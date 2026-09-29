@@ -1,0 +1,19 @@
+# build output
+/dist/
+/bin/
+/sleipnir
+/sleipnir.exe
+*.test
+*.out
+coverage.txt
+
+# local harness state (sessions, blobs, caches)
+.sleipnir/sessions/
+.sleipnir/blobs/
+.sleipnir/tmp/
+.sleipnir/*.local.*
+
+# editors / OS
+.idea/
+.vscode/
+.DS_Store
