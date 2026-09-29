@@ -78,4 +78,6 @@ type Prompter func(ctx context.Context, r Request) Decision
 type AllowAll struct{}
 
 // Check implements Requester.
-func (AllowAll) Check(context.Context, Request) Decision { return Decision{Allow: true, Reason: "allow-all"} }
+func (AllowAll) Check(context.Context, Request) Decision {
+	return Decision{Allow: true, Reason: "allow-all"}
+}
