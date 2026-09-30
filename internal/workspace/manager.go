@@ -416,14 +416,17 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 	}
 	m.mu.Unlock()
 
-	if fi, err := os.Lstat(dest); err == nil {
+	if _, err := os.Lstat(dest); err == nil {
 		if opts.Reuse {
 			if t, aerr := m.adopt(ctx, agent, dest, base); aerr == nil {
 				return t, false, nil
 			}
 		}
-		_ = fi
-		return nil, false, fmt.Errorf("%w: %s", ErrExists, dest)
+		// The leftover of a creation that died before it finished is cleared; anything
+		// else at this name is taken.
+		if !m.clearHalfCreated(ctx, dest, orphanAge) {
+			return nil, false, fmt.Errorf("%w: %s", ErrExists, dest)
+		}
 	} else if !os.IsNotExist(err) {
 		return nil, false, err
 	}
@@ -433,13 +436,21 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 
 	wa := gitx.WorktreeAddOptions{Path: dest, Branch: branch, Detach: branch == "", Commit: base, NoCheckout: true}
 	if err := m.st.base.WorktreeAdd(ctx, wa); err != nil {
+		if k := gitx.KindOf(err); k == gitx.KindCanceled || k == gitx.KindTimeout {
+			m.abandonAdd(ctx, dest, branch, base)
+		}
 		return nil, false, err
 	}
-	repo, err := m.st.base.Reopen(ctx, dest)
+	// Registered. Until the marker is written the tree is nobody's (see orphan.go), so
+	// the rest of this step is not something the caller may interrupt: it is a few
+	// local operations, and abandoning it half way would strand the name.
+	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	defer cancel()
+	repo, err := m.st.base.Reopen(sctx, dest)
 	if err != nil {
-		_ = m.st.base.WorktreeRemove(ctx, dest, true)
+		_ = m.st.base.WorktreeRemove(sctx, dest, true)
 		if branch != "" {
-			_ = m.st.base.DeleteBranch(ctx, branch)
+			_ = m.st.base.DeleteBranch(sctx, branch)
 		}
 		return nil, false, err
 	}
@@ -449,9 +460,9 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 		PID: m.st.self.pid, Start: m.st.self.start, BootID: m.st.self.bootID, Created: m.now().UTC(),
 	}
 	if err := writeMarker(repo.GitDir(), mk); err != nil {
-		_ = m.st.base.WorktreeRemove(ctx, dest, true)
+		_ = m.st.base.WorktreeRemove(sctx, dest, true)
 		if branch != "" {
-			_ = m.st.base.DeleteBranch(ctx, branch)
+			_ = m.st.base.DeleteBranch(sctx, branch)
 		}
 		return nil, false, fmt.Errorf("workspace: cannot write marker: %w", err)
 	}
@@ -493,7 +504,15 @@ func (m *Manager) reclaimStale(ctx context.Context, agent, dest, branch string) 
 		}
 		return err
 	}
-	n, err := m.st.base.CommitsOnlyOn(ctx, branch, m.st.prefix+"/*", m.integrationRef())
+	// Work that was merged lives on the integration branch, if the session has one
+	// (a revision that does not exist cannot be excluded).
+	var elsewhere []string
+	if _, err := m.st.base.BranchSHA(ctx, m.st.prefix+"/"+integrationName); err == nil {
+		elsewhere = append(elsewhere, m.integrationRef())
+	} else if gitx.KindOf(err) != gitx.KindNotFound {
+		return err
+	}
+	n, err := m.st.base.CommitsOnlyOn(ctx, branch, m.st.prefix+"/*", elsewhere...)
 	if err != nil {
 		return err
 	}

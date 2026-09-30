@@ -12,6 +12,29 @@ import (
 	"github.com/reee344/sleipnir/internal/gitx"
 )
 
+// gitShim writes an executable wrapper around the real git. body runs before the
+// real git is exec'd (it may exit instead); $D is the wrapper's own directory, for
+// flags and evidence, and $REAL is the real git.
+func gitShim(t *testing.T, body string) (path, dir string) {
+	t.Helper()
+	skipWithoutUnix(t)
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	dir = t.TempDir()
+	script := "#!/bin/sh\n" +
+		"D=$(dirname \"$0\")\n" +
+		"REAL='" + realGit + "'\n" +
+		body + "\n" +
+		"exec \"$REAL\" \"$@\"\n"
+	path = filepath.Join(dir, "git-shim")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path, dir
+}
+
 // newShimmedEnv is a queue whose git is a wrapper script that can interfere with
 // exactly one command, the update of the integration branch (the publish step),
 // once the test arms it by creating $D/armed. snippet is the shell code that
@@ -20,27 +43,13 @@ import (
 // setup, runs the real git.
 func newShimmedEnv(t *testing.T, snippet string) (e *queueEnv, ctl string) {
 	t.Helper()
-	skipWithoutUnix(t)
-	realGit, err := exec.LookPath("git")
-	if err != nil {
-		t.Skip("no git")
-	}
-	ctl = t.TempDir()
-	script := "#!/bin/sh\n" +
-		"D=$(dirname \"$0\")\n" +
-		"REAL='" + realGit + "'\n" +
-		"case \" $* \" in\n" +
-		"  *\" update-ref \"*\"/_integration \"*)\n" +
-		"    if [ -f \"$D/armed\" ]; then\n" +
-		"      rm -f \"$D/armed\"\n" +
-		snippet + "\n" +
-		"    fi;;\n" +
-		"esac\n" +
-		"exec \"$REAL\" \"$@\"\n"
-	shim := filepath.Join(ctl, "git-shim")
-	if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	shim, ctl := gitShim(t, "case \" $* \" in\n"+
+		"  *\" update-ref \"*\"/_integration \"*)\n"+
+		"    if [ -f \"$D/armed\" ]; then\n"+
+		"      rm -f \"$D/armed\"\n"+
+		snippet+"\n"+
+		"    fi;;\n"+
+		"esac")
 	dir := newRepo(t)
 	repo := openRepo(t, dir, gitx.WithGitPath(shim))
 	m := newManager(t, repo)

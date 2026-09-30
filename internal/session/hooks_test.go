@@ -151,3 +151,68 @@ func TestBadHookConfigurationDisablesHooksNotTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestToolAndStopHooksThroughRealCommands(t *testing.T) {
+	repo := newRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "keepme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "stopped-once")
+	var results []string
+	var lastUser string
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		lastUser = c.LastUser()
+		switch assistantTurns(c) {
+		case 0:
+			return mock.Reply{Text: "cleaning", ToolCalls: []mock.ToolCall{call("c1", "bash", map[string]any{"command": "rm -rf keepme"})}}
+		case 1:
+			for _, m := range c.Messages {
+				if m.Role == "tool" {
+					results = append(results, m.Content)
+				}
+			}
+			return mock.Reply{Text: "trying again", ToolCalls: []mock.ToolCall{call("c2", "bash", map[string]any{"command": "echo hello"})}}
+		}
+		return mock.Reply{Text: "finished"}
+	})
+	o := opts(t, repo, client, model)
+	o.Config = hookConfig(t, map[string]string{
+		"PreToolUse":  `if grep -q 'rm -rf'; then echo "recursive deletes are not allowed here" >&2; exit 2; fi`,
+		"PostToolUse": `cat >/dev/null; echo '{"hookSpecificOutput":{"additionalContext":"audited by the hook"}}'`,
+		"Stop":        `cat >/dev/null; if [ ! -e ` + marker + ` ]; then touch ` + marker + `; echo "run the linter first" >&2; exit 2; fi`,
+	})
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	res, err := s.Run(context.Background(), "tidy up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "keepme")); err != nil {
+		t.Fatalf("the PreToolUse hook must have stopped the delete: %v", err)
+	}
+	if len(results) == 0 || !strings.Contains(results[0], "A hook blocked this call: recursive deletes are not allowed here") {
+		t.Fatalf("the model was not told why its call was blocked: %q", results)
+	}
+	if !strings.Contains(lastUser, "[stop hook] run the linter first") {
+		t.Errorf("a Stop hook that exits 2 must send the agent back with its reason, last message: %q", lastUser)
+	}
+	if !strings.Contains(res.Text, "finished") {
+		t.Errorf("result %q", res.Text)
+	}
+	// Hooks are visible in the log, for the inspector and for training data.
+	var ran, blocked int
+	for _, e := range readEvents(t, res.Dir) {
+		if e.Type == "hook.run" {
+			ran++
+			if strings.Contains(string(e.Data), `"blocked":true`) {
+				blocked++
+			}
+		}
+	}
+	if ran < 4 || blocked < 2 {
+		t.Errorf("hook.run events: %d ran, %d blocked", ran, blocked)
+	}
+}

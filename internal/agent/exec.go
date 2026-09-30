@@ -86,6 +86,7 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 	switch {
 	case call.Invalid != "":
 		res = tools.Errorf("The arguments for %s were not valid JSON (%s), most likely cut off by the output limit. Send a smaller call.", call.ToolName, call.Invalid)
+		res.Meta = withErrorKind(res.Meta, ErrKindInvalidInput)
 		return
 	case ctx.Err() != nil:
 		res = tools.Errorf("interrupted before %s ran", call.ToolName)
@@ -94,7 +95,25 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 	t, ok := a.cfg.Tools.Get(call.ToolName)
 	if !ok {
 		res = tools.Errorf("unknown tool %q", call.ToolName)
+		res.Meta = withErrorKind(res.Meta, ErrKindUnknownTool)
 		return
+	}
+	hc := ToolHookCall{Agent: a.cfg.ID, Role: a.cfg.Role, Tool: call.ToolName, Input: call.Input}
+	var hookText []string
+	if h := a.cfg.Hooks; h != nil {
+		o := h.BeforeTool(ctx, hc)
+		if o.Veto {
+			res = tools.Errorf("A hook blocked this call: %s", o.Reason)
+			res.Meta = withErrorKind(res.Meta, ErrKindHook)
+			return
+		}
+		if len(o.UpdatedInput) > 0 {
+			call.Input = o.UpdatedInput
+			hc.Input = o.UpdatedInput
+		}
+		if o.Context != "" {
+			hookText = append(hookText, o.Context)
+		}
 	}
 	var err error
 	res, err = t.Run(ctx, &tools.Call{ID: call.ToolID, Name: call.ToolName, Input: call.Input, Env: a.env()})
@@ -103,6 +122,18 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 	}
 	if res == nil {
 		res = tools.Errorf("%s returned nothing", call.ToolName)
+	}
+	if h := a.cfg.Hooks; h != nil {
+		o := h.AfterTool(ctx, hc, res)
+		if o.Reason != "" {
+			hookText = append(hookText, o.Reason)
+		}
+		if o.Context != "" {
+			hookText = append(hookText, o.Context)
+		}
+	}
+	if len(hookText) > 0 {
+		res.Text += "\n[hook] " + strings.Join(hookText, "\n[hook] ")
 	}
 	return
 }
@@ -123,6 +154,11 @@ func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Durat
 	}
 	content := []core.Block{core.Text(text)}
 	content = append(content, res.Blocks...)
+	if res.IsError {
+		if _, ok := res.Meta["error_kind"]; !ok {
+			res.Meta = withErrorKind(res.Meta, classifyToolError(res.Text))
+		}
+	}
 	a.cfg.Sink.ToolEnd(a.cfg.ID, call, res, took)
 	a.emit(events.TypeToolResult, map[string]any{
 		"id": call.ToolID, "name": call.ToolName, "error": res.IsError, "chars": len(res.Text),

@@ -488,6 +488,7 @@ func (s *Session) build() error {
 			Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
 			Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 			MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
+			Hooks: s.agentHooks(),
 		})
 		if err != nil {
 			return err
@@ -534,7 +535,7 @@ func (s *Session) build() error {
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
 		Workdir: o.Cwd, Root: o.Root, Params: params, Planner: planner, Est: est, Limits: limits, Now: o.Now,
-		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After,
+		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
 	}
 	if len(o.RoleModels) > 0 {
 		deps.RoleModels = map[string]swarm.RoleModel{}

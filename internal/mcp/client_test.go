@@ -1072,3 +1072,79 @@ func TestDecodeToolResultShapes(t *testing.T) {
 		t.Errorf("decode error echoes payload: %v", err)
 	}
 }
+
+// finishedTransport fails every send the way a transport that has already ended
+// does (with the raw cause), and tells the client why only when the test says so:
+// the interval a child process's transport spends collecting an exit status.
+type finishedTransport struct {
+	mu sync.Mutex
+	h  Handler
+}
+
+func (f *finishedTransport) Start(h Handler) error {
+	f.mu.Lock()
+	f.h = h
+	f.mu.Unlock()
+	return nil
+}
+
+func (f *finishedTransport) Send(context.Context, []byte) error {
+	return &closedError{cause: io.EOF}
+}
+
+func (f *finishedTransport) Close() error { return nil }
+
+func (f *finishedTransport) Ended() bool { return true }
+
+func (f *finishedTransport) report(err error) {
+	f.mu.Lock()
+	h := f.h
+	f.mu.Unlock()
+	h.Closed(err)
+}
+
+func TestCallOnAFinishedTransportReportsTheRealCause(t *testing.T) {
+	// The send fails with the raw cause (end of file) while the owner of the
+	// transport is still finding out how the server died. The caller, and through
+	// it the model, must be told the real reason, not "EOF".
+	ft := &finishedTransport{}
+	c := NewClient(ft, ClientOptions{})
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.ended() || c.Err() != nil {
+		t.Fatalf("ended=%v err=%v: the client should know the transport is over before it is told why", c.ended(), c.Err())
+	}
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		ft.report(errors.New("server process exited (exit status 3)"))
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := c.Ping(ctx)
+	if !errors.Is(err, ErrClosed) || !strings.Contains(err.Error(), "exit status 3") || strings.Contains(err.Error(), "EOF") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCallOnAFinishedTransportDoesNotWaitLongerThanTheCaller(t *testing.T) {
+	// A transport that never says why must not hold a call: the caller's own
+	// deadline ends the wait and the raw cause is reported.
+	ft := &finishedTransport{}
+	c := NewClient(ft, ClientOptions{})
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := c.Ping(ctx)
+	if !errors.Is(err, ErrClosed) || !strings.Contains(err.Error(), "EOF") {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("waited %v", d)
+	}
+}

@@ -132,6 +132,9 @@ type Config struct {
 	Limiter Limiter
 	Gate    Gate
 	Sink    Sink
+	// Hooks runs user-configured commands around tool calls and before the agent
+	// stops (nil: none).
+	Hooks Hooks
 
 	Workdir string
 	Root    string
@@ -442,6 +445,7 @@ func (a *Agent) emit(typ string, data any) {
 // no tool calls, is cancelled, or hits a limit.
 func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	res := &Result{}
+	vetoes := 0 // Stop hooks that sent the agent back to work in this run
 	if input != "" {
 		a.pushUser(core.OriginUser, []core.Block{core.Text(input)})
 		a.emit(events.TypeUserInput, map[string]any{"text": input})
@@ -472,6 +476,15 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 		calls := turn.ToolCalls()
 		if len(calls) == 0 {
 			res.Text = kv.AnswerText(turn) // what the model said, not its reasoning
+			// A Stop hook may send the agent back to work (run the tests, fix the
+			// lint) a bounded number of times.
+			if h := a.cfg.Hooks; h != nil && vetoes < maxStopVetoes {
+				if o := h.BeforeStop(ctx, a.cfg.ID, a.cfg.Role, res.Text, vetoes > 0); o.Veto {
+					vetoes++
+					a.pushUser(core.OriginUser, []core.Block{core.Text("[stop hook] " + o.Reason)})
+					continue
+				}
+			}
 			u, c := a.Usage()
 			_, res.CostUSD = u, c
 			res.Compactions = a.comp.count

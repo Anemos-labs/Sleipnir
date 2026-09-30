@@ -54,6 +54,7 @@ type rigOpts struct {
 	budget    float64
 	blobs     events.Blobs
 	capture   bool // ask the (mock) endpoint for token ids and logprobs
+	hooks     agent.Hooks
 }
 
 func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
@@ -101,7 +102,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 		Params: core.Params{MaxTokens: 512},
 		Events: log, Planner: opts.planner, NoCompaction: opts.noCompact,
 		SessionID: "testsession", MaxSteps: opts.steps, BudgetUSD: opts.budget,
-		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture,
+		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture, Hooks: opts.hooks,
 	})
 	if err != nil {
 		t.Fatal(err)

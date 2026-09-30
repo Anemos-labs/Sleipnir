@@ -151,6 +151,15 @@ func (s *Session) promptHook(ctx context.Context, first bool, goal string) (stri
 	return goal + "\n\n[context from your hooks]\n" + strings.Join(extra, "\n"), nil
 }
 
+// agentHooks is the hook adapter as an agent.Hooks, or a true nil when no hooks
+// are configured (a nil *hookAdapter inside an interface would not be nil).
+func (s *Session) agentHooks() agent.Hooks {
+	if s.hookAdapter == nil {
+		return nil
+	}
+	return s.hookAdapter
+}
+
 func (s *Session) mainAgent() string {
 	if s.opts.Swarm {
 		return "mgr"

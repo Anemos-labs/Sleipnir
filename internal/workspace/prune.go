@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -119,11 +120,15 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 		m.pruneOne(ctx, opts, e, act, rep)
 	}
 
+	m.pruneHalfCreated(ctx, opts, rep)
+
 	// Branches nobody has checked out and no live tree needs.
 	refs, err := m.st.base.Branches(ctx, m.st.prefix+"/")
 	if err != nil {
 		return rep, err
 	}
+	// What is checked out now, not before this call removed trees.
+	attached = map[string]bool{}
 	after, _ := m.st.base.Worktrees(ctx)
 	for _, w := range after {
 		if w.Branch != "" {
@@ -160,6 +165,34 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 		rep.BranchesRemoved = append(rep.BranchesRemoved, act)
 	}
 	return rep, nil
+}
+
+// pruneHalfCreated removes the registrations that died before they got a marker
+// (see orphan.go). The repository lock is held by the caller.
+func (m *Manager) pruneHalfCreated(ctx context.Context, opts PruneOptions, rep *PruneReport) {
+	ents, err := os.ReadDir(m.st.dirReal)
+	if err != nil {
+		return
+	}
+	minAge := max(orphanAge, opts.MinAge)
+	for _, e := range ents {
+		if !e.IsDir() {
+			continue
+		}
+		dest := filepath.Join(m.st.dirReal, e.Name())
+		if _, ok := m.halfCreated(dest, minAge); !ok {
+			continue
+		}
+		act := PruneAction{Agent: e.Name(), Path: dest, Reason: "half-created tree: registered, but its creation never finished"}
+		if opts.DryRun {
+			act.Reason += " (dry run)"
+		} else if !m.clearHalfCreated(ctx, dest, minAge) {
+			act.Reason = "half-created tree that could not be removed"
+			rep.Kept = append(rep.Kept, act)
+			continue
+		}
+		rep.Removed = append(rep.Removed, act)
+	}
 }
 
 // sessionRefsExcluding is sessionRefs without one branch (a branch is not

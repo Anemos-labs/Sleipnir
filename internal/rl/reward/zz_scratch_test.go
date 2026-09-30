@@ -1,3 +1,5 @@
+//go:build scratch
+
 package reward
 
 import (

@@ -149,3 +149,73 @@ func TestTestNameMatchingIsBounded(t *testing.T) {
 		})
 	})
 }
+
+// bigEpisode builds a long swarm run: a manager that spawns the workers, workers
+// that run tests and write files, a compaction (a compactor fork and a rebase)
+// every 40 steps, mail between neighbours. Inline prompts on the compactor steps
+// and the steps after them give the fidelity probes something to read.
+func bigEpisode(agents, steps int) *rl.Episode {
+	var as []rl.Agent
+	var edges []rl.Edge
+	for a := 0; a < agents; a++ {
+		role := "worker"
+		if a == 0 {
+			role = "manager"
+		}
+		id := fmt.Sprintf("ag%d", a)
+		var sts []rl.Step
+		seg, prompt, turn := 0, 4000, int64(1)
+		for s := 0; s < steps; s++ {
+			st := mkStep(fmt.Sprintf("%s.%d", id, s), withPrompt(prompt, "sp"), withOut(80), withAt(time.Duration(a*steps+s)*time.Second),
+				withTurnID(turn), withSeg(seg, 0), withUsage(prompt/2, prompt/2, 300, 80),
+				withObs(bashObs(fmt.Sprintf("go test ./pkg%d/...", s%17), fmt.Sprintf("--- FAIL: TestCase%d (0.01s)\n    x_test.go:%d: got \"value %d here\"", s, s, s)),
+					writeObs(fmt.Sprintf("pkg%d/file%d.go", s%17, s))),
+				withText(fmt.Sprintf("step %d", s)))
+			turn++
+			prompt += 300
+			if seg > 0 && s%40 == 0 {
+				st.Inline = &core.Prompt{Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(fmt.Sprintf("summary keeps pkg%d/file%d.go and TestCase%d", (s-1)%17, s-1, s-1))}}}}
+			}
+			sts = append(sts, st)
+			if s%40 == 39 {
+				c := mkStep(fmt.Sprintf("%s.c%d", id, s), withKind(rl.KindCompactor), withPrompt(prompt+500, "sp"), withOut(200), withAt(time.Duration(a*steps+s)*time.Second),
+					withSeg(seg, 0), withText(fmt.Sprintf(`{"keep_from":"t%d"}`, turn-8)))
+				c.Inline = &core.Prompt{Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(strings.Repeat(fmt.Sprintf("context of go test ./pkg%d/... and TestCase%d in pkg%d/file%d.go ", s%17, s, s%17, s), 60))}}}}
+				sts = append(sts, c)
+				edges = append(edges, rl.Edge{Kind: rl.EdgeCompact, From: c.ID, To: fmt.Sprintf("%s.%d", id, s+1)})
+				seg++
+				prompt = 4000 + 3000
+			}
+		}
+		as = append(as, mkAgent(id, role, sts...))
+		if a > 0 {
+			edges = append(edges, rl.Edge{Kind: rl.EdgeSpawn, From: "ag0.0", To: id})
+			edges = append(edges, rl.Edge{Kind: rl.EdgeMail, From: fmt.Sprintf("ag%d.1", a-1), To: fmt.Sprintf("%s.2", id)})
+		}
+	}
+	ep := mkEpisode("big/0", as...)
+	ep.Edges = edges
+	ep.Signals = map[string]float64{rl.SigRequests: float64(agents * steps), rl.SigMailSent: float64(agents), rl.SigCriticalPath: float64(steps)}
+	return ep
+}
+
+func TestScoringScalesWithEpisodeSize(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Probes = true
+	task := &rl.Task{Budget: rl.Budget{ITE: 5e7, Steps: 100000, Requests: 100000}, Verifier: rl.Verifier{Cmd: "go test ./...", Protected: []string{"*_test.go"}}}
+	run := func(agents, steps int) {
+		ep := bigEpisode(agents, steps)
+		if err := Score(ep, task, cfg, nil); err != nil {
+			t.Fatal(err)
+		}
+		if !finite(ep.Reward.Total) {
+			t.Fatalf("total %v", ep.Reward.Total)
+		}
+	}
+	t.Run("one long agent", func(t *testing.T) {
+		requireLinear(t, "1 agent, n steps", 500, func(n int) { run(1, n) })
+	})
+	t.Run("many agents", func(t *testing.T) {
+		requireLinear(t, "n agents, 40 steps", 50, func(n int) { run(n, 40) })
+	})
+}

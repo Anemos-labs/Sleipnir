@@ -130,6 +130,9 @@ type Deps struct {
 	// OnWrite is told after every successful write (the checkpoint store uses it
 	// to tell an agent's last write from a human's later edit).
 	OnWrite func(agent, path string)
+	// Hooks runs user-configured commands around every agent's tool calls and
+	// stops (nil: none).
+	Hooks agent.Hooks
 }
 
 // RoleModel is a per-role model override.

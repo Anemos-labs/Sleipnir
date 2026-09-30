@@ -152,7 +152,7 @@ unless noted.
 * **Minimal fix.** In `commit()` map the tail through a thinking strip (same rule as `retain`); drop the
   `inFlight` exception (compact only at user-turn boundaries, which is already the case); in `requestOnce` consume
   `a.strip` under the same lock as the stack snapshot and strip durably before rendering.
-* **Test sketch.** Exists; after the fix the three tests must pass with `REVIEW_STRICT=1`.
+* **Test sketch.** Exists (review-time); after the fix the three tests are permanent regression tests and pass by default.
 
 ## R3. The compactor fork changes `tool_choice`: on Anthropic it forfeits the whole conversation cache
 

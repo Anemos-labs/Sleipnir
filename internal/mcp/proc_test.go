@@ -587,3 +587,28 @@ func TestProcSlowButWithinBudgetStartup(t *testing.T) {
 	}
 	callText(t, c, "echo", `{"message":"x"}`)
 }
+
+func TestCallAfterTheServerHungUpButBeforeItExitedNamesHowItDied(t *testing.T) {
+	skipNotUnix(t)
+	// The server closes its output at once and exits (status 3) 800ms later, so
+	// for that long the transport has ended and the process has not been reaped.
+	// A call made in between fails to send; it must still learn the exit status.
+	c, err := dialProcTest(t, helperCfg("linger", map[string]string{mcptest.EnvDelay: "800ms"}), DialOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashed := callAsync(c, context.Background(), "crash", `{}`, CallOptions{})
+	waitFor(t, "the transport to end", func() bool { return c.ended() })
+	if c.Err() != nil {
+		t.Fatalf("the client already knows why: %v (the interval this test needs is gone)", c.Err())
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err = c.Ping(ctx)
+	if !errors.Is(err, ErrClosed) || !strings.Contains(err.Error(), "exit status 3") {
+		t.Errorf("Ping err = %v", err)
+	}
+	if r := await(t, crashed, 10*time.Second); !errors.Is(r.err, ErrClosed) || !strings.Contains(r.err.Error(), "exit status 3") {
+		t.Errorf("the crashing call itself: %v", r.err)
+	}
+}

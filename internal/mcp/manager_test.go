@@ -896,3 +896,40 @@ func TestManagerRoundTripOfSnapshotHashAcrossSpecs(t *testing.T) {
 		t.Errorf("specs do not round-trip: %v", err)
 	}
 }
+
+func TestCallLandingWhileTheConnectionIsDyingWaitsForTheRestart(t *testing.T) {
+	skipNotUnix(t)
+	// The server hangs up and lingers for 800ms before it exits. In that interval
+	// the stream is over but the supervisor has not been told, so the manager
+	// still holds the dead connection; a call arriving then must be treated as one
+	// landing in the restart window (wait, then succeed), not sent down a
+	// connection that can only fail.
+	o := quickOpts(map[string]ServerConfig{"srv": helperCfg("linger", map[string]string{mcptest.EnvDelay: "800ms"})})
+	o.ReconnectWait = 8 * time.Second
+	m := startManager(t, o)
+	snap := m.Snapshot()
+	env, _ := testEnv(newRecorder(true))
+	crash := findTool(t, snap.Tools(), "__crash")
+	echo := findTool(t, snap.Tools(), "__echo")
+
+	crashed := make(chan *tools.Result, 1)
+	go func() { crashed <- runTool(t, crash, env, `{}`) }()
+	srv := m.serverByName("srv")
+	waitFor(t, "the stream to end", func() bool {
+		c := srv.currentClient()
+		return c != nil && c.ended()
+	})
+	if c := srv.currentClient(); c == nil || c.Err() != nil {
+		t.Fatal("the supervisor already knows: the interval this test needs is gone")
+	}
+	res := runTool(t, echo, env, `{"message":"hello"}`)
+	if res.IsError || res.Text != "hello" {
+		t.Errorf("a call landing while the connection was dying should wait for the restart: %+v", res)
+	}
+	if r := <-crashed; !r.IsError || !strings.Contains(r.Text, "exit status 3") {
+		t.Errorf("the crashing call: %+v", r)
+	}
+	if st := statusOf(m, "srv"); st.State != StateReady || st.Restarts != 1 {
+		t.Errorf("%+v", st)
+	}
+}

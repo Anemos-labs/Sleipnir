@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -22,7 +23,8 @@ const (
 	EnvPidFile = "SLEIPNIR_MCPTEST_PIDFILE"
 	// EnvSecret is echoed to stderr by the "secret-stderr" mode.
 	EnvSecret = "SLEIPNIR_MCPTEST_SECRET"
-	// EnvDelay is how long the "slow-init" mode waits before serving.
+	// EnvDelay is how long the "slow-init" mode waits before serving and the
+	// "linger" mode between hanging up and exiting.
 	EnvDelay = "SLEIPNIR_MCPTEST_DELAY"
 )
 
@@ -56,9 +58,13 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 //	grandchild   serve, with a child process of its own (pid in EnvPidFile)
 //	secret-stderr print EnvSecret to stderr, then exit 2
 //	slow-init    wait EnvDelay (a Go duration) before serving
+//	linger       serve; the "crash" tool closes stdout at once but exits (status
+//	             3) only after EnvDelay: the client sees the stream end long
+//	             before it can learn how the process died
 //	sleep        sleep forever (the grandchild's mode)
 func HelperMain() {
 	mode := os.Getenv(EnvMode)
+	var hungUp atomic.Bool
 	out := &lockedWriter{w: os.Stdout}
 	s := New()
 	s.OnCrash = func() { os.Exit(3) }
@@ -101,10 +107,24 @@ func HelperMain() {
 		if d, err := time.ParseDuration(os.Getenv(EnvDelay)); err == nil {
 			time.Sleep(d)
 		}
+	case "linger":
+		d, err := time.ParseDuration(os.Getenv(EnvDelay))
+		if err != nil {
+			d = 500 * time.Millisecond
+		}
+		s.OnCrash = func() {
+			hungUp.Store(true)
+			_ = os.Stdout.Close()
+			time.Sleep(d)
+			os.Exit(3)
+		}
 	}
 	err := s.ServeStdio(os.Stdin, out)
 	if mode == "ignoreterm" {
 		select {} // stdin closed: an ill-behaved server keeps running
+	}
+	if hungUp.Load() {
+		select {} // a call after the hang-up ended the serve loop; the crash exits when its delay is over
 	}
 	if err != nil && !strings.Contains(err.Error(), "closed") {
 		fmt.Fprintln(os.Stderr, "serve:", err)
