@@ -90,14 +90,14 @@ func (s stripped) String() string {
 // structure the rest of the loader sees is the one a reader sees.
 func stripHidden(s string) (string, stripped) {
 	var st stripped
-	clean := true
+	untouched := true
 	for _, r := range s {
 		if hiddenKind(r) != hiddenNone || r == 0x85 || r == 0x2028 || r == 0x2029 {
-			clean = false
+			untouched = false
 			break
 		}
 	}
-	if clean {
+	if untouched {
 		return s, st
 	}
 	var b strings.Builder
