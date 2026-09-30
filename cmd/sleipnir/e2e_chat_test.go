@@ -75,6 +75,26 @@ func (c *chatTerm) ctrlD() {
 	}
 }
 
+// quitWithCtrlC presses Ctrl-C at the prompt until the session ends. One press only says how to
+// quit; a second, soon after and with nothing typed in between, quits. "Soon" is a clock (two
+// seconds), so a machine that took longer than that between two presses makes the second a
+// first one again, and the test presses again after each reminder. Only a session that never
+// ends fails.
+func (c *chatTerm) quitWithCtrlC() {
+	c.t.Helper()
+	for range 5 {
+		c.ctrlC()
+		err := c.term.ExpectString("Ctrl-C again", e2eGuard)
+		switch {
+		case errors.Is(err, ptytest.ErrEOF):
+			return // the output ended: so did the session
+		case err != nil:
+			c.t.Fatal(err)
+		}
+	}
+	c.t.Fatalf("five presses of Ctrl-C at the prompt did not end the session:\n%s", c.term.Transcript())
+}
+
 // exited waits for the session to end and checks its exit status.
 func (c *chatTerm) exited(code int) {
 	c.t.Helper()
@@ -126,6 +146,53 @@ func TestChatCtrlCCancelsTheTurnNotTheSession(t *testing.T) {
 	}
 }
 
+// A chat with a manager (--swarm) is the same: Ctrl-C cancels the manager's turn, not the session.
+func TestChatSwarmCtrlCCancelsTheTurnNotTheSession(t *testing.T) {
+	m := startModel(t)
+	slow := m.on("@slow", say("slow turn finished").held())
+	m.on("@hello", say("hi there"))
+	w := newWorld(t, m.url())
+	c := startChat(t, w, "--swarm", "1")
+
+	c.send("@slow")
+	slow.wait(t)
+	c.ctrlC()
+	c.expect("(cancelled)")
+	c.prompt()
+	slow.release()
+	c.send("@hello")
+	c.expect("hi there")
+	c.prompt()
+	c.ctrlD()
+	c.exited(0)
+}
+
+// A session that ended by two Ctrl-C at the prompt is a session that ended cleanly: it can be
+// continued, with the turns it had.
+func TestChatResumesASessionThatCtrlCEnded(t *testing.T) {
+	m := startModel(t)
+	m.on("@hello", say("hi there"))
+	m.on("@again", say("and again"))
+	w := newWorld(t, m.url())
+
+	c := startChat(t, w)
+	c.send("@hello")
+	c.expect("hi there")
+	c.prompt()
+	c.quitWithCtrlC()
+	c.exited(0)
+
+	c = startChat(t, w, "--continue")
+	c.send("@again")
+	c.expect("and again")
+	c.prompt()
+	c.ctrlD()
+	c.exited(0)
+	if got, want := m.seen(), []string{"@hello", "@again"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("the model got the goals %q, want %q", got, want)
+	}
+}
+
 // At the prompt Ctrl-C does not quit: it says how to, and a goal works afterwards. A second
 // Ctrl-C, right after one, quits. Anything in between (a goal) makes the next one a first.
 func TestChatCtrlCAtThePromptAsksBeforeItQuits(t *testing.T) {
@@ -146,23 +213,7 @@ func TestChatCtrlCAtThePromptAsksBeforeItQuits(t *testing.T) {
 	c.expect("Ctrl-C again")
 	c.prompt()
 
-	// The second press quits. "Right after" is a clock (two seconds), so a machine that took
-	// longer than that between the two makes the second press a first one again: press after
-	// each hint until the session ends. Only a session that does not end fails.
-	ended := false
-	for i := 0; i < 5 && !ended; i++ {
-		c.ctrlC()
-		err := c.term.ExpectString("Ctrl-C again", e2eGuard)
-		switch {
-		case errors.Is(err, ptytest.ErrEOF):
-			ended = true
-		case err != nil:
-			t.Fatal(err)
-		}
-	}
-	if !ended {
-		t.Fatalf("five presses of Ctrl-C at the prompt did not end the session:\n%s", c.term.Transcript())
-	}
+	c.quitWithCtrlC()
 	c.exited(0)
 	if got, ok := w.sessionEnd(); !ok || got != "interrupted" {
 		t.Errorf("the session ended with reason %q (recorded: %v), want \"interrupted\"", got, ok)

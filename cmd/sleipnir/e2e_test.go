@@ -325,29 +325,35 @@ func (m *scriptedModel) respond(c *mock.Call) mock.Reply {
 	}
 	text := strings.TrimSpace(c.LastUser())
 	m.mu.Lock()
+	// The goal is the last registered name in the message (the longest, where one ends in
+	// another: a name is a prefix of a longer one at the same place).
 	var goal string
 	var tr turn
+	at := -1
 	for name, t := range m.turns {
-		if strings.HasSuffix(text, name) && len(name) > len(goal) {
-			goal, tr = name, t
+		i := strings.LastIndex(text, name)
+		if i >= 0 && (i > at || (i == at && len(name) > len(goal))) {
+			goal, tr, at = name, t, i
 		}
 	}
 	if goal == "" {
-		m.unscripted = append(m.unscripted, oneLineCLI(text, 80))
+		m.unscripted = append(m.unscripted, oneLineCLI(text, 80)+" … "+text[max(0, len(text)-120):])
 		m.mu.Unlock()
 		return mock.Reply{Text: "unscripted goal"}
 	}
 	m.goals = append(m.goals, goal)
 	// The first message of a session carries the shared pins in front of the goal; later ones
-	// are the goal alone; and a goal whose turn was cancelled (nothing answered it) is still in
-	// the message that the next goal is added to. Anything else in front is input that ended up
-	// in the goal by mistake (a half-typed line that was not discarded, for one).
-	front := strings.TrimSuffix(text, goal)
+	// are the goal alone; a goal whose turn was cancelled (nothing answered it) is still in the
+	// message that the next goal is added to; and a swarm's manager is given the board after
+	// the goal. Anything else around it is input that ended up in the goal by mistake (a
+	// half-typed line that was not discarded, for one).
+	front := text[:at]
 	for name := range m.turns {
 		front = strings.ReplaceAll(front, name, "")
 	}
-	if front != "" && !strings.HasSuffix(front, "</role-context>") {
-		m.stray = append(m.stray, "…"+front[max(0, len(front)-60):]+"⟦"+goal+"⟧")
+	after := text[at+len(goal):]
+	if (front != "" && !strings.HasSuffix(front, "</role-context>")) || (after != "" && !strings.HasPrefix(after, "<live board=")) {
+		m.stray = append(m.stray, "…"+front[max(0, len(front)-60):]+"⟦"+goal+"⟧"+oneLineCLI(after, 60))
 	}
 	m.mu.Unlock()
 	if g := tr.gate; g != nil {
