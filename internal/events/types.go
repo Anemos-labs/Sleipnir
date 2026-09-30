@@ -58,6 +58,17 @@ const (
 	TypeLease       = "lease"
 	TypeGovernor    = "governor"
 
+	// Supervision of the manager. swarm.hold: a batch run's manager gave a final
+	// answer while the board still held unfinished work and was sent back to it
+	// (payload: reason). swarm.unfinished: the run ended anyway (the veto bound was
+	// reached) and reported what was left. swarm.wake: a finished worker, a
+	// submission or mail woke an idle manager of an interactive session (payload:
+	// n, note); swarm.wake.paused: the bound on automatic turns was reached.
+	TypeSwarmHold       = "swarm.hold"
+	TypeSwarmUnfinished = "swarm.unfinished"
+	TypeSwarmWake       = "swarm.wake"
+	TypeSwarmWakePaused = "swarm.wake.paused"
+
 	// Humans.
 	TypeUserInput = "user.input"
 	TypeUserSteer = "user.steer"

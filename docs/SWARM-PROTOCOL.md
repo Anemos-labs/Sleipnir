@@ -97,6 +97,17 @@ manager: reject / reopen    review -> doing with feedback (or todo when the work
 manager: fail               failed  (its worker, if running, is stopped)
 ```
 
+**The manager's own stop.** The manager's final answer is a stop like any other, and the harness decides whether the
+run may end (`swarm.Config.HoldManager`, set for every session that is not interactive: `run`, `swarm`, RL rollouts).
+While workers are running, or tasks are in review, doing, blocked or todo, a final answer is vetoed with one short
+harness-written reason that lists ids only (`Not finished: running: be-1 (T3), te-1 (T4); in review: T2; not started:
+T5. Use wait, accept or reject submissions, and fail tasks you abandon, then give your final answer.`: sorted,
+deterministic, at most about 400 characters, the lists shrink before the instruction is cut). The user's own Stop hooks run
+first and either may veto. The agent loop bounds vetoes per run (three), so a manager that will not settle its board is
+released: the run ends, its result is followed by a `[harness] Unfinished when the manager stopped: ...` line, and the
+person gets a notice (`swarm.hold` and `swarm.unfinished` events). A run that was cancelled, whose budget is spent, or
+whose swarm is shut down is never held (those paths end before, or without, consulting the guard).
+
 Rules: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
 bounded (a deadline, and at most two runs at once) and a verifier that ignores its context cannot hold the caller past
@@ -218,7 +229,7 @@ never promoted as an instruction.
 | stuck worker | watchdog: no model or tool event for 10 minutes -> alert; at 20 minutes the run is cancelled and its task requeued (attempt counted); a run that ignores the cancel for 30 more seconds is abandoned: the worker is retired and its goroutine left to finish alone |
 | provider outage / 429 / 5xx | retry with backoff inside the request; the governor slows the whole swarm |
 | swarm budget spent | no request is admitted, running workers are stopped, the manager is told once |
-| manager finishes | workers finish their current task and idle; the run ends with the board's state and a summary |
+| manager finishes | a batch run holds it until the board is settled (section 4); when the bound is reached the run ends and names what was left. In an interactive session workers legitimately outlive the turn and finished work wakes the manager (section 13) |
 | shutdown | agents are cancelled and awaited for at most 10 s; nothing new starts afterwards |
 | verifier flaky or broken | infra errors (could not run, timed out) are reported as such and never fail a task nor count as a pass; `--verify-repeat N` requires unanimity |
 | forged or hostile mail | defused and framed as data; never grants anything |
@@ -227,7 +238,8 @@ never promoted as an instruction.
 
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
-release), `governor` (rate-limit episodes), `swarm.budget`, compaction and cache events. A `board.op` names its operation
+release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
+`swarm.wake`/`swarm.wake.paused` (waking an idle manager), compaction and cache events. A `board.op` names its operation
 (`create`, `claim`, `assign`, `update`, `scope`, `finish`, `block`, `resume`, `requeue`, `agent`, `agent-remove`,
 `note`, `notes-take`, `alert`, `alert-clear`, `alert-expire`), the new version, and its operands (the task's status,
 owner, line, result, evidence, attempts, rev and scope, plus title, description, role and dependencies at creation; an
@@ -242,4 +254,25 @@ corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction
   `board.op` events (a test holds it to that), but nothing calls it at startup yet; alerts are transient and not rebuilt.
 * On a cold prefix a higher-priority follower (the manager) can wait behind a worker-priority primer, because the warm
   gate is entered before the governor; the fix belongs in the agent's request path or the gate.
-* The manager is not woken by a worker's completion once its own run has ended; it sees the board at its next turn.
+* A batch run's manager that ignores three vetoes still ends with work unfinished; the run says so, it does not keep going.
+
+## 13. The manager between turns (interactive sessions)
+
+In `sleipnir chat --swarm N` a person talks to the manager between turns and workers outlive a turn: the session sets
+`Interactive`, so the manager is not held, the swarm runs for the life of the session (not of one turn's context: the chat
+loop cancels that when a turn ends; Ctrl-C still cancels the turn and, through `RunManager`, its workers), and
+`swarm.Config.WakeManager` is on. When the manager is idle and something happens that it has not seen (a worker finished,
+failed or stopped, a task reached review, mail arrived for it), the swarm starts one manager run:
+
+* **Coalesced.** A burst of events starts one run: the timer restarts on each event (1.5 s quiet, at most 10 s after the
+  first). What counts as news is the board compared with the one the manager's newest request showed it, so nothing it
+  already saw wakes it, and an event with nothing behind it starts no run.
+* **Never concurrent, never after the end.** No run starts while the manager is running (it sees the board itself; mail that
+  lands after its last drain wakes it when the run ends), after `Shutdown`, or once the swarm budget is spent
+  (`--budget-usd` still applies to the wake run like any other).
+* **Bounded.** At most 8 automatic runs between two human inputs (`RunManager`, or steering sent with `Session.Send`); the
+  person is told once when the bound is reached (`swarm.wake.paused`) and the count starts again when they write.
+* **Harness-written and inert.** The note (`While you were idle: T1 is in review (be-1); T2 failed; mail is waiting for you.
+  Check the board, ...`) holds ids and status words only, never text an agent wrote. It arrives as harness mail, not as a user
+  turn: a user turn would be folded by compaction into the manager's `instructions` as something the person asked for, once
+  per wake. It is shown to the person through the session sink (level `wake`) and logged (`swarm.wake`).

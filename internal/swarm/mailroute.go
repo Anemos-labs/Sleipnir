@@ -133,6 +133,9 @@ func (s *Swarm) deliver(msg Message) error {
 		return err
 	}
 	s.wake(m)
+	if m.manager {
+		s.managerEvent() // mail for an idle manager wakes it (wake.go)
+	}
 	return nil
 }
 
@@ -148,6 +151,9 @@ func (s *Swarm) notify(to, kind, text string) {
 	if err := m.receive(s, msg); err == nil {
 		s.emitAs(to, events.TypeMailDeliver, map[string]any{"id": msg.ID, "from": harnessSender})
 		s.wake(m)
+		if m.manager {
+			s.managerEvent()
+		}
 	}
 }
 

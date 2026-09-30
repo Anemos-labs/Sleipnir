@@ -82,6 +82,13 @@ type Options struct {
 	Roles      swarm.Roles
 	Verify     string // command the harness runs before a worker's task may leave "doing"
 	RoleModels map[string]string
+	// Interactive says a person is at the keyboard across turns (sleipnir chat).
+	// Batch runs (run, swarm, RL rollouts) leave it false and the swarm holds the
+	// manager: it may not give a final answer while workers are running or tasks are
+	// unreviewed. An interactive session is not held (workers legitimately outlive a
+	// turn) and instead wakes the idle manager when finished work needs it, with the
+	// swarm running for the life of the session rather than of one turn.
+	Interactive bool
 
 	// Limits.
 	MaxSteps      int
@@ -160,6 +167,10 @@ type Session struct {
 	started bool
 	closed  bool
 	turn    int
+	// swarmCtx is the context an interactive session's swarm runs on: it lives until
+	// Close, not until the end of one turn (see swarmContext).
+	swarmCtx  context.Context
+	swarmStop context.CancelFunc
 }
 
 // Result is what a Run produced.
@@ -558,6 +569,7 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	sc.VerifyCmd = o.Verify
 	sc.Verify = runVerify
+	sc.HoldManager, sc.WakeManager = !o.Interactive, o.Interactive
 
 	deps := swarm.Deps{
 		Provider: s.Provider, Model: s.Model, Registry: reg,
@@ -673,12 +685,31 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(goal, 60)))
 
 	if s.Swarm != nil {
-		s.Swarm.Start(ctx)
+		s.Swarm.Start(s.swarmContext(ctx))
 		res, err := s.Swarm.RunManager(ctx, goal)
 		return s.result(res, err)
 	}
 	res, err := s.Agent.Run(ctx, goal)
 	return s.result(res, err)
+}
+
+// swarmContext is the context the swarm runs on. A batch run's swarm lives on the
+// context of its one Run. An interactive session's must outlive a turn: the chat
+// loop cancels each turn's context when the turn ends, which would stop every
+// worker the manager left running and end the swarm before a person could talk to
+// the manager about it (or before the swarm could wake the manager). Ctrl-C still
+// works: it cancels the turn's context, which stops the manager's run and, through
+// RunManager, the workers.
+func (s *Session) swarmContext(turn context.Context) context.Context {
+	if !s.opts.Interactive {
+		return turn
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.swarmCtx == nil {
+		s.swarmCtx, s.swarmStop = context.WithCancel(context.WithoutCancel(turn))
+	}
+	return s.swarmCtx
 }
 
 func (s *Session) result(res *agent.Result, err error) (*Result, error) {
@@ -740,6 +771,7 @@ func (s *Session) Send(text string) {
 	switch {
 	case s.Swarm != nil:
 		if m := s.Swarm.Manager(); m != nil {
+			s.Swarm.HumanInput()
 			m.Send(text)
 		}
 	case s.Agent != nil:
@@ -759,6 +791,12 @@ func (s *Session) Close() error {
 	s.mu.Unlock()
 	if s.Swarm != nil {
 		s.Swarm.Shutdown()
+	}
+	s.mu.Lock()
+	stop := s.swarmStop
+	s.mu.Unlock()
+	if stop != nil {
+		stop()
 	}
 	if s.shell != nil {
 		s.shell.Shutdown()

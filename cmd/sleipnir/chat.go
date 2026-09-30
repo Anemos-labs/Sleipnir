@@ -47,10 +47,10 @@ func cmdChat(ctx context.Context, args []string) error {
 		return err
 	}
 	in := bufio.NewReader(os.Stdin)
-	o := session.Options{
+	o := chatOptions(session.Options{
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
-	}
+	})
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		o.Prompter = session.TerminalPrompter(in, os.Stderr)
 	}
@@ -101,6 +101,15 @@ func cmdChat(ctx context.Context, args []string) error {
 		}
 		runTurn(ctx, s, line)
 	}
+}
+
+// chatOptions marks a session as interactive: a person is at the keyboard across
+// turns. In a swarm that means the manager is not held to its board (workers
+// legitimately outlive a turn) and finished work wakes it instead; run and swarm
+// are batch runs and do not set it.
+func chatOptions(o session.Options) session.Options {
+	o.Interactive = true
+	return o
 }
 
 func modeName(s *session.Session) string {

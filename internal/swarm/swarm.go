@@ -78,6 +78,22 @@ type Config struct {
 	// InboxSoftCap is how many messages may wait in one agent's inbox before further
 	// mail is coalesced into a digest (default 12).
 	InboxSoftCap int
+
+	// HoldManager makes a final answer of the manager wait for the board: while
+	// workers are running or tasks are unreviewed, the manager's Stop is vetoed with a
+	// short reason (at most agent's per-run bound of times), so a batch run does not end
+	// with its workers cut off. Interactive sessions leave it off (see hold.go).
+	HoldManager bool
+	// WakeManager starts a manager run, with a short harness-written note, when the
+	// manager is idle and a worker finishes, fails or submits, or mail arrives for it:
+	// what an interactive session needs, since workers outlive a turn there (see
+	// wake.go). WakeQuiet is how long a burst of such events must be quiet before the
+	// run starts, WakeMax the longest a burst may postpone it, MaxWakes the bound on
+	// automatic runs between two human inputs (defaults 1.5s, 10s, 8).
+	WakeManager bool
+	WakeQuiet   time.Duration
+	WakeMax     time.Duration
+	MaxWakes    int
 }
 
 // DefaultConfig returns sane limits for a laptop-sized swarm.
@@ -89,6 +105,7 @@ func DefaultConfig() Config {
 		Board:      DefaultBoardLimits(), MaxAttempts: 3, VerifyTimeout: 15 * time.Minute, MaxVerifies: 2,
 		StuckAfter: 10 * time.Minute, StuckGrace: 30 * time.Second, ShutdownGrace: 10 * time.Second,
 		SuperviseEvery: time.Second, InboxSoftCap: 12,
+		WakeQuiet: 1500 * time.Millisecond, WakeMax: 10 * time.Second, MaxWakes: 8,
 	}
 }
 
@@ -172,6 +189,9 @@ type Swarm struct {
 	verifySem  chan struct{}
 	hseq       atomic.Int64
 	budgetOnce atomic.Bool
+
+	wk      waker                    // waking an idle manager (wake.go)
+	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
 }
 
 // New builds a swarm. Call Start before spawning.
@@ -215,6 +235,15 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	}
 	if cfg.InboxSoftCap <= 0 {
 		cfg.InboxSoftCap = def.InboxSoftCap
+	}
+	if cfg.WakeQuiet <= 0 {
+		cfg.WakeQuiet = def.WakeQuiet
+	}
+	if cfg.WakeMax <= 0 {
+		cfg.WakeMax = def.WakeMax
+	}
+	if cfg.MaxWakes <= 0 {
+		cfg.MaxWakes = def.MaxWakes
 	}
 	if deps.Events == nil {
 		deps.Events = events.Discard{}
@@ -278,6 +307,7 @@ func (s *Swarm) Shutdown() {
 	s.closed = true
 	cancel := s.cancel
 	s.mu.Unlock()
+	s.wk.stop() // no wake after this
 	if cancel != nil {
 		cancel()
 	}
@@ -354,7 +384,12 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 // RunManager runs the manager on a goal and returns its final answer. If ctx ends
 // while it runs, the workers are stopped too (their tasks go back to todo). A panic
 // in the manager's run is returned as an error.
-func (s *Swarm) RunManager(ctx context.Context, goal string) (res *agent.Result, err error) {
+//
+// With Config.HoldManager the manager is sent back to work, a bounded number of
+// times, when it answers while the board holds unfinished work; if it still stops
+// with work left, the answer is followed by a harness line naming what was left
+// (running workers, tasks in review, ...), which is also shown as a notice.
+func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, error) {
 	a, err := s.StartManager()
 	if err != nil {
 		return nil, err
@@ -363,16 +398,23 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (res *agent.Result,
 	if m == nil {
 		return nil, errors.New("the manager is gone")
 	}
-	m.mu.Lock()
-	if m.life != lifeIdle {
-		m.mu.Unlock()
+	if !s.reserveManager(m) {
 		return nil, errors.New("the manager is already running")
 	}
-	m.life = lifeRunning
-	m.mu.Unlock()
+	s.HumanInput()
+	return s.runManager(ctx, m, goal, "")
+}
+
+// runManager runs the reserved manager. mail, when set, is a message the harness
+// framed (a wake note) that is queued for the manager's first step; goal is the
+// person's input, or "" for a run the harness started.
+func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (res *agent.Result, err error) {
 	stop := context.AfterFunc(ctx, func() { s.stopWorkers("interrupted", false) })
 	defer stop()
 	m.setState(s, "running", "planning")
+	if mail != "" {
+		m.a.Send(mail)
+	}
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -381,17 +423,39 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (res *agent.Result,
 				s.emitAs(m.id, "agent.panic", map[string]any{"id": m.id, "panic": fmt.Sprint(r), "stack": string(st)})
 			}
 		}()
-		res, err = a.Run(ctx, goal)
+		res, err = m.a.Run(ctx, goal)
 	}()
-	m.mu.Lock()
-	m.life = lifeIdle
-	m.mu.Unlock()
+	s.releaseManager(m)
 	state := "done"
 	if err != nil {
 		state = "failed"
 	}
 	m.setState(s, state, "")
+	if err == nil {
+		s.afterManagerRun(m, res)
+	}
 	return res, err
+}
+
+// afterManagerRun is what the swarm does when the manager's run has returned cleanly.
+// A held manager that stopped anyway (the veto bound was reached) reports what it left
+// behind; in an interactive session, anything the manager has not seen wakes it again.
+func (s *Swarm) afterManagerRun(m *member, res *agent.Result) {
+	if s.cfg.HoldManager && res != nil {
+		if u := s.unfinishedWork(); !u.empty() {
+			txt := u.summary(holdListCap)
+			res.Text = strings.TrimRight(res.Text, "\n")
+			if res.Text != "" {
+				res.Text += "\n\n"
+			}
+			res.Text += "[harness] Unfinished when the manager stopped: " + txt + "."
+			s.emitAs(m.id, events.TypeSwarmUnfinished, map[string]any{"unfinished": txt})
+			s.managerNotice(m, "warn", "the manager stopped with unfinished work: "+txt)
+		}
+	}
+	if s.cfg.WakeManager && s.wakeNote(m) != "" {
+		s.managerEvent()
+	}
 }
 
 // Manager returns the manager agent, if started.

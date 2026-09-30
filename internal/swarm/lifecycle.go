@@ -61,6 +61,12 @@ type member struct {
 	ev       *Evidence
 	manager  bool
 	readOnly bool
+	// service marks an agent of the harness itself (the mailman): it is not a worker,
+	// holds no task, and never counts as unfinished work.
+	service bool
+	// sink is the session's sink for this agent (before the swarm wraps it): the
+	// swarm's own notices to the person go through it.
+	sink agent.Sink
 	// notify is signalled (never blocking) whenever mail is queued for the member.
 	notify chan struct{}
 
@@ -125,11 +131,15 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence) (*me
 	if d.NewSink != nil {
 		sink = d.NewSink(id)
 	}
-	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, notify: make(chan struct{}, 1)}
+	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, sink: sink, notify: make(chan struct{}, 1)}
 	m.box.init()
 	model, prov := d.Model, d.Provider
 	if rm, ok := d.RoleModels[r.Name]; ok && rm.Provider != nil {
 		model, prov = rm.Model, rm.Provider
+	}
+	hooks := d.Hooks
+	if isMgr && s.cfg.HoldManager {
+		hooks = &holdHooks{inner: d.Hooks, s: s, m: m}
 	}
 	cfg := agent.Config{
 		ID: id, Role: r.Name, Model: model, Provider: prov, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
@@ -138,6 +148,9 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence) (*me
 		Params: d.Params,
 		Hot: func(agentID string) []core.Block {
 			snap := s.Board.Snapshot()
+			if isMgr {
+				s.noteManagerSeen(snap) // what the manager has looked at (see wake.go)
+			}
 			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
 			return []core.Block{core.Text(txt)}
 		},
@@ -147,7 +160,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence) (*me
 		Workdir: d.Workdir, Root: d.Root, Limits: d.Limits,
 		Planner: d.Planner, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		OnPromote: s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
-		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: d.Hooks,
+		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: hooks,
 	}
 	a, err := agent.New(cfg)
 	if err != nil {
@@ -540,6 +553,7 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	m.setState(s, state, stateLine)
 	s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
 	s.afterIdle(m, kind == stopClean)
+	s.managerEvent() // a worker finished, failed or stopped: an idle manager may want to know
 }
 
 // currentTask picks the assignment an idle agent's status shows: what it still
