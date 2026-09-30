@@ -659,7 +659,13 @@ func TestCacheEcon_CommitStripsThinkingFromTheCarriedTail(t *testing.T) {
 func TestCacheEcon_UserInstructionGuarantees(t *testing.T) {
 	e := cxEst()
 
-	t.Run("a long task survives verbatim, a huge one is cut with a recall pointer", func(t *testing.T) {
+	// Updated for S07 (docs/reviews/tranche2-b.md). This test used to pin the old
+	// bounds: a task over 2400 tokens lost its END, which is where a spec puts its
+	// constraints. What the user typed is now pinned in full up to TaskMaxTokens (8000
+	// by default); only a text beyond that is cut, and then it keeps its beginning AND
+	// its end around a pointer, and is reported. The intent of the test (long user
+	// text survives, a huge one is bounded and points at the archive) is unchanged.
+	t.Run("a long task survives verbatim", func(t *testing.T) {
 		s := cxStack(t, "be-1", cxSizes{constT: 500})
 		th := NewThread()
 		mid := "MID-START " + cxText("requirement ", 500) + " MID-END-MARKER"
@@ -681,11 +687,36 @@ func TestCacheEcon_UserInstructionGuarantees(t *testing.T) {
 		if !strings.Contains(seg.Text, "MID-END-MARKER") {
 			t.Fatalf("a 500-token task must survive verbatim, got %d bytes", len(seg.Text))
 		}
-		if strings.Contains(seg.Text, "SPEC-END-MARKER") || !strings.Contains(seg.Text, "SPEC-START") {
-			t.Fatalf("a 5000-token task is cut to the task cap (start kept, end gone)")
+		if !strings.Contains(seg.Text, "SPEC-START") || !strings.Contains(seg.Text, "SPEC-END-MARKER") || len(res.UserTextCut) != 0 {
+			t.Fatalf("a 5000-token task is under the task cap and must be pinned in full (cut: %v)", res.UserTextCut)
 		}
-		if !strings.Contains(seg.Text, "truncated; full text: recall t") {
-			t.Fatalf("the cut entry must say where the rest is:\n%s", seg.Text[len(seg.Text)-200:])
+	})
+
+	t.Run("a huge task keeps its start and its end, points at the archive and is flagged", func(t *testing.T) {
+		s := cxStack(t, "be-1", cxSizes{constT: 500})
+		th := NewThread()
+		huge := "HUGE-START " + cxText("requirement ", 30000) + " HUGE-END-MARKER"
+		th.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text(huge)}})
+		for i := 0; i < 6; i++ {
+			cxExchange(th, fmt.Sprint(i), 100)
+		}
+		s.Thread = th.Snapshot()
+		res, err := Apply(s, &Patch{KeepFrom: s.Thread.Turns[len(s.Thread.Turns)-3].ID}, e, DefaultApplyPolicy())
+		if err != nil {
+			t.Fatal(err)
+		}
+		seg, _ := res.Notes.Segment("instructions")
+		if !strings.Contains(seg.Text, "HUGE-START") || !strings.Contains(seg.Text, "HUGE-END-MARKER") {
+			t.Fatalf("a text over the task cap keeps its beginning and its end:\n%.200s ... %.200s", seg.Text, seg.Text[len(seg.Text)-200:])
+		}
+		if !strings.Contains(seg.Text, "full text: recall t1") {
+			t.Fatalf("the cut entry must say where the rest is:\n%.400s", seg.Text)
+		}
+		if got := e.Tokens(seg.Text); got > DefaultApplyPolicy().TaskMaxTokens+200 {
+			t.Fatalf("a huge task is bounded, got %d tokens", got)
+		}
+		if len(res.UserTextCut) != 1 || !strings.HasPrefix(res.UserTextCut[0], "t1:") {
+			t.Fatalf("the cut must be reported: %v", res.UserTextCut)
 		}
 	})
 
@@ -1011,6 +1042,11 @@ func TestCacheEcon_RenderMergesAdjacentUserTurnsAtStart(t *testing.T) {
 func TestCacheEcon_SpineAndInstructionsStayBounded(t *testing.T) {
 	e := cxEst()
 	pol := DefaultApplyPolicy()
+	// The mechanism under test is the bound, whatever its default: S07 raised the
+	// default (12000) so a large spec and its steering stay pinned in full, which this
+	// scenario (150 short instructions, ~6k tokens) no longer exceeds. Pin the old
+	// value here so the eviction behind a pointer is still exercised.
+	pol.MaxInstructionTokens = 4000
 	s := cxStack(t, "mgr", cxSizes{constT: 3000, shared: 2500, role: 2200})
 	th := NewThread()
 	next := 0
