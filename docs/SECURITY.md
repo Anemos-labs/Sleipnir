@@ -34,7 +34,9 @@ instruction files until you say `--trust-project`.
   mode lifts (`~/.ssh` keys, `~/.aws`, `~/.gnupg`, `/proc/*/environ`, `.git` writes, system directories), guarded paths
   (`.env`), role profiles that can only tighten, and no prompter means deny. Every file, web and shell tool asks the engine
   before it acts; background-job tools ask before touching another agent's job, and a read-only role (reviewer, scout) is
-  denied them by name.
+  denied them by name. A question in `chat` takes only a line typed after it was shown (`cmd/sleipnir/chat_input.go`): text
+  pasted or typed while a turn runs waits for the next prompt, so a `y` that arrived earlier cannot approve an action it was
+  not typed for, and a question that Ctrl-C cancels takes nothing.
 * *Tool output is data.* It arrives as `role:tool`, never as an instruction. Pins and notes are user-role context, mail is typed,
   capped and never authority (`docs/SWARM-PROTOCOL.md`). This is defence in depth for a probabilistic reader, not a guarantee.
 * *Repository text is confined.* Instruction files are read through `os.Root`: links out of the project, hidden directories,
