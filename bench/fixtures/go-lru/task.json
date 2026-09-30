@@ -1,0 +1,13 @@
+{
+  "id": "go-lru",
+  "kind": "fix",
+  "lang": "go",
+  "difficulty": "medium",
+  "prompt": "The generic LRU cache in this repository (`lru.go`, package `lru`) has two kinds of problems that its users report.\n\n1. It does not always evict the least recently used entry: entries that were just used can be evicted while older, untouched ones survive.\n2. It is shared by many goroutines in our server, but under concurrent use `go test -race` reports data races, and without the race detector the process sometimes dies with \"concurrent map read and map write\".\n\nFix `lru.go` so that the cache behaves exactly as README.md specifies, without changing its public API. `lru_test.go` holds the README examples and a small concurrent test; do not edit any *_test.go file. Run the tests with `go test -race -timeout 60s ./...` (the timeout turns a deadlock into a failure instead of a hang). More tests than the visible ones, covering the rest of the README and heavier concurrent use, are run when your work is checked.",
+  "verify": "go test -count=1 -race ./...",
+  "timeout_s": 180,
+  "protected": ["*_test.go"],
+  "team": {"mode": "single"},
+  "tags": ["go", "fix", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

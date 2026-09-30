@@ -1,0 +1,13 @@
+{
+  "id": "go-ratelimit",
+  "kind": "refactor",
+  "lang": "go",
+  "difficulty": "medium",
+  "prompt": "Refactor the Go package `ratelimit` (`ratelimit/limiter.go` and `ratelimit/keyed.go`) so that the time it uses is injectable. Today the token-bucket `Limiter` and the per-key `Keyed` limiter read the time with `time.Now()` and `time.Since()`, so anything that depends on elapsed time can only be tested by sleeping.\n\nAdd a `Clock` interface (one method, `Now() time.Time`) and the constructors `NewWithClock(rate float64, burst int, clock Clock) *Limiter` and `NewKeyedWithClock(rate float64, burst int, clock Clock) *Keyed`, and make every reading of the time come from the clock: the refill of a `Limiter`, the last-use bookkeeping and `Sweep` of a `Keyed`, and the limiters that a `Keyed` creates for its keys. A nil clock means the real time.\n\nThe public API that existing callers use must not change: `New`, `NewKeyed` and all existing methods keep their signatures and behaviour, and package `middleware` (an existing caller) must not be modified. README.md specifies the new API exactly, together with the limiter semantics that the tests rely on. The repository's tests use the real clock and pass today; they must keep passing. More tests, which use a fake clock, are run when your work is checked. Do not edit any *_test.go file; check your work with `go test ./...`.",
+  "verify": "go test -count=1 ./...",
+  "timeout_s": 180,
+  "protected": ["*_test.go", "middleware/**"],
+  "team": {"mode": "single"},
+  "tags": ["go", "refactor", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}
