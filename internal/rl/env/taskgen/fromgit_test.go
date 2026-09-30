@@ -270,6 +270,36 @@ func contains(list []string, s string) bool {
 	return false
 }
 
+// Without a workspace manager FromGit runs git from a scratch HOME of its own. That
+// directory is gone when the call returns, mined or failed: mining used to leave one
+// behind in the temp directory per call.
+func TestFromGitRemovesItsScratchDirectory(t *testing.T) {
+	f, _ := buildCalcRepo(t) // its directories are made before TMPDIR moves
+	notARepo := t.TempDir()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp) // os.MkdirTemp("", ...) reads it on every call
+	left := func(when string) {
+		t.Helper()
+		if ents, err := os.ReadDir(tmp); err != nil || len(ents) != 0 {
+			t.Errorf("%s left %d entries in the temp dir (%v)", when, len(ents), err)
+		}
+	}
+
+	tasks, _, err := FromGit(context.Background(), f.Dir, GitOptions{NoValidate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) == 0 {
+		t.Fatal("nothing was mined, so the run did not exercise the scratch directory")
+	}
+	left("mining")
+
+	if _, _, err := FromGit(context.Background(), notARepo, GitOptions{NoValidate: true}); err == nil {
+		t.Fatal("a directory that is not a repository was mined")
+	}
+	left("a refused repository")
+}
+
 func TestFromGitDedupesIdenticalCommits(t *testing.T) {
 	f := newFixture(t)
 	f.write("go.mod", calcGoMod)

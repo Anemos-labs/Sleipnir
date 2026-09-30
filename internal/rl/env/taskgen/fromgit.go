@@ -193,6 +193,7 @@ func FromGit(ctx context.Context, repoPath string, opts GitOptions) ([]rl.Task, 
 		if g, err = env.NewGit(env.GitOptions{}); err != nil {
 			return nil, rep, err
 		}
+		defer g.Close() // the scratch HOME this call made for git
 	}
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {

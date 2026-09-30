@@ -27,6 +27,7 @@ import (
 type Git struct {
 	bin     string
 	scratch string
+	owned   bool // scratch was created by NewGit, so Close removes it
 	pass    []string
 	base    []string
 
@@ -58,17 +59,28 @@ func NewGit(o GitOptions) (*Git, error) {
 		}
 		bin = p
 	}
-	scratch := o.Scratch
+	scratch, owned := o.Scratch, false
 	if scratch == "" {
 		d, err := os.MkdirTemp("", "sleipnir-git-")
 		if err != nil {
 			return nil, err
 		}
-		scratch = d
+		scratch, owned = d, true
 	} else if err := os.MkdirAll(scratch, 0o700); err != nil {
 		return nil, err
 	}
-	return &Git{bin: bin, scratch: scratch, pass: o.PassEnv, base: o.Base}, nil
+	return &Git{bin: bin, scratch: scratch, owned: owned, pass: o.PassEnv, base: o.Base}, nil
+}
+
+// Close removes the scratch directory NewGit made when GitOptions.Scratch was empty;
+// a directory the caller named is theirs and is left alone. It is safe to call on a nil
+// Git and more than once, and git must not be run through g afterwards.
+func (g *Git) Close() error {
+	if g == nil || !g.owned {
+		return nil
+	}
+	g.owned = false
+	return os.RemoveAll(g.scratch)
 }
 
 // safeConfig overrides every configuration key through which git can be made to
