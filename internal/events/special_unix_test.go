@@ -29,7 +29,7 @@ func within(t *testing.T, what string, f func()) {
 
 // The state directory is somewhere an agent's tools may reach: a FIFO planted where a blob
 // belongs is refused without waiting for a writer, and the next Put replaces it.
-func TestSecReview_S34_FIFOInPlaceOfABlobDoesNotHang(t *testing.T) {
+func TestSec_S34_FIFOInPlaceOfABlobDoesNotHang(t *testing.T) {
 	d, err := NewDirBlobs(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestSecReview_S34_FIFOInPlaceOfABlobDoesNotHang(t *testing.T) {
 // A symlink where the log belongs (state written to by another user before the
 // directory was made private, or by a tool) is never written through, and a FIFO is
 // not waited on.
-func TestSecReview_S35_OpenRefusesASymlinkedOrSpecialLog(t *testing.T) {
+func TestSec_S35_OpenRefusesASymlinkedOrSpecialLog(t *testing.T) {
 	base := t.TempDir()
 	victim := filepath.Join(base, "victim.txt")
 	if err := os.WriteFile(victim, []byte("do not touch\n"), 0o600); err != nil {
