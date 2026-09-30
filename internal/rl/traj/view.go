@@ -36,11 +36,11 @@ type view struct {
 }
 
 type spawnEv struct {
-	seq                       uint64
-	idx                       int
-	ts                        time.Time
-	id, role, parent, model   string
-	task                      string
+	seq                     uint64
+	idx                     int
+	ts                      time.Time
+	id, role, parent, model string
+	task                    string
 }
 
 type endEv struct {
@@ -70,31 +70,31 @@ type layerEv struct {
 }
 
 type mailEv struct {
-	seq              uint64
-	idx              int
-	id, from, to     string
-	kind, text       string
+	seq          uint64
+	idx          int
+	id, from, to string
+	kind, text   string
 }
 
 type deliverEv struct {
-	seq     uint64
-	idx     int
-	id      string
-	to      string // the agent the event is attributed to
-	from    string
-	ts      time.Time
+	seq  uint64
+	idx  int
+	id   string
+	to   string // the agent the event is attributed to
+	from string
+	ts   time.Time
 }
 
 type outcomeEv struct {
-	seq     uint64
-	kind    string
-	pass    bool
-	hasPass bool
-	score   float64
+	seq      uint64
+	kind     string
+	pass     bool
+	hasPass  bool
+	score    float64
 	hasScore bool
-	version string
-	detail  core.Hash
-	ms      int64
+	version  string
+	detail   core.Hash
+	ms       int64
 }
 
 type turnEv struct {
@@ -243,14 +243,13 @@ func (r *Run) buildView() *view {
 
 func parseOutcome(e events.Event) outcomeEv {
 	var p struct {
-		Kind    string          `json:"kind"`
-		Pass    *bool           `json:"pass"`
-		Score   *float64        `json:"score"`
-		Version string          `json:"version"`
-		VerVer  string          `json:"verifier_version"`
-		Detail  core.Hash       `json:"detail"`
-		Ms      int64           `json:"ms"`
-		_       json.RawMessage `json:"-"`
+		Kind    string    `json:"kind"`
+		Pass    *bool     `json:"pass"`
+		Score   *float64  `json:"score"`
+		Version string    `json:"version"`
+		VerVer  string    `json:"verifier_version"`
+		Detail  core.Hash `json:"detail"`
+		Ms      int64     `json:"ms"`
 	}
 	_ = json.Unmarshal(e.Data, &p)
 	o := outcomeEv{seq: e.Seq, kind: strings.ToLower(p.Kind), version: p.Version, detail: p.Detail, ms: p.Ms}

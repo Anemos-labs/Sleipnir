@@ -196,8 +196,8 @@ func decodeEscapes(s string) string {
 		case '0':
 			b.WriteByte(0)
 		case 'x':
-			if i+2 < len(s)+0 && i+2 <= len(s)-1+1 {
-				if v, err := strconv.ParseUint(s[i+1:min(i+3, len(s))], 16, 8); err == nil && i+3 <= len(s) {
+			if i+2 < len(s) {
+				if v, err := strconv.ParseUint(s[i+1:i+3], 16, 8); err == nil {
 					b.WriteByte(byte(v))
 					i += 2
 					continue
@@ -209,14 +209,11 @@ func decodeEscapes(s string) string {
 			if s[i] == 'U' {
 				w = 8
 			}
-			if i+w < len(s)+0 || i+w == len(s)-0 && i+w <= len(s) {
-				end := i + 1 + w
-				if end <= len(s) {
-					if v, err := strconv.ParseUint(s[i+1:end], 16, 32); err == nil && utf8.ValidRune(rune(v)) {
-						b.WriteRune(rune(v))
-						i = end - 1
-						continue
-					}
+			if end := i + 1 + w; end <= len(s) {
+				if v, err := strconv.ParseUint(s[i+1:end], 16, 32); err == nil && utf8.ValidRune(rune(v)) {
+					b.WriteRune(rune(v))
+					i = end - 1
+					continue
 				}
 			}
 			b.WriteByte(s[i])

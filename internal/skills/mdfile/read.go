@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -182,14 +183,6 @@ func ReadDirLimited(dir string, limit int) (entries []os.DirEntry, more bool, er
 	if len(entries) > limit {
 		entries, more = entries[:limit], true
 	}
-	sortEntries(entries)
+	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	return entries, more, nil
-}
-
-func sortEntries(es []os.DirEntry) {
-	for i := 1; i < len(es); i++ {
-		for j := i; j > 0 && es[j].Name() < es[j-1].Name(); j-- {
-			es[j], es[j-1] = es[j-1], es[j]
-		}
-	}
 }

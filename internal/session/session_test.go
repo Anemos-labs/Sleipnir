@@ -413,3 +413,35 @@ func TestEnrichModelUsesTheEndpointsCatalogueAndCachesIt(t *testing.T) {
 }
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
+
+func TestReconIgnoresTestdataAndListsOnlyRealBinaries(t *testing.T) {
+	repo := newRepo(t)
+	for name, body := range map[string]string{
+		"cmd/app/main.go":                       "package main\n\nfunc main() {}\n",
+		"cmd/app/testdata/deep/fixture.go":      "package deep\n",
+		"pkg/testdata/data.go":                  "package testdata\n",
+		"cmd/app/internal/helper/helper_one.go": "package helper\n",
+	} {
+		p := filepath.Join(repo, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := session.BuildRecon(context.Background(), session.ReconOptions{Root: repo, BudgetTokens: 3000, NoGit: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := ""
+	for _, s := range r.Segments {
+		all += s.Text
+	}
+	if strings.Contains(all, "testdata") {
+		t.Errorf("testdata is fixture noise, not project structure:\n%s", all)
+	}
+	if !strings.Contains(all, "binaries: cmd/app") || strings.Contains(all, "cmd/app/") && strings.Contains(all, "binaries: cmd/app cmd/app/") {
+		t.Errorf("only cmd/<name> directories are binaries:\n%s", all)
+	}
+}

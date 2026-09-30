@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/rl"
 )
 
@@ -181,7 +180,7 @@ func (b *builder) toolSignals(s map[string]float64) {
 	if b.task != nil {
 		checkCmd = squash(b.task.Verifier.Cmd)
 	}
-	firstCaller := map[string]string{}    // canonical call -> first agent that made it
+	firstCaller := map[string]string{}      // canonical call -> first agent that made it
 	editors := map[string]map[string]bool{} // path -> agents that edited it
 	type readState struct{ lastRead, lastWrite core.TurnID }
 	// Re-reads need the thread positions of calls and of each compaction's keep_from.
@@ -452,5 +451,3 @@ func canonicalJSON(raw json.RawMessage) string {
 
 // squash collapses whitespace so a command matches however it was wrapped.
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
-
-var _ = events.TypeToolCall

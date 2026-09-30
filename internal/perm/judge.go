@@ -169,15 +169,15 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 	case mode == ModeBypass:
 		res = allow("bypass mode")
 	case u.class == cmdSafe:
-		res = allow("read-only command")
+		res = allow(ev.modeReason(genericSafe))
 	case u.class == cmdFSWrite && mode == ModeAcceptEdits:
-		res = allow("accept-edits mode: file operation checked below")
+		res = allow(ev.modeReason(genericFSWrite))
 	case mode == ModePlan:
 		res = deny(planReason(u.label + " is not a read-only command"))
 	case u.class == cmdFSWrite:
-		res = ask(u.label+" modifies files; approve it, or use accept-edits mode to allow this inside the workspace", ev.remember(u))
+		res = ask(ev.modeReason(u.label+" modifies files; approve it, or use accept-edits mode to allow this inside the workspace"), ev.remember(u))
 	default:
-		res = ask(u.label+": "+u.why, ev.remember(u))
+		res = ask(ev.modeReason(u.label+": "+u.why), ev.remember(u))
 	}
 	if res.kind == vDeny {
 		return res
@@ -193,12 +193,21 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 	return res
 }
 
+// Generic reasons of a command-level allow; an access-level reason says more.
+const (
+	genericSafe    = "read-only command"
+	genericFSWrite = "file operation inside the workspace"
+)
+
+// modeReason names the mode a verdict rests on.
+func (ev *evaluator) modeReason(s string) string { return string(ev.v.mode) + " mode: " + s }
+
 // combineAccess is combine, except that an access-level reason replaces the
-// generic "read-only command" reason of an allow, which says more.
+// generic reason of a command-level allow.
 func combineAccess(res, av verdict) verdict {
 	if res.kind == vAllow && av.kind == vAllow && !strings.HasPrefix(av.reason, "bypass") {
 		out := combine(res, av)
-		if res.reason == "read-only command" || strings.HasPrefix(res.reason, "accept-edits mode: file operation") {
+		if strings.HasSuffix(res.reason, genericSafe) || strings.HasSuffix(res.reason, genericFSWrite) {
 			out.reason = av.reason
 		}
 		return out
@@ -303,19 +312,19 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	case ModeAcceptEdits:
 		if a.write {
 			if ev.rs.inWorkspace(a.real) {
-				return allow("accept-edits mode: write inside the workspace")
+				return allow(ev.modeReason("write inside the workspace"))
 			}
-			return ask("writes "+a.raw+" outside the workspace", rem())
+			return ask(ev.modeReason("writes "+a.raw+" outside the workspace; approval needed"), rem())
 		}
 	default:
 		if a.write {
-			return ask("writing "+a.raw+" needs approval in default mode", rem())
+			return ask(ev.modeReason("writing "+a.raw+" needs approval"), rem())
 		}
 	}
 	if ev.rs.inWorkspace(a.real) {
-		return allow("read inside the workspace")
+		return allow(ev.modeReason("read inside the workspace"))
 	}
-	return ask("reads "+a.raw+" outside the workspace", rem())
+	return ask(ev.modeReason("reads "+a.raw+" outside the workspace; approval needed"), rem())
 }
 
 // ruleHits reports whether a path rule covers the access. Deny and ask rules

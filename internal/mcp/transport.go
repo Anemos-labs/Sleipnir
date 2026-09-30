@@ -32,20 +32,22 @@ type Transport interface {
 type Handler struct {
 	// Message delivers one complete incoming message. The callee owns msg. The
 	// stdio transports call it from a single goroutine, in order; the HTTP
-	// transports may call it from several at once.
+	// transports may call it from several at once. It must not block: it runs
+	// on the goroutine that drains the server's output.
 	Message func(msg []byte)
-	// Closed reports that the transport ended: the server exited, hung up, or
-	// (HTTP) forgot the session. It is called at most once and may be called
-	// after Close; err is never nil.
+	// Closed reports that the transport ended on its own: the server exited,
+	// hung up, or (HTTP) forgot the session. It is called at most once, never
+	// after a local Close, and err is never nil.
 	Closed func(err error)
 }
 
-// Version-aware transports are told the negotiated protocol version after the
+// versioned transports are told the negotiated protocol version after the
 // handshake (the HTTP transports send it as a header on every request).
 type versioned interface{ SetProtocolVersion(v string) }
 
-// Transports with a server-to-client channel that is separate from requests
-// (the streamable HTTP GET stream) open it once the handshake is done.
+// listener transports have a server-to-client channel that is separate from
+// requests (the streamable HTTP GET stream); it is opened once the handshake
+// is done.
 type listener interface{ Listen() }
 
 // DefaultMaxMessageBytes bounds one incoming message. Bigger ones are not
@@ -77,6 +79,11 @@ const (
 	maxGarbageBytes = 16 << 20
 )
 
+var (
+	errFlood      = errors.New("server wrote too much output that is not JSON-RPC")
+	errWriteStuck = errors.New("server is not reading its input (a write timed out)")
+)
+
 // StreamOptions configures NewStreamTransport.
 type StreamOptions struct {
 	// MaxMessageBytes bounds one incoming message (default DefaultMaxMessageBytes).
@@ -85,10 +92,11 @@ type StreamOptions struct {
 	// considered wedged (not reading its input) and the transport fails.
 	// Default 30s.
 	WriteTimeout time.Duration
-	// CloseReader, when set, is closed by Close to end a blocked read.
+	// CloseReader, when set, is closed when the transport finishes, to end a
+	// blocked read.
 	CloseReader io.Closer
-	// OnDrop is told about messages the transport discarded (oversized,
-	// garbage). Optional; must not block.
+	// OnDrop is told about input the transport discarded (oversized or not
+	// JSON-RPC). Optional; must not block.
 	OnDrop func(reason string)
 }
 
@@ -99,17 +107,18 @@ type StreamOptions struct {
 // reads, which matters: a server that fills its stdout while we are writing to
 // its stdin would otherwise deadlock both ends.
 type StreamTransport struct {
-	r     io.Reader
-	w     io.WriteCloser
-	opts  StreamOptions
-	max   int
-	out   chan *outMsg
-	done  chan struct{}
-	once  sync.Once
-	cause atomic.Pointer[error]
-	h     Handler
-	wg    sync.WaitGroup
-	start sync.Once
+	r    io.Reader
+	w    io.WriteCloser
+	opts StreamOptions
+	max  int
+
+	out        chan *outMsg
+	done       chan struct{} // closed when the transport is finished
+	writerDone chan struct{}
+	once       sync.Once
+	cause      atomic.Pointer[error]
+	h          Handler
+	started    atomic.Bool
 }
 
 type outMsg struct {
@@ -128,23 +137,18 @@ func NewStreamTransport(r io.Reader, w io.WriteCloser, opts StreamOptions) *Stre
 	}
 	return &StreamTransport{
 		r: r, w: w, opts: opts, max: opts.MaxMessageBytes,
-		out: make(chan *outMsg, 64), done: make(chan struct{}),
+		out: make(chan *outMsg, 64), done: make(chan struct{}), writerDone: make(chan struct{}),
 	}
 }
 
 // Start implements Transport.
 func (t *StreamTransport) Start(h Handler) error {
-	started := false
-	t.start.Do(func() {
-		started = true
-		t.h = h
-		t.wg.Add(2)
-		go t.readLoop()
-		go t.writeLoop()
-	})
-	if !started {
+	if !t.started.CompareAndSwap(false, true) {
 		return errors.New("mcp: transport already started")
 	}
+	t.h = h
+	go t.readLoop()
+	go t.writeLoop()
 	return nil
 }
 
@@ -158,6 +162,11 @@ func (t *StreamTransport) Send(ctx context.Context, msg []byte) error {
 	copy(buf, msg)
 	buf[len(msg)] = '\n'
 	m := &outMsg{data: buf, done: make(chan error, 1)}
+	select {
+	case <-t.done: // never queue behind a finished transport
+		return t.closedErr()
+	default:
+	}
 	select {
 	case t.out <- m:
 	case <-ctx.Done():
@@ -178,16 +187,18 @@ func (t *StreamTransport) Send(ctx context.Context, msg []byte) error {
 }
 
 func (t *StreamTransport) closedErr() error {
-	if c := t.cause.Load(); c != nil && *c != nil {
+	if c := t.cause.Load(); c != nil {
 		return &closedError{cause: *c}
 	}
 	return &closedError{}
 }
 
-// finish ends the transport once. cause is reported to Handler.Closed unless
-// it is nil (a local Close).
+// finish ends the transport once. A non-nil cause means it ended on its own
+// and is reported to Handler.Closed; a nil cause is a local Close.
 func (t *StreamTransport) finish(cause error) {
+	first := false
 	t.once.Do(func() {
+		first = true
 		if cause != nil {
 			t.cause.Store(&cause)
 		}
@@ -197,24 +208,138 @@ func (t *StreamTransport) finish(cause error) {
 			_ = t.opts.CloseReader.Close()
 		}
 	})
-	if cause != nil && t.h.Closed != nil {
-		t.reportClosed(cause)
+	// Outside the Once: the callback may call Close, which re-enters finish.
+	if first && cause != nil && t.h.Closed != nil {
+		t.h.Closed(cause)
 	}
 }
 
-var closedReported sync.Map // placeholder to keep the linter honest about once-only reporting
-
-func (t *StreamTransport) reportClosed(cause error) {
-	if t.closedOnce == nil {
-		return
-	}
-}
-
-// Close implements Transport. It does not wait for the read goroutine: with
-// no CloseReader that may sit in Read until the peer closes.
+// Close implements Transport. It does not wait for the read goroutine: with no
+// CloseReader that may sit in Read until the peer closes its end.
 func (t *StreamTransport) Close() error {
 	t.finish(nil)
-	// Give the writer a moment to notice; it exits on done.
-	t.wg.Wait()
+	if t.started.Load() {
+		select {
+		case <-t.writerDone:
+		case <-time.After(time.Second):
+		}
+	}
 	return nil
+}
+
+func (t *StreamTransport) drop(reason string) {
+	if t.opts.OnDrop != nil {
+		t.opts.OnDrop(reason)
+	}
+}
+
+func (t *StreamTransport) writeLoop() {
+	defer close(t.writerDone)
+	for {
+		select {
+		case <-t.done:
+			return
+		case m := <-t.out:
+			// A peer that stops reading would block this write forever; the
+			// watchdog turns that into a failed transport (which unblocks the
+			// write by closing the pipe) rather than a hung harness.
+			wd := time.AfterFunc(t.opts.WriteTimeout, func() { t.finish(errWriteStuck) })
+			_, err := t.w.Write(m.data)
+			wd.Stop()
+			m.done <- err
+			if err != nil {
+				t.finish(fmt.Errorf("writing to server: %w", err))
+				return
+			}
+		}
+	}
+}
+
+// readLoop splits the input into lines without ever holding more than
+// MaxMessageBytes of one. A line that is over the limit is not kept: it
+// streams through a skimmer so that, if it was the answer to a call, that call
+// can be failed by id right away.
+func (t *StreamTransport) readLoop() {
+	br := bufio.NewReaderSize(t.r, 64<<10)
+	var (
+		acc                  []byte
+		skim                 *skimmer
+		garbLines, garbBytes int
+	)
+	deliver := func(line []byte) bool {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			return true
+		}
+		if line[0] != '{' && line[0] != '[' {
+			garbLines++
+			garbBytes += len(line)
+			t.drop("skipped output that is not JSON-RPC")
+			return garbLines <= maxGarbageLines && garbBytes <= maxGarbageBytes
+		}
+		garbLines, garbBytes = 0, 0
+		if t.h.Message != nil {
+			t.h.Message(bytes.Clone(line))
+		}
+		return true
+	}
+	oversize := func() {
+		id, hasMethod, ok := skim.result()
+		skim = nil
+		if ok && id != nil && !hasMethod && t.h.Message != nil {
+			t.h.Message(tooLargeResponse(id, t.max))
+			return
+		}
+		t.drop("dropped an oversized message")
+	}
+	for {
+		chunk, err := br.ReadSlice('\n')
+		complete := err == nil
+		if err != nil && !errors.Is(err, bufio.ErrBufferFull) {
+			// End of stream or a read error. Text after the last newline is a
+			// final unterminated message.
+			switch {
+			case skim != nil:
+				skim.feed(chunk)
+				oversize()
+			case len(acc)+len(chunk) > 0 && len(acc)+len(chunk) <= t.max:
+				deliver(append(acc, chunk...))
+			}
+			t.finish(err)
+			return
+		}
+		switch {
+		case skim != nil:
+			skim.feed(chunk)
+			if complete {
+				oversize()
+				acc = nil
+			}
+		case len(acc)+len(chunk) > t.max:
+			skim = &skimmer{}
+			skim.feed(acc)
+			skim.feed(chunk)
+			acc = nil
+			if complete {
+				oversize()
+			}
+		case complete:
+			line := chunk
+			if len(acc) > 0 {
+				acc = append(acc, chunk...)
+				line = acc
+			}
+			if !deliver(line) {
+				t.finish(errFlood)
+				return
+			}
+			if cap(acc) > 1<<20 {
+				acc = nil // do not pin a big buffer for the connection's life
+			} else {
+				acc = acc[:0]
+			}
+		default:
+			acc = append(acc, chunk...)
+		}
+	}
 }

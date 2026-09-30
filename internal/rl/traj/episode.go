@@ -2,7 +2,6 @@ package traj
 
 import (
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 
@@ -76,7 +75,8 @@ type agentInfo struct {
 	reqs                          []*reqInfo  // every request, kept or not, in request order
 	steps                         []*stepInfo // kept steps in request order
 	main                          []*stepInfo // kept main-kind steps in request order
-	state                         string      // from agent.end
+	segs                          []rl.Segment
+	state                         string // from agent.end
 	ended                         bool
 }
 
@@ -618,5 +618,3 @@ func cleanFinish(a *agentInfo) bool {
 	last := a.main[len(a.main)-1]
 	return len(last.turn.ToolCalls()) == 0 && (last.p.stop == core.StopEnd || last.p.stop == "")
 }
-
-var _ = fmt.Sprintf

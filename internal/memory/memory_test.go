@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -216,24 +217,20 @@ func TestUnreadableFileReportsAnErrorButKeepsTheRest(t *testing.T) {
 
 func TestImportsAreIncludedRightAfterTheirImporter(t *testing.T) {
 	w := newWorld(t)
-	tree(t, w.home, map[string]string{
-		".sleipnir/shared.md": "shared style",
-		"notes.txt":           "home notes",
-	})
 	tree(t, w.root, map[string]string{
-		"AGENTS.md":      "Intro\n@docs/style.md\n@~/.sleipnir/shared.md\n@~/notes.txt\nOutro",
-		"docs/style.md":  "style body\n@more.md",
-		"docs/more.md":   "more body",
-		"CLAUDE.md":      "claude",
-		"docs/unused.md": "never imported",
+		"AGENTS.md":          "Intro\n@docs/style.md\n@.sleipnir/extra.md\nOutro",
+		"docs/style.md":      "style body\n@more.md",
+		"docs/more.md":       "more body",
+		"CLAUDE.md":          "claude",
+		"docs/unused.md":     "never imported",
+		".sleipnir/extra.md": "extra body",
 	})
 	srcs := w.mustLoad("")
 	want := []string{
 		"AGENTS.md|project",
 		"docs/style.md|import",
 		"docs/more.md|import", // relative to the importing file
-		"~/.sleipnir/shared.md|import",
-		"~/notes.txt|import",
+		".sleipnir/extra.md|import",
 		"CLAUDE.md|project",
 	}
 	if got := paths(srcs); !reflect.DeepEqual(got, want) {
@@ -242,6 +239,33 @@ func TestImportsAreIncludedRightAfterTheirImporter(t *testing.T) {
 	// The import lines stay in the importer's text.
 	if !strings.Contains(srcs[0].Text, "@docs/style.md") || !strings.Contains(srcs[0].Text, "Outro") {
 		t.Fatalf("importer text = %q", srcs[0].Text)
+	}
+}
+
+// The user's own file may import from ~/.sleipnir (with "~/.sleipnir/..." or
+// relative paths) and nowhere else: the rest of the home directory is as
+// off-limits to it as to a project file.
+func TestUserFileImportsStayInsideUserSleipnirDir(t *testing.T) {
+	w := newWorld(t)
+	tree(t, w.home, map[string]string{
+		".sleipnir/SLEIPNIR.md":     "user rules\n@style/go.md\n@~/.sleipnir/shared.md\n@~/notes.txt\n@../outside.md",
+		".sleipnir/style/go.md":     "go style\n@../shared.md",
+		".sleipnir/shared.md":       "shared",
+		"notes.txt":                 "home notes",
+		"outside.md":                "OUTSIDE-BODY",
+		".sleipnir/style/.priv.md":  "hidden names are the user's own business",
+		".sleipnir/style/notes.pdf": "not text",
+	})
+	srcs, err := w.load("")
+	want := []string{"~/.sleipnir/SLEIPNIR.md|user", "~/.sleipnir/style/go.md|import", "~/.sleipnir/shared.md|import"}
+	if got := paths(srcs); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	if err == nil || !strings.Contains(err.Error(), "@~/notes.txt refused") || !strings.Contains(err.Error(), "@../outside.md refused") {
+		t.Fatalf("the two escapes should be reported: %v", err)
+	}
+	if out := Render(srcs); strings.Contains(out, "home notes") || strings.Contains(out, "OUTSIDE-BODY") {
+		t.Fatalf("home content leaked:\n%s", out)
 	}
 }
 
@@ -338,23 +362,24 @@ func TestOnlyMarkdownAndTextCanBeImported(t *testing.T) {
 	}
 }
 
-func TestImportsOutsideRootAndHomeAreIgnored(t *testing.T) {
+func TestImportsOutsideTheProjectRootAreRefusedAndReported(t *testing.T) {
 	w := newWorld(t)
 	outside := filepath.Join(w.base, "outside")
 	tree(t, outside, map[string]string{"secret.md": "outside content"})
 	tree(t, w.root, map[string]string{
-		"AGENTS.md": "@../outside/secret.md\n@" + filepath.ToSlash(filepath.Join(outside, "secret.md")) + "\n@../home/ok.md",
+		"AGENTS.md": "@../outside/secret.md\n@" + filepath.ToSlash(filepath.Join(outside, "secret.md")) + "\n@../home/ok.md\n@~/ok.md",
 	})
 	tree(t, w.home, map[string]string{"ok.md": "inside home"})
-	srcs := w.mustLoad("")
-	got := paths(srcs)
-	// ../home/ok.md is inside the home directory, so it is allowed; the two
-	// pointing at "outside" are not.
-	if !reflect.DeepEqual(got, []string{"AGENTS.md|project", "~/ok.md|import"}) {
+	srcs, err := w.load("")
+	if got := paths(srcs); !reflect.DeepEqual(got, []string{"AGENTS.md|project"}) {
 		t.Fatalf("got %v", got)
 	}
-	if strings.Contains(Render(srcs), "outside content") {
-		t.Fatal("outside content leaked")
+	// The home directory is no more the project's business than any other place.
+	if out := Render(srcs); strings.Contains(out, "outside content") || strings.Contains(out, "inside home") {
+		t.Fatalf("outside content leaked:\n%s", out)
+	}
+	if err == nil || strings.Count(err.Error(), "refused: outside the project root") != 4 {
+		t.Fatalf("each refused import should be reported: %v", err)
 	}
 }
 
@@ -366,9 +391,12 @@ func TestSymlinkInsideTheProjectCannotEscapeIt(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(w.root, "innocent.md")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	srcs := w.mustLoad("")
+	srcs, err := w.load("")
 	if len(srcs) != 1 || strings.Contains(Render(srcs), "outside content") {
 		t.Fatalf("symlink escaped the project: %v", paths(srcs))
+	}
+	if err == nil || !strings.Contains(err.Error(), "innocent.md") {
+		t.Fatalf("the escape should be reported: %v", err)
 	}
 }
 
@@ -379,11 +407,47 @@ func TestUserSleipnirDirMayBeASymlinkIntoADotfilesRepo(t *testing.T) {
 	if err := os.Symlink(dotfiles, filepath.Join(w.home, ".sleipnir")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	tree(t, w.root, map[string]string{"AGENTS.md": "@~/.sleipnir/style/go.md"})
+	tree(t, w.root, map[string]string{"AGENTS.md": "project rules"})
 	got := paths(w.mustLoad(""))
 	want := []string{"~/.sleipnir/SLEIPNIR.md|user", "~/.sleipnir/style/go.md|import", "AGENTS.md|project"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+// Individual files under ~/.sleipnir may be symlinks too (stow and friends), and
+// they are followed wherever they lead: the directory is the user's own.
+func TestUserSleipnirFilesMayBeSymlinksIntoADotfilesRepo(t *testing.T) {
+	w := newWorld(t)
+	dotfiles := filepath.Join(w.base, "dotfiles")
+	tree(t, dotfiles, map[string]string{"sleipnir.md": "user rules\n@~/.sleipnir/lib.md", "lib.md": "the library"})
+	if err := os.MkdirAll(filepath.Join(w.home, ".sleipnir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{"SLEIPNIR.md": "sleipnir.md", "lib.md": "lib.md"} {
+		if err := os.Symlink(filepath.Join(dotfiles, target), filepath.Join(w.home, ".sleipnir", link)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+	got := paths(w.mustLoad(""))
+	want := []string{"~/.sleipnir/SLEIPNIR.md|user", "~/.sleipnir/lib.md|import"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+// A project cannot borrow the user's trust: importing from ~/.sleipnir is as
+// refused as importing from anywhere else outside the project.
+func TestProjectFileCannotImportFromUserSleipnirDir(t *testing.T) {
+	w := newWorld(t)
+	tree(t, w.home, map[string]string{".sleipnir/shared.md": "personal notes"})
+	tree(t, w.root, map[string]string{"AGENTS.md": "rules\n@~/.sleipnir/shared.md"})
+	srcs, err := w.load("")
+	if got := paths(srcs); !reflect.DeepEqual(got, []string{"AGENTS.md|project"}) {
+		t.Fatalf("got %v", got)
+	}
+	if err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -410,8 +474,68 @@ func TestImportFanOutIsBounded(t *testing.T) {
 	}
 	files["AGENTS.md"] = b.String()
 	tree(t, w.root, files)
-	if n := len(w.mustLoad("")); n > maxSources {
-		t.Fatalf("%d sources; a hostile fan-out must stop at %d", n, maxSources)
+	srcs, err := w.load("")
+	if n := len(srcs); n != 1+maxImports {
+		t.Fatalf("%d sources; a hostile fan-out must stop at %d imports", n, maxImports)
+	}
+	if err == nil || !strings.Contains(err.Error(), "import limit reached") {
+		t.Fatalf("hitting the limit should be reported: %v", err)
+	}
+}
+
+// A file that lists thousands of imports that do not exist costs a bounded number
+// of lookups, not one per line.
+func TestImportLinesExaminedAreBounded(t *testing.T) {
+	w := newWorld(t)
+	var b strings.Builder
+	for i := 0; i < 5000; i++ {
+		fmt.Fprintf(&b, "@missing/%04d.md\n", i)
+	}
+	tree(t, w.root, map[string]string{"AGENTS.md": b.String()})
+	ld, err := newLoader(Opts{Root: w.root, Home: w.home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ld.close()
+	ld.file(ld.proj, "AGENTS.md", ScopeProject, 0)
+	if ld.specs != maxImportSpecs {
+		t.Fatalf("examined %d lines, want exactly %d", ld.specs, maxImportSpecs)
+	}
+	if err := errors.Join(ld.errs...); err == nil || !strings.Contains(err.Error(), "import limit reached") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// Imports cannot add more than maxImportBytes between them, however many files
+// they name and however large each is.
+func TestImportBytesAreBounded(t *testing.T) {
+	w := newWorld(t)
+	files := map[string]string{}
+	var b strings.Builder
+	chunk := strings.Repeat("filler line of text\n", (60<<10)/20)
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&b, "@big%02d.md\n", i)
+		files[fmt.Sprintf("big%02d.md", i)] = chunk
+	}
+	files["AGENTS.md"] = b.String()
+	tree(t, w.root, files)
+	srcs, err := w.load("")
+	if err == nil || !strings.Contains(err.Error(), "import limit reached") {
+		t.Fatalf("hitting the limit should be reported: %v", err)
+	}
+	read := 0
+	for _, s := range srcs[1:] {
+		if s.Scope != ScopeImport {
+			t.Fatalf("unexpected scope %q", s.Scope)
+		}
+		read += len(s.Text)
+	}
+	// One file may straddle the limit; nothing after it is read.
+	if read > maxImportBytes+MaxFileBytes+len(srcs)*len(totalNote) {
+		t.Fatalf("imports added %d bytes, limit is %d", read, maxImportBytes)
+	}
+	if len(srcs) > maxImportBytes/len(chunk)+3 {
+		t.Fatalf("%d sources loaded", len(srcs))
 	}
 }
 

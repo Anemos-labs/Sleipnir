@@ -198,8 +198,9 @@ func newRun(evs []events.Event, blobs events.Blobs) *Run {
 }
 
 // normalize orders events by sequence number and drops exact duplicates (the
-// same record appended twice by a resumed writer). Logs without sequence numbers
-// keep their given order: the caller's order is all the information there is.
+// same record appended twice by a resumed writer). A log where any event lacks a
+// sequence number is numbered in the order given: the caller's order is all the
+// information there is.
 func (r *Run) normalize(evs []events.Event) []events.Event {
 	seqd := len(evs) > 0
 	for _, e := range evs {
@@ -210,6 +211,12 @@ func (r *Run) normalize(evs []events.Event) []events.Event {
 	}
 	if seqd {
 		sort.SliceStable(evs, func(i, j int) bool { return evs[i].Seq < evs[j].Seq })
+	} else {
+		// Every derivation below compares positions in the log, so events get
+		// numbers in the order they were handed over.
+		for i := range evs {
+			evs[i].Seq = uint64(i + 1)
+		}
 	}
 	out := evs[:0:0]
 	for i, e := range evs {

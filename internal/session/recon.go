@@ -148,6 +148,7 @@ var skipDirs = map[string]bool{
 	".git": true, ".hg": true, ".svn": true, "node_modules": true, "vendor": true, "dist": true, "build": true,
 	"target": true, "__pycache__": true, ".venv": true, "venv": true, ".tox": true, ".idea": true, ".vscode": true,
 	".next": true, ".cache": true, "coverage": true, ".gradle": true, "bin": true, "obj": true, ".sleipnir": true,
+	"testdata": true,
 }
 
 func listFiles(ctx context.Context, root string, max int, useGit bool) ([]string, error) {
@@ -388,7 +389,7 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 		var mains []string
 		seen := map[string]bool{}
 		for _, f := range files {
-			if strings.HasPrefix(f, "cmd/") && strings.HasSuffix(f, ".go") {
+			if strings.HasPrefix(f, "cmd/") && strings.HasSuffix(f, ".go") && strings.Count(f, "/") == 2 {
 				if d := path.Dir(f); !seen[d] {
 					seen[d] = true
 					mains = append(mains, d)

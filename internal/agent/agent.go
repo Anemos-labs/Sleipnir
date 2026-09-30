@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,7 +50,10 @@ func (NopLimiter) Acquire(context.Context, int) (Release, error) {
 }
 
 // HotSource renders the always-fresh tail for an agent: its view of the task
-// board and mailbox. It is called once per request and must be cheap.
+// board and mailbox. It is called once per request in kv.HotInline mode and once
+// per user turn otherwise, and must be cheap. Where the text lands (after the
+// last cache marker, as a persisted notice, or as a turn-scoped system message)
+// is decided per route, see kv.ResolveHot.
 type HotSource func(agent string) []core.Block
 
 // Gate holds back requests over a cold shared prefix until one of them has
@@ -100,6 +105,19 @@ type Config struct {
 
 	Params core.Params
 	Hot    HotSource
+	// HotMode requests a hot-tail mechanism. The zero value (kv.HotInline) lets
+	// the harness choose for the route: persist-on-change on models that enforce
+	// preserved thinking, turn-scoped where the provider supports it, inline
+	// otherwise (kv.ResolveHot).
+	HotMode kv.HotMode
+	// HotMinRequests is the fewest requests between two persisted hot notices
+	// (kv.HotPersist only; default 3). A busy board changes on almost every step;
+	// each notice stays in the thread until compaction folds it.
+	HotMinRequests int
+	// HotKey maps the hot blocks to the string whose change makes a new persisted
+	// notice necessary. The default hashes the text with the board version stamp
+	// and context counter removed.
+	HotKey func([]core.Block) string
 
 	// Session services (shared).
 	Events  events.Emitter
