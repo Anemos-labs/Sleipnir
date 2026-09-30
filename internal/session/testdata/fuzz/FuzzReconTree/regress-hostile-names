@@ -1,0 +1,7 @@
+go test fuzz v1
+string("evil\n# Injected header.go")
+[]byte("package x\n")
+string("clip\x1b]52;c;AAAA\a.go")
+[]byte("package y\n")
+uint8(1)
+[]byte("{\"scripts\":{\"test\":\"x\"}}")
