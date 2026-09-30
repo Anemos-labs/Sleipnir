@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/session"
@@ -270,5 +272,52 @@ func TestBuiltinCommandNamesCannotBeImpersonated(t *testing.T) {
 		if _, found := s.Commands().Get(name); found {
 			t.Errorf("a repository must not define /%s: it would impersonate the harness", name)
 		}
+	}
+}
+
+// models.roles in the configuration gives a role its own model, below --role-model
+// and a definition's model: in priority.
+func TestConfigModelsRolesPickTheModelOfARole(t *testing.T) {
+	repo := newRepo(t)
+	var mainCalls, otherCalls, flagCalls atomic.Int32
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { mainCalls.Add(1); return mock.Reply{Text: "from main"} })
+	newServer := func(n *atomic.Int32) string {
+		srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(c *mock.Call) mock.Reply {
+			n.Add(1)
+			return mock.Reply{Text: "from another endpoint"}
+		})
+		ts := srv.Start()
+		t.Cleanup(ts.Close)
+		return ts.URL
+	}
+	otherURL, flagURL := newServer(&otherCalls), newServer(&flagCalls)
+
+	run := func(cfgRole, flagRole string) {
+		o := opts(t, repo, client, model)
+		o.Swarm = true
+		cfg := config.Defaults()
+		cfg.Providers = map[string]config.Provider{"other": {BaseURL: otherURL}, "flag": {BaseURL: flagURL}}
+		cfg.Models.Roles = map[string]string{"manager": cfgRole}
+		o.Config = cfg
+		if flagRole != "" {
+			o.RoleModels = map[string]string{"manager": flagRole}
+		}
+		s, err := session.New(context.Background(), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		if _, err := s.Run(context.Background(), "say hi"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("other/model-a", "")
+	if otherCalls.Load() == 0 || mainCalls.Load() != 0 {
+		t.Errorf("models.roles was not applied: other=%d main=%d", otherCalls.Load(), mainCalls.Load())
+	}
+	otherCalls.Store(0)
+	run("other/model-a", "flag/model-b")
+	if flagCalls.Load() == 0 || otherCalls.Load() != 0 {
+		t.Errorf("--role-model must beat models.roles: flag=%d other=%d", flagCalls.Load(), otherCalls.Load())
 	}
 }

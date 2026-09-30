@@ -244,7 +244,7 @@ add the provider you use next to it.
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
 | `default` | string | none | yes | `provider/model` used when neither `--model` nor `SLEIPNIR_MODEL` is given. It must contain a `/`; a bare id such as `gpt-5` is a validation error here (it is fine after `--model`) |
-| `roles` | object | none | no | Role name to `provider/model`. Validated, not used yet. To give a role its own model today use `--role-model role=provider/model`, or `model:` in an agent definition (`docs/EXTENDING.md`) |
+| `roles` | object | none | yes | Role name to `provider/model` for swarm roles (`manager`, `worker`-style roles, your own definitions). Lowest priority: `--role-model role=provider/model` and `model:` in an agent definition (`docs/EXTENDING.md`) come first |
 | `compactor` | string | none | no | Validated, not used yet: compaction runs on the agent's own model |
 
 **Catalogue and price overrides: there are none.** No key sets a price or a context window. Costs and windows come from,

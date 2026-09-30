@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -645,6 +646,33 @@ func (s *Session) build(ctx context.Context) error {
 				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
 			}
 			deps.RoleModels[d.Name] = swarm.RoleModel{Provider: p, Model: m}
+		}
+	}
+	// models.roles in the configuration: the lowest-priority source of a role's
+	// model (--role-model and a definition's model: come first).
+	if len(s.cfg.Models.Roles) > 0 {
+		if deps.RoleModels == nil {
+			deps.RoleModels = map[string]swarm.RoleModel{}
+		}
+		names := make([]string, 0, len(s.cfg.Models.Roles))
+		for role := range s.cfg.Models.Roles {
+			names = append(names, role)
+		}
+		sort.Strings(names)
+		for _, role := range names {
+			ref := s.cfg.Models.Roles[role]
+			if _, set := deps.RoleModels[role]; set || ref == "" {
+				continue
+			}
+			mr, err := ResolveModel(s.cfg, ref)
+			if err != nil {
+				return fmt.Errorf("models.roles.%s = %s: %w", role, ref, err)
+			}
+			p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: o.CaptureTokens})
+			if err != nil {
+				return fmt.Errorf("models.roles.%s = %s: %w", role, ref, err)
+			}
+			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: m}
 		}
 	}
 	sw := swarm.New(sc, deps, s.ext.roles)

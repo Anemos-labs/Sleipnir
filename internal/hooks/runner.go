@@ -633,6 +633,26 @@ func (r *Runner) Prompter(next perm.Prompter) perm.Prompter {
 		if next == nil {
 			return perm.Decision{Allow: false, Reason: "approval required and no one is available to give it"}
 		}
+		r.notify(req)
 		return next(ctx, req)
 	}
+}
+
+// notify tells Notification hooks that a person is about to be asked something,
+// so a hook can pull them back to the terminal (a desktop notification, a
+// sound). It runs beside the question, never in front of it: the prompt must not
+// wait for a slow hook, and a hook cannot answer it (that is PermissionRequest's
+// job).
+func (r *Runner) notify(req perm.Request) {
+	if r == nil || r.Set.Empty() {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, _ = r.Run(ctx, Event{
+			Name: Notification, Agent: req.Agent, Role: req.Role, Cwd: req.Cwd,
+			Extra: map[string]any{"notification_type": "permission_prompt", "message": "Sleipnir needs your permission: " + clip(req.Summary, 200)},
+		})
+	}()
 }

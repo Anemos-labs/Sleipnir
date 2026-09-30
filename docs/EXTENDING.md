@@ -349,7 +349,7 @@ report findings instead of changing files`), `go vet ./...` ran, its requests we
 every agent of the swarm sent the identical tool list.
 
 **Model per role.** Set `model:` in the definition, or pass `--role-model role=provider/model` (repeatable, works for
-built-in roles too). `models.roles` in a config file is validated but not used yet.
+built-in roles too), or `models.roles` in a config file (lowest priority of the three).
 
 **Limits and reserved names.** The instructions cost their size on every request of every agent of the role: over 800
 tokens loads with a warning that says so, over 4,000 tokens is refused. At most 128 definitions, 64 KB each. A

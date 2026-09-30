@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/reee344/sleipnir/internal/perm"
 )
@@ -122,5 +123,47 @@ func TestPrompterPassesTheRequestToTheHook(t *testing.T) {
 	in, _ := p["tool_input"].(map[string]any)
 	if in["command"] != "make deploy" {
 		t.Errorf("tool_input = %v", in)
+	}
+}
+
+// A Notification hook hears that a person is being asked something, beside the
+// question and without being able to answer it.
+func TestNotificationHookRunsWhenAPersonIsAsked(t *testing.T) {
+	dir := realTemp(t)
+	seen := filepath.Join(dir, "seen.json")
+	r := newRunner(t, settings(t, "Notification", group{matcher: "permission_prompt", hooks: []hookSpec{cmdHook("cat > " + seen)}}))
+	answered := make(chan struct{})
+	human := func(context.Context, perm.Request) perm.Decision {
+		close(answered)
+		return perm.Decision{Allow: true, Reason: "the human said yes"}
+	}
+	d := r.Prompter(human)(context.Background(), bashReq(r, "make deploy"))
+	if !d.Allow || d.Reason != "the human said yes" {
+		t.Fatalf("the human's answer must be the decision: %+v", d)
+	}
+	<-answered
+	var payload map[string]any
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(seen); err == nil && json.Unmarshal(b, &payload) == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if payload["hook_event_name"] != "Notification" || payload["notification_type"] != "permission_prompt" || !strings.Contains(payload["message"].(string), "make deploy") {
+		t.Errorf("payload: %v", payload)
+	}
+
+	// No question for a person, no notification: a hook that decided has nothing to announce.
+	r2 := newRunner(t, map[string]json.RawMessage{
+		"PermissionRequest": settings(t, "PermissionRequest", group{hooks: []hookSpec{cmdHook(heredoc(`{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}`))}})["PermissionRequest"],
+		"Notification":      settings(t, "Notification", group{hooks: []hookSpec{cmdHook("touch " + filepath.Join(dir, "unexpected"))}})["Notification"],
+	})
+	if d := r2.Prompter(nil)(context.Background(), bashReq(r2, "make deploy")); !d.Allow {
+		t.Fatalf("the hook allowed it: %+v", d)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if _, err := os.Stat(filepath.Join(dir, "unexpected")); err == nil {
+		t.Error("a Notification hook ran although nobody was asked")
 	}
 }
