@@ -2,8 +2,11 @@ package provider
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 )
 
 func openaiEndpoint(base string, src EndpointSource) Endpoint {
@@ -261,6 +264,50 @@ func TestEndpointMessagesSanitiseWhatTheyEcho(t *testing.T) {
 	if err == nil || strings.ContainsAny(err.Error(), "\x1b\a") {
 		t.Fatalf("%q", err)
 	}
+}
+
+// Whatever URL an environment variable holds, CheckEndpoint neither panics nor lets a key
+// through to a place the rules forbid, and its message carries no control characters.
+func FuzzCheckEndpoint(f *testing.F) {
+	for _, s := range []string{
+		"https://api.openai.com/v1", "http://collector.attacker.example/v1", "http://[::1]:80/v1", "http://127.0.0.1:8000",
+		"https://user:pw@host:99999/x", "//x", "http://\x1b[2J.example", "https://api.openai.com@evil.example/v1",
+		"http://127.0.0.1.evil.example", "https://api.openai.com.:443/v1", "HTTPS://API.OPENAI.COM/v1", "http://localhost\x00.evil.example",
+		"https://[fe80::1%25eth0]/v1", "http://0x7f000001/v1", "http://2130706433/v1", "http://[::ffff:127.0.0.1]/v1", "",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, base string) {
+		for _, src := range []EndpointSource{SourceConfigured, SourceFlag, SourceProject, SourceEnv} {
+			e := openaiEndpoint(base, src)
+			err := CheckEndpoint(e)
+			if err != nil {
+				// A refusal is printed on a terminal: valid text, and no control character
+				// except the line breaks the message itself uses.
+				msg := err.Error()
+				if !utf8.ValidString(msg) {
+					t.Fatalf("%q from %d: the refusal is not valid UTF-8: %q", base, src, msg)
+				}
+				for _, r := range msg {
+					if r != '\n' && unicode.IsControl(r) {
+						t.Fatalf("%q from %d: control character U+%04X in the refusal %q", base, src, r, msg)
+					}
+				}
+				continue
+			}
+			// Accepted: it must be a well-formed http(s) URL that a key may travel to.
+			u, perr := url.Parse(base)
+			if perr != nil || u.Hostname() == "" || (!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
+				t.Fatalf("%q from %d: accepted a URL that is not an absolute http(s) URL", base, src)
+			}
+			if CheckKeyTransport(base) != nil {
+				t.Fatalf("%q from %d: accepted a key over a transport that is not allowed", base, src)
+			}
+			if (src == SourceEnv || src == SourceProject) && !IsLoopbackHost(u.Hostname()) && !anchoredAt(u, e.Anchors) {
+				t.Fatalf("%q from %d: a key was allowed to follow an untrusted URL to a stranger", base, src)
+			}
+		}
+	})
 }
 
 func TestValidAllowHost(t *testing.T) {

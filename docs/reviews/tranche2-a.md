@@ -155,7 +155,8 @@ A hung endpoint is `ErrTimeout` (first attempt retryable, see C-08).
   `TestResolveKeyDestination`, `TestAProjectConfigCannotAllowItsOwnBaseURL`, `TestAMalformedUserConfigAllowsNothing`,
   `TestAllowInsecureReachesTheClient`; `provider/endpoint_test.go` (a table of about 50 endpoints: look-alike hosts,
   sibling subdomains, other ports, ports 80/443, IPv6, loopback look-alikes, listed hosts, every source; the suggested JSON
-  works; sanitised echo); `config/endpoint_test.go` (user-only dropping in every project layer, provenance, validation);
+  works; sanitised echo; a fuzz target, `FuzzCheckEndpoint`, that checks no accepted URL breaks the rules);
+  `config/endpoint_test.go` (user-only dropping in every project layer, provenance, validation);
   `session/providers_endpoint_test.go` (build, info, loaded-config end-to-end, credential headers, catalogue).
 * **Residual.** (a) `<PROVIDER>_BASE_URL` for a provider the user's config defines is judged against the user's URL only;
   an `allow_hosts` entry is trusted as written (any port unless one is given). (b) Header credentials are found by name;
@@ -175,9 +176,10 @@ A hung endpoint is `ErrTimeout` (first attempt retryable, see C-08).
   stream, `RequestTimeout` 10 min for a non-streaming call. `FirstByteTimeout` defaults to `StreamIdleTimeout` when only the
   latter is set, so one setting bounds a silent server as well as a stalled stream (this is what the repro's
   `StreamIdleTimeout: 200ms` exercises). All are configurable: `Config.FirstByteTimeout / StreamIdleTimeout /
-  RequestTimeout`, and in a provider's `options`: `first_byte_timeout_sec`, `stream_idle_timeout_sec`,
-  `request_timeout_sec` (both dialects; at most a day). Expiry is `provider.ErrTimeout`; a caller that cancelled gets its own
-  cancellation, not a timeout.
+  RequestTimeout` and `Config.Limits.MaxDuration`, and in a provider's `options`: `first_byte_timeout_sec`,
+  `stream_idle_timeout_sec`, `stream_timeout_sec` (the whole of one streamed response; raise it for a slow self-hosted model
+  that writes very long answers) and `request_timeout_sec` (both dialects; at most a day). Expiry is `provider.ErrTimeout`; a
+  caller that cancelled gets its own cancellation, not a timeout.
 * **Retry cap (needed for the repro).** The agent retries a `Retryable()` failure up to 6 times, so a server that swallows
   every request would hold a run for 6 first-byte deadlines (6 x 200 ms = 1.2 s > the repro's 900 ms bound, and 12 minutes
   at the defaults). `provider.Error.NoRetry` (new; `Retryable()` honours it) and `MaxSilentAttempts = 2`: the watchdog counts,
@@ -193,7 +195,9 @@ A hung endpoint is `ErrTimeout` (first attempt retryable, see C-08).
   body, stall mid-stream, keep-alives keep it alive, caller cancellation, non-stream deadline, config defaults, retry cap).
 * **Residual.** The swarm's `Governor` slot still has no maximum hold of its own (C-08's second suggestion is in
   `internal/swarm`, not here): with these deadlines a slot is held at most 30 minutes by a server that trickles a byte
-  inside every idle window, and about 4 minutes by one that says nothing at all (2 x 120 s).
+  inside every idle window, and about 4 minutes by one that says nothing at all (2 x 120 s). A legitimate response that
+  takes longer than `stream_timeout_sec` (a very long answer from a slow model) is cut and retried; raise the option for such
+  a model.
 
 ## S29. Streamed reasoning must not become answer text (confirmation)
 
@@ -203,6 +207,20 @@ openaichat: `TestStreamedReasoningIsNeverPartOfTheAnswerText` (`reasoning` and `
 JSON-shaped marker a parser would pick up), `TestReasoningDetailsStayInsideTheThinkingBlock` (`reasoning_details` items are
 kept verbatim, signature included, in the thinking block's wire form), `TestNonStreamingReasoningIsSeparatedToo`.
 anthropic: `TestStreamedThinkingIsNeverPartOfTheAnswerText` (`thinking_delta` and `signature_delta`).
+
+## Not done here (belongs to another owner)
+
+* **swarm / agent (F10 remainder, C-08 second half).** A maximum hold time on a `Governor` slot; non-zero default budgets,
+  the `!(spend < budget)` comparison and a per-task budget for mail wake-ups. The transport now hands them figures that are
+  finite and never negative (`Price.USD` is `+Inf` rather than NaN), but the breakers themselves are theirs.
+* **rl/harness.** `Harness.policy` builds its own `config.Config` holding only the policy provider, so a user's
+  `allow_insecure_http` / `allow_hosts` for it are not visible: a policy server on a plain-http LAN address *with an API key*
+  now fails fast with a message that points at a setting the harness does not read. https, loopback and key-less servers are
+  unaffected. The harness should copy the allowances from the user's provider of the same name (or take a flag).
+* **docs.** There is no configuration reference; the new user-only settings and the timeout options are described only in the
+  code comments (`config.Provider`, `session.buildAnthropic`) and here.
+* **agent (optional).** Stream-cap violations use `ErrServer` (see the top). If a dedicated kind is preferred later
+  (for example one the agent reports at once instead of retrying), `provider.LimitExceeded` is the single place to change.
 
 ## Behaviour and API changes other code should know
 

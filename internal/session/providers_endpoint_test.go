@@ -428,6 +428,51 @@ func TestProviderOptionsSetTheTimeouts(t *testing.T) {
 	}
 }
 
+// A stream that keeps sending keep-alives is lively, not finished: stream_timeout_sec is
+// the bound on the whole response (and the knob for a slow model that writes very long answers).
+func TestProviderOptionsSetTheStreamDeadline(t *testing.T) {
+	clearProviderEnv(t)
+	drip := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl, _ := w.(http.Flusher)
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(30 * time.Millisecond):
+			}
+			if _, err := io.WriteString(w, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			fl.Flush()
+		}
+	}))
+	defer drip.Close()
+	for _, dialect := range []string{config.DialectOpenAIChat, config.DialectAnthropic} {
+		t.Run(dialect, func(t *testing.T) {
+			cfg := &config.Config{Providers: map[string]config.Provider{"p": {
+				Dialect: dialect, BaseURL: drip.URL,
+				Options: map[string]any{"first_byte_timeout_sec": float64(600), "stream_idle_timeout_sec": float64(600), "stream_timeout_sec": float64(1)},
+			}}}
+			p, m, err := session.BuildProvider(cfg, session.ModelRef{Provider: "p", Model: "m"}, session.ProviderOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			prompt := &core.Prompt{Model: m.ID, Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("hi")}}}, Params: core.Params{MaxTokens: 16}}
+			start := time.Now()
+			_, err = p.Do(context.Background(), &provider.Request{Prompt: prompt}, nil)
+			pe, ok := provider.AsError(err)
+			if !ok || pe.Kind != provider.ErrTimeout || !strings.Contains(pe.Message, "still running after 1s") {
+				t.Fatalf("%v", err)
+			}
+			if d := time.Since(start); d < 900*time.Millisecond || d > 10*time.Second {
+				t.Fatalf("the stream_timeout_sec option was not applied: %v", d)
+			}
+		})
+	}
+}
+
 // ---- the catalogue --------------------------------------------------------------------------------
 
 const goodCatalogue = `{"data":[{"id":"vendor/cheap","context_length":64000,"architecture":{"modality":"text->text"},"pricing":{"prompt":"0.000001","completion":"0.000002"}}]}`

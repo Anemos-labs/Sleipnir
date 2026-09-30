@@ -316,6 +316,7 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 		FirstByteTimeout:  optSeconds(p.Options, "first_byte_timeout_sec"),
 		StreamIdleTimeout: optSeconds(p.Options, "stream_idle_timeout_sec"),
 		RequestTimeout:    optSeconds(p.Options, "request_timeout_sec"),
+		Limits:            provider.StreamLimits{MaxDuration: optSeconds(p.Options, "stream_timeout_sec")},
 	})
 	if o.CaptureTokens || optBool(p.Options, "capture_tokens") {
 		prof := client.Profile()
@@ -340,7 +341,9 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 //
 // Both dialects take first_byte_timeout_sec (how long a request may get no response
 // at all; default 120, or stream_idle_timeout_sec when only that is set),
-// stream_idle_timeout_sec (silence once a stream has started; default 60) and
+// stream_idle_timeout_sec (silence once a stream has started; default 60),
+// stream_timeout_sec (the whole of one streamed response, however lively; default
+// 1800: raise it for a slow self-hosted model that writes very long answers) and
 // request_timeout_sec (a non-streaming call; default 600).
 func buildAnthropic(ref ModelRef, p config.Provider, base, key string, o ProviderOptions) provider.Provider {
 	ao := anthropic.Options{
@@ -363,6 +366,7 @@ func buildAnthropic(ref ModelRef, p config.Provider, base, key string, o Provide
 		FirstByteTimeout:  optSeconds(p.Options, "first_byte_timeout_sec"),
 		StreamIdleTimeout: optSeconds(p.Options, "stream_idle_timeout_sec"),
 		RequestTimeout:    optSeconds(p.Options, "request_timeout_sec"),
+		Limits:            provider.StreamLimits{MaxDuration: optSeconds(p.Options, "stream_timeout_sec")},
 	})
 	prof := client.Profile()
 	if v, ok := p.Options["cache_control"].(bool); ok && !v {
