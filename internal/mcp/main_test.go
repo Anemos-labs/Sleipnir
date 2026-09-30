@@ -14,18 +14,21 @@ import (
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/mcp/mcptest"
 	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/reee344/sleipnir/internal/testutil"
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
 // TestMain turns the test binary into an MCP server when a stdio test starts it
 // as a child: the binary re-executes itself, so stdio tests exercise real
-// processes, pipes, signals and process groups without a fixture binary.
+// processes, pipes, signals and process groups without a fixture binary. Otherwise it
+// runs the tests and checks that no goroutine of the module is left behind: a closed
+// manager has stopped its readers, its pumps and its children.
 func TestMain(m *testing.M) {
 	if mcptest.IsHelper() {
 		mcptest.HelperMain()
 		return
 	}
-	os.Exit(m.Run())
+	os.Exit(testutil.CheckLeaks(m))
 }
 
 // helperCfg is a trusted stdio entry that runs the reference server in the given

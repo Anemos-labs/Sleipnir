@@ -417,6 +417,7 @@ func TestStreamMessageIsOwnedByTheHandler(t *testing.T) {
 	var kept [][]byte
 	var n atomic.Int32
 	rr, rw := io.Pipe()
+	defer rw.Close() // the reader goroutine stays in Read until its input ends
 	tr := NewStreamTransport(rr, nopWriteCloser{io.Discard}, StreamOptions{})
 	if err := tr.Start(Handler{Message: func(m []byte) {
 		mu.Lock()
