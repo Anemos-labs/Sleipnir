@@ -1,4 +1,9 @@
-# Sleipnir
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/logo-wordmark-dark.svg">
+    <img src="docs/media/logo-wordmark.svg" alt="Sleipnir: one manager brain, many legs" width="620">
+  </picture>
+</h1>
 
 **A coding-agent harness for OpenAI-style and Anthropic-style endpoints, built around one idea: the prompt cache is
 the shared memory of a team of agents.**

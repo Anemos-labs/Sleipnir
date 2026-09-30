@@ -51,21 +51,34 @@ class Screen:
             self.put(x + 2, y, " " + title + " ", PAL["fg"], None, True)
 
     def html(self):
+        """Every cell is its own fixed-size box. Full and half blocks are drawn as backgrounds, exactly as a terminal fills a cell,
+        so they do not depend on the font's glyph height (a glyph block leaves hairline gaps between rows)."""
         rows = []
         for line in self.cells:
             out = []
             for ch, fg, bg, fl in line:
                 st = []
-                if fg:
-                    st.append("color:" + fg)
-                if bg:
-                    st.append("background:" + bg)
+                text = html.escape(ch) if ch != " " else "&nbsp;"
+                base = bg or "transparent"
+                if ch == "█" and fg:
+                    st.append("background:" + fg)
+                    text = "&nbsp;"
+                elif ch == "▀" and fg:
+                    st.append("background:linear-gradient(to bottom,%s 50%%,%s 50%%)" % (fg, base))
+                    text = "&nbsp;"
+                elif ch == "▄" and fg:
+                    st.append("background:linear-gradient(to bottom,%s 50%%,%s 50%%)" % (base, fg))
+                    text = "&nbsp;"
+                else:
+                    if fg:
+                        st.append("color:" + fg)
+                    if bg:
+                        st.append("background:" + bg)
                 if fl & 1:
                     st.append("font-weight:700")
                 if fl & 2:
                     st.append("opacity:.55")
-                c = html.escape(ch) if ch != " " else "&nbsp;"
-                out.append('<i style="%s">%s</i>' % (";".join(st), c) if st else "<i>%s</i>" % c)
+                out.append('<i style="%s">%s</i>' % (";".join(st), text) if st else "<i>%s</i>" % text)
             rows.append("<div class='r'>" + "".join(out) + "</div>")
         return "\n".join(rows)
 

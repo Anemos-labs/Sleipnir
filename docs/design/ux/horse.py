@@ -44,9 +44,13 @@ def poly(g, pts):
                 g[y][x] = 1
 
 
+HIPS = [10, 13, 16, 19, 22, 25, 28, 31]     # eight legs, evenly spread along the whole belly: none missing in the middle
+
+
 def horse(phase=0):
-    """phase 0..3: the gait. Eight legs: four behind, four in front; each leg swings between a tucked and a stretched foot,
-    offset from its neighbours so the gallop reads as a wave."""
+    """phase 0..3: the gait. Eight legs, one every three pixels under the belly, fanned like a galloping stride: the hind ones lean
+    back, the front ones reach forward, the middle ones stay closer to upright; each swings with its own offset so the cycle reads
+    as a wave, and a leg that is lifted is shorter. Every leg has a knee."""
     g = [[0] * W for _ in range(H)]
     ellipse(g, 20, 7, 11.5, 3.3)                                        # body
     poly(g, [(28, 5), (31, 6), (36, 2), (34, 0)])                       # neck
@@ -55,15 +59,21 @@ def horse(phase=0):
     for i in range(5):                                                  # mane down the back of the neck
         g[4 - i][27 + i] = 1
         g[5 - i][27 + i] = 1
-    line(g, 9, 5, 5, 5); line(g, 5, 5, 3, 8); line(g, 3, 8, 4, 12); line(g, 9, 6, 6, 8); line(g, 6, 8, 6, 11)   # tail
-    back = [(11, (5, 16), (13, 12)), (13, (9, 17), (15, 13)), (16, (14, 16), (17, 13)), (18, (19, 14), (19, 12))]
-    front = [(24, (23, 17), (26, 13)), (26, (31, 16), (28, 12)), (29, (35, 14), (31, 12)), (31, (40, 12), (33, 11))]
-    for k, (hx, stretched, tucked) in enumerate(back + front):
-        t = (math.sin(phase * math.pi / 2 + k * 0.9) + 1) / 2
-        fx = round(tucked[0] + (stretched[0] - tucked[0]) * t)
-        fy = round(tucked[1] + (stretched[1] - tucked[1]) * t)
-        line(g, hx, 9, fx, fy)
-        g[min(H - 1, fy)][min(W - 1, fx)] = 1
+    # the tail streams back from the rump at the height of the back, rising a little, in two wisps; it must never hang down into the
+    # legs' rows (it read as two more legs)
+    line(g, 9, 5, 6, 4); line(g, 6, 4, 3, 4); line(g, 3, 4, 1, 6)
+    line(g, 9, 6, 6, 6); line(g, 6, 6, 3, 7); line(g, 3, 7, 1, 9)
+    for k, hx in enumerate(HIPS):
+        wave = phase * math.pi / 2 + k * math.pi / 4
+        ang = (k - 3.5) * 0.16 + 0.30 * math.sin(wave)                  # radians from the vertical, + is forward
+        lift = max(0.0, math.sin(wave + math.pi / 2))                   # 0..1
+        upper, lower = 4.0, 5.0 - 2.2 * lift
+        kx = hx + round(upper * math.sin(ang * 0.6))
+        ky = 9 + round(upper * math.cos(ang * 0.6))
+        fx = kx + round(lower * math.sin(ang * 1.5 - 0.25 * lift))
+        fy = ky + round(lower * math.cos(ang * 1.4))
+        line(g, hx, 9, kx, ky)
+        line(g, kx, ky, fx, fy)
     return g
 
 
