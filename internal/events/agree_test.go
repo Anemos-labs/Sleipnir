@@ -8,8 +8,6 @@ package events
 // on, and FuzzLogFile looks for what they do not.
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -82,30 +80,14 @@ func TestScanAndOpenAgreeOnWhatIsDamage(t *testing.T) {
 	}
 }
 
-// Lines the two readers disagree about. Scan decodes the whole Event and accepts any
-// sequence number above zero; Open (parseLine) reads only the sequence number and the
-// type and refuses one above 2^53. So a line whose timestamp, cause, version, agent or
-// session has the wrong type is damage to Scan and an event to Open (which counts on
-// from its sequence number and records nothing), and a line with a huge sequence number
-// is an event to Scan and damage to Open. A consumer then reads an event that the log
-// has already discarded, or never hears of damage that it is skipping on every read.
-//
-// Known bug, in internal/events/log.go (not changed here, see the report): the two must
-// share one definition of a valid event. The minimal patch is one function,
-//
-//	func decodeEvent(line []byte) (Event, bool) {
-//		var e Event
-//		if json.Unmarshal(line, &e) != nil || e.Seq == 0 || e.Seq > maxSeq {
-//			return Event{}, false
-//		}
-//		return e, true
-//	}
-//
-// used by Scan and by scanLog (instead of parseLine). Run with SLEIPNIR_KNOWN_BUG=1.
-func TestKnownBugScanAndOpenDisagreeOnWhatAnEventIs(t *testing.T) {
-	if os.Getenv("SLEIPNIR_KNOWN_BUG") == "" {
-		t.Skip("known bug: Scan and Open disagree about lines with a sequence number above 2^53 or a member of the wrong type (see internal/events/agree_test.go)")
-	}
+// Lines the two readers used to disagree about. Scan decoded the whole Event and accepted any sequence number above zero;
+// Open read only the sequence number and the type and refused one above 2^53. So a line whose timestamp, cause, version,
+// agent or session had the wrong type was damage to Scan and an event to Open (which counted on from its sequence number
+// and recorded nothing), and a line with a huge sequence number was an event to Scan and damage to Open: a consumer read
+// an event that the log had already discarded, or never heard of damage that it skipped on every read. Both now use
+// decodeEvent, which found by the fuzz target below (and reported, with these cases, by the tests that cut a log at every
+// byte).
+func TestScanAndOpenAgreeOnWhatAnEventIs(t *testing.T) {
 	for _, tc := range []struct{ name, line string }{
 		{"the largest sequence number", `{"seq":18446744073709551615,"type":"x"}`},
 		{"a sequence number just above 2^53", `{"seq":9007199254740993,"type":"x"}`},
@@ -124,24 +106,10 @@ func TestKnownBugScanAndOpenDisagreeOnWhatAnEventIs(t *testing.T) {
 	}
 }
 
-// A log that already holds the highest sequence number Open accepts (2^53) makes Emit
-// write the next one, 2^53+1, which Open refuses: the line the log has just been given
-// is damage the next time it is opened, and Open records it as such. Only a damaged or
-// hostile log gets there (nothing emits 2^53 events), but the writer should not produce
-// a line its own reader rejects.
-//
-// Known bug, in internal/events/log.go (not changed here, see the report): emitLocked
-// must stop at the limit, for example
-//
-//	if l.seq >= maxSeq {
-//		return 0, fmt.Errorf("events: the log has reached its last sequence number")
-//	}
-//
-// before l.seq++. Run with SLEIPNIR_KNOWN_BUG=1.
-func TestKnownBugEmitWritesALineOpenRejects(t *testing.T) {
-	if os.Getenv("SLEIPNIR_KNOWN_BUG") == "" {
-		t.Skip("known bug: Emit counts past the highest sequence number Open accepts (see internal/events/agree_test.go)")
-	}
+// A log that already holds the highest sequence number Open accepts (2^53) used to make Emit write the next one, 2^53+1,
+// which Open refuses: the line the log had just been given was damage the next time it was opened. Only a damaged or hostile
+// log gets there (nothing emits 2^53 events), but the writer must not produce a line its own reader rejects: Emit stops.
+func TestEmitStopsAtTheLastSequenceNumber(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "events.jsonl")
 	if err := os.WriteFile(path, []byte(evLine(1, "a")+fmt.Sprintf(`{"seq":%d,"type":"x"}`+"\n", uint64(maxSeq))), 0o600); err != nil {
@@ -153,27 +121,12 @@ func TestKnownBugEmitWritesALineOpenRejects(t *testing.T) {
 	}
 	seq, err := l.Emit("", "y", nil)
 	l.Close()
-	if err == nil && seq > maxSeq {
+	if err == nil {
 		t.Fatalf("Emit wrote seq %d, above the %d that Open accepts", seq, uint64(maxSeq))
 	}
-}
-
-// knownDivergent says whether a log holds a line that falls in the class of the known
-// bug above, so that the fuzz target can look for other disagreements without stopping
-// at that one. With SLEIPNIR_KNOWN_BUG set nothing is excluded.
-func knownDivergent(data []byte) bool {
-	if os.Getenv("SLEIPNIR_KNOWN_BUG") != "" {
-		return false
+	if b, rerr := os.ReadFile(path); rerr != nil || strings.Count(string(b), "\n") != 2 {
+		t.Errorf("the refused event must not reach the file (%v): %q", rerr, b)
 	}
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		_, _, loose := parseLine(line) // what Open accepts
-		var e Event
-		strict := json.Unmarshal(line, &e) == nil && e.Seq != 0 // what Scan accepts
-		if loose != strict {
-			return true
-		}
-	}
-	return false
 }
 
 // FuzzLogFile treats arbitrary bytes as an existing events.jsonl. Whatever they are:
@@ -196,9 +149,6 @@ func FuzzLogFile(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > 1<<20 {
 			t.Skip("large inputs only slow the target down")
-		}
-		if knownDivergent(data) {
-			t.Skip("a line of the known Scan/Open disagreement (TestKnownBugScanAndOpenDisagreeOnWhatAnEventIs)")
 		}
 		dir := t.TempDir()
 		path := filepath.Join(dir, "events.jsonl")
@@ -224,10 +174,6 @@ func FuzzLogFile(f *testing.F) {
 			}
 			maxValid = max(maxValid, e.Seq)
 		}
-		if maxValid >= maxSeq && os.Getenv("SLEIPNIR_KNOWN_BUG") == "" {
-			t.Skip("a log at its last sequence number (TestKnownBugEmitWritesALineOpenRejects)")
-		}
-
 		l, err := Open(dir, "s")
 		if err != nil {
 			t.Fatalf("Open: %v", err)
@@ -245,6 +191,13 @@ func FuzzLogFile(f *testing.F) {
 		}
 		l.SetClock(func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) })
 		seq, err := l.Emit("a", "appended", nil)
+		if maxValid >= maxSeq { // a log at its last sequence number takes nothing more, and says so
+			l.Close()
+			if err == nil {
+				t.Fatalf("Emit wrote seq %d into a log at its last sequence number", seq)
+			}
+			return
+		}
 		if err != nil {
 			l.Close()
 			t.Fatalf("Emit: %v", err)
