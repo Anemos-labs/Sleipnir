@@ -25,7 +25,8 @@
 #   4. The next version: a first release is v0.1.0. Before 1.0 a breaking change (type!: in a subject, or a BREAKING CHANGE
 #      footer) bumps the minor and everything else the patch. From 1.0: breaking = major, feat = minor, everything else
 #      (fix, perf, refactor, subjects that are not conventional commits) = patch. Squash merges carry the pull request title
-#      as the subject: type(scope)!: subject (#123).
+#      as the subject: type(scope)!: subject (#123). A footer is not read in a build(deps) commit: Dependabot pastes the
+#      dependency's own release notes into its bodies (write build(deps)!: to declare a dependency update breaking).
 #   5. The tag already exists on a commit that is not in this history: release=false.
 #   6. AUTO_RELEASE is not exactly "true": release=false. Nothing publishes itself until the owner sets that variable.
 #   7. No LICENSE, LICENSE.md or LICENSE.txt in the commit's root: release=false, "no LICENSE file: choose one before the
@@ -116,7 +117,13 @@ counts=$(git log --no-merges --format=%s "$range" | awk '
 IFS=' ' read -r n_break n_feat n_fix n_conv n_other <<EOF
 $counts
 EOF
-if git log --no-merges --format=%B "$range" | grep -Eq '^BREAKING[ -]CHANGE(: | #)'; then footer=1; else footer=0; fi
+footer=$(git log --no-merges --format='%x1e%B' "$range" | awk -v RS='\036' '
+  {
+    n = split($0, l, "\n")
+    if (l[1] ~ /^[Bb]uild\(deps[^)]*\)/) next
+    for (i = 2; i <= n; i++) if (l[i] ~ /^BREAKING[ -]CHANGE(: | #)/) { c++; break }
+  }
+  END { print c + 0 }')
 breaking=$((n_break + footer))
 
 # User-facing files: what can end up in the binary or its release. Tests, testdata and markdown do not; a file that is

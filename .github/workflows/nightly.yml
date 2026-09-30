@@ -131,12 +131,12 @@ jobs:
       # Not here: bench/build.sh --check. It builds the whole benchmark suite (mutations and a three-fold admission run of
       # every task, minutes to hours) and needs the full history; that is a job for a person, not for a drift check.
 
-  # The same scan as ci's security job, on a schedule: an advisory published today should not wait for the next push.
+  # The same scan as ci's security job, on a schedule: an advisory published today should not wait for the next push. It is
+  # not continue-on-error: a red nightly run is the signal (GitHub mails a failed scheduled run).
   vulncheck:
     name: known vulnerabilities
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

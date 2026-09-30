@@ -176,6 +176,25 @@ d=$(seed)
 released "$d" v0.3.4
 BODY="This is not a BREAKING CHANGE: it is a sentence." commit "$d" "fix: y (#6)" internal/core/core.go
 verdict "$d" "a mid-line mention is not a footer" v0.3.5
+# Dependabot pastes the dependency's release notes into the body; an upstream footer must not bump our minor version
+d=$(seed)
+released "$d" v0.3.4
+BODY="Bumps golang.org/x/net from 0.43.0 to 0.44.0.
+
+Release notes
+BREAKING CHANGE: upstream removed a function" commit "$d" "build(deps): bump golang.org/x/net from 0.43.0 to 0.44.0 (#9)" go.mod go.sum
+verdict "$d" "a footer pasted into a build(deps) body is not read" v0.3.5
+d=$(seed)
+released "$d" v0.3.4
+BODY="Bumps it.
+
+BREAKING CHANGE: but the maintainer says so" commit "$d" "build(deps)!: bump the thing (#9)" go.mod go.sum
+verdict "$d" "build(deps)! declares a dependency update breaking" v0.4.0
+d=$(seed)
+released "$d" v0.3.4
+BODY="BREAKING CHANGE: upstream removed a function" commit "$d" "build(deps): bump one (#9)" go.mod
+BODY="BREAKING CHANGE: real" commit "$d" "fix: change the log format (#10)" internal/core/core.go
+verdict "$d" "a real footer next to a dependency bump still counts" v0.4.0
 d=$(seed)
 released "$d" v0.3.4
 commit "$d" "fix: one (#7)" internal/core/core.go

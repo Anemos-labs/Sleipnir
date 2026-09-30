@@ -194,9 +194,9 @@ jobs:
           name: release-assets
           path: release-assets
       # The tag does not exist yet: this call creates it at the commit that was built (so --verify-tag is not passed).
-      # gh creates the release as a draft, uploads every file, and only then publishes, so a failed upload leaves a draft
-      # (delete it on the Releases page and run this workflow again), never a half-filled release. A release that exists
-      # makes the job do nothing.
+      # With files to upload, gh creates the release as a draft, uploads every file, publishes it last, and deletes the
+      # draft if an upload fails: there is never a half-filled release, and a failed run can simply be run again. A release
+      # that exists makes the job do nothing.
       - name: create the release and its tag
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then

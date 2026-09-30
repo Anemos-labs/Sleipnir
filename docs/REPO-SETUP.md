@@ -101,6 +101,7 @@ a signed-commit-capable path.
 | CodeQL **default setup** off | **Settings > Advanced Security > Code scanning > CodeQL analysis**: if it says "Default", open the menu and switch it off (or `gh api -X PATCH repos/OWNER/REPO/code-scanning/default-setup -f state=not-configured`) | `codeql.yml` is the advanced setup. With both, GitHub refuses the results of the workflow and the `code_scanning` rule has nothing to read. |
 | Dependency graph on | **Settings > Advanced Security > Dependency graph** (on by default in a public repository) | The dependency review job of ci fails without it. |
 | Require SHA pinning | **Settings > Actions > General > Actions permissions**: optionally "Require actions to be pinned to a full-length commit SHA" (if your page shows it) | Enforces at run time what `scripts/check-pins.sh` checks in the files. |
+| Immutable releases (optional) | **Settings > General > Releases** (if your page shows it) | Once a release is published, its tag and files cannot be changed or deleted. The release workflow already works this way (draft, upload, publish). |
 | Anything the script listed as failed | The setting that failed call sets (`--dry-run` shows which call is which) | A token without the right scope, or an endpoint your GitHub does not have yet. Approval for outside contributors lives in **Settings > Actions > General > Fork pull request workflows from outside collaborators** ("Require approval for all outside collaborators"). |
 | `AUTO_RELEASE` | step 5 | The switch that lets a merge publish. |
 
@@ -200,7 +201,7 @@ without writing `$GITHUB_OUTPUT` and without the one network question; try it on
 | No version tag reachable | A first release, `v0.1.0` |
 | A `vX.Y.Z` tag on the commit, or on a later commit | `release=false`, "already released as vX.Y.Z" |
 | Since the last tag only docs, tests and CI changed, and no subject says feat, fix, perf, revert or breaking | `release=false`, "docs/tests/CI only" |
-| Before 1.0, a breaking change (`type!:` in a subject, or a `BREAKING CHANGE` footer) | minor bump |
+| Before 1.0, a breaking change (`type!:` in a subject, or a `BREAKING CHANGE` footer; a footer is not read in a `build(deps)` commit, whose body is Dependabot quoting the dependency's notes) | minor bump |
 | Before 1.0, anything else user-facing | patch bump (a `feat` too) |
 | From 1.0, breaking / `feat` / anything else | major / minor / patch |
 | A subject that is not a conventional commit | counts as patch when a user-facing file changed |
@@ -225,10 +226,12 @@ User-facing: a non-test, non-markdown file under `cmd/` or `internal/` (testdata
   run releases everything since the last tag, so nothing is lost; it may only come later.
 * **The release builds with the newest stable Go**, because Go 1.24 is out of support; `go.mod` keeps saying `go 1.24`, and the
   `go.mod` leg of the test matrix proves it still builds and passes.
-* **A failed upload leaves a draft release**, never a published one without files: delete the draft on the Releases page and
-  run the workflow again.
-* **After a release is wrong:** an administrator deletes the release and the tag (the tag ruleset lets administrators), fixes
-  the cause, and merges the next pull request; the plan recomputes.
+* **A failed upload leaves no half-made release.** With files to attach, `gh release create` makes a draft, uploads, publishes
+  last, and deletes the draft if an upload fails (read in the source of gh 2.102); run the workflow again. If a draft is ever
+  left behind, delete it on the Releases page.
+* **After a release is wrong:** unless immutable releases is on (Step 4), an administrator deletes the release and the tag (the
+  tag ruleset lets administrators), fixes the cause, and merges the next pull request; the plan recomputes. With immutable
+  releases on, a published release and its tag cannot be changed or deleted: ship a fixed version instead.
 * **First run.** `release` only runs from the default branch's copy of the workflow. With the ruleset in place a pull
   request shows `ci-gate` as "Expected, waiting for status to be reported" until `ci` reports it; if it never does, `ci` did
   not run for that pull request (a disabled workflow, a syntax error in a workflow file, a path filter someone added).
