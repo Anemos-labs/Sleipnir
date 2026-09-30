@@ -353,9 +353,9 @@ func splitShell(line string) []simpleCmd {
 			i++
 		case c == '|':
 			endCmd("|")
-		case c == '&' && !(inWord && word.Len() > 0 && strings.HasSuffix(word.String(), ">")):
-			// "&" backgrounds a command ("2>&1" keeps its ampersand).
-			if i > 0 && (rs[i-1] == '>' || rs[i-1] == '<') {
+		case c == '&':
+			// "&" backgrounds a command; in "2>&1" and "&>file" it is part of a redirection.
+			if (i > 0 && (rs[i-1] == '>' || rs[i-1] == '<')) || (i+1 < len(rs) && rs[i+1] == '>') {
 				inWord = true
 				word.WriteRune(c)
 			} else {
@@ -470,12 +470,13 @@ func classifyCommand(cmd string) (isTest, masked bool) {
 	if last < 0 {
 		return false, false
 	}
-	for i := last; i < len(cs)-1; i++ {
-		if len(cs[i+1].words) > 0 || cs[i].op == "|" || cs[i].op == "||" {
-			return true, true
+	masked = cs[last].op == "|" || cs[last].op == "||" || cs[last].op == "&"
+	for _, c := range cs[last+1:] {
+		if len(c.words) > 0 {
+			masked = true
 		}
 	}
-	return true, cs[last].op == "|" || cs[last].op == "||"
+	return true, masked
 }
 
 func shortPath(p string) string {
