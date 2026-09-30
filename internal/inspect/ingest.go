@@ -360,16 +360,20 @@ func (s *Session) onRequest(ev *events.Event, ts time.Time) {
 		s.compareLayers(r, a.prevMain)
 		r.rebase, a.rebasePending = a.rebasePending, ""
 		r.epoch = a.commits
+		// The guard reports drift just before the request it concerns.
+		guardFlagged := a.pendingDrift != nil
+		if an := a.pendingDrift; an != nil {
+			an.Req = r.id
+			a.pendingDrift = nil
+		}
 		if r.hadPrev {
 			s.checked++
 			if r.first >= 0 && r.rebase == "" {
 				r.undeclared = true
-				s.anomTot.Undeclared++
+				if !guardFlagged {
+					s.anomTot.Undeclared++
+				}
 			}
-		}
-		if an := a.pendingDrift; an != nil {
-			an.Req = r.id
-			a.pendingDrift = nil
 		}
 		r.foldedAtReq = a.foldedCum
 		r.afterCommit, a.lastCommit = a.lastCommit, nil

@@ -13,8 +13,10 @@ import (
 // fixed is a token estimator with no calibration: exactly one token per four bytes.
 type fixed struct{}
 
-func (fixed) Tokens(s string) int   { return (len(s) + 3) / 4 }
-func (fixed) Observe(int, int)      {}
+var est = fixed{}
+
+func (fixed) Tokens(s string) int { return (len(s) + 3) / 4 }
+func (fixed) Observe(int, int)    {}
 
 func TestListingFormatAndOrder(t *testing.T) {
 	w := newWorld(t)
@@ -24,8 +26,8 @@ func TestListingFormatAndOrder(t *testing.T) {
 	w.proj(".claude", "hidden", "---\nname: hidden\ndescription: not for the model\ndisable-model-invocation: true\n---\nx")
 	w.proj(".claude", "userless", "---\nname: userless\ndescription: model only\nuser-invocable: false\n---\nx")
 	c, _ := w.discover(true)
-	want := "alpha: First one.\nmiddle: Body of middle.\nuserless: model only\nzeta: Last one."
-	// "middle" has no description: the first line of its body is used.
+	// "middle" has neither description nor body: it is listed by name alone.
+	want := "alpha: First one.\nmiddle\nuserless: model only\nzeta: Last one."
 	if got := c.Listing(0, nil); got != want {
 		t.Fatalf("listing:\n%s\nwant:\n%s", got, want)
 	}
@@ -89,7 +91,7 @@ func TestListingFitsTheBudget(t *testing.T) {
 	prev := 1 << 30
 	for _, budget := range []int{3000, 1500, 800, 500, 300, 200, 120, 60, 30} {
 		got := c.Listing(budget, fixed{})
-		toks := fixed{}.Tokens(got)
+		toks := est.Tokens(got)
 		if toks > budget {
 			t.Errorf("budget %d: listing is %d tokens:\n%s", budget, toks, got)
 		}
@@ -125,8 +127,8 @@ func TestListingDropsLeastRelevantSkillsAndSaysSo(t *testing.T) {
 	}
 	c, _ := w.discover(true)
 	got := c.Listing(60, fixed{})
-	if fixed{}.Tokens(got) > 60 {
-		t.Fatalf("over budget: %d tokens\n%s", fixed{}.Tokens(got), got)
+	if est.Tokens(got) > 60 {
+		t.Fatalf("over budget: %d tokens\n%s", est.Tokens(got), got)
 	}
 	for i := 0; i < 5; i++ {
 		if !strings.Contains(got, fmt.Sprintf("proj-%02d", i)) {

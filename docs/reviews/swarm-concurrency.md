@@ -17,7 +17,7 @@ I added test files named `*_review_test.go` (index in section 4; no non-test fil
 
 * `TestConc_*` (57 repros + 2 subprocess bodies): gated behind `SLEIPNIR_REVIEW=1` (the same switch the security review uses). Each asserts the
   **correct** behaviour, so it **fails while the finding is open**; default `go test` skips them and stays green.
-* `TestConcSound_*` (9): always on, cheap (about 2 s together). Stress/regression checks for behaviour I found sound (two of them were repros that other builders fixed while I was reviewing: the warm-gate stuck primer and the torn blob).
+* `TestConcSound_*` (10): always on, cheap (about 2 s together). Stress/regression checks for behaviour I found sound (two of them were repros that other builders fixed while I was reviewing: the warm-gate stuck primer and the torn blob).
 
 ```
 # every repro currently FAILS (= finding reproduced); 4 packages
@@ -29,7 +29,7 @@ go test -race -count=20 ./internal/swarm ./internal/agent ./internal/events
 ```
 
 Baseline before my tests: `go test -race -count=20 ./internal/swarm ./internal/agent ./internal/events` was green. Last full gated run:
-57 of 57 repros fail, 9 of 9 sound checks pass. I ran every gated repro 5-30 times (with and without `-race`): the deterministic ones failed every time;
+57 of 57 repros fail, 10 of 10 sound checks pass. I ran every gated repro 5-30 times (with and without `-race`): the deterministic ones failed every time;
 the three probabilistic ones (`BoardWaitLostWakeupStress`, `SetStatePublishesOutsideItsLock...`, `RetireDuringSpawnCrashesTheProcess`) were
 tightened until they failed 8/8 (details in their comments). Many interleavings are forced with locks and channels (freeze `Board.mu`, hold `Leases.mu`,
 stall an emitter) instead of hoping for scheduler luck. A `-race` run also reports the unsynchronised `member.task` accesses (finding C-10).
@@ -207,7 +207,7 @@ stall an emitter) instead of hoping for scheduler luck. A `-race` run also repor
   The same happens to a brand-new worker that receives mail between registration and its own `startRun`: its first user turn is somebody's FYI.
 * **Reuse vs finishRun** (`finishRun` ~`:587`): the first critical section marks the member idle, but `idle` is published at the very end; a reuse in that window is overwritten by the old run's late `setState(idle)`: the board (hot view, `wait` report) says idle for a running agent.
 * **setState** (~`:691`): updates `m.state` under `m.mu`, publishes to the board after unlock. Two concurrent callers can publish in the opposite order. Trailing-edge line updates are dropped by the 750 ms throttle (C-16); *state transitions* are never throttled (sound check).
-* **Data race.** `member.task` is written with no lock (`Spawn` `swarm.go:415` and `:451`, `claim` `tools.go:89`) and read by `setState` (`:700`, under `m.mu`, which the writer does not hold) and `finishRun` (`:597`). `-race` reports both site pairs in three of the tests (`MailToAHalfBuiltWorker...`, `ReuseAssignmentIsDropped...`, `SwarmChaos...`; the detector reports each pair once per run).
+* **Data race.** `member.task` is written with no lock (`Spawn` `swarm.go:415` and `:451`, `claim` `tools.go:89`) and read by `setState` (`:700`, under `m.mu`, which the writer does not hold), `finishRun` (`:597`) and, since `reassignCard` was added, `startRun` itself (`:570`). `-race` reports both site pairs in three of the tests (`MailToAHalfBuiltWorker...`, `ReuseAssignmentIsDropped...`, `SwarmChaos...`; the detector reports each pair once per run).
 * **Repro.** `SLEIPNIR_REVIEW=1 go test -race -count=1 -run 'TestConc_(RetireRacingStartRun|ReuseAssignmentIsDropped|MailToAHalfBuilt|ReuseDuringFinishRun|SetStatePublishes|SwarmChaos)' ./internal/swarm`
   ```
   Retire returned nil for be-1 although its run is live ...; a running agent cannot be mailed any more: no agent "be-1" (agents: mgr); be-1 is off the swarm roster but back on the board roster (a permanent ghost ...)
@@ -324,7 +324,7 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 * **Can the hot view mislead?** Yes: alerts never expire, idle shown for a running agent, trailing status dropped, dead `failed` tasks counted open, ghost agents, notes displacing useful lines (C-06, C-10, C-16).
 * **Unbounded growth.** Notes, tasks (never pruned; per-mutation copy), router maps, recipient inbox, archive index (whole turns), `Log.subs` if callers do not cancel, gate keys and recall handles (small). Alerts are capped at 8 but never expire.
 * **Lease released while a write is in flight?** `ReleaseAll` runs from `finishRun` (after `Run` has joined its tool goroutines), from `task done` (same agent, sequential) and from `Retire`. It can overlap a live write only through the `Retire` race (C-10), and then the content-hash check plus the fs per-path lock still prevent a lost update (sound check below); the cost is duplicate effort and alert noise.
-* **`done` verifier while the agent is cancelled.** By reading (not separately tested): the verifier gets the cancelled context; a killed command returns non-zero and `done` reports "Not done"; if it returned 0 first, `Finish(review)` still runs; then `Run` exits and `finishRun` marks a still-`doing` task `failed`. End states are consistent, but a cancelled swarm converts every in-flight task to terminal `failed` with an owner (C-03/C-14).
+* **`done` verifier while the agent is cancelled.** Tested (`TestConcSound_VerifierCancelledMidVerificationSettlesTheTask`, both a killed verifier and one that finishes first): the task always ends settled (`failed` or `review`) with the agent `idle`; none is left `doing`. The cost is that a cancelled swarm converts every in-flight task to terminal `failed` with an owner still set (C-03/C-14).
 
 ## 4. Test index
 
@@ -333,7 +333,7 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 | `internal/swarm/rig_review_test.go` | in-process fake provider (`rvProvider`), rig with hooks, gate helper | |
 | `internal/swarm/runtime_review_test.go` | 24 (incl. 2 subprocess bodies): mail/reject, spawn/claim races, caps, ghosts, budget, orphans, panics, cancel/shutdown, verifier | |
 | `internal/swarm/state_review_test.go` | 21: wait/Changed, no-ops, aliasing, notes, hot cost, alerts, state machine, router, governor, log replay | Governor stress (cancels, timers, 429s, priorities), WarmGate stress, WarmGate escalates past a stuck primer, 50 agents on Board/Router/Leases/hot/`Changed()` |
-| `internal/swarm/chaos_review_test.go` | 8: chaos, status throttle, setState reorder, gate/governor inversion, Shutdown, archive, evidence, SetShared | Real `fs` tools with stolen leases, throttle never drops a state change, wait wakes on board/mail |
+| `internal/swarm/chaos_review_test.go` | 8: chaos, status throttle, setState reorder, gate/governor inversion, Shutdown, archive, evidence, SetShared | Real `fs` tools with stolen leases, throttle never drops a state change, wait wakes on board/mail, cancel during verification settles the task |
 | `internal/agent/agent_review_test.go` | 3: inbox at Run exit, compactor lifetime, hung request | |
 | `internal/events/log_review_test.go` | 2: group-commit tail, Subscribe after Close | `Close` racing `Emit`/`Subscribe`/cancel/`Flush`; torn blob is repaired |
 | `internal/tools/support_review_test.go` | 1: recall handle aliasing | |
@@ -348,7 +348,7 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 
 ## 6. Caveats
 
-* Snapshot: other builders edited `swarm.go`, `agent/compact.go`, `agent/agent.go`, `perm`, `kv` while I worked (the `agent` package did not compile for a few minutes at a time, twice). Findings were re-verified after the last such edit (all 57 repros fail, 9 sound checks pass, `swarm`/`events`/`tools` default suites green apart from the item below). Two repros went green because other builders fixed them mid-review (gate rewrite, verifying blob store); the reused-worker card also changed (`reassignCard`), so the reuse repro now looks for `Your assignment is task T2:` instead of `Begin task T2`. The baseline `-count=20` run was green before and after adding my files. The compactor label format changed under me once; the compactor test now recognises the fork by its `<compactor-task>` block instead of the label.
+* Snapshot: other builders edited `swarm.go`, `agent/compact.go`, `agent/agent.go`, `perm`, `kv` while I worked (the `agent` package did not compile for a few minutes at a time, twice). Findings were re-verified after the last such edit (all 57 repros fail, 10 sound checks pass, `swarm`/`events`/`tools` default suites green apart from the item below). Two repros went green because other builders fixed them mid-review (gate rewrite, verifying blob store); the reused-worker card also changed (`reassignCard`), so the reuse repro now looks for `Your assignment is task T2:` instead of `Begin task T2`. The baseline `-count=20` run was green before and after adding my files. The compactor label format changed under me once; the compactor test now recognises the fork by its `<compactor-task>` block instead of the label.
 * At the time of my last run the default (ungated) `internal/agent` and `internal/swarm` suites also contained another reviewer's `TestCacheEcon_*` tests that fail with "defect no longer reproduces ... invert or delete this review test" after code changes made by others; none of those failures come from my files.
 * The tests touch unexported names (`member`, `Swarm.get`, `Board.mu`/`snap`/`wake`, `Router.now`/`recent`, `Leases.mu`, `startRun`, `memberSink`); a refactor may need to update them. Freeze-the-lock interleavings prove the race is *reachable*, not how often production hits it; C-01, C-02 (reuse path), C-07, C-13 need no race at all.
 * Probabilistic tests: `BoardWaitLostWakeupStress` (found at iteration 15-225), `SetStatePublishesOutsideItsLockAndCanReorder` (about 1 in 5,000 racing pairs, loops up to 8 s and stops at the first mismatch), `RetireDuringSpawnCrashesTheProcess` (subprocess, up to 8 s).
@@ -369,5 +369,6 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 * **`setState` never drops a state transition** (`TestConcSound_ThrottleNeverDropsAStateChange`): only `line` changes are throttled; the final `idle` always lands (the ordering issues are C-10).
 * **Lock order** (by reading): `Swarm.mu -> member.mu` (`Spawn`), `Swarm.mu -> Agent.mu` (`TotalCost`), `Leases.mu -> Board.mu -> Log.mu` (conflict alert), `Agent.mu -> Log.mu` (`SyncShared`); no reverse edge and no callback into the swarm under those locks (only a user Sink in the emit-error path could close a cycle). No deadlock found.
 * **Agent loop.** `runTools` always returns one result per call (interrupted calls get "interrupted before X ran"), so the thread never holds a dangling `tool_use` after cancel; `runOne` recovers tool panics; the compaction commit is a compare-and-swap on the thread epoch (`Thread.Commit`), so a stale patch is rejected, not applied; `Agent.Send` never blocks.
+* **Cancel during verification** (`TestConcSound_VerifierCancelledMidVerificationSettlesTheTask`): a verifier killed by the cancel, or one that finished just before it, leaves the task `failed` or `review` and the agent `idle`, never `doing` under an idle owner.
 * **Mail duplication.** None found: `takeInbox` swaps under the lock; `startRun` is idempotent; the router's dedupe/rate check-and-set is atomic under `r.mu`.
 * **Board authority.** `Claim` refuses foreign-owned tasks; `Update/Block/Resume/Finish` check ownership (except the manager bypass, which is keyed on the literal `"manager"` that `task accept/reject` pass explicitly).

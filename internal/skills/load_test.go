@@ -72,7 +72,7 @@ func TestLoadCleansArguments(t *testing.T) {
 	w := newWorld(t)
 	w.proj(".claude", "echo", "---\nname: echo\ndescription: d\n---\n<$ARGUMENTS>")
 	c, _ := w.discover(true)
-	l, err := c.Load("echo", "a‮b\x00c")
+	l, err := c.Load("echo", "a\u202Eb\x00c")
 	if err != nil || l.Body != "<abc>" {
 		t.Fatalf("body = %q, err = %v", l.Body, err)
 	}

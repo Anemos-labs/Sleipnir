@@ -71,10 +71,17 @@ func TestMergeCleanAndFastForward(t *testing.T) {
 	if err != nil || nff.Head == aheadSHA {
 		t.Fatalf("--no-ff must create a merge commit: %+v, %v", nff, err)
 	}
-	// --ff-only refuses divergent history with a typed error.
-	rawGit(t, dir, "reset", "-q", "--hard", "main")
-	if _, err := r.Merge(ctx, MergeOptions{Ref: "side", FFOnly: true}); err == nil {
+	// --ff-only refuses divergent history.
+	rawGit(t, dir, "checkout", "-q", "-B", "diverged", "main~1")
+	writeFile(t, filepath.Join(dir, "div.txt"), "div\n")
+	rawGit(t, dir, "add", "-A")
+	rawGit(t, dir, "commit", "-qm", "diverged")
+	rawGit(t, dir, "checkout", "-q", "main")
+	if _, err := r.Merge(ctx, MergeOptions{Ref: "diverged", FFOnly: true}); err == nil {
 		t.Fatal("--ff-only merged divergent history")
+	}
+	if ok, _ := r.IsClean(ctx); !ok || r.InProgress() != "" {
+		t.Fatal("refused --ff-only left the tree dirty")
 	}
 	if _, err := r.Merge(ctx, MergeOptions{Ref: "--strategy=ours"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("option-looking ref: %v", err)
@@ -440,14 +447,20 @@ func TestOpenPinsTheWorkTreeAgainstConfigRedirects(t *testing.T) {
 	if readFile(t, filepath.Join(victim, "keep.txt")) != "keep\n" {
 		t.Fatal("victim touched")
 	}
-	// core.bare=true in a work tree: git's view wins, operations needing a work tree fail closed.
+	// core.bare=true next to a real work tree: the pinned work tree wins, so the
+	// operation still acts on this repository's own directory and nowhere else.
 	rawGit(t, dir, "config", "--unset", "core.worktree")
 	rawGit(t, dir, "config", "core.bare", "true")
+	rawGit(t, dir, "config", "core.worktree", victim)
 	rb := openRepo(t, dir)
-	if !rb.IsBare() {
-		t.Fatal("core.bare=true not honored")
+	if rb.Root() != dir {
+		t.Fatalf("Root with core.bare=true: %q", rb.Root())
 	}
-	if err := rb.ResetHard(ctx, "HEAD"); err == nil {
-		t.Fatal("ResetHard ran on a repository configured as bare")
+	writeFile(t, filepath.Join(dir, "a.txt"), "changed again\n")
+	if err := rb.ResetHard(ctx, "HEAD"); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, filepath.Join(dir, "a.txt")) != "alpha\n" || readFile(t, filepath.Join(victim, "keep.txt")) != "keep\n" {
+		t.Fatal("core.bare=true plus core.worktree redirected a destructive operation")
 	}
 }

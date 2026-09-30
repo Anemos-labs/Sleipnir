@@ -139,7 +139,28 @@ func writeSynth(t testing.TB, dir string, cfg synthCfg) synthResult {
 	if err := log.Close(); err != nil {
 		t.Fatal(err)
 	}
+	retimeFirst(t, filepath.Join(dir, "events.jsonl"), cfg.Start.Add(-time.Millisecond))
 	return s.res
+}
+
+// retimeFirst sets the timestamp of the log.open event, which events.Open stamps
+// with the wall clock before a test can install its own.
+func retimeFirst(t testing.TB, path string, ts time.Time) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := strings.IndexByte(string(data), '\n')
+	var ev events.Event
+	if err := json.Unmarshal(data[:i], &ev); err != nil {
+		t.Fatal(err)
+	}
+	ev.TS = ts
+	line, _ := json.Marshal(ev)
+	if err := os.WriteFile(path, append(line, data[i:]...), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (s *sim) emit(agent, typ string, data any) uint64 {
@@ -236,9 +257,18 @@ func (s *sim) run() {
 	var spawned = map[string]bool{"mgr": true}
 	for {
 		var pick *simAgent
+		workersLeft := false
+		for _, a := range s.agents[1:] {
+			if a.done < a.steps {
+				workersLeft = true
+			}
+		}
 		for _, a := range s.agents {
 			if a.done >= a.steps {
 				continue
+			}
+			if a.mgr && workersLeft && a.done >= a.steps-3 {
+				continue // the manager's closing turns (accept, final answer) come after the workers finish
 			}
 			if pick == nil || a.next.Before(pick.next) {
 				pick = a
@@ -465,13 +495,13 @@ func (s *sim) tools_(a *simAgent) {
 	var calls []tc
 	switch {
 	case a.mgr:
-		switch a.done % 4 {
-		case 1:
+		switch {
+		case a.done > a.steps-3 && a.done < a.steps:
+			calls = append(calls, tc{"task", map[string]any{"action": "accept", "id": fmt.Sprintf("T%d", a.done-(a.steps-3)+1), "text": "verified"}, 30, 30, false})
+		case a.done%4 == 1:
 			calls = append(calls, tc{"task", map[string]any{"action": "list"}, 40, 900, false})
-		case 2:
+		case a.done%4 == 2:
 			calls = append(calls, tc{"wait", map[string]any{"timeout_sec": 120}, 20000 + s.rng.Intn(30000), 700, false})
-		case 3:
-			calls = append(calls, tc{"task", map[string]any{"action": "accept", "id": "T1", "text": "verified"}, 30, 30, false})
 		default:
 			calls = append(calls, tc{"mail", map[string]any{"to": "be-1", "text": "please also cover the 429 path", "kind": "request"}, 25, 40, false})
 		}
@@ -519,7 +549,7 @@ func (s *sim) tools_(a *simAgent) {
 	if a.done%11 == 0 && !a.mgr {
 		s.emit("harness", events.TypeBoardOp, map[string]any{"op": "alert", "version": 400 + a.done})
 	}
-	if a.done%5 == 0 {
+	if a.done%5 == 0 && !a.mgr {
 		mid := fmt.Sprintf("m%d", s.res.MailSent+1)
 		s.emit(a.id, events.TypeMailSend, map[string]any{"id": mid, "from": a.id, "to": "mgr", "kind": "info", "text": "progress: " + words(a.done, 6)})
 		s.emit("mgr", events.TypeMailDeliver, map[string]any{"id": mid, "from": a.id})

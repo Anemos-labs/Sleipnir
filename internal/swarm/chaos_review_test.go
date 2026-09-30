@@ -601,3 +601,53 @@ func TestConc_ConcurrentSetSharedLeavesAgentsOnDifferentEpochs(t *testing.T) {
 		}
 	}
 }
+
+// Sound: cancelling the swarm while a worker is inside the verifier settles the task
+// instead of leaving it "doing" under an idle owner, whichever way the verifier
+// returns (killed with a non-zero code, or finished with 0 just before the cancel).
+func TestConcSound_VerifierCancelledMidVerificationSettlesTheTask(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code int
+		want []TaskStatus
+	}{
+		{"killed", 137, []TaskStatus{StatusFailed}},
+		{"finished first", 0, []TaskStatus{StatusReview}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var r *rvRig
+			inside := make(chan struct{}, 1)
+			cfg := Config{MaxWriters: 4, VerifyCmd: "go test ./...", Verify: func(ctx context.Context, dir, cmd string) (string, int, error) {
+				inside <- struct{}{}
+				r.sw.cancel() // Shutdown / user interrupt while the verifier runs
+				<-ctx.Done()
+				return "output", tc.code, nil
+			}}
+			r = newRVRig(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
+				if c.Role == "backend" && c.Assistants == 0 {
+					return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "x"}}}}
+				}
+				return rvReply{Text: "summary"}
+			})
+			r.sw.StartManager()
+			id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-inside
+			rvWait(t, "worker idle", func() bool { return r.idle(id) })
+			time.Sleep(50 * time.Millisecond)
+			tk, _ := r.sw.Board.Snapshot().Task("T1")
+			ok := false
+			for _, w := range tc.want {
+				ok = ok || tk.Status == w
+			}
+			if !ok {
+				t.Fatalf("T1 ended %q (%s); want one of %v", tk.Status, tk.Result, tc.want)
+			}
+			if a, _ := r.sw.Board.Snapshot().Agent(id); a.State != "idle" {
+				t.Fatalf("worker state %q", a.State)
+			}
+		})
+	}
+}
