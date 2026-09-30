@@ -34,6 +34,8 @@ func analyseSafe(prog string, args []string) safeAnalysis {
 		return analyseGo(args)
 	case "find":
 		return analyseFind(args)
+	case "sed":
+		return analyseSed(args)
 	case "for":
 		// shellparse reports the word list of a for/select loop as this
 		// pseudo-command. The loop only walks the names, so links are not
