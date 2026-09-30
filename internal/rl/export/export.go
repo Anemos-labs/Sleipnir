@@ -126,6 +126,14 @@ type Options struct {
 	Wire openaichat.Options
 }
 
+// DefaultOptions returns the options a caller should start from: the format with
+// DropFlagged on. A bool cannot default to true in Go, so leaving DropFlagged to
+// the zero value would silently export infra-failed, truncated and reward-hacked
+// episodes; a caller that wants everything must say so by clearing it.
+func DefaultOptions(f Format) Options {
+	return Options{Format: f, DropFlagged: true}
+}
+
 // Stats reports what an export did and why it dropped what it dropped. All maps
 // are keyed by stable names and are sorted when marshalled.
 type Stats struct {

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -718,9 +719,22 @@ func TestAnthropicResponderView(t *testing.T) {
 }
 
 func TestAnthropicStampedeOverAColdPrefix(t *testing.T) {
-	cfg := AnthropicConfig{MinPrefixTokens: 100}
-	cfg.FirstToken = 120 * time.Millisecond
-	srv, ts := newA(t, cfg, nil)
+	// The responder runs after a request's cache lookup and before the first byte
+	// that publishes what it wrote. Holding both requests there until both have
+	// arrived makes them overlap by construction, whatever the scheduler does.
+	var arrived atomic.Int32
+	both := make(chan struct{})
+	srv, ts := newA(t, AnthropicConfig{MinPrefixTokens: 100}, func(*Call) Reply {
+		if arrived.Add(1) == 2 {
+			close(both)
+		}
+		select {
+		case <-both:
+		case <-time.After(10 * time.Second):
+			t.Error("the two overlapping requests never met")
+		}
+		return Reply{Text: "ok"}
+	})
 	body := req(obj{"system": []obj{withCC(text(big(400, "shared")), "")}}, userMsg(text("task")))
 
 	var wg sync.WaitGroup

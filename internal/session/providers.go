@@ -16,6 +16,7 @@ import (
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/reee344/sleipnir/internal/provider/anthropic"
 	"github.com/reee344/sleipnir/internal/provider/gateway"
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 )
@@ -151,6 +152,102 @@ func optString(m map[string]any, k string) string {
 	return s
 }
 
+func optInt(m map[string]any, k string) int {
+	switch v := m[k].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	}
+	return 0
+}
+
+func optStrings(m map[string]any, k string) []string {
+	var out []string
+	switch v := m[k].(type) {
+	case []any:
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+	case []string:
+		out = v
+	}
+	return out
+}
+
+// buildChat constructs an OpenAI-style chat-completions client.
+func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOptions) provider.Provider {
+	oo := openaichat.Options{
+		SessionHeader:        optBool(p.Options, "session_header"),
+		CacheKeyBody:         optBool(p.Options, "cache_key_body"),
+		SystemRole:           optString(p.Options, "system_role"),
+		MaxTokensField:       optString(p.Options, "max_tokens_field"),
+		ReasoningEffortField: optString(p.Options, "reasoning_effort_field"),
+		CacheControlParts:    optBool(p.Options, "cache_control_parts"),
+	}
+	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
+		oo.ExtraBody = extra
+	}
+	client := openaichat.New(openaichat.Config{
+		Name: ref.Provider, BaseURL: base, APIKey: key, Headers: p.Headers, Options: oo,
+		HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders,
+	})
+	if o.CaptureTokens || optBool(p.Options, "capture_tokens") {
+		prof := client.Profile()
+		prof.CaptureTokens = true
+		client.SetProfile(prof)
+	}
+	return client
+}
+
+// buildAnthropic constructs a Messages-API client: Anthropic itself, or a
+// gateway that speaks its wire format (a marketplace's /messages route). What a
+// gateway does not forward is declared in the provider's options:
+//
+//	auth_style             "x-api-key" (default) or "bearer"
+//	cache_control          false when the gateway drops cache_control markers
+//	no_turn_scoped_system  the gateway has no mid-conversation system messages
+//	no_thinking_replay     the gateway cannot take thinking blocks back
+//	no_zero_max_tokens     the gateway rejects max_tokens 0 (warm-ups use 1)
+//	session_header_name    header that carries the routing key, if any
+//	version, betas, default_max_tokens, thinking_display, thinking_budget,
+//	max_breakpoints, extra_body
+func buildAnthropic(ref ModelRef, p config.Provider, base, key string, o ProviderOptions) provider.Provider {
+	ao := anthropic.Options{
+		NoTurnScopedSystem: optBool(p.Options, "no_turn_scoped_system"),
+		NoThinkingReplay:   optBool(p.Options, "no_thinking_replay"),
+		NoZeroMaxTokens:    optBool(p.Options, "no_zero_max_tokens"),
+		DefaultMaxTokens:   optInt(p.Options, "default_max_tokens"),
+		ThinkingDisplay:    optString(p.Options, "thinking_display"),
+		ThinkingBudget:     optInt(p.Options, "thinking_budget"),
+		MaxBreakpoints:     optInt(p.Options, "max_breakpoints"),
+	}
+	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
+		ao.ExtraBody = extra
+	}
+	client := anthropic.New(anthropic.Config{
+		Name: ref.Provider, BaseURL: base, APIKey: key, Headers: p.Headers, Model: ref.Model,
+		AuthStyle: optString(p.Options, "auth_style"), Version: optString(p.Options, "version"),
+		Betas: optStrings(p.Options, "betas"), SessionHeader: optString(p.Options, "session_header_name"),
+		Options: ao, HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders,
+	})
+	prof := client.Profile()
+	if v, ok := p.Options["cache_control"].(bool); ok && !v {
+		// A gateway that drops cache_control has no explicit breakpoints to plan.
+		prof.Cache.MaxBreakpoints = 0
+	}
+	if ao.NoTurnScopedSystem {
+		prof.TurnScopedSystem = false
+	}
+	if ao.NoThinkingReplay {
+		prof.ReplayThinking = false
+	}
+	client.SetProfile(prof)
+	return client
+}
+
 // BuildProvider constructs the client for ref together with the harness's model
 // description (prices and cache behaviour, from the built-in table or a
 // conservative fallback).
@@ -171,35 +268,22 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		return nil, cost.Model{}, fmt.Errorf("provider %q needs %s to be set", ref.Provider, p.APIKeyEnv)
 	}
 
+	var client provider.Provider
 	switch p.EffectiveDialect() {
 	case config.DialectOpenAIChat:
-	case config.DialectAnthropic, config.DialectOpenAIResponses:
-		return nil, cost.Model{}, fmt.Errorf("provider %q uses the %s dialect, whose native adapter is not built yet; use the endpoint's chat-completions route (dialect %q)",
-			ref.Provider, p.EffectiveDialect(), config.DialectOpenAIChat)
+		client = buildChat(ref, p, base, key, o)
+	case config.DialectAnthropic:
+		if o.CaptureTokens || optBool(p.Options, "capture_tokens") {
+			return nil, cost.Model{}, fmt.Errorf("provider %q speaks the %s dialect, which returns no token ids or logprobs; RL capture needs a self-hosted chat-completions server (vLLM, SGLang)", ref.Provider, config.DialectAnthropic)
+		}
+		client = buildAnthropic(ref, p, base, key, o)
+	case config.DialectOpenAIResponses:
+		return nil, cost.Model{}, fmt.Errorf("provider %q uses the %s dialect, whose native adapter is not built yet; use the endpoint's chat-completions route (dialect %q) or its Messages route (dialect %q)",
+			ref.Provider, p.EffectiveDialect(), config.DialectOpenAIChat, config.DialectAnthropic)
 	default:
 		return nil, cost.Model{}, fmt.Errorf("provider %q: unknown dialect %q", ref.Provider, p.Dialect)
 	}
-
-	oo := openaichat.Options{
-		SessionHeader:        optBool(p.Options, "session_header"),
-		CacheKeyBody:         optBool(p.Options, "cache_key_body"),
-		SystemRole:           optString(p.Options, "system_role"),
-		MaxTokensField:       optString(p.Options, "max_tokens_field"),
-		ReasoningEffortField: optString(p.Options, "reasoning_effort_field"),
-		CacheControlParts:    optBool(p.Options, "cache_control_parts"),
-	}
-	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
-		oo.ExtraBody = extra
-	}
-	client := openaichat.New(openaichat.Config{
-		Name: ref.Provider, BaseURL: base, APIKey: key, Headers: p.Headers, Options: oo,
-		HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders,
-	})
 	prof := client.Profile()
-	if o.CaptureTokens || optBool(p.Options, "capture_tokens") {
-		prof.CaptureTokens = true
-		client.SetProfile(prof)
-	}
 
 	m, ok := cost.Defaults().Lookup(ref.Model)
 	if !ok {

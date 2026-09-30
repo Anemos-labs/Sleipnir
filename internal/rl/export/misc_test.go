@@ -37,6 +37,27 @@ func TestWriterErrorsAreReturned(t *testing.T) {
 	}
 }
 
+// TestDefaultOptionsDropFlagged: the zero value of Options exports flagged
+// episodes (a bool cannot default to true), DefaultOptions does not.
+func TestDefaultOptionsDropFlagged(t *testing.T) {
+	flagged := withFlags(rollout(t, variant{plan: "A", reward: 1, pass: true}), rl.FlagInfraError)
+	for _, f := range export.Formats() {
+		d := export.DefaultOptions(f)
+		if d.Format != f || !d.DropFlagged {
+			t.Fatalf("%s: %+v", f, d)
+		}
+		d.KeepFlat = true
+		d.Inline = true
+		if out, st := run(t, []export.Source{flagged}, d); out != "" || st.Drops["episode:infra_error"] != 1 {
+			t.Errorf("%s: default options exported a flagged episode: %q %v", f, out, st.Drops)
+		}
+	}
+	zero := export.Options{Format: export.FormatSteps, KeepFlat: true}
+	if out, _ := run(t, []export.Source{flagged}, zero); out == "" {
+		t.Error("clearing DropFlagged must export everything")
+	}
+}
+
 func TestWireOptionsShapeThePrompt(t *testing.T) {
 	src := rollout(t, variant{plan: "A", reward: 1, pass: true})
 	out, _ := run(t, []export.Source{src}, export.Options{Format: export.FormatSteps, KeepFlat: true, DropFlagged: true, Wire: openaichat.Options{SystemRole: "developer", MaxTokensField: "max_completion_tokens", ExtraBody: map[string]any{"foo": 1}}})

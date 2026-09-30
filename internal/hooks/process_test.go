@@ -139,7 +139,7 @@ func TestOutputIsCleanedBeforeItReachesAModel(t *testing.T) {
 		want    []string
 		absent  []string
 	}{
-		{"invalid utf8", `printf 'bad \377\376 bytes' >&2; exit 2`, []string{"bad �� bytes"}, nil},
+		{"invalid utf8", `printf 'bad \377\376 bytes' >&2; exit 2`, []string{"bad \uFFFD bytes"}, nil},
 		{"ansi colours", `printf '\033[1;31mred\033[0m text' >&2; exit 2`, []string{"red text"}, []string{"\x1b", "[31m", "[0m"}},
 		{"osc title and clipboard", `printf 'a\033]0;evil title\007b\033]52;c;ZGF0YQ==\033\\c' >&2; exit 2`, []string{"abc"}, []string{"evil", "ZGF0YQ", "\x1b"}},
 		{"cursor movement", `printf 'x\033[2J\033[Hy' >&2; exit 2`, []string{"xy"}, []string{"\x1b", "[2J"}},

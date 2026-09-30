@@ -352,8 +352,11 @@ func (g *genReader) Read(p []byte) (int, error) {
 
 func TestHugeLogIsStreamedNotSlurped(t *testing.T) {
 	n := 30000
-	if testing.Short() {
+	switch {
+	case testing.Short():
 		n = 4000
+	case raceEnabled:
+		n = 8000
 	}
 	g := &genReader{n: n}
 	var before runtime.MemStats
@@ -379,8 +382,8 @@ func TestHugeLogIsStreamedNotSlurped(t *testing.T) {
 	// What is held afterwards is tiny next to what went through.
 	grew := int64(after.HeapAlloc) - int64(before.HeapAlloc)
 	t.Logf("streamed %.1f MB, retained heap grew %.1f MB", float64(g.sent)/1e6, float64(grew)/1e6)
-	if g.sent < 8<<20 && !testing.Short() {
-		t.Fatalf("the generator only produced %d bytes", g.sent)
+	if g.sent < int64(n)*1200 {
+		t.Fatalf("the generator only produced %d bytes for %d requests", g.sent, n)
 	}
 	if limit := g.sent / 4; grew > limit || grew > 48<<20 {
 		t.Errorf("heap grew by %d bytes while streaming %d: the log is being slurped", grew, g.sent)

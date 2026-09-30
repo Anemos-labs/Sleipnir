@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/rl"
 	"github.com/reee344/sleipnir/internal/rl/env"
 )
@@ -59,7 +60,10 @@ type MutateOptions struct {
 	IDPrefix string
 	Tags     []string
 	Budget   rl.Budget
-	Progress func(string)
+	// GoldBlobs, when set, receives each task's reference solution (the reverse
+	// patch) and records its hash in Meta.gold_blob, which ValidateComposite needs.
+	GoldBlobs events.Blobs
+	Progress  func(string)
 }
 
 // Mutate injects small bugs (a flipped comparison, a dropped nil check, an
@@ -432,10 +436,18 @@ func tryMutation(ctx context.Context, r *repo, commit, authorDate, repoDir strin
 	setup = append(append([]string(nil), setup...), applyPatchCommand(fwd))
 
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d\x00%s", commit, m.File, m.Start, m.Op)))
-	metaRaw, _ := json.Marshal(Meta{
+	meta := Meta{
 		Commit: commit, AuthorDate: authorDate, Generator: "taskgen/mutate", Lang: lang, Files: []string{m.File},
 		Mutation: m.info(), Base: commit,
-	})
+	}
+	if opts.GoldBlobs != nil {
+		h, err := opts.GoldBlobs.Put(rev)
+		if err != nil {
+			return nil, nil, err
+		}
+		meta.GoldBlob = string(h)
+	}
+	metaRaw, _ := json.Marshal(meta)
 	t := rl.Task{
 		ID:     fmt.Sprintf("mut-%s-%s", opts.IDPrefix, hex.EncodeToString(sum[:5])),
 		Kind:   rl.TaskFix,

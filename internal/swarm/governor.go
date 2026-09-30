@@ -1,7 +1,6 @@
 package swarm
 
 import (
-	"container/heap"
 	"context"
 	"sync"
 	"time"
@@ -20,16 +19,35 @@ type GovernorConfig struct {
 	Burst int
 	// MaxConcurrent caps in-flight requests. 0 means unlimited.
 	MaxConcurrent int
-	Now           func() time.Time
+	// MaxPause caps how long one Retry-After can stop admission (default 60s): a
+	// hostile or broken endpoint must not be able to freeze the whole swarm.
+	MaxPause time.Duration
+	// Admit, when set, is asked before every request (with no governor lock held)
+	// and may refuse it: the swarm's budget check.
+	Admit func() error
+	// OnEvent, when set, is told about rate-limit episodes (with no lock held).
+	OnEvent func(action string, data map[string]any)
+	Now     func() time.Time
 }
+
+// numPrio is the number of priority classes (agent.PrioInteractive, PrioWorker,
+// PrioBackground and one spare); larger numbers are clamped to the last.
+const numPrio = 4
+
+// agingEvery is how many higher-priority admissions a waiting request tolerates
+// before it is admitted ahead of them: strict priority would let a steady stream
+// of worker requests starve background compaction forever.
+const agingEvery = 8
 
 // Governor paces requests for a whole swarm. It implements agent.Limiter.
 //
 // Requests are admitted in priority order (interactive/manager before workers
-// before background compaction) as concurrency slots and rate-limit tokens
-// become available. A 429 pauses admission for the server's Retry-After and
-// tightens the effective rate; sustained success loosens it again, so the swarm
-// converges on what the endpoint will actually take.
+// before background compaction), first come first served within a priority, as
+// concurrency slots and rate-limit tokens become available; a lower priority is
+// never starved for more than a few admissions. A 429 pauses admission for the
+// server's Retry-After (capped) and tightens the effective rate once per episode;
+// sustained success loosens it again, so the swarm converges on what the endpoint
+// will actually take.
 type Governor struct {
 	cfg GovernorConfig
 
@@ -40,8 +58,10 @@ type Governor struct {
 	max      float64
 	inflight int
 	pause    time.Time
-	q        waitQueue
-	seq      uint64
+	episode  time.Time // 429s before this instant belong to the current episode
+	qs       [numPrio][]*waiter
+	skipped  [numPrio]int
+	queued   int
 	timer    *time.Timer
 	okRun    int
 }
@@ -50,6 +70,9 @@ type Governor struct {
 func NewGovernor(cfg GovernorConfig) *Governor {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.MaxPause <= 0 {
+		cfg.MaxPause = 60 * time.Second
 	}
 	g := &Governor{cfg: cfg, last: cfg.Now()}
 	if cfg.RPM > 0 {
@@ -66,54 +89,55 @@ func NewGovernor(cfg GovernorConfig) *Governor {
 
 type waiter struct {
 	prio  int
-	seq   uint64
-	ready chan struct{}
-	idx   int
+	ready chan error // nil: admitted; non-nil: refused
+	dead  bool       // cancelled while queued
 }
 
-type waitQueue []*waiter
-
-func (q waitQueue) Len() int { return len(q) }
-func (q waitQueue) Less(i, j int) bool {
-	if q[i].prio != q[j].prio {
-		return q[i].prio < q[j].prio
+func clampPrio(p int) int {
+	switch {
+	case p < 0:
+		return 0
+	case p >= numPrio:
+		return numPrio - 1
 	}
-	return q[i].seq < q[j].seq
-}
-func (q waitQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i]; q[i].idx, q[j].idx = i, j }
-func (q *waitQueue) Push(x any)   { w := x.(*waiter); w.idx = len(*q); *q = append(*q, w) }
-func (q *waitQueue) Pop() any {
-	old := *q
-	n := len(old)
-	w := old[n-1]
-	*q = old[:n-1]
-	return w
+	return p
 }
 
 // Acquire implements agent.Limiter.
 func (g *Governor) Acquire(ctx context.Context, prio int) (agent.Release, error) {
-	w := &waiter{prio: prio, ready: make(chan struct{}, 1)}
+	if g.cfg.Admit != nil {
+		if err := g.cfg.Admit(); err != nil {
+			return nil, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	w := &waiter{prio: clampPrio(prio), ready: make(chan error, 1)}
 	g.mu.Lock()
-	g.seq++
-	w.seq = g.seq
-	heap.Push(&g.q, w)
+	g.qs[w.prio] = append(g.qs[w.prio], w)
+	g.queued++
 	g.dispatchLocked()
 	g.mu.Unlock()
 
 	select {
-	case <-w.ready:
+	case err := <-w.ready:
+		if err != nil {
+			return nil, err
+		}
 		return g.release, nil
 	case <-ctx.Done():
 		g.mu.Lock()
 		select {
-		case <-w.ready:
-			// Admitted concurrently with cancellation: give the slot back.
-			g.inflight--
-			g.dispatchLocked()
-		default:
-			if w.idx >= 0 && w.idx < len(g.q) && g.q[w.idx] == w {
-				heap.Remove(&g.q, w.idx)
+		case err := <-w.ready:
+			if err == nil {
+				// Admitted concurrently with cancellation: give the slot back.
+				g.inflight--
+				g.dispatchLocked()
 			}
+		default:
+			w.dead = true
+			g.queued--
 		}
 		g.mu.Unlock()
 		return nil, ctx.Err()
@@ -121,23 +145,13 @@ func (g *Governor) Acquire(ctx context.Context, prio int) (agent.Release, error)
 }
 
 func (g *Governor) release(_ *core.Usage, err error) {
+	var ev map[string]any
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	g.inflight--
+	now := g.cfg.Now()
 	if err != nil {
 		if pe, ok := provider.AsError(err); ok && pe.Kind == provider.ErrRateLimit {
-			g.okRun = 0
-			wait := pe.RetryAfter
-			if wait <= 0 {
-				wait = time.Second
-			}
-			if until := g.cfg.Now().Add(wait); until.After(g.pause) {
-				g.pause = until
-			}
-			if g.rate > 0 {
-				g.rate = max(g.rate*0.8, g.max*0.1) // multiplicative decrease
-				g.tokens = 0
-			}
+			ev = g.rateLimitedLocked(now, pe.RetryAfter)
 		}
 	} else if g.rate > 0 && g.rate < g.max {
 		g.okRun++
@@ -147,6 +161,38 @@ func (g *Governor) release(_ *core.Usage, err error) {
 		}
 	}
 	g.dispatchLocked()
+	g.mu.Unlock()
+	if ev != nil && g.cfg.OnEvent != nil {
+		g.cfg.OnEvent("rate-limited", ev)
+	}
+}
+
+// rateLimitedLocked handles one 429. Admission pauses for the Retry-After (capped
+// at MaxPause); the rate is cut once per episode: the requests that were in flight
+// when the endpoint started refusing all come back 429 within moments of each
+// other, and treating each as a fresh signal would collapse the rate to its floor
+// after a single burst.
+func (g *Governor) rateLimitedLocked(now time.Time, retryAfter time.Duration) map[string]any {
+	wait := retryAfter
+	if wait <= 0 {
+		wait = time.Second
+	}
+	if wait > g.cfg.MaxPause {
+		wait = g.cfg.MaxPause
+	}
+	if until := now.Add(wait); until.After(g.pause) {
+		g.pause = until
+	}
+	if now.Before(g.episode) {
+		return nil
+	}
+	g.episode = now.Add(max(wait, time.Second))
+	g.okRun = 0
+	if g.rate > 0 {
+		g.rate = max(g.rate*0.8, g.max*0.1) // multiplicative decrease
+		g.tokens = 0
+	}
+	return map[string]any{"rate_per_min": g.rate * 60, "pause_ms": wait.Milliseconds(), "retry_after_ms": retryAfter.Milliseconds(), "inflight": g.inflight, "queued": g.queued}
 }
 
 // refillLocked adds tokens for elapsed time.
@@ -161,12 +207,55 @@ func (g *Governor) refillLocked(now time.Time) {
 	}
 }
 
+// nextLocked removes and returns the waiter to admit next: the best priority
+// class, unless a lower class has been passed over agingEvery times.
+func (g *Governor) nextLocked() *waiter {
+	best := -1
+	for p := 0; p < numPrio; p++ {
+		g.trimLocked(p)
+		if len(g.qs[p]) > 0 {
+			best = p
+			break
+		}
+	}
+	if best < 0 {
+		return nil
+	}
+	pick := best
+	for p := best + 1; p < numPrio; p++ {
+		if len(g.qs[p]) > 0 && g.skipped[p] >= agingEvery {
+			pick = p
+			break
+		}
+	}
+	for p := pick + 1; p < numPrio; p++ {
+		if len(g.qs[p]) > 0 {
+			g.skipped[p]++
+		}
+	}
+	g.skipped[pick] = 0
+	w := g.qs[pick][0]
+	g.qs[pick][0] = nil
+	g.qs[pick] = g.qs[pick][1:]
+	return w
+}
+
+// trimLocked drops cancelled waiters from the front of a queue.
+func (g *Governor) trimLocked(p int) {
+	q := g.qs[p]
+	for len(q) > 0 && q[0].dead {
+		q[0] = nil
+		q = q[1:]
+	}
+	g.qs[p] = q
+}
+
 // dispatchLocked admits as many waiters as concurrency, tokens and any pause
 // allow, then arms a timer for the next opportunity.
 func (g *Governor) dispatchLocked() {
 	now := g.cfg.Now()
 	g.refillLocked(now)
-	for g.q.Len() > 0 {
+	for g.queued > 0 {
 		if g.cfg.MaxConcurrent > 0 && g.inflight >= g.cfg.MaxConcurrent {
 			return // a release will re-dispatch
 		}
@@ -179,13 +268,17 @@ func (g *Governor) dispatchLocked() {
 			g.armLocked(time.Duration(need * float64(time.Second)))
 			return
 		}
-		w := heap.Pop(&g.q).(*waiter)
-		w.idx = -1
+		w := g.nextLocked()
+		if w == nil {
+			g.queued = 0
+			return
+		}
+		g.queued--
 		if g.rate > 0 {
 			g.tokens--
 		}
 		g.inflight++
-		w.ready <- struct{}{}
+		w.ready <- nil
 	}
 }
 
@@ -215,5 +308,5 @@ type Stats struct {
 func (g *Governor) Stats() Stats {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return Stats{InFlight: g.inflight, Queued: g.q.Len(), Rate: g.rate * 60, Paused: g.cfg.Now().Before(g.pause)}
+	return Stats{InFlight: g.inflight, Queued: g.queued, Rate: g.rate * 60, Paused: g.cfg.Now().Before(g.pause)}
 }

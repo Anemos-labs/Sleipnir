@@ -1,8 +1,9 @@
 // Package export writes canonical episodes (rl.Episode, built by package traj and
 // scored by the reward package) as trainer-ready JSON lines.
 //
-//	n, err := export.Export(w, []export.Source{{Episode: ep, Prompts: traj.Resolver{Run: run}}},
-//	        export.Options{Format: export.FormatSteps, DropFlagged: true, Redactor: red})
+//	o := export.DefaultOptions(export.FormatSteps) // DropFlagged on; a bool cannot default to true
+//	o.Redactor = red
+//	st, err := export.Export(w, []export.Source{{Episode: ep, Prompts: traj.Resolver{Run: run}}}, o)
 //
 // # Principles
 //

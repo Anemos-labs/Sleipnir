@@ -1,7 +1,6 @@
 package taskgen
 
 import (
-	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -166,5 +165,3 @@ func dirHasSuffixFile(files []string, dir, suffix string) bool {
 	}
 	return false
 }
-
-var _ = bytes.Equal
