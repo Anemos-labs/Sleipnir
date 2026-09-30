@@ -33,9 +33,13 @@ type marker struct {
 	Ref         string `json:"ref,omitempty"`
 	// Owner identifies the creating process so a later run can tell a crashed
 	// session from a live one.
-	PID     int       `json:"pid"`
-	Start   int64     `json:"start,omitempty"`
-	BootID  string    `json:"boot,omitempty"`
+	PID    int    `json:"pid"`
+	Start  int64  `json:"start,omitempty"`
+	BootID string `json:"boot,omitempty"`
+	// PIDNS names the process-id namespace PID was valid in (Linux). Containers on one
+	// machine share a boot id but not their process ids: a pid recorded in another
+	// namespace says nothing about whether that process is running.
+	PIDNS   string    `json:"pidns,omitempty"`
 	Created time.Time `json:"created"`
 }
 
@@ -96,11 +100,22 @@ type self struct {
 	pid    int
 	start  int64
 	bootID string
+	pidns  string
 }
 
 func currentSelf() self {
 	pid := os.Getpid()
-	return self{pid: pid, start: procStart(pid), bootID: bootID()}
+	return self{pid: pid, start: procStart(pid), bootID: bootID(), pidns: pidNamespace()}
+}
+
+// pidNamespace identifies the process-id namespace of this process ("" where the
+// platform has none to tell).
+func pidNamespace() string {
+	ns, err := os.Readlink("/proc/self/ns/pid")
+	if err != nil {
+		return ""
+	}
+	return ns
 }
 
 // bootID identifies the machine boot on Linux (process ids mean nothing across
@@ -128,6 +143,9 @@ func (mk *marker) owner() ownerState {
 	}
 	if mk.BootID != "" && mk.BootID != bootID() {
 		return ownerUnknown
+	}
+	if mk.PIDNS != "" && mk.PIDNS != pidNamespace() {
+		return ownerUnknown // another container: its process ids are not ours to look up
 	}
 	if !pidExists(mk.PID) {
 		return ownerDead

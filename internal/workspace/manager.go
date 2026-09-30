@@ -457,7 +457,7 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 	mk := marker{
 		Prefix: m.st.prefix, Agent: agent, Path: dest, Branch: branch, Base: base, Mode: m.st.mode.String(),
 		Integration: spec.integration, Ref: spec.ref,
-		PID: m.st.self.pid, Start: m.st.self.start, BootID: m.st.self.bootID, Created: m.now().UTC(),
+		PID: m.st.self.pid, Start: m.st.self.start, BootID: m.st.self.bootID, PIDNS: m.st.self.pidns, Created: m.now().UTC(),
 	}
 	if err := writeMarker(repo.GitDir(), mk); err != nil {
 		_ = m.st.base.WorktreeRemove(sctx, dest, true)
@@ -577,7 +577,7 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if err != nil {
 		return nil, err
 	}
-	mk.PID, mk.Start, mk.BootID = m.st.self.pid, m.st.self.start, m.st.self.bootID
+	mk.PID, mk.Start, mk.BootID, mk.PIDNS = m.st.self.pid, m.st.self.start, m.st.self.bootID, m.st.self.pidns
 	if err := writeMarker(admin, *mk); err != nil {
 		return nil, err
 	}

@@ -27,6 +27,15 @@
 // tree carries a marker written into its private git directory, and Remove and
 // Prune refuse anything without a matching marker and branch prefix.
 //
+// Interruptions. A canceled context or a crash never leaves the repository or the
+// queue half-done. gitx stops git in a way that lets it remove its lock files;
+// the steps whose outcome would otherwise be ambiguous (moving the integration
+// branch, moving the user's branch, finishing the registration of a tree) run to
+// completion on their own bounded context once started; what an interrupted or
+// crashed creation leaves behind is cleared by the next Create or Prune; and a
+// queue whose integration tree was damaged rebuilds it from the branch, which only
+// ever names verified commits.
+//
 // Integration with the rest of the harness (done by the session layer, not here):
 // a tree's Path is what tools.Env.Cwd and Root should be for that agent, and the
 // checkpoint store for that agent should be rooted there. Tree.Reset rewinds a

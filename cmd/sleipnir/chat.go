@@ -36,13 +36,18 @@ func cmdChat(ctx context.Context, args []string) error {
 	trust := fs.Bool("trust-project", false, "load project instruction files and project-level config")
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
+	resume := resumeFlags(fs)
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	spec, err := resume()
+	if err != nil {
 		return err
 	}
 	in := bufio.NewReader(os.Stdin)
 	o := session.Options{
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
-		TrustProject: *trust, BudgetUSD: *budget,
+		TrustProject: *trust, BudgetUSD: *budget, Resume: spec,
 	}
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		o.Prompter = session.TerminalPrompter(in, os.Stderr)
@@ -63,8 +68,11 @@ func cmdChat(ctx context.Context, args []string) error {
 	}
 	defer s.Close()
 
-	fmt.Fprintf(os.Stderr, "sleipnir %s · %s · %s · session %s\nType a goal, or /help. Ctrl-C cancels the current turn; /exit quits.\n",
-		version, s.Model.ID, modeName(s), s.ID)
+	fmt.Fprintf(os.Stderr, "sleipnir %s · %s · %s · session %s\n", version, s.Model.ID, modeName(s), s.ID)
+	if s.Resumed() {
+		fmt.Fprintf(os.Stderr, "resumed: %d turns restored; the first request writes the cached prefix again, once\n", len(s.Agent.Stack().Thread.Turns))
+	}
+	fmt.Fprintln(os.Stderr, "Type a goal, or /help. Ctrl-C cancels the current turn; /exit quits.")
 	for {
 		fmt.Fprint(os.Stderr, "\n› ")
 		line, err := readInput(ctx, in)
@@ -157,6 +165,7 @@ func runTurn(parent context.Context, s *session.Session, goal string) {
 const chatHelp = `/help              this text (and your custom commands and skills)
 /cost              tokens, cost and cache hit ratio so far
 /context           layer sizes of the current prompt (what is pinned, what is thread)
+/compact [focus]   fold the older thread now (optionally: what to keep in view); a declared, priced rebase
 /agents            swarm board: agents and tasks
 /mode <m>          default | accept-edits | plan | bypass   (/plan = plan mode)
 /rewind            list checkpoints;  /rewind <id> restores files to before that turn
@@ -181,6 +190,8 @@ func slash(ctx context.Context, s *session.Session, line string) (quit bool, sen
 		printCost(s)
 	case "/context":
 		printContext(s)
+	case "/compact":
+		compactNow(ctx, s, strings.TrimSpace(strings.TrimPrefix(line, f[0])), os.Stderr)
 	case "/agents":
 		printAgents(s)
 	case "/plan":
@@ -292,6 +303,23 @@ func printCost(s *session.Session) {
 	}
 	fmt.Fprintf(os.Stderr, "input %d (uncached) + %d cached-read + %d cache-write · output %d · hit %.0f%% · $%.4f\n",
 		u.InputTokens, u.CacheReadTokens, u.CacheWriteTokens(), u.OutputTokens, u.HitRatio()*100, usd)
+}
+
+// compactNow folds the thread on request, with Ctrl-C bound to it, and says what
+// happened. focus tells the compactor what the user cares about.
+func compactNow(parent context.Context, s *session.Session, focus string, w io.Writer) {
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	rep, err := s.Compact(ctx, focus)
+	switch {
+	case err != nil:
+		fmt.Fprintln(w, "compact:", err)
+	case rep.Mode == "none":
+		fmt.Fprintln(w, "nothing to compact yet")
+	default:
+		fmt.Fprintf(w, "compacted (%s): %d turns folded, %d → %d tokens; the next request writes the cached prefix again, once\n",
+			rep.Mode, rep.FoldedTurns, rep.TokensBefore, rep.TokensAfter)
+	}
 }
 
 func printContext(s *session.Session) {

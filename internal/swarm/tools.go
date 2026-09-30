@@ -422,7 +422,11 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		ch := s.Board.Changed() // before the snapshot, so no change is missed
 		cur := s.Board.Snapshot()
 		digest := diffSnapshots(base, cur)
-		pending := m != nil && m.hasMail()
+		pending := false
+		if m != nil {
+			m.pump(s) // coalesced mail moves into the inbox as soon as there is room, so "mail arrived" is true
+			pending = m.a.PendingInbox() > 0
+		}
 		switch {
 		case s.budgetErr() != nil:
 			s.setSeen(me, cur)

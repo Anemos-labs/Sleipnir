@@ -166,6 +166,20 @@ func TestProcStatParsing(t *testing.T) {
 	if (&marker{PID: os.Getpid(), BootID: "elsewhere"}).owner() != ownerUnknown {
 		t.Fatal("other boot")
 	}
+	// another container on the same machine: same boot, different process ids
+	if ns := pidNamespace(); ns != "" {
+		other := &marker{PID: os.Getpid(), BootID: bootID(), PIDNS: "pid:[0]"}
+		if other.owner() != ownerUnknown {
+			t.Fatal("a pid from another pid namespace cannot be judged, and must not read as dead")
+		}
+		here := &marker{PID: os.Getpid(), BootID: bootID(), PIDNS: ns}
+		if here.owner() != ownerAlive {
+			t.Fatal("own pid namespace")
+		}
+		if self := currentSelf(); self.pidns != ns {
+			t.Fatalf("currentSelf: %q, want %q", self.pidns, ns)
+		}
+	}
 }
 
 func TestCorruptMarkersMakeATreeForeign(t *testing.T) {

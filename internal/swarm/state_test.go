@@ -262,30 +262,46 @@ func TestNotesAreBounded(t *testing.T) {
 	}
 }
 
-// Tasks are never pruned and failed tasks count as "open" forever, so the
-// manager's hot view (and the O(lines^2) budget loop) grows with session age.
+// countingEstimator counts how much estimating work a rendering asks for.
+type countingEstimator struct {
+	core.Estimator
+	calls, bytes int
+}
+
+func (c *countingEstimator) Tokens(s string) int {
+	c.calls++
+	c.bytes += len(s)
+	return c.Estimator.Tokens(s)
+}
+
+// The manager's view lists a bounded number of tasks (failed ones are capped) and the
+// work to render it does not grow with the age of the board: 1000 dead tasks cost the
+// same, in estimator calls and bytes, as 100.
 func TestManagerHotViewCostIsBoundedByFailedTasks(t *testing.T) {
 	b := NewBoard(nil)
-	est := core.NewBytesEstimator().WithRatio(4)
-	var last time.Duration
-	made := 0
-	for _, target := range []int{100, 250, 500, 1000} {
-		for ; made < target; made++ {
-			tk, _ := b.CreateTask("mgr", TaskSpec{Title: fmt.Sprintf("attempt %d at the flaky migration", made)})
+	b.SetLimits(BoardLimits{MaxTasks: 5000})
+	work := func(n int) (calls, bytes int, out string) {
+		for b.Snapshot() != nil && len(b.Snapshot().Tasks) < n {
+			tk, _ := b.CreateTask("mgr", TaskSpec{Title: fmt.Sprintf("attempt %d at the flaky migration", len(b.Snapshot().Tasks))})
 			b.Assign("mgr", "be-1", tk.ID)
 			b.Finish("be-1", tk.ID, StatusFailed, "agent stopped: context canceled")
 		}
+		est := &countingEstimator{Estimator: core.NewBytesEstimator().WithRatio(4)}
 		start := time.Now()
-		RenderHot(b.Snapshot(), "mgr", "manager", true, DefaultHotConfig(), est)
-		last = time.Since(start)
-		t.Logf("%4d failed tasks: manager RenderHot = %v", target, last.Round(time.Millisecond))
+		out = RenderHot(b.Snapshot(), "mgr", "manager", true, DefaultHotConfig(), est)
+		t.Logf("%4d failed tasks: manager RenderHot = %v, %d estimator calls over %d bytes", n, time.Since(start).Round(time.Microsecond), est.calls, est.bytes)
+		return est.calls, est.bytes, out
 	}
-	out := RenderHot(b.Snapshot(), "mgr", "manager", true, DefaultHotConfig(), est)
+	c100, b100, _ := work(100)
+	c1000, b1000, out := work(1000)
 	if failedLines := strings.Count(out, " failed "); failedLines > maxHotFailed+2 {
 		t.Fatalf("the manager's view lists %d failed tasks (cap %d):\n%s", failedLines, maxHotFailed, out)
 	}
-	if last > 20*time.Millisecond {
-		t.Fatalf("manager RenderHot took %v with 1000 dead (failed) tasks that still count as open (it runs on every manager request)", last.Round(time.Millisecond))
+	if c1000 > c100+10 || b1000 > 2*b100+4096 {
+		t.Fatalf("estimating the manager's view took %d calls / %d bytes with 1000 failed tasks against %d / %d with 100", c1000, b1000, c100, b100)
+	}
+	if !strings.Contains(out, "more lines omitted") {
+		t.Fatalf("the hidden tasks are not accounted for:\n%s", out)
 	}
 }
 

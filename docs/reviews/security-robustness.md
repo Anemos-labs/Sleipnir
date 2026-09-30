@@ -26,6 +26,10 @@ I added 15 test files named `security*_review_test.go` (list in section 4). Two 
   stays green. Tranche 1 fixed S33, S34, S35 (permissions), S36, S37, S41, S42 and S43 and removed their gates (they are now ordinary regression
   tests, together with the extra tests the fixes needed); S35's redaction half was decided (log verbatim and private, redaction at export) and S44 was fixed at integration. 52 gated repros remain.
 * `TestSecSound_*` (13 tests when the review was written, 21 now): always on. Regression checks for behaviour the review found sound.
+* **Swarm tranche (2026-09-30):** S10a-c, S11, S12a-b, S13a-c, S14-S21, S23 and S26b (the governor's `Retry-After` ceiling) are fixed in
+  `internal/swarm` and their repros are now ungated regression tests named `TestSec_S##_*` (S18 now asserts the refusal of over-cap reuse instead of
+  the bypass). What the swarm cannot fix alone: S22b (the constitution in `agent/prompt.go` must say that mail, board text and other agents' status are
+  untrusted peer data), S26a/S26c (the provider client and `agent.backoff` must cap `Retry-After` too), S48b for the agent's own detached compaction goroutine.
 
 ```
 # the repros that are still gated: every one currently FAILS (= finding reproduced)

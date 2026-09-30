@@ -899,3 +899,35 @@ func TestLeaseSweepDropsExpiredLeasesAndTheirAlerts(t *testing.T) {
 		t.Fatalf("after the sweep: leases=%d alerts=%d", l.Len(), len(b.Snapshot().Alerts))
 	}
 }
+
+// wait does not spin on mail that is still coalesced: it moves the digest into the
+// inbox, where the agent will take it, and reports it as arrived once.
+func TestWaitDeliversCoalescedMail(t *testing.T) {
+	r := newRVRig(t, Config{InboxSoftCap: 4, Router: looseRouter()}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" && c.Assistants == 0 {
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "list"}}}}
+		}
+		return rvReply{Text: "ok"}
+	})
+	r.sw.StartManager()
+	for i := 0; i < 30; i++ {
+		if _, err := r.sw.Router.Send(fmt.Sprintf("w-%d", i%3), "manager", "info", fmt.Sprintf("progress %d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.sw.RunManager(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get("mgr")
+	if m.a.PendingInbox() != 0 {
+		t.Fatalf("inbox = %d after the run", m.a.PendingInbox())
+	}
+	start := time.Now()
+	res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 5})
+	if d := time.Since(start); d > time.Second || !strings.Contains(res.Text, "mail arrived") {
+		t.Fatalf("wait slept %v: %q", d.Round(time.Millisecond), res.Text)
+	}
+	if m.a.PendingInbox() != 1 {
+		t.Fatalf("the digest was not moved into the inbox (inbox %d)", m.a.PendingInbox())
+	}
+}

@@ -247,9 +247,7 @@ func (h *HTTP) get(w http.ResponseWriter, r *http.Request) {
 			return false
 		}
 	}
-	ss.mu.Lock()
-	ss.stream = push
-	ss.mu.Unlock()
+	ss.attach(push)
 	defer func() {
 		ss.mu.Lock()
 		ss.stream = nil
@@ -329,14 +327,23 @@ func (h *SSE) stream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	var wmu sync.Mutex
+	over := false
 	write := func(event, data string) {
 		wmu.Lock()
 		defer wmu.Unlock()
+		if over { // a request goroutine that outlived the stream: the ResponseWriter is no longer ours
+			return
+		}
 		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
 		if fl != nil {
 			fl.Flush()
 		}
 	}
+	defer func() {
+		wmu.Lock()
+		over = true
+		wmu.Unlock()
+	}()
 	sid := newSID()
 	ss := h.s.newSession(sid)
 	defer ss.close()

@@ -281,6 +281,7 @@ type session struct {
 	nextID   int64
 	inflight map[string]context.CancelFunc
 	stream   func([]byte) bool // server-initiated messages (nil when no channel is open)
+	backlog  [][]byte          // messages pushed while no channel was open, oldest first
 	crashFn  func()
 	init     bool
 }
@@ -306,14 +307,40 @@ func (ss *session) close() {
 
 func (ss *session) crash() { ss.crashFn() }
 
-// push delivers a server-initiated message on the session's open channel, if any.
+// maxBacklog bounds what a session keeps for a channel that is not open yet.
+const maxBacklog = 16
+
+// push delivers a server-initiated message on the session's open channel. With
+// none open it keeps the most recent messages for the channel that opens next,
+// as a server with an event store does: a streamable HTTP client opens its GET
+// stream a moment after the handshake, and a server that dropped what it sent in
+// that moment would make every "announce a change right after connecting" a
+// race with the GET request.
 func (ss *session) push(msg []byte) {
 	ss.mu.Lock()
 	f := ss.stream
+	if f == nil {
+		if len(ss.backlog) >= maxBacklog {
+			ss.backlog = ss.backlog[1:]
+		}
+		ss.backlog = append(ss.backlog, msg)
+	}
 	ss.mu.Unlock()
 	if f != nil {
 		f(msg)
 	}
+}
+
+// attach installs the channel for server-initiated messages and hands it what
+// was pushed before it existed, in order and ahead of anything pushed after.
+func (ss *session) attach(f func([]byte) bool) {
+	ss.mu.Lock()
+	for _, b := range ss.backlog {
+		f(b)
+	}
+	ss.backlog = nil
+	ss.stream = f
+	ss.mu.Unlock()
 }
 
 func (ss *session) ask(ctx context.Context, out func([]byte), method string, params any) (json.RawMessage, map[string]any, error) {

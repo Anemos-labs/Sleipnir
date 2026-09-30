@@ -1,10 +1,28 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"strings"
 )
+
+// resumeFlags registers --resume and --continue on fs. The returned function
+// gives the resume request for session.Options.Resume: "" for a new session, a
+// session id or directory, or "latest" (the newest session of this project).
+func resumeFlags(fs *flag.FlagSet) func() (string, error) {
+	spec := fs.String("resume", "", "continue an earlier single-agent session: its id, its directory, or 'latest' (this project's newest)")
+	cont := fs.Bool("continue", false, "continue this project's newest session (same as --resume latest)")
+	return func() (string, error) {
+		switch {
+		case *spec != "" && *cont:
+			return "", errors.New("--resume and --continue are alternatives; give one")
+		case *cont:
+			return "latest", nil
+		}
+		return *spec, nil
+	}
+}
 
 // parseInterspersed parses args like the go flag package but lets flags follow
 // positional arguments, the way git and docker do: `sleipnir swarm 8 "goal"

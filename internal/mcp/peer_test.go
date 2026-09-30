@@ -99,17 +99,18 @@ func (p *peer) nothing(d time.Duration) {
 	}
 }
 
-// send writes one raw line to the client.
-func (p *peer) send(line string) {
-	p.t.Helper()
+// send writes one raw line to the client. It reports a failed write (the client
+// hung up) instead of logging it: adversarial tests keep sending until the
+// client cuts them off, from goroutines that can outlive the test, and a
+// t.Logf after the test ended is a data race.
+func (p *peer) send(line string) error {
 	p.wmu.Lock()
 	defer p.wmu.Unlock()
-	if _, err := io.WriteString(p.out, line+"\n"); err != nil {
-		p.t.Logf("peer send failed: %v", err)
-	}
+	_, err := io.WriteString(p.out, line+"\n")
+	return err
 }
 
-func (p *peer) sendf(format string, args ...any) { p.send(fmt.Sprintf(format, args...)) }
+func (p *peer) sendf(format string, args ...any) { _ = p.send(fmt.Sprintf(format, args...)) }
 
 // reply answers a request with a result.
 func (p *peer) reply(req map[string]json.RawMessage, result string) {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/session"
 )
 
 func init() {
@@ -169,6 +170,7 @@ func cmdSessions(_ context.Context, args []string) error {
 		id, model, prompt string
 		when              time.Time
 		cost              float64
+		resumable         bool
 	}
 	var rows []row
 	for _, e := range ents {
@@ -179,15 +181,27 @@ func cmdSessions(_ context.Context, args []string) error {
 		if fi, err := e.Info(); err == nil {
 			r.when = fi.ModTime()
 		}
-		summarize(filepath.Join(root, e.Name(), "events.jsonl"), &r.model, &r.prompt, &r.cost)
 		rows = append(rows, r)
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
 	if len(rows) > *n {
 		rows = rows[:*n]
 	}
+	for i := range rows { // read the logs of the rows shown, not of every session ever recorded
+		r := &rows[i]
+		d := filepath.Join(root, r.id)
+		summarize(filepath.Join(d, "events.jsonl"), &r.model, &r.prompt, &r.cost)
+		r.resumable = session.Resumable(d)
+	}
 	for _, r := range rows {
-		fmt.Printf("%s  %-28s $%-8.4f %s\n", r.id, r.model, r.cost, r.prompt)
+		mark := " "
+		if r.resumable {
+			mark = "↺"
+		}
+		fmt.Printf("%s %s  %-28s $%-8.4f %s\n", mark, r.id, r.model, r.cost, r.prompt)
+	}
+	if len(rows) > 0 {
+		fmt.Fprintln(os.Stderr, "↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project's newest)")
 	}
 	return nil
 }

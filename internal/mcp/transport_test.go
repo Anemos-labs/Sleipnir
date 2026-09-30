@@ -174,7 +174,9 @@ func TestStreamGarbageIsSkippedButBounded(t *testing.T) {
 	// A server that only ever prints garbage is cut off.
 	go func() {
 		for i := 0; i < maxGarbageLines+50; i++ {
-			p.send("still not json")
+			if p.send("still not json") != nil {
+				return // cut off, as intended
+			}
 		}
 	}()
 	select {

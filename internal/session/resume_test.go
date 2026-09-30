@@ -52,6 +52,9 @@ func TestResumeContinuesTheConversationAndTheLog(t *testing.T) {
 	if _, err := s2.Run(context.Background(), "what was the codeword?"); err != nil {
 		t.Fatal(err)
 	}
+	if err := s2.Close(); err != nil { // the log group-commits; close it before reading the file
+		t.Fatal(err)
+	}
 	last := prompts[len(prompts)-1]
 	for _, want := range []string{"remember the codeword PINEAPPLE", "noted", "what was the codeword?"} {
 		if !strings.Contains(last, want) {
@@ -212,3 +215,41 @@ func TestCompactThroughTheSession(t *testing.T) {
 }
 
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
+
+// A swarm session cannot be resumed yet. "latest" must not pick one (its
+// snapshots are the manager's), and naming one says why it cannot be continued.
+func TestResumeSkipsAndExplainsSwarmSessions(t *testing.T) {
+	home, root := t.TempDir(), t.TempDir()
+	sessions := filepath.Join(home, ".sleipnir", "sessions")
+	forge := func(id string, swarm bool) string {
+		dir := filepath.Join(sessions, id)
+		l, err := events.Open(dir, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		l.Emit("", events.TypeSessionStart, map[string]any{"swarm": swarm, "root": root})
+		l.Emit("mgr", events.TypeAgentSnapshot, map[string]any{"blob": "x"})
+		if err := l.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	single := forge("20260101-000000-aaaaaa", false)
+	swarm := forge("20260102-000000-bbbbbb", true) // newer, but not resumable
+
+	got, err := session.ResolveResume(home, root, "latest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != single {
+		t.Errorf("latest = %s, want the newest resumable session %s", got, single)
+	}
+	if !session.Resumable(single) || session.Resumable(swarm) {
+		t.Errorf("Resumable: single=%v swarm=%v", session.Resumable(single), session.Resumable(swarm))
+	}
+	for _, spec := range []string{"20260102-000000-bbbbbb", swarm} {
+		if _, err := session.ResolveResume(home, root, spec); err == nil || !strings.Contains(err.Error(), "swarm session") {
+			t.Errorf("resume %q: %v, want an explanation that swarm sessions cannot be resumed", spec, err)
+		}
+	}
+}

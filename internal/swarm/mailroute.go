@@ -119,14 +119,6 @@ func (m *member) pump(s *Swarm) bool {
 	return true
 }
 
-// hasMail reports whether anything is waiting for the member.
-func (m *member) hasMail() bool {
-	m.mu.Lock()
-	box := !m.box.empty()
-	m.mu.Unlock()
-	return box || m.a.PendingInbox() > 0
-}
-
 // deliver hands routed mail to its recipient and wakes an idle worker. It reports
 // failure (the recipient is gone, the swarm is shut down) so the sender is told.
 func (s *Swarm) deliver(msg Message) error {

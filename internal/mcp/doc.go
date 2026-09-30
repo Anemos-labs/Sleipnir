@@ -113,6 +113,13 @@
 // the writes an MCP tool makes: they bypass Sleipnir's leases, staleness checks
 // and checkpoints, so permission rules are the only barrier around them.
 //
+// A streamable HTTP server can only announce a change on the GET stream, which
+// the client opens a moment after the handshake and reopens after a drop. An
+// announcement sent while it is not open is lost (the protocol replays nothing
+// without resumable streams, which are not implemented), so the manager's view
+// of such a server can lag until it announces again or reconnects. The model is
+// never affected mid-session: what it sees is the frozen snapshot.
+//
 // # Example
 //
 // A CLI-free session that connects to a server, freezes its tools, registers

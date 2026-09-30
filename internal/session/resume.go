@@ -36,24 +36,40 @@ func ResolveResume(home, root, spec string) (string, error) {
 		sort.Sort(sort.Reverse(sort.StringSlice(names))) // ids start with a timestamp
 		for _, n := range names {
 			d := filepath.Join(sessions, n)
-			if sessionRoot(d) == root && hasSnapshot(d) {
+			if li := inspectLog(d); li.root == root && li.resumable() {
 				return d, nil
 			}
 		}
-		return "", fmt.Errorf("no session of %s has a finished turn to resume from", root)
+		return "", fmt.Errorf("no single-agent session of %s has a finished turn to resume from", root)
 	case strings.ContainsAny(spec, `/\`):
 		if !hasLog(spec) {
 			return "", fmt.Errorf("%s is not a session directory (no events.jsonl)", spec)
 		}
-		return spec, nil
+		return checkResumable(spec)
 	default:
 		d := filepath.Join(sessions, spec)
 		if !hasLog(d) {
 			return "", fmt.Errorf("no session %q (looked in %s)", spec, sessions)
 		}
-		return d, nil
+		return checkResumable(d)
 	}
 }
+
+// checkResumable refuses a session that cannot be continued, in words that say why.
+func checkResumable(dir string) (string, error) {
+	li := inspectLog(dir)
+	switch {
+	case li.swarm:
+		return "", fmt.Errorf("%s was a swarm session, and swarm sessions cannot be resumed yet (its log and checkpoints stay for inspection)", dir)
+	case !li.snapshot:
+		return "", fmt.Errorf("%s has no snapshot: no turn finished, so there is nothing to resume from", dir)
+	}
+	return dir, nil
+}
+
+// Resumable reports whether the session in dir can be continued: a single-agent
+// session that finished at least one turn.
+func Resumable(dir string) bool { return inspectLog(dir).resumable() }
 
 func hasLog(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, "events.jsonl"))
@@ -77,33 +93,38 @@ func scanHead(dir string, fn func(events.Event) bool) {
 	}
 }
 
-// sessionRoot is the project root a session was started in ("" when unknown).
-func sessionRoot(dir string) string {
-	root := ""
-	scanHead(dir, func(e events.Event) bool {
-		if e.Type != events.TypeSessionStart {
-			return true
-		}
-		var d struct {
-			Root string `json:"root"`
-		}
-		_ = json.Unmarshal(e.Data, &d)
-		root = d.Root
-		return false
-	})
-	return root
+// logInfo is what a resume decision needs to know about a session log.
+type logInfo struct {
+	root     string // project root the session was started in ("" when unknown)
+	swarm    bool   // the session ran a swarm
+	snapshot bool   // an agent finished a turn and saved a snapshot
 }
 
-func hasSnapshot(dir string) bool {
-	found := false
+func (l logInfo) resumable() bool { return l.snapshot && !l.swarm }
+
+// inspectLog reads the head of a session log: session.start (the first one
+// decides root and swarm) and whether any snapshot exists.
+func inspectLog(dir string) logInfo {
+	var li logInfo
+	started := false
 	scanHead(dir, func(e events.Event) bool {
-		if e.Type == events.TypeAgentSnapshot {
-			found = true
-			return false
+		switch e.Type {
+		case events.TypeSessionStart:
+			if !started {
+				started = true
+				var d struct {
+					Root  string `json:"root"`
+					Swarm bool   `json:"swarm"`
+				}
+				_ = json.Unmarshal(e.Data, &d)
+				li.root, li.swarm = d.Root, d.Swarm
+			}
+		case events.TypeAgentSnapshot:
+			li.snapshot = true
 		}
-		return true
+		return !(started && li.snapshot)
 	})
-	return found
+	return li
 }
 
 // restore brings the single agent back from the session's newest snapshot.

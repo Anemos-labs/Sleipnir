@@ -196,12 +196,12 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		o.Now = time.Now
 	}
 	if o.Resume != "" {
+		if o.Swarm {
+			return nil, errors.New("resuming into a swarm is not supported yet: start a new swarm session (an earlier session's log and checkpoints stay)")
+		}
 		dir, err := ResolveResume(o.Home, o.Root, o.Resume)
 		if err != nil {
 			return nil, err
-		}
-		if o.Swarm {
-			return nil, errors.New("resuming a swarm session is not supported yet")
 		}
 		o.Dir, o.ID = dir, filepath.Base(dir)
 	}
@@ -719,6 +719,9 @@ func (s *Session) Compact(ctx context.Context, focus string) (agent.CompactRepor
 	}
 	return rep, err
 }
+
+// Resumed reports whether this session continues an earlier one.
+func (s *Session) Resumed() bool { return s.opts.Resume != "" }
 
 // Send steers a running agent (or the manager) with a message at its next turn
 // boundary.

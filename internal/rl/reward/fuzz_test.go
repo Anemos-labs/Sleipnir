@@ -160,8 +160,12 @@ func TestRandomInputsNeverPanic(t *testing.T) {
 		}
 		return b.String()
 	}
+	iters := 4000
+	if underRace {
+		iters = 1000 // the race detector makes each round ten times slower
+	}
 	start := time.Now()
-	for i := 0; i < 4000; i++ {
+	for i := 0; i < iters; i++ {
 		s := gen()
 		for _, fd := range parseDiff(s) {
 			_ = fd.pathVariants()
@@ -187,7 +191,7 @@ func TestRandomInputsNeverPanic(t *testing.T) {
 		}
 	}
 	if d := time.Since(start); d > 60*time.Second {
-		t.Errorf("4000 random inputs took %v", d)
+		t.Errorf("%d random inputs took %v", iters, d)
 	}
 }
 

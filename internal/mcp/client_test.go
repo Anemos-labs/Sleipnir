@@ -612,7 +612,9 @@ func TestMalformedMessagesAreToleratedUntilTheyNeverStop(t *testing.T) {
 	// A server that never sends anything valid is cut off.
 	go func() {
 		for i := 0; i < maxMalformedRun+100; i++ {
-			p.send(`{"jsonrpc":`)
+			if p.send(`{"jsonrpc":`) != nil {
+				return // cut off, as intended
+			}
 		}
 	}()
 	select {

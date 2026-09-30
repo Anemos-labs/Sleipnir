@@ -3,6 +3,8 @@
 package gitx
 
 import (
+	"errors"
+	"os"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -48,7 +50,15 @@ func configureProc(cmd *exec.Cmd) (finish func()) {
 			p := pid
 			timer = time.AfterFunc(termGrace, func() { killGroup(p) })
 		}
-		return syscall.Kill(-pid, syscall.SIGTERM)
+		if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
+			if errors.Is(err, syscall.ESRCH) {
+				// Nothing left to signal: the command finished by itself just now, and its
+				// result stands.
+				return os.ErrProcessDone
+			}
+			return err
+		}
+		return nil
 	}
 	return func() {
 		mu.Lock()
