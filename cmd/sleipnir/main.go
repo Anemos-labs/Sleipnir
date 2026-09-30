@@ -33,7 +33,10 @@ var (
 )
 
 func main() {
-	harden.Process() // first, before anything reads a key or starts a command: see docs/SECURITY.md
+	// First, before anything reads a key or starts a command: see docs/SECURITY.md. MoveKeys takes the
+	// provider keys out of the environment, so no command the harness starts inherits them; every reader
+	// goes through harden.Secret (harden.TestReadersOfCredentialsUseSecret).
+	harden.Process(harden.MoveKeys())
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)

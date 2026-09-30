@@ -59,12 +59,12 @@ package config
 import (
 	"bytes"
 	"encoding/json"
-	"os"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/perm"
 )
 
@@ -138,13 +138,14 @@ type Provider struct {
 	BaseURLFromProject bool `json:"-"`
 }
 
-// APIKey reads the provider's API key from the environment, at call time. It
-// returns "" when APIKeyEnv is empty or the variable is unset.
+// APIKey reads the provider's API key, at call time: from the environment or, when
+// harden.MoveKeys took it out of there, from the harness's own memory. It returns ""
+// when APIKeyEnv is empty or the variable is unset.
 func (p Provider) APIKey() string {
 	if p.APIKeyEnv == "" {
 		return ""
 	}
-	return strings.TrimSpace(os.Getenv(p.APIKeyEnv))
+	return strings.TrimSpace(harden.Secret(p.APIKeyEnv))
 }
 
 // EffectiveDialect is Dialect, defaulting to "openai-chat".

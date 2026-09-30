@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/inspect"
 )
 
@@ -25,7 +26,7 @@ func init() { extraCommands["inspect"] = cmdInspect }
 func cmdInspect(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8787", "listen address; anything but a loopback address requires --token")
-	token := fs.String("token", os.Getenv("SLEIPNIR_INSPECT_TOKEN"), "access token (also read from $SLEIPNIR_INSPECT_TOKEN, which keeps it out of process listings); required for a non-loopback --addr")
+	token := fs.String("token", harden.Secret("SLEIPNIR_INSPECT_TOKEN"), "access token (also read from $SLEIPNIR_INSPECT_TOKEN, which keeps it out of process listings); required for a non-loopback --addr")
 	open := fs.Bool("open", false, "open the dashboard in the default browser")
 	asJSON := fs.Bool("json", false, "print the summary as JSON and exit (for scripts and CI)")
 	session := fs.String("session", "", "with --json on a directory of sessions: the session to summarise (its id from the list)")

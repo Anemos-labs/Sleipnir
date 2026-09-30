@@ -15,6 +15,7 @@ import (
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/mcp"
 	"github.com/reee344/sleipnir/internal/session"
 )
@@ -48,11 +49,11 @@ func cmdInit(_ context.Context, args []string) error {
 	def := *model
 	if def == "" {
 		switch {
-		case os.Getenv("HEIMDALL_API_KEY") != "":
+		case harden.Secret("HEIMDALL_API_KEY") != "":
 			def = "heimdall/deepseek/deepseek-v4.1-flash"
-		case os.Getenv("OPENROUTER_API_KEY") != "":
+		case harden.Secret("OPENROUTER_API_KEY") != "":
 			def = "openrouter/deepseek/deepseek-chat"
-		case os.Getenv("OPENAI_API_KEY") != "":
+		case harden.Secret("OPENAI_API_KEY") != "":
 			def = "openai/gpt-5-mini"
 		}
 	}

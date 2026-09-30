@@ -17,6 +17,7 @@ import (
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/rl"
 	"github.com/reee344/sleipnir/internal/rl/env"
 	"github.com/reee344/sleipnir/internal/rl/harness"
@@ -532,7 +533,7 @@ func rlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	}
 	token := ""
 	if *tokenEnv != "" {
-		if token = os.Getenv(*tokenEnv); token == "" {
+		if token = harden.Secret(*tokenEnv); token == "" {
 			return fmt.Errorf("rl serve: $%s is empty", *tokenEnv)
 		}
 	}

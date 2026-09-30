@@ -13,6 +13,7 @@ import (
 
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/core"
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/mcp"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
@@ -75,6 +76,15 @@ func (s *Session) startMCP(ctx context.Context, reg *tools.Registry) {
 	}
 	s.mcp = st
 	env := mcp.EnvMap(os.Environ())
+	// Keys the harness holds itself (harden.MoveKeys) are no longer in the environment, and
+	// an entry that names ${SOME_API_KEY} must resolve as it always did: what a
+	// configuration may see is the same set as before, and approving a project entry still
+	// shows which variables it asks for.
+	for _, name := range harden.Held() {
+		if v, ok := harden.LookupSecret(name); ok {
+			env[name] = v
+		}
+	}
 	st.mgr = mcp.NewManager(mcp.Options{
 		Servers: servers, Env: env, Cwd: o.Cwd,
 		Roots:    []mcp.Root{{Path: o.Root, Name: filepath.Base(o.Root)}},

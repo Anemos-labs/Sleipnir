@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/reee344/sleipnir/internal/config"
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 )
@@ -70,11 +71,11 @@ func (pf providerFlags) resolve() (providerSpec, string, error) {
 		switch {
 		case pf.baseURL != "":
 			name = "custom"
-		case os.Getenv("HEIMDALL_API_KEY") != "":
+		case harden.Secret("HEIMDALL_API_KEY") != "":
 			name = "heimdall"
-		case os.Getenv("OPENROUTER_API_KEY") != "":
+		case harden.Secret("OPENROUTER_API_KEY") != "":
 			name = "openrouter"
-		case os.Getenv("OPENAI_API_KEY") != "":
+		case harden.Secret("OPENAI_API_KEY") != "":
 			name = "openai"
 		default:
 			return providerSpec{}, "", fmt.Errorf("no provider configured: set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY), or pass --provider and --base-url")
@@ -99,7 +100,7 @@ func (pf providerFlags) resolve() (providerSpec, string, error) {
 	}
 	key := ""
 	if spec.keyEnv != "" {
-		key = os.Getenv(spec.keyEnv)
+		key = harden.Secret(spec.keyEnv)
 	}
 
 	// Judge the endpoint before the key is used for anything.
