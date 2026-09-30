@@ -1,0 +1,34 @@
+# Self-contained standard library packages copied into the benchmark's Go corpus (see bench/tools/stdmini).
+# Each has tests, no cgo or assembly, and no dependency on an internal package. Keep the list closed: a listed package
+# must not be used (in its code or its tests) together with a standard library package that is not listed but imports it
+# (two copies of one type do not unify: hash and unicode are out for that reason); the build verifies the whole module,
+# so a mistake shows as a compile error. "!file" leaves a file of that package out.
+cmp
+compress/bzip2
+container/heap
+container/list
+container/ring
+encoding/ascii85
+encoding/base32
+encoding/base64
+encoding/csv
+encoding/hex
+encoding/pem
+go/ast !example_test.go !filter_test.go   # both format a tree with go/format, which imports the standard go/ast
+go/build/constraint
+go/parser !performance_test.go !resolver_test.go   # the first reads ../printer/nodes.go when the test binary starts; the second needs its helper
+go/scanner
+go/token
+html
+image/color
+math/bits
+math/cmplx
+mime/quotedprintable
+net/mail
+net/textproto
+net/url
+regexp/syntax
+text/scanner
+text/tabwriter
+text/template/parse
+unicode/utf8
