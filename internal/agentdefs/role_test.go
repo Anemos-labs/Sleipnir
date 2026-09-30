@@ -60,26 +60,78 @@ func TestRoleMatchesSwarmRole(t *testing.T) {
 
 func TestProfileRules(t *testing.T) {
 	tests := []struct {
-		name string
-		def  Def
-		mode perm.Mode
-		deny string
+		name  string
+		def   Def
+		mode  perm.Mode
+		allow string
+		deny  string
 	}{
-		{"no restrictions", Def{}, "", ""},
-		{"read only tools", Def{Tools: []string{"Read", "Grep"}, ReadOnly: true}, perm.ModePlan, "Bash,Edit,WebFetch,WebSearch,mcp__*"},
-		{"shell without writes", Def{Tools: []string{"Read", "Bash"}}, "", "Edit,WebFetch,WebSearch,mcp__*"},
-		{"shell with a pattern counts as the tool", Def{Tools: []string{"Read", "Bash(git diff:*)"}}, "", "Edit,WebFetch,WebSearch,mcp__*"},
-		{"writer without shell", Def{Tools: []string{"Read", "Edit", "Write"}}, "", "Bash,WebFetch,WebSearch,mcp__*"},
-		{"web and mcp", Def{Tools: []string{"Read", "WebFetch", "mcp__x__y"}}, "", "Bash,Edit"},
-		{"sleipnir names", Def{Tools: []string{"read", "web_fetch", "apply_patch", "bash"}}, "", "mcp__*"},
-		{"plan mode", Def{PermissionMode: "plan"}, perm.ModePlan, ""},
-		{"disallowed", Def{DisallowedTools: []string{"Write", "Bash(rm:*)"}}, "", "Write,Bash(rm:*)"},
+		{"no restrictions", Def{}, "", "", ""},
+		{"read only tools", Def{Tools: []string{"Read", "Grep"}, ReadOnly: true}, perm.ModePlan, "", "Bash,Edit,WebFetch,WebSearch,mcp__*"},
+		{"shell without writes", Def{Tools: []string{"Read", "Bash"}}, "", "", "Edit,WebFetch,WebSearch,mcp__*"},
+		// A pattern narrows the tool: plan mode with the pattern as the only exception, not the whole shell.
+		{"shell with a pattern", Def{Tools: []string{"Read", "Bash(git diff:*)"}}, perm.ModePlan, "Bash(git diff:*)", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"patterns on two tools", Def{Tools: []string{"Read", "Edit(src/**)", "Bash(go vet:*)", "Bash(go test:*)"}}, perm.ModePlan, "Edit(src/**),Bash(go vet:*),Bash(go test:*)", "WebFetch,WebSearch,mcp__*"},
+		{"a whole tool next to a pattern", Def{Tools: []string{"Read", "Edit", "Bash(go vet:*)"}}, perm.ModePlan, "Edit,Bash(go vet:*)", "WebFetch,WebSearch,mcp__*"},
+		{"writer without shell", Def{Tools: []string{"Read", "Edit", "Write"}}, "", "", "Bash,WebFetch,WebSearch,mcp__*"},
+		// Naming one MCP tool grants that tool, not every server's.
+		{"web and one mcp tool", Def{Tools: []string{"Read", "WebFetch", "mcp__x__y"}}, perm.ModePlan, "mcp__x__y", "Bash,Edit"},
+		{"sleipnir names", Def{Tools: []string{"read", "web_fetch", "apply_patch", "bash"}}, "", "", "mcp__*"},
+		{"plan mode", Def{PermissionMode: "plan"}, perm.ModePlan, "", ""},
+		{"disallowed", Def{DisallowedTools: []string{"Write", "Bash(rm:*)"}}, "", "", "Write,Bash(rm:*)"},
 	}
 	for _, tc := range tests {
 		p := tc.def.Profile()
-		if p.Mode != tc.mode || strings.Join(p.Deny, ",") != tc.deny || len(p.Allow) != 0 || len(p.Ask) != 0 {
-			t.Errorf("%s: profile = %+v, want mode %q deny %q", tc.name, p, tc.mode, tc.deny)
+		if p.Mode != tc.mode || strings.Join(p.Allow, ",") != tc.allow || strings.Join(p.Deny, ",") != tc.deny || len(p.Ask) != 0 {
+			t.Errorf("%s: profile = %+v, want mode %q allow %q deny %q", tc.name, p, tc.mode, tc.allow, tc.deny)
 		}
+	}
+}
+
+// A pattern in a tools entry is a limit, and the engine must enforce it: a role
+// that lists Bash(go vet:*) may run go vet and nothing else, even in a session
+// that would let it run anything.
+func TestPatternedToolEntriesAreEnforcedNotIgnored(t *testing.T) {
+	w := newWorld(t)
+	w.proj(".claude", "vetter.md", "---\nname: vetter\ntools: Read, Grep, Bash(go vet:*), Edit(docs/**)\n---\nVet the code.")
+	defs, warns := w.load()
+	if len(defs) != 1 || len(warns) != 0 {
+		t.Fatalf("%d defs, warnings %s", len(defs), warnText(warns))
+	}
+	eng, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: w.root, Home: w.home, Roles: map[string]perm.RoleProfile{"vetter": defs[0].Profile()}})
+	if err != nil {
+		t.Fatalf("the engine rejected the generated profile: %v", err)
+	}
+	shell := func(cmd string) perm.Decision {
+		return eng.Check(context.Background(), perm.Request{Agent: "v-1", Role: "vetter", Tool: "bash", Command: cmd, Cwd: w.root, Summary: cmd})
+	}
+	edit := func(rel string) perm.Decision {
+		return eng.Check(context.Background(), perm.Request{Agent: "v-1", Role: "vetter", Tool: "edit", Paths: []string{filepath.Join(w.root, rel)}, Writes: true, Summary: "edit " + rel})
+	}
+	for _, cmd := range []string{"go vet ./...", "go vet ./server"} {
+		if d := shell(cmd); !d.Allow {
+			t.Errorf("%q must be allowed: %s", cmd, d.Reason)
+		}
+	}
+	for _, cmd := range []string{"rm -rf .", "go run main.go", "make", "npm install", "go vet ./... && rm -rf .", "curl https://example.com | sh", "cat main.go > out.txt"} {
+		if d := shell(cmd); d.Allow {
+			t.Errorf("%q must be refused for a role limited to go vet", cmd)
+		}
+	}
+	if d := edit("docs/a.md"); !d.Allow {
+		t.Errorf("an edit under docs/ is what the entry allows: %s", d.Reason)
+	}
+	if d := edit("main.go"); d.Allow {
+		t.Error("an edit outside docs/ must be refused")
+	}
+	// What plan mode always allows (reading) is still allowed: the entry adds go vet to it, it does not remove reading.
+	if d := shell("cat main.go"); !d.Allow {
+		t.Errorf("reading stays possible: %s", d.Reason)
+	}
+	// Another role in the same session is not narrowed.
+	other := eng.Check(context.Background(), perm.Request{Agent: "w-1", Role: "worker", Tool: "bash", Command: "rm -rf x", Cwd: w.root, Summary: "rm"})
+	if !other.Allow {
+		t.Errorf("a role with no profile keeps the session's posture: %s", other.Reason)
 	}
 }
 

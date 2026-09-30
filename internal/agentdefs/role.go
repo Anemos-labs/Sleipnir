@@ -96,8 +96,14 @@ func allReadOnly(tools []string) bool {
 //
 //   - A read-only role (or permissionMode: plan) gets plan mode.
 //   - An explicit tool allowlist denies the classes it leaves out: shell
-//     commands, file writes, web access and MCP tools. Patterns inside an entry
-//     ("Bash(git diff:*)") are not enforced; the entry counts as the tool.
+//     commands, file writes, web access and MCP tools.
+//   - An entry that narrows a tool, either with a pattern ("Bash(git diff:*)",
+//     "Edit(src/**)") or by naming one MCP tool, does not grant the whole class.
+//     The role then runs in plan mode (nothing that writes or executes) with
+//     exactly those entries, and the whole-tool entries that plan mode would
+//     refuse, carved out as its own allow rules. The engine still never grants
+//     beyond what the session permits, so "Bash(go vet:*)" means go vet under
+//     the session's rules, and every other command is refused.
 //   - disallowedTools are denied as written.
 //
 // Tools are never hidden: every agent sends the same tool list so that the
@@ -109,29 +115,35 @@ func (d Def) Profile() perm.RoleProfile {
 		p.Mode = perm.ModePlan
 	}
 	if len(d.Tools) > 0 {
-		var shell, write, web, mcp bool
+		var listed [classMCP + 1]bool // classes the allowlist mentions at all
+		var carve []string            // entries that are exceptions to plan mode
+		narrowed := false
 		for _, t := range d.Tools {
-			switch classOf(t) {
-			case classShell:
-				shell = true
-			case classWrite:
-				write = true
-			case classWeb:
-				web = true
-			case classMCP:
-				mcp = true
+			c := classOf(t)
+			listed[c] = true
+			narrow := strings.Contains(t, "(") || c == classMCP
+			switch {
+			case narrow:
+				narrowed = true
+				carve = append(carve, t)
+			case c == classShell || c == classWrite || c == classOther:
+				carve = append(carve, t) // a whole tool, granted where plan mode would refuse it
 			}
 		}
-		if !shell {
+		if narrowed {
+			p.Mode = perm.ModePlan
+			p.Allow = append(p.Allow, carve...)
+		}
+		if !listed[classShell] {
 			p.Deny = append(p.Deny, "Bash")
 		}
-		if !write {
+		if !listed[classWrite] {
 			p.Deny = append(p.Deny, "Edit")
 		}
-		if !web {
+		if !listed[classWeb] {
 			p.Deny = append(p.Deny, "WebFetch", "WebSearch")
 		}
-		if !mcp {
+		if !listed[classMCP] {
 			p.Deny = append(p.Deny, "mcp__*")
 		}
 	}

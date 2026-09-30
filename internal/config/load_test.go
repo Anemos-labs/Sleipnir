@@ -320,34 +320,85 @@ func TestNullUnsetsWhatLowerLayersSet(t *testing.T) {
 	}
 }
 
-func TestHooksMCPAndUnknownKeysReplaceWholesalePerEntry(t *testing.T) {
+func TestMCPAndUnknownKeysReplaceWholesalePerEntry(t *testing.T) {
 	p := newProj(t)
 	p.user(`{
-		"hooks": {"pre_tool": {"command": "a", "args": ["x"]}, "post_tool": {"command": "keep"}},
 		"mcp": {"github": {"command": "gh-mcp", "env": {"A": "1"}}, "fs": {"command": "fs-mcp"}},
 		"experimental": {"a": 1, "b": 2}
 	}`)
 	p.project(`{
-		"hooks": {"pre_tool": {"command": "b"}},
 		"mcp": {"github": {"url": "https://mcp.example.com"}},
 		"experimental": {"c": 3}
 	}`)
 	cfg, _ := p.mustLoad()
 	get := func(m map[string]json.RawMessage, k string) string { return string(m[k]) }
-	if got := get(cfg.Hooks, "pre_tool"); got != `{"command":"b"}` {
-		t.Errorf("hooks.pre_tool = %s (an entry replaces as a unit, it is not merged)", got)
-	}
-	if got := get(cfg.Hooks, "post_tool"); got != `{"command":"keep"}` {
-		t.Errorf("hooks.post_tool = %s (other entries survive)", got)
-	}
 	if got := get(cfg.MCP, "github"); got != `{"url":"https://mcp.example.com"}` {
-		t.Errorf("mcp.github = %s", got)
+		t.Errorf("mcp.github = %s (an entry replaces as a unit, it is not merged)", got)
 	}
 	if got := get(cfg.MCP, "fs"); got != `{"command":"fs-mcp"}` {
-		t.Errorf("mcp.fs = %s", got)
+		t.Errorf("mcp.fs = %s (other entries survive)", got)
 	}
-	if got := get(cfg.Extra, "experimental"); got != `{"c":3}` {
-		t.Errorf("unknown top-level key = %s (replaced whole)", got)
+	if got := string(cfg.Extra["experimental"]); got != `{"c":3}` {
+		t.Errorf("experimental = %s (unknown keys replace wholesale)", got)
+	}
+}
+
+// A repository's configuration adds to the user's deny and ask rules and to their
+// hooks; it can never take from them, whatever it writes (a shorter list, an empty
+// one, null), and whether or not the project is trusted.
+func TestARepositoryCanOnlyAddToTheUsersGuardrails(t *testing.T) {
+	p := newProj(t)
+	p.user(`{
+		"permissions": {"deny": ["Bash(rm:*)", "Read(~/.aws/**)"], "ask": ["Bash(git push:*)"],
+			"roles": {"reviewer": {"deny": ["Write"]}}},
+		"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "/usr/local/bin/guard"}]}]}
+	}`)
+	p.project(`{
+		"permissions": {"deny": [], "ask": null, "roles": {"reviewer": {"deny": null}}},
+		"hooks": {"PreToolUse": []}
+	}`)
+	for _, untrusted := range []bool{false, true} {
+		cfg, _ := p.mustLoad(func(o *LoadOpts) { o.UntrustedProject = untrusted })
+		if !reflect.DeepEqual(cfg.Permissions.Deny, []string{"Bash(rm:*)", "Read(~/.aws/**)"}) || !reflect.DeepEqual(cfg.Permissions.Ask, []string{"Bash(git push:*)"}) {
+			t.Errorf("untrusted=%v: the user's deny/ask were changed: %+v", untrusted, cfg.Permissions)
+		}
+		if !reflect.DeepEqual(cfg.Permissions.Roles["reviewer"].Deny, []string{"Write"}) {
+			t.Errorf("untrusted=%v: the user's role deny list was changed: %+v", untrusted, cfg.Permissions.Roles)
+		}
+		if got := string(cfg.Hooks["PreToolUse"]); !strings.Contains(got, "/usr/local/bin/guard") {
+			t.Errorf("untrusted=%v: the user's hook is gone: %s", untrusted, got)
+		}
+	}
+
+	// Additions append, after the user's own, and a repeat is not doubled.
+	p.project(`{
+		"permissions": {"deny": ["Bash(curl:*)", "Bash(rm:*)"], "ask": ["Bash(make:*)"]},
+		"hooks": {"PreToolUse": [{"matcher": "Write", "hooks": [{"type": "command", "command": "./check.sh"}]}]}
+	}`)
+	cfg, rep := p.mustLoad()
+	if !reflect.DeepEqual(cfg.Permissions.Deny, []string{"Bash(rm:*)", "Read(~/.aws/**)", "Bash(curl:*)"}) || !reflect.DeepEqual(cfg.Permissions.Ask, []string{"Bash(git push:*)", "Bash(make:*)"}) {
+		t.Errorf("deny/ask = %+v", cfg.Permissions)
+	}
+	var groups []map[string]any
+	if err := json.Unmarshal(cfg.Hooks["PreToolUse"], &groups); err != nil || len(groups) != 2 || groups[0]["matcher"] != "Bash" || groups[1]["matcher"] != "Write" {
+		t.Errorf("hooks = %s (user's first, the project's after) %v", cfg.Hooks["PreToolUse"], err)
+	}
+	_ = rep
+}
+
+// Nothing about a provider is a repository's to say unless the user trusts it: not
+// even an entry with no URL in it (it would change which provider counts as configured).
+func TestUntrustedProjectContributesNoProviderEntries(t *testing.T) {
+	p := newProj(t)
+	p.user(`{"providers": {"mine": {"base_url": "https://mine.example.com", "api_key_env": "MINE_KEY"}}}`)
+	p.project(`{"providers": {"evil": {}, "extra": {"dialect": "anthropic"}, "mine": {"dialect": "anthropic"}}}`)
+	cfg, _ := p.mustLoad(func(o *LoadOpts) { o.UntrustedProject = true })
+	if len(cfg.Providers) != 1 || cfg.Providers["mine"].Dialect == "anthropic" || cfg.Providers["mine"].BaseURL != "https://mine.example.com" {
+		t.Errorf("providers = %+v", cfg.Providers)
+	}
+	cfg, _ = p.mustLoad()
+	if len(cfg.Providers) != 3 {
+		t.Errorf("a trusted project's providers apply: %+v", cfg.Providers)
 	}
 }
 

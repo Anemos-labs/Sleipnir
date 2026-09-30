@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -44,6 +45,7 @@ type merger struct {
 	tree    map[string]any
 	origins map[string]string // path (segments joined by \x00) -> source
 	sources map[string]string // top-level key -> source
+	kind    string            // kind of the layer being merged
 }
 
 func newMerger() *merger {
@@ -65,8 +67,47 @@ func opaque(segs []string) bool {
 	return false
 }
 
+// additive reports whether the value at segs is a list that layers supplied by a
+// repository may only add to: the user's deny and ask rules (a project may always
+// add restrictions, but must not be able to remove the user's by replacing the
+// list, emptying it or setting it to null) and the entries of hooks (a trusted
+// project's hooks run after the user's, they do not switch them off).
+func additive(segs []string) bool {
+	switch len(segs) {
+	case 2:
+		return (segs[0] == "permissions" && (segs[1] == "deny" || segs[1] == "ask")) || segs[0] == "hooks"
+	case 4:
+		return segs[0] == "permissions" && segs[1] == "roles" && (segs[3] == "deny" || segs[3] == "ask")
+	}
+	return false
+}
+
+// repoSupplied reports whether the layer being merged arrives with a repository.
+func (m *merger) repoSupplied() bool { return m.kind == "project" || m.kind == "local" }
+
+// unionList appends the elements of add that are not already in have, keeping the
+// order (lower layers first).
+func unionList(have any, add []any) []any {
+	out, _ := have.([]any)
+	out = append([]any(nil), out...)
+	for _, a := range add {
+		dup := false
+		for _, h := range out {
+			if reflect.DeepEqual(h, a) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, deepCopy(a))
+		}
+	}
+	return out
+}
+
 // apply merges one layer over what is already there.
 func (m *merger) apply(l *layer) {
+	m.kind = l.kind
 	m.mergeObject(m.tree, l.tree, nil, l.source)
 	for _, k := range sortedKeys(l.tree) {
 		if l.tree[k] == nil {
@@ -81,6 +122,16 @@ func (m *merger) mergeObject(dst, src map[string]any, segs []string, source stri
 	for _, k := range sortedKeys(src) {
 		v := src[k]
 		p := cloneSegs(segs, k)
+		if m.repoSupplied() && additive(p) {
+			// A repository adds to these lists and cannot take from them: null and
+			// an empty list change nothing, a longer list appends.
+			if add, ok := v.([]any); ok && len(add) > 0 {
+				dst[k] = unionList(dst[k], add)
+				m.forget(p)
+				m.record(p, dst[k], source)
+			}
+			continue
+		}
 		if v == nil { // null: unset whatever lower layers said
 			delete(dst, k)
 			m.forget(p)

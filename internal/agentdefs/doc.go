@@ -36,7 +36,10 @@
 // The tool allowlist itself cannot be expressed in a Role, and hiding tools
 // would fork every agent's cached tool list. Def.Profile gives the runtime
 // equivalent: a perm.RoleProfile that denies the tool classes the allowlist
-// leaves out and the tools disallowedTools names. Register it with the
+// leaves out and the tools disallowedTools names. An entry that narrows a tool
+// (a pattern such as Bash(go vet:*), or one named MCP tool) puts the role in
+// plan mode with exactly those entries as exceptions, so the limit is enforced
+// and never silently widened to the whole tool. Register the profile with the
 // permission engine under Role.Name.
 //
 // # Security model

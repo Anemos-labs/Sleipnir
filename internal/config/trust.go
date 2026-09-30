@@ -85,5 +85,11 @@ func (l *layer) collectRisks(drop bool) []Issue {
 		}
 	}
 	walk(l.tree, nil)
+	if drop {
+		// Nothing about a provider is a repository's to say: not its URL or headers
+		// (dropped above), and not the rest of an entry either (a dialect, a model
+		// table, or an empty entry that changes which provider counts as configured).
+		delete(l.tree, "providers")
+	}
 	return risks
 }

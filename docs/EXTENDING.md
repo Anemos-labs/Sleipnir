@@ -334,8 +334,13 @@ through a permission profile the engine applies on top of the session's: a role 
 * `readonly: true`, `permissionMode: plan` or an allowlist made only of read-only tools (`Read`, `Grep`, `Glob`, `LS`,
   `WebFetch`, `WebSearch`, `Skill`, ...) makes the role read-only: plan mode, and it does not count against the
   swarm's writer cap. Any unknown or shell/edit/MCP/delegation tool in the list makes it a writer.
-* An allowlist denies every class it leaves out: `Bash`, `Edit`, `WebFetch`/`WebSearch`, MCP tools. A pattern inside
-  an entry (`Bash(go vet:*)`) is not enforced: the entry counts as the whole tool.
+* An allowlist denies every class it leaves out: `Bash`, `Edit`, `WebFetch`/`WebSearch`, MCP tools.
+* An entry that **narrows** a tool does not grant the whole tool: a pattern (`Bash(go vet:*)`, `Edit(docs/**)`) or one
+  named MCP tool (`mcp__github__list_issues`). Such a role runs in plan mode (nothing that writes or executes) with
+  exactly those entries as its exceptions, plus any whole tools it lists (`Edit`, `Bash`). So `tools: Read, Bash(go
+  vet:*)` may read and run `go vet`, and every other command is refused, even in a session that would let it run
+  anything. The permission engine still never grants more than the session does. Such a role counts as a writer for
+  the swarm's cap.
 * `disallowedTools` entries are denied as written.
 
 Checked with a definition like the one above (on a stand-in model): the reviewer's `touch worker-file` was refused

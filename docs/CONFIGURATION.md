@@ -58,11 +58,18 @@ configuration is valid
 Layers are merged by presence, not by value:
 
 * objects merge key by key, recursively (`providers`, `providers.<name>`, `permissions.roles.<role>`, every section);
-* lists replace the list below them: a higher layer's `permissions.allow` does not add to a lower one, it replaces it;
+* lists replace the list below them: a higher layer's `permissions.allow` does not add to a lower one, it replaces it.
+  The exceptions are the guardrails, which a repository can only add to: `permissions.deny`, `permissions.ask`, the
+  same per role (`permissions.roles.<role>.deny`, `.ask`) and the events under `hooks`. In a project file
+  (`.sleipnir/config.json` or the local override) a longer list appends to yours, and a shorter one, an empty one or
+  `null` changes nothing;
 * a scalar is overridden only if the higher layer contains the key, so an explicit `false` or `0` beats a `true` or
   `5` below it;
-* `null` deletes whatever the lower layers set for that key;
-* each event under `hooks` (`hooks.PreToolUse`, ...) replaces the same event from a lower layer as a whole;
+* `null` deletes whatever the lower layers set for that key (except for the guardrails above, when it comes from a
+  project file);
+* each event under `hooks` (`hooks.PreToolUse`, ...) adds the project's hook groups after yours when the project is
+  trusted (yours run first, so a guard hook of yours cannot be switched off by a repository); between two of your own
+  layers a later one replaces the event as a whole;
 * unknown top-level keys are kept but do nothing, and produce a warning with a "did you mean" hint. Unknown keys
   inside a section are ignored with a warning. `$schema` and other `$`-prefixed top-level keys are editor metadata and
   never warn.
@@ -135,8 +142,9 @@ Settings that could send your API key to another host, run commands or widen wha
 | `ui.editor` | runs a command |
 
 Everything else in a project file applies without trust: `models`, `cache`, `swarm` (including `budget_usd`), the tool
-limits, `ui.theme`, `permissions.ask` and `permissions.deny` (they can only restrict), and a provider's `dialect` and
-`models`.
+limits, `ui.theme`, and `permissions.ask` and `permissions.deny` (a project can add to your lists, never remove from
+them). Providers are gated as a whole: an untrusted project contributes no provider entry at all, not even one without
+a URL.
 
 In a session (`chat`, `run`, `swarm`) an untrusted project's sensitive settings are dropped with a notice such as
 `ignored security-sensitive settings from the project's config (hooks); pass --trust-project to apply them`.
@@ -148,16 +156,9 @@ project's instruction files (`AGENTS.md`, ...), skills, slash commands and agent
 (`docs/EXTENDING.md`). `models` and every `rl` command never trust a project file: put the provider they need in your
 user file, or pass `--base-url`/`--api-key-env` to `rl` and `doctor`.
 
-Three consequences of the merge rules that are worth knowing before you open an unfamiliar repository:
-
-* Lists replace. A project's `"permissions": {"deny": []}` **replaces your own `deny` list**, trusted or not, because
-  `deny` is not a gated key. Built-in protections (section 8) are not affected. Run `sleipnir config --json` in a repo
-  you do not know and read `permissions`.
-* With `--trust-project`, a project's `hooks.PreToolUse` replaces your own `hooks.PreToolUse` for that event, so your
-  guard hook does not run.
-* A project can still add a provider entry; only its sensitive fields are dropped, so `{"providers": {"x": {}}}`
-  leaves an empty provider `x`. An empty entry counts as a configured provider, which matters for the default-provider
-  rule in section 6.
+What a repository cannot do, trusted or not: remove or shorten your `permissions.deny` and `permissions.ask` rules,
+or switch off your hooks. Run `sleipnir config` in a repository you do not know: the layers and the origin of every
+value are listed, and the security-sensitive settings the project made are named.
 
 ## 5. Environment variables
 
