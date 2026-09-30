@@ -411,3 +411,5 @@ func TestEnrichModelUsesTheEndpointsCatalogueAndCachesIt(t *testing.T) {
 		t.Fatal("an unreachable catalogue must leave the fallback in place")
 	}
 }
+
+func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
