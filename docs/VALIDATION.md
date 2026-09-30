@@ -48,6 +48,26 @@ When a step fails:
   (`docs/CACHE-DESIGN.md`, HotMode); check the profile the doctor reports.
 * **429s**: lower `swarm.requests_per_minute`; the governor adapts but starts from what you configure.
 
+## First measurements
+
+The first real-endpoint runs (Heimdall staging, `deepseek/deepseek-v4.1-flash`, 30 September 2026, about US$0.002 in all
+per run) found the bugs listed in the changelog and left one baseline, `validation/20260930-081737-deepseek_deepseek-v4.1-flash.json`:
+
+| step | result of the baseline run |
+|---|---|
+| 1 endpoint profile | streaming, exact cost, tools, cached tokens reported; cache granularity ~128 tokens (the smallest cached size came out as ~128, ~256 or undetermined in different runs); 5 of 9 repeat requests hit ("partly"); a parallel burst needs a warm-up; 600 requests/min |
+| 2 steady state | 5 requests, steady hit ratio 91% (criterion 80%: met), no drift, tests pass |
+| 3 compaction | 32 requests, two model-authored compactions (about 2.3k tokens removed each), tests pass; hit ratio in the requests after a commit 57% (criterion 60%: not met) |
+| 4 swarm | manager and two workers, 20 requests, hit ratio 68%; the workers' first requests were all warm (criterion 50%: met), tests pass |
+| 6 RL | two rollouts complete, `rl verify` 0 mismatches; 0 step records (both samples got the same reward, so the group carries no signal) |
+
+**Read the hit ratios as a range, not a number.** The endpoint's prefix cache is erratic: the same script, run five times
+on the same day, gave a steady hit ratio of 64% to 96% for one agent and 42% to 80% for the swarm, and `doctor` counted 5 to
+9 hits in nine repeat requests. The harness's side is steady: no run had a `drift` anomaly, and every recorded prompt replays to
+its wire hash. What the misses look like (a conversation that alternates between reading its whole prefix and reading only the
+first 640 tokens) and how the routing key behaved is in `docs/CACHE-DESIGN.md`. Criteria on hit ratios therefore need a rerun
+before they are read as a regression; drift anomalies, replay mismatches, failed tests and rollouts that end in `infra` do not.
+
 ## Recording a baseline
 
 Commit `validation/<date>-<model>.json` (written by the script) when you change anything in `internal/kv`, the
