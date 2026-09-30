@@ -325,7 +325,7 @@ func New(cfg Config) (*Agent, error) {
 		cfg.Sink = NopSink{}
 	}
 	if cfg.Perm == nil {
-		cfg.Perm = perm.AllowAll{}
+		cfg.Perm = perm.DenyAll{} // fail closed: see perm.DenyAll
 	}
 	if cfg.Guard == nil {
 		cfg.Guard = tools.NoGuard{}

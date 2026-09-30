@@ -43,7 +43,8 @@ The first release.
 - File, shell, web and recall tools; every agent sends the same tool list and roles are restricted at run time by the
   permission engine (modes, rules, shell-syntax analysis, role profiles, hard denies for credentials).
 - Skills (listing in the shared layer, loaded on demand), custom slash commands, markdown role definitions, hooks
-  (SessionStart/End, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PermissionRequest), MCP servers, checkpoints
+  (SessionStart/End, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PermissionRequest), MCP servers (tools frozen per
+  session, per-entry approval for project servers, prompts as slash commands, `sleipnir mcp`, `/mcp`), checkpoints
   and rewind. Repository-supplied skills, commands, roles, hooks and instruction files are read only when the project
   is trusted, and writes to the directories that hold them always ask.
 
@@ -67,17 +68,33 @@ The first release.
 
 ### Security
 
+`docs/SECURITY.md` is the threat model: what is protected, what is not, what is hardened on each OS, how to confine harder.
+
 - Hostile repositories: instruction files, skills, commands, roles and hooks from a repository are read only when the
   project is trusted; symlinks and imports cannot leave the project; invisible Unicode is stripped; repository text is
-  rendered "(scope, unverified)".
-- The provider key never reaches a tool's environment; the permission engine hard-denies credential paths; Ask rules apply
-  even in bypass mode; unattended sessions refuse to ask.
+  rendered "(scope, unverified)". A repository's configuration can add to your `permissions.deny`/`ask` rules and your
+  hooks, never remove them, and cannot define providers unless trusted. A project's MCP server starts only after you
+  approve that exact entry.
+- Keys: the provider key goes only where you allowed it (the provider's own host, loopback, or a host in your user
+  configuration), never over plain `http` to another machine, and no redirect carries it off the original origin. It is held
+  out of the harness's environment, so nothing the harness starts inherits it; on Linux the process is non-dumpable and its
+  initial environment is erased, on macOS debugger attach is refused. The RL rollout server sends a policy key only where its
+  operator listed.
+- Endpoints are not believed: responses are bounded as they are read, silent servers are timed out, hostile usage counters,
+  costs and catalogue prices are clamped or dropped, error text is sanitised.
+- The permission engine hard-denies credential paths; Ask rules apply even in bypass mode; unattended sessions refuse to ask;
+  nothing defaults to allow-all (an agent, swarm member or tool environment built without a permission policy is denied).
+- The prompt engine treats what it did not write as data: a compactor may write only its own notes sections, every text that
+  enters a layer is escaped and bounded, what a person typed is pinned in full (beginning and end above the bound), and the
+  harness's own task text is never pinned as the user's word. Tool results per turn are budgeted (the excess is saved behind a
+  recall handle) and a tool call has a deadline.
 - Session state is private (0700/0600), blobs are verified by hash, a damaged log line is recorded rather than truncating the
-  rest, and checkpoint restore refuses anything that would write outside the project.
+  rest, a session directory has one writer at a time, and checkpoint restore refuses anything that would write outside the
+  project. Terminal output drops escape sequences and control characters that a model, tool, file or page wrote.
 - Swarm: mail, notes, status lines and alerts are framed and bounded as untrusted peer data; scopes are enforced at write
   time; "done" belongs to the harness; Retry-After is capped everywhere.
 - Independent adversarial reviews of the prompt engine, the swarm and the trust boundaries are in `docs/reviews/`, with what
-  was fixed and what remains.
+  was fixed (all of it) and what remains.
 
 ### Interfaces
 

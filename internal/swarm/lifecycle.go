@@ -118,7 +118,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence) (*me
 	isMgr := r.Name == "manager"
 	requester := perm.Requester(d.Perm)
 	if requester == nil {
-		requester = perm.AllowAll{}
+		requester = perm.DenyAll{} // fail closed: see perm.DenyAll
 	}
 	requester = roleRequester{inner: requester, role: r}
 	sink := agent.Sink(agent.NopSink{})

@@ -15,8 +15,8 @@ Severity scale: **blocker** = the manager/worker protocol silently gives wrong r
 
 The swarm runtime was reworked against `docs/SWARM-PROTOCOL.md` (2026-09-30). Findings below are **fixed** unless marked otherwise; the
 repros that covered them became ungated regression tests (`lifecycle_test.go`, `state_test.go`, `chaos_test.go`, `spec_test.go`; the old
-`*_review_test.go` names are gone). `go test -race -count=1 ./internal/swarm` is green; `SLEIPNIR_REVIEW=1` still runs the two repros of findings
-that live in other packages.
+`*_review_test.go` names are gone). The findings that lived in other packages were fixed in tranche 2 (rows below), and no repro of this review is gated any more:
+`go test -race -count=1 ./...` runs them all.
 
 | Finding | Status |
 |---|---|
@@ -27,41 +27,37 @@ that live in other packages.
 | C-05 no fault containment | fixed: recover per run goroutine, sink, supervisor and manager run; `Spawn` never dereferences a missing member |
 | C-06 one agent stalls every request path | fixed here for the swarm: bounded board inputs; `RenderHot` is single-pass with caps (1000 failed tasks: 438 ms -> 6 ms) |
 | C-07 evidence calls a failing test passed | fixed: `Meta.exit_code`, shell-aware test detection, masked/unknown statuses |
-| C-08 silent provider holds a request | **not fixed here** (agent/provider timeouts; owner elsewhere) |
-| C-09 archive index pins whole turns | **not fixed here** (`kv/archive.go`; `TestConc_ArchiveIndex...` stays gated) |
+| C-08 silent provider holds a request | fixed in tranche 2 A: the transport arms a first-byte deadline when the request is sent (120 s; idle 60 s, total 30 min) and a request that gets no response twice is not retried again (`provider.MaxSilentAttempts`); still open: a per-slot maximum hold in the governor (`tranche2-a.md`) |
+| C-09 archive index pins whole turns | fixed in tranche 2 B: a small fixed-size index per turn, `Archive.Release`/`Close` per agent, `RangeLimit` (`tranche2-b.md`) |
 | C-10 member lifecycle races | fixed: one state machine under `member.mu` (idle/running/retired), atomic reserve, ordered publication, registration after assignment |
 | C-11 `wait` defects | fixed: lock-free `Changed()`, `wait` baseline is the caller's last view, unknown ids are an error, alerts diffed by text |
 | C-12 log cannot rebuild the board | fixed in the swarm: operand-bearing `board.op`, `lease`/`governor`/`agent.state`/`mail.drop` events, and `ReplayBoard` (tested to rebuild tasks, roster and notes exactly); resume is not wired at startup |
-| C-13 group commit has no timer | **not fixed here** (`events/log.go`) |
-| C-14 cancellation and shutdown | fixed except the detached compactor job (agent): manager cancel stops workers, bounded `Shutdown`, verifier deadline and concurrency cap, closed state |
+| C-13 group commit has no timer | fixed in tranche 2 C (`events/log.go`) |
+| C-14 cancellation and shutdown | fixed: manager cancel stops workers, bounded `Shutdown`, verifier deadline and concurrency cap, closed state; the agent's detached compaction job is tracked and cancelled with the run or `Agent.Close` (tranche 2 B) |
 | C-15 no task state machine | fixed: transition table, `done` terminal, dependencies on spawn |
 | C-16 stale and noisy hot view | fixed: alerts expire and clear, no-op mutations publish nothing, trailing status line is flushed |
 | C-17 router | fixed: sweeps, delivery failure reported (and the sender's budget returned), inbox bounded and coalesced |
-| C-18 governor and warm gate | governor fixed (one cut per 429 episode, aging, `Retry-After` ceiling); the cold-prefix priority inversion is **not fixed** (agent request path / gate) |
-| C-19 hygiene | fixed except `events.Log.Subscribe` after `Close` and 32-bit recall handles (other packages) |
+| C-18 governor and warm gate | fixed: governor (one cut per 429 episode, aging, `Retry-After` ceiling); the warm gate is priority-aware (`PriorityGate`, `ColdPrefixGate`; tranche 2 B) |
+| C-19 hygiene | fixed; `events.Log.Subscribe` after `Close` and 16-hex recall handles in tranche 2 C |
 
 ## 0. How to reproduce
 
 I added test files named `*_review_test.go` (index in section 4; no non-test file was modified). Two kinds of tests:
 
-* `TestConc_*` (57 repros + 2 subprocess bodies): gated behind `SLEIPNIR_REVIEW=1` (the same switch the security review uses). Each asserts the
-  **correct** behaviour, so it **fails while the finding is open**; default `go test` skips them and stays green.
+* `TestConc_*` (57 repros + 2 subprocess bodies): were gated behind `SLEIPNIR_REVIEW=1`. Each asserted the **correct** behaviour, so it **failed while
+  the finding was open**. All are fixed and ungated: they run with everything else.
 * `TestConcSound_*` (10): always on, cheap (about 2 s together). Stress/regression checks for behaviour I found sound (two of them were repros that other builders fixed while I was reviewing: the warm-gate stuck primer and the torn blob).
 
 ```
-# every repro currently FAILS (= finding reproduced); 4 packages
-SLEIPNIR_REVIEW=1 go test -race -count=1 -run 'TestConc_' ./internal/swarm ./internal/agent ./internal/events ./internal/tools
-# always-on checks (green)
-go test -race -count=1 -run 'TestConcSound_' ./internal/swarm ./internal/events
-# the baseline command: green with my files in the tree (my files add no default-run failures; see the caveat about other reviewers' tests)
-go test -race -count=20 ./internal/swarm ./internal/agent ./internal/events
+go test -race -count=1 -run 'TestConc' ./internal/swarm ./internal/agent ./internal/events ./internal/tools   # every repro and sound check
+go test -race -count=20 ./internal/swarm ./internal/agent ./internal/events                                   # the baseline stress command
 ```
 
-Baseline before my tests: `go test -race -count=20 ./internal/swarm ./internal/agent ./internal/events` was green. Last full gated run:
-57 of 57 repros fail, 10 of 10 sound checks pass. I ran every gated repro 5-30 times (with and without `-race`): the deterministic ones failed every time;
-the three probabilistic ones (`BoardWaitLostWakeupStress`, `SetStatePublishesOutsideItsLock...`, `RetireDuringSpawnCrashesTheProcess`) were
-tightened until they failed 8/8 (details in their comments). Many interleavings are forced with locks and channels (freeze `Board.mu`, hold `Leases.mu`,
-stall an emitter) instead of hoping for scheduler luck. A `-race` run also reports the unsynchronised `member.task` accesses (finding C-10).
+When the review was written, 57 of 57 gated repros failed and 10 of 10 sound checks passed. I ran every repro 5-30 times (with and without `-race`): the
+deterministic ones failed every time; the three probabilistic ones (`BoardWaitLostWakeupStress`, `SetStatePublishesOutsideItsLock...`,
+`RetireDuringSpawnCrashesTheProcess`) were tightened until they failed 8/8 (details in their comments). Many interleavings are forced with locks and
+channels (freeze `Board.mu`, hold `Leases.mu`, stall an emitter) instead of hoping for scheduler luck. A `-race` run also reported the unsynchronised
+`member.task` accesses (finding C-10).
 
 ## 1. Ranked summary
 

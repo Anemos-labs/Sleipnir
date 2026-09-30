@@ -20,6 +20,7 @@ import (
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 	"github.com/reee344/sleipnir/internal/swarm"
@@ -48,6 +49,7 @@ func secRevNewRig(t *testing.T, cfg swarm.Config, r mock.Responder) *secRevRig {
 		Shared:  kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: strings.Repeat("The repo is a Go API. ", 100), Vol: kv.VolEpoch}}),
 		Workdir: t.TempDir(), Root: t.TempDir(), Params: core.Params{MaxTokens: 512},
 		Files: tools.NewFileState(), Handles: tools.NewHandles(),
+		Perm: perm.AllowAll{}, // these tests are about the swarm, not the permission policy
 	}
 	sw := swarm.New(cfg, deps, nil)
 	reg := tools.NewRegistry()

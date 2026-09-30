@@ -37,6 +37,7 @@ func testEnv(t testing.TB) *tools.Env {
 		Root:  dir,
 		Files: tools.NewFileState(),
 		Blobs: events.NewMemBlobs(),
+		Perm:  perm.AllowAll{}, // these tests are about the tools, not the policy
 	}
 }
 

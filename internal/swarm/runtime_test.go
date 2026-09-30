@@ -89,6 +89,7 @@ func newRig(t *testing.T, cfg swarm.Config, mcfg mock.Config, r mock.Responder) 
 		Shared:  kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: strings.Repeat("The repo is a Go API with a React client. ", 120), Vol: kv.VolEpoch}}),
 		Workdir: t.TempDir(), Root: t.TempDir(), Params: core.Params{MaxTokens: 512},
 		Files: tools.NewFileState(), Handles: tools.NewHandles(),
+		Perm: perm.AllowAll{}, // these tests are about the swarm, not the permission policy
 	}
 	sw := swarm.New(cfg, deps, nil)
 	reg := tools.NewRegistry()

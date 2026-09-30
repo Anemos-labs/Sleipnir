@@ -377,14 +377,16 @@ func TestReadNilEnvFieldsAreDefaulted(t *testing.T) {
 	// Env inside the call.
 	dir := realTemp(t)
 	writeFile(t, filepath.Join(dir, "f"), "x\n")
-	env := &tools.Env{Cwd: dir}
+	env := &tools.Env{Cwd: dir, Perm: perm.AllowAll{}}
 	contains(t, mustOK(t, run(t, Read{}, env, map[string]any{"path": "f"})), "x")
 	if env.Files == nil || env.Guard == nil || env.Perm == nil {
 		t.Errorf("Defaults() was not applied to the caller's Env")
 	}
+	// A call with no Env at all is tolerated, and fails closed: with no permission policy
+	// to ask, nothing is read (S46).
 	res, err := Read{}.Run(context.Background(), &tools.Call{Input: []byte(`{"path":"` + filepath.Join(dir, "f") + `"}`)})
-	if err != nil || res.IsError {
-		t.Errorf("nil Env should be tolerated: %v %v", err, res)
+	if err != nil || !res.IsError || !strings.Contains(res.Text, "no permission policy") {
+		t.Errorf("a nil Env must not panic and must be denied: %v %v", err, res)
 	}
 }
 

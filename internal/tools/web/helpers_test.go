@@ -58,7 +58,7 @@ func (h *harness) advance(d time.Duration) {
 }
 
 func (h *harness) env(agent string) *tools.Env {
-	return &tools.Env{Agent: agent, Blobs: h.blobs, Now: h.now}
+	return &tools.Env{Agent: agent, Blobs: h.blobs, Now: h.now, Perm: perm.AllowAll{}}
 }
 
 func (h *harness) run(env *tools.Env, input any) *tools.Result {

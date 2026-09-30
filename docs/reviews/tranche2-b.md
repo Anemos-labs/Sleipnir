@@ -342,3 +342,13 @@ SLEIPNIR_REVIEW=1 go test -count=1 -run 'TestSec|TestConc' ./internal/kv ./inter
 * The new timing-sensitive tests were repeated (`-race -count=3` to `6`) without a failure. They use hang guards (5 s to 60 s) instead of tight
   bounds; the ones to watch on a loaded machine are the escape and `ParsePatch` linearity tests in `kv`, and `TestConc_ColdPrefixGateDoesNotInvertPriority`
   (a 150 ms margin between the manager's admission on a warm and on a cold prefix).
+
+## 8. Integration follow-ups
+
+* **`Run` and the swarm kickoff (S22).** `core.OriginTask` and `Agent.RunTask(ctx, brief, assignment)` exist: a task the harness hands to an agent is not the user's
+  word, is never pinned into `instructions`, and its assignment card (a `kv.Task` block) replaces the harness-owned `assignment` section when its turn is folded,
+  so a reused worker's notes describe the task it has now (`docs/CACHE-DESIGN.md` 4.1). Switching the swarm's kickoff and reuse call sites to it is part of merging the swarm features (they are being rewritten there).
+* **Resume.** `Session.Close` closes the solo agent, and `--resume` rebuilds the archive index and the recall handles from the event log
+  (`agent.RebuildArchive`, `agent.RebuildHandles`; `tool.result` records the blob ref and the full length, spills are logged as `tool.spill`), so `recall` finds
+  turns that were folded before the resume.
+* **`docs/CACHE-DESIGN.md` 4.1** quotes the new bounds (8000, 2000, 12000).

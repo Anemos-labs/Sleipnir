@@ -192,3 +192,15 @@ characters instead of 8, in the "[full output saved as ...]" line of newly trunc
 * Session/UI owners: print file, web and listing text through `tools.SanitizeForTerminal`.
 * Agent owner: a default per-call deadline in `runOne` that skips `wait`.
 * Recall owner: the schema example `out_ab12cd34` (G0) when convenient.
+
+## Integration follow-ups
+
+* **Provider keys** are held out of the environment: `cmd/sleipnir` calls `harden.Process(harden.MoveKeys())` and every reader (provider resolution, `config.Provider.APIKey`, the
+  RL token, the inspector token, MCP `${VAR}` expansion) uses `harden.Secret`. `TestReadersOfCredentialsUseSecret` (source level) fails on a new `os.Getenv` of a credential;
+  `TestKeysLeaveTheEnvironmentButStillReachTheirReaders` runs the real paths in a child that did what `main` does.
+* **S46.** `perm.DenyAll` is what `agent.New`, swarm members and `tools.Env.Defaults` use when they are given no `Requester`; `TestSec_S46_*` is an ordinary test now.
+* **Per-call deadline.** `agent.Config.ToolTimeout` (default 30 minutes, above the longest wait a built-in tool allows itself, negative for none) stops a tool that would hold the
+  agent for ever; the model is told the call ran too long (`error_kind: timeout`, a `tool.timeout` event). A tool that finishes late keeps its result.
+* **Still open from this list:** the read-only role profiles do not deny `bash_output`/`bash_kill` by name (the engine asks about other agents' jobs).
+* The recall schema example (`out_ab12cd34`) is left alone: changing it is a change to the bytes of G0, to be made together with the next one that is needed anyway.
+* `docs/ARCHITECTURE.md` ("Security posture") and the README documentation list point at `docs/SECURITY.md`.

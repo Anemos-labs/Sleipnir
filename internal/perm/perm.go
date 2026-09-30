@@ -236,10 +236,22 @@ type Requester interface {
 // Prompter asks a human (or a delegating agent) to decide.
 type Prompter func(ctx context.Context, r Request) Decision
 
-// AllowAll is a Requester that permits everything (tests, bypass sandboxes).
+// AllowAll is a Requester that permits everything (tests, bypass sandboxes). Nothing
+// defaults to it: a caller that means to allow everything has to say so.
 type AllowAll struct{}
 
 // Check implements Requester.
 func (AllowAll) Check(context.Context, Request) Decision {
 	return Decision{Allow: true, Reason: "allow-all"}
+}
+
+// DenyAll is a Requester that permits nothing. It is what a constructor uses when it
+// was given no Requester (agent.New, swarm members, tools.Env.Defaults), so that
+// forgetting to wire the permission engine stops every tool that acts instead of
+// silently allowing all of them (S46).
+type DenyAll struct{}
+
+// Check implements Requester.
+func (DenyAll) Check(context.Context, Request) Decision {
+	return Decision{Allow: false, Reason: "no permission policy is configured (a caller must pass a perm.Requester, or perm.AllowAll{} to allow everything)"}
 }

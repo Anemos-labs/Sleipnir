@@ -20,6 +20,7 @@ import (
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
@@ -455,7 +456,7 @@ func lastToolResultEvent(t *testing.T, r *limRig) map[string]any {
 // why, and the run goes on.
 func TestToolCallIsStoppedAtTheDeadlineAndTheRunGoesOn(t *testing.T) {
 	var sawDeadline atomic.Bool
-	hang := fakeTool{name: "hang", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+	hang := fakeTool{name: "hang", readOnly: true, runCtx: func(ctx context.Context, _ *tools.Call) *tools.Result {
 		if _, ok := ctx.Deadline(); ok {
 			sawDeadline.Store(true)
 		}
@@ -501,7 +502,7 @@ func TestToolCallIsStoppedAtTheDeadlineAndTheRunGoesOn(t *testing.T) {
 // keeps its result.
 func TestToolDeadlineLeavesCancellationAndLateSuccessAlone(t *testing.T) {
 	t.Run("late success is kept", func(t *testing.T) {
-		slow := fakeTool{name: "slow", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+		slow := fakeTool{name: "slow", readOnly: true, runCtx: func(ctx context.Context, _ *tools.Call) *tools.Result {
 			time.Sleep(300 * time.Millisecond) // ignores its context, finishes after the deadline
 			return &tools.Result{Text: "the work is done"}
 		}}
@@ -525,7 +526,7 @@ func TestToolDeadlineLeavesCancellationAndLateSuccessAlone(t *testing.T) {
 	})
 	t.Run("cancellation is not a timeout", func(t *testing.T) {
 		started := make(chan struct{})
-		hang := fakeTool{name: "hang", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+		hang := fakeTool{name: "hang", readOnly: true, runCtx: func(ctx context.Context, _ *tools.Call) *tools.Result {
 			close(started)
 			<-ctx.Done()
 			return tools.Errorf("interrupted")
@@ -540,7 +541,7 @@ func TestToolDeadlineLeavesCancellationAndLateSuccessAlone(t *testing.T) {
 	})
 	t.Run("negative turns the deadline off", func(t *testing.T) {
 		var hasDeadline atomic.Bool
-		probe := fakeTool{name: "probe", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+		probe := fakeTool{name: "probe", readOnly: true, runCtx: func(ctx context.Context, _ *tools.Call) *tools.Result {
 			_, ok := ctx.Deadline()
 			hasDeadline.Store(ok)
 			return &tools.Result{Text: "fine"}
@@ -555,7 +556,7 @@ func TestToolDeadlineLeavesCancellationAndLateSuccessAlone(t *testing.T) {
 	})
 	t.Run("the default is generous", func(t *testing.T) {
 		var limit atomic.Int64
-		probe := fakeTool{name: "probe", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+		probe := fakeTool{name: "probe", readOnly: true, runCtx: func(ctx context.Context, _ *tools.Call) *tools.Result {
 			if d, ok := ctx.Deadline(); ok {
 				limit.Store(int64(time.Until(d)))
 			}
@@ -570,4 +571,27 @@ func TestToolDeadlineLeavesCancellationAndLateSuccessAlone(t *testing.T) {
 			t.Fatalf("default deadline %v, want between 20 minutes and %v", got, agent.DefaultToolTimeout)
 		}
 	})
+}
+
+// An agent built without a permission Requester is denied everything (S46): forgetting to
+// wire the engine stops the tools that act, it does not open them.
+func TestAgentWithoutARequesterDeniesEverything(t *testing.T) {
+	var decision perm.Decision
+	var mu sync.Mutex
+	probe := fakeTool{name: "probe", readOnly: true, runCtx: func(ctx context.Context, c *tools.Call) *tools.Result {
+		d := c.Env.Perm.Check(ctx, perm.Request{Agent: c.Env.Agent, Tool: "bash", Command: "rm -rf ~", Writes: true})
+		mu.Lock()
+		decision = d
+		mu.Unlock()
+		return &tools.Result{Text: "asked"}
+	}}
+	r := newLimRig(t, nil, []fakeTool{probe}, toolCallOnce("probe")) // the rig sets no Perm
+	if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if decision.Allow || !strings.Contains(decision.Reason, "no permission policy") {
+		t.Fatalf("an agent with no Requester was allowed to act: %+v", decision)
+	}
 }

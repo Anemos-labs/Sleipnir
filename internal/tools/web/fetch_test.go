@@ -1251,12 +1251,17 @@ func TestFetchPermissionRequest(t *testing.T) {
 	})
 }
 
+// A call with no Env at all is tolerated, and fails closed: with no permission policy to ask,
+// nothing is fetched (S46).
 func TestNilEnv(t *testing.T) {
-	srv, _ := serve(t, "text/plain", "hi")
+	srv, hits := serve(t, "text/plain", "hi")
 	h := newHarness(t, allowAll)
 	res, err := h.tool.Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"url":"` + srv.URL + `"}`)})
-	if err != nil || res.IsError {
+	if err != nil || !res.IsError || !strings.Contains(res.Text, "no permission policy") {
 		t.Errorf("nil Env: %+v %v", res, err)
+	}
+	if hits.Load() != 0 {
+		t.Error("a fetch without a permission policy reached the server")
 	}
 }
 

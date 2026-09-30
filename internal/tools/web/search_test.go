@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
@@ -57,7 +58,7 @@ func runSearch(t *testing.T, b Backend, env *tools.Env, input any) *tools.Result
 		raw = bs
 	}
 	if env == nil {
-		env = &tools.Env{Agent: "a"}
+		env = &tools.Env{Agent: "a", Perm: perm.AllowAll{}}
 	}
 	res, err := (&searchTool{b: b}).Run(context.Background(), &tools.Call{ID: "s1", Name: "web_search", Input: raw, Env: env})
 	if err != nil {
@@ -212,15 +213,19 @@ func TestSearchErrorsAndPermission(t *testing.T) {
 		fb := &fakeBackend{block: make(chan struct{})}
 		ctx, cancel := context.WithCancel(context.Background())
 		time.AfterFunc(50*time.Millisecond, cancel)
-		res, err := (&searchTool{b: fb}).Run(ctx, &tools.Call{Input: json.RawMessage(`{"query":"q"}`), Env: &tools.Env{}})
+		res, err := (&searchTool{b: fb}).Run(ctx, &tools.Call{Input: json.RawMessage(`{"query":"q"}`), Env: &tools.Env{Perm: perm.AllowAll{}}})
 		if err != nil || !res.IsError {
 			t.Errorf("result = %+v %v", res, err)
 		}
 	})
-	t.Run("nil env", func(t *testing.T) {
-		res, err := (&searchTool{b: &fakeBackend{}}).Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"query":"q"}`)})
-		if err != nil || res.IsError {
+	t.Run("nil env fails closed", func(t *testing.T) {
+		fb := &fakeBackend{}
+		res, err := (&searchTool{b: fb}).Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"query":"q"}`)})
+		if err != nil || !res.IsError || !strings.Contains(res.Text, "no permission policy") {
 			t.Errorf("result = %+v %v", res, err)
+		}
+		if len(fb.queries) != 0 {
+			t.Error("a search without a permission policy reached the backend")
 		}
 	})
 }

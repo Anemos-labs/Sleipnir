@@ -247,3 +247,15 @@ anthropic: `TestStreamedThinkingIsNeverPartOfTheAnswerText` (`thinking_delta` an
 
 None. No stable prompt layer, tool list, request body or header changed: the changes are on the response side, in error
 handling and in configuration.
+
+## Integration follow-ups
+
+* **The tool-call bound sits above the agent's cap.** `DefaultMaxToolCalls` here was 128, the same number as the agent's per-turn cap (tranche 2 B, S24), so a
+  model that asked for 168 calls had its whole response dropped at the wire instead of getting the per-call refusal. The transport bound is 512 now and a test in
+  `internal/agent` (`TestTransportToolCallBoundSitsAboveTheAgentCap`) keeps it above the cap.
+* **The rollout server.** `rl serve` takes a policy endpoint and a key variable from each request; without a rule, that was the same hole as S45 with a
+  network client in front of it. The server now sends a key only to the hosts its operator listed (`--policy-host`, loopback always allowed) and only from
+  the variables listed (`--policy-key-env`; default none), and `rl rollout`/`rl eval`/`rl serve` take `--allow-insecure-http` for a policy server on a
+  trusted network (the harness passes the operator's word to the provider's endpoint check; a request never sets it).
+* **Documentation.** `docs/SECURITY.md` says where a key may go and how a response is bounded; `docs/CONFIGURATION.md` lists `allow_hosts`,
+  `allow_insecure_http` and the four `*_timeout_sec` options.

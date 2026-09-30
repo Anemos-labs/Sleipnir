@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/reee344/sleipnir/internal/core"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
@@ -236,7 +237,7 @@ func TestEnvDefaultsAreAppliedSafelyUnderConcurrency(t *testing.T) {
 	// parallel read-only calls share it: filling the defaults must not race.
 	dir := realTemp(t)
 	writeFile(t, filepath.Join(dir, "f.txt"), "x\n")
-	env := &tools.Env{Cwd: dir}
+	env := &tools.Env{Cwd: dir, Perm: perm.AllowAll{}}
 	var wg sync.WaitGroup
 	for i := 0; i < 32; i++ {
 		wg.Add(1)
@@ -407,7 +408,7 @@ func TestAllToolsWorkWithABareEnv(t *testing.T) {
 	// on the first call and later calls (same *Env) share that state, so the
 	// read-before-edit rule still works across calls.
 	dir := realTemp(t)
-	env := &tools.Env{Cwd: dir}
+	env := &tools.Env{Cwd: dir, Perm: perm.AllowAll{}}
 	mustOK(t, run(t, Write{}, env, map[string]any{"path": "a/b.txt", "content": "one\ntwo\n"}))
 	mustOK(t, run(t, Read{}, env, map[string]any{"path": "a/b.txt"}))
 	mustOK(t, run(t, Edit{}, env, map[string]any{"path": "a/b.txt", "old_string": "one", "new_string": "1"}))

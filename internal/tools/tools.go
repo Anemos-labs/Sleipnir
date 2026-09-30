@@ -136,7 +136,7 @@ func (e *Env) Defaults() *Env {
 		e.Guard = NoGuard{}
 	}
 	if e.Perm == nil {
-		e.Perm = perm.AllowAll{}
+		e.Perm = perm.DenyAll{} // fail closed: see perm.DenyAll
 	}
 	if e.Emit == nil {
 		e.Emit = events.Discard{}

@@ -192,6 +192,10 @@ type s40Report struct {
 	Direct string `json:"direct"`
 	Leak   string `json:"leak"`
 	OwnEnv bool   `json:"own_env"`
+	// Secret is whether harden.Secret still returns the key; Inherited what a child started with
+	// the harness's own environment (git, a hook, a verifier) sees of it.
+	Secret    bool   `json:"secret"`
+	Inherited string `json:"inherited"`
 }
 
 // TestSecS40Harness is the harness process of the repro; it does nothing unless it is started as one.
@@ -200,18 +204,50 @@ func TestSecS40Harness(t *testing.T) {
 	if mode == "" {
 		t.Skip("helper process for TestSec_S40_ProviderKeyIsNotReadableFromProcEnviron")
 	}
-	if mode == "hardened" {
-		harden.Process() // what main does before anything else
+	switch mode {
+	case "hardened":
+		harden.Process() // the environment erasure and the non-dumpable flag
+	case "moved":
+		harden.Process(harden.MoveKeys()) // what main does before anything else
 	}
 	h := secRevNew(t)
 	all := secRevPerm{allow: map[string]bool{"be-1": true}}
 	direct := h.run("be-1", all, "bash", map[string]any{"command": "env | grep -c HEIMDALL_API_KEY || true"})
 	leak := h.run("be-1", all, "bash", map[string]any{"command": `tr '\0' '\n' < /proc/$PPID/environ | grep HEIMDALL_API_KEY`})
-	b, err := json.Marshal(s40Report{Direct: direct.Text, Leak: leak.Text, OwnEnv: os.Getenv("HEIMDALL_API_KEY") == s40Key})
+	inherited, _ := exec.Command("printenv", "HEIMDALL_API_KEY").Output() // nil Env: inherits ours, like git or a hook
+	b, err := json.Marshal(s40Report{
+		Direct: direct.Text, Leak: leak.Text, OwnEnv: os.Getenv("HEIMDALL_API_KEY") == s40Key,
+		Secret: harden.Secret("HEIMDALL_API_KEY") == s40Key, Inherited: strings.TrimSpace(string(inherited)),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	os.Stdout.WriteString("\nS40-REPORT " + string(b) + "\n")
+}
+
+// With MoveKeys, which is what main does, the key is in no environment at all: not the kernel's copy, not the
+// harness's own, so no command it starts by inheriting (git, hooks, verifiers, MCP servers) receives it. The harness
+// still has it, through harden.Secret.
+func TestSec_S40_AHeldKeyIsInNoEnvironmentAndStillReadable(t *testing.T) {
+	if _, err := os.Stat("/proc/self/environ"); err != nil {
+		t.Skip("no /proc")
+	}
+	if _, err := exec.LookPath("printenv"); err != nil {
+		t.Skip("no printenv")
+	}
+	h := runS40Harness(t, "moved")
+	if strings.Contains(h.Leak, s40Key) {
+		t.Errorf("S40: the key is readable through /proc/$PPID/environ of a harness that holds it")
+	}
+	if h.OwnEnv || h.Inherited != "" {
+		t.Errorf("S40: the key is still in the environment (os.Getenv: %v, inherited by a child: %q)", h.OwnEnv, h.Inherited)
+	}
+	if !h.Secret {
+		t.Error("S40: the harness lost its own key")
+	}
+	if h.Direct == "" || !strings.Contains(h.Direct, "0") {
+		t.Errorf("S40: a command's own environment holds the key: %q", h.Direct)
+	}
 }
 
 func runS40Harness(t *testing.T, mode string) s40Report {

@@ -132,6 +132,7 @@ Settings that could send your API key to another host, run commands or widen wha
 | `providers.<name>.api_key_env` | chooses which environment variable is sent |
 | `providers.<name>.headers` | can add credentials or route requests |
 | `providers.<name>.options` | provider-specific behaviour, may hold URLs |
+| `providers.<name>.allow_hosts`, `.allow_insecure_http` | say where your key may go: dropped from **every** project layer, trusted or not (section 6) |
 | `permissions.mode` | `bypass` turns off every prompt |
 | `permissions.allow` | pre-approves actions |
 | `permissions.roles.<role>.mode`, `.allow` | the same, per role |
@@ -192,8 +193,8 @@ gated key is yours, not the repository's, so the trust gate does not apply to it
 
 | Variable | Used for |
 |---|---|
-| the variable named by a provider's `api_key_env` | the API key. Built-in providers: `HEIMDALL_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`. Hooks never receive it; shell commands do not receive variables whose names look like credentials, so name yours `..._API_KEY` |
-| `<NAME>_BASE_URL` | overrides the `base_url` of provider `<NAME>` (upper-cased, `-` becomes `_`): `HEIMDALL_BASE_URL`, `OPENROUTER_BASE_URL`, `OPENAI_BASE_URL`, `LOCAL_BASE_URL`. Applies to configured providers too |
+| the variable named by a provider's `api_key_env` | the API key. Built-in providers: `HEIMDALL_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`. At start-up the harness moves every `*_API_KEY` variable (and any other variable a provider names) out of its own environment into memory, so nothing it starts (git, hooks, verifiers, MCP servers, the agent's shell) inherits it; name yours `..._API_KEY` |
+| `<NAME>_BASE_URL` | overrides the `base_url` of provider `<NAME>` (upper-cased, `-` becomes `_`): `HEIMDALL_BASE_URL`, `OPENROUTER_BASE_URL`, `OPENAI_BASE_URL`, `LOCAL_BASE_URL`. Applies to configured providers too. The environment is not your word (a `.envrc` or a CI job can set it), so the key follows an override only to the provider's own host, to loopback, or to a host in `allow_hosts`; anything else is refused with the line of configuration that would allow it |
 | `SLEIPNIR_HOME` | the state directory (default `~/.sleipnir`): `sessions/`, `cache/`, `rl-work/` |
 | `SLEIPNIR_INSPECT_TOKEN` | access token for `sleipnir inspect` on a non-loopback address |
 | `BRAVE_API_KEY`, `TAVILY_API_KEY`, `SEARXNG_URL` | enable the `web_search` tool (the first one set wins, in this order); without one only `web_fetch` exists |
@@ -218,13 +219,16 @@ An object of named endpoints. A name may not be empty, contain whitespace or con
 | `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | `session_header`; header `X-Title: Sleipnir` |
 | `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` | `cache_key_body` |
 
-A configured provider with the same name replaces the built-in one entirely (no field-by-field merge with the
-built-in).
+A configured entry with the same name and **its own `base_url`** replaces the built-in one entirely: it defines the provider outright and
+inherits nothing, in particular not the built-in key variable. An entry with **no `base_url`** (typically one that only sets `allow_hosts`) extends
+the built-in provider: its URL, dialect, key variable, options and headers stay.
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
 | `dialect` | string | `openai-chat` | yes | The wire protocol: `openai-chat` (OpenAI-style chat completions) or `anthropic` (Messages API). `openai-responses` passes validation but the adapter is not built yet: a session that uses it stops with an error that says so |
-| `base_url` | string | none | yes | Absolute http(s) URL, required for every provider that is not built in. `openai-chat` posts to `<base_url>/chat/completions`. `anthropic` posts to `<base_url>/v1/messages`, or to `<base_url>/messages` when the URL already ends in `/v1`. A trailing `/` is ignored. Plain `http://` to a host that is not loopback, or credentials inside the URL, produce a warning |
+| `base_url` | string | none | yes | Absolute http(s) URL, required for every provider that is not built in. `openai-chat` posts to `<base_url>/chat/completions`. `anthropic` posts to `<base_url>/v1/messages`, or to `<base_url>/messages` when the URL already ends in `/v1`. A trailing `/` is ignored. Credentials inside the URL produce a warning. A key is sent over `https`, or over plain `http` to loopback only, unless `allow_insecure_http` says otherwise; a redirect is followed only within the original scheme, host and port |
+| `allow_hosts` | list of strings | none | yes | **User file only.** Hosts, besides the provider's own, that may receive its key when the URL arrives through the environment (`<NAME>_BASE_URL`) or a project file: `"gateway.example.com"` or `"gateway.example.com:8443"`, case-insensitive. A refusal prints the exact snippet to add |
+| `allow_insecure_http` | bool | `false` | yes | **User file only.** Lets the key travel over plain `http` to a host that is not this machine (a trusted LAN proxy). Warned about by `sleipnir config` |
 | `api_key_env` | string | none | yes | The **name** of the environment variable holding the key. If set and the variable is empty when a session starts: `provider "x" needs NAME to be set`. If omitted, no credential header is sent (local servers). `openai-chat` sends `Authorization: Bearer <key>`; `anthropic` sends `x-api-key: <key>` unless `options.auth_style` is `bearer` |
 | `headers` | object of strings | none | yes | Extra headers on every request. Names must be valid HTTP tokens, values may not contain CR, LF or NUL. On `anthropic`, an `anthropic-beta` header is merged with the betas the adapter needs instead of replacing them |
 | `options` | object | none | yes | Dialect-specific request options, section 7. The values are **not validated**: an unknown key or a value of the wrong type is ignored without a warning |
@@ -356,6 +360,15 @@ endpoint.
 | `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
+
+Both dialects also take the timeouts below. A silent server is cut off, so no request holds an agent for ever.
+
+| Option | Type | Default | Effect |
+|---|---|---|---|
+| `first_byte_timeout_sec` | number | `120` (the idle value when only that is set) | How long a request may wait for the first byte of the response body. Headers alone do not count. A request that gets no response twice is not retried again |
+| `stream_idle_timeout_sec` | number | `60` | The longest silence inside a stream. Keep-alive comments and pings count as activity |
+| `stream_timeout_sec` | number | `1800` | The whole of one streamed response. Raise it for a slow self-hosted model that writes very long answers |
+| `request_timeout_sec` | number | `600` | A call that is not streamed (at most a day) |
 
 ### Options of `anthropic`
 

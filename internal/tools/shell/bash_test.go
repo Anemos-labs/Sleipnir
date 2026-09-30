@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/reee344/sleipnir/internal/core"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
@@ -432,12 +433,12 @@ func TestNilAndBareEnv(t *testing.T) {
 		t.Errorf("nil env: %+v %v", res, err)
 	}
 	// Optional Env fields may all be nil.
-	res, err = tool.Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"command":"echo hi"}`), Env: &tools.Env{Cwd: h.root}})
+	res, err = tool.Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"command":"echo hi"}`), Env: &tools.Env{Cwd: h.root, Perm: perm.AllowAll{}}})
 	if err != nil || res.IsError || res.Text != "hi\n[exit code 0]" {
 		t.Errorf("bare env: %+v %v", res, err)
 	}
 	// With only Root set, it is the working directory.
-	res, _ = tool.Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"command":"pwd"}`), Env: &tools.Env{Root: h.root}})
+	res, _ = tool.Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"command":"pwd"}`), Env: &tools.Env{Root: h.root, Perm: perm.AllowAll{}}})
 	if res.Text != h.root+"\n[exit code 0]" {
 		t.Errorf("root-only env: %+v", res)
 	}

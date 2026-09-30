@@ -12,60 +12,64 @@ and, as they landed during the review, `perm/*` and `tools/web/guard.go` (see se
 Severity scale: **blocker** = fix before the harness is pointed at any repository/PR/page you do not control;
 **high** = fix before multi-agent runs; **medium** = fix before unattended or long runs; **low** = hardening.
 
-**Status (2026-09-30, tranche 1).** F1 (`internal/memory`) and the state-integrity part of F12 (`internal/events`, `internal/checkpoint`)
-are fixed; each finding has a "Resolution" note below. Still open in tranche 1's packages: S44 (trust marker, session-level),
-the write-time redaction half of S35 (needs a policy decision and session wiring) and where the state directory lives (session-level).
-F2-F11 and F13-F18 are untouched.
+**Status (2026-09-30, after tranche 2).** Every finding in this review is fixed except the pieces listed under "Still open" at the end
+of this paragraph. Each finding below has a "Resolution" note; the work landed in four steps, each with its own record:
+tranche 1 (`internal/memory`, `internal/events`, `internal/checkpoint`: F1, F12), the swarm tranche (`internal/swarm`: F2, F5, F6, F8, F9;
+`docs/reviews/swarm-concurrency.md`), tranche 2 A (`docs/reviews/tranche2-a.md`: the model transport, F10, F13), B (`tranche2-b.md`: the
+context engine and the agent loop, F3, F4, F14, F15, F16) and C (`tranche2-c.md`: tools, events, permissions, F7, F11, F12, F18), and the integration
+that followed them: S46 (F17: `perm.DenyAll`, no constructor defaults to allow-all any more), the swarm kickoff origin (S22: `core.OriginTask`, so the
+harness's own task text is never pinned as the user's word), provider keys held out of the environment (`harden.MoveKeys` is on, every reader
+goes through `harden.Secret`), the rollout server's policy allow-lists, and a per-call tool deadline. `docs/SECURITY.md` is the model these fixes add up to.
+
+Still open: the swarm governor's per-slot maximum hold, non-zero default budgets and the mail-wake budgets (the rest of F10; a slot is held at most
+30 minutes by a trickling server or about 4 minutes by a silent one, see `tranche2-a.md`), a read-only role's `bash_output`/`bash_kill` are gated by the engine
+but not denied by name in the role profiles (S38, residual), and in-range lies from an endpoint (a gateway reporting `cost: 0` while charging, a
+halved catalogue price) cannot be detected on the client.
 
 ## 0. How to reproduce
 
 I added 15 test files named `security*_review_test.go` (list in section 4). Two kinds of tests:
 
-* `TestSecReview_S##_*` (61 tests when the review was written): gated behind `SLEIPNIR_REVIEW=1`. Each asserts the **secure** behaviour, so it
-  **fails while the finding is open** and turns green when fixed (then delete its gate line). Default `go test` skips them, so the tree
-  stays green. Tranche 1 fixed S33, S34, S35 (permissions), S36, S37, S41, S42 and S43 and removed their gates (they are now ordinary regression
-  tests, together with the extra tests the fixes needed); S35's redaction half was decided (log verbatim and private, redaction at export) and S44 was fixed at integration. 52 gated repros remain.
+* `TestSecReview_S##_*` (61 tests when the review was written): were gated behind `SLEIPNIR_REVIEW=1`. Each asserted the **secure** behaviour, so it
+  **failed while the finding was open** and turned green when fixed. All of them are fixed: the gates are gone and the tests are ordinary regression tests
+  named `TestSec_S##_*` (with the extra tests each fix needed). Default `go test` runs them all. The `Repro` lines in the findings below record how each
+  was reproduced at the time: read `TestSec_` for `TestSecReview_` and drop `SLEIPNIR_REVIEW=1`.
 * `TestSecSound_*` (13 tests when the review was written, 21 now): always on. Regression checks for behaviour the review found sound.
-* **Swarm tranche (2026-09-30):** S10a-c, S11, S12a-b, S13a-c, S14-S21, S23 and S26b (the governor's `Retry-After` ceiling) are fixed in
-  `internal/swarm` and their repros are now ungated regression tests named `TestSec_S##_*` (S18 now asserts the refusal of over-cap reuse instead of
-  the bypass). What the swarm cannot fix alone: S22b (the constitution in `agent/prompt.go` must say that mail, board text and other agents' status are
-  untrusted peer data), S26a/S26c (the provider client and `agent.backoff` must cap `Retry-After` too), S48b for the agent's own detached compaction goroutine.
+* **Swarm tranche (2026-09-30):** S10a-c, S11, S12a-b, S13a-c, S14-S21, S23 and S26b (the governor's `Retry-After` ceiling) were fixed in
+  `internal/swarm` (S18 now asserts the refusal of over-cap reuse instead of the bypass). The parts the swarm could not fix alone landed in
+  tranche 2: S22b (the constitution says that mail, board text and other agents' status are untrusted peer data), S26a/S26c (one shared, capped
+  `Retry-After` parser), S48b (the agent's own detached compaction job is tracked and closable).
 
 ```
-# the repros that are still gated: every one currently FAILS (= finding reproduced)
-# (in internal/memory, internal/events and internal/checkpoint that is S44 and S35b only)
-SLEIPNIR_REVIEW=1 HEIMDALL_API_KEY=sk-review-canary go test -count=1 -run TestSecReview \
-  ./internal/kv ./internal/swarm ./internal/agent ./internal/events ./internal/provider/... \
-  ./internal/memory ./internal/tools/... ./internal/checkpoint ./cmd/sleipnir
-# regression checks that must stay green
-go test -race -count=1 -run TestSecSound ./internal/...
+go test -race -count=1 -run 'TestSec' ./...        # every repro, now an ordinary regression test (TestSec_S##_*, TestSecSound_*)
+go test -race -count=1 ./...                       # the whole suite
 ```
 
-`HEIMDALL_API_KEY=sk-review-canary` is only needed by S40 (it must be in the initial `/proc/self/environ`; the test refuses any value
-that does not start with `sk-review-`, so a real key is never used or logged). The always-on checks and the end-to-end repros (S18, S19, S23, S25, S24) ran clean under `-race`.
+The S40 test starts a helper process of its own with a canary key in its initial environment (a value that starts with `sk-review-`, so it can never
+be a real key) and reads `/proc/$PPID/environ` from a command the helper's shell tool runs; it needs nothing from your environment.
 
 ## 1. Ranked summary
 
 | # | Sev | Finding | Repro |
 |---|---|---|---|
-| F1 | blocker | **Fixed in tranche 1 except S44.** A hostile repository reaches the shared prompt layer with no model involvement: symlinked `AGENTS.md` reads any file (private keys), `@import` reaches any `.md/.txt` under `$HOME`, invisible Unicode survives, no trust gate | S41-S44 |
-| F2 | blocker | The read-only role gate (`readOnlyCommand`) is bypassed by `git status; ...`, a newline, `find -delete`, `go test -exec`, `rg --pre`, ...; it is the only enforced permission today | S10a-c |
-| F3 | high | A compactor patch (LLM output steerable by tool output) can rewrite/erase `notes.instructions`, the section the constitution says to *follow*, and `promote` reaches every agent's board | S01, S25, S03a-c |
-| F4 | high | No structural escaping: layers, compactor brief, mail, status lines, alerts, task text can forge `</my-notes>`, `<live>`, `<compactor-task>`, `[mail ... from mgr]` | S02, S49, S14, S23 |
-| F5 | high | Swarm broadcast channels are unauthenticated and uncapped: `note`, status line (tool arguments), lease alerts, task titles; constitution does not mark mail/board as untrusted | S13a, S15, S16, S22, S22b |
-| F6 | high | "The harness decides" is advisory: verifier is opt-in, scope is never enforced at write, writer cap bypassed by reuse, evidence is regexp over command text | S19, S12a/b, S18, S17, S11, S20 |
-| F7 | high | The provider API key is readable by the model through `/proc/$PPID/environ` even though it is scrubbed from `env`; scrub list is a name heuristic | S40, S39 |
-| F8 | high | One agent can freeze every agent's request path: unbounded `notes`/`tasks` make `RenderHot` O(n²) (2.6 s per request at 5k notes) | S13a-c |
-| F9 | medium | Hostile/buggy `Retry-After` pauses the whole swarm indefinitely (uncapped, overflows) | S26a-c |
-| F10 | medium | Budgets fail open: negative/NaN usage, cost and catalogue prices; no default budget | S28, S28b |
-| F11 | medium | `bash_output`/`bash_kill` never consult permissions; jobs are session-wide (read-only role can read/kill others' jobs) | S38 |
-| F12 | medium | **Fixed in tranche 1 except redaction and state location.** Session state: world-readable, inside the workspace, unverified blobs, latent path traversal, log truncation on mid-file damage, forged checkpoint restore, no redaction | S33-S37 |
-| F13 | medium | Provider transport: redirects replay prompt + custom headers, `http://` + env base URL, unbounded stream, unsanitised error text | S27, S30, S31, S45 |
-| F14 | medium | Context resource limits: no per-turn tool-result budget (1.4 MB in one turn), oversized newest unit is unrecoverable, archive index 5 KB/turn RAM and O(n) `Put`, `recall` decodes the whole archive | S24, S06, S05, S04, S08, S47 |
-| F15 | medium | `MechanicalPatch` panics on an empty thread; goroutines that run agents/compactors have no `recover` | S48, S48b |
-| F16 | medium | User-instruction preservation is weaker than documented (600-token cap, user-origin task titles, steering shares `OriginMail`) | S07, S22 |
-| F17 | medium | Permission defaults fail open (`AllowAll` in three constructors) | S46 |
-| F18 | low | Handle collisions, `wait` spin, glob matcher O(P*N^2) on hostile `.gitignore`, no per-tool deadline, router map growth, lease squat, cache-key fingerprint, races on `member.task`/`s.manager`, terminal escapes, ... | S32, S21, S16, S50 |
+| F1 | blocker | **Fixed** (tranche 1; S44 at integration). A hostile repository reaches the shared prompt layer with no model involvement: symlinked `AGENTS.md` reads any file (private keys), `@import` reaches any `.md/.txt` under `$HOME`, invisible Unicode survives, no trust gate | S41-S44 |
+| F2 | blocker | **Fixed** (swarm tranche: the role profile goes through the permission engine). The read-only role gate (`readOnlyCommand`) is bypassed by `git status; ...`, a newline, `find -delete`, `go test -exec`, `rg --pre`, ...; it is the only enforced permission today | S10a-c |
+| F3 | high | **Fixed** (tranche 2 B: a compactor may write only its own sections; the harness owns `instructions` and `assignment`). A compactor patch (LLM output steerable by tool output) can rewrite/erase `notes.instructions`, the section the constitution says to *follow*, and `promote` reaches every agent's board | S01, S25, S03a-c |
+| F4 | high | **Fixed** (tranche 2 B: `kv.EscapeUntrusted`, `GuardFrame`; swarm tranche for mail, status lines, alerts and task text). No structural escaping: layers, compactor brief, mail, status lines, alerts, task text can forge `</my-notes>`, `<live>`, `<compactor-task>`, `[mail ... from mgr]` | S02, S49, S14, S23 |
+| F5 | high | **Fixed** (swarm tranche; constitution wording in tranche 2 B). Swarm broadcast channels are unauthenticated and uncapped: `note`, status line (tool arguments), lease alerts, task titles; constitution does not mark mail/board as untrusted | S13a, S15, S16, S22, S22b |
+| F6 | high | **Fixed** (swarm tranche: verifier-gated done, scope enforced at write, evidence observed by the harness). "The harness decides" is advisory: verifier is opt-in, scope is never enforced at write, writer cap bypassed by reuse, evidence is regexp over command text | S19, S12a/b, S18, S17, S11, S20 |
+| F7 | high | **Fixed** (tranche 2 C: `internal/harden`; at integration `MoveKeys` is on and every reader uses `harden.Secret`). The provider API key is readable by the model through `/proc/$PPID/environ` even though it is scrubbed from `env`; scrub list is a name heuristic | S40, S39 |
+| F8 | high | **Fixed** (swarm tranche: the hot view is bounded and linear). One agent can freeze every agent's request path: unbounded `notes`/`tasks` make `RenderHot` O(n²) (2.6 s per request at 5k notes) | S13a-c |
+| F9 | medium | **Fixed** (swarm governor ceiling; one shared, capped `ParseRetryAfter`). Hostile/buggy `Retry-After` pauses the whole swarm indefinitely (uncapped, overflows) | S26a-c |
+| F10 | medium | **Fixed except default budgets and mail-wake budgets** (tranche 2 A: usage, cost and catalogue validation). Budgets fail open: negative/NaN usage, cost and catalogue prices; no default budget | S28, S28b |
+| F11 | medium | **Fixed** (tranche 2 C: the job tools ask the engine about other agents' jobs; residual: read-only role profiles do not deny them by name). `bash_output`/`bash_kill` never consult permissions; jobs are session-wide (read-only role can read/kill others' jobs) | S38 |
+| F12 | medium | **Fixed** (tranche 1 and 2 C; redaction happens at export). Session state: world-readable, inside the workspace, unverified blobs, latent path traversal, log truncation on mid-file damage, forged checkpoint restore, no redaction | S33-S37 |
+| F13 | medium | **Fixed** (tranche 2 A). Provider transport: redirects replay prompt + custom headers, `http://` + env base URL, unbounded stream, unsanitised error text | S27, S30, S31, S45 |
+| F14 | medium | **Fixed** (tranche 2 B). Context resource limits: no per-turn tool-result budget (1.4 MB in one turn), oversized newest unit is unrecoverable, archive index 5 KB/turn RAM and O(n) `Put`, `recall` decodes the whole archive | S24, S06, S05, S04, S08, S47 |
+| F15 | medium | **Fixed** (tranche 2 B). `MechanicalPatch` panics on an empty thread; goroutines that run agents/compactors have no `recover` | S48, S48b |
+| F16 | medium | **Fixed** (tranche 2 B: bounds; at integration `core.OriginTask` for swarm kickoffs). User-instruction preservation is weaker than documented (600-token cap, user-origin task titles, steering shares `OriginMail`) | S07, S22 |
+| F17 | medium | **Fixed** (`perm.DenyAll`: no constructor defaults to allow-all). Permission defaults fail open (`AllowAll` in three constructors) | S46 |
+| F18 | low | **Fixed or bounded** (swarm tranche, tranche 2 C, and a per-call tool deadline at integration). Handle collisions, `wait` spin, glob matcher O(P*N^2) on hostile `.gitignore`, no per-tool deadline, router map growth, lease squat, cache-key fingerprint, races on `member.task`/`s.manager`, terminal escapes, ... | S32, S21, S16, S50 |
 
 Quick wins (each under ~30 lines): F2 (delegate to `perm.Engine` plan-mode role profile, acceptance test already passes), F3 key allowlist
 + separate harness-only instructions segment, F4 `escapeForLayer`, F9 `RetryAfter` ceiling, F10 clamp/NaN checks, F12 hash-verify on `Get`
@@ -537,7 +541,7 @@ Missing hooks, each small:
 
 ## 4. Test index
 
-| Files (all `*_review_test.go`) | Gated repros (fail = open) | Always-on checks |
+| Files (all `*_review_test.go`) | Repros (were gated; every one is fixed and runs by default) | Always-on checks |
 |---|---|---|
 | `internal/kv/security_review_test.go` | S01, S02, S03a-c, S04, S05, S06, S07, S08, S47, S48, S49 | ParsePatch adversarial shapes (16 hostile inputs incl. 1M-deep nesting, 8 MB strings, int overflow, duplicate keys, NULs, lone surrogates: no panic, < 2 s), 3,000 random patches never panic and always yield a `Validate`-clean replacement |
 | `internal/swarm/security_review_test.go` | S10a-c, S11, S12a-b, S13a-c, S14, S15, S16, S17, S20, S21, S22, S26b | mail router boundaries (no broadcast/self/unknown/oversize/duplicate, per-pair limit), role and ownership checks in coordination tools |
@@ -546,17 +550,17 @@ Missing hooks, each small:
 | `internal/agent/security_internal_review_test.go` | S26c | |
 | `internal/provider/openaichat/security_review_test.go` | S26a, S27, S28, S29, S30, S31 | API key only in the `Authorization` header (never URL/error/String), stream parser survives garbage frames |
 | `internal/provider/gateway/security_review_test.go` | S28b | |
-| `internal/events/security_review_test.go`, `special_unix_test.go` | S35b (redaction; S33-S36 fixed, now ungated) | torn tail repaired and seq continues; blob Put idempotent, blob files 0600; concurrent Put/Get under vandalism never serves wrong bytes; `GetMax`; `ValidHash` |
-| `internal/checkpoint/security_review_test.go`, `security_unix_review_test.go` | none (S37 fixed, now ungated) | legitimate rewinds (incl. links inside the project) unaffected |
-| `internal/memory/security_review_test.go` | S44 (S41-S43 fixed, now ungated) | import restrictions (outside root, symlink out, `~/.ssh`, `/etc/passwd`, non-text ext) and HTML-comment stripping hold; visible text untouched by the stripper; every smuggling block classified; a cwd outside the root brings nothing; reported problems bounded |
+| `internal/events/security_review_test.go`, `special_unix_test.go` | S33-S36 (S35b, redaction, was decided: the log is verbatim and private, redaction happens at export) | torn tail repaired and seq continues; blob Put idempotent, blob files 0600; concurrent Put/Get under vandalism never serves wrong bytes; `GetMax`; `ValidHash` |
+| `internal/checkpoint/security_review_test.go`, `security_unix_review_test.go` | S37 | legitimate rewinds (incl. links inside the project) unaffected |
+| `internal/memory/security_review_test.go` | S41-S44 | import restrictions (outside root, symlink out, `~/.ssh`, `/etc/passwd`, non-text ext) and HTML-comment stripping hold; visible text untouched by the stripper; every smuggling block classified; a cwd outside the root brings nothing; reported problems bounded |
 | `internal/tools/security_review_test.go` | S32, S46 | |
 | `internal/tools/fs/security_review_test.go` | S50 | |
 | `internal/tools/shell/security_review_test.go` | S38, S39, S40 | cwd cannot escape the root through `cd`/symlink; ANSI/OSC sequences and >3 MB output are sanitised/bounded |
 | `internal/perm/security_review_test.go` | | plan-mode role profile denies every S10 bypass and keeps read-only commands allowed (acceptance test for F2) |
 | `cmd/sleipnir/security_review_test.go` | S45 | |
 
-Observed output of the full gated run when the review was written: 61 of 61 repros failed (all findings reproduced); always-on checks passed under `-race`.
-After tranche 1: `go test -race -count=1 ./internal/memory/... ./internal/events/... ./internal/checkpoint/...` is green; with `SLEIPNIR_REVIEW=1` the only failures in those packages are S44, S35b and the two open repros of the concurrency review in `events/log_review_test.go`.
+When the review was written, 61 of 61 gated repros failed (all findings reproduced) and the always-on checks passed under `-race`. After tranche 2 and the
+integration that followed it, none is gated: the repros are named `TestSec_S##_*` and `go test -race -count=1 ./...` runs them with everything else.
 
 ## 5. Things I checked and found sound
 

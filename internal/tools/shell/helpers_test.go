@@ -76,7 +76,7 @@ func (o *outLog) get() (stdout, stderr string, calls int) {
 // env returns an agent's Env. Like the real one it is created once per agent
 // and reused across calls.
 func (h *harness) env(agent string) *tools.Env {
-	return &tools.Env{Agent: agent, Cwd: h.root, Root: h.root, Blobs: h.blobs, Emit: h.log}
+	return &tools.Env{Agent: agent, Cwd: h.root, Root: h.root, Blobs: h.blobs, Emit: h.log, Perm: perm.AllowAll{}} // the tests are about the tool, not the policy
 }
 
 func (h *harness) call(ctx context.Context, env *tools.Env, name string, input any) *tools.Result {

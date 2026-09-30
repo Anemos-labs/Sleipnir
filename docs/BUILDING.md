@@ -8,11 +8,13 @@ version of "how code here is written". Read it before touching a package.
 
 - `go env -w GOTOOLCHAIN=local` (already set in the dev container). Do not let tooling
   bump the `go` directive in `go.mod`; it must stay `1.24`.
-- Do not edit `go.mod` / `go.sum`. Allowed non-stdlib deps are already declared:
+- Do not edit `go.mod` / `go.sum` without a reason. Allowed non-stdlib deps are already declared:
   `golang.org/x/net`, `golang.org/x/sys`, `golang.org/x/term`. If you believe another
-  dependency is essential, write a stdlib fallback and say so in your report.
-- Check your work with: `gofmt -l ./internal` (must print nothing), `go vet ./...`,
-  `go test -race -count=1 ./<your packages>/...`.
+  dependency is essential, write a stdlib fallback and say so in your report. CI runs
+  `go mod tidy -diff`, so a change that leaves the files untidy fails.
+- Check your work with: `gofmt -l cmd internal` (must print nothing), `go vet ./...`,
+  `go test -race -count=1 ./<your packages>/...`. `scripts/check.sh` runs what CI runs
+  (format, tidy, vet, build, race tests, cross-compiles).
 
 ## Layout
 
@@ -45,6 +47,7 @@ internal/tools          tool contract and shared helpers: output truncation with
   tools/recall          pages folded context back in
   tools/skilltool       loads a skill's full text on demand
 
+internal/harden         makes the harness process opaque to the commands it runs: non-dumpable, environment erasure, provider keys held in memory
 internal/perm           the permission engine: modes, rules, shell-syntax analysis, role profiles
 internal/shellparse     small, defensive analyser for shell command lines
 internal/checkpoint     pre-modification file snapshots, for diff and rewind
@@ -64,7 +67,7 @@ internal/demo           the scripted team behind `sleipnir demo`, run against th
 
 internal/workspace      isolates writers from each other and integrates their work; not wired into sessions yet
 internal/gitx           the only gateway to the git binary: typed helpers over one hardened process runner
-internal/mcp            Model Context Protocol client; not wired into sessions yet
+internal/mcp            Model Context Protocol client: servers from configuration, per-entry approval of project servers, tools frozen per session
   mcp/mcptest           small MCP server used to test the client
 
 internal/rl             RL vocabulary: the harness as an environment

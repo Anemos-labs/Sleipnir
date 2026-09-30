@@ -2,12 +2,11 @@ package swarm
 
 // Chaos, throttle and end-to-end tests (docs/reviews/swarm-concurrency.md): real
 // agent runs over a fake provider while spawn/reuse/retire/mail race each other,
-// the status throttle, and the real fs tools under stolen leases. TestConc_* that
-// remain are repros of findings that live in other packages (they assert the
-// correct behaviour and are gated behind SLEIPNIR_REVIEW=1); TestConcSound_* cover
-// behaviour the review found sound.
+// the status throttle, and the real fs tools under stolen leases. TestConc_* are
+// the repros of that review's findings, all fixed and ungated now; TestConcSound_*
+// cover behaviour the review found sound.
 //
-//	SLEIPNIR_REVIEW=1 go test -race -count=1 -run 'TestConc_' ./internal/swarm
+//	go test -race -count=1 -run 'TestConc' ./internal/swarm
 
 import (
 	"context"
@@ -27,6 +26,7 @@ import (
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
 	"github.com/reee344/sleipnir/internal/tools/fs"
 )
@@ -339,7 +339,7 @@ func TestConcSound_StolenLeasesStillCannotLoseAnEdit(t *testing.T) {
 		wg.Add(1)
 		go func(a int) {
 			defer wg.Done()
-			env := (&tools.Env{Agent: fmt.Sprintf("a%d", a), Cwd: dir, Root: dir, Files: files, Guard: guard, Blobs: blobs}).Defaults()
+			env := (&tools.Env{Agent: fmt.Sprintf("a%d", a), Cwd: dir, Root: dir, Files: files, Guard: guard, Blobs: blobs, Perm: perm.AllowAll{}}).Defaults()
 			for n := 0; n < per; {
 				in, _ := json.Marshal(map[string]any{"path": path})
 				if res, _ := read.Run(context.Background(), &tools.Call{Input: in, Env: env}); res.IsError {

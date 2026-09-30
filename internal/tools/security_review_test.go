@@ -1,12 +1,10 @@
 package tools
 
-// Security review repros for docs/reviews/security-robustness.md. S46 is still open and gated
-// (SLEIPNIR_REVIEW=1, asserts the SECURE behaviour and fails while the finding is open). S32 is
-// fixed and is an ordinary regression test.
+// Security review repros for docs/reviews/security-robustness.md (S32, S46), fixed and now
+// ordinary regression tests.
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 
@@ -40,13 +38,10 @@ func TestSec_S32_DistinctBlobsNeverShareAHandle(t *testing.T) {
 	}
 }
 
-// S46: the permission engine is an interface with exactly one implementation today (AllowAll) and
-// every constructor defaults a missing Requester to it (tools.Env.Defaults, agent.New,
-// swarm.buildAgent), so forgetting to wire one silently disables all permission checks.
-func TestSecReview_S46_MissingRequesterDefaultsToAllowAll(t *testing.T) {
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("security-review repro: set SLEIPNIR_REVIEW=1")
-	}
+// S46: every constructor used to default a missing Requester to allow-all (tools.Env.Defaults,
+// agent.New, swarm members), so forgetting to wire one silently disabled all permission checks.
+// The default is deny now (perm.DenyAll).
+func TestSec_S46_MissingRequesterDeniesEverything(t *testing.T) {
 	env := (&Env{Agent: "be-1"}).Defaults()
 	d := env.Perm.Check(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: "rm -rf ~", Writes: true})
 	if d.Allow {

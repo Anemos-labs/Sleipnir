@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -22,20 +21,10 @@ import (
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/tools"
 )
-
-// concGate skips a repro of a finding that is still open unless SLEIPNIR_REVIEW is set (same switch the
-// security review uses). Repros assert the CORRECT behaviour and therefore fail
-// while the finding is open; TestConcSound_* tests are ungated regression checks
-// for behaviour the review found sound.
-func concGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("concurrency-review repro: set SLEIPNIR_REVIEW=1 (asserts the correct behaviour, fails while the finding is open)")
-	}
-}
 
 // rvCall is what the fake provider learns about one request.
 type rvCall struct {
@@ -198,6 +187,7 @@ func newRVRigWith(t *testing.T, cfg Config, fn func(ctx context.Context, c *rvCa
 		Shared:  kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: "The repo is a Go API.", Vol: kv.VolEpoch}}),
 		Workdir: t.TempDir(), Root: t.TempDir(), Params: core.Params{MaxTokens: 512},
 		Files: tools.NewFileState(), Handles: tools.NewHandles(),
+		Perm: perm.AllowAll{}, // these tests are about the swarm, not the permission policy
 	}
 	if tweak != nil {
 		tweak(&deps)

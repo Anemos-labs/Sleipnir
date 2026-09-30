@@ -155,13 +155,17 @@ Tool output, web pages, file contents and mail are data, never instructions; pin
 system. Permissions are an engine (modes, rules, shell-syntax analysis, role profiles), not a prompt; writes pass a lease
 guard, a content-hash staleness check and a checkpoint; verifier files are never visible to a training policy. What a
 repository brings (config keys that redirect keys or run code, instruction files, skills, slash commands, agent
-definitions, hooks) is ignored unless you pass `--trust-project`. Real isolation for untrusted repositories needs an OS
-sandbox; see `docs/ARCHITECTURE.md`.
+definitions, hooks, MCP servers) is ignored unless you pass `--trust-project`, and a project's MCP server is started only
+after you approve that exact entry. Provider keys go only where you allowed and are held out of the environment the
+commands inherit. Real isolation for untrusted repositories needs an OS sandbox: `docs/SECURITY.md` is the threat model, what is
+hardened on each OS and how to confine harder.
 
 ## Documentation
 
 * `docs/CONFIGURATION.md` - where configuration lives, every key, providers and their options, permissions, trust, worked examples
 * `docs/EXTENDING.md` - instruction files, skills, slash commands, agent definitions, hooks, sessions and resume, compaction
+* `docs/MCP.md` - MCP servers: configuration, the approval model for project servers, tools, prompts, `sleipnir mcp`
+* `docs/SECURITY.md` - threat model, what is protected and what is not, hardening per OS, confining harder
 * `docs/CLI.md` - every command and flag (generated from `--help`), slash commands, exit codes
 * `docs/ARCHITECTURE.md` - system map, package map, one request end to end, decisions
 * `docs/CACHE-DESIGN.md` - the layered generational cache, planner, guard, simulation results
@@ -175,6 +179,7 @@ sandbox; see `docs/ARCHITECTURE.md`.
 
 ```sh
 make build test race lint sim
+scripts/check.sh                       # what CI runs: format, tidy, vet, build, race tests, cross-compiles
 ```
 
 Go 1.24, standard library plus `golang.org/x/{net,sys,term}`. See `AGENTS.md` and `docs/BUILDING.md`.
