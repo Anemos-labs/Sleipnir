@@ -414,6 +414,8 @@ sleipnir rl rollout                run G samples per task with a policy and writ
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
 sleipnir rl serve                  HTTP rollout server for a trainer
 sleipnir rl reward                 re-score a run directory with different reward weights
+sleipnir rl report                 what runs measured: pass rate with its interval, cost, cache hits, friction
+sleipnir rl compare                two runs or saved reports over the tasks both ran, with paired intervals and gates
 sleipnir rl export                 write trainer-ready data
 sleipnir rl expand                 turn a deduplicated canonical export back into inline form
 sleipnir rl verify                 replay every recorded prompt and check it against its wire hash
@@ -1107,6 +1109,57 @@ flags:
         price and cache model episodes are repriced under: a preset or a model id (see -list-targets)
   -tasks string
         tasks file to score against (default: each rollout's task.json, whose hidden files are redacted)
+```
+<!-- /flags -->
+
+### `sleipnir rl report`
+
+What a run (or several) measured, recomputed from the episodes on disk, so a run that was rescored reports what it is now:
+pass rate with a 95% Wilson interval, tasks solved, cost per episode and per pass, the token-weighted cache hit ratio,
+requests and wall time (median and 90th percentile), and the friction that costs requests: failed and malformed tool calls,
+retried requests, cache breaks, false "done" claims and hack flags. `--format md` makes the table for a document,
+`--format json` the file `rl compare` reads back: commit one as a baseline. A run that is still going reports what has
+finished and says how much has not.
+
+<!-- flags: rl report -->
+```text
+usage: sleipnir rl report [flags] RUN_DIR|REPORT.json...
+
+flags:
+  -by-tag
+        also break each run down by task tag
+  -format string
+        table | md | json (json is what rl compare reads: commit it as a baseline) (default "table")
+  -o string
+        write the report to this file instead of standard output
+  -tasks
+        also list every task: samples passed, cost, requests, wall time
+```
+<!-- /flags -->
+
+### `sleipnir rl compare`
+
+Two runs, or a run and a saved report, over the tasks both ran. Tasks, not samples, are resampled (a paired bootstrap), so the
+interval answers "would this hold on other tasks like these". A metric is `better` or `worse` only when its interval excludes
+zero; otherwise it is `same`. `--gate pass_at_1:0.05` makes the command exit non-zero when pass@1 got worse by more than 0.05 and
+the interval says it is not noise; a `%` tolerance (`mean_usd:25%`) is relative to A. Run the same configuration twice and
+compare the runs to see the noise floor before choosing a tolerance.
+
+<!-- flags: rl compare -->
+```text
+usage: sleipnir rl compare [flags] A B
+
+flags:
+  -confidence float
+        confidence level of the intervals (default 0.95)
+  -format string
+        table | json (default "table")
+  -gate value
+        metric[:tolerance] that must not get worse (repeatable, or comma-separated): e.g. pass_at_1:0.05 or mean_usd:25%; fails only when the drop is bigger than the tolerance and the interval excludes zero
+  -resamples int
+        bootstrap resamples (default 2000)
+  -seed int
+        bootstrap seed (the comparison is deterministic) (default 1)
 ```
 <!-- /flags -->
 

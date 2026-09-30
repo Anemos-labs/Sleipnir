@@ -17,6 +17,7 @@ func TestWriteCreatesFileAndParents(t *testing.T) {
 	env := testEnv(t)
 	res := run(t, Write{}, env, map[string]any{"path": "a/b/c/new.txt", "content": "hello\nworld\n"})
 	text := mustOK(t, res)
+	// "Created " is read by the RL hack detector to tell a new scratch file from an overwrite (reward.createdByWrite).
 	contains(t, text, "Created a/b/c/new.txt", "2 lines", "12 bytes")
 	if got := readFileT(t, filepath.Join(env.Cwd, "a/b/c/new.txt")); got != "hello\nworld\n" {
 		t.Errorf("content = %q", got)

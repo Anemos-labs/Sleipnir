@@ -240,6 +240,14 @@ type RolloutResult struct {
 	Steps    int      `json:"steps"`
 	WallMs   int64    `json:"wall_ms"`
 	VerifyMs int64    `json:"verify_ms"`
+	// What the rollout used and how it went, from its episode: billed tokens by kind, and the episode's own counts of
+	// failed tool calls, malformed ones, retried and failed requests, and cache breaks (see the rl.Sig* signals).
+	Tokens         Tokens `json:"tokens"`
+	ToolErrors     int    `json:"tool_errors,omitempty"`
+	InvalidCalls   int    `json:"invalid_calls,omitempty"`
+	Retries        int    `json:"retries,omitempty"`
+	RequestErrors  int    `json:"request_errors,omitempty"`
+	CacheAnomalies int    `json:"cache_anomalies,omitempty"`
 	// ProtectedTouched are protected paths the agent's diff changed.
 	ProtectedTouched []string             `json:"protected_touched,omitempty"`
 	Error            string               `json:"error,omitempty"`
@@ -1059,10 +1067,27 @@ func loadFinishedEpisode(dir string) (*rl.Episode, bool) {
 
 // resultFromEpisode derives the per-rollout record from an episode.
 func (rn *run) resultFromEpisode(j job, ep *rl.Episode) RolloutResult {
+	res := ResultFromEpisode(ep, j.task.Tags)
+	res.Task, res.Sample = j.task.ID, j.sample
+	if rn.opts.KeepEpisodes {
+		res.Episode = ep
+	}
+	return res
+}
+
+// ResultFromEpisode derives the per-rollout record of a finished episode: what the runner writes to the summary, and what
+// LoadRun recomputes from the episodes on disk. Task and Sample come from the episode; tags from the task.
+func ResultFromEpisode(ep *rl.Episode, tags []string) RolloutResult {
 	res := RolloutResult{
-		Task: j.task.ID, Sample: j.sample, Status: StatusOK, Tags: j.task.Tags, Attempts: 1,
+		Task: ep.TaskID, Sample: ep.Sample, Status: StatusOK, Tags: tags, Attempts: 1,
 		Claimed: ep.Outcome.Claimed, Flags: append([]string(nil), ep.Flags...),
 		Reward: ep.Reward.Total, CostUSD: ep.Cost.USD, ITE: ep.Cost.ITE, WallMs: ep.Cost.WallMs,
+		Tokens:         tokensOf(ep.Cost.Usage),
+		ToolErrors:     int(ep.Signals[rl.SigToolErrors]),
+		InvalidCalls:   int(ep.Signals[rl.SigInvalidToolCalls]),
+		Retries:        int(ep.Signals[sigRequestRetries]),
+		RequestErrors:  int(ep.Signals[sigRequestErrors]),
+		CacheAnomalies: int(ep.Signals[rl.SigCacheAnomalies]),
 	}
 	if v := ep.Outcome.Verifier; v != nil {
 		res.Verified, res.Pass, res.Score, res.VerifyMs = true, v.Pass, v.Score, v.Ms
@@ -1117,9 +1142,6 @@ func (rn *run) resultFromEpisode(j job, ep *rl.Episode) RolloutResult {
 			}
 			res.Roles[role] = *rs
 		}
-	}
-	if rn.opts.KeepEpisodes {
-		res.Episode = ep
 	}
 	return res
 }

@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/reee344/sleipnir/internal/stats"
 )
 
 // ReportSchema identifies evaluation reports.
-const ReportSchema = "sleipnir.rl.eval/1"
+const ReportSchema = "sleipnir.rl.eval/2"
 
 // ErrContaminated is returned (wrapped in a *ContaminationError) when an
 // evaluation would run on tasks that appear in the training set.
@@ -132,6 +133,34 @@ type Report struct {
 	InfraRate  float64 `json:"infra_rate"`
 	BudgetRate float64 `json:"budget_rate"`
 
+	// Report v2. Passed counts episodes; PassLow and PassHigh are the 95% Wilson interval of Passed/Completed (episodes are
+	// taken as independent, which they are not quite: several samples of one task share its difficulty, so read it as the
+	// interval for a workload like this suite, and compare runs with Compare, which resamples tasks).
+	Passed   int     `json:"passed"`
+	PassLow  float64 `json:"pass_low"`
+	PassHigh float64 `json:"pass_high"`
+	// Solved is the share of tasks that at least one sample passed.
+	Solved float64 `json:"solved"`
+	// Pending is how many rollouts of a run that has not finished have no outcome yet.
+	Pending int `json:"pending,omitempty"`
+	// What was spent: the sum over completed episodes, and per passing one.
+	USDTotal   float64 `json:"usd_total"`
+	USDPerPass float64 `json:"usd_per_pass,omitempty"`
+	// Tokens are billed tokens by kind over completed episodes; HitRatio is the token-weighted share served from the cache.
+	Tokens   Tokens  `json:"tokens"`
+	HitRatio float64 `json:"hit_ratio"`
+	// Friction, per completed episode: failed and malformed tool calls, retried and failed requests, cache breaks.
+	ToolErrors     float64 `json:"tool_errors_per_ep"`
+	InvalidCalls   float64 `json:"invalid_calls_per_ep"`
+	Retries        float64 `json:"retries_per_ep"`
+	RequestErrors  float64 `json:"request_errors_per_ep"`
+	CacheAnomalies float64 `json:"cache_anomalies_per_ep"`
+	// FalseDone is the share of episodes that claimed to be done and failed the verifier.
+	FalseDone float64 `json:"false_done_rate"`
+	// Attempts and Identity come from the run directory (LoadRun); a report built from results alone leaves them empty.
+	Attempts *AttemptStats `json:"attempts,omitempty"`
+	Identity *Identity     `json:"identity,omitempty"`
+
 	ByTag  map[string]Slice      `json:"by_tag,omitempty"`
 	ByRole map[string]RoleReport `json:"by_role,omitempty"`
 
@@ -198,7 +227,8 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 
 	var ite, usd, req, steps, wall []float64
 	var scoreSum, rewardSum float64
-	hacks, budgets := 0, 0
+	hacks, budgets, falseDone := 0, 0, 0
+	var tool, invalid, retries, reqErrs, anomalies float64
 	rows := make([]TaskResult, 0, len(tasks))
 	roleAcc := map[string]*roleAccum{}
 	for _, t := range tasks {
@@ -212,7 +242,17 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 		for _, r := range rs {
 			if r.Pass {
 				row.Correct++
+				rep.Passed++
+			} else if r.Claimed == "done" {
+				falseDone++
 			}
+			rep.Tokens = rep.Tokens.plus(r.Tokens)
+			rep.USDTotal += r.CostUSD
+			tool += float64(r.ToolErrors)
+			invalid += float64(r.InvalidCalls)
+			retries += float64(r.Retries)
+			reqErrs += float64(r.RequestErrors)
+			anomalies += float64(r.CacheAnomalies)
 			if r.Hacky() {
 				row.Hacks++
 				hacks++
@@ -275,10 +315,28 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 		rep.PassAt1 /= float64(len(valid))
 	}
 	if rep.Completed > 0 {
-		rep.MeanScore = scoreSum / float64(rep.Completed)
-		rep.MeanReward = rewardSum / float64(rep.Completed)
-		rep.HackRate = float64(hacks) / float64(rep.Completed)
-		rep.BudgetRate = float64(budgets) / float64(rep.Completed)
+		n := float64(rep.Completed)
+		rep.MeanScore = scoreSum / n
+		rep.MeanReward = rewardSum / n
+		rep.HackRate = float64(hacks) / n
+		rep.BudgetRate = float64(budgets) / n
+		rep.FalseDone = float64(falseDone) / n
+		rep.ToolErrors, rep.InvalidCalls, rep.Retries = tool/n, invalid/n, retries/n
+		rep.RequestErrors, rep.CacheAnomalies = reqErrs/n, anomalies/n
+		rep.PassLow, rep.PassHigh = stats.Wilson(rep.Passed, rep.Completed, stats.Z95)
+		rep.HitRatio = rep.Tokens.HitRatio()
+		if rep.Passed > 0 {
+			rep.USDPerPass = rep.USDTotal / float64(rep.Passed)
+		}
+		if len(valid) > 0 {
+			solved := 0
+			for _, r := range valid {
+				if r.Correct > 0 {
+					solved++
+				}
+			}
+			rep.Solved = float64(solved) / float64(len(valid))
+		}
 	}
 	rep.ITE, rep.USD, rep.Requests, rep.Steps, rep.WallMs = dist(ite), dist(usd), dist(req), dist(steps), dist(wall)
 

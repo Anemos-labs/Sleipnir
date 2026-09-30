@@ -37,6 +37,8 @@ in a clean checkout, scores it, and writes trainer-ready data (docs/TRAINING-DAT
   eval       run held-out tasks and report pass@k, cost and protocol quality
   serve      HTTP rollout server for a trainer
   reward     re-score a run directory with different reward weights
+  report     what runs measured: pass rate with its interval, cost, cache hits, friction (table, markdown, json)
+  compare    two runs or saved reports over the tasks both ran, with paired intervals and pass/fail gates
   export     write trainer-ready data: steps, tokens, groups, sft, dpo, kto, atif, canonical
   expand     turn a deduplicated canonical export back into inline form
   verify     replay every recorded prompt and check it against its wire hash
