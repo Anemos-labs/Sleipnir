@@ -794,3 +794,43 @@ func TestApplyOnScoredEpisodes(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactorRewardFromAggregatesOnly(t *testing.T) {
+	// Episodes that carry only the "role/compactor" aggregate (no per-call
+	// rewards): every compactor call of the episode uses it.
+	var eps []*rl.Episode
+	for i, agg := range []float64{0.2, 0.9, 0.5} {
+		w := mkAgent("w", "worker", float64(i), 3)
+		w.Steps[1].Kind, w.Steps[1].Role = rl.KindCompactor, rl.RoleCompactor
+		ep := mkEp(fmt.Sprintf("t/%d", i), "t", w)
+		ep.Reward.Components = map[string]float64{"role/compactor": agg}
+		eps = append(eps, ep)
+	}
+	rep := mustApply(t, eps, DefaultSpec())
+	roles := map[string]int{}
+	for _, g := range rep.Groups {
+		roles[g.Role] = g.N
+	}
+	if roles[rl.RoleCompactor] != 3 || roles[rl.RoleWorker] != 3 {
+		t.Fatalf("groups: %v", roles)
+	}
+	m, s := meanStdRef([]float64{0.2, 0.9, 0.5})
+	for i, agg := range []float64{0.2, 0.9, 0.5} {
+		near(t, "compactor advantage from the aggregate", eps[i].Agents[0].Steps[1].Advantage, (agg-m)/(s+DefaultEps))
+	}
+	// The agent-level aggregate outranks the episode's.
+	for i, ep := range eps {
+		ep.Agents[0].Reward.Components = map[string]float64{"role/compactor": []float64{5, 1, 3}[i]}
+	}
+	mustApply(t, eps, DefaultSpec())
+	m2, s2 := meanStdRef([]float64{5, 1, 3})
+	near(t, "agent aggregate", eps[0].Agents[0].Steps[1].Advantage, (5-m2)/(s2+DefaultEps))
+}
+
+func TestSpecStringsAreNormalised(t *testing.T) {
+	eps := workers("t", 1, 0, 0.5)
+	rep := mustApply(t, eps, Spec{Method: "  GRPO ", PerRole: true, GroupBy: "Task+Policy"})
+	if rep.Method != MethodGRPO || eps[0].Agents[0].Steps[0].Advantage <= 0 {
+		t.Errorf("spec strings should be case and space insensitive: %+v", rep)
+	}
+}

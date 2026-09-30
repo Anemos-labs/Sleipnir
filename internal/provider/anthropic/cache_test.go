@@ -600,23 +600,21 @@ func TestPreservedThinkingAppendOnlyLoopWithTurnScopedHotBlocks(t *testing.T) {
 			t.Fatalf("round %d: the response must carry a replayable thinking block: %+v", i+1, r.Turn.Blocks)
 		}
 	}
-	// The hot block costs nothing once it clears and never disturbs the cache:
-	// each request reads everything the previous one sent except that request's
-	// (then still active) hot text, which was after the rolling marker.
-	for i := 1; i < len(a.usage); i++ {
-		prev := a.usage[i-1].TotalInput()
-		wantRead := prev - a.hotTok[i-1]
-		// The previous request's own hot block was not in it: the hot block a
-		// round appends is sent for the first time with the NEXT request.
-		if i == 1 {
-			wantRead = prev
+	// The hot block costs nothing once it clears and never disturbs the cache. It
+	// sits after the rolling marker, so while it is active it is billed as
+	// uncached input; on the next request it is cleared (no tokens, no prefix
+	// contribution) and the request reads everything the previous one cached,
+	// which is that request's whole prompt minus its hot block.
+	for u := 1; u < len(a.usage); u++ {
+		want := a.usage[u-1].TotalInput()
+		if u >= 2 {
+			want -= a.hotTok[u-2]
 		}
-		got := a.usage[i]
-		if got.CacheReadTokens < wantRead-a.hotTok[i-1]-2 || got.CacheReadTokens > prev {
-			t.Errorf("round %d: read %d, previous total %d", i+1, got.CacheReadTokens, prev)
+		if got := a.usage[u].CacheReadTokens; got != want {
+			t.Errorf("request %d read %d, want %d", u+1, got, want)
 		}
-		if got.HitRatio() < 0.5 {
-			t.Errorf("round %d: hit ratio %.2f", i+1, got.HitRatio())
+		if got := a.usage[u].InputTokens; got != a.hotTok[u-1] {
+			t.Errorf("request %d: uncached input %d, want its active hot block (%d tokens)", u+1, got, a.hotTok[u-1])
 		}
 	}
 }
@@ -671,10 +669,11 @@ func TestPreservedThinkingFoldedHotBlocksAreAppendOnlyToo(t *testing.T) {
 			t.Fatalf("round %d: %v", i+1, err)
 		}
 	}
-	// The rolling marker rides on the folded text, so the cache keeps everything.
-	for i := 1; i < len(a.usage); i++ {
-		if a.usage[i].CacheReadTokens < a.usage[i-1].TotalInput()-2 {
-			t.Errorf("round %d: read %d of the previous %d", i+1, a.usage[i].CacheReadTokens, a.usage[i-1].TotalInput())
+	// The rolling marker rides on the folded text, so the cache keeps everything:
+	// each request reads the whole previous prompt and nothing is uncached.
+	for u := 1; u < len(a.usage); u++ {
+		if a.usage[u].CacheReadTokens != a.usage[u-1].TotalInput() || a.usage[u].InputTokens != 0 {
+			t.Errorf("request %d: %+v after a %d-token prompt", u+1, a.usage[u], a.usage[u-1].TotalInput())
 		}
 	}
 }

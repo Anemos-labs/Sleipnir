@@ -31,6 +31,7 @@ var (
 // is credential-shaped, whatever the value of the assembled string.
 var (
 	awsKey    = frag("AKI", "AIOSFODNN7", "EXAMPLE")
+	awsSecret = frag("wJalrXUtnFEMI/", "K7MDENG/", "bPxRfiCYEX", "AMPLEKEY")
 	ghToken   = frag("gh", "p_", "16C7e42F292c6912E7710c838347Ae178B4a")
 	ghFine    = frag("github", "_pat_", "11ABCDEFG0abcdefghijkl_", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456")
 	googleKey = frag("AI", "zaSyA-", "1234567890abcdefghijklmnopqrstu")
@@ -87,7 +88,7 @@ func TestRedactsSecrets(t *testing.T) {
 		{"kv header", `-H "X-Api-Key: 7f3a9c1e5b2d4f6a8c0e"`, KindSecret, "7f3a9c1e5b2d4f6a8c0e"},
 		{"kv flag space", "mysql --password Sup3rS3cret!pw -u root", KindSecret, "Sup3rS3cret!pw"},
 		{"kv flag equals", "tool --token=abc123def456ghi789", KindSecret, "abc123def456ghi789"},
-		{"kv aws secret", "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", KindSecret, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"},
+		{"kv aws secret", "aws_secret_access_key = " + awsSecret, KindSecret, awsSecret},
 		{"kv connection string", "Server=db;User Id=sa;Password=P4ssw0rd!Long1;Database=x", KindSecret, "P4ssw0rd!Long1"},
 		{"kv php", `'password' => 'xK3$9mQ2pL7vN4'`, KindSecret, "xK3$9mQ2pL7vN4"},
 		{"kv dollar password", `password = "$ecr3t!Pass#word"`, KindSecret, "$ecr3t!Pass#word"},

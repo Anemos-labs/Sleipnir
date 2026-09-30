@@ -63,7 +63,7 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 | `internal/checkpoint` | pre-modification snapshots and rewind |
 | `internal/config`, `internal/memory` | layered JSONC config; AGENTS.md/CLAUDE.md-style instruction files → shared-layer text |
 | `internal/session` | assembles provider, tools, permissions, checkpoints, layers (constitution, shared pin from `recon` + instruction files, role pins), event log and one agent or a swarm; the CLI, the RL harness and tests all build sessions the same way |
-| `internal/rl` | RL vocabulary (`Episode`, `Step`, `Task`, rewards, flags) and its subpackages: `env` (tasks, isolated rollouts, clean-checkout verifier, task generators, eval, rollout server), `traj` (event log -> episode, exact prompt replay), `reward` (components, hack detectors, repricing, probes), `adv` (group advantages), `export` (steps, tokens, groups, sft, dpo, kto, atif), `redact` |
+| `internal/rl` | RL vocabulary (`Episode`, `Step`, `Task`, rewards, flags) and its subpackages: `env` (tasks, isolated rollouts, clean-checkout verifier, task generators, eval, rollout server), `traj` (event log -> episode, exact prompt replay), `reward` (components, hack detectors, repricing, probes), `adv` (group advantages), `export` (steps, tokens, groups, sft, dpo, kto, atif), `redact`, `harness` (implements `env.Harness` on `session`: the rollout runs the real assembly under a fixed config, a scrubbed shell environment, refused prompts and hard budgets) |
 
 ## One request, end to end
 

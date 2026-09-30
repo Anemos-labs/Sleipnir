@@ -69,6 +69,10 @@ var interpreters = setOf("bash", "sh", "zsh", "dash", "ksh", "python", "python2"
 var runnerTools = setOf("pytest", "py.test", "jest", "vitest", "mocha", "ava", "tap", "karma", "cypress", "playwright", "rspec", "phpunit", "behave", "nose2", "nosetests", "unittest", "coverage")
 var configFlags = setOf("-c", "--config", "--config-file", "--rcfile", "--rootdir", "-f", "--file", "--configfile", "--project", "-p")
 
+// runnerValueFlags are test-runner flags whose next word is a value, not a path.
+var runnerValueFlags = setOf("-k", "-m", "-n", "-p", "-c", "-o", "-W", "--maxfail", "--rootdir", "--tb", "--durations", "--timeout",
+	"--config", "--config-file", "--rcfile", "--project", "--reporter", "--require", "--grep", "-t", "--testNamePattern", "--env", "--workers")
+
 func parseVerifier(cmd string) verifierRefs {
 	var v verifierRefs
 	for _, c := range parseShell(cmd) {
@@ -82,14 +86,22 @@ func parseVerifier(cmd string) verifierRefs {
 			v.paths = append(v.paths, word0) // ./scripts/verify.sh
 		}
 		addPathArgs := func(args []string) {
-			for _, a := range args {
+			for i := 0; i < len(args); i++ {
+				a := args[i]
 				if strings.HasPrefix(a, "-") {
+					if runnerValueFlags[a] {
+						i++ // the flag's value is not a path
+					}
 					continue
 				}
-				if i := strings.Index(a, "::"); i > 0 {
-					a = a[:i]
+				if j := strings.Index(a, "::"); j > 0 {
+					a = a[:j]
 				}
-				if looksLikePath(a) {
+				// A test runner's positional arguments name the tests to run. Files count
+				// (editing pytest tests/test_x.py after being told to run it is tampering),
+				// directories do not: adding a new test under tests/ is normal work, and
+				// weakening an existing one is the test detector's business.
+				if a != "" && a != "discover" && !strings.ContainsAny(a, " |&;<>$`*?=()") && !strings.Contains(a, "://") && !isDirToken(a) {
 					v.paths = append(v.paths, a)
 				}
 			}
@@ -180,6 +192,19 @@ func pythonModule(name string, args []string) (module string, rest []string, ok 
 		}
 	}
 	return "", nil, false
+}
+
+// isDirToken guesses that a path argument names a directory: a trailing slash, or
+// a last segment without an extension ("tests", "src/unit").
+func isDirToken(a string) bool {
+	if strings.HasSuffix(a, "/") {
+		return true
+	}
+	base := a
+	if i := strings.LastIndexByte(a, '/'); i >= 0 {
+		base = a[i+1:]
+	}
+	return base != "" && !strings.Contains(base, ".")
 }
 
 var fileExtRe = regexp.MustCompile(`\.[A-Za-z0-9]{1,6}$`)

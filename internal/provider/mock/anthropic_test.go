@@ -768,17 +768,18 @@ func TestAnthropicEntriesAreReadableAtTheFirstByte(t *testing.T) {
 		t.Fatal(r.body)
 	}
 	go io.Copy(io.Discard, br)
-	var stats []AnthropicStat
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if stats = srv.AnthropicStats(); len(stats) >= 1 {
-			break
+	var a, b *AnthropicStat
+	for _, st := range srv.AnthropicStats() {
+		st := st
+		switch st.N {
+		case 1:
+			a = &st
+		case 2:
+			b = &st
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
-	// B finished first (A is still streaming): B is the only recorded call.
-	if len(stats) < 1 || stats[0].Read == 0 {
-		t.Fatalf("B must read A's entry from A's first byte on: %+v", stats)
+	if a == nil || b == nil || a.Read != 0 || a.Write5m == 0 || b.Read != a.Write5m {
+		t.Fatalf("B must read exactly what A wrote, from A's first byte on: A %+v B %+v", a, b)
 	}
 }
 

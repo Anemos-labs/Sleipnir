@@ -8,13 +8,13 @@ import (
 // dotted naming of internal/events; the session layer may register them next to
 // the other type constants.
 const (
-	EventCreate  = "workspace.create"
-	EventRemove  = "workspace.remove"
-	EventPrune   = "workspace.prune"
-	EventCommit  = "workspace.commit"
-	EventReset   = "workspace.reset"
-	EventQueued  = "merge.queued"
-	EventMerged  = "merge.merged"
+	EventCreate   = "workspace.create"
+	EventRemove   = "workspace.remove"
+	EventPrune    = "workspace.prune"
+	EventCommit   = "workspace.commit"
+	EventReset    = "workspace.reset"
+	EventQueued   = "merge.queued"
+	EventMerged   = "merge.merged"
 	EventConflict = "merge.conflict"
 	// EventVerifyFailed is emitted when the verifier rejects a candidate, before
 	// the roll back; EventRolledBack once the integration tip is restored.

@@ -223,8 +223,9 @@ func TestSecReview_S34_DamagedBlobsAreDetectedAndRepairedByPut(t *testing.T) {
 	}
 }
 
-// S35: session state was created 0755/0644 (the checkpoint store uses 0700/0600). Everything is private to the
-// user now, temp files included, and state left by an older version is tightened when it is reopened.
+// S35: session state was created 0755/0644 (the checkpoint store uses 0700/0600). Everything this package
+// creates is private to the user now, temp files included, and an older version's world-readable log is
+// tightened when it is reopened.
 func TestSecReview_S35_LogAndBlobPermissions(t *testing.T) {
 	secRevUnixPerms(t)
 	base := t.TempDir()
@@ -267,7 +268,7 @@ func TestSecReview_S35_LogAndBlobPermissions(t *testing.T) {
 	}
 }
 
-func TestSecReview_S35_ExistingLooseStateIsTightened(t *testing.T) {
+func TestSecReview_S35_ExistingLooseLogIsTightenedButDirectoriesAreLeftAlone(t *testing.T) {
 	secRevUnixPerms(t)
 	base := t.TempDir()
 	dir := filepath.Join(base, "old-session")
@@ -291,13 +292,13 @@ func TestSecReview_S35_ExistingLooseStateIsTightened(t *testing.T) {
 	if _, err := NewDirBlobs(filepath.Join(dir, "blobs")); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{dir, filepath.Join(dir, "blobs"), filepath.Join(dir, "events.jsonl")} {
-		fi, err := os.Stat(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if fi.Mode().Perm()&0o077 != 0 {
-			t.Errorf("%s is still %v", p, fi.Mode().Perm())
+	if fi, err := os.Stat(filepath.Join(dir, "events.jsonl")); err != nil || fi.Mode().Perm()&0o077 != 0 {
+		t.Errorf("the existing log is still %v (%v)", fi.Mode().Perm(), err)
+	}
+	// A directory that exists may have been chosen on purpose (--session-dir .): its mode is not ours to change.
+	for _, p := range []string{dir, filepath.Join(dir, "blobs")} {
+		if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o755 {
+			t.Errorf("%s was changed to %v (%v)", p, fi.Mode().Perm(), err)
 		}
 	}
 }

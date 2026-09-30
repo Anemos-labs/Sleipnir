@@ -330,7 +330,9 @@ func (a *AnthropicServer) handleMessages(w http.ResponseWriter, r *http.Request)
 	stat.Completion, stat.Stop = out.usage.OutputTokens, out.stop
 	stat.Cost = a.price(q.model).USD(usageOf(plan, out.usage.OutputTokens))
 	stat.Status = 200
-	defer a.recordA(stat)
+	// Recorded before the response is written, so that a client that has seen the
+	// reply (or its first byte) can already find the call in Stats.
+	a.recordA(stat)
 
 	w.Header().Set("Request-Id", reqID)
 	if !q.stream {

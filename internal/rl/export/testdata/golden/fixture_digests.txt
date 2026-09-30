@@ -1,0 +1,9 @@
+steps     records=27  bytes=980564   sha256=7ad0663ca3aa813adf93918dfea266cfffeadcdd20093d5af0b4055687e0dc10
+tokens    records=27  bytes=1058487  sha256=357a2d948a008ea78b56d6403d8a671c90738ae767a101be8ff114090d59f613
+groups    records=1   bytes=419923   sha256=693aab1673ca9d8f0b6473ae7ff5251da858c6ce9383586cc7473dd348ea3bf3
+sft       records=9   bytes=396783   sha256=837192dba44a3673010ab3c8bb283710235d8d38e05d8c2971d412a3f0211b4f
+dpo       records=0   bytes=0        sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+kto       records=27  bytes=980304   sha256=044f79e2ad31b950589eb537bd6ca0aca2475f44e5cf1a888607ce28596e89a9
+atif      records=1   bytes=1152021  sha256=54636da21e13ca2ba7b664c49aaff1935dcf5d61175f79e32b3a2636deec3e66
+canonical records=1   bytes=2145939  sha256=3fb7ea77836226d837e032c42ee0e474682fabf9344086674f1865dc2d7a04ce
+canonical records=1   bytes=1340652  sha256=e98e3a06d4a674bb904e9f9db96dc2fb93c444561e0674e238c7faf0a11c421e (dedup, table in stream)

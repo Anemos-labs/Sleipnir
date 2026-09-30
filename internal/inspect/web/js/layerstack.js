@@ -96,8 +96,8 @@ export class LayerStack {
       s('pattern', { id: 'hatch', width: 7, height: 7, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, s('rect', { class: 'hatch-bar', width: 3, height: 7 })),
       s('pattern', { id: 'hatchl', width: 9, height: 9, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, s('rect', { class: 'hatch-bar', width: 1.6, height: 9 }))));
 
-    svg.appendChild(s('text', { x: 0, y: 12 }, 'Layers, in prompt order (width = tokens)'));
-    svg.appendChild(s('text', { x: 0, y: yB - 8 }, 'As billed by the provider: read from cache, written to cache, processed uncached'));
+    svg.appendChild(s('text', { x: 0, y: 12 }, W >= 420 ? 'Layers, in prompt order (width = tokens)' : 'Layers (width = tokens)'));
+    svg.appendChild(s('text', { x: 0, y: yB - 8 }, W >= 620 ? 'As billed by the provider: read from cache, written to cache, processed uncached' : W >= 380 ? 'As billed: cache read, cache write, uncached' : 'As billed'));
 
     // Row A: layers.
     let x = 0;

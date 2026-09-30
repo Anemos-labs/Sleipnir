@@ -378,9 +378,8 @@ func isURLWithoutCreds(v string) bool {
 }
 
 // looksLikePath reports file-system paths and lower-case slash-separated names
-// ("prod/db/password"), which name a secret rather than hold one. A base64
-// secret such as wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY has upper-case
-// segments and is not a path.
+// ("prod/db/password"), which name a secret rather than hold one. A base64 secret
+// key (an AWS secret access key, say) has upper-case segments and is not a path.
 func looksLikePath(v string) bool {
 	switch {
 	case strings.HasPrefix(v, "/"), strings.HasPrefix(v, "./"), strings.HasPrefix(v, "../"), strings.HasPrefix(v, "~"), strings.HasPrefix(v, `\\`):

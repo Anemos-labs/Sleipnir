@@ -65,7 +65,8 @@ type req struct {
 	prompt   int
 	hit      float64
 	expected int
-	anomaly  bool
+	anomaly  bool    // the guard flagged this request (drift or a low read)
+	anomKind string  // drift | low_hit
 	cost     float64 // reported cost_usd, else priced
 	reported bool
 	gateway  bool

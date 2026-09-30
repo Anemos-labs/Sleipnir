@@ -240,9 +240,6 @@ func New(dir string, blobs events.Blobs, root string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("checkpoint: %w", err)
 	}
-	if fi, err := os.Stat(dir); err == nil && fi.IsDir() && fi.Mode().Perm()&0o077 != 0 {
-		_ = os.Chmod(dir, fi.Mode().Perm()&^0o077) // state left by an older version; best effort
-	}
 	if blobs == nil {
 		if blobs, err = events.NewDirBlobs(filepath.Join(dir, "blobs")); err != nil {
 			return nil, fmt.Errorf("checkpoint: %w", err)

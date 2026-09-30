@@ -3,9 +3,6 @@ package workspace
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -154,40 +151,7 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 // checkFileSizes refuses to record files above the limit: once in history they
 // stay in the repository for good.
 func (t *Tree) checkFileSizes(ctx context.Context) error {
-	limit := t.m.maxFileBytes()
-	if limit < 0 {
-		return nil
-	}
-	st, err := t.repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all", MaxBytes: 32 << 20})
-	if err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	var big []string
-	check := func(p string) {
-		if seen[p] {
-			return
-		}
-		seen[p] = true
-		fi, err := os.Lstat(filepath.Join(t.Path, filepath.FromSlash(p)))
-		if err == nil && fi.Mode().IsRegular() && fi.Size() > limit {
-			big = append(big, p)
-		}
-	}
-	for _, c := range st.Staged {
-		check(c.Path)
-	}
-	for _, c := range st.Unstaged {
-		check(c.Path)
-	}
-	for _, p := range st.Untracked {
-		check(p)
-	}
-	if len(big) > 0 {
-		sort.Strings(big)
-		return &TooLargeError{Files: big, Limit: limit}
-	}
-	return nil
+	return t.m.checkSizes(ctx, t.repo, t.Path)
 }
 
 // Reset returns the tree to Base: tracked files are restored, commits made since

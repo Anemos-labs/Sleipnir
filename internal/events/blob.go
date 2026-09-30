@@ -54,8 +54,8 @@ func ValidHash(h core.Hash) bool {
 	return true
 }
 
-// DirBlobs stores blobs on disk under dir/ab/cd/<hash>. The directory is private
-// to the user (0700, files 0600), a blob is only ever handed out after its content
+// DirBlobs stores blobs on disk under dir/ab/cd/<hash>. Directories it creates
+// are private to the user (0700, files 0600), a blob is only ever handed out after its content
 // has been re-hashed, and only well-formed hashes are accepted, so neither a
 // corrupted store nor a hostile hash string can serve the wrong bytes or reach a
 // file outside it.
@@ -77,18 +77,10 @@ func NewDirBlobs(dir string) (*DirBlobs, error) {
 	return &DirBlobs{dir: dir, verified: map[core.Hash]struct{}{}}, nil
 }
 
-// makePrivateDir creates dir (and any missing parents) readable by the owner only
-// and, when it already exists with wider permissions (state written by an older
-// version), takes the group and other bits away. Only dir itself is adjusted.
-func makePrivateDir(dir string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	if fi, err := os.Stat(dir); err == nil && fi.IsDir() && fi.Mode().Perm()&0o077 != 0 {
-		_ = os.Chmod(dir, fi.Mode().Perm()&^0o077) // best effort: it may not be ours
-	}
-	return nil
-}
+// makePrivateDir creates dir (and any missing parents) readable by the owner
+// only. A directory that already exists keeps its mode: it may be somewhere the
+// caller chose on purpose, and the files in it are private regardless.
+func makePrivateDir(dir string) error { return os.MkdirAll(dir, 0o700) }
 
 // path returns where blob h lives. h must be valid (see ValidHash).
 func (d *DirBlobs) path(h core.Hash) string {

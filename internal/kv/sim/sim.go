@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/reee344/sleipnir/internal/kv"
 )
 
 // Provider models a provider's cache and prices.
@@ -43,7 +44,26 @@ type Provider struct {
 	// TTFB models time to first byte: base + per uncached token.
 	TTFBBase    time.Duration
 	TTFBPerToks time.Duration // per 1000 uncached tokens
+	// HotMode is how the route delivers the hot tail (kv.ResolveHot): inline (the
+	// uncached tail, rebuilt every request), persisted on change (models that
+	// enforce preserved thinking on a provider without turn-scoped system
+	// messages) or turn-scoped (priced like inline: it follows the last marker).
+	HotMode kv.HotMode
 }
+
+// WithHot returns p with the hot tail delivered the given way.
+func (p Provider) WithHot(m kv.HotMode) Provider {
+	p.HotMode = m
+	if m == kv.HotPersist {
+		p.Name += ", preserved thinking (hot board persisted on change)"
+	}
+	return p
+}
+
+// AnthropicPreserved is Anthropic() on a model that enforces preserved thinking
+// (Fable 5.1, Opus 5.5, Sonnet 5.5): an inline hot tail would void every thinking
+// signature, so the board is persisted on change.
+func AnthropicPreserved() Provider { return Anthropic().WithHot(kv.HotPersist) }
 
 // Anthropic returns an explicit-breakpoint provider with 5-minute TTL.
 func Anthropic() Provider {

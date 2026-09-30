@@ -334,44 +334,45 @@ type AgentDetail struct {
 
 // Req is one model call, as a row.
 type Req struct {
-	ID         string   `json:"id"`
-	Seq        uint64   `json:"seq"`
-	Rev        uint64   `json:"rev"`
-	Agent      string   `json:"agent"`
-	Role       string   `json:"role,omitempty"`
-	Kind       string   `json:"kind"`
-	Model      string   `json:"model,omitempty"`
-	TS         int64    `json:"ts"` // unix ms
-	T          int64    `json:"t"`  // ms since session start
-	Done       bool     `json:"done"`
-	Failed     bool     `json:"failed,omitempty"`
-	Err        string   `json:"err,omitempty"`
-	In         int      `json:"in"`
-	Read       int      `json:"read"`
-	Write      int      `json:"write"`
-	Out        int      `json:"out"`
-	Prompt     int      `json:"prompt"`
-	Hit        float64  `json:"hit"`
-	Expected   int      `json:"expected"`
-	Anomaly    bool     `json:"anomaly,omitempty"`
-	USD        float64  `json:"usd"`
-	NoCache    float64  `json:"no_cache"`
-	Naive      float64  `json:"naive,omitempty"`
-	NaiveCtx   int      `json:"naive_ctx,omitempty"`
-	TTFB       int64    `json:"ttfb_ms,omitempty"`
-	TotalMs    int64    `json:"total_ms,omitempty"`
-	Stop       string   `json:"stop,omitempty"`
-	Cold       bool     `json:"cold,omitempty"`
-	First      bool     `json:"first,omitempty"`
-	Rebase     string   `json:"rebase,omitempty"`  // declared rebase just before this request
-	Changed    []string `json:"changed,omitempty"` // layers whose bytes changed since the agent's previous request
-	Undeclared bool     `json:"undeclared,omitempty"`
-	ThreadFrom int64    `json:"thread_from,omitempty"`
-	ThreadTo   int64    `json:"thread_to,omitempty"`
-	Layers     [7]int   `json:"layers"` // tokens per layer G0..G6; see LayerReport for provenance
-	G0Known    bool     `json:"g0_known"`
-	Epoch      int      `json:"epoch"` // commits before this request
-	WireHash   string   `json:"wire_hash,omitempty"`
+	ID          string   `json:"id"`
+	Seq         uint64   `json:"seq"`
+	Rev         uint64   `json:"rev"`
+	Agent       string   `json:"agent"`
+	Role        string   `json:"role,omitempty"`
+	Kind        string   `json:"kind"`
+	Model       string   `json:"model,omitempty"`
+	TS          int64    `json:"ts"` // unix ms
+	T           int64    `json:"t"`  // ms since session start
+	Done        bool     `json:"done"`
+	Failed      bool     `json:"failed,omitempty"`
+	Err         string   `json:"err,omitempty"`
+	In          int      `json:"in"`
+	Read        int      `json:"read"`
+	Write       int      `json:"write"`
+	Out         int      `json:"out"`
+	Prompt      int      `json:"prompt"`
+	Hit         float64  `json:"hit"`
+	Expected    int      `json:"expected"`
+	Anomaly     bool     `json:"anomaly,omitempty"`
+	AnomalyKind string   `json:"anomaly_kind,omitempty"` // drift | low_hit
+	USD         float64  `json:"usd"`
+	NoCache     float64  `json:"no_cache"`
+	Naive       float64  `json:"naive,omitempty"`
+	NaiveCtx    int      `json:"naive_ctx,omitempty"`
+	TTFB        int64    `json:"ttfb_ms,omitempty"`
+	TotalMs     int64    `json:"total_ms,omitempty"`
+	Stop        string   `json:"stop,omitempty"`
+	Cold        bool     `json:"cold,omitempty"`
+	First       bool     `json:"first,omitempty"`
+	Rebase      string   `json:"rebase,omitempty"`  // declared rebase just before this request
+	Changed     []string `json:"changed,omitempty"` // layers whose bytes changed since the agent's previous request
+	Undeclared  bool     `json:"undeclared,omitempty"`
+	ThreadFrom  int64    `json:"thread_from,omitempty"`
+	ThreadTo    int64    `json:"thread_to,omitempty"`
+	Layers      [7]int   `json:"layers"` // tokens per layer G0..G6; see LayerReport for provenance
+	G0Known     bool     `json:"g0_known"`
+	Epoch       int      `json:"epoch"` // commits before this request
+	WireHash    string   `json:"wire_hash,omitempty"`
 }
 
 // RequestPage is /api/requests.

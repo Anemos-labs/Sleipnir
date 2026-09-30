@@ -69,10 +69,18 @@ func cmdInit(_ context.Context, args []string) error {
 			},
 			"permissions": map[string]any{"mode": "default"},
 		}
+		if def != "" {
+			patch["models"] = map[string]any{"default": def}
+		}
 	} else {
 		patch = map[string]any{
 			"permissions": map[string]any{"deny": []string{"Read(./.env)", "Read(./secrets/**)"}},
 			"swarm":       map[string]any{"max_agents": 12, "isolation": "shared"},
+		}
+		// A project shares a model only when asked to: the detected default depends on
+		// whose keys are in this shell.
+		if *model != "" {
+			patch["models"] = map[string]any{"default": *model}
 		}
 	}
 	if err := config.Save(path, patch); err != nil {

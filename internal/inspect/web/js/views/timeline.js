@@ -21,7 +21,7 @@ export function tipFor(r, prev) {
   rows.push(h('div', { class: 'r' }, h('span', { class: 'k' }, 'hit ratio'), h('span', { class: 'v' }, pct(r.hit))));
   rows.push(h('div', { class: 'r' }, h('span', { class: 'k' }, 'cost'), h('span', { class: 'v' }, usd(r.usd))));
   if (r.rebase) rows.push(h('div', { class: 'flag' }, 'After a ' + (REBASE[r.rebase] || r.rebase) + (r.changed && r.changed.length ? ': ' + r.changed.join(', ') + ' rewritten' : '')));
-  if (r.anomaly) rows.push(h('div', { class: 'flag crit' }, 'Cache anomaly: read below the guard’s expectation'));
+  if (r.anomaly) rows.push(h('div', { class: 'flag crit' }, r.anomaly_kind === 'drift' ? 'Prefix drift: a layer changed with no declared rebase' : 'Cache anomaly: read below the guard’s expectation'));
   else if (r.undeclared && !r.rebase) rows.push(h('div', { class: 'flag crit' }, 'Layers changed with no declared rebase'));
   if (r.cold && !r.first) rows.push(h('div', { class: 'flag' }, 'Cold start: nothing read from cache'));
   if (r.first) rows.push(h('div', { class: 'flag' }, 'First request of ' + r.agent));

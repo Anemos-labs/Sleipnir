@@ -71,6 +71,9 @@ func refsIn(text string) []ref {
 			out = append(out, r)
 		}
 	}
+	// Bare and scp-style forms are looked for outside the URLs already parsed, so
+	// "https://api.github.com/repos/o/r" does not also yield "github.com/repos/o".
+	text = urlRe.ReplaceAllString(text, " ")
 	for _, m := range scpRe.FindAllStringSubmatch(text, -1) {
 		if r, ok := parseRef("https://" + m[1] + "/" + m[2]); ok {
 			r.raw = m[0]
@@ -115,7 +118,11 @@ func repoKey(host, p string) string {
 		if len(s) < 2 {
 			return ""
 		}
-		repo := strings.TrimSuffix(s[1], ".git")
+		repo := s[1]
+		if i := strings.IndexByte(repo, '@'); i >= 0 {
+			repo = repo[:i] // a version pin: github.com/o/r@v1
+		}
+		repo = strings.TrimSuffix(repo, ".git")
 		if repo == "" {
 			return ""
 		}

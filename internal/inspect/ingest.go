@@ -365,6 +365,7 @@ func (s *Session) onRequest(ev *events.Event, ts time.Time) {
 		if an := a.pendingDrift; an != nil {
 			an.Req = r.id
 			a.pendingDrift = nil
+			r.anomaly, r.anomKind = true, "drift"
 		}
 		if r.hadPrev {
 			s.checked++
@@ -541,6 +542,7 @@ func (s *Session) onResponse(ev *events.Event, ts time.Time) {
 		s.tot.Requests++
 		s.tot.Pending++
 		a.openReq++
+		s.swarm.inflight++ // balanced by the decrement below: the request is answered in the same breath
 		s.byID[r.id] = r
 		s.reqs = append(s.reqs, r)
 		a.reqs = append(a.reqs, r)
@@ -569,7 +571,13 @@ func (s *Session) onResponse(ev *events.Event, ts time.Time) {
 	r.usage, r.done, r.side = u, true, p.Side || r.kind != "main"
 	r.prompt = u.TotalInput()
 	r.hit = u.HitRatio()
-	r.expected, r.anomaly = p.ExpectedRead, p.Anomaly
+	r.expected = p.ExpectedRead
+	if p.Anomaly {
+		r.anomaly = true
+		if r.anomKind == "" {
+			r.anomKind = "low_hit"
+		}
+	}
 	r.ttfb, r.total, r.stop = p.TTFBMs, p.TotalMs, p.Stop
 	r.rev = s.rev
 	r.priced = pi.bill(u).Total
@@ -924,7 +932,7 @@ func (s *Session) onAnomaly(ev *events.Event, ts time.Time) {
 	case "low_hit":
 		s.anomTot.LowHit++
 		if r := s.byID[p.Req]; r != nil {
-			r.anomaly = true
+			r.anomaly, r.anomKind = true, "low_hit"
 		}
 	}
 	an.N = s.anomTot.Total

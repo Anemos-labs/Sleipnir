@@ -108,8 +108,9 @@ type Recovery struct {
 // are counted so sequence numbers continue. A torn final line from a crash is
 // truncated; a complete line in the middle that is not a valid event is not: it
 // is skipped and counted (see Recovery, and the log.corrupt event Open appends),
-// and everything after it is kept and appended to. The directory is created 0700
-// and the log 0600; wider permissions left by an older version are tightened.
+// and everything after it is kept and appended to. Directories are created 0700
+// and the log 0600; an existing log with wider permissions (written by an older
+// version) is tightened, an existing directory keeps its mode.
 func Open(dir, session string) (*Log, error) {
 	if err := makePrivateDir(dir); err != nil {
 		return nil, err
@@ -132,7 +133,7 @@ func Open(dir, session string) (*Log, error) {
 		return nil, fmt.Errorf("events: %s is not a regular file", path)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
-		_ = f.Chmod(fi.Mode().Perm() &^ 0o077) // best effort, like the directory
+		_ = f.Chmod(fi.Mode().Perm() &^ 0o077) // our file; best effort
 	}
 	sc, err := scanLog(f)
 	if err != nil {

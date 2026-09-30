@@ -314,12 +314,23 @@ func (s *sample) sortKey() string { return fmt.Sprintf("%s\x00%06d\x00%06d", s.e
 // singleCall roles are trained per call, each with its own reward.
 func singleCall(role string) bool { return role == rl.RoleCompactor || role == rl.RoleMailman }
 
-// scoredCalls reports whether reward.Score scored this episode's compactor or
-// mailman calls individually (it leaves a "role/<name>" aggregate on the episode
-// and a per-call reward in Step.Reward).
-func scoredCalls(ep *rl.Episode, role string) bool {
-	_, ok := ep.Reward.Components["role/"+role]
-	return ok
+// callReward returns the reward of a compactor or mailman call when it was
+// scored on its own, and false when it should inherit its chain's. reward.Score
+// leaves a per-call reward in Step.Reward, the mean over an agent's calls under
+// the agent's "role/<name>" component, and the mean over the episode under the
+// episode's; a call whose own reward is zero falls back to those aggregates, so
+// hand-made episodes that only carry the aggregate work too.
+func callReward(ep *rl.Episode, a *rl.Agent, st *rl.Step, role string) (float64, bool) {
+	if st.Reward != 0 {
+		return st.Reward, true
+	}
+	if v, ok := a.Reward.Components["role/"+role]; ok {
+		return v, true
+	}
+	if v, ok := ep.Reward.Components["role/"+role]; ok {
+		return v, true
+	}
+	return 0, false
 }
 
 func eligible(ep *rl.Episode) (bool, string) {
@@ -356,10 +367,10 @@ func collectSamples(eps []*rl.Episode, spec Spec, rep *Report) []*sample {
 				}
 				role := reward.StepRole(a, st)
 				if singleCall(role) {
-					if scoredCalls(ep, role) {
+					if r, ok := callReward(ep, a, st, role); ok {
 						// Scored individually: one sample per call, in the call's own role.
 						out = append(out, &sample{ep: ep, ai: ai, si: si, role: role, steps: []*rl.Step{st},
-							reward: st.Reward, group: gk})
+							reward: r, group: gk})
 						continue
 					}
 					// Unscored: the call inherits the reward of the chain it served, i.e.
@@ -445,6 +456,9 @@ func spread(v []float64) (lo, hi float64) {
 // baseline to speak of: their advantages are 0 (for grpo, rloo and anchor) and
 // they are listed in Report.Flat.
 func Apply(eps []*rl.Episode, s Spec) (Report, error) {
+	s.Method = strings.ToLower(strings.TrimSpace(s.Method))
+	s.GroupBy = strings.ToLower(strings.TrimSpace(s.GroupBy))
+	s.AnchorBy = strings.ToLower(strings.TrimSpace(s.AnchorBy))
 	rep := Report{Method: s.Method}
 	if err := s.validate(); err != nil {
 		return rep, err

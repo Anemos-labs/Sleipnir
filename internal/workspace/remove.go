@@ -135,7 +135,7 @@ func (t *Tree) Remove(ctx context.Context, force bool) error {
 func (m *Manager) removeTree(ctx context.Context, t *Tree, force bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.removed {
+	if t.isRemoved() {
 		return nil
 	}
 	if err := m.ensure(ctx); err != nil {
@@ -199,7 +199,7 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 			}
 		}
 	}
-	t.removed = true
+	t.removed.Store(true)
 	m.mu.Lock()
 	if cur := m.trees[t.Agent]; cur == t {
 		delete(m.trees, t.Agent)

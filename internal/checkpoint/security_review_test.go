@@ -458,8 +458,8 @@ func TestSecReview_S37_ManifestTextIsCleanedAndWarningsAreBounded(t *testing.T) 
 	}
 }
 
-// State is private to the user: the directory, manifests and counter are 0700/0600, and a directory left
-// wider by an older version is tightened.
+// State is private to the user: the directory the store creates, its manifests and counter, and its own blob
+// store are 0700/0600.
 func TestSecReview_S37_StateIsPrivate(t *testing.T) {
 	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
 		t.Skip("permission bits are not meaningful here")
@@ -469,14 +469,8 @@ func TestSecReview_S37_StateIsPrivate(t *testing.T) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(base, "state", "checkpoints")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	s, err := New(dir, nil, root) // its own blob store
+	dir := filepath.Join(base, "state", "checkpoints") // created by New, parents included
+	s, err := New(dir, nil, root)                      // its own blob store
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +483,7 @@ func TestSecReview_S37_StateIsPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := 0
-	err = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(filepath.Join(base, "state"), func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -506,7 +500,7 @@ func TestSecReview_S37_StateIsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seen < 6 { // dir, cp_0001.json, meta.json, blobs, ab, cd, blob
+	if seen < 7 { // state, checkpoints, cp_0001.json, meta.json, blobs, ab, cd, blob
 		t.Fatalf("walked only %d entries", seen)
 	}
 }

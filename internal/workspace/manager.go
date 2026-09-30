@@ -164,7 +164,9 @@ func (m *Manager) now() time.Time {
 	return time.Now()
 }
 
-func (m *Manager) emit(typ, agent, task string, data map[string]any) { m.OnEvent.emit(typ, agent, task, data) }
+func (m *Manager) emit(typ, agent, task string, data map[string]any) {
+	m.OnEvent.emit(typ, agent, task, data)
+}
 
 func (m *Manager) maxFileBytes() int64 {
 	switch {

@@ -573,8 +573,9 @@ func planRequests(ep *rl.Episode, infos []stepInfo, shared map[string]int, targe
 	}
 	reqs := make([]plannedReq, 0, len(infos))
 	type agentState struct {
-		g   *generation
-		gen int
+		g     *generation
+		gen   int
+		route string // routing key of the agent's last main request, which its forks share
 	}
 	states := make([]agentState, len(ep.Agents))
 
@@ -617,6 +618,7 @@ func planRequests(ep *rl.Episode, infos []stepInfo, shared map[string]int, targe
 				g.prompt = p
 			}
 			g := as.g
+			as.route = r.route
 			r.nodes = g.nodes[:len(g.nodes):len(g.nodes)]
 			r.tail = p - lastCum(r.nodes)
 			r.bp = breakpoints(r.nodes, g.hasShared, maxBP)
@@ -624,6 +626,9 @@ func planRequests(ep *rl.Episode, infos []stepInfo, shared map[string]int, targe
 			// A fork reuses the agent's own prefix and appends a one-shot
 			// instruction: read the chain up to what fits, bill the rest uncached.
 			g := as.g
+			if prefix == "" && as.route != "" {
+				r.route = as.route // a fork goes where its parent's cache is
+			}
 			m := len(g.nodes)
 			for m > 0 && g.nodes[m-1].cum > p {
 				m--

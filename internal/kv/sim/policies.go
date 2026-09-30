@@ -191,6 +191,65 @@ func DefaultLayered() LayeredOptions {
 	return LayeredOptions{Compaction: true, ColdMask: true, Gate: true, Affinity: true, RetainedFrac: 0.22, SpineFrac: 0.03, MaskedResult: 40, HotEvery: 3, Planner: kv.DefaultPlanner()}
 }
 
+// primerGate is the simulator's model of swarm.WarmGate: the first request over
+// a cold prefix goes alone; the rest wait for its first response byte, after
+// which the provider serves the prefix from cache. Requests arrive one at a time
+// in simulated order, so "the first" is well defined. Like the real gate it keys
+// two nested levels (the shared prefix on a routing shard, the role prefix inside
+// it) and presumes a level warm from the start of the request that touched it,
+// less a margin. It does not model the stuck-primer escalation: primers here
+// never hang.
+type primerGate struct {
+	enabled bool
+	ttl     time.Duration
+	margin  time.Duration
+	keys    map[string]*gateState
+}
+
+type gateState struct{ ready, warmUntil time.Duration }
+
+func newPrimerGate(enabled bool, ttl time.Duration) *primerGate {
+	margin := ttl / 5
+	if margin > 20*time.Second {
+		margin = 20 * time.Second
+	}
+	return &primerGate{enabled: enabled, ttl: ttl, margin: margin, keys: map[string]*gateState{}}
+}
+
+// wait reports how long a request at now must hold for any of the keys' primers.
+func (g *primerGate) wait(now time.Duration, keys ...string) time.Duration {
+	if !g.enabled {
+		return 0
+	}
+	var w time.Duration
+	for _, k := range keys {
+		if st := g.keys[k]; st != nil && st.ready > now && st.ready-now > w {
+			w = st.ready - now
+		}
+	}
+	return w
+}
+
+// touch records a request over key that started at now and whose first byte
+// arrives after ttfb. A request over a prefix that had gone cold becomes the new
+// primer.
+func (g *primerGate) touch(key string, now, ttfb time.Duration) {
+	st := g.keys[key]
+	if st == nil {
+		st = &gateState{ready: now + ttfb}
+		g.keys[key] = st
+	} else if g.ttl > 0 && now >= st.warmUntil {
+		st.ready = now + ttfb
+	}
+	if g.ttl <= 0 {
+		st.warmUntil = 1 << 62
+		return
+	}
+	// The provider measures an entry's life from the start of the request that
+	// wrote or read it, and the gate does the same, less a margin.
+	st.warmUntil = now + g.ttl - g.margin
+}
+
 // SpineBound and InstructionBound mirror kv.DefaultApplyPolicy: the spine is
 // evicted behind a pointer line once it exceeds MaxSpineTokens (down to 70%).
 const (
@@ -262,10 +321,6 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 		}
 		return fmt.Sprintf("G/%d", agentIdx%shards), fmt.Sprintf("G/%d|R:worker", agentIdx%shards)
 	}
-	horizon := pl.HorizonTurns
-	if horizon == 0 {
-		horizon = kv.DefaultPlanner().HorizonTurns
-	}
 
 	var mgrThread []seg
 	mgrTok := 0
@@ -276,9 +331,8 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 		mttfb := managerBill(r, start, true, &mgrThread, &mgrTok, route(0, "mgr"), w.AssignTokens)
 		// The manager's request primes the constitution and shared pin on its own
 		// engine; other shards still have to prime theirs.
-		mShared, mRole := gateKeys(0)
+		mShared, _ := gateKeys(0)
 		gate.touch(mShared, start, mttfb)
-		gate.touch(mRole, start, mttfb)
 		t0 := firstDispatch(start, mttfb)
 
 		var actors []*actor
@@ -286,25 +340,25 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 			i := i
 			id := fmt.Sprintf("w%02d", i)
 			var (
-				thread     []seg
-				threadTok  int
-				taskNo     int
-				active     bool
-				notesVer   int
-				spineVer   int
-				notesTok   int
-				spineTok   int
-				epoch      int
-				lastReq    time.Duration
-				haveReq    bool
-				job        *compJob
-				sp         *taskSpec
-				si         int
-				total      int
-				sinceMask  int
-				sinceHot   int
-				hotSeq     int
-				pendingHot bool
+				thread    []seg
+				threadTok int
+				taskNo    int
+				active    bool
+				notesVer  int
+				spineVer  int
+				notesTok  int
+				spineTok  int
+				epoch     int
+				lastReq   time.Duration
+				haveReq   bool
+				job       *compJob
+				sp        *taskSpec
+				si        int
+				total     int
+				sinceMask int
+				sinceHot  int
+				hotSeq    int
+				forceHot  bool
 			)
 			a := &actor{id: id, next: t0}
 			a.step = func(now time.Duration) (bool, time.Duration) {
@@ -317,7 +371,7 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 					active = true
 					thread, threadTok, notesVer, spineVer, epoch = nil, 0, 0, 0, 0
 					notesTok, spineTok, job, haveReq = w.AssignTokens, 0, nil, false
-					sinceMask, sinceHot, hotSeq, pendingHot = 1<<20, 0, 0, w.HotTokens > 0
+					sinceMask, sinceHot, hotSeq, forceHot = 1<<20, 0, 0, true
 					sp = w.spec(k)
 					total = w.OrientSteps + len(sp.work)
 					si = 0
@@ -328,15 +382,17 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 				}
 				// Boundary: commit or start compaction.
 				if o.Compaction {
+					// Warm the way the agent judges it: within the modelled entry lifetime
+					// of its last request (no oracle over the provider's true state).
 					warm := haveReq
 					if p.TTL > 0 {
-						warm = haveReq && !pl.IsCold(lastReq-lastReq+lastReqAt(lastReq, haveReq), now, p.TTL)
+						warm = haveReq && !pl.IsCold(epochAt.Add(lastReq), epochAt.Add(now), p.TTL)
 					}
 					prefix := w.ConstTokens + w.SharedTokens + w.RoleTokens
 					state := func(threadNow int) kv.State {
 						maskable := 0
 						if len(thread) > 4 {
-							maskable = maskableTokens(thread[:len(thread)-4], w.MaskMinTokens(), o.MaskedResult)
+							maskable = maskableTokens(thread[:len(thread)-4], maskMinTokens, o.MaskedResult)
 						}
 						return kv.State{
 							PrefixTokens: prefix, NotesTokens: notesTok, SpineTokens: spineTok,
@@ -345,7 +401,6 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 							MaskableTokens: maskable, SinceMask: sinceMask,
 						}
 					}
-					_ = horizon
 					if job != nil && job.readyAt <= now {
 						st := state(threadTok)
 						tail := thread[job.snapSegs:]
@@ -363,7 +418,7 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 						out := kv.Outcome{SnapTokens: job.snapTok, SpineAdded: job.spine, RetainedTokens: job.rt, SpineAfter: spineAfter,
 							SpineRewritten: evicted, NotesChanged: true, NotesAfter: notesTok + notesGrowth, TailTokens: tailPrior}
 						job.held++
-						if stale, _ := pl.Stale(job.snapTok+0, threadTok, job.held); stale {
+						if stale, _ := pl.Stale(job.snapTok, threadTok, job.held); stale {
 							job = nil // dropped; a new one may start below
 						} else if d := pl.ShouldCommit(st, out); d.Yes {
 							epoch++
@@ -375,7 +430,7 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 							notesTok += notesGrowth
 							r.res.Compactions++
 							job = nil
-							pendingHot = pendingHot || p.HotMode == kv.HotPersist
+							forceHot = true // the newest notice may have been folded away: write a fresh one
 						}
 					}
 					if job == nil && len(thread) >= 6 {
@@ -388,7 +443,7 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 							keep := len(thread) - 4
 							changed := 0
 							for k := 0; k < keep; k++ {
-								if sg := thread[k]; strings.HasPrefix(sg.id, "r:") && sg.tokens >= w.MaskMinTokens() {
+								if sg := thread[k]; strings.HasPrefix(sg.id, "r:") && sg.tokens >= maskMinTokens {
 									thread[k] = seg{id: fmt.Sprintf("m:%s:%d", sg.id, epoch), tokens: o.MaskedResult}
 									changed++
 								}
@@ -414,16 +469,15 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 				}
 				hot := 0
 				if p.HotMode != kv.HotPersist {
-					hot = w.HotTokens
-				} else if pendingHot && si > 0 || pendingHot && len(thread) == 0 {
-					// Persist on change: the board rides in the user turn as a frozen
-					// block, first with the task and then every few steps.
-					if sinceHot >= hotEvery || len(thread) == 0 {
-						hotSeq++
-						thread = append(thread, seg{fmt.Sprintf("hotn:%s:%d:%d:%d", id, taskNo, epoch, hotSeq), w.HotTokens, false})
-						threadTok += w.HotTokens
-						sinceHot = 0
-					}
+					hot = w.HotTokens // inline (or turn-scoped): the uncached tail, every request
+				} else if forceHot || sinceHot >= hotEvery {
+					// Persist on change: the board rides in the user turn as a frozen block,
+					// with the task and then every few steps; it stays in the thread until a
+					// commit folds it.
+					hotSeq++
+					thread = append(thread, seg{fmt.Sprintf("hotn:%s:%d:%d:%d", id, taskNo, epoch, hotSeq), w.HotTokens, false})
+					threadTok += w.HotTokens
+					sinceHot, forceHot = 0, false
 				}
 				segs := layeredSegs(w, id, notesVer, spineVer, notesTok, spineTok, thread, hot)
 				var st stepSpec
@@ -465,13 +519,12 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 	return r.finish()
 }
 
-// lastReqAt is the start of the agent's previous request (zero when none).
-func lastReqAt(t time.Duration, have bool) time.Duration {
-	if !have {
-		return 0
-	}
-	return t
-}
+// epochAt anchors the simulator's durations as times for kv.Planner.IsCold.
+var epochAt = time.Unix(0, 0)
+
+// maskMinTokens is the size at which kv.MaskOnly hides a result (half of
+// ApplyPolicy.MaskMinTokens, floored at 600).
+const maskMinTokens = 600
 
 // maskableTokens is what masking the bulky results among segs would save.
 func maskableTokens(segs []seg, minTokens, masked int) int {
