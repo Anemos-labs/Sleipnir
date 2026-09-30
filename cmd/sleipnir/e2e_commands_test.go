@@ -439,7 +439,10 @@ func TestDemoAndInspect(t *testing.T) {
 	})
 }
 
-// A marketplace-shaped catalogue: prices are per token, as decimal strings.
+// A marketplace-shaped catalogue (Heimdall's and OpenRouter's): prices are per token, as decimal
+// strings, and architecture.modality says what a model takes and gives. The mock provider's own
+// catalogue has no modality, so `models` would print it only with --all; this one has the fields
+// `models` filters on.
 const catalogue = `{"data":[
  {"id":"vendor/chat-small","context_length":131072,"architecture":{"modality":"text->text"},
   "pricing":{"prompt":"0.0000005","completion":"0.000002","input_cache_read":"0.0000001"},"supported_parameters":["tools","reasoning_effort"]},
