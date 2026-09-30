@@ -2,6 +2,7 @@ package repocheck
 
 import (
 	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -78,12 +79,18 @@ func TestRulesetRequiresJobsOfCI(t *testing.T) {
 			jobs[j.Name] = true
 		}
 	}
+	var fixed []string
+	for n := range jobs {
+		fixed = append(fixed, strconv.Quote(n))
+	}
+	sort.Strings(fixed)
+	jobList := strings.Join(fixed, ", ")
 	if len(p.Checks) != 1 || p.Checks[0].Context != "ci-gate" || p.Checks[0].IntegrationID != actionsAppID {
 		t.Errorf("the ruleset requires %+v; the design is the single check ci-gate from the GitHub Actions app (integration_id %d)", p.Checks, actionsAppID)
 	}
 	for _, c := range p.Checks {
 		if !jobs[c.Context] {
-			t.Errorf("the ruleset requires the check %q, but no job of ci.yml has that name (its jobs: %v): rename one of them, or every pull request waits for a check that never comes", c.Context, jobs)
+			t.Errorf("the ruleset requires the check %q, but no job of ci.yml has that name (the jobs with a fixed name: %s): rename one of them, or every pull request waits for a check that never comes", c.Context, jobList)
 		}
 	}
 }
