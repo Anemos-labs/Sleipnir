@@ -504,3 +504,40 @@ func capTokens(s string, max int, est core.Estimator) string {
 	}
 	return string(r) + " …[truncated]"
 }
+
+// MaskOnly is the deterministic compaction: no turn is folded, the spine and
+// notes are untouched, and no model is involved. Bulky tool results older than
+// the newest units are replaced by recallable placeholders and stale thinking is
+// stripped. It is what the planner chooses when the cache is cold (the next
+// request re-prefills everything anyway, so a smaller prompt is free) and what
+// keeps a hard limit from ever needing a model call to be respected.
+func MaskOnly(s *Stack, est core.Estimator, pol ApplyPolicy) (*ApplyResult, error) {
+	turns := s.Thread.Turns
+	units := Units(turns)
+	protect := pol.MinKeepUnits
+	if protect < 1 {
+		protect = 1
+	}
+	if len(units) <= protect {
+		return nil, fmt.Errorf("nothing to mask: only %d units", len(units))
+	}
+	mp := pol
+	mp.AutoMaskAfterUnits = protect
+	if mp.MaskMinTokens > 600 {
+		mp.MaskMinTokens /= 2
+	}
+	res := &ApplyResult{Spine: s.Spine, Notes: s.Notes, KeepFrom: turns[0].ID}
+	before := 0
+	for _, tr := range turns {
+		before += TurnTokens(tr, est)
+	}
+	res.Replacement = retain(turns, units, 0, &Patch{}, mp, est, res)
+	for _, tr := range res.Replacement {
+		res.RetainedTokens += TurnTokens(tr, est)
+	}
+	res.RemovedTokens = before - res.RetainedTokens
+	if res.MaskedResults == 0 && res.RemovedTokens <= 0 {
+		return nil, fmt.Errorf("nothing worth masking")
+	}
+	return res, nil
+}

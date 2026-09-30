@@ -92,9 +92,25 @@ type Outcome struct {
 	CompactorITE float64
 }
 
+// Mode says how a compaction should be carried out.
+type Mode int
+
+const (
+	// ModeFork asks a model (a fork of the agent's own request) for a patch. It is
+	// the high-quality path and only worth its call while the cache is warm: the
+	// fork reads the agent's cached prefix at the read rate.
+	ModeFork Mode = iota
+	// ModeMask applies deterministic masking of bulky old tool results right now,
+	// with no model call. It is the right move when the cache is cold: the next
+	// request re-prefills the whole prompt anyway, so shrinking it first is free,
+	// whereas a fork would have to pay a cold write for the prefix itself.
+	ModeMask
+)
+
 // Decision explains a planner verdict.
 type Decision struct {
 	Yes    bool
+	Mode   Mode
 	NetITE float64 // expected saving in input-token equivalents (may be negative)
 	Reason string
 }
@@ -102,6 +118,18 @@ type Decision struct {
 // ShouldStart decides whether to spend a compactor call at all.
 func (p Planner) ShouldStart(s State) Decision {
 	p.fill()
+	d := p.shouldStart(s)
+	if d.Yes && !s.Warm {
+		// A fork over a cold prefix pays a full write just to read the thread;
+		// the deterministic path shrinks it for nothing and the next request pays
+		// one (smaller) write instead of two.
+		d.Mode = ModeMask
+		d.Reason += " (cold: masking instead of a model call)"
+	}
+	return d
+}
+
+func (p Planner) shouldStart(s State) Decision {
 	switch {
 	case s.ThreadTokens >= p.HardThreadTokens:
 		return Decision{Yes: true, Reason: fmt.Sprintf("thread %dk over hard limit %dk", s.ThreadTokens/1000, p.HardThreadTokens/1000)}
@@ -110,7 +138,7 @@ func (p Planner) ShouldStart(s State) Decision {
 	case s.ThreadTokens >= p.SoftThreadTokens:
 		return Decision{Yes: true, Reason: fmt.Sprintf("thread %dk over soft limit %dk", s.ThreadTokens/1000, p.SoftThreadTokens/1000)}
 	case !s.Warm && s.ThreadTokens >= p.MinThreadTokens:
-		return Decision{Yes: true, Reason: "cache is cold: rewriting is free"}
+		return Decision{Yes: true, Mode: ModeMask, Reason: "cache is cold: shrink for free by masking, no model call"}
 	}
 	return Decision{Reason: "no pressure"}
 }

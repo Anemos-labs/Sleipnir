@@ -82,14 +82,23 @@ func (a *Agent) boundary(ctx context.Context) {
 		return
 	}
 	d := a.cfg.Planner.ShouldStart(st)
-	// Compaction needs something to fold: at least two units beyond the ones
-	// that always stay verbatim.
-	if d.Yes && a.foldableUnits() < 2 {
+	// A model compaction needs something to fold: at least two units beyond the
+	// ones that always stay verbatim. Masking only needs one.
+	if d.Yes && d.Mode == kv.ModeFork && a.foldableUnits() < 2 {
+		d.Yes = false
+	}
+	if d.Yes && d.Mode == kv.ModeMask && a.foldableUnits() < 1 {
 		d.Yes = false
 	}
 	if d.Yes {
-		a.emit(events.TypeCompactPlan, map[string]any{"decision": "start", "reason": d.Reason, "warm": st.Warm, "thread_tokens": st.ThreadTokens})
-		a.startCompaction(ctx, d.Reason)
+		a.emit(events.TypeCompactPlan, map[string]any{"decision": "start", "mode": modeName(d.Mode), "reason": d.Reason, "warm": st.Warm, "thread_tokens": st.ThreadTokens})
+		if d.Mode == kv.ModeMask {
+			if err := a.maskCommit(d.Reason); err != nil {
+				a.emit(events.TypeCompactReject, map[string]any{"stage": "mask", "reason": err.Error()})
+			}
+		} else {
+			a.startCompaction(ctx, d.Reason)
+		}
 	}
 	if a.overWindow(st) {
 		_ = a.emergencyCompact(ctx, "prompt over 85% of the context window")
@@ -261,8 +270,12 @@ func (a *Agent) commit(rp *readyPatch, why string) error {
 		"notes_over_budget": res.NotesOverBudget, "fallback": rp.fallback, "warnings": res.Warnings,
 		"held_ms": a.cfg.Now().Sub(rp.at).Milliseconds(),
 	})
+	var spineVer uint64
+	if res.Spine != nil {
+		spineVer = res.Spine.Version
+	}
 	a.emit(events.TypeLayerCommit, map[string]any{
-		"scope": "agent", "spine": res.Spine.Hash().Short(), "spine_version": res.Spine.Version,
+		"scope": "agent", "spine": res.Spine.Hash().Short(), "spine_version": spineVer,
 		"notes": res.Notes.Hash().Short(), "notes_changed": res.NotesChanged,
 	})
 	for _, l := range []*kv.Layer{res.Spine, res.Notes} {
@@ -341,4 +354,25 @@ func lastID(s kv.Stack) core.TurnID {
 		return 0
 	}
 	return s.Thread.Turns[len(s.Thread.Turns)-1].ID
+}
+
+func modeName(m kv.Mode) string {
+	if m == kv.ModeMask {
+		return "mask"
+	}
+	return "fork"
+}
+
+// maskCommit performs the deterministic compaction immediately, at a boundary.
+func (a *Agent) maskCommit(reason string) error {
+	a.mu.Lock()
+	snap := a.stack
+	snap.Thread = a.thread.Snapshot()
+	a.mu.Unlock()
+	res, err := kv.MaskOnly(&snap, a.est, a.cfg.ApplyPolicy)
+	if err != nil {
+		return err
+	}
+	rp := &readyPatch{res: res, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true}
+	return a.commit(rp, "mask: "+reason)
 }

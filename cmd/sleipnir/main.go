@@ -76,6 +76,7 @@ Commands:
   doctor    probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs
   models    list models and prices from a marketplace catalogue
   mock      run the built-in mock provider (deterministic, cache-faithful) for demos and tests
+  sim       simulate cache policies: what layering buys and where it stops paying
   version   print version
 
 Providers are selected with --provider (heimdall, openrouter, openai, custom) or

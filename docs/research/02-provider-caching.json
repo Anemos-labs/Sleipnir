@@ -241,7 +241,7 @@
    "max_tokens:0 request pre-warms (writes cache, empty content, stop_reason max_tokens); rejected with stream:true, thinking.type=enabled, output_config.format, forced tool_choice, or inside Message Batches",
    "Preserved thinking (Fable 5.1, Opus 5.5, Sonnet 5.5): any edit to system/tools/earlier messages invalidates later thinking blocks; API default is 400 for accounts created >= 2026-08-31 00:00 UTC, else only when prefix_mismatch_behavior is set; Sonnet 5.5 blocks are also bound to the producing account",
    "Message Batches: caching best-effort (30%-98% hits typical); use 1h TTL + single warm-up request",
-   "Platform caveats: cache diagnostics and inline-tools are Claude API only; on-demand compaction not on Bedrock; effort change clears cache on Bedrock/Google Cloud/gateways",
+   "Platform caveats: cache diagnostics and inline-tools are Claude API only; on-demand compaction not on Bedrock; effort change clears cache on Bedrock, Google Cloud and Claude apps gateways (top-level effort; per-message effort avoids it on the Claude API)",
    "Server-tool results (web search/fetch/code execution) get an AUTOMATIC 5m cache breakpoint whenever the request already carries any cache_control, so ephemeral_5m writes can appear even when every marker you set is 1h",
    "A tool with defer_loading:true cannot carry cache_control (400); tool search types: tool_search_tool_regex_20251119, tool_search_tool_bm25_20251119; discovered tools arrive as tool_reference blocks so the prefix is untouched",
    "Anthropic-schema client tools have trained-in signatures and no special caching interaction: bash_20250124, text_editor_20250728 (name str_replace_based_edit_tool), memory_20250818, code_execution_20260120 (programmatic tool calling)",
@@ -326,7 +326,7 @@
    300,
    86400
   ],
-  "ttl_note": "prompt_cache_retention: in_memory (typically 5-10 min idle, up to 1h) or 24h (extended, KV offloaded to GPU-local storage); gpt-5.5, gpt-5.5-pro and later: only 24h; older models default 24h unless org is ZDR (then in_memory)",
+  "ttl_note": "300 = lower bound of the typical in_memory idle window and 86400 = the 24h option; neither is a guarantee (best-effort). prompt_cache_retention: in_memory (typically 5-10 min idle, up to 1h - docs summary [M]) or 24h (extended, KV offloaded to GPU-local storage); gpt-5.5, gpt-5.5-pro and later: only 24h; older models default 24h unless org is ZDR (then in_memory)",
   "read_multiplier": 0.1,
   "read_multiplier_note": "0.5 (gpt-4o, o1, o3-mini), 0.25 (gpt-4.1, o3, o4-mini), 0.1 (gpt-5 family incl. 5.5)",
   "write_multiplier_5m": 1.0,
