@@ -1,0 +1,239 @@
+# Fold: the compaction of the storyboard, 31.2k tokens of thread folded into a 2.4k resume; read the pictures top to bottom as the animation
+
+== progress 0.00, width 60 (width 60, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+                                                            |
+                                                            |
+                                                            |
+                                                            |
+                                                            |
+spine                                                       |
+◆ compacting 31.2k                                          |
+
+== progress 0.25, width 60 (width 60, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                         |
+fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                            |
+                                                            |
+                                                            |
+                                                            |
+spine                                                       |
+◆ compacting 31.2k → 18.6k                                  |
+
+== progress 0.50, width 60 (width 60, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                         |
+fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                                      |
+       ▓▓▓▓▓▓▓▓▓▓▓                                          |
+                                                            |
+                                                            |
+spine                                                       |
+◆ compacting 31.2k → 9.6k                                   |
+
+== progress 0.75, width 60 (width 60, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                         |
+fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                                      |
+       ▓▓▓▓▓▓▓                                              |
+       ▒▒▒▒▒                                                |
+                                                            |
+spine  ▏                                                    |
+◆ compacting 31.2k → 4.2k                                   |
+
+== progress 1.00, width 60 (width 60, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                         |
+fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                                      |
+       ▓▓▓▓▓▓▓                                              |
+       ▒▒▒▒ 2.4k                                            |
+                                                            |
+spine  ▏resume                                              |
+◆ compacted 31.2k → 2.4k (-92%)                             |
+# the same at other widths: fewer steps when it is narrow, only the last line when there is no room for a staircase
+
+== progress 0.6, width 40 (width 40, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                 |
+fold ↓ ▓▓▓▓▓▓▓▓                         |
+       ▓▓▓▓                             |
+                                        |
+                                        |
+spine                                   |
+◆ compacting 31.2k → 7.0k               |
+
+== progress 0.6, width 30 (width 30, 7 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓               |
+fold ↓ ▓▓▓                    |
+       ▒▒                     |
+                              |
+spine                         |
+◆ compacting 31.2k → 7.0k     |
+
+== progress 0.6, width 24 (width 24, 6 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+fold ↓ ▓▓▓▓             |
+       ▒▒               |
+                        |
+spine                   |
+◆ 31.2k → 7.0k          |
+
+== progress 0.6, width 16 (width 16, 1 lines)
+◆ 31.2k → 7.0k  |
+
+== progress 0.6, width 12 (width 12, 1 lines)
+◆ 31.2k → 7…|
+
+== finished, width 30 (width 30, 7 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓               |
+fold ↓ ▓▓▓                    |
+       ▒ 2.4k                 |
+                              |
+spine  ▏resume                |
+◆ compacted 31.2k → 2.4k      |
+
+== finished, width 16 (width 16, 1 lines)
+◆ 31.2k → 2.4k  |
+# a finer sequence, 10 frames at width 44 (the row that is moving retracts from the row above it)
+
+== progress 0.0 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+                                            |
+                                            |
+                                            |
+                                            |
+                                            |
+spine                                       |
+◆ compacting 31.2k                          |
+
+== progress 0.1 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓             |
+                                            |
+                                            |
+                                            |
+                                            |
+spine                                       |
+◆ compacting 31.2k → 25.7k                  |
+
+== progress 0.2 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+                                            |
+                                            |
+                                            |
+                                            |
+spine                                       |
+◆ compacting 31.2k → 20.8k                  |
+
+== progress 0.3 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓                        |
+                                            |
+                                            |
+                                            |
+spine                                       |
+◆ compacting 31.2k → 16.5k                  |
+
+== progress 0.4 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓                            |
+                                            |
+                                            |
+                                            |
+spine                                       |
+◆ compacting 31.2k → 12.8k                  |
+
+== progress 0.5 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓                            |
+       ▓▓▓▓▓▓                               |
+                                            |
+                                            |
+spine                                       |
+◆ compacting 31.2k → 9.6k                   |
+
+== progress 0.6 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓                            |
+       ▓▓▓▓                                 |
+                                            |
+                                            |
+spine                                       |
+◆ compacting 31.2k → 7.0k                   |
+
+== progress 0.7 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓                            |
+       ▓▓▓▓                                 |
+       ▒▒▒                                  |
+                                            |
+spine  ▏                                    |
+◆ compacting 31.2k → 5.0k                   |
+
+== progress 0.8 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓                            |
+       ▓▓▓▓                                 |
+       ▒▒ 2.4k                              |
+                                            |
+spine  ▏                                    |
+◆ compacting 31.2k → 3.6k                   |
+
+== progress 0.9 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓                            |
+       ▓▓▓▓                                 |
+       ▒▒ 2.4k                              |
+                                            |
+spine  ▏res                                 |
+◆ compacting 31.2k → 2.7k                   |
+
+== progress 1.0 (width 44, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   |
+fold ↓ ▓▓▓▓▓▓▓▓▓                            |
+       ▓▓▓▓                                 |
+       ▒▒ 2.4k                              |
+                                            |
+spine  ▏resume                              |
+◆ compacted 31.2k → 2.4k (-92%)             |
+# odd sizes: nothing gained, everything dropped
+
+== after = before (width 40, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 5.0k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓     |
+fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓     |
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓     |
+       ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ 5.0k|
+                                        |
+spine  ▏resume                          |
+◆ compacted 5.0k → 5.0k                 |
+
+== after = 0 (width 40, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 5.0k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                 |
+fold ↓ ▓▓▓▓▓▓▓▓                         |
+       ▓▓▓                              |
+       ▒ 0                              |
+                                        |
+spine  ▏resume                          |
+◆ compacted 5.0k → 0 (-100%)            |
+
+== after > before is clamped (width 40, 8 lines)
+thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 5.0k|
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓     |
+fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓     |
+       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓     |
+       ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ 5.0k|
+                                        |
+spine  ▏resume                          |
+◆ compacted 5.0k → 5.0k                 |

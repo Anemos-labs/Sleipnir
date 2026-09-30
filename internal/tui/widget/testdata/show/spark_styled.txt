@@ -1,0 +1,5 @@
+# the colour of a bar is its health: above .85 good, above .5 warn, else bad (and Bold)
+
+== the sketch
+  {info+b|↻}       {bad+b|⚠}      {accent+b|◆}
+{bad+b|▂}{warn|▅▇}{good|██████}{warn|▆}{bad+b|▄}{good|█████████}

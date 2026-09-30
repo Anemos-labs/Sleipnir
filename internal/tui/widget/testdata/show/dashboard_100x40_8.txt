@@ -1,0 +1,43 @@
+# Dashboard at 100x40 with 8 agents, frame 12 (the last mail is arriving); the layout is what fits: read what is there and what is left out
+
+== 100x40, 8 agents (width 100, 40 lines)
+╭ SLEIPNIR ▸ swarm “add pagination to every list endpoin…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
+│                            ▄▄         │ one prefix, eight riders                                 │|
+│                         ▄▄██▀█▄       │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▰▰▰▱▱          │|
+│                       ▄█▀██▀▀██       │                                                          │|
+│         ▄▄▄▄▄▄█████████▀██▀           │ ████████████████████████████████████████████████████████ │|
+│      ▄████▀▀█████████████             │         G0                   G1                 G2       │|
+│       ▀▀   ▄▀▀▀█████▀▀█▀▄             │    ╎      ┃      ┃      │      │      ╎      ╎      │    │|
+│            █▀███ ██████▀█             │    ╎      ┃      ┃      │      │      ╎      ╎      │    │|
+│            ▀▀▄█  █ ████ █             │    ╎      ┃      ┃      │      │      ╎      ╎      │    │|
+│           ▄▀█▀   █▄▀▀█▀▄█             │    m0     w1     w2     w3     w4     w5     w6     w7   │|
+│                                       │                                                          │|
+├─ agents ──────────────────────────────┴──────────────────────────────────────────────────────────┤|
+│ AGENT       STATE   DOING                       PROMPT                 TOK    COST    ⛁ LEASE    │|
+│ m0 manager  ⠹ think plan: split by endpoint     █████████████████▓░  12.1k  $0.012  96% —        │|
+│ w1 backend  ⚙ tool  go test ./orders/...        ███████████▏█████▓░  72.2k  $0.020  97% orders/* │|
+│ w2 backend  ✎ edit  internal/users/list.go      ███████████▏█████▓░  69.6k  $0.018  95% users/*  │|
+│ w3 frontend ✉ wait  schema: GET /orders         ███████████▏█████▓░  34.2k  $0.009  96% web/api  │|
+│ w7 docs     ⚠ stuck npm test - same failure     ████████████▏███▓░░  48.0k  $0.012  88% docs/*   │|
+│ … and 3 more (all of them are in the heatmap)                                                    │|
+├─ swarm gantt · last 60 s ──────────────────────────┬─ task board ────────────────────────────────┤|
+│ m0 ▄▄▁ ▂  ▇▄▅▆▂▁▂▅▅█▇▅█▅▇▇▇▄▆ ▂▁▁ ▂▁▂ ◆▄▆▅▆▇▇▆▆▆▅▇ │ todo 3     running 4  verify 1   merged 5   │|
+│ w1 ▄▄██▇▄▄▇▅▆✉▅▅▇██▄▄▆█▆▅▅▄▄█▆██ ▁▁▁▂ ▁██▄▇▅▅▆▇▄▄█ │ ▢ t9  do…  ▣ t3 ord   ◌ t7       ✓ t1 ✓ t2  │|
+│ w2 ▁▁▁█▆▆▆▇▆▇▇▄▆▅█▅█▆▇▄▇█▅▄▄▇▇▁▂▁▂ ▂ ▂ ▂▆▇██▄▇▇▇▇▆ │ ▢ t10 e2e  ▣ t4 usr              ✓ t4 ✓ t5  │|
+│ w3 ▁▂▁▆█▇▄▇ ▂▂▂▇▆▇▆▅▂▂▁▂ ▁▁▂▂▇▇▅▄✉██▂▁▂ ▂█▇▆▆▇▆▇▆█ │ ▢ t11 doc  ▣ t5 web              ✓ t6       │|
+│ w7 ▁ ▂ ▂▁ ▇███▆▄▄▇▅▇██▇██▆▅▆▆▄█▅█▅▅▄▇▄▄▂▂▁▁▁⚠▂▂▁▁▂ │            ▣ t6 cli                         │|
+│    -60s                 -30s                   now │                                             │|
+├─ merge queue ─────────┬─ mail ─────────────────────┼─ governor ─────────┬─ 8 agents ─────────────┤|
+│ ▸ t7 rebase ✓ ─ veri… │ ✉ w1 ➜ w3 “schema: GET /o… │ rpm 212/240 ▰▰▰▰▰▱ │ ⠹ ⚙ ✎ ✉ ⠹ ◌ ✓ ⚠        │|
+│     go test ./orders… │ ✉ m0 ➜ w5 “start e2e afte… │ 429s 0  retries 1  │                        │|
+│   t8 rebase ⠹         │ ✉ w4 ➜ m0 “done: table pa… │ $0.31/$20 ▰▱▱▱▱▱▱▱ │ ⠹ think 2              │|
+│                       │ ✉ w2 ➜ w1 “rename ListO”   │ shared prefix 3:41 │ ⚙ tool  1              │|
+│ merged t1 t2 t4 t5 t6 │                            │ ≈ 6× faster        │ ✎ edit  1              │|
+│ conflicts 0 · bounce… │                            │                    │ ✉ wait  1              │|
+│                       │                            │                    │ ◌ idle  1              │|
+│                       │                            │                    │ ✓ done  1              │|
+│                       │ routed 14 · dup 0 · ignor… │                    │ ⚠ stuck 1              │|
+├───────────────────────┴────────────────────────────┴────────────────────┴────────────────────────┤|
+│                                                                                                  │|
+│ ↑↓ agent · enter transcript · m mail · b board · c cache · t stack · ? help · q back to shell    │|
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯|

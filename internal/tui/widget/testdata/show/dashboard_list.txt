@@ -1,0 +1,111 @@
+# below 60 columns or 8 rows the cockpit is a one-column list: the title, the clock, the states, the agents, the board, the queue, the governor, the feed
+
+== 59x30 (width 59, 17 lines)
+SLEIPNIR ▸ swarm “add pagination to every list endpoint…”  |
+◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94%                     |
+⠹2 ⚙1 ✎1 ✉1 ◌1 ✓1 ⚠1                                       |
+m0 ⠸ plan: split by endpoint                            96%|
+w1 ⚙ go test ./orders/...                               97%|
+w2 ✎ internal/users/list.go                             95%|
+w3 ✉ schema: GET /orders                                96%|
+w4 ⠧ paginate <Orders>                                  94%|
+w5 ◌ waits for t3 merge                                 91%|
+w6 ✓ approved t2                                        95%|
+w7 ⚠ npm test - same failure                            88%|
+todo 3 · running 4 · verifying 1 · merged 5                |
+merge t7 verify ⠸ · t8 rebase ⠸ · 5 merged                 |
+rpm 212/240 · prefix 3:41                                  |
+02:10 w1 ✓ go test ./orders/...     1.4 s · $0.0004 · ⛁ 97%|
+02:09 w7 ⚠ same failure twice: npm test — nudged, stops at…|
+02:08 m0 ◆ compacted 31.2k → 2.4k at a cold moment         |
+
+== 40x20 (width 40, 17 lines)
+SLEIPNIR ▸ swarm “add pagination to eve…|
+◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94%  |
+⠹2 ⚙1 ✎1 ✉1 ◌1 ✓1 ⚠1                    |
+m0 ⠸ plan: split by endpoint         96%|
+w1 ⚙ go test ./orders/...            97%|
+w2 ✎ internal/users/list.go          95%|
+w3 ✉ schema: GET /orders             96%|
+w4 ⠧ paginate <Orders>               94%|
+w5 ◌ waits for t3 merge              91%|
+w6 ✓ approved t2                     95%|
+w7 ⚠ npm test - same failure         88%|
+todo 3 · running 4 · verifying 1 · merg…|
+merge t7 verify ⠸ · t8 rebase ⠸ · 5 mer…|
+rpm 212/240 · prefix 3:41               |
+02:10 w1 ✓ go test ./orders/...         |
+02:09 w7 ⚠ same failure twice: npm test…|
+02:08 m0 ◆ compacted 31.2k → 2.4k at a …|
+
+== 40x12 (width 40, 12 lines)
+SLEIPNIR ▸ swarm “add pagination to eve…|
+◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94%  |
+⠹2 ⚙1 ✎1 ✉1 ◌1 ✓1 ⚠1                    |
+m0 ⠸ plan: split by endpoint         96%|
+w1 ⚙ go test ./orders/...            97%|
+w2 ✎ internal/users/list.go          95%|
+w3 ✉ schema: GET /orders             96%|
+w7 ⚠ npm test - same failure         88%|
+… and 3 more                            |
+todo 3 · running 4 · verifying 1 · merg…|
+merge t7 verify ⠸ · t8 rebase ⠸ · 5 mer…|
+rpm 212/240 · prefix 3:41               |
+
+== 32x9 (width 32, 9 lines)
+SLEIPNIR ▸ swarm “add paginatio…|
+◷ 02:10 · 8 agents · $0.31/$20 …|
+⠹2 ⚙1 ✎1 ✉1 ◌1 ✓1 ⚠1            |
+m0 ⠸ plan: split by endpoint 96%|
+w1 ⚙ go test ./orders/...    97%|
+w2 ✎ internal/users/list.go  95%|
+w7 ⚠ npm test - same failure 88%|
+… and 4 more                    |
+todo 3 · running 4 · verifying …|
+
+== 24x6 (width 24, 6 lines)
+SLEIPNIR ▸ swarm “add p…|
+◷ 02:10 · 8 agents · $0…|
+⠹2 ⚙1 ✎1 ✉1 ◌1 ✓1 ⚠1    |
+m0 ⠸ plan: split by… 96%|
+w7 ⚠ npm test - sam… 88%|
+… and 6 more            |
+
+== 20x4 (width 20, 4 lines)
+SLEIPNIR ▸ swarm “a…|
+◷ 02:10 · 8 agents …|
+⠹2 ⚙1 ✎1 ✉1 ◌1 ✓1 ⚠1|
+w7 ⚠ npm test -… 88%|
+
+== 20x2 (width 20, 2 lines)
+SLEIPNIR ▸ swarm “a…|
+◷ 02:10 · 8 agents …|
+
+== 20x1 (width 20, 1 lines)
+SLEIPNIR ▸ swarm “a…|
+
+== 100x7 (width 100, 7 lines)
+SLEIPNIR ▸ swarm “add pagination to every list endpoint…”                                           |
+◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94%                                                              |
+⠹2 ⚙1 ✎1 ✉1 ◌1 ✓1 ⚠1                                                                                |
+m0 ⠸ plan: split by endpoint                                                                     96%|
+w1 ⚙ go test ./orders/...                                                                        97%|
+w7 ⚠ npm test - same failure                                                                     88%|
+… and 5 more                                                                                        |
+# fifty agents: the stuck ones are kept
+
+== 40x14, 50 agents (width 40, 14 lines)
+SLEIPNIR ▸ swarm “add pagination to eve…|
+◷ 02:10 · 50 agents · $0.31/$20 · ⛁ 94% |
+⠹14 ⚙10 ✎6 ✉5 ◌5 ✓7 ⚠3                  |
+m0 ⠸ plan: split by endpoint         96%|
+w1 ⚙ go test ./orders/...            97%|
+w2 ✎ internal/users/list.go          95%|
+w3 ✉ schema: GET /orders             96%|
+w7 ⚠ npm test - same failure         88%|
+w17 ⚠ go test ./...                  85%|
+w42 ⚠ internal/orders/list.go        88%|
+… and 43 more                           |
+todo 3 · running 4 · verifying 1 · merg…|
+merge t7 verify ⠸ · t8 rebase ⠸ · 5 mer…|
+rpm 212/240 · prefix 3:41               |

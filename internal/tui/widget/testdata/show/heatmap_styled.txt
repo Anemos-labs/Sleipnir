@@ -1,0 +1,12 @@
+# think accent, tool good, edit G1, wait warn, idle dim, done G2, stuck bad and Bold
+
+== one of each
+{dim|◌} {accent|⠹} {good|⚙} {G1|✎} {warn|✉} {bad+b|⚠} {G2|✓}
+
+{accent|⠹ }{dim|think} 1
+{good|⚙ }{dim|tool } 1
+{G1|✎ }{dim|edit } 1
+{warn|✉ }{dim|wait } 1
+{dim|◌ idle } 1
+{G2|✓ }{dim|done } 1
+{bad+b|⚠ }{dim|stuck} 1

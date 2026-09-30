@@ -1,0 +1,11 @@
+# the marker of the head is info and Bold, ✓ good, the spinner info and Bold, ✗ and the bounce bad
+
+== frame 1
+{info+b|▸ }{-+b|t7} rebase {good|✓}{dim| ─} verify {info+b|⠙}
+{dim|    go test ./orders/...}
+{dim|  }{-+b|t8} rebase {info+b|⠙}
+{bad+b|✗ }{-+b|t9} rebase {good|✓}{dim| ─} verify {bad+b|✗}
+{bad+b|  ↩ back to w3: FAIL TestList}
+
+{good|merged} t1 t2 t4 t5 t6
+{dim|conflicts 0 · bounced back 1}
