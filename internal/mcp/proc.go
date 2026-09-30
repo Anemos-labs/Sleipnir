@@ -250,6 +250,10 @@ func (p *procTransport) describeExit(streamErr error) error {
 // Send implements Transport.
 func (p *procTransport) Send(ctx context.Context, msg []byte) error { return p.st.Send(ctx, msg) }
 
+// Ended reports that the server's output has ended, which is before Closed
+// reports how it died (see ender).
+func (p *procTransport) Ended() bool { return p.st.Ended() }
+
 // Close implements Transport: the orderly MCP shutdown, then force.
 //
 //  1. Close stdin. EOF on stdin is the protocol's shutdown signal.

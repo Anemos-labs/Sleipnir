@@ -94,8 +94,15 @@ func replacesRemoved(name string, removed nameSet) bool {
 	if removed.set[name] {
 		return true
 	}
-	for _, r := range removed.list {
-		if similarNames(name, r) {
+	x := stripTestPrefix(name)
+	if x != "" && removed.strippedSet[x] {
+		return true
+	}
+	for _, r := range removed.stripped {
+		if !removed.spend() {
+			return true // out of budget: assume the suspicious answer
+		}
+		if similarStripped(x, r) {
 			return true
 		}
 	}

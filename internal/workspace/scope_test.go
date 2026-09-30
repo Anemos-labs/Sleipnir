@@ -60,6 +60,16 @@ func TestScopeMatch(t *testing.T) {
 		{"data/table with space.csv", "data/table with space.csv", true},
 		{"docs/日本語/*", "docs/日本語/ガイド.md", true},
 		{"docs/?本語", "docs/日本語", true},
+		// whitespace around a pattern is a typo, unless a backslash protects it
+		{"  docs/guide.md\n", "docs/guide.md", true},
+		{"docs/guide.md ", "docs/guide.md ", false}, // trimmed: it names guide.md, not "guide.md "
+		{`docs/guide.md\ `, "docs/guide.md ", true},
+		{`docs/guide.md\ `, "docs/guide.md", false},
+		{`docs/guide.md\   `, "docs/guide.md ", true}, // one escaped space kept, the typo trimmed
+		{`docs/guide.md\\ `, `docs/guide.md\`, true},  // an escaped backslash does not protect the space
+		{`\ lead`, " lead", true},
+		{" ", " ", false},
+		{`\ `, " ", true},
 		// hostile or malformed input covers nothing
 		{"", "a", false},
 		{"../etc/passwd", "etc/passwd", false},

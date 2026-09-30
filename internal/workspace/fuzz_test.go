@@ -3,19 +3,22 @@ package workspace
 import (
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 )
 
 // escapeGlob turns a literal path into a pattern that matches exactly it (and what
-// lies beneath it).
+// lies beneath it): every character that means something to the dialect, and every
+// space (which is trimmed at the ends of a pattern), gets a backslash.
 func escapeGlob(lit string) string {
 	var sb strings.Builder
-	for i := 0; i < len(lit); i++ {
-		switch lit[i] {
-		case '\\', '*', '?', '[', ']', '{', '}', ',':
+	for i := 0; i < len(lit); {
+		r, w := utf8.DecodeRuneInString(lit[i:])
+		if strings.ContainsRune(`\*?[]{},`, r) || unicode.IsSpace(r) {
 			sb.WriteByte('\\')
 		}
-		sb.WriteByte(lit[i])
+		sb.WriteString(lit[i : i+w])
+		i += w
 	}
 	return sb.String()
 }

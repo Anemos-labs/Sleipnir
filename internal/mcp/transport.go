@@ -52,6 +52,13 @@ type versioned interface{ SetProtocolVersion(v string) }
 // is done.
 type listener interface{ Listen() }
 
+// ender transports can say that their connection is over before Handler.Closed
+// has delivered the reason. A child process's transport waits a moment for the
+// exit status so the error can say how the server died; in that interval every
+// send already fails, and the manager must not hand such a connection to a new
+// call as if it were live.
+type ender interface{ Ended() bool }
+
 // DefaultMaxMessageBytes bounds one incoming message. Bigger ones are not
 // buffered: they stream past a skimmer that recovers the id, so the call they
 // answer fails at once with ErrMessageTooLarge instead of exhausting memory or
@@ -185,6 +192,16 @@ func (t *StreamTransport) Send(ctx context.Context, msg []byte) error {
 		return ctx.Err()
 	case <-t.done:
 		return t.closedErr()
+	}
+}
+
+// Ended reports whether the stream has finished, for any reason.
+func (t *StreamTransport) Ended() bool {
+	select {
+	case <-t.done:
+		return true
+	default:
+		return false
 	}
 }
 

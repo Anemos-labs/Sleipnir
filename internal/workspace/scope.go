@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -28,8 +29,9 @@ import (
 // enumerates paths, so `**/*.go` versus `internal/**/x_?.go` is answered
 // instantly and correctly.
 //
-// A pattern that cannot be parsed (empty, NUL, "..", absurdly long or deep) is
-// treated fail-closed: it overlaps everything and covers nothing.
+// Whitespace around a pattern is ignored unless a backslash protects it. A pattern
+// that cannot be parsed (empty, NUL, "..", absurdly long or deep) is treated
+// fail-closed: it overlaps everything and covers nothing.
 
 const (
 	maxScopeBytes    = 4096
@@ -323,9 +325,29 @@ func scanBrace(pat string, open int) (closeAt int, commas []int) {
 
 var errBadScope = errors.New("workspace: invalid scope pattern")
 
+// trimPatternSpace removes the whitespace around a pattern, which is almost always
+// an accident of how the pattern was written down (a config line, a model's list),
+// except where a backslash protects it: a file called "a " is the pattern `a\ `.
+func trimPatternSpace(p string) string {
+	p = strings.TrimLeftFunc(p, unicode.IsSpace)
+	t := strings.TrimRightFunc(p, unicode.IsSpace)
+	if len(t) == len(p) {
+		return p
+	}
+	backslashes := 0
+	for i := len(t) - 1; i >= 0 && t[i] == '\\'; i-- {
+		backslashes++
+	}
+	if backslashes%2 == 1 {
+		_, w := utf8.DecodeRuneInString(p[len(t):])
+		return p[:len(t)+w] // the first trailing space is escaped: it is part of the name
+	}
+	return t
+}
+
 // compileScope parses a scope pattern.
 func compileScope(pattern string) (*scopePattern, error) {
-	p := strings.TrimSpace(pattern)
+	p := trimPatternSpace(pattern)
 	switch {
 	case p == "":
 		return nil, errBadScope

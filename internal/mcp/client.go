@@ -652,6 +652,9 @@ func (c *Client) request(ctx context.Context, method string, build func(id int64
 				default:
 				}
 				c.forget(id)
+				if errors.Is(err, ErrClosed) {
+					return nil, c.endedErr(ctx, err)
+				}
 				if ctx.Err() != nil && !o.noCancel {
 					c.sendCancel(id, ctx.Err())
 				}
@@ -680,6 +683,43 @@ func (c *Client) request(ctx context.Context, method string, build func(id int64
 			}
 		}
 	}
+}
+
+// closeCauseWait bounds how long a call whose send failed on a finished
+// transport waits to be told why. A child process's transport collects the exit
+// status (up to two seconds) and the last of its stderr (a third of a second)
+// before it reports; this is a little more than both.
+const closeCauseWait = 3 * time.Second
+
+// endedErr is the error of a call whose send failed because the transport had
+// finished. That error only knows the raw cause (end of file); the owner of
+// the transport reports the real one (how the child died, why the session
+// ended) through Closed a moment later, and that is what the caller, and
+// through it the model, should be told. The wait is bounded so a transport
+// that never reports cannot hold a call.
+func (c *Client) endedErr(ctx context.Context, sendErr error) error {
+	t := time.NewTimer(closeCauseWait)
+	defer t.Stop()
+	select {
+	case <-c.done:
+		return c.Err()
+	case <-t.C:
+	case <-ctx.Done():
+	}
+	return sendErr
+}
+
+// ended reports whether the connection is over or known to be ending: the
+// transport has finished but has not yet told the client why (see ender). A
+// call that arrives now would fail at once.
+func (c *Client) ended() bool {
+	select {
+	case <-c.done:
+		return true
+	default:
+	}
+	e, ok := c.t.(ender)
+	return ok && e.Ended()
 }
 
 // abandon gives up on a call: it stops waiting, tells the server to stop

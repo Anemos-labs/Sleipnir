@@ -100,3 +100,52 @@ func TestProtectedWritesAreLinearInPathDepth(t *testing.T) {
 		})
 	}
 }
+
+func TestTestNameMatchingIsBounded(t *testing.T) {
+	// Thousands of tests removed and thousands added in one file: matching every
+	// removed name against every added one is their product. Renames in order and
+	// renames of the generic prefix are found without scanning; the rest is
+	// bounded by a comparison budget, past which the answer is "no replacement".
+	task := &rl.Task{Verifier: rl.Verifier{Cmd: "go test"}}
+	build := func(n int, oldName, newName func(i int) string) string {
+		var lines []string
+		for i := 0; i < n; i++ {
+			lines = append(lines, "-func "+oldName(i)+"(t *testing.T) {", "-}")
+		}
+		for i := 0; i < n; i++ {
+			lines = append(lines, "+func "+newName(i)+"(t *testing.T) {", "+}")
+		}
+		return gitDiff("pkg/big_test.go", hunkOf(lines...))
+	}
+	score := func(diff string) *rl.Episode {
+		ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+		h := core.HashString(diff)
+		ep.Outcome.Diff = h
+		mustScore(t, ep, task, DefaultConfig(), DiffMap{h: diff})
+		return ep
+	}
+	t.Run("in-order renames cost nothing", func(t *testing.T) {
+		requireLinear(t, "in-order renames", 500, func(n int) {
+			ep := score(build(n, func(i int) string { return fmt.Sprintf("TestParse%d", i) }, func(i int) string { return fmt.Sprintf("TestParse%dV2", i) }))
+			if hasFlag(ep, fTest) {
+				t.Fatalf("a rename of every test was flagged: %v", ep.Reward.Notes)
+			}
+		})
+	})
+	t.Run("prefix-only renames cost nothing", func(t *testing.T) {
+		requireLinear(t, "prefix renames", 500, func(n int) {
+			ep := score(build(n, func(i int) string { return fmt.Sprintf("TestCase%d", (i*7919)%n) }, func(i int) string { return fmt.Sprintf("BenchmarkCase%d", i) }))
+			if hasFlag(ep, fTest) {
+				t.Fatalf("a rename of every test was flagged: %v", ep.Reward.Notes)
+			}
+		})
+	})
+	t.Run("unrelated names are bounded and flagged", func(t *testing.T) {
+		requireLinear(t, "unrelated names", 1000, func(n int) {
+			ep := score(build(n, func(i int) string { return fmt.Sprintf("TestAlpha%d", i) }, func(i int) string { return fmt.Sprintf("TestZeta%d", i) }))
+			if !hasFlag(ep, fTest) {
+				t.Fatalf("replacing every test with unrelated ones was not flagged")
+			}
+		})
+	})
+}

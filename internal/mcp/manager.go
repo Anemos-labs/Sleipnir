@@ -632,14 +632,12 @@ func (s *server) awaitClient(ctx context.Context) (*Client, error) {
 		st, c, why := s.state, s.client, s.errText
 		s.mu.Unlock()
 		if st == StateReady && c != nil {
-			select {
-			case <-c.Done():
-				// The connection has just died and the supervisor has not retired it
-				// yet: that is a restart in progress, not a live server.
-				st = StateRestarting
-			default:
+			if !c.ended() {
 				return c, nil
 			}
+			// The connection has just died and the supervisor has not retired it
+			// yet: that is a restart in progress, not a live server.
+			st = StateRestarting
 		}
 		if (st == StateConnecting || st == StateRestarting) && wait > 0 {
 			if deadline == nil {

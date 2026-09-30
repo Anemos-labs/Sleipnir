@@ -256,13 +256,55 @@ func goBuildIgnore(added string) bool {
 	return false
 }
 
+// nameSet is the test names found in one side of a diff.
 type nameSet struct {
 	list []string
 	set  map[string]bool
+	// stripped holds each name without its generic prefix, computed once because
+	// the similarity checks below compare names pairwise; strippedSet is the same
+	// as a set, so a rename that only changes the prefix costs one lookup.
+	stripped    []string
+	strippedSet map[string]bool
+	// budget is what is left of the pairwise similarity comparisons this file may
+	// make, shared by every lookup on the removed side (see similarityBudget).
+	budget *int
+}
+
+// similarityBudget bounds the pairwise name comparisons made for one file. A
+// diff that removes thousands of tests and adds thousands of differently named
+// ones would otherwise cost their product; real changes need a few hundred at
+// most. When the budget runs out the answer is the suspicious one (no
+// replacement found): a wholesale rewrite of a test suite is what this detector
+// exists to notice.
+const similarityBudget = 4_000_000
+
+func newNameSet() nameSet {
+	b := similarityBudget
+	return nameSet{set: map[string]bool{}, strippedSet: map[string]bool{}, budget: &b}
+}
+
+func (ns *nameSet) add(name string) {
+	st := stripTestPrefix(name)
+	ns.list = append(ns.list, name)
+	ns.stripped = append(ns.stripped, st)
+	ns.set[name] = true
+	ns.strippedSet[st] = true
+}
+
+// spend takes one comparison from the budget and reports whether it was there.
+func (ns nameSet) spend() bool {
+	if ns.budget == nil {
+		return true
+	}
+	if *ns.budget <= 0 {
+		return false
+	}
+	*ns.budget--
+	return true
 }
 
 func testNames(kit *testKit, named, code string) nameSet {
-	ns := nameSet{set: map[string]bool{}}
+	ns := newNameSet()
 	if kit.decl == nil {
 		return ns
 	}
@@ -295,8 +337,7 @@ func testNames(kit *testKit, named, code string) nameSet {
 		if name == "" {
 			name = fmt.Sprintf("#%d", len(ns.list))
 		}
-		ns.list = append(ns.list, name)
-		ns.set[name] = true
+		ns.add(name)
 	}
 	return ns
 }
@@ -308,25 +349,49 @@ func testNames(kit *testKit, named, code string) nameSet {
 // than by count is what stops "delete TestA, add an unrelated trivial TestB"
 // from passing as a rename.
 func lostTests(removed, added nameSet) []string {
-	claimed := map[string]bool{}
-	var lost []string
-	for _, r := range removed.list {
+	claimed := make([]bool, len(added.list))
+	// Unclaimed added names by their stripped form: a rename that changes only the
+	// generic prefix (TestParse -> BenchmarkParse) is then found without a scan.
+	byStripped := map[string][]int{}
+	for j, a := range added.list {
+		if !removed.set[a] { // a kept test cannot also stand in for another
+			byStripped[added.stripped[j]] = append(byStripped[added.stripped[j]], j)
+		}
+	}
+	var pending []int
+	for i, r := range removed.list {
 		if added.set[r] {
 			continue
 		}
+		if st := removed.stripped[i]; st != "" && len(byStripped[st]) > 0 {
+			claimed[byStripped[st][0]] = true
+			byStripped[st] = byStripped[st][1:]
+			continue
+		}
+		pending = append(pending, i)
+	}
+	var lost []string
+	first := 0 // added[:first] are all taken, which keeps in-order renames linear
+	for _, i := range pending {
 		found := false
-		for _, a := range added.list {
-			if claimed[a] || removed.set[a] {
+		for first < len(claimed) && (claimed[first] || removed.set[added.list[first]]) {
+			first++
+		}
+		for j := first; j < len(added.list); j++ {
+			if claimed[j] || removed.set[added.list[j]] {
 				continue
 			}
-			if similarNames(r, a) {
-				claimed[a] = true
+			if !removed.spend() {
+				break
+			}
+			if similarStripped(removed.stripped[i], added.stripped[j]) {
+				claimed[j] = true
 				found = true
 				break
 			}
 		}
 		if !found {
-			lost = append(lost, r)
+			lost = append(lost, removed.list[i])
 		}
 	}
 	return lost
@@ -347,8 +412,10 @@ func stripTestPrefix(s string) string {
 // similarNames reports whether two test names look like a rename of one another:
 // one contains the other ("Parse" -> "ParseHeaders"), or they share at least 60%
 // of the longer one as common prefix plus common suffix.
-func similarNames(a, b string) bool {
-	x, y := stripTestPrefix(a), stripTestPrefix(b)
+func similarNames(a, b string) bool { return similarStripped(stripTestPrefix(a), stripTestPrefix(b)) }
+
+// similarStripped is similarNames on names already stripped of their prefix.
+func similarStripped(x, y string) bool {
 	if x == "" || y == "" {
 		return false
 	}
