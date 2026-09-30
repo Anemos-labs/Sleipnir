@@ -180,6 +180,18 @@ func (r *Registry) Get(name string) (Tool, bool) {
 	return t, ok
 }
 
+// Names returns the registered tool names, sorted.
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	out := make([]string, 0, len(r.tools))
+	for n := range r.tools {
+		out = append(out, n)
+	}
+	r.mu.RUnlock()
+	sort.Strings(out)
+	return out
+}
+
 // Specs returns tool specs sorted by name with canonical schemas: the exact
 // list every agent sends.
 func (r *Registry) Specs() ([]core.ToolSpec, error) {

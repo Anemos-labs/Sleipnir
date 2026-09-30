@@ -275,6 +275,11 @@ func TestAskingIsRefusedAndTheTestToolingIsAllowed(t *testing.T) {
 	if !strings.Contains(strings.ToLower(refused), "approv") && !strings.Contains(strings.ToLower(refused), "denied") {
 		t.Errorf("a command that needs approval must be refused, the model saw: %q", refused)
 	}
+	// What the model is told decides what it does next: a bare "no human is available" sent small models looking for other ways
+	// to the same action (and to guess paths). The refusal says why it was needed and what to do instead.
+	if !strings.Contains(refused, "use an action that is allowed") || !strings.Contains(refused, "curl") {
+		t.Errorf("the refusal should name the command and say what to do instead, the model saw: %q", refused)
+	}
 	var sawTestRun bool
 	for _, e := range readEvents(t, sp.RunDir) {
 		if e.Type == events.TypeTurnAppend && strings.Contains(string(e.Data), "Add is broken") {

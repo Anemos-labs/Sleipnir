@@ -192,7 +192,7 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		Config: cfg, Model: spec.Policy.Model, Provider: p, ModelInfo: &model,
 		CaptureTokens: spec.Capture,
 		ID:            sessionID(spec), Dir: spec.RunDir,
-		Mode: h.mode(), Prompter: refuse,
+		Mode:     h.mode(), // no Prompter: nobody answers, and the engine then refuses with the reason and what to do instead
 		MaxSteps: spec.Budget.Steps, BudgetUSD: spec.Budget.USD,
 		ContextWindow: firstPositive(spec.Budget.ContextWindow, h.ContextTokens),
 		TrustProject:  !h.IgnoreRepoInstructions,
@@ -439,11 +439,6 @@ func visibleVerify(t rl.Task) string {
 		return ""
 	}
 	return t.Verifier.Cmd
-}
-
-// refuse answers every permission prompt with a refusal: nobody is there.
-func refuse(_ context.Context, r perm.Request) perm.Decision {
-	return perm.Decision{Allow: false, Reason: "no human is available to approve this in an unattended run"}
 }
 
 var unsafeID = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
