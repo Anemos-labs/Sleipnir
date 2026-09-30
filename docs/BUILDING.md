@@ -37,6 +37,7 @@ internal/provider       the boundary between the harness and model APIs: Provide
   provider/gateway      marketplace catalogue (Heimdall, OpenRouter): public model list, prices, capabilities
   provider/probe        measures how an endpoint really behaves (behind `sleipnir doctor`)
   provider/mock         deterministic, protocol-strict fake provider with an automatic prefix cache
+  provider/providertest scripted-stream harness and the contract every adapter owes its caller (used by the adapters' tests)
 
 internal/agent          one model-driven worker: render its layered prompt, call the provider, run tools, keep context healthy
 internal/swarm          many agents over one repository: board, mail router, leases, governor, warm gate, roles, spawn
@@ -82,6 +83,8 @@ internal/rl             RL vocabulary: the harness as an environment
   rl/export             canonical episodes as trainer-ready JSON lines
   rl/redact             removes secrets and personal data from training data
   rl/harness            runs rollouts through the real assembly (internal/session) against a policy endpoint
+
+internal/testutil       test helpers shared by suites: the goroutine-leak check (`CheckLeaks`, `VerifyNone`); no product code imports it
 ```
 
 ## Style
@@ -103,6 +106,10 @@ internal/rl             RL vocabulary: the harness as an environment
 - Table-driven, with adversarial cases (empty input, huge input, unicode, CRLF, symlinks,
   path traversal, concurrent callers). Use `t.TempDir()`; never touch the real HOME.
 - Anything concurrent must pass `-race`.
+- The suites of the packages that start goroutines (`agent`, `swarm`, `mcp`, `session`, `workspace`) end with
+  `testutil.CheckLeaks` in `TestMain`: a goroutine of this module still running ten seconds after the last test is a
+  failure, and its stack and its creator are printed. A test that starts a reader on a pipe or a server closes it;
+  `testutil.VerifyNone(t)` (first line of a test) holds one test to the same.
 - Prefer testing observable behaviour over internals.
 - What a command does with Ctrl-C, its streams and its exit status is decided outside its functions, so it is tested outside
   them. `cmd/sleipnir/e2e_test.go` runs the command in a child process (`TestMain` makes the test binary run `main()`), in a

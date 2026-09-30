@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte(": HEIMDALL PROCESSING\n\ndata: {\"id\":\"gen-1\",\"object\":\"chat.completion.chunk\",\"model\":\"vendor/model-x\",\"provider\":\"Acme\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"gen-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Grüße, \"}}]}\n\ndata: {\"id\":\"gen-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"世界 🐎 🐎\"}}]}\r\n\r\n: keep-alive\n\nevent: message\ndata: {\"id\":\"gen-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" — done. é\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"gen-1\",\"model\":\"vendor/model-x\",\"choices\":[],\"usage\":{\"prompt_tokens\":120,\"completion_tokens\":17,\"total_tokens\":137,\"prompt_tokens_details\":{\"cached_tokens\":96,\"cache_write_tokens\":8},\"cost\":0.000123}}\n\ndata: [DONE]\n\n")
+uint16(245)
+bool(false)

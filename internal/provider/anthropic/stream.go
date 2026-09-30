@@ -226,14 +226,19 @@ func readStream(body io.Reader, start time.Time, on func(provider.Event), lim pr
 			return nil, s.ttfb, perr
 		}
 		if done {
+			// A message that ends without ever having begun is not a message: its blocks and
+			// its stop reason describe nothing, and the warm gate never heard EvStart.
+			if !s.started {
+				return nil, s.ttfb, &provider.Error{Kind: provider.ErrServer, Message: "message_stop before message_start"}
+			}
 			return s.finish(), s.ttfb, nil
 		}
 	}
-	if s.complete {
-		return s.finish(), s.ttfb, nil
-	}
 	if !s.started {
 		return nil, s.ttfb, &provider.Error{Kind: provider.ErrNetwork, Message: "stream ended before message_start"}
+	}
+	if s.complete {
+		return s.finish(), s.ttfb, nil
 	}
 	return nil, s.ttfb, &provider.Error{Kind: provider.ErrNetwork, Message: fmt.Sprintf("stream ended before message_stop after %d content block(s)", len(s.blocks))}
 }
