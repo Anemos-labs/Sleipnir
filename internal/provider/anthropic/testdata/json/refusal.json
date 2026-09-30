@@ -1,0 +1,1 @@
+{"id":"msg_fixture_refusal_json","type":"message","role":"assistant","model":"claude-fable-5-1","content":[],"stop_reason":"refusal","stop_details":{"type":"refusal","category":null,"explanation":null},"usage":{"input_tokens":9,"output_tokens":0}}

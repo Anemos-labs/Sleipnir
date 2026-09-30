@@ -220,7 +220,7 @@ func allNumeric(labels []string) bool {
 
 // normalizeHost lower-cases, drops a trailing dot, and folds the Unicode
 // look-alikes of ASCII that hostname processing (IDNA) treats as the real
-// thing: "127。0。0。1" is the loopback address to a browser.
+// thing: "127" + ideographic full stops + "0.0.1" is the loopback address to a browser.
 func normalizeHost(h string) string {
 	h = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(h)), ".")
 	ascii := true
@@ -235,7 +235,7 @@ func normalizeHost(h string) string {
 	}
 	return strings.Map(func(r rune) rune {
 		switch {
-		case r == '。' || r == '．' || r == '｡':
+		case r == 0x3002 || r == 0xFF0E || r == 0xFF61: // ideographic, fullwidth, halfwidth ideographic full stops
 			return '.'
 		case r >= 0xFF01 && r <= 0xFF5E:
 			return r - 0xFEE0

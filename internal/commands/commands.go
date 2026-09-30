@@ -229,7 +229,6 @@ type loader struct {
 	reserved map[string]bool
 	cmds     []Command
 	byKey    map[string]int
-	paths    []string // display path of the command at the same index in cmds
 }
 
 // walk reads one directory of a commands source. prefix holds the directory
@@ -284,7 +283,7 @@ func (l *loader) walk(src mdfile.Source, dir string, prefix []string, depth int,
 			}
 			warns = append(warns, l.walk(src, p, append(append([]string(nil), prefix...), name), depth+1, visited)...)
 		case isFile && strings.HasSuffix(strings.ToLower(name), ".md"):
-			warns = append(warns, l.file(src, p, prefix, strings.TrimSuffix(name, name[len(name)-3:]))...)
+			warns = append(warns, l.file(src, p, prefix, name[:len(name)-3])...)
 		}
 	}
 	return warns

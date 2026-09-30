@@ -204,19 +204,19 @@ type RolloutResult struct {
 	Resumed bool     `json:"resumed,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
 	// Attempts is how many times the rollout ran (1 unless infra retries happened).
-	Attempts int     `json:"attempts"`
-	Verified bool    `json:"verified"` // a verifier verdict exists
-	Pass     bool    `json:"pass"`
-	Score    float64 `json:"score"`
-	Claimed  string  `json:"claimed,omitempty"`
+	Attempts int      `json:"attempts"`
+	Verified bool     `json:"verified"` // a verifier verdict exists
+	Pass     bool     `json:"pass"`
+	Score    float64  `json:"score"`
+	Claimed  string   `json:"claimed,omitempty"`
 	Flags    []string `json:"flags,omitempty"`
-	Reward   float64 `json:"reward"`
-	CostUSD  float64 `json:"cost_usd"`
-	ITE      float64 `json:"ite"`
-	Requests int     `json:"requests"`
-	Steps    int     `json:"steps"`
-	WallMs   int64   `json:"wall_ms"`
-	VerifyMs int64   `json:"verify_ms"`
+	Reward   float64  `json:"reward"`
+	CostUSD  float64  `json:"cost_usd"`
+	ITE      float64  `json:"ite"`
+	Requests int      `json:"requests"`
+	Steps    int      `json:"steps"`
+	WallMs   int64    `json:"wall_ms"`
+	VerifyMs int64    `json:"verify_ms"`
 	// ProtectedTouched are protected paths the agent's diff changed.
 	ProtectedTouched []string             `json:"protected_touched,omitempty"`
 	Error            string               `json:"error,omitempty"`
@@ -545,9 +545,10 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	task := j.task
 	st := &stage{rn: rn, j: j, n: "prepare"}
 	var (
-		ws     *Workspace
-		wallMs int64
-		keep   bool // the workspace is worth keeping if the caller asked for that
+		ws      *Workspace
+		wallMs  int64
+		keep    bool // the workspace is worth keeping if the caller asked for that
+		abandon bool // a harness may still be running in the workspace: leave it alone
 	)
 
 	// fail turns an error into an infra outcome. A rollout that ends in an
@@ -555,7 +556,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	// carrying the infra_error flag, so the run directory is complete and
 	// exporters see, and drop, it.
 	fail := func(err error, retry bool) attemptOutcome {
-		keep = true
+		keep, abandon = true, true
 		res := RolloutResult{Task: task.ID, Sample: j.sample, Tags: task.Tags, Status: StatusInfra, Error: fmt.Sprintf("%s: %v", st.n, err)}
 		if !retry || attempt >= r.retries()+1 {
 			rn.writeInfraEpisode(j, dir, res.Error, wallMs)
@@ -568,9 +569,14 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 			out = fail(fmt.Errorf("panic: %v", p), st.n != "extract" && st.n != "score")
 		}
 		if ws != nil {
-			if keep && rn.opts.KeepFailed {
+			switch {
+			case abandon:
+				// Removing a tree an unresponsive harness may still be writing to
+				// would only make it fail in confusing ways; PruneStale collects it.
 				out.result.KeptWorkspace = ws.Root
-			} else {
+			case keep && rn.opts.KeepFailed:
+				out.result.KeptWorkspace = ws.Root
+			default:
 				_ = ws.Cleanup()
 			}
 		}

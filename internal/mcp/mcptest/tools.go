@@ -121,10 +121,12 @@ func referenceTools(s *Server) []Tool {
 			Handler: func(context.Context, *Call) *Result { return TextResult(fmt.Sprint(os.Getpid())) }},
 		{Name: "unicode", Description: "Return text with control sequences.",
 			Handler: func(context.Context, *Call) *Result {
-				// Built from escapes so the source stays readable: an ANSI colour, an
-				// OSC title, a zero-width space, a bidi override, and tag characters
-				// spelling "hi".
-				return TextResult("plain \x1b[31mred\x1b[0m \x1b]0;title\x07 zero​width ‮flipped \U000E0068\U000E0069 end")
+				// An ANSI colour, an OSC title, a zero-width space, a bidi override and
+				// two tag characters spelling "hi". Built from code points so the
+				// source stays readable.
+				zwsp, rlo := string(rune(0x200B)), string(rune(0x202E))
+				tags := string(rune(0xE0068)) + string(rune(0xE0069))
+				return TextResult("plain \x1b[31mred\x1b[0m \x1b]0;title\x07 zero" + zwsp + "width " + rlo + "flipped " + tags + " end")
 			}},
 	}
 }

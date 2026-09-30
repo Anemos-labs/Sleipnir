@@ -896,7 +896,7 @@ func redactURL(raw string) string {
 	}
 	out := u.Scheme + "://" + u.Host
 	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		out += "/…"
+		out += "/..."
 	}
 	return out
 }

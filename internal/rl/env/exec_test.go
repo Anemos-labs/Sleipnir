@@ -32,7 +32,7 @@ func minimalEnv(extra ...string) []string {
 	return append([]string{"PATH=/usr/local/bin:/usr/bin:/bin", "LC_ALL=C"}, extra...)
 }
 
-func run(t testing.TB, s Sandbox, dir, cmd string, timeout time.Duration, env ...string) ExecResult {
+func runCmd(t testing.TB, s Sandbox, dir, cmd string, timeout time.Duration, env ...string) ExecResult {
 	t.Helper()
 	res, err := s.Exec(context.Background(), dir, minimalEnv(env...), cmd, timeout)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestExecBasics(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			res := run(t, s, dir, tc.cmd, 30*time.Second)
+			res := runCmd(t, s, dir, tc.cmd, 30*time.Second)
 			if res.ExitCode != tc.wantExit || res.Signal != tc.wantSig {
 				t.Errorf("exit=%d signal=%d, want %d/%d (stderr %q)", res.ExitCode, res.Signal, tc.wantExit, tc.wantSig, res.Stderr)
 			}
@@ -140,7 +140,7 @@ func TestExecBasics(t *testing.T) {
 
 func TestExecInterleavesOutput(t *testing.T) {
 	s := testSandbox(t)
-	res := run(t, s, t.TempDir(), "echo one; sleep 0.05; echo two >&2; sleep 0.05; echo three", 10*time.Second)
+	res := runCmd(t, s, t.TempDir(), "echo one; sleep 0.05; echo two >&2; sleep 0.05; echo three", 10*time.Second)
 	if res.Output != "one\ntwo\nthree\n" {
 		t.Fatalf("Output = %q", res.Output)
 	}
@@ -151,7 +151,7 @@ func TestExecEnvironmentIsExact(t *testing.T) {
 	// A variable of the harness's own environment must not reach the command,
 	// even though exec would inherit it for a nil Env.
 	t.Setenv("HARNESS_ONLY_API_KEY", "harness-secret-value")
-	res := run(t, s, t.TempDir(), "env | sort", 10*time.Second, "FOO=bar")
+	res := runCmd(t, s, t.TempDir(), "env | sort", 10*time.Second, "FOO=bar")
 	if strings.Contains(res.Stdout, "harness-secret-value") || strings.Contains(res.Stdout, "HARNESS_ONLY_API_KEY") {
 		t.Fatalf("harness environment leaked:\n%s", res.Stdout)
 	}
@@ -172,7 +172,7 @@ func TestExecTimeoutKillsProcessGroup(t *testing.T) {
 	// The child would outlive a plain kill of the shell.
 	cmd := fmt.Sprintf("sleep 60 & echo $! > %s; wait", pidFile)
 	start := time.Now()
-	res := run(t, s, dir, cmd, 300*time.Millisecond)
+	res := runCmd(t, s, dir, cmd, 300*time.Millisecond)
 	if !res.TimedOut {
 		t.Fatalf("expected a timeout: %+v", res)
 	}
@@ -188,7 +188,7 @@ func TestExecKillsBackgroundStragglersAfterNormalExit(t *testing.T) {
 	pidFile := filepath.Join(dir, "daemon.pid")
 	// The shell exits at once; the background process holds stdout open.
 	start := time.Now()
-	res := run(t, s, dir, fmt.Sprintf("sleep 60 & echo $! > %s; echo done", pidFile), 30*time.Second)
+	res := runCmd(t, s, dir, fmt.Sprintf("sleep 60 & echo $! > %s; echo done", pidFile), 30*time.Second)
 	if res.ExitCode != 0 || res.Stdout != "done\n" || res.TimedOut {
 		t.Fatalf("got %+v", res)
 	}

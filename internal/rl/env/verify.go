@@ -71,8 +71,8 @@ type VerifyOptions struct {
 	KeepCheckout bool
 }
 
-// RunResult is one execution of the verifier command.
-type RunResult struct {
+// VerifyRun is one execution of the verifier command.
+type VerifyRun struct {
 	ExitCode  int     `json:"exit_code"`
 	Pass      bool    `json:"pass"`
 	Score     float64 `json:"score"`
@@ -93,7 +93,7 @@ type Result struct {
 	Version string `json:"version"`
 	Mode    string `json:"mode"` // exit0 | regex | json-score | expect
 
-	Runs  []RunResult `json:"runs,omitempty"`
+	Runs  []VerifyRun `json:"runs,omitempty"`
 	Flaky bool        `json:"flaky,omitempty"` // repeats disagreed
 	// ExitCode, TimedOut and Truncated describe the last run.
 	ExitCode  int   `json:"exit_code"`
@@ -436,7 +436,7 @@ func (m *Workspaces) verify(ctx context.Context, in verifyInput) (Result, error)
 // runVerifierOnce prepares a fresh clean checkout, applies the filtered diff,
 // writes the hidden files and runs the verifier command once.
 func (m *Workspaces) runVerifierOnce(ctx context.Context, in verifyInput, fr filterResult, pm PassMode,
-	timeout time.Duration, maxOut int64, idx int, res *Result) (rr RunResult, output, rejected string, err error) {
+	timeout time.Duration, maxOut int64, idx int, res *Result) (rr VerifyRun, output, rejected string, err error) {
 	task, opts := in.task, in.opts
 	co, err := m.newCheckout(ctx, in.snap, task, fmt.Sprint(idx))
 	if err != nil {
@@ -489,8 +489,8 @@ func (m *Workspaces) runVerifierOnce(ctx context.Context, in verifyInput, fr fil
 
 // judgeRun applies the pass mode to one execution. Nothing here is an error:
 // a hung, killed or garbled verifier is a failed verdict.
-func judgeRun(pm PassMode, er ExecResult) RunResult {
-	rr := RunResult{ExitCode: er.ExitCode, TimedOut: er.TimedOut, Truncated: er.Truncated, Signal: er.Signal, Ms: er.Duration.Milliseconds()}
+func judgeRun(pm PassMode, er ExecResult) VerifyRun {
+	rr := VerifyRun{ExitCode: er.ExitCode, TimedOut: er.TimedOut, Truncated: er.Truncated, Signal: er.Signal, Ms: er.Duration.Milliseconds()}
 	switch {
 	case er.TimedOut:
 		rr.Note = "verifier timed out"
@@ -572,7 +572,7 @@ func judgeExpect(e Expect, answer string) (score float64, pass bool) {
 
 // combineRuns folds repeated runs into one verdict. The score is the mean, so a
 // verifier that passes two runs out of three reports 0.667 whatever the policy.
-func combineRuns(runs []RunResult, policy string) (pass bool, score float64, flaky bool) {
+func combineRuns(runs []VerifyRun, policy string) (pass bool, score float64, flaky bool) {
 	if len(runs) == 0 {
 		return false, 0, false
 	}
@@ -604,7 +604,7 @@ func verifyAnswerOnly(task rl.Task, opts VerifyOptions) (Result, error) {
 	}
 	score, pass := judgeExpect(e, opts.Answer)
 	res.Pass, res.Score = pass, score
-	res.Runs = []RunResult{{Pass: pass, Score: score}}
+	res.Runs = []VerifyRun{{Pass: pass, Score: score}}
 	res.Log = fmt.Sprintf("===== answer check: pass=%v score=%.3f (%d expected strings)\n", pass, score, len(e.Contains))
 	if !pass {
 		res.Runs[0].Note = "answer does not contain the expected text"

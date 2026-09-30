@@ -97,7 +97,7 @@ func clean(s string, strict bool) string {
 		return s
 	}
 	s = stripANSI(s)
-	s = strings.ToValidUTF8(s, "�")
+	s = strings.ToValidUTF8(s, string(utf8.RuneError))
 	if strings.IndexByte(s, '\r') >= 0 {
 		s = strings.ReplaceAll(s, "\r\n", "\n")
 		s = strings.ReplaceAll(s, "\r", "\n")

@@ -55,49 +55,49 @@ const (
 	packCreditVaries    = "credit_varies"
 )
 
-// tokenVerdict tests one step for the tokens format: the generic step filters, a
-// consistent trace with prompt ids and finite logprobs, and, when redaction is on,
-// that redaction leaves the step's text alone. Token ids encode the original text,
-// so a redacted prompt cannot keep them: exporting them would leak the very
-// secret the redactor removed, and re-tokenising would fabricate ids.
-func (x *exporter) tokenVerdict(c stepCtx) tokCandidate {
-	tc := tokCandidate{c: c}
-	if r := x.stepVerdict(c); r != "" {
-		tc.reason = r
-		return tc
-	}
+// traceUsable returns the step's token trace when it may be exported, or the
+// reason it may not: a consistent trace with prompt ids and finite logprobs, and,
+// when redaction is on, text that redaction leaves alone. Token ids encode the
+// original text, so a redacted prompt cannot keep them: exporting them would leak
+// the very secret the redactor removed, and re-tokenising would fabricate ids.
+func (x *exporter) traceUsable(c stepCtx) (*core.TokenTrace, string) {
 	tr := c.st.Tokens
 	switch {
 	case tr == nil || !tr.Consistent():
-		tc.reason = "no_tokens"
-		return tc
+		return nil, "no_tokens"
 	case len(tr.PromptIDs) == 0:
-		tc.reason = "no_prompt_ids"
-		return tc
+		return nil, "no_prompt_ids"
 	}
 	for _, lp := range tr.Logprobs {
 		if math.IsNaN(float64(lp)) || math.IsInf(float64(lp), 0) {
-			tc.reason = "bad_logprobs"
-			return tc
+			return nil, "bad_logprobs"
 		}
 	}
 	if x.red != nil {
 		p, err := x.promptFor(c.we, c.st)
 		if err != nil {
 			x.stats.warn(c.st.ID + ": " + err.Error())
-			tc.reason = "no_prompt"
-			return tc
+			return nil, "no_prompt"
 		}
 		if _, changed := x.redactPrompt(p); changed {
-			tc.reason = "redacted_tokens"
-			return tc
+			return nil, "redacted_tokens"
 		}
 		if _, changed := x.redactTurn(c.st.Completion.Turn); changed {
-			tc.reason = "redacted_tokens"
-			return tc
+			return nil, "redacted_tokens"
 		}
 	}
-	tc.tok = tr
+	return tr, ""
+}
+
+// tokenVerdict tests one step for the tokens format: the generic step filters and
+// a usable trace.
+func (x *exporter) tokenVerdict(c stepCtx) tokCandidate {
+	tc := tokCandidate{c: c}
+	if r := x.stepVerdict(c); r != "" {
+		tc.reason = r
+		return tc
+	}
+	tc.tok, tc.reason = x.traceUsable(c)
 	return tc
 }
 

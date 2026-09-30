@@ -80,15 +80,19 @@ func promptSource(cfg Config, d DiffSource) PromptText {
 	}
 	chain = append(chain, InlinePromptText)
 	return func(ep *rl.Episode, st *rl.Step) (string, error) {
-		var last error
+		// Report the most informative failure: the first source that actually
+		// failed, not the trailing "prompt was not inlined" fallback.
+		var first error
 		for _, f := range chain {
 			text, err := f(ep, st)
 			if err == nil {
 				return text, nil
 			}
-			last = err
+			if first == nil || (errors.Is(first, ErrNoPromptText) && !errors.Is(err, ErrNoPromptText)) {
+				first = err
+			}
 		}
-		return "", last
+		return "", first
 	}
 }
 
