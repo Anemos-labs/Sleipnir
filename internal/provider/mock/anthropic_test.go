@@ -549,9 +549,11 @@ func TestAnthropicPrewarm(t *testing.T) {
 }
 
 func TestAnthropicTierInvalidationOverHTTP(t *testing.T) {
+	// The tools must be big enough to be cacheable on their own (the minimum
+	// prefix is 100 tokens here): a marker on a prefix below it writes nothing.
 	tools := []obj{
-		{"name": "bash", "description": "run", "input_schema": obj{"type": "object", "properties": obj{"c": obj{"type": "string"}}}},
-		withCC(obj{"name": "read", "description": "read", "input_schema": obj{"type": "object"}}, "1h"),
+		{"name": "bash", "description": big(60, "run"), "input_schema": obj{"type": "object", "properties": obj{"c": obj{"type": "string"}}}},
+		withCC(obj{"name": "read", "description": big(60, "read"), "input_schema": obj{"type": "object"}}, "1h"),
 	}
 	sys := func(s string) []obj { return []obj{withCC(text(big(300, s)), "1h")} }
 	conv := func(fields obj) string {
@@ -575,7 +577,7 @@ func TestAnthropicTierInvalidationOverHTTP(t *testing.T) {
 		{"effort changes", obj{"output_config": obj{"effort": "low"}}, want{true, true, false}},
 		{"effort set to the model default equals omitted", obj{"output_config": obj{"effort": "high"}}, want{true, true, true}},
 		{"system changes", obj{"system": sys("edited")}, want{true, false, false}},
-		{"a tool changes", obj{"tools": []obj{tools[0], withCC(obj{"name": "read", "description": "read files", "input_schema": obj{"type": "object"}}, "1h")}}, want{false, false, false}},
+		{"a tool changes", obj{"tools": []obj{tools[0], withCC(obj{"name": "read", "description": big(60, "read") + "more", "input_schema": obj{"type": "object"}}, "1h")}}, want{false, false, false}},
 		{"the model changes", obj{"model": "other-model"}, want{false, false, false}},
 		{"max_tokens and metadata are not cache inputs", obj{"max_tokens": 999, "metadata": obj{"user_id": "u"}}, want{true, true, true}},
 	}

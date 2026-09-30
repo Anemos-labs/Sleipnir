@@ -367,7 +367,7 @@ func (q *aReq) parseThinking() *aErr {
 		if t.BudgetTokens == nil || *t.BudgetTokens < 1024 {
 			return badReq("thinking.enabled.budget_tokens: Input should be greater than or equal to 1024")
 		}
-		if *t.BudgetTokens >= q.maxTokens {
+		if q.maxTokens != 0 && *t.BudgetTokens >= q.maxTokens {
 			return badReq("thinking.enabled.budget_tokens: Input should be less than max_tokens")
 		}
 	case "disabled":
