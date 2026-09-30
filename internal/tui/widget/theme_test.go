@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 
 	"github.com/reee344/sleipnir/internal/tui/cell"
@@ -127,47 +125,6 @@ func widgetUnderRace() bool {
 		}
 	}
 	return false
-}
-
-// scalingBestOf runs fn a few times and keeps the fastest, discarding scheduler and GC noise.
-func scalingBestOf(reps int, fn func()) time.Duration {
-	best := time.Duration(1 << 62)
-	for i := 0; i < reps; i++ {
-		runtime.GC()
-		start := time.Now()
-		fn()
-		if d := time.Since(start); d < best {
-			best = d
-		}
-	}
-	return best
-}
-
-// requireLinear fails when fn(4n) takes far more than four times fn(n): linear code takes about 4x, quadratic code about 16x.
-// It compares growth, not absolute time, because a slow machine, three suites at once or the race detector would make an
-// absolute limit flaky (see docs/BUILDING.md). A run that finishes within the noise floor passes (there is nothing to measure),
-// and a failing measurement is repeated up to five times before it counts. The only absolute limit is a hang guard.
-func requireLinear(t *testing.T, name string, n int, fn func(n int)) {
-	t.Helper()
-	reps := 3
-	if widgetUnderRace() {
-		n, reps = max(n/4, 1), 2
-	}
-	var small, large time.Duration
-	for attempt := 0; attempt < 5; attempt++ {
-		small = scalingBestOf(reps, func() { fn(n) })
-		large = scalingBestOf(reps, func() { fn(4 * n) })
-		if large <= 100*time.Millisecond || large <= 8*small {
-			break
-		}
-	}
-	t.Logf("%s: n=%d %v, 4n %v", name, n, small, large)
-	if large > 2*time.Minute {
-		t.Errorf("%s: %d units took %v", name, 4*n, large)
-	}
-	if large > 100*time.Millisecond && large > 8*small {
-		t.Errorf("%s: super-linear growth: %v for n=%d, %v for 4n", name, small, n, large)
-	}
 }
 
 func TestThemesAreComparableValues(t *testing.T) {

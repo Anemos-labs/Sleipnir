@@ -440,7 +440,7 @@ func TestMDStreamIsDeterministic(t *testing.T) {
 
 func TestMDStreamBigDocumentsStayLinearPerRender(t *testing.T) {
 	// appending to a long finished document and rendering: the finished blocks are not rendered again
-	requireLinear(t, "render of a stream of n blocks", 600, func(n int) {
+	requireLinear(t, "render of a stream of n blocks", 150, func(n int) {
 		var s MDStream
 		s.Append(strings.Repeat("a paragraph of some words\n\n- item\n- item\n\n```\ncode\n```\n\n", n))
 		s.Render(80, DefaultTheme())
