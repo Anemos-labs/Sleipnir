@@ -159,7 +159,7 @@ func (rs *resolver) protectForm(f string, a access) protection {
 		}
 	}
 
-	if base == ".env" || strings.HasPrefix(base, ".env.") {
+	if isEnvFile(base) {
 		return protection{tierGuarded, shown + " is an .env file and may hold secrets (add an allow rule to use it)"}
 	}
 
@@ -233,6 +233,26 @@ func (rs *resolver) inStrictWorkspace(f string) bool {
 // text it does have already gives away: "$DIR/.ssh/id_rsa" and "~bob/.aws/x" name
 // credential directories whatever the variable holds, and a write to
 // "$DIR/.git/config" is a write into .git.
+// isEnvFile reports whether a file name is an .env file that may hold secrets:
+// ".env" and ".env.<anything>", except the conventional templates that document
+// which variables a project reads and hold placeholders (".env.example",
+// ".env.sample", ".env.template", ".env.dist"). Reading those is how a model
+// learns what to set; guarding them only makes it ask for an allow rule every
+// time. The name must match exactly: ".env.example.local" is a real file.
+func isEnvFile(base string) bool {
+	if base == ".env" {
+		return true
+	}
+	if !strings.HasPrefix(base, ".env.") {
+		return false
+	}
+	switch strings.ToLower(base[len(".env."):]) {
+	case "example", "sample", "template", "dist", "tpl", "defaults":
+		return false
+	}
+	return true
+}
+
 func dynamicSuspect(raw string, write bool) string {
 	segs := splitSegs(fold(raw))
 	for i, sg := range segs {
@@ -245,7 +265,7 @@ func dynamicSuspect(raw string, write bool) string {
 			return raw + " writes inside .git"
 		}
 	}
-	if n := len(segs); n > 0 && (segs[n-1] == ".env" || strings.HasPrefix(segs[n-1], ".env.")) {
+	if n := len(segs); n > 0 && isEnvFile(segs[n-1]) {
 		return raw + " names an .env file"
 	}
 	return ""

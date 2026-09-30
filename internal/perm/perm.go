@@ -40,7 +40,9 @@
 // file system applies (".SSH", ".\u017fsh").
 //
 // Guarded (denied unless an Allow rule names the path; a blanket Read or Read(**)
-// does not count): **/.env and **/.env.*, ~/.ssh public keys, known_hosts and
+// does not count): **/.env and **/.env.* (except the templates .env.example,
+// .env.sample, .env.template, .env.dist, .env.tpl and .env.defaults, which hold
+// placeholders), ~/.ssh public keys, known_hosts and
 // config (reads), and token files such as ~/.npmrc and ~/.git-credentials.
 //
 // # Workspace

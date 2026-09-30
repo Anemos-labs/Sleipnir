@@ -444,8 +444,9 @@ Refused whatever the mode or your rules: any access to `~/.ssh` private keys (an
 with `git` commands, which are judged as commands); writes to `/etc`, `/usr`, `/bin` and other system directories;
 recursive delete, chmod or archive of a directory that contains any of those (`rm -rf ~`, `rm -rf /`).
 
-Denied unless an `allow` rule names the path (a blanket `Read` does not count): `.env` and `.env.*` files (including
-`.env.example`), `~/.ssh` public keys, `known_hosts` and `config` for reads, and token files such as `~/.npmrc` and
+Denied unless an `allow` rule names the path (a blanket `Read` does not count): `.env` and `.env.*` files (except the
+conventional templates `.env.example`, `.env.sample`, `.env.template`, `.env.dist`, `.env.tpl` and `.env.defaults`, which
+hold placeholders; `.env.example.local` is not a template), `~/.ssh` public keys, `known_hosts` and `config` for reads, and token files such as `~/.npmrc` and
 `~/.git-credentials`.
 
 Writes into the directories that hold hooks, skills, commands, agent definitions and project configuration always

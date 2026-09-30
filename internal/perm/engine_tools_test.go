@@ -73,7 +73,8 @@ func TestToolRequests(t *testing.T) {
 
 		// --- .env files: denied unless a rule names them ---
 		{name: "dotenv denied", req: read(R + ".env"), want: "deny", why: ".env"},
-		{name: "dotenv example denied too", req: read(R + ".env.example"), want: "deny"},
+		{name: "dotenv template is readable", req: read(R + ".env.example"), want: "allow"},
+		{name: "dotenv template variant is not a template", req: read(R + ".env.example.local"), want: "deny"},
 		{name: "dotenv nested", req: read(R + "sub/.env"), want: "deny"},
 		{name: "dotenv local", req: read(R + "sub/.env.local"), want: "deny"},
 		{name: "dotenv in bypass", mode: ModeBypass, req: read(R + ".env"), want: "deny"},

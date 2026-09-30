@@ -171,7 +171,7 @@ func TestBashAllowlist(t *testing.T) {
 		`mkfs /dev/sdb`, `wipefs -a /dev/sda`, `fdisk /dev/sda`, `parted /dev/sda`, `tee /dev/sda`, `cp x /dev/sda`, `> /dev/sda`, `sudo dd of=/dev/sda`,
 		`:(){ :|:& };:`, `:(){ :|: & };:`, `:(){:|:&};:`, `bomb(){ bomb|bomb& };bomb`, `f(){ f|f&};f`,
 		// .env
-		`cat .env`, `cat .env.example`, `cat ./.env`, `cat src/../.env`, `head .env`, `grep x .env`, `cat sub/.env`, `cp .env /tmp/x`, `echo x > .env`,
+		`cat .env`, `cat .env.example.local`, `cat ./.env`, `cat src/../.env`, `head .env`, `grep x .env`, `cat sub/.env`, `cp .env /tmp/x`, `echo x > .env`,
 		`docker run --env-file .env img`, `source .env`, `. ./.env`, `cat "$HOME/proj/.env"`, `cat {root}/.env`, `cat < .env`, `cd src && cat ../.env`,
 		`cat .e*`, `cat .env*`, `cat .en?`, `cat .{env,x}`, `cat $'\x2eenv'`, `c'a't .en'v'`,
 		// system
@@ -181,6 +181,10 @@ func TestBashAllowlist(t *testing.T) {
 	}
 	for _, c := range deny {
 		cases = append(cases, tc{name: "deny " + c, req: bash(c), want: "deny"})
+	}
+	// Templates of an .env file document which variables a project reads; they hold placeholders.
+	for _, c := range []string{`cat .env.example`, `cat .env.sample`, `cat ./.env.template`, `cat sub/.env.dist`, `grep KEY .env.example`} {
+		cases = append(cases, tc{name: "allow " + c, req: bash(c), want: "allow"})
 	}
 	runCases(t, f, cases)
 }
