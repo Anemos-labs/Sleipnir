@@ -87,7 +87,7 @@ GOVER=$(go env GOVERSION)
 # 1. The Go corpus.
 STDMINI_SHA=
 STDMINI_COMMIT=
-if want mutations || want composite || want recall; then
+if want mutations || want composite; then
   if [ ! -d "$OUT/repos/stdmini/.git" ] || [ "$FORCE" = 1 ]; then
     rm -rf "$OUT/repos/stdmini"
     log "building the std-mini corpus ($GOVER)"
@@ -110,8 +110,9 @@ if want mutations && ! have mut; then
     "$OUT/parts/mut.raw.jsonl" > "$OUT/parts/mut.jsonl"
 fi
 
-# 3. Real commits of this repository: a commit that changes source and tests is a task.
-if want mined && ! have mined; then
+# This repository's history at the pinned revision: the source of the mined tasks and of the recall tasks (the standard
+# library copies hold no distinctive constants to ask about).
+ensure_history() {
   REV=$(cfg .parts.mined.rev)
   if [ ! -d "$OUT/repos/sleipnir/.git" ]; then
     log "cloning this repository's history"
@@ -119,6 +120,11 @@ if want mined && ! have mined; then
     git clone -q --no-local "$ROOT" "$OUT/repos/sleipnir"
   fi
   git -C "$OUT/repos/sleipnir" cat-file -e "$REV^{commit}" 2>/dev/null || { echo "bench/build.sh: revision $REV is not in the history" >&2; exit 2; }
+}
+
+# 3. Real commits of this repository: a commit that changes source and tests is a task.
+if want mined && ! have mined; then
+  ensure_history
   log "mined tasks at $REV"
   # shellcheck disable=SC2086
   "$BIN" rl taskgen git --repo "$OUT/repos/sleipnir" --repo-path repos/sleipnir --rev "$REV" --lang go --id-prefix sl \
@@ -153,8 +159,9 @@ fi
 
 # 6. Memory tasks: read a fact, read a dozen files, state the fact; the window is small, so the history is compacted.
 if want recall && ! have recall; then
-  log "recall tasks"
-  "$BIN" rl taskgen recall --repo "$OUT/repos/stdmini" --repo-path repos/stdmini --max "$(cfg .parts.recall.max)" \
+  ensure_history
+  log "recall tasks at $REV"
+  "$BIN" rl taskgen recall --repo "$OUT/repos/sleipnir" --repo-path repos/sleipnir --rev "$REV" --lang go --max "$(cfg .parts.recall.max)" \
     --seed "$(cfg .parts.recall.seed)" -o "$OUT/parts/recall.raw.jsonl" >/dev/null
   jq -c '.tags = ((.tags + ["long"]) | unique)' "$OUT/parts/recall.raw.jsonl" > "$OUT/parts/recall.jsonl"
 fi
@@ -177,11 +184,19 @@ rm -f "$OUT/admit.json"
 if [ "$ADMIT" = 1 ]; then
   REPEATS=$(cfg .admit.repeats)
   log "admission ($REPEATS repeats each): $(wc -l < "$OUT/tasks.all.jsonl" | tr -d ' ') tasks"
-  # rl tasks check exits non-zero when any task is unsound; the report says which
+  # rl tasks check exits non-zero when any task is unsound; the report says which. It runs from the suite directory, where
+  # the tasks' relative repository paths resolve, exactly as a benchmark run will.
   # shellcheck disable=SC2086
-  "$BIN" rl tasks check "$OUT/tasks.all.jsonl" --blobs "$OUT/blobs" --verify-repeats "$REPEATS" --concurrency 3 \
-    --report "$OUT/admit.json" $RIG >"$OUT/admit.log" 2>&1 || true
+  ( cd "$OUT" && "$BIN" rl tasks check tasks.all.jsonl --blobs blobs --verify-repeats "$REPEATS" --concurrency 3 \
+      --report admit.json $RIG ) >"$OUT/admit.log" 2>&1 || true
   [ -s "$OUT/admit.json" ] || { echo "bench/build.sh: the admission check produced no report; see $OUT/admit.log" >&2; exit 1; }
+  # A check that rejects most of what was built is a broken check (or a broken build), not a hundred bad tasks.
+  bad=$(jq '[.[] | select((.ok or .skipped) | not)] | length' "$OUT/admit.json")
+  total=$(jq 'length' "$OUT/admit.json")
+  if [ "$((bad * 2))" -gt "$total" ]; then
+    echo "bench/build.sh: admission rejected $bad of $total tasks; that points at the build, not the tasks. See $OUT/admit.log and $OUT/admit.json" >&2
+    exit 1
+  fi
 fi
 QUAR=$(jq -c '.quarantine' "$RECIPE")
 if [ -s "$OUT/admit.json" ]; then
