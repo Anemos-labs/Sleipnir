@@ -303,14 +303,16 @@ func TestWarmGateElectsOnePrimer(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			start := time.Now()
 			started, err := g.Enter(context.Background(), "prefix")
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			if time.Since(start) < 20*time.Millisecond {
-				// Returned immediately: this is the primer.
+			// Classified by state, not by how long Enter took: a goroutine that is
+			// only scheduled after the primer has started finds the prefix warm and
+			// returns at once without being a primer (loaded machines do that).
+			if startedAt.Load() == 0 {
+				// Returned while the prefix was still cold: this is the primer.
 				primers.Add(1)
 				time.Sleep(80 * time.Millisecond) // prefill
 				startedAt.Store(time.Now().UnixNano())

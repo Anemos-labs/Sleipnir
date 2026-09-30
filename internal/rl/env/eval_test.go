@@ -163,7 +163,7 @@ func TestBuildReportEmpty(t *testing.T) {
 }
 
 func TestEvalRunsSamplesAndRefusesTrainingTasks(t *testing.T) {
-	f := newRunnerFixture(t)
+	f := newRunnerFixture(t, quickVerify)
 	f.h.Scripts = map[string]FakeScript{
 		"mathx-max/0": {Steps: []FakeStep{FakeWrite("mathx.go", fixedMath)}},
 		"mathx-max/1": {Steps: []FakeStep{FakeWrite("mathx.go", fixedMath)}},

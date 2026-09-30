@@ -748,6 +748,10 @@ func (s *server) run(startCtx context.Context, first chan<- error) {
 			stopAttempt()
 		}
 		cancelAttempt()
+		// Record why the attempt failed before Start hears about it: a caller reads
+		// Status as soon as Start returns and must see the outcome, not the moment
+		// before it.
+		fatal := err != nil && ctx.Err() == nil && s.recordFailure(err)
 		report(err)
 
 		if ctx.Err() != nil {
@@ -777,27 +781,15 @@ func (s *server) run(startCtx context.Context, first chan<- error) {
 				m.logf("mcp: server %q: session expired; reconnecting", s.name)
 				continue
 			}
-		default:
-			txt := s.errorText(err) // takes s.mu itself: compute before locking
-			s.mu.Lock()
-			s.errText = txt
-			s.mu.Unlock()
-			var fe *fatalError
-			if errors.As(err, &fe) {
-				s.mu.Lock()
-				s.state, s.fatal = StateFailed, true
-				if errors.Is(err, ErrNotApproved) {
-					s.state = StateRefused
-				}
-				s.mu.Unlock()
-				m.logf("mcp: server %q not started: %v", s.name, err)
-				if !s.park(ctx) {
-					s.shutdown()
-					return
-				}
-				failures = 0
-				continue
+		case fatal:
+			m.logf("mcp: server %q not started: %v", s.name, err)
+			if !s.park(ctx) {
+				s.shutdown()
+				return
 			}
+			failures = 0
+			continue
+		default:
 			cause = err
 		}
 		failures++
@@ -832,6 +824,25 @@ func (s *server) run(startCtx context.Context, first chan<- error) {
 			return
 		}
 	}
+}
+
+// recordFailure stores why a connection attempt failed and, when no retry can
+// help (see fatalError), the terminal state: refused when the server was not
+// approved, failed otherwise. It reports whether the failure is fatal.
+func (s *server) recordFailure(err error) bool {
+	txt := s.errorText(err) // takes s.mu itself: compute before locking
+	var fe *fatalError
+	fatal := errors.As(err, &fe)
+	s.mu.Lock()
+	s.errText = txt
+	if fatal {
+		s.state, s.fatal = StateFailed, true
+		if errors.Is(err, ErrNotApproved) {
+			s.state = StateRefused
+		}
+	}
+	s.mu.Unlock()
+	return fatal
 }
 
 // park waits, doing nothing, until Reconnect or shutdown; it reports whether

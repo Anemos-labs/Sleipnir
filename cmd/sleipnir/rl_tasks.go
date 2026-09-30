@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/reee344/sleipnir/internal/rl"
 	"github.com/reee344/sleipnir/internal/rl/env"
 	"github.com/reee344/sleipnir/internal/rl/env/taskgen"
+	"github.com/reee344/sleipnir/internal/rl/recall"
 )
 
 func init() {
@@ -258,6 +260,8 @@ func rlTaskgen(ctx context.Context, args []string, stdout, stderr io.Writer) err
              (the parent commit is the start, the commit message the prompt, the commit's tests the hidden verifier)
   mutate     inject bugs the project's own tests catch; the reverse patch is the reference solution
   composite  combine independent tasks of one repository into swarm tasks for a manager and workers
+  recall     memory tasks: read a fact early, read many other files, then state the fact exactly
+             (a small context window makes the agent compact its history in between)
 
 Every task is validated in the same environment rollouts use before it is written:
 the verifier must fail on the start state and pass with the reference solution.
@@ -273,6 +277,8 @@ the verifier must fail on the start state and pass with the reference solution.
 		return taskgenMutate(ctx, args[1:], stdout, stderr)
 	case "composite":
 		return taskgenComposite(args[1:], stdout, stderr)
+	case "recall":
+		return taskgenRecall(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return nil
@@ -289,12 +295,12 @@ func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 // genCommon are the flags every generator shares.
 type genCommon struct {
 	repo, out, report, idPrefix string
-	tags, setup                        multiFlag
-	testCmd, rev                       string
-	max, concurrency                   int
-	timeout                            time.Duration
-	langs                              string
-	rig                                rigFlags
+	tags, setup                 multiFlag
+	testCmd, rev                string
+	max, concurrency            int
+	timeout                     time.Duration
+	langs                       string
+	rig                         rigFlags
 }
 
 func (g *genCommon) register(fs *flag.FlagSet) {
@@ -470,6 +476,53 @@ func taskgenComposite(args []string, stdout, stderr io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "wrote %d composite tasks (%d components each) from %d tasks to %s\n", len(tasks), *k, len(base), dest)
 	fmt.Fprintf(stderr, "composite verifiers reuse the components' hidden files: keep the blobs directory next to the output (copy or link it)\n")
+	return nil
+}
+
+func taskgenRecall(args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("rl taskgen recall", stderr, "rl taskgen recall --repo PATH [flags]")
+	repo := fs.String("repo", "", "the repository to ask about (a local path)")
+	out := fs.String("o", "recall.jsonl", "output tasks file")
+	rev := fs.String("rev", "", "revision to build tasks from (default HEAD)")
+	maxTasks := fs.Int("max", 10, "tasks wanted")
+	files := fs.Int("files", 12, "other files the agent must read between learning the fact and stating it")
+	window := fs.Int("window", 12000, "context window in tokens written into each task: small, so the reading overflows it and history is compacted")
+	seed := fs.Int64("seed", 0, "selects which facts and files are used; the result is deterministic")
+	langs := fs.String("lang", "", "comma-separated languages to use (go, python)")
+	idPrefix := fs.String("id-prefix", "recall", "prefix of task ids")
+	var tags multiFlag
+	fs.Var(&tags, "tag", "tag added to every task, repeatable")
+	if _, err := parseInterspersed(fs, args); err != nil {
+		return err
+	}
+	if *repo == "" {
+		return errors.New("rl taskgen recall: --repo is required")
+	}
+	scratch, err := os.MkdirTemp("", "sleipnir-recall-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(scratch)
+	g, err := env.NewGit(env.GitOptions{Scratch: scratch})
+	if err != nil {
+		return fmt.Errorf("rl taskgen recall: %w", err)
+	}
+	abs, err := filepath.Abs(*repo)
+	if err != nil {
+		return err
+	}
+	tasks, err := recall.Generate(context.Background(), abs, recall.Options{
+		Git: g, Rev: *rev, Max: *maxTasks, Files: *files, Window: *window, Seed: *seed,
+		Languages: splitList(*langs), IDPrefix: *idPrefix, Tags: []string(tags),
+	})
+	if err != nil {
+		return fmt.Errorf("rl taskgen recall: %w", err)
+	}
+	if err := env.WriteTasks(*out, tasks); err != nil {
+		return fmt.Errorf("rl taskgen recall: %w", err)
+	}
+	fmt.Fprintf(stdout, "wrote %d recall tasks to %s (each reads %d files under a %d-token window)\n", len(tasks), *out, *files, *window)
+	fmt.Fprintf(stderr, "run them like any tasks: sleipnir rl rollout --tasks %s --model <policy> --group 4 ...\n", *out)
 	return nil
 }
 

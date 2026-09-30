@@ -466,12 +466,12 @@ const (
 )
 
 // classifyStop says how a run ended.
-func classifyStop(err error, rs *runState, ctx context.Context) (kind stopKind, why string, count bool) {
+func classifyStop(err error, reason string, reasonCounts bool, ctx context.Context) (kind stopKind, why string, count bool) {
 	switch {
 	case err == nil:
 		return stopClean, "", false
-	case rs.reason != "":
-		return stopHarness, rs.reason, rs.count
+	case reason != "":
+		return stopHarness, reason, reasonCounts
 	}
 	var pe *panicError
 	switch {
@@ -504,15 +504,20 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	for id, rev := range rs.tasks {
 		tasks[id] = rev
 	}
+	reason, reasonCounts := rs.reason, rs.count
 	m.mu.Unlock()
 
-	kind, why, count := classifyStop(err, rs, ctx)
+	kind, why, count := classifyStop(err, reason, reasonCounts, ctx)
 	var line string
 	switch kind {
 	case stopClean:
 		line = s.settleClean(ctx, m, tasks, res)
 	default:
 		line = s.settleStopped(m, tasks, kind, why, count)
+	}
+	if line != "" {
+		s.notifyManager(line)
+		line = ""
 	}
 	s.Leases.ReleaseAll(m.id)
 	s.Board.ClearAlertKey("stuck", "stuck:"+m.id)
@@ -534,9 +539,6 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	m.mu.Unlock()
 	m.setState(s, state, stateLine)
 	s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
-	if line != "" {
-		s.notifyManager(line)
-	}
 	s.afterIdle(m)
 }
 

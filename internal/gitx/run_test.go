@@ -223,6 +223,149 @@ func TestRunnerCancellation(t *testing.T) {
 	}
 }
 
+// fileAppears polls for path (a shim's "I am ready" signal, so that a signal is
+// never sent before its trap is installed).
+func fileAppears(path string, within time.Duration) bool {
+	deadline := time.Now().Add(within)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// cancelWhenReady cancels once the shim has said it is ready and reports when it
+// did, so that a test measures how long stopping took rather than how long the
+// shim took to start. It never blocks forever: a shim that fails to start is
+// reported and the call is cancelled anyway.
+func cancelWhenReady(t *testing.T, out string, cancel context.CancelFunc) <-chan time.Time {
+	at := make(chan time.Time, 1)
+	go func() {
+		if !fileAppears(filepath.Join(out, "ready"), 10*time.Second) {
+			t.Errorf("the shim never signalled readiness")
+		}
+		at <- time.Now()
+		cancel()
+	}()
+	return at
+}
+
+func waitGone(t *testing.T, what string, pid int, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for processRunning(pid) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s (pid %d) is still running", what, pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A command that is stopped gets SIGTERM first: that is what makes git delete the
+// lock files it holds. (SIGKILL leaves index.lock or a ref lock behind, and every
+// later write to that repository then fails.)
+func TestRunnerStopsCommandsGentlyFirstSoTheyCanRemoveTheirLocks(t *testing.T) {
+	dir := newRepo(t)
+	gitShim, out := shim(t, `
+case " $* " in *" status "*)
+  : > "$D/held.lock"
+  trap 'echo term > "$D/got-term"; rm -f "$D/held.lock"; exit 143' TERM
+  sleep 30 &
+  echo ready > "$D/ready"
+  wait
+  exit 0;;
+esac
+exec "$REAL" "$@"`)
+	r, err := Open(dir, WithGitPath(gitShim), WithHermeticConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelledAt := cancelWhenReady(t, out, cancel)
+	_, err = r.Status(ctx)
+	took := time.Since(<-cancelledAt)
+	if !errors.Is(err, ErrCanceled) {
+		t.Fatalf("want ErrCanceled, got %v", err)
+	}
+	if _, serr := os.Stat(filepath.Join(out, "got-term")); serr != nil {
+		t.Fatal("the command was not asked to stop with SIGTERM: it never got to clean up")
+	}
+	if _, serr := os.Stat(filepath.Join(out, "held.lock")); serr == nil {
+		t.Fatal("the lock file the command held is still there")
+	}
+	if took >= termGrace {
+		t.Fatalf("a command that stops on SIGTERM took %s (the grace period is %s): it was killed instead", took, termGrace)
+	}
+}
+
+// A command that ignores SIGTERM is killed, with everything else in its group,
+// once the grace period is over.
+func TestRunnerKillsWhatIgnoresSIGTERMAfterTheGracePeriod(t *testing.T) {
+	dir := newRepo(t)
+	gitShim, out := shim(t, `
+case " $* " in *" status "*)
+  trap '' TERM
+  echo $$ > "$D/leader.pid"
+  sleep 60 &
+  echo $! > "$D/child.pid"
+  echo ready > "$D/ready"
+  wait
+  exit 0;;
+esac
+exec "$REAL" "$@"`)
+	r, err := Open(dir, WithGitPath(gitShim), WithHermeticConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelledAt := cancelWhenReady(t, out, cancel)
+	_, err = r.Status(ctx)
+	took := time.Since(<-cancelledAt)
+	if !errors.Is(err, ErrCanceled) {
+		t.Fatalf("want ErrCanceled, got %v", err)
+	}
+	if took < termGrace-100*time.Millisecond {
+		t.Fatalf("stopped after %s: the command was killed without the grace period", took)
+	}
+	if took > 8*time.Second {
+		t.Fatalf("took %s to stop a command that ignores SIGTERM", took)
+	}
+	for _, f := range []string{"leader.pid", "child.pid"} {
+		pid, _ := strconv.Atoi(strings.TrimSpace(readFile(t, filepath.Join(out, f))))
+		waitGone(t, f, pid, 3*time.Second)
+	}
+}
+
+// A stray that ignores SIGTERM and no longer holds our pipes would not delay the
+// call at all, so nothing but the final sweep can end it.
+func TestRunnerSweepsStraysThatSurviveTheStop(t *testing.T) {
+	dir := newRepo(t)
+	gitShim, out := shim(t, `
+case " $* " in *" status "*)
+  ( trap '' TERM; exec sleep 60 ) >/dev/null 2>&1 </dev/null &
+  echo $! > "$D/stray.pid"
+  echo ready > "$D/ready"
+  sleep 60
+  exit 0;;
+esac
+exec "$REAL" "$@"`)
+	r, err := Open(dir, WithGitPath(gitShim), WithHermeticConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelWhenReady(t, out, cancel)
+	if _, err = r.Status(ctx); !errors.Is(err, ErrCanceled) {
+		t.Fatalf("want ErrCanceled, got %v", err)
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(readFile(t, filepath.Join(out, "stray.pid"))))
+	waitGone(t, "the stray", pid, 3*time.Second)
+}
+
 func TestRunnerOutputCap(t *testing.T) {
 	dir := newRepo(t)
 	// 10 MB on stdout for status and cat-file, from a process that would block if we stopped reading.

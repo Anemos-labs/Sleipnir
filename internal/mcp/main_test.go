@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/mcp/mcptest"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
@@ -98,9 +99,50 @@ func (r *recorder) requests() []perm.Request {
 	return append([]perm.Request(nil), r.reqs...)
 }
 
+// memBlobs is an in-memory content-addressed store with the method set of the
+// harness blob store, so the tests need nothing from the events package.
+type memBlobs struct {
+	mu sync.Mutex
+	m  map[core.Hash][]byte
+}
+
+func (b *memBlobs) Put(data []byte) (core.Hash, error) {
+	h := core.HashBytes(data)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.m == nil {
+		b.m = map[core.Hash][]byte{}
+	}
+	b.m[h] = append([]byte(nil), data...)
+	return h, nil
+}
+
+func (b *memBlobs) Get(h core.Hash) ([]byte, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	data, ok := b.m[h]
+	if !ok {
+		return nil, errors.New("blob not found")
+	}
+	return append([]byte(nil), data...), nil
+}
+
+func (b *memBlobs) Has(h core.Hash) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.m[h]
+	return ok
+}
+
+func (b *memBlobs) Len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.m)
+}
+
 // testEnv is a tools.Env with a blob store and the given permission checker.
-func testEnv(p perm.Requester) (*tools.Env, *events.MemBlobs) {
-	blobs := events.NewMemBlobs()
+func testEnv(p perm.Requester) (*tools.Env, *memBlobs) {
+	blobs := &memBlobs{}
 	env := (&tools.Env{Agent: "a1", Role: "worker", Perm: p, Blobs: blobs}).Defaults()
 	return env, blobs
 }

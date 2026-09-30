@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,6 +22,7 @@ import (
 	"github.com/reee344/sleipnir/internal/rl/env"
 	"github.com/reee344/sleipnir/internal/rl/export"
 	"github.com/reee344/sleipnir/internal/rl/harness"
+	"github.com/reee344/sleipnir/internal/rl/recall"
 	"github.com/reee344/sleipnir/internal/rl/redact"
 	"github.com/reee344/sleipnir/internal/rl/reward"
 	"github.com/reee344/sleipnir/internal/rl/traj"
@@ -238,3 +242,125 @@ func TestRolloutsToTrainingData(t *testing.T) {
 }
 
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
+
+// TestRecallTaskIsJudgedOnTheFinalMessage runs a generated memory task: the
+// agent reads a fact, reads other files, and must state the fact. The verdict
+// comes from an exact match on the final message, with no command to run.
+func TestRecallTaskIsJudgedOnTheFinalMessage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	dir := t.TempDir()
+	for i := 1; i <= 8; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("pkg%02d", i), fmt.Sprintf("pkg%02d.go", i))
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		body := fmt.Sprintf("// Package pkg%02d is one of many.\npackage pkg%02d\n\nconst Retries%02d = %d\n", i, i, i, 4000+i*37)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/many\n\ngo 1.24\n"), 0o644)
+	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Skipf("git: %v %s", err, out)
+		}
+	}
+	g, err := env.NewGit(env.GitOptions{Scratch: t.TempDir()})
+	if err != nil {
+		t.Skip(err)
+	}
+	tasks, err := recall.Generate(context.Background(), dir, recall.Options{Git: g, Max: 1, Files: 3, Window: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := tasks[0]
+
+	landmarkRe := regexp.MustCompile("Read `([^`]+)`")
+	fillerRe := regexp.MustCompile(`(?m)^ {3}- (\S+)$`)
+	valueRe := regexp.MustCompile(`= (\d+)`)
+
+	// The scripted policy keeps its own notes, the way a model carries what it has
+	// understood: compacting its thread does not make it forget which step it is on.
+	type plan struct {
+		landmark, value string
+		fillers         []string
+		step            int
+	}
+	var mu sync.Mutex
+	var plans []*plan
+	pol := startPolicy(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.LastUser(), "<compactor-task>") {
+			return mock.Reply{Text: "I will not produce JSON today."} // the harness falls back to a mechanical compaction
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if turns(c) == 0 {
+			plans = append(plans, &plan{})
+		}
+		pl := plans[len(plans)-1]
+		wrong := len(plans) == 2 // the second sample misremembers
+		for _, m := range c.Messages {
+			switch {
+			case m.Role == "user" && pl.landmark == "" && strings.Contains(m.Content, "memory exercise"):
+				pl.landmark = landmarkRe.FindStringSubmatch(m.Content)[1]
+				for _, f := range fillerRe.FindAllStringSubmatch(m.Content, -1) {
+					pl.fillers = append(pl.fillers, f[1])
+				}
+			case m.Role == "tool" && pl.value == "" && pl.landmark != "" && strings.Contains(m.Content, strings.TrimSuffix(filepath.Base(pl.landmark), ".go")):
+				if v := valueRe.FindStringSubmatch(m.Content); v != nil {
+					pl.value = v[1]
+				}
+			}
+		}
+		step := pl.step
+		pl.step++
+		switch {
+		case step == 0:
+			return mock.Reply{Text: "reading the landmark", ToolCalls: []mock.ToolCall{call("r0", "read", map[string]any{"path": pl.landmark})}}
+		case step <= len(pl.fillers):
+			return mock.Reply{Text: "next file", ToolCalls: []mock.ToolCall{call(fmt.Sprintf("r%d", step), "read", map[string]any{"path": pl.fillers[step-1]})}}
+		}
+		answer := pl.value
+		if wrong || answer == "" {
+			answer = "1"
+		}
+		return mock.Reply{Text: "Covered every file.\nANSWER: " + answer}
+	})
+
+	ws, err := env.NewWorkspaces(env.WorkspaceOptions{Root: t.TempDir(), RepoBase: "/", DisableNetIsolation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	pipe := &harness.Pipeline{Harness: rl.HarnessRef{Version: "test"}, Reward: reward.DefaultConfig()}
+	rn := &env.Runner{Harness: &harness.Harness{NewProvider: injected(pol.url)}, Extract: pipe.Extract, Score: pipe.Score,
+		Workspaces: ws, Out: filepath.Join(t.TempDir(), "run"), Concurrency: 1, InfraRetries: -1}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	sum, err := rn.Rollout(ctx, []rl.Task{task}, 2, env.RolloutOpts{RunID: "r", Policy: env.PolicySpec{Model: "mock-1"}, KeepEpisodes: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Completed != 2 {
+		t.Fatalf("%+v", sum)
+	}
+	var good, bad *rl.Episode
+	for _, r := range sum.Results {
+		if r.Episode.Outcome.Verifier != nil && r.Episode.Outcome.Verifier.Pass {
+			good = r.Episode
+		} else {
+			bad = r.Episode
+		}
+	}
+	if good == nil || bad == nil {
+		t.Fatalf("one sample answers correctly and one does not: pass rate %v", sum.PassRate)
+	}
+	if bad.Reward.Total >= good.Reward.Total {
+		t.Errorf("a wrong answer must earn less: %v vs %v", bad.Reward.Total, good.Reward.Total)
+	}
+	if bad.Outcome.Claimed != "done" || bad.Reward.Components[reward.CompHonestDone] >= 0 {
+		t.Errorf("claiming done with a wrong answer is a false claim: %+v", bad.Reward)
+	}
+}

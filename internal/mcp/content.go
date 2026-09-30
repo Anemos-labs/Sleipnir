@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
 )
 
 // Rendering a tool result for the model.
@@ -40,6 +40,14 @@ const maxResultChars = 4 << 20
 // is filling the blob store.
 const maxMediaBytes = 8 << 20
 
+// blobStore is the part of the harness blob store this package uses: it only
+// ever writes. Declaring it here (tools.Env.Blobs satisfies it) keeps the
+// package's dependencies to core, tools and perm, and lets tests supply a
+// two-line fake.
+type blobStore interface {
+	Put(data []byte) (core.Hash, error)
+}
+
 // mediaRef describes a binary payload that was stored.
 type mediaRef struct {
 	Kind      string `json:"kind"` // image, audio, blob
@@ -56,7 +64,7 @@ type rendered struct {
 }
 
 // renderResult converts a tool result to model-visible text.
-func renderResult(res *CallToolResult, blobs events.Blobs, attach bool, redact *redactor) rendered {
+func renderResult(res *CallToolResult, blobs blobStore, attach bool, redact *redactor) rendered {
 	var out rendered
 	var sb strings.Builder
 	over := false
@@ -68,7 +76,13 @@ func renderResult(res *CallToolResult, blobs events.Blobs, attach bool, redact *
 			sb.WriteByte('\n')
 		}
 		if sb.Len()+len(s) > maxResultChars {
-			s = s[:max(0, maxResultChars-sb.Len())]
+			cut := max(0, maxResultChars-sb.Len())
+			// Back up to a rune boundary: the text was valid UTF-8 and the cut must
+			// not be what makes it invalid.
+			for cut > 0 && cut < len(s) && !utf8.RuneStart(s[cut]) {
+				cut--
+			}
+			s = s[:cut]
 			over = true
 		}
 		sb.WriteString(s)

@@ -23,8 +23,9 @@ const (
 	DefaultMaxOutput = 32 << 20
 	maxStderrBytes   = 256 << 10
 	// waitDelay bounds how long we wait for output pipes to close after the
-	// process group has been killed: a grandchild that escaped the group and still
-	// holds the pipe must not hang us.
+	// process group has been told to stop (SIGTERM, then SIGKILL after termGrace, see
+	// proc_unix.go): a grandchild that escaped the group and still holds the pipe
+	// must not hang us.
 	waitDelay = 2 * time.Second
 	// DefaultLockWait is how long a mutating command keeps retrying while another
 	// git process holds a lock file.
@@ -421,10 +422,11 @@ func (s *settings) execOnce(ctx context.Context, c call, op string) (*output, er
 	}
 	stderr := &capWriter{max: maxStderrBytes}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	configureProc(cmd)
+	finish := configureProc(cmd)
 	cmd.WaitDelay = waitDelay
 
 	runErr := cmd.Run()
+	finish()
 	out := &output{stdout: stdout.bytes(), stderr: strings.TrimSpace(string(stderr.bytes())), exit: 0}
 	if cmd.ProcessState != nil {
 		out.exit = cmd.ProcessState.ExitCode()

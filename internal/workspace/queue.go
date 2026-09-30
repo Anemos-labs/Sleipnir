@@ -646,13 +646,21 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	}
 
 	// 5. Publish: the branch only ever moves to a verified commit, and only from the
-	// tip we expect.
+	// tip we expect. A caller that gave up before this point costs nothing but the
+	// merge, which is undone; after it, the move is not interruptible (see publish).
 	q.setPhase(entry, "publishing")
-	if err := m.st.base.UpdateBranch(ctx, q.branch, after, prev, "sleipnir: integrate "+s.Agent); err != nil {
+	if err := ctx.Err(); err != nil {
+		q.setPhase(entry, "rolling back")
 		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
 			err = errors.Join(err, rerr)
 		}
-		return nil, fmt.Errorf("workspace: the integration branch moved underneath the queue: %w", err)
+		return nil, err
+	}
+	if err := q.publish(ctx, after, prev, s.Agent); err != nil {
+		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
+		return nil, err
 	}
 	q.mu.Lock()
 	q.tip = after
@@ -668,6 +676,39 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		"strategy": q.opts.Strategy.String(), "verified": cmd != "",
 	})
 	return res, nil
+}
+
+// publishTimeout bounds the move of the integration branch, a single ref update
+// that takes milliseconds unless the disk is in trouble.
+const publishTimeout = time.Minute
+
+// publish moves the integration branch from prev to after (compare-and-swap), and
+// cannot be cancelled by the caller once it starts. The queue's bookkeeping is
+// only correct if the branch and q.tip agree after every submission, and a git
+// process that is stopped half way through the update leaves either nothing
+// changed (plus, if it was killed rather than asked, a stale lock that blocks
+// every later publish) or the branch already moved while the caller is told it
+// was not. So the update runs on its own bounded context, and if it still fails
+// (timeout, killed) the branch itself is asked what happened: a branch that is at
+// after was published, whatever the error said.
+func (q *Queue) publish(ctx context.Context, after, prev, agent string) error {
+	pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishTimeout)
+	defer cancel()
+	base := q.m.st.base
+	err := base.UpdateBranch(pctx, q.branch, after, prev, "sleipnir: integrate "+agent)
+	if err == nil {
+		return nil
+	}
+	// The update's own deadline may be what failed, so the question gets a fresh one.
+	qctx, qcancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer qcancel()
+	if cur, berr := base.BranchSHA(qctx, q.branch); berr == nil && cur == after {
+		return nil
+	}
+	if gitx.KindOf(err) == gitx.KindConflict {
+		return fmt.Errorf("workspace: the integration branch moved underneath the queue: %w", err)
+	}
+	return fmt.Errorf("workspace: publishing the integration branch failed: %w", err)
 }
 
 func firstN(s []string, n int) []string {
@@ -932,6 +973,9 @@ func (q *Queue) Finish(ctx context.Context) (string, error) {
 	return d.Patch, nil
 }
 
+// fastForwardTimeout bounds the update of the user's branch and work tree.
+const fastForwardTimeout = 5 * time.Minute
+
 // FastForwardResult reports FastForward.
 type FastForwardResult struct {
 	// Branch is the user's branch that moved (empty when nothing had to move).
@@ -982,11 +1026,7 @@ func (q *Queue) FastForward(ctx context.Context) (*FastForwardResult, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: %s has commits the session did not start from; merge %s or apply Finish's patch", ErrNotFastForward, branch, q.branch)
 	}
-	if r.IsBare() {
-		if err := r.UpdateBranch(ctx, branch, tip, head, "sleipnir: fast-forward to the integration tip"); err != nil {
-			return nil, err
-		}
-	} else {
+	if !r.IsBare() {
 		// "all": with collapsed directories, a Dir inside the repository would hide
 		// behind its parent (.sleipnir/) and look like user content.
 		st, err := r.StatusWith(ctx, gitx.StatusOptions{Untracked: "all"})
@@ -996,9 +1036,21 @@ func (q *Queue) FastForward(ctx context.Context) (*FastForwardResult, error) {
 		if dirty := m.dirtyPaths(st); len(dirty) > 0 {
 			return nil, fmt.Errorf("%w: the working tree has %d uncommitted change(s) (%s); commit or stash them first", ErrDirty, len(dirty), strings.Join(firstN(dirty, 5), ", "))
 		}
-		if _, err := r.Merge(ctx, gitx.MergeOptions{Ref: tip, FFOnly: true}); err != nil {
+	}
+	// Past the last check the move cannot be interrupted by the caller: it rewrites
+	// files of the user's own working tree, where a half-done update is worse than
+	// either end state. It runs on its own generous bound instead.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fastForwardTimeout)
+	defer cancel()
+	if r.IsBare() {
+		if err := r.UpdateBranch(mctx, branch, tip, head, "sleipnir: fast-forward to the integration tip"); err != nil {
 			return nil, err
 		}
+	} else if _, err := r.Merge(mctx, gitx.MergeOptions{Ref: tip, FFOnly: true}); err != nil {
+		return nil, err
 	}
 	q.emit(EventFastForward, "", "", map[string]any{"branch": branch, "from": head, "to": tip})
 	return &FastForwardResult{Branch: branch, From: head, To: tip}, nil

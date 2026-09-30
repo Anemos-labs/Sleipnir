@@ -84,6 +84,16 @@ func newRunnerFixture(t *testing.T, mut ...func(*runnerFixture)) *runnerFixture 
 	return f
 }
 
+// quickVerify swaps the task's verifier for a shell check that costs
+// milliseconds instead of a `go test` run. Tests about orchestration (ordering,
+// seeds, resume, cancellation, streaming) do not care what the verifier is, only
+// that it tells the fixed tree from the buggy one; the tests about verification
+// itself keep the real thing. The check squeezes out whitespace so it does not
+// depend on formatting: the fix swaps the branch's return value.
+func quickVerify(f *runnerFixture) {
+	f.task.Verifier.Cmd = `tr -d ' \t\n' < mathx.go | grep -q 'ifa>b{returna}'`
+}
+
 func (f *runnerFixture) opts() RolloutOpts {
 	return RolloutOpts{
 		Policy: PolicySpec{Model: "test-policy", BaseURL: "https://user:pw@policy.example:8000/v1?key=abc", APIKeyEnv: "POLICY_KEY", Sampling: json.RawMessage(`{"temperature":1}`)},
@@ -386,7 +396,7 @@ func TestRolloutFullPath(t *testing.T) {
 }
 
 func TestRolloutIsResumableAndForceable(t *testing.T) {
-	f := newRunnerFixture(t)
+	f := newRunnerFixture(t, quickVerify)
 	f.h.Scripts = map[string]FakeScript{
 		"mathx-max/0": {Steps: []FakeStep{FakeWrite("mathx.go", fixedMath)}},
 		"mathx-max/1": {},
@@ -432,7 +442,7 @@ func TestRolloutIsResumableAndForceable(t *testing.T) {
 }
 
 func TestRolloutResumeIgnoresCorruptEpisodeFiles(t *testing.T) {
-	f := newRunnerFixture(t)
+	f := newRunnerFixture(t, quickVerify)
 	f.rollout([]rl.Task{f.task}, 1, f.opts())
 	if err := os.WriteFile(filepath.Join(f.sampleDir("mathx-max", 0), "episode.json"), []byte("{truncated"), 0o644); err != nil {
 		t.Fatal(err)
@@ -444,7 +454,7 @@ func TestRolloutResumeIgnoresCorruptEpisodeFiles(t *testing.T) {
 }
 
 func TestRolloutCancellationWritesManifestAndSummary(t *testing.T) {
-	f := newRunnerFixture(t)
+	f := newRunnerFixture(t, quickVerify)
 	f.r.Concurrency = 2
 	f.r.StopGrace = 5 * time.Second
 	f.h.Default = FakeScript{Steps: []FakeStep{FakeWrite("marker.txt", "x"), FakeHang()}}
@@ -543,7 +553,7 @@ func TestRolloutKeepFailed(t *testing.T) {
 
 func TestRolloutExtractAndScoreFailuresAreContained(t *testing.T) {
 	t.Run("extract error", func(t *testing.T) {
-		f := newRunnerFixture(t)
+		f := newRunnerFixture(t, quickVerify)
 		f.r.Extract = func(string, rl.Task, int, string) (*rl.Episode, error) { return nil, errors.New("replay mismatch") }
 		f.r.InfraRetries = 2
 		sum := f.rollout([]rl.Task{f.task}, 2, f.opts())
@@ -558,7 +568,7 @@ func TestRolloutExtractAndScoreFailuresAreContained(t *testing.T) {
 		}
 	})
 	t.Run("extract panic", func(t *testing.T) {
-		f := newRunnerFixture(t)
+		f := newRunnerFixture(t, quickVerify)
 		f.r.Extract = func(string, rl.Task, int, string) (*rl.Episode, error) { panic("nil pointer") }
 		sum := f.rollout([]rl.Task{f.task}, 1, f.opts())
 		if sum.Infra != 1 || !strings.Contains(sum.Results[0].Error, "nil pointer") {
@@ -566,7 +576,7 @@ func TestRolloutExtractAndScoreFailuresAreContained(t *testing.T) {
 		}
 	})
 	t.Run("score error and panic", func(t *testing.T) {
-		f := newRunnerFixture(t)
+		f := newRunnerFixture(t, quickVerify)
 		f.r.Score = func(ep *rl.Episode, task *rl.Task, dir string) error {
 			if ep.Sample == 0 {
 				return errors.New("bad reward config")
@@ -579,7 +589,7 @@ func TestRolloutExtractAndScoreFailuresAreContained(t *testing.T) {
 		}
 	})
 	t.Run("nil extract and score use the defaults", func(t *testing.T) {
-		f := newRunnerFixture(t)
+		f := newRunnerFixture(t, quickVerify)
 		f.r.Extract, f.r.Score = nil, nil
 		f.h.Default = FakeScript{Steps: []FakeStep{FakeWrite("mathx.go", fixedMath)}}
 		sum := f.rollout([]rl.Task{f.task}, 1, f.opts())
@@ -588,7 +598,7 @@ func TestRolloutExtractAndScoreFailuresAreContained(t *testing.T) {
 		}
 	})
 	t.Run("one bad task does not stop the others", func(t *testing.T) {
-		f := newRunnerFixture(t)
+		f := newRunnerFixture(t, quickVerify)
 		bad := f.task
 		bad.ID = "broken-repo"
 		bad.Repo.Commit = strings.Repeat("0", 40)
@@ -664,7 +674,7 @@ func TestRolloutValidatesInputs(t *testing.T) {
 }
 
 func TestRolloutDeterministicOrderingAndSeeds(t *testing.T) {
-	f := newRunnerFixture(t)
+	f := newRunnerFixture(t, quickVerify)
 	f.r.Concurrency = 4
 	t2 := f.task
 	t2.ID = "mathx-max-b"
@@ -682,7 +692,7 @@ func TestRolloutDeterministicOrderingAndSeeds(t *testing.T) {
 	for _, c := range f.h.Calls() {
 		seeds[fmt.Sprintf("%s/%d", c.Task, c.Sample)] = c.Seed
 	}
-	f2 := newRunnerFixture(t)
+	f2 := newRunnerFixture(t, quickVerify)
 	f2.h.Default = f.h.Default
 	f2.r.Concurrency = 1
 	f2.rollout([]rl.Task{f2.task, func() rl.Task { x := f2.task; x.ID = "mathx-max-b"; return x }()}, 4, f2.opts())
@@ -710,7 +720,7 @@ func TestRolloutPassesNetworkIsolationToTheHarness(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fakeBin, "ip"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f := newRunnerFixture(t)
+	f := newRunnerFixture(t, quickVerify)
 	local, err := NewLocalSandbox(LocalSandboxOptions{LookPath: func(n string) (string, error) {
 		if n == "ip" {
 			return filepath.Join(fakeBin, "ip"), nil
@@ -774,7 +784,7 @@ func TestSampleSeedIsStable(t *testing.T) {
 }
 
 func TestRolloutSwarmDefaultsFromTheTask(t *testing.T) {
-	f := newRunnerFixture(t)
+	f := newRunnerFixture(t, quickVerify)
 	f.h.Default = FakeScript{}
 	swarm := f.task
 	swarm.ID = "swarm-task"

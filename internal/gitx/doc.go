@@ -29,7 +29,9 @@
 //     other directory, and an agent that rewrites the .git file of its own
 //     worktree cannot make the harness commit into a different repository;
 //   - is bounded: a deadline (context and per-call timeout), a cap on captured
-//     output, and a kill of the whole process group when either trips.
+//     output, and a stop of the whole process group when either trips (SIGTERM
+//     first, so that git removes the lock files it holds, SIGKILL after a short
+//     grace period).
 //
 // Consequences worth knowing: hooks never run (also the user's own; the harness
 // commits are machine work, not the user's), LFS-style filters are not applied

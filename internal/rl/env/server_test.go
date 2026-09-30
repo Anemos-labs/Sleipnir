@@ -33,7 +33,7 @@ type serverFixture struct {
 
 func newServerFixture(t *testing.T, mut ...func(*ServeOptions)) *serverFixture {
 	t.Helper()
-	rf := newRunnerFixture(t)
+	rf := newRunnerFixture(t, quickVerify)
 	rf.h.Default = FakeScript{Steps: []FakeStep{FakeWrite("mathx.go", fixedMath)}, Final: "fixed"}
 	root := filepath.Join(t.TempDir(), "served")
 	o := ServeOptions{Root: root, Token: testToken, Tasks: []rl.Task{rf.task}, MaxRuns: 2}
@@ -370,7 +370,7 @@ func TestServerRejectsBadRequests(t *testing.T) {
 }
 
 func TestServerConfinesInlineTasksToRepoRoots(t *testing.T) {
-	f0 := newRunnerFixture(t)
+	f0 := newRunnerFixture(t, quickVerify)
 	allowed := filepath.Dir(f0.repo.Dir)
 	f := newServerFixture(t, func(o *ServeOptions) { o.RepoRoots = []string{allowed} })
 	outside := f.task

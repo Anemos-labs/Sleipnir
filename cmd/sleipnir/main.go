@@ -87,6 +87,8 @@ Commands:
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
   swarm     shorthand for run --swarm
   recon     print the deterministic project survey that seeds the shared prompt layer
+  inspect   the cache inspector: a live or after-the-fact dashboard of a recorded session (layers, hit ratio, swarm, cost)
+  rl        the RL environment: taskgen, rollout, eval, serve, reward, export, verify (see: sleipnir rl help)
   doctor    probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs
   models    list models and prices from a marketplace catalogue
   demo      a scripted team of 10+ agents on a mock endpoint: see the shared cache and the bill, no key needed

@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/mcp"
 	"github.com/reee344/sleipnir/internal/mcp/mcptest"
 	"github.com/reee344/sleipnir/internal/perm"
@@ -55,7 +54,7 @@ func Example() {
 
 	// Run one. Errors of every kind come back as results the model can read.
 	echo, _ := reg.Get("mcp__demo__echo")
-	env := (&tools.Env{Agent: "main", Perm: onlyEcho{}, Blobs: events.NewMemBlobs()}).Defaults()
+	env := (&tools.Env{Agent: "main", Perm: onlyEcho{}}).Defaults()
 	res, _ := echo.Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"message":"hello"}`), Env: env})
 	fmt.Println("echo:", res.Text, res.IsError)
 
