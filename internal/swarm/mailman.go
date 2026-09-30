@@ -358,7 +358,7 @@ func (mr *mailroom) start(b *mailBatch) string {
 	mr.mu.Unlock()
 	m.a.Send(mr.render(b))
 	s.emit(events.TypeMailBatch, map[string]any{"batch": b.id, "mailman": m.id, "recipients": len(b.order), "parcels": n})
-	s.launch(m, rs, ctx, "")
+	s.launch(m, rs, ctx, runStart{})
 	return ""
 }
 

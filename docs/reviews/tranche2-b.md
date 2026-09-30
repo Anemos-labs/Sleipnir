@@ -347,7 +347,7 @@ SLEIPNIR_REVIEW=1 go test -count=1 -run 'TestSec|TestConc' ./internal/kv ./inter
 
 * **`Run` and the swarm kickoff (S22).** `core.OriginTask` and `Agent.RunTask(ctx, brief, assignment)` exist: a task the harness hands to an agent is not the user's
   word, is never pinned into `instructions`, and its assignment card (a `kv.Task` block) replaces the harness-owned `assignment` section when its turn is folded,
-  so a reused worker's notes describe the task it has now (`docs/CACHE-DESIGN.md` 4.1). Switching the swarm's kickoff and reuse call sites to it is part of merging the swarm features (they are being rewritten there).
+  so a reused worker's notes describe the task it has now (`docs/CACHE-DESIGN.md` 4.1). The swarm's kickoff and reuse call sites use it (`swarm.runStart`, `reassignStart`).
 * **Resume.** `Session.Close` closes the solo agent, and `--resume` rebuilds the archive index and the recall handles from the event log
   (`agent.RebuildArchive`, `agent.RebuildHandles`; `tool.result` records the blob ref and the full length, spills are logged as `tool.spill`), so `recall` finds
   turns that were folded before the resume.

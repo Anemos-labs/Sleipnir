@@ -191,8 +191,11 @@ worker mail -> router (kind, recipient, length, rate limits, dedupe: unchanged)
 
 `spawn(role, task)` creates a worker on a task card (title, acceptance, scope). The worker needs no briefing: G0-G2
 come from the provider's cache. Reusing an idle worker (`spawn ... agent=be-1`) is preferred for follow-up work in the
-same area: its notes, spine and thread are warm. **A reused worker always receives the new task card as a user turn** (and
-its scope), never silently continues an old one.
+same area: its notes, spine and thread are warm. **A reused worker always receives the new task card** (and its scope) **as a task
+turn** (`core.OriginTask`, a brief plus a `kv.Task` block that holds the card), never silently continues an old one. A task turn is
+the harness's, not the person's: compaction never pins it into the worker's `instructions`, and when the turn is folded away the
+card replaces the `assignment` section of the worker's notes, so the notes describe the task it has now (an isolated writer's card
+keeps its isolation note). A fresh worker's kickoff is a task turn without a card: its notes have held the card since the spawn.
 
 Spawn is one decision under one lock: the agent and writer limits, who owns the task, its dependencies and scope
 overlap are checked and applied together, so concurrent spawns, reuses and self-claims cannot exceed a limit or give two

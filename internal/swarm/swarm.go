@@ -593,8 +593,9 @@ func (s *Swarm) isService(role string) bool { return s.mail != nil && role == Ma
 
 // taskCard renders the assignment text. In notes (pin=true) it carries the full
 // card; the kickoff message is the short form. Everything from the task is made
-// single-line (the description keeps its line breaks) and defused: the kickoff is a
-// user-origin turn that compaction may later preserve as an instruction.
+// single-line (the description keeps its line breaks) and defused: the task text comes
+// from a board that models fill in, and it ends up in a worker's notes (and, for the
+// kickoff, in a task turn; never in the user's instructions).
 func taskCard(t Task, agentID string, pin bool) string {
 	title := cleanText(t.Title, maxTitleRunes)
 	if pin {

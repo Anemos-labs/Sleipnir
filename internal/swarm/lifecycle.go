@@ -461,10 +461,10 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 }
 
 // launch starts the run goroutine of a reserved member.
-func (s *Swarm) launch(m *member, rs *runState, ctx context.Context, input string) {
+func (s *Swarm) launch(m *member, rs *runState, ctx context.Context, start runStart) {
 	s.adopt(m, rs)
 	m.setState(s, "running", "starting")
-	go s.runMember(m, rs, ctx, input)
+	go s.runMember(m, rs, ctx, start)
 }
 
 // wake starts an idle worker (mail arrived for it).
@@ -473,11 +473,11 @@ func (s *Swarm) wake(m *member) {
 		return
 	}
 	if rs, ctx, ok := s.reserve(m); ok {
-		s.launch(m, rs, ctx, "")
+		s.launch(m, rs, ctx, runStart{})
 	}
 }
 
-func (s *Swarm) runMember(m *member, rs *runState, ctx context.Context, input string) {
+func (s *Swarm) runMember(m *member, rs *runState, ctx context.Context, start runStart) {
 	defer s.wg.Done()
 	defer rs.cancel()
 	var res *agent.Result
@@ -490,7 +490,8 @@ func (s *Swarm) runMember(m *member, rs *runState, ctx context.Context, input st
 				s.emitAs(m.id, "agent.panic", map[string]any{"id": m.id, "panic": fmt.Sprint(r), "stack": string(st)})
 			}
 		}()
-		res, err = m.a.Run(ctx, input)
+		// A task from the harness, not the person's word: see runStart.
+		res, err = m.a.RunTask(ctx, start.brief, start.card)
 	}()
 	func() {
 		defer func() {

@@ -143,17 +143,17 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	m.task, m.gateTries = task.ID, 0
 	m.mu.Unlock()
 	s.emitAs(m.id, "agent.assign", map[string]any{"id": m.id, "role": m.role, "task": task.ID, "by": req.By})
-	input := taskCard(task, m.id, false)
+	start := runStart{brief: taskCard(task, m.id, false)}
 	if len(m.a.Thread().Snapshot().Turns) > 0 {
-		input = reassignCard(task, m.id)
+		start = reassignStart(task, m)
 	}
 	// A reused writer starts the new task from what has been merged since.
 	if note, err := s.syncTree(ctx, m); err != nil {
-		input += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), 160) + ". Merge the integration branch yourself before you start, or ask the manager.)"
+		start.brief += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), 160) + ". Merge the integration branch yourself before you start, or ask the manager.)"
 	} else if note != "" {
-		input += "\n" + note
+		start.brief += "\n" + note
 	}
-	s.launch(m, rs, ctx, input)
+	s.launch(m, rs, ctx, start)
 	return m.id, nil
 }
 
@@ -215,7 +215,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	m.task = task.ID
 	m.mu.Unlock()
 	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": s.modelFor(role.Name).ID})
-	s.launch(m, rs, ctx, taskCard(task, id, false))
+	s.launch(m, rs, ctx, runStart{brief: taskCard(task, id, false)}) // the notes hold the card since the spawn
 	return id, nil
 }
 

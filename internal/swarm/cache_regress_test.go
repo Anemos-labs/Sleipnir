@@ -362,4 +362,28 @@ func TestCacheEcon_ReusedWorkerReceivesTheNewTasksBrief(t *testing.T) {
 			t.Fatalf("the reused worker's prompt is missing %q:\n%s", want, second[max(0, len(second)-900):])
 		}
 	}
+
+	// Both are the harness's own task turns, never the person's word (compaction pins a
+	// person's turns into the instructions the agent obeys): the kickoff carries no card, and
+	// the reassignment carries its card as a task block, which replaces the notes' assignment
+	// when the turn is folded.
+	var tasks []core.Turn
+	for _, tr := range sw.get(id).a.Thread().Snapshot().Turns {
+		switch tr.Origin {
+		case core.OriginUser:
+			t.Fatalf("a swarm worker's thread holds a turn typed by a person: %+v", tr)
+		case core.OriginTask:
+			tasks = append(tasks, tr)
+		}
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("want a kickoff and a reassignment, got %d task turns", len(tasks))
+	}
+	if len(tasks[0].Blocks) != 1 || kv.IsTask(tasks[0].Blocks[0]) {
+		t.Fatalf("a fresh worker's kickoff must not carry a card (its notes hold it): %+v", tasks[0].Blocks)
+	}
+	if len(tasks[1].Blocks) != 2 || kv.IsTask(tasks[1].Blocks[0]) || !kv.IsTask(tasks[1].Blocks[1]) ||
+		!strings.Contains(tasks[1].Blocks[1].Text, "MUST-USE-CURSOR-PAGINATION-BRIEF") || !strings.Contains(tasks[1].Blocks[0].Text, "replaces the assignment in <my-notes>") {
+		t.Fatalf("the reassignment is a brief and a task block with the new card: %+v", tasks[1].Blocks)
+	}
 }
