@@ -31,9 +31,10 @@ func checkAgainstOracle(t *testing.T, sn *Snapshot, o *oracle) {
 		bad("stats %+v for %d events: a recorded log is all understood, and nothing is dropped", s, o.events)
 	}
 
-	// The agents: exactly those that were spawned, with their roles.
-	if len(sn.Agents) != len(o.spawn) {
-		bad("%d agents, %d were spawned (%v)", len(sn.Agents), len(o.spawn), agentIDs(sn))
+	// The agents: exactly those that were spawned, with their roles (a session of one agent has no spawn: its agent is the one that
+	// wrote the events).
+	if want := len(o.spawn); len(sn.Agents) != want && !(want == 0 && len(sn.Agents) == len(o.actors)) {
+		bad("%d agents, %d were spawned (%v), %d wrote events", len(sn.Agents), want, agentIDs(sn), len(o.actors))
 	}
 	for _, id := range o.spawn {
 		a, ok := sn.Agent(id)
@@ -119,6 +120,28 @@ func checkAgainstOracle(t *testing.T, sn *Snapshot, o *oracle) {
 	if tt.Retries != o.retries || tt.RateLimited != o.rateLimits || tt.Errors != o.errors || tt.Cancelled != o.cancelled {
 		bad("totals: %d retries (%d rate limits), %d errors, %d cancelled; the log has %d, %d, %d and %d", tt.Retries, tt.RateLimited, tt.Errors,
 			tt.Cancelled, o.retries, o.rateLimits, o.errors, o.cancelled)
+	}
+
+	// Runs that were cancelled (agent.cancel), each agent's latest by phase and cause.
+	if tt.RunsCancelled != sum(o.cancels) {
+		bad("totals: %d runs cancelled, the log has %d", tt.RunsCancelled, sum(o.cancels))
+	}
+	for _, a := range sn.Agents {
+		if a.Cancel.Count != o.cancels[a.ID] || a.Cancel.Phase != o.lastCancelPhase[a.ID] || a.Cancel.Cause != o.lastCancelCause[a.ID] {
+			bad("%s: cancel %+v, the log has %d and the latest was %q (%q)", a.ID, a.Cancel, o.cancels[a.ID], o.lastCancelPhase[a.ID], o.lastCancelCause[a.ID])
+		}
+	}
+
+	// The permission questions: what was asked, how it was settled and by whom, and that nothing is left waiting in a log that ended.
+	if pm := sn.Perms; pm.Asked != o.asked || pm.Allowed != o.allowed || pm.Denied != o.denied || pm.ByUser != o.permBy[PermByUser] ||
+		pm.ByNoOne != o.permBy[PermByNoOne] || pm.ByPolicy != o.permBy[PermByPolicy] || pm.Canceled != o.permBy[PermByCanceled] ||
+		len(pm.Pending)+pm.Abandoned != o.unanswered || len(pm.Recent) != min(o.allowed+o.denied, PermLog) {
+		bad("perms %s; the log has %d asked, %d allowed, %d denied, by %v, %d never answered", js(sn.Perms), o.asked, o.allowed, o.denied, o.permBy, o.unanswered)
+	}
+	for _, a := range sn.Agents {
+		if a.Asking != 0 {
+			bad("%s is still asking %d questions at the end of the log", a.ID, a.Asking)
+		}
 	}
 
 	// Mail.

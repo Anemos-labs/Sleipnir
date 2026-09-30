@@ -247,33 +247,79 @@ type Governor struct {
 	Retries     int `json:"retries,omitempty"`
 }
 
-// PermAsk is a permission question waiting for an answer.
+// Who decided a permission question, as perm.decide's "by" says (internal/perm Audit.By).
+const (
+	// PermByUser: a person answered (the terminal prompter, a hook, the dialog of the UI).
+	PermByUser = "user"
+	// PermByNoOne: the engine had to ask and there was no one to ask (a batch run, a swarm worker, a rollout): the request was refused.
+	PermByNoOne = "no one"
+	// PermByPolicy: a rule settled it without a question: a deny rule, a built-in protection or the mode (a refusal, never an allow).
+	PermByPolicy = "policy"
+	// PermByCanceled: the run was cancelled while the question waited, which is not an answer.
+	PermByCanceled = "canceled"
+)
+
+// PermAsk is a permission question, as perm.ask records it: the permission engine could not settle a tool call by its rules and
+// had to put a question. The log gives a question no id; the State tells it from another by Seq, and pairs it with its answer by
+// who asked, the tool, the command and the paths (they are the same in the perm.decide).
 type PermAsk struct {
-	ID      string    `json:"id,omitempty"`
-	Seq     uint64    `json:"seq"`
-	T       time.Time `json:"t,omitzero"`
-	Agent   string    `json:"agent,omitempty"`
-	Tool    string    `json:"tool,omitempty"`
-	Summary string    `json:"summary"`
+	Seq uint64    `json:"seq"`
+	T   time.Time `json:"t,omitzero"`
+	// Agent is who asked: the agent whose tool call is held at the question. Role is the role it runs in, where the log says.
+	Agent string `json:"agent,omitempty"`
+	Role  string `json:"role,omitempty"`
+	// Tool is what it wants to use ("bash", "write"), Command the shell command line of a bash call (the producer cuts it at 400
+	// characters, this type at 200) and Paths the files the call touches (at most MaxPermPaths; shown relative to the project when
+	// under it).
+	Tool    string   `json:"tool,omitempty"`
+	Command string   `json:"command,omitempty"`
+	Paths   []string `json:"paths,omitempty"`
+	// Reason is why the engine asked ("reads /etc/hosts outside the workspace": a sentence of its own, not of the model's).
+	Reason string `json:"reason,omitempty"`
+	// Summary is the line a dialog shows first: the tool and what it is to act on, the command or the paths.
+	Summary string `json:"summary"`
 }
 
-// PermDecision is an answered question.
+// PermDecision is a permission question that has been settled, or a request that was refused without one.
 type PermDecision struct {
-	Ask    PermAsk   `json:"ask"`
-	Seq    uint64    `json:"seq"`
-	T      time.Time `json:"t,omitzero"`
-	Allow  bool      `json:"allow"`
-	Reason string    `json:"reason,omitempty"`
+	// Ask is what was asked. Asked is false when the State saw no perm.ask for it: a refusal by policy, which is never put as a
+	// question, or an answer whose question came before the part of the log that was read; Ask is then what the perm.decide itself
+	// says (Seq and T are zero).
+	Ask   PermAsk `json:"ask"`
+	Asked bool    `json:"asked"`
+	Seq   uint64  `json:"seq"`
+	// T is when it was settled, WaitedMs how long a question waited for its answer (event time), zero when it was not asked.
+	T        time.Time `json:"t,omitzero"`
+	WaitedMs int64     `json:"waited_ms,omitempty"`
+	// Allow is the answer; a decision that does not say it is a refusal.
+	Allow bool `json:"allow"`
+	// By is who decided (PermByUser, PermByNoOne, PermByPolicy, PermByCanceled) and Remember how long the answer is kept as a rule:
+	// "session", "project", or empty for this once.
+	By       string `json:"by,omitempty"`
+	Remember string `json:"remember,omitempty"`
+	// Reason is why it was decided so: the rule, the protection or the mode that settled it, or what the person said.
+	Reason string `json:"reason,omitempty"`
 }
 
-// Perms is the permission dialog's state: the questions waiting and the last few answers. No producer writes perm.ask or
-// perm.decide yet (the terminal prompter in internal/session/sink.go does not log), so this stays empty until one does.
+// Perms is the state of the permission dialog: the questions waiting, the last few answers and the counts.
 type Perms struct {
+	// Pending are the questions nobody has answered yet, oldest first (at most MaxPending); Recent the last PermLog settled
+	// ones, oldest first. A question stops being pending when its answer comes, when its agent's run ends or is cancelled, and when
+	// the session ends.
 	Pending []PermAsk      `json:"pending,omitempty"`
 	Recent  []PermDecision `json:"recent,omitempty"`
-	Asked   int            `json:"asked,omitempty"`
-	Allowed int            `json:"allowed,omitempty"`
-	Denied  int            `json:"denied,omitempty"`
+	// Asked counts perm.ask events, Allowed and Denied the decisions by their answer, and ByUser, ByNoOne, ByPolicy and Canceled
+	// by who made them (a decision by someone else counts in Allowed or Denied only).
+	Asked    int `json:"asked,omitempty"`
+	Allowed  int `json:"allowed,omitempty"`
+	Denied   int `json:"denied,omitempty"`
+	ByUser   int `json:"by_user,omitempty"`
+	ByNoOne  int `json:"by_no_one,omitempty"`
+	ByPolicy int `json:"by_policy,omitempty"`
+	Canceled int `json:"canceled,omitempty"`
+	// Abandoned counts the questions that never got their answer in the log: their agent's run ended or was cancelled first, or the
+	// session ended (or a log was read from the middle).
+	Abandoned int `json:"abandoned,omitempty"`
 }
 
 // Supervision counts how the swarm held and woke its manager.
@@ -312,6 +358,7 @@ const (
 	FeedSession FeedKind = "session" // the session began or ended
 	FeedNote    FeedKind = "note"    // a notice the session logged, a wake, a hold
 	FeedJob     FeedKind = "job"     // a background shell job
+	FeedCancel  FeedKind = "cancel"  // a run that was cancelled
 )
 
 // The glyphs of the feed. Kind says what a line is; Glyph is the default picture for it, which a renderer that cannot draw it
@@ -329,6 +376,7 @@ const (
 	GlyphMerge   = "▸"
 	GlyphInput   = "❯"
 	GlyphInfo    = "·"
+	GlyphAsk     = "?"
 )
 
 // FeedLine is one line of the live feed.

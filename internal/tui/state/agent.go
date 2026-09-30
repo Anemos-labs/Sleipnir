@@ -1,6 +1,7 @@
 package state
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,7 +69,9 @@ type agentState struct {
 	plan       planInfo
 	prefix     string // the prefix group it rides
 	touch      touchInfo
-	lastTask   string // the task it last held, for settling "done" whichever of the accept and the end comes first
+	lastTask   string  // the task it last held, for settling "done" whichever of the accept and the end comes first
+	asks       int     // permission questions of this agent that are waiting for an answer (State.perms.pending holds them)
+	failed     failure // its newest failed model request, until something else of its own happens
 }
 
 func newAgentState(id string, t time.Time) *agentState {
@@ -107,8 +110,9 @@ func (a *agentState) active(t time.Time) {
 	}
 }
 
-// refresh derives Status and the current tool from the run state, the open tools and the stuck flag. A run that ended
-// (idle, done, error) shows that whatever else is recorded; a working agent shows stuck while it has not got out of a
+// refresh derives Status and the current tool from the run state, the open tools, the questions it waits on and the stuck flag. A
+// run that ended (idle, done, error) shows that whatever else is recorded; a working agent shows asking while a permission
+// question of its is unanswered (it is held, whatever its tool call looks like), else stuck while it has not got out of a
 // repetition, else its newest tool, else thinking once it has sent a request, else starting.
 func (a *agentState) refresh() {
 	switch a.run {
@@ -120,6 +124,8 @@ func (a *agentState) refresh() {
 		a.Status = StatusError
 	default:
 		switch {
+		case a.asks > 0:
+			a.Status = StatusAsking
 		case a.Stuck.Active:
 			a.Status = StatusStuck
 		case len(a.tools) > 0:
@@ -136,7 +142,7 @@ func (a *agentState) refresh() {
 	} else {
 		a.Tool, a.ToolSummary, a.ToolSince = "", "", time.Time{}
 	}
-	a.OpenTools, a.InFlight = len(a.tools), len(a.reqs)
+	a.OpenTools, a.InFlight, a.Asking = len(a.tools), len(a.reqs), a.asks
 }
 
 // syncBusy opens or closes the busy interval of the activity lane: the agent is busy while a model request or a tool call is
@@ -160,6 +166,23 @@ func (a *agentState) endRun(r runState, t time.Time) {
 	a.Compacting = false
 	a.syncBusy(t)
 	a.refresh()
+}
+
+// endRun is agentState.endRun for an agent that has stopped for good or for now: what it waited for is over as well, so the
+// permission questions it had put are no longer pending (the engine answers them "canceled" before a run ends, but a log may be
+// cut short, and a question must not outlive its asker).
+func (s *State) endRun(a *agentState, r runState, t time.Time) {
+	s.dropAsks(a)
+	a.endRun(r, t)
+}
+
+// stopped is the run state of an agent whose run was cut short: idle, unless it had ended for good already (a cancel that arrives
+// after the manager's answer, or after a failure, does not bring the agent back).
+func stopped(r runState) runState {
+	if r == runDone || r == runError {
+		return r
+	}
+	return runIdle
 }
 
 // removeTool takes the open tool call with the id off the list.
@@ -294,12 +317,12 @@ func (s *State) applyInfo(a *agentState, state, line string, task *string, t tim
 		}
 		a.refresh()
 	case "idle":
-		a.endRun(runIdle, t)
+		s.endRun(a, runIdle, t)
 		s.settleDone(a)
 	case "done":
-		a.endRun(runDone, t)
+		s.endRun(a, runDone, t)
 	case "failed":
-		a.endRun(runError, t)
+		s.endRun(a, runError, t)
 	}
 	a.active(t)
 }
@@ -323,11 +346,11 @@ func (s *State) onAgentEnd(e events.Event, t time.Time) {
 	a.Evidence = clean(p.Evidence, textLong)
 	switch p.State {
 	case "failed":
-		a.endRun(runError, t)
+		s.endRun(a, runError, t)
 	case "done":
-		a.endRun(runDone, t)
+		s.endRun(a, runDone, t)
 	default:
-		a.endRun(runIdle, t)
+		s.endRun(a, runIdle, t)
 		s.settleDone(a)
 	}
 	a.active(t)
@@ -371,6 +394,55 @@ func (s *State) onStuck(e events.Event, t time.Time) {
 	s.line(e.Seq, t, e.Agent, FeedStuck, GlyphWarn, text, note)
 }
 
+// onCancel is agent.cancel (internal/agent agent.go run): the run ended because its context was cancelled, and the event says what
+// the run was doing (phase) and how far it had got (steps). The producer writes it as the last thing the run does, after the
+// results of the tools that were interrupted and after the model.error that reports a request cancelled, so the agent has stopped:
+// it is idle, unless it had ended for good already. A swarm worker's agent.end follows and says what it is now.
+func (s *State) onCancel(e events.Event, t time.Time) {
+	var p struct {
+		Phase string `json:"phase"`
+		Cause string `json:"cause"`
+		Steps int    `json:"steps"`
+	}
+	if !s.decode(e.Data, maxPayload, &p) {
+		return
+	}
+	phase, cause := clip(p.Phase, textID), clip(p.Cause, textID)
+	s.totals.RunsCancelled++
+	if a := s.agent(e.Agent, t); a != nil {
+		if a.failed.ok && !a.failed.side && phase == CancelModel {
+			// The run ended inside a request, and the request is what failed, just before: it failed because the run was cancelled.
+			s.reclassify(a)
+		}
+		a.failed = failure{}
+		a.Cancel = Cancel{Count: a.Cancel.Count + 1, Phase: phase, Cause: cause, Steps: clampInt(p.Steps), At: t}
+		s.endRun(a, stopped(a.run), t)
+		a.active(t)
+	}
+	who := "a run"
+	if e.Agent != "" {
+		who = clip(e.Agent, textID) + "'s run"
+	}
+	text := who + " was cancelled"
+	switch phase {
+	case CancelModel:
+		text += " while it waited for the model"
+	case CancelTools:
+		text += " while its tools ran"
+	}
+	detail := "before its first answer"
+	switch {
+	case p.Steps == 1:
+		detail = "after 1 step"
+	case p.Steps > 1:
+		detail = "after " + strconv.Itoa(clampInt(p.Steps)) + " steps"
+	}
+	if cause == CauseDeadline {
+		detail += ", a time limit passed"
+	}
+	s.line(e.Seq, t, e.Agent, FeedCancel, GlyphEnd, text, detail)
+}
+
 // onFault is a panic, a timeout or an abandoned run: a line for the feed, and for an abandoned run the agent's status.
 func (s *State) onFault(e events.Event, t time.Time) {
 	var p struct {
@@ -391,7 +463,7 @@ func (s *State) onFault(e events.Event, t time.Time) {
 	case "agent.abandon":
 		text = id + " did not stop when asked: its run was abandoned"
 		if a := s.agent(id, t); a != nil {
-			a.endRun(runError, t)
+			s.endRun(a, runError, t)
 			a.active(t)
 		}
 	case "tool.timeout":

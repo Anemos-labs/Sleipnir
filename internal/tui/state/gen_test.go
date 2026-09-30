@@ -101,14 +101,17 @@ func genEvents(n int, seed int64) []events.Event {
 		case k < 98:
 			add("swarm", events.TypeGovernor, fmt.Sprintf(`{"action":"rate-limited","rate_per_min":%d,"pause_ms":%d,"inflight":3,"queued":4}`, r.Intn(600), r.Intn(9000)))
 		case k < 99:
-			id := fmt.Sprintf("p%d", r.Intn(40))
+			cmd := fmt.Sprintf("run something %d", r.Intn(40))
 			if r.Intn(2) == 0 {
-				add(a, events.TypePermAsk, fmt.Sprintf(`{"id":%q,"agent":%q,"tool":"bash","summary":"run something %d"}`, id, a, r.Intn(99)))
+				add(a, events.TypePermAsk, fmt.Sprintf(`{"tool":"bash","reason":"r","command":%q,"paths":["/r/a%d","/elsewhere/b"],"role":"role1"}`, cmd, r.Intn(3)))
 			} else {
-				add(a, events.TypePermDecide, fmt.Sprintf(`{"id":%q,"allow":%v,"reason":"r"}`, id, r.Intn(2) == 0))
+				add(a, events.TypePermDecide, fmt.Sprintf(`{"tool":"bash","reason":"r","command":%q,"paths":["/r/a%d","/elsewhere/b"],"allow":%v,"by":%q,"remember":%q}`,
+					cmd, r.Intn(3), r.Intn(2) == 0, []string{"user", "no one", "policy", "canceled"}[r.Intn(4)], []string{"", "session", "project"}[r.Intn(3)]))
 			}
 		default:
-			switch r.Intn(6) {
+			switch r.Intn(7) {
+			case 6:
+				add(a, events.TypeAgentCancel, fmt.Sprintf(`{"phase":%q,"cause":%q,"steps":%d}`, []string{"model", "tools", "between"}[r.Intn(3)], []string{"canceled", "deadline"}[r.Intn(2)], r.Intn(40)))
 			case 0:
 				add("", fmt.Sprintf("x.unknown.%d", r.Intn(500)), `{"a":1}`)
 			case 1:

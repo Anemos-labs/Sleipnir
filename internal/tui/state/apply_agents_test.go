@@ -490,3 +490,33 @@ func TestCompactorSideRequestsAreNotMainRequests(t *testing.T) {
 		t.Errorf("a compactor's answer must not end the run of the agent: status %s", a.Status)
 	}
 }
+
+// tool.call carries the name as the model wrote it and, when the harness ran another tool because it repaired the name, as: the
+// tool that ran (internal/agent exec.go). The agent is shown doing that tool, with the summary that tool's input has; tool.result
+// still carries the name as written, and does not rename it.
+func TestTheToolThatRanIsTheOneShownWhenAModelsNameWasRepaired(t *testing.T) {
+	b := newB()
+	st := New()
+	apply(t, st, b.Emit("w-1", events.TypeToolCall, map[string]any{"id": "c1", "name": "read<|channel|>commentary", "as": "read", "input": map[string]any{"path": "src/a.go"}}))
+	apply(t, st, b.Emit("w-1", events.TypeToolCall, map[string]any{"id": "c2", "name": "functions.grep", "as": "grep", "input": map[string]any{"pattern": "TODO", "path": "src"}}))
+	if a := agentOf(t, st.Snapshot(), "w-1"); a.Tool != "grep" || a.ToolSummary != "TODO src" || a.OpenTools != 2 || a.Status != StatusTool {
+		t.Errorf("shown doing %q %q (%d open, %s)", a.Tool, a.ToolSummary, a.OpenTools, a.Status)
+	}
+	b.Advance(ms(5))
+	apply(t, st, b.Emit("w-1", events.TypeToolResult, map[string]any{"id": "c2", "name": "functions.grep", "error": false, "chars": 3, "ms": 4}))
+	apply(t, st, b.Emit("w-1", events.TypeToolResult, map[string]any{"id": "c1", "name": "read<|channel|>commentary", "error": false, "chars": 3, "ms": 5}))
+	sn := st.Snapshot()
+	if !feedHas(sn, FeedTool, "w-1", "read src/a.go") || !feedHas(sn, FeedTool, "w-1", "grep TODO src") {
+		t.Errorf("feed:\n%s", js(sn.Feed))
+	}
+	for _, l := range sn.Feed {
+		if strings.Contains(l.Text, "<|") || strings.Contains(l.Text, "functions.") {
+			t.Errorf("the feed shows the name as the model wrote it: %q", l.Text)
+		}
+	}
+	// A call without as is what its name says.
+	apply(t, st, b.Emit("w-1", events.TypeToolCall, map[string]any{"id": "c3", "name": "bash", "input": map[string]any{"command": "ls"}}))
+	if a := agentOf(t, st.Snapshot(), "w-1"); a.Tool != "bash" || a.ToolSummary != "ls" {
+		t.Errorf("shown doing %q %q", a.Tool, a.ToolSummary)
+	}
+}

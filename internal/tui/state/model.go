@@ -94,6 +94,7 @@ func (s *State) onRequest(e events.Event, t time.Time) {
 	model := clip(p.Model, textID)
 	a.Model = firstOf(a.Model, model)
 	a.active(t)
+	a.failed = failure{} // it went on after a failed request: that one was not the end of it
 	if len(a.reqs) >= MaxOpenRequests {
 		a.reqs = append(a.reqs[:0], a.reqs[1:]...)
 	}
@@ -199,6 +200,7 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	}
 
 	a.active(t)
+	a.failed = failure{}
 	addTokens(&a.Tokens, u)
 	a.CostUSD += cost
 	a.SavedUSD += saved
@@ -282,6 +284,24 @@ func (s *State) touchCache(a *agentState, p responseWire, rq openReq, had bool, 
 	a.touch = touchInfo{last: start, how: how, ttl: ttl, dflt: dflt, size: a.Stack.Prompt}
 }
 
+// isCancelText reports whether the error text of a model.error says that the request was cut off because its run was stopped, not
+// that it failed: Go's own word for a cancelled context, and the provider adapters' (internal/provider/openaichat and anthropic
+// write "provider: network: request cancelled" when the caller's context was cancelled). It is a reading of text; agent.cancel is
+// the authoritative word, and onCancel corrects a failure that this did not recognise.
+func isCancelText(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "context canceled") || strings.Contains(m, "context cancelled") || strings.Contains(m, "network: request cancelled")
+}
+
+// failure is a model request that failed for good, remembered until anything else of its agent's happens: if the next thing is the
+// cancellation of the agent's run, the failure was the cancellation (see onCancel).
+type failure struct {
+	ok   bool
+	seq  uint64
+	req  string
+	side bool
+}
+
 func (s *State) onModelError(e events.Event, t time.Time) {
 	var p struct {
 		Req     string `json:"req"`
@@ -315,20 +335,20 @@ func (s *State) onModelError(e events.Event, t time.Time) {
 		s.line(e.Seq, t, e.Agent, FeedRetry, GlyphWarn, "retrying: "+firstOf(what, "request failed"), "in "+fmtDur(p.DelayMs))
 		return
 	}
-	if cancelled := strings.Contains(p.Error, "context canceled"); cancelled {
+	if isCancelText(p.Error) {
 		// A request that was cancelled because its run was stopped (the manager finished, the person interrupted, the session ended)
 		// did not fail: it is not an error of the endpoint or of the agent, and must not turn the agent red.
 		s.totals.Cancelled++
 		if a != nil {
-			a.takeReq(clip(p.Req, textID))
-			if a.run == runThinking && len(a.tools) == 0 {
-				a.run = runIdle
+			rq, had := a.takeReq(clip(p.Req, textID))
+			if !(had && rq.side) && a.run == runThinking && len(a.tools) == 0 {
+				a.run = runIdle // the run is over (a compactor's side request that is cancelled does not say the run is)
 			}
 			a.active(t)
 			a.syncBusy(t)
 			a.refresh()
 		}
-		s.line(e.Seq, t, e.Agent, FeedNote, GlyphInfo, "request cancelled: the run was stopped", clip(p.Req, textID))
+		s.line(e.Seq, t, e.Agent, FeedNote, GlyphInfo, cancelledRequestText, clip(p.Req, textID))
 		return
 	}
 	s.totals.Errors++
@@ -340,9 +360,30 @@ func (s *State) onModelError(e events.Event, t time.Time) {
 		if !side {
 			a.run = runError
 		}
+		a.failed = failure{ok: true, seq: e.Seq, req: clip(p.Req, textID), side: side}
 		a.active(t)
 		a.syncBusy(t)
 		a.refresh()
 	}
 	s.line(e.Seq, t, e.Agent, FeedError, GlyphFail, "model request failed: "+firstOf(clean(p.Error, textLine), "no reason given"), "")
+}
+
+// cancelledRequestText is the feed line of a request that was cut off with its run.
+const cancelledRequestText = "request cancelled: the run was stopped"
+
+// reclassify turns the model request that failed last into a cancelled one, because the run it belonged to has been reported
+// cancelled: the error text was the transport's own wording of the cancellation, one isCancelText does not know. The counts, the
+// agent's state and the line of the feed are what they would have been had the request been recognised at once.
+func (s *State) reclassify(a *agentState) {
+	f := a.failed
+	a.failed = failure{}
+	s.totals.Errors = max(s.totals.Errors-1, 0)
+	s.totals.Cancelled++
+	a.Errors = max(a.Errors-1, 0)
+	if a.run == runError {
+		a.run = runIdle
+	}
+	s.feed.revise(func(l *FeedLine) bool { return l.Seq == f.seq && l.Kind == FeedError }, func(l *FeedLine) {
+		l.Kind, l.Glyph, l.Text, l.Detail = FeedNote, GlyphInfo, cancelledRequestText, clean(f.req, textShort)
+	})
 }

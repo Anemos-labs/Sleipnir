@@ -76,16 +76,20 @@ func toolStatus(name string) Status {
 	return StatusTool
 }
 
+// onToolCall is tool.call: id, name (as the model wrote it), input, and as when the harness ran another tool than the name says
+// (a model that leaks pieces of its chat format into the name, "read<|channel|>commentary", or qualifies it, "functions.read":
+// internal/agent exec.go repairToolName). What the agent is shown doing is the tool that ran.
 func (s *State) onToolCall(e events.Event, t time.Time) {
 	var p struct {
 		ID    string    `json:"id"`
 		Name  string    `json:"name"`
+		As    string    `json:"as"`
 		Input toolInput `json:"input"`
 	}
 	if !s.decode(e.Data, maxToolPayload, &p) {
 		return
 	}
-	name := clip(p.Name, textID)
+	name := clip(firstOf(p.As, p.Name), textID)
 	if name == "" {
 		s.bad()
 		return
@@ -103,6 +107,7 @@ func (s *State) onToolCall(e events.Event, t time.Time) {
 	if len(a.tools) >= MaxOpenTools {
 		a.tools = append(a.tools[:0], a.tools[1:]...)
 	}
+	a.failed = failure{}
 	a.tools = append(a.tools, openTool{id: id, name: name, summary: toolSummary(name, &p.Input), t: t, seq: e.Seq, status: toolStatus(name)})
 	if a.run == runIdle || a.run == runDone || a.run == runError {
 		a.run = runThinking // it is working: whatever said it had stopped is out of date
@@ -129,7 +134,7 @@ func (s *State) onToolResult(e events.Event, t time.Time) {
 	a := s.agent(e.Agent, t)
 	if a != nil {
 		if c, ok := a.removeTool(clip(p.ID, textID)); ok {
-			name, summary = firstOf(name, c.name), c.summary
+			name, summary = firstOf(c.name, name), c.summary // the tool that ran, not the name as the model wrote it
 			if !c.t.IsZero() && p.Ms <= 0 {
 				p.Ms = t.Sub(c.t).Milliseconds()
 			}

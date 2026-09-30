@@ -10,15 +10,18 @@ type Status string
 // The statuses. Starting is an agent that has been spawned or given work and has not yet sent a request; Thinking one whose
 // model request is in flight (or whose tool results are being turned into the next request); Tool and Editing one that runs a
 // tool (Editing for edit, write and apply_patch); Waiting one inside the swarm's wait tool (waiting for the team's mail or
-// tasks); Idle one whose run ended and can be given more work; Stuck one that the repetition guard has told it is repeating
-// one failing call (until a call succeeds or its run ends); Done one whose run finished for good (a manager that has answered,
-// or a worker whose task was accepted); Error one that stopped with a failure.
+// tasks); Asking one whose tool call is held at a permission question that nobody has answered yet (perm.ask without its
+// perm.decide), which is a wait for a person, not work; Idle one whose run ended and can be given more work; Stuck one that the
+// repetition guard has told it is repeating one failing call (until a call succeeds, a person writes to it or its run ends);
+// Done one whose run finished for good (a manager that has answered, or a worker whose task was accepted); Error one that
+// stopped with a failure.
 const (
 	StatusStarting Status = "starting"
 	StatusThinking Status = "thinking"
 	StatusTool     Status = "tool"
 	StatusEditing  Status = "editing"
 	StatusWaiting  Status = "waiting"
+	StatusAsking   Status = "asking"
 	StatusIdle     Status = "idle"
 	StatusStuck    Status = "stuck"
 	StatusDone     Status = "done"
@@ -28,7 +31,7 @@ const (
 // Active reports whether the status is one of a working agent (not idle, done or failed).
 func (s Status) Active() bool {
 	switch s {
-	case StatusStarting, StatusThinking, StatusTool, StatusEditing, StatusWaiting, StatusStuck:
+	case StatusStarting, StatusThinking, StatusTool, StatusEditing, StatusWaiting, StatusAsking, StatusStuck:
 		return true
 	}
 	return false
@@ -138,6 +141,10 @@ type Agent struct {
 	// Compacting is true while a compaction of its thread is being worked out, from the planner's decision to its commit.
 	Compacting bool  `json:"compacting,omitempty"`
 	Stuck      Stuck `json:"stuck,omitzero"`
+	// Cancel is what agent.cancel said about the agent's runs: the zero value until one was cancelled.
+	Cancel Cancel `json:"cancel,omitzero"`
+	// Asking is how many permission questions of this agent wait for an answer (Snapshot.Perms.Pending says which).
+	Asking int `json:"asking,omitempty"`
 	// Scope is the paths its tasks in progress may touch; Leases the files it holds a write lease on (at most MaxLeasesPerAgent).
 	Scope  []string `json:"scope,omitempty"`
 	Leases []string `json:"leases,omitempty"`
@@ -158,6 +165,36 @@ type Stuck struct {
 	At     time.Time `json:"at,omitzero"`
 	// Active is true from the event until a tool call succeeds or the agent's run ends: the agent has not got out of it yet.
 	Active bool `json:"active,omitempty"`
+}
+
+// The phases of an agent's run that agent.cancel names: what the run was doing when it ended. "model" is a request to the provider
+// in flight. "tools" is tool calls running, but the agent sets the phase back as soon as the batch of calls returns, and a call that
+// is cancelled (a shell command killed, a permission question left unanswered) returns at once, so a cancellation that lands
+// while a tool runs or a question waits is in practice reported as "between": everything that is not a request, the moments
+// between steps included. (So the text of the feed says what a cancelled request was doing, and does not say it of "between".)
+const (
+	CancelModel   = "model"
+	CancelTools   = "tools"
+	CancelBetween = "between"
+)
+
+// The causes agent.cancel names: "canceled" (a person's Ctrl-C, the manager finishing, the session ending: the log does not say
+// which) and "deadline" (a time limit of the harness passed).
+const (
+	CauseCanceled = "canceled"
+	CauseDeadline = "deadline"
+)
+
+// Cancel is what agent.cancel said: a run of the agent ended because its context was cancelled. It is not a failure of the agent
+// (a cancelled request is not an error either, see Totals.Cancelled); the agent is idle afterwards, or whatever agent.end says.
+type Cancel struct {
+	// Count is how many runs of the agent were cancelled; the rest describes the latest.
+	Count int    `json:"count,omitempty"`
+	Phase string `json:"phase,omitempty"` // CancelModel, CancelTools or CancelBetween
+	Cause string `json:"cause,omitempty"` // CauseCanceled or CauseDeadline
+	// Steps is how many model answers the run had finished when it was cancelled.
+	Steps int       `json:"steps,omitempty"`
+	At    time.Time `json:"at,omitzero"`
 }
 
 // Section is one layer of the prompt as the request recorded it: shared (G1), role (G2), notes (G3) and spine (G4). The
@@ -375,13 +412,16 @@ type Totals struct {
 	Errors    int `json:"errors,omitempty"`
 	// Cancelled counts the requests that were cancelled because their run was stopped (the manager finished, the session ended):
 	// they are not errors and do not count in Errors.
-	Cancelled   int `json:"cancelled,omitempty"`
-	Retries     int `json:"retries,omitempty"`
-	RateLimited int `json:"rate_limited,omitempty"`
-	ToolCalls   int `json:"tool_calls,omitempty"`
-	ToolErrors  int `json:"tool_errors,omitempty"`
-	Compactions int `json:"compactions,omitempty"`
-	Anomalies   int `json:"anomalies,omitempty"`
+	Cancelled int `json:"cancelled,omitempty"`
+	// RunsCancelled counts the runs that ended because their context was cancelled (agent.cancel): a person's Ctrl-C, the manager
+	// finishing while a worker still ran, a deadline. One cancelled run usually cancels one request as well (Cancelled).
+	RunsCancelled int `json:"runs_cancelled,omitempty"`
+	Retries       int `json:"retries,omitempty"`
+	RateLimited   int `json:"rate_limited,omitempty"`
+	ToolCalls     int `json:"tool_calls,omitempty"`
+	ToolErrors    int `json:"tool_errors,omitempty"`
+	Compactions   int `json:"compactions,omitempty"`
+	Anomalies     int `json:"anomalies,omitempty"`
 	// CostUSD is the sum of the cost_usd of the responses, as reported.
 	CostUSD float64 `json:"cost_usd"`
 	// Tokens sums every response (main and side); its HitRatio is weighted by tokens.

@@ -1,5 +1,5 @@
 {
-  "seq": 86,
+  "seq": 90,
   "clock": "2026-01-02T03:04:31Z",
   "first": "2026-01-02T03:04:05Z",
   "now": "2026-01-02T03:04:31Z",
@@ -61,7 +61,7 @@
         "cache_key": "sl:test:prefix-mgr-0001",
         "answered": true,
         "resp_req": "mgr.1",
-        "resp_seq": 83,
+        "resp_seq": 87,
         "prompt": 4910,
         "read": 4900,
         "fresh": 10,
@@ -177,13 +177,14 @@
       "line": "starting",
       "spawned": "2026-01-02T03:04:07.015Z",
       "spawn_seq": 20,
-      "last_active": "2026-01-02T03:04:20.5Z",
+      "last_active": "2026-01-02T03:04:28.701Z",
       "tokens": {"input": 510, "cache_read": 9100, "cache_write": 0, "output": 70},
       "cost_usd": 0.007,
       "saved_usd": 0.03276,
       "requests": 2,
       "retries": 1,
       "tool_calls": 1,
+      "cancel": {"count": 1, "phase": "tools", "cause": "canceled", "steps": 2, "at": "2026-01-02T03:04:28.701Z"},
       "scope": ["web/orders/**"],
       "stack": {
         "req": "fe-1.2",
@@ -284,6 +285,7 @@
     "requests": 6,
     "main": 6,
     "responses": 7,
+    "runs_cancelled": 1,
     "retries": 1,
     "rate_limited": 1,
     "tool_calls": 10,
@@ -419,15 +421,58 @@
   "perms": {
     "recent": [
       {
-        "ask": {"id": "p1", "seq": 66, "t": "2026-01-02T03:04:22Z", "agent": "be-1", "tool": "bash", "summary": "run `go test ./orders/...`"},
+        "ask": {
+          "seq": 66,
+          "t": "2026-01-02T03:04:22Z",
+          "agent": "be-1",
+          "role": "backend",
+          "tool": "bash",
+          "command": "go test ./orders/...",
+          "reason": "not on the read-only list",
+          "summary": "bash go test ./orders/..."
+        },
+        "asked": true,
         "seq": 67,
         "t": "2026-01-02T03:04:22.8Z",
+        "waited_ms": 800,
         "allow": true,
-        "reason": "approved by the user"
+        "by": "user",
+        "remember": "session",
+        "reason": "allowed by user for the session"
+      },
+      {
+        "ask": {
+          "seq": 0,
+          "agent": "fe-1",
+          "role": "frontend",
+          "tool": "read",
+          "paths": ["/home/u/.ssh/id_rsa"],
+          "summary": "read /home/u/.ssh/id_rsa"
+        },
+        "asked": false,
+        "seq": 83,
+        "t": "2026-01-02T03:04:28.1Z",
+        "allow": false,
+        "by": "policy",
+        "reason": "a protected path: ~/.ssh"
+      },
+      {
+        "ask": {"seq": 84, "t": "2026-01-02T03:04:28.2Z", "agent": "fe-1", "role": "frontend", "tool": "bash", "command": "npm install", "reason": "reaches the network", "summary": "bash npm install"},
+        "asked": true,
+        "seq": 85,
+        "t": "2026-01-02T03:04:28.7Z",
+        "waited_ms": 500,
+        "allow": false,
+        "by": "canceled",
+        "reason": "approval canceled: context canceled"
       }
     ],
-    "asked": 1,
-    "allowed": 1
+    "asked": 2,
+    "allowed": 1,
+    "denied": 2,
+    "by_user": 1,
+    "by_policy": 1,
+    "canceled": 1
   },
   "feed": [
     {"seq": 2, "t": "2026-01-02T03:04:05.005Z", "kind": "session", "glyph": "·", "text": "session started: m", "detail": "prov"},
@@ -473,8 +518,8 @@
     {"seq": 61, "t": "2026-01-02T03:04:19.1Z", "agent": "fe-1", "kind": "retry", "glyph": "⚠", "text": "retrying: rate_limit (http 429)", "detail": "in 800 ms"},
     {"seq": 62, "t": "2026-01-02T03:04:19.105Z", "kind": "retry", "glyph": "⚠", "text": "the endpoint is rate limiting: the swarm slowed to 384 requests a minute", "detail": "paused 1.0 s"},
     {"seq": 64, "t": "2026-01-02T03:04:21Z", "agent": "swarm", "kind": "epoch", "glyph": "↻", "text": "the shared prefix was re-written: a new epoch", "detail": "phase boundary"},
-    {"seq": 66, "t": "2026-01-02T03:04:22Z", "agent": "be-1", "kind": "perm", "glyph": "?", "text": "be-1 asks to run `go test ./orders/...`"},
-    {"seq": 67, "t": "2026-01-02T03:04:22.8Z", "agent": "be-1", "kind": "perm", "glyph": "✓", "text": "allowed: run `go test ./orders/...`", "detail": "approved by the user"},
+    {"seq": 66, "t": "2026-01-02T03:04:22Z", "agent": "be-1", "kind": "perm", "glyph": "?", "text": "be-1 asks permission: bash go test ./orders/...", "detail": "not on the read-only list"},
+    {"seq": 67, "t": "2026-01-02T03:04:22.8Z", "agent": "be-1", "kind": "perm", "glyph": "✓", "text": "allowed: bash go test ./orders/...", "detail": "by you, kept for the session"},
     {"seq": 70, "t": "2026-01-02T03:04:24Z", "agent": "be-1", "kind": "merge", "glyph": "▸", "text": "T1 queued for merge", "detail": "position 1"},
     {"seq": 71, "t": "2026-01-02T03:04:24.005Z", "agent": "fe-1", "kind": "merge", "glyph": "▸", "text": "T2 queued for merge", "detail": "position 2"},
     {"seq": 72, "t": "2026-01-02T03:04:25Z", "agent": "be-1", "kind": "merge", "glyph": "✓", "text": "T1 merged (0123456789ab)", "detail": "1 files"},
@@ -484,8 +529,20 @@
     {"seq": 79, "t": "2026-01-02T03:04:27Z", "agent": "mgr", "kind": "board", "glyph": "✓", "text": "T1 accepted", "detail": "orders endpoint"},
     {"seq": 80, "t": "2026-01-02T03:04:27.5Z", "agent": "sc-1", "kind": "board", "glyph": "▣", "text": "T3 is in review", "detail": "survey the api"},
     {"seq": 81, "t": "2026-01-02T03:04:27.6Z", "agent": "sc-1", "kind": "end", "glyph": "✗", "text": "sc-1 stopped with a failure", "detail": "no files edited"},
-    {"seq": 85, "t": "2026-01-02T03:04:30.01Z", "kind": "merge", "glyph": "✓", "text": "the merged work was applied to your checkout"},
-    {"seq": 86, "t": "2026-01-02T03:04:31Z", "kind": "session", "glyph": "·", "text": "session ended (completed)", "detail": "$0.05"}
+    {"seq": 83, "t": "2026-01-02T03:04:28.1Z", "agent": "fe-1", "kind": "perm", "glyph": "✗", "text": "denied: read /home/u/.ssh/id_rsa", "detail": "by policy: a protected path: ~/.ssh"},
+    {"seq": 84, "t": "2026-01-02T03:04:28.2Z", "agent": "fe-1", "kind": "perm", "glyph": "?", "text": "fe-1 asks permission: bash npm install", "detail": "reaches the network"},
+    {
+      "seq": 85,
+      "t": "2026-01-02T03:04:28.7Z",
+      "agent": "fe-1",
+      "kind": "perm",
+      "glyph": "✗",
+      "text": "denied: bash npm install",
+      "detail": "cancelled while it waited: approval canceled: context canceled"
+    },
+    {"seq": 86, "t": "2026-01-02T03:04:28.701Z", "agent": "fe-1", "kind": "cancel", "glyph": "■", "text": "fe-1's run was cancelled while its tools ran", "detail": "after 2 steps"},
+    {"seq": 89, "t": "2026-01-02T03:04:30.01Z", "kind": "merge", "glyph": "✓", "text": "the merged work was applied to your checkout"},
+    {"seq": 90, "t": "2026-01-02T03:04:31Z", "kind": "session", "glyph": "·", "text": "session ended (completed)", "detail": "$0.05"}
   ],
   "activity": {
     "end": "2026-01-02T03:04:31Z",
@@ -621,5 +678,5 @@
       "at": 1
     }
   ],
-  "stats": {"events": 86, "last_seq": 86}
+  "stats": {"events": 90, "last_seq": 90}
 }

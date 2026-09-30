@@ -180,6 +180,8 @@ func (s *State) apply(e events.Event) {
 		s.onAgentEnd(e, t)
 	case events.TypeAgentStuck:
 		s.onStuck(e, t)
+	case events.TypeAgentCancel:
+		s.onCancel(e, t)
 	case "agent.panic", "agent.abandon", "supervisor.panic", "sink.panic", "tool.panic", "tool.timeout":
 		s.onFault(e, t)
 

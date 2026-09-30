@@ -567,3 +567,65 @@ func TestTailFollowsARealRecordingGrowingInPiecesOfAnySize(t *testing.T) {
 		}
 	}
 }
+
+// A line is an event to the tail exactly when it is one to events.Scan (and to events.Open, whose definition Scan shares: its
+// decodeEvent). A log that one reads as sound and the other as damaged would show a person watching a session and one replaying it
+// two different sessions. The candidates are those of internal/events' own agreement test, and the limits of the sequence number.
+func TestTailAndScanAgreeOnWhatIsAnEvent(t *testing.T) {
+	for _, c := range []struct {
+		name, line string
+		valid      bool
+	}{
+		{"a minimal event", `{"seq":2,"type":"x"}`, true},
+		{"an event with every member", `{"seq":2,"ts":"2026-09-30T00:00:00Z","session":"s","agent":"a","type":"x","cause":1,"data":{"a":[1,2]},"v":1}`, true},
+		{"a payload of any JSON type", `{"seq":2,"type":"x","data":"text"}`, true},
+		{"a missing type", `{"seq":2}`, true},
+		{"a null time", `{"seq":2,"ts":null,"type":"x"}`, true},
+		{"the largest sequence number", `{"seq":9007199254740992,"type":"x"}`, true},
+		{"one above it", `{"seq":9007199254740993,"type":"x"}`, false},
+		{"the largest number a uint64 holds", `{"seq":18446744073709551615,"type":"x"}`, false},
+		{"a time that is not one", `{"seq":2,"ts":"yesterday","type":"x"}`, false},
+		{"sequence number zero", `{"seq":0,"type":"x"}`, false},
+		{"a missing sequence number", `{"type":"x"}`, false},
+		{"a negative sequence number", `{"seq":-2,"type":"x"}`, false},
+		{"a fractional sequence number", `{"seq":2.5,"type":"x"}`, false},
+		{"a sequence number in exponent form", `{"seq":2e0,"type":"x"}`, false},
+		{"a sequence number that is a string", `{"seq":"2","type":"x"}`, false},
+		{"a type that is not a string", `{"seq":2,"type":7}`, false},
+		{"text that is not JSON", `this is not json`, false},
+		{"an array", `[2,"x"]`, false},
+		{"a bare number", `2`, false},
+		{"an event with text after it", `{"seq":2,"type":"x"} trailing`, false},
+		{"two events on one line", `{"seq":2,"type":"x"}{"seq":3,"type":"y"}`, false},
+		{"an unterminated string", `{"seq":2,"type":"x`, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := writeLog(t, lineOf(evAt(1))+c.line+"\n"+lineOf(evAt(4)))
+			var scanned []uint64
+			err := events.Scan(path, func(e events.Event) error { scanned = append(scanned, e.Seq); return nil })
+			scanBad := 0
+			var ce *events.CorruptError
+			if errors.As(err, &ce) {
+				scanBad = ce.Lines
+			} else if err != nil {
+				t.Fatalf("Scan: %v", err)
+			}
+			r := startTail(t, path, TailOptions{})
+			p := r.firstPoll()
+			scannedAll := len(scanned) == 3
+			if scannedAll != c.valid || (scanBad == 0) != c.valid {
+				t.Fatalf("Scan delivered %v and skipped %d lines; want valid=%v (the candidate's own verdict, as events.Scan gives it)", scanned, scanBad, c.valid)
+			}
+			if p.Corrupt != scanBad || p.Total != len(scanned) {
+				t.Errorf("Scan delivers %d events and skips %d lines; the tail delivers %d and skips %d", len(scanned), scanBad, p.Total, p.Corrupt)
+			}
+			var want []string
+			for _, s := range scanned {
+				want = append(want, fmt.Sprint(s))
+			}
+			if got := r.seqs(); got != strings.Join(want, ",") {
+				t.Errorf("Scan delivers %v, the tail %s", scanned, got)
+			}
+		})
+	}
+}

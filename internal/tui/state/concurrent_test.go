@@ -134,9 +134,15 @@ func scribble(sn *Snapshot) {
 	}
 	for i := range sn.Perms.Pending {
 		sn.Perms.Pending[i].Summary = "scribble"
+		for j := range sn.Perms.Pending[i].Paths {
+			sn.Perms.Pending[i].Paths[j] = "scribble"
+		}
 	}
 	for i := range sn.Perms.Recent {
 		sn.Perms.Recent[i].Reason = "scribble"
+		for j := range sn.Perms.Recent[i].Ask.Paths {
+			sn.Perms.Recent[i].Ask.Paths[j] = "scribble"
+		}
 	}
 	for i := range sn.TTL {
 		sn.TTL[i].Key = "scribble"

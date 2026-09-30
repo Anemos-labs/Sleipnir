@@ -2,7 +2,9 @@ package state
 
 import (
 	"math"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/events"
@@ -81,10 +83,11 @@ func (s *State) onSessionEnd(e events.Event, t time.Time) {
 	// still in the last turn of its run when the session ended (the manager is quicker than the worker's closing message), is done.
 	for _, a := range s.agents {
 		if a.Status.Active() {
-			a.endRun(runIdle, t)
+			s.endRun(a, runIdle, t)
 			s.settleDone(a)
 		}
 	}
+	s.dropAllAsks() // nobody is left to answer: a question of an agent that is not tracked, or of none, ends with the session
 	s.line(e.Seq, t, "", FeedSession, GlyphInfo, "session ended ("+firstOf(ss.EndReason, "other")+")", fmtUSD(ss.EndCostUSD))
 }
 
@@ -98,6 +101,13 @@ func (s *State) onUserInput(e events.Event, t time.Time) {
 	}
 	if a := s.agent(e.Agent, t); a != nil {
 		a.active(t)
+		a.failed = failure{}
+		if a.Stuck.Active {
+			// user.input opens a run (a person's message, or a task the harness hands a worker) and a run starts with a repetition
+			// guard that has seen nothing: what an earlier run was told about repeating a call is over with it.
+			a.Stuck.Active = false
+			a.refresh()
+		}
 	}
 	if p.Origin != "" && p.Origin != "user" {
 		return // a task the harness handed out is not something a person said
@@ -336,87 +346,198 @@ func (s *State) onBudget(e events.Event, t time.Time) {
 
 // permState is the permission dialog's state.
 type permState struct {
-	pending []PermAsk
-	recent  ring[PermDecision]
-	asked   int
-	allowed int
-	denied  int
+	pending   []PermAsk
+	recent    ring[PermDecision]
+	asked     int
+	allowed   int
+	denied    int
+	byUser    int
+	byNoOne   int
+	byPolicy  int
+	canceled  int
+	abandoned int
+}
+
+// permWire is the payload of perm.ask and perm.decide (internal/session permaudit.go, from perm.Audit): the request the permission
+// engine could not simply allow, and for perm.decide what came of it. There is no id in it: the event's agent, the tool, the command
+// and the paths are what tell one question from another and pair it with its answer. The producer cuts command at 400 characters
+// and paths at five of 200; allow is always written, by is one of the PermBy* words, remember is "session" or "project" and absent
+// for an answer that is not kept.
+type permWire struct {
+	Tool     string   `json:"tool"`
+	Reason   string   `json:"reason"`
+	Command  string   `json:"command"`
+	Paths    []string `json:"paths"`
+	Role     string   `json:"role"`
+	Allow    *bool    `json:"allow"`
+	By       string   `json:"by"`
+	Remember string   `json:"remember"`
+}
+
+// ask is what a permWire says about the question, in the form the State keeps it: bounded, one line, paths relative to the project.
+// The same function reads a perm.ask and the perm.decide that answers it, so that the two come out equal where the log means the same.
+func (s *State) ask(w *permWire, e events.Event, t time.Time) PermAsk {
+	q := PermAsk{Seq: e.Seq, T: t, Agent: clip(e.Agent, textID), Role: clip(w.Role, textID), Tool: clip(w.Tool, textID),
+		Command: clean(w.Command, textPath), Reason: clean(w.Reason, textLine)}
+	root := s.root()
+	for _, p := range w.Paths {
+		if len(q.Paths) >= MaxPermPaths {
+			break
+		}
+		q.Paths = append(q.Paths, relPath(root, clean(p, textPath)))
+	}
+	what := q.Command
+	if what == "" {
+		what = strings.Join(q.Paths, ", ")
+	}
+	q.Summary = clean(firstOf(strings.TrimSpace(q.Tool+" "+what), "a permission request"), textLine)
+	return q
+}
+
+// answers reports whether the decision (read like a question, without its sequence number) is the answer to the pending question:
+// the same agent, tool, command and paths.
+func (q PermAsk) answers(d PermAsk) bool {
+	return q.Agent == d.Agent && q.Tool == d.Tool && q.Command == d.Command && slices.Equal(q.Paths, d.Paths)
+}
+
+// detach returns the question with paths of its own, for a snapshot that must share nothing with the State.
+func (q PermAsk) detach() PermAsk {
+	q.Paths = copyOf(q.Paths)
+	return q
 }
 
 func (s *State) onPermAsk(e events.Event, t time.Time) {
-	var p struct {
-		ID      string `json:"id"`
-		Agent   string `json:"agent"`
-		Tool    string `json:"tool"`
-		Summary string `json:"summary"`
-		Command string `json:"command"`
-		Path    string `json:"path"`
-	}
-	if !s.decode(e.Data, maxPayload, &p) {
+	var w permWire
+	if !s.decode(e.Data, maxPayload, &w) {
 		return
 	}
-	ask := PermAsk{ID: clip(p.ID, textID), Seq: e.Seq, T: t, Agent: clip(firstOf(p.Agent, e.Agent), textID), Tool: clip(p.Tool, textID),
-		Summary: clean(firstOf(p.Summary, p.Command, p.Path, p.Tool, "a permission"), textLine)}
-	if len(s.perms.pending) >= MaxPending {
-		s.perms.pending = append(s.perms.pending[:0], s.perms.pending[1:]...)
+	q := s.ask(&w, e, t)
+	ps := &s.perms
+	if len(ps.pending) >= MaxPending {
+		// More questions unanswered than anyone can be shown: the oldest makes room, and is counted as not kept.
+		s.forgetAsk(0)
+		s.stats.Dropped++
 	}
-	s.perms.pending = append(s.perms.pending, ask)
-	s.perms.asked++
-	s.line(e.Seq, t, ask.Agent, FeedPerm, "?", ask.Agent+" asks to "+ask.Summary, "")
+	ps.pending = append(ps.pending, q)
+	ps.asked++
+	if a := s.agent(e.Agent, t); a != nil {
+		a.Role = firstOf(a.Role, q.Role)
+		a.asks++
+		a.active(t)
+		a.refresh()
+	}
+	s.line(e.Seq, t, q.Agent, FeedPerm, GlyphAsk, firstOf(q.Agent, "an agent")+" asks permission: "+q.Summary, q.Reason)
 }
 
 func (s *State) onPermDecide(e events.Event, t time.Time) {
-	var p struct {
-		ID       string `json:"id"`
-		Agent    string `json:"agent"`
-		Tool     string `json:"tool"`
-		Allow    *bool  `json:"allow"`
-		Allowed  *bool  `json:"allowed"`
-		Decision string `json:"decision"`
-		Reason   string `json:"reason"`
-	}
-	if !s.decode(e.Data, maxPayload, &p) {
+	var w permWire
+	if !s.decode(e.Data, maxPayload, &w) {
 		return
 	}
-	allow := false
-	switch {
-	case p.Allow != nil:
-		allow = *p.Allow
-	case p.Allowed != nil:
-		allow = *p.Allowed
-	default:
-		switch p.Decision {
-		case "allow", "allowed", "approve", "approved", "yes":
-			allow = true
+	if w.Allow == nil {
+		s.bad() // a decision that does not say what it decided: it is shown as a refusal, never as a consent
+	}
+	d := PermDecision{Seq: e.Seq, T: t, Allow: w.Allow != nil && *w.Allow, By: clip(w.By, textID), Remember: clip(w.Remember, textID),
+		Reason: clean(w.Reason, textLine)}
+	d.Ask = s.ask(&w, e, t)
+	ps := &s.perms
+	if at := slices.IndexFunc(ps.pending, func(q PermAsk) bool { return q.answers(d.Ask) }); at >= 0 {
+		d.Ask, d.Asked = ps.pending[at], true
+		d.WaitedMs = max(t.Sub(d.Ask.T).Milliseconds(), 0)
+		s.forgetAsk(at)
+		if a := s.agents[d.Ask.Agent]; a != nil {
+			a.active(t)
+			a.refresh()
 		}
-	}
-	id, agent, tool := clip(p.ID, textID), clip(firstOf(p.Agent, e.Agent), textID), clip(p.Tool, textID)
-	at := -1
-	for i, a := range s.perms.pending {
-		if (id != "" && a.ID == id) || (id == "" && (agent == "" || a.Agent == agent) && (tool == "" || a.Tool == tool)) {
-			at = i
-			break
-		}
-	}
-	if at < 0 && id == "" && len(s.perms.pending) > 0 {
-		at = 0 // an answer that names nothing answers the oldest question
-	}
-	var ask PermAsk
-	if at >= 0 {
-		ask = s.perms.pending[at]
-		s.perms.pending = append(s.perms.pending[:at], s.perms.pending[at+1:]...)
 	} else {
-		ask = PermAsk{ID: id, Agent: agent, Tool: tool, Summary: firstOf(tool, "a permission")}
+		// There is no question event to point at (a refusal by policy is never asked), and the reason the decision carries is the
+		// decision's, not the question's.
+		d.Ask.Seq, d.Ask.T, d.Ask.Reason = 0, time.Time{}, ""
 	}
-	s.perms.recent.push(PermDecision{Ask: ask, Seq: e.Seq, T: t, Allow: allow, Reason: clean(p.Reason, textShort)})
+	if d.Allow {
+		ps.allowed++
+	} else {
+		ps.denied++
+	}
+	switch d.By {
+	case PermByUser:
+		ps.byUser++
+	case PermByNoOne:
+		ps.byNoOne++
+	case PermByPolicy:
+		ps.byPolicy++
+	case PermByCanceled:
+		ps.canceled++
+	}
+	ps.recent.push(d)
 	glyph, word := GlyphOK, "allowed"
-	if allow {
-		s.perms.allowed++
-	} else {
-		s.perms.denied++
+	if !d.Allow {
 		glyph, word = GlyphFail, "denied"
 	}
-	s.line(e.Seq, t, ask.Agent, FeedPerm, glyph, word+": "+ask.Summary, clean(p.Reason, textShort))
+	s.line(e.Seq, t, d.Ask.Agent, FeedPerm, glyph, word+": "+d.Ask.Summary, decisionDetail(&d))
+}
+
+// decisionDetail is the small print of a decision's line in the feed: who decided, and why when it was not a person's yes.
+func decisionDetail(d *PermDecision) string {
+	var by string
+	switch d.By {
+	case PermByUser:
+		by = "by you"
+	case PermByNoOne:
+		by = "no one to ask"
+	case PermByPolicy:
+		by = "by policy"
+	case PermByCanceled:
+		by = "cancelled while it waited"
+	case "":
+		by = "by unknown"
+	default:
+		by = "by " + d.By
+	}
+	if d.Remember != "" {
+		by += ", kept for the " + d.Remember
+	}
+	if d.Reason != "" && !d.Allow {
+		by += ": " + d.Reason
+	}
+	return by
+}
+
+// forgetAsk takes the pending question at index i off the list, and off its agent's count of questions it waits on.
+func (s *State) forgetAsk(i int) {
+	ps := &s.perms
+	q := ps.pending[i]
+	ps.pending = slices.Delete(ps.pending, i, i+1)
+	if a := s.agents[q.Agent]; a != nil && a.asks > 0 {
+		a.asks--
+		a.refresh()
+	}
+}
+
+// dropAsks forgets the questions an agent can no longer be waiting for, because its run ended: they are counted as abandoned, and
+// an answer that comes for one later is recorded as a decision that was not asked.
+func (s *State) dropAsks(a *agentState) {
+	ps := &s.perms
+	for i := len(ps.pending) - 1; i >= 0; i-- {
+		if ps.pending[i].Agent == a.ID {
+			s.forgetAsk(i)
+			ps.abandoned++
+		}
+	}
+	a.asks = 0
+}
+
+// dropAllAsks forgets every pending question: the session is over.
+func (s *State) dropAllAsks() {
+	ps := &s.perms
+	ps.abandoned += len(ps.pending)
+	ps.pending = nil
+	for _, a := range s.agents {
+		if a.asks > 0 {
+			a.asks = 0
+			a.refresh()
+		}
+	}
 }
 
 func (s *State) onSupervision(e events.Event, t time.Time) {

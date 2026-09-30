@@ -151,7 +151,15 @@ func (s *State) govSnapshot(now time.Time) Governor {
 
 func (s *State) permSnapshot() Perms {
 	p := &s.perms
-	return Perms{Pending: copyOf(p.pending), Recent: p.recent.slice(), Asked: p.asked, Allowed: p.allowed, Denied: p.denied}
+	out := Perms{Recent: p.recent.slice(), Asked: p.asked, Allowed: p.allowed, Denied: p.denied, ByUser: p.byUser, ByNoOne: p.byNoOne,
+		ByPolicy: p.byPolicy, Canceled: p.canceled, Abandoned: p.abandoned}
+	for _, q := range p.pending {
+		out.Pending = append(out.Pending, q.detach())
+	}
+	for i := range out.Recent {
+		out.Recent[i].Ask = out.Recent[i].Ask.detach()
+	}
+	return out
 }
 
 // ---- accessors on the State --------------------------------------------------------------------------------------------

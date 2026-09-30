@@ -9,11 +9,12 @@
 // # What is held
 //
 // Session (model, provider, cwd, start, renderer version, swarm or single), Agents (status, current tool, tokens, cost, requests,
-// errors, retries, compactions, lease and scope, stuck phase, hit-ratio history), each agent's prompt stack (the sections of its
-// latest request, the cache reads its latest response reported, the expected read and whether it missed, anomalies with the layer
-// that diverged, compaction commits with before and after tokens and whether the moment was cold, epochs), Totals and Savings,
-// the cache history of an agent for a sparkline, TTL clocks per prefix, the task Board, the MergeQueue, Mail, Leases, the
-// Governor, pending Permission questions, a Feed of short human lines and an Activity matrix for the swarm gantt.
+// errors, retries, compactions, lease and scope, stuck phase, cancelled runs, the permission questions it waits on, hit-ratio
+// history), each agent's prompt stack (the sections of its latest request, the cache reads its latest response reported, the
+// expected read and whether it missed, anomalies with the layer that diverged, compaction commits with before and after tokens and
+// whether the moment was cold, epochs), Totals and Savings, the cache history of an agent for a sparkline, TTL clocks per prefix,
+// the task Board, the MergeQueue, Mail, Leases, the Governor, the Perms (the permission questions that wait for an answer, who
+// asked what, and the last answers with who gave them), a Feed of short human lines and an Activity matrix for the swarm gantt.
 //
 // # Rules the package keeps
 //
@@ -52,10 +53,17 @@
 //
 // # Where the knowledge comes from
 //
-// The shapes of the payloads are those of their producers (internal/agent request.go, exec.go, compact.go; internal/swarm board.go,
-// mailbox.go, mailman.go, leases.go, isolate.go, lifecycle.go; internal/workspace events.go; internal/session session.go), as
-// internal/inspect folds them for the web dashboard; this package imports none of them, only internal/events (the envelope) and
-// internal/cost (the price table that turns cache reads into saved dollars).
+// The shapes of the payloads are those of their producers (internal/agent agent.go, request.go, exec.go, compact.go; internal/swarm
+// board.go, mailbox.go, mailman.go, leases.go, isolate.go, lifecycle.go; internal/workspace events.go; internal/session session.go
+// and permaudit.go), as internal/inspect folds them for the web dashboard; this package imports none of them, only internal/events
+// (the envelope) and internal/cost (the price table that turns cache reads into saved dollars).
+//
+// Three of those shapes are worth knowing before reading the code. perm.ask and perm.decide carry no id, so a question and its
+// answer are paired by who asked, the tool, the command and the paths, oldest first, and a perm.decide with no question before it
+// is a request that a rule refused without asking (by "policy"). agent.cancel is the last thing a cancelled run writes: it ends the
+// run, and it says that the model.error just before it, whatever words the transport used, was the cancellation and not a failure;
+// its phase "tools" is in practice reported as "between" (see CancelBetween). A tool.call whose name the harness repaired carries
+// the tool that ran as "as", and that is the one shown.
 //
 // The tests check what the State makes of the logs of real sessions, recorded hermetically by the repository's own scripted teams
 // against its mock endpoint (the demo; a session that compacts, sends mail, gets stuck, is rate limited and meets a cold cache; one

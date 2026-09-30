@@ -16,6 +16,12 @@ import (
 // DefaultPoll is how often Tail looks for new lines when it is given no ticker.
 const DefaultPoll = 250 * time.Millisecond
 
+// maxSeq is the largest sequence number a line may carry and still be an event: events.Scan and events.Open share that test
+// (internal/events decodeEvent), and Tail has to agree with them on what a valid line is, or a person watching a session and one
+// replaying it see two different sessions. The constant is not exported there, so it is repeated here, and
+// TestTailAndScanAgreeOnWhatIsAnEvent fails if the two come apart.
+const maxSeq = 1 << 53
+
 // TailOptions configures Tail and Follow.
 type TailOptions struct {
 	// Tick, when not nil, is the ticker: each value received is one poll of the log, and Interval is not used. A test sends on a
@@ -380,7 +386,7 @@ func (t *tailer) tryUnfinished() error {
 // then corrupt, where an unfinished one may just not be written yet.
 func (t *tailer) deliver(line []byte, complete bool) error {
 	var e events.Event
-	if json.Unmarshal(line, &e) != nil || e.Seq == 0 {
+	if json.Unmarshal(line, &e) != nil || e.Seq == 0 || e.Seq > maxSeq {
 		if complete {
 			t.corrupt++
 		}
