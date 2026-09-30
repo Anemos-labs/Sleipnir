@@ -157,9 +157,10 @@ func TestBreakpointPlanning(t *testing.T) {
 	if got := labels(c0, DefaultPolicy()); len(got) != 0 {
 		t.Fatalf("automatic-caching providers get no markers: %v", got)
 	}
-	// A layer under the size floor gets no marker of its own.
+	// A role pin under the provider minimum gets no marker of its own (the slot goes
+	// to the constitution instead); the shared pin needs only a big enough prefix.
 	s.RoleL = NewLayer("role:backend", KindRole, 2, []Segment{{Key: "c", Text: "tiny", Vol: VolEpoch}})
-	if got := labels(caps(), DefaultPolicy()); strings.Join(got, ",") != "shared,notes,thread" {
+	if got := labels(caps(), DefaultPolicy()); strings.Join(got, ",") != "const,shared,notes,thread" {
 		t.Fatalf("tiny role layer should not get a breakpoint: %v", got)
 	}
 	// Prompt shorter than the provider minimum is not cacheable at all.

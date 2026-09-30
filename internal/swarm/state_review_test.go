@@ -534,11 +534,13 @@ func TestConc_GovernorBackgroundStarvesUnderSteadyWorkerLoad(t *testing.T) {
 
 // ---- WarmGate --------------------------------------------------------------------
 
-// If a primer never reports (panic between Enter and the finisher, or a request
-// that hangs), priming stays true forever: every later request on that prefix
-// waits the full maxWait and then goes ahead ungated; nobody is ever re-elected.
-func TestConc_WarmGateStuckPrimerTaxesEveryLaterRequest(t *testing.T) {
-	concGate(t)
+// Regression check. This was a finding (C-18) against the first WarmGate: if a
+// primer never reported (panic between Enter and the finisher, a hung request),
+// priming stayed true forever and EVERY later request on that prefix waited the
+// whole maxWait. The gate was rewritten while this review was under way (after
+// maxWait it releases a co-primer, then two, then four; a co-primer's first byte
+// warms the level), and this now passes: later arrivals are not taxed.
+func TestConcSound_WarmGateEscalatesPastAStuckPrimer(t *testing.T) {
 	const maxWait = 150 * time.Millisecond
 	g := NewWarmGate(time.Minute, maxWait)
 	if _, err := g.Enter(context.Background(), "k"); err != nil { // the primer; it never calls back

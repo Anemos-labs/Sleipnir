@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -602,7 +603,7 @@ func (s *server) callTimeout() time.Duration {
 func (s *server) awaitClient(ctx context.Context) (*Client, error) {
 	wait := s.m.opts.ReconnectWait
 	var timer <-chan time.Time
-	for {
+	for spins := 0; ; spins++ {
 		s.mu.Lock()
 		st, c, up, why := s.state, s.client, s.up, s.errText
 		s.mu.Unlock()
@@ -617,7 +618,9 @@ func (s *server) awaitClient(ctx context.Context) (*Client, error) {
 			}
 			select {
 			case <-up:
-				continue
+				if spins < 4 { // re-check the state; bounded so a stale closed channel cannot spin
+					continue
+				}
 			case <-timer:
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -749,12 +752,15 @@ func (s *server) run(startCtx context.Context, first chan<- error) {
 			}
 		default:
 			s.mu.Lock()
-			s.errText = err.Error()
+			s.errText = s.errorText(err)
 			s.mu.Unlock()
 			var fe *fatalError
 			if errors.As(err, &fe) {
 				s.mu.Lock()
-				s.state, s.fatal = StateRefused, true
+				s.state, s.fatal = StateFailed, true
+				if errors.Is(err, ErrNotApproved) {
+					s.state = StateRefused
+				}
 				s.mu.Unlock()
 				m.logf("mcp: server %q not started: %v", s.name, err)
 				if !s.park(ctx) {
@@ -825,7 +831,7 @@ func (s *server) markDown(c *Client, cause error) {
 	if s.client == c {
 		s.client = nil
 		s.state = StateRestarting
-		s.errText = s.m.opts.redactFor(s, cause)
+		s.errText = s.errorText(cause)
 		select {
 		case <-s.up:
 			s.up = make(chan struct{})
@@ -836,8 +842,8 @@ func (s *server) markDown(c *Client, cause error) {
 	_ = c.Close() // reap the process; safe to call from here (not from the transport's goroutine)
 }
 
-// redactFor renders an error for status text: sanitised, capped, redacted.
-func (o *Options) redactFor(s *server, err error) string {
+// errorText renders an error for status text: sanitised, capped, redacted.
+func (s *server) errorText(err error) string {
 	if err == nil {
 		return ""
 	}
@@ -956,12 +962,9 @@ func (s *server) connect(ctx context.Context) error {
 // expand or validate, a program that does not exist, a protocol version we
 // cannot speak, an address the guard refuses.
 func isFatalDial(err error) bool {
-	return errors.Is(err, ErrProtocolVersion) || errors.Is(err, ErrBlocked) || errors.Is(err, os.ErrNotExist) ||
-		errors.Is(err, errConfig)
+	return errors.Is(err, ErrProtocolVersion) || errors.Is(err, ErrBlocked) || errors.Is(err, errConfig) ||
+		errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) || errors.Is(err, exec.ErrNotFound)
 }
-
-// errConfig marks configuration problems found before anything was contacted.
-var errConfig = errors.New("invalid configuration")
 
 func (s *server) listTools(ctx context.Context, c *Client) ([]Tool, []string, error) {
 	list, warns, err := c.ListTools(ctx)

@@ -538,3 +538,91 @@ func TestReadOnlyRoleIsEnforcedByTheEngine(t *testing.T) {
 		t.Fatalf("expected 3 denied writes/mutations and 1 permitted vet, got denied=%d vet=%d", denied, vetRan)
 	}
 }
+
+// TestPermissionModesThroughTheAssembledSession runs the same four actions under
+// each mode: a file write in the project, a shell command that touches a file in
+// the project, a network command, and a read of a credential file.
+func TestPermissionModesThroughTheAssembledSession(t *testing.T) {
+	type outcome struct{ write, touch, curl, secret bool } // true = allowed to run
+	cases := []struct {
+		name    string
+		mode    perm.Mode
+		answer  bool // what the prompter says when asked
+		want    outcome
+		prompts int
+	}{
+		{"default asks and the user allows", perm.ModeDefault, true, outcome{true, true, true, false}, 3},
+		{"default asks and the user denies", perm.ModeDefault, false, outcome{false, false, false, false}, 3},
+		{"accept-edits takes edits in the project without asking, asks for the network", perm.ModeAcceptEdits, false, outcome{true, true, false, false}, 1},
+		{"plan is read-only", perm.ModePlan, true, outcome{false, false, false, false}, 0},
+		{"bypass allows everything except hard denies", perm.ModeBypass, false, outcome{true, true, true, false}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newRepo(t)
+			home := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, ".ssh", "id_rsa"), []byte("not a real key"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			client, model := startMock(t, func(c *mock.Call) mock.Reply {
+				if assistantTurns(c) == 0 {
+					return mock.Reply{Text: "acting", ToolCalls: []mock.ToolCall{
+						call("w", "write", map[string]any{"path": "out.txt", "content": "hi\n"}),
+						call("t", "bash", map[string]any{"command": "touch touched.txt"}),
+						call("c", "bash", map[string]any{"command": "curl -s --max-time 1 http://127.0.0.1:9/x"}),
+						call("s", "read", map[string]any{"path": filepath.Join(home, ".ssh", "id_rsa")}),
+					}}
+				}
+				return mock.Reply{Text: "done"}
+			})
+			var mu sync.Mutex
+			prompts := 0
+			o := opts(t, repo, client, model)
+			o.Home = home
+			o.Mode = tc.mode
+			o.Prompter = func(ctx context.Context, r perm.Request) perm.Decision {
+				mu.Lock()
+				prompts++
+				mu.Unlock()
+				return perm.Decision{Allow: tc.answer, Reason: "scripted"}
+			}
+			s, err := session.New(context.Background(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			if _, err := s.Run(context.Background(), "do the things"); err != nil {
+				t.Fatal(err)
+			}
+			// A tool "ran" unless the transcript shows the engine refusing it.
+			denied := map[string]bool{}
+			for _, e := range readEvents(t, s.Dir) {
+				if e.Type != events.TypeTurnAppend {
+					continue
+				}
+				var turn core.Turn
+				json.Unmarshal(e.Data, &turn)
+				for _, b := range turn.Blocks {
+					if b.Kind == core.BlockToolResult && strings.Contains(b.PlainText(), "permission denied") {
+						denied[b.ToolID] = true
+					}
+				}
+			}
+			got := outcome{write: !denied["w"], touch: !denied["t"], curl: !denied["c"], secret: !denied["s"]}
+			if got != tc.want {
+				t.Errorf("outcome = %+v, want %+v", got, tc.want)
+			}
+			if _, err := os.Stat(filepath.Join(repo, "out.txt")); (err == nil) != tc.want.write {
+				t.Errorf("out.txt exists=%v, want %v", err == nil, tc.want.write)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if prompts != tc.prompts {
+				t.Errorf("prompter asked %d times, want %d", prompts, tc.prompts)
+			}
+		})
+	}
+}

@@ -37,6 +37,16 @@ type DialOptions struct {
 	MaxMessageBytes int
 }
 
+// errConfig marks problems in a definition, found before anything was started
+// or contacted; retrying cannot fix them.
+var errConfig = errors.New("invalid configuration")
+
+type configError struct{ err error }
+
+func (e *configError) Error() string        { return e.err.Error() }
+func (e *configError) Unwrap() error        { return e.err }
+func (e *configError) Is(target error) bool { return target == errConfig }
+
 // redactedError carries an error whose text has been scrubbed of secrets while
 // keeping the original in the chain for errors.Is/As.
 type redactedError struct {
@@ -68,10 +78,10 @@ func redactErr(r *redactor, err error) error {
 func Dial(ctx context.Context, name string, cfg ServerConfig, o DialOptions) (*Client, error) {
 	x, err := cfg.Expand(o.Env)
 	if err != nil {
-		return nil, fmt.Errorf("server %q: %w", clipForError(name), err)
+		return nil, fmt.Errorf("server %q: %w", clipForError(name), &configError{err})
 	}
 	if err := x.Validate(); err != nil {
-		return nil, fmt.Errorf("server %q: %w", clipForError(name), err)
+		return nil, fmt.Errorf("server %q: %w", clipForError(name), &configError{err})
 	}
 	red := newRedactor(x.secrets())
 
@@ -135,7 +145,7 @@ func dialProc(x ServerConfig, o DialOptions, red *redactor) (Transport, error) {
 	if dir != "" {
 		fi, err := os.Stat(dir)
 		if err != nil || !fi.IsDir() {
-			return nil, errors.New("cwd: is not an existing directory")
+			return nil, &configError{errors.New("cwd: is not an existing directory")}
 		}
 	}
 	return startProc(procSpec{

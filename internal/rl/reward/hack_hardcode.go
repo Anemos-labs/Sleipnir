@@ -46,7 +46,8 @@ type RepoSearcher interface {
 }
 
 type literal struct {
-	norm       string // decoded, folded, lower-case
+	raw        string // decoded text; concatenated parts are joined before normalising
+	norm       string // folded, lower-case, whitespace collapsed
 	start, end int    // byte range in the scanned text
 	num        bool
 }
@@ -80,7 +81,7 @@ func scanLiterals(src string) []literal {
 					break
 				}
 				body := src[i+3 : i+3+end]
-				out = append(out, literal{norm: normLiteral(decodeEscapes(body)), start: i, end: i + 3 + end + 3})
+				out = append(out, literal{raw: decodeEscapes(body), start: i, end: i + 3 + end + 3})
 				i += 3 + end + 3
 				break
 			}
@@ -92,7 +93,7 @@ func scanLiterals(src string) []literal {
 				j++
 			}
 			if j < n && src[j] == c {
-				out = append(out, literal{norm: normLiteral(decodeEscapes(src[i+1 : j])), start: i, end: j + 1})
+				out = append(out, literal{raw: decodeEscapes(src[i+1 : j]), start: i, end: j + 1})
 				i = j + 1
 			} else {
 				i++ // an apostrophe, not a quote
@@ -103,7 +104,7 @@ func scanLiterals(src string) []literal {
 				i++
 				break
 			}
-			out = append(out, literal{norm: normLiteral(src[i+1 : i+1+end]), start: i, end: i + 1 + end + 1})
+			out = append(out, literal{raw: src[i+1 : i+1+end], start: i, end: i + 1 + end + 1})
 			i += end + 2
 		case c >= '0' && c <= '9' && (i == 0 || !isWord(src[i-1]) && src[i-1] != '.'):
 			j := i
@@ -112,14 +113,20 @@ func scanLiterals(src string) []literal {
 			}
 			tok := strings.ReplaceAll(src[i:j], "_", "")
 			if numericEvidence(tok) {
-				out = append(out, literal{norm: strings.ToLower(tok), start: i, end: j, num: true})
+				out = append(out, literal{raw: tok, norm: strings.ToLower(tok), start: i, end: j, num: true})
 			}
 			i = j
 		default:
 			i++
 		}
 	}
-	return mergeConcats(out, src)
+	out = mergeConcats(out, src)
+	for i := range out {
+		if !out[i].num {
+			out[i].norm = normLiteral(out[i].raw)
+		}
+	}
+	return out
 }
 
 // numericEvidence keeps numbers distinctive enough to mean something: long
@@ -150,7 +157,7 @@ func mergeConcats(lits []literal, src string) []literal {
 	out := make([]literal, 0, len(lits))
 	for _, l := range lits {
 		if n := len(out); n > 0 && !l.num && !out[n-1].num && concatGap(src[out[n-1].end:l.start]) {
-			out[n-1].norm += l.norm
+			out[n-1].raw += l.raw // joined before normalising, or the space at the seam is lost
 			out[n-1].end = l.end
 			continue
 		}
@@ -346,6 +353,34 @@ func comparisonNear(code string, start, end int) bool {
 	} else {
 		le += end
 	}
-	window := strings.ToLower(foldLine(code[prev:le]))
+	// Blank string contents first: a literal that itself contains " in " or "=="
+	// must not count as a comparison.
+	window := strings.ToLower(foldLine(blankStrings(code[prev:le])))
 	return compareRe.MatchString(tight(window)) || compareRe.MatchString(window)
+}
+
+// blankStrings replaces the contents of quoted strings with spaces, keeping the
+// quotes and the length.
+func blankStrings(s string) string {
+	b := []byte(s)
+	var quote byte
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		if quote != 0 {
+			switch {
+			case c == '\\' && i+1 < len(b):
+				b[i], b[i+1] = ' ', ' '
+				i++
+			case c == quote:
+				quote = 0
+			case c != '\n':
+				b[i] = ' '
+			}
+			continue
+		}
+		if c == '"' || c == '\'' || c == '`' {
+			quote = c
+		}
+	}
+	return string(b)
 }

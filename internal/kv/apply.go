@@ -32,9 +32,10 @@ type ApplyPolicy struct {
 	// tail included. A rebase voids their provider-side bindings anyway; keeping
 	// them would only bloat the prompt or trigger a rejection.
 	StripThinking bool
-	// MaxSectionTokens / MaxNotesTokens cap the notes layer: a section over its
-	// cap by half again is trimmed oldest line first (the compactor is asked to
-	// consolidate well before that).
+	// MaxSectionTokens caps one compactor-written notes section and
+	// MaxNotesTokens all of them together (the instructions and assignment sections
+	// have their own bounds): over its cap a section is trimmed oldest line first
+	// behind a marker. The compactor is asked to consolidate well before that.
 	MaxSectionTokens int
 	MaxNotesTokens   int
 	// UserInstructionKey is the notes section that receives user-authored text
@@ -70,7 +71,7 @@ func DefaultApplyPolicy() ApplyPolicy {
 		UserInstructionKey:       "instructions",
 		UserInstructionMaxTokens: 600,
 		TaskMaxTokens:            2400,
-		MaxInstructionTokens:     3000,
+		MaxInstructionTokens:     4000,
 		MaxSpineTokens:           3000,
 	}
 }
@@ -646,16 +647,18 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 			}
 		}
 	}
+	// The instructions and the assignment have their own bounds; MaxNotesTokens
+	// caps what the compactor writes.
 	notesTotal := func() (total int, largest string) {
 		big := 0
 		for _, k := range order {
 			sg := segs[k]
-			if strings.TrimSpace(sg.Text) == "" {
+			if strings.TrimSpace(sg.Text) == "" || k == instrKey || k == "assignment" {
 				continue
 			}
 			t := est.Tokens(sg.Text)
 			total += t
-			if t > big && k != instrKey && k != "assignment" {
+			if t > big {
 				big, largest = t, k
 			}
 		}

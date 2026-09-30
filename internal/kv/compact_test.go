@@ -141,14 +141,12 @@ func TestApplyProtectsNewestUnitsAndInFlightExchange(t *testing.T) {
 	if len(last.ToolCalls()) != 1 || last.ToolCalls()[0].ToolID != "call_pending" {
 		t.Fatal("in-flight exchange must survive")
 	}
-	hasThinking := false
+	// A rebase voids every thinking binding, the in-flight assistant turn's
+	// included: removing all thinking is the one edit a provider always accepts.
 	for _, b := range last.Blocks {
 		if b.Kind == core.BlockThinking {
-			hasThinking = true
+			t.Fatal("thinking must be stripped from every retained turn, the in-flight one too")
 		}
-	}
-	if !hasThinking {
-		t.Fatal("the in-flight assistant turn keeps its thinking (its tool result is still owed)")
 	}
 	if len(Units(res.Replacement)) < 2 {
 		t.Fatalf("at least MinKeepUnits units must remain, got %d", len(Units(res.Replacement)))
@@ -363,8 +361,19 @@ func TestPlannerStartTriggers(t *testing.T) {
 	}
 	cold := base
 	cold.Warm = false
-	if !pl.ShouldStart(cold).Yes {
-		t.Fatal("a cold cache with a non-trivial thread is a free compaction window")
+	cold.MaskableTokens, cold.SinceMask = 4_000, 100
+	if d := pl.ShouldStart(cold); !d.Yes || d.Mode != ModeMask {
+		t.Fatalf("a cold cache with something to mask is a free compaction window: %+v", d)
+	}
+	nothing := cold
+	nothing.MaskableTokens = 0
+	if pl.ShouldStart(nothing).Yes {
+		t.Fatal("a cold cache with nothing to mask has nothing to do (a fork would pay a cold prefix write)")
+	}
+	recent := cold
+	recent.SinceMask = 2
+	if pl.ShouldStart(recent).Yes {
+		t.Fatal("a mask commit just happened: no storm")
 	}
 	tiny := cold
 	tiny.ThreadTokens = 1_000
@@ -416,8 +425,11 @@ func TestForkPromptSharesParentPrefixExactly(t *testing.T) {
 			t.Fatalf("fork diverges from parent at block %d: it would miss the parent's cache", i)
 		}
 	}
-	if fork.Params.ToolChoice != "none" || fork.Params.Effort != "high" {
-		t.Fatalf("fork must keep parent params (effort) and forbid tool calls: %+v", fork.Params)
+	// Every request parameter is the parent's: on Anthropic a changed tool_choice
+	// (or thinking / effort) invalidates the messages tier and the fork would pay a
+	// full write instead of reading the parent's prefix. "No tools" is text only.
+	if fork.Params.ToolChoice != parent.Prompt.Params.ToolChoice || fork.Params.Effort != "high" || fork.Params.MaxTokens != 4096 {
+		t.Fatalf("fork must keep the parent's params exactly: %+v vs %+v", fork.Params, parent.Prompt.Params)
 	}
 	if len(fork.Tools) != len(parent.Prompt.Tools) {
 		t.Fatal("fork must keep the parent's tool list (tools render first)")

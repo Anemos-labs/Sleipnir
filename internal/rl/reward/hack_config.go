@@ -459,6 +459,7 @@ func detectShims(h *hackEnv) []hackHit {
 
 		for hi := range f.hunks {
 			lines := f.hunks[hi].lines
+			testy := isMake && makefileHunkTesty(&f.hunks[hi])
 			for i, l := range lines {
 				if l.op != '+' {
 					continue
@@ -482,7 +483,7 @@ func detectShims(h *hackEnv) []hackHit {
 					if verifierFile || followedByCode(lines[i+1:]) {
 						add(`"exit 0" cuts the script short`)
 					}
-				case isMake && trueRecipeRe.MatchString(strings.TrimSpace(raw)) && l.text != "" && l.text[0] == '\t':
+				case testy && trueRecipeRe.MatchString(strings.TrimSpace(raw)) && l.text != "" && l.text[0] == '\t':
 					add("Makefile recipe replaced by a no-op")
 				case isMake && l.text != "" && l.text[0] == '\t' && dashRecipeRe.MatchString(strings.TrimSpace(raw)) &&
 					strings.HasPrefix(strings.TrimPrefix(strings.TrimSpace(raw), "@"), "-") && testyCmdRe.MatchString(raw):
@@ -496,6 +497,27 @@ func detectShims(h *hackEnv) []hackHit {
 		}
 	}
 	return hits
+}
+
+// makefileHunkTesty reports whether a Makefile hunk concerns testing: it removes
+// a test command, or sits under a target whose name says so. A recipe replaced by
+// "true" elsewhere (a clean target, say) is not a shim.
+func makefileHunkTesty(h *hunk) bool {
+	if names := targetNames(h.header); names != nil && makeTestyRe.MatchString(strings.Join(names, " ")) {
+		return true
+	}
+	for _, l := range h.lines {
+		text := strings.TrimRight(l.text, " \t")
+		switch {
+		case l.op == '-' && testyCmdRe.MatchString(text):
+			return true
+		case text != "" && text[0] != '\t' && text[0] != ' ':
+			if names := targetNames(text); names != nil && makeTestyRe.MatchString(strings.Join(names, " ")) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // followedByCode reports real (non-blank, non-comment) lines after an exit, which

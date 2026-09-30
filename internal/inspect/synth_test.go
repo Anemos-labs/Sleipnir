@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -59,40 +58,42 @@ func (c *synthCfg) fill() {
 
 // synthResult reports what the generator injected, so tests can assert exact numbers.
 type synthResult struct {
-	Requests, Main, Side       int
-	Commits                    int
-	Drift, LowHit              int
-	Spawns, MailSent           int
-	Usage                      core.Usage
-	ReportedUSD                float64
-	PerAgentMain               map[string]int
-	FirstRequestReads          map[string]int
-	LastSeq                    uint64
+	Requests, Main, Side int
+	Commits              int
+	Drift, LowHit        int
+	Spawns, MailSent     int
+	Usage                core.Usage
+	ReportedUSD          float64
+	PerAgentMain         map[string]int
+	FirstRequestReads    map[string]int
+	LastSeq              uint64
 }
 
 type simAgent struct {
-	id, role    string
-	next        time.Time
-	steps       int
-	done        int
-	thread      int
-	turn        int
-	from        int
-	spine       int
-	notesTok    int
-	notesVer    int
-	spineVer    int
-	lastReq     time.Time
-	prevChain   []int
-	prevSig     []string
-	commits     int
-	toolsVar    int
-	idleAt      int // step at which the agent idles past the TTL (0: never)
-	task        string
-	pinTok      int
-	mgr         bool
-	openCalls   int
-	spawnedAt   time.Time
+	id, role     string
+	next         time.Time
+	steps        int
+	done         int
+	thread       int
+	turn         int
+	from         int
+	spine        int
+	notesTok     int
+	notesVer     int
+	spineVer     int
+	lastReq      time.Time
+	prevChain    []int
+	prevSig      []string
+	prevFrom     int
+	evictAt      int // step at which the provider loses the entry (a low_hit anomaly)
+	commits      int
+	toolsVar     int
+	idleAt       int // step at which the agent idles past the TTL (0: never)
+	task         string
+	pinTok       int
+	mgr          bool
+	openCalls    int
+	spawnedAt    time.Time
 	firstReqRead int
 }
 
@@ -221,6 +222,9 @@ func (s *sim) run() {
 		if cfg.Anomalies && i == 1 {
 			a.idleAt = cfg.Steps / 2
 		}
+		if cfg.Anomalies && i == 2 {
+			a.evictAt = cfg.Steps / 3
+		}
 		s.agents = append(s.agents, a)
 	}
 	// Workers are spawned by the manager at staggered times.
@@ -334,14 +338,14 @@ func (s *sim) step(a *simAgent) {
 	}
 
 	// ---- cache model (explicit breakpoints, 5 minute TTL) ----
+	// expected is what the drift guard would report: the exact prefix shared with
+	// the agent's previous request, in estimated tokens.
 	warmSelf := !first && s.now.Sub(a.lastReq) < 5*time.Minute
 	shareKey := cfg.Model + "/g01"
-	prefix := 0
 	expected := 0
 	if !first {
-		expected = 0
 		for i := range chain {
-			if sigs[i] != a.prevSig[i] || (i == 5 && a.from != a.prevFrom()) {
+			if sigs[i] != a.prevSig[i] || (i == 5 && a.from != a.prevFrom) {
 				break
 			}
 			if i == 5 {
@@ -351,9 +355,14 @@ func (s *sim) step(a *simAgent) {
 			}
 		}
 	}
+	prefix := 0
+	evicted := cfg.Anomalies && a.evictAt > 0 && a.done == a.evictAt
 	switch {
-	case drift:
+	case drift || evicted:
 		prefix = 0
+		if evicted {
+			prefix = g0 // the provider kept only the very front
+		}
 	case warmSelf:
 		prefix = expected
 	default:
@@ -412,15 +421,6 @@ func (s *sim) step(a *simAgent) {
 		s.emit(a.id, events.TypeCacheAnomaly, map[string]any{"kind": "low_hit", "req": reqID, "expected_read": expected, "actual_read": read, "diverged": ""})
 		s.res.LowHit++
 	}
-	if !warmSelf && !first && !drift {
-		// A cold restart after an idle gap: the guard expected the old prefix.
-		expected2 := expected
-		if expected2 >= 1024 && read < expected2*7/10 {
-			s.emit(a.id, events.TypeCacheAnomaly, map[string]any{"kind": "low_hit", "req": reqID, "expected_read": expected2, "actual_read": read, "diverged": ""})
-			s.res.LowHit++
-			anomaly = true
-		}
-	}
 	s.advance(time.Duration(lat-ttfb) * time.Millisecond)
 	u := core.Usage{InputTokens: fresh, CacheReadTokens: read, CacheWrite5mTokens: write, OutputTokens: out}
 	hit := u.HitRatio()
@@ -440,14 +440,11 @@ func (s *sim) step(a *simAgent) {
 	s.res.ReportedUSD += usd
 	s.warm[shareKey] = s.now
 	a.lastReq = s.now
-	a.prevChain, a.prevSig = chain, sigs
-	a.setPrevFrom(a.from)
+	a.prevChain, a.prevSig, a.prevFrom = chain, sigs, a.from
 
 	// ---- tools ----
 	s.tools_(a)
 }
-
-func (a *simAgent) prevFrom() int { return a.prevFromV }
 
 func (s *sim) hashOf(text string) string {
 	if text == "" {
@@ -565,7 +562,6 @@ func (s *sim) compact(a *simAgent) {
 	s.res.Commits++
 	a.thread = retained
 	a.from = a.turn - 3
-	a.setPrevFrom(-1) // the guard's chain is rebased by the commit
 	a.spine += spineAdd
 	a.spineVer++
 	if a.commits%2 == 1 {
@@ -573,8 +569,6 @@ func (s *sim) compact(a *simAgent) {
 		a.notesTok += 120
 	}
 	s.emit(a.id, events.TypeLayerCommit, map[string]any{"scope": "agent", "spine": "abc", "spine_version": a.spineVer, "notes": "def", "notes_changed": a.commits%2 == 1})
-	// After a declared rebase the guard's comparison restarts from the new chain.
-	a.prevChain = nil
 }
 
 // synthDir is a convenience for tests: a temp dir with a swarm session.
@@ -596,5 +590,4 @@ func TestWriteSynthSession(t *testing.T) {
 	writeSynth(t, filepath.Join(dir, "solo"), synthCfg{Workers: 0, Steps: 60, MgrSteps: 1, Session: "solo-session"})
 	b, _ := json.MarshalIndent(res, "", " ")
 	t.Logf("%s", b)
-	_ = sort.Strings
 }

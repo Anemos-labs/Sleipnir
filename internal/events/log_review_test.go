@@ -4,7 +4,7 @@ package events
 // durability of the group commit, subscriber lifecycle, Close racing
 // Emit/Subscribe, and the blob store's trust in files it finds on disk.
 // TestConc_* are gated repros (SLEIPNIR_REVIEW=1, fail while the finding is
-// open); TestConcSound_* is an ungated stress check.
+// open); TestConcSound_* are ungated (a stress check and a regression check).
 //
 //	SLEIPNIR_REVIEW=1 go test -race -count=1 -run 'TestConc_' ./internal/events
 
@@ -169,11 +169,12 @@ func TestConcSound_LogCloseRacesEmitAndSubscribeStress(t *testing.T) {
 	}
 }
 
-// A blob whose file was torn by a crash (rename can persist before the data;
-// Put never fsyncs) poisons the store: Put trusts any existing file by name, Get
-// never re-hashes.
-func TestConc_BlobPutTrustsATornFileForever(t *testing.T) {
-	concGate(t)
+// Regression check. This was a finding (C-19): a blob whose file was torn by a
+// crash poisoned the store, because Put trusted any existing file by name and Get
+// never re-hashed. DirBlobs was hardened while this review was under way (Put
+// verifies size and content and replaces a torn file; Get re-hashes), so this now
+// passes.
+func TestConcSound_BlobPutRepairsATornFile(t *testing.T) {
 	d, err := NewDirBlobs(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -183,12 +184,12 @@ func TestConc_BlobPutTrustsATornFileForever(t *testing.T) {
 	if err := os.WriteFile(d.path(h), payload[:17], 0o644); err != nil { // torn write
 		t.Fatal(err)
 	}
-	h2, _ := d.Put(payload) // the same content again: should repair
+	h2, _ := d.Put(payload) // the same content again: must repair
 	got, err := d.Get(h2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if core.HashBytes(got) != h {
-		t.Fatalf("blob %s now holds %d corrupt bytes (want %d): Put skipped the write because the file exists and Get returns it without verifying the hash", h.Short(), len(got), len(payload))
+		t.Fatalf("blob %s now holds %d corrupt bytes (want %d)", h.Short(), len(got), len(payload))
 	}
 }

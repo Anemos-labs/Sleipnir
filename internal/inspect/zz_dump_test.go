@@ -3,25 +3,41 @@ package inspect
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 )
 
 func TestDump(t *testing.T) {
-	s, err := Load("../rl/traj/testdata/agent_run")
+	dir := os.Getenv("DUMP_DIR")
+	if dir == "" {
+		t.Skip()
+	}
+	s, err := Load(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sum := s.Summary()
-	sum.Series.Points = sum.Series.Points[:3]
+	sum.Series.Points = nil
+	sum.Cost.Assumptions = nil
 	b, _ := json.MarshalIndent(sum, "", " ")
 	fmt.Println(string(b))
-	c := s.Compactions()
-	b, _ = json.MarshalIndent(c, "", " ")
-	fmt.Println(string(b))
-	rp, _ := s.Layers("be-1.10", true)
-	b, _ = json.MarshalIndent(rp, "", " ")
-	fmt.Println(string(b))
-	rp2 := s.Requests(RequestQuery{Tail: true, Limit: 3})
-	b, _ = json.MarshalIndent(rp2, "", " ")
-	fmt.Println(string(b))
+	for _, name := range []string{"anom", "swarm", "agents"} {
+		var v any
+		switch name {
+		case "anom":
+			v = s.Anomalies()
+		case "swarm":
+			sw := s.Swarm()
+			sw.Agents = nil
+			v = sw
+		case "agents":
+			ag := s.Agents()
+			for i := range ag {
+				ag[i].SparkCtx, ag[i].SparkHit = nil, nil
+			}
+			v = ag
+		}
+		b, _ := json.MarshalIndent(v, "", " ")
+		fmt.Println(name, string(b))
+	}
 }

@@ -15,9 +15,9 @@ Severity scale: **blocker** = the manager/worker protocol silently gives wrong r
 
 I added test files named `*_review_test.go` (index in section 4; no non-test file was modified). Two kinds of tests:
 
-* `TestConc_*` (59 repros + 2 subprocess bodies): gated behind `SLEIPNIR_REVIEW=1` (the same switch the security review uses). Each asserts the
+* `TestConc_*` (57 repros + 2 subprocess bodies): gated behind `SLEIPNIR_REVIEW=1` (the same switch the security review uses). Each asserts the
   **correct** behaviour, so it **fails while the finding is open**; default `go test` skips them and stays green.
-* `TestConcSound_*` (7): always on, cheap (about 2 s together). Stress/regression checks for behaviour I found sound.
+* `TestConcSound_*` (9): always on, cheap (about 2 s together). Stress/regression checks for behaviour I found sound (two of them were repros that other builders fixed while I was reviewing: the warm-gate stuck primer and the torn blob).
 
 ```
 # every repro currently FAILS (= finding reproduced); 4 packages
@@ -29,7 +29,7 @@ go test -race -count=20 ./internal/swarm ./internal/agent ./internal/events
 ```
 
 Baseline before my tests: `go test -race -count=20 ./internal/swarm ./internal/agent ./internal/events` was green. Last full gated run:
-59 of 59 repros fail, 7 of 7 sound checks pass. I ran every gated repro 5-30 times (with and without `-race`): the deterministic ones failed every time;
+57 of 57 repros fail, 9 of 9 sound checks pass. I ran every gated repro 5-30 times (with and without `-race`): the deterministic ones failed every time;
 the three probabilistic ones (`BoardWaitLostWakeupStress`, `SetStatePublishesOutsideItsLock...`, `RetireDuringSpawnCrashesTheProcess`) were
 tightened until they failed 8/8 (details in their comments). Many interleavings are forced with locks and channels (freeze `Board.mu`, hold `Leases.mu`,
 stall an emitter) instead of hoping for scheduler luck. A `-race` run also reports the unsynchronised `member.task` accesses (finding C-10).
@@ -55,8 +55,8 @@ stall an emitter) instead of hoping for scheduler luck. A `-race` run also repor
 | C-15 | medium | **No task state machine**: `done` regresses via `resume`/`finish(review)`/`block`; `Spawn` ignores dependencies (only self-claim enforces them) | `BoardAllowsDoneToRegress`, `SpawnIgnoresUnmetDependencies` |
 | C-16 | medium | **Stale and noisy hot view**: alerts never clear (no production `ClearAlerts`); no-op mutations bump the version and wake every waiter; the 750 ms status throttle drops the trailing line | `LeaseAlertsOutliveTheConflict`, `NoopMutations...`, `StatusThrottleHidesTheLongRunningTool` |
 | C-17 | medium | **Router**: `recent`/`sender`/`pair` maps never shrink; success and `mail.deliver` reported for mail dropped after a retire; manager inbox unbounded (1,800 mails = one user turn) | `RouterMapsGrowForever`, `RouterReportsSuccess...`, `ManagerInboxIsUnbounded` |
-| C-18 | medium | **Governor/gate**: one 429 episode collapses the rate to the floor; background (compaction) starves under steady worker load; a cold-prefix gate inverts priority (manager waits 480 ms vs 69 ms warm); a vanished primer taxes every later request by `maxWait` | `GovernorConcurrent429s...`, `GovernorBackgroundStarves...`, `ColdPrefixGateInvertsPriority`, `WarmGateStuckPrimer...` |
-| C-19 | low | Latent/hygiene: `TakeNotes()` with no ids takes all; snapshots alias caller slices; shared-note dedupe is role-sensitive; concurrent `SetShared` leaves agents on different epochs; `Subscribe` after `Close` never closes; torn blob trusted; 32-bit recall handles alias; O(n) board copy per mutation; `s.manager` read unlocked | (see C-19) |
+| C-18 | medium | **Governor/gate**: one 429 episode collapses the rate to the floor; background (compaction) starves under steady worker load; a cold-prefix gate inverts priority (manager waits 480 ms vs 69 ms warm); | `GovernorConcurrent429s...`, `GovernorBackgroundStarves...`, `ColdPrefixGateInvertsPriority` |
+| C-19 | low | Latent/hygiene: `TakeNotes()` with no ids takes all; snapshots alias caller slices; shared-note dedupe is role-sensitive; concurrent `SetShared` leaves agents on different epochs; `Subscribe` after `Close` never closes; 32-bit recall handles alias; O(n) board copy per mutation; `s.manager` read unlocked | (see C-19) |
 
 ## 2. Findings
 
@@ -185,7 +185,7 @@ stall an emitter) instead of hoping for scheduler luck. A `-race` run also repor
   `agent/request.go` `call` (~`:417`) adds no per-attempt deadline. Marketplaces commonly send headers only with the first byte.
 * **Repro.** `SLEIPNIR_REVIEW=1 go test -race -count=1 -run TestConc_HungRequest ./internal/agent`
   `a silent server held the request for 1.501s (error: provider: timeout: Post ".../chat/completions": context deadline exceeded); StreamIdleTimeout=200ms never applied because it is armed after the headers; only the caller's deadline ended it`
-* **Impact.** The hung call keeps its `Governor` slot (`DefaultConfig()` sets `MaxConcurrent: 24`: after 24 such calls the whole swarm blocks in `Acquire`), keeps `WarmGate` priming (every later request on that prefix waits the 45 s `maxWait`, see C-18) and pins the agent. Retries never start
+* **Impact.** The hung call keeps its `Governor` slot (`DefaultConfig()` sets `MaxConcurrent: 24`: after 24 such calls the whole swarm blocks in `Acquire`), keeps `WarmGate` priming (followers wait `maxWait`, 45 s, before a co-primer is released; the first gate version waited on every later request too, see C-18) and pins the agent. Retries never start
   because the first attempt never returns.
 * **Minimal fix.** Arm the idle watchdog before `http.Do` (or `Transport.ResponseHeaderTimeout` around 60 s) and wrap each attempt in `context.WithTimeout(ctx, cfg.AttemptTimeout)`; make the governor slot carry a max hold.
 
@@ -298,8 +298,8 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 * **Starvation** (`governor.go:77-81`): strict priority, no aging; four workers hammering one slot starve a `PrioBackground` request for the whole 400 ms test (`TestConc_GovernorBackgroundStarves...`). In production this starves compaction under saturation until the 85% emergency path.
 * **Priority inversion.** The gate is entered before the governor (`request.go` `~:132` then `~:420`): a worker-priority primer queued behind five workers holds the manager (priority 0) at the gate: 480 ms versus 69 ms with a warm prefix
   (`TestConc_ColdPrefixGateInvertsPriority`). Fix: let followers with higher priority bypass the gate, or enter the gate after admission.
-* **Stuck primer** (`gate.go:47-78`): if a primer never reports (panic before the finisher, a hung request, C-08), `priming` stays true; every later request waits the whole `maxWait` (45 s in production) and then goes ahead ungated; nobody is re-elected
-  (`TestConc_WarmGateStuckPrimerTaxesEveryLaterRequest`: 150 ms, 150 ms, 150 ms). Fix: on timeout reset `priming` and elect the waiter as the new primer.
+* **Stuck primer: fixed during the review.** With the first `WarmGate`, a primer that never reported (panic before the finisher, a hung request, C-08) left `priming` true and every later request waited the whole `maxWait`
+  (150 ms, 150 ms, 150 ms in my repro; 45 s in production). Another builder rewrote the gate (levels, escalating co-primers after `maxWait`, a co-primer's first byte warms the level); the repro now passes and lives on as `TestConcSound_WarmGateEscalatesPastAStuckPrimer`.
 
 ### C-19. Latent and hygiene items (LOW)
 
@@ -308,7 +308,7 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 * Shared-scope note dedupe includes the author's role (`AddNote`, `onPromote`), so the same convention noted by two roles is stored and rendered twice (`TestConc_SharedNoteDedupeIsRoleSensitive`).
 * `SetShared` publishes `s.shared` under the lock and syncs members outside it: two overlapping calls can finish in the opposite order and leave 21 of 25 agents on the older epoch (`TestConc_ConcurrentSetSharedLeavesAgentsOnDifferentEpochs`, up to 8 forced attempts, 25/25 runs). A worker built across an epoch can miss it the same way (`buildAgent` reads `s.shared` once, registers later); not reproduced.
 * `events.Log.Subscribe` after `Close` returns a channel that is never closed (`log.go:231`; `TestConc_SubscribeAfterCloseNeverDelivers`); dropped-event counts are never exposed.
-* `events.DirBlobs.Put` skips the write if the file exists and `Get` never re-hashes, so one torn blob (no fsync before rename) poisons the hash forever (`TestConc_BlobPutTrustsATornFileForever`).
+* Torn blobs: `DirBlobs.Put` used to trust any existing file and `Get` never re-hashed; fixed during the review (verifying `DirBlobs`, `ErrBlobCorrupt`), kept as `TestConcSound_BlobPutRepairsATornFile`. (Still no fsync before the rename.)
 * Recall handles are `out_` + 8 hex chars of the hash in one session-wide table (`tools/support.go:71`): two outputs aliased after 179,282 outputs in my run (`TestConc_RecallHandlesAreOnly32BitsAndAliasSilently`); ~1% at 9k, 50% at 77k. Use 16+ hex chars.
 * `memberSink.ToolStart/ToolEnd` call `Board.SetAgent` (board mutex, event log) although the `Sink` contract says "must not block".
 * `NewRouter(..., func() string { return s.manager }, ...)` reads `s.manager` without `s.mu`; `RunManager` twice replaces the manager member (fresh context) instead of resuming it.
@@ -332,10 +332,10 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 |---|---|---|
 | `internal/swarm/rig_review_test.go` | in-process fake provider (`rvProvider`), rig with hooks, gate helper | |
 | `internal/swarm/runtime_review_test.go` | 24 (incl. 2 subprocess bodies): mail/reject, spawn/claim races, caps, ghosts, budget, orphans, panics, cancel/shutdown, verifier | |
-| `internal/swarm/state_review_test.go` | 22: wait/Changed, no-ops, aliasing, notes, hot cost, alerts, state machine, router, governor, gate, log replay | Governor stress (cancels, timers, 429s, priorities), WarmGate stress, 50 agents on Board/Router/Leases/hot/`Changed()` |
+| `internal/swarm/state_review_test.go` | 21: wait/Changed, no-ops, aliasing, notes, hot cost, alerts, state machine, router, governor, log replay | Governor stress (cancels, timers, 429s, priorities), WarmGate stress, WarmGate escalates past a stuck primer, 50 agents on Board/Router/Leases/hot/`Changed()` |
 | `internal/swarm/chaos_review_test.go` | 8: chaos, status throttle, setState reorder, gate/governor inversion, Shutdown, archive, evidence, SetShared | Real `fs` tools with stolen leases, throttle never drops a state change, wait wakes on board/mail |
 | `internal/agent/agent_review_test.go` | 3: inbox at Run exit, compactor lifetime, hung request | |
-| `internal/events/log_review_test.go` | 3: group-commit tail, Subscribe after Close, torn blob | `Close` racing `Emit`/`Subscribe`/cancel/`Flush` |
+| `internal/events/log_review_test.go` | 2: group-commit tail, Subscribe after Close | `Close` racing `Emit`/`Subscribe`/cancel/`Flush`; torn blob is repaired |
 | `internal/tools/support_review_test.go` | 1: recall handle aliasing | |
 
 ## 5. Suggested fix order
@@ -348,7 +348,7 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
 
 ## 6. Caveats
 
-* Snapshot: other builders edited `swarm.go`, `agent/compact.go`, `agent/agent.go`, `perm`, `kv` while I worked (the `agent` package did not compile for a few minutes at a time, twice). Findings were re-verified after the last such edit (all 59 repros fail, 7 sound checks pass, `swarm`/`events`/`tools` default suites green apart from item below). The baseline `-count=20` run was green before and after adding my files. The compactor label format changed under me once; the compactor test now recognises the fork by its `<compactor-task>` block instead of the label.
+* Snapshot: other builders edited `swarm.go`, `agent/compact.go`, `agent/agent.go`, `perm`, `kv` while I worked (the `agent` package did not compile for a few minutes at a time, twice). Findings were re-verified after the last such edit (all 57 repros fail, 9 sound checks pass, `swarm`/`events`/`tools` default suites green apart from the item below). Two repros went green because other builders fixed them mid-review (gate rewrite, verifying blob store); the reused-worker card also changed (`reassignCard`), so the reuse repro now looks for `Your assignment is task T2:` instead of `Begin task T2`. The baseline `-count=20` run was green before and after adding my files. The compactor label format changed under me once; the compactor test now recognises the fork by its `<compactor-task>` block instead of the label.
 * At the time of my last run the default (ungated) `internal/agent` and `internal/swarm` suites also contained another reviewer's `TestCacheEcon_*` tests that fail with "defect no longer reproduces ... invert or delete this review test" after code changes made by others; none of those failures come from my files.
 * The tests touch unexported names (`member`, `Swarm.get`, `Board.mu`/`snap`/`wake`, `Router.now`/`recent`, `Leases.mu`, `startRun`, `memberSink`); a refactor may need to update them. Freeze-the-lock interleavings prove the race is *reachable*, not how often production hits it; C-01, C-02 (reuse path), C-07, C-13 need no race at all.
 * Probabilistic tests: `BoardWaitLostWakeupStress` (found at iteration 15-225), `SetStatePublishesOutsideItsLockAndCanReorder` (about 1 in 5,000 racing pairs, loops up to 8 s and stops at the first mismatch), `RetireDuringSpawnCrashesTheProcess` (subprocess, up to 8 s).
@@ -362,6 +362,7 @@ Repro: `TestConc_BoardAllowsDoneToRegress`, `TestConc_SpawnIgnoresUnmetDependenc
   Snapshots are immutable except for the caller-slice aliasing in C-19; readers never block.
 * **Governor** (`TestConcSound_GovernorStress`): 300 requests with cancellations mid-dispatch, timer re-arming, 429 pauses and mixed priorities: `MaxConcurrent` never exceeded (peak 4), the queue drains, no goroutine leak, the admitted-while-cancelled path returns its slot. Priority order and Retry-After pausing (existing tests) hold.
 * **WarmGate** (`TestConcSound_WarmGateStress`): 400 goroutines with random cancels, primer failures/successes and a second call of the finisher: no deadlock, no double close (`sync.Once`), no key left primed; one primer among 8 and failure promotion (existing tests).
+* **Warm gate under a vanished primer** (`TestConcSound_WarmGateEscalatesPastAStuckPrimer`): after the gate rewrite, later arrivals are not taxed by `maxWait` (co-primer escalation).
 * **`events.Log`** (`TestConcSound_LogCloseRacesEmitAndSubscribeStress`): `Close` racing 8 emitters, 4 subscribe/cancel loops and `Flush`: no send-on-closed, no double close, in-order delivery, `Emit` reports the closed log, idempotent cancel; sequence order under 16 concurrent emitters and torn-tail repair (existing tests). Subscribers never block the emitter.
 * **Edit safety net** (`TestConcSound_StolenLeasesStillCannotLoseAnEdit`): with every lease stolen (TTL 1 ns) the real `fs` read/edit tools, `FileState` and the per-path lock lose no update across 6 agents x 8 edits. All three write paths (`edit`, `write`, `apply_patch`) hold the path lock across freshness check and commit.
 * **`wait` wake-ups** (`TestConcSound_WaitWakesPromptly...`): a board change and a mail both wake the tool inside its 250 ms poll (except the cases in C-11).

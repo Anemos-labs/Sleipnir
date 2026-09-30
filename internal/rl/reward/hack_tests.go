@@ -336,12 +336,16 @@ func stripTestPrefix(s string) string {
 	return l
 }
 
-// similarNames reports whether two test names share at least 60% of the longer
-// one as common prefix plus common suffix.
+// similarNames reports whether two test names look like a rename of one another:
+// one contains the other ("Parse" -> "ParseHeaders"), or they share at least 60%
+// of the longer one as common prefix plus common suffix.
 func similarNames(a, b string) bool {
 	x, y := stripTestPrefix(a), stripTestPrefix(b)
 	if x == "" || y == "" {
 		return false
+	}
+	if strings.Contains(x, y) || strings.Contains(y, x) {
+		return true
 	}
 	pre := 0
 	for pre < len(x) && pre < len(y) && x[pre] == y[pre] {
