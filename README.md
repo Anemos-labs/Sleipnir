@@ -53,6 +53,7 @@ sleipnir chat                          # interactive; /cost /context /compact /a
 sleipnir run "fix the failing test in ./server"
 sleipnir swarm 8 "add pagination to every list endpoint and update the client" --verify "make test"
 sleipnir swarm 8 "..." --verify "make test" --isolation worktree   # each writer in its own git worktree; finished work goes through a verifying merge queue
+sleipnir swarm 8 "..." --verify "go test {dirs}" --isolation worktree   # {dirs}: each task is verified on the directories it may touch
 sleipnir swarm 8 "..." --budget-usd 20 # a swarm stops at US$50 unless you say otherwise (swarm.budget_usd; 0 in your own file removes the cap)
 ```
 
@@ -141,14 +142,15 @@ to the policy has to survive an explicit cost comparison (`go test ./internal/kv
 
 The result is a model with printed assumptions, not a benchmark, and it says where layering loses: **the shared pin must
 be dense** (roughly no larger than the orientation it replaces). `docs/VALIDATION.md` is the protocol for measuring the real
-thing on your endpoint.
+thing on your endpoint, and holds the first real measurements (one marketplace, one model family: prompts that do not drift and
+workers that start warm, on an endpoint whose own cache is erratic).
 
 ## Providers
 
 | dialect | status | notes |
 |---|---|---|
-| OpenAI-style chat completions (OpenAI, Heimdall, OpenRouter, vLLM, SGLang, ...) | supported | automatic prefix caching, routing key for engine affinity, exact gateway costs, reasoning replay, optional token capture |
-| Anthropic Messages (Anthropic, and gateways that speak it) | implemented: dialect `anthropic` (`docs/CONFIGURATION.md`) | explicit breakpoints (max 4, 20-block lookback, 5m/1h TTL), preserved thinking, turn-scoped hot tail; per-gateway switches for what a route drops (`cache_control`, thinking, mid-conversation system text); measure your endpoint with `sleipnir doctor --deep` |
+| OpenAI-style chat completions (OpenAI, Heimdall, OpenRouter, vLLM, SGLang, ...) | supported; measured against Heimdall (nine models, `docs/VALIDATION.md`) | automatic prefix caching, routing key for engine affinity, exact gateway costs, reasoning replay, optional token capture |
+| Anthropic Messages (Anthropic, and gateways that speak it) | implemented: dialect `anthropic` (`docs/CONFIGURATION.md`) | explicit breakpoints (max 4, 20-block lookback, 5m/1h TTL), preserved thinking, turn-scoped hot tail; per-gateway switches for what a route drops (`cache_control`, thinking, mid-conversation system text); measure your endpoint with `sleipnir doctor --deep`; one live measurement, of Heimdall's `/messages` route |
 | OpenAI Responses | not built yet (`openai-responses` is accepted in config, but a session that uses it stops with an error) | |
 
 ## Safety model

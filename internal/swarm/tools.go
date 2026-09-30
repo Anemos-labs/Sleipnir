@@ -177,12 +177,13 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if m != nil {
 		ev = m.ev
 	}
-	if vr := s.verify(ctx, c.Env.Cwd); !vr.ok {
+	if vr := s.verify(ctx, c.Env.Cwd, task.Files); !vr.ok {
 		if vr.infra {
 			return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
 		}
 		tail, _ := tools.Truncate(vr.out, 3000)
-		return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: verification `%s` failed (exit %d). Fix the failures and call done again.\n%s", s.cfg.VerifyCmd, vr.code, tail)}
+		return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: verification `%s` failed (exit %d). Fix the failures and call done again.%s\n%s",
+			ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, s.isolatedVerifyHint(m), tail)}
 	}
 	result := oneLine(in.Text, 120)
 	if result == "" {
@@ -234,12 +235,13 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if _, merged := s.mergedFor(task); !merged {
 				return tools.Errorf("%s was not accepted: its work is not in the integration branch (the merge did not run or did not succeed). Reject it so its worker resubmits, or fail it.", in.ID)
 			}
-		} else if vr := s.verify(ctx, c.Env.Cwd); !vr.ok {
+		} else if vr := s.verify(ctx, c.Env.Cwd, task.Files); !vr.ok {
 			if vr.infra {
 				return tools.Errorf("%s was not accepted: verification could not run (%v). Retry, or reject it.", in.ID, cleanText(vr.err.Error(), 200))
 			}
 			tail, _ := tools.Truncate(vr.out, 3000)
-			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s", in.ID, s.cfg.VerifyCmd, vr.code, tail)}
+			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
+				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
 		}
 		if err := s.Board.Accept(me, in.ID, in.Text); err != nil {
 			return tools.Errorf("%v", err)

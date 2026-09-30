@@ -4,6 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -26,10 +31,13 @@ type verifyResult struct {
 // deadline, and a verifier that ignores its context cannot hold the caller past it.
 // A verifier that could not run at all is reported as such (infra) and never as a
 // failed test.
-func (s *Swarm) verify(ctx context.Context, dir string) verifyResult {
+//
+// files is the task's scope, used to expand {dirs} in the command (ExpandVerify).
+func (s *Swarm) verify(ctx context.Context, dir string, files []string) verifyResult {
 	if s.cfg.VerifyCmd == "" {
 		return verifyResult{ok: true}
 	}
+	cmd := ExpandVerify(s.cfg.VerifyCmd, dir, files)
 	if s.cfg.Verify == nil {
 		return verifyResult{infra: true, err: errors.New("no verification runner is installed")}
 	}
@@ -53,7 +61,7 @@ func (s *Swarm) verify(ctx context.Context, dir string) verifyResult {
 				ch <- outcome{err: fmt.Errorf("the verifier crashed: %v", r)}
 			}
 		}()
-		out, code, err := s.cfg.Verify(vctx, dir, s.cfg.VerifyCmd)
+		out, code, err := s.cfg.Verify(vctx, dir, cmd)
 		ch <- outcome{out, code, err}
 	}()
 	select {
@@ -71,4 +79,120 @@ func (s *Swarm) verify(ctx context.Context, dir string) verifyResult {
 		}
 		return verifyResult{infra: true, err: fmt.Errorf("verification timed out after %s", s.cfg.VerifyTimeout.Round(time.Second))}
 	}
+}
+
+// verifyDirsToken stands, in a verify command, for the directories a task may touch.
+const verifyDirsToken = "{dirs}"
+
+// maxVerifyDirs bounds how many directories {dirs} lists; a scope wider than that is the whole tree.
+const maxVerifyDirs = 40
+
+// ExpandVerify replaces {dirs} in a verify command with the directories the task's scope covers,
+// as words a shell (or cmd) reads as they are: `go test {dirs}` becomes `go test ./p01 ./p05`.
+//
+// It is what lets a decomposed task be verified on its own work. In an isolated run a worker's
+// tree holds only its own changes, so a command over the whole repository fails until every part
+// is merged, and parts that each wait for the others never are: a real swarm of three workers
+// deadlocked that way on `go test ./...` and only recovered when its manager folded the tasks
+// into one. Without a scope, or when the scope reaches the top of the repository or is wider than
+// maxVerifyDirs directories, {dirs} is ./... (everything, as before). A command without the token
+// is returned as it is.
+//
+// The scope is text a model wrote, and it ends up in a command line: an entry is used only if it
+// is a plain relative path inside the checkout made of letters, digits and . _ - + / (a glob
+// contributes the directory before its first wildcard), and nothing else is ever inserted. root is
+// the checkout the paths are looked up in: an entry that names a directory there is that
+// directory, any other entry is a file (or one that does not exist yet) and contributes its parent.
+func ExpandVerify(cmd, root string, files []string) string {
+	if !strings.Contains(cmd, verifyDirsToken) {
+		return cmd
+	}
+	dirs := verifyDirs(root, files)
+	arg := "./..."
+	if len(dirs) > 0 {
+		words := make([]string, len(dirs))
+		for i, d := range dirs {
+			words[i] = "./" + d
+		}
+		arg = strings.Join(words, " ")
+	}
+	return strings.ReplaceAll(cmd, verifyDirsToken, arg)
+}
+
+// verifyDirs is the sorted, distinct directories (relative, slash-separated, without "./") of a
+// scope; nil means the whole tree.
+func verifyDirs(root string, files []string) []string {
+	seen := map[string]bool{}
+	for _, f := range files {
+		f = strings.TrimSpace(f)
+		f = strings.TrimPrefix(f, "./")
+		if f == "" {
+			continue
+		}
+		if !plainScopePath(f) {
+			return nil // something odd in the scope: verify everything rather than guess
+		}
+		var dir string
+		if i := strings.IndexAny(f, "*?[{"); i >= 0 {
+			prefix := f[:i]
+			if strings.HasSuffix(prefix, "/") {
+				dir = strings.TrimSuffix(prefix, "/")
+			} else {
+				dir = path.Dir(prefix)
+			}
+		} else if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(f))); err == nil && st.IsDir() {
+			dir = strings.TrimSuffix(f, "/")
+		} else {
+			dir = path.Dir(f)
+		}
+		dir = path.Clean(dir)
+		if dir == "." || dir == "" {
+			return nil // the scope reaches the top of the repository
+		}
+		seen[dir] = true
+	}
+	if len(seen) == 0 || len(seen) > maxVerifyDirs {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// plainScopePath reports whether a scope entry is safe to put in a command line: relative, inside
+// the checkout, and made only of letters, digits and . _ - + / (and the wildcards a scope allows).
+func plainScopePath(f string) bool {
+	if strings.HasPrefix(f, "/") || strings.HasPrefix(f, "-") {
+		return false
+	}
+	for _, seg := range strings.Split(f, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	for _, r := range f {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case strings.ContainsRune("._-+/*?[]{},", r):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isolatedVerifyHint is added to the failure a worker in an isolated tree gets when the verify
+// command does not name its task's directories ({dirs}): the command then looks at the whole
+// repository, and the tree holds only that worker's changes, so a failure may be another task's
+// work that has not been merged yet. Without this a worker edits code that is not its own to make
+// the command pass, or loops on it (see ExpandVerify).
+func (s *Swarm) isolatedVerifyHint(m *member) string {
+	if m == nil || m.tree == nil || strings.Contains(s.cfg.VerifyCmd, verifyDirsToken) {
+		return ""
+	}
+	return " Your tree holds only your own changes, so failures in files you did not touch may be another task's work that is not merged yet: " +
+		"if the failing files are not yours, block the task and tell the manager rather than editing them."
 }

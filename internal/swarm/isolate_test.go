@@ -157,7 +157,41 @@ type isoOpts struct {
 	dirty    map[string]string
 	// queueVerify replaces the merge queue's verifier (the trees keep verifyDir).
 	queueVerify func(dir string) (string, int)
-	tweak       func(*Deps)
+	// dirsVerify makes the verify command "check-dirs {dirs}": every directory it names must hold
+	// done.txt, in the trees and in the merge queue alike (see checkDirs).
+	dirsVerify bool
+	tweak      func(*Deps)
+}
+
+// checkDirs is the verifier of dirsVerify: the words of cmd after its first are directories
+// (./a ./b, or ./... for every top-level directory), and each must hold done.txt in dir.
+func checkDirs(dir, cmd string) (string, int) {
+	words := strings.Fields(cmd)
+	if len(words) < 2 {
+		return "FAIL: no directories to check in " + cmd, 1
+	}
+	var want []string
+	for _, w := range words[1:] {
+		if w == "./..." {
+			for _, e := range dirEntries(dir) {
+				if st, err := os.Stat(filepath.Join(dir, e)); err == nil && st.IsDir() && !strings.HasPrefix(e, ".") {
+					want = append(want, e)
+				}
+			}
+			continue
+		}
+		want = append(want, strings.TrimPrefix(w, "./"))
+	}
+	var problems []string
+	for _, d := range want {
+		if !fileExists(filepath.Join(dir, filepath.FromSlash(d), "done.txt")) {
+			problems = append(problems, "FAIL: "+d+"/done.txt is missing")
+		}
+	}
+	if len(problems) > 0 {
+		return strings.Join(problems, "\n"), 1
+	}
+	return "ok", 0
 }
 
 // newIsoRig builds the repository, the workspace manager, the queue and the swarm.
@@ -181,7 +215,7 @@ func newIsoRig(t *testing.T, o isoOpts, fn func(ctx context.Context, c *rvCall) 
 	}
 	mgr := &workspace.Manager{Repo: git, Dir: trees, Prefix: "sleipnir/t", Snapshot: o.snapshot, OnEvent: workspace.EmitTo(log)}
 	qo := workspace.QueueOptions{}
-	if o.verify || o.queueVerify != nil {
+	if o.verify || o.queueVerify != nil || o.dirsVerify {
 		check := verifyDir
 		if o.queueVerify != nil {
 			check = o.queueVerify
@@ -189,6 +223,9 @@ func newIsoRig(t *testing.T, o isoOpts, fn func(ctx context.Context, c *rvCall) 
 		qo.VerifyCmd = "verify-dir"
 		qo.Verify = func(ctx context.Context, req workspace.VerifyRequest) workspace.VerifyResult {
 			out, code := check(req.Dir)
+			if o.dirsVerify {
+				out, code = checkDirs(req.Dir, req.Cmd)
+			}
 			return workspace.VerifyResult{Cmd: req.Cmd, ExitCode: code, Output: out}
 		}
 	}
@@ -198,11 +235,18 @@ func newIsoRig(t *testing.T, o isoOpts, fn func(ctx context.Context, c *rvCall) 
 	}
 	iso := &Isolation{Manager: mgr, Queue: q, Commit: o.commit}
 	cfg := o.cfg
-	if o.verify || o.queueVerify != nil {
+	if o.verify || o.queueVerify != nil || o.dirsVerify {
 		cfg.VerifyCmd = "verify-dir"
 		cfg.Verify = func(ctx context.Context, dir, cmd string) (string, int, error) {
 			out, code := verifyDir(dir)
 			return out, code, nil
+		}
+		if o.dirsVerify {
+			cfg.VerifyCmd = "check-dirs {dirs}"
+			cfg.Verify = func(ctx context.Context, dir, cmd string) (string, int, error) {
+				out, code := checkDirs(dir, cmd)
+				return out, code, nil
+			}
 		}
 	}
 	r := &isoRig{repo: repo, trees: trees, mgr: mgr, q: q, iso: iso, cwds: map[string]string{}, saw: map[string]string{}}
@@ -504,5 +548,34 @@ func TestIsolatedWorkersEditDisjointFilesAndTheirWorkIsMerged(t *testing.T) {
 		if len(r.log.OfType(typ)) == 0 {
 			t.Errorf("no %s events were logged", typ)
 		}
+	}
+}
+
+// A decomposed task set can be verified task by task in isolated trees when the verify command
+// names the task's own directories ({dirs}). Without it each worker's `go test ./...`-like command
+// sees only its own change and fails on the others' directories until they merge, which they cannot
+// do before they pass: a real swarm of three workers deadlocked that way.
+func TestScopedVerifyLetsDecomposedIsolatedTasksEachPassOnTheirOwnWork(t *testing.T) {
+	sc := script{
+		"be-1": {act(writeCall("a/done.txt", "ok\n")), act(doneCall("T1", "made a"))},
+		"fe-1": {act(writeCall("b/done.txt", "ok\n")), act(doneCall("T2", "made b"))},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 1}, dirsVerify: true,
+		files: map[string]string{"a/keep.txt": "a\n", "b/keep.txt": "b\n"}}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "make a", "a/**")
+	r.mustSpawn("frontend", "make b", "b/**")
+	for _, id := range []string{"T1", "T2"} {
+		r.waitStatus(id, StatusReview)
+	}
+	for _, id := range []string{"T1", "T2"} {
+		if tk := r.task(id); !strings.Contains(tk.Evidence, "merged into integration") {
+			t.Fatalf("%s evidence %q lacks the merge", id, tk.Evidence)
+		}
+	}
+	// The same swarm with a command over the whole repository never gets there: each worker's tree
+	// lacks the other's done.txt.
+	if out, code := checkDirs(r.cwd("be-1"), "check-dirs ./..."); code == 0 {
+		t.Fatalf("the whole-repository command passed in a worker's tree (%s): the scenario proves nothing", out)
 	}
 }

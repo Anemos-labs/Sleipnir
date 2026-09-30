@@ -68,6 +68,31 @@ its wire hash. What the misses look like (a conversation that alternates between
 first 640 tokens) and how the routing key behaved is in `docs/CACHE-DESIGN.md`. Criteria on hit ratios therefore need a rerun
 before they are read as a regression; drift anomalies, replay mismatches, failed tests and rollouts that end in `infra` do not.
 
+### One task per model
+
+The same task ("make the tests in `slug_test.go` pass without changing them, run them to check": a Go package, `accept-edits`,
+`go test` allowed) on each of the marketplace's nine models, one run each, the same day:
+
+| model | tests | requests | cost (US$) | note |
+|---|---|---|---|---|
+| `deepseek/deepseek-v4.1-flash` | pass | 4 to 6 | 0.00007 | the model of the runs above |
+| `deepseek/deepseek-v4-flash` | pass | 9 | 0.00017 | |
+| `google/gemma-4-31b-it` | pass | 6 | 0.00040 | 140 s for 6 requests |
+| `minimaxai/minimax-m2.7` | pass | 7 | 0.00022 | |
+| `openai/gpt-oss-20b` | pass | 11 | 0.00018 | write `heimdall/openai/gpt-oss-20b`: a model id that starts with the name of a built-in provider names that provider, and the error says so |
+| `qwen/qwen3.8-27b` | pass | 5 | 0.00109 | |
+| `qwen/qwen3.8-flash-next` | pass | 5 | 0.00033 | |
+| `zai-org/glm-5.3-flash` | pass | 4 | 0.00022 | no cache reads reported |
+| `openbmb/minicpm5-2b` | pass | 35 | 0.00096 | its first run made 200 requests ($0.0079) repeating two refused commands; refusals that say nobody can approve, and the repetition guard, are what changed |
+
+A real swarm on the same marketplace (a manager, three workers in worktrees and a mailman on a second model, twelve
+packages to fix) started and spawned its workers, and then met an outage: the provider behind seven of the nine models answered
+`502 provider_unavailable` (`error code: 1033`, a tunnel to the origin that was down) to every request for more than ten
+minutes. Each request was retried six times over about three minutes and then its agent failed, the manager included; the
+run said so, and the workers' unmerged trees were kept (`The agents made no changes that reached the integration branch. 3 worker
+tree(s) still hold work ...`). That is the harness doing what it should when the endpoint is gone; it is not a measurement of a
+swarm's speed.
+
 ## Recording a baseline
 
 Commit `validation/<date>-<model>.json` (written by the script) when you change anything in `internal/kv`, the

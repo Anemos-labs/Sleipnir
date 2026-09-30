@@ -718,7 +718,8 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if !ok || t.Owner != m.id || t.Status != StatusDoing || t.Rev != rev {
 			continue
 		}
-		vr := s.verify(ctx, m.dir)
+		vr := s.verify(ctx, m.dir, t.Files)
+		vcmd := ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files)
 		if ctx.Err() != nil { // the swarm is stopping: nothing failed
 			s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
 			continue
@@ -769,11 +770,11 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			m.mu.Unlock()
 			if tries <= maxGateTries {
 				s.notify(m.id, "request", fmt.Sprintf("Not done: you stopped without finishing %s and verification `%s` failed (exit %d). Fix the failures, then call task done.\n%s",
-					id, cleanText(s.cfg.VerifyCmd, 80), vr.code, tailText(vr.out, 1500)))
+					id, cleanText(vcmd, 80), vr.code, tailText(vr.out, 1500)))
 				continue
 			}
 			if nt, applied := s.Board.Requeue(m.id, id, rev, fmt.Sprintf("verification failed %d times", tries), true, s.cfg.MaxAttempts); applied {
-				notes = append(notes, s.requeueLine(m.id, nt, fmt.Sprintf("verification `%s` kept failing", cleanText(s.cfg.VerifyCmd, 60))))
+				notes = append(notes, s.requeueLine(m.id, nt, fmt.Sprintf("verification `%s` kept failing", cleanText(vcmd, 60))))
 			}
 		}
 	}

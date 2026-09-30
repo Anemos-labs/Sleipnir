@@ -349,6 +349,7 @@ type errorEnvelope struct {
 		Metadata struct {
 			ErrorType       string `json:"error_type"`
 			ProviderMessage string `json:"provider_message"`
+			ProviderName    string `json:"provider_name"`
 		} `json:"metadata"`
 	} `json:"error"`
 }
@@ -366,6 +367,11 @@ func mapHTTPError(status int, h http.Header, body []byte) *provider.Error {
 	}
 	if pm := env.Error.Metadata.ProviderMessage; pm != "" {
 		msg += " (" + pm + ")"
+	}
+	// A marketplace names the provider whose attempt failed: with several behind one model id, that
+	// is what tells a person to route around it (a whole provider was down for a real swarm run).
+	if pn := env.Error.Metadata.ProviderName; pn != "" {
+		msg += " [provider " + pn + "]"
 	}
 	// The text is the endpoint's, and it goes to the event log, the terminal and
 	// possibly to other agents: bounded, and stripped of control characters,

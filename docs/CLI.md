@@ -159,7 +159,7 @@ Usage of chat:
   -verbose
         print notices and tool errors
   -verify string
-        swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)
+        swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'
 ```
 <!-- /flags -->
 
@@ -230,7 +230,7 @@ flags:
   -verbose
         print notices and tool errors
   -verify string
-        swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)
+        swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'
 ```
 <!-- /flags -->
 

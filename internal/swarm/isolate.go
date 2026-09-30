@@ -262,7 +262,7 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task) integration {
 		return s.notCommitted(ctx, err)
 	}
 	res, err := iso.Queue.Submit(ctx, workspace.Submission{
-		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: s.cfg.VerifyCmd, Message: subject,
+		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), Message: subject,
 		Scope: t.Files, EnforceScope: len(t.Files) > 0,
 	})
 	if err != nil {

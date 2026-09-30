@@ -39,7 +39,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
-	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
+	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	isolation, commit := isolationFlags(fs)
 	mailman := mailmanFlag(fs)
 	roleModels := kvFlags{}

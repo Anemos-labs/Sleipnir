@@ -64,7 +64,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	swarmN := fs.Int("swarm", 0, "run a manager with up to N workers instead of a single agent (config swarm.max_agents is the ceiling)")
 	maxSteps := fs.Int("max-steps", 0, "step limit for a single agent (default 200)")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
-	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
+	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	isolation, commit := isolationFlags(fs)
 	mailman := mailmanFlag(fs)
 	asJSON := fs.Bool("json", false, "stream events as JSON lines on stdout")

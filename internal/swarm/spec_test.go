@@ -315,10 +315,10 @@ func TestAcceptReRunsTheVerifier(t *testing.T) {
 // A verifier configured without a runner can never pass.
 func TestVerifierWithoutARunnerNeverPasses(t *testing.T) {
 	s := New(Config{VerifyCmd: "go test ./..."}, Deps{}, nil)
-	if vr := s.verify(context.Background(), "."); vr.ok || !vr.infra {
+	if vr := s.verify(context.Background(), ".", nil); vr.ok || !vr.infra {
 		t.Fatalf("verify = %+v", vr)
 	}
-	if vr := New(Config{}, Deps{}, nil).verify(context.Background(), "."); !vr.ok {
+	if vr := New(Config{}, Deps{}, nil).verify(context.Background(), ".", nil); !vr.ok {
 		t.Fatal("no verifier configured must pass")
 	}
 }
@@ -340,7 +340,7 @@ func TestVerifierParallelismIsBounded(t *testing.T) {
 	}}, Deps{}, nil)
 	done := make(chan struct{})
 	for i := 0; i < 8; i++ {
-		go func() { s.verify(context.Background(), "."); done <- struct{}{} }()
+		go func() { s.verify(context.Background(), ".", nil); done <- struct{}{} }()
 	}
 	for i := 0; i < 8; i++ {
 		<-done

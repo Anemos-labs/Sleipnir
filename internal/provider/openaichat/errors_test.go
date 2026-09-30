@@ -84,6 +84,14 @@ func TestErrorClassificationSurvivesSanitising(t *testing.T) {
 	if pe.Message != "boom (upstream said no)" {
 		t.Fatalf("%q", pe.Message)
 	}
+	// A marketplace says which provider failed.
+	pe = mapHTTPError(502, http.Header{}, []byte(`{"error":{"code":502,"message":"The provider returned an error","metadata":{"provider_status":530,"provider_message":"error code: 1033","provider_name":"Consensus Protocol","error_type":"provider_unavailable"}}}`))
+	if pe.Kind != provider.ErrServer || pe.Message != "The provider returned an error (error code: 1033) [provider Consensus Protocol]" {
+		t.Fatalf("%v %q", pe.Kind, pe.Message)
+	}
+	// What it says is the endpoint's, so it is cleaned like the rest of the text.
+	pe = mapHTTPError(502, http.Header{}, []byte(`{"error":{"message":"down","metadata":{"provider_name":"Evil`+"\u001b[31m"+` Corp"}}}`))
+	clean(t, pe.Message)
 }
 
 func TestInBandErrorTextIsSanitised(t *testing.T) {

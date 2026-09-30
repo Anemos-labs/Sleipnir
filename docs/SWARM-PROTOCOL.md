@@ -88,7 +88,7 @@ create (manager)            todo
 claim / spawn               doing   (owner set, dependencies and scope checked, leases acquired lazily on write)
 worker: done(text)          --> the HARNESS runs the gate:
                                  1. evidence: files the harness saw the agent edit, commands it ran and their exit codes
-                                 2. verifier: the configured command (--verify "go test ./...") in the agent's workdir
+                                 2. verifier: the configured command (--verify "go test {dirs}") in the agent's workdir
                               pass  -> review (result = the model's text; evidence = what the harness observed)
                               fail  -> doing (the verifier output is returned to the worker, not to the manager)
 worker stops without done   the same gate runs on its behalf; on failure the worker is sent back to work with the
@@ -116,6 +116,17 @@ first and either may veto. The agent loop bounds vetoes per run (three), so a ma
 released: the run ends, its result is followed by a `[harness] Unfinished when the manager stopped: ...` line, and the
 person gets a notice (`swarm.hold` and `swarm.unfinished` events). A run that was cancelled, whose budget is spent, or
 whose swarm is shut down is never held (those paths end before, or without, consulting the guard).
+
+**Verifying a task on its own work.** `--verify` is one command for every task. In an isolated run a worker's tree holds only its
+own changes, so a command over the whole repository (`go test ./...`) fails on every directory that belongs to a task not yet
+merged, and tasks that each wait for the others never merge: a real swarm of three workers deadlocked that way until its manager
+folded them into one task. `{dirs}` in the command stands for the directories the task's scope covers (`go test {dirs}` becomes
+`go test ./p01 ./p05`; a task with no scope, or one whose scope reaches the top of the repository, gets `./...`), for the worker's
+gate and for the merge queue's check alike, so each task is verified on its own directories and the merged result on the same
+ones. Only plain relative paths are ever inserted (the scope is text a model wrote), and a command without the token is run as it
+is. A worker in an isolated tree whose command has no `{dirs}` is told, when it fails, that its tree holds only its own changes
+and that failures in files it did not touch may be another task's work: it should block the task and tell the manager instead of
+editing them.
 
 Rules: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
