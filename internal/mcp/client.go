@@ -777,7 +777,13 @@ func (c *Client) notify(ctx context.Context, method string, params any) error {
 	if err != nil {
 		return err
 	}
-	return c.t.Send(ctx, msg)
+	if err := c.t.Send(ctx, msg); err != nil {
+		if errors.Is(err, ErrClosed) {
+			return c.endedErr(ctx, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // ---- protocol ----

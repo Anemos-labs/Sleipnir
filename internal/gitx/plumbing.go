@@ -93,6 +93,121 @@ func (r *Repo) CommitsOnlyOn(ctx context.Context, tip, excludeBranchGlob string,
 	return n, nil
 }
 
+// ChangedEntry is a tree entry that a change added or modified.
+type ChangedEntry struct {
+	Path string
+	// Mode is the entry's new mode: "100644" or "100755" for files, "120000" for a
+	// symbolic link, "160000" for a gitlink (a pointer to a commit of another
+	// repository). OldMode is "000000" when the entry is new.
+	Mode, OldMode string
+	// SHA is the object the entry names.
+	SHA string
+	// Size is the blob's size in bytes; -1 for gitlinks and for objects that are not
+	// available.
+	Size int64
+}
+
+// ChangedEntries lists what the change from base to to added or modified (deleted
+// entries are left out; renames are not detected, so a moved file is a new entry),
+// with the size of each blob. It exists so that callers can refuse what must not
+// enter history - files that are too large, gitlinks that point nowhere - by
+// looking at what was committed rather than at what is lying in a work tree. At
+// most max entries are returned (default 100000); truncated says there were more.
+func (r *Repo) ChangedEntries(ctx context.Context, base, to string, max int) (entries []ChangedEntry, truncated bool, err error) {
+	for _, rev := range []string{base, to} {
+		if err := validateRev("diff-tree", rev); err != nil {
+			return nil, false, err
+		}
+	}
+	if max <= 0 {
+		max = 100000
+	}
+	out, err := r.run(ctx, call{
+		args:   []string{"diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-ext-diff", "--diff-filter=AMT", "--end-of-options", base, to},
+		maxOut: 64 << 20, killOnCap: true,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	toks := strings.Split(string(out.stdout), "\x00")
+	truncated = out.truncated
+	for i := 0; i+1 < len(toks); i += 2 {
+		meta := strings.Fields(strings.TrimPrefix(toks[i], ":"))
+		if len(meta) < 5 {
+			break
+		}
+		if len(entries) >= max {
+			truncated = true
+			break
+		}
+		entries = append(entries, ChangedEntry{Path: toks[i+1], OldMode: meta[0], Mode: meta[1], SHA: meta[3], Size: -1})
+	}
+	// Sizes, in one process for all of them.
+	var want strings.Builder
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if e.Mode != "160000" && !seen[e.SHA] {
+			seen[e.SHA] = true
+			want.WriteString(e.SHA + "\n")
+		}
+	}
+	if len(seen) == 0 {
+		return entries, truncated, nil
+	}
+	sizes, err := r.run(ctx, call{
+		args:  []string{"cat-file", "--batch-check=%(objectname) %(objectsize)"},
+		stdin: strings.NewReader(want.String()), maxOut: 64 << 20,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	size := make(map[string]int64, len(seen))
+	for _, line := range strings.Split(string(sizes.stdout), "\n") {
+		sha, n, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		if v, err := strconv.ParseInt(n, 10, 64); err == nil {
+			size[sha] = v
+		}
+	}
+	for i := range entries {
+		if v, ok := size[entries[i].SHA]; ok && entries[i].Mode != "160000" {
+			entries[i].Size = v
+		}
+	}
+	return entries, truncated, nil
+}
+
+// SubmodulePaths lists the paths .gitmodules declares as submodules at rev. A
+// revision without a .gitmodules file declares none.
+func (r *Repo) SubmodulePaths(ctx context.Context, rev string) ([]string, error) {
+	if err := validateRev("config", rev); err != nil {
+		return nil, err
+	}
+	ls, err := r.run(ctx, call{args: []string{"ls-tree", "-z", "--name-only", "--end-of-options", rev, "--", ".gitmodules"}})
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(strings.ReplaceAll(ls.text(), "\x00", "")) == "" {
+		return nil, nil
+	}
+	out, err := r.run(ctx, call{
+		args:   []string{"config", "--blob", rev + ":.gitmodules", "-z", "--get-regexp", `^submodule\..*\.path$`},
+		okExit: []int{1}, // no match
+	})
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, entry := range strings.Split(string(out.stdout), "\x00") {
+		if _, val, ok := strings.Cut(entry, "\n"); ok && val != "" {
+			paths = append(paths, val)
+		}
+	}
+	return paths, nil
+}
+
 // SparseCheckoutSet restricts this work tree to the given directories (cone
 // mode: everything under them plus the files at the repository root) and
 // materializes the change. Git records the setting per worktree, which makes it

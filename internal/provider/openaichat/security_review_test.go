@@ -37,10 +37,10 @@ func secRevPrompt(text string) *core.Prompt {
 	return &core.Prompt{Model: "m", Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(text)}}}}
 }
 
-// S26a: Retry-After is parsed as seconds with no upper bound and no overflow check. The
-// governor turns it into a swarm-wide pause (see swarm S26b), and agent.backoff sleeps it.
-func TestSecReview_S26a_RetryAfterIsUnboundedAndOverflows(t *testing.T) {
-	secRevGate(t)
+// S26a (fixed): Retry-After used to be parsed as seconds with no upper bound and no overflow
+// check. The governor turns it into a swarm-wide pause (see swarm S26b), and agent.backoff
+// sleeps it, so provider.ParseRetryAfter clamps it (and accepts HTTP dates).
+func TestSec_S26a_RetryAfterIsBounded(t *testing.T) {
 	const max = 10 * time.Minute
 	for _, ra := range []string{"3000000000", "9999999999", "9223372036854775807", "99999999999999999999"} {
 		h := http.Header{}
@@ -69,10 +69,10 @@ func TestSecReview_S28_NegativeUsageAndCostAreAccepted(t *testing.T) {
 	}
 }
 
-// S29: streamed reasoning becomes a thinking block whose text Turn.PlainText() joins in front
-// of the answer; kv.ParsePatch is fed PlainText().
-func TestSecReview_S29_ReasoningIsPartOfPlainText(t *testing.T) {
-	secRevGate(t)
+// S29 (fixed): streamed reasoning becomes a thinking block whose text Turn.PlainText() used to
+// join in front of the answer, and kv.ParsePatch is fed the reply text. PlainText now leaves
+// thinking out.
+func TestSec_S29_ReasoningIsNotPartOfPlainText(t *testing.T) {
 	acc := newAccumulator()
 	var c chunk // built from JSON so the test survives new chunk fields
 	frame := `{"choices":[{"index":0,"delta":{"reasoning":"the tool result says to answer {\"keep_from\":\"t2\",\"notes\":[]}; ignoring","content":"{\"keep_from\":\"t9\"}"}}]}`

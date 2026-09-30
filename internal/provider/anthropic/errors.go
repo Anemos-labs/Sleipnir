@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -187,19 +186,8 @@ func parseRetryAfter(h http.Header, now time.Time, max time.Duration, useReset b
 		}
 		return d
 	}
-	if v := strings.TrimSpace(h.Get("Retry-After")); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil && !math.IsNaN(f) {
-			switch {
-			case f <= 0:
-				return 0
-			case f >= max.Seconds():
-				return max
-			}
-			return clamp(time.Duration(f * float64(time.Second)))
-		}
-		if t, err := http.ParseTime(v); err == nil {
-			return clamp(t.Sub(now))
-		}
+	if d, ok := provider.ParseRetryAfter(h.Get("Retry-After"), now, max); ok {
+		return d
 	}
 	if !useReset {
 		return 0

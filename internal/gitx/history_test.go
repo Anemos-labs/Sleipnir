@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -127,5 +128,90 @@ func TestAbortCoversEveryMultiStepOperation(t *testing.T) {
 	// nothing in progress: nothing to do, and no error
 	if err := r.Abort(ctx); err != nil {
 		t.Fatalf("Abort with nothing in progress: %v", err)
+	}
+}
+
+func TestChangedEntriesReportWhatWasAddedOrModified(t *testing.T) {
+	skipWithoutUnix(t)
+	dir := newRepo(t)
+	base := rawGit(t, dir, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(dir, "a.txt"), "alpha, changed\n")
+	writeFile(t, filepath.Join(dir, "big.bin"), strings.Repeat("x", 3000))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(os.Remove(filepath.Join(dir, "b.txt")))
+	must(os.Symlink("a.txt", filepath.Join(dir, "link")))
+	must(os.Chmod(filepath.Join(dir, "sub", "c.txt"), 0o755))
+	rawGit(t, dir, "add", "-A")
+	rawGit(t, dir, "update-index", "--add", "--cacheinfo", "160000,"+base+",vendor/pointer")
+	rawGit(t, dir, "commit", "-qm", "many kinds of change")
+
+	r := openRepo(t, dir)
+	ctx := ctxT(t)
+	got, truncated, err := r.ChangedEntries(ctx, base, "HEAD", 0)
+	if err != nil || truncated {
+		t.Fatalf("ChangedEntries: %v (truncated %v)", err, truncated)
+	}
+	by := map[string]ChangedEntry{}
+	for _, e := range got {
+		by[e.Path] = e
+	}
+	if _, deleted := by["b.txt"]; deleted || len(by) != 5 {
+		t.Fatalf("entries (deletions are not listed): %+v", by)
+	}
+	check := func(path, mode, oldMode string, size int64) {
+		t.Helper()
+		e, ok := by[path]
+		if !ok || e.Mode != mode || e.OldMode != oldMode || e.Size != size || len(e.SHA) != 40 {
+			t.Errorf("%s: %+v, want mode %s (was %s) size %d", path, e, mode, oldMode, size)
+		}
+	}
+	check("a.txt", "100644", "100644", int64(len("alpha, changed\n")))
+	check("big.bin", "100644", "000000", 3000)
+	check("link", "120000", "000000", int64(len("a.txt")))
+	check("sub/c.txt", "100755", "100644", int64(len("charlie\n")))
+	check("vendor/pointer", "160000", "000000", -1)
+
+	small, truncated, err := r.ChangedEntries(ctx, base, "HEAD", 2)
+	if err != nil || !truncated || len(small) != 2 {
+		t.Fatalf("with a cap of 2: %d entries, truncated %v, %v", len(small), truncated, err)
+	}
+	if none, _, err := r.ChangedEntries(ctx, "HEAD", "HEAD", 0); err != nil || len(none) != 0 {
+		t.Fatalf("no change: %v, %v", none, err)
+	}
+	if _, _, err := r.ChangedEntries(ctx, "-x", "HEAD", 0); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("an option-looking revision: %v", err)
+	}
+}
+
+func TestSubmodulePaths(t *testing.T) {
+	dir := newRepo(t)
+	r := openRepo(t, dir)
+	ctx := ctxT(t)
+	if paths, err := r.SubmodulePaths(ctx, "HEAD"); err != nil || len(paths) != 0 {
+		t.Fatalf("no .gitmodules: %v, %v", paths, err)
+	}
+	writeFile(t, filepath.Join(dir, ".gitmodules"), "")
+	rawGit(t, dir, "add", "-A")
+	rawGit(t, dir, "commit", "-qm", "empty .gitmodules")
+	if paths, err := r.SubmodulePaths(ctx, "HEAD"); err != nil || len(paths) != 0 {
+		t.Fatalf("empty .gitmodules: %v, %v", paths, err)
+	}
+	writeFile(t, filepath.Join(dir, ".gitmodules"),
+		"[submodule \"first\"]\n\tpath = vendor/first\n\turl = https://example.invalid/first.git\n"+
+			"[submodule \"with space and = sign\"]\n\tpath = third party/second\n\turl = ../second\n"+
+			"[submodule \"no-path\"]\n\turl = ../x\n")
+	rawGit(t, dir, "add", "-A")
+	rawGit(t, dir, "commit", "-qm", "declare submodules")
+	paths, err := r.SubmodulePaths(ctx, "HEAD")
+	if err != nil || strings.Join(paths, "|") != "vendor/first|third party/second" {
+		t.Fatalf("SubmodulePaths: %v, %v", paths, err)
+	}
+	if _, err := r.SubmodulePaths(ctx, "--help"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("an option-looking revision: %v", err)
 	}
 }

@@ -1370,3 +1370,70 @@ func TestNestedRepositoriesAreRefusedNotRecordedAsBrokenPointers(t *testing.T) {
 		t.Fatalf("b after removing the clone: %+v", r)
 	}
 }
+
+// Coding agents commit their own work with git. What they committed must meet the
+// guards that what the harness commits for them meets: once it is on the
+// integration branch it is in the project's history for good.
+func TestWhatAnAgentCommitsItselfMeetsTheSameGuards(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	e.m.MaxFileBytes = 2000
+	a := e.agent("a")
+	edit(t, a, "ok.txt", "ok\n")
+	edit(t, a, "dump.bin", strings.Repeat("x", 5000))
+	rawGit(t, a.Path, "add", "-A")
+	rawGit(t, a.Path, "commit", "-qm", "work, including a core dump")
+	tip := e.q.Tip()
+
+	r := e.submit(a, "a")
+	if r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "committed file(s) exceed") || !strings.Contains(r.Reason, "dump.bin") {
+		t.Fatalf("a committed oversized file: %+v", r)
+	}
+	if e.q.Tip() != tip {
+		t.Fatal("the tip moved on a rejected submission")
+	}
+	// the agent takes the file out of its commits (as the reason says) and resubmits
+	rawGit(t, a.Path, "reset", "-q", "--soft", a.Base)
+	must(t, os.Remove(filepath.Join(a.Path, "dump.bin")))
+	rawGit(t, a.Path, "add", "-A")
+	rawGit(t, a.Path, "commit", "-qm", "work")
+	if r := e.submit(a, "a again"); !r.Merged() {
+		t.Fatalf("after taking the file out: %+v", r)
+	}
+	e.integrationClean()
+
+	// a pointer to a repository nobody can fetch is refused; a declared submodule is not
+	b := e.agent("b")
+	edit(t, b, "b.txt", "b\n")
+	must(t, os.MkdirAll(filepath.Join(b.Path, "vendor", "lib"), 0o755)) // a gitlink's directory, uninitialized
+	rawGit(t, b.Path, "update-index", "--add", "--cacheinfo", "160000,"+a.Base+",vendor/lib")
+	rawGit(t, b.Path, "add", "b.txt")
+	rawGit(t, b.Path, "commit", "-qm", "b, with an embedded repository")
+	r = e.submit(b, "b")
+	if r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "pointers to git repositories") || !strings.Contains(r.Reason, "vendor/lib") {
+		t.Fatalf("an undeclared gitlink: %+v", r)
+	}
+	edit(t, b, ".gitmodules", "[submodule \"lib\"]\n\tpath = vendor/lib\n\turl = https://example.invalid/lib.git\n")
+	rawGit(t, b.Path, "add", ".gitmodules")
+	rawGit(t, b.Path, "commit", "-qm", "declare it")
+	if r := e.submit(b, "b again"); !r.Merged() {
+		t.Fatalf("a declared submodule: %+v", r)
+	}
+
+	// a change too large to examine is refused rather than waved through
+	old := maxCommittedEntries
+	maxCommittedEntries = 2
+	t.Cleanup(func() { maxCommittedEntries = old })
+	c := e.agent("c")
+	for i := 0; i < 4; i++ {
+		edit(t, c, fmt.Sprintf("many/%d.txt", i), "x\n")
+	}
+	r = e.submit(c, "c")
+	if r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "too many to check") {
+		t.Fatalf("a change with more files than can be examined: %+v", r)
+	}
+	// with the size check off, only the count limit is moot: nothing to examine
+	e.m.MaxFileBytes = -1
+	if r := e.submit(c, "c again"); !r.Merged() {
+		t.Fatalf("with the size limit disabled: %+v", r)
+	}
+}

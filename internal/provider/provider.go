@@ -11,6 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
@@ -193,6 +197,45 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error { return e.Err }
+
+// DefaultMaxRetryAfter caps how long a server may ask a client to wait.
+const DefaultMaxRetryAfter = 2 * time.Minute
+
+// ParseRetryAfter reads a Retry-After value: whole or decimal seconds, or an HTTP
+// date. The result is clamped to [0, max] (DefaultMaxRetryAfter when max <= 0):
+// the agent trusts this number over its own backoff, so a misconfigured gateway
+// or a daily quota asking for hours must not be able to park an agent, and a
+// huge number must not overflow a Duration. ok is false when v holds no usable
+// value.
+func ParseRetryAfter(v string, now time.Time, max time.Duration) (d time.Duration, ok bool) {
+	if max <= 0 {
+		max = DefaultMaxRetryAfter
+	}
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, false
+	}
+	if f, err := strconv.ParseFloat(v, 64); err == nil && !math.IsNaN(f) {
+		switch {
+		case f <= 0:
+			return 0, true
+		case f >= max.Seconds():
+			return max, true
+		}
+		return time.Duration(f * float64(time.Second)), true
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		return min(max, max0(t.Sub(now))), true
+	}
+	return 0, false
+}
+
+func max0(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	return d
+}
 
 // Retryable reports whether the same request may succeed if repeated.
 func (e *Error) Retryable() bool {

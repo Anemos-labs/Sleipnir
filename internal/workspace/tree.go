@@ -99,17 +99,31 @@ func (t *Tree) DiffWith(ctx context.Context, opts gitx.DiffOptions) (*gitx.Diff,
 	return t.repo.Diff(ctx, t.Base, opts)
 }
 
-// TooLargeError lists files refused by Commit for exceeding Manager.MaxFileBytes.
+// TooLargeError lists files refused for exceeding Manager.MaxFileBytes, or a
+// change refused for touching more files than can be checked.
 type TooLargeError struct {
 	Files []string
 	Limit int64
+	// Committed says the files are already in commits of the tree (the agent ran git
+	// commit itself), so removing them from the work tree is not enough.
+	Committed bool
+	// TooMany, when non-zero, means the change touches more than this many files and
+	// was refused unexamined.
+	TooMany int
 }
 
 func (e *TooLargeError) Error() string {
+	if e.TooMany > 0 {
+		return fmt.Sprintf("workspace: the change touches more than %d files, too many to check against the %d byte limit", e.TooMany, e.Limit)
+	}
 	list := e.Files
 	more := ""
 	if len(list) > 5 {
 		list, more = list[:5], fmt.Sprintf(" and %d more", len(e.Files)-5)
+	}
+	if e.Committed {
+		return fmt.Sprintf("workspace: %d committed file(s) exceed the %d byte limit (%s%s): take them out of the commits (for example git reset --soft to the starting point, unstage them, and commit again) or raise MaxFileBytes",
+			len(e.Files), e.Limit, strings.Join(list, ", "), more)
 	}
 	return fmt.Sprintf("workspace: %d file(s) exceed the %d byte limit (%s%s): remove them, add them to .gitignore, or raise MaxFileBytes",
 		len(e.Files), e.Limit, strings.Join(list, ", "), more)

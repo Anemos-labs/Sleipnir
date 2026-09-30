@@ -150,10 +150,17 @@ func (t Turn) ToolCalls() []Block {
 	return out
 }
 
-// PlainText concatenates all textual content of the turn.
+// PlainText concatenates the textual content of the turn: what the model said
+// and what tools returned. Reasoning is not included: it is neither an answer nor
+// safe to parse as one (a model may quote hostile text inside its reasoning, and
+// a parser that scans for the first JSON object would take it), so callers that
+// want it read the thinking blocks themselves.
 func (t Turn) PlainText() string {
 	var sb strings.Builder
 	for _, b := range t.Blocks {
+		if b.Kind == BlockThinking {
+			continue
+		}
 		sb.WriteString(b.PlainText())
 	}
 	return sb.String()

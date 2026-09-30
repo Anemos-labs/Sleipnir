@@ -42,13 +42,14 @@ func bestOf(reps int, fn func()) time.Duration {
 // one bad sample says more about the neighbours than about the code.
 func requireLinear(t *testing.T, name string, n int, fn func(n int)) {
 	t.Helper()
+	reps := 3
 	if underRace {
-		n = max(n/4, 1)
+		n, reps = max(n/4, 1), 2
 	}
 	var small, large time.Duration
 	for attempt := 0; attempt < 2; attempt++ {
-		small = bestOf(3, func() { fn(n) })
-		large = bestOf(3, func() { fn(4 * n) })
+		small = bestOf(reps, func() { fn(n) })
+		large = bestOf(reps, func() { fn(4 * n) })
 		t.Logf("%s: n=%d %v, 4n %v", name, n, small, large)
 		if large <= 100*time.Millisecond || large <= 8*small {
 			break

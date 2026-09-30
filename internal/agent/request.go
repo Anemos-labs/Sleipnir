@@ -17,6 +17,9 @@ import (
 // RetryBase is the first backoff step; tests shrink it.
 var RetryBase = time.Second
 
+// MaxRetryAfter caps how long a server's Retry-After may hold one request back.
+var MaxRetryAfter = provider.DefaultMaxRetryAfter
+
 const maxAttempts = 6
 
 // request renders the agent's prompt and performs one model call, with retry,
@@ -463,6 +466,9 @@ func backoff(attempt int, retryAfter time.Duration) time.Duration {
 	}
 	jitter := 0.75 + rand.Float64()*0.5
 	d = time.Duration(float64(d) * jitter)
+	if retryAfter > MaxRetryAfter {
+		retryAfter = MaxRetryAfter // providers clamp too; the loop does not rely on it
+	}
 	if retryAfter > d {
 		d = retryAfter
 	}

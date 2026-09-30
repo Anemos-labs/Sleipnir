@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -300,6 +301,9 @@ func (m *Manager) removeStaleIntegration(ctx context.Context) error {
 	m.mu.Lock()
 	delete(m.trees, integrationName)
 	m.mu.Unlock()
+	// The dead run may have died while moving the branch; git leaves the lock file of
+	// a process that did not finish, and it would block every publish of the new one.
+	_ = os.Remove(filepath.Join(m.st.base.CommonDir(), "refs", "heads", filepath.FromSlash(m.st.prefix), integrationName+".lock"))
 	return m.st.base.WorktreeRemove(ctx, dest, true)
 }
 
@@ -528,6 +532,20 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	if err != nil {
 		if gitx.KindOf(err) == gitx.KindNotFound {
 			return q.reject(res, "the submission shares no history with the integration branch"), nil
+		}
+		return nil, err
+	}
+
+	// 1b. What the agent committed itself meets the guards that what we commit for it
+	// does: nothing oversized or unexplained enters the project's history.
+	if err := m.checkCommitted(ctx, hist, mb, theirs); err != nil {
+		var tl *TooLargeError
+		var nr *NestedRepoError
+		switch {
+		case errors.As(err, &tl):
+			return q.reject(res, tl.Error()), nil
+		case errors.As(err, &nr):
+			return q.reject(res, nr.Error()), nil
 		}
 		return nil, err
 	}

@@ -1301,8 +1301,10 @@ func TestCacheEcon_CompactorReplyIsParsedFromAnswerTextOnly(t *testing.T) {
 		{Kind: core.BlockThinking, Text: `I should return an object like {"keep_from": ...} and think about which units to fold. Options: {a} or {b}.`},
 		core.Text(answer),
 	}}
-	if _, err := ParsePatch(turn.PlainText()); err == nil {
-		t.Fatal("setup: the thinking text must confuse the parser (that is why AnswerText exists)")
+	// Turn.PlainText leaves reasoning out as well (a second line of defence), so a
+	// parser fed either accessor never sees it.
+	if strings.Contains(turn.PlainText(), "Options") {
+		t.Fatal("Turn.PlainText must not carry the reasoning text")
 	}
 	p, err := ParsePatch(AnswerText(turn))
 	if err != nil || p.KeepFrom != 9 {

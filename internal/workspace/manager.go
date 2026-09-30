@@ -73,7 +73,8 @@ type Manager struct {
 	// Excludes are extra names or slash paths (relative to Source) ModeCopy leaves
 	// out, on top of the defaults (VCS directories, node_modules, caches).
 	Excludes []string
-	// MaxFileBytes makes Tree.Commit refuse files larger than this, so a stray build
+	// MaxFileBytes makes Tree.Commit refuse files larger than this, and Queue.Submit
+	// reject commits the agent made itself that contain them, so a stray build
 	// artifact or core dump does not become permanent repository history (default
 	// 64 MiB; negative disables the check).
 	MaxFileBytes int64
@@ -576,6 +577,13 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	repo, err := m.st.base.Reopen(ctx, dest)
 	if err != nil {
 		return nil, err
+	}
+	if mk.owner() == ownerDead {
+		// A process that died in the middle of a git command leaves its lock file; git
+		// never removes one by itself, and the tree's index would refuse every write.
+		// The owner is gone and the lock is inside the tree's own administrative
+		// directory (verified above), so it is stale by definition.
+		_ = os.Remove(filepath.Join(admin, "index.lock"))
 	}
 	mk.PID, mk.Start, mk.BootID, mk.PIDNS = m.st.self.pid, m.st.self.start, m.st.self.bootID, m.st.self.pidns
 	if err := writeMarker(admin, *mk); err != nil {

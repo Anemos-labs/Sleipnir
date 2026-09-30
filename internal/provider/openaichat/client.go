@@ -281,10 +281,8 @@ func mapHTTPError(status int, h http.Header, body []byte) *provider.Error {
 		msg += " (" + pm + ")"
 	}
 	e.Message = msg
-	if ra := h.Get("Retry-After"); ra != "" {
-		if secs, err := strconv.Atoi(strings.TrimSpace(ra)); err == nil {
-			e.RetryAfter = time.Duration(secs) * time.Second
-		}
+	if d, ok := provider.ParseRetryAfter(h.Get("Retry-After"), time.Now(), 0); ok {
+		e.RetryAfter = d
 	}
 	lower := strings.ToLower(msg)
 	switch {

@@ -265,11 +265,17 @@ func (t *StreamTransport) writeLoop() {
 			wd := time.AfterFunc(t.opts.WriteTimeout, func() { t.finish(errWriteStuck) })
 			_, err := t.w.Write(m.data)
 			wd.Stop()
-			m.done <- err
 			if err != nil {
-				t.finish(fmt.Errorf("writing to server: %w", err))
+				// A failed write ends the transport. The sender is told in the same
+				// terms as any other send on a finished transport, so that it waits
+				// for the owner's account of the end (a child's exit status and last
+				// words) instead of reporting a bare "broken pipe".
+				cause := fmt.Errorf("writing to server: %w", err)
+				m.done <- &closedError{cause: cause}
+				t.finish(cause)
 				return
 			}
+			m.done <- nil
 		}
 	}
 }

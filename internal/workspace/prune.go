@@ -313,6 +313,8 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 // .gitignore.
 type NestedRepoError struct {
 	Paths []string
+	// Committed says the pointers are already in commits of the tree.
+	Committed bool
 }
 
 func (e *NestedRepoError) Error() string {
@@ -320,11 +322,73 @@ func (e *NestedRepoError) Error() string {
 	if len(list) > 5 {
 		list, more = list[:5], fmt.Sprintf(" and %d more", len(e.Paths)-5)
 	}
+	if e.Committed {
+		return fmt.Sprintf("workspace: %d path(s) were committed as pointers to git repositories of their own, not declared as submodules (%s%s): take them out of the commits (git rm --cached, then commit again) or declare them in .gitmodules",
+			len(e.Paths), strings.Join(list, ", "), more)
+	}
 	return fmt.Sprintf("workspace: %d director(ies) are git repositories of their own (%s%s): remove them or add them to .gitignore",
 		len(e.Paths), strings.Join(list, ", "), more)
 }
 
 func (e *NestedRepoError) Is(target error) bool { return target == ErrNestedRepo }
+
+// maxCommittedEntries bounds how many changed files checkCommitted examines; a
+// change that touches more is refused unexamined (a variable so that a test can
+// lower it).
+var maxCommittedEntries = 100000
+
+// checkCommitted applies the same guards to what an agent committed itself (a
+// coding agent's habit: it runs git commit in its tree) as checkCommittable
+// applies to what the harness commits for it. It looks at the entries the range
+// base..to added or modified: blobs above the size limit, and gitlinks that
+// .gitmodules does not declare. Once such a commit is on the integration branch it
+// is in the project's history for good.
+func (m *Manager) checkCommitted(ctx context.Context, repo *gitx.Repo, base, to string) error {
+	entries, truncated, err := repo.ChangedEntries(ctx, base, to, maxCommittedEntries)
+	if err != nil {
+		return err
+	}
+	limit := m.maxFileBytes()
+	var big, pointers []string
+	for _, e := range entries {
+		switch {
+		case e.Mode == "160000":
+			if e.OldMode != "160000" {
+				pointers = append(pointers, e.Path)
+			}
+		case limit >= 0 && e.Size > limit:
+			big = append(big, e.Path)
+		}
+	}
+	if len(pointers) > 0 {
+		declared, err := repo.SubmodulePaths(ctx, to)
+		if err != nil {
+			return err
+		}
+		isDeclared := make(map[string]bool, len(declared))
+		for _, d := range declared {
+			isDeclared[path.Clean(d)] = true
+		}
+		var undeclared []string
+		for _, p := range pointers {
+			if !isDeclared[p] {
+				undeclared = append(undeclared, p)
+			}
+		}
+		if len(undeclared) > 0 {
+			sort.Strings(undeclared)
+			return &NestedRepoError{Paths: undeclared, Committed: true}
+		}
+	}
+	if len(big) > 0 {
+		sort.Strings(big)
+		return &TooLargeError{Files: big, Limit: limit, Committed: true}
+	}
+	if truncated && limit >= 0 {
+		return &TooLargeError{Limit: limit, TooMany: maxCommittedEntries}
+	}
+	return nil
+}
 
 // checkCommittable is the guard every commit of an agent's work passes: nothing in
 // what would be recorded may be a nested repository or exceed the size limit (once

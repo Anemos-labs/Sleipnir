@@ -26,6 +26,9 @@ func TestNewQueueTakesOverTheIntegrationTreeOfADeadRun(t *testing.T) {
 	tip, base := e.q.Tip(), e.q.Base()
 	orphan(t, e.q.tree) // the process is gone: nothing was closed
 	orphan(t, a)
+	// ... perhaps in the middle of moving the branch
+	staleRefLock := filepath.Join(e.repo.CommonDir(), "refs", "heads", "sleipnir", "s1", "_integration.lock")
+	writeFile(t, staleRefLock, "")
 
 	fresh := &Manager{Repo: e.repo, Dir: e.m.Dir, Prefix: e.m.Prefix, Clock: testClock()}
 	if _, err := NewQueue(tctx(t), fresh, QueueOptions{}); !errors.Is(err, ErrExists) {
@@ -40,6 +43,9 @@ func TestNewQueueTakesOverTheIntegrationTreeOfADeadRun(t *testing.T) {
 	}
 	if !exists(filepath.Join(q2.tree.Path, "a.txt")) {
 		t.Fatal("the new integration tree does not hold the earlier work")
+	}
+	if exists(staleRefLock) {
+		t.Fatal("the dead run's lock on the integration branch is still there")
 	}
 	b := mustCreate(t, fresh, "b", CreateOptions{Base: q2.Tip()})
 	edit(t, b, "b.txt", "b\n")
@@ -500,4 +506,41 @@ func TestCopyModeRefusesWhatIsNotItsToUse(t *testing.T) {
 	if err := m3.Close(tctx(t), true); err == nil || !exists(filepath.Join(stray, shadowName, "keep")) {
 		t.Fatalf("Close removed something that is not a snapshot of ours: %v", err)
 	}
+}
+
+// A process that dies in the middle of a git command leaves its lock file, and git
+// never removes one by itself. The next session adopting the dead one's tree finds
+// it usable rather than refusing every write.
+func TestAdoptingADeadOwnersTreeClearsItsStaleIndexLock(t *testing.T) {
+	dir := newRepo(t)
+	repo := openRepo(t, dir)
+	m := newManager(t, repo)
+	a := mustCreate(t, m, "a")
+	edit(t, a, "a.txt", "work in progress\n")
+	lock := filepath.Join(a.repo.GitDir(), "index.lock")
+	writeFile(t, lock, "")
+	orphan(t, a)
+
+	fresh := &Manager{Repo: repo, Dir: m.Dir, Prefix: "sleipnir/s1", Clock: testClock()}
+	adopted, err := fresh.Create(tctx(t), "a", CreateOptions{Reuse: true})
+	if err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	if exists(lock) {
+		t.Fatal("the dead process's lock file is still there")
+	}
+	if sha, err := adopted.Commit(tctx(t), "saved after the crash"); err != nil || sha == "" {
+		t.Fatalf("Commit in the adopted tree: %q, %v", sha, err)
+	}
+	// a tree whose owner is alive keeps whatever lock it holds: it may be real
+	live := mustCreate(t, m, "live")
+	liveLock := filepath.Join(live.repo.GitDir(), "index.lock")
+	writeFile(t, liveLock, "")
+	if _, err := (&Manager{Repo: repo, Dir: m.Dir, Prefix: "sleipnir/s1", Clock: testClock()}).Create(tctx(t), "live", CreateOptions{Reuse: true}); !errors.Is(err, ErrExists) {
+		t.Fatalf("adopting a live tree: %v", err)
+	}
+	if !exists(liveLock) {
+		t.Fatal("the lock of a live tree was removed")
+	}
+	must(t, os.Remove(liveLock))
 }

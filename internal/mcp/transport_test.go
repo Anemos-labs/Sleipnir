@@ -357,6 +357,38 @@ func TestStreamWedgedPeerTripsWriteWatchdog(t *testing.T) {
 	}
 }
 
+func TestStreamFailedWriteIsAFinishedTransport(t *testing.T) {
+	// The peer's input is closed, so the write fails at once. That must read as a
+	// transport that ended (errors.Is ErrClosed, with the write error as its
+	// cause), like every other send on a finished transport, not as a bare pipe
+	// error: the caller then waits for the owner's account of the end.
+	rr, rw := io.Pipe()
+	defer rw.Close()
+	pr, pw := io.Pipe()
+	_ = pr.Close() // nobody will ever read: writes fail with io.ErrClosedPipe
+	tr := NewStreamTransport(rr, pw, StreamOptions{})
+	col := newCollector()
+	if err := tr.Start(col.handler()); err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Close()
+	err := tr.Send(context.Background(), []byte(`{"x":1}`))
+	if !errors.Is(err, ErrClosed) || !errors.Is(err, io.ErrClosedPipe) || !strings.Contains(err.Error(), "writing to server") {
+		t.Fatalf("Send err = %v", err)
+	}
+	select {
+	case cause := <-col.closed:
+		if !errors.Is(cause, io.ErrClosedPipe) {
+			t.Errorf("Closed cause = %v", cause)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a failed write must end the transport")
+	}
+	if !tr.Ended() {
+		t.Error("Ended() is false after the transport finished")
+	}
+}
+
 func TestStreamSendHonoursContext(t *testing.T) {
 	rr, rw := io.Pipe()
 	defer rw.Close()
