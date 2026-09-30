@@ -115,7 +115,7 @@ type CacheStats struct {
 type PriceUsed struct {
 	Model       string  `json:"model"`
 	Canonical   string  `json:"canonical"`
-	Source      string  `json:"source"` // "table" | "fallback"
+	Source      string  `json:"source"` // "catalogue" | "table" | "given" | "recorded" | "fallback"
 	InputPerM   float64 `json:"input_per_m"`
 	OutputPerM  float64 `json:"output_per_m"`
 	ReadPerM    float64 `json:"read_per_m"`

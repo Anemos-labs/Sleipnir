@@ -156,6 +156,9 @@ type Session struct {
 
 	Model    cost.Model
 	Provider provider.Provider
+	// described are the models the session may call (the main one and the roles'), with
+	// where each description came from; session.start records them.
+	described map[string]described
 
 	Registry *tools.Registry
 	Specs    []core.ToolSpec
@@ -390,6 +393,7 @@ func (s *Session) buildProvider(ctx context.Context) error {
 	o := s.opts
 	if o.Provider != nil {
 		s.Provider = o.Provider
+		src := sourceGiven
 		if o.ModelInfo != nil {
 			s.Model = *o.ModelInfo
 		} else {
@@ -398,12 +402,13 @@ func (s *Session) buildProvider(ctx context.Context) error {
 				id = "unknown"
 			}
 			if m, ok := cost.Defaults().Lookup(id); ok {
-				s.Model = m
+				s.Model, src = m, sourceTable
 			} else {
-				s.Model = cost.Fallback(id)
+				s.Model, src = cost.Fallback(id), sourceFallback
 				s.Model.Cache = o.Provider.Profile().Cache
 			}
 		}
+		s.noteModel(s.Model, src)
 		return nil
 	}
 	ref, err := ResolveModel(s.cfg, o.Model)
@@ -414,10 +419,7 @@ func (s *Session) buildProvider(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.Provider, s.Model = p, m
-	if !o.Offline {
-		s.Model = EnrichModel(ctx, filepath.Join(stateRoot(o.Home), "cache"), p.Profile().BaseURL, s.Model)
-	}
+	s.Provider, s.Model = p, s.describe(ctx, p, m)
 	return nil
 }
 
@@ -726,7 +728,7 @@ func (s *Session) build(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("role model %s=%s: %w", role, ref, err)
 			}
-			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: m}
+			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: s.describe(ctx, p, m)}
 		}
 	}
 	if len(s.ext.defs) > 0 {
@@ -745,7 +747,7 @@ func (s *Session) build(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
 			}
-			deps.RoleModels[d.Name] = swarm.RoleModel{Provider: p, Model: m}
+			deps.RoleModels[d.Name] = swarm.RoleModel{Provider: p, Model: s.describe(ctx, p, m)}
 		}
 	}
 	// models.roles in the configuration: the lowest-priority source of a role's
@@ -772,7 +774,7 @@ func (s *Session) build(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("models.roles.%s = %s: %w", role, ref, err)
 			}
-			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: m}
+			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: s.describe(ctx, p, m)}
 		}
 	}
 	iso, err := s.buildIsolation(ctx)
@@ -884,6 +886,7 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 		if len(s.opts.Meta) > 0 {
 			start["meta"] = s.opts.Meta
 		}
+		start["models"] = s.modelRecords()
 		if info := s.mcpInfo(); info != nil {
 			start["mcp"] = info
 		}

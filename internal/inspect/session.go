@@ -133,6 +133,8 @@ type metaState struct {
 	schema                                                                  int
 	endReason, isolation                                                    string
 	mailman                                                                 bool
+	// recorded are the prices session.start says the run used, by model id.
+	recorded map[string]recordedModel
 }
 
 // New creates an empty Session for dir, which holds events.jsonl (and blobs/).

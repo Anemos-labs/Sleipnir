@@ -250,7 +250,11 @@ configured provider: from then on a bare marketplace id such as `deepseek/deepse
 in order: a built-in table of well-known models; the endpoint's own catalogue, fetched from `<base_url>/models` when the
 model is not in the table and cached for six hours under `<state>/cache/`; a conservative fallback (200k context, $3 per
 million input tokens, $15 output). When an endpoint reports the cost of a call (Heimdall does, as `usage.cost`) the bill
-uses that figure and the table is only an estimate. `sleipnir models` prints a marketplace catalogue with prices.
+uses that figure and the table is only an estimate. This holds for every model of a session: the main one and the
+models of roles (`--role-model`, `models.roles`, an agent definition's `model:`, the mailman's). `session.start` in the
+event log records what each was described with (the numbers and where they came from: `catalogue`, `table`, `given`,
+`fallback`), and `sleipnir inspect` prices the run with those numbers, so its dollar figures for a marketplace model are the
+gateway's, not the fallback's. `sleipnir models` prints a marketplace catalogue with prices.
 `--context-window N` on `run` overrides the window for one run.
 
 ### `permissions`

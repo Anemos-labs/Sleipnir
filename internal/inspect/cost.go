@@ -9,22 +9,79 @@ import (
 	"github.com/reee344/sleipnir/internal/cost"
 )
 
+// maxRecordedModels bounds the models one log's session.start may price.
+const maxRecordedModels = 24
+
+// recordedWire is one entry of session.start's "models": the numbers the run was priced with.
+// It comes from a log, so nothing in it is trusted until validated.
+type recordedWire struct {
+	Source           string  `json:"source"`
+	InputPerM        float64 `json:"input_per_m"`
+	OutputPerM       float64 `json:"output_per_m"`
+	CacheReadPerM    float64 `json:"cache_read_per_m"`
+	CacheWrite5mPerM float64 `json:"cache_write_5m_per_m"`
+	CacheWrite1hPerM float64 `json:"cache_write_1h_per_m"`
+	ExplicitCache    bool    `json:"explicit_cache"`
+	TTLSeconds       int     `json:"ttl_s"`
+}
+
+// recordedModel is a model's price as its run recorded it.
+type recordedModel struct {
+	source   string
+	price    cost.Price
+	explicit bool
+	ttl      time.Duration
+}
+
+// validated turns a wire entry into a recordedModel, or says it cannot be used: an id that is
+// not a model id, or a price that is not a sane number of dollars (a log is not trusted more
+// than a catalogue: cost.Price.Validate is the one place that decides).
+func (r recordedWire) validated(id string) (recordedModel, bool) {
+	if id == "" || len(id) > cost.MaxModelIDBytes {
+		return recordedModel{}, false
+	}
+	p := cost.Price{InputPerM: r.InputPerM, OutputPerM: r.OutputPerM, CacheReadPerM: r.CacheReadPerM,
+		CacheWrite5mPerM: r.CacheWrite5mPerM, CacheWrite1hPerM: r.CacheWrite1hPerM}
+	if p.Validate() != nil || r.TTLSeconds < 0 || r.TTLSeconds > 30*24*3600 {
+		return recordedModel{}, false
+	}
+	src := r.Source
+	switch src {
+	case "catalogue", "table", "given", "fallback":
+	default:
+		src = "recorded"
+	}
+	return recordedModel{source: src, price: p, explicit: r.ExplicitCache, ttl: time.Duration(r.TTLSeconds) * time.Second}, true
+}
+
 // priceInfo is one model's price and cache rules as the inspector applies them.
 type priceInfo struct {
 	model     string
 	canonical string
-	source    string // "table" | "fallback"
+	source    string // "catalogue" | "table" | "given" | "recorded" (a run's own record) | "fallback"
 	price     cost.Price
 	ttl       time.Duration
 	explicit  bool
 	requests  int
 }
 
-// priceFor resolves a model id (gateway-style ids and date suffixes are
-// tolerated by cost.Table) and remembers the answer. An id the table does not
-// know gets cost.Fallback's conservative prices and is reported as such.
+// priceFor resolves a model id and remembers the answer. The prices the run itself recorded
+// (session.start) come first: they are what it was billed by. Then the table (gateway-style
+// ids and date suffixes are tolerated by cost.Table). An id neither knows gets cost.Fallback's
+// conservative prices and is reported as such.
 func (s *Session) priceFor(model string) *priceInfo {
 	if p, ok := s.prices[model]; ok {
+		return p
+	}
+	if r, ok := s.meta.recorded[model]; ok {
+		ttl := r.ttl
+		if ttl == 0 {
+			ttl = 5 * time.Minute
+		}
+		p := &priceInfo{model: model, canonical: cost.Normalize(model), source: r.source, price: r.price, ttl: ttl, explicit: r.explicit}
+		if len(s.prices) < 64 {
+			s.prices[model] = p
+		}
 		return p
 	}
 	m, ok := s.opts.Prices.Lookup(model)

@@ -4,6 +4,10 @@
 set -eu
 
 : "${MODEL:?set MODEL to a tool-capable model id (see: sleipnir models)}"
+# The agents run the fixture's tests themselves. In accept-edits mode a command that is not read-only is refused when
+# nobody can be asked, and the model then spends its steps looking for ways round the refusal (a first run against a real
+# model made 24 tool calls that way), so the test command is allowed. Set the variable yourself to allow more or less.
+export SLEIPNIR_PERMISSIONS_ALLOW="${SLEIPNIR_PERMISSIONS_ALLOW:-Bash(go test:*)}"
 BUDGET_USD="${BUDGET_USD:-3}"
 BIN="${SLEIPNIR:-sleipnir}"
 OUT="${OUT:-validation}"

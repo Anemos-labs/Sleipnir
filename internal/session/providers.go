@@ -444,24 +444,30 @@ const catalogTTL = 6 * time.Hour
 // overflow it before compaction starts. Failures are silent: the fallback stands
 // and gateway-reported costs still make the bill exact.
 func EnrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) cost.Model {
+	out, _ := enrichModel(ctx, cacheDir, baseURL, m)
+	return out
+}
+
+// enrichModel is EnrichModel that also says whether the catalogue had the model.
+func enrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) (cost.Model, bool) {
 	if m.Provider != "unknown" || baseURL == "" {
-		return m
+		return m, false
 	}
 	// The catalogue decides the prices a budget is computed from: over plain http it
 	// could be rewritten on the way, so it is only read over https or from this
 	// machine.
 	if provider.CheckKeyTransport(baseURL) != nil {
-		return m
+		return m, false
 	}
 	entries := loadCatalog(ctx, cacheDir, baseURL)
 	for _, e := range entries {
 		if e.Model.ID == m.ID || cost.Normalize(e.Model.ID) == cost.Normalize(m.ID) {
 			out := e.Model // every entry has passed cost.Model.Validate (gateway.Parse, gateway.Vet)
 			out.ID = m.ID
-			return out
+			return out, true
 		}
 	}
-	return m
+	return m, false
 }
 
 func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry {

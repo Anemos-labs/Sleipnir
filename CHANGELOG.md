@@ -49,7 +49,12 @@ The first release.
 - OpenAI-style chat completions (OpenAI, marketplaces such as Heimdall and OpenRouter, vLLM, SGLang), with reasoning
   replay, optional token-id capture, and exact gateway costs.
 - Native Anthropic Messages adapter with explicit cache breakpoints and per-gateway limits declared as options.
-- `sleipnir doctor` measures a real endpoint: streaming, tools, cache reporting, block granularity, warm-up needs.
+- `sleipnir doctor` measures a real endpoint: streaming, tools, cache reporting, block granularity, warm-up needs. Its
+  cache verdict counts nine repeat requests (`yes`, `partly`, `NO`), because a marketplace cache can hit on some and miss on
+  others.
+- Every model of a session, roles' models included, is described from its endpoint's catalogue when the built-in table
+  does not know it, and `session.start` records the prices each was described with, so `inspect` shows the gateway's
+  figures instead of a generic estimate.
 
 ### Tools, permissions and extensions
 

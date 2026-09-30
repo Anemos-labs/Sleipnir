@@ -361,6 +361,69 @@ func TestUnknownModelUsesFallbackPricesAndSaysSo(t *testing.T) {
 	}
 }
 
+// A run records the prices it was billed by in session.start; a marketplace model the table
+// has never heard of is then priced with them, not with the generic fallback (which was
+// hundreds of times off for a model that costs cents per million tokens).
+func TestRecordedPricesAreUsedForAModelTheTableDoesNotKnow(t *testing.T) {
+	b := newEvb(t)
+	b.emit("", "session.start", m{"model": "acme/frobnicator-9", "models": m{
+		"acme/frobnicator-9": m{"source": "catalogue", "context": 1000000, "input_per_m": 0.005, "output_per_m": 0.01, "cache_read_per_m": 0.0013,
+			"cache_write_5m_per_m": 0.005, "cache_write_1h_per_m": 0.005},
+	}})
+	b.req("a", "a.1", nil, m{"model": "acme/frobnicator-9"})
+	b.resp("a", "a.1", 1000, 3000, 0, 100, m{"model": "acme/frobnicator-9"})
+	sum := mustLoad(t, b.dir).Summary()
+	if len(sum.Cost.Prices) != 1 {
+		t.Fatalf("prices = %+v", sum.Cost.Prices)
+	}
+	p := sum.Cost.Prices[0]
+	if p.Source != "catalogue" || p.InputPerM != 0.005 || p.ReadPerM != 0.0013 || p.OutputPerM != 0.01 || p.Explicit {
+		t.Errorf("the recorded price was not used: %+v", p)
+	}
+	near(t, "actual bill", sum.Cost.Actual.Total, (1000*0.005+3000*0.0013+100*0.01)/1e6)
+	for _, w := range sum.Warnings {
+		if strings.Contains(w, "fallback") {
+			t.Errorf("a recorded price is not an estimate, but the log warns: %q", w)
+		}
+	}
+}
+
+// The log is not trusted more than a catalogue: a price that is not a sane number of dollars
+// is ignored, and the model is priced as if nothing had been recorded.
+func TestRecordedPricesThatAreNotSaneAreIgnored(t *testing.T) {
+	for name, rec := range map[string]m{
+		"negative":   {"source": "catalogue", "input_per_m": -1, "output_per_m": 1},
+		"enormous":   {"source": "catalogue", "input_per_m": 1e12, "output_per_m": 1},
+		"bad ttl":    {"source": "catalogue", "input_per_m": 1, "output_per_m": 1, "ttl_s": -5},
+		"not a map":  nil,
+		"odd source": {"source": "whatever the log says", "input_per_m": 2, "output_per_m": 4},
+	} {
+		b := newEvb(t)
+		models := m{"acme/frobnicator-9": rec}
+		if rec == nil {
+			models = m{"acme/frobnicator-9": "cheap"}
+		}
+		b.emit("", "session.start", m{"models": models})
+		b.req("a", "a.1", nil, m{"model": "acme/frobnicator-9"})
+		b.resp("a", "a.1", 1000, 0, 0, 10, m{"model": "acme/frobnicator-9"})
+		sum := mustLoad(t, b.dir).Summary()
+		if len(sum.Cost.Prices) != 1 {
+			t.Fatalf("%s: prices = %+v", name, sum.Cost.Prices)
+		}
+		p := sum.Cost.Prices[0]
+		switch name {
+		case "odd source":
+			if p.Source != "recorded" || p.InputPerM != 2 {
+				t.Errorf("%s: a sane price with an unknown source label is kept and called recorded: %+v", name, p)
+			}
+		default:
+			if p.Source != "fallback" {
+				t.Errorf("%s: an unusable record was applied: %+v", name, p)
+			}
+		}
+	}
+}
+
 func TestCostFallsBackToPricedWhenTheLogHasNoCost(t *testing.T) {
 	b := newEvb(t)
 	b.req("a", "a.1", nil, nil)

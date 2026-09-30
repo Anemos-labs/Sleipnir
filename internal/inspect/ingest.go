@@ -165,12 +165,24 @@ func (s *Session) onSessionStart(raw json.RawMessage) {
 		SharedHash                                        string `json:"shared_hash"`
 		Isolation                                         string
 		Mailman                                           bool
+		Models                                            map[string]recordedWire
 	}
 	if json.Unmarshal(raw, &p) != nil {
 		s.badPay++
 		return
 	}
 	m := &s.meta
+	for id, r := range p.Models {
+		if rec, ok := r.validated(id); ok {
+			if m.recorded == nil {
+				m.recorded = map[string]recordedModel{}
+			}
+			if _, known := m.recorded[id]; known || len(m.recorded) < maxRecordedModels {
+				m.recorded[id] = rec
+				delete(s.prices, id) // a price memoised before this record is out of date
+			}
+		}
+	}
 	m.version, m.provider, m.dialect, m.renderer = p.Version, p.Provider, p.Dialect, p.Renderer
 	m.root, m.swarm, m.reconTokens, m.sharedHash = p.Root, p.Swarm, p.ReconTokens, p.SharedHash
 	m.isolation, m.mailman = oneLine(p.Isolation, 24), p.Mailman
