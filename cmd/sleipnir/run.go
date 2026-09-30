@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
 	isolation, commit := isolationFlags(fs)
+	mailman := mailmanFlag(fs)
 	asJSON := fs.Bool("json", false, "stream events as JSON lines on stdout")
 	quiet := fs.Bool("quiet", false, "print only the final answer")
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
@@ -94,7 +96,7 @@ func cmdRun(ctx context.Context, args []string) error {
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit,
+		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
 	}
 	if interactive {
 		o.Prompter = session.TerminalPrompter(os.Stdin, os.Stderr)
@@ -170,6 +172,43 @@ func isolationFlags(fs *flag.FlagSet) (isolation *string, commit *bool) {
 	isolation = fs.String("isolation", "", "swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end")
 	commit = fs.Bool("commit", false, "swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)")
 	return isolation, commit
+}
+
+// triBool is a boolean flag that also knows whether it was given: --mailman turns the
+// mailman on, --mailman=false turns it off for one run whatever the configuration says,
+// and leaving it out leaves the configuration in charge.
+type triBool struct{ set, val bool }
+
+func (t *triBool) String() string {
+	if t == nil || !t.set {
+		return ""
+	}
+	return strconv.FormatBool(t.val)
+}
+
+func (t *triBool) Set(v string) error {
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return err
+	}
+	t.set, t.val = true, b
+	return nil
+}
+
+func (t *triBool) IsBoolFlag() bool { return true }
+
+// mailmanFlag registers --mailman (run, swarm and chat share it) and returns what to put
+// in session.Options.Mailman: nil when the flag was not given.
+func mailmanFlag(fs *flag.FlagSet) func() *bool {
+	var t triBool
+	fs.Var(&t, "mailman", "swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>")
+	return func() *bool {
+		if !t.set {
+			return nil
+		}
+		v := t.val
+		return &v
+	}
 }
 
 // finishRun ends an isolated run (see session.Session.Finish) even when the run was

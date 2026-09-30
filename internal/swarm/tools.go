@@ -21,6 +21,16 @@ func (s *Swarm) Tools() []tools.Tool {
 	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}}
 }
 
+// refuseService is the answer a service agent (the mailman) gets from every swarm
+// tool but mail: the tool list is the same for every agent, and what an agent may do
+// with it is decided at run time.
+func (s *Swarm) refuseService(role string) *tools.Result {
+	if s.isService(role) {
+		return tools.Errorf("the %s only delivers mail: use the mail tool for the parcels you were given, and nothing else", role)
+	}
+	return nil
+}
+
 func decode(in json.RawMessage, v any) *tools.Result {
 	if len(in) == 0 {
 		in = json.RawMessage(`{}`)
@@ -60,6 +70,9 @@ type taskIn struct {
 }
 
 func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
+	if r := t.s.refuseService(c.Env.Role); r != nil {
+		return r, nil
+	}
 	var in taskIn
 	if r := decode(c.Input, &in); r != nil {
 		return r, nil
@@ -308,9 +321,21 @@ func (t *mailTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) 
 	if r := decode(c.Input, &in); r != nil {
 		return r, nil
 	}
+	if t.s.isService(c.Env.Role) {
+		// The mailman's mail is a delivery, never a message to be routed (no loop): the
+		// harness settles which parcels it stands for, who wrote them and what kind it is.
+		reply, err := t.s.mail.fromMailman(c.Env.Agent, in.To, in.Text)
+		if err != nil {
+			return tools.Errorf("%v", err), nil
+		}
+		return text("%s", reply), nil
+	}
 	m, err := t.s.Router.Send(c.Env.Agent, in.To, in.Kind, in.Text)
 	if err != nil {
 		return tools.Errorf("%v", err), nil
+	}
+	if m.Via != "" {
+		return text("sent %s to %s; it goes through the mailman and may reach %s as part of a digest", m.ID, m.To, m.To), nil
 	}
 	return text("sent %s to %s", m.ID, m.To), nil
 }
@@ -329,6 +354,9 @@ func (t *noteTool) Spec() core.ToolSpec {
 }
 
 func (t *noteTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) {
+	if r := t.s.refuseService(c.Env.Role); r != nil {
+		return r, nil
+	}
 	var in struct{ Text, Scope string }
 	if r := decode(c.Input, &in); r != nil {
 		return r, nil
@@ -404,6 +432,9 @@ func (t *waitTool) Spec() core.ToolSpec {
 }
 
 func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
+	if r := t.s.refuseService(c.Env.Role); r != nil {
+		return r, nil
+	}
 	var in struct {
 		TimeoutSec int      `json:"timeout_sec"`
 		Until      []string `json:"until"`

@@ -40,6 +40,9 @@ func cmdChat(ctx context.Context, args []string) error {
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
 	isolation, commit := isolationFlags(fs)
+	mailman := mailmanFlag(fs)
+	roleModels := kvFlags{}
+	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)")
 	resume := resumeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -52,7 +55,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	o := chatOptions(session.Options{
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
-		Verify: *verify, Isolation: *isolation, Commit: *commit,
+		Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
 	})
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		o.Prompter = session.TerminalPrompter(in, os.Stderr)
@@ -397,6 +400,11 @@ func printAgents(s *session.Session) {
 	}
 	for _, t := range snap.Tasks {
 		fmt.Fprintf(os.Stderr, "  %-4s %-8s %-8s %s\n", t.ID, t.Status, t.Owner, firstText(t.Title, 80))
+	}
+	if s.Swarm.MailmanEnabled() {
+		st := s.Swarm.MailmanStats()
+		fmt.Fprintf(os.Stderr, "  mailman: %d worker messages taken, %d digests covering %d, %d delivered directly, %d waiting\n",
+			st.Parcels, st.Digests, st.Digested, st.Direct, st.Pending)
 	}
 }
 

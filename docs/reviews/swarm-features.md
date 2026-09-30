@@ -138,3 +138,71 @@ needs the merge, advisory leases, guards); `internal/perm` (`confine_test.go`); 
 * Disk: one checkout per writer, created at spawn; no sparse checkout by scope yet.
 * The inspector does not show trees or the queue (the events are in the log); `internal/inspect` is not in this change's scope.
 * The queue verifies with `--verify` only; without it merges are serialised and conflict-checked but not tested.
+
+## Piece 3: the mailman (`swarm.mailman`, `--mailman`)
+
+### What was built
+
+`internal/swarm/mailman.go` (the mailroom: parcel ledger, batching, the mailman's life cycle, direct delivery, the bound), the role
+(`MailmanRole`, added by `swarm.New` only when the mode is on), a divert hook in `Router.Send`, a mailman branch in the `mail` tool,
+run-time restrictions, `Message.Via`/`Origins` and the digest frame, the config key, `--mailman` (tri-state: `--mailman=false`
+overrides a configuration that turns it on) and `chat --role-model`, events `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/
+`mail.mailman`. The protocol as implemented is `docs/SWARM-PROTOCOL.md` section 5 ("The mailman") and section 12 (where it differs
+from what was first described).
+
+### Decisions worth knowing
+
+* **The harness decides everything but the words.** The mailman's one action is the existing `mail` tool; the harness recognises
+  its role (the role in a tool call is put there by the harness, not by the model) and turns the call into a delivery: the
+  recipient must have parcels in the current batch, one digest per recipient, and the digest stands for exactly those parcels. The
+  frame's sender list and kind are computed from the ledger, so the mailman can neither forge a sender nor hide one; the text goes
+  through the same defusing as any agent's mail and arrives marked as untrusted peer data. A mailman that is injected by a parcel
+  can therefore do what a worker who mailed the recipient directly could do, and no more.
+* **The mailman does not pick recipients** (the first description said it would). Choosing who hears what is a policy the harness
+  cannot audit; digesting is. See section 12.
+* **A lone parcel is not worth a request.** A recipient with a single parcel in a batch gets it directly and at once; only
+  recipients with at least two are sent to the mailman, and a batch with none makes no request at all. That is what keeps the mode
+  cheap on a quiet swarm, and what makes "wake only when parcels are pending" true in spirit: a parcel alone never wakes it.
+* **Placeholder batch.** The dispatcher creates the batch the moment it takes parcels from the ledger. Without that, two dispatches
+  could overlap (a full-batch timer firing while another dispatch was between taking parcels and starting the run), and the second
+  saw a half-empty ledger and delivered singles that belonged in a digest; the batch-size test found it by flaking. The batch also
+  keeps the parcels it holds counted as waiting, and a batch whose end is lost cannot wedge the mailroom (the sweep clears it after
+  three times the bound; the end of an old run cannot clear a newer batch).
+* **Failure costs delay, not mail.** Stuck (no answer within the bound, the run stopped at twice it), absent (could not be made,
+  model failed twice: given up on for twice the bound and the person is told), budget spent, swarm stopping, ledger full: the
+  harness delivers directly, as the router would have. A recipient that was retired meanwhile makes the harness tell the sender.
+* **The role is not a field.** `swarm.Role` shares its shape with `agentdefs.Role` (a test holds the two together, and the session
+  converts between them), so "service role" is the role's name while the mode is on (`Swarm.isService`), not a new field. The
+  role is added to the swarm's own copy of the role table only when the mode is on, replacing any project role of that name
+  (the session also reserves the name and id prefix from project agent definitions), so `BuiltinRoles()` and everything a mode-off
+  session builds are byte for byte what they were.
+* **No cache event.** No shared layer changes and the tool list is identical (the session test asserts one tools blob across all
+  agents). The mailman's own request prefix is priced: its first request writes its small role layer, and, when it runs on a model
+  of its own (`--role-model mailman=<model>`), the shared prefix once on that model. It sees a one-line hot view, so its uncached
+  tail is about ten tokens.
+
+### Tests that hold it
+
+`internal/swarm/mailman_test.go`: `TestMailmanDigestsABurstIntoFewerDeliveriesThatNameEverySender` (8 workers x 30 messages: 240
+parcels become at most 30 digests, every parcel accounted for exactly once, every digest names exactly the senders it stands for,
+the manager's inbox stays under the soft cap), `TestSingleParcelsGoDirectWithoutAMailmanRun`, `TestAuthorityMailBypassesTheMailman`,
+`TestMailmanMailIsNeverRoutedAgain`, `TestStuckMailmanIsBypassedAfterTheBound`, `TestFailingMailmanIsGivenUpOnAndMailStillArrives`,
+`TestMailmanCannotForgeSendersKindsOrHeaders`, `TestMailmanOnlyDeliversMail`, `TestMailmanBounds`,
+`TestMailmanIsNotATeammateAndUsesItsOwnModel`, `TestMailmanOffChangesNothing`, `TestMailmanIsWokenOnlyByParcels`,
+`TestMailmanShutdownWithParcelsPending`, `TestSpentBudgetMeansNoMailman`, `TestLostBatchDoesNotWedgeTheMailroom`,
+`TestDigestFormat`; `internal/session/mailman_test.go` (a real permission engine refuses the mailman's read; the manager receives
+digests naming worker ids; one tool list for every agent; option and configuration precedence; the reserved name);
+`internal/config/mailman_test.go`; `cmd/sleipnir/isolate_test.go` (`TestMailmanFlagIsATriState`, the config display).
+
+### Residual risks
+
+* Latency. Worker mail to the manager (or anyone) arrives after the quiet period and a mailman round when there is a burst,
+  and after the quiet period when there is not; the worst case is the 30 s bound. A worker that needs an answer at once should
+  not depend on mail. (A `blocker` could bypass the wait; it does not, to keep the mode simple to reason about.)
+* A digest is model-written: it can drop a fact or reword one badly. The originals are in the log (`mail.send`), the frame names
+  who said what, and a recipient that doubts a digest can mail the named sender.
+* A mailman on a weak model may fail often; after two failures in a row it is given up on for a minute and the person is told.
+* `models.roles.<role>` in the configuration is not wired to any role's model (only `--role-model` and agent definitions are), so
+  a configuration cannot name the mailman's model yet.
+* The digest text is bounded (700 characters) but not otherwise checked against the parcels: there is no verification that it
+  mentions every distinct fact, by design (that would need a second model).

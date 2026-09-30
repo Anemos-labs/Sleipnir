@@ -162,7 +162,14 @@ func swarmSettings(cfg *config.Config, rep *config.Report) []string {
 	if iso == config.IsolationWorktree {
 		note = "every writer gets its own git worktree; finished work is merged and verified, and applied to the checkout at the end"
 	}
-	return []string{fmt.Sprintf("swarm.isolation: %s (%s): %s", iso, origin("swarm.isolation"), note)}
+	mail, mailNote := "off", "worker mail is delivered at once"
+	if cfg.Swarm.Mailman {
+		mail, mailNote = "on", "worker mail goes through a mailman agent that digests bursts (its model: --role-model mailman=<model>)"
+	}
+	return []string{
+		fmt.Sprintf("swarm.isolation: %s (%s): %s", iso, origin("swarm.isolation"), note),
+		fmt.Sprintf("swarm.mailman: %s (%s): %s", mail, origin("swarm.mailman"), mailNote),
+	}
 }
 
 // redactedConfig is cfg as `config --json` prints it: the output ends up in bug

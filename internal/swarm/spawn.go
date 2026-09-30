@@ -112,7 +112,7 @@ func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
 
 func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	m := s.get(req.Agent)
-	if m == nil {
+	if m == nil || m.service {
 		return "", fmt.Errorf("no agent %q", cleanText(req.Agent, 40))
 	}
 	if m.manager {
@@ -159,7 +159,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 
 func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	role, ok := s.roles[req.Role]
-	if !ok || req.Role == "manager" {
+	if !ok || req.Role == "manager" || s.isService(req.Role) {
 		return "", fmt.Errorf("unknown role %q (roles: %s)", cleanText(req.Role, 40), strings.Join(s.spawnableRoles(), ", "))
 	}
 	if err := s.precheckScope(req, files, role); err != nil {
@@ -324,6 +324,9 @@ func (s *Swarm) Retire(id string) error {
 	}
 	if m.manager {
 		return fmt.Errorf("%s is the manager", id)
+	}
+	if m.service {
+		return fmt.Errorf("%s is the harness's own agent", id)
 	}
 	m.mu.Lock()
 	switch {

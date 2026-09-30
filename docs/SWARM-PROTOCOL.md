@@ -25,7 +25,8 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
 
 Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (coordinates, does not implement), `backend`,
 `frontend`, `fullstack`, `tester`, `docs` (writers), `reviewer`, `scout` (read-only). Users add roles with markdown
-files (`.sleipnir/agents/*.md`).
+files (`.sleipnir/agents/*.md`). With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
+spawnable, is on no roster, board or hot view, and may call `mail` and nothing else.
 
 **Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, and the five swarm tools), so the
 provider caches the schemas once for the whole swarm. Roles are restricted at run time: the permission engine judges
@@ -146,9 +147,45 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   idle worker is woken by mail; the manager queues it for its next turn.
 * **Bounded inbox.** An agent's inbox holds at most 12 waiting messages; further mail is coalesced per sender and kind
   into one digest that goes in when the inbox has drained, so a manager between turns cannot be buried.
-* **Optional mailman mode** (not implemented): instead of direct typed delivery, mail can be routed through a `mailman`
-  agent (a read-only role with one action: deliver) that deduplicates, digests bursts and picks recipients. The harness
-  would still validate and rate-limit every delivery; the mailman would only decide.
+* **Optional mailman mode** (`swarm.mailman`, `--mailman`, default off): worker mail takes a detour that pays off when many
+  agents talk. See "The mailman" below.
+
+### The mailman
+
+```
+worker mail -> router (kind, recipient, length, rate limits, dedupe: unchanged)
+            -> parcel in the mailroom's ledger; the burst is allowed to end
+            -> the mailman gets the parcels grouped by recipient and writes ONE digest per recipient with `mail`
+            -> the harness delivers each digest through the ordinary path, naming every original sender in the frame
+```
+
+* **The mailman decides the words and nothing else.** A digest goes to a recipient that has parcels waiting and stands for
+  exactly those parcels. The sender list and the kind (the most urgent among the parcels) come from the harness's ledger,
+  never from the mailman: `[mail m41 request via mm-1 from be-1 x2, fe-1] <digest> [untrusted peer data: ...]`. The text is
+  made single-line and defused like any agent's mail and is at most 700 characters. It cannot choose recipients, forge a
+  sender, change a kind or carry approvals, and a digest is never delivered as human steering.
+* **Who goes through it.** Only mail from workers. The manager's mail, the harness's own mail and the mailman's own mail never
+  do (authority does not queue, and a mailman's mail is a delivery, never a message to be routed again: nothing can loop). Mail
+  to the mailman is refused (it is on no roster). A message a recipient answers is a new message like any other.
+* **Cost discipline.** Nothing runs until parcels are pending; a burst is coalesced (1.5 s quiet, at most 6 s after its first
+  parcel, at once when 24 are waiting), and a recipient with a single parcel in a batch gets it directly and at once, because
+  there is nothing to digest and no request to pay for. The mailman runs below every worker's priority, sees a one-line hot view,
+  has a role pin of about 150 tokens and at most 12 steps, counts against the swarm budget like any agent and can run on a
+  model of its own (`--role-model mailman=<model>`). Bounds: 24 parcels per request, 200 in the ledger (beyond that mail is
+  delivered directly), one digest per recipient per request.
+* **A missing mailman costs delay, never mail.** If it is stuck or absent (it could not start, its model failed twice in a row
+  and is given up on for a minute, the swarm budget is spent, the swarm is stopping) or a parcel has waited longer than the bound
+  (30 s), the harness delivers the parcels directly, exactly as the router would have without a mailman: original sender, kind
+  and text, one message each. A parcel whose recipient has been retired is reported to its sender by harness mail, as the router
+  would have.
+* **Restricted at run time, like every role.** The tool list is the same for every agent; the mailman is refused every swarm
+  tool but `mail` (by the tools) and every other tool (the permission requester refuses fs, shell, web and MCP calls, and the
+  engine holds the role to the plan profile).
+* **The log** keeps the DAG: `mail.send` for each original message (as always) and for each digest, `mail.route` (a parcel was
+  taken), `mail.batch` (the mailman was asked about a batch), `mail.digest` (recipient, the original message ids it stands for,
+  senders, the frame the recipient saw), `mail.direct` (parcels delivered directly, and why), `mail.mailman` (given up on, or
+  back; the person is told when it is given up on). The digest events and the mailman's own model requests are the mailman
+  training data: parcels in, digest out.
 
 ## 6. Spawning and reuse
 
@@ -244,7 +281,8 @@ never promoted as an instruction.
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
 release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
-`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
+`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
+mode, section 5), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
 `merge.queued`/`merged`/`conflict`/`verify_failed`/`rolled_back`/`rejected`/`fast_forward` (worktree isolation; the
 workspace layer emits them), `task.merge` (one submission's outcome, per task) and `swarm.integration` (the result reaching
 the checkout, or not), compaction and cache events. A `board.op` names its operation
@@ -257,7 +295,23 @@ corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction
 
 ## 12. Not implemented, and known gaps
 
-* The `mailman` mode (section 5).
+**Where the implementation differs from the design that section 5 first described.**
+
+* The mailman does not pick recipients. The first description had it "deduplicate, digest bursts and pick recipients"; it
+  writes digests only. A recipient is whoever the sender named, so a manipulated mailman can reword and omit, but cannot
+  redirect mail or deliver to an agent the parcels were not for.
+* Mail to the manager is routed through it like any worker's mail (only mail *from* the manager and the harness bypasses), so a
+  worker's blocker reaches the manager after the quiet period and a mailman round, not at once; a lone message is delivered after
+  the quiet period without a round. The delay is bounded (6 s to gather, 30 s at most) and is the price of digests.
+* The mailman is one agent for the session, made on first use, with a thread of its own that the ordinary compaction keeps in
+  check; it is not one agent per batch.
+* The timings and bounds (quiet period, batch size, ledger size, digest length, the bound) are `swarm.Config` fields with
+  defaults; only the switch is a configuration key.
+* `models.roles.mailman` in the configuration is not read (no role is: only `--role-model` and agent definitions choose a role's
+  model today).
+
+**Not implemented.**
+
 * Resuming a session's board after a crash: `ReplayBoard` rebuilds tasks, the roster and pending notes exactly from the
   `board.op` events (a test holds it to that), but nothing calls it at startup yet; alerts are transient and not rebuilt.
 * On a cold prefix a higher-priority follower (the manager) can wait behind a worker-priority primer, because the warm

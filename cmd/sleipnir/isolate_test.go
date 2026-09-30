@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,6 +161,39 @@ func TestIsolationFlagsAreChecked(t *testing.T) {
 	}
 }
 
+// --mailman is a tri-state: given, it turns the mailman on; --mailman=false turns it off for
+// one run whatever the configuration says; left out, it leaves the configuration in charge.
+func TestMailmanFlagIsATriState(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{nil, "unset"},
+		{[]string{"--mailman"}, "true"},
+		{[]string{"--mailman=true"}, "true"},
+		{[]string{"--mailman=false"}, "false"},
+	} {
+		fs := flag.NewFlagSet("t", flag.ContinueOnError)
+		get := mailmanFlag(fs)
+		if err := fs.Parse(tc.args); err != nil {
+			t.Fatalf("%v: %v", tc.args, err)
+		}
+		got := "unset"
+		if v := get(); v != nil {
+			got = fmt.Sprint(*v)
+		}
+		if got != tc.want {
+			t.Errorf("%v: %s, want %s", tc.args, got, tc.want)
+		}
+	}
+	fs := flag.NewFlagSet("t", flag.ContinueOnError)
+	mailmanFlag(fs)
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse([]string{"--mailman=maybe"}); err == nil {
+		t.Error("a value that is not a boolean must be rejected")
+	}
+}
+
 // What the person is told at the end of an isolated run: what reached the checkout may
 // be silenced with --quiet; a result that did not reach it never is, and names the one
 // command that gets it.
@@ -189,13 +224,16 @@ func TestPrintIntegration(t *testing.T) {
 // `sleipnir config` says what the swarm's isolation is and which layer set it.
 func TestConfigShowsTheSwarmIsolationAndWhereItCameFrom(t *testing.T) {
 	cfg := config.Defaults()
-	if got := swarmSettings(cfg, nil); len(got) != 1 || !strings.HasPrefix(got[0], "swarm.isolation: none (default)") {
+	if got := swarmSettings(cfg, nil); len(got) != 2 || !strings.HasPrefix(got[0], "swarm.isolation: none (default)") || !strings.HasPrefix(got[1], "swarm.mailman: off (default)") {
 		t.Fatalf("defaults: %q", got)
 	}
 	cfg.Swarm.Isolation = config.IsolationWorktree
 	rep := &config.Report{Origins: map[string]string{"swarm.isolation": "/home/u/.sleipnir/config.json"}}
+	cfg.Swarm.Mailman = true
+	rep.Origins["swarm.mailman"] = "env:SLEIPNIR_SWARM_MAILMAN"
 	got := swarmSettings(cfg, rep)
-	if len(got) != 1 || !strings.HasPrefix(got[0], "swarm.isolation: worktree (/home/u/.sleipnir/config.json)") || !strings.Contains(got[0], "own git worktree") {
+	if len(got) != 2 || !strings.HasPrefix(got[0], "swarm.isolation: worktree (/home/u/.sleipnir/config.json)") || !strings.Contains(got[0], "own git worktree") ||
+		!strings.HasPrefix(got[1], "swarm.mailman: on (env:SLEIPNIR_SWARM_MAILMAN)") || !strings.Contains(got[1], "--role-model mailman=") {
 		t.Fatalf("worktree: %q", got)
 	}
 	// The real thing, through the loader: a project file that sets it.

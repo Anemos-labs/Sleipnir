@@ -94,6 +94,24 @@ type Config struct {
 	WakeQuiet   time.Duration
 	WakeMax     time.Duration
 	MaxWakes    int
+
+	// Mailman routes worker mail through a mailman agent instead of delivering each
+	// message at once (mailman.go). The router still validates and rate-limits every
+	// message; the mailman only decides how bursts are worded. The manager's and the
+	// harness's own mail is never routed through it. MailmanQuiet is how long a burst
+	// of parcels must be quiet before the mailman is asked (default 1.5s),
+	// MailmanMax the longest a burst may postpone it (6s), MailmanBound the longest any
+	// parcel waits before the harness delivers it directly (30s), MailmanBatch how
+	// many parcels one request of the mailman covers (24), MailmanMaxPending how many
+	// the harness holds at all before delivering directly (200), and MailmanDigestChars
+	// the longest digest (700).
+	Mailman            bool
+	MailmanQuiet       time.Duration
+	MailmanMax         time.Duration
+	MailmanBound       time.Duration
+	MailmanBatch       int
+	MailmanMaxPending  int
+	MailmanDigestChars int
 }
 
 // DefaultConfig returns sane limits for a laptop-sized swarm.
@@ -106,6 +124,8 @@ func DefaultConfig() Config {
 		StuckAfter: 10 * time.Minute, StuckGrace: 30 * time.Second, ShutdownGrace: 10 * time.Second,
 		SuperviseEvery: time.Second, InboxSoftCap: 12,
 		WakeQuiet: 1500 * time.Millisecond, WakeMax: 10 * time.Second, MaxWakes: 8,
+		MailmanQuiet: 1500 * time.Millisecond, MailmanMax: 6 * time.Second, MailmanBound: 30 * time.Second,
+		MailmanBatch: 24, MailmanMaxPending: 200, MailmanDigestChars: 700,
 	}
 }
 
@@ -196,6 +216,7 @@ type Swarm struct {
 
 	wk      waker                    // waking an idle manager (wake.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
+	mail    *mailroom                // mailman mode (mailman.go); nil when it is off
 
 	// Worktree isolation (isolate.go): the harness's record of which task assignments
 	// reached the integration branch, how often each came back from the merge queue,
@@ -259,6 +280,24 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	if cfg.MaxWakes <= 0 {
 		cfg.MaxWakes = def.MaxWakes
 	}
+	if cfg.MailmanQuiet <= 0 {
+		cfg.MailmanQuiet = def.MailmanQuiet
+	}
+	if cfg.MailmanMax <= 0 {
+		cfg.MailmanMax = def.MailmanMax
+	}
+	if cfg.MailmanBound <= 0 {
+		cfg.MailmanBound = def.MailmanBound
+	}
+	if cfg.MailmanBatch <= 0 {
+		cfg.MailmanBatch = def.MailmanBatch
+	}
+	if cfg.MailmanMaxPending <= 0 {
+		cfg.MailmanMaxPending = def.MailmanMaxPending
+	}
+	if cfg.MailmanDigestChars <= 0 {
+		cfg.MailmanDigestChars = def.MailmanDigestChars
+	}
 	if deps.Events == nil {
 		deps.Events = events.Discard{}
 	}
@@ -270,6 +309,16 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	}
 	if roles == nil {
 		roles = BuiltinRoles()
+	}
+	if cfg.Mailman {
+		// The mailman is the harness's own role: added here (over any role of the same
+		// name), in a copy, so the caller's table is not changed.
+		with := make(Roles, len(roles)+1)
+		for n, r := range roles {
+			with[n] = r
+		}
+		with[MailmanRoleName] = MailmanRole()
+		roles = with
 	}
 	s := &Swarm{cfg: cfg, deps: deps, roles: roles, members: map[string]*member{}, seq: map[string]int{},
 		roleLay: map[string]*kv.Layer{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
@@ -291,6 +340,10 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Gate = NewWarmGate(deps.Model.Cache.DefaultTTL(), 0)
 	s.Router = NewRouter(cfg.Router, deps.Events, s.roster, s.ManagerID, nil)
 	s.Router.SetDeliver(s.deliver)
+	if cfg.Mailman {
+		s.mail = newMailroom(s)
+		s.Router.SetDivert(s.mail.divert)
+	}
 	for name, r := range roles {
 		s.roleLay[name] = r.Layer()
 	}
@@ -325,6 +378,9 @@ func (s *Swarm) Shutdown() {
 	cancel := s.cancel
 	s.mu.Unlock()
 	s.wk.stop() // no wake after this
+	if s.mail != nil {
+		s.mail.stop() // and no batch for the mailman
+	}
 	if cancel != nil {
 		cancel()
 	}
@@ -342,12 +398,16 @@ func (s *Swarm) Shutdown() {
 	}
 }
 
+// roster lists the agents mail can be addressed to: everyone but the harness's own
+// service agents (the mailman is nobody's correspondent).
 func (s *Swarm) roster() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ids := make([]string, 0, len(s.members))
-	for id := range s.members {
-		ids = append(ids, id)
+	for id, m := range s.members {
+		if !m.service {
+			ids = append(ids, id)
+		}
 	}
 	sort.Strings(ids)
 	return ids
@@ -508,12 +568,18 @@ func (s *Swarm) modelFor(role string) cost.Model {
 func (s *Swarm) spawnableRoles() []string {
 	var out []string
 	for _, n := range s.roles.Names() {
-		if n != "manager" {
+		if n != "manager" && !s.isService(n) {
 			out = append(out, n)
 		}
 	}
 	return out
 }
+
+// isService reports whether a role is one of the harness's own (the mailman, while
+// mailman mode is on): the harness starts it, and it is nobody's teammate or
+// correspondent. When the mode is off a role of that name is whatever the project made
+// it.
+func (s *Swarm) isService(role string) bool { return s.mail != nil && role == MailmanRoleName }
 
 // taskCard renders the assignment text. In notes (pin=true) it carries the full
 // card; the kickoff message is the short form. Everything from the task is made
@@ -567,6 +633,9 @@ type roleRequester struct {
 	// permission engine is there to enforce the role's profile: a second, stricter
 	// opinion for an agent whose profile the swarm cannot vouch for.
 	strictShell bool
+	// only, when set, is the whole list of tools the agent may call: the mailman may
+	// call mail, and nothing else, whatever the mode or the rules say.
+	only map[string]bool
 }
 
 // isolatedManagerMsg is what the manager of an isolated run is told when it tries to
@@ -575,6 +644,9 @@ const isolatedManagerMsg = "in an isolated run the manager does not edit files: 
 
 func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decision {
 	req.Role = r.role.Name
+	if r.only != nil && !r.only[req.Tool] {
+		return perm.Decision{Allow: false, Reason: r.denyWrites}
+	}
 	if r.denyWrites != "" {
 		_, engine := r.inner.(*perm.Engine)
 		switch {

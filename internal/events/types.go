@@ -69,6 +69,19 @@ const (
 	TypeSwarmWake       = "swarm.wake"
 	TypeSwarmWakePaused = "swarm.wake.paused"
 
+	// Mailman mode (swarm.mailman). mail.route: a worker's message was accepted by the
+	// router and handed to the mailman's ledger instead of being delivered (payload: id,
+	// from, to, kind). mail.digest: the mailman's digest for one recipient was delivered
+	// (payload: id, to, mailman, parcels = the original message ids, senders, frame).
+	// mail.direct: messages were delivered directly, as the router would have without a
+	// mailman, and why (payload: reason, n, ids). mail.batch: the mailman was asked to
+	// digest a batch of parcels (payload: batch, mailman, recipients, parcels).
+	// mail.mailman: the mailman is down for a while (or back) (payload: state, reason).
+	TypeMailDigest   = "mail.digest"
+	TypeMailDirect   = "mail.direct"
+	TypeMailBatch    = "mail.batch"
+	TypeMailmanState = "mail.mailman"
+
 	// Worktree isolation (swarm.isolation = "worktree"). internal/workspace emits
 	// these (its Event* constants are the same strings): one tree per writer, and a
 	// serial merge queue that verifies every integration.

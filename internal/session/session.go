@@ -98,6 +98,11 @@ type Options struct {
 	// result onto the person's branch (a fast-forward; the checkout must be clean and
 	// on a branch) instead of leaving it as uncommitted edits in the working tree.
 	Commit bool
+	// Mailman, when set, overrides swarm.mailman for this session: true routes worker
+	// mail through a mailman agent that digests bursts (docs/SWARM-PROTOCOL.md section
+	// 5), false delivers it at once. Nil leaves it to the configuration. It applies to
+	// swarms; its model is the session's unless RoleModels names one for "mailman".
+	Mailman *bool
 
 	// Limits.
 	MaxSteps      int
@@ -425,6 +430,13 @@ func (s *Session) buildPerm() error {
 			roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow}
 		}
 	}
+	if s.mailmanOn() {
+		// The mailman is read-only and its one tool is mail (the swarm holds it to that);
+		// the engine holds it to plan mode as well.
+		if _, ok := roles[swarm.MailmanRoleName]; !ok {
+			roles[swarm.MailmanRoleName] = perm.RoleProfile{Mode: perm.ModePlan}
+		}
+	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
@@ -610,6 +622,7 @@ func (s *Session) build(ctx context.Context) error {
 	sc.VerifyCmd = o.Verify
 	sc.Verify = runVerify
 	sc.HoldManager, sc.WakeManager = !o.Interactive, o.Interactive
+	sc.Mailman = s.mailmanOn()
 
 	deps := swarm.Deps{
 		Provider: s.Provider, Model: s.Model, Registry: reg,
@@ -721,6 +734,13 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 		}
 		if info := s.mcpInfo(); info != nil {
 			start["mcp"] = info
+		}
+		// What the run's swarm was set up to do to files and mail, when it is not the default.
+		if s.iso != nil {
+			start["isolation"] = config.IsolationWorktree
+		}
+		if s.mailmanOn() {
+			start["mailman"] = true
 		}
 		if s.opts.Resume != "" {
 			start["resumed"] = true

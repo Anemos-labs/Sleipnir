@@ -135,7 +135,13 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		requester = perm.AllowAll{}
 	}
 	rr := roleRequester{inner: requester, role: r}
+	isSvc := s.isService(r.Name)
 	switch {
+	case isSvc:
+		// The mailman: one tool, mail. Whatever else it calls is refused, by the requester
+		// (the file, shell and web tools ask it) and by the swarm tools themselves.
+		rr.denyWrites = fmt.Sprintf("the %s only delivers mail: its one tool is mail", r.Name)
+		rr.only = map[string]bool{"mail": true}
 	case r.ReadOnly:
 		rr.denyWrites = fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.Name)
 	case isMgr && s.isolated():
@@ -164,7 +170,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 			}
 		}
 	}
-	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, sink: sink, notify: make(chan struct{}, 1),
+	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
 		tree: tree, dir: workdir}
 	m.box.init()
 	model, prov := d.Model, d.Provider
@@ -181,6 +187,11 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		Const:         d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
 		Params: d.Params,
 		Hot: func(agentID string) []core.Block {
+			if isSvc {
+				// The board is nothing to the mailman: it knows who it is, and that is all the
+				// uncached tail it is billed for.
+				return []core.Block{core.Text(fmt.Sprintf("you: %s (%s)", agentID, r.Name))}
+			}
 			snap := s.Board.Snapshot()
 			if isMgr {
 				s.noteManagerSeen(snap) // what the manager has looked at (see wake.go)
@@ -310,7 +321,9 @@ func (m *member) publish(s *Swarm) {
 		return
 	}
 	_, info.CostUSD = m.a.Usage()
-	s.Board.SetAgent(info)
+	if !m.service { // the harness's own agents are not on the board: nobody's teammate
+		s.Board.SetAgent(info)
+	}
 	if first {
 		s.emitAs(m.id, events.TypeAgentState, map[string]any{"id": m.id, "state": info.State, "line": info.Line, "task": info.Task})
 	}
@@ -543,6 +556,10 @@ func classifyStop(err error, reason string, reasonCounts bool, ctx context.Conte
 // worker stopped abnormally, returns to todo for someone else (failed after
 // MaxAttempts). Leases are released and the manager hears of a stop in one line.
 func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *agent.Result, err error) {
+	if m.service {
+		s.finishService(m, rs, ctx, err)
+		return
+	}
 	m.mu.Lock()
 	if m.run != rs || m.life != lifeRunning {
 		m.mu.Unlock()

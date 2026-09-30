@@ -212,7 +212,16 @@ type Swarm struct {
 	// and never anywhere a configuration value names: a project's file may switch
 	// isolation on (it only reduces risk), but it cannot choose where anything is
 	// written.
-	Isolation string  `json:"isolation,omitempty"`
+	Isolation string `json:"isolation,omitempty"`
+	// Mailman routes worker mail through a mailman agent that turns bursts into short
+	// digests (default false: mail is delivered at once). The router's checks and rate
+	// limits are unchanged, the manager's and the harness's own mail never goes through
+	// the mailman, and every digest names its original senders; a mailman that is absent
+	// or slow costs delay, never mail (docs/SWARM-PROTOCOL.md section 5). It runs on the
+	// session's model unless one is given for the role (--role-model mailman=<model>).
+	// Like isolation, it changes nothing about what a project's files can reach, so a
+	// project's file may set it.
+	Mailman   bool    `json:"mailman,omitempty"`
 	BudgetUSD float64 `json:"budget_usd"`
 }
 
