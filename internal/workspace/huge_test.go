@@ -53,6 +53,16 @@ func newHugeRepo(t testing.TB, dirs, perDir int) string {
 	return dir
 }
 
+// hugeSize is the default size of the large-tree tests, chosen so that they take
+// seconds, not minutes, in a normal run (the race detector and a busy machine
+// multiply the time spent copying files). SLEIPNIR_HUGE=1 runs the full sizes.
+func hugeSize(normal, full int) int {
+	if os.Getenv("SLEIPNIR_HUGE") != "" {
+		return full
+	}
+	return normal
+}
+
 func countFiles(t testing.TB, root string) int {
 	t.Helper()
 	n := 0
@@ -77,7 +87,7 @@ func TestHugeRepositoryTrees(t *testing.T) {
 		t.Skip("large repository")
 	}
 	skipWithoutUnix(t)
-	const dirs, perDir = 400, 50 // 20,002 files
+	dirs, perDir := hugeSize(200, 400), 50 // 10,002 files (20,002 in the full size)
 	dir := newHugeRepo(t, dirs, perDir)
 	repo := openRepo(t, dir)
 	m := newManager(t, repo)
@@ -122,14 +132,15 @@ func TestHugeRepositoryTrees(t *testing.T) {
 	}
 	t.Logf("%d sparse trees created in parallel in %s", n, time.Since(start).Round(time.Millisecond))
 
-	// Work in the full tree: a handful of changes among 20,000 files
+	// Work in the full tree: a handful of changes among the many files
 	start = time.Now()
-	edit(t, full, "pkg0100/file07.go", "package pkg0100\n\nconst V07 = -1\n")
-	edit(t, full, "pkg0200/new.go", "package pkg0200\n")
-	must(t, os.Remove(filepath.Join(full.Path, "pkg0300", "file01.go")))
+	dEdit, dAdd, dDel := fmt.Sprintf("pkg%04d", dirs/4), fmt.Sprintf("pkg%04d", dirs/2), fmt.Sprintf("pkg%04d", 3*dirs/4)
+	edit(t, full, dEdit+"/file07.go", "package "+dEdit+"\n\nconst V07 = -1\n")
+	edit(t, full, dAdd+"/new.go", "package "+dAdd+"\n")
+	must(t, os.Remove(filepath.Join(full.Path, dDel, "file01.go")))
 	ch, err := full.Changed(tctx(t))
-	if err != nil || strings.Join(ch, ",") != "pkg0100/file07.go,pkg0200/new.go,pkg0300/file01.go" {
-		t.Fatalf("Changed = %v, %v", ch, err)
+	if want := dEdit + "/file07.go," + dAdd + "/new.go," + dDel + "/file01.go"; err != nil || strings.Join(ch, ",") != want {
+		t.Fatalf("Changed = %v, %v (want %s)", ch, err, want)
 	}
 	patch, err := full.Diff(tctx(t))
 	if err != nil || !strings.Contains(patch, "V07 = -1") {
@@ -142,7 +153,7 @@ func TestHugeRepositoryTrees(t *testing.T) {
 
 	// integrate the full tree and a sparse one; the integration tree holds everything
 	edit(t, sp, "pkg0003/file00.go", "package pkg0003\n\nconst V00 = -3\n")
-	q1 := mustQueue(t, m, QueueOptions{VerifyCmd: "test -f pkg0399/file49.go"})
+	q1 := mustQueue(t, m, QueueOptions{VerifyCmd: fmt.Sprintf("test -f pkg%04d/file%02d.go", dirs-1, perDir-1)})
 	start = time.Now()
 	r1 := mustSubmit(t, q1, Submission{Tree: full, Task: "full"})
 	r2 := mustSubmit(t, q1, Submission{Tree: sp, Task: "sparse"})
@@ -171,7 +182,7 @@ func TestHugeDirectoryInCopyMode(t *testing.T) {
 	skipWithoutUnix(t)
 	isolateHome(t)
 	src := filepath.Join(t.TempDir(), "big plain dir")
-	const dirs, perDir = 200, 50 // 10,000 files
+	dirs, perDir := hugeSize(100, 200), 50 // 5,000 files (10,000 in the full size)
 	for d := 0; d < dirs; d++ {
 		for f := 0; f < perDir; f++ {
 			writeFile(t, filepath.Join(src, fmt.Sprintf("d%03d", d), fmt.Sprintf("f%02d.txt", f)), fmt.Sprintf("dir %d file %d\n", d, f))

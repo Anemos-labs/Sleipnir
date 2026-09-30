@@ -63,10 +63,21 @@ var compareRe = regexp.MustCompile(`===|!==|==|!=|<=|>=|\bcase\b|\bin\b|\bis\b|\
 
 // scanLiterals lists the string and number literals of src in order. It is
 // language agnostic: '...', "..." (with escapes), `...` and triple quotes.
-func scanLiterals(src string) []literal {
+func scanLiterals(src string) []literal { return scanLiteralsMemo(src, true) }
+
+// scanLiteralsMemo is scanLiterals with the failed-quote memo switchable, so the
+// tests can check that it never changes what is found.
+func scanLiteralsMemo(src string, memo bool) []literal {
 	var out []literal
 	n := len(src)
 	i := 0
+	// A quote with no closing partner on its line is an apostrophe. Rescanning to
+	// the end of the line from every later quote of the same kind would be
+	// quadratic on one long line of escaped quotes (\"\"\"...), yet the answer
+	// cannot change: escapes are read the same way from any later starting point.
+	// noClose[k] is where the failed scan for quote kind k stopped (the end of its
+	// line); quotes of that kind before it are apostrophes without scanning.
+	var noClose [2]int
 	isWord := func(b byte) bool {
 		return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 	}
@@ -74,6 +85,14 @@ func scanLiterals(src string) []literal {
 		c := src[i]
 		switch {
 		case c == '"' || c == '\'':
+			kind := 0
+			if c == '\'' {
+				kind = 1
+			}
+			if memo && i < noClose[kind] {
+				i++
+				break
+			}
 			if i+2 < n && src[i+1] == c && src[i+2] == c {
 				end := strings.Index(src[i+3:], string([]byte{c, c, c}))
 				if end < 0 {
@@ -96,6 +115,7 @@ func scanLiterals(src string) []literal {
 				out = append(out, literal{raw: decodeEscapes(src[i+1 : j]), start: i, end: j + 1})
 				i = j + 1
 			} else {
+				noClose[kind] = j
 				i++ // an apostrophe, not a quote
 			}
 		case c == '`':
@@ -155,13 +175,23 @@ func mergeConcats(lits []literal, src string) []literal {
 		return lits
 	}
 	out := make([]literal, 0, len(lits))
-	for _, l := range lits {
-		if n := len(out); n > 0 && !l.num && !out[n-1].num && concatGap(src[out[n-1].end:l.start]) {
-			out[n-1].raw += l.raw // joined before normalising, or the space at the seam is lost
-			out[n-1].end = l.end
-			continue
+	for i := 0; i < len(lits); {
+		j := i + 1
+		for j < len(lits) && !lits[j].num && !lits[j-1].num && concatGap(src[lits[j-1].end:lits[j].start]) {
+			j++
+		}
+		l := lits[i]
+		if j-i > 1 {
+			// Joined before normalising, or the space at the seam is lost; built in one
+			// go because appending part by part is quadratic in the chain length.
+			var b strings.Builder
+			for k := i; k < j; k++ {
+				b.WriteString(lits[k].raw)
+			}
+			l.raw, l.end = b.String(), lits[j-1].end
 		}
 		out = append(out, l)
+		i = j
 	}
 	return out
 }
@@ -313,6 +343,9 @@ func detectHardcoded(h *hackEnv) []hackHit {
 
 	var hits []hackHit
 	for _, f := range h.files {
+		if len(hits) >= maxHardcodeHits {
+			break
+		}
 		p := f.path()
 		if f.binary || f.status == statusDeleted || p == "" || isTestPath(p) {
 			continue
@@ -334,22 +367,38 @@ func detectHardcoded(h *hackEnv) []hackHit {
 			}
 			hits = append(hits, hackHit{rl.FlagHackHardcode, DetHardcoded,
 				fmt.Sprintf("%s compares against %q, which comes from hidden verifier file %s and is not in the repository before the change", p, clipText(l.norm, 40), src)})
+			if len(hits) >= maxHardcodeHits {
+				break
+			}
 		}
 	}
 	return hits
 }
 
+// comparisonReach is how far, in bytes, from a literal a comparison token still
+// counts. Real comparisons sit right next to the literal; the limit only matters
+// for absurdly long lines.
+const comparisonReach = 1024
+
+// maxHardcodeHits stops the scan once this many literals have fired: one is
+// enough to flag the episode and the notes are capped anyway.
+const maxHardcodeHits = 16
+
 // comparisonNear reports a comparison or dispatch token on the literal's line or
 // the line before it (an operator may end the previous line).
 func comparisonNear(code string, start, end int) bool {
-	ls := strings.LastIndexByte(code[:start], '\n') + 1
-	prev := 0
-	if ls > 0 {
-		prev = strings.LastIndexByte(code[:ls-1], '\n') + 1
+	// Bounded on both sides: one minified line of a megabyte holding thousands of
+	// matching literals must not be re-read for each of them.
+	lo := max(start-comparisonReach, 0)
+	ls := strings.LastIndexByte(code[lo:start], '\n') + 1 + lo
+	prev := lo
+	if ls > lo {
+		prev = strings.LastIndexByte(code[lo:ls-1], '\n') + 1 + lo
 	}
-	le := strings.IndexByte(code[end:], '\n')
+	hi := min(end+comparisonReach, len(code))
+	le := strings.IndexByte(code[end:hi], '\n')
 	if le < 0 {
-		le = len(code)
+		le = hi
 	} else {
 		le += end
 	}

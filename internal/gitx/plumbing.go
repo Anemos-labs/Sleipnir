@@ -108,6 +108,15 @@ func (r *Repo) SparseCheckoutSet(ctx context.Context, dirs []string) error {
 		if err != nil {
 			return err
 		}
+		// Unlike every other path we pass, these end up as lines of a pattern file
+		// (.git/info/sparse-checkout, or its per-worktree copy): a newline would add
+		// a pattern of the caller's choosing, and other control characters have no
+		// business in a directory name we are asked to check out.
+		for _, r := range c {
+			if r < 0x20 || r == 0x7f {
+				return newErr(KindInvalid, "sparse-checkout", "directory name %q contains a control character", d)
+			}
+		}
 		args = append(args, c)
 	}
 	_, err := r.run(ctx, call{args: args, mutating: true})

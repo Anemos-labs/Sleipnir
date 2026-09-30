@@ -196,7 +196,7 @@ func TestScratchScaling(t *testing.T) {
 			run := func(n int) time.Duration {
 				s := strings.Repeat(unit, n/len(unit)+1)[:n]
 				best := time.Duration(1 << 62)
-				for rep := 0; rep < 3; rep++ {
+				for rep := 0; rep < 2; rep++ {
 					runtime.GC()
 					done := make(chan time.Duration, 1)
 					go func() {
@@ -213,7 +213,7 @@ func TestScratchScaling(t *testing.T) {
 						fmt.Printf("SLOW %s unit=%q n=%d (>6s)\n", name, unit, n)
 						os.Exit(2)
 					}
-					if best < 5*time.Millisecond {
+					if best > 50*time.Millisecond {
 						break
 					}
 				}
@@ -237,5 +237,14 @@ func sortStrings(a []string) {
 		for j := i; j > 0 && a[j] < a[j-1]; j-- {
 			a[j], a[j-1] = a[j-1], a[j]
 		}
+	}
+}
+
+func TestScratchMemoOff(t *testing.T) {
+	for _, n := range []int{10000, 40000} {
+		s := strings.Repeat(`\"`, n)
+		start := time.Now()
+		scanLiteralsMemo(s, false)
+		t.Logf("memo off, n=%d units: %v", n, time.Since(start))
 	}
 }

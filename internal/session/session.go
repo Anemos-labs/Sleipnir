@@ -27,6 +27,7 @@ import (
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/hooks"
 	"github.com/reee344/sleipnir/internal/kv"
 	"github.com/reee344/sleipnir/internal/memory"
 	"github.com/reee344/sleipnir/internal/perm"
@@ -139,8 +140,10 @@ type Session struct {
 	Skills *skills.Catalog
 	Roles  swarm.Roles
 
-	ext   *extensions
-	shell *shell.Manager
+	ext         *extensions
+	hooks       *hooks.Runner
+	hookAdapter *hookAdapter
+	shell       *shell.Manager
 
 	mu      sync.Mutex
 	started bool
@@ -232,8 +235,14 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		s.Model.ContextTokens = o.ContextWindow
 	}
 
-	// Skills and role definitions, then permissions (which need the roles' profiles).
+	// Hooks, then skills and role definitions, then permissions (which need the
+	// roles' profiles and put PermissionRequest hooks in front of the prompter).
+	var hookWarns []string
+	if s.hooks, hookWarns = newHookRunner(cfg, s.ID, o.Root); s.hooks != nil {
+		s.hookAdapter = &hookAdapter{s: s, run: s.hooks}
+	}
 	s.loadExtensions()
+	s.ext.warnings = append(s.ext.warnings, hookWarns...)
 	s.Skills, s.Roles = s.ext.skills, s.ext.roles
 	for _, w := range s.ext.warnings {
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": w})
@@ -342,7 +351,7 @@ func (s *Session) buildPerm() error {
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home,
 		Allow: s.cfg.Permissions.Allow, Ask: ask, Deny: s.cfg.Permissions.Deny,
-		Roles: roles, Prompter: o.Prompter,
+		Roles: roles, Prompter: s.hookPrompter(o.Prompter),
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
@@ -608,6 +617,11 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 	turn := s.turn
 	s.mu.Unlock()
 
+	goal, err := s.promptHook(ctx, first, goal)
+	if err != nil {
+		return nil, err
+	}
+
 	if first {
 		start := map[string]any{
 			"version": Version, "model": s.Model.ID, "provider": s.Provider.Profile().Name, "dialect": s.Provider.Profile().Dialect,
@@ -684,6 +698,11 @@ func (s *Session) Close() error {
 	}
 	if s.shell != nil {
 		s.shell.Shutdown()
+	}
+	if started && s.hookAdapter != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionEnd, Agent: s.mainAgent(), Extra: map[string]any{"reason": "other"}})
+		cancel()
 	}
 	if started {
 		s.Log.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": s.cost()})
