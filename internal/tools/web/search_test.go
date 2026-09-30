@@ -311,7 +311,7 @@ func TestTavily(t *testing.T) {
 	up := newUpstream(t, 200, "application/json", `{"query":"go","results":[
 	 {"title":"Go","url":"https://go.dev/","content":"The Go programming language.","score":0.9,"raw_content":null},
 	 {"title":"Docs","url":"https://go.dev/doc/","content":"Documentation.","score":0.5}]}`)
-	tv := &Tavily{APIKey: "tvly-abc", BaseURL: up.URL + "/search"}
+	tv := &Tavily{APIKey: "test-tavily-key", BaseURL: up.URL + "/search"}
 	if tv.Name() != "tavily" {
 		t.Errorf("Name = %q", tv.Name())
 	}
@@ -323,7 +323,7 @@ func TestTavily(t *testing.T) {
 	if req.Method != "POST" || req.URL.Path != "/search" {
 		t.Errorf("request = %s %s", req.Method, req.URL)
 	}
-	if req.Header.Get("Authorization") != "Bearer tvly-abc" || req.Header.Get("Content-Type") != "application/json" {
+	if req.Header.Get("Authorization") != "Bearer test-tavily-key" || req.Header.Get("Content-Type") != "application/json" {
 		t.Errorf("headers = %v", req.Header)
 	}
 	var sent map[string]any
@@ -333,7 +333,7 @@ func TestTavily(t *testing.T) {
 	if sent["query"] != "go generics" || sent["max_results"] != float64(4) || sent["search_depth"] != "basic" || sent["include_answer"] != false {
 		t.Errorf("body = %s", body)
 	}
-	if strings.Contains(body, "tvly-abc") {
+	if strings.Contains(body, "test-tavily-key") {
 		t.Error("the API key leaked into the request body")
 	}
 	if len(rs) != 2 || rs[0].Snippet != "The Go programming language." || rs[1].URL != "https://go.dev/doc/" {
@@ -561,6 +561,18 @@ func TestBackendFromEnv(t *testing.T) {
 	}
 }
 
+func TestSearchResultsAreStrippedOfHiddenCharacters(t *testing.T) {
+	fb := &fakeBackend{results: []SearchResult{{
+		Title:   "Ti\U000E0049\U000E0067\u202etle",
+		URL:     "https://x.test/",
+		Snippet: "sni\u200b\u2066ppet \U000E0041",
+	}}}
+	res := runSearch(t, fb, nil, map[string]any{"query": "q"})
+	if want := "1. Title\n   https://x.test/\n   snippet"; res.Text != want {
+		t.Errorf("text = %q, want %q", res.Text, want)
+	}
+}
+
 func TestCleanSnippet(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -574,7 +586,7 @@ func TestCleanSnippet(t *testing.T) {
 		{"<script>alert(1)</script>text", 100, "alert(1)text"}, // markup is stripped, not executed; the text is data
 		{strings.Repeat("é", 50), 10, strings.Repeat("é", 10) + "…"},
 		{"", 10, ""},
-		{"bad \xff utf8", 100, "bad  utf8"},
+		{"bad \xff utf8", 100, "bad utf8"},
 		{"<unclosed tag", 100, "<unclosed tag"},
 	}
 	for _, tt := range tests {

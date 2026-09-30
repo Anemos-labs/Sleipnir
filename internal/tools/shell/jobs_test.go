@@ -483,3 +483,96 @@ func TestJobsSurviveEmitterErrors(t *testing.T) {
 		return strings.Contains(h.output(env, id, map[string]any{"since": 0}).Text, "exited 0")
 	})
 }
+
+// Jobs are session-wide, but that must not put them outside the permission
+// engine: a read-only role must not read a writer's output or kill its runs.
+func TestCrossAgentJobAccessIsPermissionGated(t *testing.T) {
+	h := newHarness(t, Options{KillGrace: 300 * time.Millisecond})
+	owner := h.env("be-1")
+	id := h.startJob(owner, "echo secret-from-be-1; sleep 30")
+	waitFor(t, "output", 10*time.Second, func() bool {
+		return strings.Contains(h.output(owner, id, map[string]any{"since": 0}).Text, "secret-from-be-1")
+	})
+
+	t.Run("denied", func(t *testing.T) {
+		deny := &recordingPerm{allow: false, why: "read-only role"}
+		rv := h.env("rv-1")
+		rv.Role = "reviewer"
+		rv.Perm = deny
+
+		out := h.output(rv, id)
+		if !out.IsError || out.Text != "permission denied: read-only role" || strings.Contains(out.Text, "secret") {
+			t.Errorf("bash_output = %+v", out)
+		}
+		kill := h.kill(rv, id)
+		if !kill.IsError || kill.Text != "permission denied: read-only role" {
+			t.Errorf("bash_kill = %+v", kill)
+		}
+		if state, _, _ := h.m.job(id).snapshot(); state != jobRunning {
+			t.Error("a denied kill stopped the job")
+		}
+		reqs := deny.seen()
+		if len(reqs) != 2 {
+			t.Fatalf("%d permission requests, want 2", len(reqs))
+		}
+		for i, want := range []struct {
+			tool   string
+			writes bool
+		}{{"bash_output", false}, {"bash_kill", true}} {
+			r := reqs[i]
+			if r.Tool != want.tool || r.Writes != want.writes || r.Agent != "rv-1" || r.Role != "reviewer" || r.Command != "" || r.Paths != nil || r.Network {
+				t.Errorf("request %d = %+v", i, r)
+			}
+			for _, s := range []string{"job_1", "be-1", "echo secret-from-be-1"} {
+				if !strings.Contains(r.Summary, s) {
+					t.Errorf("request %d summary %q lacks %q", i, r.Summary, s)
+				}
+			}
+			if !json.Valid(r.Input) {
+				t.Errorf("request %d input = %q", i, r.Input)
+			}
+		}
+	})
+	t.Run("denied without reason", func(t *testing.T) {
+		rv := h.env("rv-2")
+		rv.Perm = &recordingPerm{}
+		if out := h.output(rv, id); out.Text != "permission denied" {
+			t.Errorf("text = %q", out.Text)
+		}
+	})
+	t.Run("allowed", func(t *testing.T) {
+		allow := &recordingPerm{allow: true}
+		mgr := h.env("mgr")
+		mgr.Perm = allow
+		if out := h.output(mgr, id, map[string]any{"since": 0}); out.IsError || !strings.HasPrefix(out.Text, "secret-from-be-1\n") {
+			t.Errorf("bash_output = %+v", out)
+		}
+		if n := len(allow.seen()); n != 1 {
+			t.Errorf("%d requests", n)
+		}
+	})
+	t.Run("an agent's own jobs need no approval", func(t *testing.T) {
+		strict := &recordingPerm{allow: false, why: "no"}
+		owner.Perm = strict
+		if out := h.output(owner, id, map[string]any{"since": 0}); out.IsError {
+			t.Errorf("owner denied its own job: %+v", out)
+		}
+		if n := len(strict.seen()); n != 0 {
+			t.Errorf("the permission engine was asked %d times about the owner's own job", n)
+		}
+	})
+	t.Run("unknown ids are not a permission matter", func(t *testing.T) {
+		rv := h.env("rv-3")
+		rv.Perm = &recordingPerm{}
+		if out := h.output(rv, "job_99"); !strings.Contains(out.Text, `no job "job_99"`) {
+			t.Errorf("text = %q", out.Text)
+		}
+	})
+	t.Run("permitted kill works", func(t *testing.T) {
+		mgr := h.env("mgr2")
+		mgr.Perm = &recordingPerm{allow: true}
+		if r := h.kill(mgr, id); r.IsError || !strings.HasPrefix(r.Text, "job job_1 killed") {
+			t.Errorf("kill = %+v", r)
+		}
+	})
+}

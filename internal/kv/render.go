@@ -7,15 +7,16 @@ import (
 // RendererVersion identifies the prompt layout. Bump it whenever Render would
 // produce different bytes for the same stack, so logged prompts and training data
 // can be tied to the layout the model was actually served with.
-const RendererVersion = "sleipnir-kv/1"
+const RendererVersion = "sleipnir-kv/2"
 
 // RenderOpts are the per-request inputs to Render that are not part of the
 // agent's persistent stack.
 type RenderOpts struct {
-	// Hot is the always-fresh tail (board view, mailbox headers). It is
-	// rendered after the last cache breakpoint and never persisted.
+	// Hot is the always-fresh tail (board view, mailbox headers) in HotInline
+	// mode: rendered after the last cache breakpoint and never persisted. In the
+	// other modes the hot text lives in the thread and Hot is ignored.
 	Hot []core.Block
-	// Caps describes the target provider.
+	// Caps describes the target provider (Caps.HotMode is the resolved mode).
 	Caps   Caps
 	Policy Policy
 	Params core.Params
@@ -25,6 +26,11 @@ type RenderOpts struct {
 	// StripThinking omits stored thinking blocks (used on the first request
 	// after a declared rebase, where their bindings are void by construction).
 	StripThinking bool
+	// PrevRolling is where the previous request of this agent put its rolling
+	// marker, when nothing has been rebased since (so the blocks up to there are
+	// byte-identical). The planner uses it to keep that cache entry within the
+	// provider's lookback window of the new one.
+	PrevRolling *core.BlockRef
 	// Est sizes layers for breakpoint planning.
 	Est core.Estimator
 }
@@ -47,6 +53,10 @@ type Rendered struct {
 	ThreadFrom int
 	// PrefixKey identifies the shared trie node (see Stack.PrefixKey).
 	PrefixKey core.Hash
+	// Caps are the provider capabilities the prompt was rendered for.
+	Caps Caps
+	// Rolling is the block that carries the rolling marker, when one was planned.
+	Rolling *core.BlockRef
 }
 
 // Render turns a stack snapshot into a provider-neutral prompt.
@@ -59,7 +69,13 @@ type Rendered struct {
 //	msg[0]:   user, blocks [G1 shared][G2 role][G3 notes][G4 spine] + first
 //	          thread turn if it is a user turn
 //	msg[1..]: remaining thread turns
-//	tail:     G6 hot blocks appended to the final user message
+//	tail:     G6 hot blocks appended to the final user message (HotInline only)
+//
+// Turn-scoped system messages (HotTurnScoped): a thread turn with role system is
+// rendered as its own message with ClearAt set, kept in the array for every later
+// request byte for byte. It never carries a cache marker (the rolling marker
+// moves to the block before it). Without HotTurnScoped such a turn is folded into
+// the neighbouring user message like any other user text.
 func Render(s *Stack, o RenderOpts) *Rendered {
 	if o.Est == nil {
 		o.Est = core.NewBytesEstimator()
@@ -96,6 +112,7 @@ func Render(s *Stack, o RenderOpts) *Rendered {
 	addLayer("notes", s.Notes)
 	addLayer("spine", s.Spine)
 
+	turnScoped := o.Caps.HotMode == HotTurnScoped
 	msgs := []core.Message{pre}
 	turns := s.Thread.Turns
 	i := 0
@@ -113,25 +130,36 @@ func Render(s *Stack, o RenderOpts) *Rendered {
 		if len(blocks) == 0 {
 			blocks = []core.Block{core.Text("(no output)")}
 		}
-		if n := len(msgs); n > 0 && msgs[n-1].Role == tr.Role && n > 1 {
+		role := tr.Role
+		if role == core.RoleSystem && !turnScoped {
+			role = core.RoleUser // adapters without the feature would fold it anyway
+		}
+		if role == core.RoleSystem {
+			msgs = append(msgs, core.Message{Role: core.RoleSystem, ClearAt: ClearAtNextUser, Blocks: blocks, Turn: tr.ID})
+			continue
+		}
+		if n := len(msgs); n > 0 && msgs[n-1].Role == role {
 			// Defensive merge: the agent loop keeps roles alternating, but a
-			// stray double user turn must not reach the provider as two messages.
+			// stray double user turn (a retry after a failed first request, a
+			// retained region that opens with two user turns) must not reach the
+			// provider as two adjacent messages. Appending to the previous message
+			// keeps the render append-only.
 			msgs[n-1].Blocks = append(msgs[n-1].Blocks, blocks...)
 			continue
 		}
-		msgs = append(msgs, core.Message{Role: tr.Role, Blocks: blocks, Turn: tr.ID})
+		msgs = append(msgs, core.Message{Role: role, Blocks: blocks, Turn: tr.ID})
 	}
 
-	// The rolling breakpoint sits after the last persistent block; the hot tail
-	// follows it and is billed at the uncached rate every request.
-	last := len(msgs) - 1
-	rolling := core.BlockRef{Msg: last, Blk: len(msgs[last].Blocks) - 1}
-	if len(o.Hot) > 0 {
+	// Ephemeral hot tail, after the last persistent block: the planner puts the
+	// rolling marker before it and it is billed at the uncached rate every
+	// request. It is only appended in HotInline mode.
+	if len(o.Hot) > 0 && o.Caps.HotMode == HotInline {
 		hot := make([]core.Block, len(o.Hot))
 		for k, b := range o.Hot {
 			b.Ephemeral = true
 			hot[k] = b
 		}
+		last := len(msgs) - 1
 		if msgs[last].Role == core.RoleUser {
 			msgs[last].Blocks = append(msgs[last].Blocks, hot...)
 		} else {
@@ -144,9 +172,9 @@ func Render(s *Stack, o RenderOpts) *Rendered {
 	for _, m := range marks {
 		refs[m.name] = m.ref
 	}
-	refs["thread"] = rolling
 	bps := planBreakpoints(p, refs, sections, o)
 	p.Breakpoints = bps
+	var rolling *core.BlockRef
 	for i := range sections {
 		for _, b := range bps {
 			if b.Label == sections[i].Name {
@@ -154,7 +182,13 @@ func Render(s *Stack, o RenderOpts) *Rendered {
 			}
 		}
 	}
-	return &Rendered{Prompt: p, Sections: sections, ThreadFrom: threadFrom, PrefixKey: s.PrefixKey()}
+	for _, b := range bps {
+		if b.Label == "thread" {
+			r := b.After
+			rolling = &r
+		}
+	}
+	return &Rendered{Prompt: p, Sections: sections, ThreadFrom: threadFrom, PrefixKey: s.PrefixKey(), Caps: o.Caps, Rolling: rolling}
 }
 
 // renderBlocks converts a turn's blocks to wire-ready blocks, dropping thinking

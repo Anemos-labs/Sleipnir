@@ -67,7 +67,20 @@ var ErrStaleEpoch = errors.New("thread epoch moved")
 // between, the caller must re-derive. Turns appended after the snapshot are
 // carried over verbatim behind the replacement, which is what lets a
 // background compactor work on a snapshot while the agent keeps running.
+//
+// Verbatim is only right where nothing binds those turns to the old prefix. A
+// provider that enforces preserved thinking checks each thinking block against
+// everything before it, and a commit rewrites everything before the carried
+// turns; callers on such routes use CommitWith to strip them.
 func (t *Thread) Commit(expect uint64, replacement []core.Turn, snapLen int) error {
+	return t.CommitWith(expect, replacement, snapLen, nil)
+}
+
+// CommitWith is Commit with a transformation applied to the carried tail: the
+// turns appended after the snapshot were produced against the prefix that this
+// commit replaces, so a caller can strip what the rebase voids (thinking) in the
+// same atomic step.
+func (t *Thread) CommitWith(expect uint64, replacement []core.Turn, snapLen int, tail func(core.Turn) core.Turn) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.epoch != expect {
@@ -76,13 +89,41 @@ func (t *Thread) Commit(expect uint64, replacement []core.Turn, snapLen int) err
 	if snapLen > len(t.turns) {
 		return fmt.Errorf("kv: snapshot longer than thread (%d > %d)", snapLen, len(t.turns))
 	}
-	tail := t.turns[snapLen:]
-	out := make([]core.Turn, 0, len(replacement)+len(tail))
+	carried := t.turns[snapLen:]
+	out := make([]core.Turn, 0, len(replacement)+len(carried))
 	out = append(out, replacement...)
-	out = append(out, tail...)
+	for _, tr := range carried {
+		if tail != nil {
+			tr = tail(tr)
+		}
+		out = append(out, tr)
+	}
 	t.turns = out
 	t.epoch++
 	return nil
+}
+
+// Rewrite maps every turn through fn and, when any turn changed, installs the
+// result as a new epoch. It is the primitive for durable, declared rewrites that
+// touch the whole thread (stripping thinking after a shared-layer epoch or a
+// binding error). fn must not modify its argument's block slice in place;
+// snapshots share it.
+func (t *Thread) Rewrite(fn func(core.Turn) (core.Turn, bool)) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]core.Turn, len(t.turns))
+	changed := false
+	for i, tr := range t.turns {
+		var c bool
+		out[i], c = fn(tr)
+		changed = changed || c
+	}
+	if !changed {
+		return false
+	}
+	t.turns = out
+	t.epoch++
+	return true
 }
 
 // Tokens estimates the thread size.
@@ -134,13 +175,17 @@ type Unit struct {
 	From, To   core.TurnID
 }
 
-// Units partitions turns into indivisible units.
+// Units partitions turns into indivisible units. Turn-scoped system messages
+// (the hot tail in HotTurnScoped mode) belong to the turn they follow.
 func Units(turns []core.Turn) []Unit {
 	var out []Unit
 	for i := 0; i < len(turns); {
 		j := i + 1
 		if turns[i].Role == core.RoleAssistant && len(turns[i].ToolCalls()) > 0 && j < len(turns) {
 			j++ // the results turn
+		}
+		for j < len(turns) && turns[j].Role == core.RoleSystem && turns[i].Role != core.RoleSystem {
+			j++ // trailing turn-scoped system messages
 		}
 		out = append(out, Unit{Start: i, End: j, From: turns[i].ID, To: turns[j-1].ID})
 		i = j

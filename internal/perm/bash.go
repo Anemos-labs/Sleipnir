@@ -10,8 +10,12 @@ import (
 	"github.com/reee344/sleipnir/internal/shellparse"
 )
 
-// maxUnits bounds how many simple commands of one line are judged.
-const maxUnits = 2000
+// Bounds on hostile input: simple commands judged per line, and file operands
+// resolved per command or tool request.
+const (
+	maxUnits    = 2000
+	maxOperands = 4000
+)
 
 // cmdClass says where a simple command sits relative to the allowlists.
 type cmdClass int
@@ -49,6 +53,9 @@ type unit struct {
 
 	tool bool // a non-shell tool request
 	req  *Request
+
+	rem     []Rule // cached remember rules
+	remDone bool
 }
 
 // evaluator judges one request against one view (mode and rule set).
@@ -294,6 +301,14 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		if u.name == "" {
 			// ./tool or /opt/x/tool: running a file reads it; it is not a write.
 			uses = append([]pathUse{{raw: s.Program}}, uses...)
+		}
+	}
+	if len(uses) > maxOperands {
+		// Beyond this the operands are not looked at one by one; the command is
+		// simply never auto-allowed. Protections still see the first ones.
+		uses = uses[:maxOperands]
+		if u.dyn == "" {
+			u.dyn = fmt.Sprintf("it has more than %d operands, too many to check", maxOperands)
 		}
 	}
 	for i, use := range uses {

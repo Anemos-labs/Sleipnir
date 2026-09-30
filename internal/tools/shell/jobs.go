@@ -13,6 +13,7 @@ import (
 
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
@@ -214,6 +215,37 @@ func (m *Manager) unknownJob(env *tools.Env, id string) *tools.Result {
 	return fail(env, "no job %q; known jobs: %s", clip(id, 40), strings.Join(ids, ", "))
 }
 
+// authorize gates access to a job that another agent started. Jobs are shared
+// by the whole session so that a manager can watch a worker's test run, but
+// "shared" must not mean "outside the permission engine": a read-only reviewer
+// must not read a writer's output (test logs, secrets) or kill its verification
+// run. An agent's own jobs need no further approval, since it already had
+// permission to start them.
+func (m *Manager) authorize(ctx context.Context, env *tools.Env, c *tools.Call, j *job, tool string, writes bool) *tools.Result {
+	if j.agent == env.Agent {
+		return nil
+	}
+	verb := "read the output of"
+	if writes {
+		verb = "kill"
+	}
+	dec := env.Perm.Check(ctx, perm.Request{
+		Agent:   env.Agent,
+		Role:    env.Role,
+		Tool:    tool,
+		Input:   c.Input,
+		Summary: fmt.Sprintf("%s %s, started by %s (%s)", verb, j.id, j.agent, clip(firstLine(j.command), 80)),
+		Writes:  writes,
+	})
+	if dec.Allow {
+		return nil
+	}
+	if dec.Reason != "" {
+		return fail(env, "permission denied: %s", dec.Reason)
+	}
+	return fail(env, "permission denied")
+}
+
 func jobNum(id string) int {
 	var n int
 	fmt.Sscanf(id, "job_%d", &n)
@@ -301,6 +333,9 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 	if j == nil {
 		return t.m.unknownJob(env, strings.TrimSpace(id)), nil
 	}
+	if denied := t.m.authorize(ctx, env, c, j, "bash_output", false); denied != nil {
+		return denied, nil
+	}
 	from := j.cursor(env.Agent)
 	if hasSince {
 		from = int64(math.Min(math.Floor(since), 9e18))
@@ -363,6 +398,9 @@ func (t *killTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	j := m.job(strings.TrimSpace(id))
 	if j == nil {
 		return m.unknownJob(env, strings.TrimSpace(id)), nil
+	}
+	if denied := m.authorize(ctx, env, c, j, "bash_kill", true); denied != nil {
+		return denied, nil
 	}
 
 	state, _, exit := j.snapshot()

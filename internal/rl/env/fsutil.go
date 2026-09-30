@@ -180,33 +180,43 @@ func removeIn(root *os.Root, rel string) error {
 	return root.Remove(rel)
 }
 
-// writeFileIn creates rel below root with the given content, replacing any
-// existing file, symlink or directory at that path. The final open is
-// O_EXCL, so even a racing symlink cannot redirect the write.
-func writeFileIn(root *os.Root, rel string, data []byte, mode fs.FileMode) error {
+// createFileIn creates rel below root for writing, replacing any existing
+// file, symlink or directory at that path, and returns the open file. The final
+// open is O_EXCL, so even a racing symlink cannot redirect the write. mode is
+// applied with fchmod on the descriptor rather than chmod on the path: the
+// umask may have removed bits the caller asked for (the exec bit of a hidden
+// script), and a path-based chmod would be a second chance for a swapped-in
+// symlink.
+func createFileIn(root *os.Root, rel string, mode fs.FileMode) (*os.File, error) {
 	if err := validRelPath(rel); err != nil {
-		return fmt.Errorf("%s: %w", rel, err)
+		return nil, fmt.Errorf("%s: %w", rel, err)
 	}
 	if dir := path.Dir(rel); dir != "." {
 		if err := ensureDirIn(root, dir); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := removeIn(root, rel); err != nil {
-		return err
+		return nil, err
 	}
 	f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode.Perm())
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Chmod(mode.Perm()); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+// writeFileIn creates rel below root with the given content (see createFileIn).
+func writeFileIn(root *os.Root, rel string, data []byte, mode fs.FileMode) error {
+	f, err := createFileIn(root, rel, mode)
 	if err != nil {
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	// fchmod on the descriptor, not chmod on the path: the umask may have
-	// removed bits the caller asked for (the exec bit of a hidden script), and
-	// a path-based chmod would be a second chance for a swapped-in symlink.
-	if err := f.Chmod(mode.Perm()); err != nil {
 		f.Close()
 		return err
 	}

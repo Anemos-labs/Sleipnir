@@ -461,34 +461,32 @@ func entropyCandidateOK(c string) bool {
 }
 
 // isWordy reports strings made mostly of dictionary-length lower-case runs
-// (getUserByIdV2AndValidateSession, my-service-name-2024-prod): identifiers and
-// slugs with a digit in them. Random tokens alternate case and digits every
-// character or two and score near zero.
+// (getUserByIdV2AndValidateSession, my-service-name-2024-prod-eu): identifiers
+// and slugs with a digit in them. Random tokens alternate case and digits every
+// character or two and score near zero. Digits and separators are neutral.
 func isWordy(c string) bool {
-	total, run, inRun := 0, 0, false
+	letters, wordy, run := 0, 0, 0
 	flush := func() {
 		if run >= 3 {
-			total += run
+			wordy += run
 		}
-		run, inRun = 0, false
+		run = 0
 	}
 	for i := 0; i < len(c); i++ {
-		b := c[i]
-		switch {
+		switch b := c[i]; {
 		case b >= 'a' && b <= 'z':
+			letters++
 			run++
-			inRun = true
 		case b >= 'A' && b <= 'Z':
+			letters++
 			flush()
-			run, inRun = 1, true // a capital starts a camelCase word
+			run = 1 // a capital starts a camelCase word
 		default:
 			flush()
 		}
 	}
-	if inRun {
-		flush()
-	}
-	return float64(total) >= 0.7*float64(len(c))
+	flush()
+	return letters > 0 && float64(wordy) >= 0.7*float64(letters)
 }
 
 func isHex(c string) bool {

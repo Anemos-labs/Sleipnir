@@ -27,17 +27,25 @@ var (
 	slackHook  = frag("https://hooks.", "slack.com/services/T01234567/B01234567/", "AbCdEfGhIjKlMnOpQrStUvWx")
 )
 
-const (
-	awsKey    = "AKIAIOSFODNN7EXAMPLE"
-	ghToken   = "ghp_16C7e42F292c6912E7710c838347Ae178B4a"
-	googleKey = "AIzaSyA-1234567890abcdefghijklmnopqrstu"
-	npmToken  = "npm_Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb3d"
-	pypiToken = "pypi-AgEIcHlwaS5vcmcCJDU4Yjc5ZDQ3LTMxYzMtNDJhZC04MjBiLTZkZDQ0OWZjMDkzNQACKlsxLFsic2xlaXBuaXIiXV0AAAYg1234567890abcdef"
-	llmKey    = "sk-ant-api03-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb3dEf6hIj9kLm2nOp5q"
-	hfToken   = "hf_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
-	jwtTok    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-	pemFull   = "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu\nKUpRKfFLfRYC9AIKjbJTWit+CqvjWYzvQwECAwEAAQJAIJLixBy2qpFoS4DSmoEm\n-----END RSA PRIVATE KEY-----"
+// The rest of the vectors follow the same rule (see frag): no line of this file
+// is credential-shaped, whatever the value of the assembled string.
+var (
+	awsKey    = frag("AKI", "AIOSFODNN7", "EXAMPLE")
+	ghToken   = frag("gh", "p_", "16C7e42F292c6912E7710c838347Ae178B4a")
+	ghFine    = frag("github", "_pat_", "11ABCDEFG0abcdefghijkl_", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456")
+	googleKey = frag("AI", "zaSyA-", "1234567890abcdefghijklmnopqrstu")
+	npmToken  = frag("np", "m_", "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb3d")
+	pypiToken = frag("py", "pi-", "AgEIcHlwaS5vcmc", "CJDU4Yjc5ZDQ3LTMxYzMtNDJhZC04MjBiLTZkZDQ0OWZjMDkzNQACKlsxLFsic2xlaXBuaXIiXV0AAAYg1234567890abcdef")
+	llmKey    = frag("s", "k-ant-", "api03-", "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb3dEf6hIj9kLm2nOp5q")
+	openaiKey = frag("s", "k-proj-", "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy")
+	hfToken   = frag("h", "f_", "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789")
+	jwtTok    = frag("ey", "JhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", ".", "ey", "JzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ", ".", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c")
+	pemBody   = strings.Repeat("QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=", 1) + "\n" + strings.Repeat("YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=", 1)
+	pemFull   = pemBegin("RSA ") + "\n" + pemBody + "\n" + pemEnd("RSA ")
 )
+
+func pemBegin(kind string) string { return frag("-----", "BEGIN ", kind, "PRIVATE ", "KEY-----") }
+func pemEnd(kind string) string   { return frag("-----", "END ", kind, "PRIVATE ", "KEY-----") }
 
 var tokenShape = regexp.MustCompile(`⟦redacted:[a-z0-9_]+:[0-9a-f]{6}⟧`)
 
@@ -50,7 +58,7 @@ func TestRedactsSecrets(t *testing.T) {
 		{"aws access key", "aws_access_key_id = " + awsKey, KindAWS, awsKey},
 		{"aws in json", `{"AccessKeyId":"` + awsKey + `"}`, KindAWS, awsKey},
 		{"github classic", "git clone https://" + ghToken + "@github.com/o/r", KindGitHub, ghToken},
-		{"github fine grained", "token github_pat_11ABCDEFG0abcdefghijkl_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456", KindGitHub, "github_pat_11ABCDEFG0abcdefghijkl_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456"},
+		{"github fine grained", "token " + ghFine, KindGitHub, ghFine},
 		{"gitlab", "GITLAB=" + glToken, KindGitLab, glToken},
 		{"slack bot", "SLACK_BOT=" + slackTok, KindSlack, slackTok},
 		{"slack webhook", "curl " + slackHook, KindSlack, "AbCdEfGhIjKlMnOpQrStUvWx"},
@@ -60,12 +68,12 @@ func TestRedactsSecrets(t *testing.T) {
 		{"npm", "//registry.npmjs.org/:_authToken=" + npmToken, KindNPM, npmToken},
 		{"pypi", "password: " + pypiToken, KindPyPI, pypiToken},
 		{"anthropic key", "export ANTHROPIC_API_KEY=" + llmKey, KindLLM, llmKey},
-		{"openai key", "OPENAI=sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy", KindLLM, "sk-proj-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy"},
+		{"openai key", "OPENAI=" + openaiKey, KindLLM, openaiKey},
 		{"huggingface", "HF_TOKEN=" + hfToken, KindHuggingFace, hfToken},
 		{"jwt", "cookie: session=" + jwtTok, KindJWT, jwtTok},
-		{"pem block", "key:\n" + pemFull + "\nend", KindPrivateKey, "MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu"},
-		{"pem openssh", "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n-----END OPENSSH PRIVATE KEY-----", KindPrivateKey, "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW"},
-		{"pem truncated", "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\nMzEfYyjiWA4R4/M2bS1GB4t7NXp98C3SC6dVMvDuictGeurT8jNbvJZHtCSuYEvu\n… [4000 chars elided] …", KindPrivateKey, "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj"},
+		{"pem block", "key:\n" + pemFull + "\nend", KindPrivateKey, "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo="},
+		{"pem openssh", pemBegin("OPENSSH ") + "\n" + pemBody + "\n" + pemEnd("OPENSSH "), KindPrivateKey, "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo="},
+		{"pem truncated", pemBegin("") + "\n" + pemBody + "\n… [4000 chars elided] …", KindPrivateKey, "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo="},
 		{"url credentials", "git clone https://deploy:s3cr3tPassw0rd@git.corp.io/x.git", KindURLCred, "s3cr3tPassw0rd"},
 		{"bearer header", `curl -H "Authorization: Bearer 3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c" https://api.x`, KindBearer, "3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c"},
 		{"basic header", "Authorization: Basic dXNlcjpzdXBlcnNlY3JldHBhc3M=", KindBearer, "dXNlcjpzdXBlcnNlY3JldHBhc3M="},
@@ -161,8 +169,8 @@ func TestKeepsOrdinaryCode(t *testing.T) {
 		{"struct field", "Password string `json:\"password\"`"},
 		{"go doc comment", "// token: the raw token value provided by the client library"},
 		{"flag without value", "--password is required for this command"},
-		{"pem mention", `if !strings.Contains(s, "-----BEGIN RSA PRIVATE KEY-----") { return }`},
-		{"pem mention prose", "The file starts with -----BEGIN PRIVATE KEY----- and then base64."},
+		{"pem mention", `if !strings.Contains(s, "` + pemBegin("RSA ") + `") { return }`},
+		{"pem mention prose", "The file starts with " + pemBegin("") + " and then base64."},
 		{"url no creds", "https://github.com/reee344/sleipnir/issues/12"},
 		{"url same user pass", "postgres://postgres:postgres@localhost:5432/db"},
 		{"url placeholder", "https://user:${PASSWORD}@host.example/x"},
@@ -331,7 +339,7 @@ func TestAllowListAndKinds(t *testing.T) {
 
 func TestJSONRedactsValuesOnly(t *testing.T) {
 	r := testRedactor()
-	in := json.RawMessage(`{ "password" : "hunter2hunter2", "nested": {"ghp_16C7e42F292c6912E7710c838347Ae178B4a": ["` + ghToken + `", 42, true, null, "plain"]},
+	in := json.RawMessage(`{ "password" : "hunter2hunter2", "nested": {"` + ghToken + `": ["` + ghToken + `", 42, true, null, "plain"]},
  "path": "/home/alice/x", "escaped": "line1\nline2 key=\"` + awsKey + `\"", "html": "a < b && c > d" }`)
 	out := r.JSON(in)
 	if !json.Valid(out) {
@@ -344,7 +352,7 @@ func TestJSONRedactsValuesOnly(t *testing.T) {
 		}
 	}
 	// The key that looks like a token is a key and stays.
-	if !strings.Contains(s, `"ghp_16C7e42F292c6912E7710c838347Ae178B4a":`) {
+	if !strings.Contains(s, `"`+ghToken+`":`) {
 		t.Fatalf("keys must not be redacted: %s", s)
 	}
 	if !strings.Contains(s, `"a < b && c > d"`) {
@@ -460,8 +468,8 @@ func TestAdversarialInputs(t *testing.T) {
 	for _, in := range []string{
 		"\x00\x00\x00", "⟦redacted:", "⟦redacted:x:zzzzzz⟧", "password=\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
 		"日本語のテキスト /home/山田/x alice@例え.jp", "\xff\xfe invalid \xc3\x28 utf8 " + ghToken,
-		"-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n", "Bearer", "Authorization:", "::", ":::::", "1.2.3.4.5.6.7.8",
-		strings.Repeat("-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcw\n", 200),
+		pemBegin(""), pemBegin("") + "\n", "Bearer", "Authorization:", "::", ":::::", "1.2.3.4.5.6.7.8",
+		strings.Repeat(pemBegin("")+"\n"+pemBody+"\n", 200),
 		"api_key=" + strings.Repeat("A", 100000),
 	} {
 		out := r.String(in)
@@ -492,8 +500,9 @@ func TestCRLFAndMultiline(t *testing.T) {
 	if strings.Contains(out, "hunter2hunter2") || !strings.HasSuffix(out, "\r\nline three\r\n") || !strings.HasPrefix(out, "line one\r\nDB_PASSWORD=⟦redacted:secret:") {
 		t.Fatalf("CRLF handling: %q", out)
 	}
-	pem := "before\r\n-----BEGIN PRIVATE KEY-----\r\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\r\n-----END PRIVATE KEY-----\r\nafter"
-	if got := r.String(pem); got != "before\r\n"+r.token(KindPrivateKey, "-----BEGIN PRIVATE KEY-----\r\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\r\n-----END PRIVATE KEY-----")+"\r\nafter" {
+	block := pemBegin("") + "\r\n" + pemBody + "\r\n" + pemEnd("")
+	pem := "before\r\n" + block + "\r\nafter"
+	if got := r.String(pem); got != "before\r\n"+r.token(KindPrivateKey, block)+"\r\nafter" {
 		t.Fatalf("PEM with CRLF: %q", got)
 	}
 }

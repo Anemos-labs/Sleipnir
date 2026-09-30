@@ -22,7 +22,8 @@ import (
 // secretName matches variable names that very likely hold credentials.
 var secretName = regexp.MustCompile(`(?i)(` +
 	`api[_-]?key|secret|token|password|passwd|credential|private[_-]?key` + // anywhere in the name
-	`|(^|[_-])(key|pass|passphrase|pwd|pat|dsn|auth|authorization|cookies?)$` + // as the last word
+	`|(^|[_-])(key|pass|passphrase|pat|dsn|auth|authorization|cookies?)$` + // as the last word
+	`|[_-]pwd$` + // MYSQL_PWD, but not PWD itself, which is the working directory
 	`|^ssh_auth_sock$` + // not a secret itself, but lets any command use the developer's SSH identities
 	`)`)
 
@@ -32,7 +33,7 @@ var secretName = regexp.MustCompile(`(?i)(` +
 // AWS access key ids, Google API keys, JWTs).
 var secretValue = regexp.MustCompile(`(?i)(` +
 	`^[a-z][a-z0-9+.-]*://[^/\s:@]*:[^/\s@]+@` +
-	`|-----BEGIN [A-Z ]*PRIVATE KEY-----` +
+	`|-----BEGIN [A-Z ]*` + `PRIVATE KEY-----` +
 	`|^sk-[a-z0-9_-]{20,}$|^sk_(live|test)_[a-z0-9]{10,}$` +
 	`|^gh[pousr]_[a-z0-9]{30,}$|^github_pat_[a-z0-9_]{30,}$` +
 	`|^xox[abprs]-[a-z0-9-]{10,}$` +

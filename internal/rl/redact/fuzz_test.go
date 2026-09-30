@@ -12,16 +12,16 @@ import (
 func FuzzRedact(f *testing.F) {
 	seeds := []string{
 		"", "password=hunter2hunter2", "Authorization: Bearer abc123def456ghi789jkl",
-		"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcw\n", "/home/alice/x C:\\Users\\Bob\\y",
+		pemBegin("") + "\n" + pemBody + "\n", "/home/alice/x C:\\Users\\Bob\\y",
 		"alice@corp.io 8.8.4.4 2a00:1450:4001:81b::200e", "⟦redacted:secret:abcdef⟧password=⟦redacted:secret:abcdef⟧",
 		"key=\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", "std::vector a::b ::1 fe80::1", `{"token":"abcdefghijklmnop"}`,
-		"the api key is Zq8Yw3Xe6Rt1Uy4Io7Pa0Sd2Fg5Hj9Kl", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghij",
+		"the api key is Zq8Yw3Xe6Rt1Uy4Io7Pa0Sd2Fg5Hj9Kl", jwtTok,
 		"https://u:p4ssw0rd@host/x -H 'X-Api-Key: 7f3a9c1e5b2d4f6a8c0e'", "\xff\xfe\xc3\x28",
 	}
 	for _, s := range seeds {
 		f.Add(s)
 	}
-	const planted = "AKIAIOSFODNN7EXAMPLE"
+	planted := awsKey
 	f.Fuzz(func(t *testing.T, in string) {
 		r1, r2 := New(Config{Salt: "fz"}), New(Config{Salt: "fz"})
 		out := r1.String(in)
@@ -47,7 +47,7 @@ func FuzzRedact(f *testing.F) {
 func FuzzRedactJSON(f *testing.F) {
 	for _, s := range []string{
 		`{}`, `[]`, `"x"`, `{"password":"hunter2hunter2","n":[1,2,{"a":"/home/alice/x"}]}`,
-		`{"a":"\u0000\ud83d\ude00","b":"line\nbreak AKIAIOSFODNN7EXAMPLE"}`, ` [ "a" , "b" ] `, `{"k":"v"`, `{"db_password":"x"}`,
+		`{"a":"\u0000\ud83d\ude00","b":"line\nbreak ` + awsKey + `"}`, ` [ "a" , "b" ] `, `{"k":"v"`, `{"db_password":"x"}`,
 	} {
 		f.Add(s)
 	}
@@ -74,9 +74,15 @@ func FuzzRedactJSON(f *testing.F) {
 
 // keys lists the object keys of a document in order.
 func keys(doc string) string {
+	type frame struct{ object, expectKey bool }
 	dec := json.NewDecoder(strings.NewReader(doc))
 	var ks []string
-	depth := []bool{} // true: object, expecting key next
+	var stack []frame
+	valueDone := func() {
+		if n := len(stack); n > 0 && stack[n-1].object {
+			stack[n-1].expectKey = true
+		}
+	}
 	for {
 		tok, err := dec.Token()
 		if err != nil {
@@ -86,34 +92,23 @@ func keys(doc string) string {
 		case json.Delim:
 			switch v {
 			case '{':
-				depth = append(depth, true)
+				stack = append(stack, frame{object: true, expectKey: true})
 			case '[':
-				depth = append(depth, false)
+				stack = append(stack, frame{})
 			default:
-				depth = depth[:len(depth)-1]
-				if n := len(depth); n > 0 && depth[n-1] == false {
-					// value finished inside array; nothing to toggle
-				}
+				stack = stack[:len(stack)-1]
+				valueDone()
 			}
 		case string:
-			if n := len(depth); n > 0 && depth[n-1] {
+			if n := len(stack); n > 0 && stack[n-1].object && stack[n-1].expectKey {
 				ks = append(ks, v)
-				depth[n-1] = false
+				stack[n-1].expectKey = false
 				continue
 			}
-			if n := len(depth); n > 0 {
-				// a value: the next token in an object is a key again
-				if isObj := objectAt(depth, n-1); isObj {
-					depth[n-1] = true
-				}
-			}
+			valueDone()
 		default:
-			if n := len(depth); n > 0 && objectAt(depth, n-1) {
-				depth[n-1] = true
-			}
+			valueDone()
 		}
 	}
 	return strings.Join(ks, "\x00")
 }
-
-func objectAt(depth []bool, i int) bool { return true }

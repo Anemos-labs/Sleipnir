@@ -81,8 +81,50 @@ func (f *fetcher) convert(body []byte, hdr http.Header, final *url.URL) (doc *do
 	default:
 		doc.text = cleanText(text)
 	}
+	doc.text = stripInvisible(doc.text)
+	doc.title = stripInvisible(doc.title)
 	doc.runes = utf8.RuneCountInString(doc.text)
 	return doc, nil
+}
+
+// stripInvisible removes characters that display as nothing (or only reorder
+// text) but reach the model intact: Unicode tag characters, bidirectional
+// overrides and isolates, zero-width spaces and word joiners. They are the
+// standard carrier for hidden instructions in a fetched page ("ASCII
+// smuggling"), which no human reviewing the transcript would ever see.
+// Zero-width (non-)joiners and the left/right marks stay: emoji sequences and
+// several scripts need them.
+func stripInvisible(s string) string {
+	hidden := false
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			hidden = true
+			break
+		}
+	}
+	if !hidden {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if invisible(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func invisible(r rune) bool {
+	switch {
+	case r == 0x00AD, r == 0x180E, r == 0x200B, r == 0x2060, r == 0xFEFF:
+	case r >= 0x2061 && r <= 0x2064: // invisible operators
+	case r >= 0x202A && r <= 0x202E: // bidi embeddings and overrides
+	case r >= 0x2066 && r <= 0x2069: // bidi isolates
+	case r >= 0xE0000 && r <= 0xE007F: // tag characters
+	case r >= 0xE0100 && r <= 0xE01EF: // variation selectors supplement
+	default:
+		return false
+	}
+	return true
 }
 
 func looksJSON(body []byte) bool {

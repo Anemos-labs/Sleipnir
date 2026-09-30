@@ -17,6 +17,12 @@ import (
 //     even when a read boundary falls in the middle of one;
 //   - NUL and other unprintable control bytes are dropped (and counted, so a
 //     stream that is mostly control bytes can be recognised as binary);
+//   - invisible format characters (Unicode tag characters, bidirectional
+//     overrides, zero-width spaces and joiners-that-join-nothing) are dropped:
+//     they render as nothing for a human reviewing a transcript yet reach the
+//     model intact, which makes them the standard carrier for hidden
+//     instructions ("ASCII smuggling"). Command output is attacker-influenced
+//     text like any other (`cat README.md`);
 //   - \t, \n and \r survive. \r is resolved later by collapseCR because a
 //     progress bar redraws one line thousands of times.
 
@@ -93,9 +99,11 @@ func (s *sanitizer) feed(dst, src []byte) []byte {
 					i++
 					continue
 				}
-				if r < 0xA0 { // C1 controls
+				switch {
+				case r < 0xA0: // C1 controls
 					s.ctrl++
-				} else {
+				case invisible(r):
+				default:
 					dst = append(dst, src[i:i+size]...)
 				}
 				i += size
@@ -171,6 +179,24 @@ func (s *sanitizer) feed(dst, src []byte) []byte {
 		}
 	}
 	return dst
+}
+
+// invisible reports runes that display as nothing (or only reorder text) and so
+// can smuggle content past a human reader. Zero-width joiner and non-joiner and
+// the left/right marks are deliberately kept: emoji sequences and several
+// scripts need them.
+func invisible(r rune) bool {
+	switch {
+	case r == 0x00AD, r == 0x180E, r == 0x200B, r == 0x2060, r == 0xFEFF:
+	case r >= 0x2061 && r <= 0x2064: // invisible operators
+	case r >= 0x202A && r <= 0x202E: // bidi embeddings and overrides
+	case r >= 0x2066 && r <= 0x2069: // bidi isolates
+	case r >= 0xE0000 && r <= 0xE007F: // tag characters
+	case r >= 0xE0100 && r <= 0xE01EF: // variation selectors supplement
+	default:
+		return false
+	}
+	return true
 }
 
 // flush emits whatever a dangling partial character turns into at end of stream.

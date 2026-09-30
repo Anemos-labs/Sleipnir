@@ -17,10 +17,17 @@ import (
 // exact prefix. A prefix that shrinks without a declared rebase (a commit or
 // shared-layer epoch) is a harness bug; the guard names the first block that
 // diverged and the layer it belongs to.
+//
+// The chain covers everything a provider keys its cache on, not only block
+// text: the model and the request parameters that sit in front of the messages
+// tier (thinking, effort, tool_choice), and each block's message role and
+// position in its message, so re-splitting the same blocks into other messages
+// is a change too. Ephemeral blocks (the inline hot tail) are skipped: they sit
+// after the last marker and are not cached.
 type Guard struct {
 	prev     []core.Hash // per persistent block, wire order
 	prevTok  []int       // cumulative estimated tokens per block
-	prevSecs []string    // layer name per block ("tools","const","shared",...)
+	prevSecs []string    // layer name per block ("params","tools","const","shared",...)
 	epoch    uint64
 }
 
@@ -31,6 +38,8 @@ type Check struct {
 	// SharedTokens estimates the size of that prefix: what the provider should
 	// be able to serve from cache.
 	SharedTokens int
+	// TotalTokens estimates the size of the whole prompt (persistent blocks).
+	TotalTokens int
 	// Drift is true when the prefix shrank although nothing declared a rebase.
 	Drift bool
 	// Diverged names the first differing block's layer when Drift is set.
@@ -43,6 +52,9 @@ type Check struct {
 func (g *Guard) Observe(r *Rendered, epoch uint64, est core.Estimator) Check {
 	hashes, toks, secs := digest(r, est)
 	var c Check
+	if len(toks) > 0 {
+		c.TotalTokens = toks[len(toks)-1]
+	}
 	if g.prev != nil {
 		n := 0
 		for n < len(hashes) && n < len(g.prev) && hashes[n] == g.prev[n] {
@@ -79,6 +91,9 @@ func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, sec
 		cum = append(cum, total)
 		secs = append(secs, sec)
 	}
+	// Model and the parameters that key the messages tier come first, so a change
+	// names "params" and invalidates everything behind it, as it does at the provider.
+	add("params", []byte("model|"+p.Model+"|thinking|"+p.Params.Thinking+"|effort|"+p.Params.Effort+"|tool_choice|"+p.Params.ToolChoice), 0)
 	for i := range p.Tools {
 		t := p.Tools[i]
 		raw, _ := json.Marshal(t)
@@ -102,7 +117,13 @@ func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, sec
 				label = names[bi]
 			}
 			raw, _ := json.Marshal(b)
-			add(label, raw, BlockTokens(b, est))
+			// Role, position in the message and turn-scoped marking are part of
+			// what the provider hashed.
+			head := []byte(string(m.Role) + "|" + m.ClearAt + "|")
+			if bi == 0 {
+				head = append(head, '^')
+			}
+			add(label, append(head, raw...), SentBlockTokens(b, est))
 		}
 	}
 	return hashes, cum, secs

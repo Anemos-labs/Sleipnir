@@ -14,6 +14,10 @@ func (ev *evaluator) tool() verdict {
 		paths = inputPaths(r)
 	}
 	tree, content := toolWalks(r.Tool)
+	if len(paths) > maxOperands {
+		paths = paths[:maxOperands]
+		u.dyn = "too many paths to check"
+	}
 	for _, p := range paths {
 		u.accesses = append(u.accesses, ev.resolve(pathUse{raw: p, write: r.Writes, tree: tree && !r.Writes, content: content && !r.Writes}, cw)...)
 	}

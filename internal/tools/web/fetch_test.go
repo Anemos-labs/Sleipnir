@@ -1330,3 +1330,64 @@ func names(specs []core.ToolSpec) []string {
 
 // ensure the url import is used in all build configurations
 var _ = url.Parse
+
+// Hidden characters are the carrier for instructions a human reviewing the
+// transcript never sees; they are removed at the source for every content type.
+func TestFetchStripsInvisibleCharacters(t *testing.T) {
+	tagged := "\U000E0049\U000E0067\U000E006E\U000E006F\U000E0072\U000E0065" // "Ignore" in tag characters
+	hidden := tagged + "\u202e\u2066\u200b\u2060\ufeff\u00ad"
+	zwj := "\U0001F468\u200d\U0001F469"
+	tests := []struct {
+		name, ctype, body, want string
+	}{
+		{"html text", "text/html", "<p>vis" + hidden + "ible " + zwj + "</p>", "visible " + zwj},
+		{"html link text and url", "text/html", `<a href="/x">li` + hidden + `nk</a>`, "[link](%URL%/x)"},
+		{"html title", "text/html", "<title>Ti" + hidden + "tle</title><p>body</p>", "body"},
+		{"plain text", "text/plain", "pla" + hidden + "in\n", "plain\n"},
+		{"json string", "application/json", `{"k":"v` + hidden + `al"}`, "{\n  \"k\": \"val\"\n}"},
+		{"alt text", "text/html", `<img alt="a` + hidden + `lt">`, "[image: alt]"},
+		{"pre block", "text/html", "<pre>co" + hidden + "de</pre>", "```\ncode\n```"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, _ := serve(t, tt.ctype, tt.body)
+			res := newHarness(t, allowAll).get(srv.URL)
+			if res.IsError {
+				t.Fatal(res.Text)
+			}
+			for _, r := range res.Text {
+				if invisible(r) {
+					t.Fatalf("U+%04X survived in %q", r, res.Text)
+				}
+			}
+			_, body, _ := splitPage(t, res.Text)
+			if want := strings.ReplaceAll(tt.want, "%URL%", srv.URL); body != want {
+				t.Errorf("body = %q, want %q", body, want)
+			}
+		})
+	}
+	// The page title line is cleaned too.
+	srv, _ := serve(t, "text/html", "<title>Ti"+hidden+"tle</title><p>body</p>")
+	if res := newHarness(t, allowAll).get(srv.URL); !strings.Contains(res.Text, "\nTitle: Title\n") {
+		t.Errorf("text = %q", res.Text)
+	}
+}
+
+func TestStripInvisible(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"", ""},
+		{"plain ascii", "plain ascii"},
+		{"caf\u00e9 \u65e5\u672c\u8a9e \U0001F600", "caf\u00e9 \u65e5\u672c\u8a9e \U0001F600"},
+		{"a\U000E0041b", "ab"},
+		{"a\u202eb", "ab"},
+		{"a\u200bb\u2060c\ufeffd", "abcd"},
+		{"soft\u00adhyphen", "softhyphen"},
+		{"\u200d\u200c\u200e\u200f", "\u200d\u200c\u200e\u200f"},
+		{"\u2764\ufe0f", "\u2764\ufe0f"},
+	}
+	for _, tt := range tests {
+		if got := stripInvisible(tt.in); got != tt.want {
+			t.Errorf("stripInvisible(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

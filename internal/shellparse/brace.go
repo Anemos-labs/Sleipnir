@@ -16,35 +16,48 @@ func hasBraceCandidate(w *wbuf) bool {
 	return false
 }
 
+// Bounds on brace expansion: long words and deeply nested expressions are not
+// expanded (the analysis becomes unparsed instead).
+const (
+	maxBraceWordLen = 4096
+	maxBraceDepth   = 32
+)
+
 // braceExpand performs bash-style brace expansion on the word (v, m) where m
 // marks quoted bytes. Brace expansion is purely lexical, so doing it here lets
 // callers see every word the shell would run: ~/.{ssh,aws}/x is two paths.
-// over reports that the expansion exceeded maxBraceWords; the unexpanded word
-// is returned in that case.
+// over reports that the expansion exceeded a bound (maxBraceWords outputs,
+// nesting maxBraceDepth, a word longer than maxBraceWordLen); the unexpanded
+// word is returned in that case.
 func braceExpand(v, m []byte) (words []string, over bool) {
+	if len(v) > maxBraceWordLen {
+		return []string{string(v)}, true
+	}
 	budget := maxBraceWords
 	blown := false
-	var rec func(v, m []byte) []string
-	rec = func(v, m []byte) []string {
+	var rec func(v, m []byte, depth int) []string
+	rec = func(v, m []byte, depth int) []string {
 		if blown {
 			return nil
 		}
+		if depth > maxBraceDepth {
+			blown = true
+			return nil
+		}
+		match, commas := braceStructure(v, m)
 		for i := 0; i < len(v); i++ {
-			if v[i] != '{' || m[i] != 0 {
-				continue
-			}
-			closeIdx, commas := matchBrace(v, m, i)
-			if closeIdx < 0 {
+			closeIdx := match[i]
+			if v[i] != '{' || m[i] != 0 || closeIdx < 0 {
 				continue
 			}
 			preV, preM := v[:i], m[:i]
 			postV, postM := v[closeIdx+1:], m[closeIdx+1:]
-			if len(commas) > 0 {
+			if cs := commas[i]; len(cs) > 0 {
 				var out []string
 				prev := i + 1
-				for _, ci := range append(commas, closeIdx) {
+				for _, ci := range append(append([]int(nil), cs...), closeIdx) {
 					av, am := cat3(preV, preM, v[prev:ci], m[prev:ci], postV, postM)
-					out = append(out, rec(av, am)...)
+					out = append(out, rec(av, am, depth+1)...)
 					prev = ci + 1
 				}
 				return out
@@ -58,7 +71,7 @@ func braceExpand(v, m []byte) (words []string, over bool) {
 					for _, e := range elems {
 						ev := []byte(e)
 						av, am := cat3(preV, preM, ev, make([]byte, len(ev)), postV, postM)
-						out = append(out, rec(av, am)...)
+						out = append(out, rec(av, am, depth+1)...)
 					}
 					return out
 				}
@@ -70,34 +83,42 @@ func braceExpand(v, m []byte) (words []string, over bool) {
 		}
 		return []string{string(v)}
 	}
-	out := rec(v, m)
+	out := rec(v, m, 0)
 	if blown || len(out) == 0 {
 		return []string{string(v)}, blown
 	}
 	return out, false
 }
 
-func matchBrace(v, m []byte, open int) (closeIdx int, commas []int) {
-	depth := 0
-	for k := open + 1; k < len(v); k++ {
+// braceStructure finds, in one pass, the matching close for every unquoted '{'
+// (-1 when it has none) and the top-level commas between them. Doing it once
+// per expansion step keeps unbalanced input such as 100000 open braces linear.
+func braceStructure(v, m []byte) (match []int, commas map[int][]int) {
+	match = make([]int, len(v))
+	for i := range match {
+		match[i] = -1
+	}
+	commas = map[int][]int{}
+	var stack []int
+	for k := 0; k < len(v); k++ {
 		if m[k] != 0 {
 			continue
 		}
 		switch v[k] {
 		case '{':
-			depth++
+			stack = append(stack, k)
 		case '}':
-			if depth == 0 {
-				return k, commas
+			if n := len(stack); n > 0 {
+				match[stack[n-1]] = k
+				stack = stack[:n-1]
 			}
-			depth--
 		case ',':
-			if depth == 0 {
-				commas = append(commas, k)
+			if n := len(stack); n > 0 {
+				commas[stack[n-1]] = append(commas[stack[n-1]], k)
 			}
 		}
 	}
-	return -1, nil
+	return match, commas
 }
 
 func allUnquoted(m []byte) bool {

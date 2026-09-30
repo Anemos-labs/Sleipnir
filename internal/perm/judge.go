@@ -52,8 +52,27 @@ func combine(a, b verdict) verdict {
 	case a.kind == vAllow:
 		a.explicit = a.explicit && b.explicit
 	case a.kind == vAsk:
-		a.rem = append(a.rem[:len(a.rem):len(a.rem)], b.rem...)
+		a.rem = mergeRules(a.rem, b.rem)
 		a.askRule = a.askRule || b.askRule
+	}
+	return a
+}
+
+// mergeRules appends the rules of b that a does not already hold. Many
+// operands of one command ask for the same remembered rule; keeping the list
+// duplicate-free keeps merging linear.
+func mergeRules(a, b []Rule) []Rule {
+	for _, r := range b {
+		dup := false
+		for _, x := range a {
+			if x == r {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			a = append(a[:len(a):len(a)], r)
+		}
 	}
 	return a
 }
@@ -190,6 +209,12 @@ func combineAccess(res, av verdict) verdict {
 func (ev *evaluator) decideTool(u *unit) verdict {
 	r := *u.req
 	mode := ev.v.mode
+	if u.dyn != "" && mode != ModeBypass { // too many paths to judge one by one
+		if mode == ModePlan {
+			return deny(planReason(u.dyn))
+		}
+		return ask(u.dyn, nil)
+	}
 	rule := ev.toolAllowRule(r)
 	var res verdict
 	have := true
@@ -250,7 +275,7 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 // accessVerdict applies allow rules and the mode's defaults to one file access.
 func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	mode := ev.v.mode
-	rem := ev.rememberAccess(a, u)
+	rem := func() []Rule { return ev.rememberAccess(a, u) } // only needed when it asks
 	if a.dynamic {
 		switch {
 		case mode == ModeBypass:
@@ -280,17 +305,17 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 			if ev.rs.inWorkspace(a.real) {
 				return allow("accept-edits mode: write inside the workspace")
 			}
-			return ask("writes "+a.raw+" outside the workspace", rem)
+			return ask("writes "+a.raw+" outside the workspace", rem())
 		}
 	default:
 		if a.write {
-			return ask("writing "+a.raw+" needs approval in default mode", rem)
+			return ask("writing "+a.raw+" needs approval in default mode", rem())
 		}
 	}
 	if ev.rs.inWorkspace(a.real) {
 		return allow("read inside the workspace")
 	}
-	return ask("reads "+a.raw+" outside the workspace", rem)
+	return ask("reads "+a.raw+" outside the workspace", rem())
 }
 
 // ruleHits reports whether a path rule covers the access. Deny and ask rules
@@ -426,6 +451,13 @@ func (ev *evaluator) toolAllowRule(r Request) *crule {
 // request pass: an exact command for shell commands, exact paths or the host
 // for tools. It returns nil when no rule could ever match (dynamic pieces).
 func (ev *evaluator) remember(u *unit) []Rule {
+	if !u.remDone {
+		u.rem, u.remDone = ev.buildRemember(u), true
+	}
+	return u.rem
+}
+
+func (ev *evaluator) buildRemember(u *unit) []Rule {
 	if u.tool {
 		var rules []Rule
 		seen := map[string]bool{}

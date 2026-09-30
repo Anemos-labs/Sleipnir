@@ -27,6 +27,13 @@ type Caps struct {
 	ReplayThinking bool
 	// CacheKeys marks providers that route by an explicit key.
 	CacheKeys bool
+	// TurnScopedSystem: the provider accepts role=system messages with
+	// clear_at "next_user_message" (Message.ClearAt). Adapters without it fold
+	// such a message into ordinary user content.
+	TurnScopedSystem bool
+	// HotMode is how the hot tail is delivered. Callers resolve it with
+	// ResolveHot; Render only reads the resolved value.
+	HotMode HotMode
 }
 
 // Policy tunes breakpoint placement.
@@ -35,8 +42,11 @@ type Policy struct {
 	// read by many agents; a long TTL survives idle gaps for a higher write
 	// price. Zero uses the provider default.
 	SharedTTL time.Duration
-	// MinLayerForBreakpoint skips a breakpoint after a layer smaller than this:
-	// the extra cache entry would save less than it costs to maintain.
+	// MinLayerForBreakpoint skips the notes marker when the notes layer is
+	// smaller than this: the slot is worth more elsewhere and the entry would
+	// save less than it costs. The shared and role markers do not use it: they
+	// only need the prefix before them to reach the provider's minimum (and the
+	// role pin itself to reach it), because they serve every agent of the swarm.
 	MinLayerForBreakpoint int
 }
 
@@ -91,6 +101,10 @@ func (s *Stack) PrefixKey() core.Hash {
 		b = append(b, 0)
 		b = append(b, t.InputSchema...)
 		b = append(b, 0)
+		if t.Strict {
+			b = append(b, 's')
+		}
+		b = append(b, 0)
 	}
 	b = append(b, s.Const.Hash()...)
 	b = append(b, 0)
@@ -113,6 +127,10 @@ func (s *Stack) GlobalKey() core.Hash {
 		b = append(b, t.Description...)
 		b = append(b, 0)
 		b = append(b, t.InputSchema...)
+		b = append(b, 0)
+		if t.Strict {
+			b = append(b, 's')
+		}
 		b = append(b, 0)
 	}
 	b = append(b, s.Const.Hash()...)

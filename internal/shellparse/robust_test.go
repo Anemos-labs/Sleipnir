@@ -193,3 +193,62 @@ func FuzzQuoteRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+// Quadratic behaviour on hostile input shows up as a hang, not a wrong answer:
+// each of these shapes once took seconds to minutes at 100 KB.
+func TestAdversarialSizeIsBounded(t *testing.T) {
+	n := 50_000
+	rep := strings.Repeat
+	inputs := map[string]string{
+		"open braces":            "echo " + rep("{", n),
+		"open brace comma":       "echo " + rep("{,", n/2),
+		"open brace a comma":     "echo " + rep("{a,", n/3),
+		"closing braces":         "echo " + rep("}{", n/2),
+		"balanced braces":        "echo " + rep("{x}", n/3),
+		"nested brace groups":    "echo " + rep("{{a,b}", n/6),
+		"sequence groups":        "echo " + rep("{1..9}", 100),
+		"open param expansions":  "echo " + rep("${", n/2),
+		"open command subst":     "echo " + rep("$(", n/2),
+		"open arithmetic":        "echo " + rep("$((", n/3),
+		"nested arithmetic":      "echo " + rep("$((1+", n/5) + "1" + rep("))", n/5),
+		"nested param balanced":  "echo " + rep("${x:-", n/5) + "y" + rep("}", n/5),
+		"backticks":              "echo " + rep("`", n),
+		"escaped backticks":      "echo " + rep("\\`", n),
+		"quotes":                 "echo " + rep("'", n) + rep("\"", n),
+		"ansi-c":                 "echo " + rep("$'", n/2),
+		"heredocs":               rep("cat <<E\n", n/8),
+		"heredoc with subst":     "cat <<EOF\n" + rep("$(", n/2) + "\nEOF",
+		"open parens":            rep("(", n),
+		"pipes":                  rep("a|", n/2),
+		"and-ands":               rep("a&&", n/3),
+		"newlines":               rep("\n", n),
+		"keywords":               rep("if ", n/3) + rep("for a in b; ", n/12) + rep("case ", n/5) + rep("[[ ", n/3),
+		"wrappers":               rep("sudo env nohup time ", n/20) + "x",
+		"shell -c chain":         rep("bash -c ", n/8) + "x",
+		"eval chain":             rep("eval ", n/5) + "x",
+		"assignments":            rep("a=b ", n/4) + "x",
+		"redirections":           rep("2>a ", n/4),
+		"process substitutions":  rep("<(", n/2),
+		"one long word":          "echo " + rep("a", n*10),
+		"many words":             "echo " + rep("a ", n),
+		"many env words":         "echo " + rep("A=1 ", n),
+		"many nested cmd substs": "echo " + rep("$(echo x) ", n/10),
+	}
+	for name, in := range inputs {
+		in := in
+		t.Run(name, func(t *testing.T) {
+			start := time.Now()
+			done := make(chan Analysis, 1)
+			go func() { done <- Parse(in) }()
+			select {
+			case a := <-done:
+				if el := time.Since(start); el > 5*time.Second {
+					t.Errorf("took %v", el)
+				}
+				checkInvariants(t, in, a)
+			case <-time.After(20 * time.Second):
+				t.Fatal("did not finish in 20s")
+			}
+		})
+	}
+}

@@ -387,7 +387,7 @@ var tagRe = regexp.MustCompile(`<[^>]*>`)
 // bounds the length.
 func cleanSnippet(s string, n int) string {
 	s = html.UnescapeString(tagRe.ReplaceAllString(s, ""))
-	s = strings.ToValidUTF8(oneLine(s), "")
+	s = oneLine(stripInvisible(strings.ToValidUTF8(s, "")))
 	return clipRunes(s, n)
 }
 

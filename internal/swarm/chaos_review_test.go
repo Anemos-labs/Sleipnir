@@ -227,9 +227,18 @@ func TestConcSound_ThrottleNeverDropsAStateChange(t *testing.T) {
 			t.Fatal(err)
 		}
 		rvWait(t, "idle", func() bool { return r.idle(id) })
-		time.Sleep(2 * time.Millisecond)
-		if a, _ := r.sw.Board.Snapshot().Agent(id); a.State != "idle" {
-			t.Fatalf("%s finished but the board says %q", id, a.State)
+		// finishRun flips running=false first and publishes "idle" a few steps later, so
+		// poll: the claim is that the transition is never dropped, not that it is instant.
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			a, _ := r.sw.Board.Snapshot().Agent(id)
+			if a.State == "idle" {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s finished but the board still says %q 3s later", id, a.State)
+			}
+			time.Sleep(2 * time.Millisecond)
 		}
 	}
 }

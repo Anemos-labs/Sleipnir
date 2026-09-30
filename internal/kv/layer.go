@@ -11,11 +11,18 @@
 //	G3 notes                  one agent's tenured facts/decisions
 //	G4 spine                  one agent's append-only one-line history
 //	G5 thread                 verbatim recent turns, append-only
-//	G6 hot                    always-fresh board/mailbox view, never cached
+//	G6 hot                    always-fresh board/mailbox view (see HotMode)
 //
 // Pins and spine are labelled context, not instructions: only G0 is rendered in
 // the system role, so text distilled from untrusted tool output never gains
 // operator authority.
+//
+// G6 is delivered one of three ways, chosen per route (ResolveHot): inline
+// (appended after the last cache marker and rebuilt every request: cheap, but it
+// rewrites a message an assistant turn was already produced against), persisted
+// on change (a frozen notice block in the thread: append-only, safe for
+// preserved thinking), or as a turn-scoped system message (persisted, cleared by
+// the provider after its turn).
 package kv
 
 import (

@@ -57,6 +57,8 @@ func (p Profile) KVCaps() kv.Caps {
 		MinPrefixTokens: p.Cache.MinPrefixTokens,
 		ReplayThinking:  p.ReplayThinking,
 		CacheKeys:       p.Cache.KeyRouting,
+
+		TurnScopedSystem: p.TurnScopedSystem,
 	}
 }
 

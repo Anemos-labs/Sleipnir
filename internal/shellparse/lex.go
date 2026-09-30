@@ -41,9 +41,28 @@ type lexer struct {
 	src      string
 	pos, end int
 	st       *state
-	depth    int
+	depth    int // nesting of substitutions (each gets its own lexer)
+	nest     int // nesting of ${...} and $((...)) inside this lexer
 	heredocs []pendingHeredoc
 }
+
+// maxNest bounds ${ ${ ${ ... and $(( $(( ... inside one lexer; anything deeper
+// is not real shell code and would only cost quadratic time.
+const maxNest = 24
+
+// enter records one more level of expansion nesting and reports whether it is
+// allowed; on refusal the input is abandoned as unparsed.
+func (l *lexer) enter() bool {
+	if l.nest >= maxNest {
+		l.st.problem("expansion nesting too deep")
+		l.pos = l.end
+		return false
+	}
+	l.nest++
+	return true
+}
+
+func (l *lexer) leave() { l.nest-- }
 
 func newLexer(src string, st *state, depth int) *lexer {
 	return &lexer{src: src, end: len(src), st: st, depth: depth}

@@ -270,6 +270,9 @@ func (l *lexer) backtick(w *wbuf, nested *[]Simple, dq bool) {
 // command substitution), so the caller can fall back to cmdSubst.
 func (l *lexer) arith(w *wbuf, nested *[]Simple) bool {
 	start := l.pos
+	if l.nest >= maxNest {
+		return false // fall back to cmdSubst, which is depth limited
+	}
 	depth := 0
 	for i := start + 3; i < l.end; i++ {
 		switch l.src[i] {
@@ -283,7 +286,9 @@ func (l *lexer) arith(w *wbuf, nested *[]Simple) bool {
 				continue
 			}
 			if i+1 < l.end && l.src[i+1] == ')' {
+				l.nest++
 				l.scanExpansions(start+3, i, nested)
+				l.nest--
 				w.litStr(l.src[start : i+2])
 				l.pos = i + 2
 				return true
@@ -299,6 +304,10 @@ func (l *lexer) arith(w *wbuf, nested *[]Simple) bool {
 func (l *lexer) paramExp(w *wbuf, nested *[]Simple) {
 	start := l.pos
 	l.pos += 2
+	if !l.enter() {
+		return
+	}
+	defer l.leave()
 	var scratch wbuf
 	closed := false
 	for l.pos < l.end && !closed && l.st.tick() {

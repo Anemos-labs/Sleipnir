@@ -5,8 +5,9 @@
 // The rendered text feeds a byte-stable cached prompt layer, so everything here
 // is built to produce identical bytes for identical content: the order is fixed
 // by the discovery rules, line endings and comments are normalised, and paths
-// are shown relative to the project root or as "~/..." so neither the machine's
-// directory layout nor the user's home directory leaks into the prompt.
+// are shown relative to the project root or as "~/.sleipnir/..." so neither the
+// machine's directory layout nor the user's home directory leaks into the
+// prompt.
 //
 // Discovery order (later entries have higher precedence):
 //
@@ -18,13 +19,40 @@
 //     .sleipnir/SLEIPNIR.local.md (scope "local")
 //
 // A line consisting of "@path" imports another file (relative to the importing
-// file, "~/" for the home directory). Imports are followed to a depth of five,
-// each file is included once, and an imported file appears right after the file
-// that imported it with scope "import". Imports are restricted to markdown and
-// text files inside the project root or the user's home directory (or under the
-// user's ~/.sleipnir, which may be a symlink to a dotfiles checkout), so a
-// repository cannot use an import line to pull an arbitrary file (an ssh key, a
-// credentials file) into a prompt.
+// file, or "~/" for the home directory). Imports are followed to a depth of
+// five, each file is included once, and an imported file appears right after the
+// file that imported it with scope "import".
+//
+// # Trust
+//
+// Project files are attacker-controlled text: anyone who can get a repository
+// cloned can plant an AGENTS.md in it. Two rules keep that text from reaching
+// beyond the repository.
+//
+// Every file is read inside a trust domain. Files of the project (scopes
+// "project", "dir", "local" and everything they import) live in the project
+// root: a path, whether it is spelled directly or reached through a symlink,
+// that leaves the root is refused, and so is an absolute symlink. The user's
+// own ~/.sleipnir (and the imports of the file in it) is the only trusted place
+// outside the project; it may be a symlink into a dotfiles checkout. A project
+// file therefore cannot pull in a private key, a credentials file or another
+// project's notes by naming or linking to it, and cannot import from the home
+// directory at all.
+//
+// Imports are further limited to markdown and text files (.md, .markdown, .mdx,
+// .txt) and never reach into hidden directories other than .sleipnir, .claude,
+// .github and .agents, so a repository's own .git, .ssh, .aws, .gnupg or .env
+// stay out even when they sit inside the root. A symlinked instruction file is
+// held to the same standard: it must lead to such a file inside the root. The
+// number of files, the bytes they add and the depth are bounded, so a hostile
+// tree of imports costs a fixed amount of work.
+//
+// Text that renders as nothing but is read by a model (Unicode tag characters,
+// variation selectors, bidirectional controls, zero-width and other format
+// characters, and control characters) is removed from every file and from every
+// displayed path, so what a person sees in an editor is what the model gets.
+// The scope of each Source is kept so a caller can drop the project's files when
+// the project is not trusted.
 //
 // Sizes are capped at 64 KB per file and 256 KB overall. A file over its cap is
 // cut at a line boundary and says so. When the total is exceeded, the
@@ -40,6 +68,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -67,6 +96,14 @@ const (
 	MaxImportDepth = 5
 	// maxSources bounds the work a hostile tree of imports can cause.
 	maxSources = 128
+	// maxImports caps the files pulled in through "@path" lines in one Load,
+	// maxImportSpecs the "@path" lines examined (loaded or not) and
+	// maxImportBytes the bytes the loaded imports may add.
+	maxImports     = 64
+	maxImportSpecs = 256
+	maxImportBytes = 2 * MaxTotalBytes
+	// maxProblems bounds the problems reported by one Load.
+	maxProblems = 32
 	// minPartial is the smallest slice of the total budget worth spending on a
 	// partial file; below it the file is omitted with a note instead.
 	minPartial = 512
@@ -75,12 +112,14 @@ const (
 // Source is one instruction file (or import) that made it into the prompt.
 type Source struct {
 	// Path is how the file is shown: relative to the project root with "/"
-	// separators, or "~/..." under the user's home directory. It is never an
-	// absolute machine path, so rendering is reproducible across machines.
+	// separators, or "~/.sleipnir/..." under the user's own directory. It is
+	// never an absolute machine path, so rendering is reproducible across
+	// machines. Files imported from the user's file are the only sources shown
+	// with a "~/" prefix and scope "import".
 	Path  string
 	Scope string
-	// Text is the file's content with line endings normalised, HTML comments
-	// removed and surrounding blank lines trimmed.
+	// Text is the file's content with line endings normalised, hidden and control
+	// characters and HTML comments removed and surrounding blank lines trimmed.
 	Text string
 	// Truncated reports that Text ends with a truncation note.
 	Truncated bool
@@ -99,48 +138,83 @@ type Opts struct {
 	Home string
 }
 
+// domain is a place instruction files may be read from. A file and everything it
+// imports stay inside one domain.
+type domain struct {
+	// dir is the domain's directory: symlink-free for a project root, lexically
+	// ~/.sleipnir for the user's.
+	dir string
+	// user marks ~/.sleipnir, the one trusted location outside the project: its
+	// symlinks are followed wherever they lead (a dotfiles checkout, typically).
+	user bool
+	// root confines every access of a project domain to dir, race-free: a
+	// symlink, a ".." or an absolute link that leaves it fails the open itself.
+	root *os.Root
+}
+
+// open opens the file at rel (slash-separated, relative to the domain) without
+// blocking, so a FIFO planted under an instruction file's name cannot hang us.
+func (d *domain) open(rel string) (*os.File, error) {
+	if d.user {
+		return os.OpenFile(filepath.Join(d.dir, filepath.FromSlash(rel)), openFlags, 0)
+	}
+	return d.root.OpenFile(filepath.FromSlash(rel), openFlags, 0)
+}
+
 type loader struct {
-	root string
-	home string // "" when unknown
-	// userDir is ~/.sleipnir; anything lexically under it may be imported even
-	// if it is a symlink to a dotfiles checkout elsewhere.
-	userDir  string
-	realRoot string
-	realHome string
-	dirs     []string // root ... cwd
+	home string  // canonical home directory, "" when unknown
+	proj *domain // the project root; nil when it cannot be opened
+	user *domain // ~/.sleipnir; nil when the home directory is unknown
+	// dirs are the directories from the root down to cwd, relative to the root
+	// and slash-separated ("" is the root itself).
+	dirs []string
 
 	out  []Source
 	seen []os.FileInfo
 	errs []error
+	// dropped counts problems beyond maxProblems.
+	dropped int
+	// Work done by imports so far, against maxImports, maxImportSpecs and
+	// maxImportBytes; limitNoted keeps the limit message to one.
+	imports, specs, importBytes int
+	limitNoted                  bool
 }
 
 // Load discovers, reads and expands the instruction files for opts. Missing
 // files are simply absent from the result. A non-nil error means some existing
-// file could not be read (or looks binary); the returned sources are still
-// everything that could be loaded, so callers can log the error and carry on.
+// file could not be read, looks binary, was refused (a symlink or "@path"
+// import leading outside its trust domain) or had hidden characters removed;
+// the returned sources are still everything that could be loaded, so callers
+// can log the error and carry on.
 func Load(opts Opts) ([]Source, error) {
 	ld, err := newLoader(opts)
 	if err != nil {
 		return nil, err
 	}
-	if ld.home != "" {
-		ld.file(filepath.Join(ld.userDir, "SLEIPNIR.md"), ScopeUser, 0)
+	defer ld.close()
+	if ld.user != nil {
+		ld.file(ld.user, "SLEIPNIR.md", ScopeUser, 0)
 	}
-	for i, d := range ld.dirs {
-		scope := ScopeDir
-		if i == 0 {
-			scope = ScopeProject
+	if ld.proj != nil {
+		for i, d := range ld.dirs {
+			scope := ScopeDir
+			if i == 0 {
+				scope = ScopeProject
+			}
+			for _, name := range []string{"AGENTS.md", "CLAUDE.md", "SLEIPNIR.md", ".sleipnir/SLEIPNIR.md"} {
+				ld.file(ld.proj, path.Join(d, name), scope, 0)
+			}
 		}
-		for _, name := range []string{"AGENTS.md", "CLAUDE.md", "SLEIPNIR.md", filepath.Join(".sleipnir", "SLEIPNIR.md")} {
-			ld.file(filepath.Join(d, name), scope, 0)
-		}
-	}
-	for _, d := range ld.dirs {
-		for _, name := range []string{"SLEIPNIR.local.md", filepath.Join(".sleipnir", "SLEIPNIR.local.md")} {
-			ld.file(filepath.Join(d, name), ScopeLocal, 0)
+		for _, d := range ld.dirs {
+			for _, name := range []string{"SLEIPNIR.local.md", ".sleipnir/SLEIPNIR.local.md"} {
+				ld.file(ld.proj, path.Join(d, name), ScopeLocal, 0)
+			}
 		}
 	}
 	ld.applyBudget()
+	if ld.dropped > 0 {
+		ld.errs = append(ld.errs, fmt.Errorf("memory: %d further problems not listed", ld.dropped))
+	}
 	return ld.out, errors.Join(ld.errs...)
 }
 
@@ -164,33 +238,54 @@ func newLoader(o Opts) (*loader, error) {
 		home, _ = os.UserHomeDir()
 	}
 	ld := &loader{}
-	var err error
 	// Everything is canonicalised up front (symlinks resolved) so that display
-	// paths do not depend on how the caller happened to spell a directory.
-	if ld.root, err = canonical(root); err != nil {
-		return nil, fmt.Errorf("memory: %w", err)
-	}
-	cwd, err = canonical(cwd)
+	// paths do not depend on how the caller happened to spell a directory, and so
+	// that containment is judged against where the root really is.
+	rootDir, err := canonical(root)
 	if err != nil {
 		return nil, fmt.Errorf("memory: %w", err)
 	}
-	ld.realRoot = ld.root
+	cwdDir, err := canonical(cwd)
+	if err != nil {
+		return nil, fmt.Errorf("memory: %w", err)
+	}
 	if home != "" {
 		if ld.home, err = canonical(home); err != nil {
 			return nil, fmt.Errorf("memory: %w", err)
 		}
-		ld.realHome = ld.home
-		ld.userDir = filepath.Join(ld.home, ".sleipnir")
+		ld.user = &domain{dir: filepath.Join(ld.home, ".sleipnir"), user: true}
 	}
-	ld.dirs = []string{ld.root}
-	if rel, ok := under(ld.root, cwd); ok && rel != "." {
-		cur := ld.root
-		for _, part := range strings.Split(rel, string(filepath.Separator)) {
-			cur = filepath.Join(cur, part)
+	r, err := os.OpenRoot(rootDir)
+	switch {
+	case err == nil:
+		ld.proj = &domain{dir: rootDir, root: r}
+	case !isMissing(err):
+		ld.problem(fmt.Errorf("memory: project root: %w", unwrapPath(err)))
+	}
+	ld.dirs = []string{""}
+	if rel, ok := under(rootDir, cwdDir); ok && rel != "." {
+		cur := ""
+		for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+			cur = path.Join(cur, part)
 			ld.dirs = append(ld.dirs, cur)
 		}
 	}
 	return ld, nil
+}
+
+func (ld *loader) close() {
+	if ld.proj != nil && ld.proj.root != nil {
+		ld.proj.root.Close()
+	}
+}
+
+// problem records something worth telling the caller, up to maxProblems.
+func (ld *loader) problem(err error) {
+	if len(ld.errs) >= maxProblems {
+		ld.dropped++
+		return
+	}
+	ld.errs = append(ld.errs, err)
 }
 
 // canonical makes p absolute, cleaned and (where it exists) symlink-free.
@@ -217,45 +312,67 @@ func under(base, p string) (string, bool) {
 	return "", false
 }
 
-// file loads one instruction file and, recursively, its imports.
-func (ld *loader) file(path, scope string, depth int) {
+// isMissing reports that a path (or a directory on the way to it) is not there.
+func isMissing(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// file loads one instruction file (rel is slash-separated, relative to d) and,
+// recursively, its imports.
+func (ld *loader) file(d *domain, rel, scope string, depth int) {
 	if len(ld.out) >= maxSources {
 		return
 	}
-	fi, err := os.Stat(path) // follows symlinks: CLAUDE.md -> AGENTS.md is one file
+	name := ld.display(d, rel)
+	if err := ld.checkTarget(d, rel); err != nil {
+		ld.problem(fmt.Errorf("memory: %s: %w", name, err))
+		return
+	}
+	f, err := d.open(rel)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
-			ld.errs = append(ld.errs, fmt.Errorf("memory: %s: %w", ld.display(path, scope), unwrapPath(err)))
+		if !isMissing(err) {
+			ld.problem(fmt.Errorf("memory: %s: %w", name, unwrapPath(err)))
 		}
 		return
 	}
-	// Directories, devices and FIFOs are not instruction files (and opening a
-	// FIFO would block forever).
+	defer f.Close()
+	fi, err := f.Stat() // of the opened file, so what is judged is what is read
+	if err != nil {
+		ld.problem(fmt.Errorf("memory: %s: %w", name, unwrapPath(err)))
+		return
+	}
+	// Directories, devices and FIFOs are not instruction files.
 	if !fi.Mode().IsRegular() {
 		return
 	}
 	for _, s := range ld.seen {
-		if os.SameFile(s, fi) {
+		if os.SameFile(s, fi) { // CLAUDE.md -> AGENTS.md is one file
 			return
 		}
 	}
 	ld.seen = append(ld.seen, fi)
 
-	raw, truncated, err := readCapped(path)
+	raw, truncated, err := readCapped(f)
 	if err != nil {
-		ld.errs = append(ld.errs, fmt.Errorf("memory: %s: %w", ld.display(path, scope), unwrapPath(err)))
+		ld.problem(fmt.Errorf("memory: %s: %w", name, unwrapPath(err)))
 		return
+	}
+	if scope == ScopeImport {
+		ld.importBytes += len(raw)
 	}
 	if bytes.IndexByte(raw[:min(len(raw), 8192)], 0) >= 0 {
-		ld.errs = append(ld.errs, fmt.Errorf("memory: %s: looks like a binary file; skipped", ld.display(path, scope)))
+		ld.problem(fmt.Errorf("memory: %s: looks like a binary file; skipped", name))
 		return
 	}
-	text := clean(raw)
+	text, hidden := cleanCounting(raw)
+	if hidden.total() > 0 {
+		ld.problem(fmt.Errorf("memory: %s: removed %d hidden characters (%s)", name, hidden.total(), hidden))
+	}
 	imports := findImports(text)
 	if strings.TrimSpace(text) == "" {
 		return // nothing to tell the model
 	}
-	src := Source{Path: ld.display(path, scope), Scope: scope, Text: text}
+	src := Source{Path: name, Scope: scope, Text: text}
 	if truncated {
 		src.Text += fileNote
 		src.Truncated = true
@@ -266,23 +383,46 @@ func (ld *loader) file(path, scope string, depth int) {
 		return
 	}
 	for _, spec := range imports {
-		if target, ok := ld.resolveImport(path, spec); ok {
-			ld.file(target, ScopeImport, depth+1)
+		if ld.specs >= maxImportSpecs {
+			ld.limit()
+			return
 		}
+		ld.specs++
+		ld.importFile(d, rel, spec, depth)
 	}
 }
 
 var fileNote = fmt.Sprintf("\n\n[... truncated: this file is larger than %d KB; the rest is not included]", MaxFileBytes>>10)
 
-// readCapped reads at most MaxFileBytes of a file, reporting whether more was
-// there. A cut never leaves half a UTF-8 character or, when a line break is
-// close, half a line.
-func readCapped(path string) (data []byte, truncated bool, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, false, err
+// checkTarget vets, before a project file is opened, where its path really
+// lands. A symlink may only lead somewhere inside the project, and (when a
+// symlink is involved at all) only to something that could have been imported:
+// otherwise AGENTS.md -> .env or -> .git/config would smuggle a repository's own
+// secrets into the prompt. The open itself is confined by the domain's os.Root
+// whatever this finds; the check exists to say why.
+func (ld *loader) checkTarget(d *domain, rel string) error {
+	if d.user {
+		return nil
 	}
-	defer f.Close()
+	abs := filepath.Join(d.dir, filepath.FromSlash(rel))
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return nil // missing, looping or unreadable: the open reports what matters
+	}
+	realRel, ok := under(d.dir, real)
+	if !ok {
+		return errors.New("symlink leads outside the project root; not loaded")
+	}
+	if real != abs && !importable(filepath.ToSlash(realRel), false) {
+		return errors.New("symlink does not lead to a markdown or text file outside hidden directories; not loaded")
+	}
+	return nil
+}
+
+// readCapped reads at most MaxFileBytes of f, reporting whether more was there.
+// A cut never leaves half a UTF-8 character or, when a line break is close,
+// half a line.
+func readCapped(f *os.File) (data []byte, truncated bool, err error) {
 	data, err = io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
 	if err != nil {
 		return nil, false, err
@@ -320,28 +460,21 @@ func unwrapPath(err error) error {
 	return err
 }
 
-// display renders a path the way it appears in Source.Path.
-func (ld *loader) display(path, scope string) string {
-	if scope == ScopeUser && ld.home != "" {
-		if rel, ok := under(ld.home, path); ok {
-			return sanitize("~/" + filepath.ToSlash(rel))
-		}
+// display renders a file the way it appears in Source.Path. Both branches show a
+// domain-relative path, so no machine-specific prefix can reach the prompt.
+func (ld *loader) display(d *domain, rel string) string {
+	if d.user {
+		return sanitize("~/.sleipnir/" + rel)
 	}
-	if rel, ok := under(ld.root, path); ok {
-		return sanitize(filepath.ToSlash(rel))
-	}
-	if ld.home != "" {
-		if rel, ok := under(ld.home, path); ok {
-			return sanitize("~/" + filepath.ToSlash(rel))
-		}
-	}
-	return sanitize(filepath.Base(path))
+	return sanitize(rel)
 }
 
-// sanitize keeps a hostile file name from injecting lines into the prompt.
+// sanitize keeps a hostile file name from injecting lines, or invisible text,
+// into the prompt: control characters, Unicode line separators and every hidden
+// character become U+FFFD, which is visible.
 func sanitize(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f || r == 0x2028 || r == 0x2029 { // controls and Unicode line separators
+		if r < 0x20 || r == 0x7f || r == 0x2028 || r == 0x2029 || r == 0x85 || hiddenKind(r) != hiddenNone {
 			return utf8.RuneError
 		}
 		return r
@@ -350,46 +483,96 @@ func sanitize(s string) string {
 
 var importExts = []string{".md", ".markdown", ".mdx", ".txt"}
 
-// resolveImport turns an "@spec" into a file path, or reports that the import
-// should be ignored (unsupported type, outside the allowed locations, missing).
-func (ld *loader) resolveImport(importer, spec string) (string, bool) {
+// hiddenDirs are the dot-directories an import may go through: the places
+// instruction files legitimately live. Every other hidden name (.git, .ssh,
+// .aws, .gnupg, .env, ...) is refused.
+var hiddenDirs = []string{".sleipnir", ".claude", ".github", ".agents"}
+
+// importable reports whether rel (slash-separated, relative to a domain) is a
+// file that may be imported: markdown or text, and, unless the domain is the
+// user's own, nowhere below a hidden name that is not in hiddenDirs.
+func importable(rel string, user bool) bool {
+	if !slices.Contains(importExts, strings.ToLower(path.Ext(rel))) {
+		return false
+	}
+	if user {
+		return true
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if strings.HasPrefix(part, ".") && !slices.Contains(hiddenDirs, strings.ToLower(part)) {
+			return false
+		}
+	}
+	return true
+}
+
+// importFile follows one "@spec" line of the file at importer (relative to d).
+func (ld *loader) importFile(d *domain, importer, spec string, depth int) {
+	rel, err := ld.resolveImport(d, importer, spec)
+	switch {
+	case errors.Is(err, errIgnored):
+		return // not an importable type (or no home to expand ~ against): plain text
+	case err != nil:
+		ld.problem(fmt.Errorf("memory: %s: import @%s refused: %w", ld.display(d, importer), sanitize(spec), err))
+		return
+	}
+	if ld.imports >= maxImports || ld.importBytes >= maxImportBytes {
+		ld.limit()
+		return
+	}
+	before := len(ld.out)
+	ld.imports++
+	ld.file(d, rel, ScopeImport, depth+1)
+	if len(ld.out) == before { // missing, duplicate or empty: no work worth counting
+		ld.imports--
+	}
+}
+
+// limit says once that imports were cut off.
+func (ld *loader) limit() {
+	if ld.limitNoted {
+		return
+	}
+	ld.limitNoted = true
+	ld.problem(fmt.Errorf("memory: import limit reached (%d files, %d KB, %d lines); further imports skipped", maxImports, maxImportBytes>>10, maxImportSpecs))
+}
+
+// errIgnored says an "@spec" line is plain text, not an import.
+var errIgnored = errors.New("not an import")
+
+// resolveImport turns an "@spec" into a path relative to d. errIgnored means the
+// line is just text (not a markdown/text path, or nothing to expand "~"
+// against); any other error is a refusal, reported because the line names a file
+// that could have been imported but the trust rules forbid it. A missing file is
+// neither: the open decides that.
+func (ld *loader) resolveImport(d *domain, importer, spec string) (string, error) {
 	var target string
 	switch {
 	case spec == "~" || strings.HasPrefix(spec, "~/"):
 		if ld.home == "" {
-			return "", false
+			return "", errIgnored
 		}
 		target = filepath.Join(ld.home, filepath.FromSlash(strings.TrimPrefix(spec, "~")))
 	case filepath.IsAbs(filepath.FromSlash(spec)):
 		target = filepath.Clean(filepath.FromSlash(spec))
 	default:
-		target = filepath.Join(filepath.Dir(importer), filepath.FromSlash(spec))
+		target = filepath.Join(d.dir, filepath.FromSlash(path.Dir(importer)), filepath.FromSlash(spec))
 	}
 	if !slices.Contains(importExts, strings.ToLower(filepath.Ext(target))) {
-		return "", false
+		return "", errIgnored
 	}
-	// The user's own ~/.sleipnir may be a symlink into a dotfiles repository, so
-	// it is judged by where it is, not where it points. Everything else is judged
-	// by its real location: a symlink inside the repository must not be a way
-	// out of it.
-	if ld.userDir != "" {
-		if _, ok := under(ld.userDir, target); ok {
-			return target, true
+	rel, ok := under(d.dir, target)
+	if !ok {
+		if d.user {
+			return "", errors.New("outside the user's ~/.sleipnir directory")
 		}
+		return "", errors.New("outside the project root")
 	}
-	real, err := filepath.EvalSymlinks(target)
-	if err != nil {
-		return "", false // missing: the line stays as plain text
+	rel = filepath.ToSlash(rel)
+	if !importable(rel, d.user) {
+		return "", errors.New("inside a hidden directory")
 	}
-	if _, ok := under(ld.realRoot, real); ok {
-		return target, true
-	}
-	if ld.realHome != "" {
-		if _, ok := under(ld.realHome, real); ok {
-			return target, true
-		}
-	}
-	return "", false
+	return rel, nil
 }
 
 // applyBudget enforces MaxTotalBytes. Later sources have higher precedence, so

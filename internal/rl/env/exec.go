@@ -236,7 +236,7 @@ func (s *LocalSandbox) argv(cmd string, pol ExecPolicy) (argv []string, warnings
 		return inner, nil
 	}
 	if s.netIso.Available {
-		return s.netIso.wrap(inner), nil
+		return s.netIso.wrap(s.shell, inner), nil
 	}
 	if s.netIso.Reason != "" {
 		warnings = append(warnings, "network isolation unavailable: "+s.netIso.Reason)

@@ -108,7 +108,7 @@ func (m *Manager) recordCwd(env *tools.Env, base, start, cwdFile string) (dir, n
 		m.mu.Lock()
 		delete(m.cwds, env.Agent)
 		m.mu.Unlock()
-		return base, "[working directory reset to " + base + ": " + final + " is outside the project root]"
+		return base, "[working directory reset to " + printable(base) + ": " + printable(final) + " is outside the project root]"
 	}
 	m.mu.Lock()
 	if final == base {
@@ -118,6 +118,18 @@ func (m *Manager) recordCwd(env *tools.Env, base, start, cwdFile string) (dir, n
 	}
 	m.mu.Unlock()
 	return final, ""
+}
+
+// printable makes a path safe to embed in a one-line note: a directory name may
+// hold newlines, and an outside-the-project path is by definition not one the
+// project controls, so it must not be able to forge lines in a tool result.
+func printable(p string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xA0) {
+			return '?'
+		}
+		return r
+	}, strings.ToValidUTF8(p, "?"))
 }
 
 func isDir(p string) bool {

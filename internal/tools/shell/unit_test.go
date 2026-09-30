@@ -52,6 +52,12 @@ func TestSanitizer(t *testing.T) {
 		{"invalid utf8 replaced", []string{"caf\xe9!"}, "caf\uFFFD!"},
 		{"lone continuation replaced", []string{"a\x80b"}, "a\uFFFDb"},
 		{"truncated char at eof", []string{"abc\xe2\x9c"}, "abc\uFFFD"},
+		{"tag characters dropped", []string{"a\U000E0041\U000E0042\U000E007Fb"}, "ab"},
+		{"bidi overrides dropped", []string{"a\u202eb\u202ac\u2066d\u2069e"}, "abcde"},
+		{"zero-width space and word joiner dropped", []string{"a\u200bb\u2060c\ufeffd\u00ade"}, "abcde"},
+		{"joiners and marks kept", []string{"a\u200db\u200cc\u200ed\u200fe"}, "a\u200db\u200cc\u200ed\u200fe"},
+		{"emoji zwj sequence kept", []string{"\U0001F468\u200d\U0001F469\u200d\U0001F467"}, "\U0001F468\u200d\U0001F469\u200d\U0001F467"},
+		{"variation selector 16 kept, supplement dropped", []string{"\u2764\ufe0f\U000E0100"}, "\u2764\ufe0f"},
 		{"c1 control dropped", []string{"a\u0085b\u009bc"}, "abc"},
 		{"only escape", []string{"\x1b[0m"}, ""},
 		{"state survives empty chunk", []string{"a\x1b[3", "", "1mb"}, "ab"},
@@ -82,6 +88,19 @@ func TestSanitizerChunkingInvariance(t *testing.T) {
 		got, _ := feedAll(chunks...)
 		if got != want {
 			t.Fatalf("chunk size %d: got %q, want %q", size, got, want)
+		}
+	}
+}
+
+func TestInvisible(t *testing.T) {
+	for _, r := range []rune{0x00AD, 0x180E, 0x200B, 0x2060, 0x2061, 0x2064, 0xFEFF, 0x202A, 0x202E, 0x2066, 0x2069, 0xE0000, 0xE0041, 0xE007F, 0xE0100, 0xE01EF} {
+		if !invisible(r) {
+			t.Errorf("U+%04X should be dropped", r)
+		}
+	}
+	for _, r := range []rune{'a', ' ', '\n', 0x00A0, 0x200C, 0x200D, 0x200E, 0x200F, 0xFE0F, 0x2065, 0x2070, 0xE0080, 0xE00FF, 0xE01F0, 0x1F600, 0x65E5, 0x061C} {
+		if invisible(r) {
+			t.Errorf("U+%04X should be kept", r)
 		}
 	}
 }
@@ -606,10 +625,23 @@ func TestLooksSecret(t *testing.T) {
 		"SSH_AUTH_SOCK=/tmp/agent.1",
 		// values that give the secret away whatever the name is
 		"DATABASE_URL=postgres://app:hunter2@db:5432/prod", "REDIS_URL=redis://:hunter2@cache", "BROKER=amqps://u:p@mq/",
-		"X=-----BEGIN RSA PRIVATE KEY-----", "X=-----BEGIN PRIVATE KEY-----", "X=sk-ant-api03-abcdefghijklmnopqrstuv",
-		"X=sk_live_abcdefghijk", "X=ghp_abcdefghijklmnopqrstuvwxyz0123456789", "X=github_pat_11ABCDEFG0abcdefghijklmnopqrstuv",
-		"X=xoxb-1234567890-abcdefghij", "X=AKIAIOSFODNN7EXAMPLE", "X=AIzaSyA1234567890abcdefghijklmnopqrstuvw",
-		"X=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc-def_ghi",
+	}
+	// Credential-shaped values are assembled from fragments: no literal in this
+	// file looks like a real token to a secret scanner.
+	rep := strings.Repeat
+	for _, v := range []string{
+		"-----BEGIN " + "RSA PRIVATE" + " KEY-----",
+		"-----BEGIN " + "PRIVATE" + " KEY-----",
+		"sk" + "-ant-api03-" + rep("a", 22),
+		"sk" + "_live_" + rep("a", 12),
+		"gh" + "p_" + rep("a", 36),
+		"github" + "_pat_" + rep("A", 40),
+		"xox" + "b-1234567890-" + rep("a", 12),
+		"AK" + "IA" + rep("A", 16),
+		"AI" + "za" + rep("A", 35),
+		"ey" + "J" + rep("a", 12) + ".ey" + "J" + rep("a", 12) + "." + rep("b", 10),
+	} {
+		secret = append(secret, "X="+v)
 	}
 	plain := []string{
 		"PATH=/usr/bin:/bin", "HOME=/home/u", "PWD=/work", "OLDPWD=/work", "SHELL=/bin/bash", "LANG=C.UTF-8", "TERM=xterm",
@@ -634,9 +666,9 @@ func TestLooksSecret(t *testing.T) {
 		}
 	}
 	// PassEnv overrides both name and value rules.
-	env := commandEnv([]string{"DATABASE_URL=postgres://a:b@h/d", "X=ghp_abcdefghijklmnopqrstuvwxyz0123456789"}, "a", "", []string{"database_url"})
+	env := commandEnv([]string{"DATABASE_URL=postgres://a:b@h/d", "X=gh" + "p_" + rep("a", 36)}, "a", "", []string{"database_url"})
 	joined := strings.Join(env, "\n")
-	if !strings.Contains(joined, "DATABASE_URL=") || strings.Contains(joined, "ghp_") {
+	if !strings.Contains(joined, "DATABASE_URL=") || strings.Contains(joined, "X=") {
 		t.Errorf("env = %v", env)
 	}
 }
