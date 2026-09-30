@@ -37,6 +37,7 @@ internal/provider       the boundary between the harness and model APIs: Provide
   provider/gateway      marketplace catalogue (Heimdall, OpenRouter): public model list, prices, capabilities
   provider/probe        measures how an endpoint really behaves (behind `sleipnir doctor`)
   provider/mock         deterministic, protocol-strict fake provider with an automatic prefix cache
+  provider/providertest scripted-stream harness and the contract every adapter owes its caller (used by the adapters' tests)
 
 internal/agent          one model-driven worker: render its layered prompt, call the provider, run tools, keep context healthy
 internal/swarm          many agents over one repository: board, mail router, leases, governor, warm gate, roles, spawn
