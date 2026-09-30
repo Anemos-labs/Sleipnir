@@ -71,8 +71,11 @@ func (k *call) readFile(path, disp string, max int64) ([]byte, iofs.FileInfo, *t
 	if fi.Size() > max {
 		return nil, nil, k.fail("%s is %s, larger than the %s limit for this tool; use grep or the shell for a file this size", disp, humanBytes(fi.Size()), humanBytes(max))
 	}
-	f, err := os.Open(path)
+	f, ofi, err := openRegular(path)
 	if err != nil {
+		if errors.Is(err, errNotRegular) { // replaced by something else since the Stat above
+			return nil, nil, k.fail("%s is not a regular file (%s)", disp, fileKind(ofi.Mode()))
+		}
 		return nil, nil, k.statFailure(path, disp, err)
 	}
 	defer f.Close()
@@ -85,6 +88,31 @@ func (k *call) readFile(path, disp string, max int64) ([]byte, iofs.FileInfo, *t
 		return nil, nil, k.fail("%s is larger than the %s limit for this tool", disp, humanBytes(max))
 	}
 	return data, fi, nil
+}
+
+var errNotRegular = errors.New("not a regular file")
+
+// openRegular opens path for reading and checks on the descriptor, not on the
+// name, that it is a regular file. The tools stat a path before they open it, but
+// the model has a shell: between the two, a path can become a FIFO, and os.Open
+// on a FIFO with no writer waits until one shows up, for ever, with nothing able
+// to cancel it. Opening with noWait fails at once instead, and a file that is
+// not regular is closed unread (the FileInfo says what it was).
+func openRegular(path string) (*os.File, iofs.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|noWait, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, fi, errNotRegular
+	}
+	return f, fi, nil
 }
 
 func fileKind(m iofs.FileMode) string {
@@ -284,8 +312,21 @@ func atomicWrite(path string, data []byte, existing iofs.FileInfo) (err error) {
 }
 
 func writeInPlace(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	// No O_TRUNC in the open: it would already have cut the file before we could
+	// check what it is, and on a FIFO or device the open must have no effect at all.
+	f, err := os.OpenFile(path, os.O_WRONLY|noWait, 0)
 	if err != nil {
+		return err
+	}
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		f.Close()
+		if err == nil {
+			err = errNotRegular
+		}
+		return err
+	}
+	if err := f.Truncate(0); err != nil {
+		f.Close()
 		return err
 	}
 	if _, err := f.Write(data); err != nil {

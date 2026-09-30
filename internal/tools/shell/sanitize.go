@@ -3,6 +3,8 @@ package shell
 import (
 	"strings"
 	"unicode/utf8"
+
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 // Command output is arbitrary bytes, but everything downstream (provider JSON,
@@ -182,22 +184,9 @@ func (s *sanitizer) feed(dst, src []byte) []byte {
 }
 
 // invisible reports runes that display as nothing (or only reorder text) and so
-// can smuggle content past a human reader. Zero-width joiner and non-joiner and
-// the left/right marks are deliberately kept: emoji sequences and several
-// scripts need them.
-func invisible(r rune) bool {
-	switch {
-	case r == 0x00AD, r == 0x180E, r == 0x200B, r == 0x2060, r == 0xFEFF:
-	case r >= 0x2061 && r <= 0x2064: // invisible operators
-	case r >= 0x202A && r <= 0x202E: // bidi embeddings and overrides
-	case r >= 0x2066 && r <= 0x2069: // bidi isolates
-	case r >= 0xE0000 && r <= 0xE007F: // tag characters
-	case r >= 0xE0100 && r <= 0xE01EF: // variation selectors supplement
-	default:
-		return false
-	}
-	return true
-}
+// can smuggle content past a human reader; the list lives in package tools, where
+// the terminal sanitiser and the web converter share it.
+func invisible(r rune) bool { return tools.Invisible(r) }
 
 // flush emits whatever a dangling partial character turns into at end of stream.
 func (s *sanitizer) flush(dst []byte) []byte {
