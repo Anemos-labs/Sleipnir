@@ -408,7 +408,7 @@ Project provider settings are never read by `rl`; configure the policy in your u
 and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exits 0.
 
 ```text
-sleipnir rl taskgen <generator>    make tasks from history, compose swarm tasks, generate recall tasks or mutations
+sleipnir rl taskgen <generator>    make tasks from history, authored fixtures, mutations or recall questions, or compose swarm tasks
 sleipnir rl tasks <command> FILE   validate, filter, split and check task files
 sleipnir rl rollout                run G samples per task with a policy and write a run directory
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
@@ -641,6 +641,38 @@ flags:
         tag added to every task, repeatable
   -window int
         context window in tokens written into each task: small, so the reading overflows it and history is compacted (default 12000)
+```
+<!-- /flags -->
+
+### `sleipnir rl taskgen fixture`
+
+Hand-written tasks: a directory of fixtures, one subdirectory each, turned into tasks. A fixture holds `task.json` (id,
+kind `fix|feature|refactor|greenfield`, language, difficulty, prompt, verify command, timeout, protected globs, team,
+tags, budget), `start/` (the repository the agent starts in, visible tests included), `hidden/` (files written over the
+checkout only when the result is verified) and `solution/` (the files that differ in a reference solution). Each becomes
+a one-commit git repository under `--repo-root`; hidden files and the solution go to the blob store. The task names its
+repository relative to the directory a rollout runs in, so the tasks file does not depend on this machine. Nothing is
+run here: `sleipnir rl tasks check` proves each task sound (the verifier fails on the start and passes with the solution).
+
+<!-- flags: rl taskgen fixture -->
+```text
+usage: sleipnir rl taskgen fixture --dir DIR [flags]
+
+flags:
+  -blobs string
+        blob store for the hidden files and reference solutions (default: blobs/ next to -o)
+  -dir string
+        directory of fixtures: one subdirectory each, with task.json, start/, hidden/ and solution/
+  -id string
+        comma-separated fixture ids (path.Match wildcards allowed); default all
+  -o string
+        output tasks file (default "tasks.jsonl")
+  -repo-path-prefix string
+        how a task names its repository: <prefix>/<id>, resolved against the directory a rollout runs in, so the tasks file is not tied to this machine (default: the base name of --repo-root)
+  -repo-root string
+        where the fixtures' repositories are written, one per fixture (default: fixture-repos next to -o)
+  -tag value
+        tag added to every task, repeatable
 ```
 <!-- /flags -->
 

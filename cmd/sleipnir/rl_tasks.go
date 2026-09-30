@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -262,6 +263,8 @@ func rlTaskgen(ctx context.Context, args []string, stdout, stderr io.Writer) err
   composite  combine independent tasks of one repository into swarm tasks for a manager and workers
   recall     memory tasks: read a fact early, read many other files, then state the fact exactly
              (a small context window makes the agent compact its history in between)
+  fixture    authored tasks: a directory per task (task.json, start/, hidden/, solution/), for what mined
+             history cannot give (other languages, tasks built from a specification, planted bugs)
 
 Every task is validated in the same environment rollouts use before it is written:
 the verifier must fail on the start state and pass with the reference solution.
@@ -279,6 +282,8 @@ the verifier must fail on the start state and pass with the reference solution.
 		return taskgenComposite(args[1:], stdout, stderr)
 	case "recall":
 		return taskgenRecall(args[1:], stdout, stderr)
+	case "fixture":
+		return taskgenFixture(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return nil
@@ -524,6 +529,111 @@ func taskgenRecall(args []string, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "wrote %d recall tasks to %s (each reads %d files under a %d-token window)\n", len(tasks), *out, *files, *window)
 	fmt.Fprintf(stderr, "run them like any tasks: sleipnir rl rollout --tasks %s --model <policy> --group 4 ...\n", *out)
 	return nil
+}
+
+// taskgenFixture turns a directory of authored fixtures into tasks (see taskgen.FixtureSpec). It runs nothing: `rl tasks check`
+// then proves each task sound in the environment rollouts use.
+func taskgenFixture(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("rl taskgen fixture", stderr, "rl taskgen fixture --dir DIR [flags]")
+	dir := fs.String("dir", "", "directory of fixtures: one subdirectory each, with task.json, start/, hidden/ and solution/")
+	ids := fs.String("id", "", "comma-separated fixture ids (path.Match wildcards allowed); default all")
+	out := fs.String("o", "tasks.jsonl", "output tasks file")
+	repoRoot := fs.String("repo-root", "", "where the fixtures' repositories are written, one per fixture (default: fixture-repos next to -o)")
+	prefix := fs.String("repo-path-prefix", "", "how a task names its repository: <prefix>/<id>, resolved against the directory a rollout runs in, so the tasks file is not tied to this machine (default: the base name of --repo-root)")
+	blobs := fs.String("blobs", "", "blob store for the hidden files and reference solutions (default: blobs/ next to -o)")
+	var tags multiFlag
+	fs.Var(&tags, "tag", "tag added to every task, repeatable")
+	if _, err := parseInterspersed(fs, args); err != nil {
+		return err
+	}
+	if *dir == "" {
+		return errors.New("rl taskgen fixture: --dir is required")
+	}
+	entries, err := os.ReadDir(*dir)
+	if err != nil {
+		return fmt.Errorf("rl taskgen fixture: %w", err)
+	}
+	var want []string
+	if *ids != "" {
+		want = splitList(*ids)
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(*dir, e.Name(), "task.json")); err != nil {
+			continue
+		}
+		if len(want) > 0 {
+			ok := false
+			for _, w := range want {
+				if m, _ := path.Match(w, e.Name()); m {
+					ok = true
+				}
+			}
+			if !ok {
+				continue
+			}
+		}
+		names = append(names, e.Name())
+	}
+	if len(names) == 0 {
+		return fmt.Errorf("rl taskgen fixture: no fixture in %s matches", *dir)
+	}
+	sort.Strings(names)
+	outDir := filepath.Dir(*out)
+	if *repoRoot == "" {
+		*repoRoot = filepath.Join(outDir, "fixture-repos")
+	}
+	if *prefix == "" {
+		*prefix = filepath.Base(*repoRoot)
+	}
+	blobsDir := *blobs
+	if blobsDir == "" {
+		blobsDir = filepath.Join(outDir, "blobs")
+	}
+	store, err := events.NewDirBlobs(blobsDir)
+	if err != nil {
+		return fmt.Errorf("rl taskgen fixture: %w", err)
+	}
+	g, err := env.NewGit(env.GitOptions{})
+	if err != nil {
+		return fmt.Errorf("rl taskgen fixture: %w", err)
+	}
+	defer g.Close()
+	var tasks []rl.Task
+	for _, n := range names {
+		t, err := taskgen.FromFixture(ctx, filepath.Join(*dir, n), taskgen.FixtureOptions{
+			RepoRoot: *repoRoot, RepoPathPrefix: *prefix, HiddenBlobs: store, GoldBlobs: store, Git: g,
+		})
+		if err != nil {
+			return fmt.Errorf("rl taskgen fixture: %w", err)
+		}
+		t.Tags = dedupeStrings(append(t.Tags, []string(tags)...))
+		tasks = append(tasks, *t)
+	}
+	if err := env.ValidateTasks(tasks); err != nil {
+		return fmt.Errorf("rl taskgen fixture: %w", err)
+	}
+	if err := env.WriteTasks(*out, tasks); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "wrote %d tasks to %s (repositories in %s, hidden files and reference solutions in %s)\n", len(tasks), *out, *repoRoot, blobsDir)
+	fmt.Fprintf(stderr, "next: sleipnir rl tasks check %s, run from the directory that holds %s/ so the tasks' relative repositories resolve\n", *out, *prefix)
+	return nil
+}
+
+func dedupeStrings(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func parseDate(s string) (time.Time, error) {
