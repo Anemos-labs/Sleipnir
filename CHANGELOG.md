@@ -34,8 +34,11 @@ The first release.
   work reaches your checkout through a serial merge queue that verifies every integration and undoes a merge whose check
   fails; the result is applied at the end of the run (as edits, or as commits with `--commit`) and is never lost when it
   cannot be. The manager is told so, so it does not ask you to merge anything. Several managers, or a swarm and your own git,
-  may work in one repository at once: git itself fails a command that lists the worktrees while another process is creating one
-  ("failed to read .../commondir: Success", found by CI), and the harness waits that moment out like any other lock.
+  may work in one repository at once: git itself fails a command that lists the worktrees while another process is creating or
+  removing one ("failed to read .../commondir: Success", found by CI; a vanished `worktrees` directory; a `locked` file that went
+  between the check and the read), and the harness waits those moments out like any other lock. A worktree made with a new branch
+  is a branch and then a worktree here, so that a repeated add does not meet the branch the failed one left, and a branch made for
+  a worktree that could not be made is taken back. Under load, four processes doing this at once failed 11 of 60 runs before and none of 100 after.
 - `--verify` may contain `{dirs}`, the directories a task's scope covers, so tasks of a decomposed job are verified on their
   own work (`go test {dirs}`): in an isolated run a command over the whole repository cannot pass until every part is merged,
   and a real swarm of three workers deadlocked on it.

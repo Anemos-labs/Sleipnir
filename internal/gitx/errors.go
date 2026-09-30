@@ -168,6 +168,31 @@ func firstLines(s string, n int) string {
 	return strings.Join(out, "; ")
 }
 
+// worktreeAdminChanging reports whether git failed because another git process was changing the
+// administrative area of the linked worktrees (.git/worktrees) under it, which every command that
+// lists the worktrees can trip over (`worktree add`, `remove` and `list`, `branch -d`):
+//
+//   - a worktree being created has its directory and an empty commondir file (git opens the file,
+//     then writes it); the errno of a read that found nothing to fail on is 0:
+//     "failed to read .git/worktrees/w-01/commondir: Success" (or, when the file was removed
+//     between the check and the read, "...: No such file or directory");
+//   - the last worktree being removed takes the worktrees directory with it, under a listing that
+//     had found it: "Invalid path '.git/worktrees': No such file or directory", or, for an add that
+//     had made the directory a moment before, "could not create directory of
+//     '.git/worktrees/w-0': No such file or directory". Both read like "not found".
+//
+// The command that failed changed nothing, and a moment later it works.
+func worktreeAdminChanging(l string) bool {
+	switch {
+	case strings.Contains(l, "failed to read") && (strings.Contains(l, "/commondir") || strings.Contains(l, ".git/worktrees/")):
+		return true
+	case strings.Contains(l, ".git/worktrees") && strings.Contains(l, "no such file or directory") &&
+		(strings.Contains(l, "invalid path") || strings.Contains(l, "could not create")):
+		return true
+	}
+	return false
+}
+
 // classify maps git's failure (its stderr, plus the head of stdout where git
 // prints conflicts there) to a Kind. The text is stable because every invocation
 // runs with LC_ALL=C.
@@ -191,13 +216,7 @@ func classify(text string) Kind {
 	// X but expected Y" is a compare-and-swap miss, retrying it cannot help).
 	case has(".lock': file exists", ".lock\": file exists", "another git process seems to be running"):
 		return KindLocked
-	// Another git process is creating a linked worktree. Its administrative directory is
-	// there and its commondir file is still empty (git opens the file, then writes it), and
-	// a command that lists the worktrees, which `worktree add`, `worktree remove` and
-	// `branch -d` all do first, reads the empty file and dies with the errno of a read that
-	// did not fail: "failed to read .git/worktrees/w-01/commondir: Success". Nothing was
-	// changed, and a moment later the file is complete.
-	case strings.Contains(l, "failed to read") && strings.Contains(l, "/commondir"):
+	case worktreeAdminChanging(l):
 		return KindLocked
 	// The one lock git words without the name of the lock file: "error: could not lock config
 	// file .git/config: File exists". Other reasons (a permission, a missing directory) are not

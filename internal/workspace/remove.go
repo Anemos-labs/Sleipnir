@@ -211,8 +211,11 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 	}
 	var errs []error
 	if t.Branch != "" {
-		if err := m.st.base.DeleteBranch(ctx, t.Branch); err != nil && gitx.KindOf(err) != gitx.KindNotFound {
-			// "not found" would mean it is already gone; anything else is worth reporting
+		if err := m.st.base.DeleteBranch(ctx, t.Branch); err != nil {
+			// A branch that is already gone is not a failure; anything else is worth reporting. Look
+			// rather than take git's "not found" for it: it is also what git says when the directory of the
+			// worktrees vanishes under a listing (another process removed its last one), and a branch
+			// was left behind that way.
 			if _, berr := m.st.base.BranchSHA(ctx, t.Branch); !errors.Is(berr, gitx.ErrNotFound) {
 				errs = append(errs, err)
 			}

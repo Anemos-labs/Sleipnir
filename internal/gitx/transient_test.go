@@ -2,9 +2,11 @@ package gitx
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -48,32 +50,77 @@ func finishHalfMade(t *testing.T, commondir string, delay time.Duration) {
 }
 
 func TestWorktreeAddWaitsOutAWorktreeThatIsBeingCreated(t *testing.T) {
+	// With a new branch too: git's own `worktree add -b` leaves the branch behind when it fails, so
+	// running it again meets "a branch named ... already exists" (four processes adding worktrees at
+	// once did that in one run in six, once the wait was in).
+	for name, add := range map[string]WorktreeAddOptions{
+		"detached":   {Detach: true, Commit: "HEAD"},
+		"new branch": {Branch: "sleipnir/s1/w", Commit: "HEAD"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := newRepo(t)
+			commondir := halfMadeWorktree(t, dir, "other")
+			add.Path = filepath.Join(t.TempDir(), "w")
+			ctx := ctxT(t)
+
+			// A runner that does not wait reports it as a lock, and nothing was left behind.
+			err := openRepo(t, dir, WithLockWait(0)).WorktreeAdd(ctx, add)
+			if !errors.Is(err, ErrLocked) {
+				t.Fatalf("want ErrLocked from a worktree that is being created, got %v", err)
+			}
+			if _, err := os.Stat(add.Path); !os.IsNotExist(err) {
+				t.Fatalf("the failed add left %s behind: %v", add.Path, err)
+			}
+			if ents, _ := os.ReadDir(filepath.Join(dir, ".git", "worktrees")); len(ents) != 1 {
+				t.Fatalf("the failed add left an administrative directory behind: %v", ents)
+			}
+			if refs, _ := openRepo(t, dir).Branches(ctx, "sleipnir/"); len(refs) != 0 {
+				t.Fatalf("the failed add left its branch behind: %+v", refs)
+			}
+
+			// One that does wait gets its worktree once the other one is complete.
+			finishHalfMade(t, commondir, 400*time.Millisecond)
+			r := openRepo(t, dir, WithLockWait(30*time.Second))
+			if err := r.WorktreeAdd(ctx, add); err != nil {
+				t.Fatalf("WorktreeAdd should have waited for the other worktree: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(add.Path, ".git")); err != nil {
+				t.Fatal(err)
+			}
+			if add.Branch != "" {
+				refs, _ := r.Branches(ctx, "sleipnir/")
+				if len(refs) != 1 || refs[0].Name != add.Branch {
+					t.Fatalf("branches after the add: %+v", refs)
+				}
+				if br, _ := openRepo(t, add.Path).Branch(ctx); br != add.Branch {
+					t.Fatalf("the worktree has %q checked out, want %q", br, add.Branch)
+				}
+			}
+		})
+	}
+}
+
+// A worktree that cannot be made does not leave its branch behind (git's own -b does).
+func TestFailedWorktreeAddTakesItsNewBranchBack(t *testing.T) {
 	dir := newRepo(t)
-	commondir := halfMadeWorktree(t, dir, "other")
-	target := filepath.Join(t.TempDir(), "w")
-	add := WorktreeAddOptions{Path: target, Detach: true, Commit: "HEAD"}
+	r := openRepo(t, dir)
 	ctx := ctxT(t)
-
-	// A runner that does not wait reports it as a lock, and git changed nothing.
-	err := openRepo(t, dir, WithLockWait(0)).WorktreeAdd(ctx, add)
-	if !errors.Is(err, ErrLocked) {
-		t.Fatalf("want ErrLocked from a worktree that is being created, got %v", err)
+	taken := t.TempDir()
+	writeFile(t, filepath.Join(taken, "in the way"), "x") // a directory that is not empty: git refuses it
+	err := r.WorktreeAdd(ctx, WorktreeAddOptions{Path: taken, Branch: "sleipnir/s1/w", Commit: "HEAD"})
+	if err == nil {
+		t.Fatal("a worktree was added over a directory that has files in it")
 	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Fatalf("the failed add left %s behind: %v", target, err)
+	if refs, _ := r.Branches(ctx, "sleipnir/"); len(refs) != 0 {
+		t.Fatalf("the branch of a worktree that was not made is still there: %+v", refs)
 	}
-	if ents, _ := os.ReadDir(filepath.Join(dir, ".git", "worktrees")); len(ents) != 1 {
-		t.Fatalf("the failed add left an administrative directory behind: %v", ents)
+	// A branch that was there before is not this call's to take back.
+	rawGit(t, dir, "branch", "sleipnir/s1/mine")
+	if err := r.WorktreeAdd(ctx, WorktreeAddOptions{Path: filepath.Join(t.TempDir(), "w"), Branch: "sleipnir/s1/mine", Commit: "HEAD"}); err == nil {
+		t.Fatal("a branch that exists was created again")
 	}
-
-	// One that does wait gets its worktree once the other one is complete.
-	finishHalfMade(t, commondir, 400*time.Millisecond)
-	r := openRepo(t, dir, WithLockWait(30*time.Second))
-	if err := r.WorktreeAdd(ctx, add); err != nil {
-		t.Fatalf("WorktreeAdd should have waited for the other worktree: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(target, ".git")); err != nil {
-		t.Fatal(err)
+	if refs, _ := r.Branches(ctx, "sleipnir/"); len(refs) != 1 || refs[0].Name != "sleipnir/s1/mine" {
+		t.Fatalf("branches: %+v", refs)
 	}
 }
 
@@ -132,5 +179,75 @@ func TestAConfigFileBeingWrittenIsWaitedFor(t *testing.T) {
 	}
 	if got := rawGit(t, dir, "config", "sleipnir.test"); got != "value" {
 		t.Fatalf("config value = %q", got)
+	}
+}
+
+// The real thing, not a planted entry: handles that add, remove and list the worktrees of one repository at
+// once (a swarm's managers, and a person's own git). Before the runner waited these moments out, three
+// seconds of it gave dozens of failures: an empty commondir being read, a commondir that vanished, the
+// worktrees directory removed under a listing, and (with a new branch) the branch a failed add leaves behind.
+func TestConcurrentWorktreeCommandsDoNotFail(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs git for a few seconds")
+	}
+	dir := newRepo(t)
+	trees := t.TempDir()
+	ctx := ctxT(t)
+	stop := time.Now().Add(3 * time.Second)
+	var mu sync.Mutex
+	var failures []string
+	fail := func(what string, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		failures = append(failures, what+": "+err.Error())
+	}
+	var wg sync.WaitGroup
+	for w := 0; w < 6; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			r := openRepo(t, dir, WithLockWait(time.Minute))
+			for n := 0; time.Now().Before(stop); n++ {
+				add := WorktreeAddOptions{Path: filepath.Join(trees, fmt.Sprintf("w%d-%d", w, n)), Detach: true, Commit: "HEAD", NoCheckout: n%2 == 0}
+				if n%3 == 0 {
+					add.Detach, add.Branch = false, fmt.Sprintf("sleipnir/s/w%d-%d", w, n)
+				}
+				if err := r.WorktreeAdd(ctx, add); err != nil {
+					fail("add", err)
+					continue
+				}
+				if err := r.WorktreeRemove(ctx, add.Path, true); err != nil {
+					fail("remove", err)
+				}
+				if add.Branch != "" {
+					if err := r.DeleteBranch(ctx, add.Branch); err != nil {
+						fail("delete branch", err)
+					}
+				}
+			}
+		}(w)
+	}
+	for l := 0; l < 3; l++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r := openRepo(t, dir, WithLockWait(time.Minute))
+			for time.Now().Before(stop) {
+				if _, err := r.Worktrees(ctx); err != nil {
+					fail("list", err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if len(failures) > 0 {
+		shown := failures
+		if len(shown) > 5 {
+			shown = shown[:5]
+		}
+		t.Fatalf("%d command(s) failed, for example:\n%s", len(failures), strings.Join(shown, "\n"))
+	}
+	if refs, _ := openRepo(t, dir).Branches(ctx, "sleipnir/"); len(refs) != 0 {
+		t.Fatalf("branches left behind: %+v", refs)
 	}
 }

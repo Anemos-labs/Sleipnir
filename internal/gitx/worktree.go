@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Worktree is one entry of `git worktree list`.
@@ -110,7 +111,29 @@ func (r *Repo) WorktreeAdd(ctx context.Context, o WorktreeAddOptions) error {
 		if err := ValidateBranchName(o.Branch); err != nil {
 			return err
 		}
-		args = append(args, "-b", o.Branch)
+		// `worktree add -b` is a branch made and then a worktree made on it, and when the second
+		// step fails git leaves the branch behind. A runner that waits out a failure that passes
+		// (classify: another process is creating a worktree) would run the whole command again
+		// and be told "a branch named X already exists": four processes adding worktrees at once
+		// did that in one run in six. So the two steps are ours, the second is the one that is
+		// repeated, and a branch made here is taken back when the worktree cannot be (after a
+		// cancellation or a timeout it is the caller's to sort out, with whatever else the
+		// killed command left: workspace.abandonAdd).
+		tip, err := r.ResolveRef(ctx, o.Commit)
+		if err != nil {
+			return err
+		}
+		if err := r.CreateBranch(ctx, o.Branch, tip); err != nil {
+			return err
+		}
+		args = append(args, "--", o.Path, o.Branch)
+		if _, err := r.run(ctx, call{args: args, mutating: true, timeout: 10 * r.s.timeout}); err != nil {
+			if k := KindOf(err); k != KindCanceled && k != KindTimeout {
+				r.dropNewBranch(ctx, o.Branch, tip)
+			}
+			return err
+		}
+		return nil
 	case o.Detach:
 		args = append(args, "--detach")
 	default:
@@ -119,6 +142,16 @@ func (r *Repo) WorktreeAdd(ctx context.Context, o WorktreeAddOptions) error {
 	args = append(args, "--", o.Path, o.Commit)
 	_, err := r.run(ctx, call{args: args, mutating: true, timeout: 10 * r.s.timeout})
 	return err
+}
+
+// dropNewBranch takes back a branch WorktreeAdd made, at tip, for a worktree that could not be made. It
+// is best effort, and it deletes the branch only if it still points where it was made. It is not
+// `branch -D`: that lists the worktrees first, which is what may just have failed (another process
+// creating one), and the branch is one this call made a moment ago, so nothing has it checked out.
+func (r *Repo) dropNewBranch(ctx context.Context, name, tip string) {
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	defer cancel()
+	_, _ = r.run(cctx, call{args: []string{"update-ref", "-d", "refs/heads/" + name, tip}, mutating: true})
 }
 
 // WorktreeRemove deletes a linked worktree's directory and its administrative
