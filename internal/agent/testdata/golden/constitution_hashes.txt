@@ -1,0 +1,8 @@
+# The constitution, as written and as the const layer the session renders into the system block
+# (Session.build: kv.NewLayer("const", kv.KindConst, 1, one frozen segment holding the text); the layer trims trailing newlines)
+# columns: variant, what, byte count, tokens at 4 bytes per token, sha256
+# regenerate: go test ./internal/agent -run TestGoldenConstitution -update   (read docs/BUILDING.md, "Changing prompt bytes", first)
+solo	text	3314	829	eb30514d74c25950dab2a018b946fc09462b7da26c765f99f7f37198efa4c774
+solo	layer	3313	829	0861f48f32c54f0b1e380cbc3450694fe1a6d71ebe043f464c609afe6151b5b6
+swarm	text	4253	1064	b43ec778c8ea401eae873c20e66f48422174c24a208234545ff248692f90ee99
+swarm	layer	4252	1063	bb05b98e236912657818b0da956910bd54459a6f748666803abc268faf279eae

@@ -131,6 +131,19 @@ internal/rl             RL vocabulary: the harness as an environment
   To see what the runners see before pushing, run the test binaries as an unprivileged user with a symlinked `TMPDIR`
   (`go test -c`, then `setpriv --reuid=65534 ...`); it catches most of the above.
 
+## Changing prompt bytes
+
+The stable prompt bytes are cache keys, so golden files pin them, one test per thing (a change fails one named test):
+`internal/core/testdata/golden/canonical_*.txt` (`TestCanonicalGolden`: canonical JSON of blocks, messages, tools, the wire hash),
+`internal/kv/testdata/golden/render/` (`TestGoldenRenderedStack`: layer hashes and the whole `kv.Render` output for every hot mode
+and route), `internal/kv/testdata/golden/tools/` (`TestGoldenToolSpecs`: the tool list every agent sends) and
+`internal/agent/testdata/golden/constitution_*.txt` (`TestGoldenConstitution`). An intended change, in one commit:
+1. run that test with `-update` (`go test ./internal/kv -run Golden -update`) and read the `git diff` of `testdata/`: it is what
+   you are pricing. Never update to turn a test green unread;
+2. if what `kv.Render` sends the model changed, bump `kv.RendererVersion` and add the row `TestGoldenRenderedStack/renderer_version`
+   prints to `renderHistory` (`TestRendererVersion` fails until both agree);
+3. add a CHANGELOG entry priced with `sleipnir sim`: a changed byte re-writes the prefix after it for every agent (CACHE-DESIGN §1).
+
 ## Why tools look the way they do (swarm implications)
 
 - **Every agent gets the same tool list**, byte for byte, so the provider caches the tool

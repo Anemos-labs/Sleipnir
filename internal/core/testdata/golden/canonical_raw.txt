@@ -1,0 +1,42 @@
+# core.Canonical applied to raw JSON
+# columns: case, sha256 of the bytes, byte count, the bytes (Go-quoted with q: when they hold characters a reviewer cannot see)
+# regenerate: go test ./internal/core -run TestCanonicalGolden -update   (read docs/BUILDING.md, "Changing prompt bytes", first)
+empty_object	44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a	2	{}
+empty_array	4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945	2	[]
+scalar_string	ba2df4903a2c14e86dc3bcca58911b44ac1d2514b7227bf6eb08cfb978f55a1b	3	"x"
+scalar_number	6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918	2	12
+scalar_true	b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b	4	true
+scalar_null	74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b	4	null
+nil_passes_through	-	0	(nil)
+empty_passes_through	-	0	(empty, not nil)
+keys_sorted_nested	e7586ae14c4b043f988eba411c4231fa9aac08fc4ab4586773ca70edda7b2345	41	{"a":{"c":[3,{"y":2,"z":1}],"d":2},"b":1}
+keys_sorted_everywhere	5acd2ae9794c756818ac5222a3ecc30325c6a04e3cd1ca3e2bc8742f82d0c564	52	{"a":{},"z":{"a":[{"x":2,"y":1}],"b":{"c":2,"d":1}}}
+keys_sorted_bytewise	5e22b088d0b77bb0010562e926e0d78bc976431feb1a9648976b45206bb2b050	43	{"":7,"10":5,"9":6,"A":4,"B":2,"a":3,"b":1}
+keys_sorted_by_utf8_bytes_not_utf16	ed33820ae03c5a99d07f4400a941a6a60acd05c0ccd2e51b2b28aa8939258b62	31	q:"{\"z\":4,\"\u00e9\":3,\"\uffff\":2,\"\U0001f600\":1}"
+array_order_kept	5e21d54df1a71703f6f25216ff0c5dbd78bca73255f936a50c0128cb5e801c5b	21	[3,1,2,{"a":2,"b":1}]
+whitespace_removed	8c547cce7ccb1b89359479c0b71a0a4b62acfc54a2b2780fd34aaeb75f9e44b7	18	{"a":[1,2],"b":{}}
+outer_whitespace_removed	015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862	7	{"a":1}
+tool_schema_shape	90b8998057ebf89eedaadf0f8b423b3c50bf1ad8096f4e03d0d807c33622e6b7	159	{"additionalProperties":false,"properties":{"limit":{"type":"integer"},"path":{"description":"File path","type":"string"}},"required":["path"],"type":"object"}
+duplicate_keys_last_wins	7e8059f495589fcd981232cc11d00b00da3802c01d688fa1cf1f6bed6e5bb33c	7	{"a":2}
+html_not_escaped	3f8386621fcf39ad7e021cccebe4424eaac6083e6235c75e9af86c853f7dbc0a	16	{"a":"<b>&</b>"}
+html_escapes_decoded	57d020860f367bd76644d08c93908783ae01612c5d242f23c5be31272fd42621	11	{"<x>":"&"}
+slash_escape_decoded	b9293316ef631c94fa2e4c37f6a2d58d13b29f1b43876c71a71233a91aee5525	9	{"a":"/"}
+unicode_escapes_decoded	242127686be82bc18c6c47b1278228f3d2d0490701b00f3aee96ddde9e4aa993	11	{"a":"éA"}
+surrogate_pair_joined	8da70d6db48a3dc32fa9526602b4970d2eb551ffbbb8c497d97e4cb24f637d04	12	{"a":"😀"}
+lone_surrogate_replaced	ff283b920eb2db41781ef213a9c2a428f30928a2cdc77b67dc1426545b4ef02f	11	{"a":"�"}
+unicode_kept_raw	776387879c0840dc79479faa6668736b26f57258ad5d09460c98fb2b641d1502	21	{"a":"é😀 日本"}
+line_and_paragraph_separators_escaped	67996fabe892a1b63b068565db88cc5fd16fb925c16f5a9dc0d46b7a6b14d229	23	{"a":"x\u2028y\u2029z"}
+control_characters	5db20f3d58fb785cf95c4589b2617695c8ed3e935a1056316a2d0536a4e54d9c	33	q:"{\"a\":\"\\u0000\\u001f\x7f\u0085\\n\\t\\r\\b\\f\"}"
+invalid_utf8_replaced	70293f7899103ad51e49a27ce0210737ce8f6fa4a7d71bf5bd1d79ce967ad298	13	{"a":"x�y"}
+numbers_kept_verbatim	2e5ec009dfac982b57174a859c706238ed9caba76f075140fb36c3e7a3e43cbe	96	{"a":1.0,"b":1e2,"c":-0,"d":100000000000000000000,"e":0.10,"f":1E+2,"g":12345678901234567890123}
+nesting_50_deep	a4bbb0a31964dd21d4ed752e0ac5150f3ec0d8f65ac3894b423bc367b2cc65bf	101	[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
+quirk_second_value_ignored	015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862	7	{"a":1}
+quirk_trailing_garbage_ignored	015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862	7	{"a":1}
+error_whitespace_only	-	-	error
+error_truncated	-	-	error
+error_trailing_comma	-	-	error
+error_single_quotes	-	-	error
+error_nan	-	-	error
+error_bare_word	-	-	error
+error_byte_order_mark	-	-	error
+error_nesting_beyond_the_decoder_limit	-	-	error
