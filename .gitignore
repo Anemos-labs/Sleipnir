@@ -17,3 +17,6 @@ coverage.txt
 .idea/
 .vscode/
 .DS_Store
+
+# agent worktrees (local, ephemeral)
+/.claude/worktrees/
