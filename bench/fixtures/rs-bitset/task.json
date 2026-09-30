@@ -1,0 +1,13 @@
+{
+  "id": "rs-bitset",
+  "kind": "fix",
+  "lang": "rust",
+  "difficulty": "medium",
+  "prompt": "The Rust crate in the repository root is a growable set of small integers, `BitSet`, stored as a bit vector (`src/lib.rs`, `src/ops.rs`, `src/iter.rs`); `README.md` is its specification. The implementation has several bugs. Two you can see by running the tests: `union` of two sets of different sizes loses elements, and after shrinking a set with `resize` the removed elements are still counted by `len()` and still yielded by `iter()`. There are more, and they do not all show in the visible tests: the complete checks run when your work is verified cover every row of the README's table, including sets of different capacities, bits at the 64-bit word boundaries (0, 63, 64, 127, 128, ...), shrinking to a multiple of 64 and to other sizes, and growing again after a shrink. Read each operation against the README and fix the code so that it behaves exactly as specified.\n\nKeep the public API as it is and use only the standard library (no crates; the build is offline). Do not edit anything under `tests/`. Check your work with `cargo test --offline --quiet`.",
+  "verify": "cargo test --offline --quiet",
+  "timeout_s": 300,
+  "protected": ["tests/*"],
+  "team": {"mode": "single"},
+  "tags": ["rust", "fix", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}
