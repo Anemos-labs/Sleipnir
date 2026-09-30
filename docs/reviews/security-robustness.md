@@ -24,8 +24,7 @@ I added 15 test files named `security*_review_test.go` (list in section 4). Two 
 * `TestSecReview_S##_*` (61 tests when the review was written): gated behind `SLEIPNIR_REVIEW=1`. Each asserts the **secure** behaviour, so it
   **fails while the finding is open** and turns green when fixed (then delete its gate line). Default `go test` skips them, so the tree
   stays green. Tranche 1 fixed S33, S34, S35 (permissions), S36, S37, S41, S42 and S43 and removed their gates (they are now ordinary regression
-  tests, together with the extra tests the fixes needed); S35's redaction half was split off as the gated `S35b`. 54 gated repros remain
-  (including S44 and S35b).
+  tests, together with the extra tests the fixes needed); S35's redaction half was decided (log verbatim and private, redaction at export) and S44 was fixed at integration. 52 gated repros remain.
 * `TestSecSound_*` (13 tests when the review was written, 21 now): always on. Regression checks for behaviour the review found sound.
 
 ```
@@ -134,8 +133,9 @@ Fix (minimal):
 * **Tests** (`internal/memory/security_review_test.go`, `memory_test.go`, `special_unix_test.go`, `fuzz_test.go`): S41 x (6 file names x 2 directories x absolute/relative links), directories, in-root targets, loops/dangling/absolute-inside links;
   S42 x (home imports, hidden directories); S43 x (payload, paths, disguised comments/imports), fuzz invariant "no hidden code point survives `clean`"; import fan-out/byte/line bounds; FIFO imports. Mutation-checked: removing the `os.Root` confinement, the target check,
   the hidden-directory rule or the stripping each turns specific tests red.
-* **Left.** S44 (no trust marker on project text, no trust-on-first-use, constitution wording) is session/agent-level; its gated repro stays. `session.userScopeOnly` keeps only `ScopeUser`, so the user file's own imports (scope `import`, path `~/.sleipnir/...`) are dropped for an untrusted
-  project; keeping them is a one-line change there (`Path` starts with `~/` only for the user's files). Project settings, hooks and the rest of item 4 of the fix above are outside this package.
+* **S44, fixed after tranche 1 (integration).** `memory.Render` labels every repository-origin source `(<scope>, unverified)`; the user's own file and what it imports keep `(user)` / `(import)`, so nothing a repository author wrote reads like the user's word.
+  `session.userScopeOnly` now keeps the user file's imports (path `~/.sleipnir/...`) for an untrusted project (test: `TestUserInstructionsAndTheirImportsSurviveAnUntrustedProject`), and repository scope stays dropped wholesale unless the project is trusted. Not done: trust-on-first-use with a content pin
+  (a repo file changing under a trusted project is not detected), and the constitution's wording about `<shared-context>` (tranche 2: agent). Project settings, hooks and the rest of item 4 of the fix above are outside this package.
 
 ### F2. Read-only role gate is trivially bypassed (BLOCKER)
 
@@ -398,9 +398,10 @@ carries an HMAC with a per-install key, and `Sum` is mandatory for `file` record
   the checksum, and one rewind writes at most 1 GiB. Manifest files are read with a 64 MiB cap and without following symlinks or waiting on FIFOs; hostile file names or counters cannot overflow the id counter; warnings are bounded.
 * **Tests** (`internal/events/security_review_test.go`, `special_unix_test.go`, `internal/checkpoint/security_review_test.go`, `security_unix_review_test.go`): S33 (family of traversal hashes, malformed hashes), S34 (tamper, torn, emptied, longer, same-size, symlink,
   FIFO), S35 (permissions, existing loose state, symlinked/FIFO log), S36 (mid-file damage recorded once, torn-tail table, read errors, size bounds, seq wrap), S37 (forged absolute/`..`/NUL keys, missing hashes, planted symlinks, directory swapped for a link, forged `new_dirs`, huge
-  content and total budget, tampered blob, manifest bounds, counters, cleaned text, permissions, restart behaviour). Mutation-checked for the containment, absolute-key, checksum and bound rules.
-* **Left.** (a) Write-time redaction (second half of S35; the gated repro is now `S35b`): `internal/rl/redact` exists, so the missing piece is an `events` hook plus session wiring, and a decision whether the *log* or only the *export* is redacted (a
-  redacted log no longer reproduces what the provider was sent). (b) Where the state directory lives (outside the workspace, or self-ignored, plus a deny for the agent's tools): session-level, unchanged. (c) Same-uid concurrent tampering with the
+  content and total budget, tampered blob, manifest bounds, counters, cleaned text, permissions, restart behaviour). Mutation-checked: removing hash validation, `Get`'s re-hash, `Put`'s repair, the
+  torn-tail-only rule, read-error propagation, the line bound or the directory modes (events), and the containment check, the re-resolution at write time, the absolute-key rule, the mandatory checksum or the size/budget bounds (checkpoint) each turns specific tests red.
+* **Decided (integration).** (a) Write-time redaction (second half of S35, was gated `S35b`): the *log* is not redacted, the *export* is. The log is the source of truth for exact-prompt replay (`rl/traj` rebuilds every prompt from it and checks the wire hash against what the provider was sent), and a redacted log cannot reproduce that; instead it is private (0700/0600, S35) and `rl/redact` scrubs everything that leaves it as training data. Pinned by `TestLogIsVerbatimAndPrivateByDesign`. Users who need retention limits prune session directories (`sleipnir sessions`).
+  (b) Where the state directory lives (outside the workspace, or self-ignored, plus a deny for the agent's tools): session-level, unchanged. (c) Same-uid concurrent tampering with the
   working tree during a rewind is not defended against (that attacker can write the target directly); the resolve-at-use check narrows the window, it does not close it. (d) An HMAC over manifests is not attempted: its key would live where the manifests live.
 
 ### F13. Provider transport hardening (MEDIUM)

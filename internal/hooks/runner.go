@@ -34,6 +34,10 @@ const (
 	DefaultMaxPayload = 4 << 20
 	// DefaultMaxParallel bounds how many hooks of one event run at once.
 	DefaultMaxParallel = 8
+	// DefaultMaxConcurrent bounds how many hooks run at once across all events and
+	// agents sharing a Runner: fifty agents each firing PreToolUse hooks should
+	// queue, not fork hundreds of processes together.
+	DefaultMaxConcurrent = 32
 	// DefaultKillGrace is how long a hook gets to obey SIGTERM before SIGKILL.
 	DefaultKillGrace = 500 * time.Millisecond
 	// DefaultPipeGrace is how long the runner waits, once a hook's process has
@@ -97,9 +101,12 @@ type Runner struct {
 	MaxContext     int
 	MaxPayload     int
 	MaxParallel    int
+	MaxConcurrent  int
 	KillGrace      time.Duration
 	PipeGrace      time.Duration
 
+	semOnce   sync.Once
+	sem       chan struct{}
 	mu        sync.Mutex
 	approveMu sync.Mutex
 	approved  map[string]bool
@@ -146,6 +153,25 @@ func (r *Runner) maxParallel() int {
 		return r.MaxParallel
 	}
 	return DefaultMaxParallel
+}
+
+// acquire takes one of the Runner-wide slots, waiting for one to free up; it
+// returns false if ctx ends first. The wait does not count against the hook's
+// timeout, which starts when the hook does.
+func (r *Runner) acquire(ctx context.Context) (release func(), ok bool) {
+	r.semOnce.Do(func() {
+		n := r.MaxConcurrent
+		if n <= 0 {
+			n = DefaultMaxConcurrent
+		}
+		r.sem = make(chan struct{}, n)
+	})
+	select {
+	case r.sem <- struct{}{}:
+		return func() { <-r.sem }, true
+	case <-ctx.Done():
+		return nil, false
+	}
 }
 
 func (r *Runner) killGrace() time.Duration {
@@ -338,6 +364,11 @@ func (r *Runner) runOne(ctx context.Context, event string, h Hook, ev Event, pay
 		}
 	}()
 	timeout := r.timeoutFor(h)
+	release, ok := r.acquire(ctx)
+	if !ok {
+		return r.interpret(event, h, outcome{exit: -1, canceled: true}, timeout)
+	}
+	defer release()
 	var out outcome
 	if h.Type == TypeHTTP {
 		out = r.postHook(ctx, h, payload, timeout)
@@ -499,7 +530,13 @@ func (r *Runner) conditionHolds(ctx context.Context, h Hook, ev Event) bool {
 	if err != nil {
 		return false
 	}
-	return !eng.Check(ctx, r.condRequest(ev)).Allow
+	d := eng.Check(ctx, r.condRequest(ev))
+	// The engine also refuses what its built-in protections forbid (a recursive
+	// delete of "/", a write under .git), whatever the rule says; only a refusal
+	// that names the rule means the rule matched. A request the protections
+	// refuse is not going to run, so a hook that is not consulted about it loses
+	// nothing.
+	return !d.Allow && strings.HasPrefix(d.Reason, "denied by rule ")
 }
 
 func (r *Runner) condEngine(cond string) (*perm.Engine, error) {

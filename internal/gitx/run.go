@@ -237,6 +237,9 @@ type call struct {
 	// workTree pins --work-tree; "" means no pin (bare repositories, or commands
 	// that need no repository).
 	workTree string
+	// gitDir pins GIT_DIR: the repository is the one we opened, whatever the
+	// directory's own .git says now.
+	gitDir string
 	// args is the subcommand and its arguments, without global options.
 	args  []string
 	stdin io.Reader
@@ -394,6 +397,9 @@ func (s *settings) execOnce(ctx context.Context, c call, op string) (*output, er
 		for i, o := range c.overrides {
 			env = append(env, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, o.k), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, o.v))
 		}
+	}
+	if c.gitDir != "" {
+		env = append(env, "GIT_DIR="+c.gitDir)
 	}
 	cmd.Env = env
 	cmd.Stdin = c.stdin // nil means /dev/null: git can never wait for a prompt

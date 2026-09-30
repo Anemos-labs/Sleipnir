@@ -144,7 +144,7 @@ func TestListingDropsLeastRelevantSkillsAndSaysSo(t *testing.T) {
 	// The note's count matches what is missing.
 	listed := strings.Count(got, "\n")
 	var omitted int
-	fmt.Sscanf(got[strings.LastIndex(got, "\n")+1:], "(%d more", &omitted)
+	_, _ = fmt.Sscanf(got[strings.LastIndex(got, "\n")+1:], "(%d more", &omitted)
 	if listed+omitted != 35 {
 		t.Errorf("%d listed + %d omitted != 35", listed, omitted)
 	}

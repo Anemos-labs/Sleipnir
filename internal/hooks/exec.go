@@ -60,7 +60,7 @@ func (s *sink) snapshot() ([]byte, bool) {
 // limit > 0 asks for overflow to be signalled once the stream has carried more
 // than that many bytes in total.
 func pump(f *os.File, s *sink, limit int64, overflow chan<- struct{}) {
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	buf := make([]byte, 32<<10)
 	for {
 		n, err := f.Read(buf)
@@ -110,28 +110,28 @@ func (r *Runner) execCommand(ctx context.Context, command string, payload []byte
 	}
 	outR, outW, err := os.Pipe()
 	if err != nil {
-		inR.Close()
-		inW.Close()
+		_ = inR.Close()
+		_ = inW.Close()
 		res.startErr = err
 		return res
 	}
 	errR, errW, err := os.Pipe()
 	if err != nil {
 		for _, f := range []*os.File{inR, inW, outR, outW} {
-			f.Close()
+			_ = f.Close()
 		}
 		res.startErr = err
 		return res
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = inR, outW, errW
 	err = cmd.Start()
-	inR.Close()
-	outW.Close()
-	errW.Close()
+	_ = inR.Close()
+	_ = outW.Close()
+	_ = errW.Close()
 	if err != nil {
-		inW.Close()
-		outR.Close()
-		errR.Close()
+		_ = inW.Close()
+		_ = outR.Close()
+		_ = errR.Close()
 		res.startErr = err
 		res.dur = time.Since(start)
 		return res
@@ -189,8 +189,8 @@ func (r *Runner) execCommand(ctx context.Context, command string, payload []byte
 	case <-time.After(r.pipeGrace()):
 		res.strays = true
 		killGroup(pid)
-		outR.Close()
-		errR.Close()
+		_ = outR.Close()
+		_ = errR.Close()
 		<-pumpsDone
 	}
 	_ = inW.Close()

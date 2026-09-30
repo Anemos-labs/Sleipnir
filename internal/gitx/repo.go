@@ -170,7 +170,7 @@ type batch struct {
 
 // begin scans the configuration once for the driver neutralizations.
 func (r *Repo) begin(ctx context.Context) (*batch, error) {
-	ov, err := r.s.driverOverrides(ctx, r.runDir(), r.pin())
+	ov, err := r.s.driverOverrides(ctx, r.runDir(), r.pin(), r.gitDir)
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +193,9 @@ func (b *batch) run(ctx context.Context, c call) (*output, error) {
 	}
 	if c.workTree == "" {
 		c.workTree = b.r.pin()
+	}
+	if c.gitDir == "" {
+		c.gitDir = b.r.gitDir
 	}
 	c.overrides = append(append([]kv(nil), b.ov...), c.overrides...)
 	return b.r.s.exec(ctx, c)
@@ -217,8 +220,11 @@ func (r *Repo) run(ctx context.Context, c call) (*output, error) {
 	if c.workTree == "" {
 		c.workTree = r.pin()
 	}
+	if c.gitDir == "" {
+		c.gitDir = r.gitDir
+	}
 	if len(c.args) > 0 && !pureCommands[c.args[0]] && c.overrides == nil {
-		ov, err := r.s.driverOverrides(ctx, c.dir, c.workTree)
+		ov, err := r.s.driverOverrides(ctx, c.dir, c.workTree, c.gitDir)
 		if err != nil {
 			return nil, err
 		}

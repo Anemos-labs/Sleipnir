@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -27,14 +28,14 @@ func TestTimeoutKillsTheWholeProcessGroup(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{cmdHook(tc.command).timeout(1)}}))
+			r := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{cmdHook(tc.command).timeout(0.5)}}))
 			start := time.Now()
 			res := run(t, r, Event{Name: PreToolUse})
 			elapsed := time.Since(start)
 			if elapsed > 5*time.Second {
 				t.Fatalf("Run took %v", elapsed)
 			}
-			if !strings.Contains(errorText(res), "timed out after 1s") || res.Blocked {
+			if !strings.Contains(errorText(res), "timed out after 500ms") || res.Blocked {
 				t.Errorf("errors = %q blocked=%v", errorText(res), res.Blocked)
 			}
 			if len(res.Runs) != 1 || !res.Runs[0].TimedOut || res.Runs[0].ExitCode < 128 {
@@ -225,8 +226,7 @@ func TestCancellationKillsRunningHooks(t *testing.T) {
 func TestHooksRunInParallel(t *testing.T) {
 	var hs []hookSpec
 	for i := 0; i < 6; i++ {
-		hs = append(hs, cmdHook("sleep 0.6"))
-		hs[i]["command"] = "sleep 0.6; echo " + string(rune('a'+i)) + " > /dev/null"
+		hs = append(hs, cmdHook("sleep 0.5; echo "+string(rune('a'+i))+" > /dev/null"))
 	}
 	r := newRunner(t, settings(t, PreToolUse, group{hooks: hs}))
 	start := time.Now()
@@ -235,14 +235,15 @@ func TestHooksRunInParallel(t *testing.T) {
 	if res.Ran() != 6 || len(res.Errors) != 0 {
 		t.Fatalf("ran %d: %s", res.Ran(), errorText(res))
 	}
-	if elapsed > 3*time.Second { // 6 x 0.6 s sequentially would be 3.6 s
-		t.Errorf("6 hooks of 0.6 s took %v: they ran one after another", elapsed)
+	if elapsed > 2500*time.Millisecond { // 6 x 0.5 s one after another would be 3 s
+		t.Errorf("6 hooks of 0.5 s took %v: they ran one after another", elapsed)
 	}
 
-	r.MaxParallel = 1
+	serial := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{cmdHook("sleep 0.4"), cmdHook("sleep 0.4; true"), cmdHook("sleep 0.4; :")}}))
+	serial.MaxParallel = 1
 	start = time.Now()
-	run(t, r, Event{Name: PreToolUse})
-	if elapsed := time.Since(start); elapsed < 3*time.Second {
+	run(t, serial, Event{Name: PreToolUse})
+	if elapsed := time.Since(start); elapsed < 1100*time.Millisecond {
 		t.Errorf("MaxParallel=1 took %v; hooks should have been serialised", elapsed)
 	}
 }
@@ -398,4 +399,98 @@ func TestConcurrentRunsAreIndependent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// Neither goroutines nor file descriptors may accumulate, whatever happened to
+// the hooks: this runs the awkward outcomes over and over.
+func TestNoGoroutineOrDescriptorLeaks(t *testing.T) {
+	r := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{
+		cmdHook("exit 0"),
+		cmdHook("echo x >&2; exit 2"),
+		cmdHook("sleep 30").timeout(0.1),
+		cmdHook("sleep 30 & exit 0"),
+		cmdHook("yes | head -c 3000000"),
+		cmdHook("cat > /dev/null"),
+	}}))
+	r.PipeGrace = 100 * time.Millisecond
+	r.KillGrace = 50 * time.Millisecond
+	warm := func() {
+		run(t, r, Event{Name: PreToolUse, Extra: map[string]any{"bulk": strings.Repeat("z", 200<<10)}})
+	}
+	warm() // let pools and lazily started things settle
+	beforeG, beforeFD := runtime.NumGoroutine(), openDescriptors()
+	for i := 0; i < 15; i++ {
+		warm()
+	}
+	var afterG, afterFD int
+	waitFor(t, 10*time.Second, "goroutines and descriptors to settle", func() bool {
+		afterG, afterFD = runtime.NumGoroutine(), openDescriptors()
+		return afterG <= beforeG+3 && (afterFD < 0 || afterFD <= beforeFD+3)
+	})
+	t.Logf("goroutines %d -> %d, descriptors %d -> %d", beforeG, afterG, beforeFD, afterFD)
+}
+
+// openDescriptors counts this process's open files, or -1 where /proc is missing.
+func openDescriptors() int {
+	ents, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return -1
+	}
+	return len(ents)
+}
+
+// Fifty agents firing hooks at once must queue behind the Runner-wide limit.
+func TestRunnerWideConcurrencyLimit(t *testing.T) {
+	r := one(t, PreToolUse, "", "echo start >> log.txt; sleep 0.3; echo end >> log.txt")
+	r.MaxConcurrent = 2
+	var wg sync.WaitGroup
+	start := time.Now()
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			run(t, r, Event{Name: PreToolUse, Agent: "a-" + itoa(i)})
+		}()
+	}
+	wg.Wait()
+	// Six hooks of 0.3 s, two at a time, take at least three rounds.
+	if elapsed := time.Since(start); elapsed < 800*time.Millisecond {
+		t.Errorf("6 hooks with 2 slots finished in %v", elapsed)
+	}
+	// And never more than two were running: replay the log.
+	b, _ := os.ReadFile(filepath.Join(r.Dir, "log.txt"))
+	running, peak := 0, 0
+	for _, line := range strings.Fields(string(b)) {
+		if line == "start" {
+			running++
+			peak = max(peak, running)
+		} else {
+			running--
+		}
+	}
+	if peak > 2 {
+		t.Errorf("%d hooks ran at once with MaxConcurrent=2", peak)
+	}
+}
+
+func TestWaitingForASlotEndsWithTheContext(t *testing.T) {
+	r := one(t, PreToolUse, "", "sleep 1")
+	r.MaxConcurrent = 1
+	first := make(chan struct{})
+	go func() {
+		_, _ = r.Run(context.Background(), Event{Name: PreToolUse})
+		close(first)
+	}()
+	time.Sleep(200 * time.Millisecond) // the first hook now holds the only slot
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	res, err := r.Run(ctx, Event{Name: PreToolUse})
+	if err == nil || time.Since(start) > time.Second {
+		t.Errorf("err %v after %v", err, time.Since(start))
+	}
+	if res.Ran() != 1 || len(res.Errors) != 0 {
+		t.Logf("result: %+v", res)
+	}
+	<-first
 }

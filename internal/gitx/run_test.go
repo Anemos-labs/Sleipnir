@@ -83,12 +83,18 @@ func TestRunnerScrubsEnvironmentAndHardensEveryInvocation(t *testing.T) {
 	if len(envs) < 5 || len(envs) != len(argsFiles) {
 		t.Fatalf("recorded %d env files and %d arg files", len(envs), len(argsFiles))
 	}
-	forbidden := []string{"GIT_DIR=", "GIT_WORK_TREE=", "GIT_EXTERNAL_DIFF=", "GIT_SSH_COMMAND=", "GIT_PROXY_COMMAND=", "GIT_EXEC_PATH=",
+	forbidden := []string{"GIT_DIR=/nonexistent", "GIT_WORK_TREE=", "GIT_EXTERNAL_DIFF=", "GIT_SSH_COMMAND=", "GIT_PROXY_COMMAND=", "GIT_EXEC_PATH=",
 		"GIT_ASKPASS=/evil", "GIT_CONFIG_PARAMETERS=", "GIT_PAGER=evil", "GIT_EDITOR=evil", "GIT_TRACE=", "GITHUB_TOKEN", "OPENAI_API_KEY",
 		"AWS_SECRET", "SSH_AUTH_SOCK", "SSH_ASKPASS", "EDITOR=evil", "VISUAL", "PAGER=evil", "de_DE", "LANGUAGE=de", "GIT_CONFIG_KEY_0=core.fsmonitor"}
 	required := []string{"LC_ALL=C", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_EDITOR=:", "GIT_SEQUENCE_EDITOR=:", "GIT_NO_REPLACE_OBJECTS=1", "HOME="}
 	for _, f := range envs {
 		env := readFile(t, f)
+		// Repo-bound commands carry our own GIT_DIR (the repository we opened), never
+		// the caller's; the discovery commands of Open run before we know it.
+		argsText := readFile(t, strings.Replace(f, "env.", "args.", 1))
+		if strings.Contains(argsText, "--work-tree=") && !strings.Contains(argsText, "--is-bare-repository") && !strings.Contains(env, "GIT_DIR="+filepath.Join(r.Root(), ".git")+"\n") {
+			t.Errorf("%s: GIT_DIR is not pinned to the opened repository:\n%s", filepath.Base(f), env)
+		}
 		for _, bad := range forbidden {
 			if strings.Contains(env, bad) {
 				t.Errorf("%s: environment leaks %q", filepath.Base(f), bad)

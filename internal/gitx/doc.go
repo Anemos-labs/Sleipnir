@@ -23,9 +23,11 @@
 //     diff.*.command/textconv) that the effective configuration defines and
 //     blanks each of them, because those names are chosen by the repository and
 //     cannot be listed in advance (see guard.go);
-//   - pins the work tree to the directory that holds .git, so a hostile
+//   - pins the work tree to the directory that holds .git, and the git directory
+//     to the one found when the handle was opened (GIT_DIR), so a hostile
 //     core.worktree cannot redirect `add -A`, `reset --hard` or `clean` at some
-//     other directory;
+//     other directory, and an agent that rewrites the .git file of its own
+//     worktree cannot make the harness commit into a different repository;
 //   - is bounded: a deadline (context and per-call timeout), a cap on captured
 //     output, and a kill of the whole process group when either trips.
 //

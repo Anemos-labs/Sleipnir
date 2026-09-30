@@ -327,7 +327,8 @@ func validHeader(k, v string) bool {
 	}
 	for i := 0; i < len(k); i++ {
 		c := k[i]
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0) {
+		isToken := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0
+		if !isToken {
 			return false
 		}
 	}

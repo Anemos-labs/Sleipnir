@@ -371,11 +371,13 @@ func (s *Session) buildShared(ctx context.Context) error {
 }
 
 // userScopeOnly keeps the user's own instruction files when the project is not
-// trusted: project files can carry prompt injection.
+// trusted: project files can carry prompt injection. The user file's imports
+// are the user's too; the loader shows them with a "~/" path, and only ever
+// reads them from the user's own directory.
 func userScopeOnly(srcs []memory.Source) []memory.Source {
 	var out []memory.Source
 	for _, s := range srcs {
-		if s.Scope == memory.ScopeUser {
+		if s.Scope == memory.ScopeUser || (s.Scope == memory.ScopeImport && strings.HasPrefix(s.Path, "~/")) {
 			out = append(out, s)
 		}
 	}

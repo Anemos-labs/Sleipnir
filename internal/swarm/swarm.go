@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/agent"
@@ -24,7 +27,8 @@ type Config struct {
 	SessionID string
 	// MaxAgents bounds registered agents (running or idle).
 	MaxAgents int
-	// MaxWriters bounds agents whose roles may modify files. Evidence from
+	// MaxWriters bounds agents whose roles may modify files that are running at
+	// once, including a worker reused for new work (spawn agent=...). Evidence from
 	// multi-agent coding studies is that peer writers on one codebase collide
 	// far more than they help; readers (review, research, test runs) scale.
 	MaxWriters int
@@ -36,18 +40,44 @@ type Config struct {
 	LeaseTTL      time.Duration
 	// AffinityShards spreads agents over provider engines (see agent.Config).
 	AffinityShards int
-	// BudgetUSD caps total spend across the swarm (0 = unlimited).
+	// BudgetUSD caps total spend across the swarm, retired agents included (0 =
+	// unlimited). When it is spent every running worker is stopped and no request
+	// is admitted.
 	BudgetUSD float64
 	// AgentBudgetUSD caps each worker.
 	AgentBudgetUSD float64
 	// VerifyCmd, when set, is run in an agent's workdir before its task may leave
-	// "doing": the harness, not the model, decides whether work is finished.
+	// "doing", and again when the manager accepts it: the harness, not the model,
+	// decides whether work is finished.
 	VerifyCmd string
 	// Verify runs a command; injected so the swarm does not depend on the shell
 	// package. It returns combined output and exit code.
 	Verify func(ctx context.Context, dir, cmd string) (string, int, error)
 	// IdleRetire retires idle workers after this long (0 = never).
 	IdleRetire time.Duration
+
+	// Board bounds what agents can put on the board: tasks, pending notes, alerts.
+	Board BoardLimits
+	// MaxAttempts is how many times workers may stop without finishing a task
+	// before the task is failed instead of requeued (default 3).
+	MaxAttempts int
+	// VerifyTimeout bounds one verifier run (default 15 minutes); MaxVerifies
+	// bounds how many run at once (default 2).
+	VerifyTimeout time.Duration
+	MaxVerifies   int
+	// StuckAfter is how long a running worker may show no sign of life before the
+	// watchdog raises an alert; at twice that it is cancelled and its task requeued
+	// (default 10 minutes, negative disables). StuckGrace is how long a cancelled
+	// worker gets to return before the harness stops waiting for it (default 30s).
+	StuckAfter time.Duration
+	StuckGrace time.Duration
+	// ShutdownGrace bounds how long Shutdown waits for agents to stop (default 10s).
+	ShutdownGrace time.Duration
+	// SuperviseEvery is the housekeeping interval (default 1s).
+	SuperviseEvery time.Duration
+	// InboxSoftCap is how many messages may wait in one agent's inbox before further
+	// mail is coalesced into a digest (default 12).
+	InboxSoftCap int
 }
 
 // DefaultConfig returns sane limits for a laptop-sized swarm.
@@ -56,6 +86,9 @@ func DefaultConfig() Config {
 		MaxAgents: 24, MaxWriters: 4, RPM: 500, MaxConcurrent: 24,
 		Hot: DefaultHotConfig(), Router: DefaultRouterConfig(), LeaseTTL: 10 * time.Minute,
 		IdleRetire: 15 * time.Minute,
+		Board:      DefaultBoardLimits(), MaxAttempts: 3, VerifyTimeout: 15 * time.Minute, MaxVerifies: 2,
+		StuckAfter: 10 * time.Minute, StuckGrace: 30 * time.Second, ShutdownGrace: 10 * time.Second,
+		SuperviseEvery: time.Second, InboxSoftCap: 12,
 	}
 }
 
@@ -105,22 +138,6 @@ type RoleModel struct {
 	Model    cost.Model
 }
 
-// member is one registered agent.
-type member struct {
-	id, role string
-	a        *agent.Agent
-	ev       *Evidence
-	task     string
-
-	mu       sync.Mutex
-	running  bool
-	state    string
-	line     string
-	lastPush time.Time
-	cancel   context.CancelFunc
-	idleAt   time.Time
-}
-
 // Swarm runs many agents over one repository.
 type Swarm struct {
 	cfg   Config
@@ -133,6 +150,9 @@ type Swarm struct {
 	Gov    *Governor
 	Gate   *WarmGate
 
+	spawnMu  sync.Mutex // serialises admission: spawn, reuse and the limits they enforce
+	sharedMu sync.Mutex // serialises SetShared
+
 	mu       sync.Mutex
 	members  map[string]*member
 	seq      map[string]int
@@ -141,8 +161,14 @@ type Swarm struct {
 	roleLay  map[string]*kv.Layer
 	rootCtx  context.Context
 	cancel   context.CancelFunc
+	closed   bool
+	spent    float64              // spend of agents that have left (the budget ledger)
+	lastSeen map[string]*Snapshot // per agent: the board at the end of its last wait
 	wg       sync.WaitGroup
-	lastSeen map[string]uint64 // per agent: board version at its last wait
+
+	verifySem  chan struct{}
+	hseq       atomic.Int64
+	budgetOnce atomic.Bool
 }
 
 // New builds a swarm. Call Start before spawning.
@@ -163,6 +189,30 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	if cfg.Router == (RouterConfig{}) {
 		cfg.Router = def.Router
 	}
+	if cfg.MaxAttempts <= 0 {
+		cfg.MaxAttempts = def.MaxAttempts
+	}
+	if cfg.VerifyTimeout <= 0 {
+		cfg.VerifyTimeout = def.VerifyTimeout
+	}
+	if cfg.MaxVerifies <= 0 {
+		cfg.MaxVerifies = def.MaxVerifies
+	}
+	if cfg.StuckAfter == 0 {
+		cfg.StuckAfter = def.StuckAfter
+	}
+	if cfg.StuckGrace <= 0 {
+		cfg.StuckGrace = def.StuckGrace
+	}
+	if cfg.ShutdownGrace <= 0 {
+		cfg.ShutdownGrace = def.ShutdownGrace
+	}
+	if cfg.SuperviseEvery <= 0 {
+		cfg.SuperviseEvery = def.SuperviseEvery
+	}
+	if cfg.InboxSoftCap <= 0 {
+		cfg.InboxSoftCap = def.InboxSoftCap
+	}
 	if deps.Events == nil {
 		deps.Events = events.Discard{}
 	}
@@ -176,33 +226,70 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 		roles = BuiltinRoles()
 	}
 	s := &Swarm{cfg: cfg, deps: deps, roles: roles, members: map[string]*member{}, seq: map[string]int{},
-		roleLay: map[string]*kv.Layer{}, lastSeen: map[string]uint64{}, shared: deps.Shared}
+		roleLay: map[string]*kv.Layer{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
+		verifySem: make(chan struct{}, cfg.MaxVerifies)}
 	s.Board = NewBoard(deps.Events)
+	s.Board.SetClock(deps.Now)
+	s.Board.SetLimits(cfg.Board)
 	s.Leases = NewLeases(cfg.LeaseTTL, s.Board)
-	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent})
+	s.Leases.SetEmitter(deps.Events)
+	s.Leases.SetRoots(s.roots()...)
+	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
+		OnEvent: func(action string, data map[string]any) {
+			data["action"] = action
+			s.emit(events.TypeGovernor, data)
+		}})
 	s.Gate = NewWarmGate(deps.Model.Cache.DefaultTTL(), 0)
-	s.Router = NewRouter(cfg.Router, deps.Events, s.roster, func() string { return s.manager }, s.deliver)
+	s.Router = NewRouter(cfg.Router, deps.Events, s.roster, s.ManagerID, nil)
+	s.Router.SetDeliver(s.deliver)
 	for name, r := range roles {
 		s.roleLay[name] = r.Layer()
 	}
 	return s
 }
 
-// Start binds the swarm to a context; cancelling it stops every agent.
+// Start binds the swarm to a context; cancelling it stops every agent. It is safe
+// to call on every turn of a session: while the swarm is running it does nothing,
+// and after its context has ended (a turn that was cancelled) it starts again on
+// the new one. After Shutdown it does nothing.
 func (s *Swarm) Start(ctx context.Context) {
-	s.rootCtx, s.cancel = context.WithCancel(ctx)
-	if s.cfg.IdleRetire > 0 {
-		s.wg.Add(1)
-		go s.janitor()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || (s.rootCtx != nil && s.rootCtx.Err() == nil) {
+		return
 	}
+	s.rootCtx, s.cancel = context.WithCancel(ctx)
+	rc := s.rootCtx
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.supervise(rc)
+	}()
 }
 
-// Shutdown cancels all agents and waits for them.
+// Shutdown cancels all agents and waits for them, but not forever: an agent stuck
+// in a tool that ignores its context is left behind after ShutdownGrace. It is safe
+// to call twice; after it nothing new starts.
 func (s *Swarm) Shutdown() {
-	if s.cancel != nil {
-		s.cancel()
+	s.mu.Lock()
+	s.closed = true
+	cancel := s.cancel
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
-	s.wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	t := time.NewTimer(s.cfg.ShutdownGrace)
+	defer t.Stop()
+	select {
+	case <-done:
+	case <-t.C:
+		s.emit("swarm.shutdown", map[string]any{"waited": s.cfg.ShutdownGrace.String(), "note": "agents still running were left behind"})
+	}
 }
 
 func (s *Swarm) roster() []string {
@@ -226,79 +313,20 @@ func (s *Swarm) ManagerID() string {
 	return s.manager
 }
 
-// TotalCost sums spend across agents.
-func (s *Swarm) TotalCost() float64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var t float64
-	for _, m := range s.members {
-		_, c := m.a.Usage()
-		t += c
-	}
-	return t
-}
-
-// buildAgent constructs an agent for a member.
-func (s *Swarm) buildAgent(id string, r Role, notes *kv.Layer, ev *Evidence) (*agent.Agent, error) {
-	d := s.deps
-	isMgr := r.Name == "manager"
-	requester := perm.Requester(d.Perm)
-	if requester == nil {
-		requester = perm.AllowAll{}
-	}
-	requester = roleRequester{inner: requester, role: r}
-	sink := agent.Sink(agent.NopSink{})
-	if d.NewSink != nil {
-		sink = d.NewSink(id)
-	}
-	m := &member{id: id, role: r.Name, ev: ev, state: "idle"}
-	model, prov := d.Model, d.Provider
-	if rm, ok := d.RoleModels[r.Name]; ok && rm.Provider != nil {
-		model, prov = rm.Model, rm.Provider
-	}
-	cfg := agent.Config{
-		ID: id, Role: r.Name, Model: model, Provider: prov, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
-		CaptureTokens: d.CaptureTokens,
-		Const:         d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
-		Params: d.Params,
-		Hot: func(agentID string) []core.Block {
-			snap := s.Board.Snapshot()
-			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
-			return []core.Block{core.Text(txt)}
-		},
-		Events: d.Events, Blobs: d.Blobs, Archive: d.Archive, Files: d.Files, Guard: guardWithAfter{s.Leases, d.OnWrite}, Snap: d.Snap,
-		Handles: d.Handles, Perm: requester, Limiter: s.Gov, Gate: s.Gate,
-		Sink:    &memberSink{Sink: sink, s: s, m: m, ev: ev},
-		Workdir: d.Workdir, Root: d.Root, Limits: d.Limits,
-		Planner: d.Planner, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
-		OnPromote: s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
-		BudgetUSD: s.cfg.AgentBudgetUSD,
-	}
-	a, err := agent.New(cfg)
-	if err != nil {
-		return nil, err
-	}
-	m.a = a
-	s.mu.Lock()
-	s.members[id] = m
-	s.mu.Unlock()
-	return a, nil
-}
-
 func (s *Swarm) currentShared() *kv.Layer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.shared
 }
 
-func (s *Swarm) get(id string) *member {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.members[id]
-}
-
-// StartManager creates the manager agent.
+// StartManager creates the manager agent, or returns the one that exists: a session
+// that runs several turns keeps one manager and its thread.
 func (s *Swarm) StartManager() (*agent.Agent, error) {
+	s.spawnMu.Lock()
+	defer s.spawnMu.Unlock()
+	if m := s.get(s.ManagerID()); m != nil {
+		return m.a, nil
+	}
 	r, ok := s.roles["manager"]
 	if !ok {
 		return nil, errors.New("no manager role defined")
@@ -307,28 +335,54 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	if id == "" {
 		id = "mgr"
 	}
-	ev := NewEvidence()
-	a, err := s.buildAgent(id, r, nil, ev)
+	m, err := s.newMember(id, r, nil, NewEvidence())
 	if err != nil {
 		return nil, err
 	}
+	s.register(m, s.currentShared())
 	s.mu.Lock()
 	s.manager = id
 	s.mu.Unlock()
-	s.Board.SetAgent(AgentInfo{ID: id, Role: "manager", State: "running"})
+	m.setState(s, "running", "")
 	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": "manager", "model": s.modelFor("manager").ID})
-	return a, nil
+	return m.a, nil
 }
 
-// RunManager runs the manager on a goal and returns its final answer.
-func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, error) {
+// RunManager runs the manager on a goal and returns its final answer. If ctx ends
+// while it runs, the workers are stopped too (their tasks go back to todo). A panic
+// in the manager's run is returned as an error.
+func (s *Swarm) RunManager(ctx context.Context, goal string) (res *agent.Result, err error) {
 	a, err := s.StartManager()
 	if err != nil {
 		return nil, err
 	}
 	m := s.get(a.ID())
+	if m == nil {
+		return nil, errors.New("the manager is gone")
+	}
+	m.mu.Lock()
+	if m.life != lifeIdle {
+		m.mu.Unlock()
+		return nil, errors.New("the manager is already running")
+	}
+	m.life = lifeRunning
+	m.mu.Unlock()
+	stop := context.AfterFunc(ctx, func() { s.stopWorkers("interrupted", false) })
+	defer stop()
 	m.setState(s, "running", "planning")
-	res, err := a.Run(ctx, goal)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				st := debug.Stack()
+				res, err = nil, &panicError{val: r, stack: st}
+				s.emitAs(m.id, "agent.panic", map[string]any{"id": m.id, "panic": fmt.Sprint(r), "stack": string(st)})
+			}
+		}()
+		res, err = a.Run(ctx, goal)
+	}()
+	m.mu.Lock()
+	m.life = lifeIdle
+	m.mu.Unlock()
 	state := "done"
 	if err != nil {
 		state = "failed"
@@ -343,119 +397,6 @@ func (s *Swarm) Manager() *agent.Agent {
 		return m.a
 	}
 	return nil
-}
-
-// SpawnReq describes a worker to start.
-type SpawnReq struct {
-	Role string
-	// TaskID assigns an existing task; otherwise Title creates one.
-	TaskID string
-	Title  string
-	Brief  string
-	Files  []string
-	// Agent reuses an idle worker (its context and cache are already warm).
-	Agent string
-	By    string
-}
-
-// Spawn starts (or reuses) a worker for a task and returns its id.
-func (s *Swarm) Spawn(req SpawnReq) (string, error) {
-	if s.rootCtx == nil {
-		return "", errors.New("swarm not started")
-	}
-	if s.cfg.BudgetUSD > 0 && s.TotalCost() >= s.cfg.BudgetUSD {
-		return "", fmt.Errorf("swarm budget of $%.2f is exhausted", s.cfg.BudgetUSD)
-	}
-	var task Task
-	snap := s.Board.Snapshot()
-	switch {
-	case req.TaskID != "":
-		t, ok := snap.Task(req.TaskID)
-		if !ok {
-			return "", fmt.Errorf("no task %s", req.TaskID)
-		}
-		if t.Status == StatusDone {
-			return "", fmt.Errorf("%s is already done", req.TaskID)
-		}
-		if t.Owner != "" && t.Owner != req.Agent {
-			return "", fmt.Errorf("%s is already owned by %s", req.TaskID, t.Owner)
-		}
-		task = t
-	case strings.TrimSpace(req.Title) != "":
-		t, err := s.Board.CreateTask(req.By, TaskSpec{Title: req.Title, Desc: req.Brief, Role: req.Role, Files: req.Files})
-		if err != nil {
-			return "", err
-		}
-		task = t
-	default:
-		return "", errors.New("spawn needs a task id or a title")
-	}
-	if len(req.Files) > 0 {
-		task.Files = req.Files
-	}
-	if c := s.scopeConflict(task); c != "" {
-		return "", errors.New(c)
-	}
-
-	// Reuse an idle worker.
-	if req.Agent != "" {
-		m := s.get(req.Agent)
-		if m == nil {
-			return "", fmt.Errorf("no agent %q", req.Agent)
-		}
-		m.mu.Lock()
-		busy := m.running
-		m.mu.Unlock()
-		if busy {
-			return "", fmt.Errorf("%s is still working; wait for it or spawn a new worker", req.Agent)
-		}
-		if err := s.Board.Assign(req.By, m.id, task.ID); err != nil {
-			return "", err
-		}
-		m.task = task.ID
-		s.startRun(m, taskCard(task, m.id, false))
-		return m.id, nil
-	}
-
-	role, ok := s.roles[req.Role]
-	if !ok || req.Role == "manager" {
-		return "", fmt.Errorf("unknown role %q (roles: %s)", req.Role, strings.Join(s.spawnableRoles(), ", "))
-	}
-	s.mu.Lock()
-	total := len(s.members)
-	writers := 0
-	for _, m := range s.members {
-		if r := s.roles[m.role]; !r.ReadOnly && m.role != "manager" && m.isActive() {
-			writers++
-		}
-	}
-	s.mu.Unlock()
-	if total >= s.cfg.MaxAgents {
-		return "", fmt.Errorf("agent limit reached (%d); reuse an idle worker with spawn agent=… or wait", s.cfg.MaxAgents)
-	}
-	if !role.ReadOnly && writers >= s.cfg.MaxWriters {
-		return "", fmt.Errorf("%d writers are already active (limit %d): concurrent writers collide on shared code. Wait for one to finish, reuse an idle worker, or use a read-only role (reviewer, scout) for this", writers, s.cfg.MaxWriters)
-	}
-
-	s.mu.Lock()
-	s.seq[role.Name]++
-	id := fmt.Sprintf("%s-%d", role.Short, s.seq[role.Name])
-	s.mu.Unlock()
-
-	ev := NewEvidence()
-	notes := kv.NewLayer("notes:"+id, kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: taskCard(task, id, true), Vol: kv.VolFrozen}})
-	if _, err := s.buildAgent(id, role, notes, ev); err != nil {
-		return "", err
-	}
-	m := s.get(id)
-	m.task = task.ID
-	if err := s.Board.Assign(req.By, id, task.ID); err != nil {
-		return "", err
-	}
-	s.Board.SetAgent(AgentInfo{ID: id, Role: role.Name, State: "running", Task: task.ID})
-	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": s.modelFor(role.Name).ID})
-	s.startRun(m, taskCard(task, id, false))
-	return id, nil
 }
 
 // guardWithAfter forwards to the lease guard and additionally reports writes.
@@ -489,186 +430,32 @@ func (s *Swarm) spawnableRoles() []string {
 	return out
 }
 
-func (m *member) isActive() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.running || m.state == "running"
-}
-
 // taskCard renders the assignment text. In notes (pin=true) it carries the full
-// card; the kickoff message is the short form.
+// card; the kickoff message is the short form. Everything from the task is made
+// single-line (the description keeps its line breaks) and defused: the kickoff is a
+// user-origin turn that compaction may later preserve as an instruction.
 func taskCard(t Task, agentID string, pin bool) string {
-	var sb strings.Builder
+	title := cleanText(t.Title, maxTitleRunes)
 	if pin {
-		fmt.Fprintf(&sb, "You are %s. Your assignment is task %s: %s\n", agentID, t.ID, t.Title)
-		if t.Desc != "" {
-			sb.WriteString(t.Desc + "\n")
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "You are %s. Your assignment is task %s: %s\n", agentID, t.ID, title)
+		if d := cleanBlock(t.Desc, maxDescRunes); d != "" {
+			sb.WriteString(d + "\n")
 		}
 		if len(t.Files) > 0 {
-			sb.WriteString("Scope: " + strings.Join(t.Files, ", ") + " (edit only inside your scope; ask the manager to widen it)\n")
+			files := make([]string, 0, len(t.Files))
+			for _, f := range t.Files {
+				files = append(files, cleanText(f, maxScopeLen))
+			}
+			sb.WriteString("Scope: " + strings.Join(files, ", ") + " (edit only inside your scope: writes outside it are rejected; ask the manager to widen it)\n")
 		}
 		if len(t.Deps) > 0 {
-			sb.WriteString("Depends on: " + strings.Join(t.Deps, ", ") + "\n")
+			sb.WriteString("Depends on: " + cleanText(strings.Join(t.Deps, ", "), 120) + "\n")
 		}
 		sb.WriteString("When finished, call task done with a one-line result. The harness verifies your work before accepting it.")
 		return sb.String()
 	}
-	return fmt.Sprintf("Begin task %s: %s. Your assignment and scope are in <my-notes>.", t.ID, t.Title)
-}
-
-// scopeConflict reports overlap between a task's scope and other active tasks.
-func (s *Swarm) scopeConflict(t Task) string {
-	if len(t.Files) == 0 {
-		return ""
-	}
-	snap := s.Board.Snapshot()
-	for _, o := range snap.Tasks {
-		if o.ID == t.ID || o.Status != StatusDoing || len(o.Files) == 0 {
-			continue
-		}
-		for _, a := range t.Files {
-			for _, b := range o.Files {
-				if scopesOverlap(a, b) {
-					return fmt.Sprintf("scope %q overlaps %s (%s, held by %s). Give the two tasks disjoint areas, or make %s depend on %s", a, o.ID, b, o.Owner, t.ID, o.ID)
-				}
-			}
-		}
-	}
-	return ""
-}
-
-// scopesOverlap reports whether two path patterns can match a common file. It is
-// deliberately conservative: prefix relationships between directory patterns
-// count as overlap.
-func scopesOverlap(a, b string) bool {
-	pa, pb := globPrefix(a), globPrefix(b)
-	return strings.HasPrefix(pa, pb) || strings.HasPrefix(pb, pa)
-}
-
-func globPrefix(p string) string {
-	p = strings.TrimPrefix(strings.TrimSpace(p), "./")
-	if i := strings.IndexAny(p, "*?[{"); i >= 0 {
-		p = p[:i]
-	}
-	return p
-}
-
-// startRun runs the agent in the background. A worker that already has a thread
-// is being reused for another task: its <my-notes> still describe the first one,
-// so the kickoff carries the new task's full brief and scope (reassignCard).
-func (s *Swarm) startRun(m *member, input string) {
-	m.mu.Lock()
-	if m.running {
-		m.mu.Unlock()
-		return
-	}
-	m.running = true
-	ctx, cancel := context.WithCancel(s.rootCtx)
-	m.cancel = cancel
-	m.mu.Unlock()
-	if input != "" && len(m.a.Thread().Snapshot().Turns) > 0 {
-		if t, ok := s.Board.Snapshot().Task(m.task); ok {
-			input = reassignCard(t, m.id)
-		}
-	}
-	m.setState(s, "running", "starting")
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		defer cancel()
-		res, err := m.a.Run(ctx, input)
-		s.finishRun(m, res, err)
-	}()
-}
-
-// finishRun records a worker's completion. The harness closes the loop even if
-// the model forgot: a task still "doing" moves to review with the evidence and
-// the model's final message attached.
-func (s *Swarm) finishRun(m *member, res *agent.Result, err error) {
-	m.mu.Lock()
-	m.running = false
-	m.idleAt = s.deps.Now()
-	m.mu.Unlock()
-	state := "idle"
-	if err != nil && !errors.Is(err, context.Canceled) {
-		state = "failed"
-	}
-	snap := s.Board.Snapshot()
-	if t, ok := snap.Task(m.task); ok && t.Owner == m.id && t.Status == StatusDoing {
-		summary := ""
-		if res != nil {
-			summary = strings.TrimSpace(res.Text)
-		}
-		if err != nil {
-			_ = s.Board.Finish(m.id, t.ID, StatusFailed, fmt.Sprintf("agent stopped: %v", err))
-		} else {
-			_ = s.Board.Finish(m.id, t.ID, StatusReview, oneLine(summary, 120)+" ["+m.ev.Summary()+"]")
-		}
-	}
-	s.Leases.ReleaseAll(m.id)
-	m.setState(s, state, "")
-	s.emit(events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
-}
-
-// deliver hands mail to the recipient and wakes it if idle.
-func (s *Swarm) deliver(msg Message) {
-	m := s.get(msg.To)
-	if m == nil {
-		return
-	}
-	m.a.Send(msg.Format())
-	m.mu.Lock()
-	idle := !m.running
-	m.mu.Unlock()
-	if idle && msg.To != s.ManagerID() {
-		s.startRun(m, "")
-	}
-}
-
-// Retire removes an idle agent.
-func (s *Swarm) Retire(id string) error {
-	m := s.get(id)
-	if m == nil {
-		return fmt.Errorf("no agent %q", id)
-	}
-	m.mu.Lock()
-	busy := m.running
-	m.mu.Unlock()
-	if busy {
-		return fmt.Errorf("%s is running", id)
-	}
-	s.mu.Lock()
-	delete(s.members, id)
-	s.mu.Unlock()
-	s.Board.RemoveAgent(id)
-	s.Leases.ReleaseAll(id)
-	return nil
-}
-
-func (s *Swarm) janitor() {
-	defer s.wg.Done()
-	t := time.NewTicker(time.Minute)
-	defer t.Stop()
-	for {
-		select {
-		case <-s.rootCtx.Done():
-			return
-		case <-t.C:
-			now := s.deps.Now()
-			for _, id := range s.roster() {
-				m := s.get(id)
-				if m == nil || id == s.ManagerID() {
-					continue
-				}
-				m.mu.Lock()
-				stale := !m.running && !m.idleAt.IsZero() && now.Sub(m.idleAt) > s.cfg.IdleRetire
-				m.mu.Unlock()
-				if stale {
-					_ = s.Retire(id)
-				}
-			}
-		}
-	}
+	return fmt.Sprintf("Begin task %s: %s. Your assignment and scope are in <my-notes>.", t.ID, title)
 }
 
 // onPromote receives facts compactors want promoted into shared context.
@@ -679,48 +466,6 @@ func (s *Swarm) onPromote(from string, ps []kv.Promotion) {
 	}
 	for _, p := range ps {
 		_, _ = s.Board.AddNote(from, p.Scope, role, p.Text)
-	}
-}
-
-func (s *Swarm) emit(typ string, data any) {
-	_, _ = s.deps.Events.Emit("swarm", typ, data)
-}
-
-// setState publishes an agent's harness-derived status, throttled so a busy
-// swarm does not turn every tool call into a board version.
-func (m *member) setState(s *Swarm, state, line string) {
-	m.mu.Lock()
-	changed := m.state != state || m.line != line
-	now := s.deps.Now()
-	if !changed || (state == m.state && now.Sub(m.lastPush) < 750*time.Millisecond) {
-		m.mu.Unlock()
-		return
-	}
-	m.state, m.line, m.lastPush = state, line, now
-	task := m.task
-	m.mu.Unlock()
-	_, cost := m.a.Usage()
-	s.Board.SetAgent(AgentInfo{ID: m.id, Role: m.role, State: state, Task: task, Line: line, CostUSD: cost})
-}
-
-// memberSink derives agent status and evidence from what an agent actually does.
-type memberSink struct {
-	agent.Sink
-	s  *Swarm
-	m  *member
-	ev *Evidence
-}
-
-func (k *memberSink) ToolStart(a string, call core.Block) {
-	k.Sink.ToolStart(a, call)
-	k.m.setState(k.s, "running", activity(call))
-}
-
-func (k *memberSink) ToolEnd(a string, call core.Block, res *tools.Result, took time.Duration) {
-	k.Sink.ToolEnd(a, call, res, took)
-	k.ev.Observe(call, res, k.s.deps.Now())
-	if call.ToolName == "wait" {
-		k.m.setState(k.s, "running", "reviewing results")
 	}
 }
 
@@ -753,14 +498,94 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 	return r.inner.Check(ctx, req)
 }
 
-// readOnlyCommand is a conservative allowlist for read-only roles' shell use.
+// readOnlyCommand is the fallback allowlist for read-only roles' shell use when no
+// permission engine is installed. It accepts one plain command from a short list
+// of inspection programs: no control operators, redirections or substitutions, no
+// flag that makes the program write or run another, and no path that leaves the
+// project (absolute paths, "~", "..").
 func readOnlyCommand(cmd string) bool {
 	c := strings.TrimSpace(cmd)
-	if strings.ContainsAny(c, ";&|><`$") && !strings.HasPrefix(c, "git ") {
+	if c == "" || strings.ContainsAny(c, ";&|<>`$(){}\n\r\\") {
 		return false
 	}
-	for _, p := range []string{"ls", "cat ", "head ", "tail ", "wc ", "grep ", "rg ", "find ", "git status", "git diff", "git log", "git show", "git blame", "go test", "go vet", "go build", "npm test", "pytest", "cargo test", "make test", "pwd", "echo "} {
-		if strings.HasPrefix(c, p) || c == strings.TrimSpace(p) {
+	cs := splitShell(c)
+	if len(cs) != 1 || cs[0].op != "" || len(cs[0].words) == 0 {
+		return false
+	}
+	w := cs[0].words
+	prog := w[0]
+	args := w[1:]
+	for _, a := range args {
+		if pathEscapes(a) {
+			return false
+		}
+	}
+	has := func(deny ...string) bool {
+		for _, a := range args {
+			for _, d := range deny {
+				if a == d || strings.HasPrefix(a, d+"=") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	switch prog {
+	case "ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "diff", "stat", "file", "tree":
+		return true
+	case "rg":
+		return !has("--pre", "--pre-glob", "--hostname-bin", "-z", "--search-zip")
+	case "find":
+		return !has("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls")
+	case "git":
+		if len(args) == 0 {
+			return false
+		}
+		switch args[0] {
+		case "status", "diff", "log", "show", "blame", "ls-files", "rev-parse", "grep", "shortlog", "describe":
+			return !has("--output", "-o", "--ext-diff", "--textconv", "--no-index", "--open-files-in-pager", "-O", "--exec")
+		}
+		return false
+	case "go":
+		if len(args) == 0 {
+			return false
+		}
+		switch args[0] {
+		case "test", "vet", "list", "version":
+			return !has("-exec", "-toolexec", "-vettool", "-o", "-coverprofile", "-cpuprofile", "-memprofile", "-blockprofile", "-mutexprofile", "-trace", "-outputdir", "-overlay", "-modfile", "-pkgdir", "-fuzz", "-fuzztime")
+		}
+		return false
+	case "npm", "pnpm", "yarn":
+		return len(args) == 1 && args[0] == "test"
+	case "pytest":
+		return !has("--basetemp", "-p", "--junitxml", "--junit-xml", "--cov-report", "--resultlog")
+	case "cargo":
+		return len(args) > 0 && (args[0] == "test" || args[0] == "check") && !has("--target-dir", "--manifest-path", "--config")
+	case "make":
+		return len(args) == 1 && (args[0] == "test" || args[0] == "check")
+	}
+	return false
+}
+
+// pathEscapes reports whether a command argument names a place outside the
+// project: an absolute path, a home-relative path, or a ".." component. Flags and
+// revision syntax such as HEAD~1 or main..topic are not paths.
+func pathEscapes(a string) bool {
+	if strings.HasPrefix(a, "-") {
+		if i := strings.IndexByte(a, '='); i > 0 { // --flag=/etc/passwd
+			a = a[i+1:]
+		} else {
+			return false
+		}
+	}
+	if a == "" {
+		return false
+	}
+	if strings.HasPrefix(a, "/") || strings.HasPrefix(a, "~") {
+		return true
+	}
+	for _, seg := range strings.Split(path.Clean(strings.ReplaceAll(a, `\`, "/")), "/") {
+		if seg == ".." {
 			return true
 		}
 	}
@@ -769,8 +594,11 @@ func readOnlyCommand(cmd string) bool {
 
 // SetShared installs new shared context for every agent at its next turn
 // boundary. Editing the shared layer flushes every agent's cache, so this is an
-// epoch: callers batch promotions and do it rarely (see Epoch).
+// epoch: callers batch promotions and do it rarely (see Epoch). Two overlapping
+// calls are serialised, so every agent ends on the same, newest epoch.
 func (s *Swarm) SetShared(l *kv.Layer, reason string) {
+	s.sharedMu.Lock()
+	defer s.sharedMu.Unlock()
 	s.mu.Lock()
 	s.shared = l
 	ids := make([]*member, 0, len(s.members))

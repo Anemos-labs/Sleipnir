@@ -32,19 +32,19 @@ export function create() {
     el.querySelector('#sesssub').textContent = `${list.sessions.length} under ${list.root}`;
     if (!rows.length) { mount(box, h('div', { class: 'empty' }, h('strong', null, 'No sessions'), 'Nothing matches.')); return; }
     const hasEp = rows.some(s => s.episode);
-    mount(box, h('div', { class: 'tblwrap' }, h('table', { class: 'tbl' },
+    mount(box, h('div', { class: 'tblwrap' }, h('table', { class: 'tbl cards' },
       h('thead', null, h('tr', null, h('th', null, 'Session'), h('th', null, 'Model'), h('th', { class: 'r' }, 'Requests'), h('th', { class: 'r' }, 'Agents'), h('th', { class: 'r' }, 'Hit ratio'),
         h('th', { class: 'r' }, 'Cost'), h('th', { class: 'r' }, 'Saved'), h('th', { class: 'r' }, 'Commits'), h('th', { class: 'r' }, '▲'), hasEp ? h('th', null, 'Outcome') : null, h('th', null, 'Updated'))),
       h('tbody', null, ...rows.map(s => {
         const d = s.digest, e = s.episode;
         return h('tr', { class: 'clickable', tabindex: 0, on: { click: () => open(s.id), keydown: ev => { if (ev.key === 'Enter') open(s.id); } } },
-          h('td', null, h('div', { class: 'row' }, h('span', { class: 'dot ' + (s.live ? 'live' : 'ended') }), h('b', null, s.name)), d && d.goal ? h('div', { class: 'sub ell', css: { maxWidth: '360px' } }, d.goal) : null,
+          h('td', { class: 'wide' }, h('div', { class: 'row' }, h('span', { class: 'dot ' + (s.live ? 'live' : 'ended') }), h('b', null, s.name)), d && d.goal ? h('div', { class: 'sub ell goal' }, d.goal) : null,
             e && e.task_id ? h('div', { class: 'sub' }, 'task ' + e.task_id + (e.sample ? ' · sample ' + e.sample : '')) : null),
-          h('td', { class: 'mono' }, d ? d.model || '' : ''), h('td', { class: 'r' }, d ? int(d.requests) : '…'), h('td', { class: 'r' }, d ? int(d.agents) : ''),
-          h('td', { class: 'r' }, d ? pct(d.hit_ratio) : ''), h('td', { class: 'r' }, d ? usd(d.cost_usd) : ''), h('td', { class: 'r' }, d ? pct(d.saved_pct) : ''),
-          h('td', { class: 'r' }, d ? int(d.commits) : ''), h('td', { class: 'r' }, d && d.anomalies ? h('span', { class: 'chip crit' }, d.anomalies) : d ? '0' : ''),
-          hasEp ? h('td', null, e ? [e.pass == null ? null : h('span', { class: 'chip ' + (e.pass ? 'good' : 'crit') }, e.pass ? '✓ pass' : '✗ fail'), ' ', h('span', { class: 'muted' }, 'reward ' + e.reward.toFixed(2)), (e.flags || []).length ? h('span', { class: 'chip warn' }, e.flags[0]) : null] : '') : null,
-          h('td', { class: 'muted nowrap' }, ago(s.updated)));
+          h('td', { class: 'mono', 'data-label': 'Model' }, d ? d.model || '' : ''), h('td', { class: 'r', 'data-label': 'Requests' }, d ? int(d.requests) : '…'), h('td', { class: 'r', 'data-label': 'Agents' }, d ? int(d.agents) : ''),
+          h('td', { class: 'r', 'data-label': 'Hit ratio' }, d ? pct(d.hit_ratio) : ''), h('td', { class: 'r', 'data-label': 'Cost' }, d ? usd(d.cost_usd) : ''), h('td', { class: 'r', 'data-label': 'Saved' }, d ? pct(d.saved_pct) : ''),
+          h('td', { class: 'r', 'data-label': 'Commits' }, d ? int(d.commits) : ''), h('td', { class: 'r', 'data-label': 'Anomalies' }, d && d.anomalies ? h('span', { class: 'chip crit' }, d.anomalies) : d ? '0' : ''),
+          hasEp ? h('td', e ? { class: 'wide', 'data-label': 'Outcome' } : { class: 'wide' }, e ? [e.pass == null ? null : h('span', { class: 'chip ' + (e.pass ? 'good' : 'crit') }, e.pass ? '✓ pass' : '✗ fail'), ' ', h('span', { class: 'muted' }, 'reward ' + e.reward.toFixed(2)), (e.flags || []).length ? h('span', { class: 'chip warn' }, e.flags[0]) : null] : '') : null,
+          h('td', { class: 'muted nowrap', 'data-label': 'Updated' }, ago(s.updated)));
       })))));
   }
 

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -609,9 +608,15 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 
 	// 2. the agent
 	st.set("agent", attempt)
+	// A swarm task runs as a swarm even when the caller did not ask for one, and
+	// the team size defaults to the task's.
+	swarm, agents := rn.opts.Swarm || task.Team.Mode == "swarm", rn.opts.Agents
+	if agents == 0 {
+		agents = task.Team.Agents
+	}
 	spec := RunSpec{
-		Task: task, Workspace: ws.Dir, RunDir: dir, Policy: rn.policy, Capture: rn.opts.Capture, Swarm: rn.opts.Swarm,
-		Agents: rn.opts.Agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
+		Task: task, Workspace: ws.Dir, RunDir: dir, Policy: rn.policy, Capture: rn.opts.Capture, Swarm: swarm,
+		Agents: agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
 		Seed: SampleSeed(rn.opts.Seed, task.ID, j.sample), Budget: task.Budget,
 		Sample: j.sample, Group: rn.groupID(task.ID), Attempt: attempt, Env: ws.Env(),
 		NetPrefix: r.Workspaces.IsolationPrefix(task),
@@ -1091,14 +1096,4 @@ func writeJSONAtomic(p string, v any) error {
 		return err
 	}
 	return atomicWriteFile(p, append(b, '\n'), 0o644)
-}
-
-// sortedKeys returns the keys of m in order.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

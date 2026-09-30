@@ -2,7 +2,7 @@
 // billed it, what changed since the previous request, and (on demand) the layer
 // text with the first differing byte of every rewritten layer.
 
-import { h, mount, tok, pct, usd, clock, hideTip, int } from '../lib.js';
+import { h, mount, tok, pct, usd, clock, hideTip, int, revealIn } from '../lib.js';
 import { S, nav, api, memo, mainRows, sideRows, agentById, defaultAgent, setFollow } from '../state.js';
 import { TimelineChart } from '../charts.js';
 import { LayerStack, verdict, layerTable, stackLegend } from '../layerstack.js';
@@ -71,7 +71,7 @@ export function create() {
         onStep: step,
       });
     }
-    st.chart.setData({ rows, commits: [], ticks: [], mode: rows.length && (S.sum && S.sum.session.duration_ms < 3000) ? 'req' : 'req', color: 'layer', domain: null, selId: sel ? sel.id : null });
+    st.chart.setData({ rows, commits: [], ticks: [], mode: 'req', color: 'layer', domain: null, selId: sel ? sel.id : null });
 
     // list, newest first
     const sorted = rows.slice().reverse().slice(0, 400);
@@ -81,7 +81,7 @@ export function create() {
       h('span', { class: 'c' }, pct(r.hit)))));
     if (!sorted.length) mount(list, h('div', { class: 'empty' }, 'No requests for this agent yet.'));
     const cur = list.querySelector('[aria-current="true"]');
-    if (cur && st.scrolled !== (sel && sel.id)) { st.scrolled = sel && sel.id; cur.scrollIntoView({ block: 'nearest' }); }
+    if (cur && st.scrolled !== (sel && sel.id)) { st.scrolled = sel && sel.id; revealIn(list, cur); }
 
     if (!sel) { mount(detail, h('div', { class: 'card' }, h('div', { class: 'empty' }, h('strong', null, 'No request selected'), 'Pick one from the list.'))); return; }
     const key = sel.id + '|' + st.text + '|' + (S.sum ? S.sum.rev : 0);

@@ -664,6 +664,11 @@ func (b *Board) Update(agent, id, line string) error {
 // Submit moves the owner's doing task to review with the worker's result and the
 // harness's evidence. It is the only way a worker's task leaves doing for good.
 func (b *Board) Submit(agent, id, result, evidence string) error {
+	return b.SubmitAt(agent, id, 0, result, evidence)
+}
+
+// SubmitAt is Submit that applies only to the assignment rev (0: any).
+func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string) error {
 	return b.mutate(agent, "submit", func(d *draft) error {
 		i, t, err := owned(d, agent, id)
 		if err != nil {
@@ -671,6 +676,9 @@ func (b *Board) Submit(agent, id, result, evidence string) error {
 		}
 		if t.Status != StatusDoing {
 			return fmt.Errorf("%s is %s, not doing", id, t.Status)
+		}
+		if rev != 0 && t.Rev != rev {
+			return fmt.Errorf("%s was reassigned while you worked on it", id)
 		}
 		t.Status, t.Line = StatusReview, ""
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
@@ -745,6 +753,28 @@ func (b *Board) SendBack(by, id, feedback string) (Task, error) {
 		return nil
 	})
 	return out, err
+}
+
+// Unassign returns a task that is not finished to the pool without an owner (its
+// worker is gone). A task in review keeps nothing of the abandoned attempt.
+func (b *Board) Unassign(by, id, reason string) error {
+	return b.mutate(by, "unassign", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
+		switch t.Status {
+		case StatusDoing, StatusBlocked, StatusReview:
+		default:
+			return fmt.Errorf("%s is %s", id, t.Status)
+		}
+		t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", cleanText(reason, maxLineRunes), d.Version
+		t.Result, t.Evidence = "", ""
+		d.tasks()[i] = t
+		d.setTask(t)
+		return nil
+	})
 }
 
 // Reopen returns a failed task to todo so it can be assigned again.

@@ -146,6 +146,9 @@ func newHostileRepo(t *testing.T, redirectWorktree bool) *hostileRepo {
 	// Attributes that select every hostile driver for every file, committed for real.
 	writeFile(t, filepath.Join(dir, ".gitattributes"), "* filter=evil diff=evil merge=evil\n*.md filter=we.ird na=me merge=evil2\n")
 	writeFile(t, filepath.Join(dir, "notes.md"), "notes\n")
+	// data.cfg matches neither *.txt nor *.md, so it uses the "evil" filter driver,
+	// which has a long-running process filter (the others only have clean/smudge)
+	writeFile(t, filepath.Join(dir, "data.cfg"), "cfg\n")
 	rawGit(t, dir, "add", "-A")
 	rawGit(t, dir, "commit", "-qm", "attributes")
 	// A second branch that changes a.txt one way, so a merge has something to merge.
@@ -223,6 +226,7 @@ func TestHostileFixtureIsReallyHostile(t *testing.T) {
 	relief := []string{"-c", "core.fsmonitor=false", "-c", "filter.evil.process=", "-c", "filter.evil.required=false", "-c", "merge.verifySignatures=false", "-c", "log.showSignature=false"}
 	git := func(args ...string) { rawGitMayFail(h.dir, args...) }
 	writeFile(t, filepath.Join(h.dir, "a.txt"), "edited\n")
+	writeFile(t, filepath.Join(h.dir, "data.cfg"), "edited cfg\n")
 	git("status")                                                              // fsmonitor (via include), filter process
 	git(append(relief, "add", "-A")...)                                        // clean filter
 	git(append(relief, "commit", "-qm", "signed attempt")...)                  // hooks, gpg.program
@@ -264,6 +268,7 @@ func battery(t *testing.T, h *hostileRepo, r *Repo) {
 	_ = tolerate
 
 	writeFile(t, filepath.Join(h.dir, "a.txt"), "edited on main\n")
+	writeFile(t, filepath.Join(h.dir, "data.cfg"), "cfg edited on main\n")
 	writeFile(t, filepath.Join(h.dir, "new.txt"), "untracked\n")
 	writeFile(t, filepath.Join(h.dir, "notes.md"), "notes edited\n")
 

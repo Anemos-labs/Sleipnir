@@ -66,7 +66,7 @@ func (r *Runner) postHook(ctx context.Context, h Hook, payload []byte, timeout t
 		res.dur = time.Since(start)
 		return res
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHTTPBody+1))
 	if err != nil {
 		res.startErr = fmt.Errorf("reading the response failed: %s", oneLine(errText(err)))

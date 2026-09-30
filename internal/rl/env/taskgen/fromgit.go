@@ -517,9 +517,11 @@ func buildTask(ctx context.Context, r *repo, ci commitInfo, license, repoDir str
 
 	// The reference solution: every non-test change of the commit.
 	sort.Strings(goldPaths)
-	gold, err := r.gitIn(ctx, []byte(strings.Join(goldPaths, "\x00")+"\x00"), []string{"GIT_LITERAL_PATHSPECS=1"},
-		"diff", "--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv",
-		"--pathspec-from-file=-", "--pathspec-file-nul", ci.Parent, ci.Hash)
+	// GIT_LITERAL_PATHSPECS makes every path mean itself (no globs, no magic); the
+	// number of paths is bounded by GitOptions.MaxFiles.
+	diffArgs := append([]string{"diff", "--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv",
+		ci.Parent, ci.Hash, "--"}, goldPaths...)
+	gold, err := r.gitIn(ctx, nil, []string{"GIT_LITERAL_PATHSPECS=1"}, diffArgs...)
 	if err != nil {
 		return nil, nil, nil, err
 	}

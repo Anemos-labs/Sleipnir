@@ -493,6 +493,10 @@ func oneLine(s string, max int) string {
 func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) (*Result, error) {
 	m := q.m
 	repo := q.tree.repo
+	// History queries go through the repository the trees belong to, not through the
+	// integration tree: they must keep working while that tree is damaged (settle
+	// below is what repairs it).
+	hist := m.st.base
 	res := &Result{Agent: s.Agent, Task: s.Task}
 	q.mu.Lock()
 	prev := q.tip
@@ -511,12 +515,12 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	if theirs == prev {
 		return q.empty(res, "the submission is the integration tip itself"), nil
 	}
-	if ok, err := repo.IsAncestor(ctx, theirs, prev); err != nil {
+	if ok, err := hist.IsAncestor(ctx, theirs, prev); err != nil {
 		return nil, err
 	} else if ok {
 		return q.empty(res, "everything in the submission is already integrated"), nil
 	}
-	mb, err := repo.MergeBase(ctx, prev, theirs)
+	mb, err := hist.MergeBase(ctx, prev, theirs)
 	if err != nil {
 		if gitx.KindOf(err) == gitx.KindNotFound {
 			return q.reject(res, "the submission shares no history with the integration branch"), nil
@@ -526,7 +530,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 
 	// 2. Scope, judged on what this submission itself changed.
 	if s.EnforceScope && len(s.Scope) > 0 {
-		d, err := repo.Diff(ctx, mb, gitx.DiffOptions{To: theirs, NoPatch: true, MaxFiles: 1 << 20})
+		d, err := hist.Diff(ctx, mb, gitx.DiffOptions{To: theirs, NoPatch: true, MaxFiles: 1 << 20})
 		if err != nil {
 			return nil, err
 		}
@@ -595,7 +599,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		_ = q.rollbackTo(ctx, prev)
 		return nil, err
 	}
-	res.Commits, _ = repo.CountCommits(ctx, mb, theirs)
+	res.Commits, _ = hist.CountCommits(ctx, mb, theirs)
 
 	// 4. Verify the combined result.
 	cmd := s.VerifyCmd
@@ -738,7 +742,7 @@ func (q *Queue) commitSubmission(ctx context.Context, s Submission) (sha, reject
 // landedBy returns a lookup from path to the agents whose already-integrated
 // changes (landed after mb) touch it.
 func (q *Queue) landedBy(ctx context.Context, mb, tip string) func(string) []string {
-	res, err := q.tree.repo.Git(ctx, "rev-list", "--max-count=5000", mb+".."+tip)
+	res, err := q.m.st.base.Git(ctx, "rev-list", "--max-count=5000", mb+".."+tip)
 	if err != nil {
 		return nil
 	}
@@ -769,7 +773,7 @@ func (q *Queue) landedBy(ctx context.Context, mb, tip string) func(string) []str
 }
 
 func (q *Queue) changedBetween(ctx context.Context, a, b string) ([]string, error) {
-	d, err := q.tree.repo.Diff(ctx, a, gitx.DiffOptions{To: b, NoPatch: true, MaxFiles: 1 << 20})
+	d, err := q.m.st.base.Diff(ctx, a, gitx.DiffOptions{To: b, NoPatch: true, MaxFiles: 1 << 20})
 	if err != nil {
 		return nil, err
 	}
@@ -912,7 +916,7 @@ func (q *Queue) Finish(ctx context.Context) (string, error) {
 	if base == tip {
 		return "", nil
 	}
-	d, err := q.tree.repo.Diff(ctx, base, gitx.DiffOptions{To: tip, Renames: true, MaxPatchBytes: q.opts.MaxPatchBytes})
+	d, err := q.m.st.base.Diff(ctx, base, gitx.DiffOptions{To: tip, Renames: true, MaxPatchBytes: q.opts.MaxPatchBytes})
 	if err != nil {
 		return "", err
 	}
@@ -977,7 +981,9 @@ func (q *Queue) FastForward(ctx context.Context) (*FastForwardResult, error) {
 			return nil, err
 		}
 	} else {
-		st, err := r.Status(ctx)
+		// "all": with collapsed directories, a Dir inside the repository would hide
+		// behind its parent (.sleipnir/) and look like user content.
+		st, err := r.StatusWith(ctx, gitx.StatusOptions{Untracked: "all"})
 		if err != nil {
 			return nil, err
 		}

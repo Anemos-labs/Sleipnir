@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 // A scope is the list of paths a task may touch: directories ("src/api", with or
@@ -37,8 +38,10 @@ func normScope(p string) (string, error) {
 	if len(p) > maxScopeLen {
 		return "", fmt.Errorf("scope entry longer than %d characters", maxScopeLen)
 	}
-	if strings.ContainsRune(p, 0) {
-		return "", errors.New("scope entry contains a NUL byte")
+	for _, r := range p {
+		if unicode.IsControl(r) || r == '<' || r == '>' || r == 0x2028 || r == 0x2029 || (r >= 0x200B && r <= 0x200F) || (r >= 0x202A && r <= 0x202E) || r == 0xFEFF {
+			return "", errors.New("scope entry contains a control character or an angle bracket")
+		}
 	}
 	p = strings.ReplaceAll(p, `\`, "/")
 	abs := strings.HasPrefix(p, "/")

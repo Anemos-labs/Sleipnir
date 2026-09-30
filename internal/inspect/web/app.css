@@ -260,7 +260,7 @@ ul.plain li { margin: 3px 0; }
 /* ---- charts ------------------------------------------------------------------------------ */
 .chart { position: relative; min-width: 0; }
 .chart canvas { display: block; width: 100%; touch-action: pan-y; }
-.chart .agent-label { position: absolute; left: 50px; top: 6px; display: flex; align-items: center; gap: 6px; pointer-events: none; font-weight: 600; font-size: 12px; }
+.chart .agent-label { position: absolute; left: 50px; top: 4px; display: flex; align-items: center; gap: 6px; pointer-events: none; font-weight: 600; font-size: 12px; }
 .tip {
   position: fixed; z-index: 60; pointer-events: none; max-width: 320px;
   padding: 8px 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--axis); border-radius: 10px;
@@ -286,6 +286,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .tbl tr.clickable:hover td { background: var(--surface-2); }
 .tbl tr.sel td { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
 .tbl .sub { color: var(--muted); font-size: 11.5px; }
+.tbl .why { max-width: 300px; }
+.tbl .sizecell { min-width: 170px; }
+.tbl .goal { max-width: 360px; }
 
 /* ---- layer stack ----------------------------------------------------------------------------- */
 .stack { min-width: 0; }
@@ -309,6 +312,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .stack .bp { fill: var(--ink); }
 .lt { width: 100%; }
 .lt td { vertical-align: middle; }
+.lt .billcell { min-width: 72px; }
 .lt .sw { vertical-align: -2px; margin-right: 6px; }
 .state { display: inline-flex; align-items: center; gap: 5px; }
 .state.cached { color: var(--good-t); }
@@ -426,6 +430,21 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border: 1px solid var(--axis); b
   .card-b { padding: 10px 12px 12px; }
   .tab { padding: 9px 10px; }
   .grid.g2 { grid-template-columns: minmax(0, 1fr); }
+
+  /* Wide tables become one card per row: each cell keeps its label (data-label) and wraps. */
+  .hide-sm { display: none; }
+  .tbl th { white-space: normal; }
+  .tbl.cards, .tbl.cards tbody { display: block; }
+  .tbl.cards thead { display: none; }
+  .tbl.cards tr { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+  .tbl.cards tr:last-child { border-bottom: 0; }
+  .tbl.cards td { display: block; padding: 0; border: 0; min-width: 0; text-align: left; }
+  .tbl.cards td.r { text-align: left; }
+  .tbl.cards td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font-size: 11px; line-height: 1.3; }
+  .tbl.cards td.wide, .tbl.cards td[colspan] { flex: 1 1 100%; max-width: 100%; }
+  .tbl.cards td:empty { display: none; }
+  .tbl.cards td .ell { white-space: normal; }
+  .tbl .why, .tbl .goal, .tbl .sizecell { max-width: none; min-width: 0; }
 }
 
 /* ---- sparklines ---------------------------------------------------------------------------------------------------- */

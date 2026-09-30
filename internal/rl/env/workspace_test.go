@@ -2,6 +2,7 @@ package env
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -619,4 +620,122 @@ func TestConcurrentPrepareAcrossTasks(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestUrlRepositoriesAreMirroredOnce(t *testing.T) {
+	r, base := mathxRepo(t)
+	m := newManager(t)
+	task := mathxTask(r, base)
+	task.Repo.Path = ""
+	task.Repo.URL = "file://" + r.Dir
+	w, err := m.Prepare(ctxT(t), task, "s0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Cleanup()
+	if got := mustRead(t, filepath.Join(w.Root, "mathx.go")); got != buggyMath {
+		t.Fatalf("workspace content: %q", got)
+	}
+	mirrors, _ := os.ReadDir(filepath.Join(m.Root(), "repos"))
+	if len(mirrors) != 1 {
+		t.Fatalf("expected one mirror, got %d", len(mirrors))
+	}
+	// A second task on the same URL reuses the mirror, and a commit added upstream
+	// after mirroring is fetched on demand.
+	r.write("mathx.go", fixedMath)
+	newCommit := r.commit("fix")
+	task2 := task
+	task2.ID = "second"
+	task2.Repo.Commit = newCommit
+	w2, err := m.Prepare(ctxT(t), task2, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w2.Cleanup()
+	if got := mustRead(t, filepath.Join(w2.Root, "mathx.go")); got != fixedMath {
+		t.Fatalf("new commit not fetched: %q", got)
+	}
+	if mirrors, _ = os.ReadDir(filepath.Join(m.Root(), "repos")); len(mirrors) != 1 {
+		t.Fatalf("mirror duplicated: %d", len(mirrors))
+	}
+	// A path that does not exist falls back to the URL.
+	task3 := task
+	task3.ID = "third"
+	task3.Repo.Path = filepath.Join(r.Dir, "nope")
+	w3, err := m.Prepare(ctxT(t), task3, "s2")
+	if err != nil {
+		t.Fatalf("fallback to URL: %v", err)
+	}
+	w3.Cleanup()
+	// An unreachable URL is an infra error, and no half-made mirror is left.
+	task4 := task
+	task4.ID = "fourth"
+	task4.Repo.URL = "file://" + filepath.Join(t.TempDir(), "missing.git")
+	if _, err := m.Prepare(ctxT(t), task4, "s3"); err == nil || !IsInfra(err) {
+		t.Fatalf("unreachable URL: %v", err)
+	}
+	if mirrors, _ = os.ReadDir(filepath.Join(m.Root(), "repos")); len(mirrors) != 1 {
+		t.Fatalf("failed clone left debris: %d entries", len(mirrors))
+	}
+}
+
+func TestNetworkIsolationFallbackIsRecordedOrRefused(t *testing.T) {
+	noHost := func(string) (string, error) { return "", os.ErrNotExist }
+	m, err := NewWorkspaces(WorkspaceOptions{Root: filepath.Join(t.TempDir(), "root"), LookPath: func(n string) (string, error) {
+		if n == "sh" {
+			return "/bin/sh", nil
+		}
+		return noHost(n)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	found := false
+	for _, w := range m.Warnings() {
+		if strings.Contains(w, "network isolation unavailable") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no fallback warning recorded: %v", m.Warnings())
+	}
+	if prefix := m.IsolationPrefix(rl.Task{}); prefix != nil {
+		t.Errorf("isolation prefix without isolation: %v", prefix)
+	}
+	// Strict mode refuses to start instead.
+	_, err = NewWorkspaces(WorkspaceOptions{Root: filepath.Join(t.TempDir(), "root2"), RequireNetIsolation: true, LookPath: noHost})
+	if err == nil || !strings.Contains(err.Error(), "network isolation is required") {
+		t.Fatalf("got %v", err)
+	}
+	// The manifest of a run carries the warning.
+	f := newRunnerFixture(t)
+	f.m.warn("network isolation unavailable: test")
+	f.rollout([]rl.Task{f.task}, 1, f.opts())
+	var mf Manifest
+	json.Unmarshal([]byte(mustRead(t, filepath.Join(f.out, "manifest.json"))), &mf)
+	if len(mf.Warnings) == 0 || !strings.Contains(mf.Warnings[0], "network isolation unavailable") {
+		t.Fatalf("manifest warnings: %v", mf.Warnings)
+	}
+}
+
+func TestResourceLimitsApplyToVerifierCommands(t *testing.T) {
+	if _, err := exec.LookPath("prlimit"); err != nil {
+		t.Skip("prlimit not installed")
+	}
+	r, base := mathxRepo(t)
+	m := newManager(t, func(o *WorkspaceOptions) { o.Limits = Limits{FileSize: 1 << 20} })
+	task := mathxTask(r, base)
+	// The command tries to write a 5 MB file: the limit stops it (SIGXFSZ) and
+	// the verdict is a failure, not an infra error.
+	task.Verifier.Cmd = "head -c 5000000 /dev/zero > big.bin && echo wrote-it"
+	w, err := m.Prepare(ctxT(t), task, "s0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Cleanup()
+	res, err := Verify(ctxT(t), task, w, VerifyOptions{})
+	if err != nil || res.Pass || res.ExitCode != 128+25 { // SIGXFSZ
+		t.Fatalf("file size limit not enforced: %v pass=%v\n%s", err, res.Pass, res.Log)
+	}
 }

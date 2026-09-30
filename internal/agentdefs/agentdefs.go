@@ -307,6 +307,12 @@ func (l *loader) entry(src mdfile.Source, e os.DirEntry) []Warning {
 	if len(badTools) > 0 {
 		adv("ignored malformed tools entries: %s", quoted(badTools))
 	}
+	for _, t := range tools {
+		if t == "*" { // "every tool", spelled out: the same as no allowlist
+			tools, hasTools = nil, false
+			break
+		}
+	}
 	if hasTools && len(tools) == 0 {
 		// An allowlist whose entries were all malformed must not silently become
 		// "no restriction": that would widen the role.

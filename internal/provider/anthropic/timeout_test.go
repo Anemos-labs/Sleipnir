@@ -87,14 +87,16 @@ func TestStreamIdleTimeout(t *testing.T) {
 			sseHeaders(w)
 			w.Write([]byte(startEvent + textStart))
 			fl.Flush()
-			for i := 0; i < 12; i++ { // 12 x 40ms = 480ms of silence between real events, in 40ms steps
+			for i := 0; i < 12; i++ { // 480ms without a real event (longer than the timeout), pinged every 40ms
 				time.Sleep(40 * time.Millisecond)
 				w.Write([]byte("event: ping\ndata: {\"type\": \"ping\"}\n\n"))
 				fl.Flush()
 			}
 			w.Write([]byte(tail))
 		})
-		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 150 * time.Millisecond})
+		// The timeout is ten times the ping interval so that a scheduling stall on a
+		// busy machine cannot pass for silence.
+		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 400 * time.Millisecond})
 		resp, err := c.Do(context.Background(), &provider.Request{Prompt: hello("m")}, nil)
 		if err != nil || resp.Turn.PlainText() != "partial" {
 			t.Fatalf("%v %+v", err, resp)
@@ -111,7 +113,7 @@ func TestStreamIdleTimeout(t *testing.T) {
 			}
 			w.Write([]byte("\n" + tail))
 		})
-		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 150 * time.Millisecond})
+		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 400 * time.Millisecond})
 		if _, err := c.Do(context.Background(), &provider.Request{Prompt: hello("m")}, nil); err != nil {
 			t.Fatal(err)
 		}

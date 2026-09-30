@@ -129,7 +129,7 @@ func Classify(p string) (lang string, kind Kind) {
 		}
 		return Java, Source
 	}
-	if fixtureDir || containsSeq(dirs, "src", "test") || hasDir("__tests__") {
+	if fixtureDir || containsSeq(dirs, "src", "test") || hasDir("__tests__", "tests", "test") {
 		return "", TestSupport
 	}
 	return "", Other

@@ -83,7 +83,7 @@ func TestNormalizeSchemaSanitisesEveryString(t *testing.T) {
 			t.Errorf("invisible %U survived in %s", r, got)
 		}
 	}
-	if !strings.Contains(string(got), `"description":"parameter"`) || !strings.Contains(string(got), `"xy"`) {
+	if !strings.Contains(string(got), `"description":"para meter"`) || !strings.Contains(string(got), `"xy"`) {
 		t.Errorf("text should survive minus the invisible parts: %s", got)
 	}
 }

@@ -88,6 +88,7 @@ type Server struct {
 	sessions  map[*session]struct{}
 	cancelled []string
 	calls     map[string]int
+	methods   map[string]int
 	inits     []string // protocolVersion of each initialize received
 	added     int
 }
@@ -96,7 +97,7 @@ type Server struct {
 func New() *Server {
 	s := &Server{
 		Name: "mcptest", Version: "1.0.0",
-		tools: map[string]*Tool{}, sessions: map[*session]struct{}{}, calls: map[string]int{},
+		tools: map[string]*Tool{}, sessions: map[*session]struct{}{}, calls: map[string]int{}, methods: map[string]int{},
 	}
 	for _, t := range referenceTools(s) {
 		s.AddTool(t)
@@ -115,6 +116,13 @@ func New() *Server {
 			}},
 	}
 	return s
+}
+
+// SetPrompts replaces the prompt list.
+func (s *Server) SetPrompts(ps ...Prompt) {
+	s.mu.Lock()
+	s.prompts = append([]Prompt(nil), ps...)
+	s.mu.Unlock()
 }
 
 // AddTool adds or replaces a tool. It does not notify clients; call
@@ -184,6 +192,14 @@ func (s *Server) Calls(tool string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.calls[tool]
+}
+
+// MethodCalls reports how many requests of a JSON-RPC method were received
+// ("tools/list", "tools/call", ...).
+func (s *Server) MethodCalls(method string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.methods[method]
 }
 
 // Initializes returns the protocol version of every initialize received.
@@ -423,6 +439,9 @@ func (ss *session) request(m rpcIn, out func([]byte)) {
 	}()
 
 	s := ss.s
+	s.mu.Lock()
+	s.methods[m.Method]++
+	s.mu.Unlock()
 	switch m.Method {
 	case "initialize":
 		var p struct {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -523,5 +524,76 @@ func TestGitEscapeHatch(t *testing.T) {
 		if _, err := r.Git(ctx, args...); !errors.Is(err, ErrInvalid) {
 			t.Errorf("Git(%q) = %v, want ErrInvalid", args, err)
 		}
+	}
+}
+
+// An agent owns the files of its worktree, .git included. Rewriting that file (or
+// replacing it with a directory) must not redirect what the harness does with its
+// handle: the git directory was fixed when the handle was opened.
+func TestHandleIgnoresARewrittenDotGitFile(t *testing.T) {
+	skipWithoutUnix(t)
+	dir := newRepo(t)
+	mainRepo := openRepo(t, dir)
+	wt := filepath.Join(t.TempDir(), "agent-tree")
+	rawGit(t, dir, "worktree", "add", "-q", "-b", "agent", wt)
+	r := openRepo(t, wt)
+	ctx := ctxT(t)
+	mainHead, _ := mainRepo.Head(ctx)
+	mainStatus, _ := mainRepo.Status(ctx)
+	markers := t.TempDir()
+
+	type step struct {
+		name     string
+		redirect func()
+	}
+	rmDotGit := func() {
+		if err := os.RemoveAll(filepath.Join(wt, ".git")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	redirects := []step{
+		{"points at the main repository", func() {
+			rmDotGit()
+			writeFile(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(dir, ".git")+"\n")
+		}},
+		{"deleted", rmDotGit},
+		{"replaced by a hostile repository", func() {
+			rmDotGit()
+			hostile := filepath.Join(wt, ".git")
+			if err := os.MkdirAll(filepath.Join(hostile, "hooks"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(hostile, "HEAD"), "ref: refs/heads/evil\n")
+			writeFile(t, filepath.Join(hostile, "config"), "[core]\n\trepositoryformatversion = 0\n\thooksPath = "+filepath.Join(hostile, "hooks")+"\n\tfsmonitor = \"touch "+filepath.Join(markers, "fsmonitor")+"; echo\"\n")
+			writeFile(t, filepath.Join(hostile, "hooks", "pre-commit"), "#!/bin/sh\ntouch "+filepath.Join(markers, "pre-commit")+"\n")
+			if err := os.Chmod(filepath.Join(hostile, "hooks", "pre-commit"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for i, st := range redirects {
+		name := st.name
+		i++
+		st.redirect()
+		writeFile(t, filepath.Join(wt, "agent-file-"+strconv.Itoa(i)+".txt"), "by the agent\n")
+		sha, err := r.CommitAll(ctx, "agent work "+name, Author{Name: "agent"})
+		if err != nil || sha == "" {
+			t.Fatalf("%s: CommitAll = %q, %v", name, sha, err)
+		}
+		if br, _ := r.Branch(ctx); br != "agent" {
+			t.Fatalf("%s: the commit went to branch %q", name, br)
+		}
+		if head, _ := mainRepo.Head(ctx); head != mainHead {
+			t.Fatalf("%s: the main repository's HEAD moved", name)
+		}
+		if st, _ := mainRepo.Status(ctx); len(st.Staged) != len(mainStatus.Staged) || len(st.Untracked) != len(mainStatus.Untracked) {
+			t.Fatalf("%s: the main repository's index/work tree changed: %+v", name, st)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "agent-file-"+strconv.Itoa(i)+".txt")); err == nil {
+			t.Fatalf("%s: a file landed in the user's checkout", name)
+		}
+	}
+	if ents, _ := os.ReadDir(markers); len(ents) != 0 {
+		t.Fatalf("hostile replacement .git ran code: %v", ents)
 	}
 }

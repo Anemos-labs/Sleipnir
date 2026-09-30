@@ -128,7 +128,7 @@ func (t *mcpTool) Run(ctx context.Context, c *tools.Call) (res *tools.Result, er
 		return r, nil
 	}
 
-	rd := renderResult(result, env.Blobs, t.m.opts.AttachMedia, srv.red)
+	rd := renderResult(result, env.Blobs, t.m.opts.AttachMedia, srv.redactor())
 	limits := env.Limits
 	if n := srv.cfg.MaxOutputChars; n > 0 && (limits.MaxOutputChars <= 0 || n < limits.MaxOutputChars) {
 		limits.MaxOutputChars = n // an entry can lower the cap, never raise it

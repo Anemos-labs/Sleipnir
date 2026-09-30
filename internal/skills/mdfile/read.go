@@ -61,7 +61,7 @@ func ReadFile(path string, o ReadOpts) (File, error) {
 	if err != nil {
 		return File{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil {
 		return File{}, err
@@ -175,7 +175,7 @@ func ReadDirLimited(dir string, limit int) (entries []os.DirEntry, more bool, er
 	if err != nil {
 		return nil, false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	entries, err = f.ReadDir(limit + 1)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, false, err

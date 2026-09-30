@@ -163,7 +163,7 @@ func Substitute(tmpl, args string, mode ArgMode) (out string, used bool) {
 			b.WriteString(all())
 			used = true
 			i += 1 + len(kw)
-		case rest != "" && rest[0] >= '1' && rest[0] <= '9' && !(len(rest) > 1 && rest[1] >= '0' && rest[1] <= '9'):
+		case rest != "" && rest[0] >= '1' && rest[0] <= '9' && (len(rest) == 1 || rest[1] < '0' || rest[1] > '9'):
 			b.WriteString(one(int(rest[0] - '1')))
 			used = true
 			i += 2

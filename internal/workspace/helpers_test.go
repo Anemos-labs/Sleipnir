@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -247,3 +248,12 @@ func mustSubmit(t testing.TB, q *Queue, s Submission) *Result {
 }
 
 func osRename(from, to string) error { return os.Rename(from, to) }
+
+func keys(m map[string]string) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}

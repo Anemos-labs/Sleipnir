@@ -204,14 +204,14 @@ export function layerTable(rep, prevRow, onLayer, sel) {
     return h('tr', { class: 'clickable' + (sel === l.key ? ' sel' : ''), on: { click: () => onLayer && onLayer(l.key) } },
       h('td', null, h('span', { class: 'sw g' + gi }), h('b', null, l.key), ' ', l.title),
       h('td', { class: 'r' }, l.state === 'absent' ? '–' : tok(l.tokens), delta ? h('div', { class: 'sub' }, (delta > 0 ? '+' : '') + tok(delta)) : null),
-      h('td', { class: 'r' }, l.state === 'absent' ? '–' : pct(l.tokens / total)),
+      h('td', { class: 'r hide-sm' }, l.state === 'absent' ? '–' : pct(l.tokens / total)),
       h('td', { title: STATE_HELP[l.state] || '' }, h('span', { class: 'state ' + l.state }, stateLabel(l.state), l.breakpoint ? ' ◆' : '')),
-      h('td', null, l.state === 'absent' || !(l.read + l.write + l.fresh) ? '' : billBar(l)),
-      h('td', { class: 'mono muted' }, l.hash || ''));
+      h('td', { class: 'billcell' }, l.state === 'absent' || !(l.read + l.write + l.fresh) ? '' : billBar(l)),
+      h('td', { class: 'mono muted hide-sm' }, l.hash || ''));
   });
   return h('div', { class: 'tblwrap' }, h('table', { class: 'tbl lt' },
-    h('thead', null, h('tr', null, h('th', null, 'Layer'), h('th', { class: 'r' }, 'Tokens'), h('th', { class: 'r' }, 'Share'),
-      h('th', null, 'Since previous request'), h('th', null, 'Provider billed'), h('th', null, 'Hash / turns'))),
+    h('thead', null, h('tr', null, h('th', null, 'Layer'), h('th', { class: 'r' }, 'Tokens'), h('th', { class: 'r hide-sm' }, 'Share'),
+      h('th', null, 'Since previous request'), h('th', null, 'Provider billed'), h('th', { class: 'hide-sm' }, 'Hash / turns'))),
     h('tbody', null, ...rows)));
 }
 

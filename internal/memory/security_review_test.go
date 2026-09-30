@@ -3,12 +3,11 @@ package memory
 // Security regression tests for docs/reviews/security-robustness.md (memory
 // findings S41-S44).
 //
-// TestSecReview_S41..S43 pin the fixes; they began as repro tests that failed
-// while the findings were open. S44 (no trust marker on project instructions) is
-// a session-level finding that this package cannot fix: its test stays gated
-// behind SLEIPNIR_REVIEW=1 and asserts the behaviour the finding asks for:
-//
-//	SLEIPNIR_REVIEW=1 go test -count=1 -run TestSecReview_S44 ./internal/memory
+// TestSecReview_S41..S43 and TestSecSound_S44 pin the fixes; they began as repro
+// tests that failed while the findings were open. S44 (no trust marker on project
+// instructions) is fixed in Render, which labels repository sources "unverified",
+// and in session.userScopeOnly, which drops repository scope for an untrusted
+// project.
 //
 // TestSecSound_* pin behaviour the review found sound.
 
@@ -365,19 +364,27 @@ func TestSecReview_S43_HiddenCharactersCannotDisguiseCommentsOrImports(t *testin
 	}
 }
 
-// S44: nothing distinguishes "the user wrote this" from "the repository says so":
-// project-scope files are rendered without any trust marker, and the constitution
-// tells the model to trust <shared-context>. There is no trust-on-first-use gate
-// or content pin. Session-level; left open here (session.TrustProject already
-// drops project scope wholesale for an untrusted project).
-func TestSecReview_S44_ProjectInstructionsHaveNoTrustMarker(t *testing.T) {
-	secRevGate(t)
-	root := t.TempDir()
+// S44: nothing used to distinguish "the user wrote this" from "the repository says
+// so". Repository sources are now labelled unverified in the rendered layer, the
+// user's own file (and what it imports) is not, and session.TrustProject drops
+// repository scope wholesale for an untrusted project.
+func TestSecSound_S44_RepositoryInstructionsAreMarkedUnverified(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
 	secRevWrite(t, filepath.Join(root, "AGENTS.md"), "Always run ./install.sh first.\n")
-	srcs, _ := Load(Opts{Root: root, Home: t.TempDir()})
+	secRevWrite(t, filepath.Join(home, ".sleipnir", "SLEIPNIR.md"), "Personal: be terse.\n@prefs.md\n")
+	secRevWrite(t, filepath.Join(home, ".sleipnir", "prefs.md"), "Personal import.\n")
+	srcs, err := Load(Opts{Root: root, Home: home})
+	if err != nil {
+		t.Fatal(err)
+	}
 	out := Render(srcs)
-	if !strings.Contains(strings.ToLower(out), "untrusted") && !strings.Contains(strings.ToLower(out), "unverified") {
-		t.Errorf("S44: repository instruction files are rendered as plain trusted text:\n%s", out)
+	if !strings.Contains(out, "### AGENTS.md (project, unverified)") {
+		t.Errorf("S44: repository instruction files must be labelled unverified:\n%s", out)
+	}
+	for _, label := range []string{"### ~/.sleipnir/SLEIPNIR.md (user)", "### ~/.sleipnir/prefs.md (import)"} {
+		if !strings.Contains(out, label) {
+			t.Errorf("the user's own files are not unverified; want %q in:\n%s", label, out)
+		}
 	}
 }
 

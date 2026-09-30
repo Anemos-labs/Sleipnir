@@ -146,7 +146,8 @@ func validShort(s string) bool {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
-		if c := s[i]; !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+		c := s[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 			return false
 		}
 	}

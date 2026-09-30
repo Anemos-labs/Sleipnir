@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -63,7 +64,7 @@ type Hook struct {
 func (h Hook) String() string {
 	what := h.Command
 	if h.Type == TypeHTTP {
-		what = h.URL
+		what = redactURL(h.URL)
 	}
 	pos := fmt.Sprintf("%s[%d].hooks[%d]", h.Event, h.Group, h.Index)
 	if h.Source != "" {
@@ -92,6 +93,18 @@ func (h Hook) behaviorKey() string {
 	c := h
 	c.Event, c.Matcher = "", ""
 	return c.Key()
+}
+
+// redactURL shows where an http hook posts without the parts that can carry a
+// secret: userinfo, query string and fragment. Hook descriptions end up in
+// messages and logs.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(unparseable URL)"
+	}
+	u.User, u.RawQuery, u.Fragment = nil, "", ""
+	return u.String()
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }

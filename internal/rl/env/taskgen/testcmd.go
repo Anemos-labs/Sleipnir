@@ -43,7 +43,8 @@ func goTestChunks(src string) map[string]string {
 		if i+1 < len(starts) {
 			end = starts[i+1][0]
 		}
-		chunk := src[s[0]:end]
+		// Trailing blank lines belong to whatever follows, not to this function.
+		chunk := strings.TrimRight(src[s[0]:end], " \t\r\n")
 		if m := goTestFuncRe.FindStringSubmatch(chunk); m != nil {
 			out[m[1]] = chunk
 		}

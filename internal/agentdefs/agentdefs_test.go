@@ -548,3 +548,21 @@ func TestLoadIsDeterministic(t *testing.T) {
 		t.Fatalf("order = %s", names(first))
 	}
 }
+
+func TestStarMeansEveryTool(t *testing.T) {
+	w := newWorld(t)
+	w.proj(".claude", "a.md", "---\nname: a\ntools: '*'\n---\nbody")
+	w.proj(".claude", "b.md", "---\nname: b\ntools: [Read, \"*\"]\n---\nbody")
+	defs, warns := w.load()
+	if len(defs) != 2 || len(warns) != 0 {
+		t.Fatalf("%d defs, warnings %s", len(defs), warnText(warns))
+	}
+	for _, d := range defs {
+		if d.Tools != nil || d.ReadOnly {
+			t.Errorf("%s: tools %v readonly %v; \"*\" is the same as no allowlist", d.Name, d.Tools, d.ReadOnly)
+		}
+		if p := d.Profile(); len(p.Deny) != 0 || p.Mode != "" {
+			t.Errorf("%s: profile %+v restricts a role that may use every tool", d.Name, p)
+		}
+	}
+}

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"sort"
@@ -78,9 +81,20 @@ type Options struct {
 	// which variables it wants). Without it, untrusted servers are refused.
 	Approve func(ServerConfig) bool
 
-	// Net configures HTTP and SSE connections: the address guard (Dial hook,
-	// AllowPrivate) and an optional proxy.
-	Net NetOptions
+	// Dial replaces the built-in address guard as the dialer of HTTP and SSE
+	// connections. The caller then owns the SSRF policy (Sleipnir hands in the
+	// guard its web tools use); the built-in one refuses private, loopback,
+	// link-local and reserved addresses, resolving the name itself and connecting
+	// to the vetted address, so a name cannot answer differently the second time.
+	Dial func(ctx context.Context, network, address string) (net.Conn, error)
+	// AllowPrivate lets remote servers live on private and loopback addresses
+	// (never link-local, metadata or reserved ones) and permits plain http://. It
+	// applies to every server; an entry's own allow_private does the same for that
+	// server. With a Dial hook it only decides whether plain http:// is acceptable.
+	AllowPrivate bool
+	// Proxy routes HTTP and SSE requests through a proxy. It is nil by default:
+	// the process environment (HTTP_PROXY) is never consulted implicitly.
+	Proxy func(*http.Request) (*url.URL, error)
 
 	// ClientName and ClientVersion identify the harness to servers.
 	ClientName, ClientVersion string
@@ -211,7 +225,7 @@ func NewManager(opts Options) *Manager {
 	}
 	names := sortedKeys(opts.Servers)
 	for i, name := range names {
-		cfg := opts.Servers[name]
+		cfg := opts.Servers[name].Clone() // the caller's maps must not be able to change a running definition
 		s := newServer(m, name, cfg)
 		if i >= maxServers {
 			s.state, s.errText = StateFailed, fmt.Sprintf("more than %d servers configured; this one is ignored", maxServers)
@@ -550,7 +564,6 @@ type server struct {
 	prompts       []Prompt
 	warnings      []string
 	restarts      int
-	up            chan struct{} // closed while ready; replaced when the server goes down
 	dirty         map[ListKind]bool
 	approvalKnown bool
 	approved      bool
@@ -561,7 +574,7 @@ func newServer(m *Manager, name string, cfg ServerConfig) *server {
 	s := &server{
 		m: m, name: name, cfg: cfg, state: StateConnecting,
 		reconnect: make(chan struct{}, 1), refresh: make(chan struct{}, 1),
-		up: make(chan struct{}), dirty: map[ListKind]bool{},
+		dirty: map[ListKind]bool{},
 	}
 	// The redactor is built from the entry as expanded at connect time; until
 	// then the unexpanded values (placeholders) are all there is to hide.
@@ -590,6 +603,14 @@ func (s *server) status() ServerStatus {
 	return st
 }
 
+// redactor returns the current secret masker (it is replaced on every connect,
+// when the entry is expanded afresh).
+func (s *server) redactor() *redactor {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.red
+}
+
 func (s *server) callTimeout() time.Duration {
 	if s.cfg.Timeout > 0 {
 		return s.cfg.Timeout
@@ -599,37 +620,39 @@ func (s *server) callTimeout() time.Duration {
 
 // awaitClient returns the live connection, waiting briefly for a restart to
 // finish: a call that lands in the half second between a crash and its restart
-// is far more useful delayed than failed.
+// is far more useful delayed than failed. It polls (every 10ms, and only while a
+// server is down) rather than being woken: the state changes under the
+// supervisor's feet in several places, and a missed wake-up here would turn
+// into a stuck agent, while a poll cannot miss anything.
 func (s *server) awaitClient(ctx context.Context) (*Client, error) {
 	wait := s.m.opts.ReconnectWait
-	var timer <-chan time.Time
-	for spins := 0; ; spins++ {
+	var deadline <-chan time.Time
+	for {
 		s.mu.Lock()
-		st, c, up, why := s.state, s.client, s.up, s.errText
+		st, c, why := s.state, s.client, s.errText
 		s.mu.Unlock()
 		if st == StateReady && c != nil {
-			return c, nil
+			select {
+			case <-c.Done():
+				// The connection has just died and the supervisor has not retired it
+				// yet: that is a restart in progress, not a live server.
+				st = StateRestarting
+			default:
+				return c, nil
+			}
 		}
 		if (st == StateConnecting || st == StateRestarting) && wait > 0 {
-			if timer == nil {
+			if deadline == nil {
 				t := time.NewTimer(wait)
 				defer t.Stop()
-				timer = t.C
+				deadline = t.C
 			}
 			select {
-			case <-up:
-				if spins < 4 { // re-check the state; bounded so a stale closed channel cannot spin
-					continue
-				}
-			case <-timer:
+			case <-time.After(10 * time.Millisecond):
+				continue
+			case <-deadline:
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			}
-			s.mu.Lock()
-			st, c, why = s.state, s.client, s.errText
-			s.mu.Unlock()
-			if st == StateReady && c != nil {
-				return c, nil
 			}
 		}
 		if why != "" {
@@ -671,7 +694,7 @@ func (s *server) gate() error {
 					ok = false
 				}
 			}()
-			ok = s.m.opts.Approve(s.cfg)
+			ok = s.m.opts.Approve(s.cfg.Clone())
 		}()
 		s.m.approveMu.Unlock()
 	}
@@ -832,11 +855,6 @@ func (s *server) markDown(c *Client, cause error) {
 		s.client = nil
 		s.state = StateRestarting
 		s.errText = s.errorText(cause)
-		select {
-		case <-s.up:
-			s.up = make(chan struct{})
-		default:
-		}
 	}
 	s.mu.Unlock()
 	_ = c.Close() // reap the process; safe to call from here (not from the transport's goroutine)
@@ -848,7 +866,7 @@ func (s *server) errorText(err error) string {
 		return ""
 	}
 	msg, _ := truncateRunes(oneLine(err.Error(), 600), 500)
-	return s.red.apply(msg)
+	return s.redactor().apply(msg)
 }
 
 func (s *server) shutdown() {
@@ -856,11 +874,6 @@ func (s *server) shutdown() {
 	c := s.client
 	s.client = nil
 	s.state = StateClosed
-	select {
-	case <-s.up:
-		s.up = make(chan struct{})
-	default:
-	}
 	s.mu.Unlock()
 	if c != nil {
 		_ = c.Close()
@@ -898,7 +911,8 @@ func (s *server) connect(ctx context.Context) error {
 	}
 	prefix := fmt.Sprintf("mcp %s: ", s.name)
 	client, err := Dial(ctx, s.name, s.cfg, DialOptions{
-		Env: m.opts.Env, BaseEnv: m.opts.BaseEnv, Cwd: m.opts.Cwd, Net: m.opts.Net,
+		Env: m.opts.Env, BaseEnv: m.opts.BaseEnv, Cwd: m.opts.Cwd,
+		Net:            NetOptions{Dial: m.opts.Dial, AllowPrivate: m.opts.AllowPrivate, Proxy: m.opts.Proxy},
 		StartupTimeout: m.opts.ConnectTimeout, ShutdownGrace: m.opts.ShutdownGrace, MaxMessageBytes: m.opts.MaxMessageBytes,
 		Client: ClientOptions{
 			Name: m.opts.ClientName, Version: m.opts.ClientVersion, Roots: m.opts.Roots,
@@ -938,11 +952,6 @@ func (s *server) connect(ctx context.Context) error {
 	s.warnings = append(warns, pwarns...)
 	s.state, s.errText = StateReady, ""
 	s.dirty = map[ListKind]bool{}
-	select {
-	case <-s.up:
-	default:
-		close(s.up)
-	}
 	wasRestart := gen > 1
 	s.mu.Unlock()
 	if wasRestart {
@@ -1066,7 +1075,7 @@ func (s *server) refreshKind(ctx context.Context, c *Client, gen int, k ListKind
 	case ListTools:
 		list, warns, err := s.listTools(rctx, c)
 		if err != nil {
-			m.logf("mcp: server %q: re-listing tools failed: %v", s.name, s.red.apply(cleanText(err.Error())))
+			m.logf("mcp: server %q: re-listing tools failed: %v", s.name, s.redactor().apply(cleanText(err.Error())))
 			return
 		}
 		s.mu.Lock()
@@ -1083,7 +1092,7 @@ func (s *server) refreshKind(ctx context.Context, c *Client, gen int, k ListKind
 	case ListPrompts:
 		list, _, err := s.listPrompts(rctx, c)
 		if err != nil {
-			m.logf("mcp: server %q: re-listing prompts failed: %v", s.name, s.red.apply(cleanText(err.Error())))
+			m.logf("mcp: server %q: re-listing prompts failed: %v", s.name, s.redactor().apply(cleanText(err.Error())))
 			return
 		}
 		s.mu.Lock()

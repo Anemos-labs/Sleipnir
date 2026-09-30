@@ -35,6 +35,11 @@ import (
 // is also the bound on what one call can put there.
 const maxResultChars = 4 << 20
 
+// maxMediaBytes bounds one binary payload the harness will store. A server that
+// returns a screenshot is normal; one that returns hundreds of megabytes per call
+// is filling the blob store.
+const maxMediaBytes = 8 << 20
+
 // mediaRef describes a binary payload that was stored.
 type mediaRef struct {
 	Kind      string `json:"kind"` // image, audio, blob
@@ -77,6 +82,10 @@ func renderResult(res *CallToolResult, blobs events.Blobs, attach bool, redact *
 		}
 		ref := mediaRef{Kind: kind, MediaType: mediaType, Bytes: len(data)}
 		where := "not stored"
+		if len(data) > maxMediaBytes {
+			out.media = append(out.media, ref)
+			return fmt.Sprintf("[%s: %s, %s, not stored: over the %s limit; not shown]", kind, mediaType, humanBytes(len(data)), humanBytes(maxMediaBytes))
+		}
 		if blobs != nil {
 			if h, err := blobs.Put(data); err == nil {
 				ref.Ref = string(h)

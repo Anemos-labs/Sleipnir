@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -315,10 +316,6 @@ func TestCacheTTLs(t *testing.T) {
 }
 
 func TestCacheStampedeOverAColdPrefix(t *testing.T) {
-	mcfg := mock.AnthropicConfig{}
-	mcfg.FirstToken = 150 * time.Millisecond
-	mcfg.DecodePer = 15 * time.Millisecond
-	slow := func(*mock.Call) mock.Reply { return mock.Reply{Text: big(30, "long-answer")} }
 	prompt := func(task string) *core.Prompt {
 		p := layers("mock-1", bigTools(300), user(core.Text(task)))
 		p.Messages = p.Messages[:1]
@@ -326,9 +323,30 @@ func TestCacheStampedeOverAColdPrefix(t *testing.T) {
 		p.Breakpoints = []core.Breakpoint{bp(sysRef(0), time.Hour, "const"), bp(ref(0, 1), time.Hour, "shared")}
 		return p
 	}
+	answer := mock.Reply{Text: big(30, "long-answer")}
+	send := func(c *anthropic.Client, task string, on func(provider.Event)) (*provider.Response, error) {
+		return c.Do(context.Background(), &provider.Request{Prompt: prompt(task)}, on)
+	}
+
+	// The mock calls the responder after a request's cache lookup and before the
+	// first byte that publishes what the request wrote. Parking requests there
+	// fixes the order of events without sleeping, so none of these tests depends on
+	// how quickly the scheduler starts a goroutine.
 
 	t.Run("two concurrent requests both write; one after the first byte reads", func(t *testing.T) {
-		c, srv := newMockClient(t, mcfg, slow, anthropic.Config{Model: "mock-1"})
+		var arrived atomic.Int32
+		both := make(chan struct{})
+		c, srv := newMockClient(t, mock.AnthropicConfig{}, func(*mock.Call) mock.Reply {
+			if arrived.Add(1) == 2 {
+				close(both)
+			}
+			select {
+			case <-both:
+			case <-time.After(10 * time.Second):
+				t.Error("the two overlapping requests never met")
+			}
+			return answer
+		}, anthropic.Config{Model: "mock-1"})
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var usage []core.Usage
@@ -336,13 +354,20 @@ func TestCacheStampedeOverAColdPrefix(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				r := do(t, c, prompt(fmt.Sprint("task ", i)))
+				r, err := send(c, fmt.Sprint("task ", i), nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
 				mu.Lock()
 				usage = append(usage, r.Usage)
 				mu.Unlock()
 			}(i)
 		}
 		wg.Wait()
+		if len(usage) != 2 {
+			t.Fatalf("%d of 2 requests completed", len(usage))
+		}
 		if usage[0].CacheReadTokens != 0 || usage[1].CacheReadTokens != 0 || usage[0].CacheWriteTokens() == 0 || usage[1].CacheWriteTokens() == 0 {
 			t.Fatalf("the stampede pays twice: %+v", usage)
 		}
@@ -357,42 +382,77 @@ func TestCacheStampedeOverAColdPrefix(t *testing.T) {
 
 	t.Run("a request launched at the first streamed byte reads the entry", func(t *testing.T) {
 		// This is the contract the swarm's warm gate relies on: EvStart from the
-		// adapter means "entries written by this request are now readable".
-		c, _ := newMockClient(t, mcfg, slow, anthropic.Config{Model: "mock-1"})
-		started := make(chan struct{})
+		// adapter means "entries written by this request are now readable". The
+		// follower is sent from inside the primer's EvStart callback, so it starts
+		// after the first byte by construction, while the primer is still streaming:
+		// the server keeps decoding for about 300ms after that, so an entry published
+		// only when the response ends would be missed.
+		mcfg := mock.AnthropicConfig{}
+		mcfg.DecodePer = 20 * time.Millisecond
+		c, _ := newMockClient(t, mcfg, func(*mock.Call) mock.Reply { return answer }, anthropic.Config{Model: "mock-1"})
+		var follower *provider.Response
 		var once sync.Once
-		primerDone := make(chan *provider.Response, 1)
-		go func() {
-			r, err := c.Do(context.Background(), &provider.Request{Prompt: prompt("primer")}, func(e provider.Event) {
-				if e.Kind == provider.EvStart {
-					once.Do(func() { close(started) })
+		primer, err := send(c, "primer", func(e provider.Event) {
+			if e.Kind != provider.EvStart {
+				return
+			}
+			once.Do(func() {
+				var ferr error
+				if follower, ferr = send(c, "follower", nil); ferr != nil {
+					t.Errorf("follower: %v", ferr)
 				}
 			})
-			if err != nil {
-				t.Error(err)
-			}
-			primerDone <- r
-		}()
-		<-started
-		follower := do(t, c, prompt("follower"))
-		primer := <-primerDone
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if follower == nil {
+			t.Fatal("the follower never ran")
+		}
 		if follower.Usage.CacheReadTokens != primer.Usage.CacheWriteTokens() || follower.Usage.CacheReadTokens == 0 {
 			t.Fatalf("follower %+v primer %+v", follower.Usage, primer.Usage)
 		}
-		if follower.Total >= primer.Total {
-			t.Errorf("the follower was released while the primer was still streaming: %v vs %v", follower.Total, primer.Total)
-		}
 	})
 
-	t.Run("a request launched before the first byte does not", func(t *testing.T) {
-		c, _ := newMockClient(t, mcfg, slow, anthropic.Config{Model: "mock-1"})
+	t.Run("a request that looks before the first byte does not", func(t *testing.T) {
+		primerIn, earlyIn := make(chan struct{}), make(chan struct{})
+		var primerOnce, earlyOnce sync.Once
+		wait := func(ch chan struct{}, what string) {
+			select {
+			case <-ch:
+			case <-time.After(10 * time.Second):
+				t.Errorf("timed out waiting for %s", what)
+			}
+		}
+		c, _ := newMockClient(t, mock.AnthropicConfig{}, func(cl *mock.Call) mock.Reply {
+			switch {
+			case strings.Contains(cl.LastUser(), "primer"):
+				primerOnce.Do(func() { close(primerIn) })
+				wait(earlyIn, "the early request") // the primer's first byte waits for the early lookup
+			case strings.Contains(cl.LastUser(), "early"):
+				earlyOnce.Do(func() { close(earlyIn) })
+			}
+			return answer
+		}, anthropic.Config{Model: "mock-1"})
 		done := make(chan *provider.Response, 1)
-		go func() { done <- do(t, c, prompt("primer")) }()
-		time.Sleep(30 * time.Millisecond) // well inside the primer's 150ms first-token delay
-		early := do(t, c, prompt("early"))
-		<-done
-		if early.Usage.CacheReadTokens != 0 {
-			t.Fatalf("entries are not readable before the first byte: %+v", early.Usage)
+		go func() {
+			r, err := send(c, "primer", nil)
+			if err != nil {
+				t.Error(err)
+			}
+			done <- r
+		}()
+		wait(primerIn, "the primer") // its lookup is done and it has written nothing readable yet
+		early, err := send(c, "early", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		primer := <-done
+		if primer == nil {
+			t.Fatal("the primer failed")
+		}
+		if early.Usage.CacheReadTokens != 0 || early.Usage.CacheWriteTokens() == 0 || primer.Usage.CacheWriteTokens() == 0 {
+			t.Fatalf("entries are not readable before the first byte: early %+v primer %+v", early.Usage, primer.Usage)
 		}
 	})
 }

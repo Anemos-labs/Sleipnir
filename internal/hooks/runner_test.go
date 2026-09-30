@@ -356,3 +356,58 @@ func TestFailClosed(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestHookEnvironmentInPractice(t *testing.T) {
+	urlWithPassword := "https://" + "u" + ":" + "pw" + "@example.com/x"
+	r := one(t, PreToolUse, "", "env > env.txt")
+	r.Env = append(testEnv(),
+		"HEIMDALL_API_KEY=canary-not-a-secret", "GITHUB_TOKEN=canary", "AWS_SECRET_ACCESS_KEY=canary", "DATABASE_URL=canary",
+		"MY_SERVICE_URL="+urlWithPassword, "SSH_AUTH_SOCK=/tmp/agent.sock", "CUSTOM_PROVIDER_CREDENTIALS_X=canary", "HARMLESS=fine",
+		"SLEIPNIR_AGENT=stale-agent",
+	)
+	r.DenyEnv = []string{"HARMLESS_*"}
+	res := run(t, r, Event{Name: PreToolUse, Tool: "bash", Agent: "be-2", Role: "backend", Cwd: r.Dir})
+	if len(res.Errors) != 0 {
+		t.Fatal(errorText(res))
+	}
+	b, err := os.ReadFile(filepath.Join(r.Dir, "env.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := string(b)
+	for _, leaked := range []string{"canary", "HEIMDALL", "GITHUB_TOKEN", "AWS_SECRET", "DATABASE_URL", "MY_SERVICE_URL", "SSH_AUTH_SOCK", "stale-agent"} {
+		if strings.Contains(env, leaked) {
+			t.Errorf("the hook's environment contains %q:\n%s", leaked, env)
+		}
+	}
+	for _, want := range []string{
+		"CLAUDE_PROJECT_DIR=" + r.Dir, "SLEIPNIR_PROJECT_DIR=" + r.Dir, "SLEIPNIR_HOOK_EVENT=PreToolUse", "SLEIPNIR_AGENT=be-2",
+		"SLEIPNIR_ROLE=backend", "SLEIPNIR_SESSION_ID=sess-1", "HOME=/nonexistent-home", "HARMLESS=fine", "PATH=",
+	} {
+		if !strings.Contains(env, want) {
+			t.Errorf("the hook's environment lacks %q:\n%s", want, env)
+		}
+	}
+
+	// PassEnv is the deliberate exception, DenyEnv the deliberate addition.
+	r.PassEnv = []string{"GITHUB_TOKEN"}
+	r.DenyEnv = []string{"HARMLESS"}
+	run(t, r, Event{Name: PreToolUse, Tool: "bash"})
+	b, _ = os.ReadFile(filepath.Join(r.Dir, "env.txt"))
+	if !strings.Contains(string(b), "GITHUB_TOKEN=canary") || strings.Contains(string(b), "HARMLESS") || strings.Contains(string(b), "HEIMDALL") {
+		t.Errorf("PassEnv/DenyEnv not applied:\n%s", b)
+	}
+}
+
+// The default environment is the process's own, scrubbed.
+func TestDefaultEnvironmentIsTheProcessesOwnScrubbed(t *testing.T) {
+	t.Setenv("SLEIPNIR_TEST_API_KEY", "canary-not-a-secret")
+	t.Setenv("SLEIPNIR_TEST_HARMLESS", "visible")
+	r := one(t, PreToolUse, "", "env > env.txt")
+	r.Env = nil
+	run(t, r, Event{Name: PreToolUse})
+	b, _ := os.ReadFile(filepath.Join(r.Dir, "env.txt"))
+	if strings.Contains(string(b), "SLEIPNIR_TEST_API_KEY") || !strings.Contains(string(b), "SLEIPNIR_TEST_HARMLESS=visible") {
+		t.Errorf("environment:\n%s", b)
+	}
+}

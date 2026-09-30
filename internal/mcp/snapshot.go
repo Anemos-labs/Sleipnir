@@ -275,7 +275,15 @@ func serverCandidates(sv serverTools, o SnapshotOptions, warn func(string, ...an
 	}
 	var out []*candidate
 	reported := map[string]bool{}
+	capped := false
 	for _, t := range list {
+		if len(out) >= o.MaxToolsPerServer {
+			// Only the first MaxToolsPerServer usable tools (by name) are exposed, so
+			// the rest need not be vetted: a server listing thousands must not make
+			// every snapshot cost thousands of sanitisations and regex scans.
+			capped = true
+			break
+		}
 		label := cleanStrict(t.Name)
 		if label == "" {
 			label = "(unnamed)"
@@ -303,6 +311,9 @@ func serverCandidates(sv serverTools, o SnapshotOptions, warn func(string, ...an
 		if desc == "" {
 			desc = t.Annotations.Title
 		}
+		// Sanitise again here: the snapshot's promise (nothing invisible, capped, tidy)
+		// must not depend on the tools having come through decodeTool.
+		desc = cleanMeta(desc, o.MaxDescriptionChars*4)
 		if why := detectInjection(desc); why != "" && !o.AllowSuspicious {
 			warn("server %q: tool %q excluded: its description %s", sv.name, label, why)
 			continue
@@ -322,9 +333,8 @@ func serverCandidates(sv serverTools, o SnapshotOptions, warn func(string, ...an
 			readOnly: t.Annotations.ReadOnly(), remote: sv.remote,
 		})
 	}
-	if len(out) > o.MaxToolsPerServer {
-		warn("server %q offers %d usable tools; only the first %d (by name) are exposed", sv.name, len(out), o.MaxToolsPerServer)
-		out = out[:o.MaxToolsPerServer]
+	if capped {
+		warn("server %q offers more than %d usable tools; only the first %d (by name) are exposed", sv.name, o.MaxToolsPerServer, o.MaxToolsPerServer)
 	}
 	return out
 }

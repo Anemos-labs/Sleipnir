@@ -48,9 +48,9 @@ const maxDriverNames = 512
 
 // driverOverrides scans the configuration visible from dir and returns the
 // overrides that neutralize its drivers.
-func (s *settings) driverOverrides(ctx context.Context, dir, workTree string) ([]kv, error) {
+func (s *settings) driverOverrides(ctx context.Context, dir, workTree, gitDir string) ([]kv, error) {
 	out, err := s.exec(ctx, call{
-		dir: dir, workTree: workTree,
+		dir: dir, workTree: workTree, gitDir: gitDir,
 		args:    []string{"config", "--list", "--includes", "-z"},
 		maxOut:  8 << 20,
 		timeout: 30 * time.Second,

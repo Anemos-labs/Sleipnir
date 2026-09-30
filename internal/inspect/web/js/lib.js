@@ -119,6 +119,13 @@ export function ago(ts, now = Date.now()) {
 
 export function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 
+/** Scrolls only `box` so that `el` shows inside it; unlike scrollIntoView it never moves the page. */
+export function revealIn(box, el) {
+  const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+  if (r.top < b.top) box.scrollTop -= b.top - r.top;
+  else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+}
+
 /** Nice axis ticks: about `n` round values covering 0..max. */
 export function niceTicks(max, n = 4) {
   if (!(max > 0)) return [0, 1];

@@ -6,38 +6,45 @@ and is it correct on Anthropic (explicit breakpoints, preserved thinking) and on
 
 Tree state reviewed: 2026-09-30 00:15 to 01:00 UTC. Other builders were editing concurrently; two changes landed
 mid-review and are covered: the cold-cache `ModeMask` path (`kv.MaskOnly`, `Planner.ShouldStart` modes) and the
-`internal/kv/sim` simulator with CACHE-DESIGN §8. No non-test file was modified. Ground truth for provider
+`internal/kv/sim` simulator with CACHE-DESIGN §8. No non-test file was modified during the review. Ground truth for provider
 semantics is the bundled `claude-api` reference (`prompt-caching.md`, `model-migration.md` "Breaking change 3",
 `preserved-thinking-migration/causes.md`; citations like `prompt-caching.md:83` are line numbers in those files under
 `.../claude-api/shared/`) and `docs/research/02-provider-caching.md`. ITE = input-token equivalent (1 = one plain input token).
 
+## Status after the fix pass
+
+The findings below describe the tree **as reviewed** and are kept as written, because the evidence and the numbers
+are the argument for the design that replaced it. Each has since been fixed, or deliberately left, as recorded in
+"Resolution" (next section). The review tests were then converted into permanent regression tests: they assert the
+*fixed* behaviour, pass by default (the `REVIEW_STRICT` switch is gone), and the always-sound ones are kept. The
+fixed design is in `docs/CACHE-DESIGN.md` (rewritten: corrected claims, regenerated §8 numbers).
+
 ## How to reproduce
 
-Every finding below has a test named `TestCacheEcon_*` in a `cache_review_test.go` file. Convention: a test **passes
-while the defect is present** (tree stays green) and **fails once it is fixed**, telling the fixer to invert or
-delete it. `REVIEW_STRICT=1` inverts that (tests fail while the defect is present).
+The permanent tests are named `TestCacheEcon_*` (kv, agent, mock, openaichat, swarm) plus `TestSim*` in
+`internal/kv/sim` and the planner/hot tests in `internal/kv` (see the Test index). They fail if the defect returns.
 
 ```sh
-go test -race -count=1 -run CacheEcon -v ./internal/kv ./internal/kv/sim ./internal/agent \
+go test -race -count=1 ./internal/kv/... ./internal/agent ./internal/swarm ./internal/provider/...
+go test -race -count=1 -run 'CacheEcon|TestSim' -v ./internal/kv ./internal/kv/sim ./internal/agent \
     ./internal/provider/mock ./internal/provider/openaichat ./internal/swarm
-REVIEW_STRICT=1 go test -count=1 -run CacheEcon ./internal/kv ./internal/kv/sim ./internal/agent \
-    ./internal/provider/mock ./internal/provider/openaichat ./internal/swarm     # 32 failures = 32 open defects
-go test -race -count=1 -skip Review ./internal/kv ./internal/agent ./internal/provider/... ./internal/cost  # baseline
 ```
 
 Shared instruments used by the tests (worth reusing):
 
-* `internal/kv/cache_review_test.go`: `cxSim`, a small model of Anthropic explicit caching (entries only at
+* `internal/kv/cache_regress_test.go`: `cxSim`, a small model of Anthropic explicit caching (entries only at
   breakpoints, 20-position lookback, runs of tool_use/tool_result count once, read up to the highest hit, write to
-  the last breakpoint). It is driven by the real `kv.Render`, `kv.Apply`, `Thread.Commit`.
-* `internal/agent/cache_review_test.go`: `cxProv`, a fake provider that speaks the `anthropic` dialect and
+  the last breakpoint) and `cxAuto`, the same for an automatic-prefix engine. Both are driven by the real
+  `kv.Render`, `kv.PlanMarks`, `kv.Apply`, `Thread.Commit`; the planner's commit penalty is checked against what
+  `cxSim` actually charges (within a few percent).
+* `internal/agent/cache_regress_test.go`: `cxProv`, a fake provider that speaks the `anthropic` dialect and
   **enforces preserved-thinking bindings**: a thinking block's signature is the hash of everything on the wire
-  before it (tools, system, every earlier message, hot tail included). A replayed block whose prefix changed
-  returns HTTP 400 (`provider.ErrThinkingBinding`), exactly what `prefix_mismatch_behavior: error` does.
+  before it (tools, system, every earlier message *as sent*). A replayed block whose prefix changed returns
+  HTTP 400 (`provider.ErrThinkingBinding`), exactly what `prefix_mismatch_behavior: error` does.
 
 ## Ranked findings
 
-| # | Sev | Finding | Test |
+| # | Sev | Finding | Review-time test (permanent ones: see Resolution) |
 |---|---|---|---|
 | R1 | blocker (Claude route) | Hot tail is a per-request rewrite of the last user message: every request after the first is a thinking-binding 400; Guard cannot see it | `HotTailBreaksPreservedThinking` |
 | R2 | high | `Thread.Commit` carries the tail with pre-commit thinking; `SyncShared` strip is a flag consumed one boundary late | `BackgroundCommitBreaksThinkingOfCarriedTurns`, `SyncSharedBetween...`, `CommitTailKeeps...` |
@@ -59,6 +66,34 @@ Shared instruments used by the tests (worth reusing):
 | R18 | med/low | Spine, instructions and notes grow without bound; whole spine block rewritten every commit; `NotesOverBudget` has no consumer | `SpineAndInstructionsGrowWithoutBound` |
 | R19 | med | CACHE-DESIGN.md factual errors and overclaims (list below) | n/a |
 | R20 | low | Render merge guard, thinking-block marker, estimator flicker and calibration bias, keys, config footguns, profile defaults | see R20 |
+
+## Resolution
+
+"Fixed" means the defect's test now asserts the correct behaviour and passes by default. Names are `TestCacheEcon_*`
+unless noted.
+
+| # | Status | What changed | Regression tests |
+|---|---|---|---|
+| R1 | fixed | `kv.HotMode`: `HotInline` (default), `HotPersist` (frozen notice block in the user turn, only on change, at most every 3 requests) and `HotTurnScoped` (persisted `Role:system` turn rendered as `Message{ClearAt}`). `kv.ResolveHot` forces persist where preserved thinking is replayed and the route has no turn-scoped system messages. `ErrThinkingBinding` is recovered once: durable strip, declared rebase, retry | `HotTailKeepsPreservedThinkingValid`, `TurnScopedHotIsPersistedAsClearAtSystemMessages`, `InlineHotRemainsTheDefaultWhereNothingIsBound`, `BindingRejectionIsRecoveredOnce`; kv `TestResolveHotPicksTheMechanismForTheRoute`, `TestTurnScopedHotIsAPersistedSystemMessage` |
+| R2 | fixed | Thinking is stripped from the carried tail inside `Thread.CommitWith`; `SyncShared` strips under the same lock; a response in flight during an epoch is stripped in `pushResponse` (the in-flight exception is gone) | `CommitStripsThinkingFromTheCarriedTail`, `BackgroundCommitStripsThinkingOfCarriedTurns`, `SyncSharedStripsInTheSameStepAsTheSwap`, `EpochDuringARequestStripsTheResponsesThinking` |
+| R3 | fixed | The fork keeps every request parameter of the parent (nothing moves to `tool_choice: none`); the instruction asks for text only; a `tool_use` reply is a failure and falls back to the mechanical patch; only text blocks are parsed | `ForkKeepsEveryRequestParameter`, `CompactorReplyIsParsedFromAnswerTextOnly`; sim `TestSimForkReadsTheParentsPrefix` |
+| R4 | fixed | Hard/soft limits are judged on the live thread; a held patch goes `Stale` (age or growth) and is re-proposed; emergency compaction stays reachable while a patch is pending | `HeldPatchCannotBlockCompaction`; kv `TestShouldCommitJudgesTheLiveThread`, `TestStalePatchesAreDiscarded` |
+| R5 | fixed | `kv.Sizer` counts what is sent: thinking that is not replayed is 0, cleared turn-scoped system turns are 0 | `PlannerIgnoresReasoningThatIsNeverSent`; kv `TestSizerCountsWhatRenderSends` |
+| R6 | fixed | Warmth is the modelled TTL first (`Planner.IsCold` with `ColdMargin`), then guard-expected against actual reads; a provider that reports no cache usage is unknown, treated as warm; the low-hit alarm fires on a miss of at least max(2000 tokens, 5%) and the first request is checked when the gate says the prefix is warm | `BigToolResultIsNotAColdCache`, `NonReportingProviderIsNotCold`, `LowHitAlarmFiresOnEveryLargeMiss`, `FirstRequestIsCheckedAgainstAWarmSharedPrefix` |
+| R7 | fixed | `MaskOnly` returns `ErrNothingToMask` when there is nothing to save; mask commits need `MaskMinTokens` and `MaskMinInterval`; a thinking strip is not progress; a cold agent above the hard limit still folds | `HiddenCacheIsNotACommitStorm`, `ColdMaskCommitsAreRateLimitedAndNeverEmpty`, `ColdAgentAboveTheHardLimitStillFolds`; kv `TestMaskOnlyNeedsSomethingToMask` |
+| R8 | fixed | `commitEconomics` prices the commit as the cache charges it (explicit: w(R+D'+S') - r(T+D'+S); automatic: w(A+R+D') - r(T+D'); a notes change adds notes and spine); T includes masking savings; the start decision prices the compactor call and `Remaining` | `PlannerPenaltyMatchesWhatTheCacheCharges`, `PlannerNeverApprovesAMoneyLosingCommit`, `SnapTokensIncludeMaskingSavings`; kv `TestPlannerStartMatrix` |
+| R9 | fixed | `kv.PlanMarks`: priority thread > anchor > shared/constitution > role (at the provider minimum) > notes (at `MinLayerForBreakpoint`) > constitution; G0, G1, G2 markers exist; the 1500-token floor applies to notes only, role and shared markers need just the provider minimum | `SmallLayersStillShareThePrefixAcrossAgents`; kv `TestPlanMarksSpendsSlotsInPriorityOrder` |
+| R10 | fixed | The 20-position lookback is planned: a lookback anchor marker keeps the previous marker reachable when a turn appends many positions | `LookbackWindowIsPlannedFor` |
+| R11 | fixed | The guard hashes request parameters, role, `ClearAt` and the first-block flag; exposes `ReadableTokens`; the alarm rule is in R6 | `GuardSeesWhatTheProviderKeysOn`, `LowHitAlarmFiresOnEveryLargeMiss` |
+| R12 | fixed | The gate is keyed per level (shared, shard, role: nested `\|` keys); the warm window runs from request start minus a margin and ends before the entry expires; after `maxWait` the release is staggered, with a doubling co-primer escalation; `Warm(key)` is optional on the `Gate` interface | swarm `GateWarmWindowEndsBeforeTheProviderEntry`, `GateStaggersReleaseWhenThePrimerIsStuck`, `GateRecoversFromAPrimerThatNeverReports`, `GateElectsOnePrimerPerLevel`, `GateNestedKeysStress`; agent `GateKeyCoversShardAndRole` |
+| R13 | **not fixed** (documented) | Affinity and shard sizing are unverified against a real marketplace. CACHE-DESIGN now says "designed for, not verified"; the default shard count and the D11 canary are follow-up work | none (analysis) |
+| R14 | fixed | Steering (human) and long task text are preserved to `instructions`, bounded, with `[tN]` pointers; mail (`[mail` prefix) is data and never preserved; `instructions` and `assignment` are protected note keys | `UserInstructionGuarantees`, `SteeringSurvivesCompactionAndMailDoesNot`, `InboxBurstIsOneBlockPerClass` |
+| R15 | fixed | `startRun` sends a reused worker a `reassignCard` with the new task's full brief and scope | swarm `ReusedWorkerReceivesTheNewTasksBrief` |
+| R16 | partly | Mock (automatic mode): eviction takes tails before roots. Explicit-breakpoint caching is **not** in this engine: another engineer owns `mock/anthropic.go` and its explicit engine. Simulator: real `PlanMarks`/`Planner`, warm by entry lifetime (no oracle), forks read the parent's prefix, the gate it models is the gate the code implements; §8 regenerated | `MockEvictsTailsBeforeRoots`, `AutomaticModeKeysOnPrefixBytesOnly`; sim `TestSimPlacesMarkersWithTheRealPlanner`, `TestSimForkReadsTheParentsPrefix`, `TestSimGateIsKeyedAndTimedLikeTheRealOne`, `TestSimHeadlineWithTheFixesStaysInTheDocumentedRange` |
+| R17 | fixed | `openaichat` renders the marker on a tool result (one-part array), on a system block and on assistant text; unmarked results stay plain strings | `RollingBreakpointOnToolResultIsRendered`, `UnmarkedToolResultsStayPlainStrings`, `SystemBlockMarkerIsRendered`, `AssistantTextMarkerIsRendered` |
+| R18 | fixed | Spine, instructions and notes are bounded (`MaxSpineTokens`, `MaxInstructionTokens`, `TaskMaxTokens`, per-section and total notes bounds) with eviction pointers that only replace their own pointers; `NotesOverBudget` now makes the compactor consolidate | `SpineAndInstructionsStayBounded`, `EvictionOnlyReplacesItsOwnPointers`; kv `TestNotesAreHeldToTheirBudgetAndTheCompactorIsAskedToConsolidate` |
+| R19 | fixed | `docs/CACHE-DESIGN.md` rewritten; `docs/ARCHITECTURE.md` corrected (mock scope, boundary step, hot delivery) | n/a |
+| R20 | partly | Fixed: adjacent user turns merge at the start; the rolling marker never lands on a thinking block; `Strict` is in `PrefixKey`/`GlobalKey` and `Params` in the guard; `ApplyPolicy.WithDefaults` fills bounds but keeps deliberate zeros. Left: estimator calibration and flicker, the string/array flip in `openaichat.renderUser`, the `openaichat.DefaultProfile` TTL/minimum, token-capture canary | `RenderMergesAdjacentUserTurnsAtStart`, `RollingBreakpointNeverLandsOnAThinkingBlock`, `EstimatorMovesBreakpointsButNeverBytes`; kv `TestApplyPolicyWithDefaultsFillsBoundsButKeepsDeliberateZeros` |
 
 ---
 
@@ -458,14 +493,18 @@ Line numbers are for the current file.
 
 ## Test index
 
+The tables above name the review-time tests; the permanent regression tests that replaced them are (all `TestCacheEcon_`
+unless noted; "(sound)" = was never a defect, kept always on):
+
 | File | Tests |
 |---|---|
-| `internal/kv/cache_review_test.go` | `SmallLayersLoseCrossAgentSharing`, `LookbackWindowIsNotPlannedFor`, `PlannerPenaltyOmitsTailSpineAndNotes`, `PlannerAcceptsMoneyLosingCommit`, `SnapTotalExcludesMaskingSavings`, `CommitTailKeepsPreRebaseThinking`, `UserInstructionGuarantees`, `ForkChangesToolChoice`, `GuardBlindSpots`, `ApplyCommitRenderStructuralSoundness` (sound), `RenderLeavesTwoUserMessagesAtStart`, `SpineAndInstructionsGrowWithoutBound`, `BreakpointRulesHoldOnRandomStacks` (sound), `RollingBreakpointCanLandOnAThinkingBlock`, `EstimatorMovesBreakpointsButNeverBytes`, `CompactorReplyIncludesThinkingText` |
-| `internal/kv/sim/cache_review_test.go` | `SimBillsForksAsCacheReadsButToolChoiceInvalidatesMessages` |
-| `internal/agent/cache_review_test.go` | `HotTailBreaksPreservedThinking`, `BackgroundCommitBreaksThinkingOfCarriedTurns`, `SyncSharedBetweenBoundaryAndRequestSendsStaleThinking`, `WarmHeuristicMisreadsABigToolResult`, `NonReportingProviderLooksColdForever`, `LowHitAnomalyIsSilentOnLargeMisses`, `GateKeyIgnoresShardAndRole`, `ColdStartNoLongerForksAModelCall` (regression), `HeldMarginalPatchBlocksCompactionForever`, `ColdModeCommitsEveryStepByStrippingThinking`, `ColdModeWithNothingToMaskNeverFolds`, `PlannerCountsReasoningThatIsNeverSent` |
-| `internal/provider/mock/cache_review_test.go` | `MockEvictsRootsBeforeLeaves`, `MockIsBlindToCacheKeyParameters` |
-| `internal/provider/openaichat/cache_review_test.go` | `RollingBreakpointOnToolResultIsDropped` |
-| `internal/swarm/cache_review_test.go` | `GateWarmWindowOutlivesTheProviderEntry`, `GateStampedesWhenColdPrefillOutlastsMaxWait`, `ReusedWorkerNeverSeesTheNewTasksBrief` |
+| `internal/kv/cache_regress_test.go` | `SmallLayersStillShareThePrefixAcrossAgents`, `LookbackWindowIsPlannedFor`, `PlannerPenaltyMatchesWhatTheCacheCharges`, `PlannerNeverApprovesAMoneyLosingCommit`, `SnapTokensIncludeMaskingSavings`, `CommitStripsThinkingFromTheCarriedTail`, `UserInstructionGuarantees`, `ForkKeepsEveryRequestParameter`, `GuardSeesWhatTheProviderKeysOn`, `ApplyCommitRenderStructuralSoundness` (sound), `RenderMergesAdjacentUserTurnsAtStart`, `SpineAndInstructionsStayBounded`, `EvictionOnlyReplacesItsOwnPointers`, `BreakpointRulesHoldOnRandomStacks` (sound), `RollingBreakpointNeverLandsOnAThinkingBlock`, `EstimatorMovesBreakpointsButNeverBytes` (sound), `CompactorReplyIsParsedFromAnswerTextOnly` |
+| `internal/kv/hot_test.go`, `internal/kv/planner_test.go` (no prefix) | `TestResolveHotPicksTheMechanismForTheRoute`, `TestApplyKeepsOnlyTheNewestPersistedNoticeAndNeverCopiesOneIntoInstructions`, `TestTurnScopedHotIsAPersistedSystemMessage`, `TestSizerCountsWhatRenderSends`, `TestMaskOnlyNeedsSomethingToMask`, `TestPlanMarksSpendsSlotsInPriorityOrder`, `TestThreadRewriteAndCommitWithLeaveSnapshotsUntouched`, `TestApplyPolicyWithDefaultsFillsBoundsButKeepsDeliberateZeros`, `TestNotesAreHeldToTheirBudgetAndTheCompactorIsAskedToConsolidate`, `TestPlannerStartMatrix`, `TestShouldCommitJudgesTheLiveThread`, `TestStalePatchesAreDiscarded` |
+| `internal/kv/sim/cache_regress_test.go` (no prefix) | `TestSimPlacesMarkersWithTheRealPlanner`, `TestSimForkReadsTheParentsPrefix`, `TestSimGateIsKeyedAndTimedLikeTheRealOne`, `TestSimHeadlineWithTheFixesStaysInTheDocumentedRange`, `TestSimPersistedHotOnAPreservedThinkingRoute` |
+| `internal/agent/cache_regress_test.go` | `HotTailKeepsPreservedThinkingValid`, `TurnScopedHotIsPersistedAsClearAtSystemMessages`, `InlineHotRemainsTheDefaultWhereNothingIsBound`, `BindingRejectionIsRecoveredOnce`, `BackgroundCommitStripsThinkingOfCarriedTurns`, `SyncSharedStripsInTheSameStepAsTheSwap`, `EpochDuringARequestStripsTheResponsesThinking`, `BigToolResultIsNotAColdCache`, `NonReportingProviderIsNotCold`, `LowHitAlarmFiresOnEveryLargeMiss`, `FirstRequestIsCheckedAgainstAWarmSharedPrefix`, `GateKeyCoversShardAndRole`, `ColdStartNoLongerForksAModelCall` (sound), `HeldPatchCannotBlockCompaction`, `HiddenCacheIsNotACommitStorm`, `ColdAgentAboveTheHardLimitStillFolds`, `ColdMaskCommitsAreRateLimitedAndNeverEmpty`, `PlannerIgnoresReasoningThatIsNeverSent`, `InboxBurstIsOneBlockPerClass`, `SteeringSurvivesCompactionAndMailDoesNot` |
+| `internal/provider/mock/cache_regress_test.go` | `MockEvictsTailsBeforeRoots`, `AutomaticModeKeysOnPrefixBytesOnly` |
+| `internal/provider/openaichat/cache_regress_test.go` | `RollingBreakpointOnToolResultIsRendered`, `UnmarkedToolResultsStayPlainStrings`, `SystemBlockMarkerIsRendered`, `AssistantTextMarkerIsRendered` |
+| `internal/swarm/cache_regress_test.go` | `GateWarmWindowEndsBeforeTheProviderEntry`, `GateStaggersReleaseWhenThePrimerIsStuck`, `GateRecoversFromAPrimerThatNeverReports`, `GateElectsOnePrimerPerLevel`, `GateNestedKeysStress`, `ReusedWorkerReceivesTheNewTasksBrief` |
 
 ---
 

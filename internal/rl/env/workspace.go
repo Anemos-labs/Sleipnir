@@ -75,6 +75,11 @@ type WorkspaceOptions struct {
 	// samples of a broken task fail at once instead of each repeating the setup.
 	// Default 30 s; negative disables.
 	FailureTTL time.Duration
+	// LookPath and Probe replace how the default sandbox finds and tries host
+	// tools (unshare, ip, prlimit); they exist for tests and embedders with
+	// unusual hosts. Nil means exec.LookPath and running the command.
+	LookPath func(string) (string, error)
+	Probe    func(ctx context.Context, name string, args ...string) error
 	// Logf receives diagnostics; nil discards them.
 	Logf func(format string, args ...any)
 }
@@ -171,6 +176,7 @@ func NewWorkspaces(o WorkspaceOptions) (*Workspaces, error) {
 		ls, err := NewLocalSandbox(LocalSandboxOptions{
 			DisableNetIsolation: o.DisableNetIsolation,
 			Defaults:            ExecPolicy{Limits: o.Limits, MaxOutput: o.MaxOutput, Grace: o.KillGrace},
+			LookPath:            o.LookPath, Probe: o.Probe,
 		})
 		if err != nil {
 			return nil, err

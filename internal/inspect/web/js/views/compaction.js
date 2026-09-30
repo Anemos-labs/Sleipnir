@@ -63,21 +63,22 @@ export function create() {
     const body = [];
     for (const c of rows.slice(0, 300)) {
       const open = st.open.has(c.n);
-      body.push(h('tr', { class: 'clickable', on: { click: () => { if (open) st.open.delete(c.n); else st.open.add(c.n); render(); } }, 'aria-expanded': String(open) },
-        h('td', { class: 'r muted' }, c.n),
-        h('td', { class: 'nowrap' }, c.status === 'committed' ? clock(c.commit_ms) : clock(c.start_ms), h('div', { class: 'sub' }, c.agent)),
-        h('td', null, modeBadge(c), c.patch === 'mechanical' && c.mode === 'fork' ? h('span', { class: 'chip warn', title: c.fallback_reason || 'the model’s patch was unusable' }, 'mechanical fallback') : null,
+      const toggle = () => { if (open) st.open.delete(c.n); else st.open.add(c.n); render(); };
+      body.push(h('tr', { class: 'clickable', tabindex: 0, on: { click: toggle, keydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } } }, 'aria-expanded': String(open) },
+        h('td', { class: 'r muted', 'data-label': '#' }, c.n),
+        h('td', { class: 'nowrap', 'data-label': 'When' }, c.status === 'committed' ? clock(c.commit_ms) : clock(c.start_ms), h('div', { class: 'sub' }, c.agent)),
+        h('td', { 'data-label': 'Mode' }, modeBadge(c), c.patch === 'mechanical' && c.mode === 'fork' ? h('span', { class: 'chip warn', title: c.fallback_reason || 'the model’s patch was unusable' }, 'mechanical fallback') : null,
           c.status !== 'committed' ? h('span', { class: 'chip ' + (c.status === 'failed' ? 'crit' : '') }, c.status) : null),
-        h('td', { css: { maxWidth: '300px' } }, h('div', { class: 'ell', title: c.trigger }, c.trigger || '–'), c.reason && c.reason !== c.trigger ? h('div', { class: 'sub ell', title: c.reason }, 'decision: ' + c.reason) : null),
-        h('td', null, c.warm == null ? h('span', { class: 'muted' }, '–') : h('span', { class: 'chip ' + (c.warm ? '' : 'accent') }, c.warm ? 'warm' : 'cold')),
-        h('td', { css: { minWidth: '170px' } }, sizeBar(c)),
-        h('td', { class: 'r' }, tok(c.net), h('div', { class: 'sub' }, c.prompt_before && c.next ? tok(c.prompt_before) + ' → ' + tok(c.next.prompt) : '')),
-        h('td', { class: 'r' }, usd(c.compactor_usd), h('div', { class: 'sub' }, c.next ? tok(c.next.rewrite) + ' rewritten' : '')),
-        h('td', { class: 'r' }, c.next ? pct(c.next.hit) : '–', h('div', { class: 'sub' }, c.next ? c.next.req : ''))));
-      if (open) body.push(h('tr', null, h('td', { colspan: 10 }, detail(c))));
+        h('td', { 'data-label': 'Cache' }, c.warm == null ? h('span', { class: 'muted' }, '–') : h('span', { class: 'chip ' + (c.warm ? '' : 'accent') }, c.warm ? 'warm' : 'cold')),
+        h('td', { class: 'wide why' }, h('div', { class: 'ell', title: c.trigger }, c.trigger || '–'), c.reason && c.reason !== c.trigger ? h('div', { class: 'sub ell', title: c.reason }, 'decision: ' + c.reason) : null),
+        h('td', { class: 'wide sizecell' }, sizeBar(c)),
+        h('td', { class: 'r', 'data-label': 'Net saved' }, tok(c.net), h('div', { class: 'sub' }, c.prompt_before && c.next ? tok(c.prompt_before) + ' → ' + tok(c.next.prompt) : '')),
+        h('td', { class: 'r', 'data-label': 'Cost' }, usd(c.compactor_usd), h('div', { class: 'sub' }, c.next ? tok(c.next.rewrite) + ' rewritten' : '')),
+        h('td', { class: 'r', 'data-label': 'Next hit' }, c.next ? pct(c.next.hit) : '–', h('div', { class: 'sub' }, c.next ? c.next.req : ''))));
+      if (open) body.push(h('tr', null, h('td', { colspan: 9 }, detail(c))));
     }
-    mount(box, h('div', { class: 'tblwrap' }, h('table', { class: 'tbl' },
-      h('thead', null, h('tr', null, [['#', 'r'], ['When', ''], ['Mode', ''], ['Why', ''], ['Cache', ''], ['Folded → spine, kept', ''], ['Net saved', 'r'], ['Cost', 'r'], ['Next hit', 'r']].map(([t, c]) => h('th', { class: c }, t)), h('th', null, ''))),
+    mount(box, h('div', { class: 'tblwrap' }, h('table', { class: 'tbl cards' },
+      h('thead', null, h('tr', null, [['#', 'r'], ['When', ''], ['Mode', ''], ['Cache', ''], ['Why', ''], ['Folded → spine, kept', ''], ['Net saved', 'r'], ['Cost', 'r'], ['Next hit', 'r']].map(([t, c]) => h('th', { class: c }, t)))),
       h('tbody', null, ...body))),
       rows.length > 300 ? h('div', { class: 'note' }, `Showing the newest 300 of ${rows.length}.`) : null);
   }

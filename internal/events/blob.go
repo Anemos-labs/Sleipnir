@@ -55,10 +55,10 @@ func ValidHash(h core.Hash) bool {
 }
 
 // DirBlobs stores blobs on disk under dir/ab/cd/<hash>. Directories it creates
-// are private to the user (0700, files 0600), a blob is only ever handed out after its content
-// has been re-hashed, and only well-formed hashes are accepted, so neither a
-// corrupted store nor a hostile hash string can serve the wrong bytes or reach a
-// file outside it.
+// are private to the user (0700, files 0600), a blob is only ever handed out
+// after its content has been re-hashed, and only well-formed hashes are
+// accepted, so neither a corrupted store nor a hostile hash string can serve the
+// wrong bytes or reach a file outside it.
 type DirBlobs struct {
 	dir string
 

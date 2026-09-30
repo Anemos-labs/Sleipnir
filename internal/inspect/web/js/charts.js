@@ -89,7 +89,7 @@ export class TimelineChart {
   layout() {
     const compact = !!this.opts.compact;
     const top = compact ? 62 : 190, bot = compact ? 28 : 96;
-    const padL = 46, padR = 14, padT = compact ? 8 : 12, gap = compact ? 12 : 16, axis = compact ? 0 : 22;
+    const padL = 46, padR = 14, padT = compact ? 24 : 12, gap = compact ? 12 : 16, axis = compact ? 0 : 22;
     const H = padT + top + gap + bot + axis + (compact ? 4 : 0);
     return { compact, top, bot, padL, padR, padT, gap, axis, H, plotW: Math.max(10, this.W - padL - padR) };
   }

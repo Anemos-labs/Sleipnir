@@ -118,6 +118,9 @@ func Mutate(ctx context.Context, repoPath string, opts MutateOptions) ([]rl.Task
 		return nil, rep, err
 	}
 	authorDate := strings.TrimSpace(string(dateOut))
+	if d, err := time.Parse(time.RFC3339, authorDate); err == nil {
+		authorDate = d.UTC().Format(time.RFC3339) // one canonical form for date splits
+	}
 
 	files, err := r.listFiles(ctx, commit)
 	if err != nil {

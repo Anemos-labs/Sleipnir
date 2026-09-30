@@ -175,8 +175,10 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 	}
 	mk := e.mk
 	missing := e.wt.Prunable
+	admin := e.admin
 	if !missing {
-		if _, _, err := m.verifyTreeDir(ctx, e.wt.Path); err != nil {
+		var err error
+		if admin, _, err = m.verifyTreeDir(ctx, e.wt.Path); err != nil {
 			keep("not safe to delete: " + err.Error())
 			return
 		}
@@ -231,7 +233,7 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 		rep.Removed = append(rep.Removed, act)
 		return
 	}
-	if err := m.st.base.WorktreeRemove(ctx, e.wt.Path, true); err != nil {
+	if err := m.deleteTree(ctx, e.wt.Path, admin, true); err != nil {
 		keep("remove failed: " + err.Error())
 		return
 	}

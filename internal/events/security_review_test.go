@@ -4,11 +4,9 @@ package events
 // findings S33-S36, part of F12).
 //
 // TestSecReview_S33..S36 pin the fixes; they began as repro tests that failed while
-// the findings were open. The write-time redaction half of S35 needs a policy
-// decision and session wiring that this package cannot supply: its test stays
-// gated behind SLEIPNIR_REVIEW=1 and asserts the behaviour the finding asks for:
-//
-//	SLEIPNIR_REVIEW=1 go test -count=1 -run TestSecReview_S35b ./internal/events
+// the findings were open. The write-time redaction half of S35 was decided the
+// other way: the log is verbatim and private, redaction happens at export
+// (TestLogIsVerbatimAndPrivateByDesign).
 //
 // TestSecSound_* pin behaviour the review found sound.
 
@@ -303,23 +301,37 @@ func TestSecReview_S35_ExistingLooseLogIsTightenedButDirectoriesAreLeftAlone(t *
 	}
 }
 
-// S35 (second half): the log holds every tool call input and every full turn (tool outputs) in clear text, and
-// there is no write-time redaction hook. Left open: it needs a policy decision (redacting the log means a
-// replay no longer reproduces what the provider was sent) and wiring in the session; see the report.
-func TestSecReview_S35b_LogHasNoRedactionHook(t *testing.T) {
-	secRevGate(t)
+// S35 (second half), decided: the log is verbatim and private, and redaction happens at export.
+// The log is the source of truth for exact-prompt replay (rl/traj rebuilds every prompt from it and
+// checks the wire hash against what the provider was sent); a redacted log could not reproduce that,
+// so secrets are kept out of the training data by rl/redact at export time, and out of everyone
+// else's reach by the permissions S35 pinned above (directories 0700, files 0600). This test fixes
+// the decision: if a hook ever rewrites the text on the way into the log, exact replay breaks and
+// this test says why.
+func TestLogIsVerbatimAndPrivateByDesign(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sessions", "s1")
 	l, err := Open(dir, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = l.Emit("be-1", TypeToolCall, map[string]any{"name": "bash", "input": map[string]any{"command": "curl -H 'Authorization: Bearer sk-live-CANARY123' https://api.example"}})
+	cmd := "curl -H 'Authorization: Bearer canary-token-value' https://api.example"
+	if _, err := l.Emit("be-1", TypeToolCall, map[string]any{"name": "bash", "input": map[string]any{"command": cmd}}); err != nil {
+		t.Fatal(err)
+	}
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := os.ReadFile(filepath.Join(dir, "events.jsonl"))
-	if strings.Contains(string(raw), "sk-live-CANARY123") {
-		t.Errorf("S35: events.jsonl contains the bearer token typed into a tool call (no write-time redaction hook exists)")
+	raw, err := os.ReadFile(filepath.Join(dir, "events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "canary-token-value") {
+		t.Error("the log must keep the exact text: replay and wire-hash verification depend on it (redaction is applied at export)")
+	}
+	if runtime.GOOS != "windows" {
+		if fi, err := os.Stat(filepath.Join(dir, "events.jsonl")); err != nil || fi.Mode().Perm()&0o077 != 0 {
+			t.Errorf("a log that keeps secrets verbatim must be private, got %v (%v)", fi.Mode().Perm(), err)
+		}
 	}
 }
 
@@ -430,6 +442,7 @@ func TestSecReview_S36_OnlyATornFinalLineIsTruncated(t *testing.T) {
 		{"whole-event-missing-newline", evLine(1, "a") + strings.TrimSuffix(evLine(2, "b"), "\n"), 3, evLine(2, "b"), "", Recovery{}},
 		{"garbage-with-newline-last", evLine(1, "a") + evLine(2, "b") + "garbage\n", 3, "garbage\n", "", Recovery{CorruptLines: 1, FirstCorruptLine: 3}},
 		{"garbage-then-fragment", evLine(1, "a") + "garbage\n" + `{"seq":3,`, 2, "garbage\n", "", Recovery{CorruptLines: 1, FirstCorruptLine: 2, TornBytes: 9}},
+		{"not-a-log-at-all", "this is not\na log\n", 2, "this is not\na log\n", "", Recovery{CorruptLines: 2, FirstCorruptLine: 1}}, // log.open is seq 1; nothing is destroyed
 		{"empty-lines-are-damage-not-events", evLine(1, "a") + "\n\n" + evLine(2, "b"), 3, "\n\n", "", Recovery{CorruptLines: 2, FirstCorruptLine: 2}},
 		{"seq-zero-and-huge", evLine(1, "a") + evLine(0, "z") + `{"seq":18446744073709551615,"type":"x"}` + "\n" + `{"seq":9007199254740993}` + "\n", 2, "18446744073709551615", "", Recovery{CorruptLines: 3, FirstCorruptLine: 2}},
 	}

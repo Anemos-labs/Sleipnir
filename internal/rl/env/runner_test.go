@@ -770,3 +770,39 @@ func TestSampleSeedIsStable(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestRolloutSwarmDefaultsFromTheTask(t *testing.T) {
+	f := newRunnerFixture(t)
+	f.h.Default = FakeScript{}
+	swarm := f.task
+	swarm.ID = "swarm-task"
+	swarm.Kind = rl.TaskSwarm
+	swarm.Team = rl.Team{Mode: "swarm", Agents: 4}
+	var got []RunSpec
+	var mu sync.Mutex
+	f.h.Func = func(ctx context.Context, spec RunSpec) (RunResult, error) {
+		mu.Lock()
+		got = append(got, spec)
+		mu.Unlock()
+		return RunResult{Claimed: "done"}, nil
+	}
+	f.rollout([]rl.Task{swarm, f.task}, 1, f.opts())
+	by := map[string]RunSpec{}
+	for _, s := range got {
+		by[s.Task.ID] = s
+	}
+	if s := by["swarm-task"]; !s.Swarm || s.Agents != 4 {
+		t.Errorf("swarm task: swarm=%v agents=%d", s.Swarm, s.Agents)
+	}
+	if s := by["mathx-max"]; s.Swarm || s.Agents != 0 {
+		t.Errorf("single task: swarm=%v agents=%d", s.Swarm, s.Agents)
+	}
+	// Explicit options win.
+	opts := f.opts()
+	opts.Swarm, opts.Agents, opts.Force = true, 6, true
+	got = nil
+	f.rollout([]rl.Task{f.task}, 1, opts)
+	if len(got) != 1 || !got[0].Swarm || got[0].Agents != 6 {
+		t.Errorf("explicit swarm options: %+v", got)
+	}
+}

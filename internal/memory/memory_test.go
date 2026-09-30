@@ -645,7 +645,7 @@ func TestCRLFBOMAndCommentsNormaliseToTheSameText(t *testing.T) {
 		tree(t, w.root, map[string]string{"AGENTS.md": content})
 		renders[name] = Render(w.mustLoad(""))
 	}
-	want := "### AGENTS.md (project)\n# Title\n\nUse tabs.\nRun `make test`.\n"
+	want := "### AGENTS.md (project, unverified)\n# Title\n\nUse tabs.\nRun `make test`.\n"
 	for name, got := range renders {
 		if got != want {
 			t.Errorf("%s: render = %q, want %q", name, got, want)
@@ -710,10 +710,10 @@ func TestRenderIsByteStableAcrossMachines(t *testing.T) {
 		t.Fatalf("renders differ between two identical setups:\n%s\n---\n%s", a, b)
 	}
 	want := "### ~/.sleipnir/SLEIPNIR.md (user)\nuser rules\n" +
-		"\n### AGENTS.md (project)\n# Rules\n- be careful\n@docs/extra.md\n" +
-		"\n### docs/extra.md (import)\nextra rules\n" +
-		"\n### pkg/CLAUDE.md (dir)\npkg rules\n" +
-		"\n### SLEIPNIR.local.md (local)\nmy local tweaks\n"
+		"\n### AGENTS.md (project, unverified)\n# Rules\n- be careful\n@docs/extra.md\n" +
+		"\n### docs/extra.md (import, unverified)\nextra rules\n" +
+		"\n### pkg/CLAUDE.md (dir, unverified)\npkg rules\n" +
+		"\n### SLEIPNIR.local.md (local, unverified)\nmy local tweaks\n"
 	if a != want {
 		t.Fatalf("render:\n%q\nwant:\n%q", a, want)
 	}
@@ -743,7 +743,7 @@ func TestRenderFormat(t *testing.T) {
 		{Path: "a.md", Scope: "user", Text: "one"},
 		{Path: "b/c.md", Scope: "dir", Text: "two\nlines"},
 	})
-	want := "### a.md (user)\none\n\n### b/c.md (dir)\ntwo\nlines\n"
+	want := "### a.md (user)\none\n\n### b/c.md (dir, unverified)\ntwo\nlines\n"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}

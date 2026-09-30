@@ -43,7 +43,7 @@ func newQueueEnv(t *testing.T, o QueueOptions) *queueEnv {
 	repo := openRepo(t, dir)
 	m := newManager(t, repo)
 	log := &eventLog{}
-	o.OnEvent = log.fn()
+	m.OnEvent = log.fn() // the queue defaults to the manager's sink
 	q := mustQueue(t, m, o)
 	return &queueEnv{t: t, dir: dir, repo: repo, m: m, q: q, log: log}
 }
@@ -124,12 +124,16 @@ func TestQueueMergesSeveralAgentsSerially(t *testing.T) {
 		st.Branch != "sleipnir/s1/_integration" || st.Path != e.q.tree.Path || st.Active != nil || len(st.Waiting) != 0 {
 		t.Fatalf("status: %+v", st)
 	}
-	// events: queued/merged in order, with the payload the dashboard needs
-	want := []string{EventCreate, EventCreate, EventCreate, EventQueued, EventCommit, EventMerged, EventQueued, EventCommit, EventMerged, EventQueued, EventCommit, EventMerged}
-	got := e.log.types()
-	// the integration tree's own creation comes first
-	if len(got) < len(want) || strings.Join(got[len(got)-len(want)+3:], ",") != strings.Join(want[3:], ",") {
-		t.Fatalf("events:\n got %v\nwant …%v", got, want[3:])
+	// events: queued, commit, merged for each submission in order
+	var queueEvents []string
+	for _, ty := range e.log.types() {
+		if strings.HasPrefix(ty, "merge.") || ty == EventCommit {
+			queueEvents = append(queueEvents, ty)
+		}
+	}
+	wantEv := []string{EventQueued, EventCommit, EventMerged, EventQueued, EventCommit, EventMerged, EventQueued, EventCommit, EventMerged}
+	if strings.Join(queueEvents, ",") != strings.Join(wantEv, ",") {
+		t.Fatalf("events:\n got %v\nwant %v", queueEvents, wantEv)
 	}
 	ev, _ := e.log.first(EventMerged)
 	if ev.Agent != "be-1" || ev.Task != "T1 util" || ev.Data["before"] != base || ev.Data["after"] != r1.After || ev.Data["strategy"] != "merge" || ev.Data["verified"] != true {
@@ -217,7 +221,7 @@ func waitFor(t testing.TB, cond func() bool) {
 
 func TestQueueConflictLeavesNoTraceAndIsActionable(t *testing.T) {
 	e := newQueueEnv(t, QueueOptions{VerifyCmd: "true"})
-	a, b := e.agent("be-1"), e.agent("be-2")
+	a, b, x := e.agent("be-1"), e.agent("be-2"), e.agent("be-3")
 	edit(t, a, "internal/core/core.go", strings.Replace(coreV1, "return 1", "return 100", 1))
 	edit(t, b, "internal/core/core.go", strings.Replace(coreV1, "return 1", "return 200", 1))
 	edit(t, b, "docs/guide.md", "# guide\n\nline one\nline two\nline three\nline four\nline five\nline six by be-2\n")
@@ -310,8 +314,7 @@ func TestQueueConflictLeavesNoTraceAndIsActionable(t *testing.T) {
 		t.Fatal("be-2's other change did not land")
 	}
 	e.integrationClean()
-	// AbortUpdate abandons an Update
-	x := e.agent("be-3")
+	// AbortUpdate abandons an Update (x started before all this landed)
 	edit(t, x, "internal/core/core.go", strings.Replace(coreV1, "return 1", "return 7", 1))
 	if cf, err := x.Update(tctx(t), e.q.Tip()); err != nil || cf == nil {
 		t.Fatalf("Update: %v", err)
@@ -771,7 +774,7 @@ func TestQueueEmptyAndRejectedSubmissions(t *testing.T) {
 	if r := e.submit(a, "a"); !r.Merged() {
 		t.Fatalf("%+v", r)
 	}
-	if r := e.submit(a, "a again"); r.Outcome != OutcomeEmpty || !strings.Contains(r.Reason, "already integrated") {
+	if r := e.submit(a, "a again"); r.Outcome != OutcomeEmpty || r.Reason == "" {
 		t.Fatalf("resubmission: %+v", r)
 	}
 	// a tree that merged the tip in and added nothing of its own has nothing to land
@@ -799,19 +802,24 @@ func TestQueueEmptyAndRejectedSubmissions(t *testing.T) {
 	if r := strict.submit(c, "c"); !r.Merged() {
 		t.Fatalf("committed tree: %+v", r)
 	}
-	// oversize files
-	strict.m.MaxFileBytes = 500
-	d := strict.agent("d")
+	if st := strict.q.Status(); st.Rejected != 1 {
+		t.Fatalf("rejected count: %+v", st)
+	}
+	strict.integrationClean()
+
+	// oversize files and scope violations are refused when the queue commits for the agent
+	auto := newQueueEnv(t, QueueOptions{})
+	auto.m.MaxFileBytes = 500
+	d := auto.agent("d")
 	edit(t, d, "huge.bin", strings.Repeat("x", 4000))
-	if r := strict.submit(d, "d"); r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "huge.bin") {
+	if r := auto.submit(d, "d"); r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "huge.bin") {
 		t.Fatalf("oversize: %+v", r)
 	}
-	// scope
-	f := strict.agent("f")
+	f := auto.agent("f")
 	edit(t, f, "internal/core/core.go", "package core\n")
 	edit(t, f, "docs/other.md", "x\n")
 	edit(t, f, "cmd/app/main.go", "package main\n")
-	rr := mustSubmit(t, strict.q, Submission{Tree: f, Task: "f", Scope: []string{"internal/core/**"}, EnforceScope: true, Message: "f work"})
+	rr := mustSubmit(t, auto.q, Submission{Tree: f, Task: "f", Scope: []string{"internal/core/**"}, EnforceScope: true, Message: "f work"})
 	if rr.Outcome != OutcomeRejected || !strings.Contains(rr.Reason, "docs/other.md") || !strings.Contains(rr.Reason, "cmd/app/main.go") || strings.Contains(rr.Reason, "internal/core") {
 		t.Fatalf("scope: %+v", rr)
 	}
@@ -819,16 +827,16 @@ func TestQueueEmptyAndRejectedSubmissions(t *testing.T) {
 		t.Fatalf("out-of-scope files: %v", rr.Files)
 	}
 	// without EnforceScope the scope is advisory
-	if r := mustSubmit(t, strict.q, Submission{Tree: f, Scope: []string{"internal/core/**"}}); !r.Merged() {
+	if r := mustSubmit(t, auto.q, Submission{Tree: f, Scope: []string{"internal/core/**"}}); !r.Merged() {
 		t.Fatalf("advisory scope: %+v", r)
 	}
-	if st := strict.q.Status(); st.Rejected != 3 {
+	if st := auto.q.Status(); st.Rejected != 2 {
 		t.Fatalf("rejected count: %+v", st)
 	}
-	if strict.log.count(EventRejected) < 3 {
-		t.Fatalf("events: %v", strict.log.types())
+	if auto.log.count(EventRejected) < 2 {
+		t.Fatalf("events: %v", auto.log.types())
 	}
-	strict.integrationClean()
+	auto.integrationClean()
 }
 
 func TestQueueScopeJudgesOnlyTheSubmissionsOwnChanges(t *testing.T) {

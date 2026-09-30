@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -223,7 +222,7 @@ func TestDiffSurvivesHostileWorkspaceContent(t *testing.T) {
 		}
 	}
 	// A FIFO and a unix socket: opening the FIFO for reading would block forever.
-	if err := syscall.Mkfifo(filepath.Join(root, "fifo"), 0o644); err != nil {
+	if err := mkfifo(filepath.Join(root, "fifo")); err != nil {
 		t.Fatal(err)
 	}
 	// Names git or a filesystem could misread as control paths.

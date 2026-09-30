@@ -617,7 +617,9 @@ var (
 )
 
 // Render formats sources as markdown: one "### <path> (<scope>)" block per
-// source, in order, separated by a blank line. The output depends only on the
+// source, in order, separated by a blank line. Sources from the repository carry
+// ", unverified" after the scope, so nothing a repository author wrote reads like
+// something the user said. The output depends only on the
 // sources, so it is byte-stable across runs and machines.
 func Render(srcs []Source) string {
 	var b strings.Builder
@@ -629,6 +631,11 @@ func Render(srcs []Source) string {
 		b.WriteString(s.Path)
 		b.WriteString(" (")
 		b.WriteString(s.Scope)
+		if s.Scope != ScopeUser && !(s.Scope == ScopeImport && strings.HasPrefix(s.Path, "~/")) {
+			// Text that came out of the repository is guidance, not the user's word:
+			// anyone who can commit to it can write it.
+			b.WriteString(", unverified")
+		}
 		b.WriteString(")\n")
 		b.WriteString(s.Text)
 		b.WriteByte('\n')

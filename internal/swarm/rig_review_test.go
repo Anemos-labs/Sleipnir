@@ -255,7 +255,7 @@ func (r *rvRig) idle(id string) bool {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return !m.running
+	return m.life == lifeIdle
 }
 
 func (r *rvRig) running(id string) bool {
@@ -265,7 +265,7 @@ func (r *rvRig) running(id string) bool {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.running
+	return m.life == lifeRunning
 }
 
 // callTool runs one of the swarm's coordination tools as agent `as` with role `role`.

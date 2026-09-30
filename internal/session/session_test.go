@@ -209,6 +209,37 @@ func TestProjectInstructionsNeedTrust(t *testing.T) {
 	}
 }
 
+func TestUserInstructionsAndTheirImportsSurviveAnUntrustedProject(t *testing.T) {
+	repo := newRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("Project rule: PROJECT-MARKER.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	o.TrustProject = false
+	udir := filepath.Join(o.Home, ".sleipnir")
+	if err := os.MkdirAll(udir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(udir, "SLEIPNIR.md"), []byte("Personal rule: USER-MARKER.\n@prefs.md\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(udir, "prefs.md"), []byte("Imported preference: IMPORT-MARKER.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	text := s.Shared.Text()
+	for marker, want := range map[string]bool{"USER-MARKER": true, "IMPORT-MARKER": true, "PROJECT-MARKER": false} {
+		if got := strings.Contains(text, marker); got != want {
+			t.Errorf("%s in the shared layer = %v, want %v (untrusted project)", marker, got, want)
+		}
+	}
+}
+
 func TestReconIsDenseDeterministicAndBudgeted(t *testing.T) {
 	repo := newRepo(t)
 	build := func(budget int) *session.Recon {

@@ -358,7 +358,8 @@ func framingAt(s string) bool {
 	for _, name := range framingTags {
 		if len(s) >= len(name) && strings.EqualFold(s[:len(name)], name) {
 			rest := s[len(name):]
-			if rest == "" || !(rest[0] == '-' || rest[0] == '_' || rest[0] >= '0' && rest[0] <= '9' || rest[0]|0x20 >= 'a' && rest[0]|0x20 <= 'z') {
+			continues := rest != "" && (rest[0] == '-' || rest[0] == '_' || rest[0] >= '0' && rest[0] <= '9' || rest[0]|0x20 >= 'a' && rest[0]|0x20 <= 'z')
+			if !continues {
 				return true
 			}
 		}
@@ -522,7 +523,8 @@ func ValidTool(s string) bool {
 	}
 	for i := 0; i < len(name); i++ {
 		c := name[i]
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.' || c == ':' || c == '*') {
+		isName := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.' || c == ':' || c == '*'
+		if !isName {
 			return false
 		}
 	}

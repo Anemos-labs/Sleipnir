@@ -82,8 +82,10 @@
 // /proc/<pid>/environ of the harness, so the harness should also stop being
 // dumpable (prctl PR_SET_DUMPABLE) after it has read its keys.
 //
-// A hook cannot hang or flood the harness. Each runs in its own process group
-// with a timeout, and the whole group is killed (SIGTERM, then SIGKILL) when the
+// A hook cannot hang or flood the harness. Runner.MaxParallel bounds the hooks
+// of one event and Runner.MaxConcurrent all hooks of a Runner, so a swarm of
+// agents queues instead of forking hundreds of processes together. Each hook
+// runs in its own process group with a timeout, and the whole group is killed (SIGTERM, then SIGKILL) when the
 // timeout, the caller's context or an output limit ends it; background children
 // that keep its output open are ended when it is done. Output is capped, cleaned
 // of terminal escapes, invalid UTF-8 and hidden Unicode, and capped again when it

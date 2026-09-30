@@ -250,7 +250,8 @@ func listFiles(realDir string) (files []string, more bool) {
 				if err != nil || !mdfile.Within(realDir, real) {
 					continue
 				}
-				if fi, err := os.Stat(real); err == nil && fi.Mode().IsRegular() && !(rel == "" && strings.EqualFold(name, FileName)) {
+				isSkillFile := rel == "" && strings.EqualFold(name, FileName)
+				if fi, err := os.Stat(real); err == nil && fi.Mode().IsRegular() && !isSkillFile {
 					files = append(files, r)
 				}
 			}

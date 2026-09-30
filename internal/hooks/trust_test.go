@@ -97,7 +97,7 @@ func TestApproveCallback(t *testing.T) {
 		t.Errorf("runs = %+v", res.Runs)
 	}
 	// Decisions are remembered, for approvals and refusals alike.
-	os.Remove(filepath.Join(r.Dir, "a.txt"))
+	_ = os.Remove(filepath.Join(r.Dir, "a.txt"))
 	run(t, r, Event{Name: Stop})
 	run(t, r, Event{Name: Stop})
 	if len(asked) != 2 || !ran(r.Dir, "a.txt") {

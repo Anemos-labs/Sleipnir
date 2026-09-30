@@ -135,6 +135,28 @@ func normalizeType(t string) string {
 	return ""
 }
 
+// Clone returns a copy that shares no maps or slices with c, so a hook handed a
+// definition cannot change what the manager will run.
+func (c ServerConfig) Clone() ServerConfig {
+	out := c
+	out.Args = append([]string(nil), c.Args...)
+	out.AllowTools = append([]string(nil), c.AllowTools...)
+	out.DenyTools = append([]string(nil), c.DenyTools...)
+	if c.Env != nil {
+		out.Env = make(map[string]string, len(c.Env))
+		for k, v := range c.Env {
+			out.Env[k] = v
+		}
+	}
+	if c.Headers != nil {
+		out.Headers = make(map[string]string, len(c.Headers))
+		for k, v := range c.Headers {
+			out.Headers[k] = v
+		}
+	}
+	return out
+}
+
 // Remote reports whether the server is reached over the network.
 func (c ServerConfig) Remote() bool {
 	t := c.EffectiveType()
