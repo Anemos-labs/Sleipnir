@@ -41,15 +41,15 @@ when the cache economics say so, or at a cold moment for free.
 curl -fsSL https://raw.githubusercontent.com/reee344/sleipnir/main/scripts/install.sh | sh
 sleipnir demo                          # no key, no network: a scripted team of 14 agents, the cache at work, the bill
 
-# 2. point it at a model: any OpenAI-compatible endpoint works (marketplaces, OpenRouter, OpenAI, vLLM, ...)
+# 2. point it at a model: any OpenAI-compatible endpoint works (marketplaces, OpenRouter, OpenAI, vLLM, ...), and so does an Anthropic Messages endpoint
 export HEIMDALL_API_KEY=...            # or OPENROUTER_API_KEY / OPENAI_API_KEY
 sleipnir init --user                   # your providers and permission mode (project files cannot set these unless trusted)
-cd your-project && sleipnir init       # shareable project settings, AGENTS.md
+cd your-project && sleipnir init       # shareable project settings, AGENTS.md (read only with --trust-project)
 sleipnir models | head                 # catalogue with prices
 sleipnir doctor --model <model> --deep # measures streaming, tools, cache reporting, granularity, warm-up needs
 
 # 3. work
-sleipnir chat                          # interactive; /cost /context /agents /rewind /diff /plan
+sleipnir chat                          # interactive; /cost /context /compact /agents /rewind /diff /plan; --resume ID or --continue
 sleipnir run "fix the failing test in ./server"
 sleipnir swarm 8 "add pagination to every list endpoint and update the client" --verify "make test"
 ```
@@ -92,18 +92,23 @@ thing on your endpoint.
 | dialect | status | notes |
 |---|---|---|
 | OpenAI-style chat completions (OpenAI, Heimdall, OpenRouter, vLLM, SGLang, ...) | supported | automatic prefix caching, routing key for engine affinity, exact gateway costs, reasoning replay, optional token capture |
-| Anthropic Messages | see `docs/ARCHITECTURE.md` (status table) | explicit breakpoints (max 4, 20-block lookback, 5m/1h TTL), preserved thinking, turn-scoped hot tail |
-| OpenAI Responses | planned | |
+| Anthropic Messages (Anthropic, and gateways that speak it) | implemented: dialect `anthropic` (`docs/CONFIGURATION.md`) | explicit breakpoints (max 4, 20-block lookback, 5m/1h TTL), preserved thinking, turn-scoped hot tail; per-gateway switches for what a route drops (`cache_control`, thinking, mid-conversation system text); measure your endpoint with `sleipnir doctor --deep` |
+| OpenAI Responses | not built yet (`openai-responses` is accepted in config, but a session that uses it stops with an error) | |
 
 ## Safety model
 
 Tool output, web pages, file contents and mail are data, never instructions; pins and notes are user-role context, never
 system. Permissions are an engine (modes, rules, shell-syntax analysis, role profiles), not a prompt; writes pass a lease
-guard, a content-hash staleness check and a checkpoint; verifier files are never visible to a training policy. Real
-isolation for untrusted repositories needs an OS sandbox; see `docs/ARCHITECTURE.md`.
+guard, a content-hash staleness check and a checkpoint; verifier files are never visible to a training policy. What a
+repository brings (config keys that redirect keys or run code, instruction files, skills, slash commands, agent
+definitions, hooks) is ignored unless you pass `--trust-project`. Real isolation for untrusted repositories needs an OS
+sandbox; see `docs/ARCHITECTURE.md`.
 
 ## Documentation
 
+* `docs/CONFIGURATION.md` - where configuration lives, every key, providers and their options, permissions, trust, worked examples
+* `docs/EXTENDING.md` - instruction files, skills, slash commands, agent definitions, hooks, sessions and resume, compaction
+* `docs/CLI.md` - every command and flag (generated from `--help`), slash commands, exit codes
 * `docs/ARCHITECTURE.md` - system map, package map, one request end to end, decisions
 * `docs/CACHE-DESIGN.md` - the layered generational cache, planner, guard, simulation results
 * `docs/SWARM-PROTOCOL.md` - board, mail, leases, roles, warm gate, verifier-gated done
