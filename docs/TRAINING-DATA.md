@@ -241,6 +241,10 @@ and references it by hash; `sleipnir rl expand` and the Go/Python loaders expand
 
 ## 8. Governance and data quality
 
+* **Raw logs are private.** The event log and blobs hold everything the agent saw, including any secret a tool
+  printed (`cat .env`). They are written 0600 in 0700 directories and are never the shareable artefact: redaction
+  happens at export, not at write time, because redacting a blob would change its content hash and break exact-prompt
+  replay. Share exports, not run directories.
 * **Redaction** (deterministic, so identical text redacts identically and prefix sharing survives): secret patterns
   (cloud keys, tokens, private keys, JWTs, high-entropy strings near `key|token|secret|password`), emails, IPs,
   home-directory paths. Runs at export time over prompts, completions and observations.
