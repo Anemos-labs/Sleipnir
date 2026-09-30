@@ -1,0 +1,13 @@
+{
+  "id": "go-jsonpath",
+  "kind": "feature",
+  "lang": "go",
+  "difficulty": "hard",
+  "prompt": "Implement `Eval(doc any, path string) ([]any, error)` in the Go package in the repository root (`jsonpath.go`; it is currently a stub that always fails). It evaluates a tiny JSONPath subset over a document decoded by encoding/json into an `any`: `$`, `.name`, `['name']`, `[n]`, `[*]` and `..name`.\n\nREADME.md specifies everything precisely: the exact syntax (and which paths are syntax errors), what each segment selects, the exact order of the results (including how object members are ordered and the order in which `..name` visits a document), what a path that selects nothing returns, and when an error is returned. This subset deliberately differs from full JSONPath in places (for example there is no `.*`, no negative index, and `..` only takes a plain name), so follow the README, not your memory of JSONPath. More tests than the visible ones, covering the rest of the README, are run when your work is checked.\n\n`jsonpath_test.go` holds the README examples; do not edit any *_test.go file. Check your work with `go test ./...`.",
+  "verify": "go test -count=1 ./...",
+  "timeout_s": 120,
+  "protected": ["*_test.go"],
+  "team": {"mode": "single"},
+  "tags": ["go", "feature", "hard", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

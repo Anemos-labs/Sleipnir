@@ -1,0 +1,13 @@
+{
+  "id": "java-eventbus",
+  "kind": "fix",
+  "lang": "java",
+  "difficulty": "easy",
+  "prompt": "Our small synchronous event bus (`src/EventBus.java`, Java 21, default package, no dependencies) misbehaves when a listener changes the subscriptions while an event is being delivered. Users report that `publish` sometimes throws `ConcurrentModificationException`, and sometimes silently skips a listener, for example when a one-shot listener cancels its own `Subscription` from inside its callback, or when a listener subscribes another listener.\n\nFix `src/EventBus.java` so that it behaves as README.md specifies, without changing its public API. Read the README's rules on order and on what a listener that is subscribed or cancelled during a delivery receives (the 'Snapshot' rule); they are precise and have examples. `test/TestMain.java` is a plain program (no JUnit) with the README examples and a few more; do not edit it. Build and run it with: rm -rf build && mkdir -p build && javac -d build $(find . -name '*.java') && java -cp build TestMain\n\nMore tests than the visible ones, covering the rest of the README, are run when your work is checked.",
+  "verify": "rm -rf build && mkdir -p build && javac -d build $(find . -name '*.java') && java -cp build TestMain",
+  "timeout_s": 120,
+  "protected": ["test/**"],
+  "team": {"mode": "single"},
+  "tags": ["java", "fix", "easy", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

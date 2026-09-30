@@ -1,0 +1,13 @@
+{
+  "id": "java-matrix",
+  "kind": "feature",
+  "lang": "java",
+  "difficulty": "medium",
+  "prompt": "`src/Matrix.java` is an immutable matrix of `long` entries (Java 21, default package, no dependencies, no JUnit). Construction, element access, equals/hashCode/toString are done; `multiply`, `transpose`, `determinant` and `inverse` are stubs that throw `UnsupportedOperationException`. Implement them.\n\nREADME.md specifies them exactly: the matrix product and its shape rule, the transpose, the determinant (exact integer arithmetic on `long`, never floating point, for square matrices only, and correct when a pivot position holds a zero), and `inverse()`, which returns a matrix only for square matrices whose determinant is 1 or -1 and otherwise throws a specific exception type (IllegalArgumentException for a non-square matrix, ArithmeticException for determinant 0 or any other determinant value). No method may modify its operands. Follow the README, including the exception types. More tests than the visible ones, covering the rest of the README, are run when your work is checked.\n\n`test/TestMain.java` is a plain program with the README examples and a tiny assertion helper (it exits with status 1 if any check fails); do not edit it. Build and run with: rm -rf build && mkdir -p build && javac -d build $(find . -name '*.java') && java -cp build TestMain",
+  "verify": "rm -rf build && mkdir -p build && javac -d build $(find . -name '*.java') && java -cp build TestMain",
+  "timeout_s": 120,
+  "protected": ["test/**"],
+  "team": {"mode": "single"},
+  "tags": ["java", "feature", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

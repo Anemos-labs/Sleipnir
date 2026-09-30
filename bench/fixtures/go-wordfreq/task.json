@@ -1,0 +1,13 @@
+{
+  "id": "go-wordfreq",
+  "kind": "feature",
+  "lang": "go",
+  "difficulty": "medium",
+  "prompt": "Implement `TopN` in the Go package in the repository root (`wordfreq.go`); it is currently a stub that returns nil.\n\n`func TopN(text string, n int, stop []string) []Count` returns the n most frequent words of text, most frequent first, with words of equal frequency ordered alphabetically, after dropping the words in stop. What counts as a word (Unicode letters, apostrophes inside words), how case is folded, how stop words are matched, how ties are ordered, and the edge cases (n <= 0, fewer than n distinct words, and so on) are all specified exactly in README.md, with worked examples. Follow it to the letter: more tests than the visible ones, covering the rest of the README, are run when your work is checked.\n\n`wordfreq_test.go` holds the README examples; do not edit any *_test.go file. Check your work with `go test ./...`.",
+  "verify": "go test -count=1 ./...",
+  "timeout_s": 120,
+  "protected": ["*_test.go"],
+  "team": {"mode": "single"},
+  "tags": ["go", "feature", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}
