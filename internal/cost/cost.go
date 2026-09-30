@@ -98,11 +98,16 @@ type Weights struct {
 
 // Weights derives relative prices. Missing cache prices fall back to the
 // common 0.1x read / 1.25x write structure.
+//
+// Weights does not repair a price that cannot be right: a NaN or negative figure
+// comes out as a NaN or negative weight, so that a caller which has to decide
+// (internal/rl/reward refuses such a target, rather than pricing an episode at NaN)
+// can see it. Prices that come from outside the process are checked where they
+// enter (Model.Validate, Table.Put, gateway.Vet); use Price.Validate before trusting
+// weights derived from a price of unknown origin.
 func (p Price) Weights() Weights {
 	in := p.InputPerM
-	if !finite(in) || in <= 0 || p.Validate() != nil {
-		// No usable input price (or a price table that cannot be trusted): the
-		// common structure, never a ratio of garbage.
+	if in <= 0 {
 		return Weights{Read: 0.1, Write5m: 1.25, Write1h: 2, Output: 5}
 	}
 	w := Weights{

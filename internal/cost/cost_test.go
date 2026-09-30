@@ -231,14 +231,16 @@ func TestHostileCatalogueCannotMakeABudgetUnreachable(t *testing.T) {
 	}
 }
 
-func TestWeightsIgnoreGarbage(t *testing.T) {
+// Weights keeps two promises that callers depend on. A price with no usable input
+// price has the common structure; and a price that cannot be right is NOT repaired:
+// the invalid figure shows up in the weights, where internal/rl/reward looks for it
+// and refuses the target (a test there pins that refusal). Prices from outside the
+// process are stopped earlier, by Validate at the table boundary.
+func TestWeights(t *testing.T) {
 	want := Weights{Read: 0.1, Write5m: 1.25, Write1h: 2, Output: 5}
 	for name, p := range map[string]Price{
 		"zero":     {},
-		"NaN":      {InputPerM: math.NaN(), OutputPerM: 1},
-		"Inf":      {InputPerM: math.Inf(1), OutputPerM: 1},
 		"negative": {InputPerM: -1, OutputPerM: 1},
-		"NaN out":  {InputPerM: 1, OutputPerM: math.NaN()},
 	} {
 		if got := p.Weights(); got != want {
 			t.Errorf("%s: Weights = %+v, want the default structure %+v", name, got, want)
@@ -247,5 +249,27 @@ func TestWeightsIgnoreGarbage(t *testing.T) {
 	w := Price{InputPerM: 2, OutputPerM: 10, CacheReadPerM: 0.5}.Weights()
 	if w.Read != 0.25 || w.Output != 5 || w.Write5m != 1.25 || w.Write1h != 2 {
 		t.Errorf("ordinary weights changed: %+v", w)
+	}
+}
+
+func TestWeightsDoNotHideAnInvalidPrice(t *testing.T) {
+	if w := (Price{InputPerM: 3, OutputPerM: math.NaN()}).Weights(); !math.IsNaN(w.Output) {
+		t.Errorf("a NaN output price must stay visible, got %+v", w)
+	}
+	if w := (Price{InputPerM: 3, OutputPerM: 15, CacheReadPerM: -1}).Weights(); w.Read >= 0 {
+		t.Errorf("a negative cache-read price must stay visible, got %+v", w)
+	}
+	if w := (Price{InputPerM: math.NaN(), OutputPerM: 15}).Weights(); !math.IsNaN(w.Output) {
+		t.Errorf("a NaN input price must stay visible, got %+v", w)
+	}
+	// ... and Validate is what tells the caller so.
+	for _, p := range []Price{
+		{InputPerM: 3, OutputPerM: math.NaN()},
+		{InputPerM: 3, OutputPerM: 15, CacheReadPerM: -1},
+		{InputPerM: math.NaN(), OutputPerM: 15},
+	} {
+		if p.Validate() == nil {
+			t.Errorf("%+v passed Validate", p)
+		}
 	}
 }
