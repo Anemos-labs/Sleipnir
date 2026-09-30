@@ -80,10 +80,14 @@ func cmdChat(ctx context.Context, args []string) error {
 		case line == "":
 			continue
 		case strings.HasPrefix(line, "/"):
-			if quit := slash(s, line); quit {
+			quit, send := slash(ctx, s, line)
+			if quit {
 				return nil
 			}
-			continue
+			if send == "" {
+				continue
+			}
+			line = send // a custom command or skill expanded into a prompt
 		}
 		runTurn(ctx, s, line)
 	}
@@ -150,7 +154,7 @@ func runTurn(parent context.Context, s *session.Session, goal string) {
 	}
 }
 
-const chatHelp = `/help              this text
+const chatHelp = `/help              this text (and your custom commands and skills)
 /cost              tokens, cost and cache hit ratio so far
 /context           layer sizes of the current prompt (what is pinned, what is thread)
 /agents            swarm board: agents and tasks
@@ -158,16 +162,21 @@ const chatHelp = `/help              this text
 /rewind            list checkpoints;  /rewind <id> restores files to before that turn
 /diff <id>         show what changed since a checkpoint
 /recon             show the project map pinned in the shared layer
+/skills            list the skills the model can load
 /exit              quit (also Ctrl-D)`
 
-// slash handles a slash command; it reports whether to quit.
-func slash(s *session.Session, line string) bool {
+// slash handles a slash command. It reports whether to quit, and the prompt to
+// send when the command was a custom one (or a skill) that expanded into text.
+func slash(ctx context.Context, s *session.Session, line string) (quit bool, send string) {
 	f := strings.Fields(line)
 	switch f[0] {
 	case "/exit", "/quit":
-		return true
+		return true, ""
 	case "/help", "/?":
 		fmt.Fprintln(os.Stderr, chatHelp)
+		printCustom(s, os.Stderr)
+	case "/skills":
+		printSkills(s, os.Stderr)
 	case "/cost":
 		printCost(s)
 	case "/context":
@@ -198,9 +207,75 @@ func slash(s *session.Session, line string) bool {
 			fmt.Fprintln(os.Stderr, s.Shared.Text())
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %s; try /help\n", f[0])
+		args := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
+		prompt, notices, ok, err := expandSlash(ctx, s, strings.TrimPrefix(f[0], "/"), args)
+		for _, n := range notices {
+			fmt.Fprintln(os.Stderr, "note:", n)
+		}
+		switch {
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "%s: %v\n", f[0], err)
+		case !ok:
+			fmt.Fprintf(os.Stderr, "unknown command %s; try /help\n", f[0])
+		default:
+			return false, prompt
+		}
 	}
-	return false
+	return false, ""
+}
+
+// expandSlash turns a custom command or a user-invocable skill into the prompt
+// to send. ok is false when nothing of that name exists.
+func expandSlash(ctx context.Context, s *session.Session, name, args string) (prompt string, notices []string, ok bool, err error) {
+	if reg := s.Commands(); reg != nil {
+		if _, found := reg.Get(name); found {
+			exp, err := reg.Expand(ctx, name, args)
+			if err != nil {
+				return "", nil, true, err
+			}
+			return exp.Prompt, exp.Notices, true, nil
+		}
+	}
+	if s.Skills != nil {
+		if _, found := s.Skills.Get(name); found {
+			l, err := s.Skills.LoadForUser(name, args)
+			if err != nil {
+				return "", nil, true, err
+			}
+			return l.Text(), nil, true, nil
+		}
+	}
+	return "", nil, false, nil
+}
+
+// printCustom lists the user's own commands and skills under /help.
+func printCustom(s *session.Session, w io.Writer) {
+	if reg := s.Commands(); reg != nil {
+		cmds := reg.List()
+		if len(cmds) > 0 {
+			fmt.Fprintln(w, "\ncustom commands:")
+		}
+		for _, c := range cmds {
+			fmt.Fprintf(w, "/%-17s %s\n", c.Name, firstText(c.Description, 90))
+		}
+	}
+	if s.Skills != nil && s.Skills.Len() > 0 {
+		fmt.Fprintln(w, "\nskills (also loadable by the model; /skills lists them):")
+	}
+}
+
+func printSkills(s *session.Session, w io.Writer) {
+	if s.Skills == nil || s.Skills.Len() == 0 {
+		fmt.Fprintln(w, "no skills (put SKILL.md files under .sleipnir/skills/<name>/ or ~/.sleipnir/skills/<name>/)")
+		return
+	}
+	for _, k := range s.Skills.Skills() {
+		who := ""
+		if k.DisableModelInvocation {
+			who = " (you only)"
+		}
+		fmt.Fprintf(w, "  %-20s %s%s\n", k.Name, firstText(k.Summary(), 90), who)
+	}
 }
 
 func printCost(s *session.Session) {

@@ -104,6 +104,42 @@ func TestRunCommandEndToEnd(t *testing.T) {
 	}
 }
 
+// The README says `sleipnir swarm 8 "goal" --verify "make test"`: flags after the
+// prompt must be flags, not more goal.
+func TestRunTakesFlagsAfterThePrompt(t *testing.T) {
+	var seen string
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(c *mock.Call) mock.Reply {
+		seen = c.LastUser()
+		return mock.Reply{Text: "ok"}
+	})
+	ts := srv.Start()
+	defer ts.Close()
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git unavailable: %v %s", err, out)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".sleipnir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := fmt.Sprintf(`{"providers":{"mock":{"base_url":%q}},"models":{"default":"mock/mock-1"}}`, ts.URL)
+	if err := os.WriteFile(filepath.Join(repo, ".sleipnir", "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SLEIPNIR_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	var err error
+	out := capture(t, func() {
+		err = cmdRun(context.Background(), []string{"say", "hello", "--cwd", repo, "--mode", "bypass", "--no-web", "--trust-project", "--quiet"})
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	// The pins and the prompt share the first user message; the prompt is its tail.
+	if !strings.HasSuffix(strings.TrimSpace(seen), "say hello") || strings.Contains(seen, "--cwd") {
+		t.Fatalf("the model was sent %q: flags after the prompt were swallowed into it", seen)
+	}
+}
+
 func TestSimAndRoleModelFlags(t *testing.T) {
 	kf := kvFlags{}
 	if err := kf.Set("manager=heimdall/x"); err != nil || kf["manager"] != "heimdall/x" {

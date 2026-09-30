@@ -9,11 +9,6 @@ import (
 	"time"
 )
 
-// termGrace is how long a command may take to die after SIGTERM before the whole
-// group is sent SIGKILL. It must stay below waitDelay, the point at which the
-// standard library gives up on the leader on its own.
-const termGrace = 1500 * time.Millisecond
-
 // configureProc puts the command in a session of its own: pid == process-group
 // id, so signalling -pid reaches every descendant that did not deliberately leave
 // (hooks or filters we failed to disarm, a credential helper), and the command

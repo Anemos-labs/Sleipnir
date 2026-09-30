@@ -502,11 +502,16 @@ func allSettled(s *Snapshot, ids []string) bool {
 // to todo, agents that failed, and alerts that appeared.
 func diffSnapshots(a, b *Snapshot) []string {
 	var out []string
+	before := make(map[string]int, len(a.Tasks))
+	for i := range a.Tasks {
+		before[a.Tasks[i].ID] = i
+	}
 	for _, t := range b.Tasks {
-		old, ok := a.Task(t.ID)
+		i, ok := before[t.ID]
 		if !ok {
 			continue // the waiting agent created it; it is not news
 		}
+		old := a.Tasks[i]
 		if old.Status == t.Status && old.Rev == t.Rev {
 			continue
 		}

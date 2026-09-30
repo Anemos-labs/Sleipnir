@@ -23,10 +23,14 @@ const (
 	DefaultMaxOutput = 32 << 20
 	maxStderrBytes   = 256 << 10
 	// waitDelay bounds how long we wait for output pipes to close after the
-	// process group has been told to stop (SIGTERM, then SIGKILL after termGrace, see
-	// proc_unix.go): a grandchild that escaped the group and still holds the pipe
-	// must not hang us.
+	// process group has been told to stop: a grandchild that escaped the group and
+	// still holds the pipe must not hang us.
 	waitDelay = 2 * time.Second
+	// termGrace is how long a command may take to die after SIGTERM before the
+	// whole process group is sent SIGKILL (proc_unix.go; other platforms have no
+	// such step). It must stay below waitDelay, the point at which the standard
+	// library gives up on the leader on its own.
+	termGrace = 1500 * time.Millisecond
 	// DefaultLockWait is how long a mutating command keeps retrying while another
 	// git process holds a lock file.
 	DefaultLockWait = 10 * time.Second

@@ -1,15 +1,20 @@
 package session
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/reee344/sleipnir/internal/agentdefs"
+	"github.com/reee344/sleipnir/internal/commands"
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/skills"
 	"github.com/reee344/sleipnir/internal/swarm"
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 // Extensions are the user-written parts of a harness: skills and role
@@ -19,6 +24,7 @@ import (
 // at all (see protectedConfigDirs).
 type extensions struct {
 	skills   *skills.Catalog
+	commands *commands.Registry
 	defs     []agentdefs.Def
 	roles    swarm.Roles
 	profiles map[string]perm.RoleProfile
@@ -40,6 +46,18 @@ func (s *Session) loadExtensions() {
 	ext.skills = cat
 	for _, w := range warns {
 		ext.warnings = append(ext.warnings, "skills: "+w.String())
+	}
+
+	// Custom slash commands: markdown templates. Their !`shell` and @file parts
+	// run through the permission engine like anything else.
+	reg, cwarns := commands.Load(commands.Opts{
+		Root: o.Root, Home: o.Home, TrustProject: o.TrustProject,
+		Builtins: append(commands.DefaultBuiltins(), "mode", "diff", "recon", "skill"),
+		Exec:     s.userShell, AllowRead: s.allowRead,
+	})
+	ext.commands = reg
+	for _, w := range cwarns {
+		ext.warnings = append(ext.warnings, "commands: "+w.String())
 	}
 
 	roles := swarm.Roles{}
@@ -116,4 +134,45 @@ var protectedConfigDirs = []string{
 	"Edit(./.sleipnir/**)", "Edit(./.claude/**)",
 	"Edit(./.git/hooks/**)", "Edit(./.git/config)",
 	"Edit(~/.sleipnir/**)", "Edit(~/.claude/**)",
+}
+
+// Commands returns the custom slash commands discovered at start (nil-safe).
+func (s *Session) Commands() *commands.Registry {
+	if s.ext == nil {
+		return nil
+	}
+	return s.ext.commands
+}
+
+// userShell runs a shell command a slash command asked for. It is the user's
+// template, but the command still goes through the permission engine (which
+// refuses what an unattended session would refuse) and the shell tool's own
+// environment scrubbing.
+func (s *Session) userShell(ctx context.Context, cmd string) (string, error) {
+	bash, ok := s.Registry.Get("bash")
+	if !ok {
+		return "", errors.New("the shell tool is not available")
+	}
+	in, _ := json.Marshal(map[string]any{"command": cmd})
+	env := (&tools.Env{
+		Agent: "user", Cwd: s.opts.Cwd, Root: s.opts.Root, Perm: s.Perm, Blobs: s.Blobs, Emit: s.Log,
+		Now: s.opts.Now,
+	}).Defaults()
+	res, err := bash.Run(ctx, &tools.Call{ID: "slash", Name: "bash", Input: in, Env: env})
+	if err != nil {
+		return "", err
+	}
+	if res.IsError {
+		return "", errors.New(res.Text)
+	}
+	return res.Text, nil
+}
+
+// allowRead is asked before a slash command's @path include is read.
+func (s *Session) allowRead(ctx context.Context, path string) error {
+	d := s.Perm.Check(ctx, perm.Request{Agent: "user", Tool: "read", Paths: []string{path}, Summary: "include " + path + " in a slash command"})
+	if !d.Allow {
+		return errors.New(d.Reason)
+	}
+	return nil
 }

@@ -87,6 +87,34 @@ func TestManagerConnectsConcurrentlyAndReportsPartialFailure(t *testing.T) {
 	}
 }
 
+func TestStartReturnsAfterTheOutcomeIsRecorded(t *testing.T) {
+	// A caller reads Status as soon as Start returns. The supervisor must have
+	// stored why a server failed (and that it is refused or failed for good) by
+	// then, not a moment later; repeated so that the old ordering shows up.
+	for i := 0; i < 300; i++ {
+		o := Options{
+			Servers: map[string]ServerConfig{
+				"gone":    {Type: TypeStdio, Command: "definitely-not-a-real-binary-xyz", Trust: true, Scope: ScopeUser},
+				"project": {Type: TypeStdio, Command: "definitely-not-a-real-binary-xyz", Scope: ScopeProject},
+			},
+			Backoff: Backoff{Min: time.Hour, Max: time.Hour, MaxFailures: 1},
+		}
+		m := NewManager(o)
+		err := m.Start(context.Background())
+		gone, project := statusOf(m, "gone"), statusOf(m, "project")
+		_ = m.Close()
+		if !errors.Is(err, ErrNotApproved) {
+			t.Fatalf("Start err = %v", err)
+		}
+		if gone.State != StateFailed || gone.Error == "" {
+			t.Fatalf("round %d: gone = %+v", i, gone)
+		}
+		if project.State != StateRefused || !strings.Contains(project.Error, "not started without approval") {
+			t.Fatalf("round %d: project = %+v", i, project)
+		}
+	}
+}
+
 func TestManagerStartsServersInParallel(t *testing.T) {
 	skipNotUnix(t)
 	servers := map[string]ServerConfig{}

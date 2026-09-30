@@ -77,6 +77,7 @@ type member struct {
 	idleAt    time.Time
 	gateTries int
 	stuckWarn bool
+	autoRuns  int
 	box       overflow
 	emitted   string
 
@@ -517,7 +518,6 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	}
 	if line != "" {
 		s.notifyManager(line)
-		line = ""
 	}
 	s.Leases.ReleaseAll(m.id)
 	s.Board.ClearAlertKey("stuck", "stuck:"+m.id)
@@ -539,7 +539,7 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	m.mu.Unlock()
 	m.setState(s, state, stateLine)
 	s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
-	s.afterIdle(m)
+	s.afterIdle(m, kind == stopClean)
 }
 
 // currentTask picks the assignment an idle agent's status shows: what it still
@@ -651,15 +651,34 @@ func tailText(s string, max int) string {
 	return cleanBlock(s, max+2)
 }
 
+// maxAutoRuns bounds how many runs in a row the harness starts on its own for one
+// worker because mail is still waiting after a run; a new message starts the count
+// again.
+const maxAutoRuns = 3
+
 // afterIdle runs when a worker becomes idle: mail that arrived while it was
 // finishing (or feedback the harness just queued for it) starts another run
-// instead of waiting for the next message.
-func (s *Swarm) afterIdle(m *member) {
+// instead of waiting for the next message. A run that ended abnormally does not
+// restart by itself (it would fail again at once); the mail waits for the next trigger.
+func (s *Swarm) afterIdle(m *member, restart bool) {
 	if m.manager {
 		return
 	}
 	m.pump(s)
-	if m.a.PendingInbox() > 0 {
+	if !restart {
+		return
+	}
+	if m.a.PendingInbox() == 0 {
+		m.mu.Lock()
+		m.autoRuns = 0
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Lock()
+	m.autoRuns++
+	n := m.autoRuns
+	m.mu.Unlock()
+	if n <= maxAutoRuns {
 		s.wake(m)
 	}
 }

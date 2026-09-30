@@ -86,6 +86,7 @@ func (m *member) receive(s *Swarm, msg Message) error {
 	if m.life == lifeRetired {
 		return fmt.Errorf("%s has been retired", m.id)
 	}
+	m.autoRuns = 0
 	if m.box.empty() && m.a.PendingInbox() < s.cfg.InboxSoftCap {
 		m.a.Send(msg.Frame())
 	} else {
@@ -98,21 +99,24 @@ func (m *member) receive(s *Swarm, msg Message) error {
 	return nil
 }
 
-// pump moves coalesced mail into the inbox once there is room for it.
-func (m *member) pump(s *Swarm) {
+// pump moves coalesced mail into the inbox once there is room for it, and reports
+// whether it did.
+func (m *member) pump(s *Swarm) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.box.empty() || m.life == lifeRetired {
-		return
+		return false
 	}
 	if m.a.PendingInbox() >= max(s.cfg.InboxSoftCap/2, 1) {
-		return
+		return false
 	}
 	m.a.Send(m.box.digest(s.nextHarnessID()))
+	m.autoRuns = 0
 	select {
 	case m.notify <- struct{}{}:
 	default:
 	}
+	return true
 }
 
 // hasMail reports whether anything is waiting for the member.

@@ -478,13 +478,3 @@ func classifyCommand(cmd string) (isTest, masked bool) {
 	}
 	return true, masked
 }
-
-func shortPath(p string) string {
-	if p == "" {
-		return "a file"
-	}
-	if j := strings.LastIndexAny(p, `/\`); j >= 0 {
-		return p[j+1:]
-	}
-	return p
-}

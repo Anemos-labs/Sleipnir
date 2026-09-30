@@ -1271,3 +1271,43 @@ func TestQueueRefusesForeignAndIntegrationTrees(t *testing.T) {
 		t.Fatalf("second queue: %v", err)
 	}
 }
+
+// The integration tree belongs to the queue. What a swarm iterates over to look
+// after its agents (Trees, Get) never hands it out, List labels it, and shutting
+// the agents down with Manager.Close does not pull it from under the queue.
+func TestTheIntegrationTreeBelongsToTheQueueNotToTheAgents(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a := e.agent("a")
+	if ts := e.m.Trees(); len(ts) != 1 || ts[0] != a {
+		t.Fatalf("Trees: %v", ts)
+	}
+	if got, ok := e.m.Get(integrationName); ok {
+		t.Fatalf("Get(%q) handed out the integration tree: %v", integrationName, got)
+	}
+	infos, err := e.m.List(tctx(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	integration := 0
+	for _, in := range infos {
+		if in.Integration {
+			integration++
+			if in.Path != e.q.tree.Path {
+				t.Fatalf("List: the integration entry is %s, the queue's tree is %s", in.Path, e.q.tree.Path)
+			}
+		}
+	}
+	if len(infos) != 2 || integration != 1 {
+		t.Fatalf("List: want the agent tree and the integration tree, got %+v", infos)
+	}
+	must(t, e.m.Close(tctx(t), true))
+	if !exists(e.q.tree.Path) {
+		t.Fatal("Manager.Close removed the integration tree")
+	}
+	b := e.agent("b")
+	edit(t, b, "b.txt", "b\n")
+	if r := e.submit(b, "b"); !r.Merged() {
+		t.Fatalf("the queue after Manager.Close: %+v", r)
+	}
+	e.integrationClean()
+}

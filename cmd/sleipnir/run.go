@@ -64,10 +64,11 @@ func cmdRun(ctx context.Context, args []string) error {
 		fmt.Fprint(os.Stderr, "usage: sleipnir run [flags] <prompt | ->\n\nRuns one goal through the harness. The prompt may be '-' to read stdin.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(args); err != nil {
+	words, err := parseInterspersed(fs, args)
+	if err != nil {
 		return err
 	}
-	prompt := strings.TrimSpace(strings.Join(fs.Args(), " "))
+	prompt := strings.TrimSpace(strings.Join(words, " "))
 	if prompt == "-" || (prompt == "" && !term.IsTerminal(int(os.Stdin.Fd()))) {
 		b, err := io.ReadAll(io.LimitReader(os.Stdin, 8<<20))
 		if err != nil {

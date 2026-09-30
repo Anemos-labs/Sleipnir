@@ -745,3 +745,33 @@ func TestConfigDefaults(t *testing.T) {
 		t.Fatalf("board limits: %+v", b)
 	}
 }
+
+// A run that ends abnormally is not restarted on its own because mail is waiting: it
+// would fail again at once. Here the worker's own budget is spent; mail to it starts
+// one run per message, never a loop.
+func TestAbnormalStopDoesNotRestartOnItsOwn(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4, AgentBudgetUSD: 1, Router: looseRouter()}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "ok", Usage: core.Usage{InputTokens: 1_000_000}} // $4 per request
+	})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "the first run", func() bool { return r.idle(id) && r.prov.callsFor(id) == 1 })
+	for i := 0; i < 3; i++ {
+		if _, err := r.sw.Router.Send("mgr", id, "info", fmt.Sprintf("ping %d", i)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	ends := len(r.log.OfType(events.TypeAgentEnd))
+	if ends > 8 {
+		t.Fatalf("%d runs ended for one worker and three messages: the harness is restarting a worker that fails at once", ends)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if again := len(r.log.OfType(events.TypeAgentEnd)); again != ends {
+		t.Fatalf("runs keep ending with nothing new to do (%d -> %d)", ends, again)
+	}
+}
