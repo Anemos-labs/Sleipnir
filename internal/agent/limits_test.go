@@ -276,7 +276,7 @@ func TestSec_S24_ResultsOverBudgetSpillBehindARecallHandle(t *testing.T) {
 	var mu sync.Mutex
 	var first, second []string
 	var recalled string
-	handleRe := regexp.MustCompile(`out_[0-9a-f]{8}`)
+	handleRe := regexp.MustCompile(`out_[0-9a-f]{16,}`)
 	r := newLimRig(t, func(c *agent.Config) { c.MaxTurnResultChars = 10_000 }, fts, func(c *mock.Call) mock.Reply {
 		mu.Lock()
 		defer mu.Unlock()
@@ -311,7 +311,7 @@ func TestSec_S24_ResultsOverBudgetSpillBehindARecallHandle(t *testing.T) {
 		if !strings.Contains(m, fmt.Sprintf("HEAD-%d", i)) || !strings.Contains(m, fmt.Sprintf("TAIL-%d", i)) {
 			t.Errorf("result %d lost its head or tail", i)
 		}
-		if !strings.Contains(m, "exceeded 10000 characters") || !regexp.MustCompile(`saved as out_[0-9a-f]{8}: recall\(handle="out_[0-9a-f]{8}"\)`).MatchString(m) {
+		if !strings.Contains(m, "exceeded 10000 characters") || !regexp.MustCompile(`saved as out_[0-9a-f]{16,}: recall\(handle="out_[0-9a-f]{16,}"\)`).MatchString(m) {
 			t.Errorf("result %d does not say where the rest is: ...%s", i, m[len(m)-200:])
 		}
 		if len(m) > 4000 {

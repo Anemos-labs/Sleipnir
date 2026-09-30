@@ -47,8 +47,10 @@ type Result struct {
 	Blocks []core.Block
 	// FullRef is the blob holding the complete output when Text was truncated;
 	// Handle is the short id the model can pass to the recall tool.
-	FullRef   core.Hash
-	Handle    string
+	FullRef core.Hash
+	Handle  string
+	// FullChars is the length of the complete output FullRef holds.
+	FullChars int
 	Truncated bool
 	// Meta carries structured details for logs and UIs (exit code, diff, ...).
 	Meta map[string]any

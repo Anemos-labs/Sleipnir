@@ -44,7 +44,7 @@ func (e *Env) Finish(text string, isErr bool) *Result {
 	res.Truncated = true
 	if e.Blobs != nil {
 		if h, err := e.Blobs.Put([]byte(text)); err == nil {
-			res.FullRef = h
+			res.FullRef, res.FullChars = h, len(text)
 			res.Handle = e.Handles.Add(h, len(text))
 			res.Text += fmt.Sprintf("\n[full output saved as %s (%d chars); use recall to read a range]", res.Handle, len(text))
 		}

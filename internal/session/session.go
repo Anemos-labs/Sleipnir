@@ -152,7 +152,9 @@ type Session struct {
 
 	cfgRep      *config.Report // where each configuration value came from (nil when Options.Config was given)
 	mcp         *mcpState
-	unlock      func() // releases the lock on the session directory
+	archive     *kv.Archive    // folded turns, for recall
+	handles     *tools.Handles // recall handles of truncated output
+	unlock      func()         // releases the lock on the session directory
 	ext         *extensions
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
@@ -520,6 +522,7 @@ func (s *Session) build(ctx context.Context) error {
 		web.Register(reg, wc)
 	}
 	archive := kv.NewArchive(s.Blobs)
+	s.archive = archive
 	reg.Register(recall.New(archive))
 	// Always registered: the tool list must not depend on the project.
 	reg.Register(skilltool.New(s.Skills))
@@ -549,6 +552,7 @@ func (s *Session) build(ctx context.Context) error {
 
 	files := tools.NewFileState()
 	handles := tools.NewHandles()
+	s.handles = handles
 	est := core.NewBytesEstimator()
 
 	if !o.Swarm {
@@ -834,6 +838,9 @@ func (s *Session) Close() error {
 	s.mu.Unlock()
 	if s.Swarm != nil {
 		s.Swarm.Shutdown()
+	}
+	if s.Agent != nil {
+		_ = s.Agent.Close() // waits for a compaction still running, and frees the agent's archive index
 	}
 	if s.shell != nil {
 		s.shell.Shutdown()

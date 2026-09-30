@@ -136,5 +136,17 @@ func (s *Session) restore() error {
 	if err != nil {
 		return err
 	}
-	return s.Agent.Restore(*snap)
+	if err := s.Agent.Restore(*snap); err != nil {
+		return err
+	}
+	// What the restored thread points at must still resolve: folded turns (recall
+	// turns=...) and truncated output (recall handle=...) live in the blob store,
+	// their indexes in memory.
+	if _, err := agent.RebuildArchive(s.Dir, s.Agent.ID(), s.archive); err != nil {
+		s.notice("", "resume: the archive could not be re-indexed, so recall of folded turns may miss: "+err.Error())
+	}
+	if _, err := agent.RebuildHandles(s.Dir, s.handles); err != nil {
+		s.notice("", "resume: recall handles could not be restored: "+err.Error())
+	}
+	return nil
 }

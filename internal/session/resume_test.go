@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -332,4 +333,91 @@ func TestASessionDirectoryHasOneWriter(t *testing.T) {
 		t.Fatalf("the directory must be free once its session closed: %v", err)
 	}
 	s2.Close()
+}
+
+// Compaction is acceptable because it is reversible: recall brings folded turns
+// and truncated output back. A resumed session must keep that promise for what
+// happened before the resume.
+func TestRecallStillWorksForFoldedTurnsAndHandlesAfterAResume(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	handleRe := regexp.MustCompile(`out_[0-9a-f]{16,}`)
+	var handle string
+
+	// First session: read a file, produce output too long to show, finish, fold the early turns.
+	step := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.LastUser(), "<compactor-task>") {
+			return mock.Reply{Text: `{"keep_from":"t4","spine":[{"turns":"t1-t3","line":"read main.go"}],"mask":[],"notes":[],"promote":[]}`}
+		}
+		for _, m := range c.Messages {
+			if m.Role == "tool" {
+				if h := handleRe.FindString(m.Content); h != "" {
+					handle = h
+				}
+			}
+		}
+		step++
+		switch step {
+		case 1:
+			return mock.Reply{Text: "reading", ToolCalls: []mock.ToolCall{call("c1", "read", map[string]any{"path": "main.go"})}}
+		case 2:
+			return mock.Reply{Text: "producing output", ToolCalls: []mock.ToolCall{call("c2", "bash", map[string]any{"command": "yes 'a long line of output' | head -n 4000"})}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	o := opts(t, repo, client, model)
+	o.Dir = dir
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s1.Run(context.Background(), "read the code and run the noisy command"); err != nil {
+		t.Fatal(err)
+	}
+	if rep, err := s1.Compact(context.Background(), ""); err != nil || rep.Mode == "none" {
+		t.Fatalf("setup: compaction %+v %v", rep, err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if handle == "" {
+		t.Fatal("setup: the long output did not get a recall handle")
+	}
+
+	// Second session: recall a folded turn range and the handle.
+	var recalled []string
+	calls := 0
+	client2, model2 := startMock(t, func(c *mock.Call) mock.Reply {
+		calls++
+		switch calls {
+		case 1:
+			return mock.Reply{Text: "recalling", ToolCalls: []mock.ToolCall{call("r1", "recall", map[string]any{"turns": "t1-t3"})}}
+		case 2:
+			return mock.Reply{Text: "recalling output", ToolCalls: []mock.ToolCall{call("r2", "recall", map[string]any{"handle": handle, "limit": 200})}}
+		}
+		for _, m := range c.Messages {
+			if m.Role == "tool" {
+				recalled = append(recalled, m.Content)
+			}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	o2 := opts(t, repo, client2, model2)
+	o2.Resume = dir
+	s2, err := session.New(context.Background(), o2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if _, err := s2.Run(context.Background(), "what did you read before?"); err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(recalled, "\n---\n")
+	if !strings.Contains(all, "package main") {
+		t.Errorf("recall of the folded turns found nothing after the resume:\n%s", all)
+	}
+	if !strings.Contains(all, "a long line of output") {
+		t.Errorf("recall of the handle %s found nothing after the resume:\n%s", handle, all)
+	}
 }

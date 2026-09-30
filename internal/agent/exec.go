@@ -130,6 +130,8 @@ func (a *Agent) budgetResults(results []core.Block, refused int) {
 			note := fmt.Sprintf("\n[this turn's tool output exceeded %d characters, so %d of this result's %d are shown", budget, len(shown), len(full))
 			if h, err := a.cfg.Blobs.Put([]byte(full)); err == nil {
 				handle := a.cfg.Handles.Add(h, len(full))
+				// Recorded so that a resumed session can mint the same handle again.
+				a.emit("tool.spill", map[string]any{"id": b.ToolID, "handle": handle, "ref": h, "chars": len(full)})
 				note += fmt.Sprintf("; the whole result is saved as %s: recall(handle=%q) pages through it]", handle, handle)
 			} else {
 				note += "; the rest could not be saved, so re-run the call with a narrower request]"
@@ -260,7 +262,7 @@ func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Durat
 	a.cfg.Sink.ToolEnd(a.cfg.ID, call, res, took)
 	a.emit(events.TypeToolResult, map[string]any{
 		"id": call.ToolID, "name": call.ToolName, "error": res.IsError, "chars": len(res.Text),
-		"truncated": res.Truncated, "handle": res.Handle, "ms": took.Milliseconds(), "meta": res.Meta,
+		"truncated": res.Truncated, "handle": res.Handle, "ref": res.FullRef, "full_chars": res.FullChars, "ms": took.Milliseconds(), "meta": res.Meta,
 	})
 	return core.ToolResult(call.ToolID, res.IsError, content...)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 // snapshotVersion is the format of Snapshot. A snapshot of another version is
@@ -187,4 +188,65 @@ func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 		return nil, fmt.Errorf("snapshot %s: %w", last.Short(), err)
 	}
 	return &s, nil
+}
+
+// RebuildArchive re-indexes every turn an agent appended to a session log, so that
+// recall keeps working after a resume for the turns compaction folded away before
+// it: the archive's index lives in memory, the turns themselves in the blob store.
+// It returns how many turns it indexed. A damaged tail of the log is not an error
+// (the same rule as LatestSnapshot).
+func RebuildArchive(dir, agentID string, ar *kv.Archive) (int, error) {
+	n := 0
+	err := events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type != events.TypeTurnAppend || e.Agent != agentID {
+			return nil
+		}
+		var t core.Turn
+		if json.Unmarshal(e.Data, &t) == nil && t.ID > 0 {
+			if ar.Put(agentID, t) == nil {
+				n++
+			}
+		}
+		return nil
+	})
+	var ce *events.CorruptError
+	if err != nil && !errors.As(err, &ce) {
+		return n, err
+	}
+	return n, nil
+}
+
+// RebuildHandles mints again the recall handles (out_...) that earlier runs of the
+// session issued for truncated and spilled tool output, from the log, in the order
+// they were issued: handles are a function of the blob hashes and that order, so the
+// ones the restored thread mentions resolve to the same blobs as before.
+func RebuildHandles(dir string, h *tools.Handles) (int, error) {
+	n := 0
+	err := events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type != events.TypeToolResult && e.Type != "tool.spill" {
+			return nil
+		}
+		var d struct {
+			Handle    string    `json:"handle"`
+			Ref       core.Hash `json:"ref"`
+			Chars     int       `json:"chars"`      // tool.spill: the whole result
+			FullChars int       `json:"full_chars"` // tool.result: the whole output behind a truncated one
+		}
+		if json.Unmarshal(e.Data, &d) != nil || d.Handle == "" || d.Ref == "" {
+			return nil
+		}
+		size := d.FullChars
+		if e.Type == "tool.spill" {
+			size = d.Chars
+		}
+		if h.Add(d.Ref, size) == d.Handle {
+			n++
+		}
+		return nil
+	})
+	var ce *events.CorruptError
+	if err != nil && !errors.As(err, &ce) {
+		return n, err
+	}
+	return n, nil
 }
