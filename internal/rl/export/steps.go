@@ -31,35 +31,47 @@ func eachStep(work []*workEpisode, fn func(c stepCtx) error) error {
 	return nil
 }
 
-// selectStep applies the step-level filters that every training format shares:
-// role, provider terms, prompt size. It records why a step was dropped.
+// stepVerdict says why a step cannot be exported in the current format, or "" if
+// it can: role, provider terms, prompt size. Nothing is recorded; the caller that
+// leaves the step out calls noteDrop, so a step is counted once.
 //
 // RL formats only ever export the policy's own steps. sft, dpo and kto may also
 // use a teacher's completions, but only for models listed in TeacherOK; every
 // other non-policy step is skipped and counted, never exported as a target.
-func (x *exporter) selectStep(c stepCtx) bool {
+func (x *exporter) stepVerdict(c stepCtx) string {
 	st := c.st
 	if !x.roleMatches(st.Role) {
-		x.stats.drop("step:role_filtered")
-		return false
+		return "role_filtered"
 	}
 	if !st.Trainable {
 		switch {
 		case x.o.Format.rl():
-			x.stats.drop("step:not_trainable")
-			return false
+			return "not_trainable"
 		case !x.teacherOK[st.Model]:
-			x.stats.drop("step:teacher_not_ok")
-			bump(&x.stats.TeacherSkipped, st.Model, 1)
-			return false
+			return "teacher_not_ok"
 		}
 	}
 	if len(st.Completion.Turn.Blocks) == 0 {
-		x.stats.drop("step:empty_completion")
-		return false
+		return "empty_completion"
 	}
 	if x.o.MaxPromptTokens > 0 && st.Prompt.Tokens > x.o.MaxPromptTokens {
-		x.stats.drop("step:prompt_too_long")
+		return "prompt_too_long"
+	}
+	return ""
+}
+
+// noteDrop records that a step was left out and why.
+func (x *exporter) noteDrop(c stepCtx, reason string) {
+	x.stats.drop("step:" + reason)
+	if reason == "teacher_not_ok" {
+		bump(&x.stats.TeacherSkipped, c.st.Model, 1)
+	}
+}
+
+// selectStep is stepVerdict plus recording, for formats whose unit is one step.
+func (x *exporter) selectStep(c stepCtx) bool {
+	if reason := x.stepVerdict(c); reason != "" {
+		x.noteDrop(c, reason)
 		return false
 	}
 	return true

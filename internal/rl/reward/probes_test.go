@@ -169,7 +169,7 @@ func TestProbeMatchingIsNormalised(t *testing.T) {
 		{"absent", f(FactFile, "pkg/parse.go"), "changed other.go", false},
 		{"partial word does not count", f(FactLiteral, "exceeds the limit"), "exceeds the lim", false},
 		{"empty fact never matches", f(FactFile, ""), "anything", false},
-		{"unicode", f(FactLiteral, "größe überschritten"), "Fehler: GRÖSSE ÜBERSCHRITTEN", true},
+		{"unicode", f(FactLiteral, "überschritten das limit"), "Fehler: ÜBERSCHRITTEN DAS LIMIT", true},
 	}
 	for _, tc := range tests {
 		if got := factFound(normalizeText(tc.prompt), tc.fact); got != tc.want {

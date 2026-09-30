@@ -380,3 +380,13 @@ func parseObject(raw []byte) (map[string]any, error) {
 	}
 	return m, nil
 }
+
+// textRaw is the block form of string content: the API treats "hi" and
+// [{"type":"text","text":"hi"}] as the same message, so the record must too.
+func textRaw(s string) json.RawMessage {
+	b, _ := json.Marshal(struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}{"text", s})
+	return b
+}

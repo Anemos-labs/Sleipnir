@@ -564,7 +564,7 @@ func (q *aReq) parseSystem() *aErr {
 	if json.Unmarshal(raw, &s) == nil {
 		q.systemString = true
 		if strings.TrimSpace(s) != "" {
-			q.system = []aBlock{{typ: "text", text: s, raw: raw}}
+			q.system = []aBlock{{typ: "text", text: s, raw: textRaw(s)}}
 		}
 		return nil
 	}
@@ -645,7 +645,7 @@ func (q *aReq) parseMessages() *aErr {
 			if strings.TrimSpace(str) == "" {
 				return badReq("messages.%d: all messages must have non-empty content except for the optional final assistant message", i)
 			}
-			msg.blocks = []aBlock{{typ: "text", text: str, raw: content}}
+			msg.blocks = []aBlock{{typ: "text", text: str, raw: textRaw(str)}}
 		} else {
 			var blocks []json.RawMessage
 			if err := json.Unmarshal(content, &blocks); err != nil {

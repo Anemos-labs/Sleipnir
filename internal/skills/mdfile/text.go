@@ -176,6 +176,29 @@ func closesFence(line, marker string) bool {
 	return len(t) >= len(marker) && strings.Trim(t, marker[:1]) == ""
 }
 
+// Fence tracks fenced code blocks while a caller walks a markdown text line by
+// line. It is the same notion of "inside code" that StripComments uses, so
+// callers that must leave code alone (shell and include syntax in a command
+// template) agree with it.
+type Fence struct {
+	marker string
+}
+
+// Next reports whether line is inside or part of a fenced block (an opening or
+// closing fence line counts as inside), and updates the state.
+func (f *Fence) Next(line string) (inside bool) {
+	if m := fenceOpen(line); m != "" {
+		switch {
+		case f.marker == "":
+			f.marker = m
+		case closesFence(line, f.marker):
+			f.marker = ""
+		}
+		return true
+	}
+	return f.marker != ""
+}
+
 // StripComments removes <!-- ... --> comments, including multi-line ones, but
 // leaves fenced code blocks and inline code spans alone: documentation that
 // shows what an HTML comment looks like must survive. A line that held nothing

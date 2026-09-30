@@ -420,9 +420,9 @@ func foldedWindow(a *rl.Agent, si int) []int {
 // ---- fact extraction ---------------------------------------------------------------------
 
 var (
-	goFailRe     = regexp.MustCompile(`--- FAIL: (Test[\w/.\-]*|Benchmark[\w/.\-]*|Example[\w/.\-]*)`)
+	goFailRe     = regexp.MustCompile(`--- FAIL: ((?:Test|Benchmark|Example)[\p{L}\p{N}_/.\-]*)`)
 	goErrLineRe  = regexp.MustCompile(`(?m)^\s*(\S+\.go:\d+(?::\d+)?): (.{6,140})$`)
-	pyFailRe     = regexp.MustCompile(`FAILED ([\w./\-]+)::([\w\[\]:.\-]+)`)
+	pyFailRe     = regexp.MustCompile(`FAILED ([\p{L}\p{N}_./\-]+)::([\p{L}\p{N}_\[\]:.\-]+)`)
 	pyErrRe      = regexp.MustCompile(`(?m)^E\s+(\w*(?:Error|Exception)\b.{0,120})$`)
 	jsFailRe     = regexp.MustCompile(`(?m)^\s*(?:●|✕|×)\s+(.{4,120})$`)
 	panicRe      = regexp.MustCompile(`(?m)^(?:panic|fatal error): (.{4,140})$`)
@@ -480,12 +480,31 @@ func commandCore(cmd string) string {
 	if best == "" {
 		best = cmd
 	}
-	best = strings.Join(strings.Fields(best), " ")
+	best = strings.Join(stripRedirects(strings.Fields(best)), " ")
 	r := []rune(best)
 	if len(r) > 120 {
 		best = string(r[:120])
 	}
 	return best
+}
+
+var redirectRe = regexp.MustCompile(`^\d*(?:[<>]{1,2}|&>)&?\S*$`)
+
+// stripRedirects drops output plumbing ("2>&1", "> out.txt") from command words.
+func stripRedirects(words []string) []string {
+	var out []string
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		if redirectRe.MatchString(w) {
+			// A bare operator takes the next word as its target.
+			if strings.Trim(w, "0123456789") == ">" || strings.Trim(w, "0123456789") == ">>" || w == "<" || w == "&>" {
+				i++
+			}
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 func splitCommand(cmd string) []string {

@@ -99,6 +99,23 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 	return ModelRef{Provider: p, Model: ref}, nil
 }
 
+// ProviderInfo returns a provider's base URL and API-key variable, from the
+// configuration or the built-ins (with the <NAME>_BASE_URL override applied).
+func ProviderInfo(cfg *config.Config, name string) (baseURL, keyEnv string, ok bool) {
+	p, ok := lookupProvider(cfg, name)
+	if !ok {
+		return "", "", false
+	}
+	base := p.BaseURL
+	if env := os.Getenv(strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_BASE_URL"); env != "" {
+		base = env
+	}
+	return base, p.APIKeyEnv, true
+}
+
+// DefaultProvider is the provider a bare model id is sent to.
+func DefaultProvider(cfg *config.Config) (string, error) { return defaultProvider(cfg) }
+
 // defaultProvider picks the provider a bare model id is sent to: the only
 // configured one, else the first built-in whose key is set.
 func defaultProvider(cfg *config.Config) (string, error) {

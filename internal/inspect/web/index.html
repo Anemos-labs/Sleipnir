@@ -1,1 +1,22 @@
-<!doctype html><title>x</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Sleipnir cache inspector</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="top" class="top" role="banner"></header>
+<section id="kpis" class="kpis" aria-label="Session totals"></section>
+<nav id="tabs" class="tabs" aria-label="Views"></nav>
+<main id="view" class="view" tabindex="-1"></main>
+<div id="overlay" class="overlay" hidden></div>
+<div id="tip" class="tip" role="tooltip" hidden></div>
+<noscript><p class="noscript">The cache inspector is a single-page app and needs JavaScript. It loads nothing from the network except this server.</p></noscript>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

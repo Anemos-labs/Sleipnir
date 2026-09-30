@@ -53,19 +53,27 @@ func cmdInit(_ context.Context, args []string) error {
 			def = "openai/gpt-5-mini"
 		}
 	}
-	patch := map[string]any{
-		"providers": map[string]any{
-			// A self-hosted policy server (vLLM/SGLang): token capture makes rollouts RL-ready.
-			"local": map[string]any{
-				"base_url": "http://127.0.0.1:8000/v1",
-				"options":  map[string]any{"capture_tokens": true},
+	// Project files are part of a repository and may be someone else's, so the
+	// settings that decide where keys and prompts go (providers, permission
+	// mode) are ignored there unless the project is trusted. They belong in the
+	// user's own config; the project gets only what is safe to share.
+	var patch map[string]any
+	if *user {
+		patch = map[string]any{
+			"providers": map[string]any{
+				// A self-hosted policy server (vLLM/SGLang): token capture makes rollouts RL-ready.
+				"local": map[string]any{
+					"base_url": "http://127.0.0.1:8000/v1",
+					"options":  map[string]any{"capture_tokens": true},
+				},
 			},
-		},
-		"permissions": map[string]any{"mode": "default", "deny": []string{"Read(./.env)", "Read(./secrets/**)"}},
-		"swarm":       map[string]any{"max_agents": 12, "isolation": "shared"},
-	}
-	if def != "" {
-		patch["models"] = map[string]any{"default": def}
+			"permissions": map[string]any{"mode": "default"},
+		}
+	} else {
+		patch = map[string]any{
+			"permissions": map[string]any{"deny": []string{"Read(./.env)", "Read(./secrets/**)"}},
+			"swarm":       map[string]any{"max_agents": 12, "isolation": "shared"},
+		}
 	}
 	if err := config.Save(path, patch); err != nil {
 		return err
@@ -86,6 +94,9 @@ func cmdInit(_ context.Context, args []string) error {
 				f.Close()
 			}
 		}
+	}
+	if !*user {
+		fmt.Fprintln(os.Stderr, "providers and the permission mode live in your user config: `sleipnir init --user` (project files cannot set them unless trusted)")
 	}
 	fmt.Fprintln(os.Stderr, "next: sleipnir doctor --model <model> --deep, then sleipnir chat")
 	return nil

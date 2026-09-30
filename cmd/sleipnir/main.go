@@ -16,9 +16,12 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/config"
+	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/gateway"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/provider/probe"
+	"github.com/reee344/sleipnir/internal/session"
 	"github.com/reee344/sleipnir/internal/tools/shell"
 )
 
@@ -106,32 +109,57 @@ func addProviderFlags(fs *flag.FlagSet) *providerFlags {
 func cmdDoctor(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	pf := addProviderFlags(fs)
-	model := fs.String("model", "", "model id to probe (required)")
+	model := fs.String("model", "", "model to probe: provider/model, or a bare id for the default provider (required)")
 	deep := fs.Bool("deep", false, "also measure cache granularity, minimum prefix and warm-up needs (more requests)")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	noKey := fs.Bool("no-affinity", false, "do not send a conversation/cache key")
 	capture := fs.Bool("capture", false, "also check token-id capture (self-hosted policy servers; RL data)")
+	trust := fs.Bool("trust-project", false, "apply provider settings from the project's config (they are ignored by default)")
 	fs.Parse(args)
 	if *model == "" {
 		return fmt.Errorf("doctor: --model is required (see `sleipnir models`)")
 	}
-	spec, key, err := pf.resolve()
-	if err != nil {
-		return err
-	}
-	if key == "" && spec.keyEnv != "" {
-		return fmt.Errorf("doctor: %s is not set", spec.keyEnv)
-	}
 	rec := &headerRecorder{}
-	client := newClient(spec, key, rec)
-	if *capture {
-		prof := client.Profile()
-		prof.CaptureTokens = true
-		client.SetProfile(prof)
+	var client provider.Provider
+	probeModel, where := *model, ""
+	if pf.baseURL == "" && pf.provider == "" {
+		// Same resolution as `run`: configured providers, then the built-ins.
+		cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: !*trust})
+		if err != nil {
+			return err
+		}
+		ref, err := session.ResolveModel(cfg, *model)
+		if err != nil {
+			return err
+		}
+		c, _, err := session.BuildProvider(cfg, ref, session.ProviderOptions{CaptureTokens: *capture, OnHeaders: rec.set})
+		if err != nil {
+			return err
+		}
+		client, probeModel = c, ref.Model
+		base, keyEnv, _ := session.ProviderInfo(cfg, ref.Provider)
+		where = fmt.Sprintf("%s (%s, key from %s)", ref.Provider, base, envLabel(providerSpec{keyEnv: keyEnv}))
+	} else {
+		// Explicit endpoint flags: a one-off custom provider.
+		spec, key, err := pf.resolve()
+		if err != nil {
+			return err
+		}
+		if key == "" && spec.keyEnv != "" {
+			return fmt.Errorf("doctor: %s is not set", spec.keyEnv)
+		}
+		c := newClient(spec, key, rec)
+		if *capture {
+			prof := c.Profile()
+			prof.CaptureTokens = true
+			c.SetProfile(prof)
+		}
+		client = c
+		where = fmt.Sprintf("%s (key from %s)", spec.baseURL, envLabel(spec))
 	}
-	fmt.Fprintf(os.Stderr, "probing %s at %s (key from %s)\n", *model, spec.baseURL, envLabel(spec))
+	fmt.Fprintf(os.Stderr, "probing %s at %s\n", probeModel, where)
 	rep, err := probe.Run(ctx, probe.Config{
-		Provider: client, Model: *model, Deep: *deep, Headers: rec.get, CacheKey: !*noKey, Capture: *capture,
+		Provider: client, Model: probeModel, Deep: *deep, Headers: rec.get, CacheKey: !*noKey, Capture: *capture,
 		Log: func(s string) { fmt.Fprintln(os.Stderr, s) },
 	})
 	if err != nil && rep == nil {
@@ -160,15 +188,31 @@ func cmdModels(ctx context.Context, args []string) error {
 	all := fs.Bool("all", false, "include non-chat models")
 	filter := fs.String("filter", "", "only ids containing this text")
 	fs.Parse(args)
-	spec, _, err := pf.resolve()
-	if err != nil && pf.baseURL == "" && pf.provider == "" {
-		spec = builtinProviders["heimdall"]
-	} else if err != nil {
-		return err
+	baseURL := ""
+	if pf.baseURL != "" {
+		baseURL = pf.baseURL
+	} else {
+		cfg, _, cerr := config.Load(config.LoadOpts{UntrustedProject: true})
+		if cerr != nil {
+			return cerr
+		}
+		name := strings.ToLower(pf.provider)
+		if name == "" {
+			if d, derr := session.DefaultProvider(cfg); derr == nil {
+				name = d
+			} else {
+				name = "heimdall" // the catalogue is public
+			}
+		}
+		b, _, ok := session.ProviderInfo(cfg, name)
+		if !ok || b == "" {
+			return fmt.Errorf("models: unknown provider %q", name)
+		}
+		baseURL = b
 	}
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	entries, err := gateway.Fetch(cctx, &http.Client{Timeout: 30 * time.Second}, spec.baseURL)
+	entries, err := gateway.Fetch(cctx, &http.Client{Timeout: 30 * time.Second}, baseURL)
 	if err != nil {
 		return err
 	}

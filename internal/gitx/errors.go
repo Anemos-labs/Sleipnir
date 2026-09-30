@@ -168,10 +168,11 @@ func firstLines(s string, n int) string {
 	return strings.Join(out, "; ")
 }
 
-// classify maps git's failure (exit status plus stderr text) to a Kind. The text
-// is stable because every invocation runs with LC_ALL=C.
-func classify(stderr string) Kind {
-	l := strings.ToLower(stderr)
+// classify maps git's failure (its stderr, plus the head of stdout where git
+// prints conflicts there) to a Kind. The text is stable because every invocation
+// runs with LC_ALL=C.
+func classify(text string) Kind {
+	l := strings.ToLower(text)
 	has := func(subs ...string) bool {
 		for _, s := range subs {
 			if strings.Contains(l, s) {
@@ -185,13 +186,14 @@ func classify(stderr string) Kind {
 		return KindNotARepo
 	case has("detected dubious ownership", "unsafe repository"):
 		return KindUnsafe
-	case has("unable to create", "cannot lock ref", "another git process seems to be running", "could not lock config file", "unable to lock"):
-		if has(".lock", "another git process", "lock") {
-			return KindLocked
-		}
-	}
-	switch {
-	case has("this operation must be run in a work tree", "must be run in a work tree"):
+	// Real lock contention: a *.lock file exists. This is retried, so it must not
+	// match failures that merely mention locking a ref ("cannot lock ref ... is at
+	// X but expected Y" is a compare-and-swap miss, retrying it cannot help).
+	case has(".lock': file exists", ".lock\": file exists", "another git process seems to be running"):
+		return KindLocked
+	case has("but expected", "reference already exists", "already exists and is not a valid"):
+		return KindConflict
+	case has("this operation must be run in a work tree"):
 		return KindNotARepo
 	case has("would be overwritten", "please commit your changes or stash them",
 		"you have unstaged changes", "your index contains uncommitted changes",
@@ -203,8 +205,8 @@ func classify(stderr string) Kind {
 		return KindConflict
 	case has("unknown revision", "bad revision", "not a valid object name", "needed a single revision",
 		"bad object", "invalid reference", "not a valid ref", "no such ref", "does not exist",
-		"did not match any", "exists on disk, but not in", "path '", "unknown commit", "couldn't find remote ref",
-		"not found", "no such file or directory"):
+		"did not match any", "exists on disk, but not in", "unknown commit", "couldn't find remote ref",
+		"no such file or directory"):
 		return KindNotFound
 	}
 	return KindOther
