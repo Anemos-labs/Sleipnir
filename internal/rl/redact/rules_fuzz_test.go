@@ -15,7 +15,7 @@ const longestReplacement = 36
 // redactor and on one that has seen it); a text that has been redacted is a fixed point;
 // nothing grows by more than a token a replacement and there are no more replacements than
 // bytes; the counts are of rules that are on, and Changed agrees with them; no rules, no
-// change; a key on a line of its own never survives.
+// change; a key of every token family that is on, on a line of its own, never survives.
 func FuzzRedactKinds(f *testing.F) {
 	all := uint32(1)<<len(AllKinds()) - 1
 	for i, kind := range AllKinds() {
@@ -85,15 +85,31 @@ func FuzzRedactKinds(f *testing.F) {
 			t.Fatalf("a second pass over the same text gave %q and %d replacements, want %q and %d", r.String(in), r.Total(), out, 2*total)
 		}
 
+		// A key of each family that is on, on a line of its own, is found whatever surrounds it.
 		// (Text that holds the key inside a longer run of letters and digits is left alone on
 		// purpose, and then the key is in the output for that reason.)
-		if on[KindAWS] && !strings.Contains(in, awsKey) {
-			wrapped := in + "\n" + awsKey + "\n" + in
-			if strings.Contains(New(cfg).String(wrapped), awsKey) {
-				t.Fatalf("the planted key survived (kinds %v) in %q", kinds, wrapped)
+		var planted []string
+		for _, p := range plants {
+			if on[p.kind] && !strings.Contains(in, p.key) {
+				planted = append(planted, p.key)
+			}
+		}
+		if len(planted) > 0 {
+			wrapped := in + "\n" + strings.Join(planted, "\n") + "\n" + in
+			out := New(cfg).String(wrapped)
+			for _, key := range planted {
+				if strings.Contains(out, key) {
+					t.Fatalf("the planted key %q survived (kinds %v) in %q", key, kinds, wrapped)
+				}
 			}
 		}
 	})
+}
+
+// plants are keys that each have to be found on a line of their own, one per family.
+var plants = []struct{ kind, key string }{
+	{KindAWS, awsKey}, {KindGitHub, ghToken}, {KindGitLab, glToken}, {KindSlack, slackTok}, {KindGoogle, googleKey},
+	{KindStripe, stripeKey}, {KindNPM, npmToken}, {KindPyPI, pypiToken}, {KindLLM, llmKey}, {KindHuggingFace, hfToken}, {KindJWT, jwtTok},
 }
 
 // placeholderName is a home-directory placeholder the fuzzer proposes, cut to a name: a
