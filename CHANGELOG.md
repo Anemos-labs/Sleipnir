@@ -52,6 +52,9 @@ The first release.
 - `sleipnir doctor` measures a real endpoint: streaming, tools, cache reporting, block granularity, warm-up needs. Its
   cache verdict counts nine repeat requests (`yes`, `partly`, `NO`), because a marketplace cache can hit on some and miss on
   others.
+- A repetition guard: an agent that makes the same call with the same failing result eight times among its last twenty
+  calls is stopped (`agent stuck`), after being told at the fourth. A first run against a real 2B model made two hundred
+  requests over two refused commands.
 - A run with no one to ask (`run`, a swarm, a rollout) says so in every refusal that needs approval, so a model stops looking
   for another way to the same action instead of spending its steps on it.
 - Every model of a session, roles' models included, is described from its endpoint's catalogue when the built-in table

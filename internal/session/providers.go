@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -401,7 +402,14 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		return nil, cost.Model{}, err
 	}
 	if p.APIKeyEnv != "" && key == "" {
-		return nil, cost.Model{}, fmt.Errorf("provider %q needs %s to be set", ref.Provider, p.APIKeyEnv)
+		msg := fmt.Sprintf("provider %q needs %s to be set", ref.Provider, p.APIKeyEnv)
+		// A marketplace model id can start with a provider's name (openai/gpt-oss-20b on a marketplace is
+		// not the OpenAI API): say how to reach it through the default provider.
+		if d, err := defaultProvider(cfg); err == nil && d != ref.Provider {
+			full := ref.Provider + "/" + ref.Model
+			msg += fmt.Sprintf(" (if %q is a model id of your default provider %s, write it as %s/%s)", full, d, d, full)
+		}
+		return nil, cost.Model{}, errors.New(msg)
 	}
 
 	var client provider.Provider

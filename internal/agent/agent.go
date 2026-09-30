@@ -274,6 +274,7 @@ type Agent struct {
 	rollEpoch    uint64
 	rollValid    bool
 	anomStreak   int
+	rep          repeatGuard // the run's failed calls (see repeat.go); used by run only
 
 	// Hot tail persistence (kv.HotPersist).
 	hotFP  string // fingerprint of the newest persisted notice ("" when none)
@@ -579,6 +580,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
 	}
+	a.rep.reset()
 	for step := 0; step < a.cfg.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			return res, err
@@ -642,7 +644,17 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		if extra := a.takeInbox(); len(extra) > 0 {
 			blocks = append(blocks, extra...)
 		}
+		note, stuck := a.rep.observe(a.cfg.ID, calls, results)
+		if note != "" && stuck == nil {
+			blocks = append(blocks, core.Text(note))
+			a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "note": note})
+		}
 		a.pushUser(core.OriginTool, blocks)
+		if stuck != nil {
+			// The results are in the thread, so it stays valid; the run ends here.
+			a.emit(events.TypeAgentStuck, map[string]any{"phase": "stop", "error": stuck.Error()})
+			return res, stuck
+		}
 	}
 	return res, fmt.Errorf("agent %s: step limit %d reached", a.cfg.ID, a.cfg.MaxSteps)
 }

@@ -1098,7 +1098,7 @@ answer `unknown command`.
 | Code | Meaning |
 |---|---|
 | `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that ends with `/exit` or Ctrl-D |
-| `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: the budget of $50.00 is exhausted ...`, which says how to raise it), a reached step limit, a prompt blocked by a hook, and a failed `doctor` probe |
+| `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: the budget of $50.00 is exhausted ...`, which says how to raise it), a reached step limit, an agent that repeated one failing call until the harness stopped it (`agent stuck`), a prompt blocked by a hook, and a failed `doctor` probe |
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
 
 A model that ends its turn normally is a success (`0`) whatever the task's outcome; check the result (`run --json`, the

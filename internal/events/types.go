@@ -13,6 +13,9 @@ const (
 	TypeAgentSpawn = "agent.spawn"
 	TypeAgentState = "agent.state"
 	TypeAgentEnd   = "agent.end"
+	// TypeAgentStuck: the repetition guard told an agent it was repeating one failing call
+	// (phase "nudge") or ended its run for it (phase "stop").
+	TypeAgentStuck = "agent.stuck"
 	// TypeAgentSnapshot references a blob with everything needed to resume an
 	// agent (thread, notes, spine, counters); TypeAgentRestore records a resume.
 	TypeAgentSnapshot = "agent.snapshot"

@@ -395,6 +395,29 @@ func TestMissingBaseURLAndMissingKeyKeepTheirMessages(t *testing.T) {
 	}
 }
 
+// A marketplace's model id can start with the name of a provider that is built in
+// (openai/gpt-oss-20b): written as it is, it names that provider, whose key is not set. The
+// error says how to reach the model through the provider that is set.
+func TestAModelIdThatStartsWithAProviderNameSaysHowToReachItThroughTheDefaultProvider(t *testing.T) {
+	clearProviderEnv(t)
+	t.Setenv("HEIMDALL_API_KEY", "hd-key-for-test")
+	_, _, err := session.BuildProvider(nil, session.ModelRef{Provider: "openai", Model: "gpt-oss-20b"}, session.ProviderOptions{})
+	if err == nil {
+		t.Fatal("a provider without its key was built")
+	}
+	for _, want := range []string{"needs OPENAI_API_KEY to be set", `"openai/gpt-oss-20b"`, "default provider heimdall", "heimdall/openai/gpt-oss-20b"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+	// With no other provider to reach it through there is nothing to suggest.
+	clearProviderEnv(t)
+	_, _, err = session.BuildProvider(nil, session.ModelRef{Provider: "openai", Model: "gpt-5"}, session.ProviderOptions{})
+	if err == nil || strings.Contains(err.Error(), "default provider") {
+		t.Errorf("no default provider exists, so no hint: %v", err)
+	}
+}
+
 // ---- timeouts from the provider's options -------------------------------------------------------
 
 func TestProviderOptionsSetTheTimeouts(t *testing.T) {

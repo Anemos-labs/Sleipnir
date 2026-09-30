@@ -101,7 +101,9 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
    the assistant turn is appended to thread, archive and log.
 7. **Tools.** Calls run concurrently when read-only, in order otherwise; each write passes permission →
    lease guard → checkpoint → file-state staleness check. Results are truncated with a recall handle.
-8. Loop, or return the final answer.
+8. Loop, or return the final answer. A call that fails the same way (same tool, same arguments, same result) eight
+   times among the last twenty calls ends the run with `agent stuck`; the model is told once, in its results turn, at the
+   fourth (`agent.stuck` events). A step limit and a budget are the backstops; this notices that nothing changes.
 
 ## Providers
 
