@@ -193,6 +193,52 @@ func TestChatCtrlCDropsAHalfTypedLine(t *testing.T) {
 	}
 }
 
+// Ctrl-D is the end of input for whatever reads next. During a turn nothing reads the input
+// for an answer, so it waits, like a line typed ahead, and ends the chat when the turn is over.
+func TestChatCtrlDDuringATurnQuitsAfterIt(t *testing.T) {
+	m := startModel(t)
+	slow := m.on("@slow", say("slow turn finished").held())
+	w := newWorld(t, m.url())
+	c := startChat(t, w)
+
+	c.send("@slow")
+	slow.wait(t)
+	c.ctrlD()
+	slow.release()
+	c.expect("slow turn finished") // the turn was not cut short
+	c.exited(0)
+	if got, ok := w.sessionEnd(); !ok || got != "exit" {
+		t.Errorf("the session ended with reason %q (recorded: %v), want \"exit\"", got, ok)
+	}
+}
+
+// Ctrl-D at an approval question is no answer: the action is refused, the chat goes on.
+func TestChatCtrlDAtAQuestionIsARefusal(t *testing.T) {
+	m := startModel(t)
+	m.on("@write", writes("approved.txt"))
+	m.on("@hello", say("hi there"))
+	w := newWorld(t, m.url())
+	c := startChat(t, w)
+
+	c.send("@write")
+	c.expect("allow? [y]es once")
+	c.ctrlD()
+	if out := c.untilPrompt(); !strings.Contains(out, "✗ write approved.txt") {
+		t.Errorf("the write should have been refused:\n%s", out)
+	}
+	c.send("@hello") // still here
+	c.expect("hi there")
+	c.prompt()
+	c.ctrlD()
+	c.exited(0)
+	if exists(filepath.Join(w.project, "approved.txt")) {
+		t.Error("the write was done")
+	}
+	if res := m.toolResults(); len(res) != 1 || !strings.Contains(res[0], "no answer") {
+		t.Errorf("the model was told %q, want a refusal that says there was no answer", res)
+	}
+}
+
 // SIGTERM still ends the process, at the prompt and in the middle of a turn, whatever Ctrl-C
 // does: the turn is cancelled and the chat leaves, as a session that was interrupted.
 func TestChatSIGTERMEndsTheProcess(t *testing.T) {

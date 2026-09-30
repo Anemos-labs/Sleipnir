@@ -15,7 +15,6 @@ package main
 // fed by a pipe the test types into.
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -217,12 +216,10 @@ func newChatInput(t *testing.T) *chatInput {
 	pr, pw := io.Pipe()
 	t.Cleanup(func() { pw.Close() })
 	c := &chatInput{t: t, pw: pw, probe: &probeReader{r: pr}}
-	in := bufio.NewReader(c.probe)
-	c.ask = session.TerminalPrompter(in, &c.out)
-	c.goal = func(ctx context.Context) (string, error) { return readInput(ctx, in) }
-	// With one reader per question there is no other way to know that the question is waiting
-	// than that a read is in progress.
-	c.asking = func() bool { in, _ := c.probe.state(); return in }
+	lines := newStdinLines(c.probe, true)
+	c.ask = session.LinePrompter(lines.Answer, &c.out)
+	c.goal = func(ctx context.Context) (string, error) { return readInput(ctx, lines, nil) }
+	c.asking = lines.asking
 	return c
 }
 

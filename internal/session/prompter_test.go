@@ -212,3 +212,104 @@ func TestTerminalPrompterCancelledQuestionDoesNotSwallowTheNextLine(t *testing.T
 		t.Errorf("the second question: %+v", d)
 	}
 }
+
+// The answer function decides when the question is shown: it has to be ready for the answer
+// before the question is visible, because a person (or a script that waits for the question and
+// answers at once) types the moment it is. So LinePrompter shows nothing itself; it hands the
+// answer function show, and show prints the question once however often it is called.
+func TestLinePrompterLetsTheAnswerFunctionShowTheQuestion(t *testing.T) {
+	var out lockedBuffer
+	var before, after string
+	ask := LinePrompter(func(ctx context.Context, show func()) (string, error) {
+		before = out.String()
+		show()
+		show()
+		after = out.String()
+		return "y", nil
+	}, &out)
+	if d := ask(context.Background(), toolRequest()); !d.Allow {
+		t.Fatalf("%+v", d)
+	}
+	if before != "" {
+		t.Errorf("the question was on the screen before the answer function asked for it: %q", before)
+	}
+	want := "\nworker-2 wants to: write notes.txt [default mode: writing notes.txt needs approval]\n  allow? [y]es once / [a]lways this session / [n]o: "
+	if after != want {
+		t.Errorf("after show the screen had %q, want %q (once)", after, want)
+	}
+}
+
+// An answer function that cannot take an answer shows no question.
+func TestLinePrompterShowsNothingWhenThereIsNoOneToAnswer(t *testing.T) {
+	var out lockedBuffer
+	ask := LinePrompter(func(context.Context, func()) (string, error) { return "", io.EOF }, &out)
+	if d := ask(context.Background(), toolRequest()); d.Allow || d.Reason != "no answer" {
+		t.Fatalf("%+v", d)
+	}
+	if out.String() != "" {
+		t.Errorf("a question was shown that no one could answer: %q", out.String())
+	}
+}
+
+// Whatever the answer function fails with, the question is refused: no answer is not consent.
+func TestLinePrompterRefusesWithoutAnAnswer(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"the input ended", io.EOF},
+		{"the turn was cancelled", context.Canceled},
+		{"another error", io.ErrClosedPipe},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out lockedBuffer
+			ask := LinePrompter(func(context.Context, func()) (string, error) { return "y", tc.err }, &out) // even with "y" in hand
+			if d := ask(context.Background(), toolRequest()); d.Allow || d.Reason != "no answer" {
+				t.Fatalf("%+v", d)
+			}
+		})
+	}
+}
+
+// The context of the question reaches the answer function: it is how a cancelled turn stops its
+// question.
+func TestLinePrompterPassesTheContextOn(t *testing.T) {
+	type key struct{}
+	var got any
+	var out lockedBuffer
+	ask := LinePrompter(func(ctx context.Context, _ func()) (string, error) { got = ctx.Value(key{}); return "n", nil }, &out)
+	ask(context.WithValue(context.Background(), key{}, "the turn"), toolRequest())
+	if got != "the turn" {
+		t.Fatalf("the answer function got another context: %v", got)
+	}
+}
+
+// One question at a time, whichever way the answers are read.
+func TestLinePrompterAsksOneQuestionAtATime(t *testing.T) {
+	var out lockedBuffer
+	release := make(chan struct{})
+	var inAnswer sync.WaitGroup
+	inAnswer.Add(1)
+	var once sync.Once
+	ask := LinePrompter(func(ctx context.Context, show func()) (string, error) {
+		show()
+		once.Do(inAnswer.Done)
+		<-release
+		return "y", nil
+	}, &out)
+	first, second := make(chan perm.Decision, 1), make(chan perm.Decision, 1)
+	go func() { first <- ask(context.Background(), toolRequest()) }()
+	inAnswer.Wait() // the first is on the screen and waiting
+	go func() { second <- ask(context.Background(), toolRequest()) }()
+	// The second asker has to wait its turn; let the first finish, and the second follows.
+	close(release)
+	if d := decisionWithin(t, first, "the first question"); !d.Allow {
+		t.Errorf("first: %+v", d)
+	}
+	if d := decisionWithin(t, second, "the second question"); !d.Allow {
+		t.Errorf("second: %+v", d)
+	}
+	if n := strings.Count(out.String(), "allow?"); n != 2 {
+		t.Errorf("%d questions were shown, want 2:\n%s", n, out.String())
+	}
+}

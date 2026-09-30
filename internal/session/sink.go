@@ -211,12 +211,33 @@ var _ agent.Sink = (*JSONSink)(nil)
 // TerminalPrompter asks the user on the terminal whether an action may proceed:
 // y (once), a (always for this session), n (deny). Requests are serialised so
 // parallel agents never interleave questions.
+//
+// It reads its answers from in itself, one line per question: right for a command that
+// reads nothing else from in (run, mcp test). A command that reads in for something else
+// as well (chat reads its goals from it) must own the input and use LinePrompter; two
+// readers of one input take each other's lines.
 func TerminalPrompter(in io.Reader, out io.Writer) perm.Prompter {
+	return LinePrompter(directAnswers(in), out)
+}
+
+// LinePrompter is TerminalPrompter for a caller that owns the input: answer is how it gets the
+// person's reply. It is called with the question's context and with show, which puts the
+// question on the screen, and it must
+//
+//   - start taking for itself the lines that arrive, then call show, then wait. In that order: a
+//     person (or a script that waits for the question and answers at once) types as soon as the
+//     question is visible, and an answer that arrives before the answer function is ready for it
+//     would be taken for a line typed ahead and lost. A line that was already waiting when it
+//     began is typed ahead, for whoever reads the prompt; it is not an answer;
+//   - return the first line that arrives after it began;
+//   - return ctx's error, having taken nothing, when ctx ends first: the turn that asked was
+//     cancelled, and what the person types next is for whoever reads next;
+//   - return an error when the input has ended, which is "no answer" (a refusal). An answer
+//     function that fails before it shows the question shows nothing.
+//
+// Questions are serialised as TerminalPrompter's are.
+func LinePrompter(answer func(ctx context.Context, show func()) (string, error), out io.Writer) perm.Prompter {
 	var mu sync.Mutex
-	rd, ok := in.(*bufio.Reader)
-	if !ok {
-		rd = bufio.NewReader(in)
-	}
 	return func(ctx context.Context, r perm.Request) perm.Decision {
 		mu.Lock()
 		defer mu.Unlock()
@@ -224,14 +245,16 @@ func TerminalPrompter(in io.Reader, out io.Writer) perm.Prompter {
 		if who == "" {
 			who = "agent"
 		}
-		if r.Tool == "mcp-server" {
-			// Starting a project's tool server: it runs code or reaches a host the
-			// repository chose. The answer that remembers is per exact entry.
-			fmt.Fprintf(out, "\nSleipnir wants to %s\n  start it? [y]es this time / [p]roject: remember this exact entry / [n]o: ", r.Summary)
-		} else {
-			fmt.Fprintf(out, "\n%s wants to: %s\n  allow? [y]es once / [a]lways this session / [n]o: ", who, r.Summary)
-		}
-		line, err := readLine(ctx, rd)
+		show := sync.OnceFunc(func() {
+			if r.Tool == "mcp-server" {
+				// Starting a project's tool server: it runs code or reaches a host the
+				// repository chose. The answer that remembers is per exact entry.
+				fmt.Fprintf(out, "\nSleipnir wants to %s\n  start it? [y]es this time / [p]roject: remember this exact entry / [n]o: ", r.Summary)
+			} else {
+				fmt.Fprintf(out, "\n%s wants to: %s\n  allow? [y]es once / [a]lways this session / [n]o: ", who, r.Summary)
+			}
+		})
+		line, err := answer(ctx, show)
 		if err != nil {
 			return perm.Decision{Allow: false, Reason: "no answer"}
 		}
@@ -251,20 +274,48 @@ func TerminalPrompter(in io.Reader, out io.Writer) perm.Prompter {
 	}
 }
 
-func readLine(ctx context.Context, rd *bufio.Reader) (string, error) {
+// directAnswers reads one line per call from in. The read runs in a goroutine, so that a
+// question that is cancelled can stop waiting, and that goroutine is not abandoned: the read
+// stays in progress until it returns, and the next call waits for that same read. What is
+// typed after a cancelled question is therefore the answer to the next question (or stays
+// unread, if there is none), and never the prize of a goroutine nobody waits for, which is
+// what it used to be: an approval cancelled by Ctrl-C took the next line the person typed.
+func directAnswers(in io.Reader) func(ctx context.Context, show func()) (string, error) {
+	rd, ok := in.(*bufio.Reader)
+	if !ok {
+		rd = bufio.NewReader(in)
+	}
 	type res struct {
 		s   string
 		err error
 	}
-	ch := make(chan res, 1)
-	go func() {
-		s, err := rd.ReadString('\n')
-		ch <- res{s, err}
-	}()
-	select {
-	case r := <-ch:
-		return r.s, r.err
-	case <-ctx.Done():
-		return "", ctx.Err()
+	var (
+		mu      sync.Mutex
+		pending chan res // the read in progress, if any
+	)
+	return func(ctx context.Context, show func()) (string, error) {
+		show() // nothing else reads in: there is no typed-ahead line to tell from an answer
+		mu.Lock()
+		if pending == nil {
+			ch := make(chan res, 1)
+			pending = ch
+			go func() {
+				s, err := rd.ReadString('\n')
+				ch <- res{s, err}
+			}()
+		}
+		ch := pending
+		mu.Unlock()
+		select {
+		case r := <-ch:
+			mu.Lock()
+			if pending == ch {
+				pending = nil
+			}
+			mu.Unlock()
+			return r.s, r.err
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
 }

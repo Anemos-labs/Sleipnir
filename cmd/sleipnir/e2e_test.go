@@ -339,10 +339,15 @@ func (m *scriptedModel) respond(c *mock.Call) mock.Reply {
 	}
 	m.goals = append(m.goals, goal)
 	// The first message of a session carries the shared pins in front of the goal; later ones
-	// are the goal alone. Anything else in front is input that ended up in the goal by mistake
-	// (a half-typed line that was not discarded, for one).
-	if front := strings.TrimSuffix(text, goal); front != "" && !strings.HasSuffix(front, "</role-context>") {
-		m.stray = append(m.stray, oneLineCLI(front, 80)+"⟦"+goal+"⟧")
+	// are the goal alone; and a goal whose turn was cancelled (nothing answered it) is still in
+	// the message that the next goal is added to. Anything else in front is input that ended up
+	// in the goal by mistake (a half-typed line that was not discarded, for one).
+	front := strings.TrimSuffix(text, goal)
+	for name := range m.turns {
+		front = strings.ReplaceAll(front, name, "")
+	}
+	if front != "" && !strings.HasSuffix(front, "</role-context>") {
+		m.stray = append(m.stray, "…"+front[max(0, len(front)-60):]+"⟦"+goal+"⟧")
 	}
 	m.mu.Unlock()
 	if g := tr.gate; g != nil {

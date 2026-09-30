@@ -1,17 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -25,10 +22,26 @@ import (
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
-func init() { extraCommands["chat"] = cmdChat }
+func init() {
+	extraCommands["chat"] = cmdChat
+	ownsInterrupt["chat"] = true
+}
+
+// quitHint is what a first Ctrl-C at the prompt says.
+const quitHint = "(press Ctrl-C again within 2 seconds to quit, or type /exit)"
 
 // cmdChat is the interactive loop: type a goal, watch the agent work, steer with
-// slash commands. Ctrl-C cancels the running turn, not the session.
+// slash commands.
+//
+// Ctrl-C cancels what is running (a turn, and any question the turn is asking; a slash
+// command; the start of the session) and nothing else. At the prompt a first Ctrl-C prints
+// quitHint, and a second one within quitWindow, with nothing typed in between, quits. The
+// handling is in one place, interrupts (chat_input.go), and main leaves SIGINT to it
+// (ownsInterrupt): the process's context, which ends the session, is cancelled by SIGTERM only.
+//
+// The input is owned by one reader, stdinLines (chat_input.go): the prompt reads goals and an
+// approval question reads its answer from it, and a line typed while a turn runs waits for the
+// prompt instead of answering a question that comes later.
 func cmdChat(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("chat", flag.ExitOnError)
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
@@ -48,18 +61,24 @@ func cmdChat(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	// From here on Ctrl-C is this command's: registered before anything slow starts, so that
+	// it never meets the default action, which would end the process.
+	intr := newInterrupts()
+	stopWatching := intr.watch()
+	defer stopWatching()
 	spec, err := resume()
 	if err != nil {
 		return err
 	}
-	in := bufio.NewReader(os.Stdin)
+	isTerminal := term.IsTerminal(int(os.Stdin.Fd()))
+	lines := newStdinLines(os.Stdin, !isTerminal)
 	o := chatOptions(session.Options{
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
 		Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
 	})
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		o.Prompter = session.TerminalPrompter(in, os.Stderr)
+	if isTerminal {
+		o.Prompter = session.LinePrompter(lines.Answer, os.Stderr)
 	}
 	mainAgent := "main"
 	if o.Swarm {
@@ -71,7 +90,13 @@ func cmdChat(ctx context.Context, args []string) error {
 		o.NewSink = func(string) agent.Sink { return sink }
 	}
 	session.Version = version
-	s, err := session.New(ctx, o)
+	// Starting can take a while (catalogue, recon, tool servers), and Ctrl-C ends it. The
+	// context is not cancelled when New returns: what New starts may keep it.
+	startCtx, cancelStart := context.WithCancel(ctx)
+	defer cancelStart()
+	intr.begin(cancelStart)
+	s, err := session.New(startCtx, o)
+	intr.end()
 	if err != nil {
 		return err
 	}
@@ -86,21 +111,35 @@ func cmdChat(ctx context.Context, args []string) error {
 	if s.Resumed() {
 		fmt.Fprintf(os.Stderr, "resumed: %d turns restored; the first request writes the cached prefix again, once\n", len(s.Agent.Stack().Thread.Turns))
 	}
-	fmt.Fprintln(os.Stderr, "Type a goal, or /help. Ctrl-C cancels the current turn; /exit quits.")
+	fmt.Fprintln(os.Stderr, "Type a goal, or /help. Ctrl-C cancels the current turn (twice at the prompt quits); /exit or Ctrl-D quits.")
 	for {
+		if ctx.Err() != nil { // SIGTERM, in the middle of a turn or not
+			s.SetEndReason(session.EndInterrupted)
+			fmt.Fprintln(os.Stderr)
+			return nil
+		}
 		fmt.Fprint(os.Stderr, "\n› ")
-		line, err := readInput(ctx, in)
-		if err != nil {
-			switch {
-			case errors.Is(err, io.EOF):
-				s.SetEndReason(session.EndExit)
-				fmt.Fprintln(os.Stderr)
-				return nil
-			case errors.Is(err, context.Canceled):
+		line, err := readInput(ctx, lines, intr.idle)
+		switch {
+		case err == nil:
+			intr.disarm() // whatever was typed, a Ctrl-C after it is a first one again
+		case errors.Is(err, errInterrupted):
+			if intr.pressed() {
 				s.SetEndReason(session.EndInterrupted)
 				fmt.Fprintln(os.Stderr)
 				return nil
 			}
+			fmt.Fprintln(os.Stderr, "\n"+quitHint)
+			continue
+		case errors.Is(err, io.EOF):
+			s.SetEndReason(session.EndExit)
+			fmt.Fprintln(os.Stderr)
+			return nil
+		case errors.Is(err, context.Canceled):
+			s.SetEndReason(session.EndInterrupted)
+			fmt.Fprintln(os.Stderr)
+			return nil
+		default:
 			s.SetEndReason(session.EndError)
 			return err
 		}
@@ -109,7 +148,9 @@ func cmdChat(ctx context.Context, args []string) error {
 		case line == "":
 			continue
 		case strings.HasPrefix(line, "/"):
-			quit, send := slash(ctx, s, line)
+			var quit bool
+			var send string
+			intr.run(ctx, func(c context.Context) { quit, send = slash(c, s, line) })
 			if quit {
 				s.SetEndReason(session.EndExit)
 				return nil
@@ -119,7 +160,7 @@ func cmdChat(ctx context.Context, args []string) error {
 			}
 			line = send // a custom command or skill expanded into a prompt
 		}
-		runTurn(ctx, s, line)
+		runTurn(ctx, intr, s, line)
 	}
 }
 
@@ -140,43 +181,14 @@ func modeName(s *session.Session) string {
 	return m
 }
 
-// readInput reads one logical line; a trailing backslash continues it.
-func readInput(ctx context.Context, in *bufio.Reader) (string, error) {
-	var sb strings.Builder
-	for {
-		type res struct {
-			s   string
-			err error
-		}
-		ch := make(chan res, 1)
-		go func() { s, err := in.ReadString('\n'); ch <- res{s, err} }()
-		var r res
-		select {
-		case r = <-ch:
-		case <-ctx.Done():
-			return "", ctx.Err()
-		}
-		if r.err != nil && r.s == "" {
-			return "", r.err
-		}
-		ln := strings.TrimRight(r.s, "\r\n")
-		if strings.HasSuffix(ln, "\\") {
-			sb.WriteString(strings.TrimSuffix(ln, "\\"))
-			sb.WriteString("\n")
-			fmt.Fprint(os.Stderr, "… ")
-			continue
-		}
-		sb.WriteString(ln)
-		return sb.String(), nil
-	}
-}
-
-// runTurn runs one goal with Ctrl-C bound to that turn only.
-func runTurn(parent context.Context, s *session.Session, goal string) {
-	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	defer stop()
+// runTurn runs one goal with Ctrl-C bound to that turn only (interrupts.run): it cancels the
+// turn, and with it a question the turn is asking, and nothing else. parent is the process's
+// context, which SIGTERM cancels.
+func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal string) {
 	start := time.Now()
-	res, err := s.Run(ctx, goal)
+	var res *session.Result
+	var err error
+	intr.run(parent, func(ctx context.Context) { res, err = s.Run(ctx, goal) })
 	fmt.Fprintln(os.Stdout)
 	if res != nil {
 		fmt.Fprintf(os.Stderr, "── %s · %d steps · $%.4f · cache hit %.0f%%\n",
@@ -204,7 +216,7 @@ const chatHelp = `/help              this text (and your custom commands and ski
 /recon             show the project map pinned in the shared layer
 /skills            list the skills the model can load
 /mcp               MCP tool servers: state and tools (/mcp reconnect NAME); their prompts run as /mcp__server__prompt
-/exit              quit (also Ctrl-D)`
+/exit              quit (also Ctrl-D, or Ctrl-C twice at the prompt)`
 
 // slash handles a slash command. It reports whether to quit, and the prompt to
 // send when the command was a custom one (or a skill) that expanded into text.
@@ -358,11 +370,10 @@ func printCost(s *session.Session) {
 		u.InputTokens, u.CacheReadTokens, u.CacheWriteTokens(), u.OutputTokens, u.HitRatio()*100, usd)
 }
 
-// compactNow folds the thread on request, with Ctrl-C bound to it, and says what
-// happened. focus tells the compactor what the user cares about.
-func compactNow(parent context.Context, s *session.Session, focus string, w io.Writer) {
-	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	defer stop()
+// compactNow folds the thread on request and says what happened. focus tells the compactor
+// what the user cares about. ctx is one that Ctrl-C cancels (the slash command runs under
+// interrupts.run).
+func compactNow(ctx context.Context, s *session.Session, focus string, w io.Writer) {
 	rep, err := s.Compact(ctx, focus)
 	switch {
 	case err != nil:

@@ -43,10 +43,19 @@ func main() {
 		usage(os.Stderr)
 		os.Exit(2)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	cmd, args := os.Args[1], os.Args[2:]
+	// Ctrl-C and SIGTERM cancel the process's context, and with it whatever a command is doing:
+	// that is what Ctrl-C means for a command that does one thing. A command that does many
+	// (chat: a turn at a time) handles Ctrl-C itself, and its context is cancelled by SIGTERM
+	// only: a signal goes to every channel that asked for it, so registering here as well would
+	// end the whole session when a turn was cancelled.
+	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if ownsInterrupt[cmd] {
+		sigs = []os.Signal{syscall.SIGTERM}
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), sigs...)
 	defer stop()
 
-	cmd, args := os.Args[1], os.Args[2:]
 	var err error
 	switch cmd {
 	case "doctor":
@@ -87,6 +96,10 @@ func reportError(w io.Writer, err error) int {
 
 // extraCommands lets other files in this package register subcommands.
 var extraCommands = map[string]func(context.Context, []string) error{}
+
+// ownsInterrupt names the commands that handle Ctrl-C themselves (chat.go registers chat); the
+// process's context is not cancelled by SIGINT for them.
+var ownsInterrupt = map[string]bool{}
 
 func usage(w io.Writer) {
 	fmt.Fprint(w, `sleipnir - a coding-agent harness with a shared multi-layer prompt cache
