@@ -3,7 +3,7 @@ package events
 // Security regression tests for docs/reviews/security-robustness.md (events
 // findings S33-S36, part of F12).
 //
-// TestSecReview_S33..S36 pin the fixes; they began as repro tests that failed while
+// TestSec_S33..S36 pin the fixes; they began as repro tests that failed while
 // the findings were open. The write-time redaction half of S35 was decided the
 // other way: the log is verbatim and private, redaction happens at export
 // (TestLogIsVerbatimAndPrivateByDesign).
@@ -42,13 +42,6 @@ func secRevFiles(t *testing.T, dir string) []string {
 	return out
 }
 
-func secRevGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("security-review repro: set SLEIPNIR_REVIEW=1 (asserts the secure behaviour, fails while the finding is open)")
-	}
-}
-
 func secRevUnixPerms(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
@@ -75,7 +68,7 @@ func evSeqs(t *testing.T, path string) ([]uint64, error) {
 // S33: DirBlobs.path builds a filesystem path from the hash string without validating it, so
 // any string that reaches Get/Has (a Block.MediaRef from a tool result or provider, a hash read
 // from a tampered log) walked out of the blob directory. Only 64 lowercase hex digits are hashes now.
-func TestSecReview_S33_BlobHashIsNotValidatedAsAPath(t *testing.T) {
+func TestSec_S33_BlobHashIsNotValidatedAsAPath(t *testing.T) {
 	base := t.TempDir()
 	dir := filepath.Join(base, "state", "blobs")
 	secret := filepath.Join(base, "secret.txt")
@@ -105,7 +98,7 @@ func TestSecReview_S33_BlobHashIsNotValidatedAsAPath(t *testing.T) {
 
 // Everything that is not exactly 64 lowercase hex digits is refused before any path is built, and
 // the error neither echoes control characters nor grows with the input.
-func TestSecReview_S33_MalformedHashesAreRejected(t *testing.T) {
+func TestSec_S33_MalformedHashesAreRejected(t *testing.T) {
 	b, err := NewDirBlobs(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +134,7 @@ func TestSecReview_S33_MalformedHashesAreRejected(t *testing.T) {
 // S34: blobs are content-addressed but Get never re-hashed, and the store may live
 // under a directory the agent's write tools can reach: archived turns, layer texts and
 // rendered hot blocks (the training corpus) could be rewritten with no detection.
-func TestSecReview_S34_TamperedBlobIsNotServed(t *testing.T) {
+func TestSec_S34_TamperedBlobIsNotServed(t *testing.T) {
 	dir := t.TempDir()
 	b, err := NewDirBlobs(dir)
 	if err != nil {
@@ -174,7 +167,7 @@ func TestSecReview_S34_TamperedBlobIsNotServed(t *testing.T) {
 // A torn write (rename persisted before the data), a rewritten file of the same size, an emptied file
 // and a symlink planted in place of the blob are all detected by Get and healed by the next Put of the
 // same content, instead of poisoning the store for good.
-func TestSecReview_S34_DamagedBlobsAreDetectedAndRepairedByPut(t *testing.T) {
+func TestSec_S34_DamagedBlobsAreDetectedAndRepairedByPut(t *testing.T) {
 	payload := bytes.Repeat([]byte("layer text "), 500)
 	damage := map[string]func(t *testing.T, p string){
 		"torn":     func(t *testing.T, p string) { os.WriteFile(p, payload[:17], 0o600) },
@@ -224,7 +217,7 @@ func TestSecReview_S34_DamagedBlobsAreDetectedAndRepairedByPut(t *testing.T) {
 // S35: session state was created 0755/0644 (the checkpoint store uses 0700/0600). Everything this package
 // creates is private to the user now, temp files included, and an older version's world-readable log is
 // tightened when it is reopened.
-func TestSecReview_S35_LogAndBlobPermissions(t *testing.T) {
+func TestSec_S35_LogAndBlobPermissions(t *testing.T) {
 	secRevUnixPerms(t)
 	base := t.TempDir()
 	dir := filepath.Join(base, "sessions", "s1")
@@ -266,7 +259,7 @@ func TestSecReview_S35_LogAndBlobPermissions(t *testing.T) {
 	}
 }
 
-func TestSecReview_S35_ExistingLooseLogIsTightenedButDirectoriesAreLeftAlone(t *testing.T) {
+func TestSec_S35_ExistingLooseLogIsTightenedButDirectoriesAreLeftAlone(t *testing.T) {
 	secRevUnixPerms(t)
 	base := t.TempDir()
 	dir := filepath.Join(base, "old-session")
@@ -337,7 +330,7 @@ func TestLogIsVerbatimAndPrivateByDesign(t *testing.T) {
 
 // S36: Open truncated the log at the FIRST unparseable line, not just at a torn final line, so
 // one damaged record silently destroyed every later event (the source of truth / training data).
-func TestSecReview_S36_MidFileCorruptionDoesNotTruncateTheRestOfTheLog(t *testing.T) {
+func TestSec_S36_MidFileCorruptionDoesNotTruncateTheRestOfTheLog(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "events.jsonl")
 	content := evLine(1, "a") + evLine(2, "b") + "\x00\x00 bit rot \x00\n" + evLine(4, "d") + evLine(5, "e") + evLine(6, "f")
@@ -403,7 +396,7 @@ func TestSecReview_S36_MidFileCorruptionDoesNotTruncateTheRestOfTheLog(t *testin
 }
 
 // Damage that turns up after an earlier one was recorded is recorded too.
-func TestSecReview_S36_NewDamageAfterARecordedOneIsRecordedAgain(t *testing.T) {
+func TestSec_S36_NewDamageAfterARecordedOneIsRecordedAgain(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "events.jsonl")
 	if err := os.WriteFile(path, []byte(evLine(1, "a")+"junk\n"+evLine(3, "c")), 0o600); err != nil {
@@ -428,7 +421,7 @@ func TestSecReview_S36_NewDamageAfterARecordedOneIsRecordedAgain(t *testing.T) {
 // Only a torn FINAL line is ever cut: a crash leaves no newline, and either a fragment (truncated) or a
 // whole event that only lost its newline (kept). A garbage line that did get its newline is damage, not
 // a crash tail, so it stays.
-func TestSecReview_S36_OnlyATornFinalLineIsTruncated(t *testing.T) {
+func TestSec_S36_OnlyATornFinalLineIsTruncated(t *testing.T) {
 	cases := []struct {
 		name      string
 		content   string
@@ -496,7 +489,7 @@ func TestSecReview_S36_OnlyATornFinalLineIsTruncated(t *testing.T) {
 
 // A read error is not the end of the file: cutting the log where a transient failure
 // happened would destroy every event after it.
-func TestSecReview_S36_ReadErrorsAreNotTreatedAsEndOfFile(t *testing.T) {
+func TestSec_S36_ReadErrorsAreNotTreatedAsEndOfFile(t *testing.T) {
 	content := evLine(1, "a") + evLine(2, "b") + evLine(3, "c")
 	boom := errors.New("input/output error")
 	r := io.MultiReader(strings.NewReader(content[:len(evLine(1, "a"))+5]), iotest.ErrReader(boom))
@@ -516,7 +509,7 @@ func TestSecReview_S36_ReadErrorsAreNotTreatedAsEndOfFile(t *testing.T) {
 
 // Log lines, on disk or emitted, are bounded: a huge line is skipped without being buffered
 // (memory stays bounded however long it is) and Emit never writes a line the readers would refuse.
-func TestSecReview_S36_LineSizeIsBounded(t *testing.T) {
+func TestSec_S36_LineSizeIsBounded(t *testing.T) {
 	old := maxLineBytes
 	maxLineBytes = 4096
 	t.Cleanup(func() { maxLineBytes = old })
@@ -567,7 +560,7 @@ func TestSecReview_S36_LineSizeIsBounded(t *testing.T) {
 
 // A sequence number near the top of the range must not be resumed from: counting on from it would wrap
 // to 0 and every later event would be unreadable.
-func TestSecReview_S36_HugeSequenceNumbersCannotWrapTheCounter(t *testing.T) {
+func TestSec_S36_HugeSequenceNumbersCannotWrapTheCounter(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "events.jsonl")
 	if err := os.WriteFile(path, []byte(evLine(1, "a")+`{"seq":18446744073709551615,"type":"x"}`+"\n"), 0o600); err != nil {

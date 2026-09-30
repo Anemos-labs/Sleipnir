@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
@@ -50,10 +51,12 @@ func backendName(b Backend) string {
 // is configured (in which case Register leaves web_search out). BRAVE_API_KEY
 // wins over TAVILY_API_KEY, which wins over SEARXNG_URL.
 func BackendFromEnv() Backend {
-	if k := strings.TrimSpace(os.Getenv("BRAVE_API_KEY")); k != "" {
+	// The keys are read with harden.Secret: a harness that moved its API keys out of
+	// the process environment (harden.MoveKeys) still finds them.
+	if k := strings.TrimSpace(harden.Secret("BRAVE_API_KEY")); k != "" {
 		return NewBrave(k)
 	}
-	if k := strings.TrimSpace(os.Getenv("TAVILY_API_KEY")); k != "" {
+	if k := strings.TrimSpace(harden.Secret("TAVILY_API_KEY")); k != "" {
 		return NewTavily(k)
 	}
 	if u := strings.TrimSpace(os.Getenv("SEARXNG_URL")); u != "" {

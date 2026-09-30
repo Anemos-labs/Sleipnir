@@ -2,7 +2,6 @@ package fs
 
 import (
 	"io"
-	"os"
 	"strings"
 )
 
@@ -127,15 +126,13 @@ func parseIgnoreFile(data []byte, off int) *ignoreFile {
 // loadIgnoreFile reads path if it is a readable regular file (or a symlink to
 // one) of sane size.
 func loadIgnoreFile(path string, off int) *ignoreFile {
-	f, err := os.Open(path)
+	// A .gitignore that is a FIFO (a repository cannot ship one, but a command can
+	// make one) must not stall every search that walks past it.
+	f, _, err := openRegular(path)
 	if err != nil {
 		return nil
 	}
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() {
-		return nil
-	}
 	data, err := io.ReadAll(io.LimitReader(f, maxIgnoreFileBytes))
 	if err != nil {
 		return nil

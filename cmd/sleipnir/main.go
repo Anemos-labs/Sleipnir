@@ -17,12 +17,12 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/config"
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/gateway"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/provider/probe"
 	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/tools/shell"
 )
 
 // Set at build time via -ldflags.
@@ -32,9 +32,7 @@ var (
 )
 
 func main() {
-	// Make this process non-dumpable so the commands it runs for agents cannot read
-	// its environment (provider API keys) through /proc/<ppid>/environ.
-	_ = shell.HardenProcess()
+	harden.Process() // first, before anything reads a key or starts a command: see docs/SECURITY.md
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,8 +52,21 @@ func (e *Env) Finish(text string, isErr bool) *Result {
 	return res
 }
 
-// Handles maps short recall handles ("out_ab12cd34") to blobs. It is shared by
-// a session so any agent can page through output another agent produced.
+// Handles maps short recall handles ("out_0123456789abcdef") to blobs. It is
+// shared by a session so any agent can page through output another agent
+// produced.
+//
+// A handle is "out_" plus the first 16 hex characters (64 bits) of the blob's
+// hash. That is short enough for a model to copy and wide enough that two
+// different outputs practically never share one, but "practically never" is not
+// a guarantee the table can lean on: it is shared by every agent, an agent that
+// can influence what its tools print can grind for a prefix, and a collision
+// would make recall(handle) answer with another agent's output. So Add never
+// trusts the width: when a different blob already holds the id, the newcomer's
+// id is lengthened, four hex characters at a time, until it is free. A handle
+// that was issued therefore keeps resolving to its own blob for the life of the
+// table, and the ids depend only on the hashes and the order of the calls
+// (never on time or map order), so a replayed session mints the same ones.
 type Handles struct {
 	mu sync.RWMutex
 	m  map[string]handle
@@ -63,23 +77,61 @@ type handle struct {
 	len int
 }
 
+const (
+	handlePrefix  = "out_"
+	handleMinHex  = 16 // 64 bits of the hash
+	handleHexStep = 4  // how much a colliding newcomer's id grows per attempt
+)
+
 // NewHandles returns an empty table.
 func NewHandles() *Handles { return &Handles{m: map[string]handle{}} }
 
-// Add registers a blob and returns its handle.
+// Add registers a blob and returns its handle. Adding the same blob again
+// returns the same handle; a different blob never receives (or replaces) a
+// handle that is already taken.
 func (h *Handles) Add(ref core.Hash, length int) string {
-	id := "out_" + ref.Short()[:8]
+	digits := string(ref)
 	h.mu.Lock()
-	h.m[id] = handle{ref: ref, len: length}
-	h.mu.Unlock()
-	return id
+	defer h.mu.Unlock()
+	for n := handleMinHex; ; n += handleHexStep {
+		n = min(n, len(digits))
+		id := handlePrefix + digits[:n]
+		cur, taken := h.m[id]
+		if !taken {
+			h.m[id] = handle{ref: ref, len: length}
+			return id
+		}
+		if cur.ref == ref {
+			return id
+		}
+		if n == len(digits) {
+			break
+		}
+	}
+	// Not reachable for real hashes: an id that spells a whole hash can only be
+	// held by that hash. Arbitrary input (a Blobs implementation with odd
+	// hashes) still must never overwrite, so fall back to numbering.
+	for i := 2; ; i++ {
+		id := handlePrefix + digits + "_" + strconv.Itoa(i)
+		cur, taken := h.m[id]
+		if !taken {
+			h.m[id] = handle{ref: ref, len: length}
+			return id
+		}
+		if cur.ref == ref {
+			return id
+		}
+	}
 }
 
-// Resolve returns the blob behind a handle.
+// Resolve returns the blob behind a handle. Whitespace around the handle (a
+// model copying it out of a sentence) is ignored; anything else must match
+// exactly: there is no prefix matching, so a truncated handle is unknown rather
+// than possibly someone else's.
 func (h *Handles) Resolve(id string) (core.Hash, int, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	x, ok := h.m[id]
+	x, ok := h.m[strings.TrimSpace(id)]
 	return x.ref, x.len, ok
 }
 

@@ -12,7 +12,7 @@ import (
 
 // A FIFO planted where a manifest belongs must not hang New (the harness would never start), and it
 // keeps its number like any other file that cannot be read.
-func TestSecReview_S37_FIFOManifestDoesNotHang(t *testing.T) {
+func TestSec_S37_FIFOManifestDoesNotHang(t *testing.T) {
 	f := newForge(t)
 	if err := syscall.Mkfifo(filepath.Join(f.state, "cp_0001.json"), 0o600); err != nil {
 		t.Skipf("cannot create a fifo: %v", err)

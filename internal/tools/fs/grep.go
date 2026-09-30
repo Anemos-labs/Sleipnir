@@ -490,7 +490,7 @@ func searchFile(path string, o searchOpts) fileResult {
 	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxGrepFileBytes {
 		return res
 	}
-	f, err := os.Open(path)
+	f, _, err := openRegular(path)
 	if err != nil {
 		return res
 	}

@@ -1,7 +1,8 @@
 package tools
 
-// Security review repro for docs/reviews/security-robustness.md (gated: SLEIPNIR_REVIEW=1,
-// asserts the SECURE behaviour and fails while the finding is open).
+// Security review repros for docs/reviews/security-robustness.md. S46 is still open and gated
+// (SLEIPNIR_REVIEW=1, asserts the SECURE behaviour and fails while the finding is open). S32 is
+// fixed and is an ordinary regression test.
 
 import (
 	"context"
@@ -13,23 +14,29 @@ import (
 	"github.com/reee344/sleipnir/internal/perm"
 )
 
-// S32: recall handles are "out_" + the first 8 hex digits (32 bits) of the blob hash, in a
-// session-wide table that silently overwrites on collision: recall(handle) can then return a
+// S32: recall handles were "out_" + the first 8 hex digits (32 bits) of the blob hash, in a
+// session-wide table that silently overwrote on collision: recall(handle) could then return a
 // different command's output. With ~50k truncated outputs in a large session the chance of at
-// least one collision is ~25%; an insider can also grind a 32-bit prefix.
-func TestSecReview_S32_HandleCollisionSilentlyOverwrites(t *testing.T) {
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("security-review repro: set SLEIPNIR_REVIEW=1")
-	}
+// least one collision was ~25%; an insider could also grind a 32-bit prefix. The handle is now
+// 64 bits and a colliding newcomer gets a longer one, so two blobs never share a handle.
+func TestSec_S32_DistinctBlobsNeverShareAHandle(t *testing.T) {
 	h := NewHandles()
 	a := core.Hash("deadbeef" + strings.Repeat("1", 56)) // e.g. the real test log
-	b := core.Hash("deadbeef" + strings.Repeat("2", 56)) // e.g. attacker-ground content
+	b := core.Hash("deadbeef" + strings.Repeat("2", 56)) // e.g. attacker-ground content: same first 8 hex digits
 	ida := h.Add(a, 100)
 	idb := h.Add(b, 200)
-	got, _, _ := h.Resolve(ida)
-	t.Logf("handles: %s -> %s, %s -> %s; resolving the first now returns %s", ida, a.Short(), idb, b.Short(), got.Short())
-	if ida == idb && got != a {
-		t.Errorf("S32: handle %s (first output) now resolves to a different blob; Add overwrote it silently", ida)
+	if ida == idb {
+		t.Fatalf("S32: two different blobs got the same handle %s", ida)
+	}
+	for _, c := range []struct {
+		id   string
+		want core.Hash
+		len  int
+	}{{ida, a, 100}, {idb, b, 200}} {
+		got, n, ok := h.Resolve(c.id)
+		if !ok || got != c.want || n != c.len {
+			t.Errorf("S32: handle %s resolves to %s (len %d, ok=%v), want %s (len %d)", c.id, got.Short(), n, ok, c.want.Short(), c.len)
+		}
 	}
 }
 

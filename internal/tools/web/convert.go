@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 type contentKind int
@@ -113,19 +115,7 @@ func stripInvisible(s string) string {
 	}, s)
 }
 
-func invisible(r rune) bool {
-	switch {
-	case r == 0x00AD, r == 0x180E, r == 0x200B, r == 0x2060, r == 0xFEFF:
-	case r >= 0x2061 && r <= 0x2064: // invisible operators
-	case r >= 0x202A && r <= 0x202E: // bidi embeddings and overrides
-	case r >= 0x2066 && r <= 0x2069: // bidi isolates
-	case r >= 0xE0000 && r <= 0xE007F: // tag characters
-	case r >= 0xE0100 && r <= 0xE01EF: // variation selectors supplement
-	default:
-		return false
-	}
-	return true
-}
+func invisible(r rune) bool { return tools.Invisible(r) }
 
 func looksJSON(body []byte) bool {
 	t := bytes.TrimSpace(body)
