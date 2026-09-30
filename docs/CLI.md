@@ -139,8 +139,9 @@ with status 0. The other commands (`run`, `swarm`, `inspect`, ...) keep one mean
 **Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal.
 It is never the answer to an approval question: a question takes the first line typed after it was shown, so a `y` that was
 typed for something else cannot approve an action, and a line typed ahead is not lost to a question either. A question that
-Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A Ctrl-D typed during a turn quits when the turn is
-over, as it would have at the prompt.
+Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is already typed survives the Ctrl-C that
+cancels the turn and runs next (a line not yet finished does not: the terminal discards it), and a Ctrl-D typed during a
+turn quits when the turn is over, as it would have at the prompt.
 
 <!-- flags: chat -->
 ```text

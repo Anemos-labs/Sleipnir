@@ -423,6 +423,34 @@ func TestChatALineTypedAheadIsNotTheAnswer(t *testing.T) {
 	}
 }
 
+// A line that is already typed when Ctrl-C cancels the turn is not thrown away with it: it runs
+// next. (A terminal discards what was typed and not yet read when Ctrl-C is pressed; the chat
+// reads while the turn runs, so a finished line is its own by then. The test waits for that.)
+func TestChatALineTypedAheadSurvivesCtrlC(t *testing.T) {
+	m := startModel(t)
+	slow := m.on("@slow", say("slow turn finished").held())
+	m.on("@hello", say("hi there"))
+	w := newWorld(t, m.url())
+	c := startChat(t, w)
+
+	c.send("@slow")
+	slow.wait(t)
+	c.send("@hello") // typed ahead
+	c.expect("@hello")
+	if err := c.term.WaitInputRead(e2eGuard); err != nil {
+		t.Fatalf("the chat did not read the line typed while the turn ran: %v", err)
+	}
+	c.ctrlC()
+	c.expect("(cancelled)")
+	c.expect("hi there") // the line typed ahead ran, without anything being typed after the Ctrl-C
+	c.prompt()
+	c.ctrlD()
+	c.exited(0)
+	if got, want := m.seen(), []string{"@slow", "@hello"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("the model got the goals %q, want %q", got, want)
+	}
+}
+
 // Without a terminal nothing can be asked, and the chat reads its goals line by line until
 // the input ends.
 func TestChatFromAPipe(t *testing.T) {
