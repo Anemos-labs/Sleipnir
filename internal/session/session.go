@@ -113,6 +113,9 @@ type Options struct {
 	Meta map[string]any
 	// NoWeb omits the web tools.
 	NoWeb bool
+	// NoMCP starts no MCP servers (RL rollouts, tests): the tool list is then the
+	// built-in one whatever the configuration says.
+	NoMCP bool
 	// Offline skips network lookups made for convenience (model catalogue).
 	Offline bool
 }
@@ -146,6 +149,8 @@ type Session struct {
 	Skills *skills.Catalog
 	Roles  swarm.Roles
 
+	cfgRep      *config.Report // where each configuration value came from (nil when Options.Config was given)
+	mcp         *mcpState
 	ext         *extensions
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
@@ -206,9 +211,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		o.Dir, o.ID = dir, filepath.Base(dir)
 	}
 	cfg := o.Config
+	var rep *config.Report
 	if cfg == nil {
 		var err error
-		var rep *config.Report
 		cfg, rep, err = config.Load(config.LoadOpts{Cwd: cwd, Root: o.Root, Home: o.Home, UntrustedProject: !o.TrustProject})
 		if err != nil {
 			return nil, fmt.Errorf("config: %w", err)
@@ -221,7 +226,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			o.Sink.Notice("", "warn", "ignored security-sensitive settings from the project's config ("+strings.Join(names, ", ")+"); pass --trust-project to apply them")
 		}
 	}
-	s := &Session{opts: o, cfg: cfg}
+	s := &Session{opts: o, cfg: cfg, cfgRep: rep}
 
 	// Identity and storage.
 	s.ID = o.ID
@@ -282,7 +287,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		s.Log.Close()
 		return nil, err
 	}
-	if err := s.build(); err != nil {
+	if err := s.build(ctx); err != nil {
 		s.Log.Close()
 		return nil, err
 	}
@@ -440,7 +445,7 @@ func userScopeOnly(srcs []memory.Source) []memory.Source {
 }
 
 // build registers tools and creates the agent or swarm.
-func (s *Session) build() error {
+func (s *Session) build(ctx context.Context) error {
 	o := s.opts
 	limits := tools.DefaultLimits()
 	if t := s.cfg.Tools; t.MaxOutputChars > 0 {
@@ -470,6 +475,9 @@ func (s *Session) build() error {
 	reg.Register(recall.New(archive))
 	// Always registered: the tool list must not depend on the project.
 	reg.Register(skilltool.New(s.Skills))
+	// MCP servers add their tools here, before the list is frozen: every agent of
+	// the session then sends the same tools array, byte for byte.
+	s.startMCP(ctx, reg)
 
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
 	constLayer := kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: constText, Vol: kv.VolFrozen}})
@@ -654,6 +662,9 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 		if len(s.opts.Meta) > 0 {
 			start["meta"] = s.opts.Meta
 		}
+		if info := s.mcpInfo(); info != nil {
+			start["mcp"] = info
+		}
 		if s.opts.Resume != "" {
 			start["resumed"] = true
 		}
@@ -752,6 +763,7 @@ func (s *Session) Close() error {
 	if s.shell != nil {
 		s.shell.Shutdown()
 	}
+	s.closeMCP()
 	if started && s.hookAdapter != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionEnd, Agent: s.mainAgent(), Extra: map[string]any{"reason": "other"}})

@@ -184,6 +184,9 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		MaxSteps: spec.Budget.Steps, ContextWindow: firstPositive(spec.Budget.ContextWindow, h.ContextTokens),
 		TrustProject: !h.IgnoreRepoInstructions,
 		NoWeb:        !task.Network, Offline: true,
+		// A rollout is a closed, reproducible episode: no tool servers, whatever the
+		// task's repository or the user's configuration says.
+		NoMCP:    true,
 		ShellEnv: spec.Env, ShellWrap: spec.NetPrefix,
 		NewSink: h.NewSink,
 		// What the log says about its own policy: the extractor reads it back, so an

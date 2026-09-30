@@ -60,6 +60,27 @@ type Report struct {
 	ProjectRisks []Issue `json:"project_risks,omitempty"`
 }
 
+// KindOf says which kind of layer (defaults, user, project, local, env,
+// overrides) supplied the value at an origin key such as "mcp.github", or "" when
+// no layer set it (or the report is nil). Callers that treat a repository's
+// settings differently from the user's own ask this instead of guessing from a
+// file path.
+func (r *Report) KindOf(key string) string {
+	if r == nil {
+		return ""
+	}
+	src, ok := r.Origins[key]
+	if !ok {
+		return ""
+	}
+	for i := len(r.Layers) - 1; i >= 0; i-- {
+		if r.Layers[i].Source == src {
+			return r.Layers[i].Kind
+		}
+	}
+	return ""
+}
+
 // UserConfigPath is the user-level file for a home directory.
 func UserConfigPath(home string) string { return filepath.Join(home, ".sleipnir", "config.json") }
 

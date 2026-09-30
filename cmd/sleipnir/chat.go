@@ -19,6 +19,7 @@ import (
 	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/checkpoint"
 	"github.com/reee344/sleipnir/internal/core"
+	"github.com/reee344/sleipnir/internal/mcp"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/session"
 )
@@ -36,6 +37,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	trust := fs.Bool("trust-project", false, "load project instruction files and project-level config")
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
+	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	resume := resumeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -47,7 +49,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	in := bufio.NewReader(os.Stdin)
 	o := session.Options{
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
-		TrustProject: *trust, BudgetUSD: *budget, Resume: spec,
+		TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
 	}
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		o.Prompter = session.TerminalPrompter(in, os.Stderr)
@@ -172,6 +174,7 @@ const chatHelp = `/help              this text (and your custom commands and ski
 /diff <id>         show what changed since a checkpoint
 /recon             show the project map pinned in the shared layer
 /skills            list the skills the model can load
+/mcp               MCP tool servers: state and tools (/mcp reconnect NAME); their prompts run as /mcp__server__prompt
 /exit              quit (also Ctrl-D)`
 
 // slash handles a slash command. It reports whether to quit, and the prompt to
@@ -186,6 +189,16 @@ func slash(ctx context.Context, s *session.Session, line string) (quit bool, sen
 		printCustom(s, os.Stderr)
 	case "/skills":
 		printSkills(s, os.Stderr)
+	case "/mcp":
+		if len(f) == 3 && f[1] == "reconnect" {
+			if err := s.MCPReconnect(f[2]); err != nil {
+				fmt.Fprintln(os.Stderr, "mcp:", err)
+			} else {
+				fmt.Fprintln(os.Stderr, "reconnecting", f[2])
+			}
+			break
+		}
+		printMCP(s, os.Stderr)
 	case "/cost":
 		printCost(s)
 	case "/context":
@@ -238,6 +251,17 @@ func slash(ctx context.Context, s *session.Session, line string) (quit bool, sen
 // expandSlash turns a custom command or a user-invocable skill into the prompt
 // to send. ok is false when nothing of that name exists.
 func expandSlash(ctx context.Context, s *session.Session, name, args string) (prompt string, notices []string, ok bool, err error) {
+	if strings.HasPrefix(name, "mcp__") {
+		for _, p := range s.MCPPrompts() {
+			if p.Command == "/"+name {
+				text, err := s.MCPPrompt(ctx, p.Command, mcpPromptArgs(p, args))
+				if err != nil {
+					return "", nil, true, err
+				}
+				return text, nil, true, nil
+			}
+		}
+	}
 	if reg := s.Commands(); reg != nil {
 		if _, found := reg.Get(name); found {
 			exp, err := reg.Expand(ctx, name, args)
@@ -398,4 +422,40 @@ func showDiff(s *session.Session, args []string) {
 	for _, d := range diffs {
 		fmt.Fprintf(os.Stdout, "%s (%s)\n%s\n", d.Path, d.Status, d.Unified)
 	}
+}
+
+// mcpPromptArgs maps what the user typed after a server prompt's command onto its
+// declared arguments: name=value pairs, or bare words filling the arguments in
+// order (the last one takes the rest of the line).
+func mcpPromptArgs(p mcp.PromptEntry, line string) map[string]string {
+	out := map[string]string{}
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return out
+	}
+	var bare []string
+	for _, w := range strings.Fields(line) {
+		if k, v, ok := strings.Cut(w, "="); ok && k != "" {
+			out[k] = v
+			continue
+		}
+		bare = append(bare, w)
+	}
+	var free []string
+	for _, a := range p.Arguments {
+		if _, set := out[a.Name]; !set {
+			free = append(free, a.Name)
+		}
+	}
+	for i, w := range bare {
+		if i >= len(free) {
+			break
+		}
+		if i == len(free)-1 {
+			out[free[i]] = strings.Join(bare[i:], " ")
+			break
+		}
+		out[free[i]] = w
+	}
+	return out
 }

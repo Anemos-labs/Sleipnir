@@ -253,3 +253,52 @@ func TestResumeSkipsAndExplainsSwarmSessions(t *testing.T) {
 		}
 	}
 }
+
+// The model is a property of the run, not of the conversation: a session can be
+// continued on a different model (a cheaper one, or after the first ran out of
+// budget), and the conversation comes with it.
+func TestResumeOnAnotherModel(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	var models []string
+	var last string
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		models = append(models, c.Model)
+		var all []string
+		for _, m := range c.Messages {
+			all = append(all, m.Content)
+		}
+		last = strings.Join(all, "\n")
+		return mock.Reply{Text: "noted"}
+	})
+	o := opts(t, repo, client, model)
+	o.Dir = dir
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s1.Run(context.Background(), "the codeword is PINEAPPLE"); err != nil {
+		t.Fatal(err)
+	}
+	s1.Close()
+
+	other := model
+	other.ID = "mock-2"
+	o2 := opts(t, repo, client, other)
+	o2.Model = "mock-2"
+	o2.Resume = dir
+	s2, err := session.New(context.Background(), o2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if _, err := s2.Run(context.Background(), "and now?"); err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 2 || models[0] != "mock-1" || models[1] != "mock-2" {
+		t.Errorf("models used: %v", models)
+	}
+	if !strings.Contains(last, "PINEAPPLE") {
+		t.Error("the conversation did not come along to the other model")
+	}
+}

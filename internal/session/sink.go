@@ -172,7 +172,13 @@ func TerminalPrompter(in io.Reader, out io.Writer) perm.Prompter {
 		if who == "" {
 			who = "agent"
 		}
-		fmt.Fprintf(out, "\n%s wants to: %s\n  allow? [y]es once / [a]lways this session / [n]o: ", who, r.Summary)
+		if r.Tool == "mcp-server" {
+			// Starting a project's tool server: it runs code or reaches a host the
+			// repository chose. The answer that remembers is per exact entry.
+			fmt.Fprintf(out, "\nSleipnir wants to %s\n  start it? [y]es this time / [p]roject: remember this exact entry / [n]o: ", r.Summary)
+		} else {
+			fmt.Fprintf(out, "\n%s wants to: %s\n  allow? [y]es once / [a]lways this session / [n]o: ", who, r.Summary)
+		}
 		line, err := readLine(ctx, rd)
 		if err != nil {
 			return perm.Decision{Allow: false, Reason: "no answer"}
@@ -181,7 +187,13 @@ func TerminalPrompter(in io.Reader, out io.Writer) perm.Prompter {
 		case "y", "yes":
 			return perm.Decision{Allow: true, Reason: "allowed by user"}
 		case "a", "always":
-			return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
+			if r.Tool != "mcp-server" {
+				return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
+			}
+		case "p", "project":
+			if r.Tool == "mcp-server" {
+				return perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}
+			}
 		}
 		return perm.Decision{Allow: false, Reason: "denied by user"}
 	}

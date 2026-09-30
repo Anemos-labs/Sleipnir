@@ -58,6 +58,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	ctxWin := fs.Int("context-window", 0, "override the model's context window (small values force frequent compaction)")
 	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)")
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
+	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	resume := resumeFlags(fs)
 	roleModels := kvFlags{}
 	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x)")
@@ -91,7 +92,7 @@ func cmdRun(ctx context.Context, args []string) error {
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec,
+		Resume: spec, NoMCP: *noMCP,
 	}
 	if interactive {
 		o.Prompter = session.TerminalPrompter(os.Stdin, os.Stderr)
