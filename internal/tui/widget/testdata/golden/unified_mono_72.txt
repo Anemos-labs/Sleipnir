@@ -1,0 +1,40 @@
+{d}commit 3f2a9c1d0e{/}
+{d}Author: A Dev <dev@example.com>{/}
+{d}Date:   Tue Sep 29 10:00:00 2026 +0000{/}
+
+{d}    orders: page is one-based{/}
+
+{b}orders/list.go{/}  {b}+3{/} {b}−1{/}
+{d}⋯ func (s *Store) List(ctx context.Context, page, size int) ([]Order, e…{/}
+{d} 56  56       if size <= 0 {{/}
+{d} 57  57           size = 50{/}
+{d} 58  58       }{/}
+ 59     {b}- {/}    offset := page * size
+     59 {b}+ {/}    offset := {bu}({/}page {bu}- 1) {/}* size
+{d} 60  60       rows, err := s.db.QueryContext(ctx, listSQL, size, offset){/}
+{d} 61  61       if err != nil {{/}
+{d} 62  62           return nil, err{/}
+{d}⋯ 57 unchanged lines  func scan(rows *sql.Rows) ([]Order, error) {{/}
+{d}120 120       var out []Order{/}
+{d}121 121       for rows.Next() {{/}
+{d}122 122           var o Order{/}
+    123 {b}+ {/}        // Scan fails on a NULL total
+    124 {b}+ {/}        var total sql.NullInt64
+{d}123 125           if err := rows.Scan(&o.ID, &o.Name); err != nil {{/}
+{d}124 126               return nil, err{/}
+{d}125 127           }{/}
+
+{b}orders/list_test.go{/}  {b}+4{/} {b}−0{/} {d}(new file){/}
+  1 {b}+ {/}package orders
+  2 {b}+ {/}
+  3 {b}+ {/}func TestList(t *testing.T) {
+  4 {b}+ {/}}
+{d}    \ No newline at end of file{/}
+
+{b}new_name.txt{/} {d}(renamed from old_name.txt){/}
+
+{b}logo.png{/} {d}(binary file changed){/}
+
+{b}gone.txt{/}  {b}+0{/} {b}−2{/} {d}(deleted){/}
+1   {b}- {/}first
+2   {b}- {/}second
