@@ -490,17 +490,21 @@ type AnomalyReport struct {
 
 // TaskView is a board task, reconstructed from tool calls and board ops.
 type TaskView struct {
-	ID      string    `json:"id"`
-	Title   string    `json:"title,omitempty"`
-	Status  string    `json:"status"`
-	Owner   string    `json:"owner,omitempty"`
-	Role    string    `json:"role,omitempty"`
-	Line    string    `json:"line,omitempty"`
-	Result  string    `json:"result,omitempty"`
-	Deps    []string  `json:"deps,omitempty"`
-	Files   []string  `json:"files,omitempty"`
-	Created time.Time `json:"created"`
-	Updated time.Time `json:"updated"`
+	ID     string `json:"id"`
+	Title  string `json:"title,omitempty"`
+	Status string `json:"status"`
+	Owner  string `json:"owner,omitempty"`
+	Role   string `json:"role,omitempty"`
+	Line   string `json:"line,omitempty"`
+	Result string `json:"result,omitempty"`
+	// Evidence is what the harness itself recorded when the worker submitted
+	// (the verifier's verdict), as opposed to Result, which is the worker's word.
+	Evidence string    `json:"evidence,omitempty"`
+	Attempts int       `json:"attempts,omitempty"`
+	Deps     []string  `json:"deps,omitempty"`
+	Files    []string  `json:"files,omitempty"`
+	Created  time.Time `json:"created"`
+	Updated  time.Time `json:"updated"`
 }
 
 // MinutePoint is one minute of coordination activity.

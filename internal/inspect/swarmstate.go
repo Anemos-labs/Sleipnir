@@ -188,11 +188,12 @@ func firstNonEmpty(a ...string) string {
 
 var taskIDRe = regexp.MustCompile(`^T\d+$`)
 
-// boardTracker rebuilds the task board from the log. board.op events record
-// only the operation and the board version, so the details come from the
-// task and spawn tool calls that caused them (their arguments are logged), from
-// agent.spawn (task id, owner) and from agent.end. If a producer starts logging
-// task, status or title on board.op, those fields win.
+// boardTracker rebuilds the task board from the log. The swarm logs the full
+// state of a task on every board.op ("exact" logs: the event carries the task's
+// rev), and then the events are the truth. Older logs record only the operation
+// and the board version, so the details come from the task and spawn tool calls
+// that caused them (their arguments are logged), from agent.spawn (task id,
+// owner) and from agent.end; fields a board.op does carry win either way.
 type boardTracker struct {
 	tasks     map[string]*boardTask
 	created   int
@@ -200,6 +201,7 @@ type boardTracker struct {
 	agentTask map[string]string
 	manager   string
 	touched   bool
+	exact     bool // some board.op carried the full task state
 }
 
 type boardTask struct {
@@ -313,16 +315,35 @@ func (b *boardTracker) ensure(id string, ts time.Time) *boardTask {
 
 func (b *boardTracker) onBoardOp(actor, op string, raw json.RawMessage, ts time.Time) {
 	var extra struct {
-		Task, ID, Title, Status, Owner, Line, Result string
+		Task, ID, Title, Status, Owner, Line, Result, Evidence, Role string
+		Attempts                                                     int
+		Rev                                                          *uint64  // present when the event carries the full task state
+		Deps, Files, Tasks                                           []string // Tasks: what a requeue returned to the queue
 	}
 	_ = json.Unmarshal(raw, &extra)
 	call := b.current(actor)
 	id := firstNonEmpty(extra.Task, extra.ID)
+	full := extra.Rev != nil && id != ""
 	set := func(t *boardTask) {
 		if t == nil {
 			return
 		}
 		t.Updated = ts
+		if full {
+			// The event is the task after the operation: an empty owner, line or
+			// result means cleared, not unknown.
+			b.exact = true
+			t.Status, t.Owner = extra.Status, extra.Owner
+			t.Line, t.Result = oneLine(extra.Line, 160), oneLine(extra.Result, 200)
+			t.Evidence, t.Attempts = oneLine(extra.Evidence, 200), extra.Attempts
+			t.Files = capStrings(extra.Files, 16)
+			if extra.Title != "" {
+				t.Title = oneLine(extra.Title, 160)
+				t.Role, t.Deps = oneLine(extra.Role, 40), capStrings(extra.Deps, 16)
+			}
+			b.touched = true
+			return
+		}
 		if extra.Title != "" {
 			t.Title = oneLine(extra.Title, 160)
 		}
@@ -338,7 +359,23 @@ func (b *boardTracker) onBoardOp(actor, op string, raw json.RawMessage, ts time.
 		if extra.Result != "" {
 			t.Result = oneLine(extra.Result, 200)
 		}
+		if extra.Evidence != "" {
+			t.Evidence = oneLine(extra.Evidence, 200)
+		}
+		if extra.Attempts > 0 {
+			t.Attempts = extra.Attempts
+		}
 		b.touched = true
+	}
+	if op == "requeue" && id == "" && len(extra.Tasks) > 0 {
+		// The harness returned all of a stopped worker's tasks to the queue.
+		for _, tid := range extra.Tasks {
+			if t := b.ensure2(tid, ts); t != nil {
+				t.Status, t.Owner, t.Line, t.Updated = "todo", "", oneLine(extra.Line, 160), ts
+				b.touched, b.exact = true, b.exact || extra.Rev != nil
+			}
+		}
+		return
 	}
 	switch op {
 	case "create":
@@ -444,6 +481,12 @@ func (b *boardTracker) onBoardOp(actor, op string, raw json.RawMessage, ts time.
 		}
 		if t := b.ensure2(id, ts); t != nil {
 			t.Status, t.Line = "doing", ""
+			set(t)
+		}
+	case "requeue":
+		// One task went back to the queue (or failed, after too many attempts); only
+		// logs with the full task state say which, so there is nothing to guess.
+		if t := b.ensure2(id, ts); t != nil && full {
 			set(t)
 		}
 	}

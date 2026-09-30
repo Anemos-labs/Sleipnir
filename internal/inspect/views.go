@@ -575,6 +575,9 @@ func (s *Session) Swarm() SwarmReport {
 	rep.Tasksrc = "none: the log has no board activity"
 	if s.board.touched || len(rep.Tasks) > 0 {
 		rep.Tasksrc = "reconstructed from task and spawn tool calls, board ops and agent.spawn; board.op events themselves carry only the operation"
+		if s.board.exact {
+			rep.Tasksrc = "replayed from the board.op events, which carry the full task state"
+		}
 	}
 	for _, t := range rep.Tasks {
 		rep.TaskCount[t.Status]++

@@ -64,7 +64,9 @@ export function create() {
       h('div', { class: 'col' }, h('h3', null, h('span', null, c), h('span', { class: 'muted' }, (by[c] || []).length)),
         ...(by[c] || []).map(t => h('div', { class: 'task' }, h('div', { class: 't' }, h('span', { class: 'mono muted' }, t.id + ' '), t.title || '(untitled)'),
           h('div', { class: 'm' }, [t.owner ? '→ ' + t.owner : 'unassigned', t.role ? ' · ' + t.role : ''].join('')),
-          t.line || t.result ? h('div', { class: 'm' }, t.line || t.result) : null))))),
+          t.line || t.result ? h('div', { class: 'm' }, t.line || t.result) : null,
+          t.evidence ? h('div', { class: 'm', title: 'what the harness recorded, not the worker\u2019s word' }, 'evidence: ' + t.evidence) : null,
+          t.attempts ? h('div', { class: 'm' }, 'attempt ' + (t.attempts + 1)) : null))))),
       h('div', { class: 'note' }, 'Tasks are ' + (d.tasks_source || '') + '.'));
   }
 

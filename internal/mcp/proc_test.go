@@ -612,3 +612,24 @@ func TestCallAfterTheServerHungUpButBeforeItExitedNamesHowItDied(t *testing.T) {
 		t.Errorf("the crashing call itself: %v", r.err)
 	}
 }
+
+func TestServerThatDiesAtOnceIsAlwaysReportedWithItsExitAndLastWords(t *testing.T) {
+	skipNotUnix(t)
+	// The child exits while the client is still writing its first request, so
+	// depending on timing the write meets a closed pipe or the read meets the end
+	// of the stream. Either way the error must say how the process died and what
+	// it said last, never a bare "broken pipe".
+	n := 40
+	if testing.Short() {
+		n = 5
+	}
+	for i := 0; i < n; i++ {
+		_, err := dialProcTest(t, helperCfg("exit", nil), DialOptions{})
+		if err == nil {
+			t.Fatal("a server that exits at once must not connect")
+		}
+		if !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "missing configuration") {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+}
