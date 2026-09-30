@@ -3,6 +3,9 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -370,5 +373,41 @@ func TestResolveModelAndProviders(t *testing.T) {
 	p, m, err := session.BuildProvider(nil, session.ModelRef{Provider: "heimdall", Model: "deepseek/deepseek-v4.1-flash"}, session.ProviderOptions{CaptureTokens: true})
 	if err != nil || !p.Profile().CaptureTokens || m.ContextTokens == 0 {
 		t.Fatalf("heimdall provider: %v %+v %+v", err, p.Profile(), m)
+	}
+}
+
+func TestEnrichModelUsesTheEndpointsCatalogueAndCachesIt(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `{"data":[{"id":"acme/coder-32k","context_length":32768,"architecture":{"modality":"text->text"},
+			"pricing":{"prompt":"0.000001","completion":"0.000004","input_cache_read":"0.00000025"},
+			"top_provider":{"context_length":32768,"max_completion_tokens":4096},"supported_parameters":["tools"]}]}`)
+	}))
+	defer srv.Close()
+	cache := t.TempDir()
+	unknown := cost.Fallback("acme/coder-32k")
+	got := session.EnrichModel(context.Background(), cache, srv.URL, unknown)
+	if got.ContextTokens != 32768 {
+		t.Fatalf("the catalogue's context window must replace the 200k fallback, got %d", got.ContextTokens)
+	}
+	if got.Price.InputPerM != 1 || got.Price.CacheReadPerM != 0.25 {
+		t.Fatalf("prices from the catalogue: %+v", got.Price)
+	}
+	before := hits
+	if again := session.EnrichModel(context.Background(), cache, srv.URL, unknown); again.ContextTokens != 32768 || hits != before {
+		t.Fatalf("second lookup must come from the disk cache (hits %d -> %d)", before, hits)
+	}
+	// Known vendor models keep the built-in table; unreachable catalogues fall back silently.
+	known, _ := cost.Defaults().Lookup("claude-opus-5-5")
+	if session.EnrichModel(context.Background(), cache, srv.URL, known).ContextTokens != known.ContextTokens {
+		t.Fatal("a model the table knows must not be overwritten")
+	}
+	if session.EnrichModel(context.Background(), t.TempDir(), "http://127.0.0.1:1", unknown).ContextTokens != unknown.ContextTokens {
+		t.Fatal("an unreachable catalogue must leave the fallback in place")
 	}
 }

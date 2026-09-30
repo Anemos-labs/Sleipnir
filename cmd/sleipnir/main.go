@@ -103,6 +103,7 @@ func cmdDoctor(ctx context.Context, args []string) error {
 	deep := fs.Bool("deep", false, "also measure cache granularity, minimum prefix and warm-up needs (more requests)")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	noKey := fs.Bool("no-affinity", false, "do not send a conversation/cache key")
+	capture := fs.Bool("capture", false, "also check token-id capture (self-hosted policy servers; RL data)")
 	fs.Parse(args)
 	if *model == "" {
 		return fmt.Errorf("doctor: --model is required (see `sleipnir models`)")
@@ -116,9 +117,14 @@ func cmdDoctor(ctx context.Context, args []string) error {
 	}
 	rec := &headerRecorder{}
 	client := newClient(spec, key, rec)
+	if *capture {
+		prof := client.Profile()
+		prof.CaptureTokens = true
+		client.SetProfile(prof)
+	}
 	fmt.Fprintf(os.Stderr, "probing %s at %s (key from %s)\n", *model, spec.baseURL, envLabel(spec))
 	rep, err := probe.Run(ctx, probe.Config{
-		Provider: client, Model: *model, Deep: *deep, Headers: rec.get, CacheKey: !*noKey,
+		Provider: client, Model: *model, Deep: *deep, Headers: rec.get, CacheKey: !*noKey, Capture: *capture,
 		Log: func(s string) { fmt.Fprintln(os.Stderr, s) },
 	})
 	if err != nil && rep == nil {

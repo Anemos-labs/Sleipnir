@@ -36,6 +36,11 @@ type Config struct {
 	Log func(string)
 	// CacheKey enables affinity in requests (as the harness would send it).
 	CacheKey bool
+	// Capture also checks token capture: whether the endpoint returns prompt and
+	// completion token ids and logprobs, and whether prompt ids are prefix-stable
+	// across an append-only conversation (what RL training data relies on to pack
+	// a segment into one sequence). The provider's profile must allow capture.
+	Capture bool
 }
 
 // Step is one probe request.
@@ -63,6 +68,9 @@ type Findings struct {
 	WarmupNeeded         *bool    `json:"warmup_needed,omitempty"`
 	ReasoningSeen        bool     `json:"reasoning_seen"`
 	ReasoningDetails     bool     `json:"reasoning_details"`
+	TokenIDs             bool     `json:"token_ids,omitempty"`
+	TokenLogprobs        bool     `json:"token_logprobs,omitempty"`
+	TokenPrefixStable    bool     `json:"token_prefix_stable,omitempty"`
 	RateLimit            string   `json:"rate_limit,omitempty"`
 	BytesPerToken        float64  `json:"bytes_per_token"`
 	TTFB                 string   `json:"ttfb"`
@@ -99,6 +107,9 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	steps := []func(context.Context) error{r.basic, r.tools, r.cache, r.reasoning}
 	if cfg.Deep {
 		steps = append(steps, r.minPrefix, r.warmup)
+	}
+	if cfg.Capture {
+		steps = append(steps, r.capture)
 	}
 	for _, s := range steps {
 		if err := s(ctx); err != nil && ctx.Err() != nil {
@@ -333,6 +344,62 @@ func (r *runner) reasoning(ctx context.Context) error {
 	return nil
 }
 
+// capture checks token-id capture and the prefix-stability that segment packing
+// needs: prompt ids of an append-only follow-up must start with the previous
+// prompt ids followed by the sampled completion ids.
+func (r *runner) capture(ctx context.Context) error {
+	r.cfg.Log("token capture")
+	ask := func(name string, p *core.Prompt) (*provider.Response, error) {
+		start := time.Now()
+		resp, err := r.cfg.Provider.Do(ctx, &provider.Request{Prompt: p, Label: "probe:" + name, Capture: true}, nil)
+		st := Step{Name: name, Took: time.Since(start)}
+		if err != nil {
+			st.Detail = err.Error()
+		} else {
+			st.OK, st.Usage, st.Cost = true, resp.Usage, resp.CostUSD
+			if resp.CostUSD != nil {
+				r.rep.TotalUSD += *resp.CostUSD
+			}
+		}
+		r.rep.Steps = append(r.rep.Steps, st)
+		return resp, err
+	}
+	p1 := r.prompt("You are terse.", user("Reply with exactly the words: one two three."))
+	r1, err := ask("capture-1", p1)
+	if err != nil {
+		r.note("token capture request failed: " + err.Error())
+		return nil
+	}
+	tr := r1.Tokens
+	if tr == nil || len(tr.CompletionIDs) == 0 {
+		r.note("endpoint returned no token ids (needs a vLLM/SGLang-style server started with token-id support; profile.CaptureTokens must be on)")
+		return nil
+	}
+	r.rep.Findings.TokenIDs = len(tr.PromptIDs) > 0
+	r.rep.Findings.TokenLogprobs = len(tr.Logprobs) == len(tr.CompletionIDs)
+	p2 := r.prompt("You are terse.", user("Reply with exactly the words: one two three."),
+		core.Message{Role: core.RoleAssistant, Blocks: r1.Turn.Blocks},
+		user("Now reply with exactly the words: four five six."))
+	r2, err := ask("capture-2", p2)
+	if err != nil || r2.Tokens == nil {
+		r.note("second capture request returned no token ids")
+		return nil
+	}
+	a, b, c := tr.PromptIDs, r2.Tokens.PromptIDs, tr.CompletionIDs
+	stable := len(a) > 0 && len(b) >= len(a)+len(c)
+	for i := 0; stable && i < len(a); i++ {
+		stable = a[i] == b[i]
+	}
+	for i := 0; stable && i < len(c); i++ {
+		stable = c[i] == b[len(a)+i]
+	}
+	r.rep.Findings.TokenPrefixStable = stable
+	if !stable {
+		r.note("prompt ids are not an extension of previous prompt+completion ids (chat template re-renders the assistant turn): segments will be exported per step, not packed")
+	}
+	return nil
+}
+
 // minPrefix finds the smallest prompt size at which a repeat request hits.
 func (r *runner) minPrefix(ctx context.Context) error {
 	r.cfg.Log("min-prefix")
@@ -429,6 +496,9 @@ func (rep *Report) Text() string {
 		fmt.Fprintf(&sb, "  warm-up before burst %s\n", yn(*f.WarmupNeeded))
 	}
 	fmt.Fprintf(&sb, "  reasoning exposed    %s (structured details %s)\n", yn(f.ReasoningSeen), yn(f.ReasoningDetails))
+	if f.TokenIDs || f.TokenLogprobs || f.TokenPrefixStable {
+		fmt.Fprintf(&sb, "  token ids            %s (logprobs %s, prefix-stable for packing %s)\n", yn(f.TokenIDs), yn(f.TokenLogprobs), yn(f.TokenPrefixStable))
+	}
 	if f.RateLimit != "" {
 		fmt.Fprintf(&sb, "  rate limit           %s\n", f.RateLimit)
 	}

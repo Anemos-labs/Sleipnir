@@ -74,3 +74,39 @@ func TestProbeMeasuresMockEngine(t *testing.T) {
 		t.Fatalf("profile not refined: %+v", prof.Cache)
 	}
 }
+
+func TestProbeChecksTokenCapture(t *testing.T) {
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}},
+		func(c *mock.Call) mock.Reply { return mock.Reply{Text: "one two three"} })
+	ts := srv.Start()
+	defer ts.Close()
+
+	prof := openaichat.DefaultProfile("mock", ts.URL)
+	prof.CaptureTokens = true
+	c := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Profile: &prof})
+	rep, err := probe.Run(context.Background(), probe.Config{Provider: c, Model: "mock-1", Capture: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := rep.Findings
+	if !f.TokenIDs || !f.TokenLogprobs || !f.TokenPrefixStable {
+		t.Fatalf("a capturing endpoint must be recognised: %+v", f)
+	}
+	if !strings.Contains(rep.Text(), "token ids") {
+		t.Fatalf("report should mention token ids:\n%s", rep.Text())
+	}
+
+	// An endpoint whose profile cannot capture yields a note, not a failure.
+	plain := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL})
+	rep, err = probe.Run(context.Background(), probe.Config{Provider: plain, Model: "mock-1", Capture: true})
+	if err != nil || rep.Findings.TokenIDs {
+		t.Fatalf("no capture expected: %v %+v", err, rep.Findings)
+	}
+	noted := false
+	for _, n := range rep.Findings.Notes {
+		noted = noted || strings.Contains(n, "no token ids")
+	}
+	if !noted {
+		t.Fatalf("expected an explanatory note, got %v", rep.Findings.Notes)
+	}
+}

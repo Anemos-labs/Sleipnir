@@ -97,6 +97,8 @@ type Options struct {
 	Env []string
 	// NoWeb omits the web tools.
 	NoWeb bool
+	// Offline skips network lookups made for convenience (model catalogue).
+	Offline bool
 }
 
 // Session is a running assembly. Run may be called repeatedly; the agent (or
@@ -199,7 +201,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	}
 
 	// Model and provider.
-	if err := s.buildProvider(); err != nil {
+	if err := s.buildProvider(ctx); err != nil {
 		s.Log.Close()
 		return nil, err
 	}
@@ -243,7 +245,7 @@ func stateRoot(home string) string {
 	return filepath.Join(home, ".sleipnir")
 }
 
-func (s *Session) buildProvider() error {
+func (s *Session) buildProvider(ctx context.Context) error {
 	o := s.opts
 	if o.Provider != nil {
 		s.Provider = o.Provider
@@ -272,6 +274,9 @@ func (s *Session) buildProvider() error {
 		return err
 	}
 	s.Provider, s.Model = p, m
+	if !o.Offline {
+		s.Model = EnrichModel(ctx, filepath.Join(stateRoot(o.Home), "cache"), p.Profile().BaseURL, s.Model)
+	}
 	return nil
 }
 

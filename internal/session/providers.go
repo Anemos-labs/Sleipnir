@@ -1,15 +1,22 @@
 package session
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/reee344/sleipnir/internal/provider/gateway"
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 )
 
@@ -188,4 +195,57 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		m.ContextTokens = 200_000
 	}
 	return client, m, nil
+}
+
+// catalogTTL is how long a downloaded model catalogue is trusted.
+const catalogTTL = 6 * time.Hour
+
+// EnrichModel replaces the fallback description of a model with the endpoint's
+// own catalogue entry (exact prices, context window, cache behaviour) when the
+// endpoint publishes one. Marketplaces serve hundreds of models the built-in
+// table cannot know, and a wrong context window would either waste the window or
+// overflow it before compaction starts. Failures are silent: the fallback stands
+// and gateway-reported costs still make the bill exact.
+func EnrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) cost.Model {
+	if m.Provider != "unknown" || baseURL == "" {
+		return m
+	}
+	entries := loadCatalog(ctx, cacheDir, baseURL)
+	for _, e := range entries {
+		if e.Model.ID == m.ID || cost.Normalize(e.Model.ID) == cost.Normalize(m.ID) {
+			out := e.Model
+			out.ID = m.ID
+			return out
+		}
+	}
+	return m
+}
+
+func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry {
+	var path string
+	if cacheDir != "" {
+		sum := sha256.Sum256([]byte(baseURL))
+		path = filepath.Join(cacheDir, "catalog-"+hex.EncodeToString(sum[:6])+".json")
+		if st, err := os.Stat(path); err == nil && time.Since(st.ModTime()) < catalogTTL {
+			if b, err := os.ReadFile(path); err == nil {
+				var es []gateway.Entry
+				if json.Unmarshal(b, &es) == nil && len(es) > 0 {
+					return es
+				}
+			}
+		}
+	}
+	fctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	es, err := gateway.Fetch(fctx, nil, baseURL)
+	if err != nil || len(es) == 0 {
+		return nil
+	}
+	if path != "" {
+		if b, err := json.Marshal(es); err == nil {
+			_ = os.MkdirAll(cacheDir, 0o700)
+			_ = os.WriteFile(path, b, 0o600)
+		}
+	}
+	return es
 }
