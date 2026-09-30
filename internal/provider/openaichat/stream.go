@@ -1,7 +1,9 @@
 package openaichat
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"sort"
 	"strings"
@@ -20,7 +22,10 @@ type chunk struct {
 	Choices        []chunkChoice `json:"choices"`
 	PromptTokenIDs []int32       `json:"prompt_token_ids"`
 	Usage          *usage        `json:"usage"`
-	Error          *apiError     `json:"error"`
+	// Error is kept raw: endpoints spell it as an object whose message is text, an
+	// object whose message is not, and a bare string, and a frame that carries an
+	// error must never be lost to its shape (see errorFrame).
+	Error json.RawMessage `json:"error"`
 }
 
 // chunkChoice is one choice of a frame.
@@ -114,6 +119,59 @@ type apiError struct {
 	Code     json.RawMessage `json:"code"`
 	Message  string          `json:"message"`
 	Metadata json.RawMessage `json:"metadata"`
+}
+
+// errorFrame reads the error member of a frame, or returns nil when there is none.
+// Endpoints spell it in more ways than the one the API documents:
+//
+//	{"error":{"code":429,"message":"slow down"}}         the documented object
+//	{"error":{"code":500,"message":{"detail":"..."}}}    a message that is not text
+//	{"error":"upstream timed out"}                        a bare string
+//
+// All of them are errors. A member that is null, empty or some other JSON value is
+// not one (servers that always send "error":null exist).
+func errorFrame(raw json.RawMessage) *apiError {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return nil
+	}
+	switch raw[0] {
+	case '"':
+		var s string
+		if json.Unmarshal(raw, &s) != nil || strings.TrimSpace(s) == "" {
+			return nil
+		}
+		return &apiError{Message: s}
+	case '{':
+		var e struct {
+			Code     json.RawMessage `json:"code"`
+			Message  json.RawMessage `json:"message"`
+			Metadata json.RawMessage `json:"metadata"`
+		}
+		_ = json.Unmarshal(raw, &e) // a member of the wrong type leaves the others readable
+		return &apiError{Code: e.Code, Message: messageText(e.Message), Metadata: e.Metadata}
+	}
+	return nil
+}
+
+// messageText is an error message as text: a string as it is, anything else (an
+// object with the details, an array) as its compact JSON.
+func messageText(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	switch {
+	case len(raw) == 0, string(raw) == "null":
+		return ""
+	case raw[0] == '"':
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return s
+		}
+	}
+	var b bytes.Buffer
+	if json.Compact(&b, raw) != nil {
+		return ""
+	}
+	return b.String()
 }
 
 // normalize converts the wire usage to core.Usage. Every counter is clamped to
@@ -467,15 +525,28 @@ func readStream(body io.Reader, start time.Time, on func(provider.Event)) (*accu
 	return readStreamLimits(body, start, on, provider.StreamLimits{})
 }
 
+// errStreamCut is what a body that ends before the endpoint said it was finished is.
+// The wording names the two ways an endpoint says so, for whoever reads the log.
+const errStreamCut = "the stream ended before [DONE] or a finish reason: the connection was cut"
+
 // readStreamLimits consumes an SSE body. A response that outgrows a limit ends
 // with a provider error (see provider.LimitExceeded); the caller cancels the
 // request.
+//
+// A stream is complete when the endpoint says so: [DONE], or the finish reason of a
+// choice. A body that just ends is a connection that was cut (a proxy that closed
+// it cleanly, a server that died between two frames), and taking it for a short
+// answer would end the agent's task on half a sentence, or on nothing at all: an
+// answer with no tool calls is the end of a run.
 func readStreamLimits(body io.Reader, start time.Time, on func(provider.Event), lim provider.StreamLimits) (*accumulator, error) {
 	acc := newAccumulatorLimits(lim)
 	r := provider.NewSSEReaderLimits(body, lim)
 	for {
 		ev, err := r.Next()
 		if err == io.EOF {
+			if acc.finish == "" {
+				return acc, &provider.Error{Kind: provider.ErrNetwork, Message: errStreamCut}
+			}
 			return acc, nil
 		}
 		if err != nil {
@@ -493,10 +564,22 @@ func readStreamLimits(body io.Reader, start time.Time, on func(provider.Event), 
 		}
 		var c chunk
 		if err := json.Unmarshal([]byte(data), &c); err != nil {
-			continue // tolerate non-JSON keep-alive payloads
+			var bad *json.UnmarshalTypeError
+			if !errors.As(err, &bad) {
+				if ev.Event == "error" {
+					return acc, eventError(ev.Event, data)
+				}
+				continue // tolerate non-JSON keep-alive payloads
+			}
+			// Valid JSON with a member of the wrong type (a content that is a list of parts,
+			// a number where a string belongs): encoding/json has decoded everything else, and
+			// a frame that is dropped whole takes its text, its tool calls or its error with it.
 		}
-		if c.Error != nil {
-			return acc, mapInBandError(c.Error)
+		if e := errorFrame(c.Error); e != nil {
+			return acc, mapInBandError(e)
+		}
+		if ev.Event == "error" {
+			return acc, eventError(ev.Event, data)
 		}
 		if c.Usage != nil {
 			acc.rawUsage = rawUsageOf([]byte(data)) // the audit record is what the server sent
@@ -505,4 +588,10 @@ func readStreamLimits(body io.Reader, start time.Time, on func(provider.Event), 
 			return acc, err
 		}
 	}
+}
+
+// eventError is the error for an SSE event named "error" whose payload carries no
+// error member: whatever it says, the endpoint said it was an error.
+func eventError(event, data string) *provider.Error {
+	return &provider.Error{Kind: provider.ErrServer, Message: provider.SanitizeText(event+" event: "+data, 0), Raw: provider.CapRaw([]byte(data))}
 }

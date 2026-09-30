@@ -57,6 +57,8 @@ type Adapter struct {
 	Capture bool
 	// ContentType of the scripted reply; empty means text/event-stream.
 	ContentType string
+	// Status of the scripted reply; zero means 200.
+	Status int
 }
 
 // Outcome is everything a caller can observe of one request.
@@ -189,7 +191,7 @@ func (a Adapter) RunReader(tb testing.TB, mk func() io.Reader) Outcome {
 	if ct == "" {
 		ct = "text/event-stream"
 	}
-	hc := &http.Client{Transport: roundTripper{mk: mk, contentType: ct}}
+	hc := &http.Client{Transport: roundTripper{mk: mk, contentType: ct, status: a.Status}}
 	p := a.New(hc)
 	req := &provider.Request{
 		Prompt:  &core.Prompt{Model: a.Model, Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("hi")}}}, Params: core.Params{MaxTokens: 256}},
@@ -342,9 +344,9 @@ const maxMessage = provider.MaxErrorText + 256
 // Check asserts the contract of an adapter on one outcome, whatever the endpoint
 // sent:
 //
-//   - a failure is a *provider.Error with a defined kind, a message that is inert
-//     and bounded, a bounded raw body, a retry delay within its clamp, and no
-//     response;
+//   - a failure is a *provider.Error with a defined kind, a message that says
+//     something and is inert and bounded, a status that is zero or an HTTP status, a
+//     bounded raw body, a retry delay within its clamp, and no response;
 //   - a success has a response whose identifiers are inert and bounded, counters
 //     within their clamp, a cost that can be believed or none, a defined stop
 //     reason, and only valid JSON wherever the block is replayed verbatim;
@@ -423,8 +425,11 @@ func checkError(tb testing.TB, err error) {
 		tb.Errorf("undefined error kind %d", pe.Kind)
 		return // String() would index out of range
 	}
-	if !Inert(pe.Message) {
-		tb.Errorf("error message is not inert: %q", truncate(pe.Message))
+	if !Inert(pe.Message) || pe.Message == "" {
+		tb.Errorf("error message is empty or not inert: %q", truncate(pe.Message))
+	}
+	if pe.Status != 0 && (pe.Status < 100 || pe.Status > 599) {
+		tb.Errorf("Status %d is not an HTTP status", pe.Status)
 	}
 	if len(pe.Message) > maxMessage {
 		tb.Errorf("error message is %d bytes (limit %d)", len(pe.Message), maxMessage)
