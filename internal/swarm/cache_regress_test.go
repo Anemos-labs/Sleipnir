@@ -73,51 +73,59 @@ func TestCacheEcon_GateWarmWindowEndsBeforeTheProviderEntry(t *testing.T) {
 // nor release them all at once onto a cold prefix: after maxWait ONE follower is
 // released as a co-primer; the first byte of any primer then warms the level for
 // everyone still waiting.
+//
+// The test does not sleep to a moment between two escalation ticks, which a loaded machine
+// misses (it failed at load 40): it waits for the first release, whenever the tick comes,
+// and then gives the primer's first byte at once, long before a second tick (maxWait later).
 func TestCacheEcon_GateStaggersReleaseWhenThePrimerIsStuck(t *testing.T) {
 	const followers = 7
-	g := NewWarmGate(5*time.Minute, 80*time.Millisecond)
+	g := NewWarmGate(5*time.Minute, 500*time.Millisecond)
 	started, err := g.Enter(context.Background(), "k")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t0 := time.Now()
-	var mu sync.Mutex
-	var releasedAt []time.Duration
-	var wg sync.WaitGroup
+	var primerByte atomic.Bool
+	early := make(chan bool, followers) // true: released while the primer was still stuck
 	primerByteSeen := make(chan struct{})
 	for i := 0; i < followers; i++ {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
 			done, err := g.Enter(context.Background(), "k")
 			if err != nil {
+				early <- false
 				return
 			}
-			mu.Lock()
-			releasedAt = append(releasedAt, time.Since(t0))
-			mu.Unlock()
+			early <- !primerByte.Load()
 			// A released co-primer is as slow as the primer: its own first byte only
 			// arrives with the primer's.
 			<-primerByteSeen
 			done(true)
 		}()
 	}
-	// The primer's first byte arrives after the first escalation tick (80ms) and
-	// before the second (160ms).
-	time.Sleep(115 * time.Millisecond)
-	primerByte := time.Since(t0)
+	var stuck int
+	select {
+	case e := <-early: // the first release: the co-primer, let go by the first escalation tick
+		if !e {
+			t.Fatal("the first follower released must have been released while the primer was stuck")
+		}
+		stuck++
+	case <-time.After(time.Minute): // a hang guard, not a measurement
+		t.Fatal("no follower was released as a co-primer")
+	}
+	primerByte.Store(true)
 	started(true)
 	close(primerByteSeen)
-	wg.Wait()
-	early := 0
-	for _, d := range releasedAt {
-		if d < primerByte-5*time.Millisecond {
-			early++
+	for i := 1; i < followers; i++ {
+		select {
+		case e := <-early:
+			if e {
+				stuck++
+			}
+		case <-time.After(time.Minute):
+			t.Fatal("a follower was never released after the primer's first byte")
 		}
 	}
-	t.Logf("%d of %d followers were released before the primer's first byte (at %v); release times %v", early, followers, primerByte.Round(time.Millisecond), releasedAt)
-	if early != 1 {
-		t.Fatalf("exactly one co-primer may be released while the primer is stuck (the old gate released all %d at maxWait), got %d", followers, early)
+	if stuck != 1 {
+		t.Fatalf("exactly one co-primer may be released while the primer is stuck (the old gate released all %d at maxWait), got %d", followers, stuck)
 	}
 }
 

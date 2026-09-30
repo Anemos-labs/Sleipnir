@@ -1,0 +1,2 @@
+# Golden screens are compared byte for byte: always LF, whatever core.autocrlf says.
+*.screen text eol=lf

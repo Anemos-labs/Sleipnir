@@ -1,0 +1,111 @@
+# StackTable: the ctrl+t panel; columns give way in a fixed order as the width shrinks (epoch, hash, share, word, bar)
+
+== 93% cached, width 76 (width 76, 9 lines)
+   layer       tokens share cache            hash     epoch                 |
+▏  █ G0 const    9.1k   19% ████████ cached  3fa9c1d2     0                 |
+   █ G1 shared  12.4k   26% ████████ cached  b71e04aa     0                 |
+▏  █ G2 role     6.0k   12% ████████ cached  0c5de9f1     1                 |
+   █ G3          3.2k    7% ████████ cached  9a2b7c30     2                 |
+   █ G4          1.8k    4% ████████ cached  e4410d6b     2                 |
+▏  █ G5 thread  14.6k   30% ██████▓░ partial 51d8a3ee     3                 |
+   █ G6          1.2k    2% ░░░░░░░░ paid    77c0f9b4     3                 |
+   total        48.3k  100% ██████▓░ 93% hit                                |
+
+== 93% cached, width 64 (width 64, 9 lines)
+   layer       tokens share cache            hash     epoch     |
+▏  █ G0 const    9.1k   19% ████████ cached  3fa9c1d2     0     |
+   █ G1 shared  12.4k   26% ████████ cached  b71e04aa     0     |
+▏  █ G2 role     6.0k   12% ████████ cached  0c5de9f1     1     |
+   █ G3          3.2k    7% ████████ cached  9a2b7c30     2     |
+   █ G4          1.8k    4% ████████ cached  e4410d6b     2     |
+▏  █ G5 thread  14.6k   30% ██████▓░ partial 51d8a3ee     3     |
+   █ G6          1.2k    2% ░░░░░░░░ paid    77c0f9b4     3     |
+   total        48.3k  100% ██████▓░ 93% hit                    |
+
+== 93% cached, width 56 (width 56, 9 lines)
+   layer       tokens share cache            hash       |
+▏  █ G0 const    9.1k   19% ████████ cached  3fa9c1d2   |
+   █ G1 shared  12.4k   26% ████████ cached  b71e04aa   |
+▏  █ G2 role     6.0k   12% ████████ cached  0c5de9f1   |
+   █ G3          3.2k    7% ████████ cached  9a2b7c30   |
+   █ G4          1.8k    4% ████████ cached  e4410d6b   |
+▏  █ G5 thread  14.6k   30% ██████▓░ partial 51d8a3ee   |
+   █ G6          1.2k    2% ░░░░░░░░ paid    77c0f9b4   |
+   total        48.3k  100% ██████▓░ 93% hit            |
+
+== 93% cached, width 48 (width 48, 9 lines)
+   layer       tokens share cache               |
+▏  █ G0 const    9.1k   19% ████████ cached     |
+   █ G1 shared  12.4k   26% ████████ cached     |
+▏  █ G2 role     6.0k   12% ████████ cached     |
+   █ G3          3.2k    7% ████████ cached     |
+   █ G4          1.8k    4% ████████ cached     |
+▏  █ G5 thread  14.6k   30% ██████▓░ partial    |
+   █ G6          1.2k    2% ░░░░░░░░ paid       |
+   total        48.3k  100% ██████▓░ 93% hit    |
+
+== 93% cached, width 40 (width 40, 9 lines)
+   layer       tokens cache             |
+▏  █ G0 const    9.1k ████████ cached   |
+   █ G1 shared  12.4k ████████ cached   |
+▏  █ G2 role     6.0k ████████ cached   |
+   █ G3          3.2k ████████ cached   |
+   █ G4          1.8k ████████ cached   |
+▏  █ G5 thread  14.6k ██████▓░ partial  |
+   █ G6          1.2k ░░░░░░░░ paid     |
+   total        48.3k ██████▓░ 93% hit  |
+
+== 93% cached, width 32 (width 32, 9 lines)
+   layer       tokens cache     |
+▏  █ G0 const    9.1k ████████  |
+   █ G1 shared  12.4k ████████  |
+▏  █ G2 role     6.0k ████████  |
+   █ G3          3.2k ████████  |
+   █ G4          1.8k ████████  |
+▏  █ G5 thread  14.6k ██████▓░  |
+   █ G6          1.2k ░░░░░░░░  |
+   total        48.3k ██████▓░  |
+
+== 93% cached, width 24 (width 24, 9 lines)
+   layer       tokens   |
+▏  █ G0 const    9.1k   |
+   █ G1 shared  12.4k   |
+▏  █ G2 role     6.0k   |
+   █ G3          3.2k   |
+   █ G4          1.8k   |
+▏  █ G5 thread  14.6k   |
+   █ G6          1.2k   |
+   total        48.3k   |
+
+== 93% cached, width 16 (width 16, 9 lines)
+   layer  tokens|
+▏  █ G0 …   9.1k|
+   █ G1 …  12.4k|
+▏  █ G2 …   6.0k|
+   █ G3     3.2k|
+   █ G4     1.8k|
+▏  █ G5 …  14.6k|
+   █ G6     1.2k|
+   total   48.3k|
+
+== nothing cached (the first request) (width 64, 9 lines)
+   layer       tokens share cache            hash     epoch     |
+▏  █ G0 const    9.1k   19% ░░░░░░░░ paid    3fa9c1d2     0     |
+   █ G1 shared  12.4k   26% ░░░░░░░░ paid    b71e04aa     0     |
+▏  █ G2 role     6.0k   12% ░░░░░░░░ paid    0c5de9f1     1     |
+   █ G3          3.2k    7% ░░░░░░░░ paid    9a2b7c30     2     |
+   █ G4          1.8k    4% ░░░░░░░░ paid    e4410d6b     2     |
+▏  █ G5 thread  14.6k   30% ░░░░░░░░ paid    51d8a3ee     3     |
+   █ G6          1.2k    2% ░░░░░░░░ paid    77c0f9b4     3     |
+   total        48.3k  100% ░░░░░░░░ 0% hit                     |
+
+== a cache break at G3 (width 64, 9 lines)
+   layer       tokens share cache            hash     epoch     |
+▏  █ G0 const    9.1k   19% ████████ cached  3fa9c1d2     0     |
+   █ G1 shared  12.4k   26% ████████ cached  b71e04aa     0     |
+▏  █ G2 role     6.0k   12% ░░░░░░░░ paid    0c5de9f1     1     |
+ ⚠ █ G3          3.2k    7% ░░░░░░░░ paid    9a2b7c30     2     |
+   █ G4          1.8k    4% ░░░░░░░░ paid    e4410d6b     2     |
+▏  █ G5 thread  14.6k   30% ░░░░░░░░ paid    51d8a3ee     3     |
+   █ G6          1.2k    2% ░░░░░░░░ paid    77c0f9b4     3     |
+   total        48.3k  100% ███▓░░░░ 45% hit                    |

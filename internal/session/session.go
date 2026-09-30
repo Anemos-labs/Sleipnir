@@ -471,7 +471,7 @@ func (s *Session) buildPerm() error {
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
 		Allow: s.cfg.Permissions.Allow, Ask: ask, Deny: s.cfg.Permissions.Deny,
-		Roles: roles, Prompter: s.hookPrompter(o.Prompter),
+		Roles: roles, Prompter: s.hookPrompter(o.Prompter), Audit: s.auditPermission,
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
@@ -933,6 +933,12 @@ func (s *Session) swarmContext(turn context.Context) context.Context {
 }
 
 func (s *Session) result(res *agent.Result, err error) (*Result, error) {
+	// The answer a person has just read is in the log on disk: the log flushes in the background, which left the last
+	// events of a turn in its buffer for a moment (a reader that looked then saw a log without the tool results of the turn
+	// that had just ended, and a crash in that moment lost them).
+	if s.Log != nil {
+		_ = s.Log.Flush()
+	}
 	out := &Result{SessionID: s.ID, Dir: s.Dir}
 	if res != nil {
 		out.Text, out.Steps, out.Usage, out.CostUSD, out.Stop, out.Compactions = res.Text, res.Steps, res.Usage, res.CostUSD, res.Stop, res.Compactions

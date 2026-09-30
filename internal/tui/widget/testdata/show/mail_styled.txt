@@ -1,0 +1,8 @@
+# the envelope is warn and Bold, names Bold, the arrow and the subject dim; while a message arrives its subject is Bold
+
+== settled
+{warn+b|✉ }{-+b|w1}{dim| ➜ }{-+b|w3} {dim|“schema: GET /orders”}  {dim|312 tok}
+{warn+b|✉ }{-+b|m0}{dim| ➜ }{-+b|w5} {dim|“start e2e after t3”}    {dim|96 tok}
+
+== arriving (frame 12)
+{warn+b|✉ }{-+b|w2}{dim| ➜ }{-+b|w1} {-+b|“rename ListO”}

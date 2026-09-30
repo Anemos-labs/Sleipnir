@@ -344,7 +344,7 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 			if ev.rs.inWorkspace(a.real) {
 				return allow(ev.modeReason("write inside the workspace"))
 			}
-			return ask(ev.modeReason("writes "+a.raw+" outside the workspace; approval needed"), rem())
+			return ask(ev.modeReason("writes "+a.raw+" "+ev.outsideWorkspace()+"; approval needed"), rem())
 		}
 	default:
 		if a.write {
@@ -354,7 +354,16 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	if ev.rs.inWorkspace(a.real) {
 		return allow(ev.modeReason("read inside the workspace"))
 	}
-	return ask(ev.modeReason("reads "+a.raw+" outside the workspace; approval needed"), rem())
+	return ask(ev.modeReason("reads "+a.raw+" "+ev.outsideWorkspace()+"; approval needed"), rem())
+}
+
+// outsideWorkspace is the phrase for a path that is not under the workspace. It names the workspace: a model that guessed
+// a path ("/root/repo") learns from the refusal where it is working, instead of guessing again.
+func (ev *evaluator) outsideWorkspace() string {
+	if r := ev.rs.root(); r.lex != "" {
+		return "outside the workspace (" + r.lex + ")"
+	}
+	return "outside the workspace"
 }
 
 // ruleHits reports whether a path rule covers the access. Deny and ask rules

@@ -1,0 +1,18 @@
+# the inherited part is in the layers' colours, the task card is warn (▒)
+
+== progress 0.4
+{dim|shared }{G0|████████████}{G1|███████████████}{G2|█████████}
+{-+b|41.2k  }     {G0+b|G0}           {G1+b|G1}          {G2+b|G2}
+             {G0|╎}            {G1|╎}           {G2|╎}
+       {good+b|↓ inherited at the cache READ price}
+
+{info+b|new    }{G0|████████████}{G1|█████▓}
+
+== progress 1
+{dim|shared }{G0|████████████}{G1|███████████████}{G2|█████████}
+{-+b|41.2k  }     {G0+b|G0}           {G1+b|G1}          {G2+b|G2}
+             {G0|╎}            {G1|╎}           {G2|╎}
+       {good+b|↓ inherited at the cache READ price}
+
+{info+b|new    }{G0|████████████}{G1|███████████████}{G2|█████████}{warn|▒}
+       {good|inherits 41.2k}{dim| · }{warn|pays 800}

@@ -1,0 +1,12 @@
+{
+  "name": "csvtool",
+  "version": "1.0.0",
+  "description": "A command line tool for small CSV files",
+  "private": true,
+  "bin": {
+    "csvtool": "bin/csvtool.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "greenfield-py-todoapi",
+  "kind": "greenfield",
+  "lang": "python",
+  "difficulty": "hard",
+  "prompt": "Build a tiny persistent TODO service from scratch, using only the Python 3.11 standard library. Read README.md first: it is the complete specification. It defines the `todo` package: `TodoStore`, backed by the `sqlite3` module (create, get, list with tag and done filters, complete, delete, add and remove tags; exact validation, tag normalisation, id and ordering rules, persistence, use from several threads), and a JSON-over-HTTP layer built on `http.server` (`todo.server.make_server`) with a stated route table, exact status codes, bodies and error messages, and the order in which errors are reported.\n\nCreate the package `todo/` in the repository root (for example `todo/__init__.py`, `todo/store.py`, `todo/server.py`). Hidden acceptance tests will use `TodoStore` directly (including from several threads and across closing and reopening the database file) and will start the server on port 0 in a thread and talk to it with `urllib`, checking statuses, bodies and headers exactly; so follow the README to the letter, where it is precise it is meant literally. The visible `tests/test_example.py` shows how the server is started; do not edit it. Run the tests from the repository root with `python3 -m unittest discover -s tests`.",
+  "verify": "python3 -m unittest discover -s tests",
+  "timeout_s": 180,
+  "protected": ["tests/test_example.py"],
+  "team": {"mode": "swarm", "agents": 3},
+  "tags": ["python", "greenfield", "hard", "fixture"],
+  "budget": {"steps": 80, "requests": 160, "wall_s": 1800}
+}

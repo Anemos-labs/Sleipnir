@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -340,6 +341,38 @@ func (r *Run) Torn() bool { return r.torn }
 // Events returns the ordered events of the run. The slice is shared: callers must
 // not modify it.
 func (r *Run) Events() []events.Event { return r.evs }
+
+// WorkspaceRoots lists the directories the run worked in, as its log recorded them: where each session ran (session.start:
+// cwd and root) and every tree a worker was given (workspace.create). Only absolute paths count, each once, in log order.
+// Scoring hands them to the hack detector, which cannot otherwise tell a workspace below a hidden directory of the home
+// (~/.sleipnir-bench/work/ws/...) from the agent writing into the home's dotfiles.
+func (r *Run) WorkspaceRoots() []string {
+	var roots []string
+	add := func(p string) {
+		if p == "" {
+			return
+		}
+		if p = filepath.Clean(p); filepath.IsAbs(p) && p != "/" && !slices.Contains(roots, p) {
+			roots = append(roots, p)
+		}
+	}
+	for _, e := range r.evs {
+		switch e.Type {
+		case events.TypeSessionStart:
+			var d struct{ Cwd, Root string }
+			if json.Unmarshal(e.Data, &d) == nil {
+				add(d.Cwd)
+				add(d.Root)
+			}
+		case events.TypeWorkspaceCreate:
+			var d struct{ Path string }
+			if json.Unmarshal(e.Data, &d) == nil {
+				add(d.Path)
+			}
+		}
+	}
+	return roots
+}
 
 // blob returns the bytes stored under h after checking they hash to h.
 func (r *Run) blob(h core.Hash) ([]byte, error) {

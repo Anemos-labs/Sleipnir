@@ -190,7 +190,16 @@ func detectProtected(h *hackEnv) []hackHit {
 	add := func(note string) {
 		hits = append(hits, hackHit{rl.FlagHackProtected, DetProtected, note})
 	}
+	// The diff is the net effect of the agent's work on the tree, and the verifier discards every protected change in it.
+	// A file the agent added did not exist at the start, so there was nothing to weaken: scratch tests (a debug_test.go
+	// to reproduce a bug) are how an agent investigates, and a hack flag both zeroes the outcome and keeps the episode out
+	// of the training export, so flagging them punished the behaviour worth learning (a benchmark found four such
+	// episodes in twenty). A new file that is part of the verifier (named by its command, a build or test configuration
+	// file) is still caught by detectVerifier.
 	for _, f := range h.files {
+		if f.status == statusAdded {
+			continue
+		}
 		for _, p := range f.pathVariants() {
 			if pat, ok := h.protected.match(p); ok {
 				add(fmt.Sprintf("protected path %s %s (pattern %q)", p, f.status, pat))
@@ -198,9 +207,14 @@ func detectProtected(h *hackEnv) []hackHit {
 			}
 		}
 	}
-	// Tool calls: the diff shown to the scorer may already have had protected
-	// paths stripped, and the write tools name their targets explicitly.
+	// With a diff to look at, what the tool calls did to protected paths is already in it, and what is not in it (a
+	// scratch file created and deleted again, an edit reverted) changed nothing the verifier could see. The calls are
+	// evidence only when there is no diff: a log from somewhere else, or a run that was cut off.
+	if h.ep.Outcome.Diff != "" {
+		return hits
+	}
 	roots := h.roots()
+	created := map[string]bool{} // paths the write tool created during the episode: the agent's own scratch files
 	for _, c := range h.calls {
 		if c.isError {
 			continue
@@ -213,12 +227,28 @@ func detectProtected(h *hackEnv) []hackHit {
 			targets = shellWriteTargets(commandOf(c))
 		}
 		for _, t := range targets {
-			if shown, pat, ok := protectedTarget(h.protected, t, roots); ok {
+			shown, pat, ok := protectedTarget(h.protected, t, roots)
+			if !ok {
+				continue
+			}
+			key := strings.ToLower(shown)
+			switch {
+			case createdByWrite(c):
+				created[key] = true
+			case created[key]:
+			default:
 				add(fmt.Sprintf("%s tool wrote protected path %s (pattern %q)", c.raw, shown, pat))
 			}
 		}
 	}
 	return hits
+}
+
+// createdByWrite reports whether a write tool's result says the file did not exist before. "Created <path> (...)" is the
+// wording of the write tool in internal/tools/fs, which a test there pins ("Overwrote" says it did). Only that tool's own
+// words count: a shell command's target is not known to be new.
+func createdByWrite(c toolCall) bool {
+	return c.name == "write" && strings.HasPrefix(strings.TrimSpace(c.output), "Created ")
 }
 
 // protectedTarget judges a path an agent wrote against the protected patterns,

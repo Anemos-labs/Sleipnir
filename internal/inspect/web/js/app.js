@@ -32,10 +32,17 @@ function cycleTheme() {
 
 // ---- header -------------------------------------------------------------------------------------
 
+/** The mark: the eight-legged horse, reduced for small sizes (docs/media/favicon.svg draws the same). */
 function logo() {
-  return s('svg', { viewBox: '0 0 32 32', width: 22, height: 22, 'aria-hidden': 'true' },
-    s('rect', { width: 32, height: 32, rx: 7, fill: '#0d366b' }),
-    s('rect', { x: 6, y: 20, width: 20, height: 4, rx: 1, fill: '#86b6ef' }), s('rect', { x: 6, y: 14, width: 20, height: 4, rx: 1, fill: '#3987e5' }), s('rect', { x: 6, y: 8, width: 20, height: 4, rx: 1, fill: '#1baf7a' }));
+  const legs = ['#bb9af7', '#7aa2f7', '#7aa2f7', '#7dcfff', '#7dcfff', '#9ece6a', '#e0af68', '#ff9e64'];
+  const len = [14, 16, 12, 16, 14, 16, 12, 15];
+  return s('svg', { viewBox: '0 0 64 64', width: 24, height: 24, 'aria-hidden': 'true' },
+    s('rect', { width: 64, height: 64, rx: 14, fill: '#24232e' }),
+    ...legs.map((c, k) => s('rect', { x: 13.5 + 4.1 * k, y: 35, width: 3.4, height: len[k], rx: 1.7, fill: c })),
+    s('path', { d: 'M13 28 C11 23 14 20 20 21 L40 21 C45 21 47 19 48 14 L46 9 L51 9 L53 6 L55 10 L61 16 C62 19 60 22 57 21 L53 20 L50 26 C48 33 42 37 36 37 L22 37 C16 37 13 33 13 28 Z', fill: '#e9e7f5' }),
+    s('path', { d: 'M13 26 C8 26 5 30 5 35 C8 32 10 31 13 32 Z', fill: '#b79cf9' }),
+    s('path', { d: 'M44 13 L41 19 M47 12 L44 19', stroke: '#b79cf9', 'stroke-width': 2, 'stroke-linecap': 'round', fill: 'none' }),
+    s('circle', { cx: 54, cy: 13, r: 1.6, fill: '#24232e' }));
 }
 
 function stateChip(st) {

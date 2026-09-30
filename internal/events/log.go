@@ -197,15 +197,23 @@ type logScan struct {
 	needNewline bool
 }
 
-// parseLine reads the sequence number and type of a line, which must be a JSON
-// object with a positive "seq" within range: the loose test for "a valid event"
-// that resuming a log needs.
-func parseLine(line []byte) (seq uint64, typ string, ok bool) {
-	var e struct {
-		Seq  uint64 `json:"seq"`
-		Type string `json:"type"`
-	}
+// decodeEvent reads a line as an Event. It is the one test for "a valid event", used by
+// Scan (which delivers events) and by Open (which resumes a log): a JSON object whose
+// members have their types and whose "seq" is positive and within range. Two tests
+// that differ disagree about lines (a timestamp that is not a time, a sequence number
+// above 2^53), and a log that Scan reads as sound would then be damaged to Open.
+func decodeEvent(line []byte) (Event, bool) {
+	var e Event
 	if json.Unmarshal(line, &e) != nil || e.Seq == 0 || e.Seq > maxSeq {
+		return Event{}, false
+	}
+	return e, true
+}
+
+// parseLine reads the sequence number and type of a line that decodeEvent accepts.
+func parseLine(line []byte) (seq uint64, typ string, ok bool) {
+	e, ok := decodeEvent(line)
+	if !ok {
 		return 0, "", false
 	}
 	return e.Seq, e.Type, true
@@ -372,6 +380,9 @@ func (l *Log) emitLocked(agent, typ string, data any, opts []Opt) (uint64, error
 			return 0, err
 		}
 		raw = b
+	}
+	if l.seq >= maxSeq { // Open refuses a line above this: the writer must not produce one its reader rejects
+		return 0, fmt.Errorf("events: the log has reached its last sequence number")
 	}
 	l.seq++
 	e := Event{Seq: l.seq, TS: l.now().UTC(), Session: l.session, Agent: agent, Type: typ, Data: raw}
@@ -564,7 +575,11 @@ func Scan(path string, fn func(Event) error) error {
 			return err
 		}
 		var e Event
-		if tooLong || json.Unmarshal(line, &e) != nil || e.Seq == 0 {
+		ok := false
+		if !tooLong {
+			e, ok = decodeEvent(line)
+		}
+		if !ok {
 			if complete { // an unterminated last line is a torn write, not damage
 				bad++
 				if first == 0 {

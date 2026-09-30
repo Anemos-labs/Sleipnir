@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -41,6 +42,30 @@ type Config struct {
 	// Persist is called (outside any engine lock) when a project-scope rule is
 	// added, so the caller can write it to the project's settings.
 	Persist func(Scope, Rule)
+	// Audit hears of every question the engine has to put and every refusal, for the event log: what was asked and why,
+	// and what came of it. Plain allows are not reported (there is one per tool call). It is called outside any engine
+	// lock and must not block.
+	Audit func(Audit)
+}
+
+// Audit is one step of a request that was not simply allowed.
+type Audit struct {
+	// Kind is "ask" when the engine is about to put a question (Decision is empty), and "decide" for its outcome, or for
+	// a refusal that needed no question.
+	Kind    string
+	Request Request
+	// Reason is why it was asked, or why it was decided.
+	Reason   string
+	Decision Decision
+	// By says who decided: "user" (the prompter), "no one" (there was nobody to ask: a run, a swarm, a rollout), "policy" (a
+	// deny rule, a built-in protection or the mode) or "canceled" (the request was cancelled while it waited).
+	By string
+}
+
+func (e *Engine) audit(a Audit) {
+	if e.cfg.Audit != nil {
+		e.cfg.Audit(a)
+	}
 }
 
 // RoleProfile overlays a stricter posture for one role. The role is judged
@@ -310,9 +335,21 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 	case vAllow:
 		return Decision{Allow: true, Reason: v.reason}
 	case vDeny:
-		return Decision{Reason: v.reason}
+		d := Decision{Reason: v.reason}
+		e.audit(Audit{Kind: "decide", Request: r, Reason: v.reason, Decision: d, By: "policy"})
+		return d
 	}
-	return e.resolveAsk(ctx, r, v)
+	e.audit(Audit{Kind: "ask", Request: r, Reason: v.reason})
+	d := e.resolveAsk(ctx, r, v)
+	by := "user"
+	switch {
+	case e.cfg.Prompter == nil:
+		by = "no one"
+	case !d.Allow && strings.HasPrefix(d.Reason, "approval canceled"):
+		by = "canceled"
+	}
+	e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: by})
+	return d
 }
 
 // Rules returns the active rules of one action as text, sorted; it is for

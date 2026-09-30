@@ -122,10 +122,26 @@ commands:
 
 ### `sleipnir chat`
 
-Interactive session. Type a goal and press Enter; end a line with `\` to continue it on the next. Ctrl-C cancels the
-running turn (not the session); Ctrl-D or `/exit` quits. The prompt asks `allow? [y]es once / [a]lways this session /
-[n]o` when a tool call needs approval (only when stdin is a terminal). `--resume ID|latest` and `--continue` continue a
-single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed below.
+Interactive session. Type a goal and press Enter; end a line with `\` to continue it on the next. The prompt asks
+`allow? [y]es once / [a]lways this session / [n]o` when a tool call needs approval (only when stdin is a terminal; from a
+pipe the goals are read line by line until the input ends, and an action that needs approval is refused). `--resume
+ID|latest` and `--continue` continue a single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed
+below.
+
+**Ctrl-C and Ctrl-D.** Ctrl-C cancels what is running, and nothing else: the turn (and so the approval question it is
+asking, if it is), a slash command such as `/compact`, or the start of the session. The chat goes on, at a fresh prompt.
+At the prompt a first Ctrl-C does not quit: it discards what was typed on the line (as a shell does), says how to quit,
+and a second Ctrl-C within two seconds, with nothing typed in between, quits. Ctrl-D on an empty line and `/exit` quit at
+once. SIGTERM cancels the running turn and ends the chat. A chat that ends by `/exit` or Ctrl-D is recorded as `exit`, one
+that ends by a second Ctrl-C or by SIGTERM as `interrupted` (`SessionEnd` in `docs/EXTENDING.md`), and all of them exit
+with status 0. The other commands (`run`, `swarm`, `inspect`, ...) keep one meaning for Ctrl-C: it cancels the command.
+
+**Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal.
+It is never the answer to an approval question: a question takes the first line typed after it was shown, so a `y` that was
+typed for something else cannot approve an action, and a line typed ahead is not lost to a question either. A question that
+Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is already typed survives the Ctrl-C that
+cancels the turn and runs next (a line not yet finished does not: the terminal discards it), and a Ctrl-D typed during a
+turn quits when the turn is over, as it would have at the prompt.
 
 <!-- flags: chat -->
 ```text
@@ -401,6 +417,32 @@ flags:
 ```
 <!-- /flags -->
 
+### `sleipnir friction`
+
+`sleipnir friction PATH...` ranks what slowed recorded sessions down: permission questions and refusals (with the reason and who
+settled them), tool calls that failed, runs that got stuck or were cancelled, requests the endpoint did not answer, cache
+breaks, and the same file read or call repeated. PATH is a session directory, a directory of sessions (`~/.sleipnir/sessions`), or
+the run directory of a benchmark: every `events.jsonl` under it is one session. Each finding names the events that show it
+(`session seq: detail`). `docs/DOGFOOD.md` is the method and the register of what it found.
+
+<!-- flags: friction -->
+```text
+usage: sleipnir friction [flags] PATH...
+
+flags:
+  -category string
+        only this category, or a prefix of one (permission, tool, agent, request, cache, compaction, file, call)
+  -examples int
+        examples kept for each finding (default 3)
+  -json
+        print the report as JSON
+  -min-count int
+        leave out findings seen fewer times (default 1)
+  -top int
+        how many findings to print (0 = all) (default 15)
+```
+<!-- /flags -->
+
 ## `sleipnir rl`
 
 The RL environment (`docs/TRAINING-DATA.md`): generate tasks, roll a policy out on them, score, export.
@@ -414,6 +456,8 @@ sleipnir rl rollout                run G samples per task with a policy and writ
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
 sleipnir rl serve                  HTTP rollout server for a trainer
 sleipnir rl reward                 re-score a run directory with different reward weights
+sleipnir rl report                 what runs measured: pass rate with its interval, cost, cache hits, friction
+sleipnir rl compare                two runs or saved reports over the tasks both ran, with paired intervals and gates
 sleipnir rl export                 write trainer-ready data
 sleipnir rl expand                 turn a deduplicated canonical export back into inline form
 sleipnir rl verify                 replay every recorded prompt and check it against its wire hash
@@ -1099,12 +1143,65 @@ flags:
         list the target-price presets and exit
   -probes
         run compaction fidelity probes (default true)
+  -redetect-hacks
+        forget the hack:* flags a previous scoring stored and detect them again (scoring never removes a flag by itself; use this after a detector was fixed)
   -rewards string
         rewards.json with weights, caps, detectors (default: the documented defaults)
   -target-price string
         price and cache model episodes are repriced under: a preset or a model id (see -list-targets)
   -tasks string
         tasks file to score against (default: each rollout's task.json, whose hidden files are redacted)
+```
+<!-- /flags -->
+
+### `sleipnir rl report`
+
+What a run (or several) measured, recomputed from the episodes on disk, so a run that was rescored reports what it is now:
+pass rate with a 95% Wilson interval, tasks solved, cost per episode and per pass, the token-weighted cache hit ratio,
+requests and wall time (median and 90th percentile), and the friction that costs requests: failed and malformed tool calls,
+retried requests, cache breaks, false "done" claims and hack flags. `--format md` makes the table for a document,
+`--format json` the file `rl compare` reads back: commit one as a baseline. A run that is still going reports what has
+finished and says how much has not.
+
+<!-- flags: rl report -->
+```text
+usage: sleipnir rl report [flags] RUN_DIR|REPORT.json...
+
+flags:
+  -by-tag
+        also break each run down by task tag
+  -format string
+        table | md | json (json is what rl compare reads: commit it as a baseline) (default "table")
+  -o string
+        write the report to this file instead of standard output
+  -tasks
+        also list every task: samples passed, cost, requests, wall time
+```
+<!-- /flags -->
+
+### `sleipnir rl compare`
+
+Two runs, or a run and a saved report, over the tasks both ran. Tasks, not samples, are resampled (a paired bootstrap), so the
+interval answers "would this hold on other tasks like these". A metric is `better` or `worse` only when its interval excludes
+zero; otherwise it is `same`. `--gate pass_at_1:0.05` makes the command exit non-zero when pass@1 got worse by more than 0.05 and
+the interval says it is not noise; a `%` tolerance (`mean_usd:25%`) is relative to A. Run the same configuration twice and
+compare the runs to see the noise floor before choosing a tolerance.
+
+<!-- flags: rl compare -->
+```text
+usage: sleipnir rl compare [flags] A B
+
+flags:
+  -confidence float
+        confidence level of the intervals (default 0.95)
+  -format string
+        table | json (default "table")
+  -gate value
+        metric[:tolerance] that must not get worse (repeatable, or comma-separated): e.g. pass_at_1:0.05 or mean_usd:25%; fails only when the drop is bigger than the tolerance and the interval excludes zero
+  -resamples int
+        bootstrap resamples (default 2000)
+  -seed int
+        bootstrap seed (the comparison is deterministic) (default 1)
 ```
 <!-- /flags -->
 
@@ -1217,7 +1314,7 @@ flags:
 | `/diff <id>` | show what changed since a checkpoint |
 | `/recon` | print the project map, instruction files and skills listing pinned in the shared layer |
 | `/skills` | list the skills the model can load (`(you only)` marks those only you can invoke) |
-| `/exit` (also `/quit`) | quit; Ctrl-D does the same |
+| `/exit` (also `/quit`) | quit; Ctrl-D does the same, and so does Ctrl-C twice at the prompt |
 | `/<name> [args]` | a custom command from `commands/`, or a skill; `docs/EXTENDING.md` sections 2 and 3 |
 
 A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. Reserved names some of which
@@ -1229,7 +1326,7 @@ answer `unknown command`.
 
 | Code | Meaning |
 |---|---|
-| `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that ends with `/exit` or Ctrl-D |
+| `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that the person ends (`/exit`, Ctrl-D, Ctrl-C twice at the prompt) or that SIGTERM ends |
 | `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: the budget of $50.00 is exhausted ...`, which says how to raise it), a reached step limit, an agent that repeated one failing call until the harness stopped it (`agent stuck`), a prompt blocked by a hook, and a failed `doctor` probe |
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
 | `3` | unfinished: the work ended with tasks left undone |

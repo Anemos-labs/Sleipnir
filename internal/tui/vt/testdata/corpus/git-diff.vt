@@ -1,0 +1,11 @@
+[1mdiff --git a/f.txt b/f.txt[m
+[1mindex bd6db16..f6ecc64 100644[m
+[1m--- a/f.txt[m
+[1m+++ b/f.txt[m
+[36m@@ -1,4 +1,5 @@[m
+ uno[m
+ two[m
+[31m-three[m
+[32m+[m[32mTHREE[m
+ four[m
+[32m+[m[32msix[m

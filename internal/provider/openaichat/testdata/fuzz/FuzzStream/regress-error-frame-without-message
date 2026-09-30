@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("data:{\"error\":{}}")
+uint16(115)
+bool(false)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1441,5 +1442,23 @@ func TestVerifierRunsFollowTheTaskCommand(t *testing.T) {
 	withTask := episode(t, run, traj.Options{Policy: rl.PolicyRef{Model: "m"}, Task: task})
 	if withTask.Signals[rl.SigVerifierRuns] != 3 {
 		t.Fatalf("the task's own command counts, whatever the spacing: %v", withTask.Signals[rl.SigVerifierRuns])
+	}
+}
+
+func TestWorkspaceRootsComeFromTheLog(t *testing.T) {
+	r := trajtest.New()
+	r.Emit("a1", events.TypeSessionStart, map[string]any{"cwd": "/w/tree", "root": "/w/tree"})
+	r.Emit("a1", events.TypeSessionStart, map[string]any{"cwd": "/w/tree/sub/", "root": "relative/tree"})
+	r.Emit("swarm", events.TypeWorkspaceCreate, map[string]any{"path": "/w/trees/w1", "branch": "w1"})
+	r.Emit("swarm", events.TypeWorkspaceCreate, map[string]any{"path": "/w/trees/w1"})
+	r.Emit("swarm", events.TypeWorkspaceCreate, map[string]any{"path": "/"})
+	r.Emit("a1", events.TypeSessionStart, []int{1}) // not an object: skipped, not an error
+	got := traj.OpenWith(r.Events(), r.Blobs).WorkspaceRoots()
+	want := []string{"/w/tree", "/w/tree/sub", "/w/trees/w1"}
+	if !slices.Equal(got, want) {
+		t.Errorf("WorkspaceRoots = %q, want %q (absolute, cleaned, once each, never /)", got, want)
+	}
+	if got := traj.OpenWith(trajtest.New().Events(), nil).WorkspaceRoots(); len(got) != 0 {
+		t.Errorf("a log that says nothing has no roots, got %q", got)
 	}
 }

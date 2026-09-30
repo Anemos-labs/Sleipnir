@@ -1,0 +1,13 @@
+{
+  "id": "greenfield-go-mdlite",
+  "kind": "greenfield",
+  "lang": "go",
+  "difficulty": "hard",
+  "prompt": "Build `mdlite` from scratch: a Markdown-subset to HTML converter, as a Go library plus a small command line tool. Read README.md first: it is the complete specification, with the exact grammar of what is supported (headings, paragraphs with hard line breaks, emphasis and strong, inline code, fenced code blocks, bullet and numbered lists, links, HTML escaping) and of what is not, the exact output format (including every newline), and 19 worked examples.\n\nCreate, in this repository (only the Go standard library; `go.mod` is given): the package `mdlite` in the module root with `func Render(src string) string`, and `cmd/mdlite/main.go`, a program that reads all of standard input and writes `mdlite.Render` of it to standard output, exiting 0. Hidden acceptance tests will run the library on every example of the README and on other inputs that follow directly from its rules, and will run the tool with `go run ./cmd/mdlite`, feeding input on standard input and comparing standard output byte for byte; so follow the README exactly, where it is precise it is meant literally. The visible `mdlite_test.go` holds a few of the examples; do not edit it. Check your work with `go test ./...`.",
+  "verify": "go test -count=1 ./...",
+  "timeout_s": 300,
+  "protected": ["mdlite_test.go"],
+  "team": {"mode": "swarm", "agents": 3},
+  "tags": ["go", "greenfield", "hard", "fixture"],
+  "budget": {"steps": 80, "requests": 160, "wall_s": 1800}
+}

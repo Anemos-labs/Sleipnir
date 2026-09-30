@@ -16,6 +16,9 @@ const (
 	// TypeAgentStuck: the repetition guard told an agent it was repeating one failing call
 	// (phase "nudge") or ended its run for it (phase "stop").
 	TypeAgentStuck = "agent.stuck"
+	// TypeAgentCancel: a run ended because its context was cancelled (a person's Ctrl-C, a harness deadline or
+	// budget). Payload: phase (what it was doing: "model", "tools" or "between"), cause ("canceled" or "deadline"), steps.
+	TypeAgentCancel = "agent.cancel"
 	// TypeAgentSnapshot references a blob with everything needed to resume an
 	// agent (thread, notes, spine, counters); TypeAgentRestore records a resume.
 	TypeAgentSnapshot = "agent.snapshot"
@@ -36,7 +39,11 @@ const (
 	TypeToolResult = "tool.result"
 	// TypeToolJob is emitted when a background shell job starts and when it ends
 	// (status, duration, exit code); the payload is shell.JobEvent.
-	TypeToolJob    = "tool.job"
+	TypeToolJob = "tool.job"
+	// perm.ask is written when the permission engine has to put a question, perm.decide when one is answered or a request
+	// is refused outright (plain allows are not recorded). Both carry tool, reason, command (clipped), paths (at most five),
+	// role; perm.decide adds allow, by ("user", "no one" when nobody could be asked, "policy" for a deny rule or a
+	// built-in protection, "canceled") and remember.
 	TypePermAsk    = "perm.ask"
 	TypePermDecide = "perm.decide"
 

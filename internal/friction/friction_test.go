@@ -1,0 +1,260 @@
+package friction
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/reee344/sleipnir/internal/events"
+)
+
+type ev struct {
+	agent, typ string
+	data       map[string]any
+}
+
+// log writes a session log the way the harness does, and returns its directory.
+func log(t *testing.T, dir string, evs ...ev) string {
+	t.Helper()
+	l, err := events.Open(dir, filepath.Base(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range evs {
+		if _, err := l.Emit(e.agent, e.typ, e.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func response(req string) ev { return ev{"a", events.TypeModelResponse, map[string]any{"req": req}} }
+
+func toolCall(id, name string, input map[string]any) ev {
+	return ev{"a", events.TypeToolCall, map[string]any{"id": id, "name": name, "input": input}}
+}
+
+func toolFail(id, name, kind string) ev {
+	return ev{"a", events.TypeToolResult, map[string]any{"id": id, "name": name, "error": true, "meta": map[string]any{"error_kind": kind}}}
+}
+
+func find(rep Report, category, contains string) *Finding {
+	for i := range rep.Findings {
+		if f := &rep.Findings[i]; f.Category == category && strings.Contains(f.Key, contains) {
+			return f
+		}
+	}
+	return nil
+}
+
+// A log from before perm.decide existed has only the failed tool results: the refusals are grouped by the command, with
+// the paths left out, so "cd /workspace" and "cd /repo" are one pattern and sed is another.
+func TestRefusalsInOlderLogsAreGroupedByCommand(t *testing.T) {
+	dir := log(t, filepath.Join(t.TempDir(), "s1"),
+		response("r1"), toolCall("c1", "bash", map[string]any{"command": "cd /workspace 2>/dev/null || pwd; go test ./..."}), toolFail("c1", "bash", "permission"),
+		response("r2"), toolCall("c2", "bash", map[string]any{"command": "cd /repo && ls"}), toolFail("c2", "bash", "permission"),
+		response("r3"), toolCall("c3", "bash", map[string]any{"command": "sed -n 1,5p main.go"}), toolFail("c3", "bash", "permission"),
+		response("r4"), toolCall("c4", "bash", map[string]any{"command": "go test ./..."}),
+	)
+	rep, err := Mine([]string{dir}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cd := find(rep, PermRefused, "cd <path>")
+	if cd == nil || cd.Count != 2 || cd.Wasted != 2 || cd.Sessions != 1 {
+		t.Fatalf("cd: %+v", cd)
+	}
+	if sed := find(rep, PermRefused, "sed -n"); sed == nil || sed.Count != 1 {
+		t.Errorf("sed: %+v", sed)
+	}
+	if rep.Findings[0].Key != cd.Key {
+		t.Errorf("the pattern that happened twice must rank first: %+v", rep.Findings[0])
+	}
+	if len(cd.Examples) != 2 || cd.Examples[0].Seq == 0 || !strings.Contains(cd.Examples[0].Detail, "cd /workspace") {
+		t.Errorf("examples: %+v", cd.Examples)
+	}
+	if rep.Requests != 4 || rep.Sessions != 1 {
+		t.Errorf("requests %d sessions %d", rep.Requests, rep.Sessions)
+	}
+}
+
+// Since perm.decide exists a refusal is in the log twice, as that event and as the failed result: it is counted once, from
+// the event, which says why and who decided.
+func TestARefusalIsCountedOnceWhenThereIsAPermDecide(t *testing.T) {
+	dir := log(t, filepath.Join(t.TempDir(), "s1"),
+		response("r1"), toolCall("c1", "bash", map[string]any{"command": "cd /workspace && ls"}),
+		ev{"a", events.TypePermAsk, map[string]any{"tool": "bash", "command": "cd /workspace && ls", "reason": "reads /workspace outside the workspace (/root/w/tree); approval needed"}},
+		ev{"a", events.TypePermDecide, map[string]any{"tool": "bash", "command": "cd /workspace && ls", "reason": "approval required: reads /workspace outside the workspace (/root/w/tree)", "allow": false, "by": "no one"}},
+		toolFail("c1", "bash", "permission"),
+		response("r2"), toolCall("c2", "bash", map[string]any{"command": "go vet ./..."}),
+		ev{"a", events.TypePermAsk, map[string]any{"tool": "bash", "command": "go vet ./...", "reason": "not on the allowlist"}},
+		ev{"a", events.TypePermDecide, map[string]any{"tool": "bash", "command": "go vet ./...", "reason": "approved by the user", "allow": true, "by": "user"}},
+		response("r3"), toolCall("c3", "read", map[string]any{"path": "/home/u/.ssh/id_rsa"}),
+		ev{"a", events.TypePermDecide, map[string]any{"tool": "read", "reason": "built-in protection: ~/.ssh", "allow": false, "by": "policy"}},
+		ev{"a", events.TypePermDecide, map[string]any{"tool": "bash", "reason": "approval canceled: context canceled", "allow": false, "by": "canceled"}},
+	)
+	rep, err := Mine([]string{dir}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refused int
+	for _, f := range rep.Findings {
+		if f.Category == PermRefused {
+			refused += f.Count
+		}
+	}
+	if refused != 2 { // the unattended one and the policy one; the cancelled wait is nobody's refusal
+		t.Errorf("%d refusals, want 2: %+v", refused, rep.Findings)
+	}
+	cd := find(rep, PermRefused, "cd <path>")
+	if cd == nil || !strings.Contains(cd.Key, "[no one]") || !strings.Contains(cd.Key, "outside the workspace") {
+		t.Errorf("the key should say why and who decided: %+v", cd)
+	}
+	if asked := find(rep, PermAsked, "go vet"); asked == nil || asked.Count != 1 || asked.Severity != S1 {
+		t.Errorf("a question a person answered: %+v", asked)
+	}
+	if p := find(rep, PermRefused, "[policy]"); p == nil {
+		t.Errorf("a refusal by policy is missing: %+v", rep.Findings)
+	}
+}
+
+func TestStuckCancelRetryCacheAndRepetitionAreFound(t *testing.T) {
+	evs := []ev{
+		response("r1"),
+		{"a", events.TypeAgentStuck, map[string]any{"phase": "nudge", "note": "you ran the same command 3 times"}},
+		{"a", events.TypeAgentStuck, map[string]any{"phase": "stop", "error": "agent a: agent stuck: go test failed the same way 4 times"}},
+		{"a", events.TypeAgentCancel, map[string]any{"phase": "model", "cause": "canceled", "steps": 4}},
+		{"a", events.TypeModelError, map[string]any{"req": "r1", "kind": "rate_limit", "status": 429, "attempt": 2}},
+		{"a", events.TypeModelError, map[string]any{"req": "r1", "kind": "rate_limit", "status": 429, "attempt": 3}},
+		{"a", events.TypeModelError, map[string]any{"req": "r1", "error": "boom"}}, // a final failure is not a retry
+		{"a", events.TypeCacheAnomaly, map[string]any{"kind": "drift"}},
+		{"a", events.TypeCompactReject, map[string]any{"stage": "model_patch", "reason": "patch keeps 12 turns, the floor is 4"}},
+	}
+	for i := 0; i < 4; i++ { // the same file read four times, the same command run three
+		id := string(rune('a' + i))
+		evs = append(evs, toolCall("r"+id, "read", map[string]any{"path": "main.go"}))
+	}
+	for i := 0; i < 3; i++ {
+		evs = append(evs, toolCall("b"+string(rune('a'+i)), "bash", map[string]any{"command": "go test ./..."}))
+	}
+	evs = append(evs, toolCall("u", "bash<|channel|>commentary", map[string]any{}), toolFail("u", "bash<|channel|>commentary", "unknown_tool"))
+	rep, err := Mine([]string{log(t, filepath.Join(t.TempDir(), "s1"), evs...)}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []struct {
+		category, key string
+		count, sev    int
+	}{
+		{Stuck, "stop", 1, S3}, {Stuck, "nudge", 1, S2}, {Cancelled, "canceled during model", 1, S3},
+		{Retried, "rate_limit (429)", 2, S1}, {CacheBreak, "drift", 1, S1}, {CompactFail, "model_patch", 1, S1},
+		{ReRead, "three or more times", 3, S2}, {RepeatedCall, "go test", 2, S2}, {ToolUnknown, "bash<|channel|>commentary", 1, S2},
+	} {
+		f := find(rep, want.category, want.key)
+		if f == nil || f.Count != want.count || f.Severity != want.sev {
+			t.Errorf("%s %q: %+v, want count %d severity %d", want.category, want.key, f, want.count, want.sev)
+		}
+	}
+	if rep.Findings[0].Category != ReRead && rep.Findings[0].Category != RepeatedCall && rep.Findings[0].Category != Stuck {
+		t.Logf("top: %+v", rep.Findings[0])
+	}
+}
+
+// A file that was changed between two reads is not read "again": reading it after the edit is how a model checks its work.
+func TestReadingAFileAfterChangingItIsNotARepeat(t *testing.T) {
+	evs := []ev{
+		toolCall("1", "read", map[string]any{"path": "/w/tree/main.go"}),
+		toolCall("2", "read", map[string]any{"path": "/w/tree/main.go"}),
+		toolCall("3", "edit", map[string]any{"path": "main.go"}), // the same file, spelled relatively
+		toolCall("4", "read", map[string]any{"path": "/w/tree/main.go"}),
+		toolCall("5", "read", map[string]any{"path": "/w/tree/main.go"}),
+		toolCall("6", "read", map[string]any{"path": "/w/tree/other.go"}),
+		toolCall("7", "read", map[string]any{"path": "/w/tree/other.go"}),
+		toolCall("8", "read", map[string]any{"path": "/w/tree/other.go"}),
+	}
+	rep, err := Mine([]string{log(t, filepath.Join(t.TempDir(), "s1"), evs...)}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := find(rep, ReRead, "three or more")
+	if f == nil || f.Count != 2 { // only other.go: read three times, two of them avoidable; main.go was read twice either side of its edit
+		t.Errorf("%+v", f)
+	}
+}
+
+func TestFindingsRankByFrequencySeverityAndWaste(t *testing.T) {
+	var evs []ev
+	for i, id := range []string{"1", "2", "3"} { // three refusals, three different requests
+		evs = append(evs, response("r"+id), toolCall(id, "bash", map[string]any{"command": "cd /x && ls"}), toolFail(id, "bash", "permission"))
+		_ = i
+	}
+	evs = append(evs, response("r9"), ev{"a", events.TypeAgentStuck, map[string]any{"phase": "stop", "error": "stuck"}})
+	rep, err := Mine([]string{log(t, filepath.Join(t.TempDir(), "s1"), evs...)}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 3 refusals x severity 2 squared x (1 + 3 wasted / 3) = 24; one stop x 3 squared x (1 + 1/1) = 18.
+	if len(rep.Findings) != 2 || rep.Findings[0].Category != PermRefused || rep.Findings[0].Score != 24 || rep.Findings[1].Score != 18 {
+		t.Errorf("%+v", rep.Findings)
+	}
+	if got, _ := Mine([]string{log(t, filepath.Join(t.TempDir(), "s2"), evs...)}, Options{MinCount: 2}); len(got.Findings) != 1 {
+		t.Errorf("MinCount 2 must drop what happened once: %+v", got.Findings)
+	}
+	if got, _ := Mine([]string{log(t, filepath.Join(t.TempDir(), "s3"), evs...)}, Options{Examples: 1}); len(got.Findings[0].Examples) != 1 {
+		t.Errorf("Examples 1: %+v", got.Findings[0].Examples)
+	}
+}
+
+// Every events.jsonl under a directory is a session: a run directory of rollouts, or ~/.sleipnir/sessions.
+func TestMineWalksDirectoriesAndNamesSessions(t *testing.T) {
+	root := t.TempDir()
+	one := []ev{response("r1"), toolCall("c", "bash", map[string]any{"command": "cd /a"}), toolFail("c", "bash", "permission")}
+	log(t, filepath.Join(root, "run", "task-1", "0"), one...)
+	log(t, filepath.Join(root, "run", "task-1", "1"), one...)
+	log(t, filepath.Join(root, "run", "task-2", "0", "blobs"), one...) // blobs are not sessions
+	rep, err := Mine([]string{root}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := find(rep, PermRefused, "cd <path>")
+	if rep.Sessions != 2 || f == nil || f.Count != 2 || f.Sessions != 2 {
+		t.Fatalf("sessions %d: %+v", rep.Sessions, f)
+	}
+	if want := "run/task-1/0"; f.Examples[0].Session != want {
+		t.Errorf("session named %q, want %q", f.Examples[0].Session, want)
+	}
+	if _, err := Mine([]string{t.TempDir()}, Options{}); err == nil || !strings.Contains(err.Error(), "no events.jsonl") {
+		t.Errorf("an empty directory: %v", err)
+	}
+	if _, err := Mine([]string{filepath.Join(root, "nope")}, Options{}); err == nil {
+		t.Error("a missing path must be an error")
+	}
+}
+
+func TestCommandKey(t *testing.T) {
+	for in, want := range map[string]string{
+		"cd /workspace && ls":                "cd <path>",
+		"cd \"$(pwd)\" && go test ./...":     "cd <path>",
+		"GOFLAGS=-mod=mod go test ./...":     "go test",
+		"sed -n '1,5p' main.go":              "sed -n",
+		"grep -rn foo src":                   "grep -rn",
+		"git diff HEAD~1":                    "git diff",
+		"":                                   "(empty)",
+		"cat > /tmp/x.go << 'EOF'\npkg\nEOF": "cat >",
+	} {
+		if got := commandKey(in); got != want {
+			t.Errorf("commandKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestNormaliseKeepsWhatIsTheSameAndDropsWhatVaries(t *testing.T) {
+	a := normalise("reads /workspace outside the workspace (/root/.bench/w/mut-1/tree); approval needed after 12 tries")
+	b := normalise("reads /repo outside the workspace (/home/u/x/tree); approval needed after 3 tries")
+	if a != b || !strings.Contains(a, "outside the workspace") {
+		t.Errorf("%q vs %q", a, b)
+	}
+}

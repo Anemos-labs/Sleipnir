@@ -1,0 +1,13 @@
+{
+  "id": "rs-rpn",
+  "kind": "feature",
+  "lang": "rust",
+  "difficulty": "medium",
+  "prompt": "Implement a reverse-polish-notation calculator in the Rust crate in the repository root. `src/token.rs`, `src/eval.rs` and `src/error.rs` already define the public types (`Token`, `RpnError`) and the function signatures, but the bodies are `todo!()`: implement `tokenize`, `evaluate`, `eval` and the `Display` impl of `RpnError`.\n\n`README.md` specifies the behaviour exactly: the token grammar (it is stricter than what `str::parse::<f64>` accepts), the operand order, `%` and `^`, the error cases and which error wins when there are several, and the `Display` messages, with worked examples. Follow it to the letter: more tests than the visible ones, covering the rest of the README, are run when your work is checked.\n\nUse only the standard library (no crates; the build is offline). Do not edit anything under `tests/`. Check your work with `cargo test --offline --quiet`.",
+  "verify": "cargo test --offline --quiet",
+  "timeout_s": 300,
+  "protected": ["tests/*"],
+  "team": {"mode": "single"},
+  "tags": ["rust", "feature", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}
