@@ -45,20 +45,29 @@ func callID(raw json.RawMessage) (int64, bool) {
 	if len(raw) == 0 {
 		return 0, false
 	}
+	var n int64
 	if raw[0] == '"' {
 		var s string
 		if json.Unmarshal(raw, &s) != nil {
 			return 0, false
 		}
-		n, err := strconv.ParseInt(s, 10, 64)
-		return n, err == nil
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		n = v
+	} else {
+		var f float64
+		if json.Unmarshal(raw, &f) != nil || float64(int64(f)) != f {
+			return 0, false
+		}
+		n = int64(f)
 	}
-	var f float64
-	if json.Unmarshal(raw, &f) != nil {
+	// Our ids start at 1: anything else answers nothing we sent.
+	if n <= 0 {
 		return 0, false
 	}
-	n := int64(f)
-	return n, float64(n) == f && n > 0
+	return n, true
 }
 
 // marshalRequest and friends build outgoing messages by hand rather than from

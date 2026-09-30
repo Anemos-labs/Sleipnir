@@ -294,6 +294,15 @@ func TestBuildTextEncoding(t *testing.T) {
 			t.Errorf("case %d: text did not round-trip (len got %d want %d)", i, len(got), len(want))
 		}
 	}
+	// Invalid bytes and line separators are written as escapes, exactly as
+	// encoding/json does, so the body stays valid JSON and every consumer decodes
+	// the same string.
+	esc := func(hex string) string { return "\\" + "u" + hex }
+	p2 := &core.Prompt{Model: "m", Messages: []core.Message{user(core.Text("a\xffb" + string(rune(0x2028)) + string(rune(0x2029))))}}
+	b2 := string(build(t, p2, anthropic.Options{}, false).Body)
+	if !strings.Contains(b2, "a"+esc("fffd")+"b"+esc("2028")+esc("2029")) {
+		t.Errorf("escapes missing: %s", b2)
+	}
 	// HTML characters are not escaped.
 	p := &core.Prompt{Model: "m", Messages: []core.Message{user(core.Text("a<b>&c"))}}
 	if !strings.Contains(string(build(t, p, anthropic.Options{}, false).Body), `"a<b>&c"`) {

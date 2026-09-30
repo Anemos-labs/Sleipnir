@@ -69,6 +69,10 @@ type proc struct {
 // startProc launches the process and its pumps. The caller must have called
 // m.begin and is responsible for m.end.
 func (m *Manager) startProc(sp procSpec) (*proc, error) {
+	if w := m.opts.Wrap; len(w) > 0 {
+		args := append(append([]string(nil), w[1:]...), sp.path)
+		sp.args, sp.path = append(args, sp.args...), w[0]
+	}
 	cmd := exec.Command(sp.path, sp.args...)
 	cmd.Dir = sp.dir
 	cmd.Env = sp.env

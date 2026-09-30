@@ -2,6 +2,7 @@ package shell
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,15 @@ type Options struct {
 	// wildcards allowed) that are handed to commands even though they look like
 	// secrets. Everything else matching the secret pattern is scrubbed.
 	PassEnv []string
+	// BaseEnv, when non-nil, is the environment commands start from instead of
+	// the harness process's own ("K=V" entries). RL rollouts pass a private HOME
+	// and TMPDIR with no credentials at all. The secret scrub still runs over it.
+	BaseEnv []string
+	// Wrap is an argv prefix every command runs under: the shell is started as
+	// Wrap[0] Wrap[1:]... <shell> <flags> <script>. It is how a rollout is given a
+	// network-less namespace (see internal/rl/env NetPrefix) without the shell
+	// tools knowing anything about sandboxes.
+	Wrap []string
 	// Shell overrides shell detection with the path or name of a shell binary.
 	Shell string
 	// MaxOutputBytes kills a foreground command that writes more than this many
@@ -93,6 +103,12 @@ func NewManager(opts ...Options) *Manager {
 	var o Options
 	for _, x := range opts {
 		o.PassEnv = append(o.PassEnv, x.PassEnv...)
+		if x.BaseEnv != nil {
+			o.BaseEnv = x.BaseEnv
+		}
+		if len(x.Wrap) > 0 {
+			o.Wrap = append([]string(nil), x.Wrap...)
+		}
 		if x.Shell != "" {
 			o.Shell = x.Shell
 		}
@@ -128,6 +144,14 @@ func NewManager(opts ...Options) *Manager {
 }
 
 var errShutDown = errors.New("the shell manager has been shut down")
+
+// baseEnv is the environment commands are built from.
+func (m *Manager) baseEnv() []string {
+	if m.opts.BaseEnv != nil {
+		return m.opts.BaseEnv
+	}
+	return os.Environ()
+}
 
 // begin registers a process about to be supervised; it fails after Shutdown.
 // Checking and adding under one lock is what makes Shutdown's Wait safe.

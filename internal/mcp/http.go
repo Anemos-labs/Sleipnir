@@ -389,8 +389,8 @@ func (t *httpTransport) readPostStream(resp *http.Response, isRequest bool, reqI
 			}
 			return
 		}
-		if ev.Event != "" && ev.Event != "message" {
-			continue
+		if (ev.Event != "" && ev.Event != "message") || ev.Data == "" {
+			continue // other event types, and keep-alives with no payload
 		}
 		t.deliver([]byte(ev.Data))
 	}
@@ -482,7 +482,7 @@ func (t *httpTransport) listenAttempt(lastID string) (streamed bool, id string, 
 		if ev.Retry >= 0 {
 			retry = ev.Retry
 		}
-		if ev.Event != "" && ev.Event != "message" {
+		if (ev.Event != "" && ev.Event != "message") || ev.Data == "" {
 			continue
 		}
 		t.deliver([]byte(ev.Data))

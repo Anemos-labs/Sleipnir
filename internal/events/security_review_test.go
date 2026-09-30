@@ -670,4 +670,56 @@ func TestSecSound_ConcurrentPutGetNeverServesWrongBytes(t *testing.T) {
 	}
 }
 
+// Callers that must bound their memory can ask for a blob with a size limit; an oversized one is refused
+// before it is read, and the limit is exact.
+func TestSecSound_GetMaxRefusesOversizedBlobsBeforeReadingThem(t *testing.T) {
+	d, err := NewDirBlobs(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewMemBlobs()
+	payload := bytes.Repeat([]byte("x"), 1000)
+	for name, store := range map[string]interface {
+		Blobs
+		GetMax(core.Hash, int64) ([]byte, error)
+	}{"dir": d, "mem": m} {
+		h, err := store.Put(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := store.GetMax(h, 1000); err != nil || !bytes.Equal(got, payload) {
+			t.Fatalf("%s: a blob exactly at the limit must be served: %d bytes, %v", name, len(got), err)
+		}
+		if got, err := store.GetMax(h, 999); !errors.Is(err, ErrBlobTooLarge) || got != nil {
+			t.Fatalf("%s: one byte over must be refused: %d bytes, %v", name, len(got), err)
+		}
+		if got, err := store.GetMax(h, 0); !errors.Is(err, ErrBlobTooLarge) || got != nil {
+			t.Fatalf("%s: %d bytes, %v", name, len(got), err)
+		}
+		if got, err := store.Get(h); err != nil || !bytes.Equal(got, payload) {
+			t.Fatalf("%s: plain Get must still serve any size: %d bytes, %v", name, len(got), err)
+		}
+	}
+	if _, err := d.GetMax(core.Hash("../x"), 10); !errors.Is(err, ErrInvalidHash) {
+		t.Fatalf("GetMax must vet the hash too: %v", err)
+	}
+	// Empty content is a blob like any other (and not "corrupt").
+	h, _ := d.Put(nil)
+	if got, err := d.Get(h); err != nil || len(got) != 0 {
+		t.Fatalf("empty blob: %q %v", got, err)
+	}
+}
+
+func TestSecSound_ValidHashIsExactlyLowercaseSHA256Hex(t *testing.T) {
+	good := core.HashString("x")
+	if !ValidHash(good) {
+		t.Fatal("core.HashString output must be valid")
+	}
+	for _, bad := range []core.Hash{"", good[:63], good + "0", core.Hash(strings.ToUpper(string(good))), "../" + good[3:], good[:63] + "g"} {
+		if ValidHash(bad) {
+			t.Fatalf("%q must not be valid", bad)
+		}
+	}
+}
+
 func dirOf(b *DirBlobs) string { return b.dir }

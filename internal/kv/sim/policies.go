@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/kv"
@@ -47,15 +48,15 @@ func managerBill(r *runner, now time.Duration, layered bool, mgrThread *[]seg, m
 	var bp []int
 	if layered {
 		segs = []seg{{"G0", r.w.ConstTokens, false}, {"G1", r.w.SharedTokens, false}, {"G2:mgr", 2000, false}, {"G3:mgr", r.w.AssignTokens, false}}
-		bp = []int{1, 2, 3}
+		segs = append(segs, *mgrThread...)
+		if r.p.HotMode == kv.HotInline || r.p.HotMode == kv.HotTurnScoped {
+			segs = append(segs, seg{"hot:mgr", 2000, true})
+		}
+		bp = layeredBP(r.p, segs)
 	} else {
 		segs = []seg{{"G0", r.w.ConstTokens, false}, {"goal", r.w.AssignTokens, false}, {"mgr-explore", r.w.ExploreTokens, false}}
-		bp = []int{0}
-	}
-	segs = append(segs, *mgrThread...)
-	bp = append(bp, len(segs)-1)
-	if layered {
-		segs = append(segs, seg{"hot:mgr", 2000, true})
+		segs = append(segs, *mgrThread...)
+		bp = []int{0, len(segs) - 1}
 	}
 	return r.bill(now, eng, segs, bp, 260+briefOut)
 }
@@ -176,75 +177,45 @@ type LayeredOptions struct {
 	Shards int
 	// Planner drives compaction decisions (zero value = defaults).
 	Planner kv.Planner
-	// RetainedFrac / SpineFrac describe what a model compaction patch achieves;
-	// MaskFrac is the share of older thread tokens that survive a mask-only commit.
-	RetainedFrac, SpineFrac, MaskFrac float64
+	// RetainedFrac / SpineFrac describe what a model compaction patch achieves.
+	RetainedFrac, SpineFrac float64
+	// MaskedResult is the size a masked tool result shrinks to (a placeholder).
+	MaskedResult int
+	// HotEvery is the number of steps between persisted hot notices when the
+	// provider's route persists the hot tail (kv.HotPersist); default 3.
+	HotEvery int
 }
 
 // DefaultLayered enables everything.
 func DefaultLayered() LayeredOptions {
-	return LayeredOptions{Compaction: true, ColdMask: true, Gate: true, Affinity: true, RetainedFrac: 0.22, SpineFrac: 0.03, MaskFrac: 0.40, Planner: kv.DefaultPlanner()}
+	return LayeredOptions{Compaction: true, ColdMask: true, Gate: true, Affinity: true, RetainedFrac: 0.22, SpineFrac: 0.03, MaskedResult: 40, HotEvery: 3, Planner: kv.DefaultPlanner()}
 }
 
-// primerGate is the simulator's model of swarm.WarmGate: the first request over
-// a cold prefix goes alone; the rest wait for its first response byte, after
-// which the provider serves the prefix from cache. Requests arrive one at a time
-// in simulated order, so "the first" is well defined.
-type primerGate struct {
-	enabled bool
-	ttl     time.Duration
-	margin  time.Duration
-	keys    map[string]*gateState
-}
-
-type gateState struct{ ready, warmUntil time.Duration }
-
-func newPrimerGate(enabled bool, ttl time.Duration) *primerGate {
-	return &primerGate{enabled: enabled, ttl: ttl, margin: 30 * time.Second, keys: map[string]*gateState{}}
-}
-
-// wait reports how long a request at now must hold for any of the keys' primers.
-func (g *primerGate) wait(now time.Duration, keys ...string) time.Duration {
-	if !g.enabled {
-		return 0
-	}
-	var w time.Duration
-	for _, k := range keys {
-		if st := g.keys[k]; st != nil && st.ready > now && st.ready-now > w {
-			w = st.ready - now
-		}
-	}
-	return w
-}
-
-// touch records a request over key that started at now and whose first byte
-// arrives after ttfb. A request over a prefix that had gone cold becomes the new
-// primer.
-func (g *primerGate) touch(key string, now, ttfb time.Duration) {
-	st := g.keys[key]
-	if st == nil {
-		st = &gateState{ready: now + ttfb}
-		g.keys[key] = st
-	} else if g.ttl > 0 && now >= st.warmUntil {
-		st.ready = now + ttfb
-	}
-	if g.ttl <= 0 {
-		st.warmUntil = 1 << 62
-		return
-	}
-	st.warmUntil = now + ttfb + g.ttl - g.margin
-}
+// SpineBound and InstructionBound mirror kv.DefaultApplyPolicy: the spine is
+// evicted behind a pointer line once it exceeds MaxSpineTokens (down to 70%).
+const (
+	spineBound = 3000
+	// notesGrowth is what each model commit adds to the notes layer (compactor
+	// notes ops and preserved user text).
+	notesGrowth = 120
+)
 
 type compJob struct {
 	readyAt   time.Duration
 	snapTok   int // thread tokens covered
 	snapSegs  int // number of thread segments covered
 	spine, rt int
+	held      int // boundaries at which the ready patch was held
 }
 
 // Layered models Sleipnir: shared/role pins, per-agent notes and spine, a
 // planner-driven compacting thread, a small hot tail, a warm gate and routing
-// affinity.
+// affinity. It follows the code: breakpoints come from kv.PlanMarks, decisions
+// from the real kv.Planner (fed the same state the agent feeds it, with warmth
+// judged by the entry lifetime like the agent does, and the planner's default
+// horizon instead of an oracle for the remaining work), masking hides the bulky
+// old results one by one so the cache keeps the prefix before the first, and a
+// route with preserved thinking persists the hot tail in the thread on change.
 func Layered(w Workload, p Provider, o LayeredOptions) Result {
 	name := "sleipnir layered"
 	if !o.Compaction {
@@ -258,6 +229,9 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 	if !o.Affinity && p.Engines > 1 {
 		name += " − affinity"
 	}
+	if p.HotMode == kv.HotPersist {
+		name += " (persisted hot)"
+	}
 	r := newRunner(w, p, name)
 	pl := o.Planner
 	shards := o.Shards
@@ -266,6 +240,10 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 	}
 	if shards < 1 {
 		shards = 1
+	}
+	hotEvery := o.HotEvery
+	if hotEvery < 1 {
+		hotEvery = 3
 	}
 	route := func(agentIdx int, id string) int {
 		if !o.Affinity {
@@ -276,12 +254,17 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 	gate := newPrimerGate(o.Gate, p.TTL)
 	// A cold prefix has to be primed once per routing key: with affinity that is
 	// once per shard, without it every request may land on a different engine and
-	// the gate can only serialise on the prefix itself.
+	// the gate can only serialise on the prefix itself. Providers that route by
+	// nothing (Anthropic's per-workspace cache) share one shared-level key.
 	gateKeys := func(agentIdx int) (shared, role string) {
-		if !o.Affinity {
-			return "G", "R:worker"
+		if !o.Affinity || p.Engines <= 1 {
+			return "G", "G|R:worker"
 		}
-		return fmt.Sprintf("G/%d", agentIdx%shards), fmt.Sprintf("R:worker/%d", agentIdx%shards)
+		return fmt.Sprintf("G/%d", agentIdx%shards), fmt.Sprintf("G/%d|R:worker", agentIdx%shards)
+	}
+	horizon := pl.HorizonTurns
+	if horizon == 0 {
+		horizon = kv.DefaultPlanner().HorizonTurns
 	}
 
 	var mgrThread []seg
@@ -293,11 +276,9 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 		mttfb := managerBill(r, start, true, &mgrThread, &mgrTok, route(0, "mgr"), w.AssignTokens)
 		// The manager's request primes the constitution and shared pin on its own
 		// engine; other shards still have to prime theirs.
-		if !o.Affinity {
-			gate.touch("G", start, mttfb)
-		} else {
-			gate.touch("G/0", start, mttfb)
-		}
+		mShared, mRole := gateKeys(0)
+		gate.touch(mShared, start, mttfb)
+		gate.touch(mRole, start, mttfb)
 		t0 := firstDispatch(start, mttfb)
 
 		var actors []*actor
@@ -305,22 +286,25 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 			i := i
 			id := fmt.Sprintf("w%02d", i)
 			var (
-				thread    []seg
-				threadTok int
-				stepsLeft int
-				taskNo    int
-				active    bool
-				notesVer  int
-				spineVer  int
-				notesTok  int
-				spineTok  int
-				epoch     int
-				lastReq   time.Duration
-				haveReq   bool
-				job       *compJob
-				sp        *taskSpec
-				si        int
-				total     int
+				thread     []seg
+				threadTok  int
+				taskNo     int
+				active     bool
+				notesVer   int
+				spineVer   int
+				notesTok   int
+				spineTok   int
+				epoch      int
+				lastReq    time.Duration
+				haveReq    bool
+				job        *compJob
+				sp         *taskSpec
+				si         int
+				total      int
+				sinceMask  int
+				sinceHot   int
+				hotSeq     int
+				pendingHot bool
 			)
 			a := &actor{id: id, next: t0}
 			a.step = func(now time.Duration) (bool, time.Duration) {
@@ -333,9 +317,10 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 					active = true
 					thread, threadTok, notesVer, spineVer, epoch = nil, 0, 0, 0, 0
 					notesTok, spineTok, job, haveReq = w.AssignTokens, 0, nil, false
+					sinceMask, sinceHot, hotSeq, pendingHot = 1<<20, 0, 0, w.HotTokens > 0
 					sp = w.spec(k)
 					total = w.OrientSteps + len(sp.work)
-					stepsLeft, si = total, 0
+					si = 0
 				}
 				sharedKey, roleKey := gateKeys(i)
 				if wait := gate.wait(now, sharedKey, roleKey); wait > 0 {
@@ -343,74 +328,104 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 				}
 				// Boundary: commit or start compaction.
 				if o.Compaction {
-					warm := haveReq && now-lastReq <= p.TTL-pl.ColdMargin
-					if p.TTL == 0 {
-						warm = haveReq
+					warm := haveReq
+					if p.TTL > 0 {
+						warm = haveReq && !pl.IsCold(lastReq-lastReq+lastReqAt(lastReq, haveReq), now, p.TTL)
 					}
-					if job != nil && job.readyAt <= now {
-						st := kv.State{
-							PrefixTokens: w.ConstTokens + w.SharedTokens + w.RoleTokens + notesTok + spineTok,
-							ThreadTokens: job.snapTok, ContextWindow: w.ContextWindow, Warm: warm,
-							Remaining: float64(stepsLeft), W: p.W, Write: p.Write,
+					prefix := w.ConstTokens + w.SharedTokens + w.RoleTokens
+					state := func(threadNow int) kv.State {
+						maskable := 0
+						if len(thread) > 4 {
+							maskable = maskableTokens(thread[:len(thread)-4], w.MaskMinTokens(), o.MaskedResult)
 						}
-						st.PromptTokens = st.PrefixTokens + threadTok
-						if d := pl.ShouldCommit(st, kv.Outcome{SpineAdded: job.spine, RetainedTokens: job.rt}); d.Yes {
-							tail := thread[job.snapSegs:]
+						return kv.State{
+							PrefixTokens: prefix, NotesTokens: notesTok, SpineTokens: spineTok,
+							ThreadTokens: threadNow, PromptTokens: prefix + notesTok + spineTok + threadNow,
+							ContextWindow: w.ContextWindow, Warm: warm, Remaining: 0, W: p.W, Write: p.Write, Explicit: p.Explicit,
+							MaskableTokens: maskable, SinceMask: sinceMask,
+						}
+					}
+					_ = horizon
+					if job != nil && job.readyAt <= now {
+						st := state(threadTok)
+						tail := thread[job.snapSegs:]
+						tailTok, tailPrior := 0, 0
+						for k, sg := range tail {
+							tailTok += sg.tokens
+							if k < len(tail)-2 { // the newest exchange has not been sent yet
+								tailPrior += sg.tokens
+							}
+						}
+						spineAfter, evicted := spineTok+job.spine, false
+						if spineAfter > spineBound {
+							spineAfter, evicted = spineBound*7/10, true
+						}
+						out := kv.Outcome{SnapTokens: job.snapTok, SpineAdded: job.spine, RetainedTokens: job.rt, SpineAfter: spineAfter,
+							SpineRewritten: evicted, NotesChanged: true, NotesAfter: notesTok + notesGrowth, TailTokens: tailPrior}
+						job.held++
+						if stale, _ := pl.Stale(job.snapTok+0, threadTok, job.held); stale {
+							job = nil // dropped; a new one may start below
+						} else if d := pl.ShouldCommit(st, out); d.Yes {
 							epoch++
 							thread = append([]seg{{fmt.Sprintf("ret:%s:%d:%d", id, taskNo, epoch), job.rt, false}}, tail...)
-							tailTok := 0
-							for _, s := range tail {
-								tailTok += s.tokens
-							}
 							threadTok = job.rt + tailTok
-							spineTok += job.spine
+							spineTok = spineAfter
 							spineVer++
 							notesVer++
-							notesTok += 120
+							notesTok += notesGrowth
 							r.res.Compactions++
 							job = nil
+							pendingHot = pendingHot || p.HotMode == kv.HotPersist
 						}
-					} else if job == nil && len(thread) >= 6 {
-						st := kv.State{
-							PrefixTokens: w.ConstTokens + w.SharedTokens + w.RoleTokens + notesTok + spineTok,
-							ThreadTokens: threadTok, ContextWindow: w.ContextWindow, Warm: warm,
-							Remaining: float64(stepsLeft), W: p.W, Write: p.Write,
-						}
-						st.PromptTokens = st.PrefixTokens + threadTok
-						d := pl.ShouldStart(st)
+					}
+					if job == nil && len(thread) >= 6 {
+						d := pl.ShouldStart(state(threadTok))
 						switch {
 						case d.Yes && d.Mode == kv.ModeMask && o.ColdMask:
-							// Cold cache: shrink deterministically for free. Older results are
-							// masked; the newest units stay verbatim.
-							keep := 4
-							if keep > len(thread) {
-								keep = len(thread)
-							}
-							older := thread[:len(thread)-keep]
-							oldTok := 0
-							for _, sg := range older {
-								oldTok += sg.tokens
-							}
-							tail := thread[len(thread)-keep:]
+							// Cold cache: hide the bulky old results, newest four segments
+							// verbatim. The cache keeps everything before the first masked one.
 							epoch++
-							thread = append([]seg{{fmt.Sprintf("msk:%s:%d:%d", id, taskNo, epoch), int(float64(oldTok) * o.MaskFrac), false}}, tail...)
-							threadTok = 0
-							for _, sg := range thread {
-								threadTok += sg.tokens
+							keep := len(thread) - 4
+							changed := 0
+							for k := 0; k < keep; k++ {
+								if sg := thread[k]; strings.HasPrefix(sg.id, "r:") && sg.tokens >= w.MaskMinTokens() {
+									thread[k] = seg{id: fmt.Sprintf("m:%s:%d", sg.id, epoch), tokens: o.MaskedResult}
+									changed++
+								}
 							}
-							r.res.MaskCommits++
+							if changed > 0 {
+								threadTok = 0
+								for _, sg := range thread {
+									threadTok += sg.tokens
+								}
+								r.res.MaskCommits++
+							}
+							sinceMask = 0
 						case d.Yes && d.Mode == kv.ModeFork:
 							// The compactor is a fork: the agent's own prefix, read from cache,
 							// plus an instruction and a short answer.
 							csegs := layeredSegs(w, id, notesVer, spineVer, notesTok, spineTok, thread, 0)
 							csegs = append(csegs, seg{"compact-instr", 1400, true})
-							ttfb := r.bill(now, route(i, id), csegs, layeredBP(csegs), 700)
+							ttfb := r.bill(now, route(i, id), csegs, layeredBP(p, csegs), 700)
 							job = &compJob{readyAt: now + ttfb + 14*time.Second, snapTok: threadTok, snapSegs: len(thread),
 								spine: int(float64(threadTok) * o.SpineFrac), rt: int(float64(threadTok) * o.RetainedFrac)}
 						}
 					}
 				}
-				segs := layeredSegs(w, id, notesVer, spineVer, notesTok, spineTok, thread, w.HotTokens)
+				hot := 0
+				if p.HotMode != kv.HotPersist {
+					hot = w.HotTokens
+				} else if pendingHot && si > 0 || pendingHot && len(thread) == 0 {
+					// Persist on change: the board rides in the user turn as a frozen
+					// block, first with the task and then every few steps.
+					if sinceHot >= hotEvery || len(thread) == 0 {
+						hotSeq++
+						thread = append(thread, seg{fmt.Sprintf("hotn:%s:%d:%d:%d", id, taskNo, epoch, hotSeq), w.HotTokens, false})
+						threadTok += w.HotTokens
+						sinceHot = 0
+					}
+				}
+				segs := layeredSegs(w, id, notesVer, spineVer, notesTok, spineTok, thread, hot)
 				var st stepSpec
 				res := 0
 				if si < w.OrientSteps {
@@ -422,18 +437,19 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 					st = sp.work[si-w.OrientSteps]
 					res = st.res
 				}
-				ttfb := r.bill(now, route(i, id), segs, layeredBP(segs), st.out)
+				ttfb := r.bill(now, route(i, id), segs, layeredBP(p, segs), st.out)
 				gate.touch(sharedKey, now, ttfb)
 				gate.touch(roleKey, now, ttfb)
 				lastReq, haveReq = now, true
+				sinceMask++
+				sinceHot++
 				thread = append(thread,
 					seg{fmt.Sprintf("o:%s:%d:%d:%d", id, taskNo, epoch, len(thread)), st.out, false},
 					seg{fmt.Sprintf("r:%s:%d:%d:%d", id, taskNo, epoch, len(thread)), res, false})
 				threadTok += st.out + res
-				stepsLeft--
 				si++
 				next := now + ttfb + st.lat
-				if stepsLeft <= 0 {
+				if si >= total {
 					active = false
 					r.res.Steps += total
 					managerBill(r, next, true, &mgrThread, &mgrTok, route(0, "mgr"), w.AssignTokens)
@@ -447,6 +463,25 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 		start = end + gap(w)
 	}
 	return r.finish()
+}
+
+// lastReqAt is the start of the agent's previous request (zero when none).
+func lastReqAt(t time.Duration, have bool) time.Duration {
+	if !have {
+		return 0
+	}
+	return t
+}
+
+// maskableTokens is what masking the bulky results among segs would save.
+func maskableTokens(segs []seg, minTokens, masked int) int {
+	n := 0
+	for _, sg := range segs {
+		if strings.HasPrefix(sg.id, "r:") && sg.tokens >= minTokens {
+			n += sg.tokens - masked
+		}
+	}
+	return n
 }
 
 func layeredSegs(w Workload, id string, notesVer, spineVer, notesTok, spineTok int, thread []seg, hot int) []seg {
@@ -466,18 +501,39 @@ func layeredSegs(w Workload, id string, notesVer, spineVer, notesTok, spineTok i
 	return segs
 }
 
-// layeredBP places the four breakpoints: end of shared, role, notes, and the
-// rolling one at the end of the last persistent segment.
-func layeredBP(segs []seg) []int {
-	bp := []int{1, 2, 3}
-	last := -1
-	for i, s := range segs {
-		if !s.ephemeral {
-			last = i
-		}
+// layeredBP places the cache markers with the same planner the renderer uses
+// (kv.PlanMarks), on the simulator's segments: "G0" ends the constitution,
+// "G1" the shared pin, "G2:*" the role pin, "G3:*" the notes, "G4:*" is the
+// spine, everything else is thread. Ephemeral segments (the inline hot tail)
+// are not part of the cached prompt. Providers that cache automatically get none.
+func layeredBP(p Provider, segs []seg) []int {
+	if !p.Explicit {
+		return nil
 	}
-	if last > 3 {
-		bp = append(bp, last)
+	var blocks []kv.PlanBlock
+	var at []int
+	for i, s := range segs {
+		if s.ephemeral {
+			continue
+		}
+		pb := kv.PlanBlock{Tokens: s.tokens}
+		switch {
+		case s.id == "G0":
+			pb.End, pb.LayerTokens = "const", s.tokens
+		case s.id == "G1":
+			pb.End, pb.LayerTokens = "shared", s.tokens
+		case strings.HasPrefix(s.id, "G2:"):
+			pb.End, pb.LayerTokens = "role", s.tokens
+		case strings.HasPrefix(s.id, "G3:"):
+			pb.End, pb.LayerTokens = "notes", s.tokens
+		}
+		blocks = append(blocks, pb)
+		at = append(at, i)
+	}
+	caps := kv.Caps{MaxBreakpoints: p.MaxBP, LookbackBlocks: 20, MinPrefixTokens: p.MinPrefix}
+	var bp []int
+	for _, m := range kv.PlanMarks(blocks, -1, caps, kv.DefaultPolicy()) {
+		bp = append(bp, at[m.Block])
 	}
 	return bp
 }

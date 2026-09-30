@@ -51,6 +51,8 @@ func golden(t *testing.T, dir, name string, got []byte) {
 	}
 }
 
+func readFile(path string) ([]byte, error) { return os.ReadFile(path) }
+
 func fixture(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", name))

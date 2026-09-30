@@ -22,9 +22,7 @@ func tag(s string) string {
 }
 
 func TestCleanText(t *testing.T) {
-	const (
-		zwsp, zwnj, zwj = "​", "‌", "‍"
-	)
+	zwsp, zwnj, zwj := u(0x200B), u(0x200C), u(0x200D)
 	tests := []struct {
 		name string
 		in   string
@@ -223,7 +221,7 @@ func TestGlobMatch(t *testing.T) {
 }
 
 func FuzzClean(f *testing.F) {
-	for _, s := range []string{"", "plain", "\x1b[31m", "\x1b]52;c;\x07", "a‍b", tag("x"), "\xff\xfe", "\r\n\r", "❤️️"} {
+	for _, s := range []string{"", "plain", "\x1b[31m", "\x1b]52;c;\x07", "a" + u(0x200D) + "b", tag("x"), "\xff\xfe", "\r\n\r", u(0x2764, 0xFE0F, 0xFE0F)} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {

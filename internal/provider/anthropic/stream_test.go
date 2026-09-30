@@ -133,7 +133,7 @@ type fixtureCase struct {
 func TestStreamFixtures(t *testing.T) {
 	cases := []fixtureCase{
 		{"text.sse", func(t *testing.T, r *provider.Response, ev *recorder) {
-			if got := r.Turn.PlainText(); got != "Hello, world é\U0001F40E" {
+			if got := r.Turn.PlainText(); got != "Hello, world "+string(rune(0xe9))+string(rune(0x1F40E)) {
 				t.Errorf("text = %q", got)
 			}
 			if len(r.Turn.Blocks) != 1 || r.Turn.Blocks[0].Kind != core.BlockText || r.Turn.Blocks[0].Wire != nil {

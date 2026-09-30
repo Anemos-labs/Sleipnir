@@ -2,9 +2,12 @@ package checkpoint
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/reee344/sleipnir/internal/events"
 )
 
 // DiffStatus says how a path differs from a checkpoint.
@@ -61,7 +64,14 @@ func (s *Store) Diff(id string) ([]FileDiff, error) {
 
 	out := []FileDiff{}
 	for _, it := range items {
-		cur, curData := s.capture(it.abs)
+		abs, err := s.resolveKey(it.key)
+		if err != nil {
+			// Never read through a path that leads out of the project: say so instead.
+			out = append(out, FileDiff{Path: it.key, Status: DiffModified, Agents: slices.Clone(it.agents),
+				Note: "cannot be compared: " + err.Error()})
+			continue
+		}
+		cur, curData := s.capture(abs)
 		if sameState(cur, it.want) {
 			continue
 		}
@@ -95,10 +105,13 @@ func (s *Store) diffOne(it *planned, cur state, curData []byte) FileDiff {
 	case kAbsent:
 		oldOK = true
 	case kFile:
-		b, err := s.blobs.Get(want.Blob)
-		if err != nil {
+		b, err := s.readBlob(want.Blob, maxDiffBytes)
+		switch {
+		case errors.Is(err, events.ErrBlobTooLarge):
+			note("too large to diff (the saved content is over %s)", humanBytes(maxDiffBytes))
+		case err != nil:
 			note("the checkpoint's saved content is unavailable: %v", err)
-		} else {
+		default:
 			oldData, oldOK = b, true
 		}
 	case kUnsaved, kOther:

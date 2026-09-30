@@ -191,10 +191,10 @@ var errStop = errors.New("export: sample cap reached")
 
 // exporter carries the state of one Export call.
 type exporter struct {
-	o     Options
-	out   *bufio.Writer
-	stats Stats
-	red   *redact.Redactor
+	o         Options
+	out       *bufio.Writer
+	stats     Stats
+	red       *redact.Redactor
 	redBefore map[string]int
 
 	teacherOK map[string]bool
@@ -202,8 +202,9 @@ type exporter struct {
 	roles     []string
 	splits    []splitBin
 
-	// prompt cache: resolved and redacted prompts per (episode, step)
-	cur *episodeCtx
+	// work is the set of episodes that reached the format writers, for the
+	// episodes-kept count.
+	work []*workEpisode
 }
 
 // Export writes the selected records of srcs to w as JSON lines and returns what it
@@ -277,6 +278,11 @@ func newExporter(w io.Writer, o Options) (*exporter, error) {
 }
 
 func (x *exporter) finishStats() {
+	for _, we := range x.work {
+		if we.contributed {
+			x.stats.Kept++
+		}
+	}
 	if x.red != nil {
 		after := x.red.Stats()
 		for k, v := range after {
@@ -358,6 +364,7 @@ func (x *exporter) run(srcs []Source) error {
 		work = out
 	}
 
+	x.work = work
 	switch x.o.Format {
 	case FormatSteps:
 		return x.writeSteps(work)
@@ -485,10 +492,14 @@ func addDrop(m map[string]int, k string, n int) map[string]int {
 const flatEps = 1e-12
 
 func groupHasSignal(members []*workEpisode) bool {
+	type roleReward struct {
+		role string
+		v    float64
+	}
+	seen := map[roleReward]bool{}
 	perRole := map[string][]float64{}
 	nonZeroAdv := false
 	for _, we := range members {
-		seen := map[string]bool{}
 		for ai := range we.ep.Agents {
 			ag := &we.ep.Agents[ai]
 			for si := range ag.Steps {
@@ -496,12 +507,10 @@ func groupHasSignal(members []*workEpisode) bool {
 				if math.Abs(st.Advantage) > flatEps {
 					nonZeroAdv = true
 				}
-				// One reward per (episode, role): a role's steps share it.
-				key := st.Role
 				r, _ := rewardOf(we.ep, ag, st)
-				if !seen[key+fmt.Sprintf("|%v", r)] {
-					seen[key+fmt.Sprintf("|%v", r)] = true
-					perRole[key] = append(perRole[key], r)
+				if k := (roleReward{st.Role, r}); !seen[k] {
+					seen[k] = true
+					perRole[st.Role] = append(perRole[st.Role], r)
 				}
 			}
 		}

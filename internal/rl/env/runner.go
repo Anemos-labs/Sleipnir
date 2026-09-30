@@ -556,7 +556,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	// carrying the infra_error flag, so the run directory is complete and
 	// exporters see, and drop, it.
 	fail := func(err error, retry bool) attemptOutcome {
-		keep, abandon = true, true
+		keep = true
 		res := RolloutResult{Task: task.ID, Sample: j.sample, Tags: task.Tags, Status: StatusInfra, Error: fmt.Sprintf("%s: %v", st.n, err)}
 		if !retry || attempt >= r.retries()+1 {
 			rn.writeInfraEpisode(j, dir, res.Error, wallMs)
@@ -577,7 +577,9 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 			case keep && rn.opts.KeepFailed:
 				out.result.KeptWorkspace = ws.Root
 			default:
-				_ = ws.Cleanup()
+				if err := ws.Cleanup(); err != nil {
+					r.logf("env: %s/%d: cleaning up %s: %v", task.ID, j.sample, ws.Root, err)
+				}
 			}
 		}
 	}()
@@ -627,7 +629,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	case ho.hung:
 		// The harness may still be writing to the run directory; touching its log
 		// now could corrupt it, so the outcome is recorded without a log entry.
-		keep = true
+		keep, abandon = true, true
 		res := RolloutResult{Task: task.ID, Sample: j.sample, Tags: task.Tags, Status: StatusInfra,
 			Error: "agent: the harness did not return after its context ended"}
 		rn.writeInfraEpisodeNoEvents(j, dir, res.Error, wallMs)

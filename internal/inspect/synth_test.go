@@ -323,7 +323,8 @@ func (s *sim) step(a *simAgent) {
 		s.advance(7 * time.Minute)
 	}
 	// ---- boundary: compaction ----
-	if !a.mgr && a.thread > cfg.SoftLimit {
+	driftStep := cfg.Anomalies && a.id == "be-1" && a.done == cfg.Steps*2/3
+	if !a.mgr && a.thread > cfg.SoftLimit && !driftStep {
 		s.compact(a)
 	}
 	// ---- layers ----
@@ -360,7 +361,7 @@ func (s *sim) step(a *simAgent) {
 
 	// ---- drift injection: the tool list is silently rewritten ----
 	drift := false
-	if cfg.Anomalies && a.id == "be-1" && a.done == cfg.Steps*2/3 {
+	if driftStep {
 		a.toolsVar++
 		toolsHash = s.toolsBlob(a.toolsVar)
 		sigs[0] = toolsHash

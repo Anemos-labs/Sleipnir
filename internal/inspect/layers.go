@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -294,10 +295,9 @@ func diffBlobs(b *blobStore, label, prevHash, hash string) (LayerDiff, bool) {
 		return LayerDiff{}, false
 	}
 	at := commonPrefix(pa, pb)
-	return LayerDiff{
-		Layer: label, At: at, PrevBytes: int(ta), Bytes: int(tb),
-		Before: window(pa, at), After: window(pb, at),
-	}, true
+	before, split := window(pa, at)
+	after, _ := window(pb, at)
+	return LayerDiff{Layer: label, At: at, PrevBytes: int(ta), Bytes: int(tb), Before: before, After: after, Split: split}, true
 }
 
 // commonPrefix is the length of the longest common prefix of a and b.
@@ -310,8 +310,11 @@ func commonPrefix(a, b []byte) int {
 	return i
 }
 
-// window returns the text around byte offset at, cut on character boundaries.
-func window(data []byte, at int) string {
+// window returns the text around byte offset at, cut on character boundaries,
+// and how many of its characters come before at.
+func window(data []byte, at int) (string, int) {
 	lo, hi := max(at-diffWindow, 0), min(at+diffWindow, len(data))
-	return strings.ToValidUTF8(string(data[lo:hi]), "�")
+	at = min(at, len(data))
+	head := strings.ToValidUTF8(string(data[lo:at]), "\uFFFD")
+	return strings.ToValidUTF8(string(data[lo:hi]), "\uFFFD"), utf8.RuneCountInString(head)
 }

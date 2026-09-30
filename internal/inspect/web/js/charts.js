@@ -89,7 +89,7 @@ export class TimelineChart {
   layout() {
     const compact = !!this.opts.compact;
     const top = compact ? 62 : 190, bot = compact ? 28 : 96;
-    const padL = 46, padR = 14, padT = compact ? 8 : 12, gap = compact ? 6 : 16, axis = compact ? 0 : 22;
+    const padL = 46, padR = 14, padT = compact ? 8 : 12, gap = compact ? 12 : 16, axis = compact ? 0 : 22;
     const H = padT + top + gap + bot + axis + (compact ? 4 : 0);
     return { compact, top, bot, padL, padR, padT, gap, axis, H, plotW: Math.max(10, this.W - padL - padR) };
   }
@@ -154,7 +154,7 @@ export class TimelineChart {
     for (const t of ticks) {
       const y = Math.round(Yt(t)) + 0.5;
       g.beginPath(); g.moveTo(L.padL, y); g.lineTo(L.padL + L.plotW, y); g.stroke();
-      if (!L.compact || t === 0 || t === ticks[ticks.length - 1]) g.fillText(tok(t), L.padL - 8, y);
+      if (!L.compact || (t !== 0 && t === ticks[ticks.length - 1])) g.fillText(tok(t), L.padL - 8, y);
     }
 
     if (vis.length) {
@@ -393,7 +393,9 @@ export class LineChart {
     const g = this.ctx, P = palette();
     g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
     g.font = '11px ' + cssVar('--sans'); g.textBaseline = 'middle';
-    const padL = 54, padR = 74, padT = 10, padB = 24;
+    g.font = '600 11px ' + cssVar('--sans');
+    const padL = 54, padR = Math.min(Math.max(...this.series.map(sr => g.measureText(sr.short || sr.name).width), 40) + 18, Math.floor(W * 0.4)), padT = 10, padB = 24;
+    g.font = '11px ' + cssVar('--sans');
     const pw = W - padL - padR, ph = H - padT - padB;
     const xs = this.xs;
     if (!xs.length) return;
@@ -457,18 +459,18 @@ export class LineChart {
   }
 }
 
-/** A small line with an end dot, for tiles and cards. values in any range; y is scaled to [lo,hi]. */
-export function sparkline(values, { w = 120, hgt = 28, lo, hi, stroke = 'var(--muted)', end = 'var(--accent)', title } = {}) {
-  const svg = s('svg', { viewBox: `0 0 ${w} ${hgt}`, width: w, height: hgt, role: 'img', 'aria-label': title || 'trend', preserveAspectRatio: 'none' });
+/** A small line with an end dot, for tiles and cards. y is scaled to [lo,hi] (default: the data's range). */
+export function sparkline(values, { w = 120, hgt = 28, lo, hi, title } = {}) {
+  const svg = s('svg', { viewBox: `0 0 ${w} ${hgt}`, width: w, height: hgt, role: 'img', 'aria-label': title || 'trend' });
   if (!values || values.length < 2) return svg;
   const mn = lo != null ? lo : Math.min(...values), mx = hi != null ? hi : Math.max(...values);
   const span = mx - mn || 1;
   const px = i => 2 + i / (values.length - 1) * (w - 4);
   const py = v => hgt - 3 - (clamp(v, mn, mx) - mn) / span * (hgt - 6);
   const d = values.map((v, i) => (i ? 'L' : 'M') + px(i).toFixed(1) + ' ' + py(v).toFixed(1)).join('');
-  svg.appendChild(s('path', { d, fill: 'none', stroke, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  svg.appendChild(s('path', { class: 'sp-line', d }));
   const last = values.length - 1;
-  svg.appendChild(s('circle', { cx: px(last), cy: py(values[last]), r: 3.5, fill: end }));
+  svg.appendChild(s('circle', { class: 'sp-dot', cx: px(last), cy: py(values[last]), r: 3.5 }));
   return svg;
 }
 

@@ -72,12 +72,12 @@ func appendJSONString(dst []byte, s string) []byte {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		if r == utf8.RuneError && size == 1 {
 			dst = append(dst, s[start:i]...)
-			dst = append(dst, `�`...)
+			dst = append(dst, "\\"+"ufffd"...)
 			i += size
 			start = i
 			continue
 		}
-		if r == ' ' || r == ' ' {
+		if r == 0x2028 || r == 0x2029 {
 			dst = append(dst, s[start:i]...)
 			dst = append(dst, '\\', 'u', '2', '0', '2', hexDigits[r&0xf])
 			i += size

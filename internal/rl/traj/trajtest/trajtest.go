@@ -208,6 +208,10 @@ type Call struct {
 	// Mail texts are appended as text blocks to the tool-result turn, as the
 	// swarm delivers mail.
 	Mail []string
+	// Thinking adds a reasoning block before the text; ReasoningWire, when set, is
+	// its provider-native JSON (what the wire replays as reasoning_details).
+	Thinking      string
+	ReasoningWire string
 }
 
 // Step performs one call and returns the request id.
@@ -227,6 +231,13 @@ func (a *Agent) Step(c Call) string {
 		return req
 	}
 	blocks := []core.Block{}
+	if c.Thinking != "" {
+		tb := core.Block{Kind: core.BlockThinking, Text: c.Thinking}
+		if c.ReasoningWire != "" {
+			tb.Wire, tb.WireFormat = json.RawMessage(c.ReasoningWire), "openai-chat"
+		}
+		blocks = append(blocks, tb)
+	}
 	if c.Text != "" {
 		blocks = append(blocks, core.Text(c.Text))
 	}

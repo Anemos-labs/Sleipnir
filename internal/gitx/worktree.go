@@ -239,7 +239,7 @@ func (r *Repo) DeleteBranch(ctx context.Context, name string) error {
 	return err
 }
 
-// UpdateRef moves a branch to sha only if it currently points at old (an empty
+// UpdateBranch moves a branch to sha only if it currently points at old (an empty
 // old means "must not exist yet"). The compare-and-swap is what lets the merge
 // queue advance the integration branch without trusting that nobody else did.
 func (r *Repo) UpdateBranch(ctx context.Context, name, sha, old, reason string) error {
@@ -275,6 +275,10 @@ func Init(ctx context.Context, dir string, bare bool, opts ...Option) (*Repo, er
 	if err != nil {
 		return nil, err
 	}
+	return initRepo(ctx, s, dir, bare)
+}
+
+func initRepo(ctx context.Context, s settings, dir string, bare bool) (*Repo, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, &Error{Kind: KindInvalid, Op: "init", ExitCode: -1, Err: err}
@@ -291,4 +295,10 @@ func Init(ctx context.Context, dir string, bare bool, opts ...Option) (*Repo, er
 		return nil, err
 	}
 	return open(ctx, s, abs)
+}
+
+// Init creates a new repository at dir with this handle's settings (timeouts,
+// hermetic configuration, trusted filters); see the package-level Init.
+func (r *Repo) Init(ctx context.Context, dir string, bare bool) (*Repo, error) {
+	return initRepo(ctx, r.s, dir, bare)
 }

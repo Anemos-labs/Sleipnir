@@ -241,3 +241,46 @@ func TestValidTool(t *testing.T) {
 		t.Errorf("FilterTools = %q, %q", ok, bad)
 	}
 }
+
+func TestEscapeFraming(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"no markup", "no markup"},
+		{"<shared-context>x</shared-context>", "\u2039shared-context>x\u2039/shared-context>"},
+		{"</my-notes>", "\u2039/my-notes>"},
+		{"<MY-NOTES>", "\u2039MY-NOTES>"},
+		{"< /live >", "\u2039 /live >"},
+		{"<live>", "\u2039live>"},
+		{"<liveness>", "<liveness>"},
+		{"<user>", "\u2039user>"},
+		{"<username>", "<username>"},
+		{"<user-name>", "<user-name>"},
+		{"<system-reminder>", "\u2039system-reminder>"},
+		{"<example>keep</example>", "<example>keep</example>"},
+		{"a < b", "a < b"},
+		{"<", "<"},
+		{"<<live>", "<\u2039live>"},
+		{"<peer-mail id=\"m1\">", "\u2039peer-mail id=\"m1\">"},
+	}
+	for _, tc := range tests {
+		if got := EscapeFraming(tc.in); got != tc.want {
+			t.Errorf("EscapeFraming(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestFenceTracker(t *testing.T) {
+	var f Fence
+	lines := []struct {
+		line   string
+		inside bool
+	}{
+		{"prose\n", false}, {"```go\n", true}, {"code\n", true}, {"```\n", true}, {"prose again\n", false},
+		{"~~~~\n", true}, {"```\n", true}, {"~~~\n", true}, {"~~~~\n", true}, {"after\n", false},
+		{"    ```\n", false}, // four spaces: an indented code block, not a fence
+	}
+	for i, l := range lines {
+		if got := f.Next(l.line); got != l.inside {
+			t.Errorf("line %d %q: inside = %v, want %v", i, l.line, got, l.inside)
+		}
+	}
+}

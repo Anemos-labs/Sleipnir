@@ -3,6 +3,7 @@ package reward
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // A tiny comment and string lexer for source fragments taken from diffs. The
@@ -168,7 +169,23 @@ func foldLine(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	space := false
-	for _, r := range s {
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < utf8.RuneSelf {
+			i++
+			if c == ' ' || (c >= '\t' && c <= '\r') {
+				space = true
+				continue
+			}
+			if space && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			space = false
+			b.WriteByte(c)
+			continue
+		}
+		r, w := utf8.DecodeRuneInString(s[i:])
+		i += w
 		switch {
 		case unicode.Is(unicode.Cf, r):
 			continue
@@ -193,25 +210,26 @@ func foldLine(s string) string {
 // tight removes whitespace around member access, calls and decorators, so that
 // "t . Skip ( )" and "t.Skip()" are one token stream. Line breaks count as
 // whitespace, which also defeats a call split across lines ("t.\nSkip()").
+// The characters involved are ASCII, so it works on bytes.
 func tight(s string) string {
 	s = foldLine(s)
 	var b strings.Builder
 	b.Grow(len(s))
-	rs := []rune(s)
-	for i, r := range rs {
-		if r == ' ' {
-			var prev, next rune
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == ' ' {
+			var prev, next byte
 			if i > 0 {
-				prev = rs[i-1]
+				prev = s[i-1]
 			}
-			if i+1 < len(rs) {
-				next = rs[i+1]
+			if i+1 < len(s) {
+				next = s[i+1]
 			}
-			if strings.ContainsRune(".([@", prev) || strings.ContainsRune(".()[", next) {
+			if prev == '.' || prev == '(' || prev == '@' || prev == '[' || next == '.' || next == '(' || next == ')' || next == '[' {
 				continue
 			}
 		}
-		b.WriteRune(r)
+		b.WriteByte(c)
 	}
 	return b.String()
 }

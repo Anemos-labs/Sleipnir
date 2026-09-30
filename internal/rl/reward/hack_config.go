@@ -468,7 +468,7 @@ func detectShims(h *hackEnv) []hackHit {
 				if raw == "" {
 					continue
 				}
-				if inTest {
+				if inTest && (strings.Contains(l.text, "xit") || strings.Contains(l.text, "halt")) {
 					code := foldLine(lexCode(l.text, langOfPath(p), false))
 					if testExitRe.MatchString(tight(code)) {
 						add("process exit with status 0 in a test file")

@@ -93,8 +93,15 @@ type Options struct {
 	NewSink func(agentID string) agent.Sink
 
 	Now func() time.Time
-	// Env is appended to the environment of shell commands.
-	Env []string
+	// ShellEnv, when non-nil, is the whole environment shell commands start from
+	// (RL rollouts: a private HOME, no credentials); nil inherits the process's.
+	ShellEnv []string
+	// ShellWrap is an argv prefix every shell command runs under (a network-less
+	// namespace for RL rollouts).
+	ShellWrap []string
+	// Meta is recorded on the session.start event (run provenance: task, sample,
+	// seed, policy and sampling of an RL rollout).
+	Meta map[string]any
 	// NoWeb omits the web tools.
 	NoWeb bool
 	// Offline skips network lookups made for convenience (model catalogue).
@@ -391,7 +398,7 @@ func (s *Session) build() error {
 
 	reg := tools.NewRegistry()
 	fs.Register(reg)
-	s.shell = shell.NewManager(shell.Options{})
+	s.shell = shell.NewManager(shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap})
 	shell.Register(reg, s.shell)
 	if !o.NoWeb {
 		// ConfigFromEnv routes through HTTPS_PROXY when one is set (sandboxed and
@@ -555,11 +562,15 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 	s.mu.Unlock()
 
 	if first {
-		s.Log.Emit("", events.TypeSessionStart, map[string]any{
+		start := map[string]any{
 			"version": Version, "model": s.Model.ID, "provider": s.Provider.Profile().Name, "dialect": s.Provider.Profile().Dialect,
 			"swarm": s.opts.Swarm, "root": s.opts.Root, "cwd": s.opts.Cwd, "renderer": kv.RendererVersion,
 			"recon_tokens": reconTokens(s.Recon), "shared_hash": s.Shared.Hash().Short(),
-		})
+		}
+		if len(s.opts.Meta) > 0 {
+			start["meta"] = s.opts.Meta
+		}
+		s.Log.Emit("", events.TypeSessionStart, start)
 	}
 	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(goal, 60)))
 

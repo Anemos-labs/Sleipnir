@@ -389,11 +389,14 @@ func fillTimes(steps []stepInfo, stamped int, cursor time.Duration) {
 // later agent's first request got (its ExpectedRead, else its recorded cache
 // read), which can only be the shared prefix; and, when several agents carry the
 // id, the smallest first prompt among them (an upper bound: it also contains the
-// agent's own assignment). An id carried by a single agent needs no size, since
-// nothing else can read its entry.
+// agent's own assignment). A prefix that starts a single chain of a single agent
+// needs no size, since nothing else can read its entry; one that starts several
+// (an agent's rebases after compactions) does, because each rebase keeps reading
+// the shared layers.
 func inferSharedTokens(ep *rl.Episode, infos []stepInfo, o RepriceOptions) (map[string]int, []string) {
 	type acc struct {
 		agents  map[int]bool
+		starts  int // chains that begin with this prefix, across agents
 		minP    int
 		inline  int
 		cand    int
@@ -412,6 +415,9 @@ func inferSharedTokens(ep *rl.Episode, infos []stepInfo, o RepriceOptions) (map[
 			by[id] = a
 		}
 		a.agents[in.ai] = true
+		if in.gen {
+			a.starts++
+		}
 		if in.prompt > 0 && in.prompt < a.minP && in.gen {
 			a.minP = in.prompt
 		}
@@ -440,15 +446,15 @@ func inferSharedTokens(ep *rl.Episode, infos []stepInfo, o RepriceOptions) (map[
 			s = a.inline
 		case a.hasCand:
 			s = a.cand
-		case len(a.agents) > 1 && a.minP != math.MaxInt:
+		case (len(a.agents) > 1 || a.starts > 1) && a.minP != math.MaxInt:
 			s = a.minP
 			warns = append(warns, fmt.Sprintf("shared prefix %q: size not recorded, assuming %d tokens (smallest first prompt); pin it with reprice.shared_tokens", id, s))
 		}
 		if a.minP != math.MaxInt && s > a.minP {
 			s = a.minP // a prefix cannot exceed any prompt that contains it
 		}
-		if len(a.agents) < 2 && !a.hasInl && o.SharedTokens[id] == 0 {
-			s = 0 // a single agent's chain needs no separate shared node
+		if len(a.agents) < 2 && a.starts < 2 && !a.hasInl && o.SharedTokens[id] == 0 {
+			s = 0 // one chain of one agent: nothing else can read a separate shared node
 		}
 		if s > 0 {
 			sizes[id] = s

@@ -377,3 +377,47 @@ func (r *registry) list(current string) SessionList {
 	})
 	return out
 }
+
+// Sessions scans root and returns the session list with digests, loading each
+// log once (logs over 64 MiB get a digest only when opened). It is what
+// `sleipnir inspect --json DIR` prints for a directory of sessions.
+func Sessions(root string, opts Options) (SessionList, error) {
+	opts.fill()
+	r, err := newRegistry(root, opts, nil)
+	if err != nil {
+		return SessionList{}, err
+	}
+	r.indexPending(context.Background())
+	list := r.list("")
+	if r.single {
+		list.Current = "."
+	}
+	return list, nil
+}
+
+// OpenSession loads one session found under root by its id (as listed by
+// Sessions). The id is matched against the sessions discovered under root; it is
+// never used as a path. In a directory that is itself a session the id is ignored.
+func OpenSession(root, id string, opts Options) (*Session, error) {
+	opts.fill()
+	r, err := newRegistry(root, opts, nil)
+	if err != nil {
+		return nil, err
+	}
+	e := r.get(id)
+	if e == nil && id == "" {
+		e = r.only()
+	}
+	if e == nil {
+		if id == "" {
+			return nil, errors.New("inspect: this directory holds several sessions; pick one with --session")
+		}
+		return nil, errors.New("inspect: no such session under " + filepath.Base(r.root))
+	}
+	o := opts
+	o.ID, o.Name = e.id, e.name
+	if e.id == "." {
+		o.ID = ""
+	}
+	return LoadWith(e.dir, o)
+}

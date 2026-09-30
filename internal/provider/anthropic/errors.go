@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"net/http"
@@ -40,7 +41,7 @@ func mapHTTPError(status int, h http.Header, body []byte, now time.Time, maxRetr
 		}
 	}
 	if msg == "" {
-		msg = http.StatusText(status)
+		msg = strings.TrimSpace(fmt.Sprintf("HTTP %d %s", status, http.StatusText(status)))
 	}
 	if id := firstNonEmpty(h.Get("Request-Id"), env.RequestID); id != "" {
 		msg += " (request_id " + id + ")"

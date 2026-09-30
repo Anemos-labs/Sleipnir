@@ -22,6 +22,20 @@
 // atomically with a temporary file and rename, so a crash never leaves a torn
 // file. It is not fsynced: like the edits it protects, it survives the process
 // dying, not necessarily the machine losing power.
+//
+// Trust: the state directory can be written by anyone who can write files as the
+// user (and, if it sits inside the project, by whatever a repository ships), so a
+// manifest is data, not authority. Loading vets every record: keys must be
+// root-relative paths that stay inside the project root, every saved file must
+// carry a content hash and a checksum, and sizes, modes and hashes must be in
+// range; anything else is dropped with a warning. Files outside the project are
+// recorded by absolute path while the process that made the record lives, and can
+// be rewound by it, but such a record is not accepted back from disk. Restore and
+// Diff resolve each path at the moment they use it and refuse anything that lands
+// outside the project root, including through a symlink that appeared since (or
+// that an earlier step of the same rewind created); restored content is read
+// with a size bound, must match its checksum, and a rewind writes at most a
+// bounded number of bytes.
 package checkpoint
 
 import (
@@ -29,6 +43,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -54,6 +69,26 @@ const (
 	mtimeGrace = 5 * time.Second
 
 	maxLabelRunes = 120
+
+	// maxKeyBytes bounds a path or symlink target read from a manifest (PATH_MAX).
+	maxKeyBytes = 4096
+	// maxSeq bounds checkpoint numbers and the id counter, so a hostile file name
+	// or counter cannot overflow the next id.
+	maxSeq = 1 << 30
+	// maxRecords bounds the records one manifest file may hold.
+	maxRecords = 200_000
+	// maxWarnings bounds the warnings kept about a damaged state directory.
+	maxWarnings = 100
+	// maxID bounds an owner's uid/gid read from a manifest.
+	maxID = 1<<31 - 1
+)
+
+// Limits that tests shrink. maxManifestBytes bounds one manifest file (a real one
+// is a few hundred bytes per touched file); maxRestoreBytes bounds the content one
+// Restore may write.
+var (
+	maxManifestBytes int64 = 64 << 20
+	maxRestoreBytes  int64 = 1 << 30
 )
 
 // ErrUnknownCheckpoint is returned for an id that does not exist.
@@ -67,7 +102,8 @@ type Info struct {
 	Label string    `json:"label"`
 	Time  time.Time `json:"time"`
 	// Files are the paths first touched in this checkpoint (relative to the
-	// root when inside it, absolute otherwise), sorted.
+	// root when inside it, absolute otherwise, in which case only the process
+	// that recorded it can rewind it: see the package documentation), sorted.
 	Files []string `json:"files"`
 	// Agents that touched at least one file, sorted.
 	Agents []string `json:"agents"`
@@ -179,6 +215,7 @@ type Store struct {
 	next     int
 	inflight map[string]*flight
 	warnings []string
+	warnMore int // warnings beyond maxWarnings
 }
 
 // New opens (creating if needed) the checkpoint store in dir. Existing
@@ -202,6 +239,9 @@ func New(dir string, blobs events.Blobs, root string) (*Store, error) {
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("checkpoint: %w", err)
+	}
+	if fi, err := os.Stat(dir); err == nil && fi.IsDir() && fi.Mode().Perm()&0o077 != 0 {
+		_ = os.Chmod(dir, fi.Mode().Perm()&^0o077) // state left by an older version; best effort
 	}
 	if blobs == nil {
 		if blobs, err = events.NewDirBlobs(filepath.Join(dir, "blobs")); err != nil {
@@ -236,10 +276,18 @@ func (s *Store) SetClock(now func() time.Time) {
 func (s *Store) Warnings() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return slices.Clone(s.warnings)
+	out := slices.Clone(s.warnings)
+	if s.warnMore > 0 {
+		out = append(out, fmt.Sprintf("and %d more problems in the checkpoint files", s.warnMore))
+	}
+	return out
 }
 
 func (s *Store) warnf(format string, args ...any) {
+	if len(s.warnings) >= maxWarnings {
+		s.warnMore++
+		return
+	}
 	s.warnings = append(s.warnings, fmt.Sprintf(format, args...))
 }
 
@@ -266,10 +314,19 @@ func (s *Store) load() error {
 		if m == nil || e.IsDir() {
 			continue
 		}
-		if n, _ := strconv.Atoi(m[1]); n > maxSeen {
-			maxSeen = n
+		seq, err := strconv.Atoi(m[1])
+		if err != nil || seq > maxSeq {
+			s.warnf("skipped checkpoint file %s: its number is out of range", e.Name())
+			continue
 		}
-		data, err := os.ReadFile(filepath.Join(s.dir, e.Name()))
+		if seq > maxSeen {
+			maxSeen = seq
+		}
+		data, err := readBounded(filepath.Join(s.dir, e.Name()), maxManifestBytes)
+		if errors.Is(err, errUnusable) {
+			s.warnf("skipped checkpoint file %s: %v", e.Name(), err)
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("checkpoint: %w", err)
 		}
@@ -278,7 +335,6 @@ func (s *Store) load() error {
 			s.warnf("skipped corrupt checkpoint file %s: %v", e.Name(), err)
 			continue
 		}
-		seq, _ := strconv.Atoi(m[1])
 		if doc.Seq == 0 {
 			doc.Seq = seq
 		}
@@ -286,10 +342,22 @@ func (s *Store) load() error {
 			s.warnf("skipped checkpoint file %s: contents do not match its name", e.Name())
 			continue
 		}
-		cp := &checkpoint{ID: doc.ID, Seq: doc.Seq, Label: doc.Label, Time: doc.Time, index: map[string]*fileRec{}}
+		if doc.V > manifestVersion {
+			s.warnf("skipped checkpoint file %s: it was written by a newer version", e.Name())
+			continue
+		}
+		if len(doc.Files) > maxRecords {
+			s.warnf("skipped checkpoint file %s: more than %d records", e.Name(), maxRecords)
+			continue
+		}
+		cp := &checkpoint{ID: doc.ID, Seq: doc.Seq, Label: cleanLabel(doc.Label), Time: doc.Time, index: map[string]*fileRec{}}
 		for _, r := range doc.Files {
-			if r == nil || !s.validRecord(r) {
-				s.warnf("dropped an invalid record in %s", e.Name())
+			if r == nil {
+				s.warnf("dropped an empty record in %s", e.Name())
+				continue
+			}
+			if err := s.validRecord(r); err != nil {
+				s.warnf("dropped an invalid record in %s (%.120q): %v", e.Name(), r.Path, err)
 				continue
 			}
 			if _, dup := cp.index[r.Path]; dup {
@@ -302,9 +370,9 @@ func (s *Store) load() error {
 	sort.Slice(loaded, func(i, j int) bool { return loaded[i].Seq < loaded[j].Seq })
 	s.cps = loaded
 
-	if data, err := os.ReadFile(filepath.Join(s.dir, "meta.json")); err == nil {
+	if data, err := readBounded(filepath.Join(s.dir, "meta.json"), 1<<20); err == nil {
 		var m metaDoc
-		if json.Unmarshal(data, &m) == nil && m.Next > s.next {
+		if json.Unmarshal(data, &m) == nil && m.Next > s.next && m.Next <= maxSeq {
 			s.next = m.Next
 		}
 	}
@@ -318,14 +386,82 @@ func (s *Store) load() error {
 	return nil
 }
 
-// validRecord rejects records that could make Restore write somewhere the
-// manifest format never produces: a relative key must stay inside the root.
-func (s *Store) validRecord(r *fileRec) bool {
-	if r.Path == "" || r.Pre.Kind == "" {
-		return false
+// validKey vets a manifest path: root-relative, staying inside the root. Absolute
+// paths are what a live Store records for files outside the project, but they are
+// only trusted in the process that made them, so they are not accepted from disk.
+func validKey(key string) error {
+	switch {
+	case key == "":
+		return errors.New("empty path")
+	case len(key) > maxKeyBytes:
+		return errors.New("path too long")
+	case strings.ContainsRune(key, 0):
+		return errors.New("path contains a NUL byte")
 	}
-	p := filepath.FromSlash(r.Path)
-	return filepath.IsAbs(p) || filepath.IsLocal(p)
+	p := filepath.FromSlash(key)
+	if filepath.IsAbs(p) {
+		return errors.New("names a path outside the project root (only the process that recorded it can rewind such a path)")
+	}
+	if !filepath.IsLocal(p) {
+		return errors.New("path leaves the project root")
+	}
+	if key == "." || path.Clean(key) != key { // keys are written clean; another spelling is an alias or a trick
+		return errors.New("path is not in canonical form")
+	}
+	return nil
+}
+
+// validRecord vets a record read from disk (see the package documentation). It may
+// tidy the record (drop a fingerprint or directory names it cannot trust) and
+// returns why the whole record has to go, or nil.
+func (s *Store) validRecord(r *fileRec) error {
+	if err := validKey(r.Path); err != nil {
+		return err
+	}
+	if err := s.validState(&r.Pre); err != nil {
+		return fmt.Errorf("recorded state: %w", err)
+	}
+	if r.Post != nil && s.validState(r.Post) != nil {
+		r.Post = nil // a fingerprint that does not check out is no fingerprint
+	}
+	r.NewDirs = slices.DeleteFunc(r.NewDirs, func(k string) bool { return validKey(k) != nil })
+	if len(r.Agents) > 64 {
+		r.Agents = r.Agents[:64]
+	}
+	for i, a := range r.Agents {
+		r.Agents[i] = cleanText(a, 128)
+	}
+	return nil
+}
+
+// validState checks one recorded state: a known kind, and for a saved file the
+// hashes that name and vouch for its content (a rewind refuses a file without a
+// checksum), a size within the store's cap, and a mode in range.
+func (s *Store) validState(st *state) error {
+	switch st.Kind {
+	case kAbsent, kDir, kOther, kUnsaved:
+	case kFile:
+		if !events.ValidHash(st.Blob) || !events.ValidHash(st.Sum) {
+			return errors.New("a saved file needs a content hash and a checksum")
+		}
+		if st.Size < 0 || st.Size > s.maxBytes {
+			return fmt.Errorf("saved file size %d is out of range", st.Size)
+		}
+	case kLink:
+		if st.Target == "" || len(st.Target) > maxKeyBytes || strings.ContainsRune(st.Target, 0) {
+			return errors.New("bad symlink target")
+		}
+	default:
+		return fmt.Errorf("unknown kind %.40q", string(st.Kind))
+	}
+	if st.Mode > 0o7777 {
+		return fmt.Errorf("mode %o is out of range", st.Mode)
+	}
+	if o := st.Owner; o != nil && (o.UID < 0 || o.GID < 0 || o.UID > maxID || o.GID > maxID) {
+		st.Owner = nil
+	}
+	st.Note = cleanText(st.Note, 300)
+	return nil
 }
 
 func (s *Store) persistLocked(cp *checkpoint) error {
@@ -352,7 +488,7 @@ func (s *Store) persistMetaLocked() error {
 }
 
 func cleanLabel(label string) string {
-	label = strings.Join(strings.Fields(label), " ")
+	label = cleanText(strings.Join(strings.Fields(label), " "), 4*maxLabelRunes)
 	if r := []rune(label); len(r) > maxLabelRunes {
 		label = string(r[:maxLabelRunes]) + "…"
 	}
@@ -476,12 +612,45 @@ func (s *Store) keyFor(abs string) string {
 	return filepath.ToSlash(abs)
 }
 
-func (s *Store) absFor(key string) string {
+// errEscapes is returned for a manifest path that resolves outside the project root.
+var errEscapes = errors.New("it leads outside the project root (through a symlink?)")
+
+// resolveKey maps a manifest key to the absolute path an operation may touch, or
+// says why not. It is called at the moment of use, not when a rewind is planned:
+// an earlier step of the same rewind may have put a symlink in the way.
+//
+// A relative key must stay inside the root once the symlinks in its directory part
+// are resolved, and the path returned has those symlinks resolved, so writing to
+// it cannot be redirected. The last element is left alone: every operation
+// replaces or removes it rather than following it. An absolute key can only be one
+// this process recorded (load drops the others) for a file outside the project, and
+// is used as is.
+func (s *Store) resolveKey(key string) (string, error) {
 	p := filepath.FromSlash(key)
 	if filepath.IsAbs(p) {
-		return p
+		return filepath.Clean(p), nil
 	}
-	return filepath.Join(s.root, p)
+	if key == "" || strings.ContainsRune(key, 0) || !filepath.IsLocal(p) {
+		return "", errors.New("the recorded path is not inside the project root")
+	}
+	abs := filepath.Join(s.realRoot, p)
+	dir := resolveDir(filepath.Dir(abs))
+	if _, ok := underRoot(s.realRoot, dir); !ok {
+		return "", errEscapes
+	}
+	return filepath.Join(dir, filepath.Base(abs)), nil
+}
+
+// underRoot reports whether p is root or inside it.
+func underRoot(root, p string) (string, bool) {
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return "", false
+	}
+	if rel == "." || filepath.IsLocal(rel) {
+		return rel, true
+	}
+	return "", false
 }
 
 func (s *Store) snapshot(agent, abs string) error {
@@ -667,7 +836,6 @@ func (s *Store) indexLocked(id string) int {
 // the latest record (for the modified-behind-our-back check).
 type planned struct {
 	key     string
-	abs     string
 	want    state
 	agents  []string
 	last    fileRec
@@ -684,7 +852,7 @@ func (s *Store) planLocked(idx int) []*planned {
 		for _, r := range cp.files {
 			p := byKey[r.Path]
 			if p == nil {
-				p = &planned{key: r.Path, abs: s.absFor(r.Path), want: r.Pre}
+				p = &planned{key: r.Path, want: r.Pre}
 				byKey[r.Path] = p
 				order = append(order, p)
 			}

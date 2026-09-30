@@ -130,7 +130,7 @@ func (t *sseTransport) stream() {
 				return
 			}
 		case "", "message":
-			if t.h.Message != nil {
+			if t.h.Message != nil && ev.Data != "" {
 				t.h.Message([]byte(ev.Data))
 			}
 		}

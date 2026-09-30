@@ -18,20 +18,31 @@ import (
 )
 
 // sharedGoCache lets the many `go test` runs of this package share one build
-// cache: compiling the standard library from scratch for every fresh HOME would
-// take longer than everything else in the suite together. Production runs get
-// a per-rollout cache instead (see EnvSpec).
+// cache. Compiling the standard library from scratch for every fresh HOME would
+// take ten seconds per test process; the developer's own cache is already warm
+// and only ever gains entries. Production runs get a per-rollout cache instead
+// (see EnvSpec), which is why this is a test-only override.
 var sharedGoCache string
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "envtest-gocache-")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
+	dir := ""
+	if out, err := exec.Command("go", "env", "GOCACHE").Output(); err == nil {
+		dir = strings.TrimSpace(string(out))
+	}
+	cleanup := false
+	if dir == "" || dir == "off" {
+		d, err := os.MkdirTemp("", "envtest-gocache-")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		dir, cleanup = d, true
 	}
 	sharedGoCache = dir
 	code := m.Run()
-	_ = removeAllNoFollow(dir)
+	if cleanup {
+		_ = removeAllNoFollow(dir)
+	}
 	os.Exit(code)
 }
 

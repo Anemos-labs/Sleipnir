@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
+	"github.com/reee344/sleipnir/internal/events"
 )
 
 // Action is what a rewind does (or would do) to one path.
@@ -38,7 +39,8 @@ const (
 	// work; RestoreOpts.Force overrides it.
 	OutcomeConflict Outcome = "conflict"
 	// OutcomeUnrestorable: the original content was never saved (too large,
-	// unreadable, special file). Force cannot help.
+	// unreadable, special file), or the path leads outside the project root (a
+	// symlink, a damaged record). Force cannot help.
 	OutcomeUnrestorable Outcome = "unrestorable"
 	// OutcomeFailed: an I/O error while applying. The path keeps its record so
 	// the rewind can be retried.
@@ -164,6 +166,12 @@ type task struct {
 // checkpoint recorded. Files whose original content was never saved are
 // OutcomeUnrestorable and are never touched.
 //
+// A path is only ever written after it has been resolved again, and one that
+// leads outside the project root (through a symlink that appeared after the
+// checkpoint, or that an earlier step of the same rewind created) is refused as
+// OutcomeUnrestorable; content is verified against its checksum and a rewind
+// writes at most maxRestoreBytes in total.
+//
 // Files that were rewound are forgotten by the checkpoints; files that failed
 // or were refused keep their records so the rewind can be retried. When every
 // file was rewound and no filter was given, the checkpoints after id are dropped
@@ -217,8 +225,9 @@ func (s *Store) Restore(id string, opts RestoreOpts) (RestoreReport, error) {
 	sort.SliceStable(dels, func(i, j int) bool { return depth(dels[i].it.key) > depth(dels[j].it.key) })
 	sort.SliceStable(puts, func(i, j int) bool { return depth(puts[i].it.key) < depth(puts[j].it.key) })
 	if !opts.DryRun {
+		budget := maxRestoreBytes
 		for _, t := range append(dels, puts...) {
-			if err := s.apply(t); err != nil {
+			if err := s.apply(t, &budget); err != nil {
 				t.res.Outcome, t.res.Detail = OutcomeFailed, err.Error()
 			} else {
 				t.res.Outcome = OutcomeDone
@@ -303,9 +312,16 @@ func (s *Store) filter(items []*planned, opts RestoreOpts) (kept []*planned, unm
 // evaluate compares a path's current state with the state to restore and
 // decides what to do about it, without changing anything.
 func (s *Store) evaluate(it *planned, opts RestoreOpts) *task {
-	cur, _ := s.capture(it.abs)
-	t := &task{it: it, cur: cur}
+	t := &task{it: it}
 	t.res = FileResult{Path: it.key, Action: ActionNone, Agents: slices.Clone(it.agents)}
+	abs, err := s.resolveKey(it.key)
+	if err != nil {
+		t.res.Outcome = OutcomeUnrestorable
+		t.res.Detail = "refused: " + err.Error()
+		return t
+	}
+	cur, _ := s.capture(abs)
+	t.cur = cur
 
 	if sameState(cur, it.want) {
 		t.res.Outcome = OutcomeUnchanged
@@ -386,61 +402,97 @@ func (s *Store) conflict(it *planned, cur state, action Action, opts RestoreOpts
 	return ""
 }
 
-// apply performs one task's action on disk.
-func (s *Store) apply(t *task) error {
+// apply performs one task's action on disk. The path is resolved again here, at
+// the moment of writing: what the key led to when the rewind was planned may not
+// be what it leads to now.
+func (s *Store) apply(t *task, budget *int64) error {
 	it := t.it
+	abs, err := s.resolveKey(it.key)
+	if err != nil {
+		return fmt.Errorf("refused: %v", err)
+	}
 	switch t.action {
 	case ActionDelete:
-		if err := os.Remove(it.abs); err != nil && !isMissing(err) {
+		if err := os.Remove(abs); err != nil && !isMissing(err) {
 			return fmt.Errorf("cannot remove: %s", reason(err))
 		}
 		return nil
 	case ActionChmod:
-		if err := os.Chmod(it.abs, goMode(it.want.Mode)); err != nil {
+		if err := chmodNoFollow(abs, goMode(it.want.Mode)); err != nil {
 			return fmt.Errorf("cannot change permissions: %s", reason(err))
 		}
 		return nil
 	case ActionRestore, ActionRecreate:
 		// Read and verify the saved content before touching the file, so a
 		// missing or corrupt blob leaves the current file exactly as it was.
-		data, err := s.blobs.Get(it.want.Blob)
-		if err != nil {
+		if it.want.Size > s.maxBytes {
+			return fmt.Errorf("the saved file is larger than the %s cap", humanBytes(s.maxBytes))
+		}
+		data, err := s.readBlob(it.want.Blob, s.maxBytes)
+		switch {
+		case errors.Is(err, events.ErrBlobTooLarge):
+			return fmt.Errorf("the saved content is larger than the %s cap", humanBytes(s.maxBytes))
+		case errors.Is(err, events.ErrBlobCorrupt):
+			return fmt.Errorf("the saved content is corrupt: %w", err)
+		case err != nil:
 			return fmt.Errorf("the saved content is missing from the blob store: %w", err)
 		}
-		if it.want.Sum != "" && core.HashBytes(data) != it.want.Sum {
+		if it.want.Sum == "" || core.HashBytes(data) != it.want.Sum {
 			return errors.New("the saved content is corrupt (checksum mismatch)")
 		}
-		if err := s.prepare(it.abs, t.cur); err != nil {
+		if int64(len(data)) > *budget {
+			return errors.New("this rewind has already written its limit of content; rewind again for the rest")
+		}
+		if err := s.prepare(abs, t.cur); err != nil {
 			return err
 		}
-		if err := writeFileAtomic(it.abs, data, goMode(it.want.Mode), it.want.Owner); err != nil {
+		if err := writeFileAtomic(abs, data, goMode(it.want.Mode), it.want.Owner); err != nil {
 			return fmt.Errorf("cannot write: %s", reason(err))
 		}
+		*budget -= int64(len(data))
 		return nil
 	case ActionRelink:
-		if err := s.prepare(it.abs, t.cur); err != nil {
+		if err := s.prepare(abs, t.cur); err != nil {
 			return err
 		}
-		if err := symlinkAtomic(it.want.Target, it.abs, it.want.Owner); err != nil {
+		if err := symlinkAtomic(it.want.Target, abs, it.want.Owner); err != nil {
 			return fmt.Errorf("cannot create symlink: %s", reason(err))
 		}
 		return nil
 	case ActionMkdir:
 		if t.cur.Kind != kAbsent && t.cur.Kind != kDir {
-			if err := os.Remove(it.abs); err != nil {
+			if err := os.Remove(abs); err != nil {
 				return fmt.Errorf("cannot remove what is in the way: %s", reason(err))
 			}
 		}
-		if err := os.MkdirAll(it.abs, 0o755); err != nil {
+		if err := os.MkdirAll(abs, 0o755); err != nil {
 			return fmt.Errorf("cannot create directory: %s", reason(err))
 		}
-		chownPath(it.abs, it.want.Owner)
-		if err := os.Chmod(it.abs, goMode(it.want.Mode)); err != nil {
+		chownPath(abs, it.want.Owner)
+		if err := chmodNoFollow(abs, goMode(it.want.Mode)); err != nil {
 			return fmt.Errorf("cannot change permissions: %s", reason(err))
 		}
 		return nil
 	}
 	return nil
+}
+
+// maxGetter is implemented by blob stores that can refuse an oversized blob
+// before reading it into memory (events.DirBlobs and events.MemBlobs do).
+type maxGetter interface {
+	GetMax(h core.Hash, max int64) ([]byte, error)
+}
+
+// readBlob reads a blob of at most max bytes.
+func (s *Store) readBlob(h core.Hash, max int64) ([]byte, error) {
+	if g, ok := s.blobs.(maxGetter); ok {
+		return g.GetMax(h, max)
+	}
+	b, err := s.blobs.Get(h)
+	if err == nil && int64(len(b)) > max {
+		return nil, fmt.Errorf("%w: %d bytes, limit %d", events.ErrBlobTooLarge, len(b), max)
+	}
+	return b, err
 }
 
 // prepare makes room for a file or symlink at abs: parents are created, and a
@@ -487,7 +539,10 @@ func (s *Store) removeCreatedDirs(tasks []*task, dry bool) []FileResult {
 	})
 	var out []FileResult
 	for _, key := range keys {
-		abs := s.absFor(key)
+		abs, err := s.resolveKey(key)
+		if err != nil {
+			continue // a name a manifest made up, or one that now leads out of the project: not ours to remove
+		}
 		fi, err := os.Lstat(abs)
 		if err != nil || !fi.IsDir() {
 			continue

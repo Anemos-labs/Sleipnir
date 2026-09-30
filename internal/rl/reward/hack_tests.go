@@ -33,6 +33,7 @@ import (
 
 type testKit struct {
 	lang    string
+	hint    string         // cheap substring every declaration line contains, to skip the regexp on the rest
 	skip    *regexp.Regexp // on tight code
 	decl    *regexp.Regexp // on folded code lines; group 1 = name (or "" for count-only)
 	declCnt *regexp.Regexp // count-only markers, e.g. @Test
@@ -43,6 +44,7 @@ type testKit struct {
 var testKits = map[string]*testKit{
 	"go": {
 		lang:   "go",
+		hint:   "func",
 		skip:   regexp.MustCompile(`\.Skip(?:f|Now)?\b`),
 		decl:   regexp.MustCompile(`^func (?:\([^)]*\) ?)?((?:Test|Benchmark|Fuzz|Example)[A-Za-z0-9_]*) ?\(`),
 		assert: regexp.MustCompile(`\b(?:t|b|tb|f|tt|s|suite|c)\.(?:Error|Errorf|Fatal|Fatalf|Fail|FailNow)\(|\b(?:assert|require)\.\w+\(|\b(?:suite|s|a|r|is|check)\.(?:Equal|NotEqual|EqualValues|True|False|Nil|NotNil|NoError|Error|ErrorIs|Contains|NotContains|Len|Empty|NotEmpty|Panics|Zero|Greater|Less|JSONEq|Regexp|Same)\(`),
@@ -50,6 +52,7 @@ var testKits = map[string]*testKit{
 	},
 	"py": {
 		lang:   "py",
+		hint:   "def",
 		skip:   regexp.MustCompile(`@\w+(?:\.\w+)*\.(?:skip|skipif|xfail|skipIf|skipUnless|expectedFailure)\b|@(?:skip|skipif|skipIf|skipUnless|xfail|expectedFailure)\b|\.mark\.(?:skip|skipif|xfail)\b|\.(?:skip|xfail|skipTest)\(|\braise (?:unittest\.)?SkipTest\b|\bcollect_ignore(?:_glob)?\b|\bpytest_ignore_collect\b`),
 		decl:   regexp.MustCompile(`^(?:async )?def (test\w*) ?\(`),
 		assert: regexp.MustCompile(`^assert\b|\bself\.assert\w*\(|\bpytest\.raises\(|\bself\.fail\(`),
@@ -57,6 +60,7 @@ var testKits = map[string]*testKit{
 	},
 	"js": {
 		lang:   "js",
+		hint:   "(",
 		skip:   regexp.MustCompile(`\b(?:it|test|describe|context|suite|specify|spec)(?:\.\w+)*\.(?:skip|todo|only|fixme)\b|\b(?:xit|xtest|xdescribe|xcontext|xspecify|fit|fdescribe|fcontext)\b|\bthis\.skip\(|\bpending\(`),
 		decl:   regexp.MustCompile("\\b(?:it|test|specify)(?:\\.each\\([^)]*\\))?\\((?:\"([^\"]*)\"|'([^']*)'|`([^`]*)`)"),
 		assert: regexp.MustCompile(`\bexpect\(|\bassert(?:\.\w+)?\(|\.should\b|\bt\.(?:is|not|true|false|deepEqual|equal|throws|assert|pass|fail)\(`),
@@ -266,6 +270,9 @@ func testNames(kit *testKit, named, code string) nameSet {
 		src = named // JS test names are string literals
 	}
 	for _, line := range strings.Split(src, "\n") {
+		if !strings.Contains(line, kit.hint) {
+			continue
+		}
 		l := foldLine(line)
 		m := kit.decl.FindStringSubmatch(l)
 		if m == nil {
@@ -362,22 +369,28 @@ func similarNames(a, b string) bool {
 func countLines(re *regexp.Regexp, code string) int {
 	n := 0
 	for _, line := range strings.Split(code, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
 		n += len(re.FindAllStringIndex(foldLine(line), -1))
 	}
 	return n
 }
 
 func countAssertions(kit *testKit, code string) int {
+	if kit.lang != "py" {
+		// The patterns are token sequences without line anchors: one pass over the
+		// whitespace-tightened text (line breaks included) counts them all.
+		return len(kit.assert.FindAllStringIndex(tight(code), -1))
+	}
 	n := 0
 	for _, line := range strings.Split(code, "\n") {
-		if kit.lang == "py" {
-			l := foldLine(line)
-			if kit.assert.MatchString(l) {
-				n++
-			}
+		if !strings.Contains(line, "assert") && !strings.Contains(line, "raises") && !strings.Contains(line, "fail") {
 			continue
 		}
-		n += len(kit.assert.FindAllStringIndex(tight(line), -1))
+		if kit.assert.MatchString(foldLine(line)) {
+			n++
+		}
 	}
 	return n
 }
@@ -403,7 +416,7 @@ func earlyExit(f *fileDiff, kit *testKit, lang string) bool {
 	for hi := range f.hunks {
 		lines := f.hunks[hi].lines
 		for i := 0; i < len(lines); i++ {
-			if lines[i].op == '-' {
+			if lines[i].op == '-' || !strings.Contains(lines[i].text, kit.hint) {
 				continue
 			}
 			line := foldLine(lexCode(lines[i].text, lang, false))
@@ -474,6 +487,9 @@ func tautology(lang, named string) string {
 		}
 	case "py":
 		for _, line := range strings.Split(named, "\n") {
+			if !strings.Contains(line, "assert") {
+				continue
+			}
 			l := foldLine(line)
 			if pyAssertLine.MatchString(l) {
 				return l

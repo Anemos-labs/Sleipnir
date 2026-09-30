@@ -600,29 +600,43 @@ func TestScoreRefusesToSkipTheDiffSilently(t *testing.T) {
 	}
 }
 
-func TestDetectorsAreBoundedOnHugeDiffs(t *testing.T) {
+func TestDetectorsAreLinearOnHugeDiffs(t *testing.T) {
 	// A multi-megabyte diff full of test code, pathological lines and header
-	// lookalikes must be analysed in bounded time (all detectors are linear).
-	var b strings.Builder
-	b.WriteString("diff --git a/pkg/big_test.go b/pkg/big_test.go\n--- a/pkg/big_test.go\n+++ b/pkg/big_test.go\n")
-	const n = 60000
-	fmt.Fprintf(&b, "@@ -1,%d +1,%d @@\n", n, n)
-	for i := 0; i < n/2; i++ {
-		fmt.Fprintf(&b, "-func helper%d(t *testing.T) { t.Errorf(\"x%d\") }\n+func helper%d(t *testing.T) { t.Logf(\"%s\") }\n", i, i, i, strings.Repeat("a", 60))
+	// lookalikes must be analysed in time linear in its size. Checking the growth
+	// rate (4x the input takes about 4x, not 16x) is robust to slow machines and
+	// the race detector, which an absolute limit is not.
+	build := func(n int) string {
+		var b strings.Builder
+		b.WriteString("diff --git a/pkg/big_test.go b/pkg/big_test.go\n--- a/pkg/big_test.go\n+++ b/pkg/big_test.go\n")
+		fmt.Fprintf(&b, "@@ -1,%d +1,%d @@\n", n, n)
+		for i := 0; i < n/2; i++ {
+			fmt.Fprintf(&b, "-func helper%d(t *testing.T) { t.Errorf(\"x%d\") }\n+func helper%d(t *testing.T) { t.Logf(\"%s\") }\n", i, i, i, strings.Repeat("a", 60))
+		}
+		b.WriteString(strings.Repeat("+", 1<<18) + "\n") // a long line
+		return b.String()
 	}
-	b.WriteString(strings.Repeat("+", 1<<20) + "\n") // one megabyte line
-	diff := b.String()
-	ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
-	h := core.HashString(diff)
-	ep.Outcome.Diff = h
 	task := &rl.Task{Prompt: "p", Verifier: rl.Verifier{Cmd: "make test", Protected: []string{"*_test.go", "**/*.golden"}, Hidden: map[string]string{"h_test.go": "text:" + `want := "some hidden expected value"`}}}
-	start := time.Now()
-	mustScore(t, ep, task, DefaultConfig(), DiffMap{h: diff})
-	if d := time.Since(start); d > 20*time.Second {
-		t.Errorf("scoring a %d MB diff took %v", len(diff)>>20, d)
+	run := func(diff string) (time.Duration, *rl.Episode) {
+		ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+		h := core.HashString(diff)
+		ep.Outcome.Diff = h
+		start := time.Now()
+		mustScore(t, ep, task, DefaultConfig(), DiffMap{h: diff})
+		return time.Since(start), ep
 	}
+	small, large := build(6000), build(24000)
+	dSmall, _ := run(small)
+	dLarge, ep := run(large)
 	if !hasFlag(ep, fProt) || !hasFlag(ep, fTest) {
 		t.Errorf("flags: %v", ep.Flags)
+	}
+	t.Logf("%d KB: %v, %d KB: %v", len(small)>>10, dSmall, len(large)>>10, dLarge)
+	if dLarge > 60*time.Second {
+		t.Errorf("scoring a %d MB diff took %v", len(large)>>20, dLarge)
+	}
+	// Allow generous noise around the ideal 4x; quadratic behaviour would be ~16x.
+	if dSmall > 20*time.Millisecond && dLarge > 9*dSmall {
+		t.Errorf("super-linear growth: %v for the small diff, %v for 4x the size", dSmall, dLarge)
 	}
 }
 

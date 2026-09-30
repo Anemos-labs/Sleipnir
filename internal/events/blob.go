@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -32,12 +33,16 @@ var (
 	// ErrInvalidHash is returned for a hash that is not 64 lowercase hex digits:
 	// such a string is never turned into a path.
 	ErrInvalidHash = errors.New("invalid blob hash")
+	// ErrBlobTooLarge is returned by GetMax for a blob over the caller's limit; the
+	// content was not read into memory.
+	ErrBlobTooLarge = errors.New("blob exceeds the size limit")
 )
 
-// validHash reports whether h has the form core.HashBytes produces: 64 lowercase
+// ValidHash reports whether h has the form core.HashBytes produces: 64 lowercase
 // hex digits. DirBlobs builds file paths from hashes, so anything else (a "..",
-// a slash, a NUL) must never get that far.
-func validHash(h core.Hash) bool {
+// a slash, a NUL) must never get that far; code that reads hashes from files it
+// does not control (a checkpoint manifest) can use it to vet them.
+func ValidHash(h core.Hash) bool {
 	if len(h) != 64 {
 		return false
 	}
@@ -85,7 +90,7 @@ func makePrivateDir(dir string) error {
 	return nil
 }
 
-// path returns where blob h lives. h must be valid (see validHash).
+// path returns where blob h lives. h must be valid (see ValidHash).
 func (d *DirBlobs) path(h core.Hash) string {
 	s := string(h)
 	if len(s) < 5 {
@@ -142,7 +147,7 @@ func (d *DirBlobs) intact(p string, h core.Hash, size int) bool {
 	if ok {
 		return true
 	}
-	b, err := readBlobFile(p)
+	b, err := readBlobFile(p, int64(size))
 	if err != nil || core.HashBytes(b) != h {
 		return false
 	}
@@ -167,11 +172,15 @@ func (d *DirBlobs) markVerified(h core.Hash) {
 
 // Get reads a blob. The content is hashed before it is returned: if it does not
 // hash to h the error wraps ErrBlobCorrupt and no bytes are returned.
-func (d *DirBlobs) Get(h core.Hash) ([]byte, error) {
-	if !validHash(h) {
+func (d *DirBlobs) Get(h core.Hash) ([]byte, error) { return d.GetMax(h, math.MaxInt64) }
+
+// GetMax is Get for callers that must bound their memory: a blob larger than max
+// bytes is refused (ErrBlobTooLarge) before it is read.
+func (d *DirBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	if !ValidHash(h) {
 		return nil, fmt.Errorf("%w: %.64q", ErrInvalidHash, string(h))
 	}
-	b, err := readBlobFile(d.path(h))
+	b, err := readBlobFile(d.path(h), max)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%w: %s", ErrBlobNotFound, h.Short())
 	}
@@ -186,9 +195,10 @@ func (d *DirBlobs) Get(h core.Hash) ([]byte, error) {
 	return b, nil
 }
 
-// readBlobFile reads a regular file without following a symlink at the end of the
-// path and without blocking on a FIFO someone planted in its place.
-func readBlobFile(p string) ([]byte, error) {
+// readBlobFile reads a regular file of at most max bytes without following a
+// symlink at the end of the path and without blocking on a FIFO someone planted
+// in its place.
+func readBlobFile(p string, max int64) ([]byte, error) {
 	f, err := os.OpenFile(p, openReadFlags, 0)
 	if err != nil {
 		if isSymlinkRefusal(err) {
@@ -204,13 +214,24 @@ func readBlobFile(p string) ([]byte, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, fmt.Errorf("%w: not a regular file", ErrBlobCorrupt)
 	}
-	return io.ReadAll(f)
+	if fi.Size() > max {
+		return nil, fmt.Errorf("%w: %d bytes, limit %d", ErrBlobTooLarge, fi.Size(), max)
+	}
+	lim := max // read one byte more than allowed: the file may have grown since the stat
+	if lim < math.MaxInt64 {
+		lim++
+	}
+	b, err := io.ReadAll(io.LimitReader(f, lim))
+	if err == nil && int64(len(b)) > max {
+		return nil, fmt.Errorf("%w: over %d bytes", ErrBlobTooLarge, max)
+	}
+	return b, err
 }
 
 // Has reports whether a blob exists (as a regular file; its content is not
 // checked, Get does that).
 func (d *DirBlobs) Has(h core.Hash) bool {
-	if !validHash(h) {
+	if !ValidHash(h) {
 		return false
 	}
 	fi, err := os.Lstat(d.path(h))
@@ -244,6 +265,20 @@ func (m *MemBlobs) Get(h core.Hash) ([]byte, error) {
 	b, ok := m.m[h]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrBlobNotFound, h.Short())
+	}
+	return append([]byte(nil), b...), nil
+}
+
+// GetMax is Get with a size limit, like DirBlobs.GetMax.
+func (m *MemBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	b, ok := m.m[h]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrBlobNotFound, h.Short())
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("%w: %d bytes, limit %d", ErrBlobTooLarge, len(b), max)
 	}
 	return append([]byte(nil), b...), nil
 }

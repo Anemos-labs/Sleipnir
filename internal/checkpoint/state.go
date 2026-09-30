@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"github.com/reee344/sleipnir/internal/core"
 )
@@ -266,3 +267,65 @@ func resolveDir(dir string) string {
 
 // depth counts path separators, used to order deep paths before shallow ones.
 func depth(p string) int { return strings.Count(filepath.ToSlash(p), "/") }
+
+// chmodNoFollow is os.Chmod for a path that must not be a symlink: Chmod follows
+// one, and a rewind must never change the permissions of something the path only
+// happens to lead to.
+func chmodNoFollow(path string, mode fs.FileMode) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		return errors.New("the path is a symlink")
+	}
+	return os.Chmod(path, mode)
+}
+
+// errUnusable marks a manifest file that is not something to read at all (not a
+// regular file, a symlink, or over the size limit), as opposed to an I/O error.
+var errUnusable = errors.New("unusable file")
+
+// readBounded reads a regular file of at most limit bytes, refusing to follow a
+// symlink at the end of the path or to wait on a FIFO. What it refuses is
+// reported as errUnusable.
+func readBounded(path string, limit int64) ([]byte, error) {
+	f, err := os.OpenFile(path, openReadFlags, 0)
+	if err != nil {
+		if isSymlinkRefusal(err) {
+			return nil, fmt.Errorf("%w: it is a symlink", errUnusable)
+		}
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: not a regular file", errUnusable)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%w: larger than %s", errUnusable, humanBytes(limit))
+	}
+	return data, nil
+}
+
+// cleanText makes text read from a manifest safe to show: control characters and
+// Unicode line separators are dropped, and it is cut to max runes.
+func cleanText(s string, max int) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r == 0x2028 || r == 0x2029 {
+			return -1
+		}
+		return r
+	}, s)
+	if r := []rune(s); len(r) > max {
+		return string(r[:max])
+	}
+	return s
+}

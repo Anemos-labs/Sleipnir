@@ -322,6 +322,50 @@ func EscapeTags(s string) string {
 	return b.String()
 }
 
+// framingTags are the tag names the harness uses to frame sections of a prompt
+// (see the constitution and the layer renderer). Text a repository controls
+// must not be able to close one of them and open another.
+var framingTags = []string{
+	"shared-context", "role-context", "my-notes", "history", "live", "compactor-task", "peer-mail",
+	"system-reminder", "system", "assistant", "user", "human", "tool_result", "function_results",
+}
+
+// EscapeFraming neutralises only the markup that could forge the harness's own
+// framing: "<" followed by an optional "/" and one of the framing tag names
+// (case-insensitively) becomes U+2039 "‹". Unlike EscapeTags it leaves the
+// other tags alone, so a role pin that structures its instructions with
+// <example> or <rules> keeps working. It is deterministic.
+func EscapeFraming(s string) string {
+	if strings.IndexByte(s, '<') < 0 {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 4)
+	for i := 0; i < len(s); i++ {
+		if s[i] == '<' && framingAt(s[i+1:]) {
+			b.WriteString("\u2039")
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// framingAt reports whether s (the text after a "<") starts with a framing tag
+// name, optionally preceded by "/" or white space.
+func framingAt(s string) bool {
+	s = strings.TrimLeft(strings.TrimPrefix(strings.TrimLeft(s, " \t"), "/"), " \t")
+	for _, name := range framingTags {
+		if len(s) >= len(name) && strings.EqualFold(s[:len(name)], name) {
+			rest := s[len(name):]
+			if rest == "" || !(rest[0] == '-' || rest[0] == '_' || rest[0] >= '0' && rest[0] <= '9' || rest[0]|0x20 >= 'a' && rest[0]|0x20 <= 'z') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // CutLines shortens s to at most maxBytes bytes, at a line boundary when one is
 // close and never inside a UTF-8 character. cut reports whether anything was
 // removed.

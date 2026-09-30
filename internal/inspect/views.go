@@ -164,6 +164,7 @@ func (s *Session) seriesLocked(max int) Series {
 			pt.Write += int64(r.usage.CacheWriteTokens())
 			pt.Out += int64(r.usage.OutputTokens)
 			pt.USD += r.cost
+			pt.Priced += r.priced
 			pt.NoCache += r.noCache
 			pt.Naive += r.naive
 			if r.anomaly {

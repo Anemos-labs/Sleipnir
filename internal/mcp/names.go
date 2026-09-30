@@ -51,9 +51,26 @@ func hashOf(parts ...string) string {
 	return hex.EncodeToString(h.Sum(nil))[:hashLen]
 }
 
+// hasHashSuffix reports a trailing "-" plus hashLen lower-case hex digits: the
+// shape of a hash this file appends. A configured name that already looks like
+// that is treated as needing alteration (it then gets a suffix of its own), so
+// the suffix pattern only ever comes from hashing, and one server cannot pick a
+// name that equals another's altered form without inverting the hash.
+func hasHashSuffix(s string) bool {
+	if len(s) <= hashLen+1 || s[len(s)-hashLen-1] != '-' {
+		return false
+	}
+	for i := len(s) - hashLen; i < len(s); i++ {
+		if c := s[i]; !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // cleanServerSegment reports whether s is usable as a server segment as is.
 func cleanServerSegment(s string) bool {
-	if s == "" || len(s) > maxServerSeg || strings.Contains(s, "__") {
+	if s == "" || len(s) > maxServerSeg || strings.Contains(s, "__") || hasHashSuffix(s) {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
@@ -90,10 +107,10 @@ func serverSegment(server string) string {
 	if seg == "" {
 		seg = "srv"
 	}
-	if room := maxServerSeg - 1 - 6; len(seg) > room {
+	if room := maxServerSeg - 1 - hashLen; len(seg) > room {
 		seg = strings.Trim(seg[:room], "_-")
 	}
-	return seg + "-" + hashOf(server)[:6]
+	return seg + "-" + hashOf(server)
 }
 
 // toolPart makes a tool name safe for the name charset. Characters outside it

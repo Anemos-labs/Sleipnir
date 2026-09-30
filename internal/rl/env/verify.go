@@ -725,10 +725,10 @@ func finishResult(res Result, opts VerifyOptions) (Result, error) {
 		if err := atomicWriteFile(filepath.Join(opts.OutDir, "verifier.log"), []byte(res.Log), 0o644); err != nil {
 			return res, Infra("write results", err)
 		}
-		if res.Diff != nil {
-			if err := atomicWriteFile(filepath.Join(opts.OutDir, "diff.patch"), res.Diff, 0o644); err != nil {
-				return res, Infra("write results", err)
-			}
+		// diff.patch always exists, empty when the agent changed nothing: a missing
+		// file would be indistinguishable from a run that never got verified.
+		if err := atomicWriteFile(filepath.Join(opts.OutDir, "diff.patch"), res.Diff, 0o644); err != nil {
+			return res, Infra("write results", err)
 		}
 	}
 	if opts.Store != nil {
@@ -736,10 +736,8 @@ func finishResult(res Result, opts VerifyOptions) (Result, error) {
 		if res.LogBlob, err = opts.Store.Put([]byte(res.Log)); err != nil {
 			return res, Infra("store log", err)
 		}
-		if res.Diff != nil {
-			if res.DiffBlob, err = opts.Store.Put(res.Diff); err != nil {
-				return res, Infra("store diff", err)
-			}
+		if res.DiffBlob, err = opts.Store.Put(res.Diff); err != nil {
+			return res, Infra("store diff", err)
 		}
 	}
 	return res, nil

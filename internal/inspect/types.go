@@ -203,7 +203,8 @@ type SeriesPoint struct {
 	Write   int64   `json:"write"`
 	Out     int64   `json:"out"`
 	Hit     float64 `json:"hit"`
-	USD     float64 `json:"usd"` // reported cost, else priced
+	USD     float64 `json:"usd"`    // reported cost, else priced
+	Priced  float64 `json:"priced"` // usage x table prices: comparable with no_cache and naive
 	NoCache float64 `json:"no_cache"`
 	Naive   float64 `json:"naive"`
 	Anom    int     `json:"anom"`
@@ -623,6 +624,7 @@ type LayerDiff struct {
 	Bytes     int    `json:"bytes"`
 	Before    string `json:"before"`
 	After     string `json:"after"`
+	Split     int    `json:"split"` // characters of Before/After that are common context
 }
 
 // LayerReport is /api/layers.

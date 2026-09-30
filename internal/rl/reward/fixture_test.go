@@ -94,16 +94,26 @@ func loadFixtureEpisode(t *testing.T) *rl.Episode {
 		switch e.Type {
 		case "model.request":
 			var d struct {
-				Req  string `json:"req"`
-				Kind string `json:"kind"`
-				Role string `json:"role"`
-				Wire string `json:"wire_hash"`
+				Req      string `json:"req"`
+				Kind     string `json:"kind"`
+				Role     string `json:"role"`
+				Wire     string `json:"wire_hash"`
+				Sections []struct {
+					Name string `json:"name"`
+					Hash string `json:"hash"`
+				} `json:"sections"`
 			}
 			if err := json.Unmarshal(e.Data, &d); err != nil {
 				t.Fatal(err)
 			}
 			st := rl.Step{ID: d.Req, Kind: d.Kind, Role: d.Role, Model: "mock-1", Segment: segment, Epoch: segment, At: e.TS, Trainable: true}
 			st.Prompt = rl.PromptRef{Req: d.Req, WireHash: core.Hash(d.Wire)}
+			for _, sec := range d.Sections {
+				if sec.Name == "shared" {
+					// The shared pin is what traj exports as the shared prefix id.
+					st.Prompt.SharedPrefix = sec.Hash[:12]
+				}
+			}
 			if d.Kind == rl.KindCompactor {
 				st.Segment, st.Epoch = 0, 0 // set below from the previous main step
 				if lastMain >= 0 {
@@ -246,8 +256,36 @@ func TestRepriceMatchesTheRecordedCacheBehaviour(t *testing.T) {
 	}
 	recorded := rep.Recorded
 	ratio := float64(rep.Read) / float64(recorded.Read)
-	if ratio < 0.75 || ratio > 1.25 {
+	if ratio < 0.9 || ratio > 1.1 {
 		t.Errorf("replayed reads %d vs recorded %d (ratio %.2f): the model diverges from the real cache behaviour", rep.Read, recorded.Read, ratio)
+	}
+	// Request by request the replay reads what the recorded provider read, within
+	// the token-estimation noise of the harness's own counters (a few tokens per
+	// step, plus one tail block).
+	off := 0
+	for ai, a := range ep.Agents {
+		for si, s := range a.Steps {
+			sb, _ := rep.StepOf(ai, si)
+			if s.Kind == rl.KindCompactor {
+				continue // the recorded forks race the next main request; checked separately
+			}
+			diff := float64(sb.Read - int64(s.Usage.CacheReadTokens))
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff > 100 {
+				off++
+				t.Logf("step %s: replayed read %d, recorded %d", s.ID, sb.Read, s.Usage.CacheReadTokens)
+			}
+		}
+	}
+	// One request in the recording read a fork's write the instant it was made
+	// (the mock publishes entries immediately); everything else agrees.
+	if off > 1 {
+		t.Errorf("%d requests disagree with the recorded cache behaviour", off)
+	}
+	if rep.SharedTokens[ep.Agents[0].Steps[0].Prompt.SharedPrefix] == 0 {
+		t.Errorf("the shared prefix size should be inferred from the rebases: %v %v", rep.SharedTokens, rep.Warnings)
 	}
 	// Same tokens either way: uncached + read + write partitions the prompts.
 	var prompts int64

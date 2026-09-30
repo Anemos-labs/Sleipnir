@@ -232,6 +232,7 @@ func (ex *expansion) run(cmd string) (string, error) {
 	}
 	ex.execs++
 	cmd, used := mdfile.Substitute(cmd, ex.args, mdfile.ArgsShell)
+	cmd = strings.TrimSpace(cmd) // a missing argument leaves no trailing space behind
 	ex.usedArgs = ex.usedArgs || used
 
 	ctx, cancel := context.WithTimeout(ex.ctx, ex.r.opts.ExecTimeout)

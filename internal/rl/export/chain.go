@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/rl"
 )
 
@@ -44,7 +45,10 @@ func (x *exporter) renderChain(steps []stepCtx, objectArgs bool) (*chainView, er
 		}
 		turn, tc := x.redactTurn(c.st.Completion.Turn)
 		cv.changed = cv.changed || pc || tc
-		counts[j] = len(wp.Messages)
+		counts[j], err = x.persistentCount(rp, wp)
+		if err != nil {
+			return nil, err
+		}
 		if comps[j], err = x.renderCompletion(turn, c.st.Model, objectArgs); err != nil {
 			return nil, err
 		}
@@ -126,4 +130,45 @@ func withWeight(msgs []json.RawMessage, weights []int) ([]json.RawMessage, error
 		out[i] = b
 	}
 	return out, nil
+}
+
+// persistentCount is the number of wire messages of a rendered prompt that the
+// next prompt of the same segment still contains: the messages without the
+// ephemeral hot tail. The hot block is appended to the last message of a request
+// and replaced on the next one, so a completion sits right after the persistent
+// messages, not after the hot ones.
+func (x *exporter) persistentCount(p *core.Prompt, wp wirePrompt) (int, error) {
+	if !hasEphemeral(p) {
+		return len(wp.Messages), nil
+	}
+	stripped := *p
+	stripped.Messages = make([]core.Message, 0, len(p.Messages))
+	for _, m := range p.Messages {
+		var keep []core.Block
+		for _, b := range m.Blocks {
+			if !b.Ephemeral {
+				keep = append(keep, b)
+			}
+		}
+		if len(keep) > 0 {
+			m.Blocks = keep
+			stripped.Messages = append(stripped.Messages, m)
+		}
+	}
+	sp, err := x.renderPrompt(&stripped, false)
+	if err != nil {
+		return 0, err
+	}
+	return len(sp.Messages), nil
+}
+
+func hasEphemeral(p *core.Prompt) bool {
+	for _, m := range p.Messages {
+		for _, b := range m.Blocks {
+			if b.Ephemeral {
+				return true
+			}
+		}
+	}
+	return false
 }
