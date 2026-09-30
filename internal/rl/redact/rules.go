@@ -425,16 +425,24 @@ func detectEntropy(_ *Redactor, s, work string) []span {
 		if !entropyCandidateOK(c) {
 			continue
 		}
-		ls := strings.LastIndexByte(work[:loc[0]], '\n') + 1
-		if loc[0]-ls > 64 {
-			ls = loc[0] - 64
-		}
-		if !entKeyBeforeRE.MatchString(work[ls:loc[0]]) {
+		if !entKeyBeforeRE.MatchString(entropyKeyWindow(work, loc[0])) {
 			continue
 		}
 		out = append(out, span{start: loc[0], end: loc[1], secret: s[loc[0]:loc[1]]})
 	}
 	return out
+}
+
+// entropyKeyWindow is what the entropy rule reads in front of a candidate at at: back to
+// the start of its line, but no more than 64 bytes. It looks at that window only:
+// searching back for the start of the line costs the whole line for every candidate,
+// which is quadratic on a line of many candidates (a minified file, a long log line).
+func entropyKeyWindow(work string, at int) string {
+	from := max(0, at-64)
+	if i := strings.LastIndexByte(work[from:at], '\n'); i >= 0 {
+		from += i + 1
+	}
+	return work[from:at]
 }
 
 func entropyCandidateOK(c string) bool {
