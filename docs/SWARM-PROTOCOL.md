@@ -296,7 +296,7 @@ never promoted as an instruction.
 | swarm budget spent | no request is admitted, running workers are stopped, the manager is told once |
 | manager finishes | a batch run holds it until the board is settled (section 4); when the bound is reached the run ends and names what was left. In an interactive session workers legitimately outlive the turn and finished work wakes the manager (section 13) |
 | shutdown | agents are cancelled and awaited for at most 10 s; nothing new starts afterwards |
-| verifier flaky or broken | infra errors (could not run, timed out) are reported as such and never fail a task nor count as a pass; `--verify-repeat N` requires unanimity |
+| verifier flaky or broken | infra errors (could not run, timed out) are reported as such and never fail a task nor count as a pass; `--verify-repeats N` (on `rl tasks check` and `rl rollout`) requires unanimity |
 | forged or hostile mail | defused and framed as data; never grants anything |
 
 ## 11. Observability

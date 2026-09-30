@@ -632,6 +632,7 @@ func TestPermissionModesThroughTheAssembledSession(t *testing.T) {
 			}
 			// A tool "ran" unless the transcript shows the engine refusing it.
 			denied := map[string]bool{}
+			results := map[string]string{} // what each tool said, for the failure message
 			for _, e := range readEvents(t, s.Dir) {
 				if e.Type != events.TypeTurnAppend {
 					continue
@@ -639,14 +640,17 @@ func TestPermissionModesThroughTheAssembledSession(t *testing.T) {
 				var turn core.Turn
 				json.Unmarshal(e.Data, &turn)
 				for _, b := range turn.Blocks {
-					if b.Kind == core.BlockToolResult && strings.Contains(b.PlainText(), "permission denied") {
-						denied[b.ToolID] = true
+					if b.Kind == core.BlockToolResult {
+						results[b.ToolID] = b.PlainText()
+						if strings.Contains(b.PlainText(), "permission denied") {
+							denied[b.ToolID] = true
+						}
 					}
 				}
 			}
 			got := outcome{write: !denied["w"], touch: !denied["t"], curl: !denied["c"], secret: !denied["s"]}
 			if got != tc.want {
-				t.Errorf("outcome = %+v, want %+v", got, tc.want)
+				t.Errorf("outcome = %+v, want %+v\nwhat each tool said: %q\nprompts: %d", got, tc.want, results, prompts)
 			}
 			if _, err := os.Stat(filepath.Join(repo, "out.txt")); (err == nil) != tc.want.write {
 				t.Errorf("out.txt exists=%v, want %v", err == nil, tc.want.write)

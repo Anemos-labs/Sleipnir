@@ -417,6 +417,32 @@ flags:
 ```
 <!-- /flags -->
 
+### `sleipnir friction`
+
+`sleipnir friction PATH...` ranks what slowed recorded sessions down: permission questions and refusals (with the reason and who
+settled them), tool calls that failed, runs that got stuck or were cancelled, requests the endpoint did not answer, cache
+breaks, and the same file read or call repeated. PATH is a session directory, a directory of sessions (`~/.sleipnir/sessions`), or
+the run directory of a benchmark: every `events.jsonl` under it is one session. Each finding names the events that show it
+(`session seq: detail`). `docs/DOGFOOD.md` is the method and the register of what it found.
+
+<!-- flags: friction -->
+```text
+usage: sleipnir friction [flags] PATH...
+
+flags:
+  -category string
+        only this category, or a prefix of one (permission, tool, agent, request, cache, compaction, file, call)
+  -examples int
+        examples kept for each finding (default 3)
+  -json
+        print the report as JSON
+  -min-count int
+        leave out findings seen fewer times (default 1)
+  -top int
+        how many findings to print (0 = all) (default 15)
+```
+<!-- /flags -->
+
 ## `sleipnir rl`
 
 The RL environment (`docs/TRAINING-DATA.md`): generate tasks, roll a policy out on them, score, export.

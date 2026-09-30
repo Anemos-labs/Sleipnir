@@ -196,6 +196,16 @@ defect the runs showed, with the evidence, and what changed.
   the marker is unique per build. A test that put fake clocks and real file times in one assertion failed for good after a date
   (`inspect`); the glob-cost test was a 100 ms stopwatch that failed at load 37 and is now a hang guard.
 
+- **`sleipnir friction PATH...`** ranks what slowed recorded sessions down (refusals and questions with their reasons, failed and
+  unknown tool calls, stuck and cancelled runs, retries, cache breaks, repeated reads) by count, severity and the requests it
+  wasted, with the event that shows each. The permission engine now writes `perm.ask` and `perm.decide` (nothing emitted them before)
+  and a cancelled run writes `agent.cancel`. The session flushes its log when a turn ends: the log flushed in the background, so a
+  reader that looked right after an answer, and a crash at that moment, missed the turn's last events (it made a permission test
+  fail one run in eight). `docs/DOGFOOD.md` is the method and the register of what it found.
+- **A nightly workflow** (`.github/workflows/nightly.yml`): every fuzz target for three minutes (`scripts/fuzz.sh`, which finds
+  them), the suite under `-race` three times with shuffled order, coverage, and the drift checks (`docs/CLI.md` and the README's
+  simulator block against the binary), which the regular CI now runs too. Job timeouts everywhere.
+
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
 which every request reads at the cached price, and the first request after an upgrade writes the prefix anew, once per session.
