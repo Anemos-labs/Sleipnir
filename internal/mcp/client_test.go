@@ -424,8 +424,8 @@ func TestProgressExtendsTheInactivityTimeout(t *testing.T) {
 	ch := callAsync(c, context.Background(), "long", `{}`, CallOptions{
 		Timeout: 300 * time.Millisecond,
 		OnProgress: func(pr Progress) {
+			lastMsg.Store(pr.Message) // before the count: the test reads the message once the count says the last one ran
 			seen.Add(1)
-			lastMsg.Store(pr.Message)
 		},
 	})
 	req := p.expect("tools/call")

@@ -155,8 +155,8 @@ func TestDialHookReplacesTheBuiltInGuard(t *testing.T) {
 	var calls atomic.Int32
 	var lastAddr atomic.Value
 	hook := func(ctx context.Context, network, address string) (net.Conn, error) {
+		lastAddr.Store(address) // before the count: a reader that sees a call sees its address
 		calls.Add(1)
-		lastAddr.Store(address)
 		return (&net.Dialer{}).DialContext(ctx, network, address)
 	}
 	cfg := httpCfg(ts.URL)
