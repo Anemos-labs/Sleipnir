@@ -1,0 +1,14 @@
+{fg=faint}╭─ {/}{b}Tests{/}{fg=faint} ────────────────────────╮{/}
+{fg=faint}│{/} status: {fg=good}ok{/}  {fg=bad}3 failed{/}           {fg=faint}│{/}
+{fg=faint}│{/}                                {fg=faint}│{/}
+{fg=faint}│{/} {fg=dim}a second line that is long{/}     {fg=faint}│{/}
+{fg=faint}│{/} {fg=dim}enough to wrap around the edge{/} {fg=faint}│{/}
+{fg=faint}╰────────────────────────────────╯{/}
+{fg=warn}╔═ {/}{b,fg=warn}Warning{/}{fg=warn} ══════════════════════╗{/}
+{fg=warn}║{/}                                {fg=warn}║{/}
+{fg=warn}║{/}  careful                       {fg=warn}║{/}
+{fg=warn}║{/}                                {fg=warn}║{/}
+{fg=warn}╚════════════════════════════════╝{/}
+{fg=faint}╭────────────────────────────────╮{/}
+{fg=faint}│{/} no title, truncated: xxxxxxxx… {fg=faint}│{/}
+{fg=faint}╰────────────────────────────────╯{/}

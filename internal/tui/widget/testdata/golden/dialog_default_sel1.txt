@@ -1,0 +1,8 @@
+{fg=warn}╭─ {/}{b,fg=warn}Bash command{/}{fg=warn} ───────────────────────────────────────────╮{/}
+{fg=warn}│{/} go test -race -count=1 ./internal/tui/widget/...         {fg=warn}│{/}
+{fg=warn}│{/} in ~/code/orders-api                                     {fg=warn}│{/}
+{fg=warn}│{/}                                                          {fg=warn}│{/}
+{fg=warn}│{/} {b,fg=accent,bg=selected-bg}❯ {/}{b,bg=selected-bg}1. Yes                                                {/} {fg=warn}│{/}
+{fg=warn}│{/}   {fg=dim}2. {/}Yes, and don't ask again for go test                {fg=warn}│{/}
+{fg=warn}│{/}   {fg=dim}3. {/}No, and tell Sleipnir what to do instead{fg=dim} (esc){/}      {fg=warn}│{/}
+{fg=warn}╰──────────────────────────────────────────────────────────╯{/}

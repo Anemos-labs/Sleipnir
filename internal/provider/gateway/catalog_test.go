@@ -59,3 +59,20 @@ func TestMissingCachePriceFallsBackToInput(t *testing.T) {
 		t.Fatalf("%+v", p)
 	}
 }
+
+// Catalogues of the OpenAI kind list ids and nothing else. Their models have no modality, and `sleipnir models` showed
+// none of them: a header and an empty table.
+func TestAModelWithoutAModalityIsListedAsChat(t *testing.T) {
+	es, err := Parse([]byte(`{"object":"list","data":[{"id":"gpt-x","object":"model","owned_by":"openai"},{"id":"qwen3:8b","object":"model"},` +
+		`{"id":"dall-e","architecture":{"modality":"text->image"},"pricing":{"prompt":"0.000001","completion":"0.000002"}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat := map[string]bool{}
+	for _, e := range es {
+		chat[e.Model.ID] = e.IsChat()
+	}
+	if !chat["gpt-x"] || !chat["qwen3:8b"] || chat["dall-e"] || len(chat) != 3 {
+		t.Fatalf("IsChat by model: %v (a catalogue that does not say is taken as chat; one that says text->image is not)", chat)
+	}
+}

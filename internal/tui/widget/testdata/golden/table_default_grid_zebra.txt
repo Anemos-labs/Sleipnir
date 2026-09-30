@@ -1,0 +1,6 @@
+  {b}Agent{/}                             {fg=faint}│{/} {b}Role{/}   {fg=faint}│{/} {b}Tokens{/} {fg=faint}│{/} {b}Hit{/}
+  {fg=faint}──────────────────────────────────┼────────┼────────┼─────{/}
+  manager                           {fg=faint}│{/} lead   {fg=faint}│{/}  12.1k {fg=faint}│{/} 93%
+{bg=zebra-bg}  worker-auth-refactor              {/}{fg=faint,bg=zebra-bg}│{/}{bg=zebra-bg} writer {/}{fg=faint,bg=zebra-bg}│{/}{bg=zebra-bg}    812 {/}{fg=faint,bg=zebra-bg}│{/}{bg=zebra-bg}  7% {/}
+{b,fg=accent,bg=selected-bg}❯ {/}{b,bg=selected-bg}日本語のエージェント              {/}{b,fg=faint,bg=selected-bg}│{/}{b,bg=selected-bg} reader {/}{b,fg=faint,bg=selected-bg}│{/}{b,bg=selected-bg}   1.2M {/}{b,fg=faint,bg=selected-bg}│{/}{b,bg=selected-bg} 100%{/}
+{bg=zebra-bg}  x                                 {/}{fg=faint,bg=zebra-bg}│{/}{bg=zebra-bg} y      {/}{fg=faint,bg=zebra-bg}│{/}{bg=zebra-bg}        {/}{fg=faint,bg=zebra-bg}│{/}{bg=zebra-bg}     {/}

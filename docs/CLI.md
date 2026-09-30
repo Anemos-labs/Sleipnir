@@ -181,13 +181,25 @@ Usage of chat:
 
 ### `sleipnir run`
 
-`sleipnir run [flags] <prompt | ->` runs one goal and exits. The prompt is the remaining words, or `-`, or stdin when
-stdin is not a terminal. Progress goes to stdout, a one-line summary (time, steps, cost, cache hit ratio, compactions,
-session directory) to stderr. `--quiet` prints only the final answer. `--json` streams one JSON object per line on
-stdout: `text`, `thinking`, `tool_start`, `tool_end`, `response`, `notice`, and a final `{"type":"result", ...}` with
-`text`, `steps`, `cost_usd`, `usage`, `hit_ratio`, `compactions`, `stop`, `session`, `dir`, `elapsed_ms`, `error`.
-Unattended (stdin not a terminal) nothing can be approved: an action that needs approval is refused. Slash commands are
-not expanded in `run`. `swarm` and `run --swarm` are the same command.
+`sleipnir run [flags] <prompt | ->` runs one goal and exits. The goal is the remaining words, or what is piped in, or both:
+`git diff | sleipnir run "review this"` sends the piped text first, in a `<stdin>` block, and the words last (the instruction
+after the material it is about). A lone `-`, or `-` as the last word, says "the piped input goes here" and waits for it;
+with the goal in words alone, piped data that has not begun to arrive within 3 seconds is left out (with a note on stderr)
+so that a parent process that forgot to close our stdin cannot hold the run. With no words, stdin is the goal when it is
+not a terminal. Input that is not data (a terminal, `/dev/null`) is not input, and more than 8 MiB of it is refused. Progress
+goes to stdout, a one-line summary (time, steps, cost, cache hit ratio, compactions, session directory) to stderr.
+`--quiet` prints only the final answer, on stdout. `--json` streams one JSON object per line on stdout: `text`, `thinking`,
+`reset` (the response in progress is being retried and starts over: drop the text of it you have), `tool_start`, `tool_end`
+(`output` is the whole output up to 64 KiB, `error` the tool's own verdict, `failed` whether the call did not do what it
+was asked, which includes a command that exited with a status other than 0 or ran out of time, and `exit_code` for a
+command), `response`, `notice`, and a final `{"type":"result", ...}` with `text`, `steps`, `cost_usd`, `usage`, `hit_ratio`,
+`compactions`, `stop`, `session`, `dir`, `elapsed_ms`, `error` and, for a swarm that stopped with work left, `unfinished`
+(and the status is 3). `--cwd` must name a directory that exists. Unattended (stdin not a terminal) nothing can be
+approved: an action that needs approval is refused. Slash commands are not expanded in `run`. `swarm` and `run --swarm`
+are the same command.
+
+Ctrl-C (or SIGTERM) ends a run: it prints `sleipnir: interrupted` and exits with 130 (143 for SIGTERM); work that passed
+verification in an isolated swarm is still applied first, and a second Ctrl-C quits at once.
 
 `sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a manager with up to N workers. N comes
 first and must be 1 or more (anything else is an error that shows an example); the flags are `run`'s, and
@@ -332,7 +344,8 @@ Usage of doctor:
 ### `sleipnir models`
 
 Prints the catalogue of an OpenAI-style marketplace (`<base_url>/models`; Heimdall's needs no key) with context size and
-prices per million tokens. The provider is `--provider`, else your default provider, else `heimdall`. Project config is
+prices per million tokens. Only chat models are listed (`--all` lists the others); a catalogue that does not say what its
+models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. The provider is `--provider`, else your default provider, else `heimdall`. Project config is
 never trusted here.
 
 <!-- flags: models -->
@@ -1329,7 +1342,8 @@ answer `unknown command`.
 | `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that the person ends (`/exit`, Ctrl-D, Ctrl-C twice at the prompt) or that SIGTERM ends |
 | `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: the budget of $50.00 is exhausted ...`, which says how to raise it), a reached step limit, an agent that repeated one failing call until the harness stopped it (`agent stuck`), a prompt blocked by a hook, and a failed `doctor` probe |
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
-| `3` | unfinished: the work ended with tasks left undone |
+| `3` | unfinished: a swarm's manager stopped with work left undone (running workers, submissions nobody judged, tasks nobody finished); what was done is in place, and `run --json` names what was left in `unfinished` |
+| `130`, `143` | interrupted: the command was ended by Ctrl-C (SIGINT) or by SIGTERM (128 plus the signal, the shell's convention) and printed `sleipnir: interrupted` |
 | `75` | try again later (`EX_TEMPFAIL`): `rl rollout` or `rl eval` in which **no** rollout completed (the endpoint was down, every attempt failed, or the spend cap was reached). Rerunning into the same `--out` resumes; a benchmark script loops on this status. A run in which some rollouts completed exits 0 and reports its infrastructure failures in the summary |
 
 A model that ends its turn normally is a success (`0`) whatever the task's outcome; check the result (`run --json`, the

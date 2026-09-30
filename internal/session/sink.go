@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/core"
@@ -114,18 +115,41 @@ func (s *TextSink) ToolEnd(a string, call core.Block, res *tools.Result, took ti
 	if s.isMain(a) {
 		s.endLine()
 	}
-	mark := "✓"
-	if res != nil && res.IsError {
+	mark, how := "✓", took.Round(time.Millisecond).String()
+	if res.Failed() {
 		mark = "✗"
+		if o := res.Outcome(); o != "" {
+			how += ", " + o
+		}
 	}
 	who := ""
 	if s.Main == "" || a != s.Main {
 		who = "[" + a + "] "
 	}
-	fmt.Fprintf(s.log, "%s%s %s (%s)\n", who, mark, toolSummary(call), took.Round(time.Millisecond))
-	if res != nil && res.IsError && s.Verbose {
-		fmt.Fprintf(s.log, "    %s\n", firstLine(res.Text, 200))
+	fmt.Fprintf(s.log, "%s%s %s (%s)\n", who, mark, toolSummary(call), how)
+	if s.Verbose && res.Failed() {
+		if res.IsError {
+			fmt.Fprintf(s.log, "    %s\n", firstLine(res.Text, 200))
+		} else {
+			// a command that failed: its last lines say what went wrong
+			for _, l := range tailLines(res.Text, 5, 200) {
+				fmt.Fprintf(s.log, "    %s\n", l)
+			}
+		}
 	}
+}
+
+// Reset is called when a response is being retried: the text of the attempt that failed stays on the answer stream, since it was
+// printed, and the new attempt begins on a line of its own.
+func (s *TextSink) Reset(a string) {
+	if !s.isMain(a) {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.endLine()
+	delete(s.said, a)
+	delete(s.lead, a)
 }
 
 // Response ends the agent's message: the next one starts afresh, and white space that was all a message
@@ -167,6 +191,23 @@ func firstLine(s string, n int) string {
 	return s
 }
 
+// tailLines is the last n non-empty lines of s, each cut to width runes.
+func tailLines(s string, n, width int) []string {
+	var out []string
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i := len(lines) - 1; i >= 0 && len(out) < n; i-- {
+		l := strings.TrimRight(lines[i], " \t\r")
+		if l == "" {
+			continue
+		}
+		if r := []rune(l); len(r) > width {
+			l = string(r[:width]) + "…"
+		}
+		out = append([]string{l}, out...)
+	}
+	return out
+}
+
 // JSONSink writes one JSON object per event (stream-json), for scripts and for
 // other programs that drive Sleipnir.
 type JSONSink struct {
@@ -194,10 +235,34 @@ func (s *JSONSink) ToolEnd(a string, c core.Block, r *tools.Result, took time.Du
 	m := map[string]any{"type": "tool_end", "agent": a, "id": c.ToolID, "name": c.ToolName, "ms": took.Milliseconds()}
 	if r != nil {
 		m["error"] = r.IsError
-		m["output"] = firstLine(r.Text, 4000)
+		m["failed"] = r.Failed()
+		if code, ok := r.ExitStatus(); ok {
+			m["exit_code"] = code
+		}
+		m["output"] = clipOutput(r.Text, maxJSONOutput)
 	}
 	s.emit(m)
 }
+
+// maxJSONOutput bounds the output of one tool in the JSON stream. The tools keep their output within their own limits, so this
+// only matters for one that does not; a script that wants more reads the session's log.
+const maxJSONOutput = 64 << 10
+
+func clipOutput(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + fmt.Sprintf("\n[output truncated: %d of %d bytes shown]", cut, len(s))
+}
+
+// Reset tells a consumer of the stream that the response in progress starts over (it is being retried): the text it has seen of
+// it is to be dropped.
+func (s *JSONSink) Reset(a string) { s.emit(map[string]any{"type": "reset", "agent": a}) }
+
 func (s *JSONSink) Response(a string, r *provider.Response, hit float64) {
 	s.emit(map[string]any{"type": "response", "agent": a, "usage": r.Usage, "hit_ratio": hit, "stop": r.Stop})
 }

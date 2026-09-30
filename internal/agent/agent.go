@@ -86,6 +86,14 @@ type Sink interface {
 	Notice(agent, level, msg string)
 }
 
+// A Resetter is a Sink that can take back what it showed of a response that is being retried. When a request fails part-way
+// through a stream and is sent again, the text of the failed attempt has already been given to the sink; a sink that can do
+// something about it (end the line, drop the partial text, mark the start of the new attempt) implements this, and is called
+// when the new attempt begins. One that does not gets the new attempt's text after the old one's, as it always has.
+type Resetter interface {
+	Reset(agent string)
+}
+
 // NopSink ignores everything.
 type NopSink struct{}
 
@@ -652,13 +660,13 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			return res, nil
 		}
 		phase = "tools"
-		results := a.runTools(ctx, calls)
+		results, exitFailed := a.runTools(ctx, calls)
 		phase = "between"
 		blocks := results
 		if extra := a.takeInbox(); len(extra) > 0 {
 			blocks = append(blocks, extra...)
 		}
-		note, stuck := a.rep.observe(a.cfg.ID, calls, results)
+		note, stuck := a.rep.observeExits(a.cfg.ID, calls, results, exitFailed)
 		if note != "" && stuck == nil {
 			blocks = append(blocks, core.Text(note))
 			a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "note": note})

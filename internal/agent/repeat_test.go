@@ -141,3 +141,55 @@ func TestAFailureRepeatedBetweenOtherCallsIsStillALoop(t *testing.T) {
 		t.Fatalf("steps = %d, want 15", res.Steps)
 	}
 }
+
+// A command that exits with a status other than 0 is not a tool error (the model is meant to read what it printed), so the guard
+// used to count nothing for it: a model that ran one failing command until the step limit was never told. The same command
+// failing the same way is a loop whatever the tool calls it; what it prints about how long it took is not a difference.
+func TestAFailingCommandRepeatedIsALoopToo(t *testing.T) {
+	var n int
+	failing := fakeTool{name: "bash", run: func(json.RawMessage) *tools.Result {
+		n++
+		return &tools.Result{
+			Text: fmt.Sprintf("--- FAIL: TestList (0.%02ds)\nFAIL\tx\t%d.004s\n[exit code 1]", n, n),
+			Meta: map[string]any{"exit_code": 1, "timed_out": false},
+		}
+	}}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{failing}, steps: 100}, func(c *mock.Call) mock.Reply {
+		return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "bash", `{"command":"go test ./..."}`)}}
+	})
+	res, err := r.agent.Run(context.Background(), "go")
+	if !errors.Is(err, agent.ErrStuck) {
+		t.Fatalf("err = %v, want ErrStuck (steps %d)", err, res.Steps)
+	}
+	if res.Steps != 8 || !strings.Contains(err.Error(), "bash failed the same way 8 times") {
+		t.Fatalf("steps = %d, err = %v", res.Steps, err)
+	}
+	if nudges, stops := stuckEvents(r); nudges != 1 || stops != 1 {
+		t.Fatalf("agent.stuck events: %d nudges and %d stops, want 1 and 1", nudges, stops)
+	}
+}
+
+// Failing commands that fail differently (a model fixing one test after another) and commands that succeed are not repetition.
+func TestFailingCommandsThatDifferAreNotALoop(t *testing.T) {
+	var n int
+	cmd := fakeTool{name: "bash", run: func(json.RawMessage) *tools.Result {
+		n++
+		if n > 40 {
+			return &tools.Result{Text: "ok\n[exit code 0]", Meta: map[string]any{"exit_code": 0}}
+		}
+		return &tools.Result{Text: fmt.Sprintf("--- FAIL: Test%c (0.01s)\n[exit code 1]", 'A'+n%26), Meta: map[string]any{"exit_code": 1}}
+	}}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{cmd}, steps: 100}, func(c *mock.Call) mock.Reply {
+		if assistantTurns(c) < 60 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "bash", `{"command":"go test ./..."}`)}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	res, err := r.agent.Run(context.Background(), "go")
+	if err != nil || res.Text != "done" {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if nudges, stops := stuckEvents(r); nudges != 0 || stops != 0 {
+		t.Fatalf("agent.stuck events for commands that were not repeating: %d, %d", nudges, stops)
+	}
+}

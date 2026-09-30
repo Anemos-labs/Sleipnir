@@ -1,0 +1,4 @@
+{b}docs/new.md{/}  {b}+3{/} {b}−0{/} {d}(new file){/}
+  1 {b}+ {/}# Title
+  2 {b}+ {/}
+  3 {b}+ {/}body

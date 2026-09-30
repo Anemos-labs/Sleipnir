@@ -224,24 +224,22 @@ func TestCancellationKillsRunningHooks(t *testing.T) {
 }
 
 func TestHooksRunInParallel(t *testing.T) {
+	// Each hook announces itself and waits until all six have: only hooks that run at the same time can ever see that, whatever
+	// the machine's speed (a wall-clock bound between 4.5 s and 6 s failed at a load of 13). Hooks run one after another would each
+	// wait out the cap (30 s) and fail.
 	var hs []hookSpec
 	for i := 0; i < 6; i++ {
-		hs = append(hs, cmdHook("sleep 1; echo "+string(rune('a'+i))+" > /dev/null"))
+		hs = append(hs, cmdHook(`touch started.`+string(rune('a'+i))+`; n=0; while [ "$(ls started.* | wc -l)" -lt 6 ]; do n=$((n+1)); [ $n -gt 600 ] && exit 1; sleep 0.05; done`))
 	}
 	r := newRunner(t, settings(t, PreToolUse, group{hooks: hs}))
-	start := time.Now()
 	res := run(t, r, Event{Name: PreToolUse})
-	elapsed := time.Since(start)
 	if res.Ran() != 6 || len(res.Errors) != 0 {
-		t.Fatalf("ran %d: %s", res.Ran(), errorText(res))
-	}
-	if elapsed > 4500*time.Millisecond { // 6 x 1 s one after another would be 6 s
-		t.Errorf("6 hooks of 1 s took %v: they ran one after another", elapsed)
+		t.Fatalf("ran %d, and the hooks that did not meet the others are errors: they ran one after another. %s", res.Ran(), errorText(res))
 	}
 
 	serial := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{cmdHook("sleep 0.4"), cmdHook("sleep 0.4; true"), cmdHook("sleep 0.4; :")}}))
 	serial.MaxParallel = 1
-	start = time.Now()
+	start := time.Now()
 	run(t, serial, Event{Name: PreToolUse})
 	if elapsed := time.Since(start); elapsed < 1100*time.Millisecond {
 		t.Errorf("MaxParallel=1 took %v; hooks should have been serialised", elapsed)

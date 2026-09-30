@@ -367,6 +367,13 @@ func (k *memberSink) Response(a string, r *provider.Response, hit float64) {
 	k.safely(func() { k.Sink.Response(a, r, hit) })
 }
 
+// Reset passes a retry on to the sink the member wraps, if that sink cares (agent.Resetter).
+func (k *memberSink) Reset(a string) {
+	if r, ok := k.Sink.(agent.Resetter); ok {
+		k.safely(func() { r.Reset(a) })
+	}
+}
+
 func (k *memberSink) Notice(a, level, msg string) {
 	k.safely(func() { k.Sink.Notice(a, level, msg) })
 }

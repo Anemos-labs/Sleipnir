@@ -185,3 +185,26 @@ func TestProbeChecksTokenCapture(t *testing.T) {
 		t.Fatalf("expected an explanatory note, got %v", rep.Findings.Notes)
 	}
 }
+
+func TestReportFailureIsAnEndpointThatAnsweredNothing(t *testing.T) {
+	ok := func(name string) probe.Step { return probe.Step{Name: name, OK: true} }
+	bad := func(name, why string) probe.Step { return probe.Step{Name: name, Detail: why} }
+	for _, tc := range []struct {
+		name  string
+		steps []probe.Step
+		want  string // "" means no failure
+	}{
+		{"everything answered", []probe.Step{ok("basic"), ok("tools"), ok("cache-cold")}, ""},
+		{"a capability that is missing is a finding, not a failure", []probe.Step{ok("basic"), bad("tools", "400"), bad("reasoning", "400")}, ""},
+		{"the plain request failed", []probe.Step{bad("basic", "connection refused"), bad("tools", "connection refused")}, "the endpoint did not answer a basic request: connection refused"},
+		{"nothing was asked", nil, "the probe made no request"},
+	} {
+		err := (&probe.Report{Steps: tc.steps}).Failure()
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("%s: Failure() = %v, want nil", tc.name, err)
+		case tc.want != "" && (err == nil || err.Error() != tc.want):
+			t.Errorf("%s: Failure() = %v, want %q", tc.name, err, tc.want)
+		}
+	}
+}

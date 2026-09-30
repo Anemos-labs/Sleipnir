@@ -628,3 +628,79 @@ func TestAgentRefusesABudgetThatCannotStopAnything(t *testing.T) {
 		}
 	}
 }
+
+// resetSink records the order of what a sink is told about a response: its text, and that it is being retried.
+type resetSink struct {
+	agent.NopSink
+	mu  sync.Mutex
+	log []string
+}
+
+func (s *resetSink) add(x string)     { s.mu.Lock(); s.log = append(s.log, x); s.mu.Unlock() }
+func (s *resetSink) Text(_, d string) { s.add("text:" + d) }
+func (s *resetSink) Reset(string)     { s.add("reset") }
+func (s *resetSink) Notice(_, level, msg string) {
+	if level == "warn" {
+		s.add("notice")
+	}
+}
+func (s *resetSink) all() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.log...)
+}
+
+// A response that fails part-way through its stream and is sent again has already shown its first words: a sink that can take
+// them back is told when the new attempt begins (they used to appear twice, the second time whole, on the answer stream).
+func TestARetriedResponseTellsTheSinkItStartsOver(t *testing.T) {
+	var n atomic.Int32
+	sink := &resetSink{}
+	r := newLimRig(t, func(c *agent.Config) { c.Sink = sink }, nil, func(*mock.Call) mock.Reply {
+		if n.Add(1) == 1 {
+			return mock.Reply{Text: "The bug is in the par", Fault: &mock.Fault{Status: 502, Message: "upstream reset", MidStream: true}} // the mock streams "partial…"
+		}
+		return mock.Reply{Text: "The bug is in the parser."}
+	})
+	res, err := r.agent.Run(context.Background(), "find the bug")
+	if err != nil || res.Text != "The bug is in the parser." {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	log := strings.Join(sink.all(), "|")
+	i, j, k := strings.Index(log, "text:partial"), strings.Index(log, "reset"), strings.LastIndex(log, "text:The bug")
+	if i < 0 || j < i || k < j || strings.Count(log, "reset") != 1 {
+		t.Fatalf("the sink should see the partial text, then one reset, then the new attempt: %s", log)
+	}
+}
+
+// The notices of a request that keeps failing count the attempts, and the last failure ends the request: it used to announce a
+// retry and wait out the longest backoff for an attempt that was never made.
+func TestRetryNoticesCountTheAttemptsAndTheLastFailureIsFinal(t *testing.T) {
+	var n atomic.Int32
+	r := newLimRig(t, nil, nil, func(*mock.Call) mock.Reply {
+		n.Add(1)
+		return mock.Reply{Fault: &mock.Fault{Status: 503, Message: "no endpoints"}}
+	})
+	_, err := r.agent.Run(context.Background(), "hi")
+	if err == nil {
+		t.Fatal("a request that fails every time must fail")
+	}
+	if got := n.Load(); got != 6 {
+		t.Fatalf("%d requests were made, want 6", got)
+	}
+	notices := r.sink.all()
+	if len(notices) != 5 {
+		t.Fatalf("%d retry notices, want 5 (one before each attempt after the first):\n%s", len(notices), strings.Join(notices, "\n"))
+	}
+	if !strings.HasSuffix(notices[0], "(attempt 2 of 6)") || !strings.HasSuffix(notices[4], "(attempt 6 of 6)") {
+		t.Errorf("the notices do not count the attempts:\n%s", strings.Join(notices, "\n"))
+	}
+	retries := 0
+	for _, e := range eventData(t, r.log, events.TypeModelError) {
+		if _, ok := e["attempt"]; ok {
+			retries++
+		}
+	}
+	if retries != 5 {
+		t.Errorf("%d model.error events for a retry, want 5 (the sixth failure is reported once, as the end of the request)", retries)
+	}
+}

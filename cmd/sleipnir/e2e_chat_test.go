@@ -623,7 +623,7 @@ func TestRunAsksOnTheTerminal(t *testing.T) {
 	}
 }
 
-// `run` is not a chat: Ctrl-C ends the run, with the status of a run that failed.
+// `run` is not a chat: Ctrl-C ends the run, says so, and exits with the status a shell gives a process that Ctrl-C ended (130).
 func TestRunCtrlCEndsTheRun(t *testing.T) {
 	m := startModel(t)
 	slow := m.on("@slow", say("slow turn finished").held())
@@ -632,8 +632,8 @@ func TestRunCtrlCEndsTheRun(t *testing.T) {
 	c := &chatTerm{t: t, w: w, term: term}
 	slow.wait(t)
 	c.ctrlC()
-	c.expect("sleipnir: ") // the error that ended it, however it is worded
-	c.exited(1)
+	c.expect("sleipnir: interrupted")
+	c.exited(130)
 	if got, ok := w.sessionEnd(); !ok || got != "interrupted" {
 		t.Errorf("the session ended with reason %q (recorded: %v), want \"interrupted\"", got, ok)
 	}

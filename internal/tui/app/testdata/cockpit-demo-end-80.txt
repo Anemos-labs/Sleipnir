@@ -1,0 +1,28 @@
+╭ SLEIPNIR ▸ The handbook has one docume…  ◷ 00:00 · 8 agents · $0.20 · ⛁ 92% ─╮
+│                        ▄▄     │ one prefix, eight riders                     │
+│                     ░▄██▄█▄   │ shared G0–G2 4.5k tokens  ● warm 5:00 ▰▰▰▰   │
+│                   ░░▄██▀▀██   │                                              │
+│     ░░░░▄▄████████░▄██▀       │ ████████████████████████████████████████████ │
+│  ░░░░░░▄█████████████         │ G0 G1 G2                                     │
+│   ░░   ▒▒▓▓██▓██▓▓█▓▓         │   ╎     ┃    ┃     ╎    ┃     ┃    ┃     ┃   │
+│        ▒▒▓▓▒ ▓▒▒▓▓▒▓▓         │   ╎     ┃    ┃     ╎    ┃     ┃    ┃     ┃   │
+│        ▒▒▓ ▒ ▓ ▒▓▓▒ ▓         │   ╎     ┃    ┃     ╎    ┃     ┃    ┃     ┃   │
+│        ▒▒▓▓▒ ▓▓▓▓▓▒▒▓         │  mgr   dc-1 dc-2  rv-1 sc-1  sc-2 sc-3  sc-4 │
+│                               │                                              │
+├─ agents ──────────────────────┴──────────────────────────────────────────────┤
+│ AGENT         STATE   DOING        PROMPT             TOK    COST    ⛁ LEASE │
+│ mgr manager   ✓ done  done         ███████████████   5.8k  $0.053  98% —     │
+│ dc-1 docs     ✓ done  wrote summa… █▏█████████████   5.2k  $0.032  97% —     │
+│ dc-2 docs     ✓ done  wrote summa… █▏█████████████   5.2k  $0.032  97% —     │
+│ rv-1 reviewer ✓ done  every summa… █████████████▓░   4.6k  $0.016  96% —     │
+│ sc-1 scout    ✓ done  topic 1: si… █▏█████████████   4.7k  $0.017  97% —     │
+│ sc-2 scout    ✓ done  topic 2: si… █▏█████████████   4.7k  $0.016  97% —     │
+│ sc-3 scout    ✓ done  topic 3: si… █▏█████████████   4.7k  $0.017  97% —     │
+│ sc-4 scout    ✓ done  topic 4: si… █▏█████████████   4.7k  $0.016  97% —     │
+├─ task board ─────────────────────────────────────────────────────────────────┤
+│ todo 0             running 0          verifying 0        merged 7            │
+│                                                          ✓ T1 ✓ T2 ✓ T3      │
+│                                                          ✓ T4 ✓ T5 ✓ T6      │
+│                                                          ✓ T7                │
+│ ↑↓ agent · enter transcript · m mail · b board · ? help · q back to shell    │
+╰──────────────────────────────────────────────────────────────────────────────╯

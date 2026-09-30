@@ -92,6 +92,22 @@ type Report struct {
 	TotalUSD float64   `json:"total_usd"`
 }
 
+// Failure says whether the probe found a usable endpoint: nil when the endpoint answered a plain request, else why it did not. What
+// the later steps find (tool calling, a prefix cache, reasoning) are capabilities, and one that is missing is a finding of the
+// report, not a failed probe.
+func (r *Report) Failure() error {
+	for _, s := range r.Steps {
+		if s.Name != "basic" {
+			continue
+		}
+		if !s.OK {
+			return fmt.Errorf("the endpoint did not answer a basic request: %s", s.Detail)
+		}
+		return nil
+	}
+	return fmt.Errorf("the probe made no request")
+}
+
 type runner struct {
 	cfg   Config
 	rep   *Report

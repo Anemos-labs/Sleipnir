@@ -286,6 +286,10 @@ func (a *Agent) forward(e provider.Event) {
 		a.cfg.Sink.Text(a.cfg.ID, e.Text)
 	case provider.EvThinking:
 		a.cfg.Sink.Thinking(a.cfg.ID, e.Text)
+	case provider.EvReset:
+		if r, ok := a.cfg.Sink.(Resetter); ok {
+			r.Reset(a.cfg.ID)
+		}
 	}
 }
 
@@ -471,8 +475,11 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 			return nil, err
 		}
 		last = err
+		if attempt == maxAttempts-1 {
+			break // that was the last one: nothing follows it, so there is nothing to wait for or to announce
+		}
 		delay := backoff(attempt, pe.RetryAfter)
-		a.cfg.Sink.Notice(a.cfg.ID, "warn", retryNotice(pe, delay))
+		a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("%s (attempt %d of %d)", retryNotice(pe, delay), attempt+2, maxAttempts))
 		a.emit(events.TypeModelError, map[string]any{
 			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
 		})
