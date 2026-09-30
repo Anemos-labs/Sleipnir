@@ -2,14 +2,12 @@
 
 package shell
 
-// Security review repros for docs/reviews/security-robustness.md.
+// Security review repros for docs/reviews/security-robustness.md (S38-S40, tranche 2).
 //
-// TestSecReview_* are gated behind SLEIPNIR_REVIEW=1 and assert the SECURE behaviour, so they
-// FAIL while the finding is open:
-//
-//	HEIMDALL_API_KEY=sk-review-canary SLEIPNIR_REVIEW=1 go test -count=1 -run TestSecReview ./internal/tools/shell
-//
-// TestSecSound_* are ungated regression checks for behaviour the review found sound.
+// They asserted the SECURE behaviour and were gated behind SLEIPNIR_REVIEW=1 while the findings
+// were open; all three are fixed, so they are ordinary regression tests now (S38's and S39's fixes
+// landed earlier, in jobs.go and env.go, S40's is internal/harden). TestSecSound_* are regression
+// checks for behaviour the review found sound.
 
 import (
 	"context"
@@ -21,16 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/harden"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
-
-func secRevGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("security-review repro: set SLEIPNIR_REVIEW=1 (asserts the secure behaviour, fails while the finding is open)")
-	}
-}
 
 // secRevPerm allows only the listed agents (a stand-in for a role gate or plan mode).
 type secRevPerm struct{ allow map[string]bool }
@@ -80,11 +72,10 @@ func (h *secRevShell) run(agent string, p perm.Requester, tool string, in any) *
 	return res
 }
 
-// S38: bash_output and bash_kill never consult the permission engine, and jobs are session-wide
-// with sequential ids (job_1, job_2, ...). A read-only reviewer, or any agent in plan mode, can
+// S38: bash_output and bash_kill never consulted the permission engine, and jobs are session-wide
+// with sequential ids (job_1, job_2, ...). A read-only reviewer, or any agent in plan mode, could
 // read every other agent's background output and kill their servers and test runs.
-func TestSecReview_S38_JobToolsBypassPermissionsAndAreCrossAgent(t *testing.T) {
-	secRevGate(t)
+func TestSec_S38_JobToolsAreGatedByPermissionsAcrossAgents(t *testing.T) {
 	h := secRevNew(t)
 	writer := secRevPerm{allow: map[string]bool{"be-1": true}}
 	reviewer := secRevPerm{allow: map[string]bool{}} // denies everything, like the read-only role gate
@@ -101,18 +92,24 @@ func TestSecReview_S38_JobToolsBypassPermissionsAndAreCrossAgent(t *testing.T) {
 	if !kill.IsError {
 		t.Errorf("S38b: rv-1 (all permissions denied) killed be-1's background job: %q", kill.Text)
 	}
+	// The owner is not asked again for its own job.
+	if own := h.run("be-1", writer, "bash_output", map[string]any{"id": "job_1"}); own.IsError {
+		t.Errorf("S38: the owner could not read its own job: %q", own.Text)
+	}
 }
 
-// S39: the model-visible environment is scrubbed by NAME (api_key|secret|token|password|
-// passwd|credential). Plenty of credential-bearing variables do not match.
-func TestSecReview_S39_EnvScrubIsANameHeuristic(t *testing.T) {
-	secRevGate(t)
+// S39: the model-visible environment was scrubbed by NAME only (api_key|secret|token|password|
+// passwd|credential); plenty of credential-bearing variables did not match. Names and values are
+// now both checked (harden.LooksSecret).
+func TestSec_S39_EnvScrubCoversCredentialNamesAndValues(t *testing.T) {
 	base := []string{
 		"DATABASE_URL=postgres://app:hunter2@db/prod", "REDIS_URL=redis://:hunter2@cache", "MYSQL_PWD=hunter2",
 		"SENTRY_DSN=https://abc@o1.ingest.sentry.io/1", "SSH_AUTH_SOCK=/tmp/ssh-XXXX/agent.1", "STRIPE_KEY=sk_live_abc",
 		"HEIMDALL_KEY=abc", "PRIVATE_KEY=-----BEGIN", "AUTHORIZATION=Bearer abc", "COOKIE=session=abc", "GH_PAT=ghp_abc",
-		// controls that ARE scrubbed today
+		// controls that ARE scrubbed by name
 		"OPENAI_API_KEY=sk-x", "GITHUB_TOKEN=ghp_x", "AWS_SECRET_ACCESS_KEY=x",
+		// and variables that must keep reaching commands
+		"PATH=/usr/bin", "HOME=/home/u", "GOPATH=/go", "KEYBOARD=us", "PWD=/stale",
 	}
 	env := commandEnv(base, "be-1", "/work", nil)
 	have := map[string]bool{}
@@ -130,29 +127,110 @@ func TestSecReview_S39_EnvScrubIsANameHeuristic(t *testing.T) {
 			t.Errorf("control: %s should be scrubbed", name)
 		}
 	}
+	for _, name := range []string{"PATH", "HOME", "GOPATH", "KEYBOARD", "PWD"} {
+		if !have[name] {
+			t.Errorf("S39: the scrub also removed %s, which commands need", name)
+		}
+	}
+	// The operator can still hand a credential to commands on purpose.
+	env = commandEnv(base, "be-1", "/work", []string{"database_url", "GH_*"})
+	have = map[string]bool{}
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		have[name] = true
+	}
+	for _, name := range []string{"DATABASE_URL", "GH_PAT"} {
+		if !have[name] {
+			t.Errorf("S39: PassEnv did not let %s through", name)
+		}
+	}
+	if have["REDIS_URL"] {
+		t.Error("S39: PassEnv let an unlisted credential through")
+	}
 }
 
 // S40: scrubbing the child's environment does not protect the harness's own key: on Linux any
 // same-uid process can read /proc/<pid>/environ of its parent, and os.Unsetenv does not change
 // it. The shell tool needs no exploit: `tr '\0' '\n' </proc/$PPID/environ`.
-func TestSecReview_S40_ProviderKeyReadableFromProcEnviron(t *testing.T) {
-	secRevGate(t)
-	key := os.Getenv("HEIMDALL_API_KEY")
-	if !strings.HasPrefix(key, "sk-review-") { // never run this against (or log) a real key
-		t.Skip("start the test binary with HEIMDALL_API_KEY=sk-review-canary so the variable is part of the initial /proc/self/environ")
-	}
+//
+// The fix is in internal/harden (harden.Process, the first call of main: the values of credential
+// variables are erased from the kernel's copy of the environment and the process is made
+// non-dumpable). The harness of the repro is a child copy of this test binary, so that the key is
+// part of its initial environment, as when a user exports it before starting sleipnir. The
+// control run is a harness that never called harden.Process; it shows the repro can see the leak.
+// (The flag itself is tested, as an unprivileged user, in internal/harden.)
+func TestSec_S40_ProviderKeyIsNotReadableFromProcEnviron(t *testing.T) {
 	if _, err := os.Stat("/proc/self/environ"); err != nil {
 		t.Skip("no /proc")
+	}
+	key := s40Key
+	control := runS40Harness(t, "control")
+	if !strings.Contains(control.Leak, key) {
+		t.Skipf("the control run (no harden.Process) could not read its parent's environment either (%q): nothing to show here", control.Leak)
+	}
+	h := runS40Harness(t, "hardened")
+	t.Logf("env | grep -c HEIMDALL_API_KEY -> %q (scrubbed as designed)", strings.TrimSpace(strings.Split(h.Direct, "\n")[0]))
+	t.Logf("tr < /proc/$PPID/environ printed the canary: %v", strings.Contains(h.Leak, key))
+	if strings.Contains(h.Leak, key) {
+		t.Errorf("S40: the harness's provider key is readable by a model-run command through /proc/$PPID/environ")
+	}
+	if h.Direct == "" || !strings.Contains(h.Direct, "0") {
+		t.Errorf("S40: the shell tool no longer scrubs the key from the command's own environment: %q", h.Direct)
+	}
+	// The key is still in the harness's own environment: hardening hides it from others, it does not take it from the harness.
+	if !h.OwnEnv {
+		t.Error("S40: the harness lost its own key")
+	}
+}
+
+// s40Key is the canary of the review: it must start with "sk-review-" so that it can never be a real key.
+const s40Key = "sk-review-canary"
+
+const s40Helper = "SLEIPNIR_S40_HELPER"
+
+type s40Report struct {
+	Direct string `json:"direct"`
+	Leak   string `json:"leak"`
+	OwnEnv bool   `json:"own_env"`
+}
+
+// TestSecS40Harness is the harness process of the repro; it does nothing unless it is started as one.
+func TestSecS40Harness(t *testing.T) {
+	mode := os.Getenv(s40Helper)
+	if mode == "" {
+		t.Skip("helper process for TestSec_S40_ProviderKeyIsNotReadableFromProcEnviron")
+	}
+	if mode == "hardened" {
+		harden.Process() // what main does before anything else
 	}
 	h := secRevNew(t)
 	all := secRevPerm{allow: map[string]bool{"be-1": true}}
 	direct := h.run("be-1", all, "bash", map[string]any{"command": "env | grep -c HEIMDALL_API_KEY || true"})
-	t.Logf("env | grep -c HEIMDALL_API_KEY -> %q (scrubbed as designed)", strings.TrimSpace(strings.Split(direct.Text, "\n")[0]))
 	leak := h.run("be-1", all, "bash", map[string]any{"command": `tr '\0' '\n' < /proc/$PPID/environ | grep HEIMDALL_API_KEY`})
-	t.Logf("tr < /proc/$PPID/environ printed the canary: %v", strings.Contains(leak.Text, key))
-	if strings.Contains(leak.Text, key) {
-		t.Errorf("S40: the harness's provider key is readable by a model-run command through /proc/$PPID/environ")
+	b, err := json.Marshal(s40Report{Direct: direct.Text, Leak: leak.Text, OwnEnv: os.Getenv("HEIMDALL_API_KEY") == s40Key})
+	if err != nil {
+		t.Fatal(err)
 	}
+	os.Stdout.WriteString("\nS40-REPORT " + string(b) + "\n")
+}
+
+func runS40Harness(t *testing.T, mode string) s40Report {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSecS40Harness$", "-test.v")
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), s40Helper + "=" + mode, "HEIMDALL_API_KEY=" + s40Key}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("harness (%s) failed: %v\n%s", mode, err, out)
+	}
+	_, line, ok := strings.Cut(string(out), "\nS40-REPORT ")
+	if !ok {
+		t.Fatalf("harness (%s) printed no report (bash missing?):\n%s", mode, out)
+	}
+	var r s40Report
+	if err := json.Unmarshal([]byte(strings.SplitN(line, "\n", 2)[0]), &r); err != nil {
+		t.Fatalf("bad report: %v\n%s", err, line)
+	}
+	return r
 }
 
 // ---- sound behaviour ----------------------------------------------------------------

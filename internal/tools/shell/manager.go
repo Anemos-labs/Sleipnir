@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/reee344/sleipnir/internal/harden"
 )
 
 // Options tunes a Manager. The zero value is what production uses.
@@ -145,12 +147,21 @@ func NewManager(opts ...Options) *Manager {
 
 var errShutDown = errors.New("the shell manager has been shut down")
 
-// baseEnv is the environment commands are built from.
+// baseEnv is the environment commands are built from. Credentials that
+// harden.MoveKeys took out of the process environment are not in os.Environ; the
+// ones the operator listed in PassEnv are put back, so moving keys away from the
+// harness's other children does not take away what PassEnv promised these ones.
 func (m *Manager) baseEnv() []string {
 	if m.opts.BaseEnv != nil {
 		return m.opts.BaseEnv
 	}
-	return os.Environ()
+	env := os.Environ()
+	for _, name := range harden.Held() {
+		if passAllowed(name, m.opts.PassEnv) {
+			env = append(env, name+"="+harden.Secret(name))
+		}
+	}
+	return env
 }
 
 // begin registers a process about to be supervised; it fails after Shutdown.
