@@ -50,3 +50,91 @@ still open. The protocol as implemented is `docs/SWARM-PROTOCOL.md`; this page i
   a long time can still spend eight manager requests on a burst of finishing workers. `--budget-usd` bounds the money.
 * In chat the wake turn streams to the terminal while the person may be typing at the prompt: the text is interleaved, and the
   prompt is not redrawn.
+
+## Piece 2: worktree isolation (`swarm.isolation = "worktree"`)
+
+### What was built
+
+The protocol as implemented is `docs/SWARM-PROTOCOL.md` section 14. In short: `internal/session/isolate.go` decides early
+(preconditions, refused before a model is contacted) and builds late (`workspace.Manager` + `workspace.Queue`, a start-up
+`Prune`); `internal/swarm/isolate.go` runs it (a tree per writer, the merge step in `done`, bounces, the end-of-run
+application); `internal/perm` learned two things (`Confine`, `TreeParents`); the CLI has `--isolation` and `--commit` on
+`run`, `swarm` and `chat` (and `chat --verify`), `sleipnir config` prints the effective value and its origin.
+
+### Decisions worth knowing
+
+* **Merge before review.** `done` commits the tree and submits it to the queue; the task reaches review only when it merged, and
+  `accept` requires the merge record (`swarm.merged`) instead of re-running the verifier in a checkout that does not have the
+  work. The alternative (merge at `accept`) would make the manager's acceptance also the merge, so a rejected task's conflict
+  would surface after review and a worker that had already stopped could not resolve it. The price is that work of a task the
+  manager later rejects or fails stays on the integration branch (no revert; a rejected task's worker resubmits on top).
+* **The verifier could not run is not a failed test.** A merge whose verifier timed out or could not start, and a git error, are
+  reported as infrastructure (`integration.infra`): a `done` call is answered with the error; a worker that stopped without `done`
+  has its task sent to review marked NOT MERGED, which `accept` refuses. Only a verifier that ran and exited non-zero bounces the
+  worker as `verify_failed`. While a worker waits its turn in the serial queue a keepalive tells the watchdog it is not stuck.
+* **Confinement is a hard deny in the permission engine, not a convention** (`perm.Engine.Confine`). It sits where every access
+  of a request is judged, so it covers shell commands as well as the file tools, works on resolved paths (a link inside the tree
+  that leads into another tree is another tree), and is not lifted by an allow rule or by bypass mode. The lease guard alone
+  could not have done this: it only sees the file tools.
+* **A finding of the end-to-end test: the project's relative rules did not apply inside a tree.** Rules such as `Deny(Edit(./migrations/**))`
+  or the built-in ask rule on `./.sleipnir/**` are anchored at the workspace root, so a worker in its own copy of the project was
+  held to none of them, and the merge would carry the forbidden change into the checkout. `perm.Config.TreeParents` anchors every
+  relative rule (and floating allow rules) at each tree as well; `TestRelativeRulesApplyInsideEveryTree` and
+  `TestProjectPermissionRulesHoldInsideTheTrees` fail without it (mutation-checked).
+* **Where the trees live** (a second finding of the same test). The first design kept them under the state directory. Every write
+  there asked for approval, in every mode, because `~/.sleipnir/**` is a protected configuration directory (hooks, skills and
+  commands run as code), so no worker could write a file. They now live in the per-user cache directory
+  (`$XDG_CACHE_HOME` or `~/.cache`, `<cache>/sleipnir/worktrees/<session>/`), which is also where large re-creatable data belongs. No
+  configuration key chooses the location, and a location inside the repository or a protected directory is refused.
+  Sessions run for another home (tests, the RL harness) keep everything under that home.
+* **The result is applied when the manager stops, not only at the end.** `applyMerged` runs after every manager run (a batch
+  run's only one, each turn and each wake run of a chat session), incrementally (the delta since the last application), and the
+  person is told at level `integrate` when something arrived or when it could not (once per distinct failure). `Finish` reports
+  the whole run. The default is uncommitted edits, which is what a shared-tree run leaves, and it is recorded in the checkpoint
+  store first, so `/rewind` undoes it and the end of the session does not re-apply it. `--commit` fast-forwards the person's branch
+  instead and requires a clean checkout, checked at start.
+* **The trees start from the working tree, uncommitted edits included** (`Manager.Snapshot`), so agents see what the person sees
+  and the result applies on top of it; if the person edits the same files during the run the patch does not apply, nothing is
+  changed, and the report names the branch and the command that gets the result (`git diff --binary <applied> <branch> | git apply
+  --3way`, starting from what was already applied).
+* **The manager and read-only roles keep the checkout.** The manager is read-only in an isolated run (swarm-level denial with
+  `strictShell`, plus a plan-mode profile in the engine) because anything it wrote into the checkout would bypass the queue.
+* **No new tool.** A worker that needs another's merged work blocks its task and says so, as before; its tree is brought to the
+  integration tip when the manager resumes it. New, reused, resumed and bounced trees are brought to the tip by the harness.
+* **Leases are advisory; scopes are not.** The writer cap and the scope-overlap refusal are lifted (the queue settles overlaps and
+  enforces the scope on the commit); overlapping writers raise the existing alert, naming agents only.
+* **Cache.** The isolation card is appended to a worker's private assignment note only. No shared layer changes; the prompt names no
+  path (the tools print relative paths), so two workers' first requests have the same system prompt byte for byte
+  (`TestIsolatedSwarm...` asserts it and that no request names a tree).
+* **Clean-up.** `Session.Finish` (called by `Close`, and by the CLI to print the report) removes trees that hold nothing unmerged and
+  deletes the integration branches once their result is in the checkout; a killed session's trees are salvaged onto their own
+  branches and removed by the next isolated session (`Manager.Prune`, live owners are never touched), and the person is told
+  what was kept.
+* **Subdirectories.** A session started below the repository root keeps its writers in the same subdirectory of their trees. A
+  project root that is not the repository's root is refused (scopes and rules are anchored differently in a tree).
+
+### Tests that hold it
+
+`internal/session`: `TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult` (seven scripted workers over a mock
+endpoint on a real repository: three disjoint, a same-line pair, a pair whose changes fail the project's verifier together; the
+checkout ends merged and verified, nothing crossed between trees, prompts are byte-equal and name no tree, the trees and branches
+are gone), `TestTheSameTeamWithoutIsolationStillWorks`, `TestCommitOptionCommitsTheVerifiedResultOntoTheBranch`,
+`TestIsolationRefusesWhatItCannotDo`, `TestTreesOfACrashedSessionAreCleanedUpAtTheNextStart`, `TestInteractiveIsolatedSessionAppliesAtTheEndOfEveryTurn`,
+`TestRewindUndoesWhatAnIsolatedRunApplied`, `TestResultThatCannotBeAppliedStaysOnItsBranch`,
+`TestProjectPermissionRulesHoldInsideTheTrees`, `TestIsolatedSessionInASubdirectoryKeepsItsWritersThere`; `internal/swarm`
+(`isolate_test.go`, `isolate_flow_test.go`: conflicts, verifier failures, scope rejection, bounded bounces, empty merges, accept
+needs the merge, advisory leases, guards); `internal/perm` (`confine_test.go`); `internal/config` (`isolation_test.go`);
+`cmd/sleipnir` (`isolate_test.go`).
+
+### Residual risks
+
+* Reviewers and scouts read the person's checkout, which lacks merged work until the manager stops. They can read it with `git show`
+  on the commit in the task's evidence, but an isolated review is weaker than a shared-tree one. A read-only tree at the integration
+  tip per reviewer would fix it and was left out because the specification keeps read-only roles on the checkout.
+* No revert of merged work when the manager rejects or fails the task afterwards (above).
+* A verifier that needs untracked or ignored files (`.env`, `node_modules`, build output) fails in a tree; submodules are not
+  initialised in trees. A project that cannot be built from a clean checkout is a poor fit.
+* A project root that is not the repository root cannot be isolated; a monorepo sub-project needs the repository root.
+* Disk: one checkout per writer, created at spawn; no sparse checkout by scope yet.
+* The inspector does not show trees or the queue (the events are in the log); `internal/inspect` is not in this change's scope.
+* The queue verifies with `--verify` only; without it merges are serialised and conflict-checked but not tested.

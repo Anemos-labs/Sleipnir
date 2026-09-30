@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/reee344/sleipnir/internal/workspace"
 )
 
 // A member goes idle -> running -> idle -> ... -> retired. Every transition is made
@@ -64,6 +66,10 @@ type member struct {
 	// service marks an agent of the harness itself (the mailman): it is not a worker,
 	// holds no task, and never counts as unfinished work.
 	service bool
+	// tree is the agent's git worktree in an isolated run (nil: it works in the
+	// shared checkout); dir is the directory its tools work in either way.
+	tree *workspace.Tree
+	dir  string
 	// sink is the session's sink for this agent (before the swarm wraps it): the
 	// swarm's own notices to the person go through it.
 	sink agent.Sink
@@ -118,20 +124,48 @@ func (s *Swarm) emitAs(agentID, typ string, data any) {
 // nextHarnessID numbers the harness's own mail.
 func (s *Swarm) nextHarnessID() string { return fmt.Sprintf("h%d", s.hseq.Add(1)) }
 
-// newMember builds an agent and its member record; it registers nothing.
-func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence) (*member, error) {
+// newMember builds an agent and its member record; it registers nothing. tree is
+// the git worktree of an isolated writer (nil: the shared checkout): the agent's
+// tools then work there, with checkpoints of its own.
+func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree *workspace.Tree) (*member, error) {
 	d := s.deps
 	isMgr := r.Name == "manager"
 	requester := perm.Requester(d.Perm)
 	if requester == nil {
 		requester = perm.AllowAll{}
 	}
-	requester = roleRequester{inner: requester, role: r}
+	rr := roleRequester{inner: requester, role: r}
+	switch {
+	case r.ReadOnly:
+		rr.denyWrites = fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.Name)
+	case isMgr && s.isolated():
+		// Anything the manager wrote into the shared checkout of an isolated run would
+		// bypass the merge queue: it spawns a worker for changes instead.
+		rr.denyWrites, rr.strictShell = isolatedManagerMsg, true
+	}
+	requester = rr
 	sink := agent.Sink(agent.NopSink{})
 	if d.NewSink != nil {
 		sink = d.NewSink(id)
 	}
-	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, sink: sink, notify: make(chan struct{}, 1)}
+	workdir, root, snap, after := d.Workdir, d.Root, d.Snap, d.OnWrite
+	if tree != nil {
+		workdir, root = tree.Path, tree.Path
+		if iso := d.Isolation; iso != nil {
+			if sub := iso.Subdir; sub != "" {
+				// The session was started in a subdirectory: its writers work in the same
+				// one of their trees (when the tree has it; an ignored directory is not there).
+				if dir := filepath.Join(tree.Path, filepath.FromSlash(sub)); isDir(dir) {
+					workdir = dir
+				}
+			}
+			if iso.Checkpoints != nil {
+				snap, after = iso.Checkpoints(id, tree.Path)
+			}
+		}
+	}
+	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, sink: sink, notify: make(chan struct{}, 1),
+		tree: tree, dir: workdir}
 	m.box.init()
 	model, prov := d.Model, d.Provider
 	if rm, ok := d.RoleModels[r.Name]; ok && rm.Provider != nil {
@@ -154,10 +188,10 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence) (*me
 			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
 			return []core.Block{core.Text(txt)}
 		},
-		Events: d.Events, Blobs: d.Blobs, Archive: d.Archive, Files: d.Files, Guard: guardWithAfter{s.Leases, d.OnWrite}, Snap: d.Snap,
+		Events: d.Events, Blobs: d.Blobs, Archive: d.Archive, Files: d.Files, Guard: guardWithAfter{s.Leases, after}, Snap: snap,
 		Handles: d.Handles, Perm: requester, Limiter: s.Gov, Gate: s.Gate,
 		Sink:    &memberSink{Sink: sink, s: s, m: m, ev: ev},
-		Workdir: d.Workdir, Root: d.Root, Limits: d.Limits,
+		Workdir: workdir, Root: root, Limits: d.Limits,
 		Planner: d.Planner, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		OnPromote: s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
 		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: hooks,
@@ -584,7 +618,7 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if !ok || t.Owner != m.id || t.Status != StatusDoing || t.Rev != rev {
 			continue
 		}
-		vr := s.verify(ctx, s.deps.Workdir)
+		vr := s.verify(ctx, m.dir)
 		if ctx.Err() != nil { // the swarm is stopping: nothing failed
 			s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
 			continue
@@ -594,6 +628,34 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			summary = strings.TrimSpace(res.Text)
 		}
 		evid := m.ev.Summary()
+		if vr.ok && m.tree != nil {
+			// Isolated run: the harness commits the tree and merges it on the worker's
+			// behalf, exactly as for a worker that calls done.
+			out := s.integrate(ctx, m, t)
+			switch {
+			case out.interrupted || ctx.Err() != nil:
+				s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
+				continue
+			case out.infra != nil:
+				_ = s.Board.SubmitAt(m.id, id, rev, summary, "NOT MERGED (the merge could not run: "+cleanText(out.infra.Error(), 100)+"); "+evid)
+				notes = append(notes, fmt.Sprintf("%s reached review but could not be merged (%s)", id, cleanText(out.infra.Error(), 80)))
+				continue
+			case out.bounce != "":
+				m.mu.Lock()
+				m.gateTries++
+				tries := m.gateTries
+				m.mu.Unlock()
+				if tries <= maxGateTries {
+					s.notify(m.id, "request", "You stopped without finishing "+id+". "+out.bounce)
+					continue
+				}
+				if nt, applied := s.Board.Requeue(m.id, id, rev, fmt.Sprintf("merge failed %d times", tries), true, s.cfg.MaxAttempts); applied {
+					notes = append(notes, s.requeueLine(m.id, nt, "its work kept failing to merge"))
+				}
+				continue
+			}
+			evid = out.evidence + "; " + evid
+		}
 		switch {
 		case vr.ok:
 			_ = s.Board.SubmitAt(m.id, id, rev, summary, evid)

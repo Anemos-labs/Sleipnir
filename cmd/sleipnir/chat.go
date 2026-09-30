@@ -38,6 +38,8 @@ func cmdChat(ctx context.Context, args []string) error {
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
+	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
+	isolation, commit := isolationFlags(fs)
 	resume := resumeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -50,6 +52,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	o := chatOptions(session.Options{
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
+		Verify: *verify, Isolation: *isolation, Commit: *commit,
 	})
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		o.Prompter = session.TerminalPrompter(in, os.Stderr)
@@ -68,7 +71,12 @@ func cmdChat(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer func() {
+		// An isolated session ends by applying what passed verification to the checkout
+		// (a no-op, and nil, for any other session); the person is told what happened.
+		printIntegration(os.Stderr, finishRun(ctx, s), false)
+		s.Close()
+	}()
 
 	fmt.Fprintf(os.Stderr, "sleipnir %s · %s · %s · session %s\n", version, s.Model.ID, modeName(s), s.ID)
 	if s.Resumed() {

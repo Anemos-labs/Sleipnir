@@ -109,6 +109,9 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if err != nil {
 			return tools.Errorf("%v", err), nil
 		}
+		if s.isolated() {
+			return text("%s resumed%s", in.ID, s.afterResume(ctx, me, isMgr, in.ID)), nil
+		}
 		return text("%s resumed", in.ID), nil
 	case "accept", "reject", "reopen", "fail":
 		if !isMgr {
@@ -157,7 +160,8 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return tools.Errorf("%s is %s, not doing", in.ID, task.Status)
 	}
 	ev := NewEvidence()
-	if m := s.get(me); m != nil {
+	m := s.get(me)
+	if m != nil {
 		ev = m.ev
 	}
 	if vr := s.verify(ctx, c.Env.Cwd); !vr.ok {
@@ -172,6 +176,23 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		result = "completed"
 	}
 	summary := ev.Summary()
+	if m != nil && m.tree != nil {
+		// Isolated run: the work is committed and goes through the merge queue, which
+		// verifies it merged with everything that landed before it.
+		out := s.integrate(ctx, m, task)
+		switch {
+		case out.interrupted:
+			return tools.Errorf("interrupted")
+		case out.infra != nil:
+			return tools.Errorf("Not done yet: the merge could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(out.infra.Error(), 200))
+		case out.bounce != "":
+			if s.countBounce(task) >= s.cfg.MaxAttempts {
+				return tools.Errorf("%s", s.giveUpMerge(m, task, firstLineOf(out.bounce, 100)))
+			}
+			return &tools.Result{IsError: true, Text: out.bounce}
+		}
+		summary = out.evidence + "; " + summary
+	}
 	if err := s.Board.SubmitAt(me, in.ID, task.Rev, result, summary); err != nil {
 		return tools.Errorf("%v", err)
 	}
@@ -193,7 +214,14 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		if task.Status != StatusReview {
 			return tools.Errorf("%s is %s: a task is accepted from review, after its worker calls done", in.ID, task.Status)
 		}
-		if vr := s.verify(ctx, c.Env.Cwd); !vr.ok {
+		if s.hadTree(task.Owner) {
+			// Isolated run: the shared checkout does not hold the work yet, so the verifier
+			// is not re-run there. The merge queue verified the merged result; a task is
+			// accepted only if its work is in the integration branch.
+			if _, merged := s.mergedFor(task); !merged {
+				return tools.Errorf("%s was not accepted: its work is not in the integration branch (the merge did not run or did not succeed). Reject it so its worker resubmits, or fail it.", in.ID)
+			}
+		} else if vr := s.verify(ctx, c.Env.Cwd); !vr.ok {
 			if vr.infra {
 				return tools.Errorf("%s was not accepted: verification could not run (%v). Retry, or reject it.", in.ID, cleanText(vr.err.Error(), 200))
 			}

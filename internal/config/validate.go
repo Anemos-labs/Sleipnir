@@ -21,7 +21,7 @@ var (
 	dialects   = []string{DialectAnthropic, DialectOpenAIChat, DialectOpenAIResponses}
 	permModes  = []perm.Mode{perm.ModeDefault, perm.ModeAcceptEdits, perm.ModePlan, perm.ModeBypass}
 	cacheTTLs  = []string{"5m", "1h"}
-	isolations = []string{"shared", "worktree"}
+	isolations = []string{IsolationNone, "shared", IsolationWorktree}
 )
 
 type validator struct{ issues []Issue }
@@ -249,7 +249,7 @@ func (v *validator) swarm(s Swarm) {
 	v.nonNegative(seg("swarm", "requests_per_minute"), s.RequestsPerMinute)
 	v.nonNegative(seg("swarm", "max_concurrent_requests"), s.MaxConcurrentRequests)
 	if s.Isolation != "" && !slices.Contains(isolations, s.Isolation) {
-		v.err(seg("swarm", "isolation"), "must be \"shared\" or \"worktree\", got %q", s.Isolation)
+		v.err(seg("swarm", "isolation"), "must be \"none\" or \"worktree\", got %q", s.Isolation)
 	}
 	if s.BudgetUSD < 0 || math.IsNaN(s.BudgetUSD) || math.IsInf(s.BudgetUSD, 0) {
 		v.err(seg("swarm", "budget_usd"), "must be zero (no limit) or a positive amount")

@@ -150,6 +150,10 @@ type Deps struct {
 	// Hooks runs user-configured commands around every agent's tool calls and
 	// stops (nil: none).
 	Hooks agent.Hooks
+	// Isolation, when set, gives every writer a git worktree of its own and
+	// integrates finished work through a verifying merge queue (isolate.go). Nil is
+	// swarm.isolation = "none": one shared tree, guarded by leases.
+	Isolation *Isolation
 }
 
 // RoleModel is a per-role model override.
@@ -192,6 +196,16 @@ type Swarm struct {
 
 	wk      waker                    // waking an idle manager (wake.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
+
+	// Worktree isolation (isolate.go): the harness's record of which task assignments
+	// reached the integration branch, how often each came back from the merge queue,
+	// and the end-of-run state.
+	merged     map[string]mergeRec
+	bounces    map[string]int
+	treeAgents map[string]bool // agents that ever had a tree of their own
+	apply      applyState
+	finishMu   sync.Mutex
+	finished   *IntegrationReport
 }
 
 // New builds a swarm. Call Start before spawning.
@@ -259,13 +273,16 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	}
 	s := &Swarm{cfg: cfg, deps: deps, roles: roles, members: map[string]*member{}, seq: map[string]int{},
 		roleLay: map[string]*kv.Layer{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
-		verifySem: make(chan struct{}, cfg.MaxVerifies)}
+		verifySem: make(chan struct{}, cfg.MaxVerifies), merged: map[string]mergeRec{}, bounces: map[string]int{}, treeAgents: map[string]bool{}}
 	s.Board = NewBoard(deps.Events)
 	s.Board.SetClock(deps.Now)
 	s.Board.SetLimits(cfg.Board)
 	s.Leases = NewLeases(cfg.LeaseTTL, s.Board)
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
+	if s.isolated() {
+		s.Leases.Isolate()
+	}
 	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
 			data["action"] = action
@@ -368,7 +385,7 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	if id == "" {
 		id = "mgr"
 	}
-	m, err := s.newMember(id, r, nil, NewEvidence())
+	m, err := s.newMember(id, r, nil, NewEvidence(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +448,7 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 		state = "failed"
 	}
 	m.setState(s, state, "")
+	s.applyMerged(m) // isolated runs: the verified, merged work reaches the person's checkout now
 	if err == nil {
 		s.afterManagerRun(m, res)
 	}
@@ -542,24 +560,35 @@ func (s *Swarm) onPromote(from string, ps []kv.Promotion) {
 type roleRequester struct {
 	inner perm.Requester
 	role  Role
+	// denyWrites, when set, makes the agent read-only whatever its role says, and is
+	// what it is told: read-only roles, and the manager of an isolated run.
+	denyWrites string
+	// strictShell applies the fallback allowlist to shell commands even when the
+	// permission engine is there to enforce the role's profile: a second, stricter
+	// opinion for an agent whose profile the swarm cannot vouch for.
+	strictShell bool
 }
+
+// isolatedManagerMsg is what the manager of an isolated run is told when it tries to
+// change a file.
+const isolatedManagerMsg = "in an isolated run the manager does not edit files: spawn a worker for the change (the harness verifies and merges its work)"
 
 func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decision {
 	req.Role = r.role.Name
-	if r.role.ReadOnly {
+	if r.denyWrites != "" {
 		_, engine := r.inner.(*perm.Engine)
 		switch {
-		case req.Tool == "bash" && engine:
+		case req.Tool == "bash" && engine && !r.strictShell:
 			// The permission engine parses shell syntax and enforces the role's
 			// (plan) profile itself; a prefix allowlist here would only be a weaker,
 			// bypassable second opinion (and would deny the checks the profile allows).
 		case req.Tool == "bash":
 			// No engine (tests, embedding): fall back to the conservative allowlist.
 			if !readOnlyCommand(req.Command) {
-				return perm.Decision{Allow: false, Reason: fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.role.Name)}
+				return perm.Decision{Allow: false, Reason: r.denyWrites}
 			}
 		case req.Writes:
-			return perm.Decision{Allow: false, Reason: fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.role.Name)}
+			return perm.Decision{Allow: false, Reason: r.denyWrites}
 		}
 	}
 	return r.inner.Check(ctx, req)

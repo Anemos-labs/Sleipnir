@@ -97,6 +97,11 @@ manager: reject / reopen    review -> doing with feedback (or todo when the work
 manager: fail               failed  (its worker, if running, is stopped)
 ```
 
+**In an isolated run** (section 14) the gate has a third step. After the evidence and the verifier (run in the worker's
+own tree) the harness commits the tree and submits it to the merge queue, which merges it onto the integration tip and
+verifies the *merged* result. The task reaches review only when that succeeded (`merged`, or `empty`: nothing to merge),
+and `accept` requires that merge record instead of re-running the verifier in a checkout that does not have the work yet.
+
 **The manager's own stop.** The manager's final answer is a stop like any other, and the harness decides whether the
 run may end (`swarm.Config.HoldManager`, set for every session that is not interactive: `run`, `swarm`, RL rollouts).
 While workers are running, or tasks are in review, doing, blocked or todo, a final answer is vetoed with one short
@@ -187,8 +192,8 @@ Layered, cheapest first:
 4. **Checkpoints** before every write; `/rewind` restores per file, per agent, or everything.
 5. **Isolation (optional)**: `swarm.isolation: "worktree"` gives each writer its own git worktree and integrates finished
    trees through a serial, verifying **merge queue**: three-way merge onto the integration tip, structured conflict
-   report (files, hunks) returned to the manager without leaving the tree dirty, verify command after each merge,
-   rollback on failure.
+   report (files, hunks) returned to the worker whose work conflicted, verify command after each merge, rollback on
+   failure. In that mode leases become advisory and the merge queue settles overlaps; section 14 is the whole design.
 6. **Role gates**: reviewers and scouts cannot write; the engine denies it.
 
 ## 8. The hot view and the governor
@@ -239,7 +244,10 @@ never promoted as an instruction.
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
 release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
-`swarm.wake`/`swarm.wake.paused` (waking an idle manager), compaction and cache events. A `board.op` names its operation
+`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
+`merge.queued`/`merged`/`conflict`/`verify_failed`/`rolled_back`/`rejected`/`fast_forward` (worktree isolation; the
+workspace layer emits them), `task.merge` (one submission's outcome, per task) and `swarm.integration` (the result reaching
+the checkout, or not), compaction and cache events. A `board.op` names its operation
 (`create`, `claim`, `assign`, `update`, `scope`, `finish`, `block`, `resume`, `requeue`, `agent`, `agent-remove`,
 `note`, `notes-take`, `alert`, `alert-clear`, `alert-expire`), the new version, and its operands (the task's status,
 owner, line, result, evidence, attempts, rev and scope, plus title, description, role and dependencies at creation; an
@@ -255,6 +263,7 @@ corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction
 * On a cold prefix a higher-priority follower (the manager) can wait behind a worker-priority primer, because the warm
   gate is entered before the governor; the fix belongs in the agent's request path or the gate.
 * A batch run's manager that ignores three vetoes still ends with work unfinished; the run says so, it does not keep going.
+* Worktree isolation (section 14) has residual gaps of its own, listed there.
 
 ## 13. The manager between turns (interactive sessions)
 
@@ -276,3 +285,97 @@ failed or stopped, a task reached review, mail arrived for it), the swarm starts
   Check the board, ...`) holds ids and status words only, never text an agent wrote. It arrives as harness mail, not as a user
   turn: a user turn would be folded by compaction into the manager's `instructions` as something the person asked for, once
   per wake. It is shown to the person through the session sink (level `wake`) and logged (`swarm.wake`).
+
+## 14. Worktree isolation
+
+`swarm.isolation` is `"none"` (the default; `"shared"` is the same thing under its older name) or `"worktree"`.
+`sleipnir run|swarm|chat --isolation none|worktree` overrides it for one session, `SLEIPNIR_SWARM_ISOLATION` sets it from the
+environment, `sleipnir config` prints the effective value and the layer that set it, and `--commit` (worktree only) changes what
+the end of the run does (below). A project's config file may turn isolation on (it only reduces risk) but nothing in the
+configuration can choose where the trees go. Isolation applies to swarms: a single agent asked for it in so many words is an
+error, one under a configuration that isolates swarms just runs.
+
+**Preconditions, refused up front with the reason** (before a model is contacted): a git repository with a work tree whose root
+is the project root, at least one commit, git on the path; with `--commit`, a clean checkout on a branch. Nothing is created in
+the repository.
+
+**Trees.** Every *writer* gets `<cache>/sleipnir/worktrees/<session id>/<agent>` on branch `sleipnir/<session id>/<agent>`,
+created at the integration tip when the worker is spawned (`internal/workspace`). `<cache>` is the per-user cache directory
+(`$XDG_CACHE_HOME`, or `~/.cache`): the trees are large and disposable, and the state directory is out because `~/.sleipnir`
+is a protected configuration directory. The trees start from what the person sees now, *uncommitted edits included* (a
+snapshot commit that no branch of theirs points at), and the result is applied on top of exactly that. A session started in
+a subdirectory keeps its writers in the same subdirectory of their trees. The manager and the read-only roles keep the
+checkout: the manager does not edit files in an isolated run (anything it wrote there would bypass the merge queue; it spawns a
+worker), and reviewers and scouts read the checkout, which holds a task's work only after it is applied, so they read merged
+work with `git show <commit>` (the commit is in the task's evidence).
+
+**Nothing in the prompt names a tree.** The tools print paths relative to the working directory, which are the project's
+paths, and the isolation card (`Isolation: your working directory is a private git worktree ...`, which says what the
+harness will do with the work) is appended to the worker's private assignment note, never to a shared layer. The bytes of
+G0, G1 and G2 do not change; only a worker's own notes are longer, when the feature is on.
+
+**Confinement is enforced, not conventional.** The permission engine confines every writer to its own tree
+(`perm.Engine.Confine`): whatever it reads or writes inside the workspace (the checkout, another agent's tree) outside its
+own is a hard deny that no rule and no mode (bypass included) lifts, judged on resolved paths and covering shell commands as
+well as the file tools. And every rule that is relative to the workspace (`Edit(./.sleipnir/**)`, `Deny(Read(./secrets/**))`,
+a floating `Allow`) applies inside each tree as it does in the checkout (`perm.Config.TreeParents`): the work reaches the
+checkout by a merge, so a rule that guarded only the checkout would guard nothing. The lease guard still enforces task scopes.
+
+**Leases become advisory.** Nobody can block anybody, so the writer cap and the scope-overlap refusal are lifted. Two writers
+touching the same repository-relative path raise the usual alert, which names the agents and never the file, and warns of a
+merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit.
+
+**`done` continues into the queue** (section 4). The harness commits the tree and submits it; the queue is serial, merges onto
+the integration tip and runs the verifier (`--verify`) on the merged result, and moves the integration branch only if it passes.
+
+| Outcome | What happens |
+|---|---|
+| `merged` | the task proceeds to review (its evidence names the integration commit) |
+| `empty` | nothing to merge (no changes): reported as such, and the task proceeds |
+| `conflict` | back to the worker with the conflicting files and hunks; the integration tip is merged into its tree, so the markers are in its files (`ours` is its own version) |
+| `verify_failed` | back to the worker with the verifier's output; its tree now holds the merged state, so the failure reproduces there |
+| `rejected` | back to the worker with the reason: outside its scope, an oversized file, a nested repository, unresolved markers |
+| could not run | the merge or the verifier failed to give a verdict (git error, timeout): reported as an infrastructure problem, never as a failed test. A `done` call is answered with the error and the worker retries or blocks; a worker that stopped without calling `done` has its task sent to review marked NOT MERGED, which `accept` refuses |
+
+A bounce is rework like any other: after `MaxAttempts` (3) the task returns to `todo`, the worker is stopped and the manager is
+told once. A worker sees other agents' work only when it is merged: a new worker starts from the integration tip, and a reused
+worker, a resumed task and a bounced worker have their tree brought up to it. Nothing else crosses between trees, and there is
+no new tool: a worker that needs merged work blocks its task and says what it needs, as before.
+
+**The end of the run.** When the manager stops (each turn of a chat session, the end of a batch run) the harness applies what
+has been merged to the person's checkout, incrementally (`swarm.integration`; the person is told at level `integrate`):
+
+* by default as **uncommitted changes** (a patch onto the working tree), exactly what a shared-tree run leaves behind, recorded
+  in the checkpoint store first so `/rewind` undoes it;
+* with `--commit` as **commits on the current branch** (a fast-forward to the integration tip; it needs a clean checkout, and
+  fails without changing anything if the branch moved).
+
+If applying fails (the person edited the same files meanwhile) nothing is changed, the integration branch stays, and the
+report says which branch and the one command that gets the result (`git diff --binary <base> <branch> | git apply --3way`, or
+`git merge <branch>` with `--commit`). `Session.Finish` ends the run (also called by `Close`): it stops the swarm, applies what
+remains, removes every tree that holds nothing unmerged (one that does is kept and named), and deletes the integration branches
+once their result is in the checkout. The CLI prints the report (`integration: ...`, and under `"integration"` in `--json`).
+**A killed session** leaves its trees; the next isolated session of the repository cleans up at its start (`Manager.Prune`): the
+trees of dead sessions are committed onto their own branches and removed, a branch holding commits that exist nowhere else is
+kept and named, and a tree whose owner is still running is never touched.
+
+**Costs.** One checkout per writer (disk and the time of `git worktree add`, paid at spawn), one verifier run per merge (in the
+integration tree, serial), and a worker that finishes second can be sent back. In exchange the writer cap and the scope-overlap
+refusal are gone, and a shared tree's races cannot happen.
+
+**Residual gaps.**
+
+* Work is merged before it is reviewed, and there is no revert: a task the manager then rejects, reopens or fails keeps its
+  merged work on the integration branch (a rejected task's worker resubmits on top of it). The manager sees the merge in the
+  task's evidence and can have a worker undo it.
+* Reviewers and scouts read the person's checkout, which lacks unapplied merged work until the manager stops; they can read a
+  task's work with `git show` on the commit its evidence names.
+* The verifier that runs on merges is the `--verify` command. Without one the queue only serialises and detects conflicts. In a
+  chat session `--verify` is now accepted (it was not before).
+* A project whose root is not the repository's root (a `.sleipnir/` directory in a subdirectory of a larger repository) cannot
+  be isolated; run from the repository root.
+* Trees are made with `git worktree`: submodules are not initialised in them and ignored files (build output, `node_modules`,
+  `.env`) are absent, so a verifier that needs them fails in the tree until the worker makes them; a project that cannot be
+  built from a clean checkout is a poor fit.
+* Symlink-heavy or very large repositories pay the checkout cost per writer; there is no sparse checkout by scope yet.
+* The inspector does not show trees or the queue yet (the events are in the log).

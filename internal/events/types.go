@@ -69,6 +69,28 @@ const (
 	TypeSwarmWake       = "swarm.wake"
 	TypeSwarmWakePaused = "swarm.wake.paused"
 
+	// Worktree isolation (swarm.isolation = "worktree"). internal/workspace emits
+	// these (its Event* constants are the same strings): one tree per writer, and a
+	// serial merge queue that verifies every integration.
+	TypeWorkspaceCreate = "workspace.create"
+	TypeWorkspaceRemove = "workspace.remove"
+	TypeWorkspacePrune  = "workspace.prune"
+	TypeWorkspaceCommit = "workspace.commit"
+	TypeWorkspaceReset  = "workspace.reset"
+	TypeMergeQueued     = "merge.queued"
+	TypeMergeMerged     = "merge.merged"
+	TypeMergeConflict   = "merge.conflict"
+	TypeMergeVerifyFail = "merge.verify_failed"
+	TypeMergeRolledBack = "merge.rolled_back"
+	TypeMergeRejected   = "merge.rejected"
+	TypeMergeFastFwd    = "merge.fast_forward"
+	// task.merge is the swarm's account of one submission to the queue: which task,
+	// which outcome (merged, empty, conflict, verify_failed, rejected, error), the
+	// integration commit and the files; swarm.integration is the end of the run: the
+	// integration branch and whether its result reached the user's checkout.
+	TypeTaskMerge        = "task.merge"
+	TypeSwarmIntegration = "swarm.integration"
+
 	// Humans.
 	TypeUserInput = "user.input"
 	TypeUserSteer = "user.steer"

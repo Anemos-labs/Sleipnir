@@ -89,6 +89,15 @@ type Options struct {
 	// turn) and instead wakes the idle manager when finished work needs it, with the
 	// swarm running for the life of the session rather than of one turn.
 	Interactive bool
+	// Isolation overrides swarm.isolation for this session: "none" (every agent edits
+	// the one checkout, guarded by leases) or "worktree" (every writer gets a git
+	// worktree of its own and its finished work goes through a verifying merge queue;
+	// see isolate.go). Empty leaves it to the configuration. It applies to swarms.
+	Isolation string
+	// Commit, with worktree isolation, makes the end of the run commit the verified
+	// result onto the person's branch (a fast-forward; the checkout must be clean and
+	// on a branch) instead of leaving it as uncommitted edits in the working tree.
+	Commit bool
 
 	// Limits.
 	MaxSteps      int
@@ -171,6 +180,11 @@ type Session struct {
 	// Close, not until the end of one turn (see swarmContext).
 	swarmCtx  context.Context
 	swarmStop context.CancelFunc
+
+	// iso is the worktree isolation plan (nil: the swarm edits the shared checkout);
+	// finish is the report of the end of an isolated run, once it has happened.
+	iso    *isoPlan
+	finish *swarm.IntegrationReport
 }
 
 // Result is what a Run produced.
@@ -258,6 +272,19 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		return nil, err
 	}
 
+	// Worktree isolation is decided before anything expensive is built: a project that
+	// cannot be isolated fails at once, with the reason.
+	if err := s.planIsolation(ctx); err != nil {
+		s.Log.Close()
+		return nil, err
+	}
+	built := false
+	defer func() {
+		if !built {
+			s.releaseIsolation() // the merge queue and branches of a session that never started
+		}
+	}()
+
 	// Model and provider.
 	if err := s.buildProvider(ctx); err != nil {
 		s.Log.Close()
@@ -308,6 +335,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			return nil, fmt.Errorf("resume: %w", err)
 		}
 	}
+	built = true
 	return s, nil
 }
 
@@ -385,9 +413,21 @@ func (s *Session) buildPerm() error {
 			}
 		}
 	}
+	var extra []string
+	if s.iso != nil {
+		// The session's worktrees are part of the workspace, and the project's relative
+		// rules hold inside each of them: writers work there, each confined to its own
+		// (swarm.bindTree). The manager does not edit files in an isolated run (anything
+		// it wrote into the shared checkout would bypass the merge queue), so the engine
+		// holds it to plan mode as well as the swarm's own check.
+		extra = []string{s.iso.dir}
+		if _, ok := roles["manager"]; !ok {
+			roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow}
+		}
+	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home,
+		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
 		Allow: s.cfg.Permissions.Allow, Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.hookPrompter(o.Prompter),
 	})
@@ -612,6 +652,11 @@ func (s *Session) build(ctx context.Context) error {
 			deps.RoleModels[d.Name] = swarm.RoleModel{Provider: p, Model: m}
 		}
 	}
+	iso, err := s.buildIsolation(ctx)
+	if err != nil {
+		return err
+	}
+	deps.Isolation = iso
 	sw := swarm.New(sc, deps, s.ext.roles)
 	for _, t := range sw.Tools() {
 		reg.Register(t)
@@ -790,7 +835,16 @@ func (s *Session) Close() error {
 	started := s.started
 	s.mu.Unlock()
 	if s.Swarm != nil {
-		s.Swarm.Shutdown()
+		if s.iso != nil {
+			// An isolated run ends by putting its verified result into the checkout and
+			// removing its trees (Finish stops the swarm first). A caller that already
+			// finished, to print the report, gets the same report back and nothing repeats.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			s.Finish(ctx)
+			cancel()
+		} else {
+			s.Swarm.Shutdown()
+		}
 	}
 	s.mu.Lock()
 	stop := s.swarmStop

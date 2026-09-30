@@ -109,7 +109,10 @@ Many agents editing one tree is the main hazard (public agent PRs conflict textu
 overlap). Layered defences: **scopes** declared per task and checked at spawn (overlap refused); **write leases**
 with TTL and conflict alerts; **content-hash staleness** on every edit (correct even if a lease is stolen);
 **checkpoints** before every write; a **writer cap** with unlimited read-only roles; **role gates** (reviewers
-cannot write); and, planned, **worktree isolation** per writer with a verifying merge queue.
+cannot write); and, optionally, **worktree isolation** (`swarm.isolation: "worktree"`, `--isolation worktree`): every
+writer works in a git worktree of its own, confined to it by the permission engine, and its finished work goes through
+a verifying merge queue (`internal/workspace`) before it reaches the person's checkout. `internal/session` builds it
+(`isolate.go`), `internal/swarm` runs it (`isolate.go`); see `docs/SWARM-PROTOCOL.md` section 14.
 
 ## Security posture
 

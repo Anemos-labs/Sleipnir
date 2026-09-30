@@ -9,6 +9,7 @@ import (
 
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/workspace"
 )
 
 // SpawnReq describes a worker to start.
@@ -92,7 +93,7 @@ func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []strin
 // manager is told the most useful thing first. The board repeats the check inside its
 // critical section; this one is only for the message.
 func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
-	if role.ReadOnly {
+	if role.ReadOnly || s.isolated() {
 		return nil
 	}
 	sn := s.Board.Snapshot()
@@ -125,8 +126,9 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%s is still working; wait for it or spawn a new worker", m.id)
 	}
-	if !role.ReadOnly {
-		// The reserved member counts as active: the cap applies to reuse as well.
+	if !role.ReadOnly && !s.isolated() {
+		// The reserved member counts as active: the cap applies to reuse as well. (An
+		// isolated run has no writer cap: every writer edits a tree of its own.)
 		if w := s.activeWriters(); w > s.cfg.MaxWriters {
 			s.unreserve(m, rs)
 			return "", writerCapError(w-1, s.cfg.MaxWriters)
@@ -144,6 +146,12 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	input := taskCard(task, m.id, false)
 	if len(m.a.Thread().Snapshot().Turns) > 0 {
 		input = reassignCard(task, m.id)
+	}
+	// A reused writer starts the new task from what has been merged since.
+	if note, err := s.syncTree(ctx, m); err != nil {
+		input += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), 160) + ". Merge the integration branch yourself before you start, or ask the manager.)"
+	} else if note != "" {
+		input += "\n" + note
 	}
 	s.launch(m, rs, ctx, input)
 	return m.id, nil
@@ -165,7 +173,8 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	if total >= s.cfg.MaxAgents {
 		return "", fmt.Errorf("agent limit reached (%d); reuse an idle worker with spawn agent=… or wait", s.cfg.MaxAgents)
 	}
-	if !role.ReadOnly {
+	if !role.ReadOnly && !s.isolated() {
+		// (An isolated run has no writer cap: every writer edits a tree of its own.)
 		if w := s.activeWriters(); w >= s.cfg.MaxWriters {
 			return "", writerCapError(w, s.cfg.MaxWriters)
 		}
@@ -178,19 +187,30 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 		s.Board.Requeue(id, task.ID, task.Rev, "the worker could not be started", false, s.cfg.MaxAttempts)
 		return "", err
 	}
-	notes := kv.NewLayer("notes:"+id, kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: taskCard(task, id, true), Vol: kv.VolFrozen}})
-	m, err := s.newMember(id, role, notes, NewEvidence())
+	var tree *workspace.Tree
+	card := taskCard(task, id, true)
+	if s.isolated() && !role.ReadOnly {
+		if tree, err = s.createTree(id); err != nil {
+			return undo(fmt.Errorf("could not create a git worktree for %s: %w", id, err))
+		}
+		card += isolationCard
+	}
+	notes := kv.NewLayer("notes:"+id, kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: card, Vol: kv.VolFrozen}})
+	m, err := s.newMember(id, role, notes, NewEvidence(), tree)
 	if err != nil {
+		s.dropTree(tree)
 		return undo(err)
 	}
 	rs, ctx, ok := s.reserve(m)
 	if !ok {
+		s.dropTree(tree)
 		return undo(errors.New("the swarm is shutting down"))
 	}
 	s.mu.Lock()
 	s.seq[role.Name]++
 	s.mu.Unlock()
 	s.register(m, shared)
+	s.bindTree(m)
 	m.mu.Lock()
 	m.task = task.ID
 	m.mu.Unlock()
@@ -203,10 +223,13 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 
 // scopeCheck is the board-side check that a task's scope does not overlap another
 // active writer's. Read-only roles neither take part nor are blocked: they cannot
-// write, so their tasks may share any area.
+// write, so their tasks may share any area. In an isolated run writers do not
+// collide (each edits a tree of its own; the merge queue settles overlaps), so
+// overlapping scopes are allowed there: a scope still says which files a task may
+// touch, and the queue enforces it.
 func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	return func(sn *Snapshot, t Task) error {
-		if readOnly || len(t.Files) == 0 {
+		if readOnly || len(t.Files) == 0 || s.isolated() {
 			return nil
 		}
 		return s.scopeConflictIn(sn, t)
@@ -334,6 +357,7 @@ func (s *Swarm) detach(m *member) {
 	m.stopTimers()
 	requeued := s.Board.RequeueOwned(m.id, "its worker was retired")
 	s.Leases.ReleaseAll(m.id)
+	s.retireTree(m) // an isolated worker's tree goes with it when nothing would be lost
 	m.pubMu.Lock()
 	s.Board.RemoveAgent(m.id)
 	m.pubMu.Unlock()
