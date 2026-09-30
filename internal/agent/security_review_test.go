@@ -1,19 +1,13 @@
 package agent_test
 
-// Security review repros for docs/reviews/security-robustness.md.
-//
-// TestSecReview_* are gated behind SLEIPNIR_REVIEW=1 and assert the SECURE behaviour, so
-// they FAIL while the finding is open:
-//
-//	SLEIPNIR_REVIEW=1 go test -count=1 -run TestSecReview ./internal/agent
-//
-// TestSecSound_* are ungated regression checks for behaviour the review found sound.
+// Security review repros for docs/reviews/security-robustness.md, now ungated regression
+// tests (docs/reviews/tranche2-b.md): every TestSec_S## test asserts the secure behaviour
+// of one finding, and TestSecSound_* the behaviour the review found to be sound.
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -28,13 +22,6 @@ import (
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 	"github.com/reee344/sleipnir/internal/tools"
 )
-
-func secRevGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("security-review repro: set SLEIPNIR_REVIEW=1 (asserts the secure behaviour, fails while the finding is open)")
-	}
-}
 
 type secRevTool struct {
 	name string
@@ -101,8 +88,7 @@ func secRevNewAgentCtx(t *testing.T, planner kv.Planner, fts []secRevTool, r moc
 // S22b: the constitution's injection rule names tool results, web pages and files. It does
 // not name peer mail, board notes/status, task text, recall output, or the repo instruction
 // files that become <shared-context> (which the same prompt tells the model to "trust").
-func TestSecReview_S22b_ConstitutionUntrustedListIsIncomplete(t *testing.T) {
-	secRevGate(t)
+func TestSec_S22b_ConstitutionClassifiesPeerAndRepositoryTextAsUntrusted(t *testing.T) {
 	c := agent.Constitution(agent.ConstitutionOpts{Swarm: true})
 	i := strings.Index(c, "# Safety")
 	if i < 0 {
@@ -125,8 +111,7 @@ func TestSecReview_S22b_ConstitutionUntrustedListIsIncomplete(t *testing.T) {
 // S24: one assistant response may carry any number of tool calls and every result is
 // appended to the next request. 60 parallel reads at the 24k-char tool cap put ~1.4 MB
 // (~360k tokens) into a single turn.
-func TestSecReview_S24_PerTurnToolCallsAndResultBytesAreUncapped(t *testing.T) {
-	secRevGate(t)
+func TestSec_S24_PerTurnToolCallsAndResultBytesAreCapped(t *testing.T) {
 	const calls = 60
 	fts := []secRevTool{{name: "read", ro: true, run: func(json.RawMessage) string { return strings.Repeat("a line of source code\n", 1090) }}} // ~24k chars
 	var mu sync.Mutex
@@ -164,8 +149,7 @@ func TestSecReview_S24_PerTurnToolCallsAndResultBytesAreUncapped(t *testing.T) {
 // the (scripted) compactor "obeys"; the harness then commits the patch and the attacker's
 // text is in the next request under "## instructions", and the promotion is queued for
 // every agent's board. The only barrier is the model's compliance.
-func TestSecReview_S25_CompactorInjectionReachesInstructionsAndPromotions(t *testing.T) {
-	secRevGate(t)
+func TestSec_S25_CompactorInjectionCannotReachInstructionsOrPromotions(t *testing.T) {
 	pl := kv.DefaultPlanner()
 	pl.SoftThreadTokens = 6500
 	pl.MinThreadTokens = 2000
@@ -243,8 +227,7 @@ func TestSecReview_S25_CompactorInjectionReachesInstructionsAndPromotions(t *tes
 // S48b: the same panic through the real loop: a mail-woken worker (Run with empty input, empty
 // thread) whose pinned prefix is over 85% of the model's window goes boundary -> emergencyCompact
 // -> MechanicalPatch(empty thread) -> index out of range, on a goroutine nobody recovers.
-func TestSecReview_S48b_EmptyThreadOversizedPrefixCrashesTheAgentLoop(t *testing.T) {
-	secRevGate(t)
+func TestSec_S48b_EmptyThreadOversizedPrefixDoesNotCrashTheAgentLoop(t *testing.T) {
 	r := secRevNewAgentCtx(t, kv.Planner{}, []secRevTool{{name: "echo", ro: true, run: func(json.RawMessage) string { return "x" }}},
 		func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} }, 2000) // prefix (~2.5k tokens of constitution, pins, tools) > 85% of 2000
 	defer func() {

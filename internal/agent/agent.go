@@ -65,6 +65,15 @@ type Gate interface {
 	Enter(ctx context.Context, key string) (func(ok bool), error)
 }
 
+// PriorityGate is a Gate that knows who is asking. A request that outranks the one
+// priming a cold prefix must not wait for it (the governor would admit it first), so
+// the agent passes its priority (Prio*) when the gate can use it. Gates that do not
+// implement it are called through Enter.
+type PriorityGate interface {
+	Gate
+	EnterPrio(ctx context.Context, key string, prio int) (func(ok bool), error)
+}
+
 // Sink receives live progress for UIs. All methods must be safe for concurrent
 // use and must not block.
 type Sink interface {
@@ -153,7 +162,10 @@ type Config struct {
 	CaptureTokens bool
 	// Compaction toggles background compaction (on by default via NewAgent).
 	NoCompaction bool
-	// OnPromote receives facts the compactor proposes for shared layers.
+	// OnPromote receives the facts a compactor proposes for the shared layers, after
+	// the harness has vetted them (kv.Apply: few, short, worded as facts, marked
+	// Unverified). Each Text starts with UnverifiedPrefix: a proposal is what a model
+	// wrote after reading whatever was in its thread, and nothing has checked it.
 	OnPromote func(agent string, p []kv.Promotion)
 
 	Est core.Estimator
@@ -162,7 +174,49 @@ type Config struct {
 	MaxSteps  int     // per Run; default 200
 	BudgetUSD float64 // 0: unlimited
 	Priority  int
+
+	// MaxToolCallsPerTurn is how many of the tool calls in one model turn are run
+	// (default DefaultMaxToolCalls). The rest are answered with an error that tells
+	// the model to issue fewer, so every call has its result and the thread stays valid
+	// but one turn cannot fan out into hundreds of executions. Negative: no cap.
+	MaxToolCallsPerTurn int
+	// MaxTurnResultChars is how much result text one turn's tool calls may put into
+	// the next request (default DefaultMaxTurnResultChars). Results are kept whole, in
+	// call order, while they fit; the rest are cut to a short excerpt (a few hundred to
+	// 1,500 characters, so nothing vanishes and the total stays within about 1.5 times
+	// this), and the full text is stored behind a recall handle named in the result.
+	// Negative: no cap.
+	MaxTurnResultChars int
+
+	// NoMailReopen makes Run return, as it used to, when the model answers without tool
+	// calls even though mail arrived while it was answering; the mail then stays in the
+	// inbox (PendingInbox). By default Run reads it first, in the same run (at most
+	// maxMailRounds times), so that a message sent to a working agent is never
+	// stranded. Set it for a caller that owns a run's scope and starts the next run
+	// itself when mail is waiting: a swarm worker's run settles only the assignments it
+	// started with, so mail that changes one (a reject) has to be read by the run that
+	// then owns it.
+	NoMailReopen bool
 }
+
+// The per-turn tool budgets (S24) unless the Config says otherwise. The call cap is
+// generous on purpose: a manager that creates a task and spawns a worker for each of 50
+// agents asks for about a hundred calls in one turn, and refusing those would break the
+// fan-out the swarm exists for. What it stops is a runaway turn of hundreds of executions.
+// Bytes are what fill the context, so the result budget is the tighter one: 120,000
+// characters is about 30,000 tokens, half of what one turn may add before the planner's
+// hard limit.
+const (
+	DefaultMaxToolCalls       = 128
+	DefaultMaxTurnResultChars = 120_000
+)
+
+// ErrClosed is returned by Run after Close.
+var ErrClosed = errors.New("agent closed")
+
+// CloseGrace bounds how long Close waits for a compaction job that ignores its
+// cancelled context (a provider that does not honour it). Tests shrink it.
+var CloseGrace = 5 * time.Second
 
 // Result summarises one Run.
 type Result struct {
@@ -223,6 +277,14 @@ type Agent struct {
 	lastSnap    core.Hash // the blob of the newest snapshot written
 
 	comp compactionState
+
+	// life is the agent's lifetime: compaction jobs run on it, and Close ends it.
+	// jobs counts the jobs in flight so that Close (and a swarm's Shutdown) can wait
+	// for them instead of leaving them to write into a closed log.
+	life       context.Context
+	lifeCancel context.CancelFunc
+	jobs       sync.WaitGroup
+	closed     bool
 }
 
 // inboxMsg is one queued message. Steering typed by a human is preserved through
@@ -295,9 +357,16 @@ func New(cfg Config) (*Agent, error) {
 	if cfg.HotKey == nil {
 		cfg.HotKey = defaultHotKey
 	}
+	if cfg.MaxToolCallsPerTurn == 0 {
+		cfg.MaxToolCallsPerTurn = DefaultMaxToolCalls
+	}
+	if cfg.MaxTurnResultChars == 0 {
+		cfg.MaxTurnResultChars = DefaultMaxTurnResultChars
+	}
 	th := kv.NewThread()
 	th.SetClock(cfg.Now)
 	a := &Agent{cfg: cfg, est: cfg.Est, thread: th, lastMaskReq: -1 << 20}
+	a.life, a.lifeCancel = context.WithCancel(context.Background())
 	a.stack = kv.Stack{
 		Agent: cfg.ID, Role: cfg.Role, Model: cfg.Model.ID,
 		Tools: cfg.ToolSpecs,
@@ -446,8 +515,17 @@ func (a *Agent) emit(typ string, data any) {
 // no tool calls, is cancelled, or hits a limit.
 func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	res := &Result{}
+	if a.life.Err() != nil {
+		return res, ErrClosed
+	}
 	defer a.saveSnapshot() // however Run ends: a resumed session continues from here
-	vetoes := 0            // Stop hooks that sent the agent back to work in this run
+	// Interrupting this run interrupts the compaction job that is in flight (it is
+	// working for a run that will not continue), while a run that ends normally leaves
+	// its job to finish: an interactive agent's Run returns after every answer.
+	stop := context.AfterFunc(ctx, a.cancelCompaction)
+	defer stop()
+	vetoes := 0     // Stop hooks that sent the agent back to work in this run
+	mailRounds := 0 // times a finished answer was reopened because mail arrived meanwhile
 	if input != "" {
 		a.pushUser(core.OriginUser, []core.Block{core.Text(input)})
 		a.emit(events.TypeUserInput, map[string]any{"text": input})
@@ -455,6 +533,9 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	for step := 0; step < a.cfg.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			return res, err
+		}
+		if a.life.Err() != nil {
+			return res, ErrClosed
 		}
 		if a.cfg.BudgetUSD > 0 {
 			if _, c := a.Usage(); c >= a.cfg.BudgetUSD {
@@ -478,12 +559,25 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 		calls := turn.ToolCalls()
 		if len(calls) == 0 {
 			res.Text = kv.AnswerText(turn) // what the model said, not its reasoning
+			// Mail or steering that arrived while this answer was being produced would
+			// be stranded: the run is ending and nothing else reads the inbox. Read it
+			// now. The thread ends with an assistant turn, so the next step turns it
+			// into the user turn it should have been. Bounded, so a peer that keeps
+			// writing cannot keep a finished agent working for ever; whatever is left
+			// stays in the inbox for the caller to see (PendingInbox). A caller that
+			// starts the next run itself can ask for that (NoMailReopen).
+			if !a.cfg.NoMailReopen && a.PendingInbox() > 0 && mailRounds < maxMailRounds {
+				mailRounds++
+				continue
+			}
 			// A Stop hook may send the agent back to work (run the tests, fix the
 			// lint) a bounded number of times.
 			if h := a.cfg.Hooks; h != nil && vetoes < maxStopVetoes {
 				if o := h.BeforeStop(ctx, a.cfg.ID, a.cfg.Role, res.Text, vetoes > 0); o.Veto {
 					vetoes++
-					a.pushUser(core.OriginUser, []core.Block{core.Text("[stop hook] " + o.Reason)})
+					// A nudge from the harness, not something the user typed: it must
+					// not be pinned into the instructions notes as the user's word.
+					a.pushUser(core.OriginSystem, []core.Block{core.Text("[stop hook] " + o.Reason)})
 					continue
 				}
 			}
@@ -500,6 +594,40 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 		a.pushUser(core.OriginTool, blocks)
 	}
 	return res, fmt.Errorf("agent %s: step limit %d reached", a.cfg.ID, a.cfg.MaxSteps)
+}
+
+// maxMailRounds is how many times one Run reopens a finished answer to read mail that
+// arrived while it was being written.
+const maxMailRounds = 4
+
+// Close ends the agent's background work: it cancels the compaction job in flight,
+// waits for it (up to CloseGrace, so a provider that ignores its context cannot wedge
+// a shutdown) and releases the agent's index in the archive. It is safe to call more
+// than once and from any goroutine; Run returns ErrClosed afterwards. A swarm calls it
+// when an agent is retired.
+func (a *Agent) Close() error {
+	a.mu.Lock()
+	first := !a.closed
+	a.closed = true
+	a.mu.Unlock()
+	a.lifeCancel()
+	done := make(chan struct{})
+	go func() {
+		a.jobs.Wait()
+		close(done)
+	}()
+	var err error
+	t := time.NewTimer(CloseGrace)
+	defer t.Stop()
+	select {
+	case <-done:
+	case <-t.C:
+		err = fmt.Errorf("agent %s: a compaction job did not stop within %s", a.cfg.ID, CloseGrace)
+	}
+	if first {
+		a.cfg.Archive.Release(a.cfg.ID)
+	}
+	return err
 }
 
 func withUsage(r *provider.Response) core.Turn {
@@ -597,7 +725,7 @@ func (a *Agent) pushUser(origin core.Origin, blocks []core.Block) core.Turn {
 	mode := a.caps(a.cfg.Provider.Profile()).HotMode
 	var hot []core.Block
 	if a.cfg.Hot != nil && mode != kv.HotInline {
-		for _, h := range a.cfg.Hot(a.cfg.ID) {
+		for _, h := range a.hotBlocks() {
 			if strings.TrimSpace(h.Text) != "" {
 				hot = append(hot, core.Text(h.Text))
 			}
@@ -622,6 +750,26 @@ func (a *Agent) pushUser(origin core.Origin, blocks []core.Block) core.Turn {
 		a.push(core.Turn{Role: core.RoleSystem, Origin: core.OriginSystem, Blocks: hot})
 	}
 	return t
+}
+
+// hotBlocks asks the HotSource for the board view and guards it: whatever the source
+// did to sanitise the text of other agents, the view the model receives is one
+// <live> frame with one opening and one closing tag, so nothing that got into its
+// interior can close it or open another structural frame. A well-formed view comes
+// back byte for byte as it was produced.
+func (a *Agent) hotBlocks() []core.Block {
+	if a.cfg.Hot == nil {
+		return nil
+	}
+	in := a.cfg.Hot(a.cfg.ID)
+	out := make([]core.Block, len(in))
+	for i, b := range in {
+		if b.Kind == core.BlockText {
+			b.Text = kv.GuardFrame(b.Text, "live")
+		}
+		out[i] = b
+	}
+	return out
 }
 
 // resyncHotLocked re-derives which hot notice the thread ends with after a

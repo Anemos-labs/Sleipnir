@@ -42,14 +42,35 @@ type ApplyPolicy struct {
 	// automatically, so human instructions survive any compaction. The harness
 	// owns it: patch ops on it (and on "assignment") are ignored.
 	UserInstructionKey string
-	// UserInstructionMaxTokens caps one steering entry, TaskMaxTokens one
+	// UserInstructionMaxTokens bounds one steering entry, TaskMaxTokens one
 	// user-typed turn (the task itself is usually the longest thing a human
-	// writes). Text beyond the cap is cut with a pointer to the archived turn.
+	// writes). The bounds are generous on purpose: what the user typed is pinned in
+	// full below them. Text beyond one keeps its beginning and its end (constraints
+	// often close a spec), says how much was left out and where the rest is
+	// ("recall tN"), and is reported in ApplyResult.UserTextCut.
 	UserInstructionMaxTokens int
 	TaskMaxTokens            int
 	// MaxInstructionTokens bounds the whole instructions section; the oldest
-	// entries move to the archive behind one pointer line when it overflows.
+	// entries move to the archive behind one pointer line when it overflows. It must
+	// stay well above TaskMaxTokens, or the task itself would be the first thing
+	// evicted.
 	MaxInstructionTokens int
+	// MaxNoteOps bounds how many note ops of one patch are applied and MaxNoteChars
+	// how long one add/replace line may be: what a compactor (or whatever steered it)
+	// can write into a private layer per commit is bounded, and a bigger patch is
+	// applied in part with a warning, not refused.
+	MaxNoteOps   int
+	MaxNoteChars int
+	// MaxPromotions bounds how many facts one patch may propose for the shared
+	// layers, MaxPromotionChars the length of one. See vetPromotion for what else a
+	// proposal must satisfy.
+	MaxPromotions     int
+	MaxPromotionChars int
+	// SqueezeMinTokens is the smallest tool result an emergency patch (one with a
+	// Target) may excerpt in the newest units, and SqueezeKeepTokens how much of it
+	// survives, head and tail, with a pointer to the rest.
+	SqueezeMinTokens  int
+	SqueezeKeepTokens int
 	// MaxSpineTokens bounds the spine the same way: the oldest digests are
 	// evicted behind a pointer line, never summarised again.
 	MaxSpineTokens int
@@ -69,10 +90,16 @@ func DefaultApplyPolicy() ApplyPolicy {
 		MaxSectionTokens:         1500,
 		MaxNotesTokens:           6000,
 		UserInstructionKey:       "instructions",
-		UserInstructionMaxTokens: 600,
-		TaskMaxTokens:            2400,
-		MaxInstructionTokens:     4000,
+		UserInstructionMaxTokens: 2000,
+		TaskMaxTokens:            8000,
+		MaxInstructionTokens:     12000,
 		MaxSpineTokens:           3000,
+		MaxNoteOps:               64,
+		MaxNoteChars:             400,
+		MaxPromotions:            3,
+		MaxPromotionChars:        240,
+		SqueezeMinTokens:         1500,
+		SqueezeKeepTokens:        800,
 	}
 }
 
@@ -119,6 +146,24 @@ func (p ApplyPolicy) WithDefaults() ApplyPolicy {
 	if p.MaxSpineTokens == 0 {
 		p.MaxSpineTokens = d.MaxSpineTokens
 	}
+	if p.MaxNoteOps == 0 {
+		p.MaxNoteOps = d.MaxNoteOps
+	}
+	if p.MaxNoteChars == 0 {
+		p.MaxNoteChars = d.MaxNoteChars
+	}
+	if p.MaxPromotions == 0 {
+		p.MaxPromotions = d.MaxPromotions
+	}
+	if p.MaxPromotionChars == 0 {
+		p.MaxPromotionChars = d.MaxPromotionChars
+	}
+	if p.SqueezeMinTokens == 0 {
+		p.SqueezeMinTokens = d.SqueezeMinTokens
+	}
+	if p.SqueezeKeepTokens == 0 {
+		p.SqueezeKeepTokens = d.SqueezeKeepTokens
+	}
 	return p
 }
 
@@ -152,10 +197,19 @@ type ApplyResult struct {
 	SpineEvicted            int
 	NotesBefore, NotesAfter int
 	// NotesEvicted names the sections that were trimmed ("instructions: 12").
-	NotesEvicted  []string
+	NotesEvicted []string
+	// UserTextCut lists the user-typed turns whose text was longer than its bound and
+	// so is pinned as beginning and end only ("t1: 21000 tokens, kept about 8000"): the
+	// one case in which what a human wrote is not pinned in full. The full text is
+	// always in the archive.
+	UserTextCut   []string
 	MaskedResults int
 	// MaskedTokens is what masking saved.
 	MaskedTokens int
+	// SqueezedResults and SqueezedTokens count the tool results an emergency patch
+	// excerpted (only patches with a Target ever do), and what that saved.
+	SqueezedResults int
+	SqueezedTokens  int
 	// NoticesDropped counts stale persisted hot notices removed from the
 	// retained region (all but the newest).
 	NoticesDropped int
@@ -291,24 +345,27 @@ func Apply(s *Stack, p *Patch, est core.Estimator, pol ApplyPolicy) (*ApplyResul
 
 	// Notes: patch ops, then auto-preserved user instructions.
 	res.NotesBefore = s.Notes.Tokens(est)
-	notes, changed, over, evicts, warns := applyNotes(s, p, turns, units[:keepIdx], est, pol)
+	notes, changed, over, evicts, warns, cuts := applyNotes(s, p, turns, units[:keepIdx], est, pol)
 	res.Notes, res.NotesChanged, res.NotesOverBudget, res.NotesEvicted = notes, changed, over, evicts
 	res.NotesAfter = res.Notes.Tokens(est)
 	res.Warnings = append(res.Warnings, warns...)
+	res.UserTextCut = cuts
 
 	// Retained turns.
 	res.Replacement = retain(turns, units, keepIdx, p, pol, est, res)
+	if p.Target > 0 {
+		res.Replacement = squeeze(res.Replacement, p.Target, est, pol, z, res)
+	}
 	res.RetainedTokens = z.Turns(res.Replacement)
-	res.Proposals = p.Promote
+	res.Proposals = vetPromotions(p.Promote, pol, &res.Warnings)
 	return res, nil
 }
 
+// spineLine renders one digest line: "t12-t19 · what happened". The text is one
+// escaped line of at most max characters (max 0: no cut), so a digest, whoever
+// wrote it, cannot close the <history> frame or pose as another entry.
 func spineLine(from, to core.TurnID, text string, max int) string {
-	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
-	if max > 0 && utf8.RuneCountInString(text) > max {
-		r := []rune(text)
-		text = string(r[:max-1]) + "…"
-	}
+	text = EscapeLine(text, max)
 	if from == to {
 		return fmt.Sprintf("t%d · %s", from, text)
 	}
@@ -343,7 +400,8 @@ func mechanicalLine(turns []core.Turn, us []Unit) string {
 	}
 	parts := make([]string, 0, len(order))
 	for _, n := range order {
-		parts = append(parts, fmt.Sprintf("%s×%d", n, counts[n]))
+		// Tool names come out of model replies: one line, nothing that reads as a tag.
+		parts = append(parts, fmt.Sprintf("%s×%d", EscapeLine(n, 40), counts[n]))
 	}
 	msg := fmt.Sprintf("tool work: %s", strings.Join(parts, " "))
 	if errs > 0 {
@@ -365,6 +423,14 @@ func retain(turns []core.Turn, units []Unit, keepIdx int, p *Patch, pol ApplyPol
 		masked[[2]int64{int64(m.Turn), int64(m.Index)}] = true
 	}
 	labels := toolLabels(turns)
+	// The newest units are what the agent is acting on: a model-written patch may
+	// name any result it likes, but the ones in the protected units are never masked
+	// (S05). Only the harness's own emergency path shrinks them, see squeeze.
+	protect := pol.MinKeepUnits
+	if protect < 1 {
+		protect = 1
+	}
+	refused := map[[2]int64]bool{}
 
 	// The newest persisted notice and the last user turn are the only ones that
 	// still matter.
@@ -410,7 +476,12 @@ func retain(turns []core.Turn, units []Unit, keepIdx int, p *Patch, pol ApplyPol
 					}
 				case core.BlockToolResult:
 					tok := BlockTokens(b, est)
-					explicit := masked[[2]int64{int64(tr.ID), int64(resultIdx)}]
+					ref := [2]int64{int64(tr.ID), int64(resultIdx)}
+					explicit := masked[ref]
+					if explicit && fromEnd < protect {
+						explicit = false
+						refused[ref] = true
+					}
 					auto := pol.AutoMaskAfterUnits > 0 && fromEnd >= pol.AutoMaskAfterUnits && tok >= pol.MaskMinTokens
 					if (explicit || auto) && !isMasked(b) {
 						mb := maskBlock(b, tr.ID, resultIdx, labels[b.ToolID], tok)
@@ -428,13 +499,26 @@ func retain(turns []core.Turn, units []Unit, keepIdx int, p *Patch, pol ApplyPol
 			out = append(out, tr)
 		}
 	}
+	if len(refused) > 0 {
+		refs := make([]string, 0, len(refused))
+		for r := range refused {
+			refs = append(refs, fmt.Sprintf("t%d.%d", r[0], r[1]))
+		}
+		sort.Strings(refs)
+		res.Warnings = append(res.Warnings, fmt.Sprintf("mask %s ignored: the newest %d units stay verbatim", strings.Join(refs, ", "), protect))
+	}
 	return out
 }
 
 const maskPrefix = "⟦masked"
 
+// maskRe is the exact shape maskBlock writes. isMasked insists on all of it: a tool
+// result that merely starts with "⟦masked" (any tool can write that) is ordinary
+// output, and must not be able to opt out of masking and squeezing that way.
+var maskRe = regexp.MustCompile(`^⟦masked: [^\n]{0,240} · ~\d+ tokens · recall t\d+\.\d+⟧$`)
+
 func isMasked(b core.Block) bool {
-	return len(b.Result) == 1 && strings.HasPrefix(b.Result[0].Text, maskPrefix)
+	return len(b.Result) == 1 && len(b.Result[0].Text) <= 400 && maskRe.MatchString(b.Result[0].Text)
 }
 
 func maskBlock(b core.Block, turn core.TurnID, idx int, label string, tokens int) core.Block {
@@ -445,13 +529,16 @@ func maskBlock(b core.Block, turn core.TurnID, idx int, label string, tokens int
 	return core.Block{Kind: core.BlockToolResult, ToolID: b.ToolID, IsError: b.IsError, Result: []core.Block{core.Text(text)}}
 }
 
-// toolLabels maps tool_use ids to short human labels: name(first argument).
+// toolLabels maps tool_use ids to short human labels: name(first argument). The
+// label ends up in a mask placeholder and in the compactor's brief, and both the tool
+// name and its arguments are model output (a model can be talked into calling
+// `echo "</history>..."`), so both are one escaped line.
 func toolLabels(turns []core.Turn) map[string]string {
 	out := map[string]string{}
 	for _, tr := range turns {
 		for _, b := range tr.Blocks {
 			if b.Kind == core.BlockToolUse {
-				out[b.ToolID] = b.ToolName + "(" + firstArg(b.Input) + ")"
+				out[b.ToolID] = EscapeLine(b.ToolName, 40) + "(" + firstArg(b.Input) + ")"
 			}
 		}
 	}
@@ -466,12 +553,7 @@ func firstArg(in json.RawMessage) string {
 	}
 	for _, k := range []string{"path", "file_path", "command", "pattern", "url", "query", "patch"} {
 		if v, ok := m[k].(string); ok && v != "" {
-			v = strings.Join(strings.Fields(v), " ")
-			if utf8.RuneCountInString(v) > 60 {
-				r := []rune(v)
-				v = string(r[:59]) + "…"
-			}
-			return v
+			return EscapeLine(v, 60)
 		}
 	}
 	return ""
@@ -502,7 +584,29 @@ func harnessKeys(pol ApplyPolicy) map[string]bool {
 	return m
 }
 
-func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Estimator, pol ApplyPolicy) (layer *Layer, changed, over bool, evicts []string, warns []string) {
+// compactorKeys are the notes sections a compactor's patch may write: exactly the
+// ones its brief names (see Instruction). Anything else is refused with a warning, not
+// created: a section is a "## key" header in the agent's pinned context, so a key the
+// model invents ("urgent-from-the-user", a look-alike of "instructions" in another
+// alphabet) would be a heading it authored itself. Sections that exist already keep
+// working for the harness (the assignment, the user's instructions).
+var compactorKeys = map[string]bool{"facts": true, "decisions": true, "constraints": true, "files": true, "todo": true, "working-set": true}
+
+const compactorKeyList = "facts, decisions, constraints, files, todo, working-set"
+
+// noteText is what a note op's text becomes: escaped, trimmed and, for a line that is
+// added or replaced, cut to the per-op bound (a "set" replaces a whole section and is
+// bounded by the section budget instead).
+func noteText(text, op string, pol ApplyPolicy) (string, bool) {
+	t := strings.TrimSpace(EscapeUntrusted(text))
+	if op != "set" && pol.MaxNoteChars > 0 && utf8.RuneCountInString(t) > pol.MaxNoteChars {
+		// Defused again after the cut: it can end a word where it did not end before.
+		return EscapeUntrusted(cutRunes(t, pol.MaxNoteChars)), true
+	}
+	return t, false
+}
+
+func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Estimator, pol ApplyPolicy) (layer *Layer, changed, over bool, evicts []string, warns []string, cuts []string) {
 	segs := map[string]*Segment{}
 	var order []string
 	if s.Notes != nil {
@@ -525,47 +629,69 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 		order = append(order, key)
 		return sg
 	}
+	// A compactor's note ops are proposals from a model that may have been steered by
+	// whatever it read. They can only write the sections its brief names; the harness's
+	// own sections (the user's instructions, the assignment) and any key it did not
+	// hand out are refused; the number and length of ops are bounded; and every text is
+	// escaped, so it cannot close the <my-notes> frame or pose as a section.
 	owned := harnessKeys(pol)
-	for _, op := range p.Notes {
+	ops := p.Notes
+	if pol.MaxNoteOps > 0 && len(ops) > pol.MaxNoteOps {
+		warns = append(warns, fmt.Sprintf("notes: %d ops sent, only the first %d applied", len(ops), pol.MaxNoteOps))
+		ops = ops[:pol.MaxNoteOps]
+	}
+	for i, op := range ops {
+		name := strings.ToLower(strings.TrimSpace(op.Op))
 		key := strings.TrimSpace(strings.ToLower(op.Key))
-		if owned[key] {
-			warns = append(warns, fmt.Sprintf("notes %s on %q ignored: the harness owns that section", op.Op, key))
+		switch {
+		case owned[key]:
+			warns = append(warns, fmt.Sprintf("notes[%d] %s on %q ignored: the harness owns that section", i, name, key))
+			continue
+		case !compactorKeys[key]:
+			warns = append(warns, fmt.Sprintf("notes[%d] %s on %q ignored: not a section a compactor may write (%s)", i, name, EscapeLine(key, 32), compactorKeyList))
 			continue
 		}
-		switch op.Op {
+		text, cutText := noteText(op.Text, name, pol)
+		if cutText {
+			warns = append(warns, fmt.Sprintf("notes[%d]: text cut to %d characters", i, pol.MaxNoteChars))
+		}
+		match := EscapeUntrusted(op.Match)
+		switch name {
 		case "add":
 			sg := get(key)
-			t := strings.TrimSpace(op.Text)
-			if t == "" || strings.Contains(sg.Text, t) {
+			if text == "" || strings.Contains(sg.Text, text) {
 				continue
 			}
 			if sg.Text != "" {
 				sg.Text += "\n"
 			}
-			sg.Text += t
+			sg.Text += text
 			changed = true
 		case "set":
 			sg := get(key)
-			if sg.Text != strings.TrimSpace(op.Text) {
-				sg.Text = strings.TrimSpace(op.Text)
+			if sg.Text != text {
+				sg.Text = text
 				changed = true
 			}
 		case "replace":
 			sg := get(key)
 			ls := strings.Split(sg.Text, "\n")
 			hit := false
-			for i, l := range ls {
-				if op.Match != "" && strings.Contains(l, op.Match) {
-					ls[i] = strings.TrimSpace(op.Text)
+			for j, l := range ls {
+				if len(strings.TrimSpace(match)) >= 3 && strings.Contains(l, match) {
+					ls[j] = text
 					hit, changed = true, true
 					break
 				}
 			}
 			if !hit {
+				if text == "" {
+					continue
+				}
 				if sg.Text != "" {
 					sg.Text += "\n"
 				}
-				sg.Text += strings.TrimSpace(op.Text)
+				sg.Text += text
 				changed = true
 				warns = append(warns, fmt.Sprintf("notes replace in %q: match not found, appended instead", key))
 			} else {
@@ -573,12 +699,12 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 			}
 		case "remove":
 			sg, ok := segs[key]
-			if !ok || op.Match == "" {
-				continue
+			if !ok || len(strings.TrimSpace(match)) < 3 {
+				continue // a shorter match would wipe lines by accident
 			}
 			var keep []string
 			for _, l := range strings.Split(sg.Text, "\n") {
-				if strings.Contains(l, op.Match) {
+				if strings.Contains(l, match) {
 					changed = true
 					continue
 				}
@@ -593,7 +719,9 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 	if key := strings.TrimSpace(strings.ToLower(pol.UserInstructionKey)); key != "" {
 		for _, u := range old {
 			for _, tr := range turns[u.Start:u.End] {
-				for _, e := range userEntries(tr, est, pol) {
+				entries, cut := userEntries(tr, est, pol)
+				cuts = append(cuts, cut...)
+				for _, e := range entries {
 					sg := get(key)
 					if strings.Contains(sg.Text, e) {
 						continue
@@ -607,8 +735,11 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 			}
 		}
 	}
+	if len(cuts) > 0 {
+		warns = append(warns, "user text kept as beginning and end only (full text: recall): "+strings.Join(cuts, "; "))
+	}
 	if !changed {
-		return s.Notes, false, false, nil, warns
+		return s.Notes, false, false, nil, warns, cuts
 	}
 
 	// Bounds. The instructions section overflows into the archive behind a
@@ -698,53 +829,103 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 	if s.Notes != nil {
 		id, ver = s.Notes.ID, s.Notes.Version+1
 	}
-	return NewLayer(id, KindNotes, ver, out), true, over, evicts, warns
+	return NewLayer(id, KindNotes, ver, out), true, over, evicts, warns, cuts
 }
 
 // userEntries renders the human-authored text of a folded turn as instruction
 // entries: one per user-typed turn, one per steering block. Notices, model text,
-// tool results and mail from other agents are never user text.
-func userEntries(tr core.Turn, est core.Estimator, pol ApplyPolicy) []string {
-	var out []string
+// tool results and mail from other agents are never user text. cut names the
+// entries that were longer than their bound (see instructionEntry).
+func userEntries(tr core.Turn, est core.Estimator, pol ApplyPolicy) (entries, cut []string) {
+	add := func(txt string, max int) {
+		if txt = strings.TrimSpace(txt); txt == "" {
+			return
+		}
+		e, c := instructionEntry(tr.ID, txt, max, est)
+		entries = append(entries, e)
+		if c != "" {
+			cut = append(cut, c)
+		}
+	}
 	switch {
 	case tr.Origin == core.OriginUser:
-		if txt := strings.TrimSpace(userText(tr)); txt != "" {
-			out = append(out, instructionEntry(tr.ID, txt, pol.TaskMaxTokens, est))
-		}
+		add(userText(tr), pol.TaskMaxTokens)
 	default:
 		for _, b := range tr.Blocks {
 			if IsSteer(b) {
-				if txt := strings.TrimSpace(b.Text); txt != "" {
-					out = append(out, instructionEntry(tr.ID, txt, pol.UserInstructionMaxTokens, est))
-				}
+				add(b.Text, pol.UserInstructionMaxTokens)
 			}
 		}
 	}
-	return out
+	return entries, cut
 }
 
-// instructionEntry formats one preserved user text. Continuation lines are
-// indented so a bullet inside the text cannot be mistaken for another entry; the
-// turn id lets a pointer line and recall find the original.
-func instructionEntry(id core.TurnID, text string, max int, est core.Estimator) string {
-	body, cut := capTokens(text, max, est)
-	body = strings.ReplaceAll(body, "\n", "\n  ")
-	if cut {
-		return fmt.Sprintf("- %s …[truncated; full text: recall t%d]", body, id)
+// instructionEntry formats one preserved user text. What the user typed is pinned in
+// full up to max tokens; a longer text keeps its beginning and its end (a spec closes
+// with its constraints) around a marker that says how much is missing and where it
+// is, and cut describes it for the report. Continuation lines are indented so a
+// bullet inside the text cannot be mistaken for another entry; the turn id lets a
+// pointer line and recall find the original. The text is escaped like everything
+// else that enters the notes: a pasted "</my-notes>" must not close the frame.
+func instructionEntry(id core.TurnID, text string, max int, est core.Estimator) (entry, cut string) {
+	text = strings.TrimSpace(EscapeUntrusted(text))
+	indent := func(s string) string { return strings.ReplaceAll(s, "\n", "\n  ") }
+	tok := est.Tokens(text)
+	if max <= 0 || tok <= max {
+		return fmt.Sprintf("- %s [t%d]", indent(text), id), ""
 	}
-	return fmt.Sprintf("- %s [t%d]", body, id)
+	head, tail := headTail(text, max, est)
+	omitted := tok - est.Tokens(head) - est.Tokens(tail)
+	if omitted < 0 {
+		omitted = 0
+	}
+	entry = fmt.Sprintf("- %s\n  …[~%d tokens omitted; full text: recall t%d]…\n  %s [t%d]", indent(head), omitted, id, indent(tail), id)
+	// The cuts can end a word where it did not end before: defuse the whole entry again.
+	return EscapeUntrusted(entry), fmt.Sprintf("t%d: %d tokens, kept about %d", id, tok, max)
 }
 
-// capTokens truncates text to roughly max tokens and reports whether it did.
-func capTokens(s string, max int, est core.Estimator) (string, bool) {
-	if max <= 0 || est.Tokens(s) <= max {
-		return s, false
+// headTail keeps about max tokens of s, the first 60% of them from its start and the
+// rest from its end, cutting on line and character boundaries. The estimator only
+// counts, so the byte budget is derived from this text's own bytes per token.
+func headTail(s string, max int, est core.Estimator) (head, tail string) {
+	tok := est.Tokens(s)
+	if tok <= max || max <= 0 || tok == 0 {
+		return s, ""
 	}
-	r := []rune(s)
-	for len(r) > 8 && est.Tokens(string(r)) > max {
-		r = r[:len(r)*9/10]
+	keep := int(float64(len(s)) * float64(max) / float64(tok))
+	h := keep * 6 / 10
+	return cutHead(s, h), cutTail(s, keep-h)
+}
+
+// cutHead returns about the first n bytes of s, ending on a character boundary and,
+// when a line end is close, on it.
+func cutHead(s string, n int) string {
+	if n >= len(s) {
+		return s
 	}
-	return strings.TrimRight(string(r), " \n"), true
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	if i := strings.LastIndexByte(s[:n], '\n'); i > n*85/100 {
+		n = i
+	}
+	return strings.TrimRight(s[:n], " \n")
+}
+
+// cutTail returns about the last n bytes of s, starting on a character boundary and,
+// when a line start is close, on it.
+func cutTail(s string, n int) string {
+	if n >= len(s) {
+		return s
+	}
+	from := len(s) - n
+	for from < len(s) && !utf8.RuneStart(s[from]) {
+		from++
+	}
+	if i := strings.IndexByte(s[from:], '\n'); i >= 0 && i < n*15/100 {
+		from += i + 1
+	}
+	return strings.TrimLeft(s[from:], " \n")
 }
 
 // ---- bounded, append-ordered sections --------------------------------------------

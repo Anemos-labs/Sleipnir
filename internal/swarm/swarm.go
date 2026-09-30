@@ -293,6 +293,16 @@ func (s *Swarm) Shutdown() {
 	case <-t.C:
 		s.emit("swarm.shutdown", map[string]any{"waited": s.cfg.ShutdownGrace.String(), "note": "agents still running were left behind"})
 	}
+	// An idle agent may still have a compaction job in flight, and nothing else
+	// cancels it: close every agent (concurrently, each bounded by agent.CloseGrace).
+	var closing sync.WaitGroup
+	for _, id := range s.roster() {
+		if m := s.get(id); m != nil {
+			closing.Add(1)
+			go func() { defer closing.Done(); _ = m.a.Close() }()
+		}
+	}
+	closing.Wait()
 }
 
 func (s *Swarm) roster() []string {

@@ -332,6 +332,7 @@ func (s *Swarm) detach(m *member) {
 	delete(s.lastSeen, m.id)
 	s.mu.Unlock()
 	m.stopTimers()
+	_ = m.a.Close() // cancels and waits for its compaction job, releases its archive index
 	requeued := s.Board.RequeueOwned(m.id, "its worker was retired")
 	s.Leases.ReleaseAll(m.id)
 	m.pubMu.Lock()

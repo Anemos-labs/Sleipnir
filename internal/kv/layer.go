@@ -174,17 +174,33 @@ func renderSegments(kind Kind, id string, segs []Segment) string {
 			sb.WriteString("\n")
 		}
 		if s.Key != "" {
+			// A key is one line of header text: it may not carry a newline, a tag or a
+			// marker, whoever chose it.
 			sb.WriteString("## ")
-			sb.WriteString(s.Key)
+			sb.WriteString(EscapeLine(s.Key, 64))
 			sb.WriteString("\n")
 		}
-		sb.WriteString(strings.TrimRight(s.Text, "\n"))
+		sb.WriteString(strings.TrimRight(segmentText(kind, s.Text), "\n"))
 		sb.WriteString("\n")
 	}
 	sb.WriteString("</")
 	sb.WriteString(tag)
 	sb.WriteString(">")
 	return sb.String()
+}
+
+// segmentText is what a segment's text becomes inside its layer's frame. Whoever wrote
+// it (a compactor, a tool, a peer, a repository file), it cannot close the frame or
+// open another one: structural tags, harness markers and hidden characters are
+// defused (see EscapeUntrusted). The private layers (notes, spine) also defuse lines
+// that look like a section header, since their sections are "## key" blocks; the
+// shared and role pins are markdown documents whose own headers must stay. Text with
+// nothing to defuse renders byte for byte as written.
+func segmentText(kind Kind, text string) string {
+	if kind == KindNotes || kind == KindSpine {
+		return EscapeUntrusted(text)
+	}
+	return escapeProtocol(text)
 }
 
 func tagFor(k Kind) string {

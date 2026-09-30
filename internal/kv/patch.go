@@ -1,12 +1,9 @@
 package kv
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/reee344/sleipnir/internal/core"
 )
@@ -32,6 +29,12 @@ type Patch struct {
 	// Promote proposes facts for the shared or role layer. Proposals are queued
 	// for the curator; they never edit shared layers directly.
 	Promote []Promotion `json:"-"`
+
+	// Target, when set by the harness (MechanicalPatch, never by a parsed reply), is the
+	// size in tokens the retained thread must fit: Apply may then excerpt the
+	// oversized tool results of the newest units, which a model-written patch can
+	// never touch (S05, S06).
+	Target int `json:"-"`
 
 	Warnings []string `json:"-"`
 }
@@ -62,6 +65,10 @@ type Promotion struct {
 	Scope string `json:"scope"` // "shared" or "role"
 	Key   string `json:"key"`
 	Text  string `json:"text"`
+	// Unverified is set by Apply on every proposal it lets through: the text comes from
+	// a model that may have been steered by whatever it read, and nothing has checked it
+	// against the repository. It is never read from the compactor's reply.
+	Unverified bool `json:"-"`
 }
 
 // rawPatch is the wire form emitted by the compactor.
@@ -103,111 +110,4 @@ func parseRange(s string) (from, to core.TurnID, err error) {
 	}
 	id, err := ParseTurnID(s)
 	return id, id, err
-}
-
-// ParsePatch extracts and validates the JSON object in a compactor's reply.
-// Models wrap JSON in prose or code fences; the first complete top-level object
-// is used. Structural problems are errors; questionable content becomes
-// warnings so one bad entry does not discard an otherwise good patch.
-func ParsePatch(reply string) (*Patch, error) {
-	obj, err := firstJSONObject(reply)
-	if err != nil {
-		return nil, err
-	}
-	var rp rawPatch
-	dec := json.NewDecoder(bytes.NewReader(obj))
-	if err := dec.Decode(&rp); err != nil {
-		return nil, fmt.Errorf("compaction patch is not valid JSON: %w", err)
-	}
-	p := &Patch{}
-	if rp.KeepFrom == "" {
-		return nil, fmt.Errorf("compaction patch has no keep_from")
-	}
-	kf, err := ParseTurnID(rp.KeepFrom)
-	if err != nil {
-		return nil, fmt.Errorf("keep_from: %w", err)
-	}
-	p.KeepFrom = kf
-	for i, s := range rp.Spine {
-		from, to, err := parseRange(s.Turns)
-		if err != nil || to < from {
-			p.Warnings = append(p.Warnings, fmt.Sprintf("spine[%d]: bad range %q ignored", i, s.Turns))
-			continue
-		}
-		line := strings.TrimSpace(strings.ReplaceAll(s.Line, "\n", " "))
-		if line == "" {
-			p.Warnings = append(p.Warnings, fmt.Sprintf("spine[%d]: empty line ignored", i))
-			continue
-		}
-		p.Spine = append(p.Spine, SpineEntry{From: from, To: to, Line: line})
-	}
-	for i, m := range rp.Mask {
-		mm := maskRef.FindStringSubmatch(m)
-		if mm == nil {
-			p.Warnings = append(p.Warnings, fmt.Sprintf("mask[%d]: bad ref %q ignored", i, m))
-			continue
-		}
-		t, _ := strconv.ParseInt(mm[1], 10, 64)
-		ix, _ := strconv.Atoi(mm[2])
-		p.Mask = append(p.Mask, MaskRef{Turn: core.TurnID(t), Index: ix})
-	}
-	for i, n := range rp.Notes {
-		n.Op = strings.ToLower(strings.TrimSpace(n.Op))
-		switch n.Op {
-		case "add", "set", "replace", "remove":
-		default:
-			p.Warnings = append(p.Warnings, fmt.Sprintf("notes[%d]: unknown op %q ignored", i, n.Op))
-			continue
-		}
-		if strings.TrimSpace(n.Key) == "" {
-			p.Warnings = append(p.Warnings, fmt.Sprintf("notes[%d]: missing key ignored", i))
-			continue
-		}
-		p.Notes = append(p.Notes, n)
-	}
-	for i, pr := range rp.Promote {
-		pr.Scope = strings.ToLower(strings.TrimSpace(pr.Scope))
-		if (pr.Scope != "shared" && pr.Scope != "role") || strings.TrimSpace(pr.Text) == "" {
-			p.Warnings = append(p.Warnings, fmt.Sprintf("promote[%d]: ignored", i))
-			continue
-		}
-		p.Promote = append(p.Promote, pr)
-	}
-	return p, nil
-}
-
-// firstJSONObject finds the first balanced {...} in s, skipping braces inside
-// strings.
-func firstJSONObject(s string) ([]byte, error) {
-	start := strings.IndexByte(s, '{')
-	if start < 0 {
-		return nil, fmt.Errorf("no JSON object in compaction reply")
-	}
-	depth, inStr, esc := 0, false, false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if inStr {
-			switch {
-			case esc:
-				esc = false
-			case c == '\\':
-				esc = true
-			case c == '"':
-				inStr = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inStr = true
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return []byte(s[start : i+1]), nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("unterminated JSON object in compaction reply")
 }

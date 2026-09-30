@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/reee344/sleipnir/internal/core"
@@ -99,20 +101,57 @@ func (t *Tool) handle(env *tools.Env, in input, limit int) *tools.Result {
 	return &tools.Result{Text: out}
 }
 
+// resultRef matches "t13.7": the 7th tool result of turn 13, the form the mask and
+// excerpt placeholders in the thread name.
+var resultRef = regexp.MustCompile(`(?i)^\s*t?(\d+)\s*[.#]\s*(\d+)\s*$`)
+
+// maxRangeTurns bounds how many archived turns one call reads. The output is capped
+// at the limit anyway; reading a whole archive to show its first page would only cost
+// memory (S47). The budget in bytes follows the output limit.
+const maxRangeTurns = 64
+
 func (t *Tool) turns(env *tools.Env, in input, limit int) *tools.Result {
 	spec := strings.TrimSpace(in.Turns)
+	if m := resultRef.FindStringSubmatch(spec); m != nil {
+		return t.result(env, m, spec, limit)
+	}
 	from, to, err := parseRange(spec)
 	if err != nil {
-		return tools.Errorf("bad turn range %q (use e.g. t12-t19)", spec)
+		return tools.Errorf("bad turn range %q (use e.g. t12-t19, or t13.7 for one tool result)", spec)
 	}
-	got, err := t.Archive.Range(env.Agent, from, to)
+	got, more, err := t.Archive.RangeLimit(env.Agent, from, to, maxRangeTurns, 4*limit)
 	if err != nil {
 		return tools.Errorf("archive read failed: %v", err)
 	}
 	if len(got) == 0 {
 		return tools.Errorf("no archived turns in %s", spec)
 	}
-	return &tools.Result{Text: kv.FormatTurns(got, limit)}
+	out := kv.FormatTurns(got, limit)
+	if more {
+		out += fmt.Sprintf("\n[the range holds more turns: call again with turns=\"t%d-t%d\"]", got[len(got)-1].ID+1, to)
+	}
+	return &tools.Result{Text: out}
+}
+
+// result serves "t13.7": one tool result of one archived turn, in full up to the limit.
+func (t *Tool) result(env *tools.Env, m []string, spec string, limit int) *tools.Result {
+	id, err1 := strconv.ParseInt(m[1], 10, 64)
+	idx, err2 := strconv.Atoi(m[2])
+	if err1 != nil || err2 != nil {
+		return tools.Errorf("bad tool result reference %q (use e.g. t13.7)", spec)
+	}
+	got, err := t.Archive.Range(env.Agent, core.TurnID(id), core.TurnID(id))
+	if err != nil {
+		return tools.Errorf("archive read failed: %v", err)
+	}
+	if len(got) == 0 {
+		return tools.Errorf("no archived turn t%d", id)
+	}
+	text, err := kv.FormatResult(got[0], idx, limit)
+	if err != nil {
+		return tools.Errorf("%v", err)
+	}
+	return &tools.Result{Text: text}
 }
 
 func (t *Tool) search(env *tools.Env, in input) *tools.Result {
