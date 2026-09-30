@@ -169,7 +169,11 @@ func newIsoRig(t *testing.T, o isoOpts, fn func(ctx context.Context, c *rvCall) 
 			t.Fatal(err)
 		}
 	}
-	trees := filepath.Join(t.TempDir(), "trees")
+	base, err := filepath.EvalSymlinks(t.TempDir()) // macOS: /var is /private/var, and the trees are reported by their real path
+	if err != nil {
+		t.Fatal(err)
+	}
+	trees := filepath.Join(base, "trees")
 	log := events.NewMemLog()
 	git, err := gitx.Open(repo, gitx.WithHermeticConfig())
 	if err != nil {

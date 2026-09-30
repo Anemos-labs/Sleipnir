@@ -184,9 +184,9 @@ func TestJobKillReachesStubbornChildren(t *testing.T) {
 	if d := time.Since(start); d > 8*time.Second {
 		t.Errorf("kill took %v", d)
 	}
-	if pidAlive(child) {
-		t.Fatalf("stubborn child %d survived bash_kill", child)
-	}
+	// The kill signals the whole group; a child that is being torn down is not gone the very
+	// instant the call returns on a loaded machine, so give it a moment (it does not need more).
+	waitDead(t, child, 5*time.Second)
 }
 
 func TestJobTimeout(t *testing.T) {

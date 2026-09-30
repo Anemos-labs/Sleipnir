@@ -189,8 +189,12 @@ func TestVerifyTamperingWithTestsHasNoEffect(t *testing.T) {
 		w := f.workspace("case")
 		mustWrite(t, filepath.Join(w.Root, "MATHX_TEST.GO"), "package mathx\n")
 		res := f.verify(w)
-		if !reflect.DeepEqual(res.ProtectedTouched, []string{"MATHX_TEST.GO"}) {
-			t.Fatalf("ProtectedTouched = %v", res.ProtectedTouched)
+		want := []string{"MATHX_TEST.GO"}
+		if caseInsensitiveFS(t, w.Root) {
+			want = []string{"mathx_test.go"} // the same file as the test that is already there
+		}
+		if !reflect.DeepEqual(res.ProtectedTouched, want) {
+			t.Fatalf("ProtectedTouched = %v, want %v", res.ProtectedTouched, want)
 		}
 	})
 }

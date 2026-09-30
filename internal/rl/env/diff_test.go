@@ -229,9 +229,9 @@ func TestDiffSurvivesHostileWorkspaceContent(t *testing.T) {
 	for _, name := range []string{".GIT/config", "git~1/x", ".git./y", "sub/.git ../z"} {
 		mustWrite(t, filepath.Join(root, filepath.FromSlash(name)), "boom")
 	}
-	// Non-UTF-8 name.
+	// Non-UTF-8 name (macOS file systems refuse to create one).
 	if err := os.WriteFile(filepath.Join(root, "bad-\xff\xfe-name"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
+		t.Logf("this file system does not allow non-UTF-8 names: %v", err)
 	}
 	mustWrite(t, filepath.Join(root, "mathx.go"), fixedMath) // the legitimate change
 	d, err := w.Diff(ctxT(t), 0)
@@ -517,6 +517,10 @@ func TestFilterPatch(t *testing.T) {
 	hidden := map[string]bool{foldPath("mathx_hidden_test.go"): true}
 	fr := filterPatch(d.Files, prot, hidden)
 	wantProt := []string{"MATHX_HIDDEN_TEST.GO", "go.mod", "mathx_hidden_test.go", "mathx_test.go", "sub/deep_test.go"}
+	if caseInsensitiveFS(t, root) {
+		// The two hidden-test spellings are one file here: the first name it was created under wins.
+		wantProt = []string{"MATHX_HIDDEN_TEST.GO", "go.mod", "mathx_test.go", "sub/deep_test.go"}
+	}
 	if !reflect.DeepEqual(fr.Protected, wantProt) {
 		t.Fatalf("protected touched = %v, want %v", fr.Protected, wantProt)
 	}

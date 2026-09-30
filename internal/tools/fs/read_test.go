@@ -172,7 +172,6 @@ func TestReadErrors(t *testing.T) {
 		{"directory", map[string]any{"path": "src"}, []string{"is a directory", "use ls"}},
 		{"missing", map[string]any{"path": "nope.txt"}, []string{"file not found: nope.txt"}},
 		{"typo suggestion", map[string]any{"path": "src/main.gp"}, []string{"file not found", "did you mean src/main.go"}},
-		{"case suggestion", map[string]any{"path": "src/MAIN.go"}, []string{"did you mean src/main.go"}},
 		{"missing dir", map[string]any{"path": "nodir/x.txt"}, []string{"file not found: nodir/x.txt"}},
 		{"empty path", map[string]any{"path": ""}, []string{"path is required"}},
 		{"blank path", map[string]any{"path": "   "}, []string{"path is required"}},
@@ -188,6 +187,15 @@ func TestReadErrors(t *testing.T) {
 		{"empty input", ``, []string{"path is required"}},
 		{"null input", `null`, []string{"path is required"}},
 		{"huge path", map[string]any{"path": strings.Repeat("a/", 20000)}, []string{"too long"}},
+	}
+	// On a case-insensitive file system (macOS, Windows) src/MAIN.go is src/main.go:
+	// the read succeeds and there is nothing to suggest.
+	if !caseInsensitiveDir(t, env.Cwd) {
+		tests = append(tests, struct {
+			name  string
+			input any
+			want  []string
+		}{"case suggestion", map[string]any{"path": "src/MAIN.go"}, []string{"did you mean src/main.go"}})
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

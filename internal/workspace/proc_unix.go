@@ -6,8 +6,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"strconv"
-	"strings"
 	"syscall"
 )
 
@@ -25,31 +23,15 @@ func pidExists(pid int) bool {
 	return true
 }
 
+// procInfo is what procStat can tell about a process: its state letter ('Z' for a
+// zombie, the /proc letters otherwise) and a value that identifies when it started.
 type procInfo struct {
 	state byte
 	start int64
 }
 
-// procStat reads /proc/<pid>/stat where it exists.
-func procStat(pid int) (procInfo, bool) {
-	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-	if err != nil {
-		return procInfo{}, false
-	}
-	s := string(b)
-	// The command name is parenthesised and may contain spaces and parentheses:
-	// the fields we want come after the last ')'.
-	i := strings.LastIndexByte(s, ')')
-	if i < 0 || i+2 >= len(s) {
-		return procInfo{}, false
-	}
-	f := strings.Fields(s[i+2:])
-	// f[0] is state (field 3 overall); starttime is field 22 overall -> f[19].
-	if len(f) < 20 || len(f[0]) == 0 {
-		return procInfo{}, false
-	}
-	return procInfo{state: f[0][0], start: atoi64(f[19])}, true
-}
+// procStat is implemented per platform (proc_linux.go, proc_darwin.go,
+// proc_stat_other.go); it reports false where the platform cannot say.
 
 // procStart returns a value that identifies when the process started (0 when
 // unknown), to tell a live owner from an unrelated process that reused its pid.

@@ -349,6 +349,16 @@ func TestCloneTreeDetails(t *testing.T) {
 	must(t, os.Chtimes(filepath.Join(src, "a.txt"), stamp, stamp))
 	must(t, os.Chmod(filepath.Join(src, "a.txt"), 0o640))
 
+	// The copies keep the read-only directory, and a user who is not root cannot
+	// delete what is inside it: open the copies up again before TempDir removes them.
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err == nil && d.IsDir() {
+				_ = os.Chmod(p, 0o755)
+			}
+			return nil
+		})
+	})
 	dst := mustMkdir(t, filepath.Join(root, "dst"))
 	skipAbs := filepath.Join(src, "keep") // never entered
 	err := cloneTree(tctx(t), src, dst, cloneOpts{excludes: []string{"skip-me", "exact/path"}, skipAbs: []string{skipAbs}, skipTop: map[string]bool{"emptydir": true}})

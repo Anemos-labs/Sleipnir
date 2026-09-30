@@ -351,6 +351,11 @@ func TestNonLoopbackNeedsAToken(t *testing.T) {
 				t.Logf("no IPv6 loopback here: %v", err)
 				continue
 			}
+			if strings.Contains(err.Error(), "can't assign requested address") {
+				// macOS only has 127.0.0.1 on its loopback interface; the rest of 127/8 needs an alias.
+				t.Logf("%s is not configured on this machine: %v", addr, err)
+				continue
+			}
 			t.Errorf("Listen(%q): %v", addr, err)
 			continue
 		}

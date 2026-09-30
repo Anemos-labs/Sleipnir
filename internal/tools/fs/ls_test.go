@@ -226,7 +226,7 @@ func TestFileNamesCannotForgeOutputLines(t *testing.T) {
 		t.Skip("file system does not allow newlines in names")
 	}
 	bad := "bad\xffname.txt"
-	os.WriteFile(filepath.Join(env.Cwd, bad), []byte("needle\n"), 0o644)
+	badOK := os.WriteFile(filepath.Join(env.Cwd, bad), []byte("needle\n"), 0o644) == nil // macOS refuses non-UTF-8 names
 	os.WriteFile(filepath.Join(env.Cwd, "fine é 日本.txt"), []byte("needle\n"), 0o644)
 
 	check := func(what, out string) {
@@ -243,5 +243,7 @@ func TestFileNamesCannotForgeOutputLines(t *testing.T) {
 	for _, e := range engines(t) {
 		check("grep/"+e.name, mustOK(t, run(t, e.tool, env, map[string]any{"pattern": "needle", "output_mode": "files_with_matches"})))
 	}
-	contains(t, mustOK(t, run(t, LS{}, env, map[string]any{})), `"bad\xffname.txt"`)
+	if badOK {
+		contains(t, mustOK(t, run(t, LS{}, env, map[string]any{})), `"bad\xffname.txt"`)
+	}
 }

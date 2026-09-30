@@ -239,8 +239,8 @@ func TestIncludeLimits(t *testing.T) {
 func TestAllowReadHook(t *testing.T) {
 	w := newWorld(t)
 	put(t, filepath.Join(w.root, "ok.txt"), "fine")
-	put(t, filepath.Join(w.root, "private", "p.txt"), "PRIVATE")
-	w.proj(".claude", "t.md", "@ok.txt @private/p.txt")
+	put(t, filepath.Join(w.root, "vault", "p.txt"), "PRIVATE")
+	w.proj(".claude", "t.md", "@ok.txt @vault/p.txt")
 	var asked []string
 	var sawCommand string
 	o := w.opts()
@@ -249,7 +249,8 @@ func TestAllowReadHook(t *testing.T) {
 		if r, ok := FromContext(ctx); ok {
 			sawCommand = r.Name
 		}
-		if strings.Contains(p, "private") {
+		// (not "private": on macOS every temp directory is under /private)
+		if strings.Contains(p, "vault") {
 			return errors.New("denied by policy")
 		}
 		return nil

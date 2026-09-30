@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -226,6 +227,21 @@ var argSnippets = []string{
 	`é`, `日本語`, `a😀b`, `"é"`, `$'\xc3\xa9'`,
 }
 
+// bash4Only are snippets whose expansion bash 3.2 (what macOS ships) does not do:
+// zero-padded and stepped brace sequences arrived in bash 4.0. Parse follows the
+// current bash, so these are only compared against a bash that has them.
+var bash4Only = map[string]bool{`{01..03}`: true, `{1..10..3}`: true}
+
+// bashMajor is the major version of the bash at path, or 0 when it cannot be told.
+func bashMajor(bash string) int {
+	out, err := exec.Command(bash, "--noprofile", "--norc", "-c", "echo ${BASH_VERSINFO[0]}").Output()
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return n
+}
+
 func TestArgsDifferentialAgainstBash(t *testing.T) {
 	if testing.Short() {
 		t.Skip("short mode")
@@ -234,9 +250,13 @@ func TestArgsDifferentialAgainstBash(t *testing.T) {
 	if err != nil {
 		t.Skip("bash not installed")
 	}
+	oldBash := bashMajor(bash) < 4
 	dir := t.TempDir()
 	checked := 0
 	for _, sn := range argSnippets {
+		if oldBash && bash4Only[sn] {
+			continue
+		}
 		// Globs, tildes and variables depend on the environment; Parse leaves them
 		// textual by design, so only compare the deterministic ones.
 		if strings.ContainsAny(strings.ReplaceAll(sn, `\$`, ""), "*?[$~") && !strings.Contains(sn, "$'") && !strings.Contains(sn, `$"`) {

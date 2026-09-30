@@ -27,6 +27,19 @@ func realTemp(t testing.TB) string {
 	return d
 }
 
+// caseInsensitiveDir reports whether dir is on a file system that treats names that
+// differ only in case as one file (the default on macOS and Windows).
+func caseInsensitiveDir(t testing.TB, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "CaseProbe.tmp")
+	if err := os.WriteFile(probe, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(probe)
+	_, err := os.Stat(filepath.Join(dir, "caseprobe.TMP"))
+	return err == nil
+}
+
 // testEnv builds an Env for agent "a1" rooted at a fresh temp dir.
 func testEnv(t testing.TB) *tools.Env {
 	t.Helper()

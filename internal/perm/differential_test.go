@@ -256,6 +256,17 @@ func TestAllowedCommandsChangeNothing(t *testing.T) {
 	}
 	f := newFixture(t)
 	e := f.engine(t, Config{})
+	// The go command records telemetry under $HOME/.config/go the first time it runs, which
+	// would create a directory the snapshot below sees appear. That is the toolchain's own
+	// bookkeeping and not what a command does to the workspace: switch it off before the
+	// first snapshot (the file is what `go telemetry off` writes).
+	mode := filepath.Join(f.home, ".config", "go", "telemetry", "mode")
+	if err := os.MkdirAll(filepath.Dir(mode), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mode, []byte("off 2026-01-01\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range safeCommands {
 		d := e.Check(bg, Request{Agent: "d", Tool: "Bash", Command: c, Cwd: f.root})
 		if !d.Allow || strings.Contains(c, "tail -f") {

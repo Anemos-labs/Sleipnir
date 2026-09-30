@@ -134,7 +134,9 @@ func TestProcStatParsing(t *testing.T) {
 	if runtimeGOOS() == "windows" {
 		t.Skip()
 	}
-	// our own process: alive, non-zero start time where /proc exists
+	// our own process: alive, with a start time where the platform can tell (/proc on
+	// Linux, the kernel's process table on macOS)
+	canTell := runtimeGOOS() == "linux" || runtimeGOOS() == "darwin"
 	if !pidExists(os.Getpid()) {
 		t.Fatal("own pid reported dead")
 	}
@@ -144,17 +146,15 @@ func TestProcStatParsing(t *testing.T) {
 	if pidExists(0) || pidExists(-1) {
 		t.Fatal("invalid pids")
 	}
-	if _, err := os.Stat("/proc/self/stat"); err == nil {
-		if procStart(os.Getpid()) == 0 {
-			t.Fatal("no start time for our own process")
-		}
+	if canTell && procStart(os.Getpid()) == 0 {
+		t.Fatal("no start time for our own process")
 	}
 	// a marker of a live process with matching start is alive; reused pid (start differs) is dead
 	mk := &marker{PID: os.Getpid(), Start: procStart(os.Getpid()), BootID: bootID()}
 	if mk.owner() != ownerAlive {
 		t.Fatal("own marker not alive")
 	}
-	if _, err := os.Stat("/proc/self/stat"); err == nil {
+	if canTell {
 		mk.Start++
 		if mk.owner() != ownerDead {
 			t.Fatal("reused pid must read as dead")

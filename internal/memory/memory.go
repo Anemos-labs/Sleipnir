@@ -288,7 +288,11 @@ func (ld *loader) problem(err error) {
 	ld.errs = append(ld.errs, err)
 }
 
-// canonical makes p absolute, cleaned and (where it exists) symlink-free.
+// canonical makes p absolute, cleaned and (where it exists) symlink-free. A path that
+// does not exist yet is spelled as its deepest existing ancestor resolves plus the rest,
+// so that it agrees with paths that were resolved whole (on macOS a temporary directory
+// is /var/... for one and /private/var/... for the other, and containment is a
+// comparison of spellings).
 func canonical(p string) (string, error) {
 	abs, err := filepath.Abs(p)
 	if err != nil {
@@ -296,6 +300,18 @@ func canonical(p string) (string, error) {
 	}
 	if r, err := filepath.EvalSymlinks(abs); err == nil {
 		return r, nil
+	}
+	rest := ""
+	for cur := abs; ; {
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(r, rest), nil
+		}
 	}
 	return abs, nil
 }

@@ -125,9 +125,10 @@ func TestRunnerScrubsEnvironmentAndHardensEveryInvocation(t *testing.T) {
 func TestRunnerSessionAndStdin(t *testing.T) {
 	dir := newRepo(t)
 	gitShim, out := shim(t, `
-sid=$(ps -o sid= -p $$ | tr -d ' ')
+pgid=$(ps -o pgid= -p $$ | tr -d ' ')
+tty=$(ps -o tty= -p $$ | tr -d ' ')
 n=$(wc -c 2>/dev/null | tr -d ' ')
-echo "pid=$$ sid=$sid stdin=$n" > "$D/proc.$$"
+echo "pid=$$ pgid=$pgid tty=$tty stdin=$n" > "$D/proc.$$"
 exec "$REAL" "$@"`)
 	r, err := Open(dir, WithGitPath(gitShim), WithHermeticConfig())
 	if err != nil {
@@ -145,16 +146,21 @@ exec "$REAL" "$@"`)
 		if !strings.Contains(line, "stdin=0") {
 			t.Errorf("git inherited a readable stdin: %s", line)
 		}
-		var pid, sid string
+		// A process that is the leader of its own group and has no controlling terminal is what
+		// Setsid makes of it (ps has no portable "session id" column: macOS lacks it).
+		var pid, pgid, tty string
 		for _, fld := range strings.Fields(line) {
 			if v, ok := strings.CutPrefix(fld, "pid="); ok {
 				pid = v
 			}
-			if v, ok := strings.CutPrefix(fld, "sid="); ok {
-				sid = v
+			if v, ok := strings.CutPrefix(fld, "pgid="); ok {
+				pgid = v
+			}
+			if v, ok := strings.CutPrefix(fld, "tty="); ok {
+				tty = v
 			}
 		}
-		if pid == "" || pid != sid {
+		if pid == "" || pid != pgid || strings.Trim(tty, "?") != "" {
 			t.Errorf("git is not the leader of its own session (no controlling terminal, killable as a group): %s", line)
 		}
 	}
