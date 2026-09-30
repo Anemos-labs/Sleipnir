@@ -83,6 +83,11 @@ type Request struct {
 	// Capture asks the endpoint for token ids and logprobs; ignored (and the
 	// response has no Tokens) when the profile cannot provide them.
 	Capture bool
+
+	// silent counts the attempts of this request that got no response at all
+	// (see Watchdog). A caller that retries keeps passing the same *Request, which
+	// is how the adapters can tell a first hang from a repeated one.
+	silent int32
 }
 
 // EventKind classifies streaming events.
@@ -181,19 +186,27 @@ func (k ErrKind) String() string {
 
 // Error is a provider failure with enough structure to act on.
 type Error struct {
-	Kind       ErrKind
-	Status     int
+	Kind   ErrKind
+	Status int
+	// Message is the endpoint's text (or the adapter's own), bounded and free of
+	// control characters and escape sequences: adapters pass it through
+	// SanitizeText, and Error() does so again for errors built by hand.
 	Message    string
 	RetryAfter time.Duration
 	Raw        json.RawMessage
 	Err        error
+	// NoRetry marks a failure that repeating the request will not fix whatever its
+	// Kind says (an endpoint that swallowed the same request repeatedly, a redirect
+	// to another origin).
+	NoRetry bool
 }
 
 func (e *Error) Error() string {
+	msg := SanitizeText(e.Message, MaxErrorText)
 	if e.Status != 0 {
-		return fmt.Sprintf("provider: %s (http %d): %s", e.Kind, e.Status, e.Message)
+		return fmt.Sprintf("provider: %s (http %d): %s", e.Kind, e.Status, msg)
 	}
-	return fmt.Sprintf("provider: %s: %s", e.Kind, e.Message)
+	return fmt.Sprintf("provider: %s: %s", e.Kind, msg)
 }
 
 func (e *Error) Unwrap() error { return e.Err }
@@ -239,6 +252,9 @@ func max0(d time.Duration) time.Duration {
 
 // Retryable reports whether the same request may succeed if repeated.
 func (e *Error) Retryable() bool {
+	if e.NoRetry {
+		return false
+	}
 	switch e.Kind {
 	case ErrNetwork, ErrTimeout, ErrRateLimit, ErrOverloaded, ErrServer:
 		return true

@@ -28,9 +28,20 @@ var sensitivePaths = [][]string{
 	{"ui", "editor"}, // runs a command
 }
 
-// isSensitive reports whether segs is exactly one of the sensitive paths.
-func isSensitive(segs []string) bool {
-	for _, pat := range sensitivePaths {
+// userOnlyPaths are settings that only the user's own file may make. A project
+// file that carries one has it dropped, whether or not the project is trusted:
+// they are how the user tells the harness "this provider's key may go to that
+// host", and a repository must not be able to say that on the user's behalf. (The
+// sensitive paths above are what a trusted project may set; these it never can.)
+var userOnlyPaths = [][]string{
+	{"providers", "*", "allow_hosts"},
+	{"providers", "*", "allow_insecure_http"},
+}
+
+// matchPath reports whether segs is exactly one of the patterns ("*" matches any
+// one segment).
+func matchPath(patterns [][]string, segs []string) bool {
+	for _, pat := range patterns {
 		if len(pat) != len(segs) {
 			continue
 		}
@@ -46,6 +57,44 @@ func isSensitive(segs []string) bool {
 		}
 	}
 	return false
+}
+
+// isSensitive reports whether segs is exactly one of the sensitive paths.
+func isSensitive(segs []string) bool { return matchPath(sensitivePaths, segs) }
+
+// UserOnlyPaths lists the settings Load honours only in the user-level file, as
+// dotted paths with "*" for any name (documentation and tests).
+func UserOnlyPaths() []string {
+	out := make([]string, len(userOnlyPaths))
+	for i, p := range userOnlyPaths {
+		out[i] = strings.Join(p, ".")
+	}
+	return out
+}
+
+// dropUserOnly removes the user-only settings from a project-level layer and
+// reports each one. It is applied to every project-level layer, trusted or not.
+func (l *layer) dropUserOnly() []Issue {
+	var risks []Issue
+	var walk func(m map[string]any, segs []string)
+	walk = func(m map[string]any, segs []string) {
+		for _, k := range sortedKeys(m) {
+			p := cloneSegs(segs, k)
+			if matchPath(userOnlyPaths, p) {
+				is := Issue{Severity: SeverityWarning, Source: l.source, Path: fmtPath(p), segs: p}
+				is.Message = "can only be set in your user configuration file (~/.sleipnir/config.json); a project file cannot grant it, trusted or not, so it was ignored"
+				l.position(&is)
+				risks = append(risks, is)
+				delete(m, k)
+				continue
+			}
+			if sub, ok := m[k].(map[string]any); ok {
+				walk(sub, p)
+			}
+		}
+	}
+	walk(l.tree, nil)
+	return risks
 }
 
 // SensitivePaths lists the settings Load treats as risky in project files, as

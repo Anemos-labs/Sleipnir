@@ -114,7 +114,7 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 		"Training":    {"enabled", "redact_secrets", "dir"},
 		"Models":      {"default", "roles", "compactor"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles"},
-		"Provider":    {"dialect", "base_url", "api_key_env", "headers", "options", "models"},
+		"Provider":    {"dialect", "base_url", "api_key_env", "headers", "options", "models", "allow_hosts", "allow_insecure_http"},
 		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "ui", "training", "hooks", "mcp"},
 	}
 	types := map[string]reflect.Type{

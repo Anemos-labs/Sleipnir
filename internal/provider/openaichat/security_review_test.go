@@ -1,13 +1,9 @@
 package openaichat
 
-// Security review repros for docs/reviews/security-robustness.md.
-//
-// TestSecReview_* are gated behind SLEIPNIR_REVIEW=1 and assert the SECURE behaviour, so
-// they FAIL while the finding is open:
-//
-//	SLEIPNIR_REVIEW=1 go test -count=1 -run TestSecReview ./internal/provider/openaichat
-//
-// TestSecSound_* are ungated regression checks for behaviour the review found sound.
+// Security review repros for docs/reviews/security-robustness.md. Every finding that used to be
+// gated behind SLEIPNIR_REVIEW=1 here (S26a, S27-S31) is fixed: TestSec_* are ordinary
+// regression tests of the secure behaviour, and TestSecSound_* check behaviour the review found
+// sound.
 
 import (
 	"context"
@@ -16,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -25,13 +20,6 @@ import (
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/provider"
 )
-
-func secRevGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("security-review repro: set SLEIPNIR_REVIEW=1 (asserts the secure behaviour, fails while the finding is open)")
-	}
-}
 
 func secRevPrompt(text string) *core.Prompt {
 	return &core.Prompt{Model: "m", Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(text)}}}}
@@ -53,14 +41,24 @@ func TestSec_S26a_RetryAfterIsBounded(t *testing.T) {
 	}
 }
 
-// S28: usage numbers are trusted verbatim: a negative completion_tokens/cost makes the
-// agent's and the swarm's dollar budgets unreachable (fail open).
-func TestSecReview_S28_NegativeUsageAndCostAreAccepted(t *testing.T) {
-	secRevGate(t)
+// S28 (fixed): usage numbers used to be trusted verbatim: a negative completion_tokens/cost made
+// the agent's and the swarm's dollar budgets unreachable (fail open). normalize now clamps every
+// counter and drops a cost that cannot be the charge of one request (the request is then priced
+// from its tokens); more cases in usage_test.go.
+//
+// Test change (reason): the original log line dereferenced u.Cost unconditionally. The fix
+// drops an invalid cost from u itself (u.Cost becomes nil: "no exact charge, price it from the
+// tokens"), which is exactly what the assertion below asks for ("not passed on as the exact
+// charge"), so the log line must not assume the pointer is set. The assertions are unchanged.
+func TestSec_S28_NegativeUsageAndCostAreNotAccepted(t *testing.T) {
 	neg := -1.0e6
 	u := &usage{PromptTokens: 100, CompletionTokens: -5_000_000, Cost: &neg}
 	n := u.normalize()
-	t.Logf("normalised usage: %+v cost=%v", n, *u.Cost)
+	cost := "none (priced from tokens)"
+	if u.Cost != nil {
+		cost = fmt.Sprint(*u.Cost)
+	}
+	t.Logf("normalised usage: %+v cost=%v", n, cost)
 	if n.OutputTokens < 0 {
 		t.Errorf("S28: negative completion_tokens survived normalisation (OutputTokens=%d)", n.OutputTokens)
 	}
@@ -86,10 +84,11 @@ func TestSec_S29_ReasoningIsNotPartOfPlainText(t *testing.T) {
 	}
 }
 
-// S27: the client follows redirects. A 307/308 re-POSTs the full prompt to the new host and
-// forwards every custom header (only Authorization/Cookie are stripped by net/http).
-func TestSecReview_S27_RedirectReplaysPromptAndCustomHeaders(t *testing.T) {
-	secRevGate(t)
+// S27 (fixed): the client used to follow redirects. A 307/308 re-POSTed the full prompt to the
+// new host and forwarded every custom header (net/http strips only Authorization/Cookie).
+// A redirect that leaves the configured origin is now refused without being followed; more
+// cases (same-origin redirects, other statuses, both adapters) in redirect_test.go.
+func TestSec_S27_RedirectDoesNotReplayPromptOrCustomHeaders(t *testing.T) {
 	var mu sync.Mutex
 	var gotBody, gotAuth, gotCustom string
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -118,11 +117,11 @@ func TestSecReview_S27_RedirectReplaysPromptAndCustomHeaders(t *testing.T) {
 	}
 }
 
-// S30: the streaming path has no byte cap (the non-streaming path caps at 64 MiB). A gateway
-// that streams forever fills memory: text, reasoning, tool-call args and the SSE line buffer
-// are all unbounded strings.Builders.
-func TestSecReview_S30_StreamingResponseIsUnbounded(t *testing.T) {
-	secRevGate(t)
+// S30 (fixed): the streaming path had no byte cap (the non-streaming path caps at 64 MiB). A
+// gateway that streamed for ever filled memory: text, reasoning, tool-call args and the SSE line
+// buffer were all unbounded. The response limits (provider.StreamLimits) now cancel the stream
+// and return a provider error; the individual limits are in limits_test.go.
+func TestSec_S30_StreamingResponseIsBounded(t *testing.T) {
 	if testing.Short() {
 		t.Skip("streams ~70 MiB")
 	}
@@ -151,11 +150,11 @@ func TestSecReview_S30_StreamingResponseIsUnbounded(t *testing.T) {
 	}
 }
 
-// S31: error messages from the endpoint are passed on verbatim: a JSON error.message is
-// uncapped (only the non-JSON fallback is cut at 400 bytes) and control/escape bytes
-// reach the event log and the terminal.
-func TestSecReview_S31_ErrorMessageIsUncappedAndUnsanitised(t *testing.T) {
-	secRevGate(t)
+// S31 (fixed): error messages from the endpoint were passed on verbatim: a JSON error.message
+// was uncapped (only the non-JSON fallback was cut at 400 bytes) and control/escape bytes
+// reached the event log and the terminal. They are now capped and sanitised; more cases in
+// errors_test.go and in the provider package's sanitiser tests.
+func TestSec_S31_ErrorMessageIsCappedAndSanitised(t *testing.T) {
 	huge := strings.Repeat("x", 900_000)
 	body := fmt.Sprintf(`{"error":{"message":"%s\u001b]52;c;ZXZpbA==\u0007\u001b[2J"}}`, huge)
 	pe := mapHTTPError(400, http.Header{}, []byte(body))

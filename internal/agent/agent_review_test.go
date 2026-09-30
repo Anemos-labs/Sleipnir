@@ -2,12 +2,9 @@ package agent_test
 
 // Adversarial review tests for the agent loop's failure handling
 // (docs/reviews/swarm-concurrency.md): inbox draining at Run exit, background
-// compactor lifetime, and the absence of any time-to-first-byte bound on a model
-// request. The first two are ungated regression tests now (docs/reviews/tranche2-b.md);
-// TestConc_HungRequest... (C-08, the provider client's time-to-first-byte bound) is
-// still a gated repro (SLEIPNIR_REVIEW=1) that fails while its finding is open.
-//
-//	SLEIPNIR_REVIEW=1 go test -race -count=1 -run 'TestConc_' ./internal/agent
+// compactor lifetime, and the time-to-first-byte bound on a model request. All of
+// them are ordinary regression tests now (docs/reviews/tranche2-a.md and
+// tranche2-b.md).
 
 import (
 	"context"
@@ -15,7 +12,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -30,17 +26,6 @@ import (
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 	"github.com/reee344/sleipnir/internal/tools"
 )
-
-// concGate skips a defect repro unless SLEIPNIR_REVIEW is set (same switch the
-// security review uses). Repros assert the CORRECT behaviour and therefore fail
-// while the finding is open; TestConcSound_* tests are ungated regression checks
-// for behaviour the review found sound.
-func concGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("concurrency-review repro: set SLEIPNIR_REVIEW=1 (asserts the correct behaviour, fails while the finding is open)")
-	}
-}
 
 // arvProvider is an in-process provider whose replies the test scripts.
 type arvProvider struct {
@@ -225,13 +210,16 @@ func TestConc_CompactorJobEndsWithACancelledRun(t *testing.T) {
 	}
 }
 
-// There is no time-to-first-byte deadline on a model request. The stream-idle
-// watchdog is armed only after response headers arrive, and the HTTP client has no
-// ResponseHeaderTimeout, so a server that accepts the request and goes silent
-// holds the agent (its governor slot, and the warm gate if it is the primer) until
-// the caller's context ends.
-func TestConc_HungRequestIsNotBoundedByAnyTimeout(t *testing.T) {
-	concGate(t) // C-08: the provider client's time-to-first-byte bound; not part of this tranche
+// C-08 (fixed): there used to be no time-to-first-byte deadline on a model request.
+// The stream-idle watchdog was armed only after response headers arrived, so a
+// server that accepts the request and goes silent held the agent (its governor
+// slot, and the warm gate if it is the primer) until the caller's context ended.
+// The adapters now arm the watchdog when the request is sent: a silent server ends
+// the attempt with provider.ErrTimeout after FirstByteTimeout (StreamIdleTimeout
+// when only that is set), and a request that gets no response twice is not retried
+// again (provider.MaxSilentAttempts), so the run below ends after two attempts of
+// 200ms each, not six.
+func TestConc_HungRequestIsBoundedByTheFirstByteDeadline(t *testing.T) {
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-release // accept, never answer

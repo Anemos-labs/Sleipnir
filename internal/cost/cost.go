@@ -8,6 +8,8 @@
 package cost
 
 import (
+	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -70,13 +72,21 @@ type Price struct {
 	CacheWrite1hPerM float64 `json:"cache_write_1h_per_m"`
 }
 
-// USD prices a usage record.
+// USD prices a usage record. The result is never NaN or negative: a price or a
+// token count that cannot be right (see Price.Validate) prices the record at
+// +Inf, so a budget check ("spend >= limit") trips instead of silently never
+// firing. Prices that passed Validate and counts that are not negative give the
+// ordinary figure.
 func (p Price) USD(u core.Usage) float64 {
-	return (float64(u.InputTokens)*p.InputPerM +
+	usd := (float64(u.InputTokens)*p.InputPerM +
 		float64(u.CacheReadTokens)*p.CacheReadPerM +
 		float64(u.CacheWrite5mTokens)*p.CacheWrite5mPerM +
 		float64(u.CacheWrite1hTokens)*p.CacheWrite1hPerM +
 		float64(u.OutputTokens)*p.OutputPerM) / 1e6
+	if math.IsNaN(usd) || usd < 0 {
+		return math.Inf(1)
+	}
+	return usd
 }
 
 // Weights are prices relative to the plain input price. They let planners work
@@ -88,6 +98,13 @@ type Weights struct {
 
 // Weights derives relative prices. Missing cache prices fall back to the
 // common 0.1x read / 1.25x write structure.
+//
+// Weights does not repair a price that cannot be right: a NaN or negative figure
+// comes out as a NaN or negative weight, so that a caller which has to decide
+// (internal/rl/reward refuses such a target, rather than pricing an episode at NaN)
+// can see it. Prices that come from outside the process are checked where they
+// enter (Model.Validate, Table.Put, gateway.Vet); use Price.Validate before trusting
+// weights derived from a price of unknown origin.
 func (p Price) Weights() Weights {
 	in := p.InputPerM
 	if in <= 0 {
@@ -152,11 +169,12 @@ func normalizeFull(id string) string {
 // Table is a set of models with lookup by (normalised) id.
 type Table struct{ m map[string]Model }
 
-// NewTable builds a table from models.
+// NewTable builds a table from models. A model that fails Validate is left out
+// (use Put to learn why).
 func NewTable(models ...Model) *Table {
 	t := &Table{m: map[string]Model{}}
 	for _, m := range models {
-		t.Put(m)
+		_ = t.Put(m)
 	}
 	return t
 }
@@ -173,12 +191,35 @@ func (t *Table) Lookup(id string) (Model, bool) {
 
 // Put adds or replaces a model. It is stored under its full id and, when free,
 // under the short id so "claude-opus-5-5" still finds "anthropic/claude-opus-5-5".
-func (t *Table) Put(m Model) {
+//
+// A model that fails Validate (a NaN or negative price, an absurd window, an
+// unusable id) is refused and the table is left as it was: lookups then fall
+// through to a conservative Fallback instead of to numbers that would make a
+// budget unreachable.
+func (t *Table) Put(m Model) error {
+	if err := m.Validate(); err != nil {
+		return fmt.Errorf("cost: model %q refused: %w", displayID(m.ID), err)
+	}
 	full, short := normalizeFull(m.ID), Normalize(m.ID)
 	t.m[full] = m
 	if _, taken := t.m[short]; !taken || short == full {
 		t.m[short] = m
 	}
+	return nil
+}
+
+// displayID is a model id fit for an error message.
+func displayID(id string) string {
+	id = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			return '?'
+		}
+		return r
+	}, id)
+	if len(id) > 64 {
+		id = strings.ToValidUTF8(id[:64], "?") + "..."
+	}
+	return id
 }
 
 // All returns every distinct model.

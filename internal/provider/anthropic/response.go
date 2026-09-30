@@ -15,17 +15,29 @@ import (
 // remainder as input_tokens; cache reads and writes are separate counters, so
 // the prompt total is the sum of all three.
 type wireUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	InputTokens              tokens `json:"input_tokens"`
+	CacheCreationInputTokens tokens `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     tokens `json:"cache_read_input_tokens"`
 	CacheCreation            *struct {
-		Ephemeral5m int `json:"ephemeral_5m_input_tokens"`
-		Ephemeral1h int `json:"ephemeral_1h_input_tokens"`
+		Ephemeral5m tokens `json:"ephemeral_5m_input_tokens"`
+		Ephemeral1h tokens `json:"ephemeral_1h_input_tokens"`
 	} `json:"cache_creation"`
-	OutputTokens        int `json:"output_tokens"`
+	OutputTokens        tokens `json:"output_tokens"`
 	OutputTokensDetails *struct {
-		ThinkingTokens int `json:"thinking_tokens"`
+		ThinkingTokens tokens `json:"thinking_tokens"`
 	} `json:"output_tokens_details"`
+}
+
+// tokens is a token counter as the wire reports it. It decodes any JSON number (or
+// a numeric string) and never fails: a report whose counter is negative,
+// fractional, astronomical or not a number keeps its other members, because a
+// report that fails to decode is a report dropped, and a dropped usage report reads
+// as "free". normalize limits the value to 0..provider.MaxUsageTokens.
+type tokens int
+
+func (t *tokens) UnmarshalJSON(b []byte) error {
+	*t = tokens(provider.ParseTokenCount(b))
+	return nil
 }
 
 // merge folds a later (cumulative) usage report into u. Streaming reports usage
@@ -49,9 +61,11 @@ func (u *wireUsage) merge(o wireUsage) {
 }
 
 // normalize converts to core.Usage: uncached input, cache read, cache write per
-// TTL, output. Negative counters (a buggy gateway) are clamped to zero.
+// TTL, output. Every counter is clamped to 0..provider.MaxUsageTokens (a negative
+// or absurd one, from a buggy or hostile gateway, must not reach the agent's or the
+// swarm's spend), and the reasoning share cannot exceed the output.
 func (u wireUsage) normalize() core.Usage {
-	pos := func(n int) int { return max(n, 0) }
+	pos := func(n tokens) int { return provider.ClampTokens(int(n)) }
 	total := pos(u.CacheCreationInputTokens)
 	w5, w1 := total, 0 // no TTL split reported: the default lifetime is 5m
 	if u.CacheCreation != nil {
@@ -68,9 +82,42 @@ func (u wireUsage) normalize() core.Usage {
 		OutputTokens:       pos(u.OutputTokens),
 	}
 	if u.OutputTokensDetails != nil {
-		out.ReasoningTokens = pos(u.OutputTokensDetails.ThinkingTokens)
+		out.ReasoningTokens = min(pos(u.OutputTokensDetails.ThinkingTokens), out.OutputTokens)
 	}
 	return out
+}
+
+// checkResultLimits applies the response limits to a message that arrived whole (a
+// non-streaming body): the streaming path counts as it reads, this counts what was
+// parsed.
+func checkResultLimits(r *result, lim provider.StreamLimits) error {
+	lim = lim.Normalized()
+	if len(r.blocks) > lim.MaxBlocks {
+		return provider.LimitExceededCount("content blocks", lim.MaxBlocks)
+	}
+	text, think, tools := 0, 0, 0
+	for _, b := range r.blocks {
+		switch b.Kind {
+		case core.BlockText:
+			text += len(b.Text)
+		case core.BlockThinking, core.BlockRedactedThinking:
+			think += len(b.Text) + len(b.Wire)
+		case core.BlockToolUse:
+			if tools++; tools > lim.MaxToolCalls {
+				return provider.LimitExceededCount("tool calls", lim.MaxToolCalls)
+			}
+			if len(b.Input) > lim.MaxToolArgBytes {
+				return provider.LimitExceeded("tool call arguments", int64(lim.MaxToolArgBytes))
+			}
+		}
+	}
+	switch {
+	case text > lim.MaxTextBytes:
+		return provider.LimitExceeded("answer text", int64(lim.MaxTextBytes))
+	case think > lim.MaxTextBytes:
+		return provider.LimitExceeded("reasoning text", int64(lim.MaxTextBytes))
+	}
+	return nil
 }
 
 // wireTransformation is one input_transformations entry: something the API did
