@@ -55,26 +55,32 @@ type Step struct {
 
 // Findings are the conclusions the harness acts on.
 type Findings struct {
-	Streaming            bool     `json:"streaming"`
-	Tools                bool     `json:"tools"`
-	ToolRoundTrip        bool     `json:"tool_round_trip"`
-	UsageReported        bool     `json:"usage_reported"`
-	CostReported         bool     `json:"cost_reported"`
-	CachedTokensReported bool     `json:"cached_tokens_reported"`
-	CacheWorks           bool     `json:"cache_works"`
-	CacheHitRatio        float64  `json:"cache_hit_ratio"`
-	CacheGranularity     int      `json:"cache_granularity"`
-	MinCachePrefix       int      `json:"min_cache_prefix"`
-	WarmupNeeded         *bool    `json:"warmup_needed,omitempty"`
-	ReasoningSeen        bool     `json:"reasoning_seen"`
-	ReasoningDetails     bool     `json:"reasoning_details"`
-	TokenIDs             bool     `json:"token_ids,omitempty"`
-	TokenLogprobs        bool     `json:"token_logprobs,omitempty"`
-	TokenPrefixStable    bool     `json:"token_prefix_stable,omitempty"`
-	RateLimit            string   `json:"rate_limit,omitempty"`
-	BytesPerToken        float64  `json:"bytes_per_token"`
-	TTFB                 string   `json:"ttfb"`
-	Notes                []string `json:"notes,omitempty"`
+	Streaming            bool    `json:"streaming"`
+	Tools                bool    `json:"tools"`
+	ToolRoundTrip        bool    `json:"tool_round_trip"`
+	UsageReported        bool    `json:"usage_reported"`
+	CostReported         bool    `json:"cost_reported"`
+	CachedTokensReported bool    `json:"cached_tokens_reported"`
+	CacheWorks           bool    `json:"cache_works"`
+	CacheHitRatio        float64 `json:"cache_hit_ratio"`
+	// CacheRepeats is how many requests of the cache step repeated a prompt the endpoint had
+	// already seen (the identical repeat and the growth series), and CacheRepeatHits how many
+	// of them read cached tokens. A cache spread over several engines hits on some and misses
+	// on others, and one request would say either.
+	CacheRepeats      int      `json:"cache_repeats"`
+	CacheRepeatHits   int      `json:"cache_repeat_hits"`
+	CacheGranularity  int      `json:"cache_granularity"`
+	MinCachePrefix    int      `json:"min_cache_prefix"`
+	WarmupNeeded      *bool    `json:"warmup_needed,omitempty"`
+	ReasoningSeen     bool     `json:"reasoning_seen"`
+	ReasoningDetails  bool     `json:"reasoning_details"`
+	TokenIDs          bool     `json:"token_ids,omitempty"`
+	TokenLogprobs     bool     `json:"token_logprobs,omitempty"`
+	TokenPrefixStable bool     `json:"token_prefix_stable,omitempty"`
+	RateLimit         string   `json:"rate_limit,omitempty"`
+	BytesPerToken     float64  `json:"bytes_per_token"`
+	TTFB              string   `json:"ttfb"`
+	Notes             []string `json:"notes,omitempty"`
 }
 
 // Report is the full result.
@@ -263,14 +269,19 @@ func (r *runner) cache(ctx context.Context) error {
 		return err
 	}
 	f := &r.rep.Findings
-	f.CachedTokensReported = b.Usage.CacheReadTokens > 0
-	if b.Usage.TotalInput() > 0 {
-		f.CacheHitRatio = float64(b.Usage.CacheReadTokens) / float64(b.Usage.TotalInput())
+	// Every later request of this step repeats a prompt the endpoint has already seen, so each
+	// is a chance to hit. The verdict counts them all: it is not a coin flip on an endpoint
+	// whose cache hits on some requests and not on others.
+	var readTokens, promptTokens int
+	tally := func(u core.Usage) {
+		f.CacheRepeats++
+		if u.CacheReadTokens > 0 {
+			f.CacheRepeatHits++
+		}
+		readTokens += u.CacheReadTokens
+		promptTokens += u.TotalInput()
 	}
-	f.CacheWorks = f.CacheHitRatio >= 0.5
-	if !f.CacheWorks {
-		r.note("second identical-prefix request did not hit the cache; affinity, engine or minimum size may be the cause")
-	}
+	tally(b.Usage)
 	// Granularity: send a series of prompts, each extending the previous system
 	// text by an uneven amount. Each request's reads then cover the previous
 	// prompt rounded down to a whole cache block, so the reported counts are
@@ -285,9 +296,21 @@ func (r *runner) cache(ctx context.Context) error {
 		if err != nil {
 			break
 		}
+		tally(g.Usage)
 		if g.Usage.CacheReadTokens > 0 {
 			reads = append(reads, g.Usage.CacheReadTokens)
 		}
+	}
+	if promptTokens > 0 {
+		f.CacheHitRatio = float64(readTokens) / float64(promptTokens)
+	}
+	f.CachedTokensReported = f.CacheRepeatHits > 0
+	f.CacheWorks = f.CacheRepeatHits*2 >= f.CacheRepeats
+	switch {
+	case f.CacheRepeatHits == 0:
+		r.note("no repeat request hit the cache; affinity, engine or minimum size may be the cause")
+	case f.CacheRepeatHits < f.CacheRepeats:
+		r.note(fmt.Sprintf("%d of %d repeat requests hit the cache: hits are erratic (the endpoint may serve one conversation from more than one engine, or read a prefix only after some delay)", f.CacheRepeatHits, f.CacheRepeats))
 	}
 	if g := granularity(reads); g > 1 && g <= 512 {
 		f.CacheGranularity = g
@@ -485,7 +508,11 @@ func (rep *Report) Text() string {
 	fmt.Fprintf(&sb, "  exact cost reported  %s\n", yn(f.CostReported))
 	fmt.Fprintf(&sb, "  tool calling         %s (round trip %s)\n", yn(f.Tools), yn(f.ToolRoundTrip))
 	fmt.Fprintf(&sb, "  cached tokens shown  %s\n", yn(f.CachedTokensReported))
-	fmt.Fprintf(&sb, "  prefix cache works   %s (repeat-request hit ratio %.0f%%)\n", yn(f.CacheWorks), f.CacheHitRatio*100)
+	verdict := yn(f.CacheWorks)
+	if f.CacheRepeatHits > 0 && f.CacheRepeatHits < f.CacheRepeats {
+		verdict = "partly"
+	}
+	fmt.Fprintf(&sb, "  prefix cache works   %s (%d of %d repeat requests hit; %.0f%% of their prompt tokens)\n", verdict, f.CacheRepeatHits, f.CacheRepeats, f.CacheHitRatio*100)
 	if f.CacheGranularity > 0 {
 		fmt.Fprintf(&sb, "  cache granularity    ~%d tokens\n", f.CacheGranularity)
 	}

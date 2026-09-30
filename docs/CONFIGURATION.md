@@ -608,8 +608,9 @@ sleipnir doctor --model heimdall-messages/deepseek/deepseek-v4.1-flash --deep
 
 `doctor` works with any configured provider, either dialect. It runs a series of real requests and reports whether
 streaming works, whether usage and exact cost are reported, whether tool calling round-trips, whether cached tokens are
-shown and whether a repeated prefix actually hits the cache, the cache granularity and the smallest cached size
-(`--deep`), whether a parallel burst needs a warm-up (`--deep`), whether reasoning is exposed, and (`--capture`) whether
+shown and how many of nine repeated prefixes hit the cache (`yes`; `partly` when some did and some did not, which is
+what an endpoint that serves one conversation from several engines looks like; or `NO`), the cache granularity and the
+smallest cached size (`--deep`), whether a parallel burst needs a warm-up (`--deep`), whether reasoning is exposed, and (`--capture`) whether
 token ids come back. It prints the cost of the probe. Add `--json` for a machine-readable report, and `--no-affinity`
 to send no routing key. Acting on it: if `prefix cache works` is `NO` on the Messages route but `yes` on the chat route
 of the same marketplace, use the chat route (example (a)); the docs of the harness recommend that route for

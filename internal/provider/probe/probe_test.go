@@ -75,6 +75,81 @@ func TestProbeMeasuresMockEngine(t *testing.T) {
 	}
 }
 
+// A cache that hits on some requests and not on others is not "working" or "broken": the
+// verdict counts every repeat request of the cache step. Without affinity the mock spreads
+// requests over three engines, so the first request each engine sees misses and the rest hit
+// (one sample, the identical repeat, would have said the cache does not work).
+func TestProbeCountsEveryRepeatRequest(t *testing.T) {
+	srv := mock.New(mock.Config{Engines: 3, Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}},
+		func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	ts := srv.Start()
+	defer ts.Close()
+
+	c := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Options: openaichat.Options{SessionHeader: true}})
+	rep, err := probe.Run(context.Background(), probe.Config{Provider: c, Model: "mock-1", CacheKey: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := rep.Findings
+	if f.CacheRepeats != 9 || f.CacheRepeatHits != 7 {
+		t.Fatalf("%d of %d repeat requests hit, want 7 of 9 (the second and third request each engine had not seen miss): %+v", f.CacheRepeatHits, f.CacheRepeats, f)
+	}
+	if !f.CacheWorks || !f.CachedTokensReported {
+		t.Fatalf("a cache that hits on most requests works: %+v", f)
+	}
+	if f.CacheHitRatio < 0.5 || f.CacheHitRatio > 0.9 {
+		t.Fatalf("hit ratio %.2f: the two misses cost a share of the prompt tokens", f.CacheHitRatio)
+	}
+	txt := rep.Text()
+	if !strings.Contains(txt, "prefix cache works   partly (7 of 9 repeat requests hit") {
+		t.Fatalf("the report must say the hits were partial:\n%s", txt)
+	}
+	noted := false
+	for _, n := range f.Notes {
+		noted = noted || strings.Contains(n, "7 of 9 repeat requests hit the cache: hits are erratic")
+	}
+	if !noted {
+		t.Fatalf("no note about erratic hits: %v", f.Notes)
+	}
+
+	// With the conversation key sent, one engine serves every request and all of them hit.
+	pinned, err := probe.Run(context.Background(), probe.Config{Provider: c, Model: "mock-1", CacheKey: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := pinned.Findings; g.CacheRepeats != 9 || g.CacheRepeatHits != 9 || !strings.Contains(pinned.Text(), "prefix cache works   yes (9 of 9") {
+		t.Fatalf("with affinity every repeat request hits: %+v\n%s", g, pinned.Text())
+	}
+}
+
+// An endpoint that never reports cached tokens is told so plainly.
+func TestProbeSaysWhenNothingIsCached(t *testing.T) {
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 1 << 20}},
+		func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	ts := srv.Start()
+	defer ts.Close()
+
+	c := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL})
+	rep, err := probe.Run(context.Background(), probe.Config{Provider: c, Model: "mock-1", CacheKey: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := rep.Findings
+	if f.CacheWorks || f.CachedTokensReported || f.CacheRepeatHits != 0 || f.CacheRepeats != 9 {
+		t.Fatalf("nothing was cached: %+v", f)
+	}
+	if !strings.Contains(rep.Text(), "prefix cache works   NO (0 of 9 repeat requests hit") {
+		t.Fatalf("report:\n%s", rep.Text())
+	}
+	noted := false
+	for _, n := range f.Notes {
+		noted = noted || strings.Contains(n, "no repeat request hit the cache")
+	}
+	if !noted {
+		t.Fatalf("no note: %v", f.Notes)
+	}
+}
+
 func TestProbeChecksTokenCapture(t *testing.T) {
 	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}},
 		func(c *mock.Call) mock.Reply { return mock.Reply{Text: "one two three"} })
