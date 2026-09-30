@@ -1,0 +1,11 @@
+{
+  "name": "csv",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An RFC 4180 style CSV parser and writer",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

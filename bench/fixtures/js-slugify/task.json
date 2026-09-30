@@ -1,0 +1,13 @@
+{
+  "id": "js-slugify",
+  "kind": "feature",
+  "lang": "js",
+  "difficulty": "medium",
+  "prompt": "Implement `slugify(text, options)` in `src/slugify.js` exactly as README.md specifies: the order of the Unicode steps (NFKD normalisation, removal of all combining marks, lower-casing), which characters survive (only ASCII letters and digits: emoji and non-Latin scripts are dropped), how words are joined, the `separator` and `maxLength` options with their validation errors, and how `maxLength` cuts the slug so that it never ends with a separator. `src/slugify.js` currently throws. The visible tests in `test/slugify.test.js` cover only the basics; your code will also be checked against the rest of the README. Run the tests from the repository root with `node --test test/*.test.js` (Node 22; use only the standard library and do not add dependencies). Do not modify anything under `test/`.",
+  "verify": "node --test test/*.test.js",
+  "timeout_s": 60,
+  "protected": ["test/**"],
+  "team": {"mode": "single"},
+  "tags": ["js", "feature", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

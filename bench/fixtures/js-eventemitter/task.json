@@ -1,0 +1,13 @@
+{
+  "id": "js-eventemitter",
+  "kind": "fix",
+  "lang": "js",
+  "difficulty": "medium",
+  "prompt": "`src/emitter.js` is a small synchronous EventEmitter (on, once, off, emit, listenerCount); README.md specifies its behaviour exactly. It has bugs. Reported symptoms: (1) `once` listeners are always called after all `on` listeners instead of in registration order; (2) changing the listeners while an emit is running goes wrong: a listener that calls `off` (or a `once` listener that fires) can make the next listener be skipped, a listener added during an emit is already called by that emit, and `emit` can return false although a listener was called; (3) `off(event, fn)` has no effect on a listener that was registered with `once(event, fn)`; (4) `emit('error', err)` with no 'error' listener returns false instead of throwing. Fix the implementation so that it behaves as README.md specifies in every respect, not just for these examples. It must stay an implementation of its own: do not extend, wrap or replace it with `node:events`. Run the tests from the repository root with `node --test test/*.test.js` (Node 22; standard library only). The visible tests cover only part of the specification. Do not modify anything under `test/`.",
+  "verify": "node --test test/*.test.js",
+  "timeout_s": 60,
+  "protected": ["test/**"],
+  "team": {"mode": "single"},
+  "tags": ["js", "fix", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

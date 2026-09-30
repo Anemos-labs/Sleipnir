@@ -1,0 +1,13 @@
+{
+  "id": "py-ini",
+  "kind": "feature",
+  "lang": "python",
+  "difficulty": "medium",
+  "prompt": "Implement the INI reader specified in README.md. The package `ini/` already exposes `loads`, `Config` and `IniError`, but `loads` (in `ini/parser.py`) and the methods of `Config` (in `ini/config.py`) are stubs that raise NotImplementedError. README.md is exact: follow every rule in it (line handling, comments, backslash continuation lines, section headers, key/value splitting, quoting, the case policy, the `duplicates` option, the exact spellings that `getint` and `getbool` accept, and which situations raise `IniError` with which `lineno`). The visible tests in `tests/` only cover the basics; your code will also be checked against the rest of the specification. Run the tests from the repository root with `python3 -m unittest discover -s tests -v`. Do not modify anything under `tests/`.",
+  "verify": "python3 -m unittest discover -s tests -v",
+  "timeout_s": 60,
+  "protected": ["tests/**"],
+  "team": {"mode": "single"},
+  "tags": ["python", "feature", "medium", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

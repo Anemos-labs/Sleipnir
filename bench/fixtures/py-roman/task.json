@@ -1,0 +1,13 @@
+{
+  "id": "py-roman",
+  "kind": "fix",
+  "lang": "python",
+  "difficulty": "easy",
+  "prompt": "The small library in `roman.py` converts integers to Roman numerals (`to_roman`) and back (`from_roman`); `README.md` is its specification. It has bugs. `from_roman` gives wrong answers or rejects valid numerals that repeat a letter: `from_roman('III')` should be 3 and `from_roman('MMXXIV')` should be 2024. The top of the supported range is rejected in both directions: `to_roman(3999)` should return 'MMMCMXCIX' and `from_roman('MMMCMXCIX')` should return 3999. Fix the library so that it behaves exactly as README.md specifies. Run the tests from the repository root with `python3 -m unittest discover -s tests -v`. Do not modify anything under `tests/`.",
+  "verify": "python3 -m unittest discover -s tests -v",
+  "timeout_s": 60,
+  "protected": ["tests/**"],
+  "team": {"mode": "single"},
+  "tags": ["python", "fix", "easy", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}
