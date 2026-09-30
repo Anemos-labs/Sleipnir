@@ -1,0 +1,669 @@
+# Configuring Sleipnir
+
+This page is for people who installed the binary and want to point it at a model, tune permissions and limits, or
+share settings through a repository. Extension files (instruction files, skills, slash commands, agent definitions,
+hooks) are in `docs/EXTENDING.md`; every command and flag is in `docs/CLI.md`.
+
+`sleipnir config` shows the configuration a session would use and which file each top-level key came from.
+`sleipnir config --json` prints the merged result. Run it after every edit: it reports syntax errors with file, line
+and column, and validates values.
+
+Statements here were checked against the code and against the binary. Where a key is accepted but nothing reads it yet,
+the tables say so ("no effect yet"); those keys are validated and kept, so files written today keep working when the
+feature lands.
+
+## 1. Where configuration comes from
+
+Lowest precedence first:
+
+| # | Source | Where | Notes |
+|---|---|---|---|
+| 1 | built-in defaults | the binary | listed per key in section 6 |
+| 2 | user file | `~/.sleipnir/config.json` | trusted. `sleipnir init --user` writes a starter (mode 0600) |
+| 3 | project file | `<project>/.sleipnir/config.json` | meant to be committed. `sleipnir init` writes a starter. Untrusted input (section 4) |
+| 4 | local file | `<project>/.sleipnir/config.local.json` | same schema, for your own overrides of a shared project file. Keep it out of git (`sleipnir init` adds it to `.gitignore`). Untrusted like the project file |
+| 5 | environment | `SLEIPNIR_*` variables | section 5 |
+| 6 | flags | `--model`, `--mode`, `--budget-usd`, ... | not part of the file schema: each flag overrides one setting (section 2) |
+
+The **project root** is the nearest directory, from the working directory upwards, that contains `.git` (a directory
+or a file, as in worktrees) or a `.sleipnir/` directory. The `.sleipnir/` in your home directory does not make your
+home a project. With no marker, the working directory is the root. `chat` and `run` take `--cwd DIR` to start the
+search elsewhere; `config` and `doctor` always start from the directory you run them in.
+
+`$HOME` decides where the user file lives. `SLEIPNIR_HOME` is a different thing: it moves the *state* directory
+(recorded sessions, the model-catalogue cache, `rl-work`) and nothing else. The user's config, instruction file,
+skills, commands and agent definitions are always under `$HOME/.sleipnir/`.
+
+A file that does not exist is skipped. A file that cannot be read or parsed stops the run with an error; Sleipnir
+never continues with part of a configuration, because silently dropping a layer could drop a `deny` rule.
+
+Example output (example (a) in section 9; temp directory shortened to `~`):
+
+```text
+layers (lowest precedence first):
+  defaults  defaults (active)
+  user      ~/.sleipnir/config.json (found)
+  project   ./.sleipnir/config.json (not found)
+  local     ./.sleipnir/config.local.json (not found)
+keys:
+  models       ~/.sleipnir/config.json
+  permissions  ~/.sleipnir/config.json
+  providers    ~/.sleipnir/config.json
+  swarm        ~/.sleipnir/config.json
+configuration is valid
+```
+
+## 2. Precedence and merging
+
+Layers are merged by presence, not by value:
+
+* objects merge key by key, recursively (`providers`, `providers.<name>`, `permissions.roles.<role>`, every section);
+* lists replace the list below them: a higher layer's `permissions.allow` does not add to a lower one, it replaces it;
+* a scalar is overridden only if the higher layer contains the key, so an explicit `false` or `0` beats a `true` or
+  `5` below it;
+* `null` deletes whatever the lower layers set for that key;
+* each event under `hooks` (`hooks.PreToolUse`, ...) replaces the same event from a lower layer as a whole;
+* unknown top-level keys are kept but do nothing, and produce a warning with a "did you mean" hint. Unknown keys
+  inside a section are ignored with a warning. `$schema` and other `$`-prefixed top-level keys are editor metadata and
+  never warn.
+
+Worked example. The user file sets nothing about the swarm; the project file has `"swarm": {"max_agents": 12}`; the
+local file has `"swarm": {"max_agents": 6}` and `"models": {"default": null}`; the shell exports
+`SLEIPNIR_SWARM_MAX_AGENTS=30`:
+
+| Source | `swarm.max_agents` |
+|---|---|
+| project file | 12 |
+| + local file | 6 (and `models.default` from lower layers is removed) |
+| + `SLEIPNIR_SWARM_MAX_AGENTS=30` | 30 |
+
+Flags are applied by the commands themselves, after the merge, and always win over every layer:
+
+| Flag | Overrides | Commands |
+|---|---|---|
+| `--model M` | `models.default` (and `SLEIPNIR_MODEL`) | `chat`, `run`, `swarm`, `doctor`, `rl rollout`, `rl eval` |
+| `--mode M` | `permissions.mode` (role profiles under `permissions.roles` still apply) | `chat`, `run`, `swarm` |
+| `--budget-usd N` | `swarm.budget_usd`, and it also caps a single agent | `chat`, `run`, `swarm` |
+| `--swarm N` | the swarm size: a manager plus up to N workers (`swarm.max_agents` is not consulted by the CLI) | `chat`, `run` |
+| `--role-model role=M` | the model of one role (repeatable) | `run`, `swarm`, `rl rollout`, `rl eval` |
+| `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
+| `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
+
+## 3. File format
+
+Files are JSONC: JSON with `//` and `/* */` comments and trailing commas. A UTF-8 byte-order mark is skipped, an empty
+file (or one with only comments) is an empty object, and a file is limited to 1 MiB and 64 levels of nesting. Strings
+use double quotes. A number where an integer is expected must be an integer.
+
+Every problem in every layer is reported in one run, with file, line, column and field path, for example:
+
+```text
+sleipnir: ~/.sleipnir/config.json:7:28: swarm.max_agents: expected an integer, got a string
+~/.sleipnir/config.json:3:26: providers.acme.dialect: unknown dialect "openai" (valid: anthropic, openai-chat, openai-responses)
+~/.sleipnir/config.json:3:48: providers.acme.base_url: must be an absolute http(s) URL such as https://api.example.com/v1
+~/.sleipnir/config.json:3:86: providers.acme.api_key_env: must be the NAME of an environment variable (letters, digits and underscores), not the key itself
+~/.sleipnir/config.json:5:26: models.default: must look like "provider/model", got "gpt-5"
+~/.sleipnir/config.json:6:28: permissions.mode: unknown permission mode "yolo" (valid: default, accept-edits, plan, bypass)
+~/.sleipnir/config.json:6:46: permissions.allow[0]: rule "Bash(git status": missing closing parenthesis
+~/.sleipnir/config.json:7:49: swarm.budget_usd: must be zero (no limit) or a positive amount
+```
+
+**Never put a key in a file.** A provider names the environment variable that holds its key (`api_key_env`); the
+variable is read when the session starts. A value in a file that looks like a credential (a well-known key prefix, or a
+long token-like string under a key named `key`, `token`, `secret` or `password`) produces a warning, and a
+`api_key_env` that is not a valid variable name is an error (the message does not echo the value).
+
+## 4. Trust: project files are untrusted input
+
+`<project>/.sleipnir/config.json` and `config.local.json` arrive with a repository, which may be someone else's.
+Settings that could send your API key to another host, run commands or widen what the agent may do without asking are
+**ignored unless you pass `--trust-project`**:
+
+| Ignored key | Why |
+|---|---|
+| `providers.<name>.base_url` | redirects requests, and the key that signs them |
+| `providers.<name>.api_key_env` | chooses which environment variable is sent |
+| `providers.<name>.headers` | can add credentials or route requests |
+| `providers.<name>.options` | provider-specific behaviour, may hold URLs |
+| `permissions.mode` | `bypass` turns off every prompt |
+| `permissions.allow` | pre-approves actions |
+| `permissions.roles.<role>.mode`, `.allow` | the same, per role |
+| `hooks` | runs commands |
+| `mcp` | starts servers |
+| `tools.web_allow_private`, `tools.web_allow_hosts` | reaches internal networks |
+| `training` (the whole section) | exports conversations |
+| `ui.editor` | runs a command |
+
+Everything else in a project file applies without trust: `models`, `cache`, `swarm` (including `budget_usd`), the tool
+limits, `ui.theme`, `permissions.ask` and `permissions.deny` (they can only restrict), and a provider's `dialect` and
+`models`.
+
+In a session (`chat`, `run`, `swarm`) an untrusted project's sensitive settings are dropped with a notice such as
+`ignored security-sensitive settings from the project's config (hooks); pass --trust-project to apply them`.
+`sleipnir config` lists them under "security-sensitive settings from project files" (with `--trust-project` it lists
+the same settings as applied).
+
+`--trust-project` is all or nothing and lasts for one command; nothing is remembered. It gates more than config: the
+project's instruction files (`AGENTS.md`, ...), skills, slash commands and agent definitions are also read only with it
+(`docs/EXTENDING.md`). `models` and every `rl` command never trust a project file: put the provider they need in your
+user file, or pass `--base-url`/`--api-key-env` to `rl` and `doctor`.
+
+Three consequences of the merge rules that are worth knowing before you open an unfamiliar repository:
+
+* Lists replace. A project's `"permissions": {"deny": []}` **replaces your own `deny` list**, trusted or not, because
+  `deny` is not a gated key. Built-in protections (section 8) are not affected. Run `sleipnir config --json` in a repo
+  you do not know and read `permissions`.
+* With `--trust-project`, a project's `hooks.PreToolUse` replaces your own `hooks.PreToolUse` for that event, so your
+  guard hook does not run.
+* A project can still add a provider entry; only its sensitive fields are dropped, so `{"providers": {"x": {}}}`
+  leaves an empty provider `x`. An empty entry counts as a configured provider, which matters for the default-provider
+  rule in section 6.
+
+## 5. Environment variables
+
+### Settings
+
+Each `SLEIPNIR_*` variable that names a setting is one entry above the files and below the flags. An empty value counts
+as unset, booleans accept `1/true/yes/on` and `0/false/no/off`, lists are comma-separated, and a value of the wrong
+type is an error that names the variable (`env:SLEIPNIR_SWARM_MAX_AGENTS: swarm.max_agents: expected an integer, got
+"lots"`). Other `SLEIPNIR_*` variables are ignored. Providers, hooks and MCP servers can only be set in files.
+
+| Variable | Setting |
+|---|---|
+| `SLEIPNIR_MODEL` | `models.default` |
+| `SLEIPNIR_COMPACTOR_MODEL` | `models.compactor` |
+| `SLEIPNIR_MODEL_<ROLE>` | `models.roles.<role>` (the role name is lower-cased: `SLEIPNIR_MODEL_MANAGER`) |
+| `SLEIPNIR_PERMISSION_MODE` | `permissions.mode` |
+| `SLEIPNIR_<SECTION>_<FIELD>` | any scalar or list field of a section, named by its JSON path in upper case |
+
+The last form covers: `SLEIPNIR_MODELS_DEFAULT`, `SLEIPNIR_MODELS_COMPACTOR`, `SLEIPNIR_PERMISSIONS_MODE`,
+`SLEIPNIR_PERMISSIONS_ALLOW`, `SLEIPNIR_PERMISSIONS_ASK`, `SLEIPNIR_PERMISSIONS_DENY`, `SLEIPNIR_CACHE_SHARED_TTL`,
+`SLEIPNIR_CACHE_MIN_LAYER_FOR_BREAKPOINT`, `SLEIPNIR_CACHE_COMPACT_THRESHOLD_TOKENS`,
+`SLEIPNIR_CACHE_THREAD_SOFT_LIMIT_TOKENS`, `SLEIPNIR_CACHE_HOT_MAX_TOKENS`, `SLEIPNIR_CACHE_AFFINITY_SHARDS`,
+`SLEIPNIR_CACHE_PREWARM`, `SLEIPNIR_CACHE_KEEPALIVE`, `SLEIPNIR_SWARM_MAX_AGENTS`, `SLEIPNIR_SWARM_REQUESTS_PER_MINUTE`,
+`SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS`, `SLEIPNIR_SWARM_ISOLATION`, `SLEIPNIR_SWARM_BUDGET_USD`,
+`SLEIPNIR_TOOLS_MAX_OUTPUT_CHARS`, `SLEIPNIR_TOOLS_DEFAULT_TIMEOUT_SEC`, `SLEIPNIR_TOOLS_MAX_TIMEOUT_SEC`,
+`SLEIPNIR_TOOLS_WEB_ALLOW_PRIVATE`, `SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS`, `SLEIPNIR_UI_THEME`, `SLEIPNIR_UI_EDITOR`,
+`SLEIPNIR_TRAINING_ENABLED`, `SLEIPNIR_TRAINING_REDACT_SECRETS`, `SLEIPNIR_TRAINING_DIR`. (A variable that sets a
+gated key is yours, not the repository's, so the trust gate does not apply to it.)
+
+### Other variables the binary reads
+
+| Variable | Used for |
+|---|---|
+| the variable named by a provider's `api_key_env` | the API key. Built-in providers: `HEIMDALL_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`. Hooks never receive it; shell commands do not receive variables whose names look like credentials, so name yours `..._API_KEY` |
+| `<NAME>_BASE_URL` | overrides the `base_url` of provider `<NAME>` (upper-cased, `-` becomes `_`): `HEIMDALL_BASE_URL`, `OPENROUTER_BASE_URL`, `OPENAI_BASE_URL`, `LOCAL_BASE_URL`. Applies to configured providers too |
+| `SLEIPNIR_HOME` | the state directory (default `~/.sleipnir`): `sessions/`, `cache/`, `rl-work/` |
+| `SLEIPNIR_INSPECT_TOKEN` | access token for `sleipnir inspect` on a non-loopback address |
+| `BRAVE_API_KEY`, `TAVILY_API_KEY`, `SEARXNG_URL` | enable the `web_search` tool (the first one set wins, in this order); without one only `web_fetch` exists |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | honoured by the provider clients and the web tools |
+
+The agent's own shell commands do not inherit variables whose names or values look like credentials (`*_API_KEY`,
+`*_TOKEN`, `*_SECRET`, `GITHUB_TOKEN`, URLs with a password, well-known key formats), and there is no setting to pass
+them through in `chat`/`run`. Hooks are scrubbed the same way (`docs/EXTENDING.md`).
+
+## 6. Key reference
+
+Types are JSON types. "Applied" says whether anything reads the key today.
+
+### `providers`
+
+An object of named endpoints. A name may not be empty, contain whitespace or contain `/` (model references are
+`provider/model`). Three providers exist without being configured, each usable as soon as its key variable is set:
+
+| Name | `base_url` | `api_key_env` | Options and headers |
+|---|---|---|---|
+| `heimdall` | `https://api-staging.impossiblecarrot.cc/api/v1` | `HEIMDALL_API_KEY` | `session_header`, `cache_key_body`; header `X-Title: Sleipnir` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | `session_header`; header `X-Title: Sleipnir` |
+| `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` | `cache_key_body` |
+
+A configured provider with the same name replaces the built-in one entirely (no field-by-field merge with the
+built-in).
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `dialect` | string | `openai-chat` | yes | The wire protocol: `openai-chat` (OpenAI-style chat completions) or `anthropic` (Messages API). `openai-responses` passes validation but the adapter is not built yet: a session that uses it stops with an error that says so |
+| `base_url` | string | none | yes | Absolute http(s) URL, required for every provider that is not built in. `openai-chat` posts to `<base_url>/chat/completions`. `anthropic` posts to `<base_url>/v1/messages`, or to `<base_url>/messages` when the URL already ends in `/v1`. A trailing `/` is ignored. Plain `http://` to a host that is not loopback, or credentials inside the URL, produce a warning |
+| `api_key_env` | string | none | yes | The **name** of the environment variable holding the key. If set and the variable is empty when a session starts: `provider "x" needs NAME to be set`. If omitted, no credential header is sent (local servers). `openai-chat` sends `Authorization: Bearer <key>`; `anthropic` sends `x-api-key: <key>` unless `options.auth_style` is `bearer` |
+| `headers` | object of strings | none | yes | Extra headers on every request. Names must be valid HTTP tokens, values may not contain CR, LF or NUL. On `anthropic`, an `anthropic-beta` header is merged with the betas the adapter needs instead of replacing them |
+| `options` | object | none | yes | Dialect-specific request options, section 7. The values are **not validated**: an unknown key or a value of the wrong type is ignored without a warning |
+| `models` | list of strings | none | no | Informational. Checked for empty entries, whitespace and duplicates, and used for nothing else |
+
+**Model references.** A model is written `provider/model`, and the model part may contain slashes
+(`heimdall/deepseek/deepseek-v4.1-flash` is provider `heimdall`, model `deepseek/deepseek-v4.1-flash`). A **bare id**
+(no known provider before the first slash) goes to the default provider, which is: the only provider under
+`providers`, otherwise the first of `heimdall`, `openrouter`, `openai` whose key variable is set. With two or more
+configured providers and none of the built-in keys set there is no default and a bare id fails with `no provider
+configured`. `sleipnir init --user` writes a `local` provider, which makes it the only configured provider: from then
+on a bare marketplace id such as `deepseek/deepseek-v4.1-flash` is sent to `local`. Write `heimdall/deepseek/...` or
+add the provider you use next to it.
+
+### `models`
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `default` | string | none | yes | `provider/model` used when neither `--model` nor `SLEIPNIR_MODEL` is given. It must contain a `/`; a bare id such as `gpt-5` is a validation error here (it is fine after `--model`) |
+| `roles` | object | none | no | Role name to `provider/model`. Validated, not used yet. To give a role its own model today use `--role-model role=provider/model`, or `model:` in an agent definition (`docs/EXTENDING.md`) |
+| `compactor` | string | none | no | Validated, not used yet: compaction runs on the agent's own model |
+
+**Catalogue and price overrides: there are none.** No key sets a price or a context window. Costs and windows come from,
+in order: a built-in table of well-known models; the endpoint's own catalogue, fetched from `<base_url>/models` when the
+model is not in the table and cached for six hours under `<state>/cache/`; a conservative fallback (200k context, $3 per
+million input tokens, $15 output). When an endpoint reports the cost of a call (Heimdall does, as `usage.cost`) the bill
+uses that figure and the table is only an estimate. `sleipnir models` prints a marketplace catalogue with prices.
+`--context-window N` on `run` overrides the window for one run.
+
+### `permissions`
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `mode` | string | `default` | yes | `default`, `accept-edits`, `plan` or `bypass`. `--mode` and `SLEIPNIR_PERMISSION_MODE` override it. `bypass` warns: use it only in a sandbox |
+| `allow` | list of rules | `[]` | yes | Actions that need no question |
+| `ask` | list of rules | `[]` | yes | Actions that always ask, whatever the mode or the allow list says |
+| `deny` | list of rules | `[]` | yes | Actions that are refused, in every mode |
+| `roles` | object | none | yes | Per-role overlay: `roles.<role>` with `mode`, `allow`, `ask`, `deny`. Section 8 |
+
+Rule syntax, precedence, modes and examples are in section 8. Every rule is parsed when the file loads, so a typo is
+an error with a line number, not a rule that silently never matches. A rule that is in both `allow` and `deny` is a
+warning.
+
+### `cache`
+
+Tuning of the prompt-cache engine. A `0` means "use the engine's default".
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `shared_ttl` | string | `5m` | no | `5m` or `1h`, the lifetime requested for shared-layer cache entries. Validated, no effect yet |
+| `min_layer_for_breakpoint` | integer | `1500` | single agent | Do not place a cache breakpoint after a layer smaller than this many tokens. A `0` behaves like the default: a positive value is needed to change it. Swarm agents do not read it |
+| `compact_threshold_tokens` | integer | `0` (60,000) | yes | Thread size at which compaction is forced whatever it costs |
+| `thread_soft_limit_tokens` | integer | `0` (20,000) | yes | Thread size at which the planner starts considering a compaction |
+| `hot_max_tokens` | integer | `0` (900) | swarm | Cap on the always-fresh "hot" view a worker sees (the manager's is 2,200 and is not configurable) |
+| `affinity_shards` | integer | `0` (one key) | swarm | Spread a large swarm over this many provider routing keys |
+| `prewarm` | boolean | `true` | no | No effect yet: the swarm's warm gate is always on |
+| `keepalive` | boolean | `false` | no | No effect yet |
+
+### `swarm`
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `max_agents` | integer | `0` | no (CLI) | Bounds registered agents. `chat`/`run --swarm N` always set it to N+1 (the manager and N workers), so this key does not change anything from the CLI |
+| `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
+| `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
+| `isolation` | string | `shared` | no | `shared` (all agents edit one working tree) or `worktree`. Only `shared` exists: worktree isolation is not built yet, and `worktree` is accepted but has no effect |
+| `budget_usd` | number | `0` (none) | swarm | Total spend cap for a swarm run, retired agents included; when spent, workers stop and no request is admitted. `--budget-usd` overrides it and is the way to cap a single agent |
+
+At most four agents that may write files run at once (fixed; not configurable).
+
+### `tools`
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `max_output_chars` | integer | `24000` | yes | Model-visible tool output is cut to this many characters (head and tail kept); the full text stays behind a `recall` handle |
+| `default_timeout_sec` | integer | `120` | yes | Timeout of a shell command that names none. May not exceed `max_timeout_sec` |
+| `max_timeout_sec` | integer | `600` | yes | The longest timeout a shell command may ask for |
+| `web_allow_private` | boolean | `false` | yes | Turns the private-address guard of `web_fetch` off: loopback, private, link-local and cloud-metadata addresses become reachable |
+| `web_allow_hosts` | list of strings | `[]` | yes | Hosts `web_fetch` may reach even though the guard would block them: a name (`docs.internal`), an IP, `host:port`, `[::1]:8080`, or `*.corp.example` (subdomains only, not the apex) |
+
+`web_allow_hosts` is an exemption from the private-network guard, not a list of the only hosts the agent may fetch:
+public hosts are reachable, subject to permissions. Whether a fetch is allowed at all is decided by `permissions`:
+in `default` mode `web_fetch` asks; `WebFetch(domain:example.com)` in `allow` lets it through (host and subdomains), and
+an allow rule also lifts the ban that `plan` mode puts on network access.
+
+### `ui`
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `theme` | string | none | no | No effect yet |
+| `editor` | string | none | no | Meant for editing long input; no effect yet (`chat` reads lines, and a trailing `\` continues a line) |
+
+### `training`
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `enabled` | boolean | `false` | no | No effect yet |
+| `redact_secrets` | boolean | `true` | no | No effect yet |
+| `dir` | string | none | no | No effect yet |
+
+This section does not switch recording on or off. Every session already writes its event log and blobs to
+`<state>/sessions/<id>/` (`events.jsonl`, `blobs/`, `checkpoints/`; `<state>` is `$SLEIPNIR_HOME`, else `~/.sleipnir`,
+and `run --session-dir DIR` puts one run elsewhere), and the RL pipeline (`sleipnir rl ...`, `docs/TRAINING-DATA.md`)
+reads those. Redaction is a flag of `sleipnir rl export` (`--no-redact`, `--redact-salt`), and token capture is the
+`--capture` flag plus the provider option `capture_tokens` (section 7).
+
+### `hooks` and `mcp`
+
+`hooks` is an object of events, each a list of matcher groups; the format, events and examples are in
+`docs/EXTENDING.md`. Hooks from a project file run only with `--trust-project`. `mcp` is accepted and kept as written,
+and it is on the gated list of section 4.
+
+## 7. Provider options
+
+`providers.<name>.options` passes dialect-specific switches to the adapter. Booleans must be JSON `true`/`false`,
+strings must be strings, and numbers must be numbers; anything else is ignored silently, as are unknown keys. If a
+setting seems to have no effect, look at the request itself (`sleipnir inspect <session dir>`) before suspecting the
+endpoint.
+
+### Options of `openai-chat`
+
+| Option | Type | Default | Effect |
+|---|---|---|---|
+| `session_header` | bool | `false` | Send the session's routing key as an `X-Session-Id` header, so a gateway keeps a conversation on the engine that holds its cache |
+| `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdall) |
+| `system_role` | string | `system` | Role name of the system message; `developer` for OpenAI reasoning models |
+| `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (16000, or the model's maximum if smaller) |
+| `reasoning_effort_field` | string | none | Any non-empty value lets a request's reasoning effort through as `reasoning_effort`. The harness does not set an effort in this version, so this has no effect in normal runs |
+| `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
+| `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
+| `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
+
+### Options of `anthropic`
+
+| Option | Type | Default | Effect |
+|---|---|---|---|
+| `auth_style` | string | `x-api-key` | `x-api-key` or `bearer` (`Authorization: Bearer`) |
+| `version` | string | `2023-06-01` | The `anthropic-version` header |
+| `betas` | list of strings | none | `anthropic-beta` values sent on every request, in addition to the ones the adapter adds itself |
+| `cache_control` | bool | `true` | `false` when the gateway drops cache markers: no breakpoints are planned or sent |
+| `max_breakpoints` | integer | `4` | Cap on `cache_control` markers per request |
+| `no_turn_scoped_system` | bool | `false` | The gateway has no system messages in the middle of a conversation; such text is folded into a user message instead |
+| `no_thinking_replay` | bool | `false` | The gateway cannot take thinking blocks back; they are dropped from history instead of replayed |
+| `no_zero_max_tokens` | bool | `false` | The gateway rejects `max_tokens: 0`; cache warm-ups use `1` |
+| `session_header_name` | string | none | Header that carries the routing key (for example `X-Session-Id`); Anthropic itself ignores it |
+| `default_max_tokens` | integer | `8192` | Used only when a request carries no `max_tokens`. The harness always sets one (16000, or the model's maximum if smaller), so this rarely matters |
+| `thinking_display` | string | none | Value of `thinking.display`, sent only when a request carries a `thinking` object. The harness does not turn thinking on itself; it adds such an object only for models that always think, to carry the binding control after a compaction |
+| `thinking_budget` | integer | `8192` | `budget_tokens` for models that do not have adaptive thinking. Only used when thinking is requested, which the harness does not do in this version |
+| `extra_body` | object | none | Members merged into the request body. Naming a member the adapter owns (`model`, `max_tokens`, `stream`, `thinking`, `output_config`, `temperature`, `stop_sequences`, `metadata`, `tool_choice`, `tools`, `system`, `messages`) is an error |
+
+`capture_tokens` on an `anthropic` provider is refused at startup: the Messages API returns no token ids or logprobs,
+and RL data capture needs a chat-completions server.
+
+## 8. Permissions in detail
+
+The engine decides every tool call before it runs. A request is settled by the first of these that applies:
+
+1. **Hard denies**: built-in protections, and your `deny` rules. They beat everything, `bypass` included.
+2. Your `ask` rules: the answer is a question, whatever `allow` or the mode says.
+3. High-risk shell commands (`sudo`, `rm -rf` of the workspace or home, `dd` to devices, force-pushes to shared
+   branches, `git reset --hard` on a shared branch, `shutdown`, ...): ask, and plan mode refuses. A blanket `Bash` or
+   `Bash(*)` allow does not lift this; an exact rule, or one that names the risky flag, does.
+4. Your `allow` rules.
+5. The mode's defaults.
+
+### Modes
+
+| Mode | Behaviour |
+|---|---|
+| `default` | Reads inside the workspace and read-only shell commands are allowed; everything else asks |
+| `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) |
+| `plan` | Read-only. Writes, network access and commands that are not provably read-only are refused with a message that says to present a plan. An `allow` rule still carves an exception (say `Edit(docs/plan.md)`) |
+| `bypass` | Allows everything except hard denies, `deny` rules, guarded paths without an `allow` rule, and `ask` rules. For sandboxes |
+
+Switch a running chat with `/mode <m>` or `/plan`.
+
+**When no human is available** (`run`/`swarm` with stdin not a terminal, or any unattended run) a question cannot be
+asked, so the action is refused with `approval required: <why>`. In a terminal the question is
+`allow? [y]es once / [a]lways this session / [n]o`; `a` adds an exact rule for the rest of the session (it is not
+written to any file), and anything but `y`/`a` refuses.
+
+### Rules
+
+A rule is `Tool` or `Tool(pattern)` in `allow`, `ask` or `deny`.
+
+| Rule | Matches |
+|---|---|
+| `Bash(go test:*)` | a shell command whose words start with `go test` (`:*` or a trailing ` *` allows any further arguments) |
+| `Bash(make lint)` | exactly `make lint` (`make lint extra` is not covered) |
+| `Bash` or `Bash(*)` | every shell command |
+| `Read(./.env)`, `Read(~/.ssh/**)` | reads of those paths **by any tool**, the shell included (`cat .env` counts) |
+| `Edit(docs/**)` | writes to matching paths, by the edit tools or by shell redirections |
+| `Read`, `Edit` | every read, every write |
+| `WebFetch(domain:example.com)` | requests to that host and its subdomains (`domain:*.example.com`: subdomains only) |
+| `WebFetch(https://api.example.com/*)` | requests whose URL matches the wildcard |
+
+Tool names are case-insensitive and ignore `_` and `-` (`WebFetch` is `web_fetch`). `Read(...)` and `Edit(...)` are
+about access, not about which tool did it: they apply to the file tools and to the paths a shell command reads or
+writes. `WebFetch` matches `web_fetch` and `WebSearch` matches `web_search`. Any other name (`skill`, `recall`, ...)
+matches a tool by name.
+
+Path patterns are gitignore-like: `**` spans directories, `~` is your home, `./x` and `x/y` are relative to the
+workspace, an absolute path is itself, and a pattern without a slash matches at any depth (for `deny` and `ask`
+anywhere on disk, for `allow` inside the workspace). A pattern covers the directory it names and everything below it.
+Paths are compared after symlinks are followed, and an `allow` rule only ever matches the resolved path.
+
+`Bash` rules match the parsed command. Every simple command in a line is judged, including those inside `$(...)`,
+backticks, `eval` and `sh -c` strings, and a line is allowed only if every part is. An `allow` rule sees the command as
+written (`./git` is not `git`); `deny` and `ask` rules also see through `sudo`, `env`, `nohup`, absolute paths and
+quoting. Commands the engine cannot analyse (variable-built names, unterminated quotes, `curl | sh`, ...) are never
+auto-allowed; only `bypass` lets them pass.
+
+### Built-in protections
+
+Refused whatever the mode or your rules: any access to `~/.ssh` private keys (and writes to anything in `~/.ssh`),
+`~/.aws`, `~/.gnupg`, `~/.config/gcloud`, `/proc/*/environ`, `/etc/shadow`; writes to `.git/**` (change repositories
+with `git` commands, which are judged as commands); writes to `/etc`, `/usr`, `/bin` and other system directories;
+recursive delete, chmod or archive of a directory that contains any of those (`rm -rf ~`, `rm -rf /`).
+
+Denied unless an `allow` rule names the path (a blanket `Read` does not count): `.env` and `.env.*` files (including
+`.env.example`), `~/.ssh` public keys, `known_hosts` and `config` for reads, and token files such as `~/.npmrc` and
+`~/.git-credentials`.
+
+Writes into the directories that hold hooks, skills, commands, agent definitions and project configuration always
+ask, in every mode: `docs/EXTENDING.md`.
+
+### What a decision looks like
+
+A refusal reaches the model as a tool error naming the cause. These are real messages from a run with `allow:
+["Bash(go test:*)", "Edit(docs/**)"]`, `ask: ["Bash(git push:*)"]` and `deny: ["Bash(curl:*)", "Edit(./secrets/**)"]`,
+unattended, in `default` mode:
+
+```text
+bash  make lint extra   -> permission denied: approval required: default mode: make lint extra: not on the read-only allowlist
+bash  curl https://...  -> permission denied: denied by rule Bash(curl:*)
+bash  git push origin   -> permission denied: approval required: rule Bash(git push:*) requires approval
+write secrets/x.txt     -> permission denied (write secrets/x.txt): denied by rule Edit(./secrets/**)
+read  .env              -> permission denied (read .env): built-in protection: ... is an .env file and may hold secrets
+bash  cat ~/.ssh/id_rsa -> permission denied: built-in protection: ~/.ssh holds credentials: ~/.ssh/id_rsa is protected
+bash  sudo ls           -> permission denied: approval required: high risk: it runs with elevated privileges (sudo/doas/su)
+write docs/a.md         -> Created docs/a.md (1 line, 6 bytes)
+```
+
+### Role profiles
+
+`permissions.roles.<role>` overlays a stricter posture on one role. The role's requests are judged under the session
+and under its profile and the **more severe** answer stands: a profile can add denials and questions or pick a
+stricter mode, never grant what the session would not. A role that takes a stricter mode than the session is judged
+from scratch under it: the session's `allow` rules do not carve exceptions out of the role's mode, only the role's own
+`allow` rules do.
+
+Role names: `worker` is the role of a single agent (`chat`/`run` without `--swarm`); a swarm adds `manager`, `backend`,
+`frontend`, `fullstack`, `tester`, `reviewer`, `scout`, `docs`, plus roles defined in `.sleipnir/agents/`.
+`reviewer` and `scout` are read-only in the engine (plan mode, with `go test`, `go vet`, `pytest`, `npm test`,
+`npm run test:*`, `cargo test`, `cargo check` and `make test` allowed so they can verify what they review).
+
+```jsonc
+"permissions": {
+  "mode": "accept-edits",
+  "roles": {
+    "worker":   { "deny": ["Bash(go build:*)"], "ask": ["Edit(docs/**)"] },
+    "reviewer": { "deny": ["WebFetch"] }
+  }
+}
+```
+
+A refusal by a role says so: `permission denied: role worker: denied by rule Bash(go build:*)`. Every agent still
+sends the same tool list; a role is restricted at run time, never by hiding tools.
+
+## 9. Examples
+
+All four validate with `sleipnir config`. None contains a key: the key stays in the environment.
+
+### (a) An OpenAI-style marketplace (Heimdall)
+
+Heimdall's web site and documentation are at `https://staging.impossiblecarrot.cc`; its API is served from
+`https://api-staging.impossiblecarrot.cc/api/v1` (the site host answers 404 for `/api/v1`, so use the `api-` host as the
+base URL). Chat completions are at `<base>/chat/completions`, and the catalogue at `<base>/models` is public
+(`sleipnir models` works without a key). This block reproduces the built-in `heimdall` provider: with
+`HEIMDALL_API_KEY` exported you can leave `providers` out entirely and keep only what you want to change.
+
+```jsonc
+// ~/.sleipnir/config.json
+{
+  "providers": {
+    "heimdall": {
+      "dialect": "openai-chat",
+      "base_url": "https://api-staging.impossiblecarrot.cc/api/v1",
+      "api_key_env": "HEIMDALL_API_KEY",
+      "headers": { "X-Title": "Sleipnir" },
+      "options": {
+        "session_header": true,  // send the routing key as X-Session-Id
+        "cache_key_body": true   // and as prompt_cache_key in the request body
+      }
+    }
+  },
+  "models": { "default": "heimdall/deepseek/deepseek-v4.1-flash" },
+  "permissions": {
+    "mode": "default",
+    "allow": ["Bash(go test:*)", "Bash(make lint)"],
+    "deny": ["Read(./.env)", "Read(./secrets/**)"]
+  },
+  "swarm": { "requests_per_minute": 400, "budget_usd": 5 }
+}
+```
+
+```sh
+export HEIMDALL_API_KEY=...           # create a key in the web UI; never paste it into a file
+sleipnir models | head                # catalogue and prices, no key needed
+sleipnir doctor --model heimdall/deepseek/deepseek-v4.1-flash --deep
+sleipnir chat
+```
+
+### (b) Native Anthropic-style routes
+
+Two cases use `"dialect": "anthropic"`: the Anthropic API itself, and a marketplace's Anthropic-style route.
+
+The Anthropic API needs no options; the defaults (explicit cache breakpoints, `x-api-key`, version `2023-06-01`) are
+its own. `base_url` is required.
+
+```jsonc
+// ~/.sleipnir/config.json: the Anthropic API itself
+{
+  "providers": {
+    "anthropic": {
+      "dialect": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY"
+    }
+  },
+  "models": { "default": "anthropic/claude-sonnet-5-5" }
+}
+```
+
+A marketplace route is a different animal: it translates the Messages wire format to whatever engine serves the model,
+and what it forwards decides which options you need. Heimdall's route is `POST <base>/messages`, so the same `.../api/v1`
+base URL works (the adapter appends `/messages` because the URL ends in `/v1`). Its published Messages documentation
+(`https://staging.impossiblecarrot.cc/docs/api/messages`) says that `cache_control` and other Anthropic-specific block
+hints are accepted but not forwarded, that no cache usage is reported, that `thinking` is accepted without effect, that
+a system turn in the middle of a conversation is folded into the leading system text, that `max_tokens` must be a
+positive integer, and that `X-Session-Id` is the way to keep a conversation on one engine. The options below follow
+from that:
+
+```jsonc
+// ~/.sleipnir/config.json: a marketplace's Anthropic-style /messages route
+{
+  "providers": {
+    "heimdall-messages": {
+      "dialect": "anthropic",
+      "base_url": "https://api-staging.impossiblecarrot.cc/api/v1",  // requests go to <base_url>/messages
+      "api_key_env": "HEIMDALL_API_KEY",
+      "options": {
+        "cache_control": false,           // the route does not forward cache markers: plan none
+        "no_turn_scoped_system": true,    // fold mid-conversation system text into user text
+        "no_zero_max_tokens": true,       // warm-ups send max_tokens 1, not 0
+        "session_header_name": "X-Session-Id"  // routing key for engine affinity
+      }
+    }
+  },
+  "models": { "default": "heimdall-messages/deepseek/deepseek-v4.1-flash" }
+}
+```
+
+**What is and is not verified.** The URL, headers (`auth_style`, `betas`, `session_header_name`, custom headers),
+`cache_control` markers and `max_tokens` that the adapter sends for these options were checked against a local
+stand-in server; `no_turn_scoped_system` and `no_zero_max_tokens`, which only matter for a swarm's hot view and cache
+warm-ups, were read from the code, not exercised. **No option of the `anthropic` dialect has been verified against a
+live endpoint**: how a real gateway reacts to `cache_control`, `no_turn_scoped_system`, `no_zero_max_tokens`,
+`session_header_name`, `betas`, `max_breakpoints`, `thinking_*` or `extra_body` is unmeasured, and the values above
+come from the marketplace's documentation, not from a measurement. Measure your own endpoint:
+
+```sh
+sleipnir doctor --model heimdall-messages/deepseek/deepseek-v4.1-flash --deep
+```
+
+`doctor` works with any configured provider, either dialect. It runs a series of real requests and reports whether
+streaming works, whether usage and exact cost are reported, whether tool calling round-trips, whether cached tokens are
+shown and whether a repeated prefix actually hits the cache, the cache granularity and the smallest cached size
+(`--deep`), whether a parallel burst needs a warm-up (`--deep`), whether reasoning is exposed, and (`--capture`) whether
+token ids come back. It prints the cost of the probe. Add `--json` for a machine-readable report, and `--no-affinity`
+to send no routing key. Acting on it: if `prefix cache works` is `NO` on the Messages route but `yes` on the chat route
+of the same marketplace, use the chat route (example (a)); the docs of the harness recommend that route for
+cache-aware runs on Heimdall (`docs/ARCHITECTURE.md`, `docs/VALIDATION.md`).
+
+### (c) A local vLLM or SGLang policy server for RL data capture
+
+Rollouts need token ids and logprobs from the policy. A self-hosted OpenAI-compatible server (vLLM, SGLang) can return
+them; hosted gateways cannot.
+
+```jsonc
+// ~/.sleipnir/config.json: a self-hosted vLLM or SGLang server as the policy to train
+{
+  "providers": {
+    "local": {
+      "dialect": "openai-chat",
+      "base_url": "http://127.0.0.1:8000/v1",
+      // "api_key_env": "LOCAL_LLM_KEY",   // only if the server checks a key
+      "options": {
+        "capture_tokens": true              // this server returns token ids and logprobs
+        // "extra_body": { "top_k": 20 }    // any extra request member the server accepts
+      }
+    }
+  },
+  "models": { "default": "local/my-policy" }
+}
+```
+
+Put this in the **user** file: `rl` commands never read provider settings from a project file. Alternatively skip the
+provider entry and name the server on the command line: `--model my-policy --base-url http://127.0.0.1:8000/v1`.
+
+```sh
+sleipnir doctor --model local/my-policy --capture     # do token ids come back? logprobs? are they prefix-stable?
+sleipnir rl rollout --tasks tasks/all.train.jsonl --model local/my-policy --group 8 --capture --out runs/r1
+```
+
+With `--capture` the request carries `logprobs: true` and `return_token_ids: true`. Without it, nothing extra is sent,
+even though `capture_tokens` is set: the option only declares what the server can do. RL policies must speak
+`openai-chat`; a provider with another dialect is refused (`docs/TRAINING-DATA.md`).
+
+For illustration, this is the capture line of `doctor --capture` against the harness's own mock server (`sleipnir
+mock`, which imitates vLLM's token ids); your server's answer is the one that counts:
+
+```text
+  token ids            yes (logprobs yes, prefix-stable for packing yes)
+```
+
+## 10. Troubleshooting
+
+| Message | Cause |
+|---|---|
+| `no model configured: pass --model or set models.default in .sleipnir/config.json` | no model given and `models.default` unset |
+| `no provider configured: set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY) or define one under "providers" ...` | a bare model id and no default provider (section 6), or no built-in key set |
+| `provider "x" needs NAME to be set` | the provider's `api_key_env` variable is empty in this shell |
+| `provider "x" has no base_url` | a configured provider without `base_url` |
+| `provider "x" uses the openai-responses dialect, whose native adapter is not built yet ...` | use `openai-chat` or `anthropic` |
+| `ignored security-sensitive settings from the project's config (...)` | the project file set gated keys; `--trust-project` applies them (section 4) |
+| `unknown key "modles" (did you mean "models"?); it is kept but has no effect` | a misspelled key; nothing reads it |
+| `bypass mode turns off permission prompts; use it only inside a sandbox` | `permissions.mode` is `bypass` |
+| `provider: auth (http 401): Missing or invalid API key` | the key variable is empty, wrong or expired. `sleipnir doctor --model provider/model` shows the answer without starting a session |
+| `429` from the endpoint | lower `swarm.requests_per_minute` |
+
+`sleipnir config` prints the `unknown key` warning twice (once with file and line, once without); the first is the one
+to read.

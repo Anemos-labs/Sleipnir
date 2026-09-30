@@ -16,18 +16,68 @@ version of "how code here is written". Read it before touching a package.
 
 ## Layout
 
+One line per package, from the first sentence of each package's doc comment
+(`go list -f '{{.ImportPath}}: {{.Doc}}' ./...` prints them; update this list when a package is added).
+`docs/ARCHITECTURE.md` has the system map and how the packages fit together.
+
 ```
-cmd/sleipnir        the binary
-internal/core       provider-neutral vocabulary (Turn, Block, Prompt, Usage, hashing)
-internal/events     append-only event log + content-addressed blobs (source of truth)
-internal/kv         layered prompt-cache engine (layers, renderer, planner, compaction)
-internal/cost       provider cache models + prices
-internal/provider   provider interface; openaichat/ (marketplace + OpenAI), mock/ (test server)
-internal/tools      tool contract + shared helpers; tools/fs, tools/shell, tools/web ...
-internal/perm       permission engine
-internal/swarm      board, mailbox, roles, scheduling
-internal/agent      the agent loop
-internal/train      training-data export
+cmd/sleipnir            the binary: every command, the chat loop and the RL subcommands (package main)
+
+internal/core           provider-neutral vocabulary: messages, blocks, tools, usage, ids, hashing
+internal/events         source of truth: append-only session event log plus a content-addressed blob store
+internal/cost           economics the cache planner reasons with: per-model prices and each provider family's caching rules
+internal/kv             the multi-layer prompt-cache engine: layers, renderer, breakpoint planner, drift guard, compaction
+  kv/sim                deterministic cost simulator for prompt-cache policies (behind `sleipnir sim`)
+
+internal/provider       the boundary between the harness and model APIs: Provider interface, errors, SSE
+  provider/openaichat   adapter for OpenAI-style /chat/completions (OpenAI, Heimdall, OpenRouter, vLLM, SGLang)
+  provider/anthropic    adapter for the Anthropic Messages API, and gateways that speak it
+  provider/gateway      marketplace catalogue (Heimdall, OpenRouter): public model list, prices, capabilities
+  provider/probe        measures how an endpoint really behaves (behind `sleipnir doctor`)
+  provider/mock         deterministic, protocol-strict fake provider with an automatic prefix cache
+
+internal/agent          one model-driven worker: render its layered prompt, call the provider, run tools, keep context healthy
+internal/swarm          many agents over one repository: board, mail router, leases, governor, warm gate, roles, spawn
+internal/tools          tool contract and shared helpers: output truncation with recall handles, cross-agent file state
+  tools/fs              read, write, edit, apply_patch, glob, grep, ls
+  tools/shell           bash (foreground or background), bash_output, bash_kill
+  tools/web             web_fetch and web_search
+  tools/recall          pages folded context back in
+  tools/skilltool       loads a skill's full text on demand
+
+internal/perm           the permission engine: modes, rules, shell-syntax analysis, role profiles
+internal/shellparse     small, defensive analyser for shell command lines
+internal/checkpoint     pre-modification file snapshots, for diff and rewind
+internal/hooks          user-defined commands at points of an agent's life, in Claude Code's hook format
+
+internal/config         layered JSONC configuration, with trust gating of project files
+internal/memory         instruction files (AGENTS.md, CLAUDE.md, SLEIPNIR.md) rendered as one deterministic block
+internal/skills         Agent Skills: a listing in the shared layer, bodies loaded on demand
+  skills/mdfile         shared markdown-with-frontmatter reader behind skills, commands and agent definitions
+internal/commands       custom slash commands: markdown prompt templates
+internal/agentdefs      markdown subagent definitions, turned into swarm roles
+
+internal/session        assembles provider, tools, permissions, layers, event log and one agent or a swarm; CLI, RL and tests share it
+internal/inspect        the cache inspector: a read-only model of a session log and an embedded web dashboard
+  inspect/web           the dashboard's static assets (not a Go package)
+internal/demo           the scripted team behind `sleipnir demo`, run against the mock provider
+
+internal/workspace      isolates writers from each other and integrates their work; not wired into sessions yet
+internal/gitx           the only gateway to the git binary: typed helpers over one hardened process runner
+internal/mcp            Model Context Protocol client; not wired into sessions yet
+  mcp/mcptest           small MCP server used to test the client
+
+internal/rl             RL vocabulary: the harness as an environment
+  rl/env                tasks, isolated rollouts, clean-checkout verification, evaluation, rollout server
+  rl/env/taskgen        task generators: git history, mutations, composites
+  rl/recall             memory tasks: read a fact early, state it exactly after long unrelated reading
+  rl/traj               recorded run to canonical episode, with exact prompt replay
+  rl/traj/trajtest      synthetic recorded runs for tests
+  rl/reward             episode to reward components, hack flags, counterfactual cost, scalar rewards
+  rl/adv                per-step advantages for group-relative policy optimisation
+  rl/export             canonical episodes as trainer-ready JSON lines
+  rl/redact             removes secrets and personal data from training data
+  rl/harness            runs rollouts through the real assembly (internal/session) against a policy endpoint
 ```
 
 ## Style
