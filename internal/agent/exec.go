@@ -74,20 +74,39 @@ func (a *Agent) refuseCall(call core.Block, asked, limit int) core.Block {
 	return core.ToolResult(call.ToolID, true, core.Text(msg))
 }
 
-// spillFloor is the least a result keeps when its turn is over budget: enough to see
-// what it was and to decide whether to page through the rest.
-const spillFloor = 1500
+// spillFloor is the most a result that does not fit keeps as its floor when its turn is
+// over budget: enough to see what it was and to decide whether to page through the rest.
+// With many results the floor shrinks (spillFloorFor) to no less than minSpillFloor, so
+// that the floors of a turn of a hundred results do not add up to more than the budget.
+const (
+	spillFloor    = 1500
+	minSpillFloor = 300
+	// spillNoteRoom is about what the note naming a handle adds to an excerpt: a result
+	// hardly longer than its floor is kept whole, since cutting it would not make it
+	// shorter.
+	spillNoteRoom = 200
+)
 
-// budgetResults keeps one turn's tool output within MaxTurnResultChars. Results are
-// taken in call order and kept whole while they fit; one that does not fit keeps a
-// head-and-tail excerpt (at least spillFloor characters, so no result vanishes) and
-// its full text goes to the blob store behind a recall handle that the result names.
-// Nothing is lost, the model is told what it is looking at, and one turn cannot put
-// hundreds of kilobytes into every later request.
+// spillFloorFor is the floor for a turn of n results under budget characters: a quarter
+// of the budget shared out between them, between minSpillFloor and spillFloor.
+func spillFloorFor(budget, n int) int {
+	return min(spillFloor, max(minSpillFloor, budget/(4*max(n, 1))))
+}
+
+// budgetResults keeps one turn's tool output within about MaxTurnResultChars. Results
+// are taken in call order and kept whole while they fit; one that does not fit keeps a
+// head-and-tail excerpt (at least the floor, so no result vanishes) and its full text
+// goes to the blob store behind a recall handle that the result names. Nothing is lost,
+// the model is told what it is looking at, and one turn cannot put hundreds of
+// kilobytes into every later request. The budget is exceeded only by the floors of the
+// results after it ran out, which are small (spillFloorFor) and, with the notes that
+// name the handles, come to at most about half of the budget again at the default call
+// cap.
 func (a *Agent) budgetResults(results []core.Block, refused int) {
 	budget := a.cfg.MaxTurnResultChars
 	spilled, chars := 0, 0
 	if budget > 0 {
+		floor := spillFloorFor(budget, len(results))
 		used := 0
 		for i := range results {
 			b := results[i]
@@ -102,11 +121,11 @@ func (a *Agent) budgetResults(results []core.Block, refused int) {
 			}
 			full := text.String()
 			remaining := budget - used
-			if len(full) <= remaining || len(full) <= spillFloor {
+			if len(full) <= remaining || len(full) <= floor+spillNoteRoom {
 				used += len(full)
 				continue
 			}
-			keep := max(remaining, spillFloor)
+			keep := max(remaining, floor)
 			shown, _ := tools.Truncate(full, keep)
 			note := fmt.Sprintf("\n[this turn's tool output exceeded %d characters, so %d of this result's %d are shown", budget, len(shown), len(full))
 			if h, err := a.cfg.Blobs.Put([]byte(full)); err == nil {

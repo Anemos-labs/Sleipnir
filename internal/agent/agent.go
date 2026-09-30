@@ -180,10 +180,12 @@ type Config struct {
 	// the model to issue fewer, so every call has its result and the thread stays valid
 	// but one turn cannot fan out into hundreds of executions. Negative: no cap.
 	MaxToolCallsPerTurn int
-	// MaxTurnResultChars is the most result text one turn's tool calls may put into
+	// MaxTurnResultChars is how much result text one turn's tool calls may put into
 	// the next request (default DefaultMaxTurnResultChars). Results are kept whole, in
-	// call order, while they fit; the rest are cut to an excerpt, and the full text is
-	// stored behind a recall handle named in the result. Negative: no cap.
+	// call order, while they fit; the rest are cut to a short excerpt (a few hundred to
+	// 1,500 characters, so nothing vanishes and the total stays within about 1.5 times
+	// this), and the full text is stored behind a recall handle named in the result.
+	// Negative: no cap.
 	MaxTurnResultChars int
 
 	// NoMailReopen makes Run return, as it used to, when the model answers without tool
@@ -197,11 +199,15 @@ type Config struct {
 	NoMailReopen bool
 }
 
-// The per-turn tool budgets (S24) unless the Config says otherwise. Sixteen calls is
-// more than the parallel reads and searches a turn needs; 120,000 characters is about
-// 30,000 tokens, half of what one turn may add before the planner's hard limit.
+// The per-turn tool budgets (S24) unless the Config says otherwise. The call cap is
+// generous on purpose: a manager that creates a task and spawns a worker for each of 50
+// agents asks for about a hundred calls in one turn, and refusing those would break the
+// fan-out the swarm exists for. What it stops is a runaway turn of hundreds of executions.
+// Bytes are what fill the context, so the result budget is the tighter one: 120,000
+// characters is about 30,000 tokens, half of what one turn may add before the planner's
+// hard limit.
 const (
-	DefaultMaxToolCalls       = 16
+	DefaultMaxToolCalls       = 128
 	DefaultMaxTurnResultChars = 120_000
 )
 

@@ -219,12 +219,16 @@ func TestSec_S24_TheFirstCallsRunInOrderWhateverTheirKind(t *testing.T) {
 func TestSec_S24_DefaultsAndUnlimited(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		calls, chars int
+		calls, chars int // the Config
+		asked        int // calls in the turn
 		wantRan      int
 		wantBytes    func(int) bool
 	}{
-		{"defaults", 0, 0, agent.DefaultMaxToolCalls, func(n int) bool { return n < 300_000 }},
-		{"unlimited", -1, -1, 60, func(n int) bool { return n > 1_300_000 }},
+		// The default cap is well above what a fan-out needs and well below a runaway; the
+		// budget holds the turn to about 1.5 times 120,000 characters however many results.
+		{"defaults", 0, 0, agent.DefaultMaxToolCalls + 40, agent.DefaultMaxToolCalls, func(n int) bool { return n < 200_000 }},
+		{"defaults with 60 calls", 0, 0, 60, 60, func(n int) bool { return n < 200_000 }},
+		{"unlimited", -1, -1, 60, 60, func(n int) bool { return n > 1_300_000 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var ran atomic.Int32
@@ -236,7 +240,7 @@ func TestSec_S24_DefaultsAndUnlimited(t *testing.T) {
 				mu.Lock()
 				defer mu.Unlock()
 				if len(toolMessages(c)) == 0 {
-					return mock.Reply{ToolCalls: manyCalls("read", 60)}
+					return mock.Reply{ToolCalls: manyCalls("read", tc.asked)}
 				}
 				total = 0
 				for _, m := range toolMessages(c) {
