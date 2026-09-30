@@ -2,8 +2,11 @@ package svg
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/reee344/sleipnir/internal/tui/cell"
 )
 
 // Options tune Animated.
@@ -18,7 +21,8 @@ type visit struct{ start, end time.Duration }
 
 // A version is one content a row (or the cursor) had, and when it is visible.
 type version struct {
-	row    []Cell // a row's cells
+	row    []Cell // a row's cells (a tile of it)
+	x0     int    // the column the first of them is at
 	cx, cy int    // the cursor's place
 	off    bool   // the cursor was not shown
 	visits []visit
@@ -67,9 +71,11 @@ func Animated(frames []Frame, th Theme, o Options) string {
 	}
 	total := at[len(at)-1] + o.Hold
 
-	rowTracks := make([]*track, rows)
-	for y := range rowTracks {
-		rowTracks[y] = newTrack()
+	// A row is cut into tiles of tileCols columns, and every tile has its own history: a spinner that turns in one cell costs one
+	// small group, not a copy of the row (of the whole screen, for a picture whose panels all move).
+	tracks := make([]map[int]*track, rows) // by row, then by the column a tile starts at
+	for y := range tracks {
+		tracks[y] = map[int]*track{}
 	}
 	cursor := newTrack()
 	for i, f := range frames {
@@ -85,7 +91,15 @@ func Animated(frames []Frame, th Theme, o Options) string {
 			if y < len(f.Rows) {
 				row = f.Rows[y]
 			}
-			rowTracks[y].see(rowSig(row), func() *version { return &version{row: row} }, at[i], end)
+			for _, t := range tiles(row, cols) {
+				seg := t.cells
+				tr := tracks[y][t.x0]
+				if tr == nil {
+					tr = newTrack()
+					tracks[y][t.x0] = tr
+				}
+				tr.see(fmt.Sprintf("%d|%s", len(seg), rowSig(seg)), func() *version { return &version{row: seg, x0: t.x0} }, at[i], end)
+			}
 		}
 		key, x, y := "off", 0, 0
 		if f.CursorOn {
@@ -130,11 +144,18 @@ func Animated(frames []Frame, th Theme, o Options) string {
 
 	var body strings.Builder
 	for y := 0; y < rows; y++ {
-		for _, v := range rowTracks[y].versions {
-			if !rowVisible(v.row) {
-				continue
+		x0s := make([]int, 0, len(tracks[y]))
+		for x0 := range tracks[y] {
+			x0s = append(x0s, x0)
+		}
+		sort.Ints(x0s) // map order must not decide the bytes
+		for _, x0 := range x0s {
+			for _, v := range tracks[y][x0].versions {
+				if !rowVisible(v.row) {
+					continue
+				}
+				drawRow(&body, th, v.row, y, v.x0, classOf(v.visits))
 			}
-			drawRow(&body, th, v.row, y, classOf(v.visits))
 		}
 	}
 	for _, v := range cursor.versions {
@@ -177,6 +198,33 @@ func pct(t, total time.Duration) string {
 		return "0"
 	}
 	return s
+}
+
+// tileCols is the width of a tile of a row.
+const tileCols = 20
+
+// A tile is a stretch of a row.
+type tile struct {
+	x0    int
+	cells []Cell
+}
+
+// tiles cuts a row of cols cells into stretches of about tileCols cells. A wide rune and the empty cell after it are never
+// separated: the boundary moves one cell to the right instead.
+func tiles(row []Cell, cols int) []tile {
+	if len(row) < cols {
+		row = append(append([]Cell(nil), row...), make([]Cell, cols-len(row))...)
+	}
+	var out []tile
+	for x := 0; x < cols; {
+		e := min(x+tileCols, cols)
+		if e < cols && e > x && row[e].Text == "" && cell.StringWidth(row[e-1].Text) > 1 {
+			e++
+		}
+		out = append(out, tile{x0: x, cells: row[x:e]})
+		x = e
+	}
+	return out
 }
 
 // rowSig is a row's content as a string, so equal rows are found cheaply.
