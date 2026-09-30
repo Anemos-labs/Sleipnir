@@ -61,7 +61,7 @@ type blockAcc struct {
 	members []member
 
 	text, think, partial            strings.Builder
-	sig                             string
+	sig                             []byte
 	sawText, sawThink, sawSig, sawJ bool
 	done                            bool
 	block                           core.Block
@@ -81,12 +81,14 @@ func (a *blockAcc) startString(key string) string {
 // setSignature keeps the signature. The API sends it whole in one signature_delta
 // (the official SDKs assign it); a gateway that chunked or repeated it is
 // tolerated: a value that extends the current one replaces it, anything else is
-// appended.
+// appended. The signature is a byte buffer, not a string: appending to a string
+// copies it every time, which a stream of one-byte deltas would turn into a
+// quadratic amount of work.
 func (a *blockAcc) setSignature(s string) {
-	if strings.HasPrefix(s, a.sig) {
-		a.sig = s
+	if len(s) >= len(a.sig) && s[:len(a.sig)] == string(a.sig) {
+		a.sig = append(a.sig[:0], s...)
 	} else {
-		a.sig += s
+		a.sig = append(a.sig, s...)
 	}
 	a.sawSig = true
 }
@@ -129,7 +131,7 @@ func (a *blockAcc) build() (raw []byte, invalidText string, invalid bool) {
 		case m.key == "thinking" && a.sawThink:
 			emit("thinking", str(a.startString("thinking")+a.think.String()))
 		case m.key == "signature" && a.sawSig:
-			emit("signature", str(a.sig))
+			emit("signature", str(string(a.sig)))
 		case m.key == "input" && a.sawJ:
 			emit("input", input())
 		default:
@@ -148,7 +150,7 @@ func (a *blockAcc) build() (raw []byte, invalidText string, invalid bool) {
 		emit("thinking", str(a.think.String()))
 	}
 	if a.sawSig && !wrote["signature"] {
-		emit("signature", str(a.sig))
+		emit("signature", str(string(a.sig)))
 	}
 	if a.sawJ && !wrote["input"] {
 		emit("input", input())
@@ -195,19 +197,26 @@ type sseEvent struct {
 // The stream is complete only when the API said so (message_stop, or a
 // message_delta carrying stop_reason). A body that just ends is a dropped
 // connection, and treating it as a short answer would silently truncate a turn.
-func readStream(body io.Reader, start time.Time, on func(provider.Event)) (*result, time.Duration, error) {
+//
+// The response is bounded (see provider.StreamLimits): one that outgrows a limit
+// ends with a provider error, and the caller cancels the request.
+func readStream(body io.Reader, start time.Time, on func(provider.Event), lim provider.StreamLimits) (*result, time.Duration, error) {
+	lim = lim.Normalized()
 	s := &streamState{
-		on: on, start: start, res: &result{},
+		on: on, start: start, res: &result{}, lim: lim,
 		blocks: map[int]*blockAcc{}, raw: map[string]json.RawMessage{},
 	}
-	r := provider.NewSSEReader(body)
+	r := provider.NewSSEReaderLimits(body, lim)
 	for {
 		ev, err := r.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, s.ttfb, &provider.Error{Kind: provider.ErrNetwork, Message: err.Error(), Err: err}
+			if pe, ok := provider.AsError(err); ok {
+				return nil, s.ttfb, pe // a limit
+			}
+			return nil, s.ttfb, &provider.Error{Kind: provider.ErrNetwork, Message: provider.SanitizeText(err.Error(), 0), Err: err}
 		}
 		if len(bytes.TrimSpace(ev.Data)) == 0 {
 			continue
@@ -234,6 +243,7 @@ type streamState struct {
 	start time.Time
 	ttfb  time.Duration
 	res   *result
+	lim   provider.StreamLimits
 
 	usage wireUsage
 	raw   map[string]json.RawMessage
@@ -241,6 +251,9 @@ type streamState struct {
 
 	blocks map[int]*blockAcc
 	order  []int
+
+	// What the response has accumulated so far, against lim.
+	textBytes, thinkBytes, tools int
 
 	started, complete bool
 	stopReason        string
@@ -255,11 +268,22 @@ var known = map[string]bool{
 	"content_block_stop": true, "message_delta": true, "message_stop": true, "error": true,
 }
 
+// badEvent builds the error for a frame that does not parse. The text is the
+// server's (or derived from it), so it is bounded and made inert; the frame itself
+// is kept, bounded, for diagnosis.
+func badEvent(what string, err error, raw []byte) *provider.Error {
+	return &provider.Error{
+		Kind:    provider.ErrServer,
+		Message: provider.SanitizeText("malformed "+what+": "+err.Error(), 0),
+		Raw:     provider.CapRaw(raw),
+	}
+}
+
 func (s *streamState) handle(ev provider.SSEEvent) (done bool, err error) {
 	var e sseEvent
 	if jerr := json.Unmarshal(ev.Data, &e); jerr != nil {
 		if known[ev.Event] {
-			return false, &provider.Error{Kind: provider.ErrServer, Message: fmt.Sprintf("malformed %s event: %v", ev.Event, jerr), Raw: ev.Data}
+			return false, badEvent(ev.Event+" event", jerr, ev.Data)
 		}
 		return false, nil // keep-alive noise
 	}
@@ -285,7 +309,7 @@ func (s *streamState) handle(ev provider.SSEEvent) (done bool, err error) {
 		return true, nil
 	case "error":
 		if e.Error == nil {
-			return false, &provider.Error{Kind: provider.ErrServer, Message: "error event without an error object", Raw: ev.Data}
+			return false, &provider.Error{Kind: provider.ErrServer, Message: "error event without an error object", Raw: provider.CapRaw(ev.Data)}
 		}
 		return false, inBandError(e.Error.Type, e.Error.Message, ev.Data)
 	}
@@ -302,32 +326,34 @@ func (s *streamState) messageStart(e sseEvent) error {
 	}
 	if len(e.Message) > 0 {
 		if err := json.Unmarshal(e.Message, &m); err != nil {
-			return &provider.Error{Kind: provider.ErrServer, Message: "malformed message_start: " + err.Error(), Raw: e.Message}
+			return badEvent("message_start", err, e.Message)
 		}
 	}
 	if !s.started {
 		s.started = true
 		s.ttfb = time.Since(s.start)
-		s.res.id, s.res.model = m.ID, m.Model
+		s.res.id, s.res.model = provider.SanitizeText(m.ID, 256), provider.SanitizeText(m.Model, 256)
 		// EvStart marks the API beginning to respond, which is the moment cache
 		// entries written by this request become readable: the swarm's warm gate
 		// releases the followers on it.
-		s.on(provider.Event{Kind: provider.EvStart, RequestID: m.ID, Elapsed: s.ttfb})
+		s.on(provider.Event{Kind: provider.EvStart, RequestID: s.res.id, Elapsed: s.ttfb})
 	}
 	s.ext = append(s.ext, m.extras)
 	s.addUsage(m.Usage)
 	return nil
 }
 
+// addUsage folds a usage report into the running totals. It never drops one: a
+// report with a counter that cannot be read still counts for the members that can
+// (see tokens), because a dropped report reads as "free".
 func (s *streamState) addUsage(raw json.RawMessage) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return
 	}
 	var u wireUsage
-	if json.Unmarshal(raw, &u) == nil {
-		s.usage.merge(u)
-		mergeRawUsage(s.raw, raw)
-	}
+	_ = json.Unmarshal(raw, &u)
+	s.usage.merge(u)
+	mergeRawUsage(s.raw, raw)
 }
 
 func (s *streamState) blockStart(e sseEvent) error {
@@ -338,9 +364,12 @@ func (s *streamState) blockStart(e sseEvent) error {
 	if _, dup := s.blocks[idx]; dup {
 		return nil
 	}
+	if len(s.blocks) >= s.lim.MaxBlocks {
+		return provider.LimitExceededCount("content blocks", s.lim.MaxBlocks)
+	}
 	members, err := orderedMembers(e.ContentBlock)
 	if err != nil {
-		return &provider.Error{Kind: provider.ErrServer, Message: "malformed content_block_start: " + err.Error(), Raw: e.ContentBlock}
+		return badEvent("content_block_start", err, e.ContentBlock)
 	}
 	a := &blockAcc{index: idx, members: members}
 	for _, m := range members {
@@ -352,6 +381,12 @@ func (s *streamState) blockStart(e sseEvent) error {
 		case "name":
 			_ = json.Unmarshal(m.val, &a.name)
 		}
+	}
+	if a.typ == "tool_use" {
+		if s.tools >= s.lim.MaxToolCalls {
+			return provider.LimitExceededCount("tool calls", s.lim.MaxToolCalls)
+		}
+		s.tools++
 	}
 	s.blocks[idx] = a
 	s.order = append(s.order, idx)
@@ -377,24 +412,40 @@ func (s *streamState) blockDelta(e sseEvent) error {
 		PartialJSON string `json:"partial_json"`
 	}
 	if err := json.Unmarshal(e.Delta, &d); err != nil {
-		return &provider.Error{Kind: provider.ErrServer, Message: "malformed content_block_delta: " + err.Error(), Raw: e.Delta}
+		return badEvent("content_block_delta", err, e.Delta)
 	}
 	switch d.Type {
 	case "text_delta":
+		if s.textBytes+len(d.Text) > s.lim.MaxTextBytes {
+			return provider.LimitExceeded("answer text", int64(s.lim.MaxTextBytes))
+		}
+		s.textBytes += len(d.Text)
 		a.sawText = true
 		a.text.WriteString(d.Text)
 		if d.Text != "" {
 			s.on(provider.Event{Kind: provider.EvText, Index: a.index, Text: d.Text})
 		}
 	case "thinking_delta":
+		if s.thinkBytes+len(d.Thinking) > s.lim.MaxTextBytes {
+			return provider.LimitExceeded("reasoning text", int64(s.lim.MaxTextBytes))
+		}
+		s.thinkBytes += len(d.Thinking)
 		a.sawThink = true
 		a.think.WriteString(d.Thinking)
 		if d.Thinking != "" {
 			s.on(provider.Event{Kind: provider.EvThinking, Index: a.index, Text: d.Thinking})
 		}
 	case "signature_delta":
+		// A signature is reasoning payload, and it can arrive in pieces.
+		if s.thinkBytes+len(d.Signature) > s.lim.MaxTextBytes {
+			return provider.LimitExceeded("reasoning text", int64(s.lim.MaxTextBytes))
+		}
+		s.thinkBytes += len(d.Signature)
 		a.setSignature(d.Signature)
 	case "input_json_delta":
+		if a.partial.Len()+len(d.PartialJSON) > s.lim.MaxToolArgBytes {
+			return provider.LimitExceeded("tool call arguments", int64(s.lim.MaxToolArgBytes))
+		}
 		a.sawJ = true
 		a.partial.WriteString(d.PartialJSON)
 		if d.PartialJSON != "" {

@@ -226,13 +226,16 @@ func TestConc_CompactorJobOutlivesACancelledRun(t *testing.T) {
 	}
 }
 
-// There is no time-to-first-byte deadline on a model request. The stream-idle
-// watchdog is armed only after response headers arrive, and the HTTP client has no
-// ResponseHeaderTimeout, so a server that accepts the request and goes silent
-// holds the agent (its governor slot, and the warm gate if it is the primer) until
-// the caller's context ends.
-func TestConc_HungRequestIsNotBoundedByAnyTimeout(t *testing.T) {
-	concGate(t)
+// C-08 (fixed): there used to be no time-to-first-byte deadline on a model request.
+// The stream-idle watchdog was armed only after response headers arrived, so a
+// server that accepts the request and goes silent held the agent (its governor
+// slot, and the warm gate if it is the primer) until the caller's context ended.
+// The adapters now arm the watchdog when the request is sent: a silent server ends
+// the attempt with provider.ErrTimeout after FirstByteTimeout (StreamIdleTimeout
+// when only that is set), and a request that gets no response twice is not retried
+// again (provider.MaxSilentAttempts), so the run below ends after two attempts of
+// 200ms each, not six.
+func TestConc_HungRequestIsBoundedByTheFirstByteDeadline(t *testing.T) {
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-release // accept, never answer

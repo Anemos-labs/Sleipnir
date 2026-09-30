@@ -29,11 +29,31 @@ type Config struct {
 	Options Options
 	// Profile overrides the default automatic-caching profile.
 	Profile *provider.Profile
-	// StreamIdleTimeout aborts a stream that goes silent (keep-alive comments
-	// count as activity). Default 120s.
+	// FirstByteTimeout bounds the wait from sending a streaming request until the
+	// first byte of the response body arrives (a keep-alive comment counts). A
+	// server that accepts the request and never answers is otherwise a request
+	// that never ends. Default: StreamIdleTimeout when that is set, else 120s,
+	// which is generous for a reasoning model that says nothing until it has
+	// finished thinking. Expiry is a provider.ErrTimeout, which the agent retries;
+	// a request that got no response at all twice is not retried a third time.
+	FirstByteTimeout time.Duration
+	// StreamIdleTimeout aborts a stream that goes silent once it has started
+	// (keep-alive comments count as activity). Default 60s.
 	StreamIdleTimeout time.Duration
+	// RequestTimeout bounds a non-streaming call (warm-ups, keep-alives) from the
+	// moment it is sent until its body is read. Default 10 minutes.
+	RequestTimeout time.Duration
+	// Limits bounds what one response may cost in bytes, events, text, tool calls
+	// and time (zero fields take the provider defaults).
+	Limits provider.StreamLimits
+	// AllowInsecureHTTP lets the API key travel over plain http to a host that is
+	// not this machine (a trusted LAN proxy). By default a key is only sent over
+	// https, or over http to a loopback address.
+	AllowInsecureHTTP bool
 	// OnHeaders receives every response's headers (rate-limit accounting).
-	OnHeaders  func(http.Header)
+	OnHeaders func(http.Header)
+	// HTTPClient carries the requests. Its redirect policy is tightened: a redirect
+	// to another origin is refused whatever the client says.
 	HTTPClient *http.Client
 }
 
@@ -42,14 +62,26 @@ type Client struct {
 	cfg     Config
 	profile provider.Profile
 	http    *http.Client
+	keyErr  error // set when the API key must not be sent to BaseURL
 }
 
 // New builds a Client.
 func New(cfg Config) *Client {
 	cfg.Options.defaults()
-	if cfg.StreamIdleTimeout == 0 {
-		cfg.StreamIdleTimeout = 120 * time.Second
+	idleSet := cfg.StreamIdleTimeout > 0
+	if !idleSet {
+		cfg.StreamIdleTimeout = provider.DefaultStreamIdleTimeout
 	}
+	if cfg.FirstByteTimeout <= 0 {
+		cfg.FirstByteTimeout = provider.DefaultFirstByteTimeout
+		if idleSet {
+			cfg.FirstByteTimeout = cfg.StreamIdleTimeout
+		}
+	}
+	if cfg.RequestTimeout <= 0 {
+		cfg.RequestTimeout = provider.DefaultRequestTimeout
+	}
+	cfg.Limits = cfg.Limits.Normalized()
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 	hc := cfg.HTTPClient
 	if hc == nil {
@@ -59,7 +91,13 @@ func New(cfg Config) *Client {
 	if cfg.Profile != nil {
 		prof = *cfg.Profile
 	}
-	return &Client{cfg: cfg, profile: prof, http: hc}
+	c := &Client{cfg: cfg, profile: prof, http: provider.HardenClient(hc)}
+	if cfg.APIKey != "" && !cfg.AllowInsecureHTTP {
+		if err := provider.CheckKeyTransport(cfg.BaseURL); err != nil {
+			c.keyErr = err
+		}
+	}
+	return c
 }
 
 // newTransport returns a transport sized for many concurrent streams: a swarm
@@ -109,6 +147,12 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	if on == nil {
 		on = func(provider.Event) {}
 	}
+	if req == nil || req.Prompt == nil {
+		return nil, &provider.Error{Kind: provider.ErrBadRequest, Message: "openaichat: request has no prompt"}
+	}
+	if c.keyErr != nil {
+		return nil, keyTransportError(c.keyErr)
+	}
 	p := req.Prompt
 	stream := !req.NoStream && !req.Warm
 	if req.Warm {
@@ -124,13 +168,26 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 		return nil, &provider.Error{Kind: provider.ErrBadRequest, Message: err.Error(), Err: err}
 	}
 
+	parent := ctx
 	start := time.Now()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// One watchdog for the whole exchange, armed before the request is sent: it
+	// covers a server that accepts the connection and never answers, as well as one
+	// that stalls mid-stream. It cancels the derived context, so it records why:
+	// "the caller cancelled" and "the server went quiet" are handled differently.
+	first, idle, total := c.cfg.FirstByteTimeout, c.cfg.StreamIdleTimeout, c.cfg.Limits.MaxDuration
+	if !stream {
+		first, idle, total = c.cfg.RequestTimeout, c.cfg.RequestTimeout, 0
+	}
+	wd := provider.NewWatchdog(cancel, first, idle, total, req)
+	wd.Start()
+	defer wd.Stop()
+
 	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return nil, &provider.Error{Kind: provider.ErrBadRequest, Message: err.Error(), Err: err}
+		return nil, &provider.Error{Kind: provider.ErrBadRequest, Message: provider.SanitizeText(err.Error(), 0), Err: err}
 	}
 	hr.Header.Set("Content-Type", "application/json")
 	if stream {
@@ -148,48 +205,43 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 
 	resp, err := c.http.Do(hr)
 	if err != nil {
-		return nil, transportError(ctx, err)
+		return nil, c.failure(parent, wd, err)
 	}
 	defer resp.Body.Close()
 	if c.cfg.OnHeaders != nil {
 		c.cfg.OnHeaders(resp.Header)
 	}
+	rd := wd.Reader(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		b, _ := io.ReadAll(io.LimitReader(rd, 1<<20))
 		return nil, mapHTTPError(resp.StatusCode, resp.Header, b)
 	}
 
 	var acc *accumulator
 	if stream {
-		// Watchdog: abort a stream that has gone silent.
-		idle := time.AfterFunc(c.cfg.StreamIdleTimeout, cancel)
-		defer idle.Stop()
-		acc, err = readStream(&activityReader{r: resp.Body, timer: idle, d: c.cfg.StreamIdleTimeout}, start, on)
+		acc, err = readStreamLimits(rd, start, on, c.cfg.Limits)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil, transportError(ctx, ctx.Err())
-			}
-			return nil, err
+			return nil, c.failure(parent, wd, err)
 		}
 	} else {
-		b, rerr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+		b, rerr := provider.ReadCapped(rd, c.cfg.Limits.MaxBytes)
 		if rerr != nil {
-			return nil, transportError(ctx, rerr)
+			return nil, c.failure(parent, wd, rerr)
 		}
-		acc = newAccumulator()
+		acc = newAccumulatorLimits(c.cfg.Limits)
 		var c2 chunk
 		if err := json.Unmarshal(b, &c2); err != nil {
-			return nil, &provider.Error{Kind: provider.ErrServer, Message: "unparseable response: " + err.Error(), Raw: b}
+			return nil, &provider.Error{Kind: provider.ErrServer, Message: "unparseable response: " + provider.SanitizeText(err.Error(), 0), Raw: provider.CapRaw(b)}
 		}
 		if c2.Error != nil {
 			return nil, mapInBandError(c2.Error)
 		}
 		if c2.Usage != nil {
-			if raw, err := json.Marshal(c2.Usage); err == nil {
-				acc.rawUsage = raw
-			}
+			acc.rawUsage = rawUsageOf(b)
 		}
-		acc.feed(&c2, start, on)
+		if err := acc.feed(&c2, start, on); err != nil {
+			return nil, err
+		}
 	}
 
 	if !acc.started {
@@ -202,14 +254,14 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 		ID:       acc.id,
 		Model:    acc.model,
 		Turn:     turn,
-		Usage:    acc.usage.normalize(),
+		Usage:    acc.usage.normalize(), // also drops an unusable cost from acc.usage
 		Stop:     stop,
 		RawUsage: acc.rawUsage,
 		Total:    time.Since(start),
 		Provider: acc.provider,
 	}
 	if acc.usage != nil {
-		out.CostUSD = acc.usage.Cost
+		out.CostUSD = provider.ValidCost(acc.usage.Cost)
 	}
 	if opts.CaptureTokens {
 		out.Tokens = acc.trace(acc.model)
@@ -219,19 +271,50 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	return out, nil
 }
 
-// activityReader resets the idle watchdog on every read.
-type activityReader struct {
-	r     io.Reader
-	timer *time.Timer
-	d     time.Duration
+// failure turns an error from the transport or the body into the provider error
+// the caller sees. In order: a redirect that left the origin, a deadline of the
+// watchdog (a timeout, never "cancelled"), an error the adapter already
+// classified, and last the caller's own cancellation or deadline and plain
+// network failures.
+func (c *Client) failure(parent context.Context, wd *provider.Watchdog, err error) *provider.Error {
+	if re, ok := provider.AsRedirect(err); ok {
+		return provider.RedirectFailure(re)
+	}
+	if pe := wd.Failure(err); pe != nil {
+		return pe
+	}
+	if parent.Err() == nil { // the caller has not given up: what the adapter already classified stands
+		if pe, ok := provider.AsError(err); ok {
+			return pe
+		}
+	}
+	return transportError(parent, err)
 }
 
-func (a *activityReader) Read(p []byte) (int, error) {
-	n, err := a.r.Read(p)
-	if n > 0 {
-		a.timer.Reset(a.d)
+// keyTransportError is the refusal to send an API key where it would cross the
+// network unencrypted (or where the URL is unusable). It is never retried.
+func keyTransportError(err error) *provider.Error {
+	msg := err.Error()
+	var ins *provider.InsecureKeyError
+	if errors.As(err, &ins) {
+		msg += "; use an https URL or a loopback address, or allow it deliberately for this provider (allow_insecure_http in your user config)"
 	}
-	return n, err
+	return &provider.Error{Kind: provider.ErrBadRequest, Message: provider.SanitizeText(msg, 0), Err: err, NoRetry: true}
+}
+
+// rawUsageOf extracts the usage object of a response body verbatim, for the audit
+// record; an object too large to keep is replaced by a marker.
+func rawUsageOf(body []byte) json.RawMessage {
+	var r struct {
+		Usage json.RawMessage `json:"usage"`
+	}
+	if json.Unmarshal(body, &r) != nil || len(r.Usage) == 0 || string(r.Usage) == "null" {
+		return nil
+	}
+	if len(r.Usage) > 4096 {
+		return json.RawMessage(fmt.Sprintf(`{"truncated":true,"bytes":%d}`, len(r.Usage)))
+	}
+	return append(json.RawMessage(nil), r.Usage...)
 }
 
 func fallbackToolID(name, args string, n int) string {
@@ -239,18 +322,22 @@ func fallbackToolID(name, args string, n int) string {
 	return "call_" + hex.EncodeToString(sum[:6])
 }
 
-func transportError(ctx context.Context, err error) *provider.Error {
-	if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+// transportError classifies a failure that happened below HTTP. parent is the
+// caller's context: its cancellation is "cancelled" (which the agent does not
+// retry: it has stopped anyway), its deadline a timeout.
+func transportError(parent context.Context, err error) *provider.Error {
+	msg := provider.SanitizeText(err.Error(), 0)
+	if errors.Is(parent.Err(), context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		return &provider.Error{Kind: provider.ErrNetwork, Message: "request cancelled", Err: err}
 	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
-		return &provider.Error{Kind: provider.ErrTimeout, Message: err.Error(), Err: err}
+		return &provider.Error{Kind: provider.ErrTimeout, Message: msg, Err: err}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return &provider.Error{Kind: provider.ErrTimeout, Message: err.Error(), Err: err}
+		return &provider.Error{Kind: provider.ErrTimeout, Message: msg, Err: err}
 	}
-	return &provider.Error{Kind: provider.ErrNetwork, Message: err.Error(), Err: err}
+	return &provider.Error{Kind: provider.ErrNetwork, Message: msg, Err: err}
 }
 
 // errorEnvelope covers the shapes gateways and vendors use.
@@ -267,7 +354,7 @@ type errorEnvelope struct {
 }
 
 func mapHTTPError(status int, h http.Header, body []byte) *provider.Error {
-	e := &provider.Error{Status: status, Raw: body}
+	e := &provider.Error{Status: status, Raw: provider.CapRaw(body)}
 	var env errorEnvelope
 	_ = json.Unmarshal(body, &env)
 	msg := env.Error.Message
@@ -280,6 +367,10 @@ func mapHTTPError(status int, h http.Header, body []byte) *provider.Error {
 	if pm := env.Error.Metadata.ProviderMessage; pm != "" {
 		msg += " (" + pm + ")"
 	}
+	// The text is the endpoint's, and it goes to the event log, the terminal and
+	// possibly to other agents: bounded, and stripped of control characters,
+	// escape sequences and invisible characters.
+	msg = provider.SanitizeText(msg, provider.MaxErrorText)
 	e.Message = msg
 	if d, ok := provider.ParseRetryAfter(h.Get("Retry-After"), time.Now(), 0); ok {
 		e.RetryAfter = d
@@ -317,7 +408,7 @@ func mapInBandError(e *apiError) *provider.Error {
 	if json.Unmarshal(e.Code, &n) == nil {
 		code = n
 	}
-	pe := &provider.Error{Status: code, Message: e.Message, Raw: mustJSON(e)}
+	pe := &provider.Error{Status: code, Message: provider.SanitizeText(e.Message, provider.MaxErrorText), Raw: provider.CapRaw(mustJSON(e))}
 	switch {
 	case code == 429:
 		pe.Kind = provider.ErrRateLimit
@@ -341,7 +432,10 @@ func mustJSON(v any) json.RawMessage {
 // compile-time interface check.
 var _ provider.Provider = (*Client)(nil)
 
-// String helps logs.
-func (c *Client) String() string { return fmt.Sprintf("openaichat(%s %s)", c.cfg.Name, c.cfg.BaseURL) }
+// String helps logs. The API key is never included, nor is anything after the
+// host and path of the base URL (user name, password, query).
+func (c *Client) String() string {
+	return fmt.Sprintf("openaichat(%s %s)", c.cfg.Name, provider.RedactURL(c.cfg.BaseURL))
+}
 
 var _ = core.Text

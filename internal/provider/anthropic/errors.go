@@ -42,10 +42,14 @@ func mapHTTPError(status int, h http.Header, body []byte, now time.Time, maxRetr
 	if msg == "" {
 		msg = strings.TrimSpace(fmt.Sprintf("HTTP %d %s", status, http.StatusText(status)))
 	}
+	// The text is the endpoint's, and it goes to the event log, the terminal and
+	// possibly to other agents: bounded, and stripped of control characters, escape
+	// sequences and invisible characters.
+	msg = provider.SanitizeText(msg, provider.MaxErrorText)
 	if id := firstNonEmpty(h.Get("Request-Id"), env.RequestID); id != "" {
-		msg += " (request_id " + id + ")"
+		msg += " (request_id " + provider.SanitizeText(id, 128) + ")"
 	}
-	e := &provider.Error{Status: status, Message: msg, Raw: append(json.RawMessage(nil), body...)}
+	e := &provider.Error{Status: status, Message: msg, Raw: provider.CapRaw(body)}
 	e.Kind = kindFor(status, env.Error.Type, msg)
 	if e.Kind == provider.ErrRateLimit || e.Kind == provider.ErrOverloaded || e.Kind == provider.ErrServer {
 		e.RetryAfter = parseRetryAfter(h, now, maxRetryAfter, e.Kind == provider.ErrRateLimit)
@@ -57,7 +61,7 @@ func mapHTTPError(status int, h http.Header, body []byte, now time.Time, maxRetr
 // already started, so there is no HTTP status; Status stays zero and the API's
 // error type leads the message.
 func inBandError(typ, msg string, raw []byte) *provider.Error {
-	e := &provider.Error{Message: strings.TrimSpace(typ + ": " + msg), Raw: append(json.RawMessage(nil), raw...)}
+	e := &provider.Error{Message: provider.SanitizeText(typ+": "+msg, provider.MaxErrorText), Raw: provider.CapRaw(raw)}
 	e.Kind = kindFor(0, typ, msg)
 	return e
 }
@@ -237,13 +241,13 @@ func minDur(ds []time.Duration) time.Duration {
 }
 
 // transportError classifies a failure that happened below HTTP. parent is the
-// caller's context; watchdog reports that our own idle timer fired. The two must
-// not be confused: the derived context is cancelled in both cases, but only the
-// caller cancelling is "cancelled" - a silent stream is a timeout, and is retried.
-func transportError(parent context.Context, watchdog bool, idle time.Duration, err error) *provider.Error {
+// caller's context. A deadline of our own watchdog is handled before this is
+// reached (provider.Watchdog.Failure): the derived context is cancelled in both
+// cases, but only the caller cancelling is "cancelled" - a silent stream is a
+// timeout, and is retried.
+func transportError(parent context.Context, err error) *provider.Error {
+	msg := provider.SanitizeText(err.Error(), 0)
 	switch {
-	case watchdog:
-		return &provider.Error{Kind: provider.ErrTimeout, Message: "no data from the server for " + idle.String(), Err: err}
 	case errors.Is(parent.Err(), context.Canceled):
 		return &provider.Error{Kind: provider.ErrNetwork, Message: "request cancelled", Err: parent.Err()}
 	case errors.Is(parent.Err(), context.DeadlineExceeded):
@@ -251,10 +255,10 @@ func transportError(parent context.Context, watchdog bool, idle time.Duration, e
 	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
-		return &provider.Error{Kind: provider.ErrTimeout, Message: err.Error(), Err: err}
+		return &provider.Error{Kind: provider.ErrTimeout, Message: msg, Err: err}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return &provider.Error{Kind: provider.ErrTimeout, Message: err.Error(), Err: err}
+		return &provider.Error{Kind: provider.ErrTimeout, Message: msg, Err: err}
 	}
-	return &provider.Error{Kind: provider.ErrNetwork, Message: err.Error(), Err: err}
+	return &provider.Error{Kind: provider.ErrNetwork, Message: msg, Err: err}
 }
