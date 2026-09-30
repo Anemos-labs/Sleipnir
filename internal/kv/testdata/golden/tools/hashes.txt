@@ -1,0 +1,27 @@
+# The tools every agent sends: sha256 of each tool's serialised spec, and of the whole serialised list per kind of session
+# (core.MarshalStable of the tools, what a request's manifest hashes as its tools blob). A session's list is the registry's Specs().
+# columns: what, byte count, sha256, then for a session the tools in order
+# regenerate: go test ./internal/kv -run TestGoldenToolSpecs -update   (read docs/BUILDING.md, "Changing prompt bytes", first)
+tool apply_patch	718	f28035994a76447cfcf40fa10c8bda1073f8c82f52f7d92e77f160c5251f2b9c
+tool bash	982	ab507440b2cf14874725e9cb165f695261c26f4d875494180e4f665d93bcb5a1
+tool bash_kill	322	1b371d1734446bf9327472dec9f851012bc264ceda437045500d95eab911f46f
+tool bash_output	488	ce355af498d34be96f56585310fa641e17cca07c5841247423cbf7e519d2916a
+tool edit	1023	105975eaeab97089ca5662d86453856631906cb10ae497127acf85022908aa41
+tool glob	574	c71f7387a1d2c2d6ae0238e4d7f5ec7c1f03b947d4a48c98db6151d24993c630
+tool grep	1353	e00f03faafe2cf81369bb69c2d759afafafcbeaa98fa17ee5f2775796579e8ae
+tool ls	585	f9a26bdc731904a30c39182a70e2b793236a3b9bc926d2e1045770cd757807b5
+tool mail	493	9b49569520080694b93f98585aece042ea7655f7294362c8b91916ecb866eb72
+tool note	366	6f2a05892ba7acbd484bf69aac0c83939040c3c4be2756a609ee64dc6f5fedaa
+tool read	676	3eff3329b779dfb35e015cbfb3d9d354c6fd7b6d50be8d9017c6df1f45971d1f
+tool recall	766	0646ff34eb79cafeffe8a8d163d1164c760d6a856024a93bdb77533fd9c3430d
+tool skill	674	0b04738cba4c448210178e09812ee8a365b287b1f1459bb2a1ca0af8640c3dd0
+tool spawn	575	b30d0c02d034d3b5351352ada852b3dafaa7e8da654d4c11ee002c44f64a4727
+tool task	960	4658b662c7abad5aa4a2628be57f19841a86d94e8b71d3334018cb7c8cb1ff30
+tool wait	408	4666900f8f6078a2c12def31d6d9b4c8ff417c7239a9b9dffe7410743a4e8aca
+tool web_fetch	732	2c6d1922c0ab28844ba4da596cb7e1f84f3bc34dfe228a7167d724d7925d0a4d
+tool web_search	461	4c247da7eef729594b01434e426278733c975095e38253008bbf154b28ec6a36
+tool write	587	73b777ed8627d2c82797c99bb2d3bd0c983c9df30923c02606b1135f42baf7f7
+session solo	9494	1965ed16ea744d496b07867f27c814d1ad76fa6fde432d95c938e5f93a93f9a4	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,read,recall,skill,web_fetch,write
+session solo+web_search	9956	72ab37618ded25cb1c98d1621d87251374eba199f5dbdfe13627e26db2ef6247	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,read,recall,skill,web_fetch,web_search,write
+session swarm	12301	765100c65dc464f748f997225c6b4e86d97c193471f5f42395c24920cda5b790	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,mail,note,read,recall,skill,spawn,task,wait,web_fetch,write
+session swarm+web_search	12763	790e7ca4205b670e5a2fcccada945934914713ae0d3b1116fc33afd038a2f811	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,mail,note,read,recall,skill,spawn,task,wait,web_fetch,web_search,write

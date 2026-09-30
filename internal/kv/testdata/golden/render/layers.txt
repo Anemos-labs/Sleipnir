@@ -1,0 +1,10 @@
+# The layers of the canonical session as rendered: bytes and sha256 of each layer's text, and the keys derived from them
+# columns: layer, byte count, sha256
+# regenerate: go test ./internal/kv -run TestGoldenRenderedStack -update   (read docs/BUILDING.md, "Changing prompt bytes", first)
+const	77	2f5093b982ae8af9b0d7bff9b3331d244bf2e834d9cee5c9fa2f4196dfb1d19b
+shared	349	862b279c0d3516122ec6b836df94e3e84399ac07e1ac037f7f10a7b8720586f1
+role	321	a181b45acfb0db9dab509c490ff25e6ee36598439038c85f270f73a0b9238e3b
+notes	505	c529309baede39e92eefd006b35801a94a2d5e25ea8e792b037c5dc05641dd24
+spine	133	b9c67141ded62a29691451a74f127e70fe9d639ba944b93e49d933fdfd474e0b
+prefix_key	-	bb7f6153935387bf416aa2c49ce69345008ea1f06e4b63ad2aa41f6cdf63553a
+global_key	-	412a4b7a138521fc3f157502c4532c29c389362055437162d0b10e5074307f6c
