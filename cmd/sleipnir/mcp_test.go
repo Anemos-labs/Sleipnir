@@ -16,15 +16,6 @@ import (
 	"github.com/reee344/sleipnir/internal/mcp/mcptest"
 )
 
-// The test binary doubles as the MCP reference server for `sleipnir mcp test`.
-func TestMain(m *testing.M) {
-	if mcptest.IsHelper() {
-		mcptest.HelperMain()
-		return
-	}
-	os.Exit(m.Run())
-}
-
 func TestMCPPromptArgs(t *testing.T) {
 	p := mcp.PromptEntry{Arguments: []mcp.PromptArgument{{Name: "file"}, {Name: "focus"}}}
 	for _, c := range []struct {
