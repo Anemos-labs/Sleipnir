@@ -399,7 +399,9 @@ func TestHugeCommandsAreBounded(t *testing.T) {
 			t.Errorf("a %d byte command was allowed: %s", len(c), d.Reason)
 		}
 	}
-	if el := time.Since(start); el > 20*time.Second {
+	// A bound for a complexity bomb (minutes), not for a slow machine: under the race detector
+	// with three test runs at once ten huge inputs took twenty-one seconds.
+	if el := time.Since(start); el > 120*time.Second {
 		t.Errorf("huge inputs took %v", el)
 	}
 }

@@ -195,7 +195,9 @@ func FuzzQuoteRoundTrip(f *testing.F) {
 }
 
 // Quadratic behaviour on hostile input shows up as a hang, not a wrong answer:
-// each of these shapes once took seconds to minutes at 100 KB.
+// each of these shapes once took seconds to minutes at 100 KB. The bounds are hang
+// guards, not timings: the deepest of them (nested arithmetic) takes four seconds under the race
+// detector on a machine that is busy with other suites, and a bound of five failed it there.
 func TestAdversarialSizeIsBounded(t *testing.T) {
 	n := 50_000
 	rep := strings.Repeat
@@ -242,12 +244,12 @@ func TestAdversarialSizeIsBounded(t *testing.T) {
 			go func() { done <- Parse(in) }()
 			select {
 			case a := <-done:
-				if el := time.Since(start); el > 5*time.Second {
+				if el := time.Since(start); el > 45*time.Second {
 					t.Errorf("took %v", el)
 				}
 				checkInvariants(t, in, a)
-			case <-time.After(20 * time.Second):
-				t.Fatal("did not finish in 20s")
+			case <-time.After(90 * time.Second):
+				t.Fatal("did not finish in 90s")
 			}
 		})
 	}

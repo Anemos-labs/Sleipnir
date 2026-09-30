@@ -673,6 +673,11 @@ type roleRequester struct {
 // change a file.
 const isolatedManagerMsg = "in an isolated run the manager does not edit files: spawn a worker for the change (the harness verifies and merges its work)"
 
+// readOnlyShellHint is added to a shell command's refusal: "the manager does not edit files" alone told a
+// manager that had only chained two reads with && (a real one, on its first action) that reading was
+// forbidden.
+const readOnlyShellHint = "; the shell here takes one plain read-only command at a time (ls, cat, grep, find, git status/diff/log, go test), with no pipes, && or redirects"
+
 func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decision {
 	req.Role = r.role.Name
 	if r.only != nil && !r.only[req.Tool] {
@@ -686,9 +691,10 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 			// (plan) profile itself; a prefix allowlist here would only be a weaker,
 			// bypassable second opinion (and would deny the checks the profile allows).
 		case req.Tool == "bash":
-			// No engine (tests, embedding): fall back to the conservative allowlist.
+			// No engine (tests, embedding), or an agent the swarm holds to a stricter shell:
+			// the conservative allowlist.
 			if !readOnlyCommand(req.Command) {
-				return perm.Decision{Allow: false, Reason: r.denyWrites}
+				return perm.Decision{Allow: false, Reason: r.denyWrites + readOnlyShellHint}
 			}
 		case req.Writes:
 			return perm.Decision{Allow: false, Reason: r.denyWrites}

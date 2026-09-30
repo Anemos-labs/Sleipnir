@@ -31,8 +31,8 @@ const (
 	// such step). It must stay below waitDelay, the point at which the standard
 	// library gives up on the leader on its own.
 	termGrace = 1500 * time.Millisecond
-	// DefaultLockWait is how long a mutating command keeps retrying while another
-	// git process holds a lock file.
+	// DefaultLockWait is how long a command keeps retrying while another git process
+	// holds a lock file or is creating a worktree.
 	DefaultLockWait = 10 * time.Second
 )
 
@@ -87,7 +87,7 @@ func WithTrustedFilters(names ...string) Option {
 // WithClock injects the time source used for commit dates (tests).
 func WithClock(now func() time.Time) Option { return func(s *settings) { s.now = now } }
 
-// WithLockWait sets how long mutating commands retry on lock contention.
+// WithLockWait sets how long commands retry on lock contention.
 func WithLockWait(d time.Duration) Option { return func(s *settings) { s.lockWait = d } }
 
 func newSettings(opts []Option) (settings, error) {
@@ -361,7 +361,7 @@ func (s *settings) exec(ctx context.Context, c call) (*output, error) {
 	backoff := 25 * time.Millisecond
 	for {
 		out, err := s.execOnce(ctx, c, op)
-		if err == nil || !c.mutating || KindOf(err) != KindLocked || !time.Now().Before(deadline) {
+		if err == nil || KindOf(err) != KindLocked || !time.Now().Before(deadline) {
 			return out, err
 		}
 		// A retry must send the same input again. Readers we can rewind (every stdin
@@ -376,8 +376,11 @@ func (s *settings) exec(ctx context.Context, c call) (*output, error) {
 				return out, err
 			}
 		}
-		// Another git process holds a lock (index.lock, a ref lock, config.lock).
-		// git fails before changing anything in that case, so retrying is safe.
+		// Another git process holds a lock (index.lock, a ref lock, config.lock) or is
+		// creating a worktree (see classify). git fails before changing anything in
+		// those cases, so retrying is safe. So is retrying a read: it does nothing the
+		// second time that it did not do the first, and a read is never locked out by
+		// anything but the second case.
 		select {
 		case <-ctx.Done():
 			return out, err

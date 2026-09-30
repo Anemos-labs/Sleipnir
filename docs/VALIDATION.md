@@ -101,6 +101,14 @@ packages to fix, `--isolation worktree --mailman`):
 * The same run with `--verify "go test {dirs}"`: three tasks with file scopes, three workers, all three merged within a minute of
   each other four minutes in, a tester confirmed the merged tree, 12 of 12 packages pass in the checkout, 60 requests, 63% hit
   ratio (no `drift`), US$0.006 in all, 13 minutes (the manager's and the tester's slow responses are most of it).
+* A smaller one, four packages, `--swarm 3 --isolation worktree --verify "go test {dirs}"` on the same model: all four tasks were
+  accepted, merged by the queue and applied to the checkout as uncommitted changes, 7 minutes 27 seconds, US$0.0032, 59% hit
+  ratio. The manager's refusals were all the limits doing their work (a worker still busy, a run of three workers for four
+  tasks, an agent id that did not exist yet), except the first: its opening command chained two reads with `&&` and was
+  answered "the manager does not edit files", which is not what was wrong with it (the refusal now says the shell takes one
+  plain read-only command at a time). The output showed three more things that have been fixed since: thirty blank lines
+  before the final answer, a retry notice that said only `server`, and cache-miss warnings that did not say the prefix had not
+  changed (the endpoint's misses, not the harness's).
 
 ## Recording a baseline
 

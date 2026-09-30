@@ -281,6 +281,7 @@ type cxOpts struct {
 	model    string         // default claude-opus-5-5 (enforces preserved thinking)
 	gate     agent.Gate
 	hotMode  kv.HotMode
+	sink     agent.Sink // what the person is told; nil means nothing
 }
 
 func cxAgent(t *testing.T, o cxOpts) (*agent.Agent, *events.MemLog) {
@@ -322,7 +323,7 @@ func cxAgent(t *testing.T, o cxOpts) (*agent.Agent, *events.MemLog) {
 		Shared: kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: strings.Repeat("The repo is a Go service. ", 100), Vol: kv.VolEpoch}}),
 		Params: core.Params{MaxTokens: 512, Thinking: "adaptive"},
 		Events: emitter, Planner: o.planner, NoCompaction: o.noCompct, SessionID: "review",
-		Hot: o.hot, AffinityShards: o.shards, MaxSteps: o.steps, Gate: o.gate, HotMode: o.hotMode,
+		Hot: o.hot, AffinityShards: o.shards, MaxSteps: o.steps, Gate: o.gate, HotMode: o.hotMode, Sink: o.sink,
 	}
 	if o.roleText != "" {
 		cfg.RoleL = kv.NewLayer("role:"+o.role, kv.KindRole, 1, []kv.Segment{{Key: o.role, Text: o.roleText, Vol: kv.VolEpoch}})
@@ -889,6 +890,42 @@ func TestCacheEcon_LowHitAlarmFiresOnEveryLargeMiss(t *testing.T) {
 	}
 	if n75 != deg75 {
 		t.Fatalf("a persistent 25%% miss (the recent thread re-written at 1.25x every step) must alarm too: %d of %d", n75, deg75)
+	}
+}
+
+// A miss the guard cannot explain by a change of the prompt is the endpoint's: the notice says so, so
+// a person does not go looking for a bug in the harness (a real marketplace served 5% to 96% of an
+// identical prefix, request after request).
+func TestCacheEcon_MissNoticeSaysTheEndpointDidNotServeAnUnchangedPrefix(t *testing.T) {
+	prov := &cxProv{prof: cxAnthropicProfile()}
+	inner := cxWorkModel(10, nil)
+	prov.handle = func(p *cxProv, req *provider.Request) (*provider.Response, error) {
+		r, err := inner(p, req)
+		if r != nil && p.mainN >= 6 && !strings.Contains(cxLastUserText(req.Prompt), "<compactor-task>") {
+			read := r.Usage.CacheReadTokens * 3 / 10
+			r.Usage.InputTokens += r.Usage.CacheReadTokens - read
+			r.Usage.CacheReadTokens = read
+		}
+		return r, err
+	}
+	sink := &noticeSink{}
+	a, _ := cxAgent(t, cxOpts{prov: prov, noCompct: true, sink: sink, toolOut: func(json.RawMessage) *tools.Result {
+		return &tools.Result{Text: strings.Repeat("0123456789abcdef", 1500)}
+	}})
+	if _, err := a.Run(context.Background(), "do the work"); err != nil {
+		t.Fatal(err)
+	}
+	var misses []string
+	for _, n := range sink.all() {
+		if strings.Contains(n, "cache miss:") {
+			misses = append(misses, n)
+		}
+	}
+	if len(misses) != 1 { // one per run of consecutive misses
+		t.Fatalf("want one cache-miss notice, got %q", sink.all())
+	}
+	if !strings.HasPrefix(misses[0], "warn: cache miss: expected ~") || !strings.Contains(misses[0], "(the prompt prefix did not change: the endpoint did not serve it)") {
+		t.Fatalf("the notice does not say whose miss it is: %q", misses[0])
 	}
 }
 

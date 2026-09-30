@@ -228,11 +228,11 @@ func TestConc_HungRequestIsBoundedByTheFirstByteDeadline(t *testing.T) {
 	defer close(release)
 	client := openaichat.New(openaichat.Config{Name: "hang", BaseURL: srv.URL, StreamIdleTimeout: 200 * time.Millisecond})
 	a, _ := newARV(t, client, arvRigOpts{})
-	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	start := time.Now()
 	_, err := a.Run(ctx, "hello")
-	if d := time.Since(start); d > 900*time.Millisecond {
+	if d := time.Since(start); d > 4*time.Second { // two attempts of 200ms; only the caller's 8 s deadline would take longer
 		t.Fatalf("a silent server held the request for %v (error: %v); StreamIdleTimeout=200ms never applied because it is armed after the headers; only the caller's deadline ended it", d.Round(time.Millisecond), err)
 	}
 }

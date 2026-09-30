@@ -226,7 +226,7 @@ func TestCancellationKillsRunningHooks(t *testing.T) {
 func TestHooksRunInParallel(t *testing.T) {
 	var hs []hookSpec
 	for i := 0; i < 6; i++ {
-		hs = append(hs, cmdHook("sleep 0.5; echo "+string(rune('a'+i))+" > /dev/null"))
+		hs = append(hs, cmdHook("sleep 1; echo "+string(rune('a'+i))+" > /dev/null"))
 	}
 	r := newRunner(t, settings(t, PreToolUse, group{hooks: hs}))
 	start := time.Now()
@@ -235,8 +235,8 @@ func TestHooksRunInParallel(t *testing.T) {
 	if res.Ran() != 6 || len(res.Errors) != 0 {
 		t.Fatalf("ran %d: %s", res.Ran(), errorText(res))
 	}
-	if elapsed > 2500*time.Millisecond { // 6 x 0.5 s one after another would be 3 s
-		t.Errorf("6 hooks of 0.5 s took %v: they ran one after another", elapsed)
+	if elapsed > 4500*time.Millisecond { // 6 x 1 s one after another would be 6 s
+		t.Errorf("6 hooks of 1 s took %v: they ran one after another", elapsed)
 	}
 
 	serial := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{cmdHook("sleep 0.4"), cmdHook("sleep 0.4; true"), cmdHook("sleep 0.4; :")}}))

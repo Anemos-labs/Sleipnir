@@ -137,6 +137,10 @@ func TestSecretSpansCoverExactlyTheValues(t *testing.T) {
 // A large environment is scanned in linear time (a real one is a few kilobytes; the kernel allows
 // megabytes). The block is 100 KB, about 4,000 entries: enough to show an accidental rescan from the
 // start of the block, small enough to stay fast under the race detector.
+//
+// The bound catches a scan that runs away, not a slow one: the regular expressions cost a few
+// seconds under the race detector on a machine that is doing other work (three suites at once took
+// sixteen), against a tenth of a second in a normal run.
 func TestSecretSpansOnALargeBlock(t *testing.T) {
 	var b bytes.Buffer
 	want := 0
@@ -149,7 +153,7 @@ func TestSecretSpansOnALargeBlock(t *testing.T) {
 	}
 	start := time.Now()
 	spans := secretSpans(b.Bytes(), shouldErase)
-	if d := time.Since(start); d > 10*time.Second {
+	if d := time.Since(start); d > 2*time.Minute {
 		t.Fatalf("scanning %d bytes took %v", b.Len(), d)
 	}
 	if len(spans) != want {

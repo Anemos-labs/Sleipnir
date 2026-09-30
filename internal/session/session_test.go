@@ -766,6 +766,40 @@ func TestInstructionFilesThatAreSkippedOrCutAreReported(t *testing.T) {
 	}
 }
 
+// A turn that is only tool calls, opened by a model with a newline or two, must not leave blank lines
+// on the answer stream (thirty of them preceded the final answer of a small swarm). Blank lines that
+// begin a message with words in it are dropped too, its indentation and everything after it are not.
+func TestTextSinkDropsBlankLinesThatOnlyOpenAMessage(t *testing.T) {
+	var out, log strings.Builder
+	sink := session.NewTextSink(&out, &log, "main", false)
+	resp := func() { sink.Response("main", nil, 0) }
+
+	sink.Text("main", "\n")
+	sink.Text("main", "  \n\n")
+	sink.Text("worker", "\n\nnot the answer\n")
+	resp() // a message that said nothing but white space
+	if out.String() != "" {
+		t.Fatalf("white space alone reached the answer: %q", out.String())
+	}
+
+	sink.Text("main", "\n")
+	sink.Text("main", "\n  indented")
+	sink.Text("main", " and more\n\nafter a blank line\n")
+	resp()
+	if got, want := out.String(), "  indented and more\n\nafter a blank line\n"; got != want {
+		t.Fatalf("answer = %q, want %q", got, want)
+	}
+
+	// A held-back message does not leak into the next one, and each message starts afresh.
+	sink.Text("main", "\n\n")
+	resp()
+	sink.Text("main", "\nsecond\n")
+	resp()
+	if got, want := out.String(), "  indented and more\n\nafter a blank line\nsecond\n"; got != want {
+		t.Fatalf("answer = %q, want %q", got, want)
+	}
+}
+
 // Text that reaches the terminal is data: an escape sequence in a model's answer
 // (say, an OSC 52 clipboard write a web page talked it into) must not arrive as one.
 func TestTextSinkStripsTerminalEscapes(t *testing.T) {

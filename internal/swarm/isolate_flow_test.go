@@ -307,6 +307,11 @@ func TestWritesOutsideTheOwnTreeAreRefused(t *testing.T) {
 	if d := rr.Check(context.Background(), perm.Request{Tool: "bash", Command: "git log --oneline", Writes: true}); !d.Allow {
 		t.Errorf("the manager may still inspect: %+v", d)
 	}
+	// Two reads chained together are refused too, and the refusal says why, not that reading is forbidden.
+	d := rr.Check(context.Background(), perm.Request{Tool: "bash", Command: "find . -name '*.go' | head -20 && cat p01/p01.go"})
+	if d.Allow || !strings.Contains(d.Reason, "one plain read-only command at a time") {
+		t.Errorf("a chained read: %+v", d)
+	}
 	if d := rr.Check(context.Background(), perm.Request{Tool: "read", Paths: []string{r.repo + "/a.txt"}}); !d.Allow {
 		t.Errorf("the manager may still read: %+v", d)
 	}

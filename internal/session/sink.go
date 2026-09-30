@@ -29,6 +29,14 @@ type TextSink struct {
 	mu       sync.Mutex
 	midLine  bool // out has an unterminated line
 	lastTool map[string]string
+
+	// said and lead track, per agent, how the message in progress began. Some models open a turn
+	// that is all tool calls with a newline or two, and each of those left an empty line on the answer
+	// stream: thirty of them before the final answer of a small swarm. What a message has said while
+	// it is only white space is held in lead, written without its blank lines when a word arrives
+	// (said is then true) and dropped when the message ends without one.
+	said map[string]bool
+	lead map[string]string
 }
 
 // NewTextSink builds a sink writing answers to out and progress to log. Both are
@@ -37,7 +45,8 @@ type TextSink struct {
 // an OSC 52 clipboard write, a title change, a cursor jump), and none of it may
 // reach the terminal as commands.
 func NewTextSink(out, log io.Writer, main string, verbose bool) *TextSink {
-	return &TextSink{out: termSafe{out}, log: termSafe{log}, Main: main, Verbose: verbose, lastTool: map[string]string{}}
+	return &TextSink{out: termSafe{out}, log: termSafe{log}, Main: main, Verbose: verbose,
+		lastTool: map[string]string{}, said: map[string]bool{}, lead: map[string]string{}}
 }
 
 // termSafe writes what it is given after tools.SanitizeForTerminal has removed
@@ -59,8 +68,29 @@ func (s *TextSink) Text(a, d string) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.said[a] {
+		s.lead[a] += d
+		if strings.TrimSpace(s.lead[a]) == "" {
+			return
+		}
+		d = trimBlankLines(s.lead[a])
+		delete(s.lead, a)
+		s.said[a] = true
+	}
 	fmt.Fprint(s.out, d)
 	s.midLine = !strings.HasSuffix(d, "\n")
+}
+
+// trimBlankLines drops the lines at the start of s that hold nothing but white space, and keeps the
+// indentation of the first line that does.
+func trimBlankLines(s string) string {
+	for {
+		i := strings.IndexByte(s, '\n')
+		if i < 0 || strings.TrimSpace(s[:i]) != "" {
+			return s
+		}
+		s = s[i+1:]
+	}
 }
 
 func (s *TextSink) Thinking(string, string) {}
@@ -98,7 +128,14 @@ func (s *TextSink) ToolEnd(a string, call core.Block, res *tools.Result, took ti
 	}
 }
 
-func (s *TextSink) Response(string, *provider.Response, float64) {}
+// Response ends the agent's message: the next one starts afresh, and white space that was all a message
+// said is dropped.
+func (s *TextSink) Response(a string, _ *provider.Response, _ float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.said, a)
+	delete(s.lead, a)
+}
 
 func (s *TextSink) Notice(a, level, msg string) {
 	s.mu.Lock()

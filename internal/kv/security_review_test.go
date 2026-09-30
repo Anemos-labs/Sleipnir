@@ -403,7 +403,10 @@ func TestSecSound_ParsePatchAdversarialShapes(t *testing.T) {
 					}
 				}
 			}()
-			if d := time.Since(start); d > 5*time.Second {
+			// A bound that catches a complexity bomb (an input that takes minutes or hours), not a
+			// slow machine: under the race detector and three test runs at once the 8 MB and
+			// 200,000-deep inputs took six to eight seconds.
+			if d := time.Since(start); d > 45*time.Second {
 				t.Errorf("took %v", d)
 			}
 		})

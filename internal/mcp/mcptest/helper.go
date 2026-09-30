@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,7 +28,42 @@ const (
 	// EnvDelay is how long the "slow-init" mode waits before serving and the
 	// "linger" mode between hanging up and exiting.
 	EnvDelay = "SLEIPNIR_MCPTEST_DELAY"
+	// EnvBarrier is the directory the "barrier" mode meets its siblings in, and
+	// EnvBarrierCount how many helpers must be there before any of them serves.
+	EnvBarrier      = "SLEIPNIR_MCPTEST_BARRIER"
+	EnvBarrierCount = "SLEIPNIR_MCPTEST_BARRIER_COUNT"
 )
+
+// barrierWait is the longest a "barrier" helper waits for its siblings. It is far
+// beyond the time a loaded machine needs to start a few processes and below the
+// connect timeout the tests use, so a helper that gives up did so because no one
+// else was coming.
+const barrierWait = 8 * time.Second
+
+// arriveAtBarrier records that this helper is running (<dir>/<pid>.up), waits until
+// n helpers are, and then records how the wait ended: <dir>/<pid>.ok when all of them
+// arrived, <dir>/<pid>.late when the wait ran out first.
+func arriveAtBarrier(dir string, n int) {
+	if dir == "" || n < 1 {
+		return
+	}
+	mark := func(suffix string) {
+		_ = os.WriteFile(filepath.Join(dir, strconv.Itoa(os.Getpid())+suffix), nil, 0o600)
+	}
+	mark(".up")
+	deadline := time.Now().Add(barrierWait)
+	for {
+		if up, _ := filepath.Glob(filepath.Join(dir, "*.up")); len(up) >= n {
+			mark(".ok")
+			return
+		}
+		if time.Now().After(deadline) {
+			mark(".late")
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
 
 // IsHelper reports whether this process was started as a server helper.
 func IsHelper() bool { return os.Getenv(EnvHelper) != "" }
@@ -58,6 +95,8 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 //	grandchild   serve, with a child process of its own (pid in EnvPidFile)
 //	secret-stderr print EnvSecret to stderr, then exit 2
 //	slow-init    wait EnvDelay (a Go duration) before serving
+//	barrier      wait until EnvBarrierCount helpers have started in the directory EnvBarrier
+//	             (or barrierWait has passed), then serve; each leaves a file saying how it went
 //	linger       serve; the "crash" tool closes stdout at once but exits (status
 //	             3) only after EnvDelay: the client sees the stream end long
 //	             before it can learn how the process died
@@ -107,6 +146,9 @@ func HelperMain() {
 		if d, err := time.ParseDuration(os.Getenv(EnvDelay)); err == nil {
 			time.Sleep(d)
 		}
+	case "barrier":
+		n, _ := strconv.Atoi(os.Getenv(EnvBarrierCount))
+		arriveAtBarrier(os.Getenv(EnvBarrier), n)
 	case "linger":
 		d, err := time.ParseDuration(os.Getenv(EnvDelay))
 		if err != nil {

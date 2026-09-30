@@ -38,8 +38,10 @@ func bestOf(reps int, fn func()) time.Duration {
 
 // requireLinear fails when fn(4n) takes far more than four times fn(n). Runs
 // that finish within the noise floor pass: there is nothing to measure. A
-// failure is measured a second time before it counts, because on a busy machine
-// one bad sample says more about the neighbours than about the code.
+// failure is measured again, up to five times, before it counts: on a busy machine a
+// sample says more about the neighbours than about the code (three suites at once
+// gave ratios of nine and more, twice in a row, for code that is linear), while an
+// algorithm that really is quadratic gives sixteen every time.
 func requireLinear(t *testing.T, name string, n int, fn func(n int)) {
 	t.Helper()
 	reps := 3
@@ -47,7 +49,7 @@ func requireLinear(t *testing.T, name string, n int, fn func(n int)) {
 		n, reps = max(n/4, 1), 2
 	}
 	var small, large time.Duration
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < 5; attempt++ {
 		small = bestOf(reps, func() { fn(n) })
 		large = bestOf(reps, func() { fn(4 * n) })
 		t.Logf("%s: n=%d %v, 4n %v", name, n, small, large)

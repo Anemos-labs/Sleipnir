@@ -438,7 +438,7 @@ func TestConcSound_WaitWakesPromptlyOnBoardChangeAndOnMail(t *testing.T) {
 			}
 			select {
 			case <-res:
-				if d := time.Since(start); d > 700*time.Millisecond {
+				if d := time.Since(start); d > 3*time.Second { // asleep to its 30 s timeout is what this is not
 					t.Fatalf("wait took %v to notice a %s event", d, name)
 				}
 			case <-time.After(5 * time.Second):

@@ -13,7 +13,7 @@ import (
 
 func TestProbeMeasuresMockEngine(t *testing.T) {
 	srv := mock.New(mock.Config{
-		FirstToken: 40 * time.Millisecond,
+		FirstToken: 120 * time.Millisecond, // the window in which a parallel burst finds nothing: wide, so a loaded machine does not close it
 		Engine:     mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64},
 	}, func(c *mock.Call) mock.Reply {
 		last := c.Messages[len(c.Messages)-1]

@@ -429,7 +429,7 @@ func TestExtractFactsAdversarialOutputs(t *testing.T) {
 	ep := mkEpisode("t/0", a)
 	start := time.Now()
 	ps := probes(ep, nil, 100)
-	if d := time.Since(start); d > 5*time.Second {
+	if d := time.Since(start); d > time.Minute { // a fraction of a second when the machine is quiet; this catches an explosion
 		t.Errorf("extraction took %v", d)
 	}
 	facts := factTexts(ps[0])

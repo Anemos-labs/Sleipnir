@@ -240,7 +240,13 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 			"missed": missed, "diverged": check.Diverged, "first_request": firstCheck,
 		})
 		if streak == 0 {
-			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("cache miss: expected ~%d tokens read from cache, got %d", expected, u.CacheReadTokens))
+			// Whose miss it is: a prompt that changed under a stable layer was already reported
+			// above, so a miss the guard did not explain is the endpoint not serving the prefix it was sent.
+			why := ""
+			if !check.Drift {
+				why = " (the prompt prefix did not change: the endpoint did not serve it)"
+			}
+			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("cache miss: expected ~%d tokens read from cache, got %d%s", expected, u.CacheReadTokens, why))
 		}
 	}
 	// The endpoint changed the request behind our back (dropped a thinking block
@@ -429,6 +435,20 @@ func (a *Agent) gateKey(s *kv.Stack, prof provider.Profile) string {
 	return shared + "|" + s.PrefixKey().Short()
 }
 
+// retryNotice is the line a person sees while a request is being repeated: what failed (the kind of
+// failure, the HTTP status and what the endpoint said, bounded) and when the next attempt is. "server;
+// retrying in 877ms" says nothing to someone who has to decide whether to wait or to change model.
+func retryNotice(pe *provider.Error, delay time.Duration) string {
+	what := pe.Kind.String()
+	if pe.Status != 0 {
+		what += fmt.Sprintf(" (http %d)", pe.Status)
+	}
+	if m := provider.SanitizeText(pe.Message, 160); m != "" {
+		what += ": " + m
+	}
+	return fmt.Sprintf("%s; retrying in %s", what, delay.Round(time.Millisecond))
+}
+
 // call performs a provider request with retry and rate-limit gating.
 func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
 	var last error
@@ -452,7 +472,7 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 		}
 		last = err
 		delay := backoff(attempt, pe.RetryAfter)
-		a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("%s; retrying in %s", pe.Kind, delay.Round(time.Millisecond)))
+		a.cfg.Sink.Notice(a.cfg.ID, "warn", retryNotice(pe, delay))
 		a.emit(events.TypeModelError, map[string]any{
 			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
 		})

@@ -331,11 +331,12 @@ func TestWarmGateElectsOnePrimer(t *testing.T) {
 	if primers.Load() != 1 || released.Load() != 7 {
 		t.Fatalf("primers=%d followers=%d", primers.Load(), released.Load())
 	}
-	// Now warm: nobody waits.
+	// Now warm: nobody waits. (A gate that did wait would wait for a primer that never comes, so the
+	// bound is only a stand-in for "not held": it is far from what a busy machine costs.)
 	start := time.Now()
 	s, _ := g.Enter(context.Background(), "prefix")
 	s(true)
-	if time.Since(start) > 10*time.Millisecond || !g.Warm("prefix") {
+	if time.Since(start) > 2*time.Second || !g.Warm("prefix") {
 		t.Fatal("warm prefix must pass straight through")
 	}
 }

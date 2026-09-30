@@ -33,7 +33,9 @@ The first release.
 - Worktree isolation (`swarm.isolation: worktree`, `--isolation`): every writer edits a git worktree of its own, and its
   work reaches your checkout through a serial merge queue that verifies every integration and undoes a merge whose check
   fails; the result is applied at the end of the run (as edits, or as commits with `--commit`) and is never lost when it
-  cannot be. The manager is told so, so it does not ask you to merge anything.
+  cannot be. The manager is told so, so it does not ask you to merge anything. Several managers, or a swarm and your own git,
+  may work in one repository at once: git itself fails a command that lists the worktrees while another process is creating one
+  ("failed to read .../commondir: Success", found by CI), and the harness waits that moment out like any other lock.
 - `--verify` may contain `{dirs}`, the directories a task's scope covers, so tasks of a decomposed job are verified on their
   own work (`go test {dirs}`): in an isolated run a command over the whole repository cannot pass until every part is merged,
   and a real swarm of three workers deadlocked on it.
@@ -63,6 +65,10 @@ The first release.
 - Every model of a session, roles' models included, is described from its endpoint's catalogue when the built-in table
   does not know it, and `session.start` records the prices each was described with, so `inspect` shows the gateway's
   figures instead of a generic estimate.
+- What a person is told is specific: the notice while a request is repeated names the failure, its HTTP status and what the
+  endpoint said (`server (http 502): The provider returned an error … [provider X]; retrying in 877ms`), and a cache-miss
+  warning says when the prompt prefix did not change, so the miss was the endpoint's (a real marketplace served 5% to 96% of an
+  identical prefix, request after request).
 
 ### Tools, permissions and extensions
 
@@ -138,6 +144,10 @@ The first release.
 
 ### Interfaces
 
+- The answer stream carries no blank lines that only open a model's turn (some models start a turn of tool calls with a newline;
+  a small swarm printed thirty before its final answer).
+- The isolated manager's shell refusal says what its shell takes (one plain read-only command at a time), not only that it may not
+  edit files: a real manager chained two reads with `&&` and was told reading was forbidden.
 - `sleipnir chat` (slash commands, Ctrl-C per turn), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and

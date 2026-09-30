@@ -485,6 +485,11 @@ func TestErrorFormatting(t *testing.T) {
 		"CONFLICT (content): Merge conflict in a.txt":                                          KindConflict,
 		"fatal: ambiguous argument 'zzz': unknown revision or path not in the working tree.":   KindNotFound,
 		"fatal: this operation must be run in a work tree":                                     KindNotARepo,
+		"fatal: failed to read /x/.git/worktrees/w-01/commondir: Success":                      KindLocked,
+		"fatal: failed to read .git/worktrees/w-01/commondir: Undefined error: 0":              KindLocked,
+		"fatal: failed to read /x/notes.txt: Success":                                          KindOther,
+		"error: could not lock config file .git/config: File exists":                           KindLocked,
+		"error: could not lock config file .git/config: Permission denied":                     KindOther,
 		"something unexpected": KindOther,
 	} {
 		if got := classify(stderr); got != want {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -115,22 +116,31 @@ func TestStartReturnsAfterTheOutcomeIsRecorded(t *testing.T) {
 	}
 }
 
+// The manager starts its servers together, not one after another. The servers are helper
+// processes that do not answer until all of them are running (mcptest "barrier"): a manager
+// that waited for one to connect before it started the next would never get them all up, and
+// every helper would give up waiting. No clock is compared, so a loaded machine cannot fail it.
 func TestManagerStartsServersInParallel(t *testing.T) {
 	skipNotUnix(t)
+	const n = 6
+	dir := t.TempDir()
 	servers := map[string]ServerConfig{}
-	for i := 0; i < 6; i++ {
-		servers[fmt.Sprintf("s%d", i)] = helperCfg("slow-init", map[string]string{mcptest.EnvDelay: "500ms"})
+	for i := 0; i < n; i++ {
+		servers[fmt.Sprintf("s%d", i)] = helperCfg("barrier", map[string]string{
+			mcptest.EnvBarrier: dir, mcptest.EnvBarrierCount: strconv.Itoa(n),
+		})
 	}
 	m := NewManager(quickOpts(servers))
 	t.Cleanup(func() { _ = m.Close() })
-	start := time.Now()
 	if err := m.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(start); d > 2500*time.Millisecond {
-		t.Errorf("6 servers x 500ms took %v: they must connect concurrently, not one after another", d)
+	ok, _ := filepath.Glob(filepath.Join(dir, "*.ok"))
+	late, _ := filepath.Glob(filepath.Join(dir, "*.late"))
+	if len(ok) != n || len(late) != 0 {
+		t.Errorf("%d of %d servers saw all the others start and %d gave up waiting: they must connect concurrently, not one after another", len(ok), n, len(late))
 	}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < n; i++ {
 		if st := statusOf(m, fmt.Sprintf("s%d", i)); st.State != StateReady {
 			t.Errorf("%+v", st)
 		}

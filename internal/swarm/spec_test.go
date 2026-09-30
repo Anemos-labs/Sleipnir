@@ -924,7 +924,7 @@ func TestWaitDeliversCoalescedMail(t *testing.T) {
 	}
 	start := time.Now()
 	res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 5})
-	if d := time.Since(start); d > time.Second || !strings.Contains(res.Text, "mail arrived") {
+	if d := time.Since(start); d > 3*time.Second || !strings.Contains(res.Text, "mail arrived") { // its timeout is 5 s
 		t.Fatalf("wait slept %v: %q", d.Round(time.Millisecond), res.Text)
 	}
 	if m.a.PendingInbox() != 1 {

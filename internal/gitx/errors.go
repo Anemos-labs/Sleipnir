@@ -26,8 +26,8 @@ const (
 	KindTimeout
 	// KindCanceled: the caller's context was canceled and the command killed.
 	KindCanceled
-	// KindLocked: another git process held a lock file for longer than we were
-	// willing to wait.
+	// KindLocked: another git process held a lock file, or was in the middle of
+	// creating a linked worktree, for longer than we were willing to wait.
 	KindLocked
 	// KindUnsafe: a safety check refused the repository (foreign owner,
 	// redirected work tree, absurd configuration).
@@ -190,6 +190,19 @@ func classify(text string) Kind {
 	// match failures that merely mention locking a ref ("cannot lock ref ... is at
 	// X but expected Y" is a compare-and-swap miss, retrying it cannot help).
 	case has(".lock': file exists", ".lock\": file exists", "another git process seems to be running"):
+		return KindLocked
+	// Another git process is creating a linked worktree. Its administrative directory is
+	// there and its commondir file is still empty (git opens the file, then writes it), and
+	// a command that lists the worktrees, which `worktree add`, `worktree remove` and
+	// `branch -d` all do first, reads the empty file and dies with the errno of a read that
+	// did not fail: "failed to read .git/worktrees/w-01/commondir: Success". Nothing was
+	// changed, and a moment later the file is complete.
+	case strings.Contains(l, "failed to read") && strings.Contains(l, "/commondir"):
+		return KindLocked
+	// The one lock git words without the name of the lock file: "error: could not lock config
+	// file .git/config: File exists". Other reasons (a permission, a missing directory) are not
+	// waited for.
+	case strings.Contains(l, "could not lock config file") && strings.Contains(l, "file exists"):
 		return KindLocked
 	case has("but expected", "reference already exists", "already exists and is not a valid"):
 		return KindConflict

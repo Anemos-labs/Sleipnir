@@ -452,10 +452,18 @@ func (r *runner) warmup(ctx context.Context) error {
 	burst := func(tag string) (cached, total int) {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
+		// The requests are meant to overlap: they wait for one another and are sent together, so that
+		// how far apart the goroutines happen to start does not decide whether the later ones find
+		// the prefix the earlier ones are still computing.
+		start := make(chan struct{})
+		var ready sync.WaitGroup
 		for i := 0; i < 4; i++ {
 			wg.Add(1)
+			ready.Add(1)
 			go func(i int) {
 				defer wg.Done()
+				ready.Done()
+				<-start
 				resp, err := r.cfg.Provider.Do(ctx, &provider.Request{Prompt: r.prompt(sys, user(fmt.Sprintf("Say ok. %s%d", tag, i)))}, nil)
 				if err != nil {
 					return
@@ -466,6 +474,8 @@ func (r *runner) warmup(ctx context.Context) error {
 				mu.Unlock()
 			}(i)
 		}
+		ready.Wait()
+		close(start)
 		wg.Wait()
 		return
 	}

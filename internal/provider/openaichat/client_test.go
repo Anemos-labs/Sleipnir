@@ -229,19 +229,27 @@ func TestAffinityKeepsSharedPrefixOnOneEngine(t *testing.T) {
 
 func TestFanOutNeedsWarmup(t *testing.T) {
 	sys := strings.Repeat("Shared project context. ", 400)
-	cfg := mock.Config{FirstToken: 60 * time.Millisecond, Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}
+	// The first-token window is wide and the requests are sent together: entries publish at the first
+	// token, and a loaded machine must not be able to start one request after another's first token.
+	cfg := mock.Config{FirstToken: 250 * time.Millisecond, Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}
 	fan := func(c *openaichat.Client, n int) {
-		var wg sync.WaitGroup
+		var wg, ready sync.WaitGroup
+		start := make(chan struct{})
 		for i := 0; i < n; i++ {
 			wg.Add(1)
+			ready.Add(1)
 			go func(i int) {
 				defer wg.Done()
+				ready.Done()
+				<-start
 				p := prompt(sys, user("task "+string(rune('a'+i))))
 				if _, err := c.Do(context.Background(), &provider.Request{Prompt: p}, nil); err != nil {
 					t.Error(err)
 				}
 			}(i)
 		}
+		ready.Wait()
+		close(start)
 		wg.Wait()
 	}
 
