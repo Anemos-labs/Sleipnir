@@ -6,8 +6,8 @@ set -eu
 : "${MODEL:?set MODEL to a tool-capable model id (see: sleipnir models)}"
 # The agents run the fixture's tests themselves. In accept-edits mode a command that is not read-only is refused when
 # nobody can be asked, and the model then spends its steps looking for ways round the refusal (a first run against a real
-# model made 24 tool calls that way), so the test command is allowed. Set the variable yourself to allow more or less.
-export SLEIPNIR_PERMISSIONS_ALLOW="${SLEIPNIR_PERMISSIONS_ALLOW:-Bash(go test:*)}"
+# model made 24 tool calls that way), so the test and vet commands are allowed. Set the variable yourself to allow more or less.
+export SLEIPNIR_PERMISSIONS_ALLOW="${SLEIPNIR_PERMISSIONS_ALLOW:-Bash(go test:*),Bash(go vet:*)}"
 BUDGET_USD="${BUDGET_USD:-3}"
 BIN="${SLEIPNIR:-sleipnir}"
 OUT="${OUT:-validation}"
@@ -77,26 +77,29 @@ go test ./... >/dev/null 2>&1 && echo pass > "$WORK/tests2" || echo fail > "$WOR
 echo "== 3. compaction recovery (small thresholds)"
 git checkout -q -- . && git clean -fdq
 # The fixture is small: the default thresholds (compaction is considered at 20k tokens of thread, forced at 60k) are never
-# reached, so lower them, and give the agent fourteen notes to read one by one so the thread grows over several requests and a
-# compaction has time to finish before the run does. (A first run with only --context-window 24000 made no compaction at
-# all; with lowered thresholds and eight notes the compactor's patch removed almost nothing and was rightly refused.) The notes are untracked and are
-# cleaned away before the next step.
+# reached, so lower them, and give the agent twenty short notes to read one by one so the thread grows slowly over many
+# requests, and a task of five phases so that there are requests left after the compaction is ready. It has to: a compaction is a
+# model call over the whole thread (30 to 60 seconds on a reasoning model), a patch is discarded when the thread has grown by more
+# than a quarter of what it covered (and at least 3,000 tokens) meanwhile, and one that is ready only for the last request is
+# never committed. (A first run with only --context-window 24000 made no compaction at all; with big notes the first patch was
+# stale and the second came too late; with thresholds of 300 and 900 tokens the patch folded so little that the planner rightly
+# refused it: the compactor keeps a tail of about 700 tokens, so there must be a few thousand more to fold.) The notes are untracked and are cleaned away before the next step.
 mkdir -p docs
 i=1
-while [ "$i" -le 14 ]; do
+while [ "$i" -le 20 ]; do
   {
     echo "# Note $i"
     j=1
-    while [ "$j" -le 12 ]; do
+    while [ "$j" -le 4 ]; do
       echo "Line $j of note $i: the slug package turns titles into URL fragments; this line only pads the note so that reading it costs some tokens ($i/$j)."
       j=$((j + 1))
     done
   } > "docs/note$i.md"
   i=$((i + 1))
 done
-SLEIPNIR_CACHE_THREAD_SOFT_LIMIT_TOKENS=300 SLEIPNIR_CACHE_COMPACT_THRESHOLD_TOKENS=900 \
+SLEIPNIR_CACHE_THREAD_SOFT_LIMIT_TOKENS=2500 SLEIPNIR_CACHE_COMPACT_THRESHOLD_TOKENS=3500 \
 "$BIN" run --model "$MODEL" --mode accept-edits --trust-project --budget-usd "$BUDGET_USD" --context-window 24000 --session-dir "$WORK/s3" --json \
-  "Make the tests in slug_test.go pass without changing the tests. First read the fourteen notes docs/note1.md to docs/note14.md, one file per step, and say in one sentence what each adds; then fix the code and run the tests." > "$WORK/run3.jsonl" || true
+  "Do these in order, one at a time, and run the tests after each: (1) read the twenty notes docs/note1.md to docs/note20.md, one file per step, and say in one sentence what each adds; (2) make the tests in slug_test.go pass without changing that file; (3) add a doc comment with two examples above Slugify; (4) add BenchmarkSlugify in a new file slug_bench_test.go; (5) run go vet ./... and fix what it reports." > "$WORK/run3.jsonl" || true
 "$BIN" inspect --json "$WORK/s3" > "$WORK/inspect3.json" 2>/dev/null || true
 go test ./... >/dev/null 2>&1 && echo pass > "$WORK/tests3" || echo fail > "$WORK/tests3"
 
@@ -130,7 +133,7 @@ if command -v jq >/dev/null 2>&1; then
         "first requests warm \(.cache.warm_first)/\(.cache.first_requests)",
         "compactions \(.compaction.commits)",
         "anomalies \(.anomalies.total)",
-        "cost $\(.cost.actual.total * 10000 | floor / 10000)",
+        "cost $\(.cost.actual.total * 1000000 | round / 1000000)",
         "tests \($tests)" ] | "   " + join("  ·  ")' "$2"
   }
   verdict "2 steady state"   "$WORK/inspect2.json" "$WORK/tests2"
@@ -140,7 +143,8 @@ if command -v jq >/dev/null 2>&1; then
     "   step 2 criteria: steady hit ratio >= 80% " + (if .cache.steady_hit_ratio >= 0.8 then "OK" else "NOT MET" end) +
     ", no drift anomalies " + (if .anomalies.drift == 0 then "OK" else "NOT MET (\(.anomalies.drift))" end)' "$WORK/inspect2.json"
   [ ! -s "$WORK/inspect3.json" ] || jq -r '
-    "   step 3 criteria: at least one compaction commit " + (if .compaction.commits >= 1 then "OK" else "NOT MET (the run stayed under the lowered thresholds: enlarge the task)" end)' "$WORK/inspect3.json"
+    "   step 3 criteria: at least one compaction commit " + (if .compaction.commits >= 1 then "OK" else "NOT MET (no patch was committed: see the compact.* events; enlarge the task)" end) +
+    ", hit ratio after a commit >= 60% " + (if .cache.rebase_requests == 0 then "n/a (no request after a commit)" elif .cache.rebase_hit_ratio >= 0.6 then "OK (\(.cache.rebase_hit_ratio * 100 | floor)%)" else "NOT MET (\(.cache.rebase_hit_ratio * 100 | floor)%)" end)' "$WORK/inspect3.json"
   [ ! -s "$WORK/inspect4.json" ] || jq -r '
     "   step 4 criteria: workers'"'"' first requests warm >= 50% " + (if .cache.first_requests > 0 and (.cache.warm_first / .cache.first_requests) >= 0.5 then "OK" else "NOT MET" end)' "$WORK/inspect4.json"
   echo "   step 6 RL: rollout $(jq -c '{completed: .completed, infra: .infra, cancelled: .cancelled}' "$WORK/rollout.json" 2>/dev/null || echo 'no summary')"

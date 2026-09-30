@@ -333,8 +333,19 @@ it; the client-side path above is the portable one.)
   race detector. Not tested: behaviour against a real provider.
 * **Affinity.** Engines behind a marketplace cache per engine. Requests carry a routing key
   (`sl:<session>:<GlobalKey>:<shard>`) as `prompt_cache_key` and `X-Session-Id`, so agents that share a prefix
-  *should* land on the engine that holds it; `AffinityShards` spreads very large swarms over several engines. This is
-  **designed for, not verified**: the only evidence is the in-repo mock, which hard-codes pinning by those keys.
+  *should* land on the engine that holds it; `AffinityShards` spreads very large swarms over several engines. This was
+  designed against the in-repo mock, which hard-codes pinning by those keys, and has **one live measurement** (Heimdall,
+  `deepseek/deepseek-v4.1-flash`, September 2026, one key per swarm sent as `prompt_cache_key` and `X-Session-Id`): the
+  hits were erratic, not pinned. Sequential requests of one append-only conversation alternated between reading nearly
+  their whole prefix and reading only the first 640 tokens (the constitution and tools every request shares); `doctor`'s nine
+  repeat requests hit 5 to 9 times depending on the run; a single agent's steady hit ratio was 66 to 82% and a four-worker
+  swarm's 42%. Every one of those misses was the endpoint's: the harness's prompts did not drift (no `drift`
+  anomaly, every prompt replays to its wire hash). Which layer at the marketplace loses the pin (the marketplace routes by
+  it as a preference, and forwards it to the provider as `x-session-id`) is not determined from outside. Twelve sequential
+  requests over one 3.4k-token prefix, sent with the id as `X-Session-Id` only, `prompt_cache_key` only, both (what the
+  harness sends), and with `session_id` added, hit anywhere from 0 to 9 times whichever way the id was sent, and the same
+  style ranged from 0 to 9 between runs; with a new id per request none of eleven hit. So the id is what makes a hit
+  possible and the marketplace's pin is what makes it unreliable; no way of sending the id was better than another.
   `docs/research/02-provider-caching.md` §0 and §6 record every marketplace-gateway behaviour as unverified and
   prescribe the canary suite (D11) first. The default is one shard (one key per swarm); OpenAI documents ~15
   requests/min per prefix+key before spill to other machines, so a busy swarm needs about RPM/12 shards, which nothing

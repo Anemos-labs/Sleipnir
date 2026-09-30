@@ -601,10 +601,13 @@ from that:
 **What is and is not verified.** The URL, headers (`auth_style`, `betas`, `session_header_name`, custom headers),
 `cache_control` markers and `max_tokens` that the adapter sends for these options were checked against a local
 stand-in server; `no_turn_scoped_system` and `no_zero_max_tokens`, which only matter for a swarm's hot view and cache
-warm-ups, were read from the code, not exercised. **No option of the `anthropic` dialect has been verified against a
-live endpoint**: how a real gateway reacts to `cache_control`, `no_turn_scoped_system`, `no_zero_max_tokens`,
-`session_header_name`, `betas`, `max_breakpoints`, `thinking_*` or `extra_body` is unmeasured, and the values above
-come from the marketplace's documentation, not from a measurement. Measure your own endpoint:
+warm-ups, were read from the code, not exercised. **One live endpoint has been measured, once**: Heimdall's `/messages`
+route with exactly the options above (with `deepseek/deepseek-v4.1-flash`, September 2026). `doctor` found streaming,
+usage, and a tool-calling round trip working, no exact cost and no cache reads reported (as the route's documentation says:
+the bill is then priced from the endpoint's catalogue), and no reasoning exposed; a six-step agent task (list, write, read,
+run a command) completed and was priced from the catalogue. That says nothing about `betas`, `max_breakpoints`,
+`thinking_*` or `extra_body`, nor about any other gateway: how a real one reacts to `cache_control` is unmeasured, and
+the values above come from the marketplace's documentation plus that one measurement. Measure your own endpoint:
 
 ```sh
 sleipnir doctor --model heimdall-messages/deepseek/deepseek-v4.1-flash --deep
