@@ -11,6 +11,7 @@ import (
 
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/kv"
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
@@ -216,12 +217,23 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 		}
 	}
 	var err error
-	res, err = t.Run(ctx, &tools.Call{ID: call.ToolID, Name: call.ToolName, Input: call.Input, Env: a.env()})
+	tctx, stopClock := a.toolContext(ctx)
+	res, err = t.Run(tctx, &tools.Call{ID: call.ToolID, Name: call.ToolName, Input: call.Input, Env: a.env()})
+	timedOut := tctx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+	stopClock()
 	if err != nil {
 		res = tools.Errorf("%s failed: %v", call.ToolName, err)
 	}
 	if res == nil {
 		res = tools.Errorf("%s returned nothing", call.ToolName)
+	}
+	if timedOut && res.IsError {
+		// The tool came back because the deadline passed, not of its own accord. A result
+		// that is not an error is kept: the work finished, if late.
+		was := res.Text
+		res = tools.Errorf("%s ran longer than %s and was stopped (%s). Ask for less, or split the work up.", call.ToolName, a.cfg.ToolTimeout, kv.EscapeLine(was, 200))
+		res.Meta = withErrorKind(res.Meta, ErrKindTimeout)
+		a.emit("tool.timeout", map[string]any{"id": call.ToolID, "name": call.ToolName, "limit_ms": a.cfg.ToolTimeout.Milliseconds()})
 	}
 	if h := a.cfg.Hooks; h != nil {
 		o := h.AfterTool(ctx, hc, res)
@@ -236,6 +248,15 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 		res.Text += "\n[hook] " + strings.Join(hookText, "\n[hook] ")
 	}
 	return
+}
+
+// toolContext is the context of one tool call: the run's, with the per-call deadline if
+// there is one. stop releases its timer.
+func (a *Agent) toolContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if d := a.cfg.ToolTimeout; d > 0 {
+		return context.WithTimeout(ctx, d)
+	}
+	return ctx, func() {}
 }
 
 // perTurnResultCap bounds a single result even if a tool forgot to truncate.

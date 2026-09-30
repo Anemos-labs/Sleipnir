@@ -420,3 +420,154 @@ func TestTransportToolCallBoundSitsAboveTheAgentCap(t *testing.T) {
 		t.Fatalf("provider.DefaultMaxToolCalls = %d must exceed agent.DefaultMaxToolCalls = %d", provider.DefaultMaxToolCalls, agent.DefaultMaxToolCalls)
 	}
 }
+
+// ---- the per-call deadline -------------------------------------------------------------
+
+// toolCallOnce answers the first request with one call of the named tool and the next with text.
+func toolCallOnce(name string) mock.Responder {
+	var mu sync.Mutex
+	asked := false
+	return func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		if !asked {
+			asked = true
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: name, Args: `{}`}}}
+		}
+		return mock.Reply{Text: "ok"}
+	}
+}
+
+func lastToolResultEvent(t *testing.T, r *limRig) map[string]any {
+	t.Helper()
+	evs := r.log.OfType(events.TypeToolResult)
+	if len(evs) == 0 {
+		t.Fatal("no tool.result event")
+	}
+	var m map[string]any
+	if err := json.Unmarshal(evs[len(evs)-1].Data, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// A tool that would hold the agent for ever is stopped at the deadline, the model is told
+// why, and the run goes on.
+func TestToolCallIsStoppedAtTheDeadlineAndTheRunGoesOn(t *testing.T) {
+	var sawDeadline atomic.Bool
+	hang := fakeTool{name: "hang", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+		if _, ok := ctx.Deadline(); ok {
+			sawDeadline.Store(true)
+		}
+		<-ctx.Done()
+		return tools.Errorf("interrupted: %v", ctx.Err())
+	}}
+	var seen []string
+	var mu sync.Mutex
+	inner := toolCallOnce("hang")
+	r := newLimRig(t, func(c *agent.Config) { c.ToolTimeout = 150 * time.Millisecond }, []fakeTool{hang}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		seen = append(seen, toolMessages(c)...)
+		mu.Unlock()
+		return inner(c)
+	})
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // a failing deadline must not hang the suite
+	defer cancel()
+	if _, err := r.agent.Run(ctx, "go"); err != nil {
+		t.Fatalf("the run did not survive a hung tool: %v", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("the run took %v", d)
+	}
+	if !sawDeadline.Load() {
+		t.Error("the tool's context carried no deadline")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) == 0 || !strings.Contains(seen[len(seen)-1], "ran longer than 150ms") || !strings.Contains(seen[len(seen)-1], "hang") {
+		t.Fatalf("the model was told %q", seen)
+	}
+	ev := lastToolResultEvent(t, r)
+	if meta, _ := ev["meta"].(map[string]any); meta["error_kind"] != agent.ErrKindTimeout {
+		t.Fatalf("tool.result meta: %v", ev["meta"])
+	}
+	if len(r.log.OfType("tool.timeout")) != 1 {
+		t.Error("no tool.timeout event")
+	}
+}
+
+// The caller's own cancellation is not a timeout, and a tool that finishes its work late
+// keeps its result.
+func TestToolDeadlineLeavesCancellationAndLateSuccessAlone(t *testing.T) {
+	t.Run("late success is kept", func(t *testing.T) {
+		slow := fakeTool{name: "slow", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+			time.Sleep(300 * time.Millisecond) // ignores its context, finishes after the deadline
+			return &tools.Result{Text: "the work is done"}
+		}}
+		var seen []string
+		var mu sync.Mutex
+		inner := toolCallOnce("slow")
+		r := newLimRig(t, func(c *agent.Config) { c.ToolTimeout = 100 * time.Millisecond }, []fakeTool{slow}, func(c *mock.Call) mock.Reply {
+			mu.Lock()
+			seen = append(seen, toolMessages(c)...)
+			mu.Unlock()
+			return inner(c)
+		})
+		if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if len(seen) == 0 || !strings.Contains(seen[len(seen)-1], "the work is done") {
+			t.Fatalf("a result that arrived late was thrown away: %q", seen)
+		}
+	})
+	t.Run("cancellation is not a timeout", func(t *testing.T) {
+		started := make(chan struct{})
+		hang := fakeTool{name: "hang", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+			close(started)
+			<-ctx.Done()
+			return tools.Errorf("interrupted")
+		}}
+		r := newLimRig(t, func(c *agent.Config) { c.ToolTimeout = time.Hour }, []fakeTool{hang}, toolCallOnce("hang"))
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() { <-started; cancel() }()
+		_, _ = r.agent.Run(ctx, "go")
+		if n := len(r.log.OfType("tool.timeout")); n != 0 {
+			t.Fatalf("the caller's cancel was reported as a timeout (%d events)", n)
+		}
+	})
+	t.Run("negative turns the deadline off", func(t *testing.T) {
+		var hasDeadline atomic.Bool
+		probe := fakeTool{name: "probe", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+			_, ok := ctx.Deadline()
+			hasDeadline.Store(ok)
+			return &tools.Result{Text: "fine"}
+		}}
+		r := newLimRig(t, func(c *agent.Config) { c.ToolTimeout = -1 }, []fakeTool{probe}, toolCallOnce("probe"))
+		if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+			t.Fatal(err)
+		}
+		if hasDeadline.Load() {
+			t.Fatal("a negative ToolTimeout still set a deadline")
+		}
+	})
+	t.Run("the default is generous", func(t *testing.T) {
+		var limit atomic.Int64
+		probe := fakeTool{name: "probe", readOnly: true, runCtx: func(ctx context.Context, _ json.RawMessage) *tools.Result {
+			if d, ok := ctx.Deadline(); ok {
+				limit.Store(int64(time.Until(d)))
+			}
+			return &tools.Result{Text: "fine"}
+		}}
+		r := newLimRig(t, nil, []fakeTool{probe}, toolCallOnce("probe"))
+		if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+			t.Fatal(err)
+		}
+		// Above the longest wait the built-in tools allow themselves (10 minutes).
+		if got := time.Duration(limit.Load()); got < 20*time.Minute || got > agent.DefaultToolTimeout {
+			t.Fatalf("default deadline %v, want between 20 minutes and %v", got, agent.DefaultToolTimeout)
+		}
+	})
+}

@@ -20,6 +20,9 @@ const (
 	// ErrKindTooManyCalls marks a call that was not run because its turn asked for
 	// more calls than the per-turn cap (Config.MaxToolCallsPerTurn).
 	ErrKindTooManyCalls = "too_many_calls"
+	// ErrKindTimeout marks a call that was stopped because it ran longer than the
+	// per-call deadline (Config.ToolTimeout).
+	ErrKindTimeout = "timeout"
 )
 
 // withErrorKind sets meta["error_kind"], creating the map when needed. An empty

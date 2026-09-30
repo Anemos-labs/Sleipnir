@@ -188,6 +188,14 @@ type Config struct {
 	// Negative: no cap.
 	MaxTurnResultChars int
 
+	// ToolTimeout bounds one tool call (default DefaultToolTimeout). Its context ends
+	// when the time is up; a tool that honours it returns, and the model is told the call
+	// ran too long. It is a backstop for a tool that would otherwise hold the agent for
+	// ever (a third-party server, a hung mount), well above what the built-in tools
+	// allow themselves (the shell tool at most 10 minutes, the swarm's wait the same).
+	// Negative: no deadline.
+	ToolTimeout time.Duration
+
 	// NoMailReopen makes Run return, as it used to, when the model answers without tool
 	// calls even though mail arrived while it was answering; the mail then stays in the
 	// inbox (PendingInbox). By default Run reads it first, in the same run (at most
@@ -209,6 +217,8 @@ type Config struct {
 const (
 	DefaultMaxToolCalls       = 128
 	DefaultMaxTurnResultChars = 120_000
+	// DefaultToolTimeout is the longest one tool call may take (Config.ToolTimeout).
+	DefaultToolTimeout = 30 * time.Minute
 )
 
 // ErrClosed is returned by Run after Close.
@@ -362,6 +372,9 @@ func New(cfg Config) (*Agent, error) {
 	}
 	if cfg.MaxTurnResultChars == 0 {
 		cfg.MaxTurnResultChars = DefaultMaxTurnResultChars
+	}
+	if cfg.ToolTimeout == 0 {
+		cfg.ToolTimeout = DefaultToolTimeout
 	}
 	th := kv.NewThread()
 	th.SetClock(cfg.Now)

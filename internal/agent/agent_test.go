@@ -25,13 +25,18 @@ type fakeTool struct {
 	name     string
 	readOnly bool
 	run      func(in json.RawMessage) *tools.Result
+	// runCtx, when set, is used instead of run and gets the call's context.
+	runCtx func(ctx context.Context, in json.RawMessage) *tools.Result
 }
 
 func (f fakeTool) Spec() core.ToolSpec {
 	return core.ToolSpec{Name: f.name, Description: "fake " + f.name, InputSchema: json.RawMessage(`{"type":"object"}`), ReadOnly: f.readOnly}
 }
 
-func (f fakeTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) {
+func (f fakeTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
+	if f.runCtx != nil {
+		return f.runCtx(ctx, c.Input), nil
+	}
 	return f.run(c.Input), nil
 }
 
