@@ -62,6 +62,7 @@ type Engine struct {
 	mu     sync.Mutex
 	blocks map[uint64]*list.Element // chain hash -> LRU element
 	lru    *list.List               // front = most recent
+	down   bool                     // an outage: nothing is found and nothing is kept (see SetDown)
 }
 
 type blockEntry struct {
@@ -100,6 +101,9 @@ func (e *Engine) Lookup(data []byte) int {
 	chain := e.chain(data)
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.down {
+		return 0
+	}
 	now := e.now()
 	hit := 0
 	for _, h := range chain {
@@ -134,6 +138,9 @@ func (e *Engine) Insert(data []byte) {
 	chain := e.chain(data)
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.down {
+		return
+	}
 	now := e.now()
 	// Leaf first, so the sequence's root is the last to be evicted (see Lookup).
 	for i := len(chain) - 1; i >= 0; i-- {
@@ -150,6 +157,28 @@ func (e *Engine) Insert(data []byte) {
 		delete(e.blocks, back.Value.(*blockEntry).key)
 		e.lru.Remove(back)
 	}
+}
+
+// SetDown starts (true) or ends (false) an outage of the cache: while it lasts no request finds anything cached and nothing a request
+// sends is kept. When it ends the cache is empty, so the requests that follow pay to fill it again, which is what an engine that
+// restarted or lost its cache looks like from outside.
+func (e *Engine) SetDown(down bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.down = down
+	if !down {
+		e.blocks = map[uint64]*list.Element{}
+		e.lru.Init()
+	}
+}
+
+// Flush drops every cached block, as an engine that restarted or evicted its cache early would: the next request finds nothing of
+// the prefixes it was promised.
+func (e *Engine) Flush() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.blocks = map[uint64]*list.Element{}
+	e.lru.Init()
 }
 
 // Resident reports the number of cached blocks.

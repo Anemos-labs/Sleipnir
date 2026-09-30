@@ -35,7 +35,13 @@ import (
 
 // Options configures a demo run.
 type Options struct {
-	// Topics is the number of documents to survey (default 8, at least 2, even).
+	// Scenario is what the team is asked to do: "handbook" (the default: survey a handbook and summarise it, a second or two) or
+	// "shop" (build a small shop: about twenty seconds, with mail, a stuck agent, a cold cache and a compaction, a cache break and a
+	// merge that is sent back; see shop_script.go).
+	Scenario string
+	// Scale stretches (above 1) or squeezes (below 1) the time the shop takes, and the lifetime of its cache with it (default 1).
+	Scale float64
+	// Topics is the number of documents to survey (default 8, at least 2, even); the handbook scenario only.
 	Topics int
 	// Dir is where the workspace and the recorded session go; empty makes a
 	// directory under the system's temporary directory.
@@ -64,6 +70,8 @@ type Report struct {
 	HitRatio                        float64
 	Elapsed                         time.Duration
 	Summaries                       []string
+	// Scale is the scale the shop scenario ran at (zero for the handbook).
+	Scale float64
 }
 
 // Prices used by the demo. They are round numbers in the range of current
@@ -75,6 +83,13 @@ var (
 
 // Run executes the demo and prints its report to o.Out.
 func Run(ctx context.Context, o Options) (*Report, error) {
+	switch o.Scenario {
+	case "", "handbook":
+	case "shop":
+		return runShop(ctx, o)
+	default:
+		return nil, fmt.Errorf("demo: unknown scenario %q (handbook or shop)", o.Scenario)
+	}
 	if o.Topics < 2 {
 		o.Topics = 8
 	}
@@ -102,7 +117,7 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 	}
 
 	script := newScript(o.Topics)
-	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, script.respond)
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}, Price: prices}, script.respond)
 	ts := srv.Start()
 	defer ts.Close()
 	prof := openaichat.DefaultProfile("demo", ts.URL)
@@ -437,7 +452,7 @@ func (r *Report) print(w io.Writer, final string) {
 	fmt.Fprintf(w, "    if every agent kept a private cache   $%.4f (%.0f%% less with the shared prefix)\n", r.NoShareUSD, pctLess(r.CostUSD, r.NoShareUSD))
 	fmt.Fprintf(w, "    with no caching at all                $%.4f (%.0f%% less)\n", r.NoCacheUSD, pctLess(r.CostUSD, r.NoCacheUSD))
 	fmt.Fprintf(w, "\nPrices are round demo numbers ($%.2f/M input, $%.3f/M cached, $%.2f/M output); the model is a script.\n", prices.InputPerM, prices.CacheReadPerM, prices.OutputPerM)
-	fmt.Fprintf(w, "Workspace: %s\nRecorded session: %s\n", r.Workspace, r.Dir)
+	fmt.Fprintf(w, "Workspace: %s\nRecorded session: %s\nSee it again: sleipnir replay %s\n", r.Workspace, r.Dir, r.Dir)
 }
 
 func pctLess(actual, base float64) float64 {

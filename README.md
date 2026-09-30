@@ -28,6 +28,41 @@ for the price of a cache read plus a two-line assignment. Background compactors 
 read the same cache) fold old history into one-line resumes and promote important facts, and the harness commits each patch
 when the cache economics say so, or at a cold moment for free.
 
+## See it
+
+`sleipnir demo` (on a terminal; `--scenario shop` anywhere) runs a team of nine agents through the real harness against a mock
+endpoint (no key, no network, about twenty seconds; on a terminal you watch it happen in the live cockpit), and `sleipnir replay`
+plays any recorded session back. The pictures below are the terminal's own screens,
+drawn from that session's event log and nothing else (`scripts/record-demo.sh`), not mock-ups. The model in the recording is a
+script, so it says nothing clever; everything around it is the real harness: git worktrees, the merge queue and its checks, the mail
+router, the cache planner, the governor, the accounting. The cache lives 25 seconds here instead of minutes, so you can watch it cool.
+
+<p align="center"><img src="docs/media/swarm.svg" alt="The swarm cockpit: a pixel horse with eight legs, one prefix shared by eight riders, the agent table with a prompt bar for each (the part they inherit bright, their own dimmer), a gantt of the last minute with mail, compactions and a stuck agent marked, the task board, the verified merge queue, mail, the governor" width="760"></p>
+
+**The swarm** (`sleipnir watch`, `sleipnir replay`). Three scouts read the same prefix at once and pay for it once; four workers
+each get a git worktree and a scope; the backend mails the frontend what it will serve; the repetition guard tells a worker that has
+run the same failing check four times that it is going in circles; the provider loses its cache and every agent that had a warm
+one notices; and the merge queue sends the frontend's piece back because, merged with the catalogue's, the shop has two default
+ports, each of which was fine in its own tree. The horse has eight legs, one for each rider on the shared prefix: a leg lifts while
+its worker runs a tool.
+
+<p align="center"><img src="docs/media/cache.svg" alt="The cache of one agent: its prompt drawn by layer, bright where the provider read it from its cache; the hit ratio of every request with the compaction and the cache breaks marked; the thread folding into a resume; the anomalies the harness saw" width="760"></p>
+
+**The cache** (press `c`). What only this harness knows: the prompt of one agent by layer, sized by tokens and bright where the
+provider read it from its cache (a light runs along it when an answer arrives); the clock of the cache; the hit ratio of every
+request with `◆` for a compaction and `⚠` for a break; the thread folding into a one-line resume; and, when the provider drops its
+cache, the layer where the prompt stopped matching, what was expected, what was read and what the miss cost.
+
+<p align="center"><img src="docs/media/fold.svg" alt="A compaction at a cold moment: the thread folds step by step into a resume, and the harness says the cache was cold, so the rewrite cost nothing extra" width="760"></p>
+
+**A compaction at the cheapest moment.** The model proposes a patch, the harness validates it and holds it until the moment it is
+cheapest to apply. Here the agent was busy building while its cache cooled, so the commit was free (`fork · the cache was cold`);
+the other workers' compactions were made while their caches were warm, which is a declared, priced rebase and is shown as one.
+
+Try it: `sleipnir demo` (the last screen stays until you press `q`; `c` `m` `b` `o` choose the screen), then `sleipnir replay latest`
+to play it back (space pauses, the arrows seek, `+` and `-` change the speed). Stills for places that do not play animation: [swarm](docs/media/swarm.png),
+[cache](docs/media/cache.png), [fold](docs/media/fold.png).
+
 ## Why this is different
 
 | | typical harness | Sleipnir |
@@ -44,7 +79,9 @@ when the cache economics say so, or at a cold moment for free.
 ```sh
 # 1. install (Linux/macOS)                                   (or: go install github.com/reee344/sleipnir/cmd/sleipnir@latest)
 curl -fsSL https://raw.githubusercontent.com/reee344/sleipnir/main/scripts/install.sh | sh
-sleipnir demo                          # no key, no network: a scripted team of 14 agents, the cache at work, the bill
+sleipnir demo                          # no key, no network: on a terminal, watch nine scripted agents build a shop in git worktrees (20 s, the live cockpit: the cache, the mail, the merge queue), then the bill
+sleipnir demo --scenario handbook      # a one-second survey by a scripted team and the bill, as text (what a pipe gets)
+sleipnir replay latest                 # play a recorded session back as the cockpit; `sleipnir watch` shows one being written
 
 # 2. point it at a model: any OpenAI-compatible endpoint works (marketplaces, OpenRouter, OpenAI, vLLM, ...), and so does an Anthropic Messages endpoint
 export HEIMDALL_API_KEY=...            # or OPENROUTER_API_KEY / OPENAI_API_KEY

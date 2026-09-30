@@ -22,3 +22,21 @@ remove one (eight is the point); do not use the wobble filter on anything else; 
 
 Regenerate: `python3 make_logo.py && node render.mjs logo.html wordmark.html social.html favicon-test.html` (Python 3 and headless
 Chromium through Playwright; the SVGs are plain paths plus one SVG filter for the hand-drawn wobble).
+
+## The gallery
+
+The recordings of the terminal interface are not drawings: each is the program's own screen, played from the event log of one recorded
+session, `showcase/events.jsonl` (the shop demo: `sleipnir demo --scenario shop`, with the paths of the machine that made it replaced).
+`gallery.json` lists them (which screen, how big, which stretch of the session, at which second the still is taken), and the same
+manifest is read by `sleipnir replay --gallery`, by `scripts/record-demo.sh` and by the test that checks the committed files.
+
+| File | What it shows |
+|---|---|
+| `swarm.svg`, `swarm.png` | the swarm cockpit over the whole session: the shared prefix and its riders, mail, a stuck agent, the provider losing its cache, the merge queue sending a piece back |
+| `cache.svg`, `cache.png` | the cache of one agent (be-2) from its start: layers, the clock, the hit ratio with its marks, a compaction while warm, the break and what it cost |
+| `fold.svg`, `fold.png` | another agent's (be-1) compaction at a cold moment, after a build that outlasted the cache |
+
+The SVGs are animated with CSS only (no script: they play in a README and in any browser), identical frames are merged, and the file is a
+function of the log and the manifest, so `scripts/record-demo.sh --check` (and `go test ./internal/tui/app`) fail when a change to a
+screen or a widget has not been recorded again. The PNG stills are taken from the SVGs with headless Chromium (`scripts/svg2png.mjs`).
+To make a new session: `scripts/record-demo.sh --new-session` (about twenty seconds, no key), then read the diff of the pictures and commit.

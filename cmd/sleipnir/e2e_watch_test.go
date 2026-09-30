@@ -157,11 +157,13 @@ func TestE2EReplayRestoresTheTerminalOnSIGTERM(t *testing.T) {
 func TestE2EReplayFollowsTheSizeOfTheWindow(t *testing.T) {
 	_, s := startReplay(t)
 	waitScreen(t, s, 100, 36, "the cockpit", shows("SLEIPNIR", "riders"))
+	// What the program writes after the resize is laid out for the new window, and begins with a clear of the screen, so an emulator of
+	// the new size that is given everything written from here on ends up with a whole frame whatever else of the old one it got.
+	// The mark is taken before the window changes: taken after, on a machine that stalls, it could fall in the middle of the new frame.
+	mark := len(s.Transcript())
 	if err := s.Resize(24, 70); err != nil {
 		t.Fatal(err)
 	}
-	// what the program writes after the resize is laid out for the new window: the emulator is the new size from the start of it
-	mark := len(s.Transcript())
 	waitScreen(t, s, 70, 24, "a cockpit of 70 columns", func(tm *vt.Term) bool {
 		// the tail of the transcript, from the first byte written after the signal, is a whole frame at the new size
 		fresh := vt.New(70, 24)

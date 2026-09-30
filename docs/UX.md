@@ -1,18 +1,28 @@
 # The terminal interface
 
 What `sleipnir chat`, `run`, `swarm`, `watch` and `replay` should look and feel like, why, and how it is built and tested.
-The pictures are **design sketches** (`docs/design/ux/`, regenerated with `python3 make_sketches.py && node render.mjs ...`);
-they are not screenshots of working code. As each piece lands, real recordings replace them.
+The swarm and the cache are real recordings of the program (`docs/media`, made by `scripts/record-demo.sh` from the event log of a
+recorded session, never drawn by hand); the chat and the storyboard are still **design sketches** (`docs/design/ux/`, regenerated
+with `python3 make_sketches.py && node render.mjs ...`), which are not screenshots of working code. As each piece lands, a real
+recording replaces its sketch.
 
 | | |
 |---|---|
-| ![chat](design/ux/chat.png) | ![swarm](design/ux/swarm.png) |
-| ![storyboard](design/ux/story.png) | ![the mark](media/logo.png) |
+| ![the swarm, recorded](media/swarm.png) | ![the cache of one agent, recorded](media/cache.png) |
+| ![chat, a sketch](design/ux/chat.png) | ![storyboard, a sketch](design/ux/story.png) |
 
 ## Where things stand
 
-Today `chat` is a line REPL: no colour, no spinner or status line, no markdown, no diffs, typed `y/a/n` approvals
-(`internal/session/sink.go`, `cmd/sleipnir/chat.go`). `sleipnir inspect` is a browser dashboard. Everything below is to be built.
+Built and tested: the foundation (`term`, `cell`, `vt`, `render`, `input`), the widgets, the state reducer, the headless recorder and
+two programs, `sleipnir watch` (follows a session that is being written, for a second terminal or a tmux pane beside a run) and
+`sleipnir replay` (plays a recorded one on a clock of its own; `--record` writes an animated SVG and `--final` a text screen), each with
+four screens: the cockpit, the cache of one agent, the mail and the board with the merge queue. Their tests run the real command on a
+pseudo-terminal and read the screen through the terminal emulator. The demo that the recordings are made from is
+`sleipnir demo --scenario shop`.
+
+Not built yet: the inline chat program (the live region of the next section). Today `chat` is a line REPL: no colour, no spinner or
+status line, no markdown, no diffs, typed `y/a/n` approvals (`internal/session/sink.go`, `cmd/sleipnir/chat.go`). `sleipnir inspect` is
+a browser dashboard.
 
 ## Principles
 
@@ -76,7 +86,12 @@ At more than ~16 agents the table becomes a heatmap (one cell per agent, coloure
 
 **Replay.** `sleipnir replay SESSION [--speed 8] [--until SEQ]` plays a recorded session through the same renderer, with
 the animations, and needs no key: the demo for people who have not got a provider yet, and the way a bug report becomes a
-movie. `sleipnir demo` is a replay of a scripted mock-provider session.
+movie.
+
+**Demo.** `sleipnir demo` on a terminal runs a scripted team on the mock endpoint and shows it in the live cockpit (the same program
+as `watch`, over the log the harness is writing): nothing to install, no key, and the first thing a person sees of the product.
+When the team is done its last screen stays, the other screens can be looked at, and `q` leaves for the report; a `q` before the end
+stops the team. Off a terminal, or with `--plain`, it is the text report.
 
 ## The animations (each is a pure function of state and frame)
 
@@ -137,9 +152,11 @@ The live sink stays an `agent.Sink`, but it does not draw: it forwards to the sa
 
 ## Media
 
-`scripts/record-demo.sh` runs `sleipnir demo` into a session directory, replays it headless into `docs/media/*.svg` (animated)
-and `*.png` (stills), and the README embeds them. Recordings are generated from real event logs, never hand-edited, so a
-change in the UI regenerates them in CI (`nightly`).
+`scripts/record-demo.sh` draws the recordings of `docs/media` (animated SVG, CSS only) and their PNG stills from the event log of the
+recorded showcase session (`docs/media/showcase/events.jsonl`, from `sleipnir demo --scenario shop`), as the manifest
+`docs/media/gallery.json` lists them. `--new-session` runs the demo again first; `--check` (and `go test ./internal/tui/app`) fail
+when the committed files are not what the code draws from the committed log, so a change in the UI that has not been recorded again is
+caught by CI, not by a reader. Recordings are generated from real event logs, never hand-edited.
 
 ## Order of work
 

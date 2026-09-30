@@ -30,23 +30,40 @@ type TTYOptions struct {
 	View   View
 	Agent  string
 	NoAnim bool
+	// QuitLive and QuitEnded say what q does, in the row of keys, while the session is under way and after it ended ("quit" when
+	// empty): a program that prints something when the screen closes (the demo's report) says so, and one that stops the
+	// session when it closes says that.
+	QuitLive, QuitEnded string
 }
 
-// RunTTY shows the session on the terminal until the user quits: it puts the terminal in raw mode, draws on the alternate screen,
-// reads keys, follows the window's size and ticks the animation at UIFPS, and puts everything back the way it was on every way
-// out, a panic included. It returns ErrNoTerminal, having touched nothing, when there is no terminal to draw on.
-func RunTTY(ctx context.Context, src Source, o TTYOptions) error {
-	in, out := o.In, o.Out
+// resolve fills in the terminal the options leave out: the process's own.
+func (o TTYOptions) resolve() (in, out *os.File, env func(string) string) {
+	in, out, env = o.In, o.Out, o.Env
 	if in == nil {
 		in = os.Stdin
 	}
 	if out == nil {
 		out = os.Stdout
 	}
-	env := o.Env
 	if env == nil {
 		env = os.Getenv
 	}
+	return in, out, env
+}
+
+// HaveTerminal reports whether RunTTY would find a terminal to draw on: input and output that are terminals, and an output that
+// takes escape sequences (not TERM=dumb). A program that has to choose what to do before it starts (run with a screen or without)
+// asks this first.
+func HaveTerminal(o TTYOptions) bool {
+	in, out, env := o.resolve()
+	return !term.Detect(env, out).Dumb && xterm.IsTerminal(int(in.Fd()))
+}
+
+// RunTTY shows the session on the terminal until the user quits: it puts the terminal in raw mode, draws on the alternate screen,
+// reads keys, follows the window's size and ticks the animation at UIFPS, and puts everything back the way it was on every way
+// out, a panic included. It returns ErrNoTerminal, having touched nothing, when there is no terminal to draw on.
+func RunTTY(ctx context.Context, src Source, o TTYOptions) error {
+	in, out, env := o.resolve()
 	caps := term.Detect(env, out)
 	if caps.Dumb || !xterm.IsTerminal(int(in.Fd())) {
 		return ErrNoTerminal
@@ -69,7 +86,7 @@ func RunTTY(ctx context.Context, src Source, o TTYOptions) error {
 	}
 	return Run(ctx, Config{
 		Src: src, Screen: render.NewScreen(out, caps), Keys: ReadKeys(ctx, in), Sizes: sizes, Tick: ticker.C,
-		Pal: pal, NoAnim: o.NoAnim || !caps.Anim, View: o.View, Agent: o.Agent,
+		Pal: pal, NoAnim: o.NoAnim || !caps.Anim, View: o.View, Agent: o.Agent, QuitLive: o.QuitLive, QuitEnded: o.QuitEnded,
 	})
 }
 

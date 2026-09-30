@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -65,7 +66,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prefill: time proportional to the tokens that were not cached.
-	sleep(s.cfg.FirstToken + time.Duration(promptTokens-cached)*s.cfg.PrefillPer)
+	pause(r.Context(), s.cfg.FirstToken+time.Duration(promptTokens-cached)*s.cfg.PrefillPer)
 	// The request's blocks become readable now, at first token, and not
 	// before. Parallel requests that started earlier could not read them.
 	engine.Insert(prompt)
@@ -187,7 +188,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			first = false
 		}
 		send(chunk(d, nil))
-		sleep(s.cfg.DecodePer)
+		pause(r.Context(), s.cfg.DecodePer)
 	}
 	if reply.Reasoning != "" {
 		for _, piece := range pieces(reply.Reasoning, 24) {
@@ -323,6 +324,20 @@ func pieces(s string, n int) []string {
 func sleep(d time.Duration) {
 	if d > 0 {
 		time.Sleep(d)
+	}
+}
+
+// pause waits d, or less when the client has gone away: a request that was cancelled must not keep the server, and whoever is
+// stopping it (a test, the demo that was left early), waiting for the time its reply would have taken.
+func pause(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+	case <-ctx.Done():
 	}
 }
 

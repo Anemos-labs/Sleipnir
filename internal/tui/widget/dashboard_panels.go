@@ -141,10 +141,16 @@ func frameTitleBar(task string, stats []string, width int, below []int, p Palett
 		c.put(x+1, "┬", faint)
 	}
 
-	// leave out what does not fit: the last stat first
+	// leave out what does not fit: the last stat first (a stat may carry text from outside, so it is cleaned like every other text)
+	clean := make([]string, 0, len(stats))
+	for _, s := range stats {
+		if s = showClean(s); s != "" {
+			clean = append(clean, s)
+		}
+	}
 	right := ""
-	for n := len(stats); n > 0; n-- {
-		if r := " " + strings.Join(stats[:n], " · ") + " "; cell.StringWidth(r) <= width-14 {
+	for n := len(clean); n > 0; n-- {
+		if r := " " + strings.Join(clean[:n], " · ") + " "; cell.StringWidth(r) <= width-14 {
 			right = r
 			break
 		}
@@ -333,6 +339,12 @@ func dashHints(hints []Hint, w int, p Palette) cell.Line {
 	if hints == nil {
 		hints = defaultHints
 	}
+	// a hint may name something that came from outside (an agent), so it is cleaned like every other text; the caller's slice is left alone
+	cleaned := make([]Hint, len(hints))
+	for i, h := range hints {
+		cleaned[i] = Hint{Text: showClean(h.Text), Rank: h.Rank}
+	}
+	hints = cleaned
 	keep := make([]bool, len(hints))
 	for i := range keep {
 		keep[i] = true

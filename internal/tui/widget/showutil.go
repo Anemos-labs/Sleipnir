@@ -240,12 +240,18 @@ func showClean(s string) string {
 }
 
 // showHidden is the characters that change how text is displayed without drawing anything: direction marks and overrides,
-// zero-width spaces, invisible operators, the byte-order mark.
+// zero-width spaces, invisible operators, the byte-order mark, the soft hyphen, the Mongolian vowel separator, and the tag
+// characters and ideographic variation selectors of the planes above (the same set the markdown and dialog widgets drop, and
+// widgettest.Control looks for).
 func showHidden(r rune) bool {
 	switch {
 	case r >= 0x200b && r <= 0x200f, r >= 0x202a && r <= 0x202e, r >= 0x2060 && r <= 0x206f, r == 0xfeff:
 		return true
+	case r == 0x00ad, r == 0x180e:
+		return true
 	case r >= 0xe0000 && r <= 0xe007f: // tag characters
+		return true
+	case r >= 0xe0100 && r <= 0xe01ef: // variation selectors supplement
 		return true
 	}
 	return false

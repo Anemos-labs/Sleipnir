@@ -63,6 +63,9 @@ type Mode struct {
 	At, Total time.Duration
 	// Final says that the screen is one still picture of a session, its last (replay --final).
 	Final bool
+	// QuitLive and QuitEnded say what q does, in the row of keys, while the session is under way and after it ended; "quit" when
+	// empty. A program that prints something when the screen closes says so.
+	QuitLive, QuitEnded string
 }
 
 // label is the first of the title bar's stats: what the screen is doing with the session.
@@ -162,10 +165,16 @@ func hintsFor(s Scene) []widget.Hint {
 	} else {
 		h = append(h, widget.Hint{Text: "space pause", Rank: 3})
 	}
+	quit := "quit"
+	if s.Snap != nil && s.Snap.Session.Ended && s.Mode.QuitEnded != "" {
+		quit = s.Mode.QuitEnded
+	} else if (s.Snap == nil || !s.Snap.Session.Ended) && s.Mode.QuitLive != "" {
+		quit = s.Mode.QuitLive
+	}
 	h = append(h,
 		widget.Hint{Text: "o cockpit", Rank: 7}, widget.Hint{Text: "c cache", Rank: 8}, widget.Hint{Text: "m mail", Rank: 9},
 		widget.Hint{Text: "b board", Rank: 10}, widget.Hint{Text: "↑↓ agent", Rank: 4},
-		widget.Hint{Text: "? help", Rank: 2}, widget.Hint{Text: "q quit", Rank: 1})
+		widget.Hint{Text: "? help", Rank: 2}, widget.Hint{Text: "q " + quit, Rank: 1})
 	return h
 }
 

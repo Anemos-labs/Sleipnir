@@ -192,6 +192,27 @@ func (s *Server) Reset() {
 	s.mu.Unlock()
 }
 
+// FlushCaches empties the prefix cache of every engine (see Engine.Flush): a provider that dropped its cache. The conversation pins
+// are kept, so the same requests go to the same engines and find them cold.
+func (s *Server) FlushCaches() {
+	for i := 0; i < s.router.Len(); i++ {
+		s.router.Engine(i).Flush()
+	}
+}
+
+// CacheOutage takes the prefix cache of every engine away for d (see Engine.SetDown) and returns at once: every request in that time
+// finds nothing it was promised, and when it is over the cache is empty. It is the demo's cache break.
+func (s *Server) CacheOutage(d time.Duration) {
+	for i := 0; i < s.router.Len(); i++ {
+		s.router.Engine(i).SetDown(true)
+	}
+	time.AfterFunc(d, func() {
+		for i := 0; i < s.router.Len(); i++ {
+			s.router.Engine(i).SetDown(false)
+		}
+	})
+}
+
 // Router exposes the router for tests that inspect engines.
 func (s *Server) Router() *Router { return s.router }
 

@@ -38,6 +38,9 @@ type Config struct {
 	// View and Agent are where the program starts.
 	View  View
 	Agent string
+	// QuitLive and QuitEnded are what the row of keys says q does while the session is under way and after it ended ("quit" when
+	// empty).
+	QuitLive, QuitEnded string
 }
 
 // maxStep is the longest stretch of time one tick may move a replay by: a process that was suspended for an hour does not play the
@@ -272,7 +275,7 @@ func (m *model) current() string {
 
 // scene is what is on the screen now.
 func (m *model) scene() Scene {
-	mode := Mode{Replay: m.rep != nil, Paused: m.paused}
+	mode := Mode{Replay: m.rep != nil, Paused: m.paused, QuitLive: m.c.QuitLive, QuitEnded: m.c.QuitEnded}
 	if m.rep != nil {
 		mode.Speed, mode.At, mode.Total = m.rep.Speed(), m.rep.Elapsed(), m.rep.Total()
 	}

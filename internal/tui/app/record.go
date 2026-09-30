@@ -24,6 +24,9 @@ type RecordOptions struct {
 	Speed float64
 	// Until stops the recording after the last event whose seq is not above it (0 means the whole log).
 	Until uint64
+	// From starts the recording this far into the session (what happened before is already on the screen at the first frame, and
+	// nothing arrives in it) and Length ends it that long after From (0: at the end of the log). Both are in the time of the session.
+	From, Length time.Duration
 	// Hold is how long the last frame stays before the loop starts again (default 4 s).
 	Hold time.Duration
 	// Palette and Theme are the colours of the cockpit and of the terminal it is drawn on (the defaults of each when zero).
@@ -82,6 +85,10 @@ func Frames(path string, o RecordOptions) ([]svg.Frame, error) {
 	defer pl.Close()
 	step := time.Second / time.Duration(o.FPS)
 	mem := NewMemory()
+	if o.From > 0 { // skip to where the recording starts: the state is what it was then, and none of it is arriving
+		pl.Advance(time.Duration(float64(o.From) / o.Speed))
+		mem.Seed(pl.State().SnapshotAt(pl.Now()))
+	}
 	var frames []svg.Frame
 	for f := range pl.Frames(step) {
 		ui := f.Index * UIFPS / o.FPS
@@ -92,9 +99,12 @@ func Frames(path string, o RecordOptions) ([]svg.Frame, error) {
 			agent = Newest(sn)
 		}
 		lines := Draw(Scene{Snap: sn, View: o.View, Agent: agent, Frame: ui, Cols: o.Cols, Rows: o.Rows, Pal: o.Palette, Mem: mem, NoAnim: o.NoAnim,
-			Mode: Mode{Replay: true, Speed: o.Speed, At: pl.Elapsed(), Total: 0}})
+			Mode: Mode{Replay: true, Speed: o.Speed}})
 		fr := svg.FromLines(lines, o.Cols, time.Duration(f.Index)*step)
 		frames = append(frames, fr)
+		if o.Length > 0 && pl.Elapsed() >= o.From+o.Length {
+			break
+		}
 	}
 	if err := pl.Err(); err != nil {
 		return nil, fmt.Errorf("replay: %w", err)
