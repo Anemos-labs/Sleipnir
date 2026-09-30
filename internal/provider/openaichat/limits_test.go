@@ -143,16 +143,16 @@ func TestLimitsAreInclusiveAtTheBoundary(t *testing.T) {
 func TestNegativeLimitTurnsOneOff(t *testing.T) {
 	s := newScripted(t, func(w http.ResponseWriter, fl http.Flusher, r *http.Request) {
 		sse(w)
-		for i := 0; i < 300; i++ {
+		for i := 0; i < provider.DefaultMaxToolCalls+1; i++ {
 			fmt.Fprint(w, toolFrame(i, fmt.Sprint("c", i), "read", "{}"))
 		}
 		fmt.Fprint(w, finish("tool_calls"))
 	})
 	if _, err := call(t, s.URL, Config{}, nil); err == nil {
-		t.Fatal("300 tool calls exceed the default limit of 128")
+		t.Fatalf("%d tool calls exceed the default limit", provider.DefaultMaxToolCalls+1)
 	}
 	resp, err := call(t, s.URL, Config{Limits: provider.StreamLimits{MaxToolCalls: -1}}, nil)
-	if err != nil || len(resp.Turn.ToolCalls()) != 300 {
+	if err != nil || len(resp.Turn.ToolCalls()) != provider.DefaultMaxToolCalls+1 {
 		t.Fatalf("with the limit off: %v", err)
 	}
 }

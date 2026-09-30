@@ -20,6 +20,7 @@ import (
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 	"github.com/reee344/sleipnir/internal/tools"
@@ -407,5 +408,15 @@ func TestSec_S24_AnOrdinaryTurnIsUntouched(t *testing.T) {
 	}
 	if b := eventData(t, r.log, "tool.budget"); len(b) != 0 {
 		t.Errorf("a turn within budget logged %v", b)
+	}
+}
+
+// The transport's bound on the tool calls of one response must sit above the number of
+// calls the agent runs in a turn. Below it, a model that asks for a few more than the
+// cap would not get the refusal that tells it to issue fewer (S24): its whole response
+// would be dropped at the wire and retried as a server error.
+func TestTransportToolCallBoundSitsAboveTheAgentCap(t *testing.T) {
+	if provider.DefaultMaxToolCalls <= agent.DefaultMaxToolCalls {
+		t.Fatalf("provider.DefaultMaxToolCalls = %d must exceed agent.DefaultMaxToolCalls = %d", provider.DefaultMaxToolCalls, agent.DefaultMaxToolCalls)
 	}
 }

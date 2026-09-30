@@ -83,7 +83,8 @@ A hung endpoint is `ErrTimeout` (first attempt retryable, see C-08).
 * **Cause.** Nothing bounded a stream: 70 MiB of tiny deltas became one 65 MiB turn; one SSE line, one event count or one
   tool call's arguments had no limit; keep-alive comments reset the idle timer for ever.
 * **Fix.** `provider.StreamLimits` (`limits.go`) with defaults far above legitimate traffic: 64 MiB of body, 8 MiB per
-  line, 1,048,576 events, 8 MiB of answer text (and, separately, of reasoning), 128 tool calls, 4 MiB of arguments per call,
+  line, 1,048,576 events, 8 MiB of answer text (and, separately, of reasoning), 512 tool calls (the agent runs at most 128 per turn and refuses
+  the rest, S24, so the transport bound sits above it), 4 MiB of arguments per call,
   1,024 blocks, 30 minutes per response. `Config.Limits` overrides any of them (negative turns one off). They are enforced
   where the data is read (`provider.SSEReader`: bytes, line length, events) and where it is folded (the openaichat and
   anthropic accumulators: text, reasoning, tool calls, arguments, blocks) and at the wall clock (the watchdog's total

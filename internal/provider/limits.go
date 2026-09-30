@@ -43,11 +43,15 @@ type StreamLimits struct {
 
 // Default stream limits.
 const (
-	DefaultMaxStreamBytes   = 64 << 20 // the cap the non-streaming path always had
-	DefaultMaxLineBytes     = 8 << 20
-	DefaultMaxEvents        = 1 << 20
-	DefaultMaxTextBytes     = 8 << 20
-	DefaultMaxToolCalls     = 128
+	DefaultMaxStreamBytes = 64 << 20 // the cap the non-streaming path always had
+	DefaultMaxLineBytes   = 8 << 20
+	DefaultMaxEvents      = 1 << 20
+	DefaultMaxTextBytes   = 8 << 20
+	// DefaultMaxToolCalls sits well above the number of calls the agent runs in one
+	// turn (agent.DefaultMaxToolCalls, 128): a model that asks for more gets its extra
+	// calls refused with an error it can act on (S24), which needs the whole response.
+	// This bound only ends a stream that never stops calling tools.
+	DefaultMaxToolCalls     = 512
 	DefaultMaxToolArgBytes  = 4 << 20
 	DefaultMaxBlocks        = 1024
 	DefaultMaxStreamElapsed = 30 * time.Minute
