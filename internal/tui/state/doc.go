@@ -67,8 +67,9 @@
 //
 // The tests check what the State makes of the logs of real sessions, recorded hermetically by the repository's own scripted teams
 // against its mock endpoint (the demo; a session that compacts, sends mail, gets stuck, is rate limited and meets a cold cache; one
-// with worktree isolation and the merge queue), against an oracle that counts the same log the plain way, and pin it with golden
-// files (testdata/golden). Where the events do not carry a figure a screen would want (the permission mode, the budget until it is
+// with worktree isolation and the merge queue; one with the mailman; and four of one agent in the default permission mode: a person
+// at the prompt, no one to ask, a run cancelled while a question waits and one cancelled in a request), against an oracle that
+// counts the same log the plain way, and pin it with golden files (testdata/golden). Where the events do not carry a figure a screen would want (the permission mode, the budget until it is
 // spent, the phases of a merge, the prompt layers that requests do not size), the type that would hold it says so in its comment,
 // and the field is left empty; where the State estimates one (the size of a message in tokens), the comment says that instead.
 package state

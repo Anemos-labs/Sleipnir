@@ -347,10 +347,13 @@ func TestTailAndFollowNeedNoOptions(t *testing.T) {
 	st := New()
 	done := make(chan error, 1)
 	go func() { done <- Follow(ctx2, path, st) }()
+	guard := time.After(hang)
 	for st.LastSeq() < 2 { // the first poll is not timed: wait for it by what it did
 		select {
 		case err := <-done:
 			t.Fatalf("Follow ended early: %v", err)
+		case <-guard:
+			t.Fatal("Follow delivered nothing")
 		default:
 			runtime.Gosched()
 		}

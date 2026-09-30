@@ -175,6 +175,22 @@ func scribble(sn *Snapshot) {
 	}
 }
 
+// awaitMore waits, by yielding, until the count is above before: the readers do not stop taking snapshots, so it is a matter of a
+// round of the scheduler and never of a time. It reports false if the count has not moved after the test's hang guard, which a
+// reader that ended (a check of its failed) would cause, where a wait that only yields would never end.
+func awaitMore(n *atomic.Int64, before int64) bool {
+	guard := time.After(hang)
+	for n.Load() == before {
+		select {
+		case <-guard:
+			return false
+		default:
+			runtime.Gosched()
+		}
+	}
+	return true
+}
+
 // foldWhileRead folds the events in the test's goroutine, in batches, while readers take snapshots without pause; after each batch
 // the writer waits until every reader has taken one more, so that the two are known to have overlapped and no reader is starved by
 // the writer (neither is a timing: the wait is for a count). Then the State must be what a fold with nobody looking makes.
@@ -305,9 +321,11 @@ func TestResetWhileSnapshotsAreTaken(t *testing.T) {
 		for _, e := range evs[:150] {
 			st.Apply(e)
 		}
-		for _, r := range rs { // let each reader see the State that is about to be replaced
-			for before := r.snaps.Load(); r.snaps.Load() == before; {
-				runtime.Gosched()
+		for i, r := range rs { // let each reader see the State that is about to be replaced
+			if !awaitMore(&r.snaps, r.snaps.Load()) {
+				close(stop)
+				wg.Wait()
+				t.Fatalf("reader %d took no snapshot while the writer waited", i)
 			}
 		}
 		st.Reset()
