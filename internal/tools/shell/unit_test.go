@@ -594,3 +594,49 @@ func TestWithin(t *testing.T) {
 		}
 	}
 }
+
+func TestLooksSecret(t *testing.T) {
+	secret := []string{
+		// the spec's pattern
+		"OPENAI_API_KEY=x", "anthropic_api-key=x", "MY_SECRET=x", "GITHUB_TOKEN=x", "DB_PASSWORD=x", "DB_PASSWD=x",
+		"AWS_CREDENTIALS=x", "GOOGLE_APPLICATION_CREDENTIALS=/k.json", "AWS_SESSION_TOKEN=x",
+		// last-word names
+		"STRIPE_KEY=x", "HEIMDALL_KEY=x", "KEY=x", "GPG_KEY=x", "PRIVATE_KEY=x", "MYSQL_PWD=x", "GH_PAT=x", "DB_PASS=x",
+		"SSH_PASSPHRASE=x", "SENTRY_DSN=x", "HTTP_AUTH=x", "AUTHORIZATION=x", "COOKIE=x", "Set-Cookie=x", "PRIVATEKEY=x",
+		"SSH_AUTH_SOCK=/tmp/agent.1",
+		// values that give the secret away whatever the name is
+		"DATABASE_URL=postgres://app:hunter2@db:5432/prod", "REDIS_URL=redis://:hunter2@cache", "BROKER=amqps://u:p@mq/",
+		"X=-----BEGIN RSA PRIVATE KEY-----", "X=-----BEGIN PRIVATE KEY-----", "X=sk-ant-api03-abcdefghijklmnopqrstuv",
+		"X=sk_live_abcdefghijk", "X=ghp_abcdefghijklmnopqrstuvwxyz0123456789", "X=github_pat_11ABCDEFG0abcdefghijklmnopqrstuv",
+		"X=xoxb-1234567890-abcdefghij", "X=AKIAIOSFODNN7EXAMPLE", "X=AIzaSyA1234567890abcdefghijklmnopqrstuvw",
+		"X=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc-def_ghi",
+	}
+	plain := []string{
+		"PATH=/usr/bin:/bin", "HOME=/home/u", "PWD=/work", "OLDPWD=/work", "SHELL=/bin/bash", "LANG=C.UTF-8", "TERM=xterm",
+		"MONKEY=banana", "KEYBOARD=us", "PASSENGERS=3", "COMPASS=north", "OAUTH_CLIENT=x", "DISPLAY=:0", "EDITOR=vim", "TMPDIR=/tmp",
+		"GOPATH=/go", "NODE_ENV=production", "CI=true", "AWS_ACCESS_KEY_ID=AKIA-not-a-real-id", "AWS_REGION=us-east-1",
+		"GIT_SSH_COMMAND=ssh -i /k", "SSH_KEY_PATH=/k", "ORIGIN=git@github.com:o/r.git", "URL=https://example.com/a@b:c",
+		"PROXYISH=1", "JAVA_HOME=/jdk", "SUDO_USER=root", "LS_COLORS=rs=0:di=01;34", "EMPTY=",
+		"BASE=http://localhost:8080/path", "ADDR=user@host", "SK=sk-short", "T=eyJ.eyJ.x",
+		// proxy settings carry credentials routinely and are needed to reach the network
+		"HTTPS_PROXY=http://user:pw@proxy.corp:3128", "http_proxy=http://user:pw@proxy:3128", "NO_PROXY=localhost",
+	}
+	for _, kv := range secret {
+		name, val, _ := strings.Cut(kv, "=")
+		if !looksSecret(name, val) {
+			t.Errorf("%s should be scrubbed", kv)
+		}
+	}
+	for _, kv := range plain {
+		name, val, _ := strings.Cut(kv, "=")
+		if looksSecret(name, val) {
+			t.Errorf("%s should pass through", kv)
+		}
+	}
+	// PassEnv overrides both name and value rules.
+	env := commandEnv([]string{"DATABASE_URL=postgres://a:b@h/d", "X=ghp_abcdefghijklmnopqrstuvwxyz0123456789"}, "a", "", []string{"database_url"})
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, "DATABASE_URL=") || strings.Contains(joined, "ghp_") {
+		t.Errorf("env = %v", env)
+	}
+}

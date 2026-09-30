@@ -234,8 +234,8 @@ func TestSecretEnvScrubbing(t *testing.T) {
 			t.Error("PATH was scrubbed")
 		}
 		// Whatever the host environment holds, nothing secret-looking may pass.
-		for name := range vars {
-			if secretName.MatchString(name) {
+		for name, val := range vars {
+			if looksSecret(name, val) {
 				t.Errorf("secret-looking variable %s reached the command", name)
 			}
 		}
