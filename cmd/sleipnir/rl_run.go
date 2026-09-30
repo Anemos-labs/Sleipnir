@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/harden"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/rl"
 	"github.com/reee344/sleipnir/internal/rl/env"
 	"github.com/reee344/sleipnir/internal/rl/harness"
@@ -44,6 +47,9 @@ type policyFlags struct {
 	roleModels                       kvFlags
 	seed                             int64
 	ctxTokens                        int
+	mode, permMode, allow            string
+	ignoreRepo                       bool
+	rpm                              int
 }
 
 func (p *policyFlags) register(fs *flag.FlagSet) {
@@ -61,6 +67,54 @@ func (p *policyFlags) register(fs *flag.FlagSet) {
 	fs.Var(p.roleModels, "role-model", "role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model")
 	fs.Int64Var(&p.seed, "seed", 0, "run seed; each rollout's sampling seed derives from it")
 	fs.IntVar(&p.ctxTokens, "context-tokens", 0, "the policy's context window when a task does not set one")
+	fs.StringVar(&p.mode, "mode", "", "who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager with N workers, the same as --swarm N) | empty: what each task's team says")
+	fs.StringVar(&p.permMode, "perm-mode", "", "permission mode of the agents: accept-edits (the default) | default | plan | bypass")
+	fs.StringVar(&p.allow, "allow", "", "permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)")
+	fs.BoolVar(&p.ignoreRepo, "ignore-repo-instructions", false, "do not load AGENTS.md-style files of a task's repository into the agents' context")
+	fs.IntVar(&p.rpm, "rpm", 0, "pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits")
+}
+
+// team is who works, from --mode and --swarm: a swarm of n workers, every task as a single agent, or (neither) what
+// each task's team says.
+func (p *policyFlags) team() (swarm bool, agents int, single bool, err error) {
+	switch {
+	case p.mode == "":
+		return p.swarm > 0, p.swarm, false, nil
+	case p.mode == "single":
+		if p.swarm > 0 {
+			return false, 0, false, errors.New("--mode single and --swarm contradict each other")
+		}
+		return false, 0, true, nil
+	case strings.HasPrefix(p.mode, "swarm:"):
+		n, perr := strconv.Atoi(strings.TrimPrefix(p.mode, "swarm:"))
+		if perr != nil || n < 1 {
+			return false, 0, false, fmt.Errorf("--mode %q: want swarm:N with N workers, at least 1", p.mode)
+		}
+		if p.swarm > 0 && p.swarm != n {
+			return false, 0, false, errors.New("--mode swarm:N and --swarm name different sizes")
+		}
+		return true, n, false, nil
+	}
+	return false, 0, false, fmt.Errorf("--mode %q: want single or swarm:N", p.mode)
+}
+
+// permissions is the permission mode and allow rules the flags ask for: empty mode and nil rules mean the harness defaults.
+func (p *policyFlags) permissions() (perm.Mode, []string, error) {
+	var mode perm.Mode
+	switch p.permMode {
+	case "":
+	case "accept-edits", "default", "plan", "bypass":
+		mode = perm.Mode(p.permMode)
+	default:
+		return "", nil, fmt.Errorf("--perm-mode %q: want accept-edits, default, plan or bypass", p.permMode)
+	}
+	switch strings.TrimSpace(p.allow) {
+	case "":
+		return mode, nil, nil
+	case "none":
+		return mode, []string{}, nil
+	}
+	return mode, splitList(p.allow), nil
 }
 
 // resolve turns the flags into the policy spec and a harness for it.
@@ -124,10 +178,21 @@ func (p *policyFlags) resolve(fs *flag.FlagSet) (env.PolicySpec, *harness.Harnes
 			return env.PolicySpec{}, nil, err
 		}
 	}
+	permMode, allow, err := p.permissions()
+	if err != nil {
+		return env.PolicySpec{}, nil, err
+	}
+	if _, _, _, err := p.team(); err != nil {
+		return env.PolicySpec{}, nil, err
+	}
+	if p.rpm < 0 {
+		return env.PolicySpec{}, nil, errors.New("--rpm must not be negative")
+	}
 	h := &harness.Harness{
 		PolicyOptions: prov.Options, PolicyHeaders: prov.Headers, ContextTokens: p.ctxTokens,
 		// What the user's own provider entry allows, or what this command line says.
 		PolicyAllowInsecureHTTP: p.allowInsecureHTTP || prov.AllowInsecureHTTP, PolicyAllowHosts: prov.AllowHosts,
+		Mode: permMode, Allow: allow, IgnoreRepoInstructions: p.ignoreRepo, RateLimit: harness.NewRateLimit(p.rpm),
 	}
 	return spec, h, nil
 }
@@ -155,6 +220,8 @@ type rigFlags struct {
 	keepFailed                            bool
 	passEnv                               string
 	setEnv                                kvFlags
+	budgetUSD, maxSpend                   float64
+	maxSteps, maxRequests                 int
 }
 
 func (r *rigFlags) register(fs *flag.FlagSet) {
@@ -174,6 +241,37 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&r.passEnv, "pass-env", "", "comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist")
 	r.setEnv = kvFlags{}
 	fs.Var(r.setEnv, "set-env", "NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)")
+	fs.Float64Var(&r.budgetUSD, "budget-usd", 0, "spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)")
+	fs.IntVar(&r.maxSteps, "max-steps", 0, "step cap of one rollout whose task sets none")
+	fs.IntVar(&r.maxRequests, "max-requests", 0, "cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)")
+	fs.Float64Var(&r.maxSpend, "max-spend-usd", 0, "spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too")
+}
+
+// validate rejects budgets that are not positive numbers (0 means unset).
+func (rf *rigFlags) validate() error {
+	for _, c := range []struct {
+		name string
+		v    float64
+	}{{"--budget-usd", rf.budgetUSD}, {"--max-spend-usd", rf.maxSpend}} {
+		if math.IsNaN(c.v) || math.IsInf(c.v, 0) || c.v < 0 {
+			return fmt.Errorf("%s must be a positive number of US dollars", c.name)
+		}
+	}
+	if rf.maxSteps < 0 || rf.maxRequests < 0 {
+		return errors.New("--max-steps and --max-requests must not be negative")
+	}
+	return nil
+}
+
+// budget is what the flags give a rollout whose task leaves it open. With a run cap and no rollout cap, each rollout
+// is held to a share of the run's, so the overshoot a cap can have (rollouts in flight finish) stays small.
+func (rf *rigFlags) budget(stderr io.Writer) rl.Budget {
+	b := rl.Budget{Steps: rf.maxSteps, Requests: rf.maxRequests, USD: rf.budgetUSD}
+	if b.USD == 0 && rf.maxSpend > 0 {
+		b.USD = rf.maxSpend / float64(max(2*rf.concurrency, 4))
+		fmt.Fprintf(stderr, "no --budget-usd: each rollout is capped at $%.4g, a share of the run's $%.4g\n", b.USD, rf.maxSpend)
+	}
+	return b
 }
 
 // rig is a configured Runner and what closes it.
@@ -210,6 +308,9 @@ func (rf *rigFlags) workspaces(stderr io.Writer) (*env.Workspaces, error) {
 }
 
 func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer) (*rig, error) {
+	if err := rf.validate(); err != nil {
+		return nil, err
+	}
 	cfg := reward.DefaultConfig()
 	var err error
 	if rf.rewards != "" {
@@ -245,7 +346,7 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		Harness: h, Extract: pipe.Extract, Score: pipe.Score, Workspaces: ws, Out: out,
 		Concurrency: rf.concurrency, HiddenBlobs: hidden,
 		VerifyRepeats: rf.verifyRepeats, VerifyPassPolicy: rf.verifyPolicy,
-		InfraRetries: rf.infraRetries, MaxWall: rf.maxWall,
+		InfraRetries: rf.infraRetries, MaxWall: rf.maxWall, MaxSpendUSD: rf.maxSpend,
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
 	}
 	return &rig{Runner: rn, Pipe: pipe, Reward: cfg, closeF: ws.Close}, nil
@@ -356,9 +457,14 @@ func rlRollout(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	defer rg.Close()
 	rg.Runner.Progress = progressPrinter(stderr)
 	fmt.Fprintf(stderr, "rolling out %d tasks x %d samples with %s (%s) into %s\n", len(tasks), *group, pol.Model, pol.BaseURL, *out)
+	swarm, agents, single, terr := pf.team()
+	if terr != nil {
+		return fmt.Errorf("rl rollout: %w", terr)
+	}
 	sum, err := rg.Runner.Rollout(ctx, tasks, *group, env.RolloutOpts{
-		RunID: filepath.Base(*out), Policy: pol, Capture: pf.capture, Swarm: pf.swarm > 0, Agents: pf.swarm,
+		RunID: filepath.Base(*out), Policy: pol, Capture: pf.capture, Swarm: swarm, Agents: agents, Single: single,
 		RoleModels: pf.roleModels, TargetPrice: rf.target, Seed: pf.seed, Force: *force, KeepFailed: rf.keepFailed,
+		Budget: rf.budget(stderr),
 	})
 	if sum != nil {
 		if *asJSON {
@@ -372,8 +478,22 @@ func rlRollout(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	if err != nil {
 		return fmt.Errorf("rl rollout: %w", err)
 	}
+	if err := nothingCompleted("rl rollout", sum); err != nil {
+		return err
+	}
 	fmt.Fprintf(stderr, "next: sleipnir rl export %s --format steps -o data.jsonl\n", *out)
 	return nil
+}
+
+// nothingCompleted is the error of a run in which not one rollout completed (every one failed for infrastructure reasons,
+// was capped or was cancelled): it exits with exitTempFail, so a script can resume the run later instead of reading an empty report as a
+// result. A run with some completed rollouts succeeds; infra failures are in the summary and the report's rates.
+func nothingCompleted(cmd string, sum *env.Summary) error {
+	if sum == nil || sum.Rollouts == 0 || sum.Completed > 0 || sum.Interrupted {
+		return nil
+	}
+	return &exitError{code: exitTempFail, err: fmt.Errorf("%s: no rollout completed (%d infrastructure failures, %d capped by the spend cap, %d cancelled); rerun into the same --out to resume",
+		cmd, sum.Infra, sum.Capped, sum.Cancelled)}
 }
 
 // ---- rl eval ----
@@ -411,10 +531,14 @@ func rlEval(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	}
 	defer rg.Close()
 	rg.Runner.Progress = progressPrinter(stderr)
+	swarm, agents, single, terr := pf.team()
+	if terr != nil {
+		return fmt.Errorf("rl eval: %w", terr)
+	}
 	rep, err := env.Eval(ctx, rg.Runner, tasks, env.EvalOptions{
 		Samples: *samples, ExcludeFile: *exclude,
-		Rollout: env.RolloutOpts{RunID: filepath.Base(*out), Policy: pol, Capture: pf.capture, Swarm: pf.swarm > 0, Agents: pf.swarm,
-			RoleModels: pf.roleModels, TargetPrice: rf.target, Seed: pf.seed},
+		Rollout: env.RolloutOpts{RunID: filepath.Base(*out), Policy: pol, Capture: pf.capture, Swarm: swarm, Agents: agents, Single: single,
+			RoleModels: pf.roleModels, TargetPrice: rf.target, Seed: pf.seed, Budget: rf.budget(stderr)},
 	})
 	var ce *env.ContaminationError
 	if errors.As(err, &ce) {
@@ -440,6 +564,9 @@ func rlEval(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	}
 	if err != nil {
 		return fmt.Errorf("rl eval: %w", err)
+	}
+	if rep.Rollouts > 0 && rep.Completed == 0 {
+		return &exitError{code: exitTempFail, err: fmt.Errorf("rl eval: no rollout completed (%d infrastructure failures); rerun into the same --out to resume", rep.Infra)}
 	}
 	return nil
 }

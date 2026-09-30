@@ -1,6 +1,7 @@
 package env
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -56,6 +57,8 @@ type RunSpec struct {
 	Swarm      bool
 	Agents     int
 	RoleModels map[string]string
+	// Single runs the task as one agent even when its team says swarm: the baseline a swarm is compared with.
+	Single bool
 	// TargetPrice names the price model episodes are repriced under.
 	TargetPrice string
 	Seed        int64
@@ -131,6 +134,11 @@ type Runner struct {
 	// StopGrace is how long a harness gets to return after its context ended
 	// before the rollout is written off as an infra error (default 30 s).
 	StopGrace time.Duration
+	// MaxSpendUSD caps what a run may spend, failed attempts and earlier invocations into the same directory
+	// included (see LedgerFile). When it is reached no further rollout starts; those are reported as capped.
+	// Rollouts already running finish, so the cap is overshot by at most what they are still allowed to spend:
+	// give each rollout a budget of its own (Budget.USD) as well. Zero means no cap.
+	MaxSpendUSD float64
 
 	// Progress, if set, receives events. Calls are serialised; keep the callback
 	// quick, workers wait for it.
@@ -141,20 +149,25 @@ type Runner struct {
 
 // RolloutOpts configures one Rollout call.
 type RolloutOpts struct {
-	RunID       string
-	Policy      PolicySpec
-	Capture     bool
-	Swarm       bool
-	Agents      int
-	RoleModels  map[string]string
+	RunID      string
+	Policy     PolicySpec
+	Capture    bool
+	Swarm      bool
+	Agents     int
+	RoleModels map[string]string
+	// Single runs every task as one agent, swarm tasks too (Swarm and Agents are then ignored).
+	Single      bool
 	TargetPrice string
 	Seed        int64
 	// Group labels GRPO groups: the group of a task is "<task>@<Group>". The
 	// default is the run id, so groups never mix runs (and thus policy
 	// snapshots) unless the caller says so.
 	Group string
-	// Force reruns rollouts that already have an episode.
+	// Force reruns rollouts that already have an episode, and lets a run start over in a directory
+	// that holds the rollouts of another policy.
 	Force bool
+	// Budget fills what a task's own budget leaves open (steps, requests, USD, wall-clock seconds, context window).
+	Budget rl.Budget
 	// KeepFailed keeps the workspace of rollouts whose verifier failed or that
 	// hit an infra error, for debugging.
 	KeepFailed bool
@@ -202,6 +215,8 @@ const (
 	StatusOK        = "ok"
 	StatusInfra     = "infra"
 	StatusCancelled = "cancelled"
+	// StatusCapped: not run, because the run's spend cap was reached (Runner.MaxSpendUSD).
+	StatusCapped = "capped"
 )
 
 // RolloutResult is the per-rollout record kept in the summary.
@@ -267,6 +282,8 @@ type run struct {
 	total  int
 	start  time.Time
 	policy PolicySpec
+
+	ledger *ledger // what every attempt spent
 
 	mu       sync.Mutex // guards done, results, lastSave
 	done     int
@@ -360,6 +377,12 @@ func (r *Runner) Rollout(ctx context.Context, tasks []rl.Task, group int, opts R
 	rn.total = len(tasks) * group
 	rn.results = make([]RolloutResult, rn.total)
 	rn.start = r.now()
+	if !opts.Force {
+		if err := rn.checkResumable(); err != nil {
+			return nil, err
+		}
+	}
+	rn.ledger = openLedger(filepath.Join(out, LedgerFile))
 
 	if err := rn.writeManifest("running"); err != nil {
 		return nil, err
@@ -490,6 +513,11 @@ func (rn *run) rollout(ctx context.Context, j job) (res RolloutResult) {
 		base.Status = StatusCancelled
 		return base
 	}
+	if rn.capReached() {
+		base.Status = StatusCapped
+		base.Error = fmt.Sprintf("the run's spend cap of $%.4g is reached", rn.r.MaxSpendUSD)
+		return base
+	}
 	rn.emit(Progress{Type: "rollout.start", Task: j.task.ID, Sample: j.sample})
 
 	maxAttempts := rn.r.retries() + 1
@@ -504,6 +532,10 @@ func (rn *run) rollout(ctx context.Context, j job) (res RolloutResult) {
 			return out
 		}
 		if !last.retry || attempt == maxAttempts {
+			break
+		}
+		if rn.capReached() { // another attempt would spend past the cap
+			last.result.Error += " (not retried: the run's spend cap is reached)"
 			break
 		}
 		rn.emit(Progress{Type: "rollout.retry", Task: j.task.ID, Sample: j.sample, Attempt: attempt, Error: last.result.Error})
@@ -552,6 +584,8 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	r := rn.r
 	task := j.task
 	st := &stage{rn: rn, j: j, n: "prepare"}
+	// Runs last (deferred first): what this attempt spent is recorded before the next one starts from an empty directory.
+	defer func() { rn.recordAttempt(j, dir, attempt, out) }()
 	var (
 		ws      *Workspace
 		wallMs  int64
@@ -619,19 +653,21 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	st.set("agent", attempt)
 	// A swarm task runs as a swarm even when the caller did not ask for one, and
 	// the team size defaults to the task's.
-	swarm, agents := rn.opts.Swarm || task.Team.Mode == "swarm", rn.opts.Agents
+	swarm, agents := (rn.opts.Swarm || task.Team.Mode == "swarm") && !rn.opts.Single, rn.opts.Agents
 	if agents == 0 {
 		agents = task.Team.Agents
 	}
 	spec := RunSpec{
-		Task: task, Workspace: ws.Dir, RunDir: dir, Policy: rn.policy, Capture: rn.opts.Capture, Swarm: swarm,
+		Task: task, Workspace: ws.Dir, RunDir: dir, Policy: rn.policy, Capture: rn.opts.Capture, Swarm: swarm, Single: rn.opts.Single,
 		Agents: agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
-		Seed: SampleSeed(rn.opts.Seed, task.ID, j.sample), Budget: task.Budget,
+		Seed: SampleSeed(rn.opts.Seed, task.ID, j.sample), Budget: mergeBudget(task.Budget, rn.opts.Budget),
 		Sample: j.sample, Group: rn.groupID(task.ID), Attempt: attempt, Env: ws.Env(),
 		NetPrefix: r.Workspaces.IsolationPrefix(task),
 	}
 	agentStart := r.now()
-	ho := rn.runHarness(ctx, spec, r.wallFor(task))
+	walled := task
+	walled.Budget = spec.Budget
+	ho := rn.runHarness(ctx, spec, r.wallFor(walled))
 	wallMs = r.now().Sub(agentStart).Milliseconds()
 	if ctx.Err() != nil {
 		return attemptOutcome{cancelled: true}
@@ -1105,4 +1141,105 @@ func writeJSONAtomic(p string, v any) error {
 		return err
 	}
 	return atomicWriteFile(p, append(b, '\n'), 0o644)
+}
+
+// mergeBudget is the budget of a rollout: the task's own, with what it leaves open taken from the run's defaults.
+// (ITE is a reward normaliser of the task, not a limit, and is never defaulted.)
+func mergeBudget(task, run rl.Budget) rl.Budget {
+	b := task
+	if b.Steps == 0 {
+		b.Steps = run.Steps
+	}
+	if b.Requests == 0 {
+		b.Requests = run.Requests
+	}
+	if b.USD == 0 {
+		b.USD = run.USD
+	}
+	if b.WallS == 0 {
+		b.WallS = run.WallS
+	}
+	if b.ContextWindow == 0 {
+		b.ContextWindow = run.ContextWindow
+	}
+	return b
+}
+
+// checkResumable refuses to continue a run directory under another policy, seed or team, or with a verifier that
+// changed. Finished episodes are skipped on a rerun, and they were produced under what the manifest says: resuming
+// under something else would file new rollouts among the old results and report the mixture as one experiment.
+func (rn *run) checkResumable() error {
+	b, err := os.ReadFile(filepath.Join(rn.out, "manifest.json"))
+	if err != nil {
+		return nil // a new run
+	}
+	var old Manifest
+	if json.Unmarshal(b, &old) != nil {
+		return nil // nothing trustworthy to compare with
+	}
+	here := ManifestPolicy{Model: rn.policy.Model, Endpoint: endpointHost(rn.policy.BaseURL), Sampling: rn.policy.Sampling}
+	var diffs []string
+	if old.Policy.Model != "" && old.Policy.Model != here.Model {
+		diffs = append(diffs, fmt.Sprintf("policy %s, this run uses %s", old.Policy.Model, here.Model))
+	}
+	if old.Policy.Endpoint != "" && old.Policy.Endpoint != here.Endpoint {
+		diffs = append(diffs, fmt.Sprintf("endpoint %s, this run uses %s", old.Policy.Endpoint, here.Endpoint))
+	}
+	if !sameJSON(old.Policy.Sampling, here.Sampling) {
+		diffs = append(diffs, fmt.Sprintf("sampling %s, this run uses %s", compactJSON(old.Policy.Sampling), compactJSON(here.Sampling)))
+	}
+	if old.Config.Seed != rn.opts.Seed {
+		diffs = append(diffs, fmt.Sprintf("seed %d, this run uses %d", old.Config.Seed, rn.opts.Seed))
+	}
+	if old.Config.Swarm != rn.opts.Swarm || old.Config.Agents != rn.opts.Agents || old.Config.Single != rn.opts.Single {
+		diffs = append(diffs, fmt.Sprintf("team swarm=%v agents=%d single=%v, this run uses swarm=%v agents=%d single=%v",
+			old.Config.Swarm, old.Config.Agents, old.Config.Single, rn.opts.Swarm, rn.opts.Agents, rn.opts.Single))
+	}
+	if !sameRoleModels(old.Config.RoleModels, rn.opts.RoleModels) {
+		diffs = append(diffs, "role models differ")
+	}
+	oldVer := map[string]string{}
+	for _, t := range old.Tasks {
+		oldVer[t.ID] = t.VerifierVersion
+	}
+	for _, t := range rn.tasks {
+		if v, ok := oldVer[t.ID]; ok && v != VerifierVersion(t) {
+			diffs = append(diffs, fmt.Sprintf("task %s was verified by another verifier", t.ID))
+		}
+	}
+	if len(diffs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("env: %s holds a run with %s: rollouts finished there would be resumed into this one and the results mixed; use another directory, or Force to start over",
+		rn.out, strings.Join(diffs, "; "))
+}
+
+func compactJSON(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "none"
+	}
+	var buf bytes.Buffer
+	if json.Compact(&buf, raw) != nil {
+		return string(raw)
+	}
+	return buf.String()
+}
+
+func sameJSON(a, b json.RawMessage) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	return compactJSON(a) == compactJSON(b)
+}
+
+func sameRoleModels(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }

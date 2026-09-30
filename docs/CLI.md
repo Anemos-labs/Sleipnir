@@ -432,6 +432,8 @@ usage: sleipnir rl taskgen git --repo PATH [flags]
 flags:
   -blobs string
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
   -gen-concurrency int
@@ -454,6 +456,12 @@ flags:
         skip commits changing more files than this (default 12)
   -max-lines int
         skip commits changing more lines than this (default 800)
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
   -no-net-isolation
@@ -514,6 +522,8 @@ usage: sleipnir rl taskgen mutate --repo PATH [flags]
 flags:
   -blobs string
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
   -file value
@@ -532,6 +542,12 @@ flags:
         stop after this many tasks (0: all)
   -max-attempts int
         candidate mutations to try (default 20 x --max)
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
   -no-net-isolation
@@ -689,6 +705,8 @@ usage: sleipnir rl tasks check [flags] FILE
 flags:
   -blobs string
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
   -gold string
@@ -697,6 +715,12 @@ flags:
         retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
   -keep-failed
         keep the workspaces of failed rollouts for debugging
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
   -no-net-isolation
@@ -724,11 +748,33 @@ flags:
 
 ### `sleipnir rl rollout`
 
+Budgets and cost accounting, for runs against a real endpoint:
+
+* `--budget-usd`, `--max-steps`, `--max-requests` bound **one rollout** whose task sets no budget of its own (a task's
+  `budget` block wins, field by field). `--max-requests` counts the requests the endpoint **answered**: one it refused
+  (429, 5xx, a dropped connection) is repeated by the agent and does not count, or an endpoint that is busy now and then
+  would end rollouts as `budget` for requests that produced nothing. A single agent has no dollar cap unless one is given
+  here; a swarm has the session's default of US$50.
+* `--max-spend-usd` bounds **the run**: what every attempt cost, failed ones and earlier invocations into the same `--out`
+  included. When it is reached no further rollout starts (those are reported `capped`); rollouts already running finish, so
+  it is overshot by at most what they may still spend. Without `--budget-usd` each rollout is held to a share of the cap.
+* `ledger.jsonl` in the run directory has one line per attempt (task, sample, attempt, status, cost, answered requests,
+  retries), written as the attempt ends: an attempt starts from an empty sample directory, so what a failed one spent
+  would otherwise vanish. `summary.json` has `spent_usd`, the ledger's total.
+* `--rpm` paces the policy requests of **all** rollouts to one rate; a swarm's governor limits one swarm, so without it
+  `--concurrency` multiplies the endpoint's limit.
+* `--mode single` runs every task as one agent, swarm tasks too (the baseline a swarm is compared with); `--mode swarm:N`
+  is `--swarm N`. A team of N workers is N+1 agents with the manager.
+* Rerunning into an `--out` that holds a run of another policy, seed, team or verifier is refused (`--force` starts over):
+  finished rollouts are resumed, and mixing them with new ones reports two experiments as one.
+
 <!-- flags: rl rollout -->
 ```text
 usage: sleipnir rl rollout --tasks tasks.jsonl --model MODEL --group G --out RUN_DIR [flags]
 
 flags:
+  -allow string
+        permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)
   -allow-insecure-http
         let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default
   -api-key-env string
@@ -737,6 +783,8 @@ flags:
         policy endpoint base URL (default: the provider's)
   -blobs string
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -capture
         ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
   -concurrency int
@@ -749,16 +797,26 @@ flags:
         samples per task (the GRPO group size) (default 4)
   -id string
         comma-separated task ids (path.Match wildcards allowed)
+  -ignore-repo-instructions
+        do not load AGENTS.md-style files of a task's repository into the agents' context
   -infra-retries int
         retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
   -json
         print the summary as JSON
   -keep-failed
         keep the workspaces of failed rollouts for debugging
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
   -max-tokens int
         completion limit per request (overrides --sampling)
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
+  -mode string
+        who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager with N workers, the same as --swarm N) | empty: what each task's team says
   -model string
         the policy: provider/model or a bare id for the default provider (default: config models.default)
   -n int
@@ -769,12 +827,16 @@ flags:
         run directory (default: runs/<timestamp>); rerunning into it resumes
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -perm-mode string
+        permission mode of the agents: accept-edits (the default) | default | plan | bypass
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
         role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+  -rpm int
+        pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -sampling string
         sampling parameters as a JSON object, e.g. {"temperature":1,"top_p":0.95,"max_tokens":4096}
   -seed int
@@ -813,6 +875,8 @@ flags:
 usage: sleipnir rl eval --tasks holdout.jsonl --model MODEL [flags]
 
 flags:
+  -allow string
+        permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)
   -allow-insecure-http
         let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default
   -api-key-env string
@@ -823,6 +887,8 @@ flags:
         an earlier report.json to compare against
   -blobs string
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -capture
         ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
   -concurrency int
@@ -833,16 +899,26 @@ flags:
         training task list (ids, one per line, or task JSONL): refuse to evaluate anything in it
   -id string
         comma-separated task ids (path.Match wildcards allowed)
+  -ignore-repo-instructions
+        do not load AGENTS.md-style files of a task's repository into the agents' context
   -infra-retries int
         retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
   -json
         print the report as JSON
   -keep-failed
         keep the workspaces of failed rollouts for debugging
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
   -max-tokens int
         completion limit per request (overrides --sampling)
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
+  -mode string
+        who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager with N workers, the same as --swarm N) | empty: what each task's team says
   -model string
         the policy: provider/model or a bare id for the default provider (default: config models.default)
   -n int
@@ -853,12 +929,16 @@ flags:
         run directory (default: runs/eval-<timestamp>)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -perm-mode string
+        permission mode of the agents: accept-edits (the default) | default | plan | bypass
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
         role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+  -rpm int
+        pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -samples int
         samples per task (pass^k needs k or more) (default 1)
   -sampling string
@@ -905,6 +985,8 @@ flags:
         let a policy key travel over plain http to a listed host that is not this machine (a trusted network); off by default
   -blobs string
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
   -infra-retries int
@@ -913,8 +995,14 @@ flags:
         keep the workspaces of failed rollouts for debugging
   -max-group int
         largest group size of one request (default 64)
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-runs int
         concurrent rollout requests (default 2)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
   -no-net-isolation
@@ -1100,6 +1188,8 @@ answer `unknown command`.
 | `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that ends with `/exit` or Ctrl-D |
 | `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: the budget of $50.00 is exhausted ...`, which says how to raise it), a reached step limit, an agent that repeated one failing call until the harness stopped it (`agent stuck`), a prompt blocked by a hook, and a failed `doctor` probe |
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
+| `3` | unfinished: the work ended with tasks left undone |
+| `75` | try again later (`EX_TEMPFAIL`): `rl rollout` or `rl eval` in which **no** rollout completed (the endpoint was down, every attempt failed, or the spend cap was reached). Rerunning into the same `--out` resumes; a benchmark script loops on this status. A run in which some rollouts completed exits 0 and reports its infrastructure failures in the summary |
 
 A model that ends its turn normally is a success (`0`) whatever the task's outcome; check the result (`run --json`, the
 summary line, `sleipnir inspect`) or your own tests.

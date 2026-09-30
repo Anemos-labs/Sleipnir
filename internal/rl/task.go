@@ -68,8 +68,12 @@ type Verifier struct {
 
 // Budget bounds an episode. Zero means the harness default.
 type Budget struct {
-	Steps         int     `json:"steps,omitempty"`
-	Requests      int     `json:"requests,omitempty"`
+	Steps int `json:"steps,omitempty"`
+	// Requests bounds the model requests the endpoint answered; a request it refused (429, 5xx, a dropped
+	// connection) is repeated and does not count.
+	Requests int `json:"requests,omitempty"`
+	// USD is a hard cap on what one rollout may spend: the agent stops as a budget outcome when it is reached.
+	USD           float64 `json:"usd,omitempty"`
 	ITE           float64 `json:"ite,omitempty"`
 	WallS         int     `json:"wall_s,omitempty"`
 	ContextWindow int     `json:"context_window,omitempty"` // set low to force frequent compaction

@@ -40,7 +40,12 @@ type Summary struct {
 	Resumed   int `json:"resumed"`
 	Infra     int `json:"infra"`
 	Cancelled int `json:"cancelled"`
-	Pending   int `json:"pending,omitempty"`
+	// Capped rollouts were not run: the run's spend cap was reached (Runner.MaxSpendUSD).
+	Capped  int `json:"capped,omitempty"`
+	Pending int `json:"pending,omitempty"`
+	// SpentUSD is what every attempt of the run cost, failed attempts and earlier invocations included (the
+	// ledger's total); the means below are over completed rollouts only.
+	SpentUSD float64 `json:"spent_usd"`
 	// Partial is true for the live summary written while the run is going.
 	Partial     bool `json:"partial,omitempty"`
 	Interrupted bool `json:"interrupted,omitempty"`
@@ -102,7 +107,11 @@ func (rn *run) summarise(cancelled bool) *Summary {
 			}
 		}
 	}
-	return buildSummary(rn.id, rn.start, rn.r.now(), rn.tasks, rn.group, results, rn.r.Workspaces.Warnings(), cancelled)
+	s := buildSummary(rn.id, rn.start, rn.r.now(), rn.tasks, rn.group, results, rn.r.Workspaces.Warnings(), cancelled)
+	if rn.ledger != nil {
+		s.SpentUSD = rn.ledger.total()
+	}
+	return s
 }
 
 // buildSummary aggregates rollout results. It is a pure function so evaluation
@@ -170,6 +179,8 @@ func buildSummary(runID string, started, ended time.Time, tasks []rl.Task, group
 			}
 		case StatusCancelled:
 			s.Cancelled++
+		case StatusCapped:
+			s.Capped++
 		default:
 			s.Pending++
 		}
@@ -231,6 +242,7 @@ type ManifestConfig struct {
 	Seed          int64             `json:"seed"`
 	Capture       bool              `json:"capture,omitempty"`
 	Swarm         bool              `json:"swarm,omitempty"`
+	Single        bool              `json:"single,omitempty"`
 	Agents        int               `json:"agents,omitempty"`
 	RoleModels    map[string]string `json:"role_models,omitempty"`
 	TargetPrice   string            `json:"target_price,omitempty"`
@@ -296,7 +308,7 @@ func (rn *run) writeManifest(status string) error {
 	m.Updated = rn.r.now().UTC()
 	r := rn.r
 	m.Config = ManifestConfig{
-		Concurrency: max(r.Concurrency, 1), Seed: rn.opts.Seed, Capture: rn.opts.Capture, Swarm: rn.opts.Swarm,
+		Concurrency: max(r.Concurrency, 1), Seed: rn.opts.Seed, Capture: rn.opts.Capture, Swarm: rn.opts.Swarm, Single: rn.opts.Single,
 		Agents: rn.opts.Agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
 		InfraRetries: r.retries(), VerifyRepeats: max(r.VerifyRepeats, 1), PassPolicy: r.VerifyPassPolicy,
 		WorkspaceMode: r.Workspaces.opts.Mode, Group: rn.opts.Group, KeepFailed: rn.opts.KeepFailed, Force: rn.opts.Force,

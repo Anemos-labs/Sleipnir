@@ -99,6 +99,8 @@ type Harness struct {
 	HTTPClient *http.Client
 	// NewSink, if set, gives every agent a UI sink (a progress bar, a transcript).
 	NewSink func(agentID string) agent.Sink
+	// RateLimit, if set, paces the policy requests of every rollout that uses this Harness (see RateLimit).
+	RateLimit *RateLimit
 }
 
 var _ env.Harness = (*Harness)(nil)
@@ -111,6 +113,9 @@ func (h *Harness) Run(ctx context.Context, spec env.RunSpec) (env.RunResult, err
 	prov, model, err := h.policy(spec)
 	if err != nil {
 		return env.RunResult{}, env.Infra("policy", err)
+	}
+	if h.RateLimit != nil {
+		prov = &paced{Provider: prov, limit: h.RateLimit}
 	}
 	lim := &limited{Provider: prov, max: int64(spec.Budget.Requests)}
 	cfg, err := h.config(spec)
@@ -188,9 +193,10 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		CaptureTokens: spec.Capture,
 		ID:            sessionID(spec), Dir: spec.RunDir,
 		Mode: h.mode(), Prompter: refuse,
-		MaxSteps: spec.Budget.Steps, ContextWindow: firstPositive(spec.Budget.ContextWindow, h.ContextTokens),
-		TrustProject: !h.IgnoreRepoInstructions,
-		NoWeb:        !task.Network, Offline: true,
+		MaxSteps: spec.Budget.Steps, BudgetUSD: spec.Budget.USD,
+		ContextWindow: firstPositive(spec.Budget.ContextWindow, h.ContextTokens),
+		TrustProject:  !h.IgnoreRepoInstructions,
+		NoWeb:         !task.Network, Offline: true,
 		// A rollout is a closed, reproducible episode: no tool servers, whatever the
 		// task's repository or the user's configuration says.
 		NoMCP:    true,
@@ -212,9 +218,14 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 	}
 	params, _ := samplingParams(spec.Policy.Sampling)
 	o.Params = params
-	if spec.Swarm || task.Team.Mode == "swarm" {
+	if !spec.Single && (spec.Swarm || task.Team.Mode == "swarm") {
 		o.Swarm = true
-		o.MaxAgents = firstPositive(spec.Agents, task.Team.Agents)
+		// A team size counts workers (`run --swarm N` is N workers and a manager, and a composite task's
+		// team is one worker per part); MaxAgents counts the manager too. Passing N as it stood gave a task
+		// of three parts two workers.
+		if n := firstPositive(spec.Agents, task.Team.Agents); n > 0 {
+			o.MaxAgents = n + 1
+		}
 		o.RoleModels = spec.RoleModels
 		roles, err := rolesFor(task.Team)
 		if err != nil {
@@ -460,20 +471,39 @@ func homeOf(env []string, runDir string) string {
 // limited counts requests and refuses the ones over the task's request budget.
 // The refusal is a payment error, which the agent never retries, so the run ends
 // there and is reported as a budget outcome.
+//
+// Only requests the endpoint answered count. One it did not answer (a 429, a 5xx, a
+// dropped connection) is one the agent repeats, and it is not the policy's doing: counting it ended runs as
+// "budget" for requests that produced nothing, so on an endpoint that is busy now and then a benchmark
+// measured the endpoint's moods instead of the model's work.
 type limited struct {
 	provider.Provider
-	max int64
-	n   atomic.Int64
-	hit atomic.Bool
+	max     int64
+	n       atomic.Int64 // requests answered, plus those in flight
+	hit     atomic.Bool
+	retried atomic.Int64 // requests the endpoint did not answer, which the agent repeated
 }
 
 // Do implements provider.Provider.
 func (l *limited) Do(ctx context.Context, req *provider.Request, on func(provider.Event)) (*provider.Response, error) {
 	if n := l.n.Add(1); l.max > 0 && n > l.max {
+		l.n.Add(-1)
 		l.hit.Store(true)
 		return nil, &provider.Error{Kind: provider.ErrPayment, Message: fmt.Sprintf("request budget of %d exhausted", l.max)}
 	}
-	return l.Provider.Do(ctx, req, on)
+	resp, err := l.Provider.Do(ctx, req, on)
+	if err != nil && unanswered(err) {
+		l.n.Add(-1)
+		l.retried.Add(1)
+	}
+	return resp, err
+}
+
+// unanswered reports whether a request failed in a way the agent repeats it for: the endpoint could not be
+// reached, timed out, refused for rate, or failed (the kinds that say nothing about the policy, see isInfra).
+func unanswered(err error) bool {
+	var pe *provider.Error
+	return errors.As(err, &pe) && pe.Retryable()
 }
 
 func (l *limited) exhausted() bool { return l.hit.Load() }

@@ -75,13 +75,17 @@ func main() {
 
 // reportError prints what a command returned and gives the process exit code: 0 for
 // success, and for -h too (the flag package printed the usage: help is not a
-// failure), 1 for an error, which is printed with terminal control characters made
-// harmless.
+// failure), 1 for an error, or the status an exitError names (exitcode.go). The
+// message is printed with terminal control characters made harmless.
 func reportError(w io.Writer, err error) int {
 	if err == nil || errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
 	fmt.Fprintln(w, "sleipnir:", tools.SanitizeForTerminal(err.Error()))
+	var ee *exitError
+	if errors.As(err, &ee) && ee.code > 0 {
+		return ee.code
+	}
 	return 1
 }
 

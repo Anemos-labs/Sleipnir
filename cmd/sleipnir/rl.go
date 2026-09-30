@@ -552,7 +552,12 @@ func printSummary(w io.Writer, s *env.Summary) {
 		state = "interrupted"
 	}
 	fmt.Fprintf(w, "run %s: %s; %d tasks x %d samples\n", s.RunID, state, s.Tasks, s.Group)
-	fmt.Fprintf(w, "  rollouts %d: %d completed (%d resumed), %d infra errors, %d cancelled, %d pending\n", s.Rollouts, s.Completed, s.Resumed, s.Infra, s.Cancelled, s.Pending)
+	fmt.Fprintf(w, "  rollouts %d: %d completed (%d resumed), %d infra errors, %d cancelled, %d pending", s.Rollouts, s.Completed, s.Resumed, s.Infra, s.Cancelled, s.Pending)
+	if s.Capped > 0 {
+		fmt.Fprintf(w, ", %d not run (spend cap)", s.Capped)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  spent $%.4f in all (every attempt, failed ones included; ledger.jsonl)\n", s.SpentUSD)
 	fmt.Fprintf(w, "  pass rate %.1f%%   mean score %.3f   mean reward %.3f   hack rate %.1f%%   budget rate %.1f%%\n", 100*s.PassRate, s.MeanScore, s.MeanReward, 100*s.HackRate, 100*s.BudgetRate)
 	fmt.Fprintf(w, "  mean cost $%.4f   mean ITE %.0f   mean requests %.1f   mean steps %.1f   mean wall %.1fs\n", s.MeanCostUSD, s.MeanITE, s.MeanRequests, s.MeanSteps, s.MeanWallMs/1000)
 	if len(s.PerTask) > 0 {
