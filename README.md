@@ -42,7 +42,8 @@ curl -fsSL https://raw.githubusercontent.com/reee344/sleipnir/main/scripts/insta
 
 # 2. point it at a model: any OpenAI-compatible endpoint works (marketplaces, OpenRouter, OpenAI, vLLM, ...)
 export HEIMDALL_API_KEY=...            # or OPENROUTER_API_KEY / OPENAI_API_KEY
-cd your-project && sleipnir init       # writes .sleipnir/config.json and AGENTS.md
+sleipnir init --user                   # your providers and permission mode (project files cannot set these unless trusted)
+cd your-project && sleipnir init       # shareable project settings, AGENTS.md
 sleipnir models | head                 # catalogue with prices
 sleipnir doctor --model <model> --deep # measures streaming, tools, cache reporting, granularity, warm-up needs
 

@@ -266,6 +266,12 @@ func argsToObjects(msg json.RawMessage) (json.RawMessage, error) {
 // renderCompletion renders one completion turn as the assistant wire message the
 // next prompt would contain, then applies the reasoning option.
 func (x *exporter) renderCompletion(t core.Turn, model string, objectArgs bool) (json.RawMessage, error) {
+	return x.renderCompletionAs(t, model, objectArgs, x.o.Reasoning)
+}
+
+// renderCompletionAs is renderCompletion with an explicit reasoning mode; "keep"
+// yields the message exactly as the wire replays it.
+func (x *exporter) renderCompletionAs(t core.Turn, model string, objectArgs bool, reasoning string) (json.RawMessage, error) {
 	p := &core.Prompt{Model: model, Messages: []core.Message{{Role: core.RoleAssistant, Blocks: t.Blocks}}}
 	wp, err := x.renderPrompt(p, objectArgs)
 	if err != nil {
@@ -274,7 +280,7 @@ func (x *exporter) renderCompletion(t core.Turn, model string, objectArgs bool) 
 	if len(wp.Messages) != 1 {
 		return nil, fmt.Errorf("completion rendered to %d messages", len(wp.Messages))
 	}
-	if x.o.Reasoning == "keep" {
+	if reasoning == "keep" {
 		return wp.Messages[0], nil
 	}
 	var m map[string]json.RawMessage
@@ -282,7 +288,7 @@ func (x *exporter) renderCompletion(t core.Turn, model string, objectArgs bool) 
 		return nil, err
 	}
 	delete(m, "reasoning_details")
-	if x.o.Reasoning == "field" {
+	if reasoning == "field" {
 		var sb strings.Builder
 		for _, b := range t.Blocks {
 			if b.Kind == core.BlockThinking && b.Text != "" {

@@ -174,9 +174,17 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	cfg := o.Config
 	if cfg == nil {
 		var err error
-		cfg, _, err = config.Load(config.LoadOpts{Cwd: cwd, Root: o.Root, Home: o.Home, UntrustedProject: !o.TrustProject})
+		var rep *config.Report
+		cfg, rep, err = config.Load(config.LoadOpts{Cwd: cwd, Root: o.Root, Home: o.Home, UntrustedProject: !o.TrustProject})
 		if err != nil {
 			return nil, fmt.Errorf("config: %w", err)
+		}
+		if !o.TrustProject && rep != nil && len(rep.ProjectRisks) > 0 && o.Sink != nil {
+			var names []string
+			for _, r := range rep.ProjectRisks {
+				names = append(names, r.Path)
+			}
+			o.Sink.Notice("", "warn", "ignored security-sensitive settings from the project's config ("+strings.Join(names, ", ")+"); pass --trust-project to apply them")
 		}
 	}
 	s := &Session{opts: o, cfg: cfg}

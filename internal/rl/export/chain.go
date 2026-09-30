@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/rl"
 )
 
@@ -49,7 +48,7 @@ func (x *exporter) renderChain(steps []stepCtx, objectArgs bool) (*chainView, er
 		if comps[j], err = x.renderCompletion(turn, c.st.Model, objectArgs); err != nil {
 			return nil, err
 		}
-		if raws[j], err = x.renderCompletionWire(turn, c.st.Model, objectArgs); err != nil {
+		if raws[j], err = x.renderCompletionAs(turn, c.st.Model, objectArgs, "keep"); err != nil {
 			return nil, err
 		}
 		if j == len(steps)-1 {
@@ -71,15 +70,6 @@ func (x *exporter) renderChain(steps []stepCtx, objectArgs bool) (*chainView, er
 		}
 	}
 	return cv, nil
-}
-
-// renderCompletionWire renders a completion exactly as the wire replays it,
-// before the Reasoning option is applied.
-func (x *exporter) renderCompletionWire(t core.Turn, model string, objectArgs bool) (json.RawMessage, error) {
-	saved := x.o.Reasoning
-	x.o.Reasoning = "keep"
-	defer func() { x.o.Reasoning = saved }()
-	return x.renderCompletion(t, model, objectArgs)
 }
 
 func sameJSON(a, b json.RawMessage) bool {
