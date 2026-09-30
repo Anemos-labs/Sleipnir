@@ -62,9 +62,23 @@ type Log struct {
 	subs   map[int]*sub
 	nextID int
 	closed bool
-	lastFl time.Time
 	rec    Recovery
+
+	// Group commit (see commitLocked). lastFl is when the buffer last went to
+	// the OS, on the monotonic clock: event timestamps come from an injectable
+	// clock (tests, simulation) and from the wall clock, which can step back.
+	lastFl     time.Time
+	timer      *time.Timer // flushes the tail of a burst; created on first use
+	timerArmed bool
 }
+
+// groupCommitWindow bounds how long an event may wait in the write buffer.
+// While events keep arriving the log flushes at most once per window, so a
+// burst from a busy swarm shares write syscalls; when they stop, a timer flushes
+// what is left within the window, so a crash or SIGKILL in a quiet period (every
+// agent waiting on a model call, the manager parked in wait) loses at most the
+// last few milliseconds of events, not everything since the last flush.
+const groupCommitWindow = 5 * time.Millisecond
 
 type sub struct {
 	ch      chan Event
@@ -380,14 +394,8 @@ func (l *Log) emitLocked(agent, typ string, data any, opts []Opt) (uint64, error
 	if _, err := l.w.Write(line); err != nil {
 		return 0, err
 	}
-	// Group commit: flush at most every few milliseconds so bursts of events
-	// from a busy swarm share one write syscall, while a crash loses at most a
-	// handful of trailing events.
-	if t := e.TS; t.Sub(l.lastFl) > 5*time.Millisecond {
-		if err := l.w.Flush(); err != nil {
-			return 0, err
-		}
-		l.lastFl = t
+	if err := l.commitLocked(); err != nil {
+		return 0, err
 	}
 	for _, s := range l.subs {
 		select {
@@ -399,14 +407,66 @@ func (l *Log) emitLocked(agent, typ string, data any, opts []Opt) (uint64, error
 	return e.Seq, nil
 }
 
+// commitLocked is the group commit, run after every buffered write. The first
+// event after a quiet period is flushed at once; further events inside the
+// window only mark the buffer dirty and make sure a timer will flush it when the
+// window ends, so the last event of a burst is never left waiting for a next
+// event that may not come. (A write that overflowed the 64 KiB buffer has already
+// gone out on its own.)
+func (l *Log) commitLocked() error {
+	if l.w.Buffered() == 0 {
+		return nil
+	}
+	since := time.Since(l.lastFl)
+	if l.lastFl.IsZero() || since >= groupCommitWindow {
+		return l.flushBufferLocked()
+	}
+	if !l.timerArmed {
+		l.timerArmed = true
+		if d := groupCommitWindow - since; l.timer == nil {
+			l.timer = time.AfterFunc(d, l.flushTail)
+		} else {
+			l.timer.Reset(d)
+		}
+	}
+	return nil
+}
+
+func (l *Log) flushBufferLocked() error {
+	err := l.w.Flush()
+	l.lastFl = time.Now()
+	return err
+}
+
+// flushTail is the timer's callback: it writes out whatever a burst left in the
+// buffer. A write error is not lost: bufio's error is sticky, so the next Emit,
+// Flush or Close returns it.
+func (l *Log) flushTail() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.timerArmed = false
+	if l.closed || l.w.Buffered() == 0 {
+		return
+	}
+	_ = l.flushBufferLocked()
+}
+
 // Subscribe returns a channel of future events. The channel is buffered;
 // slow subscribers lose events (counted) instead of stalling the swarm.
+// Subscribing to a closed log returns a channel that is already closed (and a
+// cancel that does nothing): nothing will ever be delivered, and a consumer
+// ranging over the channel ends instead of waiting for ever.
 func (l *Log) Subscribe(buffer int) (<-chan Event, func()) {
 	if buffer < 1 {
 		buffer = 256
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		ch := make(chan Event)
+		close(ch)
+		return ch, func() {}
+	}
 	id := l.nextID
 	l.nextID++
 	s := &sub{ch: make(chan Event, buffer)}
@@ -421,20 +481,21 @@ func (l *Log) Subscribe(buffer int) (<-chan Event, func()) {
 	}
 }
 
-// Flush forces buffered events to the OS and fsyncs.
+// Flush forces buffered events to the OS and fsyncs: everything emitted before
+// the call is durable when it returns.
 func (l *Log) Flush() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed {
 		return nil
 	}
-	if err := l.w.Flush(); err != nil {
+	if err := l.flushBufferLocked(); err != nil {
 		return err
 	}
 	return l.f.Sync()
 }
 
-// Close flushes and closes the log.
+// Close flushes and closes the log, and stops its background flush.
 func (l *Log) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -442,6 +503,10 @@ func (l *Log) Close() error {
 		return nil
 	}
 	l.closed = true
+	if l.timer != nil {
+		l.timer.Stop() // a callback already waiting on mu sees closed and returns
+	}
+	l.timerArmed = false
 	for id, s := range l.subs {
 		close(s.ch)
 		delete(l.subs, id)
