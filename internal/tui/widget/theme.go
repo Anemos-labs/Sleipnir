@@ -17,6 +17,11 @@
 // MonoTheme has no colours, and the widgets stay readable in it: whatever a colour says (added or removed, selected, changed,
 // a heading's level) is also said by text (a marker, a rule, a glyph) or by an attribute (bold, underline, reverse).
 //
+// The signature widgets (the prompt stack, sparkline, TTL clock, fold, fork, horse, fan, gantt, heatmap, kanban, mail flow, merge
+// queue, agent table and dashboard, in their own files: see showtheme.go) take a Palette in the place where the widgets described
+// here take a Theme. The two are not unified yet, and what this page says about Theme is about the text widgets: markdown, diff,
+// dialog, table, box, gauge and spinner.
+//
 // A widget added to this package keeps both rules by reusing what is here: safeText and safeOneLine (markdown_text.go) make
 // any text safe to lay out, cutRows hard-wraps at the cell boundary, clipLines is the last pass that enforces the width, and
 // Theme.glyphs picks the Unicode or the ASCII glyph set. The checks the tests use (widgettest.MaxWidth, widgettest.Control,
