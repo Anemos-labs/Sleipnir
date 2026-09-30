@@ -745,7 +745,10 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 		return err
 	}
 	defer func() { _ = removeAllNoFollow(tmpDir) }()
-	marker := "setup-" + key
+	// Unique to this build: another process that shares the work directory may be building the same snapshot, and
+	// sweeping a marker kills every process that carries it, so a marker both share lets the one that finishes first
+	// kill the other's setup.
+	marker := "setup-" + key + "-" + randHex(6)
 	env := BuildEnv(EnvSpec{
 		Home: s.home, Tmp: tmpDir, Network: true, Marker: marker, Base: m.baseEnv,
 		Deny: []string{m.root}, PassEnv: m.opts.PassEnv, Set: m.opts.SetEnv,

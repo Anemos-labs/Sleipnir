@@ -33,7 +33,8 @@
 # stopped the run; 2 usage or a failed preflight.
 #
 # The suite's repositories are named relative to the suite directory, so the benchmark runs from there; the work
-# directory and the Go build cache are the benchmark's own (BENCH_HOME), apart from your development ones.
+# directory and the Go build cache (BENCH_GOCACHE, default BENCH_HOME/gocache) are the benchmark's own, apart from your
+# development ones.
 set -eu
 LC_ALL=C
 export LC_ALL
@@ -127,7 +128,8 @@ gb=$(free_gb)
 stamp=$(date -u +%Y%m%d-%H%M%S)
 slug=$(printf '%s' "$MODEL" | tr '/:' '__')
 [ -n "$OUT" ] || OUT=$BENCH_HOME/runs/$stamp-$slug${LABEL:+-$LABEL}
-mkdir -p "$OUT" "$BENCH_HOME/gocache" "$BENCH_HOME/work"
+GOCACHE_DIR=${BENCH_GOCACHE:-$BENCH_HOME/gocache}
+mkdir -p "$OUT" "$GOCACHE_DIR" "$BENCH_HOME/work"
 OUT=$(cd "$OUT" && pwd)
 pin() { if [ -n "$PIN" ] && command -v taskset >/dev/null 2>&1; then taskset -c "$PIN" "$@"; else "$@"; fi; }
 
@@ -137,7 +139,7 @@ rollout() {
   _bin=$1 _run=$2 _group=$3 _seed=$4
   # shellcheck disable=SC2086 # EXTRA is a list of flags
   ( cd "$SUITE" && pin "$_bin" rl rollout --tasks tasks.jsonl --blobs blobs --model "$MODEL" --group "$_group" --out "$_run" \
-      --work-dir "$BENCH_HOME/work" --set-env "GOCACHE=$BENCH_HOME/gocache" --set-env GOFLAGS=-mod=mod --set-env GOTOOLCHAIN=local \
+      --work-dir "$BENCH_HOME/work" --set-env "GOCACHE=$GOCACHE_DIR" --set-env GOFLAGS=-mod=mod --set-env GOTOOLCHAIN=local \
       --tag "$TAG" --concurrency "$CONC" --rpm "$RPM" --budget-usd "$BUDGET" --max-spend-usd "$CAP" --seed "$_seed" \
       ${MODE:+--mode "$MODE"} $EXTRA ) >>"$_run/bench.log" 2>&1
 }
