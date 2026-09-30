@@ -49,6 +49,9 @@ func Score(ep *rl.Episode, task *rl.Task, cfg Config, d DiffSource) error {
 	if task == nil {
 		task = &rl.Task{}
 	}
+	if err := checkPatterns("task.verifier.protected", task.Verifier.Protected); err != nil {
+		return err
+	}
 	s := &scorer{ep: ep, task: task, cfg: r, diff: d, src: promptSource(cfg, d)}
 	return s.run()
 }

@@ -769,13 +769,18 @@ func (s *server) run(startCtx context.Context, first chan<- error) {
 			if time.Since(began) >= m.opts.StableAfter {
 				failures = 0
 			}
-			if errors.Is(cause, ErrSessionExpired) {
+			if errors.Is(cause, ErrSessionExpired) && time.Since(began) > time.Second {
+				// A session that lived a while and then expired is routine (the server
+				// restarted, or timed it out): start a fresh one at once. One that
+				// expires immediately, over and over, is a failing server and takes the
+				// backoff path below.
 				m.logf("mcp: server %q: session expired; reconnecting", s.name)
-				continue // a fresh session is not a failure of the server
+				continue
 			}
 		default:
+			txt := s.errorText(err) // takes s.mu itself: compute before locking
 			s.mu.Lock()
-			s.errText = s.errorText(err)
+			s.errText = txt
 			s.mu.Unlock()
 			var fe *fatalError
 			if errors.As(err, &fe) {
@@ -850,11 +855,12 @@ func (s *server) currentClient() *Client {
 // fail, and the last known tool list stays (so a crash does not change the
 // snapshot, and with it the cached prefix).
 func (s *server) markDown(c *Client, cause error) {
+	txt := s.errorText(cause) // takes s.mu itself: compute before locking
 	s.mu.Lock()
 	if s.client == c {
 		s.client = nil
 		s.state = StateRestarting
-		s.errText = s.errorText(cause)
+		s.errText = txt
 	}
 	s.mu.Unlock()
 	_ = c.Close() // reap the process; safe to call from here (not from the transport's goroutine)

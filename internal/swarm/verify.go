@@ -58,6 +58,9 @@ func (s *Swarm) verify(ctx context.Context, dir string) verifyResult {
 	}()
 	select {
 	case r := <-ch:
+		if err := ctx.Err(); err != nil { // interrupted: whatever it printed is not a verdict
+			return verifyResult{infra: true, err: err}
+		}
 		if r.err != nil {
 			return verifyResult{infra: true, err: r.err, out: r.out}
 		}

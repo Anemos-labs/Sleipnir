@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"fmt"
 	"path"
 	"strconv"
 	"strings"
@@ -126,6 +127,14 @@ type globSet []glob
 
 const maxBraceAlternatives = 64
 
+// maxPatternBytes bounds one pattern. Patterns are written by task authors and
+// are short ("tests/**", "**/*_test.go"); the bound keeps every match at
+// O(len(path)) with a small constant even for a hostile pattern met by a hostile
+// path. Score rejects a task whose protected pattern exceeds it rather than
+// ignore the pattern: silently unprotected paths are the failure this package
+// exists to prevent.
+const maxPatternBytes = 1024
+
 func compileGlobs(patterns []string) globSet {
 	var out globSet
 	for _, raw := range patterns {
@@ -140,7 +149,7 @@ func compileGlobs(patterns []string) globSet {
 
 func compileGlob(raw, p string) (glob, bool) {
 	p = slashPath(p)
-	if p == "" || strings.HasPrefix(p, "!") {
+	if p == "" || strings.HasPrefix(p, "!") || len(p) > maxPatternBytes {
 		return glob{}, false
 	}
 	g := glob{raw: raw}
@@ -163,14 +172,28 @@ func compileGlob(raw, p string) (glob, bool) {
 		g.anchored = true
 	}
 	for _, s := range strings.Split(p, "/") {
-		if s != "" && s != "." {
-			g.segs = append(g.segs, s)
+		if s == "" || s == "." {
+			continue
 		}
+		if s == "**" && len(g.segs) > 0 && g.segs[len(g.segs)-1] == "**" {
+			continue // "**/**" is "**"
+		}
+		g.segs = append(g.segs, s)
 	}
 	if len(g.segs) == 0 {
 		return glob{}, false
 	}
 	return g, true
+}
+
+// checkPatterns rejects protected patterns that cannot be compiled safely.
+func checkPatterns(field string, patterns []string) error {
+	for i, p := range patterns {
+		if len(p) > maxPatternBytes {
+			return fmt.Errorf("reward: %s[%d]: pattern is %d bytes; at most %d can be matched safely", field, i, len(p), maxPatternBytes)
+		}
+	}
+	return nil
 }
 
 // expandBraces expands one level of {a,b} alternation, recursively, up to limit
@@ -239,40 +262,63 @@ func (g glob) matches(ps []string) bool {
 		}
 		return false
 	}
-	// Anchored: the pattern may match the path itself or any parent directory.
+	// Anchored: the pattern may match the path itself or any parent directory, i.e.
+	// any non-empty prefix of its segments (all but the last for a directory-only
+	// pattern).
 	last := len(ps)
 	if g.dirOnly {
-		last = len(ps) - 1
+		last--
 	}
-	for j := 1; j <= last; j++ {
-		if matchSegs(g.segs, ps[:j]) {
-			return true
-		}
-	}
-	return false
+	return matchPrefix(g.segs, ps[:max(last, 0)])
 }
 
-// matchSegs matches pattern segments against path segments with "**" spanning
-// any number (including zero) of segments. Dynamic programming keeps it
-// O(len(pat)*len(path)) whatever the pattern looks like.
-func matchSegs(pat, ps []string) bool {
-	prev := make([]bool, len(ps)+1)
-	cur := make([]bool, len(ps)+1)
-	prev[0] = true
-	for i := 1; i <= len(pat); i++ {
-		p := pat[i-1]
-		cur[0] = p == "**" && prev[0]
-		for j := 1; j <= len(ps); j++ {
-			switch {
-			case p == "**":
-				cur[j] = prev[j] || cur[j-1] || prev[j-1]
-			default:
-				cur[j] = prev[j-1] && segMatch(p, ps[j-1])
+// matchPrefix reports whether the pattern segments match some non-empty prefix of
+// ps exactly, with "**" spanning any number (including zero) of segments. It
+// simulates the pattern as an automaton over ps in one pass, so the cost is
+// O(len(pat)*len(ps)) at worst and it stops as soon as no state is alive (an
+// anchored literal fails on the first segment). Trying each prefix separately
+// would cost a factor len(ps) more, which a path of thousands of segments in a
+// diff would turn into a stall.
+func matchPrefix(pat, ps []string) bool {
+	n := len(pat)
+	live := make([]bool, n+1) // live[i]: the first i pattern segments are consumed
+	next := make([]bool, n+1)
+	// A "**" may consume nothing, so a state in front of one also reaches the next.
+	spread := func(set []bool) {
+		for i := 0; i < n; i++ {
+			if set[i] && pat[i] == "**" {
+				set[i+1] = true
 			}
 		}
-		prev, cur = cur, prev
 	}
-	return prev[len(ps)]
+	live[0] = true
+	spread(live)
+	for _, seg := range ps {
+		clear(next)
+		alive := false
+		for i := 0; i < n; i++ {
+			if !live[i] {
+				continue
+			}
+			switch {
+			case pat[i] == "**":
+				next[i] = true
+				alive = true
+			case segMatch(pat[i], seg):
+				next[i+1] = true
+				alive = true
+			}
+		}
+		if !alive {
+			return false
+		}
+		spread(next)
+		if next[n] {
+			return true
+		}
+		live, next = next, live
+	}
+	return false
 }
 
 // segMatch matches one path segment: "*" any run, "?" one character, "[...]"

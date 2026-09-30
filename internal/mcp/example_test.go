@@ -98,9 +98,9 @@ func ExampleParseWith() {
 // ExampleOptions_approve shows the approval hook: it sees the entry as written,
 // and can ask the user about exactly what will run and which variables it wants.
 func ExampleOptions_approve() {
-	servers, _ := mcp.Parse(map[string]json.RawMessage{
+	servers, _ := mcp.ParseWith(map[string]json.RawMessage{
 		"tools": json.RawMessage(`{"command": "npx", "args": ["-y", "some-mcp-server"], "env": {"API_KEY": "${SERVICE_KEY}"}}`),
-	})
+	}, mcp.ParseOptions{Scope: mcp.ScopeProject})
 	mgr := mcp.NewManager(mcp.Options{
 		Servers: servers,
 		Approve: func(c mcp.ServerConfig) bool {

@@ -19,9 +19,11 @@ const (
 	MaxCommandBytes = 16 << 10
 	// maxParseErrors bounds how many problems one Parse reports.
 	maxParseErrors = 20
-	// maxGroups and maxHooksPerGroup bound a hostile configuration.
+	// maxGroups, maxHooksPerGroup and maxHooksPerEvent bound a hostile
+	// configuration: an event that runs thousands of processes is not a hook setup.
 	maxGroups        = 256
 	maxHooksPerGroup = 64
+	maxHooksPerEvent = 128
 )
 
 // Parse reads the value of a settings file's "hooks" key (config.Config.Hooks):
@@ -117,7 +119,13 @@ func (p *parser) event(key string, raw json.RawMessage) {
 		return
 	}
 	for gi, g := range groups {
+		if len(p.set.byEvent[event]) > maxHooksPerEvent {
+			break // already reported below
+		}
 		p.group(key, event, gi, g)
+	}
+	if n := len(p.set.byEvent[event]); n > maxHooksPerEvent {
+		p.errorf(key, "%d hooks for one event; the limit is %d", n, maxHooksPerEvent)
 	}
 }
 

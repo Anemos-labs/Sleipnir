@@ -634,6 +634,80 @@ func TestBuildSystemMessageEdgeCases(t *testing.T) {
 	})
 }
 
+// The API answers a 400 to a mid-conversation system message on a family that
+// lacks the feature (Sonnet 5, Opus 4.7 and older, Haiku). The adapter folds the
+// text into the preceding user message there, whatever the profile said.
+func TestBuildSystemMessageIsGatedByModel(t *testing.T) {
+	prompt := func(model string) *core.Prompt {
+		return &core.Prompt{Model: model, Messages: []core.Message{
+			user(core.Text("q")), asst(core.Text("a")), user(core.Text("next")), hot("next_user_message", "board: 3 open"),
+		}}
+	}
+	native := func(b *anthropic.Built) bool {
+		return strings.Contains(string(b.Body), `{"role":"system","content":[{"type":"text","text":"board: 3 open"}],"clear_at":"next_user_message"}`)
+	}
+	for _, tc := range []struct {
+		model  string
+		native bool
+	}{
+		{"claude-opus-5-5", true}, {"claude-fable-5-1", true}, {"claude-sonnet-5-5", true}, {"claude-opus-5", true}, {"claude-opus-4-8", true},
+		{"anthropic/claude-opus-5-5", true}, {"claude-opus-5-5-20260901", true},
+		{"claude-sonnet-5", false}, {"claude-opus-4-7", false}, {"claude-opus-4-6", false}, {"claude-sonnet-4-6", false}, {"claude-haiku-4-5", false},
+		{"my-gateway-alias", true}, // unknown: the benefit of the doubt
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			b := build(t, prompt(tc.model), anthropic.Options{}, false)
+			if native(b) != tc.native {
+				t.Fatalf("native = %v, want %v:\n%s", native(b), tc.native, b.Body)
+			}
+			if tc.native {
+				if len(b.Warnings) != 0 || len(b.Betas) != 1 || b.Betas[0] != anthropic.BetaTurnScopedSystem {
+					t.Errorf("warnings %v betas %v", b.Warnings, b.Betas)
+				}
+				return
+			}
+			// Folded: an ordinary text block at the end of the last user message, no
+			// system role, no clear_at, no beta.
+			if strings.Contains(string(b.Body), `"role":"system"`) || strings.Contains(string(b.Body), "clear_at") || len(b.Betas) != 0 {
+				t.Errorf("betas %v body %s", b.Betas, b.Body)
+			}
+			msgs := decode(t, b.Body)["messages"].([]any)
+			last := msgs[len(msgs)-1].(map[string]any)
+			blocks := last["content"].([]any)
+			if last["role"] != "user" || blocks[len(blocks)-1].(map[string]any)["text"] != "board: 3 open" {
+				t.Errorf("last message = %v", last)
+			}
+			if !reflect.DeepEqual(codes(b.Warnings), []string{"system_folded"}) || !strings.Contains(b.Warnings[0].Message, tc.model) {
+				t.Errorf("warnings = %v", b.Warnings)
+			}
+		})
+	}
+	t.Run("a custom resolver decides", func(t *testing.T) {
+		yes := func(string) anthropic.ModelInfo { return anthropic.ModelInfo{Known: true, MidSystem: true} }
+		no := func(string) anthropic.ModelInfo { return anthropic.ModelInfo{Known: true} }
+		if b := build(t, prompt("claude-sonnet-5"), anthropic.Options{Models: yes}, false); !native(b) {
+			t.Errorf("resolver says yes:\n%s", b.Body)
+		}
+		if b := build(t, prompt("claude-opus-5-5"), anthropic.Options{Models: no}, false); native(b) {
+			t.Errorf("resolver says no:\n%s", b.Body)
+		}
+	})
+	t.Run("folding for the model is stable as the conversation grows", func(t *testing.T) {
+		// Append-only holds for the folded rendering too: the text of a reminder
+		// stays where it was put when later turns are added.
+		short := build(t, prompt("claude-sonnet-5"), anthropic.Options{}, false)
+		p := prompt("claude-sonnet-5")
+		p.Messages = append(p.Messages, asst(core.Text("b")), user(core.Text("more")), hot("next_user_message", "board: 2 open"))
+		long := build(t, p, anthropic.Options{}, false)
+		sm, lm := decode(t, short.Body)["messages"].([]any), decode(t, long.Body)["messages"].([]any)
+		for i := 0; i < len(sm)-1; i++ {
+			if !reflect.DeepEqual(sm[i], lm[i]) {
+				t.Errorf("messages[%d] changed:\n%v\n%v", i, sm[i], lm[i])
+			}
+		}
+	})
+}
+
 func TestBuildParams(t *testing.T) {
 	tmp := 0.7
 	nan := math.NaN()
@@ -982,19 +1056,62 @@ func TestBuildBetas(t *testing.T) {
 	}
 }
 
-func TestBuildWarnsAboutInlineHotAndResultOrder(t *testing.T) {
+// An inline hot block is the default delivery on models that do not bind
+// thinking, so it must not nag there. Where it does harm (a thinking block is
+// replayed above it, on a model that enforces the binding or may) the adapter says so.
+func TestBuildWarnsAboutInlineHotWhereItVoidsThinking(t *testing.T) {
 	inline := core.Text("board view")
 	inline.Ephemeral = true
+	mk := func(model string, withThinking bool) *core.Prompt {
+		reply := []core.Block{core.ToolUse("toolu_1", "bash", nil)}
+		if withThinking {
+			reply = append([]core.Block{thinkingBlock("sig-fixture-1")}, reply...)
+		}
+		return &core.Prompt{Model: model, Messages: []core.Message{
+			user(core.Text("q")), asst(reply...), user(core.ToolResult("toolu_1", false, core.Text("ok")), inline),
+		}}
+	}
+	for _, tc := range []struct {
+		name     string
+		model    string
+		thinking bool
+		opts     anthropic.Options
+		warn     bool
+	}{
+		{"a preserved-thinking model with thinking replayed", "claude-opus-5-5", true, anthropic.Options{}, true},
+		{"Fable 5.1 binds too", "claude-fable-5-1", true, anthropic.Options{}, true},
+		{"the first request has nothing to void", "claude-opus-5-5", false, anthropic.Options{}, false},
+		{"a model that does not bind thinking", "claude-sonnet-5", true, anthropic.Options{}, false},
+		{"Fable 5 is exempt", "claude-fable-5", true, anthropic.Options{}, false},
+		{"unless the caller asked for the check", "claude-opus-4-8", true, anthropic.Options{BindingMode: "drop_block"}, true},
+		{"an unknown model may enforce", "gateway-alias", true, anthropic.Options{}, true},
+		{"an unknown model with no thinking", "gateway-alias", false, anthropic.Options{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := build(t, mk(tc.model, tc.thinking), tc.opts, false)
+			got := false
+			for _, c := range codes(b.Warnings) {
+				got = got || c == "ephemeral_inline"
+			}
+			if got != tc.warn {
+				t.Errorf("warned = %v, want %v (%v)", got, tc.warn, b.Warnings)
+			}
+			// Either way the block is rendered as given: the adapter never edits the prompt.
+			if !strings.Contains(string(b.Body), `{"type":"text","text":"board view"}`) {
+				t.Errorf("the inline block must be sent:\n%s", b.Body)
+			}
+		})
+	}
+}
+
+func TestBuildWarnsAboutToolResultOrder(t *testing.T) {
 	p := &core.Prompt{Model: "m", Messages: []core.Message{
 		user(core.Text("q")),
-		asst(core.ToolUse("toolu_1", "bash", nil)),
-		user(core.ToolResult("toolu_1", false, core.Text("ok")), inline),
 		asst(core.ToolUse("toolu_2", "bash", nil)),
 		user(core.Text("text first"), core.ToolResult("toolu_2", false, core.Text("ok"))),
 	}}
 	b := build(t, p, anthropic.Options{}, false)
-	got := codes(b.Warnings)
-	if !reflect.DeepEqual(got, []string{"ephemeral_inline", "tool_result_order"}) {
+	if got := codes(b.Warnings); !reflect.DeepEqual(got, []string{"tool_result_order"}) {
 		t.Errorf("warnings = %v", b.Warnings)
 	}
 	// Blocks are rendered as given: the adapter never reorders.

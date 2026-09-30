@@ -553,6 +553,23 @@ func TestCacheEcon_BindingRejectionIsRecoveredOnce(t *testing.T) {
 	if prov.rejects == 0 {
 		t.Fatal("setup: the fake never rejected anything")
 	}
+	// The rejection is proof the route binds signatures: the agent treats it as a
+	// preserved-thinking route from then on (hot view persisted, not inlined), so
+	// the failure is a one-off and not a tax on every later request.
+	if prov.rejects != 1 {
+		t.Fatalf("the route must be learned after its first rejection, got %d rejections", prov.rejects)
+	}
+	if n := cxCount(log, events.TypeCacheAnomaly, `"flagged":false`); n != 1 {
+		t.Fatalf("the anomaly must say the model table did not flag the route: %d", n)
+	}
+	last := prov.requests()[len(prov.requests())-1]
+	for _, m := range last.Messages {
+		for _, blk := range m.Blocks {
+			if blk.Ephemeral {
+				t.Fatal("after the rejection the hot view must be persisted, not inlined")
+			}
+		}
+	}
 	if n := cxCount(log, events.TypeCacheAnomaly, `"kind":"thinking_binding"`); n != prov.rejects {
 		t.Fatalf("every rejection must be logged as an anomaly: %d vs %d", n, prov.rejects)
 	}

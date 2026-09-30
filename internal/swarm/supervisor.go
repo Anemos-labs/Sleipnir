@@ -54,6 +54,9 @@ func (s *Swarm) superviseMember(m *member, now time.Time) {
 	if m.manager {
 		return
 	}
+	if m.a.PendingInbox() > 0 {
+		s.wake(m) // no-op unless the worker is idle
+	}
 	m.mu.Lock()
 	life, rs, idleAt := m.life, m.run, m.idleAt
 	m.mu.Unlock()

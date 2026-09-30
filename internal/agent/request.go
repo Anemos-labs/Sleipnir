@@ -78,8 +78,12 @@ func (a *Agent) recoverBinding(pe *provider.Error) bool {
 	if !changed {
 		return false
 	}
+	// The rejection is proof the route binds signatures. flagged=false means the
+	// model table did not say so: the route is now treated as one that does.
+	a.enforcing.Store(true)
 	a.emit(events.TypeCacheAnomaly, map[string]any{
 		"kind": "thinking_binding", "action": "stripped all thinking durably and retried once", "error": pe.Message,
+		"flagged": a.cfg.Model.PreservedThinking,
 	})
 	a.emit(events.TypeLayerCommit, map[string]any{"scope": "thinking-strip", "reason": "provider rejected a thinking block"})
 	a.cfg.Sink.Notice(a.cfg.ID, "warn", "provider rejected a thinking block; reasoning history dropped and the request retried")

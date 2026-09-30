@@ -199,16 +199,19 @@ export function create() {
   }
 
   function renderTable(agent) {
-    const rows = S.reqs.filter(r => r.done && (!agent || r.agent === agent)).slice(-300).reverse();
-    const cls = r => (r.anomaly ? 'crit' : r.rebase ? 'warn' : '');
+    const all = S.reqs.filter(r => r.done && (!agent || r.agent === agent));
+    const rows = all.slice(-300).reverse();
+    // Columns: label, right-aligned, dropped on phones (the request id already says agent and kind).
+    const cols = [['Request', 0, 0], ['Agent', 0, 1], ['Kind', 0, 1], ['Time', 0, 1], ['Context', 1, 0], ['Read', 1, 0], ['Written', 1, 1], ['Uncached', 1, 1], ['Hit', 1, 0], ['Cost', 1, 0], ['Notes', 0, 0]];
+    const cell = (i, ...kids) => h('td', { class: [cols[i][1] ? 'r' : '', cols[i][2] ? 'hide-sm' : ''].join(' ').trim() }, ...kids);
     mount(tableBox, h('div', { class: 'tblwrap' }, h('table', { class: 'tbl' },
-      h('thead', null, h('tr', null, ['Request', 'Agent', 'Kind', 'Time', 'Context', 'Read', 'Written', 'Uncached', 'Hit', 'Cost', 'Notes'].map((t, i) => h('th', { class: i > 3 && i < 10 ? 'r' : '' }, t)))),
+      h('thead', null, h('tr', null, cols.map(([t, right, hide]) => h('th', { class: [right ? 'r' : '', hide ? 'hide-sm' : ''].join(' ').trim() }, t)))),
       h('tbody', null, ...rows.map(r => h('tr', { class: 'clickable' + (S.q.req === r.id ? ' sel' : ''), on: { click: () => { if (r.kind === 'main') { setFollow(false); nav({ agent: r.agent, req: r.id }, { replace: true }); } } } },
-        h('td', { class: 'mono' }, r.id), h('td', null, r.agent), h('td', null, r.kind), h('td', { class: 'num' }, clock(r.t)),
-        h('td', { class: 'r' }, tok(r.prompt)), h('td', { class: 'r' }, tok(r.read)), h('td', { class: 'r' }, tok(r.write)), h('td', { class: 'r' }, tok(r.in)),
-        h('td', { class: 'r' }, pct(r.hit)), h('td', { class: 'r' }, usd(r.usd)),
+        h('td', { class: 'mono' }, r.id), cell(1, r.agent), cell(2, r.kind), h('td', { class: 'num hide-sm' }, clock(r.t)),
+        cell(4, tok(r.prompt)), cell(5, tok(r.read)), cell(6, tok(r.write)), cell(7, tok(r.in)),
+        cell(8, pct(r.hit)), cell(9, usd(r.usd)),
         h('td', null, r.anomaly ? h('span', { class: 'chip crit' }, 'anomaly') : null, r.rebase ? h('span', { class: 'chip warn' }, r.rebase) : null, r.cold && !r.first && r.kind === 'main' ? h('span', { class: 'chip' }, 'cold') : null)))))),
-      h('div', { class: 'note' }, 'Newest 300 requests. The same numbers the chart draws.'));
+      h('div', { class: 'note' }, (all.length > rows.length ? `The newest ${rows.length} of ${int(all.length)} requests` : `${int(all.length)} request${all.length === 1 ? '' : 's'}`) + ', compactor calls included. The same numbers the chart draws.'));
   }
 
   async function renderSelected(sel) {

@@ -13,6 +13,9 @@ import (
 
 // pidExists reports whether a live (non-zombie) process has this pid.
 func pidExists(pid int) bool {
+	if pid <= 0 {
+		return false // kill(0, ...) and kill(-1, ...) address whole groups, not a process
+	}
 	if err := syscall.Kill(pid, 0); err != nil && !errors.Is(err, syscall.EPERM) {
 		return false
 	}

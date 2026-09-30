@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
@@ -209,6 +210,10 @@ type Agent struct {
 	// Hot tail persistence (kv.HotPersist).
 	hotFP  string // fingerprint of the newest persisted notice ("" when none)
 	hotAge int    // main requests since it was written
+	// enforcing is set once the route has rejected a replayed thinking block: it
+	// binds signatures whatever the model table says, so the hot view must stop
+	// rewriting earlier bytes (see caps).
+	enforcing atomic.Bool
 
 	stepInRun   int
 	lastMaskReq int
@@ -352,7 +357,10 @@ func (a *Agent) applyPolicy() kv.ApplyPolicy {
 // the hot-tail mechanism this model needs.
 func (a *Agent) caps(prof provider.Profile) kv.Caps {
 	c := prof.KVCaps()
-	c.HotMode = kv.ResolveHot(a.cfg.HotMode, c, a.cfg.Model.PreservedThinking)
+	// A route that has once rejected a replayed thinking block (a gateway, an
+	// unflagged model) binds signatures like a preserved-thinking model does, so
+	// it is treated as one from then on rather than rejected on every request.
+	c.HotMode = kv.ResolveHot(a.cfg.HotMode, c, a.cfg.Model.PreservedThinking || a.enforcing.Load())
 	return c
 }
 

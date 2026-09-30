@@ -1068,6 +1068,9 @@ func (b *Board) RaiseAlertKey(kind, key, text string) {
 		d.Alerts = as
 		d.set("kind", kind)
 		d.set("text", text)
+		if key != "" {
+			d.set("key", key)
+		}
 		return nil
 	})
 }
@@ -1101,6 +1104,7 @@ func (b *Board) ExpireAlerts() {
 		if len(d.Alerts) == before {
 			return errNoChange
 		}
+		d.set("dropped", before-len(d.Alerts))
 		return nil
 	})
 }
@@ -1108,6 +1112,7 @@ func (b *Board) ExpireAlerts() {
 // ClearAlerts removes alerts of a kind.
 func (b *Board) ClearAlerts(kind string) {
 	_ = b.mutate("harness", "alert-clear", func(d *draft) error {
+		d.set("kind", kind)
 		return d.clearAlerts(func(a Alert) bool { return a.Kind == kind })
 	})
 }
@@ -1116,6 +1121,8 @@ func (b *Board) ClearAlerts(kind string) {
 func (b *Board) ClearAlertKey(kind, key string) {
 	key = cleanText(key, 200)
 	_ = b.mutate("harness", "alert-clear", func(d *draft) error {
+		d.set("kind", kind)
+		d.set("key", key)
 		return d.clearAlerts(func(a Alert) bool { return a.Kind == kind && a.Key == key })
 	})
 }

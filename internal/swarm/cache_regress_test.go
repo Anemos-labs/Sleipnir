@@ -354,7 +354,8 @@ func TestCacheEcon_ReusedWorkerReceivesTheNewTasksBrief(t *testing.T) {
 	if second == "" {
 		t.Fatal("no request was made for the reused worker")
 	}
-	for _, want := range []string{"MUST-USE-CURSOR-PAGINATION-BRIEF", "second task", "Scope: pkg/users/", "New assignment", "replaces the assignment in <my-notes>"} {
+	// The scope is printed in its canonical form (with or without a trailing slash).
+	for _, want := range []string{"MUST-USE-CURSOR-PAGINATION-BRIEF", "second task", "Scope: pkg/users", "New assignment", "replaces the assignment in <my-notes>"} {
 		if !strings.Contains(second, want) {
 			t.Fatalf("the reused worker's prompt is missing %q:\n%s", want, second[max(0, len(second)-900):])
 		}

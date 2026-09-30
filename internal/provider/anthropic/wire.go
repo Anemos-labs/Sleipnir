@@ -186,6 +186,8 @@ type builder struct {
 	drops map[core.BlockRef]string
 
 	ephemeralWarned bool
+	// thinkingReplayed: a thinking block has been rendered into an earlier message.
+	thinkingReplayed bool
 }
 
 func (b *builder) warn(code, format string, args ...any) {
@@ -368,15 +370,25 @@ func (b *builder) userMessage(mi int, m core.Message) error {
 	return nil
 }
 
-// noteEphemeral flags the legacy inline hot tail. Rendered as given, it is a
-// per-request edit of an earlier turn: on preserved-thinking models that is a
-// 400 on the next request. The fix belongs in kv (a persisted, turn-scoped
-// system message); the adapter cannot make it, and must not guess.
+// noteEphemeral flags the inline hot tail where it does harm. Rendered as given,
+// it is a per-request edit of a message an assistant turn was already produced
+// against, so the thinking blocks replayed above it are bound to a record that no
+// longer exists: a 400 on a model that enforces preserved thinking (or a dropped
+// block with drop_block). The fix belongs in kv (a persisted or turn-scoped
+// delivery, see kv.ResolveHot); the adapter cannot make it, and must not guess.
+//
+// On models that do not bind thinking the inline tail is the cheapest delivery
+// there is (it sits after the last marker), so it is not worth a warning per
+// request, and neither is the first request, which has no thinking to void.
 func (b *builder) noteEphemeral(blk core.Block, mi int) {
-	if blk.Ephemeral && !b.ephemeralWarned {
-		b.ephemeralWarned = true
-		b.warn("ephemeral_inline", "messages[%d] carries an ephemeral block inline; removing it on a later request edits history and invalidates the cache and later thinking blocks (use a persisted turn-scoped system message)", mi)
+	if !blk.Ephemeral || b.ephemeralWarned || !b.thinkingReplayed {
+		return
 	}
+	if b.info.Known && !b.info.PreservedThinking && b.o.BindingMode == "" {
+		return
+	}
+	b.ephemeralWarned = true
+	b.warn("ephemeral_inline", "messages[%d] carries an ephemeral block inline while earlier thinking blocks are replayed; the next request removes it, which voids their binding to the conversation (use a persisted or turn-scoped hot block)", mi)
 }
 
 func (b *builder) assistantMessage(mi int, m core.Message) error {
@@ -412,6 +424,7 @@ func (b *builder) assistantMessage(mi int, m core.Message) error {
 				continue
 			}
 			rb = rblock{prefix: prefix, members: members, why: "thinking blocks cannot carry cache_control", label: label}
+			b.thinkingReplayed = true
 		case core.BlockToolResult, core.BlockImage:
 			return fmt.Errorf("anthropic: %s: %q blocks cannot appear in an assistant message", label, blk.Kind)
 		default:
@@ -480,7 +493,10 @@ func (b *builder) systemMessage(mi int, m core.Message) error {
 	if n := len(b.msgs); n > 0 {
 		prev = &b.msgs[n-1]
 	}
-	native := !b.o.NoTurnScopedSystem && prev != nil && prev.role == "user"
+	// The model gate matters as much as the position: the API answers a 400 to a
+	// system message on a family without the feature, and a request that only
+	// wanted to deliver a reminder must not die of it.
+	native := !b.o.NoTurnScopedSystem && b.info.midSystem() && prev != nil && prev.role == "user"
 
 	if native {
 		var idxs []int
@@ -502,7 +518,13 @@ func (b *builder) systemMessage(mi int, m core.Message) error {
 	// message (a new user message when there is none). This is the documented
 	// fallback and it is append-only too: on the next request the same text sits
 	// in the same place. The cost is that it never clears.
-	if !b.o.NoTurnScopedSystem {
+	switch {
+	case b.o.NoTurnScopedSystem:
+		// The caller declared the endpoint without the feature: folding is the
+		// expected rendering, not news.
+	case !b.info.midSystem():
+		b.warn("system_folded", "model %q does not accept mid-conversation system messages; messages[%d] was folded into user text", b.p.Model, mi)
+	default:
 		b.warn("system_folded", "messages[%d] (system) does not follow a user message and was folded into user text", mi)
 	}
 	if prev != nil && prev.role == "user" {

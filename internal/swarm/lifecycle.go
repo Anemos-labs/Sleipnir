@@ -477,6 +477,8 @@ func classifyStop(err error, rs *runState, ctx context.Context) (kind stopKind, 
 	switch {
 	case errors.As(err, &pe):
 		return stopFailed, "crashed: " + cleanText(fmt.Sprint(pe.val), 80), true
+	case errors.Is(err, errSwarmBudget):
+		return stopHarness, "swarm budget exhausted", false
 	case errors.Is(err, agent.ErrBudget):
 		return stopFailed, "budget limit reached", true
 	case errors.Is(err, context.Canceled), ctx.Err() != nil:

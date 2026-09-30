@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -74,8 +75,10 @@ type Harness struct {
 	// Allow replaces DefaultAllow when non-nil (use []string{} for none).
 	Allow []string
 	// PolicyOptions are extra provider options for the policy endpoint (the keys
-	// of config.Provider.Options: "system_role", "max_tokens_field", ...).
+	// of config.Provider.Options: "system_role", "max_tokens_field", ...), and
+	// PolicyHeaders extra request headers.
 	PolicyOptions map[string]any
+	PolicyHeaders map[string]string
 	// ContextTokens is the policy's context window when a task does not set one.
 	// Zero keeps the model table's or the fallback's.
 	ContextTokens int
@@ -183,9 +186,12 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		NoWeb:        !task.Network, Offline: true,
 		ShellEnv: spec.Env, ShellWrap: spec.NetPrefix,
 		NewSink: h.NewSink,
+		// What the log says about its own policy: the extractor reads it back, so an
+		// episode's policy is what the run recorded, not what a caller remembers.
 		Meta: map[string]any{"rl": map[string]any{
 			"task": task.ID, "kind": task.Kind, "sample": spec.Sample, "group": spec.Group, "attempt": spec.Attempt,
 			"seed": spec.Seed, "capture": spec.Capture, "policy": spec.Policy.Model, "sampling": json.RawMessage(nonEmpty(spec.Policy.Sampling)),
+			"endpoint": hostOf(spec.Policy.BaseURL), "role_models": spec.RoleModels, "target_price": spec.TargetPrice,
 		}},
 	}
 	if o.ShellEnv == nil {
@@ -208,6 +214,15 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		o.Verify = visibleVerify(task)
 	}
 	return o, nil
+}
+
+// hostOf is the host of a URL, never its credentials or path.
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 func nonEmpty(b json.RawMessage) json.RawMessage {
@@ -246,7 +261,7 @@ func (h *Harness) config(spec env.RunSpec) (*config.Config, error) {
 		cfg.Providers[k] = v
 	}
 	if h.NewProvider == nil {
-		pol, err := policyProviderConfig(spec, h.PolicyOptions)
+		pol, err := policyProviderConfig(spec, h.PolicyOptions, h.PolicyHeaders)
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +287,7 @@ func (h *Harness) policy(spec env.RunSpec) (provider.Provider, cost.Model, error
 	if h.NewProvider != nil {
 		return h.NewProvider(spec)
 	}
-	pc, err := policyProviderConfig(spec, h.PolicyOptions)
+	pc, err := policyProviderConfig(spec, h.PolicyOptions, h.PolicyHeaders)
 	if err != nil {
 		return nil, cost.Model{}, err
 	}
@@ -284,7 +299,7 @@ func (h *Harness) policy(spec env.RunSpec) (provider.Provider, cost.Model, error
 // policyProviderConfig describes the policy endpoint. The API key is read from
 // the variable the spec names, in this process only: the agent's shell never
 // sees it.
-func policyProviderConfig(spec env.RunSpec, extra map[string]any) (config.Provider, error) {
+func policyProviderConfig(spec env.RunSpec, extra map[string]any, headers map[string]string) (config.Provider, error) {
 	pol := spec.Policy
 	if pol.Model == "" {
 		return config.Provider{}, errors.New("the policy has no model")
@@ -310,7 +325,7 @@ func policyProviderConfig(spec env.RunSpec, extra map[string]any) (config.Provid
 		opts["capture_tokens"] = true
 	}
 	return config.Provider{
-		Dialect: config.DialectOpenAIChat, BaseURL: pol.BaseURL, APIKeyEnv: pol.APIKeyEnv, Options: opts,
+		Dialect: config.DialectOpenAIChat, BaseURL: pol.BaseURL, APIKeyEnv: pol.APIKeyEnv, Options: opts, Headers: headers,
 	}, nil
 }
 

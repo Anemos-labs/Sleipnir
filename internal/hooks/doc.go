@@ -72,7 +72,9 @@
 // the Runner is Trusted, that is, the caller has established that the project is
 // trusted, or its Approve callback approves that hook. The zero Runner runs
 // nothing it cannot vouch for. A hook that is not run is reported, not silently
-// dropped.
+// dropped. An approval names the command line, not the files it runs: a script in
+// the project that is edited after it was approved runs under the approval, for
+// the rest of the Runner's life.
 //
 // Hooks do not inherit the harness's secrets. The environment is scrubbed of
 // variables that look like credentials (API keys, tokens, passwords, cloud

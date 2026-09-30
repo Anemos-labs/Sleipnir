@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -34,9 +35,12 @@ func TestRoleMatchesSwarmRole(t *testing.T) {
 			return true
 		}
 		for _, fld := range st.Fields.List {
-			typ, _ := fld.Type.(*ast.Ident)
+			// ExprString, not a type assertion to *ast.Ident: a slice or
+			// pointer field added to swarm.Role must show up as drift, not
+			// as a nil dereference in this test.
+			typ := types.ExprString(fld.Type)
 			for _, name := range fld.Names {
-				want = append(want, name.Name+" "+typ.Name)
+				want = append(want, name.Name+" "+typ)
 			}
 		}
 		return false

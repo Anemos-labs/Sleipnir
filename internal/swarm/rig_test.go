@@ -26,7 +26,7 @@ import (
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
-// concGate skips a defect repro unless SLEIPNIR_REVIEW is set (same switch the
+// concGate skips a repro of a finding that is still open unless SLEIPNIR_REVIEW is set (same switch the
 // security review uses). Repros assert the CORRECT behaviour and therefore fail
 // while the finding is open; TestConcSound_* tests are ungated regression checks
 // for behaviour the review found sound.

@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/reee344/sleipnir/internal/agent"
@@ -40,8 +41,12 @@ func (s *Swarm) budgetErr() error {
 		return nil
 	}
 	s.budgetExceeded(tc)
-	return fmt.Errorf("swarm budget of $%.2f is exhausted ($%.2f spent): %w", s.cfg.BudgetUSD, tc, agent.ErrBudget)
+	return fmt.Errorf("swarm budget of $%.2f is exhausted ($%.2f spent): %w: %w", s.cfg.BudgetUSD, tc, errSwarmBudget, agent.ErrBudget)
 }
+
+// errSwarmBudget marks a stop caused by the swarm-wide budget: no task or worker
+// is at fault, so it does not count as a failed attempt.
+var errSwarmBudget = errors.New("swarm budget exhausted")
 
 // budgetExceeded stops the running workers, once, and tells the manager.
 func (s *Swarm) budgetExceeded(spent float64) {

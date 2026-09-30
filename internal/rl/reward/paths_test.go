@@ -1,9 +1,12 @@
 package reward
 
 import (
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/reee344/sleipnir/internal/rl"
 )
 
 func TestCleanRel(t *testing.T) {
@@ -167,5 +170,115 @@ func TestCleanAbs(t *testing.T) {
 		if got := cleanAbs(in); got != want {
 			t.Errorf("cleanAbs(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// refMatchSegs is the specification of anchored glob matching, written the
+// obvious way: a dynamic program over one pattern and one path, tried against
+// every non-empty prefix of the path. matchPrefix must agree with it on every
+// input; it exists only to be faster.
+func refMatchSegs(pat, ps []string) bool {
+	prev := make([]bool, len(ps)+1)
+	cur := make([]bool, len(ps)+1)
+	prev[0] = true
+	for i := 1; i <= len(pat); i++ {
+		p := pat[i-1]
+		cur[0] = p == "**" && prev[0]
+		for j := 1; j <= len(ps); j++ {
+			if p == "**" {
+				cur[j] = prev[j] || cur[j-1] || prev[j-1]
+			} else {
+				cur[j] = prev[j-1] && segMatch(p, ps[j-1])
+			}
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(ps)]
+}
+
+func refMatchPrefix(pat, ps []string) bool {
+	for j := 1; j <= len(ps); j++ {
+		if refMatchSegs(pat, ps[:j]) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMatchPrefixAgreesWithTheSpecification(t *testing.T) {
+	rng := rand.New(rand.NewSource(3))
+	patSegs := []string{"a", "b", "c", "*", "**", "**", "?", "a*", "*b", "[ab]", "x"}
+	names := []string{"a", "b", "c", "ab", "ba", "x", "aab"}
+	pick := func(from []string, max int) []string {
+		out := make([]string, rng.Intn(max+1))
+		for i := range out {
+			out[i] = from[rng.Intn(len(from))]
+		}
+		return out
+	}
+	for i := 0; i < 30000; i++ {
+		pat, path := pick(patSegs, 6), pick(names, 8)
+		if len(pat) == 0 {
+			continue
+		}
+		if got, want := matchPrefix(pat, path), refMatchPrefix(pat, path); got != want {
+			t.Fatalf("matchPrefix(%q, %q) = %v, specification says %v", pat, path, got, want)
+		}
+	}
+}
+
+func TestGlobMatchIsLinearInPathLength(t *testing.T) {
+	// A path of tens of thousands of segments can be written into a diff. Matching
+	// every prefix separately made this cubic in the worst case (minutes for a 20 KB
+	// path); one pass is linear. Growth is compared rather than an absolute time so
+	// slow machines and the race detector do not matter.
+	set := compileGlobs([]string{".github/**", "**/*_test.go", "a/**/b/**/c", "src/*/gen.go", "vendor/", "*.lock", "**/**/x/**"})
+	for _, unit := range []string{"a/", "a/b/", ".github/", "**/", "src/x/", "b/"} {
+		time1 := func(n int) time.Duration {
+			p, _ := cleanRel(strings.Repeat(unit, n) + "z.go")
+			start := time.Now()
+			set.match(p)
+			return time.Since(start)
+		}
+		small, large := time1(10000), time1(40000)
+		t.Logf("unit %q: %v -> %v", unit, small, large)
+		if large > 5*time.Second {
+			t.Errorf("unit %q: a 40000-segment path took %v", unit, large)
+		}
+		if small > 20*time.Millisecond && large > 9*small {
+			t.Errorf("unit %q: super-linear growth, %v for n and %v for 4n", unit, small, large)
+		}
+	}
+}
+
+func TestOverlongProtectedPatternsAreRejectedNotIgnored(t *testing.T) {
+	long := strings.Repeat("a/", maxPatternBytes) // twice the limit
+	if got := compileGlobs([]string{long}); len(got) != 0 {
+		t.Errorf("an over-long pattern compiled: %d globs", len(got))
+	}
+	ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	before := epJSON(t, ep)
+	err := Score(ep, &rl.Task{Verifier: rl.Verifier{Protected: []string{"tests/**", long}}}, DefaultConfig(), nil)
+	if err == nil || !strings.Contains(err.Error(), "task.verifier.protected[1]") {
+		t.Fatalf("want an error naming task.verifier.protected[1], got %v", err)
+	}
+	if epJSON(t, ep) != before {
+		t.Error("a rejected task changed the episode")
+	}
+	// At the limit is fine.
+	ok := strings.Repeat("a", maxPatternBytes-2) + "/x"
+	if err := Score(ep, &rl.Task{Verifier: rl.Verifier{Protected: []string{ok}}}, DefaultConfig(), nil); err != nil {
+		t.Errorf("a pattern of exactly %d bytes was rejected: %v", len(ok), err)
+	}
+}
+
+func TestConsecutiveDoubleStarsCollapse(t *testing.T) {
+	g, ok := compileGlob("x", "a/**/**/**/b")
+	if !ok || len(g.segs) != 3 {
+		t.Fatalf("segs = %q", g.segs)
+	}
+	set := compileGlobs([]string{strings.Repeat("**/", 300) + "x.txt"}) // 905 bytes: under the limit
+	if _, hit := set.match(strings.Repeat("d/", 300) + "x.txt"); !hit {
+		t.Error("collapsed ** pattern no longer matches")
 	}
 }

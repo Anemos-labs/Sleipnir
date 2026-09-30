@@ -95,6 +95,7 @@ type httpTransport struct {
 	version  string
 	failures int
 	failed   bool
+	closing  bool // no new stream goroutines once Close has begun
 
 	listenOnce sync.Once
 	closeOnce  sync.Once
@@ -130,6 +131,24 @@ func (t *httpTransport) drop(reason string) {
 	if t.onDrop != nil {
 		t.onDrop(reason)
 	}
+}
+
+// spawn runs f as a tracked goroutine unless the transport is closing. Close
+// waits for tracked goroutines, and a WaitGroup must not gain members once a
+// Wait may have started; this is the one place they are added.
+func (t *httpTransport) spawn(f func()) bool {
+	t.mu.Lock()
+	if t.closing {
+		t.mu.Unlock()
+		return false
+	}
+	t.wg.Add(1)
+	t.mu.Unlock()
+	go func() {
+		defer t.wg.Done()
+		f()
+	}()
+	return true
 }
 
 // fail ends the transport on its own account, once.
@@ -370,7 +389,6 @@ func (t *httpTransport) readJSONBody(resp *http.Response, isRequest bool, reqID 
 // duplicate, ignored by the client), so a dropped connection is a prompt error
 // instead of a wait for the timeout.
 func (t *httpTransport) readPostStream(resp *http.Response, isRequest bool, reqID []byte, rctx context.Context, release func()) {
-	defer t.wg.Done()
 	defer release()
 	defer resp.Body.Close()
 	rd := newSSEReader(resp.Body, t.max)
@@ -400,14 +418,10 @@ func (t *httpTransport) readPostStream(resp *http.Response, isRequest bool, reqI
 // Listen implements listener: it opens the GET stream for server-initiated
 // messages. A server without one answers 405, which ends the attempt quietly.
 func (t *httpTransport) Listen() {
-	t.listenOnce.Do(func() {
-		t.wg.Add(1)
-		go t.listenLoop()
-	})
+	t.listenOnce.Do(func() { t.spawn(t.listenLoop) })
 }
 
 func (t *httpTransport) listenLoop() {
-	defer t.wg.Done()
 	delay := time.Second
 	failures := 0
 	lastID := ""
@@ -511,6 +525,7 @@ func (i *idleReader) Read(p []byte) (int, error) {
 func (t *httpTransport) Close() error {
 	t.closeOnce.Do(func() {
 		t.mu.Lock()
+		t.closing = true
 		hadSession := t.session != ""
 		t.mu.Unlock()
 		if hadSession {

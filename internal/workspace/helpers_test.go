@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -257,3 +258,5 @@ func keys(m map[string]string) []string {
 	sort.Strings(out)
 	return out
 }
+
+func runtimeGOOS() string { return runtime.GOOS }

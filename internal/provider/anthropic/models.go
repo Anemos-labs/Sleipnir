@@ -46,7 +46,23 @@ type ModelInfo struct {
 	// Efforts lists the accepted output_config.effort values, cheapest first.
 	// Empty on a known family means effort is not supported.
 	Efforts []string
+	// PreservedThinking: a thinking block is valid only while everything before it
+	// is unchanged (Fable 5.1, Opus 5.5, Sonnet 5.5). Editing an earlier message,
+	// which is what an inline board view does on the next request, voids every
+	// later thinking block: a 400 by default, a dropped block with drop_block.
+	PreservedThinking bool
+	// MidSystem: the family accepts role:system messages inside the conversation
+	// (permanent ones, and turn-scoped ones with clear_at). Elsewhere the API
+	// answers a 400, which would kill a request that only wanted to deliver a
+	// board view; such a message is folded into user text instead.
+	MidSystem bool
 }
+
+// midSystem reports whether a mid-conversation system message may be sent. An
+// unknown model gets the benefit of the doubt: it is usually a gateway's alias
+// for a model that has the feature, and Options.NoTurnScopedSystem (or the
+// profile) is the switch for an endpoint that does not.
+func (m ModelInfo) midSystem() bool { return !m.Known || m.MidSystem }
 
 // ModelResolver maps a model id to its ModelInfo.
 type ModelResolver func(model string) ModelInfo
@@ -67,15 +83,16 @@ var families = []struct {
 	prefix string
 	info   ModelInfo
 }{
-	{"claude-fable-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts}},
-	{"claude-mythos-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts}},
-	{"claude-opus-5-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts}},
-	{"claude-opus-5", ModelInfo{Known: true, NoSampling: true, Efforts: allEfforts}},
-	{"claude-opus-4-8", ModelInfo{Known: true, NoSampling: true, Efforts: allEfforts}},
+	{"claude-fable-5-1", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts, MidSystem: true, PreservedThinking: true}},
+	{"claude-fable-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts, MidSystem: true}},
+	{"claude-mythos-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts, MidSystem: true}},
+	{"claude-opus-5-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts, MidSystem: true, PreservedThinking: true}},
+	{"claude-opus-5", ModelInfo{Known: true, NoSampling: true, Efforts: allEfforts, MidSystem: true}},
+	{"claude-opus-4-8", ModelInfo{Known: true, NoSampling: true, Efforts: allEfforts, MidSystem: true}},
 	{"claude-opus-4-7", ModelInfo{Known: true, NoSampling: true, Efforts: allEfforts}},
 	{"claude-opus-4-6", ModelInfo{Known: true, Efforts: fourEfforts}},
 	{"claude-opus-4-5", ModelInfo{Known: true, Thinking: ThinkBudget, Efforts: threeEfforts}},
-	{"claude-sonnet-5-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts}},
+	{"claude-sonnet-5-5", ModelInfo{Known: true, NoSampling: true, AlwaysThinks: true, Efforts: allEfforts, MidSystem: true, PreservedThinking: true}},
 	{"claude-sonnet-5", ModelInfo{Known: true, NoSampling: true, Efforts: allEfforts}},
 	{"claude-sonnet-4-6", ModelInfo{Known: true, Efforts: fourEfforts}},
 	{"claude-sonnet-4-5", ModelInfo{Known: true, Thinking: ThinkBudget}},

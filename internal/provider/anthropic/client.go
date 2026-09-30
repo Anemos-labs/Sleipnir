@@ -105,7 +105,11 @@ func New(cfg Config) *Client {
 	if hc == nil {
 		hc = &http.Client{Transport: newTransport()}
 	}
-	prof := DefaultProfile(cfg.Name, cfg.BaseURL, cfg.Model)
+	models := cfg.Options.Models
+	if models == nil {
+		models = DefaultModelInfo
+	}
+	prof := defaultProfile(cfg.Name, cfg.BaseURL, cfg.Model, models)
 	if cfg.Profile != nil {
 		prof = *cfg.Profile
 	}
@@ -130,10 +134,16 @@ func newTransport() *http.Transport {
 // DefaultProfile describes the first-party API: explicit breakpoints (at most
 // four, 20-position lookback, 5-minute and 1-hour lifetimes), entries readable
 // once the first response byte is out, reads that refresh the lifetime, thinking
-// blocks that replay verbatim, turn-scoped system messages, thinking binding
-// controls and zero-token pre-warms. model sizes the minimum cacheable prefix
-// (an unknown or empty model gets a conservative 1024).
+// blocks that replay verbatim, thinking binding controls and zero-token
+// pre-warms. model sizes the minimum cacheable prefix (an unknown or empty model
+// gets a conservative 1024) and decides TurnScopedSystem: the families without
+// mid-conversation system messages (Sonnet 5, Opus 4.7 and earlier, Haiku) get
+// false, so kv delivers the board view another way instead of earning a 400.
 func DefaultProfile(name, baseURL, model string) provider.Profile {
+	return defaultProfile(name, baseURL, model, DefaultModelInfo)
+}
+
+func defaultProfile(name, baseURL, model string, models ModelResolver) provider.Profile {
 	minPrefix := 1024
 	if model != "" {
 		if m, ok := cost.Defaults().Lookup(model); ok && m.Cache.MinPrefixTokens > 0 {
@@ -147,7 +157,7 @@ func DefaultProfile(name, baseURL, model string) provider.Profile {
 		Cache:             cost.AnthropicCacheModel(minPrefix),
 		ReplayThinking:    true,
 		BindingControls:   true,
-		TurnScopedSystem:  true,
+		TurnScopedSystem:  models(model).midSystem(),
 		PrewarmZeroTokens: true,
 		StreamUsage:       true,
 		// Anthropic returns neither token ids nor logprobs.

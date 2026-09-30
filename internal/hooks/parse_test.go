@@ -320,3 +320,30 @@ func TestMergeKeepsConfigurationOrder(t *testing.T) {
 		t.Error("merging nothing must give an empty set")
 	}
 }
+
+func TestParseBoundsHooksPerEvent(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`{"Stop": [`)
+	for g := 0; g < 3; g++ { // 3 groups of 50 hooks: each group is fine, the event is not
+		if g > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`{"hooks": [`)
+		for i := 0; i < 50; i++ {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(`{"command": "x` + itoaTest(g*100+i) + `"}`)
+		}
+		b.WriteString(`]}`)
+	}
+	b.WriteString(`]}`)
+	if _, err := Parse(cfg(t, b.String())); err == nil || !strings.Contains(err.Error(), "hooks for one event; the limit is 128") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func itoaTest(n int) string {
+	b, _ := json.Marshal(n)
+	return string(b)
+}

@@ -211,11 +211,15 @@ type Event struct {
 	SessionID   string
 	// Cwd is the agent's working directory; hooks run there.
 	Cwd string
-	// Extra adds event-specific fields to the payload (prompt, source, message,
-	// trigger, stop_hook_active, ...). Keys that the payload defines itself are
-	// ignored. SessionStart, SessionEnd, Notification, PreCompact and PostCompact
-	// hooks are matched on Extra["source"], ["reason"], ["notification_type"] and
-	// ["trigger"].
+	// Extra adds event-specific fields to the payload: "prompt" (UserPromptSubmit),
+	// "source" (SessionStart: startup, resume, clear or compact), "reason"
+	// (SessionEnd), "message" and "notification_type" (Notification), "trigger"
+	// (PreCompact and PostCompact: manual or auto), and "stop_hook_active" (Stop
+	// and SubagentStop: true when the agent is already continuing because an
+	// earlier Stop hook blocked, which is how a hook avoids blocking forever). Keys
+	// that the payload defines itself are ignored. SessionStart, SessionEnd,
+	// Notification, PreCompact and PostCompact hooks are matched on "source",
+	// "reason", "notification_type" and "trigger".
 	Extra map[string]any
 }
 

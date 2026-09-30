@@ -276,7 +276,9 @@ func (q *Queue) openTree(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	q.mu.Lock()
 	q.tree = t
+	q.mu.Unlock()
 	return nil
 }
 
@@ -433,6 +435,9 @@ func (q *Queue) Submit(ctx context.Context, s Submission) (*Result, error) {
 	if s.Agent == "" {
 		s.Agent = s.Tree.Agent
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	entry := &QueueEntry{Agent: s.Agent, Task: s.Task, Phase: "queued"}
 	q.mu.Lock()
 	if q.closed {
@@ -492,7 +497,6 @@ func oneLine(s string, max int) string {
 
 func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) (*Result, error) {
 	m := q.m
-	repo := q.tree.repo
 	// History queries go through the repository the trees belong to, not through the
 	// integration tree: they must keep working while that tree is damaged (settle
 	// below is what repairs it).
@@ -547,11 +551,13 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		}
 	}
 
-	// 3. Combine, in a tree that is exactly at the tip and clean.
+	// 3. Combine, in a tree that is exactly at the tip and clean. settle may have to
+	// rebuild the tree, so the handle is taken afterwards, never before.
 	q.setPhase(entry, "merging")
 	if err := q.settle(ctx, prev); err != nil {
 		return nil, err
 	}
+	repo := q.tree.repo
 	var out *gitx.MergeResult
 	switch q.opts.Strategy {
 	case StrategyRebase:

@@ -134,9 +134,9 @@ func (w *warned) none(t *testing.T) {
 }
 
 // routeMode is what an agent resolves for this client: the hot-tail mechanism its
-// profile allows on a model that enforces preserved thinking.
-func routeMode(c *anthropic.Client) kv.HotMode {
-	return kv.ResolveHot(kv.HotInline, c.Profile().KVCaps(), true)
+// profile allows, given whether the model enforces preserved thinking.
+func routeMode(c *anthropic.Client, preservedThinking bool) kv.HotMode {
+	return kv.ResolveHot(kv.HotInline, c.Profile().KVCaps(), preservedThinking)
 }
 
 // e2eAgent is the smallest agent loop that goes through the same seams as
@@ -297,7 +297,7 @@ func hasBeta(s mock.AnthropicStat, beta string) bool {
 func TestEndToEndKVStackSixAgentRounds(t *testing.T) {
 	var w warned
 	c, srv := newMockClient(t, enforced, scripted, anthropic.Config{Model: e2eModel, OnWarnings: w.collect})
-	mode := routeMode(c)
+	mode := routeMode(c, true)
 	if mode != kv.HotTurnScoped {
 		t.Fatalf("this route delivers the board view as %v, want turn-scoped", mode)
 	}
@@ -399,7 +399,7 @@ func TestEndToEndKVSharedLayersServeOtherAgentsAcrossAnIdleGap(t *testing.T) {
 	mcfg.Now = clock.now
 	var w warned
 	c, srv := newMockClient(t, mcfg, scripted, anthropic.Config{Model: e2eModel, OnWarnings: w.collect})
-	mode := routeMode(c)
+	mode := routeMode(c, true)
 
 	a := newE2EAgent(t, c, e2eStack(t, "be-1", "backend"), mode)
 	a.run(1)
@@ -470,7 +470,7 @@ func TestEndToEndKVPersistedBoardViewWithoutTurnScopedSystem(t *testing.T) {
 	prof.TurnScopedSystem = false
 	var w warned
 	c, srv := newMockClient(t, enforced, scripted, anthropic.Config{Profile: &prof, OnWarnings: w.collect})
-	mode := routeMode(c)
+	mode := routeMode(c, true)
 	if mode != kv.HotPersist {
 		t.Fatalf("resolved %v: a preserved-thinking route without turn-scoped messages must persist the view", mode)
 	}
@@ -508,15 +508,24 @@ func TestEndToEndKVPersistedBoardViewWithoutTurnScopedSystem(t *testing.T) {
 // preserved thinking rewrites the message an earlier thinking block was produced
 // against. The adapter must surface that as the recoverable ErrThinkingBinding.
 func TestEndToEndKVInlineBoardViewOnAnEnforcingRouteFails(t *testing.T) {
-	c, _ := newMockClient(t, enforced, scripted, anthropic.Config{Model: e2eModel})
+	var w warned
+	c, _ := newMockClient(t, enforced, scripted, anthropic.Config{Model: e2eModel, OnWarnings: w.collect})
 	a := newE2EAgent(t, c, e2eStack(t, "be-1", "backend"), kv.HotInline)
 	a.run(1) // nothing to bind yet
+	w.none(t)
 
 	_, err := a.step()
 	pe := wantKind(t, err, provider.ErrThinkingBinding, false)
 	if pe.Status != 400 {
 		t.Errorf("status = %d", pe.Status)
 	}
+	// The adapter saw it coming: the request that is about to fail is the first
+	// one that carries thinking under an inline tail.
+	w.mu.Lock()
+	if len(w.got) != 1 || w.got[0].Code != "ephemeral_inline" {
+		t.Errorf("warnings = %+v", w.got)
+	}
+	w.mu.Unlock()
 
 	// The agent's recovery: strip thinking from the thread durably and retry. It
 	// works once; the next thinking block is bound to an inline tail again.
@@ -528,4 +537,76 @@ func TestEndToEndKVInlineBoardViewOnAnEnforcingRouteFails(t *testing.T) {
 	}
 	_, err = a.step()
 	wantKind(t, err, provider.ErrThinkingBinding, false)
+}
+
+// A family without mid-conversation system messages (the mock, like the API,
+// answers such a message with a 400). Two ways it must not matter: the profile
+// derived from the model turns the feature off so kv picks another delivery, and
+// a profile that wrongly claims the feature still cannot get one sent.
+func TestEndToEndKVOnAModelWithoutMidConversationSystem(t *testing.T) {
+	const model = "claude-sonnet-5"
+	stack := func() kv.Stack {
+		s := e2eStack(t, "be-1", "backend")
+		s.Model = model
+		return s
+	}
+
+	t.Run("the model's profile leaves the board view inline", func(t *testing.T) {
+		var w warned
+		c, srv := newMockClient(t, mock.AnthropicConfig{}, scripted, anthropic.Config{Model: model, OnWarnings: w.collect})
+		if mode := routeMode(c, false); mode != kv.HotInline {
+			t.Fatalf("mode = %v", mode)
+		}
+		a := newE2EAgent(t, c, stack(), kv.HotInline)
+		a.run(3)
+		w.none(t)
+		st := srv.AnthropicStats()
+		for i, s := range st {
+			if hasBeta(s, anthropic.BetaTurnScopedSystem) || s.Status != 200 {
+				t.Errorf("request %d: status %d betas %v", i+1, s.Status, s.Betas)
+			}
+		}
+		// The inline board view is the only thing after the rolling marker, and it
+		// is rebuilt every request: the cache still reads everything before it.
+		for i := 1; i < len(st); i++ {
+			if st[i].Read != cached(st[i-1]) || st[i].Uncached != a.hot[i] {
+				t.Errorf("request %d: read %d (want %d) uncached %d (want %d)", i+1, st[i].Read, cached(st[i-1]), st[i].Uncached, a.hot[i])
+			}
+		}
+	})
+
+	t.Run("an optimistic profile still cannot send one", func(t *testing.T) {
+		prof := anthropic.DefaultProfile("gateway", "", "") // unknown model: claims the feature
+		if !prof.TurnScopedSystem {
+			t.Fatal("precondition: the profile claims turn-scoped system messages")
+		}
+		var w warned
+		c, srv := newMockClient(t, mock.AnthropicConfig{}, scripted, anthropic.Config{Profile: &prof, OnWarnings: w.collect})
+		a := newE2EAgent(t, c, stack(), kv.HotTurnScoped)
+		a.run(3)
+		st := srv.AnthropicStats()
+		for i, s := range st {
+			if hasBeta(s, anthropic.BetaTurnScopedSystem) || s.Status != 200 {
+				t.Errorf("request %d: status %d betas %v", i+1, s.Status, s.Betas)
+			}
+		}
+		// Every request reports the fold, and only that.
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if len(w.got) == 0 {
+			t.Fatal("folding the board view must be reported")
+		}
+		for _, x := range w.got {
+			if x.Code != "system_folded" || !strings.Contains(x.Message, model) {
+				t.Errorf("warning %v", x)
+			}
+		}
+		// Folded text is ordinary, append-only content: what the previous request
+		// cached is read back whole.
+		for i := 1; i < len(st); i++ {
+			if st[i].Read != cached(st[i-1]) {
+				t.Errorf("request %d read %d, want %d", i+1, st[i].Read, cached(st[i-1]))
+			}
+		}
+	})
 }

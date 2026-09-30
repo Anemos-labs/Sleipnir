@@ -273,6 +273,25 @@ func TestClientProfile(t *testing.T) {
 			t.Errorf("min prefix for %q = %d, want %d", model, got, want)
 		}
 	}
+	// Turn-scoped system messages exist only on some families; on the others the
+	// profile says so, and kv delivers the board view another way.
+	for model, want := range map[string]bool{
+		"claude-opus-5-5": true, "claude-fable-5-1": true, "claude-sonnet-5-5": true, "claude-opus-5": true, "claude-opus-4-8": true,
+		"anthropic/claude-sonnet-5-5": true, "claude-sonnet-5": false, "claude-opus-4-7": false, "claude-sonnet-4-6": false, "claude-haiku-4-5": false,
+		"": true, "who-knows": true,
+	} {
+		if got := anthropic.New(anthropic.Config{Model: model}).Profile().TurnScopedSystem; got != want {
+			t.Errorf("TurnScopedSystem for %q = %v, want %v", model, got, want)
+		}
+	}
+	if kv.ResolveHot(kv.HotInline, anthropic.New(anthropic.Config{Model: "claude-sonnet-5"}).Profile().KVCaps(), false) != kv.HotInline {
+		t.Error("a model without mid-conversation system messages gets the inline board view")
+	}
+	// A custom model resolver reaches the profile too.
+	custom := anthropic.Config{Model: "claude-sonnet-5", Options: anthropic.Options{Models: func(string) anthropic.ModelInfo { return anthropic.ModelInfo{Known: true, MidSystem: true} }}}
+	if !anthropic.New(custom).Profile().TurnScopedSystem {
+		t.Error("Options.Models must decide the default profile")
+	}
 	// A profile override wins, and SetProfile swaps it.
 	o := anthropic.DefaultProfile("gw", "https://gw", "")
 	o.ReplayThinking = false
