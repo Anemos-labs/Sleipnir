@@ -67,13 +67,52 @@ func providerNames(cfg *config.Config) []string {
 }
 
 func lookupProvider(cfg *config.Config, name string) (config.Provider, bool) {
+	b, isBuiltin := builtinProviders[name]
 	if cfg != nil {
 		if p, ok := cfg.Providers[name]; ok {
+			if isBuiltin && p.BaseURL == "" {
+				// An entry that names no endpoint of its own only tunes the built-in
+				// provider (options, a header, an allowance such as allow_hosts): it
+				// extends it instead of replacing it with a provider that has nowhere
+				// to send requests. An entry with its own base_url defines the
+				// provider outright and inherits nothing, in particular not the
+				// built-in key variable: a key issued for one host is not sent to
+				// another because a configuration forgot to say otherwise.
+				p = extendBuiltin(b, p)
+			}
 			return p, true
 		}
 	}
-	p, ok := builtinProviders[name]
-	return p, ok
+	return b, isBuiltin
+}
+
+// extendBuiltin lays a configured entry over the built-in provider it names.
+func extendBuiltin(b, p config.Provider) config.Provider {
+	p.BaseURL = b.BaseURL
+	if p.Dialect == "" {
+		p.Dialect = b.Dialect
+	}
+	if p.APIKeyEnv == "" {
+		p.APIKeyEnv = b.APIKeyEnv
+	}
+	p.Headers = mergeMaps(b.Headers, p.Headers)
+	p.Options = mergeMaps(b.Options, p.Options)
+	return p
+}
+
+// mergeMaps returns base overlaid with over, as a new map (nil when both are empty).
+func mergeMaps[V any](base, over map[string]V) map[string]V {
+	if len(base)+len(over) == 0 {
+		return nil
+	}
+	out := make(map[string]V, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
 }
 
 // ResolveModel turns a user-supplied model string into a provider and model id.
@@ -106,17 +145,80 @@ func LookupProvider(cfg *config.Config, name string) (config.Provider, bool) {
 }
 
 // ProviderInfo returns a provider's base URL and API-key variable, from the
-// configuration or the built-ins (with the <NAME>_BASE_URL override applied).
+// configuration or the built-ins, with the <NAME>_BASE_URL override applied where
+// BuildProvider would honour it. An override that would carry the provider's key to
+// a host it is not known to use (see provider.CheckEndpoint) is ignored here and
+// refused, with an explanation, by BuildProvider: callers such as the RL policy
+// setup turn this URL into a client that sends the key, so it must not be the
+// attacker's.
 func ProviderInfo(cfg *config.Config, name string) (baseURL, keyEnv string, ok bool) {
 	p, ok := lookupProvider(cfg, name)
 	if !ok {
 		return "", "", false
 	}
 	base := p.BaseURL
-	if env := os.Getenv(strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_BASE_URL"); env != "" {
-		base = env
+	if env := envBaseURL(name); env != "" {
+		if _, err := endpointOf(name, p, p.APIKey()); err == nil {
+			base = env
+		}
 	}
 	return base, p.APIKeyEnv, true
+}
+
+// envBaseURLVar is the environment variable that overrides a provider's base URL.
+func envBaseURLVar(name string) string {
+	return strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_BASE_URL"
+}
+
+func envBaseURL(name string) string { return strings.TrimSpace(os.Getenv(envBaseURLVar(name))) }
+
+// endpointOf resolves where provider name's requests go and checks that its API key
+// (key, "" when none is sent) may be sent there. The base URL is the provider's
+// configured one unless <NAME>_BASE_URL overrides it; an override from the
+// environment, and a URL that a project file supplied, may not carry the key to a
+// host the provider is not known to use unless the user's own configuration lists
+// it (allow_hosts), and a key never travels over plain http to another machine
+// unless the user allowed that too (allow_insecure_http). The returned error says
+// what was refused and how to allow it deliberately.
+func endpointOf(name string, p config.Provider, key string) (string, error) {
+	base, src := p.BaseURL, provider.SourceConfigured
+	if p.BaseURLFromProject {
+		src = provider.SourceProject
+	}
+	if env := envBaseURL(name); env != "" {
+		base, src = env, provider.SourceEnv
+	}
+	if base == "" {
+		return "", fmt.Errorf("provider %q has no base_url", name)
+	}
+	ep := provider.Endpoint{
+		Name: name, BaseURL: base, Source: src, EnvVar: envBaseURLVar(name),
+		Anchors: trustedBaseURLs(name, p), AllowHosts: p.AllowHosts, AllowInsecureHTTP: p.AllowInsecureHTTP,
+		// A header such as Authorization or X-Api-Key goes wherever the key goes.
+		CredentialHeaders: provider.CredentialHeaders(p.Headers),
+	}
+	if key != "" {
+		ep.KeyEnv = p.APIKeyEnv
+	}
+	if err := provider.CheckEndpoint(ep); err != nil {
+		return "", err
+	}
+	return base, nil
+}
+
+// trustedBaseURLs are the base URLs a provider may always use: the compiled-in
+// default of a built-in provider of that name, and the URL the user's own
+// configuration (or the code that built the provider) gives it. A URL that came
+// from a project file is not among them.
+func trustedBaseURLs(name string, p config.Provider) []string {
+	var out []string
+	if b, ok := builtinProviders[name]; ok && b.BaseURL != "" {
+		out = append(out, b.BaseURL)
+	}
+	if p.BaseURL != "" && !p.BaseURLFromProject {
+		out = append(out, p.BaseURL)
+	}
+	return out
 }
 
 // DefaultProvider is the provider a bare model id is sent to.
@@ -167,6 +269,19 @@ func optInt(m map[string]any, k string) int {
 	return 0
 }
 
+// optSeconds reads a whole number of seconds from provider options as a duration:
+// 0 (unset) unless it is positive, and at most a day.
+func optSeconds(m map[string]any, k string) time.Duration {
+	f, _ := m[k].(float64)
+	if i, ok := m[k].(int); ok {
+		f = float64(i)
+	}
+	if !(f > 0) {
+		return 0
+	}
+	return time.Duration(min(f, 86400)) * time.Second
+}
+
 func optStrings(m map[string]any, k string) []string {
 	var out []string
 	switch v := m[k].(type) {
@@ -197,7 +312,10 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 	}
 	client := openaichat.New(openaichat.Config{
 		Name: ref.Provider, BaseURL: base, APIKey: key, Headers: p.Headers, Options: oo,
-		HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders,
+		HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders, AllowInsecureHTTP: p.AllowInsecureHTTP,
+		FirstByteTimeout:  optSeconds(p.Options, "first_byte_timeout_sec"),
+		StreamIdleTimeout: optSeconds(p.Options, "stream_idle_timeout_sec"),
+		RequestTimeout:    optSeconds(p.Options, "request_timeout_sec"),
 	})
 	if o.CaptureTokens || optBool(p.Options, "capture_tokens") {
 		prof := client.Profile()
@@ -219,6 +337,11 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 //	session_header_name    header that carries the routing key, if any
 //	version, betas, default_max_tokens, thinking_display, thinking_budget,
 //	max_breakpoints, extra_body
+//
+// Both dialects take first_byte_timeout_sec (how long a request may get no response
+// at all; default 120, or stream_idle_timeout_sec when only that is set),
+// stream_idle_timeout_sec (silence once a stream has started; default 60) and
+// request_timeout_sec (a non-streaming call; default 600).
 func buildAnthropic(ref ModelRef, p config.Provider, base, key string, o ProviderOptions) provider.Provider {
 	ao := anthropic.Options{
 		NoTurnScopedSystem: optBool(p.Options, "no_turn_scoped_system"),
@@ -236,7 +359,10 @@ func buildAnthropic(ref ModelRef, p config.Provider, base, key string, o Provide
 		Name: ref.Provider, BaseURL: base, APIKey: key, Headers: p.Headers, Model: ref.Model,
 		AuthStyle: optString(p.Options, "auth_style"), Version: optString(p.Options, "version"),
 		Betas: optStrings(p.Options, "betas"), SessionHeader: optString(p.Options, "session_header_name"),
-		Options: ao, HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders,
+		Options: ao, HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders, AllowInsecureHTTP: p.AllowInsecureHTTP,
+		FirstByteTimeout:  optSeconds(p.Options, "first_byte_timeout_sec"),
+		StreamIdleTimeout: optSeconds(p.Options, "stream_idle_timeout_sec"),
+		RequestTimeout:    optSeconds(p.Options, "request_timeout_sec"),
 	})
 	prof := client.Profile()
 	if v, ok := p.Options["cache_control"].(bool); ok && !v {
@@ -261,14 +387,15 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 	if !ok {
 		return nil, cost.Model{}, fmt.Errorf("unknown provider %q (known: %s)", ref.Provider, strings.Join(providerNames(cfg), ", "))
 	}
-	base := p.BaseURL
-	if env := os.Getenv(strings.ToUpper(strings.ReplaceAll(ref.Provider, "-", "_")) + "_BASE_URL"); env != "" {
-		base = env
-	}
-	if base == "" {
-		return nil, cost.Model{}, fmt.Errorf("provider %q has no base_url", ref.Provider)
-	}
 	key := p.APIKey()
+	// Where the requests go, and whether the key may go there: an override from the
+	// environment or a project file cannot point a key at a host the provider is not
+	// known to use, and no key crosses the network unencrypted, unless the user's own
+	// configuration says so. A refusal explains how to allow it; it never downgrades.
+	base, err := endpointOf(ref.Provider, p, key)
+	if err != nil {
+		return nil, cost.Model{}, err
+	}
 	if p.APIKeyEnv != "" && key == "" {
 		return nil, cost.Model{}, fmt.Errorf("provider %q needs %s to be set", ref.Provider, p.APIKeyEnv)
 	}
@@ -316,10 +443,16 @@ func EnrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) co
 	if m.Provider != "unknown" || baseURL == "" {
 		return m
 	}
+	// The catalogue decides the prices a budget is computed from: over plain http it
+	// could be rewritten on the way, so it is only read over https or from this
+	// machine.
+	if provider.CheckKeyTransport(baseURL) != nil {
+		return m
+	}
 	entries := loadCatalog(ctx, cacheDir, baseURL)
 	for _, e := range entries {
 		if e.Model.ID == m.ID || cost.Normalize(e.Model.ID) == cost.Normalize(m.ID) {
-			out := e.Model
+			out := e.Model // every entry has passed cost.Model.Validate (gateway.Parse, gateway.Vet)
 			out.ID = m.ID
 			return out
 		}
@@ -335,8 +468,13 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry 
 		if st, err := os.Stat(path); err == nil && time.Since(st.ModTime()) < catalogTTL {
 			if b, err := os.ReadFile(path); err == nil {
 				var es []gateway.Entry
-				if json.Unmarshal(b, &es) == nil && len(es) > 0 {
-					return es
+				// The copy on disk is not trusted more than the network: the same
+				// checks apply, so an edited file cannot smuggle in a price that a
+				// download could not.
+				if json.Unmarshal(b, &es) == nil {
+					if es = gateway.Vet(es); len(es) > 0 {
+						return es
+					}
 				}
 			}
 		}

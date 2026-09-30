@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 )
@@ -18,6 +19,10 @@ type providerSpec struct {
 	keyEnv  string
 	opts    openaichat.Options
 	headers map[string]string
+	// allowInsecure is the user's deliberate permission (providers.<name>.
+	// allow_insecure_http in their own configuration) to send the key over plain http
+	// to a host that is not this machine.
+	allowInsecure bool
 }
 
 var builtinProviders = map[string]providerSpec{
@@ -44,9 +49,21 @@ type providerFlags struct {
 	provider string
 	baseURL  string
 	keyEnv   string
+	// home is where the user's own configuration is looked for (empty: the current
+	// user's home). Tests set it so they never read the real one.
+	home string
 }
 
 // resolve picks a provider spec from flags and the environment.
+//
+// The base URL comes from --base-url (the user typed it), else from the
+// <PROVIDER>_BASE_URL environment variable, else from the built-in default. The
+// environment is not the user's word: a .envrc or a CI job of a repository being
+// worked on can set it. So an API key is never sent to a host that the environment
+// chose unless the provider is known to use it or the user's own configuration lists
+// it (providers.<name>.allow_hosts), and a key is never sent over plain http to
+// another machine unless providers.<name>.allow_insecure_http says so. A refusal is
+// an error that says how to allow it deliberately.
 func (pf providerFlags) resolve() (providerSpec, string, error) {
 	name := strings.ToLower(pf.provider)
 	if name == "" {
@@ -67,10 +84,12 @@ func (pf providerFlags) resolve() (providerSpec, string, error) {
 	if name == "custom" || !ok {
 		spec = providerSpec{name: "custom", opts: openaichat.Options{SessionHeader: true}}
 	}
+	builtinBase := spec.baseURL // "" for a custom endpoint: there is nothing it is known to use
+	src, envVar := provider.SourceConfigured, ""
 	if pf.baseURL != "" {
-		spec.baseURL = pf.baseURL
-	} else if env := os.Getenv(strings.ToUpper(spec.name) + "_BASE_URL"); env != "" {
-		spec.baseURL = env
+		spec.baseURL, src = pf.baseURL, provider.SourceFlag
+	} else if v := strings.ToUpper(spec.name) + "_BASE_URL"; strings.TrimSpace(os.Getenv(v)) != "" {
+		spec.baseURL, src, envVar = strings.TrimSpace(os.Getenv(v)), provider.SourceEnv, v
 	}
 	if pf.keyEnv != "" {
 		spec.keyEnv = pf.keyEnv
@@ -82,7 +101,35 @@ func (pf providerFlags) resolve() (providerSpec, string, error) {
 	if spec.keyEnv != "" {
 		key = os.Getenv(spec.keyEnv)
 	}
+
+	// Judge the endpoint before the key is used for anything.
+	ep := provider.Endpoint{Name: spec.name, BaseURL: spec.baseURL, Source: src, EnvVar: envVar}
+	if builtinBase != "" {
+		ep.Anchors = []string{builtinBase}
+	}
+	if key != "" {
+		ep.KeyEnv = spec.keyEnv
+		ep.AllowHosts, ep.AllowInsecureHTTP = pf.userAllowances(spec.name)
+	}
+	if err := provider.CheckEndpoint(ep); err != nil {
+		return spec, "", err
+	}
+	spec.allowInsecure = ep.AllowInsecureHTTP
 	return spec, key, nil
+}
+
+// userAllowances reads what the user's own configuration file allows for a
+// provider: hosts that may receive its key when the environment names them, and
+// whether its key may travel over plain http. Only the user-level file counts (a
+// project's are never honoured, see config.UserOnlyPaths), so the project is loaded
+// as untrusted; a configuration that cannot be read allows nothing.
+func (pf providerFlags) userAllowances(name string) (hosts []string, insecure bool) {
+	cfg, _, err := config.Load(config.LoadOpts{Home: pf.home, UntrustedProject: true, Environ: func() []string { return nil }})
+	if err != nil || cfg == nil {
+		return nil, false
+	}
+	p := cfg.Providers[name]
+	return p.AllowHosts, p.AllowInsecureHTTP
 }
 
 // headerRecorder remembers the latest response headers (rate-limit info).
@@ -107,7 +154,7 @@ func (r *headerRecorder) get() http.Header {
 func newClient(spec providerSpec, key string, rec *headerRecorder) *openaichat.Client {
 	cfg := openaichat.Config{
 		Name: spec.name, BaseURL: spec.baseURL, APIKey: key,
-		Headers: spec.headers, Options: spec.opts,
+		Headers: spec.headers, Options: spec.opts, AllowInsecureHTTP: spec.allowInsecure,
 	}
 	if rec != nil {
 		cfg.OnHeaders = rec.set
