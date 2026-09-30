@@ -370,14 +370,32 @@ func TestUnifiedDiffScalesLinearly(t *testing.T) {
 			UnifiedDiff(patch, 80, DefaultTheme())
 		})
 	}
-	requireLinear(t, "Diff of n scattered changes", 300, func(n int) {
-		before := repeatLines(10*n, func(i int) string { return fmt.Sprintf("line %d", i) })
-		after := repeatLines(10*n, func(i int) string {
-			if i%10 == 5 {
+	// Diff is not linear in general: the search costs about N*D for N lines and D edits, so a change in every tenth line of a
+	// file is quadratic on purpose, up to the cap on D (diffMaxD) past which the rest of the file becomes one coarse hunk. (Growth
+	// across the cap is no growth to measure: a run of n changes below it and one of 8n above it are two different algorithms,
+	// which is how a first version of this check, with n changes scattered over 10n lines, failed under load.) What is linear, and
+	// what these two cases pin, is the ordinary edit, a few changes in a big file, and the file rewritten from top to bottom,
+	// which the cap answers in the same time however long it is.
+	requireLinear(t, "Diff of 20 changes in 40n lines", 300, func(n int) {
+		before := repeatLines(40*n, func(i int) string { return fmt.Sprintf("line %d", i) })
+		after := repeatLines(40*n, func(i int) string {
+			if i%(2*n) == n {
 				return "changed"
 			}
 			return fmt.Sprintf("line %d", i)
 		})
+		Diff("f", before, after, 80, DefaultTheme(), DiffOptions{})
+	})
+	rewritten := func(n int) (before, after string) {
+		return repeatLines(n, func(i int) string { return fmt.Sprintf("old %d", i) }), repeatLines(n, func(i int) string { return fmt.Sprintf("new %d", i) })
+	}
+	const pastTheCap = 600 // 2*600 edits are more than diffMaxD: the search gives up and the whole file is one removed and one added block
+	b, a := rewritten(pastTheCap)
+	if runs := diffScript(splitDiffLines(b), splitDiffLines(a)); len(runs) != 2 {
+		t.Fatalf("%d lines that share nothing are not past the cap on the search any more (diffMaxD = %d): %+v", pastTheCap, diffMaxD, runs)
+	}
+	requireLinearFrom(t, "Diff of n lines that share nothing", pastTheCap, pastTheCap, func(n int) {
+		before, after := rewritten(n)
 		Diff("f", before, after, 80, DefaultTheme(), DiffOptions{})
 	})
 }
