@@ -161,7 +161,10 @@ var _ agent.Sink = (*JSONSink)(nil)
 // parallel agents never interleave questions.
 func TerminalPrompter(in io.Reader, out io.Writer) perm.Prompter {
 	var mu sync.Mutex
-	rd := bufio.NewReader(in)
+	rd, ok := in.(*bufio.Reader)
+	if !ok {
+		rd = bufio.NewReader(in)
+	}
 	return func(ctx context.Context, r perm.Request) perm.Decision {
 		mu.Lock()
 		defer mu.Unlock()

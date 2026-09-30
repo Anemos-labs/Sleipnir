@@ -73,6 +73,7 @@ Usage:
   sleipnir <command> [flags]
 
 Commands:
+  chat      interactive session (slash commands, Ctrl-C cancels a turn)
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
   swarm     shorthand for run --swarm
   recon     print the deterministic project survey that seeds the shared prompt layer
