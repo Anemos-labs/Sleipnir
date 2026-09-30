@@ -1099,6 +1099,8 @@ flags:
         list the target-price presets and exit
   -probes
         run compaction fidelity probes (default true)
+  -redetect-hacks
+        forget the hack:* flags a previous scoring stored and detect them again (scoring never removes a flag by itself; use this after a detector was fixed)
   -rewards string
         rewards.json with weights, caps, detectors (default: the documented defaults)
   -target-price string

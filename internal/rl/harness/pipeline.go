@@ -3,6 +3,7 @@ package harness
 import (
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/reee344/sleipnir/internal/events"
@@ -68,6 +69,9 @@ func (p *Pipeline) Score(ep *rl.Episode, task *rl.Task, runDir string) error {
 			return err
 		}
 	}
+	// The hack detector needs to know where the workspace is: without it a workspace below a hidden directory of the home
+	// (~/.sleipnir-bench/work/...) looks like the agent writing into the home's dotfiles. The log says where it ran.
+	cfg.WorkspaceRoots = append(slices.Clone(cfg.WorkspaceRoots), run.WorkspaceRoots()...)
 	res := traj.Resolver{Run: run}
 	cfg.Prompts = func(e *rl.Episode, st *rl.Step) (string, error) {
 		pr, err := res.Prompt(e, st)
