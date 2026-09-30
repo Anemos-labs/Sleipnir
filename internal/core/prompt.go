@@ -11,6 +11,12 @@ type Message struct {
 	// Turn is the thread turn this message renders, or 0 for synthetic
 	// messages (the pinned-context preamble).
 	Turn TurnID `json:"turn,omitempty"`
+	// ClearAt marks a turn-scoped system message ("next_user_message"): the
+	// provider shows it to the model only until the next user message and then
+	// renders nothing for it, while it stays in the array byte-identical so the
+	// prefix cache and preserved-thinking bindings keep matching. Adapters for
+	// providers without the feature fold such a message into ordinary content.
+	ClearAt string `json:"clear_at,omitempty"`
 }
 
 // BlockRef addresses one block of a Prompt in wire order.

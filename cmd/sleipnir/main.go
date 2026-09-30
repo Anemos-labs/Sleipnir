@@ -73,6 +73,9 @@ Usage:
   sleipnir <command> [flags]
 
 Commands:
+  run       run a goal through the harness (single agent; --swarm N for a manager with workers)
+  swarm     shorthand for run --swarm
+  recon     print the deterministic project survey that seeds the shared prompt layer
   doctor    probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs
   models    list models and prices from a marketplace catalogue
   mock      run the built-in mock provider (deterministic, cache-faithful) for demos and tests

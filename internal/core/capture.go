@@ -56,12 +56,13 @@ type BlobGetter func(h Hash) ([]byte, error)
 // wireMsg is the model-visible part of a message. The turn id is bookkeeping and
 // deliberately excluded so identical content shares one blob across agents.
 type wireMsg struct {
-	Role   Role    `json:"role"`
-	Blocks []Block `json:"blocks"`
+	Role    Role    `json:"role"`
+	ClearAt string  `json:"clear_at,omitempty"`
+	Blocks  []Block `json:"blocks"`
 }
 
 func messageJSON(m Message) ([]byte, error) {
-	return MarshalStable(wireMsg{Role: m.Role, Blocks: m.Blocks})
+	return MarshalStable(wireMsg{Role: m.Role, ClearAt: m.ClearAt, Blocks: m.Blocks})
 }
 
 // WireHash is the identity of what the model sees: model, tools, system and
@@ -211,7 +212,7 @@ func (m Manifest) Expand(base []Hash, get BlobGetter) (*Prompt, []Hash, error) {
 		if err := json.Unmarshal(b, &w); err != nil {
 			return nil, nil, err
 		}
-		p.Messages = append(p.Messages, Message{Role: w.Role, Blocks: w.Blocks})
+		p.Messages = append(p.Messages, Message{Role: w.Role, ClearAt: w.ClearAt, Blocks: w.Blocks})
 	}
 	return p, msgs, nil
 }

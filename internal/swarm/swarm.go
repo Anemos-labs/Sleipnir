@@ -94,6 +94,9 @@ type Deps struct {
 	RoleModels map[string]RoleModel
 	// CaptureTokens asks endpoints for token ids and logprobs on every call.
 	CaptureTokens bool
+	// OnWrite is told after every successful write (the checkpoint store uses it
+	// to tell an agent's last write from a human's later edit).
+	OnWrite func(agent, path string)
 }
 
 // RoleModel is a per-role model override.
@@ -263,7 +266,7 @@ func (s *Swarm) buildAgent(id string, r Role, notes *kv.Layer, ev *Evidence) (*a
 			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
 			return []core.Block{core.Text(txt)}
 		},
-		Events: d.Events, Blobs: d.Blobs, Archive: d.Archive, Files: d.Files, Guard: s.Leases, Snap: d.Snap,
+		Events: d.Events, Blobs: d.Blobs, Archive: d.Archive, Files: d.Files, Guard: guardWithAfter{s.Leases, d.OnWrite}, Snap: d.Snap,
 		Handles: d.Handles, Perm: requester, Limiter: s.Gov, Gate: s.Gate,
 		Sink:    &memberSink{Sink: sink, s: s, m: m, ev: ev},
 		Workdir: d.Workdir, Root: d.Root, Limits: d.Limits,
@@ -453,6 +456,19 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": s.modelFor(role.Name).ID})
 	s.startRun(m, taskCard(task, id, false))
 	return id, nil
+}
+
+// guardWithAfter forwards to the lease guard and additionally reports writes.
+type guardWithAfter struct {
+	tools.Guard
+	after func(agent, path string)
+}
+
+func (g guardWithAfter) AfterWrite(agent, path string) {
+	g.Guard.AfterWrite(agent, path)
+	if g.after != nil {
+		g.after(agent, path)
+	}
 }
 
 // modelFor is the model a role runs on.

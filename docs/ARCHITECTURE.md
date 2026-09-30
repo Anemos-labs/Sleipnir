@@ -7,7 +7,8 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 
 1. a **layered, generational prompt-cache engine** (`docs/CACHE-DESIGN.md`),
 2. a **swarm runtime** with a shared board, typed mail, leases and harness-owned "done" (`docs/SWARM-PROTOCOL.md`),
-3. an **event log that is also the training corpus** (`docs/TRAINING-DATA.md`).
+3. an **RL environment**: every run is recorded so that its exact prompts, completions and token ids can be
+   rebuilt and scored by verifiable rewards, and exported as trainer-ready data (`docs/TRAINING-DATA.md`).
 
 ## Principles
 
@@ -61,7 +62,8 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 | `internal/perm` | permission modes/rules/prompter, role profiles; `internal/shellparse` for bash analysis |
 | `internal/checkpoint` | pre-modification snapshots and rewind |
 | `internal/config`, `internal/memory` | layered JSONC config; AGENTS.md/CLAUDE.md-style instruction files → shared-layer text |
-| `internal/train` | (planned) exporters, redaction, dataset tools |
+| `internal/session` | assembles provider, tools, permissions, checkpoints, layers (constitution, shared pin from `recon` + instruction files, role pins), event log and one agent or a swarm; the CLI, the RL harness and tests all build sessions the same way |
+| `internal/rl` | RL vocabulary (`Episode`, `Step`, `Task`, rewards, flags) and its subpackages: `env` (tasks, isolated rollouts, clean-checkout verifier, task generators, eval, rollout server), `traj` (event log -> episode, exact prompt replay), `reward` (components, hack detectors, repricing, probes), `adv` (group advantages), `export` (steps, tokens, groups, sft, dpo, kto, atif), `redact` |
 
 ## One request, end to end
 
