@@ -31,9 +31,24 @@ type TextSink struct {
 	lastTool map[string]string
 }
 
-// NewTextSink builds a sink writing answers to out and progress to log.
+// NewTextSink builds a sink writing answers to out and progress to log. Both are
+// cleaned for a terminal: what the model says, what a tool ran and what came back
+// can carry escape sequences (a page or a file that talks the model into printing
+// an OSC 52 clipboard write, a title change, a cursor jump), and none of it may
+// reach the terminal as commands.
 func NewTextSink(out, log io.Writer, main string, verbose bool) *TextSink {
-	return &TextSink{out: out, log: log, Main: main, Verbose: verbose, lastTool: map[string]string{}}
+	return &TextSink{out: termSafe{out}, log: termSafe{log}, Main: main, Verbose: verbose, lastTool: map[string]string{}}
+}
+
+// termSafe writes what it is given after tools.SanitizeForTerminal has removed
+// escape sequences and control characters (newline and tab stay).
+type termSafe struct{ w io.Writer }
+
+func (t termSafe) Write(p []byte) (int, error) {
+	if _, err := io.WriteString(t.w, tools.SanitizeForTerminal(string(p))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 func (s *TextSink) isMain(a string) bool { return s.Main == "" || a == s.Main }

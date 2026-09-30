@@ -25,6 +25,7 @@ import (
 	"github.com/reee344/sleipnir/internal/provider/openaichat"
 	"github.com/reee344/sleipnir/internal/session"
 	"github.com/reee344/sleipnir/internal/swarm"
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 // newRepo makes a small Go project under git.
@@ -762,5 +763,25 @@ func TestInstructionFilesThatAreSkippedOrCutAreReported(t *testing.T) {
 	}
 	if txt := s.Shared.Text(); !strings.Contains(txt, "instruction files truncated") || strings.Contains(txt, "survey truncated") {
 		t.Errorf("the shared layer does not say its instructions were cut (or says it about a survey)")
+	}
+}
+
+// Text that reaches the terminal is data: an escape sequence in a model's answer
+// (say, an OSC 52 clipboard write a web page talked it into) must not arrive as one.
+func TestTextSinkStripsTerminalEscapes(t *testing.T) {
+	var out, log strings.Builder
+	sink := session.NewTextSink(&out, &log, "main", true)
+	sink.Text("main", "hello \x1b]52;c;ZXZpbA==\x07world\x1b[2J\x1b[31m red\x1b[0m\r\nline two\n")
+	sink.Notice("main", "warn", "tool said \x1b]0;pwned\x07 done")
+	call := core.ToolUse("c1", "bash", json.RawMessage(`{"command":"echo \u001b[41m hi"}`))
+	sink.ToolStart("main", call)
+	sink.ToolEnd("main", call, &tools.Result{Text: "boom \x1b[?1049h", IsError: true}, time.Millisecond)
+	for name, got := range map[string]string{"out": out.String(), "log": log.String()} {
+		if strings.ContainsAny(got, "\x1b\x07\r") {
+			t.Errorf("%s contains a control character: %q", name, got)
+		}
+	}
+	if !strings.Contains(out.String(), "hello ") || !strings.Contains(out.String(), "world") || !strings.Contains(out.String(), "line two") {
+		t.Errorf("ordinary text must survive: %q", out.String())
 	}
 }

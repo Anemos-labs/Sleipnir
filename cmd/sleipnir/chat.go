@@ -22,6 +22,7 @@ import (
 	"github.com/reee344/sleipnir/internal/mcp"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/session"
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 func init() { extraCommands["chat"] = cmdChat }
@@ -160,7 +161,7 @@ func runTurn(parent context.Context, s *session.Session, goal string) {
 	case errors.Is(err, agent.ErrBudget):
 		fmt.Fprintln(os.Stderr, "stopped: budget exhausted")
 	default:
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "error:", tools.SanitizeForTerminal(err.Error()))
 	}
 }
 
@@ -228,7 +229,7 @@ func slash(ctx context.Context, s *session.Session, line string) (quit bool, sen
 		showDiff(s, f[1:])
 	case "/recon":
 		if s.Shared != nil {
-			fmt.Fprintln(os.Stderr, s.Shared.Text())
+			fmt.Fprintln(os.Stderr, tools.SanitizeForTerminal(s.Shared.Text()))
 		}
 	default:
 		args := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
@@ -383,7 +384,11 @@ func printAgents(s *session.Session) {
 	}
 }
 
+// firstText is s cut to n bytes, and cleaned for a terminal: it is used for
+// text somebody else wrote (a skill's description, a worker's status line, a
+// task title).
 func firstText(s string, n int) string {
+	s = tools.SanitizeForTerminal(s)
 	if len(s) > n {
 		return s[:n] + "…"
 	}
@@ -420,7 +425,7 @@ func showDiff(s *session.Session, args []string) {
 		return
 	}
 	for _, d := range diffs {
-		fmt.Fprintf(os.Stdout, "%s (%s)\n%s\n", d.Path, d.Status, d.Unified)
+		fmt.Fprintf(os.Stdout, "%s (%s)\n%s\n", tools.SanitizeForTerminal(d.Path), d.Status, tools.SanitizeForTerminal(d.Unified))
 	}
 }
 

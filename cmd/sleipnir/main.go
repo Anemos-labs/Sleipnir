@@ -23,6 +23,7 @@ import (
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/provider/probe"
 	"github.com/reee344/sleipnir/internal/session"
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 // Set at build time via -ldflags.
@@ -63,7 +64,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "sleipnir:", err)
+		fmt.Fprintln(os.Stderr, "sleipnir:", tools.SanitizeForTerminal(err.Error()))
 		os.Exit(1)
 	}
 }
