@@ -7,7 +7,7 @@ they are not screenshots of working code. As each piece lands, real recordings r
 | | |
 |---|---|
 | ![chat](design/ux/chat.png) | ![swarm](design/ux/swarm.png) |
-| ![storyboard](design/ux/story.png) | ![mark](design/ux/logo.png) |
+| ![storyboard](design/ux/story.png) | ![the mark](media/logo.png) |
 
 ## Where things stand
 

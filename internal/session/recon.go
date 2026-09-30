@@ -1,13 +1,11 @@
 package session
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/fs"
 	"math"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -16,7 +14,9 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
+	"github.com/reee344/sleipnir/internal/gitx"
 	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 // ReconOptions controls the deterministic project survey that seeds the shared
@@ -125,10 +125,43 @@ func BuildRecon(ctx context.Context, o ReconOptions) (*Recon, error) {
 			r.Segments = append(r.Segments, kv.Segment{Key: "code map", Text: m, Vol: kv.VolEpoch})
 		}
 	}
-	for _, s := range r.Segments {
-		r.Tokens += o.Est.Tokens(s.Text)
+	for i, s := range r.Segments {
+		// Every repository string is made safe where it enters (safeLine); this keeps whatever
+		// is added later from leaving with an escape sequence in it. It changes nothing in text
+		// that has none.
+		r.Segments[i].Text = tools.SanitizeForTerminal(s.Text)
+		r.Tokens += o.Est.Tokens(r.Segments[i].Text)
 	}
 	return r, nil
+}
+
+// safeLine makes text that came from the repository (a file name, the project name in a
+// manifest, a package comment) fit for the survey. The survey goes into the shared layer
+// of every agent and to the terminal (`sleipnir recon`), and a repository is untrusted:
+// a file can be named with a line break and a header, or with an escape sequence that
+// writes the clipboard. Escape sequences, control characters and invisible ones are
+// removed, and the text is one line, so it cannot start a line of its own. Ordinary text
+// comes back byte for byte, and so does every survey of an ordinary project.
+func safeLine(s string) string {
+	s = tools.SanitizeForTerminal(s)
+	if strings.ContainsAny(s, "\n\t") {
+		s = strings.Map(func(r rune) rune {
+			if r == '\n' || r == '\t' {
+				return ' '
+			}
+			return r
+		}, s)
+	}
+	return s
+}
+
+// safeLines is safeLine for each of a list.
+func safeLines(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = safeLine(s)
+	}
+	return out
 }
 
 func projectLine(root string, r *Recon) string {
@@ -139,7 +172,7 @@ func projectLine(root string, r *Recon) string {
 		}
 		parts = append(parts, fmt.Sprintf("%s %d", l.Name, l.Files))
 	}
-	return fmt.Sprintf("%s: %d files (%s)", filepath.Base(root), r.Files, strings.Join(parts, ", "))
+	return fmt.Sprintf("%s: %d files (%s)", safeLine(filepath.Base(root)), r.Files, strings.Join(parts, ", "))
 }
 
 // ---- file listing ----------------------------------------------------------------
@@ -185,21 +218,68 @@ func listFiles(ctx context.Context, root string, max int, useGit bool) ([]string
 	return out, err
 }
 
+// reconGitOutput bounds what one git command may hand back (a variable so that a test
+// can shrink it). A listing or a history the size of a monorepo's is cut off, and the
+// survey goes on without it (the file walk, no churn ranking) instead of reading it all.
+var reconGitOutput int64 = 16 << 20
+
+// openGit opens the repository that holds root through gitx, the one way the harness runs
+// git: a repository is untrusted input, and plain `git` in a directory someone else prepared
+// runs the programs its .git/config names (core.fsmonitor on ls-files, a signature verifier
+// on log) with the person's rights, at the start of every session, before anyone has said
+// whether the project is trusted. gitx overrides every configuration key that names a
+// program, scrubs the environment, bounds the output and stops the process group at the
+// deadline. rel is where root lies in the work tree ("." at its top).
+func openGit(root string) (repo *gitx.Repo, rel string, ok bool) {
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, "", false
+	}
+	repo, err = gitx.Open(real, gitx.WithMaxOutput(reconGitOutput))
+	if err != nil || repo.IsBare() {
+		return nil, "", false
+	}
+	rel, err = filepath.Rel(repo.Root(), real)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, "", false
+	}
+	return repo, filepath.ToSlash(rel), true
+}
+
+// pathspec is dir as a git pathspec. git matches a pathspec against a path literally
+// first, by its leading directories, so the name of a directory works as it is even when
+// it holds characters git also reads as a pattern (what such a name over-matches, a
+// sibling the pattern happens to fit, is dropped by the caller's prefix test). A name
+// that would be read as pathspec "magic" is made relative.
+func pathspec(dir string) string {
+	if strings.HasPrefix(dir, ":") {
+		return "./" + dir
+	}
+	return dir
+}
+
 func gitFiles(ctx context.Context, root string, max int) ([]string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
-	b, err := cmd.Output()
-	if err != nil {
+	repo, rel, ok := openGit(root)
+	if !ok {
+		return nil, false
+	}
+	args := []string{"ls-files", "-z", "--cached", "--others", "--exclude-standard"}
+	prefix := ""
+	if rel != "." { // gitx runs at the top of the work tree: ask for this directory only
+		args, prefix = append(args, "--", pathspec(rel)), rel+"/"
+	}
+	res, err := repo.Git(ctx, args...)
+	if err != nil || res.ExitCode != 0 || res.Truncated {
 		return nil, false
 	}
 	var out []string
-	for _, f := range bytes.Split(b, []byte{0}) {
-		if len(f) == 0 {
+	for _, p := range strings.Split(res.Stdout, "\x00") {
+		p, found := strings.CutPrefix(p, prefix)
+		if p == "" || !found {
 			continue
 		}
-		p := string(f)
 		st, err := os.Lstat(filepath.Join(root, p))
 		if err != nil || !st.Mode().IsRegular() {
 			continue // deleted in the worktree, or a symlink/submodule
@@ -293,7 +373,7 @@ func layoutText(files []string) string {
 	sb.WriteString("Layout (file counts):\n")
 	for _, n := range names {
 		d := tops[n]
-		fmt.Fprintf(&sb, "  %s/ %d", n, d.n)
+		fmt.Fprintf(&sb, "  %s/ %d", safeLine(n), d.n)
 		if len(d.subs) > 0 {
 			subs := make([]string, 0, len(d.subs))
 			for s := range d.subs {
@@ -312,7 +392,7 @@ func layoutText(files []string) string {
 					items = append(items, fmt.Sprintf("+%d more", len(subs)-maxSubs))
 					break
 				}
-				items = append(items, fmt.Sprintf("%s(%d)", s, d.subs[s]))
+				items = append(items, fmt.Sprintf("%s(%d)", safeLine(s), d.subs[s]))
 			}
 			sb.WriteString(": " + strings.Join(items, " "))
 		}
@@ -326,7 +406,7 @@ func layoutText(files []string) string {
 		if len(shown) > maxRoot {
 			shown, more = shown[:maxRoot], len(shown)-maxRoot
 		}
-		sb.WriteString("  root files: " + strings.Join(shown, " "))
+		sb.WriteString("  root files: " + strings.Join(safeLines(shown), " "))
 		if more > 0 {
 			fmt.Fprintf(&sb, " +%d more", more)
 		}
@@ -385,7 +465,7 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 		if m := reGoVersion.FindStringSubmatch(mod); m != nil {
 			ver = m[1]
 		}
-		add("Go module %s (go %s)", name, ver)
+		add("Go module %s (go %s)", safeLine(name), safeLine(ver))
 		var mains []string
 		seen := map[string]bool{}
 		for _, f := range files {
@@ -397,14 +477,14 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 			}
 		}
 		if len(mains) > 0 {
-			add("  binaries: %s", strings.Join(firstN(mains, 8), " "))
+			add("  binaries: %s", strings.Join(safeLines(firstN(mains, 8)), " "))
 		}
 		cmds = append(cmds, "go build ./...", "go vet ./...", "go test ./...")
 	}
 	if has(files, "package.json") {
 		pj := readSmall(root, "package.json", 256<<10)
 		scripts := jsonKeys(pj, "scripts")
-		add("Node package (package.json); scripts: %s", strings.Join(firstN(scripts, 14), ", "))
+		add("Node package (package.json); scripts: %s", strings.Join(safeLines(firstN(scripts, 14)), ", "))
 		for _, s := range scripts {
 			switch s {
 			case "test", "lint", "build", "typecheck", "check", "format":
@@ -415,7 +495,7 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 	if has(files, "pyproject.toml") || has(files, "setup.py") || has(files, "requirements.txt") {
 		py := readSmall(root, "pyproject.toml", 64<<10)
 		if m := rePyName.FindStringSubmatch(py); m != nil {
-			add("Python project %s", m[1])
+			add("Python project %s", safeLine(m[1]))
 		} else {
 			add("Python project")
 		}
@@ -432,7 +512,7 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 	if has(files, "Cargo.toml") {
 		c := readSmall(root, "Cargo.toml", 64<<10)
 		if m := reCargoName.FindStringSubmatch(c); m != nil {
-			add("Rust crate %s", m[1])
+			add("Rust crate %s", safeLine(m[1]))
 		} else {
 			add("Rust workspace")
 		}
@@ -465,7 +545,7 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 			targets = append(targets, t)
 		}
 		if len(targets) > 0 {
-			add("Makefile targets: %s", strings.Join(firstN(targets, 16), " "))
+			add("Makefile targets: %s", strings.Join(safeLines(firstN(targets, 16)), " "))
 		}
 		for _, t := range targets {
 			switch t {
@@ -484,7 +564,7 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 		}
 	}
 	if len(wf) > 0 {
-		add("CI: %s", strings.Join(firstN(wf, 6), " "))
+		add("CI: %s", strings.Join(safeLines(firstN(wf, 6)), " "))
 	}
 	return sb.String(), dedupe(cmds)
 }
@@ -671,7 +751,7 @@ func symbolMap(ctx context.Context, root string, files []string, budget int, est
 	used := est.Tokens(sb.String())
 	shown := 0
 	for _, rk := range all {
-		line := rk.file + ": " + strings.Join(limitSyms(rk.syms, symbolCap(rk.score)), ", ") + "\n"
+		line := safeLine(rk.file) + ": " + strings.Join(limitSyms(rk.syms, symbolCap(rk.score)), ", ") + "\n"
 		cost := est.Tokens(line)
 		if used+cost > budget {
 			if shown > 0 {
@@ -692,7 +772,10 @@ func symbolMap(ctx context.Context, root string, files []string, budget int, est
 	return sb.String()
 }
 
-var rePkgDoc = regexp.MustCompile(`(?m)^//\s*Package\s+\w+\s+(.*)$`)
+// rePkgDoc finds the start of a package comment on one line: white space inside it is
+// blank or tab, never a line break, or "// Package d" alone on its line would take the
+// next line for its text ("d: package d").
+var rePkgDoc = regexp.MustCompile(`(?m)^//[ \t]*Package[ \t]+\w+[ \t]+(.*)$`)
 
 // packageDocs lists the most depended-on Go packages with the first sentence of
 // their package comment: one dense line each says what a package is for, which
@@ -753,7 +836,7 @@ func packageDocs(root string, texts map[string]string, indeg map[string]int, bud
 	sb.WriteString("Packages (most depended-on first):\n")
 	used := est.Tokens(sb.String())
 	for _, p := range pks {
-		line := p.dir + ": " + p.doc + "\n"
+		line := safeLine(p.dir) + ": " + safeLine(p.doc) + "\n"
 		if c := est.Tokens(line); used+c > budget {
 			break
 		} else {
@@ -901,16 +984,24 @@ func countImports(f, text, goMod string, indeg map[string]int) {
 func gitChurn(ctx context.Context, root string) map[string]int {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "log", "--name-only", "--pretty=format:", "--since=180.days", "-n", "400")
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
-	b, err := cmd.Output()
 	out := map[string]int{}
-	if err != nil {
+	repo, rel, ok := openGit(root)
+	if !ok {
 		return out
 	}
-	for _, l := range strings.Split(string(b), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			out[l]++
+	// -z: names are taken as they are, not quoted and escaped by git the way a name with a
+	// backslash, a quote or a control character would otherwise be.
+	args := []string{"log", "--name-only", "-z", "--pretty=format:", "--since=180.days", "-n", "400"}
+	if rel != "." { // names relative to root, as the file listing has them
+		args = append(args, "--relative="+rel)
+	}
+	res, err := repo.Git(ctx, args...)
+	if err != nil || res.ExitCode != 0 {
+		return out
+	}
+	for _, name := range strings.Split(res.Stdout, "\x00") {
+		if name = strings.Trim(name, "\n"); name != "" { // a commit boundary leaves a line break
+			out[name]++
 		}
 	}
 	return out

@@ -1,0 +1,17 @@
+# {style|text}: G0..G6 are the layer colours, +d is the Dim attribute, +b Bold; bad is the alarm
+
+== cached 60%, width 40
+{G0|███████}{G0+b|▏}{G1|██████████}{G2|████}{G2+b|▏}{G3|▓}{G3+d|░░}{G4+d|░}{G5+d|░░░░░░░░░░░}{G5+b|▏}{G6+d|░}
+   {G0+b|G0}       {G1+b|G1}     {G2+b|G2}  {G3+b|G3} {G4+b|G4}    {G5+b|G5}    {G6+b|G6}
+
+== break at G2
+{G0|███████}{G0+b|▏}{G1|██████████}{bad+b|████▏}{G3|▓}{G3+d|░░}{G4+d|░}{G5+d|░░░░░░░░░░░}{G5+b|▏}{G6+d|░}
+   {G0+b|G0}       {G1+b|G1}     {bad+b|⚠G2} {G3+b|G3} {G4+b|G4}    {G5+b|G5}    {G6+b|G6}
+
+== sweep 0.4
+{G0|███████}{G0+b|▏}{G1|███████▓}{warn+b|▶}{warn|▷}{warn+d|▹}{G2+d|░░░}{G2+b|▏}{G3+d|░░░}{G4+d|░}{G5+d|░░░░░░░░░░░}{G5+b|▏}{G6+d|░}
+   {G0+b|G0}       {G1+b|G1}     {G2+b|G2}  {G3+b|G3} {G4+b|G4}    {G5+b|G5}    {G6+b|G6}
+
+== warm 0.5: faded towards the faint colour
+{#9e1919|███████}{G0+b|▏}{#9f1919|██████████████}{G2+b|▏}{#a01919|▓}{G3+d|░░}{G4+d|░}{G5+d|░░░░░░░░░░░}{G5+b|▏}{G6+d|░}
+   {G0+b|G0}       {G1+b|G1}     {G2+b|G2}  {G3+b|G3} {G4+b|G4}    {G5+b|G5}    {G6+b|G6}

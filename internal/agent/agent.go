@@ -581,6 +581,16 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
 	}
 	a.rep.reset()
+	phase := "between" // what a cancellation interrupted, for agent.cancel
+	defer func() {
+		if err := ctx.Err(); err != nil {
+			cause := "canceled"
+			if errors.Is(err, context.DeadlineExceeded) {
+				cause = "deadline"
+			}
+			a.emit(events.TypeAgentCancel, map[string]any{"phase": phase, "cause": cause, "steps": res.Steps})
+		}
+	}()
 	for step := 0; step < a.cfg.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			return res, err
@@ -601,10 +611,12 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.boundary(ctx)
 		a.drainInbox()
 
+		phase = "model"
 		resp, epoch, err := a.request(ctx)
 		if err != nil {
 			return res, err
 		}
+		phase = "between"
 		res.Steps++
 		res.Usage = res.Usage.Add(resp.Usage)
 		res.Stop = resp.Stop
@@ -639,7 +651,9 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			res.Compactions = a.comp.count
 			return res, nil
 		}
+		phase = "tools"
 		results := a.runTools(ctx, calls)
+		phase = "between"
 		blocks := results
 		if extra := a.takeInbox(); len(extra) > 0 {
 			blocks = append(blocks, extra...)

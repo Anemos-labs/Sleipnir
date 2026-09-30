@@ -1,0 +1,40 @@
+# Spark: two lines, the marks above and the bars below; ⚠ a cache break, ◆ a compaction, ↻ an epoch
+
+== the sketch: 20 requests (width 30, 2 lines)
+  ↻       ⚠      ◆            |
+▂▅▇██████▆▄█████████          |
+
+== only the last 12 cells: the history is resampled, never averaged (width 12, 2 lines)
+ ↻    ⚠   ◆ |
+▂▇███▆▄█████|
+
+== a width of 5 (width 5, 2 lines)
+↻ ⚠ ◆|
+▂█▄██|
+# a long history in a short row: the lowest sample of every run is what the cell shows, so the one bad request (index 97) survives
+
+== 200 requests, width 50 (width 50, 2 lines)
+                        ⚠            ↻            |
+████████████████████████▁█████████████████████████|
+
+== 200 requests, width 20 (width 20, 2 lines)
+         ⚠     ↻    |
+█████████▁██████████|
+
+== 200 requests, width 7 (width 7, 2 lines)
+   ⚠ ↻ |
+███▁███|
+# every bar height, and the colour thresholds (above .85 good, above .5 amber, else red)
+
+== 0 to 1 in 17 steps (width 30, 2 lines)
+                              |
+▁▁▁▂▂▃▃▄▄▅▅▆▆▇▇██             |
+# odd input: NaN is a gap, out-of-range values are clamped
+
+== NaN, -1, 2, +Inf (width 10, 2 lines)
+          |
+·▁██▄     |
+
+== no values (width 10, 2 lines)
+          |
+·         |

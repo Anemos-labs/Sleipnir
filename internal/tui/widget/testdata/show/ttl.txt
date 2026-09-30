@@ -1,0 +1,63 @@
+# TTL: the cache warmth clock; ●◕◑◔ by the quarter left, ▰ drains into ▱, amber (Bold) in the last minute, red ○ cold at zero
+
+== remaining 5m0s of 5m (width 24, 1 lines)
+● warm 5:00 ▰▰▰▰▰▰▰▰    |
+
+== remaining 4m12s of 5m (width 24, 1 lines)
+◕ warm 4:12 ▰▰▰▰▰▰▰▱    |
+
+== remaining 3m41s of 5m (width 24, 1 lines)
+◕ warm 3:41 ▰▰▰▰▰▰▱▱    |
+
+== remaining 2m30s of 5m (width 24, 1 lines)
+◑ warm 2:30 ▰▰▰▰▱▱▱▱    |
+
+== remaining 1m20s of 5m (width 24, 1 lines)
+◔ warm 1:20 ▰▰▱▱▱▱▱▱    |
+
+== remaining 1m0s of 5m (width 24, 1 lines)
+◔ warm 1:00 ▰▰▱▱▱▱▱▱    |
+
+== remaining 45s of 5m (width 24, 1 lines)
+◔ warm 0:45 ▰▱▱▱▱▱▱▱    |
+
+== remaining 12s of 5m (width 24, 1 lines)
+◔ warm 0:12 ▰▱▱▱▱▱▱▱    |
+
+== remaining 400ms of 5m (width 24, 1 lines)
+◔ warm 0:01 ▰▱▱▱▱▱▱▱    |
+
+== remaining 0s of 5m (width 24, 1 lines)
+○ cold ▱▱▱▱▱▱▱▱         |
+# a short width gives up the bar, then the word, then the time
+
+== 4:12 left, width 20 (width 20, 1 lines)
+◕ warm 4:12 ▰▰▰▰▰▰▰▱|
+
+== 4:12 left, width 16 (width 16, 1 lines)
+◕ warm 4:12 ▰▰▰▰|
+
+== 4:12 left, width 11 (width 11, 1 lines)
+◕ warm 4:12|
+
+== 4:12 left, width 9 (width 9, 1 lines)
+◕ 4:12   |
+
+== 4:12 left, width 6 (width 6, 1 lines)
+◕ 4:12|
+
+== 4:12 left, width 3 (width 3, 1 lines)
+◕  |
+
+== 4:12 left, width 2 (width 2, 1 lines)
+◕ |
+
+== 4:12 left, width 1 (width 1, 1 lines)
+◕|
+
+== cold, width 8 (width 8, 1 lines)
+○ cold  |
+
+== an hour-long TTL (width 24, 2 lines)
+● warm 59:30 ▰▰▰▰▰▰▰▰   |
+◑ warm 1:00:05 ▰▰▰▰▱▱▱▱ |

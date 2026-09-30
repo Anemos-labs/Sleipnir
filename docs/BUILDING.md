@@ -37,6 +37,7 @@ internal/provider       the boundary between the harness and model APIs: Provide
   provider/gateway      marketplace catalogue (Heimdall, OpenRouter): public model list, prices, capabilities
   provider/probe        measures how an endpoint really behaves (behind `sleipnir doctor`)
   provider/mock         deterministic, protocol-strict fake provider with an automatic prefix cache
+  provider/providertest scripted-stream harness and the contract every adapter owes its caller (used by the adapters' tests)
 
 internal/agent          one model-driven worker: render its layered prompt, call the provider, run tools, keep context healthy
 internal/swarm          many agents over one repository: board, mail router, leases, governor, warm gate, roles, spawn
@@ -64,6 +65,7 @@ internal/session        assembles provider, tools, permissions, layers, event lo
 internal/inspect        the cache inspector: a read-only model of a session log and an embedded web dashboard
   inspect/web           the dashboard's static assets (not a Go package)
 internal/demo           the scripted team behind `sleipnir demo`, run against the mock provider
+internal/ptytest        runs a command on a pseudo-terminal, so that a test can type at it, press Ctrl-C and wait for what it prints
 
 internal/workspace      isolates writers from each other and integrates their work; not wired into sessions yet
 internal/gitx           the only gateway to the git binary: typed helpers over one hardened process runner
@@ -81,6 +83,8 @@ internal/rl             RL vocabulary: the harness as an environment
   rl/export             canonical episodes as trainer-ready JSON lines
   rl/redact             removes secrets and personal data from training data
   rl/harness            runs rollouts through the real assembly (internal/session) against a policy endpoint
+
+internal/testutil       test helpers shared by suites: the goroutine-leak check (`CheckLeaks`, `VerifyNone`); no product code imports it
 ```
 
 ## Style
@@ -102,7 +106,18 @@ internal/rl             RL vocabulary: the harness as an environment
 - Table-driven, with adversarial cases (empty input, huge input, unicode, CRLF, symlinks,
   path traversal, concurrent callers). Use `t.TempDir()`; never touch the real HOME.
 - Anything concurrent must pass `-race`.
+- The suites of the packages that start goroutines (`agent`, `swarm`, `mcp`, `session`, `workspace`) end with
+  `testutil.CheckLeaks` in `TestMain`: a goroutine of this module still running ten seconds after the last test is a
+  failure, and its stack and its creator are printed. A test that starts a reader on a pipe or a server closes it;
+  `testutil.VerifyNone(t)` (first line of a test) holds one test to the same.
 - Prefer testing observable behaviour over internals.
+- What a command does with Ctrl-C, its streams and its exit status is decided outside its functions, so it is tested outside
+  them. `cmd/sleipnir/e2e_test.go` runs the command in a child process (`TestMain` makes the test binary run `main()`), in a
+  private home, with a scripted mock model that a test can hold in the middle of a turn; `internal/ptytest` runs it on a
+  pseudo-terminal, where a test types, presses Ctrl-C (the terminal turns the byte into SIGINT, as it does for a person) and
+  waits for the output, with the transcript in every failure. `ptytest.WaitInputRead` is the barrier between "I typed a line"
+  and "the program has it". A bug in how a program and its terminal fit together (chat's Ctrl-C ended the session) does not
+  show in a test that calls a function or sends a signal itself.
 - CI runs the suite on Linux (as an ordinary user, not root) and macOS (`.github/workflows/ci.yml`, also runnable by
   hand from the Actions tab); Windows is built, not tested. Things the first runs found, so that the next test does not
   repeat them:

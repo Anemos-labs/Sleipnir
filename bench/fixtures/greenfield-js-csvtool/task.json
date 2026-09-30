@@ -1,0 +1,13 @@
+{
+  "id": "greenfield-js-csvtool",
+  "kind": "greenfield",
+  "lang": "javascript",
+  "difficulty": "medium",
+  "prompt": "Build `csvtool` from scratch: a Node.js (v22, no npm packages, only `node:` built-ins) command line tool for small CSV files. Read README.md first: it is the complete specification. It defines the CSV quoting rules for reading and writing, the five subcommands `head N`, `select COLS`, `filter COL OP VALUE` (operators `=` `!=` `<` `<=` `>` `>=` `contains`), `sort COL [--desc] [--numeric]` and `stats COL`, how numbers and strings are compared, the number format of `stats`, every error message with its exit status, and the order in which errors are reported, with worked examples.\n\nCreate `bin/csvtool.js` (the entry point, run as `node bin/csvtool.js COMMAND ...`; it reads the CSV file given as the last argument, or standard input, and writes CSV to standard output) and any modules you like under `src/`; `package.json` is given. Hidden acceptance tests will spawn the tool with `child_process`, feed it standard input, and compare standard output, standard error and the exit status exactly; so follow the README to the letter, where it is precise it is meant literally. The visible `test/example.test.js` shows how the tests run the tool; do not edit it. Check your work with `npm test` (it runs `node --test test/*.test.js`).",
+  "verify": "node --test test/*.test.js",
+  "timeout_s": 300,
+  "protected": ["test/example.test.js"],
+  "team": {"mode": "swarm", "agents": 3},
+  "tags": ["javascript", "node", "greenfield", "medium", "fixture"],
+  "budget": {"steps": 80, "requests": 160, "wall_s": 1800}
+}

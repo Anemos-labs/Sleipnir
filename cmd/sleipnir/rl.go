@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -36,6 +37,8 @@ in a clean checkout, scores it, and writes trainer-ready data (docs/TRAINING-DAT
   eval       run held-out tasks and report pass@k, cost and protocol quality
   serve      HTTP rollout server for a trainer
   reward     re-score a run directory with different reward weights
+  report     what runs measured: pass rate with its interval, cost, cache hits, friction (table, markdown, json)
+  compare    two runs or saved reports over the tasks both ran, with paired intervals and pass/fail gates
   export     write trainer-ready data: steps, tokens, groups, sft, dpo, kto, atif, canonical
   expand     turn a deduplicated canonical export back into inline form
   verify     replay every recorded prompt and check it against its wire hash
@@ -404,6 +407,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	dry := fs.Bool("dry-run", false, "print the new rewards without rewriting episode.json")
 	list := fs.Bool("list-targets", false, "list the target-price presets and exit")
 	probes := fs.Bool("probes", true, "run compaction fidelity probes")
+	redetect := fs.Bool("redetect-hacks", false, "forget the hack:* flags a previous scoring stored and detect them again (scoring never removes a flag by itself; use this after a detector was fixed)")
 	paths, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
@@ -464,7 +468,16 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		}
 		c := cfg
 		c.Prompts = promptText(cache, s.Dir)
+		// Where the run worked, from its own log: the detector cannot guess it (see traj.Run.WorkspaceRoots).
+		run, err := cache.get(s.Dir)
+		if err != nil {
+			return fmt.Errorf("rl reward: %s: %w", s.Dir, err)
+		}
+		c.WorkspaceRoots = append(slices.Clone(cfg.WorkspaceRoots), run.WorkspaceRoots()...)
 		was := ep.Reward.Total
+		if *redetect {
+			ep.Flags = slices.DeleteFunc(slices.Clone(ep.Flags), func(f string) bool { return strings.HasPrefix(f, "hack:") })
+		}
 		if err := reward.Score(ep, task, c, reward.DiffsFromBlobs(blobs.Get)); err != nil {
 			return fmt.Errorf("rl reward: %s: %w", ep.ID, err)
 		}

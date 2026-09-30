@@ -22,7 +22,10 @@
 //   - Hack detection reads evidence the policy cannot rewrite: the harness's
 //     own unified diff (before protected paths are stripped), the tool calls
 //     it made, and the task's verifier definition. Flags never disappear once
-//     set, and any hack:* flag forces the outcome component to zero.
+//     set, and any hack:* flag forces the outcome component to zero. Protected
+//     paths are judged by the diff when there is one (a new file under a
+//     protected glob is a scratch file, not tampering: the verifier discards
+//     it), and by the tool calls only when there is not.
 //   - Cost is priced like production: the recorded request recipes (prompt
 //     sizes, shared prefixes, timing) are replayed through a deterministic
 //     prefix-cache model of the *target* provider, not the one the rollout

@@ -233,8 +233,8 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 		if err := json.Unmarshal(b, &c2); err != nil {
 			return nil, &provider.Error{Kind: provider.ErrServer, Message: "unparseable response: " + provider.SanitizeText(err.Error(), 0), Raw: provider.CapRaw(b)}
 		}
-		if c2.Error != nil {
-			return nil, mapInBandError(c2.Error)
+		if e := errorFrame(c2.Error); e != nil {
+			return nil, mapInBandError(e)
 		}
 		if c2.Usage != nil {
 			acc.rawUsage = rawUsageOf(b)
@@ -377,6 +377,9 @@ func mapHTTPError(status int, h http.Header, body []byte) *provider.Error {
 	// possibly to other agents: bounded, and stripped of control characters,
 	// escape sequences and invisible characters.
 	msg = provider.SanitizeText(msg, provider.MaxErrorText)
+	if msg == "" {
+		msg = strings.TrimSpace(fmt.Sprintf("HTTP %d %s", status, http.StatusText(status)))
+	}
 	e.Message = msg
 	if d, ok := provider.ParseRetryAfter(h.Get("Retry-After"), time.Now(), 0); ok {
 		e.RetryAfter = d
@@ -414,7 +417,17 @@ func mapInBandError(e *apiError) *provider.Error {
 	if json.Unmarshal(e.Code, &n) == nil {
 		code = n
 	}
-	pe := &provider.Error{Status: code, Message: provider.SanitizeText(e.Message, provider.MaxErrorText), Raw: provider.CapRaw(mustJSON(e))}
+	msg := provider.SanitizeText(e.Message, provider.MaxErrorText)
+	if msg == "" {
+		msg = "the endpoint sent an error with no message" // the frame is in Raw
+	}
+	pe := &provider.Error{Message: msg, Raw: provider.CapRaw(mustJSON(e))}
+	// Status is an HTTP status. The code of an in-band error is whatever number the
+	// endpoint chose (a negative one, a four-digit vendor code): it still decides the
+	// kind below, but it is not reported as "http 1234".
+	if code >= 100 && code <= 599 {
+		pe.Status = code
+	}
 	switch {
 	case code == 429:
 		pe.Kind = provider.ErrRateLimit

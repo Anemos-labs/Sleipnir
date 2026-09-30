@@ -1,0 +1,87 @@
+# MailFlow: ✉ from ➜ to “subject” and the cost; the newest message arrives over four frames after its Born
+
+== frame 9 (width 46, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”        312 tok|
+✉ m0 ➜ w5 “start e2e after t3”          96 tok|
+✉ w4 ➜ m0 “done: table paged”           88 tok|
+✉ w2 ➜ w1                                     |
+
+== frame 10 (width 46, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”        312 tok|
+✉ m0 ➜ w5 “start e2e after t3”          96 tok|
+✉ w4 ➜ m0 “done: table paged”           88 tok|
+✉ w2 ➜ w1                                     |
+
+== frame 11 (width 46, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”        312 tok|
+✉ m0 ➜ w5 “start e2e after t3”          96 tok|
+✉ w4 ➜ m0 “done: table paged”           88 tok|
+✉ w2 ➜ w1 “rename”                            |
+
+== frame 12 (width 46, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”        312 tok|
+✉ m0 ➜ w5 “start e2e after t3”          96 tok|
+✉ w4 ➜ m0 “done: table paged”           88 tok|
+✉ w2 ➜ w1 “rename ListO”                      |
+
+== frame 13 (width 46, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”        312 tok|
+✉ m0 ➜ w5 “start e2e after t3”          96 tok|
+✉ w4 ➜ m0 “done: table paged”           88 tok|
+✉ w2 ➜ w1 “rename ListOptions?”         41 tok|
+
+== frame 14 (width 46, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”        312 tok|
+✉ m0 ➜ w5 “start e2e after t3”          96 tok|
+✉ w4 ➜ m0 “done: table paged”           88 tok|
+✉ w2 ➜ w1 “rename ListOptions?”         41 tok|
+
+== frame 40 (width 46, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”        312 tok|
+✉ m0 ➜ w5 “start e2e after t3”          96 tok|
+✉ w4 ➜ m0 “done: table paged”           88 tok|
+✉ w2 ➜ w1 “rename ListOptions?”         41 tok|
+# other widths: the tokens go first, then the subject is cut
+
+== width 36, settled (width 36, 4 lines)
+✉ w1 ➜ w3 “schema: GET /orders”     |
+✉ m0 ➜ w5 “start e2e after t3”      |
+✉ w4 ➜ m0 “done: table paged”       |
+✉ w2 ➜ w1 “rename ListOptions?”     |
+
+== width 30, settled (width 30, 4 lines)
+✉ w1 ➜ w3 “schema: GET /order…|
+✉ m0 ➜ w5 “start e2e after t3”|
+✉ w4 ➜ m0 “done: table paged” |
+✉ w2 ➜ w1 “rename ListOptions…|
+
+== width 24, settled (width 24, 4 lines)
+✉ w1 ➜ w3 “schema: GET …|
+✉ m0 ➜ w5 “start e2e af…|
+✉ w4 ➜ m0 “done: table …|
+✉ w2 ➜ w1 “rename ListO…|
+
+== width 16, settled (width 16, 4 lines)
+✉ w1 ➜ w3 “sche…|
+✉ m0 ➜ w5 “star…|
+✉ w4 ➜ m0 “done…|
+✉ w2 ➜ w1 “rena…|
+
+== width 10, settled (width 10, 4 lines)
+✉ w1 ➜ w3 |
+✉ m0 ➜ w5 |
+✉ w4 ➜ m0 |
+✉ w2 ➜ w1 |
+# the arrival at width 30: the subject is typed a third at a time
+
+== width 30, frame 10 (width 30, 1 lines)
+✉ w2 ➜ w1                     |
+
+== width 30, frame 11 (width 30, 1 lines)
+✉ w2 ➜ w1 “rename”            |
+
+== width 30, frame 12 (width 30, 1 lines)
+✉ w2 ➜ w1 “rename ListO”      |
+
+== width 30, frame 13 (width 30, 1 lines)
+✉ w2 ➜ w1 “rename ListOptions…|

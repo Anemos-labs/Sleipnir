@@ -65,6 +65,12 @@ func (b *evb) write(p []byte) {
 	if _, err := f.Write(p); err != nil {
 		b.t.Fatal(err)
 	}
+	// The builder lives on a fake timeline (t0 is a fixed date) and the views decide "live" and "idle" by comparing the clock they
+	// are given with the log's modification time, so the file's time must be on that timeline too: with the real time it is
+	// ahead of any fake "now" once that date has passed, and every test of an old log became a test of a live one.
+	if err := os.Chtimes(b.path, b.now, b.now); err != nil {
+		b.t.Fatal(err)
+	}
 }
 
 // emit appends one event and returns its seq.

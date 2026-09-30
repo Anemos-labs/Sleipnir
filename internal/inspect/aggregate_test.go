@@ -869,6 +869,13 @@ func TestSessionStateAndMeta(t *testing.T) {
 			if b.seq == 0 {
 				b.raw("")
 			}
+			// A log is live when it was written to recently, by its file's modification time as well
+			// as by its last event: with the clock of the test injected, the file has to say when it
+			// was written in that clock too, or the state depends on the day the test runs on (a file
+			// written "now" is newer than an injected time in the past, and so always live).
+			if err := os.Chtimes(b.path, b.now, b.now); err != nil {
+				t.Fatal(err)
+			}
 			s, err := LoadWith(b.dir, Options{Now: func() time.Time { return tc.now }})
 			if err != nil {
 				t.Fatal(err)

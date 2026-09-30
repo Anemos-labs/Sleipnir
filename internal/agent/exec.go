@@ -152,7 +152,7 @@ func (a *Agent) budgetResults(results []core.Block, refused int) {
 }
 
 func (a *Agent) readOnly(c core.Block) bool {
-	t, ok := a.cfg.Tools.Get(c.ToolName)
+	t, ok := a.cfg.Tools.Get(a.toolNameFor(c.ToolName))
 	if !ok {
 		return true // errors are cheap and side-effect free
 	}
@@ -173,7 +173,12 @@ func (a *Agent) env() *tools.Env {
 func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 	start := time.Now()
 	a.cfg.Sink.ToolStart(a.cfg.ID, call)
-	a.emit(events.TypeToolCall, map[string]any{"id": call.ToolID, "name": call.ToolName, "input": json.RawMessage(call.Input)})
+	name := a.toolNameFor(call.ToolName)
+	callEvent := map[string]any{"id": call.ToolID, "name": call.ToolName, "input": json.RawMessage(call.Input)}
+	if name != call.ToolName {
+		callEvent["as"] = name // what the model wrote is kept as it wrote it; this is the tool that ran
+	}
+	a.emit(events.TypeToolCall, callEvent)
 
 	var res *tools.Result
 	defer func() {
@@ -193,13 +198,13 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 		res = tools.Errorf("interrupted before %s ran", call.ToolName)
 		return
 	}
-	t, ok := a.cfg.Tools.Get(call.ToolName)
+	t, ok := a.cfg.Tools.Get(name)
 	if !ok {
-		res = tools.Errorf("unknown tool %q", call.ToolName)
+		res = tools.Errorf("%s", unknownToolMessage(a.cfg.Tools.Names(), call.ToolName))
 		res.Meta = withErrorKind(res.Meta, ErrKindUnknownTool)
 		return
 	}
-	hc := ToolHookCall{Agent: a.cfg.ID, Role: a.cfg.Role, Tool: call.ToolName, Input: call.Input}
+	hc := ToolHookCall{Agent: a.cfg.ID, Role: a.cfg.Role, Tool: name, Input: call.Input}
 	var hookText []string
 	if h := a.cfg.Hooks; h != nil {
 		o := h.BeforeTool(ctx, hc)
@@ -218,7 +223,7 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 	}
 	var err error
 	tctx, stopClock := a.toolContext(ctx)
-	res, err = t.Run(tctx, &tools.Call{ID: call.ToolID, Name: call.ToolName, Input: call.Input, Env: a.env()})
+	res, err = t.Run(tctx, &tools.Call{ID: call.ToolID, Name: name, Input: call.Input, Env: a.env()})
 	timedOut := tctx.Err() == context.DeadlineExceeded && ctx.Err() == nil
 	stopClock()
 	if err != nil {
@@ -289,3 +294,102 @@ func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Durat
 }
 
 var _ = fmt.Sprintf
+
+// toolNameFor is the tool a call's name means (see repairToolName).
+func (a *Agent) toolNameFor(name string) string {
+	return repairToolName(func(n string) bool { _, ok := a.cfg.Tools.Get(n); return ok }, name)
+}
+
+// repairToolName maps a tool name that a model wrote with pieces of its own chat format still attached to the tool it means. Some
+// models served through gateways leak their format into the name ("read<|channel|>commentary": the harmony format of gpt-oss),
+// or qualify it with a namespace ("functions.read"). The call is unambiguous and refusing it costs the model a step, and a small
+// model may not recover at all, so the dispatcher runs the tool the name obviously means. The name is returned unchanged when it
+// already is a tool, or when no tool results from the repair; nothing is guessed beyond cutting what is not a name.
+func repairToolName(has func(string) bool, name string) string {
+	if has(name) {
+		return name
+	}
+	cand := name
+	if i := strings.Index(cand, "<|"); i >= 0 {
+		cand = cand[:i]
+	}
+	cand = strings.Trim(cand, " \t\r\n.:;,\"'`")
+	for _, ns := range []string{"functions.", "function.", "tools.", "tool."} {
+		cand = strings.TrimPrefix(cand, ns)
+	}
+	if cand != "" && cand != name && has(cand) {
+		return cand
+	}
+	return name
+}
+
+// toolAliases are names models commonly use for what Sleipnir's tools do. They are only ever suggested, never run: the
+// arguments of a borrowed name may not be the arguments of ours.
+var toolAliases = map[string]string{
+	"search": "grep", "grep_search": "grep", "ripgrep": "grep", "rg": "grep", "find_in_files": "grep",
+	"read_file": "read", "open_file": "read", "open": "read", "cat": "read", "view": "read", "view_file": "read", "readfile": "read",
+	"write_file": "write", "create_file": "write", "create": "write", "writefile": "write",
+	"edit_file": "edit", "str_replace": "edit", "str_replace_editor": "edit", "replace": "edit", "editfile": "edit",
+	"run": "bash", "shell": "bash", "sh": "bash", "run_command": "bash", "execute": "bash", "execute_bash": "bash", "terminal": "bash", "exec": "bash",
+	"list_files": "ls", "list_dir": "ls", "list_directory": "ls", "listdir": "ls", "dir": "ls",
+	"find_files": "glob", "file_search": "glob", "find": "glob",
+}
+
+// unknownToolMessage says what the tools are and, when the name is close to one of them or a usual alias of one, which it was.
+func unknownToolMessage(names []string, name string) string {
+	msg := fmt.Sprintf("unknown tool %q. The tools are: %s.", name, strings.Join(names, ", "))
+	if s := suggestTool(names, name); s != "" {
+		msg += fmt.Sprintf(" Did you mean %q?", s)
+	}
+	return msg
+}
+
+func suggestTool(names []string, name string) string {
+	has := map[string]bool{}
+	for _, n := range names {
+		has[n] = true
+	}
+	low := strings.ToLower(strings.TrimSpace(name))
+	if i := strings.Index(low, "<|"); i >= 0 {
+		low = low[:i]
+	}
+	if has[low] {
+		return low
+	}
+	if t, ok := toolAliases[low]; ok && has[t] {
+		return t
+	}
+	limit := 2 // edits; a short name is not close to anything at two
+	if len(low) < 4 {
+		limit = 1
+	}
+	best, bestD := "", limit+1
+	for _, n := range names {
+		if d := editDistance(low, n); d < bestD {
+			best, bestD = n, d
+		}
+	}
+	return best
+}
+
+// editDistance is the Levenshtein distance of two short strings.
+func editDistance(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur := make([]int, len(rb)+1)
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(rb)]
+}

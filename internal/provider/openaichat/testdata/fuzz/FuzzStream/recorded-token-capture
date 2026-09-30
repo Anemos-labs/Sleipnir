@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("data: {\"id\":\"t1\",\"model\":\"local\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"token_ids\":[11,12],\"logprobs\":{\"content\":[{\"logprob\":-0.25},{\"logprob\":-1.5}]}}],\"prompt_token_ids\":[1,2,3,4]}\n\ndata: {\"id\":\"t1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo ✓\"},\"token_ids\":[13],\"logprobs\":{\"content\":[{\"logprob\":-0.125}]}}]}\n\ndata: {\"id\":\"t1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"t1\",\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":3}}\n\ndata: [DONE]\n\n")
+uint16(173)
+bool(true)

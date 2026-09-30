@@ -1,0 +1,112 @@
+name: nightly
+
+# What is too slow or too random for every push: every fuzz target for a few minutes, the whole suite under the race
+# detector three times, coverage, and the drift checks. Nothing here blocks a merge; a red run is a thing to look at in
+# the morning. A fuzz failure uploads the input that made it, which becomes a regression seed once the bug is fixed.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "time for each fuzz target"
+        default: "3m"
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: which packages have fuzz targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      packages: ${{ steps.list.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "packages=$(sh scripts/fuzz.sh --packages)" >> "$GITHUB_OUTPUT"
+
+  fuzz:
+    name: fuzz ${{ matrix.package }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.plan.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: fuzz every target of the package
+        run: sh scripts/fuzz.sh "${{ inputs.fuzztime || '3m' }}" "${{ matrix.package }}"
+      - name: keep the inputs that failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers-${{ strategy.job-index }}
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
+
+  race3:
+    name: the suite under -race, three times
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      # -count=3 runs every test three times in one process: what a test leaves behind (a goroutine, a file, a package
+      # variable) shows up as the second run failing. -shuffle=on finds the tests that depend on another one's order.
+      - run: go test -race -count=3 -shuffle=on -timeout 100m ./...
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - run: go test -count=1 -timeout 50m -coverprofile=cover.out -coverpkg=./internal/...,./cmd/... ./...
+      - name: summary
+        run: |
+          go tool cover -func=cover.out | tail -1 | sed 's/^/total: /' | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Lowest-covered packages:' >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=cover.out | awk '$1 !~ /total/ { split($1, a, ":"); f=a[1]; sub(/\/[^\/]*$/, "", f); s[f]+=substr($3, 1, length($3)-1); n[f]++ } END { for (f in s) printf "%6.1f%%  %s\n", s[f]/n[f], f }' | sort -n | head -15 | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+
+  drift:
+    name: documents and generated files agree with the code
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - run: sh scripts/gen-cli-docs.sh --check
+      - name: README's simulator block is current
+        run: |
+          cp README.md /tmp/README.before
+          sh scripts/readme-sim.sh
+          diff -u /tmp/README.before README.md || { echo "README.md's sim block is stale: run make readme-sim"; exit 1; }
+      - name: the recorded demo matches what the interface draws
+        run: |
+          if [ -f scripts/record-demo.sh ]; then sh scripts/record-demo.sh --check; fi

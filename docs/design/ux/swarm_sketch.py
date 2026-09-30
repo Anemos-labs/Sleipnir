@@ -1,6 +1,7 @@
 import random
 from sketchlib import *
 import horse as H
+import sprite as SP
 
 P = PAL
 INK = {"a": "#d6336c", "b": "#1c7ed6", "c": "#2b8a3e", "d": "#e8590c", "e": "#7048e8"}
@@ -9,14 +10,15 @@ STATE = dict(think="#bb9af7", tool="#9ece6a", wait="#e0af68", idle="#565f89", st
 
 
 def mini_stack(s, x, y, w, shared, hit, tint):
-    """One agent's prompt as a small bar: the inherited shared prefix (bright gradient) then its own layers."""
+    """One agent's prompt as a small bar: the inherited shared prefix (bright gradient) then its own layers. Lower-half blocks, so
+    bars of adjacent rows stay apart as they do in a real terminal (full blocks would fuse into one slab)."""
     g = [LAYER["G0"], LAYER["G1"], LAYER["G2"]]
     for i in range(w):
         if i < shared:
-            s.put(x + i, y, "█", g[min(2, i * 3 // max(1, shared))])
+            s.put(x + i, y, "▄", g[min(2, i * 3 // max(1, shared))])
         else:
             cached = (i - shared) < (w - shared) * hit
-            s.put(x + i, y, "█" if cached else "░", tint, dim=not cached)
+            s.put(x + i, y, "▄", tint, dim=not cached)
 
 
 def lane(rnd, n, bias):
@@ -31,33 +33,57 @@ def lane(rnd, n, bias):
     return out[:n]
 
 
+class Shifted(Screen):
+    """Rows from from_y down are pushed dy rows lower, so the header can grow without renumbering the rest of the sketch."""
+    def __init__(self, cols, rows, dy=3, from_y=12):
+        super().__init__(cols, rows + dy)
+        self.dy, self.from_y, self.raw = dy, from_y, False
+
+    def _y(self, y):
+        return y + self.dy if y >= self.from_y and not self.raw else y
+
+    def put(self, x, y, text, *a, **k):
+        return super().put(x, self._y(y), text, *a, **k)
+
+    def fill(self, x, y, w, h, bg):
+        return super().fill(x, self._y(y), w, h, bg)
+
+    def box(self, x, y, w, h, *a, **k):
+        return super().box(x, self._y(y), w, h, *a, **k)
+
+
 def swarm():
     cols, rows = 112, 51
-    s = Screen(cols, rows)
-    s.box(0, 0, cols, rows, "", P["faint"])
+    s = Shifted(cols, rows)
+    s.box(0, 0, cols, rows + 3, "", P["faint"])
     s.runs(2, 0, [(" SLEIPNIR ", P["magenta"], None, "b"), ("▸ ", P["dim"]), ('swarm “add pagination to every list endpoint…” ', P["fg"])])
     stats = "◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% "
     s.put(cols - 2 - len(stats), 0, stats, P["fg"])
 
-    # horse
-    rnd = random.Random(7)
-    g = H.horse(1)
-    hips = [11, 13, 16, 18, 25, 27, 30, 32]
-    leg_cols = [ROLE["backend"], ROLE["backend"], ROLE["frontend"], ROLE["frontend"], ROLE["tester"], ROLE["reviewer"], ROLE["docs"], ROLE["manager"]]
-    for cy, row in enumerate(H.halfblocks(g)):
-        for cx, ch in enumerate(row):
-            if ch == " ":
+    # horse: the official mark rasterised (sprite.py), medium size: 13 terminal rows
+    s.raw = True
+    SP.use("medium")
+    px = SP.frame(0)
+    for cy in range(0, len(px), 2):
+        top = px[cy].ljust(SP.W)
+        bot = px[cy + 1].ljust(SP.W) if cy + 1 < len(px) else " " * SP.W
+        for cx in range(SP.W):
+            t, u = top[cx], bot[cx]
+            ct, cu = SP.PAL.get(t), SP.PAL.get(u)
+            if not ct and not cu:
                 continue
-            if cy >= 5:
-                k = min(range(8), key=lambda i: abs(hips[i] + (cy - 5) * 0 - (cx)))
-                col = leg_cols[k]
+            if ct and cu and ct == cu:
+                s.put(3 + cx, 1 + cy // 2, "█", ct)
+            elif ct and cu:
+                s.put(3 + cx, 1 + cy // 2, "▀", ct, cu)
+            elif ct:
+                s.put(3 + cx, 1 + cy // 2, "▀", ct)
             else:
-                col = "#9d7cd8" if cx < 30 else "#bb9af7"
-            s.put(3 + cx, 2 + cy, ch, col)
-    s.put(3, 11, "eight legs · eight riders", P["dim"])
+                s.put(3 + cx, 1 + cy // 2, "▄", cu)
+    s.put(3, 14, "eight legs · eight riders", P["dim"])
 
-    # shared prefix panel
-    s.box(52, 1, 58, 10, "one prefix, eight riders", P["faint"])
+    # shared prefix panel (raw rows: it sits in the header)
+    s.box(52, 1, 58, 13, "one prefix, eight riders", P["faint"])
     s.runs(54, 2, [("shared G0–G2 ", P["fg"], None, "b"), ("41.2k tokens  ", P["dim"]), ("◕ warm 3:41 ", P["yellow"]), ("▰▰▰▰▰▰▰", P["yellow"]), ("▱", P["faint"])])
     x = 54
     for name, n in (("G0", 20), ("G1", 16), ("G2", 10)):
@@ -69,10 +95,11 @@ def swarm():
     heavy = [0, 2, 2, 1, 1, 0, 0, 1]
     for i, lab in enumerate(labels):
         cx = 56 + i * 6
-        for j in range(3):
+        for j in range(5):
             s.put(cx + 1, 6 + j, "┃" if heavy[i] == 2 else "│" if heavy[i] else "╎", LAYER["G1"], dim=(heavy[i] == 0))
-        s.put(cx, 9, lab, P["fg"], bold=True)
-    s.put(54, 10, "", P["dim"])
+        s.put(cx, 11, lab, P["fg"], bold=True)
+    s.put(54, 12, "every rider reads the same cached 41.2k: none re-reads it at full price", P["dim"])
+    s.raw = False
 
     # agents board
     s.put(0, 12, "├" + "─" * (cols - 2) + "┤", P["faint"])
@@ -185,14 +212,14 @@ def swarm():
     notes = [
         (4, 1, INK["e"], ["Eight legs, eight workers: a leg lifts while", "its worker runs a tool; the gait quickens", "with load. Idle = a standing horse.", "(--no-anim: standing horse, no motion)"]),
         (6, 2, INK["a"], ["SPAWN = CACHE FORK. One cached prefix", "(G0–G2, 41.2k) carries every rider; a new", "worker pays a cache READ for it plus a", "two-line task card, never a full-price re-read."]),
-        (15, 3, INK["c"], ["each row's bar: bright = inherited from", "the shared prefix, dimmer = the agent's own", "notes and thread. w7's went dark: it lost", "its cache, and the ⛁ column says 88%."]),
-        (17, 4, INK["d"], ["states: ⠹ thinking ⚙ tool ✎ edit", "✉ waiting on mail ◌ idle ✓ done", "⚠ stuck (the repeat guard fired)"]),
-        (26, 5, INK["b"], ["swarm gantt: the last minute of every agent.", "✉ mail  ◆ compaction  ⚠ stuck — the", "parallelism you paid for, made visible."]),
-        (36, 6, INK["e"], ["verified merges: rebase, verify, merge;", "a failure bounces back to its worker", "with the output."]),
-        (37, 7, INK["c"], ["at 50 agents the board becomes a heatmap;", "arrow keys focus one agent and open its", "live transcript."]),
+        (18, 3, INK["c"], ["each row's bar: bright = inherited from", "the shared prefix, dimmer = the agent's own", "notes and thread. w7's went dark: it lost", "its cache, and the ⛁ column says 88%."]),
+        (20, 4, INK["d"], ["states: ⠹ thinking ⚙ tool ✎ edit", "✉ waiting on mail ◌ idle ✓ done", "⚠ stuck (the repeat guard fired)"]),
+        (29, 5, INK["b"], ["swarm gantt: the last minute of every agent.", "✉ mail  ◆ compaction  ⚠ stuck — the", "parallelism you paid for, made visible."]),
+        (39, 6, INK["e"], ["verified merges: rebase, verify, merge;", "a failure bounces back to its worker", "with the output."]),
+        (40, 7, INK["c"], ["at 50 agents the board becomes a heatmap;", "arrow keys focus one agent and open its", "live transcript."]),
     ]
     WR = 40 + int(cols * CW + 28)
     return page(s, "Sleipnir watch: a swarm at work (design sketch)",
                 "full-screen cockpit for swarm runs: sleipnir watch SESSION (live) · sleipnir replay SESSION (recorded)",
-                "sleipnir watch — swarm “add pagination…” — 112×51",
+                "sleipnir watch — swarm “add pagination…” — 112×54",
                 place_notes(WR, [(r, n, c, l, cols - 1) for r, n, c, l in notes]), extra_w=430)

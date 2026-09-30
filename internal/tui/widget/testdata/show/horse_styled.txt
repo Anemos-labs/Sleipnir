@@ -1,0 +1,24 @@
+# styles of the small horse: body, hair, eye and hoof colours; legs r1..r5 by role; a cell of two colours is fg/bg
+# busy legs are Bold; idle legs are the role colour faded towards faint (no attribute at 24-bit colour)
+
+== frame 1, legs 1 and 4 busy
+                         {body|▄▄}
+                      {hair|▄}{body|▄██}{eye/body|▀}{body|█▄}
+                    {hair|▄█}{hair/body|▀}{body|██▀▀██}
+      {hair|▄▄▄▄}{body|▄▄████████}{hair|█}{hair/body|▀}{body|██▀}
+   {hair|▄████▀}{hair/body|▀}{body|█████████████}
+    {hair|▀▀}   {#267b26|▄}{body/#267b26|▀}{body/r1|▀▀}{body|██}{#267c26|█}{body|██}{body/#267c26|▀▀}{body|█}{body/#267d26|▀}{#267d26|▄}
+         {#267b26|██}{r1+b|█} {#267b26|█} {#267c26|█}{r2+b|██}{#267c26|██}{#267d26|█▀█}
+         {#267b26|█}{#267b26/r1|▀}{r1+b|█} {#267b26|█} {#267c26|█}{r2+b|█} {#267c26|██}{#267d26|█} {#267d26|█}
+         {hoof|█}{r1/hoof+b|▀▀} {hoof|█} {hoof|█}{r2/hoof+b|▀}{hoof|▄}{#267c26/hoof|▀}{hoof|█}{#267d26/hoof|▀}{hoof|▄█}
+
+== standing
+                         {body|▄▄}
+                      {hair|▄}{body|▄██}{eye/body|▀}{body|█▄}
+                    {hair|▄█}{hair/body|▀}{body|██▀▀██}
+      {hair|▄▄▄▄}{body|▄▄████████}{hair|█}{hair/body|▀}{body|██▀}
+   {hair|▄████▀}{hair/body|▀}{body|█████████████}
+    {hair|▀▀}   {r0|▄}{body/r0|▀}{body/r1|▀▀}{body|██}{r2|█}{body|██}{body/r3|▀▀}{body|█}{body/r5|▀}{r5|▄}
+         {r0|██}{r1|█▀█} {r2|███}{r3|██}{r4|█}{r5|▀█}
+         {r0|█▀}{r1|█} {r1|█} {r2|█} {r2|█}{r3|██}{r4|█} {r5|█}
+         {hoof|█▄█▄█} {hoof|█▄}{hoof/hoof|▀}{r3/hoof|▀}{hoof|█}{r4/hoof|▀}{hoof|▄█}

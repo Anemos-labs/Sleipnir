@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("data: {\"id\":\"e1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial ü\"}}]}\n\ndata: {\"error\":{\"code\":429,\"message\":\"rate limited\\u001b]52;c;ZXZpbA==\\u0007 slow\\n\\ndown \\u001b[2J\",\"metadata\":{\"provider_name\":\"Acme\"}}}\n\ndata: [DONE]\n\n")
+uint16(76)
+bool(false)

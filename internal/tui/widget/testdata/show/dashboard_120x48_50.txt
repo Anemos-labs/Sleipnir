@@ -1,0 +1,51 @@
+# Dashboard at 120x48 with 50 agents, frame 12 (the last mail is arriving); the layout is what fits: read what is there and what is left out
+
+== 120x48, 50 agents (width 120, 48 lines)
+╭ SLEIPNIR ▸ swarm “add pagination to every list endpoint…” ───────────────── ◷ 02:10 · 50 agents · $0.31/$20 · ⛁ 94% ─╮|
+│                                ▄▄             │ one prefix, 50 riders                                                │|
+│                             ▄▄██▀█▄           │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▰▰▰▱▱                      │|
+│                           ▄█▀██▀▀██           │                                                                      │|
+│             ▄▄▄▄▄▄█████████▀██▀               │ ████████████████████████████████████████████████████████████████████ │|
+│          ▄████▀▀█████████████                 │           G0                        G1                    G2         │|
+│           ▀▀   ▄▀▀▀█████▀▀█▀▄                 │   ╎   ┃   ┃   │   │   ╎   ╎   │   ┃   ┃   ┃   ┃   ┃   ┃   ┃   ┃      │|
+│                ███ ██████████▄                │   ╎   ┃   ┃   │   │   ╎   ╎   │   ┃   ┃   ┃   ┃   ┃   ┃   ┃   ┃      │|
+│               ▄█▄████▀█ ██ █ ▀█▄              │   ╎   ┃   ┃   │   │   ╎   ╎   │   ┃   ┃   ┃   ┃   ┃   ┃   ┃   ┃      │|
+│              ▄▀ ▀▀▀▀▀▄▀▄▀█ ▀▀  ▀              │   m0  w1  w2  w3  w4  w5  w6  w7  w8  w9 w10 w11 w12 w13 w14 w15 +34 │|
+│                                               │                                                                      │|
+├─ agents ──────────────────────────────────────┴──────────────────────────────────────────────────────────────────────┤|
+│ AGENT        STATE   DOING                                    PROMPT                     TOK    COST    ⛁ LEASE      │|
+│ m0 manager   ⠹ think plan: split by endpoint                  █████████████████████▓░  12.1k  $0.012  96% —          │|
+│ w1 backend   ⚙ tool  go test ./orders/...                     █████████████▏███████▓░  72.2k  $0.020  97% orders/*   │|
+│ w2 backend   ✎ edit  internal/users/list.go                   ██████████████▏██████▓░  69.6k  $0.018  95% users/*    │|
+│ w3 frontend  ✉ wait  schema: GET /orders                      █████████████▏███████▓░  34.2k  $0.009  96% web/api    │|
+│ w4 frontend  ⠦ think paginate <Orders>                        ███████████▏█████████▓░  44.6k  $0.014  94% web/ord    │|
+│ w5 tester    ◌ idle  waits for t3 merge                       ████████████████████▓░░   6.8k  $0.004  91% —          │|
+│ w7 docs      ⚠ stuck npm test - same failure                  ██████████████▏████▓░░░  48.0k  $0.012  88% docs/*     │|
+│ w17 frontend ⚠ stuck go test ./...                            ███████████▏███████▓░░░  82.7k  $0.021  85% docs/*     │|
+│ w42 backend  ⚠ stuck internal/orders/list.go                  ████████████████▏██▓░░░  58.8k  $0.009  88% —          │|
+│ … and 41 more (all of them are in the heatmap)                                                                       │|
+├─ swarm gantt · last 60 s ──────────────────────────────────────┬─ task board ────────────────────────────────────────┤|
+│ m0  ▄▄▁  ▂  ▇▆▄▅▅▆▂▁▂▂▅▅█▇▅▅█▅▄▇▇▄▆  ▂▁ ▁ ▂ ▁▂ ◆ ▄▆▅▆▅▇▇▆▄▆▆▅▇ │ todo 3       running 4    verifying 1  merged 5     │|
+│ w1  ▄▄█▆█▇▄▄▇▆▅▆✉▅▅▅▇▄██▄▄▆▅█▆▅▄▅▄█▆▆██▇ ▁▁▁ ▂ ▁▅██▄▅▇▅▅▆▇▅▄▄█ │ ▢ t9  docs   ▣ t3 ord     ◌ t7         ✓ t1 ✓ t2    │|
+│ w2  ▁▁▁█▄▆▆▆▆▇▆▇▇▅▄▆▅██▅█▆▄▇▄▇█▇▅▄▆▇▇▁▂▂▁▂ ▂▂ ▂ ▂▁▆▇█▆█▄▇▄▇▇▇▆ │ ▢ t10 e2e    ▣ t4 usr                  ✓ t4 ✓ t5    │|
+│ w3  ▁▂▁▆▆█▇▄▇  ▂▂▂▂▇▆▇▇▆▅▂▂▁▁▂  ▁▂▁▂▇▇▄▅▄✉██▂▂▁▂  ▂█▇▅▆▆▇▅▆▇▆█ │ ▢ t11 doc    ▣ t5 web                  ✓ t6         │|
+│ w4  ▅▅█▆▂▂▁ ▄▆▇▄▇▅▅▆▄█▄▆▄▆▅▅█▅▅█▂▁▁ ▂▆▄▅▆▅▄▆▇▇█▆▄▇▆▄▆    ▂ ▂▄█ │              ▣ t6 cli                               │|
+│ w5   ▂▁▂▁   ▂▁▁ ▂▁▁▁     ▂▂▁ ▂▂▁▂▁ ▁▁▂▂  ▂▁ ▂▁▁▁ ▂▂▁▂▁▁▂▁▁▁▁▂▂ │                                                     │|
+│ w7  ▁ ▂  ▂▁ ▇▇██▇█▆▄▄▄▇▅▇██▄▇█▇█▆▆▆▄▄█▅▅█▅▅▄▄▇▄▄▂ ▂▁ ▁▁⚠▂▂ ▁▁▂ │                                                     │|
+│ w17 ▂   ▂▁▂▁▂ ▂▁ ▂▄▆▅▄█▄▅▆▇▄█▇▅▅▁▁▆▆▇▇▇▆▄█ ▂ ▂▆▇▇▇█▄▄▇▆▆▆█▇▆▇█ │                                                     │|
+│ w42 ▁▁▁▁  ▂ ▁ ▂▇▇█▆▅▄█▇██▅▆█▇▄█▄▆██▄▄▆▇▄▄▆▇▅▆▇▇▆▇   ▁▁▁ ▄▇▆ ▂▂ │                                                     │|
+│     -60s                       -30s                        now │                                                     │|
+├─ merge queue ───────────────┬─ mail ───────────────────────────┼─ governor ───────────┬─ 50 agents ──────────────────┤|
+│ ▸ t7 rebase ✓ ─ verify ⠹    │ ✉ w1 ➜ w3 “schema: GET /orders”  │ rpm 212/240 ▰▰▰▰▰▰▰▱ │ ⠹ ⚙ ✎ ✉ ⠹ ◌ ✓ ⚠ ⠹ ◌ ⠹ ✎ ✎ ⠹  │|
+│     go test ./orders/...    │ ✉ m0 ➜ w5 “start e2e after t3”   │ 429s 0  retries 1    │ ✉ ◌ ⚙ ⚠ ⠹ ✎ ⠹ ✉ ⠹ ⠹ ✉ ⚙ ◌ ⚙  │|
+│   t8 rebase ⠹               │ ✉ w4 ➜ m0 “done: table paged”    │ $0.31/$20 ▰▱▱▱▱▱▱▱▱▱ │ ⠹ ✓ ✓ ✓ ✎ ⠹ ✉ ⚙ ⠹ ◌ ⚙ ⚙ ✓ ⠹  │|
+│                             │ ✉ w2 ➜ w1 “rename ListO”         │ shared prefix 3:41   │ ⚠ ⚙ ⚙ ✓ ✎ ✓ ⚙ ⠹              │|
+│ merged t1 t2 t4 t5 t6       │                                  │ ≈ 6× faster          │                              │|
+│ conflicts 0 · bounced back… │                                  │                      │ ⠹ think 14   ⚙ tool  10      │|
+│                             │                                  │                      │ ✎ edit   6   ✉ wait   5      │|
+│                             │                                  │                      │ ◌ idle   5   ✓ done   7      │|
+│                             │ routed 14 · dup 0 · ignored 1    │                      │ ⚠ stuck  3                   │|
+├─────────────────────────────┴──────────────────────────────────┴──────────────────────┴──────────────────────────────┤|
+│                                                                                                                      │|
+│ ↑↓ agent · enter transcript · m mail · b board · c cache · t stack · p pause · ? help · q back to shell              │|
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯|

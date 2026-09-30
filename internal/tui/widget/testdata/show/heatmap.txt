@@ -1,0 +1,78 @@
+# Heatmap: one cell per agent, a glyph per state (⠹ thinking ⚙ tool ✎ edit ✉ wait ◌ idle ✓ done ⚠ stuck) and a legend with counts
+
+== the sketch's eight agents, 8 columns (width 15, 9 lines)
+⠹ ⚙ ✎ ✉ ⠹ ◌ ✓ ⚠|
+               |
+⠹ think 2      |
+⚙ tool  1      |
+✎ edit  1      |
+✉ wait  1      |
+◌ idle  1      |
+✓ done  1      |
+⚠ stuck 1      |
+
+== fifty agents, 10 columns (width 19, 13 lines)
+⠹ ⚙ ✎ ✉ ⠹ ◌ ✓ ⚠ ⠹ ◌|
+⠹ ✎ ✎ ⠹ ✉ ◌ ⚙ ⚠ ⠹ ✎|
+⠹ ✉ ⠹ ⠹ ✉ ⚙ ◌ ⚙ ⠹ ✓|
+✓ ✓ ✎ ⠹ ✉ ⚙ ⠹ ◌ ⚙ ⚙|
+✓ ⠹ ⚠ ⚙ ⚙ ✓ ✎ ✓ ⚙ ⠹|
+                   |
+⠹ think 14         |
+⚙ tool  10         |
+✎ edit   6         |
+✉ wait   5         |
+◌ idle   5         |
+✓ done   7         |
+⚠ stuck  3         |
+
+== fifty agents, 7 columns (a one-column legend) (width 13, 16 lines)
+⠹ ⚙ ✎ ✉ ⠹ ◌ ✓|
+⚠ ⠹ ◌ ⠹ ✎ ✎ ⠹|
+✉ ◌ ⚙ ⚠ ⠹ ✎ ⠹|
+✉ ⠹ ⠹ ✉ ⚙ ◌ ⚙|
+⠹ ✓ ✓ ✓ ✎ ⠹ ✉|
+⚙ ⠹ ◌ ⚙ ⚙ ✓ ⠹|
+⚠ ⚙ ⚙ ✓ ✎ ✓ ⚙|
+⠹            |
+             |
+⠹ think 14   |
+⚙ tool  10   |
+✎ edit   6   |
+✉ wait   5   |
+◌ idle   5   |
+✓ done   7   |
+⚠ stuck  3   |
+
+== fifty agents, 25 columns (width 49, 7 lines)
+⠹ ⚙ ✎ ✉ ⠹ ◌ ✓ ⚠ ⠹ ◌ ⠹ ✎ ✎ ⠹ ✉ ◌ ⚙ ⚠ ⠹ ✎ ⠹ ✉ ⠹ ⠹ ✉|
+⚙ ◌ ⚙ ⠹ ✓ ✓ ✓ ✎ ⠹ ✉ ⚙ ⠹ ◌ ⚙ ⚙ ✓ ⠹ ⚠ ⚙ ⚙ ✓ ✎ ✓ ⚙ ⠹|
+                                                 |
+⠹ think 14   ⚙ tool  10                          |
+✎ edit   6   ✉ wait   5                          |
+◌ idle   5   ✓ done   7                          |
+⚠ stuck  3                                       |
+
+== three agents, more columns than agents (width 5, 9 lines)
+⠹ ⚙ ✎|
+     |
+⠹ think 1|
+⚙ tool  1|
+✎ edit  1|
+✉ wait  0|
+◌ idle  0|
+✓ done  0|
+⚠ stuck 0|
+
+== default columns (width 19, 11 lines)
+⠹ ⚙ ✎ ✉ ⠹ ◌ ✓ ⚠ ⠹ ◌|
+⠹ ✎ ✎ ⠹ ✉ ◌ ⚙ ⚠ ⠹ ✎|
+⠹ ✉ ⠹              |
+                   |
+⠹ think  8         |
+⚙ tool   2         |
+✎ edit   4         |
+✉ wait   3         |
+◌ idle   3         |
+✓ done   1         |
+⚠ stuck  2         |

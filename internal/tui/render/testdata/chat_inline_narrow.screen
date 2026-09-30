@@ -1,0 +1,29 @@
+34x16 cursor (24,12)
+--- scrollback ---
+sleipnir 0.1|
+a coding-agent harness for swarms|
+|
+> why does the cache miss after th|
+e compaction?|
+|
+The compaction rewrites the thread|
+, which is a declared|
+rebase: every byte after the first|
+ changed one is|
+--- screen ---
+written again at the cache-write p|
+rice, once, for each|
+agent that shares the prefix.|
+|
+● Bash go test ./internal/kv  ✓ 1.|
+4s|
+  ⎿  ok         github.com/reee344|
+/sleipnir/internal/kv|
+  1.402s|
+⠹ Thinking 13s  ↑1.2k ↓340  $0.01…|
+  G0   G1  G2   ▏hit 93%|
+|
+> and what does it cost?|
+? for shortcuts       default mode|
+|
+|

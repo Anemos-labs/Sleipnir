@@ -1,0 +1,110 @@
+# AgentTable: the agents of the sketch; the bar is the prompt (inherited, then own; bright = from the cache, ▓ where that ends, dim = paid)
+
+== eight agents, width 100 (width 100, 9 lines)
+AGENT       STATE   DOING                          PROMPT                  TOK    COST    ⛁ LEASE   |
+m0 manager  ⠋ think plan: split by endpoint        ██████████████████▓░  12.1k  $0.012  96% —       |
+w1 backend  ⚙ tool  go test ./orders/...           ███████████▏██████▓░  72.2k  $0.020  97% orders/*|
+w2 backend  ✎ edit  internal/users/list.go         ████████████▏█████▓░  69.6k  $0.018  95% users/* |
+w3 frontend ✉ wait  schema: GET /orders            ████████████▏█████▓░  34.2k  $0.009  96% web/api |
+w4 frontend ⠼ think paginate <Orders>              ██████████▏███████▓░  44.6k  $0.014  94% web/ord |
+w5 tester   ◌ idle  waits for t3 merge             █████████████████▓░░   6.8k  $0.004  91% —       |
+w6 reviewer ✓ done  approved t2                    ██████████████████▓░   9.9k  $0.006  95% —       |
+w7 docs     ⚠ stuck npm test - same failure        █████████████▏███▓░░  48.0k  $0.012  88% docs/*  |
+
+== eight agents, width 84 (width 84, 9 lines)
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+m0 manager  ⠋ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
+w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
+w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
+w3 frontend ✉ wait  schema: GET /orde… █████████▏████▓░  34.2k  $0.009  96% web/api |
+w4 frontend ⠼ think paginate <Orders>  ████████▏█████▓░  44.6k  $0.014  94% web/ord |
+w5 tester   ◌ idle  waits for t3 merge ██████████████▓░   6.8k  $0.004  91% —       |
+w6 reviewer ✓ done  approved t2        ██████████████▓░   9.9k  $0.006  95% —       |
+w7 docs     ⚠ stuck npm test - same f… ██████████▏██▓░░  48.0k  $0.012  88% docs/*  |
+
+== eight agents, width 70 (width 70, 9 lines)
+AGENT       STATE   DOING           PROMPT            TOK    COST    ⛁|
+m0 manager  ⠋ think plan: split by… ████████████▓░  12.1k  $0.012  96%|
+w1 backend  ⚙ tool  go test ./orde… ████████▏█████  72.2k  $0.020  97%|
+w2 backend  ✎ edit  internal/users… ████████▏███▓░  69.6k  $0.018  95%|
+w3 frontend ✉ wait  schema: GET /o… ████████▏███▓░  34.2k  $0.009  96%|
+w4 frontend ⠼ think paginate <Orde… ███████▏████▓░  44.6k  $0.014  94%|
+w5 tester   ◌ idle  waits for t3 m… ████████████▓░   6.8k  $0.004  91%|
+w6 reviewer ✓ done  approved t2     ████████████▓░   9.9k  $0.006  95%|
+w7 docs     ⚠ stuck npm test - sam… █████████▏█▓░░  48.0k  $0.012  88%|
+
+== eight agents, width 56 (width 56, 9 lines)
+AGENT       STATE   DOING       PROMPT          TOK    ⛁|
+m0 manager  ⠋ think plan: spli… ████████████  12.1k  96%|
+w1 backend  ⚙ tool  go test ./… ███████▏████  72.2k  97%|
+w2 backend  ✎ edit  internal/u… ███████▏██▓░  69.6k  95%|
+w3 frontend ✉ wait  schema: GE… ███████▏████  34.2k  96%|
+w4 frontend ⠼ think paginate <… ██████▏███▓░  44.6k  94%|
+w5 tester   ◌ idle  waits for … ██████████▓░   6.8k  91%|
+w6 reviewer ✓ done  approved t2 ██████████▓░   9.9k  95%|
+w7 docs     ⚠ stuck npm test -… ████████▏█▓░  48.0k  88%|
+
+== eight agents, width 44 (width 44, 9 lines)
+AGENT       STATE   DOING                  ⛁|
+m0 manager  ⠋ think plan: split by end…  96%|
+w1 backend  ⚙ tool  go test ./orders/.…  97%|
+w2 backend  ✎ edit  internal/users/lis…  95%|
+w3 frontend ✉ wait  schema: GET /orders  96%|
+w4 frontend ⠼ think paginate <Orders>    94%|
+w5 tester   ◌ idle  waits for t3 merge   91%|
+w6 reviewer ✓ done  approved t2          95%|
+w7 docs     ⚠ stuck npm test - same fa…  88%|
+
+== eight agents, width 32 (width 32, 9 lines)
+AGENT       STATE   DOING      ⛁|
+m0 manager  ⠋ think plan: …  96%|
+w1 backend  ⚙ tool  go tes…  97%|
+w2 backend  ✎ edit  intern…  95%|
+w3 frontend ✉ wait  schema…  96%|
+w4 frontend ⠼ think pagina…  94%|
+w5 tester   ◌ idle  waits …  91%|
+w6 reviewer ✓ done  approv…  95%|
+w7 docs     ⚠ stuck npm te…  88%|
+
+== eight agents, width 20 (width 20, 9 lines)
+AGENT       STATE  …|
+m0 manager  ⠋ think…|
+w1 backend  ⚙ tool …|
+w2 backend  ✎ edit …|
+w3 frontend ✉ wait …|
+w4 frontend ⠼ think…|
+w5 tester   ◌ idle …|
+w6 reviewer ✓ done …|
+w7 docs     ⚠ stuck…|
+# the spinner of a thinking agent turns with the frame
+
+== frame 0 (width 84, 6 lines)
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+m0 manager  ⠋ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
+w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
+w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
+w3 frontend ✉ wait  schema: GET /orde… █████████▏████▓░  34.2k  $0.009  96% web/api |
+w4 frontend ⠼ think paginate <Orders>  ████████▏█████▓░  44.6k  $0.014  94% web/ord |
+
+== frame 1 (width 84, 6 lines)
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+m0 manager  ⠙ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
+w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
+w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
+w3 frontend ✉ wait  schema: GET /orde… █████████▏████▓░  34.2k  $0.009  96% web/api |
+w4 frontend ⠴ think paginate <Orders>  ████████▏█████▓░  44.6k  $0.014  94% web/ord |
+
+== frame 2 (width 84, 6 lines)
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+m0 manager  ⠹ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
+w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
+w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
+w3 frontend ✉ wait  schema: GET /orde… █████████▏████▓░  34.2k  $0.009  96% web/api |
+w4 frontend ⠦ think paginate <Orders>  ████████▏█████▓░  44.6k  $0.014  94% web/ord |
+# odd rows
+
+== odd rows (width 84, 4 lines)
+AGENT          STATE   DOING       PROMPT              TOK    COST    ⛁ LEASE       |
+a              ⚠ stuck             ················      0  $0.000   0% —           |
+long-agent-na… ◌ idle  x           ░░░░░░░░░░░░░░░░ 10995…   $1e9+    — —           |
+b              ◌ idle              ████████▏███████     20  $0.000 100% docs/**/*.md|

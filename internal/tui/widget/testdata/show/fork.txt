@@ -1,0 +1,124 @@
+# Fork: a worker appears (storyboard panel 3): its row, its bar filling in the shared colours, then only the task card is paid
+
+== progress 0.00, width 56 (width 56, 7 lines)
+shared ████████████████████████████████████████████████ |
+41.2k         G0                G1              G2      |
+                                                        |
+                                                        |
+                                                        |
+new                                                     |
+                                                        |
+
+== progress 0.10, width 56 (width 56, 7 lines)
+shared ████████████████████████████████████████████████ |
+41.2k         G0                G1              G2      |
+               ╎                 ╎               ╎      |
+       ↓ inherited at the cache READ price              |
+                                                        |
+new                                                     |
+                                                        |
+
+== progress 0.25, width 56 (width 56, 7 lines)
+shared ████████████████████████████████████████████████ |
+41.2k         G0                G1              G2      |
+               ╎                 ╎               ╎      |
+       ↓ inherited at the cache READ price              |
+                                                        |
+new    ███████████▓                                     |
+                                                        |
+
+== progress 0.50, width 56 (width 56, 7 lines)
+shared ████████████████████████████████████████████████ |
+41.2k         G0                G1              G2      |
+               ╎                 ╎               ╎      |
+       ↓ inherited at the cache READ price              |
+                                                        |
+new    ███████████████████████████████▓                 |
+                                                        |
+
+== progress 0.70, width 56 (width 56, 7 lines)
+shared ████████████████████████████████████████████████ |
+41.2k         G0                G1              G2      |
+               ╎                 ╎               ╎      |
+       ↓ inherited at the cache READ price              |
+                                                        |
+new    ████████████████████████████████████████████████ |
+       inherits 41.2k                                   |
+
+== progress 0.80, width 56 (width 56, 7 lines)
+shared ████████████████████████████████████████████████ |
+41.2k         G0                G1              G2      |
+               ╎                 ╎               ╎      |
+       ↓ inherited at the cache READ price              |
+                                                        |
+new    ████████████████████████████████████████████████▒|
+       inherits 41.2k                                   |
+
+== progress 1.00, width 56 (width 56, 7 lines)
+shared ████████████████████████████████████████████████ |
+41.2k         G0                G1              G2      |
+               ╎                 ╎               ╎      |
+       ↓ inherited at the cache READ price              |
+                                                        |
+new    ████████████████████████████████████████████████▒|
+       inherits 41.2k · pays 800 (the task card)        |
+# other widths
+
+== finished, width 40 (width 40, 7 lines)
+shared ████████████████████████████████ |
+41.2k      G0          G1         G2    |
+            ╎           ╎          ╎    |
+       ↓ inherited at READ price        |
+                                        |
+new    ████████████████████████████████▒|
+       inherits 41.2k · pays 800        |
+
+== finished, width 30 (width 30, 7 lines)
+shared ██████████████████████ |
+41.2k     G0      G1     G2   |
+           ╎       ╎      ╎   |
+       ↓ inherited            |
+                              |
+new    ██████████████████████▒|
+inherits 41.2k · pays 800     |
+
+== finished, width 20 (width 20, 7 lines)
+shared ████████████ |
+41.2k   G0  G1  G2  |
+         ╎   ╎   ╎  |
+       ↓ inherited  |
+                    |
+new    ████████████▒|
+inherits 41.2k      |
+
+== finished, width 14 (width 14, 1 lines)
+inherits 41.2k|
+# a big task card is as wide as it is big next to the prefix
+
+== inherits 41.2k, pays 12k (width 56, 7 lines)
+shared ██████████████████████████████████████           |
+41.2k       G0             G1          G2               |
+             ╎              ╎           ╎               |
+       ↓ inherited at the cache READ price              |
+                                                        |
+new    ██████████████████████████████████████▒▒▒▒▒▒▒▒▒▒▒|
+       inherits 41.2k · pays 12.0k (the task card)      |
+# no shared prefix: everything is the task card
+
+== nothing shared (width 40, 7 lines)
+shared                                  |
+0                                       |
+                                        |
+                                        |
+                                        |
+new    ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒|
+       inherits 0 · pays 800            |
+
+== nothing at all (width 40, 7 lines)
+shared ·································|
+0                                       |
+                                        |
+       ↓ inherited at READ price        |
+                                        |
+new    ·································|
+       inherits 0 · pays 0              |

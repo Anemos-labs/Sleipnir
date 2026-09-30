@@ -16,16 +16,19 @@ import (
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/session"
+	"github.com/reee344/sleipnir/internal/testutil"
 )
 
 // The test binary re-executes itself as an MCP server (see mcptest.HelperMain):
-// real child processes, real pipes, no fixture binary.
+// real child processes, real pipes, no fixture binary. Otherwise it runs the tests and
+// checks that no goroutine of the module is left behind: a closed session has stopped
+// its agents, its servers and everything they started.
 func TestMain(m *testing.M) {
 	if mcptest.IsHelper() {
 		mcptest.HelperMain()
 		return
 	}
-	os.Exit(m.Run())
+	os.Exit(testutil.CheckLeaks(m))
 }
 
 // refServer is an MCP config entry that runs the reference server as a child of
