@@ -53,7 +53,19 @@ instruction files until you say `--trust-project`.
   manifests are vetted before a rewind writes anything. The log is verbatim by design (exact prompt replay); redaction happens
   when data leaves it (`internal/rl/redact`), so treat session directories like credentials and delete old ones.
 * *The provider key* is put only in the `Authorization` header: never in a URL, in the harness's own error text, or in events.
-  (What a hostile endpoint does with it once received is the endpoint's business.)
+  (What a hostile endpoint does with it once received is the endpoint's business.) It also goes only where you allowed it
+  (`provider.CheckEndpoint`): to the provider's own host, to loopback, or to a host your *user* configuration lists
+  (`providers.<name>.allow_hosts`); a base URL that arrives through the environment (`<PROVIDER>_BASE_URL`, which a `.envrc`
+  or a CI job can set) or a project file cannot redirect it; over plain `http` it goes to loopback only unless the user
+  configuration says `allow_insecure_http`; a redirect is followed only within the original scheme, host and port. A refusal
+  says what was refused and the one line of configuration that allows it on purpose. The RL rollout server takes a policy
+  endpoint and a key variable from each request, so it sends a key only to the hosts and from the variables its operator
+  listed (`--policy-host`, `--policy-key-env`).
+* *Endpoints are not believed.* A response is bounded as it is read (64 MiB of body, 8 MiB per line and per answer, 512 tool
+  calls, 4 MiB per call's arguments, 30 minutes) and a violation ends the request; a server that accepts a request and
+  goes silent is timed out (first byte 120 s, idle 60 s); usage counters and gateway-reported costs are clamped or priced
+  from tokens instead; a catalogue entry with an impossible price or window is dropped; error text from the wire is
+  sanitised and capped before it reaches a terminal or a log.
 * *The harness process is hardened* (section 2), and a PID-namespace or container wrapper can hide it entirely (section 3).
 
 **What it does not do.**

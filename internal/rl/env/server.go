@@ -11,9 +11,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,7 +37,11 @@ import (
 // reads. The server therefore requires a bearer token (compared in constant time)
 // unless it is bound to a loopback address, refuses to bind anywhere else
 // without one, limits request sizes and concurrency, and can confine inline
-// tasks to a set of repository roots. None of that makes it safe to expose to
+// tasks to a set of repository roots. A request also names the policy endpoint and
+// the environment variable holding its key; the server sends that key only to hosts
+// its operator listed (ServeOptions.PolicyHosts, loopback always) and only from
+// variables the operator listed (PolicyKeyEnvs), so a client cannot make it send one
+// of its credentials somewhere. None of that makes it safe to expose to
 // untrusted parties: put it behind TLS and a trust boundary you control, and run
 // its commands in a container through the Sandbox hook.
 
@@ -61,6 +67,16 @@ type ServeOptions struct {
 	// under one of these directories (and forbids URL repositories). Tasks from
 	// the registry are trusted and exempt.
 	RepoRoots []string
+	// PolicyHosts lists the hosts a request's policy.base_url may name, each as "host" or
+	// "host:port" (a bare host matches any port). Loopback addresses are always allowed.
+	// The default is loopback only: a request must not be able to point the server at a
+	// host of its own choosing.
+	PolicyHosts []string
+	// PolicyKeyEnvs lists the environment variables a request's policy.api_key_env may
+	// name. The default is none, and a request that names one is refused: the server holds
+	// credentials that a trainer has no business choosing between, and a base URL plus
+	// the name of a key variable is a way to send one of them somewhere.
+	PolicyKeyEnvs []string
 	// RewardsDir and NewScorer implement the "rewards" request field: the field
 	// names a file relative to RewardsDir, which must resolve inside it (no "..",
 	// no symlinks out), and NewScorer turns it into a Scorer for that request.
@@ -347,6 +363,45 @@ type PolicyRequest struct {
 	Sampling  json.RawMessage `json:"sampling,omitempty"`
 }
 
+// checkPolicy decides whether the endpoint and key variable a request names may be
+// used: see ServeOptions.PolicyHosts and PolicyKeyEnvs.
+func (s *Server) checkPolicy(p PolicyRequest) (int, error) {
+	if p.BaseURL != "" {
+		u, err := url.Parse(p.BaseURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+			return http.StatusBadRequest, errors.New(`"policy.base_url" must be an http or https URL`)
+		}
+		if u.User != nil {
+			return http.StatusBadRequest, errors.New(`"policy.base_url" must not carry credentials`)
+		}
+		if !s.policyHostAllowed(u) {
+			return http.StatusForbidden, fmt.Errorf("policy.base_url host %q is not one this server sends policy requests to; the operator allows hosts with --policy-host (loopback is always allowed)", u.Host)
+		}
+	}
+	if p.APIKeyEnv != "" && !slices.Contains(s.o.PolicyKeyEnvs, p.APIKeyEnv) {
+		return http.StatusForbidden, fmt.Errorf("policy.api_key_env %q is not a variable this server may use; the operator allows variables with --policy-key-env", p.APIKeyEnv)
+	}
+	return 0, nil
+}
+
+// policyHostAllowed reports whether u's host is loopback or one the operator listed.
+func (s *Server) policyHostAllowed(u *url.URL) bool {
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	hostport := strings.ToLower(u.Host)
+	for _, a := range s.o.PolicyHosts {
+		if a = strings.ToLower(strings.TrimSpace(a)); a != "" && (a == host || a == hostport) {
+			return true
+		}
+	}
+	return false
+}
+
 var (
 	runIDRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	sampleRe = regexp.MustCompile(`^[0-9]{1,9}$`)
@@ -508,6 +563,10 @@ func (s *Server) handleRollouts(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.Policy.Model) == "" {
 		httpError(w, http.StatusBadRequest, `"policy.model" is required`)
+		return
+	}
+	if code, err := s.checkPolicy(req.Policy); err != nil {
+		httpError(w, code, err.Error())
 		return
 	}
 	swarm, agents, err := parseSwarm(req.Swarm)

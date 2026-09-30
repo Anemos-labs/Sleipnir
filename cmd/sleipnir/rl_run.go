@@ -39,6 +39,7 @@ type policyFlags struct {
 	temperature, topP                float64
 	maxTokens                        int
 	capture                          bool
+	allowInsecureHTTP                bool
 	swarm                            int
 	roleModels                       kvFlags
 	seed                             int64
@@ -55,6 +56,7 @@ func (p *policyFlags) register(fs *flag.FlagSet) {
 	fs.Float64Var(&p.topP, "top-p", 0, "nucleus sampling (overrides --sampling)")
 	fs.IntVar(&p.maxTokens, "max-tokens", 0, "completion limit per request (overrides --sampling)")
 	fs.BoolVar(&p.capture, "capture", false, "ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)")
+	fs.BoolVar(&p.allowInsecureHTTP, "allow-insecure-http", false, "let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default")
 	fs.IntVar(&p.swarm, "swarm", 0, "run a manager with up to N workers instead of a single agent (default: what the task's team says)")
 	fs.Var(p.roleModels, "role-model", "role=model override, repeatable (e.g. compactor=heimdall/deepseek/deepseek-v4-flash)")
 	fs.Int64Var(&p.seed, "seed", 0, "run seed; each rollout's sampling seed derives from it")
@@ -122,7 +124,11 @@ func (p *policyFlags) resolve(fs *flag.FlagSet) (env.PolicySpec, *harness.Harnes
 			return env.PolicySpec{}, nil, err
 		}
 	}
-	h := &harness.Harness{PolicyOptions: prov.Options, PolicyHeaders: prov.Headers, ContextTokens: p.ctxTokens}
+	h := &harness.Harness{
+		PolicyOptions: prov.Options, PolicyHeaders: prov.Headers, ContextTokens: p.ctxTokens,
+		// What the user's own provider entry allows, or what this command line says.
+		PolicyAllowInsecureHTTP: p.allowInsecureHTTP || prov.AllowInsecureHTTP, PolicyAllowHosts: prov.AllowHosts,
+	}
 	return spec, h, nil
 }
 
@@ -521,6 +527,9 @@ func rlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	rewardsDir := fs.String("rewards-dir", "", "directory of rewards files a request may name")
 	maxRuns := fs.Int("max-runs", 0, "concurrent rollout requests (default 2)")
 	maxGroup := fs.Int("max-group", 0, "largest group size of one request (default 64)")
+	policyHosts := fs.String("policy-host", "", "comma-separated hosts (host or host:port) a request's policy.base_url may name; loopback is always allowed")
+	policyKeyEnvs := fs.String("policy-key-env", "", "comma-separated names of the environment variables a request's policy.api_key_env may name (default: none, so no request can pick one of this server's credentials)")
+	allowInsecure := fs.Bool("allow-insecure-http", false, "let a policy key travel over plain http to a listed host that is not this machine (a trusted network); off by default")
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return err
 	}
@@ -538,7 +547,7 @@ func rlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		}
 	}
 	// The policy comes with every request; the harness builds its client from it.
-	rg, err := rf.build(&harness.Harness{}, *runs, *tasksFile, stderr)
+	rg, err := rf.build(&harness.Harness{PolicyAllowInsecureHTTP: *allowInsecure}, *runs, *tasksFile, stderr)
 	if err != nil {
 		return fmt.Errorf("rl serve: %w", err)
 	}
@@ -546,6 +555,7 @@ func rlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	fmt.Fprintf(stderr, "rollout server on %s (runs in %s)\n", *addr, *runs)
 	err = env.Serve(ctx, *addr, rg.Runner, env.ServeOptions{
 		Root: *runs, Token: token, Tasks: tasks, RepoRoots: splitList(*repoRoots), RewardsDir: *rewardsDir,
+		PolicyHosts: splitList(*policyHosts), PolicyKeyEnvs: splitList(*policyKeyEnvs),
 		MaxRuns: *maxRuns, MaxGroup: *maxGroup, Concurrency: rf.concurrency,
 		NewScorer: func(path string) (env.Scorer, error) {
 			cfg, err := reward.LoadConfig(path)

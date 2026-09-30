@@ -544,3 +544,39 @@ func TestVisibleVerifyNeverExposesHiddenVerifiers(t *testing.T) {
 		}
 	}
 }
+
+// A policy key does not travel over plain http to a host that is not this machine unless the
+// operator said so: the refusal comes before any request, and names the flag that allows it.
+func TestPolicyKeyStaysOffPlainHTTPToAnotherHostUnlessTheOperatorAllowsIt(t *testing.T) {
+	repo := newRepo(t)
+	t.Setenv("RL_TEST_LAN_KEY", "lan-key-for-test")
+	lan := env.PolicySpec{Model: "m", BaseURL: "http://192.0.2.1:8000/v1", APIKeyEnv: "RL_TEST_LAN_KEY"} // TEST-NET-1: nothing answers
+
+	_, err := (&harness.Harness{}).Run(context.Background(), specWithPolicy(t, repo, lan))
+	if err == nil || !strings.Contains(err.Error(), "plain http") || !strings.Contains(err.Error(), "--allow-insecure-http") {
+		t.Fatalf("a key over plain http to another host must be refused with the flag that allows it: %v", err)
+	}
+
+	// Allowed by the operator: no refusal (the attempt itself goes nowhere and is cut short).
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err = (&harness.Harness{PolicyAllowInsecureHTTP: true}).Run(ctx, specWithPolicy(t, repo, lan))
+	if err != nil && strings.Contains(err.Error(), "plain http") {
+		t.Fatalf("the operator allowed it: %v", err)
+	}
+
+	// The same server without a key is not carrying a credential anywhere.
+	nokey := env.PolicySpec{Model: "m", BaseURL: "http://192.0.2.1:8000/v1"}
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel2()
+	if _, err := (&harness.Harness{}).Run(ctx2, specWithPolicy(t, repo, nokey)); err != nil && strings.Contains(err.Error(), "plain http") {
+		t.Fatalf("no key, nothing to protect: %v", err)
+	}
+}
+
+func specWithPolicy(t *testing.T, repo string, pol env.PolicySpec) env.RunSpec {
+	t.Helper()
+	sp := spec(t, repo, "anything")
+	sp.Policy = pol
+	return sp
+}

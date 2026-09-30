@@ -79,6 +79,13 @@ type Harness struct {
 	// PolicyHeaders extra request headers.
 	PolicyOptions map[string]any
 	PolicyHeaders map[string]string
+	// PolicyAllowInsecureHTTP lets the policy's API key travel over plain http to a host
+	// that is not this machine (a self-hosted policy server on a trusted network), and
+	// PolicyAllowHosts names hosts, besides the policy's own base URL, that may receive
+	// it. Both are the operator's word (a command-line flag, or the user's own provider
+	// entry); a rollout request never sets them (provider.CheckEndpoint).
+	PolicyAllowInsecureHTTP bool
+	PolicyAllowHosts        []string
 	// ContextTokens is the policy's context window when a task does not set one.
 	// Zero keeps the model table's or the fallback's.
 	ContextTokens int
@@ -264,7 +271,7 @@ func (h *Harness) config(spec env.RunSpec) (*config.Config, error) {
 		cfg.Providers[k] = v
 	}
 	if h.NewProvider == nil {
-		pol, err := policyProviderConfig(spec, h.PolicyOptions, h.PolicyHeaders)
+		pol, err := h.policyProviderConfig(spec)
 		if err != nil {
 			return nil, err
 		}
@@ -290,19 +297,27 @@ func (h *Harness) policy(spec env.RunSpec) (provider.Provider, cost.Model, error
 	if h.NewProvider != nil {
 		return h.NewProvider(spec)
 	}
-	pc, err := policyProviderConfig(spec, h.PolicyOptions, h.PolicyHeaders)
+	pc, err := h.policyProviderConfig(spec)
 	if err != nil {
 		return nil, cost.Model{}, err
 	}
 	cfg := &config.Config{Providers: map[string]config.Provider{PolicyProvider: pc}}
-	return session.BuildProvider(cfg, session.ModelRef{Provider: PolicyProvider, Model: spec.Policy.Model},
+	p, m, err := session.BuildProvider(cfg, session.ModelRef{Provider: PolicyProvider, Model: spec.Policy.Model},
 		session.ProviderOptions{CaptureTokens: spec.Capture, HTTPClient: h.HTTPClient})
+	var refused *provider.EndpointError
+	if errors.As(err, &refused) {
+		// The refusal names the user's configuration file, which chat and run read; a policy
+		// is set up on the command line.
+		err = fmt.Errorf("%w\nfor an RL policy the setting is the --allow-insecure-http flag of `sleipnir rl rollout`, `rl eval` and `rl serve` (the configuration snippet above is for chat and run)", err)
+	}
+	return p, m, err
 }
 
 // policyProviderConfig describes the policy endpoint. The API key is read from
 // the variable the spec names, in this process only: the agent's shell never
 // sees it.
-func policyProviderConfig(spec env.RunSpec, extra map[string]any, headers map[string]string) (config.Provider, error) {
+func (h *Harness) policyProviderConfig(spec env.RunSpec) (config.Provider, error) {
+	extra, headers := h.PolicyOptions, h.PolicyHeaders
 	pol := spec.Policy
 	if pol.Model == "" {
 		return config.Provider{}, errors.New("the policy has no model")
@@ -329,6 +344,7 @@ func policyProviderConfig(spec env.RunSpec, extra map[string]any, headers map[st
 	}
 	return config.Provider{
 		Dialect: config.DialectOpenAIChat, BaseURL: pol.BaseURL, APIKeyEnv: pol.APIKeyEnv, Options: opts, Headers: headers,
+		AllowHosts: h.PolicyAllowHosts, AllowInsecureHTTP: h.PolicyAllowInsecureHTTP,
 	}, nil
 }
 

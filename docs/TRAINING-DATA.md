@@ -153,6 +153,13 @@ A long-running **rollout server** (`sleipnir rl serve --addr 127.0.0.1:8090 --ru
 so verl / OpenRLHF / SkyRL agent loops and online GRPO trainers can call the harness as a black-box environment, in
 the same shape as rLLM / Agent Lightning / Polar gateways.
 
+A request names the policy endpoint and, optionally, the environment variable that holds its key
+(`policy.api_key_env`). The server sends a key only where its operator said it may go: `--policy-host HOST[:PORT],…`
+lists the hosts a request's `base_url` may name (loopback is always allowed) and `--policy-key-env NAME,…` the variables
+its `api_key_env` may name (default: none, so a client cannot choose which of the server's credentials to use or
+where to send it; a refused request gets a 403 that names the flag). A key to a plain-`http` host that is not this
+machine also needs `--allow-insecure-http`, on `rl serve` as on `rl rollout` and `rl eval`.
+
 ## 4. Canonical trajectory (`sleipnir.rl/1`)
 
 `episode.json` (types in `internal/rl/types.go`):

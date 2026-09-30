@@ -36,7 +36,9 @@ func newServerFixture(t *testing.T, mut ...func(*ServeOptions)) *serverFixture {
 	rf := newRunnerFixture(t, quickVerify)
 	rf.h.Default = FakeScript{Steps: []FakeStep{FakeWrite("mathx.go", fixedMath)}, Final: "fixed"}
 	root := filepath.Join(t.TempDir(), "served")
-	o := ServeOptions{Root: root, Token: testToken, Tasks: []rl.Task{rf.task}, MaxRuns: 2}
+	// The policy the fixture's requests name (rolloutReq) is one the operator allows.
+	o := ServeOptions{Root: root, Token: testToken, Tasks: []rl.Task{rf.task}, MaxRuns: 2,
+		PolicyHosts: []string{"vllm:8000"}, PolicyKeyEnvs: []string{"VLLM_KEY"}}
 	for _, m := range mut {
 		m(&o)
 	}
@@ -684,4 +686,89 @@ func TestResolveUnder(t *testing.T) {
 		}
 	}
 	_ = fmt.Sprint
+}
+
+// A request names the policy endpoint and the variable that holds its key. Neither may be a
+// way for a client to make the server send one of its credentials somewhere: the operator
+// lists the hosts and the variables, loopback is always fine, and nothing else is.
+func TestServerPolicyEndpointAndKeyMustBeAllowedByTheOperator(t *testing.T) {
+	f := newServerFixture(t)
+	policy := func(base, key string) map[string]any {
+		p := map[string]any{"model": "my-policy"}
+		if base != "" {
+			p["base_url"] = base
+		}
+		if key != "" {
+			p["api_key_env"] = key
+		}
+		return f.rolloutReq(map[string]any{"policy": p})
+	}
+	for _, tc := range []struct {
+		name      string
+		base, key string
+		want      int
+		errHas    string
+	}{
+		{"another host", "https://attacker.example/v1", "VLLM_KEY", 403, "policy.base_url host"},
+		{"another port of an allowed host", "http://vllm:9999/v1", "VLLM_KEY", 403, "policy.base_url host"},
+		{"a lookalike of localhost", "http://localhost.attacker.example/v1", "", 403, "policy.base_url host"},
+		{"a lookalike of a loopback address", "http://127.0.0.1.attacker.example/v1", "", 403, "policy.base_url host"},
+		{"unspecified address", "http://0.0.0.0:8000/v1", "", 403, "policy.base_url host"},
+		{"credentials in the URL", "http://user:pw@vllm:8000/v1", "", 400, "must not carry credentials"},
+		{"not http", "ftp://vllm:8000/v1", "", 400, "http or https"},
+		{"no host", "http:///v1", "", 400, "http or https"},
+		{"an unlisted key variable", "http://vllm:8000/v1", "HEIMDALL_API_KEY", 403, "policy.api_key_env"},
+		{"a key variable that only looks like the listed one", "http://vllm:8000/v1", "VLLM_KEY2", 403, "policy.api_key_env"},
+		{"an unlisted key at a loopback host", "http://127.0.0.1:8000/v1", "HEIMDALL_API_KEY", 403, "policy.api_key_env"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := f.do("POST", "/v1/rollouts", testToken, policy(tc.base, tc.key))
+			if b := body(t, resp); resp.StatusCode != tc.want || !strings.Contains(b, tc.errHas) {
+				t.Fatalf("status %d (want %d): %s", resp.StatusCode, tc.want, b)
+			}
+		})
+	}
+	if len(f.h.Calls()) != 0 {
+		t.Fatal("a refused request ran a rollout")
+	}
+	if ents, _ := os.ReadDir(f.root); len(ents) != 0 {
+		t.Errorf("refused requests left %d run directories", len(ents))
+	}
+
+	// What is allowed.
+	for _, tc := range []struct{ base, key string }{
+		{"http://vllm:8000/v1", "VLLM_KEY"},
+		{"HTTP://VLLM:8000/v1", "VLLM_KEY"}, // hosts are not case sensitive
+		{"http://127.0.0.1:8000/v1", ""},
+		{"http://127.0.0.1:8000/v1", "VLLM_KEY"},
+		{"http://[::1]:8000/v1", ""},
+		{"http://localhost:8000/v1", ""},
+		{"https://LOCALHOST/v1", ""},
+		{"", ""}, // no endpoint named: the harness reports it
+	} {
+		if code, err := f.srv.checkPolicy(PolicyRequest{Model: "m", BaseURL: tc.base, APIKeyEnv: tc.key}); err != nil {
+			t.Errorf("%q with key %q refused (%d): %v", tc.base, tc.key, code, err)
+		}
+	}
+}
+
+// With no lists at all, a server takes policies on loopback and no key: nothing else is
+// reachable through a request.
+func TestServerPolicyDefaultsAreLoopbackAndNoKey(t *testing.T) {
+	f := newServerFixture(t, func(o *ServeOptions) { o.PolicyHosts, o.PolicyKeyEnvs = nil, nil })
+	for _, tc := range []struct {
+		base, key string
+		ok        bool
+	}{
+		{"http://127.0.0.1:8000/v1", "", true},
+		{"http://localhost:8000/v1", "", true},
+		{"http://vllm:8000/v1", "", false},
+		{"https://api.example.com/v1", "", false},
+		{"http://127.0.0.1:8000/v1", "ANY_KEY", false},
+	} {
+		_, err := f.srv.checkPolicy(PolicyRequest{Model: "m", BaseURL: tc.base, APIKeyEnv: tc.key})
+		if (err == nil) != tc.ok {
+			t.Errorf("%q with key %q: allowed=%v, want %v (%v)", tc.base, tc.key, err == nil, tc.ok, err)
+		}
+	}
 }
