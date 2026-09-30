@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -103,13 +102,6 @@ func (r *fixtureRepo) write(rel, content string) {
 		r.t.Fatal(err)
 	}
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-		r.t.Fatal(err)
-	}
-}
-
-func (r *fixtureRepo) remove(rel string) {
-	r.t.Helper()
-	if err := os.Remove(filepath.Join(r.Dir, filepath.FromSlash(rel))); err != nil {
 		r.t.Fatal(err)
 	}
 }
@@ -296,20 +288,4 @@ func eventually(t testing.TB, timeout time.Duration, cond func() bool, msg strin
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s", msg)
-}
-
-// once is a tiny helper for tests that need "first caller wins".
-type once struct {
-	mu   sync.Mutex
-	done bool
-}
-
-func (o *once) do() bool {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.done {
-		return false
-	}
-	o.done = true
-	return true
 }

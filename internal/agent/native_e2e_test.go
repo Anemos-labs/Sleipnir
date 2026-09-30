@@ -15,6 +15,8 @@ package agent_test
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -36,8 +38,8 @@ func nativeRig(t *testing.T, turnScoped bool, steps int) (*anthropic.Client, *mo
 	t.Helper()
 	var main atomic.Int32
 	responder := func(c *mock.Call) mock.Reply {
-		if strings.Contains(c.LastUser(), "<compactor-task>") {
-			return mock.Reply{Text: `{"keep_from":"t5","spine":[{"turns":"t1-t4","line":"explored the build"}],"mask":[],"notes":[],"promote":[]}`}
+		if task := c.LastUser(); strings.Contains(task, "<compactor-task>") {
+			return mock.Reply{Text: nativePatch(task)}
 		}
 		n := int(main.Add(1)) - 1
 		if n < steps {
@@ -60,6 +62,29 @@ func nativeRig(t *testing.T, turnScoped bool, steps int) (*anthropic.Client, *mo
 		OnWarnings: func(_ *provider.Request, ws []anthropic.Warning) { warned = append(warned, ws...) },
 	})
 	return c, srv, &warned
+}
+
+var nativeUnitLine = regexp.MustCompile(`(?m)^\s+t(\d+)(?:-t(\d+))? ·`)
+
+// nativePatch answers a compactor task the way a model would: fold every unit
+// the instruction lists as foldable into one spine line.
+func nativePatch(task string) string {
+	first, last := 0, 0
+	for _, m := range nativeUnitLine.FindAllStringSubmatch(task, -1) {
+		from, _ := strconv.Atoi(m[1])
+		to := from
+		if m[2] != "" {
+			to, _ = strconv.Atoi(m[2])
+		}
+		if first == 0 {
+			first = from
+		}
+		last = to
+	}
+	if first == 0 {
+		return `{"keep_from":"t1","spine":[],"mask":[],"notes":[],"promote":[]}`
+	}
+	return fmt.Sprintf(`{"keep_from":"t%d","spine":[{"turns":"t%d-t%d","line":"explored the build"}],"mask":[],"notes":[],"promote":[]}`, last+1, first, last)
 }
 
 func nativeCached(s mock.AnthropicStat) int { return s.Read + s.Write5m + s.Write1h }
@@ -167,6 +192,14 @@ func TestCacheEcon_NativeAdapterAgentSurvivesACompactionCommit(t *testing.T) {
 			}
 			if len(log.OfType(events.TypeCompactCommit)) == 0 {
 				t.Fatalf("setup: nothing was committed (plans %d, rejects %d)", len(log.OfType(events.TypeCompactPlan)), len(log.OfType(events.TypeCompactReject)))
+			}
+			// The compactor fork itself must be a request the endpoint accepts: on a
+			// turn-scoped route the parent's board view (a system message) sits at the
+			// tail of the thread, and the instruction is a user turn.
+			for _, e := range log.OfType(events.TypeCompactReject) {
+				if strings.Contains(string(e.Data), `"stage":"model_patch"`) {
+					t.Fatalf("the model patch failed and fell back to the mechanical one: %s", e.Data)
+				}
 			}
 			st := srv.AnthropicStats()
 			nativeAllOK(t, st)

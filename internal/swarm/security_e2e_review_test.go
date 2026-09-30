@@ -1,14 +1,13 @@
 package swarm_test
 
-// End-to-end security review repros (mock provider). See security_review_test.go for the
-// gating convention: run with SLEIPNIR_REVIEW=1; the tests assert the SECURE behaviour and
-// fail while the finding is open.
+// End-to-end regression tests for the security review's swarm findings (mock provider):
+// the writer cap holds for reuse (S18), the harness owns "done" (S19), peer mail is framed
+// and cannot forge headers (S23).
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -26,13 +25,6 @@ import (
 	"github.com/reee344/sleipnir/internal/swarm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
-
-func secRevE2EGate(t *testing.T) {
-	t.Helper()
-	if os.Getenv("SLEIPNIR_REVIEW") == "" {
-		t.Skip("security-review repro: set SLEIPNIR_REVIEW=1 (asserts the secure behaviour, fails while the finding is open)")
-	}
-}
 
 type secRevRig struct {
 	sw  *swarm.Swarm
@@ -91,8 +83,7 @@ func secRevAgentState(r *secRevRig, id string) string {
 
 // S18: MaxWriters is only checked on the "new agent" branch of Spawn. Reusing idle
 // workers (spawn agent=...) skips it, so the cap can be exceeded up to MaxAgents.
-func TestSecReview_S18_WriterCapBypassedByReusingIdleWriters(t *testing.T) {
-	secRevE2EGate(t)
+func TestSec_S18_WriterCapBypassedByReusingIdleWriters(t *testing.T) {
 	var block atomic.Bool
 	release := make(chan struct{})
 	r := secRevNewRig(t, swarm.Config{SessionID: "s18", MaxWriters: 2, MaxAgents: 24}, func(c *mock.Call) mock.Reply {
@@ -116,15 +107,20 @@ func TestSecReview_S18_WriterCapBypassedByReusingIdleWriters(t *testing.T) {
 		secRevWaitFor(t, id+" idle", func() bool { return secRevAgentState(r, id) == "idle" })
 	}
 
-	// Phase 2: give every one of them new work at the same time.
+	// Phase 2: give every one of them new work at the same time. The cap applies to reuse
+	// as well: the first two are accepted, the rest are refused.
 	block.Store(true)
+	refused := 0
 	for i := 1; i <= n; i++ {
 		task, err := r.sw.Board.CreateTask("mgr", swarm.TaskSpec{Title: fmt.Sprintf("phase2-%d", i), Role: "backend", Files: []string{fmt.Sprintf("mod%d/**", i)}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err := r.sw.Spawn(swarm.SpawnReq{Agent: fmt.Sprintf("be-%d", i), TaskID: task.ID, By: "mgr"}); err != nil {
-			t.Fatalf("reuse be-%d refused: %v", i, err)
+			if !strings.Contains(err.Error(), "writers are already active") {
+				t.Fatalf("reuse be-%d refused for another reason: %v", i, err)
+			}
+			refused++
 		}
 	}
 	secRevWaitFor(t, "workers running", func() bool {
@@ -134,7 +130,7 @@ func TestSecReview_S18_WriterCapBypassedByReusingIdleWriters(t *testing.T) {
 				running++
 			}
 		}
-		return running >= 3
+		return running >= 2
 	})
 	running := 0
 	for _, a := range r.sw.Board.Snapshot().Agents {
@@ -142,17 +138,19 @@ func TestSecReview_S18_WriterCapBypassedByReusingIdleWriters(t *testing.T) {
 			running++
 		}
 	}
-	t.Logf("active writers: %d (MaxWriters=2)", running)
+	t.Logf("active writers: %d (MaxWriters=2), %d reuses refused", running, refused)
 	if running > 2 {
 		t.Errorf("S18: %d writers are active with MaxWriters=2; spawn agent=<idle writer> bypasses the writer cap", running)
+	}
+	if refused != n-2 {
+		t.Errorf("S18: %d of %d reuses were refused, want %d", refused, n, n-2)
 	}
 }
 
 // S19: "the harness, not the model, decides whether work is finished" holds only if the
 // worker chooses to call task done. A worker that simply stops moves to review with no
 // verification, and accept never verifies either.
-func TestSecReview_S19_VerifierIsOptIn(t *testing.T) {
-	secRevE2EGate(t)
+func TestSec_S19_VerifierIsOptIn(t *testing.T) {
 	var verifyCalls atomic.Int32
 	cfg := swarm.Config{SessionID: "s19", VerifyCmd: "go test ./...", Verify: func(ctx context.Context, dir, cmd string) (string, int, error) {
 		verifyCalls.Add(1)
@@ -197,8 +195,7 @@ func TestSecReview_S19_VerifierIsOptIn(t *testing.T) {
 // S23: a peer's mail reaches the recipient as a role=user message that starts with a
 // bracketed header, and the text is not normalised: what the model sees is
 // indistinguishable from a second, forged, mail from the manager.
-func TestSecReview_S23_PeerMailIsUserRoleWithForgeableHeaders(t *testing.T) {
-	secRevE2EGate(t)
+func TestSec_S23_PeerMailIsUserRoleWithForgeableHeaders(t *testing.T) {
 	var mu sync.Mutex
 	var seenRole, seenContent string
 	r := secRevNewRig(t, swarm.Config{SessionID: "s23"}, func(c *mock.Call) mock.Reply {

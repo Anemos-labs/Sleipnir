@@ -658,3 +658,25 @@ func TestHTTPRejectsReservedHeadersUpFront(t *testing.T) {
 		}
 	}
 }
+
+// Close must not wait for anything that has already finished: a client that has
+// streamed responses closes promptly (a stuck WaitGroup once made every HTTP
+// Close cost its 3 second safety timeout).
+func TestHTTPCloseIsPrompt(t *testing.T) {
+	for name, mode := range map[string]mcptest.HTTPOptions{"sse": {}, "json": {JSONOnly: true}} {
+		t.Run(name, func(t *testing.T) {
+			ts, _ := httpServer(t, mcptest.New(), mode)
+			c := mustDial(t, ts.URL, nil, ClientOptions{})
+			callText(t, c, "echo", `{"message":"x"}`)
+			callText(t, c, "progress", `{"steps":2}`)
+			if _, _, err := c.ListTools(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			start := time.Now()
+			c.Close()
+			if d := time.Since(start); d > time.Second {
+				t.Errorf("Close took %v", d)
+			}
+		})
+	}
+}

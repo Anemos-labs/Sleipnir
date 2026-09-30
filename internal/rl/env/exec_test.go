@@ -452,7 +452,7 @@ func TestCapBufMatchesReference(t *testing.T) {
 			for i := range chunk {
 				chunk[i] = byte('a' + rng.Intn(26))
 			}
-			b.Write(chunk)
+			_, _ = b.Write(chunk)
 			all = append(all, chunk...)
 		}
 		half := int(max / 2)
@@ -476,7 +476,7 @@ func TestCapBufMatchesReference(t *testing.T) {
 
 func TestCapBufReplacesInvalidUTF8(t *testing.T) {
 	b := newCapBuf(100)
-	b.Write([]byte("ok \xff\xfe bad"))
+	_, _ = b.Write([]byte("ok \xff\xfe bad"))
 	if got := b.String(); !utf8.ValidString(got) || strings.Contains(got, "\xff") || !bytes.Contains([]byte(got), []byte("ok ")) {
 		t.Fatalf("got %q", got)
 	}

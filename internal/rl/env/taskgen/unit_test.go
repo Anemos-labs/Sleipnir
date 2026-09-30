@@ -609,7 +609,9 @@ func TestCompositeScript(t *testing.T) {
 	}
 	// Component commands with quotes and shell syntax survive.
 	script := filepath.Join(dir, "q.sh")
-	os.WriteFile(script, []byte(compositeScript([]string{`test "it's" = "it's" && cd /tmp && true`})), 0o755)
+	if err := os.WriteFile(script, []byte(compositeScript([]string{`test "it's" = "it's" && cd /tmp && true`})), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	out, _ := exec.Command("sh", script).Output()
 	if strings.TrimSpace(string(out)) != `{"score": 1.000000}` {
 		t.Errorf("quoting: %q", out)

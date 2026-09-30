@@ -260,7 +260,7 @@ func mutationPatches(ctx context.Context, r *repo, commit string, m Mutation, mu
 	if err != nil {
 		return nil, nil, err
 	}
-	defer os.RemoveAll(scratch)
+	defer func() { _ = os.RemoveAll(scratch) }()
 	gd := filepath.Join(scratch, "g.git")
 	if _, err := r.g.Run(ctx, "", nil, "init", "--quiet", "--bare", "--template=", gd); err != nil {
 		return nil, nil, err

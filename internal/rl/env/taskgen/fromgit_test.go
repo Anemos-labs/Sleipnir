@@ -116,7 +116,9 @@ func buildCalcRepo(t *testing.T) (*fixture, map[string]string) {
 func taskBySubject(tasks []rl.Task, subject string) *rl.Task {
 	for i := range tasks {
 		var m Meta
-		json.Unmarshal(tasks[i].Meta, &m)
+		if json.Unmarshal(tasks[i].Meta, &m) != nil {
+			continue
+		}
 		if strings.HasPrefix(m.Subject, subject) {
 			return &tasks[i]
 		}
@@ -143,7 +145,9 @@ func TestFromGitMinesValidatesAndRejects(t *testing.T) {
 	var subjects []string
 	for _, tk := range tasks {
 		var meta Meta
-		json.Unmarshal(tk.Meta, &meta)
+		if err := json.Unmarshal(tk.Meta, &meta); err != nil {
+			t.Fatal(err)
+		}
 		subjects = append(subjects, meta.Subject)
 	}
 	sort.Strings(subjects)
@@ -243,7 +247,9 @@ func TestFromGitMinesValidatesAndRejects(t *testing.T) {
 	// A fresh agent workspace lacks the fix; applying the stored reference solution
 	// (which is all of the commit's source change) passes.
 	var mm Meta
-	json.Unmarshal(fix.Meta, &mm)
+	if err := json.Unmarshal(fix.Meta, &mm); err != nil {
+		t.Fatal(err)
+	}
 	g, _ := gold.Get(core.Hash(mm.GoldBlob))
 	res, err := env.VerifyPatch(context.Background(), *fix, g, env.VerifyOptions{Workspaces: m, HiddenBlobs: hidden})
 	if err != nil || !res.Pass {
@@ -304,7 +310,9 @@ func TestFromGitFilters(t *testing.T) {
 		var out []string
 		for _, tk := range ts {
 			var m Meta
-			json.Unmarshal(tk.Meta, &m)
+			if err := json.Unmarshal(tk.Meta, &m); err != nil {
+				t.Fatal(err)
+			}
 			out = append(out, m.Subject)
 		}
 		sort.Strings(out)
@@ -319,7 +327,9 @@ func TestFromGitFilters(t *testing.T) {
 		// Newest candidates: the generated-constants commit is rejected (too many
 		// files), then Sub, Abs, Min...
 		var m Meta
-		json.Unmarshal(tasks[0].Meta, &m)
+		if err := json.Unmarshal(tasks[0].Meta, &m); err != nil {
+			t.Fatal(err)
+		}
 		if m.Commit != ids["sub"] {
 			t.Errorf("first task is %s, want the newest acceptable commit %s", m.Commit, ids["sub"])
 		}
@@ -331,7 +341,9 @@ func TestFromGitFilters(t *testing.T) {
 		tasks, rep, _ := run(GitOptions{MaxFiles: 2})
 		for _, tk := range tasks {
 			var m Meta
-			json.Unmarshal(tk.Meta, &m)
+			if err := json.Unmarshal(tk.Meta, &m); err != nil {
+				t.Fatal(err)
+			}
 			if len(m.Files) > 2 {
 				t.Errorf("task with %d files", len(m.Files))
 			}
@@ -428,7 +440,9 @@ func TestFromGitInlineHiddenWithoutBlobStore(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(g.Dir, "testdata"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(g.Dir, "testdata", "blob.bin"), []byte{0, 1, 2, 0xff, 0}, 0o644)
+	if err := os.WriteFile(filepath.Join(g.Dir, "testdata", "blob.bin"), []byte{0, 1, 2, 0xff, 0}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	g.commit("Add Z with a binary fixture")
 	_, rep, _ := FromGit(context.Background(), g.Dir, GitOptions{NoValidate: true})
 	if rep.Rejected[ReasonBinaryTest] != 1 {

@@ -100,6 +100,11 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 	return ModelRef{Provider: p, Model: ref}, nil
 }
 
+// LookupProvider returns a configured or built-in provider by name.
+func LookupProvider(cfg *config.Config, name string) (config.Provider, bool) {
+	return lookupProvider(cfg, name)
+}
+
 // ProviderInfo returns a provider's base URL and API-key variable, from the
 // configuration or the built-ins (with the <NAME>_BASE_URL override applied).
 func ProviderInfo(cfg *config.Config, name string) (baseURL, keyEnv string, ok bool) {

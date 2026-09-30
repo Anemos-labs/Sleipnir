@@ -416,7 +416,9 @@ func TestRolloutIsResumableAndForceable(t *testing.T) {
 	}
 	// The manifest remembers the resume and keeps its creation time.
 	var mf Manifest
-	json.Unmarshal([]byte(mustRead(t, filepath.Join(f.out, "manifest.json"))), &mf)
+	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(f.out, "manifest.json"))), &mf); err != nil {
+		t.Fatal(err)
+	}
 	if mf.Resumes != 1 {
 		t.Errorf("manifest resumes = %d", mf.Resumes)
 	}
@@ -757,11 +759,11 @@ func TestRolloutRedactsHiddenBlobStoreContentToo(t *testing.T) {
 }
 
 func TestSampleSeedIsStable(t *testing.T) {
-	if SampleSeed(1, "a", 0) != SampleSeed(1, "a", 0) || SampleSeed(1, "a", 0) == SampleSeed(1, "a", 1) ||
-		SampleSeed(1, "a", 0) == SampleSeed(2, "a", 0) || SampleSeed(1, "a", 0) == SampleSeed(1, "b", 0) {
+	base, again := SampleSeed(1, "a", 0), SampleSeed(1, "a", 0)
+	if base != again || base == SampleSeed(1, "a", 1) || base == SampleSeed(2, "a", 0) || base == SampleSeed(1, "b", 0) {
 		t.Fatal("SampleSeed is not a function of exactly (seed, task, sample)")
 	}
-	if SampleSeed(1, "a", 0) < 0 {
+	if base < 0 {
 		t.Fatal("negative seed")
 	}
 	// A golden value pins the algorithm: changing it would silently change every

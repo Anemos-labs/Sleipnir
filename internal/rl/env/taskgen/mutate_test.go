@@ -242,13 +242,15 @@ func TestMutateGo(t *testing.T) {
 	// stored reverse patch really restores it.
 	tk := tasks[0]
 	var meta Meta
-	json.Unmarshal(tk.Meta, &meta)
+	if err := json.Unmarshal(tk.Meta, &meta); err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	w, err := m.Prepare(ctx, tk, "s0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	orig := mustRead(t, filepath.Join(f.Dir, meta.Files[0]))
 	got := mustRead(t, filepath.Join(w.Root, meta.Files[0]))
 	if got == orig {
@@ -292,7 +294,9 @@ func TestMutateFilesAndErrors(t *testing.T) {
 	}
 	for _, tk := range tasks {
 		var meta Meta
-		json.Unmarshal(tk.Meta, &meta)
+		if err := json.Unmarshal(tk.Meta, &meta); err != nil {
+			t.Fatal(err)
+		}
 		if meta.Files[0] != "util/util.go" || !strings.HasSuffix(tk.Verifier.Cmd, "./util") {
 			t.Errorf("file filter ignored: %v %s", meta.Files, tk.Verifier.Cmd)
 		}
@@ -360,7 +364,9 @@ func TestCompositeFromMutations(t *testing.T) {
 			var fs []string
 			for _, tk := range tasks {
 				var mm Meta
-				json.Unmarshal(tk.Meta, &mm)
+				if err := json.Unmarshal(tk.Meta, &mm); err != nil {
+					t.Fatal(err)
+				}
 				fs = append(fs, mm.Files...)
 			}
 			return fs
@@ -371,7 +377,9 @@ func TestCompositeFromMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cm Meta
-	json.Unmarshal(c.Meta, &cm)
+	if err := json.Unmarshal(c.Meta, &cm); err != nil {
+		t.Fatal(err)
+	}
 	if c.Kind != rl.TaskSwarm || c.Team.Mode != "swarm" || c.Team.Agents != 2 || len(cm.Components) != 2 || len(cm.Files) != 2 || len(cm.GoldBlobs) != 2 ||
 		cm.Commit != commit || cm.Generator != "taskgen/composite" || cm.AuthorDate != "2024-01-01T12:00:00Z" {
 		t.Fatalf("composite: %+v\nmeta: %+v", c, cm)
@@ -413,7 +421,7 @@ func TestCompositeFromMutations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	res, err := env.Verify(ctx, c, w, env.VerifyOptions{})
 	if err != nil || res.Pass || res.Score != 0 {
 		t.Fatalf("both bugs present: %v pass=%v score=%v\n%s", err, res.Pass, res.Score, res.Log)
@@ -483,7 +491,9 @@ func TestCompositeGrouping(t *testing.T) {
 	used := map[string]int{}
 	for _, c := range comps {
 		var cm Meta
-		json.Unmarshal(c.Meta, &cm)
+		if err := json.Unmarshal(c.Meta, &cm); err != nil {
+			t.Fatal(err)
+		}
 		if len(cm.Components) != 2 {
 			t.Fatalf("%+v", cm)
 		}

@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -342,7 +341,7 @@ func TestCloneTreeDetails(t *testing.T) {
 	defer os.Chmod(filepath.Join(src, "ro"), 0o755)
 	must(t, os.Symlink("a.txt", filepath.Join(src, "link")))
 	must(t, os.Link(filepath.Join(src, "a.txt"), filepath.Join(src, "hardlink")))
-	must(t, syscall.Mkfifo(filepath.Join(src, "fifo"), 0o644))
+	must(t, mkfifo(filepath.Join(src, "fifo")))
 	must(t, os.MkdirAll(filepath.Join(src, "emptydir"), 0o755))
 	big := strings.Repeat("0123456789abcdef", 1<<16) // 1 MiB
 	writeFile(t, filepath.Join(src, "big.dat"), big)

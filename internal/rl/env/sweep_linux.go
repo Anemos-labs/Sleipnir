@@ -35,7 +35,7 @@ func sweepMarker(marker string) int {
 			continue // exited, or not ours
 		}
 		b, _ := io.ReadAll(io.LimitReader(f, 1<<20))
-		f.Close()
+		_ = f.Close()
 		if bytes.Contains(append(b, 0), needle) {
 			if syscall.Kill(pid, syscall.SIGKILL) == nil {
 				killed++

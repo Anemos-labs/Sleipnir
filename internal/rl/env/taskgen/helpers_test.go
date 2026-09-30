@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 	sharedGoCache = dir
 	code := m.Run()
 	if cleanup {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 	}
 	os.Exit(code)
 }

@@ -28,7 +28,7 @@ func TestPrepareCreatesIsolatedHistoryFreeWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 
 	if got := treeFiles(t, w.Root); !reflect.DeepEqual(got, []string{".gitignore", "README.md", "go.mod", "mathx.go", "mathx_test.go"}) {
 		t.Fatalf("files = %v", got)
@@ -72,7 +72,7 @@ func TestWorkspaceHasNoFutureObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	cmd := exec.Command("git", "cat-file", "-e", future)
 	cmd.Dir = w.Dir
 	cmd.Env = w.Env()
@@ -97,7 +97,7 @@ func TestPrepareCloneModeKeepsHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	if got := mustRead(t, filepath.Join(w.Root, "mathx.go")); got != buggyMath {
 		t.Fatalf("clone is not at the requested commit")
 	}
@@ -286,7 +286,7 @@ func TestNonGitDirectoryIsCopied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	if got := treeFiles(t, w.Root); !reflect.DeepEqual(got, []string{"a.txt", "sub/b.txt"}) {
 		t.Fatalf("files = %v", got)
 	}
@@ -301,7 +301,7 @@ func TestNonGitDirectoryIsCopied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w2.Cleanup()
+	defer func() { _ = w2.Cleanup() }()
 	if got := mustRead(t, filepath.Join(w2.Root, "a.txt")); got != "alpha v2" {
 		t.Fatalf("stale snapshot: %q", got)
 	}
@@ -319,7 +319,7 @@ func TestSubdirWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	if w.Dir != filepath.Join(w.Root, "svc", "api") {
 		t.Fatalf("Dir = %s", w.Dir)
 	}
@@ -395,8 +395,12 @@ func TestCleanupNeverFollowsSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustWrite(t, filepath.Join(w.Root, "ro", "deep", "f"), "x")
-	os.Chmod(filepath.Join(w.Root, "ro", "deep"), 0o555)
-	os.Chmod(filepath.Join(w.Root, "ro"), 0o555)
+	if err := os.Chmod(filepath.Join(w.Root, "ro", "deep"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(w.Root, "ro"), 0o555); err != nil {
+		t.Fatal(err)
+	}
 	if err := w.Cleanup(); err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +426,7 @@ func TestCleanupRefusesForeignDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	precious := t.TempDir()
 	mustWrite(t, filepath.Join(precious, "f"), "x")
 	forged := &Workspace{ID: "forged", mgr: w.mgr, dir: precious}
@@ -453,7 +457,7 @@ func TestCleanupKillsLeftoverProcesses(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	go cmd.Wait()
+	go func() { _ = cmd.Wait() }()
 	pid := readPID(t, pidFile)
 	if !alive(pid) {
 		t.Fatal("test process did not start")
@@ -474,7 +478,7 @@ func TestSnapshotTamperingIsDetectedAndRebuilt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w1.Cleanup()
+	defer func() { _ = w1.Cleanup() }()
 	// An agent (or a stray process) reaches into the shared snapshot, which is
 	// where every later verification checkout comes from.
 	snapTree := w1.snap.tree
@@ -483,7 +487,7 @@ func TestSnapshotTamperingIsDetectedAndRebuilt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w2.Cleanup()
+	defer func() { _ = w2.Cleanup() }()
 	if got := mustRead(t, filepath.Join(w2.Root, "mathx.go")); got != buggyMath {
 		t.Fatalf("a workspace was built from a tampered snapshot: %q", got)
 	}
@@ -527,12 +531,16 @@ func TestSnapshotSurvivesManagerRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.Cleanup()
+	if err := w.Cleanup(); err != nil {
+		t.Fatal(err)
+	}
 	w, err = mk().Prepare(ctxT(t), task, "b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.Cleanup()
+	if err := w.Cleanup(); err != nil {
+		t.Fatal(err)
+	}
 	if got := strings.Count(mustRead(t, counter), "x"); got != 1 {
 		t.Fatalf("setup re-ran after restart: %d", got)
 	}
@@ -553,7 +561,7 @@ func TestPruneStale(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fresh.Cleanup()
+	defer func() { _ = fresh.Cleanup() }()
 	n, err := m.PruneStale(24 * time.Hour)
 	if err != nil || n != 1 {
 		t.Fatalf("pruned %d, %v", n, err)
@@ -612,7 +620,7 @@ func TestConcurrentPrepareAcrossTasks(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			defer w.Cleanup()
+			defer func() { _ = w.Cleanup() }()
 			if got := strings.TrimSpace(mustRead(t, filepath.Join(w.Root, "variant.txt"))); got != fmt.Sprint(i%2) {
 				fail.Add(1)
 				t.Errorf("task t%d got variant %q", i%2, got)
@@ -632,7 +640,7 @@ func TestUrlRepositoriesAreMirroredOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	if got := mustRead(t, filepath.Join(w.Root, "mathx.go")); got != buggyMath {
 		t.Fatalf("workspace content: %q", got)
 	}
@@ -651,7 +659,7 @@ func TestUrlRepositoriesAreMirroredOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w2.Cleanup()
+	defer func() { _ = w2.Cleanup() }()
 	if got := mustRead(t, filepath.Join(w2.Root, "mathx.go")); got != fixedMath {
 		t.Fatalf("new commit not fetched: %q", got)
 	}
@@ -666,7 +674,9 @@ func TestUrlRepositoriesAreMirroredOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fallback to URL: %v", err)
 	}
-	w3.Cleanup()
+	if err := w3.Cleanup(); err != nil {
+		t.Fatal(err)
+	}
 	// An unreachable URL is an infra error, and no half-made mirror is left.
 	task4 := task
 	task4.ID = "fourth"
@@ -713,7 +723,9 @@ func TestNetworkIsolationFallbackIsRecordedOrRefused(t *testing.T) {
 	f.m.warn("network isolation unavailable: test")
 	f.rollout([]rl.Task{f.task}, 1, f.opts())
 	var mf Manifest
-	json.Unmarshal([]byte(mustRead(t, filepath.Join(f.out, "manifest.json"))), &mf)
+	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(f.out, "manifest.json"))), &mf); err != nil {
+		t.Fatal(err)
+	}
 	if len(mf.Warnings) == 0 || !strings.Contains(mf.Warnings[0], "network isolation unavailable") {
 		t.Fatalf("manifest warnings: %v", mf.Warnings)
 	}
@@ -733,7 +745,7 @@ func TestResourceLimitsApplyToVerifierCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	res, err := Verify(ctxT(t), task, w, VerifyOptions{})
 	if err != nil || res.Pass || res.ExitCode != 128+25 { // SIGXFSZ
 		t.Fatalf("file size limit not enforced: %v pass=%v\n%s", err, res.Pass, res.Log)

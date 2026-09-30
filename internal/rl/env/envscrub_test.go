@@ -155,7 +155,9 @@ func TestSanitizePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := filepath.Join(good, "afile")
-	os.WriteFile(file, nil, 0o644)
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	p := strings.Join([]string{
 		"", ".", "relative/bin", "../bin", good, good + "/", good2, file,

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -189,12 +188,8 @@ exec "$REAL" "$@"`)
 	pid, _ := strconv.Atoi(pidText)
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		if err := syscall.Kill(pid, 0); err != nil {
-			break // gone
-		}
-		// a zombie counts as gone: it is dead, just not reaped by its (killed) parent yet
-		if b, err := os.ReadFile("/proc/" + pidText + "/stat"); err == nil && strings.Contains(string(b), ") Z ") {
-			break
+		if !processRunning(pid) {
+			break // gone (a zombie counts as gone: dead, just not reaped by its killed parent yet)
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("grandchild %d survived the timeout", pid)
@@ -349,5 +344,35 @@ func TestErrorFormatting(t *testing.T) {
 		if got := classify(stderr); got != want {
 			t.Errorf("classify(%q) = %v, want %v", stderr, got, want)
 		}
+	}
+}
+
+// A retry after lock contention must send the same standard input again: the
+// commit message travels on stdin, and a retry with an empty stdin would create a
+// commit with no message (or fail in a confusing way).
+func TestLockRetryReplaysStandardInput(t *testing.T) {
+	dir := newRepo(t)
+	r := openRepo(t, dir, WithLockWait(10*time.Second))
+	ctx := ctxT(t)
+	// the branch's ref lock: `add` is unaffected, but the commit that follows it
+	// fails at the last step, after it has read the message
+	lock := filepath.Join(dir, ".git", "refs", "heads", "main.lock")
+	writeFile(t, lock, "")
+	writeFile(t, filepath.Join(dir, "a.txt"), "changed\n")
+	go func() {
+		time.Sleep(700 * time.Millisecond)
+		os.Remove(lock)
+	}()
+	start := time.Now()
+	sha, err := r.CommitAll(ctx, "message that must survive the retry\n\nbody", Author{Name: "agent"})
+	if err != nil || sha == "" {
+		t.Fatalf("CommitAll: %q, %v", sha, err)
+	}
+	if time.Since(start) < 500*time.Millisecond {
+		t.Fatal("did not actually hit and wait out the ref lock")
+	}
+	c, err := r.CommitInfo(ctx, sha)
+	if err != nil || c.Subject != "message that must survive the retry" || c.Body != "body" {
+		t.Fatalf("commit after a retry: %+v, %v", c, err)
 	}
 }

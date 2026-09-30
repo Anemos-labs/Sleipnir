@@ -416,7 +416,7 @@ func LoadTasks(p string) ([]rl.Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	tasks, err := ReadTasks(f)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", p, err)
@@ -811,7 +811,7 @@ func LoadExcludeList(p string) (*ExcludeSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	ex := &ExcludeSet{IDs: map[string]bool{}, Pairs: map[string]bool{}}
 	br := bufio.NewReaderSize(f, 1<<20)
 	for n := 1; ; n++ {

@@ -299,8 +299,8 @@ func (s *LocalSandbox) Exec(ctx context.Context, dir string, env []string, cmd s
 	}
 	errR, errW, err := os.Pipe()
 	if err != nil {
-		outR.Close()
-		outW.Close()
+		_ = outR.Close()
+		_ = outW.Close()
 		return res, err
 	}
 	// Plain *os.File pipes rather than exec's own copying goroutines: Wait then
@@ -309,14 +309,14 @@ func (s *LocalSandbox) Exec(ctx context.Context, dir string, env []string, cmd s
 	c.Stdout, c.Stderr = outW, errW
 	start := time.Now()
 	if err := c.Start(); err != nil {
-		outR.Close()
-		outW.Close()
-		errR.Close()
-		errW.Close()
+		_ = outR.Close()
+		_ = outW.Close()
+		_ = errR.Close()
+		_ = errW.Close()
 		return res, fmt.Errorf("start %s: %w", argv[0], err)
 	}
-	outW.Close()
-	errW.Close()
+	_ = outW.Close()
+	_ = errW.Close()
 	pid := c.Process.Pid
 
 	outBuf, errBuf, allBuf := newCapBuf(pol.MaxOutput), newCapBuf(pol.MaxOutput), newCapBuf(pol.MaxOutput)
@@ -330,8 +330,8 @@ func (s *LocalSandbox) Exec(ctx context.Context, dir string, env []string, cmd s
 		for {
 			n, err := r.Read(buf)
 			if n > 0 {
-				own.Write(buf[:n])
-				allBuf.Write(buf[:n])
+				_, _ = own.Write(buf[:n])
+				_, _ = allBuf.Write(buf[:n])
 				if total.Add(int64(n)) > pol.KillOutput {
 					overflowOnce.Do(func() { close(overflow) })
 				}
@@ -377,12 +377,12 @@ func (s *LocalSandbox) Exec(ctx context.Context, dir string, env []string, cmd s
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		outR.Close()
-		errR.Close()
+		_ = outR.Close()
+		_ = errR.Close()
 		<-done
 	}
-	outR.Close()
-	errR.Close()
+	_ = outR.Close()
+	_ = errR.Close()
 
 	res.Duration = time.Since(start)
 	res.ExitCode, res.Signal = exitInfo(c.ProcessState)

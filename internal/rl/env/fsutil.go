@@ -92,19 +92,19 @@ func atomicWriteFile(p string, data []byte, perm fs.FileMode) error {
 	ok := false
 	defer func() {
 		if !ok {
-			os.Remove(name)
+			_ = os.Remove(name)
 		}
 	}()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -168,7 +168,7 @@ func removeIn(root *os.Root, rel string) error {
 		return err
 	}
 	ents, err := d.ReadDir(-1)
-	d.Close()
+	_ = d.Close()
 	if err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func createFileIn(root *os.Root, rel string, mode fs.FileMode) (*os.File, error)
 		return nil, err
 	}
 	if err := f.Chmod(mode.Perm()); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	return f, nil
@@ -217,7 +217,7 @@ func writeFileIn(root *os.Root, rel string, data []byte, mode fs.FileMode) error
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()
@@ -400,13 +400,13 @@ func copyFile(src, dst string, info fs.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	if err := out.Close(); err != nil {

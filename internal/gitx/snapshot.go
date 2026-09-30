@@ -52,7 +52,7 @@ func (b *batch) snapshotTree(ctx context.Context) (string, error) {
 		return "", &Error{Kind: KindOther, Op: "snapshot", ExitCode: -1, Err: err}
 	}
 	env := []string{"GIT_INDEX_FILE=" + name}
-	if _, err := b.run(ctx, call{args: []string{"add", "-A"}, env: env}); err != nil {
+	if _, err := b.run(ctx, call{args: []string{"add", "-A"}, env: env, timeout: 5 * r.s.timeout}); err != nil {
 		return "", err
 	}
 	out, err := b.run(ctx, call{args: []string{"write-tree"}, env: env})

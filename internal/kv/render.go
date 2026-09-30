@@ -131,8 +131,16 @@ func Render(s *Stack, o RenderOpts) *Rendered {
 			blocks = []core.Block{core.Text("(no output)")}
 		}
 		role := tr.Role
-		if role == core.RoleSystem && !turnScoped {
-			role = core.RoleUser // adapters without the feature would fold it anyway
+		if role == core.RoleSystem {
+			var next *core.Turn
+			if i+1 < len(turns) {
+				next = &turns[i+1]
+			}
+			if !turnScoped || !systemPlacementOK(msgs[len(msgs)-1].Role, next) {
+				// An adapter without the feature would fold it; so does a place the
+				// API would reject (in the normal loop an assistant turn always follows).
+				role = core.RoleUser
+			}
 		}
 		if role == core.RoleSystem {
 			msgs = append(msgs, core.Message{Role: core.RoleSystem, ClearAt: ClearAtNextUser, Blocks: blocks, Turn: tr.ID})

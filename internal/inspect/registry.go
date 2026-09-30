@@ -18,6 +18,7 @@ const (
 	maxSessions      = 5000
 	maxLoaded        = 8        // sessions kept in memory at once in multi-session mode
 	indexMaxBytes    = 64 << 20 // logs larger than this get a digest only once opened
+	loadRetryAfter   = 5 * time.Second
 )
 
 // entry is one discoverable session. Its model is loaded lazily, on first use,
@@ -30,6 +31,7 @@ type entry struct {
 	mtime    time.Time
 	sess     *Session
 	err      error
+	errAt    time.Time // when the last load failed; a failed load is retried after a few seconds
 	loading  bool
 	done     chan struct{}
 	lastUse  time.Time
@@ -59,6 +61,11 @@ func newRegistry(root string, opts Options, logf func(string, ...any)) (*registr
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
+	}
+	// The root is the operator's own argument, so a symlink there ("latest") is fine;
+	// the walk below does not follow links, so resolve it once here.
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = real
 	}
 	fi, err := os.Stat(abs)
 	if err != nil {
@@ -196,9 +203,12 @@ func (e *entry) ensure(opts Options, wait time.Duration, logf func(string, ...an
 		return s, true, nil
 	}
 	if e.err != nil && !e.loading {
-		err = e.err
-		e.mu.Unlock()
-		return nil, true, err
+		if time.Since(e.errAt) < loadRetryAfter {
+			err = e.err
+			e.mu.Unlock()
+			return nil, true, err
+		}
+		e.err = nil // the log may have been fixed or finished being written: try again
 	}
 	if !e.loading {
 		e.loading, e.done = true, make(chan struct{})
@@ -212,11 +222,14 @@ func (e *entry) ensure(opts Options, wait time.Duration, logf func(string, ...an
 				e.read.Store(read)
 				e.total.Store(total)
 			})
-			if err != nil {
+			if err != nil && logf != nil {
 				logf("inspect: loading %s: %v", e.name, err)
 			}
 			e.mu.Lock()
 			e.sess, e.err, e.loading = s, err, false
+			if err != nil {
+				e.errAt = time.Now()
+			}
 			e.mu.Unlock()
 			close(done)
 		}(e.done)

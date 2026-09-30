@@ -352,6 +352,18 @@ func (s *settings) exec(ctx context.Context, c call) (*output, error) {
 		if err == nil || !c.mutating || KindOf(err) != KindLocked || !time.Now().Before(deadline) {
 			return out, err
 		}
+		// A retry must send the same input again. Readers we can rewind (every stdin
+		// we pass is a strings or bytes reader) are; anything else cannot be replayed,
+		// so the lock error is returned rather than a command that got no input.
+		if c.stdin != nil {
+			sk, ok := c.stdin.(io.Seeker)
+			if !ok {
+				return out, err
+			}
+			if _, serr := sk.Seek(0, io.SeekStart); serr != nil {
+				return out, err
+			}
+		}
 		// Another git process holds a lock (index.lock, a ref lock, config.lock).
 		// git fails before changing anything in that case, so retrying is safe.
 		select {

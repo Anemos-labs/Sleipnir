@@ -76,6 +76,17 @@ func ResolveHot(want HotMode, c Caps, preservedThinking bool) HotMode {
 	return HotInline
 }
 
+// systemPlacementOK reports whether a turn-scoped system turn can be sent as a
+// role:system message where it stands. The API wants it after a user message and
+// either last in the array or followed by an assistant turn (a system message
+// followed by a user message is a 400). prev is the role of the message before it
+// in the rendered prompt, next the thread turn after it (nil at the end). Where
+// the placement is not allowed, the turn is folded into the neighbouring user
+// message instead, exactly as an adapter without the feature would send it.
+func systemPlacementOK(prev core.Role, next *core.Turn) bool {
+	return prev == core.RoleUser && (next == nil || next.Role == core.RoleAssistant)
+}
+
 // Block markers. core.Block has no field for "who wrote this text", and the
 // distinction matters: the harness's own notices must never be mistaken for
 // user text, and steering typed by a human must survive compaction while mail

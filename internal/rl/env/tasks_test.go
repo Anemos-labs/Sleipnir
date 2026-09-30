@@ -214,7 +214,9 @@ func TestLoadTasksReportsAllProblemsWithLines(t *testing.T) {
 		sb.WriteByte('\n')
 	}
 	p := filepath.Join(t.TempDir(), "t.jsonl")
-	os.WriteFile(p, []byte(sb.String()), 0o644)
+	if err := os.WriteFile(p, []byte(sb.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, err := LoadTasks(p)
 	if err == nil {
 		t.Fatal("expected errors")

@@ -20,10 +20,21 @@ import (
 // parameters unchanged (same tool_choice, same max_tokens, same thinking) and
 // keeps "do not call tools" in the instruction text; a reply that calls a tool
 // anyway is treated as a failed compaction by the caller.
+//
+// The instruction rides in the last user message, after the rolling marker (it is
+// billed at the uncached rate once; the marker keeps the parent's prefix cached).
 func ForkPrompt(s *Stack, o RenderOpts, instruction string) *core.Prompt {
 	o.Hot = nil // the live board is irrelevant to compaction and would only cost tokens
 	r := Render(s, o)
 	p := r.Prompt
+	// A turn-scoped system message at the tail is the parent's board view: the
+	// compactor does not need it, and the API rejects a system message followed by
+	// a user message, which is what the instruction is. Drop it. It never carries a
+	// cache marker (the rolling one sits on the user message before it), so the
+	// fork still reads everything the parent's last request cached.
+	for len(p.Messages) > 1 && p.Messages[len(p.Messages)-1].Role == core.RoleSystem {
+		p.Messages = p.Messages[:len(p.Messages)-1]
+	}
 	blk := core.Text(instruction)
 	last := len(p.Messages) - 1
 	if p.Messages[last].Role == core.RoleUser {

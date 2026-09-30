@@ -190,7 +190,7 @@ func (r *Repo) CommitAll(ctx context.Context, msg string, author Author) (string
 	if err := r.checkNoMarkers(ctx); err != nil {
 		return "", err
 	}
-	if _, err := b.run(ctx, call{args: []string{"add", "-A"}, mutating: true}); err != nil {
+	if _, err := b.run(ctx, call{args: []string{"add", "-A"}, mutating: true, timeout: 5 * r.s.timeout}); err != nil {
 		return "", err
 	}
 	merging := r.InProgress() == "merge"
@@ -262,7 +262,9 @@ func (r *Repo) ResetHard(ctx context.Context, rev string) error {
 	if err := validateRev("reset", rev); err != nil {
 		return err
 	}
-	_, err := r.run(ctx, call{args: []string{"reset", "--hard", "--quiet", rev, "--"}, mutating: true})
+	// Populating a new worktree is this command too, and on a repository with a
+	// million files it is not a two-minute job.
+	_, err := r.run(ctx, call{args: []string{"reset", "--hard", "--quiet", rev, "--"}, mutating: true, timeout: 10 * r.s.timeout})
 	return err
 }
 

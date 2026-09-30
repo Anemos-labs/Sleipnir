@@ -94,7 +94,7 @@ func (m *Workspaces) exportCommit(ctx context.Context, gitDir, commit, dst strin
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	var blobs []treeEntry
 	for _, e := range ents {
@@ -128,11 +128,11 @@ func (m *Workspaces) exportCommit(ctx context.Context, gitDir, commit, dst strin
 	go func() {
 		bw := bufio.NewWriter(inW)
 		for _, e := range blobs {
-			bw.WriteString(e.sha)
-			bw.WriteByte('\n')
+			_, _ = bw.WriteString(e.sha)
+			_ = bw.WriteByte('\n')
 		}
-		bw.Flush()
-		inW.Close()
+		_ = bw.Flush()
+		_ = inW.Close()
 	}()
 
 	br := bufio.NewReaderSize(outR, 1<<20)
@@ -208,7 +208,7 @@ func (m *Workspaces) exportCommit(ctx context.Context, gitDir, commit, dst strin
 		<-gitDone
 		return nil, loopErr
 	}
-	inR.Close()
+	_ = inR.Close()
 	if err := <-gitDone; err != nil && !errors.Is(err, io.ErrClosedPipe) {
 		return nil, err
 	}
@@ -322,7 +322,7 @@ func (m *Workspaces) hashTree(ctx context.Context, o hashOpts) (hashResult, erro
 	if err != nil {
 		return res, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	dirs := &dirChecker{root: root, memo: map[string]bool{}}
 	type result struct {
@@ -392,7 +392,7 @@ func (m *Workspaces) hashTree(ctx context.Context, o hashOpts) (hashResult, erro
 				}
 				r.size = fi.Size()
 				r.sha, r.err = writeBlob(o, fi.Size(), f)
-				f.Close()
+				_ = f.Close()
 			default:
 				r.skip = "special file (socket, FIFO or device)"
 			}
@@ -487,7 +487,7 @@ func writeBlob(o hashOpts, size int64, r io.Reader) (string, error) {
 	h := sha1.New()
 	header := fmt.Sprintf("blob %d\x00", size)
 	if !o.Write {
-		io.WriteString(h, header)
+		_, _ = io.WriteString(h, header)
 		n, err := io.Copy(h, io.LimitReader(r, size+1))
 		if err != nil {
 			return "", err
@@ -503,10 +503,10 @@ func writeBlob(o hashOpts, size int64, r io.Reader) (string, error) {
 		return "", err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // no-op once renamed
+	defer func() { _ = os.Remove(tmpName) }() // no-op once renamed
 	zw, _ := zlib.NewWriterLevel(tmp, zlib.BestSpeed)
 	mw := io.MultiWriter(h, zw)
-	io.WriteString(mw, header)
+	_, _ = io.WriteString(mw, header)
 	n, err := io.Copy(mw, io.LimitReader(r, size+1))
 	if err == nil && n != size {
 		err = fmt.Errorf("file changed size while being read (%d, expected %d)", n, size)
@@ -744,7 +744,7 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return err
 	}
-	defer removeAllNoFollow(tmpDir)
+	defer func() { _ = removeAllNoFollow(tmpDir) }()
 	marker := "setup-" + key
 	env := BuildEnv(EnvSpec{
 		Home: s.home, Tmp: tmpDir, Network: true, Marker: marker, Base: m.baseEnv,
@@ -856,7 +856,7 @@ func (m *Workspaces) checkSnapshot(ctx context.Context, s *snapshot) error {
 	if err != nil {
 		return err
 	}
-	defer removeAllNoFollow(scratch)
+	defer func() { _ = removeAllNoFollow(scratch) }()
 	gd := filepath.Join(scratch, "git")
 	if err := m.git.initBare(ctx, gd); err != nil {
 		return err

@@ -150,7 +150,7 @@ func (h *FakeHarness) Run(ctx context.Context, spec RunSpec) (RunResult, error) 
 	if err != nil {
 		return RunResult{}, Infra("fake harness", err)
 	}
-	defer log.Close() // runs on panic too
+	defer func() { _ = log.Close() }() // runs on panic too
 	blobs, err := events.NewDirBlobs(filepath.Join(spec.RunDir, "blobs"))
 	if err != nil {
 		return RunResult{}, Infra("fake harness", err)
@@ -231,7 +231,7 @@ func (h *FakeHarness) doStep(ctx context.Context, spec RunSpec, st FakeStep) (st
 		if err != nil {
 			return "", err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		_, err = f.WriteString(st.Data)
 		return "appended", err
 	case "delete":

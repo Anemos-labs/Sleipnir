@@ -128,7 +128,33 @@ func cxSig(p *core.Prompt, msg, blk int) string {
 	return hex.EncodeToString(h.Sum(nil)[:8])
 }
 
+// cxPlacement enforces what the API enforces about role:system messages in the
+// array: never first, after a user message, and either last or followed by an
+// assistant turn (a system message followed by a user message is a 400).
+func cxPlacement(p *core.Prompt) *provider.Error {
+	bad := func(format string, a ...any) *provider.Error {
+		return &provider.Error{Kind: provider.ErrBadRequest, Status: 400, Message: fmt.Sprintf(format, a...)}
+	}
+	for i, m := range p.Messages {
+		if m.Role != core.RoleSystem {
+			continue
+		}
+		switch {
+		case i == 0:
+			return bad("messages.0: a system message cannot be the first message")
+		case p.Messages[i-1].Role != core.RoleUser:
+			return bad("messages.%d: a system message must follow a user message", i)
+		case i < len(p.Messages)-1 && p.Messages[i+1].Role != core.RoleAssistant:
+			return bad("messages.%d: a system message must be the last message or be followed by an assistant message", i)
+		}
+	}
+	return nil
+}
+
 func cxVerify(p *core.Prompt) *provider.Error {
+	if err := cxPlacement(p); err != nil {
+		return err
+	}
 	for mi, m := range p.Messages {
 		if m.Role != core.RoleAssistant {
 			continue

@@ -294,6 +294,43 @@ func TestTokenIsRequiredAndComparedSafely(t *testing.T) {
 	}
 }
 
+// The token URL is turned into a redirect. Whatever path the request line carries,
+// the Location must stay on this origin: browsers read "//host" and "/\host" as
+// another site.
+func TestTokenRedirectNeverLeavesThisOrigin(t *testing.T) {
+	dir, _ := synthDir(t, synthCfg{Workers: 0, MgrSteps: 2, Steps: 2})
+	const tok = "s3cret-token"
+	srv := newTestServer(t, dir, func(c *Config) { c.Token = tok })
+	h := srv.Handler()
+	sameOrigin := func(p, loc string) {
+		t.Helper()
+		u, err := url.Parse(loc)
+		if err != nil || u.Host != "" || u.Scheme != "" || !strings.HasPrefix(loc, "/") || strings.HasPrefix(loc, "//") || strings.ContainsAny(loc, "\\") {
+			t.Errorf("%s redirected to %q", p, loc)
+		}
+	}
+	for _, p := range []string{"//evil.example/x", "///evil.example", "/\\evil.example", "/%5Cevil.example", "/%2F%2Fevil.example", "/../../evil.example", "/index.html", "/app.css", "/nope", "/"} {
+		rec := do(t, h, "GET", p+"?keep=1&token="+tok, nil)
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("%s: %d, want a redirect", p, rec.Code)
+			continue
+		}
+		loc := rec.Header().Get("Location")
+		sameOrigin(p, loc)
+		if strings.Contains(loc, tok) || !strings.Contains(loc, "keep=1") {
+			t.Errorf("%s redirected to %q: the token goes, other parameters stay", p, loc)
+		}
+	}
+	// Paths under /api/ take the token without a redirect; the mux may still clean an
+	// untidy path, and that redirect stays on this origin too.
+	for _, p := range []string{"/api/../evil", "/api//evil.example", "/api/./x"} {
+		rec := do(t, h, "GET", p+"?token="+tok, nil)
+		if loc := rec.Header().Get("Location"); loc != "" {
+			sameOrigin(p, loc)
+		}
+	}
+}
+
 func TestNonLoopbackNeedsAToken(t *testing.T) {
 	dir, _ := synthDir(t, synthCfg{Workers: 1, Steps: 6})
 	for _, addr := range []string{"0.0.0.0:8787", ":8787", "[::]:8787", "192.168.1.10:8787", "example.com:80", "10.0.0.1:0"} {

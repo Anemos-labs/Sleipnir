@@ -38,7 +38,10 @@ func TestBoardLifecycleAndOwnership(t *testing.T) {
 	if err := b.Update("be-1", "T1", "added limit param"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Finish("be-1", "T1", StatusDone, "cursor pagination merged"); err != nil {
+	if err := b.Finish("be-1", "T1", StatusReview, "cursor pagination merged"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Finish("mgr", "T1", StatusDone, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.Claim("fe-1", t2.ID); err != nil {
@@ -116,7 +119,10 @@ func TestNotesDedupeAndTake(t *testing.T) {
 	if _, err := b.AddNote("x", "galaxy", "", "t"); err == nil {
 		t.Fatal("bad scope")
 	}
-	got := b.TakeNotes()
+	if got := b.TakeNotes(); len(got) != 0 || len(b.Snapshot().Notes) != 1 {
+		t.Fatalf("TakeNotes with no ids must take nothing: %+v", got)
+	}
+	got := b.TakeAllNotes()
 	if len(got) != 1 || len(b.Snapshot().Notes) != 0 {
 		t.Fatalf("take: %+v", got)
 	}

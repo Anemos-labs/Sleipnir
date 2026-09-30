@@ -3,6 +3,7 @@ package kv
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -416,5 +417,227 @@ func TestNotesAreHeldToTheirBudgetAndTheCompactorIsAskedToConsolidate(t *testing
 	s.Notes = NewLayer("notes", KindNotes, 1, []Segment{{Key: "facts", Text: "- one fact", Vol: VolSlow}})
 	if instr := Instruction(s, e, pol); strings.Contains(instr, "budget") {
 		t.Fatal("no hint while notes are small")
+	}
+}
+
+// sysPlacementProblem is what the API enforces about role:system messages in the
+// array (reference: "Mid-conversation system messages"): never first, after a user
+// message, and either last or followed by an assistant turn.
+func sysPlacementProblem(p *core.Prompt) string {
+	for i, m := range p.Messages {
+		switch {
+		case i > 0 && m.Role == p.Messages[i-1].Role:
+			return fmt.Sprintf("messages %d and %d are both %s", i-1, i, m.Role)
+		case m.Role != core.RoleSystem:
+		case i == 0:
+			return "a system message is first"
+		case p.Messages[i-1].Role != core.RoleUser:
+			return fmt.Sprintf("message %d: a system message must follow a user message", i)
+		case i < len(p.Messages)-1 && p.Messages[i+1].Role != core.RoleAssistant:
+			return fmt.Sprintf("message %d: a system message must be last or followed by an assistant message", i)
+		}
+	}
+	return ""
+}
+
+func tsCaps() Caps {
+	c := cxCaps()
+	c.HotMode, c.TurnScopedSystem = HotTurnScoped, true
+	return c
+}
+
+func tsTurn(role core.Role, text string) core.Turn {
+	origin := core.OriginModel
+	switch role {
+	case core.RoleUser:
+		origin = core.OriginUser
+	case core.RoleSystem:
+		origin = core.OriginSystem
+	}
+	return core.Turn{Role: role, Origin: origin, Blocks: []core.Block{core.Text(text)}}
+}
+
+// A turn-scoped system message is only sent as one where the API accepts it. A
+// board view followed by a user turn (a retry after a failed request, mail behind
+// a tool result) folds into the user text instead of becoming a 400.
+func TestTurnScopedSystemMessagesObeyThePlacementRules(t *testing.T) {
+	roles := map[string]core.Role{"u": core.RoleUser, "a": core.RoleAssistant, "s": core.RoleSystem}
+	shape := func(seq string) *Thread {
+		th := NewThread()
+		for i, c := range seq {
+			th.Append(tsTurn(roles[string(c)], fmt.Sprintf("turn %d", i)))
+		}
+		return th
+	}
+	for _, tc := range []struct {
+		seq       string
+		wantRoles string // roles of the rendered messages after the preamble
+	}{
+		{"uasuas", "assistant,user,system,assistant,user,system"}, // the normal loop
+		{"us", "system"}, // task and its board view
+		{"usu", ""},      // a retry behind an unanswered board view: folded into one user message
+		{"uasusa", "assistant,user,assistant,user,system"}, // (u,a,s,u,s,a): first view folds, the second is followed by an assistant
+		{"uassa", "assistant,user,system,assistant"},       // two views in a row: the first folds, the second stays
+		{"uaus", "assistant,user,system"},
+		{"uasa", "assistant,user,assistant"}, // a view after an assistant turn cannot be a system message
+	} {
+		s := cxStack(t, "be-1", cxSizes{constT: 600})
+		r := cxRenderOpts(s, shape(tc.seq), RenderOpts{Caps: tsCaps(), Policy: DefaultPolicy()})
+		if msg := sysPlacementProblem(r.Prompt); msg != "" {
+			t.Errorf("%s: %s", tc.seq, msg)
+		}
+		var got []string
+		for _, m := range r.Prompt.Messages[1:] {
+			got = append(got, string(m.Role))
+		}
+		if strings.Join(got, ",") != tc.wantRoles && tc.seq != "uasusa" {
+			t.Errorf("%s: roles %v, want %s", tc.seq, got, tc.wantRoles)
+		}
+	}
+
+	// Random shapes, including ones the agent never produces.
+	rng := rand.New(rand.NewSource(7))
+	for iter := 0; iter < 500; iter++ {
+		var sb strings.Builder
+		for i, n := 0, 2+rng.Intn(14); i < n; i++ {
+			sb.WriteByte("uuasas"[rng.Intn(6)])
+		}
+		s := cxStack(t, "be-1", cxSizes{constT: 600})
+		r := cxRenderOpts(s, shape(sb.String()), RenderOpts{Caps: tsCaps(), Policy: DefaultPolicy()})
+		if msg := sysPlacementProblem(r.Prompt); msg != "" {
+			t.Fatalf("thread %q: %s", sb.String(), msg)
+		}
+		if r.Prompt.Messages[0].Role != core.RoleUser {
+			t.Fatalf("thread %q: first message is %s", sb.String(), r.Prompt.Messages[0].Role)
+		}
+	}
+}
+
+// The sizer prices what Render sends: a view that is folded into user text is sent
+// in full, one that renders as a cleared system message is not.
+func TestSizerCountsFoldedBoardViewsAndSkipsClearedOnes(t *testing.T) {
+	e := cxEst()
+	z := Sizer{Est: e, Caps: tsCaps()}
+	board := core.Turn{Role: core.RoleSystem, Origin: core.OriginSystem, Blocks: []core.Block{core.Text(cxText("board ", 500))}}
+	user := func(s string) core.Turn { return tsTurn(core.RoleUser, s) }
+	asst := func(s string) core.Turn { return tsTurn(core.RoleAssistant, s) }
+
+	normal := []core.Turn{user("task"), board, asst("a"), user("r"), board}
+	folded := []core.Turn{user("task"), board, user("retry"), board}
+	if got, want := z.Turns(normal), z.Turn(user("task"))+z.Turn(board)-z.Turn(board)+z.Turn(asst("a"))+z.Turn(user("r"))+z.Turn(board); got != want {
+		t.Fatalf("normal: %d, want %d (the first view is cleared, the last one counts)", got, want)
+	}
+	// The first view is followed by a user turn, so Render folds it into user
+	// text: it is sent in full. Only the trailing one renders as a system message.
+	if got, want := z.Turns(folded), z.Turn(user("task"))+z.Turn(board)+z.Turn(user("retry"))+z.Turn(board); got != want {
+		t.Fatalf("folded: %d, want %d", got, want)
+	}
+
+	// And it agrees with the renderer's size for the same shapes.
+	for name, turns := range map[string][]core.Turn{"normal": normal, "folded": folded} {
+		s := cxStack(t, "be-1", cxSizes{constT: 600})
+		th := NewThread()
+		for _, tr := range turns {
+			th.Append(tr)
+		}
+		r := cxRenderOpts(s, th, RenderOpts{Caps: tsCaps(), Policy: DefaultPolicy(), Est: e})
+		sentText := 0
+		for _, m := range r.Prompt.Messages[1:] {
+			if m.Role == core.RoleSystem {
+				continue // cleared copies cost nothing; the trailing one is counted below
+			}
+			for _, b := range m.Blocks {
+				sentText += SentBlockTokens(b, e)
+			}
+		}
+		if last := r.Prompt.Messages[len(r.Prompt.Messages)-1]; last.Role == core.RoleSystem {
+			for _, b := range last.Blocks {
+				sentText += SentBlockTokens(b, e)
+			}
+		}
+		total := z.Turns(turns)
+		// The preamble message carries the first user turn, so compare only the
+		// text, not framing: the sizer adds a fixed per-turn overhead.
+		if total < sentText || total > sentText+8*len(turns) {
+			t.Fatalf("%s: sizer %d vs rendered text %d", name, total, sentText)
+		}
+	}
+}
+
+// The compactor fork appends its instruction as a user turn. On a turn-scoped
+// route the parent's thread ends with the board view (a system message), and a
+// system message followed by a user message is a 400: the fork drops the view and
+// puts the instruction in the last user message, after the rolling marker.
+func TestForkPromptOnATurnScopedThreadEndsInTheInstruction(t *testing.T) {
+	e := cxEst()
+	s := cxStack(t, "be-1", cxSizes{constT: 3000, shared: 2000, notes: 200})
+	th := NewThread()
+	th.Append(tsTurn(core.RoleUser, "go"))
+	for i := 1; i <= 3; i++ {
+		id := fmt.Sprint("s", i)
+		th.Append(core.Turn{Role: core.RoleAssistant, Origin: core.OriginModel, Blocks: []core.Block{core.Text("step"), core.ToolUse("c"+id, "bash", json.RawMessage(`{}`))}})
+		th.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginTool, Blocks: []core.Block{core.ToolResult("c"+id, false, core.Text("ok "+id))}})
+		th.Append(core.Turn{Role: core.RoleSystem, Origin: core.OriginSystem, Blocks: []core.Block{core.Text("<live>board " + id + "</live>")}})
+	}
+	s.Thread = th.Snapshot()
+	opts := RenderOpts{Caps: tsCaps(), Policy: DefaultPolicy(), Est: e}
+	parent := Render(s, opts)
+	if last := parent.Prompt.Messages[len(parent.Prompt.Messages)-1]; last.Role != core.RoleSystem {
+		t.Fatalf("setup: the parent's prompt must end with the board view, ends with %s", last.Role)
+	}
+
+	fork := ForkPrompt(s, opts, "INSTRUCTION")
+	if msg := sysPlacementProblem(fork); msg != "" {
+		t.Fatalf("the fork is not a request the API accepts: %s", msg)
+	}
+	msgs := fork.Messages
+	last := msgs[len(msgs)-1]
+	if last.Role != core.RoleUser || last.Blocks[len(last.Blocks)-1].Text != "INSTRUCTION" {
+		t.Fatalf("the fork must end with the instruction in a user message, got %s / %+v", last.Role, last.Blocks[len(last.Blocks)-1])
+	}
+	// Everything before the parent's trailing view is untouched, so the provider
+	// reads it from the parent's cache; the instruction follows the rolling marker.
+	pm := parent.Prompt.Messages
+	for i := 0; i < len(msgs)-1; i++ {
+		a, _ := json.Marshal(msgs[i])
+		b, _ := json.Marshal(pm[i])
+		if string(a) != string(b) {
+			t.Fatalf("message %d differs from the parent's:\n%s\n%s", i, a, b)
+		}
+	}
+	if len(msgs) != len(pm)-1 {
+		t.Fatalf("the fork has %d messages, the parent %d: only the trailing view may go", len(msgs), len(pm))
+	}
+	for i, b := range last.Blocks[:len(last.Blocks)-1] {
+		a, _ := json.Marshal(b)
+		c, _ := json.Marshal(pm[len(pm)-2].Blocks[i])
+		if string(a) != string(c) {
+			t.Fatalf("block %d of the last user message differs from the parent's", i)
+		}
+	}
+	var thread *core.Breakpoint
+	for i := range fork.Breakpoints {
+		if fork.Breakpoints[i].Label == "thread" {
+			thread = &fork.Breakpoints[i]
+		}
+	}
+	if thread == nil || thread.After.Msg != len(msgs)-1 || thread.After.Blk != len(last.Blocks)-2 {
+		t.Fatalf("the rolling marker must sit on the last block before the instruction: %+v", thread)
+	}
+	for _, b := range fork.Breakpoints {
+		if !b.After.Sys && b.After.Msg >= 0 && msgs[b.After.Msg].Role == core.RoleSystem {
+			t.Fatalf("marker %s on a system message", b.Label)
+		}
+	}
+
+	// Where the thread ends in a user turn (nothing to drop) the instruction is
+	// appended to it, as before.
+	s2 := cxStack(t, "be-1", cxSizes{constT: 3000, shared: 2000})
+	th2 := NewThread()
+	th2.Append(tsTurn(core.RoleUser, "go"))
+	s2.Thread = th2.Snapshot()
+	f2 := ForkPrompt(s2, RenderOpts{Caps: cxCaps(), Policy: DefaultPolicy(), Est: e}, "INSTRUCTION")
+	if len(f2.Messages) != 1 || f2.Messages[0].Blocks[len(f2.Messages[0].Blocks)-1].Text != "INSTRUCTION" {
+		t.Fatalf("fork of a one-turn thread: %+v", f2.Messages)
 	}
 }

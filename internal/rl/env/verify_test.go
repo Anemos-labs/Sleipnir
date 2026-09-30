@@ -44,7 +44,7 @@ func (f *verifyFixture) workspace(label string) *Workspace {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	f.t.Cleanup(func() { w.Cleanup() })
+	f.t.Cleanup(func() { _ = w.Cleanup() })
 	return w
 }
 
@@ -154,7 +154,9 @@ func TestVerifyTamperingWithTestsHasNoEffect(t *testing.T) {
 	t.Run("deleting tests is discarded and flagged, a real fix still passes", func(t *testing.T) {
 		w := f.workspace("delete")
 		fix(t, w)
-		os.Remove(filepath.Join(w.Root, "mathx_test.go"))
+		if err := os.Remove(filepath.Join(w.Root, "mathx_test.go")); err != nil {
+			t.Fatal(err)
+		}
 		res := f.verify(w)
 		if !res.Pass {
 			t.Fatalf("legit fix rejected: %s", res.Log)
@@ -212,12 +214,14 @@ func TestVerifyAgentThatDeletesOrReplacesTheVerifier(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { w.Cleanup() })
+		t.Cleanup(func() { _ = w.Cleanup() })
 		return w
 	}
 	t.Run("deleted", func(t *testing.T) {
 		w := newWS("del")
-		os.Remove(filepath.Join(w.Root, "verify.sh"))
+		if err := os.Remove(filepath.Join(w.Root, "verify.sh")); err != nil {
+			t.Fatal(err)
+		}
 		res, err := Verify(ctxT(t), task, w, VerifyOptions{})
 		if err != nil {
 			t.Fatal(err)
@@ -247,7 +251,9 @@ func TestVerifyAgentThatDeletesOrReplacesTheVerifier(t *testing.T) {
 	})
 	t.Run("made non-executable", func(t *testing.T) {
 		w := newWS("chmod")
-		os.Chmod(filepath.Join(w.Root, "verify.sh"), 0o644)
+		if err := os.Chmod(filepath.Join(w.Root, "verify.sh"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		fixIn(t, w)
 		res, err := Verify(ctxT(t), task, w, VerifyOptions{})
 		if err != nil || !res.Pass {
@@ -275,7 +281,9 @@ func TestVerifyHiddenWritesCannotEscapeThroughAgentSymlinks(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(w.Root, "linkdir")); err != nil {
 		t.Fatal(err)
 	}
-	os.Remove(filepath.Join(w.Root, "mathx_hidden_test.go"))
+	if err := os.Remove(filepath.Join(w.Root, "mathx_hidden_test.go")); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(filepath.Join(outside, "hidden_test.go"), filepath.Join(w.Root, "mathx_hidden_test.go")); err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +438,7 @@ func TestVerifySandboxFailureIsInfra(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	_, err = Verify(ctxT(t), mathxTask(r, base), w, VerifyOptions{})
 	if err == nil || !IsInfra(err) || !strings.Contains(err.Error(), "container runtime is down") {
 		t.Fatalf("got %v", err)
@@ -473,7 +481,7 @@ func TestVerifyUsesTheSandboxHookWithScrubbedEnvAndPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	fixIn(t, w)
 	res, err := Verify(ctxT(t), task, w, VerifyOptions{})
 	if err != nil || !res.Pass {
@@ -644,7 +652,9 @@ func TestVerifyRepeatsAndPassPolicies(t *testing.T) {
 		{PassAny, true, 2.0 / 3, true},
 	}
 	for _, tc := range tests {
-		os.Remove(counter)
+		if err := os.RemoveAll(counter); err != nil {
+			t.Fatal(err)
+		}
 		res := f.verify(w, func(o *VerifyOptions) { o.Repeats = 3; o.PassPolicy = tc.policy })
 		if len(res.Runs) != 3 {
 			t.Fatalf("policy %q: %d runs\n%s", tc.policy, len(res.Runs), res.Log)

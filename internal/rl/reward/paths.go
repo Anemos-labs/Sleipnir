@@ -138,6 +138,9 @@ const maxPatternBytes = 1024
 func compileGlobs(patterns []string) globSet {
 	var out globSet
 	for _, raw := range patterns {
+		if len(raw) > maxPatternBytes {
+			continue // see maxPatternBytes: Score refuses such a task before it gets here
+		}
 		for _, p := range expandBraces(raw, maxBraceAlternatives) {
 			if g, ok := compileGlob(raw, p); ok {
 				out = append(out, g)
@@ -238,6 +241,26 @@ func (s globSet) match(p string) (string, bool) {
 	return "", false
 }
 
+// matchAnywhere is match for a path whose repository root is unknown: the
+// absolute path /work/repo/tests/a.py must still hit "tests/**", so an anchored
+// pattern may start at any segment. The automaton is re-seeded at every segment
+// (one pass) rather than run once per suffix, which is quadratic in the depth.
+func (s globSet) matchAnywhere(p string) (string, bool) {
+	if len(s) == 0 {
+		return "", false
+	}
+	segs := splitSegs(strings.ToLower(p))
+	if len(segs) == 0 {
+		return "", false
+	}
+	for _, g := range s {
+		if g.matchesAt(segs, true) {
+			return g.raw, true
+		}
+	}
+	return "", false
+}
+
 func splitSegs(p string) []string {
 	var out []string
 	for _, s := range strings.Split(p, "/") {
@@ -248,7 +271,11 @@ func splitSegs(p string) []string {
 	return out
 }
 
-func (g glob) matches(ps []string) bool {
+func (g glob) matches(ps []string) bool { return g.matchesAt(ps, false) }
+
+// matchesAt is matches, optionally letting an anchored pattern start at any
+// segment of the path.
+func (g glob) matchesAt(ps []string, anywhere bool) bool {
 	if !g.anchored {
 		// A slash-less pattern names a file or directory at any depth; a match on a
 		// directory component covers everything under it.
@@ -269,7 +296,7 @@ func (g glob) matches(ps []string) bool {
 	if g.dirOnly {
 		last--
 	}
-	return matchPrefix(g.segs, ps[:max(last, 0)])
+	return matchPrefix(g.segs, ps[:max(last, 0)], anywhere)
 }
 
 // matchPrefix reports whether the pattern segments match some non-empty prefix of
@@ -279,7 +306,10 @@ func (g glob) matches(ps []string) bool {
 // anchored literal fails on the first segment). Trying each prefix separately
 // would cost a factor len(ps) more, which a path of thousands of segments in a
 // diff would turn into a stall.
-func matchPrefix(pat, ps []string) bool {
+//
+// With reseed the pattern may also begin at any later segment, which is how a
+// suffix of the path is matched without trying each suffix.
+func matchPrefix(pat, ps []string, reseed bool) bool {
 	n := len(pat)
 	live := make([]bool, n+1) // live[i]: the first i pattern segments are consumed
 	next := make([]bool, n+1)
@@ -294,6 +324,10 @@ func matchPrefix(pat, ps []string) bool {
 	live[0] = true
 	spread(live)
 	for _, seg := range ps {
+		if reseed {
+			live[0] = true
+			spread(live)
+		}
 		clear(next)
 		alive := false
 		for i := 0; i < n; i++ {

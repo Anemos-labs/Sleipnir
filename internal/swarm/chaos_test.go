@@ -2,9 +2,10 @@ package swarm
 
 // Chaos, throttle and end-to-end tests (docs/reviews/swarm-concurrency.md): real
 // agent runs over a fake provider while spawn/reuse/retire/mail race each other,
-// the status throttle, the warm gate in front of the governor, and the real fs
-// tools under stolen leases. TestConc_* are gated repros (SLEIPNIR_REVIEW=1);
-// TestConcSound_* are ungated.
+// the status throttle, and the real fs tools under stolen leases. TestConc_* that
+// remain are repros of findings that live in other packages (they assert the
+// correct behaviour and are gated behind SLEIPNIR_REVIEW=1); TestConcSound_* cover
+// behaviour the review found sound.
 //
 //	SLEIPNIR_REVIEW=1 go test -race -count=1 -run 'TestConc_' ./internal/swarm
 
@@ -33,8 +34,7 @@ import (
 // Spawn, reuse, Retire, mail and hot rendering hammering a swarm of real agents
 // for two seconds. At quiescence the roster, the board and the mailboxes must
 // agree with each other.
-func TestConc_SwarmChaosLeavesInconsistentState(t *testing.T) {
-	concGate(t)
+func TestSwarmChaosLeavesConsistentState(t *testing.T) {
 	r := newRVRig(t, Config{MaxAgents: 200, MaxWriters: 200,
 		Router: RouterConfig{MaxPerMinute: 1 << 30, MaxPerPairPerMin: 1 << 30, MaxChars: 600, DedupeWindow: time.Nanosecond}},
 		func(ctx context.Context, c *rvCall) rvReply {
@@ -92,17 +92,7 @@ func TestConc_SwarmChaosLeavesInconsistentState(t *testing.T) {
 			default:
 			}
 			if id := pick(rng); id != "" && id != "mgr" {
-				// The janitor's own rule: only members that have run at least once.
-				// (Retiring a half-built member panics Spawn; see
-				// TestConc_RetireDuringSpawnCrashesTheProcess.)
-				if m := r.sw.get(id); m != nil {
-					m.mu.Lock()
-					seasoned := !m.idleAt.IsZero()
-					m.mu.Unlock()
-					if seasoned {
-						_ = r.sw.Retire(id)
-					}
-				}
+				_ = r.sw.Retire(id)
 			}
 			time.Sleep(200 * time.Microsecond)
 		}
@@ -134,13 +124,8 @@ func TestConc_SwarmChaosLeavesInconsistentState(t *testing.T) {
 	wg.Wait()
 	rvWait(t, "all runs to finish", func() bool {
 		for _, id := range r.sw.roster() {
-			if m := r.sw.get(id); m != nil {
-				m.mu.Lock()
-				run := m.running
-				m.mu.Unlock()
-				if run {
-					return false
-				}
+			if r.running(id) {
+				return false
 			}
 		}
 		return true
@@ -156,13 +141,8 @@ func TestConc_SwarmChaosLeavesInconsistentState(t *testing.T) {
 	for _, a := range snap.Agents {
 		if !members[a.ID] {
 			ghosts = append(ghosts, a.ID)
-		} else if m := r.sw.get(a.ID); m != nil {
-			m.mu.Lock()
-			running := m.running
-			m.mu.Unlock()
-			if a.State == "running" && !running && a.ID != "mgr" {
-				wrongState = append(wrongState, a.ID)
-			}
+		} else if a.State == "running" && !r.running(a.ID) && a.ID != "mgr" {
+			wrongState = append(wrongState, a.ID)
 		}
 	}
 	for _, tk := range snap.Tasks {
@@ -192,11 +172,9 @@ func head(s []string) []string {
 	return s
 }
 
-// setState throttles per agent: a changed line within 750ms of the last push is
-// dropped and NOT remembered. The typical multi-call step (edit, edit, bash) shows
-// the first activity for the whole duration of the last, long-running one.
-func TestConc_StatusThrottleHidesTheLongRunningTool(t *testing.T) {
-	concGate(t)
+// A line change inside the 750ms throttle window is not dropped: the newest line is
+// flushed when the window ends, so a long-running tool is shown for what it is.
+func TestStatusThrottleFlushesTheTrailingLine(t *testing.T) {
 	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	r.sw.StartManager()
 	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
@@ -208,10 +186,13 @@ func TestConc_StatusThrottleHidesTheLongRunningTool(t *testing.T) {
 	k := &memberSink{Sink: agent.NopSink{}, s: r.sw, m: m, ev: m.ev}
 	k.ToolStart(id, core.ToolUse("1", "edit", json.RawMessage(`{"path":"api/a.go"}`)))
 	k.ToolStart(id, core.ToolUse("2", "bash", json.RawMessage(`{"command":"go test ./..."}`))) // five minutes of tests
-	time.Sleep(200 * time.Millisecond)
+	rvWait(t, "the trailing status line to be published", func() bool {
+		a, _ := r.sw.Board.Snapshot().Agent(id)
+		return a.Line == "running a command"
+	})
 	a, _ := r.sw.Board.Snapshot().Agent(id)
-	if !strings.Contains(a.Line, "go test") {
-		t.Fatalf("the agent has been running `go test ./...` but every agent's hot view says %q (the update was dropped by the 750ms throttle and never re-sent)", a.Line)
+	if strings.Contains(a.Line, "go test") {
+		t.Fatalf("the status line carries the command: %q", a.Line)
 	}
 }
 
@@ -298,12 +279,11 @@ func TestConc_ColdPrefixGateInvertsPriority(t *testing.T) {
 	}
 }
 
-// Shutdown = cancel + Wait with no deadline. One tool that ignores its context
-// (a verifier stuck in an uninterruptible call) wedges it forever.
-func TestConc_ShutdownHangsOnAToolThatIgnoresItsContext(t *testing.T) {
-	concGate(t)
+// A verifier that ignores its context cannot wedge Shutdown: the harness stops
+// waiting for it at its own deadline.
+func TestShutdownIsNotHeldByAVerifierThatIgnoresItsContext(t *testing.T) {
 	release := make(chan struct{})
-	cfg := Config{MaxWriters: 4, VerifyCmd: "go test ./...", Verify: func(ctx context.Context, dir, cmd string) (string, int, error) {
+	cfg := Config{MaxWriters: 4, ShutdownGrace: 2 * time.Second, VerifyCmd: "go test ./...", Verify: func(ctx context.Context, dir, cmd string) (string, int, error) {
 		<-release // ignores ctx
 		return "ok", 0, nil
 	}}
@@ -325,7 +305,7 @@ func TestConc_ShutdownHangsOnAToolThatIgnoresItsContext(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(1500 * time.Millisecond):
-		t.Fatal("Shutdown is still blocked 1.5s after cancellation: it waits for every agent goroutine with no deadline")
+		t.Fatal("Shutdown is still blocked 1.5s after cancellation")
 	}
 }
 
@@ -390,12 +370,9 @@ func TestConcSound_StolenLeasesStillCannotLoseAnEdit(t *testing.T) {
 	}
 }
 
-// setState updates m.state under m.mu but publishes to the board after releasing
-// it, so two concurrent callers can publish in the opposite order to the one in
-// which they updated m.state: the board then disagrees with the member for as long
-// as nothing else changes.
-func TestConc_SetStatePublishesOutsideItsLockAndCanReorder(t *testing.T) {
-	concGate(t)
+// Whoever publishes last reads the newest state, so two racing updates cannot leave
+// the board disagreeing with the member.
+func TestSetStateNeverLeavesTheBoardStale(t *testing.T) {
 	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	r.sw.StartManager()
 	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
@@ -422,7 +399,7 @@ func TestConc_SetStatePublishesOutsideItsLockAndCanReorder(t *testing.T) {
 		}
 	}()
 	defer close(quit)
-	deadline := time.Now().Add(8 * time.Second)
+	deadline := time.Now().Add(3 * time.Second)
 	for i := int32(1); time.Now().Before(deadline); i++ {
 		flag.Store(1)
 		m.setState(r.sw, "running", "step")
@@ -510,8 +487,7 @@ func TestConc_ArchiveIndexRetainsWholeTurnsForeverAndSurvivesRetirement(t *testi
 // after truncating any output over MaxOutputChars, so a failing `go test` with a
 // long failure log is recorded as exit 0, and the task result the manager reads
 // says the last test PASSED. (The exit code is available in Result.Meta.)
-func TestConc_EvidenceCallsAFailingTestPassedWhenItsOutputWasTruncated(t *testing.T) {
-	concGate(t)
+func TestEvidenceNeverCallsAFailingTestPassedWhenItsOutputWasTruncated(t *testing.T) {
 	env := (&tools.Env{Agent: "be-1", Blobs: events.NewMemBlobs()}).Defaults()
 	failLog := strings.Repeat("--- FAIL: TestSomething (0.00s)\n    expected 10 got 11\n", 2000) // ~100KB
 	res := env.Finish(failLog+"[exit code 1]", false)
@@ -562,8 +538,7 @@ func (b *rvBlockEmit) Emit(agentID, typ string, data any, opts ...events.Opt) (u
 // order, so up to 8 attempts are made (each fails with probability ~95%). A worker
 // built across an epoch can miss it the same way (buildAgent reads s.shared once
 // and registers later); that window was not reproduced.
-func TestConc_ConcurrentSetSharedLeavesAgentsOnDifferentEpochs(t *testing.T) {
-	concGate(t)
+func TestConcurrentSetSharedLeavesAgentsOnTheSameEpoch(t *testing.T) {
 	be := &rvBlockEmit{Emitter: events.NewMemLog()}
 	r := newRVRigWith(t, Config{MaxAgents: 100, MaxWriters: 100}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} },
 		func(d *Deps) { d.Events = be })
@@ -602,17 +577,16 @@ func TestConc_ConcurrentSetSharedLeavesAgentsOnDifferentEpochs(t *testing.T) {
 	}
 }
 
-// Sound: cancelling the swarm while a worker is inside the verifier settles the task
-// instead of leaving it "doing" under an idle owner, whichever way the verifier
-// returns (killed with a non-zero code, or finished with 0 just before the cancel).
-func TestConcSound_VerifierCancelledMidVerificationSettlesTheTask(t *testing.T) {
+// Cancelling the swarm while a worker is inside the verifier settles the task instead
+// of leaving it "doing" under an idle owner, whichever way the verifier returns (an
+// interrupted swarm is never a verdict): the task returns to todo, nothing failed.
+func TestVerifierCancelledMidVerificationSettlesTheTask(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		code int
-		want []TaskStatus
 	}{
-		{"killed", 137, []TaskStatus{StatusFailed}},
-		{"finished first", 0, []TaskStatus{StatusReview}},
+		{"killed", 137},
+		{"finished first", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var r *rvRig
@@ -638,12 +612,8 @@ func TestConcSound_VerifierCancelledMidVerificationSettlesTheTask(t *testing.T) 
 			rvWait(t, "worker idle", func() bool { return r.idle(id) })
 			time.Sleep(50 * time.Millisecond)
 			tk, _ := r.sw.Board.Snapshot().Task("T1")
-			ok := false
-			for _, w := range tc.want {
-				ok = ok || tk.Status == w
-			}
-			if !ok {
-				t.Fatalf("T1 ended %q (%s); want one of %v", tk.Status, tk.Result, tc.want)
+			if tk.Status != StatusTodo || tk.Owner != "" || tk.Attempts != 0 {
+				t.Fatalf("T1 ended %s/%s attempts=%d (%s); want todo, unowned", tk.Status, tk.Owner, tk.Attempts, tk.Result)
 			}
 			if a, _ := r.sw.Board.Snapshot().Agent(id); a.State != "idle" {
 				t.Fatalf("worker state %q", a.State)

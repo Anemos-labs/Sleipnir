@@ -223,3 +223,57 @@ func TestRolloutEpisodesAreShownInTheList(t *testing.T) {
 		t.Errorf("episode = %+v", e)
 	}
 }
+
+func TestASymlinkedRootIsResolved(t *testing.T) {
+	root := sessionTree(t)
+	link := filepath.Join(t.TempDir(), "latest")
+	if err := os.Symlink(root, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	list, err := Sessions(link, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"loose", "r001/taskA/0", "r001/taskA/1", "r001/taskB/0"}
+	if strings.Join(ids(list), ",") != strings.Join(want, ",") {
+		t.Errorf("through a symlinked root: %v, want %v", ids(list), want)
+	}
+	if s, err := OpenSession(link, "loose", Options{}); err != nil || s.Summary().Totals.Requests == 0 {
+		t.Errorf("OpenSession through a symlinked root: %v", err)
+	}
+}
+
+func TestAFailedLoadIsRetriedLater(t *testing.T) {
+	dir, _ := synthDir(t, synthCfg{Workers: 0, MgrSteps: 2, Steps: 2})
+	reg, err := newRegistry(dir, Options{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := reg.get("")
+	log := filepath.Join(dir, "events.jsonl")
+	saved, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(log); err != nil {
+		t.Fatal(err)
+	}
+	if _, ready, err := e.ensure(Options{}, 5*time.Second, nil); !ready || err == nil {
+		t.Fatalf("a missing log: ready=%v err=%v", ready, err)
+	}
+	if err := os.WriteFile(log, saved, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The failure is remembered briefly, so a broken log is not re-read on every poll...
+	if _, _, err := e.ensure(Options{}, 5*time.Second, nil); err == nil {
+		t.Error("the failed load was retried at once")
+	}
+	// ...and forgotten after a while, so a log that got fixed or finished loads.
+	e.mu.Lock()
+	e.errAt = time.Now().Add(-time.Minute)
+	e.mu.Unlock()
+	s, ready, err := e.ensure(Options{}, 5*time.Second, nil)
+	if !ready || err != nil || s == nil || s.Summary().Totals.Requests == 0 {
+		t.Fatalf("retry: ready=%v err=%v", ready, err)
+	}
+}

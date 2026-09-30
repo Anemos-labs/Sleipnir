@@ -49,17 +49,35 @@ func (z Sizer) Turn(t core.Turn) int {
 	return n
 }
 
-// Turns is the size of a run of turns as sent.
+// Turns is the size of a run of turns as sent. A turn-scoped system turn that a
+// later user message has cleared renders nothing; one Render folds into user text
+// (a placement the API would reject) is sent like any user text.
 func (z Sizer) Turns(turns []core.Turn) int {
+	scoped := z.Caps.HotMode == HotTurnScoped
+	sys := make([]bool, len(turns))
 	lastUser := -1
+	prev := core.RoleUser // the message before the run: the preamble or a user turn
 	for i, t := range turns {
-		if t.Role == core.RoleUser {
+		role := t.Role
+		if role == core.RoleSystem {
+			var next *core.Turn
+			if i+1 < len(turns) {
+				next = &turns[i+1]
+			}
+			if scoped && systemPlacementOK(prev, next) {
+				sys[i] = true
+			} else {
+				role = core.RoleUser
+			}
+		}
+		if role == core.RoleUser {
 			lastUser = i
 		}
+		prev = role
 	}
 	n := 0
 	for i, t := range turns {
-		if t.Role == core.RoleSystem && z.Caps.HotMode == HotTurnScoped && i < lastUser {
+		if sys[i] && i < lastUser {
 			continue // cleared by a later user message: renders nothing
 		}
 		n += z.Turn(t)

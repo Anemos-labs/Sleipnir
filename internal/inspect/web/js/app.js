@@ -16,7 +16,7 @@ const VIEW_MODULES = { timeline, layers, compaction, swarm, cost, anomalies, eve
 const TAB_LABEL = { timeline: 'Timeline', layers: 'Layers', compaction: 'Compaction', swarm: 'Swarm', cost: 'Cost', anomalies: 'Anomalies', events: 'Events' };
 
 const $ = id => document.getElementById(id);
-let cur = null, curName = '', busy = false, sessionsTimer = 0;
+let cur = null, curName = '', busy = false, sessionsTimer = 0, lastPoll = 0;
 
 // ---- theme --------------------------------------------------------------------------------
 
@@ -144,7 +144,10 @@ function route() {
 async function tick() {
   if (document.hidden || busy) return;
   if (S.view === 'sessions') return;
+  // A finished session rarely changes: look every five seconds instead of every one.
+  if (S.sum && S.sum.state === 'ended' && Date.now() - lastPoll < 5000) return;
   busy = true;
+  lastPoll = Date.now();
   try {
     const first = !S.sum;
     const changed = await refreshCore();

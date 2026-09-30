@@ -88,6 +88,27 @@ func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []strin
 	return r
 }
 
+// precheckScope reports a scope overlap before the limits are consulted, so the
+// manager is told the most useful thing first. The board repeats the check inside its
+// critical section; this one is only for the message.
+func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
+	if role.ReadOnly {
+		return nil
+	}
+	sn := s.Board.Snapshot()
+	var t Task
+	if req.TaskID != "" {
+		t, _ = sn.Task(strings.TrimSpace(req.TaskID))
+	}
+	if len(files) > 0 {
+		t.Files = files
+	}
+	if len(t.Files) == 0 {
+		return nil
+	}
+	return s.scopeConflictIn(sn, t)
+}
+
 func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	m := s.get(req.Agent)
 	if m == nil {
@@ -97,6 +118,9 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 		return "", errors.New("the manager cannot be given a worker's task")
 	}
 	role := s.roles[m.role]
+	if err := s.precheckScope(req, files, role); err != nil {
+		return "", err
+	}
 	rs, ctx, ok := s.reserve(m)
 	if !ok {
 		return "", fmt.Errorf("%s is still working; wait for it or spawn a new worker", m.id)
@@ -129,6 +153,9 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	role, ok := s.roles[req.Role]
 	if !ok || req.Role == "manager" {
 		return "", fmt.Errorf("unknown role %q (roles: %s)", cleanText(req.Role, 40), strings.Join(s.spawnableRoles(), ", "))
+	}
+	if err := s.precheckScope(req, files, role); err != nil {
+		return "", err
 	}
 	s.mu.Lock()
 	total := len(s.members)

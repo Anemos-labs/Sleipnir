@@ -80,7 +80,7 @@ func (f *serverFixture) do(method, path, token string, body any) *http.Response 
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	f.t.Cleanup(func() { resp.Body.Close() })
+	f.t.Cleanup(func() { _ = resp.Body.Close() })
 	return resp
 }
 
@@ -105,7 +105,9 @@ func stream(t *testing.T, resp *http.Response) []map[string]json.RawMessage {
 
 func lineType(l map[string]json.RawMessage) string {
 	var s string
-	json.Unmarshal(l["type"], &s)
+	if err := json.Unmarshal(l["type"], &s); err != nil {
+		return "<unparseable type>"
+	}
 	return s
 }
 
@@ -158,7 +160,7 @@ func TestServerAuthentication(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			// 200 is never returned for an unknown run; an authenticated request
 			// reaches the handler (404) while an unauthenticated one is stopped (401).
 			got := resp.StatusCode
@@ -202,7 +204,9 @@ func TestServerStreamsProgressThenEpisodes(t *testing.T) {
 		t.Fatalf("first line: %v", lines[0])
 	}
 	var runID string
-	json.Unmarshal(lines[0]["run_id"], &runID)
+	if err := json.Unmarshal(lines[0]["run_id"], &runID); err != nil {
+		t.Fatal(err)
+	}
 	if !runIDRe.MatchString(runID) {
 		t.Fatalf("run id %q", runID)
 	}
@@ -217,7 +221,9 @@ func TestServerStreamsProgressThenEpisodes(t *testing.T) {
 				t.Fatal("progress after episodes started")
 			}
 			var p Progress
-			json.Unmarshal(l["progress"], &p)
+			if err := json.Unmarshal(l["progress"], &p); err != nil {
+				t.Fatal(err)
+			}
 			seenRunStart = seenRunStart || p.Type == "run.start"
 			seenRolloutDone = seenRolloutDone || p.Type == "rollout.done"
 		case "episode":
@@ -297,7 +303,9 @@ func TestServerInlineTaskAndRoleOptions(t *testing.T) {
 		t.Fatalf("call %+v", c)
 	}
 	var mf Manifest
-	json.Unmarshal([]byte(mustRead(t, filepath.Join(f.root, "my-run.1", "manifest.json"))), &mf)
+	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(f.root, "my-run.1", "manifest.json"))), &mf); err != nil {
+		t.Fatal(err)
+	}
 	if mf.RunID != "my-run.1" || !mf.Config.Swarm || mf.Config.Agents != 4 || !mf.Config.Capture || mf.Config.TargetPrice != "anthropic-sonnet" || mf.Config.RoleModels["manager"] != "big-model" {
 		t.Fatalf("manifest config: %+v", mf.Config)
 	}
@@ -374,7 +382,7 @@ func TestServerConfinesInlineTasksToRepoRoots(t *testing.T) {
 	// A symlink inside the root that points outside does not fool the check.
 	link := filepath.Join(allowed, "sneaky-link")
 	if err := os.Symlink("/etc", link); err == nil {
-		defer os.Remove(link)
+		defer func() { _ = os.Remove(link) }()
 		via := f.task
 		via.ID = "via-link"
 		via.Repo.Path = link
@@ -433,7 +441,9 @@ func TestServerRewardsPathsAreConfined(t *testing.T) {
 	var ep rl.Episode
 	for _, l := range lines {
 		if lineType(l) == "episode" {
-			json.Unmarshal(l["episode"], &ep)
+			if err := json.Unmarshal(l["episode"], &ep); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	real, _ := filepath.EvalSymlinks(filepath.Join(rewardsDir, "good.json"))
@@ -450,7 +460,7 @@ func TestServerLimitsConcurrentRuns(t *testing.T) {
 	go func() {
 		resp := f.do("POST", "/v1/rollouts", testToken, f.rolloutReq(map[string]any{"group": 1, "run_id": "slow"}))
 		close(started)
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 	}()
 	eventually(t, 30*time.Second, func() bool { return len(f.h.Calls()) == 1 }, "the first run to start")
 	resp := f.do("POST", "/v1/rollouts", testToken, f.rolloutReq(map[string]any{"group": 1}))
@@ -460,7 +470,9 @@ func TestServerLimitsConcurrentRuns(t *testing.T) {
 	// While it runs, GET reports it as running.
 	resp = f.do("GET", "/v1/runs/slow", testToken, nil)
 	var st RunStatus
-	json.NewDecoder(resp.Body).Decode(&st)
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
 	if st.Status != "running" {
 		t.Fatalf("status of a live run: %+v", st)
 	}
@@ -489,7 +501,7 @@ func TestServerClientDisconnectCancelsTheRun(t *testing.T) {
 	}
 	eventually(t, 30*time.Second, func() bool { return len(f.h.Calls()) >= 1 }, "a rollout to start")
 	cancel()
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	eventually(t, 30*time.Second, func() bool {
 		b, err := os.ReadFile(filepath.Join(f.root, "dropped", "manifest.json"))
 		return err == nil && strings.Contains(string(b), `"status": "cancelled"`)
@@ -536,7 +548,7 @@ func TestServerNoTokenNeededOnlyOnLoopback(t *testing.T) {
 			if err != nil || resp.StatusCode != 200 {
 				t.Errorf("healthz on %s: %v", tc.addr, err)
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		case err := <-done:
 			t.Fatalf("Serve(%q, token %q) failed: %v", tc.addr, tc.token, err)
 		case <-time.After(10 * time.Second):
@@ -552,7 +564,7 @@ func TestServerNoTokenNeededOnlyOnLoopback(t *testing.T) {
 	if err != nil {
 		t.Skip("cannot listen on all interfaces here")
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	o := opts(filepath.Join(t.TempDir(), "s"))
 	o.Listener = ln
 	if err := Serve(ctx, "ignored", f.r, o); !errors.Is(err, ErrNeedToken) {
@@ -660,7 +672,9 @@ func TestResolveUnder(t *testing.T) {
 	mustWrite(t, filepath.Join(root, "a", "b.json"), "x")
 	outside := t.TempDir()
 	mustWrite(t, filepath.Join(outside, "f"), "x")
-	os.Symlink(outside, filepath.Join(root, "dirlink"))
+	if err := os.Symlink(outside, filepath.Join(root, "dirlink")); err != nil {
+		t.Fatal(err)
+	}
 	if p, err := resolveUnder(root, "a/b.json"); err != nil || !strings.HasSuffix(p, filepath.Join("a", "b.json")) {
 		t.Fatalf("%q %v", p, err)
 	}

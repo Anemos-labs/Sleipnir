@@ -199,7 +199,7 @@ func classify(text string) Kind {
 		"you have unstaged changes", "your index contains uncommitted changes",
 		"contains modified or untracked files", "is dirty", "local changes"):
 		return KindDirty
-	case has("automatic merge failed", "could not apply", "patch does not apply", "patch failed",
+	case has("automatic merge failed", "could not apply", "patch does not apply", "patch failed", "not possible to fast-forward",
 		"conflict (", "merge conflict", "fix conflicts", "unmerged files", "needs merge",
 		"does not match index", "already exists in working directory"):
 		return KindConflict

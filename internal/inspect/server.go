@@ -310,10 +310,17 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request) bool {
 			SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: 7 * 24 * 3600})
 		q := r.URL.Query()
 		q.Del("token")
-		u := *r.URL
-		u.RawQuery = q.Encode()
+		// The target is one of this server's own pages, never something taken from the
+		// request line: "//host/x" or "/\host" must not become a redirect to another origin.
+		loc := "/"
+		if s.assets[r.URL.Path] != nil {
+			loc = r.URL.Path
+		}
+		if rq := q.Encode(); rq != "" {
+			loc += "?" + rq
+		}
 		w.Header().Set("Cache-Control", "no-store")
-		http.Redirect(w, r, u.String(), http.StatusSeeOther)
+		http.Redirect(w, r, loc, http.StatusSeeOther)
 		return false
 	}
 	w.Header().Set("WWW-Authenticate", `Bearer realm="sleipnir-inspect"`)

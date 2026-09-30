@@ -57,7 +57,7 @@ func TestWriteFileInDoesNotFollowSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, rel := range []string{"linkdir/victim.txt", "linkdir/deep/er.txt", "final_test.go", "dangling_test.go"} {
 		if err := writeFileIn(r, rel, []byte("HIDDEN"), 0o644); err != nil {
@@ -88,7 +88,7 @@ func TestWriteFileInReplacesDirectoryAndSetsExecBit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if err := writeFileIn(r, "x_test.go", []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestWriteFileInRejectsBadPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	for _, rel := range []string{"../x", "/abs", ".git/config", "a/../../x", ""} {
 		if err := writeFileIn(r, rel, []byte("x"), 0o644); err == nil {
 			t.Errorf("%q accepted", rel)
@@ -258,8 +258,12 @@ func TestCloneTreeStrategies(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.WriteString("changed")
-		f.Close()
+		if _, err := f.WriteString("changed"); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
 		if got := mustRead(t, filepath.Join(src, "a.txt")); got != "alpha" {
 			t.Fatalf("source was modified through the clone: %q", got)
 		}

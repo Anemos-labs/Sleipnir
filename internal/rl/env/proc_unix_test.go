@@ -39,7 +39,7 @@ func waitDead(t testing.TB, pid int) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	syscall.Kill(pid, syscall.SIGKILL)
+	_ = syscall.Kill(pid, syscall.SIGKILL)
 	t.Fatalf("process %d is still alive", pid)
 }
 

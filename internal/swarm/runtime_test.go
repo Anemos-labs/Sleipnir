@@ -226,8 +226,8 @@ func TestManagerDispatchesWorkersAndCollectsResults(t *testing.T) {
 		if !ok || tk.Status != swarm.StatusDone || tk.Owner == "" {
 			t.Fatalf("%s = %+v", id, tk)
 		}
-		if !strings.Contains(tk.Result, "edited 1") || !strings.Contains(tk.Result, "go test ./...") || !strings.Contains(tk.Result, "passed") {
-			t.Fatalf("%s result should carry harness-observed evidence, got %q", id, tk.Result)
+		if !strings.Contains(tk.Evidence, "edited 1") || !strings.Contains(tk.Evidence, "go test ./...") || !strings.Contains(tk.Evidence, "passed") {
+			t.Fatalf("%s should carry harness-observed evidence, got %q (result %q)", id, tk.Evidence, tk.Result)
 		}
 	}
 	// Workers reused the manager's warm shared prefix instead of re-writing it.

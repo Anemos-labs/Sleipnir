@@ -501,7 +501,11 @@ func withUsage(r *provider.Response) core.Turn {
 // ends with an assistant turn (so roles alternate).
 func (a *Agent) drainInbox() {
 	snap := a.thread.Snapshot()
-	if len(snap.Turns) > 0 && snap.Turns[len(snap.Turns)-1].Role == core.RoleUser {
+	last := len(snap.Turns) - 1
+	for last >= 0 && snap.Turns[last].Role == core.RoleSystem {
+		last-- // a turn-scoped board view behind the user turn is part of that turn
+	}
+	if last >= 0 && snap.Turns[last].Role == core.RoleUser {
 		return // pending input will ride along with the next tool-results turn
 	}
 	if blocks := a.takeInbox(); len(blocks) > 0 {

@@ -303,8 +303,9 @@ func (t *httpTransport) handle(resp *http.Response, isRequest bool, reqID []byte
 		ct, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 		switch ct {
 		case "text/event-stream":
-			t.wg.Add(1)
-			go t.readPostStream(resp, isRequest, reqID, rctx, release)
+			if !t.spawn(func() { t.readPostStream(resp, isRequest, reqID, rctx, release) }) {
+				return false, &closedError{}
+			}
 			return true, nil
 		case "application/json", "application/json-rpc":
 			return false, t.readJSONBody(resp, isRequest, reqID)

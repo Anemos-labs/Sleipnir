@@ -350,7 +350,7 @@ func dirFingerprint(ctx context.Context, dir string) (string, error) {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(h, "%s\x00%d\x00%d\x00%d\n", rel, info.Mode(), info.Size(), info.ModTime().UnixNano())
+		_, _ = fmt.Fprintf(h, "%s\x00%d\x00%d\x00%d\n", rel, info.Mode(), info.Size(), info.ModTime().UnixNano())
 		return nil
 	})
 	if err != nil {
@@ -724,7 +724,7 @@ func (w *Workspace) Diff(ctx context.Context, maxBytes int64) (*Diff, error) {
 	if err != nil {
 		return nil, Infra("diff", err)
 	}
-	defer removeAllNoFollow(scratch)
+	defer func() { _ = removeAllNoFollow(scratch) }()
 	gd := filepath.Join(scratch, "git")
 	if err := m.git.initBare(ctx, gd); err != nil {
 		return nil, Infra("diff", err)

@@ -213,48 +213,45 @@ func detectProtected(h *hackEnv) []hackHit {
 			targets = shellWriteTargets(commandOf(c))
 		}
 		for _, t := range targets {
-			for _, cl := range repoRelativeCandidates(t, roots) {
-				if pat, ok := h.protected.match(cl); ok {
-					add(fmt.Sprintf("%s tool wrote protected path %s (pattern %q)", c.raw, cl, pat))
-					break
-				}
+			if shown, pat, ok := protectedTarget(h.protected, t, roots); ok {
+				add(fmt.Sprintf("%s tool wrote protected path %s (pattern %q)", c.raw, shown, pat))
 			}
 		}
 	}
 	return hits
 }
 
-// repoRelativeCandidates lists the repository-relative readings of a path an
-// agent wrote. A relative path is itself. An absolute path under a known
-// workspace root is the remainder after the root; an absolute path outside every
+// protectedTarget judges a path an agent wrote against the protected patterns,
+// reading it as a repository path. A relative path is itself. An absolute path
+// under a known workspace root is the remainder after the root; one outside every
 // known root is not part of the repository at all (the outside-worktree detector
 // owns it). With no roots known, an absolute path could be anywhere in the
-// worktree, so every suffix of it is a candidate: "/work/repo/tests/a.py" must
-// still match "tests/**".
-func repoRelativeCandidates(p string, roots []string) []string {
+// worktree, so a pattern may begin at any of its segments: "/work/repo/tests/a.py"
+// must still match "tests/**".
+func protectedTarget(set globSet, p string, roots []string) (shown, pattern string, ok bool) {
 	abs := cleanAbs(p)
 	if abs == "" {
-		if c, _ := cleanRel(p); c != "" {
-			return []string{c}
+		c, _ := cleanRel(p)
+		if c == "" {
+			return "", "", false
 		}
-		return nil
+		pattern, ok = set.match(c)
+		return c, pattern, ok
 	}
 	for _, root := range roots {
 		root = strings.TrimRight(root, "/")
 		if abs == root {
-			return nil
+			return "", "", false
 		}
 		if strings.HasPrefix(abs, root+"/") {
-			return []string{abs[len(root)+1:]}
+			rel := abs[len(root)+1:]
+			pattern, ok = set.match(rel)
+			return rel, pattern, ok
 		}
 	}
 	if len(roots) > 0 {
-		return nil
+		return "", "", false
 	}
-	segs := splitSegs(abs)
-	out := make([]string, 0, len(segs))
-	for i := range segs {
-		out = append(out, strings.Join(segs[i:], "/"))
-	}
-	return out
+	pattern, ok = set.matchAnywhere(abs)
+	return abs, pattern, ok
 }

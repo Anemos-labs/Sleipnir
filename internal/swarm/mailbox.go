@@ -263,8 +263,16 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	if err := deliver(m); err != nil {
 		// Nothing was delivered: give the sender its budget back and say so.
 		r.mu.Lock()
-		r.sender[from] = unappend(r.sender[from], now)
-		r.pair[pk] = unappend(r.pair[pk], now)
+		if ts := unappend(r.sender[from], now); len(ts) > 0 {
+			r.sender[from] = ts
+		} else {
+			delete(r.sender, from)
+		}
+		if ts := unappend(r.pair[pk], now); len(ts) > 0 {
+			r.pair[pk] = ts
+		} else {
+			delete(r.pair, pk)
+		}
 		if hadPrev {
 			r.recent[dk] = prev
 		} else {

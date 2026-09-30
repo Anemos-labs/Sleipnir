@@ -31,11 +31,13 @@ import (
 	"github.com/reee344/sleipnir/internal/memory"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/reee344/sleipnir/internal/skills"
 	"github.com/reee344/sleipnir/internal/swarm"
 	"github.com/reee344/sleipnir/internal/tools"
 	"github.com/reee344/sleipnir/internal/tools/fs"
 	"github.com/reee344/sleipnir/internal/tools/recall"
 	"github.com/reee344/sleipnir/internal/tools/shell"
+	"github.com/reee344/sleipnir/internal/tools/skilltool"
 	"github.com/reee344/sleipnir/internal/tools/web"
 )
 
@@ -132,6 +134,12 @@ type Session struct {
 	Agent *agent.Agent
 	Swarm *swarm.Swarm
 
+	// Skills is the catalogue of skills the session discovered; Roles the swarm's
+	// roles, built-in plus project and user definitions.
+	Skills *skills.Catalog
+	Roles  swarm.Roles
+
+	ext   *extensions
 	shell *shell.Manager
 
 	mu      sync.Mutex
@@ -224,6 +232,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		s.Model.ContextTokens = o.ContextWindow
 	}
 
+	// Skills and role definitions, then permissions (which need the roles' profiles).
+	s.loadExtensions()
+	s.Skills, s.Roles = s.ext.skills, s.ext.roles
+	for _, w := range s.ext.warnings {
+		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": w})
+		if o.Sink != nil {
+			o.Sink.Notice("", "warn", w)
+		}
+	}
+
 	// Permissions and checkpoints.
 	if err := s.buildPerm(); err != nil {
 		s.Log.Close()
@@ -305,22 +323,25 @@ func (s *Session) buildPerm() error {
 	for name, rp := range s.cfg.Permissions.Roles {
 		roles[name] = perm.RoleProfile{Mode: perm.Mode(rp.Mode), Allow: rp.Allow, Ask: rp.Ask, Deny: rp.Deny}
 	}
+	// A role definition can only tighten what its role may do.
+	for name, p := range s.ext.profiles {
+		if _, ok := roles[name]; !ok {
+			roles[name] = p
+		}
+	}
 	// Read-only roles are read-only in the engine, not merely by a command
 	// allowlist in the swarm: the engine understands shell syntax.
-	r := o.Roles
-	if r == nil {
-		r = swarm.BuiltinRoles()
-	}
-	for name, role := range r {
+	for name, role := range s.ext.roles {
 		if role.ReadOnly {
 			if _, ok := roles[name]; !ok {
 				roles[name] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow}
 			}
 		}
 	}
+	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home,
-		Allow: s.cfg.Permissions.Allow, Ask: s.cfg.Permissions.Ask, Deny: s.cfg.Permissions.Deny,
+		Allow: s.cfg.Permissions.Allow, Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: o.Prompter,
 	})
 	if err != nil {
@@ -363,6 +384,9 @@ func (s *Session) buildShared(ctx context.Context) error {
 	s.Memory = srcs
 	if txt := memory.Render(srcs); strings.TrimSpace(txt) != "" {
 		segs = append(segs, kv.Segment{Key: "instructions", Text: fitTokens(txt, 3000, est), Vol: kv.VolEpoch})
+	}
+	if txt := s.ext.skillsSegment(); txt != "" {
+		segs = append(segs, kv.Segment{Key: "skills", Text: txt, Vol: kv.VolEpoch})
 	}
 	if len(segs) > 0 {
 		s.Shared = kv.NewLayer("shared", kv.KindShared, 1, segs)
@@ -413,6 +437,8 @@ func (s *Session) build() error {
 	}
 	archive := kv.NewArchive(s.Blobs)
 	reg.Register(recall.New(archive))
+	// Always registered: the tool list must not depend on the project.
+	reg.Register(skilltool.New(s.Skills))
 
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
 	constLayer := kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: constText, Vol: kv.VolFrozen}})
@@ -515,7 +541,26 @@ func (s *Session) build() error {
 			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: m}
 		}
 	}
-	sw := swarm.New(sc, deps, o.Roles)
+	if len(s.ext.defs) > 0 {
+		if deps.RoleModels == nil {
+			deps.RoleModels = map[string]swarm.RoleModel{}
+		}
+		for _, d := range s.ext.defs {
+			if d.Model == "" || o.RoleModels[d.Name] != "" {
+				continue
+			}
+			mr, err := ResolveModel(s.cfg, d.Model)
+			if err != nil {
+				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
+			}
+			p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: o.CaptureTokens})
+			if err != nil {
+				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
+			}
+			deps.RoleModels[d.Name] = swarm.RoleModel{Provider: p, Model: m}
+		}
+	}
+	sw := swarm.New(sc, deps, s.ext.roles)
 	for _, t := range sw.Tools() {
 		reg.Register(t)
 	}

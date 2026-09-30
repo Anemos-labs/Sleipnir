@@ -522,9 +522,10 @@ func judgeRun(pm PassMode, er ExecResult) VerifyRun {
 			rr.Pass = score >= 1-1e-9
 		}
 	default:
-		if er.ExitCode == 0 {
+		switch er.ExitCode {
+		case 0:
 			rr.Pass, rr.Score = true, 1
-		} else if er.ExitCode == 127 || er.ExitCode == 126 {
+		case 126, 127:
 			rr.Note = "command not found or not executable: check the verifier command and toolchain"
 		}
 	}
@@ -658,7 +659,7 @@ func (m *Workspaces) writeHidden(dir string, hidden map[string]string, blobs eve
 	if err != nil {
 		return nil, Infra("hidden files", err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	for _, name := range names {
 		ref := hidden[name]
 		var data []byte

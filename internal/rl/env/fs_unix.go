@@ -21,7 +21,7 @@ import (
 func chmodDirNoFollow(path string, mode fs.FileMode) error {
 	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err == nil {
-		defer syscall.Close(fd)
+		defer func() { _ = syscall.Close(fd) }()
 		return syscall.Fchmod(fd, uint32(mode.Perm()))
 	}
 	if !errors.Is(err, syscall.EACCES) {

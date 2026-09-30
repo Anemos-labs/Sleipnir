@@ -142,7 +142,9 @@ func TestGoroutinesAreReleasedAfterClose(t *testing.T) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("%d goroutines of the package survive Close (%d before):\n%s", len(left), before, strings.Join(left, "\n\n"))
+			all := make([]byte, 4<<20)
+			all = all[:runtime.Stack(all, true)]
+			t.Fatalf("%d goroutines of the package survive Close (%d before):\n%s\n=== ALL ===\n%s", len(left), before, strings.Join(left, "\n\n"), all)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

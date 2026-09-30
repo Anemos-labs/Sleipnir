@@ -84,7 +84,7 @@ func prepared(t *testing.T) (*Workspaces, *Workspace) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { w.Cleanup() })
+	t.Cleanup(func() { _ = w.Cleanup() })
 	return m, w
 }
 
@@ -186,7 +186,7 @@ func TestDiffRespectsIgnoreRulesButKeepsTrackedIgnoredFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	if !exists(filepath.Join(w.Root, "vendor", "dep", "dep.go")) {
 		t.Fatal("tracked-but-ignored file missing from the workspace")
 	}
@@ -280,7 +280,7 @@ func TestDiffDoesNotReadThroughReplacedDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w2.Cleanup()
+	defer func() { _ = w2.Cleanup() }()
 	// The agent replaces the tracked directory by a symlink to somewhere else.
 	if err := os.RemoveAll(filepath.Join(w2.Root, "sub")); err != nil {
 		t.Fatal(err)
@@ -325,16 +325,22 @@ func TestDiffTypeChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Cleanup()
+	defer func() { _ = w.Cleanup() }()
 	root := w.Root
 	// file -> symlink, symlink -> file, directory -> file
-	os.Remove(filepath.Join(root, "was-file"))
+	if err := os.Remove(filepath.Join(root, "was-file")); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink("target.txt", filepath.Join(root, "was-file")); err != nil {
 		t.Fatal(err)
 	}
-	os.Remove(filepath.Join(root, "was-link"))
+	if err := os.Remove(filepath.Join(root, "was-link")); err != nil {
+		t.Fatal(err)
+	}
 	mustWrite(t, filepath.Join(root, "was-link"), "now a file\n")
-	os.RemoveAll(filepath.Join(root, "was-dir"))
+	if err := os.RemoveAll(filepath.Join(root, "was-dir")); err != nil {
+		t.Fatal(err)
+	}
 	mustWrite(t, filepath.Join(root, "was-dir"), "now a file\n")
 	d, err := w.Diff(ctxT(t), 0)
 	if err != nil {
@@ -362,7 +368,7 @@ func TestDiffLimits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer w.Cleanup()
+		defer func() { _ = w.Cleanup() }()
 		mustWrite(t, filepath.Join(w.Root, "big.dat"), strings.Repeat("x", 4096))
 		mustWrite(t, filepath.Join(w.Root, "small.dat"), "ok")
 		d, err := w.Diff(ctxT(t), 0)
@@ -380,7 +386,7 @@ func TestDiffLimits(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer w.Cleanup()
+		defer func() { _ = w.Cleanup() }()
 		for i := 0; i < 60; i++ {
 			mustWrite(t, filepath.Join(w.Root, "many", fmt.Sprintf("f%03d", i)), "x")
 		}
@@ -412,7 +418,7 @@ func TestDiffConcurrentWorkspaces(t *testing.T) {
 				errs <- err
 				return
 			}
-			defer w.Cleanup()
+			defer func() { _ = w.Cleanup() }()
 			content := fmt.Sprintf("package mathx // variant %d\n", i)
 			if err := os.WriteFile(filepath.Join(w.Root, "mathx.go"), []byte(content), 0o644); err != nil {
 				errs <- err

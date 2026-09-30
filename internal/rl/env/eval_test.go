@@ -190,7 +190,9 @@ func TestEvalRunsSamplesAndRefusesTrainingTasks(t *testing.T) {
 
 	// A training list containing the task id: refused before anything runs.
 	list := filepath.Join(t.TempDir(), "train.txt")
-	os.WriteFile(list, []byte("other-task\nmathx-max\n"), 0o644)
+	if err := os.WriteFile(list, []byte("other-task\nmathx-max\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, err = Eval(context.Background(), f.r, []rl.Task{f.task}, EvalOptions{Samples: 1, ExcludeFile: list, Rollout: f.opts()})
 	var ce *ContaminationError
 	if !errors.Is(err, ErrContaminated) || !errors.As(err, &ce) || !reflect.DeepEqual(ce.IDs, []string{"mathx-max"}) {
@@ -203,7 +205,9 @@ func TestEvalRunsSamplesAndRefusesTrainingTasks(t *testing.T) {
 	renamed := f.task
 	renamed.ID = "renamed"
 	renamedJSON, _ := json.Marshal(f.task)
-	os.WriteFile(list, renamedJSON, 0o644)
+	if err := os.WriteFile(list, renamedJSON, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := Eval(context.Background(), f.r, []rl.Task{renamed}, EvalOptions{Samples: 1, ExcludeFile: list, Rollout: f.opts()}); !errors.Is(err, ErrContaminated) {
 		t.Fatalf("renamed copy of a training task accepted: %v", err)
 	}
