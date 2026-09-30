@@ -86,6 +86,7 @@ func (Glob) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return k.fail("%s is a file, not a directory; give a directory as path", disp), nil
 	}
 
+	defer k.bounded()()
 	var hits []globHit
 	w := k.newWalker(base, true)
 	w.run(func(e entry) walkAction {
@@ -119,7 +120,7 @@ func (Glob) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return walkContinue
 	})
 	if w.cancelled {
-		return k.fail("search cancelled"), nil
+		return k.fail("search cancelled or timed out; narrow the pattern or path"), nil
 	}
 
 	sort.Slice(hits, func(i, j int) bool {
@@ -157,6 +158,9 @@ func (Glob) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	}
 	if w.truncated {
 		sb.WriteString("\n[search stopped early after visiting a very large number of entries]")
+	}
+	if w.unreadable > 0 {
+		fmt.Fprintf(&sb, "\n[%s could not be read and %s skipped]", plural(w.unreadable, "directory"), map[bool]string{true: "was", false: "were"}[w.unreadable == 1])
 	}
 	res := k.ok(sb.String())
 	res.Meta = map[string]any{"matches": len(hits)}

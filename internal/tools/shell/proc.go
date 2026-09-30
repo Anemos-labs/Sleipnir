@@ -38,6 +38,7 @@ type procSpec struct {
 	env    []string
 	sink   sink
 	maxOut int64 // kill the command past this many raw output bytes; 0 = unlimited
+	merge  bool  // give stdout and stderr one shared pipe (exact ordering, no labels)
 }
 
 // proc is one running shell process and the pumps draining its output.
@@ -56,7 +57,7 @@ type proc struct {
 	done      chan struct{} // closed once the leader has been reaped
 	exit      exitStatus    // valid after done is closed
 	pumpsDone chan struct{} // closed once stdout and stderr both reached EOF
-	rfiles    [2]*os.File
+	rfiles    []*os.File
 	killCh    chan killReason
 
 	raw    atomic.Int64 // raw bytes read
@@ -77,22 +78,36 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 	if err != nil {
 		return nil, err
 	}
-	errR, errW, err := os.Pipe()
-	if err != nil {
-		outR.Close()
-		outW.Close()
-		return nil, err
+	// stdout and stderr normally get pipes of their own so that live output can
+	// be labelled; the price is that two readers merge them in arrival order,
+	// which can swap two writes made microseconds apart. merge trades the labels
+	// for the exact order the kernel saw.
+	errR, errW := outR, outW
+	if !sp.merge {
+		if errR, errW, err = os.Pipe(); err != nil {
+			outR.Close()
+			outW.Close()
+			return nil, err
+		}
 	}
 	cmd.Stdout, cmd.Stderr = outW, errW // stdin stays nil: /dev/null
 	err = cmd.Start()
 	outW.Close()
-	errW.Close()
+	if errW != outW {
+		errW.Close()
+	}
 	if err != nil {
 		outR.Close()
-		errR.Close()
+		if errR != outR {
+			errR.Close()
+		}
 		return nil, err
 	}
 
+	rfiles := []*os.File{outR}
+	if errR != outR {
+		rfiles = append(rfiles, errR)
+	}
 	p := &proc{
 		m:         m,
 		cmd:       cmd,
@@ -100,7 +115,7 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 		sink:      sp.sink,
 		done:      make(chan struct{}),
 		pumpsDone: make(chan struct{}),
-		rfiles:    [2]*os.File{outR, errR},
+		rfiles:    rfiles,
 		killCh:    make(chan killReason, 1),
 		maxOut:    sp.maxOut,
 		grace:     m.opts.KillGrace,
@@ -108,9 +123,11 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 	m.track(p)
 
 	var pumps sync.WaitGroup
-	pumps.Add(2)
+	pumps.Add(len(rfiles))
 	go p.pump("stdout", outR, &pumps)
-	go p.pump("stderr", errR, &pumps)
+	if errR != outR {
+		go p.pump("stderr", errR, &pumps)
+	}
 	go func() {
 		err := cmd.Wait()
 		p.exit = exitFrom(cmd.ProcessState, err)

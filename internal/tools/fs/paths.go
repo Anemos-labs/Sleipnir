@@ -6,6 +6,7 @@ import (
 	iofs "io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -170,12 +171,35 @@ func (k *call) resolve(raw string) (string, error) {
 	return real, nil
 }
 
+// resolveEntry is resolve for operations on a directory entry itself (deleting a
+// file): if the final component is a symlink it stays the link, so removing
+// "vendor/lib.go" removes the link and never the file it points to. The
+// directory part is canonicalised as usual.
+func (k *call) resolveEntry(raw string) (string, error) {
+	lex, err := absClean(k.env.Cwd, raw)
+	if err != nil {
+		return "", err
+	}
+	if fi, err := os.Lstat(lex); err == nil && fi.Mode()&iofs.ModeSymlink != 0 {
+		dir, err := k.resolve(filepath.Dir(lex))
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(dir, filepath.Base(lex)), nil
+	}
+	return k.resolve(raw)
+}
+
 // resolveArg is resolve with a model-facing error message.
 func (k *call) resolveArg(raw string) (string, string, string) {
+	return k.resolveArgWith(raw, k.resolve)
+}
+
+func (k *call) resolveArgWith(raw string, resolve func(string) (string, error)) (string, string, string) {
 	if strings.TrimSpace(raw) == "" {
 		return "", "", "path is required"
 	}
-	canon, err := k.resolve(raw)
+	canon, err := resolve(raw)
 	if err != nil {
 		if errors.Is(err, errSymlinkLoop) {
 			return "", "", fmt.Sprintf("cannot resolve %s: symlink loop", clip(raw, 200))
@@ -189,19 +213,51 @@ func (k *call) resolveArg(raw string) (string, string, string) {
 // working directory when inside it (so it can be pasted straight into the next
 // call), absolute otherwise.
 func (k *call) display(canon string) string {
-	cwd, err := absClean(k.env.Cwd, ".")
-	if err != nil {
-		return filepath.ToSlash(canon)
-	}
-	if rel, ok := relWithin(cwd, canon); ok {
-		return filepath.ToSlash(rel)
-	}
-	if real, err := realPath(cwd); err == nil && real != cwd {
-		if rel, ok := relWithin(real, canon); ok {
-			return filepath.ToSlash(rel)
+	if !k.cwdInit {
+		k.cwdInit = true
+		if c, err := absClean(k.env.Cwd, "."); err == nil {
+			k.cwdAbs = c
+			if r, err := realPath(c); err == nil && r != c {
+				k.cwdReal = r
+			}
 		}
 	}
-	return filepath.ToSlash(canon)
+	if k.cwdAbs == "" {
+		return safeName(filepath.ToSlash(canon))
+	}
+	if rel, ok := relWithin(k.cwdAbs, canon); ok {
+		return safeName(filepath.ToSlash(rel))
+	}
+	if k.cwdReal != "" {
+		if rel, ok := relWithin(k.cwdReal, canon); ok {
+			return safeName(filepath.ToSlash(rel))
+		}
+	}
+	return safeName(filepath.ToSlash(canon))
+}
+
+// safeName makes a path or file name safe to embed in line-oriented output.
+// File names are data controlled by whoever wrote the repository: a name with a
+// newline could fake extra lines in a listing (for instance one that looks like
+// an instruction), so names containing control characters or invalid UTF-8 are
+// shown quoted, with the offending bytes escaped.
+func safeName(s string) string {
+	if !needsQuoting(s) {
+		return s
+	}
+	return strconv.Quote(s)
+}
+
+func needsQuoting(s string) bool {
+	if !utf8.ValidString(s) {
+		return true
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == '\u2028' || r == '\u2029' {
+			return true
+		}
+	}
+	return false
 }
 
 // osReason turns an OS error into the short lowercase phrase models can act on

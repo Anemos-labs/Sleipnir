@@ -48,6 +48,7 @@ const (
 	editDiffLines     = 40
 	metaDiffLines     = 400
 	similarityMinimum = 0.5
+	maxHintLines      = 400
 )
 
 type editItem struct {
@@ -56,10 +57,16 @@ type editItem struct {
 	ReplaceAll bool    `json:"replace_all"`
 }
 
+// editArgs spells the single-edit fields out instead of embedding editItem:
+// encoding/json reports type errors for embedded fields as "editItem.old_string",
+// and the model should be told about "old_string".
 type editArgs struct {
-	Path string `json:"path"`
-	editItem
-	Edits []editItem `json:"edits"`
+	Path       string     `json:"path"`
+	FilePath   string     `json:"file_path"` // alias, see Read
+	Old        *string    `json:"old_string"`
+	New        *string    `json:"new_string"`
+	ReplaceAll bool       `json:"replace_all"`
+	Edits      []editItem `json:"edits"`
 }
 
 type editSpec struct {
@@ -103,6 +110,9 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if r := k.decode(&a); r != nil {
 		return r, nil
 	}
+	if a.Path == "" {
+		a.Path = a.FilePath
+	}
 	specs, msg := a.specs()
 	if msg != "" {
 		return k.fail("%s", msg), nil
@@ -111,9 +121,6 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if msg != "" {
 		return k.fail("%s", msg), nil
 	}
-	if fi, err := os.Stat(canon); err == nil && fi.IsDir() {
-		return k.fail("%s is a directory; give a file path", disp), nil
-	}
 	if r := k.authorize("edit "+disp, true, perm.RiskMedium, canon); r != nil {
 		return r, nil
 	}
@@ -121,7 +128,9 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	unlock := fileLocks.acquire(canon)
 	defer unlock()
 
-	if _, err := os.Stat(canon); errors.Is(err, iofs.ErrNotExist) {
+	if fi, err := os.Stat(canon); err == nil && fi.IsDir() {
+		return k.fail("%s is a directory; give a file path", disp), nil
+	} else if errors.Is(err, iofs.ErrNotExist) {
 		if len(specs) == 1 && specs[0].old == "" {
 			return k.createViaEdit(canon, disp, specs[0].new), nil
 		}
@@ -153,7 +162,7 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return r, nil
 	}
 
-	d := diffFiles(orig, updated, diffContext)
+	d := diffFiles(orig, updated, diffContext, metaDiffLines)
 	head := fmt.Sprintf("Edited %s: %s (+%d -%d lines)", disp, plural(n, "replacement"), d.added, d.removed)
 	text := head
 	if dt := d.text(editDiffLines); dt != "" {
@@ -173,7 +182,7 @@ func (k *call) createViaEdit(canon, disp, content string) *tools.Result {
 	if r := k.commit(canon, disp, []byte(content), nil); r != nil {
 		return r
 	}
-	return k.ok(fmt.Sprintf("Created %s (%s, %d bytes)", disp, plural(countLines([]byte(content)), "line"), len(content)))
+	return k.ok(fmt.Sprintf("Created %s (%s, %s)", disp, plural(countLines([]byte(content)), "line"), plural(len(content), "byte")))
 }
 
 // applyEdits applies the edits in order to text (BOM already removed) and
@@ -181,10 +190,9 @@ func (k *call) createViaEdit(canon, disp, content string) *tools.Result {
 // model-visible message and the caller writes nothing: an edit list is
 // all-or-nothing, so a model never has to reason about a half-applied batch.
 func applyEdits(text string, specs []editSpec, disp string) (string, int, string) {
-	style := dominantEOL(text)
 	total := 0
 	for i, sp := range specs {
-		next, n, msg := applyOne(text, sp, style, disp)
+		next, n, msg := applyOne(text, sp, disp)
 		if msg != "" {
 			if len(specs) > 1 {
 				msg = fmt.Sprintf("edit %d of %d: %s (nothing was written)", i+1, len(specs), msg)
@@ -197,9 +205,11 @@ func applyEdits(text string, specs []editSpec, disp string) (string, int, string
 	return text, total, ""
 }
 
-func applyOne(cur string, sp editSpec, style, disp string) (string, int, string) {
+type span struct{ from, to int }
+
+func applyOne(cur string, sp editSpec, disp string) (string, int, string) {
 	old, repl := sp.old, sp.new
-	if sp.old == sp.new {
+	if old == repl {
 		return "", 0, "old_string and new_string are identical; nothing to change"
 	}
 	if !strings.Contains(cur, "\r") {
@@ -216,64 +226,99 @@ func applyOne(cur string, sp editSpec, style, disp string) (string, int, string)
 		}
 		return "", 0, "old_string is empty; give the text to replace (to replace the whole file use write)"
 	}
-	// New text blends into a CRLF file: the model only ever saw LF.
-	newText := repl
-	if style == "\r\n" && !strings.Contains(repl, "\r") {
-		newText = strings.ReplaceAll(repl, "\n", "\r\n")
-	}
 
-	starts := findAll(cur, old, maxListedMatches+1)
-	if len(starts) == 0 && strings.Contains(cur, "\r\n") {
-		return applyNormalized(cur, old, newText, sp.all, disp)
+	// The model only ever saw LF (read hides the CRs), so an LF old_string that
+	// spans lines is matched against the text with CRLF folded to LF and the
+	// match is mapped back to the original bytes: only the touched lines change,
+	// even in a file that mixes endings. An old_string that names a CR itself is
+	// matched literally.
+	fold := strings.Contains(cur, "\r\n") && !strings.Contains(old, "\r") && strings.Contains(old, "\n")
+	text := cur
+	var qs []int
+	if fold {
+		text, qs = normalizeCRLF(cur)
 	}
+	starts := findAll(text, old, maxListedMatches+1)
 	if len(starts) == 0 {
-		return "", 0, explainMissing(cur, old, disp)
+		return "", 0, explainMissing(text, old, disp)
 	}
 	if len(starts) > 1 && !sp.all {
-		return "", 0, explainAmbiguous(cur, starts, strings.Count(cur, old), disp)
+		return "", 0, explainAmbiguous(text, starts, strings.Count(text, old), disp)
 	}
+	var spans []span
 	if sp.all {
-		return strings.ReplaceAll(cur, old, newText), strings.Count(cur, old), ""
+		for i := 0; ; {
+			j := strings.Index(text[i:], old)
+			if j < 0 {
+				break
+			}
+			s := i + j
+			spans = append(spans, span{s, s + len(old)})
+			i = s + len(old)
+		}
+	} else {
+		spans = []span{{starts[0], starts[0] + len(old)}}
 	}
-	return cur[:starts[0]] + newText + cur[starts[0]+len(old):], 1, ""
+	if fold {
+		// Offsets in the folded text map to the original by adding the CRs
+		// removed before them.
+		for i, s := range spans {
+			spans[i] = span{s.from + sort.SearchInts(qs, s.from), s.to + sort.SearchInts(qs, s.to)}
+		}
+	}
+	return splice(cur, spans, repl), len(spans), ""
 }
 
-// applyNormalized matches old against the text with CRLF folded to LF and maps
-// the match back to the original bytes, so a CRLF (or mixed) file can be edited
-// with LF strings and only the touched lines change. The mapping counts the
-// removed CRs before an offset, which keeps untouched CRLF lines byte-identical
-// even in a file that mixes endings.
-func applyNormalized(cur, old, newText string, all bool, disp string) (string, int, string) {
-	norm, qs := normalizeCRLF(cur)
-	oldN := strings.ReplaceAll(old, "\r\n", "\n")
-	starts := findAll(norm, oldN, maxListedMatches+1)
-	if len(starts) == 0 {
-		return "", 0, explainMissing(norm, oldN, disp)
+// splice replaces each span of cur with repl. In a file that has CRs, replacement
+// text written with bare LFs takes the line ending of the place it lands, so new
+// lines blend in instead of leaving mixed endings behind.
+func splice(cur string, spans []span, repl string) string {
+	needBlend := strings.Contains(cur, "\r") && strings.Contains(repl, "\n") && !strings.Contains(repl, "\r")
+	if !needBlend && len(spans) == 1 {
+		return cur[:spans[0].from] + repl + cur[spans[0].to:]
 	}
-	if len(starts) > 1 && !all {
-		return "", 0, explainAmbiguous(norm, starts, strings.Count(norm, oldN), disp)
+	crlf := ""
+	dominant := "\n"
+	if needBlend {
+		crlf = strings.ReplaceAll(repl, "\n", "\r\n")
+		dominant = dominantEOL(cur)
 	}
 	var b strings.Builder
-	prev, count := 0, 0
-	for idx := 0; ; {
-		j := strings.Index(norm[idx:], oldN)
-		if j < 0 {
-			break
+	prev := 0
+	for _, sp := range spans {
+		b.WriteString(cur[prev:sp.from])
+		if needBlend && localEOL(cur, sp.from, sp.to, dominant) == "\r\n" {
+			b.WriteString(crlf)
+		} else {
+			b.WriteString(repl)
 		}
-		s := idx + j
-		e := s + len(oldN)
-		from, to := s+sort.SearchInts(qs, s), e+sort.SearchInts(qs, e)
-		b.WriteString(cur[prev:from])
-		b.WriteString(newText)
-		prev = to
-		count++
-		idx = e
-		if !all {
-			break
-		}
+		prev = sp.to
 	}
 	b.WriteString(cur[prev:])
-	return b.String(), count, ""
+	return b.String()
+}
+
+// localEOL is the line ending in force where cur[from:to] sits: the first one
+// inside the span, else the one that ends the line it is on, else the previous
+// line's, else the file's dominant style.
+func localEOL(s string, from, to int, dominant string) string {
+	if i := strings.IndexByte(s[from:to], '\n'); i >= 0 {
+		return eolAt(s, from+i)
+	}
+	if i := strings.IndexByte(s[to:], '\n'); i >= 0 {
+		return eolAt(s, to+i)
+	}
+	if i := strings.LastIndexByte(s[:from], '\n'); i >= 0 {
+		return eolAt(s, i)
+	}
+	return dominant
+}
+
+func eolAt(s string, nl int) string {
+	if nl > 0 && s[nl-1] == '\r' {
+		return "\r\n"
+	}
+	return "\n"
 }
 
 // normalizeCRLF returns s with every CRLF folded to LF, plus for each removed CR
@@ -376,8 +421,12 @@ func missingHint(cur, old string) string {
 		return "It looks like it includes the line-number prefixes shown by read; leave those out."
 	}
 
-	if strings.ContainsRune(old, '�') && !strings.ContainsRune(cur, '�') {
+	if strings.Contains(old, "\uFFFD") && !strings.Contains(cur, "\uFFFD") {
 		return "old_string contains U+FFFD, which read shows for bytes that are not valid UTF-8; edit around those bytes."
+	}
+
+	if len(oldLines) > maxHintLines {
+		return "" // a hint is a courtesy; do not spend real time on a huge old_string
 	}
 
 	if t := strings.TrimSpace(old); t != "" && t != old {

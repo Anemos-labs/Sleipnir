@@ -1,0 +1,238 @@
+package perm
+
+import "testing"
+
+// Requests from file and web tools: modes, built-in protections, symlinks,
+// path traversal, rules.
+func TestToolRequests(t *testing.T) {
+	f := newFixture(t)
+	R := "{root}/"
+	cases := []tc{
+		// --- default mode: reads ---
+		{name: "read inside workspace", req: read(R + "main.go"), want: "allow", why: "read inside the workspace"},
+		{name: "read nested", req: read(R + "sub/deep/file.txt"), want: "allow"},
+		{name: "read the root itself", req: read("{root}"), want: "allow"},
+		{name: "read relative path uses root", req: read("src/a.go"), want: "allow"},
+		{name: "read dotdot staying inside", req: read(R + "src/../main.go"), want: "allow"},
+		{name: "read outside workspace asks", req: read("{out}/secret.txt"), want: "ask", why: "outside the workspace"},
+		{name: "read home file outside root asks", req: read("{home}/notes.txt"), want: "ask"},
+		{name: "read via dotdot out of root asks", req: read(R + "../../outside/secret.txt"), want: "ask"},
+		{name: "read relative dotdot out of root asks", req: read("../../outside/secret.txt"), want: "ask"},
+		{name: "read /etc/hosts asks", req: read("/etc/hosts"), want: "ask"},
+		{name: "read nonexistent inside root", req: read(R + "nope/none.txt"), want: "allow"},
+		{name: "empty request touches nothing", req: rq{tool: "board"}, want: "allow", why: "touches no files"},
+
+		// --- symlinks are resolved before matching ---
+		{name: "symlink inside to inside", req: read(R + "link-in"), want: "allow"},
+		{name: "symlink to outside file is outside", req: read(R + "link-out"), want: "ask", why: "outside the workspace"},
+		{name: "symlink to outside dir is outside", req: read(R + "link-outdir/secret.txt"), want: "ask"},
+		{name: "relative symlink escape", req: read(R + "rel-out"), want: "ask"},
+		{name: "chain of symlinks escapes", req: read(R + "chain"), want: "ask"},
+		{name: "symlink into ~/.ssh is credentials", req: read(R + "link-ssh/id_rsa"), want: "deny", why: "credentials"},
+		{name: "dotdot after a symlink is applied to its target", req: read(R + "link-outdir/../home/.ssh/id_rsa"), want: "deny"},
+		{name: "dotdot after a symlink leaves the workspace", req: read(R + "link-outdir/../secret"), want: "ask"},
+		{name: "dangling link into ~/.ssh read", req: read(R + "dangling"), want: "deny"},
+		{name: "dangling link into ~/.ssh write", mode: ModeBypass, req: write(R + "dangling"), want: "deny"},
+		{name: "write through escaping link asks", mode: ModeAcceptEdits, req: write(R + "link-out"), want: "ask", why: "outside the workspace"},
+		{name: "write through inner link ok", mode: ModeAcceptEdits, req: write(R + "link-in"), want: "allow"},
+
+		// --- credentials: hard deny, no rule or mode overrides ---
+		{name: "ssh private key", req: read("{home}/.ssh/id_rsa"), want: "deny", why: "~/.ssh"},
+		{name: "ssh key in bypass", mode: ModeBypass, req: read("{home}/.ssh/id_rsa"), want: "deny"},
+		{name: "ssh key with allow rule", allow: []string{"Read(~/.ssh/**)"}, req: read("{home}/.ssh/id_rsa"), want: "deny"},
+		{name: "ssh key with blanket allow", allow: []string{"Read"}, req: read("{home}/.ssh/id_rsa"), want: "deny"},
+		{name: "ssh unknown file", req: read("{home}/.ssh/id_ed25519"), want: "deny"},
+		{name: "ssh write config", mode: ModeBypass, req: write("{home}/.ssh/config"), want: "deny"},
+		{name: "ssh write authorized_keys", mode: ModeBypass, req: write("{home}/.ssh/authorized_keys"), want: "deny"},
+		{name: "ssh public key needs allow", req: read("{home}/.ssh/id_rsa.pub"), want: "deny", why: "SSH configuration"},
+		{name: "ssh public key with rule", allow: []string{"Read(~/.ssh/id_rsa.pub)"}, req: read("{home}/.ssh/id_rsa.pub"), want: "allow"},
+		{name: "ssh known_hosts needs allow", req: read("{home}/.ssh/known_hosts"), want: "deny"},
+		{name: "ssh known_hosts blanket allow is not enough", allow: []string{"Read"}, req: read("{home}/.ssh/known_hosts"), want: "deny"},
+		{name: "ssh dir listing guarded", req: read("{home}/.ssh"), want: "deny"},
+		{name: "another user's ssh key", req: read("/root/.ssh/id_rsa"), want: "deny", why: ".ssh"},
+		{name: "ssh dir outside home", req: read("{out}/.ssh/id_rsa"), want: "deny"},
+		{name: "aws dir outside home", mode: ModeBypass, req: read("{out}/.aws/credentials"), want: "deny"},
+		{name: "a .ssh directory inside the workspace is project content", req: read(R + "vendor/.ssh/notes"), want: "allow"},
+		{name: "aws credentials", req: read("{home}/.aws/credentials"), want: "deny", why: "~/.aws"},
+		{name: "aws credentials in bypass", mode: ModeBypass, req: read("{home}/.aws/credentials"), want: "deny"},
+		{name: "gnupg", req: read("{home}/.gnupg/pubring.kbx"), want: "deny", why: "~/.gnupg"},
+		{name: "gcloud", req: read("{home}/.config/gcloud/creds.json"), want: "deny", why: "gcloud"},
+		{name: "case folded path", req: read("{home}/.SSH/ID_RSA"), want: "deny"},
+		{name: "dotdot into ssh", req: read(R + "src/../../.ssh/id_rsa"), want: "deny"},
+		{name: "npmrc tokens guarded", req: read("{home}/.npmrc"), want: "deny"},
+		{name: "npmrc allowed by explicit rule", allow: []string{"Read(~/.npmrc)"}, req: read("{home}/.npmrc"), want: "allow"},
+		{name: "proc environ", req: read("/proc/self/environ"), want: "deny"},
+		{name: "etc shadow", req: read("/etc/shadow"), want: "deny"},
+		{name: "etc shadow in bypass", mode: ModeBypass, req: read("/etc/shadow"), want: "deny"},
+		{name: "recursive grep from home reaches credentials", req: rq{tool: "Grep", paths: []string{"{home}"}}, want: "deny", why: "contains"},
+		{name: "recursive grep inside root fine", req: rq{tool: "Grep", paths: []string{"{root}"}}, want: "allow"},
+		{name: "non-recursive listing of home is only outside", req: rq{tool: "ls", paths: []string{"{home}"}}, want: "ask"},
+
+		// --- .env files: denied unless a rule names them ---
+		{name: "dotenv denied", req: read(R + ".env"), want: "deny", why: ".env"},
+		{name: "dotenv example denied too", req: read(R + ".env.example"), want: "deny"},
+		{name: "dotenv nested", req: read(R + "sub/.env"), want: "deny"},
+		{name: "dotenv local", req: read(R + "sub/.env.local"), want: "deny"},
+		{name: "dotenv in bypass", mode: ModeBypass, req: read(R + ".env"), want: "deny"},
+		{name: "dotenv write", mode: ModeAcceptEdits, req: write(R + ".env"), want: "deny"},
+		{name: "dotenv with explicit allow", allow: []string{"Read(.env)"}, req: read(R + ".env"), want: "allow", why: "allowed by rule Read(.env)"},
+		{name: "dotenv example allowed by pattern", allow: []string{"Read(**/.env.example)"}, req: read(R + ".env.example"), want: "allow"},
+		{name: "dotenv allow does not cover others", allow: []string{"Read(.env.example)"}, req: read(R + ".env"), want: "deny"},
+		{name: "dotenv blanket read is not explicit", allow: []string{"Read"}, req: read(R + ".env"), want: "deny"},
+		{name: "dotenv glob-all is not explicit", allow: []string{"Read(**)"}, req: read(R + ".env"), want: "deny"},
+		{name: "dotenv read allow does not permit write", allow: []string{"Read(.env)"}, mode: ModeAcceptEdits, req: write(R + ".env"), want: "deny"},
+		{name: "envrc is not a dotenv", req: read(R + ".envrc"), want: "allow"},
+		{name: "dotenv deny rule still wins over allow", allow: []string{"Read(.env)"}, deny: []string{"Read(.env)"}, req: read(R + ".env"), want: "deny", why: "denied by rule"},
+
+		// --- .git internals: no writes ---
+		{name: "read git config ok", req: read(R + ".git/config"), want: "allow"},
+		{name: "write git config denied", mode: ModeAcceptEdits, req: write(R + ".git/config"), want: "deny", why: ".git"},
+		{name: "write git hook denied in bypass", mode: ModeBypass, req: write(R + ".git/hooks/pre-commit"), want: "deny"},
+		{name: "write .git itself denied", mode: ModeBypass, req: write(R + ".git"), want: "deny"},
+		{name: "write nested .git denied", mode: ModeBypass, req: write(R + "sub/.git/config"), want: "deny"},
+		{name: "write .GIT case folded", mode: ModeBypass, req: write(R + ".GIT/config"), want: "deny"},
+		{name: "write .gitignore is fine", mode: ModeAcceptEdits, req: write(R + ".gitignore"), want: "allow"},
+		{name: "write .github is fine", mode: ModeAcceptEdits, req: write(R + ".github/workflows/ci.yml"), want: "allow"},
+
+		// --- system directories: no writes ---
+		{name: "write /etc", mode: ModeBypass, req: write("/etc/passwd"), want: "deny", why: "system directory"},
+		{name: "write /usr/local/bin", mode: ModeBypass, req: write("/usr/local/bin/tool"), want: "deny"},
+		{name: "write /bin", mode: ModeBypass, req: write("/bin/sh"), want: "deny"},
+		{name: "write /sbin", mode: ModeBypass, req: write("/sbin/init"), want: "deny"},
+		{name: "write /boot", mode: ModeBypass, req: write("/boot/vmlinuz"), want: "deny"},
+		{name: "write /dev/sda", mode: ModeBypass, req: write("/dev/sda"), want: "deny"},
+		{name: "write /dev/null is harmless", req: write("/dev/null"), want: "allow", why: "harmless device"},
+		{name: "write /lib", mode: ModeBypass, req: write("/lib/x.so"), want: "deny"},
+		{name: "write /proc", mode: ModeBypass, req: write("/proc/sys/kernel/x"), want: "deny"},
+		{name: "read /usr header asks", req: read("/usr/include/stdio.h"), want: "ask"},
+		{name: "read /bin/sh asks not denies", req: read("/bin/sh"), want: "ask"},
+
+		// --- modes: writes ---
+		{name: "default write inside asks", req: write(R + "new.go"), want: "ask", why: "default mode"},
+		{name: "accept-edits write inside", mode: ModeAcceptEdits, req: write(R + "new.go"), want: "allow", why: "accept-edits"},
+		{name: "accept-edits write outside asks", mode: ModeAcceptEdits, req: write("{out}/new.go"), want: "ask"},
+		{name: "accept-edits write home asks", mode: ModeAcceptEdits, req: write("{home}/notes.txt"), want: "ask"},
+		{name: "accept-edits read outside asks", mode: ModeAcceptEdits, req: read("{out}/secret.txt"), want: "ask"},
+		{name: "plan write inside denied", mode: ModePlan, req: write(R + "new.go"), want: "deny", why: "plan mode"},
+		{name: "plan write outside denied", mode: ModePlan, req: write("{out}/x"), want: "deny", why: "plan mode"},
+		{name: "plan read inside allowed", mode: ModePlan, req: read(R + "main.go"), want: "allow"},
+		{name: "plan read outside asks", mode: ModePlan, req: read("{out}/secret.txt"), want: "ask"},
+		{name: "bypass write outside allowed", mode: ModeBypass, req: write("{out}/new.go"), want: "allow", why: "bypass"},
+		{name: "bypass read outside allowed", mode: ModeBypass, req: read("{out}/secret.txt"), want: "allow"},
+		{name: "write via edit tool name", mode: ModeAcceptEdits, req: edit(R + "src/a.go"), want: "allow"},
+		{name: "relative write path", mode: ModeAcceptEdits, req: write("src/new.go"), want: "allow"},
+		{name: "relative write escaping", mode: ModeAcceptEdits, req: write("../x.go"), want: "ask"},
+
+		// --- network ---
+		{name: "fetch asks in default", req: fetch("https://example.com/x"), want: "ask", why: "example.com"},
+		{name: "fetch asks in accept-edits", mode: ModeAcceptEdits, req: fetch("https://example.com/x"), want: "ask"},
+		{name: "fetch denied in plan", mode: ModePlan, req: fetch("https://example.com/x"), want: "deny", why: "plan mode"},
+		{name: "fetch allowed in bypass", mode: ModeBypass, req: fetch("https://example.com/x"), want: "allow"},
+		{name: "network flag on other tool", req: rq{tool: "Download", network: true}, want: "ask"},
+		{name: "fetch domain rule", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://example.com/a"), want: "allow", why: "allowed by rule"},
+		{name: "fetch domain rule covers subdomain", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://docs.example.com/a"), want: "allow"},
+		{name: "fetch domain rule ignores port", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://example.com:8443/a"), want: "allow"},
+		{name: "fetch domain rule case insensitive", allow: []string{"WebFetch(domain:Example.COM)"}, req: fetch("https://EXAMPLE.com/a"), want: "allow"},
+		{name: "fetch domain suffix trick", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://evil-example.com/a"), want: "ask"},
+		{name: "fetch domain prefix trick", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://example.com.evil.org/a"), want: "ask"},
+		{name: "fetch userinfo trick", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://example.com@evil.org/a"), want: "ask"},
+		{name: "fetch unicode lookalike host", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://exаmple.com/a"), want: "ask"},
+		{name: "fetch domain rule other host", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("https://other.org/a"), want: "ask"},
+		{name: "fetch wildcard subdomain only", allow: []string{"WebFetch(domain:*.example.com)"}, req: fetch("https://a.example.com/x"), want: "allow"},
+		{name: "fetch wildcard subdomain not apex", allow: []string{"WebFetch(domain:*.example.com)"}, req: fetch("https://example.com/x"), want: "ask"},
+		{name: "fetch deny rule covers subdomain", allow: []string{"WebFetch"}, deny: []string{"WebFetch(domain:evil.com)"}, req: fetch("https://a.evil.com/x"), want: "deny"},
+		{name: "fetch blanket allow", allow: []string{"WebFetch"}, req: fetch("https://anything.org"), want: "allow"},
+		{name: "fetch url without scheme", allow: []string{"WebFetch(domain:example.com)"}, req: fetch("example.com/path"), want: "allow"},
+		{name: "fetch alias tool name", allow: []string{"WebFetch(domain:example.com)"}, req: rq{tool: "web_fetch", network: true, input: `{"url":"https://example.com"}`}, want: "allow"},
+
+		// --- other tools ---
+		{name: "mcp tool asks", req: rq{tool: "mcp__srv__do"}, want: "ask", why: "cannot be checked"},
+		{name: "mcp tool rule by name", allow: []string{"mcp__srv__do"}, req: rq{tool: "mcp__srv__do"}, want: "allow"},
+		{name: "mcp tool wildcard rule", allow: []string{"mcp__srv__*"}, req: rq{tool: "mcp__srv__other"}, want: "allow"},
+		{name: "mcp wildcard does not cross servers", allow: []string{"mcp__srv__*"}, req: rq{tool: "mcp__evil__do"}, want: "ask"},
+		{name: "mcp tool denied in plan", mode: ModePlan, req: rq{tool: "mcp__srv__do"}, want: "deny"},
+		{name: "mcp tool deny rule beats allow", allow: []string{"mcp__srv__*"}, deny: []string{"mcp__srv__danger"}, req: rq{tool: "mcp__srv__danger"}, want: "deny"},
+		{name: "writes without paths asks", req: rq{tool: "Deploy", writes: true}, want: "ask"},
+		{name: "writes without paths denied in plan", mode: ModePlan, req: rq{tool: "Deploy", writes: true}, want: "deny"},
+		{name: "tool risk high asks even for reads", req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "ask", why: "high risk"},
+		{name: "tool risk high overridden by explicit rule", allow: []string{"Read(main.go)"}, req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "allow"},
+		{name: "tool risk high in bypass is allowed", mode: ModeBypass, req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "allow"},
+		{name: "tool risk medium is not special", req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskMedium}, want: "allow"},
+
+		// --- file rules ---
+		{name: "edit allow rule in default mode", allow: []string{"Edit(src/**)"}, req: write(R + "src/a.go"), want: "allow", why: "Edit(src/**)"},
+		{name: "edit allow rule does not cover siblings", allow: []string{"Edit(src/**)"}, req: write(R + "main.go"), want: "ask"},
+		{name: "edit allow rule via edit tool", allow: []string{"Edit(src/**)"}, req: edit(R + "src/b.go"), want: "allow"},
+		{name: "edit rule does not grant reads outside", allow: []string{"Edit(src/**)"}, req: read("{out}/secret.txt"), want: "ask"},
+		{name: "read allow rule outside root", allow: []string{"Read({out}/**)"}, req: read("{out}/secret.txt"), want: "allow"},
+		{name: "read allow rule by home tilde", allow: []string{"Read(~/notes.txt)"}, req: read("{home}/notes.txt"), want: "allow"},
+		{name: "read allow rule absolute", allow: []string{"Read({out}/secret.txt)"}, req: read("{out}/secret.txt"), want: "allow"},
+		{name: "allow rule does not follow symlink out", allow: []string{"Read(link-out)"}, req: read(R + "link-out"), want: "ask"},
+		{name: "allow rule with dotdot is not a bypass", allow: []string{"Read(src/**)"}, req: read(R + "src/../../../outside/secret.txt"), want: "ask"},
+		{name: "deny rule blocks read", deny: []string{"Read(secrets/**)"}, req: read(R + "secrets/key.txt"), want: "deny", why: "Read(secrets/**)"},
+		{name: "deny rule blocks read in bypass", mode: ModeBypass, deny: []string{"Read(secrets/**)"}, req: read(R + "secrets/key.txt"), want: "deny"},
+		{name: "deny rule read does not block write path check", mode: ModeAcceptEdits, deny: []string{"Read(secrets/**)"}, req: write(R + "secrets/key.txt"), want: "allow"},
+		{name: "deny edit rule blocks write", mode: ModeBypass, deny: []string{"Edit(docs/**)"}, req: write(R + "docs/README.md"), want: "deny"},
+		{name: "deny edit rule leaves reads", deny: []string{"Edit(docs/**)"}, req: read(R + "docs/README.md"), want: "allow"},
+		{name: "deny floating pattern anywhere", deny: []string{"Read(*.pem)"}, req: read("{out}/cert.pem"), want: "deny"},
+		{name: "deny floating pattern inside", deny: []string{"Read(*.pem)"}, req: read(R + "deep/x.pem"), want: "deny"},
+		{name: "deny directory name floating", deny: []string{"Read(secrets)"}, req: read(R + "secrets/key.txt"), want: "deny"},
+		{name: "deny blanket read", deny: []string{"Read"}, req: read(R + "main.go"), want: "deny"},
+		{name: "allow floating pattern stays inside workspace", allow: []string{"Edit(*.md)"}, req: write(R + "docs/README.md"), want: "allow"},
+		{name: "allow floating pattern not outside", allow: []string{"Edit(*.md)"}, req: write("{out}/x.md"), want: "ask"},
+		{name: "ask rule forces prompt", ask: []string{"Read(src/**)"}, req: read(R + "src/a.go"), want: "ask", why: "requires approval"},
+		{name: "ask rule beats allow rule", allow: []string{"Read"}, ask: []string{"Read(src/**)"}, req: read(R + "src/a.go"), want: "ask"},
+		{name: "ask rule applies in bypass", mode: ModeBypass, ask: []string{"Edit(docs/**)"}, req: write(R + "docs/README.md"), want: "ask"},
+		{name: "deny beats ask beats allow", allow: []string{"Read"}, ask: []string{"Read"}, deny: []string{"Read(src/**)"}, req: read(R + "src/a.go"), want: "deny"},
+		{name: "glob question mark", deny: []string{"Read(src/?.go)"}, req: read(R + "src/a.go"), want: "deny"},
+		{name: "glob class", deny: []string{"Read(src/[ab].go)"}, req: read(R + "src/b.go"), want: "deny"},
+		{name: "glob star does not cross slash", deny: []string{"Read(src/*.go)"}, req: read(R + "src/x/y.go"), want: "allow"},
+		{name: "glob doublestar crosses", deny: []string{"Read(**/deep/**)"}, req: read(R + "sub/deep/file.txt"), want: "deny"},
+		{name: "dot slash relative anchoring", deny: []string{"Read(./secrets/**)"}, req: read(R + "secrets/key.txt"), want: "deny"},
+		{name: "anchored relative does not match deeper", allow: []string{"Edit(docs/*.md)"}, req: write(R + "sub/docs/README.md"), want: "ask"},
+	}
+	runCases(t, f, cases)
+}
+
+// The request shapes the built-in tools actually send: the shell tool marks every
+// call Writes=true (the engine reads the command instead), file tools pass
+// canonical absolute paths with a risk, web tools set Network with the URL or
+// query in Input.
+func TestRequestsAsTheBuiltinToolsSendThem(t *testing.T) {
+	f := newFixture(t)
+	R := "{root}/"
+	bashTool := func(cmd string) rq {
+		return rq{tool: "bash", cmd: cmd, writes: true, input: `{"command":"x"}`}
+	}
+	cases := []tc{
+		{name: "bash tool marks writes but ls is read-only", req: bashTool("ls"), want: "allow"},
+		{name: "bash tool git status", req: bashTool("git status"), want: "allow"},
+		{name: "bash tool rm asks", req: bashTool("rm x"), want: "ask"},
+		{name: "bash tool secrets denied", req: bashTool("cat ~/.ssh/id_rsa"), want: "deny"},
+		{name: "bash tool in plan mode still reads", mode: ModePlan, req: bashTool("git diff | head"), want: "allow"},
+		{name: "bash tool in plan mode cannot write", mode: ModePlan, req: bashTool("touch x"), want: "deny", why: "plan mode"},
+		{name: "bash tool accept-edits redirect", mode: ModeAcceptEdits, req: bashTool("echo x > out.txt"), want: "allow"},
+		{name: "bash_output touches nothing", req: rq{tool: "bash_output"}, want: "allow"},
+		{name: "bash_kill touches nothing", req: rq{tool: "bash_kill"}, want: "allow"},
+		{name: "read tool", req: rq{tool: "read", paths: []string{R + "main.go"}, risk: RiskLow}, want: "allow"},
+		{name: "read tool secrets", req: rq{tool: "read", paths: []string{"{home}/.aws/credentials"}, risk: RiskLow}, want: "deny"},
+		{name: "write tool default", req: rq{tool: "write", paths: []string{R + "new.go"}, writes: true, risk: RiskMedium}, want: "ask"},
+		{name: "write tool accept-edits", mode: ModeAcceptEdits, req: rq{tool: "write", paths: []string{R + "new.go"}, writes: true, risk: RiskMedium}, want: "allow"},
+		{name: "edit tool .git", mode: ModeBypass, req: rq{tool: "edit", paths: []string{R + ".git/HEAD"}, writes: true, risk: RiskMedium}, want: "deny"},
+		{name: "apply_patch tool", mode: ModeAcceptEdits, req: rq{tool: "apply_patch", paths: []string{R + "src/a.go"}, writes: true, risk: RiskMedium}, want: "allow"},
+		{name: "apply_patch outside", mode: ModeAcceptEdits, req: rq{tool: "apply_patch", paths: []string{"{out}/x.go"}, writes: true, risk: RiskMedium}, want: "ask"},
+		{name: "glob tool", req: rq{tool: "glob", paths: []string{"{root}"}}, want: "allow"},
+		{name: "glob tool from home reaches credentials", req: rq{tool: "glob", paths: []string{"{home}"}}, want: "ask"},
+		{name: "grep tool from home reaches credentials", req: rq{tool: "grep", paths: []string{"{home}"}}, want: "deny"},
+		{name: "grep tool", req: rq{tool: "grep", paths: []string{"{root}/src"}}, want: "allow"},
+		{name: "ls tool", req: rq{tool: "ls", paths: []string{"{root}/src"}}, want: "allow"},
+		{name: "ls tool on the ssh dir", req: rq{tool: "ls", paths: []string{"{home}/.ssh"}}, want: "deny"},
+		{name: "web_fetch asks", req: rq{tool: "web_fetch", network: true, input: `{"url":"https://example.com/a"}`}, want: "ask"},
+		{name: "web_fetch allowed by domain", allow: []string{"WebFetch(domain:example.com)"}, req: rq{tool: "web_fetch", network: true, input: `{"url":"https://example.com/a"}`}, want: "allow"},
+		{name: "web_search asks", req: rq{tool: "web_search", network: true, input: `{"query":"go generics"}`}, want: "ask"},
+		{name: "web_search allowed by name", allow: []string{"WebSearch"}, req: rq{tool: "web_search", network: true, input: `{"query":"go generics"}`}, want: "allow"},
+		{name: "web_search rule does not allow fetch", allow: []string{"WebSearch"}, req: rq{tool: "web_fetch", network: true, input: `{"url":"https://example.com"}`}, want: "ask"},
+		{name: "web_search denied in plan", mode: ModePlan, req: rq{tool: "web_search", network: true, input: `{"query":"x"}`}, want: "deny"},
+	}
+	runCases(t, f, cases)
+}

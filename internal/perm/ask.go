@@ -1,0 +1,137 @@
+package perm
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"sort"
+	"sync"
+	"sync/atomic"
+)
+
+// prompts coordinates the questions put to a human. Two guarantees matter for
+// a swarm of agents sharing one screen:
+//
+//   - at most one prompt is on screen at a time (calls to the Prompter are
+//     serialised, and a waiting caller can still be cancelled through its ctx);
+//   - identical requests that arrive while one is pending are answered once:
+//     they wait for the first call and share its Decision instead of asking
+//     again.
+type prompts struct {
+	sem chan struct{}
+
+	mu       sync.Mutex
+	inflight map[string]*pending
+}
+
+type pending struct {
+	done     chan struct{}
+	d        Decision
+	canceled bool  // the asking caller gave up; waiters must ask again themselves
+	waiters  int32 // callers coalesced onto this prompt (observed by tests)
+}
+
+func (p *prompts) init() {
+	p.sem = make(chan struct{}, 1)
+	p.inflight = map[string]*pending{}
+}
+
+// promptKey identifies "the same request" for coalescing: same tool, command,
+// directory, paths and effects. The asking agent is deliberately not part of it.
+func promptKey(r Request) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%t\x00%t\x00", r.Tool, r.Command, r.Cwd, r.Writes, r.Network)
+	paths := append([]string(nil), r.Paths...)
+	sort.Strings(paths)
+	for _, p := range paths {
+		fmt.Fprintf(h, "p=%s\x00", p)
+	}
+	if r.Command == "" && len(r.Paths) == 0 {
+		h.Write(r.Input) // e.g. the URL of a fetch
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func canceledDecision(ctx context.Context) Decision {
+	return Decision{Reason: "approval canceled: " + ctx.Err().Error()}
+}
+
+// resolveAsk turns an "ask" outcome into a Decision by consulting the human.
+func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict) Decision {
+	if e.cfg.Prompter == nil {
+		return Decision{Reason: "approval required: " + v.reason}
+	}
+	key := promptKey(r)
+	for {
+		if ctx.Err() != nil {
+			return canceledDecision(ctx)
+		}
+		e.pr.mu.Lock()
+		if p, ok := e.pr.inflight[key]; ok {
+			atomic.AddInt32(&p.waiters, 1)
+			e.pr.mu.Unlock()
+			select {
+			case <-p.done:
+				if p.canceled {
+					continue // the first asker gave up; take over
+				}
+				return p.d
+			case <-ctx.Done():
+				return canceledDecision(ctx)
+			}
+		}
+		p := &pending{done: make(chan struct{})}
+		e.pr.inflight[key] = p
+		e.pr.mu.Unlock()
+		return e.lead(ctx, key, p, r, v)
+	}
+}
+
+// lead runs the prompt on behalf of every caller waiting on p.
+func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v verdict) (d Decision) {
+	p.canceled = true // stays true if the prompter panics
+	defer func() {
+		p.d = d
+		e.pr.mu.Lock()
+		delete(e.pr.inflight, key)
+		e.pr.mu.Unlock()
+		close(p.done)
+	}()
+	select {
+	case e.pr.sem <- struct{}{}:
+	case <-ctx.Done():
+		return canceledDecision(ctx)
+	}
+	defer func() { <-e.pr.sem }()
+
+	d = e.cfg.Prompter(ctx, r)
+	if ctx.Err() != nil {
+		return canceledDecision(ctx)
+	}
+	p.canceled = false
+	if d.Reason == "" {
+		if d.Allow {
+			d.Reason = "approved by the user"
+		} else {
+			d.Reason = "declined by the user"
+		}
+	}
+	e.remember(d, v)
+	return d
+}
+
+// remember honours Decision.Remember by adding the rules that make a repeat of
+// the request pass (or, for a refusal, fail). An answer to a question that a
+// user ask rule caused is not remembered: the rule would ask again anyway.
+func (e *Engine) remember(d Decision, v verdict) {
+	if d.Remember == ScopeOnce || v.askRule {
+		return
+	}
+	for _, rule := range v.rem {
+		if !d.Allow {
+			rule.Action = Deny
+		}
+		e.AddRule(d.Remember, rule)
+	}
+}

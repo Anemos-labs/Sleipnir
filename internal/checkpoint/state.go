@@ -43,6 +43,16 @@ type state struct {
 	MTime  int64     `json:"mtime,omitempty"`
 	Target string    `json:"target,omitempty"`
 	Note   string    `json:"note,omitempty"` // why the content was not saved
+	// Owner is who owned the path (unix only). A restore hands a recreated or
+	// replaced file back to them when the process is privileged enough to, so a
+	// harness running as root in a container does not turn a user's files into
+	// root's.
+	Owner *owner `json:"owner,omitempty"`
+}
+
+type owner struct {
+	UID int `json:"uid"`
+	GID int `json:"gid"`
 }
 
 // sameState reports whether two states describe the same thing on disk. mtime
@@ -124,7 +134,7 @@ func (s *Store) capture(abs string) (st state, data []byte) {
 		}
 		return state{Kind: kUnsaved, Note: "cannot inspect: " + reason(err)}, nil
 	}
-	st = state{Mode: posixMode(fi.Mode()), MTime: fi.ModTime().UnixNano(), Size: fi.Size()}
+	st = state{Mode: posixMode(fi.Mode()), MTime: fi.ModTime().UnixNano(), Size: fi.Size(), Owner: ownerOf(fi)}
 	typ := fi.Mode().Type()
 	switch {
 	case typ&fs.ModeSymlink != 0:
@@ -191,8 +201,9 @@ func humanBytes(n int64) string {
 // writeFileAtomic replaces path with data via a temporary file in the same
 // directory plus rename, so a crash or a concurrent reader never sees a
 // half-written file. mode is applied explicitly (the umask must not alter a
-// restored file's permission bits).
-func writeFileAtomic(path string, data []byte, mode fs.FileMode) error {
+// restored file's permission bits); own, when set, is applied first because
+// changing an owner can clear setuid bits.
+func writeFileAtomic(path string, data []byte, mode fs.FileMode, own *owner) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".sleipnir-tmp-*")
 	if err != nil {
 		return err
@@ -211,6 +222,7 @@ func writeFileAtomic(path string, data []byte, mode fs.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+	chownPath(name, own)
 	if err := os.Chmod(name, mode); err != nil {
 		return err
 	}
@@ -222,7 +234,7 @@ func writeFileAtomic(path string, data []byte, mode fs.FileMode) error {
 }
 
 // symlinkAtomic replaces path with a symlink to target, atomically.
-func symlinkAtomic(target, path string) error {
+func symlinkAtomic(target, path string, own *owner) error {
 	var rnd [6]byte
 	if _, err := rand.Read(rnd[:]); err != nil {
 		return err
@@ -231,6 +243,7 @@ func symlinkAtomic(target, path string) error {
 	if err := os.Symlink(target, tmp); err != nil {
 		return err
 	}
+	chownPath(tmp, own)
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
 		return err

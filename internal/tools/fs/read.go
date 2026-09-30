@@ -62,9 +62,15 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		Path   string `json:"path"`
 		Offset intArg `json:"offset"`
 		Limit  intArg `json:"limit"`
+		// FilePath is what other harnesses call the parameter; accepting it saves
+		// a model that learned that spelling a failed round trip.
+		FilePath string `json:"file_path"`
 	}
 	if r := k.decode(&a); r != nil {
 		return r, nil
+	}
+	if a.Path == "" {
+		a.Path = a.FilePath
 	}
 	if a.Offset.Set && a.Offset.V < 0 {
 		return k.fail("offset must be 1 or more (lines are numbered from 1)"), nil
@@ -147,7 +153,9 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if out.last < total {
 		text += fmt.Sprintf("\n[showing lines %d-%d of %d; continue with offset=%d]", out.first, out.last, total, out.last+1)
 	}
-	return k.ok(text), nil
+	res2 := k.ok(text)
+	res2.Meta = map[string]any{"path": disp, "lines": total, "from": out.first, "to": out.last}
+	return res2, nil
 }
 
 // outputBudget is how many bytes of body a paged result may use so that
@@ -254,7 +262,7 @@ func renderLines(body []byte, offset, limit, budget int) rendered {
 func displayLine(line []byte) string {
 	s := string(line)
 	if !utf8.ValidString(s) {
-		s = strings.ToValidUTF8(s, "�")
+		s = strings.ToValidUTF8(s, "\uFFFD")
 	}
 	if len(s) > maxLineChars {
 		if n := utf8.RuneCountInString(s); n > maxLineChars {

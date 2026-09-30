@@ -83,7 +83,10 @@ func (s *Store) diffOne(it *planned, cur state, curData []byte) FileDiff {
 	}
 	var notes []string
 	note := func(format string, args ...any) { notes = append(notes, fmt.Sprintf(format, args...)) }
-	defer func() { d.Note = strings.Join(notes, "; ") }()
+	finish := func() FileDiff {
+		d.Note = strings.Join(notes, "; ")
+		return d
+	}
 
 	// Content is comparable only when both sides are a saved file or nothing.
 	var oldData []byte
@@ -108,7 +111,7 @@ func (s *Store) diffOne(it *planned, cur state, curData []byte) FileDiff {
 		note("the current file cannot be diffed: %s", cur.Note)
 	}
 
-	if want.Kind != cur.Kind && want.Kind != kAbsent && cur.Kind != kAbsent {
+	if want.Kind != kAbsent && cur.Kind != kAbsent && typeGroup(want.Kind) != typeGroup(cur.Kind) {
 		note("type changed: %s -> %s", describe(want), describe(cur))
 	} else {
 		switch {
@@ -132,19 +135,19 @@ func (s *Store) diffOne(it *planned, cur state, curData []byte) FileDiff {
 
 	hasContent := (want.Kind == kFile || cur.Kind == kFile)
 	if !hasContent || !oldOK || !newOK {
-		return d
+		return finish()
+	}
+	if want.Kind == kFile && cur.Kind == kFile && want.Sum == cur.Sum {
+		return finish() // only the mode changed
 	}
 	if isBinary(oldData) || isBinary(curData) {
 		d.Binary = true
 		note("binary file (%s -> %s)", humanBytes(int64(len(oldData))), humanBytes(int64(len(curData))))
-		return d
+		return finish()
 	}
 	if len(oldData) > maxDiffBytes || len(curData) > maxDiffBytes {
 		note("too large to diff (%s -> %s)", humanBytes(int64(len(oldData))), humanBytes(int64(len(curData))))
-		return d
-	}
-	if want.Kind == kFile && cur.Kind == kFile && want.Sum == cur.Sum {
-		return d // only the mode changed
+		return finish()
 	}
 	oldName, newName := "a/"+strings.TrimPrefix(it.key, "/"), "b/"+strings.TrimPrefix(it.key, "/")
 	if want.Kind == kAbsent {
@@ -154,7 +157,16 @@ func (s *Store) diffOne(it *planned, cur state, curData []byte) FileDiff {
 		newName = "/dev/null"
 	}
 	d.Unified, d.Added, d.Removed = unifiedDiff(oldName, newName, string(oldData), string(curData))
-	return d
+	return finish()
+}
+
+// typeGroup collapses kinds that are the same sort of thing on disk: a regular
+// file whose content could not be saved is still a regular file.
+func typeGroup(k kind) kind {
+	if k == kUnsaved {
+		return kFile
+	}
+	return k
 }
 
 func describe(st state) string {
@@ -164,7 +176,7 @@ func describe(st state) string {
 	case kOther:
 		return st.Note
 	}
-	return string(st.Kind)
+	return string(typeGroup(st.Kind))
 }
 
 // isBinary uses git's heuristic: a NUL byte in the first 8000 bytes.

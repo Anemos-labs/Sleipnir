@@ -1,0 +1,2 @@
+go test fuzz v1
+string("nohup env A=1 time -p nice -n 3 timeout 5 stdbuf -oL sudo -u root env B=2 rm -rf /")

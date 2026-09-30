@@ -127,8 +127,9 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return fail(env, "bash: %v", err), nil
 	}
 	if background {
-		// The job's supervisor owns the wait-group slot from here on.
-		return m.startJob(env, sh, command, base, backgroundTimeout(timeoutSec, hasTimeout)), nil
+		// The job starts where the agent currently is (but its own `cd` never
+		// moves the agent), and its supervisor owns the wait-group slot from here on.
+		return m.startJob(env, sh, command, m.startDir(env, base), backgroundTimeout(timeoutSec, hasTimeout)), nil
 	}
 	defer m.end()
 	return m.runForeground(ctx, env, sh, command, base, foregroundTimeout(timeoutSec, hasTimeout, env.Limits)), nil
@@ -236,6 +237,7 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		env:    commandEnv(os.Environ(), env.Agent, dir, m.opts.PassEnv),
 		sink:   sk,
 		maxOut: m.opts.MaxOutputBytes,
+		merge:  m.opts.MergeStreams,
 	})
 	if err != nil {
 		return fail(env, "bash: could not start the command: %v", err)

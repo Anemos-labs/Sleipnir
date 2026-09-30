@@ -165,57 +165,82 @@ func posixClass(name string, r rune) bool {
 
 // matchSegs matches a path (as segments) against pattern segments, where a
 // "**" segment stands for zero or more whole segments.
+//
+// It runs once per directory entry per rule, on patterns that can come from a
+// hostile repository's .gitignore, so its cost is bounded whatever the pattern:
+// no "**" or one "**" is a plain prefix/suffix comparison (O(pattern)), and
+// several are solved by dynamic programming over (pattern segment, path
+// segment) states, O(pattern*path). Naive backtracking is exponential in the
+// number of "**", and memoising only at "**" boundaries is still quadratic in
+// the path depth.
 func matchSegs(pat, segs []string) bool {
-	stars := 0
-	for _, p := range pat {
+	first, stars := -1, 0
+	for i, p := range pat {
 		if p == "**" {
+			if stars == 0 {
+				first = i
+			}
 			stars++
 		}
 	}
-	m := segMatcher{pat: pat, segs: segs}
-	if stars >= 2 {
-		// Several ** make naive backtracking exponential on adversarial
-		// patterns; remembering failed states makes it O(len(pat)*len(segs)).
-		m.failed = map[int]bool{}
-	}
-	return m.match(0, 0)
-}
-
-type segMatcher struct {
-	pat, segs []string
-	failed    map[int]bool
-}
-
-func (m *segMatcher) match(pi, si int) bool {
-	for pi < len(m.pat) {
-		if m.pat[pi] == "**" {
-			for pi < len(m.pat) && m.pat[pi] == "**" {
-				pi++
-			}
-			if pi == len(m.pat) {
-				return true
-			}
-			key := pi*(len(m.segs)+1) + si
-			if m.failed != nil && m.failed[key] {
+	switch stars {
+	case 0:
+		if len(pat) != len(segs) {
+			return false
+		}
+		for i, p := range pat {
+			if !segMatch(p, segs[i]) {
 				return false
 			}
-			for i := si; i <= len(m.segs); i++ {
-				if m.match(pi, i) {
-					return true
-				}
-			}
-			if m.failed != nil {
-				m.failed[key] = true
-			}
+		}
+		return true
+	case 1:
+		pre, post := pat[:first], pat[first+1:]
+		if len(segs) < len(pre)+len(post) {
 			return false
 		}
-		if si >= len(m.segs) || !segMatch(m.pat[pi], m.segs[si]) {
-			return false
+		for i, p := range pre {
+			if !segMatch(p, segs[i]) {
+				return false
+			}
 		}
-		pi++
-		si++
+		off := len(segs) - len(post)
+		for i, p := range post {
+			if !segMatch(p, segs[off+i]) {
+				return false
+			}
+		}
+		return true
 	}
-	return si == len(m.segs)
+	return matchSegsDP(pat, segs)
+}
+
+func matchSegsDP(pat, segs []string) bool {
+	np, ns := len(pat), len(segs)
+	memo := make([]uint8, (np+1)*(ns+1)) // 0 unknown, 1 no match, 2 match
+	var rec func(pi, si int) bool
+	rec = func(pi, si int) bool {
+		if pi == np {
+			return si == ns
+		}
+		k := pi*(ns+1) + si
+		if memo[k] != 0 {
+			return memo[k] == 2
+		}
+		var ok bool
+		if pat[pi] == "**" {
+			ok = rec(pi+1, si) || (si < ns && rec(pi, si+1))
+		} else {
+			ok = si < ns && segMatch(pat[pi], segs[si]) && rec(pi+1, si+1)
+		}
+		if ok {
+			memo[k] = 2
+		} else {
+			memo[k] = 1
+		}
+		return ok
+	}
+	return rec(0, 0)
 }
 
 // prefixMatch reports whether segs could still be extended into a match of pat:
@@ -328,7 +353,16 @@ type globPattern struct {
 	dirOnly bool
 }
 
-const maxBraceAlternatives = 128
+const (
+	// maxPatternSegments bounds the path segments of one pattern; the matcher's
+	// table is pattern segments times path segments.
+	maxPatternSegments   = 64
+	maxBraceAlternatives = 128
+	// maxPatternBytes bounds glob patterns: brace expansion rescans the pattern
+	// for every alternative, so an absurdly long one is quadratic work for no
+	// legitimate use.
+	maxPatternBytes = 4096
+)
 
 func compileGlob(pattern string) (*globPattern, error) {
 	pattern = strings.TrimSpace(pattern)
@@ -337,6 +371,9 @@ func compileGlob(pattern string) (*globPattern, error) {
 	}
 	if strings.IndexByte(pattern, 0) >= 0 {
 		return nil, errors.New("pattern contains a NUL byte")
+	}
+	if len(pattern) > maxPatternBytes {
+		return nil, errors.New("pattern is too long")
 	}
 	g := &globPattern{}
 	if strings.HasSuffix(pattern, "/") {
@@ -365,6 +402,9 @@ func compileGlob(pattern string) (*globPattern, error) {
 		}
 		if len(segs) == 0 {
 			return nil, errors.New("pattern is empty")
+		}
+		if len(segs) > maxPatternSegments {
+			return nil, errors.New("pattern has too many path segments")
 		}
 		g.alts = append(g.alts, segs)
 	}

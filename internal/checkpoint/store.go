@@ -11,12 +11,17 @@
 // import internal/tools.
 //
 // Consistency stance: the snapshot must exist before the write happens, so
-// Before does not return until the pre-state is captured and durably recorded,
-// including for a second agent racing on a path whose first snapshot is still
-// being taken. Anything that stops a file from being saved (too large,
+// Before does not return until the pre-state is captured and recorded in the
+// manifest, including for a second agent racing on a path whose first snapshot
+// is still being taken. Anything that stops a file from being saved (too large,
 // unreadable, special file) is recorded and reported at rewind time rather than
 // blocking the edit; only harness failures (blob store or manifest I/O) make
 // Before fail.
+//
+// The manifest (one JSON file per checkpoint, plus a counter) is replaced
+// atomically with a temporary file and rename, so a crash never leaves a torn
+// file. It is not fsynced: like the edits it protects, it survives the process
+// dying, not necessarily the machine losing power.
 package checkpoint
 
 import (
@@ -87,11 +92,16 @@ type fileRec struct {
 	// got its Before: the write will have created them, so rewinding removes
 	// them again (when empty). Top-most first.
 	NewDirs []string `json:"new_dirs,omitempty"`
+
+	// gen counts Before calls on this record (not persisted). After uses it to
+	// notice that another agent announced a write while it was fingerprinting.
+	gen uint64
 }
 
 // touch notes another Before on an already-recorded path. The write that
 // follows makes any earlier post-write fingerprint stale, so it is dropped.
 func (r *fileRec) touch(agent string, now time.Time) (agentAdded bool) {
+	r.gen++
 	r.Last = now
 	r.Post = nil
 	if agent != "" && !slices.Contains(r.Agents, agent) {
@@ -250,10 +260,14 @@ func (s *Store) load() error {
 		return fmt.Errorf("checkpoint: %w", err)
 	}
 	var loaded []*checkpoint
+	maxSeen := 0 // highest number among checkpoint files, readable or not
 	for _, e := range entries {
 		m := cpFileRE.FindStringSubmatch(e.Name())
 		if m == nil || e.IsDir() {
 			continue
+		}
+		if n, _ := strconv.Atoi(m[1]); n > maxSeen {
+			maxSeen = n
 		}
 		data, err := os.ReadFile(filepath.Join(s.dir, e.Name()))
 		if err != nil {
@@ -294,6 +308,10 @@ func (s *Store) load() error {
 			s.next = m.Next
 		}
 	}
+	// A skipped file keeps its number: reusing it would overwrite evidence.
+	if maxSeen >= s.next {
+		s.next = maxSeen + 1
+	}
 	if n := len(loaded); n > 0 && loaded[n-1].Seq >= s.next {
 		s.next = loaded[n-1].Seq + 1
 	}
@@ -316,7 +334,7 @@ func (s *Store) persistLocked(cp *checkpoint) error {
 	if err != nil {
 		return fmt.Errorf("checkpoint: %w", err)
 	}
-	if err := writeFileAtomic(filepath.Join(s.dir, cp.ID+".json"), data, 0o600); err != nil {
+	if err := writeFileAtomic(filepath.Join(s.dir, cp.ID+".json"), data, 0o600, nil); err != nil {
 		return fmt.Errorf("checkpoint: saving manifest: %w", err)
 	}
 	return nil
@@ -327,7 +345,7 @@ func (s *Store) persistMetaLocked() error {
 	if err != nil {
 		return err
 	}
-	if err := writeFileAtomic(filepath.Join(s.dir, "meta.json"), data, 0o600); err != nil {
+	if err := writeFileAtomic(filepath.Join(s.dir, "meta.json"), data, 0o600, nil); err != nil {
 		return fmt.Errorf("checkpoint: saving manifest: %w", err)
 	}
 	return nil
@@ -492,11 +510,12 @@ func (s *Store) snapshot(agent, abs string) error {
 		}
 		f := &flight{done: make(chan struct{})}
 		s.inflight[fk] = f
+		now := s.now()
 		s.mu.Unlock()
 
 		// Slow work (reading, hashing, blob write) happens outside the lock so
 		// agents snapshotting different files do not serialize behind each other.
-		rec, err := s.newRecord(agent, abs, key)
+		rec, err := s.newRecord(agent, abs, key, now)
 
 		s.mu.Lock()
 		if err == nil {
@@ -513,7 +532,7 @@ func (s *Store) snapshot(agent, abs string) error {
 	}
 }
 
-func (s *Store) newRecord(agent, abs, key string) (*fileRec, error) {
+func (s *Store) newRecord(agent, abs, key string, now time.Time) (*fileRec, error) {
 	st, data := s.capture(abs)
 	if st.Kind == kFile {
 		h, err := s.blobs.Put(data)
@@ -522,7 +541,6 @@ func (s *Store) newRecord(agent, abs, key string) (*fileRec, error) {
 		}
 		st.Blob = h
 	}
-	now := s.now()
 	rec := &fileRec{Path: key, Pre: st, At: now, Last: now}
 	if agent != "" {
 		rec.Agents = []string{agent}
@@ -564,15 +582,33 @@ func (s *Store) After(agent, path string) {
 	defer s.gate.RUnlock()
 	for _, p := range s.chain(s.absolute(path)) {
 		key := s.keyFor(p)
+		// The write was announced in whichever checkpoint was current then, which
+		// may not be the newest any more if Begin ran in between.
+		s.mu.Lock()
+		var cp *checkpoint
+		var rec *fileRec
+		for i := len(s.cps) - 1; i >= 0 && rec == nil; i-- {
+			if r := s.cps[i].index[key]; r != nil {
+				cp, rec = s.cps[i], r
+			}
+		}
+		var gen uint64
+		if rec != nil {
+			gen = rec.gen
+		}
+		s.mu.Unlock()
+		if rec == nil {
+			continue
+		}
+		// Fingerprinting reads the file, so it happens outside the lock. If another
+		// agent announced a write meanwhile (gen moved), what was read may already
+		// be stale: drop it and let that agent's own After record the truth.
 		st, _ := s.capture(p)
 		s.mu.Lock()
-		if n := len(s.cps); n > 0 {
-			cp := s.cps[n-1]
-			if rec := cp.index[key]; rec != nil {
-				rec.Post = &st
-				rec.Last = s.now()
-				_ = s.persistLocked(cp)
-			}
+		if rec.gen == gen {
+			rec.Post = &st
+			rec.Last = s.now()
+			_ = s.persistLocked(cp)
 		}
 		s.mu.Unlock()
 	}

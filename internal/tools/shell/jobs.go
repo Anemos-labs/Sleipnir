@@ -20,14 +20,17 @@ import (
 // ends.
 const EventJob = "tool.job"
 
-// JobEvent is the payload of EventJob events. Exit is nil while the job runs.
+// JobEvent is the payload of EventJob events. Exit is nil while the job runs;
+// Duration (human readable, e.g. "1.5s") and DurationMS (for machines) are only
+// set once it has ended.
 type JobEvent struct {
-	ID       string `json:"id"`
-	Agent    string `json:"agent"`
-	Command  string `json:"command"`
-	Status   string `json:"status"` // "started", "exited" or "killed"
-	Exit     *int   `json:"exit,omitempty"`
-	Duration int64  `json:"duration_ms,omitempty"`
+	ID         string `json:"id"`
+	Agent      string `json:"agent"`
+	Command    string `json:"command"`
+	Status     string `json:"status"` // "started", "exited" or "killed"
+	Exit       *int   `json:"exit,omitempty"`
+	Duration   string `json:"duration,omitempty"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
 }
 
 type jobState int
@@ -100,9 +103,12 @@ func (j *job) emitEvent(status string, exit *int, dur time.Duration) {
 	if len(cmd) > 512 { // the full command is already in the tool.call event
 		cmd = strings.ToValidUTF8(cmd[:512], "") + "…"
 	}
-	_, _ = j.emit.Emit(j.agent, EventJob, JobEvent{
-		ID: j.id, Agent: j.agent, Command: cmd, Status: status, Exit: exit, Duration: dur.Milliseconds(),
-	})
+	ev := JobEvent{ID: j.id, Agent: j.agent, Command: cmd, Status: status, Exit: exit}
+	if exit != nil { // the job has ended
+		ev.Duration = dur.Round(time.Millisecond).String()
+		ev.DurationMS = dur.Milliseconds()
+	}
+	_, _ = j.emit.Emit(j.agent, EventJob, ev)
 }
 
 // startJob launches command as a background job. It consumes the caller's
@@ -119,11 +125,12 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 
 	buf := newRolling(m.opts.JobBuffer)
 	p, err := m.startProc(procSpec{
-		path: sh.path,
-		args: append(append([]string(nil), sh.flags...), command),
-		dir:  dir,
-		env:  commandEnv(os.Environ(), env.Agent, dir, m.opts.PassEnv),
-		sink: buf,
+		path:  sh.path,
+		args:  append(append([]string(nil), sh.flags...), command),
+		dir:   dir,
+		env:   commandEnv(os.Environ(), env.Agent, dir, m.opts.PassEnv),
+		sink:  buf,
+		merge: m.opts.MergeStreams,
 	})
 	if err != nil {
 		m.end()
@@ -220,23 +227,27 @@ func clip(s string, n int) string {
 	return strings.ToValidUTF8(s[:n], "") + "…"
 }
 
+// evictable reports whether a job can be forgotten: it has ended and nothing it
+// started still holds its output pipes (such a stray keeps producing output the
+// model may yet want to read, and bash_kill can still stop it).
+func (j *job) evictable() bool {
+	st, _, _ := j.snapshot()
+	return st != jobRunning && j.p.pumpsFinished()
+}
+
 func (m *Manager) hasFinishedLocked() bool {
 	for _, j := range m.jobs {
-		if st, _, _ := j.snapshot(); st != jobRunning {
+		if j.evictable() {
 			return true
 		}
 	}
 	return false
 }
 
-// evictOldestFinishedLocked forgets the oldest job that is no longer running.
+// evictOldestFinishedLocked forgets the oldest job that can be forgotten.
 func (m *Manager) evictOldestFinishedLocked() bool {
 	for i, id := range m.order {
-		j := m.jobs[id]
-		if j == nil {
-			continue
-		}
-		if st, _, _ := j.snapshot(); st != jobRunning && j.p.pumpsFinished() {
+		if j := m.jobs[id]; j != nil && j.evictable() {
 			delete(m.jobs, id)
 			m.order = append(m.order[:i:i], m.order[i+1:]...)
 			return true

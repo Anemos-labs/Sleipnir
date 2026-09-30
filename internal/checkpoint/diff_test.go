@@ -337,3 +337,30 @@ func TestPatienceFallbackKeepsScatteredEditsReadable(t *testing.T) {
 		t.Fatal("fallback diff does not apply")
 	}
 }
+
+// FuzzUnifiedDiff: for any two texts the generated diff must apply cleanly to
+// the old text and reproduce the new one, and generation must terminate.
+func FuzzUnifiedDiff(f *testing.F) {
+	for _, seed := range [][2]string{
+		{"", ""}, {"a\n", "a\n"}, {"a\nb\nc\n", "a\nB\nc\n"}, {"x", "x\n"}, {"a\r\nb\r\n", "a\nb\n"},
+		{"1\n2\n3\n4\n5\n6\n7\n8\n9\n", "1\n2\n3\nfour\n5\n6\n7\n8\nnine\n"}, {"", "new\n"}, {"gone\n", ""},
+		{"same\nsame\nsame\n", "same\nsame\n"}, {"a\n\n\nb\n", "a\nb\n"},
+	} {
+		f.Add(seed[0], seed[1])
+	}
+	f.Fuzz(func(t *testing.T, oldText, newText string) {
+		if len(oldText) > 4000 || len(newText) > 4000 {
+			t.Skip()
+		}
+		d, _, _ := unifiedDiff("A", "B", oldText, newText)
+		if oldText == newText {
+			if d != "" {
+				t.Fatalf("identical texts produced a diff: %q", d)
+			}
+			return
+		}
+		if got := applyUnified(t, oldText, d); got != newText {
+			t.Fatalf("diff does not reproduce the new text\nold=%q\nnew=%q\ngot=%q\ndiff=%q", oldText, newText, got, d)
+		}
+	})
+}

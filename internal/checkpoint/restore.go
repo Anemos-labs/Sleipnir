@@ -115,12 +115,18 @@ func (r RestoreReport) Err() error {
 		r.ID, len(bad), len(r.Files), strings.Join(bad, "\n  "))
 }
 
-// Summary is a one-line description for logs and UIs.
+// Summary is a one-line description for logs and UIs. Directory cleanups are
+// not counted as restored files.
 func (r RestoreReport) Summary() string {
-	verb := "restored"
-	done := r.Count(OutcomeDone)
+	verb, want := "restored", OutcomeDone
 	if r.DryRun {
-		verb, done = "would restore", r.Count(OutcomePlanned)
+		verb, want = "would restore", OutcomePlanned
+	}
+	done := 0
+	for _, f := range r.Files {
+		if f.Outcome == want && f.Action != ActionRmdir {
+			done++
+		}
 	}
 	parts := []string{fmt.Sprintf("%s %d", verb, done)}
 	if n := r.Count(OutcomeUnchanged); n > 0 {
@@ -407,7 +413,7 @@ func (s *Store) apply(t *task) error {
 		if err := s.prepare(it.abs, t.cur); err != nil {
 			return err
 		}
-		if err := writeFileAtomic(it.abs, data, goMode(it.want.Mode)); err != nil {
+		if err := writeFileAtomic(it.abs, data, goMode(it.want.Mode), it.want.Owner); err != nil {
 			return fmt.Errorf("cannot write: %s", reason(err))
 		}
 		return nil
@@ -415,7 +421,7 @@ func (s *Store) apply(t *task) error {
 		if err := s.prepare(it.abs, t.cur); err != nil {
 			return err
 		}
-		if err := symlinkAtomic(it.want.Target, it.abs); err != nil {
+		if err := symlinkAtomic(it.want.Target, it.abs, it.want.Owner); err != nil {
 			return fmt.Errorf("cannot create symlink: %s", reason(err))
 		}
 		return nil
@@ -428,6 +434,7 @@ func (s *Store) apply(t *task) error {
 		if err := os.MkdirAll(it.abs, 0o755); err != nil {
 			return fmt.Errorf("cannot create directory: %s", reason(err))
 		}
+		chownPath(it.abs, it.want.Owner)
 		if err := os.Chmod(it.abs, goMode(it.want.Mode)); err != nil {
 			return fmt.Errorf("cannot change permissions: %s", reason(err))
 		}

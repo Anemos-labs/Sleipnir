@@ -1,0 +1,2 @@
+go test fuzz v1
+string("echo \x00 \xff\xfe $'\\x00'")

@@ -81,7 +81,7 @@ func parseIgnoreLine(line string) (rule, bool) {
 			}
 			segs = append(segs, s)
 		}
-		if len(segs) == 0 {
+		if len(segs) == 0 || len(segs) > maxPatternSegments {
 			return rule{}, false
 		}
 		// "dir/**" means everything inside dir, not dir itself. Since an ignored
@@ -222,6 +222,9 @@ func splitGlobList(s string) []string {
 func compileOverride(patterns []string) *overrideGlobs {
 	o := &overrideGlobs{}
 	for _, p := range patterns {
+		if len(p) > maxPatternBytes {
+			continue
+		}
 		neg := false
 		if strings.HasPrefix(p, "!") {
 			neg = true

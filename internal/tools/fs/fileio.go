@@ -102,7 +102,11 @@ func fileKind(m iofs.FileMode) string {
 func (k *call) statFailure(path, disp string, err error) *tools.Result {
 	switch {
 	case errors.Is(err, iofs.ErrNotExist):
-		return k.fail("%s", notFoundMessage(path, disp))
+		msg := notFoundMessage(path, disp)
+		if hasMeta(filepath.Base(disp)) || strings.Contains(disp, "**") {
+			msg += " (a path is a literal file or directory, not a pattern; use glob to find files by pattern, or grep's glob parameter to filter what it searches)"
+		}
+		return k.fail("%s", msg)
 	case errors.Is(err, iofs.ErrPermission):
 		return k.fail("permission denied reading %s", disp)
 	}
@@ -131,11 +135,14 @@ func notFoundMessage(path, disp string) string {
 	for _, e := range entries {
 		name := e.Name()
 		s := 0.0
+		ln, lb := strings.ToLower(name), strings.ToLower(base)
 		switch {
-		case strings.EqualFold(name, base):
+		case ln == lb:
 			s = 1
+		case len(ln) <= 64 && len(lb) <= 64 && osaDistance(ln, lb) <= 1+len(lb)/12:
+			s = 0.9
 		default:
-			s = diceStrings(strings.ToLower(name), strings.ToLower(base))
+			s = diceStrings(ln, lb)
 		}
 		if s >= 0.6 {
 			cands = append(cands, cand{name, s})
@@ -156,7 +163,7 @@ func notFoundMessage(path, disp string) string {
 	parent := filepath.Dir(disp)
 	names := make([]string, len(cands))
 	for i, c := range cands {
-		names[i] = filepath.ToSlash(filepath.Join(parent, c.name))
+		names[i] = safeName(filepath.ToSlash(filepath.Join(parent, c.name)))
 	}
 	return msg + "; did you mean " + strings.Join(names, ", ") + "?"
 }
@@ -256,9 +263,12 @@ func atomicWrite(path string, data []byte, existing iofs.FileInfo) (err error) {
 			return err
 		}
 	}
-	if err = f.Sync(); err != nil {
+	if err = f.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) && !errors.Is(err, syscall.ENOTSUP) && !errors.Is(err, syscall.ENOSYS) {
+		// A filesystem that cannot fsync (some FUSE and network mounts) is not a
+		// reason to refuse the write; any real I/O error still is.
 		return err
 	}
+	err = nil
 	closed = true
 	if err = f.Close(); err != nil {
 		return err

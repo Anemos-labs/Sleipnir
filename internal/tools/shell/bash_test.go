@@ -151,7 +151,7 @@ func TestOutStreaming(t *testing.T) {
 	env2.Out = out2.fn
 	done := make(chan *tools.Result, 1)
 	go func() {
-		res, _ := h.tryCall(context.Background(), env2, "bash", map[string]any{"command": "echo early; sleep 3; echo late"})
+		res, _ := h.tryCall(context.Background(), env2, "bash", map[string]any{"command": "echo early; sleep 1; echo late"})
 		done <- res
 	}()
 	waitFor(t, "live output", 5*time.Second, func() bool {
@@ -1070,5 +1070,135 @@ func TestSpecsAreStableAcrossManagers(t *testing.T) {
 	jb, _ := json.Marshal(b)
 	if string(ja) != string(jb) {
 		t.Error("tool specs differ between registrations: every agent must see identical bytes")
+	}
+}
+
+// Two pipes are pumped concurrently, so nothing may be lost, duplicated or
+// torn, whatever the interleaving.
+func TestBothStreamsAreCompleteUnderLoad(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	env := h.env("a")
+	var out outLog
+	env.Out = out.fn
+	res := h.bash(env, `for i in $(seq 1 3000); do echo "out$i"; echo "err$i" >&2; done`)
+	stdout, stderr, _ := out.get()
+	for name, s := range map[string]string{"out": stdout, "err": stderr} {
+		lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+		if len(lines) != 3000 {
+			t.Fatalf("%s: %d lines, want 3000", name, len(lines))
+		}
+		for i, l := range lines { // each stream keeps its own order exactly
+			if want := fmt.Sprintf("%s%d", name, i+1); l != want {
+				t.Fatalf("%s line %d = %q, want %q", name, i, l, want)
+			}
+		}
+	}
+	if !res.Truncated { // ~40 KB of output exceeds the 24k default limit
+		t.Fatalf("expected truncation, got %d bytes", len(res.Text))
+	}
+	full, _ := h.blobs.Get(res.FullRef)
+	if got := strings.Count(string(full), "\n"); got != 6000 {
+		t.Errorf("blob has %d newlines, want 6000 (6000 output lines, the last newline joining the exit code line)", got)
+	}
+	if !strings.HasSuffix(string(full), "\n[exit code 0]") {
+		t.Errorf("blob tail = %q", string(full)[len(full)-30:])
+	}
+}
+
+// The UI callback is not required to be thread-safe: calls for one command are
+// serialized even though stdout and stderr are read by different goroutines.
+func TestOutCallbacksAreSerialized(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	env := h.env("a")
+	var inside, overlaps, calls int32
+	var mu sync.Mutex
+	env.Out = func(stream, text string) {
+		mu.Lock()
+		inside++
+		if inside > 1 {
+			overlaps++
+		}
+		calls++
+		mu.Unlock()
+		time.Sleep(50 * time.Microsecond)
+		mu.Lock()
+		inside--
+		mu.Unlock()
+	}
+	h.bash(env, `for i in $(seq 1 500); do echo out$i; echo err$i >&2; done`)
+	mu.Lock()
+	defer mu.Unlock()
+	if overlaps != 0 {
+		t.Errorf("%d overlapping Out calls", overlaps)
+	}
+	if calls == 0 {
+		t.Error("Out never called")
+	}
+}
+
+func TestNoFileDescriptorLeak(t *testing.T) {
+	if _, err := os.Stat("/proc/self/fd"); err != nil {
+		t.Skip("no /proc/self/fd")
+	}
+	count := func() int {
+		ents, _ := os.ReadDir("/proc/self/fd")
+		return len(ents)
+	}
+	h := newHarness(t, Options{KillGrace: 300 * time.Millisecond})
+	env := h.env("a")
+	h.bash(env, "true")
+	before := count()
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			e := h.env(fmt.Sprintf("fd%d", i))
+			h.tryCall(context.Background(), e, "bash", map[string]any{"command": "echo hi; echo err >&2"})
+			h.tryCall(context.Background(), e, "bash", map[string]any{"command": "exit 3"})
+			h.tryCall(context.Background(), e, "bash", map[string]any{"command": "sleep 5", "timeout": 0.1})
+			h.tryCall(context.Background(), e, "bash", map[string]any{"command": "echo x", "run_in_background": true})
+		}()
+	}
+	wg.Wait()
+	waitFor(t, "descriptors to be released", 10*time.Second, func() bool { return count() <= before+2 })
+}
+
+// MergeStreams trades the stdout/stderr labels for the kernel's exact order.
+func TestMergeStreamsKeepsExactOrder(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{MergeStreams: true})
+	env := h.env("a")
+	var out outLog
+	env.Out = out.fn
+	// Cross-stream writes with no pause between them: with two pipes any of
+	// these could swap; with one shared pipe they cannot.
+	res := h.bash(env, `for i in $(seq 1 300); do echo "o$i"; echo "e$i" >&2; done`)
+	stdout, stderr, _ := out.get()
+	if stderr != "" || strings.Count(stdout, "\n") != 600 {
+		t.Errorf("merged streams are all reported as stdout: stdout has %d lines, stderr %q", strings.Count(stdout, "\n"), stderr)
+	}
+	var want strings.Builder
+	for i := 1; i <= 300; i++ {
+		fmt.Fprintf(&want, "o%d\ne%d\n", i, i)
+	}
+	if res.Truncated {
+		t.Fatal("test output should fit the limit")
+	}
+	if got := strings.TrimSuffix(res.Text, "\n[exit code 0]"); got != strings.TrimSuffix(want.String(), "\n") {
+		t.Errorf("interleaving differs from the order written (%d vs %d bytes)", len(got), want.Len())
+	}
+	// Jobs merge too, and kills still reach the group.
+	id := h.startJob(env, "echo out; echo err >&2; sleep 30")
+	waitFor(t, "job output", 10*time.Second, func() bool {
+		return strings.Contains(h.output(env, id, map[string]any{"since": 0}).Text, "err")
+	})
+	if got := h.output(env, id, map[string]any{"since": 0}).Text; !strings.HasPrefix(got, "out\nerr\n") {
+		t.Errorf("job output = %q", got)
+	}
+	if r := h.kill(env, id); r.IsError {
+		t.Errorf("kill = %+v", r)
 	}
 }

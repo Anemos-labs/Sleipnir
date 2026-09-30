@@ -1,0 +1,2 @@
+go test fuzz v1
+string("cat <<EOF\n$(rm -rf ~)\n`id`\n${x:-$(id)}\nEOF\nls")

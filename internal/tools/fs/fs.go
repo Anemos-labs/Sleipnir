@@ -11,7 +11,8 @@
 //     "read current content, check it is fresh, write", because FileState can only
 //     reject the loser of a race if the check and the write are atomic.
 //   - Tools are singletons shared by every agent goroutine, so they keep no
-//     per-call state; everything per-call lives in a call value on the stack.
+//     per-call state; everything per-call lives in a call value that one
+//     goroutine owns for the duration of the call.
 package fs
 
 import (
@@ -52,12 +53,17 @@ func Register(r *tools.Registry) {
 // without the mutex two first calls would race on those writes.
 var defaultsMu sync.Mutex
 
-// call is the per-invocation context. It lives on the goroutine's stack.
+// call is the per-invocation context: created for one tool call, used by one
+// goroutine, never shared.
 type call struct {
 	ctx  context.Context
 	tool string
 	in   json.RawMessage
 	env  *tools.Env
+
+	// Working directory in the two spellings display needs, computed on first use.
+	cwdInit         bool
+	cwdAbs, cwdReal string
 }
 
 func begin(ctx context.Context, c *tools.Call, tool string) *call {
@@ -78,6 +84,19 @@ func begin(ctx context.Context, c *tools.Call, tool string) *call {
 	return &call{ctx: ctx, tool: tool, in: in, env: env}
 }
 
+// bounded limits the call to the configured default timeout. Tools that walk
+// directory trees (glob, ls, grep) use it so that pointing one at a huge tree
+// ends in an error the model can act on instead of an unbounded wait.
+func (k *call) bounded() context.CancelFunc {
+	d := k.env.Limits.DefaultTimeout
+	if d <= 0 {
+		return func() {}
+	}
+	var cancel context.CancelFunc
+	k.ctx, cancel = context.WithTimeout(k.ctx, d)
+	return cancel
+}
+
 // fail returns a model-visible error result. Every result goes through
 // Env.Finish so oversized text is truncated and recallable.
 func (k *call) fail(format string, args ...any) *tools.Result {
@@ -94,7 +113,9 @@ func (k *call) decode(dst any) *tools.Result {
 		// Some providers hand arguments over as a JSON string containing JSON.
 		var s string
 		if json.Unmarshal(raw, &s) == nil {
-			raw = bytes.TrimSpace([]byte(s))
+			if inner := bytes.TrimSpace([]byte(s)); len(inner) > 0 && inner[0] == '{' {
+				raw = inner
+			}
 		}
 	}
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {

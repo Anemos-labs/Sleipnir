@@ -17,26 +17,33 @@ const (
 	diffContext   = 2
 	maxMyersD     = 1000
 	maxDiffLineCh = 200
+	// maxMyersSteps bounds the work of one diff. Myers is O((N+M)·D); a huge file
+	// with thousands of scattered changes must not turn a successful edit into a
+	// multi-second computation of a diff nobody will read past its first lines.
+	maxMyersSteps = 40_000_000
 )
 
+// diffResult is a rendered diff. Only the first capLines lines are materialised
+// (a coarse diff of a huge file could otherwise be millions of strings); total
+// says how many there would be.
 type diffResult struct {
 	lines          []string
+	total          int
 	added, removed int
 }
 
-// text renders at most max lines and says how many were cut.
+// text renders at most max lines (0 = all that were materialised) and says how
+// many were cut.
 func (d diffResult) text(max int) string {
-	if len(d.lines) == 0 {
+	if d.total == 0 {
 		return ""
 	}
 	lines := d.lines
-	extra := 0
 	if max > 0 && len(lines) > max {
-		extra = len(lines) - max
 		lines = lines[:max]
 	}
 	s := strings.Join(lines, "\n")
-	if extra > 0 {
+	if extra := d.total - len(lines); extra > 0 {
 		s += fmt.Sprintf("\n… [diff truncated: %d more lines]", extra)
 	}
 	return s
@@ -60,8 +67,9 @@ func splitForDiff(s string) []string {
 
 type region struct{ aStart, aEnd, bStart, bEnd int }
 
-// diffFiles diffs two whole-file contents.
-func diffFiles(a, b string, ctx int) diffResult {
+// diffFiles diffs two whole-file contents, materialising at most capLines lines
+// (0 = all).
+func diffFiles(a, b string, ctx, capLines int) diffResult {
 	al, bl := splitForDiff(a), splitForDiff(b)
 	pre := 0
 	for pre < len(al) && pre < len(bl) && al[pre] == bl[pre] {
@@ -87,7 +95,8 @@ func diffFiles(a, b string, ctx int) diffResult {
 			regs[i].bEnd += pre
 		}
 	}
-	res := diffResult{lines: renderHunks(al, bl, regs, ctx)}
+	res := diffResult{}
+	res.lines, res.total = renderHunks(al, bl, regs, ctx, capLines)
 	for _, r := range regs {
 		res.removed += r.aEnd - r.aStart
 		res.added += r.bEnd - r.bStart
@@ -120,8 +129,14 @@ func regionsFromOps(ops []byte) []region {
 	return regs
 }
 
-func renderHunks(a, b []string, regs []region, ctx int) []string {
+func renderHunks(a, b []string, regs []region, ctx, capLines int) ([]string, int) {
 	var out []string
+	total := 0
+	emit := func(line func() string) {
+		if capLines <= 0 || len(out) < capLines {
+			out = append(out, line())
+		}
+	}
 	for i := 0; i < len(regs); {
 		j := i
 		for j+1 < len(regs) && regs[j+1].aStart-regs[j].aEnd <= 2*ctx {
@@ -138,26 +153,37 @@ func renderHunks(a, b []string, regs []region, ctx int) []string {
 		}
 		bFrom := first.bStart - (first.aStart - aFrom)
 		bTo := last.bEnd + (aTo - last.aEnd)
-		out = append(out, fmt.Sprintf("@@ -%s +%s @@", hunkRange(aFrom, aTo-aFrom), hunkRange(bFrom, bTo-bFrom)))
+		// Every line of a appears once (as context or removed); added lines are extra.
+		total += 1 + (aTo - aFrom)
+		for r := i; r <= j; r++ {
+			total += regs[r].bEnd - regs[r].bStart
+		}
+		emit(func() string {
+			return fmt.Sprintf("@@ -%s +%s @@", hunkRange(aFrom, aTo-aFrom), hunkRange(bFrom, bTo-bFrom))
+		})
 		pos := aFrom
 		for r := i; r <= j; r++ {
 			for ; pos < regs[r].aStart; pos++ {
-				out = append(out, " "+diffText(a[pos]))
+				p := pos
+				emit(func() string { return " " + diffText(a[p]) })
 			}
 			for p := regs[r].aStart; p < regs[r].aEnd; p++ {
-				out = append(out, "-"+diffText(a[p]))
+				p := p
+				emit(func() string { return "-" + diffText(a[p]) })
 			}
 			for p := regs[r].bStart; p < regs[r].bEnd; p++ {
-				out = append(out, "+"+diffText(b[p]))
+				p := p
+				emit(func() string { return "+" + diffText(b[p]) })
 			}
 			pos = regs[r].aEnd
 		}
 		for ; pos < aTo; pos++ {
-			out = append(out, " "+diffText(a[pos]))
+			p := pos
+			emit(func() string { return " " + diffText(a[p]) })
 		}
 		i = j + 1
 	}
-	return out
+	return out, total
 }
 
 // hunkRange formats "start,count" the way unified diffs do: start is 1-based,
@@ -173,7 +199,7 @@ func hunkRange(from, count int) string {
 }
 
 func diffText(s string) string {
-	s = strings.ToValidUTF8(s, "�")
+	s = strings.ToValidUTF8(s, "\uFFFD")
 	if len(s) > maxDiffLineCh {
 		s = cutRunes(s, maxDiffLineCh) + "…"
 	}
@@ -198,6 +224,7 @@ func myersOps(a, b []string, maxD int) (ops []byte, ok bool) {
 	v := make([]int, 2*max+3)
 	var trace [][]int
 	found := -1
+	steps := 0
 	for d := 0; d <= max && found < 0; d++ {
 		// Keep the window of v the backtrace will read: diagonals -d-1 .. d+1.
 		snap := make([]int, 2*d+3)
@@ -214,12 +241,17 @@ func myersOps(a, b []string, maxD int) (ops []byte, ok bool) {
 			for x < n && y < m && a[x] == b[y] {
 				x++
 				y++
+				steps++
 			}
+			steps++
 			v[off+k] = x
 			if x >= n && y >= m {
 				found = d
 				break
 			}
+		}
+		if steps > maxMyersSteps {
+			return nil, false
 		}
 	}
 	if found < 0 {

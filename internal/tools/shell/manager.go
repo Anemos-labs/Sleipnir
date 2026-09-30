@@ -29,6 +29,12 @@ type Options struct {
 	// MaxJobs bounds the jobs remembered by the Manager (default 64). When full,
 	// the oldest finished job is forgotten; if all are running, new jobs are refused.
 	MaxJobs int
+	// MergeStreams gives a command's stdout and stderr one shared pipe. Output
+	// then keeps the exact order in which the command wrote it, but live chunks
+	// are all reported as "stdout". By default the two streams are read
+	// separately (so the UI can tell them apart) and merged in arrival order,
+	// which can swap writes made microseconds apart.
+	MergeStreams bool
 	// KillGrace is how long SIGTERM gets before SIGKILL (default 2s).
 	KillGrace time.Duration
 	// DrainGrace is how long a finished command waits for its output pipes to
@@ -101,6 +107,9 @@ func NewManager(opts ...Options) *Manager {
 		}
 		if x.MaxJobs != 0 {
 			o.MaxJobs = x.MaxJobs
+		}
+		if x.MergeStreams {
+			o.MergeStreams = true
 		}
 		if x.KillGrace != 0 {
 			o.KillGrace = x.KillGrace

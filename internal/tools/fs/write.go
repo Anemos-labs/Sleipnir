@@ -36,11 +36,15 @@ func (Write) Spec() core.ToolSpec {
 func (Write) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	k := begin(ctx, c, "write")
 	var a struct {
-		Path    string  `json:"path"`
-		Content *string `json:"content"`
+		Path     string  `json:"path"`
+		Content  *string `json:"content"`
+		FilePath string  `json:"file_path"` // alias, see Read
 	}
 	if r := k.decode(&a); r != nil {
 		return r, nil
+	}
+	if a.Path == "" {
+		a.Path = a.FilePath
 	}
 	if a.Content == nil {
 		return k.fail(`content is required (use "" to create an empty file)`), nil
@@ -48,9 +52,6 @@ func (Write) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	canon, disp, msg := k.resolveArg(a.Path)
 	if msg != "" {
 		return k.fail("%s", msg), nil
-	}
-	if fi, err := os.Stat(canon); err == nil && fi.IsDir() {
-		return k.fail("%s is a directory; give a file path", disp), nil
 	}
 	if r := k.authorize("write "+disp, true, perm.RiskMedium, canon); r != nil {
 		return r, nil
@@ -98,7 +99,7 @@ func (Write) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		verb = "Overwrote"
 		tail = fmt.Sprintf(", was %d", existing.Size())
 	}
-	text := fmt.Sprintf("%s %s (%s, %d bytes%s)", verb, disp, plural(countLines(content), "line"), len(content), tail)
+	text := fmt.Sprintf("%s %s (%s, %s%s)", verb, disp, plural(countLines(content), "line"), plural(len(content), "byte"), tail)
 	for _, n := range notes {
 		text += "; " + n
 	}

