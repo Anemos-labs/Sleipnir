@@ -2,6 +2,7 @@ package traj
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 
@@ -126,6 +127,9 @@ func (b *builder) build() (*rl.Episode, error) {
 	}
 	b.collectAgents()
 	b.buildSteps()
+	if len(b.steps) == 0 {
+		return nil, fmt.Errorf("traj: none of the %d requests produced a usable step (%s)", len(r.reqOrder), b.whyNoSteps())
+	}
 	for _, a := range b.order {
 		b.segmentize(a)
 		b.checkTokenChains(a)
@@ -617,4 +621,12 @@ func cleanFinish(a *agentInfo) bool {
 	}
 	last := a.main[len(a.main)-1]
 	return len(last.turn.ToolCalls()) == 0 && (last.p.stop == core.StopEnd || last.p.stop == "")
+}
+
+// whyNoSteps explains an empty result with the first few reasons found.
+func (b *builder) whyNoSteps() string {
+	if ms := b.run.Verify(); len(ms) > 0 {
+		return mismatchSummary(ms, 3)
+	}
+	return "no request has a response"
 }

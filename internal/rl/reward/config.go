@@ -266,7 +266,7 @@ func ParseConfig(b []byte) (Config, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return Config{}, describeJSONError(err)
+		return Config{}, describeJSONError(err, b)
 	}
 	if _, err := dec.Token(); err != io.EOF {
 		return Config{}, errors.New("reward config: unexpected data after the JSON object")
@@ -282,14 +282,19 @@ func ParseConfig(b []byte) (Config, error) {
 	return cfg, nil
 }
 
-func describeJSONError(err error) error {
+func describeJSONError(err error, doc []byte) error {
 	var se *json.SyntaxError
 	var te *json.UnmarshalTypeError
 	switch {
 	case errors.As(err, &se):
 		return fmt.Errorf("reward config: invalid JSON at byte %d: %v", se.Offset, se)
 	case errors.As(err, &te):
-		field := te.Field
+		// encoding/json reports the struct field ("weights") but not the map key
+		// inside it; recover the full path from the document.
+		field := jsonPathAt(doc, te.Offset)
+		if field == "" {
+			field = te.Field
+		}
 		if field == "" {
 			field = "(document)"
 		}
@@ -298,6 +303,61 @@ func describeJSONError(err error) error {
 		return fmt.Errorf("reward config: %s (unknown field)", strings.TrimPrefix(err.Error(), "json: "))
 	}
 	return fmt.Errorf("reward config: %w", err)
+}
+
+// jsonPathAt returns the dotted key path of the scalar value that ends at or
+// after offset ("weights.cost"), or "" when it cannot be determined.
+func jsonPathAt(doc []byte, offset int64) string {
+	dec := json.NewDecoder(bytes.NewReader(doc))
+	type frame struct {
+		obj       bool
+		key       string
+		expectKey bool
+	}
+	var stack []frame
+	path := func() string {
+		var parts []string
+		for _, f := range stack {
+			if f.obj && f.key != "" {
+				parts = append(parts, f.key)
+			}
+		}
+		return strings.Join(parts, ".")
+	}
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return ""
+		}
+		switch v := tok.(type) {
+		case json.Delim:
+			switch v {
+			case '{':
+				stack = append(stack, frame{obj: true, expectKey: true})
+			case '[':
+				stack = append(stack, frame{})
+			default:
+				if len(stack) > 0 {
+					stack = stack[:len(stack)-1]
+				}
+				if n := len(stack); n > 0 && stack[n-1].obj {
+					stack[n-1].expectKey = true
+				}
+			}
+		default:
+			n := len(stack) - 1
+			if n >= 0 && stack[n].obj && stack[n].expectKey {
+				stack[n].key, stack[n].expectKey = fmt.Sprint(v), false
+				continue
+			}
+			if dec.InputOffset() >= offset {
+				return path()
+			}
+			if n >= 0 && stack[n].obj {
+				stack[n].expectKey = true
+			}
+		}
+	}
 }
 
 // Validate checks names and values. It returns every problem at once, each

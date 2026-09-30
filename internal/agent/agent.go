@@ -182,9 +182,8 @@ type Agent struct {
 	stack  kv.Stack
 	thread *kv.Thread
 	guard  kv.Guard
-	epoch  uint64 // rebase counter fed to the guard
-	strip  bool   // strip thinking on the next render (declared rebase)
-	inbox  []string
+	epoch  uint64 // rebase counter fed to the guard (thread epoch is added to it)
+	inbox  []inboxMsg
 	reqN   int
 	forkN  int
 	// man is the manifest state the next main request's prompt is delta-encoded
@@ -193,12 +192,35 @@ type Agent struct {
 	usage   core.Usage
 	costUSD float64
 
-	lastStart time.Time
-	lastHit   float64
-	haveHit   bool
-	mainReqs  int // completed main-thread requests
+	// Cache state (see warm.go).
+	lastStart    time.Time
+	mainReqs     int  // completed main-thread requests
+	reportsCache bool // the provider has reported cache reads or writes at least once
+	lastMiss     bool // the previous request read far less than the guard expected
+	lastEstAll   int  // estimated and reported size of the previous main prompt,
+	lastTotalIn  int  // for scaling the guard's estimates to provider tokens
+	lastReqEpoch uint64
+	lastReqLen   int // thread length at the previous main request
+	rollRef      core.BlockRef
+	rollEpoch    uint64
+	rollValid    bool
+	anomStreak   int
+
+	// Hot tail persistence (kv.HotPersist).
+	hotFP  string // fingerprint of the newest persisted notice ("" when none)
+	hotAge int    // main requests since it was written
+
+	stepInRun   int
+	lastMaskReq int
 
 	comp compactionState
+}
+
+// inboxMsg is one queued message. Steering typed by a human is preserved through
+// compaction as an instruction; mail from other agents is data and is not.
+type inboxMsg struct {
+	text  string
+	steer bool
 }
 
 // New builds an agent with an empty thread.
@@ -248,9 +270,7 @@ func New(cfg Config) (*Agent, error) {
 	if cfg.Limits == (tools.Limits{}) {
 		cfg.Limits = tools.DefaultLimits()
 	}
-	if cfg.ApplyPolicy == (kv.ApplyPolicy{}) {
-		cfg.ApplyPolicy = kv.DefaultApplyPolicy()
-	}
+	cfg.ApplyPolicy = cfg.ApplyPolicy.WithDefaults()
 	if cfg.KVPolicy == (kv.Policy{}) {
 		cfg.KVPolicy = kv.DefaultPolicy()
 	}
@@ -260,9 +280,15 @@ func New(cfg Config) (*Agent, error) {
 	if cfg.Params.MaxTokens == 0 {
 		cfg.Params.MaxTokens = 8192
 	}
+	if cfg.HotMinRequests == 0 {
+		cfg.HotMinRequests = 3
+	}
+	if cfg.HotKey == nil {
+		cfg.HotKey = defaultHotKey
+	}
 	th := kv.NewThread()
 	th.SetClock(cfg.Now)
-	a := &Agent{cfg: cfg, est: cfg.Est, thread: th}
+	a := &Agent{cfg: cfg, est: cfg.Est, thread: th, lastMaskReq: -1 << 20}
 	a.stack = kv.Stack{
 		Agent: cfg.ID, Role: cfg.Role, Model: cfg.Model.ID,
 		Tools: cfg.ToolSpecs,
@@ -274,11 +300,25 @@ func New(cfg Config) (*Agent, error) {
 // ID returns the agent id.
 func (a *Agent) ID() string { return a.cfg.ID }
 
+// mailPrefix starts every message the swarm's router delivers. Anything else
+// sent to an agent comes from the human driving it.
+const mailPrefix = "[mail"
+
 // Send queues text for the next turn boundary: steering from a human, a
-// delivered mailbox message, a harness notice. It never blocks the loop.
-func (a *Agent) Send(text string) {
+// delivered mailbox message, a harness notice. It never blocks the loop. Text
+// that carries the router's "[mail" prefix is mail from another agent (data, not
+// instructions); anything else is human steering and survives compaction
+// verbatim in the instructions notes. Use Steer to say so explicitly.
+func (a *Agent) Send(text string) { a.enqueue(text, !strings.HasPrefix(text, mailPrefix)) }
+
+// Steer queues human steering: text typed by the person driving this agent. It
+// rides with the next tool results (or as its own turn) and, unlike mail, is
+// copied into the instructions notes when its turn is compacted.
+func (a *Agent) Steer(text string) { a.enqueue(text, true) }
+
+func (a *Agent) enqueue(text string, steer bool) {
 	a.mu.Lock()
-	a.inbox = append(a.inbox, text)
+	a.inbox = append(a.inbox, inboxMsg{text: text, steer: steer})
 	a.mu.Unlock()
 }
 
@@ -301,11 +341,39 @@ func (a *Agent) Stack() kv.Stack {
 	return s
 }
 
+// applyPolicy is the configured apply policy with the provider's capabilities.
+func (a *Agent) applyPolicy() kv.ApplyPolicy {
+	pol := a.cfg.ApplyPolicy
+	pol.Caps = a.caps(a.cfg.Provider.Profile())
+	return pol
+}
+
+// caps derives the renderer's view of the route: the provider's profile plus
+// the hot-tail mechanism this model needs.
+func (a *Agent) caps(prof provider.Profile) kv.Caps {
+	c := prof.KVCaps()
+	c.HotMode = kv.ResolveHot(a.cfg.HotMode, c, a.cfg.Model.PreservedThinking)
+	return c
+}
+
+// stripTurn removes thinking from a turn when the policy says a rebase voids it.
+func (a *Agent) stripTurn(t core.Turn) core.Turn {
+	if !a.cfg.ApplyPolicy.StripThinking {
+		return t
+	}
+	out, _ := kv.StripThinkingTurn(t)
+	return out
+}
+
 // SyncShared installs new shared or role layers at a turn boundary. It is a
-// declared rebase: everything after the shared layers is re-prefilled once.
+// declared rebase: everything after the shared layers is re-prefilled once, and
+// thinking blocks bound to the old prefix are voided, so they are stripped from
+// the thread in the same critical section that swaps the layers. A request that
+// snapshots the stack therefore sees either the old layers with the old thinking
+// or the new layers without it, never a mix; a response that was already in
+// flight is stripped when it is appended (see pushResponse).
 func (a *Agent) SyncShared(shared, role *kv.Layer, reason string) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	changed := false
 	if shared != nil && shared.Hash() != a.stack.Shared.Hash() {
 		a.stack.Shared, changed = shared, true
@@ -313,12 +381,18 @@ func (a *Agent) SyncShared(shared, role *kv.Layer, reason string) {
 	if role != nil && role.Hash() != a.stack.RoleL.Hash() {
 		a.stack.RoleL, changed = role, true
 	}
+	stripped := false
 	if changed {
 		a.epoch++
-		a.strip = true
+		if a.cfg.Provider.Profile().ReplayThinking && a.cfg.ApplyPolicy.StripThinking {
+			stripped = a.thread.Rewrite(func(t core.Turn) (core.Turn, bool) { return kv.StripThinkingTurn(t) })
+		}
+	}
+	sharedHash, roleHash := a.stack.Shared.Hash().Short(), a.stack.RoleL.Hash().Short()
+	a.mu.Unlock()
+	if changed {
 		a.emit(events.TypeLayerCommit, map[string]any{
-			"scope": "shared-sync", "reason": reason,
-			"shared": a.stack.Shared.Hash().Short(), "role": a.stack.RoleL.Hash().Short(),
+			"scope": "shared-sync", "reason": reason, "shared": sharedHash, "role": roleHash, "thinking_stripped": stripped,
 		})
 	}
 }
@@ -326,6 +400,25 @@ func (a *Agent) SyncShared(shared, role *kv.Layer, reason string) {
 // push appends a turn to the thread and records it in the archive and log.
 func (a *Agent) push(t core.Turn) core.Turn {
 	t = a.thread.Append(t)
+	_ = a.cfg.Archive.Put(a.cfg.ID, t)
+	a.emit(events.TypeTurnAppend, t)
+	return t
+}
+
+// pushResponse appends the model's turn. epoch is the rebase counter the request
+// was rendered at: if a declared rebase (a shared-layer epoch on another
+// goroutine) landed while the request was in flight, the response's thinking is
+// bound to a prefix that no longer exists and is stripped before it enters the
+// thread. The check and the append share a.mu with SyncShared, so the turn is
+// either stripped here or by that strip, never left stale.
+func (a *Agent) pushResponse(resp *provider.Response, epoch uint64) core.Turn {
+	t := withUsage(resp)
+	a.mu.Lock()
+	if a.epoch+a.thread.Snapshot().Epoch != epoch {
+		t = a.stripTurn(t)
+	}
+	t = a.thread.Append(t)
+	a.mu.Unlock()
 	_ = a.cfg.Archive.Put(a.cfg.ID, t)
 	a.emit(events.TypeTurnAppend, t)
 	return t
@@ -342,7 +435,7 @@ func (a *Agent) emit(typ string, data any) {
 func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	res := &Result{}
 	if input != "" {
-		a.push(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text(input)}})
+		a.pushUser(core.OriginUser, []core.Block{core.Text(input)})
 		a.emit(events.TypeUserInput, map[string]any{"text": input})
 	}
 	for step := 0; step < a.cfg.MaxSteps; step++ {
@@ -354,17 +447,20 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 				return res, ErrBudget
 			}
 		}
+		a.mu.Lock()
+		a.stepInRun = step
+		a.mu.Unlock()
 		a.boundary(ctx)
 		a.drainInbox()
 
-		resp, err := a.request(ctx)
+		resp, epoch, err := a.request(ctx)
 		if err != nil {
 			return res, err
 		}
 		res.Steps++
 		res.Usage = res.Usage.Add(resp.Usage)
 		res.Stop = resp.Stop
-		turn := a.push(withUsage(resp))
+		turn := a.pushResponse(resp, epoch)
 		calls := turn.ToolCalls()
 		if len(calls) == 0 {
 			res.Text = turn.PlainText()
@@ -378,7 +474,7 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 		if extra := a.takeInbox(); len(extra) > 0 {
 			blocks = append(blocks, extra...)
 		}
-		a.push(core.Turn{Role: core.RoleUser, Origin: core.OriginTool, Blocks: blocks})
+		a.pushUser(core.OriginTool, blocks)
 	}
 	return res, fmt.Errorf("agent %s: step limit %d reached", a.cfg.ID, a.cfg.MaxSteps)
 }
@@ -393,7 +489,7 @@ func withUsage(r *provider.Response) core.Turn {
 	return t
 }
 
-// drainInbox turns queued steering into a user turn when the thread currently
+// drainInbox turns queued messages into a user turn when the thread currently
 // ends with an assistant turn (so roles alternate).
 func (a *Agent) drainInbox() {
 	snap := a.thread.Snapshot()
@@ -401,21 +497,46 @@ func (a *Agent) drainInbox() {
 		return // pending input will ride along with the next tool-results turn
 	}
 	if blocks := a.takeInbox(); len(blocks) > 0 {
-		a.push(core.Turn{Role: core.RoleUser, Origin: core.OriginMail, Blocks: blocks})
+		origin := core.OriginMail
+		steerOnly := true
+		for _, b := range blocks {
+			if !kv.IsSteer(b) {
+				steerOnly = false
+			}
+		}
+		if steerOnly {
+			origin = core.OriginUser
+		}
+		a.pushUser(origin, blocks)
 	}
 }
 
+// takeInbox returns the queued messages as blocks: at most one steering block
+// and one mail block per drain. Every block is a position for the provider's
+// cache lookback (20 positions), so a burst of mail must not become a burst of
+// blocks; steering keeps its own block because it is preserved differently.
 func (a *Agent) takeInbox() []core.Block {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.inbox) == 0 {
 		return nil
 	}
-	blocks := make([]core.Block, 0, len(a.inbox))
-	for _, s := range a.inbox {
-		blocks = append(blocks, core.Text(s))
+	var steer, mail []string
+	for _, m := range a.inbox {
+		if m.steer {
+			steer = append(steer, m.text)
+		} else {
+			mail = append(mail, m.text)
+		}
 	}
 	a.inbox = nil
+	var blocks []core.Block
+	if len(steer) > 0 {
+		blocks = append(blocks, kv.Steer(strings.Join(steer, "\n\n")))
+	}
+	if len(mail) > 0 {
+		blocks = append(blocks, core.Text(strings.Join(mail, "\n")))
+	}
 	return blocks
 }
 
@@ -424,4 +545,74 @@ func (a *Agent) PendingInbox() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.inbox)
+}
+
+// ---- hot tail delivery -----------------------------------------------------------
+
+// hotVolatile matches the stamps that change on every board write without any
+// visible content changing: the board version and the context counter.
+var hotVolatile = regexp.MustCompile(`board="v\d+"| · ctx \d+k`)
+
+func defaultHotKey(blocks []core.Block) string {
+	var sb strings.Builder
+	for _, b := range blocks {
+		sb.WriteString(hotVolatile.ReplaceAllString(b.Text, ""))
+		sb.WriteByte(0)
+	}
+	return string(core.HashString(sb.String()))
+}
+
+// pushUser appends a user turn and delivers the hot tail with it where the route
+// persists it: as a frozen notice block in the same turn (HotPersist, only when
+// it changed and not more often than HotMinRequests), or as a turn-scoped system
+// message right behind it (HotTurnScoped). Nothing here rewrites earlier bytes.
+func (a *Agent) pushUser(origin core.Origin, blocks []core.Block) core.Turn {
+	mode := a.caps(a.cfg.Provider.Profile()).HotMode
+	var hot []core.Block
+	if a.cfg.Hot != nil && mode != kv.HotInline {
+		for _, h := range a.cfg.Hot(a.cfg.ID) {
+			if strings.TrimSpace(h.Text) != "" {
+				hot = append(hot, core.Text(h.Text))
+			}
+		}
+	}
+	if mode == kv.HotPersist && len(hot) > 0 {
+		fp := a.cfg.HotKey(hot)
+		a.mu.Lock()
+		due := a.hotFP == "" || (fp != a.hotFP && a.hotAge >= a.cfg.HotMinRequests)
+		if due {
+			a.hotFP, a.hotAge = fp, 0
+		}
+		a.mu.Unlock()
+		if due {
+			for _, h := range hot {
+				blocks = append(blocks, kv.Notice(h.Text))
+			}
+		}
+	}
+	t := a.push(core.Turn{Role: core.RoleUser, Origin: origin, Blocks: blocks})
+	if mode == kv.HotTurnScoped && len(hot) > 0 {
+		a.push(core.Turn{Role: core.RoleSystem, Origin: core.OriginSystem, Blocks: hot})
+	}
+	return t
+}
+
+// resyncHotLocked re-derives which hot notice the thread ends with after a
+// rebase rewrote it (compaction keeps only the newest notice, and folds it away
+// when the retained region has none). Callers hold a.mu.
+func (a *Agent) resyncHotLocked() {
+	turns := a.thread.Snapshot().Turns
+	for i := len(turns) - 1; i >= 0; i-- {
+		var notices []core.Block
+		for _, b := range turns[i].Blocks {
+			if kv.IsNotice(b) {
+				notices = append(notices, b)
+			}
+		}
+		if len(notices) > 0 {
+			a.hotFP = a.cfg.HotKey(notices)
+			return
+		}
+	}
+	a.hotFP = ""
 }

@@ -1054,17 +1054,20 @@ func (b *builder) thinkingJSON(maxTokens int) ([]byte, error) {
 	if d := o.ThinkingDisplay; d != "" {
 		w.lit(`,"display":`)
 		w.str(d)
-		if d == "updates" {
-			b.need(BetaThinkingDisplayUpd)
-		}
 	}
 	if o.BindingMode != "" {
 		w.lit(`,"block_binding":{"prefix_mismatch_behavior":`)
 		w.str(o.BindingMode)
 		w.putc('}')
-		b.need(BetaThinkingBinding)
 	}
 	w.putc('}')
+	// Fixed order, so the header is stable for identical requests.
+	if o.BindingMode != "" {
+		b.need(BetaThinkingBinding)
+	}
+	if o.ThinkingDisplay == "updates" {
+		b.need(BetaThinkingDisplayUpd)
+	}
 	return w.bytes(), nil
 }
 

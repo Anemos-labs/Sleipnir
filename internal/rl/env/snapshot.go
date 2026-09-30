@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/reee344/sleipnir/internal/rl"
 )
 
 // SkippedPath records something left out of a baseline or a diff, and why. Such
@@ -220,7 +222,7 @@ func (m *Workspaces) cloneCommit(ctx context.Context, gitDir, commit, dst string
 	if _, err := m.git.Run(ctx, "", nil, "clone", "--quiet", "--no-checkout", "--no-hardlinks", "--template=", gitDir, dst); err != nil {
 		return nil, err
 	}
-	if _, err := m.git.Run(ctx, dst, nil, "checkout", "--quiet", "--detach", "--end-of-options", commit); err != nil {
+	if _, err := m.git.Run(ctx, dst, nil, "checkout", "--quiet", "--detach", commit); err != nil {
 		return nil, err
 	}
 	// The clone must not be able to fetch from (or leak its way back to) the
@@ -724,6 +726,14 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 	ok = true
 	s.dir = final
 	s.tree, s.home, s.base = filepath.Join(final, "tree"), filepath.Join(final, "home"), filepath.Join(final, "base.git")
+	// The agent repository's alternates file names the baseline objects by
+	// absolute path, and the build happened under a temporary name.
+	if m.opts.Mode != ModeClone || src.kind != "git" {
+		alt := filepath.Join(s.tree, ".git", "objects", "info", "alternates")
+		if err := os.WriteFile(alt, []byte(s.altObjects()+"\n"), 0o644); err != nil {
+			return nil, Infra("snapshot", err)
+		}
+	}
 	return s, nil
 }
 

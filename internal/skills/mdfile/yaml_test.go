@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // show renders a Value on one line so table cases can state what they expect.
@@ -136,7 +137,7 @@ func TestParseYAMLErrors(t *testing.T) {
 		{"key too long", strings.Repeat("k", 200) + ": v", 2, "longer than"},
 		{"bad escape", `a: "\q"`, 2, "unknown escape"},
 		{"bad unicode escape", `a: "\uZZZZ"`, 2, "invalid escape"},
-		{"nesting too deep", strings.Repeat("a:\n ", 12) + " b: 1", 0, "nested"},
+		{"nesting too deep", nestedMaps(12), 0, "nested"},
 		{"flow nesting too deep", "a: " + strings.Repeat("[", 30) + strings.Repeat("]", 30) + "\nb: [" + strings.Repeat("[", 30) + "\n", 0, ""},
 		{"multi-line quoted junk after close", "a: \"x\n y\" junk", 2, "after the closing quote"},
 		{"flow map duplicate keys on many lines", "a: {x: 1,\n x: 2}", 2, "duplicate key"},
@@ -201,6 +202,18 @@ func TestParseYAMLLimits(t *testing.T) {
 	})
 }
 
+// nestedMaps returns a document with n mappings inside one another.
+func nestedMaps(n int) string {
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		b.WriteString(strings.Repeat("  ", i))
+		b.WriteString("k:\n")
+	}
+	b.WriteString(strings.Repeat("  ", n))
+	b.WriteString("leaf: 1")
+	return b.String()
+}
+
 func indentAll(s string, n int) string {
 	pad := strings.Repeat(" ", n)
 	lines := strings.Split(s, "\n")
@@ -225,5 +238,41 @@ func TestParseYAMLLineNumbers(t *testing.T) {
 	}
 	if got := v.Vals[1].Line; got != 4 {
 		t.Errorf("list starts on line %d, want 4", got)
+	}
+}
+
+// Inputs shaped to be expensive for a naive parser must stay cheap: every case
+// is at the frontmatter size limit and has to finish quickly, whatever it
+// returns.
+func TestParseStress(t *testing.T) {
+	big := MaxFrontmatterBytes - 64
+	cases := map[string]string{
+		"open brackets":        "a: " + strings.Repeat("[", big),
+		"open braces":          "a: " + strings.Repeat("{", big),
+		"nested dashes":        strings.Repeat("- ", big/2),
+		"one long quoted key":  "\"" + strings.Repeat("k", big) + ": v",
+		"many colons":          "a: " + strings.Repeat("x: ", big/3),
+		"flow over many lines": "a: [" + strings.Repeat("\"q\",\n", maxContinue+10),
+		"quote per line":       strings.Repeat("\"a: b\n", big/6),
+		"alternating quotes":   "a: " + strings.Repeat("'\"", big/2),
+		"many short keys":      strings.Repeat("k: v\n", 500),
+		"comment storm":        strings.Repeat("# c\n", big/4),
+		"block scalar":         "a: |\n" + strings.Repeat("  x\n", big/4),
+		"deep indent":          strings.Repeat(" ", big/2) + "a: 1",
+		"tabs":                 strings.Repeat("\t", big),
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			start := time.Now()
+			_, _ = parseYAML(src, 2)
+			if d := time.Since(start); d > 2*time.Second {
+				t.Fatalf("took %v", d)
+			}
+			start = time.Now()
+			_, _ = Parse("---\n" + src + "\n---\nbody")
+			if d := time.Since(start); d > 2*time.Second {
+				t.Fatalf("Parse took %v", d)
+			}
+		})
 	}
 }

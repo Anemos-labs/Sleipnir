@@ -1,13 +1,23 @@
-// Package mock is a deterministic, protocol-strict fake model provider whose
-// prompt cache behaves like the real thing.
+// Package mock is a deterministic, protocol-strict fake model provider with an
+// automatic prefix cache (the OpenAI / vLLM / SGLang style).
 //
 // Cache behaviour is the whole point. A mock that always says "cache hit"
 // would let the harness regress silently; this one hashes actual prompt bytes
-// into block chains, evicts under memory pressure, only publishes a request's
-// blocks once its first token is out, and routes by conversation affinity
-// across several independent engines. Tests therefore fail when a layer edit
-// invalidates a prefix, when a fan-out forgets to warm first, or when agents
+// into block chains, evicts under memory pressure the way paged-attention
+// engines do (least recently used sequence first, its newest blocks first, so a
+// long-lived prefix outlives the tails of idle conversations), only publishes a
+// request's blocks once its first token is out, and routes by conversation
+// affinity across several independent engines. Tests therefore fail when a layer
+// edit invalidates a prefix, when a fan-out forgets to warm first, or when agents
 // that should share an engine do not.
+//
+// What it does not model is explicit-breakpoint caching (Anthropic style):
+// cache_control markers are flattened, and request parameters such as
+// tool_choice, effort or thinking configuration are not part of any key, which
+// is correct for automatic prefix caching and wrong for explicit caches. Those
+// semantics (breakpoints, the 20-block lookback, TTLs, minimum prefixes, the
+// invalidation hierarchy, thinking-binding enforcement) belong to a separate
+// engine; passing a test against this one says nothing about them.
 package mock
 
 import (
@@ -107,8 +117,11 @@ func (e *Engine) Lookup(data []byte) int {
 	if tok < e.cfg.MinCacheTokens {
 		return 0
 	}
-	// Touch on hit: a read refreshes the entry.
-	for i := 0; i < hit; i++ {
+	// Touch on hit: a read refreshes the entry. The chain is walked leaf first so
+	// the root ends up most recently used: eviction takes a sequence's newest
+	// blocks before its oldest, never the reverse (a chain whose root is gone is
+	// unreachable, and its remaining blocks would only squat in the budget).
+	for i := hit - 1; i >= 0; i-- {
 		el := e.blocks[chain[i]]
 		el.Value.(*blockEntry).last = now
 		e.lru.MoveToFront(el)
@@ -122,7 +135,9 @@ func (e *Engine) Insert(data []byte) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	now := e.now()
-	for _, h := range chain {
+	// Leaf first, so the sequence's root is the last to be evicted (see Lookup).
+	for i := len(chain) - 1; i >= 0; i-- {
+		h := chain[i]
 		if el, ok := e.blocks[h]; ok {
 			el.Value.(*blockEntry).last = now
 			e.lru.MoveToFront(el)

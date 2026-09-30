@@ -227,8 +227,12 @@ func snapshot(t *testing.T, dir string) map[string]string {
 		if err != nil {
 			return nil
 		}
-		if strings.Contains(p, string(filepath.Separator)+".cache") {
-			return nil // toolchain caches live under HOME; they are not the workspace
+		// Toolchains keep caches and module directories under HOME; they are not
+		// the workspace and a read-only command may legitimately touch them.
+		for _, tc := range []string{"/.cache", "/go/", "/.config/go", "/Library/Caches"} {
+			if strings.Contains(filepath.ToSlash(p)+"/", tc) {
+				return nil
+			}
 		}
 		sig := fi.Mode().String() + "|" + fi.ModTime().String()
 		if fi.Mode().IsRegular() {

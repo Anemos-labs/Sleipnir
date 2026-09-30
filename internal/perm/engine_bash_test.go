@@ -55,7 +55,7 @@ func TestBashAllowlist(t *testing.T) {
 		`git push`, `git pull`, `git fetch`, `git commit -m x`, `git add .`, `git checkout main`, `git stash`, `git stash pop`,
 		`git reset --hard`, `git clean -fd`, `git config user.name x`, `git -c core.pager=sh log`, `git --exec-path=/nonexistent log`, `cd .. && ls`, `echo hi | tee /dev/null`,
 		`git diff --output=out.patch`, `git log --output=x`, `git diff --ext-diff`, `go test ./...`, `go env -w X=1`, `go env -u X`,
-		`go build -o bin/x ./cmd`, `go build -toolexec=echo ./...`, `go vet -vettool=./x ./...`, `go get x`, `go mod tidy`, `go run .`,
+		`go build -o bin/x ./cmd`, `go build -toolexec=echo ./...`, `go build -ldflags=-extld=sh ./...`, `go build -gcflags=-N ./...`, `go vet -asmflags=x ./...`, `go list -compiler gccgo ./...`, `go vet -vettool=./x ./...`, `go get x`, `go mod tidy`, `go run .`,
 		`go install ./...`, `go generate ./...`, `find . -exec rm {} \;`, `find . -delete`, `find . -fprint out`, `find . -ok rm {} \;`,
 		`find . -execdir rm {} \;`, `find -L . -name x`, `grep -R foo .`, `rg --pre cat foo`, `rg -z foo`, `rg -L foo`, `rg --hostname-bin x foo`,
 		`sort -o out main.go`, `sort --output=out main.go`, `sort --compress-program=sh main.go`, `tree -o out`, `tree -l`,

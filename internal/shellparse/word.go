@@ -118,12 +118,18 @@ loop:
 		tok.alts = vals
 		return []token{tok}
 	}
-	out := make([]token, len(vals))
-	for i, v := range vals {
+	out := make([]token, 0, len(vals))
+	for _, v := range vals {
+		if v == "" && !quoted {
+			continue // like any unquoted empty expansion, an empty alternative vanishes: {,a} is just "a"
+		}
 		t := tok
 		t.text = v
 		t.nested = nil
-		out[i] = t
+		out = append(out, t)
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	out[0].nested = nested
 	return out

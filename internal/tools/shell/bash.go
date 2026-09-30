@@ -107,6 +107,9 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return fail(env, "bash: %v", err), nil
 	}
 
+	// The permission engine resolves relative paths in the command against the
+	// directory it will actually run in (the agent's tracked cwd, which persists
+	// across calls), not against the session root.
 	dec := env.Perm.Check(ctx, perm.Request{
 		Agent:   env.Agent,
 		Role:    env.Role,
@@ -114,6 +117,7 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		Input:   c.Input,
 		Summary: summary(description, command),
 		Command: command,
+		Cwd:     m.startDir(env, base),
 		Writes:  true,
 	})
 	if !dec.Allow {

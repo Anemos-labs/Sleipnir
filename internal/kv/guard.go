@@ -25,19 +25,26 @@ import (
 // is a change too. Ephemeral blocks (the inline hot tail) are skipped: they sit
 // after the last marker and are not cached.
 type Guard struct {
-	prev     []core.Hash // per persistent block, wire order
-	prevTok  []int       // cumulative estimated tokens per block
-	prevSecs []string    // layer name per block ("params","tools","const","shared",...)
-	epoch    uint64
+	prev      []core.Hash // per persistent block, wire order
+	prevTok   []int       // cumulative estimated tokens per block
+	prevSecs  []string    // layer name per block ("params","tools","const","shared",...)
+	prevMarks []int       // chain index of each cache marker of the previous request
+	prevAuto  bool        // the previous request had no markers because the provider caches automatically
+	epoch     uint64
 }
 
 // Check is the result of comparing consecutive requests.
 type Check struct {
 	// SharedBlocks is the length of the common exact prefix, in blocks.
 	SharedBlocks int
-	// SharedTokens estimates the size of that prefix: what the provider should
-	// be able to serve from cache.
+	// SharedTokens estimates the size of that prefix.
 	SharedTokens int
+	// ReadableTokens estimates what the provider can actually serve from cache
+	// for this request: all of SharedTokens on an automatic-cache provider, but
+	// only up to the highest cache marker of the previous request that lies inside
+	// the shared prefix on an explicit-cache one (an entry exists only where a
+	// marker was).
+	ReadableTokens int
 	// TotalTokens estimates the size of the whole prompt (persistent blocks).
 	TotalTokens int
 	// Drift is true when the prefix shrank although nothing declared a rebase.
@@ -50,7 +57,7 @@ type Check struct {
 // relates to the previous one. epoch is the agent's rebase counter (thread
 // epoch plus shared-layer epoch); a changed epoch legitimizes a shorter prefix.
 func (g *Guard) Observe(r *Rendered, epoch uint64, est core.Estimator) Check {
-	hashes, toks, secs := digest(r, est)
+	hashes, toks, secs, marks := digest(r, est)
 	var c Check
 	if len(toks) > 0 {
 		c.TotalTokens = toks[len(toks)-1]
@@ -64,6 +71,15 @@ func (g *Guard) Observe(r *Rendered, epoch uint64, est core.Estimator) Check {
 		if n > 0 {
 			c.SharedTokens = toks[n-1]
 		}
+		if g.prevAuto {
+			c.ReadableTokens = c.SharedTokens
+		} else {
+			for _, m := range g.prevMarks {
+				if m < n && toks[m] > c.ReadableTokens {
+					c.ReadableTokens = toks[m]
+				}
+			}
+		}
 		// Growth (new blocks appended) leaves n == len(prev). Anything less means
 		// a previously sent block changed or vanished.
 		if n < len(g.prev) && epoch == g.epoch {
@@ -76,14 +92,16 @@ func (g *Guard) Observe(r *Rendered, epoch uint64, est core.Estimator) Check {
 		}
 	}
 	g.prev, g.prevTok, g.prevSecs, g.epoch = hashes, toks, secs, epoch
+	g.prevMarks, g.prevAuto = marks, r.Caps.MaxBreakpoints == 0
 	return c
 }
 
 // digest hashes every persistent block of the prompt in wire order and labels
 // each with the layer it came from.
-func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, secs []string) {
+func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, secs []string, marks []int) {
 	p := r.Prompt
 	total := 0
+	at := map[core.BlockRef]int{}
 	add := func(sec string, raw []byte, tokens int) {
 		sum := sha256.Sum256(raw)
 		hashes = append(hashes, core.Hash(hex.EncodeToString(sum[:8])))
@@ -98,9 +116,11 @@ func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, sec
 		t := p.Tools[i]
 		raw, _ := json.Marshal(t)
 		add("tools", raw, est.Tokens(t.Name)+est.Tokens(t.Description)+est.Tokens(string(t.InputSchema))+8)
+		at[core.BlockRef{Sys: true, Msg: -1, Blk: i}] = len(hashes) - 1
 	}
 	for i := range p.System {
 		add("const", []byte(p.System[i].Text), est.Tokens(p.System[i].Text))
+		at[core.BlockRef{Sys: true, Msg: 0, Blk: i}] = len(hashes) - 1
 	}
 	names := map[int]string{}
 	// Message 0 carries the pinned layers in order; label its blocks by section.
@@ -124,7 +144,13 @@ func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, sec
 				head = append(head, '^')
 			}
 			add(label, append(head, raw...), SentBlockTokens(b, est))
+			at[core.BlockRef{Msg: mi, Blk: bi}] = len(hashes) - 1
 		}
 	}
-	return hashes, cum, secs
+	for _, b := range p.Breakpoints {
+		if i, ok := at[b.After]; ok {
+			marks = append(marks, i)
+		}
+	}
+	return hashes, cum, secs, marks
 }

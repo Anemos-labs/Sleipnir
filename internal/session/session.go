@@ -299,7 +299,7 @@ func (s *Session) buildPerm() error {
 	for name, role := range r {
 		if role.ReadOnly {
 			if _, ok := roles[name]; !ok {
-				roles[name] = perm.RoleProfile{Mode: perm.ModePlan}
+				roles[name] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow}
 			}
 		}
 	}
@@ -313,6 +313,16 @@ func (s *Session) buildPerm() error {
 	}
 	s.Perm = e
 	return nil
+}
+
+// readOnlyRoleAllow lets read-only roles (reviewers, scouts) verify what they
+// review: run the project's tests and static checks. Everything that writes or
+// executes anything else stays denied by the plan-mode profile; the engine
+// understands shell syntax, so "go test ./... && rm -rf x" is not allowed by
+// the first half.
+var readOnlyRoleAllow = []string{
+	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test)", "Bash(npm run test:*)",
+	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(make test)",
 }
 
 // buildShared assembles the shared pin: the deterministic project survey plus the

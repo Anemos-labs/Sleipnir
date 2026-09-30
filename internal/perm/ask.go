@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -51,6 +52,22 @@ func promptKey(r Request) string {
 		h.Write(r.Input) // e.g. the URL of a fetch
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// withWhy appends the reason a question is being asked to the request's
+// one-line summary, clipped so a prompt stays a prompt.
+func withWhy(summary, reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return summary
+	}
+	if len(reason) > 300 {
+		reason = reason[:297] + "..."
+	}
+	if strings.TrimSpace(summary) == "" {
+		return reason
+	}
+	return summary + " [" + reason + "]"
 }
 
 func canceledDecision(ctx context.Context) Decision {
@@ -105,7 +122,10 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	}
 	defer func() { <-e.pr.sem }()
 
-	d = e.cfg.Prompter(ctx, r)
+	// The human sees Summary and nothing else; tell them why they are asked.
+	shown := r
+	shown.Summary = withWhy(r.Summary, v.reason)
+	d = e.cfg.Prompter(ctx, shown)
 	if ctx.Err() != nil {
 		return canceledDecision(ctx)
 	}

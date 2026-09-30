@@ -68,7 +68,7 @@ type evaluator struct {
 }
 
 func (e *Engine) evaluate(v *view, r Request) verdict {
-	ev := &evaluator{e: e, v: v, rs: e.rs, r: r, globBudget: 4000}
+	ev := &evaluator{e: e, v: v, rs: e.rs, r: r, globBudget: 20000}
 	res := ev.run()
 	if r.Risk == RiskHigh && res.kind == vAllow && !res.explicit && v.mode != ModeBypass {
 		if v.mode == ModePlan {

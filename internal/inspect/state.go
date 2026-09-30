@@ -54,6 +54,7 @@ type req struct {
 	undeclared bool
 	epoch      int
 	isFirst    bool // first main request of the agent
+	cold       bool // read nothing from cache
 	hadPrev    bool
 
 	// Outcome.
@@ -78,12 +79,13 @@ type req struct {
 	side     bool
 
 	foldedAtReq int64
+	afterCommit *compaction // the commit this request is the first after
 }
 
 // toolAgg aggregates one tool's calls for one agent.
 type toolAgg struct {
-	calls, errors, truncated int
-	totalMs, maxMs, chars    int64
+	calls, done, errors, truncated int
+	totalMs, maxMs, chars          int64
 }
 
 // openCall is a tool.call waiting for its tool.result.

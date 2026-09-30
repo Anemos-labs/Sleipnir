@@ -123,14 +123,14 @@ type Session struct {
 // metaState is the session-level facts gathered from events.
 type metaState struct {
 	id, version, provider, dialect, renderer, root, goal, sharedHash, model string
-	swarm                                                                  bool
-	models                                                                 []string
-	reconTokens                                                            int
-	first, last                                                            time.Time
-	ended                                                                  bool
-	endTS                                                                  time.Time
-	endCost                                                                float64
-	schema                                                                 int
+	swarm                                                                   bool
+	models                                                                  []string
+	reconTokens                                                             int
+	first, last                                                             time.Time
+	ended                                                                   bool
+	endTS                                                                   time.Time
+	endCost                                                                 float64
+	schema                                                                  int
 }
 
 // New creates an empty Session for dir, which holds events.jsonl (and blobs/).
@@ -147,11 +147,11 @@ func New(dir string, opts Options) (*Session, error) {
 	} else {
 		dir = filepath.Dir(dir)
 	}
-	if lf, err := os.Stat(path); err != nil {
-		return nil, err
-	} else if !lf.Mode().IsRegular() {
-		return nil, fmt.Errorf("inspect: %s is not a regular file", filepath.Base(path))
+	f, err := openRegular(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect: cannot read %s: %w", filepath.Base(path), err)
 	}
+	f.Close()
 	s := &Session{opts: opts, dir: dir, path: path}
 	s.blobs = openBlobs(filepath.Join(dir, "blobs"))
 	s.reset()
@@ -332,7 +332,7 @@ func (s *Session) tail(ctx context.Context, progress func(read, total int64)) (i
 	s.tailMu.Lock()
 	defer s.tailMu.Unlock()
 
-	f, err := os.Open(s.path)
+	f, err := openRegular(s.path)
 	if err != nil {
 		return 0, err
 	}

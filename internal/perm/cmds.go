@@ -226,6 +226,9 @@ func analyseGo(args []string) safeAnalysis {
 		switch name {
 		case "toolexec", "exec", "vettool":
 			return safeAnalysis{why: "go -" + name + " runs another program"}
+		case "ldflags", "gcflags", "asmflags", "compiler", "buildmode", "pkgdir", "installsuffix":
+			// -ldflags=-extld=prog runs prog; the others change what is built where.
+			return safeAnalysis{why: "go -" + name + " can run programs or change what is written"}
 		case "w", "u", "W":
 			if sub == "env" {
 				return safeAnalysis{why: "go env -" + name + " changes the environment"}

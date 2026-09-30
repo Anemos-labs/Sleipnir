@@ -3,6 +3,7 @@ package events
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -21,20 +22,70 @@ type Blobs interface {
 	Has(h core.Hash) bool
 }
 
-// ErrBlobNotFound is returned by Get for unknown hashes.
-var ErrBlobNotFound = errors.New("blob not found")
+var (
+	// ErrBlobNotFound is returned by Get for unknown hashes.
+	ErrBlobNotFound = errors.New("blob not found")
+	// ErrBlobCorrupt is returned by Get when what is stored under a hash does not
+	// hash to it (a torn write, bit rot, or someone rewriting the file), or is not
+	// a regular file. The bytes are never returned.
+	ErrBlobCorrupt = errors.New("blob is corrupt")
+	// ErrInvalidHash is returned for a hash that is not 64 lowercase hex digits:
+	// such a string is never turned into a path.
+	ErrInvalidHash = errors.New("invalid blob hash")
+)
 
-// DirBlobs stores blobs on disk under dir/ab/cd/<hash>.
-type DirBlobs struct{ dir string }
+// validHash reports whether h has the form core.HashBytes produces: 64 lowercase
+// hex digits. DirBlobs builds file paths from hashes, so anything else (a "..",
+// a slash, a NUL) must never get that far.
+func validHash(h core.Hash) bool {
+	if len(h) != 64 {
+		return false
+	}
+	for i := 0; i < len(h); i++ {
+		if c := h[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// DirBlobs stores blobs on disk under dir/ab/cd/<hash>. The directory is private
+// to the user (0700, files 0600), a blob is only ever handed out after its content
+// has been re-hashed, and only well-formed hashes are accepted, so neither a
+// corrupted store nor a hostile hash string can serve the wrong bytes or reach a
+// file outside it.
+type DirBlobs struct {
+	dir string
+
+	mu       sync.Mutex
+	verified map[core.Hash]struct{} // blobs Put has already checked on disk, so repeated Puts stay cheap
+}
+
+// maxVerified bounds the verified set; it is simply cleared when full.
+const maxVerified = 4096
 
 // NewDirBlobs opens (creating if needed) a blob directory.
 func NewDirBlobs(dir string) (*DirBlobs, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := makePrivateDir(dir); err != nil {
 		return nil, err
 	}
-	return &DirBlobs{dir: dir}, nil
+	return &DirBlobs{dir: dir, verified: map[core.Hash]struct{}{}}, nil
 }
 
+// makePrivateDir creates dir (and any missing parents) readable by the owner only
+// and, when it already exists with wider permissions (state written by an older
+// version), takes the group and other bits away. Only dir itself is adjusted.
+func makePrivateDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if fi, err := os.Stat(dir); err == nil && fi.IsDir() && fi.Mode().Perm()&0o077 != 0 {
+		_ = os.Chmod(dir, fi.Mode().Perm()&^0o077) // best effort: it may not be ours
+	}
+	return nil
+}
+
+// path returns where blob h lives. h must be valid (see validHash).
 func (d *DirBlobs) path(h core.Hash) string {
 	s := string(h)
 	if len(s) < 5 {
@@ -44,17 +95,19 @@ func (d *DirBlobs) path(h core.Hash) string {
 }
 
 // Put stores data and returns its hash. Writes are atomic (temp file +
-// rename), so concurrent Puts of the same content are safe.
+// rename), so concurrent Puts of the same content are safe. A file that is
+// already there under the hash is trusted only if it really holds data: a
+// short, torn or rewritten file is replaced.
 func (d *DirBlobs) Put(data []byte) (core.Hash, error) {
 	h := core.HashBytes(data)
 	p := d.path(h)
-	if _, err := os.Stat(p); err == nil {
+	if d.intact(p, h, len(data)) {
 		return h, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), ".put-*")
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".put-*") // 0600
 	if err != nil {
 		return "", err
 	}
@@ -71,22 +124,97 @@ func (d *DirBlobs) Put(data []byte) (core.Hash, error) {
 		os.Remove(tmp.Name())
 		return "", err
 	}
+	d.markVerified(h)
 	return h, nil
 }
 
-// Get reads a blob.
+// intact reports whether p is a regular file holding exactly the size bytes that
+// hash to h. The (cheap) size check runs every time; the content is hashed once
+// per process and hash.
+func (d *DirBlobs) intact(p string, h core.Hash, size int) bool {
+	fi, err := os.Lstat(p) // a symlink is not a blob
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() != int64(size) {
+		return false
+	}
+	d.mu.Lock()
+	_, ok := d.verified[h]
+	d.mu.Unlock()
+	if ok {
+		return true
+	}
+	b, err := readBlobFile(p)
+	if err != nil || core.HashBytes(b) != h {
+		return false
+	}
+	d.markVerified(h)
+	return true
+}
+
+func (d *DirBlobs) forget(h core.Hash) {
+	d.mu.Lock()
+	delete(d.verified, h)
+	d.mu.Unlock()
+}
+
+func (d *DirBlobs) markVerified(h core.Hash) {
+	d.mu.Lock()
+	if len(d.verified) >= maxVerified {
+		clear(d.verified)
+	}
+	d.verified[h] = struct{}{}
+	d.mu.Unlock()
+}
+
+// Get reads a blob. The content is hashed before it is returned: if it does not
+// hash to h the error wraps ErrBlobCorrupt and no bytes are returned.
 func (d *DirBlobs) Get(h core.Hash) ([]byte, error) {
-	b, err := os.ReadFile(d.path(h))
+	if !validHash(h) {
+		return nil, fmt.Errorf("%w: %.64q", ErrInvalidHash, string(h))
+	}
+	b, err := readBlobFile(d.path(h))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%w: %s", ErrBlobNotFound, h.Short())
 	}
-	return b, err
+	if err != nil {
+		d.forget(h)
+		return nil, fmt.Errorf("blob %s: %w", h.Short(), err)
+	}
+	if got := core.HashBytes(b); got != h {
+		d.forget(h) // Put must look at the file again rather than trust an earlier check
+		return nil, fmt.Errorf("%w: %s holds %d bytes that hash to %s", ErrBlobCorrupt, h.Short(), len(b), got.Short())
+	}
+	return b, nil
 }
 
-// Has reports whether a blob exists.
+// readBlobFile reads a regular file without following a symlink at the end of the
+// path and without blocking on a FIFO someone planted in its place.
+func readBlobFile(p string) ([]byte, error) {
+	f, err := os.OpenFile(p, openReadFlags, 0)
+	if err != nil {
+		if isSymlinkRefusal(err) {
+			return nil, fmt.Errorf("%w: not a regular file", ErrBlobCorrupt)
+		}
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: not a regular file", ErrBlobCorrupt)
+	}
+	return io.ReadAll(f)
+}
+
+// Has reports whether a blob exists (as a regular file; its content is not
+// checked, Get does that).
 func (d *DirBlobs) Has(h core.Hash) bool {
-	_, err := os.Stat(d.path(h))
-	return err == nil
+	if !validHash(h) {
+		return false
+	}
+	fi, err := os.Lstat(d.path(h))
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // MemBlobs is an in-memory Blobs for tests and ephemeral sessions.

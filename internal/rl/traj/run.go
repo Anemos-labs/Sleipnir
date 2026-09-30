@@ -33,7 +33,7 @@ type Run struct {
 
 	torn     bool  // the last line of the log was cut off and dropped
 	badLines []int // 1-based numbers of unparseable lines before the tail
-	dups     int   // exact duplicate events dropped
+	dups     int   // exact duplicate events dropped (a resumed writer re-appending)
 
 	reqs      map[string]*reqInfo
 	reqOrder  []*reqInfo
@@ -221,8 +221,7 @@ func (r *Run) normalize(evs []events.Event) []events.Event {
 	out := evs[:0:0]
 	for i, e := range evs {
 		if i > 0 && e.Seq != 0 && e.Seq == evs[i-1].Seq && e.Type == evs[i-1].Type && e.Agent == evs[i-1].Agent && bytes.Equal(e.Data, evs[i-1].Data) {
-			r.dups++
-			r.issues = append(r.issues, Mismatch{Kind: KindLog, Detail: fmt.Sprintf("seq %d appears twice; the duplicate was dropped", e.Seq)})
+			r.dups++ // an identical copy carries no new information and is harmless
 			continue
 		}
 		out = append(out, e)
@@ -369,4 +368,13 @@ func (r *Run) account(n int) {
 		r.msgMem = map[core.Hash]core.Message{}
 		r.memBytes = n
 	}
+}
+
+// Resolver adapts a Run to the prompt-resolver interface of package export
+// (Prompt(ep, st)), without either package importing the other.
+type Resolver struct{ Run *Run }
+
+// Prompt returns the exact prompt of the step's request.
+func (x Resolver) Prompt(_ *rl.Episode, st *rl.Step) (*core.Prompt, error) {
+	return x.Run.Prompt(st.Prompt.Req)
 }

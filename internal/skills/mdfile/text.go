@@ -141,9 +141,14 @@ func joinerIsLegit(rs []rune, i int) bool {
 	if i == 0 || i+1 >= len(rs) {
 		return false
 	}
-	prev, next := rs[i-1], rs[i+1]
-	return prev > 0x7F && next > 0x7F && classify(prev) == keepRune && classify(next) == keepRune &&
-		prev != 0x200C && prev != 0x200D && next != 0x200C && next != 0x200D
+	return joinable(rs[i-1]) && joinable(rs[i+1])
+}
+
+// joinable reports whether r is a visible non-ASCII character that a joiner may
+// sit next to. Line separators are excluded because Sanitize turns them into
+// newlines, and a joiner beside a newline is not between two characters.
+func joinable(r rune) bool {
+	return r > 0x7F && classify(r) == keepRune && r != 0x2028 && r != 0x2029 && r != 0x200C && r != 0x200D
 }
 
 // fenceOpen returns the fence marker ("```" or "~~~", possibly longer) when line

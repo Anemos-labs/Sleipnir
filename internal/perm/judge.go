@@ -294,7 +294,7 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		}
 		return ask("cannot tell statically which path "+quote(a.raw)+" is", nil)
 	}
-	if a.write && !a.read && harmlessDevice(strings.ToLower(a.real)) {
+	if a.write && !a.read && harmlessDevice(fold(a.real)) {
 		return allow("harmless device")
 	}
 	if r := ev.accessAllowRule(a); r != nil {

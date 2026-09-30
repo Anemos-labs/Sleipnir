@@ -93,7 +93,7 @@ func (b *blobStore) read(h string, max int) ([]byte, int64, bool) {
 	if err != nil || !fi.Mode().IsRegular() {
 		return nil, 0, false
 	}
-	f, err := os.Open(p)
+	f, err := openRegular(p)
 	if err != nil {
 		return nil, 0, false
 	}

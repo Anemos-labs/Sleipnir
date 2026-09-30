@@ -89,23 +89,23 @@ type Totals struct {
 
 // CacheStats summarises how well the cache worked.
 type CacheStats struct {
-	HitRatio       float64 `json:"hit_ratio"`        // all requests: what the bill sees
-	MainHitRatio   float64 `json:"main_hit_ratio"`   // agent requests only
-	SideHitRatio   float64 `json:"side_hit_ratio"`   // compactor forks: they should read the whole prefix
-	SteadyHitRatio float64 `json:"steady_hit_ratio"` // main, not first, no rebase just before
-	RebaseHitRatio float64 `json:"rebase_hit_ratio"` // main, first request after a declared rebase
-	SteadyRequests int     `json:"steady_requests"`
-	RebaseRequests int     `json:"rebase_requests"`
-	ColdStarts     int     `json:"cold_starts"`   // main requests that read nothing from cache
-	FirstRequests  int     `json:"first_requests"` // first main request of each agent
-	WarmFirst      int     `json:"warm_first"`    // ...of which read the shared prefix (fan-out win)
-	AvgContext     float64 `json:"avg_context"`
-	MaxContext     int     `json:"max_context"`
-	AvgContextNaive float64 `json:"avg_context_naive"` // estimate: no compaction
+	HitRatio         float64 `json:"hit_ratio"`        // all requests: what the bill sees
+	MainHitRatio     float64 `json:"main_hit_ratio"`   // agent requests only
+	SideHitRatio     float64 `json:"side_hit_ratio"`   // compactor forks: they should read the whole prefix
+	SteadyHitRatio   float64 `json:"steady_hit_ratio"` // main, not first, no rebase just before
+	RebaseHitRatio   float64 `json:"rebase_hit_ratio"` // main, first request after a declared rebase
+	SteadyRequests   int     `json:"steady_requests"`
+	RebaseRequests   int     `json:"rebase_requests"`
+	ColdStarts       int     `json:"cold_starts"`    // main requests that read nothing from cache
+	FirstRequests    int     `json:"first_requests"` // first main request of each agent
+	WarmFirst        int     `json:"warm_first"`     // ...of which read the shared prefix (fan-out win)
+	AvgContext       float64 `json:"avg_context"`
+	MaxContext       int     `json:"max_context"`
+	AvgContextNaive  float64 `json:"avg_context_naive"` // estimate: no compaction
 	ContextReduction float64 `json:"context_reduction"` // 1 - avg/naive
-	ExpectedRead   int64   `json:"expected_read"` // guard's expectation, summed over requests that had one
-	ActualRead     int64   `json:"actual_read"`   // provider-reported reads on those requests
-	NoReadReports  bool    `json:"no_read_reports"` // the provider never reported a cache read
+	ExpectedRead     int64   `json:"expected_read"`     // guard's expectation, summed over requests that had one
+	ActualRead       int64   `json:"actual_read"`       // provider-reported reads on those requests
+	NoReadReports    bool    `json:"no_read_reports"`   // the provider never reported a cache read
 }
 
 // PriceUsed is one model's price as the inspector applied it.
@@ -136,20 +136,20 @@ type Money struct {
 // Reported is priced from the inspector's price table so the scenarios are
 // comparable with each other; Reported is what the log says was billed.
 type CostReport struct {
-	Reported         float64   `json:"reported"`          // sum of recorded cost_usd
-	ReportedRequests int       `json:"reported_requests"` // responses that carried cost_usd
-	GatewayRequests  int       `json:"gateway_requests"`  // ...of which the gateway reported
-	Actual           Money     `json:"actual"`            // usage x table prices
-	NoCache          Money     `json:"no_cache"`          // all prompt tokens at the plain input price
-	Naive            Money     `json:"naive"`             // ESTIMATE: whole history, end-of-turn caching
-	SavedNoCache     float64   `json:"saved_no_cache"`
-	SavedNoCachePct  float64   `json:"saved_no_cache_pct"`
-	SavedNaive       float64   `json:"saved_naive"`
-	SavedNaivePct    float64   `json:"saved_naive_pct"`
-	CompactorUSD     float64   `json:"compactor_usd"`
-	Divergence       float64   `json:"divergence"` // (reported - actual) / actual, when both are known
+	Reported         float64     `json:"reported"`          // sum of recorded cost_usd
+	ReportedRequests int         `json:"reported_requests"` // responses that carried cost_usd
+	GatewayRequests  int         `json:"gateway_requests"`  // ...of which the gateway reported
+	Actual           Money       `json:"actual"`            // usage x table prices
+	NoCache          Money       `json:"no_cache"`          // all prompt tokens at the plain input price
+	Naive            Money       `json:"naive"`             // ESTIMATE: whole history, end-of-turn caching
+	SavedNoCache     float64     `json:"saved_no_cache"`
+	SavedNoCachePct  float64     `json:"saved_no_cache_pct"`
+	SavedNaive       float64     `json:"saved_naive"`
+	SavedNaivePct    float64     `json:"saved_naive_pct"`
+	CompactorUSD     float64     `json:"compactor_usd"`
+	Divergence       float64     `json:"divergence"` // (reported - actual) / actual, when both are known
 	Prices           []PriceUsed `json:"prices"`
-	Assumptions      []string  `json:"assumptions"`
+	Assumptions      []string    `json:"assumptions"`
 }
 
 // CompactionTotals summarise generational compaction over the session.
@@ -160,8 +160,8 @@ type CompactionTotals struct {
 	Emergency    int     `json:"emergency"`
 	Fallbacks    int     `json:"fallbacks"` // fork commits that fell back to a mechanical patch
 	Rejects      int     `json:"rejects"`
-	Held         int     `json:"held"`    // planner said "not yet" to a ready patch
-	Folded       int64   `json:"folded"`  // thread tokens removed (gross)
+	Held         int     `json:"held"`   // planner said "not yet" to a ready patch
+	Folded       int64   `json:"folded"` // thread tokens removed (gross)
 	SpineAdded   int64   `json:"spine_added"`
 	Net          int64   `json:"net"` // folded - spine added: what the prompt shrank by
 	CompactorUSD float64 `json:"compactor_usd"`
@@ -180,30 +180,30 @@ type AnomalyTotals struct {
 
 // SwarmTotals summarise coordination.
 type SwarmTotals struct {
-	Agents       int `json:"agents"`
-	Spawns       int `json:"spawns"`
-	BoardOps     int `json:"board_ops"`
-	MailSent     int `json:"mail_sent"`
+	Agents        int `json:"agents"`
+	Spawns        int `json:"spawns"`
+	BoardOps      int `json:"board_ops"`
+	MailSent      int `json:"mail_sent"`
 	MailDelivered int `json:"mail_delivered"`
-	LeaseEvents  int `json:"lease_events"`
-	Alerts       int `json:"alerts"`
-	Tasks        int `json:"tasks"`
-	Running      int `json:"running"`
-	PeakInFlight int `json:"peak_in_flight"`
+	LeaseEvents   int `json:"lease_events"`
+	Alerts        int `json:"alerts"`
+	Tasks         int `json:"tasks"`
+	Running       int `json:"running"`
+	PeakInFlight  int `json:"peak_in_flight"`
 }
 
 // SeriesPoint aggregates a run of consecutive requests.
 type SeriesPoint struct {
-	I       int     `json:"i"`  // index of the first request in the group
-	T       int64   `json:"t"`  // ms since session start of the group's last request
-	N       int     `json:"n"`  // requests in the group
+	I       int     `json:"i"` // index of the first request in the group
+	T       int64   `json:"t"` // ms since session start of the group's last request
+	N       int     `json:"n"` // requests in the group
 	Prompt  int64   `json:"prompt"`
 	In      int64   `json:"in"`
 	Read    int64   `json:"read"`
 	Write   int64   `json:"write"`
 	Out     int64   `json:"out"`
 	Hit     float64 `json:"hit"`
-	USD     float64 `json:"usd"`     // reported cost, else priced
+	USD     float64 `json:"usd"` // reported cost, else priced
 	NoCache float64 `json:"no_cache"`
 	Naive   float64 `json:"naive"`
 	Anom    int     `json:"anom"`
@@ -251,9 +251,9 @@ type EpisodeInfo struct {
 type RLSummary struct {
 	Episode     *EpisodeInfo   `json:"episode,omitempty"`
 	Outcomes    []Outcome      `json:"outcomes,omitempty"`
-	Kinds       map[string]int `json:"kinds,omitempty"`      // requests per kind
-	WireHashes  int            `json:"wire_hashes"`          // requests that recorded a wire hash
-	TokenTraces int            `json:"token_traces"`         // responses that captured token ids
+	Kinds       map[string]int `json:"kinds,omitempty"` // requests per kind
+	WireHashes  int            `json:"wire_hashes"`     // requests that recorded a wire hash
+	TokenTraces int            `json:"token_traces"`    // responses that captured token ids
 	Renderers   []string       `json:"renderers,omitempty"`
 }
 
@@ -333,54 +333,54 @@ type AgentDetail struct {
 
 // Req is one model call, as a row.
 type Req struct {
-	ID         string  `json:"id"`
-	Seq        uint64  `json:"seq"`
-	Rev        uint64  `json:"rev"`
-	Agent      string  `json:"agent"`
-	Role       string  `json:"role,omitempty"`
-	Kind       string  `json:"kind"`
-	Model      string  `json:"model,omitempty"`
-	TS         int64   `json:"ts"` // unix ms
-	T          int64   `json:"t"`  // ms since session start
-	Done       bool    `json:"done"`
-	Failed     bool    `json:"failed,omitempty"`
-	Err        string  `json:"err,omitempty"`
-	In         int     `json:"in"`
-	Read       int     `json:"read"`
-	Write      int     `json:"write"`
-	Out        int     `json:"out"`
-	Prompt     int     `json:"prompt"`
-	Hit        float64 `json:"hit"`
-	Expected   int     `json:"expected"`
-	Anomaly    bool    `json:"anomaly,omitempty"`
-	USD        float64 `json:"usd"`
-	NoCache    float64 `json:"no_cache"`
-	Naive      float64 `json:"naive,omitempty"`
-	NaiveCtx   int     `json:"naive_ctx,omitempty"`
-	TTFB       int64   `json:"ttfb_ms,omitempty"`
-	TotalMs    int64   `json:"total_ms,omitempty"`
-	Stop       string  `json:"stop,omitempty"`
-	Cold       bool    `json:"cold,omitempty"`
-	First      bool    `json:"first,omitempty"`
-	Rebase     string  `json:"rebase,omitempty"` // declared rebase just before this request
+	ID         string   `json:"id"`
+	Seq        uint64   `json:"seq"`
+	Rev        uint64   `json:"rev"`
+	Agent      string   `json:"agent"`
+	Role       string   `json:"role,omitempty"`
+	Kind       string   `json:"kind"`
+	Model      string   `json:"model,omitempty"`
+	TS         int64    `json:"ts"` // unix ms
+	T          int64    `json:"t"`  // ms since session start
+	Done       bool     `json:"done"`
+	Failed     bool     `json:"failed,omitempty"`
+	Err        string   `json:"err,omitempty"`
+	In         int      `json:"in"`
+	Read       int      `json:"read"`
+	Write      int      `json:"write"`
+	Out        int      `json:"out"`
+	Prompt     int      `json:"prompt"`
+	Hit        float64  `json:"hit"`
+	Expected   int      `json:"expected"`
+	Anomaly    bool     `json:"anomaly,omitempty"`
+	USD        float64  `json:"usd"`
+	NoCache    float64  `json:"no_cache"`
+	Naive      float64  `json:"naive,omitempty"`
+	NaiveCtx   int      `json:"naive_ctx,omitempty"`
+	TTFB       int64    `json:"ttfb_ms,omitempty"`
+	TotalMs    int64    `json:"total_ms,omitempty"`
+	Stop       string   `json:"stop,omitempty"`
+	Cold       bool     `json:"cold,omitempty"`
+	First      bool     `json:"first,omitempty"`
+	Rebase     string   `json:"rebase,omitempty"`  // declared rebase just before this request
 	Changed    []string `json:"changed,omitempty"` // layers whose bytes changed since the agent's previous request
-	Undeclared bool    `json:"undeclared,omitempty"`
-	ThreadFrom int64   `json:"thread_from,omitempty"`
-	ThreadTo   int64   `json:"thread_to,omitempty"`
-	Layers     [7]int  `json:"layers"` // tokens per layer G0..G6; see LayerReport for provenance
-	G0Known    bool    `json:"g0_known"`
-	Epoch      int     `json:"epoch"` // commits before this request
-	WireHash   string  `json:"wire_hash,omitempty"`
+	Undeclared bool     `json:"undeclared,omitempty"`
+	ThreadFrom int64    `json:"thread_from,omitempty"`
+	ThreadTo   int64    `json:"thread_to,omitempty"`
+	Layers     [7]int   `json:"layers"` // tokens per layer G0..G6; see LayerReport for provenance
+	G0Known    bool     `json:"g0_known"`
+	Epoch      int      `json:"epoch"` // commits before this request
+	WireHash   string   `json:"wire_hash,omitempty"`
 }
 
 // RequestPage is /api/requests.
 type RequestPage struct {
-	Total    int   `json:"total"`    // retained requests matching the filter
-	Retained int   `json:"retained"` // retained requests overall
-	Dropped  int   `json:"dropped"`  // requests evicted from the window
-	Rev      uint64 `json:"rev"`     // pass as since= to receive changes only
-	More     bool  `json:"more"`
-	Requests []Req `json:"requests"`
+	Total    int    `json:"total"`    // retained requests matching the filter
+	Retained int    `json:"retained"` // retained requests overall
+	Dropped  int    `json:"dropped"`  // requests evicted from the window
+	Rev      uint64 `json:"rev"`      // pass as since= to receive changes only
+	More     bool   `json:"more"`
+	Requests []Req  `json:"requests"`
 }
 
 // RequestQuery filters /api/requests.
@@ -388,6 +388,7 @@ type RequestQuery struct {
 	Agent string
 	Kind  string
 	Since uint64 // rev cursor: only requests created or changed after it
+	Tail  bool   // newest Limit requests instead of changes since Since
 	Limit int
 }
 
@@ -432,7 +433,8 @@ type Compaction struct {
 	NotesChanged   bool       `json:"notes_changed"`
 	NotesOver      bool       `json:"notes_over_budget,omitempty"`
 	HeldMs         int64      `json:"held_ms"`
-	Holds          int        `json:"holds"` // "commit?" answered no before the commit
+	ProposeMs      int64      `json:"propose_ms"` // plan to ready patch
+	Holds          int        `json:"holds"`      // "commit?" answered no before the commit
 	NetITE         float64    `json:"net_ite"`
 	Calls          int        `json:"compactor_calls"`
 	CompactorUSD   float64    `json:"compactor_usd"`
@@ -580,6 +582,7 @@ type SwarmReport struct {
 
 // LayerState says what happened to a layer since the agent's previous request.
 const (
+	LayerNew         = "new"         // did not exist in the previous request
 	LayerCached      = "cached"      // same bytes, and nothing before it changed
 	LayerRewritten   = "rewritten"   // its own bytes changed (or it is new)
 	LayerInvalidated = "invalidated" // same bytes, but a layer before it changed
@@ -602,14 +605,14 @@ type LayerInfo struct {
 	Start      int    `json:"start"`   // token offset where the layer begins
 	// Billing split: how many of the layer's tokens the provider served from
 	// cache, wrote to cache, or processed uncached (by position along the prompt).
-	Read    int `json:"read"`
-	Write   int `json:"write"`
-	Fresh   int `json:"fresh"`
-	Bytes   int `json:"bytes,omitempty"`
+	Read     int    `json:"read"`
+	Write    int    `json:"write"`
+	Fresh    int    `json:"fresh"`
+	Bytes    int    `json:"bytes,omitempty"`
 	PrevHash string `json:"prev_hash,omitempty"`
-	HasText bool   `json:"has_text"`
-	Text    string `json:"text,omitempty"`
-	TextCut bool   `json:"text_cut,omitempty"`
+	HasText  bool   `json:"has_text"`
+	Text     string `json:"text,omitempty"`
+	TextCut  bool   `json:"text_cut,omitempty"`
 }
 
 // LayerDiff locates the first changed byte of a rewritten layer.
@@ -671,4 +674,42 @@ type EventQuery struct {
 	Limit int
 	Agent string
 	Type  string
+}
+
+// Digest is a session's one-line summary for the session list.
+type Digest struct {
+	Model      string    `json:"model,omitempty"`
+	Provider   string    `json:"provider,omitempty"`
+	State      string    `json:"state"`
+	Swarm      bool      `json:"swarm"`
+	Start      time.Time `json:"start"`
+	DurationMs int64     `json:"duration_ms"`
+	Requests   int       `json:"requests"`
+	Agents     int       `json:"agents"`
+	Commits    int       `json:"commits"`
+	Anomalies  int       `json:"anomalies"`
+	HitRatio   float64   `json:"hit_ratio"`
+	CostUSD    float64   `json:"cost_usd"`
+	SavedPct   float64   `json:"saved_pct"` // versus no cache
+	Goal       string    `json:"goal,omitempty"`
+}
+
+// SessionInfo is one row of /api/sessions.
+type SessionInfo struct {
+	ID      string       `json:"id"`
+	Name    string       `json:"name"`
+	Bytes   int64        `json:"bytes"`
+	Updated time.Time    `json:"updated"`
+	Live    bool         `json:"live"`
+	Digest  *Digest      `json:"digest,omitempty"`
+	Episode *EpisodeInfo `json:"episode,omitempty"`
+}
+
+// SessionList is /api/sessions.
+type SessionList struct {
+	Mode     string        `json:"mode"` // single | multi
+	Root     string        `json:"root"`
+	Current  string        `json:"current,omitempty"`
+	Sessions []SessionInfo `json:"sessions"`
+	Version  string        `json:"version,omitempty"`
 }

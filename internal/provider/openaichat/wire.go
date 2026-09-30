@@ -159,14 +159,7 @@ func Build(p *core.Prompt, o Options, stream bool) ([]byte, error) {
 	}
 
 	if len(p.System) > 0 {
-		var sb strings.Builder
-		for i, b := range p.System {
-			if i > 0 {
-				sb.WriteString("\n\n")
-			}
-			sb.WriteString(b.Text)
-		}
-		req.Messages = append(req.Messages, message{Role: o.SystemRole, Content: sb.String()})
+		req.Messages = append(req.Messages, renderSystem(p.System, o.SystemRole, bpAt))
 	}
 	for mi, m := range p.Messages {
 		msgs, err := renderMessage(mi, m, bpAt)
@@ -198,23 +191,65 @@ func Build(p *core.Prompt, o Options, stream bool) ([]byte, error) {
 	return core.MarshalStable(m)
 }
 
+// renderSystem renders the system blocks as one message. Without markers it is
+// one string (the block texts joined by a blank line); when a block carries a
+// cache marker (the constitution's, on gateways fronting Anthropic models) the
+// content becomes one part per block, the marker on that block's part, with the
+// same bytes overall.
+func renderSystem(blocks []core.Block, role string, bpAt map[core.BlockRef]core.Breakpoint) message {
+	marked := false
+	for i := range blocks {
+		if _, ok := bpAt[core.BlockRef{Sys: true, Msg: 0, Blk: i}]; ok {
+			marked = true
+		}
+	}
+	if !marked {
+		var sb strings.Builder
+		for i, b := range blocks {
+			if i > 0 {
+				sb.WriteString("\n\n")
+			}
+			sb.WriteString(b.Text)
+		}
+		return message{Role: role, Content: sb.String()}
+	}
+	parts := make([]part, 0, len(blocks))
+	for i, b := range blocks {
+		text := b.Text
+		if i > 0 {
+			text = "\n\n" + text
+		}
+		pt := part{Type: "text", Text: text}
+		if bp, ok := bpAt[core.BlockRef{Sys: true, Msg: 0, Blk: i}]; ok {
+			pt.CacheControl = &cacheControl{Type: "ephemeral", TTL: ttlString(bp)}
+		}
+		parts = append(parts, pt)
+	}
+	return message{Role: role, Content: parts}
+}
+
 func renderMessage(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) ([]message, error) {
 	switch m.Role {
 	case core.RoleAssistant:
-		return renderAssistant(m)
+		return renderAssistant(mi, m, bpAt)
 	case core.RoleUser, core.RoleSystem:
 		return renderUser(mi, m, bpAt)
 	}
 	return nil, fmt.Errorf("openaichat: unsupported role %q", m.Role)
 }
 
-func renderAssistant(m core.Message) ([]message, error) {
+func renderAssistant(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) ([]message, error) {
 	out := message{Role: "assistant"}
 	var text strings.Builder
-	for _, b := range m.Blocks {
+	var mark *core.Breakpoint
+	for bi, b := range m.Blocks {
 		switch b.Kind {
 		case core.BlockText:
 			text.WriteString(b.Text)
+			if bp, ok := bpAt[core.BlockRef{Msg: mi, Blk: bi}]; ok {
+				bp := bp
+				mark = &bp
+			}
 		case core.BlockThinking, core.BlockRedactedThinking:
 			// Only opaque reasoning_details are replayable, and only verbatim.
 			if b.WireFormat == Dialect && len(b.Wire) > 0 {
@@ -239,7 +274,10 @@ func renderAssistant(m core.Message) ([]message, error) {
 			out.ToolCalls = append(out.ToolCalls, tc)
 		}
 	}
-	if text.Len() > 0 {
+	if text.Len() > 0 && mark != nil {
+		// A marker on assistant text needs the parts form; the text is the same.
+		out.Content = []part{{Type: "text", Text: text.String(), CacheControl: &cacheControl{Type: "ephemeral", TTL: ttlString(*mark)}}}
+	} else if text.Len() > 0 {
 		out.Content = text.String()
 	} else if len(out.ToolCalls) > 0 {
 		out.Content = nil
@@ -260,6 +298,16 @@ func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) 
 		ref := core.BlockRef{Msg: mi, Blk: bi}
 		switch b.Kind {
 		case core.BlockToolResult:
+			// Chat has no tool_result block: the result is a role=tool message. A
+			// cache marker on it (in every tool loop the rolling marker lands on the
+			// last tool result) is only expressible on a content part, so a marked
+			// result is sent as a one-part array; unmarked results stay plain strings.
+			if bp, ok := bpAt[ref]; ok {
+				out = append(out, message{Role: "tool", ToolCallID: b.ToolID, Content: []part{{
+					Type: "text", Text: toolResultText(b), CacheControl: &cacheControl{Type: "ephemeral", TTL: ttlString(bp)},
+				}}})
+				continue
+			}
 			out = append(out, message{Role: "tool", ToolCallID: b.ToolID, Content: toolResultText(b)})
 		case core.BlockText:
 			pt := part{Type: "text", Text: b.Text}

@@ -1,0 +1,69 @@
+{
+  "model": "claude-opus-5-5",
+  "max_tokens": 0,
+  "thinking": {
+    "type": "adaptive"
+  },
+  "tools": [
+    {
+      "name": "bash",
+      "description": "Run a shell command.",
+      "input_schema": {
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "read",
+      "description": "Read a file.",
+      "input_schema": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    }
+  ],
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Sleipnir, a careful coding agent.",
+      "cache_control": {
+        "type": "ephemeral",
+        "ttl": "1h"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "<shared-context>the project is a Go module</shared-context>",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h"
+          }
+        },
+        {
+          "type": "text",
+          "text": "warm"
+        }
+      ]
+    }
+  ]
+}

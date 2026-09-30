@@ -223,7 +223,7 @@ func parseBoardCall(name string, input json.RawMessage) *boardCall {
 	}
 	var in struct {
 		Action, ID, Title, Description, Role, Text, Task, Brief, Agent string
-		Deps, Files                                                     []string
+		Deps, Files                                                    []string
 	}
 	if json.Unmarshal(input, &in) != nil {
 		return nil

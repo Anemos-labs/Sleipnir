@@ -206,3 +206,54 @@ func renderBlocks(tr core.Turn, o RenderOpts) []core.Block {
 	}
 	return out
 }
+
+// SharedPrefixTokens is what a request over a warm shared prefix should read from
+// cache: the tools, constitution, shared pin and role pin, everything identical
+// across agents of one role. On explicit-cache providers only what a marker
+// covers can be read, so it stops at the highest of the const, shared and role
+// markers.
+func (r *Rendered) SharedPrefixTokens(est core.Estimator) int {
+	p := r.Prompt
+	end := core.BlockRef{Msg: -2}
+	if n := len(p.System); n > 0 {
+		end = core.BlockRef{Sys: true, Msg: 0, Blk: n - 1}
+	}
+	for i, s := range r.Sections {
+		if s.Name == "shared" || s.Name == "role" {
+			end = core.BlockRef{Msg: 0, Blk: i}
+		}
+	}
+	if len(p.Breakpoints) > 0 {
+		// The highest layer marker at or before end.
+		best := core.BlockRef{Msg: -2}
+		for _, b := range p.Breakpoints {
+			if b.Label == "const" || b.Label == "shared" || b.Label == "role" {
+				best = b.After
+			}
+		}
+		end = best
+	}
+	if end.Msg == -2 {
+		return 0
+	}
+	total := 0
+	found := false
+	p.WalkBlocks(func(ref core.BlockRef, tool *core.ToolSpec, b *core.Block) {
+		if found {
+			return
+		}
+		switch {
+		case tool != nil:
+			total += est.Tokens(tool.Name) + est.Tokens(tool.Description) + est.Tokens(string(tool.InputSchema)) + 8
+		case b != nil && !b.Ephemeral:
+			total += SentBlockTokens(*b, est)
+		}
+		if ref == end {
+			found = true
+		}
+	})
+	if !found {
+		return 0
+	}
+	return total
+}

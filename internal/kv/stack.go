@@ -156,6 +156,22 @@ func PromptBytes(p *core.Prompt) int {
 	return n
 }
 
+// PromptTokens estimates the size of the whole prompt as sent, hot tail
+// included. The agent scales the guard's estimates with it: provider-reported
+// input tokens over this is the estimator's error on the previous request.
+func PromptTokens(p *core.Prompt, est core.Estimator) int {
+	n := 0
+	p.WalkBlocks(func(_ core.BlockRef, tool *core.ToolSpec, b *core.Block) {
+		switch {
+		case tool != nil:
+			n += est.Tokens(tool.Name) + est.Tokens(tool.Description) + est.Tokens(string(tool.InputSchema)) + 8
+		case b != nil:
+			n += SentBlockTokens(*b, est)
+		}
+	})
+	return n
+}
+
 func blockBytes(b core.Block) int {
 	switch b.Kind {
 	case core.BlockToolUse:

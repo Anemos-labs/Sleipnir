@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -23,27 +24,29 @@ type compactionState struct {
 
 // readyPatch is a validated patch computed against a snapshot. It is committed
 // with a compare-and-swap on the thread epoch, so the agent keeps running while
-// the compactor thinks, and turns appended in the meantime survive the commit.
+// the compactor thinks, and turns appended in the meantime survive the commit
+// (re-written by the provider, but not lost).
 type readyPatch struct {
-	res       *kv.ApplyResult
-	patch     *kv.Patch
-	epoch     uint64
-	snapLen   int
-	at        time.Time
-	reason    string
-	itc       float64 // compactor call cost, input-token equivalents
-	fallback  bool    // mechanical patch used instead of the model's
-	snapTotal int     // thread tokens covered by the patch
+	res      *kv.ApplyResult
+	patch    *kv.Patch
+	epoch    uint64
+	snapLen  int
+	at       time.Time
+	atReq    int // the agent's request counter when the patch became ready
+	reason   string
+	itc      float64 // compactor call cost, input-token equivalents
+	fallback bool    // mechanical patch used instead of the model's
+	snapLive int     // live thread tokens, as sent, when the snapshot was taken
 }
 
 // compactionCooldown avoids hammering a failing compactor.
 const compactionCooldown = 30 * time.Second
 
-// boundary runs between turns: the only place layers change. It first
-// performs any deferred thinking strip, then commits or starts compaction
-// according to the cost planner.
+// boundary runs between turns: the only place layers change. It commits a ready
+// compaction patch or starts a new compaction according to the cost planner.
+// (Thinking is never stripped here: every rebase strips it in the same atomic
+// step that performs it, see commit and SyncShared.)
 func (a *Agent) boundary(ctx context.Context) {
-	a.stripPending()
 	if a.cfg.NoCompaction {
 		return
 	}
@@ -52,24 +55,48 @@ func (a *Agent) boundary(ctx context.Context) {
 	rp := a.comp.ready
 	running := a.comp.running
 	cooling := !a.comp.failedAt.IsZero() && a.cfg.Now().Sub(a.comp.failedAt) < compactionCooldown
+	held := 0
+	if rp != nil {
+		held = a.reqN - rp.atReq
+	}
 	a.mu.Unlock()
 
+	// A patch must not be able to hold compaction hostage: one computed against a
+	// thread the agent has since outgrown, or one that has waited too long for a
+	// commit moment, is dropped and proposed again below.
 	if rp != nil {
-		// Evaluate on the region the patch covers; turns appended since ride
-		// along unchanged either way.
-		cs := st
-		cs.ThreadTokens = rp.snapTotal
-		d := a.cfg.Planner.ShouldCommit(cs, kv.Outcome{
-			SpineAdded: rp.res.SpineAdded, RetainedTokens: rp.res.RetainedTokens, CompactorITE: rp.itc,
-		})
+		if stale, why := a.cfg.Planner.Stale(rp.snapLive, st.ThreadTokens, held); stale {
+			a.mu.Lock()
+			if a.comp.ready == rp {
+				a.comp.ready = nil
+			}
+			a.mu.Unlock()
+			a.emit(events.TypeCompactReject, map[string]any{"stage": "stale", "reason": why})
+			rp = nil
+		}
+	}
+	if rp != nil {
+		// Priced against the live agent (hard and window pressure look at the live
+		// thread), on the region the patch covers plus the tail it will re-write.
+		a.mu.Lock()
+		o := a.outcomeLocked(rp)
+		a.mu.Unlock()
+		d := a.cfg.Planner.ShouldCommit(st, o)
 		a.emit(events.TypeCompactPlan, map[string]any{
 			"decision": "commit?", "yes": d.Yes, "net_ite": d.NetITE, "reason": d.Reason, "warm": st.Warm,
-			"thread_tokens": st.ThreadTokens, "age_ms": a.cfg.Now().Sub(rp.at).Milliseconds(),
+			"thread_tokens": st.ThreadTokens, "snap_tokens": o.SnapTokens, "tail_tokens": o.TailTokens,
+			"age_ms": a.cfg.Now().Sub(rp.at).Milliseconds(), "held_requests": held,
 		})
 		if d.Yes {
 			if err := a.commit(rp, d.Reason); err != nil {
 				a.emit(events.TypeCompactReject, map[string]any{"reason": err.Error()})
 			}
+			return
+		}
+		// Held. The safety net still runs: a prompt about to blow the window cannot
+		// wait for an economic moment.
+		if a.overWindow(st) {
+			_ = a.emergencyCompact(ctx, "prompt over 85% of the context window")
 		}
 		return
 	}
@@ -91,8 +118,14 @@ func (a *Agent) boundary(ctx context.Context) {
 		d.Yes = false
 	}
 	if d.Yes {
-		a.emit(events.TypeCompactPlan, map[string]any{"decision": "start", "mode": modeName(d.Mode), "reason": d.Reason, "warm": st.Warm, "thread_tokens": st.ThreadTokens})
+		a.emit(events.TypeCompactPlan, map[string]any{
+			"decision": "start", "mode": modeName(d.Mode), "reason": d.Reason, "warm": st.Warm,
+			"thread_tokens": st.ThreadTokens, "maskable_tokens": st.MaskableTokens, "net_ite": d.NetITE,
+		})
 		if d.Mode == kv.ModeMask {
+			a.mu.Lock()
+			a.lastMaskReq = a.reqN // throttle on attempts too, so a failing mask cannot storm
+			a.mu.Unlock()
 			if err := a.maskCommit(d.Reason); err != nil {
 				a.emit(events.TypeCompactReject, map[string]any{"stage": "mask", "reason": err.Error()})
 			}
@@ -118,28 +151,74 @@ func (a *Agent) overWindow(st kv.State) bool {
 	return st.ContextWindow > 0 && float64(st.PromptTokens) >= 0.85*float64(st.ContextWindow)
 }
 
-// plannerStateLocked measures the agent for the planner. Callers hold a.mu.
+// plannerStateLocked measures the agent for the planner, in tokens as sent.
+// Callers hold a.mu.
 func (a *Agent) plannerStateLocked() kv.State {
 	s := a.stack
 	s.Thread = a.thread.Snapshot()
+	prof := a.cfg.Provider.Profile()
+	caps := a.caps(prof)
+	z := kv.Sizer{Est: a.est, Caps: caps}
 	prefix := 0
 	for _, t := range s.Tools {
 		prefix += a.est.Tokens(t.Name) + a.est.Tokens(t.Description) + a.est.Tokens(string(t.InputSchema)) + 8
 	}
-	for _, l := range []*kv.Layer{s.Const, s.Shared, s.RoleL, s.Notes, s.Spine} {
+	for _, l := range []*kv.Layer{s.Const, s.Shared, s.RoleL} {
 		prefix += l.Tokens(a.est)
 	}
-	thread := s.Thread.Tokens(a.est)
+	notes, spine := s.Notes.Tokens(a.est), s.Spine.Tokens(a.est)
+	thread := z.Turns(s.Thread.Turns)
 	w := a.cfg.Model.Price.Weights()
+	explicit := caps.MaxBreakpoints > 0
 	write := w.Write5m
-	if a.cfg.Model.Cache.Auto && !a.cfg.Model.Cache.Explicit {
+	if !explicit {
 		write = 1 // engines with automatic prefix caching charge no write premium
 	}
-	return kv.State{
-		PrefixTokens: prefix, ThreadTokens: thread, PromptTokens: prefix + thread,
-		ContextWindow: a.cfg.Model.ContextTokens, Warm: a.isWarmLocked(a.cfg.Now()),
-		W: w, Write: write,
+	pol := a.cfg.ApplyPolicy
+	pol.Caps = caps
+	// The agent knows the step cap of this run; beyond that it has no idea how much
+	// work is left, so the planner's horizon applies.
+	remaining := 0.0
+	horizon := a.cfg.Planner.HorizonTurns
+	if horizon == 0 {
+		horizon = kv.DefaultPlanner().HorizonTurns
 	}
+	if left := float64(a.cfg.MaxSteps - a.stepInRun); left < horizon {
+		remaining = left
+		if remaining < 1 {
+			remaining = 1
+		}
+	}
+	return kv.State{
+		PrefixTokens: prefix, NotesTokens: notes, SpineTokens: spine,
+		ThreadTokens: thread, PromptTokens: prefix + notes + spine + thread,
+		ContextWindow: a.cfg.Model.ContextTokens, Warm: a.isWarmLocked(a.cfg.Now()),
+		Remaining: remaining, W: w, Write: write, Explicit: explicit,
+		MaskableTokens: kv.MaskableTokens(&s, a.est, pol), SinceMask: a.reqN - a.lastMaskReq,
+	}
+}
+
+// outcomeLocked prices a ready patch against the agent as it is now: what it
+// replaces, and the turns appended since that an earlier request already sent
+// (they sit behind the changed prefix and are re-written too). Callers hold a.mu.
+func (a *Agent) outcomeLocked(rp *readyPatch) kv.Outcome {
+	res := rp.res
+	o := kv.Outcome{
+		SnapTokens: res.SnapTokens, SpineAdded: res.SpineAdded, RetainedTokens: res.RetainedTokens,
+		SpineAfter: res.SpineAfter, SpineRewritten: res.SpineEvicted > 0,
+		NotesChanged: res.NotesChanged, NotesAfter: res.NotesAfter,
+		CompactorITE: rp.itc,
+	}
+	turns := a.thread.Snapshot().Turns
+	end := a.lastReqLen
+	if end > len(turns) {
+		end = len(turns)
+	}
+	if rp.snapLen < end {
+		z := kv.Sizer{Est: a.est, Caps: a.caps(a.cfg.Provider.Profile())}
+		o.TailTokens = z.Turns(turns[rp.snapLen:end])
+	}
+	return o
 }
 
 // startCompaction launches the compactor in the background.
@@ -166,6 +245,7 @@ func (a *Agent) startCompaction(ctx context.Context, reason string) {
 			a.comp.failures++
 			a.comp.failedAt = a.cfg.Now()
 		} else {
+			rp.atReq = a.reqN
 			a.comp.ready = rp
 			a.comp.failures = 0
 		}
@@ -179,11 +259,18 @@ func (a *Agent) startCompaction(ctx context.Context, reason string) {
 // propose asks the model (as a fork of this agent) for a patch, validates it
 // and computes its effect. Any failure falls back to a mechanical patch, so a
 // triggered compaction always yields something applicable.
+//
+// The fork is the agent's own request byte for byte plus one instruction block,
+// with the same parameters: on Anthropic a different tool_choice, thinking or
+// effort setting would invalidate the whole messages tier and turn the fork's
+// cache read into a full write. "Do not call tools" is therefore only text, and a
+// reply that calls one anyway counts as a failed compaction.
 func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*readyPatch, error) {
 	prof := a.cfg.Provider.Profile()
-	instr := kv.Instruction(&snap, a.est, a.cfg.ApplyPolicy)
+	pol := a.applyPolicy()
+	instr := kv.Instruction(&snap, a.est, pol)
 	p := kv.ForkPrompt(&snap, kv.RenderOpts{
-		Caps: prof.KVCaps(), Policy: a.cfg.KVPolicy, Params: a.cfg.Params,
+		Caps: a.caps(prof), Policy: a.cfg.KVPolicy, Params: a.cfg.Params,
 		CacheKey: a.cacheKey(&snap), Est: a.est,
 	}, instr)
 	a.mu.Lock()
@@ -193,39 +280,47 @@ func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*rea
 	a.recordRequest(label, &kv.Rendered{Prompt: p, Sections: nil}, nil, kv.Check{}, prof, KindCompactor, false)
 	a.emit(events.TypeCompactPatch, map[string]any{"stage": "request", "reason": reason, "thread_from": firstID(snap), "thread_to": lastID(snap)})
 
-	rp := &readyPatch{epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason}
+	z := kv.Sizer{Est: a.est, Caps: pol.Caps}
+	snapLive := z.Turns(snap.Thread.Turns)
+	rp := &readyPatch{epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, snapLive: snapLive}
 	var patch *kv.Patch
 	resp, err := a.call(ctx, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil)
 	if err == nil {
 		a.account(resp, label)
 		w := a.cfg.Model.Price.Weights()
-		rp.itc = float64(resp.Usage.InputTokens) + w.Read*float64(resp.Usage.CacheReadTokens) + float64(resp.Usage.OutputTokens)*w.Output
-		patch, err = kv.ParsePatch(resp.Turn.PlainText())
+		rp.itc = float64(resp.Usage.InputTokens) + w.Read*float64(resp.Usage.CacheReadTokens) +
+			w.Write5m*float64(resp.Usage.CacheWriteTokens()) + float64(resp.Usage.OutputTokens)*w.Output
+		if len(resp.Turn.ToolCalls()) > 0 {
+			err = errors.New("the compactor answered with a tool call instead of a patch")
+		} else {
+			// Only what the model said, never its reasoning: a thinking block that
+			// drafts a JSON shape must not be mistaken for the answer.
+			patch, err = kv.ParsePatch(kv.AnswerText(resp.Turn))
+		}
 	}
 	var res *kv.ApplyResult
 	if err == nil {
-		res, err = kv.Apply(&snap, patch, a.est, a.cfg.ApplyPolicy)
+		res, err = kv.Apply(&snap, patch, a.est, pol)
 	}
 	if err != nil {
 		// Fallback: deterministic compaction. Never leave the agent stuck with a
 		// full thread because a model answered badly.
 		a.emit(events.TypeCompactReject, map[string]any{"stage": "model_patch", "reason": err.Error(), "fallback": "mechanical"})
-		target := snap.Thread.Tokens(a.est) / 4
+		target := snapLive / 4
 		if target < 2000 {
 			target = 2000
 		}
-		patch = kv.MechanicalPatch(&snap, a.est, target, a.cfg.ApplyPolicy)
-		res, err = kv.Apply(&snap, patch, a.est, a.cfg.ApplyPolicy)
+		patch = kv.MechanicalPatch(&snap, a.est, target, pol)
+		res, err = kv.Apply(&snap, patch, a.est, pol)
 		if err != nil {
 			return nil, err
 		}
 		rp.fallback = true
 	}
 	rp.patch, rp.res = patch, res
-	rp.snapTotal = res.RemovedTokens + res.RetainedTokens
 	a.emit(events.TypeCompactPatch, map[string]any{
 		"stage": "ready", "keep_from": res.KeepFrom, "removed_tokens": res.RemovedTokens, "retained_tokens": res.RetainedTokens,
-		"spine_added": res.SpineAdded, "masked": res.MaskedResults, "mechanical_lines": res.Mechanical,
+		"snap_tokens": res.SnapTokens, "spine_added": res.SpineAdded, "masked": res.MaskedResults, "mechanical_lines": res.Mechanical,
 		"fallback": rp.fallback, "warnings": res.Warnings, "cost_ite": rp.itc,
 	})
 	return rp, nil
@@ -249,15 +344,19 @@ func (a *Agent) account(resp *provider.Response, label string) {
 
 // commit applies a ready patch: an atomic replacement of the retained thread
 // plus new spine and notes layers, followed by a declared rebase.
+//
+// The turns appended while the patch was being computed are carried over, and
+// they were produced against the prefix this commit replaces: on a route that
+// enforces preserved thinking their thinking blocks are void, so they are
+// stripped in the same atomic step (the retained region already was, by Apply).
 func (a *Agent) commit(rp *readyPatch, why string) error {
 	res := rp.res
-	if err := a.thread.Commit(rp.epoch, res.Replacement, rp.snapLen); err != nil {
-		a.mu.Lock()
+	a.mu.Lock()
+	if err := a.thread.CommitWith(rp.epoch, res.Replacement, rp.snapLen, a.stripTurn); err != nil {
 		a.comp.ready = nil
 		a.mu.Unlock()
 		return fmt.Errorf("commit rejected: %w", err)
 	}
-	a.mu.Lock()
 	a.stack.Spine = res.Spine
 	if res.NotesChanged {
 		a.stack.Notes = res.Notes
@@ -265,15 +364,25 @@ func (a *Agent) commit(rp *readyPatch, why string) error {
 	a.epoch++
 	a.comp.ready = nil
 	a.comp.count++
+	a.resyncHotLocked()
 	a.mu.Unlock()
 
 	a.emit(events.TypeCompactCommit, map[string]any{
 		"reason": why, "keep_from": res.KeepFrom, "removed_turns": res.RemovedTurns,
-		"removed_tokens": res.RemovedTokens, "retained_tokens": res.RetainedTokens, "spine_added": res.SpineAdded,
-		"masked": res.MaskedResults, "mechanical_lines": res.Mechanical, "notes_changed": res.NotesChanged,
-		"notes_over_budget": res.NotesOverBudget, "fallback": rp.fallback, "warnings": res.Warnings,
+		"removed_tokens": res.RemovedTokens, "retained_tokens": res.RetainedTokens, "snap_tokens": res.SnapTokens,
+		"spine_added": res.SpineAdded, "spine_tokens": res.SpineAfter, "spine_evicted": res.SpineEvicted,
+		"masked": res.MaskedResults, "masked_tokens": res.MaskedTokens, "mechanical_lines": res.Mechanical,
+		"notes_changed": res.NotesChanged, "notes_tokens": res.NotesAfter, "notes_evicted": res.NotesEvicted,
+		"notes_over_budget": res.NotesOverBudget, "notices_dropped": res.NoticesDropped,
+		"fallback": rp.fallback, "warnings": res.Warnings,
 		"held_ms": a.cfg.Now().Sub(rp.at).Milliseconds(),
 	})
+	if res.NotesOverBudget {
+		// The consumer of the over-budget signal: the oldest lines were evicted (see
+		// notes_evicted) and the next compactor instruction asks for a consolidation
+		// pass while notes are near their budget (kv.Instruction).
+		a.emit(events.TypeCacheAnomaly, map[string]any{"kind": "notes_over_budget", "evicted": res.NotesEvicted, "notes_tokens": res.NotesAfter})
+	}
 	var spineVer uint64
 	if res.Spine != nil {
 		spineVer = res.Spine.Version
@@ -290,7 +399,7 @@ func (a *Agent) commit(rp *readyPatch, why string) error {
 	if len(res.Proposals) > 0 && a.cfg.OnPromote != nil {
 		a.cfg.OnPromote(a.cfg.ID, res.Proposals)
 	}
-	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("compacted %d turns (%dk→%dk tokens)", res.RemovedTurns, (res.RemovedTokens+res.RetainedTokens)/1000, (res.SpineAdded+res.RetainedTokens)/1000))
+	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("compacted %d turns (%dk→%dk tokens)", res.RemovedTurns, res.SnapTokens/1000, (res.SpineAdded+res.RetainedTokens)/1000))
 	return nil
 }
 
@@ -301,49 +410,19 @@ func (a *Agent) emergencyCompact(ctx context.Context, reason string) error {
 	snap.Thread = a.thread.Snapshot()
 	a.comp.ready = nil
 	a.mu.Unlock()
-	target := snap.Thread.Tokens(a.est) / 4
+	pol := a.applyPolicy()
+	live := kv.Sizer{Est: a.est, Caps: pol.Caps}.Turns(snap.Thread.Turns)
+	target := live / 4
 	if target < 2000 {
 		target = 2000
 	}
-	patch := kv.MechanicalPatch(&snap, a.est, target, a.cfg.ApplyPolicy)
-	res, err := kv.Apply(&snap, patch, a.est, a.cfg.ApplyPolicy)
+	patch := kv.MechanicalPatch(&snap, a.est, target, pol)
+	res, err := kv.Apply(&snap, patch, a.est, pol)
 	if err != nil {
 		return err
 	}
-	rp := &readyPatch{res: res, patch: patch, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true}
+	rp := &readyPatch{res: res, patch: patch, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true, snapLive: live}
 	return a.commit(rp, "emergency: "+reason)
-}
-
-// stripPending removes thinking blocks from the thread after a shared-layer
-// epoch. Their provider-side bindings are void once the prefix changed; leaving
-// them in would trigger rejections or, worse, silent drops that vary from
-// request to request. Stripping is done once, durably, as part of the rebase.
-func (a *Agent) stripPending() {
-	a.mu.Lock()
-	need := a.strip
-	a.strip = false
-	a.mu.Unlock()
-	if !need || !a.cfg.Provider.Profile().ReplayThinking {
-		return
-	}
-	snap := a.thread.Snapshot()
-	changed := false
-	out := make([]core.Turn, len(snap.Turns))
-	for i, tr := range snap.Turns {
-		nb := make([]core.Block, 0, len(tr.Blocks))
-		for _, b := range tr.Blocks {
-			if b.Kind == core.BlockThinking || b.Kind == core.BlockRedactedThinking {
-				changed = true
-				continue
-			}
-			nb = append(nb, b)
-		}
-		tr.Blocks = nb
-		out[i] = tr
-	}
-	if changed {
-		_ = a.thread.Commit(snap.Epoch, out, len(snap.Turns))
-	}
 }
 
 func firstID(s kv.Stack) core.TurnID {
@@ -368,15 +447,18 @@ func modeName(m kv.Mode) string {
 }
 
 // maskCommit performs the deterministic compaction immediately, at a boundary.
+// It only commits when something was actually masked (kv.MaskOnly).
 func (a *Agent) maskCommit(reason string) error {
 	a.mu.Lock()
 	snap := a.stack
 	snap.Thread = a.thread.Snapshot()
 	a.mu.Unlock()
-	res, err := kv.MaskOnly(&snap, a.est, a.cfg.ApplyPolicy)
+	pol := a.applyPolicy()
+	res, err := kv.MaskOnly(&snap, a.est, pol)
 	if err != nil {
 		return err
 	}
-	rp := &readyPatch{res: res, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true}
+	live := res.SnapTokens
+	rp := &readyPatch{res: res, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true, snapLive: live}
 	return a.commit(rp, "mask: "+reason)
 }

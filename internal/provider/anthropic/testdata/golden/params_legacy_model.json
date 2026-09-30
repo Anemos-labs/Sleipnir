@@ -1,0 +1,76 @@
+{
+  "model": "claude-sonnet-4-6",
+  "max_tokens": 2048,
+  "thinking": {
+    "type": "adaptive"
+  },
+  "output_config": {
+    "effort": "high"
+  },
+  "temperature": 0.25,
+  "tool_choice": {
+    "type": "auto"
+  },
+  "tools": [
+    {
+      "name": "bash",
+      "description": "Run a shell command.",
+      "input_schema": {
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "read",
+      "description": "Read a file.",
+      "input_schema": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    }
+  ],
+  "system": [
+    {
+      "type": "text",
+      "text": "You are Sleipnir, a careful coding agent."
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "<shared-context>the project is a Go module</shared-context>"
+        },
+        {
+          "type": "text",
+          "text": "<role-context>backend conventions</role-context>"
+        },
+        {
+          "type": "text",
+          "text": "<my-notes>none yet</my-notes>"
+        },
+        {
+          "type": "text",
+          "text": "Fix the failing test."
+        }
+      ]
+    }
+  ]
+}

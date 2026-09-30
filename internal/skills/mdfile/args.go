@@ -144,24 +144,21 @@ func Substitute(tmpl, args string, mode ArgMode) (out string, used bool) {
 		b.WriteString(tmpl[i : i+j])
 		i += j
 		rest := tmpl[i+1:]
+		idx, idxLen, isIdx := 0, 0, false
+		if strings.HasPrefix(rest, kw+"[") {
+			if k := strings.IndexByte(rest, ']'); k > len(kw)+1 {
+				idx, isIdx = smallInt(rest[len(kw)+1 : k])
+				idxLen = k + 1
+			}
+		}
 		switch {
 		case strings.HasPrefix(rest, "$") && escapable(rest[1:]):
 			b.WriteByte('$') // "$$1": the second dollar's placeholder is copied as text below
 			i += 2
-		case strings.HasPrefix(rest, kw+"["):
-			k := strings.IndexByte(rest, ']')
-			digits := ""
-			if k > len(kw)+1 {
-				digits = rest[len(kw)+1 : k]
-			}
-			if n, ok := smallInt(digits); ok {
-				b.WriteString(one(n))
-				used = true
-				i += 1 + k + 1
-				continue
-			}
-			b.WriteByte('$')
-			i++
+		case isIdx:
+			b.WriteString(one(idx))
+			used = true
+			i += 1 + idxLen
 		case strings.HasPrefix(rest, kw) && !identChar(rest, len(kw)):
 			b.WriteString(all())
 			used = true

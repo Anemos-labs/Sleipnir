@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -158,11 +157,10 @@ func startProc(sp procSpec) (*procTransport, error) {
 		tail: &tailBuffer{max: 8 << 10}, redact: sp.Redact, grace: sp.Grace,
 		done: make(chan struct{}),
 	}
-	so := sp.Stream
-	// The reader is closed by procTransport itself once the process is gone, not
-	// by the stream: closing stdout early would cost the server its last words
-	// and make it die of SIGPIPE mid-shutdown.
-	p.st = NewStreamTransport(outR, inW, so)
+	// The stream is not given CloseReader: procTransport closes stdout itself
+	// once the process is gone. Closing it early would cost the server its last
+	// words and make it die of SIGPIPE in the middle of an orderly shutdown.
+	p.st = NewStreamTransport(outR, inW, sp.Stream)
 	go func() {
 		_, _ = io.Copy(p.tail, errR)
 		errR.Close()
@@ -184,7 +182,7 @@ func unwrapExecError(err error) error {
 	}
 	var pe *os.PathError
 	if errors.As(err, &pe) {
-		return fmt.Errorf("%s: %w", pe.Op, pe.Err)
+		return fmt.Errorf("%s %s: %w", pe.Op, pe.Path, pe.Err)
 	}
 	return err
 }
@@ -335,16 +333,14 @@ func (t *tailBuffer) excerpt(r *redactor) string {
 	t.mu.Lock()
 	raw := string(t.buf)
 	t.mu.Unlock()
-	lines := strings.Split(strings.TrimSpace(cleanText(raw)), "\n")
 	var keep []string
-	for i := len(lines) - 1; i >= 0 && len(keep) < 4; i-- {
-		if l := strings.TrimSpace(lines[i]); l != "" {
+	for _, l := range strings.Split(cleanText(raw), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
 			keep = append(keep, l)
 		}
 	}
-	sort.SliceStable(keep, func(i, j int) bool { return false }) // keep order as collected
-	for i, j := 0, len(keep)-1; i < j; i, j = i+1, j-1 {
-		keep[i], keep[j] = keep[j], keep[i]
+	if len(keep) > 4 {
+		keep = keep[len(keep)-4:]
 	}
 	s := r.apply(strings.Join(keep, " | "))
 	s, _ = truncateRunes(s, 300)

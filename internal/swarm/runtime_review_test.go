@@ -165,7 +165,11 @@ func TestConc_ReuseAssignmentIsDroppedWhenMailRunStartsFirst(t *testing.T) {
 		t.Fatalf("setup: Spawn reported failure: %v", spawnErr)
 	}
 	tk, _ := b.Snapshot().Task(t2.ID)
-	if tk.Owner == id && !r.prov.sawEver("Begin task "+t2.ID) {
+	// The reused worker's kickoff is a reassignCard ("...Your assignment is task T2: ...");
+	// older trees sent "Begin task T2". Its <my-notes> still describe T1, so either marker
+	// can only come from the delivered card. (The title is useless: the hot view lists it.)
+	delivered := r.prov.sawEver("Your assignment is task "+t2.ID+":") || r.prov.sawEver("Begin task "+t2.ID)
+	if tk.Owner == id && !delivered {
 		t.Fatalf("Spawn returned success and the board says %s is %s/%s (result %q), but %s never received the assignment card: startRun dropped it because a mail-triggered run was already live",
 			t2.ID, tk.Owner, tk.Status, tk.Result, id)
 	}

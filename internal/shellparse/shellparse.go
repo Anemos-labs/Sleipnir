@@ -20,8 +20,21 @@
 // purely lexical: ~/.{ssh,aws}/x yields two words.
 //
 // Substitutions ($(...), backticks, <(...), >(...), and the strings handed to
-// eval / sh -c) are parsed recursively and their commands are appended to
-// Commands right after the command that contains them (Nested=true).
+// eval, sh -c, su -c and trap, and heredocs or here-strings fed to a shell) are
+// parsed recursively and their commands are appended to Commands right after the
+// command that contains them (Nested=true).
+//
+// Two conventions callers should know. The word list of a for/select loop is
+// reported as a pseudo-command with Program "for" and the words after "in" as
+// Args, so the files a loop walks are visible. A redirection that applies to a
+// whole compound command ("done > out", "} > out", ") > out") appears as a
+// command with no Program and just the Redirects.
+//
+// # Testing
+//
+// The parser is checked against bash itself: a differential test runs hundreds
+// of snippets and generated compositions in a real bash and requires that every
+// command that actually ran is present in Commands.
 package shellparse
 
 import (

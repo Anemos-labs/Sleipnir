@@ -38,12 +38,13 @@ type toolRun struct {
 // one.
 func (b *builder) observations(a *agentInfo) {
 	turns, calls, results := b.v.turns[a.id], b.v.toolCalls[a.id], b.v.toolResults[a.id]
+	nextMain := nextMainRequests(a)
 	for _, st := range a.main {
 		uses := st.turn.ToolCalls()
 		if len(uses) == 0 {
 			continue
 		}
-		lo, hi := st.p.seq, b.nextMainRequestSeq(a, st.q)
+		lo, hi := st.p.seq, nextMain[st.q.id]
 		callQ := map[string][]toolCallEv{}
 		for k := sort.Search(len(calls), func(i int) bool { return calls[i].seq > lo }); k < len(calls) && calls[k].seq < hi; k++ {
 			callQ[calls[k].id] = append(callQ[calls[k].id], calls[k])
@@ -91,15 +92,20 @@ func (b *builder) observations(a *agentInfo) {
 	}
 }
 
-// nextMainRequestSeq is the sequence number of the agent's first main request
-// after q, kept or not; a step's tool results cannot outlive it.
-func (b *builder) nextMainRequestSeq(a *agentInfo, q *reqInfo) uint64 {
-	for _, x := range a.reqs {
-		if x.kind == rl.KindMain && x.seq > q.seq {
-			return x.seq
+// nextMainRequests maps each request id of the agent to the sequence number of
+// the agent's next main request (kept or not); a step's tool results cannot
+// outlive it. The last one maps to the end of the log.
+func nextMainRequests(a *agentInfo) map[string]uint64 {
+	next := make(map[string]uint64, len(a.reqs))
+	upcoming := ^uint64(0)
+	for i := len(a.reqs) - 1; i >= 0; i-- {
+		q := a.reqs[i]
+		next[q.id] = upcoming
+		if q.kind == rl.KindMain {
+			upcoming = q.seq
 		}
 	}
-	return ^uint64(0)
+	return next
 }
 
 // sanitizeInput keeps tool arguments that are JSON as they were and wraps

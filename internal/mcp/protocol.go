@@ -77,6 +77,9 @@ type InitializeResult struct {
 	// Instructions are the server's usage hints, sanitised and capped. They
 	// are untrusted text; the harness decides whether the model ever sees them.
 	Instructions string
+	// Tolerated is set when the server chose a protocol revision this client
+	// does not implement in full but accepts as compatible (a later date).
+	Tolerated bool
 }
 
 const maxInstructionsChars = 4000

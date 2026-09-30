@@ -553,7 +553,9 @@ func globPrefix(p string) string {
 	return p
 }
 
-// startRun runs the agent in the background.
+// startRun runs the agent in the background. A worker that already has a thread
+// is being reused for another task: its <my-notes> still describe the first one,
+// so the kickoff carries the new task's full brief and scope (reassignCard).
 func (s *Swarm) startRun(m *member, input string) {
 	m.mu.Lock()
 	if m.running {
@@ -564,6 +566,11 @@ func (s *Swarm) startRun(m *member, input string) {
 	ctx, cancel := context.WithCancel(s.rootCtx)
 	m.cancel = cancel
 	m.mu.Unlock()
+	if input != "" && len(m.a.Thread().Snapshot().Turns) > 0 {
+		if t, ok := s.Board.Snapshot().Task(m.task); ok {
+			input = reassignCard(t, m.id)
+		}
+	}
 	m.setState(s, "running", "starting")
 	s.wg.Add(1)
 	go func() {
@@ -727,8 +734,21 @@ type roleRequester struct {
 
 func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decision {
 	req.Role = r.role.Name
-	if r.role.ReadOnly && (req.Writes || (req.Tool == "bash" && !readOnlyCommand(req.Command))) {
-		return perm.Decision{Allow: false, Reason: fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.role.Name)}
+	if r.role.ReadOnly {
+		_, engine := r.inner.(*perm.Engine)
+		switch {
+		case req.Tool == "bash" && engine:
+			// The permission engine parses shell syntax and enforces the role's
+			// (plan) profile itself; a prefix allowlist here would only be a weaker,
+			// bypassable second opinion (and would deny the checks the profile allows).
+		case req.Tool == "bash":
+			// No engine (tests, embedding): fall back to the conservative allowlist.
+			if !readOnlyCommand(req.Command) {
+				return perm.Decision{Allow: false, Reason: fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.role.Name)}
+			}
+		case req.Writes:
+			return perm.Decision{Allow: false, Reason: fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.role.Name)}
+		}
 	}
 	return r.inner.Check(ctx, req)
 }

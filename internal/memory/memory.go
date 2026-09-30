@@ -112,10 +112,10 @@ const (
 // Source is one instruction file (or import) that made it into the prompt.
 type Source struct {
 	// Path is how the file is shown: relative to the project root with "/"
-	// separators, or "~/.sleipnir/..." under the user's own directory. It is
-	// never an absolute machine path, so rendering is reproducible across
-	// machines. Files imported from the user's file are the only sources shown
-	// with a "~/" prefix and scope "import".
+	// separators, or "~/.sleipnir/..." under the user's own directory (the
+	// user's file and what it imports: the only sources shown with a "~/"
+	// prefix). It is never an absolute machine path, so rendering is
+	// reproducible across machines.
 	Path  string
 	Scope string
 	// Text is the file's content with line endings normalised, hidden and control
@@ -328,34 +328,15 @@ func (ld *loader) file(d *domain, rel, scope string, depth int) {
 		ld.problem(fmt.Errorf("memory: %s: %w", name, err))
 		return
 	}
-	f, err := d.open(rel)
+	raw, truncated, ok, err := ld.read(d, rel)
 	if err != nil {
 		if !isMissing(err) {
 			ld.problem(fmt.Errorf("memory: %s: %w", name, unwrapPath(err)))
 		}
 		return
 	}
-	defer f.Close()
-	fi, err := f.Stat() // of the opened file, so what is judged is what is read
-	if err != nil {
-		ld.problem(fmt.Errorf("memory: %s: %w", name, unwrapPath(err)))
-		return
-	}
-	// Directories, devices and FIFOs are not instruction files.
-	if !fi.Mode().IsRegular() {
-		return
-	}
-	for _, s := range ld.seen {
-		if os.SameFile(s, fi) { // CLAUDE.md -> AGENTS.md is one file
-			return
-		}
-	}
-	ld.seen = append(ld.seen, fi)
-
-	raw, truncated, err := readCapped(f)
-	if err != nil {
-		ld.problem(fmt.Errorf("memory: %s: %w", name, unwrapPath(err)))
-		return
+	if !ok {
+		return // not a regular file, or already loaded
 	}
 	if scope == ScopeImport {
 		ld.importBytes += len(raw)
@@ -419,10 +400,37 @@ func (ld *loader) checkTarget(d *domain, rel string) error {
 	return nil
 }
 
+// read opens the file at rel and returns at most MaxFileBytes of it, reporting
+// whether more was there. ok is false when there is nothing to load: not a
+// regular file (directories, devices and FIFOs are not instruction files), or a
+// file already loaded under another name.
+func (ld *loader) read(d *domain, rel string) (data []byte, truncated, ok bool, err error) {
+	f, err := d.open(rel)
+	if err != nil {
+		return nil, false, false, err
+	}
+	defer f.Close()
+	fi, err := f.Stat() // of the opened file, so what is judged is what is read
+	if err != nil {
+		return nil, false, false, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, false, false, nil
+	}
+	for _, s := range ld.seen {
+		if os.SameFile(s, fi) { // CLAUDE.md -> AGENTS.md is one file
+			return nil, false, false, nil
+		}
+	}
+	ld.seen = append(ld.seen, fi)
+	data, truncated, err = readCapped(f)
+	return data, truncated, err == nil, err
+}
+
 // readCapped reads at most MaxFileBytes of f, reporting whether more was there.
 // A cut never leaves half a UTF-8 character or, when a line break is close,
 // half a line.
-func readCapped(f *os.File) (data []byte, truncated bool, err error) {
+func readCapped(f io.Reader) (data []byte, truncated bool, err error) {
 	data, err = io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
 	if err != nil {
 		return nil, false, err

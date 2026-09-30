@@ -256,6 +256,8 @@ type call struct {
 	mutating bool
 	// overrides are the attribute-driver neutralizations (guard.go).
 	overrides []kv
+	// config are extra -c settings for this command only (merge.conflictStyle).
+	config []string
 }
 
 // output is what a finished command produced.
@@ -326,6 +328,9 @@ func (s *settings) argv(c call) []string {
 		args = append(args, "--work-tree="+c.workTree)
 	}
 	for _, cfg := range hardenedConfig() {
+		args = append(args, "-c", cfg)
+	}
+	for _, cfg := range c.config {
 		args = append(args, "-c", cfg)
 	}
 	return append(args, c.args...)
@@ -410,6 +415,13 @@ func (s *settings) execOnce(ctx context.Context, c call, op string) (*output, er
 	}
 	out.truncated = stdout.overflowed()
 
+	if errors.Is(runErr, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		// git succeeded but something it started (a daemonized helper, a hook we
+		// failed to disarm) still held our pipes past WaitDelay. The output we have
+		// is complete; make sure the stray does not outlive us.
+		killGroup(cmd.Process.Pid)
+		runErr = nil
+	}
 	if runErr == nil {
 		if out.truncated && !c.killOnCap {
 			return out, &Error{Kind: KindTooLarge, Op: op, ExitCode: out.exit, Detail: fmt.Sprintf("output exceeded %d bytes", maxOut)}

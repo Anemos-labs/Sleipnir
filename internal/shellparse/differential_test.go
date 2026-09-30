@@ -2,7 +2,9 @@ package shellparse
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -206,4 +208,207 @@ func TestDifferentialGenerated(t *testing.T) {
 	if bad > 0 {
 		t.Fail()
 	}
+}
+
+// Word values matter as much as command names: path checks depend on exactly
+// what bash would pass. Each snippet is a list of arguments in shell syntax;
+// bash prints what it receives and Parse must report the same words.
+var argSnippets = []string{
+	`a b c`, `"a b" 'c d' e\ f`, `""`, `'' ""`, `"" x ''`, `a""b`, `a''b`, `""x''y`, `"a"'b'c`, `'a'"b"'c'`,
+	`"a\"b"`, `"a\\b"`, `"a\$b"`, "\"a\\`b\"", `"a\b"`, `"a\nb"`, `'a\nb'`, `'a\b'`, `a\ b`, `a\\b`, `a\"b`, `a\'b`, `\a\b\c`, `\$HOME`, `\~`, `"\~"`,
+	`$'a'`, `$'\x41'`, `$'\101'`, `$'\u00e9'`, `$'\U0001F600'`, `$'a\tb'`, `$'a\nb'`, `$'\''`, `$'\\'`, `$'\"'`, `$'\e[0m'`, `$'\cA'`, `$'\7'`, `$'\x2f\x65tc'`,
+	`$'a\0b'`, `$'\xZ'`, `$'\u'`, `$'\q'`, `$'a'$'b'`, `$'a''b'`, `$'\n'x`, `x$'\n'`, `$"a b"`, `$'\141\142\143'`, `$'\x7e/x'`,
+	"a\\\nb", "\"a\\\nb\"", "'a\\\nb'", "a \\\n b", `a\ `, `\ a`,
+	`{a,b}`, `{1..3}`, `{a,b}{c,d}`, `x{,y}`, `{a}`, `{}`, `\{a,b\}`, `"{a,b}"`, `'{a,b}'`, `a{b,c}d`, `{01..03}`, `{a..c}`, `{3..1}`, `{1..10..3}`,
+	`{-1..1}`, `{a,{b,c}}`, `{a,b}{1..2}`, `{,a}`, `{a,}`, `{,}`, `{a,b`, `a,b}`, `{a..}`, `{..a}`, `{1..a}`, `{a,b}"c"`, `"{a"',b}'`, `{a\,b,c}`, `{a,b\}c}`,
+	`x{1..3}y`, `{1..3}{a,b}`, `{{a,b},c}`, `{a,b}{,c}`, `a={b,c}`, `--opt={a,b}`, `{a,b}=x`, `{"a b",c}`, `{a\ b,c}`, `{a,b}$'\x41'`, `$'{a,b}'`,
+	`a#b`, `a\#b`, `'#'`, `"#"`, `#`, `a #b`, `-x -y --z=1`, `-- -x`, `=x`, `x=`, `x=y`, `%s`, `!x`, `a!b`, `*`, `?`, `[a]`, `~`, `~/x`, `$`, `$$`, `$1`, `${x}`,
+	`é`, `日本語`, `a😀b`, `"é"`, `$'\xc3\xa9'`,
+}
+
+func TestArgsDifferentialAgainstBash(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not installed")
+	}
+	dir := t.TempDir()
+	checked := 0
+	for _, sn := range argSnippets {
+		// Globs, tildes and variables depend on the environment; Parse leaves them
+		// textual by design, so only compare the deterministic ones.
+		if strings.ContainsAny(strings.ReplaceAll(sn, `\$`, ""), "*?[$~") && !strings.Contains(sn, "$'") && !strings.Contains(sn, `$"`) {
+			continue
+		}
+		if strings.Contains(sn, "$") && !strings.Contains(sn, "$'") && !strings.Contains(sn, `$"`) && !strings.Contains(sn, `\$`) {
+			continue
+		}
+		script := "showargs() { printf '<%s>' \"$@\"; }; showargs " + sn
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, bash, "--noprofile", "--norc", "-c", script)
+		cmd.Dir = dir
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + dir, "LC_ALL=C.UTF-8"}
+		out, err := cmd.Output()
+		cancel()
+		if err != nil {
+			continue // a syntax error or NUL in this bash; nothing to compare
+		}
+		if strings.Contains(sn, `\u`) || strings.Contains(sn, `\U`) {
+			if strings.Contains(string(out), `\u`) || strings.Contains(string(out), `\U`) {
+				continue // no UTF-8 locale here: bash leaves \u escapes undecoded
+			}
+		}
+		an := Parse("showargs " + sn)
+		if len(an.Commands) == 0 {
+			t.Errorf("no command parsed for %q", sn)
+			continue
+		}
+		var b strings.Builder
+		for _, a := range an.Commands[0].Args {
+			b.WriteString("<" + a + ">")
+		}
+		if len(an.Commands[0].Args) == 0 {
+			b.WriteString("<>") // printf with no arguments still prints its format once
+		}
+		checked++
+		if b.String() != string(out) {
+			t.Errorf("args of %q:\n  bash  %q\n  Parse %q (parsed=%v)", sn, string(out), b.String(), an.Parsed)
+		}
+	}
+	if checked < 100 {
+		t.Errorf("only %d snippets were compared", checked)
+	}
+	t.Logf("compared the words of %d snippets with bash", checked)
+}
+
+// Redirections write files; a write the parser misses is a permission hole. Run
+// snippets in a scratch directory and require that every file bash created is
+// the target of some write redirection Parse reported.
+func TestRedirectsDifferentialAgainstBash(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not installed")
+	}
+	forms := []string{
+		`echo x > FILE`, `echo x >FILE`, `echo x>FILE`, `echo x >> FILE`, `echo x >| FILE`, `echo x &> FILE`, `echo x &>> FILE`, `echo x 2> FILE`, `echo x 1> FILE`,
+		`echo x 3> FILE`, `echo x 12> FILE`, `echo x 2>> FILE`, `> FILE echo x`, `>FILE`, `: > FILE`, `echo x > FILE 2>&1`, `echo x 2>&1 > FILE`, `echo x <> FILE`,
+		`echo x > "FILE"`, `echo x > 'FILE'`, `echo x > F"IL"E`, `echo x > FIL\E`, `echo x > $'FILE'`, `cat <<EOF > FILE` + "\nbody\nEOF", `cat > FILE <<EOF` + "\nbody\nEOF",
+		`cat <<< body > FILE`, `exec 5> FILE`, `exec > FILE`, `echo x | tee FILE`, `echo x | cat > FILE`, `echo x > {FILE,FILE}`, `echo x > FILE; echo y > FILE`,
+		`{ echo x; } > FILE`, `( echo x ) > FILE`, `for i in 1; do echo x; done > FILE`, `while false; do :; done > FILE`, `if true; then echo x; fi > FILE`,
+		`echo x > FILE &`, `echo x | cat | cat > FILE`, `echo $(echo x > FILE)`, "echo `echo x > FILE`", `cat <(echo x > FILE)`, `bash -c 'echo x > FILE'`,
+		`eval 'echo x > FILE'`, `eval "echo x > FILE"`, `echo x > FILE || true`, `true && echo x > FILE`, `f() { echo x > FILE; }; f`, `echo x > "F ILE"`,
+		`FOO=1 echo x > FILE`, `env echo x > FILE`, `nohup echo x > FILE`, `time echo x > FILE`, `echo x >FILE&&:`, `echo x 2>FILE 1>&2`,
+		`echo x > FILE >> FILE2`, `echo x > FILE 2> FILE2`, `echo x > FILE1 > FILE`, `[[ -n x ]] > FILE`, `case x in x) echo y > FILE;; esac`,
+		`trap 'echo x > FILE' EXIT`, `echo x > FILE # comment`, "echo x \\\n > FILE", `echo x > ./FILE`, `echo x > sub/FILE`,
+	}
+	names := []string{"out", "a b", "f'x", "-dash", "ünï", "sub/deep"}
+	total := 0
+	for _, form := range forms {
+		for ni, name := range names {
+			if ni > 2 && (len(form)+ni)%3 != 0 {
+				continue // sample the odd names
+			}
+			if strings.Contains(form, `$'FILE'`) || strings.Contains(form, `F"IL"E`) || strings.Contains(form, `FIL\E`) {
+				if name != "out" {
+					continue // the spelling tricks only make sense for the plain name
+				}
+			}
+			snippet := spell(form, name)
+			dir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(dir, "sub", "deep"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			cmd := exec.CommandContext(ctx, bash, "--noprofile", "--norc", "-c", snippet)
+			cmd.Dir = dir
+			cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + dir, "LC_ALL=C.UTF-8"}
+			_ = cmd.Run()
+			cancel()
+			created := map[string]bool{}
+			_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+				if err == nil && fi.Mode().IsRegular() {
+					rel, _ := filepath.Rel(dir, p)
+					created[rel] = true
+				}
+				return nil
+			})
+			if len(created) == 0 {
+				continue
+			}
+			an := Parse(snippet)
+			targets := map[string]bool{}
+			for _, c := range an.Commands {
+				for _, r := range c.Redirects {
+					op := strings.TrimLeft(r.Op, "0123456789")
+					switch op {
+					case ">", ">>", ">|", "&>", "&>>", "<>":
+						targets[filepath.Clean(r.Target)] = true
+					case ">&":
+						if !allDigitsOrDash(r.Target) {
+							targets[filepath.Clean(r.Target)] = true
+						}
+					}
+				}
+				// tee and cat > are separate commands; their file operands are seen as arguments
+				for _, a := range c.Args {
+					targets[filepath.Clean(a)] = true
+				}
+			}
+			total++
+			for f := range created {
+				if !targets[f] {
+					t.Errorf("bash created %q but Parse reports no write to it (targets %v, parsed=%v):\n  %q", f, keys(targets), an.Parsed, snippet)
+				}
+			}
+		}
+	}
+	t.Logf("compared %d redirect snippets that created files", total)
+	if total < 100 {
+		t.Errorf("only %d snippets produced files; the test is not testing much", total)
+	}
+}
+
+// spell substitutes a file name into a redirect form. Forms that already put
+// FILE inside their own quoting get the raw name; the others get it shell-quoted
+// when it needs that.
+func spell(form, name string) string {
+	form = strings.ReplaceAll(strings.ReplaceAll(form, "FILE2", "second"), "FILE1", "first")
+	for _, own := range []string{`"FILE"`, `'FILE'`, `$'FILE'`, `F"IL"E`, `FIL\E`, `"F ILE"`} {
+		if strings.Contains(form, own) {
+			return strings.ReplaceAll(form, "FILE", name)
+		}
+	}
+	if strings.ContainsAny(name, " '") {
+		name = "'" + strings.ReplaceAll(name, "'", `'\''`) + "'"
+	}
+	return strings.ReplaceAll(form, "FILE", name)
+}
+
+func allDigitsOrDash(s string) bool {
+	if s == "-" {
+		return true
+	}
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func keys(m map[string]bool) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

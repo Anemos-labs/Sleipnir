@@ -445,3 +445,96 @@ func TestReconIgnoresTestdataAndListsOnlyRealBinaries(t *testing.T) {
 		t.Errorf("only cmd/<name> directories are binaries:\n%s", all)
 	}
 }
+
+// TestReadOnlyRoleIsEnforcedByTheEngine: a reviewer cannot write files or run
+// mutating commands (including ones hidden behind a permitted prefix), but can
+// still run the project's checks.
+func TestReadOnlyRoleIsEnforcedByTheEngine(t *testing.T) {
+	repo := newRepo(t)
+	whoRe := regexp.MustCompile(`you: (\S+) \((\w+)\)`)
+	taskRe := regexp.MustCompile(`task (T\d+)`)
+	var mu sync.Mutex
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		role, tid := "", ""
+		for i := len(c.Messages) - 1; i >= 0; i-- {
+			if c.Messages[i].Role != "user" {
+				continue
+			}
+			if m := whoRe.FindStringSubmatch(c.Messages[i].Content); m != nil && role == "" {
+				role = m[2]
+			}
+			if m := taskRe.FindStringSubmatch(c.Messages[i].Content); m != nil && tid == "" {
+				tid = m[1]
+			}
+		}
+		n := assistantTurns(c)
+		if role == "manager" {
+			switch n {
+			case 0:
+				return mock.Reply{Text: "plan", ToolCalls: []mock.ToolCall{
+					call("m1", "task", map[string]any{"action": "create", "title": "Review the repo", "role": "reviewer"}),
+					call("m2", "spawn", map[string]any{"role": "reviewer", "task": "T1"}),
+					call("m3", "wait", map[string]any{"until": []string{"T1"}, "timeout_sec": 20}),
+				}}
+			case 1:
+				return mock.Reply{Text: "accepting", ToolCalls: []mock.ToolCall{call("m4", "task", map[string]any{"action": "accept", "id": "T1"})}}
+			}
+			return mock.Reply{Text: "reviewed"}
+		}
+		switch n {
+		case 0:
+			return mock.Reply{Text: "trying", ToolCalls: []mock.ToolCall{
+				call("r1", "write", map[string]any{"path": "pwned.txt", "content": "x"}),
+				call("r2", "bash", map[string]any{"command": "touch pwned2.txt"}),
+				call("r3", "bash", map[string]any{"command": "go vet ./server && touch pwned3.txt"}),
+				call("r4", "bash", map[string]any{"command": "go vet ./server"}),
+			}}
+		case 1:
+			return mock.Reply{Text: "done", ToolCalls: []mock.ToolCall{call("r5", "task", map[string]any{"action": "done", "id": tid, "text": "reviewed"})}}
+		}
+		return mock.Reply{Text: "summary"}
+	})
+	o := opts(t, repo, client, model)
+	o.Swarm = true
+	o.Mode = perm.ModeAcceptEdits // the session may edit; the reviewer role may not
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Run(context.Background(), "review the repository"); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"pwned.txt", "pwned2.txt", "pwned3.txt"} {
+		if _, err := os.Stat(filepath.Join(repo, f)); err == nil {
+			t.Errorf("read-only role created %s", f)
+		}
+	}
+	// Results the reviewer saw, from the recorded transcript.
+	var denied, vetRan int
+	for _, e := range readEvents(t, s.Dir) {
+		if e.Type != events.TypeToolResult || e.Agent != "rv-1" {
+			continue
+		}
+		var r struct {
+			ID    string `json:"id"`
+			Error bool   `json:"error"`
+		}
+		json.Unmarshal(e.Data, &r)
+		switch r.ID {
+		case "r1", "r2", "r3":
+			if r.Error {
+				denied++
+			}
+		case "r4":
+			if !r.Error {
+				vetRan++
+			}
+		}
+	}
+	if denied != 3 || vetRan != 1 {
+		t.Fatalf("expected 3 denied writes/mutations and 1 permitted vet, got denied=%d vet=%d", denied, vetRan)
+	}
+}

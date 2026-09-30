@@ -100,11 +100,11 @@ func bp(after core.BlockRef, ttl time.Duration, label string) core.Breakpoint {
 // wireThinking is a thinking block exactly as the API sends it, with the
 // whitespace and escapes a re-marshal would change.
 func wireThinking(sig string) json.RawMessage {
-	return json.RawMessage(`{"type":"thinking", "thinking":"weigh <a> & <b>  then decide", "signature":"` + sig + `"}`)
+	return json.RawMessage(`{"type":"thinking", "thinking":"weigh <a> & <b>\u2028 then decide", "signature":"` + sig + `"}`)
 }
 
 func thinkingBlock(sig string) core.Block {
-	return core.Block{Kind: core.BlockThinking, Text: "weigh <a> & <b>  then decide", Wire: wireThinking(sig), WireFormat: "anthropic"}
+	return core.Block{Kind: core.BlockThinking, Text: "weigh <a> & <b>" + string(rune(0x2028)) + " then decide", Wire: wireThinking(sig), WireFormat: "anthropic"}
 }
 
 func toolUseWire(id, name, input string) core.Block {

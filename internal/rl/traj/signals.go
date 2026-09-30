@@ -269,7 +269,7 @@ func (b *builder) toolSignals(s map[string]float64) {
 				}
 				st.lastRead = turn
 			}
-		case writeTools[t.name]:
+		case writeTools[t.name] && t.has && !t.isErr:
 			for _, p := range editedPaths(t.name, in) {
 				if st := reads[id][filepath.Clean(p)]; st != nil {
 					st.lastWrite = turn

@@ -83,6 +83,10 @@ func TestAskAnswers(t *testing.T) {
 	if last.Command != q.Command || last.Role != "coder" || last.Agent != "a1" {
 		t.Errorf("prompter saw %+v", last)
 	}
+	// The one-line summary a human reads says why they are being asked.
+	if !strings.HasPrefix(last.Summary, q.Summary) || !strings.Contains(last.Summary, "not on the read-only allowlist") {
+		t.Errorf("prompt summary %q", last.Summary)
+	}
 }
 
 func TestRememberSession(t *testing.T) {

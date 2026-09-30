@@ -436,26 +436,36 @@ func expandGlob(pattern string, budget *int) (matches []string, ok bool) {
 				if *budget--; *budget < 0 {
 					return nil, false
 				}
-				ents, err := os.ReadDir(realPath(c))
+				d, err := os.Open(realPath(c))
 				if err != nil {
 					continue
 				}
-				for _, e := range ents {
-					if !shellSegMatch(seg, e.Name()) {
-						continue
-					}
-					p := filepath.Join(c, e.Name())
-					if !last {
-						// only directories (or links to them) can continue the path
-						if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
+				// Read in batches so a directory with millions of entries costs
+				// only the budget, not the whole listing.
+				for {
+					ents, err := d.ReadDir(256)
+					for _, e := range ents {
+						if *budget--; *budget < 0 {
+							d.Close()
+							return nil, false
+						}
+						if !shellSegMatch(seg, e.Name()) {
 							continue
 						}
+						p := filepath.Join(c, e.Name())
+						if !last {
+							// only directories (or links to them) can continue the path
+							if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
+								continue
+							}
+						}
+						next = append(next, p)
 					}
-					if *budget--; *budget < 0 {
-						return nil, false
+					if err != nil || len(ents) == 0 {
+						break
 					}
-					next = append(next, p)
 				}
+				d.Close()
 			}
 		}
 		cur = next

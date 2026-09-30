@@ -3,6 +3,7 @@ package perm
 import (
 	"path"
 	"strings"
+	"unicode"
 )
 
 // access is one file-system touch a request would make.
@@ -70,7 +71,7 @@ var hardSystemFiles = []string{"/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/
 // are both caught.
 func (rs *resolver) protect(a access) protection {
 	var best protection
-	for _, f := range uniq(strings.ToLower(a.lex), strings.ToLower(a.real)) {
+	for _, f := range uniq(fold(a.lex), fold(a.real)) {
 		if p := rs.protectForm(f, a); p.tier > best.tier {
 			best = p
 		}
@@ -98,7 +99,7 @@ func (rs *resolver) protectForm(f string, a access) protection {
 		base = segs[len(segs)-1]
 	}
 
-	for _, h := range uniq(strings.ToLower(rs.home), strings.ToLower(rs.homeReal)) {
+	for _, h := range uniq(fold(rs.home), fold(rs.homeReal)) {
 		if h == "" || h == "/" {
 			continue
 		}
@@ -213,7 +214,7 @@ func harmlessDevice(f string) bool {
 // a project, but a root of "/" must not switch the system-directory rule off.
 func (rs *resolver) inStrictWorkspace(f string) bool {
 	for _, r := range rs.roots {
-		l, re := strings.ToLower(r.lex), strings.ToLower(r.real)
+		l, re := fold(r.lex), fold(r.real)
 		if l == "/" || re == "/" {
 			continue
 		}
@@ -233,7 +234,7 @@ func (rs *resolver) inStrictWorkspace(f string) bool {
 // credential directories whatever the variable holds, and a write to
 // "$DIR/.git/config" is a write into .git.
 func dynamicSuspect(raw string, write bool) string {
-	segs := splitSegs(strings.ToLower(raw))
+	segs := splitSegs(fold(raw))
 	for i, sg := range segs {
 		switch {
 		case sg == ".ssh" || sg == ".aws" || sg == ".gnupg":
@@ -248,4 +249,32 @@ func dynamicSuspect(raw string, write bool) string {
 		return raw + " names an .env file"
 	}
 	return ""
+}
+
+// fold maps a path to a form in which names that a case-insensitive file system
+// would treat as one compare equal: ".SSH" and ".ssh", but also ".\u017fsh" (long
+// s) and ".\u212aube" (Kelvin sign), which APFS folds onto "s" and "k". Protected
+// names are written in lower-case ASCII, which fold leaves alone.
+func fold(s string) string {
+	ascii := true
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			ascii = false
+			break
+		}
+	}
+	if ascii {
+		return strings.ToLower(s)
+	}
+	var b strings.Builder
+	for _, r := range s {
+		min := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			if f < min {
+				min = f
+			}
+		}
+		b.WriteRune(unicode.ToLower(min))
+	}
+	return b.String()
 }

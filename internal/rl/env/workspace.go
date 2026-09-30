@@ -10,10 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/rl"
@@ -97,6 +95,10 @@ type Workspaces struct {
 	baseCtx context.Context
 	cancel  context.CancelFunc
 	bg      sync.WaitGroup
+
+	emptyOnce sync.Once
+	emptyDir  string
+	emptyErr  error
 
 	mu       sync.Mutex
 	loaded   map[string]*snapshot
@@ -641,7 +643,7 @@ func (w *Workspace) Cleanup() error {
 	return err
 }
 
-// Remove deletes a checkout directory under Root/verify or Root/ws.
+// removeCheckout deletes a checkout directory under Root/verify or Root/ws.
 func (m *Workspaces) removeCheckout(co *checkout) {
 	if co == nil || co.dir == "" {
 		return
@@ -754,8 +756,3 @@ func IsAgentLimit(err error) bool {
 	var le *limitError
 	return errors.As(err, &le)
 }
-
-// cpuCount is used for sizing worker pools in tests.
-var cpuCount = atomic.Int32{}
-
-func init() { cpuCount.Store(int32(runtime.NumCPU())) }

@@ -27,14 +27,17 @@
 // # Built-in protections
 //
 // Hard (no rule or mode lifts them): any access to ~/.ssh private keys (and
-// writes to anything in ~/.ssh), ~/.aws, ~/.gnupg, ~/.config/gcloud,
+// writes to anything in ~/.ssh), ~/.aws, ~/.gnupg, ~/.config/gcloud (also as
+// another user's home or a copy outside the workspace),
 // /proc/*/environ, /etc/shadow and friends; writes to .git/** (change
 // repositories with git commands, which are judged as commands and not as
 // file writes); writes to /etc /usr /bin /sbin /boot /dev /lib /sys /proc
 // (except harmless devices such as /dev/null); recursive delete, chmod or
 // archive of a directory that contains any of those (rm -rf ~, rm -rf /,
 // grep -r x ~). A workspace that itself sits under a system directory keeps
-// working; a workspace of "/" does not switch the rule off.
+// working; a workspace of "/" does not switch the rule off. Protected names
+// match case-insensitively, including the Unicode folds a case-insensitive
+// file system applies (".SSH", ".\u017fsh").
 //
 // Guarded (denied unless an Allow rule names the path; a blanket Read or Read(**)
 // does not count): **/.env and **/.env.*, ~/.ssh public keys, known_hosts and
@@ -94,9 +97,13 @@
 // bypass: a command substitution or process substitution, input the parser marks
 // unparsed (unterminated quotes, case, function definitions, ...), a pipe into a
 // shell or interpreter (curl | sh), a command name built from a variable, an
-// environment assignment that changes what runs (PATH, LD_PRELOAD, GIT_*), and
-// paths that cannot be resolved statically ($X). Inner commands are still
-// checked, so echo $(cat ~/.ssh/id_rsa) is denied, not merely asked about.
+// environment assignment that changes what runs (PATH, LD_PRELOAD, GIT_*),
+// paths that cannot be resolved statically ($X), quoted text that looks like a
+// command substitution where bash could evaluate it anyway (declare 'a[$(cmd)]',
+// x='a[$(cmd)]'; echo $((x))), and a line with thousands of commands or
+// operands. Inner commands are still checked, so echo $(cat ~/.ssh/id_rsa) is
+// denied, not merely asked about, and so are the strings given to eval, sh -c,
+// su -c and trap, the word list of a for loop, and heredocs fed to a shell.
 //
 // High risk (ask; plan mode denies; a blanket Bash(*) does not lift it): sudo and
 // friends, rm -rf of the workspace, home, "/", "*" or a parent, recursive chmod
@@ -120,10 +127,14 @@
 // is denied with reason "approval required: ...". Prompter calls are serialised
 // per Engine, so a swarm never shows two questions at once, and identical
 // requests (same tool, command, directory, paths, effects) that arrive while one
-// is pending share a single answer. A caller's context cancels only that caller;
-// if the caller that was asking gives up, a waiting one asks again itself. The
-// Prompter runs while the engine holds its prompt lock, so it must not trigger
-// another question on the same Engine.
+// is pending share a single answer. The Prompter is given the request with the
+// reason for asking appended to Summary, the one line a human reads.
+//
+// A caller's context cancels only that caller; if the caller that was asking
+// gives up, a waiting one asks again itself. The Prompter runs while the engine
+// holds its prompt lock, so it must not trigger another question on the same
+// Engine.
+//
 // Decision.Remember turns an answer into an exact rule (a command, a path, a
 // host) for the session or, through Config.Persist, the project; a refusal is
 // remembered as a Deny rule. Constructs that always ask (substitutions and the
@@ -134,7 +145,10 @@
 // Request.Role selects a RoleProfile from Config.Roles. The request is judged
 // under the session and under the profile's overlay, and the more severe outcome
 // stands, so a profile can tighten (deny, ask, a stricter mode; a read-only
-// reviewer is Mode: ModePlan) and never loosen.
+// reviewer is Mode: ModePlan) and never loosen. A role that takes a stricter
+// mode than the session is judged from scratch under it: the session's Allow
+// rules do not carve exceptions out of the role's mode, only the role's own
+// Allow rules do (and only up to what the session itself permits).
 //
 // # Limits
 //
