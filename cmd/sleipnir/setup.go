@@ -1,0 +1,218 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/reee344/sleipnir/internal/config"
+	"github.com/reee344/sleipnir/internal/events"
+)
+
+func init() {
+	extraCommands["init"] = cmdInit
+	extraCommands["config"] = cmdConfig
+	extraCommands["sessions"] = cmdSessions
+}
+
+// cmdInit writes a starter project configuration and instruction file. It only
+// ever creates files that do not exist, and merges through config.Save, which
+// refuses to produce a configuration that would not load.
+func cmdInit(_ context.Context, args []string) error {
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	user := fs.Bool("user", false, "write ~/.sleipnir/config.json instead of the project's")
+	model := fs.String("model", "", "default model, e.g. heimdall/deepseek/deepseek-v4.1-flash")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	wd, _ := os.Getwd()
+	root, _ := config.FindRoot(wd)
+	home, _ := os.UserHomeDir()
+	path := config.ProjectConfigPath(root)
+	if *user {
+		path = config.UserConfigPath(home)
+	}
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("init: %s already exists; edit it, or use `sleipnir config` to inspect it", path)
+	}
+	def := *model
+	if def == "" {
+		switch {
+		case os.Getenv("HEIMDALL_API_KEY") != "":
+			def = "heimdall/deepseek/deepseek-v4.1-flash"
+		case os.Getenv("OPENROUTER_API_KEY") != "":
+			def = "openrouter/deepseek/deepseek-chat"
+		case os.Getenv("OPENAI_API_KEY") != "":
+			def = "openai/gpt-5-mini"
+		}
+	}
+	patch := map[string]any{
+		"providers": map[string]any{
+			// A self-hosted policy server (vLLM/SGLang): token capture makes rollouts RL-ready.
+			"local": map[string]any{
+				"base_url": "http://127.0.0.1:8000/v1",
+				"options":  map[string]any{"capture_tokens": true},
+			},
+		},
+		"permissions": map[string]any{"mode": "default", "deny": []string{"Read(./.env)", "Read(./secrets/**)"}},
+		"swarm":       map[string]any{"max_agents": 12, "isolation": "shared"},
+	}
+	if def != "" {
+		patch["models"] = map[string]any{"default": def}
+	}
+	if err := config.Save(path, patch); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "wrote %s\n", path)
+	if !*user {
+		agents := filepath.Join(root, "AGENTS.md")
+		if _, err := os.Stat(agents); os.IsNotExist(err) {
+			body := "# Project instructions\n\nCommands to build, test and lint, conventions and things to avoid go here.\nSleipnir pins this file in the shared prompt layer, so keep it short and dense.\n\n- Build: \n- Test: \n- Lint: \n"
+			if err := os.WriteFile(agents, []byte(body), 0o644); err == nil {
+				fmt.Fprintf(os.Stderr, "wrote %s\n", agents)
+			}
+		}
+		ignore := filepath.Join(root, ".gitignore")
+		if b, _ := os.ReadFile(ignore); !strings.Contains(string(b), ".sleipnir/config.local.json") {
+			if f, err := os.OpenFile(ignore, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+				fmt.Fprintln(f, "\n# Sleipnir local settings\n.sleipnir/config.local.json")
+				f.Close()
+			}
+		}
+	}
+	fmt.Fprintln(os.Stderr, "next: sleipnir doctor --model <model> --deep, then sleipnir chat")
+	return nil
+}
+
+// cmdConfig shows the effective configuration and where each value came from.
+func cmdConfig(_ context.Context, args []string) error {
+	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	trust := fs.Bool("trust-project", false, "apply security-sensitive settings from project files")
+	asJSON := fs.Bool("json", false, "print the effective configuration as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, rep, err := config.Load(config.LoadOpts{UntrustedProject: !*trust})
+	if rep != nil && !*asJSON {
+		fmt.Fprint(os.Stderr, rep.String())
+	}
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(cfg)
+	}
+	if issues := cfg.Validate(); len(issues) > 0 {
+		for _, is := range issues {
+			fmt.Fprintln(os.Stderr, is.Error())
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "configuration is valid")
+	}
+	return nil
+}
+
+// cmdSessions lists recorded sessions, newest first.
+func cmdSessions(_ context.Context, args []string) error {
+	fs := flag.NewFlagSet("sessions", flag.ExitOnError)
+	dir := fs.String("dir", "", "sessions directory (default ~/.sleipnir/sessions)")
+	n := fs.Int("n", 20, "how many to list")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	root := *dir
+	if root == "" {
+		home := os.Getenv("SLEIPNIR_HOME")
+		if home == "" {
+			h, _ := os.UserHomeDir()
+			home = filepath.Join(h, ".sleipnir")
+		}
+		root = filepath.Join(home, "sessions")
+	}
+	ents, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		fmt.Fprintln(os.Stderr, "no sessions yet")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	type row struct {
+		id, model, prompt string
+		when              time.Time
+		cost              float64
+	}
+	var rows []row
+	for _, e := range ents {
+		if !e.IsDir() {
+			continue
+		}
+		r := row{id: e.Name()}
+		if fi, err := e.Info(); err == nil {
+			r.when = fi.ModTime()
+		}
+		summarize(filepath.Join(root, e.Name(), "events.jsonl"), &r.model, &r.prompt, &r.cost)
+		rows = append(rows, r)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
+	if len(rows) > *n {
+		rows = rows[:*n]
+	}
+	for _, r := range rows {
+		fmt.Printf("%s  %-28s $%-8.4f %s\n", r.id, r.model, r.cost, r.prompt)
+	}
+	return nil
+}
+
+// summarize reads just enough of a log for a listing line: the model from
+// session.start, the first user input, and the cost from session.end.
+func summarize(path string, model, prompt *string, usd *float64) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 16<<20)
+	for sc.Scan() {
+		var e events.Event
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		switch e.Type {
+		case events.TypeSessionStart:
+			var d struct{ Model string }
+			json.Unmarshal(e.Data, &d)
+			*model = d.Model
+		case events.TypeUserInput:
+			if *prompt == "" {
+				var d struct{ Text string }
+				json.Unmarshal(e.Data, &d)
+				*prompt = oneLineCLI(d.Text, 70)
+			}
+		case events.TypeSessionEnd:
+			var d struct {
+				Cost float64 `json:"cost_usd"`
+			}
+			json.Unmarshal(e.Data, &d)
+			*usd = d.Cost
+		}
+	}
+}
+
+func oneLineCLI(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > n {
+		s = s[:n] + "…"
+	}
+	return s
+}

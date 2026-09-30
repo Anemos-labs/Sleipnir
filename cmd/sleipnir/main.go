@@ -73,6 +73,9 @@ Usage:
   sleipnir <command> [flags]
 
 Commands:
+  init      write a starter .sleipnir/config.json and AGENTS.md for this project
+  config    show the effective configuration and where each value came from
+  sessions  list recorded sessions
   chat      interactive session (slash commands, Ctrl-C cancels a turn)
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
   swarm     shorthand for run --swarm
