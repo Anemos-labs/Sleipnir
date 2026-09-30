@@ -37,6 +37,9 @@ func (s *Swarm) guard(what string, fn func()) {
 func (s *Swarm) superviseOnce(now time.Time) {
 	s.guard("budget", func() { _ = s.budgetErr() })
 	s.guard("alerts", func() { s.Board.ExpireAlerts(); s.Leases.Sweep() })
+	if s.mail != nil {
+		s.guard("mailman", func() { s.mail.sweep(now) })
+	}
 	s.mu.Lock()
 	ms := make([]*member, 0, len(s.members))
 	for _, m := range s.members {
@@ -51,8 +54,8 @@ func (s *Swarm) superviseOnce(now time.Time) {
 
 func (s *Swarm) superviseMember(m *member, now time.Time) {
 	delivered := m.pump(s)
-	if m.manager {
-		return
+	if m.manager || m.service {
+		return // the manager is never retired or watched; the mailman has its own watch (mailman.go)
 	}
 	if delivered {
 		s.wake(m) // a digest just arrived: no-op unless the worker is idle

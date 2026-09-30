@@ -27,18 +27,31 @@ type Message struct {
 	// changed).
 	Kind string `json:"kind,omitempty"`
 	Text string `json:"text"`
+	// Via and Origins are set on a digest the mailman delivered (mailman.go), never on
+	// anything an agent sent: Via is the mailman that wrote the text (From), Origins the
+	// harness's own list of who sent the messages the digest stands for ("be-1 x2",
+	// "fe-1"). The recipient always sees both in the header: a digest cannot hide who said
+	// what, and the mailman cannot choose the names.
+	Via     string   `json:"via,omitempty"`
+	Origins []string `json:"origins,omitempty"`
 }
 
 // Format renders the message as the text delivered into the recipient's thread:
 // a header the harness writes ("[mail <id> <kind> from <agent>]") and the message
 // text. The router has already reduced the text to one printable line in which
 // nothing can pass for another header or a closing tag. The format is short and
-// fixed: it lands in cached history and is later compacted like any other turn.
+// fixed: it lands in cached history and is later compacted like any other turn. A
+// digest from the mailman names the mailman and, from the harness's own record, every
+// original sender: "[mail <id> <kind> via <mailman> from <senders>]".
 func (m Message) Format() string {
-	if m.Kind == "" || m.Kind == "info" {
-		return fmt.Sprintf("[mail %s from %s] %s", m.ID, m.From, m.Text)
+	kind := ""
+	if m.Kind != "" && m.Kind != "info" {
+		kind = m.Kind + " "
 	}
-	return fmt.Sprintf("[mail %s %s from %s] %s", m.ID, m.Kind, m.From, m.Text)
+	if m.Via != "" {
+		return fmt.Sprintf("[mail %s %svia %s from %s] %s", m.ID, kind, m.Via, strings.Join(m.Origins, ", "), m.Text)
+	}
+	return fmt.Sprintf("[mail %s %sfrom %s] %s", m.ID, kind, m.From, m.Text)
 }
 
 // untrustedNote closes every message an agent wrote: what follows the header is
@@ -92,6 +105,7 @@ type Router struct {
 
 	mu        sync.Mutex
 	deliver   func(m Message) error
+	divert    func(m Message) bool
 	seq       int
 	sender    map[string][]time.Time
 	pair      map[string][]time.Time
@@ -124,6 +138,24 @@ func (r *Router) SetDeliver(f func(Message) error) {
 	r.mu.Lock()
 	r.deliver = f
 	r.mu.Unlock()
+}
+
+// SetDivert installs the mailman's intake: after a message has passed validation and
+// the rate limits, divert may take it (true) instead of it being delivered now. Its
+// sender is told it was sent; the intake delivers it later, directly or as part of a
+// digest, and is responsible for every message it takes.
+func (r *Router) SetDivert(f func(Message) bool) {
+	r.mu.Lock()
+	r.divert = f
+	r.mu.Unlock()
+}
+
+// nextID returns a fresh message id (the mailman's digests are messages too).
+func (r *Router) nextID() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seq++
+	return fmt.Sprintf("m%d", r.seq)
 }
 
 func prune(ts []time.Time, cutoff time.Time) []time.Time {
@@ -256,10 +288,16 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	r.recent[dk] = now
 	r.seq++
 	m := Message{ID: fmt.Sprintf("m%d", r.seq), From: from, To: to, Kind: kind, Text: text}
-	deliver := r.deliver
+	deliver, divert := r.deliver, r.divert
 	r.mu.Unlock()
 
 	_, _ = r.ev.Emit(from, events.TypeMailSend, m)
+	if divert != nil && divert(m) {
+		// The mailman's intake holds it now. The sender's answer says so: the message may
+		// reach the recipient as part of a digest, some seconds from now.
+		m.Via = "mailman"
+		return m, nil
+	}
 	if err := deliver(m); err != nil {
 		// Nothing was delivered: give the sender its budget back and say so.
 		r.mu.Lock()

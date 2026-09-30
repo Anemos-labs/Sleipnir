@@ -24,7 +24,7 @@ func TestDefaults(t *testing.T) {
 		{"cache.min_layer_for_breakpoint", d.Cache.MinLayerForBreakpoint, 1500},
 		{"cache.prewarm", d.Cache.Prewarm, true},
 		{"cache.keepalive", d.Cache.Keepalive, false},
-		{"swarm.isolation", d.Swarm.Isolation, "shared"},
+		{"swarm.isolation", d.Swarm.Isolation, "none"},
 		{"tools.max_output_chars", d.Tools.MaxOutputChars, 24000},
 		{"tools.default_timeout_sec", d.Tools.DefaultTimeoutSec, 120},
 		{"tools.max_timeout_sec", d.Tools.MaxTimeoutSec, 600},
@@ -108,7 +108,7 @@ func TestEveryJSONTagIsSnakeCase(t *testing.T) {
 func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 	want := map[string][]string{
 		"Cache":       {"shared_ttl", "min_layer_for_breakpoint", "compact_threshold_tokens", "thread_soft_limit_tokens", "hot_max_tokens", "affinity_shards", "prewarm", "keepalive"},
-		"Swarm":       {"max_agents", "requests_per_minute", "max_concurrent_requests", "isolation", "budget_usd"},
+		"Swarm":       {"max_agents", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "budget_usd"},
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts"},
 		"UI":          {"theme", "editor"},
 		"Training":    {"enabled", "redact_secrets", "dir"},
@@ -149,7 +149,7 @@ func TestUnmarshalOverlaysOnAndPreservesUnknownKeys(t *testing.T) {
 	if cfg.Cache.Prewarm || cfg.Swarm.MaxAgents != 7 {
 		t.Fatalf("cfg = %+v", cfg)
 	}
-	if cfg.Cache.SharedTTL != "5m" || cfg.Cache.MinLayerForBreakpoint != 1500 || cfg.Swarm.Isolation != "shared" {
+	if cfg.Cache.SharedTTL != "5m" || cfg.Cache.MinLayerForBreakpoint != 1500 || cfg.Swarm.Isolation != "none" {
 		t.Fatalf("keys absent from the JSON must keep their values: %+v", cfg)
 	}
 	if string(cfg.Extra["future_feature"]) != `{"a": [1, 2]}` || string(cfg.Extra["$schema"]) != `"s"` {

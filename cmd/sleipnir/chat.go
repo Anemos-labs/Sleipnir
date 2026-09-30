@@ -39,6 +39,11 @@ func cmdChat(ctx context.Context, args []string) error {
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
+	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
+	isolation, commit := isolationFlags(fs)
+	mailman := mailmanFlag(fs)
+	roleModels := kvFlags{}
+	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)")
 	resume := resumeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -48,10 +53,11 @@ func cmdChat(ctx context.Context, args []string) error {
 		return err
 	}
 	in := bufio.NewReader(os.Stdin)
-	o := session.Options{
+	o := chatOptions(session.Options{
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
-	}
+		Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
+	})
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		o.Prompter = session.TerminalPrompter(in, os.Stderr)
 	}
@@ -69,7 +75,12 @@ func cmdChat(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer func() {
+		// An isolated session ends by applying what passed verification to the checkout
+		// (a no-op, and nil, for any other session); the person is told what happened.
+		printIntegration(os.Stderr, finishRun(ctx, s), false)
+		s.Close()
+	}()
 
 	fmt.Fprintf(os.Stderr, "sleipnir %s · %s · %s · session %s\n", version, s.Model.ID, modeName(s), s.ID)
 	if s.Resumed() {
@@ -102,6 +113,15 @@ func cmdChat(ctx context.Context, args []string) error {
 		}
 		runTurn(ctx, s, line)
 	}
+}
+
+// chatOptions marks a session as interactive: a person is at the keyboard across
+// turns. In a swarm that means the manager is not held to its board (workers
+// legitimately outlive a turn) and finished work wakes it instead; run and swarm
+// are batch runs and do not set it.
+func chatOptions(o session.Options) session.Options {
+	o.Interactive = true
+	return o
 }
 
 func modeName(s *session.Session) string {
@@ -381,6 +401,11 @@ func printAgents(s *session.Session) {
 	}
 	for _, t := range snap.Tasks {
 		fmt.Fprintf(os.Stderr, "  %-4s %-8s %-8s %s\n", t.ID, t.Status, t.Owner, firstText(t.Title, 80))
+	}
+	if s.Swarm.MailmanEnabled() {
+		st := s.Swarm.MailmanStats()
+		fmt.Fprintf(os.Stderr, "  mailman: %d worker messages taken, %d digests covering %d, %d delivered directly, %d waiting\n",
+			st.Parcels, st.Digests, st.Digested, st.Direct, st.Pending)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/session"
+	"github.com/reee344/sleipnir/internal/swarm"
 )
 
 func init() {
@@ -48,7 +50,9 @@ func cmdRun(ctx context.Context, args []string) error {
 	swarmN := fs.Int("swarm", 0, "run a manager with up to N workers instead of a single agent")
 	maxSteps := fs.Int("max-steps", 0, "step limit for a single agent (default 200)")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
-	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing'")
+	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
+	isolation, commit := isolationFlags(fs)
+	mailman := mailmanFlag(fs)
 	asJSON := fs.Bool("json", false, "stream events as JSON lines on stdout")
 	quiet := fs.Bool("quiet", false, "print only the final answer")
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
@@ -92,7 +96,7 @@ func cmdRun(ctx context.Context, args []string) error {
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP,
+		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
 	}
 	if interactive {
 		o.Prompter = session.TerminalPrompter(os.Stdin, os.Stderr)
@@ -126,18 +130,29 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	start := time.Now()
 	res, err := s.Run(ctx, prompt)
+	// An isolated run ends here: the verified result goes into the checkout and the
+	// trees are removed (a no-op, and nil, for a shared-tree run). Ctrl-C does not
+	// skip it: work that passed verification is not thrown away.
+	integ := finishRun(ctx, s)
 	if res != nil {
 		switch {
 		case *asJSON:
-			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+			out := map[string]any{
 				"type": "result", "text": res.Text, "steps": res.Steps, "cost_usd": res.CostUSD, "usage": res.Usage,
 				"hit_ratio": res.Usage.HitRatio(), "compactions": res.Compactions, "stop": res.Stop, "session": res.SessionID,
 				"dir": res.Dir, "elapsed_ms": time.Since(start).Milliseconds(), "error": errString(err),
-			})
+			}
+			if integ != nil {
+				out["integration"] = integ
+			}
+			_ = json.NewEncoder(os.Stdout).Encode(out)
 		case !*quiet:
 			fmt.Fprintf(os.Stderr, "\n── %s · %d steps · $%.4f · cache hit %.0f%% · %d compactions · %s\n",
 				time.Since(start).Round(time.Second), res.Steps, res.CostUSD, res.Usage.HitRatio()*100, res.Compactions, res.Dir)
 		}
+	}
+	if !*asJSON {
+		printIntegration(os.Stderr, integ, *quiet)
 	}
 	if err != nil && errors.Is(err, agent.ErrBudget) {
 		return fmt.Errorf("stopped: budget exhausted")
@@ -150,6 +165,69 @@ func errString(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// isolationFlags registers --isolation and --commit (run, swarm and chat share them).
+func isolationFlags(fs *flag.FlagSet) (isolation *string, commit *bool) {
+	isolation = fs.String("isolation", "", "swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end")
+	commit = fs.Bool("commit", false, "swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)")
+	return isolation, commit
+}
+
+// triBool is a boolean flag that also knows whether it was given: --mailman turns the
+// mailman on, --mailman=false turns it off for one run whatever the configuration says,
+// and leaving it out leaves the configuration in charge.
+type triBool struct{ set, val bool }
+
+func (t *triBool) String() string {
+	if t == nil || !t.set {
+		return ""
+	}
+	return strconv.FormatBool(t.val)
+}
+
+func (t *triBool) Set(v string) error {
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return err
+	}
+	t.set, t.val = true, b
+	return nil
+}
+
+func (t *triBool) IsBoolFlag() bool { return true }
+
+// mailmanFlag registers --mailman (run, swarm and chat share it) and returns what to put
+// in session.Options.Mailman: nil when the flag was not given.
+func mailmanFlag(fs *flag.FlagSet) func() *bool {
+	var t triBool
+	fs.Var(&t, "mailman", "swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>")
+	return func() *bool {
+		if !t.set {
+			return nil
+		}
+		v := t.val
+		return &v
+	}
+}
+
+// finishRun ends an isolated run (see session.Session.Finish) even when the run was
+// cancelled: what passed verification is applied, not thrown away. It returns nil for
+// a session that is not an isolated swarm.
+func finishRun(ctx context.Context, s *session.Session) *swarm.IntegrationReport {
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+	defer cancel()
+	return s.Finish(fctx)
+}
+
+// printIntegration says what became of an isolated run's result. What reached the
+// checkout is quiet-able; a result that did not is always said, with the one command
+// that gets it.
+func printIntegration(w io.Writer, rep *swarm.IntegrationReport, quiet bool) {
+	if rep == nil || (quiet && rep.Applied && len(rep.Kept) == 0) {
+		return
+	}
+	fmt.Fprintf(w, "integration: %s\n", rep.Message)
 }
 
 // cmdRecon prints the deterministic project survey that seeds the shared prompt

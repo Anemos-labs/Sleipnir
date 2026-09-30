@@ -504,7 +504,7 @@ func TestInvalidValuesAreAttributedToTheFileAndLineThatSuppliedThem(t *testing.T
 	for _, want := range []string{
 		userPath + ":" + at(t, userSrc, `"2h"`) + `: cache.shared_ttl: must be "5m" or "1h", got "2h"`,
 		userPath + ":" + at(t, userSrc, `"gpt"`) + `: providers.x.dialect: unknown dialect "gpt" (valid: anthropic, openai-chat, openai-responses)`,
-		projPath + ":" + at(t, projSrc, `"container"`) + `: swarm.isolation: must be "shared" or "worktree", got "container"`,
+		projPath + ":" + at(t, projSrc, `"container"`) + `: swarm.isolation: must be "none" or "worktree", got "container"`,
 		`env:SLEIPNIR_SWARM_MAX_AGENTS: swarm.max_agents: must not be negative, got -3`,
 	} {
 		if !strings.Contains(got, want) {

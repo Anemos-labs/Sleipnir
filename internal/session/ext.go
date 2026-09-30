@@ -75,10 +75,17 @@ func (s *Session) loadExtensions() {
 	for _, r := range roles {
 		shorts = append(shorts, r.Short)
 	}
+	reserved := roles.Names()
+	if s.mailmanOn() {
+		// The harness's own role: a project cannot define an agent under its name (or its
+		// id prefix), which the harness would then treat as the mailman.
+		reserved = append(reserved, swarm.MailmanRoleName)
+		shorts = append(shorts, swarm.MailmanRole().Short)
+	}
 	sort.Strings(shorts)
 	defs, dwarns := agentdefs.Load(agentdefs.Opts{
 		Root: o.Root, Home: o.Home, TrustProject: o.TrustProject,
-		Reserved: roles.Names(), ReservedShorts: shorts,
+		Reserved: reserved, ReservedShorts: shorts,
 	})
 	for _, w := range dwarns {
 		ext.warnings = append(ext.warnings, "agents: "+w.String())

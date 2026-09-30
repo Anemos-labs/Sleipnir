@@ -25,7 +25,8 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
 
 Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (coordinates, does not implement), `backend`,
 `frontend`, `fullstack`, `tester`, `docs` (writers), `reviewer`, `scout` (read-only). Users add roles with markdown
-files (`.sleipnir/agents/*.md`).
+files (`.sleipnir/agents/*.md`). With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
+spawnable, is on no roster, board or hot view, and may call `mail` and nothing else.
 
 **Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, and the five swarm tools), so the
 provider caches the schemas once for the whole swarm. Roles are restricted at run time: the permission engine judges
@@ -97,6 +98,22 @@ manager: reject / reopen    review -> doing with feedback (or todo when the work
 manager: fail               failed  (its worker, if running, is stopped)
 ```
 
+**In an isolated run** (section 14) the gate has a third step. After the evidence and the verifier (run in the worker's
+own tree) the harness commits the tree and submits it to the merge queue, which merges it onto the integration tip and
+verifies the *merged* result. The task reaches review only when that succeeded (`merged`, or `empty`: nothing to merge),
+and `accept` requires that merge record instead of re-running the verifier in a checkout that does not have the work yet.
+
+**The manager's own stop.** The manager's final answer is a stop like any other, and the harness decides whether the
+run may end (`swarm.Config.HoldManager`, set for every session that is not interactive: `run`, `swarm`, RL rollouts).
+While workers are running, or tasks are in review, doing, blocked or todo, a final answer is vetoed with one short
+harness-written reason that lists ids only (`Not finished: running: be-1 (T3), te-1 (T4); in review: T2; not started:
+T5. Use wait, accept or reject submissions, and fail tasks you abandon, then give your final answer.`: sorted,
+deterministic, at most about 400 characters, the lists shrink before the instruction is cut). The user's own Stop hooks run
+first and either may veto. The agent loop bounds vetoes per run (three), so a manager that will not settle its board is
+released: the run ends, its result is followed by a `[harness] Unfinished when the manager stopped: ...` line, and the
+person gets a notice (`swarm.hold` and `swarm.unfinished` events). A run that was cancelled, whose budget is spent, or
+whose swarm is shut down is never held (those paths end before, or without, consulting the guard).
+
 Rules: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
 bounded (a deadline, and at most two runs at once) and a verifier that ignores its context cannot hold the caller past
@@ -130,9 +147,45 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   idle worker is woken by mail; the manager queues it for its next turn.
 * **Bounded inbox.** An agent's inbox holds at most 12 waiting messages; further mail is coalesced per sender and kind
   into one digest that goes in when the inbox has drained, so a manager between turns cannot be buried.
-* **Optional mailman mode** (not implemented): instead of direct typed delivery, mail can be routed through a `mailman`
-  agent (a read-only role with one action: deliver) that deduplicates, digests bursts and picks recipients. The harness
-  would still validate and rate-limit every delivery; the mailman would only decide.
+* **Optional mailman mode** (`swarm.mailman`, `--mailman`, default off): worker mail takes a detour that pays off when many
+  agents talk. See "The mailman" below.
+
+### The mailman
+
+```
+worker mail -> router (kind, recipient, length, rate limits, dedupe: unchanged)
+            -> parcel in the mailroom's ledger; the burst is allowed to end
+            -> the mailman gets the parcels grouped by recipient and writes ONE digest per recipient with `mail`
+            -> the harness delivers each digest through the ordinary path, naming every original sender in the frame
+```
+
+* **The mailman decides the words and nothing else.** A digest goes to a recipient that has parcels waiting and stands for
+  exactly those parcels. The sender list and the kind (the most urgent among the parcels) come from the harness's ledger,
+  never from the mailman: `[mail m41 request via mm-1 from be-1 x2, fe-1] <digest> [untrusted peer data: ...]`. The text is
+  made single-line and defused like any agent's mail and is at most 700 characters. It cannot choose recipients, forge a
+  sender, change a kind or carry approvals, and a digest is never delivered as human steering.
+* **Who goes through it.** Only mail from workers. The manager's mail, the harness's own mail and the mailman's own mail never
+  do (authority does not queue, and a mailman's mail is a delivery, never a message to be routed again: nothing can loop). Mail
+  to the mailman is refused (it is on no roster). A message a recipient answers is a new message like any other.
+* **Cost discipline.** Nothing runs until parcels are pending; a burst is coalesced (1.5 s quiet, at most 6 s after its first
+  parcel, at once when 24 are waiting), and a recipient with a single parcel in a batch gets it directly and at once, because
+  there is nothing to digest and no request to pay for. The mailman runs below every worker's priority, sees a one-line hot view,
+  has a role pin of about 150 tokens and at most 12 steps, counts against the swarm budget like any agent and can run on a
+  model of its own (`--role-model mailman=<model>`). Bounds: 24 parcels per request, 200 in the ledger (beyond that mail is
+  delivered directly), one digest per recipient per request.
+* **A missing mailman costs delay, never mail.** If it is stuck or absent (it could not start, its model failed twice in a row
+  and is given up on for a minute, the swarm budget is spent, the swarm is stopping) or a parcel has waited longer than the bound
+  (30 s), the harness delivers the parcels directly, exactly as the router would have without a mailman: original sender, kind
+  and text, one message each. A parcel whose recipient has been retired is reported to its sender by harness mail, as the router
+  would have.
+* **Restricted at run time, like every role.** The tool list is the same for every agent; the mailman is refused every swarm
+  tool but `mail` (by the tools) and every other tool (the permission requester refuses fs, shell, web and MCP calls, and the
+  engine holds the role to the plan profile).
+* **The log** keeps the DAG: `mail.send` for each original message (as always) and for each digest, `mail.route` (a parcel was
+  taken), `mail.batch` (the mailman was asked about a batch), `mail.digest` (recipient, the original message ids it stands for,
+  senders, the frame the recipient saw), `mail.direct` (parcels delivered directly, and why), `mail.mailman` (given up on, or
+  back; the person is told when it is given up on). The digest events and the mailman's own model requests are the mailman
+  training data: parcels in, digest out.
 
 ## 6. Spawning and reuse
 
@@ -176,8 +229,8 @@ Layered, cheapest first:
 4. **Checkpoints** before every write; `/rewind` restores per file, per agent, or everything.
 5. **Isolation (optional)**: `swarm.isolation: "worktree"` gives each writer its own git worktree and integrates finished
    trees through a serial, verifying **merge queue**: three-way merge onto the integration tip, structured conflict
-   report (files, hunks) returned to the manager without leaving the tree dirty, verify command after each merge,
-   rollback on failure.
+   report (files, hunks) returned to the worker whose work conflicted, verify command after each merge, rollback on
+   failure. In that mode leases become advisory and the merge queue settles overlaps; section 14 is the whole design.
 6. **Role gates**: reviewers and scouts cannot write; the engine denies it.
 
 ## 8. The hot view and the governor
@@ -218,7 +271,7 @@ never promoted as an instruction.
 | stuck worker | watchdog: no model or tool event for 10 minutes -> alert; at 20 minutes the run is cancelled and its task requeued (attempt counted); a run that ignores the cancel for 30 more seconds is abandoned: the worker is retired and its goroutine left to finish alone |
 | provider outage / 429 / 5xx | retry with backoff inside the request; the governor slows the whole swarm |
 | swarm budget spent | no request is admitted, running workers are stopped, the manager is told once |
-| manager finishes | workers finish their current task and idle; the run ends with the board's state and a summary |
+| manager finishes | a batch run holds it until the board is settled (section 4); when the bound is reached the run ends and names what was left. In an interactive session workers legitimately outlive the turn and finished work wakes the manager (section 13) |
 | shutdown | agents are cancelled and awaited for at most 10 s; nothing new starts afterwards |
 | verifier flaky or broken | infra errors (could not run, timed out) are reported as such and never fail a task nor count as a pass; `--verify-repeat N` requires unanimity |
 | forged or hostile mail | defused and framed as data; never grants anything |
@@ -227,7 +280,12 @@ never promoted as an instruction.
 
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
-release), `governor` (rate-limit episodes), `swarm.budget`, compaction and cache events. A `board.op` names its operation
+release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
+`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
+mode, section 5), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
+`merge.queued`/`merged`/`conflict`/`verify_failed`/`rolled_back`/`rejected`/`fast_forward` (worktree isolation; the
+workspace layer emits them), `task.merge` (one submission's outcome, per task) and `swarm.integration` (the result reaching
+the checkout, or not), compaction and cache events. A `board.op` names its operation
 (`create`, `claim`, `assign`, `update`, `scope`, `finish`, `block`, `resume`, `requeue`, `agent`, `agent-remove`,
 `note`, `notes-take`, `alert`, `alert-clear`, `alert-expire`), the new version, and its operands (the task's status,
 owner, line, result, evidence, attempts, rev and scope, plus title, description, role and dependencies at creation; an
@@ -237,9 +295,141 @@ corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction
 
 ## 12. Not implemented, and known gaps
 
-* The `mailman` mode (section 5).
+**Where the implementation differs from the design that section 5 first described.**
+
+* The mailman does not pick recipients. The first description had it "deduplicate, digest bursts and pick recipients"; it
+  writes digests only. A recipient is whoever the sender named, so a manipulated mailman can reword and omit, but cannot
+  redirect mail or deliver to an agent the parcels were not for.
+* Mail to the manager is routed through it like any worker's mail (only mail *from* the manager and the harness bypasses), so a
+  worker's blocker reaches the manager after the quiet period and a mailman round, not at once; a lone message is delivered after
+  the quiet period without a round. The delay is bounded (6 s to gather, 30 s at most) and is the price of digests.
+* The mailman is one agent for the session, made on first use, with a thread of its own that the ordinary compaction keeps in
+  check; it is not one agent per batch.
+* The timings and bounds (quiet period, batch size, ledger size, digest length, the bound) are `swarm.Config` fields with
+  defaults; only the switch is a configuration key.
+* `models.roles.mailman` in the configuration is not read (no role is: only `--role-model` and agent definitions choose a role's
+  model today).
+
+**Not implemented.**
+
 * Resuming a session's board after a crash: `ReplayBoard` rebuilds tasks, the roster and pending notes exactly from the
   `board.op` events (a test holds it to that), but nothing calls it at startup yet; alerts are transient and not rebuilt.
 * On a cold prefix a higher-priority follower (the manager) can wait behind a worker-priority primer, because the warm
   gate is entered before the governor; the fix belongs in the agent's request path or the gate.
-* The manager is not woken by a worker's completion once its own run has ended; it sees the board at its next turn.
+* A batch run's manager that ignores three vetoes still ends with work unfinished; the run says so, it does not keep going.
+* Worktree isolation (section 14) has residual gaps of its own, listed there.
+
+## 13. The manager between turns (interactive sessions)
+
+In `sleipnir chat --swarm N` a person talks to the manager between turns and workers outlive a turn: the session sets
+`Interactive`, so the manager is not held, the swarm runs for the life of the session (not of one turn's context: the chat
+loop cancels that when a turn ends; Ctrl-C still cancels the turn and, through `RunManager`, its workers), and
+`swarm.Config.WakeManager` is on. When the manager is idle and something happens that it has not seen (a worker finished,
+failed or stopped, a task reached review, mail arrived for it), the swarm starts one manager run:
+
+* **Coalesced.** A burst of events starts one run: the timer restarts on each event (1.5 s quiet, at most 10 s after the
+  first). What counts as news is the board compared with the one the manager's newest request showed it, so nothing it
+  already saw wakes it, and an event with nothing behind it starts no run.
+* **Never concurrent, never after the end.** No run starts while the manager is running (it sees the board itself; mail that
+  lands after its last drain wakes it when the run ends), after `Shutdown`, or once the swarm budget is spent
+  (`--budget-usd` still applies to the wake run like any other).
+* **Bounded.** At most 8 automatic runs between two human inputs (`RunManager`, or steering sent with `Session.Send`); the
+  person is told once when the bound is reached (`swarm.wake.paused`) and the count starts again when they write.
+* **Harness-written and inert.** The note (`While you were idle: T1 is in review (be-1); T2 failed; mail is waiting for you.
+  Check the board, ...`) holds ids and status words only, never text an agent wrote. It arrives as harness mail, not as a user
+  turn: a user turn would be folded by compaction into the manager's `instructions` as something the person asked for, once
+  per wake. It is shown to the person through the session sink (level `wake`) and logged (`swarm.wake`).
+
+## 14. Worktree isolation
+
+`swarm.isolation` is `"none"` (the default; `"shared"` is the same thing under its older name) or `"worktree"`.
+`sleipnir run|swarm|chat --isolation none|worktree` overrides it for one session, `SLEIPNIR_SWARM_ISOLATION` sets it from the
+environment, `sleipnir config` prints the effective value and the layer that set it, and `--commit` (worktree only) changes what
+the end of the run does (below). A project's config file may turn isolation on (it only reduces risk) but nothing in the
+configuration can choose where the trees go. Isolation applies to swarms: a single agent asked for it in so many words is an
+error, one under a configuration that isolates swarms just runs.
+
+**Preconditions, refused up front with the reason** (before a model is contacted): a git repository with a work tree whose root
+is the project root, at least one commit, git on the path; with `--commit`, a clean checkout on a branch. Nothing is created in
+the repository.
+
+**Trees.** Every *writer* gets `<cache>/sleipnir/worktrees/<session id>/<agent>` on branch `sleipnir/<session id>/<agent>`,
+created at the integration tip when the worker is spawned (`internal/workspace`). `<cache>` is the per-user cache directory
+(`$XDG_CACHE_HOME`, or `~/.cache`): the trees are large and disposable, and the state directory is out because `~/.sleipnir`
+is a protected configuration directory. The trees start from what the person sees now, *uncommitted edits included* (a
+snapshot commit that no branch of theirs points at), and the result is applied on top of exactly that. A session started in
+a subdirectory keeps its writers in the same subdirectory of their trees. The manager and the read-only roles keep the
+checkout: the manager does not edit files in an isolated run (anything it wrote there would bypass the merge queue; it spawns a
+worker), and reviewers and scouts read the checkout, which holds a task's work only after it is applied, so they read merged
+work with `git show <commit>` (the commit is in the task's evidence).
+
+**Nothing in the prompt names a tree.** The tools print paths relative to the working directory, which are the project's
+paths, and the isolation card (`Isolation: your working directory is a private git worktree ...`, which says what the
+harness will do with the work) is appended to the worker's private assignment note, never to a shared layer. The bytes of
+G0, G1 and G2 do not change; only a worker's own notes are longer, when the feature is on.
+
+**Confinement is enforced, not conventional.** The permission engine confines every writer to its own tree
+(`perm.Engine.Confine`): whatever it reads or writes inside the workspace (the checkout, another agent's tree) outside its
+own is a hard deny that no rule and no mode (bypass included) lifts, judged on resolved paths and covering shell commands as
+well as the file tools. And every rule that is relative to the workspace (`Edit(./.sleipnir/**)`, `Deny(Read(./secrets/**))`,
+a floating `Allow`) applies inside each tree as it does in the checkout (`perm.Config.TreeParents`): the work reaches the
+checkout by a merge, so a rule that guarded only the checkout would guard nothing. The lease guard still enforces task scopes.
+
+**Leases become advisory.** Nobody can block anybody, so the writer cap and the scope-overlap refusal are lifted. Two writers
+touching the same repository-relative path raise the usual alert, which names the agents and never the file, and warns of a
+merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit.
+
+**`done` continues into the queue** (section 4). The harness commits the tree and submits it; the queue is serial, merges onto
+the integration tip and runs the verifier (`--verify`) on the merged result, and moves the integration branch only if it passes.
+
+| Outcome | What happens |
+|---|---|
+| `merged` | the task proceeds to review (its evidence names the integration commit) |
+| `empty` | nothing to merge (no changes): reported as such, and the task proceeds |
+| `conflict` | back to the worker with the conflicting files and hunks; the integration tip is merged into its tree, so the markers are in its files (`ours` is its own version) |
+| `verify_failed` | back to the worker with the verifier's output; its tree now holds the merged state, so the failure reproduces there |
+| `rejected` | back to the worker with the reason: outside its scope, an oversized file, a nested repository, unresolved markers |
+| could not run | the merge or the verifier failed to give a verdict (git error, timeout): reported as an infrastructure problem, never as a failed test. A `done` call is answered with the error and the worker retries or blocks; a worker that stopped without calling `done` has its task sent to review marked NOT MERGED, which `accept` refuses |
+
+A bounce is rework like any other: after `MaxAttempts` (3) the task returns to `todo`, the worker is stopped and the manager is
+told once. A worker sees other agents' work only when it is merged: a new worker starts from the integration tip, and a reused
+worker, a resumed task and a bounced worker have their tree brought up to it. Nothing else crosses between trees, and there is
+no new tool: a worker that needs merged work blocks its task and says what it needs, as before.
+
+**The end of the run.** When the manager stops (each turn of a chat session, the end of a batch run) the harness applies what
+has been merged to the person's checkout, incrementally (`swarm.integration`; the person is told at level `integrate`):
+
+* by default as **uncommitted changes** (a patch onto the working tree), exactly what a shared-tree run leaves behind, recorded
+  in the checkpoint store first so `/rewind` undoes it;
+* with `--commit` as **commits on the current branch** (a fast-forward to the integration tip; it needs a clean checkout, and
+  fails without changing anything if the branch moved).
+
+If applying fails (the person edited the same files meanwhile) nothing is changed, the integration branch stays, and the
+report says which branch and the one command that gets the result (`git diff --binary <base> <branch> | git apply --3way`, or
+`git merge <branch>` with `--commit`). `Session.Finish` ends the run (also called by `Close`): it stops the swarm, applies what
+remains, removes every tree that holds nothing unmerged (one that does is kept and named), and deletes the integration branches
+once their result is in the checkout. The CLI prints the report (`integration: ...`, and under `"integration"` in `--json`).
+**A killed session** leaves its trees; the next isolated session of the repository cleans up at its start (`Manager.Prune`): the
+trees of dead sessions are committed onto their own branches and removed, a branch holding commits that exist nowhere else is
+kept and named, and a tree whose owner is still running is never touched.
+
+**Costs.** One checkout per writer (disk and the time of `git worktree add`, paid at spawn), one verifier run per merge (in the
+integration tree, serial), and a worker that finishes second can be sent back. In exchange the writer cap and the scope-overlap
+refusal are gone, and a shared tree's races cannot happen.
+
+**Residual gaps.**
+
+* Work is merged before it is reviewed, and there is no revert: a task the manager then rejects, reopens or fails keeps its
+  merged work on the integration branch (a rejected task's worker resubmits on top of it). The manager sees the merge in the
+  task's evidence and can have a worker undo it.
+* Reviewers and scouts read the person's checkout, which lacks unapplied merged work until the manager stops; they can read a
+  task's work with `git show` on the commit its evidence names.
+* The verifier that runs on merges is the `--verify` command. Without one the queue only serialises and detects conflicts. In a
+  chat session `--verify` is now accepted (it was not before).
+* A project whose root is not the repository's root (a `.sleipnir/` directory in a subdirectory of a larger repository) cannot
+  be isolated; run from the repository root.
+* Trees are made with `git worktree`: submodules are not initialised in them and ignored files (build output, `node_modules`,
+  `.env`) are absent, so a verifier that needs them fails in the tree until the worker makes them; a project that cannot be
+  built from a clean checkout is a poor fit.
+* Symlink-heavy or very large repositories pay the checkout cost per writer; there is no sparse checkout by scope yet.
+* The inspector does not show trees or the queue yet (the events are in the log).

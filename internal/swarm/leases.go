@@ -25,6 +25,16 @@ import (
 //
 // Reads are never blocked, only writes, so agents can freely study each other's
 // files.
+//
+// In an isolated swarm (swarm.isolation = "worktree", see Isolate) every writer
+// edits a git worktree of its own, so exclusion between writers is unnecessary and a
+// lease never blocks a write. The guard then does three other things: it confines
+// each writer's writes to its own tree (and refuses writes by agents that have none:
+// the manager and read-only roles do not edit files in an isolated run, because
+// anything written into the shared checkout would bypass the merge queue), it keeps
+// enforcing the task's scope, and it turns the lease table into an advisory one: two
+// writers touching the same repository-relative path raise an alert that names the
+// agents (never the file) and warns of a merge conflict.
 type Leases struct {
 	ttl   time.Duration
 	now   func() time.Time
@@ -32,8 +42,11 @@ type Leases struct {
 	ev    events.Emitter
 	roots []string
 
-	mu   sync.Mutex
-	held map[string]*lease
+	mu       sync.Mutex
+	held     map[string]*lease
+	isolated bool
+	trees    map[string]string               // isolated: agent -> the directory of its tree
+	marks    map[string]map[string]time.Time // isolated: repository-relative path -> agent -> last write
 }
 
 type lease struct {
@@ -49,7 +62,34 @@ func NewLeases(ttl time.Duration, board *Board) *Leases {
 	if ttl == 0 {
 		ttl = 10 * time.Minute
 	}
-	return &Leases{ttl: ttl, now: time.Now, board: board, ev: events.Discard{}, held: map[string]*lease{}}
+	return &Leases{ttl: ttl, now: time.Now, board: board, ev: events.Discard{}, held: map[string]*lease{},
+		trees: map[string]string{}, marks: map[string]map[string]time.Time{}}
+}
+
+// Isolate puts the guard in isolated mode: see the type's comment.
+func (l *Leases) Isolate() {
+	l.mu.Lock()
+	l.isolated = true
+	l.mu.Unlock()
+}
+
+// BindTree tells an isolated guard which directory is an agent's own tree: its
+// writes must lie inside it, and scopes are matched against paths relative to it.
+func (l *Leases) BindTree(agent, dir string) {
+	if agent == "" || dir == "" {
+		return
+	}
+	l.mu.Lock()
+	l.trees[agent] = filepath.Clean(dir)
+	l.mu.Unlock()
+}
+
+// UnbindTree forgets an agent's tree (it is gone) and its advisory marks.
+func (l *Leases) UnbindTree(agent string) {
+	l.mu.Lock()
+	delete(l.trees, agent)
+	l.mu.Unlock()
+	l.ReleaseAll(agent)
 }
 
 // SetEmitter sends lease events (acquire, conflict, scope, release) to ev.
@@ -131,11 +171,18 @@ func (l *Leases) scopeOf(agent string) (scopes, ids []string, scoped bool) {
 }
 
 func (l *Leases) checkScope(agent, path string) error {
+	rel, ok := l.rel(path)
+	return l.checkScopeAt(agent, path, rel, ok)
+}
+
+// checkScopeAt is checkScope for a caller that has already made the path relative
+// to the repository root (ok says it lies inside it).
+func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 	scopes, ids, scoped := l.scopeOf(agent)
 	if !scoped {
 		return nil
 	}
-	if rel, ok := l.rel(path); ok && inScope(scopes, rel) {
+	if relOK && inScope(scopes, rel) {
 		return nil
 	}
 	shown := scopes
@@ -155,9 +202,104 @@ func displayPath(p string) string {
 	return p
 }
 
+// beforeIsolatedWrite is BeforeWrite in isolated mode: confine the write to the
+// agent's own tree, enforce the scope, and note the overlap with other writers.
+func (l *Leases) beforeIsolatedWrite(agent, path string) error {
+	l.mu.Lock()
+	dir, has := l.trees[agent]
+	l.mu.Unlock()
+	if !has {
+		return fmt.Errorf("this run gives every writer a git worktree of its own, and %s has none: it does not edit files. Ask the manager (mail) or, as the manager, spawn a worker for the change: the harness verifies and merges its work", safeToken(agent, 24))
+	}
+	rel, ok := relTo(dir, path)
+	if !ok {
+		return fmt.Errorf("%s is outside your working tree: this run gives every writer its own git worktree, so edit files under your working directory (the paths there are the project's paths)", displayPath(path))
+	}
+	if err := l.checkScopeAt(agent, path, rel, true); err != nil {
+		return err
+	}
+	l.advise(agent, rel)
+	return nil
+}
+
+// advise records that agent writes rel and, if another writer wrote it recently,
+// raises an alert (advisory: the write goes ahead, the merge queue settles it).
+func (l *Leases) advise(agent, rel string) {
+	now := l.now()
+	l.mu.Lock()
+	m := l.marks[rel]
+	if m == nil {
+		if len(l.marks) >= maxLeases {
+			l.sweepMarksLocked(now)
+		}
+		m = map[string]time.Time{}
+		l.marks[rel] = m
+	}
+	m[agent] = now
+	var others []string
+	for a, t := range m {
+		if a != agent && now.Sub(t) < l.ttl {
+			others = append(others, a)
+		}
+	}
+	l.mu.Unlock()
+	if len(others) == 0 {
+		return
+	}
+	sort.Strings(others)
+	who := append([]string{agent}, others...)
+	sort.Strings(who)
+	if l.board != nil {
+		l.board.RaiseAlertKey("lease", rel, fmt.Sprintf("%s edit the same file in separate trees; expect a merge conflict", safeList(who, 4)))
+	}
+	l.emit(agent, "overlap", rel, others[0])
+}
+
+// safeList joins agent ids for an alert: harness-made ids only, at most n named.
+func safeList(ids []string, n int) string {
+	var out []string
+	for i, id := range ids {
+		if i == n {
+			out = append(out, fmt.Sprintf("and %d more", len(ids)-n))
+			break
+		}
+		out = append(out, safeToken(id, 24))
+	}
+	return strings.Join(out, ", ")
+}
+
+// sweepMarksLocked drops expired advisory marks and returns the paths that lost one
+// (the alerts about them are stale: a write that is still contested raises it again).
+func (l *Leases) sweepMarksLocked(now time.Time) []string {
+	var changed []string
+	for rel, m := range l.marks {
+		dropped := false
+		for a, t := range m {
+			if now.Sub(t) >= l.ttl {
+				delete(m, a)
+				dropped = true
+			}
+		}
+		if len(m) == 0 {
+			delete(l.marks, rel)
+		}
+		if dropped {
+			changed = append(changed, rel)
+		}
+	}
+	sort.Strings(changed)
+	return changed
+}
+
 // BeforeWrite implements tools.Guard.
 func (l *Leases) BeforeWrite(agent, path string) error {
 	path = filepath.Clean(path)
+	l.mu.Lock()
+	isolated := l.isolated
+	l.mu.Unlock()
+	if isolated {
+		return l.beforeIsolatedWrite(agent, path)
+	}
 	if err := l.checkScope(agent, path); err != nil {
 		return err
 	}
@@ -210,7 +352,8 @@ func (l *Leases) sweepLocked(now time.Time) []string {
 // Sweep drops expired leases (and the alerts about them).
 func (l *Leases) Sweep() {
 	l.mu.Lock()
-	gone := l.sweepLocked(l.now())
+	now := l.now()
+	gone := append(l.sweepLocked(now), l.sweepMarksLocked(now)...)
 	l.mu.Unlock()
 	if l.board != nil {
 		for _, p := range gone {
@@ -228,6 +371,18 @@ func (l *Leases) ReleaseAll(agent string) []string {
 		if cur.holder == agent {
 			out = append(out, p)
 			delete(l.held, p)
+		}
+	}
+	// Isolated mode: the agent's advisory marks. The alert about a file goes when
+	// fewer than two writers still have it marked.
+	for rel, m := range l.marks {
+		if _, marked := m[agent]; !marked {
+			continue
+		}
+		delete(m, agent)
+		out = append(out, rel)
+		if len(m) == 0 {
+			delete(l.marks, rel)
 		}
 	}
 	l.mu.Unlock()
@@ -265,6 +420,11 @@ func (l *Leases) HeldBy(agent string) []string {
 			out = append(out, p)
 		}
 	}
+	for rel, m := range l.marks {
+		if _, ok := m[agent]; ok {
+			out = append(out, rel)
+		}
+	}
 	sort.Strings(out)
 	return out
 }
@@ -273,5 +433,5 @@ func (l *Leases) HeldBy(agent string) []string {
 func (l *Leases) Len() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return len(l.held)
+	return len(l.held) + len(l.marks)
 }

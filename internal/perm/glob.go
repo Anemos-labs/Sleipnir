@@ -16,6 +16,9 @@ import (
 type resolver struct {
 	home, homeReal string
 	roots          []rootPair // workspace roots: Root first, then any extras
+	// treeBases are "<tree parent>/*" (each parent lexical and resolved): relative
+	// patterns are anchored at every per-agent tree as well as at the root.
+	treeBases []string
 }
 
 type rootPair struct{ lex, real string }
@@ -33,6 +36,22 @@ func newResolver(home, root string, extra []string) *resolver {
 	return rs
 }
 
+// addTreeParents anchors relative patterns at every directory directly below each
+// parent as well (see Config.TreeParents). The parent's own name is escaped, so a
+// directory with glob characters in its name matches only itself; the "*" that stands
+// for the trees is the only pattern character.
+func (rs *resolver) addTreeParents(parents []string) {
+	for _, p := range parents {
+		if p == "" {
+			continue
+		}
+		l := cleanAbs(p)
+		for _, d := range uniq(l, realPath(l)) {
+			rs.treeBases = append(rs.treeBases, escapeGlob(d)+"/*")
+		}
+	}
+}
+
 // root is the primary workspace root ("" if none was configured).
 func (rs *resolver) root() rootPair {
 	if len(rs.roots) == 0 {
@@ -43,13 +62,17 @@ func (rs *resolver) root() rootPair {
 
 // anchor lists the directories relative patterns are anchored to: the
 // workspace root, or the current directory when none is configured (a Deny rule
-// must not silently stop applying because no Root was set).
+// must not silently stop applying because no Root was set), and every per-agent
+// tree (see addTreeParents).
 func (rs *resolver) anchor() []string {
+	var out []string
 	if r := rs.root(); r.lex != "" {
-		return uniq(r.lex, r.real)
+		out = uniq(r.lex, r.real)
+	} else {
+		wd := cleanAbs(".")
+		out = uniq(wd, realPath(wd))
 	}
-	wd := cleanAbs(".")
-	return uniq(wd, realPath(wd))
+	return append(out, rs.treeBases...)
 }
 
 func cleanAbs(p string) string {

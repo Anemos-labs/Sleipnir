@@ -118,6 +118,13 @@ func (ev *evaluator) judge(u *unit) verdict {
 			}
 		}
 	}
+	if c, ok := ev.e.confinement(ev.r.Agent); ok {
+		for _, a := range all {
+			if why := ev.rs.leavesConfinement(c, a, ev.r.Agent); why != "" {
+				return deny("isolation: " + why)
+			}
+		}
+	}
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
 		return deny("denied by rule " + r.String())
 	}
@@ -140,6 +147,29 @@ func (ev *evaluator) judge(u *unit) verdict {
 }
 
 func quote(s string) string { return strconv.Quote(s) }
+
+// leavesConfinement says why an access breaks an agent's confinement to its own
+// tree: it lands in a workspace root (the shared checkout, another agent's tree)
+// but not in the agent's own directory. Accesses that cannot be pinned down, and
+// accesses outside every workspace root, are not this check's business.
+func (rs *resolver) leavesConfinement(c rootPair, a access, agent string) string {
+	if a.dynamic || a.real == "" {
+		return ""
+	}
+	if inside(c.real, a.real) || !rs.inWorkspace(a.real) {
+		return ""
+	}
+	return agent + " works only inside its own tree; " + clipText(a.raw, 80) +
+		" is elsewhere in the workspace (the shared checkout or another agent's tree). Use paths relative to your working directory"
+}
+
+func clipText(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
 
 func (ev *evaluator) decideCommand(u *unit) verdict {
 	mode := ev.v.mode

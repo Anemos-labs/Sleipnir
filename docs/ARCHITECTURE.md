@@ -57,7 +57,7 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 | `internal/kv` | **the cache engine**: layers, stack, renderer, breakpoint planner, drift guard, compaction patch/apply/planner/fork, archive |
 | `internal/provider` | `Provider` interface, errors, SSE; `openaichat` adapter; `gateway` (marketplace catalogue); `probe` (endpoint doctor); `mock` (deterministic test servers; the chat-completions one models an *automatic* prefix cache only, and explicit-breakpoint caching lives in a separate engine, so a test passing against one says nothing about the other's rules) |
 | `internal/agent` | the loop: render → call (retry, governor, gate) → tools (parallel read-only, ordered writes) → boundary (compaction, epochs) |
-| `internal/swarm` | board, mail router, leases, governor, warm gate, hot view, roles, spawn/dispatch, coordination tools, evidence |
+| `internal/swarm` | board, mail router (with the optional mailman that digests bursts, `swarm.mailman`), leases, governor, warm gate, hot view, roles, spawn/dispatch, coordination tools, evidence, the manager's stop guard and wake, worktree isolation |
 | `internal/tools` | tool contract, file-state staleness tracker, truncation with recall handles; `fs`, `shell`, `web`, `recall` |
 | `internal/perm` | permission modes/rules/prompter, role profiles; `internal/shellparse` for bash analysis |
 | `internal/checkpoint` | pre-modification snapshots and rewind |
@@ -109,7 +109,10 @@ Many agents editing one tree is the main hazard (public agent PRs conflict textu
 overlap). Layered defences: **scopes** declared per task and checked at spawn (overlap refused); **write leases**
 with TTL and conflict alerts; **content-hash staleness** on every edit (correct even if a lease is stolen);
 **checkpoints** before every write; a **writer cap** with unlimited read-only roles; **role gates** (reviewers
-cannot write); and, planned, **worktree isolation** per writer with a verifying merge queue.
+cannot write); and, optionally, **worktree isolation** (`swarm.isolation: "worktree"`, `--isolation worktree`): every
+writer works in a git worktree of its own, confined to it by the permission engine, and its finished work goes through
+a verifying merge queue (`internal/workspace`) before it reaches the person's checkout. `internal/session` builds it
+(`isolate.go`), `internal/swarm` runs it (`isolate.go`); see `docs/SWARM-PROTOCOL.md` section 14.
 
 ## Security posture
 

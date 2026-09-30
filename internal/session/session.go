@@ -83,6 +83,27 @@ type Options struct {
 	Roles      swarm.Roles
 	Verify     string // command the harness runs before a worker's task may leave "doing"
 	RoleModels map[string]string
+	// Interactive says a person is at the keyboard across turns (sleipnir chat).
+	// Batch runs (run, swarm, RL rollouts) leave it false and the swarm holds the
+	// manager: it may not give a final answer while workers are running or tasks are
+	// unreviewed. An interactive session is not held (workers legitimately outlive a
+	// turn) and instead wakes the idle manager when finished work needs it, with the
+	// swarm running for the life of the session rather than of one turn.
+	Interactive bool
+	// Isolation overrides swarm.isolation for this session: "none" (every agent edits
+	// the one checkout, guarded by leases) or "worktree" (every writer gets a git
+	// worktree of its own and its finished work goes through a verifying merge queue;
+	// see isolate.go). Empty leaves it to the configuration. It applies to swarms.
+	Isolation string
+	// Commit, with worktree isolation, makes the end of the run commit the verified
+	// result onto the person's branch (a fast-forward; the checkout must be clean and
+	// on a branch) instead of leaving it as uncommitted edits in the working tree.
+	Commit bool
+	// Mailman, when set, overrides swarm.mailman for this session: true routes worker
+	// mail through a mailman agent that digests bursts (docs/SWARM-PROTOCOL.md section
+	// 5), false delivers it at once. Nil leaves it to the configuration. It applies to
+	// swarms; its model is the session's unless RoleModels names one for "mailman".
+	Mailman *bool
 
 	// Limits.
 	MaxSteps      int
@@ -164,6 +185,15 @@ type Session struct {
 	started bool
 	closed  bool
 	turn    int
+	// swarmCtx is the context an interactive session's swarm runs on: it lives until
+	// Close, not until the end of one turn (see swarmContext).
+	swarmCtx  context.Context
+	swarmStop context.CancelFunc
+
+	// iso is the worktree isolation plan (nil: the swarm edits the shared checkout);
+	// finish is the report of the end of an isolated run, once it has happened.
+	iso    *isoPlan
+	finish *swarm.IntegrationReport
 }
 
 // Result is what a Run produced.
@@ -261,6 +291,18 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if s.Blobs, err = events.NewDirBlobs(filepath.Join(s.Dir, "blobs")); err != nil {
 		return nil, err
 	}
+
+	// Worktree isolation is decided before anything expensive is built: a project that
+	// cannot be isolated fails at once, with the reason.
+	if err := s.planIsolation(ctx); err != nil {
+		s.Log.Close()
+		return nil, err
+	}
+	defer func() {
+		if !built {
+			s.releaseIsolation() // the merge queue and branches of a session that never started
+		}
+	}()
 
 	// Model and provider.
 	if err := s.buildProvider(ctx); err != nil {
@@ -390,9 +432,28 @@ func (s *Session) buildPerm() error {
 			}
 		}
 	}
+	var extra []string
+	if s.iso != nil {
+		// The session's worktrees are part of the workspace, and the project's relative
+		// rules hold inside each of them: writers work there, each confined to its own
+		// (swarm.bindTree). The manager does not edit files in an isolated run (anything
+		// it wrote into the shared checkout would bypass the merge queue), so the engine
+		// holds it to plan mode as well as the swarm's own check.
+		extra = []string{s.iso.dir}
+		if _, ok := roles["manager"]; !ok {
+			roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow}
+		}
+	}
+	if s.mailmanOn() {
+		// The mailman is read-only and its one tool is mail (the swarm holds it to that);
+		// the engine holds it to plan mode as well.
+		if _, ok := roles[swarm.MailmanRoleName]; !ok {
+			roles[swarm.MailmanRoleName] = perm.RoleProfile{Mode: perm.ModePlan}
+		}
+	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home,
+		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
 		Allow: s.cfg.Permissions.Allow, Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.hookPrompter(o.Prompter),
 	})
@@ -610,6 +671,8 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	sc.VerifyCmd = o.Verify
 	sc.Verify = runVerify
+	sc.HoldManager, sc.WakeManager = !o.Interactive, o.Interactive
+	sc.Mailman = s.mailmanOn()
 
 	deps := swarm.Deps{
 		Provider: s.Provider, Model: s.Model, Registry: reg,
@@ -679,6 +742,11 @@ func (s *Session) build(ctx context.Context) error {
 			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: m}
 		}
 	}
+	iso, err := s.buildIsolation(ctx)
+	if err != nil {
+		return err
+	}
+	deps.Isolation = iso
 	sw := swarm.New(sc, deps, s.ext.roles)
 	for _, t := range sw.Tools() {
 		reg.Register(t)
@@ -744,6 +812,13 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 		if info := s.mcpInfo(); info != nil {
 			start["mcp"] = info
 		}
+		// What the run's swarm was set up to do to files and mail, when it is not the default.
+		if s.iso != nil {
+			start["isolation"] = config.IsolationWorktree
+		}
+		if s.mailmanOn() {
+			start["mailman"] = true
+		}
 		if s.opts.Resume != "" {
 			start["resumed"] = true
 		}
@@ -752,12 +827,31 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(goal, 60)))
 
 	if s.Swarm != nil {
-		s.Swarm.Start(ctx)
+		s.Swarm.Start(s.swarmContext(ctx))
 		res, err := s.Swarm.RunManager(ctx, goal)
 		return s.result(res, err)
 	}
 	res, err := s.Agent.Run(ctx, goal)
 	return s.result(res, err)
+}
+
+// swarmContext is the context the swarm runs on. A batch run's swarm lives on the
+// context of its one Run. An interactive session's must outlive a turn: the chat
+// loop cancels each turn's context when the turn ends, which would stop every
+// worker the manager left running and end the swarm before a person could talk to
+// the manager about it (or before the swarm could wake the manager). Ctrl-C still
+// works: it cancels the turn's context, which stops the manager's run and, through
+// RunManager, the workers.
+func (s *Session) swarmContext(turn context.Context) context.Context {
+	if !s.opts.Interactive {
+		return turn
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.swarmCtx == nil {
+		s.swarmCtx, s.swarmStop = context.WithCancel(context.WithoutCancel(turn))
+	}
+	return s.swarmCtx
 }
 
 func (s *Session) result(res *agent.Result, err error) (*Result, error) {
@@ -819,6 +913,7 @@ func (s *Session) Send(text string) {
 	switch {
 	case s.Swarm != nil:
 		if m := s.Swarm.Manager(); m != nil {
+			s.Swarm.HumanInput()
 			m.Send(text)
 		}
 	case s.Agent != nil:
@@ -837,7 +932,22 @@ func (s *Session) Close() error {
 	started := s.started
 	s.mu.Unlock()
 	if s.Swarm != nil {
-		s.Swarm.Shutdown()
+		if s.iso != nil {
+			// An isolated run ends by putting its verified result into the checkout and
+			// removing its trees (Finish stops the swarm first). A caller that already
+			// finished, to print the report, gets the same report back and nothing repeats.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			s.Finish(ctx)
+			cancel()
+		} else {
+			s.Swarm.Shutdown()
+		}
+	}
+	s.mu.Lock()
+	stop := s.swarmStop
+	s.mu.Unlock()
+	if stop != nil {
+		stop()
 	}
 	if s.Agent != nil {
 		_ = s.Agent.Close() // waits for a compaction still running, and frees the agent's archive index

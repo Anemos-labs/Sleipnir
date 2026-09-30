@@ -78,6 +78,40 @@ type Config struct {
 	// InboxSoftCap is how many messages may wait in one agent's inbox before further
 	// mail is coalesced into a digest (default 12).
 	InboxSoftCap int
+
+	// HoldManager makes a final answer of the manager wait for the board: while
+	// workers are running or tasks are unreviewed, the manager's Stop is vetoed with a
+	// short reason (at most agent's per-run bound of times), so a batch run does not end
+	// with its workers cut off. Interactive sessions leave it off (see hold.go).
+	HoldManager bool
+	// WakeManager starts a manager run, with a short harness-written note, when the
+	// manager is idle and a worker finishes, fails or submits, or mail arrives for it:
+	// what an interactive session needs, since workers outlive a turn there (see
+	// wake.go). WakeQuiet is how long a burst of such events must be quiet before the
+	// run starts, WakeMax the longest a burst may postpone it, MaxWakes the bound on
+	// automatic runs between two human inputs (defaults 1.5s, 10s, 8).
+	WakeManager bool
+	WakeQuiet   time.Duration
+	WakeMax     time.Duration
+	MaxWakes    int
+
+	// Mailman routes worker mail through a mailman agent instead of delivering each
+	// message at once (mailman.go). The router still validates and rate-limits every
+	// message; the mailman only decides how bursts are worded. The manager's and the
+	// harness's own mail is never routed through it. MailmanQuiet is how long a burst
+	// of parcels must be quiet before the mailman is asked (default 1.5s),
+	// MailmanMax the longest a burst may postpone it (6s), MailmanBound the longest any
+	// parcel waits before the harness delivers it directly (30s), MailmanBatch how
+	// many parcels one request of the mailman covers (24), MailmanMaxPending how many
+	// the harness holds at all before delivering directly (200), and MailmanDigestChars
+	// the longest digest (700).
+	Mailman            bool
+	MailmanQuiet       time.Duration
+	MailmanMax         time.Duration
+	MailmanBound       time.Duration
+	MailmanBatch       int
+	MailmanMaxPending  int
+	MailmanDigestChars int
 }
 
 // DefaultConfig returns sane limits for a laptop-sized swarm.
@@ -89,6 +123,9 @@ func DefaultConfig() Config {
 		Board:      DefaultBoardLimits(), MaxAttempts: 3, VerifyTimeout: 15 * time.Minute, MaxVerifies: 2,
 		StuckAfter: 10 * time.Minute, StuckGrace: 30 * time.Second, ShutdownGrace: 10 * time.Second,
 		SuperviseEvery: time.Second, InboxSoftCap: 12,
+		WakeQuiet: 1500 * time.Millisecond, WakeMax: 10 * time.Second, MaxWakes: 8,
+		MailmanQuiet: 1500 * time.Millisecond, MailmanMax: 6 * time.Second, MailmanBound: 30 * time.Second,
+		MailmanBatch: 24, MailmanMaxPending: 200, MailmanDigestChars: 700,
 	}
 }
 
@@ -133,6 +170,10 @@ type Deps struct {
 	// Hooks runs user-configured commands around every agent's tool calls and
 	// stops (nil: none).
 	Hooks agent.Hooks
+	// Isolation, when set, gives every writer a git worktree of its own and
+	// integrates finished work through a verifying merge queue (isolate.go). Nil is
+	// swarm.isolation = "none": one shared tree, guarded by leases.
+	Isolation *Isolation
 }
 
 // RoleModel is a per-role model override.
@@ -172,6 +213,20 @@ type Swarm struct {
 	verifySem  chan struct{}
 	hseq       atomic.Int64
 	budgetOnce atomic.Bool
+
+	wk      waker                    // waking an idle manager (wake.go)
+	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
+	mail    *mailroom                // mailman mode (mailman.go); nil when it is off
+
+	// Worktree isolation (isolate.go): the harness's record of which task assignments
+	// reached the integration branch, how often each came back from the merge queue,
+	// and the end-of-run state.
+	merged     map[string]mergeRec
+	bounces    map[string]int
+	treeAgents map[string]bool // agents that ever had a tree of their own
+	apply      applyState
+	finishMu   sync.Mutex
+	finished   *IntegrationReport
 }
 
 // New builds a swarm. Call Start before spawning.
@@ -216,6 +271,33 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	if cfg.InboxSoftCap <= 0 {
 		cfg.InboxSoftCap = def.InboxSoftCap
 	}
+	if cfg.WakeQuiet <= 0 {
+		cfg.WakeQuiet = def.WakeQuiet
+	}
+	if cfg.WakeMax <= 0 {
+		cfg.WakeMax = def.WakeMax
+	}
+	if cfg.MaxWakes <= 0 {
+		cfg.MaxWakes = def.MaxWakes
+	}
+	if cfg.MailmanQuiet <= 0 {
+		cfg.MailmanQuiet = def.MailmanQuiet
+	}
+	if cfg.MailmanMax <= 0 {
+		cfg.MailmanMax = def.MailmanMax
+	}
+	if cfg.MailmanBound <= 0 {
+		cfg.MailmanBound = def.MailmanBound
+	}
+	if cfg.MailmanBatch <= 0 {
+		cfg.MailmanBatch = def.MailmanBatch
+	}
+	if cfg.MailmanMaxPending <= 0 {
+		cfg.MailmanMaxPending = def.MailmanMaxPending
+	}
+	if cfg.MailmanDigestChars <= 0 {
+		cfg.MailmanDigestChars = def.MailmanDigestChars
+	}
 	if deps.Events == nil {
 		deps.Events = events.Discard{}
 	}
@@ -228,15 +310,28 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	if roles == nil {
 		roles = BuiltinRoles()
 	}
+	if cfg.Mailman {
+		// The mailman is the harness's own role: added here (over any role of the same
+		// name), in a copy, so the caller's table is not changed.
+		with := make(Roles, len(roles)+1)
+		for n, r := range roles {
+			with[n] = r
+		}
+		with[MailmanRoleName] = MailmanRole()
+		roles = with
+	}
 	s := &Swarm{cfg: cfg, deps: deps, roles: roles, members: map[string]*member{}, seq: map[string]int{},
 		roleLay: map[string]*kv.Layer{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
-		verifySem: make(chan struct{}, cfg.MaxVerifies)}
+		verifySem: make(chan struct{}, cfg.MaxVerifies), merged: map[string]mergeRec{}, bounces: map[string]int{}, treeAgents: map[string]bool{}}
 	s.Board = NewBoard(deps.Events)
 	s.Board.SetClock(deps.Now)
 	s.Board.SetLimits(cfg.Board)
 	s.Leases = NewLeases(cfg.LeaseTTL, s.Board)
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
+	if s.isolated() {
+		s.Leases.Isolate()
+	}
 	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
 			data["action"] = action
@@ -245,6 +340,10 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Gate = NewWarmGate(deps.Model.Cache.DefaultTTL(), 0)
 	s.Router = NewRouter(cfg.Router, deps.Events, s.roster, s.ManagerID, nil)
 	s.Router.SetDeliver(s.deliver)
+	if cfg.Mailman {
+		s.mail = newMailroom(s)
+		s.Router.SetDivert(s.mail.divert)
+	}
 	for name, r := range roles {
 		s.roleLay[name] = r.Layer()
 	}
@@ -278,6 +377,10 @@ func (s *Swarm) Shutdown() {
 	s.closed = true
 	cancel := s.cancel
 	s.mu.Unlock()
+	s.wk.stop() // no wake after this
+	if s.mail != nil {
+		s.mail.stop() // and no batch for the mailman
+	}
 	if cancel != nil {
 		cancel()
 	}
@@ -305,12 +408,16 @@ func (s *Swarm) Shutdown() {
 	closing.Wait()
 }
 
+// roster lists the agents mail can be addressed to: everyone but the harness's own
+// service agents (the mailman is nobody's correspondent).
 func (s *Swarm) roster() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ids := make([]string, 0, len(s.members))
-	for id := range s.members {
-		ids = append(ids, id)
+	for id, m := range s.members {
+		if !m.service {
+			ids = append(ids, id)
+		}
 	}
 	sort.Strings(ids)
 	return ids
@@ -348,7 +455,7 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	if id == "" {
 		id = "mgr"
 	}
-	m, err := s.newMember(id, r, nil, NewEvidence())
+	m, err := s.newMember(id, r, nil, NewEvidence(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +471,12 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 // RunManager runs the manager on a goal and returns its final answer. If ctx ends
 // while it runs, the workers are stopped too (their tasks go back to todo). A panic
 // in the manager's run is returned as an error.
-func (s *Swarm) RunManager(ctx context.Context, goal string) (res *agent.Result, err error) {
+//
+// With Config.HoldManager the manager is sent back to work, a bounded number of
+// times, when it answers while the board holds unfinished work; if it still stops
+// with work left, the answer is followed by a harness line naming what was left
+// (running workers, tasks in review, ...), which is also shown as a notice.
+func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, error) {
 	a, err := s.StartManager()
 	if err != nil {
 		return nil, err
@@ -373,16 +485,23 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (res *agent.Result,
 	if m == nil {
 		return nil, errors.New("the manager is gone")
 	}
-	m.mu.Lock()
-	if m.life != lifeIdle {
-		m.mu.Unlock()
+	if !s.reserveManager(m) {
 		return nil, errors.New("the manager is already running")
 	}
-	m.life = lifeRunning
-	m.mu.Unlock()
+	s.HumanInput()
+	return s.runManager(ctx, m, goal, "")
+}
+
+// runManager runs the reserved manager. mail, when set, is a message the harness
+// framed (a wake note) that is queued for the manager's first step; goal is the
+// person's input, or "" for a run the harness started.
+func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (res *agent.Result, err error) {
 	stop := context.AfterFunc(ctx, func() { s.stopWorkers("interrupted", false) })
 	defer stop()
 	m.setState(s, "running", "planning")
+	if mail != "" {
+		m.a.Send(mail)
+	}
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -391,17 +510,40 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (res *agent.Result,
 				s.emitAs(m.id, "agent.panic", map[string]any{"id": m.id, "panic": fmt.Sprint(r), "stack": string(st)})
 			}
 		}()
-		res, err = a.Run(ctx, goal)
+		res, err = m.a.Run(ctx, goal)
 	}()
-	m.mu.Lock()
-	m.life = lifeIdle
-	m.mu.Unlock()
+	s.releaseManager(m)
 	state := "done"
 	if err != nil {
 		state = "failed"
 	}
 	m.setState(s, state, "")
+	s.applyMerged(m) // isolated runs: the verified, merged work reaches the person's checkout now
+	if err == nil {
+		s.afterManagerRun(m, res)
+	}
 	return res, err
+}
+
+// afterManagerRun is what the swarm does when the manager's run has returned cleanly.
+// A held manager that stopped anyway (the veto bound was reached) reports what it left
+// behind; in an interactive session, anything the manager has not seen wakes it again.
+func (s *Swarm) afterManagerRun(m *member, res *agent.Result) {
+	if s.cfg.HoldManager && res != nil {
+		if u := s.unfinishedWork(); !u.empty() {
+			txt := u.summary(holdListCap)
+			res.Text = strings.TrimRight(res.Text, "\n")
+			if res.Text != "" {
+				res.Text += "\n\n"
+			}
+			res.Text += "[harness] Unfinished when the manager stopped: " + txt + "."
+			s.emitAs(m.id, events.TypeSwarmUnfinished, map[string]any{"unfinished": txt})
+			s.managerNotice(m, "warn", "the manager stopped with unfinished work: "+txt)
+		}
+	}
+	if s.cfg.WakeManager && s.wakeNote(m) != "" {
+		s.managerEvent()
+	}
 }
 
 // Manager returns the manager agent, if started.
@@ -436,12 +578,18 @@ func (s *Swarm) modelFor(role string) cost.Model {
 func (s *Swarm) spawnableRoles() []string {
 	var out []string
 	for _, n := range s.roles.Names() {
-		if n != "manager" {
+		if n != "manager" && !s.isService(n) {
 			out = append(out, n)
 		}
 	}
 	return out
 }
+
+// isService reports whether a role is one of the harness's own (the mailman, while
+// mailman mode is on): the harness starts it, and it is nobody's teammate or
+// correspondent. When the mode is off a role of that name is whatever the project made
+// it.
+func (s *Swarm) isService(role string) bool { return s.mail != nil && role == MailmanRoleName }
 
 // taskCard renders the assignment text. In notes (pin=true) it carries the full
 // card; the kickoff message is the short form. Everything from the task is made
@@ -488,24 +636,41 @@ func (s *Swarm) onPromote(from string, ps []kv.Promotion) {
 type roleRequester struct {
 	inner perm.Requester
 	role  Role
+	// denyWrites, when set, makes the agent read-only whatever its role says, and is
+	// what it is told: read-only roles, and the manager of an isolated run.
+	denyWrites string
+	// strictShell applies the fallback allowlist to shell commands even when the
+	// permission engine is there to enforce the role's profile: a second, stricter
+	// opinion for an agent whose profile the swarm cannot vouch for.
+	strictShell bool
+	// only, when set, is the whole list of tools the agent may call: the mailman may
+	// call mail, and nothing else, whatever the mode or the rules say.
+	only map[string]bool
 }
+
+// isolatedManagerMsg is what the manager of an isolated run is told when it tries to
+// change a file.
+const isolatedManagerMsg = "in an isolated run the manager does not edit files: spawn a worker for the change (the harness verifies and merges its work)"
 
 func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decision {
 	req.Role = r.role.Name
-	if r.role.ReadOnly {
+	if r.only != nil && !r.only[req.Tool] {
+		return perm.Decision{Allow: false, Reason: r.denyWrites}
+	}
+	if r.denyWrites != "" {
 		_, engine := r.inner.(*perm.Engine)
 		switch {
-		case req.Tool == "bash" && engine:
+		case req.Tool == "bash" && engine && !r.strictShell:
 			// The permission engine parses shell syntax and enforces the role's
 			// (plan) profile itself; a prefix allowlist here would only be a weaker,
 			// bypassable second opinion (and would deny the checks the profile allows).
 		case req.Tool == "bash":
 			// No engine (tests, embedding): fall back to the conservative allowlist.
 			if !readOnlyCommand(req.Command) {
-				return perm.Decision{Allow: false, Reason: fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.role.Name)}
+				return perm.Decision{Allow: false, Reason: r.denyWrites}
 			}
 		case req.Writes:
-			return perm.Decision{Allow: false, Reason: fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.role.Name)}
+			return perm.Decision{Allow: false, Reason: r.denyWrites}
 		}
 	}
 	return r.inner.Check(ctx, req)

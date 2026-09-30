@@ -20,6 +20,14 @@ type Config struct {
 	// ExtraRoots are further directories treated as part of the workspace
 	// (per-agent git worktrees, scratch directories).
 	ExtraRoots []string
+	// TreeParents are directories whose immediate subdirectories are per-agent trees
+	// (git worktrees) of the project. They are workspace roots, and every rule that is
+	// relative to the workspace (Edit(./.sleipnir/**), Deny(Read(./secrets/**)),
+	// Allow(Edit(src/**))) applies inside each of those trees exactly as it does inside
+	// Root: an agent that works in its own copy of the project is held to the project's
+	// rules, not to none. (Its work reaches the person's checkout by a merge, and a rule
+	// that only guarded the checkout would guard nothing.)
+	TreeParents []string
 
 	// Allow, Ask and Deny are rule strings in the form ParseRule accepts.
 	Allow, Ask, Deny []string
@@ -66,6 +74,47 @@ type Engine struct {
 	allow, ask, deny []*crule
 	roles            map[string]*profile
 	persisted        map[Rule]bool // rules already handed to Config.Persist
+	confined         map[string]rootPair
+}
+
+// Confine binds an agent to one directory of the workspace (a git worktree of its
+// own): from now on whatever it reads or writes inside a workspace root (the shared
+// checkout, the roots of other agents' trees) must lie inside dir, whatever the mode
+// and the rules say. The check is on resolved paths, so a link inside dir that leads
+// into another tree is another tree, and it covers shell commands as well as the file
+// tools, because it sits where every access of a request is judged. Paths outside all
+// workspace roots (the system, the home directory) are not affected: the ordinary
+// rules keep deciding those. A path that cannot be resolved statically is left to the
+// mode, as everywhere else.
+func (e *Engine) Confine(agent, dir string) {
+	if agent == "" || dir == "" {
+		return
+	}
+	l := cleanAbs(dir)
+	rp := rootPair{lex: l, real: realPath(l)}
+	e.mu.Lock()
+	if e.confined == nil {
+		e.confined = map[string]rootPair{}
+	}
+	e.confined[agent] = rp
+	e.mu.Unlock()
+}
+
+// Unconfine lifts Confine (the agent's tree is gone).
+func (e *Engine) Unconfine(agent string) {
+	e.mu.Lock()
+	delete(e.confined, agent)
+	e.mu.Unlock()
+}
+
+func (e *Engine) confinement(agent string) (rootPair, bool) {
+	if agent == "" {
+		return rootPair{}, false
+	}
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	rp, ok := e.confined[agent]
+	return rp, ok
 }
 
 var _ Requester = (*Engine)(nil)
@@ -128,7 +177,8 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
-	rs := newResolver(home, cfg.Root, cfg.ExtraRoots)
+	rs := newResolver(home, cfg.Root, append(append([]string(nil), cfg.ExtraRoots...), cfg.TreeParents...))
+	rs.addTreeParents(cfg.TreeParents)
 	e := &Engine{cfg: cfg, rs: rs, mode: mode, roles: map[string]*profile{}, persisted: map[Rule]bool{}}
 	var err error
 	if e.allow, err = compileList(Allow, cfg.Allow, rs); err != nil {

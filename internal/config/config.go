@@ -227,10 +227,40 @@ type Swarm struct {
 	MaxAgents             int `json:"max_agents"`
 	RequestsPerMinute     int `json:"requests_per_minute"`
 	MaxConcurrentRequests int `json:"max_concurrent_requests"`
-	// Isolation is "shared" (all agents edit one working tree) or "worktree"
-	// (each agent gets its own git worktree).
-	Isolation string  `json:"isolation,omitempty"`
+	// Isolation is "none" (the default: every agent edits the one working tree,
+	// guarded by write leases; "shared" is the older spelling of the same thing) or
+	// "worktree": each writer gets a git worktree of its own and finished work is
+	// integrated through a verifying merge queue (docs/SWARM-PROTOCOL.md section 14).
+	// The trees always live in the user's cache directory, never in the repository
+	// and never anywhere a configuration value names: a project's file may switch
+	// isolation on (it only reduces risk), but it cannot choose where anything is
+	// written.
+	Isolation string `json:"isolation,omitempty"`
+	// Mailman routes worker mail through a mailman agent that turns bursts into short
+	// digests (default false: mail is delivered at once). The router's checks and rate
+	// limits are unchanged, the manager's and the harness's own mail never goes through
+	// the mailman, and every digest names its original senders; a mailman that is absent
+	// or slow costs delay, never mail (docs/SWARM-PROTOCOL.md section 5). It runs on the
+	// session's model unless one is given for the role (--role-model mailman=<model>).
+	// Like isolation, it changes nothing about what a project's files can reach, so a
+	// project's file may set it.
+	Mailman   bool    `json:"mailman,omitempty"`
 	BudgetUSD float64 `json:"budget_usd"`
+}
+
+// Isolation modes as IsolationMode reports them.
+const (
+	IsolationNone     = "none"
+	IsolationWorktree = "worktree"
+)
+
+// IsolationMode is the effective isolation: "worktree", or "none" for the default,
+// an empty value and the older spelling "shared".
+func (s Swarm) IsolationMode() string {
+	if s.Isolation == IsolationWorktree {
+		return IsolationWorktree
+	}
+	return IsolationNone
 }
 
 // Tools bounds tool output and work (mirrors tools.Limits).
@@ -279,7 +309,7 @@ func Defaults() *Config {
 			MinLayerForBreakpoint: 1500, // kv.DefaultPolicy
 			Prewarm:               true,
 		},
-		Swarm: Swarm{Isolation: "shared"},
+		Swarm: Swarm{Isolation: IsolationNone},
 		Tools: Tools{
 			MaxOutputChars:    24_000, // tools.DefaultLimits
 			DefaultTimeoutSec: 120,

@@ -79,7 +79,7 @@ func cmdInit(_ context.Context, args []string) error {
 	} else {
 		patch = map[string]any{
 			"permissions": map[string]any{"deny": []string{"Read(./.env)", "Read(./secrets/**)"}},
-			"swarm":       map[string]any{"max_agents": 12, "isolation": "shared"},
+			"swarm":       map[string]any{"max_agents": 12, "isolation": "none"},
 		}
 		// A project shares a model only when asked to: the detected default depends on
 		// whose keys are in this shell.
@@ -141,7 +141,37 @@ func cmdConfig(_ context.Context, args []string) error {
 	} else {
 		fmt.Fprintln(os.Stderr, "configuration is valid")
 	}
+	for _, line := range swarmSettings(cfg, rep) {
+		fmt.Fprintln(os.Stderr, line)
+	}
 	return nil
+}
+
+// swarmSettings are the effective swarm switches that change what a run does to the
+// person's files or how its agents talk, each with where its value came from: the
+// keys are easy to set in one layer and forget in another.
+func swarmSettings(cfg *config.Config, rep *config.Report) []string {
+	origin := func(key string) string {
+		if rep != nil {
+			if o := rep.Origins[key]; o != "" {
+				return o
+			}
+		}
+		return "default"
+	}
+	iso := cfg.Swarm.IsolationMode()
+	note := "every agent edits the one checkout"
+	if iso == config.IsolationWorktree {
+		note = "every writer gets its own git worktree; finished work is merged and verified, and applied to the checkout at the end"
+	}
+	mail, mailNote := "off", "worker mail is delivered at once"
+	if cfg.Swarm.Mailman {
+		mail, mailNote = "on", "worker mail goes through a mailman agent that digests bursts (its model: --role-model mailman=<model>)"
+	}
+	return []string{
+		fmt.Sprintf("swarm.isolation: %s (%s): %s", iso, origin("swarm.isolation"), note),
+		fmt.Sprintf("swarm.mailman: %s (%s): %s", mail, origin("swarm.mailman"), mailNote),
+	}
 }
 
 // redactedConfig is cfg as `config --json` prints it: the output ends up in bug
