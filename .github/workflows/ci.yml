@@ -25,6 +25,8 @@ jobs:
           cache: true
       - name: gofmt
         run: test -z "$(gofmt -l cmd internal)" || (gofmt -l cmd internal && exit 1)
+      - name: go.mod is tidy (the release hook requires it)
+        run: go mod tidy -diff
       - name: vet
         run: go vet ./...
       - name: build

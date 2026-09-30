@@ -7,6 +7,9 @@ echo "== gofmt"
 bad=$(gofmt -l cmd internal || true)
 [ -z "$bad" ] || { echo "not gofmt-clean:"; echo "$bad"; exit 1; }
 
+echo "== go.mod is tidy"
+go mod tidy -diff
+
 echo "== vet"
 go vet ./...
 
