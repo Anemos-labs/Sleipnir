@@ -1,0 +1,33 @@
+# Dashboard at 80x30 with 50 agents, frame 12 (the last mail is arriving); the layout is what fits: read what is there and what is left out
+
+== 80x30, 50 agents (width 80, 30 lines)
+╭ SLEIPNIR ▸ swarm “add pagination …  ◷ 02:10 · 50 agents · $0.31/$20 · ⛁ 94% ─╮|
+│                        ▄▄     │ one prefix, 50 riders                        │|
+│                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
+│                   ▄█▀██▀▀██   │                                              │|
+│     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
+│  ▄████▀▀█████████████         │       G0               G1            G2      │|
+│   ▀▀   ▄▀▀▀█████▀▀█▀▄         │   ╎   ┃   ┃   │   │   ╎   ╎   │   ┃   ┃      │|
+│        ███ ██████████▄        │   ╎   ┃   ┃   │   │   ╎   ╎   │   ┃   ┃      │|
+│       ▄█▄████▀█ ██ █ ▀█▄      │   ╎   ┃   ┃   │   │   ╎   ╎   │   ┃   ┃      │|
+│      ▄▀ ▀▀▀▀▀▄▀▄▀█ ▀▀  ▀      │   m0  w1  w2  w3  w4  w5  w6  w7  w8  w9 +40 │|
+│                               │                                              │|
+├─ agents ──────────────────────┴──────────────────────────────────────────────┤|
+│ AGENT        STATE   DOING      PROMPT             TOK    COST    ⛁ LEASE    │|
+│ m0 manager   ⠹ think plan: spl… █████████████▓░  12.1k  $0.012  96% —        │|
+│ w1 backend   ⚙ tool  go test .… █████████▏█████  72.2k  $0.020  97% orders/* │|
+│ w2 backend   ✎ edit  internal/… █████████▏███▓░  69.6k  $0.018  95% users/*  │|
+│ w3 frontend  ✉ wait  schema: G… █████████▏███▓░  34.2k  $0.009  96% web/api  │|
+│ w4 frontend  ⠦ think paginate … ███████▏█████▓░  44.6k  $0.014  94% web/ord  │|
+│ w7 docs      ⚠ stuck npm test … █████████▏██▓░░  48.0k  $0.012  88% docs/*   │|
+│ w17 frontend ⚠ stuck go test .… ███████▏████▓░░  82.7k  $0.021  85% docs/*   │|
+│ w42 backend  ⚠ stuck internal/… ███████████▏▓░░  58.8k  $0.009  88% —        │|
+│ … and 42 more                                                                │|
+├─ task board ─────────────────────────────────────────────────────────────────┤|
+│ todo 3             running 4          verifying 1        merged 5            │|
+│ ▢ t9  docs         ▣ t3 ord           ◌ t7               ✓ t1 ✓ t2 ✓ t4      │|
+│ ▢ t10 e2e          ▣ t4 usr                              ✓ t5 ✓ t6           │|
+│ ▢ t11 doc          ▣ t5 web                                                  │|
+│                    ▣ t6 cli                                                  │|
+│ ↑↓ agent · enter transcript · m mail · b board · ? help · q back to shell    │|
+╰──────────────────────────────────────────────────────────────────────────────╯|

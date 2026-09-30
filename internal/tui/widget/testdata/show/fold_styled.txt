@@ -1,0 +1,21 @@
+# the thread is G5 (▓), the resume G4 (▒), the summary accent
+
+== progress 0.6
+{dim|thread }{G5|▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓} {-+b|31.2k}
+{dim|       }{G5|▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓}
+{dim|fold ↓ }{G5|▓▓▓▓▓▓▓▓▓}
+{dim|       }{G5|▓▓▓▓}
+{dim|       }
+
+{dim|spine  }
+{accent+b|◆ compacting 31.2k → 7.0k}
+
+== progress 1
+{dim|thread }{G5|▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓} {-+b|31.2k}
+{dim|       }{G5|▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓}
+{dim|fold ↓ }{G5|▓▓▓▓▓▓▓▓▓}
+{dim|       }{G5|▓▓▓▓}
+{dim|       }{G4|▒▒} {-+b|2.4k}
+
+{dim|spine  }{G4+b|▏}{-+b|resume}
+{accent+b|◆ compacted 31.2k → 2.4k}{dim| (-92%)}

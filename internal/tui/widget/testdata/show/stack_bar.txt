@@ -1,0 +1,82 @@
+# StackBar: █ cached, ▓ where the cache ends, ░ paid, ▏ a provider breakpoint (the last cell of its layer), ⚠ a cache break
+# the prompt of the chat sketch: 48300 tokens in 7 layers; breakpoints on G0, G2 and G5
+
+== 93% cached, width 20 (width 20, 2 lines)
+███▏██████▏███████▓░|
+G0 G1 G2 G3 G4 G5 G6|
+
+== 93% cached, width 40 (width 40, 2 lines)
+███████▏██████████████▏█████████████▓░▏░|
+   G0       G1     G2  G3 G4    G5    G6|
+
+== 93% cached, width 50 (width 50, 2 lines)
+█████████▏██████████████████▏████████████████▓░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== 93% cached, width 80 (width 80, 2 lines)
+██████████████▏██████████████████████████████▏███████████████████████████▓░░░▏░░|
+      G0                G1              G2     G3  G4            G5           G6|
+# the cached share: none (the first request), half, all
+
+== cached 0 of 48300 tokens (width 50, 2 lines)
+░░░░░░░░░▏░░░░░░░░░░░░░░░░░░▏░░░░░░░░░░░░░░░░░░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== cached 24150 of 48300 tokens (width 50, 2 lines)
+█████████▏██████████████▓░░░▏░░░░░░░░░░░░░░░░░░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== cached 48300 of 48300 tokens (width 50, 2 lines)
+█████████▏██████████████████▏███████████████████▏█|
+    G0         G1        G2  G3 G4      G5      G6|
+# the sweep: a light runs along the bar to the match length; the bright part stops at the light
+
+== sweep 0.00 (width 50, 2 lines)
+▶▷▹░░░░░░▏░░░░░░░░░░░░░░░░░░▏░░░░░░░░░░░░░░░░░░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== sweep 0.20 (width 50, 2 lines)
+█████████▓▶▷▹░░░░░░░░░░░░░░░▏░░░░░░░░░░░░░░░░░░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== sweep 0.40 (width 50, 2 lines)
+█████████▏█████████▓▶▷▹░░░░░▏░░░░░░░░░░░░░░░░░░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== sweep 0.60 (width 50, 2 lines)
+█████████▏██████████████████▏▓▶▷▹░░░░░░░░░░░░░░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== sweep 0.80 (width 50, 2 lines)
+█████████▏██████████████████▏██████████▓▶▷▹░░░░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== sweep 0.93 (width 50, 2 lines)
+█████████▏██████████████████▏████████████████▓▶▷▹░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== sweep 1.00 (width 50, 2 lines)
+█████████▏██████████████████▏████████████████▓░░▏▶|
+    G0         G1        G2  G3 G4      G5      G6|
+# a cache break at G3: the layer is drawn in the alarm style and the label gets a warning sign
+
+== break at G3 (width 50, 2 lines)
+█████████▏████████████▓░░░░░▏░░░░░░░░░░░░░░░░░░░▏░|
+    G0         G1        G2  ⚠G3 G4     G5      G6|
+# a cooling cache fades; a cold one turns █ into ▒
+
+== warm 1.0 (width 50, 2 lines)
+█████████▏██████████████████▏████████████████▓░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== warm 0.6 (width 50, 2 lines)
+█████████▏██████████████████▏████████████████▓░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== warm 0.3 (width 50, 2 lines)
+█████████▏██████████████████▏████████████████▓░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|
+
+== warm 0.0 (width 50, 2 lines)
+▒▒▒▒▒▒▒▒▒▏▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▏▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░▏░|
+    G0         G1        G2  G3 G4      G5      G6|

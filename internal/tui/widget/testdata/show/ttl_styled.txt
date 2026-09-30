@@ -1,0 +1,10 @@
+# green while there is time, amber and Bold in the last minute, red and Bold when cold
+
+== remaining 4m12s
+{good|◕} {good|warm} 4:12 {good|▰▰▰▰▰▰▰}{faint|▱}
+
+== remaining 45s
+{warn+b|◔} {warn+b|warm} {-+b|0:45} {warn+b|▰}{faint|▱▱▱▱▱▱▱}
+
+== remaining 0s
+{bad+b|○} {bad+b|cold} {faint|▱▱▱▱▱▱▱▱}

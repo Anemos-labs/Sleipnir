@@ -1,0 +1,27 @@
+# Dashboard at 60x24 with 8 agents, frame 12 (the last mail is arriving); the layout is what fits: read what is there and what is left out
+
+== 60x24, 8 agents (width 60, 24 lines)
+╭ SLEIPNIR ▸ swa…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
+│                       ▄▄   │ one prefix, eight riders    │|
+│                    ▄▄██▀█▄ │ shared G0–G2 41.2k tokens   │|
+│                  ▄█▀██▀▀██ │                             │|
+│    ▄▄▄▄▄▄█████████▀██▀     │ ███████████████████████████ │|
+│ ▄████▀▀█████████████       │    G0        G1       G2    │|
+│  ▀▀   ▄▀▀▀█████▀▀█▀▄       │  ╎   ┃  ┃  │   │  ╎  ╎   │  │|
+│       █▀███ ██████▀█       │  ╎   ┃  ┃  │   │  ╎  ╎   │  │|
+│       ▀▀▄█  █ ████ █       │  ╎   ┃  ┃  │   │  ╎  ╎   │  │|
+│      ▄▀█▀   █▄▀▀█▀▄█       │  m0  w1 w2 w3  w4 w5 w6  w7 │|
+│                            │                             │|
+├─ agents ───────────────────┴─────────────────────────────┤|
+│ AGENT       STATE   DOING       PROMPT          TOK    ⛁ │|
+│ m0 manager  ⠹ think plan: spli… ████████████  12.1k  96% │|
+│ w1 backend  ⚙ tool  go test ./… ███████▏████  72.2k  97% │|
+│ w2 backend  ✎ edit  internal/u… ███████▏██▓░  69.6k  95% │|
+│ w3 frontend ✉ wait  schema: GE… ███████▏████  34.2k  96% │|
+│ w4 frontend ⠦ think paginate <… ██████▏███▓░  44.6k  94% │|
+│ w5 tester   ◌ idle  waits for … ██████████▓░   6.8k  91% │|
+│ w6 reviewer ✓ done  approved t2 ██████████▓░   9.9k  95% │|
+│ w7 docs     ⚠ stuck npm test -… ████████▏█▓░  48.0k  88% │|
+│                                                          │|
+│ ↑↓ agent · enter transcript · ? help · q back to shell   │|
+╰──────────────────────────────────────────────────────────╯|

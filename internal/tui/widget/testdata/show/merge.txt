@@ -1,0 +1,116 @@
+# MergeQueue: a chip moves through rebase, verify, merge; the spinner turns with the frame; a failed one is bounced back with its reason
+
+== the sketch, frame 0 (width 40, 6 lines)
+▸ t7 rebase ✓ ─ verify ⠋                |
+    go test ./orders/...                |
+  t8 rebase ⠋                           |
+                                        |
+merged t1 t2 t4 t5 t6                   |
+conflicts 0 · bounced back 0            |
+
+== the sketch, frame 1 (width 40, 6 lines)
+▸ t7 rebase ✓ ─ verify ⠙                |
+    go test ./orders/...                |
+  t8 rebase ⠙                           |
+                                        |
+merged t1 t2 t4 t5 t6                   |
+conflicts 0 · bounced back 0            |
+
+== the sketch, frame 2 (width 40, 6 lines)
+▸ t7 rebase ✓ ─ verify ⠹                |
+    go test ./orders/...                |
+  t8 rebase ⠹                           |
+                                        |
+merged t1 t2 t4 t5 t6                   |
+conflicts 0 · bounced back 0            |
+
+== the sketch, frame 3 (width 40, 6 lines)
+▸ t7 rebase ✓ ─ verify ⠸                |
+    go test ./orders/...                |
+  t8 rebase ⠸                           |
+                                        |
+merged t1 t2 t4 t5 t6                   |
+conflicts 0 · bounced back 0            |
+
+== the sketch at width 26 (width 26, 6 lines)
+▸ t7 rebase ✓ ─ verify ⠋  |
+    go test ./orders/...  |
+  t8 rebase ⠋             |
+                          |
+merged t1 t2 t4 t5 t6     |
+conflicts 0 · bounced bac…|
+# a task moving on: t8 rebases, verifies, merges; then it joins the merged list
+
+== t8 queued (width 40, 4 lines)
+  t8 queued                             |
+                                        |
+merged t6                               |
+conflicts 0 · bounced back 0            |
+
+== t8 rebasing (width 40, 5 lines)
+▸ t8 rebase ⠹                           |
+    git rebase main                     |
+                                        |
+merged t6                               |
+conflicts 0 · bounced back 0            |
+
+== t8 verifying (width 40, 5 lines)
+▸ t8 rebase ✓ ─ verify ⠹                |
+    go test ./...                       |
+                                        |
+merged t6                               |
+conflicts 0 · bounced back 0            |
+
+== t8 merging (width 40, 5 lines)
+▸ t8 rebase ✓ ─ verify ✓ ─ merge ⠹      |
+    git merge --ff-only                 |
+                                        |
+merged t6                               |
+conflicts 0 · bounced back 0            |
+
+== t8 merged (width 40, 4 lines)
+  nothing queued                        |
+                                        |
+merged t6 t8                            |
+conflicts 0 · bounced back 0            |
+# a failure is bounced back to its worker with the reason; a conflict is a failure at the rebase
+
+== two failures (width 48, 10 lines)
+✗ t2 rebase ✓ ─ verify ✗                        |
+  ↩ back to w3: FAIL TestList (0.3s): want 10 r…|
+✗ t3 rebase ✗                                   |
+  ↩ back to w4: conflict in orders/list.go      |
+▸ t4 rebase ⠙                                   |
+    git rebase main                             |
+  t5 queued                                     |
+                                                |
+merged t1                                       |
+conflicts 1 · bounced back 2                    |
+
+== two failures, narrow (width 28, 10 lines)
+✗ t2 rebase ✓ ─ verify ✗    |
+  ↩ back to w3: FAIL TestLi…|
+✗ t3 rebase ✗               |
+  ↩ back to w4: conflict in…|
+▸ t4 rebase ⠙               |
+    git rebase main         |
+  t5 queued                 |
+                            |
+merged t1                   |
+conflicts 1 · bounced back 2|
+# a long merged list wraps under its title
+
+== 24 merged (width 36, 7 lines)
+  nothing queued                    |
+                                    |
+merged t1 t2 t3 t4 t5 t6 t7 t8 t9   |
+       t10 t11 t12 t13 t14 t15 t16  |
+       t17 t18 t19 t20 t21 t22 t23  |
+       t24                          |
+conflicts 0 · bounced back 0        |
+
+== nothing queued (width 36, 4 lines)
+  nothing queued                    |
+                                    |
+merged none                         |
+conflicts 0 · bounced back 0        |

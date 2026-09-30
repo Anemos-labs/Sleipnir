@@ -1,0 +1,8 @@
+# headers: todo warn, running good, verifying info, merged G1 (all Bold); cards: todo dim, verifying info, merged good, failed bad
+
+== width 52
+{warn+b|todo 3}       {good+b|running 4}    {info+b|verifying 2}  {G1+b|merged 5}
+{dim|▢ t9  docs}   ▣ t3 ord     {info|◌ t7}         {good|✓ t1} {good|✓ t2}
+{dim|▢ t10 e2e}    ▣ t4 usr     {bad+b|✗ t8}         {good|✓ t4} {good|✓ t5}
+{dim|▢ t11 doc}    ▣ t5 web                  {good|✓ t6}
+             ▣ t6 cli

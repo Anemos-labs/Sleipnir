@@ -1,0 +1,7 @@
+# the lane is in the agent's role colour; ▁ and ▂ are Dim; marks are Bold (mail warn, compaction accent, stuck bad)
+
+== m0, w1 and w7 at width 34
+{r0+b|m0} {r0|▄▄} {r0+d|▂}{r0|▇▆▅▆}{r0+d|▂}{r0|▅█▇█▅▇▇▆} {r0+d|▂▁▂▁▂}{accent+b|◆}{r0|▆▆▇▇▆▆▇}
+{r1+b|w1} {r1|▄██▇▇▆}{warn+b|✉}{r1|▅▇██▆█▆▅▄█▆█▇}{r1+d|▁▁▂}{r1|▅█▅▇▆▇▄█}
+{r5+b|w7} {r5+d|▁▂} {r5+d|▂}{r5|▇███▄▇▇█▇██▅▆▄██▅▄▇▄}{r5+d|▂▁▁}{bad+b|⚠}{r5+d|▂▁▂}
+   {dim|-60s}         {dim|-30s}           {dim|now}
