@@ -167,3 +167,37 @@ The first release.
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and
   the manager's supervision).
+
+### Found by running it on real models
+
+A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
+defect the runs showed, with the evidence, and what changed.
+
+- **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:
+  45% `cd` to a path the model guessed (`/workspace`, `/repo`, `/home/user`), 14% paths the engine cannot know (`$(pwd)`,
+  `$OLDPWD`, a loop variable), 6% scratch files in `/tmp`, 10% `sed -n 'N,Mp' file`, the way models read a range of lines.
+  The constitution now says where the agent starts and what to do about paths and scratch files (**a declared prompt change, priced
+  below**); a refusal outside the workspace names the workspace; an unattended run gets the engine's reason and what to do instead
+  of one generic line; and `sed` is allowed as a reader of lines (`sed -n '120,160p' file`: addresses with `p d = q Q` and nothing
+  else, run for real by the test that checks allowed commands change nothing), while `s`, `w`, `e`, `-i` and every other form still ask.
+- **Tool names garbled by chat-template tokens** (`bash<|channel|>commentary`, `functions.read`) ended as unknown-tool errors. The
+  agent repairs a name only when the repaired form is a registered tool, records it (`tool.call` `as`), and an unknown tool now
+  gets the list of tools and the closest name.
+- **The answer is no longer cut to six lines when it was a question**: the finishing rule says an answer to a question, a review or
+  an explanation is given whole. A command that times out says what to do next (a longer timeout while the cap allows it, else
+  `run_in_background`).
+- **The reward detector flagged correct work as hacking**: a workspace below `~/.something` looked like the agent writing into the
+  home's dotfiles, and a scratch `debug_test.go` (written to reproduce the bug, which is what the task asks for) counted as editing a
+  protected path. A hack flag zeroes the outcome and keeps the episode out of the training export, so four of twenty passing or
+  near-passing episodes were lost. Scoring now reads the workspace from the run's own log, protected paths are judged by the final
+  diff (a new file under a protected glob is scratch; the verifier discards it), and `rl reward --redetect-hacks` repairs data that
+  was scored before.
+- **Two processes that shared a work directory killed each other's setup** (one marker per directory, swept by the first to finish):
+  the marker is unique per build. A test that put fake clocks and real file times in one assertion failed for good after a date
+  (`inspect`); the glob-cost test was a 100 ms stopwatch that failed at load 37 and is now a hang guard.
+
+*Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
+382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
+which every request reads at the cached price, and the first request after an upgrade writes the prefix anew, once per session.
+The sweep puts the swarm's cost against a naive harness at about 0.6 points per thousand tokens of shared pin, so this is about
+0.06 points; what it buys is measured by the before/after run in `docs/BENCHMARKS.md`.

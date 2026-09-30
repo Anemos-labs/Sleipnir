@@ -632,12 +632,21 @@ func TestCacheEcon_BindingRejectionIsRecoveredOnce(t *testing.T) {
 
 func TestCacheEcon_BackgroundCommitStripsThinkingOfCarriedTurns(t *testing.T) {
 	prov := &cxProv{prof: cxAnthropicProfile()}
-	prov.handle = cxWorkModel(12, func(p *cxProv, pr *core.Prompt) string {
-		// A compactor that thinks for two more agent steps.
+	// The compactor "thinks for two more agent steps". The agent does not wait for it, and a mock answers instantly, so on a
+	// loaded machine the agent could finish all twelve steps before the compactor's goroutine had even started, and there
+	// was nothing left to commit at (the test failed one run in four at load 40). The mock model therefore keeps the agent
+	// where it would be with a real model's latency: once a plan is out, the next request waits for the compactor to begin,
+	// and the second of the two steps it thinks for waits for it to answer. What is left after that is the boundaries at
+	// which the agent commits.
+	started := -1 // main requests served when the compactor began, under prov.mu
+	begun, replied := make(chan struct{}), make(chan struct{})
+	work := cxWorkModel(12, func(p *cxProv, pr *core.Prompt) string {
 		p.mu.Lock()
 		start := p.mainN
+		started = start
 		p.mu.Unlock()
-		deadline := time.Now().Add(5 * time.Second)
+		close(begun)
+		deadline := time.Now().Add(time.Minute) // a hang guard, not a measurement
 		for time.Now().Before(deadline) {
 			p.mu.Lock()
 			n := p.mainN
@@ -647,11 +656,34 @@ func TestCacheEcon_BackgroundCommitStripsThinkingOfCarriedTurns(t *testing.T) {
 			}
 			time.Sleep(2 * time.Millisecond)
 		}
+		close(replied)
 		return `{"keep_from":"t5","spine":[{"turns":"t1-t4","line":"explored"}],"mask":[],"notes":[],"promote":[]}`
 	})
 	pl := kv.DefaultPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 500, 900, 300
 	a, log := cxAgent(t, cxOpts{prov: prov, planner: pl})
+	wait := func(c chan struct{}) {
+		select {
+		case <-c:
+		case <-time.After(time.Minute):
+		}
+	}
+	prov.handle = func(p *cxProv, req *provider.Request) (*provider.Response, error) {
+		resp, err := work(p, req)
+		if strings.Contains(cxLastUserText(req.Prompt), "<compactor-task>") {
+			return resp, err
+		}
+		if len(log.OfType(events.TypeCompactPlan)) > 0 {
+			wait(begun)
+		}
+		p.mu.Lock()
+		n, s := p.mainN, started
+		p.mu.Unlock()
+		if s >= 0 && n == s+2 {
+			wait(replied)
+		}
+		return resp, err
+	}
 	_, err := a.Run(context.Background(), "do the work")
 	commits := log.OfType(events.TypeCompactCommit)
 	if len(commits) == 0 {

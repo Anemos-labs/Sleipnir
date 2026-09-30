@@ -184,6 +184,19 @@ func foregroundTimeout(sec float64, has bool, lim tools.Limits) time.Duration {
 	return min(d, lim.MaxTimeout)
 }
 
+// timeoutAdvice says what to do about a command that needed longer. Told only "timed out", a model runs the same command
+// again, or asks for a timeout the cap quietly lowers.
+func timeoutAdvice(ran time.Duration, lim tools.Limits) string {
+	limit := lim.MaxTimeout
+	if limit <= 0 {
+		limit = tools.DefaultLimits().MaxTimeout
+	}
+	if ran < limit {
+		return "[it needs longer: pass timeout (at most " + fmtSeconds(limit) + ") or start it with run_in_background and read its output with bash_output]"
+	}
+	return "[it needs longer than the limit of " + fmtSeconds(limit) + ": start it with run_in_background and read its output with bash_output]"
+}
+
 // backgroundTimeout is 0 (no deadline) unless the model asked for one: a dev
 // server that dies after the foreground default would be useless.
 func backgroundTimeout(sec float64, has bool) time.Duration {
@@ -275,7 +288,7 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 	}
 	switch reason {
 	case killTimeout:
-		marks = append(marks, "[timed out after "+fmtSeconds(timeout)+"]")
+		marks = append(marks, "[timed out after "+fmtSeconds(timeout)+"]", timeoutAdvice(timeout, env.Limits))
 	case killCancel:
 		marks = append(marks, "[cancelled]")
 	case killShutdown:

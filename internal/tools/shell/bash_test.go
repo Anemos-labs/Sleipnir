@@ -694,6 +694,32 @@ func TestTimeoutFromLimits(t *testing.T) {
 	}
 }
 
+// A command that timed out says what to do next: a longer timeout while there is room for one, and run_in_background when
+// the cap has been reached. The advice sits before the exit code, which stays the last line.
+func TestTimeoutSaysWhatToDoNext(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{KillGrace: 300 * time.Millisecond})
+	env := h.env("a")
+	env.Limits = tools.DefaultLimits()
+	env.Limits.DefaultTimeout = time.Second
+	env.Limits.MaxTimeout = 2 * time.Second
+
+	res := h.bash(env, "sleep 30")
+	for _, want := range []string{"[timed out after 1s]\n[it needs longer: pass timeout (at most 2s) or start it with run_in_background", "bash_output"} {
+		if !strings.Contains(res.Text, want) {
+			t.Errorf("below the cap, the text lacks %q:\n%s", want, res.Text)
+		}
+	}
+	if !strings.HasSuffix(res.Text, "[exit code 143]") {
+		t.Errorf("the exit code must stay last:\n%s", res.Text)
+	}
+
+	res = h.bash(env, "sleep 30", map[string]any{"timeout": 100})
+	if !strings.Contains(res.Text, "[timed out after 2s]\n[it needs longer than the limit of 2s: start it with run_in_background") || strings.Contains(res.Text, "pass timeout") {
+		t.Errorf("at the cap, only the background is left:\n%s", res.Text)
+	}
+}
+
 // The regression this guards: a child that ignores SIGTERM outliving a leader
 // that obeyed it. The whole group must be dead when the call returns.
 func TestTimeoutKillsTheWholeGroup(t *testing.T) {

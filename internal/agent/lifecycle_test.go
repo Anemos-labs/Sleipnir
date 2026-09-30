@@ -647,7 +647,8 @@ func TestSec_S22b_ConstitutionIsDeterministicAndStaysTight(t *testing.T) {
 			t.Fatalf("the constitution is not a pure function of its options (swarm=%v)", swarm)
 		}
 		// Every token of it is in the cached prefix of every agent: growth is a decision.
-		if n := core.NewBytesEstimator().WithRatio(4).Tokens(a); n > 1100 {
+		// (Raised from 1100 to 1175 when it learned where the agent starts: priced in CHANGELOG.md, "Found by running it".)
+		if n := core.NewBytesEstimator().WithRatio(4).Tokens(a); n > 1175 {
 			t.Errorf("the constitution (swarm=%v) is %d tokens; keep the wording tight or raise this bound on purpose", swarm, n)
 		}
 		lower := strings.ToLower(a)
