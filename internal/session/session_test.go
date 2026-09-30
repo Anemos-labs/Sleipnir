@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/agent"
+	"github.com/reee344/sleipnir/internal/checkpoint"
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/cost"
 	"github.com/reee344/sleipnir/internal/events"
@@ -624,5 +625,52 @@ func TestPermissionModesThroughTheAssembledSession(t *testing.T) {
 				t.Errorf("prompter asked %d times, want %d", prompts, tc.prompts)
 			}
 		})
+	}
+}
+
+// TestRewindRestoresWhatTheAgentChanged: every write passes the checkpoint store
+// first, so a rewind puts modified files back and removes files the agent created.
+func TestRewindRestoresWhatTheAgentChanged(t *testing.T) {
+	repo := newRepo(t)
+	orig, err := os.ReadFile(filepath.Join(repo, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if assistantTurns(c) == 0 {
+			return mock.Reply{Text: "editing", ToolCalls: []mock.ToolCall{
+				call("r", "read", map[string]any{"path": "main.go"}),
+				call("e", "write", map[string]any{"path": "main.go", "content": "package main\n\n// changed by the agent\nfunc main() {}\n"}),
+				call("n", "write", map[string]any{"path": "created.txt", "content": "new\n"}),
+			}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Run(context.Background(), "change main.go and add created.txt"); err != nil {
+		t.Fatal(err)
+	}
+	changed, _ := os.ReadFile(filepath.Join(repo, "main.go"))
+	if string(changed) == string(orig) {
+		t.Fatal("the agent's write did not land")
+	}
+	list := s.Ckpt.List()
+	if len(list) != 1 || len(list[0].Files) < 2 {
+		t.Fatalf("expected one checkpoint covering both files, got %+v", list)
+	}
+	rep, err := s.Ckpt.Restore(list[0].ID, checkpoint.RestoreOpts{})
+	if err != nil || !rep.OK() {
+		t.Fatalf("restore: %v %s", err, rep.Summary())
+	}
+	back, _ := os.ReadFile(filepath.Join(repo, "main.go"))
+	if string(back) != string(orig) {
+		t.Fatalf("main.go not restored:\n%s", back)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "created.txt")); err == nil {
+		t.Fatal("a file the agent created must be removed by the rewind")
 	}
 }
