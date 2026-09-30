@@ -85,13 +85,22 @@ The same task ("make the tests in `slug_test.go` pass without changing them, run
 | `zai-org/glm-5.3-flash` | pass | 4 | 0.00022 | no cache reads reported |
 | `openbmb/minicpm5-2b` | pass | 35 | 0.00096 | its first run made 200 requests ($0.0079) repeating two refused commands; refusals that say nobody can approve, and the repetition guard, are what changed |
 
-A real swarm on the same marketplace (a manager, three workers in worktrees and a mailman on a second model, twelve
-packages to fix) started and spawned its workers, and then met an outage: the provider behind seven of the nine models answered
-`502 provider_unavailable` (`error code: 1033`, a tunnel to the origin that was down) to every request for more than ten
-minutes. Each request was retried six times over about three minutes and then its agent failed, the manager included; the
-run said so, and the workers' unmerged trees were kept (`The agents made no changes that reached the integration branch. 3 worker
-tree(s) still hold work ...`). That is the harness doing what it should when the endpoint is gone; it is not a measurement of a
-swarm's speed.
+Real swarms on the same marketplace (a manager, workers in git worktrees, a mailman on a second model, twelve independent
+packages to fix, `--isolation worktree --mailman`):
+
+* On `deepseek/deepseek-v4.1-flash` the run started, spawned three workers and then met an outage: the provider behind seven
+  of the nine models answered `502 provider_unavailable` (`error code: 1033`, a tunnel to the origin that was down) to every
+  request for more than ten minutes. Each request was retried six times over about three minutes and then its agent failed,
+  the manager included; the run said so, and the workers' unmerged trees were kept (`The agents made no changes that reached
+  the integration branch. 3 worker tree(s) still hold work ...`). That is the harness doing what it should when the endpoint is
+  gone; it is not a measurement.
+* On `qwen/qwen3.8-flash-next` (another provider, slow: 15 to 90 seconds a response) with `--verify "go test ./..."` the run took
+  18 minutes and fixed all twelve packages, but only after a detour: the three workers each failed the whole-repository
+  verifier on the packages of the others (a worker's tree holds only its own changes) and none could merge, until the manager
+  folded the tasks into one. `--verify` now takes `{dirs}` (`docs/SWARM-PROTOCOL.md`).
+* The same run with `--verify "go test {dirs}"`: three tasks with file scopes, three workers, all three merged within a minute of
+  each other four minutes in, a tester confirmed the merged tree, 12 of 12 packages pass in the checkout, 60 requests, 63% hit
+  ratio (no `drift`), US$0.006 in all, 13 minutes (the manager's and the tester's slow responses are most of it).
 
 ## Recording a baseline
 

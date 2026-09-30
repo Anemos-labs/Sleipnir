@@ -579,3 +579,34 @@ func TestScopedVerifyLetsDecomposedIsolatedTasksEachPassOnTheirOwnWork(t *testin
 		t.Fatalf("the whole-repository command passed in a worker's tree (%s): the scenario proves nothing", out)
 	}
 }
+
+// The manager of an isolated run is told, in its private notes, that the checkout does not show the
+// work until the run ends and that the harness applies it then: a first real run's manager told the
+// user the verified work "lives on _integration; merge it into master" when the harness was about to
+// apply it. A manager in an ordinary run is told nothing about isolation.
+func TestTheManagerOfAnIsolatedRunKnowsWhereTheWorkGoes(t *testing.T) {
+	iso := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 1}, verify: true}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "nothing to do"}
+	})
+	iso.sw.StartManager()
+	m := iso.sw.get(iso.sw.ManagerID())
+	if _, err := m.a.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if !iso.prov.sawEver("Isolation: every writer works in a private git worktree") || !iso.prov.sawEver("never tell the user to merge anything") {
+		t.Fatal("the manager of an isolated run was not told what happens to the merged work")
+	}
+	if strings.Contains(managerIsolationCard, "/") {
+		t.Fatalf("the card names a path: the bytes must not vary: %q", managerIsolationCard)
+	}
+
+	plain := newRVRig(t, Config{MaxWriters: 1}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "nothing to do"} })
+	plain.sw.StartManager()
+	pm := plain.sw.get(plain.sw.ManagerID())
+	if _, err := pm.a.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if plain.prov.sawEver("Isolation:") {
+		t.Fatal("a manager in an ordinary run was told about isolation")
+	}
+}

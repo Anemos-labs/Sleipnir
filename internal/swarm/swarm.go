@@ -471,7 +471,11 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	if id == "" {
 		id = "mgr"
 	}
-	m, err := s.newMember(id, r, nil, NewEvidence(), nil)
+	var notes *kv.Layer
+	if s.isolated() {
+		notes = kv.NewLayer("notes:"+id, kv.KindNotes, 1, []kv.Segment{{Key: "isolation", Text: managerIsolationCard, Vol: kv.VolFrozen}})
+	}
+	m, err := s.newMember(id, r, notes, NewEvidence(), nil)
 	if err != nil {
 		return nil, err
 	}

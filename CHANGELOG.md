@@ -33,7 +33,7 @@ The first release.
 - Worktree isolation (`swarm.isolation: worktree`, `--isolation`): every writer edits a git worktree of its own, and its
   work reaches your checkout through a serial merge queue that verifies every integration and undoes a merge whose check
   fails; the result is applied at the end of the run (as edits, or as commits with `--commit`) and is never lost when it
-  cannot be.
+  cannot be. The manager is told so, so it does not ask you to merge anything.
 - `--verify` may contain `{dirs}`, the directories a task's scope covers, so tasks of a decomposed job are verified on their
   own work (`go test {dirs}`): in an isolated run a command over the whole repository cannot pass until every part is merged,
   and a real swarm of three workers deadlocked on it.

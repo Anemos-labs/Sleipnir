@@ -402,6 +402,11 @@ checkout by a merge, so a rule that guarded only the checkout would guard nothin
 touching the same repository-relative path raise the usual alert, which names the agents and never the file, and warns of a
 merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit.
 
+**The manager is told** in its private notes (never a shared layer) that writers work in private worktrees, that the checkout does
+not show their work until the run ends, that the harness then applies the result (never something to ask the user to merge), and that
+a task's evidence names its merge: without it a real manager told the user the verified work lived on the integration branch and
+had to be merged by hand.
+
 **`done` continues into the queue** (section 4). The harness commits the tree and submits it; the queue is serial, merges onto
 the integration tip and runs the verifier (`--verify`) on the merged result, and moves the integration branch only if it passes.
 

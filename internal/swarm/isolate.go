@@ -86,6 +86,15 @@ const isolationCard = "\nIsolation: your working directory is a private git work
 	"if that conflicts, fails, or leaves your scope, the task comes back to you with the details and your tree is brought up to date. " +
 	"If you need work another agent has merged, block your task and say what you need: when the manager resumes it your tree is brought up to date."
 
+// managerIsolationCard is what the manager of an isolated run has in its private notes (never in a
+// shared layer, and it names no path). Without it a manager that looks at the checkout mid-run finds the
+// original files, and its answer to the user says the work still has to be merged by hand, when the
+// harness applies the integrated result to the checkout itself at the end of the run.
+const managerIsolationCard = "Isolation: every writer works in a private git worktree. Their work is merged, one task at a time, into a shared " +
+	"integration branch and verified there; the user's checkout does not show it while the run is going. When the run ends the harness applies the " +
+	"integrated result to the checkout (as uncommitted changes, or as commits when the user asked for that): never tell the user to merge anything. " +
+	"The evidence of a task in review names its merge."
+
 // mergeRec is the harness's record that a task's work is in the integration branch.
 type mergeRec struct {
 	rev    uint64 // the assignment it belongs to
