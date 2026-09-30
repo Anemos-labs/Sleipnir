@@ -1,80 +1,61 @@
 name: ci
 
+# The one check that branch protection requires is the job named ci-gate at the bottom: it passes when every job above it
+# that matters passed. Add a job: add it to the gate's needs (internal/repocheck fails until you do). Rename ci-gate:
+# change .github/rulesets/main.json too (the same test fails until you do). There are no path filters on purpose: a
+# required check that never runs would block a pull request for good. docs/REPO-SETUP.md explains the whole design.
 on:
+  pull_request:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to a pull request cancels the run it makes obsolete. Nothing else is ever cancelled: a push to main (or a
+# manual run) is a group of its own, so the release that follows a green main is never starved by a later push.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOTOOLCHAIN: local
+
 jobs:
-  test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      # The whole history: check-declared compares the change with its base commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: "1.24"
-          cache: true
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       - name: gofmt
-        run: test -z "$(gofmt -l cmd internal)" || (gofmt -l cmd internal && exit 1)
-      - name: go.mod is tidy (the release hook requires it)
+        run: |
+          bad=$(gofmt -l cmd internal)
+          if [ -n "$bad" ]; then echo "not gofmt-clean (run gofmt -w cmd internal):"; echo "$bad"; exit 1; fi
+      - name: go.mod and go.sum are tidy
         run: go mod tidy -diff
+      - name: go.sum matches the modules it names
+        run: |
+          go mod download
+          go mod verify
       - name: vet
         run: go vet ./...
-      - name: build
-        run: go build ./...
-      - name: test (race)
-        run: go test -race -count=1 -timeout 20m ./...
-
-  cross:
-    name: cross-compile
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache: true
-      - name: build every target
-        run: |
-          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/sleipnir
-            echo "ok $t"
-          done
-
-  sim:
-    name: cache-policy guards
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache: true
-      - run: go test -count=1 ./internal/kv/sim
-      - run: go run ./cmd/sleipnir sim --mode scenarios
-
-  docs:
-    name: documents agree with the code
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache: true
+      - name: dependencies are on the allow-list
+        run: sh scripts/check-deps.sh
+      - name: every uses is pinned to a commit SHA
+        run: sh scripts/check-pins.sh
+      - name: prompt-byte changes are declared in CHANGELOG.md
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: sh scripts/check-declared.sh "$BASE"
       - name: docs/CLI.md lists every flag and command of the binary
         run: sh scripts/gen-cli-docs.sh --check
       - name: README's simulator block is current
@@ -82,3 +63,167 @@ jobs:
           cp README.md /tmp/README.before
           sh scripts/readme-sim.sh
           diff -u /tmp/README.before README.md || { echo "README.md's sim block is stale: run make readme-sim"; exit 1; }
+      - name: the recorded demo matches what the interface draws
+        run: |
+          if [ -f scripts/record-demo.sh ]; then sh scripts/record-demo.sh --check; fi
+      - name: the tests of the scripts
+        run: |
+          for t in scripts/*_test.sh; do sh "$t" || exit 1; done
+
+  test:
+    name: test (${{ matrix.os }}, go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, go: mod}
+          - {os: ubuntu-latest, go: stable}
+          - {os: ubuntu-24.04-arm, go: mod}
+          - {os: macos-latest, go: mod}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Go from go.mod
+        if: matrix.go == 'mod'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: the newest stable Go
+        if: matrix.go == 'stable'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - run: go version
+      - run: go build ./...
+      - name: test (race)
+        run: go test -race -count=1 -timeout 25m ./...
+
+  # Informational: Windows is supported best effort (docs/SECURITY.md, section 4). A red run here is worth a look and never
+  # blocks a merge: the job is not in the gate's needs.
+  windows:
+    name: windows (informational)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 -timeout 25m ./...
+
+  # Every target that .goreleaser.yaml ships (internal/repocheck compares the two lists), built and vetted, tests included,
+  # so that a file for another platform (proc_darwin.go, a _windows_test.go) cannot rot unseen on a Linux-only CI.
+  cross:
+    name: cross (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: build the binary, as the release does
+        env:
+          TARGET: ${{ matrix.target }}
+        run: GOOS=${TARGET%/*} GOARCH=${TARGET#*/} CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/sleipnir
+      - name: build and vet every package and test for the target
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          export GOOS=${TARGET%/*} GOARCH=${TARGET#*/} CGO_ENABLED=0
+          go build ./...
+          go vet ./...
+
+  sim:
+    name: cache-policy guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 ./internal/kv/sim
+      - run: go run ./cmd/sleipnir sim --mode scenarios
+
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write # only so that dependency review can comment its summary on a pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The newest Go, not the one in go.mod: govulncheck needs Go 1.26 or later, and it should judge the code against the
+      # newest standard library, as the release build does.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: dependency review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure
+
+  workflows:
+    name: workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # actionlint needs Go 1.25 or later.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      - name: actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          annotations: true
+          version: "1.30.1"
+
+  # The one required status check. It fails when any job it needs failed or was cancelled; a skipped job passes.
+  gate:
+    name: ci-gate
+    if: always()
+    needs: [lint, test, cross, sim, security, workflows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: every required job passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          bad=$(printf '%s\n' "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")')
+          if [ -n "$bad" ]; then
+            echo "::error title=ci-gate::required jobs did not pass: $bad"
+            exit 1
+          fi

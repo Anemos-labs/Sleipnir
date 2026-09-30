@@ -1,0 +1,111 @@
+name: pr
+
+# The pull request title becomes the squash commit's subject and a line of the release notes, and its type decides the
+# next version (scripts/release-plan.sh). This workflow checks the title and labels the pull request from it.
+#
+# It runs in the context of the base repository, with a token that can write to pull requests, so it never checks out
+# or runs anything from the pull request: the title is read from the event as data, compared with patterns, and never
+# reaches a shell. internal/repocheck fails if a workflow combines pull_request_target with a checkout.
+on: # zizmor: ignore[dangerous-triggers] no checkout and no code of the pull request runs; the only permission is pull-requests
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: conventional title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read # the action reads the current title of the pull request
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            test
+            build
+            ci
+            chore
+            revert
+            security
+          requireScope: false
+
+  # Labels mirror the title: feat, fix, perf, security and docs from the type, breaking from a "!" after it, dependencies
+  # from build(deps). .github/release.yml sorts the release notes by these labels. Only these seven labels are managed
+  # here; any other label (skip-changelog, for one) is left alone.
+  label:
+    name: label from the title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write # adds and removes labels (and creates one that is missing)
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const LABELS = {
+              feat: {color: '0e8a16', description: 'A new feature'},
+              fix: {color: 'd73a4a', description: 'A bug fix'},
+              perf: {color: 'fbca04', description: 'A performance improvement'},
+              security: {color: 'b60205', description: 'A security fix or hardening'},
+              docs: {color: '0075ca', description: 'Documentation only'},
+              breaking: {color: 'd93f0b', description: 'A breaking change'},
+              dependencies: {color: '0366d6', description: 'Pull requests that update a dependency file'},
+            };
+            const number = context.payload.pull_request.number;
+            try {
+              // The current title (a re-run of an old event would carry an old one). It is data: only matched, never run.
+              const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: number});
+              const m = /^([A-Za-z]+)(?:\(([^)]*)\))?(!)?:\s/.exec(pr.title);
+              const type = m ? m[1].toLowerCase() : '';
+              const scope = m && m[2] ? m[2].toLowerCase() : '';
+              const want = new Set();
+              if (['feat', 'fix', 'perf', 'security', 'docs'].includes(type)) want.add(type);
+              if (m && m[3]) want.add('breaking');
+              if (type === 'build' && (scope === 'deps' || scope === 'deps-dev')) want.add('dependencies');
+
+              const have = (await github.paginate(github.rest.issues.listLabelsOnIssue,
+                {...context.repo, issue_number: number, per_page: 100})).map((l) => l.name);
+              const add = [...want].filter((name) => !have.includes(name));
+              const drop = have.filter((name) => Object.hasOwn(LABELS, name) && !want.has(name));
+
+              for (const name of add) {
+                try {
+                  await github.rest.issues.getLabel({...context.repo, name});
+                } catch (e) {
+                  if (e.status !== 404) throw e;
+                  try {
+                    await github.rest.issues.createLabel({...context.repo, name, ...LABELS[name]});
+                  } catch (e2) {
+                    if (e2.status !== 422) throw e2; // somebody created it a moment ago
+                  }
+                }
+              }
+              if (add.length > 0) {
+                await github.rest.issues.addLabels({...context.repo, issue_number: number, labels: add});
+              }
+              for (const name of drop) {
+                try {
+                  await github.rest.issues.removeLabel({...context.repo, issue_number: number, name});
+                } catch (e) {
+                  if (e.status !== 404) throw e;
+                }
+              }
+              core.info(`labels: added [${add.join(', ')}], removed [${drop.join(', ')}]`);
+            } catch (e) {
+              // A read-only token (Dependabot, a fork) cannot label; labels are a convenience and block nothing.
+              if (e.status !== 403) throw e;
+              core.warning(`cannot label this pull request: ${e.message}`);
+            }

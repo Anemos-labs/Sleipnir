@@ -1,0 +1,34 @@
+# How GitHub sorts the generated release notes (`gh release create --generate-notes` in .github/workflows/release.yml).
+# A pull request is listed in the first category whose label it carries. The labels are set from the pull request title by
+# .github/workflows/pr.yml (internal/repocheck fails if a label here is one that workflow never sets): feat, fix, perf,
+# security, docs from the type, breaking from a "!", dependencies from build(deps). skip-changelog, set by hand, keeps a
+# pull request out of the notes.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking
+    - title: Features
+      labels:
+        - feat
+    - title: Fixes
+      labels:
+        - fix
+    - title: Performance
+      labels:
+        - perf
+    - title: Security
+      labels:
+        - security
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Documentation
+      labels:
+        - docs
+    - title: Other changes
+      labels:
+        - "*"
