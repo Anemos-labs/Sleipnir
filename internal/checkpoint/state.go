@@ -1,0 +1,255 @@
+package checkpoint
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/reee344/sleipnir/internal/core"
+)
+
+// kind is what lives at a path.
+type kind string
+
+const (
+	kAbsent kind = "absent"  // nothing there (yet)
+	kFile   kind = "file"    // regular file, content saved in the blob store
+	kLink   kind = "symlink" // symbolic link, target saved verbatim
+	kDir    kind = "dir"     // directory (mode only; contents are never saved)
+	kOther  kind = "special" // device, socket, fifo: cannot be saved or restored
+	// kUnsaved is a regular file whose content could not be saved (too large,
+	// unreadable). It is recorded so the rewind can say so instead of silently
+	// skipping the file.
+	kUnsaved kind = "unsaved"
+)
+
+// state is the recorded condition of one path at one moment. Blob is where the
+// content lives; Sum is our own SHA-256 of it, kept separately so a state can
+// be compared with a live file without trusting the blob store's key scheme
+// and so fingerprints (which have no blob) use the same field.
+type state struct {
+	Kind   kind      `json:"kind"`
+	Blob   core.Hash `json:"blob,omitempty"`
+	Sum    core.Hash `json:"sum,omitempty"`
+	Size   int64     `json:"size,omitempty"`
+	Mode   uint32    `json:"mode,omitempty"` // POSIX permission + setuid/setgid/sticky bits
+	MTime  int64     `json:"mtime,omitempty"`
+	Target string    `json:"target,omitempty"`
+	Note   string    `json:"note,omitempty"` // why the content was not saved
+}
+
+// sameState reports whether two states describe the same thing on disk. mtime
+// only counts for files we could not hash: for everything else content decides,
+// so a bare `touch` is not a change.
+func sameState(a, b state) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case kAbsent:
+		return true
+	case kFile:
+		return a.Sum == b.Sum && a.Mode == b.Mode
+	case kLink:
+		return a.Target == b.Target
+	case kDir:
+		return a.Mode == b.Mode
+	default:
+		return a.Size == b.Size && a.MTime == b.MTime && a.Mode == b.Mode
+	}
+}
+
+// posixMode packs a Go file mode into POSIX permission bits.
+func posixMode(m fs.FileMode) uint32 {
+	v := uint32(m.Perm())
+	if m&fs.ModeSetuid != 0 {
+		v |= 0o4000
+	}
+	if m&fs.ModeSetgid != 0 {
+		v |= 0o2000
+	}
+	if m&fs.ModeSticky != 0 {
+		v |= 0o1000
+	}
+	return v
+}
+
+// goMode is the inverse of posixMode.
+func goMode(v uint32) fs.FileMode {
+	m := fs.FileMode(v & 0o777)
+	if v&0o4000 != 0 {
+		m |= fs.ModeSetuid
+	}
+	if v&0o2000 != 0 {
+		m |= fs.ModeSetgid
+	}
+	if v&0o1000 != 0 {
+		m |= fs.ModeSticky
+	}
+	return m
+}
+
+// isMissing reports "there is nothing at this path": either the entry does not
+// exist or a parent component is not a directory (a write there would fail
+// anyway, and for our purposes the path is absent).
+func isMissing(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// reason renders an I/O error without the path (the caller already names it).
+func reason(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// capture reads the current state of abs. It never returns an error: anything
+// that stops us from saving a file is recorded in the state (kUnsaved) so a
+// snapshot failure never blocks the edit itself; the rewind reports it later.
+// data is the file content for kFile states.
+func (s *Store) capture(abs string) (st state, data []byte) {
+	fi, err := os.Lstat(abs)
+	if err != nil {
+		if isMissing(err) {
+			return state{Kind: kAbsent}, nil
+		}
+		return state{Kind: kUnsaved, Note: "cannot inspect: " + reason(err)}, nil
+	}
+	st = state{Mode: posixMode(fi.Mode()), MTime: fi.ModTime().UnixNano(), Size: fi.Size()}
+	typ := fi.Mode().Type()
+	switch {
+	case typ&fs.ModeSymlink != 0:
+		target, err := os.Readlink(abs)
+		if err != nil {
+			st.Kind, st.Note = kUnsaved, "cannot read link: "+reason(err)
+			return st, nil
+		}
+		st.Kind, st.Target, st.Size, st.Mode = kLink, target, 0, 0
+	case typ.IsDir():
+		st.Kind, st.Size = kDir, 0
+	case typ.IsRegular():
+		return s.captureFile(abs, fi, st)
+	default:
+		st.Kind, st.Note = kOther, "special file ("+typ.String()+")"
+	}
+	return st, nil
+}
+
+func (s *Store) captureFile(abs string, fi fs.FileInfo, st state) (state, []byte) {
+	tooLarge := func(size int64) (state, []byte) {
+		st.Kind = kUnsaved
+		st.Size = size
+		st.Note = fmt.Sprintf("too large to save (%s; the cap is %s)", humanBytes(size), humanBytes(s.maxBytes))
+		return st, nil
+	}
+	if fi.Size() > s.maxBytes {
+		return tooLarge(fi.Size())
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		st.Kind, st.Note = kUnsaved, "cannot read: "+reason(err)
+		return st, nil
+	}
+	defer f.Close()
+	// The file may grow between Lstat and read, so the cap is enforced on what
+	// was actually read as well.
+	data, err := io.ReadAll(io.LimitReader(f, s.maxBytes+1))
+	if err != nil {
+		st.Kind, st.Note = kUnsaved, "cannot read: "+reason(err)
+		return st, nil
+	}
+	if int64(len(data)) > s.maxBytes {
+		return tooLarge(int64(len(data)))
+	}
+	st.Kind = kFile
+	st.Size = int64(len(data))
+	st.Sum = core.HashBytes(data)
+	return st, data
+}
+
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	}
+	return fmt.Sprintf("%d B", n)
+}
+
+// writeFileAtomic replaces path with data via a temporary file in the same
+// directory plus rename, so a crash or a concurrent reader never sees a
+// half-written file. mode is applied explicitly (the umask must not alter a
+// restored file's permission bits).
+func writeFileAtomic(path string, data []byte, mode fs.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".sleipnir-tmp-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	done := false
+	defer func() {
+		if !done {
+			os.Remove(name)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(name, mode); err != nil {
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	done = true
+	return nil
+}
+
+// symlinkAtomic replaces path with a symlink to target, atomically.
+func symlinkAtomic(target, path string) error {
+	var rnd [6]byte
+	if _, err := rand.Read(rnd[:]); err != nil {
+		return err
+	}
+	tmp := filepath.Join(filepath.Dir(path), ".sleipnir-tmp-"+hex.EncodeToString(rnd[:]))
+	if err := os.Symlink(target, tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// resolveDir resolves symlinks in dir, tolerating a tail that does not exist
+// yet: the deepest existing ancestor is resolved and the rest appended as is.
+func resolveDir(dir string) string {
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		return r
+	}
+	parent := filepath.Dir(dir)
+	if parent == dir {
+		return dir
+	}
+	return filepath.Join(resolveDir(parent), filepath.Base(dir))
+}
+
+// depth counts path separators, used to order deep paths before shallow ones.
+func depth(p string) int { return strings.Count(filepath.ToSlash(p), "/") }

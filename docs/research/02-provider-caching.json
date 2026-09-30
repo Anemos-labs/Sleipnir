@@ -241,7 +241,16 @@
    "max_tokens:0 request pre-warms (writes cache, empty content, stop_reason max_tokens); rejected with stream:true, thinking.type=enabled, output_config.format, forced tool_choice, or inside Message Batches",
    "Preserved thinking (Fable 5.1, Opus 5.5, Sonnet 5.5): any edit to system/tools/earlier messages invalidates later thinking blocks; API default is 400 for accounts created >= 2026-08-31 00:00 UTC, else only when prefix_mismatch_behavior is set; Sonnet 5.5 blocks are also bound to the producing account",
    "Message Batches: caching best-effort (30%-98% hits typical); use 1h TTL + single warm-up request",
-   "Platform caveats: cache diagnostics and inline-tools are Claude API only; on-demand compaction not on Bedrock; effort change clears cache on Bedrock/Google Cloud/gateways"
+   "Platform caveats: cache diagnostics and inline-tools are Claude API only; on-demand compaction not on Bedrock; effort change clears cache on Bedrock/Google Cloud/gateways",
+   "Server-tool results (web search/fetch/code execution) get an AUTOMATIC 5m cache breakpoint whenever the request already carries any cache_control, so ephemeral_5m writes can appear even when every marker you set is 1h",
+   "A tool with defer_loading:true cannot carry cache_control (400); tool search types: tool_search_tool_regex_20251119, tool_search_tool_bm25_20251119; discovered tools arrive as tool_reference blocks so the prefix is untouched",
+   "Anthropic-schema client tools have trained-in signatures and no special caching interaction: bash_20250124, text_editor_20250728 (name str_replace_based_edit_tool), memory_20250818, code_execution_20260120 (programmatic tool calling)",
+   "pause_turn = server-tool loop hit its iteration cap (default 10): resend the assistant content unchanged; a client tool_use turn ends with stop_reason tool_use, never pause_turn; tool_result blocks must come first in one user message and be the only content while a server tool is unresolved",
+   "Threshold compaction (compact_20260112, beta compact-2026-01-12): trigger.value >= 50,000 input tokens, optional pause_after_compaction, custom instructions; put cache_control on the compaction block AND at the end of system so the system-prompt cache survives a compaction; cannot be combined with context_management or a signed on-demand block",
+   "On-demand compaction (beta compact-2026-09-04): request carries compaction:{type:'summarize'[,instructions<=16384 chars]} with the SAME model/system/tools/thinking as the conversation (the summarizer reads them, so the cached prefix can be reused - inference); returns one signed compaction block (stop_reason 'compaction', no deltas when streaming); cost reported in usage.iterations[type=compaction]; failure = any other stop_reason (max_tokens, tool_use, refusal, end_turn, model_context_window_exceeded)",
+   "Context editing (beta context-management-2025-06-27): clear_tool_uses_20250919 (default trigger 100K input tokens, keep 3 tool uses, optional clear_at_least/exclude_tools/clear_tool_inputs) invalidates the cached prefix from the clearing point; clear_thinking_20251015 with keep:'all' preserves the cache; on Fable 5.1/Opus 5.5/Sonnet 5.5 server-side context management never invalidates preserved thinking",
+   "Cache diagnostics (GA, Claude API only): request diagnostics:{previous_message_id} -> response diagnostics.cache_miss_reason.type in model_changed|system_changed|tools_changed|messages_changed|previous_message_not_found|unavailable (+cache_missed_input_tokens); compares request structure not actual hit; fingerprint retained only briefly, same workspace only",
+   "Refusals: HTTP 200 stop_reason:'refusal' with stop_details{category: cyber|bio|frontier_llm|reasoning_extraction|general_harms|null, explanation, recommended_model, fallback_credit_token, fallback_has_prefill_claim}; server-side fallback (beta server-side-fallback-2026-07-01, fallbacks:'default'|[up to 3 models]) is Claude API only and rebuilds the cache on the fallback model (Anthropic applies fallback credit); manual retries should send fallback_credit_token with beta fallback-credit-2026-07-01 (5-minute window, body must match exactly)"
   ],
   "confidence": "high",
   "confidence_notes": "all facts read from live platform.claude.com markdown on 2026-09-29; scope:'global' is UNVERIFIED",
@@ -261,7 +270,22 @@
    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching",
    "https://claude.com/blog/lessons-from-building-claude-code-prompt-caching-is-everything",
    "https://claude.com/blog/what-a-task-costs-on-opus-5-5"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "high",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "high",
+   "lookback_blocks": "high",
+   "ttl_options_seconds": "high",
+   "read_multiplier": "high",
+   "write_multiplier_5m": "high",
+   "write_multiplier_1h": "high",
+   "usage_field_names": "high",
+   "isolation": "high",
+   "sticky_routing": "med",
+   "concurrency_semantics": "high"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "openai_pre_gpt56",
@@ -384,7 +408,22 @@
    "https://raw.githubusercontent.com/openai/openai-cookbook/main/examples/Prompt_Caching101.ipynb",
    "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "high",
+   "granularity_tokens": "high",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "med",
+   "read_multiplier": "high",
+   "write_multiplier_5m": "high",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "med",
+   "sticky_routing": "high",
+   "concurrency_semantics": "unverified"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "openai_gpt56_plus",
@@ -527,6 +566,9 @@
   "notes": [
    "prompt_cache_breakpoint accepted on text/image/file/audio/computer-screenshot content parts (Chat and Responses); not on tools[] or instructions string - use a developer message with content parts to mark the end of the pinned layers (inference)",
    "Community reports (low confidence): breakpoint on function_call_output accepted but never writes; strict json_schema response_format prevented cache writes on Chat Completions",
+   "Price nuance: gpt-5.6-sol input $4 / output $20 is a PROMOTIONAL price (secondary source: promotion runs at least through 2026-11-21); LiteLLM prices its write at $5.00 (1.25x $4) while another secondary table lists $6.25 (1.25x a $5 list price) - re-check before budgeting",
+   "Cache writes are billed even if the entry is never read again; harnesses/proxies that read only input_tokens_details.cached_tokens and ignore cache_write_tokens under-report cost (community-reported)",
+   "Community (2026-08-13) reports the ~15 RPM per prefix+key guidance is easy to exceed when one user turn fans out into several tool-call requests; each overflow lands on a new machine = one-time miss",
    "Codex CLI uses prompt_cache_key=session id, shares parent's key for internal sub-agents, store:false + include reasoning.encrypted_content, WebSocket previous_response_id continuation requiring identical model/instructions/tools/tool_choice/reasoning/text/service_tier/prompt_cache_key"
   ],
   "confidence": "med",
@@ -537,7 +579,22 @@
    "https://developers.openai.com/api/docs/guides/prompt-caching",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
    "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/client.rs"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "med",
+   "granularity_tokens": "low",
+   "max_breakpoints": "high",
+   "lookback_blocks": "high",
+   "ttl_options_seconds": "high",
+   "read_multiplier": "med",
+   "write_multiplier_5m": "med",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "unverified",
+   "sticky_routing": "med",
+   "concurrency_semantics": "unverified"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "gemini_implicit",
@@ -562,13 +619,33 @@
   "isolation": "UNVERIFIED (project-level assumed)",
   "sticky_routing": "none documented",
   "long_context_tier": ">200K input tokens billed at 2x (cost map)",
+  "notes": [
+   "Implicit caching is on by default for Gemini 2.5+ and 'passes savings through' automatically; there is no guarantee of a hit (forum threads report inconsistent hits) - treat as opportunistic",
+   "Prefix discipline applies as everywhere: put stable content first, variable content last (browser-use maintainers filed exactly this against their agent prompts)",
+   "LiteLLM reads implicit hits from usageMetadata.cachedContentTokenCount only (no cacheTokensDetails for implicit)"
+  ],
   "confidence": "med",
   "confidence_notes": "ai.google.dev was egress-blocked; SDK stubs (google-genai 2.25.0) + LiteLLM cost map + search summaries",
   "sources": [
    "https://ai.google.dev/gemini-api/docs/caching",
    "https://pypi.org/project/google-genai/2.25.0/",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "med",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "low",
+   "read_multiplier": "med",
+   "write_multiplier_5m": "med",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "unverified",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "gemini_explicit",
@@ -592,12 +669,33 @@
   },
   "isolation": "project-scoped resource bound to one model",
   "sticky_routing": "n/a",
+  "notes": [
+   "CreateCachedContentConfig (google-genai 2.25.0) accepts ttl (duration string, up to 9 fractional digits, e.g. '3.5s') OR expire_time (RFC 3339), plus contents, system_instruction, tools, tool_config, display_name, kms_key_name",
+   "The cachedContents API rejects cached contents that END ON A MODEL TURN (assistant message or tool result) with HTTP 400 'Requests ending with a model turn are not supported' (LiteLLM source comment) => an explicit cache cannot be cut at an arbitrary mid-tool-loop position; it must end on a user turn",
+   "Storage is billed per token-hour on top of the discounted read price, so explicit caching only pays for long-lived, high-reuse context (search-summary storage prices: ~$4.50/M-token-hour on 3.1 Pro, ~$1.00 on Flash 3.5)",
+   "Cache is a named resource bound to one model: create -> reference by name -> update ttl/expire_time -> delete; it is not an in-band breakpoint like Anthropic cache_control"
+  ],
   "confidence": "med",
   "confidence_notes": "SDK types verified; pricing/min tokens from search summaries + cost map",
   "sources": [
    "https://ai.google.dev/gemini-api/docs/caching",
    "https://pypi.org/project/google-genai/2.25.0/"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "med",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "high",
+   "read_multiplier": "med",
+   "write_multiplier_5m": "med",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "med",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "deepseek",
@@ -628,7 +726,22 @@
   "sources": [
    "https://api-docs.deepseek.com/guides/kv_cache/",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "med",
+   "granularity_tokens": "med",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "low",
+   "read_multiplier": "med",
+   "write_multiplier_5m": "med",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "unverified",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "xai_grok",
@@ -659,7 +772,22 @@
    "https://docs.x.ai/developers/advanced-api-usage/prompt-caching",
    "https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "unverified",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "n/a",
+   "read_multiplier": "med",
+   "write_multiplier_5m": "med",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "med",
+   "isolation": "unverified",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "moonshot_kimi",
@@ -690,7 +818,22 @@
   "sources": [
    "https://platform.kimi.ai/docs/api/chat",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "unverified",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "unverified",
+   "read_multiplier": "low",
+   "write_multiplier_5m": "low",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "low",
+   "isolation": "unverified",
+   "sticky_routing": "low",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "alibaba_qwen",
@@ -717,12 +860,33 @@
   },
   "isolation": "UNVERIFIED",
   "sticky_routing": "none",
+  "notes": [
+   "Explicit cache is Anthropic-style: cache_control:{type:'ephemeral'} on content blocks, at most 4 markers, the system searches backward from each marker across up to 20 preceding content blocks, minimum 1,024 tokens, fixed 5-minute validity (refreshed on hit per vendor docs summary; refresh semantics UNVERIFIED)",
+   "Qwen3.5 and later only support MESSAGE-level breakpoints: several markers inside one message's content array collapse into a single breakpoint, so each independent breakpoint must sit on a separate message",
+   "Implicit cache: automatic, creation billed at 1.0x, hits billed ~0.2x, hit not guaranteed; explicit: creation ~1.25x, hits ~0.1x",
+   "LiteLLM's dashscope provider preserves cache_control on messages (does not strip it)"
+  ],
   "confidence": "med",
   "confidence_notes": "alibabacloud.com egress-blocked; search summaries of vendor docs",
   "sources": [
    "https://www.alibabacloud.com/help/en/model-studio/context-cache",
    "https://www.alibabacloud.com/help/en/model-studio/explicit-cache-best-practice"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "med",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "med",
+   "lookback_blocks": "med",
+   "ttl_options_seconds": "med",
+   "read_multiplier": "med",
+   "write_multiplier_5m": "med",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "med",
+   "isolation": "unverified",
+   "sticky_routing": "low",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "mistral",
@@ -742,12 +906,31 @@
   },
   "isolation": "UNVERIFIED",
   "sticky_routing": "prompt_cache_key (stable conversation/session/workflow id) raises hit probability; no guarantee",
+  "notes": [
+   "Cached prompt tokens billed at ~10% of the input price (search summary of docs.mistral.ai); cached count reported in usage.prompt_tokens_details.cached_tokens",
+   "Minimum prefix, granularity, TTL and isolation are not stated in any source I could reach (docs.mistral.ai was egress-blocked) - all UNVERIFIED"
+  ],
   "confidence": "low",
   "confidence_notes": "search summary of docs.mistral.ai + cost map",
   "sources": [
    "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "unverified",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "unverified",
+   "read_multiplier": "low",
+   "write_multiplier_5m": "low",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "low",
+   "isolation": "unverified",
+   "sticky_routing": "low",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "zai_glm",
@@ -768,12 +951,31 @@
   },
   "isolation": "UNVERIFIED",
   "sticky_routing": "none documented",
+  "notes": [
+   "Automatic context caching for the GLM-4.5/4.6/4.7/5.x families; count in usage.prompt_tokens_details.cached_tokens",
+   "Search summary quotes GLM-5 $1.00 in / $3.20 out / $0.20 cached (0.2x) and GLM-5.2 $1.40 in / $0.26 cached (~0.19x), plus a separate 'cached input storage' charge - its unit and whether it applies to API traffic are UNVERIFIED"
+  ],
   "confidence": "low",
   "confidence_notes": "search summaries + cost map",
   "sources": [
    "https://docs.z.ai/guides/capabilities/cache",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "unverified",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "unverified",
+   "read_multiplier": "low",
+   "write_multiplier_5m": "low",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "low",
+   "isolation": "unverified",
+   "sticky_routing": "low",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "minimax",
@@ -804,7 +1006,22 @@
    "https://platform.minimax.io/docs/api-reference/text-prompt-caching",
    "https://platform.minimax.io/docs/api-reference/anthropic-api-compatible-cache",
    "https://raw.githubusercontent.com/rwese/pi-minimax-m3-caching-fix/main/README.md"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "low",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "unverified",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "unverified",
+   "read_multiplier": "low",
+   "write_multiplier_5m": "low",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "low",
+   "isolation": "unverified",
+   "sticky_routing": "low",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "openrouter",
@@ -839,7 +1056,22 @@
   "sources": [
    "https://www.npmjs.com/package/@openrouter/sdk",
    "https://openrouter.ai/docs/guides/best-practices/prompt-caching"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "n/a",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "med",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "med",
+   "isolation": "med",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "litellm",
@@ -862,7 +1094,10 @@
   "isolation": "upstream provider semantics",
   "sticky_routing": "Router optional_pre_call_checks: deployment_affinity (API-key hash), responses_api_deployment_check (previous_response_id), session_affinity, encrypted_content_affinity, prompt_caching_deployment_check",
   "notes": [
-   "Anthropic beta headers are filtered through an allow-list JSON; unknown headers are DROPPED (debug log only). v1.103.1 list lacks compact-2026-09-04, inline-tools-2026-09-15, mid-conversation-*, server-side-fallback-2026-07-01, thinking-display-updates-2026-08-18 (config may be refreshed remotely)",
+   "Anthropic beta headers are filtered through an allow-list JSON (litellm/anthropic_beta_headers_config.json + anthropic_beta_headers_manager.py); a header not in the provider mapping is DROPPED with only a verbose_logger.debug line, so a feature silently turns off",
+   "v1.103.1 allow-list CONTAINS compact-2026-01-12, context-management-2025-06-27, prompt-caching-scope-2026-01-05, thinking-binding-controls-2026-08-01, interleaved-thinking-2025-05-14, fine-grained-tool-streaming-2025-05-14, advanced-tool-use-2025-11-20",
+   "v1.103.1 allow-list LACKS compact-2026-09-04, inline-tools-2026-09-15, mcp-client-2026-09-15, mid-conversation-system-clear-at-2026-08-21, mid-conversation-output-config-2026-07-01, mid-conversation-tool-changes-2026-07-01, server-side-fallback-2026-07-01, fallback-credit-2026-07-01, thinking-display-updates-2026-08-18",
+   "The mapping is fetched from GitHub at runtime by default (LITELLM_LOCAL_ANTHROPIC_BETA_HEADERS=True pins the wheel copy; LITELLM_ANTHROPIC_BETA_HEADERS_URL overrides the URL), so a proxy's effective list depends on its version and config - canary-test every beta header you rely on through the gateway",
    "thinking_blocks round-trip supported; _drop_unsignable_thinking_blocks silently drops blocks without valid signature",
    "Cost map lists supports_prompt_cache_breakpoint for gpt-5.6+/gpt-6 family"
   ],
@@ -871,7 +1106,22 @@
   "sources": [
    "https://pypi.org/project/litellm/1.103.1/",
    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "high",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "high",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "n/a",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "high",
+   "sticky_routing": "high",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "portkey",
@@ -904,7 +1154,22 @@
   "sources": [
    "https://raw.githubusercontent.com/Portkey-AI/gateway/main/src/providers/anthropic/chatComplete.ts",
    "https://raw.githubusercontent.com/Portkey-AI/gateway/main/src/providers/anthropic/api.ts"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "n/a",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "high",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "med",
+   "isolation": "med",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "vercel_ai_gateway",
@@ -935,7 +1200,22 @@
   "sources": [
    "https://vercel.com/docs/ai-gateway/models-and-providers/automatic-caching",
    "https://www.npmjs.com/package/@ai-sdk/gateway"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "n/a",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "low",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "low",
+   "isolation": "low",
+   "sticky_routing": "unverified",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "cloudflare_ai_gateway",
@@ -957,12 +1237,32 @@
   "usage_field_names": {},
   "isolation": "per gateway",
   "sticky_routing": "n/a",
+  "notes": [
+   "Cloudflare's 'Caching' is a RESPONSE cache (exact request match) - it never reduces prefill for near-identical prompts and is useless for agent loops; do not confuse it with provider KV/prompt caching",
+   "Provider-native endpoints (/anthropic/v1/messages, /openai/...) forward the body, so provider prompt caching keeps working; verify cache_read_input_tokens end to end because the unified/compat endpoint's handling of cache_control is UNVERIFIED",
+   "Concurrent identical requests may both miss the response cache (documented as best-effort)"
+  ],
   "confidence": "med",
   "confidence_notes": "cloudflare-docs source on GitHub; compat (unified) endpoint handling of cache_control UNVERIFIED",
   "sources": [
    "https://developers.cloudflare.com/ai-gateway/features/caching/",
    "https://developers.cloudflare.com/ai-gateway/usage/providers/anthropic/"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "n/a",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "high",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "n/a",
+   "isolation": "med",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "vllm",
@@ -994,7 +1294,22 @@
   "sources": [
    "https://raw.githubusercontent.com/vllm-project/vllm/main/docs/design/prefix_caching.md",
    "https://raw.githubusercontent.com/vllm-project/vllm/main/vllm/config/cache.py"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "high",
+   "granularity_tokens": "high",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "n/a",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "unverified",
+   "isolation": "high",
+   "sticky_routing": "high",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "sglang",
@@ -1016,12 +1331,33 @@
   },
   "isolation": "RadixKey extra_key and cache_salt namespace the tree",
   "sticky_routing": "cache-aware scheduling policies lpm (longest prefix match), dfs-weight, hrrn; default fcfs; routing-key policy uses x-smg-routing-key header; external SGLang Model Gateway for cache-aware routing",
+  "notes": [
+   "RadixAttention is a radix tree over token sequences with no fixed block size by default (page_size=1) => a hit reuses the exact longest common token prefix, the finest granularity of all stacks reviewed",
+   "Eviction policy choices (source: sglang/srt/arg_groups/choices.py): lru | lfu | slru | priority; 'priority' evicts lower-priority requests' nodes first, so per-request priority can pin shared layers",
+   "usage.prompt_tokens_details.cached_tokens is only returned when the server is started with --enable-cache-report (default False) - without it you cannot measure hit rate from responses",
+   "HiCache (--enable-hierarchical-cache, --hicache-ratio/--hicache-size) tiers KV to host memory and storage backends"
+  ],
   "confidence": "high",
   "confidence_notes": "read from sglang 0.5.20 wheel source",
   "sources": [
    "https://pypi.org/project/sglang/0.5.20/",
    "https://raw.githubusercontent.com/sgl-project/sglang/main/python/sglang/srt/mem_cache/radix_cache.py"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "high",
+   "granularity_tokens": "high",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "n/a",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "high",
+   "sticky_routing": "high",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "tensorrt_llm",
@@ -1051,7 +1387,22 @@
   "confidence_notes": "NVIDIA/TensorRT-LLM docs/source/features/kvcache.md on main",
   "sources": [
    "https://raw.githubusercontent.com/NVIDIA/TensorRT-LLM/main/docs/source/features/kvcache.md"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "n/a",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "n/a",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "high",
+   "isolation": "high",
+   "sticky_routing": "high",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  },
  {
   "id": "lmcache",
@@ -1077,6 +1428,21 @@
   "confidence_notes": "README only",
   "sources": [
    "https://raw.githubusercontent.com/LMCache/LMCache/dev/README.md"
-  ]
+  ],
+  "fact_confidence": {
+   "min_prefix_tokens": "n/a",
+   "granularity_tokens": "n/a",
+   "max_breakpoints": "n/a",
+   "lookback_blocks": "n/a",
+   "ttl_options_seconds": "n/a",
+   "read_multiplier": "n/a",
+   "write_multiplier_5m": "n/a",
+   "write_multiplier_1h": "n/a",
+   "usage_field_names": "n/a",
+   "isolation": "unverified",
+   "sticky_routing": "med",
+   "concurrency_semantics": "n/a"
+  },
+  "as_of": "2026-09-29"
  }
 ]

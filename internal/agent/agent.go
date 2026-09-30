@@ -51,6 +51,14 @@ func (NopLimiter) Acquire(context.Context, int) (Release, error) {
 // board and mailbox. It is called once per request and must be cheap.
 type HotSource func(agent string) []core.Block
 
+// Gate holds back requests over a cold shared prefix until one of them has
+// started, so a fan-out reads the prefix from cache instead of writing it once
+// per agent. Enter returns a function to call when the response starts or the
+// request fails; it must be called exactly once.
+type Gate interface {
+	Enter(ctx context.Context, key string) (func(ok bool), error)
+}
+
 // Sink receives live progress for UIs. All methods must be safe for concurrent
 // use and must not block.
 type Sink interface {
@@ -103,6 +111,7 @@ type Config struct {
 	Handles *tools.Handles
 	Perm    perm.Requester
 	Limiter Limiter
+	Gate    Gate
 	Sink    Sink
 
 	Workdir string

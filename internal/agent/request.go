@@ -70,8 +70,22 @@ func (a *Agent) requestOnce(ctx context.Context) (*provider.Response, error) {
 	reqID := fmt.Sprintf("%s.%d", a.cfg.ID, n)
 	a.recordRequest(reqID, r, hot, check, prof)
 
+	started := func(bool) {}
+	if a.cfg.Gate != nil {
+		s, gerr := a.cfg.Gate.Enter(ctx, string(stack.GlobalKey()))
+		if gerr != nil {
+			return nil, gerr
+		}
+		started = s
+	}
 	start := a.cfg.Now()
-	resp, err := a.call(ctx, &provider.Request{Prompt: r.Prompt, Label: reqID}, a.cfg.Priority, a.forward)
+	resp, err := a.call(ctx, &provider.Request{Prompt: r.Prompt, Label: reqID}, a.cfg.Priority, func(e provider.Event) {
+		a.forward(e)
+		if e.Kind == provider.EvStart {
+			started(true)
+		}
+	})
+	started(err == nil)
 	if err != nil {
 		a.emit(events.TypeModelError, map[string]any{"req": reqID, "error": err.Error()})
 		return nil, err
