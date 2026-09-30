@@ -114,6 +114,28 @@ type Provider struct {
 	// Models lists the model ids this provider serves (informational; used for
 	// completion and validation).
 	Models []string `json:"models,omitempty"`
+
+	// AllowHosts lists hosts, besides the provider's own, that may receive its API
+	// key when the base URL is changed by the environment (<NAME>_BASE_URL) or by a
+	// project file: "gateway.example.com" (any port) or "gateway.example.com:8443".
+	// Without an entry such an override is refused, because a key issued for one
+	// provider must not follow a URL that a repository (a .envrc, a project
+	// config) chose. Loopback hosts never need one.
+	//
+	// Only the user's own configuration file can set it: a project file that
+	// carries it has it ignored, trusted or not.
+	AllowHosts []string `json:"allow_hosts,omitempty"`
+	// AllowInsecureHTTP lets the API key travel over plain http to a host that is
+	// not this machine (a trusted proxy on a LAN). By default a key is only sent
+	// over https, or over http to a loopback address. User configuration only, like
+	// AllowHosts.
+	AllowInsecureHTTP bool `json:"allow_insecure_http,omitempty"`
+
+	// BaseURLFromProject records that a project-level file (trusted, or Load would
+	// have dropped it) supplied BaseURL. Load fills it in; it is not part of the file
+	// format. Callers that send the provider's key to BaseURL use it to refuse a
+	// repository-chosen host that the user has not allowed (AllowHosts).
+	BaseURLFromProject bool `json:"-"`
 }
 
 // APIKey reads the provider's API key from the environment, at call time. It

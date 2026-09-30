@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/reee344/sleipnir/internal/perm"
@@ -98,6 +99,14 @@ func (v *validator) provider(name string, p Provider) {
 			v.err(hs, "header values cannot contain line breaks or NUL")
 		}
 	}
+	for i, h := range p.AllowHosts {
+		if msg := allowHostProblem(h); msg != "" {
+			v.err(append(slices.Clone(base), "allow_hosts", fmt.Sprintf("[%d]", i)), "%s", msg)
+		}
+	}
+	if p.AllowInsecureHTTP {
+		v.warn(append(slices.Clone(base), "allow_insecure_http"), "the API key will be sent over plain http to non-local hosts; use https unless the network is one you fully trust")
+	}
 	seen := map[string]bool{}
 	for i, m := range p.Models {
 		ms := append(slices.Clone(base), "models", fmt.Sprintf("[%d]", i))
@@ -123,6 +132,29 @@ func (v *validator) baseURL(segs []string, raw string) {
 	if u.Scheme == "http" && !isLoopback(u.Hostname()) {
 		v.warn(segs, "plain http sends prompts and the API key unencrypted; use https unless this is a local endpoint")
 	}
+}
+
+// allowHostProblem says what is wrong with an allow_hosts entry ("" if nothing): it
+// must be a host name or IP literal with an optional port, and nothing else.
+func allowHostProblem(s string) string {
+	if s == "" || strings.TrimSpace(s) != s {
+		return "must not be empty or padded with spaces"
+	}
+	if strings.ContainsAny(s, "/\\@?# \t\r\n") || strings.Contains(s, "://") {
+		return "must be a host such as gateway.example.com or gateway.example.com:8443, not a URL"
+	}
+	u, err := url.Parse("//" + s)
+	if err != nil || u.Hostname() == "" || u.Host != s {
+		return "is not a valid host name or address"
+	}
+	if p := u.Port(); p != "" {
+		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
+			return "has an invalid port"
+		}
+	} else if strings.HasSuffix(u.Host, ":") {
+		return "has an empty port"
+	}
+	return ""
 }
 
 func isLoopback(host string) bool {

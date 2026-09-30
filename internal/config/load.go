@@ -221,6 +221,8 @@ func Load(opts LoadOpts) (*Config, *Report, error) {
 			continue
 		}
 		if sp.kind != "user" {
+			// What only the user may set never comes from a repository, trusted or not.
+			rep.ProjectRisks = append(rep.ProjectRisks, l.dropUserOnly()...)
 			risks := l.collectRisks(opts.UntrustedProject)
 			rep.ProjectRisks = append(rep.ProjectRisks, risks...)
 		}
@@ -283,6 +285,7 @@ func Load(opts LoadOpts) (*Config, *Report, error) {
 		}
 		return nil, rep, fmt.Errorf("config: %w", err)
 	}
+	markProjectBaseURLs(cfg, m, byPath)
 	var vwarns []Issue
 	for _, is := range cfg.Validate() {
 		if is.code == codeUnknownKey {
@@ -305,6 +308,24 @@ func Load(opts LoadOpts) (*Config, *Report, error) {
 	}
 	rep.Warnings = append(rep.Warnings, vwarns...)
 	return cfg, rep, nil
+}
+
+// markProjectBaseURLs records, on each provider, that its base URL was supplied by
+// a project-level file (Provider.BaseURLFromProject). Untrusted project files have
+// had such settings dropped before the merge, so this is only ever set when the
+// project is trusted: it tells the caller that the URL a key is about to be sent to
+// was chosen by the repository.
+func markProjectBaseURLs(cfg *Config, m *merger, byPath map[string]*layer) {
+	for name, p := range cfg.Providers {
+		if p.BaseURL == "" {
+			continue // an entry without a URL: the origin lookup below would find its parent
+		}
+		src := m.originFor([]string{"providers", name, "base_url"})
+		if l := byPath[src]; l != nil && (l.kind == "project" || l.kind == "local") {
+			p.BaseURLFromProject = true
+			cfg.Providers[name] = p
+		}
+	}
 }
 
 func hasError(issues []Issue) bool {
