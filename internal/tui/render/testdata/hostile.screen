@@ -1,0 +1,36 @@
+50x14 cursor hidden
+--- scrollback ---
+sentinel: this line must survive|
+OSC 52 clipboard write, BEL |ab||
+OSC 52 clipboard write, ST  |ab||
+OSC 52 clipboard query      |ab||
+erase display               |ab||
+erase display and home      |ab||
+cursor up and erase line: ov|ab||
+SGR                         |aredb||
+OSC 8 hyperlink, BEL        |aclickb||
+OSC 8 hyperlink, ST         |aclickb||
+window title                |visible||
+C1 CSI                      |a2Jb||
+C1 OSC and ST               |a52;c;AAAAb||
+C1 DCS                      |aqdatab||
+C1 next line and index      |abc||
+every C1                    |ab||
+bare carriage return        |abcXYZ||
+carriage return and line fee|abcXYZ||
+backspaces                  |abcXYZ||
+--- screen ---
+bell, nul, delete, vertical |abcdef||
+shift out and in            |abc||
+line feed inside a span is d|line1line2||
+charset designation         |aqqqb||
+two-byte escapes            |abcdef||
+DCS                         |visible||
+APC (kitty graphics)        |visible||
+PM                          |visible||
+SOS                         |visible||
+an escape inside an OSC ends|ab||
+line and paragraph separator|abc||
+a tab                       |a  b||
+a tab at a stop             |12345678   b||
+live region: hostile text in here  too|

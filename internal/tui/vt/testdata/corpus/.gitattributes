@@ -1,0 +1,2 @@
+# Terminal output as it was captured: raw bytes, with the carriage returns a pty adds. No line-ending conversion, ever.
+*.vt -text

@@ -1,0 +1,10 @@
+total 32
+drwxr-xr-x 3 root root 4096 Sep 30 20:24 [0m[01;34m.[0m
+drwx------ 3 root root 4096 Sep 30 20:24 [01;34m..[0m
+-rw-r--r-- 1 root root    2 Sep 30 20:24 archive.tar.gz
+-rw-r--r-- 1 root root    2 Sep 30 20:24 image.png
+lrwxrwxrwx 1 root root    7 Sep 30 20:24 [01;36mlink[0m -> main.go
+-rw-r--r-- 1 root root    2 Sep 30 20:24 main.go
+-rw-r--r-- 1 root root    2 Sep 30 20:24 readme.txt
+-rwxr-xr-x 1 root root    2 Sep 30 20:24 [01;32mscript.sh[0m
+drwxr-xr-x 2 root root 4096 Sep 30 20:24 [01;34msubdir[0m

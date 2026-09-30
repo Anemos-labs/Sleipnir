@@ -1,0 +1,14 @@
+44x12 cursor hidden
+--- screen ---
+sleipnir watch                     3 agents|
+|
+AGENT   ROLE      TOOL        TOK   HIT|
+● be-1    backend   bash      12.9k  94%|
+● fe-1    frontend  bash       8.1k  91%|
+⚠ rv-1    reviewer  stuck      2.0k   0%|
+|
+MERGE QUEUE  T3 verify  T4 rebase|
+中文 and wide cells 日本語|
+|
+|
+|
