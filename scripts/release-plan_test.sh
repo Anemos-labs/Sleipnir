@@ -322,6 +322,12 @@ commit "$d" "fix: on main (#2)" internal/core/core.go
 verdict "$d" "a tag on another branch is not a previous release" v0.5.1
 eq "previous is reachable from HEAD" v0.5.0 "$(val previous)"
 
+d=$(seed)
+git -C "$d" tag -a v1.4.0 -m "an annotated release tag"
+commit "$d" "fix: a (#1)" internal/core/core.go
+verdict "$d" "an annotated tag is a previous release" v1.4.1
+eq "an annotated tag: previous" v1.4.0 "$(val previous)"
+
 # --- a tag that already exists elsewhere
 d=$(seed)
 released "$d" v0.1.0

@@ -7,12 +7,6 @@ CHECK=$here/check-deps.sh
 command -v go >/dev/null 2>&1 || { echo "check-deps_test.sh: skipped, the go command is needed"; exit 0; }
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
-GOPROXY=off
-GOSUMDB=off
-GOTOOLCHAIN=local
-GOWORK=off
-GOFLAGS=
-export GOPROXY GOSUMDB GOTOOLCHAIN GOWORK GOFLAGS
 
 passed=0
 failed=0
@@ -85,12 +79,13 @@ mkmod() {
   } > "$m/main.go"
   printf '%s\n' "$m"
 }
-# run DIR [ARGS...] sets out (stdout and stderr together) and rc.
+# run DIR [ARGS...] sets out (stdout and stderr together) and rc. The throw-away modules resolve from local directories
+# only; the last test, on this repository, runs in the environment the caller has.
 run() {
   d=$1
   shift
   rc=0
-  out=$(sh "$CHECK" --allowlist "$allow" "$@" "$d" 2>&1) || rc=$?
+  out=$(env GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOWORK=off GOFLAGS= sh "$CHECK" --allowlist "$allow" "$@" "$d" 2>&1) || rc=$?
 }
 
 # --- a module that stays inside the list

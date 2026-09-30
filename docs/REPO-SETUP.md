@@ -20,7 +20,7 @@ rights applies them once, in the order of section 2. After that GitHub does the 
 | [`.github/CODEOWNERS`](../.github/CODEOWNERS) | Who is asked to review what, with a line for every hand-edited security zone. |
 | [`.github/pull_request_template.md`](../.github/pull_request_template.md) | The checklist of linked things. |
 | [`scripts/protect-main.sh`](../scripts/protect-main.sh) | Applies the rulesets and the repository settings through the API (`--dry-run` prints every call). |
-| [`scripts/release-plan.sh`](../scripts/release-plan.sh) | Decides whether a commit on main is released and as which version (section 2, step 6). |
+| [`scripts/release-plan.sh`](../scripts/release-plan.sh) | Decides whether a commit on main is released and as which version (section 5). |
 | [`scripts/check-deps.sh`](../scripts/check-deps.sh), [`check-pins.sh`](../scripts/check-pins.sh), [`check-declared.sh`](../scripts/check-declared.sh) | The drift checks that are shell, each with a `--help` and a test (`*_test.sh`). |
 | [`scripts/deps-allowlist.txt`](../scripts/deps-allowlist.txt) | The modules the project may depend on. |
 | [`internal/repocheck/`](../internal/repocheck) | The repository's own invariants, as Go tests (section 4). |
@@ -43,10 +43,20 @@ then **Settings > General > Default branch**, the arrows icon, choose `main`, Up
 
 ### Step 2. Add a LICENSE
 
-The owner has not chosen one, so none is added. Put `LICENSE` (or `LICENSE.md`, `LICENSE.txt`) at the repository root and
+No licence has been chosen yet, so none is added. Put `LICENSE` (or `LICENSE.md`, `LICENSE.txt`) at the repository root and
 replace "To be decided before the first release" in the README. Until then `scripts/release-plan.sh` answers
 `no LICENSE file: choose one before the first release` and nothing is ever released. Do this before step 3 (a push to an
 unprotected `main` is allowed) or as the first pull request after it.
+
+**Also before step 3: the vulnerability scan is red today (checked on 2026-09-30).** `govulncheck` reports seven advisories in
+`golang.org/x/net v0.43.0` that the code reaches through `html.Parse` in `internal/tools/web/htmlconv.go` (GO-2026-4440,
+4441, 5025, 5027, 5028, 5029, 5030). Two are fixed from x/net v0.45.0 (which still builds with Go 1.24); all seven from
+v0.55.0, whose `go.mod` says `go 1.25.0`. So closing them means raising the `go` line of this repository's `go.mod` from
+1.24 to 1.25 (Go 1.24 is out of support, but `docs/BUILDING.md` says to keep it until that is decided), then
+`go get golang.org/x/net@latest && go mod tidy`, and adding to `scripts/deps-allowlist.txt` anything that `scripts/check-deps.sh`
+says the new versions bring. The change to `go.mod` and `go.sum` was not part of this work. Until it is on `main` the
+`security` job fails, and with it `ci-gate`, on every pull request and on main (so nothing is released). Push it straight to
+`main` before step 3, or make it the first pull request: it passes its own checks. Delete this paragraph afterwards.
 
 ### Step 3. Protect `main` and the tags
 
@@ -75,6 +85,9 @@ Actions app with the branch up to date (`strict`), and code scanning results fro
 severity or worse. `tags.json` makes `v*` tags undeletable and immovable, except for the Actions app and repository
 administrators; creating one stays allowed, because the release API creates them.
 
+Check that it worked: **Settings > Rules > Rulesets** lists `main` and `release tags`, both Active. Open a pull request with
+a one-line change to a document: `ci-gate` must appear on it, and the merge button must stay blocked until it has passed.
+
 **Required signatures are left out on purpose.** Squash merges are made by GitHub and signed by it, so the rule would add no
 protection against anything the other rules do not stop; what it would add is a failure mode: any administrator push, and
 any automation without a signing key, would be refused, with no bypass to fall back on. If you later want every commit on
@@ -88,7 +101,7 @@ a signed-commit-capable path.
 | CodeQL **default setup** off | **Settings > Advanced Security > Code scanning > CodeQL analysis**: if it says "Default", open the menu and switch it off (or `gh api -X PATCH repos/OWNER/REPO/code-scanning/default-setup -f state=not-configured`) | `codeql.yml` is the advanced setup. With both, GitHub refuses the results of the workflow and the `code_scanning` rule has nothing to read. |
 | Dependency graph on | **Settings > Advanced Security > Dependency graph** (on by default in a public repository) | The dependency review job of ci fails without it. |
 | Require SHA pinning | **Settings > Actions > General > Actions permissions**: optionally "Require actions to be pinned to a full-length commit SHA" (if your page shows it) | Enforces at run time what `scripts/check-pins.sh` checks in the files. |
-| Anything the script reported as failed | The page named in its output | A token without the right scope, or an endpoint your GitHub does not have yet. Approval for outside contributors lives in **Settings > Actions > General > Fork pull request workflows from outside collaborators** ("Require approval for all outside collaborators"). |
+| Anything the script listed as failed | The setting that failed call sets (`--dry-run` shows which call is which) | A token without the right scope, or an endpoint your GitHub does not have yet. Approval for outside contributors lives in **Settings > Actions > General > Fork pull request workflows from outside collaborators** ("Require approval for all outside collaborators"). |
 | `AUTO_RELEASE` | step 5 | The switch that lets a merge publish. |
 
 ### Step 5. Switch the release on, when you are ready
@@ -216,6 +229,6 @@ User-facing: a non-test, non-markdown file under `cmd/` or `internal/` (testdata
   run the workflow again.
 * **After a release is wrong:** an administrator deletes the release and the tag (the tag ruleset lets administrators), fixes
   the cause, and merges the next pull request; the plan recomputes.
-* **First run.** `release` only runs from the default branch's copy of the workflow. `ci-gate` appears as a required check
-  once `ci` has run on a pull request; if a pull request shows "Expected — waiting for status to be reported", `ci` did not run
-  for it (look for a path filter or a disabled workflow).
+* **First run.** `release` only runs from the default branch's copy of the workflow. With the ruleset in place a pull
+  request shows `ci-gate` as "Expected, waiting for status to be reported" until `ci` reports it; if it never does, `ci` did
+  not run for that pull request (a disabled workflow, a syntax error in a workflow file, a path filter someone added).

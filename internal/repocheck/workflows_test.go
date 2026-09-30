@@ -152,8 +152,12 @@ func blocks(text string) string {
 	var out []string
 	ls := lines(text)
 	for i, l := range ls {
-		t := strings.TrimPrefix(strings.TrimSpace(l), "- ")
-		key, rest, ok := strings.Cut(t, ":")
+		trimmed := strings.TrimSpace(l)
+		keyIndent := indentOf(l)
+		if rest, ok := strings.CutPrefix(trimmed, "- "); ok {
+			trimmed, keyIndent = rest, keyIndent+2
+		}
+		key, rest, ok := strings.Cut(trimmed, ":")
 		if !ok || (key != "run" && key != "script") {
 			continue
 		}
@@ -163,7 +167,7 @@ func blocks(text string) string {
 			continue
 		}
 		for _, n := range ls[i+1:] {
-			if !blankOrComment(n) && indentOf(n) <= indentOf(l) {
+			if !blankOrComment(n) && indentOf(n) <= keyIndent {
 				break
 			}
 			out = append(out, n)

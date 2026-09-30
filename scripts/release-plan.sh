@@ -88,8 +88,8 @@ fi
 
 # 3. What changed since the last release.
 if [ -n "$previous" ]; then
-  range="$previous..$head"
-  files=$(git -c core.quotepath=off diff --name-only --no-renames "$previous" "$head")
+  range="refs/tags/$previous..$head"
+  files=$(git -c core.quotepath=off diff --name-only --no-renames "refs/tags/$previous" "$head")
   since=$previous
 else
   range=$head

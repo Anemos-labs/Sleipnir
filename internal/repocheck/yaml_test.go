@@ -98,13 +98,19 @@ func uncomment(s string) string {
 			if c == quote {
 				quote = 0
 			}
-		case c == '"' || c == '\'':
+		case (c == '"' || c == '\'') && opensQuote(s, i):
 			quote = c
 		case c == '#' && (i == 0 || s[i-1] == ' ' || s[i-1] == '\t'):
 			return strings.TrimRight(s[:i], " \t")
 		}
 	}
 	return strings.TrimRight(s, " \t")
+}
+
+// opensQuote reports whether the quote character at s[i] starts a quoted scalar (it follows a space, a bracket, a comma or a
+// colon) and not an apostrophe inside a word, as in README's.
+func opensQuote(s string, i int) bool {
+	return i == 0 || strings.IndexByte(" \t[,{:(", s[i-1]) >= 0
 }
 
 func unquote(s string) string {
