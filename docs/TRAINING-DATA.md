@@ -212,6 +212,40 @@ compacted prompt by exact/regex match on facts the compaction was supposed to ke
 tests; network access to the upstream repository or solution hosts; writes outside the worktree; `exit 0`
 shims. Flags are preserved so the data can also train detectors.
 
+**`rewards.json`.** A file lists only what it changes; everything else keeps the documented defaults (a weight of 0
+switches a component off). All keys are optional:
+
+```json
+{
+  "weights": { "outcome": 1.0, "cost": 0.3, "requests": 0.0 },
+  "caps": { "protocol": 10, "idle": 120000 },
+  "target": "anthropic-sonnet",
+  "clip": [-1.5, 1.5],
+  "probes": true,
+  "detectors": { "network": false },
+  "workspace_roots": ["/work/rollouts"],
+  "reprice": { "engines": 3, "capacity_tokens": 4000000 }
+}
+```
+
+`weights` and `caps` are keyed by the component and cap names in `internal/rl/reward/config.go` (`outcome`,
+`honest_done`, `false_done`, `cost`, `requests`, `time`, `protocol`, `evidence`, `reread`, `scope`,
+`parallel_efficiency`, `duplicate_work`, `conflicts`, `idle`, `over_spawn`, `valid`, `size`, `fidelity`, `rebase_cost`,
+`downstream`, `mail_useful`, `mail_spam`). `target` is a preset (`sleipnir rl reward -list-targets`: `anthropic-haiku`,
+`anthropic-opus`, `anthropic-sonnet`, `marketplace`, `no-cache`, `openai`) or a model id from the price tables. `clip`
+bounds every scalar reward (components stay raw). `detectors` switches individual hack detectors off (`protected`,
+`tests`, `verifier`, `hardcoded`, `network`, `outside`, `shim`; all run by default). `workspace_roots` tells the
+outside-the-worktree detector which directories an agent may write under. `reprice` tunes the counterfactual cache model
+(engines, capacity, time-to-first-byte model). Re-score a finished run without re-running anything:
+`sleipnir rl reward RUN_DIR --rewards rewards.json [--target-price marketplace] [--dry-run]`.
+
+Things the scorer will not do quietly: an episode whose verifier diff cannot be read is an error (`ErrDiffUnavailable`),
+not a pass; a protected pattern that is over 1 KiB or has more than 64 alternatives is refused with the task's field
+named, because silently dropped protection is worse than an error; fidelity probes need the prompt text (from the run's
+blobs) and are skipped and noted when it is not available, never scored 0. The hack detectors are heuristics: they miss
+values built at run time or encoded, expected values edited to match new output, and weakening done through helpers the
+diff does not show, which is why flags are kept and the verifier's clean checkout remains the source of truth.
+
 **Counterfactual pricing.** `reward.Reprice(episode, target)` replays the recorded requests through the real
 `kv` planner's cost model under the target provider (explicit write premium, TTL, read weights) and returns ITE and
 requests. The same episode can therefore be priced for Anthropic-like, OpenAI-like or marketplace-like deployment.
