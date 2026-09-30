@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -443,6 +444,45 @@ func TestPolicyEndpointGetsTheKeySamplingAndSeedFromTheSpec(t *testing.T) {
 	}
 	if m["return_token_ids"] != true {
 		t.Errorf("capture was asked for but the request does not ask for token ids: %s", bodies[0])
+	}
+}
+
+// Endpoints refuse sampling seeds they cannot hold: a gateway written in TypeScript above
+// 2^53-1, and the upstream behind it above 2^31-1 (the first rollouts against a real marketplace
+// all failed that way). Whatever the run's seeds are, the request carries one every endpoint takes.
+func TestTheSamplingSeedSentToTheEndpointIsOneEveryEndpointAccepts(t *testing.T) {
+	for _, seed := range []int64{1 << 62, math.MaxInt64, 1<<53 + 1, 1<<53 - 1, 1<<31 + 5, 1<<31 - 1, 12345} {
+		repo := newRepo(t)
+		pol := startPolicy(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+		h := &harness.Harness{}
+		sp := spec(t, repo, "hello")
+		sp.Policy = env.PolicySpec{Model: "mock-1", BaseURL: pol.url}
+		sp.Seed = seed
+		if _, err := h.Run(context.Background(), sp); err != nil {
+			t.Fatal(err)
+		}
+		bodies := pol.bodies()
+		if len(bodies) == 0 {
+			t.Fatal("no request reached the policy")
+		}
+		var m struct {
+			Seed json.Number `json:"seed"`
+		}
+		dec := json.NewDecoder(bytes.NewReader(bodies[0]))
+		dec.UseNumber()
+		if err := dec.Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		got, err := m.Seed.Int64()
+		if err != nil {
+			t.Fatalf("seed %d: the request's seed %q is not an integer: %v", seed, m.Seed, err)
+		}
+		if got < 0 || got > env.MaxWireSeed {
+			t.Errorf("seed %d went out as %d, beyond %d", seed, got, int64(env.MaxWireSeed))
+		}
+		if seed <= env.MaxWireSeed && got != seed {
+			t.Errorf("a seed the wire can hold was changed: %d -> %d", seed, got)
+		}
 	}
 }
 

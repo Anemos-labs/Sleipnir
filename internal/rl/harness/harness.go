@@ -376,7 +376,7 @@ func samplingBody(raw json.RawMessage, seed int64) map[string]any {
 		}
 	}
 	if _, ok := body["seed"]; !ok && seed != 0 {
-		body["seed"] = seed
+		body["seed"] = seed & env.MaxWireSeed // larger seeds are refused by some endpoints (env.MaxWireSeed)
 	}
 	return body
 }

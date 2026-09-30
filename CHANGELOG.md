@@ -75,6 +75,8 @@ The first release.
   verifier rewards in a clean checkout, hack detectors, cost repriced under a target provider, per-role rewards,
   GRPO/RLOO/anchor advantages, and exporters for steps, tokens, groups, SFT, DPO, KTO, ATIF and a lossless canonical
   archive. Redaction happens at export; raw logs stay private.
+- Sampling seeds are 31-bit: a real marketplace refused 63-bit and 53-bit seeds ("outside the 0 to 2147483647 this
+  endpoint accepts"), which failed every rollout of a first run against it.
 - Task generators: mined from git history, mutation, composite swarm tasks and recall (memory) tasks.
 
 ### Sessions

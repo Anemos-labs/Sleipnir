@@ -182,10 +182,19 @@ type Progress struct {
 	Error   string    `json:"error,omitempty"`
 }
 
+// MaxWireSeed is the largest sampling seed every endpoint accepts: a signed 32-bit integer's.
+// A first run against a real marketplace failed every rollout twice over. The gateway in front
+// refused a 63-bit seed ("seed: Too big: expected int to be <=9007199254740991": a JSON number
+// must survive JavaScript), and once that was fixed the model's own upstream refused a 53-bit one
+// ("seed ... is outside the 0 to 2147483647 this endpoint accepts"). Sampling seeds only need to
+// differ between samples, and 31 bits are plenty for that.
+const MaxWireSeed = 1<<31 - 1
+
 // SampleSeed derives the seed of one rollout from the run seed: deterministic
-// in (seed, task, sample) and independent of scheduling.
+// in (seed, task, sample) and independent of scheduling. It is at most MaxWireSeed, because it
+// is sent to the policy endpoint as the request's sampling seed.
 func SampleSeed(seed int64, taskID string, sample int) int64 {
-	return int64(hash64(seed, "sample", taskID, strconv.Itoa(sample)) >> 1)
+	return int64(hash64(seed, "sample", taskID, strconv.Itoa(sample)) >> 33)
 }
 
 // Statuses of a rollout.

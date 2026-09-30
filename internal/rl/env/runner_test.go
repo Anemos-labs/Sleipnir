@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -765,6 +766,21 @@ func TestRolloutRedactsHiddenBlobStoreContentToo(t *testing.T) {
 	raw := mustRead(t, filepath.Join(f.sampleDir("mathx-max", 0), "task.json"))
 	if !strings.Contains(raw, "blob:"+string(h)) || strings.Contains(raw, "TestMax") {
 		t.Errorf("task.json: %s", raw)
+	}
+}
+
+// The sample seed is sent to the policy as the request's sampling seed, so it must be one
+// every endpoint accepts (0 to 2^31-1: see MaxWireSeed).
+func TestSampleSeedIsOneEveryEndpointAccepts(t *testing.T) {
+	for _, run := range []int64{0, 1, -1, 42, math.MaxInt64, math.MinInt64, 1 << 53, 1<<53 + 1} {
+		for _, task := range []string{"", "a", "demo/fix add", strings.Repeat("x", 300)} {
+			for sample := 0; sample < 64; sample++ {
+				got := SampleSeed(run, task, sample)
+				if got < 0 || got > MaxWireSeed {
+					t.Fatalf("SampleSeed(%d, %q, %d) = %d, outside 0..%d", run, task, sample, got, int64(MaxWireSeed))
+				}
+			}
+		}
 	}
 }
 
