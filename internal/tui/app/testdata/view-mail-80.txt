@@ -1,0 +1,24 @@
+╭ SLEIPNIR ▸ mail · The handboo…  ■ ended · ◷ 1.0s · 8 agents · $0.20 · ⛁ 92% ─╮
+│ 0 sent · 0 delivered                                                         │
+├─ messages, newest last ──────────────────────┬─ who writes to whom ──────────┤
+│ no message yet: agents write to each other   │ —                             │
+│ when one needs what another knows            │                               │
+├──────────────────────────────────────────────┴───────────────────────────────┤
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ space pause · o cockpit · c cache · m mail · ↑↓ agent · ? help · q quit      │
+╰──────────────────────────────────────────────────────────────────────────────╯

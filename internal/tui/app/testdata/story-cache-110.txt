@@ -1,0 +1,44 @@
+╭ SLEIPNIR ▸ cache · mgr · Build the shop: a catalogue, a …  ■ stopped · ◷ 1m10s · 3 agents · $0.06 · ⛁ 67% ─╮
+│ mgr manager · m · 9 requests · 64% of its prompt from the cache                                            │
+│ latest answer: 9.6k prompt · 7.5k from the cache · 2.1k paid in full · saved $0.12 (list price)            │
+├─ its latest prompt ────────────────────────────────────────────────────────────────────────────────────────┤
+│ █████████████████████████████████████████████████████████████████▏██▏█████████████▓░░░░░░░░░░░░░░░░░░░░░░░ │
+│ G0 G1 G2 G3 G4 G5                                                                                          │
+│ █ cached 7.5k  ░ paid 2.1k  ▏ breakpoint                                              ● warm 4:44 ▰▰▰▰▰▰▰▰ │
+├─ layer by layer ───────────────────────────────────────────────────────────────────────────────────────────┤
+│    layer       tokens share cache            hash     epoch                                                │
+│    █ G0 const    5.0k   52% ████████ cached               0                                                │
+│ ▏  █ G1 shared    900    9% ████████ cached  shared-…     0                                                │
+│ ▏  █ G2 role      300    3% ████████ cached  role-ha…     0                                                │
+│    █ G3 notes     120    1% ████████ cached  notes-h…     0                                                │
+│    █ G4 spine      60    1% ████████ cached  spine-h…     0                                                │
+│    █ G5 thread   3.2k   33% ██▓░░░░░ partial              0                                                │
+│    total         9.6k  100% █████▓░░ 78% hit                                                               │
+├─ hit ratio per request ────────────────────────────────────────┬─ its prefix ──────────────────────────────┤
+│      ⚠ ◆                                                       │ shared 1.2k tokens of G1–G2 · 3 riders    │
+│ ▁▇▇▇▇▂▇▇▇                                                      │ mgr w1 w2                                 │
+│ 9 requests · mean 63% · lowest 0% at request 1                 │ ● warm 5:00 ▰▰▰▰▰▰▰▰                      │
+│ ⚠ cache break   ◆ compaction   ↻ new epoch                     │                                           │
+├─ compactions ──────────────────────────────────────────────────┼─ cache anomalies ─────────────────────────┤
+│ thread ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 31.2k │ ⚠ drift in notes                          │
+│        ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                           │                                           │
+│ fold ↓ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                                         │                                           │
+│        ▓▓▓▓▓▓▓                                                 │                                           │
+│        ▒▒▒▒ 2.4k                                               │                                           │
+│                                                                │                                           │
+│ spine  ▏resume                                                 │                                           │
+│ ◆ compacted 31.2k → 2.4k (-92%)                                │                                           │
+│ fork · the cache was cold, so the rewrite cost nothing extra   │                                           │
+├─ every agent's cache ──────────────────────────────────────────┴───────────────────────────────────────────┤
+│   AGENT    ROLE       REQ   HIT  LAST    READ    PAID   WRITE    SAVED                                     │
+│ › mgr      manager      9   64%   78%   46.2k   25.8k       0    $0.12                                     │
+│   w1       backend      4   70%   91%   18.0k    7.6k       0    $0.05                                     │
+│   w2       frontend     4   70%   91%   18.0k    7.6k       0    $0.05                                     │
+├─ the session ──────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 67% of the session's prompt came from the cache · saved $0.22 (list price) · 1 compaction · 1 anomaly      │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│ space pause · o cockpit · c cache · m mail · b board · ↑↓ agent · ? help · q quit                          │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

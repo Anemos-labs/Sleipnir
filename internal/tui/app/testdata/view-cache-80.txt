@@ -1,0 +1,24 @@
+╭ SLEIPNIR ▸ cache · mgr · The …  ■ ended · ◷ 1.0s · 8 agents · $0.20 · ⛁ 92% ─╮
+│ mgr manager · demo-model · 5 requests · 77% of its prompt from the cache     │
+│ latest answer: 5.8k prompt · 5.6k from the cache · 114 paid in full · saved… │
+├─ its latest prompt ──────────────────────────────────────────────────────────┤
+│ █████████████████████████████████████████████████████████████████████████▓░░ │
+│                            G0                           G1 G2      G5        │
+│ █ cached 5.6k  ░ paid 114  ▏ breakpoint                 ● warm 5:00 ▰▰▰▰▰▰▰▰ │
+├─ hit ratio per request ──────────────────────┬─ its prefix ──────────────────┤
+│                                              │ shared 362 tokens of G1–G2 ·… │
+│ ▁████                                        │ mgr                           │
+│ 5 requests · mean 74% · lowest 0% at reques… │ ● warm 5:00 ▰▰▰▰▰▰▰▰          │
+│ ⚠ cache break   ◆ compaction   ↻ new epoch   │                               │
+├─ every agent's cache ────────────────────────┴───────────────────────────────┤
+│   AGENT    ROLE       REQ   HIT  LAST    READ    PAID   WRITE    SAVED       │
+│ › mgr      manager      5   77%   98%   20.5k    6.1k       0  $0.0077       │
+│   dc-1     docs         5   94%   97%   23.3k    1.4k       0  $0.0088       │
+│   dc-2     docs         5   95%   97%   23.4k    1.3k       0  $0.0088       │
+│   rv-1     reviewer     3   96%   96%   12.9k     608       0  $0.0048       │
+│   sc-1     scout        3   95%   97%   13.0k     733       0  $0.0049       │
+│   sc-2     scout        3   95%   97%   13.1k     633       0  $0.0049       │
+│   sc-3     scout        3   95%   97%   13.1k     637       0  $0.0049       │
+│   sc-4     scout        3   95%   97%   13.1k     629       0  $0.0049       │
+│ space pause · o cockpit · c cache · m mail · ↑↓ agent · ? help · q quit      │
+╰──────────────────────────────────────────────────────────────────────────────╯

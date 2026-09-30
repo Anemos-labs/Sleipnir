@@ -1,0 +1,36 @@
+╭ SLEIPNIR ▸ board · The handbook has one document …  ■ ended · ◷ 1.0s · 8 agents · $0.20 · ⛁ 92% ─╮
+│ 7 tasks · 0 todo · 0 running · 0 verifying · 7 merged                                            │
+├─ task board ─────────────────────────────────────────────────────────────────────────────────────┤
+│ todo 0                  running 0               verifying 0             merged 7                 │
+│                                                                         ✓ T1 ✓ T2 ✓ T3 ✓ T4      │
+│                                                                         ✓ T5 ✓ T6 ✓ T7           │
+├─ tasks ──────────────────────────────────────────────────┬─ merge queue ─────────────────────────┤
+│ ✓ T1   sc-1   Survey topic 1 (docs/topic-1.md)           │ no worktree isolation in this run:    │
+│ ✓ T2   sc-2   Survey topic 2 (docs/topic-2.md)           │ work is written to the checkout       │
+│ ✓ T3   sc-3   Survey topic 3 (docs/topic-3.md)           │ directly                              │
+│ ✓ T4   sc-4   Survey topic 4 (docs/topic-4.md)           │                                       │
+│ ✓ T5   dc-1   Write the summaries for topics 1, 2 [topi… │                                       │
+│ ✓ T6   dc-2   Write the summaries for topics 3, 4 [topi… │                                       │
+│ ✓ T7   rv-1   Review every summary against the conventi… │                                       │
+├──────────────────────────────────────────────────────────┴───────────────────────────────────────┤
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ space pause · o cockpit · c cache · m mail · b board · ↑↓ agent · ? help · q quit                │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

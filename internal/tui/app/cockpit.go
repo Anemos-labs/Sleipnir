@@ -15,13 +15,17 @@ import (
 type CockpitOptions struct {
 	// NoAnim shows the standing horse and leaves out the arrival animation of mail.
 	NoAnim bool
-	// MailBorn says at which animation frame a message (by its seq) was first shown, for the arrival animation of the newest one;
-	// a message that is not in the map is settled.
-	MailBorn map[uint64]int
+	// Born says at which animation frame a message (by its seq) was first shown, for the arrival animation of the newest one; a
+	// message that is not in it is settled.
+	Born Born
 	// G0 is the size of the constitution and the tool list in tokens, when the caller knows it (the stack of a request does not
 	// size it). Zero means an estimate: the smallest unsectioned prompt of any agent, which is G0 plus the little the newest
 	// agent had been told.
 	G0 int
+	// Hints are the keys shown in the bottom row (nil: the keys of the design, which a program that has fewer of them does not
+	// want), Status the first of the stats of the title bar ("● live").
+	Hints  []widget.Hint
+	Status string
 }
 
 // Cockpit draws the swarm cockpit of a snapshot on a screen of cols x rows at animation frame.
@@ -42,6 +46,8 @@ func CockpitData(sn *state.Snapshot, opt CockpitOptions) widget.DashboardData {
 		Budget:   sn.Totals.BudgetUSD,
 		HitRatio: sn.Totals.HitRatio(),
 		NoAnim:   opt.NoAnim,
+		Hints:    opt.Hints,
+		Status:   opt.Status,
 		Governor: widget.Governor{RPM: sn.Governor.RPM, Err429: sn.Governor.RateLimited, Retries: sn.Governor.Retries},
 	}
 	if sn.Governor.RatePerMin > 0 {
@@ -371,7 +377,7 @@ func mail(sn *state.Snapshot, opt CockpitOptions) ([]widget.Mail, widget.MailSta
 	out := make([]widget.Mail, 0, len(recent))
 	for _, m := range recent {
 		born := -1
-		if b, ok := opt.MailBorn[m.Seq]; ok && !opt.NoAnim {
+		if b, ok := opt.Born[m.Seq]; ok && !opt.NoAnim {
 			born = b
 		}
 		out = append(out, widget.Mail{From: m.From, To: m.To, Subject: m.Summary, Tokens: m.Tokens, Born: born})

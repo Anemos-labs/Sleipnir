@@ -31,6 +31,11 @@ type RecordOptions struct {
 	Theme   svg.Theme
 	// NoAnim draws the standing horse and no arrival animation.
 	NoAnim bool
+	// View is the screen that is recorded (the cockpit when zero) and Agent the agent of the cache view.
+	View  View
+	Agent string
+	// Follow makes the cache view follow the agent that matters as the session goes: the one that got the newest answer.
+	Follow bool
 }
 
 func (o *RecordOptions) fill() {
@@ -55,20 +60,20 @@ func (o *RecordOptions) fill() {
 	}
 }
 
-// RecordCockpit plays the event log at path on a virtual clock and draws the swarm cockpit at every step into one animated SVG.
-// The log, the options and the code decide every byte: no clock is read and nothing is random, so the recording can be made again
-// and compared (scripts/record-demo.sh --check).
-func RecordCockpit(path string, o RecordOptions) (string, error) {
+// Record plays the event log at path on a virtual clock and draws the view at every step into one animated SVG. The log, the
+// options and the code decide every byte: no clock is read and nothing is random, so the recording can be made again and compared
+// (scripts/record-demo.sh --check).
+func Record(path string, o RecordOptions) (string, error) {
 	o.fill()
-	frames, err := CockpitFrames(path, o)
+	frames, err := Frames(path, o)
 	if err != nil {
 		return "", err
 	}
 	return svg.Animated(frames, o.Theme, svg.Options{Hold: o.Hold}), nil
 }
 
-// CockpitFrames are the frames of the recording: one per step of the virtual clock, each the screen the cockpit draws then.
-func CockpitFrames(path string, o RecordOptions) ([]svg.Frame, error) {
+// Frames are the frames of the recording: one per step of the virtual clock, each the screen the view draws then.
+func Frames(path string, o RecordOptions) ([]svg.Frame, error) {
 	o.fill()
 	pl, err := state.Replay(path, state.ReplayOptions{Speed: o.Speed, Until: o.Until})
 	if err != nil {
@@ -76,17 +81,18 @@ func CockpitFrames(path string, o RecordOptions) ([]svg.Frame, error) {
 	}
 	defer pl.Close()
 	step := time.Second / time.Duration(o.FPS)
-	born := map[uint64]int{}
+	mem := NewMemory()
 	var frames []svg.Frame
 	for f := range pl.Frames(step) {
 		ui := f.Index * UIFPS / o.FPS
 		sn := pl.State().SnapshotAt(pl.Now())
-		for _, m := range sn.Mail.Recent {
-			if _, ok := born[m.Seq]; !ok {
-				born[m.Seq] = ui
-			}
+		mem.Observe(sn, ui)
+		agent := o.Agent
+		if o.Follow && agent == "" {
+			agent = Newest(sn)
 		}
-		lines := Cockpit(sn, o.Cols, o.Rows, ui, o.Palette, CockpitOptions{NoAnim: o.NoAnim, MailBorn: born})
+		lines := Draw(Scene{Snap: sn, View: o.View, Agent: agent, Frame: ui, Cols: o.Cols, Rows: o.Rows, Pal: o.Palette, Mem: mem, NoAnim: o.NoAnim,
+			Mode: Mode{Replay: true, Speed: o.Speed, At: pl.Elapsed(), Total: 0}})
 		fr := svg.FromLines(lines, o.Cols, time.Duration(f.Index)*step)
 		frames = append(frames, fr)
 	}

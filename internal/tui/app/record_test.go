@@ -9,14 +9,14 @@ import (
 	"github.com/reee344/sleipnir/internal/tui/state/statetest"
 )
 
-func TestRecordCockpitIsADeterministicAnimation(t *testing.T) {
+func TestRecordIsADeterministicAnimation(t *testing.T) {
 	path := statetest.DemoLogFile(t)
 	o := RecordOptions{Speed: 0.25, FPS: 5}
-	a, err := RecordCockpit(path, o)
+	a, err := Record(path, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := RecordCockpit(path, o)
+	b, err := Record(path, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestRecordCockpitIsADeterministicAnimation(t *testing.T) {
 			t.Errorf("the recording lacks %q", want)
 		}
 	}
-	frames, err := CockpitFrames(path, o)
+	frames, err := Frames(path, o)
 	if err != nil || len(frames) < 10 {
 		t.Fatalf("%d frames, err %v: a 0.7 s session at a quarter of its speed is a few seconds of frames", len(frames), err)
 	}
@@ -48,13 +48,13 @@ func TestRecordCockpitIsADeterministicAnimation(t *testing.T) {
 }
 
 // Stopping at an event shows the session as it was then: fewer agents, less spent.
-func TestRecordCockpitUntilAnEvent(t *testing.T) {
+func TestRecordUntilAnEvent(t *testing.T) {
 	path := statetest.DemoLogFile(t)
-	full, err := CockpitFrames(path, RecordOptions{Speed: 0.25})
+	full, err := Frames(path, RecordOptions{Speed: 0.25})
 	if err != nil {
 		t.Fatal(err)
 	}
-	part, err := CockpitFrames(path, RecordOptions{Speed: 0.25, Until: 120})
+	part, err := Frames(path, RecordOptions{Speed: 0.25, Until: 120})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +63,8 @@ func TestRecordCockpitUntilAnEvent(t *testing.T) {
 	}
 }
 
-func TestRecordCockpitOfAMissingLog(t *testing.T) {
-	if _, err := RecordCockpit("/no/such/events.jsonl", RecordOptions{}); err == nil {
+func TestRecordOfAMissingLog(t *testing.T) {
+	if _, err := Record("/no/such/events.jsonl", RecordOptions{}); err == nil {
 		t.Fatal("a log that is not there is an error")
 	}
 }

@@ -117,6 +117,21 @@ func dashGait(frame int, legs []Leg) int {
 // dashTitleBar is the top border of the box: the name and the task on the left, the clock, the agents, the spend and the hit
 // ratio on the right, and a line between. What does not fit is cut: first the right side piece by piece, then the task.
 func dashTitleBar(d DashboardData, width int, below []int, p Palette) cell.Line {
+	agents := dashAgents(len(d.Agents))
+	spend := dashMoney(d.Spend)
+	if d.Budget > 0 {
+		spend += "/" + dashMoney(d.Budget)
+	}
+	stats := []string{"◷ " + showElapsed(d.Elapsed), agents, spend, "⛁ " + showPercent(d.HitRatio)}
+	if st := showClean(d.Status); st != "" {
+		stats = append([]string{st}, stats...)
+	}
+	return frameTitleBar(d.Title, stats, width, below, p)
+}
+
+// frameTitleBar is the top border of a full-screen view: SLEIPNIR and the task on the left, the stats on the right, dropped from
+// the end when they do not fit.
+func frameTitleBar(task string, stats []string, width int, below []int, p Palette) cell.Line {
 	c := newShowCanvas(width)
 	faint := p.faintSt()
 	c.put(0, "╭", faint)
@@ -126,13 +141,7 @@ func dashTitleBar(d DashboardData, width int, below []int, p Palette) cell.Line 
 		c.put(x+1, "┬", faint)
 	}
 
-	agents := dashAgents(len(d.Agents))
-	spend := dashMoney(d.Spend)
-	if d.Budget > 0 {
-		spend += "/" + dashMoney(d.Budget)
-	}
-	stats := []string{"◷ " + showElapsed(d.Elapsed), agents, spend, "⛁ " + showPercent(d.HitRatio)}
-	// leave out what does not fit: the hit ratio, the spend, the agents, then the clock
+	// leave out what does not fit: the last stat first
 	right := ""
 	for n := len(stats); n > 0; n-- {
 		if r := " " + strings.Join(stats[:n], " · ") + " "; cell.StringWidth(r) <= width-14 {
@@ -147,7 +156,7 @@ func dashTitleBar(d DashboardData, width int, below []int, p Palette) cell.Line 
 	head := " SLEIPNIR "
 	if room > cell.StringWidth(head)+2 {
 		c.put(1, head, p.accentSt().With(cell.Bold))
-		task := showClean(d.Title)
+		task := showClean(task)
 		if task != "" {
 			c.put(1+cell.StringWidth(head), "▸ ", p.dimSt())
 			c.put(1+cell.StringWidth(head)+2, showTrunc(task, room-cell.StringWidth(head)-3)+" ", cell.Style{})
@@ -308,13 +317,22 @@ func dashFeed(feed []FeedLine, n, w int, p Palette) []cell.Line {
 	return out
 }
 
+// Hint is one entry of the row of keys at the bottom of the cockpit: the text as shown ("p pause") and how long it is kept when the
+// row is too narrow for all of them (a higher Rank is dropped sooner; 1 is the last to go).
+type Hint struct {
+	Text string
+	Rank int
+}
+
+// defaultHints are the keys of the cockpit as designed (docs/UX.md); a program that does not have all of them says which it has
+// in DashboardData.Hints.
+var defaultHints = []Hint{{"↑↓ agent", 3}, {"enter transcript", 4}, {"m mail", 5}, {"b board", 6}, {"c cache", 7}, {"t stack", 8}, {"p pause", 9}, {"? help", 2}, {"q back to shell", 1}}
+
 // dashHints is the row of keys at the bottom. Whatever does not fit is left out whole, the least important first.
-func dashHints(w int, p Palette) cell.Line {
-	type hint struct {
-		text string
-		rank int // lower is dropped later
+func dashHints(hints []Hint, w int, p Palette) cell.Line {
+	if hints == nil {
+		hints = defaultHints
 	}
-	hints := []hint{{"↑↓ agent", 3}, {"enter transcript", 4}, {"m mail", 5}, {"b board", 6}, {"c cache", 7}, {"t stack", 8}, {"p pause", 9}, {"? help", 2}, {"q back to shell", 1}}
 	keep := make([]bool, len(hints))
 	for i := range keep {
 		keep[i] = true
@@ -323,7 +341,7 @@ func dashHints(w int, p Palette) cell.Line {
 		n, sep := 0, 0
 		for i, h := range hints {
 			if keep[i] {
-				n += cell.StringWidth(h.text) + sep
+				n += cell.StringWidth(h.Text) + sep
 				sep = 3
 			}
 		}
@@ -332,7 +350,7 @@ func dashHints(w int, p Palette) cell.Line {
 	for width() > w {
 		worst := -1
 		for i, h := range hints {
-			if keep[i] && (worst < 0 || h.rank > hints[worst].rank) {
+			if keep[i] && (worst < 0 || h.Rank > hints[worst].Rank) {
 				worst = i
 			}
 		}
@@ -349,7 +367,7 @@ func dashHints(w int, p Palette) cell.Line {
 		if b.w > 0 {
 			b.add(p.dimSt(), " · ")
 		}
-		b.add(p.dimSt(), h.text)
+		b.add(p.dimSt(), h.Text)
 	}
 	return showFit(b.line(), w)
 }
