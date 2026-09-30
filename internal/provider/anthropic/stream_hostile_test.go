@@ -119,7 +119,7 @@ func TestServerTextInIdentifiersAndErrorsIsInert(t *testing.T) {
 		return ev(name, string(b))
 	}
 	body := frame("message_start", map[string]any{"type": "message_start", "message": map[string]any{
-		"id": esc + long, "model": "m‮odel" + long, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1},
+		"id": esc + long, "model": "m\u202eodel" + long, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1},
 	}}) + ev("message_delta", stopTurn) + ev("message_stop", `{"type":"message_stop"}`)
 	o := adapter().Run(t, []byte(body), providertest.Whole)
 	providertest.Check(t, o)
