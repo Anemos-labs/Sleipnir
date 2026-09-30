@@ -476,6 +476,8 @@ flags:
         run each baseline this many times to catch flaky tests
   -repo string
         the repository to generate from (a local path)
+  -repo-path string
+        how the tasks name the repository (default: the absolute path of --repo); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine
   -report string
         also write the generation report (counts and every rejection with its reason) as JSON
   -require-net-isolation
@@ -558,6 +560,8 @@ flags:
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -repo string
         the repository to generate from (a local path)
+  -repo-path string
+        how the tasks name the repository (default: the absolute path of --repo); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine
   -report string
         also write the generation report (counts and every rejection with its reason) as JSON
   -require-net-isolation
@@ -633,6 +637,8 @@ flags:
         output tasks file (default "recall.jsonl")
   -repo string
         the repository to ask about (a local path)
+  -repo-path string
+        how the tasks name the repository (default: the absolute path of --repo); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine
   -rev string
         revision to build tasks from (default HEAD)
   -seed int
@@ -681,6 +687,10 @@ flags:
 `validate` checks every task in FILE and reports all problems; `stats` counts tasks by kind, tag, language and
 repository; `filter` writes the tasks that match tags, ids or a deterministic sample; `split` assigns whole repositories
 to named splits; `check` proves each task sound (the verifier fails on the start and passes with the reference solution).
+With `--verify-repeats N` the verifier runs N times in fresh checkouts and a task must fail on the start every time and
+pass with the solution every time: a start that passes once rewards doing nothing, a solution that fails once scores
+correct work inconsistently (a benchmark suite admits tasks this way). `--concurrency` checks tasks in parallel;
+`--report FILE` writes each verdict as JSON so a script can quarantine what failed.
 
 <!-- flags: rl tasks validate -->
 ```text
@@ -759,6 +769,8 @@ flags:
         do not isolate the network of tasks that do not need it
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -report string
+        also write each task's verdict as JSON ({id, ok, skipped, reason}): a script can quarantine what failed
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string

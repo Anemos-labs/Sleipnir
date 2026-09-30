@@ -281,13 +281,21 @@ type CheckReport struct {
 // CheckTask proves a task is sound: the verifier fails on the starting state
 // and passes with the reference solution (gold, a patch) applied. It is what
 // taskgen runs before it emits a task.
+//
+// With Repeats above one a task is held to every run, whatever PassPolicy the rollouts use: the starting state must fail
+// each time (one pass is a task that rewards doing nothing some of the time) and the reference solution must pass each
+// time (a verifier that fails the solution now and then scores the same correct work differently).
 func CheckTask(ctx context.Context, task rl.Task, gold []byte, opts VerifyOptions) (CheckReport, error) {
 	var rep CheckReport
 	var err error
-	if rep.Baseline, err = VerifyBaseline(ctx, task, opts); err != nil {
+	baseOpts, goldOpts := opts, opts
+	if opts.Repeats > 1 {
+		baseOpts.PassPolicy, goldOpts.PassPolicy = PassAny, PassAll
+	}
+	if rep.Baseline, err = VerifyBaseline(ctx, task, baseOpts); err != nil {
 		return rep, err
 	}
-	if rep.Gold, err = VerifyPatch(ctx, task, gold, opts); err != nil {
+	if rep.Gold, err = VerifyPatch(ctx, task, gold, goldOpts); err != nil {
 		return rep, err
 	}
 	if !rep.Gold.Pass {

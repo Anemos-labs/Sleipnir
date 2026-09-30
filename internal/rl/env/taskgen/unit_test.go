@@ -87,9 +87,11 @@ Signed-off-by: A Developer <dev@example.com>
 Co-authored-by: Someone <s@example.com>
 Change-Id: I8a7b6c5d
 Reviewed-on: https://gerrit.example/c/123
+Co-Authored-By: Assistant <noreply@example.com>
+Claude-Session: https://claude.ai/code/session_0123456789
 `
 	got := CleanMessage(msg)
-	for _, bad := range []string{"Signed-off-by", "Co-authored-by", "Change-Id", "Reviewed-on", "github.com/org/repo/pull", "abcdef1234", "0123456789abcdef", "dev@example.com"} {
+	for _, bad := range []string{"Signed-off-by", "Co-authored-by", "Co-Authored-By", "Claude-Session", "claude.ai/code", "Change-Id", "Reviewed-on", "github.com/org/repo/pull", "abcdef1234", "0123456789abcdef", "dev@example.com"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("cleaned message still contains %q:\n%s", bad, got)
 		}

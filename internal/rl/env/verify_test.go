@@ -676,6 +676,44 @@ func TestVerifyRepeatsAndPassPolicies(t *testing.T) {
 	}
 }
 
+// A task is checked against every run: a start that passes once, or a solution that fails once, is unsound, whatever pass
+// policy the rollouts use.
+func TestCheckTaskRepeatsHoldBothSidesToEveryRun(t *testing.T) {
+	flaky := func(dir, condition string) string {
+		// Passes on odd runs only, and only where the condition holds; state outside the checkout counts the runs.
+		counter := filepath.Join(dir, "n")
+		return fmt.Sprintf(`(%[2]s) || exit 1; n=$(cat %[1]s 2>/dev/null || echo 0); n=$((n+1)); echo $n > %[1]s; [ $((n %% 2)) -eq 1 ]`, counter, condition)
+	}
+	const isFixed = `[ "$(grep -A1 'if a > b' mathx.go | tail -1 | tr -d '[:space:]')" = returna ]`
+	fixed := func(f *verifyFixture) string {
+		f.r.write("mathx.go", fixedMath)
+		fixCommit := f.r.commit("fix")
+		return f.r.git("diff", "--binary", "--full-index", "--no-renames", f.base, fixCommit, "--", "mathx.go") + "\n"
+	}
+
+	// The start passes on the first of three runs: one run would have called the task sound only if that run failed; here the
+	// first run passes, so it is an unsound task however the rollouts count passes.
+	f := newVerifyFixture(t, func(tk *rl.Task) { tk.Verifier.Cmd = flaky(t.TempDir(), "true") })
+	gold := fixed(f)
+	if _, err := CheckTask(ctxT(t), f.task, []byte(gold), VerifyOptions{Workspaces: f.m, Repeats: 3, PassPolicy: PassMajority}); !errors.Is(err, ErrBaselinePasses) {
+		t.Fatalf("a start that passes on some run must be ErrBaselinePasses, got %v", err)
+	}
+
+	// The start fails every time (it lacks the fix), the solution passes on two of three runs: not sound either.
+	f = newVerifyFixture(t, func(tk *rl.Task) { tk.Verifier.Cmd = flaky(t.TempDir(), isFixed) })
+	gold = fixed(f)
+	if _, err := CheckTask(ctxT(t), f.task, []byte(gold), VerifyOptions{Workspaces: f.m, Repeats: 3, PassPolicy: PassAny}); !errors.Is(err, ErrGoldFails) {
+		t.Fatalf("a solution that fails on some run must be ErrGoldFails, got %v", err)
+	}
+
+	// A stable verifier passes the check with repeats.
+	f = newVerifyFixture(t)
+	gold = fixed(f)
+	if _, err := CheckTask(ctxT(t), f.task, []byte(gold), VerifyOptions{Workspaces: f.m, Repeats: 3}); err != nil {
+		t.Fatalf("a stable task with repeats: %v", err)
+	}
+}
+
 func diff(a, b float64) float64 {
 	if a > b {
 		return a - b

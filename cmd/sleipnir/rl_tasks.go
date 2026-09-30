@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
@@ -197,6 +198,7 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	var rf rigFlags
 	rf.register(fs)
 	goldDir := fs.String("gold", "", "blob store holding the reference solutions (default: --blobs)")
+	report := fs.String("report", "", "also write each task's verdict as JSON ({id, ok, skipped, reason}): a script can quarantine what failed")
 	file, err := oneFile(fs, args, "rl tasks check")
 	if err != nil {
 		return err
@@ -221,31 +223,67 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		return fmt.Errorf("rl tasks check: %w", err)
 	}
 	defer ws.Close()
+
+	// With --verify-repeats a task is held to every run: the start must fail each time and the reference solution pass each
+	// time (env.CheckTask), whatever --verify-policy says.
+	type verdict struct {
+		ID      string `json:"id"`
+		OK      bool   `json:"ok"`
+		Skipped bool   `json:"skipped,omitempty"`
+		Reason  string `json:"reason,omitempty"`
+	}
+	verdicts := make([]verdict, len(tasks))
+	vo := env.VerifyOptions{Workspaces: ws, HiddenBlobs: hidden, Repeats: rf.verifyRepeats}
+	sem := make(chan struct{}, max(1, rf.concurrency))
+	var wg sync.WaitGroup
+	for i, t := range tasks {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			v := verdict{ID: t.ID}
+			defer func() { verdicts[i] = v }()
+			var meta struct {
+				GoldBlob string `json:"gold_blob"`
+			}
+			_ = json.Unmarshal(t.Meta, &meta)
+			if meta.GoldBlob == "" {
+				v.Skipped, v.Reason = true, "no reference solution recorded"
+				return
+			}
+			patch, err := gold.Get(core.Hash(meta.GoldBlob))
+			if err != nil {
+				v.Reason = fmt.Sprintf("reference solution unavailable: %v", err)
+				return
+			}
+			if _, err := env.CheckTask(ctx, t, patch, vo); err != nil {
+				v.Reason = err.Error()
+				return
+			}
+			v.OK = true
+		}()
+	}
+	wg.Wait()
 	var bad, skipped int
-	for _, t := range tasks {
-		var meta struct {
-			GoldBlob string `json:"gold_blob"`
-		}
-		_ = json.Unmarshal(t.Meta, &meta)
-		if meta.GoldBlob == "" {
+	for _, v := range verdicts {
+		switch {
+		case v.Skipped:
 			skipped++
-			fmt.Fprintf(stdout, "%s: skipped (no reference solution recorded)\n", t.ID)
-			continue
-		}
-		patch, err := gold.Get(core.Hash(meta.GoldBlob))
-		if err != nil {
+			fmt.Fprintf(stdout, "%s: skipped (%s)\n", v.ID, v.Reason)
+		case !v.OK:
 			bad++
-			fmt.Fprintf(stdout, "%s: FAIL: reference solution unavailable: %v\n", t.ID, err)
-			continue
+			fmt.Fprintf(stdout, "%s: FAIL: %s\n", v.ID, v.Reason)
+		default:
+			fmt.Fprintf(stdout, "%s: ok\n", v.ID)
 		}
-		if _, err := env.CheckTask(ctx, t, patch, env.VerifyOptions{Workspaces: ws, HiddenBlobs: hidden}); err != nil {
-			bad++
-			fmt.Fprintf(stdout, "%s: FAIL: %v\n", t.ID, err)
-			continue
-		}
-		fmt.Fprintf(stdout, "%s: ok\n", t.ID)
 	}
 	fmt.Fprintf(stdout, "%d tasks: %d ok, %d failed, %d skipped\n", len(tasks), len(tasks)-bad-skipped, bad, skipped)
+	if *report != "" {
+		if err := writeJSONFile(*report, verdicts); err != nil {
+			return err
+		}
+	}
 	if bad > 0 {
 		return errors.New("rl tasks check: some tasks are unsound")
 	}
@@ -299,17 +337,18 @@ func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 // genCommon are the flags every generator shares.
 type genCommon struct {
-	repo, out, report, idPrefix string
-	tags, setup                 multiFlag
-	testCmd, rev                string
-	max, concurrency            int
-	timeout                     time.Duration
-	langs                       string
-	rig                         rigFlags
+	repo, repoPath, out, report, idPrefix string
+	tags, setup                           multiFlag
+	testCmd, rev                          string
+	max, concurrency                      int
+	timeout                               time.Duration
+	langs                                 string
+	rig                                   rigFlags
 }
 
 func (g *genCommon) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.repo, "repo", "", "the repository to generate from (a local path)")
+	fs.StringVar(&g.repoPath, "repo-path", "", repoPathUsage)
 	fs.StringVar(&g.out, "o", "tasks.jsonl", "output tasks file")
 	fs.StringVar(&g.report, "report", "", "also write the generation report (counts and every rejection with its reason) as JSON")
 	fs.StringVar(&g.idPrefix, "id-prefix", "", "prefix of task ids (default: the repository directory name)")
@@ -336,6 +375,7 @@ func (g *genCommon) stores() (hidden events.Blobs, blobsDir string, err error) {
 }
 
 func (g *genCommon) finish(tasks []rl.Task, rep *taskgen.Report, blobsDir string, stdout, stderr io.Writer) error {
+	nameRepo(tasks, g.repoPath)
 	if err := env.ValidateTasks(tasks); err != nil {
 		return fmt.Errorf("the generator produced invalid tasks: %w", err)
 	}
@@ -359,6 +399,19 @@ func (g *genCommon) finish(tasks []rl.Task, rep *taskgen.Report, blobsDir string
 	}
 	fmt.Fprintf(stderr, "next: sleipnir rl tasks split %s, then sleipnir rl rollout --tasks <train file> --model <policy>\n", g.out)
 	return nil
+}
+
+const repoPathUsage = "how the tasks name the repository (default: the absolute path of --repo); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine"
+
+// nameRepo records how the tasks name their repository (see repoPathUsage); "" keeps what the generator wrote.
+func nameRepo(tasks []rl.Task, as string) {
+	if as == "" {
+		return
+	}
+	as = filepath.ToSlash(as)
+	for i := range tasks {
+		tasks[i].Repo.Path = as
+	}
 }
 
 func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -487,6 +540,7 @@ func taskgenComposite(args []string, stdout, stderr io.Writer) error {
 func taskgenRecall(args []string, stdout, stderr io.Writer) error {
 	fs := newFlags("rl taskgen recall", stderr, "rl taskgen recall --repo PATH [flags]")
 	repo := fs.String("repo", "", "the repository to ask about (a local path)")
+	repoPath := fs.String("repo-path", "", repoPathUsage)
 	out := fs.String("o", "recall.jsonl", "output tasks file")
 	rev := fs.String("rev", "", "revision to build tasks from (default HEAD)")
 	maxTasks := fs.Int("max", 10, "tasks wanted")
@@ -523,6 +577,7 @@ func taskgenRecall(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("rl taskgen recall: %w", err)
 	}
+	nameRepo(tasks, *repoPath)
 	if err := env.WriteTasks(*out, tasks); err != nil {
 		return fmt.Errorf("rl taskgen recall: %w", err)
 	}

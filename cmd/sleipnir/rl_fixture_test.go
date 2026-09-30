@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,8 +83,16 @@ func TestRLTaskgenFixtureThroughTheCLI(t *testing.T) {
 	// The proof of soundness runs from the directory that holds fixture-repos/, which is how a benchmark run finds them.
 	t.Chdir(out)
 	work := filepath.Join(t.TempDir(), "work")
-	if got := r.must(rlTasks, "check", tasksFile, "--work-dir", work, "--no-net-isolation"); !strings.Contains(got, "2 ok, 0 failed") {
+	verdicts := filepath.Join(t.TempDir(), "verdicts.json")
+	if got := r.must(rlTasks, "check", tasksFile, "--work-dir", work, "--no-net-isolation", "--verify-repeats", "2", "--concurrency", "2", "--report", verdicts); !strings.Contains(got, "2 ok, 0 failed") {
 		t.Fatalf("check:\n%s", got)
+	}
+	var vs []struct {
+		ID string
+		OK bool
+	}
+	if b, err := os.ReadFile(verdicts); err != nil || json.Unmarshal(b, &vs) != nil || len(vs) != 2 || !vs[0].OK || !vs[1].OK || vs[0].ID != "demo-add" {
+		t.Fatalf("--report: %v %s %+v", err, b, vs)
 	}
 
 	// Refusals: nothing matches, no directory.
@@ -92,5 +101,37 @@ func TestRLTaskgenFixtureThroughTheCLI(t *testing.T) {
 	}
 	if _, _, err := r.do(rlTaskgen, "fixture", "-o", filepath.Join(out, "x.jsonl")); err == nil {
 		t.Error("a missing --dir must be an error")
+	}
+}
+
+// A generator records the repository as given by --repo-path, so a tasks file built on one machine names it relative to
+// the directory a rollout runs in; without the flag the absolute path is kept.
+func TestTaskgenRepoPathKeepsTheTasksFilePortable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("SLEIPNIR_HOME", filepath.Join(home, ".sleipnir"))
+	repo := gitRepo(t)
+	out := t.TempDir()
+	r := rlRun{t}
+
+	plain := filepath.Join(out, "plain.jsonl")
+	r.must(rlTaskgen, "git", "--repo", repo, "-o", plain, "--no-validate", "--id-prefix", "demo")
+	raw, _ := os.ReadFile(plain)
+	if !strings.Contains(string(raw), filepath.ToSlash(repo)) {
+		t.Fatalf("by default the task names the repository by its absolute path:\n%s", raw)
+	}
+
+	rel := filepath.Join(out, "rel.jsonl")
+	r.must(rlTaskgen, "git", "--repo", repo, "-o", rel, "--no-validate", "--id-prefix", "demo", "--repo-path", "repos/demo")
+	raw, _ = os.ReadFile(rel)
+	if !strings.Contains(string(raw), `"path":"repos/demo"`) || strings.Contains(string(raw), filepath.ToSlash(repo)) {
+		t.Fatalf("--repo-path was not applied:\n%s", raw)
+	}
+	if got := r.must(rlTasks, "validate", rel); !strings.Contains(got, "all valid") {
+		t.Fatalf("validate:\n%s", got)
 	}
 }

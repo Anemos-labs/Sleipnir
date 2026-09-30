@@ -1,0 +1,20 @@
+{
+  "name": "sleipnir-bench",
+  "format": 1,
+  "about": "The recipe of the benchmark suite and, under lock, what building it gave. bench/build.sh builds it; bench/build.sh --check compares a rebuild with the lock. budget_caps bound what a single-agent task may use, whatever its generator derived (swarm tasks keep theirs). Tags: smoke (minutes, about 8 tasks), core (the regular suite), swarm (composite tasks for a manager and workers), long (memory tasks that overflow a small context window).",
+  "go": "go1.24.7",
+  "stdmini": {
+    "packages": "bench/stdmini/packages.txt"
+  },
+  "parts": {
+    "mutations": { "seed": 1, "max": 24, "smoke": 6 },
+    "mined": { "rev": "255a2b716ac2610a86a8ed62afcdd2013e0dae55", "max": 12, "max_files": 6, "max_lines": 300 },
+    "fixtures": { "dir": "bench/fixtures" },
+    "composite": { "k": 3, "max": 4, "seed": 1 },
+    "recall": { "max": 3, "seed": 1 }
+  },
+  "budget_caps": { "steps": 60, "requests": 150, "wall_s": 1200 },
+  "admit": { "repeats": 3 },
+  "quarantine": [],
+  "lock": {}
+}

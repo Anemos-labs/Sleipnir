@@ -10,7 +10,7 @@ import (
 
 // trailerRe matches commit-message trailers that carry people, review links or
 // bookkeeping, none of which belongs in a prompt.
-var trailerRe = regexp.MustCompile(`(?i)^(signed-off-by|co-authored-by|change-id|reviewed-by|reviewed-on|acked-by|tested-by|reported-by|suggested-by|cc|bug|pr-url|differential revision|phabricator-rev|github-pr-number|\(cherry picked from commit [0-9a-f]+\))\b.*$`)
+var trailerRe = regexp.MustCompile(`(?i)^(signed-off-by|co-authored-by|co-developed-by|change-id|reviewed-by|reviewed-on|acked-by|tested-by|reported-by|suggested-by|assisted-by|generated-by|claude-session|cc|bug|pr-url|differential revision|phabricator-rev|github-pr-number|\(cherry picked from commit [0-9a-f]+\))\b.*$`)
 
 // upstreamLinkRe matches links to the very commit or pull request the task was
 // mined from (or its siblings): a prompt must not point the agent at the
