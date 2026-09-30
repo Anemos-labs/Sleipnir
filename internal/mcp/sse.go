@@ -23,16 +23,15 @@ type sseEvent struct {
 // Memory is bounded: one line, and one event's data, may not exceed the limit,
 // and the reader reports ErrMessageTooLarge instead of growing.
 type sseReader struct {
-	sc       *bufio.Scanner
-	max      int
-	started  bool
-	event    string
-	data     bytes.Buffer
-	hasData  bool
-	id       string
-	retry    int
-	lastID   string
-	overflow bool
+	sc      *bufio.Scanner
+	max     int
+	started bool
+	event   string
+	data    bytes.Buffer
+	hasData bool
+	id      string
+	retry   int
+	lastID  string
 }
 
 func newSSEReader(r io.Reader, maxEvent int) *sseReader {

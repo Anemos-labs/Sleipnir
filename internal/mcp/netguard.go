@@ -204,7 +204,7 @@ func allNumeric(labels []string) bool {
 		}
 		if len(l) > 2 && (l[:2] == "0x" || l[:2] == "0X") {
 			for _, c := range l[2:] {
-				if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+				if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 					return false
 				}
 			}

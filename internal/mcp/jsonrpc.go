@@ -6,9 +6,6 @@ import (
 	"strconv"
 )
 
-// jsonrpcVersion is the only version string MCP uses.
-const jsonrpcVersion = "2.0"
-
 // envelope is any JSON-RPC 2.0 message, decoded loosely: which of the three
 // kinds it is follows from which fields are present, not from a tag.
 //
@@ -220,10 +217,10 @@ func (s *skimmer) step(c byte) {
 			s.st = skDone // not an object (a batch array, garbage): nothing to learn
 		}
 	case skKey:
-		switch {
-		case c == '"':
+		switch c {
+		case '"':
 			s.st, s.key, s.keyBad = skKeyStr, s.key[:0], false
-		case c == '}':
+		case '}':
 			s.st = skDone
 		}
 	case skKeyStr:
@@ -331,17 +328,17 @@ func (s *skimmer) step(c byte) {
 			}
 		}
 	case skScalar:
-		switch {
-		case c == ',':
+		switch c {
+		case ',':
 			s.st = skKey
-		case c == '}':
+		case '}':
 			s.st = skDone
 		}
 	case skAfter:
-		switch {
-		case c == ',':
+		switch c {
+		case ',':
 			s.st = skKey
-		case c == '}':
+		case '}':
 			s.st = skDone
 		}
 	}

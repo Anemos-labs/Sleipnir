@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -56,8 +55,7 @@ func FuzzParse(f *testing.F) {
 
 // nopTransport swallows everything the client sends.
 type nopTransport struct {
-	mu sync.Mutex
-	h  Handler
+	h Handler
 }
 
 func (n *nopTransport) Start(h Handler) error { n.h = h; return nil }

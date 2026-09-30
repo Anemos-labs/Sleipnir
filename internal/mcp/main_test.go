@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -147,24 +146,6 @@ func testEnv(p perm.Requester) (*tools.Env, *memBlobs) {
 	return env, blobs
 }
 
-func mustJSON(t testing.TB, v any) json.RawMessage {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-func raw(m map[string]any) map[string]json.RawMessage {
-	out := map[string]json.RawMessage{}
-	for k, v := range m {
-		b, _ := json.Marshal(v)
-		out[k] = b
-	}
-	return out
-}
-
 func startManager(t *testing.T, o Options) *Manager {
 	t.Helper()
 	m := NewManager(o)
@@ -205,9 +186,3 @@ func toolNames(ts []tools.Tool) []string {
 	}
 	return out
 }
-
-var _ = http.StatusOK
-
-func newRef() *mcptest.Server { return mcptest.New() }
-
-func mcpHTTPOpts() mcptest.HTTPOptions { return mcptest.HTTPOptions{} }

@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -566,6 +565,4 @@ func TestAdapterNeverReturnsAGoError(t *testing.T) {
 	if err != nil || res == nil || !res.IsError {
 		t.Errorf("cancelled: %v %v", res, err)
 	}
-	var e error = errors.New("x")
-	_ = e
 }

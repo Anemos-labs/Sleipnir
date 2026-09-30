@@ -301,10 +301,10 @@ func (h *SSE) PostedTo() []string {
 }
 
 func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.Method == http.MethodGet:
+	switch r.Method {
+	case http.MethodGet:
 		h.stream(w, r)
-	case r.Method == http.MethodPost:
+	case http.MethodPost:
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 64<<20))
 		h.mu.Lock()
 		h.posts = append(h.posts, r.URL.RequestURI())

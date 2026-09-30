@@ -61,7 +61,7 @@ func hasHashSuffix(s string) bool {
 		return false
 	}
 	for i := len(s) - hashLen; i < len(s); i++ {
-		if c := s[i]; !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if c := s[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}
