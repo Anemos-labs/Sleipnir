@@ -1,0 +1,39 @@
+{bu}Fixing the pagination bug{/}
+
+The test in `./orders` fails because {b}`List`{/} computes the offset from a
+{i}zero-based{/} page, but pages are one-based: page 1 skips the first `size`
+rows. See {u}the handler{/}{d} (https://example.com/orders/list.go){/} or
+{u}https://example.com/docs{/}.
+
+{b}What changed{/}
+
+{d}• {/}`offset := page * size` became `(page - 1) * size`
+{d}• {/}a guard for `page < 1`:
+  {d}1. {/}return an error
+  {d}2. {/}or clamp to 1
+{b}[x] {/}test added
+{d}[ ] {/}changelog entry
+
+{i}▎ Note: pages stay one-based in the API. Only the SQL offset changes.{/}
+
+{d}│ {/}{di}go{/}
+{d}│ {/}func (s *Store) List(ctx context.Context, page, size int) ([]Order, er
+{d}│ ↳{/}ror) {
+{d}│ {/}    offset := (page - 1) * size
+{d}│ {/}    return s.query(ctx, offset, size)
+{d}│ {/}}
+
+{b}page{/} {d}│{/} {b}offset{/} {d}│{/} {b}rows{/}
+{d}─────┼────────┼─────{/}
+1    {d}│{/}      0 {d}│{/}  50
+2    {d}│{/}     50 {d}│{/}  50
+3    {d}│{/}    100 {d}│{/}  12
+
+{b}Setext heading{/}
+
+{s}old text{/} [diagram] 日本語のテキストは折り返されます。 and a hard
+break.
+
+{d}────────────────────────────────────────────────────────────────────────{/}
+
+Done.

@@ -1,0 +1,10 @@
+{b}orders/list.go{/}  {b,fg=good}+2{/} {b,fg=bad}−2{/}
+{fg=dim} 3  3   func (s *Store) List(ctx context.Context, page, size int) ([]Order, erro{/}
+{fg=dim}      {/}{fg=faint}↳ {/}{fg=dim}r) {{/}
+{fg=bad,bg=del-bg} 4    {/}{b,fg=bad,bg=del-bg}- {/}{fg=bad,bg=del-bg}    offset := page * size                                               {/}
+{fg=good,bg=add-bg}    4 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}    offset := {/}{fg=good,bg=add-word-bg}({/}{fg=good,bg=add-bg}page {/}{fg=good,bg=add-word-bg}- 1) {/}{fg=good,bg=add-bg}* size                                         {/}
+{fg=dim} 5  5       rows, err := s.db.QueryContext(ctx, listSQL, size, offset){/}
+      {fg=dim}⋯ 7 unchanged lines{/}
+{fg=dim}13 13   {/}
+{fg=bad,bg=del-bg}14    {/}{b,fg=bad,bg=del-bg}- {/}{fg=bad,bg=del-bg}func last() int { return {/}{fg=bad,bg=del-word-bg}1{/}{fg=bad,bg=del-bg} }                                            {/}
+{fg=good,bg=add-bg}   14 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}func last() int { return {/}{fg=good,bg=add-word-bg}2{/}{fg=good,bg=add-bg} }                                            {/}

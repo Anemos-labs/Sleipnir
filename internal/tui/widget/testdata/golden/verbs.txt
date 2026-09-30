@@ -1,0 +1,6 @@
+seed 0: Connecting Weighing Considering Reasoning Scanning Untangling Reading Checking Sifting Sketching Inspecting Thinking Tracing Mapping Planning Comparing
+seed 1: Reading Sketching Tracing Comparing Considering Untangling Sifting Thinking Planning Weighing Scanning Checking Inspecting Mapping Connecting Reasoning
+seed 2: Untangling Scanning Reasoning Considering Weighing Connecting Comparing Planning Mapping Tracing Thinking Inspecting Sketching Sifting Checking Reading
+seed 3: Inspecting Mapping Connecting Reasoning Reading Sketching Tracing Comparing Considering Untangling Sifting Thinking Planning Weighing Scanning Checking
+seed 4: Sketching Connecting Checking Planning Untangling Tracing Reasoning Inspecting Weighing Sifting Comparing Reading Mapping Scanning Thinking Considering
+seed 5: Sketching Tracing Comparing Considering Untangling Sifting Thinking Planning Weighing Scanning Checking Inspecting Mapping Connecting Reasoning Reading

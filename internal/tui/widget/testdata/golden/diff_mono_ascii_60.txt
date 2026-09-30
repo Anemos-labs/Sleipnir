@@ -1,0 +1,14 @@
+{b}orders/list.go{/}  {b}+2{/} {b}-2{/}
+{d} 2  2   {/}
+{d} 3  3   func (s *Store) List(ctx context.Context, page, size{/}
+{d}      \  int) ([]Order, error) {{/}
+ 4    {b}- {/}    offset := page * size
+    4 {b}+ {/}    offset := {bu}({/}page {bu}- 1) {/}* size
+{d} 5  5       rows, err := s.db.QueryContext(ctx, listSQL, siz{/}
+{d}      \ e, offset){/}
+{d} 6  6       if err != nil {{/}
+      {d}... 5 unchanged lines{/}
+{d}12 12   func other() {}{/}
+{d}13 13   {/}
+14    {b}- {/}func last() int { return {bu}1{/} }
+   14 {b}+ {/}func last() int { return {bu}2{/} }
