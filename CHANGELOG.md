@@ -52,6 +52,8 @@ The first release.
 - `sleipnir doctor` measures a real endpoint: streaming, tools, cache reporting, block granularity, warm-up needs. Its
   cache verdict counts nine repeat requests (`yes`, `partly`, `NO`), because a marketplace cache can hit on some and miss on
   others.
+- A run with no one to ask (`run`, a swarm, a rollout) says so in every refusal that needs approval, so a model stops looking
+  for another way to the same action instead of spending its steps on it.
 - Every model of a session, roles' models included, is described from its endpoint's catalogue when the built-in table
   does not know it, and `session.start` records the prices each was described with, so `inspect` shows the gateway's
   figures instead of a generic estimate.

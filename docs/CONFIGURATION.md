@@ -409,7 +409,9 @@ The engine decides every tool call before it runs. A request is settled by the f
 Switch a running chat with `/mode <m>` or `/plan`.
 
 **When no human is available** (`run`/`swarm` with stdin not a terminal, or any unattended run) a question cannot be
-asked, so the action is refused with `approval required: <why>`. In a terminal the question is
+asked, so the action is refused with `approval required: <why>` and a fixed sentence saying that this run has no one to ask
+(a model that is not told keeps looking for another way to the same action: a real one spent twenty-four tool calls on
+that). Give the run what it needs with `--mode` or `permissions.allow` (for example `Bash(go test:*)`). In a terminal the question is
 `allow? [y]es once / [a]lways this session / [n]o`; `a` adds an exact rule for the rest of the session (it is not
 written to any file), and anything but `y`/`a` refuses.
 

@@ -74,10 +74,16 @@ func canceledDecision(ctx context.Context) Decision {
 	return Decision{Reason: "approval canceled: " + ctx.Err().Error()}
 }
 
+// noOneToAsk ends the refusal of a run that has nobody to ask (run, swarm, a rollout). A model
+// told only "approval required" spends its steps on other ways to the same action: a first run
+// against a real model made twenty-four tool calls of that kind (a script, another command, a
+// program that runs the tests) before it gave up. The text is fixed, so it costs the cache nothing.
+const noOneToAsk = " (this run has no one to ask, so nothing can be approved: use an action that is allowed, or finish and say which permission you needed)"
+
 // resolveAsk turns an "ask" outcome into a Decision by consulting the human.
 func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict) Decision {
 	if e.cfg.Prompter == nil {
-		return Decision{Reason: "approval required: " + v.reason}
+		return Decision{Reason: "approval required: " + v.reason + noOneToAsk}
 	}
 	key := promptKey(r)
 	for {
