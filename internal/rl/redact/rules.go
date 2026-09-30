@@ -407,12 +407,12 @@ func isIdentifierLike(v string) bool {
 // ---- entropy near a key-like word -------------------------------------------
 
 var (
-	entCandRE = regexp.MustCompile(`[A-Za-z0-9+/_\-=]{20,}`)
+	entCandRE = regexp.MustCompile(`[A-Za-z0-9+/_\-]{20,}={0,2}`)
 	// entKeyBeforeRE requires a key-like word directly before the candidate, so the
 	// rule can never fire on a base64 blob, hash or identifier that merely sits in
 	// a file. The lower-case and upper-case forms must start a word; the capitalised
 	// form may continue a camelCase name (apiKey, authToken).
-	entKeyBeforeRE = regexp.MustCompile(`(?:(?:^|[^A-Za-z])(?:key|secret|token|passw(?:or)?d|passwd|pwd|credentials?|auth|authorization|bearer|KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|CREDENTIALS?|AUTH|AUTHORIZATION|BEARER)|(?:Key|Secret|Token|Passw(?:or)?d|Credentials?|Auth|Authorization|Bearer))[A-Za-z0-9_\-]{0,24}["']?[ \t]*(?:is|are|was|=>|:=|->|[:=])?[ \t]*["'(\[]?$`)
+	entKeyBeforeRE = regexp.MustCompile(`(?:(?:^|[^A-Za-z])(?:key|secret|token|passw(?:or)?d|passwd|pwd|credentials?|auth|authorization|bearer|KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|CREDENTIALS?|AUTH|AUTHORIZATION|BEARER)|(?:Key|Secret|Token|Passw(?:or)?d|Credentials?|Auth|Authorization|Bearer))(?:[_\-][A-Za-z0-9_\-]{0,24}|[A-Z][A-Za-z0-9]{0,24})?["']?[ \t]*(?:is|are|was|=>|:=|->|[:=])?[ \t]*["'(\[]?$`)
 	uuidRE         = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 )
 
@@ -454,10 +454,41 @@ func entropyCandidateOK(c string) bool {
 	if isHex(c) || uuidRE.MatchString(c) || strings.Count(c, "/") >= 3 {
 		return false
 	}
-	if isIdentifierLike(c) || isPlaceholder(c) {
+	if isIdentifierLike(c) || isPlaceholder(c) || isWordy(c) {
 		return false
 	}
 	return shannon(c) >= 3.5
+}
+
+// isWordy reports strings made mostly of dictionary-length lower-case runs
+// (getUserByIdV2AndValidateSession, my-service-name-2024-prod): identifiers and
+// slugs with a digit in them. Random tokens alternate case and digits every
+// character or two and score near zero.
+func isWordy(c string) bool {
+	total, run, inRun := 0, 0, false
+	flush := func() {
+		if run >= 3 {
+			total += run
+		}
+		run, inRun = 0, false
+	}
+	for i := 0; i < len(c); i++ {
+		b := c[i]
+		switch {
+		case b >= 'a' && b <= 'z':
+			run++
+			inRun = true
+		case b >= 'A' && b <= 'Z':
+			flush()
+			run, inRun = 1, true // a capital starts a camelCase word
+		default:
+			flush()
+		}
+	}
+	if inRun {
+		flush()
+	}
+	return float64(total) >= 0.7*float64(len(c))
 }
 
 func isHex(c string) bool {
@@ -513,8 +544,8 @@ func detectEmail(_ *Redactor, s, work string) []span {
 	var out []span
 	for _, loc := range emailRE.FindAllStringIndex(work, -1) {
 		m := work[loc[0]:loc[1]]
-		if !emailOK(m) {
-			continue
+		if !emailOK(m) || loc[0] >= 3 && work[loc[0]-3:loc[0]] == "://" {
+			continue // user@host in a URL is userinfo, not an address
 		}
 		// Normalise the secret so Alice@X.com and alice@x.com share a token.
 		out = append(out, span{start: loc[0], end: loc[1], secret: strings.ToLower(s[loc[0]:loc[1]])})
@@ -588,6 +619,9 @@ func detectIPv4(_ *Redactor, s, work string) []span {
 			a >= 1 && work[a-1] == '_' || b < len(work) && work[b] == '_' {
 			continue // build-1.2.3.4, 1.2.3.4-beta
 		}
+		if b+1 < len(work) && work[b] == '/' && isDigit(work[b+1]) {
+			continue // 8.8.8.0/24 names a network
+		}
 		addr, err := netip.ParseAddr(work[a:b])
 		if err != nil || !publicV4(addr) {
 			continue
@@ -646,6 +680,9 @@ func detectIPv6(_ *Redactor, s, work string) []span {
 		if a > 0 && (isAlnum(work[a-1]) || work[a-1] == '_') || b < n && (isAlnum(work[b]) || work[b] == '_') {
 			continue // std::vector, foo::bar, hex glued to a word
 		}
+		if b+1 < n && work[b] == '/' && isDigit(work[b+1]) {
+			continue // 2a00:1450::/32 names a network
+		}
 		addr, err := netip.ParseAddr(work[a:b])
 		if err != nil {
 			continue
@@ -682,6 +719,12 @@ func detectPath(r *Redactor, s, work string) []span {
 	var out []span
 	if strings.Contains(work, "/home/") || strings.Contains(work, "/Users/") {
 		for _, m := range homeUnixRE.FindAllStringSubmatchIndex(work, -1) {
+			if m[0] >= 1 && work[m[0]-1] == '.' {
+				continue // ../home/x is a relative path through a directory that happens to be called home
+			}
+			if fileLike(work[m[2]:m[3]]) && (m[3] >= len(work) || work[m[3]] != '/') {
+				continue // /home/ok.md is a file directly under /home, not a user
+			}
 			out = r.pathSpan(out, s, m[2], m[3])
 		}
 	}
@@ -691,6 +734,19 @@ func detectPath(r *Redactor, s, work string) []span {
 		}
 	}
 	return out
+}
+
+// fileLike reports names that end in a common file extension.
+func fileLike(name string) bool {
+	i := strings.LastIndexByte(name, '.')
+	if i <= 0 {
+		return false
+	}
+	switch strings.ToLower(name[i+1:]) {
+	case "md", "txt", "go", "json", "yaml", "yml", "toml", "sh", "py", "js", "ts", "log", "conf", "cfg", "ini", "lock", "sock", "pid", "xml", "html", "csv", "sql", "rs", "c", "h", "cc", "java", "rb", "zip", "gz", "tar", "pem", "key", "crt":
+		return true
+	}
+	return false
 }
 
 func (r *Redactor) pathSpan(out []span, s string, a, b int) []span {

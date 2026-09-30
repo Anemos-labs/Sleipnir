@@ -3,6 +3,8 @@ package redact
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -193,6 +195,12 @@ func TestKeepsOrdinaryCode(t *testing.T) {
 		{"prose", "The quick brown fox jumps over the lazy dog. Nothing to see; 12 items, 3.5 average."},
 		{"risk slug", "see /docs/risk-management-strategy-for-the-year-2024-planning"},
 		{"sk slug", "https://scikit.example/sk-learn-machine-learning-guide"},
+		{"relative home dir", "AGENTS.md: @../home/ok.md and ../home/notes.txt"},
+		{"home file", "cat /home/README.md /home/config.yaml"},
+		{"url userinfo", `fetch("https://example.com@evil.org/a")`},
+		{"cidr", "allow 8.8.8.0/24 and 2a00:1450::/32"},
+		{"prose with tokens plural", "the thread was a few thousand tokens (MinThreadTokens=4000, Soft=20000)"},
+		{"identifier with digits near key word", "auth getUserByIdV2AndValidateSessionToken and token my-service-name-2024-prod-eu"},
 		{"empty", ""},
 	}
 	r := testRedactor()
@@ -497,5 +505,34 @@ func BenchmarkRedactCleanCode(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r.run(src)
+	}
+}
+
+// TestRepoSourcesStayUntouched runs the redactor over real, stable source files
+// of this repository (production code of core and events, module files). Ordinary
+// Go must come through byte for byte.
+func TestRepoSourcesStayUntouched(t *testing.T) {
+	var files []string
+	for _, glob := range []string{"../../core/*.go", "../../events/*.go", "../../../go.mod", "../../../go.sum"} {
+		m, _ := filepath.Glob(glob)
+		files = append(files, m...)
+	}
+	if len(files) == 0 {
+		t.Skip("repository sources not found")
+	}
+	r := testRedactor()
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if out, changed := r.Changed(line); changed {
+				t.Errorf("%s:%d was redacted:\n%s\n%s", f, i+1, line, out)
+			}
+		}
 	}
 }
