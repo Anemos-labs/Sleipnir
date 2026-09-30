@@ -64,6 +64,7 @@ internal/session        assembles provider, tools, permissions, layers, event lo
 internal/inspect        the cache inspector: a read-only model of a session log and an embedded web dashboard
   inspect/web           the dashboard's static assets (not a Go package)
 internal/demo           the scripted team behind `sleipnir demo`, run against the mock provider
+internal/ptytest        runs a command on a pseudo-terminal, so that a test can type at it, press Ctrl-C and wait for what it prints
 
 internal/workspace      isolates writers from each other and integrates their work; not wired into sessions yet
 internal/gitx           the only gateway to the git binary: typed helpers over one hardened process runner
@@ -103,6 +104,13 @@ internal/rl             RL vocabulary: the harness as an environment
   path traversal, concurrent callers). Use `t.TempDir()`; never touch the real HOME.
 - Anything concurrent must pass `-race`.
 - Prefer testing observable behaviour over internals.
+- What a command does with Ctrl-C, its streams and its exit status is decided outside its functions, so it is tested outside
+  them. `cmd/sleipnir/e2e_test.go` runs the command in a child process (`TestMain` makes the test binary run `main()`), in a
+  private home, with a scripted mock model that a test can hold in the middle of a turn; `internal/ptytest` runs it on a
+  pseudo-terminal, where a test types, presses Ctrl-C (the terminal turns the byte into SIGINT, as it does for a person) and
+  waits for the output, with the transcript in every failure. `ptytest.WaitInputRead` is the barrier between "I typed a line"
+  and "the program has it". A bug in how a program and its terminal fit together (chat's Ctrl-C ended the session) does not
+  show in a test that calls a function or sends a signal itself.
 - CI runs the suite on Linux (as an ordinary user, not root) and macOS (`.github/workflows/ci.yml`, also runnable by
   hand from the Actions tab); Windows is built, not tested. Things the first runs found, so that the next test does not
   repeat them:

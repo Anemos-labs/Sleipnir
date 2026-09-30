@@ -122,10 +122,26 @@ commands:
 
 ### `sleipnir chat`
 
-Interactive session. Type a goal and press Enter; end a line with `\` to continue it on the next. Ctrl-C cancels the
-running turn (not the session); Ctrl-D or `/exit` quits. The prompt asks `allow? [y]es once / [a]lways this session /
-[n]o` when a tool call needs approval (only when stdin is a terminal). `--resume ID|latest` and `--continue` continue a
-single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed below.
+Interactive session. Type a goal and press Enter; end a line with `\` to continue it on the next. The prompt asks
+`allow? [y]es once / [a]lways this session / [n]o` when a tool call needs approval (only when stdin is a terminal; from a
+pipe the goals are read line by line until the input ends, and an action that needs approval is refused). `--resume
+ID|latest` and `--continue` continue a single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed
+below.
+
+**Ctrl-C and Ctrl-D.** Ctrl-C cancels what is running, and nothing else: the turn (and so the approval question it is
+asking, if it is), a slash command such as `/compact`, or the start of the session. The chat goes on, at a fresh prompt.
+At the prompt a first Ctrl-C does not quit: it discards what was typed on the line (as a shell does), says how to quit,
+and a second Ctrl-C within two seconds, with nothing typed in between, quits. Ctrl-D on an empty line and `/exit` quit at
+once. SIGTERM cancels the running turn and ends the chat. A chat that ends by `/exit` or Ctrl-D is recorded as `exit`, one
+that ends by a second Ctrl-C or by SIGTERM as `interrupted` (`SessionEnd` in `docs/EXTENDING.md`), and all of them exit
+with status 0. The other commands (`run`, `swarm`, `inspect`, ...) keep one meaning for Ctrl-C: it cancels the command.
+
+**Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal.
+It is never the answer to an approval question: a question takes the first line typed after it was shown, so a `y` that was
+typed for something else cannot approve an action, and a line typed ahead is not lost to a question either. A question that
+Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is already typed survives the Ctrl-C that
+cancels the turn and runs next (a line not yet finished does not: the terminal discards it), and a Ctrl-D typed during a
+turn quits when the turn is over, as it would have at the prompt.
 
 <!-- flags: chat -->
 ```text
@@ -1272,7 +1288,7 @@ flags:
 | `/diff <id>` | show what changed since a checkpoint |
 | `/recon` | print the project map, instruction files and skills listing pinned in the shared layer |
 | `/skills` | list the skills the model can load (`(you only)` marks those only you can invoke) |
-| `/exit` (also `/quit`) | quit; Ctrl-D does the same |
+| `/exit` (also `/quit`) | quit; Ctrl-D does the same, and so does Ctrl-C twice at the prompt |
 | `/<name> [args]` | a custom command from `commands/`, or a skill; `docs/EXTENDING.md` sections 2 and 3 |
 
 A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. Reserved names some of which
@@ -1284,7 +1300,7 @@ answer `unknown command`.
 
 | Code | Meaning |
 |---|---|
-| `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that ends with `/exit` or Ctrl-D |
+| `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that the person ends (`/exit`, Ctrl-D, Ctrl-C twice at the prompt) or that SIGTERM ends |
 | `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: the budget of $50.00 is exhausted ...`, which says how to raise it), a reached step limit, an agent that repeated one failing call until the harness stopped it (`agent stuck`), a prompt blocked by a hook, and a failed `doctor` probe |
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
 | `3` | unfinished: the work ended with tasks left undone |

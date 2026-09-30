@@ -403,7 +403,7 @@ hooks for the session with a notice; the session still starts. Event names may b
 | `SubagentStop` | when a swarm worker is about to end a run with a final answer; may block it like `Stop` | role (`agent_type`) | `stop_hook_active`, `last_assistant_message` |
 | `PreCompact` | before a compaction is applied: a person's `/compact` (`trigger` `manual`, and the hook may refuse it) or one the agent decided on itself (`auto`, which no hook can refuse: the prompt would only grow) | `trigger` | `trigger`, and for `auto` the planner's `reason` |
 | `PostCompact` | after the compaction was applied | `trigger` | `trigger` |
-| `SessionEnd` | when a session that ran at least one goal closes | `reason` | `reason`: `completed` (a `run` that finished), `exit` (`/exit` or Ctrl-D in `chat`), `interrupted` (Ctrl-C, SIGTERM), `budget`, `error`, or `other` |
+| `SessionEnd` | when a session that ran at least one goal closes | `reason` | `reason`: `completed` (a `run` that finished), `exit` (`/exit` or Ctrl-D in `chat`), `interrupted` (Ctrl-C ending a `run` or a swarm, a second Ctrl-C at the prompt of a `chat`, SIGTERM; one Ctrl-C during a chat turn only cancels the turn), `budget`, `error`, or `other` |
 
 `SubagentStart` is the one event whose plain output is **not** context: only a JSON answer with `additionalContext`
 (`{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"read docs/style.md first"}}`) adds text,

@@ -147,11 +147,23 @@ The first release.
 
 ### Interfaces
 
+- `sleipnir chat`: Ctrl-C cancels the running turn and nothing else, as the documentation said and the program did not: one Ctrl-C
+  ended the whole session (and exited 0), because Ctrl-C was registered twice, by `main` for the process and by each turn, and a signal
+  goes to every channel that asked for it. It is handled in one place now, and `main` leaves it to the chat (SIGTERM still ends the
+  process). At the prompt a first Ctrl-C discards the half-typed line and says how to quit, and a second within two seconds quits
+  (recorded as `interrupted`; Ctrl-D and `/exit` are `exit`). Found by the first tests that run the command on a pseudo-terminal
+  (`internal/ptytest`, `cmd/sleipnir/e2e_chat_test.go`).
+- `sleipnir chat` owns its input in one place, which fixes what the signal bug was hiding: the prompt and an approval question each
+  read the terminal in a goroutine that was abandoned when its context ended, so a question cancelled by Ctrl-C took the next line the
+  person typed (and raced with the prompt's reader), and a line typed while a turn ran answered the approval question that came
+  after it. Now a line typed ahead waits for the next prompt, a question takes only a line typed after it was shown, and a cancelled
+  question takes nothing. `run` and `mcp test`, which read nothing else from the terminal, still read their answers themselves
+  (`session.TerminalPrompter`, whose cancelled read is no longer left running either).
 - The answer stream carries no blank lines that only open a model's turn (some models start a turn of tool calls with a newline;
   a small swarm printed thirty before its final answer).
 - The isolated manager's shell refusal says what its shell takes (one plain read-only command at a time), not only that it may not
   edit files: a real manager chained two reads with `&&` and was told reading was forbidden.
-- `sleipnir chat` (slash commands, Ctrl-C per turn), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
+- `sleipnir chat` (slash commands, Ctrl-C per turn, Ctrl-C twice at the prompt to quit), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and
   the manager's supervision).
