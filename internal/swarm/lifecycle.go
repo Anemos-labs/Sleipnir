@@ -147,7 +147,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence) (*me
 		Workdir: d.Workdir, Root: d.Root, Limits: d.Limits,
 		Planner: d.Planner, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		OnPromote: s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
-		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: d.Hooks,
+		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: d.Hooks, NoMailReopen: !isMgr, // a worker's mail is read by its next run (afterIdle), which owns what the mail changes
 	}
 	a, err := agent.New(cfg)
 	if err != nil {

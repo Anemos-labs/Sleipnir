@@ -115,7 +115,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 
 	var hot []core.Block
 	if a.cfg.Hot != nil && caps.HotMode == kv.HotInline {
-		hot = a.cfg.Hot(a.cfg.ID)
+		hot = a.hotBlocks()
 	}
 	r := kv.Render(&stack, kv.RenderOpts{
 		Hot: hot, Caps: caps, Policy: a.cfg.KVPolicy, Params: a.cfg.Params,
@@ -136,7 +136,16 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	sharedWarm := false
 	if a.cfg.Gate != nil {
 		key := a.gateKey(&stack, prof)
-		s, gerr := a.cfg.Gate.Enter(ctx, key)
+		// A gate that can tell who is asking lets a request that outranks the primer of
+		// a cold prefix through at once, as the governor would (a manager's request must
+		// not wait for a worker that is still queued for its slot).
+		var s func(bool)
+		var gerr error
+		if pg, ok := a.cfg.Gate.(PriorityGate); ok {
+			s, gerr = pg.EnterPrio(ctx, key, a.cfg.Priority)
+		} else {
+			s, gerr = a.cfg.Gate.Enter(ctx, key)
+		}
 		if gerr != nil {
 			return nil, 0, gerr
 		}

@@ -21,12 +21,21 @@ const maxParallelTools = 8
 // order. Consecutive read-only calls run concurrently; anything that writes is a
 // barrier and runs alone, in order, so a model's sequence of edits keeps its
 // meaning while its searches and reads fan out.
+//
+// A turn is bounded twice (S24). Only the first MaxToolCallsPerTurn calls run; every
+// other call is answered with an error that tells the model to issue fewer, so each
+// call still has its result and the thread stays valid. And the results together
+// may put at most MaxTurnResultChars into the next request: see budgetResults.
 func (a *Agent) runTools(ctx context.Context, calls []core.Block) []core.Block {
 	results := make([]core.Block, len(calls))
-	for i := 0; i < len(calls); {
+	run := len(calls)
+	if limit := a.cfg.MaxToolCallsPerTurn; limit > 0 && run > limit {
+		run = limit
+	}
+	for i := 0; i < run; {
 		if a.readOnly(calls[i]) {
 			j := i
-			for j < len(calls) && a.readOnly(calls[j]) {
+			for j < run && a.readOnly(calls[j]) {
 				j++
 			}
 			var wg sync.WaitGroup
@@ -47,7 +56,77 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) []core.Block {
 		results[i] = a.runOne(ctx, calls[i])
 		i++
 	}
+	for i := run; i < len(calls); i++ {
+		results[i] = a.refuseCall(calls[i], len(calls), run)
+	}
+	a.budgetResults(results, len(calls)-run)
 	return results
+}
+
+// refuseCall answers a call that was not run because its turn asked for too many.
+func (a *Agent) refuseCall(call core.Block, asked, limit int) core.Block {
+	msg := fmt.Sprintf("Not run: this turn asked for %d tool calls and at most %d are run per turn. Issue fewer calls (a grep or a glob instead of many reads, several edits in one apply_patch) and call this one again if you still need it.", asked, limit)
+	res := tools.Errorf("%s", msg)
+	res.Meta = withErrorKind(res.Meta, ErrKindTooManyCalls)
+	a.emit(events.TypeToolResult, map[string]any{
+		"id": call.ToolID, "name": call.ToolName, "error": true, "chars": len(msg), "refused": true, "meta": res.Meta,
+	})
+	return core.ToolResult(call.ToolID, true, core.Text(msg))
+}
+
+// spillFloor is the least a result keeps when its turn is over budget: enough to see
+// what it was and to decide whether to page through the rest.
+const spillFloor = 1500
+
+// budgetResults keeps one turn's tool output within MaxTurnResultChars. Results are
+// taken in call order and kept whole while they fit; one that does not fit keeps a
+// head-and-tail excerpt (at least spillFloor characters, so no result vanishes) and
+// its full text goes to the blob store behind a recall handle that the result names.
+// Nothing is lost, the model is told what it is looking at, and one turn cannot put
+// hundreds of kilobytes into every later request.
+func (a *Agent) budgetResults(results []core.Block, refused int) {
+	budget := a.cfg.MaxTurnResultChars
+	spilled, chars := 0, 0
+	if budget > 0 {
+		used := 0
+		for i := range results {
+			b := results[i]
+			var text strings.Builder
+			var other []core.Block
+			for _, c := range b.Result {
+				if c.Kind == core.BlockText {
+					text.WriteString(c.Text)
+				} else {
+					other = append(other, c)
+				}
+			}
+			full := text.String()
+			remaining := budget - used
+			if len(full) <= remaining || len(full) <= spillFloor {
+				used += len(full)
+				continue
+			}
+			keep := max(remaining, spillFloor)
+			shown, _ := tools.Truncate(full, keep)
+			note := fmt.Sprintf("\n[this turn's tool output exceeded %d characters, so %d of this result's %d are shown", budget, len(shown), len(full))
+			if h, err := a.cfg.Blobs.Put([]byte(full)); err == nil {
+				handle := a.cfg.Handles.Add(h, len(full))
+				note += fmt.Sprintf("; the whole result is saved as %s: recall(handle=%q) pages through it]", handle, handle)
+			} else {
+				note += "; the rest could not be saved, so re-run the call with a narrower request]"
+			}
+			results[i] = core.ToolResult(b.ToolID, b.IsError, append([]core.Block{core.Text(shown + note)}, other...)...)
+			used += len(shown) + len(note)
+			spilled++
+		}
+		chars = used
+	}
+	if spilled > 0 || refused > 0 {
+		a.emit("tool.budget", map[string]any{
+			"calls": len(results), "refused": refused, "spilled": spilled, "chars": chars, "budget_chars": budget,
+			"max_calls": a.cfg.MaxToolCallsPerTurn,
+		})
+	}
 }
 
 func (a *Agent) readOnly(c core.Block) bool {

@@ -17,6 +17,9 @@ const (
 	ErrKindScope        = "scope"
 	ErrKindPermission   = "permission"
 	ErrKindHook         = "hook"
+	// ErrKindTooManyCalls marks a call that was not run because its turn asked for
+	// more calls than the per-turn cap (Config.MaxToolCallsPerTurn).
+	ErrKindTooManyCalls = "too_many_calls"
 )
 
 // withErrorKind sets meta["error_kind"], creating the map when needed. An empty

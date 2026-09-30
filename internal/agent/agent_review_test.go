@@ -3,8 +3,9 @@ package agent_test
 // Adversarial review tests for the agent loop's failure handling
 // (docs/reviews/swarm-concurrency.md): inbox draining at Run exit, background
 // compactor lifetime, and the absence of any time-to-first-byte bound on a model
-// request. TestConc_* are gated repros (SLEIPNIR_REVIEW=1) that fail while the
-// finding is open.
+// request. The first two are ungated regression tests now (docs/reviews/tranche2-b.md);
+// TestConc_HungRequest... (C-08, the provider client's time-to-first-byte bound) is
+// still a gated repro (SLEIPNIR_REVIEW=1) that fails while its finding is open.
 //
 //	SLEIPNIR_REVIEW=1 go test -race -count=1 -run 'TestConc_' ./internal/agent
 
@@ -141,8 +142,7 @@ func arvBlock(ctx context.Context, ch <-chan struct{}) {
 // model's answer has no tool calls it returns immediately, so anything Send()
 // delivered while that request was in flight is left in the inbox with nothing to
 // wake the agent (swarm.deliver saw the agent as running and did not restart it).
-func TestConc_RunReturnsWithMailStillInTheInbox(t *testing.T) {
-	concGate(t)
+func TestConc_RunDoesNotReturnWithMailInTheInbox(t *testing.T) {
 	gate := make(chan struct{})
 	inflight := make(chan struct{}, 1)
 	a, _ := newARV(t, &arvProvider{fn: func(ctx context.Context, req *provider.Request) (core.Turn, core.Usage) {
@@ -170,8 +170,7 @@ func TestConc_RunReturnsWithMailStillInTheInbox(t *testing.T) {
 // (context.WithoutCancel + 3 minute timeout) and is not tracked by anything the
 // swarm can wait on: after the run is cancelled (Shutdown) it keeps calling the
 // provider, spending money and writing events into a log that is being closed.
-func TestConc_CompactorJobOutlivesACancelledRun(t *testing.T) {
-	concGate(t)
+func TestConc_CompactorJobEndsWithACancelledRun(t *testing.T) {
 	compGate := make(chan struct{})
 	compStarted := make(chan struct{}, 1)
 	var compCtxErrAfterCancel atomic.Value
@@ -232,7 +231,7 @@ func TestConc_CompactorJobOutlivesACancelledRun(t *testing.T) {
 // holds the agent (its governor slot, and the warm gate if it is the primer) until
 // the caller's context ends.
 func TestConc_HungRequestIsNotBoundedByAnyTimeout(t *testing.T) {
-	concGate(t)
+	concGate(t) // C-08: the provider client's time-to-first-byte bound; not part of this tranche
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-release // accept, never answer

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -21,7 +22,22 @@ type compactionState struct {
 	count    int
 	failures int
 	failedAt time.Time
+	// cancel ends the job in flight (nil when none): Close and the interruption of a
+	// run call it.
+	cancel context.CancelFunc
+	// prefixWarned is set once the notice about a pinned prefix that leaves no room
+	// has been given; lastEmergencyErr is why the previous emergency compaction failed.
+	prefixWarned     bool
+	lastEmergencyErr string
 }
+
+// compactionJobTimeout bounds one background compaction request, on top of its
+// cancellation with the agent or the run it was started for.
+const compactionJobTimeout = 3 * time.Minute
+
+// UnverifiedPrefix starts the text of every promotion handed to OnPromote: the board
+// shows a proposal as it is written, and what a compactor proposes is unverified.
+const UnverifiedPrefix = "(unverified) "
 
 // readyPatch is a validated patch computed against a snapshot. It is committed
 // with a compare-and-swap on the thread epoch, so the agent keeps running while
@@ -97,7 +113,7 @@ func (a *Agent) boundary(ctx context.Context) {
 		// Held. The safety net still runs: a prompt about to blow the window cannot
 		// wait for an economic moment.
 		if a.overWindow(st) {
-			_ = a.emergencyCompact(ctx, "prompt over 85% of the context window")
+			a.overWindowCompact(st)
 		}
 		return
 	}
@@ -105,7 +121,7 @@ func (a *Agent) boundary(ctx context.Context) {
 		// Safety net: a prompt about to blow the window cannot wait for a
 		// background job that may never land.
 		if a.overWindow(st) && !running {
-			_ = a.emergencyCompact(ctx, "prompt over 85% of the context window")
+			a.overWindowCompact(st)
 		}
 		return
 	}
@@ -135,7 +151,7 @@ func (a *Agent) boundary(ctx context.Context) {
 		}
 	}
 	if a.overWindow(st) {
-		_ = a.emergencyCompact(ctx, "prompt over 85% of the context window")
+		a.overWindowCompact(st)
 	}
 }
 
@@ -223,25 +239,52 @@ func (a *Agent) outcomeLocked(rp *readyPatch) kv.Outcome {
 }
 
 // startCompaction launches the compactor in the background.
+//
+// The job belongs to the agent, not to the goroutine that happened to start it: it
+// runs on the agent's lifetime (Close cancels it and waits for it), it is cancelled when
+// the run it was started for is interrupted (see Run), it is bounded by
+// compactionJobTimeout, and a panic in it (a provider adapter, the renderer, a sink) is
+// contained and reported as a failed compaction instead of taking the process down. It
+// deliberately survives a run that ends normally: an interactive agent's Run returns
+// after every answer and the patch is committed at a later boundary.
 func (a *Agent) startCompaction(ctx context.Context, reason string) {
 	a.mu.Lock()
-	if a.comp.running || a.comp.ready != nil {
+	if a.closed || a.comp.running || a.comp.ready != nil || ctx.Err() != nil {
 		a.mu.Unlock()
 		return
 	}
 	a.comp.running = true
 	snap := a.stack
 	snap.Thread = a.thread.Snapshot()
+	jobCtx, cancel := context.WithTimeout(a.life, compactionJobTimeout)
+	a.comp.cancel = cancel
+	a.jobs.Add(1)
 	a.mu.Unlock()
+	// The run may have been cancelled between the check above and the registration of
+	// cancel, in which case its AfterFunc found nothing to cancel.
+	if ctx.Err() != nil {
+		cancel()
+	}
 
-	// The job outlives the current Run (an interactive agent's Run returns
-	// after every answer) but not the process.
-	jobCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 	go func() {
+		defer a.jobs.Done()
 		defer cancel()
-		rp, err := a.propose(jobCtx, snap, reason)
+		var (
+			rp  *readyPatch
+			err error
+		)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("the compactor panicked: %v", r)
+					a.emit("agent.panic", map[string]any{"id": a.cfg.ID, "where": "compactor", "panic": fmt.Sprint(r), "stack": string(debug.Stack())})
+				}
+			}()
+			rp, err = a.propose(jobCtx, snap, reason)
+		}()
 		a.mu.Lock()
 		a.comp.running = false
+		a.comp.cancel = nil
 		if err != nil {
 			a.comp.failures++
 			a.comp.failedAt = a.cfg.Now()
@@ -255,6 +298,16 @@ func (a *Agent) startCompaction(ctx context.Context, reason string) {
 			a.emit(events.TypeCompactReject, map[string]any{"reason": err.Error(), "stage": "propose"})
 		}
 	}()
+}
+
+// cancelCompaction cancels the compaction job in flight, if any.
+func (a *Agent) cancelCompaction() {
+	a.mu.Lock()
+	cancel := a.comp.cancel
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // propose asks the model (as a fork of this agent) for a patch, validates it
@@ -278,10 +331,9 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	pol := a.applyPolicy()
 	instr := kv.Instruction(&snap, a.est, pol)
 	if focus = strings.TrimSpace(focus); focus != "" {
-		if len(focus) > 400 {
-			focus = focus[:400]
-		}
-		line := "\nThe user asked for this compaction and says what matters most: " + strings.ReplaceAll(focus, "<", "‹") + "\n"
+		// The person's own words, so they may steer the compactor; still one escaped,
+		// bounded line, so they cannot close the brief either.
+		line := "\nThe user asked for this compaction and says what matters most: " + kv.EscapeLine(focus, 400) + "\n"
 		instr = strings.Replace(instr, "</compactor-task>", line+"</compactor-task>", 1)
 	}
 	p := kv.ForkPrompt(&snap, kv.RenderOpts{
@@ -387,11 +439,17 @@ func (a *Agent) commit(rp *readyPatch, why string) error {
 		"removed_tokens": res.RemovedTokens, "retained_tokens": res.RetainedTokens, "snap_tokens": res.SnapTokens,
 		"spine_added": res.SpineAdded, "spine_tokens": res.SpineAfter, "spine_evicted": res.SpineEvicted,
 		"masked": res.MaskedResults, "masked_tokens": res.MaskedTokens, "mechanical_lines": res.Mechanical,
+		"squeezed": res.SqueezedResults, "squeezed_tokens": res.SqueezedTokens,
 		"notes_changed": res.NotesChanged, "notes_tokens": res.NotesAfter, "notes_evicted": res.NotesEvicted,
 		"notes_over_budget": res.NotesOverBudget, "notices_dropped": res.NoticesDropped,
+		"user_text_cut": res.UserTextCut, "proposals": len(res.Proposals),
 		"fallback": rp.fallback, "warnings": res.Warnings,
 		"held_ms": a.cfg.Now().Sub(rp.at).Milliseconds(),
 	})
+	if len(res.UserTextCut) > 0 {
+		// The one case in which what a person typed is not pinned in full.
+		a.cfg.Sink.Notice(a.cfg.ID, "warn", "a message of yours is longer than the notes keep in full ("+strings.Join(res.UserTextCut, "; ")+"): its beginning and end stay pinned, and the whole text is in the archive (recall)")
+	}
 	if res.NotesOverBudget {
 		// The consumer of the over-budget signal: the oldest lines were evicted (see
 		// notes_evicted) and the next compactor instruction asks for a consolidation
@@ -412,11 +470,45 @@ func (a *Agent) commit(rp *readyPatch, why string) error {
 		}
 	}
 	if len(res.Proposals) > 0 && a.cfg.OnPromote != nil {
-		a.cfg.OnPromote(a.cfg.ID, res.Proposals)
+		// What the board shows is the text, so the proposal says what it is in it.
+		props := make([]kv.Promotion, len(res.Proposals))
+		for i, p := range res.Proposals {
+			p.Text = UnverifiedPrefix + p.Text
+			props[i] = p
+		}
+		a.cfg.OnPromote(a.cfg.ID, props)
 	}
 	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("compacted %d turns (%dk→%dk tokens)", res.RemovedTurns, res.SnapTokens/1000, (res.SpineAdded+res.RetainedTokens)/1000))
 	a.saveSnapshot()
 	return nil
+}
+
+// overWindowCompact is the boundary's safety net: the prompt is over 85% of the
+// window, so something is folded now, without a model. It never fails the run: a
+// failure is recorded (once per distinct cause, since it would repeat at every step),
+// and when the pinned prefix alone (tools, constitution, pins, notes, spine) already
+// takes that much room, no compaction of the thread can help and the person is told
+// once what to shrink.
+func (a *Agent) overWindowCompact(st kv.State) {
+	err := a.emergencyCompact(context.Background(), "prompt over 85% of the context window")
+	if err == nil {
+		return
+	}
+	a.mu.Lock()
+	repeated := a.comp.lastEmergencyErr == err.Error()
+	a.comp.lastEmergencyErr = err.Error()
+	prefix := st.PrefixTokens + st.NotesTokens + st.SpineTokens
+	warn := !a.comp.prefixWarned && st.ContextWindow > 0 && float64(prefix) >= 0.85*float64(st.ContextWindow)
+	if warn {
+		a.comp.prefixWarned = true
+	}
+	a.mu.Unlock()
+	if !repeated {
+		a.emit(events.TypeCompactReject, map[string]any{"stage": "emergency", "reason": err.Error(), "prefix_tokens": prefix, "window": st.ContextWindow})
+	}
+	if warn {
+		a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the pinned prefix alone is about %dk tokens, over 85%% of this model's %dk-token window: compacting the conversation cannot make room; shorten the project instruction files or use a model with a larger window", prefix/1000, st.ContextWindow/1000))
+	}
 }
 
 // emergencyCompact compacts synchronously without a model.
@@ -434,6 +526,12 @@ func (a *Agent) emergencyCompact(ctx context.Context, reason string) error {
 	}
 	patch := kv.MechanicalPatch(&snap, a.est, target, pol)
 	res, err := kv.Apply(&snap, patch, a.est, pol)
+	if errors.Is(err, kv.ErrNothingToCompact) {
+		// Nothing older to fold (an empty thread, or a fresh agent whose first exchange
+		// is what is too big): shrink the bulkiest tool results instead, if there are any.
+		res, err = kv.SqueezeOnly(&snap, a.est, pol, target)
+		patch = &kv.Patch{Target: target}
+	}
 	if err != nil {
 		return err
 	}

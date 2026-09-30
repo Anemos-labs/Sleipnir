@@ -85,7 +85,7 @@ func SqueezeOnly(s *Stack, est core.Estimator, pol ApplyPolicy, target int) (*Ap
 	turns := s.Thread.Turns
 	units := Units(turns)
 	if len(units) == 0 {
-		return nil, fmt.Errorf("%w: empty thread", ErrNothingToSqueeze)
+		return nil, ErrNothingToSqueeze
 	}
 	res := &ApplyResult{Spine: s.Spine, Notes: s.Notes, KeepFrom: turns[0].ID,
 		SnapTokens: z.Turns(turns), SpineBefore: s.Spine.Tokens(est), SpineAfter: s.Spine.Tokens(est),
