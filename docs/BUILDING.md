@@ -118,7 +118,16 @@ internal/rl             RL vocabulary: the harness as an environment
   - the Go command writes to `$HOME` (telemetry, build cache, GOPATH) the first time it runs: a test that snapshots a fake
     HOME must not count directory mtimes or those directories;
   - anything that waits for a background process needs a generous timeout on a loaded runner, and a test on a timer must
-    accept every outcome the timer can legitimately produce.
+    accept every outcome the timer can legitimately produce;
+  - an upper bound on time in a test is a hang guard (minutes, for a complexity bomb), not a timing: three suites at
+    once under the race detector took sixteen seconds for what takes a tenth of one on a quiet machine. Whether two things
+    ran at the same time is answered by something both wait on (a barrier: `mcptest`'s `barrier` mode, a start channel), never
+    by a clock; a scaling test (`requireLinear`) repeats a failing measurement before it counts;
+  - several git processes in one repository trip over each other in ways one process never sees (a worktree being
+    created has an empty `commondir` for a moment); `internal/gitx` waits those out, and
+    `TestConcurrentWorktreeCommandsDoNotFail` is what to extend when git shows a new one.
+  A load test finds what a quiet machine hides: run three `go test -race -count=1 ./...` at once (a CI runner runs several
+  packages at a time) and read every failure as a finding, not as noise.
   To see what the runners see before pushing, run the test binaries as an unprivileged user with a symlinked `TMPDIR`
   (`go test -c`, then `setpriv --reuid=65534 ...`); it catches most of the above.
 
