@@ -24,6 +24,9 @@ import (
 
 const shadowMarkerFile = "sleipnir-shadow.json"
 
+// copyTimeout bounds one snapshot or one clone of the snapshot.
+const copyTimeout = 30 * time.Minute
+
 type shadowMarker struct {
 	V       int       `json:"v"`
 	Source  string    `json:"source"`
@@ -33,6 +36,9 @@ type shadowMarker struct {
 
 // deriveCopy prepares the private repository and its base commit.
 func (m *Manager) deriveCopy(ctx context.Context, st mstate) (mstate, error) {
+	// A snapshot of a huge directory takes a while, but never forever.
+	ctx, cancel := context.WithTimeout(ctx, copyTimeout)
+	defer cancel()
 	src := m.Source
 	if src == "" && m.Repo != nil {
 		src = m.Repo.Root()
@@ -126,6 +132,8 @@ func (m *Manager) reopenShadow(ctx context.Context, shadow string) (*gitx.Repo, 
 // adopting its index (with file metadata refreshed), so git sees the tree as
 // checked out and unmodified without hashing a single file.
 func (m *Manager) populateCopy(ctx context.Context, t *Tree) error {
+	ctx, cancel := context.WithTimeout(ctx, copyTimeout)
+	defer cancel()
 	if err := cloneTree(ctx, m.st.pristine, t.Path, cloneOpts{skipTop: map[string]bool{".git": true}}); err != nil {
 		return fmt.Errorf("workspace: cloning the snapshot for %s: %w", t.Agent, err)
 	}

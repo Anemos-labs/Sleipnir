@@ -421,7 +421,7 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border: 1px solid var(--axis); b
 @media (max-width: 600px) {
   .top { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
   .top .spacer { display: none; }
-  .tabs { top: 0; position: static; padding: 0 8px; }
+  .tabs { top: 0; position: static; padding: 0 8px; flex-wrap: wrap; overflow-x: visible; }
   .view { padding: 12px; }
   .kpis { padding: 12px 12px 0; }
   .hero .val { font-size: 44px; }

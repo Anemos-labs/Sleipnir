@@ -297,6 +297,12 @@ func TestCostAgainstTwoCounterfactuals(t *testing.T) {
 	}
 	r1 := reqByID(t, s, "a.1")
 	near(t, "a.1 reported usd", r1.USD, 0.03) // the log's figure wins for the row
+	// The row says where its cost came from and keeps the table price beside it.
+	near(t, "a.1 priced", r1.Priced, 10000*2.5/1e6+100*10/1e6)
+	if !r1.Gateway || r3.Gateway || reqByID(t, s, "a.2").Gateway {
+		t.Errorf("gateway flags a.1/a.2/a.3 = %v/%v/%v, want only a.1", r1.Gateway, reqByID(t, s, "a.2").Gateway, r3.Gateway)
+	}
+	near(t, "a.3 priced equals usd when the log has no cost", r3.Priced, r3.USD)
 }
 
 func TestCacheStatistics(t *testing.T) {

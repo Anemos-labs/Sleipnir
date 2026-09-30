@@ -40,8 +40,8 @@ func (o *overflow) add(msg Message) {
 		if len(o.order) >= maxDigestKeys {
 			old := o.order[0]
 			o.order = o.order[1:]
+			o.dropped += o.entries[old].n
 			delete(o.entries, old)
-			o.dropped++
 		}
 		e = &digestEntry{from: msg.From, kind: msg.Kind}
 		o.entries[k] = e

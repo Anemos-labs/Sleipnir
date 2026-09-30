@@ -167,9 +167,8 @@ type Client struct {
 	dirty     [3]atomic.Bool
 	wake      chan struct{}
 
-	init         atomic.Pointer[InitializeResult]
-	knownVersion bool
-	badRun       atomic.Int64
+	init   atomic.Pointer[InitializeResult]
+	badRun atomic.Int64
 
 	statMalformed, statUnexpected, statUnknown, statDropped, statServerReq atomic.Int64
 }

@@ -407,7 +407,7 @@ func (s *Session) reqViewLocked(r *req) Req {
 		ID: r.id, Seq: r.seq, Rev: r.rev, Agent: r.agent.id, Role: firstNonEmpty(r.role, r.agent.role), Kind: r.kind, Model: r.model,
 		TS: r.t.UnixMilli(), T: max(r.t.Sub(s.meta.first).Milliseconds(), 0), Done: r.done, Failed: r.failed, Err: r.err,
 		In: r.usage.InputTokens, Read: r.usage.CacheReadTokens, Write: r.usage.CacheWriteTokens(), Out: r.usage.OutputTokens,
-		Prompt: r.prompt, Hit: r.hit, Expected: r.expected, Anomaly: r.anomaly, AnomalyKind: r.anomKind, USD: r.cost, NoCache: r.noCache,
+		Prompt: r.prompt, Hit: r.hit, Expected: r.expected, Anomaly: r.anomaly, AnomalyKind: r.anomKind, USD: r.cost, Gateway: r.gateway, Priced: r.priced, NoCache: r.noCache,
 		Naive: r.naive, NaiveCtx: r.naiveCtx, TTFB: r.ttfb, TotalMs: r.total, Stop: r.stop, Cold: r.cold, First: r.isFirst,
 		Rebase: r.rebase, Changed: changedNames(r.changed), Undeclared: r.undeclared,
 		ThreadFrom: r.threadFrom, ThreadTo: r.threadTo, Epoch: r.epoch, WireHash: shortHash(r.wire),

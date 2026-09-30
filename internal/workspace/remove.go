@@ -197,8 +197,9 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 	}
 
 	m.st.lock.Lock()
-	defer m.st.lock.Unlock()
-	if err := m.deleteTree(ctx, t.Path, admin, force || missing); err != nil {
+	err = m.deleteTree(ctx, t.Path, admin, force || missing)
+	if err != nil {
+		m.st.lock.Unlock()
 		return err
 	}
 	var errs []error
@@ -210,6 +211,7 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 			}
 		}
 	}
+	m.st.lock.Unlock()
 	t.removed.Store(true)
 	if cur, ok := livePaths.Load(t.Path); ok && cur.(*Manager) == m {
 		livePaths.Delete(t.Path)
@@ -219,6 +221,7 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 		delete(m.trees, t.Agent)
 	}
 	m.mu.Unlock()
+	// Observers are told with no lock of ours held.
 	m.emit(EventRemove, t.Agent, "", map[string]any{"path": t.Path, "branch": t.Branch, "force": force})
 	return errors.Join(errs...)
 }

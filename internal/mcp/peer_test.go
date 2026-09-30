@@ -142,12 +142,24 @@ func (p *peer) handshake(version, caps string) {
 func connectPeer(t *testing.T, caps string, copts ClientOptions, sopts StreamOptions) (*Client, *peer) {
 	t.Helper()
 	tr, p := pair(t, sopts)
-	go p.handshake(LatestProtocolVersion, caps)
+	shook := make(chan struct{})
+	go func() {
+		defer close(shook)
+		p.handshake(LatestProtocolVersion, caps)
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	c, err := Connect(ctx, tr, copts)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
+	}
+	// Connect returns once initialize is answered; the peer may not have read the
+	// initialized notification yet, and a test that goes on to read the next message
+	// would read that one.
+	select {
+	case <-shook:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the scripted handshake did not finish")
 	}
 	t.Cleanup(func() { _ = c.Close() })
 	return c, p

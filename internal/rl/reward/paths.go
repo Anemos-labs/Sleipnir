@@ -343,8 +343,8 @@ func matchPrefix(pat, ps []string, reseed bool) bool {
 				alive = true
 			}
 		}
-		if !alive {
-			return false
+		if !alive && !reseed {
+			return false // nothing can revive the match; a reseeded one may start again below
 		}
 		spread(next)
 		if next[n] {

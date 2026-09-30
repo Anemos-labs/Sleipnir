@@ -355,7 +355,9 @@ type Req struct {
 	Expected    int      `json:"expected"`
 	Anomaly     bool     `json:"anomaly,omitempty"`
 	AnomalyKind string   `json:"anomaly_kind,omitempty"` // drift | low_hit
-	USD         float64  `json:"usd"`
+	USD         float64  `json:"usd"`                    // the log's cost_usd for this call, or Priced when the log has none
+	Gateway     bool     `json:"gateway,omitempty"`      // USD is the gateway's own figure
+	Priced      float64  `json:"priced"`                 // this call's usage at the inspector's price table
 	NoCache     float64  `json:"no_cache"`
 	Naive       float64  `json:"naive,omitempty"`
 	NaiveCtx    int      `json:"naive_ctx,omitempty"`

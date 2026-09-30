@@ -263,8 +263,7 @@ func TestNotesAreBounded(t *testing.T) {
 
 // Tasks are never pruned and failed tasks count as "open" forever, so the
 // manager's hot view (and the O(lines^2) budget loop) grows with session age.
-func TestConc_ManagerHotViewCostGrowsWithFailedTasks(t *testing.T) {
-	concGate(t)
+func TestManagerHotViewCostIsBoundedByFailedTasks(t *testing.T) {
 	b := NewBoard(nil)
 	est := core.NewBytesEstimator().WithRatio(4)
 	var last time.Duration
@@ -280,7 +279,11 @@ func TestConc_ManagerHotViewCostGrowsWithFailedTasks(t *testing.T) {
 		last = time.Since(start)
 		t.Logf("%4d failed tasks: manager RenderHot = %v", target, last.Round(time.Millisecond))
 	}
-	if last > 40*time.Millisecond {
+	out := RenderHot(b.Snapshot(), "mgr", "manager", true, DefaultHotConfig(), est)
+	if failedLines := strings.Count(out, " failed "); failedLines > maxHotFailed+2 {
+		t.Fatalf("the manager's view lists %d failed tasks (cap %d):\n%s", failedLines, maxHotFailed, out)
+	}
+	if last > 20*time.Millisecond {
 		t.Fatalf("manager RenderHot took %v with 1000 dead (failed) tasks that still count as open (it runs on every manager request)", last.Round(time.Millisecond))
 	}
 }

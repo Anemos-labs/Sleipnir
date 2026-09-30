@@ -221,8 +221,16 @@ func TestMatchPrefixAgreesWithTheSpecification(t *testing.T) {
 		if len(pat) == 0 {
 			continue
 		}
-		if got, want := matchPrefix(pat, path), refMatchPrefix(pat, path); got != want {
+		if got, want := matchPrefix(pat, path, false), refMatchPrefix(pat, path); got != want {
 			t.Fatalf("matchPrefix(%q, %q) = %v, specification says %v", pat, path, got, want)
+		}
+		// Reseeded: the pattern may begin at any segment, i.e. some suffix matches.
+		want := false
+		for k := 0; k < len(path) && !want; k++ {
+			want = refMatchPrefix(pat, path[k:])
+		}
+		if got := matchPrefix(pat, path, true); got != want {
+			t.Fatalf("matchPrefix(%q, %q, anywhere) = %v, specification says %v", pat, path, got, want)
 		}
 	}
 }
@@ -248,6 +256,47 @@ func TestGlobMatchIsLinearInPathLength(t *testing.T) {
 		if small > 20*time.Millisecond && large > 9*small {
 			t.Errorf("unit %q: super-linear growth, %v for n and %v for 4n", unit, small, large)
 		}
+	}
+}
+
+func TestMatchAnywhereFindsProtectedPathsUnderAnyRoot(t *testing.T) {
+	set := compileGlobs([]string{"tests/**", "go.mod", "src/*/gen.go", "vendor/", "**/*.golden", ".github/**"})
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/work/repo/tests/a.py", true},
+		{"/work/repo/go.mod", true},
+		{"/a/b/c/d/e/src/x/gen.go", true},
+		{"/a/src/x/y/gen.go", false},
+		{"/work/vendor/x.go", true}, // anything under a matched directory
+		{"/work/vendor", false},     // a directory-only pattern needs the directory to have content
+		{"/w/x/testdata/a.golden", true},
+		{"/work/.github/workflows/ci.yml", true},
+		{"/work/repo/pkg/a.go", false},
+	}
+	for _, tc := range tests {
+		if _, got := set.matchAnywhere(tc.path); got != tc.want {
+			t.Errorf("matchAnywhere(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestProtectedTargetIsLinearInDepth(t *testing.T) {
+	// The write target "/*/*/*..." is one segment per two bytes: 10000 segments at
+	// 20 KB. With no workspace roots known every suffix used to be matched on its
+	// own, which took seconds; growth is now linear.
+	set := compileGlobs([]string{"tests/**", "go.mod", "**/*_test.go", "a/**/b"})
+	time1 := func(n int) time.Duration {
+		start := time.Now()
+		protectedTarget(set, strings.Repeat("/x", n), nil)
+		protectedTarget(set, strings.Repeat("/a", n)+"/b", nil)
+		return time.Since(start)
+	}
+	small, large := time1(20000), time1(80000)
+	t.Logf("%v -> %v", small, large)
+	if large > 5*time.Second || (small > 20*time.Millisecond && large > 9*small) {
+		t.Errorf("super-linear: %v for n, %v for 4n", small, large)
 	}
 }
 

@@ -1417,3 +1417,77 @@ func TestCacheEcon_SteeringSurvivesCompactionAndMailDoesNot(t *testing.T) {
 		t.Fatalf("mail from another agent must never become an instruction:\n%s", notes.Text())
 	}
 }
+
+// cxSysHook fires once, when the n-th turn-scoped system turn is appended: the
+// deterministic way to have mail land after a tool-results turn and its board view
+// were pushed but before the next request is built.
+type cxSysHook struct {
+	*events.MemLog
+	mu    sync.Mutex
+	seen  int
+	after int
+	fire  func()
+}
+
+func (h *cxSysHook) Emit(agentID, typ string, data any, opts ...events.Opt) (uint64, error) {
+	if typ == events.TypeTurnAppend {
+		if tr, ok := data.(core.Turn); ok && tr.Role == core.RoleSystem {
+			h.mu.Lock()
+			h.seen++
+			fire := h.seen == h.after
+			h.mu.Unlock()
+			if fire {
+				h.fire()
+			}
+		}
+	}
+	return h.MemLog.Emit(agentID, typ, data, opts...)
+}
+
+// On a turn-scoped route the thread ends with the board view (a system message)
+// behind the tool results. Mail that lands there must not become a user turn after
+// it (a system message followed by a user message is a 400): it waits and rides
+// along with the next tool-results turn, like it does behind any user turn.
+func TestCacheEcon_MailBehindATurnScopedBoardViewRidesTheNextTurn(t *testing.T) {
+	prof := cxAnthropicProfile()
+	prof.TurnScopedSystem = true
+	prov := &cxProv{prof: prof}
+	prov.handle = cxWorkModel(4, nil)
+	hook := &cxSysHook{MemLog: events.NewMemLog(), after: 2}
+	a, _ := cxAgent(t, cxOpts{prov: prov, hot: cxBoard(), noCompct: true, emitter: hook})
+	hook.fire = func() { a.Send("[mail m1 from fe-1] the docs moved to /guide") }
+	res, err := a.Run(context.Background(), "do the work")
+	if err != nil || res.Steps != 5 {
+		t.Fatalf("the run must complete: steps=%v err=%v (rejections %d)", res, err, prov.rejects)
+	}
+	if prov.rejects != 0 {
+		t.Fatalf("%d requests were rejected", prov.rejects)
+	}
+	reqs := prov.requests()
+	last := reqs[len(reqs)-1]
+	found := false
+	for i, m := range last.Messages {
+		for _, b := range m.Blocks {
+			if b.Kind == core.BlockText && strings.Contains(b.Text, "the docs moved to /guide") {
+				found = true
+				if m.Role != core.RoleUser {
+					t.Fatalf("the mail must be user content, message %d is %s", i, m.Role)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the mail was lost")
+	}
+	if a.PendingInbox() != 0 {
+		t.Fatalf("the mail was delivered, %d still queued", a.PendingInbox())
+	}
+	// Stored as it is sent: no board view is ever followed by a user turn (the
+	// renderer would have to fold it into user text, for good).
+	turns := a.Thread().Snapshot().Turns
+	for i := 0; i+1 < len(turns); i++ {
+		if turns[i].Role == core.RoleSystem && turns[i+1].Role == core.RoleUser {
+			t.Fatalf("turn %d is a board view followed by a user turn", turns[i].ID)
+		}
+	}
+}

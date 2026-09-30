@@ -19,7 +19,8 @@ export function tipFor(r, prev) {
   row('var(--c-write)', 'written', tok(r.write));
   row('var(--c-fresh)', 'uncached', tok(r.in));
   rows.push(h('div', { class: 'r' }, h('span', { class: 'k' }, 'hit ratio'), h('span', { class: 'v' }, pct(r.hit))));
-  rows.push(h('div', { class: 'r' }, h('span', { class: 'k' }, 'cost'), h('span', { class: 'v' }, usd(r.usd))));
+  rows.push(h('div', { class: 'r' }, h('span', { class: 'k' }, 'cost'), h('span', { class: 'v' }, usd(r.usd), r.gateway ? h('span', { class: 'muted' }, ' gateway') : null)));
+  if (r.ttfb_ms) rows.push(h('div', { class: 'r' }, h('span', { class: 'k' }, 'first byte'), h('span', { class: 'v' }, dur(r.ttfb_ms))));
   if (r.rebase) rows.push(h('div', { class: 'flag' }, 'After a ' + (REBASE[r.rebase] || r.rebase) + (r.changed && r.changed.length ? ': ' + r.changed.join(', ') + ' rewritten' : '')));
   if (r.anomaly) rows.push(h('div', { class: 'flag crit' }, r.anomaly_kind === 'drift' ? 'Prefix drift: a layer changed with no declared rebase' : 'Cache anomaly: read below the guard’s expectation'));
   else if (r.undeclared && !r.rebase) rows.push(h('div', { class: 'flag crit' }, 'Layers changed with no declared rebase'));

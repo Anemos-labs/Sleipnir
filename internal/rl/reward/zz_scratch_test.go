@@ -3,6 +3,7 @@ package reward
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -194,27 +195,36 @@ func TestScratchScaling(t *testing.T) {
 			}
 			run := func(n int) time.Duration {
 				s := strings.Repeat(unit, n/len(unit)+1)[:n]
-				done := make(chan time.Duration, 1)
-				go func() {
-					start := time.Now()
-					fns[name](s)
-					done <- time.Since(start)
-				}()
-				select {
-				case d := <-done:
-					return d
-				case <-time.After(6 * time.Second):
-					fmt.Printf("SLOW %s unit=%q n=%d (>6s)\n", name, unit, n)
-					os.Exit(2)
+				best := time.Duration(1 << 62)
+				for rep := 0; rep < 3; rep++ {
+					runtime.GC()
+					done := make(chan time.Duration, 1)
+					go func() {
+						start := time.Now()
+						fns[name](s)
+						done <- time.Since(start)
+					}()
+					select {
+					case d := <-done:
+						if d < best {
+							best = d
+						}
+					case <-time.After(6 * time.Second):
+						fmt.Printf("SLOW %s unit=%q n=%d (>6s)\n", name, unit, n)
+						os.Exit(2)
+					}
+					if best < 5*time.Millisecond {
+						break
+					}
 				}
-				return 0
+				return best
 			}
 			t20 := run(20000)
 			t80 := run(80000)
 			if t80 > worst {
 				worst, worstUnit = t80, unit
 			}
-			if t80 > 400*time.Millisecond && t80 > 8*t20 {
+			if t80 > 300*time.Millisecond && t80 > 7*t20 {
 				fmt.Printf("SUPERLINEAR %s unit=%q 20k=%v 80k=%v\n", name, unit, t20, t80)
 			}
 		}

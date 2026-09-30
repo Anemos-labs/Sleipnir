@@ -741,9 +741,15 @@ func TestPromptsAreSlashCommands(t *testing.T) {
 	if err != nil || len(r.Messages) != 1 || r.Messages[0].Role != "user" || !strings.Contains(r.Messages[0].Content.Text, "greet Ada") {
 		t.Fatalf("%+v %v", r, err)
 	}
+	if got := r.Text(); got != "Please greet Ada warmly." {
+		t.Errorf("Text() = %q", got)
+	}
 	r, err = m.GetPrompt(ctx, "/mcp__web__review", nil)
 	if err != nil || len(r.Messages) != 2 || r.Messages[1].Role != "assistant" {
 		t.Fatalf("%+v %v", r, err)
+	}
+	if got := r.Text(); got != "Review the diff.\n\nassistant: Send it over." {
+		t.Errorf("Text() = %q", got)
 	}
 	if _, err := m.GetPrompt(ctx, "/mcp__web__nope", nil); err == nil {
 		t.Error("unknown prompt")

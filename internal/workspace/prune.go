@@ -66,6 +66,17 @@ func (m *Manager) Prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 	if err := m.ensure(ctx); err != nil {
 		return nil, err
 	}
+	rep, err := m.prune(ctx, opts)
+	if err == nil {
+		m.emit(EventPrune, "", "", map[string]any{
+			"removed": len(rep.Removed), "kept": len(rep.Kept), "branches_removed": len(rep.BranchesRemoved),
+			"branches_kept": len(rep.BranchesKept), "live": rep.Live, "dry_run": opts.DryRun,
+		})
+	}
+	return rep, err
+}
+
+func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, error) {
 	m.st.lock.Lock()
 	defer m.st.lock.Unlock()
 
@@ -148,10 +159,6 @@ func (m *Manager) Prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 		}
 		rep.BranchesRemoved = append(rep.BranchesRemoved, act)
 	}
-	m.emit(EventPrune, "", "", map[string]any{
-		"removed": len(rep.Removed), "kept": len(rep.Kept), "branches_removed": len(rep.BranchesRemoved),
-		"branches_kept": len(rep.BranchesKept), "live": rep.Live, "dry_run": opts.DryRun,
-	})
 	return rep, nil
 }
 

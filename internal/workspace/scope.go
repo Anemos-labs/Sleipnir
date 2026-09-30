@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -443,7 +444,7 @@ func matchSegs(pat []segment, segs []string) bool {
 // splitPath normalizes a repository-relative path to segments; ok is false for
 // paths that are absolute, empty or climb out of the root.
 func splitPath(p string) ([]string, bool) {
-	p = strings.ReplaceAll(p, "\\", "/")
+	p = filepath.ToSlash(p) // git paths use '/'; on Unix a backslash is a file name character
 	p = strings.TrimPrefix(p, "./")
 	if p == "" || strings.HasPrefix(p, "/") || strings.IndexByte(p, 0) >= 0 {
 		return nil, false

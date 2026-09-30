@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -374,5 +375,94 @@ func TestApplyRejectsHostilePatches(t *testing.T) {
 	}
 	if err := r.Apply(ctx, "garbage that is not a patch\n", false); err == nil {
 		t.Fatal("garbage accepted")
+	}
+}
+
+// File names are attacker- (or model-) controlled data. Names that look like
+// options, pathspec magic, globs, or that contain control characters, quotes,
+// backslashes and newlines must survive every parse and every round trip.
+func TestPathsThatLookLikeOptionsPathspecsAndControlCharacters(t *testing.T) {
+	dir := newRepo(t)
+	r := openRepo(t, dir)
+	ctx := ctxT(t)
+	names := []string{"-rf", "--force", "-n", "a\nb.txt", "tab\there.txt", `"quoted".txt`, ":(top)x.txt", ":!excluded.txt",
+		"*.txt", "[ab].txt", "sp ace.txt", "é ü.txt", `back\slash.txt`, "trailing space ", "#hash.txt", "!bang.txt", "@{at}.txt",
+		".hidden", "sub dir/ nested -x.txt", "-dir/-file", "日本語/ファイル.txt"}
+	base, _ := r.Head(ctx)
+	for i, n := range names {
+		writeFile(t, filepath.Join(dir, filepath.FromSlash(n)), "content of "+strconv.Itoa(i)+"\n")
+	}
+
+	// the parses agree with what was written
+	st, err := r.StatusWith(ctx, StatusOptions{Untracked: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := append([]string(nil), st.Untracked...)
+	sort.Strings(got)
+	want := append([]string(nil), names...)
+	sort.Strings(want)
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("Status untracked:\n got %q\nwant %q", got, want)
+	}
+	paths, err := r.ChangedPaths(ctx, base, "")
+	if err != nil || strings.Join(paths, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("ChangedPaths:\n got %q\nwant %q (err %v)", paths, want, err)
+	}
+	d, err := r.Diff(ctx, base, DiffOptions{Renames: true})
+	if err != nil || len(d.Files) != len(names) {
+		t.Fatalf("Diff: %d files, %v", len(d.Files), err)
+	}
+	for _, f := range d.Files {
+		if f.Added != 1 || f.Binary {
+			t.Errorf("%q: %+v", f.Path, f)
+		}
+	}
+	// the patch survives a round trip through git apply into a fresh checkout
+	fresh := filepath.Join(t.TempDir(), "fresh")
+	rawGit(t, dir, "worktree", "add", "-q", "--detach", fresh, base)
+	fr := openRepo(t, fresh)
+	if err := fr.Apply(ctx, d.Patch, false); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	for i, n := range names {
+		if b, err := os.ReadFile(filepath.Join(fresh, filepath.FromSlash(n))); err != nil || string(b) != "content of "+strconv.Itoa(i)+"\n" {
+			t.Errorf("%q after apply: %q, %v", n, b, err)
+		}
+	}
+	// committing records every name exactly
+	sha, err := r.CommitAll(ctx, "weird names", Author{})
+	if err != nil || sha == "" {
+		t.Fatal(err)
+	}
+	tree := rawGit(t, dir, "ls-tree", "-r", "-z", "--name-only", sha)
+	inTree := map[string]bool{}
+	for _, n := range strings.Split(tree, "\x00") {
+		inTree[n] = true
+	}
+	for _, n := range names {
+		if !inTree[n] {
+			t.Errorf("%q missing from the commit", n)
+		}
+		if b, err := r.Show(ctx, sha, n); err != nil || !strings.HasPrefix(string(b), "content of ") {
+			t.Errorf("Show(%q) = %q, %v", n, b, err)
+		}
+	}
+	// paths are literal: a glob in a path filter names exactly that file
+	only, err := r.Log(ctx, LogOptions{Paths: []string{"*.txt"}})
+	if err != nil || len(only) != 1 {
+		t.Fatalf("Log on the literal path *.txt: %d commits, %v", len(only), err)
+	}
+	dd, err := r.Diff(ctx, base, DiffOptions{To: sha, Paths: []string{"*.txt"}})
+	if err != nil || len(dd.Files) != 1 || dd.Files[0].Path != "*.txt" {
+		t.Fatalf("Diff on the literal path *.txt: %+v, %v", dd, err)
+	}
+	// rename one weird name to another: both ends are reported
+	if err := os.Rename(filepath.Join(dir, "a\nb.txt"), filepath.Join(dir, "--renamed\n.txt")); err != nil {
+		t.Fatal(err)
+	}
+	paths, err = r.ChangedPaths(ctx, sha, "")
+	if err != nil || strings.Join(paths, "|") != "--renamed\n.txt|a\nb.txt" {
+		t.Fatalf("rename ends: %q, %v", paths, err)
 	}
 }

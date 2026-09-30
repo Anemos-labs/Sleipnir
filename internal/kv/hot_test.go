@@ -473,13 +473,12 @@ func TestTurnScopedSystemMessagesObeyThePlacementRules(t *testing.T) {
 		seq       string
 		wantRoles string // roles of the rendered messages after the preamble
 	}{
-		{"uasuas", "assistant,user,system,assistant,user,system"}, // the normal loop
-		{"us", "system"}, // task and its board view
-		{"usu", ""},      // a retry behind an unanswered board view: folded into one user message
-		{"uasusa", "assistant,user,assistant,user,system"}, // (u,a,s,u,s,a): first view folds, the second is followed by an assistant
-		{"uassa", "assistant,user,system,assistant"},       // two views in a row: the first folds, the second stays
-		{"uaus", "assistant,user,system"},
-		{"uasa", "assistant,user,assistant"}, // a view after an assistant turn cannot be a system message
+		{"usausau", "system,assistant,user,system,assistant,user"}, // the normal loop: a view behind each user turn, then the answer
+		{"us", "system"},                     // the task and its view
+		{"usu", ""},                          // a retry behind an unanswered view: the view folds into the user message
+		{"usssa", "system,assistant"},        // views in a row: only the one before the assistant turn stays a system message
+		{"uasa", "assistant,user,assistant"}, // a view behind an assistant turn does not follow a user message: folded
+		{"uas", "assistant,user"},
 	} {
 		s := cxStack(t, "be-1", cxSizes{constT: 600})
 		r := cxRenderOpts(s, shape(tc.seq), RenderOpts{Caps: tsCaps(), Policy: DefaultPolicy()})
@@ -490,7 +489,7 @@ func TestTurnScopedSystemMessagesObeyThePlacementRules(t *testing.T) {
 		for _, m := range r.Prompt.Messages[1:] {
 			got = append(got, string(m.Role))
 		}
-		if strings.Join(got, ",") != tc.wantRoles && tc.seq != "uasusa" {
+		if strings.Join(got, ",") != tc.wantRoles {
 			t.Errorf("%s: roles %v, want %s", tc.seq, got, tc.wantRoles)
 		}
 	}
@@ -524,7 +523,7 @@ func TestSizerCountsFoldedBoardViewsAndSkipsClearedOnes(t *testing.T) {
 
 	normal := []core.Turn{user("task"), board, asst("a"), user("r"), board}
 	folded := []core.Turn{user("task"), board, user("retry"), board}
-	if got, want := z.Turns(normal), z.Turn(user("task"))+z.Turn(board)-z.Turn(board)+z.Turn(asst("a"))+z.Turn(user("r"))+z.Turn(board); got != want {
+	if got, want := z.Turns(normal), z.Turn(user("task"))+z.Turn(asst("a"))+z.Turn(user("r"))+z.Turn(board); got != want {
 		t.Fatalf("normal: %d, want %d (the first view is cleared, the last one counts)", got, want)
 	}
 	// The first view is followed by a user turn, so Render folds it into user
@@ -542,22 +541,17 @@ func TestSizerCountsFoldedBoardViewsAndSkipsClearedOnes(t *testing.T) {
 		}
 		r := cxRenderOpts(s, th, RenderOpts{Caps: tsCaps(), Policy: DefaultPolicy(), Est: e})
 		sentText := 0
-		for _, m := range r.Prompt.Messages[1:] {
-			if m.Role == core.RoleSystem {
-				continue // cleared copies cost nothing; the trailing one is counted below
+		for i, m := range r.Prompt.Messages {
+			if m.Role == core.RoleSystem && i < len(r.Prompt.Messages)-1 {
+				continue // a cleared copy renders nothing
 			}
 			for _, b := range m.Blocks {
 				sentText += SentBlockTokens(b, e)
 			}
 		}
-		if last := r.Prompt.Messages[len(r.Prompt.Messages)-1]; last.Role == core.RoleSystem {
-			for _, b := range last.Blocks {
-				sentText += SentBlockTokens(b, e)
-			}
-		}
+		// The stack has no pinned layers, so message 0 holds thread text only. The
+		// sizer adds a fixed framing overhead per turn on top of the text.
 		total := z.Turns(turns)
-		// The preamble message carries the first user turn, so compare only the
-		// text, not framing: the sizer adds a fixed per-turn overhead.
 		if total < sentText || total > sentText+8*len(turns) {
 			t.Fatalf("%s: sizer %d vs rendered text %d", name, total, sentText)
 		}

@@ -69,18 +69,30 @@ func (p *policyFlags) resolve(fs *flag.FlagSet) (env.PolicySpec, *harness.Harnes
 	if err != nil {
 		return env.PolicySpec{}, nil, fmt.Errorf("config: %w", err)
 	}
-	ref, err := session.ResolveModel(cfg, p.model)
-	if err != nil {
-		return env.PolicySpec{}, nil, err
-	}
-	prov, ok := session.LookupProvider(cfg, ref.Provider)
-	if !ok {
-		return env.PolicySpec{}, nil, fmt.Errorf("unknown provider %q", ref.Provider)
+	var ref session.ModelRef
+	var prov config.Provider
+	if p.baseURL != "" && p.model != "" && !knownProviderPrefix(cfg, p.model) {
+		// A self-hosted policy server needs no provider entry: the endpoint and the
+		// model id are all there is to say.
+		ref = session.ModelRef{Provider: "policy", Model: p.model}
+		prov = config.Provider{Dialect: config.DialectOpenAIChat, BaseURL: p.baseURL, APIKeyEnv: p.keyEnv}
+	} else {
+		var err error
+		if ref, err = session.ResolveModel(cfg, p.model); err != nil {
+			return env.PolicySpec{}, nil, err
+		}
+		var ok bool
+		if prov, ok = session.LookupProvider(cfg, ref.Provider); !ok {
+			return env.PolicySpec{}, nil, fmt.Errorf("unknown provider %q", ref.Provider)
+		}
 	}
 	if d := prov.EffectiveDialect(); d != config.DialectOpenAIChat {
 		return env.PolicySpec{}, nil, fmt.Errorf("provider %q speaks %s: RL policies are served through chat completions (vLLM, SGLang, or a gateway's chat route)", ref.Provider, d)
 	}
-	base, keyEnv, _ := session.ProviderInfo(cfg, ref.Provider)
+	base, keyEnv := prov.BaseURL, prov.APIKeyEnv
+	if b, k, ok := session.ProviderInfo(cfg, ref.Provider); ok {
+		base, keyEnv = b, k
+	}
 	if p.baseURL != "" {
 		base = p.baseURL
 	}
@@ -113,6 +125,17 @@ func (p *policyFlags) resolve(fs *flag.FlagSet) (env.PolicySpec, *harness.Harnes
 	return spec, h, nil
 }
 
+// knownProviderPrefix reports whether ref starts with the name of a configured
+// or built-in provider ("local/my-policy").
+func knownProviderPrefix(cfg *config.Config, ref string) bool {
+	i := strings.IndexByte(ref, '/')
+	if i <= 0 {
+		return false
+	}
+	_, ok := session.LookupProvider(cfg, ref[:i])
+	return ok
+}
+
 // rigFlags configure the environment: where workspaces live, how rollouts are
 // verified and scored, and how much runs at once.
 type rigFlags struct {
@@ -123,6 +146,8 @@ type rigFlags struct {
 	maxWall                               time.Duration
 	noNetIsolation, requireNetIsolation   bool
 	keepFailed                            bool
+	passEnv                               string
+	setEnv                                kvFlags
 }
 
 func (r *rigFlags) register(fs *flag.FlagSet) {
@@ -139,6 +164,9 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&r.noNetIsolation, "no-net-isolation", false, "do not isolate the network of tasks that do not need it")
 	fs.BoolVar(&r.requireNetIsolation, "require-net-isolation", false, "refuse to run where network isolation is unavailable")
 	fs.BoolVar(&r.keepFailed, "keep-failed", false, "keep the workspaces of failed rollouts for debugging")
+	fs.StringVar(&r.passEnv, "pass-env", "", "comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist")
+	r.setEnv = kvFlags{}
+	fs.Var(r.setEnv, "set-env", "NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)")
 }
 
 // rig is a configured Runner and what closes it.
@@ -150,6 +178,29 @@ type rig struct {
 }
 
 func (r *rig) Close() { r.closeF() }
+
+// workspaces builds the workspace manager the flags describe.
+func (rf *rigFlags) workspaces(stderr io.Writer) (*env.Workspaces, error) {
+	work := rf.workDir
+	if work == "" {
+		home, _ := os.UserHomeDir()
+		work = filepath.Join(stateDir(home), "rl-work")
+	}
+	wd, _ := os.Getwd()
+	ws, err := env.NewWorkspaces(env.WorkspaceOptions{
+		Root: work, Mode: rf.mode, RepoBase: wd,
+		DisableNetIsolation: rf.noNetIsolation, RequireNetIsolation: rf.requireNetIsolation,
+		PassEnv: splitList(rf.passEnv), SetEnv: map[string]string(rf.setEnv),
+		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, "env: "+f+"\n", a...) },
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range ws.Warnings() {
+		fmt.Fprintf(stderr, "warning: %s\n", w)
+	}
+	return ws, nil
+}
 
 func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer) (*rig, error) {
 	cfg := reward.DefaultConfig()
@@ -165,22 +216,9 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		}
 		cfg.TargetName, cfg.Target = rf.target, cost.Model{}
 	}
-	work := rf.workDir
-	if work == "" {
-		home, _ := os.UserHomeDir()
-		work = filepath.Join(stateDir(home), "rl-work")
-	}
-	wd, _ := os.Getwd()
-	ws, err := env.NewWorkspaces(env.WorkspaceOptions{
-		Root: work, Mode: rf.mode, RepoBase: wd,
-		DisableNetIsolation: rf.noNetIsolation, RequireNetIsolation: rf.requireNetIsolation,
-		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, "env: "+f+"\n", a...) },
-	})
+	ws, err := rf.workspaces(stderr)
 	if err != nil {
 		return nil, err
-	}
-	for _, w := range ws.Warnings() {
-		fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
 	blobsDir := rf.blobs
 	if blobsDir == "" && tasksFile != "" {

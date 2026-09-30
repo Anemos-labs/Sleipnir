@@ -44,6 +44,27 @@ function stateChip(st) {
   return h('span', { class: 'chip', title }, h('span', { class: 'dot ' + (st === 'live' ? 'live' : st) }), label);
 }
 
+/** The RL episode's outcome, when the log or an episode.json carries one. */
+function episodeChip(rl) {
+  if (!rl) return null;
+  const ep = rl.episode, last = rl.outcomes && rl.outcomes.length ? rl.outcomes[rl.outcomes.length - 1] : null;
+  let pass = null, text = '';
+  const tip = [];
+  if (ep) {
+    pass = ep.pass == null ? null : ep.pass;
+    text = (pass == null ? 'episode' : pass ? '\u2713 pass' : '\u2717 fail') + ' \u00b7 reward ' + Number(ep.reward).toFixed(2);
+    tip.push([ep.task_id ? 'task ' + ep.task_id : '', 'sample ' + ep.sample, ep.policy ? 'policy ' + ep.policy : ''].filter(Boolean).join(' \u00b7 '));
+    if (ep.flags && ep.flags.length) tip.push('flags: ' + ep.flags.join(', '));
+    const comps = Object.entries(ep.components || {});
+    if (comps.length) tip.push('reward: ' + comps.map(([k, v]) => k + ' ' + Number(v).toFixed(2)).join(', '));
+  } else if (last) {
+    pass = last.pass;
+    text = (pass ? '\u2713 ' : '\u2717 ') + last.kind + ' ' + Number(last.score).toFixed(2);
+  } else return null;
+  tip.push(`${rl.wire_hashes} requests with a wire hash, ${rl.token_traces} responses with token ids`);
+  return h('span', { class: 'chip ' + (pass == null ? 'accent' : pass ? 'good' : 'crit'), title: tip.join('\n') }, text);
+}
+
 function renderTop() {
   const sum = S.sum;
   const theme = store.get('theme', 'auto');
@@ -59,6 +80,7 @@ function renderTop() {
       sum.session.model ? h('span', { class: 'chip', title: (sum.session.models || []).join(', ') }, sum.session.model) : null,
       sum.session.provider ? h('span', { class: 'chip' }, sum.session.provider) : null,
       sum.session.swarm ? h('span', { class: 'chip accent' }, 'swarm · ' + sum.totals.agents + ' agents') : null,
+      episodeChip(sum.rl),
     ] : null,
     h('span', { class: 'spacer' }),
     sum && S.view !== 'sessions' ? stateChip(sum.state) : null,

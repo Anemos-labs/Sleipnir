@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -31,10 +32,14 @@ func validateRev(op, rev string) error {
 // cleanRelPath validates a repository-relative path handed to git commands that
 // take "<rev>:<path>" and returns its slash-separated clean form.
 func cleanRelPath(op, p string) (string, error) {
-	if p == "" || strings.ContainsAny(p, "\x00\n") {
+	// A newline is fine in an argument (only NUL cannot be passed at all); every
+	// list we read back from git is NUL-separated, so names with newlines survive.
+	if p == "" || strings.ContainsRune(p, 0) {
 		return "", newErr(KindInvalid, op, "invalid path %q", p)
 	}
-	p = strings.ReplaceAll(p, "\\", "/")
+	// Git paths always use '/'. ToSlash is the identity on Unix, where a backslash
+	// is an ordinary file name character.
+	p = filepath.ToSlash(p)
 	c := path.Clean(p)
 	if path.IsAbs(c) || c == ".." || strings.HasPrefix(c, "../") || c == "." {
 		return "", newErr(KindInvalid, op, "path %q is outside the repository", p)

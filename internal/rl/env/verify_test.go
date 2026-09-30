@@ -281,9 +281,6 @@ func TestVerifyHiddenWritesCannotEscapeThroughAgentSymlinks(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(w.Root, "linkdir")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(w.Root, "mathx_hidden_test.go")); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.Symlink(filepath.Join(outside, "hidden_test.go"), filepath.Join(w.Root, "mathx_hidden_test.go")); err != nil {
 		t.Fatal(err)
 	}

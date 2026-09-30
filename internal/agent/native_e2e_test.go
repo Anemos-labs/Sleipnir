@@ -14,6 +14,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -21,12 +22,14 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/anthropic"
 	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/reee344/sleipnir/internal/tools"
 )
 
 const nativeModel = "claude-opus-5-5" // preserved thinking, 512-token minimum prefix
@@ -241,5 +244,35 @@ func TestCacheEcon_NativeAdapterUnflaggedRouteIsLearnedFromOneRejection(t *testi
 	}
 	if rejected != 1 {
 		t.Fatalf("the endpoint rejected %d requests, want 1", rejected)
+	}
+}
+
+// A shared-layer epoch in the middle of a run rewrites everything below the shared
+// pin, so every thinking block produced before it is bound to a prefix that no
+// longer exists. SyncShared strips them in the same step; the next request is
+// accepted by an endpoint that enforces the bindings.
+func TestCacheEcon_NativeAdapterAgentSurvivesASharedEpoch(t *testing.T) {
+	const steps = 6
+	c, srv, _ := nativeRig(t, true, steps)
+	newShared := kv.NewLayer("shared", kv.KindShared, 2, []kv.Segment{{Key: "project", Text: strings.Repeat("The repo moved to a monorepo. ", 100), Vol: kv.VolEpoch}})
+	var a *agent.Agent
+	calls := 0
+	a, log := cxAgent(t, cxOpts{prov: c, hot: cxBoard(), noCompct: true, model: nativeModel, toolOut: func(json.RawMessage) *tools.Result {
+		calls++
+		if calls == 3 {
+			a.SyncShared(newShared, nil, "the project moved") // between two requests, like swarm.SetShared
+		}
+		return &tools.Result{Text: strings.Repeat("build output line with some detail\n", 30)}
+	}})
+	res, err := a.Run(context.Background(), "find out why the build fails and fix it")
+	if err != nil || res.Steps != steps+1 {
+		t.Fatalf("run: steps=%v err=%v", res, err)
+	}
+	nativeAllOK(t, srv.AnthropicStats())
+	if n := cxCount(log, events.TypeLayerCommit, `"thinking_stripped":true`); n != 1 {
+		t.Fatalf("the epoch must strip thinking in the same step, got %d such commits", n)
+	}
+	if n := cxCount(log, events.TypeCacheAnomaly, ""); n != 0 {
+		t.Fatalf("a declared epoch is not an anomaly, got %d", n)
 	}
 }

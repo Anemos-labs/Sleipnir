@@ -127,6 +127,12 @@ zero input cost after its turn and thinking bindings intact. The pieces that exi
   `HotTurnScoped` the same turn is folded into the neighbouring user message, which is what an adapter without the
   feature would do anyway.
 * `kv.Sizer` counts only the newest such message: a cleared one renders nothing.
+* Placement. The API wants a system message after a user message and either last in the array or followed by an
+  assistant turn (a system message followed by a user message is a 400). `kv.Render` sends a turn as `role: system`
+  only where that holds and folds it into user text elsewhere; the normal loop never needs the fold (an assistant turn
+  always follows), it covers a retried request. The agent leaves mail that lands behind a board view queued for the
+  next tool-results turn, and the compactor fork (`kv.ForkPrompt`) drops the parent's trailing view, because its
+  instruction is a user turn and it does not need the board.
 
 What the native Anthropic adapter must do (and nothing else):
 
@@ -147,7 +153,9 @@ flagged, a gateway, a bug) the agent strips all thinking from the thread durably
 {kind: thinking_binding}`, `layer.commit {scope: thinking-strip}`), and retries once; if the profile has
 `BindingControls` it asks for `prefix_mismatch_behavior: drop_block` on that retry and on the first request after any
 rebase. If the endpoint drops a block behind our back (`input_transformations`), the same durable strip follows. A
-rejection with no thinking to strip is returned, not retried.
+rejection with no thinking to strip is returned, not retried. The rejection is also evidence: from then on the agent
+treats the route as one that enforces bindings whatever the model table says (`cache.anomaly {flagged: false}`), so
+the board is persisted instead of inlined and an unflagged gateway costs one rejected request, not one per request.
 
 ## 4. Compaction = generational collection, not summarisation
 
@@ -180,7 +188,9 @@ Anthropic a different `tool_choice`, thinking or effort setting invalidates the 
 so the fork would re-write the conversation at 1.25x instead of reading it at 0.1x (R3: +37k to +68k ITE per fork at a
 30k thread). The fork therefore sends the parent's parameters unchanged (including `max_tokens`); "do not call tools"
 is instruction text only, and a reply that calls a tool anyway, or whose answer text is not a patch, counts as failed
-and falls back to `MechanicalPatch`. The reply is parsed from its **text blocks only**, never from thinking text. What a
+and falls back to `MechanicalPatch`. The reply is parsed from its **text blocks only**, never from thinking text. The
+instruction rides in the last user message, after the rolling marker; on a turn-scoped route the parent's trailing board
+view is dropped first (§3.3, placement), which only removes bytes the parent's last request never cached. What a
 fork costs: a read of the prefix, plain input for the instruction (~1.5k), a write for turns added since the last
 request, and ~1k output tokens at ~5x. The planner prices that (§4.2).
 

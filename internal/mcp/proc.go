@@ -105,6 +105,9 @@ type procTransport struct {
 	done    chan struct{} // closed when the leader has been reaped
 	closing atomic.Bool
 	once    sync.Once
+	// stderrDone closes when the stderr drain has seen EOF, so a crash report can
+	// include what the server said last instead of racing the drain goroutine.
+	stderrDone chan struct{}
 }
 
 func startProc(sp procSpec) (*procTransport, error) {
@@ -155,13 +158,14 @@ func startProc(sp procSpec) (*procTransport, error) {
 	p := &procTransport{
 		cmd: cmd, pid: cmd.Process.Pid, inW: inW, outR: outR,
 		tail: &tailBuffer{max: 8 << 10}, redact: sp.Redact, grace: sp.Grace,
-		done: make(chan struct{}),
+		done: make(chan struct{}), stderrDone: make(chan struct{}),
 	}
 	// The stream is not given CloseReader: procTransport closes stdout itself
 	// once the process is gone. Closing it early would cost the server its last
 	// words and make it die of SIGPIPE in the middle of an orderly shutdown.
 	p.st = NewStreamTransport(outR, inW, sp.Stream)
 	go func() {
+		defer close(p.stderrDone)
 		_, _ = io.Copy(p.tail, errR)
 		errR.Close()
 	}()
@@ -221,6 +225,12 @@ func (p *procTransport) Start(h Handler) error {
 }
 
 func (p *procTransport) describeExit(streamErr error) error {
+	// Let the stderr drain catch up: the process's last words are the most useful
+	// part of a crash report. Bounded, because a grandchild may hold stderr open.
+	select {
+	case <-p.stderrDone:
+	case <-time.After(300 * time.Millisecond):
+	}
 	var msg string
 	select {
 	case <-p.done:

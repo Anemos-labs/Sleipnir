@@ -575,19 +575,21 @@ func (m *Manager) Get(agent string) (*Tree, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t, ok := m.trees[agent]
-	if !ok || t.isRemoved() {
+	if !ok || t.isRemoved() || t.integration {
 		return nil, false
 	}
 	return t, true
 }
 
-// Trees returns the live trees created by this manager, sorted by agent.
+// Trees returns the live agent trees created by this manager, sorted by agent.
+// The merge queue's own integration tree is not among them.
 func (m *Manager) Trees() []*Tree {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []*Tree
 	for _, t := range m.trees {
-		if !t.isRemoved() {
+		// the merge queue's integration tree belongs to the queue (Queue.Close)
+		if !t.isRemoved() && !t.integration {
 			out = append(out, t)
 		}
 	}

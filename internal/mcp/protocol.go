@@ -525,6 +525,46 @@ type GetPromptResult struct {
 	Messages    []PromptMessage
 }
 
+// Text flattens the expansion into text for a slash command that hands it to
+// the model as the user's message: each message's text in order (assistant
+// messages are prefixed with "assistant:" so the exchange stays readable),
+// blank-line separated. Non-text content becomes a one-line placeholder; nothing
+// binary is forwarded.
+func (r *GetPromptResult) Text() string {
+	var parts []string
+	for _, m := range r.Messages {
+		var t string
+		switch c := m.Content; c.Type {
+		case "text":
+			t = c.Text
+		case "image", "audio":
+			t = fmt.Sprintf("[%s: %s, %s; not shown]", c.Type, orDefault(c.MIMEType, "unknown type"), humanBytes(len(c.Data)))
+		case "resource":
+			if c.Resource != nil && c.Resource.Text != "" {
+				t = fmt.Sprintf("[resource %s]\n%s", orUnknown(c.Resource.URI), c.Resource.Text)
+			} else {
+				t = "[resource omitted]"
+			}
+		case "resource_link":
+			t = linkLine(c)
+		default:
+			t = fmt.Sprintf("[content of type %q omitted]", clipForError(c.Type))
+		}
+		if m.Role == "assistant" {
+			t = "assistant: " + t
+		}
+		parts = append(parts, t)
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func orDefault(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
+}
+
 func decodeGetPrompt(raw json.RawMessage) (*GetPromptResult, error) {
 	var w struct {
 		Description string `json:"description"`
