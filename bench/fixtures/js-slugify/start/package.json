@@ -1,0 +1,11 @@
+{
+  "name": "slugify-lite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turn a title into a URL slug",
+  "main": "src/slugify.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

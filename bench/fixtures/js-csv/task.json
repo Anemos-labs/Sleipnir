@@ -1,0 +1,13 @@
+{
+  "id": "js-csv",
+  "kind": "feature",
+  "lang": "js",
+  "difficulty": "hard",
+  "prompt": "Implement `parse` (in `src/parse.js`) and `stringify` (in `src/stringify.js`) of the CSV library described in README.md; `src/index.js` and `CsvError` (`src/errors.js`) already exist, and both functions currently throw. README.md is exact and complete: follow every rule in it (record and blank-line handling, quoted fields with escaped quotes and embedded line breaks, CRLF, lone CR, which situations are a `CsvError` and which record number it carries, the `delimiter`, `header` and `ragged` options of `parse`, the `delimiter`, `newline` and `columns` options of `stringify`, when a field is quoted, the trailing newline rule, conversion of non-string cells, and the TypeError/RangeError cases). The visible tests in `test/csv.test.js` cover only the basics; your code will also be checked against the rest of the README, including a parse/stringify round trip. Run the tests from the repository root with `node --test test/*.test.js` (Node 22; standard library only, no dependencies). Do not modify anything under `test/`.",
+  "verify": "node --test test/*.test.js",
+  "timeout_s": 90,
+  "protected": ["test/**"],
+  "team": {"mode": "single"},
+  "tags": ["js", "feature", "hard", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}

@@ -1,0 +1,13 @@
+{
+  "id": "py-intervals",
+  "kind": "fix",
+  "lang": "python",
+  "difficulty": "hard",
+  "prompt": "`intervals.py` implements set operations on half-open integer ranges `[start, end)`; `README.md` is the contract (read it first: canonical form, touching ranges, empty ranges, no side effects on the arguments). The library has several bugs. Reported symptoms: (1) `merge([(1, 3), (3, 5)])` returns two ranges instead of `[(1, 5)]`; (2) after `merge(ranges)` the list the caller passed in has been reordered, and the other functions reorder their arguments too; (3) `subtract([(5, 8), (1, 3)], [(2, 6)])` returns an unsorted, wrong list instead of `[(1, 2), (6, 8)]`, and a first argument with overlapping or touching ranges gives non-canonical output; (4) `subtract([(0, 10)], [(0, 3)])` returns `[(0, 0), (3, 10)]` instead of `[(3, 10)]`; (5) `intersect([(0, 5)], [(5, 9)])` returns `[(5, 5)]` instead of `[]`; (6) `intersect([(0, 10)], [(1, 2), (3, 4)])` returns only `[(1, 2)]`; (7) `contains([(0, 5)], 5)` returns True. Fix the library so that every function behaves exactly as the README specifies, not just for these examples. Run the tests from the repository root with `python3 -m unittest discover -s tests -v` (the visible tests cover only part of the contract). Do not modify anything under `tests/`.",
+  "verify": "python3 -m unittest discover -s tests -v",
+  "timeout_s": 120,
+  "protected": ["tests/**"],
+  "team": {"mode": "single"},
+  "tags": ["python", "fix", "hard", "fixture"],
+  "budget": {"steps": 40, "requests": 80, "wall_s": 900}
+}
