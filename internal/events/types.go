@@ -27,6 +27,9 @@ const (
 	// Tools and permissions.
 	TypeToolCall   = "tool.call"
 	TypeToolResult = "tool.result"
+	// TypeToolJob is emitted when a background shell job starts and when it ends
+	// (status, duration, exit code); the payload is shell.JobEvent.
+	TypeToolJob    = "tool.job"
 	TypePermAsk    = "perm.ask"
 	TypePermDecide = "perm.decide"
 

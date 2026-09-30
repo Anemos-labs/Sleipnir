@@ -19,6 +19,7 @@ import (
 	"github.com/reee344/sleipnir/internal/provider/gateway"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/provider/probe"
+	"github.com/reee344/sleipnir/internal/tools/shell"
 )
 
 // Set at build time via -ldflags.
@@ -28,6 +29,9 @@ var (
 )
 
 func main() {
+	// Make this process non-dumpable so the commands it runs for agents cannot read
+	// its environment (provider API keys) through /proc/<ppid>/environ.
+	_ = shell.HardenProcess()
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)

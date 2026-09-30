@@ -376,7 +376,13 @@ func (s *Session) build() error {
 	s.shell = shell.NewManager(shell.Options{})
 	shell.Register(reg, s.shell)
 	if !o.NoWeb {
-		web.Register(reg, web.Config{AllowPrivate: s.cfg.Tools.WebAllowPrivate, AllowHosts: s.cfg.Tools.WebAllowHosts, Backend: nil})
+		// ConfigFromEnv routes through HTTPS_PROXY when one is set (sandboxed and
+		// corporate networks resolve names at the proxy) and enables web_search when
+		// a search backend key is configured in the environment.
+		wc := web.ConfigFromEnv()
+		wc.AllowPrivate = s.cfg.Tools.WebAllowPrivate
+		wc.AllowHosts = s.cfg.Tools.WebAllowHosts
+		web.Register(reg, wc)
 	}
 	archive := kv.NewArchive(s.Blobs)
 	reg.Register(recall.New(archive))
