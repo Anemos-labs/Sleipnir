@@ -107,17 +107,7 @@ func (v *validator) provider(name string, p Provider) {
 	if p.AllowInsecureHTTP {
 		v.warn(append(slices.Clone(base), "allow_insecure_http"), "the API key will be sent over plain http to non-local hosts; use https unless the network is one you fully trust")
 	}
-	seen := map[string]bool{}
-	for i, m := range p.Models {
-		ms := append(slices.Clone(base), "models", fmt.Sprintf("[%d]", i))
-		switch {
-		case strings.TrimSpace(m) == "" || strings.ContainsAny(m, " \t\r\n"):
-			v.err(ms, "model ids cannot be empty or contain whitespace")
-		case seen[m]:
-			v.warn(ms, "duplicate model id %q", m)
-		}
-		seen[m] = true
-	}
+	v.providerOptions(base, p)
 }
 
 func (v *validator) baseURL(segs []string, raw string) {
@@ -177,7 +167,6 @@ func (v *validator) models(c *Config) {
 		}
 	}
 	check(seg("models", "default"), c.Models.Default)
-	check(seg("models", "compactor"), c.Models.Compactor)
 	for _, role := range sortedKeys(c.Models.Roles) {
 		rs := seg("models", "roles", role)
 		if role == "" || strings.ContainsAny(role, " \t\r\n") {

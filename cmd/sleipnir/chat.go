@@ -34,8 +34,8 @@ func cmdChat(ctx context.Context, args []string) error {
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	cwd := fs.String("cwd", "", "working directory")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass")
-	swarmN := fs.Int("swarm", 0, "chat with a manager that can spawn up to N workers")
-	trust := fs.Bool("trust-project", false, "load project instruction files and project-level config")
+	swarmN := fs.Int("swarm", 0, "chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling)")
+	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
@@ -91,10 +91,17 @@ func cmdChat(ctx context.Context, args []string) error {
 		fmt.Fprint(os.Stderr, "\n› ")
 		line, err := readInput(ctx, in)
 		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
+			switch {
+			case errors.Is(err, io.EOF):
+				s.SetEndReason(session.EndExit)
+				fmt.Fprintln(os.Stderr)
+				return nil
+			case errors.Is(err, context.Canceled):
+				s.SetEndReason(session.EndInterrupted)
 				fmt.Fprintln(os.Stderr)
 				return nil
 			}
+			s.SetEndReason(session.EndError)
 			return err
 		}
 		line = strings.TrimSpace(line)
@@ -104,6 +111,7 @@ func cmdChat(ctx context.Context, args []string) error {
 		case strings.HasPrefix(line, "/"):
 			quit, send := slash(ctx, s, line)
 			if quit {
+				s.SetEndReason(session.EndExit)
 				return nil
 			}
 			if send == "" {

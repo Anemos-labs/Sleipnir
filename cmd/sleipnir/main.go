@@ -5,8 +5,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -38,7 +40,7 @@ func main() {
 	// goes through harden.Secret (harden.TestReadersOfCredentialsUseSecret).
 	harden.Process(harden.MoveKeys())
 	if len(os.Args) < 2 {
-		usage()
+		usage(os.Stderr)
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -56,27 +58,38 @@ func main() {
 	case "version", "--version", "-v":
 		fmt.Printf("sleipnir %s (%s)\n", version, commit)
 	case "help", "--help", "-h":
-		usage()
+		usage(os.Stdout) // asked for: it is the output, not a complaint
 	default:
 		if handler, ok := extraCommands[cmd]; ok {
 			err = handler(ctx, args)
 			break
 		}
 		fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q\n\n", cmd)
-		usage()
+		usage(os.Stderr)
 		os.Exit(2)
 	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "sleipnir:", tools.SanitizeForTerminal(err.Error()))
-		os.Exit(1)
+	if code := reportError(os.Stderr, err); code != 0 {
+		os.Exit(code)
 	}
+}
+
+// reportError prints what a command returned and gives the process exit code: 0 for
+// success, and for -h too (the flag package printed the usage: help is not a
+// failure), 1 for an error, which is printed with terminal control characters made
+// harmless.
+func reportError(w io.Writer, err error) int {
+	if err == nil || errors.Is(err, flag.ErrHelp) {
+		return 0
+	}
+	fmt.Fprintln(w, "sleipnir:", tools.SanitizeForTerminal(err.Error()))
+	return 1
 }
 
 // extraCommands lets other files in this package register subcommands.
 var extraCommands = map[string]func(context.Context, []string) error{}
 
-func usage() {
-	fmt.Fprint(os.Stderr, `sleipnir - a coding-agent harness with a shared multi-layer prompt cache
+func usage(w io.Writer) {
+	fmt.Fprint(w, `sleipnir - a coding-agent harness with a shared multi-layer prompt cache
 
 Usage:
   sleipnir <command> [flags]
@@ -87,7 +100,7 @@ Commands:
   sessions  list recorded sessions
   chat      interactive session (slash commands, Ctrl-C cancels a turn)
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
-  swarm     shorthand for run --swarm
+  swarm     shorthand for run --swarm: sleipnir swarm <workers> "<goal>"
   recon     print the deterministic project survey that seeds the shared prompt layer
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test
   inspect   the cache inspector: a live or after-the-fact dashboard of a recorded session (layers, hit ratio, swarm, cost)
@@ -99,8 +112,10 @@ Commands:
   sim       simulate cache policies: what layering buys and where it stops paying
   version   print version
 
-Providers are selected with --provider (heimdall, openrouter, openai, custom) or
-auto-detected from HEIMDALL_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY.
+A model is written provider/model (built in: heimdall, openrouter, openai; or a provider from your
+config). A bare model id goes to the default provider: the only one configured, else the first of
+those three whose key variable (HEIMDALL_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY) is set. Keys
+are read from the environment only, never from a file. Every command takes -h.
 `)
 }
 

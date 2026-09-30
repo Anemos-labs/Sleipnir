@@ -65,9 +65,9 @@ func TestUserOnlyPathsAreDocumented(t *testing.T) {
 // Untrusted or trusted, a project's own harmless settings are unaffected by all this.
 func TestDroppingUserOnlySettingsLeavesTheRestOfTheProjectAlone(t *testing.T) {
 	p := newProj(t)
-	p.project(`{"providers": {"corp": {"dialect": "anthropic", "allow_hosts": ["x.example"], "models": ["m1"]}}, "cache": {"prewarm": false}}`)
+	p.project(`{"providers": {"corp": {"dialect": "anthropic", "allow_hosts": ["x.example"], "options": {"cache_control": false}}}, "cache": {"hot_max_tokens": 700}}`)
 	cfg, _ := p.mustLoad()
-	if cfg.Providers["corp"].Dialect != "anthropic" || !reflect.DeepEqual(cfg.Providers["corp"].Models, []string{"m1"}) || cfg.Cache.Prewarm {
+	if cfg.Providers["corp"].Dialect != "anthropic" || cfg.Providers["corp"].Options["cache_control"] != false || cfg.Cache.HotMaxTokens != 700 {
 		t.Fatalf("%+v %+v", cfg.Providers["corp"], cfg.Cache)
 	}
 }

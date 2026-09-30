@@ -14,7 +14,6 @@ import (
 // layer entry, above every file and below explicit overrides.
 //
 //	SLEIPNIR_MODEL              models.default
-//	SLEIPNIR_COMPACTOR_MODEL    models.compactor
 //	SLEIPNIR_MODEL_<ROLE>       models.roles.<role>       (role lower-cased)
 //	SLEIPNIR_PERMISSION_MODE    permissions.mode
 //	SLEIPNIR_<SECTION>_<FIELD>  any scalar or list field of a section, named by
@@ -89,7 +88,6 @@ func envBindings() []envBinding {
 	}
 	out = append(out,
 		envBinding{"SLEIPNIR_MODEL", []string{"models", "default"}, stringType},
-		envBinding{"SLEIPNIR_COMPACTOR_MODEL", []string{"models", "compactor"}, stringType},
 		envBinding{"SLEIPNIR_PERMISSION_MODE", []string{"permissions", "mode"}, stringType},
 	)
 	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })

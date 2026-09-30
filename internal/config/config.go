@@ -27,7 +27,6 @@
 // layer (see EnvVars for the machine-readable list):
 //
 //	SLEIPNIR_MODEL              models.default
-//	SLEIPNIR_COMPACTOR_MODEL    models.compactor
 //	SLEIPNIR_MODEL_<ROLE>       models.roles.<role>        (role lower-cased)
 //	SLEIPNIR_PERMISSION_MODE    permissions.mode
 //	SLEIPNIR_<SECTION>_<FIELD>  any scalar or list field of a section, named by
@@ -87,8 +86,6 @@ type Config struct {
 	Cache       Cache               `json:"cache"`
 	Swarm       Swarm               `json:"swarm"`
 	Tools       Tools               `json:"tools"`
-	UI          UI                  `json:"ui"`
-	Training    Training            `json:"training"`
 
 	// Hooks and MCP are placeholders the integrator will give real types; their
 	// entries are kept as raw JSON.
@@ -111,9 +108,6 @@ type Provider struct {
 	Headers   map[string]string `json:"headers,omitempty"`
 	// Options are provider-specific request options, passed through untouched.
 	Options map[string]any `json:"options,omitempty"`
-	// Models lists the model ids this provider serves (informational; used for
-	// completion and validation).
-	Models []string `json:"models,omitempty"`
 
 	// AllowHosts lists hosts, besides the provider's own, that may receive its API
 	// key when the base URL is changed by the environment (<NAME>_BASE_URL) or by a
@@ -162,9 +156,6 @@ type Models struct {
 	Default string `json:"default,omitempty"`
 	// Roles maps a role name to "provider/model".
 	Roles map[string]string `json:"roles,omitempty"`
-	// Compactor is the model that summarises history ("provider/model"); empty
-	// means the agent's own model.
-	Compactor string `json:"compactor,omitempty"`
 }
 
 // Permissions configures the permission engine.
@@ -206,11 +197,6 @@ type Cache struct {
 	// AffinityShards spreads a large swarm over several provider cache routing
 	// keys; 0 or 1 uses one.
 	AffinityShards int `json:"affinity_shards"`
-	// Prewarm sends the shared prefix once before fanning out, so parallel agents
-	// read the cache instead of all paying to write it.
-	Prewarm bool `json:"prewarm"`
-	// Keepalive re-touches cache entries before they expire while agents idle.
-	Keepalive bool `json:"keepalive"`
 }
 
 // SharedTTLDuration is SharedTTL as a duration (5 minutes when unset).
@@ -282,22 +268,6 @@ func (t Tools) DefaultTimeout() time.Duration {
 // MaxTimeout is MaxTimeoutSec as a duration.
 func (t Tools) MaxTimeout() time.Duration { return time.Duration(t.MaxTimeoutSec) * time.Second }
 
-// UI holds presentation settings.
-type UI struct {
-	Theme string `json:"theme,omitempty"`
-	// Editor is the command used to edit long input; empty means $VISUAL/$EDITOR.
-	Editor string `json:"editor,omitempty"`
-}
-
-// Training controls training-data export.
-type Training struct {
-	Enabled bool `json:"enabled"`
-	// RedactSecrets scrubs credentials from exported data.
-	RedactSecrets bool `json:"redact_secrets"`
-	// Dir is where exports go; empty means the session's state directory.
-	Dir string `json:"dir,omitempty"`
-}
-
 // Defaults returns the built-in configuration: the lowest-precedence layer.
 // Numbers the engines own (cache and swarm tuning) are left at 0, meaning "the
 // engine's default"; the rest mirror the defaults of the packages they feed.
@@ -307,7 +277,6 @@ func Defaults() *Config {
 		Cache: Cache{
 			SharedTTL:             "5m",
 			MinLayerForBreakpoint: 1500, // kv.DefaultPolicy
-			Prewarm:               true,
 		},
 		Swarm: Swarm{Isolation: IsolationNone},
 		Tools: Tools{
@@ -315,7 +284,6 @@ func Defaults() *Config {
 			DefaultTimeoutSec: 120,
 			MaxTimeoutSec:     600,
 		},
-		Training: Training{RedactSecrets: true},
 	}
 }
 

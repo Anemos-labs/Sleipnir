@@ -12,7 +12,7 @@ in `docs/EXTENDING.md`.
 **Conventions.** Flags may be written `-flag` or `--flag`, with `--flag value` or `--flag=value`. `run`, `swarm`, `inspect`
 and every `rl` command accept flags after positional arguments (`sleipnir swarm 8 "goal" --verify "make test"`); a lone
 `--` ends flags. For the others (`chat`, `doctor`, `models`, `init`, `config`, `sessions`, `recon`, `demo`, `mock`,
-`sim`) put flags first. `-h` or `--help` after a command prints its flags.
+`sim`) put flags first. `-h` or `--help` after a command prints its flags and exits 0.
 
 **Trust.** `--trust-project` (on `chat`, `run`, `swarm`, `config`, `doctor`) makes a session read what a repository
 brings: sensitive keys of its config file, its instruction files, skills, commands, agent definitions and hooks. Without
@@ -46,16 +46,18 @@ Never overwrites: if the file exists it stops and points you to `sleipnir config
   a starter `AGENTS.md` (only if absent), and the line `.sleipnir/config.local.json` appended to `.gitignore`. A project
   starts with a model only when you pass `--model`, because the model you would detect depends on whose keys are in
   your shell.
-* `--user`: `~/.sleipnir/config.json` (mode 0600) with `permissions.mode` `default`, a `local` provider for a
-  self-hosted server on `http://127.0.0.1:8000/v1` with `capture_tokens`, and `models.default` from `--model`, or
-  detected from the key in your environment (`HEIMDALL_API_KEY` gives `heimdall/deepseek/deepseek-v4.1-flash`,
-  `OPENROUTER_API_KEY` gives `openrouter/deepseek/deepseek-chat`, `OPENAI_API_KEY` gives `openai/gpt-5-mini`). That
-  `local` entry is the only configured provider, which changes where bare model ids go: see `docs/CONFIGURATION.md`
-  section 6.
+* `--user`: `~/.sleipnir/config.json` (mode 0600) with `permissions.mode` `default` and `models.default` from
+  `--model`, or detected from the key in your environment (`HEIMDALL_API_KEY` gives
+  `heimdall/deepseek/deepseek-v4.1-flash`, `OPENROUTER_API_KEY` gives `openrouter/deepseek/deepseek-chat`,
+  `OPENAI_API_KEY` gives `openai/gpt-5-mini`). It defines no provider: the three marketplaces are built in.
+  `--local-url URL` adds one named `local` for a self-hosted server (vLLM, SGLang) with `capture_tokens`; that entry is
+  then the only configured provider, which changes where bare model ids go (`docs/CONFIGURATION.md` section 6).
 
 <!-- flags: init -->
 ```text
 Usage of init:
+  -local-url string
+        with --user: also add a provider named local at this URL, a self-hosted server such as vLLM or SGLang (http://127.0.0.1:8000/v1); it records token ids for RL
   -model string
         default model, e.g. heimdall/deepseek/deepseek-v4.1-flash
   -user
@@ -87,9 +89,34 @@ Lists recorded sessions newest first: id, model, cost, first prompt. `↺` marks
 ```text
 Usage of sessions:
   -dir string
-        sessions directory (default ~/.sleipnir/sessions)
+        the directory that holds the sessions (default <state>/sessions, <state> being $SLEIPNIR_HOME or ~/.sleipnir)
   -n int
         how many to list (default 20)
+```
+<!-- /flags -->
+
+### `sleipnir mcp`
+
+Manages the tool servers (the Model Context Protocol) a session would start, without starting a session: `list` shows
+every server considered, where its entry came from (your user configuration, or a project's `.sleipnir/config.json` or
+`.mcp.json`) and whether it may start; `approve NAME` remembers a project entry for this project after showing what it
+would run and asking; `revoke NAME` forgets the approval; `test` starts the servers and lists the tools they offer. A
+project's entries are read only with `--trust-project`, and each still needs your approval. Configuration, approvals
+and what a server may see are in `docs/MCP.md`.
+
+<!-- flags: mcp -->
+```text
+usage: sleipnir mcp <command> [flags]
+
+Tool servers (the Model Context Protocol). Servers are configured under "mcp" in
+your user configuration (trusted) or a project's (.sleipnir/config.json or
+.mcp.json; only read with --trust-project, and each entry needs your approval).
+
+commands:
+  list [--trust-project]              the servers a session here would consider, where each came from and whether it may start
+  approve NAME [--yes]                remember a project entry for this project (shows what it would run and asks first)
+  revoke NAME                         forget an approval
+  test [NAME...] [--trust-project]    start the servers and list the tools they offer (project entries still need approval)
 ```
 <!-- /flags -->
 
@@ -105,22 +132,34 @@ single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed 
 Usage of chat:
   -budget-usd float
         stop when spend reaches this many US dollars
+  -commit
+        swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)
   -continue
         continue this project's newest session (same as --resume latest)
   -cwd string
         working directory
+  -isolation string
+        swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
+  -mailman
+        swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -mode string
         permissions: default | accept-edits | plan | bypass
   -model string
         model: provider/model or a bare id for the default provider
+  -no-mcp
+        start no MCP tool servers
   -resume string
         continue an earlier single-agent session: its id, its directory, or 'latest' (this project's newest)
+  -role-model value
+        role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
   -swarm int
-        chat with a manager that can spawn up to N workers
+        chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling)
   -trust-project
-        load project instruction files and project-level config
+        trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
         print notices and tool errors
+  -verify string
+        swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)
 ```
 <!-- /flags -->
 
@@ -134,9 +173,10 @@ stdout: `text`, `thinking`, `tool_start`, `tool_end`, `response`, `notice`, and 
 Unattended (stdin not a terminal) nothing can be approved: an action that needs approval is refused. Slash commands are
 not expanded in `run`. `swarm` and `run --swarm` are the same command.
 
-`sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a manager with up to N workers. Its
-flags are `run`'s; `sleipnir swarm --help` does not print help (the `--help` is read as the value of `--swarm`), use
-`sleipnir run --help`.
+`sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a manager with up to N workers. N comes
+first and must be 1 or more (anything else is an error that shows an example); the flags are `run`'s, and
+`sleipnir swarm -h` prints them under swarm's own usage line. `swarm.max_agents` in the configuration is the ceiling: a
+request for more than it allows (N+1 agents) is refused before anything starts.
 
 <!-- flags: run -->
 ```text
@@ -149,20 +189,28 @@ flags:
         stop when spend reaches this many US dollars
   -capture
         ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)
+  -commit
+        swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)
   -context-window int
         override the model's context window (small values force frequent compaction)
   -continue
         continue this project's newest session (same as --resume latest)
   -cwd string
         working directory (default: current)
+  -isolation string
+        swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
   -json
         stream events as JSON lines on stdout
+  -mailman
+        swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -max-steps int
         step limit for a single agent (default 200)
   -mode string
         permissions: default | accept-edits | plan | bypass (default: config, then default)
   -model string
         model: provider/model or a bare id for the default provider (default: config models.default)
+  -no-mcp
+        start no MCP tool servers
   -no-recon
         do not survey the project into the shared prompt layer
   -no-web
@@ -174,15 +222,15 @@ flags:
   -role-model value
         role=model override, repeatable (e.g. manager=heimdall/x)
   -session-dir string
-        where to write events.jsonl and blobs/ (default ~/.sleipnir/sessions/<id>)
+        directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int
-        run a manager with up to N workers instead of a single agent
+        run a manager with up to N workers instead of a single agent (config swarm.max_agents is the ceiling)
   -trust-project
-        load project instruction files and project-level config (unsafe for untrusted repositories)
+        trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
         print notices and tool errors
   -verify string
-        swarm: command the harness runs before a worker's task may leave 'doing'
+        swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)
 ```
 <!-- /flags -->
 
@@ -357,8 +405,7 @@ flags:
 
 The RL environment (`docs/TRAINING-DATA.md`): generate tasks, roll a policy out on them, score, export.
 Project provider settings are never read by `rl`; configure the policy in your user file or pass `--base-url`
-and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exits 1 (after the usage it prints
-`flag: help requested`).
+and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exits 0.
 
 ```text
 sleipnir rl taskgen <generator>    make tasks from history, compose swarm tasks, generate recall tasks or mutations
@@ -682,6 +729,8 @@ flags:
 usage: sleipnir rl rollout --tasks tasks.jsonl --model MODEL --group G --out RUN_DIR [flags]
 
 flags:
+  -allow-insecure-http
+        let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default
   -api-key-env string
         name of the environment variable holding the policy's API key (default: the provider's)
   -base-url string
@@ -725,7 +774,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override, repeatable (e.g. compactor=heimdall/deepseek/deepseek-v4-flash)
+        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -sampling string
         sampling parameters as a JSON object, e.g. {"temperature":1,"top_p":0.95,"max_tokens":4096}
   -seed int
@@ -764,6 +813,8 @@ flags:
 usage: sleipnir rl eval --tasks holdout.jsonl --model MODEL [flags]
 
 flags:
+  -allow-insecure-http
+        let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default
   -api-key-env string
         name of the environment variable holding the policy's API key (default: the provider's)
   -base-url string
@@ -807,7 +858,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override, repeatable (e.g. compactor=heimdall/deepseek/deepseek-v4-flash)
+        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -samples int
         samples per task (pass^k needs k or more) (default 1)
   -sampling string
@@ -850,6 +901,8 @@ usage: sleipnir rl serve --runs DIR [flags]
 flags:
   -addr string
         listen address (default "127.0.0.1:8090")
+  -allow-insecure-http
+        let a policy key travel over plain http to a listed host that is not this machine (a trusted network); off by default
   -blobs string
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
   -concurrency int
@@ -868,6 +921,10 @@ flags:
         do not isolate the network of tasks that do not need it
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -policy-host string
+        comma-separated hosts (host or host:port) a request's policy.base_url may name; loopback is always allowed
+  -policy-key-env string
+        comma-separated names of the environment variables a request's policy.api_key_env may name (default: none, so no request can pick one of this server's credentials)
   -repo-root string
         comma-separated directories: inline tasks may only use repositories under them
   -require-net-isolation
@@ -1040,8 +1097,8 @@ answer `unknown command`.
 
 | Code | Meaning |
 |---|---|
-| `0` | success; also `-h`/`--help` of the flag-based commands, `help`, `version`, and a `chat` that ends with `/exit` or Ctrl-D |
-| `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: budget exhausted`), a reached step limit, a prompt blocked by a hook, a failed `doctor` probe, and `-h` on any `rl` subcommand |
+| `0` | success; also `-h`/`--help` of every command (`sleipnir --help` and `help` print to stdout), `version`, and a `chat` that ends with `/exit` or Ctrl-D |
+| `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: budget exhausted`), a reached step limit, a prompt blocked by a hook, and a failed `doctor` probe |
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
 
 A model that ends its turn normally is a success (`0`) whatever the task's outcome; check the result (`run --json`, the

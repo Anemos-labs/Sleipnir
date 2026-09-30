@@ -22,14 +22,10 @@ func TestDefaults(t *testing.T) {
 		{"permissions.mode", d.Permissions.Mode, "default"},
 		{"cache.shared_ttl", d.Cache.SharedTTL, "5m"},
 		{"cache.min_layer_for_breakpoint", d.Cache.MinLayerForBreakpoint, 1500},
-		{"cache.prewarm", d.Cache.Prewarm, true},
-		{"cache.keepalive", d.Cache.Keepalive, false},
 		{"swarm.isolation", d.Swarm.Isolation, "none"},
 		{"tools.max_output_chars", d.Tools.MaxOutputChars, 24000},
 		{"tools.default_timeout_sec", d.Tools.DefaultTimeoutSec, 120},
 		{"tools.max_timeout_sec", d.Tools.MaxTimeoutSec, 600},
-		{"training.enabled", d.Training.Enabled, false},
-		{"training.redact_secrets", d.Training.RedactSecrets, true},
 	}
 	for _, c := range checks {
 		if !reflect.DeepEqual(c.got, c.want) {
@@ -107,19 +103,17 @@ func TestEveryJSONTagIsSnakeCase(t *testing.T) {
 
 func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 	want := map[string][]string{
-		"Cache":       {"shared_ttl", "min_layer_for_breakpoint", "compact_threshold_tokens", "thread_soft_limit_tokens", "hot_max_tokens", "affinity_shards", "prewarm", "keepalive"},
+		"Cache":       {"shared_ttl", "min_layer_for_breakpoint", "compact_threshold_tokens", "thread_soft_limit_tokens", "hot_max_tokens", "affinity_shards"},
 		"Swarm":       {"max_agents", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "budget_usd"},
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts"},
-		"UI":          {"theme", "editor"},
-		"Training":    {"enabled", "redact_secrets", "dir"},
-		"Models":      {"default", "roles", "compactor"},
+		"Models":      {"default", "roles"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles"},
-		"Provider":    {"dialect", "base_url", "api_key_env", "headers", "options", "models", "allow_hosts", "allow_insecure_http"},
-		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "ui", "training", "hooks", "mcp"},
+		"Provider":    {"dialect", "base_url", "api_key_env", "headers", "options", "allow_hosts", "allow_insecure_http"},
+		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "hooks", "mcp"},
 	}
 	types := map[string]reflect.Type{
 		"Cache": reflect.TypeOf(Cache{}), "Swarm": reflect.TypeOf(Swarm{}), "Tools": reflect.TypeOf(Tools{}),
-		"UI": reflect.TypeOf(UI{}), "Training": reflect.TypeOf(Training{}), "Models": reflect.TypeOf(Models{}),
+		"Models":      reflect.TypeOf(Models{}),
 		"Permissions": reflect.TypeOf(Permissions{}), "Provider": reflect.TypeOf(Provider{}), "Config": reflect.TypeOf(Config{}),
 	}
 	for name, fields := range want {
@@ -142,11 +136,11 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 
 func TestUnmarshalOverlaysOnAndPreservesUnknownKeys(t *testing.T) {
 	cfg := Defaults()
-	err := json.Unmarshal([]byte(`{"cache": {"prewarm": false}, "swarm": {"max_agents": 7}, "future_feature": {"a": [1, 2]}, "$schema": "s"}`), cfg)
+	err := json.Unmarshal([]byte(`{"cache": {"hot_max_tokens": 5}, "swarm": {"max_agents": 7}, "future_feature": {"a": [1, 2]}, "$schema": "s"}`), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Cache.Prewarm || cfg.Swarm.MaxAgents != 7 {
+	if cfg.Cache.HotMaxTokens != 5 || cfg.Swarm.MaxAgents != 7 {
 		t.Fatalf("cfg = %+v", cfg)
 	}
 	if cfg.Cache.SharedTTL != "5m" || cfg.Cache.MinLayerForBreakpoint != 1500 || cfg.Swarm.Isolation != "none" {
@@ -196,10 +190,10 @@ func TestMarshalIncludesExtraAndRoundTrips(t *testing.T) {
 
 func TestTopLevelKeysAreCaseSensitive(t *testing.T) {
 	var cfg Config
-	if err := json.Unmarshal([]byte(`{"Models": {"default": "a/b"}, "models": {"compactor": "c/d"}}`), &cfg); err != nil {
+	if err := json.Unmarshal([]byte(`{"Models": {"default": "a/b"}, "models": {"roles": {"x": "c/d"}}}`), &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Models.Default != "" || cfg.Models.Compactor != "c/d" {
+	if cfg.Models.Default != "" || cfg.Models.Roles["x"] != "c/d" {
 		t.Fatalf("models = %+v: only the exact key applies", cfg.Models)
 	}
 	if _, ok := cfg.Extra["Models"]; !ok {
@@ -316,10 +310,10 @@ func TestFmtPath(t *testing.T) {
 }
 
 func TestClosestSuggestions(t *testing.T) {
-	names := []string{"providers", "models", "permissions", "cache", "swarm", "tools", "ui", "training", "hooks", "mcp"}
+	names := []string{"providers", "models", "permissions", "cache", "swarm", "tools", "hooks", "mcp"}
 	tests := map[string]string{
 		"provider": "providers", "permission": "permissions", "Cache": "cache", "cach": "cache", "swam": "swarm",
-		"modles": "models", "tool": "tools", "xyz": "", "completely_unrelated": "", "u": "ui",
+		"modles": "models", "tool": "tools", "xyz": "", "completely_unrelated": "",
 	}
 	for in, want := range tests {
 		if got := closest(in, names); got != want {

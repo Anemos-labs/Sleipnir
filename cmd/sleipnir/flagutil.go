@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// trustProjectHelp is the help text of --trust-project on the commands that start a
+// session: what the flag lets a repository do is the same for all of them.
+const trustProjectHelp = "trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust"
+
 // resumeFlags registers --resume and --continue on fs. The returned function
 // gives the resume request for session.Options.Resume: "" for a new session, a
 // session id or directory, or "latest" (the newest session of this project).

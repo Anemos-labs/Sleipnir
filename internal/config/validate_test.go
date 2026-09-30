@@ -74,6 +74,77 @@ func TestValidate(t *testing.T) {
 			wantErr: []string{"providers.p.headers.X-Inject", `providers.p.headers[""]`, `providers.p.headers["Bad Name"]`},
 		},
 		{
+			name: "the options each dialect reads are fine",
+			mutate: func(c *Config) {
+				c.Providers = map[string]Provider{
+					"chat": {Options: map[string]any{
+						"session_header": true, "cache_key_body": true, "cache_control_parts": false, "system_role": "developer",
+						"max_tokens_field": "max_completion_tokens", "reasoning_effort_field": "reasoning_effort",
+						"first_byte_timeout_sec": float64(90), "stream_idle_timeout_sec": 30, "stream_timeout_sec": float64(3600),
+						"request_timeout_sec": float64(300), "extra_body": map[string]any{"top_k": float64(40)}, "capture_tokens": true,
+					}},
+					"msgs": {Dialect: "anthropic", Options: map[string]any{
+						"auth_style": "Bearer", "version": "2023-06-01", "betas": []any{"a", "b"}, "session_header_name": "X-Session",
+						"cache_control": false, "no_turn_scoped_system": true, "no_thinking_replay": true, "no_zero_max_tokens": true,
+						"default_max_tokens": float64(4096), "thinking_budget": float64(2048), "max_breakpoints": float64(3), "thinking_display": "summarized",
+					}},
+				}
+			},
+		},
+		{
+			name: "an option the dialect does not read warns, with a suggestion or the dialect it belongs to",
+			mutate: func(c *Config) {
+				c.Providers = map[string]Provider{
+					"chat": {Options: map[string]any{"session_headr": true, "auth_style": "bearer", "zzz": float64(1)}},
+					"msgs": {Dialect: "anthropic", Options: map[string]any{"cache_key_body": true, "no_zero_max_token": true}},
+				}
+			},
+			wantWarn: []string{"providers.chat.options.auth_style", "providers.chat.options.session_headr", "providers.chat.options.zzz", "providers.msgs.options.cache_key_body", "providers.msgs.options.no_zero_max_token"},
+			contains: map[string]string{
+				"providers.chat.options.session_headr":     `did you mean "session_header"?`,
+				"providers.chat.options.auth_style":        `option of the anthropic dialect`,
+				"providers.msgs.options.cache_key_body":    `option of the openai-chat dialect`,
+				"providers.msgs.options.no_zero_max_token": `did you mean "no_zero_max_tokens"?`,
+				"providers.chat.options.zzz":               "is ignored",
+			},
+		},
+		{
+			name: "an option value of the wrong kind or outside what the adapter takes is an error",
+			mutate: func(c *Config) {
+				c.Providers = map[string]Provider{
+					"chat": {Options: map[string]any{
+						"session_header": "yes", "system_role": "root", "max_tokens_field": 5, "first_byte_timeout_sec": -1.0,
+						"request_timeout_sec": "60", "extra_body": []any{1.0}, "stream_timeout_sec": 200000.0,
+					}},
+					"msgs": {Dialect: "anthropic", Options: map[string]any{
+						"auth_style": "basic", "betas": "x", "default_max_tokens": 1.5, "thinking_budget": -1.0,
+						"thinking_display": "loud", "cache_control": "no", "max_breakpoints": []any{}, "version": []any{"a"},
+					}},
+				}
+			},
+			wantErr: []string{
+				"providers.chat.options.extra_body", "providers.chat.options.first_byte_timeout_sec", "providers.chat.options.max_tokens_field",
+				"providers.chat.options.request_timeout_sec", "providers.chat.options.session_header", "providers.chat.options.system_role",
+				"providers.msgs.options.auth_style", "providers.msgs.options.betas", "providers.msgs.options.cache_control",
+				"providers.msgs.options.default_max_tokens", "providers.msgs.options.max_breakpoints", "providers.msgs.options.thinking_budget",
+				"providers.msgs.options.thinking_display", "providers.msgs.options.version",
+			},
+			wantWarn: []string{"providers.chat.options.stream_timeout_sec"},
+			contains: map[string]string{
+				"providers.chat.options.system_role":            "must be one of system, developer",
+				"providers.msgs.options.default_max_tokens":     "whole number",
+				"providers.chat.options.first_byte_timeout_sec": "must not be negative",
+				"providers.chat.options.stream_timeout_sec":     "capped at 86400",
+				"providers.msgs.options.betas":                  "a list of strings",
+			},
+		},
+		{
+			name: "the options of a dialect that has no adapter are not judged",
+			mutate: func(c *Config) {
+				c.Providers = map[string]Provider{"r": {Dialect: "openai-responses", Options: map[string]any{"anything": 1.0}}}
+			},
+		},
+		{
 			name: "provider names",
 			mutate: func(c *Config) {
 				c.Providers = map[string]Provider{"has/slash": {}, "has space": {}, "fine": {}}
@@ -81,17 +152,9 @@ func TestValidate(t *testing.T) {
 			wantErr: []string{`providers["has space"]`, `providers["has/slash"]`},
 		},
 		{
-			name: "provider model lists",
-			mutate: func(c *Config) {
-				c.Providers = map[string]Provider{"p": {Models: []string{"a", "b", "a", "", "has space"}}}
-			},
-			wantErr:  []string{"providers.p.models[3]", "providers.p.models[4]"},
-			wantWarn: []string{"providers.p.models[2]"},
-		},
-		{
 			name: "model references",
 			mutate: func(c *Config) {
-				c.Models = Models{Default: "no-slash", Compactor: "ok/model", Roles: map[string]string{"planner": "a/b", "coder": "bad", "empty": "", "has space": "a/b"}}
+				c.Models = Models{Default: "no-slash", Roles: map[string]string{"planner": "a/b", "coder": "bad", "empty": "", "has space": "a/b"}}
 			},
 			wantErr: []string{"models.default", "models.roles.coder", "models.roles.empty", `models.roles["has space"]`},
 		},
@@ -229,17 +292,15 @@ func nz(s []string) []string {
 func validFull() *Config {
 	c := Defaults()
 	c.Providers = map[string]Provider{
-		"anthropic": {Dialect: "anthropic", BaseURL: "https://api.anthropic.com", APIKeyEnv: "ANTHROPIC_API_KEY", Models: []string{"claude-sonnet-5-5"}},
+		"anthropic": {Dialect: "anthropic", BaseURL: "https://api.anthropic.com", APIKeyEnv: "ANTHROPIC_API_KEY"},
 		"openrouter": {Dialect: "openai-chat", BaseURL: "https://openrouter.ai/api/v1", APIKeyEnv: "OPENROUTER_API_KEY",
-			Headers: map[string]string{"HTTP-Referer": "https://example.com"}, Options: map[string]any{"route": "fallback"}},
+			Headers: map[string]string{"HTTP-Referer": "https://example.com"}, Options: map[string]any{"session_header": true}},
 	}
-	c.Models = Models{Default: "anthropic/claude-sonnet-5-5", Compactor: "openrouter/vendor/small:free", Roles: map[string]string{"planner": "anthropic/claude-opus-5"}}
+	c.Models = Models{Default: "anthropic/claude-sonnet-5-5", Roles: map[string]string{"planner": "anthropic/claude-opus-5"}}
 	c.Permissions = Permissions{Mode: "accept-edits", Allow: []string{"Read", "Bash(go test:*)"}, Ask: []string{"Bash"}, Deny: []string{"Bash(rm:*)"},
 		Roles: map[string]RolePermissions{"reviewer": {Mode: "plan", Allow: []string{"Read"}}}}
-	c.Cache = Cache{SharedTTL: "1h", MinLayerForBreakpoint: 1500, CompactThresholdTokens: 60000, ThreadSoftLimitTokens: 20000, HotMaxTokens: 2000, AffinityShards: 4, Prewarm: true, Keepalive: true}
+	c.Cache = Cache{SharedTTL: "1h", MinLayerForBreakpoint: 1500, CompactThresholdTokens: 60000, ThreadSoftLimitTokens: 20000, HotMaxTokens: 2000, AffinityShards: 4}
 	c.Swarm = Swarm{MaxAgents: 8, RequestsPerMinute: 120, MaxConcurrentRequests: 16, Isolation: "worktree", BudgetUSD: 25}
 	c.Tools = Tools{MaxOutputChars: 24000, DefaultTimeoutSec: 120, MaxTimeoutSec: 600, WebAllowHosts: []string{"docs.example.com"}}
-	c.UI = UI{Theme: "dark", Editor: "vim"}
-	c.Training = Training{Enabled: true, RedactSecrets: true, Dir: ".sleipnir/training"}
 	return c
 }

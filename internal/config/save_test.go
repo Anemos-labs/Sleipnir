@@ -191,7 +191,7 @@ func TestSaveRefusesToOverwriteAFileItCannotParse(t *testing.T) {
 	if err := os.WriteFile(path, []byte(broken), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := Save(path, map[string]any{"ui": map[string]any{"theme": "dark"}})
+	err := Save(path, map[string]any{"models": map[string]any{"default": "t/dark"}})
 	if err == nil || !strings.Contains(err.Error(), "does not parse") || !strings.Contains(err.Error(), path+":3:3") {
 		t.Fatalf("err = %v", err)
 	}
@@ -200,7 +200,7 @@ func TestSaveRefusesToOverwriteAFileItCannotParse(t *testing.T) {
 	}
 	// A top-level value that is not an object is refused too.
 	os.WriteFile(path, []byte(`["not", "an", "object"]`), 0o600)
-	if err := Save(path, map[string]any{"ui": map[string]any{"theme": "x"}}); err == nil {
+	if err := Save(path, map[string]any{"models": map[string]any{"default": "t/x"}}); err == nil {
 		t.Fatal("a top-level list must be refused")
 	}
 }
@@ -211,7 +211,7 @@ func TestSaveWritesThroughASymlink(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(real), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(real, []byte(`{"ui": {"theme": "old"}}`), 0o600); err != nil {
+	if err := os.WriteFile(real, []byte(`{"models": {"default": "t/old"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(dir, "home", ".sleipnir", "config.json")
@@ -221,13 +221,13 @@ func TestSaveWritesThroughASymlink(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if err := Save(link, map[string]any{"ui": map[string]any{"theme": "new"}}); err != nil {
+	if err := Save(link, map[string]any{"models": map[string]any{"default": "t/new"}}); err != nil {
 		t.Fatal(err)
 	}
 	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("the symlink must stay a symlink: %v %v", fi, err)
 	}
-	if !strings.Contains(readFile(t, real), `"theme": "new"`) {
+	if !strings.Contains(readFile(t, real), `"default": "t/new"`) {
 		t.Fatalf("the target was not updated: %s", readFile(t, real))
 	}
 }
@@ -239,7 +239,7 @@ func TestSaveLeavesNoTemporaryFilesEvenOnFailure(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(blocked, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(blocked, map[string]any{"ui": map[string]any{"theme": "x"}}); err == nil {
+	if err := Save(blocked, map[string]any{"models": map[string]any{"default": "t/x"}}); err == nil {
 		t.Fatal("expected an error")
 	}
 	entries, _ := os.ReadDir(dir)
@@ -257,7 +257,7 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 	patch := map[string]any{
 		"models":    map[string]any{"default": "openrouter/vendor/model:free", "roles": map[string]any{"planner": "anthropic/opus"}},
 		"providers": map[string]any{"openrouter": map[string]any{"dialect": "openai-chat", "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY", "headers": map[string]any{"HTTP-Referer": "https://example.com"}}},
-		"cache":     map[string]any{"shared_ttl": "1h", "prewarm": false, "affinity_shards": 4},
+		"cache":     map[string]any{"shared_ttl": "1h", "affinity_shards": 4},
 		"swarm":     map[string]any{"budget_usd": 12.5, "isolation": "worktree"},
 		"tools":     map[string]any{"web_allow_hosts": []string{"docs.example.com"}},
 	}
@@ -268,7 +268,7 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Models.Default != "openrouter/vendor/model:free" || cfg.Cache.SharedTTL != "1h" || cfg.Cache.Prewarm || cfg.Cache.AffinityShards != 4 ||
+	if cfg.Models.Default != "openrouter/vendor/model:free" || cfg.Cache.SharedTTL != "1h" || cfg.Cache.AffinityShards != 4 ||
 		cfg.Swarm.BudgetUSD != 12.5 || cfg.Providers["openrouter"].Headers["HTTP-Referer"] != "https://example.com" ||
 		!reflect.DeepEqual(cfg.Tools.WebAllowHosts, []string{"docs.example.com"}) {
 		t.Fatalf("cfg = %+v", cfg)
@@ -277,7 +277,7 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 
 func TestConcurrentSavesNeverProduceATornFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := Save(path, map[string]any{"ui": map[string]any{"theme": "start"}}); err != nil {
+	if err := Save(path, map[string]any{"models": map[string]any{"default": "t/start"}}); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -311,7 +311,7 @@ func TestConcurrentSavesNeverProduceATornFile(t *testing.T) {
 			for i := 0; i < 15; i++ {
 				// Concurrent read-modify-write may lose an update (documented), but
 				// must never fail or leave a half-written file.
-				_ = Save(path, map[string]any{"ui": map[string]any{"theme": fmt.Sprintf("g%d-%d", g, i)}})
+				_ = Save(path, map[string]any{"models": map[string]any{"default": fmt.Sprintf("t/g%d-%d", g, i)}})
 			}
 		}(g)
 	}

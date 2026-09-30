@@ -62,14 +62,47 @@ func TestInitUserWritesTheProvidersTheModelAndTheMode(t *testing.T) {
 	if got := sub(cfg, "models", "default"); got != "heimdall/deepseek/deepseek-v4.1-flash" {
 		t.Errorf("the default model detected from the key was not written: %v", got)
 	}
+	if got := sub(cfg, "providers"); got != nil {
+		t.Errorf("init --user must not invent a provider (a `local` one would become the only configured provider and take every bare model id): %v", got)
+	}
+	if got := sub(cfg, "permissions", "mode"); got != "default" {
+		t.Errorf("permission mode: %v", got)
+	}
+}
+
+func TestInitUserLocalURLAddsASelfHostedProvider(t *testing.T) {
+	_, home := projectDir(t)
+	if err := cmdInit(context.Background(), []string{"--user", "--local-url", "http://127.0.0.1:8000/v1", "--model", "local/my-policy"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := readJSON(t, filepath.Join(home, ".sleipnir", "config.json"))
 	if got := sub(cfg, "providers", "local", "base_url"); got != "http://127.0.0.1:8000/v1" {
 		t.Errorf("local provider: %v", got)
 	}
 	if got := sub(cfg, "providers", "local", "options", "capture_tokens"); got != true {
 		t.Errorf("token capture is what makes a local policy RL-ready: %v", got)
 	}
-	if got := sub(cfg, "permissions", "mode"); got != "default" {
-		t.Errorf("permission mode: %v", got)
+}
+
+func TestInitLocalURLNeedsUser(t *testing.T) {
+	projectDir(t)
+	err := cmdInit(context.Background(), []string{"--local-url", "http://127.0.0.1:8000/v1"})
+	if err == nil || !strings.Contains(err.Error(), "--local-url goes with --user") {
+		t.Fatalf("a provider in a project file would be ignored; init must say so: %v", err)
+	}
+}
+
+func TestInitAGENTSFileSaysWhenItIsRead(t *testing.T) {
+	proj, _ := projectDir(t)
+	if err := cmdInit(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(proj, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "--trust-project") {
+		t.Errorf("the starter file claims to be pinned into the prompt without saying that only a trusted project's is read:\n%s", b)
 	}
 }
 

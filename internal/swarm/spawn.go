@@ -215,7 +215,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	m.task = task.ID
 	m.mu.Unlock()
 	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": s.modelFor(role.Name).ID})
-	s.launch(m, rs, ctx, runStart{brief: taskCard(task, id, false)}) // the notes hold the card since the spawn
+	s.launch(m, rs, ctx, runStart{brief: taskCard(task, id, false), kickoff: true}) // the notes hold the card since the spawn
 	return id, nil
 }
 

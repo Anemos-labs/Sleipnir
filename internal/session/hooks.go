@@ -10,6 +10,7 @@ import (
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/hooks"
 	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/reee344/sleipnir/internal/swarm"
 	"github.com/reee344/sleipnir/internal/tools"
 )
 
@@ -59,7 +60,11 @@ type hookAdapter struct {
 	run *hooks.Runner
 }
 
-var _ agent.Hooks = (*hookAdapter)(nil)
+var (
+	_ agent.Hooks           = (*hookAdapter)(nil)
+	_ agent.CompactionHooks = (*hookAdapter)(nil)
+	_ agent.WorkerHooks     = (*hookAdapter)(nil)
+)
 
 func (h *hookAdapter) fire(ctx context.Context, ev hooks.Event) hooks.Result {
 	ev.SessionID, ev.Cwd = h.s.ID, h.s.opts.Cwd
@@ -115,13 +120,47 @@ func (h *hookAdapter) AfterTool(ctx context.Context, c agent.ToolHookCall, r *to
 	return out
 }
 
-// BeforeStop implements agent.Hooks.
+// BeforeStop implements agent.Hooks. The agent the person talks to (the single
+// agent, or a swarm's manager) fires Stop; a swarm's workers fire SubagentStop, as in
+// Claude Code, so a hook written for one of them is not run for every worker. The
+// mailman is a service of the harness, nobody's subagent: it fires neither.
 func (h *hookAdapter) BeforeStop(ctx context.Context, agentID, role, final string, continuing bool) agent.StopOutcome {
-	res := h.fire(ctx, hooks.Event{Name: hooks.Stop, Agent: agentID, Role: role, Extra: map[string]any{"stop_hook_active": continuing}})
+	name := hooks.Stop
+	if agentID != h.s.mainAgent() {
+		if role == swarm.MailmanRoleName {
+			return agent.StopOutcome{}
+		}
+		name = hooks.SubagentStop
+	}
+	res := h.fire(ctx, hooks.Event{Name: name, Agent: agentID, Role: role, Extra: map[string]any{
+		"stop_hook_active": continuing, "last_assistant_message": clip(final, 4000),
+	}})
 	if res.Blocked {
-		return agent.StopOutcome{Veto: true, Reason: firstNonEmpty(res.Reason, "a Stop hook asked you to keep working")}
+		return agent.StopOutcome{Veto: true, Reason: firstNonEmpty(res.Reason, "a "+name+" hook asked you to keep working")}
 	}
 	return agent.StopOutcome{}
+}
+
+// WorkerStarted implements agent.WorkerHooks: the SubagentStart hooks of a new worker.
+// What they print is added to the worker's first task message (see swarm.startedBrief).
+func (h *hookAdapter) WorkerStarted(ctx context.Context, agentID, role, task string) string {
+	res := h.fire(ctx, hooks.Event{Name: hooks.SubagentStart, Agent: agentID, Role: role, Extra: map[string]any{"task": task}})
+	return res.AdditionalContext
+}
+
+// BeforeCompact and AfterCompact implement agent.CompactionHooks: PreCompact and
+// PostCompact around the compactions the agent decides on itself (trigger "auto").
+// A person's /compact is Session.Compact (trigger "manual"), where a PreCompact hook
+// may refuse; an automatic one cannot be refused, so a hook that tries is told so.
+func (h *hookAdapter) BeforeCompact(ctx context.Context, agentID, role, reason string) {
+	res := h.fire(ctx, hooks.Event{Name: hooks.PreCompact, Agent: agentID, Role: role, Extra: map[string]any{"trigger": "auto", "reason": clip(reason, 200)}})
+	if res.Blocked {
+		h.s.notice(agentID, "a PreCompact hook asked to skip an automatic compaction: it goes ahead, because the prompt would only grow ("+clip(firstNonEmpty(res.Reason, "no reason given"), 120)+")")
+	}
+}
+
+func (h *hookAdapter) AfterCompact(ctx context.Context, agentID, role, reason string) {
+	h.fire(ctx, hooks.Event{Name: hooks.PostCompact, Agent: agentID, Role: role, Extra: map[string]any{"trigger": "auto", "reason": clip(reason, 200)}})
 }
 
 // promptHook runs UserPromptSubmit and SessionStart hooks around a goal. It

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -184,7 +185,9 @@ type Session struct {
 	mu      sync.Mutex
 	started bool
 	closed  bool
-	turn    int
+	// endReason is why the session ended (SetEndReason), for the SessionEnd hooks.
+	endReason string
+	turn      int
 	// swarmCtx is the context an interactive session's swarm runs on: it lives until
 	// Close, not until the end of one turn (see swarmContext).
 	swarmCtx  context.Context
@@ -259,6 +262,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			}
 			o.Sink.Notice("", "warn", "ignored security-sensitive settings from the project's config ("+strings.Join(names, ", ")+"); pass --trust-project to apply them")
 		}
+	}
+	if err := checkSwarmSize(cfg, o); err != nil {
+		return nil, err
 	}
 	s := &Session{opts: o, cfg: cfg, cfgRep: rep}
 
@@ -605,6 +611,9 @@ func (s *Session) build(ctx context.Context) error {
 	if c := s.cfg.Cache; c.MinLayerForBreakpoint > 0 {
 		kvPol.MinLayerForBreakpoint = c.MinLayerForBreakpoint
 	}
+	if c := s.cfg.Cache; c.SharedTTL != "" {
+		kvPol.SharedTTL = c.SharedTTLDuration() // 1h asks a provider with explicit breakpoints to keep the shared layers a long time
+	}
 	params := o.Params
 	if params.MaxTokens == 0 {
 		params.MaxTokens = min(s.Model.MaxOutput, 16000)
@@ -617,6 +626,9 @@ func (s *Session) build(ctx context.Context) error {
 	est := core.NewBytesEstimator()
 
 	if !o.Swarm {
+		if len(o.RoleModels) > 0 && o.Sink != nil {
+			o.Sink.Notice("", "warn", "--role-model has no effect without --swarm: this session has a single agent (use --model)")
+		}
 		specs, err := reg.Specs()
 		if err != nil {
 			return err
@@ -645,6 +657,8 @@ func (s *Session) build(ctx context.Context) error {
 	// tools array, byte for byte.
 	sc := swarm.DefaultConfig()
 	sc.SessionID = s.ID
+	// swarm.max_agents is the ceiling (checkSwarmSize refused a larger request); a
+	// size asked for on the command line may only be smaller.
 	if v := s.cfg.Swarm.MaxAgents; v > 0 {
 		sc.MaxAgents = v
 	}
@@ -679,10 +693,13 @@ func (s *Session) build(ctx context.Context) error {
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
-		Workdir: o.Cwd, Root: o.Root, Params: params, Planner: planner, Est: est, Limits: limits, Now: o.Now,
+		Workdir: o.Cwd, Root: o.Root, Params: params, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
 	}
 	if len(o.RoleModels) > 0 {
+		if err := s.checkRoleModels(o.RoleModels); err != nil {
+			return err
+		}
 		deps.RoleModels = map[string]swarm.RoleModel{}
 		for role, ref := range o.RoleModels {
 			mr, err := ResolveModel(s.cfg, ref)
@@ -758,6 +775,48 @@ func (s *Session) build(ctx context.Context) error {
 	sw.SetToolset(reg, specs)
 	s.Registry, s.Specs, s.Swarm = reg, specs, sw
 	return nil
+}
+
+// checkSwarmSize refuses a swarm larger than swarm.max_agents allows. The setting is
+// a ceiling that the user's file or the environment puts on every session; a request
+// for more (--swarm N asks for a manager and N workers) would otherwise override it
+// without a word.
+func checkSwarmSize(cfg *config.Config, o Options) error {
+	ceil := cfg.Swarm.MaxAgents
+	if !o.Swarm || ceil <= 0 || o.MaxAgents <= ceil {
+		return nil
+	}
+	return fmt.Errorf("swarm: %d agents requested (a manager and %d workers) but swarm.max_agents caps a session at %d; raise swarm.max_agents or ask for fewer workers", o.MaxAgents, o.MaxAgents-1, ceil)
+}
+
+// checkRoleModels refuses a role model override for a role the session does not have:
+// it would never apply, and the person would believe a worker ran on the model they
+// named. (models.roles in the configuration is not checked this way: a file may serve
+// projects whose roles differ.)
+func (s *Session) checkRoleModels(overrides map[string]string) error {
+	known := map[string]bool{}
+	for name := range s.ext.roles {
+		known[name] = true
+	}
+	if s.mailmanOn() {
+		known[swarm.MailmanRoleName] = true
+	}
+	var bad []string
+	for role := range overrides {
+		if !known[role] {
+			bad = append(bad, strconv.Quote(role))
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	sort.Strings(bad)
+	names := make([]string, 0, len(known))
+	for name := range known {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return fmt.Errorf("--role-model: no role named %s in this session (its roles: %s)", strings.Join(bad, ", "), strings.Join(names, ", "))
 }
 
 func orDefault(v, d int) int {
@@ -921,6 +980,24 @@ func (s *Session) Send(text string) {
 	}
 }
 
+// End reasons the commands give a session (SetEndReason); the default is "other".
+const (
+	EndCompleted   = "completed"   // a run finished
+	EndExit        = "exit"        // the person left a chat
+	EndInterrupted = "interrupted" // Ctrl-C or SIGTERM ended it
+	EndBudget      = "budget"      // the budget was spent
+	EndError       = "error"       // the run failed
+)
+
+// SetEndReason says why the session is ending, for the SessionEnd hooks (their
+// matcher and their "reason" field) and the session.end event. Call it before Close;
+// the last call wins, and without one the reason is "other".
+func (s *Session) SetEndReason(reason string) {
+	s.mu.Lock()
+	s.endReason = reason
+	s.mu.Unlock()
+}
+
 // Close stops agents, background jobs and the log. It is safe to call twice.
 func (s *Session) Close() error {
 	s.mu.Lock()
@@ -930,6 +1007,10 @@ func (s *Session) Close() error {
 	}
 	s.closed = true
 	started := s.started
+	reason := s.endReason
+	if reason == "" {
+		reason = "other"
+	}
 	s.mu.Unlock()
 	if s.Swarm != nil {
 		if s.iso != nil {
@@ -958,11 +1039,11 @@ func (s *Session) Close() error {
 	s.closeMCP()
 	if started && s.hookAdapter != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionEnd, Agent: s.mainAgent(), Extra: map[string]any{"reason": "other"}})
+		s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionEnd, Agent: s.mainAgent(), Extra: map[string]any{"reason": reason}})
 		cancel()
 	}
 	if started {
-		s.Log.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": s.cost()})
+		s.Log.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": s.cost(), "reason": reason})
 	}
 	err := s.Log.Close()
 	if s.unlock != nil {

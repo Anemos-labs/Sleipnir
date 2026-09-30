@@ -24,8 +24,6 @@ var sensitivePaths = [][]string{
 	{"mcp"},                        // starts servers
 	{"tools", "web_allow_private"}, // reaches internal networks
 	{"tools", "web_allow_hosts"},
-	{"training"},     // exports conversations
-	{"ui", "editor"}, // runs a command
 }
 
 // userOnlyPaths are settings that only the user's own file may make. A project

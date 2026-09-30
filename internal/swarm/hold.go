@@ -146,7 +146,25 @@ type holdHooks struct {
 	m     *member
 }
 
-var _ agent.Hooks = (*holdHooks)(nil)
+var (
+	_ agent.Hooks           = (*holdHooks)(nil)
+	_ agent.CompactionHooks = (*holdHooks)(nil)
+)
+
+// BeforeCompact and AfterCompact pass automatic compactions on to the user's hooks,
+// when they listen: the agent finds the compaction hooks through the Hooks it was
+// given, and this wrapper is what it was given.
+func (h *holdHooks) BeforeCompact(ctx context.Context, agentID, role, reason string) {
+	if ch, ok := h.inner.(agent.CompactionHooks); ok {
+		ch.BeforeCompact(ctx, agentID, role, reason)
+	}
+}
+
+func (h *holdHooks) AfterCompact(ctx context.Context, agentID, role, reason string) {
+	if ch, ok := h.inner.(agent.CompactionHooks); ok {
+		ch.AfterCompact(ctx, agentID, role, reason)
+	}
+}
 
 func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.ToolHookOutcome {
 	if h.inner == nil {

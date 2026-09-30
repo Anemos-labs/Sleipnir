@@ -5,7 +5,7 @@ commands, agent (role) definitions, hooks, and the session machinery (resume, co
 command line. This page describes each as the binary implements it today. Settings and keys are in
 `docs/CONFIGURATION.md`; commands and flags are in `docs/CLI.md`.
 
-MCP servers: see the MCP section (coming with the MCP integration).
+MCP servers (external tool servers) have a page of their own: `docs/MCP.md`.
 
 ## 0. The rules every extension follows
 
@@ -391,21 +391,28 @@ hooks for the session with a notice; the session still starts. Event names may b
 
 | Event | Fires | Matcher is tried against | Extra fields on stdin |
 |---|---|---|---|
-| `SessionStart` | before the first goal of a session, also when resuming (`source` is always `startup`) | `source` | `source` |
+| `SessionStart` | before the first goal of a session; `source` is `startup`, or `resume` when the session continues an earlier one | `source` | `source` |
 | `UserPromptSubmit` | for every goal: the `run` prompt, each `chat` line, an expanded slash command | (none: all hooks run) | `prompt` |
 | `PreToolUse` | before each tool call, before the permission check | tool name | `tool_name`, `tool_input` |
 | `PermissionRequest` | when the permission engine would ask a human | tool name | `summary`, `command`, `paths` |
+| `Notification` | beside a question to a person (a permission prompt), so a hook can pull them back to the terminal; it cannot answer it | `notification_type` (`permission_prompt`) | `notification_type`, `message` |
 | `PostToolUse` | after a tool call that succeeded | tool name | `tool_response` |
 | `PostToolUseFailure` | after a tool call that returned an error | tool name | `tool_response` |
-| `Stop` | when an agent is about to end its turn with a final answer | (none) | `stop_hook_active` |
-| `PreCompact` | before a **manual** `/compact` | `trigger` (`manual`) | `trigger` |
-| `PostCompact` | after a manual compaction | `trigger` | `trigger` |
-| `SessionEnd` | when a session that ran at least one goal closes; `reason` is `other` | `reason` | `reason` |
+| `Stop` | when the agent the person talks to (a single agent, or a swarm's manager) is about to end its turn with a final answer | (none) | `stop_hook_active`, `last_assistant_message` |
+| `SubagentStart` | when a swarm spawns a worker, before its first run; on the worker's own goroutine, so the manager's `spawn` does not wait for it. Reuse of an idle worker for a new task does not fire it again | role (`agent_type`) | `task` (the task id) |
+| `SubagentStop` | when a swarm worker is about to end a run with a final answer; may block it like `Stop` | role (`agent_type`) | `stop_hook_active`, `last_assistant_message` |
+| `PreCompact` | before a compaction is applied: a person's `/compact` (`trigger` `manual`, and the hook may refuse it) or one the agent decided on itself (`auto`, which no hook can refuse: the prompt would only grow) | `trigger` | `trigger`, and for `auto` the planner's `reason` |
+| `PostCompact` | after the compaction was applied | `trigger` | `trigger` |
+| `SessionEnd` | when a session that ran at least one goal closes | `reason` | `reason`: `completed` (a `run` that finished), `exit` (`/exit` or Ctrl-D in `chat`), `interrupted` (Ctrl-C, SIGTERM), `budget`, `error`, or `other` |
 
-`Notification`, `SubagentStart` and `SubagentStop` are accepted in a config file but **never fired** in this version.
-Automatic (planner-triggered) compactions fire no hooks. Events that exist only in Claude Code (`Setup`,
-`InstructionsLoaded`, `PermissionDenied`, `TaskCreated`, `FileChanged`, ...) are ignored with a warning, so one file can
-serve both tools. Hooks also run for a swarm's workers; `agent_id`, `agent_type` and `role` say which one.
+`SubagentStart` is the one event whose plain output is **not** context: only a JSON answer with `additionalContext`
+(`{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"read docs/style.md first"}}`) adds text,
+to the end of the worker's first task message (never to a cached layer), so a hook that merely logs cannot pollute
+a prompt. In a swarm the workers fire `SubagentStop` where the manager fires `Stop`, as in Claude Code, so one file
+serves both tools and a `Stop` hook is not run for every worker; the mailman (an agent of the harness, not a worker)
+fires neither. Events that exist only in Claude Code (`Setup`, `InstructionsLoaded`, `PermissionDenied`, `TaskCreated`,
+`FileChanged`, ...) are ignored with a warning, so one file can serve both tools. The other hooks (tool events and
+`PermissionRequest`) also run for a swarm's workers; `agent_id`, `agent_type` and `role` say which one.
 
 ### Matchers
 

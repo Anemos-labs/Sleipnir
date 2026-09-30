@@ -13,19 +13,16 @@ func TestEnvVarsDocumentTheMapping(t *testing.T) {
 		got[v.Name] = v
 	}
 	want := map[string]EnvVar{
-		"SLEIPNIR_MODEL":                   {Path: "models.default", Type: "string"},
-		"SLEIPNIR_COMPACTOR_MODEL":         {Path: "models.compactor", Type: "string"},
-		"SLEIPNIR_MODEL_<ROLE>":            {Path: "models.roles.<role>", Type: "string"},
-		"SLEIPNIR_PERMISSION_MODE":         {Path: "permissions.mode", Type: "string"},
-		"SLEIPNIR_CACHE_SHARED_TTL":        {Path: "cache.shared_ttl", Type: "string"},
-		"SLEIPNIR_CACHE_PREWARM":           {Path: "cache.prewarm", Type: "bool"},
-		"SLEIPNIR_SWARM_MAX_AGENTS":        {Path: "swarm.max_agents", Type: "integer"},
-		"SLEIPNIR_SWARM_BUDGET_USD":        {Path: "swarm.budget_usd", Type: "number"},
-		"SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS":   {Path: "tools.web_allow_hosts", Type: "list"},
-		"SLEIPNIR_PERMISSIONS_ALLOW":       {Path: "permissions.allow", Type: "list"},
-		"SLEIPNIR_TRAINING_REDACT_SECRETS": {Path: "training.redact_secrets", Type: "bool"},
-		"SLEIPNIR_UI_THEME":                {Path: "ui.theme", Type: "string"},
-		"SLEIPNIR_MODELS_DEFAULT":          {Path: "models.default", Type: "string"},
+		"SLEIPNIR_MODEL":                 {Path: "models.default", Type: "string"},
+		"SLEIPNIR_MODEL_<ROLE>":          {Path: "models.roles.<role>", Type: "string"},
+		"SLEIPNIR_PERMISSION_MODE":       {Path: "permissions.mode", Type: "string"},
+		"SLEIPNIR_CACHE_SHARED_TTL":      {Path: "cache.shared_ttl", Type: "string"},
+		"SLEIPNIR_SWARM_MAILMAN":         {Path: "swarm.mailman", Type: "bool"},
+		"SLEIPNIR_SWARM_MAX_AGENTS":      {Path: "swarm.max_agents", Type: "integer"},
+		"SLEIPNIR_SWARM_BUDGET_USD":      {Path: "swarm.budget_usd", Type: "number"},
+		"SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS": {Path: "tools.web_allow_hosts", Type: "list"},
+		"SLEIPNIR_PERMISSIONS_ALLOW":     {Path: "permissions.allow", Type: "list"},
+		"SLEIPNIR_MODELS_DEFAULT":        {Path: "models.default", Type: "string"},
 	}
 	for name, w := range want {
 		g, ok := got[name]
@@ -53,38 +50,33 @@ func TestEnvironmentSetsEveryKindOfValue(t *testing.T) {
 	p := newProj(t)
 	cfg, rep := p.mustLoad(withEnv(
 		"SLEIPNIR_MODEL=openrouter/vendor/model",
-		"SLEIPNIR_COMPACTOR_MODEL=anthropic/haiku",
 		"SLEIPNIR_PERMISSION_MODE=plan",
 		"SLEIPNIR_CACHE_SHARED_TTL=1h",
 		"SLEIPNIR_CACHE_HOT_MAX_TOKENS=1234",
-		"SLEIPNIR_CACHE_PREWARM=off",
-		"SLEIPNIR_CACHE_KEEPALIVE=YES",
 		"SLEIPNIR_SWARM_MAX_AGENTS=12",
 		"SLEIPNIR_SWARM_BUDGET_USD=7.25",
 		"SLEIPNIR_SWARM_ISOLATION=worktree",
+		"SLEIPNIR_SWARM_MAILMAN=YES",
 		"SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS=a.example.com, b.example.com ,,c.example.com",
 		"SLEIPNIR_TOOLS_WEB_ALLOW_PRIVATE=1",
 		"SLEIPNIR_PERMISSIONS_DENY=Bash(rm:*)",
-		"SLEIPNIR_UI_THEME=light",
-		"SLEIPNIR_TRAINING_ENABLED=true",
-		"SLEIPNIR_TRAINING_DIR=/var/train",
 		"SLEIPNIR_MODEL_PLANNER=anthropic/opus",
 		"SLEIPNIR_MODEL_CODE_REVIEWER=openrouter/x/y",
 	))
-	if cfg.Models.Default != "openrouter/vendor/model" || cfg.Models.Compactor != "anthropic/haiku" || cfg.Permissions.Mode != "plan" {
+	if cfg.Models.Default != "openrouter/vendor/model" || cfg.Permissions.Mode != "plan" {
 		t.Errorf("models/permissions: %+v %+v", cfg.Models, cfg.Permissions)
 	}
-	if cfg.Cache.SharedTTL != "1h" || cfg.Cache.HotMaxTokens != 1234 || cfg.Cache.Prewarm || !cfg.Cache.Keepalive {
+	if cfg.Cache.SharedTTL != "1h" || cfg.Cache.HotMaxTokens != 1234 {
 		t.Errorf("cache: %+v", cfg.Cache)
 	}
-	if cfg.Swarm.MaxAgents != 12 || cfg.Swarm.BudgetUSD != 7.25 || cfg.Swarm.Isolation != "worktree" {
+	if cfg.Swarm.MaxAgents != 12 || cfg.Swarm.BudgetUSD != 7.25 || cfg.Swarm.Isolation != "worktree" || !cfg.Swarm.Mailman {
 		t.Errorf("swarm: %+v", cfg.Swarm)
 	}
 	if !reflect.DeepEqual(cfg.Tools.WebAllowHosts, []string{"a.example.com", "b.example.com", "c.example.com"}) || !cfg.Tools.WebAllowPrivate {
 		t.Errorf("tools: %+v", cfg.Tools)
 	}
-	if !reflect.DeepEqual(cfg.Permissions.Deny, []string{"Bash(rm:*)"}) || cfg.UI.Theme != "light" || !cfg.Training.Enabled || cfg.Training.Dir != "/var/train" {
-		t.Errorf("misc: %+v %+v %+v", cfg.Permissions, cfg.UI, cfg.Training)
+	if !reflect.DeepEqual(cfg.Permissions.Deny, []string{"Bash(rm:*)"}) {
+		t.Errorf("permissions: %+v", cfg.Permissions)
 	}
 	if !reflect.DeepEqual(cfg.Models.Roles, map[string]string{"planner": "anthropic/opus", "code_reviewer": "openrouter/x/y"}) {
 		t.Errorf("roles: %v", cfg.Models.Roles)
@@ -98,7 +90,7 @@ func TestEnvironmentSetsEveryKindOfValue(t *testing.T) {
 			envInfo = l
 		}
 	}
-	if !envInfo.Found || len(envInfo.Keys) != 18 {
+	if !envInfo.Found || len(envInfo.Keys) != 13 {
 		t.Errorf("env layer = %+v", envInfo)
 	}
 }
@@ -106,14 +98,16 @@ func TestEnvironmentSetsEveryKindOfValue(t *testing.T) {
 func TestEnvironmentBoolSpellings(t *testing.T) {
 	p := newProj(t)
 	for _, v := range []string{"1", "true", "TRUE", "Yes", "on"} {
-		cfg, _ := p.mustLoad(withEnv("SLEIPNIR_CACHE_KEEPALIVE=" + v))
-		if !cfg.Cache.Keepalive {
+		cfg, _ := p.mustLoad(withEnv("SLEIPNIR_SWARM_MAILMAN=" + v))
+		if !cfg.Swarm.Mailman {
 			t.Errorf("%q should be true", v)
 		}
 	}
+	// A false spelling in the environment overrides a true in a file.
+	p.user(`{"swarm": {"mailman": true}}`)
 	for _, v := range []string{"0", "false", "No", "OFF"} {
-		cfg, _ := p.mustLoad(withEnv("SLEIPNIR_CACHE_PREWARM=" + v))
-		if cfg.Cache.Prewarm {
+		cfg, _ := p.mustLoad(withEnv("SLEIPNIR_SWARM_MAILMAN=" + v))
+		if cfg.Swarm.Mailman {
 			t.Errorf("%q should be false", v)
 		}
 	}

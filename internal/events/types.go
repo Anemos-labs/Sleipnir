@@ -41,8 +41,6 @@ const (
 	TypeLayerCommit   = "layer.commit"
 	TypeCachePlan     = "cache.plan"
 	TypeCacheAnomaly  = "cache.anomaly"
-	TypeCachePrewarm  = "cache.prewarm"
-	TypeCacheKeepAlv  = "cache.keepalive"
 	TypeCompactPlan   = "compact.plan"
 	TypeCompactPatch  = "compact.patch"
 	TypeCompactCommit = "compact.commit"

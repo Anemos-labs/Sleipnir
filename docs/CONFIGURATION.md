@@ -8,9 +8,9 @@ hooks) are in `docs/EXTENDING.md`; every command and flag is in `docs/CLI.md`.
 `sleipnir config --json` prints the merged result. Run it after every edit: it reports syntax errors with file, line
 and column, and validates values.
 
-Statements here were checked against the code and against the binary. Where a key is accepted but nothing reads it yet,
-the tables say so ("no effect yet"); those keys are validated and kept, so files written today keep working when the
-feature lands.
+Statements here were checked against the code and against the binary. Every key below is read by something. A key this
+version does not know (a typo, or a setting of a newer version) is reported with a "did you mean" hint and has no
+effect; provider options are checked the same way (section 7).
 
 ## 1. Where configuration comes from
 
@@ -91,8 +91,8 @@ Flags are applied by the commands themselves, after the merge, and always win ov
 | `--model M` | `models.default` (and `SLEIPNIR_MODEL`) | `chat`, `run`, `swarm`, `doctor`, `rl rollout`, `rl eval` |
 | `--mode M` | `permissions.mode` (role profiles under `permissions.roles` still apply) | `chat`, `run`, `swarm` |
 | `--budget-usd N` | `swarm.budget_usd`, and it also caps a single agent | `chat`, `run`, `swarm` |
-| `--swarm N` | the swarm size: a manager plus up to N workers (`swarm.max_agents` is not consulted by the CLI) | `chat`, `run` |
-| `--role-model role=M` | the model of one role (repeatable) | `run`, `swarm`, `rl rollout`, `rl eval` |
+| `--swarm N` | the swarm size: a manager plus up to N workers. `swarm.max_agents` is the ceiling: a request for more agents (N+1) than it allows is refused before anything starts | `chat`, `run` |
+| `--role-model role=M` | the model of one role (repeatable). A role the session does not have is an error (`no role named "backnd"`, with the roles it has); without `--swarm` there is only one agent and the flag draws a warning | `run`, `swarm`, `rl rollout`, `rl eval` |
 | `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
 | `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
 
@@ -139,12 +139,11 @@ Settings that could send your API key to another host, run commands or widen wha
 | `hooks` | runs commands |
 | `mcp` | starts servers |
 | `tools.web_allow_private`, `tools.web_allow_hosts` | reaches internal networks |
-| `training` (the whole section) | exports conversations |
-| `ui.editor` | runs a command |
 
-Everything else in a project file applies without trust: `models`, `cache`, `swarm` (including `budget_usd`), the tool
-limits, `ui.theme`, and `permissions.ask` and `permissions.deny` (a project can add to your lists, never remove from
-them). Providers are gated as a whole: an untrusted project contributes no provider entry at all, not even one without
+Everything else in a project file applies without trust: `models`, `cache`, `swarm` (including `budget_usd`,
+`isolation` and `mailman`: they reduce what an agent can reach or change nothing about it, and a project cannot choose
+where anything is written), the tool limits, and `permissions.ask` and `permissions.deny` (a project can add to your
+lists, never remove from them). Providers are gated as a whole: an untrusted project contributes no provider entry at all, not even one without
 a URL.
 
 In a session (`chat`, `run`, `swarm`) an untrusted project's sensitive settings are dropped with a notice such as
@@ -173,21 +172,19 @@ type is an error that names the variable (`env:SLEIPNIR_SWARM_MAX_AGENTS: swarm.
 | Variable | Setting |
 |---|---|
 | `SLEIPNIR_MODEL` | `models.default` |
-| `SLEIPNIR_COMPACTOR_MODEL` | `models.compactor` |
 | `SLEIPNIR_MODEL_<ROLE>` | `models.roles.<role>` (the role name is lower-cased: `SLEIPNIR_MODEL_MANAGER`) |
 | `SLEIPNIR_PERMISSION_MODE` | `permissions.mode` |
 | `SLEIPNIR_<SECTION>_<FIELD>` | any scalar or list field of a section, named by its JSON path in upper case |
 
-The last form covers: `SLEIPNIR_MODELS_DEFAULT`, `SLEIPNIR_MODELS_COMPACTOR`, `SLEIPNIR_PERMISSIONS_MODE`,
-`SLEIPNIR_PERMISSIONS_ALLOW`, `SLEIPNIR_PERMISSIONS_ASK`, `SLEIPNIR_PERMISSIONS_DENY`, `SLEIPNIR_CACHE_SHARED_TTL`,
+The last form covers: `SLEIPNIR_MODELS_DEFAULT`, `SLEIPNIR_PERMISSIONS_MODE`, `SLEIPNIR_PERMISSIONS_ALLOW`,
+`SLEIPNIR_PERMISSIONS_ASK`, `SLEIPNIR_PERMISSIONS_DENY`, `SLEIPNIR_CACHE_SHARED_TTL`,
 `SLEIPNIR_CACHE_MIN_LAYER_FOR_BREAKPOINT`, `SLEIPNIR_CACHE_COMPACT_THRESHOLD_TOKENS`,
 `SLEIPNIR_CACHE_THREAD_SOFT_LIMIT_TOKENS`, `SLEIPNIR_CACHE_HOT_MAX_TOKENS`, `SLEIPNIR_CACHE_AFFINITY_SHARDS`,
-`SLEIPNIR_CACHE_PREWARM`, `SLEIPNIR_CACHE_KEEPALIVE`, `SLEIPNIR_SWARM_MAX_AGENTS`, `SLEIPNIR_SWARM_REQUESTS_PER_MINUTE`,
-`SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS`, `SLEIPNIR_SWARM_ISOLATION`, `SLEIPNIR_SWARM_BUDGET_USD`,
-`SLEIPNIR_TOOLS_MAX_OUTPUT_CHARS`, `SLEIPNIR_TOOLS_DEFAULT_TIMEOUT_SEC`, `SLEIPNIR_TOOLS_MAX_TIMEOUT_SEC`,
-`SLEIPNIR_TOOLS_WEB_ALLOW_PRIVATE`, `SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS`, `SLEIPNIR_UI_THEME`, `SLEIPNIR_UI_EDITOR`,
-`SLEIPNIR_TRAINING_ENABLED`, `SLEIPNIR_TRAINING_REDACT_SECRETS`, `SLEIPNIR_TRAINING_DIR`. (A variable that sets a
-gated key is yours, not the repository's, so the trust gate does not apply to it.)
+`SLEIPNIR_SWARM_MAX_AGENTS`, `SLEIPNIR_SWARM_REQUESTS_PER_MINUTE`, `SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS`,
+`SLEIPNIR_SWARM_ISOLATION`, `SLEIPNIR_SWARM_MAILMAN`, `SLEIPNIR_SWARM_BUDGET_USD`, `SLEIPNIR_TOOLS_MAX_OUTPUT_CHARS`,
+`SLEIPNIR_TOOLS_DEFAULT_TIMEOUT_SEC`, `SLEIPNIR_TOOLS_MAX_TIMEOUT_SEC`, `SLEIPNIR_TOOLS_WEB_ALLOW_PRIVATE` and
+`SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS`. (A variable that sets a gated key is yours, not the repository's, so the trust gate
+does not apply to it.)
 
 ### Other variables the binary reads
 
@@ -206,7 +203,7 @@ them through in `chat`/`run`. Hooks are scrubbed the same way (`docs/EXTENDING.m
 
 ## 6. Key reference
 
-Types are JSON types. "Applied" says whether anything reads the key today.
+Types are JSON types. "Applied" says where the key has an effect: `yes` everywhere, `swarm` only in swarm sessions.
 
 ### `providers`
 
@@ -231,25 +228,23 @@ the built-in provider: its URL, dialect, key variable, options and headers stay.
 | `allow_insecure_http` | bool | `false` | yes | **User file only.** Lets the key travel over plain `http` to a host that is not this machine (a trusted LAN proxy). Warned about by `sleipnir config` |
 | `api_key_env` | string | none | yes | The **name** of the environment variable holding the key. If set and the variable is empty when a session starts: `provider "x" needs NAME to be set`. If omitted, no credential header is sent (local servers). `openai-chat` sends `Authorization: Bearer <key>`; `anthropic` sends `x-api-key: <key>` unless `options.auth_style` is `bearer` |
 | `headers` | object of strings | none | yes | Extra headers on every request. Names must be valid HTTP tokens, values may not contain CR, LF or NUL. On `anthropic`, an `anthropic-beta` header is merged with the betas the adapter needs instead of replacing them |
-| `options` | object | none | yes | Dialect-specific request options, section 7. The values are **not validated**: an unknown key or a value of the wrong type is ignored without a warning |
-| `models` | list of strings | none | no | Informational. Checked for empty entries, whitespace and duplicates, and used for nothing else |
+| `options` | object | none | yes | Dialect-specific request options, section 7. An option the dialect does not read is a warning (with a "did you mean" hint, or the dialect it belongs to), a value of the wrong kind or outside what the adapter takes is an error |
 
 **Model references.** A model is written `provider/model`, and the model part may contain slashes
 (`heimdall/deepseek/deepseek-v4.1-flash` is provider `heimdall`, model `deepseek/deepseek-v4.1-flash`). A **bare id**
 (no known provider before the first slash) goes to the default provider, which is: the only provider under
 `providers`, otherwise the first of `heimdall`, `openrouter`, `openai` whose key variable is set. With two or more
 configured providers and none of the built-in keys set there is no default and a bare id fails with `no provider
-configured`. `sleipnir init --user` writes a `local` provider, which makes it the only configured provider: from then
-on a bare marketplace id such as `deepseek/deepseek-v4.1-flash` is sent to `local`. Write `heimdall/deepseek/...` or
-add the provider you use next to it.
+configured`. A provider of your own (`sleipnir init --user --local-url URL` writes one named `local`) makes it the only
+configured provider: from then on a bare marketplace id such as `deepseek/deepseek-v4.1-flash` is sent to it. Write
+`heimdall/deepseek/...` or add the provider you use next to it.
 
 ### `models`
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
 | `default` | string | none | yes | `provider/model` used when neither `--model` nor `SLEIPNIR_MODEL` is given. It must contain a `/`; a bare id such as `gpt-5` is a validation error here (it is fine after `--model`) |
-| `roles` | object | none | yes | Role name to `provider/model` for swarm roles (`manager`, `worker`-style roles, your own definitions). Lowest priority: `--role-model role=provider/model` and `model:` in an agent definition (`docs/EXTENDING.md`) come first |
-| `compactor` | string | none | no | Validated, not used yet: compaction runs on the agent's own model |
+| `roles` | object | none | yes | Role name to `provider/model` for swarm roles (`manager`, `worker`-style roles, your own definitions, `mailman`). Lowest priority: `--role-model role=provider/model` and `model:` in an agent definition (`docs/EXTENDING.md`) come first. An entry for a role a session does not have is not an error: one file may serve projects with different roles. Compaction always runs on the model of the agent whose thread is being compacted, so it has no key of its own |
 
 **Catalogue and price overrides: there are none.** No key sets a price or a context window. Costs and windows come from,
 in order: a built-in table of well-known models; the endpoint's own catalogue, fetched from `<base_url>/models` when the
@@ -278,23 +273,24 @@ Tuning of the prompt-cache engine. A `0` means "use the engine's default".
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `shared_ttl` | string | `5m` | no | `5m` or `1h`, the lifetime requested for shared-layer cache entries. Validated, no effect yet |
-| `min_layer_for_breakpoint` | integer | `1500` | single agent | Do not place a cache breakpoint after a layer smaller than this many tokens. A `0` behaves like the default: a positive value is needed to change it. Swarm agents do not read it |
+| `shared_ttl` | string | `5m` | yes | `5m` or `1h`: the lifetime requested for the shared and role layers on a provider with explicit breakpoints (the Messages dialect). `1h` costs more per cache write and pays for a swarm or a session that is used over more than five minutes. Chat-completions providers cache by prefix and have no such setting |
+| `min_layer_for_breakpoint` | integer | `1500` | yes | Do not place a cache breakpoint after a layer smaller than this many tokens. A `0` behaves like the default: a positive value is needed to change it. Single agents and every agent of a swarm |
 | `compact_threshold_tokens` | integer | `0` (60,000) | yes | Thread size at which compaction is forced whatever it costs |
 | `thread_soft_limit_tokens` | integer | `0` (20,000) | yes | Thread size at which the planner starts considering a compaction |
 | `hot_max_tokens` | integer | `0` (900) | swarm | Cap on the always-fresh "hot" view a worker sees (the manager's is 2,200 and is not configurable) |
 | `affinity_shards` | integer | `0` (one key) | swarm | Spread a large swarm over this many provider routing keys |
-| `prewarm` | boolean | `true` | no | No effect yet: the swarm's warm gate is always on |
-| `keepalive` | boolean | `false` | no | No effect yet |
+
+The swarm's warm gate (the first request of a swarm writes the shared prefix before the others are released) is always on.
 
 ### `swarm`
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `max_agents` | integer | `0` | no (CLI) | Bounds registered agents. `chat`/`run --swarm N` always set it to N+1 (the manager and N workers), so this key does not change anything from the CLI |
+| `max_agents` | integer | `0` (no ceiling) | yes | The ceiling on the size of a session's swarm, the manager included. `--swarm N` asks for a manager and N workers and is refused when N+1 is more than this (`swarm: 9 agents requested (a manager and 8 workers) but swarm.max_agents caps a session at 4`); a smaller request is honoured. It is how a user file keeps a stray `--swarm 50` from spending a budget. `0` sets no ceiling |
 | `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
 | `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
-| `isolation` | string | `shared` | no | `shared` (all agents edit one working tree) or `worktree`. Only `shared` exists: worktree isolation is not built yet, and `worktree` is accepted but has no effect |
+| `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in your cache directory, whatever the configuration says |
+| `mailman` | boolean | `false` | yes | Route worker mail through a mailman agent that digests bursts (`docs/SWARM-PROTOCOL.md`); `--mailman` overrides it. It runs on the session's model unless `--role-model mailman=<model>` names one |
 | `budget_usd` | number | `0` (none) | swarm | Total spend cap for a swarm run, retired agents included; when spent, workers stop and no request is admitted. `--budget-usd` overrides it and is the way to cap a single agent |
 
 At most four agents that may write files run at once (fixed; not configurable).
@@ -314,39 +310,33 @@ public hosts are reachable, subject to permissions. Whether a fetch is allowed a
 in `default` mode `web_fetch` asks; `WebFetch(domain:example.com)` in `allow` lets it through (host and subdomains), and
 an allow rule also lifts the ban that `plan` mode puts on network access.
 
-### `ui`
+### Recording and training data
 
-| Key | Type | Default | Applied | Meaning |
-|---|---|---|---|---|
-| `theme` | string | none | no | No effect yet |
-| `editor` | string | none | no | Meant for editing long input; no effect yet (`chat` reads lines, and a trailing `\` continues a line) |
-
-### `training`
-
-| Key | Type | Default | Applied | Meaning |
-|---|---|---|---|---|
-| `enabled` | boolean | `false` | no | No effect yet |
-| `redact_secrets` | boolean | `true` | no | No effect yet |
-| `dir` | string | none | no | No effect yet |
-
-This section does not switch recording on or off. Every session already writes its event log and blobs to
-`<state>/sessions/<id>/` (`events.jsonl`, `blobs/`, `checkpoints/`; `<state>` is `$SLEIPNIR_HOME`, else `~/.sleipnir`,
-and `run --session-dir DIR` puts one run elsewhere), and the RL pipeline (`sleipnir rl ...`, `docs/TRAINING-DATA.md`)
-reads those. Redaction is a flag of `sleipnir rl export` (`--no-redact`, `--redact-salt`), and token capture is the
-`--capture` flag plus the provider option `capture_tokens` (section 7).
+There is no section for them. Every session writes its event log and blobs to `<state>/sessions/<id>/` (`events.jsonl`,
+`blobs/`, `checkpoints/`; `<state>` is `$SLEIPNIR_HOME`, else `~/.sleipnir`, and `run --session-dir DIR` puts one run
+elsewhere), and the RL pipeline (`sleipnir rl ...`, `docs/TRAINING-DATA.md`) reads those. Redaction is a flag of
+`sleipnir rl export` (`--no-redact`, `--redact-salt`), and token capture is the `--capture` flag plus the provider
+option `capture_tokens` (section 7). Keys that earlier drafts listed here (`ui`, `training`, `models.compactor`,
+`cache.prewarm`, `cache.keepalive`) never did anything and are gone: a file that still has them gets an "unknown key"
+warning.
 
 ### `hooks` and `mcp`
 
 `hooks` is an object of events, each a list of matcher groups; the format, events and examples are in
-`docs/EXTENDING.md`. Hooks from a project file run only with `--trust-project`. `mcp` is accepted and kept as written,
-and it is on the gated list of section 4.
+`docs/EXTENDING.md`. Hooks from a project file run only with `--trust-project`. `mcp` is an object of named tool
+servers (`docs/MCP.md`): entries in your own file are trusted, a project's arrive only with `--trust-project` and each
+one still needs your approval (`sleipnir mcp approve`); the key is on the gated list of section 4.
 
 ## 7. Provider options
 
 `providers.<name>.options` passes dialect-specific switches to the adapter. Booleans must be JSON `true`/`false`,
-strings must be strings, and numbers must be numbers; anything else is ignored silently, as are unknown keys. If a
-setting seems to have no effect, look at the request itself (`sleipnir inspect <session dir>`) before suspecting the
-endpoint.
+strings must be strings, and numbers must be numbers; a value of the wrong kind, a negative number of seconds, or a
+string the adapter does not take (`system_role`, `max_tokens_field`, `auth_style` and `thinking_display` have a fixed
+set) is an error with file, line and column. A name the provider's dialect does not read is a warning that says what it
+looks like (`unknown option "session_headr" for the openai-chat dialect; it is ignored (did you mean
+"session_header"?)`) or which dialect it belongs to. A test keeps this list and the code that reads the options
+together. If a setting seems to have no effect, look at the request itself (`sleipnir inspect <session dir>`) before
+suspecting the endpoint.
 
 ### Options of `openai-chat`
 
@@ -669,7 +659,7 @@ mock`, which imitates vLLM's token ids); your server's answer is the one that co
 
 | Message | Cause |
 |---|---|
-| `no model configured: pass --model or set models.default in .sleipnir/config.json` | no model given and `models.default` unset |
+| `no model configured: pass --model provider/model, set SLEIPNIR_MODEL, or write one into your config with ...` | no model given and `models.default` unset |
 | `no provider configured: set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY) or define one under "providers" ...` | a bare model id and no default provider (section 6), or no built-in key set |
 | `provider "x" needs NAME to be set` | the provider's `api_key_env` variable is empty in this shell |
 | `provider "x" has no base_url` | a configured provider without `base_url` |
@@ -680,5 +670,6 @@ mock`, which imitates vLLM's token ids); your server's answer is the one that co
 | `provider: auth (http 401): Missing or invalid API key` | the key variable is empty, wrong or expired. `sleipnir doctor --model provider/model` shows the answer without starting a session |
 | `429` from the endpoint | lower `swarm.requests_per_minute` |
 
-`sleipnir config` prints the `unknown key` warning twice (once with file and line, once without); the first is the one
-to read.
+`sleipnir config` lists every warning once, with file, line and column, under "warnings:", and ends with
+`configuration is valid, with N warning(s) listed above` (or plain `configuration is valid`). An error stops it and is
+printed instead.

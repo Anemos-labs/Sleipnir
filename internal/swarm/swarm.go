@@ -151,9 +151,12 @@ type Deps struct {
 	Root    string
 	Params  core.Params
 	Planner kv.Planner
-	Est     core.Estimator
-	Limits  tools.Limits
-	Now     func() time.Time
+	// KVPolicy tunes breakpoint placement for every agent (kv.Policy); zero is
+	// kv.DefaultPolicy, as for a solo agent.
+	KVPolicy kv.Policy
+	Est      core.Estimator
+	Limits   tools.Limits
+	Now      func() time.Time
 
 	// NewSink builds a UI sink for an agent (optional).
 	NewSink func(agentID string) agent.Sink
@@ -425,6 +428,9 @@ func (s *Swarm) roster() []string {
 
 // Roles returns the role table.
 func (s *Swarm) Roles() Roles { return s.roles }
+
+// MaxAgents is the most agents the swarm registers, the manager included.
+func (s *Swarm) MaxAgents() int { return s.cfg.MaxAgents }
 
 // ManagerID returns the manager's agent id.
 func (s *Swarm) ManagerID() string {

@@ -203,7 +203,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		Handles: d.Handles, Perm: requester, Limiter: s.Gov, Gate: s.Gate,
 		Sink:    &memberSink{Sink: sink, s: s, m: m, ev: ev},
 		Workdir: workdir, Root: root, Limits: d.Limits,
-		Planner: d.Planner, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
+		Planner: d.Planner, KVPolicy: d.KVPolicy, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		OnPromote: s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
 		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: hooks, NoMailReopen: !isMgr, // a worker's mail is read by its next run (afterIdle), which owns what the mail changes
 	}
@@ -491,7 +491,11 @@ func (s *Swarm) runMember(m *member, rs *runState, ctx context.Context, start ru
 			}
 		}()
 		// A task from the harness, not the person's word: see runStart.
-		res, err = m.a.RunTask(ctx, start.brief, start.card)
+		brief := start.brief
+		if start.kickoff {
+			brief = s.startedBrief(ctx, m, brief)
+		}
+		res, err = m.a.RunTask(ctx, brief, start.card)
 	}()
 	func() {
 		defer func() {
@@ -502,6 +506,30 @@ func (s *Swarm) runMember(m *member, rs *runState, ctx context.Context, start ru
 		}()
 		s.finishRun(m, rs, ctx, res, err)
 	}()
+}
+
+// startedBrief gives the user's SubagentStart hooks (agent.WorkerHooks) their say
+// about a new worker: what they print is added to the end of its first task message,
+// under the same label as a UserPromptSubmit hook's, and never to a cached layer. It
+// runs on the worker's own goroutine, so the manager's spawn call does not wait for
+// the hook, and a failure of the hook machinery never costs the worker its task.
+func (s *Swarm) startedBrief(ctx context.Context, m *member, brief string) string {
+	wh, ok := s.deps.Hooks.(agent.WorkerHooks)
+	if !ok || m.service {
+		return brief
+	}
+	m.mu.Lock()
+	task := m.task
+	m.mu.Unlock()
+	extra := ""
+	func() {
+		defer func() { _ = recover() }()
+		extra = wh.WorkerStarted(ctx, m.id, m.role, task)
+	}()
+	if strings.TrimSpace(extra) == "" {
+		return brief
+	}
+	return brief + "\n\n[context from your hooks]\n" + extra
 }
 
 // forceIdle is the last resort when finishRun itself failed: the member must not

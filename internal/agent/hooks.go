@@ -32,6 +32,33 @@ type Hooks interface {
 	BeforeStop(ctx context.Context, agentID, role, final string, continuing bool) StopOutcome
 }
 
+// CompactionHooks is the optional part of a Hooks that hears about automatic
+// compactions (the planner's, the mask pass and the over-window safety net; a
+// person's /compact is the session's business). The agent asks for it with a type
+// assertion, so a Hooks that does not care implements nothing extra.
+//
+// Both run in the agent's own goroutine at a turn boundary, so a slow hook delays
+// that agent's next request; a hook cannot veto an automatic compaction, because
+// one that is refused this time has to be attempted again and the prompt grows
+// meanwhile. The compaction happens whatever the hooks say.
+type CompactionHooks interface {
+	// BeforeCompact runs just before the compaction is applied to the agent's
+	// thread (the compactor's patch is ready): the moment to save what is about to
+	// be folded away. reason is the planner's, for the log.
+	BeforeCompact(ctx context.Context, agentID, role, reason string)
+	// AfterCompact runs after it was applied.
+	AfterCompact(ctx context.Context, agentID, role, reason string)
+}
+
+// WorkerHooks is the optional part of a Hooks that the swarm asks when it starts a
+// new worker (a SubagentStart hook). The swarm, not the agent, looks for it.
+type WorkerHooks interface {
+	// WorkerStarted runs on the new worker's own goroutine before its first run, so
+	// the manager's spawn call does not wait for it. The text it returns is added to
+	// the end of the worker's first task message: the message, never a cached layer.
+	WorkerStarted(ctx context.Context, agentID, role, task string) string
+}
+
 // ToolHookCall identifies a tool call to a hook.
 type ToolHookCall struct {
 	Agent, Role string

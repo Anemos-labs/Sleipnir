@@ -7,6 +7,9 @@ package swarm
 type runStart struct {
 	brief string
 	card  string
+	// kickoff marks the first run of a worker that was just spawned (not a reuse, not a
+	// wake): the run for which SubagentStart hooks may add to the brief.
+	kickoff bool
 }
 
 // reassignBrief is what a reused worker reads before its new card.

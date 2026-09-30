@@ -54,6 +54,7 @@ type readyPatch struct {
 	itc      float64 // compactor call cost, input-token equivalents
 	fallback bool    // mechanical patch used instead of the model's
 	snapLive int     // live thread tokens, as sent, when the snapshot was taken
+	manual   bool    // a person's /compact: the session announces it to the hooks, not the agent
 }
 
 // compactionCooldown avoids hammering a failing compactor.
@@ -105,7 +106,7 @@ func (a *Agent) boundary(ctx context.Context) {
 			"age_ms": a.cfg.Now().Sub(rp.at).Milliseconds(), "held_requests": held,
 		})
 		if d.Yes {
-			if err := a.commit(rp, d.Reason); err != nil {
+			if err := a.commit(ctx, rp, d.Reason); err != nil {
 				a.emit(events.TypeCompactReject, map[string]any{"reason": err.Error()})
 			}
 			return
@@ -113,7 +114,7 @@ func (a *Agent) boundary(ctx context.Context) {
 		// Held. The safety net still runs: a prompt about to blow the window cannot
 		// wait for an economic moment.
 		if a.overWindow(st) {
-			a.overWindowCompact(st)
+			a.overWindowCompact(ctx, st)
 		}
 		return
 	}
@@ -121,7 +122,7 @@ func (a *Agent) boundary(ctx context.Context) {
 		// Safety net: a prompt about to blow the window cannot wait for a
 		// background job that may never land.
 		if a.overWindow(st) && !running {
-			a.overWindowCompact(st)
+			a.overWindowCompact(ctx, st)
 		}
 		return
 	}
@@ -143,7 +144,7 @@ func (a *Agent) boundary(ctx context.Context) {
 			a.mu.Lock()
 			a.lastMaskReq = a.reqN // throttle on attempts too, so a failing mask cannot storm
 			a.mu.Unlock()
-			if err := a.maskCommit(d.Reason); err != nil {
+			if err := a.maskCommit(ctx, d.Reason, false); err != nil {
 				a.emit(events.TypeCompactReject, map[string]any{"stage": "mask", "reason": err.Error()})
 			}
 		} else {
@@ -151,8 +152,18 @@ func (a *Agent) boundary(ctx context.Context) {
 		}
 	}
 	if a.overWindow(st) {
-		a.overWindowCompact(st)
+		a.overWindowCompact(ctx, st)
 	}
+}
+
+// callHook runs a hook callback that has no outcome the agent depends on.
+func (a *Agent) callHook(what string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			a.emit("agent.panic", map[string]any{"id": a.cfg.ID, "where": what + " hook", "panic": fmt.Sprint(r), "stack": string(debug.Stack())})
+		}
+	}()
+	fn()
 }
 
 // foldableUnits counts thread units eligible for folding.
@@ -416,7 +427,26 @@ func (a *Agent) account(resp *provider.Response, label string) {
 // they were produced against the prefix this commit replaces: on a route that
 // enforces preserved thinking their thinking blocks are void, so they are
 // stripped in the same atomic step (the retained region already was, by Apply).
-func (a *Agent) commit(rp *readyPatch, why string) error {
+func (a *Agent) commit(ctx context.Context, rp *readyPatch, why string) error {
+	ch, _ := a.cfg.Hooks.(CompactionHooks)
+	// A patch computed for a thread that has been rebased since is rejected below;
+	// the hooks are not told of a compaction that is not going to happen.
+	if ch == nil || rp.manual || a.thread.Snapshot().Epoch != rp.epoch {
+		return a.applyCommit(rp, why)
+	}
+	// An automatic compaction: the agent's hooks hear of it just before it is applied
+	// (the moment to save what is about to be folded away) and just after, only if it
+	// was. A person's /compact is announced by the session instead.
+	a.callHook("before compact", func() { ch.BeforeCompact(ctx, a.cfg.ID, a.cfg.Role, why) })
+	if err := a.applyCommit(rp, why); err != nil {
+		return err
+	}
+	a.callHook("after compact", func() { ch.AfterCompact(ctx, a.cfg.ID, a.cfg.Role, why) })
+	return nil
+}
+
+// applyCommit is the atomic part of commit.
+func (a *Agent) applyCommit(rp *readyPatch, why string) error {
 	res := rp.res
 	a.mu.Lock()
 	if err := a.thread.CommitWith(rp.epoch, res.Replacement, rp.snapLen, a.stripTurn); err != nil {
@@ -489,8 +519,8 @@ func (a *Agent) commit(rp *readyPatch, why string) error {
 // and when the pinned prefix alone (tools, constitution, pins, notes, spine) already
 // takes that much room, no compaction of the thread can help and the person is told
 // once what to shrink.
-func (a *Agent) overWindowCompact(st kv.State) {
-	err := a.emergencyCompact(context.Background(), "prompt over 85% of the context window")
+func (a *Agent) overWindowCompact(ctx context.Context, st kv.State) {
+	err := a.emergencyCompact(ctx, "prompt over 85% of the context window")
 	if err == nil {
 		return
 	}
@@ -536,7 +566,7 @@ func (a *Agent) emergencyCompact(ctx context.Context, reason string) error {
 		return err
 	}
 	rp := &readyPatch{res: res, patch: patch, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true, snapLive: live}
-	return a.commit(rp, "emergency: "+reason)
+	return a.commit(ctx, rp, "emergency: "+reason)
 }
 
 func firstID(s kv.Stack) core.TurnID {
@@ -562,7 +592,7 @@ func modeName(m kv.Mode) string {
 
 // maskCommit performs the deterministic compaction immediately, at a boundary.
 // It only commits when something was actually masked (kv.MaskOnly).
-func (a *Agent) maskCommit(reason string) error {
+func (a *Agent) maskCommit(ctx context.Context, reason string, manual bool) error {
 	a.mu.Lock()
 	snap := a.stack
 	snap.Thread = a.thread.Snapshot()
@@ -573,8 +603,8 @@ func (a *Agent) maskCommit(reason string) error {
 		return err
 	}
 	live := res.SnapTokens
-	rp := &readyPatch{res: res, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true, snapLive: live}
-	return a.commit(rp, "mask: "+reason)
+	rp := &readyPatch{res: res, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true, snapLive: live, manual: manual}
+	return a.commit(ctx, rp, "mask: "+reason)
 }
 
 // CompactReport says what a manual compaction did.
@@ -621,7 +651,8 @@ func (a *Agent) CompactNow(ctx context.Context, focus string) (CompactReport, er
 		if err != nil {
 			return rep, err
 		}
-		if err := a.commit(rp, "manual /compact"); err != nil {
+		rp.manual = true
+		if err := a.commit(ctx, rp, "manual /compact"); err != nil {
 			return rep, err
 		}
 		rep.Mode = "model"
@@ -630,7 +661,7 @@ func (a *Agent) CompactNow(ctx context.Context, focus string) (CompactReport, er
 		}
 		rep.FoldedTurns = rp.res.RemovedTurns
 	case a.foldableUnits() >= 1:
-		if err := a.maskCommit("manual /compact"); err != nil {
+		if err := a.maskCommit(ctx, "manual /compact", true); err != nil {
 			if errors.Is(err, kv.ErrNothingToMask) {
 				return rep, nil
 			}

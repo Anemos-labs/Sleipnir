@@ -22,10 +22,20 @@ import (
 
 func init() {
 	extraCommands["run"] = cmdRun
-	extraCommands["swarm"] = func(ctx context.Context, args []string) error {
-		return cmdRun(ctx, append([]string{"--swarm"}, args...))
-	}
+	extraCommands["swarm"] = cmdSwarm
 	extraCommands["recon"] = cmdRecon
+}
+
+// cmdSwarm is `run --swarm N`: the first argument is the number of workers.
+func cmdSwarm(ctx context.Context, args []string) error {
+	if len(args) == 0 || args[0] == "-h" || args[0] == "-help" || args[0] == "--help" || args[0] == "help" {
+		return runCommand(ctx, "swarm", []string{"-h"}) // the flags of run, under swarm's own heading
+	}
+	n, err := strconv.Atoi(args[0])
+	if err != nil || n < 1 {
+		return fmt.Errorf("swarm: the first argument is the number of workers (1 or more), got %q; for example: sleipnir swarm 6 \"add a login page\" --verify \"go test ./...\"", args[0])
+	}
+	return runCommand(ctx, "swarm", append([]string{"--swarm", args[0]}, args[1:]...))
 }
 
 type kvFlags map[string]string
@@ -42,12 +52,16 @@ func (k kvFlags) Set(v string) error {
 
 // cmdRun runs one goal through the harness: a single agent, or with --swarm a
 // manager and workers.
-func cmdRun(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("run", flag.ExitOnError)
+func cmdRun(ctx context.Context, args []string) error { return runCommand(ctx, "run", args) }
+
+// runCommand is cmdRun under the name the person typed (run, or swarm for the
+// shorthand): the name shows in the usage.
+func runCommand(ctx context.Context, name string, args []string) error {
+	fs := flag.NewFlagSet(name, flag.ExitOnError)
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider (default: config models.default)")
 	cwd := fs.String("cwd", "", "working directory (default: current)")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass (default: config, then default)")
-	swarmN := fs.Int("swarm", 0, "run a manager with up to N workers instead of a single agent")
+	swarmN := fs.Int("swarm", 0, "run a manager with up to N workers instead of a single agent (config swarm.max_agents is the ceiling)")
 	maxSteps := fs.Int("max-steps", 0, "step limit for a single agent (default 200)")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge)")
@@ -57,8 +71,8 @@ func cmdRun(ctx context.Context, args []string) error {
 	quiet := fs.Bool("quiet", false, "print only the final answer")
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	noRecon := fs.Bool("no-recon", false, "do not survey the project into the shared prompt layer")
-	trust := fs.Bool("trust-project", false, "load project instruction files and project-level config (unsafe for untrusted repositories)")
-	dir := fs.String("session-dir", "", "where to write events.jsonl and blobs/ (default ~/.sleipnir/sessions/<id>)")
+	trust := fs.Bool("trust-project", false, trustProjectHelp)
+	dir := fs.String("session-dir", "", "directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir")
 	ctxWin := fs.Int("context-window", 0, "override the model's context window (small values force frequent compaction)")
 	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)")
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
@@ -67,7 +81,11 @@ func cmdRun(ctx context.Context, args []string) error {
 	roleModels := kvFlags{}
 	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x)")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "usage: sleipnir run [flags] <prompt | ->\n\nRuns one goal through the harness. The prompt may be '-' to read stdin.\n\nflags:\n")
+		if name == "swarm" {
+			fmt.Fprint(os.Stderr, "usage: sleipnir swarm <workers> [flags] <prompt | ->\n\nRuns one goal with a team: a manager and up to <workers> workers (the same as run --swarm <workers>).\nThe prompt may be '-' to read stdin.\n\nflags:\n")
+		} else {
+			fmt.Fprint(os.Stderr, "usage: sleipnir run [flags] <prompt | ->\n\nRuns one goal through the harness. The prompt may be '-' to read stdin.\n\nflags:\n")
+		}
 		fs.PrintDefaults()
 	}
 	words, err := parseInterspersed(fs, args)
@@ -88,7 +106,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	if prompt == "" {
 		fs.Usage()
-		return errors.New("run: a prompt is required")
+		return errors.New(name + ": a prompt is required")
 	}
 
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
@@ -130,6 +148,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	start := time.Now()
 	res, err := s.Run(ctx, prompt)
+	s.SetEndReason(endReasonOf(ctx, err))
 	// An isolated run ends here: the verified result goes into the checkout and the
 	// trees are removed (a no-op, and nil, for a shared-tree run). Ctrl-C does not
 	// skip it: work that passed verification is not thrown away.
@@ -158,6 +177,20 @@ func cmdRun(ctx context.Context, args []string) error {
 		return fmt.Errorf("stopped: budget exhausted")
 	}
 	return err
+}
+
+// endReasonOf is the SessionEnd reason of a run that returned err: how it ended, for
+// hooks that care whether a run was finished, interrupted, out of budget or broken.
+func endReasonOf(ctx context.Context, err error) string {
+	switch {
+	case err == nil:
+		return session.EndCompleted
+	case errors.Is(err, agent.ErrBudget):
+		return session.EndBudget
+	case ctx.Err() != nil || errors.Is(err, context.Canceled):
+		return session.EndInterrupted
+	}
+	return session.EndError
 }
 
 func errString(err error) string {

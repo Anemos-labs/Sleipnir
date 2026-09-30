@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -33,8 +34,12 @@ func cmdInit(_ context.Context, args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	user := fs.Bool("user", false, "write ~/.sleipnir/config.json instead of the project's")
 	model := fs.String("model", "", "default model, e.g. heimdall/deepseek/deepseek-v4.1-flash")
+	localURL := fs.String("local-url", "", "with --user: also add a provider named local at this URL, a self-hosted server such as vLLM or SGLang (http://127.0.0.1:8000/v1); it records token ids for RL")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *localURL != "" && !*user {
+		return errors.New("init: --local-url goes with --user (providers are set in your own config, not in a project's)")
 	}
 	wd, _ := os.Getwd()
 	root, _ := config.FindRoot(wd)
@@ -63,15 +68,17 @@ func cmdInit(_ context.Context, args []string) error {
 	// user's own config; the project gets only what is safe to share.
 	var patch map[string]any
 	if *user {
-		patch = map[string]any{
-			"providers": map[string]any{
-				// A self-hosted policy server (vLLM/SGLang): token capture makes rollouts RL-ready.
+		patch = map[string]any{"permissions": map[string]any{"mode": "default"}}
+		if *localURL != "" {
+			// A self-hosted policy server (vLLM/SGLang): token capture makes rollouts RL-ready.
+			// Only on request: a provider named local would become the only configured one,
+			// and a bare model id would then be sent to it instead of to a marketplace.
+			patch["providers"] = map[string]any{
 				"local": map[string]any{
-					"base_url": "http://127.0.0.1:8000/v1",
+					"base_url": *localURL,
 					"options":  map[string]any{"capture_tokens": true},
 				},
-			},
-			"permissions": map[string]any{"mode": "default"},
+			}
 		}
 		if def != "" {
 			patch["models"] = map[string]any{"default": def}
@@ -94,7 +101,7 @@ func cmdInit(_ context.Context, args []string) error {
 	if !*user {
 		agents := filepath.Join(root, "AGENTS.md")
 		if _, err := os.Stat(agents); os.IsNotExist(err) {
-			body := "# Project instructions\n\nCommands to build, test and lint, conventions and things to avoid go here.\nSleipnir pins this file in the shared prompt layer, so keep it short and dense.\n\n- Build: \n- Test: \n- Lint: \n"
+			body := "# Project instructions\n\nSleipnir reads this file into the prompt that every agent shares, when it is run with --trust-project.\nKeep it short: the commands and conventions an agent cannot work out from the code.\n\n- Build: \n- Test: \n- Lint: \n- Conventions and things to avoid: \n"
 			if err := os.WriteFile(agents, []byte(body), 0o644); err == nil {
 				fmt.Fprintf(os.Stderr, "wrote %s\n", agents)
 			}
@@ -134,12 +141,16 @@ func cmdConfig(_ context.Context, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(redactedConfig(cfg))
 	}
-	if issues := cfg.Validate(); len(issues) > 0 {
-		for _, is := range issues {
-			fmt.Fprintln(os.Stderr, is.Error())
-		}
-	} else {
+	// Load has validated the merged configuration and listed its warnings above, with
+	// the file and line of each; an error would have stopped it.
+	warnings := 0
+	if rep != nil {
+		warnings = len(rep.Warnings)
+	}
+	if warnings == 0 {
 		fmt.Fprintln(os.Stderr, "configuration is valid")
+	} else {
+		fmt.Fprintf(os.Stderr, "configuration is valid, with %d warning(s) listed above\n", warnings)
 	}
 	for _, line := range swarmSettings(cfg, rep) {
 		fmt.Fprintln(os.Stderr, line)
@@ -227,7 +238,7 @@ func redactedConfig(cfg *config.Config) any {
 // cmdSessions lists recorded sessions, newest first.
 func cmdSessions(_ context.Context, args []string) error {
 	fs := flag.NewFlagSet("sessions", flag.ExitOnError)
-	dir := fs.String("dir", "", "sessions directory (default ~/.sleipnir/sessions)")
+	dir := fs.String("dir", "", "the directory that holds the sessions (default <state>/sessions, <state> being $SLEIPNIR_HOME or ~/.sleipnir)")
 	n := fs.Int("n", 20, "how many to list")
 	if err := fs.Parse(args); err != nil {
 		return err
