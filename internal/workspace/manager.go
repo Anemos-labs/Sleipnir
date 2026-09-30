@@ -108,6 +108,12 @@ type mstate struct {
 	lock        *sync.Mutex
 }
 
+// livePaths remembers which Manager instance owns each tree directory in this
+// process. A second Manager over the same Dir (a restarted session component, a
+// sweeper) must not adopt a tree that a running Manager is using, even though the
+// marker's process id is this very process.
+var livePaths sync.Map // tree path -> *Manager
+
 // repoLocks serialize the metadata-changing steps (worktree add/remove, branch
 // create/delete) per repository across every Manager in the process: git's own
 // lock files make concurrent runs fail rather than corrupt, but "fail" would turn
@@ -366,9 +372,12 @@ func (m *Manager) create(ctx context.Context, agent string, opts CreateOptions, 
 		branch = m.st.prefix + "/" + agent
 	}
 
-	t, err := m.register(ctx, agent, dest, branch, base, opts, spec)
+	t, fresh, err := m.register(ctx, agent, dest, branch, base, opts, spec)
 	if err != nil {
 		return nil, err
+	}
+	if !fresh {
+		return t, nil // an existing tree taken over as it is: its files are the agent's work
 	}
 	if err := m.populate(ctx, t, opts); err != nil {
 		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
@@ -381,6 +390,7 @@ func (m *Manager) create(ctx context.Context, agent string, opts CreateOptions, 
 	m.mu.Lock()
 	m.trees[agent] = t
 	m.mu.Unlock()
+	livePaths.Store(dest, m)
 	data := map[string]any{"path": t.Path, "branch": t.Branch, "base": t.Base, "mode": m.st.mode.String()}
 	if len(opts.Sparse) > 0 {
 		data["sparse"] = opts.Sparse
@@ -392,7 +402,7 @@ func (m *Manager) create(ctx context.Context, agent string, opts CreateOptions, 
 // register runs the metadata step under the repository lock: it refuses to
 // overwrite anything, clears our own stale leftovers, registers the worktree
 // without checking files out, and writes the ownership marker.
-func (m *Manager) register(ctx context.Context, agent, dest, branch, base string, opts CreateOptions, spec treeSpec) (*Tree, error) {
+func (m *Manager) register(ctx context.Context, agent, dest, branch, base string, opts CreateOptions, spec treeSpec) (t *Tree, fresh bool, err error) {
 	m.st.lock.Lock()
 	defer m.st.lock.Unlock()
 
@@ -400,30 +410,30 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 	if old, ok := m.trees[agent]; ok && !old.isRemoved() {
 		m.mu.Unlock()
 		if opts.Reuse && !spec.integration {
-			return old, nil
+			return old, false, nil
 		}
-		return nil, fmt.Errorf("%w: agent %s already has a tree at %s", ErrExists, agent, old.Path)
+		return nil, false, fmt.Errorf("%w: agent %s already has a tree at %s", ErrExists, agent, old.Path)
 	}
 	m.mu.Unlock()
 
 	if fi, err := os.Lstat(dest); err == nil {
 		if opts.Reuse {
 			if t, aerr := m.adopt(ctx, agent, dest, base); aerr == nil {
-				return t, nil
+				return t, false, nil
 			}
 		}
 		_ = fi
-		return nil, fmt.Errorf("%w: %s", ErrExists, dest)
+		return nil, false, fmt.Errorf("%w: %s", ErrExists, dest)
 	} else if !os.IsNotExist(err) {
-		return nil, err
+		return nil, false, err
 	}
 	if err := m.reclaimStale(ctx, agent, dest, branch); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	wa := gitx.WorktreeAddOptions{Path: dest, Branch: branch, Detach: branch == "", Commit: base, NoCheckout: true}
 	if err := m.st.base.WorktreeAdd(ctx, wa); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	repo, err := m.st.base.Reopen(ctx, dest)
 	if err != nil {
@@ -431,7 +441,7 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 		if branch != "" {
 			_ = m.st.base.DeleteBranch(ctx, branch)
 		}
-		return nil, err
+		return nil, false, err
 	}
 	mk := marker{
 		Prefix: m.st.prefix, Agent: agent, Path: dest, Branch: branch, Base: base, Mode: m.st.mode.String(),
@@ -443,9 +453,9 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 		if branch != "" {
 			_ = m.st.base.DeleteBranch(ctx, branch)
 		}
-		return nil, fmt.Errorf("workspace: cannot write marker: %w", err)
+		return nil, false, fmt.Errorf("workspace: cannot write marker: %w", err)
 	}
-	return &Tree{Path: dest, Branch: branch, Base: base, Agent: agent, Mode: m.st.mode, m: m, repo: repo, integration: spec.integration, ref: spec.ref}, nil
+	return &Tree{Path: dest, Branch: branch, Base: base, Agent: agent, Mode: m.st.mode, m: m, repo: repo, integration: spec.integration, ref: spec.ref}, true, nil
 }
 
 // reclaimStale clears what a crashed earlier run of ours left behind under the
@@ -533,8 +543,16 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if err != nil {
 		return nil, err
 	}
-	if mk.Agent != agent || mk.Integration || (mk.owner() == ownerAlive && mk.PID != m.st.self.pid) {
+	if mk.Agent != agent || mk.Integration {
 		return nil, ErrExists
+	}
+	if mk.owner() == ownerAlive {
+		if mk.PID != m.st.self.pid {
+			return nil, ErrExists
+		}
+		if other, ok := livePaths.Load(dest); ok && other.(*Manager) != m {
+			return nil, ErrExists // a running manager in this process is using it
+		}
 	}
 	repo, err := m.st.base.Reopen(ctx, dest)
 	if err != nil {
@@ -548,6 +566,7 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	m.mu.Lock()
 	m.trees[agent] = t
 	m.mu.Unlock()
+	livePaths.Store(dest, m)
 	return t, nil
 }
 

@@ -620,17 +620,18 @@ func (c *Client) request(ctx context.Context, method string, build func(id int64
 		return nil, fmt.Errorf("mcp: encoding %s: %w", method, err)
 	}
 
-	// The call's context also aborts an HTTP response stream when the call
-	// ends, so a finished or abandoned call leaves nothing running.
+	// The call's context also aborts an HTTP request or response stream when the
+	// call ends, so a finished or abandoned call leaves nothing running.
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	if err := c.t.Send(cctx, msg); err != nil {
-		c.forget(id)
-		if ctx.Err() != nil && !o.noCancel {
-			c.sendCancel(id, ctx.Err())
-		}
-		return nil, err
-	}
+
+	// Send runs beside the wait rather than before it. For stdio it returns as
+	// soon as the bytes are written, but an HTTP server may hold the POST open
+	// for as long as the tool runs (a JSON response arrives only at the end), and
+	// the timers must already be ticking then: a call that cannot time out while
+	// it is being sent is a call that can hang the agent forever.
+	sendErr := make(chan error, 1)
+	go func() { sendErr <- c.t.Send(cctx, msg) }()
 
 	var idle <-chan time.Time
 	var idleTimer *time.Timer
@@ -643,6 +644,20 @@ func (c *Client) request(ctx context.Context, method string, build func(id int64
 	defer total.Stop()
 	for {
 		select {
+		case err := <-sendErr:
+			sendErr = nil // sent; the answer comes through the handler
+			if err != nil {
+				select { // the answer may have raced in ahead of the error
+				case r := <-p.ch:
+					return r.result, r.err
+				default:
+				}
+				c.forget(id)
+				if ctx.Err() != nil && !o.noCancel {
+					c.sendCancel(id, ctx.Err())
+				}
+				return nil, err
+			}
 		case r := <-p.ch:
 			return r.result, r.err
 		case <-p.activity:

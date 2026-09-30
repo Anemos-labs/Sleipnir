@@ -55,7 +55,7 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 | `internal/events` | append-only event log (torn-tail recovery, group commit, lossy-but-never-blocking subscribers), blob store |
 | `internal/cost` | provider cache models, model prices, input-token-equivalent weights |
 | `internal/kv` | **the cache engine**: layers, stack, renderer, breakpoint planner, drift guard, compaction patch/apply/planner/fork, archive |
-| `internal/provider` | `Provider` interface, errors, SSE; `openaichat` adapter; `gateway` (marketplace catalogue); `probe` (endpoint doctor); `mock` (cache-faithful test server) |
+| `internal/provider` | `Provider` interface, errors, SSE; `openaichat` adapter; `gateway` (marketplace catalogue); `probe` (endpoint doctor); `mock` (deterministic test servers; the chat-completions one models an *automatic* prefix cache only, and explicit-breakpoint caching lives in a separate engine, so a test passing against one says nothing about the other's rules) |
 | `internal/agent` | the loop: render → call (retry, governor, gate) → tools (parallel read-only, ordered writes) → boundary (compaction, epochs) |
 | `internal/swarm` | board, mail router, leases, governor, warm gate, hot view, roles, spawn/dispatch, coordination tools, evidence |
 | `internal/tools` | tool contract, file-state staleness tracker, truncation with recall handles; `fs`, `shell`, `web`, `recall` |
@@ -68,14 +68,23 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 ## One request, end to end
 
 1. **Boundary.** The agent commits a ready compaction patch if the planner says the moment is right, or starts a
-   background compactor, or installs a new shared epoch, or strips stale thinking.
+   background compactor, or installs a new shared epoch. Both commits are *declared rebases*: they rewrite the
+   thread (and drop its thinking blocks, which no longer match the bytes before them) in one step under one lock.
+   Thinking is never stripped on its own, because a strip is itself a prefix change and is priced as one.
 2. **Render.** `kv.Render` builds the prompt from the stack snapshot: tools, constitution, then message 0 =
-   `<shared-context>`, `<role-context>`, `<my-notes>`, `<history>`, then the thread, then the hot tail. It plans
-   breakpoints for the provider profile.
-3. **Guard.** `kv.Guard` compares the prompt with the previous request; an unexplained shrink of the common
-   prefix is a `cache.anomaly`.
-4. **Gate + governor.** The warm gate elects a primer for cold prefixes; the governor admits the request by
-   priority within the RPM budget.
+   `<shared-context>`, `<role-context>`, `<my-notes>`, `<history>`, then the thread, then the hot view. The hot view
+   is delivered in one of three modes (`kv.HotMode`, `docs/CACHE-DESIGN.md` §3): inline after the last marker
+   (default, ephemeral, rebuilt every request); persisted on change as a frozen block in the next user turn (forced
+   where preserved thinking is replayed, since an ephemeral tail would change bytes the signatures bind to); or as a
+   turn-scoped system message on a provider that supports it. `kv.PlanMarks` then places breakpoints for the
+   provider profile.
+3. **Guard.** `kv.Guard` compares the prompt (request parameters, tools, system, every block) with the previous
+   request; an unexplained change in the common prefix is a `cache.anomaly`, a declared rebase is not. After the
+   response, cache reads are compared with what the guard expected, but only on a provider that reports cache usage
+   and only inside the TTL.
+4. **Gate + governor.** The warm gate elects a primer for each cold prefix level (shared, then shard and role) and
+   releases the followers when its first byte arrives, inside a window derived from the TTL; the governor admits the
+   request by priority within the RPM budget.
 5. **Call.** The adapter renders wire JSON without reordering or re-serialising history, streams the reply,
    preserves provider-native blocks verbatim, normalises usage and cost.
 6. **Log.** `model.request` (recipe) and `model.response` (usage, hit ratio, gateway cost, expectation) are written;

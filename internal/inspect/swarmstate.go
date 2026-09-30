@@ -418,7 +418,11 @@ func (b *boardTracker) onBoardOp(actor, op string, raw json.RawMessage, ts time.
 		}
 		if t := b.ensure2(id, ts); t != nil {
 			t.Status, t.Line = status, ""
-			if result != "" {
+			switch {
+			case result == "":
+			case call != nil && call.action == "accept":
+				t.Result = oneLine(t.Result+" "+result, 200) // the manager's note is appended to the worker's result
+			default:
 				t.Result = result
 			}
 			set(t)

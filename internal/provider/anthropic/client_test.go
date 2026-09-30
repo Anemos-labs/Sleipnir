@@ -14,6 +14,7 @@ import (
 
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/reee344/sleipnir/internal/kv"
 	"github.com/reee344/sleipnir/internal/provider"
 	"github.com/reee344/sleipnir/internal/provider/anthropic"
 )
@@ -257,6 +258,14 @@ func TestClientProfile(t *testing.T) {
 	caps := p.KVCaps()
 	if caps.Dialect != "anthropic" || caps.MaxBreakpoints != 4 || caps.LookbackBlocks != 20 || caps.MinPrefixTokens != 512 || !caps.ReplayThinking || caps.CacheKeys {
 		t.Errorf("caps: %+v", caps)
+	}
+	// kv picks the hot-tail mechanism from this flag: with it the board view is a
+	// turn-scoped system message, without it a preserved-thinking route must persist it.
+	if !caps.TurnScopedSystem {
+		t.Errorf("caps must advertise turn-scoped system messages: %+v", caps)
+	}
+	if got := kv.ResolveHot(kv.HotInline, caps, true); got != kv.HotTurnScoped {
+		t.Errorf("hot mode on this route = %v, want turn-scoped", got)
 	}
 	for model, want := range map[string]int{"claude-haiku-4-5": 4096, "claude-opus-4-6": 4096, "claude-opus-4-7": 2048, "claude-sonnet-5": 1024, "claude-fable-5-1": 512, "": 1024, "who-knows": 1024} {
 		got := anthropic.New(anthropic.Config{Model: model}).Profile().Cache.MinPrefixTokens

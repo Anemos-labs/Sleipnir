@@ -43,6 +43,7 @@ type sseTransport struct {
 	readyOnce sync.Once
 	failCh    chan struct{} // closed when the stream ended
 	failed    bool
+	failErr   error // why it ended, for the errors of calls that were waiting
 	closeOnce sync.Once
 }
 
@@ -71,6 +72,9 @@ func (t *sseTransport) fail(err error) {
 	t.mu.Lock()
 	first := !t.failed
 	t.failed = true
+	if first {
+		t.failErr = err
+	}
 	t.mu.Unlock()
 	if !first {
 		return
@@ -95,7 +99,7 @@ func (t *sseTransport) stream() {
 	req.Header.Set("Accept", "text/event-stream")
 	resp, err := t.client.Do(req)
 	if err != nil {
-		t.fail(fmt.Errorf("connecting to the event stream: %s", t.redact.apply(cleanText(transportError(err).Error()))))
+		t.fail(fmt.Errorf("connecting to the event stream: %w", netError(t.redact, err)))
 		return
 	}
 	defer resp.Body.Close()
@@ -118,7 +122,7 @@ func (t *sseTransport) stream() {
 			if errors.Is(err, io.EOF) {
 				err = errors.New("server closed the event stream")
 			} else if !errors.Is(err, ErrMessageTooLarge) {
-				err = fmt.Errorf("event stream failed: %s", t.redact.apply(cleanText(transportError(err).Error())))
+				err = fmt.Errorf("event stream failed: %w", netError(t.redact, err))
 			}
 			t.fail(err)
 			return
@@ -164,7 +168,9 @@ func (t *sseTransport) Send(ctx context.Context, msg []byte) error {
 	select {
 	case <-t.ready:
 	case <-t.failCh:
-		return &closedError{}
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		return &closedError{cause: t.failErr}
 	case <-t.ctx.Done():
 		return &closedError{}
 	case <-ctx.Done():
@@ -184,7 +190,7 @@ func (t *sseTransport) Send(ctx context.Context, msg []byte) error {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return errors.New(t.redact.apply(cleanText(transportError(err).Error())))
+		return netError(t.redact, err)
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))

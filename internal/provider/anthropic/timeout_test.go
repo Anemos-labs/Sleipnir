@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -274,5 +273,3 @@ func TestHugeResponsesAreBounded(t *testing.T) {
 		t.Errorf("raw %d bytes, message %d bytes", len(pe.Raw), len(pe.Message))
 	}
 }
-
-func TestMain(m *testing.M) { os.Exit(m.Run()) }

@@ -119,6 +119,11 @@ func referenceTools(s *Server) []Tool {
 			Handler: func(context.Context, *Call) *Result { return TextResult(strings.Join(sortedEnv(), "\n")) }},
 		{Name: "pid", Description: "Return the process id.",
 			Handler: func(context.Context, *Call) *Result { return TextResult(fmt.Sprint(os.Getpid())) }},
+		{Name: "cwd", Description: "Return the working directory.",
+			Handler: func(context.Context, *Call) *Result {
+				wd, _ := os.Getwd()
+				return TextResult(wd)
+			}},
 		{Name: "unicode", Description: "Return text with control sequences.",
 			Handler: func(context.Context, *Call) *Result {
 				// An ANSI colour, an OSC title, a zero-width space, a bidi override and

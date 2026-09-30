@@ -267,15 +267,24 @@ func (x *exporter) segmentsOf(p *core.Prompt, tab *table, prevID string, prev []
 // returns the number of episodes written.
 func Expand(w io.Writer, records io.Reader, table io.Reader) (int, error) {
 	parts := map[core.Hash]segmentEntry{}
+	segPrefix := []byte(`{"schema":"` + SchemaSegment + `"`)
+	epPrefix := []byte(`{"schema":"` + rl.SchemaEpisode + `"`)
 	readTable := func(line []byte) (bool, error) {
-		var probe struct {
-			Schema string `json:"schema"`
-		}
-		if err := json.Unmarshal(line, &probe); err != nil {
-			return false, err
-		}
-		if probe.Schema != SchemaSegment {
+		// Both writers put the schema first, which spares parsing a multi-megabyte
+		// episode line twice; anything else is probed properly.
+		switch {
+		case bytes.HasPrefix(line, epPrefix):
 			return false, nil
+		case !bytes.HasPrefix(line, segPrefix):
+			var probe struct {
+				Schema string `json:"schema"`
+			}
+			if err := json.Unmarshal(line, &probe); err != nil {
+				return false, err
+			}
+			if probe.Schema != SchemaSegment {
+				return false, nil
+			}
 		}
 		var e segmentEntry
 		if err := json.Unmarshal(line, &e); err != nil {

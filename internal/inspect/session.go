@@ -456,7 +456,7 @@ func (s *Session) logMetaLocked() LogMeta {
 	return LogMeta{
 		File: filepath.Base(s.path), Events: s.events, Bytes: s.off, FileBytes: s.size, LastSeq: s.lastSeq,
 		TornBytes: s.torn, BadLines: s.bad, Reloads: s.reloads, Schema: s.meta.schema, Updated: s.mtime,
-		Blobs: s.blobs != nil, Types: types,
+		Blobs: s.blobs.available(), Types: types,
 	}
 }
 

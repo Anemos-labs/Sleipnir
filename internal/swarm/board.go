@@ -6,9 +6,14 @@
 // prompt (the hot layer), which is what lets a manager dispatch dozens of
 // workers without writing each a briefing: they already share the cached
 // project context, and the board tells them what everyone else is doing.
+//
+// The harness, not the models, owns the state: models propose (create a task,
+// finish it, mail a teammate) and deterministic code validates, applies and
+// records. docs/SWARM-PROTOCOL.md is the normative description.
 package swarm
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -32,6 +37,21 @@ const (
 	StatusFailed  TaskStatus = "failed"
 )
 
+// Limits on what one agent can put on the board. Every agent's prompt carries a
+// rendering of the board, so what one agent can add is what every agent pays for.
+const (
+	maxTitleRunes  = 160
+	maxDescRunes   = 2000
+	maxRoleRunes   = 32
+	maxTaskDeps    = 16
+	maxLineRunes   = 140
+	maxResultRunes = 160
+	maxEvidRunes   = 320
+	maxNoteRunes   = 300
+	maxAlertRunes  = 160
+	maxPendingEvts = 4096
+)
+
 // Task is one unit of work.
 type Task struct {
 	ID     string     `json:"id"`
@@ -42,8 +62,17 @@ type Task struct {
 	Role   string     `json:"role,omitempty"` // suggested role
 	Deps   []string   `json:"deps,omitempty"`
 	Line   string     `json:"line,omitempty"`   // latest one-line progress
-	Result string     `json:"result,omitempty"` // completion summary
-	Files  []string   `json:"files,omitempty"`  // areas it touches (informational)
+	Result string     `json:"result,omitempty"` // what the worker said when it finished
+	Files  []string   `json:"files,omitempty"`  // the scope: paths the task may touch
+	// Evidence is what the harness observed (edited files, the last test command
+	// and its exit status). Only the harness writes it.
+	Evidence string `json:"evidence,omitempty"`
+	// Attempts counts assignments that ended without the work reaching review.
+	Attempts int `json:"attempts,omitempty"`
+	// Rev identifies the current assignment: it changes whenever the task is
+	// (re)assigned, sent back or requeued, so a run that started under an earlier
+	// assignment can tell that it no longer owns the task.
+	Rev uint64 `json:"rev,omitempty"`
 }
 
 // AgentInfo is an agent's public status.
@@ -66,13 +95,16 @@ type Note struct {
 	Text  string `json:"text"`
 }
 
-// Alert is a short-lived warning (a lease conflict, a stalled agent).
+// Alert is a short-lived warning (a lease conflict, a stalled agent). It expires.
 type Alert struct {
-	Kind string `json:"kind"`
-	Text string `json:"text"`
+	Kind string    `json:"kind"`
+	Text string    `json:"text"`
+	Key  string    `json:"key,omitempty"`
+	At   time.Time `json:"at,omitempty"`
 }
 
-// Snapshot is an immutable view of the board. Readers never lock.
+// Snapshot is an immutable view of the board. Readers never lock. Nothing that is
+// reachable from a Snapshot may be modified.
 type Snapshot struct {
 	Version uint64
 	Tasks   []Task
@@ -101,15 +133,65 @@ func (s *Snapshot) Agent(id string) (AgentInfo, bool) {
 	return AgentInfo{}, false
 }
 
+// BoardLimits bound the board.
+type BoardLimits struct {
+	MaxTasks         int           // tasks ever created (default 1000)
+	MaxNotes         int           // pending proposed notes; the oldest are evicted (default 48)
+	MaxNotesPerAgent int           // pending notes one agent may have (default 8)
+	MaxAlerts        int           // alerts shown at once (default 8)
+	AlertTTL         time.Duration // alerts expire after this long (default 2 minutes)
+}
+
+// DefaultBoardLimits returns the default limits.
+func DefaultBoardLimits() BoardLimits {
+	return BoardLimits{MaxTasks: 1000, MaxNotes: 48, MaxNotesPerAgent: 8, MaxAlerts: 8, AlertTTL: 2 * time.Minute}
+}
+
+func (l BoardLimits) withDefaults() BoardLimits {
+	d := DefaultBoardLimits()
+	if l.MaxTasks <= 0 {
+		l.MaxTasks = d.MaxTasks
+	}
+	if l.MaxNotes <= 0 {
+		l.MaxNotes = d.MaxNotes
+	}
+	if l.MaxNotesPerAgent <= 0 {
+		l.MaxNotesPerAgent = d.MaxNotesPerAgent
+	}
+	if l.MaxAlerts <= 0 {
+		l.MaxAlerts = d.MaxAlerts
+	}
+	if l.AlertTTL <= 0 {
+		l.AlertTTL = d.AlertTTL
+	}
+	return l
+}
+
 // Board is the mutable holder of the current snapshot. Writers serialise on a
-// mutex and publish a fresh snapshot; readers load an atomic pointer.
+// mutex, apply one operation to a copy and publish it; readers (Snapshot, Changed)
+// never lock. Every operation is one version and one board.op event that carries
+// its operands, so the log can rebuild the board.
 type Board struct {
 	mu   sync.Mutex
 	snap atomic.Pointer[Snapshot]
+	wake atomic.Pointer[chan struct{}]
 	next int
 	note int
 	ev   events.Emitter
-	wake chan struct{}
+	now  func() time.Time
+	lim  BoardLimits
+
+	// Events are queued under mu (so they keep the order of the versions) and
+	// emitted after it is released by whichever writer finds no flush in progress:
+	// a slow event log slows one writer, never readers or waiters.
+	evq      []pendingEvent
+	flushing bool
+	dropped  int
+}
+
+type pendingEvent struct {
+	actor string
+	data  map[string]any
 }
 
 // NewBoard returns an empty board.
@@ -117,42 +199,192 @@ func NewBoard(ev events.Emitter) *Board {
 	if ev == nil {
 		ev = events.Discard{}
 	}
-	b := &Board{ev: ev, wake: make(chan struct{})}
+	b := &Board{ev: ev, now: time.Now, lim: DefaultBoardLimits()}
+	ch := make(chan struct{})
+	b.wake.Store(&ch)
 	b.snap.Store(&Snapshot{})
 	return b
+}
+
+// SetLimits replaces the limits (zero fields keep their defaults).
+func (b *Board) SetLimits(l BoardLimits) {
+	b.mu.Lock()
+	b.lim = l.withDefaults()
+	b.mu.Unlock()
+}
+
+// SetClock replaces the clock used to stamp and expire alerts.
+func (b *Board) SetClock(now func() time.Time) {
+	if now == nil {
+		now = time.Now
+	}
+	b.mu.Lock()
+	b.now = now
+	b.mu.Unlock()
 }
 
 // Snapshot returns the current immutable view.
 func (b *Board) Snapshot() *Snapshot { return b.snap.Load() }
 
 // Changed returns a channel closed at the next mutation; waiters re-read the
-// snapshot when it fires.
-func (b *Board) Changed() <-chan struct{} {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.wake
+// snapshot when it fires. It never blocks. To wait without losing a wake-up, load
+// the channel BEFORE reading the snapshot: a change published in between closes
+// the channel that was loaded.
+func (b *Board) Changed() <-chan struct{} { return *b.wake.Load() }
+
+// errNoChange is returned by an operation that found nothing to do: the snapshot
+// is not republished, the version does not move, nobody is woken.
+var errNoChange = errors.New("no change")
+
+// draft is the working copy an operation edits. Slices are shared with the
+// published snapshot until an operation asks to edit them (copy on write), so an
+// operation that touches only agents does not copy the tasks.
+type draft struct {
+	*Snapshot
+	b              *Board
+	ct, ca, cn, cl bool
+	evt            map[string]any
+}
+
+func (d *draft) tasks() []Task {
+	if !d.ct {
+		d.Tasks = append(make([]Task, 0, len(d.Tasks)+1), d.Tasks...)
+		d.ct = true
+	}
+	return d.Tasks
+}
+
+func (d *draft) agents() []AgentInfo {
+	if !d.ca {
+		d.Agents = append(make([]AgentInfo, 0, len(d.Agents)+1), d.Agents...)
+		d.ca = true
+	}
+	return d.Agents
+}
+
+func (d *draft) notes() []Note {
+	if !d.cn {
+		d.Notes = append(make([]Note, 0, len(d.Notes)+1), d.Notes...)
+		d.cn = true
+	}
+	return d.Notes
+}
+
+func (d *draft) alerts() []Alert {
+	if !d.cl {
+		d.Alerts = append(make([]Alert, 0, len(d.Alerts)+1), d.Alerts...)
+		d.cl = true
+	}
+	return d.Alerts
+}
+
+// set records an operand of the operation on its board.op event.
+func (d *draft) set(k string, v any) {
+	if d.evt == nil {
+		d.evt = map[string]any{}
+	}
+	d.evt[k] = v
+}
+
+// setTask records the task operands (id, status, owner, ...) of the operation.
+func (d *draft) setTask(t Task) {
+	d.set("task", t.ID)
+	d.set("status", string(t.Status))
+	if t.Owner != "" {
+		d.set("owner", t.Owner)
+	}
+	if t.Title != "" {
+		d.set("title", t.Title)
+	}
+	if t.Line != "" {
+		d.set("line", t.Line)
+	}
+	if t.Result != "" {
+		d.set("result", t.Result)
+	}
+	if len(t.Files) > 0 {
+		d.set("files", t.Files)
+	}
+	if len(t.Deps) > 0 {
+		d.set("deps", t.Deps)
+	}
+	if t.Role != "" {
+		d.set("role", t.Role)
+	}
+	if t.Attempts > 0 {
+		d.set("attempts", t.Attempts)
+	}
 }
 
 // mutate applies fn to a copy of the snapshot, bumps the version and publishes.
-func (b *Board) mutate(actor, op string, fn func(s *Snapshot) error) error {
+// An fn that returns errNoChange publishes nothing and mutate returns nil.
+func (b *Board) mutate(actor, op string, fn func(d *draft) error) error {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	cur := b.snap.Load()
-	cp := &Snapshot{
-		Version: cur.Version + 1,
-		Tasks:   append([]Task(nil), cur.Tasks...),
-		Agents:  append([]AgentInfo(nil), cur.Agents...),
-		Notes:   append([]Note(nil), cur.Notes...),
-		Alerts:  append([]Alert(nil), cur.Alerts...),
-	}
-	if err := fn(cp); err != nil {
+	d := &draft{Snapshot: &Snapshot{Version: cur.Version + 1, Tasks: cur.Tasks, Agents: cur.Agents, Notes: cur.Notes, Alerts: cur.Alerts}, b: b}
+	if err := fn(d); err != nil {
+		b.mu.Unlock()
+		if errors.Is(err, errNoChange) {
+			return nil
+		}
 		return err
 	}
-	b.snap.Store(cp)
-	_, _ = b.ev.Emit(actor, events.TypeBoardOp, map[string]any{"op": op, "version": cp.Version})
-	close(b.wake)
-	b.wake = make(chan struct{})
+	b.snap.Store(d.Snapshot)
+	next := make(chan struct{})
+	old := b.wake.Swap(&next)
+	close(*old)
+	data := map[string]any{"op": op, "version": d.Version}
+	for k, v := range d.evt {
+		data[k] = v
+	}
+	flush := b.enqueueLocked(actor, data)
+	b.mu.Unlock()
+	if flush {
+		b.flush()
+	}
 	return nil
+}
+
+func (b *Board) enqueueLocked(actor string, data map[string]any) bool {
+	if len(b.evq) >= maxPendingEvts {
+		b.evq = b.evq[1:]
+		b.dropped++
+	}
+	b.evq = append(b.evq, pendingEvent{actor, data})
+	if b.flushing {
+		return false
+	}
+	b.flushing = true
+	return true
+}
+
+// flush emits queued events in order until the queue is empty. Only one goroutine
+// flushes at a time; the rest hand their events to it and return.
+func (b *Board) flush() {
+	defer func() {
+		if r := recover(); r != nil { // an emitter that panics must not wedge the queue
+			b.mu.Lock()
+			b.flushing = false
+			b.mu.Unlock()
+		}
+	}()
+	for {
+		b.mu.Lock()
+		batch, dropped := b.evq, b.dropped
+		b.evq, b.dropped = nil, 0
+		if len(batch) == 0 && dropped == 0 {
+			b.flushing = false
+			b.mu.Unlock()
+			return
+		}
+		b.mu.Unlock()
+		if dropped > 0 {
+			_, _ = b.ev.Emit("harness", events.TypeBoardOp, map[string]any{"op": "dropped", "n": dropped})
+		}
+		for _, e := range batch {
+			_, _ = b.ev.Emit(e.actor, events.TypeBoardOp, e.data)
+		}
+	}
 }
 
 func taskIdx(s *Snapshot, id string) int {
@@ -170,233 +402,674 @@ type TaskSpec struct {
 	Deps, Files       []string
 }
 
-// CreateTask adds a todo task.
+// TaskCheck is evaluated inside the board's critical section on the task an
+// operation is about to assign, so a decision that depends on other tasks (scope
+// overlap) cannot go stale between the check and the change.
+type TaskCheck func(s *Snapshot, t Task) error
+
+// createLocked validates a spec and appends the task. Nothing is modified when it
+// returns an error.
+func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
+	title := cleanText(spec.Title, maxTitleRunes)
+	if title == "" {
+		return Task{}, fmt.Errorf("task needs a title")
+	}
+	if len(d.Tasks) >= b.lim.MaxTasks {
+		return Task{}, fmt.Errorf("the board already holds %d tasks (limit %d): reuse or finish existing tasks instead of creating more", len(d.Tasks), b.lim.MaxTasks)
+	}
+	if len(spec.Deps) > maxTaskDeps {
+		return Task{}, fmt.Errorf("a task can depend on at most %d others", maxTaskDeps)
+	}
+	var deps []string
+	seen := map[string]bool{}
+	for _, dep := range spec.Deps {
+		dep = strings.TrimSpace(dep)
+		if taskIdx(d.Snapshot, dep) < 0 {
+			return Task{}, fmt.Errorf("dependency %s does not exist", cleanText(dep, 20))
+		}
+		if !seen[dep] {
+			seen[dep] = true
+			deps = append(deps, dep)
+		}
+	}
+	files, err := cleanScopes(spec.Files)
+	if err != nil {
+		return Task{}, err
+	}
+	b.next++
+	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanBlock(spec.Desc, maxDescRunes), Status: StatusTodo,
+		Role: cleanText(spec.Role, maxRoleRunes), Deps: deps, Files: files}
+	d.Tasks = append(d.tasks(), t)
+	return t, nil
+}
+
+// CreateTask adds a todo task. Text fields are made single-line and bounded; the
+// caller's slices are copied.
 func (b *Board) CreateTask(by string, spec TaskSpec) (Task, error) {
 	var out Task
-	title := strings.TrimSpace(spec.Title)
-	if title == "" {
-		return out, fmt.Errorf("task needs a title")
-	}
-	err := b.mutate(by, "create", func(s *Snapshot) error {
-		for _, d := range spec.Deps {
-			if taskIdx(s, d) < 0 {
-				return fmt.Errorf("dependency %s does not exist", d)
-			}
+	err := b.mutate(by, "create", func(d *draft) error {
+		t, err := b.createLocked(d, spec)
+		if err != nil {
+			return err
 		}
-		b.next++
-		out = Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: strings.TrimSpace(spec.Desc), Status: StatusTodo, Role: spec.Role, Deps: spec.Deps, Files: spec.Files}
-		s.Tasks = append(s.Tasks, out)
+		out = t
+		d.setTask(t)
 		return nil
 	})
 	return out, err
 }
 
-// depsDone reports whether every dependency of t is done.
-func depsDone(s *Snapshot, t Task) (bool, string) {
+// depsDone reports whether every dependency of t is done, and the first that is not.
+func depsDone(s *Snapshot, t Task) (bool, Task) {
 	for _, d := range t.Deps {
 		if i := taskIdx(s, d); i >= 0 && s.Tasks[i].Status != StatusDone {
-			return false, d
+			return false, s.Tasks[i]
 		}
 	}
-	return true, ""
+	return true, Task{}
 }
 
-// Claim assigns a todo (or blocked-by-self) task to an agent.
-func (b *Board) Claim(agent, id string) error {
-	return b.mutate(agent, "claim", func(s *Snapshot) error {
-		i := taskIdx(s, id)
+func depsError(id string, dep Task) error {
+	if dep.Status == StatusFailed {
+		return fmt.Errorf("%s waits for %s, which failed: reopen it or re-plan", id, dep.ID)
+	}
+	return fmt.Errorf("%s waits for %s", id, dep.ID)
+}
+
+// Claim takes a todo task for an agent. It is a compare-and-set: it succeeds only
+// while the task is unowned and todo, and its dependencies are done.
+func (b *Board) Claim(agent, id string) error { return b.claim(agent, id, nil) }
+
+func (b *Board) claim(agent, id string, check TaskCheck) error {
+	return b.mutate(agent, "claim", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
 		}
-		t := s.Tasks[i]
-		if t.Owner != "" && t.Owner != agent {
+		t := d.Tasks[i]
+		switch {
+		case t.Owner != "" && t.Owner != agent:
 			return fmt.Errorf("%s is already owned by %s", id, t.Owner)
+		case t.Owner == agent && t.Status == StatusDoing:
+			return errNoChange // already yours
+		case t.Status != StatusTodo:
+			return fmt.Errorf("%s is %s, not todo", id, t.Status)
 		}
+		if ok, dep := depsDone(d.Snapshot, t); !ok {
+			return depsError(id, dep)
+		}
+		if check != nil {
+			if err := check(d.Snapshot, t); err != nil {
+				return err
+			}
+		}
+		t.Owner, t.Status, t.Line, t.Rev = agent, StatusDoing, "", d.Version
+		d.tasks()[i] = t
+		d.setTask(t)
+		return nil
+	})
+}
+
+// Assign hands a task to an agent: a todo task nobody owns, or a doing task the
+// agent already owns (the manager resuming it). Dependencies must be done. Like
+// Claim it is a compare-and-set, so a worker's own claim and the manager's spawn
+// cannot both win.
+func (b *Board) Assign(by, agent, id string) error {
+	_, err := b.assignTask(assignReq{by: by, agent: agent, id: id})
+	return err
+}
+
+type assignReq struct {
+	by, agent string
+	id        string   // an existing task; empty creates one from spec
+	spec      TaskSpec // creation spec, or (Files non-nil) the scope to set on an existing task
+	setScope  bool     // apply spec.Files to an existing task
+	check     TaskCheck
+}
+
+// assignTask creates (optionally) and assigns a task in one operation: a refused
+// assignment leaves nothing behind on the board.
+func (b *Board) assignTask(r assignReq) (Task, error) {
+	var out Task
+	err := b.mutate(r.by, "assign", func(d *draft) (err error) {
+		var t Task
+		i := -1
+		if r.id == "" {
+			created, cerr := b.createLocked(d, r.spec)
+			if cerr != nil {
+				return cerr
+			}
+			t, i = created, len(d.Tasks)-1
+			defer func() {
+				if err != nil {
+					b.next-- // the task was never published: keep ids dense
+				}
+			}()
+		} else {
+			if i = taskIdx(d.Snapshot, r.id); i < 0 {
+				return fmt.Errorf("no task %s", r.id)
+			}
+			t = d.Tasks[i]
+			switch {
+			case t.Status == StatusDone || t.Status == StatusFailed:
+				return fmt.Errorf("%s is already %s", r.id, t.Status)
+			case t.Owner != "" && t.Owner != r.agent:
+				return fmt.Errorf("%s is already owned by %s", r.id, t.Owner)
+			case t.Status == StatusReview:
+				return fmt.Errorf("%s is in review: accept it, or reject it to send it back", r.id)
+			case t.Status == StatusBlocked:
+				return fmt.Errorf("%s is blocked (%s): resolve the blocker first", r.id, oneLine(t.Line, 60))
+			}
+			if r.setScope {
+				files, err := cleanScopes(r.spec.Files)
+				if err != nil {
+					return err
+				}
+				t.Files = files
+			}
+		}
+		if ok, dep := depsDone(d.Snapshot, t); !ok {
+			return depsError(t.ID, dep)
+		}
+		if r.check != nil {
+			if err := r.check(d.Snapshot, t); err != nil {
+				return err
+			}
+		}
+		t.Owner, t.Status, t.Line, t.Rev = r.agent, StatusDoing, "", d.Version
+		d.tasks()[i] = t
+		d.setTask(t)
+		out = t
+		return nil
+	})
+	return out, err
+}
+
+// Finish moves a task to a final-ish state: review (Submit), done (Accept, the
+// result is appended as the reviewer's note) or failed (Fail). It exists for
+// callers that do not need the operation-specific forms.
+func (b *Board) Finish(agent, id string, status TaskStatus, result string) error {
+	switch status {
+	case StatusReview:
+		return b.Submit(agent, id, result, "")
+	case StatusDone:
+		return b.Accept(agent, id, result)
+	case StatusFailed:
+		return b.Fail(agent, id, result)
+	}
+	return fmt.Errorf("bad final status %q", status)
+}
+
+// SetScope replaces a task's scope (the manager widening or narrowing it).
+func (b *Board) SetScope(by, id string, files []string, check TaskCheck) error {
+	return b.mutate(by, "scope", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
 		if t.Status == StatusDone || t.Status == StatusFailed {
 			return fmt.Errorf("%s is already %s", id, t.Status)
 		}
-		if ok, dep := depsDone(s, t); !ok {
-			return fmt.Errorf("%s waits for %s", id, dep)
+		nf, err := cleanScopes(files)
+		if err != nil {
+			return err
 		}
-		t.Owner, t.Status = agent, StatusDoing
-		s.Tasks[i] = t
+		t.Files = nf
+		if check != nil && t.Status == StatusDoing {
+			if err := check(d.Snapshot, t); err != nil {
+				return err
+			}
+		}
+		d.tasks()[i] = t
+		d.setTask(t)
 		return nil
 	})
 }
 
-// Assign force-assigns a task (used by the manager when spawning).
-func (b *Board) Assign(by, agent, id string) error {
-	return b.mutate(by, "assign", func(s *Snapshot) error {
-		i := taskIdx(s, id)
-		if i < 0 {
-			return fmt.Errorf("no task %s", id)
-		}
-		t := s.Tasks[i]
-		if t.Status == StatusDone {
-			return fmt.Errorf("%s is already done", id)
-		}
-		t.Owner, t.Status = agent, StatusDoing
-		s.Tasks[i] = t
-		return nil
-	})
-}
-
-// Update sets a task's one-line progress.
-func (b *Board) Update(agent, id, line string) error {
-	return b.mutate(agent, "update", func(s *Snapshot) error {
-		i := taskIdx(s, id)
-		if i < 0 {
-			return fmt.Errorf("no task %s", id)
-		}
-		if s.Tasks[i].Owner != agent {
-			return fmt.Errorf("%s belongs to %s", id, ownerOrNone(s.Tasks[i].Owner))
-		}
-		s.Tasks[i].Line = oneLine(line, 140)
-		return nil
-	})
-}
-
-// Finish completes a task with a result line.
-func (b *Board) Finish(agent, id string, status TaskStatus, result string) error {
-	if status != StatusDone && status != StatusFailed && status != StatusReview {
-		return fmt.Errorf("bad final status %q", status)
+// owned returns the task at id if agent owns it.
+func owned(d *draft, agent, id string) (int, Task, error) {
+	i := taskIdx(d.Snapshot, id)
+	if i < 0 {
+		return -1, Task{}, fmt.Errorf("no task %s", id)
 	}
-	return b.mutate(agent, "finish", func(s *Snapshot) error {
-		i := taskIdx(s, id)
-		if i < 0 {
-			return fmt.Errorf("no task %s", id)
+	t := d.Tasks[i]
+	if t.Owner != agent {
+		return -1, Task{}, fmt.Errorf("%s belongs to %s", id, ownerOrNone(t.Owner))
+	}
+	return i, t, nil
+}
+
+// Update sets the one-line progress of a task the agent is working on.
+func (b *Board) Update(agent, id, line string) error {
+	return b.mutate(agent, "update", func(d *draft) error {
+		i, t, err := owned(d, agent, id)
+		if err != nil {
+			return err
 		}
-		if s.Tasks[i].Owner != agent && agent != "manager" {
-			return fmt.Errorf("%s belongs to %s", id, ownerOrNone(s.Tasks[i].Owner))
+		if t.Status != StatusDoing {
+			return fmt.Errorf("%s is %s, not doing", id, t.Status)
 		}
-		s.Tasks[i].Status = status
-		s.Tasks[i].Result = oneLine(result, 200)
-		s.Tasks[i].Line = ""
+		line = cleanText(line, maxLineRunes)
+		if t.Line == line {
+			return errNoChange
+		}
+		t.Line = line
+		d.tasks()[i] = t
+		d.setTask(t)
 		return nil
 	})
 }
 
-// Block marks a task blocked with a reason.
+// Submit moves the owner's doing task to review with the worker's result and the
+// harness's evidence. It is the only way a worker's task leaves doing for good.
+func (b *Board) Submit(agent, id, result, evidence string) error {
+	return b.mutate(agent, "submit", func(d *draft) error {
+		i, t, err := owned(d, agent, id)
+		if err != nil {
+			return err
+		}
+		if t.Status != StatusDoing {
+			return fmt.Errorf("%s is %s, not doing", id, t.Status)
+		}
+		t.Status, t.Line = StatusReview, ""
+		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
+		d.tasks()[i] = t
+		d.setTask(t)
+		return nil
+	})
+}
+
+// Accept marks a reviewed task done. Done is terminal: nothing changes it after.
+// Callers check authority (only the manager accepts) and run the verifier first.
+func (b *Board) Accept(by, id, note string) error {
+	return b.mutate(by, "accept", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
+		if t.Status != StatusReview {
+			return fmt.Errorf("%s is %s: only a task in review can be accepted", id, t.Status)
+		}
+		t.Status, t.Line = StatusDone, ""
+		if n := cleanText(note, maxResultRunes); n != "" {
+			t.Result = truncRunes(strings.TrimSpace(t.Result+" · "+n), 2*maxResultRunes)
+		}
+		d.tasks()[i] = t
+		d.setTask(t)
+		return nil
+	})
+}
+
+// Fail marks a task that is not done as failed.
+func (b *Board) Fail(by, id, reason string) error {
+	return b.mutate(by, "fail", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
+		if t.Status == StatusDone || t.Status == StatusFailed {
+			return fmt.Errorf("%s is already %s", id, t.Status)
+		}
+		t.Status, t.Line, t.Rev = StatusFailed, "", d.Version
+		if r := cleanText(reason, maxResultRunes); r != "" {
+			t.Result = r
+		}
+		d.tasks()[i] = t
+		d.setTask(t)
+		return nil
+	})
+}
+
+// SendBack returns a reviewed task to its owner (a rejection with feedback).
+func (b *Board) SendBack(by, id, feedback string) (Task, error) {
+	var out Task
+	err := b.mutate(by, "reject", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
+		if t.Status != StatusReview {
+			return fmt.Errorf("%s is %s: only a task in review can be sent back", id, t.Status)
+		}
+		if t.Owner == "" {
+			return fmt.Errorf("%s has no owner to send feedback to", id)
+		}
+		t.Status, t.Line, t.Rev = StatusDoing, cleanText(feedback, maxLineRunes), d.Version
+		d.tasks()[i] = t
+		d.setTask(t)
+		out = t
+		return nil
+	})
+	return out, err
+}
+
+// Reopen returns a failed task to todo so it can be assigned again.
+func (b *Board) Reopen(by, id string) error {
+	return b.mutate(by, "reopen", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
+		if t.Status != StatusFailed {
+			return fmt.Errorf("%s is %s: only a failed task can be reopened (a task in review is sent back with reject)", id, t.Status)
+		}
+		t.Status, t.Owner, t.Line, t.Result, t.Evidence, t.Attempts, t.Rev = StatusTodo, "", "", "", "", 0, d.Version
+		d.tasks()[i] = t
+		d.setTask(t)
+		return nil
+	})
+}
+
+// Requeue is what the harness does when the agent that was working on a task
+// stops without finishing it: back to todo for someone else (or failed once it
+// has used maxAttempts). It applies only if the agent still owns that assignment
+// (rev), so a run that ended late cannot undo a newer assignment.
+func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttempt bool, maxAttempts int) (Task, bool) {
+	var out Task
+	applied := false
+	_ = b.mutate("harness", "requeue", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return errNoChange
+		}
+		t := d.Tasks[i]
+		if t.Owner != agent || (t.Status != StatusDoing && t.Status != StatusBlocked) || (rev != 0 && t.Rev != rev) {
+			return errNoChange
+		}
+		if countAttempt {
+			t.Attempts++
+		}
+		t.Rev, t.Line = d.Version, ""
+		if maxAttempts > 0 && t.Attempts >= maxAttempts {
+			t.Status = StatusFailed
+			t.Result = cleanText(reason, maxResultRunes)
+		} else {
+			t.Status, t.Owner = StatusTodo, ""
+			t.Line = cleanText(reason, maxLineRunes)
+		}
+		d.tasks()[i] = t
+		d.setTask(t)
+		out, applied = t, true
+		return nil
+	})
+	return out, applied
+}
+
+// Block marks the owner's doing task blocked with a reason.
 func (b *Board) Block(agent, id, reason string) error {
-	return b.mutate(agent, "block", func(s *Snapshot) error {
-		i := taskIdx(s, id)
-		if i < 0 {
-			return fmt.Errorf("no task %s", id)
+	return b.mutate(agent, "block", func(d *draft) error {
+		i, t, err := owned(d, agent, id)
+		if err != nil {
+			return err
 		}
-		if s.Tasks[i].Owner != agent {
-			return fmt.Errorf("%s belongs to %s", id, ownerOrNone(s.Tasks[i].Owner))
+		if t.Status != StatusDoing {
+			return fmt.Errorf("%s is %s, not doing", id, t.Status)
 		}
-		s.Tasks[i].Status = StatusBlocked
-		s.Tasks[i].Line = oneLine(reason, 140)
+		t.Status, t.Line = StatusBlocked, cleanText(reason, maxLineRunes)
+		d.tasks()[i] = t
+		d.setTask(t)
 		return nil
 	})
 }
 
-// Resume returns a blocked task to doing.
+// Resume returns a blocked task to doing (its owner, once unblocked).
 func (b *Board) Resume(agent, id string) error {
-	return b.mutate(agent, "resume", func(s *Snapshot) error {
-		i := taskIdx(s, id)
-		if i < 0 {
-			return fmt.Errorf("no task %s", id)
+	return b.mutate(agent, "resume", func(d *draft) error {
+		i, t, err := owned(d, agent, id)
+		if err != nil {
+			return err
 		}
-		if s.Tasks[i].Owner != agent {
-			return fmt.Errorf("%s belongs to %s", id, ownerOrNone(s.Tasks[i].Owner))
+		if t.Status != StatusBlocked {
+			return fmt.Errorf("%s is %s, not blocked", id, t.Status)
 		}
-		s.Tasks[i].Status = StatusDoing
-		s.Tasks[i].Line = ""
+		t.Status, t.Line = StatusDoing, ""
+		d.tasks()[i] = t
+		d.setTask(t)
 		return nil
 	})
 }
 
-// SetAgent upserts an agent's status.
+// Unblock returns a blocked task to doing on the manager's authority.
+func (b *Board) Unblock(by, id string) error {
+	return b.mutate(by, "resume", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
+		if t.Status != StatusBlocked {
+			return fmt.Errorf("%s is %s, not blocked", id, t.Status)
+		}
+		t.Status, t.Line = StatusDoing, ""
+		d.tasks()[i] = t
+		d.setTask(t)
+		return nil
+	})
+}
+
+// SetAgent upserts an agent's status. Republishing an identical status is a no-op.
 func (b *Board) SetAgent(info AgentInfo) {
-	_ = b.mutate(info.ID, "agent", func(s *Snapshot) error {
-		for i := range s.Agents {
-			if s.Agents[i].ID == info.ID {
-				s.Agents[i] = info
+	info.Line = cleanText(info.Line, 70)
+	_ = b.mutate(info.ID, "agent", func(d *draft) error {
+		for i := range d.Agents {
+			if d.Agents[i].ID == info.ID {
+				if d.Agents[i] == info {
+					return errNoChange
+				}
+				d.agents()[i] = info
+				d.set("agent", info.ID)
+				d.set("state", info.State)
 				return nil
 			}
 		}
-		s.Agents = append(s.Agents, info)
-		sort.Slice(s.Agents, func(i, j int) bool { return s.Agents[i].ID < s.Agents[j].ID })
+		as := append(d.agents(), info)
+		sort.Slice(as, func(i, j int) bool { return as[i].ID < as[j].ID })
+		d.Agents = as
+		d.set("agent", info.ID)
+		d.set("state", info.State)
 		return nil
 	})
 }
 
 // RemoveAgent drops an agent from the roster.
 func (b *Board) RemoveAgent(id string) {
-	_ = b.mutate(id, "agent-remove", func(s *Snapshot) error {
-		out := s.Agents[:0:0]
-		for _, a := range s.Agents {
+	_ = b.mutate(id, "agent-remove", func(d *draft) error {
+		found := false
+		for _, a := range d.Agents {
+			if a.ID == id {
+				found = true
+			}
+		}
+		if !found {
+			return errNoChange
+		}
+		out := make([]AgentInfo, 0, len(d.Agents))
+		for _, a := range d.Agents {
 			if a.ID != id {
 				out = append(out, a)
 			}
 		}
-		s.Agents = out
+		d.Agents, d.ca = out, true
+		d.set("agent", id)
 		return nil
 	})
 }
 
+// RequeueOwned returns every doing or blocked task an agent owns to todo (the
+// agent is going away). It returns the tasks it changed.
+func (b *Board) RequeueOwned(agent, reason string) []Task {
+	var out []Task
+	_ = b.mutate("harness", "requeue", func(d *draft) error {
+		for i, t := range d.Tasks {
+			if t.Owner == agent && (t.Status == StatusDoing || t.Status == StatusBlocked) {
+				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", cleanText(reason, maxLineRunes), d.Version
+				d.tasks()[i] = t
+				out = append(out, t)
+			}
+		}
+		if len(out) == 0 {
+			return errNoChange
+		}
+		ids := make([]string, len(out))
+		for i, t := range out {
+			ids[i] = t.ID
+		}
+		d.set("tasks", ids)
+		return nil
+	})
+	return out
+}
+
 // AddNote records a fact proposed for the shared context. Identical text is
-// ignored, so several agents discovering the same convention add it once.
+// ignored, so several agents discovering the same convention add it once (for a
+// shared note whichever role found it). An agent may have only a few notes
+// pending, and the buffer keeps only the newest: what one agent can add is what
+// every agent's prompt carries.
 func (b *Board) AddNote(from, scope, role, text string) (int, error) {
-	text = oneLine(text, 300)
+	text = cleanText(text, maxNoteRunes)
 	if text == "" {
 		return 0, fmt.Errorf("empty note")
 	}
 	if scope != "shared" && scope != "role" {
 		return 0, fmt.Errorf("scope must be shared or role")
 	}
+	if scope == "shared" {
+		role = ""
+	}
 	id := 0
-	err := b.mutate(from, "note", func(s *Snapshot) error {
-		for _, n := range s.Notes {
+	err := b.mutate(from, "note", func(d *draft) error {
+		mine := 0
+		for _, n := range d.Notes {
 			if n.Text == text && n.Scope == scope && n.Role == role {
 				id = n.ID
-				return nil
+				return errNoChange
 			}
+			if n.From == from {
+				mine++
+			}
+		}
+		if mine >= b.lim.MaxNotesPerAgent {
+			return fmt.Errorf("you already have %d proposed notes waiting to be merged: wait for them, or fold your facts into one note", mine)
 		}
 		b.note++
 		id = b.note
-		s.Notes = append(s.Notes, Note{ID: id, From: from, Scope: scope, Role: role, Text: text})
+		ns := append(d.notes(), Note{ID: id, From: from, Scope: scope, Role: role, Text: text})
+		if over := len(ns) - b.lim.MaxNotes; over > 0 {
+			ns = append([]Note(nil), ns[over:]...)
+		}
+		d.Notes = ns
+		d.set("note", id)
+		d.set("text", text)
 		return nil
 	})
 	return id, err
 }
 
-// TakeNotes removes and returns pending notes (curator merging them).
+// TakeNotes removes and returns the pending notes with the given ids (the curator
+// merging them). With no ids it takes nothing; TakeAllNotes takes everything.
 func (b *Board) TakeNotes(ids ...int) []Note {
+	if len(ids) == 0 {
+		return nil
+	}
+	want := map[int]bool{}
+	for _, i := range ids {
+		want[i] = true
+	}
+	return b.takeNotes(func(n Note) bool { return want[n.ID] })
+}
+
+// TakeAllNotes removes and returns every pending note.
+func (b *Board) TakeAllNotes() []Note { return b.takeNotes(func(Note) bool { return true }) }
+
+func (b *Board) takeNotes(pick func(Note) bool) []Note {
 	var taken []Note
-	_ = b.mutate("curator", "notes-take", func(s *Snapshot) error {
-		want := map[int]bool{}
-		for _, i := range ids {
-			want[i] = true
-		}
-		keep := s.Notes[:0:0]
-		for _, n := range s.Notes {
-			if len(want) == 0 || want[n.ID] {
+	_ = b.mutate("curator", "notes-take", func(d *draft) error {
+		keep := make([]Note, 0, len(d.Notes))
+		for _, n := range d.Notes {
+			if pick(n) {
 				taken = append(taken, n)
 			} else {
 				keep = append(keep, n)
 			}
 		}
-		s.Notes = keep
+		if len(taken) == 0 {
+			return errNoChange
+		}
+		d.Notes, d.cn = keep, true
+		ids := make([]int, len(taken))
+		for i, n := range taken {
+			ids[i] = n.ID
+		}
+		d.set("notes", ids)
 		return nil
 	})
 	return taken
 }
 
 // RaiseAlert adds an alert unless an identical one is already showing.
-func (b *Board) RaiseAlert(kind, text string) {
-	text = oneLine(text, 160)
-	_ = b.mutate("harness", "alert", func(s *Snapshot) error {
-		for _, a := range s.Alerts {
-			if a.Kind == kind && a.Text == text {
-				return nil
+func (b *Board) RaiseAlert(kind, text string) { b.RaiseAlertKey(kind, "", text) }
+
+// RaiseAlertKey is RaiseAlert with a key that ClearAlertKey can remove it by (the
+// path of a contested file, the id of a stalled agent). Alerts expire after the
+// board's AlertTTL, and only the newest few are kept.
+func (b *Board) RaiseAlertKey(kind, key, text string) {
+	text = cleanText(text, maxAlertRunes)
+	key = cleanText(key, 200)
+	_ = b.mutate("harness", "alert", func(d *draft) error {
+		now := b.now()
+		d.dropExpired(now, b.lim.AlertTTL)
+		for _, a := range d.Alerts {
+			if a.Kind == kind && a.Text == text && a.Key == key {
+				if d.cl { // expiry already rewrote the list: publish that
+					return nil
+				}
+				return errNoChange
 			}
 		}
-		s.Alerts = append(s.Alerts, Alert{Kind: kind, Text: text})
-		if len(s.Alerts) > 8 {
-			s.Alerts = s.Alerts[len(s.Alerts)-8:]
+		as := append(d.alerts(), Alert{Kind: kind, Text: text, Key: key, At: now})
+		if over := len(as) - b.lim.MaxAlerts; over > 0 {
+			as = append([]Alert(nil), as[over:]...)
+		}
+		d.Alerts = as
+		d.set("kind", kind)
+		d.set("text", text)
+		return nil
+	})
+}
+
+// dropExpired removes alerts older than ttl from the draft.
+func (d *draft) dropExpired(now time.Time, ttl time.Duration) {
+	stale := false
+	for _, a := range d.Alerts {
+		if !a.At.IsZero() && now.Sub(a.At) >= ttl {
+			stale = true
+			break
+		}
+	}
+	if !stale {
+		return
+	}
+	keep := make([]Alert, 0, len(d.Alerts))
+	for _, a := range d.Alerts {
+		if a.At.IsZero() || now.Sub(a.At) < ttl {
+			keep = append(keep, a)
+		}
+	}
+	d.Alerts, d.cl = keep, true
+}
+
+// ExpireAlerts drops alerts that outlived the alert TTL.
+func (b *Board) ExpireAlerts() {
+	_ = b.mutate("harness", "alert-expire", func(d *draft) error {
+		before := len(d.Alerts)
+		d.dropExpired(b.now(), b.lim.AlertTTL)
+		if len(d.Alerts) == before {
+			return errNoChange
 		}
 		return nil
 	})
@@ -404,16 +1077,31 @@ func (b *Board) RaiseAlert(kind, text string) {
 
 // ClearAlerts removes alerts of a kind.
 func (b *Board) ClearAlerts(kind string) {
-	_ = b.mutate("harness", "alert-clear", func(s *Snapshot) error {
-		keep := s.Alerts[:0:0]
-		for _, a := range s.Alerts {
-			if a.Kind != kind {
-				keep = append(keep, a)
-			}
-		}
-		s.Alerts = keep
-		return nil
+	_ = b.mutate("harness", "alert-clear", func(d *draft) error {
+		return d.clearAlerts(func(a Alert) bool { return a.Kind == kind })
 	})
+}
+
+// ClearAlertKey removes the alerts of a kind that were raised with a key.
+func (b *Board) ClearAlertKey(kind, key string) {
+	key = cleanText(key, 200)
+	_ = b.mutate("harness", "alert-clear", func(d *draft) error {
+		return d.clearAlerts(func(a Alert) bool { return a.Kind == kind && a.Key == key })
+	})
+}
+
+func (d *draft) clearAlerts(drop func(Alert) bool) error {
+	keep := make([]Alert, 0, len(d.Alerts))
+	for _, a := range d.Alerts {
+		if !drop(a) {
+			keep = append(keep, a)
+		}
+	}
+	if len(keep) == len(d.Alerts) {
+		return errNoChange
+	}
+	d.Alerts, d.cl = keep, true
+	return nil
 }
 
 func ownerOrNone(o string) string {
@@ -423,26 +1111,19 @@ func ownerOrNone(o string) string {
 	return o
 }
 
-func oneLine(s string, max int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	r := []rune(s)
-	if max > 0 && len(r) > max {
-		return string(r[:max-1]) + "…"
-	}
-	return s
-}
-
-// Wait blocks until the board changes or the timeout passes. It returns the new
-// snapshot.
+// Wait blocks until the board's version exceeds after or the timeout passes. It
+// returns the new snapshot.
 func (b *Board) Wait(after uint64, timeout time.Duration) *Snapshot {
-	deadline := time.After(timeout)
+	t := time.NewTimer(timeout)
+	defer t.Stop()
 	for {
+		ch := b.Changed() // before the snapshot: see Changed
 		if s := b.Snapshot(); s.Version > after {
 			return s
 		}
 		select {
-		case <-b.Changed():
-		case <-deadline:
+		case <-ch:
+		case <-t.C:
 			return b.Snapshot()
 		}
 	}

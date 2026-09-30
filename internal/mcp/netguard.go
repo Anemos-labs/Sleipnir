@@ -126,14 +126,15 @@ func classify(addr netip.Addr) (addrClass, string) {
 			return classify(netip.AddrFrom4([4]byte(b[12:16])))
 		}
 	}
+	if addr.IsUnspecified() { // 0.0.0.0 reaches the local machine; the rest of 0/8 is reserved
+		return classPrivate, "unspecified"
+	}
 	for _, n := range neverNets { // metadata addresses first: some sit inside private ranges
 		if n.prefix.Contains(addr) {
 			return classNever, n.why
 		}
 	}
 	switch {
-	case addr.IsUnspecified():
-		return classPrivate, "unspecified"
 	case addr.IsLoopback():
 		return classPrivate, "loopback"
 	case addr.IsPrivate():
@@ -483,4 +484,12 @@ func transportError(err error) error {
 		return fmt.Errorf("%s: %w", strings.ToLower(ue.Op), ue.Err)
 	}
 	return err
+}
+
+// netError is transportError plus text hygiene: the message is sanitised and
+// secrets are masked, and the error chain is kept.
+func netError(r *redactor, err error) error {
+	te := transportError(err)
+	msg := r.apply(cleanText(te.Error()))
+	return &redactedError{msg: msg, err: te}
 }

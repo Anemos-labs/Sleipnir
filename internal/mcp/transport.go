@@ -20,8 +20,10 @@ type Transport interface {
 	// before Send, and must not block.
 	Start(h Handler) error
 	// Send transmits one message. It may wait for flow control but returns
-	// when ctx is done. For HTTP a request's Send returns once the server has
-	// accepted it; the answer arrives through Handler.Message.
+	// when ctx is done. For HTTP it can take as long as the server takes to
+	// answer (a plain JSON response arrives only when the tool is done), so the
+	// client runs it beside its timers, not before them; the answer itself always
+	// arrives through Handler.Message.
 	Send(ctx context.Context, msg []byte) error
 	// Close ends the connection and releases everything, killing a child
 	// process if there is one. It is safe to call more than once.

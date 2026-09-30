@@ -39,6 +39,7 @@ when the cache economics say so, or at a cold moment for free.
 ```sh
 # 1. install (Linux/macOS)                                   (or: go install github.com/reee344/sleipnir/cmd/sleipnir@latest)
 curl -fsSL https://raw.githubusercontent.com/reee344/sleipnir/main/scripts/install.sh | sh
+sleipnir demo                          # no key, no network: a scripted team of 14 agents, the cache at work, the bill
 
 # 2. point it at a model: any OpenAI-compatible endpoint works (marketplaces, OpenRouter, OpenAI, vLLM, ...)
 export HEIMDALL_API_KEY=...            # or OPENROUTER_API_KEY / OPENAI_API_KEY

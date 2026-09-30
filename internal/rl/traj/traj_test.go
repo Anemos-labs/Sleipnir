@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
@@ -1336,5 +1337,109 @@ func TestResolverAdapter(t *testing.T) {
 	want, _ := r.Prompt(st.Prompt.Req)
 	if !reflectEqualMessages(p.Messages, want.Messages) {
 		t.Fatal("resolver returned another prompt")
+	}
+}
+
+func TestMailIdleAndSpawnSignals(t *testing.T) {
+	b := trajtest.New()
+	mgr := b.SpawnRoot("mgr", "manager", "m")
+	mgr.User("go")
+	mgr.Step(trajtest.Call{Text: "spawn", Tool: "spawn", Input: `{}`, Result: "ok"})
+	w1 := b.Spawn("mgr", "w-1", "backend", "m", "T1")
+	w1.User("t1")
+	w1.Step(trajtest.Call{Text: "edit", Tool: "edit", Input: `{"path":"a.go","old_string":"a","new_string":"b"}`, Result: "ok"})
+	w1.Step(trajtest.Call{Text: "done"})
+	b.End(w1, "idle")
+	w2 := b.Spawn("mgr", "w-2", "backend", "m", "T2")
+	w2.User("t2")
+	w2.Step(trajtest.Call{Text: "edit", Tool: "edit", Input: `{"path":"a.go","old_string":"b","new_string":"c"}`, Result: "ok"})
+	w2.Step(trajtest.Call{Text: "edit again", Tool: "edit", Input: `{"path":"b.go","old_string":"b","new_string":"c"}`, Result: "b.go is being edited by w-1", IsError: true})
+	w2.Step(trajtest.Call{Text: "give up"})
+	b.End(w2, "failed")
+	w3 := b.Spawn("mgr", "w-3", "backend", "m", "T3")
+	w3.User("t3")
+	w3.Step(trajtest.Call{Text: "edit", Tool: "edit", Input: `{"path":"c.go","old_string":"b","new_string":"c"}`, Result: "c.go is outside your scope", IsError: true})
+	w3.Step(trajtest.Call{Text: "stuck"})
+	b.End(w3, "idle")
+	_ = b.Spawn("mgr", "w-4", "backend", "m", "T4") // never makes a request
+
+	// mail: a duplicate, one to a worker that runs again, one to a worker that never does.
+	b.Mail("mgr", "w-1", "info", "please also check the tests")
+	b.Advance(2 * time.Second)
+	b.Mail("mgr", "w-1", "info", "please also check the tests") // same text again (window elapsed)
+	w1.Step(trajtest.Call{Text: "checking", Tool: "read", Input: `{"path":"a_test.go"}`, Result: "package a"})
+	w1.Step(trajtest.Call{Text: "ok"})
+	b.Mail("mgr", "w-3", "info", "ignore this")
+	b.Mail("w-1", "mgr", "info", "tests fine")
+	mgr.Step(trajtest.Call{Text: "fin"})
+
+	ep := episode(t, traj.OpenWith(b.Events(), b.Blobs), traj.Options{Policy: rl.PolicyRef{Model: "m"}})
+	sig := ep.Signals
+	want := map[string]float64{
+		rl.SigMailSent: 4, rl.SigMailDuplicate: 1, rl.SigMailIgnored: 1, rl.SigSpawns: 4,
+		rl.SigLeaseConflicts: 1, rl.SigScopeViolations: 1,
+		rl.SigDuplicateWork: 1, // a.go was edited successfully by w-1 and w-2
+		// w-2 ended failed, w-3 never got an edit through, w-4 never ran; w-1 delivered.
+		rl.SigSpawnNoResult: 3,
+	}
+	for k, v := range want {
+		if sig[k] != v {
+			t.Errorf("%s = %v, want %v", k, sig[k], v)
+		}
+	}
+	// w-1 sat idle from its end until the mail woke it. The expected gap is read
+	// off the raw log rather than hard-coded: every event ticks the builder's clock,
+	// so the exact figure moves with how many events the builder emits in between.
+	// w-2 and w-3 also ended but never ran again, and w-4 never ran at all, so
+	// w-1's gap is the whole signal.
+	var endTS, nextReqTS time.Time
+	for _, ev := range b.Events() {
+		switch {
+		case ev.Type == events.TypeAgentEnd && strings.Contains(string(ev.Data), `"id":"w-1"`):
+			endTS = ev.TS
+		case ev.Type == events.TypeModelRequest && ev.Agent == "w-1" && !endTS.IsZero() && nextReqTS.IsZero():
+			nextReqTS = ev.TS
+		}
+	}
+	if endTS.IsZero() || nextReqTS.IsZero() {
+		t.Fatal("test log has no w-1 end followed by a request")
+	}
+	wantIdle := float64(nextReqTS.Sub(endTS).Milliseconds())
+	if idle := sig[rl.SigIdleMs]; idle != wantIdle || idle < 2000 {
+		t.Errorf("idle_ms = %v, want %v (at least the two-second wait)", idle, wantIdle)
+	}
+	// Two mail edges reach w-1's later step, one from the manager's last step.
+	var toW1, toMgr int
+	for _, e := range ep.Edges {
+		if e.Kind == rl.EdgeMail && strings.HasPrefix(e.To, "w-1") {
+			toW1++
+		}
+		if e.Kind == rl.EdgeMail && strings.HasPrefix(e.To, "mgr") {
+			toMgr++
+		}
+	}
+	if toW1 != 2 || toMgr != 1 {
+		t.Errorf("mail edges: %d to w-1, %d to mgr: %+v", toW1, toMgr, ep.Edges)
+	}
+}
+
+func TestVerifierRunsFollowTheTaskCommand(t *testing.T) {
+	b := trajtest.New()
+	a := b.Agent("solo", "backend", "m")
+	a.User("go")
+	a.Step(trajtest.Call{Text: "t", Tool: "bash", Input: `{"command":"go   test ./... -run TestX"}`, Result: "ok"})
+	a.Step(trajtest.Call{Text: "t", Tool: "bash", Input: `{"command":"make verify-hidden && echo done"}`, Result: "ok"})
+	a.Step(trajtest.Call{Text: "t", Tool: "bash", Input: `{"command":"ls -la"}`, Result: "ok"})
+	a.Step(trajtest.Call{Text: "t", Tool: "bash", Input: `{"command":"pytest -x"}`, Result: "ok"})
+	a.Step(trajtest.Call{Text: "done"})
+	run := traj.OpenWith(b.Events(), b.Blobs)
+	generic := episode(t, run, traj.Options{Policy: rl.PolicyRef{Model: "m"}})
+	if generic.Signals[rl.SigVerifierRuns] != 2 {
+		t.Fatalf("common test runners: %v", generic.Signals[rl.SigVerifierRuns])
+	}
+	task := &rl.Task{ID: "x", Verifier: rl.Verifier{Cmd: "make   verify-hidden"}}
+	withTask := episode(t, run, traj.Options{Policy: rl.PolicyRef{Model: "m"}, Task: task})
+	if withTask.Signals[rl.SigVerifierRuns] != 3 {
+		t.Fatalf("the task's own command counts, whatever the spacing: %v", withTask.Signals[rl.SigVerifierRuns])
 	}
 }

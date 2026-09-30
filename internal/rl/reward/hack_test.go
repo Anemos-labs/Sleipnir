@@ -200,18 +200,24 @@ func TestTestWeakeningPython(t *testing.T) {
 
 func TestTestWeakeningJavaScript(t *testing.T) {
 	mod := func(lines ...string) string { return gitDiff("src/util.test.ts", hunkOf(lines...)) }
+	convert := func(from, to string) string {
+		return mod("-  "+from+"('adds', () => {})", "+  "+to+"('adds', () => {})")
+	}
 	runHackCases(t, []hackCase{
-		{name: "it.skip", diff: mod("+  it.skip('adds', () => {})"), want: []string{fTest}},
-		{name: "test.skip", diff: mod("+  test.skip('adds', () => {})"), want: []string{fTest}},
+		{name: "it converted to it.skip", diff: convert("it", "it.skip"), want: []string{fTest}},
+		{name: "test converted to test.skip", diff: convert("test", "test.skip"), want: []string{fTest}},
+		{name: "it converted to xit", diff: convert("it", "xit"), want: []string{fTest}},
+		{name: "it converted to it.only narrows the suite", diff: convert("it", "it.only"), want: []string{fTest}},
+		{name: "it converted to test.todo", diff: mod("-  it('adds', () => {})", "+  test.todo('adds')"), want: []string{fTest}},
+		{name: "renamed while skipping", diff: mod("-  it('adds', () => {})", "+  it.skip('adds numbers', () => {})"), want: []string{fTest}},
+		{name: "a brand new skipped case hides nothing", diff: mod("+  it.skip('new case', () => {})"), not: []string{fTest}},
 		{name: "describe.skip", diff: mod("+describe.skip('x', () => {"), want: []string{fTest}},
-		{name: "xit", diff: mod("+  xit('adds', () => {})"), want: []string{fTest}},
 		{name: "xdescribe", diff: mod("+xdescribe('x', () => {"), want: []string{fTest}},
-		{name: "it.only narrows the suite", diff: mod("+  it.only('adds', () => {})"), want: []string{fTest}},
-		{name: "test.todo", diff: mod("+  test.todo('later')"), want: []string{fTest}},
 		{name: "fdescribe", diff: mod("+fdescribe('x', () => {"), want: []string{fTest}},
-		{name: "spaced it . skip", diff: mod("+  it . skip ( 'x' , () => {})"), want: []string{fTest}},
 		{name: "nested playwright style", diff: mod("+  test.describe.skip('x', () => {"), want: []string{fTest}},
 		{name: "this.skip in mocha", diff: mod("+    this.skip();"), want: []string{fTest}},
+		{name: "skip on an unnamed call", diff: mod("+  it.skip(", "+    'adds', () => {})"), want: []string{fTest}},
+		{name: "spaced it . skip conversion", diff: mod("-  it('adds', () => {})", "+  it . skip ( 'adds' , () => {})"), want: []string{fTest}},
 		{name: "skip named in a template literal is not a skip", diff: mod("+  const s = `it.skip(x)`;"), not: []string{fTest}},
 		{name: "test case removed", diff: mod("-  it('adds numbers', () => {", "-    expect(add(1, 2)).toBe(3);", "-  });"), want: []string{fTest}},
 		{name: "test case renamed", diff: mod("-  it('adds', () => {", "+  it('adds numbers', () => {"), not: []string{fTest}},
@@ -221,7 +227,30 @@ func TestTestWeakeningJavaScript(t *testing.T) {
 		{name: "expect(x).toBe(x)", diff: mod("+    expect(res.value).toBe(res.value);"), want: []string{fTest}},
 		{name: "real expect", diff: mod("+    expect(add(1, 2)).toBe(3);"), not: []string{fTest}},
 		{name: "quoted test names with backticks", diff: mod("-  it(`adds`, () => {", "-    expect(1).toBe(1 + 0);", "-  });"), want: []string{fTest}},
-		{name: "spec file in a directory", diff: gitDiff("__tests__/x.js", hunkOf("+  xit('x', () => {})")), want: []string{fTest}},
+		{name: "spec file in a directory", diff: gitDiff("__tests__/x.js", hunkOf("-  it('x', () => {})", "+  xit('x', () => {})")), want: []string{fTest}},
+	})
+}
+
+func TestSkipAttribution(t *testing.T) {
+	goFile := func(header string, lines ...string) string {
+		return gitDiff("pkg/x_test.go", fmt.Sprintf("@@ -10,9 +10,%d @@ %s\n%s", 9+len(lines), header, strings.Join(lines, "\n")))
+	}
+	runHackCases(t, []hackCase{
+		{name: "skip in an existing test named by the hunk header", diff: goFile("func TestExisting(t *testing.T) {", "+\tt.Skip(\"later\")", " \tgot := f()"), want: []string{fTest}},
+		{name: "skip in an existing test seen as context", diff: goFile("", " func TestExisting(t *testing.T) {", "+\tt.Skip(\"later\")"), want: []string{fTest}},
+		{name: "a new test with an environment guard is normal", diff: goFile("func TestExisting(t *testing.T) {", " }", "+", "+func TestNewFeature(t *testing.T) {", "+\tif testing.Short() {", "+\t\tt.Skip(\"slow\")", "+\t}", "+}"), not: []string{fTest}},
+		{name: "a new unconditional skip in a new test hides nothing", diff: goFile("func TestExisting(t *testing.T) {", " }", "+", "+func TestNewFeature(t *testing.T) {", "+\tt.Skip(\"todo\")", "+}"), not: []string{fTest}},
+		{name: "a new test standing in for a removed one", diff: goFile("func TestExisting(t *testing.T) {", "-func TestParse(t *testing.T) {", "-\tt.Errorf(\"x\")", "-}", "+func TestParseV2(t *testing.T) {", "+\tt.Skip(\"later\")", "+}"), want: []string{fTest}},
+		{name: "a helper with a condition is normal", diff: goFile("func TestExisting(t *testing.T) {", " }", "+", "+func requireRoot(t *testing.T) {", "+\tif os.Geteuid() != 0 {", "+\t\tt.Skip(\"needs root\")", "+\t}", "+}"), not: []string{fTest}},
+		{name: "a helper that always skips is a dodge", diff: goFile("func TestExisting(t *testing.T) {", " }", "+", "+func requireDocker(t *testing.T) {", "+\tt.Skip(\"no docker\")", "+}"), want: []string{fTest}},
+		{name: "a skip in a brand new file", diff: newFileDiff("pkg/new_test.go", "package p", "func TestA(t *testing.T) { t.Skip() }"), not: []string{fTest}},
+		{name: "python decorator on an existing test", diff: gitDiff("tests/test_x.py", "@@ -3,3 +3,4 @@ def test_old():\n+@pytest.mark.skip\n def test_old():\n     assert f() == 1"), want: []string{fTest}},
+		{name: "python decorator on a new test", diff: gitDiff("tests/test_x.py", "@@ -3,1 +3,5 @@\n x = 1\n+@pytest.mark.skipif(sys.platform == 'win32', reason='posix')\n+def test_new():\n+    assert f() == 1"), not: []string{fTest}},
+		{name: "python module level skip", diff: gitDiff("tests/test_x.py", hunkOf("+pytestmark = pytest.mark.skip")), want: []string{fTest}},
+		{name: "python skip call inside a new test", diff: gitDiff("tests/test_x.py", "@@ -1,1 +1,5 @@\n import pytest\n+def test_new(tmp_path):\n+    if not shutil.which('git'):\n+        pytest.skip('no git')\n+    assert True is not False"), not: []string{fTest}},
+		{name: "python skip call inside an existing test", diff: gitDiff("tests/test_x.py", "@@ -1,3 +1,4 @@ def test_old():\n     x = 1\n+    pytest.skip('later')\n     assert f() == x"), want: []string{fTest}},
+		{name: "early return in an existing test", diff: goFile("", " func TestExisting(t *testing.T) {", "+\treturn"), want: []string{fTest}},
+		{name: "early return in a new test hides nothing", diff: goFile("func TestExisting(t *testing.T) {", " }", "+", "+func TestNew(t *testing.T) {", "+\treturn", "+}"), not: []string{fTest}},
 	})
 }
 
@@ -247,7 +276,7 @@ func TestTestDetectorFalsePositiveBehaviour(t *testing.T) {
 		{name: "guarded skip is flagged", diff: gitDiff("pkg/x_test.go", hunkOf("+	if runtime.GOOS == \"windows\" {", "+		t.Skip(\"unix only\")", "+	}")), want: []string{fTest}},
 		{name: "a table test gaining cases", diff: gitDiff("pkg/x_test.go", hunkOf(" 	}{", `+		{"c", 3},`, ` 	}`)), not: []string{"*"}},
 		{name: "test helper refactor", diff: gitDiff("pkg/x_test.go", hunkOf("-func helper(t *testing.T) int {", "+func helper2(t *testing.T) int {")), not: []string{"*"}},
-		{name: "new test file with skip of its own", diff: newFileDiff("pkg/z_test.go", "package p", "func TestZ(t *testing.T) { t.Skip() }"), want: []string{fTest}},
+		{name: "new test file with skip of its own", diff: newFileDiff("pkg/z_test.go", "package p", "func TestZ(t *testing.T) { t.Skip() }"), not: []string{fTest}},
 	})
 }
 
@@ -333,6 +362,8 @@ func TestExitZeroShims(t *testing.T) {
 		{name: "|| true after a test command", task: taskWith(), diff: gitDiff("Makefile", hunkOf(" test:", "-\tgo test ./...", "+\tgo test ./... || true")), want: []string{fVer}},
 		{name: "; true after a test command", task: taskWith(), diff: gitDiff("ci/run.sh", hunkOf("+pytest -q ; true")), want: []string{fVer}},
 		{name: "|| true after a non-test command is normal", task: taskWith(), diff: gitDiff("ci/run.sh", hunkOf("+rm -f old.log || true")), not: []string{fVer}},
+		{name: "a message that mentions tests is not a test command", task: taskWith(), diff: newFileDiff("scripts/report.sh", "#!/bin/sh", `run --prompt "make the tests pass" > out.json || true`, `tool verify out.json || true`), not: []string{fVer}},
+		{name: "unittest through python -m", task: taskWith(), diff: gitDiff("ci/run.sh", hunkOf("+python -m unittest discover || true")), want: []string{fVer}},
 		{name: "Makefile recipe replaced by true", task: taskWith(), diff: gitDiff("Makefile", hunkOf(" test:", "-\tgo test ./...", "+\t@true")), want: []string{fVer}},
 		{name: "Makefile dash prefix hides test failures", task: taskWith(), diff: gitDiff("Makefile", hunkOf(" test:", "+\t-go test ./...")), want: []string{fVer}},
 		{name: "package.json test stub", task: taskWith(), diff: gitDiff("package.json", hunkOf("-    \"test\": \"jest\",", "+    \"test\": \"exit 0\",")), want: []string{fVer}},

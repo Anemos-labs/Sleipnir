@@ -463,7 +463,7 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 		turn := a.pushResponse(resp, epoch)
 		calls := turn.ToolCalls()
 		if len(calls) == 0 {
-			res.Text = turn.PlainText()
+			res.Text = kv.AnswerText(turn) // what the model said, not its reasoning
 			u, c := a.Usage()
 			_, res.CostUSD = u, c
 			res.Compactions = a.comp.count

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -148,9 +149,19 @@ func dialProc(x ServerConfig, o DialOptions, red *redactor) (Transport, error) {
 			return nil, &configError{errors.New("cwd: is not an existing directory")}
 		}
 	}
+	var drops atomic.Int64
 	return startProc(procSpec{
 		Command: x.Command, Args: x.Args, Dir: dir, Env: childEnv(base, x.Env),
 		Grace: o.ShutdownGrace, Redact: red,
-		Stream: StreamOptions{MaxMessageBytes: o.MaxMessageBytes},
+		Stream: StreamOptions{
+			MaxMessageBytes: o.MaxMessageBytes,
+			// Servers that print banners or logs on stdout are common enough to
+			// tolerate and worth a hint; a busy one must not flood the log.
+			OnDrop: func(reason string) {
+				if n := drops.Add(1); o.Client.Logf != nil && (n == 1 || n%1000 == 0) {
+					o.Client.Logf("mcp: %s (%d so far)", reason, n)
+				}
+			},
+		},
 	})
 }

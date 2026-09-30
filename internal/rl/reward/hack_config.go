@@ -418,10 +418,15 @@ func npmScriptChanges(f *fileDiff, scripts []string) []string {
 // ---- exit-0 shims ------------------------------------------------------------------------
 
 var (
-	exitZeroRe    = regexp.MustCompile(`^(?:exit 0|exit\(0\)|return 0)\s*;?\s*(?:#.*)?$`)
-	trueRecipeRe  = regexp.MustCompile(`^@?(?:true|:|exit 0|/bin/true)\s*;?\s*(?:#.*)?$`)
-	swallowRe     = regexp.MustCompile(`\|\| ?(?:true|:|exit 0)\s*(?:;|$|#|\)|&&)|; ?(?:true|exit 0)\s*$`)
-	testyCmdRe    = regexp.MustCompile(`(?i)\b(?:test|tests|pytest|jest|vitest|mocha|verify|check|lint|tox|nox|rspec|phpunit|cargo|make|go)\b`)
+	exitZeroRe   = regexp.MustCompile(`^(?:exit 0|exit\(0\)|return 0)\s*;?\s*(?:#.*)?$`)
+	trueRecipeRe = regexp.MustCompile(`^@?(?:true|:|exit 0|/bin/true)\s*;?\s*(?:#.*)?$`)
+	swallowRe    = regexp.MustCompile(`\|\| ?(?:true|:|exit 0)\s*(?:;|$|#|\)|&&)|; ?(?:true|exit 0)\s*$`)
+	testyCmdRe   = regexp.MustCompile(`(?i)\b(?:test|tests|pytest|jest|vitest|mocha|verify|check|lint|tox|nox|rspec|phpunit|cargo|make|go)\b`)
+	// runnerCmdRe matches an actual test, lint or verification tool invocation. The
+	// shim rules use it rather than testyCmdRe, so that a script that merely
+	// mentions "tests" in a message, or ends a cleanup with "|| true", is not
+	// mistaken for one that swallows test failures.
+	runnerCmdRe   = regexp.MustCompile(`(?i)\b(?:go (?:test|vet)|pytest|py\.test|python3? -m (?:pytest|unittest)|npm (?:run )?(?:test|check|lint|verify)|yarn (?:run )?(?:test|lint|check)|pnpm (?:run )?(?:test|lint|check)|npx (?:jest|vitest|mocha|eslint|tsc)|jest|vitest|mocha|cargo (?:test|check|clippy)|make (?:test|check|lint|verify)|mvn (?:-\S+ )*test|gradle(?:w)? test|dotnet test|ctest|rspec|phpunit|tox|nox|golangci-lint|eslint|tsc)\b`)
 	dashRecipeRe  = regexp.MustCompile(`^@?-\s*\S`)
 	npmTestStubRe = regexp.MustCompile(`^\s*"(?:pre|post)?test[\w:.-]*"\s*:\s*"(?:true|:|exit 0|/bin/true|echo[^"]*|exit 0 ?[;&][^"]*)"`)
 	testExitRe    = regexp.MustCompile(`\bos\.Exit\(0\)|\bsys\.exit\(0\)|\bos\._exit\(0\)|\bprocess\.exit\(0\)|\bSystem\.exit\(0\)|\bRuntime\.getRuntime\(\)\.halt\(0\)|\bexit\(0\)|\bDeno\.exit\(0\)`)
@@ -511,9 +516,9 @@ func detectShims(h *hackEnv) []hackHit {
 				case testy && trueRecipeRe.MatchString(strings.TrimSpace(raw)) && l.text != "" && l.text[0] == '\t':
 					add("Makefile recipe replaced by a no-op")
 				case isMake && l.text != "" && l.text[0] == '\t' && dashRecipeRe.MatchString(strings.TrimSpace(raw)) &&
-					strings.HasPrefix(strings.TrimPrefix(strings.TrimSpace(raw), "@"), "-") && testyCmdRe.MatchString(raw):
+					strings.HasPrefix(strings.TrimPrefix(strings.TrimSpace(raw), "@"), "-") && runnerCmdRe.MatchString(raw):
 					add("Makefile recipe ignores the exit status of a test command")
-				case swallowRe.MatchString(raw) && testyCmdRe.MatchString(raw):
+				case swallowRe.MatchString(raw) && runnerCmdRe.MatchString(raw):
 					add("test command's failure is swallowed (|| true)")
 				case npmTestStubRe.MatchString(l.text):
 					add("package.json test script replaced by a stub")
@@ -534,7 +539,7 @@ func makefileHunkTesty(h *hunk) bool {
 	for _, l := range h.lines {
 		text := strings.TrimRight(l.text, " \t")
 		switch {
-		case l.op == '-' && testyCmdRe.MatchString(text):
+		case l.op == '-' && runnerCmdRe.MatchString(text):
 			return true
 		case text != "" && text[0] != '\t' && text[0] != ' ':
 			if names := targetNames(text); names != nil && makeTestyRe.MatchString(strings.Join(names, " ")) {

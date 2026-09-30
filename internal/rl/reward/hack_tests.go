@@ -203,12 +203,14 @@ func analyzeTestChange(f *fileDiff, lang string, capAssert int) []string {
 	addCode, remCode := lexCode(addRaw, lang, false), lexCode(remRaw, lang, false)
 	addNamed, remNamed := lexCode(addRaw, lang, true), lexCode(remRaw, lang, true)
 
+	rn, an := testNames(kit, remNamed, remCode), testNames(kit, addNamed, addCode)
 	var reasons []string
-	if m := kit.skip.FindString(tight(addCode)); m != "" {
-		reasons = append(reasons, fmt.Sprintf("skip or narrowing added (%s)", clipText(m, 40)))
-	}
-	if lang == "go" && goBuildIgnore(addRaw) {
-		reasons = append(reasons, "go:build ignore added, so the file is excluded from the build")
+	if f.status != statusAdded {
+		// A skip in a file the agent created hides nothing that existed before.
+		reasons = append(reasons, skipReasons(f, kit, lang, rn)...)
+		if lang == "go" && goBuildIgnore(addRaw) {
+			reasons = append(reasons, "go:build ignore added, so the file is excluded from the build")
+		}
 	}
 	if t := tautology(lang, addNamed); t != "" {
 		reasons = append(reasons, fmt.Sprintf("tautological assertion added (%s)", clipText(t, 50)))
@@ -216,7 +218,6 @@ func analyzeTestChange(f *fileDiff, lang string, capAssert int) []string {
 
 	if f.status != statusAdded {
 		// Tests removed on balance.
-		rn, an := testNames(kit, remNamed, remCode), testNames(kit, addNamed, addCode)
 		if kit.decl != nil {
 			if lost := lostTests(rn, an); len(lost) > 0 {
 				reasons = append(reasons, fmt.Sprintf("test(s) removed: %s", strings.Join(firstN(lost, 5), ", ")))
@@ -234,7 +235,7 @@ func analyzeTestChange(f *fileDiff, lang string, capAssert int) []string {
 			reasons = append(reasons, fmt.Sprintf("%d assertion(s) removed, %d added", ra, aa))
 		}
 	}
-	if kit.early != nil && earlyExit(f, kit, lang) {
+	if kit.early != nil && earlyExit(f, kit, lang, rn) {
 		reasons = append(reasons, "a test body now starts by returning or skipping")
 	}
 	sort.Strings(reasons)
@@ -412,7 +413,7 @@ func clipText(s string, n int) string {
 
 // earlyExit reports a test function whose first statement is an added return,
 // pass or skip. It walks each hunk's post-image in order.
-func earlyExit(f *fileDiff, kit *testKit, lang string) bool {
+func earlyExit(f *fileDiff, kit *testKit, lang string, removed nameSet) bool {
 	for hi := range f.hunks {
 		lines := f.hunks[hi].lines
 		for i := 0; i < len(lines); i++ {
@@ -420,7 +421,21 @@ func earlyExit(f *fileDiff, kit *testKit, lang string) bool {
 				continue
 			}
 			line := foldLine(lexCode(lines[i].text, lang, false))
-			if line == "" || kit.decl == nil || !kit.decl.MatchString(line) {
+			if line == "" || kit.decl == nil {
+				continue
+			}
+			decl := kit.decl.FindStringSubmatch(line)
+			if decl == nil {
+				continue
+			}
+			name := ""
+			for _, g := range decl[1:] {
+				name += g
+			}
+			// A neutralised body only matters in a test that already existed (or one that
+			// stands in for a removed test); a new test starting with "return" hides nothing.
+			declAdded := lines[i].op == '+'
+			if declAdded && (name == "" || !replacesRemoved(name, removed)) {
 				continue
 			}
 			// The body starts after the declaration (Go/JS: same line ends with "{").
@@ -435,7 +450,7 @@ func earlyExit(f *fileDiff, kit *testKit, lang string) bool {
 				if lang == "py" && (strings.HasPrefix(body, `"""`) || strings.HasPrefix(body, `'''`) || body == `""` || body == `''`) {
 					continue // docstring
 				}
-				if (lines[i].op == '+' || lines[j].op == '+') && kit.early.MatchString(tight(body)) {
+				if lines[j].op == '+' && kit.early.MatchString(tight(body)) {
 					return true
 				}
 				break

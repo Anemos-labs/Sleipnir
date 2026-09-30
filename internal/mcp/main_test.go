@@ -31,7 +31,9 @@ func TestMain(m *testing.M) {
 // helperCfg is a trusted stdio entry that runs the reference server in the given
 // mode as a child process of this test binary.
 func helperCfg(mode string, env map[string]string) ServerConfig {
-	e := map[string]string{mcptest.EnvHelper: "1", mcptest.EnvMode: mode}
+	// GORACE: a -race binary sleeps a second at exit by default; the helper
+	// children need not.
+	e := map[string]string{mcptest.EnvHelper: "1", mcptest.EnvMode: mode, "GORACE": "atexit_sleep_ms=0"}
 	for k, v := range env {
 		e[k] = v
 	}

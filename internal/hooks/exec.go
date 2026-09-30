@@ -7,13 +7,6 @@ import (
 	"time"
 )
 
-const (
-	// pipeGrace is how long the runner waits, after a hook's process has exited,
-	// for the last of its output. A background child that inherited the pipes
-	// would otherwise hold the hook "running" until it exits.
-	pipeGrace = 250 * time.Millisecond
-)
-
 // outcome is what happened to one hook process.
 type outcome struct {
 	stdout, stderr       []byte
@@ -193,7 +186,7 @@ func (r *Runner) execCommand(ctx context.Context, command string, payload []byte
 	// to the harness's pipes has not finished.
 	select {
 	case <-pumpsDone:
-	case <-time.After(pipeGrace):
+	case <-time.After(r.pipeGrace()):
 		res.strays = true
 		killGroup(pid)
 		outR.Close()

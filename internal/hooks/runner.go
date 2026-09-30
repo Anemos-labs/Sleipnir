@@ -36,6 +36,13 @@ const (
 	DefaultMaxParallel = 8
 	// DefaultKillGrace is how long a hook gets to obey SIGTERM before SIGKILL.
 	DefaultKillGrace = 500 * time.Millisecond
+	// DefaultPipeGrace is how long the runner waits, once a hook's process has
+	// exited, for the last of its output. A background child that inherited the
+	// hook's stdout would otherwise keep the hook "running" until it exits; when
+	// the wait runs out the stragglers are ended. It is generous because a
+	// properly detached child (output redirected) is still finishing its own
+	// start-up in this window, and a loaded machine can take a while.
+	DefaultPipeGrace = time.Second
 )
 
 // Runner runs the hooks of a Set. It is safe for concurrent use by many agents;
@@ -91,6 +98,7 @@ type Runner struct {
 	MaxPayload     int
 	MaxParallel    int
 	KillGrace      time.Duration
+	PipeGrace      time.Duration
 
 	mu        sync.Mutex
 	approveMu sync.Mutex
@@ -147,6 +155,13 @@ func (r *Runner) killGrace() time.Duration {
 	return DefaultKillGrace
 }
 
+func (r *Runner) pipeGrace() time.Duration {
+	if r.PipeGrace > 0 {
+		return r.PipeGrace
+	}
+	return DefaultPipeGrace
+}
+
 // timeoutFor is the deadline of one hook: its own, else the default, never
 // above the maximum.
 func (r *Runner) timeoutFor(h Hook) time.Duration {
@@ -189,9 +204,9 @@ type hookResult struct {
 
 // Run runs the hooks that match ev, in parallel, and combines their answers.
 //
-// Hooks are chosen by their matcher, deduplicated by behaviour (identical hooks
-// configured twice run once), and filtered by trust and by their "if"
-// condition; each surviving command hook gets ev as JSON on stdin and a scrubbed
+// Hooks are chosen by their matcher and filtered by trust and by their "if"
+// condition; hooks that would do the same thing (the same command configured
+// twice) run once; each surviving command hook gets ev as JSON on stdin and a scrubbed
 // environment. Their answers are then folded in configuration order, never in
 // completion order, so the result does not depend on which hook was fastest:
 // Deny beats Ask beats Allow, reasons and context are concatenated in order, and
@@ -228,11 +243,6 @@ func (r *Runner) Run(ctx context.Context, ev Event) (Result, error) {
 		seen      = map[string]bool{}
 	)
 	for _, h := range matched {
-		if k := h.Key(); seen[k] {
-			continue
-		} else {
-			seen[k] = true
-		}
 		s := slot{hook: h, idx: -1}
 		switch {
 		case !r.conditionHolds(ctx, h, ev):
@@ -243,7 +253,13 @@ func (r *Runner) Run(ctx context.Context, ev Event) (Result, error) {
 		case h.Type == TypeHTTP && !r.AllowHTTP:
 			s.skipped = "not run: http hooks are disabled"
 			res.Errors = append(res.Errors, HookError{Hook: h.String(), Message: "http hooks are disabled (Runner.AllowHTTP is false); the hook was not run"})
+		case seen[h.behaviorKey()]:
+			// The same command configured twice (in two files, or under two matchers
+			// that both match) runs once per event. Hooks that were not allowed to run
+			// never reach here, so an untrusted copy cannot shadow a trusted one.
+			s.skipped = "duplicate of a hook that runs for this event"
 		default:
+			seen[h.behaviorKey()] = true
 			s.idx = len(run)
 			run = append(run, h)
 		}

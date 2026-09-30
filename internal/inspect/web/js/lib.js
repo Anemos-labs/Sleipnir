@@ -3,7 +3,8 @@
 // Every string that comes from a log (agent ids, tool names, notes, mail, hashes)
 // is untrusted. The rule of this UI: text reaches the page only through
 // textContent / createTextNode, and nothing here can build markup from a string.
-// There is deliberately no innerHTML, no inline style attribute and no inline event handler.
+// There is deliberately no way to build markup from a string here, no inline style
+// attribute and no inline event handler.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -17,7 +18,7 @@ function apply(node, props, ns) {
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (k === 'css') Object.assign(node.style, v); // CSSOM assignment is not an inline style attribute
     else if (k === 'style') throw new Error('use css:{...}, not style=');
-    else if (k === 'innerHTML' || k.startsWith('on')) throw new Error('markup and inline handlers are not allowed: ' + k);
+    else if (/^(inner|outer)HTML$|^on/i.test(k)) throw new Error('markup and inline handlers are not allowed: ' + k);
     else node.setAttribute(k, v === true ? '' : String(v));
   }
 }

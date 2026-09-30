@@ -188,7 +188,7 @@ func (t *httpTransport) noteFailure(err error) {
 	dead := t.failures >= maxConsecutiveFailures
 	t.mu.Unlock()
 	if dead {
-		t.fail(fmt.Errorf("server unreachable: %s", t.redact.apply(cleanText(transportError(err).Error()))))
+		t.fail(fmt.Errorf("server unreachable: %w", netError(t.redact, err)))
 	}
 }
 
@@ -256,9 +256,10 @@ func (t *httpTransport) Send(ctx context.Context, msg []byte) error {
 	return err
 }
 
-func (t *httpTransport) wrapErr(err error) error {
-	return errors.New(t.redact.apply(cleanText(transportError(err).Error())))
-}
+// wrapErr turns a net/http error into one that is safe to surface: the URL
+// (which may hold a token) is gone and secrets are masked, while the cause
+// stays in the chain for errors.Is (a blocked address, a cancelled context).
+func (t *httpTransport) wrapErr(err error) error { return netError(t.redact, err) }
 
 // handle interprets the response to one POST. streaming reports that a
 // goroutine now owns resp.Body and the request context.

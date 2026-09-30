@@ -200,6 +200,9 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 		}
 	}
 	t.removed.Store(true)
+	if cur, ok := livePaths.Load(t.Path); ok && cur.(*Manager) == m {
+		livePaths.Delete(t.Path)
+	}
 	m.mu.Lock()
 	if cur := m.trees[t.Agent]; cur == t {
 		delete(m.trees, t.Agent)

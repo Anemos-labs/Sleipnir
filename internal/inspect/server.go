@@ -47,6 +47,9 @@ type Config struct {
 	Token string
 	// Interval is how often live logs are polled. Default 1s.
 	Interval time.Duration
+	// LoadWait is how long a request waits for a session that is still loading
+	// before it is told to retry (202 with progress). Default 1.5s.
+	LoadWait time.Duration
 	// Options apply to every session loaded.
 	Options Options
 	// Logf receives operational messages (never request contents or the token).
@@ -79,6 +82,9 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 	if cfg.Interval <= 0 {
 		cfg.Interval = time.Second
+	}
+	if cfg.LoadWait <= 0 {
+		cfg.LoadWait = 1500 * time.Millisecond
 	}
 	cfg.Options.fill()
 	logf := cfg.Logf
@@ -403,7 +409,7 @@ func (s *Server) withSession(fn func(http.ResponseWriter, *http.Request, *Sessio
 			}
 			return
 		}
-		sess, ready, err := e.ensure(s.cfg.Options, 1500*time.Millisecond, s.logf)
+		sess, ready, err := e.ensure(s.cfg.Options, s.cfg.LoadWait, s.logf)
 		switch {
 		case !ready:
 			s.writeJSON(w, http.StatusAccepted, map[string]any{"loading": true, "read": e.read.Load(), "total": e.total.Load()})

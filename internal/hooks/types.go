@@ -85,6 +85,15 @@ func (h Hook) Key() string {
 	return hex.EncodeToString(sum[:])
 }
 
+// behaviorKey identifies what the hook does, ignoring where and under which
+// matcher it is configured: two hooks with the same key are the same action, and
+// an event that matches both should not perform it twice.
+func (h Hook) behaviorKey() string {
+	c := h
+	c.Event, c.Matcher = "", ""
+	return c.Key()
+}
+
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // Set is the parsed hook configuration. It is immutable and safe for concurrent
