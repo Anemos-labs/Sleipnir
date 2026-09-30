@@ -1,4 +1,4 @@
-# Who is asked to review a change. The rules below are the last match wins, as in .gitignore; every pattern must match a
+# Who is asked to review a change. As in .gitignore, the last line that matches a file wins, and every pattern must match a
 # file that exists (internal/repocheck fails on a stale one after a rename). The ruleset does not require a code owner's
 # approval: the owner is the only maintainer and cannot approve their own pull request, so this asks for a review and
 # blocks nothing.
