@@ -1,4 +1,4 @@
-.PHONY: build test race lint fmt sim check clean
+.PHONY: build test race lint fmt sim readme-sim check clean
 
 build:
 	go build -trimpath -ldflags "-X main.version=$$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$$(git rev-parse --short HEAD 2>/dev/null || echo none)" -o bin/sleipnir ./cmd/sleipnir
@@ -20,6 +20,10 @@ fmt:
 sim:
 	go run ./cmd/sleipnir sim --mode scenarios
 	go run ./cmd/sleipnir sim --mode pins
+
+# Refresh the simulator results quoted in README.md.
+readme-sim:
+	scripts/readme-sim.sh
 
 # Everything CI runs (gofmt, vet, build, race tests, cross-compile).
 check:
