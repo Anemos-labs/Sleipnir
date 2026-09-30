@@ -1,6 +1,6 @@
 #!/bin/sh
 # End-to-end validation against a real endpoint. See docs/VALIDATION.md.
-#   MODEL=<model> [BUDGET_USD=3] scripts/validate.sh
+#   MODEL=<model> [BUDGET_USD=3] [OUT=validation] [KEEP_WORK=1] scripts/validate.sh
 set -eu
 
 : "${MODEL:?set MODEL to a tool-capable model id (see: sleipnir models)}"
@@ -8,10 +8,14 @@ BUDGET_USD="${BUDGET_USD:-3}"
 BIN="${SLEIPNIR:-sleipnir}"
 OUT="${OUT:-validation}"
 DATE=$(date -u +%Y%m%d-%H%M%S)
-REPORT="$OUT/$DATE-$(echo "$MODEL" | tr '/' '_').json"
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+# KEEP_WORK=1 keeps the fixture and the session directories (events, inspector input) for a look after a failed step.
+trap 'if [ -n "${KEEP_WORK:-}" ]; then echo "kept: $WORK"; else rm -rf "$WORK"; fi' EXIT
 mkdir -p "$OUT"
+# The steps below run inside the fixture repository: paths given as relative ones must not follow them there.
+OUT=$(cd "$OUT" && pwd)
+case "$BIN" in */*) BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")" ;; esac
+REPORT="$OUT/$DATE-$(echo "$MODEL" | tr '/' '_').json"
 
 echo "== 1. endpoint profile"
 "$BIN" doctor --model "$MODEL" --deep --json > "$WORK/doctor.json"

@@ -362,6 +362,138 @@ func TestUserStopHooksRunBeforeTheGuard(t *testing.T) {
 	}
 }
 
+// A worker that is running but holds nothing on the board is only finishing its last
+// turn: the guard waits for it, it does not send the manager back.
+func TestWindingDownIsOnlyRunningWorkersThatHoldNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		u    unfinishedWork
+		want bool
+	}{
+		{"a worker finishing its last turn", unfinishedWork{running: []string{"be-1"}, idle: []string{"be-1"}}, true},
+		{"two of them", unfinishedWork{running: []string{"be-1", "te-1"}, idle: []string{"be-1", "te-1"}}, true},
+		{"a worker on a task", unfinishedWork{running: []string{"be-1 (T1)"}}, false},
+		{"one finishing, one working", unfinishedWork{running: []string{"be-1", "te-1 (T2)"}, idle: []string{"be-1"}}, false},
+		{"finishing, with a submission to judge", unfinishedWork{running: []string{"be-1"}, idle: []string{"be-1"}, review: []string{"T1"}}, false},
+		{"finishing, with a blocked task", unfinishedWork{running: []string{"be-1"}, idle: []string{"be-1"}, blocked: []string{"T1"}}, false},
+		{"finishing, with work nobody started", unfinishedWork{running: []string{"be-1"}, idle: []string{"be-1"}, todo: []string{"T1"}}, false},
+		{"nobody running", unfinishedWork{review: []string{"T1"}}, false},
+		{"nothing at all", unfinishedWork{}, false},
+	} {
+		if got := tc.u.windingDown(); got != tc.want {
+			t.Errorf("%s: windingDown = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// finishingRig is a swarm whose one worker has handed its task in and is now writing its
+// closing message, which the test holds back. The manager waits for the task, accepts it
+// and answers; its answer reaches the guard while the worker is still running.
+func finishingRig(t *testing.T, gate chan struct{}) (*rvRig, *recordingHooks) {
+	t.Helper()
+	inner := &recordingHooks{}
+	r := newRVRigWith(t, Config{HoldManager: true, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" {
+			switch c.Assistants {
+			case 0:
+				return rvReply{Tools: []rvToolCall{{"spawn", map[string]any{"role": "backend", "task": "Add notes"}}}}
+			case 1:
+				return rvReply{Tools: []rvToolCall{{"wait", map[string]any{"until": []string{"T1"}, "timeout_sec": 20}}}}
+			case 2:
+				return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "accept", "id": "T1"}}}}
+			}
+			return rvReply{Text: "finished"}
+		}
+		if c.Assistants == 0 {
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "added"}}}}
+		}
+		rvBlock(ctx, gate) // the closing message
+		return rvReply{Text: "summary"}
+	}, func(d *Deps) { d.Hooks = inner })
+	return r, inner
+}
+
+func TestGuardWaitsForAWorkerThatIsOnlyFinishing(t *testing.T) {
+	gate := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(gate) }) }
+	t.Cleanup(release)
+	r, inner := finishingRig(t, gate)
+
+	type outcome struct {
+		res *agent.Result
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		res, err := r.sw.RunManager(context.Background(), "add notes")
+		done <- outcome{res, err}
+	}()
+
+	// The manager's final answer has reached the stop hooks; the worker is still in its last turn.
+	rvWait(t, "the manager's final answer", func() bool { return inner.stopCalls() >= 1 })
+	if !r.running("be-1") {
+		t.Fatal("setup: the worker should still be writing its closing message")
+	}
+	select {
+	case o := <-done:
+		t.Fatalf("the run ended while the worker was still finishing: %+v", o)
+	case <-time.After(150 * time.Millisecond):
+	}
+	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 0 {
+		t.Fatalf("%d hold events: the manager was sent back for a worker that only had its closing message to write", n)
+	}
+	if n := managerCalls(r); n != 4 {
+		t.Fatalf("the manager made %d requests while the guard waited, want 4 (spawn, wait, accept, answer)", n)
+	}
+
+	release()
+	select {
+	case o := <-done:
+		if o.err != nil {
+			t.Fatal(o.err)
+		}
+		if o.res.Text != "finished" {
+			t.Fatalf("result %q: a settled board adds no report", o.res.Text)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the run did not end after the worker finished")
+	}
+	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 0 {
+		t.Fatalf("%d hold events for a run whose worker finished on its own", n)
+	}
+	if n := managerCalls(r); n != 4 {
+		t.Fatalf("the manager made %d requests, want 4: the wait must cost it none", n)
+	}
+}
+
+// The wait is short, and the guard has only so much of it: a worker that will not end is
+// waited for once, and after that it is an ordinary running worker that vetoes the answer.
+func TestGuardsWaitForAFinishingWorkerIsBounded(t *testing.T) {
+	prev := holdSettleMax
+	holdSettleMax = 100 * time.Millisecond
+	t.Cleanup(func() { holdSettleMax = prev })
+
+	gate := make(chan struct{}) // never opened: the worker does not end
+	r, _ := finishingRig(t, gate)
+	t.Cleanup(func() { close(gate) })
+
+	start := time.Now()
+	res, err := r.sw.RunManager(context.Background(), "add notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > 8*time.Second {
+		t.Fatalf("the run took %s: the wait for a finishing worker is not bounded", took)
+	}
+	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 3 {
+		t.Fatalf("%d swarm.hold events, want 3 (the veto bound: the wait is spent once, then each answer is vetoed)", n)
+	}
+	if !strings.Contains(res.Text, "[harness] Unfinished when the manager stopped: running: be-1.") {
+		t.Fatalf("the run must report the worker it left running: %q", res.Text)
+	}
+}
+
 // A run that was cancelled, and a run whose budget is spent, are never held: they are
 // ending, and a veto would only turn a clean stop into an error.
 func TestHoldNeverVetoesACancelledOrBrokeRun(t *testing.T) {

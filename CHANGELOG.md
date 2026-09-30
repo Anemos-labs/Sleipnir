@@ -37,8 +37,9 @@ The first release.
 - Optional mailman (`swarm.mailman`, `--mailman`): worker mail is digested in bursts by a small read-only agent that has
   a model of its own if you give it one; the router's checks are unchanged, a mailman that is absent or slow costs delay,
   never mail, and every digest names its senders.
-- The manager is supervised: in a batch run its final answer is held while its workers or reviews are unfinished, in a
-  chat it is woken, with a short harness-written note, when workers finish or fail.
+- The manager is supervised: in a batch run its final answer is held while its workers or reviews are unfinished (a
+  worker that is only writing its closing message is waited for, not counted), in a chat it is woken, with a short
+  harness-written note, when workers finish or fail.
 - Bounded by default: a swarm has a built-in budget (US$50, `swarm.budget_usd`, only you can raise or remove it), a
   ceiling on its size (`swarm.max_agents`), and peer mail can wake one worker only 40 times per task; budget checks fail
   closed. Read-only roles are denied the background-job tools by name.
