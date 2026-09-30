@@ -78,6 +78,13 @@ type Config struct {
 	// InboxSoftCap is how many messages may wait in one agent's inbox before further
 	// mail is coalesced into a digest (default 12).
 	InboxSoftCap int
+	// MaxMailWakes bounds how many times peer mail may wake one idle worker for its
+	// current task (default 40; negative: no bound). Each wake is a whole run, so two
+	// workers answering each other would otherwise keep each other running for as
+	// long as the swarm budget lasts. Mail past the bound is still delivered and waits
+	// in the inbox; the manager is told once, and the count starts again when the
+	// worker is given a new task. The manager's own mail and the harness's never count.
+	MaxMailWakes int
 
 	// HoldManager makes a final answer of the manager wait for the board: while
 	// workers are running or tasks are unreviewed, the manager's Stop is vetoed with a
@@ -122,7 +129,7 @@ func DefaultConfig() Config {
 		IdleRetire: 15 * time.Minute,
 		Board:      DefaultBoardLimits(), MaxAttempts: 3, VerifyTimeout: 15 * time.Minute, MaxVerifies: 2,
 		StuckAfter: 10 * time.Minute, StuckGrace: 30 * time.Second, ShutdownGrace: 10 * time.Second,
-		SuperviseEvery: time.Second, InboxSoftCap: 12,
+		SuperviseEvery: time.Second, InboxSoftCap: 12, MaxMailWakes: 40,
 		WakeQuiet: 1500 * time.Millisecond, WakeMax: 10 * time.Second, MaxWakes: 8,
 		MailmanQuiet: 1500 * time.Millisecond, MailmanMax: 6 * time.Second, MailmanBound: 30 * time.Second,
 		MailmanBatch: 24, MailmanMaxPending: 200, MailmanDigestChars: 700,
@@ -252,6 +259,9 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	}
 	if cfg.MaxAttempts <= 0 {
 		cfg.MaxAttempts = def.MaxAttempts
+	}
+	if cfg.MaxMailWakes == 0 {
+		cfg.MaxMailWakes = def.MaxMailWakes
 	}
 	if cfg.VerifyTimeout <= 0 {
 		cfg.VerifyTimeout = def.VerifyTimeout

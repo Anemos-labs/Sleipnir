@@ -53,6 +53,7 @@ sleipnir chat                          # interactive; /cost /context /compact /a
 sleipnir run "fix the failing test in ./server"
 sleipnir swarm 8 "add pagination to every list endpoint and update the client" --verify "make test"
 sleipnir swarm 8 "..." --verify "make test" --isolation worktree   # each writer in its own git worktree; finished work goes through a verifying merge queue
+sleipnir swarm 8 "..." --budget-usd 20 # a swarm stops at US$50 unless you say otherwise (swarm.budget_usd; 0 in your own file removes the cap)
 ```
 
 `sleipnir recon` prints the project map that seeds the shared layer (layout, build/test commands, package docs, ranked

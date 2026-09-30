@@ -131,6 +131,8 @@ type metaState struct {
 	endTS                                                                   time.Time
 	endCost                                                                 float64
 	schema                                                                  int
+	endReason, isolation                                                    string
+	mailman                                                                 bool
 }
 
 // New creates an empty Session for dir, which holds events.jsonl (and blobs/).

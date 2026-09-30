@@ -73,8 +73,8 @@ func TestProjectMaySetIsolationButCannotChooseWhereTreesLive(t *testing.T) {
 		}
 	}
 	for _, s := range SensitivePaths() {
-		if strings.HasPrefix(s, "swarm") {
-			t.Errorf("no swarm setting is security-sensitive, got %s", s)
+		if strings.HasPrefix(s, "swarm") && s != "swarm.budget_usd" { // the budget is the one: budget_test.go
+			t.Errorf("no other swarm setting is security-sensitive, got %s", s)
 		}
 	}
 	// The environment layer maps the field like any other.

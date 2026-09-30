@@ -235,6 +235,12 @@ func snapshot(t *testing.T, dir string) map[string]string {
 			}
 		}
 		sig := fi.Mode().String() + "|" + fi.ModTime().String()
+		if fi.IsDir() {
+			// A directory's mtime only says that an entry came or went, which the walk sees
+			// for itself (a new path, a missing one). Skipped entries (toolchain caches under
+			// HOME) would otherwise show up as a change of the directory that holds them.
+			sig = fi.Mode().String()
+		}
 		if fi.Mode().IsRegular() {
 			b, _ := os.ReadFile(p)
 			sig += "|" + string(b)
@@ -263,6 +269,14 @@ func TestAllowedCommandsChangeNothing(t *testing.T) {
 	mode := filepath.Join(f.home, ".config", "go", "telemetry", "mode")
 	if err := os.MkdirAll(filepath.Dir(mode), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	// The same for the directories the go command makes directly in HOME (its build cache
+	// and GOPATH): the snapshot skips what is inside them, but a new entry in HOME would
+	// change the mtime of HOME itself, which it does not skip.
+	for _, d := range []string{".cache", "go"} {
+		if err := os.MkdirAll(filepath.Join(f.home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.WriteFile(mode, []byte("off 2026-01-01\n"), 0o644); err != nil {
 		t.Fatal(err)

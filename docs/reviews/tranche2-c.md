@@ -145,6 +145,10 @@ otherwise. `RoleProfile{Deny: []string{"bash_output"}}` works (checked); the rea
 does not rely on cross-agent job reads, so the safest default would be "own jobs only"; that changes tested behaviour (`TestJobsAreSessionWide`)
 and is left to the integrator.
 
+*Closed by the integrator:* the session builds the read-only roles' engine profiles (and the isolated manager's) with
+`Deny: bash_output, bash_kill` (`readOnlyRoleDeny`, `TestReadOnlyRolesAreDeniedTheJobToolsByName`, which fails without it); a read-only role runs
+what it runs in the foreground. Own-job reads for every role stay as tested (`TestJobsAreSessionWide`).
+
 ## F18, in `fs`, `web`, `shell`
 
 Done:

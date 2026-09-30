@@ -44,6 +44,7 @@ func (s *Session) metaLocked(now time.Time) SessionMeta {
 		Provider: m.provider, Dialect: m.dialect, Renderer: m.renderer, Version: m.version,
 		Swarm: m.swarm || s.swarm.nSpawns > 1, Root: root, Goal: m.goal, SharedHash: m.sharedHash,
 		ReconTokens: m.reconTokens, Start: m.first, End: end, Ended: m.ended, DurationMs: dur, EndCostUSD: m.endCost,
+		EndReason: m.endReason, Isolation: m.isolation, Mailman: m.mailman,
 	}
 }
 
@@ -645,6 +646,7 @@ func (s *Session) Swarm() SwarmReport {
 		}
 	}
 	rep.Governor = gov
+	rep.Isolation, rep.Mailman, rep.Supervision = s.isolationLocked(), s.mailmanLocked(), s.supervisionLocked()
 	return rep
 }
 

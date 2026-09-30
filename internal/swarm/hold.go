@@ -208,5 +208,5 @@ func (s *Swarm) agentBudgetSpent(m *member) bool {
 		return false
 	}
 	_, c := m.a.Usage()
-	return c >= s.cfg.AgentBudgetUSD
+	return !(c < s.cfg.AgentBudgetUSD) // a cost that is not a number counts as spent
 }

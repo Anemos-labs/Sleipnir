@@ -58,7 +58,7 @@ func (s *Swarm) superviseMember(m *member, now time.Time) {
 		return // the manager is never retired or watched; the mailman has its own watch (mailman.go)
 	}
 	if delivered {
-		s.wake(m) // a digest just arrived: no-op unless the worker is idle
+		s.wakeForMail(m, "") // a digest of peer mail just arrived: no-op unless the worker is idle
 	}
 	m.mu.Lock()
 	life, rs, idleAt := m.life, m.run, m.idleAt

@@ -230,9 +230,17 @@ type Swarm struct {
 	// session's model unless one is given for the role (--role-model mailman=<model>).
 	// Like isolation, it changes nothing about what a project's files can reach, so a
 	// project's file may set it.
-	Mailman   bool    `json:"mailman,omitempty"`
+	Mailman bool `json:"mailman,omitempty"`
+	// BudgetUSD is the most a swarm run may spend, retired agents included; 0 is no
+	// limit. It defaults to DefaultSwarmBudgetUSD, a safety net: a swarm can spend many
+	// times what one agent does, and a budget that is off by default is one nobody
+	// remembers to set. Raising or removing it is the user's decision, so a project's
+	// file cannot (trust.go); --budget-usd overrides it for one run.
 	BudgetUSD float64 `json:"budget_usd"`
 }
+
+// DefaultSwarmBudgetUSD is the built-in cap on what a swarm run may spend, in US dollars.
+const DefaultSwarmBudgetUSD float64 = 50
 
 // Isolation modes as IsolationMode reports them.
 const (
@@ -278,7 +286,7 @@ func Defaults() *Config {
 			SharedTTL:             "5m",
 			MinLayerForBreakpoint: 1500, // kv.DefaultPolicy
 		},
-		Swarm: Swarm{Isolation: IsolationNone},
+		Swarm: Swarm{Isolation: IsolationNone, BudgetUSD: DefaultSwarmBudgetUSD},
 		Tools: Tools{
 			MaxOutputChars:    24_000, // tools.DefaultLimits
 			DefaultTimeoutSec: 120,

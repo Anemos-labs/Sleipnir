@@ -144,7 +144,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	}
 	defer s.Close()
 	if !*quiet && !*asJSON {
-		fmt.Fprintf(os.Stderr, "sleipnir %s · %s · session %s\n", version, s.Model.ID, s.ID)
+		fmt.Fprintf(os.Stderr, "sleipnir %s · %s%s · session %s\n", version, s.Model.ID, budgetLabel(s), s.ID)
 	}
 	start := time.Now()
 	res, err := s.Run(ctx, prompt)
@@ -174,9 +174,32 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		printIntegration(os.Stderr, integ, *quiet)
 	}
 	if err != nil && errors.Is(err, agent.ErrBudget) {
-		return fmt.Errorf("stopped: budget exhausted")
+		return budgetStopped(s, res)
 	}
 	return err
+}
+
+// budgetLabel is " · budget $N" for a session that has one: a cap that will stop a run
+// should be visible when the run starts (a swarm's is on by default).
+func budgetLabel(s *session.Session) string {
+	if b := s.Budget(); b > 0 {
+		return fmt.Sprintf(" · budget $%.2f", b)
+	}
+	return ""
+}
+
+// budgetStopped is the error of a run that hit its budget: what was spent, the cap, and
+// where it comes from (the flag, and for a swarm the configuration and its default).
+func budgetStopped(s *session.Session, res *session.Result) error {
+	spent := ""
+	if res != nil {
+		spent = fmt.Sprintf(" ($%.2f spent)", res.CostUSD)
+	}
+	hint := "raise it with --budget-usd"
+	if s.Swarm != nil {
+		hint = "raise it with --budget-usd or swarm.budget_usd (0 removes the cap)"
+	}
+	return fmt.Errorf("stopped: the budget of $%.2f is exhausted%s; %s", s.Budget(), spent, hint)
 }
 
 // endReasonOf is the SessionEnd reason of a run that returned err: how it ended, for

@@ -66,6 +66,9 @@ const (
 	TypeSwarmUnfinished = "swarm.unfinished"
 	TypeSwarmWake       = "swarm.wake"
 	TypeSwarmWakePaused = "swarm.wake.paused"
+	// swarm.wake_limit: peer mail woke one worker as often as the bound allows for its
+	// current task (payload: limit, task); further mail waits in its inbox.
+	TypeSwarmWakeLimit = "swarm.wake_limit"
 
 	// Mailman mode (swarm.mailman). mail.route: a worker's message was accepted by the
 	// router and handed to the mailman's ledger instead of being delivered (payload: id,

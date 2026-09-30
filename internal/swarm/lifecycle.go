@@ -90,8 +90,12 @@ type member struct {
 	gateTries int
 	stuckWarn bool
 	autoRuns  int
-	box       overflow
-	emitted   string
+	// mailWakes counts the runs peer mail started for the current task, and wakeLimited
+	// that the bound on them (Config.MaxMailWakes) was reached and reported.
+	mailWakes   int
+	wakeLimited bool
+	box         overflow
+	emitted     string
 
 	// progress is the unix time of the last sign of life (a model or tool event).
 	progress atomic.Int64
@@ -457,6 +461,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	}
 	m.task = taskID
 	m.gateTries = 0
+	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 }
 
@@ -467,14 +472,63 @@ func (s *Swarm) launch(m *member, rs *runState, ctx context.Context, start runSt
 	go s.runMember(m, rs, ctx, start)
 }
 
-// wake starts an idle worker (mail arrived for it).
-func (s *Swarm) wake(m *member) {
+// wake starts an idle worker (mail arrived for it). It reports whether it did.
+func (s *Swarm) wake(m *member) bool {
 	if m.manager {
-		return
+		return false
 	}
 	if rs, ctx, ok := s.reserve(m); ok {
 		s.launch(m, rs, ctx, runStart{})
+		return true
 	}
+	return false
+}
+
+// wakeForMail is wake for a message from another worker: it counts against the bound
+// on mail wakes of the worker's current task (Config.MaxMailWakes), so a conversation
+// between agents cannot keep them running for ever. The manager's mail is the person's
+// authority and the harness's own is the run's bookkeeping: neither counts.
+func (s *Swarm) wakeForMail(m *member, from string) {
+	limit := s.cfg.MaxMailWakes
+	if m.manager || m.service || limit <= 0 || from == s.ManagerID() || from == harnessSender {
+		s.wake(m)
+		return
+	}
+	m.mu.Lock()
+	over := m.mailWakes >= limit
+	m.mu.Unlock()
+	if over {
+		s.noteMailWakeLimit(m, limit)
+		return
+	}
+	if s.wake(m) {
+		m.mu.Lock()
+		m.mailWakes++
+		m.mu.Unlock()
+	}
+}
+
+// noteMailWakeLimit tells the manager, once per assignment, that a worker's mail no
+// longer wakes it.
+func (s *Swarm) noteMailWakeLimit(m *member, limit int) {
+	m.mu.Lock()
+	first := !m.wakeLimited
+	m.wakeLimited = true
+	task := m.task
+	m.mu.Unlock()
+	if !first {
+		return
+	}
+	s.emitAs(m.id, events.TypeSwarmWakeLimit, map[string]any{"limit": limit, "task": task})
+	s.notifyManager(fmt.Sprintf("%s was woken %d times by mail from other workers for %s and will not be again until it is given a new task; its mail waits in its inbox. If it is caught in a conversation, stop it or give it new work.",
+		m.id, limit, safeToken(taskLabel(task), 24)))
+}
+
+func taskLabel(s string) string {
+	if s == "" {
+		return "its task"
+	}
+	return s
 }
 
 func (s *Swarm) runMember(m *member, rs *runState, ctx context.Context, start runStart) {

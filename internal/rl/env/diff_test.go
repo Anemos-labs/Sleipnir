@@ -225,8 +225,15 @@ func TestDiffSurvivesHostileWorkspaceContent(t *testing.T) {
 	if err := mkfifo(filepath.Join(root, "fifo")); err != nil {
 		t.Fatal(err)
 	}
-	// Names git or a filesystem could misread as control paths.
-	for _, name := range []string{".GIT/config", "git~1/x", ".git./y", "sub/.git ../z"} {
+	// Names git or a filesystem could misread as control paths. On a case-insensitive
+	// file system (macOS) ".GIT" is ".git": there is no second spelling to write, and
+	// writing one would land in the checkout's own git directory.
+	caseFold := caseInsensitiveFS(t, t.TempDir())
+	hostile := []string{".GIT/config", "git~1/x", ".git./y", "sub/.git ../z"}
+	if caseFold {
+		hostile = hostile[1:]
+	}
+	for _, name := range hostile {
 		mustWrite(t, filepath.Join(root, filepath.FromSlash(name)), "boom")
 	}
 	// Non-UTF-8 name (macOS file systems refuse to create one).
@@ -249,7 +256,11 @@ func TestDiffSurvivesHostileWorkspaceContent(t *testing.T) {
 	for _, s := range d.Skipped {
 		reasons[s.Path] = s.Reason
 	}
-	for _, p := range []string{".GIT/config", "git~1/x", ".git./y", "nested-empty/", "nested-committed/"} {
+	wantSkipped := []string{".GIT/config", "git~1/x", ".git./y", "nested-empty/", "nested-committed/"}
+	if caseFold {
+		wantSkipped = wantSkipped[1:]
+	}
+	for _, p := range wantSkipped {
 		if reasons[p] == "" {
 			t.Errorf("%q should be reported as skipped; got %v", p, reasons)
 		}
@@ -261,7 +272,7 @@ func TestDiffSurvivesHostileWorkspaceContent(t *testing.T) {
 	if mustRead(t, filepath.Join(co, "mathx.go")) != fixedMath {
 		t.Fatal("legitimate change lost")
 	}
-	if exists(filepath.Join(co, ".GIT")) || exists(filepath.Join(co, "git~1")) {
+	if (!caseFold && exists(filepath.Join(co, ".GIT"))) || exists(filepath.Join(co, "git~1")) {
 		t.Fatal("control-looking paths reached the clean checkout")
 	}
 }

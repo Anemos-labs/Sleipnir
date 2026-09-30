@@ -376,14 +376,22 @@ func TestStuckMailmanIsBypassedAfterTheBound(t *testing.T) {
 	if d := time.Since(start); d < 150*time.Millisecond {
 		t.Fatalf("delivered directly after %s: before the bound", d)
 	}
+	// Which of the two reasons is given depends on whether the housekeeping pass that
+	// found the parcels overdue ran after the batch was handed to the mailman ("did not
+	// answer within the bound") or before ("waited longer than the bound"); on a slow
+	// machine either can happen. Both say that the bound is why.
 	found := false
 	for _, e := range r.log.OfType(events.TypeMailDirect) {
-		if strings.Contains(string(e.Data), "did not answer within the bound") {
+		if d := string(e.Data); strings.Contains(d, "did not answer within the bound") || strings.Contains(d, "waited longer than the bound") {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("the direct delivery does not say why")
+		var reasons []string
+		for _, e := range r.log.OfType(events.TypeMailDirect) {
+			reasons = append(reasons, string(e.Data))
+		}
+		t.Fatalf("the direct delivery does not say why: %v", reasons)
 	}
 	// The run that never answered is stopped (twice the bound), and the mailman is free again.
 	rvWait(t, "the mailman's run to be stopped", func() bool { return r.idle("mm-1") })

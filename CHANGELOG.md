@@ -30,6 +30,18 @@ The first release.
   `doing` without the evidence gate and the verifier).
 - Warm gate (one primer per cold prefix), governor (requests per minute, priorities, `Retry-After`, AIMD), watchdog
   and failure recovery.
+- Worktree isolation (`swarm.isolation: worktree`, `--isolation`): every writer edits a git worktree of its own, and its
+  work reaches your checkout through a serial merge queue that verifies every integration and undoes a merge whose check
+  fails; the result is applied at the end of the run (as edits, or as commits with `--commit`) and is never lost when it
+  cannot be.
+- Optional mailman (`swarm.mailman`, `--mailman`): worker mail is digested in bursts by a small read-only agent that has
+  a model of its own if you give it one; the router's checks are unchanged, a mailman that is absent or slow costs delay,
+  never mail, and every digest names its senders.
+- The manager is supervised: in a batch run its final answer is held while its workers or reviews are unfinished, in a
+  chat it is woken, with a short harness-written note, when workers finish or fail.
+- Bounded by default: a swarm has a built-in budget (US$50, `swarm.budget_usd`, only you can raise or remove it), a
+  ceiling on its size (`swarm.max_agents`), and peer mail can wake one worker only 40 times per task; budget checks fail
+  closed. Read-only roles are denied the background-job tools by name.
 
 ### Providers
 
@@ -43,7 +55,9 @@ The first release.
 - File, shell, web and recall tools; every agent sends the same tool list and roles are restricted at run time by the
   permission engine (modes, rules, shell-syntax analysis, role profiles, hard denies for credentials).
 - Skills (listing in the shared layer, loaded on demand), custom slash commands, markdown role definitions, hooks
-  (SessionStart/End, UserPromptSubmit, PreToolUse, PostToolUse, Stop, PermissionRequest), MCP servers (tools frozen per
+  (SessionStart/End with the reason a session ended, UserPromptSubmit, PreToolUse, PostToolUse, PermissionRequest,
+  Notification, Stop for the agent you talk to and SubagentStart/Stop for a swarm's workers, PreCompact/PostCompact around
+  every compaction, automatic ones included), MCP servers (tools frozen per
   session, per-entry approval for project servers, prompts as slash commands, `sleipnir mcp`, `/mcp`), checkpoints
   and rewind. Repository-supplied skills, commands, roles, hooks and instruction files are read only when the project
   is trusted, and writes to the directories that hold them always ask.
@@ -96,8 +110,19 @@ The first release.
 - Independent adversarial reviews of the prompt engine, the swarm and the trust boundaries are in `docs/reviews/`, with what
   was fixed (all of it) and what remains.
 
+### Configuration
+
+- Every key in the file format is read by something: the keys of earlier drafts that nothing read are gone (an old file
+  that still has them gets an "unknown key" warning with a suggestion). `cache.shared_ttl` reaches the breakpoints of
+  single agents and swarms, and provider options are validated per dialect (unknown names warn, wrong kinds and values
+  the adapter does not take are errors; a test keeps the list and the code that reads it together).
+- `sleipnir config` lists each warning once, with file, line and column; `init --user` invents no provider (`--local-url`
+  adds a self-hosted one); `swarm -h` and `-h` everywhere exit 0 and print usage; a bad worker count, a role model for a role
+  that does not exist and a budget that is not a positive number are errors that say what was expected.
+
 ### Interfaces
 
 - `sleipnir chat` (slash commands, Ctrl-C per turn), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
-  dashboard: layers, hit ratio, compactions, swarm, cost).
+  dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and
+  the manager's supervision).

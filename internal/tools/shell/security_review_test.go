@@ -281,8 +281,13 @@ func TestSecSound_CwdCannotEscapeTheRoot(t *testing.T) {
 	}
 	h.run("be-1", all, "bash", map[string]any{"command": "cd link"})
 	res := h.run("be-1", all, "bash", map[string]any{"command": "pwd -P"})
-	if strings.Contains(res.Text, filepath.Base(outside)) {
-		t.Fatalf("agent escaped the project through a symlink: %q", res.Text)
+	// The whole path, not its last element: temp directories are named with a random number
+	// ("...Escape1204129002/002"), and the base name of one ("002") can be a substring of another's.
+	resolved, _ := filepath.EvalSymlinks(outside)
+	for _, where := range []string{outside, resolved} {
+		if where != "" && strings.Contains(res.Text, where) {
+			t.Fatalf("agent escaped the project through a symlink: %q", res.Text)
+		}
 	}
 }
 

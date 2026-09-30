@@ -33,7 +33,8 @@ instruction files until you say `--trust-project`.
   rules, shell-syntax analysis that judges every simple command including those in substitutions, hard denies that no
   mode lifts (`~/.ssh` keys, `~/.aws`, `~/.gnupg`, `/proc/*/environ`, `.git` writes, system directories), guarded paths
   (`.env`), role profiles that can only tighten, and no prompter means deny. Every file, web and shell tool asks the engine
-  before it acts; background-job tools ask before touching another agent's job.
+  before it acts; background-job tools ask before touching another agent's job, and a read-only role (reviewer, scout) is
+  denied them by name.
 * *Tool output is data.* It arrives as `role:tool`, never as an instruction. Pins and notes are user-role context, mail is typed,
   capped and never authority (`docs/SWARM-PROTOCOL.md`). This is defence in depth for a probabilistic reader, not a guarantee.
 * *Repository text is confined.* Instruction files are read through `os.Root`: links out of the project, hidden directories,
@@ -66,6 +67,11 @@ instruction files until you say `--trust-project`.
   goes silent is timed out (first byte 120 s, idle 60 s); usage counters and gateway-reported costs are clamped or priced
   from tokens instead; a catalogue entry with an impossible price or window is dropped; error text from the wire is
   sanitised and capped before it reaches a terminal or a log.
+* *Spending is bounded.* A swarm has a built-in budget (US$50, `swarm.budget_usd`) that only you can raise or remove (a
+  repository's file cannot); a cost that is not a number counts as spent, a budget that is not a positive number is refused, and peer
+  mail can wake one worker only 40 times per task, so agents answering each other cannot run for as long as the budget lasts. Text
+  that another agent or a file contributes is defused by the one definition the prompt layers use (`kv.EscapeMarkup`): harness
+  markers such as `[mail`, `[stop hook]` and the label of a hook's context, and structural tags, cannot be forged.
 * *The harness process is hardened* (section 2), and a PID-namespace or container wrapper can hide it entirely (section 3).
 
 **What it does not do.**

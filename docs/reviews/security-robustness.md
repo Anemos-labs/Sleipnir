@@ -21,10 +21,13 @@ that followed them: S46 (F17: `perm.DenyAll`, no constructor defaults to allow-a
 harness's own task text is never pinned as the user's word), provider keys held out of the environment (`harden.MoveKeys` is on, every reader
 goes through `harden.Secret`), the rollout server's policy allow-lists, and a per-call tool deadline. `docs/SECURITY.md` is the model these fixes add up to.
 
-Still open: the swarm governor's per-slot maximum hold, non-zero default budgets and the mail-wake budgets (the rest of F10; a slot is held at most
-30 minutes by a trickling server or about 4 minutes by a silent one, see `tranche2-a.md`), a read-only role's `bash_output`/`bash_kill` are gated by the engine
-but not denied by name in the role profiles (S38, residual), and in-range lies from an endpoint (a gateway reporting `cost: 0` while charging, a
-halved catalogue price) cannot be detected on the client.
+Closed after the integration, in the session that followed the first cross-platform CI run: the rest of F10 (budget comparisons that fail closed, a budget
+that is not a positive number refused at construction and at the flag, a built-in US$50 swarm budget that a repository's file cannot lift, and a bound of 40
+peer-mail wakes per worker and task) and the S38 residual (read-only role profiles, and the isolated manager's, deny `bash_output` and `bash_kill` by name).
+
+Still open: the swarm governor's per-slot maximum hold (a slot is held at most 30 minutes by a trickling server or about 4 minutes by a silent one, see
+`tranche2-a.md`), and in-range lies from an endpoint (a gateway reporting `cost: 0` while charging, a halved catalogue price), which cannot be detected on
+the client. (The built-in swarm budget bounds what such a lie can cost a swarm; a single agent has its step limit and `--budget-usd`.)
 
 ## 0. How to reproduce
 
@@ -61,8 +64,8 @@ be a real key) and reads `/proc/$PPID/environ` from a command the helper's shell
 | F7 | high | **Fixed** (tranche 2 C: `internal/harden`; at integration `MoveKeys` is on and every reader uses `harden.Secret`). The provider API key is readable by the model through `/proc/$PPID/environ` even though it is scrubbed from `env`; scrub list is a name heuristic | S40, S39 |
 | F8 | high | **Fixed** (swarm tranche: the hot view is bounded and linear). One agent can freeze every agent's request path: unbounded `notes`/`tasks` make `RenderHot` O(n²) (2.6 s per request at 5k notes) | S13a-c |
 | F9 | medium | **Fixed** (swarm governor ceiling; one shared, capped `ParseRetryAfter`). Hostile/buggy `Retry-After` pauses the whole swarm indefinitely (uncapped, overflows) | S26a-c |
-| F10 | medium | **Fixed except default budgets and mail-wake budgets** (tranche 2 A: usage, cost and catalogue validation). Budgets fail open: negative/NaN usage, cost and catalogue prices; no default budget | S28, S28b |
-| F11 | medium | **Fixed** (tranche 2 C: the job tools ask the engine about other agents' jobs; residual: read-only role profiles do not deny them by name). `bash_output`/`bash_kill` never consult permissions; jobs are session-wide (read-only role can read/kill others' jobs) | S38 |
+| F10 | medium | **Fixed** (tranche 2 A: usage, cost and catalogue validation; then fail-closed comparisons, a default swarm budget only the user can raise, and a bound on peer-mail wakes). Budgets fail open: negative/NaN usage, cost and catalogue prices; no default budget | S28, S28b |
+| F11 | medium | **Fixed** (tranche 2 C: the job tools ask the engine about other agents' jobs; the read-only role profiles now deny them by name). `bash_output`/`bash_kill` never consult permissions; jobs are session-wide (read-only role can read/kill others' jobs) | S38 |
 | F12 | medium | **Fixed** (tranche 1 and 2 C; redaction happens at export). Session state: world-readable, inside the workspace, unverified blobs, latent path traversal, log truncation on mid-file damage, forged checkpoint restore, no redaction | S33-S37 |
 | F13 | medium | **Fixed** (tranche 2 A). Provider transport: redirects replay prompt + custom headers, `http://` + env base URL, unbounded stream, unsanitised error text | S27, S30, S31, S45 |
 | F14 | medium | **Fixed** (tranche 2 B). Context resource limits: no per-turn tool-result budget (1.4 MB in one turn), oversized newest unit is unrecoverable, archive index 5 KB/turn RAM and O(n) `Put`, `recall` decodes the whole archive | S24, S06, S05, S04, S08, S47 |

@@ -141,6 +141,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	}
 	m.mu.Lock()
 	m.task, m.gateTries = task.ID, 0
+	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	s.emitAs(m.id, "agent.assign", map[string]any{"id": m.id, "role": m.role, "task": task.ID, "by": req.By})
 	start := runStart{brief: taskCard(task, m.id, false)}

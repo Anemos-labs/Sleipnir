@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"sync"
@@ -593,5 +594,37 @@ func TestAgentWithoutARequesterDeniesEverything(t *testing.T) {
 	defer mu.Unlock()
 	if decision.Allow || !strings.Contains(decision.Reason, "no permission policy") {
 		t.Fatalf("an agent with no Requester was allowed to act: %+v", decision)
+	}
+}
+
+// A budget that cannot stop anything is refused at construction: NaN compares false
+// with everything, and a negative one reads as "none".
+func TestAgentRefusesABudgetThatCannotStopAnything(t *testing.T) {
+	client := openaichat.New(openaichat.Config{Name: "mock", BaseURL: "http://127.0.0.1:1"})
+	reg := tools.NewRegistry()
+	reg.Register(fakeTool{name: "echo", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: "ok"} }})
+	specs, err := reg.Specs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := func(budget float64) error {
+		_, err := agent.New(agent.Config{
+			ID: "be-1", Role: "backend", Provider: client, Tools: reg, ToolSpecs: specs, BudgetUSD: budget,
+			Model:  cost.Model{ID: "mock-1", ContextTokens: 100000, Cache: cost.OpenAICacheModel()},
+			Const:  kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: "You are a careful coding agent."}}),
+			Shared: kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: "A Go service.", Vol: kv.VolEpoch}}),
+			Params: core.Params{MaxTokens: 512}, SessionID: "lim",
+		})
+		return err
+	}
+	for _, bad := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), -0.01} {
+		if err := build(bad); err == nil || !strings.Contains(err.Error(), "budget") {
+			t.Errorf("budget %v was accepted: %v", bad, err)
+		}
+	}
+	for _, ok := range []float64{0, 0.5, 250} {
+		if err := build(ok); err != nil {
+			t.Errorf("budget %v refused: %v", ok, err)
+		}
 	}
 }

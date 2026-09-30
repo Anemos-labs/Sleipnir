@@ -12,9 +12,16 @@ const STATE_LABEL = { running: 'running', waiting: 'waiting', idle: 'idle', done
 export function create() {
   const el = h('div', { class: 'stack-v' });
   const agentsBox = h('div'), boardBox = h('div'), activityBox = h('div'), govBox = h('div'), mailBox = h('div'), spawnBox = h('div'), leaseBox = h('div');
+  const isoBox = h('div'), mailmanBox = h('div'), supBox = h('div');
+  const isoCard = card('Worktrees and merge queue', 'one git worktree per writer; every merge is verified before it counts', isoBox);
+  const mailmanCard = card('Mailman', 'worker mail digested in bursts; the router\u2019s checks are unchanged', mailmanBox);
+  const supCard = card('Manager supervision', 'held to its board in a batch run, woken when idle in a chat', supBox);
+  isoCard.hidden = mailmanCard.hidden = supCard.hidden = true;
   el.append(
     card('Agents', 'click one to open its timeline', agentsBox),
     card('Task board', null, boardBox, 'boardnote'),
+    isoCard,
+    h('div', { class: 'grid g2' }, mailmanCard, supCard),
     h('div', { class: 'grid g2' }, card('Coordination per minute', 'each bar is one minute of the session', activityBox), card('Governor and concurrency', 'what the request stream shows of admission control', govBox)),
     h('div', { class: 'grid g2' }, card('Mail', 'newest first', mailBox), h('div', { class: 'stack-v' }, card('Spawns', null, spawnBox), card('Leases', null, leaseBox))));
   const noteEl = el.querySelector('.boardnote');
@@ -28,6 +35,9 @@ export function create() {
     try { d = await memo('swarm', 'swarm'); } catch { return; }
     renderAgents(d);
     renderBoard(d);
+    renderIsolation(d);
+    renderMailman(d);
+    renderSupervision(d);
     renderActivity(d);
     renderGov(d);
     renderMail(d);
@@ -68,6 +78,69 @@ export function create() {
           t.evidence ? h('div', { class: 'm', title: 'what the harness recorded, not the worker\u2019s word' }, 'evidence: ' + t.evidence) : null,
           t.attempts ? h('div', { class: 'm' }, 'attempt ' + (t.attempts + 1)) : null))))),
       h('div', { class: 'note' }, 'Tasks are ' + (d.tasks_source || '') + '.'));
+  }
+
+  function tile(k, v, sub, tone) {
+    return h('div', { class: 'tile' }, h('div', { class: 'lbl' }, k), h('div', { class: 'val' }, v), sub ? h('div', { class: 'sub ' + (tone || '') }, sub) : null);
+  }
+
+  // Worktree isolation: what became of each writer's tree, and of the run's result.
+  function renderIsolation(d) {
+    const i = d.isolation;
+    isoCard.hidden = !i;
+    if (!i) return;
+    const q = i.queue || {}, subs = i.submissions || {};
+    const failed = (q.conflict || 0) + (q.verify_failed || 0) + (q.rejected || 0);
+    const outcomes = Object.entries(subs).sort((a, b) => b[1] - a[1]).map(([k, v]) => h('span', { class: 'chip' + (k === 'merged' || k === 'empty' ? '' : ' warn'), title: 'submissions to the queue that ended as ' + k }, k + ' ' + v));
+    const g = i.integration;
+    const end = g
+      ? h('div', { class: 'note' }, h('p', null, g.applied
+        ? 'The verified result reached your checkout' + (g.committed ? ' as commits on your branch' : ' as uncommitted edits') + ' (' + g.files + ' file' + (g.files === 1 ? '' : 's') + ').'
+        : 'The result was NOT applied to your checkout' + (g.reason ? ': ' + g.reason : '') + '. It is on branch ' + g.branch + '.'))
+      : h('div', { class: 'note' }, h('p', null, 'The run has not reported the end of its integration yet' + (d.totals && d.totals.running ? ' (workers are still running).' : '.')));
+    const merges = (i.merges || []).slice(0, 30);
+    mount(isoBox,
+      h('div', { class: 'tiles', css: { gridTemplateColumns: 'repeat(4, 1fr)' } },
+        tile('Trees', int(i.trees.created), int(i.trees.removed) + ' removed' + (i.trees.pruned ? ' · ' + i.trees.pruned + ' pruned' : '')),
+        tile('Merged', int(q.merged || 0), int(q.queued || 0) + ' queued' + (q.fast_forward ? ' · ' + q.fast_forward + ' fast-forward' : '')),
+        tile('Not merged', int(failed), failed ? [q.conflict ? q.conflict + ' conflict' : '', q.verify_failed ? q.verify_failed + ' failed verification' : '', q.rejected ? q.rejected + ' rejected' : ''].filter(Boolean).join(' · ') : 'no conflicts, no failed checks', failed ? 'warn' : ''),
+        tile('Rolled back', int(q.rolled_back || 0), 'merges undone after the check failed')),
+      h('div', { class: 'row', css: { marginTop: '8px' } }, ...outcomes),
+      end,
+      merges.length ? h('div', { class: 'tblwrap' }, h('table', { class: 'tbl' },
+        h('thead', null, h('tr', null, ['Time', 'Agent', 'Task', 'Outcome', 'Commit', 'Files or reason'].map(t => h('th', null, t)))),
+        h('tbody', null, ...merges.map(m => h('tr', null, h('td', { class: 'num' }, timeOfDay(m.t)), h('td', null, m.agent || ''), h('td', { class: 'mono' }, m.task), h('td', null, h('span', { class: 'chip' + (m.outcome === 'merged' || m.outcome === 'empty' ? '' : ' warn') }, m.outcome)),
+          h('td', { class: 'mono' }, m.commit || ''), h('td', { title: (m.files || []).join(', ') }, m.reason || ((m.files || []).length ? (m.files.length + ' file' + (m.files.length === 1 ? '' : 's') + ': ' + m.files.slice(0, 3).join(', ') + (m.files.length > 3 ? '…' : '')) : ''))))))) : null);
+  }
+
+  // The mailman: how much of the worker mail it digested, and what bypassed it.
+  function renderMailman(d) {
+    const m = d.mailman;
+    mailmanCard.hidden = !m;
+    if (!m) return;
+    const ratio = m.digested ? (m.digested / Math.max(1, m.digests)).toFixed(1) : '–';
+    const reasons = Object.entries(m.direct || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => h('span', { class: 'chip warn', title: 'messages delivered directly because ' + k }, k + ' ×' + v));
+    mount(mailmanBox,
+      h('div', { class: 'tiles', css: { gridTemplateColumns: 'repeat(2, 1fr)' } },
+        tile('Digests', int(m.digests), int(m.digested) + ' messages covered · ' + ratio + ' per digest'),
+        tile('Requests', int(m.batches), int(m.parcels) + ' messages handed to it · ' + int(m.routed) + ' routed'),
+        tile('Delivered directly', int(m.direct_messages), m.direct_messages ? 'not digested, and not lost' : 'every message went through the mailman', m.direct_messages ? 'warn' : ''),
+        tile('State', m.state === 'down' ? 'down' : 'up', m.outages ? m.outages + ' outage' + (m.outages === 1 ? '' : 's') + (m.reason ? ' · ' + m.reason : '') : 'no outages', m.state === 'down' ? 'warn' : '')),
+      reasons.length ? h('div', { class: 'row', css: { marginTop: '8px' } }, ...reasons) : null);
+  }
+
+  // The manager: sent back to its board, or woken by what its workers did.
+  function renderSupervision(d) {
+    const s = d.supervision;
+    supCard.hidden = !s;
+    if (!s) return;
+    mount(supBox,
+      h('div', { class: 'tiles', css: { gridTemplateColumns: 'repeat(2, 1fr)' } },
+        tile('Held to its board', int(s.holds), s.unfinished ? s.unfinished + ' run' + (s.unfinished === 1 ? '' : 's') + ' ended with work left' : 'final answers sent back for unfinished work'),
+        tile('Woken while idle', int(s.wakes), s.wake_paused ? 'bound reached ' + s.wake_paused + '×' : 'automatic manager runs'),
+        tile('Worker mail bound', int(s.wake_limits), s.wake_limits ? 'workers whose peer mail stopped waking them' : 'no worker was caught in a conversation', s.wake_limits ? 'warn' : '')),
+      s.last_hold ? h('div', { class: 'note' }, h('p', null, 'Last hold: ', h('span', { class: 'mono' }, s.last_hold))) : null,
+      s.last_wake ? h('div', { class: 'note' }, h('p', null, 'Last wake: ', h('span', { class: 'mono' }, s.last_wake))) : null);
   }
 
   function renderActivity(d) {

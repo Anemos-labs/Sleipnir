@@ -65,6 +65,9 @@ type SessionMeta struct {
 	Ended       bool      `json:"ended"`
 	DurationMs  int64     `json:"duration_ms"`
 	EndCostUSD  float64   `json:"end_cost_usd,omitempty"` // as recorded by session.end
+	EndReason   string    `json:"end_reason,omitempty"`   // why the session ended (session.end): completed, exit, interrupted, budget, error, other
+	Isolation   string    `json:"isolation,omitempty"`    // "worktree" when writers had trees of their own
+	Mailman     bool      `json:"mailman,omitempty"`      // worker mail went through the mailman
 }
 
 // Totals are exact over the whole log, whatever the retention window.
@@ -586,6 +589,81 @@ type SwarmReport struct {
 	Minutes   []MinutePoint  `json:"minutes"`
 	Governor  GovernorStats  `json:"governor"`
 	Alerts    int            `json:"alerts"`
+	// Isolation, Mailman and Supervision are present only when the log has something of
+	// them: a worktree run, the mailman, a held or woken manager.
+	Isolation   *IsolationView   `json:"isolation,omitempty"`
+	Mailman     *MailmanView     `json:"mailman,omitempty"`
+	Supervision *SupervisionView `json:"supervision,omitempty"`
+}
+
+// TreeCounts counts the git worktrees of an isolated run: one per writer.
+type TreeCounts struct {
+	Created int `json:"created"`
+	Removed int `json:"removed"`
+	Pruned  int `json:"pruned"` // leftovers of a run that died, removed by a later one
+	Commits int `json:"commits"`
+	Resets  int `json:"resets"`
+}
+
+// MergeView is one submission of a worker's tree to the merge queue (task.merge).
+type MergeView struct {
+	T       time.Time `json:"t"`
+	Agent   string    `json:"agent,omitempty"`
+	Task    string    `json:"task"`
+	Outcome string    `json:"outcome"` // merged | empty | conflict | verify_failed | rejected | error
+	Commit  string    `json:"commit,omitempty"`
+	Files   []string  `json:"files,omitempty"`
+	Reason  string    `json:"reason,omitempty"`
+}
+
+// IntegrationView is the end of an isolated run: whether the verified result reached
+// the user's checkout, and where it is if it did not.
+type IntegrationView struct {
+	T         time.Time `json:"t"`
+	Branch    string    `json:"branch"`
+	Tip       string    `json:"tip,omitempty"`
+	Applied   bool      `json:"applied"`
+	Committed bool      `json:"committed,omitempty"` // as commits on the user's branch, not as edits
+	Files     int       `json:"files"`
+	Reason    string    `json:"reason,omitempty"` // why it was not applied
+}
+
+// IsolationView is the worktree side of a swarm run with swarm.isolation = worktree.
+type IsolationView struct {
+	Trees TreeCounts `json:"trees"`
+	// Queue counts the merge queue's own events (queued, merged, fast_forward, conflict,
+	// verify_failed, rolled_back, rejected); Submissions the swarm's account of each
+	// task's submission by outcome.
+	Queue       map[string]int   `json:"queue"`
+	Submissions map[string]int   `json:"submissions"`
+	Merges      []MergeView      `json:"merges"` // newest first
+	Integration *IntegrationView `json:"integration,omitempty"`
+}
+
+// MailmanView is what the mailman did with worker mail (swarm.mailman).
+type MailmanView struct {
+	Routed         int            `json:"routed"`          // messages handed to the mailman's ledger
+	Batches        int            `json:"batches"`         // requests to the mailman
+	Parcels        int            `json:"parcels"`         // messages those covered
+	Digests        int            `json:"digests"`         // digests delivered
+	Digested       int            `json:"digested"`        // original messages the digests covered
+	DirectMessages int            `json:"direct_messages"` // messages delivered directly instead
+	Direct         map[string]int `json:"direct"`          // ... by reason
+	Outages        int            `json:"outages"`         // times the mailman was given up on for a while
+	State          string         `json:"state"`           // up | down, as last seen
+	Reason         string         `json:"reason,omitempty"`
+}
+
+// SupervisionView is how the manager was held to its board (batch runs) and woken when
+// idle (interactive sessions).
+type SupervisionView struct {
+	Holds      int    `json:"holds"`       // final answers sent back because work was unfinished
+	Unfinished int    `json:"unfinished"`  // runs that ended with work still on the board
+	Wakes      int    `json:"wakes"`       // automatic manager runs
+	WakePaused int    `json:"wake_paused"` // times the bound on automatic runs was reached
+	WakeLimits int    `json:"wake_limits"` // workers whose peer mail stopped waking them
+	LastHold   string `json:"last_hold,omitempty"`
+	LastWake   string `json:"last_wake,omitempty"`
 }
 
 // LayerState says what happened to a layer since the agent's previous request.

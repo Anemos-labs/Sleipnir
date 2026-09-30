@@ -55,9 +55,11 @@ func (s *Session) apply(ev *events.Event, off int64) {
 	case events.TypeSessionEnd:
 		var p struct {
 			CostUSD float64 `json:"cost_usd"`
+			Reason  string  `json:"reason"`
 		}
 		_ = json.Unmarshal(ev.Data, &p)
 		s.meta.ended, s.meta.endTS, s.meta.endCost = true, ts, p.CostUSD
+		s.meta.endReason = oneLine(p.Reason, 24)
 	case events.TypeAgentSpawn:
 		s.onSpawn(ev.Data, ts)
 	case events.TypeAgentEnd:
@@ -112,6 +114,8 @@ func (s *Session) apply(ev *events.Event, off int64) {
 		s.onGovernor(ev.Data)
 	case events.TypeOutcome:
 		s.onOutcome(ev, ts)
+	default:
+		s.onSwarmExtra(ev, ts) // worktrees and the merge queue, the mailman, the manager's hold and wake
 	}
 }
 
@@ -159,6 +163,8 @@ func (s *Session) onSessionStart(raw json.RawMessage) {
 		Swarm                                             bool
 		ReconTokens                                       int    `json:"recon_tokens"`
 		SharedHash                                        string `json:"shared_hash"`
+		Isolation                                         string
+		Mailman                                           bool
 	}
 	if json.Unmarshal(raw, &p) != nil {
 		s.badPay++
@@ -167,6 +173,7 @@ func (s *Session) onSessionStart(raw json.RawMessage) {
 	m := &s.meta
 	m.version, m.provider, m.dialect, m.renderer = p.Version, p.Provider, p.Dialect, p.Renderer
 	m.root, m.swarm, m.reconTokens, m.sharedHash = p.Root, p.Swarm, p.ReconTokens, p.SharedHash
+	m.isolation, m.mailman = oneLine(p.Isolation, 24), p.Mailman
 	if p.Model != "" {
 		m.model = p.Model
 		s.noteModel(p.Model)

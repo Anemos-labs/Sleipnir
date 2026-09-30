@@ -82,7 +82,7 @@ func cmdChat(ctx context.Context, args []string) error {
 		s.Close()
 	}()
 
-	fmt.Fprintf(os.Stderr, "sleipnir %s · %s · %s · session %s\n", version, s.Model.ID, modeName(s), s.ID)
+	fmt.Fprintf(os.Stderr, "sleipnir %s · %s%s · %s · session %s\n", version, s.Model.ID, budgetLabel(s), modeName(s), s.ID)
 	if s.Resumed() {
 		fmt.Fprintf(os.Stderr, "resumed: %d turns restored; the first request writes the cached prefix again, once\n", len(s.Agent.Stack().Thread.Turns))
 	}
@@ -187,7 +187,7 @@ func runTurn(parent context.Context, s *session.Session, goal string) {
 	case errors.Is(err, context.Canceled):
 		fmt.Fprintln(os.Stderr, "(cancelled)")
 	case errors.Is(err, agent.ErrBudget):
-		fmt.Fprintln(os.Stderr, "stopped: budget exhausted")
+		fmt.Fprintln(os.Stderr, tools.SanitizeForTerminal(budgetStopped(s, res).Error()))
 	default:
 		fmt.Fprintln(os.Stderr, "error:", tools.SanitizeForTerminal(err.Error()))
 	}

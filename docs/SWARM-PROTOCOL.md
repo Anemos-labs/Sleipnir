@@ -145,6 +145,11 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   another run when it goes idle (a bounded number of times), so it is never stranded. A delivery to a retired agent or a
   swarm that has shut down is refused to the sender (`mail.drop` is logged; the sender's rate budget is returned). An
   idle worker is woken by mail; the manager queues it for its next turn.
+* **A bound on peer wakes.** Each wake is a whole run, so two workers answering each other would keep each other
+  running for as long as the budget lasts. Peer mail may wake one worker at most 40 times for its current task
+  (`Config.MaxMailWakes`); past that the mail is still delivered and waits in the inbox, a `swarm.wake_limit` event is
+  logged, and the manager is told once. A new task starts the count again. The manager's own mail and the harness's never
+  count.
 * **Bounded inbox.** An agent's inbox holds at most 12 waiting messages; further mail is coalesced per sender and kind
   into one digest that goes in when the inbox has drained, so a manager between turns cannot be buried.
 * **Optional mailman mode** (`swarm.mailman`, `--mailman`, default off): worker mail takes a detour that pays off when many
@@ -208,7 +213,8 @@ Limits, all enforced in code:
 |---|---|---|
 | agents (running or idle) | 24 (config `swarm.max_agents`) | registration budget |
 | concurrent **writers** in the shared tree | 4 | overlapping agent changes conflict 20-42% of the time; readers (reviewers, scouts, test runners) are unlimited. Counts *running* writers, and applies to reuse via `agent=` too. A worker woken by mail is answering, not starting work, and is not counted. Isolated worktrees (section 7) lift it. |
-| per-agent and swarm budget (USD) | unlimited | a stop is an outcome, not a crash. The swarm budget is a ledger over running *and* retired agents; once spent, no request is admitted and running workers are stopped (their tasks return to todo, without counting as an attempt) |
+| swarm budget (USD) | 50 (`swarm.budget_usd`; `--budget-usd`; 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` removes it) | a stop is an outcome, not a crash. The swarm budget is a ledger over running *and* retired agents; once spent, no request is admitted and running workers are stopped (their tasks return to todo, without counting as an attempt). It is on by default because a swarm can spend many times what one agent does, and a cap that is off is one nobody remembers to set; only you can raise it (a repository's file cannot). The run's header line shows it, and the stop message says how to raise it. A cost that is not a number counts as spent, so a hostile or broken endpoint cannot slip under the limit |
+| per-agent budget (USD) | unlimited | `Config.AgentBudgetUSD`, for library users; no configuration key sets it |
 | steps per assignment | 60-150 by role | runaway guard |
 | attempts per task | 3 | a task whose workers keep stopping is failed, not requeued forever |
 | idle retire | 15 min | frees registration; a retired worker's notes are archived, its spend stays in the ledger, its unfinished tasks return to todo |
@@ -284,7 +290,7 @@ never promoted as an instruction.
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
 release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
-`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
+`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `swarm.wake_limit` (peer mail stopped waking a worker), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
 mode, section 5), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
 `merge.queued`/`merged`/`conflict`/`verify_failed`/`rolled_back`/`rejected`/`fast_forward` (worktree isolation; the
 workspace layer emits them), `task.merge` (one submission's outcome, per task) and `swarm.integration` (the result reaching

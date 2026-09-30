@@ -227,7 +227,11 @@ func TestHostileFixtureIsReallyHostile(t *testing.T) {
 	git := func(args ...string) { rawGitMayFail(h.dir, args...) }
 	writeFile(t, filepath.Join(h.dir, "a.txt"), "edited\n")
 	writeFile(t, filepath.Join(h.dir, "data.cfg"), "edited cfg\n")
-	git("status")                                                              // fsmonitor (via include), filter process
+	git("status") // fsmonitor (via include), filter process
+	// status only runs the filter for a file whose stat data looks changed, and a
+	// hook that answers "nothing changed" (macOS) can keep it from looking: hashing the
+	// file with its attributes runs the process filter every time.
+	git("hash-object", "data.cfg")
 	git(append(relief, "add", "-A")...)                                        // clean filter
 	git(append(relief, "commit", "-qm", "signed attempt")...)                  // hooks, gpg.program
 	git(append(relief, "-c", "commit.gpgsign=false", "commit", "-qm", "x")...) // post-commit

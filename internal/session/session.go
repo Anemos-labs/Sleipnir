@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -187,7 +188,10 @@ type Session struct {
 	closed  bool
 	// endReason is why the session ended (SetEndReason), for the SessionEnd hooks.
 	endReason string
-	turn      int
+	// budget is the most the session may spend (0: no limit): the swarm's cap, or the
+	// single agent's --budget-usd.
+	budget float64
+	turn   int
 	// swarmCtx is the context an interactive session's swarm runs on: it lives until
 	// Close, not until the end of one turn (see swarmContext).
 	swarmCtx  context.Context
@@ -265,6 +269,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	}
 	if err := checkSwarmSize(cfg, o); err != nil {
 		return nil, err
+	}
+	if b := o.BudgetUSD; math.IsNaN(b) || math.IsInf(b, 0) || b < 0 {
+		// Anything but a positive number reads as "no budget" below; a typo must not do that.
+		return nil, fmt.Errorf("budget: --budget-usd must be zero (no limit) or a positive amount, got %v", b)
 	}
 	s := &Session{opts: o, cfg: cfg, cfgRep: rep}
 
@@ -434,7 +442,7 @@ func (s *Session) buildPerm() error {
 	for name, role := range s.ext.roles {
 		if role.ReadOnly {
 			if _, ok := roles[name]; !ok {
-				roles[name] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow}
+				roles[name] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny}
 			}
 		}
 	}
@@ -447,7 +455,7 @@ func (s *Session) buildPerm() error {
 		// holds it to plan mode as well as the swarm's own check.
 		extra = []string{s.iso.dir}
 		if _, ok := roles["manager"]; !ok {
-			roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow}
+			roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny}
 		}
 	}
 	if s.mailmanOn() {
@@ -479,6 +487,12 @@ var readOnlyRoleAllow = []string{
 	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test)", "Bash(npm run test:*)",
 	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(make test)",
 }
+
+// readOnlyRoleDeny are the tools a read-only role is denied by name. Background jobs
+// are session-wide, and the engine alone would answer "touches no files and no
+// network: allow" to a reviewer's bash_output on the output of another agent's job.
+// What a read-only role runs it runs in the foreground and reads from the result.
+var readOnlyRoleDeny = []string{"bash_output", "bash_kill"}
 
 // buildShared assembles the shared pin: the deterministic project survey plus the
 // project's own instruction files, both budgeted (see ReconOptions).
@@ -634,6 +648,7 @@ func (s *Session) build(ctx context.Context) error {
 			return err
 		}
 		s.Registry, s.Specs = reg, specs
+		s.budget = o.BudgetUSD
 		role := soloRole()
 		a, err := agent.New(agent.Config{
 			ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Tools: reg, ToolSpecs: specs,
@@ -680,6 +695,7 @@ func (s *Session) build(ctx context.Context) error {
 	if o.BudgetUSD > 0 {
 		sc.BudgetUSD = o.BudgetUSD
 	}
+	s.budget = sc.BudgetUSD
 	if v := s.cfg.Cache.HotMaxTokens; v > 0 {
 		sc.Hot.MaxTokens = v
 	}
@@ -979,6 +995,10 @@ func (s *Session) Send(text string) {
 		s.Agent.Send(text)
 	}
 }
+
+// Budget is the most the session may spend, in US dollars (0: no limit): for a swarm
+// the built-in or configured cap or --budget-usd, for a single agent --budget-usd.
+func (s *Session) Budget() float64 { return s.budget }
 
 // End reasons the commands give a session (SetEndReason); the default is "other".
 const (

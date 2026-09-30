@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"sync"
@@ -309,6 +310,11 @@ func New(cfg Config) (*Agent, error) {
 	if cfg.Provider == nil || cfg.Tools == nil {
 		return nil, errors.New("agent: provider and tools are required")
 	}
+	if b := cfg.BudgetUSD; math.IsNaN(b) || math.IsInf(b, 0) || b < 0 {
+		// A budget that cannot be compared (NaN) or that reads as "none" (negative) would
+		// switch the breaker off without a word.
+		return nil, fmt.Errorf("agent: the budget must be zero (none) or a positive amount, got %v", b)
+	}
 	if cfg.Est == nil {
 		cfg.Est = core.NewBytesEstimator()
 	}
@@ -581,7 +587,9 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			return res, ErrClosed
 		}
 		if a.cfg.BudgetUSD > 0 {
-			if _, c := a.Usage(); c >= a.cfg.BudgetUSD {
+			// Written so that a cost that is not a number stops the run instead of
+			// slipping under the limit (a comparison with NaN is false either way).
+			if _, c := a.Usage(); !(c < a.cfg.BudgetUSD) {
 				return res, ErrBudget
 			}
 		}

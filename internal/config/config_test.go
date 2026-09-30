@@ -23,6 +23,7 @@ func TestDefaults(t *testing.T) {
 		{"cache.shared_ttl", d.Cache.SharedTTL, "5m"},
 		{"cache.min_layer_for_breakpoint", d.Cache.MinLayerForBreakpoint, 1500},
 		{"swarm.isolation", d.Swarm.Isolation, "none"},
+		{"swarm.budget_usd", d.Swarm.BudgetUSD, DefaultSwarmBudgetUSD},
 		{"tools.max_output_chars", d.Tools.MaxOutputChars, 24000},
 		{"tools.default_timeout_sec", d.Tools.DefaultTimeoutSec, 120},
 		{"tools.max_timeout_sec", d.Tools.MaxTimeoutSec, 600},

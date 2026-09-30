@@ -132,7 +132,7 @@ func (s *Swarm) deliver(msg Message) error {
 	if err := m.receive(s, msg); err != nil {
 		return err
 	}
-	s.wake(m)
+	s.wakeForMail(m, msg.From)
 	if m.manager {
 		s.managerEvent() // mail for an idle manager wakes it (wake.go)
 	}

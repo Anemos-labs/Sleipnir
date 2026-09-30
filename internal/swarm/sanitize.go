@@ -1,10 +1,11 @@
 package swarm
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/reee344/sleipnir/internal/kv"
 )
 
 // Text that one agent (or a file name, or a tool argument) can influence is shown
@@ -14,17 +15,14 @@ import (
 // harness header or a closing tag. They never expand text, so a cap applied
 // before sanitising still holds afterwards.
 
-// forgeRe matches the start of anything shaped like a harness marker: "[mail",
-// "[/mail", "[end", "[system", "[harness", "[untrusted", "[user", "[assistant",
-// "[tool" or "[live".
-var forgeRe = regexp.MustCompile(`(?i)\[\s*/?\s*(mail|end|system|harness|untrusted|user|assistant|tool|live)\b`)
-
-// neutralise defuses harness-looking markers and tag delimiters. "[mail m1" becomes
-// "(mail m1"; "<" and ">" become single-quote angle marks, so no text can open or
-// close a <live>, <my-notes> or similar tag.
+// neutralise defuses harness-looking markers and tag delimiters. What counts as a
+// harness marker ("[mail m1", "[stop hook]", "[harness]", the label of a hook's
+// context) is decided in one place, kv.EscapeMarkup, which the layers use too: "[mail
+// m1" becomes "(mail m1". On top of that every "<" and ">" becomes a single-quote
+// angle mark, so no text at all can open or close a <live>, <my-notes> or similar tag.
 func neutralise(s string) string {
-	if strings.ContainsAny(s, "[<>") {
-		s = forgeRe.ReplaceAllStringFunc(s, func(m string) string { return "(" + m[1:] })
+	s = kv.EscapeMarkup(s)
+	if strings.ContainsAny(s, "<>") {
 		s = strings.NewReplacer("<", "‹", ">", "›").Replace(s)
 	}
 	return s

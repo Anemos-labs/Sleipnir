@@ -36,9 +36,9 @@ var (
 	tagRe = regexp.MustCompile(`(?i)<(\s*/?\s*)(` + strings.Join(structuralTags, "|") + `)\b`)
 	// markerRe matches the start of a bracketed marker the harness writes itself
 	// ("[mail m1 from be-2]", "[stop hook] ...", "[hook] ...", the "[untrusted ...]"
-	// frame): text that starts with one could pass for a message from the harness or
-	// from another agent.
-	markerRe = regexp.MustCompile(`(?i)\[(\s*/?\s*)(mail|end|system|harness|untrusted|user|assistant|tool|live|hook|stop)\b`)
+	// frame, the "[context from your hooks]" label of what a hook added): text that
+	// starts with one could pass for a message from the harness or from another agent.
+	markerRe = regexp.MustCompile(`(?i)\[(\s*/?\s*)(mail|end|system|harness|untrusted|user|assistant|tool|live|hook|stop|context\s+from\s+your\s+hooks)\b`)
 	// headerRe matches a markdown header at the start of a line. A notes layer renders
 	// "## <key>" at column 0, so a line of note text that looks the same forges a section.
 	headerRe = regexp.MustCompile(`(?m)^(#{1,6})([ \t]|$)`)
@@ -130,6 +130,11 @@ func escape(s string, headers bool) string {
 // line breaks are normalised and hidden characters are removed. Text with none of
 // those comes back unchanged.
 func EscapeUntrusted(s string) string { return escape(s, true) }
+
+// EscapeMarkup is EscapeUntrusted without the header rule and without touching line
+// layout: for text placed inside a line or a block that is not a layer body (a mail, a
+// hot view line, a task card), where "#" at the start of a line is ordinary text.
+func EscapeMarkup(s string) string { return escape(s, false) }
 
 // escapeProtocol is EscapeUntrusted without the header rule, for layers whose own text
 // is markdown (the shared pin holds "### AGENTS.md (project, unverified)" headers the

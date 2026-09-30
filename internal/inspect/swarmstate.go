@@ -34,6 +34,11 @@ type swarmState struct {
 	nLease    int
 	minutes   map[int64]*minuteBucket
 
+	// isolation, mailman and supervise: see isolation.go.
+	isolation isoState
+	mailman   mailmanState
+	supervise superviseState
+
 	inflight     int
 	peakInflight int
 	govEvents    int
