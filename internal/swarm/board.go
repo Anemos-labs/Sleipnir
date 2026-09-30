@@ -318,6 +318,12 @@ func (d *draft) setTask(t Task) {
 
 // mutate applies fn to a copy of the snapshot, bumps the version and publishes.
 // An fn that returns errNoChange publishes nothing and mutate returns nil.
+//
+// The op names of the board.op event are kept stable for its consumers (the
+// inspector): create, claim, assign (a task handed to an agent, or sent back to it),
+// update, scope, finish (to review, done or failed: the status operand says which),
+// block, resume, requeue (back to todo), agent, agent-remove, note, notes-take, alert,
+// alert-clear, alert-expire. Every event names its operands (task, status, owner, ...).
 func (b *Board) mutate(actor, op string, fn func(d *draft) error) error {
 	b.mu.Lock()
 	cur := b.snap.Load()
@@ -669,7 +675,7 @@ func (b *Board) Submit(agent, id, result, evidence string) error {
 
 // SubmitAt is Submit that applies only to the assignment rev (0: any).
 func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string) error {
-	return b.mutate(agent, "submit", func(d *draft) error {
+	return b.mutate(agent, "finish", func(d *draft) error {
 		i, t, err := owned(d, agent, id)
 		if err != nil {
 			return err
@@ -691,7 +697,7 @@ func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string) 
 // Accept marks a reviewed task done. Done is terminal: nothing changes it after.
 // Callers check authority (only the manager accepts) and run the verifier first.
 func (b *Board) Accept(by, id, note string) error {
-	return b.mutate(by, "accept", func(d *draft) error {
+	return b.mutate(by, "finish", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
@@ -712,7 +718,7 @@ func (b *Board) Accept(by, id, note string) error {
 
 // Fail marks a task that is not done as failed.
 func (b *Board) Fail(by, id, reason string) error {
-	return b.mutate(by, "fail", func(d *draft) error {
+	return b.mutate(by, "finish", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
@@ -734,7 +740,7 @@ func (b *Board) Fail(by, id, reason string) error {
 // SendBack returns a reviewed task to its owner (a rejection with feedback).
 func (b *Board) SendBack(by, id, feedback string) (Task, error) {
 	var out Task
-	err := b.mutate(by, "reject", func(d *draft) error {
+	err := b.mutate(by, "assign", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
@@ -758,7 +764,7 @@ func (b *Board) SendBack(by, id, feedback string) (Task, error) {
 // Unassign returns a task that is not finished to the pool without an owner (its
 // worker is gone). A task in review keeps nothing of the abandoned attempt.
 func (b *Board) Unassign(by, id, reason string) error {
-	return b.mutate(by, "unassign", func(d *draft) error {
+	return b.mutate(by, "requeue", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
@@ -779,7 +785,7 @@ func (b *Board) Unassign(by, id, reason string) error {
 
 // Reopen returns a failed task to todo so it can be assigned again.
 func (b *Board) Reopen(by, id string) error {
-	return b.mutate(by, "reopen", func(d *draft) error {
+	return b.mutate(by, "requeue", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)

@@ -65,10 +65,13 @@ server, token ids and logprobs. The RL pipeline turns that into trainer-ready da
 
 ```sh
 sleipnir doctor --model my-policy --capture                      # does the server return token ids? are they prefix-stable?
-sleipnir rl taskgen git --repo ./myrepo --test "go test ./..." -o tasks.jsonl
-sleipnir rl rollout --tasks tasks.jsonl --model local/my-policy --group 8 --capture --out runs/r1
+sleipnir rl taskgen git --repo ./myrepo -o tasks/all.jsonl       # tasks from history; each proven to fail before and pass after
+sleipnir rl taskgen recall --repo ./myrepo -o tasks/recall.jsonl # memory tasks that force compaction
+sleipnir rl tasks split tasks/all.jsonl --spec train:0.9,test:0.1   # whole repositories per split
+sleipnir rl rollout --tasks tasks/all.train.jsonl --model local/my-policy --group 8 --capture --out runs/r1
 sleipnir rl export runs/r1 --format steps --advantage grpo -o data/r1.steps.jsonl   # or tokens / groups / sft / dpo / kto / atif
-sleipnir rl eval --tasks holdout.jsonl --model local/my-policy
+sleipnir rl eval --tasks tasks/all.test.jsonl --exclude tasks/all.train.jsonl --model local/my-policy
+sleipnir inspect runs/r1/<task>/0                                # the cache inspector works on every rollout
 ```
 
 Rewards are verifier outcomes in a clean checkout the agent cannot tamper with, plus cost repriced for your target

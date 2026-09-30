@@ -102,40 +102,53 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 
 ### 3.2 Task generators (`sleipnir rl taskgen`)
 
-Hand-written tasks do not scale, so tasks are mined from history:
+Hand-written tasks do not scale, so tasks are mined from history. Every generator validates what it makes in the
+environment rollouts use: the verifier must fail on the start state and pass with the reference solution, and hidden
+verifier files and reference solutions go to a blob store (`--blobs`, `blobs/` next to the output) that travels with
+the tasks file and never enters a workspace.
 
-* `taskgen git`: for commits that change source *and* tests, check out the parent, take the tests as the verifier
-  (hidden; protected) and the commit message / linked issue as the prompt. Verified to fail before and pass after.
-* `taskgen composite`: combine *k* independent commits that touch disjoint files into one **swarm task**: the
-  natural structure for training the manager's dispatch and the workers' coordination (verifier = all tests pass,
-  critical path = one commit's work if perfectly parallel).
-* `taskgen recall`: run a normal task, then ask a question answerable only from an early detail (an error
-  message, a file name, a constant found ten compactions ago); verifier = exact-match check. Trains `recall` use and
-  faithful compaction.
-* `taskgen mutate`: language-aware bug injection (flip a comparison, drop a nil check) with the project's own tests
-  as verifier, for cheap volume.
-
-Splits are by repository and commit date (`--holdout-repos`, `--holdout-after`); `rl eval` refuses to run on tasks
-that appear in a training set.
+* `sleipnir rl taskgen git --repo R`: for commits that change source *and* tests, check out the parent, take the
+  tests as the verifier (hidden; protected) and the commit message (or a linked issue, via a resolver) as the prompt.
+* `sleipnir rl taskgen mutate --repo R`: language-aware bug injection (flip a comparison, drop a nil check, off by
+  one) with the project's own tests as the verifier; only mutations the tests catch, whose reversal makes them pass,
+  are kept. Cheap volume, and the source of many independent tasks in one repository state.
+* `sleipnir rl taskgen composite TASKS -k 3`: combine *k* independent tasks of one repository (disjoint files) into one
+  **swarm task**: the natural structure for training the manager's dispatch and the workers' coordination (the
+  verifier passes only when every component passes; its score is the fraction that do).
+* `sleipnir rl taskgen recall --repo R`: memory tasks. The agent reads a distinctive constant in one file, reads
+  a dozen other files under a small context window (so its early history is compacted), and must then state the
+  constant exactly. The verdict is an exact match on the final message, no command and no model. It trains
+  faithful compaction and the choice between re-reading and `recall`; the cost components decide which pays.
+* `sleipnir rl tasks validate|stats|filter|split|check FILE`: hygiene. `split` assigns whole repositories to
+  train/val/test (deterministic), `check` re-proves every task sound, and `rl eval --exclude TRAIN` refuses to
+  evaluate on anything in a training list.
 
 ### 3.3 Rollouts (`sleipnir rl rollout`)
 
 ```
 sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
-    --model my-policy --base-url http://vllm:8000/v1 --capture tokens \
-    [--swarm 6] [--role-model manager=my-policy,worker=teacher-model] \
+    --model my-policy --base-url http://vllm:8000/v1 --capture \
+    [--swarm 6] [--role-model compactor=teacher-model] \
     --target-price anthropic-sonnet --rewards rewards.json --out runs/r001
 ```
 
 * Runs `group` independent samples per task (the GRPO group) through the *real* harness: real tools, real KV
   layout, real swarm, headless, with permissions set by the task (`accept-edits` inside the worktree, no network
   unless the task allows it).
-* One policy endpoint is enough; `--role-model` lets a run train one role against fixed others (for example train the
-  manager while workers use a stronger model, or the reverse).
+* One policy endpoint is enough; `--role-model role=model` (repeatable) lets a run train one role against fixed
+  others (for example train the manager while workers use a stronger model, or the reverse). The policy is named by
+  `--model` (a configured provider, or any id with `--base-url`), and its API key is read from the variable named by
+  `--api-key-env` in the harness process only: the agent's shell never sees it.
+* The agent's commands run in a scrubbed environment (private HOME and TMPDIR, no credentials, no network when the
+  host can isolate it); permission prompts are refused, as an unattended session would refuse them, and the rules let
+  the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets
+  (a stop is an outcome: `budget`), wall-clock is enforced by the runner, and infrastructure failures are retried and
+  never become episodes.
 * Output: `runs/r001/<task>/<sample>/` with `events.jsonl`, `blobs/`, `episode.json` (canonical trajectory with
-  rewards), `verifier.log`; plus `runs/r001/manifest.json` and `summary.json` (pass rate, cost, per-role stats).
+  rewards), `diff.patch`, `verifier.log`; plus `runs/r001/manifest.json` and `summary.json` (pass rate, cost,
+  per-role stats). Rerunning into the same directory resumes: finished rollouts are skipped.
 
-A long-running **rollout server** (`sleipnir rl serve --addr :8787`) exposes the same thing to trainers:
+A long-running **rollout server** (`sleipnir rl serve --addr 127.0.0.1:8090 --runs DIR --tasks registry.jsonl`) exposes the same thing to trainers:
 `POST /v1/rollouts {task, policy:{base_url,model,sampling}, group, rewards}` returns episodes (streaming NDJSON),
 so verl / OpenRLHF / SkyRL agent loops and online GRPO trainers can call the harness as a black-box environment, in
 the same shape as rLLM / Agent Lightning / Polar gateways.
@@ -229,15 +242,20 @@ default; `--keep-flat` keeps them.
 | `dpo` | step or episode | `{prompt, chosen, rejected}`: same prompt hash with different outcomes (compactor patches, anchor states) or same task with best vs worst episode | DPO / preference training |
 | `kto` | step | `{prompt, completion, label}` | KTO / BCO |
 | `atif` | episode | Harbor ATIF trajectories with `subagent_trajectories` and `context_management` | interchange |
-| `canonical` | episode | `episode.json` records with a segment table (`--dedup`) or inline prompts (`--inline`) | lossless archive; everything above derives from it |
+| `canonical` | episode | `episode.json` records with a segment table (default) or inline prompts (`--inline`) | lossless archive; everything above derives from it |
 
-Common flags: `--role worker,manager,compactor`, `--min-reward`, `--top-k N`, `--advantage grpo|rloo|none`,
-`--drop-flagged`, `--redact` (on by default), `--teacher-ok MODEL,...` (provider-terms filter), `--max-tokens`,
-`--split train:0.9,val:0.1` (by repository), `--seed`.
+Common flags: `--roles worker,manager,compactor`, `--min-reward`, `--top-k N`, `--advantage grpo|rloo|broadcast|anchor|none`
+(default: grpo for steps, tokens and groups), `--group-by task|task+policy|group`, `--keep-flagged` (flagged episodes are
+dropped by default), `--keep-flat`, `--keep-weak`, `--no-redact` (redaction is on by default), `--redact-salt`,
+`--teacher MODEL,...` (provider-terms filter), `--licenses`, `--max-prompt-tokens`, `--max-samples`,
+`--split train:0.9,val:0.1` (by repository), `--seed`, `--pack` (pack a segment into one token sequence when its traces
+chain), `--reasoning drop|field|keep`, `--stats FILE`. Output files are 0600. Start from these defaults: an exporter that
+keeps everything exports infra failures, truncated runs and reward-hacked episodes.
 
-`--inline` writes full prompts per sample (simple; large: shared layers repeat). `--dedup` writes a segment table once
-and references it by hash; `sleipnir rl expand` and the Go/Python loaders expand it. Shared prefixes are also flagged
-(`shared_prefix_id`) so trainers with prefix or tree packing compute the pinned layers once.
+`--inline` writes full prompts per sample (simple; large: shared layers repeat). The default writes a segment table once
+and references it by hash (`--table FILE` puts the table in its own file); `sleipnir rl expand EXPORT [--table FILE]`
+expands it byte for byte to the inline form. Shared prefixes are also flagged (`shared_prefix`, `shared_messages`) so
+trainers with prefix or tree packing compute the pinned layers once.
 
 ## 8. Governance and data quality
 
@@ -249,12 +267,12 @@ and references it by hash; `sleipnir rl expand` and the Go/Python loaders expand
   (cloud keys, tokens, private keys, JWTs, high-entropy strings near `key|token|secret|password`), emails, IPs,
   home-directory paths. Runs at export time over prompts, completions and observations.
 * **Provider terms.** Episodes record which model produced each completion and whether it is a teacher. Exports
-  refuse teacher outputs unless the model is listed in `--teacher-ok`. Do not train competing models on outputs whose
+  refuse teacher outputs unless the model is listed in `--teacher`. Do not train competing models on outputs whose
   terms forbid it.
 * **Licences and consent.** The repo licence and any consent flag travel with every record; `--licenses` filters.
 * **Contamination.** Task splits by repo/date; hidden verifier files never appear in prompts; a scanner flags
   episodes whose transcript contains verifier content or benchmark strings.
-* **Dedup and balance.** Exact dedup by prompt hash; per-task caps; `sleipnir rl inspect` prints pass rates, reward
+* **Dedup and balance.** Exact dedup by prompt hash; per-task caps; `sleipnir rl show RUN [TASK/SAMPLE]` prints pass rates, reward
   distributions, per-role step counts, flagged episodes, token totals, cache anomalies and group statistics.
 
 ## 9. What each role learns
@@ -276,15 +294,17 @@ cache). Size KV memory for one shared prefix plus N private tails; keep the same
 ## 10. Command reference
 
 ```
-sleipnir rl taskgen git|composite|recall|mutate ...   build tasks.jsonl from repositories
-sleipnir rl rollout ...                               run G samples per task through the real harness
-sleipnir rl serve --addr :8787                        rollout server for trainers
-sleipnir rl reward RUN --rewards rewards.json         (re)score a run with different weights
+sleipnir rl taskgen git|mutate|composite|recall ...   build tasks.jsonl (+ blobs/) from repositories
+sleipnir rl tasks validate|stats|filter|split|check   task file hygiene and soundness proofs
+sleipnir rl rollout --tasks T --model M --out RUN     run G samples per task through the real harness
+sleipnir rl eval --tasks holdout.jsonl --model M      pass@1 / pass^k / cost / protocol metrics, optional --baseline report.json
+sleipnir rl serve --addr 127.0.0.1:8090 --runs DIR    rollout server for trainers
+sleipnir rl reward RUN --rewards rewards.json         (re)score a run with different weights or target prices
 sleipnir rl export RUN --format steps|tokens|groups|sft|dpo|kto|atif|canonical ...
 sleipnir rl verify RUN                                replay check: re-expand prompts, compare wire hashes
-sleipnir rl inspect RUN                               dataset statistics and flags
-sleipnir rl eval --tasks holdout.jsonl ...            pass@1 / pass^k / cost / protocol metrics, optional --baseline RUN
-sleipnir rl expand FILE                               expand a --dedup export to inline prompts
+sleipnir rl show RUN [TASK/SAMPLE]                    run summary; one episode's agents, steps, rewards and flags
+sleipnir rl expand EXPORT [--table T]                 expand a deduplicated canonical export to inline prompts
+sleipnir inspect SESSION_DIR                          the cache inspector (any recorded session, also each rollout's)
 ```
 
 Data from ordinary interactive sessions can be exported the same way (`sleipnir rl export SESSION_DIR`): outcome
