@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -837,5 +836,4 @@ func TestStreamedThinkingIsNeverPartOfTheAnswerText(t *testing.T) {
 	if resp.Turn.PlainText() != "the actual answer" || text.String() != "the actual answer" || thinking.String() != "planning: "+marker {
 		t.Fatalf("PlainText %q, text events %q, thinking events %q", resp.Turn.PlainText(), text.String(), thinking.String())
 	}
-	_ = math.Pi
 }
