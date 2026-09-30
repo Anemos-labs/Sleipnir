@@ -4,6 +4,11 @@ import (
 	"github.com/reee344/sleipnir/internal/core"
 )
 
+// RendererVersion identifies the prompt layout. Bump it whenever Render would
+// produce different bytes for the same stack, so logged prompts and training data
+// can be tied to the layout the model was actually served with.
+const RendererVersion = "sleipnir-kv/1"
+
 // RenderOpts are the per-request inputs to Render that are not part of the
 // agent's persistent stack.
 type RenderOpts struct {

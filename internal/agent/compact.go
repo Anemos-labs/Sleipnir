@@ -186,12 +186,16 @@ func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*rea
 		Caps: prof.KVCaps(), Policy: a.cfg.KVPolicy, Params: a.cfg.Params,
 		CacheKey: a.cacheKey(&snap), Est: a.est,
 	}, instr)
-	label := "compactor:" + a.cfg.ID
+	a.mu.Lock()
+	a.forkN++
+	label := fmt.Sprintf("%s.c%d", a.cfg.ID, a.forkN)
+	a.mu.Unlock()
+	a.recordRequest(label, &kv.Rendered{Prompt: p, Sections: nil}, nil, kv.Check{}, prof, KindCompactor, false)
 	a.emit(events.TypeCompactPatch, map[string]any{"stage": "request", "reason": reason, "thread_from": firstID(snap), "thread_to": lastID(snap)})
 
 	rp := &readyPatch{epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason}
 	var patch *kv.Patch
-	resp, err := a.call(ctx, &provider.Request{Prompt: p, Label: label}, PrioBackground, nil)
+	resp, err := a.call(ctx, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil)
 	if err == nil {
 		a.account(resp, label)
 		w := a.cfg.Model.Price.Weights()
@@ -237,10 +241,10 @@ func (a *Agent) account(resp *provider.Response, label string) {
 	a.usage = a.usage.Add(resp.Usage)
 	a.costUSD += usd
 	a.mu.Unlock()
-	a.emit(events.TypeModelResponse, map[string]any{
+	a.emit(events.TypeModelResponse, a.responsePayload(map[string]any{
 		"req": label, "id": resp.ID, "model": resp.Model, "usage": resp.Usage, "cost_usd": usd,
 		"hit_ratio": resp.Usage.HitRatio(), "side": true, "stop": resp.Stop,
-	})
+	}, resp))
 }
 
 // commit applies a ready patch: an atomic replacement of the retained thread

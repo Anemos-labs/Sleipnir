@@ -14,17 +14,29 @@ import (
 // chunk is one streamed frame. Non-streaming replies share the field names
 // under choices[].message, handled by the same accumulator.
 type chunk struct {
-	ID       string `json:"id"`
-	Model    string `json:"model"`
-	Provider string `json:"provider"`
-	Choices  []struct {
-		Index        int     `json:"index"`
-		Delta        *delta  `json:"delta"`
-		Message      *delta  `json:"message"`
-		FinishReason *string `json:"finish_reason"`
-	} `json:"choices"`
-	Usage *usage    `json:"usage"`
-	Error *apiError `json:"error"`
+	ID             string        `json:"id"`
+	Model          string        `json:"model"`
+	Provider       string        `json:"provider"`
+	Choices        []chunkChoice `json:"choices"`
+	PromptTokenIDs []int32       `json:"prompt_token_ids"`
+	Usage          *usage        `json:"usage"`
+	Error          *apiError     `json:"error"`
+}
+
+// chunkChoice is one choice of a frame.
+type chunkChoice struct {
+	Index        int     `json:"index"`
+	Delta        *delta  `json:"delta"`
+	Message      *delta  `json:"message"`
+	FinishReason *string `json:"finish_reason"`
+	// vLLM-style token capture: ids of the tokens in this frame and their
+	// sampling logprobs.
+	TokenIDs []int32 `json:"token_ids"`
+	Logprobs *struct {
+		Content []struct {
+			Logprob float64 `json:"logprob"`
+		} `json:"content"`
+	} `json:"logprobs"`
 }
 
 type delta struct {
@@ -120,6 +132,10 @@ type accumulator struct {
 	rawUsage            json.RawMessage
 	started             bool
 	textOpen            bool
+
+	promptIDs []int32
+	compIDs   []int32
+	logprobs  []float32
 }
 
 type callAcc struct {
@@ -145,7 +161,16 @@ func (a *accumulator) feed(c *chunk, start time.Time, on func(provider.Event)) {
 	if c.Usage != nil {
 		a.usage = c.Usage
 	}
+	if len(c.PromptTokenIDs) > 0 {
+		a.promptIDs = c.PromptTokenIDs
+	}
 	for _, ch := range c.Choices {
+		a.compIDs = append(a.compIDs, ch.TokenIDs...)
+		if ch.Logprobs != nil {
+			for _, lp := range ch.Logprobs.Content {
+				a.logprobs = append(a.logprobs, float32(lp.Logprob))
+			}
+		}
 		d := ch.Delta
 		if d == nil {
 			d = ch.Message
@@ -236,6 +261,20 @@ func (a *accumulator) applyDelta(d *delta, on func(provider.Event)) {
 			on(provider.Event{Kind: provider.EvToolDelta, Index: tc.Index, Text: tc.Function.Arguments})
 		}
 	}
+}
+
+// trace returns the captured token trace, or nil when the server returned none.
+// Logprobs that do not line up with the completion ids are dropped rather than
+// guessed at; the ids themselves are still useful.
+func (a *accumulator) trace(model string) *core.TokenTrace {
+	if len(a.compIDs) == 0 {
+		return nil
+	}
+	t := &core.TokenTrace{ModelVersion: model, Tokenizer: model, PromptIDs: a.promptIDs, CompletionIDs: a.compIDs}
+	if len(a.logprobs) == len(a.compIDs) {
+		t.Logprobs = a.logprobs
+	}
+	return t
 }
 
 // finish builds the assistant turn.

@@ -1,0 +1,1 @@
+[{"name":"big","description":"fake big","input_schema":{"type":"object"}},{"name":"echo","description":"fake echo","input_schema":{"type":"object"}}]

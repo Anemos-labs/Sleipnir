@@ -128,6 +128,18 @@ func (m *MemBlobs) Has(h core.Hash) bool {
 	return ok
 }
 
+// All returns a copy of every stored blob, for tests and for dumping an
+// in-memory session to disk.
+func (m *MemBlobs) All() map[core.Hash][]byte {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[core.Hash][]byte, len(m.m))
+	for h, b := range m.m {
+		out[h] = append([]byte(nil), b...)
+	}
+	return out
+}
+
 // Len reports how many distinct blobs are stored.
 func (m *MemBlobs) Len() int {
 	m.mu.RLock()

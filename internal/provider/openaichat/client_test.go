@@ -324,3 +324,59 @@ func TestProtocolViolationsAreRejectedByServer(t *testing.T) {
 		t.Fatalf("want bad request, got %v", err)
 	}
 }
+
+func TestTokenCapture(t *testing.T) {
+	srv := mock.New(mock.Config{}, func(call *mock.Call) mock.Reply {
+		return mock.Reply{Text: "the answer is forty two", ToolCalls: []mock.ToolCall{{ID: "c1", Name: "read", Args: `{"path":"a.go"}`}}}
+	})
+	ts := srv.Start()
+	t.Cleanup(ts.Close)
+	prof := openaichat.DefaultProfile("mock", ts.URL)
+	prof.CaptureTokens = true
+	c := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, APIKey: "k", Profile: &prof})
+
+	p := prompt("sys", user("what is the answer to everything"))
+	for _, noStream := range []bool{false, true} {
+		resp, err := c.Do(context.Background(), &provider.Request{Prompt: p, NoStream: noStream, Capture: true}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tr := resp.Tokens
+		if tr == nil || len(tr.PromptIDs) == 0 || len(tr.CompletionIDs) == 0 {
+			t.Fatalf("noStream=%v: expected a token trace, got %+v", noStream, tr)
+		}
+		if len(tr.Logprobs) != len(tr.CompletionIDs) || !tr.Consistent() {
+			t.Fatalf("logprobs %d vs ids %d", len(tr.Logprobs), len(tr.CompletionIDs))
+		}
+	}
+	// Not asked for: nothing captured and nothing requested from the server.
+	resp, err := c.Do(context.Background(), &provider.Request{Prompt: p}, nil)
+	if err != nil || resp.Tokens != nil {
+		t.Fatalf("capture off must yield no trace: %v %+v", err, resp.Tokens)
+	}
+	// An endpoint that cannot capture is never asked to.
+	plain := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, APIKey: "k"})
+	if resp, err := plain.Do(context.Background(), &provider.Request{Prompt: p, Capture: true}, nil); err != nil || resp.Tokens != nil {
+		t.Fatalf("profile without capture support: %v %+v", err, resp.Tokens)
+	}
+
+	// Append-only prompts give prefix-stable prompt ids: the property the RL
+	// exporter relies on to pack a segment into one sequence.
+	r1, _ := c.Do(context.Background(), &provider.Request{Prompt: p, Capture: true}, nil)
+	p2 := prompt("sys", user("what is the answer to everything"),
+		core.Message{Role: core.RoleAssistant, Blocks: r1.Turn.Blocks},
+		core.Message{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("c1", false, core.Text("package main"))}})
+	r2, err := c.Do(context.Background(), &provider.Request{Prompt: p2, Capture: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := r1.Tokens.PromptIDs, r2.Tokens.PromptIDs
+	if len(b) <= len(a) {
+		t.Fatalf("second prompt must be longer: %d vs %d", len(b), len(a))
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("prompt ids diverge at %d", i)
+		}
+	}
+}

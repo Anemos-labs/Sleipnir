@@ -68,7 +68,7 @@ func (a *Agent) requestOnce(ctx context.Context) (*provider.Response, error) {
 	}
 
 	reqID := fmt.Sprintf("%s.%d", a.cfg.ID, n)
-	a.recordRequest(reqID, r, hot, check, prof)
+	a.recordRequest(reqID, r, hot, check, prof, KindMain, true)
 
 	started := func(bool) {}
 	if a.cfg.Gate != nil {
@@ -79,7 +79,7 @@ func (a *Agent) requestOnce(ctx context.Context) (*provider.Response, error) {
 		started = s
 	}
 	start := a.cfg.Now()
-	resp, err := a.call(ctx, &provider.Request{Prompt: r.Prompt, Label: reqID}, a.cfg.Priority, func(e provider.Event) {
+	resp, err := a.call(ctx, &provider.Request{Prompt: r.Prompt, Label: reqID, Capture: a.cfg.CaptureTokens}, a.cfg.Priority, func(e provider.Event) {
 		a.forward(e)
 		if e.Kind == provider.EvStart {
 			started(true)
@@ -112,13 +112,13 @@ func (a *Agent) requestOnce(ctx context.Context) (*provider.Response, error) {
 			"diverged": check.Diverged,
 		})
 	}
-	a.emit(events.TypeModelResponse, map[string]any{
+	a.emit(events.TypeModelResponse, a.responsePayload(map[string]any{
 		"req": reqID, "id": resp.ID, "model": resp.Model, "provider": resp.Provider,
 		"usage": u, "cost_usd": usd, "gateway_cost": resp.CostUSD != nil,
 		"hit_ratio": u.HitRatio(), "expected_read": expected, "anomaly": anomaly,
 		"stop": resp.Stop, "ttfb_ms": resp.TTFB.Milliseconds(), "total_ms": resp.Total.Milliseconds(),
 		"transformations": resp.Transformations,
-	})
+	}, resp))
 	a.cfg.Sink.Response(a.cfg.ID, resp, u.HitRatio())
 	return resp, nil
 }
@@ -133,11 +133,23 @@ func (a *Agent) forward(e provider.Event) {
 	}
 }
 
-// recordRequest logs the request as a recipe: layer hashes and sizes, thread
-// range, hot-block hash. Layer texts are stored once in the blob store by hash,
-// so a session with dozens of agents sharing a pinned prefix logs that prefix
-// once, and the full prompt can be reconstructed exactly for training data.
-func (a *Agent) recordRequest(reqID string, r *kv.Rendered, hot []core.Block, c kv.Check, prof provider.Profile) {
+// Request kinds recorded in model.request: what a call was for.
+const (
+	KindMain      = "main"
+	KindCompactor = "compactor"
+)
+
+// recordRequest logs the request as a recipe (layer hashes and sizes, thread
+// range, hot-block hash) and as a manifest: the exact model-visible prompt as
+// content hashes, delta-encoded against this agent's previous request. Layer and
+// message texts are stored once in the blob store, so a session with dozens of
+// agents sharing a pinned prefix logs that prefix once, and any prompt can be
+// rebuilt byte for byte (and checked against its wire hash) for training data.
+//
+// advance says whether this request becomes the base of the next one's delta:
+// side requests (compactor forks) are recorded against the last main request but
+// do not replace it.
+func (a *Agent) recordRequest(reqID string, r *kv.Rendered, hot []core.Block, c kv.Check, prof provider.Profile, kind string, advance bool) {
 	type sec struct {
 		Name   string    `json:"name"`
 		Hash   core.Hash `json:"hash"`
@@ -168,13 +180,51 @@ func (a *Agent) recordRequest(reqID string, r *kv.Rendered, hot []core.Block, c 
 		hotHash, _ = a.cfg.Blobs.Put([]byte(txt))
 	}
 	a.storeLayerTexts(r)
+
+	a.mu.Lock()
+	prev := a.man
+	a.mu.Unlock()
+	man, next, err := core.BuildManifest(r.Prompt, prev, reqID, a.cfg.Blobs.Put)
+	if err != nil {
+		// Logging must never stop the agent; the recipe below is still recorded.
+		a.cfg.Sink.Notice(a.cfg.ID, "warn", "could not record prompt manifest: "+err.Error())
+	} else if advance {
+		a.mu.Lock()
+		a.man = next
+		a.mu.Unlock()
+	}
+	role := a.cfg.Role
+	if kind == KindCompactor {
+		role = "compactor"
+	}
 	a.emit(events.TypeModelRequest, map[string]any{
-		"req": reqID, "model": r.Prompt.Model, "provider": prof.Name, "dialect": prof.Dialect,
+		"req": reqID, "agent": a.cfg.ID, "role": role, "kind": kind,
+		"model": r.Prompt.Model, "provider": prof.Name, "dialect": prof.Dialect,
 		"sections": secs, "thread_from": from, "thread_to": to, "hot": hotHash,
 		"cache_key": r.Prompt.CacheKey, "prefix_key": r.PrefixKey, "params": r.Prompt.Params,
 		"breakpoints": r.Prompt.Breakpoints, "shared_blocks": c.SharedBlocks, "shared_tokens": c.SharedTokens,
-		"tools": len(r.Prompt.Tools),
+		"tools": len(r.Prompt.Tools), "renderer": kv.RendererVersion,
+		"manifest": man, "wire_hash": man.Wire,
 	})
+}
+
+// responsePayload adds the action itself to a model.response: the assistant turn
+// as a blob (provider-native blocks intact) and, when the endpoint returned
+// them, the token ids and logprobs.
+func (a *Agent) responsePayload(p map[string]any, resp *provider.Response) map[string]any {
+	if b, err := core.MarshalStable(resp.Turn); err == nil {
+		if h, err := a.cfg.Blobs.Put(b); err == nil {
+			p["completion"] = h
+		}
+	}
+	if resp.Tokens != nil {
+		if b, err := core.MarshalStable(resp.Tokens); err == nil {
+			if h, err := a.cfg.Blobs.Put(b); err == nil {
+				p["tokens"] = h
+			}
+		}
+	}
+	return p
 }
 
 func (a *Agent) storeLayerTexts(r *kv.Rendered) {

@@ -125,6 +125,10 @@ type Config struct {
 	// SessionID and AffinityShards shape the provider routing key.
 	SessionID      string
 	AffinityShards int
+	// CaptureTokens asks the endpoint for token ids and logprobs on every call
+	// (RL rollouts against a self-hosted policy). Ignored by endpoints that
+	// cannot provide them.
+	CaptureTokens bool
 	// Compaction toggles background compaction (on by default via NewAgent).
 	NoCompaction bool
 	// OnPromote receives facts the compactor proposes for shared layers.
@@ -156,14 +160,18 @@ type Agent struct {
 	cfg Config
 	est core.Estimator
 
-	mu      sync.Mutex
-	stack   kv.Stack
-	thread  *kv.Thread
-	guard   kv.Guard
-	epoch   uint64 // rebase counter fed to the guard
-	strip   bool   // strip thinking on the next render (declared rebase)
-	inbox   []string
-	reqN    int
+	mu     sync.Mutex
+	stack  kv.Stack
+	thread *kv.Thread
+	guard  kv.Guard
+	epoch  uint64 // rebase counter fed to the guard
+	strip  bool   // strip thinking on the next render (declared rebase)
+	inbox  []string
+	reqN   int
+	forkN  int
+	// man is the manifest state the next main request's prompt is delta-encoded
+	// against (see core.BuildManifest).
+	man     core.ManifestState
 	usage   core.Usage
 	costUSD float64
 

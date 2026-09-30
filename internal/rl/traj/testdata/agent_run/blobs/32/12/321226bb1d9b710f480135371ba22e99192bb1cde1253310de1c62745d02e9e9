@@ -1,0 +1,1 @@
+{"role":"assistant","blocks":[{"kind":"text","text":"working on step 20"},{"kind":"tool_use","tool_id":"call_20","tool_name":"big","input":{"step":20},"wire":{"function":{"arguments":"{\"step\":20}","name":"big"},"id":"call_20","type":"function"},"wire_format":"openai-chat"}]}

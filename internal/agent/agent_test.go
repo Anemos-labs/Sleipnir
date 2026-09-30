@@ -52,6 +52,8 @@ type rigOpts struct {
 	tools     []fakeTool
 	steps     int
 	budget    float64
+	blobs     events.Blobs
+	capture   bool // ask the (mock) endpoint for token ids and logprobs
 }
 
 func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
@@ -60,7 +62,9 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 	srv := mock.New(opts.mock, r)
 	ts := srv.Start()
 	t.Cleanup(ts.Close)
-	client := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Options: openaichat.Options{SessionHeader: true, CacheKeyBody: true}})
+	prof := openaichat.DefaultProfile("mock", ts.URL)
+	prof.CaptureTokens = opts.capture
+	client := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Profile: &prof, Options: openaichat.Options{SessionHeader: true, CacheKeyBody: true}})
 
 	reg := tools.NewRegistry()
 	fts := opts.tools
@@ -97,7 +101,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 		Params: core.Params{MaxTokens: 512},
 		Events: log, Planner: opts.planner, NoCompaction: opts.noCompact,
 		SessionID: "testsession", MaxSteps: opts.steps, BudgetUSD: opts.budget,
-		Now: time.Now,
+		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture,
 	})
 	if err != nil {
 		t.Fatal(err)

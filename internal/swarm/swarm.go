@@ -87,6 +87,19 @@ type Deps struct {
 
 	// NewSink builds a UI sink for an agent (optional).
 	NewSink func(agentID string) agent.Sink
+
+	// RoleModels overrides the model (and endpoint) a role runs on. RL uses it to
+	// train one role against fixed others, for example the manager on the policy
+	// under training and the workers on a stronger reference model.
+	RoleModels map[string]RoleModel
+	// CaptureTokens asks endpoints for token ids and logprobs on every call.
+	CaptureTokens bool
+}
+
+// RoleModel is a per-role model override.
+type RoleModel struct {
+	Provider provider.Provider
+	Model    cost.Model
 }
 
 // member is one registered agent.
@@ -236,9 +249,14 @@ func (s *Swarm) buildAgent(id string, r Role, notes *kv.Layer, ev *Evidence) (*a
 		sink = d.NewSink(id)
 	}
 	m := &member{id: id, role: r.Name, ev: ev, state: "idle"}
+	model, prov := d.Model, d.Provider
+	if rm, ok := d.RoleModels[r.Name]; ok && rm.Provider != nil {
+		model, prov = rm.Model, rm.Provider
+	}
 	cfg := agent.Config{
-		ID: id, Role: r.Name, Model: d.Model, Provider: d.Provider, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
-		Const: d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
+		ID: id, Role: r.Name, Model: model, Provider: prov, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
+		CaptureTokens: d.CaptureTokens,
+		Const:         d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
 		Params: d.Params,
 		Hot: func(agentID string) []core.Block {
 			snap := s.Board.Snapshot()
@@ -295,6 +313,7 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	s.manager = id
 	s.mu.Unlock()
 	s.Board.SetAgent(AgentInfo{ID: id, Role: "manager", State: "running"})
+	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": "manager", "model": s.modelFor("manager").ID})
 	return a, nil
 }
 
@@ -431,9 +450,17 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 		return "", err
 	}
 	s.Board.SetAgent(AgentInfo{ID: id, Role: role.Name, State: "running", Task: task.ID})
-	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By})
+	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": s.modelFor(role.Name).ID})
 	s.startRun(m, taskCard(task, id, false))
 	return id, nil
+}
+
+// modelFor is the model a role runs on.
+func (s *Swarm) modelFor(role string) cost.Model {
+	if rm, ok := s.deps.RoleModels[role]; ok && rm.Provider != nil {
+		return rm.Model
+	}
+	return s.deps.Model
 }
 
 func (s *Swarm) spawnableRoles() []string {

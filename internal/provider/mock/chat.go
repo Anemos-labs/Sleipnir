@@ -42,6 +42,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	engine := s.router.Engine(eng)
 	cached := engine.Lookup(prompt)
 
+	capture := wantsTokenIDs(body)
 	call := &Call{
 		N: n, Model: p.model, Session: p.session, Engine: eng, System: p.system,
 		Messages: p.messages, Tools: p.tools, Cached: cached, Prompt: promptTokens, Raw: p.raw,
@@ -100,6 +101,17 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		usage["prompt_tokens_details"] = map[string]any{"cached_tokens": cached}
 	}
 	id := "gen-mock-" + itoa(n)
+	// Token capture emulation (vLLM-style): whitespace-run tokens with hashed ids,
+	// so prompts are prefix-stable and completions are reproducible.
+	var promptIDs, compIDs []int32
+	var lps []map[string]any
+	if capture {
+		promptIDs = fakeTokenize(string(prompt))
+		compIDs = fakeTokenize(completionText(reply))
+		for _, tid := range compIDs {
+			lps = append(lps, map[string]any{"logprob": fakeLogprob(tid)})
+		}
+	}
 
 	if s.cfg.CacheGenerated {
 		defer func() {
@@ -132,11 +144,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			msg["tool_calls"] = tcs
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		choice := map[string]any{"index": 0, "message": msg, "finish_reason": finish}
+		out := map[string]any{
 			"id": id, "object": "chat.completion", "model": p.model, "provider": "mock",
-			"choices": []any{map[string]any{"index": 0, "message": msg, "finish_reason": finish}},
+			"choices": []any{choice},
 			"usage":   usage,
-		})
+		}
+		if capture {
+			out["prompt_token_ids"] = promptIDs
+			choice["token_ids"] = compIDs
+			choice["logprobs"] = map[string]any{"content": lps}
+		}
+		json.NewEncoder(w).Encode(out)
 		return
 	}
 
@@ -210,11 +229,73 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if first { // empty completion still needs a first frame
 		emit(map[string]any{"content": ""})
 	}
-	send(chunk(map[string]any{}, finish))
+	last := chunk(map[string]any{}, finish)
+	if capture {
+		last["prompt_token_ids"] = promptIDs
+		ch := last["choices"].([]any)[0].(map[string]any)
+		ch["token_ids"] = compIDs
+		ch["logprobs"] = map[string]any{"content": lps}
+	}
+	send(last)
 	fin := map[string]any{"id": id, "object": "chat.completion.chunk", "model": p.model, "provider": "mock", "choices": []any{}, "usage": usage}
 	send(fin)
 	w.Write([]byte("data: [DONE]\n\n"))
 }
+
+// wantsTokenIDs reports whether the request asked for vLLM-style token capture.
+func wantsTokenIDs(body []byte) bool {
+	var q struct {
+		Return bool `json:"return_token_ids"`
+	}
+	_ = json.Unmarshal(body, &q)
+	return q.Return
+}
+
+// completionText is what the fake tokenizer sees as the model's output.
+func completionText(r Reply) string {
+	t := r.Text
+	for _, tc := range r.ToolCalls {
+		t += " <tool_call> " + tc.Name + " " + tc.Args + " </tool_call>"
+	}
+	return t
+}
+
+// fakeTokenize splits text into words (an optional leading space plus a run of
+// non-space characters) and single newlines, and hashes each to an id. It is
+// deterministic and prefix-stable at message boundaries, which is all the
+// capture tests need.
+func fakeTokenize(text string) []int32 {
+	var ids []int32
+	emit := func(tok string) {
+		var h uint32 = 2166136261
+		for i := 0; i < len(tok); i++ {
+			h = (h ^ uint32(tok[i])) * 16777619
+		}
+		ids = append(ids, int32(h%50000)+1)
+	}
+	for i := 0; i < len(text); {
+		j := i
+		switch {
+		case text[j] == '\n':
+			j++
+		default:
+			if text[j] == ' ' {
+				j++
+			}
+			for j < len(text) && text[j] != ' ' && text[j] != '\n' {
+				j++
+			}
+			if j == i { // lone space
+				j++
+			}
+		}
+		emit(text[i:j])
+		i = j
+	}
+	return ids
+}
+
+func fakeLogprob(id int32) float64 { return -0.05 - float64(id%17)/20 }
 
 func (s *Server) record(st CallStat) {
 	s.mu.Lock()

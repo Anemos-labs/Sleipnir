@@ -117,7 +117,9 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 		cp.Params.MaxTokens = 1
 		p = &cp
 	}
-	body, err := Build(p, c.cfg.Options, stream)
+	opts := c.cfg.Options
+	opts.CaptureTokens = req.Capture && c.profile.CaptureTokens
+	body, err := Build(p, opts, stream)
 	if err != nil {
 		return nil, &provider.Error{Kind: provider.ErrBadRequest, Message: err.Error(), Err: err}
 	}
@@ -208,6 +210,9 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	}
 	if acc.usage != nil {
 		out.CostUSD = acc.usage.Cost
+	}
+	if opts.CaptureTokens {
+		out.Tokens = acc.trace(acc.model)
 	}
 	out.TTFB = out.Total
 	on(provider.Event{Kind: provider.EvUsage, Usage: &out.Usage, RequestID: acc.id})

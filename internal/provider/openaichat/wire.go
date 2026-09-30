@@ -38,6 +38,10 @@ type Options struct {
 	ReasoningEffortField string
 	// ExtraBody is merged into the top level of every request.
 	ExtraBody map[string]any
+	// CaptureTokens asks a vLLM/SGLang-style server for the prompt and completion
+	// token ids and per-token logprobs (RL training data). Set per request by the
+	// client, only when the profile says the endpoint supports it.
+	CaptureTokens bool
 }
 
 func (o *Options) defaults() {
@@ -65,6 +69,8 @@ type chatRequest struct {
 	Stop             []string       `json:"stop,omitempty"`
 	PromptCacheKey   string         `json:"prompt_cache_key,omitempty"`
 	ParallelToolCall *bool          `json:"parallel_tool_calls,omitempty"`
+	Logprobs         bool           `json:"logprobs,omitempty"`
+	ReturnTokenIDs   bool           `json:"return_token_ids,omitempty"`
 }
 
 type streamOptions struct {
@@ -123,6 +129,9 @@ func Build(p *core.Prompt, o Options, stream bool) ([]byte, error) {
 	}
 	if o.CacheKeyBody {
 		req.PromptCacheKey = p.CacheKey
+	}
+	if o.CaptureTokens {
+		req.Logprobs, req.ReturnTokenIDs = true, true
 	}
 	if o.ReasoningEffortField != "" && p.Params.Effort != "" {
 		req.ReasoningEffort = p.Params.Effort

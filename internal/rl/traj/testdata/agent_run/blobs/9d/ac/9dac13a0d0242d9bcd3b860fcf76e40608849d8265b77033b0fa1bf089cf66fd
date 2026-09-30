@@ -1,0 +1,1 @@
+{"id":46,"role":"assistant","blocks":[{"kind":"text","text":"all done"}],"origin":"model","at":"2026-09-30T00:54:53.979650118Z","model":"mock-1","usage":{"input_tokens":3852,"cache_read_tokens":3024,"cache_write_5m_tokens":0,"cache_write_1h_tokens":0,"output_tokens":2}}

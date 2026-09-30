@@ -42,6 +42,10 @@ type Profile struct {
 	PrewarmZeroTokens bool
 	// StreamUsage: usage arrives in the stream.
 	StreamUsage bool
+	// CaptureTokens: the endpoint can return prompt/completion token ids and
+	// sampling logprobs (self-hosted vLLM/SGLang-style servers), which RL
+	// training needs at the LLM boundary.
+	CaptureTokens bool
 }
 
 // KVCaps derives the renderer's view of the profile.
@@ -70,6 +74,9 @@ type Request struct {
 	// BindingMode sets thinking.block_binding.prefix_mismatch_behavior
 	// ("drop_block" or "error"); empty leaves the endpoint default.
 	BindingMode string
+	// Capture asks the endpoint for token ids and logprobs; ignored (and the
+	// response has no Tokens) when the profile cannot provide them.
+	Capture bool
 }
 
 // EventKind classifies streaming events.
@@ -131,6 +138,8 @@ type Response struct {
 	CostUSD *float64
 	// Provider names the upstream that served the request, when known.
 	Provider string
+	// Tokens is the token trace of the call when Request.Capture was honoured.
+	Tokens *core.TokenTrace
 }
 
 // Provider is implemented by every adapter.
