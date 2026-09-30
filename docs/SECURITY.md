@@ -6,6 +6,24 @@ harder. It is blunt on purpose: a coding agent executes text that an attacker ma
 the process changes that. The audit trail is `docs/reviews/`; `AGENTS.md` and `docs/ARCHITECTURE.md` have the rules
 the code follows.
 
+## Reporting a vulnerability
+
+Report a vulnerability privately: not in a public issue, not in a pull request. GitHub reads this file as the repository's
+security policy, and the **Security** tab has a **Report a vulnerability** button (private vulnerability reporting): it opens
+an advisory that only you and the maintainer can see, where the fix can be prepared before anything is public.
+
+**What to include.** The version or commit (`sleipnir version`) and your operating system; what you did, what happened and
+what you expected; the smallest repository, command line or transcript that reproduces it; which boundary of section 1 you
+think is crossed (a command the permission engine should have denied, a key that reached a host it should not, text from a
+repository or a web page that was followed as an instruction); and whether the report must stay confidential until a fix
+ships. Do not send real credentials: say where they would have been read from.
+
+**What to expect.** Sleipnir has one maintainer, so this is an intention, not a contract. You should get an acknowledgement
+within about a week. The maintainer then says whether the report is in scope (the "What it does not do" list below is
+what the harness does not claim to stop), works on a fix with you in the private advisory, and publishes an advisory with
+credit to you, if you want it, when the fix is released. There is no bug bounty. A finding that turns out to be a bug without
+a security impact is handled as an ordinary issue, with your agreement.
+
 ## 1. Threat model on one page
 
 **Assets.** Provider API keys; the files and credentials of the user account the harness runs as (`~/.ssh`, `~/.aws`,
