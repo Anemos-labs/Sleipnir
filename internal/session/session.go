@@ -151,6 +151,7 @@ type Session struct {
 
 	cfgRep      *config.Report // where each configuration value came from (nil when Options.Config was given)
 	mcp         *mcpState
+	unlock      func() // releases the lock on the session directory
 	ext         *extensions
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
@@ -240,6 +241,17 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return nil, err
 	}
+	unlock, err := lockDir(s.Dir)
+	if err != nil {
+		return nil, err
+	}
+	built := false
+	defer func() {
+		if !built {
+			unlock()
+		}
+	}()
+	s.unlock = unlock
 	if s.Log, err = events.Open(s.Dir, s.ID); err != nil {
 		return nil, err
 	}
@@ -297,6 +309,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			return nil, fmt.Errorf("resume: %w", err)
 		}
 	}
+	built = true
 	return s, nil
 }
 
@@ -772,7 +785,11 @@ func (s *Session) Close() error {
 	if started {
 		s.Log.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": s.cost()})
 	}
-	return s.Log.Close()
+	err := s.Log.Close()
+	if s.unlock != nil {
+		s.unlock()
+	}
+	return err
 }
 
 func (s *Session) cost() float64 {

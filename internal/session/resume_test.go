@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -301,4 +302,34 @@ func TestResumeOnAnotherModel(t *testing.T) {
 	if !strings.Contains(last, "PINEAPPLE") {
 		t.Error("the conversation did not come along to the other model")
 	}
+}
+
+// Two processes appending to one event log would interleave two histories under
+// one sequence; a resume of a session that is still running elsewhere must fail.
+func TestASessionDirectoryHasOneWriter(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("advisory directory locks are not used on this system")
+	}
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	o := opts(t, repo, client, model)
+	o.Dir = dir
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o2 := opts(t, repo, client, model)
+	o2.Dir = dir
+	if _, err := session.New(context.Background(), o2); err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("a second writer on one session directory: %v", err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := session.New(context.Background(), o2)
+	if err != nil {
+		t.Fatalf("the directory must be free once its session closed: %v", err)
+	}
+	s2.Close()
 }
