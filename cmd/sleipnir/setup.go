@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/reee344/sleipnir/internal/config"
+	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/mcp"
 	"github.com/reee344/sleipnir/internal/session"
@@ -279,9 +280,11 @@ func summarize(path string, model, prompt *string, usd *float64) {
 			*model = d.Model
 		case events.TypeUserInput:
 			if *prompt == "" {
-				var d struct{ Text string }
+				var d struct{ Text, Origin string }
 				json.Unmarshal(e.Data, &d)
-				*prompt = oneLineCLI(d.Text, 70)
+				if d.Origin == "" || d.Origin == string(core.OriginUser) { // a task the harness handed out is not the prompt
+					*prompt = oneLineCLI(d.Text, 70)
+				}
 			}
 		case events.TypeSessionEnd:
 			var d struct {

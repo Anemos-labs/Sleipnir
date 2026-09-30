@@ -208,12 +208,20 @@ Safety properties (all tested):
 * **Atomic units.** A tool call and its result are never separated (nor a turn-scoped system message from the turn it
   follows); an in-flight exchange is never folded; the newest units always stay verbatim.
 * **User words survive compaction, bounded, and the model cannot rewrite them** (R14). The harness copies
-  human-authored text into the `instructions` notes: every user-typed turn (up to `TaskMaxTokens`, 2400) and every
-  piece of human steering (`Agent.Steer`, or `Agent.Send` of text that is not router mail; up to 600 tokens), verbatim,
-  each tagged with its turn id. An entry that had to be cut ends `…[truncated; full text: recall tN]`. Mail from other
-  agents, the hot view and tool output are never copied. Patch ops on `instructions` and `assignment` are ignored with a
-  warning. The section is bounded (`MaxInstructionTokens`, 4000): the oldest entries move to the archive behind one
-  pointer line (`- (N older instructions archived; recall turns="t3-t41")`).
+  human-authored text into the `instructions` notes: every user-typed turn (up to `TaskMaxTokens`, 8000) and every
+  piece of human steering (`Agent.Steer`, or `Agent.Send` of text that is not router mail; up to
+  `UserInstructionMaxTokens`, 2000), each tagged with its turn id. Below its bound the text is pinned verbatim; above
+  it the entry keeps its beginning and its end around `…[~N tokens omitted; full text: recall tN]…` and is reported
+  (`ApplyResult.UserTextCut`). Mail from other agents, the hot view and tool output are never copied. Neither is a task
+  the harness hands over (`core.OriginTask`, `Agent.RunTask`): a swarm's kickoff, or a reused worker's next assignment,
+  is written from a board that models fill in, so it is data with a job and not a person's word. A task turn carries
+  its assignment in a `kv.Task` block; when the turn is folded the harness-owned `assignment` section takes it over
+  (the newest folded one wins; escaped; bounded like user text), so a reused worker's notes describe the task it has
+  now. A kickoff without an assignment block pins nothing: the notes have held its card since the spawn. A compactor's
+  patch may write only `facts, decisions, constraints, files, todo, working-set`; ops on `instructions` and
+  `assignment` are ignored with a warning. The instructions section is bounded (`MaxInstructionTokens`, 12000): the
+  oldest entries move to the archive behind one pointer line (`- (N older instructions archived; recall
+  turns="t3-t41")`).
 * **Append-only spine; never summarise summaries; bounded** (R18). Old spine lines are immutable. When the spine
   exceeds `MaxSpineTokens` (3000) the oldest digests are *evicted to the archive behind one pointer line*
   (`t1-t120 · (57 earlier digests archived; recall turns="t1-t120")`), not re-written. Compactor-written notes

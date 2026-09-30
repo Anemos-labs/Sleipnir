@@ -122,6 +122,12 @@ const (
 	OriginMail   Origin = "mail"   // delivered mailbox message
 	OriginSystem Origin = "system" // harness-generated notice
 	OriginDigest Origin = "digest" // synthesized by compaction
+	// OriginTask is work the harness hands to an agent: a swarm's kickoff or a reused
+	// worker's next assignment. It says what to do, on the harness's authority, and it
+	// is not the user's word: compaction never pins it as an instruction. The task
+	// text is written from a board that models fill in, so it is data with a job, not
+	// a person's instruction.
+	OriginTask Origin = "task"
 )
 
 // Turn is one message in an agent's thread.

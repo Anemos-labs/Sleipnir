@@ -738,6 +738,21 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 	if len(cuts) > 0 {
 		warns = append(warns, "user text kept as beginning and end only (full text: recall): "+strings.Join(cuts, "; "))
 	}
+	// A task the harness handed to the agent in a turn (a reused swarm worker's next
+	// assignment) takes over the assignment section when its turn is folded; the newest
+	// folded one wins. The section is the harness's: this and the spawn are the only
+	// writers, and a task is never pinned as the user's instructions. A kickoff that
+	// carries no assignment block (the notes hold it since the spawn) pins nothing.
+	if id, text, ok := lastTask(turns, old); ok {
+		entry, cut := assignmentEntry(id, text, pol.TaskMaxTokens, est)
+		if sg := get("assignment"); sg.Text != entry {
+			sg.Text = entry
+			changed = true
+		}
+		if cut != "" {
+			warns = append(warns, "assignment kept as beginning and end only (full text: recall): "+cut)
+		}
+	}
 	if !changed {
 		return s.Notes, false, false, nil, warns, cuts
 	}
@@ -832,10 +847,56 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 	return NewLayer(id, KindNotes, ver, out), true, over, evicts, warns, cuts
 }
 
+// lastTask finds the assignment the newest folded task turn carries: the text of its
+// task blocks (see Task), in the turn's own words. Only core.OriginTask turns count;
+// a task block in any other turn is just text.
+func lastTask(turns []core.Turn, old []Unit) (id core.TurnID, text string, ok bool) {
+	for _, u := range old {
+		for _, tr := range turns[u.Start:u.End] {
+			if tr.Origin != core.OriginTask || tr.Role != core.RoleUser {
+				continue
+			}
+			var sb strings.Builder
+			for _, b := range tr.Blocks {
+				if IsTask(b) {
+					if sb.Len() > 0 {
+						sb.WriteString("\n")
+					}
+					sb.WriteString(b.Text)
+				}
+			}
+			if t := strings.TrimSpace(sb.String()); t != "" {
+				id, text, ok = tr.ID, t, true
+			}
+		}
+	}
+	return id, text, ok
+}
+
+// assignmentEntry formats an assignment for the notes: the card as the harness wrote
+// it, escaped like everything else that enters the notes, and cut to max tokens (head
+// and tail around a marker that says where the rest is) if it is longer. cut describes
+// the cut for the report.
+func assignmentEntry(id core.TurnID, text string, max int, est core.Estimator) (entry, cut string) {
+	text = strings.TrimSpace(EscapeUntrusted(text))
+	tok := est.Tokens(text)
+	if max <= 0 || tok <= max {
+		return text, ""
+	}
+	head, tail := headTail(text, max, est)
+	omitted := tok - est.Tokens(head) - est.Tokens(tail)
+	if omitted < 0 {
+		omitted = 0
+	}
+	entry = fmt.Sprintf("%s\n…[~%d tokens omitted; full text: recall t%d]…\n%s", head, omitted, id, tail)
+	return EscapeUntrusted(entry), fmt.Sprintf("t%d: %d tokens, kept about %d", id, tok, max)
+}
+
 // userEntries renders the human-authored text of a folded turn as instruction
 // entries: one per user-typed turn, one per steering block. Notices, model text,
-// tool results and mail from other agents are never user text. cut names the
-// entries that were longer than their bound (see instructionEntry).
+// tool results, mail from other agents and the tasks the harness hands out (see
+// lastTask) are never user text. cut names the entries that were longer than their
+// bound (see instructionEntry).
 func userEntries(tr core.Turn, est core.Estimator, pol ApplyPolicy) (entries, cut []string) {
 	add := func(txt string, max int) {
 		if txt = strings.TrimSpace(txt); txt == "" {

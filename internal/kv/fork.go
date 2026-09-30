@@ -133,6 +133,8 @@ func describeUnit(turns []core.Turn, labels map[string]string) string {
 		switch {
 		case tr.Role == core.RoleUser && tr.Origin == core.OriginUser:
 			parts = append(parts, "user: "+quote(userText(tr), 80))
+		case tr.Role == core.RoleUser && tr.Origin == core.OriginTask:
+			parts = append(parts, "task from the harness: "+quote(userText(tr), 80))
 		case tr.Role == core.RoleAssistant:
 			calls := tr.ToolCalls()
 			if len(calls) == 0 {

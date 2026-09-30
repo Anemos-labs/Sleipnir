@@ -511,9 +511,39 @@ func (a *Agent) emit(typ string, data any) {
 	}
 }
 
-// Run feeds input to the agent and loops until it produces a final answer with
-// no tool calls, is cancelled, or hits a limit.
+// Run feeds input, which a person typed, to the agent and loops until it produces a
+// final answer with no tool calls, is cancelled, or hits a limit. Compaction pins the
+// input into the agent's notes as the user's own words.
 func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
+	var blocks []core.Block
+	if input != "" {
+		blocks = []core.Block{core.Text(input)}
+	}
+	return a.run(ctx, core.OriginUser, blocks)
+}
+
+// RunTask is Run for work the harness hands to the agent, not something a person
+// typed: a swarm's kickoff or a reused worker's next assignment. brief is what the
+// model reads first. assignment, when it is not empty, is the task itself; it is
+// shown to the model after the brief, and when the turn is folded away the
+// "assignment" section of the agent's notes takes it over, so the notes keep
+// describing the task the agent has now. Neither text is ever pinned as the user's
+// instructions (core.OriginTask, kv.Task). With both empty the run continues from the
+// thread as it stands.
+func (a *Agent) RunTask(ctx context.Context, brief, assignment string) (*Result, error) {
+	var blocks []core.Block
+	if brief != "" {
+		blocks = append(blocks, core.Text(brief))
+	}
+	if assignment != "" {
+		blocks = append(blocks, kv.Task(assignment))
+	}
+	return a.run(ctx, core.OriginTask, blocks)
+}
+
+// run is the loop behind Run and RunTask: it adds the input turn, if there is one, with
+// the origin that says who it speaks for.
+func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block) (*Result, error) {
 	res := &Result{}
 	if a.life.Err() != nil {
 		return res, ErrClosed
@@ -526,9 +556,9 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	defer stop()
 	vetoes := 0     // Stop hooks that sent the agent back to work in this run
 	mailRounds := 0 // times a finished answer was reopened because mail arrived meanwhile
-	if input != "" {
-		a.pushUser(core.OriginUser, []core.Block{core.Text(input)})
-		a.emit(events.TypeUserInput, map[string]any{"text": input})
+	if len(input) > 0 {
+		a.pushUser(origin, input)
+		a.emit(events.TypeUserInput, inputEvent(origin, input))
 	}
 	for step := 0; step < a.cfg.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
@@ -594,6 +624,29 @@ func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 		a.pushUser(core.OriginTool, blocks)
 	}
 	return res, fmt.Errorf("agent %s: step limit %d reached", a.cfg.ID, a.cfg.MaxSteps)
+}
+
+// inputEvent is the payload of the user.input event for an input turn: what the model
+// reads (text), and, for a task the harness handed over, who it speaks for (origin) and
+// the assignment it carries. A person's input keeps the plain {"text": …} shape.
+func inputEvent(origin core.Origin, blocks []core.Block) map[string]any {
+	var text, card []string
+	for _, b := range blocks {
+		switch {
+		case kv.IsTask(b):
+			card = append(card, b.Text)
+		case b.Kind == core.BlockText:
+			text = append(text, b.Text)
+		}
+	}
+	m := map[string]any{"text": strings.Join(text, "\n")}
+	if origin != core.OriginUser {
+		m["origin"] = string(origin)
+	}
+	if len(card) > 0 {
+		m["assignment"] = strings.Join(card, "\n")
+	}
+	return m
 }
 
 // maxMailRounds is how many times one Run reopens a finished answer to read mail that

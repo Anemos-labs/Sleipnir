@@ -81,9 +81,11 @@ func (s *Session) apply(ev *events.Event, off int64) {
 		}
 	case events.TypeUserInput:
 		if s.meta.goal == "" {
-			var p struct{ Text string }
+			var p struct{ Text, Origin string }
 			_ = json.Unmarshal(ev.Data, &p)
-			s.meta.goal = oneLine(p.Text, 300)
+			if p.Origin == "" || p.Origin == "user" { // a task the harness handed out is not the goal
+				s.meta.goal = oneLine(p.Text, 300)
+			}
 		}
 		s.agentFor(ev.Agent, ts)
 	case events.TypeLayerCommit:

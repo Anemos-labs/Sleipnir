@@ -97,6 +97,8 @@ const (
 	MediaNotice = "text/x-sleipnir-notice"
 	// MediaSteer tags text a human sent to a running agent.
 	MediaSteer = "text/x-sleipnir-steer"
+	// MediaTask tags the assignment a task turn carries (see Task).
+	MediaTask = "text/x-sleipnir-task"
 )
 
 // Notice returns a frozen harness notice block.
@@ -114,6 +116,18 @@ func Steer(text string) core.Block {
 
 // IsSteer reports whether b is human steering.
 func IsSteer(b core.Block) bool { return b.Kind == core.BlockText && b.MediaType == MediaSteer }
+
+// Task returns a block carrying an assignment the harness hands to an agent inside a
+// task turn (core.OriginTask). The model reads it as text. When the turn is folded
+// away, the harness-owned "assignment" section of the agent's notes takes the text
+// over (see Apply), so a reused worker's notes describe the task it has now and not
+// the one it was spawned for. Nothing else in a task turn is kept.
+func Task(text string) core.Block {
+	return core.Block{Kind: core.BlockText, Text: text, MediaType: MediaTask}
+}
+
+// IsTask reports whether b is a task assignment block.
+func IsTask(b core.Block) bool { return b.Kind == core.BlockText && b.MediaType == MediaTask }
 
 // AnswerText concatenates the text blocks of a turn: what the model said,
 // without its reasoning, tool calls or results. Parsers of model output (the
