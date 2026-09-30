@@ -103,6 +103,24 @@ internal/rl             RL vocabulary: the harness as an environment
   path traversal, concurrent callers). Use `t.TempDir()`; never touch the real HOME.
 - Anything concurrent must pass `-race`.
 - Prefer testing observable behaviour over internals.
+- CI runs the suite on Linux (as an ordinary user, not root) and macOS (`.github/workflows/ci.yml`, also runnable by
+  hand from the Actions tab); Windows is built, not tested. Things the first runs found, so that the next test does not
+  repeat them:
+  - a temp directory can sit behind a symlink (macOS: `/var` is `/private/var`): compare resolved paths
+    (`filepath.EvalSymlinks`), and never assume that a path a tool prints is the one you gave it;
+  - a file system can be case-insensitive (macOS default) and can refuse names that are not UTF-8: probe for it and skip or
+    adapt, do not assume; a random number in a temp dir name can contain any short string, so match whole paths, not
+    base names;
+  - a test that runs as root here does not run as root there: a read-only directory needs a cleanup that makes it
+    writable again, and "permission denied" can be the correct answer;
+  - macOS has bash 3.2 (no `{01..03}`, no `|&`), BSD `ps` and `sed`, no `/proc` and no `127.0.0.2`; the process start
+    time comes from `sysctl kern.proc.pid` there (`internal/workspace/proc_darwin.go`);
+  - the Go command writes to `$HOME` (telemetry, build cache, GOPATH) the first time it runs: a test that snapshots a fake
+    HOME must not count directory mtimes or those directories;
+  - anything that waits for a background process needs a generous timeout on a loaded runner, and a test on a timer must
+    accept every outcome the timer can legitimately produce.
+  To see what the runners see before pushing, run the test binaries as an unprivileged user with a symlinked `TMPDIR`
+  (`go test -c`, then `setpriv --reuid=65534 ...`); it catches most of the above.
 
 ## Why tools look the way they do (swarm implications)
 

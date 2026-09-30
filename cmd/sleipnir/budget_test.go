@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/session"
 )
 
@@ -20,5 +24,28 @@ func TestBudgetStopNamesTheCapAndHowToRaiseIt(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "swarm.budget_usd") {
 		t.Errorf("a single agent has no swarm budget setting to raise: %v", err)
+	}
+}
+
+// The reason a run's session ended, as the SessionEnd hooks see it.
+func TestEndReasonOfARun(t *testing.T) {
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want string
+	}{
+		{"finished", context.Background(), nil, session.EndCompleted},
+		{"out of budget", context.Background(), fmt.Errorf("run: %w", agent.ErrBudget), session.EndBudget},
+		{"interrupted, as the error says", context.Background(), context.Canceled, session.EndInterrupted},
+		{"interrupted, as the context says", cancelled, errors.New("provider: request aborted"), session.EndInterrupted},
+		{"failed", context.Background(), errors.New("step limit reached"), session.EndError},
+		{"budget wins over an interrupt that follows it", cancelled, agent.ErrBudget, session.EndBudget},
+	} {
+		if got := endReasonOf(tc.ctx, tc.err); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
