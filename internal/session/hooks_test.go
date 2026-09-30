@@ -216,3 +216,39 @@ func TestToolAndStopHooksThroughRealCommands(t *testing.T) {
 		t.Errorf("hook.run events: %d ran, %d blocked", ran, blocked)
 	}
 }
+
+// SessionStart tells a hook whether the session is new or continues an earlier
+// one, so a hook can restore its own state on a resume and set it up otherwise.
+func TestSessionStartSaysWhetherTheSessionIsResumed(t *testing.T) {
+	repo := newRepo(t)
+	dump := filepath.Join(t.TempDir(), "sources.txt")
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	start := func(resume bool) {
+		o := opts(t, repo, client, model)
+		o.Dir = dir
+		if resume {
+			o.Resume = dir
+		}
+		o.Config = hookConfig(t, map[string]string{"SessionStart": "cat | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"source\"])' >> " + dump})
+		s, err := session.New(context.Background(), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Run(context.Background(), "hello"); err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+	}
+	if _, err := os.Stat("/usr/bin/python3"); err != nil {
+		if _, err := os.Stat("/usr/local/bin/python3"); err != nil {
+			t.Skip("python3 is not available to read the hook payload")
+		}
+	}
+	start(false)
+	start(true)
+	b, _ := os.ReadFile(dump)
+	if got := strings.Fields(string(b)); len(got) != 2 || got[0] != "startup" || got[1] != "resume" {
+		t.Errorf("SessionStart sources = %q, want startup then resume", got)
+	}
+}

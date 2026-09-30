@@ -133,7 +133,11 @@ func (s *Session) promptHook(ctx context.Context, first bool, goal string) (stri
 	}
 	var extra []string
 	if first {
-		res := s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionStart, Agent: s.mainAgent(), Extra: map[string]any{"source": "startup"}})
+		source := "startup"
+		if s.Resumed() {
+			source = "resume"
+		}
+		res := s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionStart, Agent: s.mainAgent(), Extra: map[string]any{"source": source}})
 		if res.AdditionalContext != "" {
 			extra = append(extra, res.AdditionalContext)
 		}

@@ -428,11 +428,19 @@ func (s *Session) buildShared(ctx context.Context) error {
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
 	}
 	if !s.opts.TrustProject {
-		srcs = userScopeOnly(srcs)
+		kept := userScopeOnly(srcs)
+		if skipped := skippedSources(srcs, kept); len(skipped) > 0 {
+			s.notice("", fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); pass --trust-project to load them", strings.Join(skipped, ", ")))
+		}
+		srcs = kept
 	}
 	s.Memory = srcs
 	if txt := memory.Render(srcs); strings.TrimSpace(txt) != "" {
-		segs = append(segs, kv.Segment{Key: "instructions", Text: fitTokens(txt, 3000, est), Vol: kv.VolEpoch})
+		fitted := fitTokensNote(txt, instructionBudget, est, "(instruction files truncated to fit the shared layer: the rest is in the files)\n")
+		if fitted != txt {
+			s.notice("", fmt.Sprintf("instruction files come to %d tokens and the shared layer takes %d: everything after the cut (the later files, project notes before local ones) is left out; shorten them, or read them with the file tools", est.Tokens(txt), instructionBudget))
+		}
+		segs = append(segs, kv.Segment{Key: "instructions", Text: fitted, Vol: kv.VolEpoch})
 	}
 	if txt := s.ext.skillsSegment(); txt != "" {
 		segs = append(segs, kv.Segment{Key: "skills", Text: txt, Vol: kv.VolEpoch})
@@ -441,6 +449,32 @@ func (s *Session) buildShared(ctx context.Context) error {
 		s.Shared = kv.NewLayer("shared", kv.KindShared, 1, segs)
 	}
 	return nil
+}
+
+// instructionBudget is how many tokens of instruction files the shared layer
+// carries. It is read on every request of every agent, so it is bounded.
+const instructionBudget = 3000
+
+// skippedSources lists (up to three) the paths in all that are not in kept.
+func skippedSources(all, kept []memory.Source) []string {
+	keep := map[string]bool{}
+	for _, k := range kept {
+		keep[k.Path] = true
+	}
+	var out []string
+	n := 0
+	for _, a := range all {
+		if keep[a.Path] {
+			continue
+		}
+		if n++; n <= 3 {
+			out = append(out, a.Path)
+		}
+	}
+	if n > 3 {
+		out = append(out, fmt.Sprintf("and %d more", n-3))
+	}
+	return out
 }
 
 // userScopeOnly keeps the user's own instruction files when the project is not

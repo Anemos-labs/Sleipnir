@@ -918,6 +918,12 @@ func gitChurn(ctx context.Context, root string) map[string]int {
 
 // fitTokens trims text to the budget on a line boundary.
 func fitTokens(text string, budget int, est core.Estimator) string {
+	return fitTokensNote(text, budget, est, "(survey truncated)\n")
+}
+
+// fitTokensNote cuts text at a line boundary so that it, with the note that says
+// so, fits the budget.
+func fitTokensNote(text string, budget int, est core.Estimator, note string) string {
 	if est.Tokens(text) <= budget {
 		return text
 	}
@@ -925,7 +931,7 @@ func fitTokens(text string, budget int, est core.Estimator) string {
 	var sb strings.Builder
 	for _, l := range lines {
 		if est.Tokens(sb.String()+l) > budget-8 {
-			sb.WriteString("(survey truncated)\n")
+			sb.WriteString(note)
 			break
 		}
 		sb.WriteString(l)

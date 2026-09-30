@@ -705,3 +705,62 @@ func TestRewindRestoresWhatTheAgentChanged(t *testing.T) {
 		t.Fatal("a file the agent created must be removed by the rewind")
 	}
 }
+
+// A person who wrote instructions for their agent must be told when they are not
+// used: because the project is not trusted, or because they do not fit.
+func TestInstructionFilesThatAreSkippedOrCutAreReported(t *testing.T) {
+	repo := newRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("Run `make test` before finishing.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+
+	o := opts(t, repo, client, model)
+	o.TrustProject = false
+	sink := &noticeSink{}
+	o.Sink = sink
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if got := sink.all(); !strings.Contains(got, "not loaded because the project is not trusted") || !strings.Contains(got, "AGENTS.md") || !strings.Contains(got, "--trust-project") {
+		t.Errorf("no notice about the skipped instruction file: %q", got)
+	}
+
+	// Trusted: nothing to report while they fit.
+	o = opts(t, repo, client, model)
+	sink = &noticeSink{}
+	o.Sink = sink
+	s, err = session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if got := sink.all(); strings.Contains(got, "instruction files") {
+		t.Errorf("a notice for instructions that were loaded whole: %q", got)
+	}
+
+	// Trusted but too long: the cut is announced, and the note in the prompt says what happened.
+	var long strings.Builder
+	for i := 0; i < 3000; i++ {
+		fmt.Fprintf(&long, "Rule %d: keep functions short and name things after what they do.\n", i)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte(long.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	o = opts(t, repo, client, model)
+	sink = &noticeSink{}
+	o.Sink = sink
+	s, err = session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if got := sink.all(); !strings.Contains(got, "instruction files come to") || !strings.Contains(got, "3000") {
+		t.Errorf("no notice about the cut: %q", got)
+	}
+	if txt := s.Shared.Text(); !strings.Contains(txt, "instruction files truncated") || strings.Contains(txt, "survey truncated") {
+		t.Errorf("the shared layer does not say its instructions were cut (or says it about a survey)")
+	}
+}
