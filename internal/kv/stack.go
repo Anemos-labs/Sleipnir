@@ -99,3 +99,55 @@ func (s *Stack) PrefixKey() core.Hash {
 	b = append(b, s.RoleL.Hash()...)
 	return core.HashBytes(b)
 }
+
+// GlobalKey identifies the prefix every agent of a session shares regardless of
+// role: model, tools, constitution and shared pin. It keys provider affinity,
+// so all agents co-locate on the engine that holds the biggest shared prefix.
+func (s *Stack) GlobalKey() core.Hash {
+	var b []byte
+	b = append(b, s.Model...)
+	b = append(b, 0)
+	for _, t := range s.Tools {
+		b = append(b, t.Name...)
+		b = append(b, 0)
+		b = append(b, t.Description...)
+		b = append(b, 0)
+		b = append(b, t.InputSchema...)
+		b = append(b, 0)
+	}
+	b = append(b, s.Const.Hash()...)
+	b = append(b, 0)
+	b = append(b, s.Shared.Hash()...)
+	return core.HashBytes(b)
+}
+
+// PromptBytes totals the bytes of persistent prompt content. Paired with the
+// provider's reported input tokens it calibrates the token estimator.
+func PromptBytes(p *core.Prompt) int {
+	n := 0
+	p.WalkBlocks(func(_ core.BlockRef, tool *core.ToolSpec, b *core.Block) {
+		switch {
+		case tool != nil:
+			n += len(tool.Name) + len(tool.Description) + len(tool.InputSchema)
+		case b != nil && !b.Ephemeral:
+			n += blockBytes(*b)
+		case b != nil:
+			n += blockBytes(*b) // ephemeral blocks are billed too
+		}
+	})
+	return n
+}
+
+func blockBytes(b core.Block) int {
+	switch b.Kind {
+	case core.BlockToolUse:
+		return len(b.ToolName) + len(b.Input)
+	case core.BlockToolResult:
+		n := 0
+		for _, c := range b.Result {
+			n += blockBytes(c)
+		}
+		return n
+	}
+	return len(b.Text)
+}
