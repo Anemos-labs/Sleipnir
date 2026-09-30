@@ -234,7 +234,7 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	}
 
 	if p.Stop != "tool_use" && a.run == runThinking && len(a.tools) == 0 {
-		a.run = runIdle // a final answer: nothing follows but the end of the run
+		s.halt(a, runIdle) // a final answer: nothing follows but the end of the run
 	}
 	s.touchCache(a, p, rq, had, t, u, true)
 	a.syncBusy(t)
@@ -342,7 +342,7 @@ func (s *State) onModelError(e events.Event, t time.Time) {
 		if a != nil {
 			rq, had := a.takeReq(clip(p.Req, textID))
 			if !(had && rq.side) && a.run == runThinking && len(a.tools) == 0 {
-				a.run = runIdle // the run is over (a compactor's side request that is cancelled does not say the run is)
+				s.halt(a, runIdle) // the run is over (a compactor's side request that is cancelled does not say the run is)
 			}
 			a.active(t)
 			a.syncBusy(t)
@@ -358,7 +358,7 @@ func (s *State) onModelError(e events.Event, t time.Time) {
 		rq, had := a.takeReq(clip(p.Req, textID))
 		side = had && rq.side
 		if !side {
-			a.run = runError
+			s.halt(a, runError)
 		}
 		a.failed = failure{ok: true, seq: e.Seq, req: clip(p.Req, textID), side: side}
 		a.active(t)

@@ -423,6 +423,9 @@ func (s *State) onPermAsk(e events.Event, t time.Time) {
 	if a := s.agent(e.Agent, t); a != nil {
 		a.Role = firstOf(a.Role, q.Role)
 		a.asks++
+		if a.run == runIdle || a.run == runDone || a.run == runError {
+			a.run = runThinking // a tool call is held at a question: it is working, whatever said it had stopped is out of date
+		}
 		a.active(t)
 		a.refresh()
 	}

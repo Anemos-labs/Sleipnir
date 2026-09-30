@@ -351,3 +351,57 @@ func TestPermissionSnapshotsShareNothingWithTheState(t *testing.T) {
 		t.Errorf("writing to a snapshot reached the State:\n%s\nwas:\n%s", got, want)
 	}
 }
+
+// A held tool call is proof that the agent is working, as any tool call is: a question of an agent the State believed had stopped
+// puts it back to work, and waiting.
+func TestAQuestionPutsAnAgentThatHadStoppedBackToWork(t *testing.T) {
+	for _, state := range []string{"idle", "done", "failed"} {
+		t.Run(state, func(t *testing.T) {
+			b := newB()
+			st := New()
+			apply(t, st, b.Spawn("w-1", "backend", "T1", "mgr"))
+			apply(t, st, b.Emit("w-1", events.TypeAgentState, map[string]any{"id": "w-1", "state": state, "line": "", "task": ""}))
+			apply(t, st, b.PermAsk("w-1", "backend", "bash", "make", "r"))
+			if a := agentOf(t, st.Snapshot(), "w-1"); a.Status != StatusAsking || a.Asking != 1 {
+				t.Errorf("after the question: %s asking %d", a.Status, a.Asking)
+			}
+			apply(t, st, b.PermDecide("w-1", "backend", "bash", "make", "ok", true, "user", ""))
+			if a := agentOf(t, st.Snapshot(), "w-1"); a.Status == StatusAsking || a.Asking != 0 || !a.Status.Active() {
+				t.Errorf("after the answer: %s asking %d", a.Status, a.Asking)
+			}
+		})
+	}
+}
+
+// The other ways an agent stops working end its questions as well: a request that failed for good, one that was cancelled, and a
+// final answer (no call is held at a question once the model has answered without asking for one).
+func TestAnAgentThatStopsWorkingIsNotWaitingOnQuestions(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		stop func(b *statetest.Builder) events.Event
+	}{
+		{"a request failed", func(b *statetest.Builder) events.Event {
+			return b.Emit("w-1", events.TypeModelError, map[string]any{"req": "w-1.1", "error": "provider: server (http 500): boom"})
+		}},
+		{"a request was cancelled", func(b *statetest.Builder) events.Event {
+			return b.Emit("w-1", events.TypeModelError, map[string]any{"req": "w-1.1", "error": "provider: network: request cancelled"})
+		}},
+		{"a final answer", func(b *statetest.Builder) events.Event {
+			p := statetest.ResponsePayload("w-1.1", "m", 10, 0, 0, 5, 0)
+			p["stop"] = "end_turn"
+			return b.Emit("w-1", events.TypeModelResponse, p)
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			b := newB()
+			st := New()
+			apply(t, st, b.Request("w-1", "w-1.1", "m", "pk", secShared()))
+			apply(t, st, b.PermAsk("w-1", "", "bash", "make", "r"))
+			apply(t, st, c.stop(b))
+			sn := st.Snapshot()
+			if a := agentOf(t, sn, "w-1"); a.Asking != 0 || a.Status == StatusAsking || len(sn.Perms.Pending) != 0 || sn.Perms.Abandoned != 1 {
+				t.Errorf("status %s asking %d, %d pending, %d abandoned", a.Status, a.Asking, len(sn.Perms.Pending), sn.Perms.Abandoned)
+			}
+		})
+	}
+}

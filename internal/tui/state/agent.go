@@ -176,6 +176,13 @@ func (s *State) endRun(a *agentState, r runState, t time.Time) {
 	a.endRun(r, t)
 }
 
+// halt sets the run state of an agent that has stopped working by a way that closes its spans itself (a final answer, a request
+// that failed or was cancelled): what it waited for is over as well, so its questions are not pending any more.
+func (s *State) halt(a *agentState, r runState) {
+	s.dropAsks(a)
+	a.run = r
+}
+
 // stopped is the run state of an agent whose run was cut short: idle, unless it had ended for good already (a cancel that arrives
 // after the manager's answer, or after a failure, does not bring the agent back).
 func stopped(r runState) runState {
