@@ -1,0 +1,8 @@
+{d}╭─ {/}{b}Bash command{/}{d} ───────────────────────────────────────────╮{/}
+{d}│{/} go test -race -count=1 ./internal/tui/widget/...         {d}│{/}
+{d}│{/} in ~/code/orders-api                                     {d}│{/}
+{d}│{/}                                                          {d}│{/}
+{d}│{/}   {d}1. {/}Yes                                                 {d}│{/}
+{d}│{/} {br}❯ 2. Yes, and don't ask again for go test               {/} {d}│{/}
+{d}│{/}   {d}3. {/}No, and tell Sleipnir what to do instead{d} (esc){/}      {d}│{/}
+{d}╰──────────────────────────────────────────────────────────╯{/}

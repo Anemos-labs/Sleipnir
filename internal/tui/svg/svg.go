@@ -166,7 +166,7 @@ func Static(f Frame, th Theme) string {
 	chrome(&b, th, w, h, top)
 	b.WriteString(fmt.Sprintf(`<g transform="translate(%s %s)">`+"\n", num(th.Padding), num(th.Padding+top)))
 	for y, row := range f.Rows {
-		drawRow(&b, th, row, y, "")
+		drawRow(&b, th, row, y, 0, "")
 	}
 	drawCursor(&b, th, f)
 	b.WriteString("</g>\n</svg>\n")
@@ -193,9 +193,9 @@ func commonCSS(th Theme) string {
 		th.Font, num(th.FontSize), th.Foreground)
 }
 
-// drawRow draws one row of cells: backgrounds, geometry for blocks and lines, then the text runs. class, when not empty, is
-// put on the row's group (an animation version).
-func drawRow(b *strings.Builder, th Theme, row []Cell, y int, class string) {
+// drawRow draws a row of cells, or a stretch of one that starts at column x0: backgrounds, geometry for blocks and lines, then the
+// text. class, when not empty, is put on the group (an animation version).
+func drawRow(b *strings.Builder, th Theme, row []Cell, y, x0 int, class string) {
 	if !rowVisible(row) {
 		return
 	}
@@ -220,7 +220,7 @@ func drawRow(b *strings.Builder, th Theme, row []Cell, y int, class string) {
 			}
 			e++
 		}
-		fmt.Fprintf(b, `<rect x="%s" y="%s" width="%s" height="%s" fill="%s"/>`, num(float64(x)*cw), num(py), num(float64(e-x)*cw+0.3), num(ch+0.3), bg)
+		fmt.Fprintf(b, `<rect x="%s" y="%s" width="%s" height="%s" fill="%s"/>`, num(float64(x0+x)*cw), num(py), num(float64(e-x)*cw+0.3), num(ch+0.3), bg)
 		x = e
 	}
 	// lines under and through text are drawn as shapes too: a text decoration stops at the gap between two words
@@ -236,10 +236,10 @@ func drawRow(b *strings.Builder, th Theme, row []Cell, y int, class string) {
 		}
 		fg := cellFG(th, row[x])
 		if st.Has(cell.Underline) {
-			fmt.Fprintf(b, `<rect x="%s" y="%s" width="%s" height="1.1" fill="%s"%s/>`, num(float64(x)*cw), num(py+ch*0.9), num(float64(e-x)*cw), fg, opacity(st))
+			fmt.Fprintf(b, `<rect x="%s" y="%s" width="%s" height="1.1" fill="%s"%s/>`, num(float64(x0+x)*cw), num(py+ch*0.9), num(float64(e-x)*cw), fg, opacity(st))
 		}
 		if st.Has(cell.Strike) {
-			fmt.Fprintf(b, `<rect x="%s" y="%s" width="%s" height="1.1" fill="%s"%s/>`, num(float64(x)*cw), num(py+ch*0.52), num(float64(e-x)*cw), fg, opacity(st))
+			fmt.Fprintf(b, `<rect x="%s" y="%s" width="%s" height="1.1" fill="%s"%s/>`, num(float64(x0+x)*cw), num(py+ch*0.52), num(float64(e-x)*cw), fg, opacity(st))
 		}
 		x = e
 	}
@@ -255,8 +255,15 @@ func drawRow(b *strings.Builder, th Theme, row []Cell, y int, class string) {
 		fg := cellFG(th, c)
 		if r := []rune(c.Text); len(r) == 1 {
 			if g, ok := glyph(r[0]); ok {
-				g.draw(b, float64(x)*cw, py, cw, ch, fg, c.Style.Has(cell.Dim))
-				x++
+				// a run of the same block or line is one shape, not one per cell: a stack bar is one rectangle
+				n := 1
+				if mergeable(g) {
+					for x+n < len(row) && row[x+n].Text == c.Text && sameInk(row[x+n].Style, c.Style) {
+						n++
+					}
+				}
+				g.draw(b, float64(x0+x)*cw, py, cw*float64(n), ch, fg, c.Style.Has(cell.Dim))
+				x += n
 				continue
 			}
 		}
@@ -269,7 +276,7 @@ func drawRow(b *strings.Builder, th Theme, row []Cell, y int, class string) {
 			for i := x; i < e; i++ {
 				word.WriteString(row[i].Text)
 			}
-			drawText(b, th, x, e-x, py, word.String(), fg, c.Style, "spacing")
+			drawText(b, th, x0+x, e-x, py, word.String(), fg, c.Style, "spacing")
 			x = e
 			continue
 		}
@@ -277,14 +284,32 @@ func drawRow(b *strings.Builder, th Theme, row []Cell, y int, class string) {
 		if cell.StringWidth(c.Text) > 1 && x+1 < len(row) && row[x+1].Text == "" {
 			w = 2
 		}
-		drawText(b, th, x, w, py, c.Text, fg, c.Style, "spacingAndGlyphs")
+		drawText(b, th, x0+x, w, py, c.Text, fg, c.Style, "spacingAndGlyphs")
 		x += w
 	}
 	b.WriteString("</g>\n")
 }
 
-// plain says a cell holds one printable ASCII character other than the space: the text every monospaced font draws on the grid.
-func plain(s string) bool { return len(s) == 1 && s[0] > ' ' && s[0] < 0x7f }
+// plain says a cell holds a character that every monospaced font draws on the grid, in one cell: printable ASCII other than the
+// space, the Latin-1 letters and signs (the middle dot of a track, the degree sign, accented letters) and the typographic
+// punctuation of running text. Symbols, arrows, box pieces and emoji are not plain: fonts disagree about their width, so each stands
+// alone in its cell.
+func plain(s string) bool {
+	if len(s) == 1 {
+		return s[0] > ' ' && s[0] < 0x7f
+	}
+	r := []rune(s)
+	if len(r) != 1 {
+		return false
+	}
+	switch c := r[0]; {
+	case c >= 0xa1 && c <= 0xff && c != 0xad:
+		return true
+	case c == '…' || c == '–' || c == '—' || c == '‘' || c == '’' || c == '“' || c == '”' || c == '•':
+		return true
+	}
+	return false
+}
 
 // drawText places text at a column and pins it to cells columns. A word is spaced out (or drawn closer) to fit; a symbol is
 // scaled to fit, since the font a viewer has may draw it wider or narrower than the cell.
@@ -324,6 +349,11 @@ func rowVisible(row []Cell) bool {
 		}
 	}
 	return false
+}
+
+// sameInk says two cells are drawn with the same colour and dimness (the background is drawn separately).
+func sameInk(a, b cell.Style) bool {
+	return a.FG == b.FG && a.BG == b.BG && a.Attr&(cell.Dim|cell.Reverse) == b.Attr&(cell.Dim|cell.Reverse)
 }
 
 func cellFG(th Theme, c Cell) string {

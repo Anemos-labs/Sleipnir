@@ -28,6 +28,23 @@ func glyph(r rune) (drawer, bool) {
 	return nil, false
 }
 
+// mergeable says that a run of the same glyph in neighbouring cells is drawn exactly by one shape as wide as the run: a block that
+// fills the cell from edge to edge, and a plain horizontal line. Anything else (a half block, a corner, a dot) is drawn cell by cell.
+func mergeable(d drawer) bool {
+	switch s := d.(type) {
+	case blockShape:
+		for _, f := range s {
+			if f.x != 0 || f.w != 1 {
+				return false
+			}
+		}
+		return true
+	case lineShape:
+		return s.u == 0 && s.d == 0 && s.l > 0 && s.l == s.r && !s.round
+	}
+	return false
+}
+
 // A frac is a rectangle in fractions of the cell, with an opacity (0 means opaque).
 type frac struct{ x, y, w, h, a float64 }
 

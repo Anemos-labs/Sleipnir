@@ -1,0 +1,40 @@
+{fg=dim}commit 3f2a9c1d0e{/}
+{fg=dim}Author: A Dev <dev@example.com>{/}
+{fg=dim}Date:   Tue Sep 29 10:00:00 2026 +0000{/}
+
+{fg=dim}    orders: page is one-based{/}
+
+{b}orders/list.go{/}  {b,fg=good}+3{/} {b,fg=bad}−1{/}
+{fg=dim}⋯ func (s *Store) List(ctx context.Context, page, size int) ([]Order, e…{/}
+{fg=dim} 56  56       if size <= 0 {{/}
+{fg=dim} 57  57           size = 50{/}
+{fg=dim} 58  58       }{/}
+{fg=bad,bg=del-bg} 59     {/}{b,fg=bad,bg=del-bg}- {/}{fg=bad,bg=del-bg}    offset := page * size                                     {/}
+{fg=good,bg=add-bg}     59 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}    offset := {/}{fg=good,bg=add-word-bg}({/}{fg=good,bg=add-bg}page {/}{fg=good,bg=add-word-bg}- 1) {/}{fg=good,bg=add-bg}* size                               {/}
+{fg=dim} 60  60       rows, err := s.db.QueryContext(ctx, listSQL, size, offset){/}
+{fg=dim} 61  61       if err != nil {{/}
+{fg=dim} 62  62           return nil, err{/}
+{fg=dim}⋯ 57 unchanged lines  func scan(rows *sql.Rows) ([]Order, error) {{/}
+{fg=dim}120 120       var out []Order{/}
+{fg=dim}121 121       for rows.Next() {{/}
+{fg=dim}122 122           var o Order{/}
+{fg=good,bg=add-bg}    123 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}        // Scan fails on a NULL total                         {/}
+{fg=good,bg=add-bg}    124 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}        var total sql.NullInt64                               {/}
+{fg=dim}123 125           if err := rows.Scan(&o.ID, &o.Name); err != nil {{/}
+{fg=dim}124 126               return nil, err{/}
+{fg=dim}125 127           }{/}
+
+{b}orders/list_test.go{/}  {b,fg=good}+4{/} {b,fg=bad}−0{/} {fg=dim}(new file){/}
+{fg=good,bg=add-bg}  1 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}package orders                                                    {/}
+{fg=good,bg=add-bg}  2 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}                                                                  {/}
+{fg=good,bg=add-bg}  3 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}func TestList(t *testing.T) {                                     {/}
+{fg=good,bg=add-bg}  4 {/}{b,fg=good,bg=add-bg}+ {/}{fg=good,bg=add-bg}}                                                                 {/}
+{fg=dim}    \ No newline at end of file{/}
+
+{b}new_name.txt{/} {fg=dim}(renamed from old_name.txt){/}
+
+{b}logo.png{/} {fg=dim}(binary file changed){/}
+
+{b}gone.txt{/}  {b,fg=good}+0{/} {b,fg=bad}−2{/} {fg=dim}(deleted){/}
+{fg=bad,bg=del-bg}1   {/}{b,fg=bad,bg=del-bg}- {/}{fg=bad,bg=del-bg}first                                                             {/}
+{fg=bad,bg=del-bg}2   {/}{b,fg=bad,bg=del-bg}- {/}{fg=bad,bg=del-bg}second                                                            {/}

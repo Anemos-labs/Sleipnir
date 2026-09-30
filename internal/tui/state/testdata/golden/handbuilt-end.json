@@ -1,0 +1,682 @@
+{
+  "seq": 90,
+  "clock": "2026-01-02T03:04:31Z",
+  "first": "2026-01-02T03:04:05Z",
+  "now": "2026-01-02T03:04:31Z",
+  "session": {
+    "id": "test",
+    "version": "1.2.3",
+    "model": "m",
+    "provider": "prov",
+    "dialect": "openai-chat",
+    "cwd": "/work/proj/sub",
+    "root": "/work/proj",
+    "renderer": "sleipnir-kv/2",
+    "swarm": true,
+    "isolation": "worktree",
+    "mailman": true,
+    "schema": 1,
+    "recon_tokens": 25,
+    "shared_hash": "0123456789ab",
+    "started": "2026-01-02T03:04:05.005Z",
+    "ended": true,
+    "ended_at": "2026-01-02T03:04:31Z",
+    "end_reason": "completed",
+    "end_cost_usd": 0.0478,
+    "goal": "add pagination to every list endpoint",
+    "epochs": 1
+  },
+  "agents": [
+    {
+      "id": "mgr",
+      "role": "manager",
+      "model": "m",
+      "status": "done",
+      "spawned": "2026-01-02T03:04:05.01Z",
+      "spawn_seq": 3,
+      "last_active": "2026-01-02T03:04:30Z",
+      "tokens": {"input": 410, "cache_read": 4900, "cache_write": 4600, "output": 100},
+      "cost_usd": 0.0143,
+      "saved_usd": 0.01764,
+      "requests": 2,
+      "tool_calls": 4,
+      "stack": {
+        "req": "mgr.1",
+        "seq": 5,
+        "at": "2026-01-02T03:04:05.03Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-hash-01", "tokens": 60, "bp": true},
+          {"name": "notes", "hash": "notes-hash-0", "tokens": 20}
+        ],
+        "section_tokens": 200,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-mgr-0",
+        "cache_key": "sl:test:prefix-mgr-0001",
+        "answered": true,
+        "resp_req": "mgr.1",
+        "resp_seq": 87,
+        "prompt": 4910,
+        "read": 4900,
+        "fresh": 10,
+        "hit": 0.9979633401221996,
+        "unsectioned": 4710
+      },
+      "hits": {
+        "ratios": [0, 0.9979633401221996]
+      }
+    },
+    {
+      "id": "be-1",
+      "role": "backend",
+      "parent": "mgr",
+      "model": "m",
+      "task": "T1",
+      "status": "done",
+      "line": "starting",
+      "spawned": "2026-01-02T03:04:07.005Z",
+      "spawn_seq": 17,
+      "last_active": "2026-01-02T03:04:25.004Z",
+      "end_state": "idle",
+      "evidence": "edited 1 (list.go); last test \"go test ./orders/...\" passed",
+      "tokens": {"input": 4800, "cache_read": 4600, "cache_write": 0, "output": 100},
+      "cost_usd": 0.024,
+      "saved_usd": 0.01656,
+      "requests": 2,
+      "tool_calls": 1,
+      "compactions": 1,
+      "stack": {
+        "req": "be-1.2",
+        "seq": 53,
+        "at": "2026-01-02T03:04:15Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-backend", "tokens": 70, "bp": true}
+        ],
+        "section_tokens": 190,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-be-00",
+        "cache_key": "sl:test:prefix-be-0002",
+        "inherited": true,
+        "answered": true,
+        "resp_req": "be-1.2",
+        "resp_seq": 55,
+        "prompt": 4700,
+        "read": 200,
+        "fresh": 4500,
+        "hit": 0.0425531914893617,
+        "expected_read": 4400,
+        "missed": 4200,
+        "miss": true,
+        "unsectioned": 4510,
+        "epochs": 1,
+        "last_commit": "shared-sync: epoch (registration)"
+      },
+      "hits": {
+        "ratios": [0.9361702127659575, 0.0425531914893617],
+        "marks": [
+          {"at": 1, "kind": "anomaly", "seq": 54, "text": "low_hit notes"},
+          {"at": 2, "kind": "compaction", "seq": 58, "text": "31k → 2.4k"},
+          {"at": 2, "kind": "epoch", "seq": 65, "text": "epoch (registration)"}
+        ]
+      },
+      "compacts": [
+        {
+          "seq": 58,
+          "t": "2026-01-02T03:04:18.01Z",
+          "agent": "be-1",
+          "mode": "fork",
+          "reason": "cold",
+          "before": 31200,
+          "after": 2400,
+          "removed": 28800,
+          "retained": 2000,
+          "spine_added": 400,
+          "removed_turns": 12,
+          "held_ms": 900,
+          "moment": "cold",
+          "at": 2
+        }
+      ],
+      "anomalies": [
+        {
+          "seq": 54,
+          "t": "2026-01-02T03:04:15.01Z",
+          "agent": "be-1",
+          "kind": "low_hit",
+          "layer": "notes",
+          "req": "be-1.2",
+          "expected": 4400,
+          "actual": 200,
+          "missed": 4200,
+          "miss_usd": 0.01512,
+          "miss_known": true,
+          "at": 1
+        }
+      ]
+    },
+    {
+      "id": "fe-1",
+      "role": "frontend",
+      "parent": "mgr",
+      "model": "m",
+      "task": "T2",
+      "status": "idle",
+      "line": "starting",
+      "spawned": "2026-01-02T03:04:07.015Z",
+      "spawn_seq": 20,
+      "last_active": "2026-01-02T03:04:28.701Z",
+      "tokens": {"input": 510, "cache_read": 9100, "cache_write": 0, "output": 70},
+      "cost_usd": 0.007,
+      "saved_usd": 0.03276,
+      "requests": 2,
+      "retries": 1,
+      "tool_calls": 1,
+      "cancel": {"count": 1, "phase": "tools", "cause": "canceled", "steps": 2, "at": "2026-01-02T03:04:28.701Z"},
+      "scope": ["web/orders/**"],
+      "stack": {
+        "req": "fe-1.2",
+        "seq": 60,
+        "at": "2026-01-02T03:04:19Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-fronten", "tokens": 75, "bp": true}
+        ],
+        "section_tokens": 195,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-fe-00",
+        "cache_key": "sl:test:prefix-fe-0003",
+        "inherited": true,
+        "answered": true,
+        "resp_req": "fe-1.2",
+        "resp_seq": 63,
+        "prompt": 4900,
+        "read": 4700,
+        "fresh": 200,
+        "hit": 0.9591836734693877,
+        "unsectioned": 4705
+      },
+      "hits": {
+        "ratios": [0.9341825902335457, 0.9591836734693877]
+      }
+    },
+    {
+      "id": "mm-1",
+      "status": "idle",
+      "last_active": "2026-01-02T03:04:14Z",
+      "tokens": {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+      "cost_usd": 0,
+      "requests": 0,
+      "stack": {},
+      "hits": {}
+    },
+    {
+      "id": "sc-1",
+      "role": "scout",
+      "parent": "mgr",
+      "model": "m",
+      "task": "T3",
+      "status": "error",
+      "line": "starting",
+      "spawned": "2026-01-02T03:04:07.025Z",
+      "spawn_seq": 23,
+      "last_active": "2026-01-02T03:04:27.6Z",
+      "end_state": "failed",
+      "evidence": "no files edited",
+      "tokens": {"input": 320, "cache_read": 4400, "cache_write": 0, "output": 40},
+      "cost_usd": 0.004,
+      "saved_usd": 0.01584,
+      "requests": 1,
+      "tool_calls": 4,
+      "tool_errors": 4,
+      "stuck": {"phase": "nudge", "nudges": 1, "note": "[harness] nosuch has now failed the same way 4 times", "at": "2026-01-02T03:04:10.45Z"},
+      "stack": {
+        "req": "sc-1.1",
+        "seq": 30,
+        "at": "2026-01-02T03:04:08.1Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-scout", "tokens": 80, "bp": true}
+        ],
+        "section_tokens": 200,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-sc-00",
+        "cache_key": "sl:test:prefix-sc-0004",
+        "inherited": true,
+        "answered": true,
+        "resp_req": "sc-1.1",
+        "resp_seq": 31,
+        "prompt": 4720,
+        "read": 4400,
+        "fresh": 320,
+        "hit": 0.9322033898305084,
+        "unsectioned": 4520
+      },
+      "hits": {
+        "ratios": [0.9322033898305084]
+      }
+    }
+  ],
+  "totals": {
+    "requests": 6,
+    "main": 6,
+    "responses": 7,
+    "runs_cancelled": 1,
+    "retries": 1,
+    "rate_limited": 1,
+    "tool_calls": 10,
+    "tool_errors": 4,
+    "compactions": 1,
+    "anomalies": 1,
+    "cost_usd": 0.04930000000000001,
+    "tokens": {"input": 6040, "cache_read": 23000, "cache_write": 4600, "output": 310},
+    "savings": {"saved_usd": 0.0828, "priced_read_tokens": 23000, "assumption": "at list price"}
+  },
+  "models": [
+    {
+      "id": "m",
+      "source": "session",
+      "known": true,
+      "price": {"input_per_m": 4, "output_per_m": 20, "cache_read_per_m": 0.4, "cache_write_5m_per_m": 5, "cache_write_1h_per_m": 8},
+      "ttl_s": 300,
+      "context": 1000000
+    }
+  ],
+  "board": {
+    "version": 40,
+    "tasks": [
+      {
+        "id": "T1",
+        "title": "orders endpoint",
+        "owner": "be-1",
+        "role": "backend",
+        "status": "done",
+        "state": "merged",
+        "result": "added pagination",
+        "rev": 31,
+        "merge": "merged",
+        "commit": "0123456789ab",
+        "seq": 79,
+        "updated": "2026-01-02T03:04:27Z"
+      },
+      {
+        "id": "T2",
+        "title": "orders table",
+        "owner": "fe-1",
+        "role": "frontend",
+        "status": "doing",
+        "state": "running",
+        "files": ["web/orders/**"],
+        "rev": 11,
+        "seq": 19,
+        "updated": "2026-01-02T03:04:07.01Z"
+      },
+      {
+        "id": "T3",
+        "title": "survey the api",
+        "owner": "sc-1",
+        "role": "scout",
+        "status": "review",
+        "state": "verifying",
+        "result": "surveyed",
+        "rev": 32,
+        "seq": 80,
+        "updated": "2026-01-02T03:04:27.5Z"
+      }
+    ],
+    "counts": {"todo": 0, "running": 1, "verifying": 1, "merged": 1, "failed": 0},
+    "alerts": [
+      {"kind": "stuck", "text": "sc-1 repeated a failing call", "key": "stuck:sc-1", "seq": 82, "t": "2026-01-02T03:04:28Z"}
+    ]
+  },
+  "merge": {
+    "recent": [
+      {
+        "seq": 72,
+        "t": "2026-01-02T03:04:25Z",
+        "agent": "be-1",
+        "task": "T1",
+        "subject": "T1: orders endpoint",
+        "stage": "merged",
+        "position": 1,
+        "commit": "0123456789ab",
+        "files": ["orders/list.go"],
+        "file_count": 1,
+        "verified": true
+      },
+      {
+        "seq": 77,
+        "t": "2026-01-02T03:04:26Z",
+        "agent": "fe-1",
+        "task": "T2",
+        "subject": "T2: orders table",
+        "stage": "conflict",
+        "position": 2,
+        "files": ["web/orders/table.tsx"],
+        "file_count": 1,
+        "reason": "1 files, 2 hunks"
+      }
+    ],
+    "counts": {"queued": 2, "merged": 1, "conflicts": 1, "bounced": 1},
+    "trees": 2,
+    "integration": {"t": "2026-01-02T03:04:30.01Z", "branch": "sleipnir/s/integration", "tip": "0123456789ab", "applied": true, "files": 1},
+    "seen": true
+  },
+  "mail": {
+    "recent": [
+      {"id": "m1", "seq": 47, "from": "fe-1", "to": "be-1", "kind": "request", "summary": "schema: GET /orders returns {items,next}", "tokens": 12, "stage": "digested", "sent": "2026-01-02T03:04:12Z"},
+      {
+        "id": "m2",
+        "seq": 50,
+        "from": "mm-1",
+        "to": "be-1",
+        "kind": "request",
+        "summary": "digest: fe-1 needs GET /orders as {items,next}",
+        "tokens": 13,
+        "stage": "delivered",
+        "sent": "2026-01-02T03:04:14Z",
+        "delivered": "2026-01-02T03:04:14.001Z",
+        "via": "mm-1",
+        "origins": ["fe-1"]
+      }
+    ],
+    "counts": {"sent": 2, "routed": 1, "delivered": 1, "digests": 1, "batches": 1}
+  },
+  "leases": {"conflicts": 1},
+  "governor": {
+    "episodes": 1,
+    "rate_per_min": 384,
+    "pause_until": "2026-01-02T03:04:20.105Z",
+    "last_at": "2026-01-02T03:04:19.105Z",
+    "inflight": 4,
+    "queued": 2,
+    "rpm": 6,
+    "rate_limited": 1,
+    "retries": 1
+  },
+  "perms": {
+    "recent": [
+      {
+        "ask": {
+          "seq": 66,
+          "t": "2026-01-02T03:04:22Z",
+          "agent": "be-1",
+          "role": "backend",
+          "tool": "bash",
+          "command": "go test ./orders/...",
+          "reason": "not on the read-only list",
+          "summary": "bash go test ./orders/..."
+        },
+        "asked": true,
+        "seq": 67,
+        "t": "2026-01-02T03:04:22.8Z",
+        "waited_ms": 800,
+        "allow": true,
+        "by": "user",
+        "remember": "session",
+        "reason": "allowed by user for the session"
+      },
+      {
+        "ask": {
+          "seq": 0,
+          "agent": "fe-1",
+          "role": "frontend",
+          "tool": "read",
+          "paths": ["/home/u/.ssh/id_rsa"],
+          "summary": "read /home/u/.ssh/id_rsa"
+        },
+        "asked": false,
+        "seq": 83,
+        "t": "2026-01-02T03:04:28.1Z",
+        "allow": false,
+        "by": "policy",
+        "reason": "a protected path: ~/.ssh"
+      },
+      {
+        "ask": {"seq": 84, "t": "2026-01-02T03:04:28.2Z", "agent": "fe-1", "role": "frontend", "tool": "bash", "command": "npm install", "reason": "reaches the network", "summary": "bash npm install"},
+        "asked": true,
+        "seq": 85,
+        "t": "2026-01-02T03:04:28.7Z",
+        "waited_ms": 500,
+        "allow": false,
+        "by": "canceled",
+        "reason": "approval canceled: context canceled"
+      }
+    ],
+    "asked": 2,
+    "allowed": 1,
+    "denied": 2,
+    "by_user": 1,
+    "by_policy": 1,
+    "canceled": 1
+  },
+  "feed": [
+    {"seq": 2, "t": "2026-01-02T03:04:05.005Z", "kind": "session", "glyph": "·", "text": "session started: m", "detail": "prov"},
+    {"seq": 3, "t": "2026-01-02T03:04:05.01Z", "agent": "mgr", "kind": "spawn", "glyph": "+", "text": "spawned mgr (manager)"},
+    {"seq": 4, "t": "2026-01-02T03:04:05.02Z", "agent": "mgr", "kind": "input", "glyph": "❯", "text": "add pagination to every list endpoint"},
+    {"seq": 8, "t": "2026-01-02T03:04:06.605Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T1 created: orders endpoint", "detail": "backend"},
+    {"seq": 9, "t": "2026-01-02T03:04:06.608Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create orders endpoint", "detail": "8 ms"},
+    {"seq": 11, "t": "2026-01-02T03:04:06.615Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T2 created: orders table", "detail": "frontend"},
+    {"seq": 12, "t": "2026-01-02T03:04:06.618Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create orders table", "detail": "8 ms"},
+    {"seq": 14, "t": "2026-01-02T03:04:06.625Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T3 created: survey the api", "detail": "scout"},
+    {"seq": 15, "t": "2026-01-02T03:04:06.628Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create survey the api", "detail": "8 ms"},
+    {"seq": 17, "t": "2026-01-02T03:04:07.005Z", "agent": "be-1", "kind": "spawn", "glyph": "+", "text": "spawned be-1 (backend) for T1"},
+    {"seq": 20, "t": "2026-01-02T03:04:07.015Z", "agent": "fe-1", "kind": "spawn", "glyph": "+", "text": "spawned fe-1 (frontend) for T2"},
+    {"seq": 23, "t": "2026-01-02T03:04:07.025Z", "agent": "sc-1", "kind": "spawn", "glyph": "+", "text": "spawned sc-1 (scout) for T3"},
+    {"seq": 34, "t": "2026-01-02T03:04:10.3Z", "agent": "be-1", "kind": "tool", "glyph": "✓", "text": "edit /work/proj/orders/list.go", "detail": "295 ms"},
+    {"seq": 37, "t": "2026-01-02T03:04:10.02Z", "agent": "sc-1", "kind": "toolerr", "glyph": "✗", "text": "nosuch", "detail": "20 ms"},
+    {"seq": 39, "t": "2026-01-02T03:04:10.12Z", "agent": "sc-1", "kind": "toolerr", "glyph": "✗", "text": "nosuch", "detail": "20 ms"},
+    {"seq": 41, "t": "2026-01-02T03:04:10.22Z", "agent": "sc-1", "kind": "toolerr", "glyph": "✗", "text": "nosuch", "detail": "20 ms"},
+    {"seq": 43, "t": "2026-01-02T03:04:10.32Z", "agent": "sc-1", "kind": "toolerr", "glyph": "✗", "text": "nosuch", "detail": "20 ms"},
+    {
+      "seq": 44,
+      "t": "2026-01-02T03:04:10.45Z",
+      "agent": "sc-1",
+      "kind": "stuck",
+      "glyph": "⚠",
+      "text": "stuck: the same call failed again and again",
+      "detail": "[harness] nosuch has now failed the same way 4 times"
+    },
+    {"seq": 45, "t": "2026-01-02T03:04:11Z", "agent": "fe-1", "kind": "lease", "glyph": "⚠", "text": "fe-1 wanted orders/list.go, which is leased to be-1"},
+    {"seq": 46, "t": "2026-01-02T03:04:11.5Z", "agent": "fe-1", "kind": "tool", "glyph": "✓", "text": "bash npm test -- orders", "detail": "1.5 s"},
+    {"seq": 47, "t": "2026-01-02T03:04:12Z", "agent": "fe-1", "kind": "mail", "glyph": "✉", "text": "fe-1 → be-1: schema: GET /orders returns {items,next}", "detail": "request · 12 tok"},
+    {
+      "seq": 50,
+      "t": "2026-01-02T03:04:14Z",
+      "agent": "mm-1",
+      "kind": "mail",
+      "glyph": "✉",
+      "text": "mm-1 → be-1 (digest): digest: fe-1 needs GET /orders as {items,next}",
+      "detail": "request · 13 tok"
+    },
+    {"seq": 54, "t": "2026-01-02T03:04:15.01Z", "agent": "be-1", "kind": "cache", "glyph": "⚠", "text": "cache break: expected ~4.4k read, got 200 (layer notes)", "detail": "the miss cost $0.02"},
+    {"seq": 58, "t": "2026-01-02T03:04:18.01Z", "agent": "be-1", "kind": "compact", "glyph": "◆", "text": "compacted 31k → 2.4k", "detail": "at a cold moment: the rewrite costs nothing extra"},
+    {"seq": 61, "t": "2026-01-02T03:04:19.1Z", "agent": "fe-1", "kind": "retry", "glyph": "⚠", "text": "retrying: rate_limit (http 429)", "detail": "in 800 ms"},
+    {"seq": 62, "t": "2026-01-02T03:04:19.105Z", "kind": "retry", "glyph": "⚠", "text": "the endpoint is rate limiting: the swarm slowed to 384 requests a minute", "detail": "paused 1.0 s"},
+    {"seq": 64, "t": "2026-01-02T03:04:21Z", "agent": "swarm", "kind": "epoch", "glyph": "↻", "text": "the shared prefix was re-written: a new epoch", "detail": "phase boundary"},
+    {"seq": 66, "t": "2026-01-02T03:04:22Z", "agent": "be-1", "kind": "perm", "glyph": "?", "text": "be-1 asks permission: bash go test ./orders/...", "detail": "not on the read-only list"},
+    {"seq": 67, "t": "2026-01-02T03:04:22.8Z", "agent": "be-1", "kind": "perm", "glyph": "✓", "text": "allowed: bash go test ./orders/...", "detail": "by you, kept for the session"},
+    {"seq": 70, "t": "2026-01-02T03:04:24Z", "agent": "be-1", "kind": "merge", "glyph": "▸", "text": "T1 queued for merge", "detail": "position 1"},
+    {"seq": 71, "t": "2026-01-02T03:04:24.005Z", "agent": "fe-1", "kind": "merge", "glyph": "▸", "text": "T2 queued for merge", "detail": "position 2"},
+    {"seq": 72, "t": "2026-01-02T03:04:25Z", "agent": "be-1", "kind": "merge", "glyph": "✓", "text": "T1 merged (0123456789ab)", "detail": "1 files"},
+    {"seq": 74, "t": "2026-01-02T03:04:25.002Z", "agent": "be-1", "kind": "board", "glyph": "▣", "text": "T1 is in review", "detail": "orders endpoint"},
+    {"seq": 76, "t": "2026-01-02T03:04:25.004Z", "agent": "be-1", "kind": "end", "glyph": "■", "text": "be-1 finished", "detail": "edited 1 (list.go); last test \"go test ./orders/...\" passed"},
+    {"seq": 77, "t": "2026-01-02T03:04:26Z", "agent": "fe-1", "kind": "merge", "glyph": "⚠", "text": "T2 conflicts with what was merged: sent back to fe-1", "detail": "1 files, 2 hunks"},
+    {"seq": 79, "t": "2026-01-02T03:04:27Z", "agent": "mgr", "kind": "board", "glyph": "✓", "text": "T1 accepted", "detail": "orders endpoint"},
+    {"seq": 80, "t": "2026-01-02T03:04:27.5Z", "agent": "sc-1", "kind": "board", "glyph": "▣", "text": "T3 is in review", "detail": "survey the api"},
+    {"seq": 81, "t": "2026-01-02T03:04:27.6Z", "agent": "sc-1", "kind": "end", "glyph": "✗", "text": "sc-1 stopped with a failure", "detail": "no files edited"},
+    {"seq": 83, "t": "2026-01-02T03:04:28.1Z", "agent": "fe-1", "kind": "perm", "glyph": "✗", "text": "denied: read /home/u/.ssh/id_rsa", "detail": "by policy: a protected path: ~/.ssh"},
+    {"seq": 84, "t": "2026-01-02T03:04:28.2Z", "agent": "fe-1", "kind": "perm", "glyph": "?", "text": "fe-1 asks permission: bash npm install", "detail": "reaches the network"},
+    {
+      "seq": 85,
+      "t": "2026-01-02T03:04:28.7Z",
+      "agent": "fe-1",
+      "kind": "perm",
+      "glyph": "✗",
+      "text": "denied: bash npm install",
+      "detail": "cancelled while it waited: approval canceled: context canceled"
+    },
+    {"seq": 86, "t": "2026-01-02T03:04:28.701Z", "agent": "fe-1", "kind": "cancel", "glyph": "■", "text": "fe-1's run was cancelled while its tools ran", "detail": "after 2 steps"},
+    {"seq": 89, "t": "2026-01-02T03:04:30.01Z", "kind": "merge", "glyph": "✓", "text": "the merged work was applied to your checkout"},
+    {"seq": 90, "t": "2026-01-02T03:04:31Z", "kind": "session", "glyph": "·", "text": "session ended (completed)", "detail": "$0.05"}
+  ],
+  "activity": {
+    "end": "2026-01-02T03:04:31Z",
+    "rows": [
+      {
+        "agent": "mgr",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000858888888888888888888888800",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "be-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000803000080000000000000000",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000180020000000000000"
+      },
+      {
+        "agent": "fe-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000848400000008400000000000",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000"
+      },
+      {
+        "agent": "mm-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000"
+      },
+      {
+        "agent": "sc-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000871000000000000000000000",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000"
+      }
+    ]
+  },
+  "ttl": [
+    {
+      "kind": "prefix",
+      "key": "prefix-be-00",
+      "agents": ["be-1"],
+      "model": "m",
+      "tokens": 190,
+      "last": "2026-01-02T03:04:15Z",
+      "how": "read",
+      "ttl_s": 300
+    },
+    {
+      "kind": "prefix",
+      "key": "prefix-fe-00",
+      "agents": ["fe-1"],
+      "model": "m",
+      "tokens": 195,
+      "last": "2026-01-02T03:04:19.9Z",
+      "how": "read",
+      "ttl_s": 300
+    },
+    {
+      "kind": "prefix",
+      "key": "prefix-mgr-0",
+      "agents": ["mgr"],
+      "model": "m",
+      "tokens": 180,
+      "last": "2026-01-02T03:04:28.5Z",
+      "how": "read",
+      "ttl_s": 300
+    },
+    {
+      "kind": "prefix",
+      "key": "prefix-sc-00",
+      "agents": ["sc-1"],
+      "model": "m",
+      "tokens": 200,
+      "last": "2026-01-02T03:04:08.9Z",
+      "how": "read",
+      "ttl_s": 300
+    },
+    {"kind": "agent", "key": "be-1", "model": "m", "tokens": 4700, "last": "2026-01-02T03:04:15Z", "how": "read", "ttl_s": 300},
+    {"kind": "agent", "key": "fe-1", "model": "m", "tokens": 4900, "last": "2026-01-02T03:04:19.9Z", "how": "read", "ttl_s": 300},
+    {"kind": "agent", "key": "mgr", "model": "m", "tokens": 4910, "last": "2026-01-02T03:04:28.5Z", "how": "read", "ttl_s": 300},
+    {"kind": "agent", "key": "sc-1", "model": "m", "tokens": 4720, "last": "2026-01-02T03:04:08.9Z", "how": "read", "ttl_s": 300}
+  ],
+  "prefixes": [
+    {
+      "key": "prefix-be-00",
+      "shared_hash": "shared-hash-",
+      "role": "backend",
+      "tokens": 190,
+      "agents": ["be-1"],
+      "riders": 1,
+      "first_seq": 26,
+      "last_seq": 53
+    },
+    {
+      "key": "prefix-fe-00",
+      "shared_hash": "shared-hash-",
+      "role": "frontend",
+      "tokens": 195,
+      "agents": ["fe-1"],
+      "riders": 1,
+      "first_seq": 28,
+      "last_seq": 60
+    },
+    {
+      "key": "prefix-mgr-0",
+      "shared_hash": "shared-hash-",
+      "role": "manager",
+      "tokens": 180,
+      "agents": ["mgr"],
+      "riders": 1,
+      "first_seq": 5,
+      "last_seq": 5
+    },
+    {
+      "key": "prefix-sc-00",
+      "shared_hash": "shared-hash-",
+      "role": "scout",
+      "tokens": 200,
+      "agents": ["sc-1"],
+      "riders": 1,
+      "first_seq": 30,
+      "last_seq": 30
+    }
+  ],
+  "anomalies": [
+    {
+      "seq": 54,
+      "t": "2026-01-02T03:04:15.01Z",
+      "agent": "be-1",
+      "kind": "low_hit",
+      "layer": "notes",
+      "req": "be-1.2",
+      "expected": 4400,
+      "actual": 200,
+      "missed": 4200,
+      "miss_usd": 0.01512,
+      "miss_known": true,
+      "at": 1
+    }
+  ],
+  "stats": {"events": 90, "last_seq": 90}
+}

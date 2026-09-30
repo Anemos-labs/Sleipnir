@@ -1,0 +1,36 @@
+╭ SLEIPNIR ▸ The handbook has one document per topic in docs…  ◷ 00:00 · 8 agents · $0.20 · ⛁ 92% ─╮
+│                            ▄▄         │ one prefix, eight riders                                 │
+│                         ░▄██▄█▄       │ shared G0–G2 4.5k tokens  ● warm 5:00 ▰▰▰▰▰▰▰▰           │
+│                       ░░▄██▀▀██       │                                                          │
+│         ░░░░▄▄████████░▄██▀           │ ████████████████████████████████████████████████████████ │
+│      ░░░░░░▄█████████████             │ G0 G1 G2                                                 │
+│       ░░   ▒▒▓▓██▓██▓▓█▓▓             │    ╎      ┃      ┃      ╎      ┃      ┃      ┃      ┃    │
+│            ▒▒▓▓▒ ▓▒▒▓▓▒▓▓             │    ╎      ┃      ┃      ╎      ┃      ┃      ┃      ┃    │
+│            ▒▒▓ ▒ ▓ ▒▓▓▒ ▓             │    ╎      ┃      ┃      ╎      ┃      ┃      ┃      ┃    │
+│            ▒▒▓▓▒ ▓▓▓▓▓▒▒▓             │   mgr    dc-1   dc-2   rv-1   sc-1   sc-2   sc-3   sc-4  │
+│                                       │                                                          │
+├─ agents ──────────────────────────────┴──────────────────────────────────────────────────────────┤
+│ AGENT         STATE   DOING                        PROMPT                 TOK    COST    ⛁ LEASE │
+│ mgr manager   ✓ done  done                         ███████████████████   5.8k  $0.053  98% —     │
+│ dc-1 docs     ✓ done  wrote summaries for topics … █▏███████████████▓░   5.2k  $0.032  97% —     │
+│ dc-2 docs     ✓ done  wrote summaries for topics … █▏███████████████▓░   5.2k  $0.032  97% —     │
+│ rv-1 reviewer ✓ done  every summary has three bul… █████████████████▓░   4.6k  $0.016  96% —     │
+│ sc-1 scout    ✓ done  topic 1: six rules, each ab… █▏███████████████▓░   4.7k  $0.017  97% —     │
+│ sc-2 scout    ✓ done  topic 2: six rules, each ab… █▏███████████████▓░   4.7k  $0.016  97% —     │
+│ sc-3 scout    ✓ done  topic 3: six rules, each ab… █▏███████████████▓░   4.7k  $0.017  97% —     │
+│ sc-4 scout    ✓ done  topic 4: six rules, each ab… █▏███████████████▓░   4.7k  $0.016  97% —     │
+├─ swarm gantt · last 60 s ───────────────────────────┬─ task board ───────────────────────────────┤
+│ mgr                                               ▅ │ todo 0     running 0  verify 0   merged 7  │
+│ dc-1                                              ▂ │                                  ✓ T1 ✓ T2 │
+│ dc-2                                              ▁ │                                  ✓ T3 ✓ T4 │
+│ rv-1                                              ▃ │                                  ✓ T5 ✓ T6 │
+│ sc-1                                              ▁ │                                  ✓ T7      │
+│ sc-2                                              ▁ │                                            │
+│ sc-3                                              ▁ │                                            │
+│ sc-4                                              ▁ │                                            │
+│      -60s                 -30s                  now │                                            │
+├─ live feed ─────────────────────────────────────────┴────────────────────────────────────────────┤
+│ 00:00  · session ended (other)                                                             $0.20 │
+│ 00:00 mgr ✓ task accept T7                                                                  0 ms │
+│ ↑↓ agent · enter transcript · m mail · b board · c cache · t stack · ? help · q back to shell    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

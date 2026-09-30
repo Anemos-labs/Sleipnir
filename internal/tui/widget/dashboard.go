@@ -244,7 +244,7 @@ func (c *dashCtx) bands(pl dashPlan) []dashBand {
 	for i := 0; i < pl.extra; i++ {
 		hints = append(hints, nil)
 	}
-	hints = append(hints, dashHints(iw-2, p))
+	hints = append(hints, dashHints(d.Hints, iw-2, p))
 	bands = append(bands, dashBand{widths: []int{iw}, lines: [][]cell.Line{hints}})
 
 	return bands

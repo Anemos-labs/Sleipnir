@@ -1,0 +1,48 @@
+{bu,fg=accent}Fixing the pagination bug{/}
+
+The test in {fg=code}./orders{/} fails because
+{b,fg=code}List{/} computes the offset from a
+{i}zero-based{/} page, but pages are
+one-based: page 1 skips the first
+{fg=code}size{/} rows. See {u,fg=info}the handler{/}
+{fg=dim}(https://example.com/orders/list.go){/}
+or {u,fg=info}https://example.com/docs{/}.
+
+{b,fg=info}What changed{/}
+
+{fg=dim}• {/}{fg=code}offset := page * size{/} became {fg=code}(page{/}
+  {fg=code}- 1) * size{/}
+{fg=dim}• {/}a guard for {fg=code}page < 1{/}:
+  {fg=dim}1. {/}return an error
+  {fg=dim}2. {/}or clamp to 1
+{b,fg=good}[x] {/}test added
+{fg=dim}[ ] {/}changelog entry
+
+{i,fg=quote}▎ Note: pages stay one-based in the{/}
+{i,fg=quote}▎ API. Only the SQL offset changes.{/}
+
+{fg=faint,bg=slab}│ {/}{i,fg=dim,bg=slab}go{/}{bg=slab}                                {/}
+{fg=faint,bg=slab}│ {/}{bg=slab}func (s *Store) List(ctx context.C{/}
+{fg=faint,bg=slab}│ ↳{/}{bg=slab}ontext, page, size int) ([]Order,{/}
+{fg=faint,bg=slab}│ ↳{/}{bg=slab} error) {                        {/}
+{fg=faint,bg=slab}│ {/}{bg=slab}    offset := (page - 1) * size   {/}
+{fg=faint,bg=slab}│ {/}{bg=slab}    return s.query(ctx, offset, si{/}
+{fg=faint,bg=slab}│ ↳{/}{bg=slab}ze)                              {/}
+{fg=faint,bg=slab}│ {/}{bg=slab}}                                 {/}
+
+{b}page{/} {fg=faint}│{/} {b}offset{/} {fg=faint}│{/} {b}rows{/}
+{fg=faint}─────┼────────┼─────{/}
+1    {fg=faint}│{/}      0 {fg=faint}│{/}  50
+2    {fg=faint}│{/}     50 {fg=faint}│{/}  50
+3    {fg=faint}│{/}    100 {fg=faint}│{/}  12
+
+{b,fg=info}Setext heading{/}
+
+{s}old text{/} {fg=info}[diagram]{/}
+日本語のテキストは折り返されます。
+and a hard
+break.
+
+{fg=faint}────────────────────────────────────{/}
+
+Done.

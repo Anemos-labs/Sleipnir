@@ -1,0 +1,44 @@
+╭ SLEIPNIR ▸ board · Build the shop: a catalogue, a cart a…  ■ stopped · ◷ 1m10s · 3 agents · $0.06 · ⛁ 67% ─╮
+│ 3 tasks · 1 todo · 1 running · 0 verifying · 1 merged                                                      │
+├─ task board ───────────────────────────────────────────────────────────────────────────────────────────────┤
+│ todo 1                     running 1                  verifying 0                merged 1                  │
+│ ▢ T3 shop                  ▣ T2 shop                                             ✓ T1                      │
+├─ tasks ────────────────────────────────────────────────────────┬─ merge queue ─────────────────────────────┤
+│ ▣ T2   w2     the cart page                                    │ no worktree isolation in this run: work   │
+│ ▢ T3   —      the checkout                                     │ is written to the checkout directly       │
+│ ✓ T1   w1     the catalogue api                                │                                           │
+├────────────────────────────────────────────────────────────────┴───────────────────────────────────────────┤
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│ space pause · o cockpit · c cache · m mail · b board · ↑↓ agent · ? help · q quit                          │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

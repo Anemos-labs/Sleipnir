@@ -290,3 +290,54 @@ func TestEmptyAnimationIsStillADocument(t *testing.T) {
 	wellFormed(t, Animated(nil, Theme{}, Options{}))
 	wellFormed(t, Static(Frame{}, Theme{}))
 }
+
+// A stack bar is sixty cells of one block: it is one rectangle, not sixty.
+func TestARunOfTheSameBlockOrLineIsOneShape(t *testing.T) {
+	doc := Static(frame(0, strings.Repeat("█", 60), strings.Repeat("─", 30), "▌▌▌"), Theme{CellW: 10, CellH: 20})
+	wellFormed(t, doc)
+	if n := strings.Count(doc, "<rect") - 1; n != 1+3 { // the picture's background, one rectangle for the bar, three half blocks
+		t.Errorf("%d rectangles for a bar, a line and three half blocks, want 4 (a half block is not a run):\n%s", n, doc)
+	}
+	if !strings.Contains(doc, `width="600.25"`) {
+		t.Errorf("the bar should be one rectangle of sixty cells:\n%s", doc)
+	}
+	if n := strings.Count(doc, "<path"); n != 1 || !strings.Contains(doc, `L300 30`) {
+		t.Errorf("the line should be one path of thirty cells, got %d paths:\n%s", n, doc)
+	}
+}
+
+// A spinner turning in one cell of a long row costs the tile it is in, not the row.
+func TestAnimatedChangesCostOneTileNotARow(t *testing.T) {
+	row := func(c string) string { return c + strings.Repeat("x", 99) }
+	frames := []Frame{frame(0, row("a")), frame(time.Second, row("b")), frame(2*time.Second, row("a"))}
+	doc := Animated(frames, Theme{}, Options{})
+	wellFormed(t, doc)
+	// the 99 x's are tiles of their own that never change: drawn once, never animated
+	if strings.Count(doc, `class="a `) != 2 {
+		t.Errorf("want two animated groups (the first tile as a and as b):\n%s", doc)
+	}
+	if n := len(tiles(frames[0].Rows[0], 100)); n != 5 {
+		t.Errorf("a row of 100 cells is %d tiles, want 5", n)
+	}
+}
+
+// A wide rune and the empty cell that follows it are never cut apart by a tile boundary.
+func TestTilesDoNotSplitAWideRune(t *testing.T) {
+	row := make([]Cell, 40)
+	for i := range row {
+		row[i] = Cell{Text: "x"}
+	}
+	row[tileCols-1], row[tileCols] = Cell{Text: "界"}, Cell{}
+	ts := tiles(row, 40)
+	if len(ts) != 2 || len(ts[0].cells) != tileCols+1 || ts[1].x0 != tileCols+1 {
+		t.Fatalf("tiles = %+v: the boundary should have moved one cell to the right", ts)
+	}
+	total := 0
+	for _, x := range ts {
+		total += len(x.cells)
+	}
+	if total != 40 {
+		t.Errorf("the tiles hold %d cells, want 40", total)
+	}
+	wellFormed(t, Animated([]Frame{{Rows: [][]Cell{row}}, {Rows: [][]Cell{row}, At: time.Second}}, Theme{}, Options{}))
+}

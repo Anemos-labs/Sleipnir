@@ -1,0 +1,336 @@
+{
+  "seq": 50,
+  "clock": "2026-09-30T20:52:28.478048575Z",
+  "first": "2026-09-30T20:52:28.228374425Z",
+  "now": "2026-09-30T20:52:28.478048575Z",
+  "session": {
+    "id": "20260930-205228-76a40e",
+    "version": "dev",
+    "model": "demo-model",
+    "provider": "demo",
+    "dialect": "openai-chat",
+    "cwd": "/work/handbook",
+    "root": "/work/handbook",
+    "renderer": "sleipnir-kv/2",
+    "swarm": true,
+    "schema": 1,
+    "recon_tokens": 25,
+    "shared_hash": "59da833ad46d",
+    "started": "2026-09-30T20:52:28.455438665Z",
+    "goal": "The handbook has one document per topic in docs/. Survey every topic, write a short summary of each into summaries/, and have the result reviewed."
+  },
+  "agents": [
+    {
+      "id": "mgr",
+      "role": "manager",
+      "model": "demo-model",
+      "status": "waiting",
+      "tool": "wait",
+      "tool_summary": "waiting for the team",
+      "tool_since": "2026-09-30T20:52:28.477001281Z",
+      "open_tools": 1,
+      "spawned": "2026-09-30T20:52:28.456965635Z",
+      "spawn_seq": 5,
+      "last_active": "2026-09-30T20:52:28.477001281Z",
+      "tokens": {"input": 4479, "cache_read": 0, "cache_write": 0, "output": 144},
+      "cost_usd": 0.020796,
+      "requests": 1,
+      "tool_calls": 9,
+      "stack": {
+        "req": "mgr.1",
+        "seq": 8,
+        "at": "2026-09-30T20:52:28.465135163Z",
+        "model": "demo-model",
+        "provider": "demo",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "59da833ad46d", "tokens": 89},
+          {"name": "role", "hash": "165f41d6a2ab", "tokens": 278}
+        ],
+        "section_tokens": 367,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 1,
+        "prefix_key": "3556feb13edd",
+        "cache_key": "sl:20260930:5f61705bc507:0",
+        "tools_hash": "65a8d41b831d",
+        "system_hashes": ["ea837241d2fb"],
+        "hot_hash": "8493e50afce2",
+        "answered": true,
+        "resp_req": "mgr.1",
+        "resp_seq": 9,
+        "prompt": 4479,
+        "fresh": 4479,
+        "unsectioned": 4112
+      },
+      "hits": {
+        "ratios": [0]
+      }
+    },
+    {
+      "id": "sc-1",
+      "role": "scout",
+      "parent": "mgr",
+      "model": "demo-model",
+      "task": "T1",
+      "status": "thinking",
+      "line": "starting",
+      "spawned": "2026-09-30T20:52:28.475710247Z",
+      "spawn_seq": 25,
+      "last_active": "2026-09-30T20:52:28.478048575Z",
+      "tokens": {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+      "cost_usd": 0,
+      "requests": 0,
+      "in_flight": 1,
+      "stack": {
+        "req": "sc-1.1",
+        "seq": 50,
+        "at": "2026-09-30T20:52:28.478048575Z",
+        "model": "demo-model",
+        "provider": "demo",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "59da833ad46d", "tokens": 87},
+          {"name": "role", "hash": "146bee01d7cd", "tokens": 86},
+          {"name": "notes", "hash": "ea9f0185fc23", "tokens": 59}
+        ],
+        "section_tokens": 232,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 1,
+        "prefix_key": "414751de7338",
+        "cache_key": "sl:20260930:5f61705bc507:0",
+        "inherited": true,
+        "tools_hash": "65a8d41b831d",
+        "system_hashes": ["ea837241d2fb"],
+        "hot_hash": "cfd9353d5252"
+      },
+      "hits": {}
+    },
+    {
+      "id": "sc-2",
+      "role": "scout",
+      "parent": "mgr",
+      "model": "demo-model",
+      "task": "T2",
+      "status": "starting",
+      "line": "starting",
+      "spawned": "2026-09-30T20:52:28.475787156Z",
+      "spawn_seq": 31,
+      "last_active": "2026-09-30T20:52:28.476822639Z",
+      "tokens": {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+      "cost_usd": 0,
+      "requests": 0,
+      "stack": {},
+      "hits": {}
+    },
+    {
+      "id": "sc-3",
+      "role": "scout",
+      "parent": "mgr",
+      "model": "demo-model",
+      "task": "T3",
+      "status": "starting",
+      "line": "starting",
+      "spawned": "2026-09-30T20:52:28.476901289Z",
+      "spawn_seq": 37,
+      "last_active": "2026-09-30T20:52:28.476914729Z",
+      "tokens": {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+      "cost_usd": 0,
+      "requests": 0,
+      "stack": {},
+      "hits": {}
+    },
+    {
+      "id": "sc-4",
+      "role": "scout",
+      "parent": "mgr",
+      "model": "demo-model",
+      "task": "T4",
+      "status": "starting",
+      "line": "starting",
+      "spawned": "2026-09-30T20:52:28.476945098Z",
+      "spawn_seq": 43,
+      "last_active": "2026-09-30T20:52:28.476957748Z",
+      "tokens": {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+      "cost_usd": 0,
+      "requests": 0,
+      "stack": {},
+      "hits": {}
+    }
+  ],
+  "totals": {
+    "requests": 2,
+    "main": 2,
+    "responses": 1,
+    "tool_calls": 9,
+    "cost_usd": 0.020796,
+    "tokens": {"input": 4479, "cache_read": 0, "cache_write": 0, "output": 144},
+    "savings": {"saved_usd": 0, "priced_read_tokens": 0, "assumption": "at list price"}
+  },
+  "models": [
+    {
+      "id": "demo-model",
+      "source": "session",
+      "known": true,
+      "price": {"input_per_m": 0.5, "output_per_m": 2, "cache_read_per_m": 0.125, "cache_write_5m_per_m": 0.5, "cache_write_1h_per_m": 0.5},
+      "ttl_s": 300,
+      "context": 1000000
+    }
+  ],
+  "board": {
+    "version": 13,
+    "tasks": [
+      {
+        "id": "T1",
+        "title": "Survey topic 1 (docs/topic-1.md)",
+        "owner": "sc-1",
+        "role": "scout",
+        "status": "doing",
+        "state": "running",
+        "rev": 6,
+        "seq": 24,
+        "updated": "2026-09-30T20:52:28.475688293Z"
+      },
+      {
+        "id": "T2",
+        "title": "Survey topic 2 (docs/topic-2.md)",
+        "owner": "sc-2",
+        "role": "scout",
+        "status": "doing",
+        "state": "running",
+        "rev": 8,
+        "seq": 30,
+        "updated": "2026-09-30T20:52:28.475775638Z"
+      },
+      {
+        "id": "T3",
+        "title": "Survey topic 3 (docs/topic-3.md)",
+        "owner": "sc-3",
+        "role": "scout",
+        "status": "doing",
+        "state": "running",
+        "rev": 10,
+        "seq": 36,
+        "updated": "2026-09-30T20:52:28.476873583Z"
+      },
+      {
+        "id": "T4",
+        "title": "Survey topic 4 (docs/topic-4.md)",
+        "owner": "sc-4",
+        "role": "scout",
+        "status": "doing",
+        "state": "running",
+        "rev": 12,
+        "seq": 42,
+        "updated": "2026-09-30T20:52:28.476935097Z"
+      }
+    ],
+    "counts": {"todo": 0, "running": 4, "verifying": 0, "merged": 0, "failed": 0}
+  },
+  "merge": {
+    "counts": {"queued": 0, "merged": 0, "conflicts": 0}
+  },
+  "mail": {
+    "counts": {"sent": 0, "delivered": 0}
+  },
+  "leases": {},
+  "governor": {"rpm": 2},
+  "perms": {},
+  "feed": [
+    {"seq": 2, "t": "2026-09-30T20:52:28.455438665Z", "kind": "session", "glyph": "·", "text": "session started: demo-model", "detail": "demo"},
+    {"seq": 5, "t": "2026-09-30T20:52:28.456965635Z", "agent": "mgr", "kind": "spawn", "glyph": "+", "text": "spawned mgr (manager)"},
+    {
+      "seq": 7,
+      "t": "2026-09-30T20:52:28.457894435Z",
+      "agent": "mgr",
+      "kind": "input",
+      "glyph": "❯",
+      "text": "The handbook has one document per topic in docs/. Survey every topic, write a short summary of each into summaries/, and have the result reviewed."
+    },
+    {"seq": 12, "t": "2026-09-30T20:52:28.475522271Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T1 created: Survey topic 1 (docs/topic-1.md)", "detail": "scout"},
+    {"seq": 13, "t": "2026-09-30T20:52:28.475547073Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create Survey topic 1 (docs/topic-1.md)", "detail": "0 ms"},
+    {"seq": 15, "t": "2026-09-30T20:52:28.475572747Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T2 created: Survey topic 2 (docs/topic-2.md)", "detail": "scout"},
+    {"seq": 16, "t": "2026-09-30T20:52:28.475579282Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create Survey topic 2 (docs/topic-2.md)", "detail": "0 ms"},
+    {"seq": 18, "t": "2026-09-30T20:52:28.475613331Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T3 created: Survey topic 3 (docs/topic-3.md)", "detail": "scout"},
+    {"seq": 19, "t": "2026-09-30T20:52:28.475620458Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create Survey topic 3 (docs/topic-3.md)", "detail": "0 ms"},
+    {"seq": 21, "t": "2026-09-30T20:52:28.475644136Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T4 created: Survey topic 4 (docs/topic-4.md)", "detail": "scout"},
+    {"seq": 22, "t": "2026-09-30T20:52:28.475656724Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create Survey topic 4 (docs/topic-4.md)", "detail": "0 ms"},
+    {"seq": 25, "t": "2026-09-30T20:52:28.475710247Z", "agent": "sc-1", "kind": "spawn", "glyph": "+", "text": "spawned sc-1 (scout) for T1"},
+    {"seq": 28, "t": "2026-09-30T20:52:28.475758295Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "spawn scout T1", "detail": "0 ms"},
+    {"seq": 31, "t": "2026-09-30T20:52:28.475787156Z", "agent": "sc-2", "kind": "spawn", "glyph": "+", "text": "spawned sc-2 (scout) for T2"},
+    {"seq": 34, "t": "2026-09-30T20:52:28.476843394Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "spawn scout T2", "detail": "1 ms"},
+    {"seq": 37, "t": "2026-09-30T20:52:28.476901289Z", "agent": "sc-3", "kind": "spawn", "glyph": "+", "text": "spawned sc-3 (scout) for T3"},
+    {"seq": 40, "t": "2026-09-30T20:52:28.476920378Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "spawn scout T3", "detail": "0 ms"},
+    {"seq": 43, "t": "2026-09-30T20:52:28.476945098Z", "agent": "sc-4", "kind": "spawn", "glyph": "+", "text": "spawned sc-4 (scout) for T4"},
+    {"seq": 46, "t": "2026-09-30T20:52:28.476963758Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "spawn scout T4", "detail": "0 ms"}
+  ],
+  "activity": {
+    "end": "2026-09-30T20:52:28Z",
+    "rows": [
+      {
+        "agent": "mgr",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "sc-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "sc-2",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "sc-3",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "sc-4",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  },
+  "ttl": [
+    {
+      "kind": "prefix",
+      "key": "3556feb13edd",
+      "agents": ["mgr"],
+      "model": "demo-model",
+      "tokens": 367,
+      "last": "2026-09-30T20:52:28.467618802Z",
+      "how": "sent",
+      "ttl_s": 300
+    },
+    {"kind": "agent", "key": "mgr", "model": "demo-model", "tokens": 4479, "last": "2026-09-30T20:52:28.467618802Z", "how": "sent", "ttl_s": 300}
+  ],
+  "prefixes": [
+    {
+      "key": "3556feb13edd",
+      "shared_hash": "59da833ad46d",
+      "role": "manager",
+      "tokens": 367,
+      "agents": ["mgr"],
+      "riders": 1,
+      "first_seq": 8,
+      "last_seq": 8
+    },
+    {
+      "key": "414751de7338",
+      "shared_hash": "59da833ad46d",
+      "role": "scout",
+      "tokens": 173,
+      "agents": ["sc-1"],
+      "riders": 1,
+      "first_seq": 50,
+      "last_seq": 50
+    }
+  ],
+  "stats": {"events": 50, "last_seq": 50}
+}

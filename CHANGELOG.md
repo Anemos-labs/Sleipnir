@@ -163,6 +163,17 @@ The first release.
   a small swarm printed thirty before its final answer).
 - The isolated manager's shell refusal says what its shell takes (one plain read-only command at a time), not only that it may not
   edit files: a real manager chained two reads with `&&` and was told reading was forbidden.
+- `sleipnir watch` and `sleipnir replay`: the session in the terminal, drawn from its event log and nothing else. Four screens: the
+  swarm cockpit (agents and what each is doing, the horse and the one prefix its riders share, the gantt, the task board, the merge
+  queue, mail, the governor, the live feed), the cache of one agent (the layers of its prompt sized by tokens and bright where the
+  provider read them from its cache, the clock of the cache, the hit ratio of every request with the breaks and compactions marked
+  on it, the fold of a compaction and whether the cache was cold when it was made, the anomalies and the layer that diverged, every
+  agent's cache side by side), the mail and the board with the merge queue. `watch` follows a log that is being written (open it
+  beside a run, in a second terminal or a tmux pane); `replay` plays a finished one on a clock of its own (pause, seek, speed).
+  `replay --record FILE.svg` writes an animated SVG (CSS only, deterministic, plays in a README) and `--final` prints the last screen
+  as text; both need no terminal. The program draws on the alternate screen, reads keys in raw mode, follows the window and puts the
+  terminal back on every way out, a signal and a panic included (`internal/tui/app`, run on a pseudo-terminal by
+  `cmd/sleipnir/e2e_watch_test.go`).
 - `sleipnir chat` (slash commands, Ctrl-C per turn, Ctrl-C twice at the prompt to quit), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and

@@ -181,6 +181,8 @@ Commands:
   recon     print the deterministic project survey that seeds the shared prompt layer
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test
   inspect   the cache inspector: a live or after-the-fact dashboard of a recorded session (layers, hit ratio, swarm, cost)
+  watch     the terminal's view of a session as it is written: the swarm cockpit, each agent's cache, mail, board
+  replay    play a recorded session back on those screens; --record writes an animated SVG, --final a text screen
   rl        the RL environment: taskgen, rollout, eval, serve, reward, report, compare, export, verify (see: sleipnir rl help)
   friction  rank what slowed recorded sessions down: refusals, failed tool calls, stuck runs, retries, repeated reads
   doctor    probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs

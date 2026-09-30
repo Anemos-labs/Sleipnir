@@ -310,6 +310,94 @@ flags:
 ```
 <!-- /flags -->
 
+### `sleipnir watch`
+
+`sleipnir watch [SESSION]` is the terminal's view of a session that is being written: the swarm cockpit (the agents and what each is
+doing, the horse and the prefix it carries, the gantt, the task board, the merge queue, mail, the governor and the live feed), the
+cache of each agent (the layers of its prompt and how much of it was read from the cache, the clock of the cache, the hit ratio of
+every request with its breaks and compactions marked, the fold of a compaction, the anomalies), the mail and the board. It is drawn
+from the session's event log and nothing else, so it can be opened in a second terminal or a tmux pane beside a run and closed
+without touching it. SESSION is a session id (or the start of one), a session directory, an `events.jsonl`, or `latest` (the
+default). It needs a terminal; `sleipnir replay SESSION --final` prints the screen as text and `sleipnir inspect` serves a web page.
+
+Keys: `o` `c` `m` `b` (or `1`-`4`, or Tab) choose the cockpit, cache, mail or board; the arrows choose the agent the cache view is about
+(by default it follows the agent that was answered last); space pauses; `a` turns the animation off; `?` lists the keys; `q` or
+Ctrl-C leaves, and the terminal is put back as it was, on every way out.
+
+<!-- flags: watch -->
+```text
+usage: sleipnir watch [flags] [SESSION]
+
+Shows a session as it is written: the swarm cockpit, the cache of each agent, the
+mail and the task board, drawn from the session's event log and nothing else, so it
+can be opened in a second terminal beside a run (or tmux pane) and closed again
+without touching it. SESSION is a session id (or the start of one), a session
+directory, an events.jsonl, or latest (the default).
+
+Space pauses the screen, o c m b choose the view, the arrows choose the agent, ?
+lists the keys and q leaves. It needs a terminal; `sleipnir replay SESSION --final`
+prints a text screen and `sleipnir inspect` serves a web page instead.
+
+flags:
+  -agent string
+        the agent the cache view is about (default: the one that was answered last)
+  -no-anim
+        no animation: the horse stands and nothing moves
+  -poll duration
+        how often the log is looked at for new events (default 250ms)
+  -view string
+        the screen to start on: cockpit, cache, mail or board (the keys o c m b change it) (default "cockpit")
+```
+<!-- /flags -->
+
+### `sleipnir replay`
+
+`sleipnir replay [SESSION]` plays a recorded session back on the same screens, on a clock of its own: space pauses, the arrows seek
+ten seconds (shift: a minute), `+` and `-` change the speed, Home and End go to the start and the end. `--record FILE.svg` writes
+the replay as an animated SVG (CSS only, no script: it plays in a README and in any browser), and `--final` prints the last screen
+as plain text; neither needs a terminal. The recording is a function of the log and the options, so it can be made again and
+compared (`scripts/record-demo.sh --check`).
+
+<!-- flags: replay -->
+```text
+usage: sleipnir replay [flags] [SESSION]
+
+Plays a recorded session back the way the cockpit showed it: the swarm, its cache
+and its mail, drawn from the session's event log and nothing else. SESSION is a
+session id (or the start of one), a session directory, an events.jsonl, or latest
+(the default).
+
+On a terminal it is a program: space pauses, the arrows seek, + and - change the
+speed, o c m b choose the screen, ? lists the keys. --record writes the same thing
+as an animated SVG that plays in a README, and --final prints the last screen as
+text; neither needs a terminal.
+
+flags:
+  -agent string
+        the agent the cache view is about (default: the one that was answered last)
+  -cols int
+        width of the screen in cells (default: the terminal's, else 100)
+  -final
+        print the last screen of the session as text and exit (needs no terminal)
+  -fps int
+        with --record: frames of the recording a second, at most 15 (default 5)
+  -hold duration
+        with --record: how long the last frame stays before the loop starts again (default 4s)
+  -no-anim
+        no animation: the horse stands and nothing moves
+  -record string
+        write an animated SVG of the replay to FILE instead of showing it (needs no terminal)
+  -rows int
+        height of the screen in lines (default: the terminal's, else 36)
+  -speed float
+        seconds of the session that pass in a second of the replay (a recording of a session that took a second is slowed down to be seen) (default 1)
+  -until uint
+        stop after the event with this seq (0: the whole log)
+  -view string
+        the screen to start on: cockpit, cache, mail or board (the keys o c m b change it) (default "cockpit")
+```
+<!-- /flags -->
+
 ### `sleipnir doctor`
 
 Sends real requests to a model and reports what the endpoint actually does. `--model` is required: `provider/model` for a

@@ -1,0 +1,6 @@
+{b}Agent{/}         {b}Role{/}    {b}Tokens{/}  {b}Hit{/}
+{d}────────────{/}  {d}──────{/}  {d}──────{/}  {d}────{/}
+manager       lead     12.1k  93%
+worker-auth…  writer     812   7%
+日本語のエ…   reader    1.2M  100%
+x             y

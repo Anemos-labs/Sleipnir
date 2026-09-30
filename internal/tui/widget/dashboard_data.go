@@ -97,4 +97,9 @@ type DashboardData struct {
 	Feed      []FeedLine
 	// NoAnim shows the standing horse instead of the galloping one.
 	NoAnim bool
+	// Hints are the keys shown in the bottom row; nil shows the keys of the design (a program shows the keys it has).
+	Hints []Hint
+	// Status is how the screen relates to the session ("● live", "▶ replay 4×", "⏸ paused"): the first thing in the title bar's
+	// stats, the last to be dropped when the width is short.
+	Status string
 }
