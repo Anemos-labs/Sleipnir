@@ -22,8 +22,11 @@ case "$BIN" in */*) BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")" ;;
 REPORT="$OUT/$DATE-$(echo "$MODEL" | tr '/' '_').json"
 
 echo "== 1. endpoint profile"
-"$BIN" doctor --model "$MODEL" --deep --json > "$WORK/doctor.json"
+# Two probes (one for the report, one to read) run side by side: they use prompts of their own and the endpoint's limit is far above what they need.
+"$BIN" doctor --model "$MODEL" --deep --json > "$WORK/doctor.json" &
+doctor_json=$!
 "$BIN" doctor --model "$MODEL" --deep | sed 's/^/   /' || true
+wait "$doctor_json" || true
 
 # A small Go project with a failing test for the agent to fix.
 mkdir -p "$WORK/repo" && cd "$WORK/repo"
@@ -71,10 +74,29 @@ echo "== 2. steady-state cache (single agent)"
 "$BIN" inspect --json "$WORK/s2" > "$WORK/inspect2.json" 2>/dev/null || true
 go test ./... >/dev/null 2>&1 && echo pass > "$WORK/tests2" || echo fail > "$WORK/tests2"
 
-echo "== 3. compaction recovery (small window)"
+echo "== 3. compaction recovery (small thresholds)"
 git checkout -q -- . && git clean -fdq
+# The fixture is small: the default thresholds (compaction is considered at 20k tokens of thread, forced at 60k) are never
+# reached, so lower them, and give the agent fourteen notes to read one by one so the thread grows over several requests and a
+# compaction has time to finish before the run does. (A first run with only --context-window 24000 made no compaction at
+# all; with lowered thresholds and eight notes the compactor's patch removed almost nothing and was rightly refused.) The notes are untracked and are
+# cleaned away before the next step.
+mkdir -p docs
+i=1
+while [ "$i" -le 14 ]; do
+  {
+    echo "# Note $i"
+    j=1
+    while [ "$j" -le 12 ]; do
+      echo "Line $j of note $i: the slug package turns titles into URL fragments; this line only pads the note so that reading it costs some tokens ($i/$j)."
+      j=$((j + 1))
+    done
+  } > "docs/note$i.md"
+  i=$((i + 1))
+done
+SLEIPNIR_CACHE_THREAD_SOFT_LIMIT_TOKENS=300 SLEIPNIR_CACHE_COMPACT_THRESHOLD_TOKENS=900 \
 "$BIN" run --model "$MODEL" --mode accept-edits --trust-project --budget-usd "$BUDGET_USD" --context-window 24000 --session-dir "$WORK/s3" --json \
-  "Make the tests in slug_test.go pass without changing the tests. Explore the repository thoroughly first and explain each step." > "$WORK/run3.jsonl" || true
+  "Make the tests in slug_test.go pass without changing the tests. First read the fourteen notes docs/note1.md to docs/note14.md, one file per step, and say in one sentence what each adds; then fix the code and run the tests." > "$WORK/run3.jsonl" || true
 "$BIN" inspect --json "$WORK/s3" > "$WORK/inspect3.json" 2>/dev/null || true
 go test ./... >/dev/null 2>&1 && echo pass > "$WORK/tests3" || echo fail > "$WORK/tests3"
 
@@ -118,7 +140,7 @@ if command -v jq >/dev/null 2>&1; then
     "   step 2 criteria: steady hit ratio >= 80% " + (if .cache.steady_hit_ratio >= 0.8 then "OK" else "NOT MET" end) +
     ", no drift anomalies " + (if .anomalies.drift == 0 then "OK" else "NOT MET (\(.anomalies.drift))" end)' "$WORK/inspect2.json"
   [ ! -s "$WORK/inspect3.json" ] || jq -r '
-    "   step 3 criteria: at least one compaction commit " + (if .compaction.commits >= 1 then "OK" else "NOT MET (raise the task size or lower --context-window)" end)' "$WORK/inspect3.json"
+    "   step 3 criteria: at least one compaction commit " + (if .compaction.commits >= 1 then "OK" else "NOT MET (the run stayed under the lowered thresholds: enlarge the task)" end)' "$WORK/inspect3.json"
   [ ! -s "$WORK/inspect4.json" ] || jq -r '
     "   step 4 criteria: workers'"'"' first requests warm >= 50% " + (if .cache.first_requests > 0 and (.cache.warm_first / .cache.first_requests) >= 0.5 then "OK" else "NOT MET" end)' "$WORK/inspect4.json"
   echo "   step 6 RL: rollout $(jq -c '{completed: .completed, infra: .infra, cancelled: .cancelled}' "$WORK/rollout.json" 2>/dev/null || echo 'no summary')"
