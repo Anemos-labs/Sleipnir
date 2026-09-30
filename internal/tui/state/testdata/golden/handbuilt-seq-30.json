@@ -1,0 +1,382 @@
+{
+  "seq": 30,
+  "clock": "2026-01-02T03:04:09.4Z",
+  "first": "2026-01-02T03:04:05Z",
+  "now": "2026-01-02T03:04:09.4Z",
+  "session": {
+    "id": "test",
+    "version": "1.2.3",
+    "model": "m",
+    "provider": "prov",
+    "dialect": "openai-chat",
+    "cwd": "/work/proj/sub",
+    "root": "/work/proj",
+    "renderer": "sleipnir-kv/2",
+    "swarm": true,
+    "isolation": "worktree",
+    "mailman": true,
+    "schema": 1,
+    "recon_tokens": 25,
+    "shared_hash": "0123456789ab",
+    "started": "2026-01-02T03:04:05.005Z",
+    "goal": "add pagination to every list endpoint"
+  },
+  "agents": [
+    {
+      "id": "mgr",
+      "role": "manager",
+      "model": "m",
+      "status": "waiting",
+      "tool": "wait",
+      "tool_summary": "waiting for the team",
+      "tool_since": "2026-01-02T03:04:07.1Z",
+      "open_tools": 1,
+      "spawned": "2026-01-02T03:04:05.01Z",
+      "spawn_seq": 3,
+      "last_active": "2026-01-02T03:04:07.1Z",
+      "tokens": {"input": 400, "cache_read": 0, "cache_write": 4600, "output": 80},
+      "cost_usd": 0.0123,
+      "requests": 1,
+      "tool_calls": 4,
+      "stack": {
+        "req": "mgr.1",
+        "seq": 5,
+        "at": "2026-01-02T03:04:05.03Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-hash-01", "tokens": 60, "bp": true},
+          {"name": "notes", "hash": "notes-hash-0", "tokens": 20}
+        ],
+        "section_tokens": 200,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-mgr-0",
+        "cache_key": "sl:test:prefix-mgr-0001",
+        "answered": true,
+        "resp_req": "mgr.1",
+        "resp_seq": 6,
+        "prompt": 5000,
+        "write": 4600,
+        "fresh": 400,
+        "unsectioned": 4800
+      },
+      "hits": {
+        "ratios": [0]
+      }
+    },
+    {
+      "id": "be-1",
+      "role": "backend",
+      "parent": "mgr",
+      "model": "m",
+      "task": "T1",
+      "status": "thinking",
+      "line": "starting",
+      "spawned": "2026-01-02T03:04:07.005Z",
+      "spawn_seq": 17,
+      "last_active": "2026-01-02T03:04:09Z",
+      "tokens": {"input": 300, "cache_read": 4400, "cache_write": 0, "output": 40},
+      "cost_usd": 0.004,
+      "saved_usd": 0.01584,
+      "requests": 1,
+      "scope": ["orders/**"],
+      "stack": {
+        "req": "be-1.1",
+        "seq": 26,
+        "at": "2026-01-02T03:04:08Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-backend", "tokens": 70, "bp": true}
+        ],
+        "section_tokens": 190,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-be-00",
+        "cache_key": "sl:test:prefix-be-0002",
+        "inherited": true,
+        "answered": true,
+        "resp_req": "be-1.1",
+        "resp_seq": 27,
+        "prompt": 4700,
+        "read": 4400,
+        "fresh": 300,
+        "hit": 0.9361702127659575,
+        "unsectioned": 4510
+      },
+      "hits": {
+        "ratios": [0.9361702127659575]
+      }
+    },
+    {
+      "id": "fe-1",
+      "role": "frontend",
+      "parent": "mgr",
+      "model": "m",
+      "task": "T2",
+      "status": "thinking",
+      "line": "starting",
+      "spawned": "2026-01-02T03:04:07.015Z",
+      "spawn_seq": 20,
+      "last_active": "2026-01-02T03:04:09.4Z",
+      "tokens": {"input": 310, "cache_read": 4400, "cache_write": 0, "output": 40},
+      "cost_usd": 0.004,
+      "saved_usd": 0.01584,
+      "requests": 1,
+      "scope": ["web/orders/**"],
+      "stack": {
+        "req": "fe-1.1",
+        "seq": 28,
+        "at": "2026-01-02T03:04:08.05Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-fronten", "tokens": 75, "bp": true}
+        ],
+        "section_tokens": 195,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-fe-00",
+        "cache_key": "sl:test:prefix-fe-0003",
+        "inherited": true,
+        "answered": true,
+        "resp_req": "fe-1.1",
+        "resp_seq": 29,
+        "prompt": 4710,
+        "read": 4400,
+        "fresh": 310,
+        "hit": 0.9341825902335457,
+        "unsectioned": 4515
+      },
+      "hits": {
+        "ratios": [0.9341825902335457]
+      }
+    },
+    {
+      "id": "sc-1",
+      "role": "scout",
+      "parent": "mgr",
+      "model": "m",
+      "task": "T3",
+      "status": "thinking",
+      "line": "starting",
+      "spawned": "2026-01-02T03:04:07.025Z",
+      "spawn_seq": 23,
+      "last_active": "2026-01-02T03:04:08.1Z",
+      "tokens": {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0},
+      "cost_usd": 0,
+      "requests": 0,
+      "in_flight": 1,
+      "stack": {
+        "req": "sc-1.1",
+        "seq": 30,
+        "at": "2026-01-02T03:04:08.1Z",
+        "model": "m",
+        "provider": "test",
+        "dialect": "openai-chat",
+        "renderer": "sleipnir-kv/2",
+        "sections": [
+          {"name": "shared", "hash": "shared-hash-", "tokens": 120},
+          {"name": "role", "hash": "role-scout", "tokens": 80, "bp": true}
+        ],
+        "section_tokens": 200,
+        "tools": 17,
+        "thread_from": 1,
+        "thread_to": 3,
+        "prefix_key": "prefix-sc-00",
+        "cache_key": "sl:test:prefix-sc-0004",
+        "inherited": true
+      },
+      "hits": {}
+    }
+  ],
+  "totals": {
+    "requests": 4,
+    "main": 4,
+    "responses": 3,
+    "tool_calls": 4,
+    "cost_usd": 0.020300000000000002,
+    "tokens": {"input": 1010, "cache_read": 8800, "cache_write": 4600, "output": 160},
+    "savings": {"saved_usd": 0.03168, "priced_read_tokens": 8800, "assumption": "at list price"}
+  },
+  "models": [
+    {
+      "id": "m",
+      "source": "session",
+      "known": true,
+      "price": {"input_per_m": 4, "output_per_m": 20, "cache_read_per_m": 0.4, "cache_write_5m_per_m": 5, "cache_write_1h_per_m": 8},
+      "ttl_s": 300,
+      "context": 1000000
+    }
+  ],
+  "board": {
+    "version": 12,
+    "tasks": [
+      {
+        "id": "T1",
+        "title": "orders endpoint",
+        "owner": "be-1",
+        "role": "backend",
+        "status": "doing",
+        "state": "running",
+        "files": ["orders/**"],
+        "rev": 10,
+        "seq": 16,
+        "updated": "2026-01-02T03:04:07Z"
+      },
+      {
+        "id": "T2",
+        "title": "orders table",
+        "owner": "fe-1",
+        "role": "frontend",
+        "status": "doing",
+        "state": "running",
+        "files": ["web/orders/**"],
+        "rev": 11,
+        "seq": 19,
+        "updated": "2026-01-02T03:04:07.01Z"
+      },
+      {"id": "T3", "title": "survey the api", "owner": "sc-1", "role": "scout", "status": "doing", "state": "running", "rev": 12, "seq": 22, "updated": "2026-01-02T03:04:07.02Z"}
+    ],
+    "counts": {"todo": 0, "running": 3, "verifying": 0, "merged": 0, "failed": 0}
+  },
+  "merge": {
+    "counts": {"queued": 0, "merged": 0, "conflicts": 0}
+  },
+  "mail": {
+    "counts": {"sent": 0, "delivered": 0}
+  },
+  "leases": {},
+  "governor": {"rpm": 4},
+  "perms": {},
+  "feed": [
+    {"seq": 2, "t": "2026-01-02T03:04:05.005Z", "kind": "session", "glyph": "·", "text": "session started: m", "detail": "prov"},
+    {"seq": 3, "t": "2026-01-02T03:04:05.01Z", "agent": "mgr", "kind": "spawn", "glyph": "+", "text": "spawned mgr (manager)"},
+    {"seq": 4, "t": "2026-01-02T03:04:05.02Z", "agent": "mgr", "kind": "input", "glyph": "❯", "text": "add pagination to every list endpoint"},
+    {"seq": 8, "t": "2026-01-02T03:04:06.605Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T1 created: orders endpoint", "detail": "backend"},
+    {"seq": 9, "t": "2026-01-02T03:04:06.608Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create orders endpoint", "detail": "8 ms"},
+    {"seq": 11, "t": "2026-01-02T03:04:06.615Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T2 created: orders table", "detail": "frontend"},
+    {"seq": 12, "t": "2026-01-02T03:04:06.618Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create orders table", "detail": "8 ms"},
+    {"seq": 14, "t": "2026-01-02T03:04:06.625Z", "agent": "mgr", "kind": "board", "glyph": "▣", "text": "T3 created: survey the api", "detail": "scout"},
+    {"seq": 15, "t": "2026-01-02T03:04:06.628Z", "agent": "mgr", "kind": "tool", "glyph": "✓", "text": "task create survey the api", "detail": "8 ms"},
+    {"seq": 17, "t": "2026-01-02T03:04:07.005Z", "agent": "be-1", "kind": "spawn", "glyph": "+", "text": "spawned be-1 (backend) for T1"},
+    {"seq": 20, "t": "2026-01-02T03:04:07.015Z", "agent": "fe-1", "kind": "spawn", "glyph": "+", "text": "spawned fe-1 (frontend) for T2"},
+    {"seq": 23, "t": "2026-01-02T03:04:07.025Z", "agent": "sc-1", "kind": "spawn", "glyph": "+", "text": "spawned sc-1 (scout) for T3"}
+  ],
+  "activity": {
+    "end": "2026-01-02T03:04:09Z",
+    "rows": [
+      {
+        "agent": "mgr",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000085884",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "be-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "fe-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000084",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "agent": "sc-1",
+        "levels": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000084",
+        "marks": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  },
+  "ttl": [
+    {
+      "kind": "prefix",
+      "key": "prefix-be-00",
+      "agents": ["be-1"],
+      "model": "m",
+      "tokens": 190,
+      "last": "2026-01-02T03:04:08.1Z",
+      "how": "read",
+      "ttl_s": 300
+    },
+    {
+      "kind": "prefix",
+      "key": "prefix-fe-00",
+      "agents": ["fe-1"],
+      "model": "m",
+      "tokens": 195,
+      "last": "2026-01-02T03:04:08.5Z",
+      "how": "read",
+      "ttl_s": 300
+    },
+    {
+      "kind": "prefix",
+      "key": "prefix-mgr-0",
+      "agents": ["mgr"],
+      "model": "m",
+      "tokens": 180,
+      "last": "2026-01-02T03:04:05.1Z",
+      "how": "write",
+      "ttl_s": 300
+    },
+    {"kind": "agent", "key": "be-1", "model": "m", "tokens": 4700, "last": "2026-01-02T03:04:08.1Z", "how": "read", "ttl_s": 300},
+    {"kind": "agent", "key": "fe-1", "model": "m", "tokens": 4710, "last": "2026-01-02T03:04:08.5Z", "how": "read", "ttl_s": 300},
+    {"kind": "agent", "key": "mgr", "model": "m", "tokens": 5000, "last": "2026-01-02T03:04:05.1Z", "how": "write", "ttl_s": 300}
+  ],
+  "prefixes": [
+    {
+      "key": "prefix-be-00",
+      "shared_hash": "shared-hash-",
+      "role": "backend",
+      "tokens": 190,
+      "agents": ["be-1"],
+      "riders": 1,
+      "first_seq": 26,
+      "last_seq": 26
+    },
+    {
+      "key": "prefix-fe-00",
+      "shared_hash": "shared-hash-",
+      "role": "frontend",
+      "tokens": 195,
+      "agents": ["fe-1"],
+      "riders": 1,
+      "first_seq": 28,
+      "last_seq": 28
+    },
+    {
+      "key": "prefix-mgr-0",
+      "shared_hash": "shared-hash-",
+      "role": "manager",
+      "tokens": 180,
+      "agents": ["mgr"],
+      "riders": 1,
+      "first_seq": 5,
+      "last_seq": 5
+    },
+    {
+      "key": "prefix-sc-00",
+      "shared_hash": "shared-hash-",
+      "role": "scout",
+      "tokens": 200,
+      "agents": ["sc-1"],
+      "riders": 1,
+      "first_seq": 30,
+      "last_seq": 30
+    }
+  ],
+  "stats": {"events": 30, "last_seq": 30}
+}
