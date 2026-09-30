@@ -133,37 +133,40 @@ func newRouter(t *testing.T) (*Router, *[]Message) {
 
 func TestRouterRules(t *testing.T) {
 	r, got := newRouter(t)
-	if _, err := r.Send("be-1", "all", "hello", false); err == nil || !strings.Contains(err.Error(), "no broadcast") {
+	if _, err := r.Send("be-1", "all", "", "hello"); err == nil || !strings.Contains(err.Error(), "no broadcast") {
 		t.Fatalf("broadcast: %v", err)
 	}
-	if _, err := r.Send("be-1", "ghost", "hi", false); err == nil || !strings.Contains(err.Error(), "agents: mgr, be-1, fe-1") {
+	if _, err := r.Send("be-1", "ghost", "", "hi"); err == nil || !strings.Contains(err.Error(), "agents: mgr, be-1, fe-1") {
 		t.Fatalf("unknown recipient should list agents: %v", err)
 	}
-	if _, err := r.Send("be-1", "be-1", "hi", false); err == nil {
+	if _, err := r.Send("be-1", "be-1", "", "hi"); err == nil {
 		t.Fatal("self mail")
 	}
-	m, err := r.Send("be-1", "manager", "blocked on schema", true)
+	m, err := r.Send("be-1", "manager", "blocker", "blocked on schema")
 	if err != nil || m.To != "mgr" || m.ID != "m1" {
 		t.Fatalf("manager alias: %v %+v", err, m)
 	}
-	if _, err := r.Send("be-1", "mgr", "blocked on schema", true); err == nil || !strings.Contains(err.Error(), "already sent") {
+	if _, err := r.Send("be-1", "mgr", "blocker", "blocked on schema"); err == nil || !strings.Contains(err.Error(), "already sent") {
 		t.Fatalf("dedupe: %v", err)
 	}
 	for i := 0; i < 3; i++ {
-		if _, err := r.Send("be-1", "fe-1", fmt.Sprintf("fact %d", i), false); err != nil {
+		if _, err := r.Send("be-1", "fe-1", "", fmt.Sprintf("fact %d", i)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := r.Send("be-1", "fe-1", "fact 4", false); err == nil || !strings.Contains(err.Error(), "several times") {
+	if _, err := r.Send("be-1", "fe-1", "", "fact 4"); err == nil || !strings.Contains(err.Error(), "several times") {
 		t.Fatalf("pair limit: %v", err)
 	}
-	if _, err := r.Send("be-1", "fe-1", strings.Repeat("x", 601), false); err == nil {
+	if _, err := r.Send("be-1", "fe-1", "", strings.Repeat("x", 601)); err == nil {
 		t.Fatal("length cap")
+	}
+	if _, err := r.Send("be-1", "mgr", "shout", "hi"); err == nil {
+		t.Fatal("unknown kind must be rejected")
 	}
 	if len(*got) != 4 {
 		t.Fatalf("delivered %d", len(*got))
 	}
-	if f := (*got)[0].Format(); f != "[mail m1 from be-1] blocked on schema" {
+	if f := (*got)[0].Format(); f != "[mail m1 blocker from be-1] blocked on schema" {
 		t.Fatalf("format = %q", f)
 	}
 }

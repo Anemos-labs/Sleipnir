@@ -164,7 +164,7 @@ Harness assumptions decay: "context anxiety" that needed resets on Sonnet 4.5 la
   token-equivalents per agent (10.2k read + 1.5k hot + 2.5k write of new tokens).
   * Editing S with no warm-up: each agent rewrites 102k x 1.25 = 127.5k; 30 agents = 3.8M, about 9 fleet-rounds of normal steps. With S warmed once it is still ~2.7M (R+P+T rewrites).
   * Trimming one transcript 60k -> 25k: rewrite 31k plus summarizer call (~10k read + ~7.5k output-equivalent) ~ 49k; saves ~3.5k per later step, so break-even ~14 steps. Compact agents that have >~15 steps left, in large batches; otherwise finish or reset with handoff notes.
-  * An agent idle over 5 minutes (long test run) loses its cache: ~127.5k to resume vs ~10k per keep-alive read; under these assumptions keep-alives or a 1-hour TTL win for gaps up to roughly 50 minutes.
+  * An agent idle over 5 minutes (long test run) loses its cache: ~127.5k to resume vs ~10k per keep-alive read (a documented `max_tokens: 0` pre-warm request, no output billed); under these assumptions keep-alives or a 1-hour TTL win for gaps up to roughly 50 minutes.
   * Coalesce prefix-changing operations (transcript trim + epoch rollover) so the S/R/P rewrite is paid once.
 
 ### A3.3 What to keep verbatim, mask, or summarize

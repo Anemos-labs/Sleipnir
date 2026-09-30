@@ -392,3 +392,10 @@ func (a *Agent) takeInbox() []core.Block {
 	a.inbox = nil
 	return blocks
 }
+
+// PendingInbox reports how many queued messages await the next turn boundary.
+func (a *Agent) PendingInbox() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.inbox)
+}

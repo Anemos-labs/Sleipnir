@@ -233,7 +233,7 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		path:   sh.path,
 		args:   append(append([]string(nil), sh.flags...), script),
 		dir:    dir,
-		env:    commandEnv(os.Environ(), env.Agent, m.opts.PassEnv),
+		env:    commandEnv(os.Environ(), env.Agent, dir, m.opts.PassEnv),
 		sink:   sk,
 		maxOut: m.opts.MaxOutputBytes,
 	})

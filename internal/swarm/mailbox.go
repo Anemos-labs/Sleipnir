@@ -11,18 +11,36 @@ import (
 
 // Message is one mail between agents.
 type Message struct {
-	ID     string `json:"id"`
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Text   string `json:"text"`
-	Urgent bool   `json:"urgent,omitempty"`
+	ID   string `json:"id"`
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Kind types the message so recipients know what is expected of them:
+	// info (no reply needed), request, blocker, answer, contract (an interface
+	// changed).
+	Kind string `json:"kind,omitempty"`
+	Text string `json:"text"`
 }
 
 // Format renders the message as the text delivered into the recipient's thread.
 // The format is fixed and short: it lands in cached history and is later
 // compacted like any other turn.
 func (m Message) Format() string {
-	return fmt.Sprintf("[mail %s from %s] %s", m.ID, m.From, m.Text)
+	if m.Kind == "" || m.Kind == "info" {
+		return fmt.Sprintf("[mail %s from %s] %s", m.ID, m.From, m.Text)
+	}
+	return fmt.Sprintf("[mail %s %s from %s] %s", m.ID, m.Kind, m.From, m.Text)
+}
+
+// Kinds lists the valid message kinds.
+var Kinds = []string{"info", "request", "blocker", "answer", "contract"}
+
+func validKind(k string) bool {
+	for _, x := range Kinds {
+		if x == k {
+			return true
+		}
+	}
+	return false
 }
 
 // RouterConfig bounds messaging so 50 agents cannot talk each other into a
@@ -78,8 +96,15 @@ func prune(ts []time.Time, cutoff time.Time) []time.Time {
 
 // Send validates and routes a message. Errors are written for the sending
 // model: they say what to do instead.
-func (r *Router) Send(from, to, text string, urgent bool) (Message, error) {
+func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	text = strings.TrimSpace(text)
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if kind == "" {
+		kind = "info"
+	}
+	if !validKind(kind) {
+		return Message{}, fmt.Errorf("kind must be one of %s", strings.Join(Kinds, ", "))
+	}
 	to = strings.TrimSpace(to)
 	if text == "" {
 		return Message{}, fmt.Errorf("empty message")
@@ -130,7 +155,7 @@ func (r *Router) Send(from, to, text string, urgent bool) (Message, error) {
 	r.pair[pk] = append(r.pair[pk], now)
 	r.recent[dk] = now
 	r.seq++
-	m := Message{ID: fmt.Sprintf("m%d", r.seq), From: from, To: to, Text: text, Urgent: urgent}
+	m := Message{ID: fmt.Sprintf("m%d", r.seq), From: from, To: to, Kind: kind, Text: text}
 	r.mu.Unlock()
 
 	_, _ = r.ev.Emit(from, events.TypeMailSend, m)

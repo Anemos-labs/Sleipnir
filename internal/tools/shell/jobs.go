@@ -122,7 +122,7 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 		path: sh.path,
 		args: append(append([]string(nil), sh.flags...), command),
 		dir:  dir,
-		env:  commandEnv(os.Environ(), env.Agent, m.opts.PassEnv),
+		env:  commandEnv(os.Environ(), env.Agent, dir, m.opts.PassEnv),
 		sink: buf,
 	})
 	if err != nil {

@@ -16,7 +16,10 @@ var secretName = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|pass
 // commandEnv builds the environment of a shell command from base ("K=V"
 // entries): secret-looking variables are dropped unless allowed, then the
 // variables that keep commands non-interactive and attributable are forced.
-func commandEnv(base []string, agent string, passEnv []string) []string {
+// PWD is set to dir (when known) because exec.Cmd only does that for an
+// implicit environment, and a stale inherited PWD misleads programs that trust
+// it instead of asking the kernel.
+func commandEnv(base []string, agent, dir string, passEnv []string) []string {
 	forced := []string{
 		"TERM=dumb",
 		"NO_COLOR=1",
@@ -24,6 +27,9 @@ func commandEnv(base []string, agent string, passEnv []string) []string {
 		"PAGER=cat",
 		"GIT_PAGER=cat",
 		"SLEIPNIR_AGENT=" + strings.Map(dropNUL, agent),
+	}
+	if dir != "" {
+		forced = append(forced, "PWD="+strings.Map(dropNUL, dir))
 	}
 	override := make(map[string]struct{}, len(forced))
 	for _, kv := range forced {

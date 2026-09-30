@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/provider"
 )
@@ -90,7 +91,7 @@ func (q *waitQueue) Pop() any {
 }
 
 // Acquire implements agent.Limiter.
-func (g *Governor) Acquire(ctx context.Context, prio int) (func(*core.Usage, error), error) {
+func (g *Governor) Acquire(ctx context.Context, prio int) (agent.Release, error) {
 	w := &waiter{prio: prio, ready: make(chan struct{}, 1)}
 	g.mu.Lock()
 	g.seq++
