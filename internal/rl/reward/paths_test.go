@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
 	"testing"
@@ -238,24 +239,13 @@ func TestMatchPrefixAgreesWithTheSpecification(t *testing.T) {
 func TestGlobMatchIsLinearInPathLength(t *testing.T) {
 	// A path of tens of thousands of segments can be written into a diff. Matching
 	// every prefix separately made this cubic in the worst case (minutes for a 20 KB
-	// path); one pass is linear. Growth is compared rather than an absolute time so
-	// slow machines and the race detector do not matter.
+	// path); one pass is linear.
 	set := compileGlobs([]string{".github/**", "**/*_test.go", "a/**/b/**/c", "src/*/gen.go", "vendor/", "*.lock", "**/**/x/**"})
 	for _, unit := range []string{"a/", "a/b/", ".github/", "**/", "src/x/", "b/"} {
-		time1 := func(n int) time.Duration {
+		requireLinear(t, fmt.Sprintf("glob match of %q*n", unit), 10000, func(n int) {
 			p, _ := cleanRel(strings.Repeat(unit, n) + "z.go")
-			start := time.Now()
 			set.match(p)
-			return time.Since(start)
-		}
-		small, large := time1(10000), time1(40000)
-		t.Logf("unit %q: %v -> %v", unit, small, large)
-		if large > 5*time.Second {
-			t.Errorf("unit %q: a 40000-segment path took %v", unit, large)
-		}
-		if small > 20*time.Millisecond && large > 9*small {
-			t.Errorf("unit %q: super-linear growth, %v for n and %v for 4n", unit, small, large)
-		}
+		})
 	}
 }
 
@@ -283,21 +273,14 @@ func TestMatchAnywhereFindsProtectedPathsUnderAnyRoot(t *testing.T) {
 }
 
 func TestProtectedTargetIsLinearInDepth(t *testing.T) {
-	// The write target "/*/*/*..." is one segment per two bytes: 10000 segments at
-	// 20 KB. With no workspace roots known every suffix used to be matched on its
-	// own, which took seconds; growth is now linear.
+	// The write target "/x/x/x..." is one segment per two bytes. With no workspace
+	// roots known every suffix used to be matched on its own, which took seconds
+	// for a 20 KB path; growth is now linear.
 	set := compileGlobs([]string{"tests/**", "go.mod", "**/*_test.go", "a/**/b"})
-	time1 := func(n int) time.Duration {
-		start := time.Now()
+	requireLinear(t, "protectedTarget", 20000, func(n int) {
 		protectedTarget(set, strings.Repeat("/x", n), nil)
 		protectedTarget(set, strings.Repeat("/a", n)+"/b", nil)
-		return time.Since(start)
-	}
-	small, large := time1(20000), time1(80000)
-	t.Logf("%v -> %v", small, large)
-	if large > 5*time.Second || (small > 20*time.Millisecond && large > 9*small) {
-		t.Errorf("super-linear: %v for n, %v for 4n", small, large)
-	}
+	})
 }
 
 func TestOverlongProtectedPatternsAreRejectedNotIgnored(t *testing.T) {
@@ -318,6 +301,22 @@ func TestOverlongProtectedPatternsAreRejectedNotIgnored(t *testing.T) {
 	ok := strings.Repeat("a", maxPatternBytes-2) + "/x"
 	if err := Score(ep, &rl.Task{Verifier: rl.Verifier{Protected: []string{ok}}}, DefaultConfig(), nil); err != nil {
 		t.Errorf("a pattern of exactly %d bytes was rejected: %v", len(ok), err)
+	}
+}
+
+func TestBraceExplosionInAProtectedPatternIsRefused(t *testing.T) {
+	ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	explosive := strings.Repeat("{a,b}", 7) + "/x" // 128 alternatives
+	err := Score(ep, &rl.Task{Verifier: rl.Verifier{Protected: []string{explosive}}}, DefaultConfig(), nil)
+	if err == nil || !strings.Contains(err.Error(), "task.verifier.protected[0]") || !strings.Contains(err.Error(), "brace") {
+		t.Fatalf("want a refusal naming the pattern and the braces, got %v", err)
+	}
+	fine := strings.Repeat("{a,b}", 6) + "/x" // exactly 64
+	if err := Score(ep, &rl.Task{Verifier: rl.Verifier{Protected: []string{fine}}}, DefaultConfig(), nil); err != nil {
+		t.Errorf("64 alternatives must be accepted: %v", err)
+	}
+	if n := len(compileGlobs([]string{fine})); n != 64 {
+		t.Errorf("compiled %d patterns, want 64", n)
 	}
 }
 

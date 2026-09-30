@@ -172,7 +172,7 @@ func Apply(s *Stack, p *Patch, est core.Estimator, pol ApplyPolicy) (*ApplyResul
 	turns := s.Thread.Turns
 	units := Units(turns)
 	if len(units) == 0 {
-		return nil, fmt.Errorf("nothing to compact: empty thread")
+		return nil, fmt.Errorf("%w: empty thread", ErrNothingToCompact)
 	}
 	res := &ApplyResult{Warnings: append([]string(nil), p.Warnings...), SnapTokens: z.Turns(turns)}
 
@@ -183,7 +183,7 @@ func Apply(s *Stack, p *Patch, est core.Estimator, pol ApplyPolicy) (*ApplyResul
 	}
 	maxKeep := len(units) - protected // index of first protected unit
 	if maxKeep <= 0 {
-		return nil, fmt.Errorf("nothing to compact: only %d units, %d protected", len(units), protected)
+		return nil, fmt.Errorf("%w: only %d units, %d protected", ErrNothingToCompact, len(units), protected)
 	}
 	keepIdx := -1
 	for i, u := range units {
@@ -199,7 +199,7 @@ func Apply(s *Stack, p *Patch, est core.Estimator, pol ApplyPolicy) (*ApplyResul
 		keepIdx = maxKeep
 	}
 	if keepIdx == 0 {
-		return nil, fmt.Errorf("nothing to compact: keep_from covers the whole thread")
+		return nil, fmt.Errorf("%w: keep_from covers the whole thread", ErrNothingToCompact)
 	}
 	res.KeepFrom = units[keepIdx].From
 
@@ -905,6 +905,10 @@ func trimPointer(old string, dropped []string) string {
 	}
 	return fmt.Sprintf("- (%d older lines %s to fit the notes budget)", n+len(dropped), pointerMark)
 }
+
+// ErrNothingToCompact is returned by Apply when the patch would fold nothing: the
+// thread is empty, too short, or the patch keeps all of it.
+var ErrNothingToCompact = errors.New("nothing to compact")
 
 // ErrNothingToMask is returned by MaskOnly when no tool result is worth hiding.
 var ErrNothingToMask = errors.New("nothing worth masking")

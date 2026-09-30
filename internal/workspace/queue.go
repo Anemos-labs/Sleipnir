@@ -770,9 +770,12 @@ func (q *Queue) commitSubmission(ctx context.Context, s Submission) (sha, reject
 		}
 		if _, err := t.commitLocked(ctx, msg); err != nil {
 			var tl *TooLargeError
+			var nr *NestedRepoError
 			switch {
 			case errors.As(err, &tl):
 				return "", tl.Error(), nil
+			case errors.As(err, &nr):
+				return "", nr.Error(), nil
 			case errors.Is(err, gitx.ErrConflict):
 				return "", "unresolved conflict markers: " + oneLine(err.Error(), 400), nil
 			}

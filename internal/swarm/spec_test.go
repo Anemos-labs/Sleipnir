@@ -775,3 +775,127 @@ func TestAbnormalStopDoesNotRestartOnItsOwn(t *testing.T) {
 		t.Fatalf("runs keep ending with nothing new to do (%d -> %d)", ends, again)
 	}
 }
+
+// A task created and finished between two waits is still news to the second one.
+func TestWaitReportsTasksThatAppearedAndSettledBetweenWaits(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r.sw.StartManager()
+	if res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 3}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	b := r.sw.Board
+	b.CreateTask("mgr", TaskSpec{Title: "quick job"})
+	b.Assign("mgr", "be-1", "T1")
+	b.Submit("be-1", "T1", "done fast", "edited 1")
+	start := time.Now()
+	res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 3})
+	if d := time.Since(start); d > 2*time.Second || !strings.Contains(res.Text, "T1 → review") || !strings.Contains(res.Text, "edited 1") {
+		t.Fatalf("wait slept %v and reported %q", d.Round(time.Millisecond), res.Text)
+	}
+}
+
+// A crashed worker's task shows up in the manager's wait as returned to the pool.
+func TestWaitWakesForACrashedWorker(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "backend" {
+			panic("boom")
+		}
+		return rvReply{Text: "ok"}
+	})
+	r.sw.StartManager()
+	r.sw.Board.CreateTask("mgr", TaskSpec{Title: "risky"})
+	out := make(chan string, 1)
+	go func() {
+		out <- r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 10}).Text
+	}()
+	time.Sleep(50 * time.Millisecond)
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case res := <-out:
+		// The round trip todo -> doing -> todo is no net change on the board, but the
+		// harness's one-line notice arrives with the result.
+		if !strings.Contains(res, "mail arrived") && !strings.Contains(res, "T1 → todo") && !strings.Contains(res, "be-1 failed") {
+			t.Fatalf("wait = %q", res)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("wait did not report the crash")
+	}
+	rvWait(t, "the notice", func() bool { return mailSent(r, "T1 returned to todo") == 1 })
+}
+
+// Retiring a worker returns what it still holds to the pool and tells the manager.
+func TestRetireReturnsUnfinishedTasksToThePool(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "backend" && c.Assistants == 0 {
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "block", "id": "T1", "text": "need the schema"}}}}
+		}
+		return rvReply{Text: "waiting for the manager"}
+	})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "T1 blocked and the worker idle", func() bool {
+		tk, _ := r.sw.Board.Snapshot().Task("T1")
+		return tk.Status == StatusBlocked && r.idle(id)
+	})
+	if err := r.sw.Retire(id); err != nil {
+		t.Fatal(err)
+	}
+	if tk, _ := r.sw.Board.Snapshot().Task("T1"); tk.Status != StatusTodo || tk.Owner != "" {
+		t.Fatalf("T1 = %s/%s after retiring its worker", tk.Status, tk.Owner)
+	}
+	if mailSent(r, "was retired") != 1 {
+		t.Fatal("the manager was not told")
+	}
+}
+
+// Spawning on an existing task can set its scope, and dependencies and scope apply to it.
+func TestSpawnOnAnExistingTaskAppliesScopeAndDependencies(t *testing.T) {
+	gate := make(chan struct{})
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		rvBlock(ctx, gate)
+		return rvReply{Text: "ok"}
+	})
+	t.Cleanup(func() { close(gate) })
+	r.sw.StartManager()
+	t1, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "first"})
+	t2, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "second", Deps: []string{t1.ID}})
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: t2.ID, Files: []string{"a/**"}, By: "mgr"}); err == nil || !strings.Contains(err.Error(), "waits for "+t1.ID) {
+		t.Fatalf("dependency not enforced: %v", err)
+	}
+	if got, _ := r.sw.Board.Snapshot().Task(t2.ID); len(got.Files) != 0 || got.Status != StatusTodo {
+		t.Fatalf("a refused spawn changed the task: %+v", got)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: t1.ID, Files: []string{"a/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := r.sw.Board.Snapshot().Task(t1.ID); len(got.Files) != 1 || got.Files[0] != "a/**" || got.Status != StatusDoing {
+		t.Fatalf("T1 = %+v", got)
+	}
+}
+
+// Leases that expire are dropped by the sweep, with their alerts.
+func TestLeaseSweepDropsExpiredLeasesAndTheirAlerts(t *testing.T) {
+	b := NewBoard(nil)
+	l := NewLeases(time.Minute, b)
+	now := time.Now()
+	l.now = func() time.Time { return now }
+	for i := 0; i < 5; i++ {
+		if err := l.BeforeWrite("be-1", fmt.Sprintf("/r/f%d.go", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = l.BeforeWrite("be-2", "/r/f0.go") // a conflict: an alert
+	if len(b.Snapshot().Alerts) != 1 || l.Len() != 5 {
+		t.Fatalf("alerts=%d leases=%d", len(b.Snapshot().Alerts), l.Len())
+	}
+	now = now.Add(2 * time.Minute)
+	l.Sweep()
+	if l.Len() != 0 || len(b.Snapshot().Alerts) != 0 {
+		t.Fatalf("after the sweep: leases=%d alerts=%d", l.Len(), len(b.Snapshot().Alerts))
+	}
+}

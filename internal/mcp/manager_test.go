@@ -912,8 +912,15 @@ func TestCallLandingWhileTheConnectionIsDyingWaitsForTheRestart(t *testing.T) {
 	crash := findTool(t, snap.Tools(), "__crash")
 	echo := findTool(t, snap.Tools(), "__echo")
 
-	crashed := make(chan *tools.Result, 1)
-	go func() { crashed <- runTool(t, crash, env, `{}`) }()
+	type outcome struct {
+		res *tools.Result
+		err error
+	}
+	crashed := make(chan outcome, 1)
+	go func() { // not runTool: it may call t.Fatal, which is for the test's own goroutine
+		res, err := crash.Run(context.Background(), &tools.Call{ID: "c1", Name: crash.Spec().Name, Input: json.RawMessage(`{}`), Env: env})
+		crashed <- outcome{res, err}
+	}()
 	srv := m.serverByName("srv")
 	waitFor(t, "the stream to end", func() bool {
 		c := srv.currentClient()
@@ -926,7 +933,7 @@ func TestCallLandingWhileTheConnectionIsDyingWaitsForTheRestart(t *testing.T) {
 	if res.IsError || res.Text != "hello" {
 		t.Errorf("a call landing while the connection was dying should wait for the restart: %+v", res)
 	}
-	if r := <-crashed; !r.IsError || !strings.Contains(r.Text, "exit status 3") {
+	if r := <-crashed; r.err != nil || r.res == nil || !r.res.IsError || !strings.Contains(r.res.Text, "exit status 3") {
 		t.Errorf("the crashing call: %+v", r)
 	}
 	if st := statusOf(m, "srv"); st.State != StateReady || st.Restarts != 1 {

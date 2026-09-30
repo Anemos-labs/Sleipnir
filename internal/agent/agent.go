@@ -220,6 +220,7 @@ type Agent struct {
 
 	stepInRun   int
 	lastMaskReq int
+	lastSnap    core.Hash // the blob of the newest snapshot written
 
 	comp compactionState
 }
@@ -445,7 +446,8 @@ func (a *Agent) emit(typ string, data any) {
 // no tool calls, is cancelled, or hits a limit.
 func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	res := &Result{}
-	vetoes := 0 // Stop hooks that sent the agent back to work in this run
+	defer a.saveSnapshot() // however Run ends: a resumed session continues from here
+	vetoes := 0            // Stop hooks that sent the agent back to work in this run
 	if input != "" {
 		a.pushUser(core.OriginUser, []core.Block{core.Text(input)})
 		a.emit(events.TypeUserInput, map[string]any{"text": input})

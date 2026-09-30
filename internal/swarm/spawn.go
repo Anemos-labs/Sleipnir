@@ -246,9 +246,13 @@ func (s *Swarm) scopeConflictIn(sn *Snapshot, t Task) error {
 func (s *Swarm) roots() []string {
 	var rs []string
 	for _, r := range []string{s.deps.Root, s.deps.Workdir} {
-		if r != "" {
-			rs = append(rs, filepath.Clean(r))
+		if r == "" {
+			continue
 		}
+		if abs, err := filepath.Abs(r); err == nil {
+			r = abs
+		}
+		rs = append(rs, filepath.Clean(r))
 	}
 	if len(rs) == 0 {
 		if wd, err := os.Getwd(); err == nil {

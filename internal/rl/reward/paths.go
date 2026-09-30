@@ -189,11 +189,16 @@ func compileGlob(raw, p string) (glob, bool) {
 	return g, true
 }
 
-// checkPatterns rejects protected patterns that cannot be compiled safely.
+// checkPatterns rejects protected patterns that cannot be compiled whole: ones
+// too long to match safely, and ones whose brace alternation expands past the
+// limit (the surplus alternatives would silently protect nothing).
 func checkPatterns(field string, patterns []string) error {
 	for i, p := range patterns {
 		if len(p) > maxPatternBytes {
 			return fmt.Errorf("reward: %s[%d]: pattern is %d bytes; at most %d can be matched safely", field, i, len(p), maxPatternBytes)
+		}
+		if n := len(expandBraces(p, maxBraceAlternatives+1)); n > maxBraceAlternatives {
+			return fmt.Errorf("reward: %s[%d]: brace alternation expands to more than %d patterns", field, i, maxBraceAlternatives)
 		}
 	}
 	return nil
@@ -203,7 +208,7 @@ func checkPatterns(field string, patterns []string) error {
 // results.
 func expandBraces(p string, limit int) []string {
 	i := strings.IndexByte(p, '{')
-	if i < 0 {
+	if i < 0 || len(p) > maxPatternBytes { // each level copies the pattern: bound the depth
 		return []string{p}
 	}
 	j := strings.IndexByte(p[i:], '}')

@@ -224,7 +224,8 @@ func TestConcSound_ThrottleNeverDropsAStateChange(t *testing.T) {
 	}
 }
 
-// The warm gate sits IN FRONT of the governor. When a cold prefix elects a
+// STILL OPEN (the fix is in the agent's request path or in gate.go, not in the swarm's
+// own state): the warm gate sits IN FRONT of the governor. When a cold prefix elects a
 // worker-priority primer that then queues behind other worker traffic, a
 // higher-priority follower (the manager) must wait for that primer even though the
 // governor would have admitted it first.
@@ -454,7 +455,7 @@ func (rvNullBlobs) Put(d []byte) (core.Hash, error) { return core.HashBytes(d), 
 func (rvNullBlobs) Get(core.Hash) ([]byte, error)   { return nil, events.ErrBlobNotFound }
 func (rvNullBlobs) Has(core.Hash) bool              { return false }
 
-// Archive.Put builds the search preview with `pv = pv[:previewCap]`, which keeps
+// STILL OPEN (kv/archive.go, not the swarm): Archive.Put builds the search preview with `pv = pv[:previewCap]`, which keeps
 // the ENTIRE lower-cased turn text alive (a substring shares its backing array), so
 // the "capped 4KB preview" costs as much memory as the turn itself, forever: there
 // is no eviction and no per-agent release, so Retire cannot give any of it back.

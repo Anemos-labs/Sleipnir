@@ -14,6 +14,13 @@ import (
 	"github.com/reee344/sleipnir/internal/rl"
 )
 
+var scanUnitsExtra = []string{
+	"cat <<X ", "<<X ", "<<-X ", "<<'X' ", "<<\"X\" ", "<<X\n", "$(", "$((", "${", "((", "<(", ">(", "$'", "$\"", "\\\n", "#", "\n#", " #", "'\\''", "\"$(", "x=$(", "for i in ", "do ", "done; ", "if ", "then ", "fi; ", "case x in ", "esac; ",
+	"sudo ", "env ", "FOO=1 ", "nohup ", "time ", "xargs ", "sh -c \"", "bash -lc '", "eval ", "exec ", "find . -exec ", "\\; ", "tee ", "cp a ", "mv a ", "rm -rf ", "sed -i s/a/b/ ", "dd of=", "curl -o ", "wget -O ", "tar -C ", "git -C ",
+	"a=b; ", "> ", ">> ", "< ", "2> ", "&> ", ">| ", "1>&2 ", "|& ", "& ", "&& ", "|| ", "; ", "\n\n", "  ", "\t\t",
+	"python -m pytest ", "pytest -k ", "go test -run ", "npm run ", "make -C ", "cargo test ", "tests/", "./tests/x.py ", "*.py ", "-- ", "--flag=value ", "-x ",
+}
+
 var scanUnits = []string{
 	"a", " ", "\n", "/", "a/", "../", "./", "\\", "\"", "'", "`", "(", ")", "{", "}", "[", "]", "*", "**", "**/", "?", "$", "$(", "${", "<<", "<<EOF\n", "EOF\n", ">", ">>", "2>&1 ", "|", "||", "&&", ";", "#", "//", "/*", "*/", "'''", "\"\"\"",
 	"@@ -1 +1 @@\n", "+", "-", "diff --git a/x b/x\n", "--- a/x\n+++ b/x\n", "rename from a\nrename to b\n", "+t.Skip()\n", "+func TestA(t *testing.T) {\n", "-func TestA(t *testing.T) {\n",
@@ -182,7 +189,11 @@ func TestScratchScaling(t *testing.T) {
 		}
 		worst := time.Duration(0)
 		worstUnit := ""
-		for _, unit := range scanUnits {
+		units := scanUnits
+		if os.Getenv("SCAN_EXTRA") != "" {
+			units = scanUnitsExtra
+		}
+		for _, unit := range units {
 			if u := os.Getenv("SCAN_UNIT"); u != "" && u != unit {
 				continue
 			}

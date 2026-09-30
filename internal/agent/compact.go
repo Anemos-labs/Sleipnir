@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
@@ -266,9 +267,23 @@ func (a *Agent) startCompaction(ctx context.Context, reason string) {
 // cache read into a full write. "Do not call tools" is therefore only text, and a
 // reply that calls one anyway counts as a failed compaction.
 func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*readyPatch, error) {
+	return a.proposeFocus(ctx, snap, reason, "")
+}
+
+// proposeFocus is propose with the user's own words about what matters (manual
+// /compact): they are typed by the person driving the agent, so they may steer the
+// compactor, unlike text the agent found in tool output.
+func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus string) (*readyPatch, error) {
 	prof := a.cfg.Provider.Profile()
 	pol := a.applyPolicy()
 	instr := kv.Instruction(&snap, a.est, pol)
+	if focus = strings.TrimSpace(focus); focus != "" {
+		if len(focus) > 400 {
+			focus = focus[:400]
+		}
+		line := "\nThe user asked for this compaction and says what matters most: " + strings.ReplaceAll(focus, "<", "‹") + "\n"
+		instr = strings.Replace(instr, "</compactor-task>", line+"</compactor-task>", 1)
+	}
 	p := kv.ForkPrompt(&snap, kv.RenderOpts{
 		Caps: a.caps(prof), Policy: a.cfg.KVPolicy, Params: a.cfg.Params,
 		CacheKey: a.cacheKey(&snap), Est: a.est,
@@ -400,6 +415,7 @@ func (a *Agent) commit(rp *readyPatch, why string) error {
 		a.cfg.OnPromote(a.cfg.ID, res.Proposals)
 	}
 	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("compacted %d turns (%dk→%dk tokens)", res.RemovedTurns, res.SnapTokens/1000, (res.SpineAdded+res.RetainedTokens)/1000))
+	a.saveSnapshot()
 	return nil
 }
 
@@ -461,4 +477,71 @@ func (a *Agent) maskCommit(reason string) error {
 	live := res.SnapTokens
 	rp := &readyPatch{res: res, epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, fallback: true, snapLive: live}
 	return a.commit(rp, "mask: "+reason)
+}
+
+// CompactReport says what a manual compaction did.
+type CompactReport struct {
+	// Mode is "model" (the compactor's patch), "mechanical" (its answer was
+	// unusable, so a deterministic patch was used), "mask" (bulky results only) or
+	// "none" (nothing to fold yet).
+	Mode         string
+	FoldedTurns  int
+	TokensBefore int
+	TokensAfter  int
+}
+
+// CompactNow folds the thread now, at the user's request, and waits for it. It
+// takes the same path as the background compaction (propose, then commit), so it
+// is a declared, priced rebase like any other: the user chose the moment, and the
+// planner's economics do not get a vote. With focus, the compactor is told what
+// the user cares about. Call it between runs.
+func (a *Agent) CompactNow(ctx context.Context, focus string) (CompactReport, error) {
+	a.mu.Lock()
+	if a.comp.running {
+		a.mu.Unlock()
+		return CompactReport{}, errors.New("a compaction is already running; try again in a moment")
+	}
+	a.comp.running = true // hold the slot: the background planner must not start another
+	a.comp.ready = nil
+	snap := a.stack
+	snap.Thread = a.thread.Snapshot()
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		a.comp.running = false
+		a.mu.Unlock()
+	}()
+
+	z := kv.Sizer{Est: a.est, Caps: a.applyPolicy().Caps}
+	rep := CompactReport{Mode: "none", TokensBefore: z.Turns(snap.Thread.Turns)}
+	switch {
+	case a.foldableUnits() >= 2:
+		rp, err := a.proposeFocus(ctx, snap, "manual /compact", focus)
+		if errors.Is(err, kv.ErrNothingToCompact) {
+			return rep, nil
+		}
+		if err != nil {
+			return rep, err
+		}
+		if err := a.commit(rp, "manual /compact"); err != nil {
+			return rep, err
+		}
+		rep.Mode = "model"
+		if rp.fallback {
+			rep.Mode = "mechanical"
+		}
+		rep.FoldedTurns = rp.res.RemovedTurns
+	case a.foldableUnits() >= 1:
+		if err := a.maskCommit("manual /compact"); err != nil {
+			if errors.Is(err, kv.ErrNothingToMask) {
+				return rep, nil
+			}
+			return rep, err
+		}
+		rep.Mode = "mask"
+	default:
+		return rep, nil
+	}
+	rep.TokensAfter = z.Turns(a.thread.Snapshot().Turns)
+	return rep, nil
 }

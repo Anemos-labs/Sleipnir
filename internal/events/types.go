@@ -13,6 +13,10 @@ const (
 	TypeAgentSpawn = "agent.spawn"
 	TypeAgentState = "agent.state"
 	TypeAgentEnd   = "agent.end"
+	// TypeAgentSnapshot references a blob with everything needed to resume an
+	// agent (thread, notes, spine, counters); TypeAgentRestore records a resume.
+	TypeAgentSnapshot = "agent.snapshot"
+	TypeAgentRestore  = "agent.restore"
 
 	// Transcript. turn.append is the canonical record of every turn an agent's
 	// thread ever contained, including turns later compacted out of the prompt.

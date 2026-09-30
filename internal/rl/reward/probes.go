@@ -164,9 +164,13 @@ func probes(ep *rl.Episode, resolve PromptText, perProbe int) []Probe {
 			}
 			window := foldedWindow(a, si)
 			cands := extractFacts(ep, ai, window)
+			// The filters read whole prompts, which can be megabytes, so they run lazily
+			// on the few candidates the sampler reaches, not on all of them.
+			var keep func(Fact) bool
 			if resolve != nil {
+				visible, haveVisible := "", false
 				if text, err := resolve(ep, st); err == nil {
-					cands = filterVisible(cands, normalizeText(text))
+					visible, haveVisible = normalizeText(text), true
 				}
 				if !haveInitial {
 					haveInitial = true
@@ -176,11 +180,16 @@ func probes(ep *rl.Episode, resolve PromptText, perProbe int) []Probe {
 						}
 					}
 				}
-				if initial != "" {
-					cands = dropPresent(cands, initial)
+				ini := initial
+				keep = func(f Fact) bool {
+					if haveVisible && !factFound(visible, f) {
+						return false // the compactor could not see it: not its fault
+					}
+					// Already in the agent's initial prompt: recovering it proves nothing.
+					return ini == "" || !strings.Contains(ini, normalizeText(f.Text))
 				}
 			}
-			p.Facts = sampleFacts(cands, ep.ID, st.ID, perProbe)
+			p.Facts = sampleFactsIf(cands, ep.ID, st.ID, perProbe, keep)
 			out = append(out, p)
 		}
 	}
@@ -680,82 +689,99 @@ func extractFacts(ep *rl.Episode, ai int, window []int) []Fact {
 	return out
 }
 
-// filterVisible keeps facts the compactor could see in its own prompt.
-func filterVisible(facts []Fact, normPrompt string) []Fact {
-	out := facts[:0:0]
-	for _, f := range facts {
-		if factFound(normPrompt, f) {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-// dropPresent removes facts already present in a text (the agent's initial
-// prompt): recovering them later proves nothing about the compaction.
-func dropPresent(facts []Fact, normText string) []Fact {
-	out := facts[:0:0]
-	for _, f := range facts {
-		if !strings.Contains(normText, normalizeText(f.Text)) {
-			out = append(out, f)
-		}
-	}
-	return out
-}
+// maxFactChecks bounds how many candidates one probe tests against prompts. A
+// test is a substring search through a prompt that may be megabytes long; with
+// a healthy episode the first few candidates pass, and only a probe whose facts
+// are mostly invisible to the compactor comes near the limit.
+const maxFactChecks = 256
 
 // sampleFacts picks up to k facts, spread over kinds, ordered by a hash of the
 // episode id, the compactor step id and the fact: deterministic, but not
 // predictable by a policy that sees neither id.
 func sampleFacts(cands []Fact, epID, stepID string, k int) []Fact {
+	return sampleFactsIf(cands, epID, stepID, k, nil)
+}
+
+// sampleFactsIf is sampleFacts over the candidates that pass keep (nil keeps
+// all). The result is the same as filtering first and sampling after; keep is
+// only called on the candidates the sampling reaches, at most maxFactChecks.
+func sampleFactsIf(cands []Fact, epID, stepID string, k int, keep func(Fact) bool) []Fact {
 	if k <= 0 || len(cands) == 0 {
 		return nil
 	}
 	type keyed struct {
-		f Fact
-		h uint64
+		f     Fact
+		h     uint64
+		state int8 // 0 untested, 1 passes, 2 fails
+		taken bool
 	}
-	byKind := map[string][]keyed{}
+	checks := 0
+	pass := func(c *keyed) bool {
+		if keep == nil {
+			return true
+		}
+		if c.state == 0 {
+			if checks >= maxFactChecks {
+				return false // out of budget: treated as failing
+			}
+			checks++
+			c.state = 2
+			if keep(c.f) {
+				c.state = 1
+			}
+		}
+		return c.state == 1
+	}
+	byKind := map[string][]*keyed{}
 	for _, f := range cands {
 		sum := sha256.Sum256([]byte(epID + "\x00" + stepID + "\x00" + f.Kind + "\x00" + f.Text))
-		byKind[f.Kind] = append(byKind[f.Kind], keyed{f, binary.BigEndian.Uint64(sum[:8])})
+		byKind[f.Kind] = append(byKind[f.Kind], &keyed{f: f, h: binary.BigEndian.Uint64(sum[:8])})
+	}
+	less := func(a, b *keyed) bool {
+		if a.h != b.h {
+			return a.h < b.h
+		}
+		return a.f.Text < b.f.Text
 	}
 	for _, list := range byKind {
 		l := list
-		sort.Slice(l, func(i, j int) bool {
-			if l[i].h != l[j].h {
-				return l[i].h < l[j].h
-			}
-			return l[i].f.Text < l[j].f.Text
-		})
+		sort.Slice(l, func(i, j int) bool { return less(l[i], l[j]) })
 	}
 	quota := map[string]int{FactFile: 3, FactCommand: 2, FactTest: 1, FactFailure: 1, FactLiteral: 1}
 	scale := func(q int) int { return max(1, (q*k+7)/8) }
 	var out []Fact
-	taken := map[string]int{}
 	order := []string{FactFile, FactTest, FactFailure, FactCommand, FactLiteral}
 	for _, kind := range order {
-		for i := 0; i < scale(quota[kind]) && i < len(byKind[kind]) && len(out) < k; i++ {
-			out = append(out, byKind[kind][i].f)
-			taken[kind]++
+		got := 0
+		for _, c := range byKind[kind] {
+			if got >= scale(quota[kind]) || len(out) >= k {
+				break
+			}
+			if pass(c) {
+				out = append(out, c.f)
+				c.taken = true
+				got++
+			}
 		}
 	}
 	// Fill any remaining slots from what is left, by hash.
 	if len(out) < k {
-		var rest []keyed
+		var rest []*keyed
 		for _, kind := range order {
-			rest = append(rest, byKind[kind][taken[kind]:]...)
-		}
-		sort.Slice(rest, func(i, j int) bool {
-			if rest[i].h != rest[j].h {
-				return rest[i].h < rest[j].h
+			for _, c := range byKind[kind] {
+				if !c.taken {
+					rest = append(rest, c)
+				}
 			}
-			return rest[i].f.Text < rest[j].f.Text
-		})
-		for _, r := range rest {
+		}
+		sort.Slice(rest, func(i, j int) bool { return less(rest[i], rest[j]) })
+		for _, c := range rest {
 			if len(out) >= k {
 				break
 			}
-			out = append(out, r.f)
+			if pass(c) {
+				out = append(out, c.f)
+			}
 		}
 	}
 	return out

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/rl"
@@ -648,28 +647,16 @@ func TestDetectorsAreLinearOnHugeDiffs(t *testing.T) {
 		return b.String()
 	}
 	task := &rl.Task{Prompt: "p", Verifier: rl.Verifier{Cmd: "make test", Protected: []string{"*_test.go", "**/*.golden"}, Hidden: map[string]string{"h_test.go": "text:" + `want := "some hidden expected value"`}}}
-	run := func(diff string) (time.Duration, *rl.Episode) {
+	requireLinear(t, "scoring a huge diff", 6000, func(n int) {
+		diff := build(n)
 		ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 		h := core.HashString(diff)
 		ep.Outcome.Diff = h
-		start := time.Now()
 		mustScore(t, ep, task, DefaultConfig(), DiffMap{h: diff})
-		return time.Since(start), ep
-	}
-	small, large := build(6000), build(24000)
-	dSmall, _ := run(small)
-	dLarge, ep := run(large)
-	if !hasFlag(ep, fProt) || !hasFlag(ep, fTest) {
-		t.Errorf("flags: %v", ep.Flags)
-	}
-	t.Logf("%d KB: %v, %d KB: %v", len(small)>>10, dSmall, len(large)>>10, dLarge)
-	if dLarge > 60*time.Second {
-		t.Errorf("scoring a %d MB diff took %v", len(large)>>20, dLarge)
-	}
-	// Allow generous noise around the ideal 4x; quadratic behaviour would be ~16x.
-	if dSmall > 20*time.Millisecond && dLarge > 9*dSmall {
-		t.Errorf("super-linear growth: %v for the small diff, %v for 4x the size", dSmall, dLarge)
-	}
+		if !hasFlag(ep, fProt) || !hasFlag(ep, fTest) {
+			t.Fatalf("flags: %v", ep.Flags)
+		}
+	})
 }
 
 func errorsIs(err, target error) bool {

@@ -90,6 +90,7 @@ func (m *Manager) clearHalfCreated(ctx context.Context, dest string, minAge time
 	if !ok {
 		return false
 	}
+	_ = os.Remove(filepath.Join(admin, "locked")) // see deleteTree
 	if err := m.st.base.WorktreeRemove(ctx, dest, true); err == nil {
 		return true
 	}

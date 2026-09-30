@@ -42,6 +42,34 @@ func (t *Thread) Append(turn core.Turn) core.Turn {
 	return turn
 }
 
+// Restore installs turns recorded by an earlier process (resuming a session). It
+// keeps the recorded ids, so spine pointers and recall ranges stay valid, and
+// continues numbering after next. Only an empty thread can be restored: turns
+// already appended would be silently discarded.
+func (t *Thread) Restore(turns []core.Turn, next core.TurnID, epoch uint64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.turns) > 0 {
+		return errors.New("kv: cannot restore into a thread that already has turns")
+	}
+	var maxID core.TurnID
+	for _, tr := range turns {
+		if tr.ID > maxID {
+			maxID = tr.ID
+		}
+	}
+	if next <= maxID {
+		next = maxID + 1
+	}
+	if next < 1 {
+		next = 1
+	}
+	t.turns = append([]core.Turn(nil), turns...)
+	t.next = next
+	t.epoch = epoch
+	return nil
+}
+
 // Snapshot is an immutable view of the thread. Because turns are only ever
 // appended, sharing the backing array is safe: a snapshot never observes
 // elements beyond its own length.

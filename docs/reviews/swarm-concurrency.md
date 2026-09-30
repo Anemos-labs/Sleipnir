@@ -11,6 +11,35 @@ Read in full: `docs/ARCHITECTURE.md`, `BUILDING.md`, `CACHE-DESIGN.md` (4, 6), `
 Severity scale: **blocker** = the manager/worker protocol silently gives wrong results in ordinary use; **high** = fix before multi-agent runs
 (caps, ownership, cost, crash, memory); **medium** = fix before unattended or long runs; **low** = latent or hygiene.
 
+## Status after the swarm fix tranche
+
+The swarm runtime was reworked against `docs/SWARM-PROTOCOL.md` (2026-09-30). Findings below are **fixed** unless marked otherwise; the
+repros that covered them became ungated regression tests (`lifecycle_test.go`, `state_test.go`, `chaos_test.go`, `spec_test.go`; the old
+`*_review_test.go` names are gone). `go test -race -count=1 ./internal/swarm` is green; `SLEIPNIR_REVIEW=1` still runs the two repros of findings
+that live in other packages.
+
+| Finding | Status |
+|---|---|
+| C-01 mail stranded during the final request; reject undone | fixed: a run that ends re-checks its inbox; settles only the `{task, rev}` it started with |
+| C-02 ownership and caps are check-then-act | fixed: one `spawnMu`, a compare-and-set claim/assign on the board with the scope check inside it, writer cap counts reuse |
+| C-03 tasks stuck forever | fixed: every task of a run is settled; a stop requeues (`failed` after 3 attempts); reject is harness-delivered; a refused spawn leaves nothing |
+| C-04 advisory swarm budget | fixed: ledger over retired agents, checked by the governor before every request, running workers stopped |
+| C-05 no fault containment | fixed: recover per run goroutine, sink, supervisor and manager run; `Spawn` never dereferences a missing member |
+| C-06 one agent stalls every request path | fixed here for the swarm: bounded board inputs; `RenderHot` is single-pass with caps (1000 failed tasks: 438 ms -> 6 ms) |
+| C-07 evidence calls a failing test passed | fixed: `Meta.exit_code`, shell-aware test detection, masked/unknown statuses |
+| C-08 silent provider holds a request | **not fixed here** (agent/provider timeouts; owner elsewhere) |
+| C-09 archive index pins whole turns | **not fixed here** (`kv/archive.go`; `TestConc_ArchiveIndex...` stays gated) |
+| C-10 member lifecycle races | fixed: one state machine under `member.mu` (idle/running/retired), atomic reserve, ordered publication, registration after assignment |
+| C-11 `wait` defects | fixed: lock-free `Changed()`, `wait` baseline is the caller's last view, unknown ids are an error, alerts diffed by text |
+| C-12 log cannot rebuild the board | fixed in the swarm: operand-bearing `board.op`, `lease`/`governor`/`agent.state`/`mail.drop` events, and `ReplayBoard` (tested to rebuild tasks, roster and notes exactly); resume is not wired at startup |
+| C-13 group commit has no timer | **not fixed here** (`events/log.go`) |
+| C-14 cancellation and shutdown | fixed except the detached compactor job (agent): manager cancel stops workers, bounded `Shutdown`, verifier deadline and concurrency cap, closed state |
+| C-15 no task state machine | fixed: transition table, `done` terminal, dependencies on spawn |
+| C-16 stale and noisy hot view | fixed: alerts expire and clear, no-op mutations publish nothing, trailing status line is flushed |
+| C-17 router | fixed: sweeps, delivery failure reported (and the sender's budget returned), inbox bounded and coalesced |
+| C-18 governor and warm gate | governor fixed (one cut per 429 episode, aging, `Retry-After` ceiling); the cold-prefix priority inversion is **not fixed** (agent request path / gate) |
+| C-19 hygiene | fixed except `events.Log.Subscribe` after `Close` and 32-bit recall handles (other packages) |
+
 ## 0. How to reproduce
 
 I added test files named `*_review_test.go` (index in section 4; no non-test file was modified). Two kinds of tests:

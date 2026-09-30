@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/reee344/sleipnir/internal/gitx"
@@ -297,7 +298,7 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 
 // salvage commits a dead session's uncommitted work onto its branch.
 func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) error {
-	if err := m.checkSizes(ctx, repo, repo.Root()); err != nil {
+	if err := m.checkCommittable(ctx, repo, repo.Root()); err != nil {
 		return err
 	}
 	_, err := repo.CommitAll(ctx, "sleipnir: salvage of "+mk.Agent+" (its session ended before the work was committed)",
@@ -305,15 +306,50 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 	return err
 }
 
-// checkSizes is the oversize-file guard for any repository handle.
-func (m *Manager) checkSizes(ctx context.Context, repo *gitx.Repo, root string) error {
-	limit := m.maxFileBytes()
-	if limit < 0 {
-		return nil
+// NestedRepoError lists the directories of a tree that are git repositories of
+// their own (an agent cloned something into its tree). Recording one would store a
+// bare pointer to a commit that no clone of the project can fetch, so it is refused
+// like an oversized file is; the remedy is the same: delete it, or list it in
+// .gitignore.
+type NestedRepoError struct {
+	Paths []string
+}
+
+func (e *NestedRepoError) Error() string {
+	list, more := e.Paths, ""
+	if len(list) > 5 {
+		list, more = list[:5], fmt.Sprintf(" and %d more", len(e.Paths)-5)
 	}
+	return fmt.Sprintf("workspace: %d director(ies) are git repositories of their own (%s%s): remove them or add them to .gitignore",
+		len(e.Paths), strings.Join(list, ", "), more)
+}
+
+func (e *NestedRepoError) Is(target error) bool { return target == ErrNestedRepo }
+
+// checkCommittable is the guard every commit of an agent's work passes: nothing in
+// what would be recorded may be a nested repository or exceed the size limit (once
+// in history a file stays in the repository for good). It works on any repository
+// handle.
+func (m *Manager) checkCommittable(ctx context.Context, repo *gitx.Repo, root string) error {
+	limit := m.maxFileBytes()
 	st, err := repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all", MaxBytes: 32 << 20})
 	if err != nil {
 		return err
+	}
+	// With every untracked file listed individually, an untracked entry that still
+	// ends in a slash is a directory git will not look into: a repository.
+	var nested []string
+	for _, p := range st.Untracked {
+		if strings.HasSuffix(p, "/") {
+			nested = append(nested, path.Clean(p))
+		}
+	}
+	if len(nested) > 0 {
+		sort.Strings(nested)
+		return &NestedRepoError{Paths: nested}
+	}
+	if limit < 0 {
+		return nil
 	}
 	seen := map[string]bool{}
 	var big []string

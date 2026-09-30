@@ -239,16 +239,87 @@ func (r *Repo) git(ctx context.Context, args ...string) (*output, error) {
 }
 
 // allowedSubcommands is what Git accepts. Network commands (fetch, pull, push,
-// clone, remote, submodule), config writes, gc and daemons are absent on purpose.
+// clone, remote, submodule), config writes, gc, daemons and commands that write
+// files of their own choosing into the current directory (format-patch) are absent
+// on purpose.
 var allowedSubcommands = map[string]bool{
 	"add": true, "apply": true, "branch": true, "cat-file": true, "checkout": true, "cherry-pick": true,
 	"clean": true, "commit": true, "commit-tree": true, "diff": true, "diff-files": true, "diff-index": true,
-	"diff-tree": true, "for-each-ref": true, "format-patch": true, "log": true, "ls-files": true,
+	"diff-tree": true, "for-each-ref": true, "log": true, "ls-files": true,
 	"ls-tree": true, "merge": true, "merge-base": true, "merge-file": true, "merge-tree": true,
 	"mktree": true, "mv": true, "read-tree": true, "rebase": true, "reset": true, "restore": true,
 	"rev-list": true, "rev-parse": true, "revert": true, "rm": true, "show": true, "show-ref": true,
 	"sparse-checkout": true, "status": true, "switch": true, "symbolic-ref": true, "update-index": true,
 	"update-ref": true, "worktree": true, "write-tree": true,
+}
+
+// deniedOptions are, per subcommand, the long options that make git run a program
+// named by the caller's argument, write to a path of the caller's choosing, or ask
+// for signatures (which run the program a repository configures; the configuration
+// is blanked, but the command line is the caller's word). The configuration cannot
+// disarm an option, so Git refuses them. git accepts any unambiguous abbreviation
+// of a long option, so an argument is refused when it is a prefix of a denied
+// option (--exe, --out, ...); legitimate options that merely start alike
+// (--oneline, --index, --verify) are not prefixes of anything on the list of their
+// subcommand and pass.
+var deniedOptions = map[string][]string{
+	"rebase":      {"--exec", "--gpg-sign"},
+	"merge":       {"--gpg-sign", "--verify-signatures"},
+	"commit":      {"--gpg-sign"},
+	"cherry-pick": {"--gpg-sign"},
+	"revert":      {"--gpg-sign"},
+	"apply":       {"--unsafe-paths"},
+	"read-tree":   {"--index-output"},
+	"diff":        diffLike,
+	"diff-files":  diffLike,
+	"diff-index":  diffLike,
+	"diff-tree":   diffLike,
+	"log":         diffLike,
+	"show":        diffLike,
+	"rev-list":    diffLike,
+	"cat-file":    {"--textconv", "--filters"},
+}
+
+var diffLike = []string{"--output", "--ext-diff", "--textconv", "--show-signature", "--open-files-in-pager"}
+
+// checkGitArgs applies the option rules of Git.
+func checkGitArgs(args []string) error {
+	sub := args[0]
+	denied := deniedOptions[sub]
+	for _, a := range args[1:] {
+		if a == "--" {
+			return nil // what follows is paths
+		}
+		if strings.HasPrefix(a, "--") {
+			name, _, _ := strings.Cut(a, "=")
+			if len(name) <= 2 {
+				continue
+			}
+			for _, d := range denied {
+				if strings.HasPrefix(d, name) {
+					return newErr(KindInvalid, sub, "option %q is not allowed", name)
+				}
+			}
+			continue
+		}
+		// Short options: -x runs a command for every commit of a rebase, and -S signs
+		// (runs a program) for the subcommands that create commits. They may be bundled
+		// (-ix, -aS) or carry an attached value (-Skeyid).
+		if len(a) > 1 && a[0] == '-' {
+			switch sub {
+			case "rebase":
+				if strings.ContainsRune(a, 'x') {
+					return newErr(KindInvalid, sub, "option %q is not allowed", a)
+				}
+				fallthrough
+			case "commit", "merge", "cherry-pick", "revert":
+				if strings.ContainsRune(a, 'S') {
+					return newErr(KindInvalid, sub, "option %q is not allowed", a)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // Result is the outcome of Git.
@@ -263,7 +334,8 @@ type Result struct {
 // returns its output. It is the escape hatch for callers that need a command
 // gitx has no typed helper for; it cannot bypass the hardening, and it refuses
 // options before the subcommand (-c, --exec-path, --git-dir ...), network
-// commands and config writes.
+// commands, config writes and the options that run programs or write to paths of
+// the caller's choosing (deniedOptions).
 func (r *Repo) Git(ctx context.Context, args ...string) (*Result, error) {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") || !allowedSubcommands[args[0]] {
 		name := ""
@@ -276,6 +348,9 @@ func (r *Repo) Git(ctx context.Context, args ...string) (*Result, error) {
 		if strings.ContainsRune(a, 0) {
 			return nil, newErr(KindInvalid, args[0], "argument contains a NUL byte")
 		}
+	}
+	if err := checkGitArgs(args); err != nil {
+		return nil, err
 	}
 	out, err := r.run(ctx, call{args: args, mutating: true})
 	res := &Result{}

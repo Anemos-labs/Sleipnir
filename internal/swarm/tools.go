@@ -507,13 +507,13 @@ func diffSnapshots(a, b *Snapshot) []string {
 		before[a.Tasks[i].ID] = i
 	}
 	for _, t := range b.Tasks {
-		i, ok := before[t.ID]
-		if !ok {
-			continue // the waiting agent created it; it is not news
-		}
-		old := a.Tasks[i]
-		if old.Status == t.Status && old.Rev == t.Rev {
-			continue
+		var old Task
+		i, existed := before[t.ID]
+		if existed {
+			old = a.Tasks[i]
+			if old.Status == t.Status && old.Rev == t.Rev {
+				continue
+			}
 		}
 		switch {
 		case t.Status == StatusReview || t.Status == StatusDone || t.Status == StatusFailed || t.Status == StatusBlocked:
@@ -530,7 +530,7 @@ func diffSnapshots(a, b *Snapshot) []string {
 				line += " [" + t.Evidence + "]"
 			}
 			out = append(out, line)
-		case t.Status == StatusTodo && old.Status != StatusTodo:
+		case t.Status == StatusTodo && existed && (old.Status == StatusDoing || old.Status == StatusBlocked || old.Status == StatusReview):
 			line := fmt.Sprintf("%s → todo (returned to the pool)", t.ID)
 			if t.Line != "" {
 				line += ": " + t.Line

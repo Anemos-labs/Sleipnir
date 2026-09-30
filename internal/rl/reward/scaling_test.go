@@ -37,12 +37,23 @@ func bestOf(reps int, fn func()) time.Duration {
 }
 
 // requireLinear fails when fn(4n) takes far more than four times fn(n). Runs
-// that finish within the noise floor pass: there is nothing to measure.
+// that finish within the noise floor pass: there is nothing to measure. A
+// failure is measured a second time before it counts, because on a busy machine
+// one bad sample says more about the neighbours than about the code.
 func requireLinear(t *testing.T, name string, n int, fn func(n int)) {
 	t.Helper()
-	small := bestOf(3, func() { fn(n) })
-	large := bestOf(3, func() { fn(4 * n) })
-	t.Logf("%s: n=%d %v, 4n %v", name, n, small, large)
+	if underRace {
+		n = max(n/4, 1)
+	}
+	var small, large time.Duration
+	for attempt := 0; attempt < 2; attempt++ {
+		small = bestOf(3, func() { fn(n) })
+		large = bestOf(3, func() { fn(4 * n) })
+		t.Logf("%s: n=%d %v, 4n %v", name, n, small, large)
+		if large <= 100*time.Millisecond || large <= 8*small {
+			break
+		}
+	}
 	if large > 20*time.Second {
 		t.Errorf("%s: %d units took %v", name, 4*n, large)
 	}
@@ -218,4 +229,46 @@ func TestScoringScalesWithEpisodeSize(t *testing.T) {
 	t.Run("many agents", func(t *testing.T) {
 		requireLinear(t, "n agents, 40 steps", 50, func(n int) { run(n, 40) })
 	})
+}
+
+func TestLazySamplingEqualsFilterThenSample(t *testing.T) {
+	rng := rand.New(rand.NewSource(5))
+	kinds := []string{FactFile, FactCommand, FactTest, FactFailure, FactLiteral}
+	keep := func(f Fact) bool { return len(f.Text)%3 != 0 || strings.HasSuffix(f.Text, "7") }
+	for trial := 0; trial < 500; trial++ {
+		var cands, filtered []Fact
+		for i, n := 0, rng.Intn(60); i < n; i++ {
+			f := Fact{Kind: kinds[rng.Intn(len(kinds))], Text: fmt.Sprintf("fact-%d-%d", trial%7, rng.Intn(100)), Step: "s1"}
+			cands = append(cands, f)
+			if keep(f) {
+				filtered = append(filtered, f)
+			}
+		}
+		k := 1 + rng.Intn(10)
+		want := sampleFacts(filtered, "e", "s", k)
+		got := sampleFactsIf(cands, "e", "s", k, keep)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("trial %d: lazy sampling differs from filtering first:\n got %+v\nwant %+v", trial, got, want)
+		}
+	}
+}
+
+func TestFactChecksAreBounded(t *testing.T) {
+	// Facts the compactor could not see all fail the test; the sampler must not
+	// search the prompt for thousands of them.
+	var cands []Fact
+	for i := 0; i < 5000; i++ {
+		cands = append(cands, Fact{Kind: FactFile, Text: fmt.Sprintf("pkg/file%d.go", i)})
+	}
+	calls := 0
+	got := sampleFactsIf(cands, "e", "s", 8, func(Fact) bool { calls++; return false })
+	if len(got) != 0 || calls != maxFactChecks {
+		t.Errorf("got %d facts after %d checks, want none after %d", len(got), calls, maxFactChecks)
+	}
+	// When facts do pass, only about k of them are ever tested.
+	calls = 0
+	got = sampleFactsIf(cands, "e", "s", 8, func(Fact) bool { calls++; return true })
+	if len(got) != 8 || calls > 16 {
+		t.Errorf("got %d facts after %d checks", len(got), calls)
+	}
 }

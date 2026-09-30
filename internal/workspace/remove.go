@@ -82,6 +82,14 @@ func (m *Manager) verifyMissing(p string) (string, *marker, error) {
 // first (it is our tree, being deleted). If git still refuses, the directory and
 // the registration are deleted directly - both were verified by the caller.
 func (m *Manager) deleteTree(ctx context.Context, p, admin string, force bool) error {
+	wantParent := resolveLoose(filepath.Join(m.st.base.CommonDir(), "worktrees"))
+	adminOK := filepath.Dir(resolveLoose(admin)) == wantParent
+	if adminOK {
+		// `git worktree lock` (which any process in the tree can run) makes git refuse
+		// to remove the tree, with or without force. The tree is ours and verified; the
+		// flag is a file in its own administrative directory and means nothing to us.
+		_ = os.Remove(filepath.Join(admin, "locked"))
+	}
 	if fi, err := os.Lstat(p); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
 		gitFile := filepath.Join(p, ".git")
 		if gfi, err := os.Lstat(gitFile); err == nil && gfi.IsDir() {
@@ -93,8 +101,7 @@ func (m *Manager) deleteTree(ctx context.Context, p, admin string, force bool) e
 	if err == nil || !force {
 		return err
 	}
-	wantParent := resolveLoose(filepath.Join(m.st.base.CommonDir(), "worktrees"))
-	if filepath.Dir(resolveLoose(admin)) != wantParent {
+	if !adminOK {
 		return err
 	}
 	if rerr := os.RemoveAll(p); rerr != nil {

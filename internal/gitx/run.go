@@ -155,6 +155,13 @@ func hardenedConfig() []string {
 		"tag.gpgsign=false",
 		"log.showSignature=false",
 		"merge.verifySignatures=false",
+		// ... and a signing or verification that is asked for anyway (a flag, or a
+		// caller of Git) must not find a program named by the repository.
+		"gpg.program=",
+		"gpg.openpgp.program=",
+		"gpg.x509.program=",
+		"gpg.ssh.program=",
+		"gpg.ssh.defaultKeyCommand=",
 		// Background maintenance would outlive the command and touch files while the
 		// caller is deleting or rewriting them.
 		"gc.auto=0",

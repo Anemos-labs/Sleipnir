@@ -35,17 +35,30 @@ var fuzzSeeds = []string{
 	"[exit code 1]\n--- FAIL: TestX (0.00s)\nFAILED tests/a.py::t - E   assert 1 == 2\npanic: boom\n\"quoted value here\"",
 }
 
+// within fails the fuzz run when one input takes long: the inputs are small, so
+// anything slow is super-linear behaviour that a crash-only fuzzer would miss.
+func within(t *testing.T, limit time.Duration, s string, fn func()) {
+	t.Helper()
+	start := time.Now()
+	fn()
+	if d := time.Since(start); d > limit {
+		t.Fatalf("%d-byte input took %v (limit %v): %q", len(s), d, limit, clipText(s, 200))
+	}
+}
+
 func FuzzParseDiff(f *testing.F) {
 	for _, s := range fuzzSeeds {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		for _, fd := range parseDiff(s) {
-			_ = fd.touched()
-			_ = fd.path()
-			_ = fd.pathVariants()
-			_ = fd.addedText()
-		}
+		within(t, 5*time.Second, s, func() {
+			for _, fd := range parseDiff(s) {
+				_ = fd.touched()
+				_ = fd.path()
+				_ = fd.pathVariants()
+				_ = fd.addedText()
+			}
+		})
 	})
 }
 
@@ -54,16 +67,18 @@ func FuzzLexAndTight(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		for _, lang := range []string{"go", "py", "js", "rs", "rb", "sh", "php", ""} {
-			a := lexCode(s, lang, true)
-			b := lexCode(s, lang, false)
-			_ = tight(a)
-			_ = foldLine(b)
-			// Only an unterminated triple quote can add closing quotes: a few bytes.
-			if len(a) > len(s)+8 || len(b) > len(s)+8 {
-				t.Fatalf("lexCode grew the input: %d -> %d/%d", len(s), len(a), len(b))
+		within(t, 5*time.Second, s, func() {
+			for _, lang := range []string{"go", "py", "js", "rs", "rb", "sh", "php", ""} {
+				a := lexCode(s, lang, true)
+				b := lexCode(s, lang, false)
+				_ = tight(a)
+				_ = foldLine(b)
+				// Only an unterminated triple quote can add closing quotes: a few bytes.
+				if len(a) > len(s)+8 || len(b) > len(s)+8 {
+					t.Fatalf("lexCode grew the input: %d -> %d/%d", len(s), len(a), len(b))
+				}
 			}
-		}
+		})
 	})
 }
 
@@ -72,22 +87,26 @@ func FuzzShellAndPaths(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		_ = parseShell(s)
-		_ = shellWriteTargets(s)
-		_ = parseVerifier(s)
-		_ = commandCore(s)
-		_ = refsIn(s)
-		_ = scanLiterals(s)
-		_, _ = unquoteGit(s)
-		_, _ = cleanRel(s)
-		_ = cleanAbs(s)
-		_ = outsideReason(s, nil)
-		_ = outsideReason(s, []string{"/work"})
-		g := compileGlobs([]string{s, "*.go", "a/**/b"})
-		_, _ = g.match(s)
-		_, _ = parsePatch(s)
-		_ = normalizeText(s)
-		_ = patchPaths(s)
+		within(t, 5*time.Second, s, func() {
+			_ = parseShell(s)
+			_ = shellWriteTargets(s)
+			_ = parseVerifier(s)
+			_ = commandCore(s)
+			_ = refsIn(s)
+			_ = scanLiterals(s)
+			_, _ = unquoteGit(s)
+			_, _ = cleanRel(s)
+			_ = cleanAbs(s)
+			_ = outsideReason(s, nil)
+			_ = outsideReason(s, []string{"/work"})
+			g := compileGlobs([]string{s, "*.go", "a/**/b"})
+			_, _ = g.match(s)
+			_, _ = g.matchAnywhere(s)
+			_, _, _ = protectedTarget(g, s, nil)
+			_, _ = parsePatch(s)
+			_ = normalizeText(s)
+			_ = patchPaths(s)
+		})
 	})
 }
 
@@ -96,11 +115,25 @@ func FuzzScoreDiff(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
+		start := time.Now()
+		defer func() {
+			if d := time.Since(start); d > 10*time.Second {
+				t.Errorf("scoring a %d-byte input took %v: %q", len(s), d, clipText(s, 200))
+			}
+		}()
 		ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""), withObs(bashObs(s, s), writeObs(s)))))
 		h := core.HashString(s)
 		ep.Outcome.Diff = h
 		task := &rl.Task{Prompt: s, Verifier: rl.Verifier{Cmd: s, Protected: []string{"*_test.go", s}, Hidden: map[string]string{"h_test.go": "text:" + s}}, Repo: rl.RepoSpec{URL: s}}
-		if err := Score(ep, task, DefaultConfig(), DiffMap{h: s}); err != nil {
+		err := Score(ep, task, DefaultConfig(), DiffMap{h: s})
+		if len(s) > maxPatternBytes {
+			// An over-long protected pattern is refused, not silently dropped.
+			if err == nil || !strings.Contains(err.Error(), "task.verifier.protected[1]") {
+				t.Fatalf("over-long protected pattern (%d bytes) was not refused: %v", len(s), err)
+			}
+			return
+		}
+		if err != nil {
 			t.Fatalf("Score failed on fuzz input: %v", err)
 		}
 		if !finite(ep.Reward.Total) {

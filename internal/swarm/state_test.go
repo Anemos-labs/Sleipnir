@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -1004,5 +1005,74 @@ func TestWaitDigestReportsAlertsEvenWhenTheListIsFull(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("a new lease-conflict alert was raised but the wait digest is %q", digest)
+	}
+}
+
+// "The log is the truth": replaying the board.op events of a session rebuilds the
+// board (tasks, agents, notes) exactly, however it got there.
+func TestBoardIsRebuiltFromTheLog(t *testing.T) {
+	log := events.NewMemLog()
+	b := NewBoard(log)
+	b.SetLimits(BoardLimits{MaxNotes: 4, MaxNotesPerAgent: 6})
+	t1, _ := b.CreateTask("mgr", TaskSpec{Title: "paginate /users", Desc: "cursor based\nkeep the old params", Role: "backend", Files: []string{"api/**"}})
+	t2, _ := b.CreateTask("mgr", TaskSpec{Title: "table UI", Deps: []string{t1.ID}, Files: []string{"web/**"}})
+	t3, _ := b.CreateTask("mgr", TaskSpec{Title: "docs"})
+	spawned, err := b.assignTask(assignReq{by: "mgr", agent: "fs-1", spec: TaskSpec{Title: "spawned with a title", Desc: "brief"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = b.Assign("mgr", "be-1", t1.ID)
+	_ = b.Update("be-1", t1.ID, "wrote the handler")
+	_ = b.Submit("be-1", t1.ID, "cursor pagination", "edited 2; last test passed")
+	if _, err := b.SendBack("mgr", t1.ID, "add a test"); err != nil {
+		t.Fatal(err)
+	}
+	_ = b.Submit("be-1", t1.ID, "with a test", "edited 3")
+	_ = b.Accept("mgr", t1.ID, "lgtm")
+	_ = b.Claim("fe-1", t2.ID)
+	_ = b.Block("fe-1", t2.ID, "waiting for the API")
+	_ = b.Unblock("mgr", t2.ID)
+	_ = b.SetScope("mgr", t2.ID, []string{"web/**", "docs/ui.md"}, nil)
+	_, _ = b.Requeue("fe-1", t2.ID, 0, "crashed", true, 3)
+	_ = b.Assign("mgr", "dc-1", t3.ID)
+	_ = b.Fail("mgr", t3.ID, "not needed")
+	_ = b.Reopen("mgr", t3.ID)
+	_ = b.Assign("mgr", "dc-2", t3.ID)
+	_ = b.RequeueOwned("dc-2", "its worker was retired")
+	_ = b.Assign("mgr", "be-3", spawned.ID)
+	for i, a := range []AgentInfo{
+		{ID: "be-1", Role: "backend", State: "idle", Task: t1.ID},
+		{ID: "fe-1", Role: "frontend", State: "running", Line: "reading files", CtxTokens: 1200, CostUSD: 0.42},
+		{ID: "mgr", Role: "manager", State: "running"},
+		{ID: "fe-1", Role: "frontend", State: "failed", Line: "crashed"},
+		{ID: "dc-9", Role: "docs", State: "idle"},
+	} {
+		_ = i
+		b.SetAgent(a)
+	}
+	b.RemoveAgent("dc-9")
+	for i := 0; i < 6; i++ { // more notes than the buffer holds: the oldest are evicted
+		_, _ = b.AddNote(fmt.Sprintf("be-%d", i%3), "shared", "", fmt.Sprintf("fact %d", i))
+	}
+	_, _ = b.AddNote("fe-1", "role", "frontend", "use the design tokens")
+	b.TakeNotes(b.Snapshot().Notes[0].ID)
+	b.RaiseAlert("lease", "transient") // alerts are not rebuilt
+
+	live := b.Snapshot()
+	got, err := ReplayBoard(log.All())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Version != live.Version {
+		t.Errorf("version %d, live %d", got.Version, live.Version)
+	}
+	if !reflect.DeepEqual(got.Tasks, live.Tasks) {
+		t.Errorf("tasks differ:\n replay: %+v\n live:   %+v", got.Tasks, live.Tasks)
+	}
+	if !reflect.DeepEqual(got.Agents, live.Agents) {
+		t.Errorf("agents differ:\n replay: %+v\n live:   %+v", got.Agents, live.Agents)
+	}
+	if !reflect.DeepEqual(got.Notes, live.Notes) {
+		t.Errorf("notes differ:\n replay: %+v\n live:   %+v", got.Notes, live.Notes)
 	}
 }

@@ -42,6 +42,10 @@ var (
 	ErrTooLarge = errors.New("workspace: too large")
 	// ErrUnsupported: the operation does not apply to this kind of workspace.
 	ErrUnsupported = errors.New("workspace: unsupported")
+	// ErrNestedRepo: a directory in the tree is a git repository of its own, which
+	// cannot be recorded (git would store a bare pointer to a commit that exists
+	// nowhere the project can get it).
+	ErrNestedRepo = errors.New("workspace: nested git repository")
 )
 
 var (

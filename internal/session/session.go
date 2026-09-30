@@ -65,6 +65,12 @@ type Options struct {
 	// ID names the session; Dir is where events.jsonl and blobs/ live (default
 	// <state>/sessions/<id>).
 	ID, Dir string
+	// Resume continues an earlier single-agent session instead of starting a new
+	// one: a session id, a session directory, or "latest" (the newest session of
+	// this project). The conversation, notes and spine come back from the newest
+	// snapshot, the log and checkpoints continue in the same directory, and the
+	// first request re-writes the cached prefix once (see agent.Snapshot).
+	Resume string
 
 	// Permissions.
 	Mode     perm.Mode
@@ -189,6 +195,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
+	if o.Resume != "" {
+		dir, err := ResolveResume(o.Home, o.Root, o.Resume)
+		if err != nil {
+			return nil, err
+		}
+		if o.Swarm {
+			return nil, errors.New("resuming a swarm session is not supported yet")
+		}
+		o.Dir, o.ID = dir, filepath.Base(dir)
+	}
 	cfg := o.Config
 	if cfg == nil {
 		var err error
@@ -269,6 +285,12 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if err := s.build(); err != nil {
 		s.Log.Close()
 		return nil, err
+	}
+	if o.Resume != "" {
+		if err := s.restore(); err != nil {
+			s.Log.Close()
+			return nil, fmt.Errorf("resume: %w", err)
+		}
 	}
 	return s, nil
 }
@@ -632,6 +654,9 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 		if len(s.opts.Meta) > 0 {
 			start["meta"] = s.opts.Meta
 		}
+		if s.opts.Resume != "" {
+			start["resumed"] = true
+		}
 		s.Log.Emit("", events.TypeSessionStart, start)
 	}
 	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(goal, 60)))
@@ -669,6 +694,30 @@ func oneLine(s string, n int) string {
 		s = s[:n] + "…"
 	}
 	return s
+}
+
+// Compact folds the agent's (or the manager's) thread now, at the user's request,
+// with an optional word on what matters most. PreCompact and PostCompact hooks run
+// around it (trigger "manual"); a PreCompact hook can refuse.
+func (s *Session) Compact(ctx context.Context, focus string) (agent.CompactReport, error) {
+	a := s.Agent
+	if s.Swarm != nil {
+		a = s.Swarm.Manager()
+	}
+	if a == nil {
+		return agent.CompactReport{Mode: "none"}, errors.New("nothing to compact yet: send a goal first")
+	}
+	if s.hookAdapter != nil {
+		res := s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.PreCompact, Agent: a.ID(), Extra: map[string]any{"trigger": "manual"}})
+		if res.Blocked {
+			return agent.CompactReport{Mode: "none"}, fmt.Errorf("blocked by a hook: %s", firstNonEmpty(res.Reason, "no reason given"))
+		}
+	}
+	rep, err := a.CompactNow(ctx, focus)
+	if err == nil && s.hookAdapter != nil {
+		s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.PostCompact, Agent: a.ID(), Extra: map[string]any{"trigger": "manual"}})
+	}
+	return rep, err
 }
 
 // Send steers a running agent (or the manager) with a message at its next turn

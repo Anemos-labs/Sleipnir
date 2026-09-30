@@ -229,16 +229,17 @@ Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
 release), `governor` (rate-limit episodes), `swarm.budget`, compaction and cache events. A `board.op` names its operation
 (`create`, `claim`, `assign`, `update`, `scope`, `finish`, `block`, `resume`, `requeue`, `agent`, `agent-remove`,
-`note`, `notes-take`, `alert`, `alert-clear`, `alert-expire`), the new version, and its operands (task, status, owner,
-title, line, result, files, ...), and events keep the order of the versions. `sleipnir inspect` shows the live board,
+`note`, `notes-take`, `alert`, `alert-clear`, `alert-expire`), the new version, and its operands (the task's status,
+owner, line, result, evidence, attempts, rev and scope, plus title, description, role and dependencies at creation; an
+agent's whole status; a note's text and scope), and events keep the order of the versions. `sleipnir inspect` shows the live board,
 per-agent context and hit ratio, mail and lease activity, and compaction timelines; the same log is the RL training
 corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction edges) is preserved.
 
 ## 12. Not implemented, and known gaps
 
 * The `mailman` mode (section 5).
-* Restoring the board from the event log after a crash: the log carries what is needed (operands on every `board.op`),
-  nothing replays it yet.
+* Resuming a session's board after a crash: `ReplayBoard` rebuilds tasks, the roster and pending notes exactly from the
+  `board.op` events (a test holds it to that), but nothing calls it at startup yet; alerts are transient and not rebuilt.
 * On a cold prefix a higher-priority follower (the manager) can wait behind a worker-priority primer, because the warm
   gate is entered before the governor; the fix belongs in the agent's request path or the gate.
 * The manager is not woken by a worker's completion once its own run has ended; it sees the board at its next turn.

@@ -286,34 +286,28 @@ func (d *draft) set(k string, v any) {
 	d.evt[k] = v
 }
 
-// setTask records the task operands (id, status, owner, ...) of the operation.
+// setTask records the mutable state of a task on the operation's event: enough, with
+// the operands of its creation, to rebuild the task from the log (ReplayBoard).
 func (d *draft) setTask(t Task) {
 	d.set("task", t.ID)
 	d.set("status", string(t.Status))
-	if t.Owner != "" {
-		d.set("owner", t.Owner)
-	}
-	if t.Title != "" {
-		d.set("title", t.Title)
-	}
-	if t.Line != "" {
-		d.set("line", t.Line)
-	}
-	if t.Result != "" {
-		d.set("result", t.Result)
-	}
-	if len(t.Files) > 0 {
-		d.set("files", t.Files)
-	}
-	if len(t.Deps) > 0 {
-		d.set("deps", t.Deps)
-	}
-	if t.Role != "" {
-		d.set("role", t.Role)
-	}
-	if t.Attempts > 0 {
-		d.set("attempts", t.Attempts)
-	}
+	d.set("owner", t.Owner)
+	d.set("line", t.Line)
+	d.set("result", t.Result)
+	d.set("evidence", t.Evidence)
+	d.set("attempts", t.Attempts)
+	d.set("rev", t.Rev)
+	d.set("files", t.Files)
+}
+
+// setNewTask is setTask for a task that has just been created: it also records the
+// fields that never change afterwards.
+func (d *draft) setNewTask(t Task) {
+	d.setTask(t)
+	d.set("title", t.Title)
+	d.set("desc", t.Desc)
+	d.set("role", t.Role)
+	d.set("deps", t.Deps)
 }
 
 // mutate applies fn to a copy of the snapshot, bumps the version and publishes.
@@ -459,7 +453,7 @@ func (b *Board) CreateTask(by string, spec TaskSpec) (Task, error) {
 			return err
 		}
 		out = t
-		d.setTask(t)
+		d.setNewTask(t)
 		return nil
 	})
 	return out, err
@@ -584,7 +578,11 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 		}
 		t.Owner, t.Status, t.Line, t.Rev = r.agent, StatusDoing, "", d.Version
 		d.tasks()[i] = t
-		d.setTask(t)
+		if r.id == "" {
+			d.setNewTask(t)
+		} else {
+			d.setTask(t)
+		}
 		out = t
 		return nil
 	})
@@ -888,6 +886,17 @@ func (b *Board) Unblock(by, id string) error {
 	})
 }
 
+// setAgent records an agent's whole status on the operation's event.
+func (d *draft) setAgent(a AgentInfo) {
+	d.set("agent", a.ID)
+	d.set("role", a.Role)
+	d.set("state", a.State)
+	d.set("task", a.Task)
+	d.set("line", a.Line)
+	d.set("ctx_tokens", a.CtxTokens)
+	d.set("cost_usd", a.CostUSD)
+}
+
 // SetAgent upserts an agent's status. Republishing an identical status is a no-op.
 func (b *Board) SetAgent(info AgentInfo) {
 	info.Line = cleanText(info.Line, 70)
@@ -898,16 +907,14 @@ func (b *Board) SetAgent(info AgentInfo) {
 					return errNoChange
 				}
 				d.agents()[i] = info
-				d.set("agent", info.ID)
-				d.set("state", info.State)
+				d.setAgent(info)
 				return nil
 			}
 		}
 		as := append(d.agents(), info)
 		sort.Slice(as, func(i, j int) bool { return as[i].ID < as[j].ID })
 		d.Agents = as
-		d.set("agent", info.ID)
-		d.set("state", info.State)
+		d.setAgent(info)
 		return nil
 	})
 }
@@ -956,6 +963,7 @@ func (b *Board) RequeueOwned(agent, reason string) []Task {
 			ids[i] = t.ID
 		}
 		d.set("tasks", ids)
+		d.set("line", cleanText(reason, maxLineRunes))
 		return nil
 	})
 	return out
@@ -996,11 +1004,18 @@ func (b *Board) AddNote(from, scope, role, text string) (int, error) {
 		id = b.note
 		ns := append(d.notes(), Note{ID: id, From: from, Scope: scope, Role: role, Text: text})
 		if over := len(ns) - b.lim.MaxNotes; over > 0 {
+			evicted := make([]int, over)
+			for i := 0; i < over; i++ {
+				evicted[i] = ns[i].ID
+			}
+			d.set("evicted", evicted)
 			ns = append([]Note(nil), ns[over:]...)
 		}
 		d.Notes = ns
 		d.set("note", id)
 		d.set("text", text)
+		d.set("scope", scope)
+		d.set("role", role)
 		return nil
 	})
 	return id, err

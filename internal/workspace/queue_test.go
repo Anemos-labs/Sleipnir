@@ -1311,3 +1311,62 @@ func TestTheIntegrationTreeBelongsToTheQueueNotToTheAgents(t *testing.T) {
 	}
 	e.integrationClean()
 }
+
+// A git repository inside an agent's tree (a clone made for reference, say) cannot
+// be recorded: git would store a pointer to a commit that no clone of the project
+// can fetch. It is refused with a reason the agent can act on, like an oversized
+// file, instead of becoming history; ignoring it, or removing it, lets the rest in.
+func TestNestedRepositoriesAreRefusedNotRecordedAsBrokenPointers(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a := e.agent("a")
+	edit(t, a, "keep.txt", "keep\n")
+	nested := filepath.Join(a.Path, "deps", "lib")
+	must(t, os.MkdirAll(nested, 0o755))
+	rawGit(t, nested, "init", "-q", "-b", "main", ".")
+	writeFile(t, filepath.Join(nested, "lib.go"), "package lib\n")
+	rawGit(t, nested, "add", "-A")
+	rawGit(t, nested, "commit", "-q", "-m", "lib")
+	head, _ := a.Head(tctx(t))
+
+	_, err := a.Commit(tctx(t), "work")
+	var nr *NestedRepoError
+	if !errors.Is(err, ErrNestedRepo) || !errors.As(err, &nr) || len(nr.Paths) != 1 || nr.Paths[0] != "deps/lib" {
+		t.Fatalf("Commit with a nested repository: %v", err)
+	}
+	if after, _ := a.Head(tctx(t)); after != head {
+		t.Fatal("a refused commit still moved the branch")
+	}
+	r := e.submit(a, "a")
+	if r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "git repositories of their own") || !strings.Contains(r.Reason, "deps/lib") {
+		t.Fatalf("submission with a nested repository: %+v", r)
+	}
+	if e.q.Tip() != r.Before {
+		t.Fatal("the tip moved on a rejected submission")
+	}
+
+	// listed in .gitignore, the repository is not part of the tree's content
+	edit(t, a, ".gitignore", "deps/\n")
+	r = e.submit(a, "a again")
+	if !r.Merged() {
+		t.Fatalf("after ignoring it: %+v", r)
+	}
+	ls := rawGit(t, e.q.tree.Path, "ls-files", "-s")
+	if strings.Contains(ls, "160000") || strings.Contains(ls, "deps") || !strings.Contains(ls, "keep.txt") {
+		t.Fatalf("what was integrated:\n%s", ls)
+	}
+	e.integrationClean()
+
+	// and a plain removal works as well
+	b := e.agent("b")
+	edit(t, b, "b.txt", "b\n")
+	inner := filepath.Join(b.Path, "clone")
+	must(t, os.MkdirAll(inner, 0o755))
+	rawGit(t, inner, "init", "-q", "-b", "main", ".")
+	if r := e.submit(b, "b"); r.Outcome != OutcomeRejected {
+		t.Fatalf("b: %+v", r)
+	}
+	must(t, os.RemoveAll(inner))
+	if r := e.submit(b, "b again"); !r.Merged() {
+		t.Fatalf("b after removing the clone: %+v", r)
+	}
+}

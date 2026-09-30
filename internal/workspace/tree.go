@@ -120,8 +120,9 @@ func (e *TooLargeError) Is(target error) bool { return target == ErrTooLarge }
 // Commit records everything the agent changed on the tree's branch and returns
 // the new commit, or "" with a nil error when there was nothing to commit. The
 // commit is attributed to the agent, is unsigned, and runs no hooks. Files larger
-// than Manager.MaxFileBytes are refused (TooLargeError), and so are unresolved
-// conflict markers left by Update.
+// than Manager.MaxFileBytes are refused (TooLargeError), and so are directories
+// that are git repositories of their own (NestedRepoError) and unresolved conflict
+// markers left by Update.
 func (t *Tree) Commit(ctx context.Context, msg string) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -148,10 +149,10 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 	return sha, nil
 }
 
-// checkFileSizes refuses to record files above the limit: once in history they
-// stay in the repository for good.
+// checkFileSizes refuses to record what must not become history: files above the
+// size limit and nested repositories.
 func (t *Tree) checkFileSizes(ctx context.Context) error {
-	return t.m.checkSizes(ctx, t.repo, t.Path)
+	return t.m.checkCommittable(ctx, t.repo, t.Path)
 }
 
 // Reset returns the tree to Base: tracked files are restored, commits made since

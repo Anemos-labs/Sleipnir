@@ -30,4 +30,11 @@
 //   - Score never mutates prompts, and on error leaves the episode untouched.
 //   - Everything is deterministic: sorted iteration, no clocks, no randomness
 //     (probe sampling is a hash of episode and step ids).
+//   - Input is hostile. Diffs, commands, paths and tool output are written by
+//     the policy being trained, so every detector runs in time linear in its
+//     input (single passes, no per-prefix or per-suffix rescans) and the few
+//     inherently pairwise steps have explicit budgets that fail towards
+//     "suspicious". Protected patterns longer than 1 KiB are refused. The
+//     tests in scaling_test.go pin the growth rate of each detector that once
+//     met an input it could not take.
 package reward
