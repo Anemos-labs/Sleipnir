@@ -1,0 +1,759 @@
+{
+ "data": [
+  {
+   "id": "convaiinnovations/laya",
+   "canonical_slug": "convaiinnovations/laya",
+   "hugging_face_id": "convaiinnovations/laya",
+   "name": "Convai: Laya",
+   "created": 1789707955,
+   "expiration_date": null,
+   "description": "Multilingual, non-autoregressive System 1 decision model. Give it a state (text, email, ticket, or JSON) and typed questions; it returns typed answers with mathematically calibrated probabilities in a single forward pass (33 ms) across 100+ languages. Trained with reinforcement learning against strictly proper scoring rules (RLCD), so reporting honest probabilities is the only way to maximise reward. It never generates text, so there is nothing to parse and nothing to hallucinate.",
+   "context_length": 512,
+   "architecture": {
+    "modality": "text->decisions",
+    "input_modalities": [
+     "text"
+    ],
+    "output_modalities": [
+     "decisions"
+    ],
+    "tokenizer": null,
+    "instruct_type": null
+   },
+   "license": "apache-2.0",
+   "parameter_count": 421000000,
+   "weights_dtype": "F16",
+   "pricing": {
+    "prompt": "0.0000000042",
+    "discount": 0.9
+   },
+   "top_provider": {
+    "context_length": 512,
+    "max_completion_tokens": null,
+    "is_moderated": false
+   },
+   "per_request_limits": null,
+   "supported_parameters": [],
+   "default_parameters": {},
+   "family": {
+    "id": "convaiinnovations/laya",
+    "name": "Convai: Laya"
+   },
+   "author": "convaiinnovations",
+   "tags": [
+    "calibrated-decisions",
+    "classification",
+    "decisions",
+    "guardrails",
+    "laya",
+    "moderation",
+    "reinforcement-learning",
+    "rlcd",
+    "routing",
+    "scoring",
+    "system-one",
+    "text-classification"
+   ],
+   "endpoint_count": 1,
+   "links": {
+    "details": "/api/v1/models/convaiinnovations/laya/endpoints"
+   },
+   "supported_voices": null,
+   "supported_dimensions": null,
+   "supported_languages": null,
+   "hugging_face": {
+    "id": "convaiinnovations/laya",
+    "read_at": 1790337942,
+    "availability": "public"
+   }
+  },
+  {
+   "id": "deepseek/deepseek-v4.1-flash",
+   "canonical_slug": "deepseek/deepseek-v4.1-flash",
+   "hugging_face_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+   "name": "deepseek-ai: DeepSeek-V4.1-Flash",
+   "created": 1789006678,
+   "expiration_date": null,
+   "description": "We introduce DeepSeek-V4.1-Flash, a multimodal Mixture-of-Experts (MoE) model with 552B backbone parameters and support for contexts of up to one million tokens. The model natively processes images and text, and generates text autoregressively.",
+   "context_length": 1048576,
+   "architecture": {
+    "modality": "text+image->text",
+    "input_modalities": [
+     "text",
+     "image"
+    ],
+    "output_modalities": [
+     "text"
+    ],
+    "tokenizer": null,
+    "instruct_type": null
+   },
+   "license": "mit",
+   "parameter_count": 763205315794,
+   "weights_dtype": "I8",
+   "pricing": {
+    "prompt": "0.000000005",
+    "completion": "0.00000001",
+    "input_cache_read": "0.00000000125",
+    "discount": 0.9
+   },
+   "top_provider": {
+    "context_length": 1048576,
+    "max_completion_tokens": 131072,
+    "is_moderated": false
+   },
+   "per_request_limits": null,
+   "supported_parameters": [
+    "frequency_penalty",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "parameter_offers": [
+    {
+     "text": {
+      "seed": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 2147483647
+      },
+      "stop": {
+       "type": "array",
+       "items": {}
+      },
+      "min_p": {
+       "default": 0,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "tools": {
+       "type": "boolean"
+      },
+      "top_k": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 200
+      },
+      "top_p": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "max_tokens": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 131072
+      },
+      "temperature": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2
+      },
+      "tool_choice": {},
+      "response_format": {},
+      "presence_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      },
+      "reasoning_effort": {
+       "default": "medium",
+       "type": "string",
+       "enum": [
+        "none",
+        "low",
+        "medium",
+        "high"
+       ]
+      },
+      "frequency_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      },
+      "repetition_penalty": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2
+      }
+     }
+    }
+   ],
+   "reasoning": {
+    "supported_efforts": [
+     "high",
+     "medium",
+     "low",
+     "none"
+    ],
+    "mandatory": false,
+    "default_effort": "medium",
+    "default_enabled": true
+   },
+   "default_parameters": {},
+   "family": {
+    "id": "deepseek/deepseek-v4.1-flash",
+    "name": "deepseek-ai: DeepSeek-V4.1-Flash"
+   },
+   "author": "deepseek",
+   "tags": [
+    "8-bit",
+    "deepseek_v41",
+    "eval-results",
+    "fp8",
+    "image-text-to-text",
+    "reasoning",
+    "text-generation",
+    "tools"
+   ],
+   "endpoint_count": 1,
+   "links": {
+    "details": "/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints"
+   },
+   "supported_voices": null,
+   "supported_dimensions": null,
+   "supported_languages": null,
+   "hugging_face": {
+    "id": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "read_at": 1790529507,
+    "availability": "public",
+    "weights_revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+    "weights_updated_at": 1789028290,
+    "downloads": 496684,
+    "likes": 3399
+   }
+  },
+  {
+   "id": "zai-org/glm-5.3-flash",
+   "canonical_slug": "zai-org/glm-5.3-flash",
+   "hugging_face_id": "JANGQ-AI/GLM-5.3-Flash-W4A16",
+   "name": "zai-org: GLM-5.3-Flash",
+   "created": 1788090016,
+   "expiration_date": null,
+   "description": "GLM-5.3-Flash \u2014 195 GB on disk (down from the 643 GB BF16 source) \u2014 INT4 W4A16 quantization of the routed experts in compressed-tensors pack-quantized format, for Hopper (H100 / H200) via vLLM Marlin kernels.",
+   "context_length": 1048576,
+   "architecture": {
+    "modality": "text+image->text",
+    "input_modalities": [
+     "text",
+     "image"
+    ],
+    "output_modalities": [
+     "text"
+    ],
+    "tokenizer": null,
+    "instruct_type": null
+   },
+   "license": "glm-5.3",
+   "parameter_count": 321323031390,
+   "weights_dtype": "I32",
+   "pricing": {
+    "prompt": "0.00000001",
+    "completion": "0.000000025",
+    "input_cache_read": "0.0000000025",
+    "discount": 0.9
+   },
+   "top_provider": {
+    "context_length": 1048576,
+    "max_completion_tokens": 65536,
+    "is_moderated": false
+   },
+   "per_request_limits": null,
+   "supported_parameters": [
+    "frequency_penalty",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "parameter_offers": [
+    {
+     "text": {
+      "seed": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 2147483647
+      },
+      "stop": {
+       "type": "array",
+       "items": {}
+      },
+      "min_p": {
+       "default": 0,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "tools": {
+       "type": "boolean"
+      },
+      "top_k": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 200
+      },
+      "top_p": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "max_tokens": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65536
+      },
+      "temperature": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2
+      },
+      "tool_choice": {},
+      "response_format": {},
+      "presence_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      },
+      "reasoning_effort": {
+       "default": "medium",
+       "type": "string",
+       "enum": [
+        "none",
+        "low",
+        "medium",
+        "high"
+       ]
+      },
+      "frequency_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      },
+      "repetition_penalty": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2
+      }
+     }
+    }
+   ],
+   "reasoning": {
+    "supported_efforts": [
+     "high",
+     "medium",
+     "low",
+     "none"
+    ],
+    "mandatory": false,
+    "default_effort": "medium",
+    "default_enabled": true
+   },
+   "default_parameters": {
+    "temperature": 1,
+    "top_p": 0.95,
+    "repetition_penalty": 1.1
+   },
+   "family": {
+    "id": "zai-org/glm-5.3-flash",
+    "name": "GLM-5.3-Flash"
+   },
+   "author": "zai-org",
+   "tags": [
+    "compressed-tensors",
+    "glm",
+    "glm5-next",
+    "glm5_next",
+    "image-text-to-text",
+    "int4",
+    "jang",
+    "marlin",
+    "reasoning",
+    "tools",
+    "vllm",
+    "w4a16"
+   ],
+   "endpoint_count": 1,
+   "links": {
+    "details": "/api/v1/models/zai-org/glm-5.3-flash/endpoints"
+   },
+   "supported_voices": null,
+   "supported_dimensions": null,
+   "supported_languages": null,
+   "hugging_face": {
+    "id": "JANGQ-AI/GLM-5.3-Flash-W4A16",
+    "read_at": 1790529506,
+    "availability": "public",
+    "languages": [
+     "en",
+     "zh"
+    ],
+    "weights_revision": "c798f2dafb360369f8a824db510fc93c275526eb",
+    "weights_updated_at": 1788326265,
+    "downloads": 271,
+    "likes": 1
+   }
+  },
+  {
+   "id": "qwen/qwen3.8-27b",
+   "canonical_slug": "qwen/qwen3.8-27b",
+   "hugging_face_id": null,
+   "name": "Qwen: Qwen3.8 27B",
+   "created": 1787875200,
+   "expiration_date": null,
+   "description": null,
+   "context_length": 262144,
+   "architecture": {
+    "modality": "text+image->text",
+    "input_modalities": [
+     "text",
+     "image"
+    ],
+    "output_modalities": [
+     "text"
+    ],
+    "tokenizer": null,
+    "instruct_type": null
+   },
+   "license": null,
+   "parameter_count": null,
+   "weights_dtype": null,
+   "pricing": {
+    "prompt": "0.000000041",
+    "completion": "0.00000025",
+    "input_cache_read": "0.00000001025",
+    "discount": 0.9
+   },
+   "top_provider": {
+    "context_length": 262144,
+    "max_completion_tokens": 65536,
+    "is_moderated": false
+   },
+   "per_request_limits": null,
+   "supported_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "parameter_offers": [
+    {
+     "text": {
+      "seed": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 2147483647
+      },
+      "stop": {
+       "type": "array",
+       "items": {}
+      },
+      "min_p": {
+       "default": 0,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "tools": {
+       "type": "boolean"
+      },
+      "top_k": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 200
+      },
+      "top_p": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "logprobs": {
+       "type": "boolean"
+      },
+      "logit_bias": {},
+      "max_tokens": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65536
+      },
+      "temperature": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2
+      },
+      "tool_choice": {},
+      "response_format": {},
+      "presence_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      },
+      "reasoning_effort": {
+       "default": "medium",
+       "type": "string",
+       "enum": [
+        "none",
+        "low",
+        "medium",
+        "high"
+       ]
+      },
+      "frequency_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      },
+      "repetition_penalty": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2
+      }
+     }
+    }
+   ],
+   "reasoning": {
+    "supported_efforts": [
+     "high",
+     "medium",
+     "low",
+     "none"
+    ],
+    "mandatory": false,
+    "default_effort": "medium",
+    "default_enabled": true
+   },
+   "default_parameters": {},
+   "family": {
+    "id": "qwen/qwen3.8-27b",
+    "name": "Qwen3.8-27B"
+   },
+   "author": "qwen",
+   "tags": [],
+   "endpoint_count": 1,
+   "links": {
+    "details": "/api/v1/models/qwen/qwen3.8-27b/endpoints"
+   },
+   "supported_voices": null,
+   "supported_dimensions": null,
+   "supported_languages": null
+  },
+  {
+   "id": "openai/gpt-oss-20b",
+   "canonical_slug": "openai/gpt-oss-20b",
+   "hugging_face_id": "openai/gpt-oss-20b",
+   "name": "openai: gpt-oss-20b",
+   "created": 1754346809,
+   "expiration_date": null,
+   "description": "Welcome to the gpt-oss series, OpenAI\u2019s open-weight models designed for powerful reasoning, agentic tasks, and versatile developer use cases.",
+   "context_length": 131072,
+   "architecture": {
+    "modality": "text->text",
+    "input_modalities": [
+     "text"
+    ],
+    "output_modalities": [
+     "text"
+    ],
+    "tokenizer": null,
+    "instruct_type": null
+   },
+   "license": "apache-2.0",
+   "parameter_count": 20914757184,
+   "weights_dtype": "U8",
+   "pricing": {
+    "prompt": "0.000000004",
+    "completion": "0.000000019",
+    "input_cache_read": "0.000000001",
+    "internal_reasoning": "0",
+    "discount": 0.9
+   },
+   "top_provider": {
+    "context_length": 131072,
+    "max_completion_tokens": 32768,
+    "is_moderated": false
+   },
+   "per_request_limits": null,
+   "supported_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning_effort",
+    "response_format",
+    "seed",
+    "stop",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "parameter_offers": [
+    {
+     "text": {
+      "seed": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 2147483647
+      },
+      "stop": {
+       "type": "array",
+       "items": {}
+      },
+      "min_p": {
+       "default": 0,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "tools": {
+       "type": "boolean"
+      },
+      "top_k": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 200
+      },
+      "top_p": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "logprobs": {
+       "type": "boolean"
+      },
+      "logit_bias": {},
+      "max_tokens": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 32768
+      },
+      "temperature": {
+       "default": 1,
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2
+      },
+      "tool_choice": {},
+      "response_format": {},
+      "presence_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      },
+      "reasoning_effort": {
+       "default": "medium",
+       "type": "string",
+       "enum": [
+        "low",
+        "medium",
+        "high"
+       ]
+      },
+      "frequency_penalty": {
+       "default": 0,
+       "type": "number",
+       "minimum": -2,
+       "maximum": 2
+      }
+     }
+    }
+   ],
+   "reasoning": {
+    "supported_efforts": [
+     "high",
+     "medium",
+     "low"
+    ],
+    "default_effort": "medium",
+    "default_enabled": true
+   },
+   "default_parameters": {},
+   "family": {
+    "id": "openai/gpt-oss-20b",
+    "name": "GPT-OSS 20B"
+   },
+   "author": "openai",
+   "tags": [
+    "8-bit",
+    "conversational",
+    "eval-results",
+    "gpt_oss",
+    "mxfp4",
+    "reasoning",
+    "text-generation",
+    "tools",
+    "vllm"
+   ],
+   "endpoint_count": 1,
+   "links": {
+    "details": "/api/v1/models/openai/gpt-oss-20b/endpoints"
+   },
+   "supported_voices": null,
+   "supported_dimensions": null,
+   "supported_languages": null,
+   "hugging_face": {
+    "id": "openai/gpt-oss-20b",
+    "read_at": 1790529505,
+    "availability": "public",
+    "papers": [
+     "2508.10925"
+    ],
+    "weights_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+    "weights_updated_at": 1756229147,
+    "downloads": 6658531,
+    "likes": 5074
+   }
+  }
+ ]
+}

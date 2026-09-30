@@ -130,16 +130,23 @@ var (
 )
 
 // Normalize maps gateway-style ids ("anthropic/claude-opus-5-5",
-// "claude-haiku-4-5-20251001") to the canonical id used in the table.
+// "claude-haiku-4-5-20251001") to the short canonical id: author prefix, date
+// suffix and dots removed, lower-cased.
 func Normalize(id string) string {
-	id = strings.TrimSpace(strings.ToLower(id))
+	id = normalizeFull(id)
 	if i := strings.LastIndex(id, "/"); i >= 0 {
 		id = id[i+1:]
 	}
+	return id
+}
+
+// normalizeFull keeps the author prefix, so two vendors' identically named
+// models do not collide in a marketplace catalogue.
+func normalizeFull(id string) string {
+	id = strings.TrimSpace(strings.ToLower(id))
 	id = dateSuffix.ReplaceAllString(id, "")
 	id = verSuffix.ReplaceAllString(id, "")
-	id = strings.ReplaceAll(id, ".", "-")
-	return id
+	return strings.ReplaceAll(id, ".", "-")
 }
 
 // Table is a set of models with lookup by (normalised) id.
@@ -149,25 +156,40 @@ type Table struct{ m map[string]Model }
 func NewTable(models ...Model) *Table {
 	t := &Table{m: map[string]Model{}}
 	for _, m := range models {
-		t.m[Normalize(m.ID)] = m
+		t.Put(m)
 	}
 	return t
 }
 
 // Lookup finds a model by id, tolerating provider prefixes and date suffixes.
+// An exact (author-qualified) match wins over the short form.
 func (t *Table) Lookup(id string) (Model, bool) {
+	if m, ok := t.m[normalizeFull(id)]; ok {
+		return m, true
+	}
 	m, ok := t.m[Normalize(id)]
 	return m, ok
 }
 
-// Put adds or replaces a model.
-func (t *Table) Put(m Model) { t.m[Normalize(m.ID)] = m }
+// Put adds or replaces a model. It is stored under its full id and, when free,
+// under the short id so "claude-opus-5-5" still finds "anthropic/claude-opus-5-5".
+func (t *Table) Put(m Model) {
+	full, short := normalizeFull(m.ID), Normalize(m.ID)
+	t.m[full] = m
+	if _, taken := t.m[short]; !taken || short == full {
+		t.m[short] = m
+	}
+}
 
-// All returns every model.
+// All returns every distinct model.
 func (t *Table) All() []Model {
+	seen := map[string]bool{}
 	out := make([]Model, 0, len(t.m))
 	for _, m := range t.m {
-		out = append(out, m)
+		if !seen[m.ID] {
+			seen[m.ID] = true
+			out = append(out, m)
+		}
 	}
 	return out
 }
