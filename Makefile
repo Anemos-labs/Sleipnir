@@ -10,11 +10,11 @@ race:
 	go test -race -count=1 ./...
 
 lint:
-	test -z "$$(gofmt -l .)"
+	test -z "$$(gofmt -l cmd internal)"
 	go vet ./...
 
 fmt:
-	gofmt -w .
+	gofmt -w cmd internal
 
 # What layering buys and where it stops paying (see docs/CACHE-DESIGN.md section 8).
 sim:

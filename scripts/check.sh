@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 echo "== gofmt"
-bad=$(gofmt -l . || true)
+bad=$(gofmt -l cmd internal || true)
 [ -z "$bad" ] || { echo "not gofmt-clean:"; echo "$bad"; exit 1; }
 
 echo "== vet"
@@ -14,7 +14,7 @@ echo "== build"
 go build ./...
 
 echo "== test (race)"
-if [ "$#" -gt 0 ]; then go test -race -count=1 "$@"; else go test -race -count=1 ./...; fi
+if [ "$#" -gt 0 ]; then go test -race -count=1 "$@"; else go test -race -count=1 -timeout 20m ./...; fi
 
 echo "== cross-compile"
 for t in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do

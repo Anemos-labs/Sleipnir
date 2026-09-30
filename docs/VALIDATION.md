@@ -21,7 +21,7 @@ gateway-reported cost (`usage.cost`) and the script stops when `--budget-usd` is
 | # | Step | Command | Pass criteria |
 |---|---|---|---|
 | 1 | **Endpoint profile** | `sleipnir doctor --model $MODEL --deep` | streaming, tools and usage reported; cached tokens reported; note granularity, minimum cached prefix and whether a parallel burst needs a warm-up |
-| 2 | **Steady-state cache** | single-agent task on a fixture repo (`scripts/fixtures/`), `sleipnir run --model $MODEL --mode accept-edits` | hit ratio >= 0.8 from the third request; no `cache.anomaly{drift}`; every prompt replays (`sleipnir rl verify`) |
+| 2 | **Steady-state cache** | single-agent task on a small fixture repo (the script creates it: a Go package with one failing test), `sleipnir run --model $MODEL --mode accept-edits` | hit ratio >= 0.8 from the third request; no `cache.anomaly{drift}`; every prompt replays (`sleipnir rl verify`) |
 | 3 | **Compaction recovery** | same task with `--context-window 24000` to force compactions | at least one commit; hit ratio >= 0.6 within 3 requests after each commit; the task still passes its tests |
 | 4 | **Swarm dispatch** | `sleipnir swarm 6 ...` on a multi-part task | workers' first-request hit ratio >= 0.5 (they read the manager-warmed prefix); requests/min under the endpoint limit; task board consistent (all tasks accepted); leases without conflicts |
 | 5 | **Cost vs the simulator** | `sleipnir sim --agents 6 --mode compare`, compared with the inspector's totals for step 4 | measured cost within 25% of the simulated layered bill, or the difference explained (the simulator is a model, not a benchmark; its assumptions are printed with its output) |
