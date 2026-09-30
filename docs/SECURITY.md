@@ -83,6 +83,11 @@ instruction files until you say `--trust-project`.
   exfiltrate what a command can read.
 * **The environment scrub is a heuristic** (names and value shapes), not a boundary; a credential with an unremarkable name
   and shape reaches commands.
+* **Worktree isolation is not a boundary either.** With `swarm.isolation: worktree` each writer edits a git worktree of its own and its work
+  reaches your checkout through a verifying merge queue; the permission engine hard-denies an isolated agent's access to the rest of the
+  workspace (the shared checkout, other agents' trees), in every mode, on resolved paths, for shell commands as well as file tools. That
+  keeps cooperating agents apart and every merge accounted for. A path a shell computes at run time cannot be resolved before it runs
+  and is left to the mode, as everywhere else, so a worker that is hostile and in `bypass` mode is not stopped by it: use a container.
 
 ## 2. What is scrubbed and hardened, per OS
 

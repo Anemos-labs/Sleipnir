@@ -27,43 +27,53 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 ## System map
 
 ```
- CLI / TUI / web inspector / headless JSON
+ CLI (chat · run · swarm · rl · inspect · …)  /  web inspector  /  headless JSON events
                 │
-            session ── config, memory files, permissions engine, checkpoints
+            session ── config (trust-gated layers), memory files, skills, hooks, MCP servers,
+                │      permission engine, checkpoints, one-writer session directory, resume
                 │
      ┌──────────┴───────────── swarm ─────────────────────────────┐
      │ manager ─ spawn/wait/task ─► workers (roles)                │
-     │ board (immutable snapshots)  mail router  leases  governor  │
-     │ warm gate                    hot view     curator(planned)  │
+     │ board (immutable snapshots)  mail router (+ optional mailman)│
+     │ leases + scopes   governor   warm gate   hot view            │
+     │ manager stop guard + wake                                    │
+     │ optional worktree isolation ─► verifying merge queue         │
      └──────────┬──────────────────────────────────────────────────┘
                 │ each agent
-             agent loop ── tools (fs, shell, web, recall, swarm, MCP) ─► workspace (shared | worktree)
+             agent loop ── tools (fs, shell, web, recall, skill, swarm, MCP) ─► workspace (shared | worktree)
                 │   render          ▲ compaction patches (fork of the agent's own request)
                 ▼                   │
                kv  ─ layers · stack · renderer · breakpoints · guard · patch/apply · planner · archive
                 │
-            provider adapters (openaichat · anthropic(planned) · responses(planned)) ─► endpoints
+            provider adapters (openaichat · anthropic) ─► endpoints        (openai-responses: not built)
                 │
         events (append-only JSONL) + blobs (content-addressed)   ◄── every layer above writes here
 ```
 
 ## Package map
 
+`docs/BUILDING.md` lists every package with its one-line job; this is how they fit together.
+
 | Package | Job |
 |---|---|
-| `internal/core` | provider-neutral vocabulary: `Turn`, `Block` (with verbatim `Wire`), `Prompt`, `Usage`, canonical JSON, token estimator |
-| `internal/events` | append-only event log (torn-tail recovery, group commit, lossy-but-never-blocking subscribers), blob store |
-| `internal/cost` | provider cache models, model prices, input-token-equivalent weights |
-| `internal/kv` | **the cache engine**: layers, stack, renderer, breakpoint planner, drift guard, compaction patch/apply/planner/fork, archive |
-| `internal/provider` | `Provider` interface, errors, SSE; `openaichat` adapter; `gateway` (marketplace catalogue); `probe` (endpoint doctor); `mock` (deterministic test servers; the chat-completions one models an *automatic* prefix cache only, and explicit-breakpoint caching lives in a separate engine, so a test passing against one says nothing about the other's rules) |
-| `internal/agent` | the loop: render → call (retry, governor, gate) → tools (parallel read-only, ordered writes) → boundary (compaction, epochs) |
-| `internal/swarm` | board, mail router (with the optional mailman that digests bursts, `swarm.mailman`), leases, governor, warm gate, hot view, roles, spawn/dispatch, coordination tools, evidence, the manager's stop guard and wake, worktree isolation |
-| `internal/tools` | tool contract, file-state staleness tracker, truncation with recall handles; `fs`, `shell`, `web`, `recall` |
-| `internal/perm` | permission modes/rules/prompter, role profiles; `internal/shellparse` for bash analysis |
+| `internal/core` | provider-neutral vocabulary: `Turn` (with an `Origin`: user, model, tool, mail, system, digest, task), `Block` (with verbatim `Wire`), `Prompt`, `Usage`, canonical JSON, token estimator |
+| `internal/events` | append-only event log (torn-tail recovery, group commit with a flush timer, lossy-but-never-blocking subscribers), blob store (hash-verified, private) |
+| `internal/cost` | provider cache models, model prices (validated at the boundary), input-token-equivalent weights |
+| `internal/kv` | **the cache engine**: layers, stack, renderer, breakpoint planner, drift guard, compaction patch/apply/planner/fork, archive, and the escaping that keeps text it did not write inert |
+| `internal/provider` | `Provider` interface, errors, SSE and stream limits, watchdog, endpoint rules (where a key may go); `openaichat` and `anthropic` adapters; `gateway` (marketplace catalogue); `probe` (endpoint doctor); `mock` (deterministic test servers; the chat-completions one models an *automatic* prefix cache only, and explicit-breakpoint caching lives in a separate engine, so a test passing against one says nothing about the other's rules) |
+| `internal/agent` | the loop: render → call (retry, governor, gate) → tools (parallel read-only, ordered writes, per-turn and per-call budgets) → boundary (compaction, epochs); snapshot and restore |
+| `internal/swarm` | board, mail router (and the optional mailman), leases, governor, warm gate, hot view, roles, spawn/dispatch, coordination tools, evidence, the manager's stop guard and wake, worktree isolation |
+| `internal/tools` | tool contract, file-state staleness tracker, truncation with recall handles; `fs`, `shell`, `web`, `recall`, `skilltool`; MCP tools join the same registry |
+| `internal/perm`, `internal/shellparse` | permission modes, rules, role profiles and confinement; bash analysis. Nothing defaults to allow-all |
+| `internal/harden` | the harness process made opaque to the commands it runs: non-dumpable, environment erasure, provider keys held in memory (`harden.Secret`) |
 | `internal/checkpoint` | pre-modification snapshots and rewind |
-| `internal/config`, `internal/memory` | layered JSONC config; AGENTS.md/CLAUDE.md-style instruction files → shared-layer text |
+| `internal/config`, `internal/memory` | layered JSONC config with trust gating of project layers; AGENTS.md/CLAUDE.md-style instruction files → shared-layer text |
+| `internal/skills`, `internal/commands`, `internal/agentdefs`, `internal/hooks`, `internal/mcp` | the ecosystem: skills (listing in the shared layer, bodies on demand), slash commands, markdown role definitions, hooks, the MCP client |
+| `internal/workspace`, `internal/gitx` | git worktrees per writer and the verifying merge queue; the only gateway to the git binary |
 | `internal/session` | assembles provider, tools, permissions, checkpoints, layers (constitution, shared pin from `recon` + instruction files, role pins), event log and one agent or a swarm; the CLI, the RL harness and tests all build sessions the same way |
-| `internal/rl` | RL vocabulary (`Episode`, `Step`, `Task`, rewards, flags) and its subpackages: `env` (tasks, isolated rollouts, clean-checkout verifier, task generators, eval, rollout server), `traj` (event log -> episode, exact prompt replay), `reward` (components, hack detectors, repricing, probes), `adv` (group advantages), `export` (steps, tokens, groups, sft, dpo, kto, atif), `redact`, `harness` (implements `env.Harness` on `session`: the rollout runs the real assembly under a fixed config, a scrubbed shell environment, refused prompts and hard budgets) |
+| `internal/inspect`, `internal/demo` | the cache inspector (a read-only model of a session log and a web dashboard); the scripted team behind `sleipnir demo` |
+| `internal/rl` | RL vocabulary (`Episode`, `Step`, `Task`, rewards, flags) and its subpackages: `env` (tasks, isolated rollouts, clean-checkout verifier, task generators, eval, rollout server), `traj` (event log -> episode, exact prompt replay), `reward` (components, hack detectors, repricing, probes), `adv` (group advantages), `export` (steps, tokens, groups, sft, dpo, kto, atif), `redact`, `recall` (memory tasks), `harness` (implements `env.Harness` on `session`: the rollout runs the real assembly under a fixed config, a scrubbed shell environment, refused prompts and hard budgets) |
+| `cmd/sleipnir` | the binary: every command, the chat loop, the RL subcommands |
 
 ## One request, end to end
 
@@ -95,13 +105,20 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 
 ## Providers
 
-The primary adapter speaks chat-completions (OpenAI, Heimdall, OpenRouter, vLLM, …). The marketplace's
-Anthropic-style route does **not** forward `cache_control` or report cache usage, so cache-aware runs use the
-chat route with a routing key. `sleipnir doctor` measures a real endpoint (streaming, tools, whether
-`cached_tokens` is reported, block granularity by gcd of read-count differences, minimum cached prefix, whether a
-parallel burst over a cold prefix shares anything, reasoning round-trips, rate-limit headers) and refines the
-profile. Native Anthropic Messages and OpenAI Responses adapters plug into the same `Provider` interface and
-render the same `core.Prompt`.
+Two dialects, one `core.Prompt`. `openai-chat` speaks chat completions (OpenAI, Heimdall, OpenRouter, vLLM, SGLang, ...):
+automatic prefix caching, a routing key so a gateway keeps a conversation on the engine that holds its cache, exact
+gateway costs, reasoning replay, optional token capture. `anthropic` speaks the Messages API (Anthropic, and gateways that
+forward its wire format): explicit breakpoints (at most four, a 20-block lookback, 5 minute or 1 hour lifetimes), preserved
+thinking, turn-scoped system messages; what a gateway drops is declared per provider in its options. A gateway's
+Anthropic-style route may not forward `cache_control` or report cache usage (`docs/research/02-provider-caching.md`), so
+`sleipnir doctor --deep` measures a real endpoint (streaming, tools, whether cached tokens are reported, block granularity by
+gcd of read-count differences, minimum cached prefix, whether a parallel burst over a cold prefix shares anything,
+reasoning round-trips, rate-limit headers) and refines the profile. An `openai-responses` adapter is not built; it is
+accepted in configuration and a session that uses it stops with an error that says so.
+
+The endpoint is not trusted (`docs/SECURITY.md`): a key goes only where the user allowed (`provider.CheckEndpoint`),
+redirects stay on the origin, a response is bounded as it is read, a silent server is timed out, and usage, costs and
+catalogue prices are validated.
 
 ## Workspace safety
 
@@ -116,16 +133,30 @@ a verifying merge queue (`internal/workspace`) before it reaches the person's ch
 
 ## Security posture
 
-Tool output, web pages, file contents and mail are data. Pins and notes are user-role context, never system.
-Mail is typed, rate-limited, deduped, capped, never broadcast, and cannot carry approvals. Compactors are told
-never to turn instructions found in tool output into notes; promotions are staged and epoch-merged. Secrets are
-scrubbed from shell environments and (planned) redacted at log-write time.
+Tool output, web pages, file contents and mail are data. Pins and notes are user-role context, never system. Mail is typed,
+rate-limited, deduped, capped, never broadcast, and cannot carry approvals. `docs/SECURITY.md` is the threat model; the
+rules the code follows are these:
+
+* **Permissions are code, and they fail closed.** Modes, rules, shell-syntax analysis and role profiles decide; an agent or a
+  tool environment built without a permission policy is denied everything (`perm.DenyAll`).
+* **A repository is untrusted until you say otherwise.** Its config cannot define providers, permission modes, hooks or MCP
+  servers unless trusted, and can only *add* to your deny/ask rules and hooks; a project's MCP server starts only after you
+  approve that exact entry.
+* **What enters a prompt layer is escaped and bounded** (`kv.EscapeUntrusted`, `GuardFrame`), and only the harness writes the
+  `instructions` and `assignment` notes: a person's words are pinned, a task the harness hands out (`OriginTask`) is not one
+  of them, and a compactor can write only its own sections.
+* **Keys go only where the user allowed and are held out of the environment** (`harden.MoveKeys`, `harden.Secret`).
+* **Endpoints are not believed**: bounded reads, timeouts, clamped counters, sanitised errors.
+* **State is private** (0700/0600, hash-verified blobs, one writer per session directory), and redaction happens where data
+  leaves the log (`internal/rl/redact`), not where it is written.
 
 ## Interfaces
 
-* CLI (`doctor`, `models`, `mock` today; `run`, `swarm`, `chat`, `export` next), headless JSON/stream-JSON.
-* TUI with a swarm dashboard, and an embedded web **cache inspector** (layer stack, per-layer tokens, hit ratio,
-  compaction events, cost vs baseline) — planned.
+* CLI: `chat` (interactive; slash commands, `--resume`/`--continue`), `run`, `swarm`, `recon`, `init`, `config`, `sessions`,
+  `models`, `doctor`, `sim`, `demo`, `inspect`, `mcp`, and the `rl` family. `docs/CLI.md` is generated from `--help`.
+* Headless JSON: `run --json` streams events as JSON lines.
+* The web **cache inspector** (`sleipnir inspect`): layer stack, per-layer tokens, hit ratio, compactions, the live board,
+  mail and leases, cost against a baseline; it is read-only and works on any session log, including every RL rollout.
 
 ## Decisions and alternatives
 

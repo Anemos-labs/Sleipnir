@@ -128,7 +128,7 @@ the tasks file and never enters a workspace.
 ```
 sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
     --model my-policy --base-url http://vllm:8000/v1 --capture \
-    [--swarm 6] [--role-model compactor=teacher-model] \
+    [--swarm 6] [--role-model worker=teacher-model] \
     --target-price anthropic-sonnet --rewards rewards.json --out runs/r001
 ```
 
@@ -136,9 +136,15 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   layout, real swarm, headless, with permissions set by the task (`accept-edits` inside the worktree, no network
   unless the task allows it).
 * One policy endpoint is enough; `--role-model role=model` (repeatable) lets a run train one role against fixed
-  others (for example train the manager while workers use a stronger model, or the reverse). The policy is named by
+  others (for example train the manager while workers use a stronger model, or the reverse). Compaction is not a role
+  of its own: a compactor is a fork of the agent's request, so it always runs on that agent's model, and the compactor
+  data (`compact.*` events, the patch and its fidelity probe) belongs to the policy that was being trained. The policy is named by
   `--model` (a configured provider, or any id with `--base-url`), and its API key is read from the variable named by
   `--api-key-env` in the harness process only: the agent's shell never sees it.
+* A swarm rollout is a batch run: the manager is held (a stop guard, bounded to three vetoes) until the board is settled, so
+  an episode is not cut short by a manager that answers while workers still run; when the bound is reached the run ends
+  and its result says what was left. With `swarm.mailman` on, the mailman's work is data too: `mail.route` (parcels in),
+  `mail.batch`, `mail.digest` (digest out, naming every original sender) and `mail.direct` (a delivery that bypassed it).
 * The agent's commands run in a scrubbed environment (private HOME and TMPDIR, no credentials, no network when the
   host can isolate it); permission prompts are refused, as an unattended session would refuse them, and the rules let
   the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets

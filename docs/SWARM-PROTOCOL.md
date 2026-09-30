@@ -28,8 +28,8 @@ Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (coordinates
 files (`.sleipnir/agents/*.md`). With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
 spawnable, is on no roster, board or hot view, and may call `mail` and nothing else.
 
-**Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, and the five swarm tools), so the
-provider caches the schemas once for the whole swarm. Roles are restricted at run time: the permission engine judges
+**Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, skill, any MCP tools, frozen for the session, and the five
+swarm tools), so the provider caches the schemas once for the whole swarm. Roles are restricted at run time: the permission engine judges
 each call under the session posture *and* the role's profile (read-only roles run under the plan profile: writes and
 mutating commands are denied by the engine that understands shell syntax, not by a command allowlist), and swarm
 tools check the caller's role, which the harness puts in the call (`spawn`, `create`, `accept`, `reject`, `reopen`,
