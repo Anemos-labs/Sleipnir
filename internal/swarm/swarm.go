@@ -237,6 +237,7 @@ type Swarm struct {
 	apply      applyState
 	finishMu   sync.Mutex
 	finished   *IntegrationReport
+	left       string // what the manager's last run left unfinished (see Unfinished)
 }
 
 // New builds a swarm. Call Start before spawning.
@@ -550,8 +551,15 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 // behind; in an interactive session, anything the manager has not seen wakes it again.
 func (s *Swarm) afterManagerRun(m *member, res *agent.Result) {
 	if s.cfg.HoldManager && res != nil {
-		if u := s.unfinishedWork(); !u.empty() {
-			txt := u.summary(holdListCap)
+		u := s.unfinishedWork()
+		txt := ""
+		if !u.empty() {
+			txt = u.summary(holdListCap)
+		}
+		s.mu.Lock()
+		s.left = txt // each run says what it left, so a clean run after an unclean one says nothing
+		s.mu.Unlock()
+		if txt != "" {
 			res.Text = strings.TrimRight(res.Text, "\n")
 			if res.Text != "" {
 				res.Text += "\n\n"
@@ -564,6 +572,15 @@ func (s *Swarm) afterManagerRun(m *member, res *agent.Result) {
 	if s.cfg.WakeManager && s.wakeNote(m) != "" {
 		s.managerEvent()
 	}
+}
+
+// Unfinished says what the manager's last run left undone: the running workers, the submissions waiting for a verdict and the
+// tasks nobody finished, as the final answer's harness note lists them. It is empty for a run that settled its board, and for
+// a swarm that is not held (an interactive session, where workers outlive a turn).
+func (s *Swarm) Unfinished() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.left
 }
 
 // Manager returns the manager agent, if started.

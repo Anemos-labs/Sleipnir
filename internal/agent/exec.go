@@ -27,8 +27,9 @@ const maxParallelTools = 8
 // other call is answered with an error that tells the model to issue fewer, so each
 // call still has its result and the thread stays valid. And the results together
 // may put at most MaxTurnResultChars into the next request: see budgetResults.
-func (a *Agent) runTools(ctx context.Context, calls []core.Block) []core.Block {
-	results := make([]core.Block, len(calls))
+func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []core.Block, exitFailed []bool) {
+	results = make([]core.Block, len(calls))
+	exitFailed = make([]bool, len(calls))
 	run := len(calls)
 	if limit := a.cfg.MaxToolCallsPerTurn; limit > 0 && run > limit {
 		run = limit
@@ -47,21 +48,21 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) []core.Block {
 				go func(k int) {
 					defer wg.Done()
 					defer func() { <-sem }()
-					results[k] = a.runOne(ctx, calls[k])
+					results[k], exitFailed[k] = a.runOne(ctx, calls[k])
 				}(k)
 			}
 			wg.Wait()
 			i = j
 			continue
 		}
-		results[i] = a.runOne(ctx, calls[i])
+		results[i], exitFailed[i] = a.runOne(ctx, calls[i])
 		i++
 	}
 	for i := run; i < len(calls); i++ {
 		results[i] = a.refuseCall(calls[i], len(calls), run)
 	}
 	a.budgetResults(results, len(calls)-run)
-	return results
+	return results, exitFailed
 }
 
 // refuseCall answers a call that was not run because its turn asked for too many.
@@ -170,7 +171,7 @@ func (a *Agent) env() *tools.Env {
 }
 
 // runOne executes one call, never panicking and never returning an empty result.
-func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
+func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, exitFailed bool) {
 	start := time.Now()
 	a.cfg.Sink.ToolStart(a.cfg.ID, call)
 	name := a.toolNameFor(call.ToolName)
@@ -187,6 +188,8 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block) {
 			a.emit("tool.panic", map[string]any{"name": call.ToolName, "stack": string(debug.Stack())})
 		}
 		out = a.finishResult(call, res, time.Since(start))
+		// a command that failed is not a tool error: the model reads what it printed, and the repeat guard counts it
+		exitFailed = res != nil && !res.IsError && res.Failed()
 	}()
 
 	switch {

@@ -283,7 +283,10 @@ func TestSec_S08_ArchiveIndexIsCompactAndPutIsCheap(t *testing.T) {
 	timeBatch(10_001, 50_001)
 	last := timeBatch(50_001, 60_001)
 	t.Logf("10k puts at n<10k: %v; 10k puts at n>50k: %v (x%.1f)", first, last, float64(last)/float64(first))
-	if last > 4*first {
+	// An O(n) Put (the id slice re-sorted on every insert) makes the last batch hundreds of times slower and tens of seconds long.
+	// A stall of the machine makes one batch slow for a moment, so the ratio is wide and the batch must also be slow in itself:
+	// at a load of 40 a 4x ratio between two batches of a few milliseconds failed this test with nothing wrong.
+	if last > 25*first && last > 2*time.Second {
 		t.Errorf("S08: Put is O(n): the id slice is re-sorted on every insert (x%.1f slower at 50k turns)", float64(last)/float64(first))
 	}
 }

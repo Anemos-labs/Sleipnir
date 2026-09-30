@@ -206,6 +206,25 @@ defect the runs showed, with the evidence, and what changed.
   them), the suite under `-race` three times with shuffled order, coverage, and the drift checks (`docs/CLI.md` and the README's
   simulator block against the binary), which the regular CI now runs too. Job timeouts everywhere.
 
+- **The headless commands did less than the documentation said.** `run --quiet` printed nothing (now the final answer, on stdout);
+  `git diff | sleipnir run "review this"` dropped the diff (a goal is now the words and the piped input, the input first in a
+  `<stdin>` block; input that has not begun to arrive in 3 seconds is left out with a note, so a parent that never closes our stdin
+  cannot hold a run); a swarm that stopped with work left exited 0 (now status 3, and `run --json` says what was left in
+  `unfinished`); `doctor` exited 0 when every request of the probe failed (now 1); `sleipnir models` printed an empty table for
+  catalogues that do not say what their models are (OpenAI's own, Ollama's, vLLM's); `--cwd` with a directory that is not there
+  failed in whatever first used it (now said at once); Ctrl-C ended a run with `sleipnir: context canceled` and status 1 (now
+  `sleipnir: interrupted` and 130, 143 for SIGTERM; a second Ctrl-C quits at once).
+- **A failed command was shown as a success.** A command that exits with a status other than 0 is not a tool error (the model is
+  meant to read what it printed), so the sinks ticked it `✓` and the stuck guard, which counts failures, never saw a model run one
+  failing command to the step limit. Sinks now show `✗ bash go test (1.4s, exit 1)` (and, with `--verbose`, the last lines of the
+  output); the guard counts a command that keeps failing the same way, with the durations it prints left out of the comparison.
+  JSON `tool_end` carries the whole output (it was cut to its first line), `failed` and `exit_code`.
+- **A retried response printed its first words twice.** When a stream failed part-way and the request was sent again, the text
+  already shown stayed and the new attempt was appended to the same line. A sink that can take it back (`agent.Resetter`) is told
+  when the new attempt begins (the terminal sink starts a new line, the JSON stream says `reset`). Retry notices count the attempts
+  (`retrying in 3.7s (attempt 4 of 6)`), and the last failure no longer announces a retry and waits out the longest backoff for an
+  attempt that is never made.
+
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
 which every request reads at the cached price, and the first request after an upgrade writes the prefix anew, once per session.

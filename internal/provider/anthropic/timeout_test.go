@@ -87,16 +87,17 @@ func TestStreamIdleTimeout(t *testing.T) {
 			sseHeaders(w)
 			w.Write([]byte(startEvent + textStart))
 			fl.Flush()
-			for i := 0; i < 12; i++ { // 480ms without a real event (longer than the timeout), pinged every 40ms
-				time.Sleep(40 * time.Millisecond)
+			for i := 0; i < 35; i++ { // 1.75s without a real event (longer than the timeout), pinged every 50ms
+				time.Sleep(50 * time.Millisecond)
 				w.Write([]byte("event: ping\ndata: {\"type\": \"ping\"}\n\n"))
 				fl.Flush()
 			}
 			w.Write([]byte(tail))
 		})
-		// The timeout is ten times the ping interval so that a scheduling stall on a
-		// busy machine cannot pass for silence.
-		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 400 * time.Millisecond})
+		// The timeout is thirty times the ping interval so that a scheduling stall on a
+		// busy machine cannot pass for silence (at a load of 13, with the race detector on
+		// four cores, ten times failed one run in a few).
+		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 1500 * time.Millisecond})
 		resp, err := c.Do(context.Background(), &provider.Request{Prompt: hello("m")}, nil)
 		if err != nil || resp.Turn.PlainText() != "partial" {
 			t.Fatalf("%v %+v", err, resp)
@@ -106,14 +107,14 @@ func TestStreamIdleTimeout(t *testing.T) {
 		s := newSlow(t, func(w http.ResponseWriter, fl http.Flusher, r *http.Request) {
 			sseHeaders(w)
 			w.Write([]byte(startEvent + textStart))
-			for i := 0; i < 10; i++ {
-				time.Sleep(40 * time.Millisecond)
+			for i := 0; i < 35; i++ { // 1.75s of comments, longer than the timeout
+				time.Sleep(50 * time.Millisecond)
 				w.Write([]byte(": keep-alive\n"))
 				fl.Flush()
 			}
 			w.Write([]byte("\n" + tail))
 		})
-		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 400 * time.Millisecond})
+		c := anthropic.New(anthropic.Config{BaseURL: s.URL, StreamIdleTimeout: 1500 * time.Millisecond})
 		if _, err := c.Do(context.Background(), &provider.Request{Prompt: hello("m")}, nil); err != nil {
 			t.Fatal(err)
 		}

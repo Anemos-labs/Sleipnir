@@ -14,9 +14,12 @@ import (
 	"os/signal"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"text/tabwriter"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/reee344/sleipnir/internal/config"
 	"github.com/reee344/sleipnir/internal/harden"
@@ -53,7 +56,7 @@ func main() {
 	if ownsInterrupt[cmd] {
 		sigs = []os.Signal{syscall.SIGTERM}
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), sigs...)
+	ctx, caught, stop := interruptContext(sigs...)
 	defer stop()
 
 	var err error
@@ -77,9 +80,66 @@ func main() {
 		usage(os.Stderr)
 		os.Exit(2)
 	}
+	if sig := caught(); sig != nil && errors.Is(err, context.Canceled) {
+		// the command ended because it was told to: say so (not what the library says about a context), and end with the status a shell
+		// gives a process that a signal stopped, so that a script can tell an interrupted run from one that failed
+		fmt.Fprintln(os.Stderr, "sleipnir: interrupted")
+		os.Exit(interruptStatus(sig))
+	}
 	if code := reportError(os.Stderr, err); code != 0 {
 		os.Exit(code)
 	}
+}
+
+// interruptContext is the context of a command that does one thing: Ctrl-C and SIGTERM cancel it. caught says which signal did, if
+// one did. After the first signal the system has the signals back, so that a second Ctrl-C ends the process at once, as it does any
+// other (a command that is slow to stop does not hold the terminal). stop gives the signals back without waiting for one.
+func interruptContext(sigs ...os.Signal) (ctx context.Context, caught func() os.Signal, stop func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, sigs...)
+	var (
+		mu   sync.Mutex
+		got  os.Signal
+		done = make(chan struct{})
+		once sync.Once
+	)
+	go func() {
+		select {
+		case s := <-ch:
+			mu.Lock()
+			got = s
+			mu.Unlock()
+			cancel()
+			signal.Stop(ch)
+			if s == os.Interrupt && term.IsTerminal(int(os.Stderr.Fd())) {
+				fmt.Fprintln(os.Stderr, "\nsleipnir: interrupting (Ctrl-C again to quit at once)")
+			}
+		case <-done:
+		}
+	}()
+	caught = func() os.Signal {
+		mu.Lock()
+		defer mu.Unlock()
+		return got
+	}
+	stop = func() {
+		once.Do(func() {
+			signal.Stop(ch)
+			close(done)
+			cancel()
+		})
+	}
+	return ctx, caught, stop
+}
+
+// interruptStatus is the exit status of a process that a signal ended, by the shell's convention: 128 plus the signal's number (130
+// for Ctrl-C, 143 for SIGTERM).
+func interruptStatus(sig os.Signal) int {
+	if s, ok := sig.(syscall.Signal); ok {
+		return 128 + int(s)
+	}
+	return 130
 }
 
 // reportError prints what a command returned and gives the process exit code: 0 for
@@ -207,11 +267,21 @@ func cmdDoctor(ctx context.Context, args []string) error {
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(rep)
+		if eerr := enc.Encode(rep); eerr != nil {
+			return eerr
+		}
+	} else {
+		fmt.Println()
+		fmt.Print(rep.Text())
 	}
-	fmt.Println()
-	fmt.Print(rep.Text())
-	return err
+	if err != nil {
+		return err
+	}
+	// docs/CLI.md: doctor exits 1 if the probe fails. The report says what was found either way.
+	if ferr := rep.Failure(); ferr != nil {
+		return fmt.Errorf("doctor: %w", ferr)
+	}
+	return nil
 }
 
 func envLabel(s providerSpec) string {

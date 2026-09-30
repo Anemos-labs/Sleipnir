@@ -157,6 +157,9 @@ func TestHeldManagerIsSentBackUntilTheBoardIsSettled(t *testing.T) {
 	if n := len(r.log.OfType(events.TypeSwarmUnfinished)); n != 0 {
 		t.Fatalf("%d swarm.unfinished events for a run that settled its board", n)
 	}
+	if got := r.sw.Unfinished(); got != "" {
+		t.Fatalf("Unfinished() = %q for a run that settled its board", got)
+	}
 	// One request to spawn, the early answer, then wait, accept, the real answer.
 	if n := managerCalls(r); n != 5 {
 		t.Fatalf("the manager made %d requests, want 5", n)
@@ -309,6 +312,10 @@ func TestHoldIsBoundedAndTheRunReportsWhatWasLeft(t *testing.T) {
 	}
 	if n := len(r.log.OfType(events.TypeSwarmUnfinished)); n != 1 {
 		t.Fatalf("%d swarm.unfinished events, want 1", n)
+	}
+	// the caller can tell from the result's data, without parsing its text, that the run did not finish
+	if got := r.sw.Unfinished(); got != "running: be-1 (T1)" {
+		t.Fatalf("Unfinished() = %q, want the running worker", got)
 	}
 }
 

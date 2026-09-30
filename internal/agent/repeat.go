@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/reee344/sleipnir/internal/core"
@@ -23,13 +24,17 @@ import (
 // is told so in the results turn, once; at repeatStop the run ends with ErrStuck, after that
 // turn has been answered, so the thread stays valid. Only failures count: a call that succeeds
 // with the same output (a poll, a re-read) is not a sign of being stuck, and one that fails
-// differently each time is not repetition.
+// differently each time is not repetition. A failure is a tool error, or a command that exited
+// with a status other than 0.
 
 const (
 	repeatWindow = 20
 	repeatNudge  = 4
 	repeatStop   = 8
 )
+
+// durationRe finds the durations a command prints ("0.004s", "12ms", "1m3s" as its 1m and 3s).
+var durationRe = regexp.MustCompile(`\b\d+(?:\.\d+)?(?:ns|µs|μs|us|ms|s|m|h)\b`)
 
 // ErrStuck is returned by Run when the agent repeated one failing call until the guard
 // ended the run. errors.Is(err, ErrStuck) tells it from a provider failure or the step limit.
@@ -46,18 +51,31 @@ func (g *repeatGuard) reset() { *g = repeatGuard{} }
 // (empty if none) and, when the run must end, the error to end it with. calls and results are
 // in the same order, as runTools returns them.
 func (g *repeatGuard) observe(agentID string, calls, results []core.Block) (note string, stop error) {
+	return g.observeExits(agentID, calls, results, nil)
+}
+
+// observeExits is observe for a batch in which some calls failed without their result being an error: a command that exited with
+// a status other than 0 (tools.Result.Failed), which the model is meant to read and act on. exitFailed says, per call, that one
+// did; it may be shorter than calls. Such a failure counts like any other, except that what a command prints about how long it
+// took ("FAIL x 0.004s", "(0.02s)") is not part of how it failed: the same test failing again is the same failure.
+func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, exitFailed []bool) (note string, stop error) {
 	for i, call := range calls {
 		if i >= len(results) {
 			break
 		}
 		key := ""
-		if results[i].IsError {
+		byExit := i < len(exitFailed) && exitFailed[i] && !results[i].IsError
+		if results[i].IsError || byExit {
+			text := results[i].PlainText()
+			if byExit {
+				text = durationRe.ReplaceAllString(text, "#")
+			}
 			sum := sha256.New()
 			sum.Write([]byte(call.ToolName))
 			sum.Write([]byte{0})
 			sum.Write(call.Input)
 			sum.Write([]byte{0})
-			sum.Write([]byte(results[i].PlainText()))
+			sum.Write([]byte(text))
 			key = hex.EncodeToString(sum.Sum(nil)[:8])
 		}
 		g.recent = append(g.recent, key)

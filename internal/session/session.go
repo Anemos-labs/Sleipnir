@@ -216,6 +216,10 @@ type Result struct {
 	Compactions int
 	SessionID   string
 	Dir         string
+	// Unfinished says what a swarm's manager left undone when it stopped (running workers, submissions nobody judged, tasks
+	// nobody finished); empty when the work was settled, and for a run that is not a swarm. A caller that wants to know whether
+	// the run did what it was asked reads it here instead of parsing the answer.
+	Unfinished string
 }
 
 // New builds a session.
@@ -230,6 +234,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	cwd, err := filepath.Abs(o.Cwd)
 	if err != nil {
 		return nil, err
+	}
+	// Said at once: a directory that is not there otherwise fails in whatever first tries to use it (the survey, the first command),
+	// with a message about that and not about the directory.
+	switch fi, serr := os.Stat(cwd); {
+	case errors.Is(serr, os.ErrNotExist):
+		return nil, fmt.Errorf("working directory %s does not exist", cwd)
+	case serr != nil:
+		return nil, fmt.Errorf("working directory %s: %w", cwd, serr)
+	case !fi.IsDir():
+		return nil, fmt.Errorf("working directory %s is not a directory", cwd)
 	}
 	o.Cwd = cwd
 	if o.Root == "" {
@@ -945,6 +959,7 @@ func (s *Session) result(res *agent.Result, err error) (*Result, error) {
 	}
 	if s.Swarm != nil {
 		out.CostUSD = s.Swarm.TotalCost()
+		out.Unfinished = s.Swarm.Unfinished()
 	}
 	return out, err
 }

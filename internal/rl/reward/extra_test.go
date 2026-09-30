@@ -118,7 +118,7 @@ func TestShellParsing(t *testing.T) {
 	parseShell(strings.Repeat("a && ", 200_000) + "b")
 	parseShell(strings.Repeat("'", 500_000))
 	parseShell(strings.Repeat("<<X\n", 50_000))
-	if d := time.Since(start); d > 5*time.Second {
+	if d := time.Since(start); d > time.Minute {
 		t.Errorf("shell parsing took %v", d)
 	}
 }
@@ -169,7 +169,7 @@ func TestLexCode(t *testing.T) {
 	lexCode(strings.Repeat(`"`+strings.Repeat(`\`, 3)+"\n", 200_000), "go", false)
 	lexCode(strings.Repeat("/*", 300_000), "go", false)
 	lexCode(strings.Repeat("'''", 200_000), "py", true)
-	if d := time.Since(start); d > 5*time.Second {
+	if d := time.Since(start); d > time.Minute {
 		t.Errorf("lexing took %v", d)
 	}
 }

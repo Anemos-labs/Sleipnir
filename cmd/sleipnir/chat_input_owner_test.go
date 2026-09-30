@@ -586,9 +586,9 @@ func TestSIGINTIsRegisteredInOnePlaceForChat(t *testing.T) {
 	}
 	for f, c := range calls {
 		switch f {
-		case "main.go": // the process's context: SIGTERM, and SIGINT for the commands that do not own it
-			if len(c) != 1 || c[0] != "signal.NotifyContext" {
-				t.Errorf("main.go registers %v, want one signal.NotifyContext", c)
+		case "main.go": // the process's context (interruptContext): SIGTERM, and SIGINT for the commands that do not own it
+			if len(c) != 1 || c[0] != "signal.Notify" {
+				t.Errorf("main.go registers %v, want one signal.Notify (interruptContext)", c)
 			}
 		case "chat_input.go": // chat's Ctrl-C
 			if len(c) != 1 || c[0] != "signal.Notify" {

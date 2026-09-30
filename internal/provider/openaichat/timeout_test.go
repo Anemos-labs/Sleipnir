@@ -109,14 +109,15 @@ func TestAStreamThatGoesSilentAfterItsFirstByteIsAnIdleTimeout(t *testing.T) {
 func TestKeepAliveCommentsCountAsActivity(t *testing.T) {
 	s := newScripted(t, func(w http.ResponseWriter, fl http.Flusher, r *http.Request) {
 		sse(w)
-		for i := 0; i < 12; i++ { // 480ms of comments, more than four idle timeouts
+		for i := 0; i < 35; i++ { // 1.75s of comments, longer than the idle timeout (which is thirty times the gap between them,
+			// so that a scheduling stall on a loaded machine cannot pass for silence)
 			fmt.Fprint(w, ": PROCESSING\n\n")
 			fl.Flush()
-			time.Sleep(40 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 		fmt.Fprint(w, frame("done"), finish("stop"))
 	})
-	resp, err := call(t, s.URL, Config{FirstByteTimeout: 400 * time.Millisecond, StreamIdleTimeout: 400 * time.Millisecond}, nil)
+	resp, err := call(t, s.URL, Config{FirstByteTimeout: 1500 * time.Millisecond, StreamIdleTimeout: 1500 * time.Millisecond}, nil)
 	if err != nil || resp.Turn.PlainText() != "done" {
 		t.Fatalf("%v %v", resp, err)
 	}

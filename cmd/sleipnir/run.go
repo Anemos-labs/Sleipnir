@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -96,13 +97,12 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	prompt := strings.TrimSpace(strings.Join(words, " "))
-	if prompt == "-" || (prompt == "" && !term.IsTerminal(int(os.Stdin.Fd()))) {
-		b, err := io.ReadAll(io.LimitReader(os.Stdin, 8<<20))
-		if err != nil {
-			return err
-		}
-		prompt = strings.TrimSpace(string(b))
+	prompt, note, err := readGoal(words, os.Stdin)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	if note != "" {
+		fmt.Fprintln(os.Stderr, "sleipnir:", note)
 	}
 	if prompt == "" {
 		fs.Usage()
@@ -161,6 +161,9 @@ func runCommand(ctx context.Context, name string, args []string) error {
 				"hit_ratio": res.Usage.HitRatio(), "compactions": res.Compactions, "stop": res.Stop, "session": res.SessionID,
 				"dir": res.Dir, "elapsed_ms": time.Since(start).Milliseconds(), "error": errString(err),
 			}
+			if res.Unfinished != "" {
+				out["unfinished"] = res.Unfinished
+			}
 			if integ != nil {
 				out["integration"] = integ
 			}
@@ -173,10 +176,106 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if !*asJSON {
 		printIntegration(os.Stderr, integ, *quiet)
 	}
+	if *quiet && res != nil {
+		// --quiet prints only the final answer: the sink shows nothing, so the answer is written here
+		if ans := strings.TrimRight(res.Text, "\n"); strings.TrimSpace(ans) != "" {
+			fmt.Fprintln(os.Stdout, ans)
+		}
+	}
 	if err != nil && errors.Is(err, agent.ErrBudget) {
 		return budgetStopped(s, res)
 	}
+	if err == nil && res != nil && res.Unfinished != "" {
+		return unfinishedError(res.Unfinished)
+	}
 	return err
+}
+
+// unfinishedError is the error of a swarm that stopped with work left undone: status 3 (docs/CLI.md), so that a script can tell a team
+// that did what it was asked from one that stopped. What was done is in place; the message says what was not.
+func unfinishedError(left string) error {
+	return &exitError{code: exitUnfinished, err: fmt.Errorf("the team stopped with unfinished work (%s); what was done is in place, see the session's board", left)}
+}
+
+// maxPromptInput bounds what is read from standard input as part of a goal.
+const maxPromptInput = 8 << 20
+
+// stdinGrace is how long a goal given in words waits for piped data to begin arriving. A pipe that nobody writes to and nobody
+// closes (a parent process that spawned us with an open stdin and forgot it) would otherwise hold the run for ever; a command that
+// takes longer than this to print its first byte is told so, and the run goes on without it.
+var stdinGrace = 3 * time.Second
+
+// readGoal is the goal of a run: the words on the command line, what is piped in, or both. A lone "-" stands for the piped input
+// (as the last word it means "the input goes with these words"). With words and input both, the input comes first in a block of
+// its own and the words last: the instruction is read after the material it is about. Input that is not data (a terminal, /dev/null,
+// a socket) is not input; with no words at all anything that is not a terminal is read, as it always was. note is something the
+// person should be told (input that never came).
+func readGoal(words []string, stdin *os.File) (goal, note string, err error) {
+	explicit := false // a "-" asked for the input: it is waited for
+	if n := len(words); n > 1 && words[n-1] == "-" {
+		words, explicit = words[:n-1], true
+	}
+	prompt := strings.TrimSpace(strings.Join(words, " "))
+	if prompt == "-" {
+		prompt, explicit = "", true
+	}
+	if prompt != "" && !explicit && !stdinHasData(stdin) {
+		return prompt, "", nil
+	}
+	if prompt == "" && !explicit && term.IsTerminal(int(stdin.Fd())) {
+		return "", "", nil
+	}
+	grace := stdinGrace
+	if prompt == "" || explicit {
+		grace = 0 // the input is all there is to go on: wait for it
+	}
+	b, arrived, err := readPipedInput(stdin, maxPromptInput, grace)
+	if err != nil {
+		return "", "", err
+	}
+	if !arrived {
+		return prompt, fmt.Sprintf("no data came on standard input within %s; going on with the prompt alone (redirect < /dev/null to skip this wait, or pipe from a command that prints sooner, or say - to wait for it)", grace), nil
+	}
+	input := strings.TrimSpace(string(b))
+	switch {
+	case prompt == "":
+		return input, "", nil
+	case input == "":
+		return prompt, "", nil
+	}
+	return "<stdin>\n" + input + "\n</stdin>\n\n" + prompt, "", nil
+}
+
+// readPipedInput reads r to its end, at most limit bytes (more is an error). With a grace period it gives up, and says so (arrived is false),
+// if the first byte has not come by then; once data has begun it waits for the rest as long as it takes.
+func readPipedInput(r io.Reader, limit int, grace time.Duration) (b []byte, arrived bool, err error) {
+	br := bufio.NewReader(io.LimitReader(r, int64(limit)+1))
+	if grace > 0 {
+		first := make(chan error, 1)
+		go func() { _, e := br.Peek(1); first <- e }()
+		select {
+		case e := <-first:
+			if e != nil && e != io.EOF {
+				return nil, true, e
+			}
+		case <-time.After(grace):
+			return nil, false, nil // the goroutine stays with the pipe until the process ends
+		}
+	}
+	b, err = io.ReadAll(br)
+	if err != nil {
+		return nil, true, err
+	}
+	if len(b) > limit {
+		return nil, true, fmt.Errorf("standard input is larger than %d MiB: name the file in the prompt instead", limit>>20)
+	}
+	return b, true, nil
+}
+
+// stdinHasData reports whether f is something a person piped data into: a pipe or a file, not a terminal, /dev/null or a socket.
+func stdinHasData(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && (fi.Mode()&os.ModeNamedPipe != 0 || fi.Mode().IsRegular())
 }
 
 // budgetLabel is " · budget $N" for a session that has one: a cap that will stop a run

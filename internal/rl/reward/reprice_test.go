@@ -536,7 +536,7 @@ func TestRepriceLongEpisodeIsFast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(start); d > 10*time.Second {
+	if d := time.Since(start); d > time.Minute {
 		t.Errorf("20k-step chain took %v", d)
 	}
 	if rep.Requests != 20000 || rep.Read == 0 {

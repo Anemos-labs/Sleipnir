@@ -117,3 +117,24 @@ func TestSafeToolNameKeepsANoteToTheHarnessOwnWords(t *testing.T) {
 		}
 	}
 }
+
+// How long a command took is not how it failed: the same failure with another duration is the same failure.
+func TestRepeatGuardIgnoresDurationsOfACommandThatFailed(t *testing.T) {
+	var g repeatGuard
+	ok := func(text string) core.Block { return core.ToolResult("id", false, core.Text(text)) }
+	var stop error
+	for i := 0; i < repeatStop && stop == nil; i++ {
+		_, stop = g.observeExits("a", []core.Block{callOf("bash", `{"command":"go test"}`)},
+			[]core.Block{ok("FAIL\tx\t0." + string(rune('1'+i)) + "04s\n--- FAIL: TestA (" + string(rune('1'+i)) + "ms)")}, []bool{true})
+	}
+	if !errors.Is(stop, ErrStuck) {
+		t.Fatalf("eight failures of one command that differ only in how long they took did not stop the run: %v", stop)
+	}
+	// A result that did not fail is not counted, whatever the flag says about other calls in the batch.
+	var h repeatGuard
+	for i := 0; i < 3*repeatWindow; i++ {
+		if note, stop := h.observeExits("a", []core.Block{callOf("bash", `{"command":"go test"}`)}, []core.Block{ok("ok")}, []bool{false}); note != "" || stop != nil {
+			t.Fatalf("a command that succeeded was counted: %q %v", note, stop)
+		}
+	}
+}

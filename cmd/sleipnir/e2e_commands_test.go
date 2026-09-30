@@ -239,10 +239,10 @@ func TestRunOutput(t *testing.T) {
 		if r.code != 0 || r.stderr != "" {
 			t.Errorf("quiet: exit %d\nstdout:\n%q\nstderr:\n%q", r.code, r.stdout, r.stderr)
 		}
+		// docs/CLI.md: "--quiet prints only the final answer". It printed nothing: the sink is agent.NopSink
+		// and the result's text was never written.
 		if strings.TrimSpace(r.stdout) != "hi there" {
-			// docs/CLI.md: "--quiet prints only the final answer". It prints nothing: the sink is
-			// agent.NopSink (run.go) and the result's text is never written.
-			t.Skipf("KNOWN DEFECT: run --quiet prints nothing on stdout (%q), the documentation says it prints the final answer", r.stdout)
+			t.Errorf("run --quiet prints %q on stdout, want the final answer", r.stdout)
 		}
 	})
 	t.Run("the prompt from standard input", func(t *testing.T) {
@@ -491,6 +491,22 @@ func TestModels(t *testing.T) {
 	assertRun(t, w.run("", base...), 1, []string{"!MODEL"}, []string{"sleipnir: ", "http 500"})
 }
 
+// A catalogue in the OpenAI style says nothing about what its models take and give. Every model of one was filtered out as "not a
+// chat model", and the command printed a header and an empty table.
+func TestModelsOfACatalogueThatSaysNothingAboutModalities(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(rw, r)
+			return
+		}
+		io.WriteString(rw, `{"object":"list","data":[{"id":"qwen3:8b","object":"model","owned_by":"library"},{"id":"gpt-x","object":"model","owned_by":"openai"}]}`)
+	}))
+	defer ts.Close()
+	w := newWorld(t, "")
+	r := w.run("", "models", "--provider", "custom", "--base-url", ts.URL+"/v1")
+	assertRun(t, r, 0, []string{"MODEL", "gpt-x", "qwen3:8b"}, nil)
+}
+
 // doctor probes an endpoint with real requests and reports what it found; here the endpoint
 // is the mock, which is cache-faithful and streams.
 func TestDoctorAgainstTheMock(t *testing.T) {
@@ -543,11 +559,10 @@ func TestDoctorOfAnEndpointThatIsDown(t *testing.T) {
 	ts.Close() // nothing listens there now
 	w := newWorld(t, "")
 	r := w.run("", "doctor", "--model", "m", "--provider", "custom", "--base-url", down+"/v1")
-	assertRun(t, r, r.code, []string{"Endpoint probe for m"}, []string{"✗ basic", "connection refused"})
-	if r.code == 0 {
-		t.Skipf("KNOWN DEFECT: doctor exits 0 when every request of the probe failed (main.go: probe.Run returns no error for failed steps), the documentation says it exits 1")
-	}
-	assertRun(t, r, 1, nil, nil)
+	assertRun(t, r, 1, []string{"Endpoint probe for m"}, []string{"✗ basic", "connection refused", "sleipnir: doctor: the endpoint did not answer"})
+	// --json reports the same, and the status still says it failed
+	r = w.run("", "doctor", "--model", "m", "--provider", "custom", "--base-url", down+"/v1", "--json")
+	assertRun(t, r, 1, []string{`"steps"`}, []string{"sleipnir: doctor: "})
 }
 
 // The simulator prints its assumptions with its numbers, in a table or as JSON. Its numbers

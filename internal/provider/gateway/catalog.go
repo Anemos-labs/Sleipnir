@@ -63,9 +63,11 @@ func (e Entry) SupportsReasoning() bool {
 }
 
 // IsChat reports whether the model produces text from text (the only kind a
-// coding agent can use).
+// coding agent can use). A catalogue that does not say what its models take and give
+// (OpenAI's own, Ollama's, vLLM's and LM Studio's list nothing but ids) leaves the
+// question open, and open counts as yes: the alternative is a listing of nothing.
 func (e Entry) IsChat() bool {
-	return strings.HasSuffix(e.Modality, "->text")
+	return e.Modality == "" || strings.HasSuffix(e.Modality, "->text")
 }
 
 func has(list []string, s string) bool {
