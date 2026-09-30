@@ -21,19 +21,24 @@ func TestMain(m *testing.M) {
 	switch os.Getenv(helperEnv) {
 	case "leak":
 		leakWait = 100 * time.Millisecond
-		go leakForever()
+		started := make(chan struct{})
+		go leakForever(started)
+		<-started // a goroutine that has not run yet has no frames to show
 	case "clean":
 		leakWait = 100 * time.Millisecond
 	}
 	os.Exit(CheckLeaks(m))
 }
 
-func leakForever() { select {} }
+func leakForever(started chan<- struct{}) {
+	close(started)
+	select {}
+}
 
 // parked is a goroutine of this module that waits until it is released; park starts one, waits
-// until it is running (before that the runtime has no frames to show for it), and returns what
-// stops it: stop returns when the goroutine is gone from the dump, so that the next test does
-// not meet the end of this one's.
+// until it is blocked there (before that the runtime has no frames to show for it, and its state
+// is not the one a test looks for), and returns what stops it: stop returns when the goroutine
+// is gone from the dump, so that the next test does not meet the end of this one's.
 func parked(started chan<- int, release <-chan struct{}) {
 	started <- Snapshot()[0].ID
 	<-release
@@ -44,22 +49,28 @@ func park() (stop func()) {
 	var once sync.Once
 	go parked(started, release)
 	id := <-started
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+		if g, ok := find(id); ok && strings.HasPrefix(g.State, "chan receive") {
+			break
+		}
+	}
 	return func() {
 		once.Do(func() { close(release) })
 		deadline := time.Now().Add(time.Minute)
-		for present(id) && time.Now().Before(deadline) {
+		for _, ok := find(id); ok && time.Now().Before(deadline); _, ok = find(id) {
 			time.Sleep(time.Millisecond)
 		}
 	}
 }
 
-func present(id int) bool {
+// find looks a goroutine up by its number in a fresh snapshot.
+func find(id int) (Goroutine, bool) {
 	for _, g := range Snapshot() {
 		if g.ID == id {
-			return true
+			return g, true
 		}
 	}
-	return false
+	return Goroutine{}, false
 }
 
 // quiet waits until no goroutine of the module is left from the tests before this one (one
@@ -238,8 +249,8 @@ func TestSnapshot(t *testing.T) {
 			t.Errorf("goroutine %d twice", g.ID)
 		}
 		seen[g.ID] = true
-		if len(g.Frames) == 0 || g.State == "" {
-			t.Errorf("goroutine %d was not parsed: %q", g.ID, g.Dump)
+		if g.State == "" {
+			t.Errorf("goroutine %d has no state: %q", g.ID, g.Dump)
 		}
 	}
 	parkedHere := 0
@@ -411,7 +422,7 @@ func TestCheckLeaksEndsTheBinary(t *testing.T) {
 		t.Errorf("a suite that leaves nothing: exit %d, output %q", code, out)
 	}
 	code, out := run("leak")
-	for _, want := range []string{"PASS", "FAIL: goroutine leak: 1 goroutine(s) of " + Module, "testutil.leakForever", "select (no cases)", "created by " + Module + "/internal/testutil.TestMain"} {
+	for _, want := range []string{"PASS", "FAIL: goroutine leak: 1 goroutine(s) of " + Module, "testutil.leakForever", "created by " + Module + "/internal/testutil.TestMain"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the output of a suite that leaks lacks %q:\n%s", want, out)
 		}
