@@ -220,6 +220,25 @@ func TestWaitInputRead(t *testing.T) {
 	})
 }
 
+// What a command writes just before it exits is in the transcript: some systems discard what is
+// queued on a terminal when its last slave descriptor closes, and the session holds one until the
+// reader has taken everything.
+func TestOutputWrittenJustBeforeExitIsNotLost(t *testing.T) {
+	need(t, "sh")
+	need(t, "yes")
+	need(t, "head")
+	const lines = 3000
+	s := ptytest.Start(t, exec.Command("sh", "-c", "yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | head -n 3000; echo THE-END"))
+	mustExpect(t, s.ExpectString("THE-END", ptytest.Guard))
+	if _, err := s.Wait(ptytest.Guard); err != nil {
+		t.Fatal(err)
+	}
+	mustExpect(t, s.ExpectEOF(ptytest.Guard))
+	if n := strings.Count(s.Transcript(), "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"); n != lines {
+		t.Fatalf("%d of %d lines in the transcript", n, lines)
+	}
+}
+
 // Close ends a command that is still running, the way the end of a test does.
 func TestCloseKillsWhatIsRunning(t *testing.T) {
 	need(t, "sleep")

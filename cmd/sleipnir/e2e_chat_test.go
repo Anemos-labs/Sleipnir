@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -489,6 +490,42 @@ func TestChatFromAPipe(t *testing.T) {
 				t.Errorf("stderr has no prompt:\n%s", r.stderr)
 			}
 		})
+	}
+}
+
+// Every slash command answers, on stderr, and /quit ends the chat at once: what was typed
+// after it is not a goal (the chat reads ahead, so it has it, and must leave it).
+func TestChatSlashCommandsFromAPipe(t *testing.T) {
+	m := startModel(t)
+	m.on("@hello", say("hi there"))
+	m.on("@never", say("this goal must not run"))
+	w := newWorld(t, m.url())
+	r := w.run(strings.Join([]string{
+		"@hello", "/help", "/cost", "/context", "/agents", "/mode", "/mode plan", "/mode bogus", "/plan",
+		"/rewind", "/rewind nope", "/diff", "/diff nope", "/recon", "/skills", "/mcp", "/mcp reconnect x",
+		"/compact", "/nothing", "/?", "/quit", "@never", "",
+	}, "\n"), "chat")
+	assertRun(t, r, 0, []string{"hi there", "!this goal must not run"}, []string{
+		"/cost              tokens, cost and cache hit ratio so far",
+		"constitution", "thread (verbatim)",
+		"single agent session",
+		"mode: default", "mode: plan", "unknown mode; use default, accept-edits, plan or bypass", "plan mode: read-only",
+		"cp_0001", "turn 1: @hello", `rewind: checkpoint: unknown checkpoint: "nope"`,
+		"usage: /diff <checkpoint id>", `diff: checkpoint: unknown checkpoint: "nope"`,
+		"## project", "no skills", "no MCP servers in this session", "nothing to compact yet",
+		"unknown command /nothing; try /help",
+	})
+	if !regexp.MustCompile(`input \d+ \(uncached\) \+ \d+ cached-read \+ \d+ cache-write · output \d+ · hit \d+% · \$\d+\.\d{4}`).MatchString(r.stderr) {
+		t.Errorf("no cost line in:\n%s", r.stderr)
+	}
+	if n := strings.Count(r.stderr, "/exit              quit"); n != 2 { // /help and /?
+		t.Errorf("the help was printed %d times, want 2", n)
+	}
+	if got, want := m.seen(), []string{"@hello"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("the model got the goals %q, want %q", got, want)
+	}
+	if got, ok := w.sessionEnd(); !ok || got != "exit" {
+		t.Errorf("the session ended with reason %q (recorded: %v), want \"exit\"", got, ok)
 	}
 }
 

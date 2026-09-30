@@ -24,3 +24,5 @@ func killGroup(int) {}
 func setWinsize(*os.File, uint16, uint16) error { return ErrUnsupported }
 
 func inputPending(*os.File) (int, error) { return 0, ErrUnsupported }
+
+func outputPending(*os.File) (int, error) { return 0, ErrUnsupported }

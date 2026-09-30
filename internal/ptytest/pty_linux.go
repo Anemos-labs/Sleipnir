@@ -14,6 +14,10 @@ import (
 // also known as FIONREAD).
 const fionread = unix.TIOCINQ
 
+// outputQueueRequest, asked of the master, is the bytes the program wrote that the master has not
+// read: on Linux the master's input queue, FIONREAD again.
+const outputQueueRequest = unix.TIOCINQ
+
 // openPty opens a pseudo-terminal: posix_openpt, grantpt, unlockpt and ptsname, which
 // on Linux are an open of /dev/ptmx and two ioctls (devpts needs no grant).
 func openPty() (master, slave *os.File, err error) {

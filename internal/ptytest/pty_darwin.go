@@ -15,6 +15,11 @@ import (
 // int), the same on every macOS architecture (x/sys/unix does not define it).
 const fionread = 0x4004667f
 
+// outputQueueRequest, asked of the master, is the bytes the program wrote that the master has not
+// read: on macOS the terminal's output queue, TIOCOUTQ (FIONREAD on the master is what the slave
+// could read, which is the other direction).
+const outputQueueRequest = unix.TIOCOUTQ
+
 // openPty opens a pseudo-terminal: posix_openpt, grantpt, unlockpt and ptsname, which on
 // macOS are an open of /dev/ptmx and three ioctls on it (TIOCPTYGRANT, TIOCPTYUNLK and
 // TIOCPTYGNAME, which fills a 128-byte buffer with the slave's name).

@@ -49,6 +49,10 @@ import (
 // a hung program fails a test instead of the whole job.
 const Guard = 60 * time.Second
 
+// drainLimit is the longest the end of a session waits for its output to be read (a hang
+// guard: the reader takes it in microseconds unless it is gone).
+const drainLimit = 10 * time.Second
+
 // Default window size of a new terminal.
 const (
 	DefaultRows = 24
@@ -158,12 +162,38 @@ func start(cmd *exec.Cmd, c config) (*Session, error) {
 		s.mu.Lock()
 		s.state, s.unread = cmd.ProcessState, unread
 		s.mu.Unlock()
+		s.drain()
 		// Let go of the terminal: the output ends when the last holder of the other end
 		// does (the command, and anything it started that is still running).
 		s.slave.Close()
 		close(s.exited)
 	}()
 	return s, nil
+}
+
+// drain waits for the reader to take what the command wrote just before it exited. Closing the
+// last descriptor of the slave end discards what is still queued on some systems (macOS), and
+// the test holds one until now. It stops waiting when nothing is queued, when the queue has
+// stopped shrinking (what the system reports is then not something the reader is about to
+// take), or at drainLimit.
+func (s *Session) drain() {
+	deadline := time.Now().Add(drainLimit)
+	last, stuck := -1, 0
+	for time.Now().Before(deadline) {
+		n, err := outputPending(s.master)
+		if err != nil || n == 0 {
+			return
+		}
+		if n == last {
+			if stuck++; stuck >= 20 {
+				return
+			}
+		} else {
+			stuck = 0
+		}
+		last = n
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // readLoop copies the terminal's output into the transcript until it ends.
