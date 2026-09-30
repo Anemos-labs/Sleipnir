@@ -290,3 +290,14 @@ func (r *ring[T]) slice() []T {
 }
 
 func (r *ring[T]) reset() { r.buf, r.head, r.total = nil, 0, 0 }
+
+// revise edits the newest element that match accepts, if the ring still holds one: a later event can explain an earlier one, and
+// the line that was written for it is then corrected, not left to say what the State no longer believes.
+func (r *ring[T]) revise(match func(*T) bool, edit func(*T)) {
+	for i := len(r.buf) - 1; i >= 0; i-- {
+		if v := r.at(i); match(v) {
+			edit(v)
+			return
+		}
+	}
+}

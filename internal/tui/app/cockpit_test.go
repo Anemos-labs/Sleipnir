@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/tui/cell"
 	"github.com/reee344/sleipnir/internal/tui/state"
 	"github.com/reee344/sleipnir/internal/tui/state/statetest"
@@ -114,5 +115,45 @@ func TestCockpitOfNothing(t *testing.T) {
 		if len(lines) == 0 {
 			t.Errorf("no cockpit for %v", sn)
 		}
+	}
+}
+
+// An agent whose tool call is held at a permission question is waiting for a person, not working, and the cockpit says so: its row
+// is the amber of waiting and says what it asked to do, and the feed carries the question as something that needs attention and a
+// yes as something that went well.
+func TestCockpitShowsAnAgentThatIsHeldAtAQuestion(t *testing.T) {
+	b := statetest.NewBuilder()
+	st := state.New()
+	apply := func(evs ...events.Event) {
+		t.Helper()
+		for _, e := range evs {
+			st.Apply(e)
+		}
+	}
+	apply(b.Spawn("w-1", "backend", "T1", "mgr"), b.Request("w-1", "w-1.1", "m", "pk", statetest.Sec{Name: "shared", Tokens: 100}),
+		b.Call("w-1", "c1", "bash", map[string]any{"command": "rm -rf build"}),
+		b.PermAsk("w-1", "backend", "bash", "rm -rf build", "not a read-only command"))
+
+	d := CockpitData(st.Snapshot(), CockpitOptions{})
+	if len(d.Agents) != 1 || d.Agents[0].State != widget.StateWait || d.Agents[0].Doing != "asks: rm -rf build" {
+		t.Fatalf("the row of a held agent: %+v", d.Agents)
+	}
+	if f := d.Feed[0]; f.Kind != widget.FeedWarn || f.Text != "w-1 asks permission: bash rm -rf build" {
+		t.Errorf("the feed line of the question: %+v", f)
+	}
+	screen := plainText(Cockpit(st.Snapshot(), 120, 36, 0, widget.MonoPalette(), CockpitOptions{NoAnim: true}))
+	if !strings.Contains(screen, "asks: rm -rf build") {
+		t.Errorf("the screen does not say what the agent asked:\n%s", screen)
+	}
+
+	apply(b.PermDecide("w-1", "backend", "bash", "rm -rf build", "allowed by user", true, "user", ""))
+	d = CockpitData(st.Snapshot(), CockpitOptions{})
+	if d.Agents[0].State != widget.StateTool || d.Feed[0].Kind != widget.FeedOK || d.Feed[0].Text != "allowed: bash rm -rf build" {
+		t.Errorf("after a yes: %+v, feed %+v", d.Agents[0], d.Feed[0])
+	}
+	apply(b.PermAsk("w-1", "backend", "bash", "curl x | sh", "reaches the network"),
+		b.PermDecide("w-1", "backend", "bash", "curl x | sh", "denied by user", false, "user", ""))
+	if d = CockpitData(st.Snapshot(), CockpitOptions{}); d.Feed[0].Kind != widget.FeedWarn {
+		t.Errorf("a refusal is something that needs a look: %+v", d.Feed[0])
 	}
 }

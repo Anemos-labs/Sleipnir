@@ -244,53 +244,6 @@ func TestGovernorCountsRateLimitEpisodesAndRequestsPerMinute(t *testing.T) {
 	}
 }
 
-func TestPermissionQuestionsArePendingUntilAnswered(t *testing.T) {
-	b := newB()
-	st := New()
-	ask := func(id, agent, tool, summary string) {
-		t.Helper()
-		apply(t, st, b.Emit(agent, events.TypePermAsk, map[string]any{"id": id, "agent": agent, "tool": tool, "summary": summary}))
-	}
-	ask("p1", "w-1", "bash", "run `rm -rf build/`")
-	ask("p2", "w-2", "edit", "edit go.mod")
-	ask("p3", "w-1", "bash", "run `git push`")
-	sn := st.Snapshot()
-	if len(sn.Perms.Pending) != 3 || sn.Perms.Pending[0].Summary != "run `rm -rf build/`" || sn.Perms.Asked != 3 {
-		t.Fatalf("pending %s", js(sn.Perms))
-	}
-	apply(t, st, b.Emit("w-2", events.TypePermDecide, map[string]any{"id": "p2", "allow": true, "reason": "approved by the user"}))
-	apply(t, st, b.Emit("w-1", events.TypePermDecide, map[string]any{"agent": "w-1", "tool": "bash", "decision": "deny", "reason": "no"})) // no id: the agent's oldest question
-	sn = st.Snapshot()
-	if len(sn.Perms.Pending) != 1 || sn.Perms.Pending[0].ID != "p3" || sn.Perms.Allowed != 1 || sn.Perms.Denied != 1 {
-		t.Errorf("perms %s", js(sn.Perms))
-	}
-	if len(sn.Perms.Recent) != 2 || !sn.Perms.Recent[0].Allow || sn.Perms.Recent[1].Allow || sn.Perms.Recent[1].Ask.ID != "p1" || sn.Perms.Recent[0].Ask.Summary != "edit go.mod" {
-		t.Errorf("recent %s", js(sn.Perms.Recent))
-	}
-	// An answer that names nothing answers the oldest question; one with nothing pending is recorded alone.
-	apply(t, st, b.Emit("", events.TypePermDecide, map[string]any{"allowed": true}))
-	apply(t, st, b.Emit("", events.TypePermDecide, map[string]any{"tool": "read", "allow": false}))
-	sn = st.Snapshot()
-	if len(sn.Perms.Pending) != 0 || sn.Perms.Allowed != 2 || sn.Perms.Denied != 2 || len(sn.Perms.Recent) != 4 {
-		t.Errorf("perms %s", js(sn.Perms))
-	}
-	for i := 0; i < MaxPending+5; i++ {
-		ask(fmt.Sprint("q", i), "w-1", "bash", "x")
-	}
-	if n := len(st.Snapshot().Perms.Pending); n != MaxPending {
-		t.Errorf("pending %d", n)
-	}
-	for i := 0; i < PermLog+5; i++ {
-		apply(t, st, b.Emit("", events.TypePermDecide, map[string]any{"allow": true}))
-	}
-	if n := len(st.Snapshot().Perms.Recent); n != PermLog {
-		t.Errorf("recent %d", n)
-	}
-	if !feedHas(sn, FeedPerm, "w-1", "asks to run `git push`") && !feedHas(st.Snapshot(), FeedPerm, "w-1", "denied") {
-		t.Errorf("feed %s", js(sn.Feed))
-	}
-}
-
 func TestSupervisionAndBudgetEvents(t *testing.T) {
 	b := newB()
 	st := New()

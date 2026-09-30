@@ -46,9 +46,11 @@ const (
 	// one per prefix and per agent, so they are bounded by those.
 	MaxPrefixes = 64
 	MaxRiders   = 64
-	// MaxPending bounds the permission questions waiting for an answer, PermLog the answered ones kept.
-	MaxPending = 16
-	PermLog    = 8
+	// MaxPending bounds the permission questions waiting for an answer, PermLog the answered ones kept and MaxPermPaths the paths
+	// kept of one question (the producer sends at most five).
+	MaxPending   = 16
+	PermLog      = 8
+	MaxPermPaths = 5
 	// MaxModels bounds the models whose prices are remembered (session.start lists at most 24).
 	MaxModels = 64
 	// MaxAlerts and MaxNotes bound what the board's alerts and pending notes keep (the board itself shows 8 and 48).

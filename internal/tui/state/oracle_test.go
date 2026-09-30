@@ -106,7 +106,26 @@ type oracle struct {
 	errors, cancelled   int
 	tasks               map[string]string // the status each task ended in
 	taskVer             map[string]float64
-	merge               map[string]int // by event type (merge.*)
+	merge               map[string]int  // by event type (merge.*)
+	actors              map[string]bool // the agents that wrote events, where the log has no agent.spawn (a session of one agent)
+
+	// agent.cancel: the runs cancelled, by agent and by phase; perm.ask and perm.decide: the questions put and how they were settled
+	// (by the "by" word), and the questions that no decision answered (a decision that matches no question, a refusal by policy, is
+	// not counted against any).
+	cancels, cancelPhase             map[string]int
+	asked, allowed, denied           int
+	permBy                           map[string]int
+	unasked, unanswered              int
+	lastCancelPhase, lastCancelCause map[string]string
+	pend                             map[string]int
+}
+
+// permKey is what tells one request of the permission engine from another in either of its events: who, what tool, what command and
+// which paths.
+func permKey(agent string, d obj) string {
+	ps, _ := d["paths"].([]any)
+	b, _ := json.Marshal(ps)
+	return agent + "\x00" + d.str("tool") + "\x00" + d.str("command") + "\x00" + string(b)
 }
 
 func readOracle(t testing.TB, log []byte, price prices) *oracle {
@@ -118,12 +137,17 @@ func readOracle(t testing.TB, log []byte, price prices) *oracle {
 		costBy: map[string]float64{}, lastRatio: map[string]float64{}, savedOf: map[string]float64{},
 		calls: map[string]int{}, callErrors: map[string]int{}, commits: map[string]int{}, anomalies: map[string]int{},
 		nudges: map[string]int{}, stops: map[string]int{}, tasks: map[string]string{}, taskVer: map[string]float64{}, merge: map[string]int{},
+		cancels: map[string]int{}, cancelPhase: map[string]int{}, permBy: map[string]int{}, pend: map[string]int{}, actors: map[string]bool{},
+		lastCancelPhase: map[string]string{}, lastCancelCause: map[string]string{},
 	}
 	kind := map[string]string{} // agent + "/" + req -> the kind of the request
 	for _, e := range evs {
 		typ, agent, d := e.str("type"), e.str("agent"), e.sub("data")
 		o.events++
 		o.count[typ]++
+		if agent != "" && agent != "swarm" && agent != "harness" && agent != "curator" {
+			o.actors[agent] = true
+		}
 		switch typ {
 		case "agent.spawn":
 			id := d.str("id")
@@ -175,7 +199,7 @@ func readOracle(t testing.TB, log []byte, price prices) *oracle {
 				if d.str("kind") == "rate_limit" || d.num("status") == 429 {
 					o.rateLimits++
 				}
-			} else if strings.Contains(d.str("error"), "context canceled") {
+			} else if msg := d.str("error"); strings.Contains(msg, "context canceled") || strings.HasSuffix(msg, "request cancelled") {
 				o.cancelled++ // a request cut off because its run was stopped did not fail
 			} else {
 				o.errors++
@@ -195,6 +219,25 @@ func readOracle(t testing.TB, log []byte, price prices) *oracle {
 				o.stops[agent]++
 			} else {
 				o.nudges[agent]++
+			}
+		case "agent.cancel":
+			o.cancels[agent]++
+			o.cancelPhase[d.str("phase")]++
+			o.lastCancelPhase[agent], o.lastCancelCause[agent] = d.str("phase"), d.str("cause")
+		case "perm.ask":
+			o.asked++
+			o.pend[permKey(agent, d)]++
+		case "perm.decide":
+			if d.flag("allow") {
+				o.allowed++
+			} else {
+				o.denied++
+			}
+			o.permBy[d.str("by")]++
+			if k := permKey(agent, d); o.pend[k] > 0 {
+				o.pend[k]--
+			} else {
+				o.unasked++
 			}
 		case "mail.send":
 			o.sent++
@@ -221,6 +264,9 @@ func readOracle(t testing.TB, log []byte, price prices) *oracle {
 		if strings.HasPrefix(typ, "merge.") {
 			o.merge[typ]++
 		}
+	}
+	for _, n := range o.pend {
+		o.unanswered += n
 	}
 	return o
 }

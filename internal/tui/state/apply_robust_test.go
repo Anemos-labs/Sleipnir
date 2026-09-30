@@ -24,7 +24,7 @@ var allTypes = []string{
 	events.TypeMailmanState, events.TypeWorkspaceCreate, events.TypeWorkspaceRemove, events.TypeWorkspacePrune, events.TypeWorkspaceCommit,
 	events.TypeWorkspaceReset, events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail,
 	events.TypeMergeRolledBack, events.TypeMergeRejected, events.TypeMergeFastFwd, events.TypeTaskMerge, events.TypeSwarmIntegration,
-	events.TypeUserInput, events.TypeUserSteer, events.TypeOutcome,
+	events.TypeUserInput, events.TypeUserSteer, events.TypeOutcome, events.TypeAgentCancel,
 	"agent.assign", "agent.panic", "agent.abandon", "mail.drop", "notice", "swarm.budget", "swarm.shutdown", "supervisor.panic", "sink.panic",
 	"tool.panic", "tool.timeout", "tool.spill", "tool.budget", "hook.run", "x.never.heard.of.it", "",
 }
@@ -274,7 +274,9 @@ func TestStringsAndNumbersFromPayloadsAreBounded(t *testing.T) {
 	apply(t, st, b.Emit("a", events.TypeUserInput, map[string]any{"text": long}))
 	apply(t, st, b.Emit("a", events.TypeToolCall, map[string]any{"id": long, "name": long, "input": map[string]any{"command": long}}))
 	apply(t, st, b.Emit("a", events.TypeLease, map[string]any{"action": "acquire", "agent": long, "path": long}))
-	apply(t, st, b.Emit("a", events.TypePermAsk, map[string]any{"id": long, "summary": long, "tool": long}))
+	apply(t, st, b.Emit("a", events.TypePermAsk, map[string]any{"tool": long, "reason": long, "command": long, "paths": []string{long, long, long, long, long, long, long}, "role": long}))
+	apply(t, st, b.Emit("a", events.TypePermDecide, map[string]any{"tool": long, "reason": long, "command": long, "allow": true, "by": long, "remember": long}))
+	apply(t, st, b.Emit("a", events.TypeAgentCancel, map[string]any{"phase": long, "cause": long, "steps": 1 << 40}))
 	bs, err := json.Marshal(st.Snapshot())
 	if err != nil {
 		t.Fatal(err)
@@ -508,9 +510,15 @@ func TestASnapshotIsImmutableAndSharesNothing(t *testing.T) {
 	}
 	for i := range mut.Perms.Pending {
 		mut.Perms.Pending[i].Summary = "x"
+		for j := range mut.Perms.Pending[i].Paths {
+			mut.Perms.Pending[i].Paths[j] = "x"
+		}
 	}
 	for i := range mut.Perms.Recent {
 		mut.Perms.Recent[i].Reason = "x"
+		for j := range mut.Perms.Recent[i].Ask.Paths {
+			mut.Perms.Recent[i].Ask.Paths[j] = "x"
+		}
 	}
 	for i := range mut.Board.Alerts {
 		mut.Board.Alerts[i].Text = "x"

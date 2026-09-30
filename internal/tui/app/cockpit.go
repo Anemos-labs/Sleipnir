@@ -114,8 +114,8 @@ func status(a state.Agent) widget.AgentState {
 		return widget.StateTool
 	case state.StatusEditing:
 		return widget.StateEdit
-	case state.StatusWaiting:
-		return widget.StateWait
+	case state.StatusWaiting, state.StatusAsking:
+		return widget.StateWait // asking is waiting for a person: the amber the widget gives to waiting
 	case state.StatusStuck, state.StatusError:
 		return widget.StateStuck
 	case state.StatusDone:
@@ -231,6 +231,12 @@ func doing(a state.Agent, tasks map[string]state.Task) string {
 			return "waits: " + t.Title
 		}
 		return "waits for the team"
+	case state.StatusAsking:
+		// The tool call that is held at the question is the agent's current one: what it asked to do.
+		if what := firstNonEmpty(a.ToolSummary, a.Tool); what != "" {
+			return "asks: " + what
+		}
+		return "asks permission"
 	case state.StatusDone:
 		if t, ok := tasks[a.Task]; ok && t.Result != "" {
 			return t.Result
@@ -396,14 +402,20 @@ func feed(sn *state.Snapshot, roles map[string]string) []widget.FeedLine {
 	for i := len(sn.Feed) - 1; i >= 0; i-- {
 		f := sn.Feed[i]
 		out = append(out, widget.FeedLine{
-			At: max(0, f.T.Sub(start)), Agent: f.Agent, Color: roleColor(roles[f.Agent]), Kind: feedKind(f.Kind), Text: f.Text, Tail: f.Detail,
+			At: max(0, f.T.Sub(start)), Agent: f.Agent, Color: roleColor(roles[f.Agent]), Kind: feedKind(f), Text: f.Text, Tail: f.Detail,
 		})
 	}
 	return out
 }
 
-func feedKind(k state.FeedKind) widget.FeedKind {
-	switch k {
+func feedKind(f state.FeedLine) widget.FeedKind {
+	switch f.Kind {
+	case state.FeedPerm:
+		// A permission line is the question (a person is wanted), the answer yes, or a refusal: only a yes went well.
+		if f.Glyph == state.GlyphOK {
+			return widget.FeedOK
+		}
+		return widget.FeedWarn
 	case state.FeedTool, state.FeedEnd:
 		return widget.FeedOK
 	case state.FeedToolErr, state.FeedError, state.FeedStuck, state.FeedCache, state.FeedRetry:
@@ -414,4 +426,14 @@ func feedKind(k state.FeedKind) widget.FeedKind {
 		return widget.FeedMail
 	}
 	return widget.FeedInfo
+}
+
+// firstNonEmpty is the first argument that is not empty.
+func firstNonEmpty(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }

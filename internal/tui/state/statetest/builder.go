@@ -128,3 +128,44 @@ func (b *Builder) Result(agent, id, name string, failed bool, ms int) events.Eve
 func (b *Builder) Spawn(id, role, task, parent string) events.Event {
 	return b.Emit("swarm", events.TypeAgentSpawn, map[string]any{"id": id, "role": role, "task": task, "by": parent, "parent": parent, "model": "m"})
 }
+
+// PermAsk makes the perm.ask the permission engine's audit writes (internal/session permaudit.go) when it has to put a question: the
+// tool, why it asks, the command of a shell call, the paths (at most five) and the role. Like the producer it leaves out what is
+// empty (command, paths, role) and never writes an id: a question and its answer are told together by who, tool, command and paths.
+func (b *Builder) PermAsk(agent, role, tool, command, reason string, paths ...string) events.Event {
+	return b.Emit(agent, events.TypePermAsk, PermPayload(role, tool, command, reason, paths))
+}
+
+// PermDecide makes the perm.decide that settles a question, or that refuses a request without one (by "policy"): the fields of the
+// question, and allow, by ("user", "no one", "policy" or "canceled") and, for an answer that is kept as a rule, remember ("session"
+// or "project").
+func (b *Builder) PermDecide(agent, role, tool, command, reason string, allow bool, by, remember string, paths ...string) events.Event {
+	d := PermPayload(role, tool, command, reason, paths)
+	d["allow"], d["by"] = allow, by
+	if remember != "" {
+		d["remember"] = remember
+	}
+	return b.Emit(agent, events.TypePermDecide, d)
+}
+
+// PermPayload is the payload of a perm.ask (and the part of a perm.decide's that is the same).
+func PermPayload(role, tool, command, reason string, paths []string) map[string]any {
+	d := map[string]any{"tool": tool, "reason": reason}
+	if command != "" {
+		d["command"] = command
+	}
+	if len(paths) > 0 {
+		d["paths"] = paths
+	}
+	if role != "" {
+		d["role"] = role
+	}
+	return d
+}
+
+// Cancel makes the agent.cancel that an agent's run writes as its last act when its context was cancelled (internal/agent agent.go):
+// phase is "model", "tools" or "between" (what the run was doing), cause "canceled" or "deadline", steps the model answers it had
+// finished.
+func (b *Builder) Cancel(agent, phase, cause string, steps int) events.Event {
+	return b.Emit(agent, events.TypeAgentCancel, map[string]any{"phase": phase, "cause": cause, "steps": steps})
+}

@@ -10,7 +10,7 @@ import (
 // handBuiltSession is a small swarm session written by hand, second by second, that touches every part of the State: a manager and
 // three workers on one prefix and two, tasks through every column of the board, a tool of every status, mail and its digest, leases,
 // a cache anomaly and a compaction at a cold moment, an epoch, a stuck worker, a rate limit, a merge queue with a conflict and a
-// verification failure, a permission question, and the end of the session. Every time in it is written down, so a test can say what
+// verification failure, permission questions (answered, refused by policy, cancelled with the run), and the end of the session. Every time in it is written down, so a test can say what
 // it expects at each of them.
 func handBuiltSession() []events.Event {
 	b := statetest.NewBuilder()
@@ -95,8 +95,8 @@ func handBuiltSession() []events.Event {
 	at(secs(16)+msec(50)).Emit("be-1", events.TypeLayerCommit, map[string]any{"scope": "shared-sync", "reason": "epoch (registration)", "shared": "x", "role": "y"})
 
 	// Work finishes; the merge queue integrates be-1's tree and bounces fe-1's.
-	at(secs(17)).Emit("be-1", events.TypePermAsk, map[string]any{"id": "p1", "agent": "be-1", "tool": "bash", "summary": "run `go test ./orders/...`"})
-	at(secs(17)+msec(800)).Emit("be-1", events.TypePermDecide, map[string]any{"id": "p1", "allow": true, "reason": "approved by the user"})
+	at(secs(17)).PermAsk("be-1", "backend", "bash", "go test ./orders/...", "not on the read-only list")
+	at(secs(17)+msec(800)).PermDecide("be-1", "backend", "bash", "go test ./orders/...", "allowed by user for the session", true, "user", "session")
 	at(secs(18)).Emit("be-1", events.TypeWorkspaceCreate, map[string]any{"path": "/cache/w/be-1", "branch": "sleipnir/s/be-1", "base": "abc", "mode": "worktree"})
 	at(secs(18)+msec(10)).Emit("fe-1", events.TypeWorkspaceCreate, map[string]any{"path": "/cache/w/fe-1", "branch": "sleipnir/s/fe-1", "base": "abc", "mode": "worktree"})
 	at(secs(19)).Emit("be-1", events.TypeMergeQueued, map[string]any{"task": "T1: orders endpoint", "position": 1})
@@ -112,6 +112,12 @@ func handBuiltSession() []events.Event {
 	at(secs(22)+msec(500)).Emit("sc-1", events.TypeBoardOp, taskOp("finish", "T3", "review", "sc-1", 32, map[string]any{"result": "surveyed"}))
 	at(secs(22)+msec(600)).Emit("sc-1", events.TypeAgentEnd, map[string]any{"id": "sc-1", "state": "failed", "evidence": "no files edited"})
 	at(secs(23)).Emit("mgr", events.TypeBoardOp, map[string]any{"op": "alert", "kind": "stuck", "text": "sc-1 repeated a failing call", "key": "stuck:sc-1", "version": 40})
+	// fe-1, sent back to its conflict, reads a key that no one may read (refused by policy, without a question) and asks to install
+	// something; its run is cancelled while the question waits: the engine answers "canceled", and then the run says so.
+	at(secs(23)+msec(100)).PermDecide("fe-1", "frontend", "read", "", "a protected path: ~/.ssh", false, "policy", "", "/home/u/.ssh/id_rsa")
+	at(secs(23)+msec(200)).PermAsk("fe-1", "frontend", "bash", "npm install", "reaches the network")
+	at(secs(23)+msec(700)).PermDecide("fe-1", "frontend", "bash", "npm install", "approval canceled: context canceled", false, "canceled", "")
+	at(secs(23)+msec(701)).Cancel("fe-1", "tools", "canceled", 2)
 	at(secs(24)).Emit("mgr", events.TypeModelResponse, withTotal(statetest.ResponsePayload("mgr.1", "m", 10, 4900, 0, 20, 0.002), 500))
 	at(secs(25)).Emit("mgr", events.TypeAgentState, map[string]any{"id": "mgr", "state": "done", "line": "", "task": ""})
 	at(secs(25)+msec(10)).Emit("swarm", events.TypeSwarmIntegration, map[string]any{"branch": "sleipnir/s/integration", "tip": "0123456789abcdef", "applied": true, "files": []string{"orders/list.go"}})

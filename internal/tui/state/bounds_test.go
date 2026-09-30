@@ -34,6 +34,24 @@ func checkBounds(t testing.TB, st *State) {
 	over("answered permissions", st.perms.recent.len(), PermLog)
 	over("anomaly log", st.anoms.len(), AnomalyLog)
 	over("unknown type names", len(st.stats.UnknownTypes), MaxUnknownTypes)
+	// What each agent says it waits on is what the table of questions says, or less (a question whose agent was not tracked when it
+	// was put is not counted for an agent that is tracked later), and an agent that waits on one is at work.
+	waits := map[string]int{}
+	for _, q := range st.perms.pending {
+		waits[q.Agent]++
+		over("paths of a question", len(q.Paths), MaxPermPaths)
+	}
+	for id, a := range st.agents {
+		if a.asks < 0 || a.asks > waits[id] || a.Asking != a.asks {
+			t.Errorf("%s waits on %d questions (shown %d), the table has %d", id, a.asks, a.Asking, waits[id])
+		}
+		if a.asks > 0 && (a.run == runIdle || a.run == runDone || a.run == runError || a.Status != StatusAsking) {
+			t.Errorf("%s waits on %d questions and is %s (run %d)", id, a.asks, a.Status, a.run)
+		}
+		if a.Status == StatusAsking && a.asks == 0 {
+			t.Errorf("%s is asking and waits on nothing", id)
+		}
+	}
 	for id, a := range st.agents {
 		over(id+" hits", a.hits.len(), HistCap)
 		over(id+" marks", a.marks.len(), MarkCap)
