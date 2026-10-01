@@ -52,29 +52,6 @@ replace "To be decided before the first release" in the README. Until then `scri
 `no LICENSE file: choose one before the first release` and nothing is ever released. Do this before step 3 (a push to an
 unprotected `main` is allowed) or as the first pull request after it.
 
-**Also before step 3: CI is not green on the code as it stands (checked on 2026-09-30, locally, with the same tools).** Fix
-what it says while `main` is still unprotected (a push is allowed), or all of it in one pull request: two required checks that
-are red for different reasons leave no pull request that can pass either. What was found:
-
-1. `security`: `govulncheck` reports seven advisories in `golang.org/x/net v0.43.0` that the code reaches through `html.Parse`
-   in `internal/tools/web/htmlconv.go` (GO-2026-4440, 4441, 5025, 5027, 5028, 5029, 5030). Two are fixed from x/net v0.45.0
-   (which still builds with Go 1.24), all seven from v0.55.0, whose `go.mod` says `go 1.25.0`. Closing them means raising the
-   `go` line of this repository's `go.mod` from 1.24 to 1.25 (Go 1.24 is out of support, but `docs/BUILDING.md` says to keep it
-   until that is decided), `go get golang.org/x/net@latest && go mod tidy`, and adding to `scripts/deps-allowlist.txt` what
-   `scripts/check-deps.sh` says the new versions bring.
-2. `test` with `stable` (Go 1.27.1 today): `internal/core` `TestCanonicalGolden/shapes`, because Go 1.27's `encoding/json`
-   writes invalid UTF-8 as a raw U+FFFD where every earlier Go wrote `\ufffd`: the canonical bytes, and so the cache key, of a
-   block with invalid UTF-8 depend on the Go version, which the canonical encoder should not allow (a prompt-bytes change:
-   `docs/BUILDING.md`, "Changing prompt bytes"); and five tests of `internal/tools/fs`, because Go 1.27 no longer fills
-   `json.UnmarshalTypeError.Field` when a custom `UnmarshalJSON` returns the error, so a wrongly typed argument is answered with
-   "arguments must be a JSON object" instead of naming the field.
-3. Found and fixed in this work: `go vet` for Windows failed on `cmd/sleipnir`'s tests (`syscall.Kill`), and two tests that Go 1.26
-   broke (`internal/inspect`: the mux redirects with 307 instead of 301; `bench/tools/stdmini`: `go/scanner` imports an internal
-   package, so the test uses `net/mail` and `net/textproto`).
-
-The changes to `go.mod` and `go.sum`, to the canonical encoder and to the tools were not part of this work. Until they are on
-`main`, `ci-gate` is red, and so nothing is released. Delete this paragraph afterwards.
-
 ### Step 3. Protect `main` and the tags
 
 With the GitHub CLI, logged in as an administrator of the repository (`gh auth login`):
@@ -248,8 +225,9 @@ User-facing: a non-test, non-markdown file under `cmd/` or `internal/` (testdata
 * **Code owners are asked, not required.** One maintainer cannot approve their own pull request.
 * **A waiting release run is replaced by a newer one** (GitHub's rule for a concurrency group without cancellation). The newer
   run releases everything since the last tag, so nothing is lost; it may only come later.
-* **The release builds with the newest stable Go**, because Go 1.24 is out of support; `go.mod` keeps saying `go 1.24`, and the
-  `go.mod` leg of the test matrix proves it still builds and passes.
+* **The release builds with the newest stable Go**, because the Go of `go.mod` is the oldest the project builds with and is
+  usually out of support by then; the `go.mod` leg of the test matrix proves it still builds and passes, and the `stable` leg
+  proves the same of the newest.
 * **A tag pushed by hand releases nothing.** The workflow this replaces released on a pushed `v*` tag; now the tag is made by
   the `publish` job together with its release, so that a release is made in one place, behind one gate (`AUTO_RELEASE`, the
   plan, `main`). A release the plan declined is fixed at its reason, or run again from **Actions > release > Run workflow**

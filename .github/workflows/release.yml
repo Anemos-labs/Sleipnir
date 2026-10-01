@@ -129,8 +129,9 @@ jobs:
           ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
-      # The newest Go (Go 1.24 is out of support): the language version stays go.mod's, and ci's go.mod legs prove it still
-      # builds. The stable leg of ci is required, so a release is built with a Go that has just passed the whole suite.
+      # The newest Go, not go.mod's: that is the oldest Go the project builds with, and usually one that is no longer
+      # supported; ci's go.mod legs prove it still builds. The stable leg of ci is required, so a release is built with a Go
+      # that has just passed the whole suite.
       # No cache: what a release job restores must not be something a pull request could have planted.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
