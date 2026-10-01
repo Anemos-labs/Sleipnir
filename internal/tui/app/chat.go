@@ -1335,6 +1335,8 @@ func (m *chatModel) statusView(sn *state.Snapshot) statusView {
 			s.kind = statusStuck
 		case a.Compacting:
 			s.kind = statusCompacting
+		case a.Status == state.StatusAsking:
+			s.kind = statusAsking
 		case a.Status == state.StatusWaiting:
 			s.kind = statusWaiting
 		case a.Status == state.StatusTool || a.Status == state.StatusEditing:
