@@ -359,6 +359,10 @@ The first release.
   members of the group, which are not its children and are gone a moment after the signal, so a command that ignored SIGTERM could still be
   running when `Shutdown` returned (once in the nightly run's three passes of the suite under `-race`); it waits, bounded, until the group
   is empty, as the MCP transport already did.
+- Found by the third nightly run: `FuzzScope` failed on a name of about 2,500 newlines. A pattern over `maxScopeBytes` (4,096) matches nothing,
+  by design, and the fuzz target's invariant ("the escaped literal matches itself") forgot that escaping puts a backslash before every
+  space and special character, so a name that fits can have an escape that does not. The invariant now holds for patterns inside the cap and
+  asserts that one over it matches nothing (`TestAPatternOverTheCapMatchesNothingEvenItsOwnLiteral`); the product did what it was meant to.
 - A long run is measured (`TestALongRunKeepsABoundedFootprint`): a thousand steps on every push and twenty thousand in the nightly run, a
   tool result each, the thread folded as it grows, the live heap read after a collection a quarter, a half and three quarters of the way,
   and held to what the archive's index takes for the turns it ever had (a few hundred bytes each; a kilobyte a step is the figure, the

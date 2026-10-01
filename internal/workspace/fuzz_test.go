@@ -65,6 +65,14 @@ func FuzzScope(f *testing.F) {
 		}
 		lit := strings.Join(segs, "/")
 		esc := escapeGlob(lit)
+		if len(esc) > maxScopeBytes {
+			// Escaping puts a backslash before every space and special character, so a literal that fits can make a pattern that
+			// does not: a pattern over the cap matches nothing, by design (found by the nightly run, on a 5 KB name of newlines).
+			if Match(esc, lit) {
+				t.Fatalf("a pattern of %d bytes, over the cap of %d, matches", len(esc), maxScopeBytes)
+			}
+			return
+		}
 		if !Match(esc, lit) {
 			t.Fatalf("the escaped literal %q does not match itself (%q)", esc, lit)
 		}

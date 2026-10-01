@@ -371,3 +371,24 @@ func TestAssertReportsChangesOutsideScope(t *testing.T) {
 func renameInTree(tree *Tree, from, to string) error {
 	return osRename(filepath.Join(tree.Path, filepath.FromSlash(from)), filepath.Join(tree.Path, filepath.FromSlash(to)))
 }
+
+// A pattern longer than the cap matches nothing, whatever it says (a scope is read from a configuration file and from what an agent writes:
+// its size is bounded so that matching it is). The escaped form of a literal is longer than the literal, a backslash before each space and
+// special character, so a name that fits the cap can have an escape that does not: FuzzScope found it with a name of 2,500 newlines, and its
+// invariant ("the escaped literal matches itself") now holds for patterns inside the cap only.
+func TestAPatternOverTheCapMatchesNothingEvenItsOwnLiteral(t *testing.T) {
+	lit := "a" + strings.Repeat("\n", maxScopeBytes/2+10)
+	if len(lit) > maxScopeBytes {
+		t.Fatalf("the test's name is %d bytes, over the cap", len(lit))
+	}
+	esc := escapeGlob(lit)
+	if len(esc) <= maxScopeBytes {
+		t.Fatalf("the escape is %d bytes: not over the cap, the test proves nothing", len(esc))
+	}
+	if Match(esc, lit) {
+		t.Fatal("a pattern over the cap matched")
+	}
+	if !Match(escapeGlob("a b"), "a b") {
+		t.Fatal("a pattern inside the cap with a space in it does not match itself")
+	}
+}
