@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +181,10 @@ func TestTheStateOfARealRichSessionAgreesWithAnIndependentCount(t *testing.T) {
 	o := readOracle(t, log, recordedPrices(evs))
 	sn := foldBytes(t, log).Snapshot()
 	checkAgainstOracle(t, sn, o)
+
+	// Said only when something below fails: what the scout's first requests and results were, so that a platform on which the script
+	// does not make a compaction happen (the first Windows run did not) says why.
+	t.Log("sc-1 in the log: " + scoutTrace(evs, "sc-1", 14))
 
 	// What the script made happen must have happened, or the checks above compared nothing. (The compactor model's own requests are
 	// not on the list: a fork compaction is a background job that the harness's safety net, an emergency compaction, can get ahead
@@ -464,4 +469,32 @@ func TestTheStateOfARealMailmanSessionAgreesWithAnIndependentCount(t *testing.T)
 	if !anyMark(rowOf(t, sn, "be-1"), ActMail) || !anyMark(rowOf(t, sn, "mgr"), ActMail) {
 		t.Error("the gantt does not mark the mail")
 	}
+}
+
+// scoutTrace is a line that says what an agent's first n requests and tool results were: the tokens each request was sent and the
+// size and outcome of each result.
+func scoutTrace(evs []obj, agent string, n int) string {
+	var parts []string
+	for _, e := range evs {
+		if e.str("agent") != agent {
+			continue
+		}
+		d := e.sub("data")
+		switch e.str("type") {
+		case "model.response":
+			parts = append(parts, fmt.Sprintf("request(in %v, read %v)", d.sub("usage").num("input_tokens"), d.sub("usage").num("cache_read_tokens")))
+		case "tool.result":
+			what := fmt.Sprintf("%s(%v chars", d.str("name"), d.num("chars"))
+			if d.flag("error") {
+				what += ", ERROR"
+			}
+			parts = append(parts, what+")")
+		case "compaction.commit":
+			parts = append(parts, "COMPACTED")
+		}
+		if len(parts) >= n {
+			break
+		}
+	}
+	return strings.Join(parts, " ")
 }
