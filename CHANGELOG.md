@@ -232,6 +232,10 @@ The first release.
 
 ### Interfaces
 
+- `sleipnir schedule add --cron "0 9 * * 1-5" "summarize yesterday's commits"` keeps a goal in `~/.sleipnir/schedule.json`; `sleipnir daemon` (or `daemon --once`
+  from cron or a systemd timer) starts each job that is due as a headless `sleipnir run` of its own, with its model, directory, permission mode and budget
+  (default US$1 a run), one hour at most, its output in `~/.sleipnir/schedule-logs/`. A daemon that was down starts an overdue job once, not once per missed slot.
+  A job's mode defaults to `default`, which refuses whatever needs a person to say yes (nobody is there).
 - `sleipnir chat`: Ctrl-C cancels the running turn and nothing else, as the documentation said and the program did not: one Ctrl-C
   ended the whole session (and exited 0), because Ctrl-C was registered twice, by `main` for the process and by each turn, and a signal
   goes to every channel that asked for it. It is handled in one place now, and `main` leaves it to the chat (SIGTERM still ends the

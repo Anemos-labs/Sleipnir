@@ -1,0 +1,149 @@
+package sched
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+// Job is one scheduled goal.
+type Job struct {
+	ID        string    `json:"id"`
+	Cron      string    `json:"cron"`
+	Goal      string    `json:"goal"`
+	Model     string    `json:"model,omitempty"`
+	Dir       string    `json:"dir,omitempty"`
+	Mode      string    `json:"mode,omitempty"` // the permission mode of the run; empty is "default", which refuses what needs a person
+	BudgetUSD float64   `json:"budget_usd,omitempty"`
+	Created   time.Time `json:"created"`
+	// LastRun is when the daemon last started the job (zero: never); LastExit is how that run ended ("ok", or what went wrong).
+	LastRun  time.Time `json:"last_run,omitempty"`
+	LastExit string    `json:"last_exit,omitempty"`
+	Log      string    `json:"log,omitempty"` // the file the last run wrote
+}
+
+// Store is the job file.
+type Store struct{ Path string }
+
+// List reads the jobs, in the order they were added. A missing file holds none.
+func (s Store) List() ([]Job, error) {
+	b, err := os.ReadFile(s.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var jobs []Job
+	if err := json.Unmarshal(b, &jobs); err != nil {
+		return nil, fmt.Errorf("%s: %w (fix or delete the file)", s.Path, err)
+	}
+	return jobs, nil
+}
+
+// Save writes the jobs atomically, readable by the user only.
+func (s Store) Save(jobs []Job) error {
+	b, err := json.MarshalIndent(jobs, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(s.Path), ".schedule-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(append(b, '\n')); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), s.Path)
+}
+
+// Add validates and stores a job; the ID is chosen here.
+func (s Store) Add(j Job, now time.Time) (Job, error) {
+	if _, err := ParseCron(j.Cron); err != nil {
+		return Job{}, err
+	}
+	if strings.TrimSpace(j.Goal) == "" {
+		return Job{}, errors.New("a job needs a goal")
+	}
+	jobs, err := s.List()
+	if err != nil {
+		return Job{}, err
+	}
+	n := 0
+	for _, o := range jobs {
+		var v int
+		if _, err := fmt.Sscanf(o.ID, "j%d", &v); err == nil && v > n {
+			n = v
+		}
+	}
+	j.ID, j.Created = fmt.Sprintf("j%d", n+1), now
+	return j, s.Save(append(jobs, j))
+}
+
+// Remove deletes a job by ID.
+func (s Store) Remove(id string) error {
+	jobs, err := s.List()
+	if err != nil {
+		return err
+	}
+	for i, j := range jobs {
+		if j.ID == id {
+			return s.Save(append(jobs[:i:i], jobs[i+1:]...))
+		}
+	}
+	return fmt.Errorf("no job %q", id)
+}
+
+// Due lists the jobs that should start at now: those whose next minute after their last run (or their creation) has come. A daemon that
+// was down while several slots passed starts a job once, not once per slot: the caller records LastRun = now.
+func Due(jobs []Job, now time.Time) []Job {
+	var due []Job
+	for _, j := range jobs {
+		c, err := ParseCron(j.Cron)
+		if err != nil {
+			continue
+		}
+		since := j.Created
+		if j.LastRun.After(since) {
+			since = j.LastRun
+		}
+		if next, ok := c.Next(since.In(now.Location())); ok && !next.After(now) {
+			due = append(due, j)
+		}
+	}
+	sort.SliceStable(due, func(a, b int) bool { return due[a].ID < due[b].ID })
+	return due
+}
+
+// Next is when the job runs next, for listings.
+func Next(j Job, now time.Time) (time.Time, bool) {
+	c, err := ParseCron(j.Cron)
+	if err != nil {
+		return time.Time{}, false
+	}
+	since := j.Created
+	if j.LastRun.After(since) {
+		since = j.LastRun
+	}
+	n, ok := c.Next(since.In(now.Location()))
+	if ok && n.Before(now) {
+		return now, true // overdue: it starts at the daemon's next look
+	}
+	return n, ok
+}

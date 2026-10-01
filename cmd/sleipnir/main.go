@@ -173,6 +173,8 @@ Commands:
   sessions  list recorded sessions (sessions prune: delete the old ones)
   chat      interactive session (slash commands, Ctrl-C cancels a turn)
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
+  schedule  goals to run on a schedule (cron): add, list, rm
+  daemon    start the scheduled goals that are due (once a half minute; --once for a cron job)
   swarm     shorthand for run --swarm: sleipnir swarm <workers> "<goal>"
   recon     print the deterministic project survey that seeds the shared prompt layer
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test

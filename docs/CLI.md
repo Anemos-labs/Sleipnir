@@ -555,8 +555,10 @@ Usage of doctor:
 
 Prints the catalogue of an OpenAI-style marketplace (`<base_url>/models`; Heimdall's needs no key) with context size and
 prices per million tokens. Only chat models are listed (`--all` lists the others); a catalogue that does not say what its
-models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. The provider is `--provider`, else your default provider, else `heimdall`. Project config is
-never trusted here.
+models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. With no `--provider` it asks every provider whose key is set, and Heimdall (its
+catalogue is public), at once, and prints `provider/model` references that `--model` takes; a provider that does not answer is named on stderr. Words, `--tools`,
+`--reasoning`, `--max-price` and `--min-context` narrow the list; favorites (`models fav add|rm|list`, kept in your user config as `models.favorites`) come first,
+marked `*`. In the chat, `/model ` completes from the same list. Project config is never trusted here.
 
 <!-- flags: models -->
 ```text
@@ -586,6 +588,50 @@ search (all must appear, any case). Favorites, marked *, come first.
         only models with configurable reasoning
   -tools
         only models that accept tools
+```
+<!-- /flags -->
+
+### `sleipnir schedule`
+
+Goals to run on a schedule, kept in `~/.sleipnir/schedule.json` (`$SLEIPNIR_HOME/schedule.json`). `sleipnir schedule` lists them with the next and
+the last run; `schedule rm <id>` removes one. `--cron` takes five fields (minute hour day-of-month month day-of-week; `*`, lists, ranges, `/step`, Sunday is 0 or 7)
+or `@hourly`, `@daily`, `@weekly`, in the local time zone. A run is a headless `sleipnir run` in `--cwd` with the job's model, mode and budget (US$1 by default);
+nobody is there to answer a question, so the default mode refuses what needs a yes: give a job `--mode accept-edits` (or an `--allow` rule in the project's settings)
+for the changes it may make.
+
+<!-- flags: schedule -->
+```text
+usage: sleipnir schedule [list]
+       sleipnir schedule add --cron EXPR [flags] <goal>
+       sleipnir schedule rm <id>
+
+flags of add:
+  -budget-usd float
+        stop a run at this many dollars (0: no limit) (default 1)
+  -cron string
+        when: five fields "minute hour day-of-month month day-of-week", or @hourly, @daily, @weekly (required)
+  -cwd string
+        working directory of the run (default: the current directory)
+  -mode string
+        permissions of the run: default | accept-edits | plan | bypass. The default refuses whatever needs a person to say yes, since nobody is there
+  -model string
+        model for the run (default: your configured default)
+```
+<!-- /flags -->
+
+### `sleipnir daemon`
+
+Starts the scheduled goals that are due, one at a time, looking every half minute until it is stopped; `--once` starts what is due now, waits for it and exits, for
+cron or a systemd timer. Each run's output is in `~/.sleipnir/schedule-logs/<job>-<time>.log` and its end (`ok`, an error, `timed out after 1h0m0s`) is shown by
+`sleipnir schedule`. A daemon that was down starts an overdue job once, not once per missed slot. Its runs use the provider keys of the daemon's own environment.
+
+<!-- flags: daemon -->
+```text
+Usage of daemon:
+  -every duration
+        how often to look for due jobs (default 30s)
+  -once
+        start what is due now, wait for it, and exit (for cron or a systemd timer)
 ```
 <!-- /flags -->
 
