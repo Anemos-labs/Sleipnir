@@ -39,6 +39,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/tools/fs"
+	"github.com/anemos-labs/sleipnir/internal/tools/memtool"
 	"github.com/anemos-labs/sleipnir/internal/tools/recall"
 	"github.com/anemos-labs/sleipnir/internal/tools/shell"
 	"github.com/anemos-labs/sleipnir/internal/tools/skilltool"
@@ -651,6 +652,7 @@ func (s *Session) build(ctx context.Context) error {
 	reg.Register(recall.New(archive))
 	// Always registered: the tool list must not depend on the project.
 	reg.Register(skilltool.New(s.Skills))
+	reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
 	// MCP servers add their tools here, before the list is frozen: every agent of
 	// the session then sends the same tools array, byte for byte.
 	s.startMCP(ctx, reg)

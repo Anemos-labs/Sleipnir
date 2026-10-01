@@ -11,7 +11,7 @@
 //
 // Discovery order (later entries have higher precedence):
 //
-//  1. ~/.sleipnir/SLEIPNIR.md (scope "user")
+//  1. ~/.sleipnir/SLEIPNIR.md and ~/.sleipnir/MEMORY.md (scope "user"; the second is the model's own notes)
 //  2. for each directory from the project root down to cwd, AGENTS.md,
 //     CLAUDE.md, SLEIPNIR.md and .sleipnir/SLEIPNIR.md (scope "project" at the
 //     root, "dir" below it)
@@ -200,6 +200,7 @@ func Load(opts Opts) ([]Source, error) {
 	defer ld.close()
 	if ld.user != nil {
 		ld.file(ld.user, "SLEIPNIR.md", ScopeUser, 0)
+		ld.file(ld.user, "MEMORY.md", ScopeUser, 0) // the notes the model saved with its memory tool (internal/tools/memtool)
 	}
 	if ld.proj != nil {
 		for i, d := range ld.dirs {

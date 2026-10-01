@@ -54,7 +54,8 @@ Plain Markdown that tells the agent how your project works: build and test comma
 
 **Which files.** All that exist are included, in this order (later text is more specific and is read last):
 
-1. `~/.sleipnir/SLEIPNIR.md` (scope `user`)
+1. `~/.sleipnir/SLEIPNIR.md` and `~/.sleipnir/MEMORY.md` (scope `user`; the second holds the notes the model saved with its `memory`
+   tool: at most 40 notes of 300 characters, each saved only after you approve the exact text; edit or delete the file freely)
 2. for each directory from the project root down to the working directory: `AGENTS.md`, `CLAUDE.md`, `SLEIPNIR.md`,
    `.sleipnir/SLEIPNIR.md` (scope `project` at the root, `dir` below it)
 3. for each of those directories: `SLEIPNIR.local.md`, `.sleipnir/SLEIPNIR.local.md` (scope `local`, for personal notes;

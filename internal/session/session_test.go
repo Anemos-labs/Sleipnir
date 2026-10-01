@@ -964,3 +964,30 @@ func TestSwitchModelKeepsTheThreadOnTheNewEndpoint(t *testing.T) {
 		t.Error("the switch is recorded in the log")
 	}
 }
+
+// A note the model saved in one session is in the shared layer of the next, in a project that has nothing of its own, and the line
+// that says the notes may be wrong survives the loader (which removes HTML comments).
+func TestSavedMemoryNotesReachTheNextSessionsSharedLayer(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	notes := "Notes the agent saved with its memory tool. They may be wrong or out of date; the user's own instructions win.\n- Prefers table-driven tests.\n"
+	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "MEMORY.md"), []byte(notes), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	o.Home = home
+	o.TrustProject = false // only the user's own files count in an untrusted project: the memory file is the user's
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got := s.Shared.Text()
+	if !strings.Contains(got, "Prefers table-driven tests.") || !strings.Contains(got, "may be wrong or out of date") {
+		t.Errorf("the shared layer lacks the saved notes:\n%s", got)
+	}
+}

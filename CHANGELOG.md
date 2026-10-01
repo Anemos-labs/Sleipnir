@@ -156,6 +156,11 @@ The first release.
 
 ### Sessions
 
+- Long-term memory: a `memory` tool (add, remove, list) keeps short notes in `~/.sleipnir/MEMORY.md`, which every later session reads into its shared
+  layer, in any project. A note is one line of at most 300 characters; the file holds 40 notes at most, and a full memory answers with the numbered
+  notes so the model merges or removes before it adds (nothing is dropped silently). Each change is a write under `~/.sleipnir`, which asks in
+  every mode and is refused when nobody is there to answer, and the question shows the exact note, so text from a web page that talked the model into
+  saving something is seen first. The tool adds to every agent's tool list: a declared change of the constant prefix, once.
 - `sleipnir sessions prune` deletes recorded sessions that are old (`--older-than`, 30 days), except the newest `--keep` (20) and any written
   to in the last ten minutes, and lists them with their sizes instead unless it is given `--yes`. Nothing deleted a session before, and
   a benchmark or a daily user has thousands within a year. A directory that has no event log is never touched.
