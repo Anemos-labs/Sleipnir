@@ -55,12 +55,16 @@ func TestTheCommittedGalleryIsWhatTheCodeDraws(t *testing.T) {
 			t.Errorf("%v (scripts/record-demo.sh draws it)", err)
 			continue
 		}
-		if string(want) != docs[name] {
-			t.Errorf("docs/media/%s is not what the code draws from %s: run scripts/record-demo.sh and commit the result", name, showcaseLog)
+		from := showcaseLog
+		if r.isChat() {
+			from = r.Source
 		}
-		if r.StillAt > 0 {
-			if _, err := os.Stat(repoFile(t, "docs/media/"+r.Name+".png")); err != nil {
-				t.Errorf("the still of %s is missing: %v", r.Name, err)
+		if string(want) != docs[name] {
+			t.Errorf("docs/media/%s is not what the code draws from %s: run scripts/record-demo.sh and commit the result", name, from)
+		}
+		for _, s := range r.StillList() {
+			if _, err := os.Stat(repoFile(t, "docs/media/"+s.Name+".png")); err != nil {
+				t.Errorf("the still %s of %s is missing: %v", s.Name, r.Name, err)
 			}
 		}
 		if r.Caption == "" {

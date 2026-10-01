@@ -1,15 +1,20 @@
 # The terminal interface
 
 What `sleipnir chat`, `run`, `swarm`, `watch` and `replay` should look and feel like, why, and how it is built and tested.
-The swarm and the cache are real recordings of the program (`docs/media`, made by `scripts/record-demo.sh` from the event log of a
-recorded session, never drawn by hand); the chat and the storyboard are still **design sketches** (`docs/design/ux/`, regenerated
-with `python3 make_sketches.py && node render.mjs ...`), which are not screenshots of working code. As each piece lands, a real
-recording replaces its sketch.
+The swarm, the cache and the chat are real recordings of the program (`docs/media`, made by `scripts/record-demo.sh`, never drawn by
+hand: the cockpit's from the event log of a recorded session, the chat's by playing the chat program itself from a transcript of one);
+the storyboard is still a **design sketch** (`docs/design/ux/`, regenerated with `python3 make_sketches.py && node render.mjs ...`),
+which is not a screenshot of working code. As each piece lands, a real recording replaces its sketch: the chat's sketch
+(`design/ux/chat.png`, what the chat was designed from) was replaced by the recording below, and is kept only as the design.
 
 | | |
 |---|---|
 | ![the swarm, recorded](media/swarm.png) | ![the cache of one agent, recorded](media/cache.png) |
-| ![chat, a sketch](design/ux/chat.png) | ![storyboard, a sketch](design/ux/story.png) |
+| ![the chat, recorded: the end of a first answer](media/chat.png) | ![the chat, recorded: a letter typed at a question lands in the input box and the question stays](media/chat-ask.png) |
+
+The storyboard is still a sketch, not a recording:
+
+![storyboard, a sketch](design/ux/story.png)
 
 ## Where things stand
 
@@ -29,6 +34,16 @@ and `NO_COLOR` are honoured, and Unicode or ASCII follows the locale. Not built:
 code blocks (the markdown renderer has the hook, the chat passes none) and the inline progress view of `run --swarm`. Where the
 chat cannot be drawn on (a pipe, a file, `TERM=dumb`) or with `--plain` it is still the line REPL it was, byte for byte, with typed
 `y/a/n` approvals (`internal/session/sink.go`, `cmd/sleipnir/chat.go`). `sleipnir inspect` is a browser dashboard.
+
+The chat has a recording of its own (`docs/media/chat.svg`, with stills), made the way the cockpit's are, with one difference that
+follows from what a chat is: a log of events cannot say what the person typed, so it is the chat program itself, run on a virtual clock
+in the emulator and given a transcript of a session (`docs/media/chat/transcript.jsonl`, made by `sleipnir chat-record`, a hidden
+command of `scripts/record-demo.sh --new-chat`). The session behind it is a real one (the harness, the real tools including `go test`,
+the permission engine, the cache planner, the accounting) against the mock endpoint, with a script for the model and one for the
+person; what it shows is a goal typed and sent, an answer streamed as markdown, the tool lines (a failing `go test`, an edit as a
+diff, the tests passing), a permission question that a letter does not answer (it lands in the input box) and `1` does, the status
+line, the stack bar with its clock, the sparkline with a `⚠`, a compaction folding into one line, and a Ctrl-C that cancels a turn and
+keeps the session. It is checked against the code like the others (`scripts/record-demo.sh --check`, `go test ./internal/tui/app`).
 Of the rest, what is built is said where it is described.
 
 ## Principles
@@ -137,7 +152,8 @@ Packages (all new; standard library, `golang.org/x/term`, `golang.org/x/sys` onl
   usage and the price table, with the assumption printed.
 - `internal/tui/input`: the line editor (key decoding, editing, history, completion, paste) over a `Reader` of decoded keys.
 - `internal/tui/app`: the programs (chat, progress, watch, replay) that connect an event source (live sink, log tail,
-  recorded file) to the reducer and the renderer, and handle Ctrl-C per turn.
+  recorded file) to the reducer and the renderer, and handle Ctrl-C per turn; and the player (`chat_play.go`) that runs the chat
+  on a virtual clock from a transcript of a session (`chat_transcript.go`), one record at a time, for the chat's recording.
 - `internal/tui/svg`: the headless recorder: replay a log with a virtual clock into frames and write an animated SVG (frames
   are the vt screen; identical consecutive frames merged) plus PNG stills via headless Chromium.
 
@@ -162,10 +178,13 @@ The live sink stays an `agent.Sink`, but it does not draw: it forwards to the sa
 ## Media
 
 `scripts/record-demo.sh` draws the recordings of `docs/media` (animated SVG, CSS only) and their PNG stills from the event log of the
-recorded showcase session (`docs/media/showcase/events.jsonl`, from `sleipnir demo --scenario shop`), as the manifest
-`docs/media/gallery.json` lists them. `--new-session` runs the demo again first; `--check` (and `go test ./internal/tui/app`) fail
-when the committed files are not what the code draws from the committed log, so a change in the UI that has not been recorded again is
-caught by CI, not by a reader. Recordings are generated from real event logs, never hand-edited.
+recorded showcase session (`docs/media/showcase/events.jsonl`, from `sleipnir demo --scenario shop`) and, for the chat, from the
+transcript of a recorded chat session (`docs/media/chat/transcript.jsonl`), as the manifest `docs/media/gallery.json` lists them.
+`--new-session` runs the demo again first and `--new-chat` records the chat session again (about half a minute, no key, the `go`
+command); `--check` (and `go test ./internal/tui/app`) fail when the committed files are not what the code draws from the committed
+log and transcript, so a change in the UI that has not been recorded again is caught by CI, not by a reader. Recordings are generated
+from real sessions, never hand-edited: the model and the person in them are scripts, and the README says so. `docs/BUILDING.md` says
+how they are made and checked, and `docs/media/README.md` how the chat's is.
 
 ## Order of work
 
