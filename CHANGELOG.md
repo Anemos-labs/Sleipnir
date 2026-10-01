@@ -382,6 +382,7 @@ defect the runs showed, with the evidence, and what changed.
   any other place names it.
 - **Two refusals that stopped nothing worth stopping.** `set -e` and `set -euo pipefail` (strict mode, which changes how a script stops and
   touches nothing) no longer ask, and `--allow tests` covers `go mod init` and `go mod tidy`, which a new project's first minutes need.
+- **A write over an existing file showed the whole file as added.** The approval now diffs against what the file holds.
 - **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:
   45% `cd` to a path the model guessed (`/workspace`, `/repo`, `/home/user`), 14% paths the engine cannot know (`$(pwd)`,
   `$OLDPWD`, a loop variable), 6% scratch files in `/tmp`, 10% `sed -n 'N,Mp' file`, the way models read a range of lines.

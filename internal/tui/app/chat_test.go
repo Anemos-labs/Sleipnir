@@ -1123,3 +1123,27 @@ func TestChatShiftTabCyclesThePermissionMode(t *testing.T) {
 		t.Errorf("shift+tab never steps into bypass, and leaves it for default: %q", got)
 	}
 }
+
+// A write over a file that exists shows what it changes: the lines that go and the lines that come. The first real session showed a
+// four-line fix as a whole file added, with nothing removed.
+func TestChatAWriteOverAFileShowsWhatItRemoves(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wc.go")
+	if err := os.WriteFile(path, []byte("package p\nvar kept = 1\nvar gone = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := startChat(t, rigOpts{})
+	call := toolCall("w1", "write", map[string]any{"path": path, "content": "package p\nvar kept = 1\nvar added = 3\n"})
+	ans := make(chan perm.Decision, 1)
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		r.sink.ToolStart("main", call)
+		ans <- r.prompt(ctx, perm.Request{Agent: "main", Tool: "write", Paths: []string{path}, Summary: "write wc.go"})
+		return TurnResult{Steps: 1}
+	}
+	r.submit("write it")
+	s := r.shows("1. Yes", "Write a file")
+	if !strings.Contains(s, "- var gone = 2") || !strings.Contains(s, "+ var added = 3") {
+		t.Errorf("the change does not show what goes and what comes:\n%s", s)
+	}
+	r.press(input.RuneKey('3', 0))
+	decision(t, ans)
+}

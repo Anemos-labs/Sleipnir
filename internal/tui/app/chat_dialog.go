@@ -1,9 +1,13 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/tui/cell"
@@ -295,7 +299,7 @@ func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner 
 		}
 	case "write":
 		if content, ok := stringField(call.input, "content"); ok {
-			body = append(body, widget.Diff("", "", content, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: approvalDiffRows})...)
+			body = append(body, widget.Diff("", currentText(r.Paths), content, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: approvalDiffRows})...)
 		}
 	case "apply_patch":
 		if patch, ok := stringField(call.input, "patch"); ok {
@@ -303,6 +307,27 @@ func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner 
 		}
 	}
 	return body
+}
+
+// currentText is what the file a write is about to replace holds now, so that the approval shows what the write changes and not the
+// whole file as added; "" for a file that is not there, is not text, or is too big to be worth reading for a preview.
+func currentText(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	f, err := os.Open(paths[0])
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() || fi.Size() > 1<<20 {
+		return ""
+	}
+	b, err := io.ReadAll(io.LimitReader(f, 1<<20))
+	if err != nil || !utf8.Valid(b) || bytes.IndexByte(b, 0) >= 0 {
+		return ""
+	}
+	return string(b)
 }
 
 // fitBody makes a body fit maxRows: a body that is too tall is cut in the middle, where a row says how many are left out, so that
