@@ -20,7 +20,9 @@ The first release.
   agent compacted mechanically instead. Three causes are fixed: a field of the wrong type (`notes` as an object, `keep_from` as a
   number) costs that field and not the patch, a reply that holds a valid patch and also calls a tool uses the patch (the call is never
   run), and a patch whose JSON is broken is refused as that, not as having no `keep_from`. `sleipnir rl rollout --thread-soft-limit N`
-  sets the size at which an agent's thread is considered for compaction, so that how soon is a setting to compare.
+  sets the size at which an agent's thread is considered for compaction, so that how soon is a setting to compare (a soft limit
+  above the default hard limit of 60,000 tokens raises the hard limit with it, unless that was set too: the hard limit forces the
+  compaction first, so a soft limit above it compared nothing).
 - Cache models for OpenAI-style automatic prefix caching (routing keys, gateway-reported cost) and Anthropic explicit
   breakpoints (max four, 20-block lookback, 5m/1h TTL), including preserved thinking, turn-scoped system messages
   and declared rebases.
@@ -306,6 +308,14 @@ defect the runs showed, with the evidence, and what changed.
   (`model.response`, the inspector's timeline), so a log could not tell an endpoint that queues from one that decodes slowly: the
   two were equal in every one of the 8,088 responses of the first benchmark run. It is now when the first frame with content
   arrived (the end, for a reply that was not streamed), as the Anthropic adapter already measured it.
+
+- **A run with nobody to ask could not run the project's tests, and said so in a line cut off before its advice.** In a dogfood
+  session (`sleipnir run` with stdin not a terminal, which is what a script, CI or a cron job is) the agent fixed a cache correctly
+  and then could not run `go test`: the permission engine refuses what needs a question when there is no one to ask, and the only
+  trace for the person was `use an act…`. `run` and `swarm` now take `--allow RULE` (repeatable: `--allow 'Bash(go test:*)'`, or
+  `--allow tests` for the build and test commands of most projects, a preset that installs and downloads nothing and hands no
+  interpreter a program of its own), and a run that was refused something ends with the commands, how many times, and the rules that
+  would let them through (`run --json` carries them as `refused_no_one_to_ask`).
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),

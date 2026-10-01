@@ -241,6 +241,8 @@ usage: sleipnir run [flags] <prompt | ->
 Runs one goal through the harness. The prompt may be '-' to read stdin.
 
 flags:
+  -allow value
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, never install or run); more in docs/CONFIGURATION.md
   -budget-usd float
         stop when spend reaches this many US dollars
   -capture

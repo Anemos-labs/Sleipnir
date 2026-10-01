@@ -411,7 +411,13 @@ Switch a running chat with `/mode <m>` or `/plan`.
 **When no human is available** (`run`/`swarm` with stdin not a terminal, or any unattended run) a question cannot be
 asked, so the action is refused with `approval required: <why>` and a fixed sentence saying that this run has no one to ask
 (a model that is not told keeps looking for another way to the same action: a real one spent twenty-four tool calls on
-that). Give the run what it needs with `--mode` or `permissions.allow` (for example `Bash(go test:*)`). In a terminal the question is
+that). A run that was refused something says so at its end, with the commands and the rule that would let them through. Give the
+run what it needs with `--allow` (repeatable, for this run only: `--allow 'Bash(go test:*)'`, or `--allow tests` for the build and
+test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet`,
+`gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint`, `pnpm test`, `yarn test`, `node --test`,
+`pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint` and `ctest`: they
+run the project's own code, as running its tests is meant to, and never install a package, download, or hand an interpreter a
+program of its own. In a terminal the question is
 `allow? [y]es once / [a]lways this session / [n]o`; `a` adds an exact rule for the rest of the session (it is not
 written to any file), and anything but `y`/`a` refuses.
 

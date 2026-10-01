@@ -78,6 +78,9 @@ type Options struct {
 	// Permissions.
 	Mode     perm.Mode
 	Prompter perm.Prompter
+	// Allow are rules that need no question in this run, on top of the configuration's (sleipnir run --allow): what the person
+	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
+	Allow []string
 
 	// Swarm runs a manager plus workers instead of a single agent.
 	Swarm      bool
@@ -185,6 +188,10 @@ type Session struct {
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
 	shell       *shell.Manager
+
+	// refused are the commands that were refused for want of anyone to ask (permaudit.go), for the hint a run prints at its end.
+	refusedMu sync.Mutex
+	refused   []refusedCommand
 
 	mu      sync.Mutex
 	started bool
@@ -484,7 +491,7 @@ func (s *Session) buildPerm() error {
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
-		Allow: s.cfg.Permissions.Allow, Ask: ask, Deny: s.cfg.Permissions.Deny,
+		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.hookPrompter(o.Prompter), Audit: s.auditPermission,
 	})
 	if err != nil {
@@ -630,13 +637,7 @@ func (s *Session) build(ctx context.Context) error {
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
 	constLayer := kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: constText, Vol: kv.VolFrozen}})
 
-	planner := kv.DefaultPlanner()
-	if c := s.cfg.Cache; c.ThreadSoftLimitTokens > 0 {
-		planner.SoftThreadTokens = c.ThreadSoftLimitTokens
-	}
-	if c := s.cfg.Cache; c.CompactThresholdTokens > 0 {
-		planner.HardThreadTokens = c.CompactThresholdTokens
-	}
+	planner := plannerFor(s.cfg.Cache)
 	kvPol := kv.DefaultPolicy()
 	if c := s.cfg.Cache; c.MinLayerForBreakpoint > 0 {
 		kvPol.MinLayerForBreakpoint = c.MinLayerForBreakpoint
@@ -1105,4 +1106,19 @@ func (s *Session) cost() float64 {
 		return c
 	}
 	return 0
+}
+
+// plannerFor is the compaction planner that the cache settings ask for. A soft limit that is set above the default hard one would never
+// be reached, the hard limit forcing the compaction first, so the hard limit follows it up unless it was set too.
+func plannerFor(c config.Cache) kv.Planner {
+	p := kv.DefaultPlanner()
+	if c.ThreadSoftLimitTokens > 0 {
+		p.SoftThreadTokens = c.ThreadSoftLimitTokens
+	}
+	if c.CompactThresholdTokens > 0 {
+		p.HardThreadTokens = c.CompactThresholdTokens
+	} else if p.SoftThreadTokens > p.HardThreadTokens {
+		p.HardThreadTokens = p.SoftThreadTokens
+	}
+	return p
 }
