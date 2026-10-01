@@ -40,6 +40,7 @@ const (
 	CompactFail  = "compaction.reject"  // a compaction patch was rejected
 	ReRead       = "file.reread"        // the same part of a file (path and range), unchanged in between, read three or more times in one session
 	RepeatedCall = "call.repeated"      // one identical call three or more times
+	OutputLimit  = "model.cutoff"       // a response that ended at the output limit (max_tokens): a full-length generation that did not finish
 )
 
 // Severity, from what the pattern does to the work.
@@ -102,6 +103,7 @@ var hints = map[string]string{
 	CompactFail:  "a compaction patch did not validate: the compactor model, or a rule that is too strict",
 	ReRead:       "the same part of a file read again and again: did the answer get lost (truncation, compaction) or never used?",
 	RepeatedCall: "the same call over and over: polling, or a loop",
+	OutputLimit:  "a response ended at the output limit: a model that rambles (look at the sampling temperature and at the text: a degenerate generation is mostly words that are not there) or a task that asks for one huge write; the agent asks the model to carry on twice and then stops with an error",
 }
 
 var (
@@ -318,9 +320,19 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 		switch e.Type {
 		case events.TypeModelResponse:
 			rep.Requests++
-			var d struct{ Req string }
+			var d struct {
+				Req     string
+				Stop    string
+				TotalMS int64 `json:"total_ms"`
+				Usage   struct {
+					OutputTokens int `json:"output_tokens"`
+				}
+			}
 			if json.Unmarshal(e.Data, &d) == nil {
 				lastReq[e.Agent] = d.Req
+				if d.Stop == "max_tokens" {
+					add(session, OutputLimit, "max_tokens", S2, ex(fmt.Sprintf("%d output tokens in %.0f s", d.Usage.OutputTokens, float64(d.TotalMS)/1000)), d.Req)
+				}
 			}
 		case events.TypeToolCall:
 			var d struct {

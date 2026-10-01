@@ -294,3 +294,30 @@ func TestNormaliseKeepsWhatIsTheSameAndDropsWhatVaries(t *testing.T) {
 		t.Errorf("%q vs %q", a, b)
 	}
 }
+
+// A response that the output limit cut off is a full-length generation that did not finish: it ranks as waste, with its request
+// counted, and the example says how long it went on. A response that stopped for any other reason is not one.
+func TestResponsesCutOffAtTheOutputLimitAreFound(t *testing.T) {
+	cut := func(req string, tokens, ms int) ev {
+		return ev{"a", events.TypeModelResponse, map[string]any{"req": req, "stop": "max_tokens", "total_ms": ms, "usage": map[string]any{"output_tokens": tokens}}}
+	}
+	ended := ev{"a", events.TypeModelResponse, map[string]any{"req": "r3", "stop": "end_turn", "total_ms": 900, "usage": map[string]any{"output_tokens": 40}}}
+	dir := log(t, filepath.Join(t.TempDir(), "s1"), cut("r1", 16000, 189729), cut("r2", 16000, 120000), ended)
+	rep, err := Mine([]string{dir}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := find(rep, OutputLimit, "max_tokens")
+	if f == nil || f.Count != 2 || f.Wasted != 2 || f.Severity != S2 {
+		t.Fatalf("output limit: %+v", f)
+	}
+	if len(f.Examples) == 0 || !strings.Contains(f.Examples[0].Detail, "16000 output tokens in 190 s") {
+		t.Errorf("examples: %+v", f.Examples)
+	}
+	if f.Hint == "" {
+		t.Error("no hint")
+	}
+	if rep.Requests != 3 {
+		t.Errorf("requests %d, want 3", rep.Requests)
+	}
+}

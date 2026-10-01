@@ -321,6 +321,15 @@ defect the runs showed, with the evidence, and what changed.
   looked for a delete action that does not exist, and tried `done` on it, for four turns. The answer to an agent that acts on a task
   it does not own now says what to do: claim a task nobody has claimed before reporting on it, and a task that should not be done
   at all is dropped with `fail` (manager only); another agent's task names its owner and who to mail.
+- **A response that the output limit cut off was taken for the final answer.** The agent loop ended a run at the first response with no
+  tool call, whatever the reason the response stopped. In the benchmark (5 of 436 sessions, on two models) a generation went on to
+  the 16,000-token limit, once for three minutes, words that were not there, and that text was the run's answer: the log's outcome
+  said `done`, `run` printed it as the result, a swarm worker would have handed it in as its report. A response that ends at the
+  limit with no call to run is not an answer now. The model is told what happened (a harness turn, not the person's word) and asked
+  to carry on, twice at most in a row, with a notice for whoever is watching; after that the run ends with `agent.ErrOutputLimit`
+  (`the response was cut off by the output limit: 16000 tokens, 3 responses in a row`), the benchmark's outcome says `gave_up`, a
+  swarm worker's task goes back to the board, and `sleipnir friction` ranks the cut-offs (`model.cutoff`). A call that was cut off
+  in the middle was and is answered by the dispatcher as arguments that do not parse.
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
