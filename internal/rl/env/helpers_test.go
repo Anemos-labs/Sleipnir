@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // sharedGoCache lets the many `go test` runs of this package share one build

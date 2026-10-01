@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // capturingModel is an endpoint that answers "ok" and keeps the last user message it was sent, and the system prompt.

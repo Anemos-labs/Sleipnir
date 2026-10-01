@@ -3,7 +3,7 @@ package vt
 import (
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // arg is parameter i, or def when it was left out.

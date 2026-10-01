@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // Bounds on hostile input: simple commands judged per line, and file operands

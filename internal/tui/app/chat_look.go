@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/input"
-	"github.com/reee344/sleipnir/internal/tui/term"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // Look says how the chat draws itself: the colours (a Theme for the text widgets, a Palette for the signature ones, which are not

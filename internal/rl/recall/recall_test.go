@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
 // repo builds a project with n Go packages, each defining a distinctive constant.

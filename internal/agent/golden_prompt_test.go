@@ -10,9 +10,9 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 // update rewrites the golden files under testdata/golden instead of comparing with them:

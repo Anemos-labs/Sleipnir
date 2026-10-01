@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // The shop scenario's cache lifetime. The real lifetimes are minutes; a demo that lasts one minute needs a cache that cools in

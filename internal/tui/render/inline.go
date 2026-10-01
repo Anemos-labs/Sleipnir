@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
 // autoFlushLines is how many printed lines may wait for a frame before Print writes them itself, so that a caller that prints a

@@ -1,7 +1,7 @@
 package vt
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // blank is the cell an erase leaves: empty, in the current background colour (back-colour erase, as xterm does), so a

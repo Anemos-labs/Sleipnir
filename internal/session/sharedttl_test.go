@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // cache.shared_ttl asks an explicit-breakpoint provider to keep the shared and role

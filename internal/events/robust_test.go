@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // steppedClock is an injected clock: one second per reading from a fixed instant, so

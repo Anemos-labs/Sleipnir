@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/reee344/sleipnir/internal/commands"
+	"github.com/anemos-labs/sleipnir/internal/commands"
 )
 
 // Expansion substitutes arguments, includes project files, and runs shell

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // Targets lists the preset target names accepted by Config.TargetName (any id

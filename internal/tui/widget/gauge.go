@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Gauges and the formatting of the numbers the status line shows. All of it is pure: the same number always gives the same text.

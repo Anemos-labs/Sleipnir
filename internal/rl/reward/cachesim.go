@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // This file is a small, exported, deterministic model of a provider's prefix

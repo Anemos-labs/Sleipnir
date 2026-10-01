@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // testEnv is a store plus a project root inside a private temp dir. The root is

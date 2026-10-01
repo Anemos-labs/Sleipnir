@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 func TestSimPlacesMarkersWithTheRealPlanner(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // Command output is arbitrary bytes, but everything downstream (provider JSON,

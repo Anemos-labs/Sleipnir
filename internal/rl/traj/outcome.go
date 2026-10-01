@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // root is the agent whose final word is the team's: the manager, or the first

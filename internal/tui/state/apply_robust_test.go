@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 // allTypes is every event type the State has a handler for or knowingly ignores, and a few it does not know.

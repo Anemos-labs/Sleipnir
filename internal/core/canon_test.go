@@ -16,7 +16,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // U+2028 and U+2029 as bytes, so that nothing between the author and the compiler can

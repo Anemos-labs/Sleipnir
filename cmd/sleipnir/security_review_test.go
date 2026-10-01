@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/config"
 )
 
 // S45 (fixed): an environment variable named <PROVIDER>_BASE_URL used to redirect a built-in

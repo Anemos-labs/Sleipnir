@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/agent"
 )
 
 // WarmGate stops a fan-out from paying for the same prefix many times.

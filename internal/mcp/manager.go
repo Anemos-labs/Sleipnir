@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // State is where a server is in its life.

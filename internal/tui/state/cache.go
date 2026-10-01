@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // mark adds a marker to the agent's hit-ratio history, at the request it precedes.

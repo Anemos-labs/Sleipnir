@@ -8,10 +8,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/traj"
-	"github.com/reee344/sleipnir/internal/rl/traj/trajtest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj/trajtest"
 )
 
 // `rl reward` rescores rollouts that are already on disk, which is how a scoring fix reaches data that was scored wrongly

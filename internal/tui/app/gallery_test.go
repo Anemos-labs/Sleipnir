@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // repoFile is a path in the repository, found by walking up from the package to go.mod.

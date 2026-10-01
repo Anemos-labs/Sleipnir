@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/ptytest"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
-	"github.com/reee344/sleipnir/internal/tui/vt"
+	"github.com/anemos-labs/sleipnir/internal/ptytest"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/tui/vt"
 )
 
 // screenOf is the screen a terminal of cols x rows shows after what the program has written so far.

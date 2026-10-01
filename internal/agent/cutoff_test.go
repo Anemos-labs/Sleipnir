@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // A response that the output limit cut off, with no call to run, is the start of something and not an answer. The first

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // PruneOptions tunes Prune.

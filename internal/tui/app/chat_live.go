@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/input"
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // The live region: the few rows under the scrollback that are drawn again at every frame. From top to bottom, when they apply:

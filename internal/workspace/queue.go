@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // Strategy is how a submission is combined with the integration tip.

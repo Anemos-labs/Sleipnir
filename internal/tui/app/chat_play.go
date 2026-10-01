@@ -11,13 +11,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tui/input"
-	"github.com/reee344/sleipnir/internal/tui/render"
-	"github.com/reee344/sleipnir/internal/tui/svg"
-	"github.com/reee344/sleipnir/internal/tui/term"
-	"github.com/reee344/sleipnir/internal/tui/vt"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/render"
+	"github.com/anemos-labs/sleipnir/internal/tui/svg"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/vt"
 )
 
 // Playing a chat transcript (chat_transcript.go) is running the chat program, the real one, against a terminal emulator and a clock

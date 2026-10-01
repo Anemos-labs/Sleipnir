@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // ErrNothingToSqueeze is returned by SqueezeOnly when no tool result is big enough to

@@ -6,7 +6,7 @@ package widget
 import (
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 const foldLabelW = 7 // "thread " and "fold ↓ "

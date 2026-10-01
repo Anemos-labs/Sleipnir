@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // A manager that put the title in a field of another name (`task`, `description`) was told "task needs a title" three times; the

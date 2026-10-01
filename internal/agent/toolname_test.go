@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // A model served through a gateway can leak its chat format into a tool name ("read<|channel|>commentary"). The call is clear;

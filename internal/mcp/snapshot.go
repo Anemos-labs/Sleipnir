@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // SnapshotOptions bound what an MCP server may add to the tool list that every

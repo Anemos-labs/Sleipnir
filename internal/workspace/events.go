@@ -1,7 +1,7 @@
 package workspace
 
 import (
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // Event type names emitted by the manager and the merge queue. They follow the

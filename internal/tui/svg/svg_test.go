@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/vt"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/vt"
 )
 
 func wellFormed(t *testing.T, doc string) {

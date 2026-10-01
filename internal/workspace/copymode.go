@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // Copy mode in one paragraph. A directory that is not a git repository still has

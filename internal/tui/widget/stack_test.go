@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/widget"
-	"github.com/reee344/sleipnir/internal/tui/widget/showtest"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/showtest"
 )
 
 // showChatLayers is the prompt of the chat sketch: 48.3k tokens in seven layers.

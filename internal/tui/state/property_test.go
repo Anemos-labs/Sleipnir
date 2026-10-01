@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // snapJSON is the State as a string, for comparing two States: the snapshot at the State's own clock, which is what every fold

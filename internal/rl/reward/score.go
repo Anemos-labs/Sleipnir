@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // SigBudgetBreaches is an optional signal (not part of rl's fixed vocabulary):

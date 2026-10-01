@@ -3,7 +3,7 @@ package state
 import (
 	"errors"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // errStop ends an events.Scan early; it is never returned to a caller.

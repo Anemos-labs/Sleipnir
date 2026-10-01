@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // ForkPrompt builds the compactor's request as a fork of the agent's own.

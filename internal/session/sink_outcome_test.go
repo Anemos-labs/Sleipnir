@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 var (

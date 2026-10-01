@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/reee344/sleipnir/internal/kv/sim"
+	"github.com/anemos-labs/sleipnir/internal/kv/sim"
 )
 
 func init() { extraCommands["sim"] = cmdSim }

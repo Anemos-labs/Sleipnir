@@ -4,7 +4,7 @@
 package widget
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // fanDefaultLayers is the shared prefix when the caller has not said what it is: three layers in the proportions of the sketch.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 func safetyEst() core.Estimator { return core.NewBytesEstimator().WithRatio(4) }

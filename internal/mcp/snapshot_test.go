@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 func mkTool(name, desc, schema string) Tool {

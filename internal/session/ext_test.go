@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 func writeFile(t *testing.T, path, body string) {

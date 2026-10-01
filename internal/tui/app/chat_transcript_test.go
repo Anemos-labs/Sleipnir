@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
 // A chat transcript is read from a file that is committed and played by every checkout, so what reads it is strict (a record it does

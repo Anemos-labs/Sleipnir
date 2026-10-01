@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // fakeBackend is a Backend that records calls and returns canned results.

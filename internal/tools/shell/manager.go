@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 )
 
 // Options tunes a Manager. The zero value is what production uses.

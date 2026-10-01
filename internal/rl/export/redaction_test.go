@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/rl/export"
-	"github.com/reee344/sleipnir/internal/rl/redact"
+	"github.com/anemos-labs/sleipnir/internal/rl/export"
+	"github.com/anemos-labs/sleipnir/internal/rl/redact"
 )
 
 func newRedactor() *redact.Redactor { return redact.New(redact.Config{Salt: "export-test"}) }

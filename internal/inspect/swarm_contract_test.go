@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // The swarm logs the full state of a task on every board.op, and the inspector

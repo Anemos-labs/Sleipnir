@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/skills/mdfile"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 // includeSet collects the files an expansion refers to. They are appended after

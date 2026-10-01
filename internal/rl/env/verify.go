@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // Verification.

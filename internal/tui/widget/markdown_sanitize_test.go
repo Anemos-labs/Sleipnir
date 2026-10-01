@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/tui/widget/widgettest"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
 // The widgets clean text with their own copy of tools.SanitizeForTerminal (this package may not import tools: it is

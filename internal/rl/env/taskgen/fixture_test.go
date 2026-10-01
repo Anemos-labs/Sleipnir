@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
 // writeFixture lays out a small fixture whose verifier is a shell script: no toolchain, so the tests are fast and hermetic.

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // buildThread makes: user task, then n exchanges (assistant tool_use + user

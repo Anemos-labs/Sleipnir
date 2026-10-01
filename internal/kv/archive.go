@@ -8,8 +8,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // Archive keeps every turn an agent ever had, whether or not compaction has

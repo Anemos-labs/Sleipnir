@@ -5,7 +5,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 // Text that one agent (or a file name, or a tool argument) can influence is shown

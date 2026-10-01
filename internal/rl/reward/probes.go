@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // Compaction fidelity probes. A compactor's job is to fold old turns into short

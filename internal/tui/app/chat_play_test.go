@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tui/input"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
-	"github.com/reee344/sleipnir/internal/tui/svg"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/tui/svg"
 )
 
 // What a playback of a transcript has to be: the program's own screens, in the order the transcript says, the same on every run.

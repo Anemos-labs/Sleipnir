@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // Seed corpora run as ordinary tests; `go test -fuzz FuzzName` explores further.

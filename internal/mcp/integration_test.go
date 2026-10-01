@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/mcp/mcptest"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // The requests an MCP tool builds must mean something to the real permission

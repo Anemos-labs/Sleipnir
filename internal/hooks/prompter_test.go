@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // engineWith builds a real permission engine whose prompter is the hooks'

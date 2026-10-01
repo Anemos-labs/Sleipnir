@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // deadPID returns the pid of a process that has exited.

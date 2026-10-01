@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/provider/providertest"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider/providertest"
 )
 
 // Frames an endpoint may send that are not the ones the wire format shows. Each

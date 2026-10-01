@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // Defaults for the zero value of a Runner.

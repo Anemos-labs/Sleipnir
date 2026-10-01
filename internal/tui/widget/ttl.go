@@ -5,7 +5,7 @@ package widget
 import (
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 const ttlBarCells = 8

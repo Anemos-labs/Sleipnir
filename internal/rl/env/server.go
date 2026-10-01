@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // The rollout server exposes the environment to trainers (verl, OpenRLHF,

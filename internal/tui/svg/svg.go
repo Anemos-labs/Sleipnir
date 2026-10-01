@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/vt"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/vt"
 )
 
 // A Cell is one position of a screen. Text is empty for a blank cell and for the second half of a wide rune.

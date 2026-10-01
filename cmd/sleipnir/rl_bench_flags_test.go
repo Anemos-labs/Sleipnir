@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
 func TestModeAndSwarmFlagsSayWhoWorks(t *testing.T) {

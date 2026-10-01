@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/input"
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
-	"github.com/reee344/sleipnir/internal/tui/widget"
-	"github.com/reee344/sleipnir/internal/tui/widget/widgettest"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
 // Everything the chat prints that somebody else wrote (a model, a tool, a file, a web page, another agent, the person's own paste) is

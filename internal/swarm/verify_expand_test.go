@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/workspace"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // {dirs} lets a decomposed task be verified on its own work: `go test {dirs}` is `go test ./p01 ./p05`

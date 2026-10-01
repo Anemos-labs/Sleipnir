@@ -10,11 +10,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // The mailman session is a team with the mailman on (docs/SWARM-PROTOCOL.md section 5): four workers each send three progress

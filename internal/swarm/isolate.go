@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/gitx"
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/workspace"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // Worktree isolation (swarm.isolation = "worktree").

@@ -7,8 +7,8 @@ import (
 	"math"
 	"sort"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // dpoRecord is one preference pair. Unit "step" compares two completions of the

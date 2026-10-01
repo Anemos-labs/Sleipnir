@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // S45: an environment variable, or a project's config file, must not carry a

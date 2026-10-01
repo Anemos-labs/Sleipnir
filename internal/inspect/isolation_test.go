@@ -3,7 +3,7 @@ package inspect
 import (
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // The swarm's worktrees and merge queue, its mailman and the supervision of its manager

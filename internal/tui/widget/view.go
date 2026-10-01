@@ -6,7 +6,7 @@
 package widget
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // ViewBand is a horizontal band of a full-screen view: panels side by side, each titled in the rule above the band.

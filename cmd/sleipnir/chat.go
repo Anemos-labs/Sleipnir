@@ -14,15 +14,15 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/checkpoint"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/mcp"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/trust"
-	"github.com/reee344/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/mcp"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/trust"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
 )
 
 func init() {

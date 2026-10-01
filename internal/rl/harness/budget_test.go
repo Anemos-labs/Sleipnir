@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/harness"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/harness"
 )
 
 // A request the endpoint did not answer is one the agent repeats, and it is not the policy's doing. It must

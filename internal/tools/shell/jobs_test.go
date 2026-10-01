@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // lastLine returns the final line of a tool result: the status trailer.

@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 func chatSession(t *testing.T, trust bool, files map[string]string) *session.Session {

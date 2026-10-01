@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // ResolveResume finds the session directory a resume request names: "latest" is

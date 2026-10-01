@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 func run(t *testing.T, cols, rows int, s string) *Term {

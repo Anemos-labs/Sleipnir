@@ -17,14 +17,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/kv"
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // arvProvider is an in-process provider whose replies the test scripts.

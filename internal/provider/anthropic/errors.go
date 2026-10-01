@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // errorEnvelope is the Messages API error body:

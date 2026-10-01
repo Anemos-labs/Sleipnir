@@ -72,10 +72,9 @@ In this order (`docs/REPO-SETUP.md` has the commands and says what each guards):
    corrected wordmark.
 5. Set the repository variable `AUTO_RELEASE` to `true` when a release should follow a merge. **A tag or release is made only on the
    owner's explicit word.**
-6. Decide the repository's name: the remote is `Anemos-labs/Sleipnir`, while the module path (`github.com/reee344/sleipnir`, in 700 or so files), the README's badges and
-   install commands, `scripts/install.sh` and the release configuration say `reee344/Sleipnir`. GitHub redirects a transferred repository, so they may all still work;
-   check `curl -fsSL .../install.sh`, `go install ...@latest` and the badges once `main` is the default, and change the module path in one commit (`go mod edit -module`
-   and a rewrite of the imports; `internal/repocheck` will say what it missed) only if the old name is going away.
+6. *(The repository's name is done: the module is `github.com/anemos-labs/sleipnir` and the badges, install commands and release configuration say `Anemos-labs/Sleipnir`, as
+   the remote does. `.github/CODEOWNERS` still lists the person `@reee344`: a code owner is a person or a team (`@Anemos-labs/team`), not an organisation, so change it to who should
+   review. Check `curl -fsSL .../install.sh` and `go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest` once `main` is the default.)*
 7. Decide Dependabot PR 1 (it needs Go 1.26 while the documents say 1.25; `internal/repocheck` blocks the mismatch) and whether Windows
    is a supported platform (port `internal/perm`, section 4 item 10, or drop it from `.goreleaser.yaml`).
 

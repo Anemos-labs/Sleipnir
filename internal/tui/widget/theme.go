@@ -29,7 +29,7 @@
 // testdata/golden and are rewritten by go test -update.
 package widget
 
-import "github.com/reee344/sleipnir/internal/tui/cell"
+import "github.com/anemos-labs/sleipnir/internal/tui/cell"
 
 // Theme is the palette and the styles widgets draw with. It is a plain value without slices, maps or functions: it can be
 // copied, compared with == and used as a cache key.

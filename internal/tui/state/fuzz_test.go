@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 // fuzzPrefix is the session an event that the fuzzer makes falls into: the hand-built swarm up to its busiest moment, so that a

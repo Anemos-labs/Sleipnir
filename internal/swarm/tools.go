@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // Tools returns the coordination tools every agent in a swarm session is

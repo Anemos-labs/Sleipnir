@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // Anchor-state credit (GiGPO-style; docs/research/03-swarm-and-training.md B3.4).

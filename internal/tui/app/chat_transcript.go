@@ -11,11 +11,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
 // A chat transcript is the recording of one chat session that the README's chat picture is made from (docs/media/chat). The swarm's

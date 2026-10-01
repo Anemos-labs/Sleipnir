@@ -17,15 +17,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/env"
-	"github.com/reee344/sleipnir/internal/rl/harness"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/rl/harness"
 )
 
 func newRepo(t *testing.T) string {

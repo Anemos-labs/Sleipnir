@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/mcp/mcptest"
+	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
 )
 
 func skipNotUnix(t *testing.T) {

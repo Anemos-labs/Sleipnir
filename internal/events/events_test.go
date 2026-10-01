@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 func TestLogAppendResumeAndTornTail(t *testing.T) {

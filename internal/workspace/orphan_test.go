@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // halfCreate leaves exactly what a process that died between "git worktree add"

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/harden"
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
 )
 
 // providerSpec describes how to reach one family of endpoints.

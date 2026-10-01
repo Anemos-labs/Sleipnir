@@ -3,7 +3,7 @@ package anthropic
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // ThinkingKind says how a model family expresses "think for me" on the wire.

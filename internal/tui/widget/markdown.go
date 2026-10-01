@@ -3,7 +3,7 @@ package widget
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Highlighter colours the code of a fenced code block. It gets the language (the first word of the fence's info string, never

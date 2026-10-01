@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 func near(a, b float64) bool { return math.Abs(a-b) < 1e-9 }

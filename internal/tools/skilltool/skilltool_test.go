@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/skills"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/skills"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 func catalog(t *testing.T) *skills.Catalog {

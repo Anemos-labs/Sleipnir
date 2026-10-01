@@ -13,7 +13,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 type contentKind int

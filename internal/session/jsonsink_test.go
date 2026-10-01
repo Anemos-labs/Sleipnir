@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // `run --json` is what a script reads, and docs/CLI.md names its events and their members. These are the lines, as a script gets them: one

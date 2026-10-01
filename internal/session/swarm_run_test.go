@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 var (

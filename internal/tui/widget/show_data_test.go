@@ -8,7 +8,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // showSketchAgents are the eight agents of the sketch, with their activity and marks.

@@ -1,6 +1,6 @@
 package input
 
-import "github.com/reee344/sleipnir/internal/tui/cell"
+import "github.com/anemos-labs/sleipnir/internal/tui/cell"
 
 // Theme is how the editor's view is styled. The zero Style is the terminal's own look, so a Theme of zero values draws plain
 // text. The renderer decides what a colour becomes on a terminal with fewer colours.

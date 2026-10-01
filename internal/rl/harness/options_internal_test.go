@@ -3,10 +3,10 @@ package harness
 import (
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
 func optionsOf(t *testing.T, sp env.RunSpec) (maxAgents int, budgetUSD float64) {

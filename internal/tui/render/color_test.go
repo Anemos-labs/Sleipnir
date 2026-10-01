@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
 // The golden table of colour down-sampling: an RGB colour, the entry of the 256-colour palette the renderer sends to a

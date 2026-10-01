@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // The link between a session and the program does nothing but forward, and never leaves an agent waiting on a program that is gone.

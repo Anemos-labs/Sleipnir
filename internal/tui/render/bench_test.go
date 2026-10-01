@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // The callers of the renderer flush at most about 15 times a second, so what matters is that a frame is cheap enough to be lost

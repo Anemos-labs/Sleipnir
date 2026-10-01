@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
 )
 
 // The time of a recorded chat is designed, not measured. `sleipnir chat-record` runs the real session as fast as the machine runs it

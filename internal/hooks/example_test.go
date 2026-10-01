@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/reee344/sleipnir/internal/hooks"
+	"github.com/anemos-labs/sleipnir/internal/hooks"
 )
 
 // A settings file's "hooks" object becomes a Set; a Runner runs the hooks that

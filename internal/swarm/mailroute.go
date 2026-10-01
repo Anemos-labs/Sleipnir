@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // Mail reaches an agent through its thread's inbox (agent.Send), which has no bound

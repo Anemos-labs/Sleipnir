@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // anthropicLike is cost.Fallback: read 0.1x, write 1.25x (5m) / 2x (1h), output

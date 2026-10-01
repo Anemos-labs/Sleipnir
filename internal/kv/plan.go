@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // RunKind classifies a block for Anthropic's position counting: a run of

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/widget/widgettest"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
 // The diff algorithm and the word-level highlight, without any rendering.

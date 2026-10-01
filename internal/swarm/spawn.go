@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/kv"
-	"github.com/reee344/sleipnir/internal/workspace"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // SpawnReq describes a worker to start.

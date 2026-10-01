@@ -12,7 +12,7 @@ again at the cache-write price, once, for each agent that|
 shares the prefix.|
 |
 ● Bash go test ./internal/kv  ✓ 1.4s|
-  ⎿  ok         github.com/reee344/sleipnir/internal/kv|
+  ⎿  ok         github.com/anemos-labs/sleipnir/internal/kv|
   1.402s|
 ⠹ Thinking 12s  ↑1.2k ↓340  $0.012  saved ≈ $0.08  esc to interrupt|
   G0   G1  G2   ▏hit 93%|

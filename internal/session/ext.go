@@ -8,13 +8,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/agentdefs"
-	"github.com/reee344/sleipnir/internal/commands"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/skills"
-	"github.com/reee344/sleipnir/internal/swarm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/agentdefs"
+	"github.com/anemos-labs/sleipnir/internal/commands"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/skills"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // Extensions are the user-written parts of a harness: skills and role

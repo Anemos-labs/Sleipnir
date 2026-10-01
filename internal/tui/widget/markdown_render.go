@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // The renderer: blocks in, styled lines out. Each block renders to lines of its own, to the width it is given; a container

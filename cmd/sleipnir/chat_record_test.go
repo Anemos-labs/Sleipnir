@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/demo"
-	"github.com/reee344/sleipnir/internal/tui/app"
-	"github.com/reee344/sleipnir/internal/tui/svg"
+	"github.com/anemos-labs/sleipnir/internal/demo"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/tui/svg"
 )
 
 // ---- the story the script is for ----

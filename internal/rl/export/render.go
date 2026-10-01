@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // promptFor returns the step's exact prompt. A prompt embedded in the step is

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // groupRecord is one line of the groups format, in the shape ART and rLLM consume:

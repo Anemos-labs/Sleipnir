@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 )
 
 // main starts with harden.Process(harden.MoveKeys()): the provider keys leave the environment, so no

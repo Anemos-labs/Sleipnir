@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // Config configures the mock server.

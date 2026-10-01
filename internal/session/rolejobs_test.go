@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // Background jobs are session-wide, and the engine alone answers "allow" to a

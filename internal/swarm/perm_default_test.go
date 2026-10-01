@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // A swarm built without a permission Requester gives its agents none, and an agent with none

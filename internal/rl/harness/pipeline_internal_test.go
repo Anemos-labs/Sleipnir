@@ -4,11 +4,11 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/reward"
-	"github.com/reee344/sleipnir/internal/rl/traj"
-	"github.com/reee344/sleipnir/internal/rl/traj/trajtest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/reward"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj/trajtest"
 )
 
 // Without knowing where the workspace is, the hack detector cannot tell a workspace below a hidden directory of the home

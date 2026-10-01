@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
 // The tests of the chat program: a scripted session behind a real renderer, read through the emulator.

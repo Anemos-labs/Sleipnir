@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // gitRepo makes a repository whose second commit fixes a bug and adds the test

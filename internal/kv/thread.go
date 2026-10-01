@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // Thread is one agent's verbatim recent history (layer G5).

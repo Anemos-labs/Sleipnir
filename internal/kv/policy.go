@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // Pressure thresholds and horizons for the compaction planner. Zero values fall

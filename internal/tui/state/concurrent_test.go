@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 // reader is a goroutine that does what a renderer does: take a snapshot (or ask for a piece of the State), look at it, and keep it

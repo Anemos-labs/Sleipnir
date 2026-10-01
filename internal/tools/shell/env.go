@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 )
 
 // Commands run by a model are prompt-injectable (a fetched web page or a repo

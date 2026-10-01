@@ -3,7 +3,7 @@ package widget
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Pipe tables: parsed here, laid out by the Table widget (table.go), which does the column arithmetic.

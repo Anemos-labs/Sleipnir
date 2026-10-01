@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // Caps is what the renderer needs to know about the target provider. Adapters

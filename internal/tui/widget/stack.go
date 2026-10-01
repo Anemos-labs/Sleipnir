@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Layer is one layer of the prompt, the unit of the stack bar.

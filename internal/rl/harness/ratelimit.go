@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // RateLimit paces the requests of every rollout that shares it. A swarm's governor limits one swarm; with many

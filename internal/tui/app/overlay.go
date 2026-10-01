@@ -3,8 +3,8 @@ package app
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // sliceLine is the cells from to (exclusive) of a line, counted in columns. A wide character that the cut would halve is replaced

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 func patchText(parts ...string) string {

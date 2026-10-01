@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 func callOf(name, args string) core.Block { return core.ToolUse("id", name, []byte(args)) }

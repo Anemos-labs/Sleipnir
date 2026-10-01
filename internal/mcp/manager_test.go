@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/mcp/mcptest"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 func statusOf(m *Manager, name string) ServerStatus {

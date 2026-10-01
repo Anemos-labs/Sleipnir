@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // ---- validation ----

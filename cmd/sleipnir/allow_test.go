@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 func TestSuggestAllowNamesTheSubcommandAndSkipsWhatIsHarmless(t *testing.T) {

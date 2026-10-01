@@ -3,7 +3,7 @@ package render
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // wrapRows breaks a line into rows of at most cols cells, so that the number of rows the renderer keeps count of is the number

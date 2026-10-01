@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // TestStressMixedToolsFromManyAgents hammers a small tree with every tool at

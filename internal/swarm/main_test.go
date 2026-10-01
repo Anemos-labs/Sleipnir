@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/testutil"
+	"github.com/anemos-labs/sleipnir/internal/testutil"
 )
 
 // The suite ends by checking that no goroutine of the module is left running: a swarm that

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // EscHint is the line shown under the prompt after one Esc press on a non-empty buffer.

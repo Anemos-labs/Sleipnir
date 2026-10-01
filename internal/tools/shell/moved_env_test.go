@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 )
 
 // harden.MoveKeys takes provider keys out of the process environment, so os.Environ no longer

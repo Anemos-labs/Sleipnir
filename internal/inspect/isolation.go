@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // What a swarm does beyond the board and the mail, read from the events the swarm and

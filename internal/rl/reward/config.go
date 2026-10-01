@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // Component names. They are the keys of rl.Reward.Components and, except where

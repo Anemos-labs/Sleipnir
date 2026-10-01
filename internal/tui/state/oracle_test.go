@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // An oracle is what a log says, counted the plain way: one pass over its lines decoded into generic maps, with none of the State's

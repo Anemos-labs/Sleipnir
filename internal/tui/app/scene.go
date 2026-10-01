@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // View is one of the screens of the watch and replay programs.

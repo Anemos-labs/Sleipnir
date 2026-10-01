@@ -3,8 +3,8 @@ package swarm
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 // Role is a kind of agent. All agents of one role share a role pin, so its

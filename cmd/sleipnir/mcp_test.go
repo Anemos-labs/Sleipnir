@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/mcp"
-	"github.com/reee344/sleipnir/internal/mcp/mcptest"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/mcp"
+	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
 )
 
 func TestMCPPromptArgs(t *testing.T) {

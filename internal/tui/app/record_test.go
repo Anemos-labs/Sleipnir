@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 func TestRecordIsADeterministicAnimation(t *testing.T) {

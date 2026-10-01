@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // wbHook is an event log that calls on after recording each event, on the goroutine that emitted it.

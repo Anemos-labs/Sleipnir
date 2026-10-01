@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // Action is what a rule does when it matches.

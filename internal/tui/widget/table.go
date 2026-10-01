@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Align is the horizontal alignment of a column.

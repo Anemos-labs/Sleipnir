@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/testutil"
+	"github.com/anemos-labs/sleipnir/internal/testutil"
 )
 
 // The tests drive a real git and POSIX shell commands. The suite ends by checking that no

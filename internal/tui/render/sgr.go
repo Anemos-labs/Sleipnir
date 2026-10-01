@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // wireStyle is a style as it will be written: down-sampled colours and the attributes. The zero value is the terminal's

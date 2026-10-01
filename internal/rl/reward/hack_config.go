@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // Verifier and CI tampering. The verifier runs in a clean checkout with the

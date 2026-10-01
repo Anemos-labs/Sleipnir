@@ -3,7 +3,7 @@ package inspect
 import (
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // secRec is one pinned-layer section as model.request records it.

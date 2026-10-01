@@ -3,7 +3,7 @@ package taskgen
 import (
 	"context"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // RecallGenerator is the hook through which recall tasks are made. It is an

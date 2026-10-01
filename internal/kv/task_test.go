@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // A task the harness hands to an agent (a swarm's kickoff or a reused worker's next

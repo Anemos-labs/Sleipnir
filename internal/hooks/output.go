@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/skills/mdfile"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 const (

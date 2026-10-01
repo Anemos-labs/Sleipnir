@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 const (

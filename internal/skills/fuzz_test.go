@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/skills/mdfile"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 // FuzzSkillFile: whatever a SKILL.md contains, discovery neither panics nor

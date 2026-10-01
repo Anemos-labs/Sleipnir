@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 func hintText(hs []widget.Hint) string {

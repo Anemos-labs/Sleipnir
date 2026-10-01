@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 func toolFrame(idx int, id, name, args string) string {

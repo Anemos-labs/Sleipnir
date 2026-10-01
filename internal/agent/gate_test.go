@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // recGate records how it was entered. It offers EnterPrio as well as Enter.

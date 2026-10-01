@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 func hang(w http.ResponseWriter, fl http.Flusher, r *http.Request) { <-r.Context().Done() }

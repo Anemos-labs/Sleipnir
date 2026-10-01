@@ -7,7 +7,7 @@ package widget
 import (
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // dashMode is how much of the cockpit the width allows.

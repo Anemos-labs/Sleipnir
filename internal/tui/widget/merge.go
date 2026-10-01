@@ -6,7 +6,7 @@ package widget
 import (
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // MergeStage is where a task is on its way into the main line.

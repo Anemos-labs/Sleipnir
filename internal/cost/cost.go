@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // ReadableAfter says when a freshly written cache entry becomes readable by

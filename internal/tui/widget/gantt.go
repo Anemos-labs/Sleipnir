@@ -4,7 +4,7 @@
 package widget
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // GanttBuckets is how many buckets a gantt shows: the last minute, at a bucket a second.

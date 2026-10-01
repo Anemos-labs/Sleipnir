@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // collide returns a hash that shares its first n hex digits with base and differs after that.

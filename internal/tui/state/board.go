@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // taskState is a Task and what the merge queue says about it right now.

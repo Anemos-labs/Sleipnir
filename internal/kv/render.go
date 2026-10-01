@@ -1,7 +1,7 @@
 package kv
 
 import (
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // RendererVersion identifies the prompt layout. Bump it whenever Render would

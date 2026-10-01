@@ -19,12 +19,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/tui/app"
-	"github.com/reee344/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
 // chatTTY is what the program needs from the flags.

@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // wireUsage is the Messages API usage object. Anthropic reports the uncached

@@ -4,7 +4,7 @@
 package widget
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 const forkLabelW = 7 // "shared " and "new    "

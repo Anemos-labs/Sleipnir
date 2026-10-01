@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/reee344/sleipnir/internal/agentdefs"
+	"github.com/anemos-labs/sleipnir/internal/agentdefs"
 )
 
 // A markdown definition becomes a swarm role plus a permission profile.

@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/widget/widgettest"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
 // Fuzz tests: `go test -fuzz FuzzMarkdown ./internal/tui/widget` (and FuzzMDStream) search for input that breaks the promises.

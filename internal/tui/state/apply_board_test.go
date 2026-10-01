@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 func taskByID(t testing.TB, sn *Snapshot, id string) Task {

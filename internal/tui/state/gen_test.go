@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 // genEvents makes a deterministic log of n events of every kind the State knows, over more agents, tasks, prefixes, models, files

@@ -22,7 +22,7 @@ func TestMainCallsProcessFirst(t *testing.T) {
 	name := ""
 	for _, imp := range f.Imports {
 		p, _ := strconv.Unquote(imp.Path.Value)
-		if p != "github.com/reee344/sleipnir/internal/harden" {
+		if p != "github.com/anemos-labs/sleipnir/internal/harden" {
 			continue
 		}
 		name = "harden"

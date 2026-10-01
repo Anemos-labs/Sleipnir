@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // A tool's input schema is sent to the model with every request of every

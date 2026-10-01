@@ -8,10 +8,10 @@
 **A coding-agent harness for OpenAI-style and Anthropic-style endpoints, built around one idea: the prompt cache is
 the shared memory of a team of agents.**
 
-[![ci](https://github.com/reee344/Sleipnir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/reee344/Sleipnir/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/reee344/Sleipnir/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/reee344/Sleipnir/actions/workflows/codeql.yml)
-[![release](https://img.shields.io/github/v/release/reee344/Sleipnir?include_prereleases&sort=semver)](https://github.com/reee344/Sleipnir/releases)
-[![Go version](https://img.shields.io/github/go-mod/go-version/reee344/Sleipnir)](go.mod)
+[![ci](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml)
+[![release](https://img.shields.io/github/v/release/Anemos-labs/Sleipnir?include_prereleases&sort=semver)](https://github.com/Anemos-labs/Sleipnir/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/Anemos-labs/Sleipnir)](go.mod)
 
 Odin's eight-legged horse: one manager brain, many legs. Sleipnir is designed to run **10, 20, 50 agents over one
 repository** without briefing them, without re-reading the project fifty times, and without letting context bloat eat the
@@ -109,8 +109,8 @@ to play it back (space pauses, the arrows seek, `+` and `-` change the speed). S
 ## Quick start
 
 ```sh
-# 1. install (Linux/macOS)                                   (or: go install github.com/reee344/sleipnir/cmd/sleipnir@latest)
-curl -fsSL https://raw.githubusercontent.com/reee344/sleipnir/main/scripts/install.sh | sh
+# 1. install (Linux/macOS)                                   (or: go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest)
+curl -fsSL https://raw.githubusercontent.com/anemos-labs/sleipnir/main/scripts/install.sh | sh
 sleipnir demo                          # no key, no network: on a terminal, watch nine scripted agents build a shop in git worktrees (20 s, the live cockpit: the cache, the mail, the merge queue), then the bill
 sleipnir demo --scenario handbook      # a one-second survey by a scripted team and the bill, as text (what a pipe gets)
 sleipnir replay latest                 # play a recorded session back as the cockpit; `sleipnir watch` shows one being written

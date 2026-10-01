@@ -7,6 +7,6 @@ package widget_test
 // function runs after every other one of the package: if the flag is there already there is nothing to do, and if not it is
 // defined here, which is what the golden files of the signature widgets (testdata/show/) need.
 
-import "github.com/reee344/sleipnir/internal/tui/widget/showtest"
+import "github.com/anemos-labs/sleipnir/internal/tui/widget/showtest"
 
 func init() { showtest.RegisterUpdateFlag() }

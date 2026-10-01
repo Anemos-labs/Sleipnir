@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // Error kinds a tool result can be classified as. The tool.result event carries no

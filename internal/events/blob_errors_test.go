@@ -3,7 +3,7 @@
 package events
 
 import (
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"os"
 	"path/filepath"
 	"strings"

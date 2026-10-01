@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // Epoch is the time a Builder starts at unless told otherwise.

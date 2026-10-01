@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
-	"github.com/reee344/sleipnir/internal/provider/probe"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/provider/probe"
 )
 
 func TestProbeMeasuresMockEngine(t *testing.T) {

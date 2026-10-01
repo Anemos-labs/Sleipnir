@@ -6,7 +6,7 @@
 package widget
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // hpx is one pixel of a sprite. key is ' ' (nothing), 'b' body, 'm' mane and tail, 'e' eye, 'L' a leg, 'h' a hoof; leg is which of

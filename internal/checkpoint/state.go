@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"unicode"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // kind is what lives at a path.

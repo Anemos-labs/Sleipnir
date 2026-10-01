@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
 )
 
 // The time of a recorded chat is designed (chat_pace.go), so what it comes to is a function of the records and can be said exactly. Nothing

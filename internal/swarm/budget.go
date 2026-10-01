@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/reee344/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/agent"
 )
 
 // The swarm budget (Config.BudgetUSD) is a ledger over every agent the swarm has

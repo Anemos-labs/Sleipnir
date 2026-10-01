@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/mcp"
-	"github.com/reee344/sleipnir/internal/mcp/mcptest"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/mcp"
+	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // onlyEcho allows exactly one MCP tool: what a permission engine with a single

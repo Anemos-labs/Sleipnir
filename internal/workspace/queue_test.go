@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 func skipWithoutUnix(t testing.TB) {

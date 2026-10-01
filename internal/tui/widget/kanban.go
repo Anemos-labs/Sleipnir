@@ -5,7 +5,7 @@ package widget
 import (
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // ColKind is which column of the board: it decides the card's glyph and the colour of the header.

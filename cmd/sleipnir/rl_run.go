@@ -16,16 +16,16 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/harden"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/env"
-	"github.com/reee344/sleipnir/internal/rl/harness"
-	"github.com/reee344/sleipnir/internal/rl/reward"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/rl/harness"
+	"github.com/anemos-labs/sleipnir/internal/rl/reward"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 func init() {

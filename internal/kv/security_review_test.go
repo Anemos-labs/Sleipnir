@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // commit applies a patch the way agent.commit does: new notes/spine layers and the

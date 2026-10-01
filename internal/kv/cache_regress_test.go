@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 func cxEst() core.Estimator { return core.NewBytesEstimator().WithRatio(4) }

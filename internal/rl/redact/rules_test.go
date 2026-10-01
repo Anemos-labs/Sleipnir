@@ -196,7 +196,7 @@ var ruleTable = map[string]ruleCases{
 			neg("a password that is the word", "redis://default:password@cache:6379"),
 			neg("a variable", "https://user:${PASSWORD}@host.example/x"),
 			neg("a placeholder", "https://user:<your-password>@host.example/x"),
-			neg("a url with no credentials", "https://github.com/reee344/sleipnir/issues/12"),
+			neg("a url with no credentials", "https://github.com/anemos-labs/sleipnir/issues/12"),
 			neg("a user and no password", "https://token@github.com/x/y"),
 			neg("a password that is too short", "https://user:pw@host.example/x"),
 		},
@@ -276,7 +276,7 @@ var ruleTable = map[string]ruleCases{
 			{"in a url parameter", "?email=dave@startup.ai&x=1", "dave@startup.ai"},
 		},
 		neg: []ruleCase{
-			neg("an ssh remote", "git@github.com:reee344/sleipnir.git"),
+			neg("an ssh remote", "git@github.com:anemos-labs/sleipnir.git"),
 			neg("a no-reply address", "Co-Authored-By: Claude <noreply@anthropic.com>"),
 			neg("an example domain", "reach user@example.com or admin@example.org"),
 			neg("a reserved domain", "me@host.invalid and me@box.test and me@pc.localhost"),

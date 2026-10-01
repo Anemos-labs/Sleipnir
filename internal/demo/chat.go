@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // The chat scenario is the session behind the chat recording of the README (docs/media/chat.svg): one person at the chat program, a

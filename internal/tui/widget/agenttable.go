@@ -6,7 +6,7 @@ package widget
 import (
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // showMoney writes dollars the way the UI does: $0.012, $12.34, $123. Negative and NaN are $0.000.

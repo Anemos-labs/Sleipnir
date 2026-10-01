@@ -23,7 +23,7 @@ import (
 	"testing"
 	"testing/iotest"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // secRevFiles lists every regular file under dir (independent of the blob layout).

@@ -17,7 +17,7 @@
 //	}
 //
 // Only goroutines of this module are looked at: one whose stack holds a function of
-// github.com/reee344/sleipnir, or one that such a function started (the runtime names the
+// github.com/anemos-labs/sleipnir, or one that such a function started (the runtime names the
 // creator in the dump). The goroutines of the test runner are not leaks, and neither is the
 // caller. A goroutine that was told to stop gets [LeakWait] to do it, so the check does not
 // fail on one that is merely on its way out. (The functions of a package main are named
@@ -38,7 +38,7 @@ import (
 
 // Module is the import path of this module. A goroutine is ours when a function whose name
 // starts with it is on its stack or started it.
-const Module = "github.com/reee344/sleipnir"
+const Module = "github.com/anemos-labs/sleipnir"
 
 // LeakWait is how long a goroutine that is on its way out is given: the check polls until
 // nothing of the module is left, and reports what is still there after this long.

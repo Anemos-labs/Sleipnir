@@ -3,7 +3,7 @@ package input
 import (
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Layout puts the buffer on rows of a given width so that the view can draw it and say exactly where the cursor is.

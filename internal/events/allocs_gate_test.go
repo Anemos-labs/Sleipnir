@@ -5,7 +5,7 @@ package events_test
 import (
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // Every request, response, tool call and result of every agent is an event: what emitting one allocates is held to what it is, with a

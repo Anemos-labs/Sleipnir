@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 // Render runs before every request of every agent, and Stack.PrefixKey and the layers' hashes with it, so what they cost is paid

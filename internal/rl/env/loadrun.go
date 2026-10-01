@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // AttemptStats is what a run's ledger says about attempts. A rollout that failed for infrastructure reasons is tried again

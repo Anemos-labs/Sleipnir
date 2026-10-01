@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/hooks"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/swarm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/hooks"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // ErrPromptBlocked is returned by Run when a UserPromptSubmit hook blocked the

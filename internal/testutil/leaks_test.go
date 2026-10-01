@@ -114,9 +114,9 @@ main.main()
 	/src/cmd/x/main.go:10 +0x1d
 
 goroutine 7 [chan receive, 2 minutes]:
-github.com/reee344/sleipnir/internal/foo.(*Pool).loop(0xc000123456, {0x55a7c0, 0xc0000b2000})
+github.com/anemos-labs/sleipnir/internal/foo.(*Pool).loop(0xc000123456, {0x55a7c0, 0xc0000b2000})
 	/src/internal/foo/pool.go:42 +0x65
-created by github.com/reee344/sleipnir/internal/foo.New in goroutine 1
+created by github.com/anemos-labs/sleipnir/internal/foo.New in goroutine 1
 	/src/internal/foo/pool.go:20 +0x99
 
 goroutine 9 gp=0xc000004380 m=nil [GC sweep wait]:
@@ -131,7 +131,7 @@ goroutine 12 [select (no cases)]:
 os/exec.(*Cmd).Wait(0xc0001)
 	/usr/local/go/src/os/exec/exec.go:900 +0x1
 ...additional frames elided...
-created by github.com/reee344/sleipnir/internal/tools.run in goroutine 7
+created by github.com/anemos-labs/sleipnir/internal/tools.run in goroutine 7
 	/src/internal/tools/run.go:77 +0x2
 `
 
@@ -144,9 +144,9 @@ func TestParseDump(t *testing.T) {
 		creator string
 	}{
 		{1, "running", []string{"main.main"}, ""},
-		{7, "chan receive, 2 minutes", []string{"github.com/reee344/sleipnir/internal/foo.(*Pool).loop"}, "github.com/reee344/sleipnir/internal/foo.New"},
+		{7, "chan receive, 2 minutes", []string{"github.com/anemos-labs/sleipnir/internal/foo.(*Pool).loop"}, "github.com/anemos-labs/sleipnir/internal/foo.New"},
 		{9, "GC sweep wait", []string{"runtime.gopark", "runtime.goparkunlock"}, "runtime.gcenable"},
-		{12, "select (no cases)", []string{"os/exec.(*Cmd).Wait"}, "github.com/reee344/sleipnir/internal/tools.run"},
+		{12, "select (no cases)", []string{"os/exec.(*Cmd).Wait"}, "github.com/anemos-labs/sleipnir/internal/tools.run"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("%d goroutines, want %d: %+v", len(got), len(want), got)
@@ -170,15 +170,15 @@ func TestParseDump(t *testing.T) {
 func TestFuncName(t *testing.T) {
 	for line, want := range map[string]string{
 		"main.main()": "main.main",
-		"testing.tRunner(0xc000102000, 0x5a7b40)":                         "testing.tRunner",
-		"pkg.(*T).M(0xc000012345, {0x1, 0x2})":                            "pkg.(*T).M",
-		"pkg.F[...](...)":                                                 "pkg.F[...]",
-		"pkg.F.func1({0xc000, 0x5}, 0x1, {0xc0, (0x2)})":                  "pkg.F.func1",
-		"github.com/reee344/sleipnir/internal/foo.(*Pool).loop(0x1, 0x2)": "github.com/reee344/sleipnir/internal/foo.(*Pool).loop",
-		"runtime.goexit({})":                                              "runtime.goexit",
-		"noargs":                                                          "noargs",
-		"":                                                                "",
-		"odd)":                                                            "odd)",
+		"testing.tRunner(0xc000102000, 0x5a7b40)":                             "testing.tRunner",
+		"pkg.(*T).M(0xc000012345, {0x1, 0x2})":                                "pkg.(*T).M",
+		"pkg.F[...](...)":                                                     "pkg.F[...]",
+		"pkg.F.func1({0xc000, 0x5}, 0x1, {0xc0, (0x2)})":                      "pkg.F.func1",
+		"github.com/anemos-labs/sleipnir/internal/foo.(*Pool).loop(0x1, 0x2)": "github.com/anemos-labs/sleipnir/internal/foo.(*Pool).loop",
+		"runtime.goexit({})":                                                  "runtime.goexit",
+		"noargs":                                                              "noargs",
+		"":                                                                    "",
+		"odd)":                                                                "odd)",
 	} {
 		if got := funcName(line); got != want {
 			t.Errorf("funcName(%q) = %q, want %q", line, got, want)

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 func doWith(t *testing.T, cfg Config) (*provider.Response, error) {

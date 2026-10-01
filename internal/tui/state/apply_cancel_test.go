@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 // agent.cancel is written by internal/agent (agent.go, run) as the last act of a run whose context was cancelled: phase says what

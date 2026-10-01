@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 func TestParseRealCatalogueSample(t *testing.T) {

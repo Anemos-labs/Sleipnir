@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/checkpoint"
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/gitx"
-	"github.com/reee344/sleipnir/internal/swarm"
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/workspace"
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // Worktree isolation (swarm.isolation = "worktree", or Options.Isolation).

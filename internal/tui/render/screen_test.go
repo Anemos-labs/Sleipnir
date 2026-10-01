@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
-	"github.com/reee344/sleipnir/internal/tui/vt"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/vt"
 )
 
 // screenHarness is a full-screen renderer wired to an emulator of the same size. The bridge does not check for synchronized

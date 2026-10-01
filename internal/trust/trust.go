@@ -28,8 +28,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/memory"
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/memory"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // Kind says what a file is to the harness.

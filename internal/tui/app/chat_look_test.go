@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
 // How the chat looks is decided by the terminal's capabilities and one flag, in one place.

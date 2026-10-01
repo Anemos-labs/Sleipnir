@@ -1,6 +1,6 @@
 package env
 
-import "github.com/reee344/sleipnir/internal/core"
+import "github.com/anemos-labs/sleipnir/internal/core"
 
 // Episode signals the env package reads that package rl does not name (internal/rl/traj produces them).
 const (

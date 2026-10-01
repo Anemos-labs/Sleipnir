@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // "server; retrying in 877ms" told a person nothing while a swarm waited out a provider that was

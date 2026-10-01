@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // resumeRepo is a git repository configured for a mock endpoint, with private

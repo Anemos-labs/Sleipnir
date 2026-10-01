@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // Dialect is the wire-format name stamped on replayable blocks.

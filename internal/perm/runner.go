@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // runnerPrefixes are the commands a person doing test-driven work runs over and over with different arguments (go test ./a, go test

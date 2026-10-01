@@ -17,7 +17,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Flatten is the plain text of the lines, one row per line, joined by "\n" with no trailing newline. Spaces at the end of a row

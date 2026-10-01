@@ -8,8 +8,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
 // Cell is one cell of a full-screen grid. Text is one character: a rune and the combining marks that follow it. The empty string

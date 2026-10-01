@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/kv"
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // The fork that asks for a patch carries the agent's tools (a different tool list would change the prompt and lose the cache), and

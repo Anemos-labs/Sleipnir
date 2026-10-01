@@ -14,9 +14,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/trust"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/trust"
 )
 
 func init() { extraCommands["trust"] = cmdTrust }

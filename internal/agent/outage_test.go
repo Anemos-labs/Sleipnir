@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // The first real swarm run on a marketplace endpoint lost a worker to "Database is temporarily unavailable": six attempts over

@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // Options tells Episode what the log cannot: which task and sample the run was,

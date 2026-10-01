@@ -8,11 +8,11 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/reward"
-	"github.com/reee344/sleipnir/internal/rl/traj"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/reward"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj"
 )
 
 // A rollout run directory holds <task>/<sample>/{episode.json, events.jsonl,

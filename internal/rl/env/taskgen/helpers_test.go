@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
 var sharedGoCache string

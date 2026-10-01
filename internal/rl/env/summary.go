@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // Schema identifiers of the run-level files.

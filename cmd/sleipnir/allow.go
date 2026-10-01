@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // allowFlag is --allow: rules that need no question in this run. A run that nobody is there to answer (a script, CI, a cron job)

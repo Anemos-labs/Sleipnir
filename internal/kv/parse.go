@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // ParsePatch extracts and validates the compactor's patch from its reply.

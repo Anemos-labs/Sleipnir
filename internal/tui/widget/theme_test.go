@@ -10,8 +10,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/widget/widgettest"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
 // Shared test support: the -update flag, golden files, the themes every widget is tested in, and the checks every widget's

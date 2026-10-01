@@ -1,6 +1,6 @@
 package kv
 
-import "github.com/reee344/sleipnir/internal/core"
+import "github.com/anemos-labs/sleipnir/internal/core"
 
 // Sizer estimates prompt sizes the way Render sends them.
 //

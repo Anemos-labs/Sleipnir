@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // DiffOptions tune Diff and UnifiedDiffWith. The zero value is what Diff's documentation describes.

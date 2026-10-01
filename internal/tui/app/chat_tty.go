@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/input"
-	"github.com/reee344/sleipnir/internal/tui/render"
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/render"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 	xterm "golang.org/x/term"
 )
 

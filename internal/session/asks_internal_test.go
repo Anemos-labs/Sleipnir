@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // trackAsks tells the swarm which worker is waiting for the person (Swarm.Asking), and must change nothing else about the question: a

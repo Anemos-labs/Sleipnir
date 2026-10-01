@@ -3,7 +3,7 @@ package kv
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // HotMode says how the always-fresh tail (layer G6: board view, alerts) reaches

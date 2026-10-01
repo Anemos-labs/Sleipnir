@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // Categories. Each finding belongs to one.

@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/harden"
-	"github.com/reee344/sleipnir/internal/inspect"
+	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/inspect"
 )
 
 func init() { extraCommands["inspect"] = cmdInspect }

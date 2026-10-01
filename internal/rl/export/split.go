@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // splitBin is one named split with its cumulative upper bound in [0,1].

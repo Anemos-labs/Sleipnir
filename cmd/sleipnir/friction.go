@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/reee344/sleipnir/internal/friction"
+	"github.com/anemos-labs/sleipnir/internal/friction"
 )
 
 func init() {

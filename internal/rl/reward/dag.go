@@ -3,7 +3,7 @@ package reward
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // roleClass maps a role name to the role tag a step trains. The harness names

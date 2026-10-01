@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // wireUsage decodes leniently (see tokens), and normalize clamps again: the second is

@@ -16,17 +16,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/adv"
-	"github.com/reee344/sleipnir/internal/rl/env"
-	"github.com/reee344/sleipnir/internal/rl/export"
-	"github.com/reee344/sleipnir/internal/rl/harness"
-	"github.com/reee344/sleipnir/internal/rl/recall"
-	"github.com/reee344/sleipnir/internal/rl/redact"
-	"github.com/reee344/sleipnir/internal/rl/reward"
-	"github.com/reee344/sleipnir/internal/rl/traj"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/adv"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/rl/export"
+	"github.com/anemos-labs/sleipnir/internal/rl/harness"
+	"github.com/anemos-labs/sleipnir/internal/rl/recall"
+	"github.com/anemos-labs/sleipnir/internal/rl/redact"
+	"github.com/anemos-labs/sleipnir/internal/rl/reward"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj"
 )
 
 // TestRolloutsToTrainingData is the whole RL loop on one task, with only the

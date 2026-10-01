@@ -4,7 +4,7 @@
 
 package widget
 
-import "github.com/reee344/sleipnir/internal/tui/cell"
+import "github.com/anemos-labs/sleipnir/internal/tui/cell"
 
 // Palette is the colours the signature widgets draw with. A widget never decides state by colour alone: glyphs, words and
 // the Bold and Dim attributes carry the same information, so MonoPalette (no colours at all) stays fully readable and draws

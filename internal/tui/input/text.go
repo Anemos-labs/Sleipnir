@@ -3,7 +3,7 @@ package input
 import (
 	"unicode"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // The buffer is a []rune. Three kinds of rune are not ordinary text:

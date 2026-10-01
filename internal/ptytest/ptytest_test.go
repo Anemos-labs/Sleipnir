@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/ptytest"
+	"github.com/anemos-labs/sleipnir/internal/ptytest"
 )
 
 // These tests drive cat and sh, which every system that can run them has: what they

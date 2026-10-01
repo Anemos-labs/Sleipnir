@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // probeReader is the input as the program sees it, with a record of what reads it: whether

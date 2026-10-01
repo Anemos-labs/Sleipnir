@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // reconGuard is how long one survey may take before the test calls it a hang.

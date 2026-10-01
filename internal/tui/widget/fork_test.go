@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/widget"
-	"github.com/reee344/sleipnir/internal/tui/widget/showtest"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/showtest"
 )
 
 // showSharedLayers is the shared prefix of the storyboard: G0 to G2, 41.2k tokens.

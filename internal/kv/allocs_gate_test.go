@@ -5,7 +5,7 @@ package kv_test
 import (
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 // The allocations of the calls that run before every request, held to what they are (with a fifth to spare for what another version of

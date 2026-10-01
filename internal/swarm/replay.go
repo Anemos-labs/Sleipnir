@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // ReplayBoard rebuilds the board from the board.op events of a session log: tasks

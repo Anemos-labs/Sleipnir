@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // toolInput is the part of a tool call's input the state reads: the field each tool names its target by.

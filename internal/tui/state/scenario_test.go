@@ -3,8 +3,8 @@ package state
 import (
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 // handBuiltSession is a small swarm session written by hand, second by second, that touches every part of the State: a manager and

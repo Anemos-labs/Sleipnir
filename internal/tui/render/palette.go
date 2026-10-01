@@ -1,8 +1,8 @@
 package render
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
 // The renderer writes colours the terminal can show. Truecolor passes RGB through; a 256-colour terminal gets the nearest entry

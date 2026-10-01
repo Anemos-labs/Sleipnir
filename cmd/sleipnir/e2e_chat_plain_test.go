@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/ptytest"
+	"github.com/anemos-labs/sleipnir/internal/ptytest"
 )
 
 // chatTerm is a chat session on a terminal, and the ways a person drives it.

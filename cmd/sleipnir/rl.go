@@ -14,14 +14,14 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/rl"
-	"github.com/reee344/sleipnir/internal/rl/adv"
-	"github.com/reee344/sleipnir/internal/rl/env"
-	"github.com/reee344/sleipnir/internal/rl/export"
-	"github.com/reee344/sleipnir/internal/rl/redact"
-	"github.com/reee344/sleipnir/internal/rl/reward"
-	"github.com/reee344/sleipnir/internal/rl/traj"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/adv"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/rl/export"
+	"github.com/anemos-labs/sleipnir/internal/rl/redact"
+	"github.com/anemos-labs/sleipnir/internal/rl/reward"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj"
 )
 
 func init() { extraCommands["rl"] = cmdRL }

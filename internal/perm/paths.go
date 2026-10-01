@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // expandWord expands the parts of a shell word that a permission check can

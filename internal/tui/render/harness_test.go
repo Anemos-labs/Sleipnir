@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
-	"github.com/reee344/sleipnir/internal/tui/vt"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/vt"
 )
 
 // The tests of this package run the renderer against the emulator of internal/tui/vt: everything the renderer writes goes into a

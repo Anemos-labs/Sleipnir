@@ -4,8 +4,8 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // tokenRecord is one line of the tokens format: a training sequence as token ids

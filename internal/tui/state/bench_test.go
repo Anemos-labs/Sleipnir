@@ -3,7 +3,7 @@ package state
 import (
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 // BenchmarkApply is the cost of folding a real session: the recorded demo, event by event. A live UI folds a few events a second

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/config"
 )
 
 // optionKeysRead returns, per function of providers.go, the provider option keys it

@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
-	"github.com/reee344/sleipnir/internal/session"
-	"github.com/reee344/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // readPayloads reads the JSON objects a hook command appended, one per line, to a file.

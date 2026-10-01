@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/widget"
-	"github.com/reee344/sleipnir/internal/tui/widget/showtest"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/showtest"
 )
 
 func TestFoldGolden(t *testing.T) {

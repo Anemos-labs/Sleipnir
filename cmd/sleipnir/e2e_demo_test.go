@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/ptytest"
+	"github.com/anemos-labs/sleipnir/internal/ptytest"
 )
 
 // startDemo runs `sleipnir demo args...` on a 100x36 terminal; --dir puts the session where the test can look at it.

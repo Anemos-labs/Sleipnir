@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // dashMoney is a sum of dollars as the headline and the governor write it: $0.31, $20, $0.0004, $123. Negative and NaN are $0.

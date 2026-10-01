@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // Sentinel errors. They are wrapped with detail, so use errors.Is.

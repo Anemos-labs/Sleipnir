@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/widget"
-	"github.com/reee344/sleipnir/internal/tui/widget/widgettest"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
 // The scrollback of a conversation, as the terminal keeps it: a golden file, for the unicode and the ASCII look. Everything in it is

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // model is what a terminal that reflows must show once the renderer has done its job, computed from what the caller asked for

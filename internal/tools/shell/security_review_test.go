@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/harden"
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // secRevPerm allows only the listed agents (a stand-in for a role gate or plan mode).

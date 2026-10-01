@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // The network detector guards the one shortcut no test can rule out: reading the

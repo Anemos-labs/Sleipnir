@@ -7,7 +7,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // glyphAt is the glyph drawn at cell col of a line ("" when the cell is empty), counted the way cell counts: a zero-width

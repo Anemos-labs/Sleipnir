@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 const loopbackHost = "127.0.0.1:8787"

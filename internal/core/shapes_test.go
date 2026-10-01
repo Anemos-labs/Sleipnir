@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // shapeCase is one Go value whose stable JSON encoding is pinned.

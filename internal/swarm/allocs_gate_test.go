@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // Reading the board costs nothing but a load, and that is what lets every agent look at it at every step: a snapshot is immutable and

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // The chat scenario is what the recording of the chat is a session of (cmd/sleipnir/chat_record.go runs it). What a recording shows of

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // The corpus in testdata/corpus is real terminal output, captured from programs running in a pseudo-terminal of 80x24 with

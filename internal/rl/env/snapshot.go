@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // SkippedPath records something left out of a baseline or a diff, and why. Such

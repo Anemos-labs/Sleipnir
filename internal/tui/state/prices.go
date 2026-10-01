@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // modelState is what is known about one model id: its price, where the price came from and the lifetime its cache entries have.

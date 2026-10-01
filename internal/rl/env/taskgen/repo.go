@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
 // repo wraps the hardened git runner around one repository's git directory.

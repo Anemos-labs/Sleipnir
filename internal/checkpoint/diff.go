@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // DiffStatus says how a path differs from a checkpoint.

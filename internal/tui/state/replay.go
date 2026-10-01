@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // DefaultFrame is the step Frames takes when it is given none: 30 frames a second of virtual time.

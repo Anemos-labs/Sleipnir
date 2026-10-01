@@ -7,7 +7,7 @@
 package widget
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 //go:generate python3 ../../../docs/design/ux/sprite.py --go horsesprite_gen.go

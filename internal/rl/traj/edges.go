@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // edge is an rl.Edge with the log position it was derived from, so edges can be

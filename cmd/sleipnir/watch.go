@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/app"
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/term"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 func init() {

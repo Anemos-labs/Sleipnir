@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 func TestParseRule(t *testing.T) {

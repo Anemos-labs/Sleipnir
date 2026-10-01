@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // shopScript plays the team of the shop scenario. Like the handbook's script it is the model and nothing else: the harness around

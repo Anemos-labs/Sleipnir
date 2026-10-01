@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 func cxRenderPrompt(t *testing.T, lastIsToolResult bool, maxBP int) *core.Prompt {

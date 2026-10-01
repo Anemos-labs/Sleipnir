@@ -3,7 +3,7 @@ package agent
 import (
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // ttl is the cache entry lifetime the agent assumes: the model's modelled

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // mergeState is the verified merge queue of a worktree-isolated run, as the events show it.

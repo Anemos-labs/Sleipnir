@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
 // The golden screens (testdata/*.screen) pin what a user sees: the emulator's screen after a scripted sequence, as plain text with
@@ -28,7 +28,7 @@ func chatHistory(h *harness) {
 	h.r.Print(cell.Join(cell.Styled(green, "> "), txt("why does the cache miss after the compaction?")), txt(""))
 	h.r.Print(txt("The compaction rewrites the thread, which is a declared rebase: every byte after the first changed one is written again at the cache-write price, once, for each agent that shares the prefix."), txt(""))
 	h.r.Print(cell.Join(cell.Styled(green, "● "), cell.Styled(cell.Style{}.With(cell.Bold), "Bash "), txt("go test ./internal/kv  "), cell.Styled(green, "✓ 1.4s")))
-	h.r.Print(cell.Join(cell.Styled(dim, "  ⎿  "), txt("ok  \tgithub.com/reee344/sleipnir/internal/kv\t1.402s")))
+	h.r.Print(cell.Join(cell.Styled(dim, "  ⎿  "), txt("ok  \tgithub.com/anemos-labs/sleipnir/internal/kv\t1.402s")))
 }
 
 // chatLive lays the live region out for a terminal of the given width, as a widget would: a status line, a stack bar, a blank

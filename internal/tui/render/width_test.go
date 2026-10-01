@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Wide runes, combining marks and lines exactly as wide as the terminal must not corrupt the renderer's count of rows, because

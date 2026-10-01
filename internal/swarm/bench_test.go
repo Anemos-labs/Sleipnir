@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // The board is read by every agent at every step (its snapshot is the <live> block they are shown) and written by each as it claims,

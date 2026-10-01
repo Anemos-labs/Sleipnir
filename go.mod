@@ -1,4 +1,4 @@
-module github.com/reee344/sleipnir
+module github.com/anemos-labs/sleipnir
 
 go 1.25.0
 

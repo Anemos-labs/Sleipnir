@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // This file turns a validated request into what the cache and the thinking

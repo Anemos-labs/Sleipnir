@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // This file parses and validates POST /v1/messages requests the way the real API

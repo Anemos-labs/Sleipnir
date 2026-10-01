@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/reee344/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
 // The chat recording of the README (docs/media/chat.svg) is the chat program played from a transcript of a real session

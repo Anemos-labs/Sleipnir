@@ -3,8 +3,8 @@ package app
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Everything the chat prints that somebody else wrote (a model, a tool, a file, a web page, another agent, the person's own

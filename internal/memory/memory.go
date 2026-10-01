@@ -75,7 +75,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // Scopes name where a Source came from.

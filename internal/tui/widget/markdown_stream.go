@@ -3,7 +3,7 @@ package widget
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // MDStream renders markdown that arrives in pieces, the way a model streams it, so that a terminal can print what is finished

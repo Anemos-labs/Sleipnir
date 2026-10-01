@@ -1,8 +1,8 @@
 package reward
 
 import (
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // compEvent is the reward of one compactor call (a fork of the agent's request

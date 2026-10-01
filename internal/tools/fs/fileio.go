@@ -14,7 +14,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}

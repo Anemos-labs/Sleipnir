@@ -102,7 +102,7 @@ eq "dry run without gh on PATH: exit status" 0 "$rc"
 has "dry run without gh on PATH: output" "gh api -X PUT repos/o/r/vulnerability-alerts" "$out"
 
 # --- which repository: --repo, GH_REPO, the origin remote in its URL forms
-for url in https://github.com/reee344/Sleipnir.git https://github.com/reee344/Sleipnir git@github.com:reee344/Sleipnir.git ssh://git@github.com/reee344/Sleipnir.git https://github.com/reee344/Sleipnir/; do
+for url in https://github.com/Anemos-labs/Sleipnir.git https://github.com/Anemos-labs/Sleipnir git@github.com:Anemos-labs/Sleipnir.git ssh://git@github.com/Anemos-labs/Sleipnir.git https://github.com/Anemos-labs/Sleipnir/; do
   c=$(mktemp -d "$tmp/copy.XXXXXX")
   mkdir -p "$c/scripts" "$c/.github"
   cp "$SCRIPT" "$c/scripts/"
@@ -112,7 +112,7 @@ for url in https://github.com/reee344/Sleipnir.git https://github.com/reee344/Sl
   rc=0
   out=$(cd "$tmp" && env -u GH_REPO sh "$c/scripts/protect-main.sh" --dry-run 2>&1) || rc=$?
   eq "origin $url: exit status" 0 "$rc"
-  has "origin $url: repository" "repos/reee344/Sleipnir" "$out"
+  has "origin $url: repository" "repos/Anemos-labs/Sleipnir" "$out"
 done
 c=$(mktemp -d "$tmp/copy.XXXXXX")
 mkdir -p "$c/scripts" "$c/.github"

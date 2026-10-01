@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/config"
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/provider"
-	"github.com/reee344/sleipnir/internal/provider/anthropic"
-	"github.com/reee344/sleipnir/internal/provider/gateway"
-	"github.com/reee344/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider/anthropic"
+	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
 )
 
 // ModelRef names a model on a provider.

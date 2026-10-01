@@ -1,6 +1,6 @@
 package app
 
-import "github.com/reee344/sleipnir/internal/tui/state"
+import "github.com/anemos-labs/sleipnir/internal/tui/state"
 
 // Born remembers at which animation frame each thing that arrives with a seq (a message, a response, a compaction, an anomaly, a
 // spawn) was first shown. The animations of the views are functions of the frame they are given; the arrival of a thing is the

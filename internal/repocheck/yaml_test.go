@@ -11,7 +11,7 @@ import (
 )
 
 // module is the import path whose go.mod marks the root of the repository.
-const module = "github.com/reee344/sleipnir"
+const module = "github.com/anemos-labs/sleipnir"
 
 // root returns the module root, or skips the test when it is not run from a checkout of the repository.
 func root(t *testing.T) string {

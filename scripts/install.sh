@@ -1,10 +1,10 @@
 #!/bin/sh
 # Install the latest Sleipnir release for this machine.
-#   curl -fsSL https://raw.githubusercontent.com/reee344/sleipnir/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/anemos-labs/sleipnir/main/scripts/install.sh | sh
 # Environment: SLEIPNIR_VERSION (default: latest), SLEIPNIR_BIN_DIR (default: ~/.local/bin).
 set -eu
 
-repo="reee344/sleipnir"
+repo="anemos-labs/sleipnir"
 bin_dir="${SLEIPNIR_BIN_DIR:-$HOME/.local/bin}"
 version="${SLEIPNIR_VERSION:-latest}"
 

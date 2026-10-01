@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/mcp/mcptest"
+	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
 )
 
 // dialHTTP connects a client to url as a user-scoped, trusted, private-allowed

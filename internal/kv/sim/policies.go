@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 // pool hands out task indexes in order. The k-th task taken always has the same

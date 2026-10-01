@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // boardView is the task board and the merge queue with the room the cockpit cannot give them: the columns, then every task with

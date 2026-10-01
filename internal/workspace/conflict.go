@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // Caps on what a Conflict carries. A conflict is shown to a model: enough to act

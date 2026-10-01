@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // scripted serves every request with script. gone receives a value when a handler

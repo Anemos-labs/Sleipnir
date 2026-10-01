@@ -1,8 +1,8 @@
 package checkpoint_test
 
 import (
-	"github.com/reee344/sleipnir/internal/checkpoint"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // The store satisfies tools.Snapshotter structurally; this package must not

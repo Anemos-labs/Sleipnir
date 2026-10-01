@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/input"
-	"github.com/reee344/sleipnir/internal/tui/render"
-	"github.com/reee344/sleipnir/internal/tui/term"
-	"github.com/reee344/sleipnir/internal/tui/vt"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/render"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/vt"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // ReadKeys and mergeInterrupts close the keys when the context is done, so a program that a signal told to stop finds two things

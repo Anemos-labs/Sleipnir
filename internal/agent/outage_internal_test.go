@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // What a wait cures is an endpoint that answered that it is down or overloaded. A failure that came with no status may be an

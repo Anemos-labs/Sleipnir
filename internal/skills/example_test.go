@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/reee344/sleipnir/internal/skills"
+	"github.com/anemos-labs/sleipnir/internal/skills"
 )
 
 // A catalog puts one line per skill in the shared prompt layer and loads the

@@ -8,8 +8,8 @@ import (
 	"io"
 	"sort"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // The canonical format is the lossless archive: one rl.Episode per line, with

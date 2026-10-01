@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // DefaultPoll is how often Tail looks for new lines when it is given no ticker.

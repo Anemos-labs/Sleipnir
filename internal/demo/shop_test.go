@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
 // The shop scenario is the showcase: a team builds a small shop in git worktrees, and the log it writes is what the README's recordings

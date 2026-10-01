@@ -6,7 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // S28b (fixed): catalogue prices are parsed with strconv.ParseFloat, which accepts "NaN", "Inf"

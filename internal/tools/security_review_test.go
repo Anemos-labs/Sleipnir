@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // S32: recall handles were "out_" + the first 8 hex digits (32 bits) of the blob hash, in a

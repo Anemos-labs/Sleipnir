@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Event is what the editor reports back from a key. A key can produce several, in order; the concrete types are below, and

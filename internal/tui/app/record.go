@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/state"
-	"github.com/reee344/sleipnir/internal/tui/svg"
-	"github.com/reee344/sleipnir/internal/tui/widget"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/svg"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
 // UIFPS is the rate the animations are designed for: the cockpit's frame counter advances this often a second. A recording at a

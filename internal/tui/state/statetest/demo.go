@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // demo4 is the event log of the repository's own demo (internal/demo: a manager, scouts, writers and a reviewer, run through the real

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // collector is a server on another origin (localhost instead of 127.0.0.1: the same

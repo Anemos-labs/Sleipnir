@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
 // Source is the session a program shows: a log that is being written (LiveSource) or one that was recorded, played on a clock of its

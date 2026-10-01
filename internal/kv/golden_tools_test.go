@@ -11,15 +11,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/kv"
-	"github.com/reee344/sleipnir/internal/swarm"
-	"github.com/reee344/sleipnir/internal/tools"
-	"github.com/reee344/sleipnir/internal/tools/fs"
-	"github.com/reee344/sleipnir/internal/tools/recall"
-	"github.com/reee344/sleipnir/internal/tools/shell"
-	"github.com/reee344/sleipnir/internal/tools/skilltool"
-	"github.com/reee344/sleipnir/internal/tools/web"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools/fs"
+	"github.com/anemos-labs/sleipnir/internal/tools/recall"
+	"github.com/anemos-labs/sleipnir/internal/tools/shell"
+	"github.com/anemos-labs/sleipnir/internal/tools/skilltool"
+	"github.com/anemos-labs/sleipnir/internal/tools/web"
 )
 
 // searchStub stands in for a configured search backend (a key in the environment), which

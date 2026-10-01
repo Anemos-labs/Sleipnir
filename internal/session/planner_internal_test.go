@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/config"
 )
 
 // A soft limit above the default hard one would never be reached: the hard limit forces the compaction first. So the hard limit

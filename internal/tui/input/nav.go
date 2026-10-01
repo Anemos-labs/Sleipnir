@@ -1,6 +1,6 @@
 package input
 
-import "github.com/reee344/sleipnir/internal/tui/cell"
+import "github.com/anemos-labs/sleipnir/internal/tui/cell"
 
 // Cursor movement and history navigation.
 

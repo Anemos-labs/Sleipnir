@@ -5,7 +5,7 @@
 package widget
 
 import (
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // dashBand is a horizontal band of the cockpit: panels side by side.

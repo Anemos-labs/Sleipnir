@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Flatten is the plain text of lines: one row per line, joined with "\n", no trailing newline, styles dropped.

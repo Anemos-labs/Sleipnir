@@ -1,8 +1,8 @@
 package session
 
 import (
-	"github.com/reee344/sleipnir/internal/events"
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // auditPermission writes the permission engine's questions and refusals to the event log (perm.ask, perm.decide). They are

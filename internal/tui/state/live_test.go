@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/demo"
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/demo"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // The live tests fold the log of a real session: the repository's own scripted team runs through the real harness (tools,

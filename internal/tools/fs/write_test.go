@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/perm"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 func TestWriteCreatesFileAndParents(t *testing.T) {

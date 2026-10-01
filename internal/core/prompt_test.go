@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // TestWalkBlocksIsPrefixOrder: tools, then system blocks, then message blocks, each with

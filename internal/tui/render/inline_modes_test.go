@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
-	"github.com/reee344/sleipnir/internal/tui/term"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
 func TestPlainOutputForAPipeIsPlainLines(t *testing.T) {

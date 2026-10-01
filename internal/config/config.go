@@ -63,8 +63,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/harden"
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // Provider dialects.

@@ -3,7 +3,7 @@ package widget
 import (
 	"strings"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // Flattening: the tokens of the inline parser become runs of text with flags. (The parser's overview is in markdown_inline.go.)

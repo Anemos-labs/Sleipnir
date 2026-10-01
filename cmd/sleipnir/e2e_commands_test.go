@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
 // assertRun checks a command's status and that each stream contains (or, with a leading !,

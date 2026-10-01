@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // lockedBuffer is what a prompter prints to, read by a test while the prompter runs.

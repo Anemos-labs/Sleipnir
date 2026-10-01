@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/agent"
 )
 
 func prioGate() *WarmGate { return NewWarmGate(time.Minute, time.Hour) }

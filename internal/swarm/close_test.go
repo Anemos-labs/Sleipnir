@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/agent"
-	"github.com/reee344/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 func archiveSomeTurns(t *testing.T, r *rvRig, id string, n int) {

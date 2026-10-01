@@ -20,8 +20,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/reee344/sleipnir/internal/cost"
-	"github.com/reee344/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 // Provider models a provider's cache and prices.

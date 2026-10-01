@@ -6,7 +6,7 @@ package widget
 import (
 	"math"
 
-	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
 // MarkKind is what a mark above the sparkline says happened at that request.

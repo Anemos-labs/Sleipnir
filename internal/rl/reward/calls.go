@@ -5,8 +5,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // toolCall is one tool invocation of a step, normalised across how the episode

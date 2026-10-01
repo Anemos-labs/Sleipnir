@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/reee344/sleipnir/internal/core"
-	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // Handles.Add used to derive the model-visible handle from the first 8 hex characters of the blob
