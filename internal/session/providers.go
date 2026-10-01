@@ -160,7 +160,7 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 		ref = cfg.Models.Default
 	}
 	if ref == "" {
-		return ModelRef{}, fmt.Errorf("no model configured: pass --model provider/model, set SLEIPNIR_MODEL, or write one into your config with `sleipnir init --user --model provider/model`")
+		return ModelRef{}, fmt.Errorf("no model configured: pass --model provider/model, set SLEIPNIR_MODEL, or write one into your config with `sleipnir init --user --model provider/model`\nRecommended: export HEIMDALL_API_KEY, then `sleipnir init --user` picks a model; `sleipnir models` lists what is available")
 	}
 	if i := strings.IndexByte(ref, '/'); i > 0 {
 		if p, ok := lookupProvider(cfg, ref[:i]); ok {
@@ -277,7 +277,7 @@ func defaultProvider(cfg *config.Config) (string, error) {
 			return n, nil
 		}
 	}
-	return "", fmt.Errorf("no provider configured: set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY) or define one under \"providers\" in .sleipnir/config.json")
+	return "", fmt.Errorf("no provider configured: set HEIMDALL_API_KEY (recommended), or the key of another provider (OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), name a local server (ollama/<model>), or define a provider under \"providers\" in your config")
 }
 
 // ProviderOptions are per-session knobs for building a client.

@@ -413,6 +413,13 @@ func TestBuiltInHostsAndLocalServers(t *testing.T) {
 	for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"} {
 		t.Setenv(k, "")
 	}
+	// Nothing set: the error says what to start with, and it is Heimdall.
+	if _, err := session.ResolveModel(nil, "some/model"); err == nil || !strings.Contains(err.Error(), "HEIMDALL_API_KEY (recommended)") {
+		t.Errorf("the no-provider error recommends Heimdall first: %v", err)
+	}
+	if _, err := session.ResolveModel(nil, ""); err == nil || !strings.Contains(err.Error(), "Recommended: export HEIMDALL_API_KEY") {
+		t.Errorf("the no-model error recommends Heimdall first: %v", err)
+	}
 	// A local server needs no key and is never the default for a bare id.
 	got, err := session.ResolveModel(nil, "ollama/qwen3:8b")
 	if err != nil || got.Provider != "ollama" || got.Model != "qwen3:8b" {

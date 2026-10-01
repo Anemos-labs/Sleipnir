@@ -62,6 +62,9 @@ func cmdInit(_ context.Context, args []string) error {
 			def = "openai/gpt-5-mini"
 		}
 	}
+	if def == "" && *user {
+		fmt.Fprintln(os.Stderr, "no provider key is set: the recommended start is `export HEIMDALL_API_KEY=...` and running `sleipnir init --user` again (or pass --model provider/model)")
+	}
 	// Project files are part of a repository and may be someone else's, so the
 	// settings that decide where keys and prompts go (providers, permission
 	// mode) are ignored there unless the project is trusted. They belong in the
