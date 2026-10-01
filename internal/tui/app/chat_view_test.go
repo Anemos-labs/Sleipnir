@@ -354,3 +354,40 @@ func TestChatAQuestionIsCutToTheHeightOfAShortWindow(t *testing.T) {
 		decision(t, ans)
 	}
 }
+
+// A question is on the screen while the window changes size: it is drawn again for the new window, with its options, and still waits
+// for its answer.
+func TestChatAQuestionSurvivesAResize(t *testing.T) {
+	// (Narrowing a window re-wraps what the terminal had drawn, so a tall region at the full width takes twice its rows for a moment; the
+	// program erases that and draws again, which is only possible while the window is tall enough for the doubled region.)
+	r := startChat(t, rigOpts{cols: 100, rows: 50})
+	ans := r.ask(bashRequest("go test -race -count=1 ./internal/orders/... ./internal/billing/... ./internal/shipping/..."))
+	r.shows("1. Yes")
+	for _, size := range [][2]int{{70, 50}, {120, 50}, {45, 50}} {
+		cols, rows := size[0], size[1]
+		r.resize(cols, rows)
+		vis := r.visible()
+		for _, want := range []string{"Run a command", "1. Yes", "2. Yes, and don't", "3. No"} {
+			if !strings.Contains(vis, want) {
+				t.Errorf("at %d columns the question lacks %q:\n%s", cols, want, vis)
+			}
+		}
+		for i, row := range strings.Split(vis, "\n") {
+			if w := cell.StringWidth(row); w > cols {
+				t.Errorf("at %d columns row %d is %d cells wide: %q", cols, i, w, row)
+			}
+		}
+		if n := strings.Count(vis, "Run a command"); n != 1 {
+			t.Errorf("at %d columns the question is on the screen %d times:\n%s", cols, n, vis)
+		}
+	}
+	select {
+	case d := <-ans:
+		t.Fatalf("a resize answered the question: %+v", d)
+	default:
+	}
+	r.press(input.RuneKey('1', 0))
+	if d := decision(t, ans); !d.Allow {
+		t.Errorf("the question is still the person's to answer: %+v", d)
+	}
+}
