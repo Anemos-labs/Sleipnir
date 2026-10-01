@@ -329,19 +329,26 @@ func (r *chatRig) visible() string {
 	return r.bridge.v.String()
 }
 
-// until waits, frame after frame, for the screen to satisfy ok.
+// until waits for the screen to satisfy ok. It looks at each frame the program draws, and also every few milliseconds: a condition that is
+// not about the screen (the session was given the goal, which another goroutine does after the frame that shows the goal was drawn) is
+// not woken by a frame that never comes, and on Windows, where that goroutine ran later, such a test waited out its hang guard.
 func (r *chatRig) until(what string, ok func(screen string) bool) string {
 	r.t.Helper()
+	poll := time.NewTicker(5 * time.Millisecond)
+	defer poll.Stop()
+	guard := time.NewTimer(time.Minute)
+	defer guard.Stop()
 	for {
 		if s := r.screen(); ok(s) {
 			return s
 		}
 		select {
 		case <-r.scr.frames:
+		case <-poll.C:
 		case e := <-r.done:
 			r.done <- e
 			r.t.Fatalf("the program ended (%v) before the screen showed %s:\n%s", e, what, r.screen())
-		case <-time.After(time.Minute):
+		case <-guard.C:
 			r.t.Fatalf("the screen never showed %s (a hang guard); it shows:\n%s", what, r.screen())
 		}
 	}

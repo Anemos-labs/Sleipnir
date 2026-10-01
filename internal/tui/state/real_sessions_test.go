@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -471,9 +472,28 @@ func TestTheStateOfARealMailmanSessionAgreesWithAnIndependentCount(t *testing.T)
 	}
 }
 
-// scoutTrace is a line that says what an agent's first n requests and tool results were: the tokens each request was sent and the
-// size and outcome of each result.
+// scoutTrace is a line that says what an agent's first n requests and tool results were: the tokens each request was sent, and the
+// size and outcome of each result, with the words of a refusal or an error.
 func scoutTrace(evs []obj, agent string, n int) string {
+	said := map[string]string{} // what each tool result said, by call id, from the turns the agent was given
+	for _, e := range evs {
+		if e.str("agent") != agent || e.str("type") != "turn.append" {
+			continue
+		}
+		blocks, _ := e.sub("data")["blocks"].([]any)
+		for _, b := range blocks {
+			blk, _ := b.(map[string]any)
+			if obj(blk).str("kind") != "tool_result" {
+				continue
+			}
+			parts, _ := blk["result"].([]any)
+			for _, p := range parts {
+				if t := obj(p.(map[string]any)).str("text"); t != "" {
+					said[obj(blk).str("tool_id")] += t
+				}
+			}
+		}
+	}
 	var parts []string
 	for _, e := range evs {
 		if e.str("agent") != agent {
@@ -487,6 +507,9 @@ func scoutTrace(evs []obj, agent string, n int) string {
 			what := fmt.Sprintf("%s(%v chars", d.str("name"), d.num("chars"))
 			if d.flag("error") {
 				what += ", ERROR"
+				if t := strings.Join(strings.Fields(said[d.str("id")]), " "); t != "" {
+					what += " " + strconv.Quote(t[:min(len(t), 240)])
+				}
 			}
 			parts = append(parts, what+")")
 		case "compaction.commit":
