@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // SnapshotTree returns the id of a tree object holding the work tree exactly as
@@ -44,12 +45,19 @@ func (b *batch) snapshotTree(ctx context.Context) (string, error) {
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
-	if err := copyIndex(tmp, real); err != nil {
+	at, err := copyIndex(tmp, real)
+	if err != nil {
 		tmp.Close()
 		return "", &Error{Kind: KindOther, Op: "snapshot", ExitCode: -1, Detail: "cannot copy the index", Err: err}
 	}
 	if err := tmp.Close(); err != nil {
 		return "", &Error{Kind: KindOther, Op: "snapshot", ExitCode: -1, Err: err}
+	}
+	// The copy has the time of the real index, not the time it was copied: see copyIndex.
+	if !at.IsZero() {
+		if err := os.Chtimes(name, at, at); err != nil {
+			return "", &Error{Kind: KindOther, Op: "snapshot", ExitCode: -1, Detail: "cannot give the copy of the index the time of the index", Err: err}
+		}
 	}
 	env := []string{"GIT_INDEX_FILE=" + name}
 	if _, err := b.run(ctx, call{args: []string{"add", "-A"}, env: env, timeout: 5 * r.s.timeout}); err != nil {
@@ -63,19 +71,32 @@ func (b *batch) snapshotTree(ctx context.Context) (string, error) {
 }
 
 // copyIndex seeds dst with the contents of the index at src, keeping its stat
-// cache so `add -A` only rehashes files that really changed. A missing index (a
-// fresh --no-checkout worktree) leaves dst empty; git then treats it as absent.
-func copyIndex(dst *os.File, src string) error {
+// cache so `add -A` only rehashes files that really changed, and returns the time
+// of the index file (the zero time when there is none). A missing index (a fresh
+// --no-checkout worktree) leaves dst empty; git then treats it as absent.
+//
+// The caller gives dst that time. git takes a file whose size, inode and times
+// match its entry for unchanged, except for an entry that is "racily clean": its
+// time is not before the time of the index file, so a rewrite that kept the size
+// and fell in the same second could have left no trace in the stat data, and git
+// reads the content. A copy that has the time of the copying says no entry is
+// racy, and a rewrite of that kind, made after the index was written, is missed by
+// the snapshot.
+func copyIndex(dst *os.File, src string) (time.Time, error) {
 	f, err := os.Open(src)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return os.Remove(dst.Name()) // let git create it: an empty file is an invalid index
+			return time.Time{}, os.Remove(dst.Name()) // let git create it: an empty file is an invalid index
 		}
-		return err
+		return time.Time{}, err
 	}
 	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return time.Time{}, err
+	}
 	_, err = io.Copy(dst, f)
-	return err
+	return fi.ModTime(), err
 }
 
 // gitPath resolves a path inside this repository's git directory, honoring

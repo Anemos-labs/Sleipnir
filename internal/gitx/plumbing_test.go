@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCommitTreeDoesNotMoveAnything(t *testing.T) {
@@ -45,6 +46,43 @@ func TestCommitTreeDoesNotMoveAnything(t *testing.T) {
 		if _, err := r.CommitTree(ctx, bad.tree, bad.par, bad.msg, Author{}); !errors.Is(err, ErrInvalid) {
 			t.Errorf("CommitTree(%+v) = %v", bad, err)
 		}
+	}
+}
+
+// git decides that a file has not changed from its stat data alone (size, inode, times), which cannot tell a rewrite that keeps the size
+// and falls in the second the entry was made in. It reads the content of such an entry instead when the entry is "racily clean": its
+// time is not before the time of the index file. A private copy of the index that is given the time of the copying says the entry is
+// clean, and a snapshot made through it records the old content, a checkpoint that silently misses an edit. (It took a second boundary
+// between the rewrite and the copy, so on CI it showed as one run in a hundred.) The copy keeps the time of the index it came from.
+func TestSnapshotSeesARewriteThatKeepsTheSizeInTheSecondOfTheIndex(t *testing.T) {
+	dir := newRepo(t)
+	rawGit(t, dir, "config", "core.trustctime", "false") // the time of the last change of an inode cannot be set back, and is not under test
+	a := filepath.Join(dir, "a.txt")
+	when := time.Now().Add(-time.Minute).Truncate(time.Second)
+
+	// The index has the stat data of the old content ...
+	if err := os.Chtimes(a, when, when); err != nil {
+		t.Fatal(err)
+	}
+	rawGit(t, dir, "add", "a.txt")
+	// ... the file is rewritten with as many bytes and the time it had, in the second the index file was written ...
+	writeFile(t, a, "dirty\n")
+	for _, p := range []string{a, filepath.Join(dir, ".git", "index")} {
+		if err := os.Chtimes(p, when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// ... which is what makes git itself read the content.
+	if st := rawGit(t, dir, "--no-optional-locks", "status", "--porcelain"); !strings.Contains(st, "a.txt") {
+		t.Fatalf("the premise does not hold, git does not see the rewrite: status = %q", st)
+	}
+
+	tree, err := openRepo(t, dir).SnapshotTree(ctxT(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rawGit(t, dir, "cat-file", "-p", tree+":a.txt"); got != "dirty" {
+		t.Fatalf("the snapshot has %q for a.txt, want the content the file has", got)
 	}
 }
 

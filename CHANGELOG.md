@@ -296,6 +296,18 @@ The first release.
   failed in 26 packages (the rest of them for POSIX assumptions: paths, file modes, a shell, a finer clock), now tests every package
   but those `scripts/windows-excluded.txt` lists with a reason each, so a red Windows run means something that worked stopped, or a
   new package that never did; taking a package off the list is how it is ported.
+- Found by the first run with the git of the runners (2.55, newer than a developer's), which failed `internal/gitx` two ways. **A
+  snapshot of the work tree could miss an edit.** `SnapshotTree` (what decides that the work tree is dirty, what a diff holds and what an
+  isolated swarm starts from) works on a private copy of the index, and the copy had the time of its copying. git trusts size, inode
+  and times for a file unless its entry is not older than the index file ("racily clean": a rewrite that kept the size and fell in the
+  same second leaves nothing in the stat data), and a copy that is newer than every entry says none is. An edit of that kind, made
+  after the index was last written, was in no snapshot, one run in a hundred of a test on a loaded runner. The copy keeps the time of
+  the index (`TestSnapshotSeesARewriteThatKeepsTheSizeInTheSecondOfTheIndex` sets the times itself and fails without it). **A fixture
+  raced a background process.** Newer git starts `git maintenance run --auto` detached after a commit, and its worktree-prune task
+  removes a worktree entry that has no index and whose gitdir is missing: the half-made worktrees that some tests build, a few
+  milliseconds after the commit before them (one run in sixteen). A real `worktree add` is locked while it initializes, and
+  everything the product runs is hardened with `maintenance.auto=false`, so the product was never exposed; the fixtures now run the
+  same way.
 
 ### Found by running it on real models
 

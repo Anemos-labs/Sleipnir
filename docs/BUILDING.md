@@ -168,6 +168,13 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
   - several git processes in one repository trip over each other in ways one process never sees (a worktree being
     created has an empty `commondir` for a moment); `internal/gitx` waits those out, and
     `TestConcurrentWorktreeCommandsDoNotFail` is what to extend when git shows a new one;
+  - a runner's git is newer than a developer's (2.55 on the first run), and what it changed was in fixtures: it starts
+    `git maintenance run --auto` detached after a commit, which removes a half-made worktree a few milliseconds later, so a fixture runs
+    git without background work (`fixtureEnv`, as the product's `hardenedConfig` does). To see what the runners see, build their git
+    (the tarball on kernel.org; `make prefix=$HOME/git-2.55 NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_EXPAT=1 NO_CURL=1
+    NO_OPENSSL=1 install`) and put its `bin` first on `PATH`. git also decides that a file is unchanged from its stat data unless
+    the entry is not older than its index file: whatever copies an index keeps its time (`gitx.copyIndex`), and a test that needs
+    the situation sets the times with `os.Chtimes` instead of racing a clock;
   - a `select` between a context and a channel that the context closes (`ReadKeys`, `mergeInterrupts`) chooses at random when both are
     ready, so a loop that treats the channel's end as "the user quit" reports a signal as a quit now and then: ask `ctx.Err()` first. A
     test makes both ready before the loop starts and runs it a few hundred times (`internal/tui/app/signal_race_test.go`);

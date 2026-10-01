@@ -32,6 +32,14 @@ func fixtureEnv(home string) []string {
 		"GIT_AUTHOR_NAME=Fixture", "GIT_AUTHOR_EMAIL=fixture@example.com",
 		"GIT_COMMITTER_NAME=Fixture", "GIT_COMMITTER_EMAIL=fixture@example.com",
 		"GIT_AUTHOR_DATE=" + date, "GIT_COMMITTER_DATE=" + date,
+		// No background work. git starts `git maintenance run --auto` detached after a commit, and the worktree-prune task of
+		// that removes a worktree entry that has no index yet and whose gitdir is not there: the half-made worktrees that some
+		// tests build, a few milliseconds after the commit that preceded them (one run in sixteen on git 2.55). Every command
+		// the product runs is hardened the same way (hardenedConfig).
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=false",
+		"GIT_CONFIG_KEY_1=gc.auto", "GIT_CONFIG_VALUE_1=0",
+		"GIT_CONFIG_KEY_2=gc.autoDetach", "GIT_CONFIG_VALUE_2=false",
 	}
 }
 
