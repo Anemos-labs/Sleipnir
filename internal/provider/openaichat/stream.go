@@ -268,6 +268,7 @@ type accumulator struct {
 	usage               *usage
 	rawUsage            json.RawMessage
 	started             bool
+	ttfb                time.Duration // when the first frame with content came, from the start of the request
 	textOpen            bool
 
 	promptIDs []int32
@@ -325,7 +326,8 @@ func (a *accumulator) feed(c *chunk, start time.Time, on func(provider.Event)) e
 		if d != nil {
 			if !a.started {
 				a.started = true
-				on(provider.Event{Kind: provider.EvStart, RequestID: a.id, Elapsed: time.Since(start)})
+				a.ttfb = time.Since(start)
+				on(provider.Event{Kind: provider.EvStart, RequestID: a.id, Elapsed: a.ttfb})
 			}
 			if err := a.applyDelta(d, on); err != nil {
 				return err

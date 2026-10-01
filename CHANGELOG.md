@@ -298,6 +298,11 @@ defect the runs showed, with the evidence, and what changed.
   reading, that the step limit and not the clock ended the runs, was wrong for the same reason: for a model that takes 30 seconds a
   request, 21 of 99 runs spent the fifteen minutes on 22 to 36 requests.
 
+- **`ttfb_ms` was the total.** The OpenAI-chat adapter reported the whole duration of a request as its time to first byte
+  (`model.response`, the inspector's timeline), so a log could not tell an endpoint that queues from one that decodes slowly: the
+  two were equal in every one of the 8,088 responses of the first benchmark run. It is now when the first frame with content
+  arrived (the end, for a reply that was not streamed), as the Anthropic adapter already measured it.
+
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
 which every request reads at the cached price, and the first request after an upgrade writes the prefix anew, once per session.

@@ -3,6 +3,9 @@ package openaichat_test
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +37,53 @@ func prompt(system string, msgs ...core.Message) *core.Prompt {
 
 func user(s string) core.Message {
 	return core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text(s)}}
+}
+
+// The time to first byte is when the first frame arrived, not when the answer ended: the adapter used to report the total as both,
+// so a log could not tell an endpoint that queues from one that decodes slowly. The server holds back the rest of the answer until
+// the client has seen the first frame, so the two times cannot be the same whatever the clock does.
+func TestTimeToFirstByteIsTheFirstFrameAndNotTheEnd(t *testing.T) {
+	released := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		io.WriteString(w, `data: {"id":"c1","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"}}]}`+"\n\n")
+		fl.Flush()
+		select {
+		case <-released:
+		case <-r.Context().Done():
+			return
+		}
+		io.WriteString(w, `data: {"id":"c1","model":"m","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`+"\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+		fl.Flush()
+	}))
+	t.Cleanup(ts.Close)
+	c := openaichat.New(openaichat.Config{Name: "raw", BaseURL: ts.URL, APIKey: "k"})
+	var once sync.Once
+	resp, err := c.Do(context.Background(), &provider.Request{Prompt: prompt("sys", user("hi"))}, func(e provider.Event) {
+		if e.Kind == provider.EvStart {
+			once.Do(func() { close(released) })
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Turn.PlainText() != "Hello" {
+		t.Fatalf("text = %q", resp.Turn.PlainText())
+	}
+	if resp.TTFB <= 0 || resp.TTFB >= resp.Total {
+		t.Errorf("time to first byte %v, total %v: the first frame came before the answer was over", resp.TTFB, resp.Total)
+	}
+	// A reply that is not streamed has one moment: its first byte is its end.
+	c2, _ := newClient(t, mock.Config{}, func(*mock.Call) mock.Reply { return mock.Reply{Text: "all at once"} }, openaichat.Options{})
+	whole, err := c2.Do(context.Background(), &provider.Request{Prompt: prompt("sys", user("hi")), NoStream: true}, func(provider.Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if whole.TTFB <= 0 || whole.TTFB > whole.Total {
+		t.Errorf("a reply that was not streamed: time to first byte %v, total %v", whole.TTFB, whole.Total)
+	}
 }
 
 func TestTextStreamAndNonStream(t *testing.T) {
