@@ -160,7 +160,7 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 		ref = cfg.Models.Default
 	}
 	if ref == "" {
-		return ModelRef{}, fmt.Errorf("no model configured: pass --model provider/model, set SLEIPNIR_MODEL, or write one into your config with `sleipnir init --user --model provider/model`\nRecommended: export HEIMDALL_API_KEY, then `sleipnir init --user` picks a model; `sleipnir models` lists what is available")
+		return ModelRef{}, fmt.Errorf("no model configured. Recommended start: export HEIMDALL_API_KEY, then `sleipnir init --user` picks a model (`sleipnir models` lists what is available).\nOr pass --model provider/model, set SLEIPNIR_MODEL, or write a model into your config with `sleipnir init --user --model provider/model`")
 	}
 	if i := strings.IndexByte(ref, '/'); i > 0 {
 		if p, ok := lookupProvider(cfg, ref[:i]); ok {

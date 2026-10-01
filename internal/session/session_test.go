@@ -418,7 +418,7 @@ func TestBuiltInHostsAndLocalServers(t *testing.T) {
 	if _, err := session.ResolveModel(nil, "some/model"); err == nil || !strings.Contains(err.Error(), "HEIMDALL_API_KEY (recommended)") {
 		t.Errorf("the no-provider error recommends Heimdall first: %v", err)
 	}
-	if _, err := session.ResolveModel(nil, ""); err == nil || !strings.Contains(err.Error(), "Recommended: export HEIMDALL_API_KEY") {
+	if _, err := session.ResolveModel(nil, ""); err == nil || !strings.Contains(err.Error(), "Recommended start: export HEIMDALL_API_KEY") {
 		t.Errorf("the no-model error recommends Heimdall first: %v", err)
 	}
 	// A local server needs no key and is never the default for a bare id.
