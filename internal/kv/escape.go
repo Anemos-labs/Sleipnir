@@ -213,7 +213,8 @@ func GuardFrame(text, tag string) string {
 		return escapeProtocol(text)
 	}
 	head, body, tail := trimmed[:end+1], trimmed[end+1:len(trimmed)-len(closeTag)], closeTag
-	if strings.ContainsAny(head, "\n\r") || len(head) > 200 {
+	// A tag has no '<' inside it: "<live <live>" is not an opening tag but two of them, the second forged (the nightly fuzzer wrote it).
+	if strings.ContainsAny(head, "\n\r") || len(head) > 200 || strings.Contains(head[1:], "<") {
 		return escapeProtocol(text)
 	}
 	guarded := escapeProtocol(body)

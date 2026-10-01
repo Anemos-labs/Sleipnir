@@ -129,6 +129,45 @@ func TestEmitStopsAtTheLastSequenceNumber(t *testing.T) {
 	}
 }
 
+// One below the last sequence number, with a damaged line in the log: Open writes down the damage (log.corrupt) and that takes the last
+// number, so the next event is refused although no valid event in the file carries it. The nightly fuzzer found it (a target that
+// said a log "at its last number" was one whose highest valid event had it). The record of the damage is a valid event, the file is
+// still one a second Open reads without finding anything new, and the refusal writes nothing.
+func TestOpenRecordsDamageWithTheLastSequenceNumberAndEmitThenStops(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.jsonl")
+	body := evLine(1, "a") + fmt.Sprintf(`{"seq":%d,"type":"x"}`+"\n", uint64(maxSeq)-1) + "this line is damage\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l, err := Open(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := l.Recovery(); rec.CorruptLines != 1 {
+		t.Fatalf("recovery %+v, want the one damaged line", rec)
+	}
+	if seq, err := l.Emit("", "y", nil); err == nil {
+		t.Fatalf("Emit wrote seq %d after the log's last sequence number was taken by the record of the damage", seq)
+	}
+	l.Close()
+	var last Event
+	if err := Scan(path, func(e Event) error { last = e; return nil }); err != nil && !errors.Is(err, ErrCorruptLog) {
+		t.Fatalf("Scan: %v", err)
+	}
+	if last.Seq != uint64(maxSeq) || last.Type != TypeLogCorrupt {
+		t.Errorf("the last event is %d %s, want %d %s", last.Seq, last.Type, uint64(maxSeq), TypeLogCorrupt)
+	}
+	l2, err := Open(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l2.Close()
+	if rec := l2.Recovery(); rec != (Recovery{}) {
+		t.Errorf("a second Open finds %+v again", rec)
+	}
+}
+
 // FuzzLogFile treats arbitrary bytes as an existing events.jsonl. Whatever they are:
 // Scan delivers only events with a sequence number and ends with nil or a *CorruptError
 // that counts what it skipped; Open succeeds and continues the sequence above every
@@ -141,7 +180,8 @@ func FuzzLogFile(f *testing.F) {
 		good + `{"seq":0,"type":"x"}` + "\n", good + `[1,2,3]` + "\n", good + strings.Repeat("x", 70000) + "\n" + evLine(3, "c"),
 		`{"seq":1,"type":"log.corrupt","data":{"corrupt_lines":1}}` + "\n" + good,
 		good + `{"seq":18446744073709551615,"type":"x"}` + "\n", good + `{"seq":2,"ts":"yesterday","type":"x"}` + "\n",
-		good + `{"seq":9007199254740992,"type":"x"}` + "\n", // the highest sequence number Open accepts
+		good + `{"seq":9007199254740992,"type":"x"}` + "\n",              // the highest sequence number Open accepts
+		good + `{"seq":9007199254740991,"type":"x"}` + "\n" + "damage\n", // one below it, and damaged: the record of the damage takes the last
 		"\r\n" + good, good + "\r\n", strings.Repeat(good, 20),
 	} {
 		f.Add([]byte(s))
@@ -191,7 +231,11 @@ func FuzzLogFile(f *testing.F) {
 		}
 		l.SetClock(func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) })
 		seq, err := l.Emit("a", "appended", nil)
-		if maxValid >= maxSeq { // a log at its last sequence number takes nothing more, and says so
+		taken := maxValid // the highest sequence number the log has used: Open's own record of damage is one of them
+		if rec.CorruptLines > 0 {
+			taken++
+		}
+		if taken >= maxSeq { // a log at its last sequence number takes nothing more, and says so
 			l.Close()
 			if err == nil {
 				t.Fatalf("Emit wrote seq %d into a log at its last sequence number", seq)

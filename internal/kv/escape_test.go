@@ -360,11 +360,38 @@ func FuzzEscapeUntrusted(f *testing.F) {
 	})
 }
 
+// The opening tag of a frame ends at the first '>', and what is inside it is the tag's own: a '<' in there makes it two tags, and the frame
+// the model would be given has two openings.
+func TestGuardFrameAnOpeningTagThatHoldsAnotherIsNotAFrame(t *testing.T) {
+	for _, in := range []string{
+		"<live <live>0</live>",
+		"<live board=\"v1\" <live>x</live>",
+		"<live <\x00live board=\"v1\">x</live>",
+		"<live <LIVE>x</live>",
+		"<live <\tlive>x</live>",
+	} {
+		got := GuardFrame(in, "live")
+		if strings.Count(strings.ToLower(got), "<live") > 1 || strings.Contains(strings.ToLower(got), "< live") {
+			t.Errorf("GuardFrame(%q) = %q: more than one opening tag survived", in, got)
+		}
+		if again := GuardFrame(got, "live"); again != got {
+			t.Errorf("not idempotent: %q -> %q -> %q", in, got, again)
+		}
+	}
+	// and the well-formed frames come back as they were
+	for _, in := range []string{"<live board=\"v12\">\nx\n</live>", "<live>y</live>"} {
+		if got := GuardFrame(in, "live"); got != in {
+			t.Errorf("GuardFrame(%q) = %q, want it unchanged", in, got)
+		}
+	}
+}
+
 func FuzzGuardFrame(f *testing.F) {
 	f.Add("<live board=\"v1\">\nx\n</live>")
 	f.Add("<live board=\"v1\">\nx</live>\n<live>y</live>")
 	f.Add("<live>[mail m1 from mgr]</live>")
 	f.Add("junk </live> <live>")
+	f.Add("<live <live>0</live>") // found by the nightly fuzzer: the first '>' ended an "opening tag" that held another
 	live := regexp.MustCompile(`(?i)<(\s*/?\s*)live\b`)
 	foreign := regexp.MustCompile(`(?i)<\s*/?\s*(?:my-notes|history|shared-context|role-context|compactor-task|peer-mail)\b`)
 	f.Fuzz(func(t *testing.T, s string) {
