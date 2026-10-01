@@ -33,12 +33,12 @@ func allowFlags(fs *flag.FlagSet) *allowFlag {
 
 const testsPreset = "tests"
 
-const testsPresetSummary = "go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, never install or run"
+const testsPresetSummary = "go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run"
 
 // testsAllow is the preset --allow tests: the commands that build and test a project. They run the project's own code, as running
 // its tests is meant to, and nothing else: no package installs, no downloads, no interpreter given a program of its own.
 var testsAllow = []string{
-	"Bash(go test:*)", "Bash(go build:*)", "Bash(go vet:*)", "Bash(gofmt:*)",
+	"Bash(go test:*)", "Bash(go build:*)", "Bash(go vet:*)", "Bash(gofmt:*)", "Bash(go mod init:*)", "Bash(go mod tidy:*)",
 	"Bash(cargo test:*)", "Bash(cargo build:*)", "Bash(cargo check:*)", "Bash(cargo clippy:*)", "Bash(cargo fmt:*)",
 	"Bash(npm test:*)", "Bash(npm run test:*)", "Bash(npm run build:*)", "Bash(npm run lint:*)", "Bash(pnpm test:*)", "Bash(yarn test:*)",
 	"Bash(node --test:*)",

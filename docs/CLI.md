@@ -241,7 +241,7 @@ over, as it would have at the prompt.
 ```text
 Usage of chat:
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
   -budget-usd float
         stop when spend reaches this many US dollars
   -commit
@@ -320,7 +320,7 @@ Runs one goal through the harness. The prompt may be '-' to read stdin.
 
 flags:
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
   -ask-timeout duration
         refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone
   -budget-usd float

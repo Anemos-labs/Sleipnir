@@ -45,6 +45,26 @@ func analyseSafe(prog string, args []string) safeAnalysis {
 			uses = append(uses, pathUse{raw: a, noFollow: true, nameOnly: true})
 		}
 		return safeAnalysis{ok: true, uses: uses}
+	case "set":
+		// Strict mode only (set -e, set -eu, set -o pipefail): it changes how the script
+		// stops, not what it touches. A bare set prints variables, and set -- rewrites
+		// the arguments, so neither is allowed.
+		for i := 0; i < len(args); i++ {
+			a := args[i]
+			if len(a) < 2 || (a[0] != '-' && a[0] != '+') || strings.Trim(a[1:], "euxo") != "" || strings.Contains(a[1:len(a)-1], "o") {
+				return safeAnalysis{why: "set with " + a + ": only -e, -u and -o pipefail are on the read-only list"}
+			}
+			if a[len(a)-1] == 'o' { // -o and -euo take an option name
+				if i+1 >= len(args) || !inList([]string{"pipefail", "errexit", "nounset"}, args[i+1]) {
+					return safeAnalysis{why: "set -o with an option other than pipefail, errexit or nounset"}
+				}
+				i++
+			}
+		}
+		if len(args) == 0 {
+			return safeAnalysis{why: "a bare set prints every variable"}
+		}
+		return safeAnalysis{ok: true}
 	case "cd":
 		var operands []string
 		for _, a := range args {

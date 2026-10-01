@@ -380,6 +380,8 @@ defect the runs showed, with the evidence, and what changed.
 - **Scratch files had no place to go.** `mktemp`, `go build -o /tmp/x` and test runs were refused in `/tmp`, and a model lost minutes to retries.
   Commands now get a private `TMPDIR` under the session's directory that the permission engine treats as workspace, and the refusal of
   any other place names it.
+- **Two refusals that stopped nothing worth stopping.** `set -e` and `set -euo pipefail` (strict mode, which changes how a script stops and
+  touches nothing) no longer ask, and `--allow tests` covers `go mod init` and `go mod tidy`, which a new project's first minutes need.
 - **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:
   45% `cd` to a path the model guessed (`/workspace`, `/repo`, `/home/user`), 14% paths the engine cannot know (`$(pwd)`,
   `$OLDPWD`, a loop variable), 6% scratch files in `/tmp`, 10% `sed -n 'N,Mp' file`, the way models read a range of lines.

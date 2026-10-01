@@ -30,6 +30,7 @@ var safeCommands = []string{
 	`sed -ne 1p main.go`, `sed -n -e 1p -e 2p main.go`, `sed 2q main.go`, `sed -n p main.go`, `grep -n package main.go | sed -n 1,3p`,
 	`ls; pwd`, `ls && pwd || echo no`, `ls > /dev/null`, `ls 2>&1`, `ls 2>/dev/null`, `ls &> /dev/null`, `ls >/dev/null 2>&1`,
 	`test -f main.go && echo yes`, `[ -d src ] && ls src`, `[[ -f main.go && -d src ]] && echo ok`,
+	`set -e`, `set -eu`, `set -euo pipefail`, `set -o pipefail`, `set +e`,
 	`true`, `false`, `:`, `sleep 1`, `seq 1 3`, `id -u`, `nproc`, `sha256sum main.go`, `md5sum main.go src/a.go`,
 	`for f in a b c; do echo $f; done`, `for i in 1 2 3; do echo $i; done`, `for f in $LIST; do echo $f; done`, `for f in src/*.go; do echo $f; done`,
 	`for f in *; do echo $f; done`, `for f in link-*; do echo $f; done`, `for f in *; do echo $f; done`, `if [ -f main.go ]; then echo yes; fi`,
@@ -65,6 +66,7 @@ func TestBashAllowlist(t *testing.T) {
 		`python script.py`, `python3 -c 'print(1)'`, `node index.js`, `npm install`, `npm test`, `make`, `make test`, `docker ps`, `kubectl get pods`,
 		`rm x`, `mkdir x`, `touch x`, `cp a b`, `mv a b`, `chmod +x x`, `ln -s a b`, `curl http://example.com`, `wget http://example.com`,
 		`ssh host`, `scp a host:`, `kill 1`, `xargs ls`, `bash script.sh`, `sh script.sh`, `./script.sh`, `/tmp/x/prog`, `source env.sh`, `. env.sh`,
+		`set`, `set -- a b`, `set -o allexport`, `set -a`, `set -o`, `set -f`,
 		`export FOO=bar`, `alias ls=x`, `read x`, `nc host 1`, `ping host`, `vim x`, `less x`, `tar tf x.tar`, `unzip -l x.zip`,
 		`node -e 'x'`, `node --version x`, `python --version x`,
 		// reads outside the workspace
