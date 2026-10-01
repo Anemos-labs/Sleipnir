@@ -256,12 +256,14 @@ func renderAssistant(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpo
 				out.ReasoningDetails = b.Wire
 			}
 		case core.BlockToolUse:
-			if b.WireFormat == Dialect && len(b.Wire) > 0 {
+			if b.WireFormat == Dialect && len(b.Wire) > 0 && b.Invalid == "" {
 				out.ToolCalls = append(out.ToolCalls, b.Wire)
 				continue
 			}
 			args := string(b.Input)
-			if args == "" {
+			if args == "" || b.Invalid != "" {
+				// Arguments the model cut off or garbled are not JSON, and an endpoint that checks the history refuses the whole
+				// request for them (one run ended on that). The tool result already tells the model what it sent.
 				args = "{}"
 			}
 			tc, err := core.MarshalStable(map[string]any{

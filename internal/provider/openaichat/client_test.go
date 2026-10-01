@@ -503,3 +503,33 @@ func TestAPageOfHTMLAnswered200IsNamedForWhatItIs(t *testing.T) {
 		t.Errorf("the message carries markup: %q", pe.Message)
 	}
 }
+
+// Arguments the model cut off are not JSON, and an endpoint that checks the history refuses the whole next request for them ("Assistant
+// tool call function.arguments must be valid JSON"): a swarm run ended on that. They are replayed as an empty object; the tool result
+// already says what went wrong.
+func TestInvalidToolArgumentsAreReplayedAsAnEmptyObject(t *testing.T) {
+	var replayed string
+	c, _ := newClient(t, mock.Config{}, func(call *mock.Call) mock.Reply {
+		for _, m := range call.Messages {
+			if m.Role == "assistant" && len(m.ToolCalls) == 1 {
+				replayed = m.ToolCalls[0].Args
+			}
+		}
+		if len(call.Messages) == 1 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: "edit", Args: `{"path": "x", "old`}}, Finish: "length"}
+		}
+		return mock.Reply{Text: "ok"}
+	}, openaichat.Options{})
+	r, err := c.Do(context.Background(), &provider.Request{Prompt: prompt("", user("go"))}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := core.Message{Role: core.RoleUser, Blocks: []core.Block{{Kind: core.BlockToolResult, ToolID: "c1", IsError: true, Result: []core.Block{core.Text("cut off")}}}}
+	p2 := prompt("", user("go"), core.Message{Role: core.RoleAssistant, Blocks: r.Turn.Blocks}, tr)
+	if _, err := c.Do(context.Background(), &provider.Request{Prompt: p2}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if replayed != "{}" {
+		t.Errorf("replayed arguments %q, want {}", replayed)
+	}
+}
