@@ -248,6 +248,10 @@ User-facing: a non-test, non-markdown file under `cmd/` or `internal/` (testdata
   run releases everything since the last tag, so nothing is lost; it may only come later.
 * **The release builds with the newest stable Go**, because Go 1.24 is out of support; `go.mod` keeps saying `go 1.24`, and the
   `go.mod` leg of the test matrix proves it still builds and passes.
+* **A tag pushed by hand releases nothing.** The workflow this replaces released on a pushed `v*` tag; now the tag is made by
+  the `publish` job together with its release, so that a release is made in one place, behind one gate (`AUTO_RELEASE`, the
+  plan, `main`). A release the plan declined is fixed at its reason, or run again from **Actions > release > Run workflow**
+  with the dry run unticked: the plan still has to say yes.
 * **A failed upload leaves no half-made release.** With files to attach, `gh release create` makes a draft, uploads, publishes
   last, and deletes the draft if an upload fails (read in the source of gh 2.102); run the workflow again. If a draft is ever
   left behind, delete it on the Releases page.
