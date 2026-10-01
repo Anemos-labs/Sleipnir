@@ -749,7 +749,7 @@ func TestE2EChatApproval(t *testing.T) {
 
 			u.send("@write")
 			vis := u.question("Write a file")
-			for _, want := range []string{"approved.txt", "1. Yes", "2. Yes, and don't ask again for this change this session", "3. No, and tell Sleipnir what to do instead"} {
+			for _, want := range []string{"approved.txt", "1. Yes", "2. Yes, and don't ask again for edits in this project this session", "3. No, and tell Sleipnir what to do instead"} {
 				if !strings.Contains(vis, want) {
 					t.Errorf("the question lacks %q:\n%s", want, vis)
 				}
