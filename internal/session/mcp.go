@@ -189,7 +189,7 @@ func (s *Session) mcpApprove(c mcp.ServerConfig) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	d := st.prompter(ctx, perm.Request{
-		Tool:    "mcp-server",
+		Tool:    perm.ToolMCPServer,
 		Summary: fmt.Sprintf("start the MCP server %q from this project's configuration. It %s", name, c.Describe()),
 		Network: c.Remote(), Risk: perm.RiskHigh,
 	})

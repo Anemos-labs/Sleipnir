@@ -180,6 +180,7 @@ Commands:
   swarm     shorthand for run --swarm: sleipnir swarm <workers> "<goal>"
   recon     print the deterministic project survey that seeds the shared prompt layer
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test
+  trust     the project's own instructions and settings: what they are, and remember your yes until they change
   inspect   the cache inspector: a live or after-the-fact dashboard of a recorded session (layers, hit ratio, swarm, cost)
   watch     the terminal's view of a session as it is written: the swarm cockpit, each agent's cache, mail, board
   replay    play a recorded session back on those screens; --record writes an animated SVG, --final a text screen

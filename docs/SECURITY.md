@@ -43,7 +43,8 @@ prompt, tool call and output verbatim.
 
 **Trusted:** you, your own config under `~/.sleipnir`, the operating system, the provider you chose (it sees everything
 you send it). **Not trusted:** model output, repository content, web content, tool output, mail, project-level config and
-instruction files until you say `--trust-project`.
+instruction files until you say `--trust-project`, or say yes to exactly those files (`sleipnir trust`; see "Trusting a
+project" below).
 
 **What the harness does about it**
 
@@ -57,6 +58,8 @@ instruction files until you say `--trust-project`.
   not typed for, and a question that Ctrl-C cancels takes nothing.
 * *Tool output is data.* It arrives as `role:tool`, never as an instruction. Pins and notes are user-role context, mail is typed,
   capped and never authority (`docs/SWARM-PROTOCOL.md`). This is defence in depth for a probabilistic reader, not a guarantee.
+* *Trust is an answer about files, not about a place.* `--trust-project` is the answer for one run. What a person can keep is a yes
+  to the files they were shown, as a hash of them (below), so that a pull that changes any of them is a new question.
 * *Repository text is confined.* Instruction files are read through `os.Root`: links out of the project, hidden directories,
   `.env`, non-text files are refused; invisible Unicode (tag characters, bidi controls, zero-width characters) is removed;
   repository-origin text is labelled unverified and is not loaded at all unless the project is trusted. Project config
@@ -93,6 +96,39 @@ instruction files until you say `--trust-project`.
   that another agent or a file contributes is defused by the one definition the prompt layers use (`kv.EscapeMarkup`): harness
   markers such as `[mail`, `[stop hook]` and the label of a hook's context, and structural tags, cannot be forged.
 * *The harness process is hardened* (section 2), and a PID-namespace or container wrapper can hide it entirely (section 3).
+
+### Trusting a project
+
+What a repository brings that the harness reads as text or settings (its instruction files and what they import, `.sleipnir/config.json`
+and `config.local.json`, `.mcp.json`, and the skills, commands and agents under `.sleipnir` and `.claude`) is used only when the project is
+trusted. There are two ways to say so: `--trust-project` for one run, and a remembered yes, which a `chat` asks for at its start (`sleipnir
+trust add` does it without a session). The remembered yes is kept in `trust.json` in the state directory, for one working directory, as a
+SHA-256 over every one of those files (their kind, path and content as the loader reads it): `internal/trust` scans them, and a session
+that starts with the same digest uses them without asking. Editing, adding or removing any of the files makes it another digest; the person
+is told which file it was, and asked again. It is the model of direnv's `allow`, for the same reason: what was read last month is not what
+a `git pull` brings today. The threats considered:
+
+* *A pull that changes a trusted file* (a new line in AGENTS.md that tells the agent to send `~/.ssh` somewhere): another digest, not used,
+  named in the notice and in the question. A file of the same name and another content is another file.
+* *The repository trusting itself*: the ledger is in the user's state directory, never in the project, and a write there asks in every mode
+  and is refused when nobody is there to ask (`Edit(~/.sleipnir/**)`, and `Config.StateDir` when `SLEIPNIR_HOME` moves it).
+* *A question that lies*: the files are listed from the scan, each path cleaned of what a terminal acts on (`provider.SanitizeText`), a
+  definition directory as one line with its file count, and what is not covered is said in the question itself.
+* *A file the digest does not cover*: a settings file that is a symbolic link out of the project (the loaders follow it, the scan does not),
+  an unreadable file, more than 400 files or 16 MB, or a tree of more than 50,000 entries makes the footprint partial, and a partial one is
+  never remembered (the session can still be trusted for itself; the person is told).
+* *A link to a file elsewhere in the project* (a skill that is a link to `docs/skill.md`): the loaders follow it, so the sum of the link
+  includes what it leads to.
+* *Which directory*: the answer is for the working directory the session starts in (what is read depends on it: the instruction files from
+  the root down to it), not for the repository. A copy elsewhere is another project; a symbolic link spelled another way is asked about
+  again, never trusted by mistake.
+* *The window between the scan and the load*: a file edited by another process between the two is read in its new form. The same process
+  can edit the ledger: it is a same-user process (below).
+* *A chat that is cancelled at the question*: no session, nothing remembered.
+
+What it does not cover is the repository's **code**. A hook that runs `./scripts/lint.sh` is covered (it is in the settings); the script is
+not. Running a repository's code is what approving `go test`, `make` or a hook is already about, and it runs with your rights. Nor does it
+make a project's tool servers start without asking: each entry of a `.mcp.json` still needs its own approval, by its fingerprint.
 
 **What it does not do.**
 

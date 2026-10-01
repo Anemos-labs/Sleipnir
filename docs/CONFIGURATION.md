@@ -147,7 +147,7 @@ limits, and `permissions.ask` and `permissions.deny` (a project can add to your 
 a URL.
 
 In a session (`chat`, `run`, `swarm`) an untrusted project's sensitive settings are dropped with a notice such as
-`ignored security-sensitive settings from the project's config (hooks); pass --trust-project to apply them`.
+`ignored security-sensitive settings from the project's config (hooks); pass --trust-project to apply them for this run, or run `sleipnir trust add` to remember them until they change`.
 `sleipnir config` lists them under "security-sensitive settings from project files" (with `--trust-project` it lists
 the same settings as applied).
 

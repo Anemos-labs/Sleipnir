@@ -67,6 +67,10 @@ func serverRequest() perm.Request {
 	return perm.Request{Tool: "mcp-server", Summary: `start the project's MCP server "files" (npx files-server)`}
 }
 
+func trustRequest() perm.Request {
+	return perm.Request{Tool: perm.ToolProjectTrust, Summary: "use this project's own instructions and settings?\nAGENTS.md: instructions, 1.3 KB\n.claude/skills/ (3 files): skills, 4.1 KB\n\nThese are added to every prompt. [changed since you trusted it: AGENTS.md changed]"}
+}
+
 // A question is answered by the line the person types: y once, a for the session, anything
 // else (an empty line too) refuses. What `run` and `mcp test` use.
 func TestTerminalPrompterAnswers(t *testing.T) {
@@ -92,6 +96,15 @@ func TestTerminalPrompterAnswers(t *testing.T) {
 		{"a server: project", serverRequest(), "project\n", perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}},
 		{"a server: a does not remember", serverRequest(), "a\n", perm.Decision{Reason: "denied by user"}},
 		{"a server: n", serverRequest(), "n\n", perm.Decision{Reason: "denied by user"}},
+		// the question of the files that come with the project: remembered until they change, and only there
+		{"files: y", trustRequest(), "y\n", perm.Decision{Allow: true, Reason: "allowed by user"}},
+		{"files: r remembers them until they change", trustRequest(), "r\n", perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}},
+		{"files: remember", trustRequest(), "remember\n", perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}},
+		{"files: a is not an answer (nothing here is for ever)", trustRequest(), "a\n", perm.Decision{Reason: "denied by user"}},
+		{"files: p is the answer of a server, not of this", trustRequest(), "p\n", perm.Decision{Reason: "denied by user"}},
+		{"files: n", trustRequest(), "n\n", perm.Decision{Reason: "denied by user"}},
+		{"a tool: r is not an answer", toolRequest(), "r\n", perm.Decision{Reason: "denied by user"}},
+		{"a server: r is not an answer", serverRequest(), "r\n", perm.Decision{Reason: "denied by user"}},
 		// The input ended: nobody answered. A last line with no newline is not taken for an answer.
 		{"the input ended", toolRequest(), "", perm.Decision{Reason: "no answer"}},
 		{"the input ended after y with no newline", toolRequest(), "y", perm.Decision{Reason: "no answer"}},
@@ -116,6 +129,7 @@ func TestTerminalPrompterShowsTheQuestion(t *testing.T) {
 		{"a tool", toolRequest(), "\nworker-2 wants to: write notes.txt [default mode: writing notes.txt needs approval]\n  allow? [y]es once / [a]lways this session / [n]o: "},
 		{"an unnamed agent", perm.Request{Tool: "bash", Summary: "run ls"}, "\nagent wants to: run ls\n  allow? [y]es once / [a]lways this session / [n]o: "},
 		{"a server", serverRequest(), "\nSleipnir wants to start the project's MCP server \"files\" (npx files-server)\n  start it? [y]es this time / [p]roject: remember this exact entry / [n]o: "},
+		{"the project's own files", trustRequest(), "\nSleipnir asks: use this project's own instructions and settings?\n  AGENTS.md: instructions, 1.3 KB\n  .claude/skills/ (3 files): skills, 4.1 KB\n\n  These are added to every prompt. [changed since you trusted it: AGENTS.md changed]\n  use them? [y]es this time / [r]emember until they change / [n]o: "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out lockedBuffer

@@ -107,6 +107,14 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 	opts, _ = dialogOptions(req)
 	askEdit.dlg = &dialogView{title: title, body: body, options: opts, sel: 1, armed: false}
 
+	askTrust := ask
+	req = perm.Request{Tool: perm.ToolProjectTrust, Cwd: "/work/proj", Risk: perm.RiskHigh, Summary: "use this project's own instructions and settings?\n" +
+		"AGENTS.md: instructions, 1.3 KB\n.sleipnir/config.json: settings, 212 B\n.claude/skills/ (3 files): skills, 4.1 KB\n\n" +
+		"These are added to every prompt and can start tool servers and run hooks. The repository's code is not covered by the answer. [changed since you trusted it: AGENTS.md changed]"}
+	title, body = k.requestBody(req, nil, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj")
+	opts, _ = dialogOptions(req)
+	askTrust.dlg = &dialogView{title: title, body: body, options: opts, armed: true}
+
 	fold := busy
 	fold.tail, fold.tools, fold.queue = nil, nil, nil
 	fold.status = statusView{kind: statusCompacting, elapsed: 31 * time.Second, tokIn: 61200, tokOut: 900}
@@ -117,7 +125,7 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 
 	starting := liveView{cols: cols, rows: rows, status: statusView{kind: statusStarting}, ed: chatEditor(t, k, cols, "", nil), mode: "default"}
 
-	return map[string]liveView{"idle": idle, "busy": busy, "ask": ask, "askedit": askEdit, "fold": fold, "menu": menu, "starting": starting}
+	return map[string]liveView{"idle": idle, "busy": busy, "ask": ask, "askedit": askEdit, "asktrust": askTrust, "fold": fold, "menu": menu, "starting": starting}
 }
 
 // dump is a live region as the golden file holds it: the rows, and where the cursor is.

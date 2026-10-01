@@ -1230,8 +1230,8 @@ func (m *chatModel) stepFolds() {
 
 // ask puts a question on the screen.
 func (m *chatModel) ask(q *question) {
-	opts, mcp := dialogOptions(q.req)
-	d := &dialog{q: q, opts: opts, mcp: mcp, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
+	opts, kind := dialogOptions(q.req)
+	d := &dialog{q: q, opts: opts, kind: kind, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
 	m.dialogs = append(m.dialogs, d)
 	if t := m.callOf(q.req); t != nil {
 		t.asking = true

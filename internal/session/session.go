@@ -186,6 +186,7 @@ type Session struct {
 	Roles  swarm.Roles
 
 	cfgRep      *config.Report // where each configuration value came from (nil when Options.Config was given)
+	trust       *trustInfo     // how the project's own files came to be used, or why not (nil when it has none)
 	mcp         *mcpState
 	archive     *kv.Archive    // folded turns, for recall
 	handles     *tools.Handles // recall handles of truncated output
@@ -281,6 +282,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		}
 		o.Dir, o.ID = dir, filepath.Base(dir)
 	}
+	tinfo, err := resolveTrust(ctx, &o)
+	if err != nil {
+		return nil, err
+	}
 	cfg := o.Config
 	var rep *config.Report
 	if cfg == nil {
@@ -294,7 +299,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			for _, r := range rep.ProjectRisks {
 				names = append(names, r.Path)
 			}
-			o.Sink.Notice("", "warn", "ignored security-sensitive settings from the project's config ("+strings.Join(names, ", ")+"); pass --trust-project to apply them")
+			o.Sink.Notice("", "warn", "ignored security-sensitive settings from the project's config ("+strings.Join(names, ", ")+"); "+trustHint("apply"))
 		}
 	}
 	if err := checkSwarmSize(cfg, o); err != nil {
@@ -304,7 +309,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		// Anything but a positive number reads as "no budget" below; a typo must not do that.
 		return nil, fmt.Errorf("budget: --budget-usd must be zero (no limit) or a positive amount, got %v", b)
 	}
-	s := &Session{opts: o, cfg: cfg, cfgRep: rep}
+	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo}
 
 	// Identity and storage.
 	s.ID = o.ID
@@ -496,7 +501,7 @@ func (s *Session) buildPerm() error {
 	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
+		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), TreeParents: extra,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
 	})
@@ -543,7 +548,7 @@ func (s *Session) buildShared(ctx context.Context) error {
 	if !s.opts.TrustProject {
 		kept := userScopeOnly(srcs)
 		if skipped := skippedSources(srcs, kept); len(skipped) > 0 {
-			s.notice("", fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); pass --trust-project to load them", strings.Join(skipped, ", ")))
+			s.notice("", fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); %s", strings.Join(skipped, ", "), trustHint("load")))
 		}
 		srcs = kept
 	}
@@ -597,7 +602,7 @@ func skippedSources(all, kept []memory.Source) []string {
 func userScopeOnly(srcs []memory.Source) []memory.Source {
 	var out []memory.Source
 	for _, s := range srcs {
-		if s.Scope == memory.ScopeUser || (s.Scope == memory.ScopeImport && strings.HasPrefix(s.Path, "~/")) {
+		if s.FromUser() {
 			out = append(out, s)
 		}
 	}
@@ -926,6 +931,9 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 		start["models"] = s.modelRecords()
 		if info := s.mcpInfo(); info != nil {
 			start["mcp"] = info
+		}
+		if rec := s.trust.record(); rec != nil {
+			start["trust"] = rec
 		}
 		// What the run's swarm was set up to do to files and mail, when it is not the default.
 		if s.iso != nil {

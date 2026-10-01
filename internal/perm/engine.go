@@ -19,6 +19,10 @@ type Config struct {
 	// "~" and the credential protections; empty means the current user's.
 	Root string
 	Home string
+	// StateDir is the harness's own directory when it is not ~/.sleipnir (the caller lists that one itself, with the other places that
+	// steer a later session): what the person trusted, their settings and skills and the record of every session are in it. A write
+	// there asks, in every mode, as a write to ~/.sleipnir does; an unattended session refuses it.
+	StateDir string
 	// ExtraRoots are further directories treated as part of the workspace
 	// (per-agent git worktrees, scratch directories).
 	ExtraRoots []string
@@ -215,7 +219,11 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if e.allow, err = compileList(Allow, cfg.Allow, rs); err != nil {
 		return nil, err
 	}
-	if e.ask, err = compileList(Ask, cfg.Ask, rs); err != nil {
+	ask := cfg.Ask
+	if cfg.StateDir != "" {
+		ask = append(append([]string(nil), ask...), "Edit("+escapeGlob(cleanAbs(cfg.StateDir))+"/**)")
+	}
+	if e.ask, err = compileList(Ask, ask, rs); err != nil {
 		return nil, err
 	}
 	if e.deny, err = compileList(Deny, cfg.Deny, rs); err != nil {

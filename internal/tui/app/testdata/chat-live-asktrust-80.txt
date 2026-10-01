@@ -1,0 +1,21 @@
+80 columns, 20 rows, cursor at row -1 column 0
+? Waiting for your answer…  20s                                 esc to interrupt
+╭─ Use this project's own files? ──────────────────────────────────────────────╮
+│ AGENTS.md: instructions, 1.3 KB                                              │
+│ .sleipnir/config.json: settings, 212 B                                       │
+│ .claude/skills/ (3 files): skills, 4.1 KB                                    │
+│                                                                              │
+│ These are added to every prompt and can start tool servers and run hooks.    │
+│ The repository's code is not covered by the answer.                          │
+│                                                                              │
+│ changed since you trusted it: AGENTS.md changed                              │
+│                                                                              │
+│ ❯ 1. Yes, use them this time                                                 │
+│   2. Yes, and remember them until they change                                │
+│   3. No, leave them out (esc)                                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  1 2 3 answers, or ↑↓ and enter  ·  esc says no  ·  ctrl+c cancels the turn
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ❯ Type a goal, / for commands, @ for files                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+accept-edits · ctrl+t stack · / commands    mock/mock-1 · 20260102-030405-abcdef

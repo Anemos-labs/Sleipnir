@@ -16,7 +16,9 @@ and every `rl` command accept flags after positional arguments (`sleipnir swarm 
 
 **Trust.** `--trust-project` (on `chat`, `run`, `swarm`, `config`, `doctor`) makes a session read what a repository
 brings: sensitive keys of its config file, its instruction files, skills, commands, agent definitions and hooks. Without
-it none of that is used. See `docs/CONFIGURATION.md` section 4 and `docs/EXTENDING.md` section 0.
+it none of that is used, unless you said yes to exactly those files before: `chat` asks at its start (and offers to
+remember the answer), `sleipnir trust add` says it without a session, and the answer holds until any of the files changes
+(`sleipnir trust`). See `docs/CONFIGURATION.md` section 4, `docs/EXTENDING.md` section 0 and `docs/SECURITY.md`.
 
 ## Commands
 
@@ -145,6 +147,44 @@ commands:
   approve NAME [--yes]                remember a project entry for this project (shows what it would run and asks first)
   revoke NAME                         forget an approval
   test [NAME...] [--trust-project]    start the servers and list the tools they offer (project entries still need approval)
+```
+<!-- /flags -->
+
+### `sleipnir trust`
+
+Shows and keeps your answer to "may this project's own files be used". What a repository brings that the harness reads as text and
+settings (its instruction files, `.sleipnir/config.json` and `.mcp.json`, and the skills, commands and agents under `.sleipnir` and
+`.claude`) is not used until you trust the project. `--trust-project` is the answer for one run. This command keeps it for exactly
+the files you saw: a hash of them is written to `trust.json` in your state directory (never in the repository), and a session
+started in that directory uses them without asking until one is edited, added or removed, when it says which and asks again.
+`sleipnir trust` shows what the project has and where you stand; `add` says yes after showing the files and asking; `forget`
+takes it back; `list` shows every directory you said yes to and whether its files still are the ones you saw. `chat` asks at its
+start and offers the same answer; `run`, `swarm` and `rl rollout` have no one to ask and use it. The answer covers what the harness
+reads, not the repository's code (`docs/SECURITY.md`, "Trusting a project").
+
+<!-- flags: trust -->
+```text
+usage: sleipnir trust [command] [flags]
+
+A project can say things to the harness of its own: instruction files (AGENTS.md), settings, tool
+servers, skills, commands and agents. None of it is used until you trust the project, for one run
+with --trust-project or, with this command, until any of those files changes: the answer is kept
+for exactly the files you saw (a hash of them), in your own state directory, never in the project.
+A chat asks at its start. A run, a swarm and a rollout have no one to ask, and use the answer.
+
+commands:
+  (none)             what in this directory's project trust would unlock, and whether you said yes to exactly that
+  add [--yes]        say yes to those files as they are now (shows them and asks first)
+  forget [--all]     forget the answer for this directory, or for every project
+  list               the directories you said yes to, and whether the files in each still are the ones you saw
+
+flags:
+  --cwd DIR          the directory to look at (default: the current one)
+  --yes              add: do not ask (a script: you have read what it shows)
+  --all              forget: every project
+
+What the answer covers is what the harness itself reads as text and settings; the repository's code is
+not covered, and running it (go test, make, a hook's script) is what every approval is about.
 ```
 <!-- /flags -->
 

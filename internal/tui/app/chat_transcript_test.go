@@ -154,6 +154,25 @@ func TestAnswerForIsTheDialogsOwnTable(t *testing.T) {
 	if got, ok := AnswerFor(server, input.RuneKey('2', 0)); !ok || !got.Allow || got.Remember != perm.ScopeProject {
 		t.Errorf("for a tool server the second answer is kept for the project: %+v %v", got, ok)
 	}
+	// the question of the project's own files has its own answers: the second is kept until the files change, and only that one
+	trustQ := perm.Request{Tool: perm.ToolProjectTrust, Summary: "use this project's own instructions and settings?\nAGENTS.md: instructions, 1 B"}
+	for key, want := range map[rune]perm.Decision{
+		'1': {Allow: true, Reason: "allowed by user"},
+		'2': {Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject},
+		'3': {Allow: false, Reason: "denied by user"},
+	} {
+		if got, ok := AnswerFor(trustQ, input.RuneKey(key, 0)); !ok || got != want {
+			t.Errorf("project files: the key %c answers %+v (%v), want %+v", key, got, ok, want)
+		}
+	}
+	opts, _ := dialogOptions(trustQ)
+	var labels []string
+	for _, o := range opts {
+		labels = append(labels, o.Label)
+	}
+	if got := strings.Join(labels, " | "); got != "Yes, use them this time | Yes, and remember them until they change | No, leave them out" {
+		t.Errorf("the options of the question about the project's files: %q", got)
+	}
 	// There is no letter that answers: not the y and n of the line prompt, not any letter, and not a number there is no option for.
 	for _, k := range []input.Key{
 		input.RuneKey('y', 0), input.RuneKey('Y', 0), input.RuneKey('n', 0), input.RuneKey('a', 0), input.RuneKey('o', 0), input.RuneKey('4', 0),

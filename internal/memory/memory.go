@@ -125,6 +125,12 @@ type Source struct {
 	Truncated bool
 }
 
+// FromUser reports whether the source is the user's own: ~/.sleipnir's instruction file, or a file that one imports (shown with a "~/"
+// path). Everything else came with the project.
+func (s Source) FromUser() bool {
+	return s.Scope == ScopeUser || (s.Scope == ScopeImport && strings.HasPrefix(s.Path, "~/"))
+}
+
 // Opts says where to look.
 type Opts struct {
 	// Root is the project root. Empty means Cwd.

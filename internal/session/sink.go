@@ -311,11 +311,15 @@ func LinePrompter(answer func(ctx context.Context, show func()) (string, error),
 			who = "agent"
 		}
 		show := sync.OnceFunc(func() {
-			if r.Tool == "mcp-server" {
+			switch r.Tool {
+			case perm.ToolMCPServer:
 				// Starting a project's tool server: it runs code or reaches a host the
 				// repository chose. The answer that remembers is per exact entry.
 				fmt.Fprintf(out, "\nSleipnir wants to %s\n  start it? [y]es this time / [p]roject: remember this exact entry / [n]o: ", r.Summary)
-			} else {
+			case perm.ToolProjectTrust:
+				// The files that come with the project: the answer that remembers is for exactly these.
+				fmt.Fprintf(out, "\nSleipnir asks: %s\n  use them? [y]es this time / [r]emember until they change / [n]o: ", indentLines(r.Summary))
+			default:
 				fmt.Fprintf(out, "\n%s wants to: %s\n  allow? [y]es once / [a]lways this session / [n]o: ", who, r.Summary)
 			}
 		})
@@ -327,16 +331,32 @@ func LinePrompter(answer func(ctx context.Context, show func()) (string, error),
 		case "y", "yes":
 			return perm.Decision{Allow: true, Reason: "allowed by user"}
 		case "a", "always":
-			if r.Tool != "mcp-server" {
+			if r.Tool != perm.ToolMCPServer && r.Tool != perm.ToolProjectTrust {
 				return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
 			}
 		case "p", "project":
-			if r.Tool == "mcp-server" {
+			if r.Tool == perm.ToolMCPServer {
 				return perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}
+			}
+		case "r", "remember":
+			if r.Tool == perm.ToolProjectTrust {
+				return perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}
 			}
 		}
 		return perm.Decision{Allow: false, Reason: "denied by user"}
 	}
+}
+
+// indentLines indents every line of s but the first (and leaves a blank one blank), so that a question that runs over several lines reads
+// as one.
+func indentLines(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i := 1; i < len(lines); i++ {
+		if lines[i] != "" {
+			lines[i] = "  " + lines[i]
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // directAnswers reads one line per call from in. The read runs in a goroutine, so that a

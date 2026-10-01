@@ -188,6 +188,21 @@ The first release.
   which needs Go 1.25, so `go.mod` says `go 1.25.0` (Go 1.24 is out of support) and `golang.org/x/sys` and `golang.org/x/term` moved
   with it. The dependencies are still the standard library and those three modules.
 
+- **Remembered project trust (`sleipnir trust`).** What a repository brings that the harness reads as text and settings (its instruction
+  files and what they import, `.sleipnir/config.json` and `config.local.json`, `.mcp.json`, and the skills, commands and agents under
+  `.sleipnir` and `.claude`) was used only with `--trust-project`, every run. A yes can now be kept for exactly the files that were seen: a
+  SHA-256 over their kind, path and content (what the loaders read; `internal/trust`) is written to `trust.json` in the state directory,
+  for the working directory, and a session started there uses the files without asking until any of them is edited, added or removed
+  (then the notice, and the question, name the file). `chat` asks at its start (a dialog with three answers, or `y` / `r` / `n` on the line
+  prompt; Ctrl-C at the question is Ctrl-C at the start); `run`, `swarm` and `rl rollout` have no one to ask and use the answer;
+  `--trust-project` stays the answer for one run and writes nothing. `sleipnir trust` shows what the project has and where you stand,
+  `add` says yes after showing the files, `forget` takes it back, `list` shows every directory and whether its files still are the ones
+  you saw. A settings file that is a link out of the project, an unreadable file, or more than 400 files or 16 MB makes the footprint
+  partial, and a partial one is never remembered. It vouches for what the harness reads, not for the repository's code, and a project's tool
+  servers still each need their own approval (`docs/SECURITY.md`, "Trusting a project"). `session.start` records how the project came to be
+  trusted (`trust`: `how`, `digest`, `files`, `saved`, `changed`) unless a flag did. Also: `perm.Config.StateDir`, so that a write to the state
+  directory asks wherever `SLEIPNIR_HOME` puts it, as a write to `~/.sleipnir` already did.
+
 ### Configuration
 
 - Every key in the file format is read by something: the keys of earlier drafts that nothing read are gone (an old file

@@ -34,7 +34,7 @@ type dialog struct {
 	shownAt time.Time
 	toolKey string
 	opts    []widget.DialogOption
-	mcp     bool // the question is whether to start a project's tool server, which has its own answers
+	kind    dialogKind
 	title   string
 	body    []cell.Line
 	width   int // the width body was laid out for
@@ -43,19 +43,36 @@ type dialog struct {
 // defaultAnswerAfter is the pause before a question takes an answer from the keyboard.
 const defaultAnswerAfter = 350 * time.Millisecond
 
+// dialogKind says which of the questions it is: most are about one action, and two are the harness's own, with answers of their own.
+type dialogKind int
+
+const (
+	kindAction dialogKind = iota // a tool call that needs a person's word
+	kindMCP                      // whether to start a project's tool server
+	kindTrust                    // whether to use the project's own instructions and settings
+)
+
 // dialogOptions are the three answers of a question. The second one is what the old prompt called "always": it remembers the
-// exact request for the rest of the session (for a project's tool server, the exact entry for the project).
+// exact request for the rest of the session (for a project's tool server, the exact entry for the project; for the project's own
+// files, the files as they are now).
 //
 // The options are chosen by their numbers, by the arrows and enter, and the last one by esc. They have no letters (the line prompt's
 // y, a and n): a letter is what a sentence is made of, and a question answered by the letters of a line that is being typed is the
 // fault this program exists to be safe against.
-func dialogOptions(r perm.Request) (opts []widget.DialogOption, mcp bool) {
-	if r.Tool == "mcp-server" {
+func dialogOptions(r perm.Request) (opts []widget.DialogOption, kind dialogKind) {
+	switch r.Tool {
+	case perm.ToolMCPServer:
 		return []widget.DialogOption{
 			{Label: "Yes, start it this time"},
 			{Label: "Yes, and remember this exact entry for this project"},
 			{Label: "No", Hint: "(esc)", Keys: []string{"esc"}},
-		}, true
+		}, kindMCP
+	case perm.ToolProjectTrust:
+		return []widget.DialogOption{
+			{Label: "Yes, use them this time"},
+			{Label: "Yes, and remember them until they change"},
+			{Label: "No, leave them out", Hint: "(esc)", Keys: []string{"esc"}},
+		}, kindTrust
 	}
 	what := "this request"
 	switch strings.ToLower(r.Tool) {
@@ -68,7 +85,7 @@ func dialogOptions(r perm.Request) (opts []widget.DialogOption, mcp bool) {
 		{Label: "Yes"},
 		{Label: "Yes, and don't ask again for " + what + " this session"},
 		{Label: "No, and tell Sleipnir what to do instead", Hint: "(esc)", Keys: []string{"esc"}},
-	}, false
+	}, kindAction
 }
 
 // AnswerFor is what a key decides when it is pressed at the dialog of a question: the digits 1 to 3 are the dialog's options (yes; yes
@@ -77,11 +94,11 @@ func dialogOptions(r perm.Request) (opts []widget.DialogOption, mcp bool) {
 // the questions of its session with it, so that what the session was told is what the dialog would have told it, and the player
 // of the recording (PlayChat) checks that the program, given the same key, decides the same.
 func AnswerFor(r perm.Request, k input.Key) (dec perm.Decision, ok bool) {
-	opts, mcp := dialogOptions(r)
+	opts, kind := dialogOptions(r)
 	if !isChoice(k, len(opts)) {
 		return perm.Decision{}, false
 	}
-	d := &dialog{mcp: mcp}
+	d := &dialog{kind: kind}
 	return d.decision(int(k.R - '1')), true
 }
 
@@ -90,8 +107,10 @@ func (d *dialog) decision(i int) perm.Decision {
 	switch {
 	case i == 0:
 		return perm.Decision{Allow: true, Reason: "allowed by user"}
-	case i == 1 && d.mcp:
+	case i == 1 && d.kind == kindMCP:
 		return perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}
+	case i == 1 && d.kind == kindTrust:
+		return perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}
 	case i == 1:
 		return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
 	}
@@ -133,10 +152,30 @@ func (k *chatLook) requestBody(r perm.Request, call *toolRun, inner int, cwd str
 	what, why := splitWhy(r.Summary)
 	tool := strings.ToLower(r.Tool)
 	switch {
-	case r.Tool == "mcp-server":
+	case r.Tool == perm.ToolMCPServer:
 		title = "Start a tool server"
 		for _, l := range textLines(what) {
 			body = append(body, cell.Text(l))
+		}
+	case r.Tool == perm.ToolProjectTrust:
+		// The question, a line for each file the project has, a blank line and what it means: the title is the question, the
+		// files are shown as they are and the explanation is text that wraps.
+		title = "Use this project's own files?"
+		lines := textLines(what)
+		if len(lines) > 0 {
+			lines = lines[1:]
+		}
+		rest := -1
+		for i, l := range lines {
+			if l == "" {
+				rest = i
+				break
+			}
+			body = append(body, cell.Text(l))
+		}
+		if rest >= 0 {
+			body = append(body, nil)
+			body = append(body, paragraph(k.st.dim, strings.Join(lines[rest+1:], " "), max(inner, 1))...)
 		}
 	case r.Command != "" || tool == "bash":
 		title = "Run a command"

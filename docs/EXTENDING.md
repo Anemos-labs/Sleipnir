@@ -518,7 +518,7 @@ forever.
 
 Nothing. `hooks` in a project file (`.sleipnir/config.json`, `config.local.json`) is dropped when the config loads
 unless you pass `--trust-project`, with the notice `ignored security-sensitive settings from the project's config
-(hooks); pass --trust-project to apply them`. Your own hooks keep running. With `--trust-project` a project's hooks run
+(hooks); pass --trust-project to apply them for this run, or run `sleipnir trust add` to remember them until they change`. Your own hooks keep running. With `--trust-project` a project's hooks run
 with your rights, exactly like yours, and a project's list for an event **replaces** yours for that event, so a
 repository can switch off your guard hook by defining its own `PreToolUse`. Read `sleipnir config --trust-project` first.
 

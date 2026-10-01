@@ -17,11 +17,12 @@ import (
 	"github.com/reee344/sleipnir/internal/provider/mock"
 )
 
-// capturingModel is an endpoint that answers "ok" and keeps the last user message it was sent.
+// capturingModel is an endpoint that answers "ok" and keeps the last user message it was sent, and the system prompt.
 type capturingModel struct {
-	ts   *httptest.Server
-	mu   sync.Mutex
-	last string
+	ts     *httptest.Server
+	mu     sync.Mutex
+	last   string
+	system string
 }
 
 func startCapturingModel(t *testing.T) *capturingModel {
@@ -29,7 +30,10 @@ func startCapturingModel(t *testing.T) *capturingModel {
 	m := &capturingModel{}
 	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(c *mock.Call) mock.Reply {
 		m.mu.Lock()
-		m.last = c.LastUser()
+		m.last, m.system = c.LastUser(), c.System
+		for _, msg := range c.Messages {
+			m.system += "\n" + msg.Content
+		}
 		m.mu.Unlock()
 		return mock.Reply{Text: "ok"}
 	})
@@ -40,6 +44,10 @@ func startCapturingModel(t *testing.T) *capturingModel {
 
 func (m *capturingModel) url() string { return m.ts.URL + "/v1" }
 func (m *capturingModel) got() string { m.mu.Lock(); defer m.mu.Unlock(); return m.last }
+
+// prompt is everything the last request told the model: the system prompt and every message (the shared layer with the project's
+// instructions is one of them).
+func (m *capturingModel) prompt() string { m.mu.Lock(); defer m.mu.Unlock(); return m.system }
 
 // A prompt and something piped in are both the goal: `git diff | sleipnir run "review this"` used to read only the words and drop
 // the diff without a word.

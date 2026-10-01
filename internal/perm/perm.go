@@ -194,6 +194,15 @@ const (
 	RiskHigh
 )
 
+// Tools that are not tools: the questions that the harness itself puts to the person through the Prompter, with a Request of this Tool.
+// The programs that ask (the line prompter, the chat's dialog) know each by name, because each has answers of its own.
+const (
+	// ToolMCPServer asks whether a tool server that arrived with the project may start.
+	ToolMCPServer = "mcp-server"
+	// ToolProjectTrust asks, at the start of a chat, whether the project's own instructions and settings may be used.
+	ToolProjectTrust = "project-trust"
+)
+
 // Request describes one action awaiting a decision.
 type Request struct {
 	Agent string          `json:"agent"`
