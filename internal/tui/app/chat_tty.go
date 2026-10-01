@@ -91,8 +91,12 @@ func RunChatTTY(ctx context.Context, link *ChatLink, attach <-chan ChatAttach, o
 	scr := render.NewInline(out, rcaps, render.WithBracketedPaste())
 
 	keys := mergeInterrupts(ctx, ReadKeys(ctx, in), sigint)
+	var bell func()
+	if env("SLEIPNIR_BELL") != "0" {
+		bell = func() { _, _ = out.WriteString("\a") } // from the program's one goroutine, between two flushes
+	}
 	return RunChat(ctx, ChatConfig{
-		Screen: scr, Keys: keys, Sizes: sizes, Tick: ticker.C, Attach: attach, Link: link, Now: time.Now,
+		Bell: bell, Screen: scr, Keys: keys, Sizes: sizes, Tick: ticker.C, Attach: attach, Link: link, Now: time.Now,
 		Look: look, MainAgent: o.MainAgent, Verbose: o.Verbose, History: o.History, CancelStart: o.CancelStart,
 	})
 }

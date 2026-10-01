@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1169,4 +1170,26 @@ func TestChatTheSecondOptionNamesWhatItRemembers(t *testing.T) {
 	if got := opts[1].Label; got != "Yes, and don't ask again for this change this session" {
 		t.Errorf("label %q", got)
 	}
+}
+
+// A question that waits for a person who is in another window rings the terminal bell once, as it appears.
+func TestChatAQuestionRingsTheBell(t *testing.T) {
+	var mu sync.Mutex
+	bells := 0
+	r := startChat(t, rigOpts{bell: func() { mu.Lock(); bells++; mu.Unlock() }})
+	ans := make(chan perm.Decision, 1)
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		ans <- r.prompt(ctx, perm.Request{Agent: "main", Tool: "bash", Command: "make", Summary: "make"})
+		return TurnResult{Steps: 1}
+	}
+	r.submit("go")
+	r.shows("1. Yes")
+	mu.Lock()
+	got := bells
+	mu.Unlock()
+	if got != 1 {
+		t.Errorf("the bell rang %d times for one question, want 1", got)
+	}
+	r.press(input.RuneKey('3', 0))
+	decision(t, ans)
 }

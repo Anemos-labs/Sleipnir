@@ -388,6 +388,7 @@ defect the runs showed, with the evidence, and what changed.
 - **"Don't ask again" for an edit never fired, and for `go test ./a` asked again for `go test ./b`.** A yes for the session to an edit inside the project is a yes to edits
   inside it. For the runner commands (`go test|build|vet`, `npm test|run`, `pytest`,
   `cargo test|build|check`, `make`, `git add|commit|status`) the second answer remembers the prefix for the session; anything else stays exact.
+- The chat rings the terminal bell once when a question waits for you (`SLEIPNIR_BELL=0` turns it off).
 - `/status` and `/permissions` in the chat: the model, mode and session at a glance, and every rule in force, what you allowed with "don't ask again" among
   them. Both answer beside a running turn.
 - **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:

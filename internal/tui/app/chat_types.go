@@ -94,6 +94,8 @@ type ChatConfig struct {
 	Sizes  <-chan term.Size
 	Tick   <-chan time.Time
 	Attach <-chan ChatAttach
+	// Bell, when set, is called as a question appears: a person who is in another window hears or sees it in the terminal's tab.
+	Bell func()
 	// Link carries the session's sink and prompter to the program. Required.
 	Link *ChatLink
 	// Now is the clock (nil: the time of the latest tick). The elapsed time of a turn, the two seconds in which a second Ctrl-C

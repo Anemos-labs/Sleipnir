@@ -199,6 +199,7 @@ permission mode, the model and the session (`docs/UX.md` describes each). From a
 needs approval is refused (with `--plain` on a terminal it asks `allow? [y]es once / [a]lways this session / [n]o`). `--resume
 ID|latest` and `--continue` continue a single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed below.
 
+A question rings the terminal's bell once as it appears (`SLEIPNIR_BELL=0` silences it), so that a person in another window sees it in the tab.
 `NO_COLOR` takes the colours away and keeps the program (bold, dim and reverse say what a colour would). `--no-anim`,
 `SLEIPNIR_ANIM=0` and `REDUCE_MOTION=1` stand the spinner still and drop the sweep of the stack bar, the fold of a compaction and
 the flash of a cache break (`NO_COLOR` does the same). The glyphs are Unicode where the locale (`LC_ALL`, `LC_CTYPE`, `LANG`) says

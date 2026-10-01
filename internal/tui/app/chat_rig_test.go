@@ -219,6 +219,7 @@ type rigOpts struct {
 	verbose     bool
 	mainAgent   string
 	history     *input.History
+	bell        func()
 }
 
 func defaultLook() Look {
@@ -259,7 +260,7 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 		clock = func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now }
 	}
 	cfg := ChatConfig{Screen: r.scr, Keys: r.keys, Sizes: r.sizes, Tick: r.tickCh, Attach: r.attach, Link: r.link, Look: o.look, Now: clock,
-		MainAgent: o.mainAgent, Verbose: o.verbose, History: o.history, AnswerAfter: answerAfter,
+		MainAgent: o.mainAgent, Verbose: o.verbose, History: o.history, AnswerAfter: answerAfter, Bell: o.bell,
 		CancelStart: func() { r.mu.Lock(); r.cancelled = true; r.mu.Unlock() }}
 	go func() {
 		end, err := RunChat(ctx, cfg)

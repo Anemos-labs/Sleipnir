@@ -96,8 +96,8 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
 6. **F3, eleven more dogfood sessions** across the four tracks (own backlog; Go standard-library bug hunts on the `std-mini` corpus;
    Python, Node, Rust and Java fixtures; greenfield builds from a written spec with hidden acceptance tests). The entry format and the tmux
    scenarios are in `docs/DOGFOOD.md`.
-7. **UX debts from real use** (`docs/DOGFOOD.md`, "Open"): an approval that waits for a person who is elsewhere should ring the terminal bell and
-   show in the cockpit (and a `swarm --cockpit` with an in-process approvals dialog); the chat re-wraps what the terminal drew when the window
+7. **UX debts from real use** (`docs/DOGFOOD.md`, "Open"): an approval that waits for a person who is elsewhere should show in the cockpit (the chat rings the terminal bell: done) and a
+   `swarm --cockpit` needs an in-process approvals dialog; the chat re-wraps what the terminal drew when the window
    narrows (a code block comes back double spaced); `run` against a dead endpoint retries for 62 seconds before it says anything final.
 8. **Plateau learning for `cache.anomaly`.** On one marketplace endpoint the planner flagged 42 anomalies in 94 requests, most of them the
    endpoint's own erratic prefix cache; learn a per-endpoint plateau of the hit ratio and flag departures from it (`internal/kv/guard.go`).

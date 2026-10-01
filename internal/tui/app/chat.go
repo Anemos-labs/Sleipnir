@@ -1233,6 +1233,9 @@ func (m *chatModel) ask(q *question) {
 	opts, kind := dialogOptions(q.req)
 	d := &dialog{q: q, opts: opts, kind: kind, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
 	m.dialogs = append(m.dialogs, d)
+	if m.c.Bell != nil {
+		m.c.Bell()
+	}
 	if t := m.callOf(q.req); t != nil {
 		t.asking = true
 		d.toolKey = t.key
