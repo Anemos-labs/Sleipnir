@@ -1,9 +1,9 @@
 # Testing Sleipnir: what guards what
 
 `docs/BUILDING.md` says how a test is written (table-driven, adversarial, race-clean, safe under load, no stopwatch). This page is
-the map: the kinds of check the repository has, what each one is there to catch, and the one command that runs it. About four
-thousand test functions, a hundred fuzz targets, thirty benchmarks and four hundred golden and seed files, in 69 packages; the test
-code is about as long as the code it tests.
+the map: the kinds of check the repository has, what each one is there to catch, and the one command that runs it. About 4,200
+test functions, 100 fuzz targets, 31 benchmarks and 435 golden and seed files, in 70 packages (`internal/repocheck` counts them and holds
+these figures to a tenth); the test code is about as long as the code it tests.
 
 ## The layers
 

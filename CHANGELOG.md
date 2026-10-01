@@ -294,7 +294,7 @@ The first release.
   is pinned to a commit.
 - **Drift fails a check.** The dependency allow-list (`scripts/check-deps.sh`), SHA pins (`scripts/check-pins.sh`), a prompt-byte change
   without its CHANGELOG entry (`scripts/check-declared.sh`), and `internal/repocheck` (links, the ruleset against the jobs it names,
-  CODEOWNERS, platforms, the installer against goreleaser, the Go version in the documents, tests CI would never run), all in
+  CODEOWNERS, platforms, the installer against goreleaser, the Go version in the documents, tests CI would never run, the figures that docs/TESTING.md opens with, counted from the tree), all in
   `scripts/check.sh` and `make check`.
 - **Protection is in the repository.** Rulesets for `main` and for `v*` tags (`.github/rulesets`), `scripts/protect-main.sh`
   (`--dry-run`) for the merge, security and Actions settings, CodeQL, Dependabot, CODEOWNERS, a conventional-title check with labels
