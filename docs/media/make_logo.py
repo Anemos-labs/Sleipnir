@@ -3,10 +3,11 @@
 
     python3 make_logo.py && node render.mjs logo.html wordmark.html social.html favicon-test.html
 
-Outputs next to this script: logo.svg, logo-dark.svg, logo-wordmark.svg, logo-wordmark-dark.svg, favicon.svg; render.mjs turns the
+Outputs next to this script: logo.svg, logo-dark.svg, logo-wordmark.svg, logo-wordmark-dark.svg, favicon.svg (the words of the wordmark are
+outlines read from wordmark-paths.json, which outline_text.py makes); render.mjs turns the
 HTML sheets into logo.png, logo-wordmark.png, social-preview.png and favicon-*.png. The hand-drawn wobble is an SVG filter
 (feTurbulence + feDisplacementMap); the geometry is plain Bezier paths, so the files are small and scale to any size."""
-import os, random, math
+import json, os, random, math
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROLE = ["#bb9af7", "#7aa2f7", "#7aa2f7", "#7dcfff", "#7dcfff", "#9ece6a", "#e0af68", "#ff9e64"]
@@ -82,13 +83,22 @@ def svg_mark(pal, title="Sleipnir"):
             % (VB_MARK, title, title, DEFS, mark(**pal)))
 
 
+# The name and the tagline are outlines (outline_text.py), not <text>: a logo shown through <img> is drawn with the reader's fonts, and the
+# live text lost the end of "Sleipnir" wherever the system's bold font is wider than the one the file was made with. The width of the
+# picture is that of the outlines, plus a margin.
+with open(os.path.join(HERE, "wordmark-paths.json")) as _f:
+    WORD = json.load(_f)
+NAME_X, NAME_Y, TAG_X, TAG_Y = 750, 262, 756, 332
+WM_W = int(math.ceil(max(NAME_X + WORD["name"]["width"], TAG_X + WORD["tagline"]["width"]) + 50))
+
+
 def svg_wordmark(pal, text_color, sub_color):
     # the mark at the left, the name and the tagline at the right
-    return ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1500 520' role='img' aria-label='Sleipnir: one manager brain, many legs'>"
+    return ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 %d 520' role='img' aria-label='Sleipnir: one manager brain, many legs'>"
             "<title>Sleipnir</title>%s<g transform='translate(-60 20) scale(1.0)'>%s</g>"
-            "<text x='800' y='262' font-family=\"%s\" font-size='190' font-weight='800' fill='%s' letter-spacing='2'>Sleipnir</text>"
-            "<text x='806' y='332' font-family=\"%s\" font-size='46' font-style='italic' fill='%s'>one manager brain, many legs</text></svg>\n"
-            % (DEFS, mark(**pal), FONT, text_color, FONT, sub_color))
+            "<path id='name' transform='translate(%d %d)' fill='%s' d='%s'/>"
+            "<path id='tagline' transform='translate(%d %d)' fill='%s' d='%s'/></svg>\n"
+            % (WM_W, DEFS, mark(**pal), NAME_X, NAME_Y, text_color, WORD["name"]["d"], TAG_X, TAG_Y, sub_color, WORD["tagline"]["d"]))
 
 
 def svg_favicon():
@@ -127,7 +137,7 @@ if __name__ == "__main__":
     write("favicon.svg", svg_favicon())
     # sheets for the PNG exports
     sheet("logo.html", svg_mark(LIGHT), 1024, 702)
-    sheet("wordmark.html", svg_wordmark(LIGHT, "#24232e", "#6b6558"), 1500, 520)
+    sheet("wordmark.html", svg_wordmark(LIGHT, "#24232e", "#6b6558"), WM_W, 520)
     social = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 640'><rect width='1280' height='640' fill='#f3eee3'/>"
               "<path d='M0 560 C320 590 960 590 1280 556' stroke='#d8d0bc' stroke-width='3' stroke-dasharray='5 11' fill='none'/>"
               "<g transform='translate(610 96) scale(0.74)'>%s</g>%s"

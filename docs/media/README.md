@@ -23,6 +23,13 @@ remove one (eight is the point); do not use the wobble filter on anything else; 
 Regenerate: `python3 make_logo.py && node render.mjs logo.html wordmark.html social.html favicon-test.html` (Python 3 and headless
 Chromium through Playwright; the SVGs are plain paths plus one SVG filter for the hand-drawn wobble).
 
+**The words in the wordmark are outlines, not text.** An SVG shown through `<img>` (as the README shows it) is drawn with the fonts of
+whoever looks at it, and a bold system font is wider than the one the file was made with: the first wordmark was live `<text>`, and the
+last letter of "Sleipnir" was cut off on GitHub (and in the PNG made here). `wordmark-paths.json` holds the outlines (DejaVu Sans, free to
+embed) and their measured width, `make_logo.py` sizes the picture from it, and `internal/repocheck` fails when a logo has a `<text>`
+element or the words come near the edge. To change the words, the size or the font: `pip install fonttools && python3 outline_text.py`,
+then regenerate as above. (`social-preview.png` is a PNG made from live text, which is fine: it is pixels.)
+
 ## The gallery
 
 The recordings of the terminal interface are not drawings: each is the program's own screen, played from a recorded session. The
