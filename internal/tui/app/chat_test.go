@@ -26,6 +26,20 @@ func contains(s string, words ...string) bool {
 	return true
 }
 
+// Before the session is made there is no mode, and the keys that the footer names start the line.
+func TestChatFooterBeforeTheSessionIsMadeStartsWithTheKeys(t *testing.T) {
+	r := startChat(t, rigOpts{noAttach: true})
+	var footer string
+	for _, row := range strings.Split(r.visible(), "\n") {
+		if strings.Contains(row, "ctrl+t stack") {
+			footer = row
+		}
+	}
+	if !strings.HasPrefix(footer, "ctrl+t stack") {
+		t.Errorf("the footer is %q, which should begin with the keys", footer)
+	}
+}
+
 func TestChatDrawsItsFirstScreen(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	s := r.screen()
@@ -447,14 +461,16 @@ func TestChatTheProcessBeingToldToStopCancelsTheTurnAndEnds(t *testing.T) {
 
 func TestChatLinesTypedAheadRunInOrderWhenTheTurnEnds(t *testing.T) {
 	r := startChat(t, rigOpts{})
-	gate := make(chan struct{})
+	gate, started := make(chan struct{}), make(chan struct{})
 	r.host.turn = func(ctx context.Context, goal string) TurnResult {
 		if goal == "first" {
+			close(started)
 			<-gate
 		}
 		return TurnResult{Steps: 1}
 	}
 	r.submit("first")
+	<-started // the session has the goal: the turn is running (the status line says so a moment before the agent has it)
 	r.until("the turn", func(s string) bool { return strings.Contains(s, "esc to interrupt") })
 	r.submit("second")
 	r.submit("third")

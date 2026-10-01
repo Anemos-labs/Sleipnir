@@ -338,7 +338,12 @@ func (k *chatLook) footer(v *liveView, w int) cell.Line {
 		var left row
 		left.add(k.modeStyle(v.mode), clean(v.mode))
 		if hint != "" {
-			left.add(k.st.dim, " "+hint)
+			if left.w == 0 { // no mode yet (the session is being made): the keys start the line, without the dot that would join them to one
+				hint = strings.TrimPrefix(hint, k.g.dot+" ")
+			} else {
+				hint = " " + hint
+			}
+			left.add(k.st.dim, hint)
 		}
 		return left.line(), left.w + 2 + cell.StringWidth(right)
 	}
