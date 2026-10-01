@@ -91,6 +91,29 @@ episodes hit a permission refusal (mostly commands starting with `cd` to a path 
 starts), correct work was flagged as a hack, one Ctrl-C ended a whole chat, a model's compaction patch was refused for one field of the
 wrong type. Each is a fix with a test that failed first; the second run measures them together.
 
+## Before and after (the first comparison)
+
+`core1` is the build before the fixes of `docs/DOGFOOD.md` rows 1 to 28; `after1` is the build after them, on the same suite, the same
+model (`heimdall/deepseek/deepseek-v4-flash`), three samples of each of 48 tasks, a day apart. `sleipnir rl compare` (paired bootstrap over
+tasks, 2000 resamples, 95% intervals):
+
+| Measure | Before | After | Difference | Verdict |
+|---|---|---|---|---|
+| pass@1 | 54.9% | 50.7% | -4.2 points [-12.5, +2.8] | same |
+| cost per episode | US$0.00131 | US$0.00085 | -35% [-0.00074, -0.00020] | better |
+| steps per episode | 24.2 | 18.0 | -6.2 [-9.6, -2.8] | better |
+| input-token equivalents | 169,385 | 116,225 | -31% | better |
+| requests per episode | 27.1 | 24.8 | -2.3 [-5.1, +0.5] | same |
+| wall time per episode | 465 s | 584 s | +119 s [+57, +181] | worse (the endpoint was shared by four of our own runs) |
+| hack rate | 1.4% | 8.3% | +6.9 points [+0.7, +13.9] | **worse: open** |
+
+What it says: the fixes made an episode cheaper and shorter and did not move the pass rate beyond noise (the interval of the difference
+includes a loss of twelve points and a gain of three; one model and 48 tasks cannot tell). What it does not say: why the hack detector
+flags 12 episodes of 144 now and 2 before. That is either a regression (scratch files, writes outside the diff) or a detector that sees more
+after `rl reward --redetect-hacks` changed what it reads; it is the first item of `docs/ROADMAP.md`. The comparison is for one model; the
+other models' runs (minimax-m2.7, qwen, and the compaction soft-limit experiment `compB`/`compC`) were stopped part way by a restart of the
+machine and are resumable (`docs/ROADMAP.md`, section 4).
+
 ## Caveats
 
 - **The endpoint is a staging marketplace** (`api-staging.impossiblecarrot.cc`): latency of 10 to 30 seconds a request, HTTP 503

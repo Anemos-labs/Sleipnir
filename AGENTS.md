@@ -5,6 +5,7 @@ Sleipnir is a Go 1.25 coding-agent harness: a layered, cache-aware prompt engine
 `docs/BUILDING.md` before changing code; `docs/TESTING.md` says what each kind of test guards and what runs it, and
 `docs/REPO-SETUP.md` is the GitHub side (the one required check, the release, the protections).
 
+- State of the project, what only the owner can do, and what to take next: `docs/ROADMAP.md`. Start there.
 - Build: `go build ./...` (binary: `go build -o bin/sleipnir ./cmd/sleipnir`, or `make build`)
 - Test: `go test -race -count=1 ./...`; format: `gofmt -l .` must print nothing; `go vet ./...`
 - Do not edit `go.mod`/`go.sum` without a reason: the dependency set is deliberately tiny (stdlib + x/net, x/sys, x/term).

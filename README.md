@@ -118,7 +118,8 @@ sleipnir replay latest                 # play a recorded session back as the coc
 # 2. point it at a model: any OpenAI-compatible endpoint works (marketplaces, OpenRouter, OpenAI, vLLM, ...), and so does an Anthropic Messages endpoint
 export HEIMDALL_API_KEY=...            # or OPENROUTER_API_KEY / OPENAI_API_KEY
 sleipnir init --user                   # your providers and permission mode (project files cannot set these unless trusted)
-cd your-project && sleipnir init       # shareable project settings, AGENTS.md (read only with --trust-project)
+cd your-project && sleipnir init       # shareable project settings, AGENTS.md (used once you trust the project: below)
+sleipnir trust                         # what this project's own files would add to every prompt; `trust add` keeps your yes until one of them changes
 sleipnir models | head                 # catalogue with prices
 sleipnir doctor --model <model> --deep # measures streaming, tools, cache reporting, granularity, warm-up needs
 
@@ -233,10 +234,26 @@ Tool output, web pages, file contents and mail are data, never instructions; pin
 system. Permissions are an engine (modes, rules, shell-syntax analysis, role profiles), not a prompt; writes pass a lease
 guard, a content-hash staleness check and a checkpoint; verifier files are never visible to a training policy. What a
 repository brings (config keys that redirect keys or run code, instruction files, skills, slash commands, agent
-definitions, hooks, MCP servers) is ignored unless you pass `--trust-project`, and a project's MCP server is started only
-after you approve that exact entry. Provider keys go only where you allowed and are held out of the environment the
+definitions, hooks, MCP servers) is ignored unless you trust the project: `--trust-project` for one run, or a yes that
+`sleipnir trust` keeps for exactly the files you saw (a hash of them: a pull that changes one is a new question), and a
+project's MCP server is started only after you approve that exact entry. Provider keys go only where you allowed and are held out of the environment the
 commands inherit. Real isolation for untrusted repositories needs an OS sandbox: `docs/SECURITY.md` is the threat model, what is
 hardened on each OS and how to confine harder.
+
+## Status
+
+Built and tested: the layered cache engine, the swarm (typed board and mail, leases, git-worktree isolation, a verifying merge queue),
+the terminal programs (`chat`, the `watch` cockpit, `replay`), MCP, skills, hooks, the RL environment, the permission engine and project
+trust. About 4,200 tests, 100 fuzz targets and a nightly run (every fuzz target, the suite three times under the race detector, a thousand
+random mixtures of endpoint faults, a twenty-thousand-step soak) back it; CI runs on Linux (amd64 and arm64) and macOS, and builds
+Windows, which is informational. It has been measured on real models (nine models of one marketplace, `docs/VALIDATION.md`), compared before
+and after its own fixes on a fixed suite of verifiable tasks (`docs/BENCHMARKS.md`, one model so far: about a third cheaper per task, the pass
+rate within noise, and one measure that got worse and is open), and used for real work: a register of forty-two findings from the benchmark,
+the end-to-end tests and four logged sessions, each with a fix and a test (`docs/DOGFOOD.md`).
+
+Not done: a first release (the version is unreleased and no licence is chosen yet), Windows support for the permission engine, the OpenAI
+Responses dialect, the scale ladder on a live endpoint and the rest of the planned dogfooding, and the second half of the benchmark. Those and
+what the owner has to switch on are in **`docs/ROADMAP.md`**, which is where an agent or a person picking this up should start.
 
 ## Documentation
 
@@ -250,6 +267,10 @@ hardened on each OS and how to confine harder.
 * `docs/SWARM-PROTOCOL.md` - board, mail, leases, roles, warm gate, verifier-gated done
 * `docs/TRAINING-DATA.md` - the RL environment, rewards, formats, governance
 * `docs/VALIDATION.md` - validating against real endpoints
+* `docs/BENCHMARKS.md` - the fixed task suite, how to run it, how a change is judged, what it found; `docs/DOGFOOD.md` - what real use found
+* `docs/TESTING.md` - what each kind of test guards and what runs it; `docs/BUILDING.md` - conventions; `docs/UX.md` - the terminal interface
+* `docs/ROADMAP.md` - the state of the project, what only the owner can do, and what to take next
+* `CONTRIBUTING.md`, `CHANGELOG.md`
 * `docs/REPO-SETUP.md` - the GitHub side: protected `main`, what CI enforces, releases, and every setting to apply
 * `docs/research/` - the landscape, provider caching and swarm/training research this design rests on
 * `docs/reviews/` - adversarial reviews and what was done about them
