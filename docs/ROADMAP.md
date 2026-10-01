@@ -57,17 +57,18 @@ interval +0.7 to +13.9): the first thing to look at.** The runs were stopped by 
 
 ## 3. What only the owner can do
 
-In this order (`docs/REPO-SETUP.md` has the commands and what each guards):
+In this order (`docs/REPO-SETUP.md` has the commands and says what each guards):
 
-1. Choose a licence (Apache-2.0 or MIT) and add `LICENSE`; the release refuses to run without one.
-2. Make `main` the default branch (Settings, Branches). Everything here is on a development branch that GitHub treats as the default.
+1. Make `main` the default branch (Settings, Branches). Everything here is on a development branch that GitHub treats as the default.
+2. Choose a licence (Apache-2.0 or MIT) and add `LICENSE`; the release refuses to run without one.
 3. `sh scripts/protect-main.sh --dry-run`, then for real: the rulesets for `main` and `v*`, the merge settings, the dependency graph.
-4. Turn off CodeQL's default setup (the repository has its own workflow), enable private vulnerability reporting, and upload
-   `docs/media/social-preview.png` (Settings, Social preview).
+4. The settings no script sets: turn off CodeQL's default setup (the repository has its own workflow), enable private vulnerability
+   reporting, and upload `docs/media/social-preview.png` (Settings, Social preview). GitHub caches README images: a hard refresh shows the
+   corrected wordmark.
 5. Set the repository variable `AUTO_RELEASE` to `true` when a release should follow a merge. **A tag or release is made only on the
    owner's explicit word.**
 6. Decide Dependabot PR 1 (it needs Go 1.26 while the documents say 1.25; `internal/repocheck` blocks the mismatch) and whether Windows
-   is a supported platform (port `internal/perm`, section 5, or drop it from `.goreleaser.yaml`).
+   is a supported platform (port `internal/perm`, section 4 item 10, or drop it from `.goreleaser.yaml`).
 
 ## 4. Open work, in the order to take it
 
