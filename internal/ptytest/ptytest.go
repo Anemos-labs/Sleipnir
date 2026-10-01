@@ -107,6 +107,10 @@ type Session struct {
 	unread   int // typed bytes nothing had read when the command exited (-1: could not be asked)
 	readDone chan struct{}
 
+	// ask is how much typed input the terminal holds that nothing has read (inputPending on the
+	// slave end; a test of the waiting replaces it).
+	ask func() (int, error)
+
 	closeOnce sync.Once
 }
 
@@ -152,10 +156,13 @@ func start(cmd *exec.Cmd, c config) (*Session, error) {
 		cmd: cmd, master: master, slave: slave,
 		changed: make(chan struct{}), exited: make(chan struct{}), readDone: make(chan struct{}),
 	}
+	s.ask = func() (int, error) { return inputPending(s.slave) }
 	go s.readLoop()
 	go func() {
 		_ = cmd.Wait()
-		unread, err := inputPending(s.slave)
+		// Some systems take the terminal from every holder when the session leader exits (macOS
+		// revokes it), so after the exit the question may have no answer: -1.
+		unread, err := s.ask()
 		if err != nil {
 			unread = -1
 		}
@@ -397,6 +404,11 @@ func (s *Session) Wait(timeout time.Duration) (*os.ProcessState, error) {
 //
 // Type the line, wait for its echo (the terminal echoes when it has accepted the input,
 // so the echo proves that the bytes are queued), then call this.
+//
+// A program that has exited is past reading. Where the terminal can still be asked, bytes
+// it left unread are an error (it never took the line); where it cannot (macOS revokes the
+// terminal from every holder when the program that leads its session exits) the exit is
+// all there is to say, and the later steps of the test say what became of the line.
 func (s *Session) WaitInputRead(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -406,15 +418,22 @@ func (s *Session) WaitInputRead(timeout time.Duration) error {
 			s.mu.Lock()
 			unread := s.unread
 			s.mu.Unlock()
-			if unread == 0 {
+			if unread <= 0 {
 				return nil
 			}
 			return s.failure(ErrEOF, fmt.Sprintf("while waiting for the program to read typed input: it exited with %d bytes unread", unread))
 		default:
 		}
-		n, err := inputPending(s.slave)
+		n, err := s.ask()
 		if err != nil {
-			return fmt.Errorf("ptytest: asking how much typed input is unread: %w", err)
+			// The program may have exited between the check above and the question, and taken
+			// the terminal with it: the exit is noted in a moment. An error that is not that
+			// outlasts the wait.
+			if time.Now().After(deadline) {
+				return fmt.Errorf("ptytest: asking how much typed input is unread: %w", err)
+			}
+			time.Sleep(2 * time.Millisecond)
+			continue
 		}
 		if n == 0 {
 			return nil
