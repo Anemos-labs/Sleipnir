@@ -549,3 +549,31 @@ func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *t
 		t.Errorf("closing changed the checkout: %v", got)
 	}
 }
+
+// A verify command over the whole repository cannot pass in an isolated swarm until every task is merged, and tasks that wait on each
+// other stall (a real run of three one-line fixes stood still for ten minutes). The person is told at the start, and how to say it.
+func TestIsolatedSwarmWarnsWhenVerifyHasNoDirs(t *testing.T) {
+	for i, tc := range []struct {
+		verify, want string
+		warns        bool
+	}{
+		{"go test ./...", `--verify "go test {dirs}"`, true},
+		{"sh verify.sh", `--verify "go test {dirs}"`, true},
+		{"go test {dirs}", "", false},
+	} {
+		repo := newRepo(t)
+		client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "done"} })
+		o := isoOptions(t, repo, client, model, fmt.Sprintf("warn-%d", i))
+		o.Verify = tc.verify
+		n := &notices{}
+		o.Sink = n
+		s, err := session.New(context.Background(), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		if got := n.has("--verify has no {dirs}"); got != tc.warns || (tc.warns && !n.has(tc.want)) {
+			t.Errorf("verify %q: warned %v, want %v (%v)", tc.verify, got, tc.warns, n.logs)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -205,6 +206,16 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		// (planIsolation checked) and the base is the branch's commit.
 		Snapshot: !p.commit,
 		OnEvent:  workspace.EmitTo(s.Log),
+	}
+	if v := s.opts.Verify; v != "" && !strings.Contains(v, "{dirs}") && s.opts.Swarm && s.opts.Sink != nil {
+		// Every worker's tree holds only its own task's changes, so a command over the whole
+		// repository fails on the others' bugs until they are merged, and they wait for each
+		// other (a real run stood still for ten minutes on three one-line fixes).
+		hint := `--verify "go test {dirs}"`
+		if strings.Contains(v, "./...") {
+			hint = "--verify " + strconv.Quote(strings.Replace(v, "./...", "{dirs}", 1))
+		}
+		s.opts.Sink.Notice("", "warn", "--verify has no {dirs} and the workers have trees of their own: a check of the whole repository cannot pass until every task is merged, so tasks that wait on each other may stall; name the directories of the task with {dirs}, as in "+hint)
 	}
 	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify})
 	if err != nil {
