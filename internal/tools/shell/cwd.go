@@ -1,8 +1,10 @@
 package shell
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -171,4 +173,26 @@ func within(path, dir string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+// leadingCd matches a command that starts by changing to one directory: cd DIR && ..., cd DIR; ..., or cd DIR alone.
+var leadingCd = regexp.MustCompile(`^\s*cd\s+(?:"([^"\n$` + "`" + `]+)"|'([^'\n]+)'|([^\s;&|<>"'$` + "`" + `\\]+))\s*(?:&&|;|\n|$)`)
+
+// missingLeadingCd is the answer to a command that starts with a cd to an absolute directory that does not exist, "" for any other
+// command. A weak model invents the directory (/Users/someone/project) although it starts in the project and its prompt says so; asking
+// the person to approve a read of a place that is not there would be a question with no answer worth giving, so it is refused at once,
+// saying where the command runs.
+func missingLeadingCd(command, dir string) string {
+	m := leadingCd.FindStringSubmatch(command)
+	if m == nil {
+		return ""
+	}
+	target := m[1] + m[2] + m[3]
+	if !filepath.IsAbs(target) {
+		return ""
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	return "the directory " + printable(target) + " does not exist. Commands already run in " + printable(dir) + ": leave the cd out and use paths relative to it"
 }

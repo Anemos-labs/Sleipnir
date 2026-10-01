@@ -2,19 +2,85 @@
   "name": "sleipnir-bench",
   "format": 1,
   "about": "The recipe of the benchmark suite and, under lock, what building it gave. bench/build.sh builds it; bench/build.sh --check compares a rebuild with the lock. budget_caps bound what a single-agent task may use, whatever its generator derived (swarm tasks keep theirs). Tags: smoke (minutes, about 8 tasks), core (the regular suite), swarm (composite tasks for a manager and workers), long (memory tasks that overflow a small context window).",
-  "go": "go1.24.7",
+  "go": "go1.25.1",
   "stdmini": {
     "packages": "bench/stdmini/packages.txt"
   },
   "parts": {
-    "mutations": { "seed": 1, "max": 24, "smoke": 6 },
-    "mined": { "rev": "255a2b716ac2610a86a8ed62afcdd2013e0dae55", "max": 12, "max_files": 6, "max_lines": 300 },
-    "fixtures": { "dir": "bench/fixtures" },
-    "composite": { "k": 3, "max": 4, "seed": 1 },
-    "recall": { "max": 3, "seed": 1 }
+    "mutations": {
+      "seed": 1,
+      "max": 24,
+      "smoke": 6
+    },
+    "mined": {
+      "rev": "255a2b716ac2610a86a8ed62afcdd2013e0dae55",
+      "max": 12,
+      "max_files": 6,
+      "max_lines": 300
+    },
+    "fixtures": {
+      "dir": "bench/fixtures"
+    },
+    "composite": {
+      "k": 3,
+      "max": 4,
+      "seed": 1
+    },
+    "recall": {
+      "max": 3,
+      "seed": 1
+    }
   },
-  "budget_caps": { "steps": 60, "requests": 150, "wall_s": 1200 },
-  "admit": { "repeats": 3 },
+  "budget_caps": {
+    "steps": 60,
+    "requests": 150,
+    "wall_s": 1200
+  },
+  "admit": {
+    "repeats": 3
+  },
   "quarantine": [],
-  "lock": {}
+  "lock": {
+    "tasks": 60,
+    "tasks_sha256": "6ccdd88896ecc01870f1f4354d15dad92781fee03f7f12190ead1f3fffb02939",
+    "stdmini": {
+      "tree_sha256": "c8bb83c719a9139090871335fa4ac262edf68ba837617bbe48ac281e9ce9cabd",
+      "commit": "b15682dd9c1c3aa4bd726765799a9e7a0f38d0f0"
+    },
+    "tags": {
+      "boundary": 4,
+      "cmp-flip": 10,
+      "composite": 4,
+      "core": 47,
+      "easy": 2,
+      "feature": 7,
+      "fix": 6,
+      "fixture": 17,
+      "go": 48,
+      "greenfield": 3,
+      "hard": 5,
+      "java": 2,
+      "javascript": 1,
+      "js": 3,
+      "k3": 4,
+      "logic-swap": 7,
+      "long": 3,
+      "medium": 21,
+      "mined": 12,
+      "mutation": 28,
+      "negate": 12,
+      "nil-check": 2,
+      "node": 1,
+      "python": 4,
+      "recall": 3,
+      "refactor": 1,
+      "rust": 2,
+      "sl": 12,
+      "sm": 28,
+      "small": 1,
+      "smoke": 6,
+      "swarm": 4
+    },
+    "quarantined": []
+  }
 }

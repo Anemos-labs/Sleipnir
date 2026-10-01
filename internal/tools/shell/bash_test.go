@@ -1292,3 +1292,31 @@ func TestBashTmpdirIsTheSessions(t *testing.T) {
 		t.Fatalf("TMPDIR = %q, want %q", res, tmp)
 	}
 }
+
+// A model that cd's to a directory it made up gets a plain answer at once, not a question to the person about a place that is not there.
+// A cd that goes somewhere real, a relative one, and a cd later in the line are left alone.
+func TestACdToAnInventedDirectoryIsAnsweredWithoutAskingAnyone(t *testing.T) {
+	h := newHarness(t)
+	env := h.env("a")
+	marker := filepath.Join(h.root, "ran")
+	for _, cmd := range []string{
+		"cd /Users/sleipnir/Downloads/work/arena/auth-service && touch " + marker,
+		`cd "/Users/someone/go/src/x y"; touch ` + marker,
+		"cd '/nonexistent/dir'\ntouch " + marker,
+		"cd /Users/nobody/proj",
+	} {
+		res := h.bash(env, cmd)
+		if !res.IsError || !strings.Contains(res.Text, "does not exist") || !strings.Contains(res.Text, "leave the cd out") || !strings.Contains(res.Text, h.root) {
+			t.Errorf("%q: %+v", cmd, res)
+		}
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the command ran after a cd to nowhere")
+	}
+	real := t.TempDir()
+	for _, cmd := range []string{"cd " + real + " && true", "cd sub 2>/dev/null; true", "true && cd /nonexistent/x || true", "echo cd /nonexistent/x"} {
+		if res := h.bash(env, cmd); strings.Contains(res.Text, "leave the cd out") {
+			t.Errorf("%q must run: %+v", cmd, res)
+		}
+	}
+}

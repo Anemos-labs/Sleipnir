@@ -107,6 +107,10 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return fail(env, "bash: %v", err), nil
 	}
 
+	if msg := missingLeadingCd(command, m.startDir(env, base)); msg != "" {
+		return fail(env, "bash: %s", msg), nil
+	}
+
 	// The permission engine resolves relative paths in the command against the
 	// directory it will actually run in (the agent's tracked cwd, which persists
 	// across calls), not against the session root.
