@@ -20,7 +20,9 @@ The first release.
   agent compacted mechanically instead. Three causes are fixed: a field of the wrong type (`notes` as an object, `keep_from` as a
   number) costs that field and not the patch, a reply that holds a valid patch and also calls a tool uses the patch (the call is never
   run), and a patch whose JSON is broken is refused as that, not as having no `keep_from`. `sleipnir rl rollout --thread-soft-limit N`
-  sets the size at which an agent's thread is considered for compaction, so that how soon is a setting to compare.
+  sets the size at which an agent's thread is considered for compaction, so that how soon is a setting to compare (a soft limit
+  above the default hard limit of 60,000 tokens raises the hard limit with it, unless that was set too: the hard limit forces the
+  compaction first, so a soft limit above it compared nothing).
 - Cache models for OpenAI-style automatic prefix caching (routing keys, gateway-reported cost) and Anthropic explicit
   breakpoints (max four, 20-block lookback, 5m/1h TTL), including preserved thinking, turn-scoped system messages
   and declared rebases.
@@ -222,6 +224,31 @@ The first release.
   recorded demo session and listed in `docs/media/gallery.json`: the swarm cockpit, the cache of one agent, a compaction at a cold moment.
   `sleipnir replay --gallery` draws them, and `scripts/record-demo.sh --check` and a Go test fail when the committed files are not what the
   code draws from the committed log. The mock endpoint got a cache outage (`Server.CacheOutage`) for the demo's break.
+- `sleipnir chat` on a terminal is a program, no longer a line REPL (`internal/tui/app`, `cmd/sleipnir/chat_tty.go`; `docs/UX.md`). What
+  is said goes into the terminal's own scrollback, so copy, search, tmux and SSH work on it: the banner, what you typed, the answer
+  streamed as markdown, each tool call as `● Bash go test ./...  ✓ 1.4s` with its output under it (long output is its head and tail,
+  `ctrl+o` writes the rest), an edit as a diff with line numbers, a compaction as one line (it folds first, where animation is on),
+  a cache break as a warning, notices and retries. The last rows are redrawn in place: the status line (spinner and verb, elapsed,
+  tokens, cost, what the cache saved at list price, `esc to interrupt`), the prompt stack bar (G0..G6, bright where the provider
+  served it from its cache, dim where it was paid for, the clock of the cache), the hit ratio of every request with `⚠ ◆ ↻` marks,
+  the input box, and a footer with the mode, the model and the session. All its numbers come from the session's log
+  (`state.State` over `Log.Subscribe`), not from new instrumentation in the agent, and the program changes nothing the model sees.
+  The program is the only writer to the terminal and the only owner of its input; the session reaches it through a sink and a
+  prompter that only forward, and a turn runs on a goroutine it starts and can cancel. The keys: an editor with history kept under
+  the state directory, a `/` palette, `@path` completion, a paste of many lines as a chip that is sent whole, typing ahead (queued,
+  and shown), `shift+tab` for the permission mode, `ctrl+t` for the stack panel. An approval is a box with the command or the
+  diff: `1` yes, `2` yes and do not ask again for this exact request this session, `3` no, arrows with enter, `esc` no, and never a
+  letter, because a question takes keys only after the keyboard has been quiet for a moment since it appeared; what is typed ahead,
+  or half typed when it appears, goes to the prompt and cannot approve anything (questions that come together, from the agents of a
+  swarm, wait their turn, each armed again when it comes to the front, and the one in front says how many wait). Ctrl-C keeps the semantics of the line chat
+  (it cancels the turn and its question and never the session; on an empty prompt a second one within two seconds quits; Ctrl-D and
+  SIGTERM as before), and Ctrl-C or SIGTERM while the session is still being made ends the chat with 130 or 143 and
+  `sleipnir: interrupted` (a project's tool server asks whether it may start during that time, on the screen like any question).
+  `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1` and `NO_COLOR` are honoured (`NO_COLOR` keeps the program and takes the colour
+  away), and the glyphs are Unicode or ASCII by the locale. A pipe, a file, `TERM=dumb` and the new `--plain` get the line chat, byte
+  for byte as before. Everything printed passes the sanitiser, and a fuzz target and a run with hostile text through every door of
+  the session say so; the tests read the screen through the terminal emulator (`cmd/sleipnir/e2e_chat_test.go`, and goldens of the
+  live region at 60, 80 and 120 columns and of a whole conversation).
 - `sleipnir chat` (slash commands, Ctrl-C per turn, Ctrl-C twice at the prompt to quit), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and
@@ -306,6 +333,39 @@ defect the runs showed, with the evidence, and what changed.
   (`model.response`, the inspector's timeline), so a log could not tell an endpoint that queues from one that decodes slowly: the
   two were equal in every one of the 8,088 responses of the first benchmark run. It is now when the first frame with content
   arrived (the end, for a reply that was not streamed), as the Anthropic adapter already measured it.
+
+- **A run with nobody to ask could not run the project's tests, and said so in a line cut off before its advice.** In a dogfood
+  session (`sleipnir run` with stdin not a terminal, which is what a script, CI or a cron job is) the agent fixed a cache correctly
+  and then could not run `go test`: the permission engine refuses what needs a question when there is no one to ask, and the only
+  trace for the person was `use an act…`. `run` and `swarm` now take `--allow RULE` (repeatable: `--allow 'Bash(go test:*)'`, or
+  `--allow tests` for the build and test commands of most projects, a preset that installs and downloads nothing and hands no
+  interpreter a program of its own), and a run that was refused something ends with the commands, how many times, and the rules that
+  would let them through (`run --json` carries them as `refused_no_one_to_ask`).
+- **A swarm manager could not tell how to drop a duplicate task.** In the first real swarm run (a model that wrote a half-garbled
+  `task create`, then created the task again) the manager's `task update` on the first one was answered `T1 belongs to nobody`; it
+  looked for a delete action that does not exist, and tried `done` on it, for four turns. The answer to an agent that acts on a task
+  it does not own now says what to do: claim a task nobody has claimed before reporting on it, and a task that should not be done
+  at all is dropped with `fail` (manager only); another agent's task names its owner and who to mail.
+- **A response that the output limit cut off was taken for the final answer.** The agent loop ended a run at the first response with no
+  tool call, whatever the reason the response stopped. In the benchmark (5 of 436 sessions, on two models) a generation went on to
+  the 16,000-token limit, once for three minutes, words that were not there, and that text was the run's answer: the log's outcome
+  said `done`, `run` printed it as the result, a swarm worker would have handed it in as its report. A response that ends at the
+  limit with no call to run is not an answer now. The model is told what happened (a harness turn, not the person's word) and asked
+  to carry on, twice at most in a row, with a notice for whoever is watching; after that the run ends with `agent.ErrOutputLimit`
+  (`the response was cut off by the output limit: 16000 tokens, 3 responses in a row`), the benchmark's outcome says `gave_up`, a
+  swarm worker's task goes back to the board, and `sleipnir friction` ranks the cut-offs (`model.cutoff`). A call that was cut off
+  in the middle was and is answered by the dispatcher as arguments that do not parse.
+- **A worker died of an endpoint outage that lasted a minute.** In the first real swarm run the endpoint answered `503 Database is
+  temporarily unavailable` and `Request ownership was lost`; a request gets six attempts over about forty seconds, the worker
+  stopped, its task went back to the board with an attempt counted, and the manager had to spawn another. Of 591 benchmark sessions,
+  53 reached the last attempt, 172 saw a 503 and 72 a 429. An agent now goes on for an endpoint that answered that it is down or
+  overloaded (a status of 500 or more, or 429): after the six attempts it waits at most half a minute between attempts until the waits
+  add up to five minutes (`session.DefaultOutagePatience`), says so (`attempt 9, waited 4m0s of 5m0s for the endpoint`), and ends
+  the run with the error only then. A refusal of the request (400, 401, 403, 404) and a failure that carries no status (a misspelt
+  URL, a refused connection) are not waited for, so a misconfiguration fails as fast as before; Ctrl-C ends the wait; a swarm
+  worker's notices count as signs of life, so the watchdog does not cancel a worker for the quiet of a retried call; and a benchmark
+  rollout opts out (the runner repeats a rollout that ended for the endpoint's fault, and waiting inside it would spend the run's own
+  clock and end it as a budget episode). The backoff of a request retried for minutes no longer overflows its shift.
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),

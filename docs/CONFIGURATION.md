@@ -411,9 +411,16 @@ Switch a running chat with `/mode <m>` or `/plan`.
 **When no human is available** (`run`/`swarm` with stdin not a terminal, or any unattended run) a question cannot be
 asked, so the action is refused with `approval required: <why>` and a fixed sentence saying that this run has no one to ask
 (a model that is not told keeps looking for another way to the same action: a real one spent twenty-four tool calls on
-that). Give the run what it needs with `--mode` or `permissions.allow` (for example `Bash(go test:*)`). In a terminal the question is
-`allow? [y]es once / [a]lways this session / [n]o`; `a` adds an exact rule for the rest of the session (it is not
-written to any file), and anything but `y`/`a` refuses.
+that). A run that was refused something says so at its end, with the commands and the rule that would let them through. Give the
+run what it needs with `--allow` (repeatable, for this run only: `--allow 'Bash(go test:*)'`, or `--allow tests` for the build and
+test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet`,
+`gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint`, `pnpm test`, `yarn test`, `node --test`,
+`pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint` and `ctest`: they
+run the project's own code, as running its tests is meant to, and never install a package, download, or hand an interpreter a
+program of its own. In a terminal the question is
+`allow? [y]es once / [a]lways this session / [n]o` (`run`, and the line chat); `a` adds an exact rule for the rest of the session (it is not
+written to any file), and anything but `y`/`a` refuses. The chat program asks with a box instead, answered by `1` (yes),
+`2` (yes, and do not ask again for this exact request: the same rule as `a`) or `3` (no; `esc` and Ctrl-D refuse too).
 
 ### Rules
 
@@ -681,6 +688,7 @@ mock`, which imitates vLLM's token ids); your server's answer is the one that co
 | `bypass mode turns off permission prompts; use it only inside a sandbox` | `permissions.mode` is `bypass` |
 | `provider: auth (http 401): Missing or invalid API key` | the key variable is empty, wrong or expired. `sleipnir doctor --model provider/model` shows the answer without starting a session |
 | `429` from the endpoint | lower `swarm.requests_per_minute` |
+| `server (http 503): ... retrying in 28s (attempt 9, waited 4m0s of 5m0s for the endpoint)` | the endpoint answered that it is down or overloaded (a status of 500 or more, or 429). Every failure gets six attempts; for this kind the agent goes on, a wait of at most half a minute between attempts, until the waits add up to five minutes (`session.DefaultOutagePatience`), and then the run ends with the error. Ctrl-C stops the wait. A refusal of the request (400, 401, 403, 404) and a failure with no status (a misspelt URL, a refused connection) are not waited for |
 
 `sleipnir config` lists every warning once, with file, line and column, under "warnings:", and ends with
 `configuration is valid, with N warning(s) listed above` (or plain `configuration is valid`). An error stops it and is

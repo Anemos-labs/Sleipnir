@@ -306,6 +306,86 @@ func TestARolloutThatTheClockEndsIsABudgetEpisodeAndNotAFalseDone(t *testing.T) 
 	}
 }
 
+// A run whose every response the output limit cut off never said it was done: it gave up, or rather the model could not finish a
+// sentence. The harness answered "done" for it (the run ended without an error), and the report counted a false claim. The first
+// benchmark had one with a 16,000-token generation that went on for three minutes.
+func TestARolloutWhoseResponsesAreCutOffAtTheOutputLimitGaveUpAndDidNotClaimDone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	repo := newRepo(t)
+	head, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Skip(err)
+	}
+	task := rl.Task{
+		ID: "demo-cutoff", Kind: rl.TaskFix,
+		Repo:     rl.RepoSpec{Path: repo, Commit: strings.TrimSpace(string(head))},
+		Prompt:   "Add returns the wrong result. Fix it and check with the tests.",
+		Verifier: rl.Verifier{Cmd: "go test ./...", TimeoutS: 120, Protected: []string{"*_test.go"}},
+		Budget:   rl.Budget{Steps: 40, Requests: 80, WallS: 120},
+	}
+	if err := env.ValidateTask(task); err != nil {
+		t.Fatal(err)
+	}
+	pol := startPolicy(t, func(c *mock.Call) mock.Reply {
+		return mock.Reply{Text: "So the fix is, and then the fix is, and then the fix is", Finish: "length"}
+	})
+	ws, err := env.NewWorkspaces(env.WorkspaceOptions{
+		Root: t.TempDir(), RepoBase: "/", DisableNetIsolation: true,
+		SetEnv: map[string]string{"GOCACHE": goCache(t), "GOFLAGS": "-mod=mod", "GOTOOLCHAIN": "local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	pipe := &harness.Pipeline{Harness: rl.HarnessRef{Version: "test"}, Reward: reward.DefaultConfig()}
+	out := filepath.Join(t.TempDir(), "cutoff")
+	rn := &env.Runner{
+		Harness: &harness.Harness{NewProvider: injected(pol.url)}, Extract: pipe.Extract, Score: pipe.Score,
+		Workspaces: ws, Out: out, Concurrency: 1, InfraRetries: -1, MaxWall: 5 * time.Minute,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute) // a hang guard
+	defer cancel()
+	sum, err := rn.Rollout(ctx, []rl.Task{task}, 1, env.RolloutOpts{
+		RunID: "cutoff", Policy: env.PolicySpec{Model: "mock-1"}, Seed: 6, KeepEpisodes: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Completed != 1 || len(sum.Results) != 1 || sum.Results[0].Episode == nil {
+		t.Fatalf("the rollout did not complete: %+v (infra: %+v)", sum, sum.InfraErrors)
+	}
+	ep := sum.Results[0].Episode
+	if ep.Outcome.Claimed != "gave_up" {
+		t.Errorf("claimed %q: the run ended because the model was cut off at the output limit again and again, which is not saying it was done", ep.Outcome.Claimed)
+	}
+	if c := ep.Reward.Components[reward.CompHonestDone]; c < 0 {
+		t.Errorf("the false-claim penalty %v for a run that did not claim: %v", c, ep.Reward.Components)
+	}
+	// The episode's claim is read back from the trajectory, which knew the stop reason all along. The outcome event of the run is
+	// what the harness itself said when the run ended, and it said "done" for every run that ended without an error.
+	var claimed []string
+	err = events.Scan(filepath.Join(out, "demo-cutoff", "0", "events.jsonl"), func(e events.Event) error {
+		if e.Type == events.TypeOutcome {
+			var m struct {
+				Claimed string `json:"claimed"`
+			}
+			if err := json.Unmarshal(e.Data, &m); err != nil {
+				return err
+			}
+			claimed = append(claimed, m.Claimed)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimed) != 1 || claimed[0] != "gave_up" {
+		t.Errorf("the outcome event of the run claims %q, want exactly one, gave_up", claimed)
+	}
+}
+
 // TestRecallTaskIsJudgedOnTheFinalMessage runs a generated memory task: the
 // agent reads a fact, reads other files, and must state the fact. The verdict
 // comes from an exact match on the final message, with no command to run.

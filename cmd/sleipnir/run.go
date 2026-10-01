@@ -81,6 +81,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	resume := resumeFlags(fs)
 	roleModels := kvFlags{}
 	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x)")
+	allow := allowFlags(fs)
 	fs.Usage = func() {
 		if name == "swarm" {
 			fmt.Fprint(os.Stderr, "usage: sleipnir swarm <workers> [flags] <prompt | ->\n\nRuns one goal with a team: a manager and up to <workers> workers (the same as run --swarm <workers>).\nThe prompt may be '-' to read stdin.\n\nflags:\n")
@@ -114,7 +115,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
+		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 	}
 	if interactive {
 		o.Prompter = session.TerminalPrompter(os.Stdin, os.Stderr)
@@ -164,6 +165,9 @@ func runCommand(ctx context.Context, name string, args []string) error {
 			if res.Unfinished != "" {
 				out["unfinished"] = res.Unfinished
 			}
+			if ref := s.RefusedWithNoOneToAsk(); len(ref) > 0 {
+				out["refused_no_one_to_ask"] = ref
+			}
 			if integ != nil {
 				out["integration"] = integ
 			}
@@ -171,6 +175,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		case !*quiet:
 			fmt.Fprintf(os.Stderr, "\n── %s · %d steps · $%.4f · cache hit %.0f%% · %d compactions · %s\n",
 				time.Since(start).Round(time.Second), res.Steps, res.CostUSD, res.Usage.HitRatio()*100, res.Compactions, res.Dir)
+			printRefusals(os.Stderr, s.RefusedWithNoOneToAsk())
 		}
 	}
 	if !*asJSON {

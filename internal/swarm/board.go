@@ -639,9 +639,20 @@ func owned(d *draft, agent, id string) (int, Task, error) {
 	}
 	t := d.Tasks[i]
 	if t.Owner != agent {
-		return -1, Task{}, fmt.Errorf("%s belongs to %s", id, ownerOrNone(t.Owner))
+		return -1, Task{}, errNotOwner(id, t.Owner)
 	}
 	return i, t, nil
+}
+
+// errNotOwner is what an agent is told when it acts on a task that is not its own. The answer says what to do next, because a
+// model that reads only "T1 belongs to nobody" has nothing to act on: the first real swarm run spent four turns looking for a
+// way to delete a duplicate task that fail would have dropped.
+func errNotOwner(id, owner string) error {
+	if owner == "" {
+		return fmt.Errorf("%s is not claimed by anyone, so there is nothing of yours to update here: claim it first. "+
+			"A task that should not be done at all is dropped with fail (manager only)", id)
+	}
+	return fmt.Errorf("%s belongs to %s, not to you: mail them, or the manager if it should move", id, owner)
 }
 
 // Update sets the one-line progress of a task the agent is working on.

@@ -167,7 +167,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return tools.Errorf("no task %s", in.ID)
 	}
 	if task.Owner != me {
-		return tools.Errorf("%s belongs to %s", in.ID, ownerOrNone(task.Owner))
+		return tools.Errorf("%v", errNotOwner(in.ID, task.Owner))
 	}
 	if task.Status != StatusDoing {
 		return tools.Errorf("%s is %s, not doing", in.ID, task.Status)

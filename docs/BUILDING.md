@@ -72,6 +72,7 @@ internal/inspect        the cache inspector: a read-only model of a session log 
   inspect/web           the dashboard's static assets (not a Go package)
 internal/demo           the scripted teams behind `sleipnir demo` (a handbook in a second; a shop built in git worktrees in twenty), run against the mock provider
 internal/ptytest        runs a command on a pseudo-terminal, so that a test can type at it, press Ctrl-C and wait for what it prints
+internal/tui            the terminal interface (docs/UX.md): term, cell, render, vt (an emulator the tests read), widget, state, input (the editor), app (the programs: chat, watch, replay), svg
 
 internal/tui            the terminal interface (docs/UX.md): everything a screen is made of, each package small and pure where it can be
   tui/cell              styled spans and lines, display widths; no escape codes
@@ -138,7 +139,10 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
   pseudo-terminal, where a test types, presses Ctrl-C (the terminal turns the byte into SIGINT, as it does for a person) and
   waits for the output, with the transcript in every failure. `ptytest.WaitInputRead` is the barrier between "I typed a line"
   and "the program has it". A bug in how a program and its terminal fit together (chat's Ctrl-C ended the session) does not
-  show in a test that calls a function or sends a signal itself.
+  show in a test that calls a function or sends a signal itself. A program that draws (`chat`, `watch`, `replay`) is read the way a
+  person reads it: `internal/tui/vt` is given what it wrote and the test waits for what the screen shows
+  (`cmd/sleipnir/e2e_chat_test.go`, `e2e_watch_test.go`); `internal/tui/app` runs the programs on a scripted terminal and session,
+  with the keys, the ticks and the size sent by the test, so that nothing waits for a clock.
 - CI runs the suite with `-race` on Linux (amd64 and arm64, as an ordinary user, not root) and macOS with the Go of `go.mod`,
   on Linux with the newest stable Go too (`.github/workflows/ci.yml`, also runnable by hand from the Actions tab); Windows
   runs without `-race` as an informational job that blocks nothing, and every shipped platform is built and vetted. Things

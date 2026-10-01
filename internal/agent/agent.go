@@ -184,6 +184,14 @@ type Config struct {
 	BudgetUSD float64 // 0: unlimited
 	Priority  int
 
+	// OutagePatience is how long, in all, the agent keeps repeating a request that fails because the endpoint is down or
+	// overloaded (an HTTP status of 500 or more, or 429): the waits between its attempts, the first six included, add up to
+	// at most this. Every failure gets six attempts; this is what lets such a failure get more. The endpoint answered, so it is
+	// there and the request is not wrong: waiting is what a person would do, and a worker that gives up after forty seconds
+	// takes its task with it. Zero (the default) is the six attempts only. A failure with no status (nothing answered: a
+	// misspelt URL, a refused connection) never gets it, so a misconfiguration fails as fast as ever.
+	OutagePatience time.Duration
+
 	// MaxToolCallsPerTurn is how many of the tool calls in one model turn are run
 	// (default DefaultMaxToolCalls). The rest are answered with an error that tells
 	// the model to issue fewer, so every call has its result and the thread stays valid
@@ -249,6 +257,11 @@ type Result struct {
 
 // ErrBudget is returned when an agent exhausts its dollar budget.
 var ErrBudget = errors.New("agent budget exhausted")
+
+// ErrOutputLimit is returned when the model's responses were cut off by the output limit (max_tokens) more than
+// maxCutoffRounds times in a row, each time with no tool call: nothing it wrote was an answer, and the run says so instead of
+// handing on the last cut-off text as if it were one.
+var ErrOutputLimit = errors.New("the response was cut off by the output limit")
 
 // Agent is one worker. Run is not reentrant; Send may be called from anywhere.
 type Agent struct {
@@ -584,6 +597,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	defer stop()
 	vetoes := 0     // Stop hooks that sent the agent back to work in this run
 	mailRounds := 0 // times a finished answer was reopened because mail arrived meanwhile
+	cutoffs := 0    // responses in a row that the output limit cut off
 	if len(input) > 0 {
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
@@ -630,6 +644,22 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		res.Stop = resp.Stop
 		turn := a.pushResponse(resp, epoch)
 		calls := turn.ToolCalls()
+		if len(calls) == 0 && resp.Stop == core.StopMaxTokens {
+			// A response that ended at the output limit, with no call to run, is not an answer: the model was cut off, and what
+			// it wrote is the start of something. Taking it for the end of the run recorded a degenerate 16,000-token
+			// generation as the answer, and "done". It is asked to carry on, a bounded number of times in a row; then the run
+			// says what happened. (A call cut off in the middle has its own answer: the arguments are marked invalid.)
+			res.Text = kv.AnswerText(turn)
+			cutoffs++
+			if cutoffs > maxCutoffRounds {
+				return res, fmt.Errorf("%w: %d tokens, %d responses in a row", ErrOutputLimit, a.cfg.Params.MaxTokens, cutoffs)
+			}
+			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response reached the output limit (%d tokens): asking the model to carry on (%d of %d)",
+				a.cfg.Params.MaxTokens, cutoffs, maxCutoffRounds))
+			a.pushUser(core.OriginSystem, []core.Block{core.Text(cutoffNudge)})
+			continue
+		}
+		cutoffs = 0
 		if len(calls) == 0 {
 			res.Text = kv.AnswerText(turn) // what the model said, not its reasoning
 			// Mail or steering that arrived while this answer was being produced would
@@ -707,6 +737,15 @@ func inputEvent(origin core.Origin, blocks []core.Block) map[string]any {
 // maxMailRounds is how many times one Run reopens a finished answer to read mail that
 // arrived while it was being written.
 const maxMailRounds = 4
+
+// maxCutoffRounds is how many times in a row one Run asks the model to carry on after a response that the output limit cut off.
+// A model that is cut off again and again is not going to finish by being asked, and every round is a full-length generation.
+const maxCutoffRounds = 2
+
+// cutoffNudge is what the model reads after such a response. It cannot see its own token count, so the harness says what
+// happened; "do it with a tool call" is the way out of the commonest cause, a long description of what it is about to do.
+const cutoffNudge = "[harness] Your last response was cut off at the output limit before it was complete. Continue from where it stopped. " +
+	"If you were about to run a command or change a file, do it now with a tool call instead of writing it out."
 
 // Close ends the agent's background work: it cancels the compaction job in flight,
 // waits for it (up to CloseGrace, so a provider that ignores its context cannot wedge

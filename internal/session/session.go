@@ -78,6 +78,13 @@ type Options struct {
 	// Permissions.
 	Mode     perm.Mode
 	Prompter perm.Prompter
+	// Allow are rules that need no question in this run, on top of the configuration's (sleipnir run --allow): what the person
+	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
+	Allow []string
+	// OutagePatience is how long an agent keeps retrying a request that fails because the endpoint is down or overloaded (an HTTP
+	// status of 500 or more, or 429), beyond the six attempts every failure gets. Zero is DefaultOutagePatience; negative is
+	// the six attempts only (what a rollout wants: the runner repeats the rollout, and waiting would eat the run's own clock).
+	OutagePatience time.Duration
 
 	// Swarm runs a manager plus workers instead of a single agent.
 	Swarm      bool
@@ -185,6 +192,10 @@ type Session struct {
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
 	shell       *shell.Manager
+
+	// refused are the commands that were refused for want of anyone to ask (permaudit.go), for the hint a run prints at its end.
+	refusedMu sync.Mutex
+	refused   []refusedCommand
 
 	mu      sync.Mutex
 	started bool
@@ -484,7 +495,7 @@ func (s *Session) buildPerm() error {
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
-		Allow: s.cfg.Permissions.Allow, Ask: ask, Deny: s.cfg.Permissions.Deny,
+		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.hookPrompter(o.Prompter), Audit: s.auditPermission,
 	})
 	if err != nil {
@@ -630,13 +641,7 @@ func (s *Session) build(ctx context.Context) error {
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
 	constLayer := kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: constText, Vol: kv.VolFrozen}})
 
-	planner := kv.DefaultPlanner()
-	if c := s.cfg.Cache; c.ThreadSoftLimitTokens > 0 {
-		planner.SoftThreadTokens = c.ThreadSoftLimitTokens
-	}
-	if c := s.cfg.Cache; c.CompactThresholdTokens > 0 {
-		planner.HardThreadTokens = c.CompactThresholdTokens
-	}
+	planner := plannerFor(s.cfg.Cache)
 	kvPol := kv.DefaultPolicy()
 	if c := s.cfg.Cache; c.MinLayerForBreakpoint > 0 {
 		kvPol.MinLayerForBreakpoint = c.MinLayerForBreakpoint
@@ -674,7 +679,7 @@ func (s *Session) build(ctx context.Context) error {
 			Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
 			Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 			MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
-			Hooks: s.agentHooks(),
+			Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience),
 		})
 		if err != nil {
 			return err
@@ -727,6 +732,7 @@ func (s *Session) build(ctx context.Context) error {
 		Snap: s.Ckpt, Handles: handles,
 		Workdir: o.Cwd, Root: o.Root, Params: params, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
+		OutagePatience: outagePatience(o.OutagePatience),
 	}
 	if len(o.RoleModels) > 0 {
 		if err := s.checkRoleModels(o.RoleModels); err != nil {
@@ -849,6 +855,21 @@ func (s *Session) checkRoleModels(overrides map[string]string) error {
 	}
 	sort.Strings(names)
 	return fmt.Errorf("--role-model: no role named %s in this session (its roles: %s)", strings.Join(bad, ", "), strings.Join(names, ", "))
+}
+
+// DefaultOutagePatience is how long an agent waits out an endpoint that is down or overloaded when nothing says otherwise: a
+// swarm worker that gave up after forty seconds took its task with it, and the endpoints of a marketplace go down for minutes.
+const DefaultOutagePatience = 5 * time.Minute
+
+// outagePatience is Options.OutagePatience as the agents take it: zero stands for the default, negative for none.
+func outagePatience(d time.Duration) time.Duration {
+	switch {
+	case d < 0:
+		return 0
+	case d == 0:
+		return DefaultOutagePatience
+	}
+	return d
 }
 
 func orDefault(v, d int) int {
@@ -1105,4 +1126,19 @@ func (s *Session) cost() float64 {
 		return c
 	}
 	return 0
+}
+
+// plannerFor is the compaction planner that the cache settings ask for. A soft limit that is set above the default hard one would never
+// be reached, the hard limit forcing the compaction first, so the hard limit follows it up unless it was set too.
+func plannerFor(c config.Cache) kv.Planner {
+	p := kv.DefaultPlanner()
+	if c.ThreadSoftLimitTokens > 0 {
+		p.SoftThreadTokens = c.ThreadSoftLimitTokens
+	}
+	if c.CompactThresholdTokens > 0 {
+		p.HardThreadTokens = c.CompactThresholdTokens
+	} else if p.SoftThreadTokens > p.HardThreadTokens {
+		p.HardThreadTokens = p.SoftThreadTokens
+	}
+	return p
 }

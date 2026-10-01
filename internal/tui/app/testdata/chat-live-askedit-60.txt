@@ -1,0 +1,19 @@
+60 columns, 18 rows, cursor at row -1 column 0
+? Waiting for your answer…  20s             esc to interrupt
+╭─ Edit a file ────────────────────────────────────────────╮
+│ orders/list.go                                           │
+│ - offset := page * size                                  │
+│ + offset := (page - 1) * size                            │
+│                                                          │
+│ outside the allow list                                   │
+│                                                          │
+│   1. Yes                                                 │
+│ ❯ 2. Yes, and don't ask again for this change this       │
+│      session                                             │
+│   3. No, and tell Sleipnir what to do instead (esc)      │
+╰──────────────────────────────────────────────────────────╯
+  typing goes to the prompt until you pause
+╭──────────────────────────────────────────────────────────╮
+│ ❯ Type a goal, / for commands, @ for files               │
+╰──────────────────────────────────────────────────────────╯
+accept-edits            mock/mock-1 · 20260102-030405-abcdef

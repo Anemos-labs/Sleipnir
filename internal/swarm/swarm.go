@@ -140,7 +140,9 @@ func DefaultConfig() Config {
 type Deps struct {
 	Provider provider.Provider
 	Model    cost.Model
-	Registry *tools.Registry
+	// OutagePatience is agent.Config.OutagePatience for every agent of the swarm.
+	OutagePatience time.Duration
+	Registry       *tools.Registry
 	// ToolSpecs is the frozen tool list (must include the swarm tools).
 	ToolSpecs []core.ToolSpec
 	Const     *kv.Layer

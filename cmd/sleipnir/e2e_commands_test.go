@@ -323,6 +323,31 @@ func TestRunUnattendedRefusesWhatNeedsApproval(t *testing.T) {
 	}
 }
 
+// A run with nobody to ask says at its end which commands it refused for that, and how to let them through; --allow is the answer, given
+// before the run (a dogfood session could not run the project's tests, and the only trace was a line cut off in the middle of its advice).
+func TestRunUnattendedSaysWhatItRefusedAndAllowAnswersIt(t *testing.T) {
+	m := startModel(t)
+	m.on("@touch", runs("touch ran.marker"))
+	w := newWorld(t, m.url())
+	r := w.run("", "run", "@touch")
+	assertRun(t, r, 0, nil, []string{"refused, because this run had no one to ask:", "touch ran.marker", "--allow 'Bash(touch:*)'", "--allow tests"})
+	if exists(filepath.Join(w.project, "ran.marker")) {
+		t.Fatal("the command ran although nothing could approve it")
+	}
+
+	r = w.run("", "run", "--allow", "Bash(touch:*)", "@touch")
+	assertRun(t, r, 0, nil, []string{"!refused, because", "!approval required", "✓ bash touch ran.marker"})
+	if !exists(filepath.Join(w.project, "ran.marker")) {
+		t.Error("the command that --allow approved did not run")
+	}
+
+	// A rule that cannot be read stops the run before it starts, and says which.
+	r = w.run("", "run", "--allow", "Bash(touch", "@touch")
+	if r.code == 0 || !strings.Contains(r.stderr, "closing parenthesis") {
+		t.Errorf("a malformed rule must be refused with its reason (status %d):\n%s", r.code, r.stderr)
+	}
+}
+
 // recon prints the survey that seeds the prompt, and its size on stderr.
 func TestRecon(t *testing.T) {
 	w := newWorld(t, "")
