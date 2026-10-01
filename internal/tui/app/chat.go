@@ -226,9 +226,10 @@ type chatModel struct {
 	folds   []*foldAnim
 	expand  []*expandable
 
-	compactSeen uint64
-	anomalySeen uint64
-	flashUntil  int
+	endpointBreaks int // cache breaks of the endpoint's own seen so far
+	compactSeen    uint64
+	anomalySeen    uint64
+	flashUntil     int
 
 	quitArmed bool
 	quitAt    time.Time
@@ -1141,6 +1142,9 @@ func (m *chatModel) snapshot() *state.Snapshot {
 	return m.snap
 }
 
+// maxEndpointBreaksShown is how many cache breaks that are the endpoint's own the scrollback says before it says that it will not say more.
+const maxEndpointBreaksShown = 3
+
 // scanSnapshot finds what the log has added that the scrollback should say: a compaction, a cache break.
 func (m *chatModel) scanSnapshot() {
 	sn := m.snap
@@ -1192,6 +1196,16 @@ func (m *chatModel) scanSnapshot() {
 		case f.anom != nil:
 			m.anomalySeen = max(m.anomalySeen, f.seq)
 			m.syncStream()
+			if f.anom.Layer == "" && f.anom.Kind == "low_hit" {
+				// the prompt did not change: it is the endpoint's cache, and on some it breaks all the time
+				m.endpointBreaks++
+				if m.endpointBreaks > maxEndpointBreaksShown {
+					if m.endpointBreaks == maxEndpointBreaksShown+1 {
+						m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, "  "+m.k.g.warn+" this endpoint's cache keeps missing the prompt prefix; further misses are not said here (/cost has the hit ratio, `sleipnir inspect` each one)")})
+					}
+					continue
+				}
+			}
 			m.block(bkNote, m.k.anomalyLines(*f.anom, f.who, m.cols))
 			if m.k.Anim {
 				m.flashUntil = m.frame + flashFrames

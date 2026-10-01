@@ -414,3 +414,27 @@ func TestChatAQuestionSurvivesAResize(t *testing.T) {
 		t.Errorf("the question is still the person's to answer: %+v", d)
 	}
 }
+
+// An endpoint whose cache misses all the time would put a break line under every answer. Three are said, then one line says that the
+// rest are not, and the next ones are left to /cost and the inspector.
+func TestChatTheEndpointsOwnCacheBreaksAreSaidThreeTimes(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 100, rows: 40})
+	b := statetest.NewBuilder()
+	log := sessionLog(b, 1, 0)
+	for i := 2; i <= 7; i++ {
+		req := fmt.Sprintf("r%d", i)
+		b.Advance(8 * time.Second)
+		log = append(log, b.Request("main", req, "mock-1", "pk1", statetest.Sec{Name: "shared", Tokens: 3200, BP: true}))
+		log = append(log, b.Emit("main", events.TypeCacheAnomaly, map[string]any{"kind": "low_hit", "diverged": "", "req": req, "expected_read": 6033, "actual_read": 100, "missed": 5000}))
+		log = append(log, b.Response("main", req, "mock-1", 3000, 100, 0, 200, 0.0031))
+	}
+	r.at(b.Now().Add(2 * time.Second))
+	r.emit(log...)
+	s := r.shows("further misses are not said here")
+	if n := strings.Count(s, "⚠ cache break"); n != maxEndpointBreaksShown {
+		t.Errorf("%d break lines, want %d:\n%s", n, maxEndpointBreaksShown, s)
+	}
+	if n := strings.Count(s, "further misses are not said here"); n != 1 {
+		t.Errorf("the note is said %d times, once", n)
+	}
+}
