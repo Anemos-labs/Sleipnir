@@ -86,9 +86,9 @@ func (d *dialog) armed(now time.Time) bool { return !now.Before(d.armAt) }
 func (d *dialog) choose(k input.Key) (idx int, chosen bool) {
 	n := len(d.opts)
 	switch {
-	case k.Is(input.Up, 0), k.Is(input.Tab, input.Shift), k.IsRune('p', input.Ctrl), k.IsRune('k', 0):
+	case k.Is(input.Up, 0), k.Is(input.Tab, input.Shift), k.IsRune('p', input.Ctrl):
 		d.sel = (d.sel + n - 1) % n
-	case k.Is(input.Down, 0), k.Is(input.Tab, 0), k.IsRune('n', input.Ctrl), k.IsRune('j', 0):
+	case k.Is(input.Down, 0), k.Is(input.Tab, 0), k.IsRune('n', input.Ctrl):
 		d.sel = (d.sel + 1) % n
 	case k.Is(input.Enter, 0):
 		return d.sel, true

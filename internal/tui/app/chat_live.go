@@ -82,6 +82,7 @@ type dialogView struct {
 	options []widget.DialogOption
 	sel     int
 	armed   bool
+	more    int // questions that wait behind this one
 }
 
 // liveView is everything the live region is made of, at one moment.
@@ -686,6 +687,14 @@ func (k *chatLook) dialogHint(d *dialogView, w int) cell.Line {
 			keys(" or ", " ", "esc says no", "ctrl+c cancels"),
 			keys(" or ", " ", "esc says no"),
 			keys(" or ", " "),
+		}
+	}
+	if d.more > 0 { // other questions wait behind this one: the person is told, as long as there is room
+		tag := cell.Styled(k.st.warn, fmt.Sprintf("  %s  %d more waiting", k.g.dot, d.more))
+		for _, v := range variants {
+			if w2 := cell.Join(v, tag); w2.Width() <= w {
+				return w2
+			}
 		}
 	}
 	for _, v := range variants {

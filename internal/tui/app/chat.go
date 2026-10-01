@@ -408,11 +408,17 @@ func (m *chatModel) answerQuestion(d *dialog, dec perm.Decision) {
 }
 
 func (m *chatModel) dropQuestion(q *question) {
+	front := m.question()
 	for i, d := range m.dialogs {
 		if d.q == q {
 			m.dialogs = append(m.dialogs[:i:i], m.dialogs[i+1:]...)
 			break
 		}
+	}
+	if next := m.question(); next != nil && next != front {
+		// The next question has been waiting behind this one, and the key that answered this one (pressed twice, say) was not meant
+		// for it: it takes keys again only after the keyboard has been quiet, like any question that has just appeared.
+		next.armAt = m.clock().Add(m.c.AnswerAfter)
 	}
 	for _, t := range m.tools {
 		t.asking = false
@@ -1285,7 +1291,7 @@ func (m *chatModel) queueTexts() []string {
 func (m *chatModel) dialogView(d *dialog) *dialogView {
 	title, body := m.k.requestBody(d.q.req, m.callOf(d.q.req), widget.BoxInnerWidth(m.cols, widget.BoxHardWrap()), m.info.Cwd)
 	body, _ = m.k.fitBody(body, m.dialogRows())
-	return &dialogView{title: title, body: body, options: d.opts, sel: d.sel, armed: d.armed(m.clock())}
+	return &dialogView{title: title, body: body, options: d.opts, sel: d.sel, armed: d.armed(m.clock()), more: len(m.dialogs) - 1}
 }
 
 // statusView is what the status line says: what the agent is doing, for how long, and what this turn has used.

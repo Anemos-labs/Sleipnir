@@ -702,6 +702,49 @@ func TestChatEnterSendsWhatIsTypedAndDoesNotApprove(t *testing.T) {
 	}
 }
 
+// Questions wait their turn, and the one behind is not answered by the key that answered the one in front (pressed twice, or pressed
+// again as the next one appeared): it takes keys only after the keyboard has been quiet, like a question that has just come.
+func TestChatTheNextQuestionIsNotAnsweredByTheKeyThatAnsweredTheOneBefore(t *testing.T) {
+	r := startChat(t, rigOpts{answerAfter: 400 * time.Millisecond})
+	first, second := make(chan perm.Decision, 1), make(chan perm.Decision, 1)
+	secondNow := make(chan struct{})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		go func() { first <- r.prompt(ctx, bashRequest("echo one")) }()
+		<-secondNow
+		go func() { second <- r.prompt(ctx, bashRequest("echo two")) }()
+		<-ctx.Done()
+		return TurnResult{Err: ctx.Err()}
+	}
+	r.submit("go")
+	r.shows("echo one", "your typing goes to the prompt until you pause")
+	r.step(500 * time.Millisecond)
+	r.shows("1 2 3")
+	close(secondNow)
+	r.shows("1 more waiting")      // the program has the second question, which waits behind the first
+	r.step(500 * time.Millisecond) // and it has waited as long as a question needs to be armed
+	r.press(input.RuneKey('1', 0)) // answers the first
+	if d := decision(t, first); !d.Allow {
+		t.Fatalf("the first question was answered 1: %+v", d)
+	}
+	r.shows("echo two")
+	r.press(input.RuneKey('1', 0)) // pressed again at once: it is not for a question that has just appeared
+	select {
+	case d := <-second:
+		t.Fatalf("the key that answered the first question answered the second: %+v", d)
+	default:
+	}
+	if s := r.screen(); !strings.Contains(s, "your typing goes to the prompt until you pause") {
+		t.Errorf("the second question says why it does not take keys yet:\n%s", s)
+	}
+	r.ctrl('u') // what was typed is not an answer, and is not a goal either
+	r.step(500 * time.Millisecond)
+	r.shows("1 2 3")
+	r.press(input.RuneKey('3', 0))
+	if d := decision(t, second); d.Allow {
+		t.Errorf("the second question was answered 3: %+v", d)
+	}
+}
+
 func TestChatAQuestionFromAnAgentOfASwarmSaysWhoAsks(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	ans := r.ask(perm.Request{Agent: "be-2", Tool: "edit", Paths: []string{"/work/proj/x.go"}, Summary: "edit x.go"})
