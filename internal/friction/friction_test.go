@@ -185,6 +185,42 @@ func TestReadingAFileAfterChangingItIsNotARepeat(t *testing.T) {
 	}
 }
 
+// A big file is read a window at a time: five windows of one file are five different reads, not one read five times. (On a real
+// benchmark this was most of what "a file read three or more times" found: 1152 of 2401 reads were of a file read before, and 110 of
+// those were the same window.) Only the same part of the same file, unchanged between, is a repeat.
+func TestReadingDifferentPartsOfAFileIsNotARepeat(t *testing.T) {
+	window := func(id string, off, lim int) ev {
+		return toolCall(id, "read", map[string]any{"path": "/w/tree/big.go", "offset": off, "limit": lim})
+	}
+	evs := []ev{
+		window("1", 1, 80), window("2", 81, 80), window("3", 161, 80), window("4", 241, 80), window("5", 321, 15),
+		// the same window three times is a repeat, two of them avoidable
+		window("6", 1, 80), window("7", 1, 80),
+		// a read of the whole file is not the same as a read of a window
+		toolCall("8", "read", map[string]any{"path": "/w/tree/big.go"}),
+	}
+	rep, err := Mine([]string{log(t, filepath.Join(t.TempDir(), "s1"), evs...)}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := find(rep, ReRead, "three or more")
+	if f == nil || f.Count != 2 {
+		t.Errorf("%+v", f)
+	}
+	if f != nil && len(f.Examples) > 0 && !strings.Contains(f.Examples[0].Detail, "offset 1") {
+		t.Errorf("the example must say which part of the file was read again: %+v", f.Examples)
+	}
+
+	evs = []ev{window("1", 1, 80), window("2", 81, 80), window("3", 161, 80), window("4", 241, 80)}
+	rep, err = Mine([]string{log(t, filepath.Join(t.TempDir(), "s2"), evs...)}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := find(rep, ReRead, "three or more"); f != nil {
+		t.Errorf("four windows of a file are not a repeat: %+v", f)
+	}
+}
+
 func TestFindingsRankByFrequencySeverityAndWaste(t *testing.T) {
 	var evs []ev
 	for i, id := range []string{"1", "2", "3"} { // three refusals, three different requests

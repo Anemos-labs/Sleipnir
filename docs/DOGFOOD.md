@@ -15,7 +15,7 @@ runs on real work and keeps a register of what it found. This page is the method
 
    #   SCORE  CATEGORY            COUNT  SESSIONS  WASTED  WHAT
    1   2328   permission.refused  291    138       288     bash: cd <path>
-   2   1500   file.reread         375    57        0       a file read three or more times
+   2   1500   file.reread         375    57        0       the same part of a file read three or more times
    3   1066   cache.break         1066   164       0       low_hit
    4   240    permission.refused  30     24        30      bash: sed -n
    ```
@@ -76,6 +76,7 @@ S1 a cost, S2 waste, S3 a stop. *Fix* names the commit's subject; *Test* is the 
 | 20 | code reading | tool | a failing command was shown as `✓` and never counted by the stuck guard | S2 | every failing command | `bash` does not set `IsError` (its output is the answer) and the sink and the guard keyed on it | `tools.Result.Failed`: sinks show `✗ ... (1.4s, exit 1)`, the guard counts a command that keeps failing (durations ignored), JSON carries `failed` and `exit_code` | `TestTextSinkMarksAFailedCommandAndSaysHowItEnded`, `TestAFailingCommandRepeatedIsALoopToo` |
 | 21 | code reading | retry | a stream that failed part-way printed its first words twice; the last failure announced a retry and waited out the longest backoff | S2 | every mid-stream failure | `forward` dropped `EvReset`; the loop slept after the last attempt | `agent.Resetter` (a new line, a `reset` JSON event); notices count attempts; the last failure is final | `TestARetriedResponseTellsTheSinkItStartsOver`, `TestRetryNoticesCountTheAttemptsAndTheLastFailureIsFinal` |
 | 22 | tests under load | test | keep-alive and idle-timeout tests, the parallel-hooks bound (4.5 s) and the log-tail latency bound (250 ms) failed at a load of 13 to 40 | S2 | about one run in five of the whole suite | wall-clock margins of 10x or less on machines that stall for seconds | margins of 30x, a rendezvous instead of a stopwatch, hang guards of a minute | the tests themselves |
+| 23 | bench core (friction on 349 sessions) | friction | `file.reread` ranked third: 529 repeats in 87 sessions | S1 | 54% of 2401 reads were of a file read before | the miner counted per file, and a big file is read a window at a time: 110 of those 1152 reads were the same window | the count is per part of a file (path and range), starts over at an edit, and the example says which part | `TestReadingDifferentPartsOfAFileIsNotARepeat` |
 
 Open: `run` against a dead endpoint retries for 62 seconds before it says anything final (the notices say what and when); after a
 cancelled turn the kernel merges the unanswered goal and the next one into one user message without a separator
