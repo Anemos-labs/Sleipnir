@@ -127,6 +127,10 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
   a commit, which pruned a half-made worktree of a fixture; fixtures run with maintenance off now (`fixtureEnv`), as the product does. And git
   trusts size, inode and times unless an entry is "racily clean": a private copy of an index keeps the real index's time (`gitx.copyIndex`).
   Build their git to see what they see (`docs/BUILDING.md`).
+- **A fixed sleep before a check that a background goroutine has finished is a flake waiting for a slow runner.** The Windows job lost
+  `TestCacheEcon_SteeringSurvivesCompactionAndMailDoesNot` to a 50 ms sleep before "was it compacted"; it waits for the commit now. The same
+  shape is left in `internal/agent/cache_regress_test.go` (the sleeps before `cxCount(log, ...)` near lines 1202, 1278 and 1375) and
+  `agent_test.go`/`compact_toolcall_test.go` (which drive one more turn instead): move them to `waitFor` the next time one fails.
 - **Coverage-instrumented test binaries that are run as the command need `GOCOVERDIR`** (`cmd/sleipnir/e2e_test.go`).
 - **A killed process group outlives the signal for a moment**: `killTree` waits for the group, not only the leader (`internal/tools/shell/proc.go`).
 - **A memory test must not keep what it measures in memory**: the first soak said 17 KB a step and it was the test's own blob store.

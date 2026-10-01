@@ -1473,10 +1473,9 @@ func TestCacheEcon_SteeringSurvivesCompactionAndMailDoesNot(t *testing.T) {
 	if _, err := a.Run(context.Background(), "do the work"); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
-	if len(log.OfType(events.TypeCompactCommit)) == 0 {
-		t.Fatal("setup: nothing was compacted")
-	}
+	// The compaction commits on its own goroutine, a moment after the run that asked for it: a fixed sleep missed it on a slow runner
+	// (the Windows job, once), so the test waits for the commit, and the bound is a hang guard.
+	waitFor(t, time.Minute, "setup: the compaction to commit", func() bool { return len(log.OfType(events.TypeCompactCommit)) > 0 })
 	notes := a.Stack().Notes
 	seg, _ := notes.Segment("instructions")
 	if !strings.Contains(seg.Text, "do the work") || !strings.Contains(seg.Text, "never touch the billing package") {
