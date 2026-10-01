@@ -83,7 +83,7 @@ The first release.
 ### Providers
 
 - `/model provider/model` in the chat moves the conversation to another model, keeping the thread, notes, spine and bill (the agent is
-  rebuilt and the old one's snapshot restored: the same path as a resume). `/model` alone shows the current one. A swarm is refused;
+  rebuilt and the old one's snapshot restored: the same path as a resume). `/model ` opens a menu of every model of the providers whose key is set (favorites first, typing filters it with the same fuzzy match as the commands); `/model` alone shows the current one. A swarm is refused;
   its workers run on their roles' models. The errors of a first run now say Heimdall is the recommended start.
 - Built in beside Heimdall, OpenRouter and OpenAI: Anthropic, the open-weight hosts Together, Fireworks, Groq, Cerebras and DeepInfra
   (each needs only its key variable), and the local servers Ollama, LM Studio, llama.cpp and vLLM (no key: `ollama/qwen3:8b`).

@@ -78,7 +78,11 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			return
 		}
 		log, _ := s.Log.Subscribe(4096)
-		attach <- app.ChatAttach{Host: &sessionHost{s: s}, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd}
+		var models func() []input.Choice
+		if s.Swarm == nil { // /model is refused in a swarm
+			models = modelChoices(startCtx)
+		}
+		attach <- app.ChatAttach{Host: &sessionHost{s: s}, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd, Models: models}
 	}()
 
 	var hist *input.History

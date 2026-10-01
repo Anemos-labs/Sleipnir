@@ -19,6 +19,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
 // modelRow is one listed model: Ref is what --model takes.
@@ -74,16 +75,16 @@ func parseTokens(s string) (int, error) {
 	return int(v * mult), nil
 }
 
-// usableProviders are the providers `models` asks when none is named: those whose key is set, and Heimdall, whose
-// catalogue is public. Local servers and providers without a catalogue route are asked only by name.
-func usableProviders(cfg *config.Config) []string {
+// usableProviders are the providers `models` asks when none is named: those whose key is set, and (withPublic) Heimdall, whose
+// catalogue is public (the chat asks only those with a key: it must not reach the network for a session that has none). Local servers and providers without a catalogue route are asked only by name.
+func usableProviders(cfg *config.Config, withPublic bool) []string {
 	var out []string
 	for _, n := range session.ProviderNames(cfg) {
 		p, ok := session.LookupProvider(cfg, n)
 		if !ok || p.EffectiveDialect() != config.DialectOpenAIChat {
 			continue
 		}
-		if n == "heimdall" || p.APIKeyEnv != "" && harden.Secret(p.APIKeyEnv) != "" {
+		if withPublic && n == "heimdall" || p.APIKeyEnv != "" && harden.Secret(p.APIKeyEnv) != "" {
 			out = append(out, n)
 		}
 	}
@@ -134,27 +135,63 @@ search (all must appear, any case). Favorites, marked *, come first.
 	}
 
 	// Which catalogues: the endpoint given, the provider named, or every usable provider.
-	type source struct{ name, base string }
-	var sources []source
+	var sources []modelSource
 	switch {
 	case pf.baseURL != "":
-		sources = []source{{"", pf.baseURL}}
+		sources = []modelSource{{"", pf.baseURL}}
 	case pf.provider != "" && !strings.EqualFold(pf.provider, "all"):
 		name := strings.ToLower(pf.provider)
 		b, _, ok := session.ProviderInfo(cfg, name)
 		if !ok || b == "" {
 			return fmt.Errorf("models: unknown provider %q", name)
 		}
-		sources = []source{{name, b}}
+		sources = []modelSource{{name, b}}
 	default:
-		for _, n := range usableProviders(cfg) {
-			b, _, _ := session.ProviderInfo(cfg, n)
-			sources = append(sources, source{n, b})
-		}
+		sources = usableSources(cfg, true)
 	}
 
+	all, errs := fetchModels(ctx, sources)
+	failed := 0
+	for i, src := range sources {
+		if errs[i] != nil {
+			failed++
+			if len(sources) == 1 {
+				return errs[i]
+			}
+			fmt.Fprintf(os.Stderr, "models: %s: %v\n", src.name, errs[i])
+		}
+	}
+	if len(sources) > 0 && failed == len(sources) {
+		return fmt.Errorf("models: no catalogue could be fetched")
+	}
+	if len(sources) == 0 {
+		return fmt.Errorf("models: no provider to ask: set HEIMDALL_API_KEY (or another provider's key), or pass --provider")
+	}
+	if err := printModels(os.Stdout, all, f, favoriteSet(cfg)); err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(all, func(r modelRow) bool { return f.keep(r, favoriteSet(cfg)) }) {
+		fmt.Fprintf(os.Stderr, "models: nothing matches (%d models listed by %d provider(s); try fewer words or filters)\n", len(all), len(sources))
+	}
+	return nil
+}
+
+// modelSource is one catalogue to ask: the provider's name ("" for a bare endpoint) and its base URL.
+type modelSource struct{ name, base string }
+
+func usableSources(cfg *config.Config, withPublic bool) []modelSource {
+	var out []modelSource
+	for _, n := range usableProviders(cfg, withPublic) {
+		b, _, _ := session.ProviderInfo(cfg, n)
+		out = append(out, modelSource{n, b})
+	}
+	return out
+}
+
+// fetchModels asks the catalogues at once. The rows are those of the catalogues that answered; errs says, per source, why one did not.
+func fetchModels(ctx context.Context, sources []modelSource) (all []modelRow, errs []error) {
 	rows := make([][]modelRow, len(sources))
-	errs := make([]error, len(sources))
+	errs = make([]error, len(sources))
 	var wg sync.WaitGroup
 	for i, src := range sources {
 		wg.Add(1)
@@ -174,32 +211,55 @@ search (all must appear, any case). Favorites, marked *, come first.
 		}()
 	}
 	wg.Wait()
-	var all []modelRow
-	failed := 0
-	for i, src := range sources {
-		if errs[i] != nil {
-			failed++
-			if len(sources) == 1 {
-				return errs[i]
-			}
-			fmt.Fprintf(os.Stderr, "models: %s: %v\n", src.name, errs[i])
-			continue
+	for i := range sources {
+		if errs[i] == nil {
+			all = append(all, rows[i]...)
 		}
-		all = append(all, rows[i]...)
 	}
-	if len(sources) > 0 && failed == len(sources) {
-		return fmt.Errorf("models: no catalogue could be fetched")
+	return all, errs
+}
+
+// modelChoices starts fetching the catalogues of every usable provider in the background and returns what `/model ` completes
+// from: favorites first, then by reference. It answers from memory, and with nothing until the first catalogue has come.
+func modelChoices(ctx context.Context) func() []input.Choice {
+	cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true})
+	if err != nil {
+		return nil
 	}
-	if len(sources) == 0 {
-		return fmt.Errorf("models: no provider to ask: set HEIMDALL_API_KEY (or another provider's key), or pass --provider")
+	var mu sync.Mutex
+	var list []input.Choice
+	go func() {
+		rows, _ := fetchModels(ctx, usableSources(cfg, false))
+		fav := favoriteSet(cfg)
+		sort.SliceStable(rows, func(i, j int) bool {
+			if fi, fj := fav[rows[i].Ref], fav[rows[j].Ref]; fi != fj {
+				return fi
+			}
+			return rows[i].Ref < rows[j].Ref
+		})
+		var out []input.Choice
+		for _, r := range rows {
+			if !r.IsChat() {
+				continue
+			}
+			d := fmt.Sprintf("%s ctx, $%.3g/M out", human(r.Model.ContextTokens), r.Model.Price.OutputPerM)
+			if r.SupportsReasoning() {
+				d += ", reasoning"
+			}
+			if fav[r.Ref] {
+				d = "* " + d
+			}
+			out = append(out, input.Choice{Text: r.Ref, Detail: d})
+		}
+		mu.Lock()
+		list = out
+		mu.Unlock()
+	}()
+	return func() []input.Choice {
+		mu.Lock()
+		defer mu.Unlock()
+		return list
 	}
-	if err := printModels(os.Stdout, all, f, favoriteSet(cfg)); err != nil {
-		return err
-	}
-	if !slices.ContainsFunc(all, func(r modelRow) bool { return f.keep(r, favoriteSet(cfg)) }) {
-		fmt.Fprintf(os.Stderr, "models: nothing matches (%d models listed by %d provider(s); try fewer words or filters)\n", len(all), len(sources))
-	}
-	return nil
 }
 
 func favoriteSet(cfg *config.Config) map[string]bool {

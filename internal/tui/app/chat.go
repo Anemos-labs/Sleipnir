@@ -314,6 +314,9 @@ func (m *chatModel) attach(a ChatAttach) {
 	}
 	m.host, m.info, m.attached, m.events = a.Host, a.Info, true, a.Events
 	var cs []input.Completer
+	if a.Models != nil {
+		cs = append(cs, input.Choices("model", a.Models))
+	}
 	if len(a.Commands) > 0 {
 		cs = append(cs, input.SlashCommands(a.Commands))
 	}

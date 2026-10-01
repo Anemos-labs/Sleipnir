@@ -81,7 +81,10 @@ type ChatAttach struct {
 	// Commands are the slash commands the prompt completes; Root is where @paths are completed from.
 	Commands []input.Command
 	Root     string
-	Err      error
+	// Models is what `/model ` completes to (the catalogues of the providers, favorites first); it answers from memory and may be empty
+	// while the catalogues are still being fetched. Nil offers nothing.
+	Models func() []input.Choice
+	Err    error
 }
 
 // ChatConfig is what the chat program is made of. Everything that touches the world is given: the screen, the keys, the size

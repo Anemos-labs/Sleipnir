@@ -139,7 +139,13 @@ func (e *Editor) triggerWord() (start int, ok bool) {
 	for s > 0 && e.cur-s < maxWord && e.buf[s-1] != '\n' && !unicode.IsSpace(e.buf[s-1]) && !isChip(e.buf[s-1]) {
 		s--
 	}
-	if s == e.cur || e.cur-s >= maxWord {
+	if e.cur-s >= maxWord {
+		return s, false
+	}
+	if e.commandArgument(s) {
+		return s, true // the first argument of a slash command ("/model qw"): the completer says whether it has choices for it
+	}
+	if s == e.cur {
 		return s, false
 	}
 	switch e.buf[s] {
@@ -149,6 +155,21 @@ func (e *Editor) triggerWord() (start int, ok bool) {
 		return s, true
 	}
 	return s, false
+}
+
+// commandArgument reports whether the word that starts at s is the first argument of a slash command: the line begins with
+// "/name" and one space comes between it and s.
+func (e *Editor) commandArgument(s int) bool {
+	ls := lineStart(e.buf, s)
+	if s-ls < 3 || e.buf[ls] != '/' || e.buf[s-1] != ' ' {
+		return false
+	}
+	for _, r := range e.buf[ls : s-1] {
+		if unicode.IsSpace(r) || isChip(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // afterKey is what every key that reached the editing commands leads to for the menu: an open one is brought up to date, a
@@ -231,6 +252,9 @@ func (e *Editor) refreshMenu() {
 	for _, r := range e.buf[m.from:e.cur] {
 		if unicode.IsSpace(r) || isChip(r) {
 			e.closeMenu()
+			if s, ok := e.triggerWord(); ok && e.commandArgument(s) {
+				e.openMenu() // the command's name is done: its argument has choices of its own, if the completer has any
+			}
 			return
 		}
 	}
