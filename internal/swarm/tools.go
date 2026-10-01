@@ -93,6 +93,10 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if err != nil {
 			return tools.Errorf("%v", err), nil
 		}
+		if strings.TrimSpace(in.Description) == "" {
+			// Not refused: a title can say it all. But a worker sees only what the task holds, and a weak manager forgets.
+			return text("created %s %q. It has no description: the worker sees only the title and files, so if the title does not say what to do and how to know it is done, mail the worker that when it takes the task (and give the next task a description)", task.ID, task.Title), nil
+		}
 		return text("created %s %q", task.ID, task.Title), nil
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil

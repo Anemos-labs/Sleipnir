@@ -45,6 +45,8 @@ The first release.
 
 ### Swarm
 
+- A task the manager creates without a description is created and the answer says what the worker will not see (it sees only the title and
+  files), so a weak manager gets one chance to write the brief. It is a hint, not a refusal: a title can say it all.
 - One manager and up to dozens of workers over one repository, dispatched from a task card without a briefing.
 - A typed board (immutable snapshots), rate-limited typed mail through a router, write leases and task scopes,
   content-hash staleness on every edit, checkpoints, a writer cap, and harness-owned "done" (a task cannot leave

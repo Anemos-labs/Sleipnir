@@ -966,3 +966,21 @@ func TestWaitDeliversCoalescedMail(t *testing.T) {
 		t.Fatalf("the digest was not moved into the inbox (inbox %d)", m.a.PendingInbox())
 	}
 }
+
+// A task created with no description is created, and the manager is told what the worker will not see.
+func TestACreatedTaskWithoutADescriptionDrawsAHint(t *testing.T) {
+	s := secRevSwarm()
+	task := secRevTool(t, s, "task")
+	for _, tc := range []struct {
+		in   map[string]any
+		hint bool
+	}{
+		{map[string]any{"action": "create", "title": "fix"}, true},
+		{map[string]any{"action": "create", "title": "fix2", "description": "fix the parser; go test ./parser must pass"}, false},
+	} {
+		r := secRevCall(t, task, "mgr", "manager", tc.in)
+		if r.IsError || !strings.Contains(r.Text, "created T") || strings.Contains(r.Text, "no description") != tc.hint {
+			t.Errorf("%v -> %q (error %v), hint wanted: %v", tc.in, r.Text, r.IsError, tc.hint)
+		}
+	}
+}
