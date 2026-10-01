@@ -30,7 +30,7 @@ var safeCommands = []string{
 	`sed -ne 1p main.go`, `sed -n -e 1p -e 2p main.go`, `sed 2q main.go`, `sed -n p main.go`, `grep -n package main.go | sed -n 1,3p`,
 	`ls; pwd`, `ls && pwd || echo no`, `ls > /dev/null`, `ls 2>&1`, `ls 2>/dev/null`, `ls &> /dev/null`, `ls >/dev/null 2>&1`,
 	`test -f main.go && echo yes`, `[ -d src ] && ls src`, `[[ -f main.go && -d src ]] && echo ok`,
-	`set -e`, `set -eu`, `set -euo pipefail`, `set -o pipefail`, `set +e`,
+	`ls $(pwd)`, `cd "$(pwd)" && ls`, `set -e`, `set -eu`, `set -euo pipefail`, `set -o pipefail`, `set +e`,
 	`true`, `false`, `:`, `sleep 1`, `seq 1 3`, `id -u`, `nproc`, `sha256sum main.go`, `md5sum main.go src/a.go`,
 	`for f in a b c; do echo $f; done`, `for i in 1 2 3; do echo $i; done`, `for f in $LIST; do echo $f; done`, `for f in src/*.go; do echo $f; done`,
 	`for f in *; do echo $f; done`, `for f in link-*; do echo $f; done`, `for f in *; do echo $f; done`, `if [ -f main.go ]; then echo yes; fi`,
@@ -77,7 +77,7 @@ func TestBashAllowlist(t *testing.T) {
 		`echo hi > out.txt`, `echo hi >> out.txt`, `ls > listing.txt`, `cat main.go > copy.go`, `echo x > src/new.go`, `ls 2> err.log`,
 		`echo hi | tee out.txt`, `cat main.go &> out`, `ls >| out`, `echo x > ../x`, `echo x > /tmp/x`,
 		// dynamic or opaque
-		`echo $(date)`, "echo `date`", `echo "$(date)"`, `ls $(pwd)`, `cat $(echo main.go)`, `echo ${x:-$(date)}`,
+		`echo $(date)`, "echo `date`", `echo "$(date)"`, `cat $(echo main.go)`, `echo ${x:-$(date)}`,
 		`x='a[$(touch pwned)]'; echo $((x))`, `unset 'a[$(touch pwned)]'`, `declare 'a[$(touch pwned)]=1'`, `read 'a[$(touch pwned)]' <<< x`,
 		`printf -v 'a[$(touch pwned)]' x`, `[[ 'a[$(touch pwned)]' -eq 1 ]]`, `test -v 'a[$(touch pwned)]'`, "let 'a[`touch pwned`]=1'",
 		`x='a[$(touch pwned)]'; [[ $x -eq 1 ]]`, `echo 'a[$(touch pwned)]' | while read x; do echo $((x)); done`, `export 'a[$(touch pwned)]=1'`,

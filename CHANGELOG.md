@@ -392,6 +392,8 @@ defect the runs showed, with the evidence, and what changed.
 - A notice of the session itself (not of an agent) no longer prints as `[] warn: ...`.
 - `/status`, `/permissions` and `/trust` in the chat: the model, mode and session at a glance, and every rule in force, what you allowed with "don't ask again" among
   them. Both answer beside a running turn.
+- **`cd "$(pwd)"` was refused.** The model's way to say "here" was the largest group of refusals of a benchmark run. The exact text `$(pwd)` is read as
+  `$PWD`; any other substitution is judged as before.
 - **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:
   45% `cd` to a path the model guessed (`/workspace`, `/repo`, `/home/user`), 14% paths the engine cannot know (`$(pwd)`,
   `$OLDPWD`, a loop variable), 6% scratch files in `/tmp`, 10% `sed -n 'N,Mp' file`, the way models read a range of lines.

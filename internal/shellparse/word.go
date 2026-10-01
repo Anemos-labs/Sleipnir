@@ -215,6 +215,12 @@ func (l *lexer) dollar(w *wbuf, nested *[]Simple, dq bool) {
 // cmdSubst reads $( ... ) at l.pos.
 func (l *lexer) cmdSubst(w *wbuf, nested *[]Simple) {
 	start := l.pos
+	if strings.HasPrefix(l.src[l.pos:l.end], "$(pwd)") {
+		// the idiom for "here" (cd "$(pwd)") is the same text as $PWD to every check that follows
+		w.litStr("$PWD")
+		l.pos += len("$(pwd)")
+		return
+	}
 	l.st.an.HasCommandSubstitution = true
 	l.pos += 2
 	if l.depth >= maxDepth {
