@@ -74,7 +74,7 @@ func TestTheWindowsJobTestsWhatTheListLeavesIn(t *testing.T) {
 	if !strings.Contains(job, "sh scripts/windows-packages.sh") || !strings.Contains(job, "go test") {
 		t.Error("the windows job of .github/workflows/ci.yml does not run `go test` on what `sh scripts/windows-packages.sh` prints: the list of excluded packages is not what decides what it tests")
 	}
-	if !strings.Contains(job, "test -n") {
+	if !strings.Contains(job, `-gt 0`) {
 		t.Error("the windows job does not check that the list of packages is not empty: a script that failed would leave `go test` with nothing to name, and the job would pass for it")
 	}
 	if _, err := os.Stat(filepath.Join(root(t), "scripts", "windows-packages.sh")); err != nil {

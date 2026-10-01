@@ -181,7 +181,9 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
   A load test finds what a quiet machine hides: run three `go test -race -count=1 ./...` at once (a CI runner runs several
   packages at a time) and read every failure as a finding, not as noise.
   To see what the runners see before pushing, run the test binaries as an unprivileged user with a symlinked `TMPDIR`
-  (`go test -c`, then `setpriv --reuid=65534 ...`); it catches most of the above.
+  (`go test -c`, then `setpriv --reuid=65534 ...`); it catches most of the above. A change to a workflow is checked the way the
+  `workflows` job checks it, with `shellcheck` on the path, since `actionlint` runs it over every `run:` script and says nothing
+  about them without it: `pip install shellcheck-py`, then `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`.
 
 ## Performance
 

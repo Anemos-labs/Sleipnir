@@ -126,9 +126,9 @@ jobs:
       - name: test the portable packages
         shell: bash
         run: |
-          pkgs=$(sh scripts/windows-packages.sh)
-          test -n "$pkgs"
-          go test -count=1 -timeout 25m $pkgs
+          mapfile -t pkgs < <(sh scripts/windows-packages.sh)
+          test "${#pkgs[@]}" -gt 0
+          go test -count=1 -timeout 25m "${pkgs[@]}"
 
   # Every target that .goreleaser.yaml ships (internal/repocheck compares the two lists), built and vetted, tests included,
   # so that a file for another platform (proc_darwin.go, a _windows_test.go) cannot rot unseen on a Linux-only CI.
