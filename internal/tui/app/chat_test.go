@@ -745,6 +745,85 @@ func TestChatTheNextQuestionIsNotAnsweredByTheKeyThatAnsweredTheOneBefore(t *tes
 	}
 }
 
+// A worker of a swarm outlives the manager's turn, and so does its question: the end of a turn, and Ctrl-C, do not take it away
+// unanswered. The manager's own question goes with the turn.
+func TestChatAWorkersQuestionOutlivesTheManagersTurn(t *testing.T) {
+	r := startChat(t, rigOpts{mainAgent: "mgr"})
+	worker := make(chan perm.Decision, 1)
+	mgr := make(chan perm.Decision, 1)
+	asked := make(chan struct{})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		switch goal {
+		case "first": // the manager starts a worker, and the turn ends while the worker waits for an answer
+			go func() {
+				worker <- r.prompt(context.Background(), perm.Request{Agent: "be-2", Tool: "bash", Command: "make deploy", Summary: "run a command [not on the allow list]"})
+			}()
+			return TurnResult{Steps: 1}
+		case "second": // the manager asks too, and is cancelled while it waits
+			go func() {
+				mgr <- r.prompt(ctx, perm.Request{Agent: "mgr", Tool: "bash", Command: "touch x", Summary: "run a command"})
+			}()
+			close(asked)
+			<-ctx.Done()
+			return TurnResult{Err: ctx.Err()}
+		}
+		return TurnResult{Steps: 1}
+	}
+	r.submit("first")
+	r.shows("make deploy", "be-2", "1. Yes")
+	r.submit("second") // typed while the worker's question is open: it is a goal, and its turn runs and ends under the question
+	<-asked
+	r.shows("1 more waiting")
+	r.ctrl('c') // cancels the manager's turn and the manager's question, not the worker's
+	r.shows("(cancelled)")
+	select {
+	case d := <-mgr:
+		if d.Allow {
+			t.Errorf("a cancelled question is not an approval: %+v", d)
+		}
+	case <-time.After(time.Minute):
+		t.Fatal("the manager's question was not refused (a hang guard)")
+	}
+	if s := r.screen(); !strings.Contains(s, "make deploy") || !strings.Contains(s, "1. Yes") {
+		t.Fatalf("the worker's question is still on the screen:\n%s", s)
+	}
+	select {
+	case d := <-worker:
+		t.Fatalf("the worker's question was answered by the end of a turn: %+v", d)
+	default:
+	}
+	r.press(input.RuneKey('1', 0))
+	if d := decision(t, worker); !d.Allow {
+		t.Errorf("the worker's question is the person's to answer: %+v", d)
+	}
+}
+
+// A worker's call goes on when the manager's turn ends: it is still listed as running, and written once, when the worker says that it
+// has ended. (The manager's own calls that were cut short by the end of the turn are written as cancelled.)
+func TestChatAWorkersCallGoesOnWhenTheManagersTurnEnds(t *testing.T) {
+	r := startChat(t, rigOpts{mainAgent: "mgr", cols: 100})
+	workers := toolCall("w1", "bash", map[string]any{"command": "go test ./..."})
+	managers := toolCall("m1", "bash", map[string]any{"command": "git status"})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		r.sink.ToolStart("be-2", workers)
+		r.sink.ToolStart("mgr", managers) // never ends: the turn is over first
+		return TurnResult{Steps: 1}
+	}
+	r.submit("go")
+	s := r.shows("1 step", "[be-2]", "go test ./...")
+	if n := strings.Count(s, "go test ./..."); n != 1 {
+		t.Errorf("the worker's call is on the screen %d times, once, as running:\n%s", n, s)
+	}
+	if !strings.Contains(s, "git status") || !strings.Contains(s, "✓ 0s") {
+		t.Errorf("the manager's call that never ended is written:\n%s", s)
+	}
+	r.sink.ToolEnd("be-2", workers, okResult("ok", nil), 2*time.Second)
+	s = r.shows("✓ 2.0s")
+	if n := strings.Count(s, "go test ./..."); n != 1 || !strings.Contains(s, "[be-2] ● Bash go test ./...  ✓ 2.0s") {
+		t.Errorf("the worker's call is written once, when it ended:\n%s", s)
+	}
+}
+
 func TestChatAQuestionFromAnAgentOfASwarmSaysWhoAsks(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	ans := r.ask(perm.Request{Agent: "be-2", Tool: "edit", Paths: []string{"/work/proj/x.go"}, Summary: "edit x.go"})

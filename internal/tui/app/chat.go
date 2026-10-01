@@ -408,13 +408,19 @@ func (m *chatModel) answerQuestion(d *dialog, dec perm.Decision) {
 }
 
 func (m *chatModel) dropQuestion(q *question) {
+	m.removeQuestions(func(d *dialog) bool { return d.q == q })
+}
+
+// removeQuestions takes the questions drop says yes to off the screen (answering them is the caller's business).
+func (m *chatModel) removeQuestions(drop func(*dialog) bool) {
 	front := m.question()
-	for i, d := range m.dialogs {
-		if d.q == q {
-			m.dialogs = append(m.dialogs[:i:i], m.dialogs[i+1:]...)
-			break
+	kept := make([]*dialog, 0, len(m.dialogs))
+	for _, d := range m.dialogs {
+		if !drop(d) {
+			kept = append(kept, d)
 		}
 	}
+	m.dialogs = kept
 	if next := m.question(); next != nil && next != front {
 		// The next question has been waiting behind this one, and the key that answered this one (pressed twice, say) was not meant
 		// for it: it takes keys again only after the keyboard has been quiet, like any question that has just appeared.
@@ -516,7 +522,9 @@ func (m *chatModel) interrupt() {
 }
 
 // cancelRun cancels what runs, and with it the questions it asks: the turn's, or the session's while it is being made (a tool server
-// of the project asks whether it may start, and the start waits for the answer).
+// of the project asks whether it may start, and the start waits for the answer). A worker of a swarm outlives a turn, and so does the
+// question it asks: that one is the worker's to ask and the person's to answer (if the worker is cancelled too, it takes its question
+// back itself).
 func (m *chatModel) cancelRun() {
 	switch {
 	case m.running != nil:
@@ -526,13 +534,13 @@ func (m *chatModel) cancelRun() {
 	default:
 		return
 	}
-	for _, d := range m.dialogs {
-		d.answer(noAnswer)
-	}
-	m.dialogs = nil
-	for _, t := range m.tools {
-		t.asking = false
-	}
+	m.removeQuestions(func(d *dialog) bool {
+		mine := d.q.req.Agent == "" || m.isMain(d.q.req.Agent)
+		if mine {
+			d.answer(noAnswer)
+		}
+		return mine
+	})
 }
 
 // eof is Ctrl-D on an empty prompt: quit, or (while something runs) quit when it is over, like a line typed ahead.
@@ -699,7 +707,6 @@ func (m *chatModel) runEnded(e runEnd) {
 	m.settle()
 	m.snapshot() // may bring a fold
 	m.running = nil
-	m.dialogs = nil
 	m.endStream()
 	m.flushFolds()
 	m.flushTools(e.turn.Err != nil)
@@ -907,22 +914,28 @@ func (m *chatModel) printTool(t doneTool) {
 	m.block(kind, lines)
 }
 
-// flushTools writes the calls that never ended (the turn was cancelled under them) as cancelled, so that the scrollback does not
-// lose them.
+// flushTools writes the calls of the turn's own agent that never ended (the turn was cancelled under them) as cancelled, so that the
+// scrollback does not lose them. The calls of a swarm's workers go on: a worker outlives the manager's turn, and says itself when its
+// call has ended.
 func (m *chatModel) flushTools(cancelled bool) {
+	kept := m.toolSeq[:0:0]
 	for _, key := range m.toolSeq {
 		t := m.tools[key]
 		if t == nil {
+			continue
+		}
+		if !m.isMain(t.agent) {
+			kept = append(kept, key)
 			continue
 		}
 		res := toolResult{Failed: true, IsError: true, Text: "cancelled"}
 		if !cancelled {
 			res = toolResult{Text: ""}
 		}
-		m.printTool(doneTool{agent: t.agent, call: callOf(t), res: res, took: m.since(t.since), cwd: m.info.Cwd, worker: !m.isMain(t.agent)})
+		m.printTool(doneTool{agent: t.agent, call: callOf(t), res: res, took: m.since(t.since), cwd: m.info.Cwd})
+		delete(m.tools, key)
 	}
-	m.tools = map[string]*toolRun{}
-	m.toolSeq = nil
+	m.toolSeq = kept
 }
 
 // ---- the answer ----
