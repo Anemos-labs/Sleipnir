@@ -1092,3 +1092,36 @@ func TestBoardIsRebuiltFromTheLog(t *testing.T) {
 		t.Errorf("notes differ:\n replay: %+v\n live:   %+v", got.Notes, live.Notes)
 	}
 }
+
+// An agent that acts on a task that is not its own is told what to do about it. The first real swarm run had a manager that
+// read "T1 belongs to nobody", could find no way to drop a duplicate task, and went on for four turns; the answer names the way.
+func TestTheAnswerToAnAgentThatDoesNotOwnATaskSaysWhatToDo(t *testing.T) {
+	b := NewBoard(nil)
+	b.CreateTask("mgr", TaskSpec{Title: "one"})
+	b.CreateTask("mgr", TaskSpec{Title: "two"})
+	if err := b.Claim("be-1", "T2"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		err  error
+		want []string
+	}{
+		{"update of a task nobody claimed", b.Update("mgr", "T1", "a better description"), []string{"T1", "not claimed by anyone", "claim it first", "fail"}},
+		{"submission of a task nobody claimed", b.Submit("be-1", "T1", "x", ""), []string{"not claimed by anyone"}},
+		{"update of another agent's task", b.Update("be-2", "T2", "hax"), []string{"T2 belongs to be-1", "not to you", "mail"}},
+	} {
+		if c.err == nil {
+			t.Errorf("%s: no error", c.name)
+			continue
+		}
+		for _, w := range c.want {
+			if !strings.Contains(c.err.Error(), w) {
+				t.Errorf("%s: %q does not say %q", c.name, c.err, w)
+			}
+		}
+		if strings.HasSuffix(c.err.Error(), "belongs to nobody") {
+			t.Errorf("%s: %q is the bare answer that gave a model nothing to act on", c.name, c.err)
+		}
+	}
+}

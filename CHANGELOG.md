@@ -316,6 +316,11 @@ defect the runs showed, with the evidence, and what changed.
   `--allow tests` for the build and test commands of most projects, a preset that installs and downloads nothing and hands no
   interpreter a program of its own), and a run that was refused something ends with the commands, how many times, and the rules that
   would let them through (`run --json` carries them as `refused_no_one_to_ask`).
+- **A swarm manager could not tell how to drop a duplicate task.** In the first real swarm run (a model that wrote a half-garbled
+  `task create`, then created the task again) the manager's `task update` on the first one was answered `T1 belongs to nobody`; it
+  looked for a delete action that does not exist, and tried `done` on it, for four turns. The answer to an agent that acts on a task
+  it does not own now says what to do: claim a task nobody has claimed before reporting on it, and a task that should not be done
+  at all is dropped with `fail` (manager only); another agent's task names its owner and who to mail.
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
