@@ -109,16 +109,22 @@ to play it back (space pauses, the arrows seek, `+` and `-` change the speed). S
 ## Quick start
 
 ```sh
-# 1. install (Linux/macOS)                                   (or: go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest)
-curl -fsSL https://raw.githubusercontent.com/anemos-labs/sleipnir/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/anemos-labs/sleipnir/main/scripts/install.sh | sh   # or: go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
+cd your-project && sleipnir            # first run: pick a provider (Heimdall is the recommended one), paste its key, pick a model; you are then in the chat
+```
+
+That is all: the key is kept in `~/.sleipnir/auth.json` (mode 0600) and your choices in `~/.sleipnir/config.json`, and the next `sleipnir` opens the chat at once. The rest of
+this section is what else the command line does.
+
+```sh
+# 1. try it with no key and no network
 sleipnir demo                          # no key, no network: on a terminal, watch nine scripted agents build a shop in git worktrees (20 s, the live cockpit: the cache, the mail, the merge queue), then the bill
 sleipnir demo --scenario handbook      # a one-second survey by a scripted team and the bill, as text (what a pipe gets)
 sleipnir replay latest                 # play a recorded session back as the cockpit; `sleipnir watch` shows one being written
 
 # 2. point it at a model. Heimdall is the recommended start; built in too: OpenRouter, OpenAI, Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra,
 #    and local servers with no key (ollama/<model>, lmstudio/, llamacpp/, vllm/). Any other OpenAI-compatible or Anthropic Messages endpoint is a config entry.
-sleipnir login                         # paste a key once (kept in ~/.sleipnir/auth.json, mode 0600); or export HEIMDALL_API_KEY / OPENROUTER_API_KEY / ... instead
-sleipnir                               # first run: asks for a key if there is none, asks the provider which models it has, writes ~/.sleipnir/config.json, opens the chat (no model name is built in)
+sleipnir login                         # paste a key (again): kept in ~/.sleipnir/auth.json, mode 0600; or export HEIMDALL_API_KEY / OPENROUTER_API_KEY / ... instead (it wins)
 cd your-project && sleipnir init       # shareable project settings, AGENTS.md (used once you trust the project: below)
 sleipnir trust                         # what this project's own files would add to every prompt; `trust add` keeps your yes until one of them changes
 sleipnir models qwen --tools           # every provider with a key at once: search words, --reasoning, --max-price, --min-context, favorites (models fav add REF)
