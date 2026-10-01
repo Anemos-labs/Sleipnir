@@ -5,7 +5,7 @@ what coding agents (and people who work like them) read first.
 
 ## Build and test
 
-Go 1.24, standard library plus `golang.org/x/{net,sys,term}`. No cgo.
+Go 1.25, standard library plus `golang.org/x/{net,sys,term}`. No cgo.
 
 ```sh
 go build ./...                       # everything

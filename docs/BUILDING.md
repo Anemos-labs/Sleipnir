@@ -1,13 +1,18 @@
 # Building Sleipnir: conventions for contributors
 
-Sleipnir is a Go (1.24, stdlib-first) coding-agent harness whose defining feature is a
+Sleipnir is a Go (1.25, stdlib-first) coding-agent harness whose defining feature is a
 multi-layer prompt-cache engine shared by swarms of agents. This page is the short
 version of "how code here is written". Read it before touching a package.
 
 ## Toolchain
 
-- `go env -w GOTOOLCHAIN=local` (already set in the dev container). Do not let tooling
-  bump the `go` directive in `go.mod`; it must stay `1.24`.
+- Go 1.25 or newer: `go.mod` says `go 1.25.0`, the oldest Go the project builds with, and the `go.mod` leg of the CI matrix proves
+  it still does. It became 1.25 with `golang.org/x/net` v0.58 (the HTML parser that reads fetched pages had seven advisories, fixed
+  from v0.55, which needs 1.25); Go 1.24 is out of support. When the `go` on your path is older the go command fetches the toolchain
+  the directive asks for (`GOTOOLCHAIN=auto`, its default). In an offline container install it and pin with `GOTOOLCHAIN=local`
+  (`GOTOOLCHAIN=go1.25.1` names one that is installed). Do not let tooling raise the directive without a reason of this kind.
+  Do not set the toolchain in a machine-wide `go env -w` where benchmarks run (`docs/BENCHMARKS.md`): a rollout's own `go test`
+  must use the Go its tasks were built with.
 - Do not edit `go.mod` / `go.sum` without a reason. Allowed non-stdlib deps are already declared:
   `golang.org/x/net`, `golang.org/x/sys`, `golang.org/x/term`. If you believe another
   dependency is essential, write a stdlib fallback and say so in your report. CI runs

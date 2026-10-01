@@ -161,6 +161,10 @@ The first release.
   time; "done" belongs to the harness; Retry-After is capped everywhere.
 - Independent adversarial reviews of the prompt engine, the swarm and the trust boundaries are in `docs/reviews/`, with what
   was fixed (all of it) and what remains.
+- **`golang.org/x/net` v0.58 and Go 1.25.** The HTML parser that turns a fetched page into text (`html.Parse`, reached from the
+  `web_fetch` tool) had seven advisories (GO-2026-4440, 4441, 5025, 5027, 5028, 5029 and 5030). `govulncheck` is clean from v0.55,
+  which needs Go 1.25, so `go.mod` says `go 1.25.0` (Go 1.24 is out of support) and `golang.org/x/sys` and `golang.org/x/term` moved
+  with it. The dependencies are still the standard library and those three modules.
 
 ### Configuration
 
