@@ -357,7 +357,7 @@ func TestConcurrentPromptsWithRemember(t *testing.T) {
 		wg.Add(1)
 		go func(g int) {
 			defer wg.Done()
-			r := f.request(bash(fmt.Sprintf("make t%d", g%10)))
+			r := f.request(bash(fmt.Sprintf("mytool t%d", g%10)))
 			r.Agent = fmt.Sprintf("a%d", g)
 			if d := e.Check(bg, r); !d.Allow {
 				t.Errorf("agent %d: %+v", g, d)

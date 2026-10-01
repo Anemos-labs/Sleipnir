@@ -418,7 +418,7 @@ test commands of most projects), `permissions.allow` in the configuration, or `-
 `pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint` and `ctest`: they
 run the project's own code, as running its tests is meant to, and never install a package, download, or hand an interpreter a
 program of its own. In a terminal the question is
-`allow? [y]es once / [a]lways this session / [n]o` (`run`, and the line chat); `a` adds an exact rule for the rest of the session (it is not
+`allow? [y]es once / [a]lways this session / [n]o` (`run`, and the line chat); `a` adds a rule for the rest of the session, the exact command or, for the runner commands of `docs/SECURITY.md` (`go test`, `npm run`, `make`...), its prefix (it is not
 written to any file), and anything but `y`/`a` refuses. The chat program asks with a box instead, answered by `1` (yes),
 `2` (yes, and do not ask again for this exact request: the same rule as `a`) or `3` (no; `esc` and Ctrl-D refuse too).
 

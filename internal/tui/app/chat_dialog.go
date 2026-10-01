@@ -82,6 +82,9 @@ func dialogOptions(r perm.Request) (opts []widget.DialogOption, kind dialogKind)
 	switch strings.ToLower(r.Tool) {
 	case "bash":
 		what = "this command"
+		if p := perm.RememberedAs(r.Command); p != "" {
+			what = "\"" + p + "\" commands"
+		}
 	case "edit", "write", "apply_patch":
 		what = "this change"
 	}

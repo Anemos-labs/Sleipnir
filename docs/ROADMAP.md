@@ -83,13 +83,7 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
    fix whichever it is, with a test. Then `sleipnir rl compare OLD NEW` per model, a "Before and after" section in `docs/BENCHMARKS.md`
    and `bench/build.sh --update-lock` to lock the suite. The runs so far cost cents (US$0.15 to 0.20 for 144 episodes); check that the key still
    works (`sleipnir doctor`) before planning around it.
-2. **G5b, prefix-scoped "don't ask again".** Today the chat's second answer remembers the exact command for the session
-   (`internal/tui/app/chat_dialog.go`, `internal/session/sink.go`); a person doing test-driven work is asked again for every different
-   `go test ./pkg`. Offer a session rule `Bash(go test:*)` from a short table of runner prefixes (`go test|build|vet`, `npm test`, `npm run`,
-   `pytest`, `cargo test|build|check`, `make`, `git add|commit|status`) and never for shells, interpreters, `rm`, `sudo`, `curl` or anything
-   unknown. The engine already understands `Bash(prefix:*)` (`internal/perm/rule.go`) and still asks for its high-risk flags. Write down in
-   `docs/SECURITY.md` what a prefix rule adds over the exact one (flags such as `go test -exec` run a program of the model's choosing; the
-   answer is that a test run already executes whatever tests the repository has, and an unattended session never gets the rule).
+2. *(G5b, prefix-scoped "don't ask again", is done: `docs/SECURITY.md`, "Don't ask again for a runner command".)*
 3. *(G5c, a private `$TMPDIR` for the session, is done: `docs/SECURITY.md`, section 2.)*
 4. **G5d, slash commands.** `/status` (model, mode, directory, session, trust, tool servers, budget), `/permissions` (mode, rules, what was
    remembered), `/trust` (what `sleipnir trust` shows), `/clear` (fold the thread and keep the pinned prefix: a declared, priced rebase, like

@@ -139,21 +139,21 @@ func TestRememberSession(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
-	if d := e.Check(bg, f.request(bash("make test"))); !d.Allow {
+	if d := e.Check(bg, f.request(bash("mytool test"))); !d.Allow {
 		t.Fatal(d)
 	}
-	if got := e.Rules(Allow); len(got) != 1 || got[0] != "Bash(make test)" {
+	if got := e.Rules(Allow); len(got) != 1 || got[0] != "Bash(mytool test)" {
 		t.Fatalf("rules after remember: %q", got)
 	}
-	if d := e.Check(bg, f.request(bash("make test"))); !d.Allow || !strings.Contains(d.Reason, "allowed by rule Bash(make test)") {
+	if d := e.Check(bg, f.request(bash("mytool test"))); !d.Allow || !strings.Contains(d.Reason, "allowed by rule Bash(mytool test)") {
 		t.Errorf("second call: %+v", d)
 	}
 	if rec.count() != 1 {
 		t.Errorf("prompted %d times, want 1", rec.count())
 	}
 	// The remembered rule is exact: other arguments prompt again.
-	e.Check(bg, f.request(bash("make test -v")))
-	e.Check(bg, f.request(bash("make build")))
+	e.Check(bg, f.request(bash("mytool test -v")))
+	e.Check(bg, f.request(bash("mytool build")))
 	if rec.count() != 3 {
 		t.Errorf("prompted %d times, want 3", rec.count())
 	}
@@ -163,8 +163,8 @@ func TestRememberOnceAddsNothing(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeOnce} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
-	e.Check(bg, f.request(bash("make test")))
-	e.Check(bg, f.request(bash("make test")))
+	e.Check(bg, f.request(bash("mytool test")))
+	e.Check(bg, f.request(bash("mytool test")))
 	if rec.count() != 2 || len(e.Rules(Allow)) != 0 {
 		t.Errorf("prompts %d, rules %q", rec.count(), e.Rules(Allow))
 	}
@@ -180,11 +180,11 @@ func TestRememberProjectPersists(t *testing.T) {
 		persisted = append(persisted, fmt.Sprintf("%s:%s:%s", s, r.Action, r))
 		mu.Unlock()
 	}}, rec.prompt)
-	e.Check(bg, f.request(bash("make test")))
-	e.Check(bg, f.request(bash("make test")))
+	e.Check(bg, f.request(bash("mytool test")))
+	e.Check(bg, f.request(bash("mytool test")))
 	mu.Lock()
 	defer mu.Unlock()
-	if len(persisted) != 1 || persisted[0] != "project:allow:Bash(make test)" {
+	if len(persisted) != 1 || persisted[0] != "project:allow:Bash(mytool test)" {
 		t.Errorf("persisted %q", persisted)
 	}
 }
@@ -194,7 +194,7 @@ func TestSessionScopeDoesNotPersist(t *testing.T) {
 	var n int32
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
 	e := askEngine(t, f, Config{Persist: func(Scope, Rule) { atomic.AddInt32(&n, 1) }}, rec.prompt)
-	e.Check(bg, f.request(bash("make test")))
+	e.Check(bg, f.request(bash("mytool test")))
 	if atomic.LoadInt32(&n) != 0 {
 		t.Error("a session rule was persisted")
 	}
@@ -232,11 +232,11 @@ func TestRememberCompoundCommand(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
-	e.Check(bg, f.request(bash("make a && make b; ls")))
-	if got := e.Rules(Allow); len(got) != 2 || got[0] != "Bash(make a)" || got[1] != "Bash(make b)" {
+	e.Check(bg, f.request(bash("mytool a && mytool b; ls")))
+	if got := e.Rules(Allow); len(got) != 2 || got[0] != "Bash(mytool a)" || got[1] != "Bash(mytool b)" {
 		t.Fatalf("rules %q", got)
 	}
-	if d := e.Check(bg, f.request(bash("make a && make b"))); !d.Allow || rec.count() != 1 {
+	if d := e.Check(bg, f.request(bash("mytool a && mytool b"))); !d.Allow || rec.count() != 1 {
 		t.Errorf("repeat: %+v, prompts %d", d, rec.count())
 	}
 }
@@ -245,12 +245,12 @@ func TestRememberQuotedCommandRoundTrips(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
-	cmd := `git commit -m "fix: it's (really) done"`
+	cmd := `mytool commit -m "fix: it's (really) done"`
 	e.Check(bg, f.request(bash(cmd)))
 	if d := e.Check(bg, f.request(bash(cmd))); !d.Allow || rec.count() != 1 {
 		t.Errorf("repeat: %+v, prompts %d, rules %q", d, rec.count(), e.Rules(Allow))
 	}
-	e.Check(bg, f.request(bash(`git commit -m "fix: other"`)))
+	e.Check(bg, f.request(bash(`mytool commit -m "fix: other"`)))
 	if rec.count() != 2 {
 		t.Errorf("a different message must prompt again, prompts = %d", rec.count())
 	}
@@ -568,5 +568,45 @@ func TestPanickingPrompterDoesNotWedgeTheEngine(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the engine deadlocked after a prompter panic")
+	}
+}
+
+// "Don't ask again" for a runner command remembers the prefix, so that the next go test of another package is not asked about; what a
+// prefix must not cover is still asked: a flag that runs a program, a different subcommand, a chain, a program that is not a runner.
+func TestRememberSessionOfARunnerCommandIsItsPrefix(t *testing.T) {
+	f := newFixture(t)
+	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	if d := e.Check(bg, f.request(bash("go test ./a"))); !d.Allow {
+		t.Fatal(d)
+	}
+	if got := e.Rules(Allow); len(got) != 1 || got[0] != "Bash(go test:*)" {
+		t.Fatalf("rules after remember: %q", got)
+	}
+	for _, cmd := range []string{"go test ./b", "go test -race -count=1 ./..."} {
+		if d := e.Check(bg, f.request(bash(cmd))); !d.Allow {
+			t.Errorf("%s: %+v", cmd, d)
+		}
+	}
+	if rec.count() != 1 {
+		t.Errorf("prompted %d times, want 1", rec.count())
+	}
+	for _, cmd := range []string{"go run .", "go test ./a && rm -rf x", "go env -w X=1", "gofmt -w ."} {
+		before := rec.count()
+		e.Check(bg, f.request(bash(cmd)))
+		if rec.count() != before+1 {
+			t.Errorf("%q was not asked about", cmd)
+		}
+	}
+}
+
+func TestRememberedAs(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"go test ./a": "go test", "npm run build": "npm run", "pytest -x": "pytest", "git commit -m x": "git commit",
+		"go run .": "", "bash x.sh": "", "rm -rf x": "", "curl x": "", "go test ./a && go vet": "", "FOO=1 go test": "", "sudo go test": "",
+	} {
+		if got := RememberedAs(cmd); got != want {
+			t.Errorf("%q: %q, want %q", cmd, got, want)
+		}
 	}
 }

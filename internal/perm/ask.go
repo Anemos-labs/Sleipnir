@@ -184,6 +184,12 @@ func (e *Engine) remember(d Decision, v verdict) {
 	for _, rule := range v.rem {
 		if !d.Allow {
 			rule.Action = Deny
+		} else if d.Remember == ScopeSession && rule.Tool == "Bash" {
+			// A yes for the rest of the session to a runner command is a yes to the runner (go test ./a, then ./b),
+			// not to that exact line. A no, and anything kept beyond the session, stay exact.
+			if p := RememberedAs(rule.Pattern); p != "" {
+				rule.Pattern = p + ":*"
+			}
 		}
 		e.AddRule(d.Remember, rule)
 	}

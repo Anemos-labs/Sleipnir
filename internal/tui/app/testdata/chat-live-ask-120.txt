@@ -6,7 +6,7 @@
 │ not on the allow list                                                                                                │
 │                                                                                                                      │
 │ ❯ 1. Yes                                                                                                             │
-│   2. Yes, and don't ask again for this command this session                                                          │
+│   2. Yes, and don't ask again for "go test" commands this session                                                    │
 │   3. No, and tell Sleipnir what to do instead (esc)                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
   1 2 3 answers, or ↑↓ and enter  ·  esc says no  ·  ctrl+c cancels the turn

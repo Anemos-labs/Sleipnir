@@ -211,7 +211,7 @@ state directory. `/` opens the palette of commands, `@` completes a path, `shift
 that was shown collapsed (a tool's long output is its first and last lines).
 
 **Approvals.** A tool that needs approval puts a box in the live region: the command, or the change as a diff, and why it asks.
-`1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session, `3` is no and tell Sleipnir what
+`1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session (for a test or build command such as `go test ./a`, for the command and not the arguments: `go test`), `3` is no and tell Sleipnir what
 to do instead; the arrows and Tab with Enter choose too, and `esc` is no. Letters never answer. A question takes keys only after
 the keyboard has been quiet for a moment since it appeared, and says so ("your typing goes to the prompt until you pause"), so a
 sentence that is half typed when the question appears, or a line typed ahead, cannot approve anything. Ctrl-D at a question is no

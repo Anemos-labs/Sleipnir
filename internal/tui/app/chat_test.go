@@ -562,7 +562,7 @@ func TestChatAQuestionIsADialogAndEachKeyAnswersIt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := startChat(t, rigOpts{})
 			ans := r.ask(bashRequest("go test ./..."))
-			s := r.shows("Run a command", "$ go test ./...", "1. Yes", "2. Yes, and don't ask again for this command this session", "3. No, and tell Sleipnir what to do instead", "not on the allow list")
+			s := r.shows("Run a command", "$ go test ./...", "1. Yes", "2. Yes, and don't ask again for \"go test\" commands this session", "3. No, and tell Sleipnir what to do instead", "not on the allow list")
 			if !strings.Contains(s, "❯ 1. Yes") {
 				t.Errorf("the choice starts on yes:\n%s", s)
 			}

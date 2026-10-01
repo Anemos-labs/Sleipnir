@@ -151,6 +151,10 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
   keeps cooperating agents apart and every merge accounted for. A path a shell computes at run time cannot be resolved before it runs
   and is left to the mode, as everywhere else, so a worker that is hostile and in `bypass` mode is not stopped by it: use a container.
 
+### "Don't ask again" for a runner command
+
+A yes for the rest of the session is an exact rule (`Bash(mytool build ./x)`), except for a short table of runner commands (`internal/perm/runner.go`: `go test|build|vet`, `npm test|run`, `pytest`, `cargo test|build|check`, `make`, `git add|commit|status`), where it is the prefix (`Bash(go test:*)`): a person doing test-driven work is not asked again for every package. The dialog names it ("don't ask again for "go test" commands"). What this adds: any arguments, among them flags such as `go test -exec`, which run a program of the model's choosing. A test run already executes whatever tests the repository has (a model that can write a test file can run anything through `go test`), so the prefix gives up little that the exact rule did not. What it does not cover stays asked about: another subcommand (`go run`), a chain (`go test ./a && rm -rf x`), a command with environment assignments or wrappers (`sudo`, `timeout`). It is never offered for shells, interpreters, `rm`, `sudo`, `curl` or anything not in the table; a no stays exact, nothing beyond the session is widened, and an unattended session has nobody to give the yes.
+
 ## 2. What is scrubbed and hardened, per OS
 
 Call `harden.Process()` first thing in `main` (`cmd/sleipnir` does). It never fails: what could not be done is in its `Status`.
