@@ -2,6 +2,7 @@
 
 Thanks for looking. This page is the short version; `docs/BUILDING.md` has the conventions in full and `AGENTS.md` is
 what coding agents (and people who work like them) read first.
+`docs/TESTING.md` is the map of what guards what, and `docs/REPO-SETUP.md` says what GitHub checks on every pull request.
 
 ## Build and test
 
