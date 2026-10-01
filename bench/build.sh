@@ -91,7 +91,11 @@ if want mutations || want composite; then
   if [ ! -d "$OUT/repos/stdmini/.git" ] || [ "$FORCE" = 1 ]; then
     rm -rf "$OUT/repos/stdmini"
     log "building the std-mini corpus ($GOVER)"
-    info=$(go run ./bench/tools/stdmini --out "$OUT/repos/stdmini" --packages "$(cfg .stdmini.packages)")
+    # a corpus that failed halfway is removed: its .git would be taken for a finished one by the next run
+    if ! info=$(go run ./bench/tools/stdmini --out "$OUT/repos/stdmini" --packages "$(cfg .stdmini.packages)"); then
+      rm -rf "$OUT/repos/stdmini"
+      exit 1
+    fi
     printf '%s\n' "$info" > "$OUT/repos/stdmini.info"
   fi
   STDMINI_SHA=$(sed -n 's/^tree_sha256 //p' "$OUT/repos/stdmini.info")

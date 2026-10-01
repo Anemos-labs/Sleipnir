@@ -10,7 +10,7 @@ container/list
 container/ring
 encoding/ascii85
 encoding/base32
-encoding/base64
+# encoding/base64 is out: since Go 1.25 it imports internal/byteorder
 encoding/csv
 encoding/hex
 encoding/pem
