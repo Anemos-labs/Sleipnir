@@ -100,6 +100,12 @@ jobs:
       - run: go build ./...
       - name: test (race)
         run: go test -race -count=1 -timeout 25m ./...
+      # The allocation gates (allocs_gate_test.go) are built only without the race detector, which changes allocation counts, and
+      # every run above has it on: this step is the only one that runs them. One leg is enough, the one with the Go their limits
+      # were measured with. internal/repocheck fails when a test of that kind is not matched by the pattern.
+      - name: tests that are not built under -race
+        if: matrix.os == 'ubuntu-latest' && matrix.go == 'mod'
+        run: go test -count=1 -timeout 10m -run 'Allocations' ./...
 
   # Informational: Windows is supported best effort (docs/SECURITY.md, section 4). A red run here is worth a look and never
   # blocks a merge: the job is not in the gate's needs.

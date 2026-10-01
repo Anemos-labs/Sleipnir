@@ -35,7 +35,8 @@ protections and the release work.
 4. **`ci-gate` must pass**, and the branch must be up to date with `main`. It waits for the jobs of `ci`: lint and drift
    checks (format, tidy, `go mod verify`, the dependency allow-list, every action pinned to a commit, prompt bytes declared
    in `CHANGELOG.md`, `docs/CLI.md` and the README's simulator block current), tests with `-race` on Linux (amd64 and
-   arm64) and macOS, with the Go of `go.mod` and the newest Go, cross-compiles and vet for every platform that is released,
+   arm64) and macOS, with the Go of `go.mod` and the newest Go (and the allocation gates, which are not built under `-race`),
+   cross-compiles and vet for every platform that is released,
    the cache-policy guards, `govulncheck` and dependency review, and `actionlint` and `zizmor` on the workflows. Windows
    runs too, for information. CodeQL must show no new alert of high severity. Conversations must be resolved.
 5. The pull request is **squash merged** (the only method), or set to auto-merge. The branch is deleted.

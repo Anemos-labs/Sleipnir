@@ -165,6 +165,7 @@ Anything but exactly `true` keeps releases off. Delete the variable to stop them
 | Declared prompt bytes | A change to a golden file of the prompt engine without a priced CHANGELOG entry | `scripts/check-declared.sh` | `sh scripts/check-declared.sh origin/main` |
 | Documents agree with code | A stale `docs/CLI.md`, a stale simulator block in the README, a recording that no longer matches the interface | `ci.yml`, `nightly.yml` | `sh scripts/gen-cli-docs.sh --check`, `make readme-sim` |
 | Tests | A regression on Linux (amd64 and arm64), macOS, with the Go of `go.mod` and with the newest stable Go, under the race detector | `ci.yml` `test` | `go test -race -count=1 ./...` |
+| Allocation gates | A hot path that allocates more than it is held to. These tests are not built under `-race`, so one more step runs them without it | `ci.yml` `test` | `go test -run Allocations ./...` |
 | Windows run (informational) | Windows breakage, seen but not blocking | `ci.yml` `windows` | `go test ./...` |
 | Cross-compile and vet | A file for another platform that stopped compiling; release day finding out | `ci.yml` `cross` | `sh scripts/check.sh` |
 | Cache-policy guards | A policy change that makes the cache model lose | `ci.yml` `sim` | `make sim` |
@@ -202,6 +203,7 @@ The left column is where the truth is written; the right columns are the copy an
 | The labels `pr.yml` sets | The categories of `.github/release.yml` | `TestPullRequestLabelsMatchReleaseNotes` | `go test` |
 | The drift checks in `scripts/` | `ci.yml` and `scripts/check.sh` | `TestDriftChecksAreWired` | `go test` |
 | The interface code | The recorded demo, when `scripts/record-demo.sh` exists | `scripts/record-demo.sh --check` | lint, nightly |
+| Test files that carry `//go:build !race` | The step of the `test` job that runs them without `-race`: its `-run` pattern and its packages | `TestTestsBuiltOnlyWithoutRaceAreRunByCI` | `go test` |
 | The version of govulncheck | Both workflows that run it | `TestToolVersionsAgree` | `go test` |
 | The `go` line of `go.mod` | The Go version that `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `docs/BUILDING.md` state (the workflows read `go.mod` themselves) | `TestDocumentsStateTheGoVersionOfGoMod` | `go test` |
 

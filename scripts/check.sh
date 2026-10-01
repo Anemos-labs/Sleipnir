@@ -57,6 +57,11 @@ go build ./...
 echo "== test (race), with the repository's own invariants (internal/repocheck)"
 if [ "$#" -gt 0 ]; then go test -race -count=1 "$@"; else go test -race -count=1 -timeout 25m ./...; fi
 
+if [ "$#" -eq 0 ]; then
+  echo "== tests that are not built under -race (the allocation gates)"
+  go test -count=1 -timeout 10m -run 'Allocations' ./...
+fi
+
 echo "== cross-compile and vet, for every target .goreleaser.yaml ships"
 for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
   GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/sleipnir
