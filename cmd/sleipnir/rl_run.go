@@ -47,6 +47,7 @@ type policyFlags struct {
 	roleModels                       kvFlags
 	seed                             int64
 	ctxTokens                        int
+	softLimit                        int
 	mode, permMode, allow            string
 	ignoreRepo                       bool
 	rpm                              int
@@ -67,6 +68,7 @@ func (p *policyFlags) register(fs *flag.FlagSet) {
 	fs.Var(p.roleModels, "role-model", "role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model")
 	fs.Int64Var(&p.seed, "seed", 0, "run seed; each rollout's sampling seed derives from it")
 	fs.IntVar(&p.ctxTokens, "context-tokens", 0, "the policy's context window when a task does not set one")
+	fs.IntVar(&p.softLimit, "thread-soft-limit", 0, "the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout")
 	fs.StringVar(&p.mode, "mode", "", "who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager with N workers, the same as --swarm N) | empty: what each task's team says")
 	fs.StringVar(&p.permMode, "perm-mode", "", "permission mode of the agents: accept-edits (the default) | default | plan | bypass")
 	fs.StringVar(&p.allow, "allow", "", "permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)")
@@ -189,7 +191,7 @@ func (p *policyFlags) resolve(fs *flag.FlagSet) (env.PolicySpec, *harness.Harnes
 		return env.PolicySpec{}, nil, errors.New("--rpm must not be negative")
 	}
 	h := &harness.Harness{
-		PolicyOptions: prov.Options, PolicyHeaders: prov.Headers, ContextTokens: p.ctxTokens,
+		PolicyOptions: prov.Options, PolicyHeaders: prov.Headers, ContextTokens: p.ctxTokens, ThreadSoftLimit: p.softLimit,
 		// What the user's own provider entry allows, or what this command line says.
 		PolicyAllowInsecureHTTP: p.allowInsecureHTTP || prov.AllowInsecureHTTP, PolicyAllowHosts: prov.AllowHosts,
 		Mode: permMode, Allow: allow, IgnoreRepoInstructions: p.ignoreRepo, RateLimit: harness.NewRateLimit(p.rpm),

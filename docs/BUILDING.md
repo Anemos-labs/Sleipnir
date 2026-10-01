@@ -163,6 +163,24 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
   To see what the runners see before pushing, run the test binaries as an unprivileged user with a symlinked `TMPDIR`
   (`go test -c`, then `setpriv --reuid=65534 ...`); it catches most of the above.
 
+## Performance
+
+What runs on every request is measured, in two ways that do not depend on each other.
+
+- **Allocations are tests.** The number of allocations of a call does not depend on the machine, so it can fail a build:
+  `allocs_gate_test.go` (`//go:build !race`, the race detector allocates for itself) in `internal/kv` (`Render` on every route and hot
+  mode, and how it grows with the thread), `internal/core` (`Canonical`), `internal/swarm` (reading the board costs nothing, a
+  claim, the governor), `internal/perm` (`Check`), `internal/events` (`Emit`) and `internal/provider` (the SSE reader) holds each
+  call to what it is, with a fifth to spare for another version of Go. A change that makes `Render`
+  allocate a block more per turn fails there, and one that makes it quadratic in the thread fails the scaling gate. Raising a limit is
+  a decision: say in the commit why the call now needs more.
+- **Time is benchmarks.** `Benchmark*` next to the code (`kv` Render and the keys, `core` Canonical, `events` Emit and Scan, `provider`
+  the SSE reader, `perm` Check, `swarm` the board and the governor, `tools/fs` grep, `session` BuildRecon, and the terminal UI's own).
+  `scripts/perf.sh run OUT.txt` runs them (median of `COUNT` repeats), `scripts/perf.sh compare OLD.txt NEW.txt` says what got slower
+  (`bench/tools/benchcmp`: a slowdown is reported only when the two ranges do not overlap, since a shared machine is noisy). Run both
+  runs in the same quiet minute, pinned to the same cpus (`CPUS=2,3`). Nothing fails a build on a wall-clock number; a run on a busy
+  machine is a hint, and the tests above are the guard.
+
 ## Changing prompt bytes
 
 The stable prompt bytes are cache keys, so golden files pin them, one test per thing (a change fails one named test):

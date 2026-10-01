@@ -51,3 +51,24 @@ func TestTheBudgetInDollarsReachesTheSession(t *testing.T) {
 		t.Fatalf("BudgetUSD = %v, want 0.25", got)
 	}
 }
+
+// How soon a rollout's threads are compacted is a setting to compare, so it can be set from the command line; left alone, a rollout
+// uses the default every session does.
+func TestTheThreadSoftLimitReachesTheConfig(t *testing.T) {
+	sp := env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p"}}
+	provide := func(env.RunSpec) (provider.Provider, cost.Model, error) { return nil, cost.Model{}, nil }
+	def, err := (&Harness{NewProvider: provide}).config(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := (&Harness{NewProvider: provide, ThreadSoftLimit: 80_000}).config(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Cache.ThreadSoftLimitTokens != 80_000 {
+		t.Errorf("soft limit %d, want the 80000 that was asked for", set.Cache.ThreadSoftLimitTokens)
+	}
+	if def.Cache.ThreadSoftLimitTokens == 80_000 || def.Cache.ThreadSoftLimitTokens < 0 {
+		t.Errorf("without the setting the config keeps its own default, got %d", def.Cache.ThreadSoftLimitTokens)
+	}
+}

@@ -1104,6 +1104,8 @@ flags:
         tasks file (JSON lines)
   -temperature float
         sampling temperature (overrides --sampling)
+  -thread-soft-limit int
+        the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout
   -top-p float
         nucleus sampling (overrides --sampling)
   -verify-policy string
@@ -1208,6 +1210,8 @@ flags:
         tasks file (JSON lines)
   -temperature float
         sampling temperature (overrides --sampling)
+  -thread-soft-limit int
+        the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout
   -top-p float
         nucleus sampling (overrides --sampling)
   -verify-policy string
