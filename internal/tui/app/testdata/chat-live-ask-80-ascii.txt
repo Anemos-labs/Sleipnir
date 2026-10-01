@@ -1,0 +1,16 @@
+80 columns, 15 rows, cursor at row -1 column 0
+? Waiting for your answer...  20s                               esc to interrupt
++- Run a command --------------------------------------------------------------+
+| $ go test -race ./...                                                        |
+|                                                                              |
+| not on the allow list                                                        |
+|                                                                              |
+| > 1. Yes                                                                     |
+|   2. Yes, and don't ask again for this command this session                  |
+|   3. No, and tell Sleipnir what to do instead (esc)                          |
++------------------------------------------------------------------------------+
+  1 2 3 or up/down enter  -  esc says no  -  ctrl+c cancels the turn
++------------------------------------------------------------------------------+
+| > Type a goal, / for commands, @ for files                                   |
++------------------------------------------------------------------------------+
+accept-edits - ctrl+t stack - / commands    mock/mock-1 - 20260102-030405-abcdef

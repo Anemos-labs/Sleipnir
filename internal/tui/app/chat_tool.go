@@ -208,7 +208,7 @@ func (k *chatLook) toolLines(t doneTool, width int) (lines []cell.Line, exp *exp
 	if extra != "" {
 		head.add(k.st.dim, "  "+extra)
 	}
-	lines = append(lines, fit(head.line(), width))
+	lines = append(lines, k.fit(head.line(), width))
 	if t.worker {
 		return lines, nil // a worker's tool is one line: its output is its own business
 	}

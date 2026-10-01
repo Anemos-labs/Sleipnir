@@ -29,7 +29,7 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	if b := clean(info.Budget); b != "" {
 		l1.add(k.st.dim, "  "+k.g.dot+" "+b)
 	}
-	out := []cell.Line{fit(l1.line(), width)}
+	out := []cell.Line{k.fit(l1.line(), width)}
 	if info.Resumed != "" {
 		out = append(out, paragraph(k.st.dim, "  "+info.Resumed, width)...)
 	}
@@ -161,7 +161,7 @@ func (k *chatLook) foldRecord(c state.Compaction, who string, width int) []cell.
 	if len(bits) > 0 {
 		r.add(k.st.dim, "  "+k.g.dot+" "+strings.Join(bits, " "+k.g.dot+" "))
 	}
-	return []cell.Line{fit(r.line(), width)}
+	return []cell.Line{k.fit(r.line(), width)}
 }
 
 // foldWidth is how many cells the thread takes in a fold, whatever its size: the bar is a picture of the ratio.
@@ -223,7 +223,7 @@ func (k *chatLook) anomalyLines(a state.Anomaly, who string, width int) []cell.L
 	if a.MissKnown && a.MissUSD > 0 {
 		r.add(k.st.dim, " "+k.g.dot+" cost ").add(k.st.warn, widget.USD(a.MissUSD))
 	}
-	out := []cell.Line{fit(r.line(), width)}
+	out := []cell.Line{k.fit(r.line(), width)}
 	if n := clean(a.Note); n != "" {
 		out = append(out, paragraph(k.st.dim, "  "+n, width)...)
 	}
@@ -241,5 +241,5 @@ func (k *chatLook) turnSummary(elapsed time.Duration, res TurnResult, saved floa
 		parts = append(parts, "saved "+k.g.approx+" "+widget.USD(saved))
 	}
 	text := k.g.rule + " " + strings.Join(parts, " "+k.g.dot+" ")
-	return fit(cell.Styled(k.st.dim, text), width)
+	return k.fit(cell.Styled(k.st.dim, text), width)
 }

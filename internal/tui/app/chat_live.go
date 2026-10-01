@@ -162,7 +162,7 @@ func (k *chatLook) liveLines(v *liveView) liveOut {
 		// A question has the keys (or is about to: see dialogView.armed). The prompt stays under it, dim, where there is room, so
 		// that what is typed while the question waits can be seen going to the prompt.
 		box, curRow = k.dialogLines(v.dlg, w), -1
-		parts = append(parts, livePart{pos: posBelow, prio: 0, lines: []cell.Line{fit(k.dialogHint(v.dlg), w)}})
+		parts = append(parts, livePart{pos: posBelow, prio: 0, lines: []cell.Line{k.dialogHint(v.dlg, w)}})
 		dim := *v
 		dim.inputBlur = true
 		under, _, _ := k.inputBox(&dim, w)
@@ -170,7 +170,7 @@ func (k *chatLook) liveLines(v *liveView) liveOut {
 	} else {
 		box, curRow, curCol = k.inputBox(v, w)
 		if below := v.ed.Lines[min(v.ed.InputRows, len(v.ed.Lines)):]; len(below) > 0 {
-			parts = append(parts, livePart{pos: posBelow, prio: 0, lines: fitAll(below, w)})
+			parts = append(parts, livePart{pos: posBelow, prio: 0, lines: k.fitAll(below, w)})
 		}
 	}
 	parts = append(parts, livePart{pos: posInput, prio: 0, lines: box})
@@ -238,10 +238,10 @@ func (k *chatLook) liveLines(v *liveView) liveOut {
 	return out
 }
 
-func fitAll(ls []cell.Line, w int) []cell.Line {
+func (k *chatLook) fitAll(ls []cell.Line, w int) []cell.Line {
 	out := make([]cell.Line, len(ls))
 	for i, l := range ls {
-		out[i] = fit(l, w)
+		out[i] = k.fit(l, w)
 	}
 	return out
 }
@@ -271,7 +271,7 @@ func (k *chatLook) inputBox(v *liveView, w int) (lines []cell.Line, curRow, curC
 	}
 	inner := widget.BoxInnerWidth(w)
 	if inner < 10 { // no room for a border: the prompt alone
-		return fitAll(body, w), v.ed.CursorRow, min(v.ed.CursorCol, w-1)
+		return k.fitAll(body, w), v.ed.CursorRow, min(v.ed.CursorCol, w-1)
 	}
 	lines = widget.Box("", body, w, k.Theme, widget.BoxPadding(1, 0))
 	if v.ed.CursorRow < n {
@@ -299,12 +299,16 @@ func (k *chatLook) queueLine(v *liveView, w int) cell.Line {
 		return nil
 	}
 	first := firstLine(v.queue[0], max(w-16, 8), k.g.ellipsis)
+	open, shut := "“", "”"
+	if !k.Unicode {
+		open, shut = `"`, `"`
+	}
 	var r row
-	r.add(k.st.dim, k.g.queued+" queued: ").add(cell.Style{Attr: cell.Italic}, "“"+first+"”")
+	r.add(k.st.dim, k.g.queued+" queued: ").add(cell.Style{Attr: cell.Italic}, open+first+shut)
 	if n := len(v.queue) - 1; n > 0 {
 		r.add(k.st.dim, fmt.Sprintf(" (+%d more)", n))
 	}
-	return fit(r.line(), w)
+	return k.fit(r.line(), w)
 }
 
 // ---- the footer ----
@@ -346,7 +350,7 @@ func (k *chatLook) footer(v *liveView, w int) cell.Line {
 		}
 	}
 	l, _ := build("", "")
-	return fit(l, w)
+	return k.fit(l, w)
 }
 
 func (k *chatLook) modeStyle(mode string) cell.Style {
@@ -412,7 +416,7 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 		segs = append(segs, seg{duration(s.elapsed.Round(time.Second)), k.st.dim, 1})
 	}
 	if s.tokIn > 0 || s.tokOut > 0 {
-		segs = append(segs, seg{fmt.Sprintf("%s%s %s%s", k.g.up, widget.Tokens(int(s.tokIn)), k.g.down, widget.Tokens(int(s.tokOut))), k.st.dim, 4})
+		segs = append(segs, seg{fmt.Sprintf("%s%s %s%s", k.g.up, widget.Tokens(int(s.tokIn)), k.g.down, widget.Tokens(int(s.tokOut))), k.st.dim, 5})
 	}
 	if s.cost > 0 {
 		segs = append(segs, seg{widget.USD(s.cost), cell.Style{}, 2})
@@ -424,7 +428,7 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 		segs = append(segs, seg{savedText, k.st.good, 3})
 	}
 	hint := "esc to interrupt"
-	segs = append(segs, seg{hint, k.st.dim, 5})
+	segs = append(segs, seg{hint, k.st.dim, 4})
 
 	build := func() (left row, right cell.Line) {
 		for _, sg := range segs {
@@ -499,7 +503,7 @@ func (k *chatLook) toolRows(v *liveView, w int) []cell.Line {
 			r.add(cell.Style{}, " ").add(cell.Style{}, cutCells(t.summary, room, k.g.ellipsis))
 		}
 		r.add(k.st.dim, tail)
-		out = append(out, fit(r.line(), w))
+		out = append(out, k.fit(r.line(), w))
 	}
 	return out
 }
@@ -517,7 +521,7 @@ func (k *chatLook) foldLine(v *liveView, w int) cell.Line {
 	r.add(k.st.accent.Without(cell.Bold), strings.Repeat(full, cells)+strings.Repeat(" ", foldWidth-cells)).
 		add(cell.Style{}, " "+widget.Tokens(foldTokens(f.before, f.after, f.progress))).
 		add(k.st.dim, " "+k.g.arrow+" "+widget.Tokens(f.after))
-	return fit(r.line(), w)
+	return k.fit(r.line(), w)
 }
 
 // ---- the cache: the prompt stack and the hit ratio ----
@@ -558,7 +562,7 @@ func (k *chatLook) stackRows(v *liveView, a *state.Agent, w int) (bar, labels ce
 	}
 	var ttl cell.Line
 	if lft, tot, ok := ttlOf(v.snap, "agent", a.ID); ok {
-		ttl = widget.TTL(lft, tot, 26, k.Palette)
+		ttl = k.ttlLine(lft, tot, 26)
 	}
 	if ttl != nil {
 		right.add(cell.Style{}, "  ").addLine(ttl)
@@ -567,8 +571,11 @@ func (k *chatLook) stackRows(v *liveView, a *state.Agent, w int) (bar, labels ce
 	barW := w - lead - right.w
 	if !k.Unicode || barW < 10 { // a bar that narrow says nothing: the words do
 		var r row
-		r.add(k.st.dim, left).addLine(right.line())
-		return fit(r.line(), w), nil
+		r.add(k.st.dim, strings.TrimRight(left, " "))
+		for _, sp := range right.line() {
+			r.add(sp.Style, sp.Text)
+		}
+		return k.fit(r.line(), w), nil
 	}
 	o := widget.NewStackOpts(barW, stk.Read)
 	if !stk.Answered {
@@ -586,12 +593,27 @@ func (k *chatLook) stackRows(v *liveView, a *state.Agent, w int) (bar, labels ce
 	b, lb := widget.StackBar(layers, o, k.Palette)
 	var r row
 	r.add(k.st.dim, left).addLine(b).addLine(right.line())
-	bar = fit(r.line(), w)
+	bar = k.fit(r.line(), w)
 	if lb != nil {
 		labels = cell.Join(cell.Spaces(lead, cell.Style{}), lb)
-		labels = fit(labels, w)
+		labels = k.fit(labels, w)
 	}
 	return bar, labels
+}
+
+// ttlLine is how long the provider will keep the prompt: the clock of widget.TTL, or in words where the glyphs cannot be trusted.
+func (k *chatLook) ttlLine(left, total time.Duration, w int) cell.Line {
+	if k.Unicode {
+		return widget.TTL(left, total, w, k.Palette)
+	}
+	if left <= 0 {
+		return cell.Styled(k.st.bad, "cold")
+	}
+	st := k.st.good
+	if left < time.Minute {
+		st = k.st.warn
+	}
+	return cell.Styled(st, "warm "+widget.Duration(left.Round(time.Second)))
 }
 
 // sparkRows is the hit ratio of every request as a row of bars, with a cache break (⚠), a compaction (◆) and a new epoch (↻) marked
@@ -631,20 +653,47 @@ func (k *chatLook) sparkRows(v *liveView, a *state.Agent, w int) (marks, bars ce
 	}
 	var bl row
 	bl.add(k.st.dim, label).addLine(lines[1]).addLine(note.line())
-	return cell.Join(cell.Spaces(len(label), cell.Style{}), lines[0]), fit(bl.line(), w)
+	return cell.Join(cell.Spaces(len(label), cell.Style{}), lines[0]), k.fit(bl.line(), w)
 }
 
 // ---- the permission dialog ----
 
-// dialogHint is the line under a question: the keys, or why they are not taken yet.
-func (k *chatLook) dialogHint(d *dialogView) cell.Line {
+// dialogHint is the line under a question: the keys, or why they are not taken yet. It is said as fully as w allows.
+func (k *chatLook) dialogHint(d *dialogView, w int) cell.Line {
+	var variants []cell.Line
 	if !d.armed {
-		return cell.Styled(k.st.dim, "  your typing goes to the prompt until you pause, so that it cannot answer this")
+		for _, s := range []string{
+			"  your typing goes to the prompt until you pause, so that it cannot answer this",
+			"  typing goes to the prompt until you pause",
+			"  typing goes to the prompt for now",
+		} {
+			variants = append(variants, cell.Styled(k.st.dim, s))
+		}
+	} else {
+		sep := "  " + k.g.dot + "  "
+		keys := func(or string, enter string, rest ...string) cell.Line {
+			var r row
+			r.add(k.st.dim, "  ").add(k.st.accent, "1 2 3").add(k.st.dim, or).add(k.st.accent, k.upDown()).
+				add(k.st.dim, enter).add(k.st.accent, "enter")
+			for _, t := range rest {
+				r.add(k.st.dim, sep+t)
+			}
+			return r.line()
+		}
+		variants = []cell.Line{
+			keys(" answers, or ", " and ", "esc says no", "ctrl+c cancels the turn"),
+			keys(" or ", " ", "esc says no", "ctrl+c cancels the turn"),
+			keys(" or ", " ", "esc says no", "ctrl+c cancels"),
+			keys(" or ", " ", "esc says no"),
+			keys(" or ", " "),
+		}
 	}
-	var r row
-	r.add(k.st.dim, "  ").add(k.st.accent, "1 2 3").add(k.st.dim, " or ").add(k.st.accent, "y a n").add(k.st.dim, ", ").add(k.st.accent, k.upDown()).
-		add(k.st.dim, " and ").add(k.st.accent, "enter").add(k.st.dim, "  "+k.g.dot+"  esc says no  "+k.g.dot+"  ctrl+c cancels the turn")
-	return r.line()
+	for _, v := range variants {
+		if v.Width() <= w {
+			return v
+		}
+	}
+	return k.fit(variants[len(variants)-1], w)
 }
 
 func (k *chatLook) upDown() string {

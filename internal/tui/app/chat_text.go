@@ -84,3 +84,11 @@ func indentLines(lines []cell.Line, pad cell.Line) []cell.Line {
 	}
 	return out
 }
+
+// fit cuts a line to w cells, with the look's ellipsis (three dots where only ASCII is trusted) when something was cut.
+func (k *chatLook) fit(l cell.Line, w int) cell.Line {
+	if w <= 0 {
+		return nil
+	}
+	return l.Truncate(w, k.g.ellipsis)
+}

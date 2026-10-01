@@ -40,12 +40,16 @@ const defaultAnswerAfter = 350 * time.Millisecond
 
 // dialogOptions are the three answers of a question. The second one is what the old prompt called "always": it remembers the
 // exact request for the rest of the session (for a project's tool server, the exact entry for the project).
+//
+// The options are chosen by their numbers, by the arrows and enter, and the last one by esc. They have no letters (the line prompt's
+// y, a and n): a letter is what a sentence is made of, and a question answered by the letters of a line that is being typed is the
+// fault this program exists to be safe against.
 func dialogOptions(r perm.Request) (opts []widget.DialogOption, mcp bool) {
 	if r.Tool == "mcp-server" {
 		return []widget.DialogOption{
-			{Label: "Yes, start it this time", Keys: []string{"y"}},
-			{Label: "Yes, and remember this exact entry for this project", Keys: []string{"p"}},
-			{Label: "No", Hint: "(esc)", Keys: []string{"n", "esc"}},
+			{Label: "Yes, start it this time"},
+			{Label: "Yes, and remember this exact entry for this project"},
+			{Label: "No", Hint: "(esc)", Keys: []string{"esc"}},
 		}, true
 	}
 	what := "this request"
@@ -56,9 +60,9 @@ func dialogOptions(r perm.Request) (opts []widget.DialogOption, mcp bool) {
 		what = "this change"
 	}
 	return []widget.DialogOption{
-		{Label: "Yes", Keys: []string{"y"}},
-		{Label: "Yes, and don't ask again for " + what + " this session", Keys: []string{"a"}},
-		{Label: "No, and tell Sleipnir what to do instead", Hint: "(esc)", Keys: []string{"n", "esc"}},
+		{Label: "Yes"},
+		{Label: "Yes, and don't ask again for " + what + " this session"},
+		{Label: "No, and tell Sleipnir what to do instead", Hint: "(esc)", Keys: []string{"esc"}},
 	}, false
 }
 

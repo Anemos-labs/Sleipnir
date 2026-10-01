@@ -1,0 +1,9 @@
+80 columns, 8 rows, cursor at row 5 column 49
+prompt 4.0k ████████████████████▏███▓░░░▏░░░░░░ 93% cached  ◕ warm 4:12 ▰▰▰▰▰▰▰▱
+                     G1          G2  G3    G4
+          ⚠◆
+cache ▁▇██▃▇█  hit ratio per request · 7 requests · saved ≈ $0.13 at list price
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ❯ now add a test for page 0 and a negative size                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+accept-edits · ctrl+t stack · / commands    mock/mock-1 · 20260102-030405-abcdef

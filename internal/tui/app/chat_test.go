@@ -582,6 +582,24 @@ func TestChatLettersNeverAnswerAQuestion(t *testing.T) {
 	}
 }
 
+// The numbers are the only characters a question takes, and only those of its options: another digit is a character of the line.
+func TestChatADigitThatNumbersNoOptionIsTyping(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	ans := r.ask(bashRequest("rm x"))
+	r.shows("1. Yes")
+	for _, c := range "4907" {
+		r.press(input.RuneKey(c, 0))
+	}
+	select {
+	case d := <-ans:
+		t.Fatalf("a digit that is no option answered the question: %+v", d)
+	default:
+	}
+	if s := r.screen(); !strings.Contains(s, "4907") {
+		t.Errorf("the digits went to the prompt:\n%s", s)
+	}
+}
+
 func TestChatAQuestionOfAToolServerHasItsOwnAnswers(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	ans := r.ask(perm.Request{Agent: "", Tool: "mcp-server", Summary: "start the project's tool server \"git\": npx -y mcp-git"})

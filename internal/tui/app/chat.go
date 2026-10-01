@@ -374,7 +374,7 @@ func (m *chatModel) dialogKey(d *dialog, k input.Key) bool {
 		return false
 	}
 	switch {
-	case isDigit(k):
+	case isChoice(k, len(d.opts)):
 	case m.ed.Empty() && (k.Is(input.Esc, 0) || k.Is(input.Enter, 0) || isNavigation(k) || k.IsRune('d', input.Ctrl)):
 	default:
 		d.armAt = now.Add(m.c.AnswerAfter)
@@ -387,11 +387,12 @@ func (m *chatModel) dialogKey(d *dialog, k input.Key) bool {
 	if i, ok := d.choose(k); ok {
 		m.answerQuestion(d, d.decision(i))
 	}
-	return true // a key that moved the choice, or a digit that is not one
+	return true // a key that moved the choice
 }
 
-func isDigit(k input.Key) bool {
-	return k.Kind == input.KindRune && k.Mod == 0 && k.R >= '1' && k.R <= '9'
+// isChoice reports whether k is the number of one of the n options. Any other digit is part of what is being typed.
+func isChoice(k input.Key, n int) bool {
+	return k.Kind == input.KindRune && k.Mod == 0 && k.R >= '1' && k.R <= '9' && int(k.R-'0') <= n
 }
 
 // isNavigation reports the keys that move the choice of a question and do nothing else.
