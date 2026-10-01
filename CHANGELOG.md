@@ -375,6 +375,8 @@ The first release.
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
 defect the runs showed, with the evidence, and what changed.
 
+- **Reasoning written into the answer.** An endpoint that does not separate reasoning can leave the model's thoughts in the answer, closed by a
+  bare `</think>`. They are now a thinking block, and the answer starts after the tag.
 - **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:
   45% `cd` to a path the model guessed (`/workspace`, `/repo`, `/home/user`), 14% paths the engine cannot know (`$(pwd)`,
   `$OLDPWD`, a loop variable), 6% scratch files in `/tmp`, 10% `sed -n 'N,Mp' file`, the way models read a range of lines.

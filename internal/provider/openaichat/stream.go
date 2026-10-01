@@ -270,6 +270,7 @@ type accumulator struct {
 	started             bool
 	ttfb                time.Duration // when the first frame with content came, from the start of the request
 	textOpen            bool
+	leakChecked         bool // splitLeakedThinking has run or does not apply
 
 	promptIDs []int32
 	compIDs   []int32
@@ -340,6 +341,39 @@ func (a *accumulator) feed(c *chunk, start time.Time, on func(provider.Event)) e
 	return nil
 }
 
+// splitLeakedThinking handles an endpoint that does not separate reasoning: the model
+// writes its thoughts into the answer and closes them with a bare </think> (no opening
+// tag). Everything before the first </think> becomes thinking, so the answer, the
+// history and the screen hold only what follows it. Only for a response with no
+// reasoning field, and only once, and never when the text opened a <think> itself.
+func (a *accumulator) splitLeakedThinking(on func(provider.Event)) error {
+	if a.leakChecked || a.reasoning.Len() > 0 || len(a.details) > 0 {
+		return nil
+	}
+	s := a.text.String()
+	if strings.Contains(s, "<think>") {
+		a.leakChecked = true
+		return nil
+	}
+	i := strings.Index(s, "</think>")
+	if i < 0 {
+		return nil
+	}
+	a.leakChecked = true
+	thought, answer := strings.TrimSpace(s[:i]), strings.TrimLeft(s[i+len("</think>"):], " \t\r\n")
+	if err := a.addThinking(len(thought)); err != nil {
+		return err
+	}
+	a.reasoning.WriteString(thought)
+	a.text.Reset()
+	a.text.WriteString(answer)
+	on(provider.Event{Kind: provider.EvReset})
+	if answer != "" {
+		on(provider.Event{Kind: provider.EvText, Text: answer})
+	}
+	return nil
+}
+
 func (a *accumulator) applyDelta(d *delta, on func(provider.Event)) error {
 	if d.Content != nil && *d.Content != "" {
 		if a.text.Len()+len(*d.Content) > a.lim.MaxTextBytes {
@@ -347,6 +381,9 @@ func (a *accumulator) applyDelta(d *delta, on func(provider.Event)) error {
 		}
 		a.text.WriteString(*d.Content)
 		on(provider.Event{Kind: provider.EvText, Text: *d.Content})
+		if err := a.splitLeakedThinking(on); err != nil {
+			return err
+		}
 	}
 	r := d.Reasoning
 	if r == "" {

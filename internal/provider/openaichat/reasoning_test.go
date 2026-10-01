@@ -111,3 +111,29 @@ func checkReasoningSeparation(t *testing.T, turn core.Turn, thinking, answer str
 		t.Fatalf("PlainText = %q, want %q", turn.PlainText(), answer)
 	}
 }
+
+// An endpoint that does not separate reasoning can leave the thoughts in the answer,
+// closed by a bare </think> (seen on a marketplace deepseek). They become thinking, the
+// answer starts after the tag, and a consumer is told to drop what it had shown.
+func TestLeakedThinkingBeforeABareCloseTagBecomesThinking(t *testing.T) {
+	s := newScripted(t, func(w http.ResponseWriter, fl http.Flusher, r *http.Request) {
+		sse(w)
+		fmt.Fprint(w, frame("let me think "), frame("about it</thi"), rawFrame(`{"id":"g","choices":[{"delta":{"content":`+jsonStr("nk>\n\nThe answer.")+`}}]}`), frame(" Done."), finish("stop"))
+	})
+	var shown strings.Builder
+	resp, err := call(t, s.URL, Config{}, func(e provider.Event) {
+		switch e.Kind {
+		case provider.EvReset:
+			shown.Reset()
+		case provider.EvText:
+			shown.WriteString(e.Text)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkReasoningSeparation(t, resp.Turn, "let me think about it", "The answer. Done.")
+	if shown.String() != "The answer. Done." {
+		t.Errorf("shown %q", shown.String())
+	}
+}
