@@ -628,6 +628,27 @@ func TestRunAsksOnTheTerminal(t *testing.T) {
 	}
 }
 
+// Ctrl-C while the question is open ends the run like any Ctrl-C: the question goes with it, nothing is written, the run says it was
+// interrupted and the log has its end. (Dogfood 4 left a swarm at a question for two hours; the Ctrl-C that finally came ended its
+// process with no end in its log.)
+func TestRunCtrlCAtAQuestionEndsTheRun(t *testing.T) {
+	m := startModel(t)
+	m.on("@write", writes("approved.txt"))
+	w := newWorld(t, m.url())
+	term := ptytest.Start(t, w.cmd("run", "@write"))
+	c := &chatTerm{t: t, w: w, term: term}
+	c.expect("allow? [y]es once / [a]lways this session / [n]o: ")
+	c.ctrlC()
+	c.expect("sleipnir: interrupted")
+	c.exited(130)
+	if got, ok := w.sessionEnd(); !ok || got != "interrupted" {
+		t.Errorf("the session ended with reason %q (recorded: %v), want \"interrupted\"", got, ok)
+	}
+	if exists(filepath.Join(w.project, "approved.txt")) {
+		t.Error("the write was done")
+	}
+}
+
 // `run` is not a chat: Ctrl-C ends the run, says so, and exits with the status a shell gives a process that Ctrl-C ended (130).
 func TestRunCtrlCEndsTheRun(t *testing.T) {
 	m := startModel(t)

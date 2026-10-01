@@ -259,7 +259,10 @@ approved: an action that needs approval is refused. Slash commands are not expan
 are the same command.
 
 Ctrl-C (or SIGTERM) ends a run: it prints `sleipnir: interrupted` and exits with 130 (143 for SIGTERM); work that passed
-verification in an isolated swarm is still applied first, and a second Ctrl-C quits at once.
+verification in an isolated swarm is still applied first, and a second Ctrl-C quits at once, with no end in the log. A run has no time
+limit of its own: an endpoint that is down is waited for, and a swarm that nothing can move stays up with its workers `stuck` (its
+spend is the only thing `--budget-usd` bounds, and nothing is spent). An unattended run takes the shell's: `timeout 2h sleipnir swarm
+...` is SIGTERM when the time is up, which ends it as above, work that was verified applied first.
 
 `sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a manager with up to N workers. N comes
 first and must be 1 or more (anything else is an error that shows an example); the flags are `run`'s, and
