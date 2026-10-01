@@ -16,6 +16,11 @@ The first release.
 - Compaction as a patch: a background compactor forks the agent's own request (same cache), returns a JSON patch,
   and the harness validates it and commits it at the cheapest moment (or at a cold moment for free). Masking before
   summarising; nothing is lost (`recall`).
+  On real models (a benchmark of 349 sessions on four of them) between a tenth and two thirds of the patches were refused, and the
+  agent compacted mechanically instead. Three causes are fixed: a field of the wrong type (`notes` as an object, `keep_from` as a
+  number) costs that field and not the patch, a reply that holds a valid patch and also calls a tool uses the patch (the call is never
+  run), and a patch whose JSON is broken is refused as that, not as having no `keep_from`. `sleipnir rl rollout --thread-soft-limit N`
+  sets the size at which an agent's thread is considered for compaction, so that how soon is a setting to compare.
 - Cache models for OpenAI-style automatic prefix caching (routing keys, gateway-reported cost) and Anthropic explicit
   breakpoints (max four, 20-block lookback, 5m/1h TTL), including preserved thinking, turn-scoped system messages
   and declared rebases.

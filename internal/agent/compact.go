@@ -329,7 +329,8 @@ func (a *Agent) cancelCompaction() {
 // with the same parameters: on Anthropic a different tool_choice, thinking or
 // effort setting would invalidate the whole messages tier and turn the fork's
 // cache read into a full write. "Do not call tools" is therefore only text, and a
-// reply that calls one anyway counts as a failed compaction.
+// reply that calls one anyway is not run: it counts as a failed compaction only when
+// what the model said holds no patch.
 func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*readyPatch, error) {
 	return a.proposeFocus(ctx, snap, reason, "")
 }
@@ -368,12 +369,18 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		w := a.cfg.Model.Price.Weights()
 		rp.itc = float64(resp.Usage.InputTokens) + w.Read*float64(resp.Usage.CacheReadTokens) +
 			w.Write5m*float64(resp.Usage.CacheWriteTokens()) + float64(resp.Usage.OutputTokens)*w.Output
-		if len(resp.Turn.ToolCalls()) > 0 {
-			err = errors.New("the compactor answered with a tool call instead of a patch")
-		} else {
-			// Only what the model said, never its reasoning: a thinking block that
-			// drafts a JSON shape must not be mistaken for the answer.
-			patch, err = kv.ParsePatch(kv.AnswerText(resp.Turn))
+		// Only what the model said, never its reasoning: a thinking block that
+		// drafts a JSON shape must not be mistaken for the answer.
+		patch, err = kv.ParsePatch(kv.AnswerText(resp.Turn))
+		if calls := len(resp.Turn.ToolCalls()); calls > 0 {
+			// The call is never run. When the text holds a patch it is judged like any other (some models call a tool in the same
+			// reply: 20 of one model's 127 compactions on a benchmark were refused for it with a valid patch in them); when it does
+			// not, the reply was a tool call instead of a patch.
+			if err != nil {
+				err = errors.New("the compactor answered with a tool call instead of a patch")
+			} else {
+				patch.Warnings = append(patch.Warnings, "the reply also called a tool, which was not run")
+			}
 		}
 	}
 	var res *kv.ApplyResult

@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,18 +39,159 @@ func ParsePatch(reply string) (*Patch, error) {
 	if err != nil {
 		return nil, err
 	}
-	var rp rawPatch
-	if err := json.Unmarshal(c, &rp); err != nil {
-		return nil, fmt.Errorf("compaction patch is not valid JSON: %w", err)
-	}
-	p, err := buildPatch(&rp)
+	rp, warns, err := decodeRaw(c)
 	if err != nil {
 		return nil, err
 	}
+	p, err := buildPatch(rp)
+	if err != nil {
+		return nil, err
+	}
+	p.Warnings = append(warns, p.Warnings...)
 	if n > 1 {
 		p.Warnings = append(p.Warnings, fmt.Sprintf("the reply held %d patch objects; the last preferred one was used", n))
 	}
 	return p, nil
+}
+
+// decodeRaw decodes the object field by field. A syntax error refuses the patch, as it always did. A field of the wrong type costs
+// that field, and says so in a warning, instead of the whole patch: on real models "notes" arrived as one object instead of a list,
+// "keep_from" as a number, a spine entry as a string, and each of those patches was refused for it, the agent compacting mechanically
+// instead of with the model's own digest of its work. Nothing here trusts the content either way: Apply vets every field.
+func decodeRaw(c []byte) (*rawPatch, []string, error) {
+	m, err := objectFields(c)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compaction patch is not valid JSON: %w", err)
+	}
+	rp := &rawPatch{}
+	var warns []string
+	warn := func(format string, a ...any) { warns = append(warns, fmt.Sprintf(format, a...)) }
+
+	if b, ok := m["keep_from"]; ok && !isJSONNull(b) {
+		switch s, ok := jsonScalar(b); {
+		case ok:
+			rp.KeepFrom = s
+		default:
+			return nil, nil, fmt.Errorf("keep_from: want a turn id such as \"t41\", got %s", cutRunes(string(b), 40))
+		}
+	}
+	for i, b := range jsonElements(m["spine"]) {
+		var e map[string]json.RawMessage
+		if json.Unmarshal(b, &e) != nil {
+			warn("spine[%d]: not an object, ignored", i)
+			continue
+		}
+		turns, _ := jsonScalar(e["turns"])
+		line, _ := jsonScalar(e["line"])
+		rp.Spine = append(rp.Spine, struct {
+			Turns string `json:"turns"`
+			Line  string `json:"line"`
+		}{turns, line})
+	}
+	for i, b := range jsonElements(m["mask"]) {
+		if s, ok := jsonScalar(b); ok {
+			rp.Mask = append(rp.Mask, s)
+			continue
+		}
+		warn("mask[%d]: not a reference, ignored", i)
+	}
+	for i, b := range jsonElements(m["notes"]) {
+		var n NoteOp
+		if json.Unmarshal(b, &n) != nil {
+			warn("notes[%d]: not an operation, ignored", i)
+			continue
+		}
+		rp.Notes = append(rp.Notes, n)
+	}
+	for i, b := range jsonElements(m["promote"]) {
+		var pr Promotion
+		if json.Unmarshal(b, &pr) != nil {
+			warn("promote[%d]: not a proposal, ignored", i)
+			continue
+		}
+		rp.Promote = append(rp.Promote, pr)
+	}
+	for _, f := range []string{"spine", "mask", "notes", "promote"} {
+		if b, ok := m[f]; ok && !isJSONNull(b) && len(jsonElements(b)) == 0 && !isEmptyJSONList(b) {
+			warn("%s: not a list, ignored", f)
+		}
+	}
+	return rp, warns, nil
+}
+
+// objectFields is the members of a JSON object by lower-cased name, as encoding/json matches field names to a struct's: without
+// regard to case, and the last of two members of one name wins.
+func objectFields(c []byte) (map[string]json.RawMessage, error) {
+	dec := json.NewDecoder(bytes.NewReader(c))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		if err == nil {
+			err = errors.New("not an object")
+		}
+		return nil, err
+	}
+	m := map[string]json.RawMessage{}
+	for dec.More() {
+		kt, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := kt.(string)
+		if !ok {
+			return nil, errors.New("not an object")
+		}
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return nil, err
+		}
+		m[strings.ToLower(key)] = raw
+	}
+	return m, nil
+}
+
+func isJSONNull(b json.RawMessage) bool { return strings.TrimSpace(string(b)) == "null" }
+
+func isEmptyJSONList(b json.RawMessage) bool {
+	var l []json.RawMessage
+	return json.Unmarshal(b, &l) == nil && len(l) == 0
+}
+
+// jsonElements is a field's list, or the one value it is when a model wrote an object where a list belongs; nothing for a null, an
+// absent field or a value that is neither (a string, a number).
+func jsonElements(b json.RawMessage) []json.RawMessage {
+	b = json.RawMessage(strings.TrimSpace(string(b)))
+	if len(b) == 0 {
+		return nil
+	}
+	switch b[0] {
+	case '[':
+		var l []json.RawMessage
+		if json.Unmarshal(b, &l) != nil {
+			return nil
+		}
+		return l
+	case '{':
+		return []json.RawMessage{b}
+	}
+	return nil
+}
+
+// jsonScalar is a string or a number as text: a turn id is "t41" or 41, a range "t3-t9".
+func jsonScalar(b json.RawMessage) (string, bool) {
+	b = json.RawMessage(strings.TrimSpace(string(b)))
+	if len(b) == 0 {
+		return "", false
+	}
+	switch b[0] {
+	case '"':
+		var s string
+		return s, json.Unmarshal(b, &s) == nil
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		var n json.Number
+		if json.Unmarshal(b, &n) == nil {
+			return n.String(), true
+		}
+	}
+	return "", false
 }
 
 // buildPatch validates the decoded wire form.
@@ -131,7 +273,7 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 		at     int
 	}
 	var cands []cand
-	var lastErr error
+	var lastErr, brokenErr error
 	sawObject := false
 	broken := -1 // where the last attempt that looked like a patch but did not decode began
 	// A hostile or garbled reply must not cost more than a constant number of passes:
@@ -157,7 +299,7 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 		if err != nil {
 			lastErr = err
 			if strings.Contains(strings.ToLower(reply[i:min(len(reply), i+n+16)]), "keep_from") {
-				broken = i
+				broken, brokenErr = i, err
 			}
 			i++
 			continue
@@ -177,6 +319,10 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 		switch {
 		case lastErr != nil && errors.Is(lastErr, io.ErrUnexpectedEOF):
 			return nil, 0, fmt.Errorf("unterminated JSON object in compaction reply")
+		case brokenErr != nil:
+			// the model wrote "keep_from" and then broke the JSON: objects inside it that decode (the spine's entries) are not the
+			// patch, and "no keep_from" would be a false thing to say about it
+			return nil, 0, fmt.Errorf("compaction patch is not valid JSON: %w", brokenErr)
 		case sawObject:
 			return nil, 0, fmt.Errorf("compaction patch has no keep_from")
 		case lastErr != nil:

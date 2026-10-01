@@ -89,6 +89,10 @@ type Harness struct {
 	// ContextTokens is the policy's context window when a task does not set one.
 	// Zero keeps the model table's or the fallback's.
 	ContextTokens int
+	// ThreadSoftLimit is the size of an agent's thread, in tokens, at which compaction is
+	// considered (config cache.thread_soft_limit_tokens). Zero keeps the default. A rollout is
+	// short, so whether it is compacted at all is a setting worth comparing.
+	ThreadSoftLimit int
 	// IgnoreRepoInstructions stops AGENTS.md-style files in the task's repository
 	// from joining the shared layer. They normally do: they are part of the task.
 	IgnoreRepoInstructions bool
@@ -298,6 +302,9 @@ func (h *Harness) config(spec env.RunSpec) (*config.Config, error) {
 	}
 	cfg.Permissions.Allow = append(append([]string(nil), base.Permissions.Allow...), allow...)
 	cfg.Permissions.Mode = string(h.mode())
+	if h.ThreadSoftLimit > 0 {
+		cfg.Cache.ThreadSoftLimitTokens = h.ThreadSoftLimit
+	}
 	// Rollouts never use the user's hooks, MCP servers or training settings.
 	cfg.Hooks, cfg.MCP = nil, nil
 	return &cfg, nil
