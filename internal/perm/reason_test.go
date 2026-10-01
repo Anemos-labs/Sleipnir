@@ -71,6 +71,10 @@ func TestPrivateTmpdirIsKnownAndNamedInTheRefusal(t *testing.T) {
 	if d.Allow || !strings.Contains(d.Reason, "scratch files go in $TMPDIR ("+tmp+")") {
 		t.Errorf("reason %q", d.Reason)
 	}
+	// A read has no use for a scratch directory: the hint is for writes.
+	if d := e.Check(context.Background(), f.request(read("{out}/secret.txt"))); d.Allow || strings.Contains(d.Reason, "$TMPDIR") {
+		t.Errorf("a read's reason %q", d.Reason)
+	}
 	// Without one, $TMPDIR is a variable the engine cannot know.
 	e = f.engine(t, Config{Mode: ModeAcceptEdits})
 	if d := e.Check(context.Background(), f.request(bash(`echo x > "$TMPDIR/a"`))); d.Allow {

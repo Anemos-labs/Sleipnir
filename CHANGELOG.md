@@ -377,6 +377,7 @@ defect the runs showed, with the evidence, and what changed.
 
 - **Reasoning written into the answer.** An endpoint that does not separate reasoning can leave the model's thoughts in the answer, closed by a
   bare `</think>`. They are now a thinking block, and the answer starts after the tag.
+- The refusal of a read outside the workspace no longer says where scratch files go (that hint is for writes).
 - **Scratch files had no place to go.** `mktemp`, `go build -o /tmp/x` and test runs were refused in `/tmp`, and a model lost minutes to retries.
   Commands now get a private `TMPDIR` under the session's directory that the permission engine treats as workspace, and the refusal of
   any other place names it.

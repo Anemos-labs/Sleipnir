@@ -344,7 +344,7 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 			if ev.rs.inWorkspace(a.real) {
 				return allow(ev.modeReason("write inside the workspace"))
 			}
-			return ask(ev.modeReason("writes "+a.raw+" "+ev.outsideWorkspace()+"; approval needed"), rem())
+			return ask(ev.modeReason("writes "+a.raw+" "+ev.outsideWorkspace(true)+"; approval needed"), rem())
 		}
 	default:
 		if a.write {
@@ -354,17 +354,17 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	if ev.rs.inWorkspace(a.real) {
 		return allow(ev.modeReason("read inside the workspace"))
 	}
-	return ask(ev.modeReason("reads "+a.raw+" "+ev.outsideWorkspace()+"; approval needed"), rem())
+	return ask(ev.modeReason("reads "+a.raw+" "+ev.outsideWorkspace(false)+"; approval needed"), rem())
 }
 
 // outsideWorkspace is the phrase for a path that is not under the workspace. It names the workspace: a model that guessed
 // a path ("/root/repo") learns from the refusal where it is working, instead of guessing again.
-func (ev *evaluator) outsideWorkspace() string {
+func (ev *evaluator) outsideWorkspace(write bool) string {
 	out := "outside the workspace"
 	if r := ev.rs.root(); r.lex != "" {
 		out += " (" + r.lex + ")"
 	}
-	if ev.rs.tmp != "" {
+	if write && ev.rs.tmp != "" {
 		out += "; scratch files go in $TMPDIR (" + ev.rs.tmp + ")"
 	}
 	return out
