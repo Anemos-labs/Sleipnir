@@ -28,6 +28,7 @@ type TextSink struct {
 	Verbose bool
 
 	mu       sync.Mutex
+	misses   int  // cache-miss notices seen
 	midLine  bool // out has an unterminated line
 	lastTool map[string]string
 
@@ -166,6 +167,16 @@ func (s *TextSink) Notice(a, level, msg string) {
 	defer s.mu.Unlock()
 	if level == "info" && !s.Verbose {
 		return
+	}
+	if strings.HasPrefix(msg, agent.CacheMissNoticePrefix) {
+		// an endpoint whose cache misses all the time: three are said, then one line that the rest are not
+		s.misses++
+		if s.misses > 3 {
+			if s.misses == 4 {
+				fmt.Fprintln(s.log, "warn: the endpoint's cache keeps missing the prompt prefix; further misses are not said here (sleipnir inspect shows each)")
+			}
+			return
+		}
 	}
 	if a == "" { // the session's own, not an agent's
 		fmt.Fprintf(s.log, "%s: %s\n", level, msg)

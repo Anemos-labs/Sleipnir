@@ -132,3 +132,20 @@ func TestTextSinkNoticeOfTheSessionHasNoEmptyBrackets(t *testing.T) {
 		t.Errorf("log %q, want %q", got, want)
 	}
 }
+
+// A run on an endpoint whose cache keeps missing says so three times and then once that it will not say more.
+func TestTextSinkSaysCacheMissesThreeTimes(t *testing.T) {
+	var out, log strings.Builder
+	s := session.NewTextSink(&out, &log, "main", false)
+	for i := 0; i < 8; i++ {
+		s.Notice("main", "warn", agent.CacheMissNoticePrefix+" ~100 tokens read from cache, got 0")
+	}
+	s.Notice("main", "warn", "something else")
+	got := log.String()
+	if n := strings.Count(got, agent.CacheMissNoticePrefix); n != 3 {
+		t.Errorf("%d miss lines, want 3:\n%s", n, got)
+	}
+	if n := strings.Count(got, "further misses are not said here"); n != 1 || !strings.Contains(got, "something else") {
+		t.Errorf("log:\n%s", got)
+	}
+}
