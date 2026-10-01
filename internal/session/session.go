@@ -496,7 +496,7 @@ func (s *Session) buildPerm() error {
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
-		Roles: roles, Prompter: s.hookPrompter(o.Prompter), Audit: s.auditPermission,
+		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), Audit: s.auditPermission,
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)

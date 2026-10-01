@@ -86,6 +86,10 @@ func (s *Swarm) watch(m *member, rs *runState, now time.Time) {
 	m.mu.Lock()
 	warned := m.stuckWarn
 	aborted := rs.abortAt
+	question := ""
+	if m.asking > 0 {
+		question = m.askWhat
+	}
 	m.mu.Unlock()
 	switch {
 	case !aborted.IsZero():
@@ -94,6 +98,11 @@ func (s *Swarm) watch(m *member, rs *runState, now time.Time) {
 		}
 	case quiet > 2*s.cfg.StuckAfter:
 		why := fmt.Sprintf("stuck: no progress for %s", quiet.Round(time.Second))
+		if question != "" {
+			// Nobody is at fault in the worker: the person it asked did not answer. Say what it was waiting for, so that the manager
+			// (and the person, through it) can tell it from a worker that hung.
+			why = fmt.Sprintf("stopped after %s without an answer to its question to the person: %s", quiet.Round(time.Second), question)
+		}
 		if s.stopRun(m, why, true) {
 			m.mu.Lock()
 			rs.abortAt = now
@@ -103,7 +112,11 @@ func (s *Swarm) watch(m *member, rs *runState, now time.Time) {
 		m.mu.Lock()
 		m.stuckWarn = true
 		m.mu.Unlock()
-		s.Board.RaiseAlertKey("stuck", "stuck:"+m.id, fmt.Sprintf("%s has made no progress for %s", m.id, quiet.Round(time.Second)))
+		msg := fmt.Sprintf("%s has made no progress for %s", m.id, quiet.Round(time.Second))
+		if question != "" {
+			msg = fmt.Sprintf("%s has waited %s for the person to answer: %s", m.id, quiet.Round(time.Second), question)
+		}
+		s.Board.RaiseAlertKey("stuck", "stuck:"+m.id, msg)
 	}
 }
 

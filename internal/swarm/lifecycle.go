@@ -96,6 +96,10 @@ type member struct {
 	mailWakes   int
 	wakeLimited bool
 	wakeMu      sync.Mutex
+	// asking counts the questions the agent has put to the person that are unanswered (an approval), and askWhat is the latest
+	// (Swarm.Asking).
+	asking  int
+	askWhat string
 	// inboxPeer says, for the messages sent to the agent's inbox (newest last), whether another
 	// worker wrote each: see noteSent. The bound on mail wakes applies to those alone.
 	inboxPeer []bool
@@ -485,6 +489,32 @@ func (s *Swarm) launch(m *member, rs *runState, ctx context.Context, start runSt
 	s.adopt(m, rs)
 	m.setState(s, "running", "starting")
 	go s.runMember(m, rs, ctx, start)
+}
+
+// Asking records that an agent is waiting for the person to answer a question (an approval prompt) and returns the call that records the
+// answer. The watchdog still stops a worker that waits for too long, and counts it as an attempt, but says what it was waiting for: a
+// worker whose question nobody answered is not a worker that hung, and the manager (and the person, through it) should be able to tell.
+// A question of an agent that is not a worker is not recorded.
+func (s *Swarm) Asking(agentID, what string) (answered func()) {
+	m := s.get(agentID)
+	if m == nil || m.manager || m.service {
+		return func() {}
+	}
+	what = cleanText(what, 140)
+	m.mu.Lock()
+	m.asking++
+	m.askWhat = what
+	m.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			m.mu.Lock()
+			if m.asking > 0 {
+				m.asking--
+			}
+			m.mu.Unlock()
+		})
+	}
 }
 
 // wake starts an idle worker (mail arrived for it). It reports whether it did.

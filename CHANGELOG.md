@@ -425,6 +425,12 @@ defect the runs showed, with the evidence, and what changed.
 - **A manager that claimed a task it meant to hand over could not get out of it.** In the second real swarm run the manager claimed
   its own task, was refused a worker for it (`T1 is already owned by mgr`) and spent turns on it; the board said whose the task was and
   nothing about the way out. The answer now says it: a task the manager holds can be dropped with `fail` and made again for a worker.
+- **A worker's unanswered question was reported as a hang.** In the fourth run (a swarm in a terminal nobody was watching) a worker asked to
+  run `cd /workspace 2>/dev/null; pwd; go test`: `/workspace` is a path the model guessed, outside the workspace, so the engine asked, and
+  the question sat on the screen for twenty minutes. The watchdog then reported "stuck: no progress for 20m1s", cancelled the run and
+  requeued the task, and nothing said that a question was waiting. The session now tells the swarm which workers are waiting for the person
+  (`Swarm.Asking`, for as long as the question is open): the alert at ten minutes and the manager's line at twenty name the question. The
+  attempt is still counted, since the next worker would ask the same.
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),

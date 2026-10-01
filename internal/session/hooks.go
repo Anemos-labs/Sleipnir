@@ -234,6 +234,22 @@ func clip(s string, n int) string {
 	return s
 }
 
+// trackAsks lets the swarm know which of its workers are waiting for the person's answer to a question (Swarm.Asking), for as long as
+// the question is open, so that a worker whose question nobody answered is reported as that and not as hung. Without a prompter there
+// is nobody to ask and the engine refuses; that stays so. The swarm is read when the question is put, not when the engine is built:
+// the engine is made first.
+func (s *Session) trackAsks(next perm.Prompter) perm.Prompter {
+	if next == nil {
+		return nil
+	}
+	return func(ctx context.Context, r perm.Request) perm.Decision {
+		if sw := s.Swarm; sw != nil {
+			defer sw.Asking(r.Agent, r.Summary)()
+		}
+		return next(ctx, r)
+	}
+}
+
 // hookPrompter puts PermissionRequest hooks in front of the human: a hook may
 // answer a question the permission engine would have asked, and never overrides a
 // refusal by the engine itself.
