@@ -7,6 +7,11 @@ how to start each item, and what bit the people before you. Read `AGENTS.md`, `d
 Written on 2026-10-01 at commit `6df3162` plus the remembered-trust work (section 2), by the agent that built most of what is in
 the repository, at the point where the owner's budget for the week ran out.
 
+Taken over on 2026-10-01 by the agent that works on it now. Since the handoff, from real use (`docs/DOGFOOD.md` rows 43 to 46): reasoning
+written into the answer, a private `$TMPDIR` (G5c), prefix and project-wide "don't ask again" (G5b), `/status` and `/permissions` (G5d,
+half), the diff of a write over an existing file, the bell at a question, strict-mode `set` and `go mod` in the allow lists, a warning for
+`--verify` without `{dirs}` in an isolated swarm, and the benchmark's own build (Go 1.25 corpus, a partial corpus left behind, `--key-file`).
+
 ## 1. Start here
 
 - **Build, test, check.** `go build ./...`, `go test -race -count=1 ./path/...`, `gofmt -l .` (must print nothing), `go vet ./...`,
