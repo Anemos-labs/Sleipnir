@@ -5,7 +5,7 @@ block/zero	050d14dfc3603bba21270f4994654e13f239f5af4edde4368a5b0a395c3b5657	11	{
 block/text	46cee8b8f442bfcd66f664c7e73416bd0120c5741b5dd0e486a67d7d6911bcbb	30	{"kind":"text","text":"hello"}
 block/text_empty_omits_the_field	560edb753473e538f5dab5d6947e8f7e3b6fe1498f309612cba7bdb6219f0b2c	15	{"kind":"text"}
 block/text_html_and_unicode	8dc335b35faf6489e182134a4c1726044b22dc4c762309072453212878864576	71	{"kind":"text","text":"<live>board</live> a & b é😀 x\u2028y\u2029"}
-block/text_invalid_utf8_replaced	7a397fcd8b03872458c296a8999d9073223f247cb71c5ed0bd4c669d7f5c8a2f	33	{"kind":"text","text":"a\ufffdb"}
+block/text_invalid_utf8_replaced	24757f3d4d18c2b6de934caba66c0f658a5d90ea9e136d142e3001cce132bb3d	30	{"kind":"text","text":"a�b"}
 block/text_notice_marker	104b4951e9090da69b9e60c97ba594372267509eed66bd51876e54e25c1f2380	71	{"kind":"text","text":"board v3","media_type":"text/x-sleipnir-notice"}
 block/text_ephemeral	fcb70e0cff62a956fe081efb2546f7eac5d2642d865b7334c26662d8ec87eaef	69	{"kind":"text","text":"<live board=\"v7\">x</live>","ephemeral":true}
 block/tool_use	1cef7501e079415825c0e22d0cfce771b40bb7ba93b833b031cc446e0dd089bc	101	{"kind":"tool_use","tool_id":"toolu_01","tool_name":"read","input":{"path":"api/list.go","limit":10}}

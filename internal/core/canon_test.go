@@ -720,3 +720,40 @@ func FuzzCanonical(f *testing.F) {
 		}
 	})
 }
+
+// A string with invalid UTF-8 is written the same by every Go: the replacement character itself. The encoding/json of Go 1.26 and
+// before wrote an escape for each bad byte and that of Go 1.27 writes the character, so a binary built by one and a log written by
+// the other hashed the same block differently (the cache key, and the replay check of a recorded prompt). The escape letters
+// themselves, and an escaped backslash in front of them, are text and stay as they are.
+func TestMarshalStableWritesInvalidUTF8AsTheReplacementCharacterWhateverTheGoVersion(t *testing.T) {
+	const fffd = "\xef\xbf\xbd"
+	for _, c := range []struct {
+		name string
+		in   any
+		want string
+	}{
+		{"one bad byte", "a\xffb", `"a` + fffd + `b"`},
+		{"two bad bytes", "\xff\xfe", `"` + fffd + fffd + `"`},
+		{"a truncated character", "x\xe2\x82", `"x` + fffd + fffd + `"`},
+		{"the character itself", "a" + fffd + "b", `"a` + fffd + `b"`},
+		{"the escape letters are text", `\ufffd`, `"\\ufffd"`},
+		{"a backslash and the letters", `\` + "ufffd", `"\\ufffd"`},
+		{"an escaped backslash, then a bad byte", `\` + "\xff", `"\\` + fffd + `"`},
+		{"a bad byte after escapes", "\"\n\xff", `"\"\n` + fffd + `"`},
+		{"a block", core.Text("a\xffb"), `{"kind":"text","text":"a` + fffd + `b"}`},
+		{"a raw message that holds the escape", struct{ R json.RawMessage }{json.RawMessage(`"\ufffd"`)}, `{"R":"` + fffd + `"}`},
+		{"a map key", map[string]int{"k\xff": 1}, `{"k` + fffd + `":1}`},
+	} {
+		got, err := core.MarshalStable(c.in)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if string(got) != c.want {
+			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
+		}
+		if !utf8.Valid(got) {
+			t.Errorf("%s: the output is not valid UTF-8: %q", c.name, got)
+		}
+	}
+}

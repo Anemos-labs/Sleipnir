@@ -247,7 +247,8 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	if !acc.started {
 		// A reply with no content frames at all (for example an empty
 		// completion) still counts as started for gating purposes.
-		on(provider.Event{Kind: provider.EvStart, RequestID: acc.id, Elapsed: time.Since(start)})
+		acc.ttfb = time.Since(start)
+		on(provider.Event{Kind: provider.EvStart, RequestID: acc.id, Elapsed: acc.ttfb})
 	}
 	turn, stop := acc.build(fallbackToolID)
 	out := &provider.Response{
@@ -266,7 +267,12 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	if opts.CaptureTokens {
 		out.Tokens = acc.trace(acc.model)
 	}
-	out.TTFB = out.Total
+	// When the first frame came, which is the end of a reply that was not streamed. (It was the total for every reply, so a log could
+	// not tell an endpoint that queues from one that decodes slowly.)
+	out.TTFB = min(acc.ttfb, out.Total)
+	if out.TTFB <= 0 {
+		out.TTFB = out.Total
+	}
 	on(provider.Event{Kind: provider.EvUsage, Usage: &out.Usage, RequestID: acc.id})
 	return out, nil
 }
