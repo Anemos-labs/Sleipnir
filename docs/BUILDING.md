@@ -65,8 +65,22 @@ internal/agentdefs      markdown subagent definitions, turned into swarm roles
 internal/session        assembles provider, tools, permissions, layers, event log and one agent or a swarm; CLI, RL and tests share it
 internal/inspect        the cache inspector: a read-only model of a session log and an embedded web dashboard
   inspect/web           the dashboard's static assets (not a Go package)
-internal/demo           the scripted team behind `sleipnir demo`, run against the mock provider
+internal/demo           the scripted teams behind `sleipnir demo` (a handbook in a second; a shop built in git worktrees in twenty), run against the mock provider
 internal/ptytest        runs a command on a pseudo-terminal, so that a test can type at it, press Ctrl-C and wait for what it prints
+
+internal/tui            the terminal interface (docs/UX.md): everything a screen is made of, each package small and pure where it can be
+  tui/cell              styled spans and lines, display widths; no escape codes
+  tui/term              what the terminal can do (colour, size, Unicode, animation allowed), raw mode, resize
+  tui/vt                a minimal terminal emulator: the tests read the screen a renderer made, and pty tests read a real command's
+  tui/render            the renderers: inline (scrollback plus a live region) and full screen (alternate screen, cell diff)
+  tui/input             key decoding, the line editor (history, completion, paste chips), no I/O
+  tui/widget            widgets as pure functions from data, a width and a frame to lines: markdown, diff, dialog, table, the prompt stack, sparkline, TTL clock, fold, horse, cockpit
+    widget/showtest     data and helpers of the signature widgets' tests
+    widget/widgettest   shared checks of the text widgets' tests (width, control characters, hostile text, goldens)
+  tui/state             the session as a pure function of its event log: one reducer, read live (Follow), at any speed (Replay) or all at once (Fold)
+    state/statetest     hand-made event sequences and the recorded demo log, for tests
+  tui/svg               the headless recorder: screens to an animated SVG (CSS only), deterministic
+  tui/app               the programs (watch, replay, and the recordings of docs/media): views as functions of a snapshot, the loop with its keys, sizes and ticks as channels
 
 internal/workspace      isolates writers from each other and integrates their work; not wired into sessions yet
 internal/gitx           the only gateway to the git binary: typed helpers over one hardened process runner

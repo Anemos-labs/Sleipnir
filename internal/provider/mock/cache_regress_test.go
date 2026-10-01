@@ -86,3 +86,30 @@ func TestCacheEcon_AutomaticModeKeysOnPrefixBytesOnly(t *testing.T) {
 		t.Fatalf("automatic prefix caching: the second request reads the first's prefix whatever else changed: %+v %+v", st[0], st[1])
 	}
 }
+
+// During an outage the engine finds nothing and keeps nothing; when it is over the cache is empty, not what it was before.
+func TestAnOutageOfTheCacheFindsNothingAndKeepsNothing(t *testing.T) {
+	e := NewEngine(EngineConfig{BlockTokens: 16, MinCacheTokens: 16}, nil)
+	data := cxBlocks(3, 6)
+	e.Insert(data)
+	if got := e.Lookup(data); got != 6*16 {
+		t.Fatalf("before the outage: %d tokens cached, want %d", got, 6*16)
+	}
+	e.SetDown(true)
+	if got := e.Lookup(data); got != 0 {
+		t.Errorf("during the outage the engine must find nothing, found %d", got)
+	}
+	other := cxBlocks(9, 4)
+	e.Insert(other) // not kept
+	e.SetDown(false)
+	if got := e.Lookup(data); got != 0 {
+		t.Errorf("after the outage the old cache is gone, found %d", got)
+	}
+	if got := e.Lookup(other); got != 0 {
+		t.Errorf("what was sent during the outage was not kept, found %d", got)
+	}
+	e.Insert(data)
+	if got := e.Lookup(data); got != 6*16 {
+		t.Errorf("the engine caches again after the outage: %d", got)
+	}
+}

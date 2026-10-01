@@ -1,0 +1,38 @@
+[
+  {
+    "name": "swarm",
+    "caption": "The swarm cockpit: nine agents on one shared prefix, worker mail, a stuck agent, the provider losing its cache, and the merge queue sending one piece back.",
+    "view": "cockpit",
+    "cols": 100,
+    "rows": 44,
+    "fps": 5,
+    "hold": "4s",
+    "still_at": 17
+  },
+  {
+    "name": "cache",
+    "caption": "The cache of one agent: its prompt by layer, bright where the provider read it from its cache; the thread folding into a resume; the provider dropping its cache and the harness saying which layer it lost and what it cost.",
+    "view": "cache",
+    "agent": "be-2",
+    "cols": 100,
+    "rows": 40,
+    "fps": 5,
+    "from": "4s",
+    "length": "12s",
+    "hold": "4s",
+    "still_at": 5
+  },
+  {
+    "name": "fold",
+    "caption": "A compaction at a cold moment: the agent's cache had cooled while it built, so folding its thread cost nothing extra.",
+    "view": "cache",
+    "agent": "be-1",
+    "cols": 100,
+    "rows": 40,
+    "fps": 5,
+    "from": "6s",
+    "length": "11s",
+    "hold": "4s",
+    "still_at": 9
+  }
+]

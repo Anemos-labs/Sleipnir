@@ -117,17 +117,17 @@ func cacheHeadline(s Scene, a *state.Agent, w int) []cell.Line {
 	var l2 row
 	stk := a.Stack
 	switch {
-	case !stk.Answered:
+	case stk.RespSeq == 0:
 		l2.add(st.dim, "no answer yet: what the cache did is known when the provider says")
 	default:
 		l2.add(st.dim, "latest answer: ").add(cell.Style{}, widget.Tokens(stk.Prompt)).add(st.dim, " prompt · ").
-			add(st.good, widget.Tokens(stk.Read)).add(st.dim, " from the cache · ")
+			add(hitStyle(st, hitOf(stk)), widget.Tokens(stk.Read)).add(st.dim, " from the cache · ")
 		if stk.Write > 0 {
 			l2.add(st.warn, widget.Tokens(stk.Write)).add(st.dim, " written · ")
 		}
 		l2.add(cell.Style{}, widget.Tokens(stk.Fresh)).add(st.dim, " paid in full")
 		if a.SavedUSD > 0 {
-			l2.add(st.dim, " · saved ").add(st.good, widget.USD(a.SavedUSD)).add(st.dim, " (list price)")
+			l2.add(st.dim, " · saved ").add(st.good, widget.USD(a.SavedUSD))
 		}
 	}
 	return []cell.Line{fit(l1.line(), w), fit(l2.line(), w)}
@@ -142,6 +142,14 @@ func modelOf(a *state.Agent, sn *state.Snapshot) string {
 		return a.Stack.Model
 	}
 	return sn.Session.Model
+}
+
+// hitOf is the share of the latest answer's prompt that was read from the cache.
+func hitOf(stk state.Stack) float64 {
+	if stk.Prompt <= 0 {
+		return 0
+	}
+	return float64(stk.Read) / float64(stk.Prompt)
 }
 
 func plural(n int, one, many string) string {
@@ -216,7 +224,9 @@ func promptLayers(a *state.Agent, g0 int) []widget.Layer {
 	return kept
 }
 
-// breakLayer is the index in layers of the layer a recent cache anomaly of the agent says diverged, or -1.
+// breakLayer is the index in layers of the layer where the cache broke in the latest answer, or -1: the layer a cache anomaly of the
+// latest request says diverged, else (for a miss, where the provider read less than the harness expected) the layer in which the read
+// prefix ended, which is where the prompt stopped matching what the provider had kept.
 func breakLayer(a *state.Agent, layers []widget.Layer) int {
 	for i := len(a.Anomalies) - 1; i >= 0; i-- {
 		an := a.Anomalies[i]
@@ -229,12 +239,21 @@ func breakLayer(a *state.Agent, layers []widget.Layer) int {
 			if len(f) == 0 {
 				continue
 			}
-			if name == f[0] || (len(f) > 1 && name == f[1]) || name == "g"+fmt.Sprint(j) {
+			if name != "" && (name == f[0] || (len(f) > 1 && name == f[1]) || name == "g"+fmt.Sprint(j)) {
 				return j
 			}
 		}
 		if name == "tools" || name == "system" || name == "const" || name == "constitution" {
 			return 0
+		}
+	}
+	if a.Stack.Miss && a.Stack.RespSeq != 0 {
+		read := a.Stack.Read
+		for j, l := range layers {
+			if read < l.Tokens {
+				return j
+			}
+			read -= l.Tokens
 		}
 	}
 	return -1
@@ -261,10 +280,7 @@ func promptPanel(s Scene, a *state.Agent, w int) []cell.Line {
 	}
 	stk := a.Stack
 	o := widget.NewStackOpts(w, stk.Read)
-	if !stk.Answered {
-		o.CachedTokens = 0
-	}
-	if stk.Answered && !s.NoAnim && stk.RespSeq != 0 {
+	if stk.RespSeq != 0 && !s.NoAnim {
 		if age := s.Mem.born().Age(stk.RespSeq, s.Frame); age < sweepFrames && stk.Prompt > 0 {
 			o.Sweep = float64(stk.Read) / float64(stk.Prompt) * float64(age+1) / sweepFrames
 		}
@@ -303,9 +319,6 @@ func layerTable(s Scene, a *state.Agent, w int) []cell.Line {
 		return nil
 	}
 	o := widget.NewStackOpts(w, a.Stack.Read)
-	if !a.Stack.Answered {
-		o.CachedTokens = 0
-	}
 	o.BreakAt = breakLayer(a, layers)
 	return widget.StackTable(layers, o, s.Pal)
 }
@@ -448,10 +461,10 @@ func anomalyPanel(s Scene, a *state.Agent, w int) []cell.Line {
 			r.add(st.dim, " in ").add(cell.Style{}, clean(an.Layer))
 		}
 		if an.Expected > 0 {
-			r.add(st.dim, fmt.Sprintf(" · read %s of %s expected", widget.Tokens(an.Actual), widget.Tokens(an.Expected)))
+			r.add(st.dim, fmt.Sprintf(" · %s/%s read", widget.Tokens(an.Actual), widget.Tokens(an.Expected)))
 		}
 		if an.MissKnown && an.MissUSD > 0 {
-			r.add(st.dim, " · cost ").add(st.warn, widget.USD(an.MissUSD))
+			r.add(st.dim, " · ").add(st.warn, widget.USD(an.MissUSD))
 		}
 		if an.Note != "" {
 			r.add(st.dim, " · "+clean(an.Note))
@@ -549,30 +562,35 @@ func agentsPanel(s Scene, sel *state.Agent, w, rows int) []cell.Line {
 	return out
 }
 
-// sessionPanel sums up what the cache did for the whole session.
+// sessionPanel sums up what the cache did for the whole session, on two lines.
 func sessionPanel(s Scene, w int) []cell.Line {
 	st := stylesOf(s.Pal)
 	t := s.Snap.Totals
-	var r row
 	if t.Tokens.Prompt() == 0 {
 		return []cell.Line{cell.Styled(st.dim, "no answer yet")}
 	}
-	r.add(hitStyle(st, t.HitRatio()), widget.Percent(t.HitRatio())).add(st.dim, " of the session's prompt came from the cache")
+	var a row
+	a.add(hitStyle(st, t.HitRatio()), widget.Percent(t.HitRatio())).add(st.dim, " of the session's prompt came from the cache")
 	if t.Savings.Known() && t.Savings.SavedUSD > 0 {
 		lead := " · saved "
 		if !t.Savings.Complete() {
 			lead = " · saved at least "
 		}
-		r.add(st.dim, lead).add(st.good, widget.USD(t.Savings.SavedUSD)).add(st.dim, " (list price)")
+		a.add(st.dim, lead).add(st.good, widget.USD(t.Savings.SavedUSD)).add(st.dim, " (list price)")
 	}
-	if t.Compactions > 0 {
-		r.add(st.dim, fmt.Sprintf(" · %d %s", t.Compactions, plural(t.Compactions, "compaction", "compactions")))
-	}
+	out := []cell.Line{fit(a.line(), w)}
+	var b row
+	b.add(st.dim, fmt.Sprintf("%d %s", t.Compactions, plural(t.Compactions, "compaction", "compactions")))
 	if t.Anomalies > 0 {
-		r.add(st.dim, " · ").add(st.warn, fmt.Sprintf("%d %s", t.Anomalies, plural(t.Anomalies, "anomaly", "anomalies")))
+		b.add(st.dim, " · ").add(st.warn, fmt.Sprintf("%d %s", t.Anomalies, plural(t.Anomalies, "anomaly", "anomalies")))
+	} else {
+		b.add(st.dim, " · 0 anomalies")
 	}
 	if t.RateLimited > 0 {
-		r.add(st.dim, fmt.Sprintf(" · %d rate limited", t.RateLimited))
+		b.add(st.dim, fmt.Sprintf(" · %d rate limited", t.RateLimited))
 	}
-	return []cell.Line{fit(r.line(), w)}
+	if t.Retries > 0 {
+		b.add(st.dim, fmt.Sprintf(" · %d retries", t.Retries))
+	}
+	return append(out, fit(b.line(), w))
 }

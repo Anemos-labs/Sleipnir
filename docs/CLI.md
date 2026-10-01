@@ -381,10 +381,18 @@ flags:
         print the last screen of the session as text and exit (needs no terminal)
   -fps int
         with --record: frames of the recording a second, at most 15 (default 5)
+  -from duration
+        with --record: start this far into the session (what happened before is on the screen at the first frame)
+  -gallery string
+        draw every recording listed in this manifest (docs/media/gallery.json) from the session, into --out; the other flags that choose a screen are then the manifest's
   -hold duration
         with --record: how long the last frame stays before the loop starts again (default 4s)
+  -length duration
+        with --record: record this much of the session from --from (default: to its end)
   -no-anim
         no animation: the horse stands and nothing moves
+  -out string
+        with --gallery: the directory the recordings are written to (default ".")
   -record string
         write an animated SVG of the replay to FILE instead of showing it (needs no terminal)
   -rows int
@@ -454,17 +462,41 @@ Usage of models:
 
 ### `sleipnir demo`
 
-Runs a scripted team through the real harness against the built-in mock endpoint: no key, no network, a few seconds.
-It writes a workspace and a recorded session to a temporary directory (or `--dir`) that you can open with
-`sleipnir inspect`.
+Runs a scripted team through the real harness against the built-in mock endpoint: no key, no network. The model is a script;
+everything around it is real. It writes a workspace and a recorded session to a temporary directory (or `--dir`) that you can open
+with `sleipnir inspect`, `sleipnir replay` (the swarm, its cache, its mail and its board, played back on a terminal) or
+`sleipnir watch`.
+
+**On a terminal it is shown**: the team is watched in the live cockpit, the same program as `sleipnir watch` (the keys `o c m b`
+change the screen, the arrows choose the agent, `space` holds the picture, `?` lists the keys), following the session as the harness
+writes it. When the team is done the last screen stays, and the other screens can be looked at, until you press `q`; then the
+report is printed on the normal screen. A `q` before the end stops the team and says where what it did is kept. `--plain` (or a
+pipe, or `TERM=dumb`) prints the report and draws nothing.
+
+Two scenarios. `handbook` (a second or two, the default when nothing is watching): a manager, scouts and writers survey a handbook
+and summarise it, to show the shared prefix and the bill. `shop` (about twenty seconds, needs `git` and `sh`, the default on a
+terminal when both are there): nine agents build a small shop in git worktrees through the verifying merge queue, with worker mail,
+a worker that repeats a failing check until the harness says so, a compaction at a warm moment and one at a cold moment, the
+provider losing its cache for a few seconds, and a merge that is sent back; its cache lives 25 seconds instead of minutes so that it
+can be watched cooling. The recordings in the README are made from a session of it.
 
 <!-- flags: demo -->
 ```text
 Usage of demo:
   -dir string
         where to put the workspace and the recorded session (default: a temporary directory)
+  -no-anim
+        with the cockpit: no animation, the horse stands
+  -plain
+        no cockpit, even on a terminal: print the report as text when the team is done
+  -scale float
+        shop: stretch (above 1) or squeeze (below 1) the time it takes, and the lifetime of its cache with it (default 1)
+  -scenario string
+        what the team does: handbook (survey a handbook and summarise it, a second or two) | shop (build a small shop in git worktrees: mail, a cache that goes cold, a stuck agent, a cache break, a merge that is sent back; about twenty seconds; needs git and sh) (default: shop with the live cockpit on a terminal, handbook otherwise)
   -topics int
-        documents to survey and summarise (an even number, 2-32) (default 8)
+        handbook: documents to survey and summarise (an even number, 2-32) (default 8)
+  -view string
+        with the cockpit: the screen to start on: cockpit, cache, mail or board (the keys o c m b change it) (default "cockpit")
 ```
 <!-- /flags -->
 

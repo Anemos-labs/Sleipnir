@@ -168,8 +168,12 @@ func cmdReplay(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	final := fs.Bool("final", false, "print the last screen of the session as text and exit (needs no terminal)")
 	speed := fs.Float64("speed", 1, "seconds of the session that pass in a second of the replay (a recording of a session that took a second is slowed down to be seen)")
 	until := fs.Uint64("until", 0, "stop after the event with this seq (0: the whole log)")
+	from := fs.Duration("from", 0, "with --record: start this far into the session (what happened before is on the screen at the first frame)")
+	length := fs.Duration("length", 0, "with --record: record this much of the session from --from (default: to its end)")
 	fps := fs.Int("fps", 5, "with --record: frames of the recording a second, at most 15")
 	hold := fs.Duration("hold", 4*time.Second, "with --record: how long the last frame stays before the loop starts again")
+	gallery := fs.String("gallery", "", "draw every recording listed in this manifest (docs/media/gallery.json) from the session, into --out; the other flags that choose a screen are then the manifest's")
+	outDir := fs.String("out", ".", "with --gallery: the directory the recordings are written to")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: sleipnir replay [flags] [SESSION]
 
@@ -195,8 +199,8 @@ flags:
 		fs.Usage()
 		return errors.New("replay: at most one session")
 	}
-	if *record != "" && *final {
-		return errors.New("replay: --record and --final are alternatives")
+	if (*record != "" && *final) || (*gallery != "" && (*record != "" || *final)) {
+		return errors.New("replay: --record, --final and --gallery are alternatives")
 	}
 	view, err := app.ParseView(sf.view)
 	if err != nil {
@@ -211,10 +215,12 @@ flags:
 		return fmt.Errorf("replay: %w", err)
 	}
 	switch {
+	case *gallery != "":
+		return renderGallery(stdout, stderr, path, *gallery, *outDir)
 	case *record != "":
 		cols, rows := sf.size(nil)
-		o := app.RecordOptions{Cols: cols, Rows: rows, FPS: *fps, Speed: *speed, Until: *until, Hold: *hold, NoAnim: sf.noAnim, View: view,
-			Agent: sf.agent, Follow: sf.agent == ""}
+		o := app.RecordOptions{Cols: cols, Rows: rows, FPS: *fps, Speed: *speed, Until: *until, From: *from, Length: *length, Hold: *hold, NoAnim: sf.noAnim,
+			View: view, Agent: sf.agent, Follow: sf.agent == ""}
 		svg, err := app.Record(path, o)
 		if err != nil {
 			return fmt.Errorf("replay: %w", err)
@@ -238,6 +244,33 @@ flags:
 		return errors.New("replay: a full-screen replay needs a terminal; --final prints the last screen as text and --record FILE.svg writes an animation")
 	}
 	return err
+}
+
+// renderGallery draws the recordings of a manifest from the session log into dir. It prints, on stdout, one line "still NAME SECONDS" for
+// every recording that wants a still picture, which is what scripts/record-demo.sh takes the stills from.
+func renderGallery(stdout, stderr io.Writer, path, manifest, dir string) error {
+	recs, err := app.LoadGallery(manifest)
+	if err != nil {
+		return fmt.Errorf("replay: %w", err)
+	}
+	docs, err := app.RenderGallery(path, recs)
+	if err != nil {
+		return fmt.Errorf("replay: %w", err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("replay: %w", err)
+	}
+	for _, r := range recs {
+		name := r.Name + ".svg"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(docs[name]), 0o644); err != nil {
+			return fmt.Errorf("replay: %w", err)
+		}
+		fmt.Fprintf(stderr, "sleipnir replay: wrote %s (%d KB)\n", filepath.Join(dir, name), (len(docs[name])+1023)/1024)
+		if r.StillAt > 0 {
+			fmt.Fprintf(stdout, "still %s %g\n", r.Name, r.StillAt)
+		}
+	}
+	return nil
 }
 
 // printFinal writes the last screen of a session as text: the log folded to its end (or to until), the screen drawn once at that

@@ -38,7 +38,7 @@ const (
 	Retried      = "request.retry"      // the endpoint did not answer and the request was repeated
 	CacheBreak   = "cache.break"        // a cache anomaly
 	CompactFail  = "compaction.reject"  // a compaction patch was rejected
-	ReRead       = "file.reread"        // the same file read three or more times in one session
+	ReRead       = "file.reread"        // the same part of a file (path and range), unchanged in between, read three or more times in one session
 	RepeatedCall = "call.repeated"      // one identical call three or more times
 )
 
@@ -100,7 +100,7 @@ var hints = map[string]string{
 	Retried:      "the endpoint did not answer: rate limit, overload or a dropped connection",
 	CacheBreak:   "the prompt cache broke: a stable layer changed, or the endpoint's cache is erratic",
 	CompactFail:  "a compaction patch did not validate: the compactor model, or a rule that is too strict",
-	ReRead:       "the same file read again and again: did the answer get lost (truncation, compaction) or never used?",
+	ReRead:       "the same part of a file read again and again: did the answer get lost (truncation, compaction) or never used?",
 	RepeatedCall: "the same call over and over: polling, or a loop",
 }
 
@@ -268,10 +268,34 @@ type call struct {
 	req                 string // the request whose response asked for it
 }
 
+// readPart names the part of a file a read call asked for: a key (the path, then the other arguments of the call, which are the
+// range) and the words for an example ("read /w/main.go (offset 81, limit 80)"). Two reads of one file with different ranges have
+// different keys.
+func readPart(path string, input json.RawMessage) (key, what string) {
+	var args map[string]json.RawMessage
+	_ = json.Unmarshal(input, &args)
+	for _, k := range []string{"path", "file_path"} {
+		delete(args, k)
+	}
+	names := make([]string, 0, len(args))
+	for k := range args {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	var rng []string
+	for _, k := range names {
+		rng = append(rng, k+" "+strings.Trim(string(args[k]), `"`))
+	}
+	if len(rng) == 0 {
+		return path + "\x00", path
+	}
+	return path + "\x00" + strings.Join(rng, ", "), path + " (" + strings.Join(rng, ", ") + ")"
+}
+
 func mineLog(path, session string, rep *Report, add func(session, category, key string, sev int, ex Example, req string)) error {
 	calls := map[string]call{}     // by tool call id
 	lastReq := map[string]string{} // the request each agent's last response answered, by agent
-	reads := map[string]int{}      // "read" calls per path
+	reads := map[string]int{}      // "read" calls per part of a file (path and range), since the file was last changed
 	same := map[string]int{}       // identical calls that did not fail (a failing call that is repeated is that failure's)
 	callKey := map[string]string{} // the key of each call, by id
 	readEx := map[string]Example{}
@@ -320,14 +344,17 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 			}
 			switch {
 			case d.Name == "read" && in.Path != "":
-				reads[in.Path]++
-				readEx[in.Path] = ex("read " + in.Path)
+				// a big file is read a window at a time: only the same part of it is read again
+				part, what := readPart(in.Path, d.Input)
+				reads[part]++
+				readEx[part] = ex("read " + what)
 			case (d.Name == "edit" || d.Name == "write") && in.Path != "":
 				// a file that was just changed is worth reading again: the count starts over (the same file is spelled
 				// relatively and absolutely by the same model)
-				for p := range reads {
+				for part := range reads {
+					p, _, _ := strings.Cut(part, "\x00")
 					if p == in.Path || strings.HasSuffix(p, "/"+strings.TrimPrefix(in.Path, "./")) || strings.HasSuffix(in.Path, "/"+strings.TrimPrefix(p, "./")) {
-						reads[p] = 0
+						reads[part] = 0
 					}
 				}
 			}
@@ -433,19 +460,19 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 		}
 	}
 	// Every repetition after the first was avoidable; the example is attached once.
-	paths := make([]string, 0, len(reads))
+	parts := make([]string, 0, len(reads))
 	for p := range reads {
-		paths = append(paths, p)
+		parts = append(parts, p)
 	}
-	sort.Strings(paths)
-	for _, p := range paths {
+	sort.Strings(parts)
+	for _, p := range parts {
 		if n := reads[p]; n >= 3 {
 			for i := 1; i < n; i++ {
 				ex := Example{}
 				if i == 1 {
 					ex = readEx[p]
 				}
-				add(session, ReRead, "a file read three or more times", S2, ex, "")
+				add(session, ReRead, "the same part of a file read three or more times", S2, ex, "")
 			}
 		}
 	}

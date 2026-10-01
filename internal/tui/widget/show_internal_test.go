@@ -167,6 +167,11 @@ func TestShowClean(t *testing.T) {
 		"\u200b\u200f\ufeffz": "z", "e\u0301": "e\u0301", "\u0301e": "e", "\u200d\u200dx": "x", "a\u200db": "a\u200db", "\xff": "�",
 		"\u2028x\u2029": " x ", "中文 🐎": "中文 🐎", "\U000e0041tag": "tag",
 	}
+	// the soft hyphen, the Mongolian vowel separator and the variation selectors supplement draw nothing; the markdown and dialog
+	// widgets drop them and widgettest.Control says no widget may return them
+	for in, want := range map[string]string{"a­b": "ab", "a᠎b": "ab", "selector\U000e0100": "selector"} {
+		cases[in] = want
+	}
 	for in, want := range cases {
 		if got := showClean(in); got != want {
 			t.Errorf("showClean(%q) = %q, want %q", in, got, want)

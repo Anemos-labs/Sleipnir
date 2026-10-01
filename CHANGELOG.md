@@ -174,6 +174,23 @@ The first release.
   as text; both need no terminal. The program draws on the alternate screen, reads keys in raw mode, follows the window and puts the
   terminal back on every way out, a signal and a panic included (`internal/tui/app`, run on a pseudo-terminal by
   `cmd/sleipnir/e2e_watch_test.go`).
+- `sleipnir demo --scenario shop`: a second scripted team, about twenty seconds, with the things the cockpit and the cache view exist to
+  show, all of them done by the real harness around a scripted model: nine agents (a manager, three scouts reading the same prefix at
+  once, four writers each in a git worktree with a scope, a reviewer); worker mail; a worker that runs the same failing check four times
+  until the repetition guard tells it so; a compaction at a warm moment (a priced rebase) and one at a cold moment (free); the provider
+  losing its cache for a few seconds (`cache.anomaly` with what each miss cost); and a merge that the queue sends back because two
+  workers each kept a rule in their own tree and broke it together. The cache lives 25 seconds in it instead of minutes, so it can be
+  watched cooling (`--scale` stretches or squeezes everything it does). Tested end to end (the merge, the bounce, the mail, the nudge,
+  the fold, and that the result in the checkout passes the project's own check).
+- `sleipnir demo` on a terminal is watched: it runs the shop and shows it in the live cockpit (the program of `watch`, over the log the
+  harness is writing), keeps the last screen, with the other screens to look at, until you press `q`, and then prints the report; a `q`
+  before the end stops the team, and a run that fails gives the terminal back at once with its error. Without a terminal, with `--plain`
+  or without git and sh it is the handbook's text report as before. The mock endpoint stops waiting for a reply's latency when its
+  client goes away, so that stopping the demo does not wait for the reply nobody is waiting for.
+- The pictures in the README (`docs/media`) are recordings of the program, made by `scripts/record-demo.sh` from the event log of one
+  recorded demo session and listed in `docs/media/gallery.json`: the swarm cockpit, the cache of one agent, a compaction at a cold moment.
+  `sleipnir replay --gallery` draws them, and `scripts/record-demo.sh --check` and a Go test fail when the committed files are not what the
+  code draws from the committed log. The mock endpoint got a cache outage (`Server.CacheOutage`) for the demo's break.
 - `sleipnir chat` (slash commands, Ctrl-C per turn, Ctrl-C twice at the prompt to quit), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and
