@@ -77,10 +77,10 @@ S1 a cost, S2 waste, S3 a stop. *Fix* names the commit's subject; *Test* is the 
 | 21 | code reading | retry | a stream that failed part-way printed its first words twice; the last failure announced a retry and waited out the longest backoff | S2 | every mid-stream failure | `forward` dropped `EvReset`; the loop slept after the last attempt | `agent.Resetter` (a new line, a `reset` JSON event); notices count attempts; the last failure is final | `TestARetriedResponseTellsTheSinkItStartsOver`, `TestRetryNoticesCountTheAttemptsAndTheLastFailureIsFinal` |
 | 22 | tests under load | test | keep-alive and idle-timeout tests, the parallel-hooks bound (4.5 s) and the log-tail latency bound (250 ms) failed at a load of 13 to 40 | S2 | about one run in five of the whole suite | wall-clock margins of 10x or less on machines that stall for seconds | margins of 30x, a rendezvous instead of a stopwatch, hang guards of a minute | the tests themselves |
 | 23 | bench core (friction on 349 sessions) | friction | `file.reread` ranked third: 529 repeats in 87 sessions | S1 | 54% of 2401 reads were of a file read before | the miner counted per file, and a big file is read a window at a time: 110 of those 1152 reads were the same window | the count is per part of a file (path and range), starts over at an edit, and the example says which part | `TestReadingDifferentPartsOfAFileIsNotARepeat` |
+| 24 | code reading | prompt | a request cancelled before an answer and the next one reached the provider as one message with nothing between them: "fix the parserdo the scanner instead" | S2 | every Ctrl-C while the model is thinking, followed by a new message | `kv.Render` merges two user turns in a row into one message (the provider would refuse two) and appended the second block to the first; a chat template that lays the parts of a message end to end ran the two together | the second block begins with a blank line, in its own text so that no block is whitespace only (some providers refuse those) and nothing sent before changes; a declared layout change (`sleipnir-kv/3`, the canonical session has such a pair now) | `TestRenderSetsAdjacentUserMessagesApart`, the render goldens |
 
-Open: `run` against a dead endpoint retries for 62 seconds before it says anything final (the notices say what and when); after a
-cancelled turn the kernel merges the unanswered goal and the next one into one user message without a separator
-(`internal/kv/render.go`); the per-session scratch directory of row 4.
+Open: `run` against a dead endpoint retries for 62 seconds before it says anything final (the notices say what and when); the
+per-session scratch directory of row 4.
 
 ## Scenarios to run by hand in tmux
 

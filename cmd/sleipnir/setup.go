@@ -235,8 +235,11 @@ func redactedConfig(cfg *config.Config) any {
 	return doc
 }
 
-// cmdSessions lists recorded sessions, newest first.
+// cmdSessions lists recorded sessions, newest first; `sessions prune` deletes the old ones.
 func cmdSessions(_ context.Context, args []string) error {
+	if len(args) > 0 && args[0] == "prune" {
+		return cmdSessionsPrune(os.Stdout, os.Stderr, args[1:], time.Now())
+	}
 	fs := flag.NewFlagSet("sessions", flag.ExitOnError)
 	dir := fs.String("dir", "", "the directory that holds the sessions (default <state>/sessions, <state> being $SLEIPNIR_HOME or ~/.sleipnir)")
 	n := fs.Int("n", 20, "how many to list")

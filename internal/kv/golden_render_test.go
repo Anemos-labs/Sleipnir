@@ -116,6 +116,9 @@ func goldenStack(t testing.TB, mode kv.HotMode) (*kv.Stack, []core.Block) {
 	assistant(core.Text("The bound is len(items)-1; it should be len(items)."))
 	user(3, core.OriginUser, kv.Steer("also add a regression test"))
 	assistant(thinking("a test first, then the fix", "c2lnLWdvbGRlbi0y")) // a reply that is only thinking
+	// A request that was cancelled before it was answered, and the mail that came next: two user messages in a row, which Render sends as one,
+	// the second set off from the first by a blank line (sleipnir-kv/3).
+	th.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text("wait, leave the page size alone")}})
 	user(4, core.OriginMail, core.Text("[mail m3 from fe-1]\nThe footer needs the total count: keep it in the response."))
 
 	stack := &kv.Stack{
@@ -453,8 +456,12 @@ func layerReport(s *kv.Stack) string {
 // has the newest row's digest, and TestRendererVersion fails when the newest row is not
 // kv.RendererVersion: so changing what the model is sent takes a new row here and a new
 // version in render.go, in the same commit, where a reviewer sees both.
+//
+// /3 sets the second of two user messages in a row (a request cancelled before an answer, then another) off from the first by a blank
+// line; the canonical session has such a pair since then, a cancelled request and then mail.
 var renderHistory = []struct{ version, digest string }{
 	{"sleipnir-kv/2", "27c98b11c17d077bc552aa0dfe3e8eedc33e2e1ace77eb636407a0bc68077f1e"},
+	{"sleipnir-kv/3", "97e026fbe6d8198e760cc976ca333ab79e0257890781fbd37f3b582a5ae5bc20"},
 }
 
 // renderDigest is the digest over what the model is sent (visibleLines) for every route and

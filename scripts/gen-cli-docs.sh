@@ -16,7 +16,8 @@
 # The script also fails when a command that the binary lists (sleipnir --help, rl help,
 # rl taskgen help, rl tasks help) has no marker in the document, so a new command cannot
 # be forgotten. `swarm` (which is `run --swarm`), `version` and the command groups
-# themselves (rl, rl taskgen, rl tasks) take no marker.
+# themselves (rl, rl taskgen, rl tasks) take no marker. A subcommand of a listed command
+# (`sessions prune`) may have one when its help starts "usage: sleipnir sessions prune".
 set -eu
 LC_ALL=C
 export LC_ALL
@@ -90,6 +91,21 @@ done
 echo "$markers" | sort -u > "$tmp/asked"
 comm -23 "$tmp/offered" "$tmp/asked" > "$tmp/missing"
 comm -13 "$tmp/offered" "$tmp/asked" > "$tmp/extra"
+# A subcommand of a listed command ("sessions prune") is not in any listing. Its marker is accepted when the command's own help
+# says it is the help of that subcommand: a renamed or removed one would print its parent's help, which names the parent.
+if [ -s "$tmp/extra" ]; then
+  : > "$tmp/extra.kept"
+  while IFS= read -r m; do
+    f=$(echo "$m" | tr ' ' '_')
+    first=${m%% *}
+    if [ "$first" != "$m" ] && [ "$first" != rl ] && grep -qx -e "$first" "$tmp/offered" \
+      && head -n 1 "$tmp/help/$f" | grep -q "^usage: sleipnir $m\b"; then
+      continue
+    fi
+    echo "$m" >> "$tmp/extra.kept"
+  done < "$tmp/extra"
+  mv "$tmp/extra.kept" "$tmp/extra"
+fi
 
 # --- rewrite the document
 awk -v dir="$tmp/help" '

@@ -7,13 +7,13 @@ cache_key: (none)
 params: max_tokens=1024 thinking="adaptive" effort="high" tool_choice="auto" stop=[] temperature=(unset)
 prefix_key: bb7f6153935387bf416aa2c49ce69345008ea1f06e4b63ad2aa41f6cdf63553a
 thread_from: 1
-rolling_marker: message 8 block 0
+rolling_marker: message 8 block 1
 
 == breakpoints (4)
 shared: after message 0 block 0 ttl=1h0m0s
 role: after message 0 block 1 ttl=1h0m0s
 notes: after message 0 block 2 ttl=0s
-thread: after message 8 block 0 ttl=0s
+thread: after message 8 block 1 ttl=0s
 
 == sections (4)
 shared: sha256=862b279c0d3516122ec6b836df94e3e84399ac07e1ac037f7f10a7b8720586f1 tokens=88 breakpoint=true
@@ -168,13 +168,19 @@ also add a regression test
 <<<
 (no output)
 >>>
-@@ message 8 role=user turn=15 clear_at=- blocks=2
-@@ block 8.0 kind=text text_bytes=78
+@@ message 8 role=user turn=15 clear_at=- blocks=3
+@@ block 8.0 kind=text text_bytes=31
 <<<
+wait, leave the page size alone
+>>>
+@@ block 8.1 kind=text text_bytes=80
+<<<
+
+
 [mail m3 from fe-1]
 The footer needs the total count: keep it in the response.
 >>>
-@@ block 8.1 kind=text ephemeral=true text_bytes=155
+@@ block 8.2 kind=text ephemeral=true text_bytes=155
 <<<
 <live board="v7">
 you: be-1 (backend) · T-1 · ctx 2k
@@ -184,5 +190,5 @@ T-2 [doing] fe-1 · render the page footer
 >>>
 
 == digests (of every non-zero field, whether or not it is printed above)
-model_visible_sha256: 26ce01fd4f50bcdf9a902483a98d447c3227d23d14b2645a3248d01b423ee88c
-rendered_sha256: 7776ff775e1dd4350346f06e902fb3879306ea51b43f696a660e07072e45e4d2
+model_visible_sha256: 135277e1c417f310fa43d80a3469d2733e6ba5feb336c04daf93bb2bdcc06614
+rendered_sha256: 10398c794daa64ec23bec4c8cd49fd24ba56b2a7396fb6961bf806dde3c5742e

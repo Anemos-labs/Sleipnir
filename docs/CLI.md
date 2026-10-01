@@ -24,7 +24,7 @@ it none of that is used. See `docs/CONFIGURATION.md` section 4 and `docs/EXTENDI
 |---|---|
 | `init` | write a starter `.sleipnir/config.json` and `AGENTS.md` (or, with `--user`, your `~/.sleipnir/config.json`) |
 | `config` | show the effective configuration and where each value came from |
-| `sessions` | list recorded sessions |
+| `sessions` | list recorded sessions; `sessions prune` deletes the old ones |
 | `chat` | interactive session with slash commands |
 | `run` | run one goal (a single agent, or a manager with workers) |
 | `swarm` | shorthand for `run --swarm` |
@@ -92,6 +92,34 @@ Usage of sessions:
         the directory that holds the sessions (default <state>/sessions, <state> being $SLEIPNIR_HOME or ~/.sleipnir)
   -n int
         how many to list (default 20)
+```
+<!-- /flags -->
+
+#### `sleipnir sessions prune`
+
+A session is a directory of the state directory (its event log, the blobs the log points at, its checkpoints) and nothing deletes one;
+a person who uses the harness every day has thousands within a year. `sessions prune` deletes the old ones: those whose newest file
+is older than `--older-than` (30 days), except the newest `--keep` (20), whatever their age, and any that was written to in the last
+ten minutes (it may be running). A directory without an `events.jsonl` is not a session and is never touched. Without `--yes` nothing
+is deleted: it lists what would go, with the size of each and the total.
+
+<!-- flags: sessions prune -->
+```text
+usage: sleipnir sessions prune [flags]
+
+Deletes recorded sessions that are old: the event log, the blobs it points at and the checkpoints of each. The newest ones are
+kept whatever their age, and so is any session that was written to in the last ten minutes. Nothing is deleted without --yes;
+without it the sessions that would go are listed, with their size.
+
+flags:
+  -dir string
+        the directory that holds the sessions (default <state>/sessions, <state> being $SLEIPNIR_HOME or ~/.sleipnir)
+  -keep int
+        never delete the newest N sessions, whatever their age (default 20)
+  -older-than string
+        delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age) (default "30d")
+  -yes
+        delete them (without it, the sessions that would go are listed and nothing is deleted)
 ```
 <!-- /flags -->
 
