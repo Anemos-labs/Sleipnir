@@ -630,7 +630,7 @@ func isLookCommand(line string) bool {
 		return false
 	}
 	switch f[0] {
-	case "/cost", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions":
+	case "/cost", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust":
 		return true
 	case "/mode", "/mcp":
 		return len(f) == 1

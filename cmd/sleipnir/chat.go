@@ -21,6 +21,7 @@ import (
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/session"
 	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/reee344/sleipnir/internal/trust"
 	"github.com/reee344/sleipnir/internal/tui/app"
 )
 
@@ -230,6 +231,7 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 const chatHelp = `/help              this text (and your custom commands and skills)
 /status            model, mode, session, budget and cost at a glance
 /permissions       the mode and the rules in force, among them what you allowed this session
+/trust             this project's own instructions and settings: what they are, and whether you trusted them
 /cost              tokens, cost and cache hit ratio so far
 /context           layer sizes of the current prompt (what is pinned, what is thread)
 /compact [focus]   fold the older thread now (optionally: what to keep in view); a declared, priced rebase
@@ -275,6 +277,12 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		printStatus(stderr, s)
 	case "/permissions":
 		printPermissions(stderr, s)
+	case "/trust":
+		home, _ := os.UserHomeDir()
+		dir, _ := os.Getwd()
+		if err := trustShow(stderr, trust.OpenLedger(session.TrustLedgerPath(home)), home, dir); err != nil {
+			fmt.Fprintln(stderr, "trust:", err)
+		}
 	case "/cost":
 		printCost(stderr, s)
 	case "/context":
