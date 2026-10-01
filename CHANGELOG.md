@@ -334,6 +334,16 @@ The first release.
   harness writes are unchanged and no golden file moved); the event log's fuzz target had a different idea of "a log at its last sequence number"
   than the log has (Open's own record of damage takes a number too); and every end-to-end test that reads a command's stderr failed under the
   coverage run, since a test binary built for coverage that runs as the command says on stderr that it has nowhere to write its counters.
+- Found by the second nightly run (a minute a fuzz target): **a refusal could put a control character on the terminal.** The configuration
+  that a refused endpoint shows, so that the person can allow it deliberately (`allow_hosts`), was the host and the provider's name run
+  through `encoding/json`, which leaves the C1 controls (U+009B is a CSI and U+009D an OSC that writes the clipboard, on a terminal that
+  honours the 8-bit forms), the bidirectional and zero-width characters and the tag characters as they are, and both come from a
+  project's configuration, which is not the reader's file. The snippet writes them as `\u` escapes now, which paste into a
+  configuration file as the same host (`FuzzCheckEndpoint` found U+009F in a host; the sentence above the snippet was sanitised all
+  along). **A killed process group could outlive the kill.** After SIGKILL `killTree` waited for the leader to be reaped and not for the
+  members of the group, which are not its children and are gone a moment after the signal, so a command that ignored SIGTERM could still be
+  running when `Shutdown` returned (once in the nightly run's three passes of the suite under `-race`); it waits, bounded, until the group
+  is empty, as the MCP transport already did.
 - A long run is measured (`TestALongRunKeepsABoundedFootprint`): a thousand steps on every push and twenty thousand in the nightly run, a
   tool result each, the thread folded as it grows, the live heap read after a collection a quarter, a half and three quarters of the way,
   and held to what the archive's index takes for the turns it ever had (a few hundred bytes each; a kilobyte a step is the figure, the

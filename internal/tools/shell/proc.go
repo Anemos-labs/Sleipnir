@@ -64,6 +64,9 @@ type proc struct {
 	ctrl   atomic.Int64 // control bytes dropped by the sanitizers
 	maxOut int64
 	grace  time.Duration
+	// alive says whether a live process remains in a process group (groupAlive): a field so that a test can say how long the
+	// group takes to go once it has been killed.
+	alive func(pgid int) bool
 }
 
 // startProc launches the process and its pumps. The caller must have called
@@ -123,6 +126,7 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 		killCh:    make(chan killReason, 1),
 		maxOut:    sp.maxOut,
 		grace:     m.opts.KillGrace,
+		alive:     groupAlive,
 	}
 	m.track(p)
 
@@ -227,16 +231,32 @@ func (p *proc) killTree() {
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		if p.leaderDone() && !groupAlive(p.pid) {
+		if p.leaderDone() && !p.alive(p.pid) {
 			return
 		}
 		select {
 		case <-grace.C:
 			killGroup(p.pid)
-			select { // SIGKILL cannot be caught; wait for the kernel to finish
-			case <-p.done:
-			case <-time.After(5 * time.Second):
-			}
+			p.awaitGroupGone()
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// awaitGroupGone waits, after a SIGKILL, until the leader has been reaped and no live process is left in the group. SIGKILL cannot be
+// caught or ignored, but it is not instant: a member that was still dying when killTree returned was running after the Shutdown, the
+// timeout or the kill that was to end it, in a directory about to be removed or holding a port about to be used again (the leader's
+// being reaped says nothing of the others, which are not its children). The wait is bounded, for a process that cannot be killed
+// (one stuck in the kernel) must not hold the harness with it.
+func (p *proc) awaitGroupGone() {
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for !(p.leaderDone() && !p.alive(p.pid)) {
+		select {
+		case <-deadline.C:
 			return
 		case <-tick.C:
 		}

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
 // An API key is issued for one provider, and the harness sends it wherever the
@@ -228,7 +229,30 @@ func snippet(name string, fields map[string]any, plainToo bool) string {
 	if err != nil {
 		return "{}"
 	}
-	return string(b)
+	return jsonSafe(string(b))
+}
+
+// jsonSafe writes the characters of a JSON document that a terminal would act on, or that change what the text appears to say, as the
+// \u escapes JSON has for them: the C1 controls (U+009B is a CSI, U+009D an OSC that writes the clipboard), the bidirectional and
+// zero-width characters, the tag characters, the rest of what SanitizeText drops. The document means what it did and still pastes into
+// a configuration file; it cannot move the cursor or show a host that is not the one it holds. The host and the provider's name in it
+// come from a project's configuration, which is not the reader's file, and encoding/json leaves all of these as they are.
+func jsonSafe(doc string) string {
+	var b strings.Builder
+	b.Grow(len(doc))
+	for _, r := range doc {
+		if !hiddenRune(r) && r != 0x2028 && r != 0x2029 {
+			b.WriteRune(r)
+			continue
+		}
+		if r > 0xFFFF {
+			hi, lo := utf16.EncodeRune(r)
+			fmt.Fprintf(&b, `\u%04x\u%04x`, hi, lo)
+			continue
+		}
+		fmt.Fprintf(&b, `\u%04x`, r)
+	}
+	return b.String()
 }
 
 // anchoredAt reports whether u is a place one of the trusted base URLs already

@@ -266,6 +266,66 @@ func TestEndpointMessagesSanitiseWhatTheyEcho(t *testing.T) {
 	}
 }
 
+// The refusal shows the configuration that would allow what it refused, and the host and the provider's name in it are the project's.
+// encoding/json writes the C1 controls (U+009B starts a control sequence on a terminal that honours the 8-bit forms, U+009D an OSC that
+// writes the clipboard), the bidirectional and zero-width characters and the tag characters as they are, so the snippet has them
+// escaped, and what a person pastes into their file is still the host that was refused (the fuzzer found U+009F in a host).
+func TestTheSnippetOfARefusalEscapesWhatItEchoesAndStillNamesTheSameHost(t *testing.T) {
+	for _, host := range []string{
+		"\u009f", "\u009b2J.evil.example", "\u009d52;c;AAAA\u009c.evil.example", "evil\u202eelpmaxe.example",
+		"zero\u200bwidth.example", "tag\U000E0041.example", "line\u2028break.example", "\ufffe.example",
+	} {
+		for _, src := range []EndpointSource{SourceProject, SourceEnv} {
+			e := openaiEndpoint("http://"+host+"/v1", src)
+			e.Name = "open\u009bai\u202e"
+			err := CheckEndpoint(e)
+			if err == nil {
+				t.Errorf("%q from %d: not refused", host, src)
+				continue
+			}
+			msg := err.Error()
+			for _, r := range msg {
+				if r != '\n' && hiddenRune(r) {
+					t.Errorf("%q from %d: U+%04X in the refusal %q", host, src, r, msg)
+					break
+				}
+			}
+			var doc struct {
+				Providers map[string]struct {
+					AllowHosts []string `json:"allow_hosts"`
+				} `json:"providers"`
+			}
+			var line string
+			for _, l := range strings.Split(msg, "\n") {
+				if t := strings.TrimSpace(l); strings.HasPrefix(t, "{") {
+					line = t
+				}
+			}
+			if err := json.Unmarshal([]byte(line), &doc); err != nil {
+				t.Errorf("%q from %d: the snippet %q is not JSON: %v", host, src, line, err)
+				continue
+			}
+			got, ok := doc.Providers[e.Name]
+			if !ok || len(got.AllowHosts) != 1 {
+				t.Errorf("%q from %d: the snippet %q does not name the provider %q once", host, src, line, e.Name)
+				continue
+			}
+			if want := mustParse(t, e.BaseURL).Host; got.AllowHosts[0] != want {
+				t.Errorf("%q from %d: the snippet allows %q, the refused host is %q", host, src, got.AllowHosts[0], want)
+			}
+		}
+	}
+}
+
+func mustParse(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("%q: %v", raw, err)
+	}
+	return u
+}
+
 // Whatever URL an environment variable holds, CheckEndpoint neither panics nor lets a key
 // through to a place the rules forbid, and its message carries no control characters.
 func FuzzCheckEndpoint(f *testing.F) {
