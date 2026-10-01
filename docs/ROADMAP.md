@@ -14,16 +14,16 @@ and the keyless local servers Ollama, LM Studio, llama.cpp, vLLM); `models.roles
 `sleipnir models` over every provider with a key, with search words, filters and favorites (`models.favorites`); `/model` in the chat (the agent is rebuilt on the new
 provider and the old snapshot restored: the resume path) with a menu that completes from the catalogues (`input.Choices`, the editor opens a menu at a slash command's first
 argument); the errors of a first run name Heimdall; a note when a model edits only tests after a failing run (`internal/agent/testguard.go`); a hint when a manager creates a task
-without a description; long-term memory (`internal/tools/memtool`, `~/.sleipnir/MEMORY.md`, every save asks); `sleipnir schedule` and `sleipnir daemon` (`internal/sched`).
+without a description; long-term memory (`internal/tools/memtool`, `~/.sleipnir/MEMORY.md`, every save asks); `sleipnir schedule` and `sleipnir daemon` (`internal/sched`); `sleipnir` alone opens the chat, and its first run (`cmd/sleipnir/pick.go`, `login.go`) asks which provider and for its key (kept in `~/.sleipnir/auth.json`, mode 0600, held in memory through `harden.Provide`), asks the provider which models it serves (**no model name is written into the code: the owner ruled that out, keep it so**) and writes `~/.sleipnir/config.json`; a refused key says to run `sleipnir login`; a `cd` to an invented directory is answered by the shell tool without a question.
 
 **Found by use, and left alone on purpose.** A 2B model (minicpm5-2b) fails a ten-line cache task by compile errors it cannot read; no nudge fixes that, so do not add
 one. Integer arguments given as strings stay refused (five tests and the web tool encode it; the error names the field). A hard refusal of a task without a description broke
 a dozen tests and real managers write terse titles: it is a hint. Writes under `~/.sleipnir` ask in every mode, so `run` cannot save a memory unattended: by design.
 
 **Open, in the order to take it:**
-1. The benchmark refresh (`docs/BENCHMARKS.md`, README numbers): the corpus is 52 tasks, the text says 48; needs `bench/build.sh --update-lock`, a key in a 0600 file, and about two hours.
+1. The benchmark refresh (`docs/BENCHMARKS.md`, README numbers): the corpus is now 60 tasks (47 `core`), the lock in `bench/suite.json` is written; an A/B of the build before this session against the current one ran into `$BENCH_HOME/runs/*ab-session3` (read `scripts/bench.sh status`, then `sleipnir rl compare`), and the tables in the README and `docs/BENCHMARKS.md` still say 48 tasks.
 2. A verify gate (refuse "done" after an edit with no test run since): measure on the benchmark first; 27% of its failures are a "done" that was not.
-3. The role table in the chat (`/models`: which model each role uses, and a menu to change one); `sleipnir init --user --brain` presets.
+3. An in-chat `/login` (the terminal is the TUI's while it runs, so the key prompt needs its own dialog; `sleipnir login` does it outside); a check of a key when it is pasted (Heimdall's catalogue is public, so listing models proves nothing: it takes a one-token request); the role table in the chat (`/models`: which model each role uses, and a menu to change one); `sleipnir init --user --brain` presets.
 4. A `sleipnir agent` profile (memory on, scheduler on, conservative permissions, budget caps) and a skill-writer tool; a gateway adapter (webhook first).
 5. The model-facing `schedule` tool (a model creates its own follow-ups), after the daemon has run for a few days.
 
