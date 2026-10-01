@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"net/http"
 	"strings"
 	"time"
 
@@ -453,10 +454,40 @@ func retryNotice(pe *provider.Error, delay time.Duration) string {
 	return fmt.Sprintf("%s; retrying in %s", what, delay.Round(time.Millisecond))
 }
 
+// outage says whether a failure is the endpoint being down or overloaded: it answered with a status of 500 or more, or with 429.
+// Those are the failures that a wait cures. Nothing that came with no status is one: the endpoint may not exist.
+func outage(pe *provider.Error) bool {
+	return pe.Status >= 500 || pe.Status == http.StatusTooManyRequests
+}
+
+// maxOutageDelay is the longest wait between two attempts of a request that keeps failing for an outage: often enough to
+// notice when the endpoint is back, rarely enough that a swarm of workers waiting together is not a load on it.
+const maxOutageDelay = 30 * time.Second
+
+// retryDelay says whether a request that failed on attempt (counting from 0) is tried again, and after how long. Every failure gets
+// maxAttempts attempts, with a wait that doubles. A failure that is an outage gets more, while the waits add up to less than
+// patience: they stop growing at maxOutageDelay, what the endpoint asked for (Retry-After, bounded by MaxRetryAfter) is still a
+// floor, and the last wait is cut to what is left of the patience.
+func retryDelay(attempt int, pe *provider.Error, waited, patience time.Duration) (delay time.Duration, again bool) {
+	patient := patience > 0 && outage(pe) && waited < patience
+	if attempt >= maxAttempts-1 && !patient {
+		return 0, false
+	}
+	delay = backoff(attempt, pe.RetryAfter)
+	if patient {
+		if attempt >= maxAttempts-1 {
+			delay = max(min(backoff(attempt, 0), maxOutageDelay), min(pe.RetryAfter, MaxRetryAfter))
+		}
+		delay = max(min(delay, patience-waited), 0)
+	}
+	return delay, true
+}
+
 // call performs a provider request with retry and rate-limit gating.
 func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
 	var last error
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	var waited time.Duration // how long the outage has been waited out, for OutagePatience
+	for attempt := 0; ; attempt++ {
 		rel, err := a.cfg.Limiter.Acquire(ctx, prio)
 		if err != nil {
 			return nil, err
@@ -475,11 +506,16 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 			return nil, err
 		}
 		last = err
-		if attempt == maxAttempts-1 {
+		delay, again := retryDelay(attempt, pe, waited, a.cfg.OutagePatience)
+		if !again {
 			break // that was the last one: nothing follows it, so there is nothing to wait for or to announce
 		}
-		delay := backoff(attempt, pe.RetryAfter)
-		a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("%s (attempt %d of %d)", retryNotice(pe, delay), attempt+2, maxAttempts))
+		waited += delay
+		of := fmt.Sprintf("attempt %d of %d", attempt+2, maxAttempts)
+		if attempt >= maxAttempts-1 {
+			of = fmt.Sprintf("attempt %d, waited %s of %s for the endpoint", attempt+2, waited.Round(time.Second), a.cfg.OutagePatience.Round(time.Second))
+		}
+		a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("%s (%s)", retryNotice(pe, delay), of))
 		a.emit(events.TypeModelError, map[string]any{
 			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
 		})
@@ -496,8 +532,8 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 }
 
 func backoff(attempt int, retryAfter time.Duration) time.Duration {
-	d := RetryBase << attempt
-	if d > 60*time.Second {
+	d := RetryBase << min(attempt, 16) // the shift is bounded: a request that is retried for minutes must not overflow it
+	if d > 60*time.Second || d <= 0 {
 		d = 60 * time.Second
 	}
 	jitter := 0.75 + rand.Float64()*0.5

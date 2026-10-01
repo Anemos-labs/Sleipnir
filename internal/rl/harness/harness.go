@@ -227,6 +227,9 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 	}
 	params, _ := samplingParams(spec.Policy.Sampling)
 	o.Params = params
+	// A rollout does not wait out an endpoint that is down: the runner repeats a rollout that ended for that reason, whole and at no
+	// cost to the statistics, and a wait inside it would spend the run's own clock and end it as a budget episode.
+	o.OutagePatience = -1
 	if !spec.Single && (spec.Swarm || task.Team.Mode == "swarm") {
 		o.Swarm = true
 		// A team size counts workers (`run --swarm N` is N workers and a manager, and a composite task's

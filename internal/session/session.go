@@ -81,6 +81,10 @@ type Options struct {
 	// Allow are rules that need no question in this run, on top of the configuration's (sleipnir run --allow): what the person
 	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
 	Allow []string
+	// OutagePatience is how long an agent keeps retrying a request that fails because the endpoint is down or overloaded (an HTTP
+	// status of 500 or more, or 429), beyond the six attempts every failure gets. Zero is DefaultOutagePatience; negative is
+	// the six attempts only (what a rollout wants: the runner repeats the rollout, and waiting would eat the run's own clock).
+	OutagePatience time.Duration
 
 	// Swarm runs a manager plus workers instead of a single agent.
 	Swarm      bool
@@ -675,7 +679,7 @@ func (s *Session) build(ctx context.Context) error {
 			Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
 			Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 			MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
-			Hooks: s.agentHooks(),
+			Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience),
 		})
 		if err != nil {
 			return err
@@ -728,6 +732,7 @@ func (s *Session) build(ctx context.Context) error {
 		Snap: s.Ckpt, Handles: handles,
 		Workdir: o.Cwd, Root: o.Root, Params: params, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
+		OutagePatience: outagePatience(o.OutagePatience),
 	}
 	if len(o.RoleModels) > 0 {
 		if err := s.checkRoleModels(o.RoleModels); err != nil {
@@ -850,6 +855,21 @@ func (s *Session) checkRoleModels(overrides map[string]string) error {
 	}
 	sort.Strings(names)
 	return fmt.Errorf("--role-model: no role named %s in this session (its roles: %s)", strings.Join(bad, ", "), strings.Join(names, ", "))
+}
+
+// DefaultOutagePatience is how long an agent waits out an endpoint that is down or overloaded when nothing says otherwise: a
+// swarm worker that gave up after forty seconds took its task with it, and the endpoints of a marketplace go down for minutes.
+const DefaultOutagePatience = 5 * time.Minute
+
+// outagePatience is Options.OutagePatience as the agents take it: zero stands for the default, negative for none.
+func outagePatience(d time.Duration) time.Duration {
+	switch {
+	case d < 0:
+		return 0
+	case d == 0:
+		return DefaultOutagePatience
+	}
+	return d
 }
 
 func orDefault(v, d int) int {

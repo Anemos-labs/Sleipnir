@@ -330,6 +330,17 @@ defect the runs showed, with the evidence, and what changed.
   (`the response was cut off by the output limit: 16000 tokens, 3 responses in a row`), the benchmark's outcome says `gave_up`, a
   swarm worker's task goes back to the board, and `sleipnir friction` ranks the cut-offs (`model.cutoff`). A call that was cut off
   in the middle was and is answered by the dispatcher as arguments that do not parse.
+- **A worker died of an endpoint outage that lasted a minute.** In the first real swarm run the endpoint answered `503 Database is
+  temporarily unavailable` and `Request ownership was lost`; a request gets six attempts over about forty seconds, the worker
+  stopped, its task went back to the board with an attempt counted, and the manager had to spawn another. Of 591 benchmark sessions,
+  53 reached the last attempt, 172 saw a 503 and 72 a 429. An agent now goes on for an endpoint that answered that it is down or
+  overloaded (a status of 500 or more, or 429): after the six attempts it waits at most half a minute between attempts until the waits
+  add up to five minutes (`session.DefaultOutagePatience`), says so (`attempt 9, waited 4m0s of 5m0s for the endpoint`), and ends
+  the run with the error only then. A refusal of the request (400, 401, 403, 404) and a failure that carries no status (a misspelt
+  URL, a refused connection) are not waited for, so a misconfiguration fails as fast as before; Ctrl-C ends the wait; a swarm
+  worker's notices count as signs of life, so the watchdog does not cancel a worker for the quiet of a retried call; and a benchmark
+  rollout opts out (the runner repeats a rollout that ended for the endpoint's fault, and waiting inside it would spend the run's own
+  clock and end it as a budget episode). The backoff of a request retried for minutes no longer overflows its shift.
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),

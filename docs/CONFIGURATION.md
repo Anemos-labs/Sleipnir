@@ -687,6 +687,7 @@ mock`, which imitates vLLM's token ids); your server's answer is the one that co
 | `bypass mode turns off permission prompts; use it only inside a sandbox` | `permissions.mode` is `bypass` |
 | `provider: auth (http 401): Missing or invalid API key` | the key variable is empty, wrong or expired. `sleipnir doctor --model provider/model` shows the answer without starting a session |
 | `429` from the endpoint | lower `swarm.requests_per_minute` |
+| `server (http 503): ... retrying in 28s (attempt 9, waited 4m0s of 5m0s for the endpoint)` | the endpoint answered that it is down or overloaded (a status of 500 or more, or 429). Every failure gets six attempts; for this kind the agent goes on, a wait of at most half a minute between attempts, until the waits add up to five minutes (`session.DefaultOutagePatience`), and then the run ends with the error. Ctrl-C stops the wait. A refusal of the request (400, 401, 403, 404) and a failure with no status (a misspelt URL, a refused connection) are not waited for |
 
 `sleipnir config` lists every warning once, with file, line and column, under "warnings:", and ends with
 `configuration is valid, with N warning(s) listed above` (or plain `configuration is valid`). An error stops it and is

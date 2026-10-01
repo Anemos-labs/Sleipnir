@@ -184,6 +184,14 @@ type Config struct {
 	BudgetUSD float64 // 0: unlimited
 	Priority  int
 
+	// OutagePatience is how long, in all, the agent keeps repeating a request that fails because the endpoint is down or
+	// overloaded (an HTTP status of 500 or more, or 429): the waits between its attempts, the first six included, add up to
+	// at most this. Every failure gets six attempts; this is what lets such a failure get more. The endpoint answered, so it is
+	// there and the request is not wrong: waiting is what a person would do, and a worker that gives up after forty seconds
+	// takes its task with it. Zero (the default) is the six attempts only. A failure with no status (nothing answered: a
+	// misspelt URL, a refused connection) never gets it, so a misconfiguration fails as fast as ever.
+	OutagePatience time.Duration
+
 	// MaxToolCallsPerTurn is how many of the tool calls in one model turn are run
 	// (default DefaultMaxToolCalls). The rest are answered with an error that tells
 	// the model to issue fewer, so every call has its result and the thread stays valid

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/kv"
@@ -468,6 +469,40 @@ func TestWatchdogAlertsThenCancelsAStuckWorker(t *testing.T) {
 	}
 	if mailSent(r, "stuck: no progress") != 1 {
 		t.Fatal("the manager was not told, once, that the worker was stuck")
+	}
+}
+
+// A worker that is waiting out an endpoint that is down says so every half minute (agent.Config.OutagePatience): that is a worker
+// at work, and the watchdog does not cancel it for the quiet of a model call that is being retried.
+func TestAWorkerThatSaysItIsWaitingForTheEndpointIsNotStuck(t *testing.T) {
+	clock := newFakeClock()
+	gate := make(chan struct{})
+	t.Cleanup(func() { close(gate) })
+	r := newClockRig(t, Config{MaxWriters: 4, StuckAfter: 10 * time.Minute, StuckGrace: time.Minute}, clock, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "backend" {
+			rvBlock(ctx, gate)
+		}
+		return rvReply{Text: "ok"}
+	})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "worker to reach the model", func() bool { return r.prov.callsFor(id) >= 1 })
+	sink := &memberSink{Sink: agent.NopSink{}, s: r.sw, m: r.sw.get(id), ev: NewEvidence()}
+
+	clock.Advance(9 * time.Minute)
+	sink.Notice(id, "warn", "server (http 503): Database is temporarily unavailable; retrying in 28s (attempt 9, waited 4m of 5m for the endpoint)")
+	clock.Advance(9 * time.Minute) // 18 minutes since the run began, 9 since the worker last said anything
+	r.sw.superviseOnce(clock.Now())
+	if as := r.sw.Board.Snapshot().Alerts; len(as) != 0 || !r.running(id) {
+		t.Fatalf("a worker that had just said it was waiting for the endpoint was judged stuck: alerts=%+v running=%v", as, r.running(id))
+	}
+	clock.Advance(2 * time.Minute) // 11 minutes of silence now: it is the worker that stopped, and not the endpoint
+	r.sw.superviseOnce(clock.Now())
+	if as := r.sw.Board.Snapshot().Alerts; len(as) != 1 || as[0].Kind != "stuck" {
+		t.Fatalf("a worker that said nothing for 11 minutes was not alerted: %+v", as)
 	}
 }
 

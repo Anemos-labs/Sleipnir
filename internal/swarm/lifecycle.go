@@ -189,7 +189,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		ID: id, Role: r.Name, Model: model, Provider: prov, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens,
 		Const:         d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
-		Params: d.Params,
+		Params: d.Params, OutagePatience: d.OutagePatience,
 		Hot: func(agentID string) []core.Block {
 			if isSvc {
 				// The board is nothing to the mailman: it knows who it is, and that is all the
@@ -374,7 +374,10 @@ func (k *memberSink) Reset(a string) {
 	}
 }
 
+// Notice is a sign of life too: what an agent tells the person while it waits for an endpoint that is down (every half minute, for
+// as long as its patience lasts, which is bounded) is the worker doing what it should, and not a worker that has stopped.
 func (k *memberSink) Notice(a, level, msg string) {
+	k.m.touch(k.s)
 	k.safely(func() { k.Sink.Notice(a, level, msg) })
 }
 
