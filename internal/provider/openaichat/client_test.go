@@ -3,6 +3,7 @@ package openaichat_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -436,5 +437,69 @@ func TestTokenCapture(t *testing.T) {
 		if a[i] != b[i] {
 			t.Fatalf("prompt ids diverge at %d", i)
 		}
+	}
+}
+
+// Found by putting the failures of a real endpoint in front of the adapter (internal/provider/chaos): an endpoint that did not stream
+// answered a streaming request with the whole completion as JSON, and the adapter, which expected frames, called it a cut connection
+// and asked again, for ever; a page of HTML with a 200 got the same words, which sent the person looking for a network fault. The
+// whole completion is read as one now, an error in that body is the endpoint's own error, and a page is named for what it is.
+func TestAnEndpointThatAnswersAStreamingRequestWithOneJSONCompletionIsRead(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = io.WriteString(w, `{"id":"c1","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"the whole answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}`)
+	}))
+	defer ts.Close()
+	c := openaichat.New(openaichat.Config{Name: "t", BaseURL: ts.URL, APIKey: "k"})
+	var started bool
+	resp, err := c.Do(context.Background(), &provider.Request{Prompt: prompt("", user("hi"))}, func(e provider.Event) {
+		if e.Kind == provider.EvStart {
+			started = true
+		}
+	})
+	if err != nil || resp == nil {
+		t.Fatalf("%v %v", resp, err)
+	}
+	if got := resp.Turn.PlainText(); got != "the whole answer" || resp.Usage.InputTokens+resp.Usage.CacheReadTokens < 10 && resp.Usage.OutputTokens != 3 {
+		t.Fatalf("answer %q usage %+v", got, resp.Usage)
+	}
+	if !started {
+		t.Error("the start of the answer was never reported: the gate that holds back the other agents waits for it")
+	}
+}
+
+func TestAnErrorBodyAnswered200IsTheEndpointsError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"error":{"message":"The server is overloaded, try again later","type":"overloaded_error"}}`)
+	}))
+	defer ts.Close()
+	c := openaichat.New(openaichat.Config{Name: "t", BaseURL: ts.URL, APIKey: "k"})
+	_, err := c.Do(context.Background(), &provider.Request{Prompt: prompt("", user("hi"))}, nil)
+	var pe *provider.Error
+	if !errors.As(err, &pe) || !pe.Retryable() || !strings.Contains(pe.Message, "overloaded") {
+		t.Fatalf("%v: want the endpoint's own error, retryable", err)
+	}
+}
+
+func TestAPageOfHTMLAnswered200IsNamedForWhatItIs(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, `<html><head><title>Sign in to the network</title></head><body><h1>Welcome</h1><p>Please accept the terms.</p></body></html>`)
+	}))
+	defer ts.Close()
+	c := openaichat.New(openaichat.Config{Name: "t", BaseURL: ts.URL, APIKey: "k"})
+	_, err := c.Do(context.Background(), &provider.Request{Prompt: prompt("", user("hi"))}, nil)
+	var pe *provider.Error
+	if !errors.As(err, &pe) || pe.Kind != provider.ErrServer || !pe.Retryable() {
+		t.Fatalf("%v: want a server failure, retryable", err)
+	}
+	for _, want := range []string{"HTML page", "captive portal", "Sign in to the network", "Please accept the terms"} {
+		if !strings.Contains(pe.Message, want) {
+			t.Errorf("the message %q lacks %q", pe.Message, want)
+		}
+	}
+	if strings.Contains(pe.Message, "<") {
+		t.Errorf("the message carries markup: %q", pe.Message)
 	}
 }

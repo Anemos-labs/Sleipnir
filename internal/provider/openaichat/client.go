@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"strconv"
@@ -217,8 +218,24 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 		return nil, mapHTTPError(resp.StatusCode, resp.Header, b)
 	}
 
-	var acc *accumulator
+	whole := !stream
 	if stream {
+		ct, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		switch {
+		case ct == "application/json":
+			// An endpoint that does not stream (a gateway whose upstream does not) answers the whole completion at once: read it as one.
+			whole = true
+		case ct == "text/html":
+			// What a proxy, a captive portal or a gateway says when the service is not there. It is a server that failed, not a stream
+			// that was cut, and the page says which.
+			b, _ := io.ReadAll(io.LimitReader(rd, 4096))
+			return nil, &provider.Error{Kind: provider.ErrServer, Raw: provider.CapRaw(b),
+				Message: "the endpoint answered with an HTML page instead of a stream (a proxy, gateway or captive portal?): " + provider.SanitizeText(htmlText(string(b)), 160)}
+		}
+	}
+
+	var acc *accumulator
+	if !whole {
 		acc, err = readStreamLimits(rd, start, on, c.cfg.Limits)
 		if err != nil {
 			return nil, c.failure(parent, wd, err)
@@ -464,3 +481,21 @@ func (c *Client) String() string {
 }
 
 var _ = core.Text
+
+// htmlText is the words of a page, roughly: its tags taken out and its white space folded, enough for a one-line message.
+func htmlText(page string) string {
+	var sb strings.Builder
+	inTag := false
+	for _, r := range page {
+		switch {
+		case r == '<':
+			inTag = true
+			sb.WriteByte(' ')
+		case r == '>':
+			inTag = false
+		case !inTag:
+			sb.WriteRune(r)
+		}
+	}
+	return strings.Join(strings.Fields(sb.String()), " ")
+}
