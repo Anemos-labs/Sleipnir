@@ -409,6 +409,35 @@ func TestResolveModelAndProviders(t *testing.T) {
 	}
 }
 
+func TestBuiltInHostsAndLocalServers(t *testing.T) {
+	for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	// A local server needs no key and is never the default for a bare id.
+	got, err := session.ResolveModel(nil, "ollama/qwen3:8b")
+	if err != nil || got.Provider != "ollama" || got.Model != "qwen3:8b" {
+		t.Fatalf("ollama: %+v %v", got, err)
+	}
+	if _, _, err := session.BuildProvider(nil, got, session.ProviderOptions{}); err != nil {
+		t.Fatalf("a local server must build without a key: %v", err)
+	}
+	if _, _, err := session.BuildProvider(nil, session.ModelRef{Provider: "together", Model: "m"}, session.ProviderOptions{}); err == nil ||
+		!strings.Contains(err.Error(), "TOGETHER_API_KEY") {
+		t.Fatalf("a hosted provider names its key variable: %v", err)
+	}
+	// "anthropic/claude-x" is a marketplace id when only the marketplace has a key.
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	got, err = session.ResolveModel(nil, "anthropic/claude-x")
+	if err != nil || got.Provider != "openrouter" || got.Model != "anthropic/claude-x" {
+		t.Fatalf("marketplace id that starts with a built-in provider name: %+v %v", got, err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "k")
+	got, _ = session.ResolveModel(nil, "anthropic/claude-x")
+	if got.Provider != "anthropic" || got.Model != "claude-x" {
+		t.Fatalf("with its key set the provider prefix is the provider: %+v", got)
+	}
+}
+
 func TestEnrichModelUsesTheEndpointsCatalogueAndCachesIt(t *testing.T) {
 	var hits int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

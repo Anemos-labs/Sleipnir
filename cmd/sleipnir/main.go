@@ -193,10 +193,11 @@ Commands:
   sim       simulate cache policies: what layering buys and where it stops paying
   version   print version
 
-A model is written provider/model (built in: heimdall, openrouter, openai; or a provider from your
-config). A bare model id goes to the default provider: the only one configured, else the first of
-those three whose key variable (HEIMDALL_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY) is set. Keys
-are read from the environment only, never from a file. Every command takes -h.
+A model is written provider/model. Built in: heimdall (recommended), openrouter, openai, anthropic,
+together, fireworks, groq, cerebras, deepinfra, and the local servers ollama, lmstudio, llamacpp and
+vllm (no key); or a provider from your config. A bare model id goes to the default provider: the only
+one configured, else the first hosted one whose key variable (HEIMDALL_API_KEY, OPENROUTER_API_KEY,
+OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. Keys are read from the environment only, never from a file. Every command takes -h.
 `)
 }
 

@@ -46,6 +46,37 @@ var builtinProviders = map[string]config.Provider{
 		Dialect: config.DialectOpenAIChat, BaseURL: "https://api.openai.com/v1", APIKeyEnv: "OPENAI_API_KEY",
 		Options: map[string]any{"cache_key_body": true},
 	},
+	"anthropic": {
+		Dialect: config.DialectAnthropic, BaseURL: "https://api.anthropic.com", APIKeyEnv: "ANTHROPIC_API_KEY",
+	},
+}
+
+// hostedOpenWeights are hosts of open-weight models that speak chat completions: a base URL and a key
+// variable each, nothing else to know. They are built in so `together/<model>` works with only the key set.
+var hostedOpenWeights = map[string][2]string{
+	"together":  {"https://api.together.xyz/v1", "TOGETHER_API_KEY"},
+	"fireworks": {"https://api.fireworks.ai/inference/v1", "FIREWORKS_API_KEY"},
+	"groq":      {"https://api.groq.com/openai/v1", "GROQ_API_KEY"},
+	"cerebras":  {"https://api.cerebras.ai/v1", "CEREBRAS_API_KEY"},
+	"deepinfra": {"https://api.deepinfra.com/v1/openai", "DEEPINFRA_API_KEY"},
+}
+
+// localServers run on this machine and need no key: `ollama/qwen3:8b` is enough. They are never picked
+// as the default provider for a bare model id (nothing says one is running); name them.
+var localServers = map[string]string{
+	"ollama":   "http://localhost:11434/v1",
+	"lmstudio": "http://localhost:1234/v1",
+	"llamacpp": "http://localhost:8080/v1",
+	"vllm":     "http://localhost:8000/v1",
+}
+
+func init() {
+	for n, v := range hostedOpenWeights {
+		builtinProviders[n] = config.Provider{Dialect: config.DialectOpenAIChat, BaseURL: v[0], APIKeyEnv: v[1]}
+	}
+	for n, u := range localServers {
+		builtinProviders[n] = config.Provider{Dialect: config.DialectOpenAIChat, BaseURL: u}
+	}
 }
 
 // providerNames lists configured and built-in providers, sorted.
@@ -129,7 +160,12 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 		return ModelRef{}, fmt.Errorf("no model configured: pass --model provider/model, set SLEIPNIR_MODEL, or write one into your config with `sleipnir init --user --model provider/model`")
 	}
 	if i := strings.IndexByte(ref, '/'); i > 0 {
-		if _, ok := lookupProvider(cfg, ref[:i]); ok {
+		if p, ok := lookupProvider(cfg, ref[:i]); ok {
+			// "anthropic/claude-x" is also a marketplace id: with no key for that provider and a
+			// default provider that has one, the whole string is the marketplace's model id.
+			if d, derr := defaultProvider(cfg); derr == nil && d != ref[:i] && (ref[:i] == "anthropic" || ref[:i] == "openai") && p.APIKey() == "" {
+				return ModelRef{Provider: d, Model: ref}, nil
+			}
 			return ModelRef{Provider: ref[:i], Model: ref[i+1:]}, nil
 		}
 	}
@@ -233,7 +269,7 @@ func defaultProvider(cfg *config.Config) (string, error) {
 			return n, nil
 		}
 	}
-	for _, n := range []string{"heimdall", "openrouter", "openai"} {
+	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra"} {
 		if p, ok := lookupProvider(cfg, n); ok && p.APIKey() != "" {
 			return n, nil
 		}
