@@ -124,7 +124,7 @@ sleipnir models | head                 # catalogue with prices
 sleipnir doctor --model <model> --deep # measures streaming, tools, cache reporting, granularity, warm-up needs
 
 # 3. work
-sleipnir chat                          # interactive; /cost /context /compact /agents /rewind /diff /plan; --resume ID or --continue
+sleipnir chat                          # interactive; /status /permissions /cost /context /compact /agents /rewind /diff /plan; --resume ID or --continue
 sleipnir run "fix the failing test in ./server"
 sleipnir swarm 8 "add pagination to every list endpoint and update the client" --verify "make test"
 sleipnir swarm 8 "..." --verify "make test" --isolation worktree   # each writer in its own git worktree; finished work goes through a verifying merge queue

@@ -121,3 +121,14 @@ func TestJSONSinkCarriesTheWholeOutputAndTheExitStatus(t *testing.T) {
 		t.Errorf("a huge output was carried whole (%d bytes) or cut without a word", len(o))
 	}
 }
+
+// A notice of the session itself (no agent) is not printed under an empty name: "[] warn: ...".
+func TestTextSinkNoticeOfTheSessionHasNoEmptyBrackets(t *testing.T) {
+	var out, log strings.Builder
+	s := session.NewTextSink(&out, &log, "main", false)
+	s.Notice("", "warn", "from the session")
+	s.Notice("w1", "warn", "from an agent")
+	if got, want := log.String(), "warn: from the session\n[w1] warn: from an agent\n"; got != want {
+		t.Errorf("log %q, want %q", got, want)
+	}
+}

@@ -389,6 +389,7 @@ defect the runs showed, with the evidence, and what changed.
   inside it. For the runner commands (`go test|build|vet`, `npm test|run`, `pytest`,
   `cargo test|build|check`, `make`, `git add|commit|status`) the second answer remembers the prefix for the session; anything else stays exact.
 - The chat rings the terminal bell once when a question waits for you (`SLEIPNIR_BELL=0` turns it off).
+- A notice of the session itself (not of an agent) no longer prints as `[] warn: ...`.
 - `/status` and `/permissions` in the chat: the model, mode and session at a glance, and every rule in force, what you allowed with "don't ask again" among
   them. Both answer beside a running turn.
 - **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:

@@ -98,7 +98,7 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
    scenarios are in `docs/DOGFOOD.md`.
 7. **UX debts from real use** (`docs/DOGFOOD.md`, "Open"): an approval that waits for a person who is elsewhere should show in the cockpit (the chat rings the terminal bell: done) and a
    `swarm --cockpit` needs an in-process approvals dialog; the chat re-wraps what the terminal drew when the window
-   narrows (a code block comes back double spaced); `run` against a dead endpoint retries for 62 seconds before it says anything final.
+   narrows (a code block comes back double spaced); `run` against a dead endpoint says each retry (so it is not silent) but retries a refused connection for 34 seconds, which could be shorter for loopback.
 8. **Plateau learning for `cache.anomaly`.** On one marketplace endpoint the planner flagged 42 anomalies in 94 requests, most of them the
    endpoint's own erratic prefix cache; learn a per-endpoint plateau of the hit ratio and flag departures from it (`internal/kv/guard.go`).
 9. **Runaway-memory supervision** for the swarm: a watchdog on the harness's own heap (the soak says it is bounded by the archive's index, a

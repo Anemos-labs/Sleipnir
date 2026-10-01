@@ -167,6 +167,10 @@ func (s *TextSink) Notice(a, level, msg string) {
 	if level == "info" && !s.Verbose {
 		return
 	}
+	if a == "" { // the session's own, not an agent's
+		fmt.Fprintf(s.log, "%s: %s\n", level, msg)
+		return
+	}
 	fmt.Fprintf(s.log, "[%s] %s: %s\n", a, level, msg)
 }
 
