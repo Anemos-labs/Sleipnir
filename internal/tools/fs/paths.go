@@ -197,7 +197,7 @@ func (k *call) resolveArg(raw string) (string, string, string) {
 
 func (k *call) resolveArgWith(raw string, resolve func(string) (string, error)) (string, string, string) {
 	if strings.TrimSpace(raw) == "" {
-		return "", "", "path is required"
+		return "", "", `path is required: pass the file in the "path" field`
 	}
 	canon, err := resolve(raw)
 	if err != nil {

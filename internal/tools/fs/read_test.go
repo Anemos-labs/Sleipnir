@@ -173,7 +173,7 @@ func TestReadErrors(t *testing.T) {
 		{"missing", map[string]any{"path": "nope.txt"}, []string{"file not found: nope.txt"}},
 		{"typo suggestion", map[string]any{"path": "src/main.gp"}, []string{"file not found", "did you mean src/main.go"}},
 		{"missing dir", map[string]any{"path": "nodir/x.txt"}, []string{"file not found: nodir/x.txt"}},
-		{"empty path", map[string]any{"path": ""}, []string{"path is required"}},
+		{"empty path", map[string]any{"path": ""}, []string{"path is required", `"path" field`}},
 		{"blank path", map[string]any{"path": "   "}, []string{"path is required"}},
 		{"nul in path", map[string]any{"path": "a\x00b"}, []string{"NUL"}},
 		{"negative offset", map[string]any{"path": "small.txt", "offset": -1}, []string{"offset must be 1 or more"}},
