@@ -34,5 +34,17 @@
     "length": "11s",
     "hold": "4s",
     "still_at": 9
+  },
+  {
+    "name": "chat",
+    "caption": "The chat: a goal typed and sent, the answer streaming as markdown, tool lines (a read, a go test that fails, an edit as a diff, the test passing), a permission question that a letter does not answer and the key 1 does, the thread folded into one line, the provider losing its cache, and a Ctrl-C that cancels a turn and keeps the session.",
+    "view": "chat",
+    "source": "chat/transcript.jsonl",
+    "cols": 100,
+    "rows": 36,
+    "fps": 15,
+    "hold": "4s",
+    "still_at": 17.5,
+    "stills": [{"name": "chat-ask", "at": 10.3}]
   }
 ]

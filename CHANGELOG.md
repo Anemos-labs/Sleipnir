@@ -240,6 +240,13 @@ The first release.
   recorded demo session and listed in `docs/media/gallery.json`: the swarm cockpit, the cache of one agent, a compaction at a cold moment.
   `sleipnir replay --gallery` draws them, and `scripts/record-demo.sh --check` and a Go test fail when the committed files are not what the
   code draws from the committed log. The mock endpoint got a cache outage (`Server.CacheOutage`) for the demo's break.
+- The chat has a recording in the README (`docs/media/chat.svg`, stills `chat.png` and `chat-ask.png`), made from a transcript of a chat
+  session because a log cannot say what a person typed: `scripts/record-demo.sh --new-chat` (the hidden command `sleipnir chat-record`)
+  runs a real session, the harness and its tools with `go test` among them, against the mock endpoint with a script for the model and one
+  for the person (who presses `y` at the permission question, which answers nothing, and then `1`), and writes everything the chat was
+  given as `docs/media/chat/transcript.jsonl`; the chat program is then played from it
+  on a virtual clock, one record at a time, so the picture is the same bytes on every machine, and `scripts/record-demo.sh --check` and a
+  Go test fail when it is not what the code draws. The README says what is real and what is scripted.
 - `sleipnir chat` on a terminal is a program, no longer a line REPL (`internal/tui/app`, `cmd/sleipnir/chat_tty.go`; `docs/UX.md`). What
   is said goes into the terminal's own scrollback, so copy, search, tmux and SSH work on it: the banner, what you typed, the answer
   streamed as markdown, each tool call as `● Bash go test ./...  ✓ 1.4s` with its output under it (long output is its head and tail,

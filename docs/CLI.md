@@ -418,7 +418,10 @@ flags:
 ten seconds (shift: a minute), `+` and `-` change the speed, Home and End go to the start and the end. `--record FILE.svg` writes
 the replay as an animated SVG (CSS only, no script: it plays in a README and in any browser), and `--final` prints the last screen
 as plain text; neither needs a terminal. The recording is a function of the log and the options, so it can be made again and
-compared (`scripts/record-demo.sh --check`).
+compared (`scripts/record-demo.sh --check`). `--gallery docs/media/gallery.json --out DIR` draws every recording the manifest lists:
+the cockpit's from the log, and the chat's from the transcript the manifest names (a log does not say what the person typed, so the
+chat is the program itself, played from a transcript of a session; docs/media/README.md); for each still the manifest asks for it
+prints a line, which is how `scripts/record-demo.sh` knows what to take them of.
 
 <!-- flags: replay -->
 ```text
@@ -446,7 +449,7 @@ flags:
   -from duration
         with --record: start this far into the session (what happened before is on the screen at the first frame)
   -gallery string
-        draw every recording listed in this manifest (docs/media/gallery.json) from the session, into --out; the other flags that choose a screen are then the manifest's
+        draw every recording listed in this manifest (docs/media/gallery.json) into --out, from the session or, for the chat's, from the transcript the manifest names; the other flags that choose a screen are then the manifest's
   -hold duration
         with --record: how long the last frame stays before the loop starts again (default 4s)
   -length duration

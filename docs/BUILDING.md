@@ -29,7 +29,7 @@ One line per package, from the first sentence of each package's doc comment
 `docs/ARCHITECTURE.md` has the system map and how the packages fit together.
 
 ```
-cmd/sleipnir            the binary: every command, the chat loop and the RL subcommands (package main)
+cmd/sleipnir            the binary: every command, the chat loop and the RL subcommands (package main); the hidden `chat-record` records the chat session of docs/media
 
 internal/core           provider-neutral vocabulary: messages, blocks, tools, usage, ids, hashing
 internal/events         source of truth: append-only session event log plus a content-addressed blob store
@@ -70,7 +70,7 @@ internal/agentdefs      markdown subagent definitions, turned into swarm roles
 internal/session        assembles provider, tools, permissions, layers, event log and one agent or a swarm; CLI, RL and tests share it
 internal/inspect        the cache inspector: a read-only model of a session log and an embedded web dashboard
   inspect/web           the dashboard's static assets (not a Go package)
-internal/demo           the scripted teams behind `sleipnir demo` (a handbook in a second; a shop built in git worktrees in twenty), run against the mock provider
+internal/demo           the scripted teams behind `sleipnir demo` (a handbook in a second; a shop built in git worktrees in twenty), run against the mock provider; and the scripted model and project of the chat recording
 internal/ptytest        runs a command on a pseudo-terminal, so that a test can type at it, press Ctrl-C and wait for what it prints
 internal/tui            the terminal interface (docs/UX.md): term, cell, render, vt (an emulator the tests read), widget, state, input (the editor), app (the programs: chat, watch, replay), svg
 
@@ -86,7 +86,7 @@ internal/tui            the terminal interface (docs/UX.md): everything a screen
   tui/state             the session as a pure function of its event log: one reducer, read live (Follow), at any speed (Replay) or all at once (Fold)
     state/statetest     hand-made event sequences and the recorded demo log, for tests
   tui/svg               the headless recorder: screens to an animated SVG (CSS only), deterministic
-  tui/app               the programs (watch, replay, and the recordings of docs/media): views as functions of a snapshot, the loop with its keys, sizes and ticks as channels
+  tui/app               the programs (chat, watch, replay) and the recordings of docs/media (the cockpit's from a log, the chat's from a transcript of a session played on a virtual clock): views as functions of a snapshot, the loop with its keys, sizes and ticks as channels
 
 internal/workspace      isolates writers from each other and integrates their work; not wired into sessions yet
 internal/gitx           the only gateway to the git binary: typed helpers over one hardened process runner
@@ -191,6 +191,39 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
   (`go test -c`, then `setpriv --reuid=65534 ...`); it catches most of the above. A change to a workflow is checked the way the
   `workflows` job checks it, with `shellcheck` on the path, since `actionlint` runs it over every `run:` script and says nothing
   about them without it: `pip install shellcheck-py`, then `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`.
+
+## Recordings
+
+The animated SVGs in the README (`docs/media/*.svg`, with PNG stills) are the terminal interface's own screens, drawn by the code from a
+recorded session and by nothing else: no one types, edits or photographs them. `docs/media/gallery.json` is the one manifest (which
+screen, how big, which stretch, which stills); `sleipnir replay --gallery`, `scripts/record-demo.sh` and the tests all read it, so a
+recording cannot be made one way and checked another. There are two kinds of source, and both are committed:
+
+- the swarm, cache and fold recordings are the cockpit played over the event log of the shop demo (`docs/media/showcase/events.jsonl`);
+- the chat recording is the chat program itself, played from a transcript (`docs/media/chat/transcript.jsonl`) of a session of the real
+  harness against the mock endpoint, with a scripted model and a scripted person (`internal/demo/chat.go`, `cmd/sleipnir/chat_record.go`).
+  A log of events cannot say what a person typed, so the transcript also holds the keys. The program is run on a virtual clock in the
+  `vt` emulator and given one record at a time, drawing once for each (`internal/tui/app/chat_play.go`), so the same transcript is the
+  same bytes on any machine at any load. The time in the transcript is designed (`cmd/sleipnir/chat_pace.go`), not measured, for the
+  reason in its header: a recording once took three and a half minutes because the machine was busy. Everything else is the session's:
+  the order, the tools (the real `go test`), the permission question and the keys that answer it, the cache planner and the accounting.
+
+What to run:
+
+```sh
+sh scripts/record-demo.sh                # draw docs/media/*.svg from the committed sources, and the PNG stills (needs node and Playwright's Chromium)
+sh scripts/record-demo.sh --check        # change nothing; exit 1 if a committed SVG is not what the code draws now (CI runs it, nightly)
+sh scripts/record-demo.sh --new-session  # run the shop demo again (20 s, no key) and keep its log, then draw
+sh scripts/record-demo.sh --new-chat     # record the chat session again (half a minute, no key, needs the go command), then draw
+```
+
+A change to a screen or a widget makes `--check` and `go test ./internal/tui/app` fail until the recordings are drawn again: run the
+script, read the diff, and look at the PNGs (an SVG diff says little; a picture says whether a glyph is clipped, a line wraps or a colour
+vanishes on the page) before committing the SVGs and PNGs together. The tests also hold the sources to the story the README tells
+(the swarm's bounced merge, the chat's failing and then passing tests, its one question, its one compaction and its one cache break), so
+a recording made again that no longer tells it is found there, and `chat-record` refuses to write a transcript that does not. A new chat
+recording is a new session: its real timings (the `go` command's own, and what the tools reported of it) differ from the committed
+one's, which is why the transcript is committed and the check is on the picture drawn from it. The README says what is real in a recording and what is scripted, and so must a new one.
 
 ## Performance
 

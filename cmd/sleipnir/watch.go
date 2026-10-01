@@ -172,7 +172,7 @@ func cmdReplay(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	length := fs.Duration("length", 0, "with --record: record this much of the session from --from (default: to its end)")
 	fps := fs.Int("fps", 5, "with --record: frames of the recording a second, at most 15")
 	hold := fs.Duration("hold", 4*time.Second, "with --record: how long the last frame stays before the loop starts again")
-	gallery := fs.String("gallery", "", "draw every recording listed in this manifest (docs/media/gallery.json) from the session, into --out; the other flags that choose a screen are then the manifest's")
+	gallery := fs.String("gallery", "", "draw every recording listed in this manifest (docs/media/gallery.json) into --out, from the session or, for the chat's, from the transcript the manifest names; the other flags that choose a screen are then the manifest's")
 	outDir := fs.String("out", ".", "with --gallery: the directory the recordings are written to")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: sleipnir replay [flags] [SESSION]
@@ -246,8 +246,9 @@ flags:
 	return err
 }
 
-// renderGallery draws the recordings of a manifest from the session log into dir. It prints, on stdout, one line "still NAME SECONDS" for
-// every recording that wants a still picture, which is what scripts/record-demo.sh takes the stills from.
+// renderGallery draws the recordings of a manifest into dir: the cockpit's from the session log, the chat's from the transcript each
+// of them names. It prints, on stdout, one line "still SVG PNG SECONDS" for every still picture a recording wants (the picture PNG.png
+// is taken from SVG.svg at that second), which is what scripts/record-demo.sh takes the stills from.
 func renderGallery(stdout, stderr io.Writer, path, manifest, dir string) error {
 	recs, err := app.LoadGallery(manifest)
 	if err != nil {
@@ -266,8 +267,8 @@ func renderGallery(stdout, stderr io.Writer, path, manifest, dir string) error {
 			return fmt.Errorf("replay: %w", err)
 		}
 		fmt.Fprintf(stderr, "sleipnir replay: wrote %s (%d KB)\n", filepath.Join(dir, name), (len(docs[name])+1023)/1024)
-		if r.StillAt > 0 {
-			fmt.Fprintf(stdout, "still %s %g\n", r.Name, r.StillAt)
+		for _, s := range r.StillList() {
+			fmt.Fprintf(stdout, "still %s %s %g\n", r.Name, s.Name, s.At)
 		}
 	}
 	return nil
