@@ -48,15 +48,28 @@ replace "To be decided before the first release" in the README. Until then `scri
 `no LICENSE file: choose one before the first release` and nothing is ever released. Do this before step 3 (a push to an
 unprotected `main` is allowed) or as the first pull request after it.
 
-**Also before step 3: the vulnerability scan is red today (checked on 2026-09-30).** `govulncheck` reports seven advisories in
-`golang.org/x/net v0.43.0` that the code reaches through `html.Parse` in `internal/tools/web/htmlconv.go` (GO-2026-4440,
-4441, 5025, 5027, 5028, 5029, 5030). Two are fixed from x/net v0.45.0 (which still builds with Go 1.24); all seven from
-v0.55.0, whose `go.mod` says `go 1.25.0`. So closing them means raising the `go` line of this repository's `go.mod` from
-1.24 to 1.25 (Go 1.24 is out of support, but `docs/BUILDING.md` says to keep it until that is decided), then
-`go get golang.org/x/net@latest && go mod tidy`, and adding to `scripts/deps-allowlist.txt` anything that `scripts/check-deps.sh`
-says the new versions bring. The change to `go.mod` and `go.sum` was not part of this work. Until it is on `main` the
-`security` job fails, and with it `ci-gate`, on every pull request and on main (so nothing is released). Push it straight to
-`main` before step 3, or make it the first pull request: it passes its own checks. Delete this paragraph afterwards.
+**Also before step 3: CI is not green on the code as it stands (checked on 2026-09-30, locally, with the same tools).** Fix
+what it says while `main` is still unprotected (a push is allowed), or all of it in one pull request: two required checks that
+are red for different reasons leave no pull request that can pass either. What was found:
+
+1. `security`: `govulncheck` reports seven advisories in `golang.org/x/net v0.43.0` that the code reaches through `html.Parse`
+   in `internal/tools/web/htmlconv.go` (GO-2026-4440, 4441, 5025, 5027, 5028, 5029, 5030). Two are fixed from x/net v0.45.0
+   (which still builds with Go 1.24), all seven from v0.55.0, whose `go.mod` says `go 1.25.0`. Closing them means raising the
+   `go` line of this repository's `go.mod` from 1.24 to 1.25 (Go 1.24 is out of support, but `docs/BUILDING.md` says to keep it
+   until that is decided), `go get golang.org/x/net@latest && go mod tidy`, and adding to `scripts/deps-allowlist.txt` what
+   `scripts/check-deps.sh` says the new versions bring.
+2. `test` with `stable` (Go 1.27.1 today): `internal/core` `TestCanonicalGolden/shapes`, because Go 1.27's `encoding/json`
+   writes invalid UTF-8 as a raw U+FFFD where every earlier Go wrote `\ufffd`: the canonical bytes, and so the cache key, of a
+   block with invalid UTF-8 depend on the Go version, which the canonical encoder should not allow (a prompt-bytes change:
+   `docs/BUILDING.md`, "Changing prompt bytes"); and five tests of `internal/tools/fs`, because Go 1.27 no longer fills
+   `json.UnmarshalTypeError.Field` when a custom `UnmarshalJSON` returns the error, so a wrongly typed argument is answered with
+   "arguments must be a JSON object" instead of naming the field.
+3. Found and fixed in this work: `go vet` for Windows failed on `cmd/sleipnir`'s tests (`syscall.Kill`), and two tests that Go 1.26
+   broke (`internal/inspect`: the mux redirects with 307 instead of 301; `bench/tools/stdmini`: `go/scanner` imports an internal
+   package, so the test uses `net/mail` and `net/textproto`).
+
+The changes to `go.mod` and `go.sum`, to the canonical encoder and to the tools were not part of this work. Until they are on
+`main`, `ci-gate` is red, and so nothing is released. Delete this paragraph afterwards.
 
 ### Step 3. Protect `main` and the tags
 
@@ -218,6 +231,10 @@ User-facing: a non-test, non-markdown file under `cmd/` or `internal/` (testdata
   published today turns every pull request red until a fixed version is merged (Dependabot proposes it; the nightly run
   tells you first). If that is too strict, remove `security` from the `needs` of `gate` in a pull request of its own; the
   tests will say if you forgot something else.
+* **The `stable` Go leg of the test matrix is required.** That is what makes a Go release that changes behaviour visible the
+  day it ships, and it also means such a release blocks merges until the code or the test is adapted (Go 1.26 and 1.27 already
+  needed two test fixes: `internal/inspect`'s redirect statuses, `bench/tools/stdmini`'s sample packages). If you would rather
+  only be told, give that matrix entry `experimental: true` and the `test` job `continue-on-error: ${{ matrix.experimental == true }}`.
 * **The title check is not required.** `pr.yml` reports it on the pull request; to make it binding add a second required
   check named `conventional title` to `main.json`. A title that is not a conventional commit is released as a patch, never
   silently dropped.
