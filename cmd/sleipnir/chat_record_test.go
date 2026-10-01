@@ -280,3 +280,19 @@ func TestChatRecordTellsTheSameStoryEveryTime(t *testing.T) {
 		t.Fatalf("two recordings of the same session have %d and %d records", len(shapes[0]), len(shapes[1]))
 	}
 }
+
+// macOS names a temporary directory two ways, and the short one is the end of the long one: replacing it first left "/private/work/orders-api".
+func TestPortableReplacesTheLongNameOfADirectoryBeforeTheShortOne(t *testing.T) {
+	short, long := "/var/folders/36/xyz/T/TestX/001/orders-api", "/private/var/folders/36/xyz/T/TestX/001/orders-api"
+	data := []byte(`{"cwd":"` + long + `","files":["` + short + `/a.go","` + long + `/b.go"]}`)
+	for _, order := range [][]string{{short, long}, {long, short}} {
+		got := string(replacePaths(data, order, "/work/orders-api"))
+		want := `{"cwd":"/work/orders-api","files":["/work/orders-api/a.go","/work/orders-api/b.go"]}`
+		if got != want {
+			t.Errorf("names in the order %v: %s, want %s", order, got, want)
+		}
+		if machinePath.MatchString(got) {
+			t.Errorf("a path of this machine is left in %s", got)
+		}
+	}
+}

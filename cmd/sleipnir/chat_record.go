@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -308,14 +309,24 @@ func portable(data []byte, ws, root string) ([]byte, error) {
 		if real, err := filepath.EvalSymlinks(set.path); err == nil && real != set.path {
 			names = append(names, real)
 		}
-		for _, n := range names {
-			data = bytes.ReplaceAll(data, []byte(n), []byte(set.as))
-		}
+		data = replacePaths(data, names, set.as)
 	}
 	if m := machinePath.Find(data); m != nil {
 		return nil, fmt.Errorf("the transcript still names a path of this machine (%q); not keeping it", m)
 	}
 	return data, nil
+}
+
+// replacePaths replaces each of names in data by as, the longest first. A temporary directory can be named two ways (macOS: /var/folders/...
+// is /private/var/folders/...), and the shorter name is the end of the longer: replaced first it leaves "/private" and the new name, a path
+// that exists on no machine and that the check for what is left of this machine's paths then refuses (the first macOS run of CI did).
+func replacePaths(data []byte, names []string, as string) []byte {
+	sorted := append([]string(nil), names...)
+	sort.SliceStable(sorted, func(i, j int) bool { return len(sorted[i]) > len(sorted[j]) })
+	for _, n := range sorted {
+		data = bytes.ReplaceAll(data, []byte(n), []byte(as))
+	}
+	return data
 }
 
 // machinePath is a path under the places a machine keeps what is its own: temporary files, homes, user directories.
