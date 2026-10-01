@@ -71,6 +71,11 @@ func Run(ctx context.Context, c Config) (err error) {
 			return ctx.Err()
 		case k, ok := <-keys:
 			if !ok {
+				// ReadKeys closes the keys when ctx is done, so a program that was told to stop finds the end of its keys and the
+				// end of its context ready together, and select chooses between them at random. The context ended it.
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				return nil
 			}
 			if m.key(k) {

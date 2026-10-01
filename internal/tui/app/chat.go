@@ -54,7 +54,11 @@ func RunChat(ctx context.Context, c ChatConfig) (end ChatEnd, err error) {
 		case k, ok := <-keys:
 			if !ok {
 				keys = nil
-				m.quit(ChatQuit) // the terminal is gone
+				if ctx.Err() != nil {
+					m.quit(ChatInterrupted) // the keys end with the context (mergeInterrupts): it was told to stop
+				} else {
+					m.quit(ChatQuit) // the terminal is gone
+				}
 				break
 			}
 			m.key(k)
