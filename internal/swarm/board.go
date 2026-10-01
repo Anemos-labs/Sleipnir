@@ -553,6 +553,11 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 			switch {
 			case t.Status == StatusDone || t.Status == StatusFailed:
 				return fmt.Errorf("%s is already %s", r.id, t.Status)
+			case t.Owner != "" && t.Owner == r.by && t.Owner != r.agent:
+				// The assigner is the owner: a manager that claimed a task it meant to hand over. The second real swarm run did,
+				// and went on for turns, because the only thing the board said was whose the task was.
+				return fmt.Errorf("%s is claimed by you, so no worker can be put on it: drop it with fail and create the task again for the worker "+
+					"(a manager hands tasks over, it does not claim them)", r.id)
 			case t.Owner != "" && t.Owner != r.agent:
 				return fmt.Errorf("%s is already owned by %s", r.id, t.Owner)
 			case t.Status == StatusReview:

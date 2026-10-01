@@ -1125,3 +1125,40 @@ func TestTheAnswerToAnAgentThatDoesNotOwnATaskSaysWhatToDo(t *testing.T) {
 		}
 	}
 }
+
+// A manager that claimed a task it meant to hand to a worker is told how to get out of it: the only way is to drop the task and make it
+// again, and the first answer said only whose it was (the second real swarm run went on for turns).
+func TestAManagerThatClaimedATaskIsToldHowToHandItToAWorker(t *testing.T) {
+	b := NewBoard(nil)
+	b.CreateTask("mgr", TaskSpec{Title: "implement"})
+	if err := b.Claim("mgr", "T1"); err != nil {
+		t.Fatal(err)
+	}
+	err := b.Assign("mgr", "be-1", "T1")
+	if err == nil {
+		t.Fatal("a task the manager holds was given to a worker")
+	}
+	for _, want := range []string{"T1 is claimed by you", "fail", "create the task again"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%q does not say %q", err, want)
+		}
+	}
+	// a task another agent holds is still reported as theirs
+	b.CreateTask("mgr", TaskSpec{Title: "other"})
+	if err := b.Claim("be-2", "T2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Assign("mgr", "be-1", "T2"); err == nil || !strings.Contains(err.Error(), "already owned by be-2") {
+		t.Errorf("a task another agent holds: %v", err)
+	}
+	// and the way out works
+	if err := b.Fail("mgr", "T1", "claimed by mistake"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateTask("mgr", TaskSpec{Title: "implement, again"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Assign("mgr", "be-1", "T3"); err != nil {
+		t.Errorf("the task made again could not be given to a worker: %v", err)
+	}
+}

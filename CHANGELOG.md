@@ -405,6 +405,9 @@ defect the runs showed, with the evidence, and what changed.
   "be-1.8"`): the manifest of the next request was advanced before the request was logged, so a compaction fork that started on its
   own goroutine could log a request whose base was not in the log yet. The state is advanced after the event now, so a reader that
   follows the log as it grows always meets a base before its request.
+- **A manager that claimed a task it meant to hand over could not get out of it.** In the second real swarm run the manager claimed
+  its own task, was refused a worker for it (`T1 is already owned by mgr`) and spent turns on it; the board said whose the task was and
+  nothing about the way out. The answer now says it: a task the manager holds can be dropped with `fail` and made again for a worker.
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
