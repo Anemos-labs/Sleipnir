@@ -155,6 +155,28 @@ func TestDescribeArgError(t *testing.T) {
 	}
 }
 
+// The argument that is named is the first wrong one, in the order the model wrote them, and the message is the same whichever Go
+// built the binary (from Go 1.27 the decoder names no field for an error that a UnmarshalJSON method returns, and counts the
+// elements of an array in the path of one it does name).
+func TestTheFirstWrongArgumentIsTheOneNamedWhateverTheGoVersion(t *testing.T) {
+	env := testEnv(t)
+	for _, tc := range []struct{ input, want string }{
+		{`{"path": "x", "offset": "5", "limit": "6"}`, `argument "offset" must be an integer (got string)`},
+		{`{"limit": "6", "path": "x", "offset": "5"}`, `argument "limit" must be an integer (got string)`},
+		{`{"path": 5, "offset": "5"}`, `argument "path" must be a string (got number)`},
+		{`{"offset": 1.5, "path": 5}`, `argument "offset" must be an integer (got number 1.5)`},
+	} {
+		got := mustErr(t, run(t, Read{}, env, tc.input))
+		contains(t, got, tc.want)
+		if strings.Contains(got, "arguments must be a JSON object") {
+			t.Errorf("%s: the answer does not name the argument: %s", tc.input, got)
+		}
+	}
+	// The path of a wrong element of an array has no position in it.
+	contains(t, mustErr(t, run(t, Edit{}, env, `{"path":"a.txt","edits":[{"old_string":"a","new_string":"b"},{"old_string":"c","new_string":5}]}`)),
+		`argument "edits.new_string" must be a string (got number)`)
+}
+
 func TestIntArgAcceptsIntegralNumbers(t *testing.T) {
 	for _, in := range []string{`5`, `5.0`, `5e0`, `0.5e1`, `+5`[1:]} {
 		var a struct {

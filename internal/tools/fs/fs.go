@@ -122,24 +122,82 @@ func (k *call) decode(dst any) *tools.Result {
 		raw = []byte("{}")
 	}
 	if err := json.Unmarshal(raw, dst); err != nil {
-		return k.fail("%s", describeArgError(err))
+		return k.fail("%s", describeArgError(err, raw, dst))
 	}
 	return nil
 }
 
-func describeArgError(err error) string {
+// describeArgError says what is wrong with the arguments in words a model can act on, and names the argument. The message must
+// not depend on the Go version that built the binary, and the decoder's own answer does: it names the field of a type that does
+// not match (from Go 1.27 with the positions of an array in the path, "edits.0.new_string" where it said "edits.new_string"), but
+// since Go 1.27 it names none for an error that a UnmarshalJSON method returned (intArg's), where it used to; and with two wrong
+// arguments it reports a different one. So the first wrong member of an object, in the order the model wrote them, is found by
+// trying each alone, and the answer is about that one.
+func describeArgError(err error, raw []byte, dst any) string {
 	var ute *json.UnmarshalTypeError
 	var se *json.SyntaxError
 	switch {
-	case errors.As(err, &ute):
-		if ute.Field == "" {
-			return "arguments must be a JSON object"
-		}
-		return fmt.Sprintf("argument %q must be %s (got %s)", ute.Field, kindName(ute.Type), ute.Value)
 	case errors.As(err, &se):
 		return "arguments are not valid JSON: " + se.Error()
+	case errors.As(err, &ute):
+		field := withoutIndexes(ute.Field)
+		if key, e := firstBadMember(raw, dst); e != nil {
+			ute, field = e, withoutIndexes(e.Field)
+			if field == "" {
+				field = key
+			}
+		}
+		if field == "" {
+			return "arguments must be a JSON object"
+		}
+		return fmt.Sprintf("argument %q must be %s (got %s)", field, kindName(ute.Type), ute.Value)
 	}
 	return "invalid arguments: " + err.Error()
+}
+
+// withoutIndexes drops the array positions from a field path: "edits.0.new_string" is "edits.new_string".
+func withoutIndexes(path string) string {
+	parts := strings.Split(path, ".")
+	keep := parts[:0]
+	for _, p := range parts {
+		if _, err := strconv.Atoi(p); err != nil {
+			keep = append(keep, p)
+		}
+	}
+	return strings.Join(keep, ".")
+}
+
+// firstBadMember tries the members of the JSON object raw one at a time against a fresh dst, and returns the first that does not
+// fit with the type error it causes. A document that is not an object has no member to name.
+func firstBadMember(raw []byte, dst any) (string, *json.UnmarshalTypeError) {
+	t := reflect.TypeOf(dst)
+	if t == nil || t.Kind() != reflect.Pointer {
+		return "", nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return "", nil
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		name, ok := key.(string)
+		if err != nil || !ok {
+			return "", nil
+		}
+		var val json.RawMessage
+		if dec.Decode(&val) != nil {
+			return "", nil
+		}
+		one, err := json.Marshal(map[string]json.RawMessage{name: val})
+		if err != nil {
+			return "", nil
+		}
+		var e *json.UnmarshalTypeError
+		if err := json.Unmarshal(one, reflect.New(t.Elem()).Interface()); err != nil && errors.As(err, &e) {
+			return name, e
+		}
+	}
+	return "", nil
 }
 
 func kindName(t reflect.Type) string {

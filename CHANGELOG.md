@@ -32,6 +32,14 @@ The first release.
   of a message end to end ran them together ("fix the parserdo the scanner instead"). No layer G0-G2 changes and nothing that was
   sent before does, so no session pays for it; only a thread with such a pair renders differently. The canonical session of the render
   goldens has such a pair now.
+- Declared byte change in `core.MarshalStable` (what wire bodies, manifests and the hashes of recorded prompts are made of): a byte
+  of invalid UTF-8 in a string is written as the replacement character itself, whatever Go built the binary. The encoding/json of
+  Go 1.26 and before wrote the escape `\ufffd` for it and Go 1.27's writes the character, so a binary built with one and a log
+  written with the other hashed the same block differently (the replay check of a recorded prompt, the cache key of a thread). The
+  character is what every Go already wrote for a U+FFFD that was in the text and what `Canonical`, which decodes first, always
+  produced. Only text that contains invalid UTF-8 (a binary file read as text) has other bytes, in the golden
+  `canonical_shapes.txt`; no layer G0 to G2, no tool schema and no valid text does, so no session pays for it and `sleipnir sim` has
+  nothing to price. The Anthropic adapter's own writer is unchanged: it never depended on the Go version.
 
 ### Swarm
 
@@ -95,6 +103,11 @@ The first release.
   session, per-entry approval for project servers, prompts as slash commands, `sleipnir mcp`, `/mcp`), checkpoints
   and rewind. Repository-supplied skills, commands, roles, hooks and instruction files are read only when the project
   is trusted, and writes to the directories that hold them always ask.
+- Tool argument errors name the argument whatever Go built the binary: `argument "offset" must be an integer (got string)`. With
+  Go 1.27 the decoder stopped naming the field of an error that a `UnmarshalJSON` method returns, so `"offset": "5"` was answered
+  with "arguments must be a JSON object" (a model cannot act on that), it numbered array positions in the path, and with two wrong
+  arguments the Go versions reported different ones. The first wrong argument in the order written is found by trying each member
+  alone.
 
 ### RL environment
 
