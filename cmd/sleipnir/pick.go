@@ -87,7 +87,7 @@ func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]
 // key is there to ask, it lists that provider's models, lets the person choose, and keeps the answer as models.default in their own
 // configuration. Anywhere it cannot ask (not a terminal, no key, a catalogue that does not answer) it changes nothing, and the session
 // then fails with its usual explanation.
-func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Writer, tty bool) error {
+func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Writer, secret func() (string, error), tty bool) error {
 	if *model != "" || !tty {
 		return nil
 	}
@@ -100,14 +100,20 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	}
 	sources := usableSources(cfg, false)
 	if len(sources) == 0 {
-		return errors.New(noKeyGuide(cfg))
+		fmt.Fprintln(out, "Welcome to Sleipnir. It needs a model provider, and none has a key yet.")
+		if _, err := login(in, out, secret, cfg, ""); err != nil {
+			return err
+		}
+		if sources = usableSources(cfg, false); len(sources) == 0 {
+			return errors.New("the key was saved, but no provider with a model list is ready: `sleipnir models --provider NAME` shows why")
+		}
 	}
 	home, _ := os.UserHomeDir()
 	cfgPath := config.UserConfigPath(home)
 	_, statErr := os.Stat(cfgPath)
 	firstTime := errors.Is(statErr, os.ErrNotExist)
 	if firstTime {
-		fmt.Fprintln(out, "Welcome to Sleipnir. First-time setup: choose a model, and your settings are kept in "+cfgPath+".")
+		fmt.Fprintln(out, "First-time setup: choose a model; your settings are kept in "+cfgPath+".")
 	}
 	names := make([]string, len(sources))
 	for i, src := range sources {
@@ -140,24 +146,4 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	}
 	*model = ref
 	return nil
-}
-
-// noKeyGuide is what a person sees when there is nothing to ask: no provider has a key. Heimdall comes first. The harness keeps no keys in
-// files (an environment variable is the only place it reads one), so the guide ends at what to export.
-func noKeyGuide(cfg *config.Config) string {
-	var hosted []string
-	for _, n := range session.ProviderNames(cfg) {
-		if n == "heimdall" {
-			continue
-		}
-		if _, keyEnv, ok := session.ProviderInfo(cfg, n); ok && keyEnv != "" {
-			hosted = append(hosted, keyEnv)
-		}
-	}
-	_, heimdallKey, _ := session.ProviderInfo(cfg, "heimdall")
-	return "Welcome to Sleipnir. It needs a model provider; none has a key yet.\n\n" +
-		"  Recommended: Heimdall.   export " + heimdallKey + "=...   then run sleipnir again\n" +
-		"  Or another provider:     export one of " + strings.Join(hosted, ", ") + "\n" +
-		"  Or a local server:       sleipnir --model ollama/<model>   (also lmstudio/, llamacpp/, vllm/; no key)\n\n" +
-		"The first run then asks the provider which models it has and writes your settings to ~/.sleipnir/config.json."
 }

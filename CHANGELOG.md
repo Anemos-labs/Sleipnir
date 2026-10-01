@@ -234,6 +234,9 @@ The first release.
 
 - `sleipnir` alone, or followed by flags (`sleipnir --model provider/model`), opens the chat in the current directory when it runs on a terminal; a script or a
   pipe still gets the usage message.
+- `sleipnir login` (and the first run, by itself) asks which provider and for its key, without echoing it, and keeps it in `~/.sleipnir/auth.json` (mode 0600,
+  never in the shared `config.json`); `logout` removes it. The key is held in memory like one moved out of the environment, and an environment variable of the usual
+  name still wins. No more "export the key and run again".
 - First-time setup: with no model configured, the chat asks the provider (the catalogue it serves right now: Sleipnir knows no model names) which model to use, with
   search words and numbers, and writes `~/.sleipnir/config.json` with that model and the permission mode, saying where. It is asked once. With no key at all it prints
   a short guide, Heimdall first. `sleipnir init --user` is the same setup on a terminal; the model it used to guess from the key is gone.

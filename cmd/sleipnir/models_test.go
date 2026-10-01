@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
+	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -166,7 +169,7 @@ func TestFirstTimeSetupWritesTheConfigFromTheProvidersOwnList(t *testing.T) {
 	}
 	var model string
 	var out bytes.Buffer
-	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("1\n")), &out, true); err != nil {
+	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("1\n")), &out, nosecret, true); err != nil {
 		t.Fatal(err)
 	}
 	if model != "fake/alpha-1" {
@@ -178,48 +181,77 @@ func TestFirstTimeSetupWritesTheConfigFromTheProvidersOwnList(t *testing.T) {
 	}
 	// Asked once: with a default in the config, nothing is asked and nothing changes.
 	model, out = "", bytes.Buffer{}
-	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("")), &out, true); err != nil || model != "" || out.Len() != 0 {
+	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("")), &out, nosecret, true); err != nil || model != "" || out.Len() != 0 {
 		t.Errorf("second run: %q %v %q", model, err, out.String())
 	}
 	// Not on a terminal: never asked.
-	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("")), &out, false); err != nil || model != "" {
+	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("")), &out, nosecret, false); err != nil || model != "" {
 		t.Errorf("no terminal: %q %v", model, err)
 	}
 }
 
-func TestWithNoKeyAtAllTheGuideNamesHeimdallFirst(t *testing.T) {
-	_, _ = projectDir(t)
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY"} {
-		t.Setenv(k, "")
-	}
-	var model string
-	err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("")), &bytes.Buffer{}, true)
-	if err == nil || !strings.Contains(err.Error(), "Recommended: Heimdall.   export HEIMDALL_API_KEY=") || !strings.Contains(err.Error(), "OPENROUTER_API_KEY") || !strings.Contains(err.Error(), "ollama/") {
-		t.Errorf("the guide: %v", err)
-	}
-}
+func nosecret() (string, error) { return "", errors.New("no key should be asked for here") }
 
-// No config file at all: the setup says so, and the file it writes holds the model and the mode.
-func TestFirstTimeSetupCreatesTheConfigFile(t *testing.T) {
+// Nothing at all: no key, no config. The person picks a provider (Heimdall is the first), pastes the key, picks a model; the key is kept in
+// auth.json (mode 0600, never in the config file) and is in use for this very run; the config file is written.
+func TestFirstRunWithNoKeyAsksForTheKeyAndKeepsIt(t *testing.T) {
+	var gotKey string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("Authorization")
 		io.WriteString(w, `{"data":[{"id":"only-model"}]}`)
 	}))
 	defer ts.Close()
 	_, home := projectDir(t)
-	t.Setenv("SLEIPNIR_MODEL", "")
-	t.Setenv("HEIMDALL_API_KEY", "k")
-	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1") // a loopback address: the key may go there
-	cfgPath := filepath.Join(home, ".sleipnir", "config.json")
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
+	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
 	var model string
 	var out bytes.Buffer
-	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("1\n")), &out, true); err != nil {
+	secret := func() (string, error) { return "sk-pasted-key-123", nil }
+	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("1\n1\n")), &out, secret, true); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if model != "heimdall/only-model" || !strings.Contains(out.String(), "1. heimdall  (recommended)") {
+		t.Fatalf("%q\n%s", model, out.String())
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".sleipnir", "auth.json"))
+	if err != nil || !strings.Contains(string(b), `"HEIMDALL_API_KEY": "sk-pasted-key-123"`) {
+		t.Fatalf("auth.json: %v %s", err, b)
+	}
+	if fi, _ := os.Stat(filepath.Join(home, ".sleipnir", "auth.json")); fi.Mode().Perm() != 0o600 {
+		t.Errorf("auth.json mode %v", fi.Mode().Perm())
+	}
+	if c, _ := os.ReadFile(filepath.Join(home, ".sleipnir", "config.json")); strings.Contains(string(c), "sk-pasted") {
+		t.Error("a key must never be in the config file, which people share")
+	}
+	if harden.Secret("HEIMDALL_API_KEY") != "sk-pasted-key-123" {
+		t.Error("the key is not in use for this run")
+	}
+	_ = gotKey
+}
+
+func TestLoginRefusesWhatTakesNoKeyAndLogoutForgets(t *testing.T) {
+	_, home := projectDir(t)
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	in := bufio.NewReader(strings.NewReader(""))
+	if _, err := login(in, &bytes.Buffer{}, nosecret, cfg, "ollama"); err == nil || !strings.Contains(err.Error(), "takes a key") {
+		t.Errorf("a local server has no key to store: %v", err)
+	}
+	t.Setenv("GROQ_API_KEY", "")
+	t.Cleanup(func() { harden.Provide("GROQ_API_KEY", "") })
+	if name, err := login(in, &bytes.Buffer{}, func() (string, error) { return " sk-groq \n", nil }, cfg, "Groq"); err != nil || name != "groq" {
+		t.Fatalf("%q %v", name, err)
+	}
+	keys, _ := config.StoredKeys(home)
+	if keys["GROQ_API_KEY"] != "sk-groq" {
+		t.Errorf("stored (trimmed): %v", keys)
+	}
+	if err := cmdLogout(context.Background(), []string{"groq"}); err != nil {
 		t.Fatal(err)
 	}
-	cfg := readJSON(t, cfgPath)
-	if model != "heimdall/only-model" || sub(cfg, "models", "default") != "heimdall/only-model" || sub(cfg, "permissions", "mode") != "default" {
-		t.Errorf("%q %v", model, cfg)
-	}
-	if !strings.Contains(out.String(), "First-time setup") || !strings.Contains(out.String(), "Wrote "+cfgPath) {
-		t.Errorf("the person is told what was written and where:\n%s", out.String())
+	if keys, _ := config.StoredKeys(home); len(keys) != 0 {
+		t.Errorf("after logout: %v", keys)
 	}
 }

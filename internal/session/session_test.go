@@ -415,10 +415,10 @@ func TestBuiltInHostsAndLocalServers(t *testing.T) {
 		t.Setenv(k, "")
 	}
 	// Nothing set: the error says what to start with, and it is Heimdall.
-	if _, err := session.ResolveModel(nil, "some/model"); err == nil || !strings.Contains(err.Error(), "HEIMDALL_API_KEY (recommended)") {
+	if _, err := session.ResolveModel(nil, "some/model"); err == nil || !strings.Contains(err.Error(), "sleipnir login` (Heimdall is the recommended provider)") {
 		t.Errorf("the no-provider error recommends Heimdall first: %v", err)
 	}
-	if _, err := session.ResolveModel(nil, ""); err == nil || !strings.Contains(err.Error(), "Recommended start: export HEIMDALL_API_KEY") {
+	if _, err := session.ResolveModel(nil, ""); err == nil || !strings.Contains(err.Error(), "Recommended start: run `sleipnir login`") {
 		t.Errorf("the no-model error recommends Heimdall first: %v", err)
 	}
 	// A local server needs no key and is never the default for a bare id.

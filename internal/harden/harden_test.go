@@ -387,3 +387,24 @@ func TestDumpableRequested(t *testing.T) {
 		}
 	}
 }
+
+func TestProvideHoldsAStoredKeyInMemoryAndTheEnvironmentWins(t *testing.T) {
+	const name = "ACME_PROVIDE_API_KEY"
+	t.Setenv(name, "")
+	t.Cleanup(func() { Provide(name, "") })
+	Provide(name, "stored")
+	if got := Secret(name); got != "stored" {
+		t.Fatalf("an empty variable is not a word: %q", got)
+	}
+	if os.Getenv(name) != "" {
+		t.Error("a stored key must not appear in the environment: commands inherit it")
+	}
+	t.Setenv(name, "from-env")
+	if got := Secret(name); got != "from-env" {
+		t.Errorf("the environment wins: %q", got)
+	}
+	Provide(name, "other")
+	if got := Secret(name); got != "from-env" {
+		t.Errorf("a set variable is not replaced: %q", got)
+	}
+}

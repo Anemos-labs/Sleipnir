@@ -78,7 +78,7 @@ func (pf providerFlags) resolve() (providerSpec, string, error) {
 		case harden.Secret("OPENAI_API_KEY") != "":
 			name = "openai"
 		default:
-			return providerSpec{}, "", fmt.Errorf("no provider configured: set HEIMDALL_API_KEY (recommended; or OPENROUTER_API_KEY / OPENAI_API_KEY), or pass --provider and --base-url")
+			return providerSpec{}, "", fmt.Errorf("no provider has a key: run `sleipnir login` (Heimdall is recommended), or set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY), or pass --provider and --base-url")
 		}
 	}
 	spec, ok := builtinProviders[name]

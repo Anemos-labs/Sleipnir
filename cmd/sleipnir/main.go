@@ -39,6 +39,10 @@ func main() {
 	// provider keys out of the environment, so no command the harness starts inherits them; every reader
 	// goes through harden.Secret (harden.TestReadersOfCredentialsUseSecret).
 	harden.Process(harden.MoveKeys())
+	// Keys the person stored with `sleipnir login`: held in memory beside the ones moved out of the environment.
+	if err := config.LoadStoredKeys(userHome()); err != nil {
+		fmt.Fprintln(os.Stderr, "sleipnir:", err)
+	}
 	cmd, args := defaultToChat(os.Args[1:], term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())))
 	if cmd == "" {
 		usage(os.Stderr)
@@ -192,6 +196,7 @@ Commands:
   init      write a starter .sleipnir/config.json and AGENTS.md for this project
   config    show the effective configuration and where each value came from
   sessions  list recorded sessions (sessions prune: delete the old ones)
+  login     store a provider's API key (asked for on the first run); logout removes it
   chat      interactive session in the current directory (what "sleipnir" alone opens on a terminal; slash commands, Ctrl-C cancels a turn)
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
   schedule  goals to run on a schedule (cron): add, list, rm
@@ -216,7 +221,7 @@ A model is written provider/model. Built in: heimdall (recommended), openrouter,
 together, fireworks, groq, cerebras, deepinfra, and the local servers ollama, lmstudio, llamacpp and
 vllm (no key); or a provider from your config. A bare model id goes to the default provider: the only
 one configured, else the first hosted one whose key variable (HEIMDALL_API_KEY, OPENROUTER_API_KEY,
-OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. Keys are read from the environment only, never from a file. Every command takes -h.
+OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from ~/.sleipnir/auth.json (sleipnir login stores it there, mode 0600). Every command takes -h.
 `)
 }
 

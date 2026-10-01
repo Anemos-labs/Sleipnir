@@ -591,6 +591,24 @@ search (all must appear, any case). Favorites, marked *, come first.
 ```
 <!-- /flags -->
 
+### `sleipnir login`
+
+Asks which provider you have a key for (Heimdall, the recommended one, is first) and for the key, which it does not echo, and keeps it in
+`~/.sleipnir/auth.json` (mode 0600; never in `config.json`). `sleipnir login heimdall` names the provider; from a pipe the key is the first line of stdin
+(`echo "$KEY" | sleipnir login heimdall`). The first run of `sleipnir` does this by itself when no provider has a key. An environment variable of the key's usual name
+(`HEIMDALL_API_KEY`) takes precedence over the stored one. `sleipnir logout <provider>` removes it.
+
+<!-- flags: login -->
+```text
+usage: sleipnir login [provider]
+
+Asks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in
+~/.sleipnir/auth.json, readable by you only. From a pipe the key is the first line of stdin:
+  echo "$KEY" | sleipnir login heimdall
+An environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.
+```
+<!-- /flags -->
+
 ### `sleipnir schedule`
 
 Goals to run on a schedule, kept in `~/.sleipnir/schedule.json` (`$SLEIPNIR_HOME/schedule.json`). `sleipnir schedule` lists them with the next and
@@ -623,7 +641,7 @@ flags of add:
 
 Starts the scheduled goals that are due, one at a time, looking every half minute until it is stopped; `--once` starts what is due now, waits for it and exits, for
 cron or a systemd timer. Each run's output is in `~/.sleipnir/schedule-logs/<job>-<time>.log` and its end (`ok`, an error, `timed out after 1h0m0s`) is shown by
-`sleipnir schedule`. A daemon that was down starts an overdue job once, not once per missed slot. Its runs use the provider keys of the daemon's own environment.
+`sleipnir schedule`. A daemon that was down starts an overdue job once, not once per missed slot. Its runs use the provider keys of the daemon's own environment or the ones stored by `sleipnir login`.
 
 <!-- flags: daemon -->
 ```text

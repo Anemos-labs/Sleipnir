@@ -55,7 +55,8 @@ func cmdInit(ctx context.Context, args []string) error {
 	if *user && *model == "" && *localURL == "" && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 		// On a terminal this is the first-time setup the chat runs by itself: ask the provider, write the file (pick.go).
 		var chosen string
-		if err := ensureModel(ctx, &chosen, bufio.NewReader(os.Stdin), os.Stderr, true); err != nil {
+		in := bufio.NewReader(os.Stdin)
+		if err := ensureModel(ctx, &chosen, in, os.Stderr, func() (string, error) { return readSecret(in) }, true); err != nil {
 			return err
 		}
 		if chosen != "" {

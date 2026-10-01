@@ -200,7 +200,7 @@ func Secret(name string) string {
 func LookupSecret(name string) (string, bool) {
 	mu.Lock()
 	defer mu.Unlock()
-	if v, ok := os.LookupEnv(name); ok { // the environment wins: it may have been set again
+	if v, ok := os.LookupEnv(name); ok && (v != "" || held[name] == "") { // the environment wins: it may have been set again; an empty variable is not a word
 		if moving && movableLocked(name, v) {
 			held[name] = v
 			_ = os.Unsetenv(name)
@@ -218,4 +218,23 @@ func Held() []string {
 	mu.Lock()
 	defer mu.Unlock()
 	return sortedHeld()
+}
+
+// Provide (with an empty value: forget) makes a credential known to Secret without putting it in the environment: a key the person stored (config.LoadStoredKeys). The
+// environment wins: a variable that is set is the person's word for this process, whatever was stored. Like a moved key, a provided one
+// is held in memory only, so no command the harness starts can read it from its environment.
+func Provide(name, value string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if value == "" { // forget it
+		delete(held, name)
+		return
+	}
+	if v, ok := os.LookupEnv(name); (ok && v != "") || name == "" {
+		return
+	}
+	if held == nil {
+		held = map[string]string{}
+	}
+	held[name] = value
 }

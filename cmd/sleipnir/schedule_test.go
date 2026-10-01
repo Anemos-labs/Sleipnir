@@ -55,18 +55,16 @@ func TestDaemonTickStartsWhatIsDueOnceAndRecordsHowItEnded(t *testing.T) {
 	}
 }
 
-// harden.MoveKeys takes the provider keys out of the environment at start, so a plain child of the daemon would have none: the job's
-// environment gets them back.
-func TestAJobsEnvironmentCarriesTheKeysTheProcessHides(t *testing.T) {
-	t.Setenv("ACME_API_KEY", "sk-test-1234567890abcdef")
-	harden.Process(harden.MoveKeys("ACME_API_KEY"))
-	t.Cleanup(func() { harden.Process() })
-	if v := os.Getenv("ACME_API_KEY"); v != "" {
-		t.Skipf("keys are not moved on this platform or build (%q still in the environment)", "ACME_API_KEY")
-	}
+// Keys the process holds in memory (moved out of the environment at start, or stored by `sleipnir login`) are not in os.Environ, so a plain
+// child of the daemon would have none: the job's environment gets them back.
+func TestAJobsEnvironmentCarriesTheKeysTheProcessHolds(t *testing.T) {
+	const name = "ACME_JOB_API_KEY"
+	t.Setenv(name, "")
+	harden.Provide(name, "sk-test-1234567890abcdef")
+	t.Cleanup(func() { harden.Provide(name, "") })
 	var found bool
 	for _, e := range jobEnv(os.Environ()) {
-		found = found || e == "ACME_API_KEY=sk-test-1234567890abcdef"
+		found = found || e == name+"=sk-test-1234567890abcdef"
 	}
 	if !found {
 		t.Error("the job would start without its key")
