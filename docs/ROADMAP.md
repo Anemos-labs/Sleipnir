@@ -7,6 +7,26 @@ how to start each item, and what bit the people before you. Read `AGENTS.md`, `d
 Written on 2026-10-01 at commit `6df3162` plus the remembered-trust work (section 2), by the agent that built most of what is in
 the repository, at the point where the owner's budget for the week ran out.
 
+## Third session (2026-10-01): what was added, and what is next
+
+**Added** (each with a test that fails without it; `CHANGELOG.md` says them for the user): built-in providers (Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra,
+and the keyless local servers Ollama, LM Studio, llama.cpp, vLLM); `models.roles.compactor` (a model of its own for the summaries, used while the thread fits its window);
+`sleipnir models` over every provider with a key, with search words, filters and favorites (`models.favorites`); `/model` in the chat (the agent is rebuilt on the new
+provider and the old snapshot restored: the resume path) with a menu that completes from the catalogues (`input.Choices`, the editor opens a menu at a slash command's first
+argument); the errors of a first run name Heimdall; a note when a model edits only tests after a failing run (`internal/agent/testguard.go`); a hint when a manager creates a task
+without a description; long-term memory (`internal/tools/memtool`, `~/.sleipnir/MEMORY.md`, every save asks); `sleipnir schedule` and `sleipnir daemon` (`internal/sched`).
+
+**Found by use, and left alone on purpose.** A 2B model (minicpm5-2b) fails a ten-line cache task by compile errors it cannot read; no nudge fixes that, so do not add
+one. Integer arguments given as strings stay refused (five tests and the web tool encode it; the error names the field). A hard refusal of a task without a description broke
+a dozen tests and real managers write terse titles: it is a hint. Writes under `~/.sleipnir` ask in every mode, so `run` cannot save a memory unattended: by design.
+
+**Open, in the order to take it:**
+1. The benchmark refresh (`docs/BENCHMARKS.md`, README numbers): the corpus is 52 tasks, the text says 48; needs `bench/build.sh --update-lock`, a key in a 0600 file, and about two hours.
+2. A verify gate (refuse "done" after an edit with no test run since): measure on the benchmark first; 27% of its failures are a "done" that was not.
+3. The role table in the chat (`/models`: which model each role uses, and a menu to change one); `sleipnir init --user --brain` presets.
+4. A `sleipnir agent` profile (memory on, scheduler on, conservative permissions, budget caps) and a skill-writer tool; a gateway adapter (webhook first).
+5. The model-facing `schedule` tool (a model creates its own follow-ups), after the daemon has run for a few days.
+
 ## Second handoff (2026-10-01, the end of the second agent's session)
 
 Read this block first; the rest of the page is the first handoff, brought up to date where the second agent's work changed it.
