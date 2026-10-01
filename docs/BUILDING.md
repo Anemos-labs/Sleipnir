@@ -175,6 +175,10 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
     NO_OPENSSL=1 install`) and put its `bin` first on `PATH`. git also decides that a file is unchanged from its stat data unless
     the entry is not older than its index file: whatever copies an index keeps its time (`gitx.copyIndex`), and a test that needs
     the situation sets the times with `os.Chtimes` instead of racing a clock;
+  - a test that measures memory must not keep what it measures in memory: the first soak test (`internal/agent/soak_test.go`) said that a
+    run leaks 17 KB a step, and what leaked was the test's blob store and event log, which a session keeps on disk. Put them there (or
+    drop them), read the live heap after `runtime.GC()` at fractions of the run rather than at its end, bound the growth per step, and
+    break the code on purpose (keep each result in a slice) to see the test fail before trusting that it can;
   - a `select` between a context and a channel that the context closes (`ReadKeys`, `mergeInterrupts`) chooses at random when both are
     ready, so a loop that treats the channel's end as "the user quit" reports a signal as a quit now and then: ask `ctx.Err()` first. A
     test makes both ready before the loop starts and runs it a few hundred times (`internal/tui/app/signal_race_test.go`);

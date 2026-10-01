@@ -21,6 +21,7 @@ these figures to a tenth); the test code is about as long as the code it tests.
 | **Allocation gates** | a hot path that allocates more than it is held to (the count does not depend on the machine, so it can fail a build) | `allocs_gate_test.go`, built only without `-race` | `go test -run Allocations ./...` |
 | **Benchmarks** | a slowdown, compared as two ranges that must not overlap, never gated on a wall-clock number | `Benchmark*`, `scripts/perf.sh` | `sh scripts/perf.sh run OUT.txt` |
 | **Chaos** | an agent that cannot survive the endpoint it will really meet: a 503 whose body says the database is away, a 502 with an HTML page, a 429, a reset, a response cut off or ended without its last frame, a server that says nothing | `internal/provider/chaos` (the faults), `internal/agent/chaos_test.go` (every fault at every request of a run, eighty random mixtures; a thousand nightly), `internal/provider/openaichat` (what each fault is called) | `go test -race ./internal/agent -run Fault`; `SLEIPNIR_CHAOS_SEEDS=1000` widens the mixtures |
+| **Soak** | a run that keeps something for every step and so cannot last for hours: a thousand steps, a tool result each, the thread folded as it grows, and the live heap after a collection at a quarter, a half and three quarters of the way, which may climb by what the archive's index takes and no more (twenty thousand steps nightly) | `internal/agent/soak_test.go` | `SLEIPNIR_SOAK_STEPS=20000 go test -run LongRun ./internal/agent` |
 | **Goroutine leaks** | a test that leaves a goroutine behind in the packages that start any | `testutil.CheckLeaks` in their `TestMain` | the same as the unit tests |
 | **Load** | the test that only passes on a quiet machine | `BUILDING.md` ("a load test finds what a quiet machine hides") | three `go test -race ./...` at once |
 | **Simulation** | a change of the cache policy that makes the model of the economics lose | `internal/kv/sim`, `sleipnir sim --mode scenarios` | `go run ./cmd/sleipnir sim` |
@@ -49,7 +50,7 @@ tests of the scripts, the suite under `-race` on Linux (amd64 and arm64) and mac
 the newest stable Go, the allocation gates (the one leg that runs them: they are not built under `-race`), every release platform
 built and vetted, the cache-policy guards, `govulncheck`, dependency review on pull requests, `actionlint` and `zizmor`, and
 `internal/repocheck` (it runs with the suite). Informational: Windows (every package but those `scripts/windows-excluded.txt` lists, with the reason for each); the nightly run (every fuzz target for three minutes, the
-suite three times under `-race` in shuffled order, a thousand random mixtures of endpoint faults, coverage, the drift checks again, `govulncheck` again); `bench/build.sh --check`
+suite three times under `-race` in shuffled order, a thousand random mixtures of endpoint faults, a run of twenty thousand steps, coverage, the drift checks again, `govulncheck` again); `bench/build.sh --check`
 and the benchmark itself (by hand, they need a key). `docs/REPO-SETUP.md` has the whole list and what each guards.
 
 A required check that flakes blocks merges, so a test that cannot pass on a loaded runner is a defect of the test: its bounds are

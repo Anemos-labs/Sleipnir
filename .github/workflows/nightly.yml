@@ -1,8 +1,8 @@
 name: nightly
 
 # What is too slow or too random for every push: every fuzz target for a few minutes, the whole suite under the race
-# detector three times, the agent against a thousand random mixtures of endpoint faults, coverage, the drift checks, and
-# a vulnerability scan (a new advisory appears on a day when nobody pushes). Nothing here blocks a merge; a red run is a
+# detector three times, the agent against a thousand random mixtures of endpoint faults and through twenty thousand steps
+# of one run, coverage, the drift checks, and a vulnerability scan (a new advisory appears on a day when nobody pushes). Nothing here blocks a merge; a red run is a
 # thing to look at in the morning. A fuzz failure uploads the input that made it, which becomes a regression seed once
 # the bug is fixed.
 on:
@@ -86,7 +86,7 @@ jobs:
       - run: go test -race -count=3 -shuffle=on -timeout 100m ./...
 
   chaos:
-    name: the agent against a thousand random mixtures of endpoint faults
+    name: the agent against endpoint faults, and through twenty thousand steps
     runs-on: ubuntu-latest
     timeout-minutes: 30
     continue-on-error: true
@@ -102,6 +102,11 @@ jobs:
       - run: go test -race -count=1 -timeout 25m -run TestARandomMixtureOfFaultsIsSurvived ./internal/agent
         env:
           SLEIPNIR_CHAOS_SEEDS: "1000"
+      # What a run keeps for each of its steps, measured over a run twenty times longer than the one every push makes. Not under -race:
+      # the detector makes it fifteen times slower and what it measures (the live heap) is the same.
+      - run: go test -count=1 -timeout 20m -run TestALongRunKeepsABoundedFootprint -v ./internal/agent
+        env:
+          SLEIPNIR_SOAK_STEPS: "20000"
 
   coverage:
     name: coverage

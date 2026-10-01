@@ -334,6 +334,12 @@ The first release.
   harness writes are unchanged and no golden file moved); the event log's fuzz target had a different idea of "a log at its last sequence number"
   than the log has (Open's own record of damage takes a number too); and every end-to-end test that reads a command's stderr failed under the
   coverage run, since a test binary built for coverage that runs as the command says on stderr that it has nowhere to write its counters.
+- A long run is measured (`TestALongRunKeepsABoundedFootprint`): a thousand steps on every push and twenty thousand in the nightly run, a
+  tool result each, the thread folded as it grows, the live heap read after a collection a quarter, a half and three quarters of the way,
+  and held to what the archive's index takes for the turns it ever had (a few hundred bytes each; a kilobyte a step is the figure, the
+  bound twice that, and a result of four kilobytes kept for every step fails it by three times). It first said 17 KB a step, which was
+  the test's own blob store: held in memory it kept every result, where a session keeps them on disk. With the store on disk a heap
+  profile accounted for all of the growth, the index and the set of blobs already verified (which is bounded); the harness leaks nothing.
 
 ### Found by running it on real models
 
