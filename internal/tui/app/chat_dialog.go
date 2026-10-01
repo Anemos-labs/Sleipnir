@@ -21,7 +21,8 @@ import (
 // one at a time, so the rule is this: a question takes keys only when the keyboard has been quiet for AnswerAfter since the
 // question appeared, or since the last key that was not for it. Until then every key goes where it would have gone without the
 // question, to the prompt, and each one starts the wait again; a person who has read the question and then presses 1 is always
-// heard, one who is typing never answers it by accident, and Ctrl-C (which can only cancel) is always heard.
+// heard, one who is typing never answers it by accident, and Ctrl-C (which can only cancel) is always heard. A question that has
+// waited behind another is in the same case when it comes to the front: the key that answered the one before was not meant for it.
 
 // dialog is a question that is on the screen.
 type dialog struct {
