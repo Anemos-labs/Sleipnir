@@ -94,8 +94,9 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
    works (`sleipnir doctor`) before planning around it.
 2. *(G5b, prefix-scoped "don't ask again", is done: `docs/SECURITY.md`, "Don't ask again for a runner command".)*
 3. *(G5c, a private `$TMPDIR` for the session, is done: `docs/SECURITY.md`, section 2.)*
-4. **G5d, `/clear` is left** (`/status`, `/permissions` and `/trust` are done): fold the thread and keep the pinned prefix, a declared, priced rebase like
-   `/compact`. `cmd/sleipnir/chat.go` (`slashTo`), `cmd/sleipnir/chat_tty.go` (`chatCommands`), `isLookCommand` in `internal/tui/app/chat.go`; `docs/CLI.md`.
+4. *(G5d, the slash commands, is done: `/status`, `/permissions` and `/trust` are in. `/clear` is decided against: it would be a new kind of compaction patch, a declared and priced rebase,
+   and a new chat gets the same thing for nothing, because G0 to G2 are byte-identical across sessions and the provider's cache serves them to the next chat; `/compact` is the way to
+   shrink a thread that must go on.)*
 5. **F2, the scale ladder and a soak on a real endpoint.** Write a generator of synthetic Go projects of N packages (3, 10, 25, 50 per worker;
    it was designed as `bench/synth/gen.sh` and is not in the repository) and run a swarm on each with `--isolation worktree --verify "go test
    {dirs}"`: tasks a minute, governor 429s, merge-queue latency, memory; then `kill -9` and `--resume`. `internal/session/scale_test.go` is the
