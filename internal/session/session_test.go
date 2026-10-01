@@ -17,6 +17,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -892,5 +893,74 @@ func TestScratchFilesGoToThePrivateTmpdir(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(s.Dir, "tmp", "x.txt"))
 	if err != nil || string(b) != "scratch\n" {
 		t.Fatalf("scratch file: %q, %v", b, err)
+	}
+}
+
+// /model moves the single agent to another model and keeps the conversation: the new endpoint's first request holds the
+// first goal, the old endpoint hears nothing more, and a swarm is refused.
+func TestSwitchModelKeepsTheThreadOnTheNewEndpoint(t *testing.T) {
+	var mu sync.Mutex
+	var seenA, seenB []string
+	last := func(c *mock.Call) string { return c.LastUser() }
+	clientA, modelA := startMock(t, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		seenA = append(seenA, last(c))
+		mu.Unlock()
+		return mock.Reply{Text: "answer from A"}
+	})
+	var bHadFirstGoal bool
+	srvB := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		seenB = append(seenB, last(c))
+		for _, m := range c.Messages {
+			if strings.Contains(fmt.Sprint(m), "first goal") {
+				bHadFirstGoal = true
+			}
+		}
+		mu.Unlock()
+		return mock.Reply{Text: "answer from B"}
+	})
+	tsB := srvB.Start()
+	t.Cleanup(tsB.Close)
+
+	repo := newRepo(t)
+	o := opts(t, repo, clientA, modelA)
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{"other": {Dialect: config.DialectOpenAIChat, BaseURL: tsB.URL + "/v1"}}
+	o.Config = cfg
+	o.Offline = true
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Run(context.Background(), "first goal"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TOGETHER_API_KEY", "")
+	if _, err := s.SwitchModel(context.Background(), "together/x"); err == nil || s.Model.ID != "mock-1" {
+		t.Fatalf("a failed switch says why and leaves the model alone: %v (model %s)", err, s.Model.ID)
+	}
+	ref, err := s.SwitchModel(context.Background(), "other/m2")
+	if err != nil || ref != "other/m2" || s.Model.ID != "m2" {
+		t.Fatalf("switch: %q %v (model %s)", ref, err, s.Model.ID)
+	}
+	res, err := s.Run(context.Background(), "second goal")
+	if err != nil || !strings.Contains(res.Text, "answer from B") {
+		t.Fatalf("the next turn runs on the new model: %+v %v", res, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seenA) != 1 || len(seenB) != 1 || !bHadFirstGoal {
+		t.Errorf("A saw %v, B saw %v, B had the first goal: %v", seenA, seenB, bHadFirstGoal)
+	}
+	var switched bool
+	for _, e := range readEvents(t, s.Dir) {
+		if e.Type == events.TypeModelSwitch {
+			switched = true
+		}
+	}
+	if !switched {
+		t.Error("the switch is recorded in the log")
 	}
 }

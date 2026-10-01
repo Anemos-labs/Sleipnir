@@ -166,8 +166,13 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 // Command runs a slash command. Both of its streams are the one the program is given, so that they come back in the order they were
 // written and nothing reaches the terminal but through the program.
 func (h *sessionHost) Command(ctx context.Context, line string, out io.Writer) app.CommandResult {
+	before := h.s.Model.ID
 	quit, send := slashTo(ctx, h.s, line, out, out)
-	return app.CommandResult{Quit: quit, Send: send}
+	res := app.CommandResult{Quit: quit, Send: send}
+	if h.s.Model.ID != before {
+		res.Model = h.s.Model.ID
+	}
+	return res
 }
 
 // Mode is the permission mode in force.
@@ -192,6 +197,7 @@ var chatCommands = []chatCommand{
 	{"context", "", "layer sizes of the current prompt"},
 	{"compact", "[focus]", "fold the older thread now"},
 	{"agents", "", "swarm board: agents and tasks"},
+	{"model", "[provider/model]", "show the model, or move this conversation to another one (the prompt cache starts over)"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass"},
 	{"plan", "", "plan mode: read-only"},
 	{"rewind", "[id]", "list checkpoints, or restore files to before a turn"},

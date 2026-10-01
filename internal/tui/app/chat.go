@@ -821,6 +821,9 @@ func (m *chatModel) commandEnded(e runEnd) {
 		}
 		m.block(bkNote, lines)
 	}
+	if e.cmd.Model != "" {
+		m.info.Model = e.cmd.Model
+	}
 	if e.cmd.Quit {
 		m.quit(ChatQuit)
 		return

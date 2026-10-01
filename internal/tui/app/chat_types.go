@@ -54,6 +54,8 @@ type TurnResult struct {
 type CommandResult struct {
 	Quit bool
 	Send string
+	// Model, when set, is the model the session runs on now (after /model), for the footer.
+	Model string
 }
 
 // ChatInfo is what the banner and the footer say about the session.

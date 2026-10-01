@@ -236,6 +236,7 @@ const chatHelp = `/help              this text (and your custom commands and ski
 /context           layer sizes of the current prompt (what is pinned, what is thread)
 /compact [focus]   fold the older thread now (optionally: what to keep in view); a declared, priced rebase
 /agents            swarm board: agents and tasks
+/model [ref]       show the model, or move this conversation to another (provider/model; the prompt cache starts over; sleipnir models lists them)
 /mode <m>          default | accept-edits | plan | bypass   (/plan = plan mode)
 /rewind            list checkpoints;  /rewind <id> restores files to before that turn
 /diff <id>         show what changed since a checkpoint
@@ -294,6 +295,16 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 	case "/plan":
 		s.Perm.SetMode(perm.ModePlan)
 		fmt.Fprintln(stderr, "plan mode: read-only")
+	case "/model":
+		if len(f) < 2 {
+			fmt.Fprintf(stderr, "model: %s (change it with /model provider/model; list them with `sleipnir models`)\n", s.Model.ID)
+			break
+		}
+		if ref, err := s.SwitchModel(ctx, f[1]); err != nil {
+			fmt.Fprintln(stderr, tools.SanitizeForTerminal(err.Error()))
+		} else {
+			fmt.Fprintf(stderr, "model: %s (the conversation carries over; the prompt cache starts over)\n", ref)
+		}
 	case "/mode":
 		if len(f) < 2 {
 			fmt.Fprintln(stderr, "mode:", s.Perm.Mode())

@@ -23,6 +23,8 @@ const (
 	// agent (thread, notes, spine, counters); TypeAgentRestore records a resume.
 	TypeAgentSnapshot = "agent.snapshot"
 	TypeAgentRestore  = "agent.restore"
+	// TypeModelSwitch records /model: the single agent moved to another model, keeping its thread.
+	TypeModelSwitch = "model.switch"
 
 	// Transcript. turn.append is the canonical record of every turn an agent's
 	// thread ever contained, including turns later compacted out of the prompt.

@@ -157,7 +157,9 @@ type Options struct {
 // manager) keeps its thread between calls.
 type Session struct {
 	opts Options
-	cfg  *config.Config
+	// newSolo builds the single agent again on the session's current Provider and Model (SwitchModel).
+	newSolo func() (*agent.Agent, error)
+	cfg     *config.Config
 
 	ID, Dir string
 	tmp     string // the private TMPDIR of the session's commands (under Dir); "" when the run brings its own environment
@@ -686,23 +688,31 @@ func (s *Session) build(ctx context.Context) error {
 		s.Registry, s.Specs = reg, specs
 		s.budget = o.BudgetUSD
 		role := soloRole()
-		comp, compModel, err := s.buildCompactor(ctx, o)
+		mk := func() (*agent.Agent, error) {
+			comp, compModel, err := s.buildCompactor(ctx, o)
+			if err != nil {
+				return nil, err
+			}
+			p := params
+			if o.Params.MaxTokens == 0 {
+				p.MaxTokens = min(s.Model.MaxOutput, 16000)
+			}
+			return agent.New(agent.Config{
+				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, Tools: reg, ToolSpecs: specs,
+				Const: constLayer, Shared: shared, RoleL: role.Layer(),
+				Params: p, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
+				Guard: writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
+				Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
+				Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
+				MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
+				Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience),
+			})
+		}
+		a, err := mk()
 		if err != nil {
 			return err
 		}
-		a, err := agent.New(agent.Config{
-			ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, Tools: reg, ToolSpecs: specs,
-			Const: constLayer, Shared: shared, RoleL: role.Layer(),
-			Params: params, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
-			Guard: writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
-			Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
-			Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
-			MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
-			Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience),
-		})
-		if err != nil {
-			return err
-		}
+		s.newSolo = mk
 		s.Agent = a
 		return nil
 	}
