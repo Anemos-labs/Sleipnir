@@ -18,6 +18,12 @@ import (
 
 func chatSession(t *testing.T, trust bool, files map[string]string) *session.Session {
 	t.Helper()
+	return chatSessionWith(t, trust, files, nil, nil)
+}
+
+// chatSessionWith is chatSession with a say in the options of the session and in what the model answers (nil: "ok").
+func chatSessionWith(t *testing.T, trust bool, files map[string]string, adjust func(*session.Options), respond func(*mock.Call) mock.Reply) *session.Session {
+	t.Helper()
 	agent.RetryBase = time.Millisecond
 	repo, home := t.TempDir(), t.TempDir()
 	for rel, body := range files {
@@ -32,16 +38,23 @@ func chatSession(t *testing.T, trust bool, files map[string]string) *session.Ses
 			t.Fatal(err)
 		}
 	}
-	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	if respond == nil {
+		respond = func(*mock.Call) mock.Reply { return mock.Reply{Text: "ok"} }
+	}
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, respond)
 	ts := srv.Start()
 	t.Cleanup(ts.Close)
 	prof := openaichat.DefaultProfile("mock", ts.URL)
 	client := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Profile: &prof})
 	m := cost.Model{ID: "mock-1", ContextTokens: 1_000_000, MaxOutput: 4096, Cache: cost.OpenAICacheModel(), Price: cost.Price{InputPerM: 1, OutputPerM: 2}}
-	s, err := session.New(context.Background(), session.Options{
+	o := session.Options{
 		Cwd: repo, Root: repo, Home: home, Dir: t.TempDir(), Provider: client, ModelInfo: &m, Model: m.ID,
 		Mode: perm.ModeDefault, NoWeb: true, TrustProject: trust, Offline: true, NoRecon: true,
-	})
+	}
+	if adjust != nil {
+		adjust(&o)
+	}
+	s, err := session.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)
 	}

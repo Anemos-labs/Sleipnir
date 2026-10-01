@@ -224,6 +224,31 @@ The first release.
   recorded demo session and listed in `docs/media/gallery.json`: the swarm cockpit, the cache of one agent, a compaction at a cold moment.
   `sleipnir replay --gallery` draws them, and `scripts/record-demo.sh --check` and a Go test fail when the committed files are not what the
   code draws from the committed log. The mock endpoint got a cache outage (`Server.CacheOutage`) for the demo's break.
+- `sleipnir chat` on a terminal is a program, no longer a line REPL (`internal/tui/app`, `cmd/sleipnir/chat_tty.go`; `docs/UX.md`). What
+  is said goes into the terminal's own scrollback, so copy, search, tmux and SSH work on it: the banner, what you typed, the answer
+  streamed as markdown, each tool call as `● Bash go test ./...  ✓ 1.4s` with its output under it (long output is its head and tail,
+  `ctrl+o` writes the rest), an edit as a diff with line numbers, a compaction as one line (it folds first, where animation is on),
+  a cache break as a warning, notices and retries. The last rows are redrawn in place: the status line (spinner and verb, elapsed,
+  tokens, cost, what the cache saved at list price, `esc to interrupt`), the prompt stack bar (G0..G6, bright where the provider
+  served it from its cache, dim where it was paid for, the clock of the cache), the hit ratio of every request with `⚠ ◆ ↻` marks,
+  the input box, and a footer with the mode, the model and the session. All its numbers come from the session's log
+  (`state.State` over `Log.Subscribe`), not from new instrumentation in the agent, and the program changes nothing the model sees.
+  The program is the only writer to the terminal and the only owner of its input; the session reaches it through a sink and a
+  prompter that only forward, and a turn runs on a goroutine it starts and can cancel. The keys: an editor with history kept under
+  the state directory, a `/` palette, `@path` completion, a paste of many lines as a chip that is sent whole, typing ahead (queued,
+  and shown), `shift+tab` for the permission mode, `ctrl+t` for the stack panel. An approval is a box with the command or the
+  diff: `1` yes, `2` yes and do not ask again for this exact request this session, `3` no, arrows with enter, `esc` no, and never a
+  letter, because a question takes keys only after the keyboard has been quiet for a moment since it appeared; what is typed ahead,
+  or half typed when it appears, goes to the prompt and cannot approve anything (questions that come together, from the agents of a
+  swarm, wait their turn, each armed again when it comes to the front, and the one in front says how many wait). Ctrl-C keeps the semantics of the line chat
+  (it cancels the turn and its question and never the session; on an empty prompt a second one within two seconds quits; Ctrl-D and
+  SIGTERM as before), and Ctrl-C or SIGTERM while the session is still being made ends the chat with 130 or 143 and
+  `sleipnir: interrupted` (a project's tool server asks whether it may start during that time, on the screen like any question).
+  `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1` and `NO_COLOR` are honoured (`NO_COLOR` keeps the program and takes the colour
+  away), and the glyphs are Unicode or ASCII by the locale. A pipe, a file, `TERM=dumb` and the new `--plain` get the line chat, byte
+  for byte as before. Everything printed passes the sanitiser, and a fuzz target and a run with hostile text through every door of
+  the session say so; the tests read the screen through the terminal emulator (`cmd/sleipnir/e2e_chat_test.go`, and goldens of the
+  live region at 60, 80 and 120 columns and of a whole conversation).
 - `sleipnir chat` (slash commands, Ctrl-C per turn, Ctrl-C twice at the prompt to quit), `run`, `swarm`, `recon`, `init`, `config`, `sessions`, `models`,
   `demo` (a scripted 14-agent team on a mock endpoint, no key needed) and `inspect` (a live or after-the-fact web
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and
