@@ -412,8 +412,9 @@ Switch a running chat with `/mode <m>` or `/plan`.
 asked, so the action is refused with `approval required: <why>` and a fixed sentence saying that this run has no one to ask
 (a model that is not told keeps looking for another way to the same action: a real one spent twenty-four tool calls on
 that). Give the run what it needs with `--mode` or `permissions.allow` (for example `Bash(go test:*)`). In a terminal the question is
-`allow? [y]es once / [a]lways this session / [n]o`; `a` adds an exact rule for the rest of the session (it is not
-written to any file), and anything but `y`/`a` refuses.
+`allow? [y]es once / [a]lways this session / [n]o` (`run`, and the line chat); `a` adds an exact rule for the rest of the session
+(it is not written to any file), and anything but `y`/`a` refuses. The chat program asks with a box instead, answered by `1` (yes),
+`2` (yes, and do not ask again for this exact request: the same rule as `a`) or `3` (no; `esc` and Ctrl-D refuse too).
 
 ### Rules
 

@@ -122,26 +122,51 @@ commands:
 
 ### `sleipnir chat`
 
-Interactive session. Type a goal and press Enter; end a line with `\` to continue it on the next. The prompt asks
-`allow? [y]es once / [a]lways this session / [n]o` when a tool call needs approval (only when stdin is a terminal; from a
-pipe the goals are read line by line until the input ends, and an action that needs approval is refused). `--resume
-ID|latest` and `--continue` continue a single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed
-below.
+Interactive session. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
+program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
+the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, what the cache saved
+at list price, `esc to interrupt`), the prompt stack bar and the hit ratio of every request, the input box, and a footer with the
+permission mode, the model and the session (`docs/UX.md` describes each). From a pipe or a file, with `TERM=dumb`, or with
+`--plain`, it is the line chat: no colour, no redrawing, a prompt `› `, a goal per line until the input ends, and an action that
+needs approval is refused (with `--plain` on a terminal it asks `allow? [y]es once / [a]lways this session / [n]o`). `--resume
+ID|latest` and `--continue` continue a single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed below.
 
-**Ctrl-C and Ctrl-D.** Ctrl-C cancels what is running, and nothing else: the turn (and so the approval question it is
-asking, if it is), a slash command such as `/compact`, or the start of the session. The chat goes on, at a fresh prompt.
-At the prompt a first Ctrl-C does not quit: it discards what was typed on the line (as a shell does), says how to quit,
-and a second Ctrl-C within two seconds, with nothing typed in between, quits. Ctrl-D on an empty line and `/exit` quit at
-once. SIGTERM cancels the running turn and ends the chat. A chat that ends by `/exit` or Ctrl-D is recorded as `exit`, one
-that ends by a second Ctrl-C or by SIGTERM as `interrupted` (`SessionEnd` in `docs/EXTENDING.md`), and all of them exit
+`NO_COLOR` takes the colours away and keeps the program (bold, dim and reverse say what a colour would). `--no-anim`,
+`SLEIPNIR_ANIM=0` and `REDUCE_MOTION=1` stand the spinner still and drop the sweep of the stack bar, the fold of a compaction and
+the flash of a cache break (`NO_COLOR` does the same). The glyphs are Unicode where the locale (`LC_ALL`, `LC_CTYPE`, `LANG`) says
+UTF-8 and ASCII otherwise.
+
+**Keys.** Enter sends; a line that ends in `\`, `alt+enter` and `ctrl+j` continue it on the next. A paste of many lines is a chip
+(`[pasted text #1 +50 lines]`) that is sent whole. Up, Down and `ctrl+r` recall the history, which is kept in `history.jsonl` in the
+state directory. `/` opens the palette of commands, `@` completes a path, `shift+tab` steps through the permission modes (never into
+`bypass`), `ctrl+t` writes the prompt stack layer by layer into the scrollback, and `ctrl+o` writes the whole of the newest output
+that was shown collapsed (a tool's long output is its first and last lines).
+
+**Approvals.** A tool that needs approval puts a box in the live region: the command, or the change as a diff, and why it asks.
+`1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session, `3` is no and tell Sleipnir what
+to do instead; the arrows and Tab with Enter choose too, and `esc` is no. Letters never answer. A question takes keys only after
+the keyboard has been quiet for a moment since it appeared, and says so ("your typing goes to the prompt until you pause"), so a
+sentence that is half typed when the question appears, or a line typed ahead, cannot approve anything. Ctrl-D at a question is no
+answer: a refusal that says so. Questions that arrive together (agents of a swarm) are asked one at a time, each after the same
+pause, and the one in front says how many wait. A project's tool server that asks whether it may start is asked the same way,
+while the session is made.
+
+**Ctrl-C and Ctrl-D.** Ctrl-C cancels what is running, and nothing else: the turn (and so the approval question it is asking, if
+it is), a slash command such as `/compact`, or the start of the session. After a turn or a command the chat goes on, at a fresh
+prompt; if it was the start of the session there is no chat to go on with, and it ends with status 130 and `sleipnir: interrupted`
+(SIGTERM then ends it with 143). At the prompt a first Ctrl-C does not quit: it discards what was typed on the line (as a shell
+does), says how to quit, and a second Ctrl-C within two seconds, with nothing typed in between, quits. Ctrl-D on an empty line and
+`/exit` quit at once. SIGTERM cancels the running turn and ends the chat. A chat that ends by `/exit` or Ctrl-D is recorded as
+`exit`, one that ends by a second Ctrl-C or by SIGTERM as `interrupted` (`SessionEnd` in `docs/EXTENDING.md`), and all of them exit
 with status 0. The other commands (`run`, `swarm`, `inspect`, ...) keep one meaning for Ctrl-C: it cancels the command.
 
-**Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal.
-It is never the answer to an approval question: a question takes the first line typed after it was shown, so a `y` that was
-typed for something else cannot approve an action, and a line typed ahead is not lost to a question either. A question that
-Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is already typed survives the Ctrl-C that
-cancels the turn and runs next (a line not yet finished does not: the terminal discards it), and a Ctrl-D typed during a
-turn quits when the turn is over, as it would have at the prompt.
+**Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal (the
+program shows the first of them under the status line as `⏎ queued: ...`). It is never the answer to an approval question: in the
+program a question takes only keys pressed after it has been quiet for a moment, as above; in the line chat it takes the first
+line typed after it was shown, so a `y` that was typed for something else cannot approve an action, and a line typed ahead is not
+lost to a question either. A question that Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is
+already typed survives the Ctrl-C that cancels the turn and runs next, and a Ctrl-D typed during a turn quits when the turn is
+over, as it would have at the prompt.
 
 <!-- flags: chat -->
 ```text
@@ -162,8 +187,12 @@ Usage of chat:
         permissions: default | accept-edits | plan | bypass
   -model string
         model: provider/model or a bare id for the default provider
+  -no-anim
+        no animation: the spinner stands still, and nothing sweeps, folds or flashes (also SLEIPNIR_ANIM=0, REDUCE_MOTION=1 and NO_COLOR)
   -no-mcp
         start no MCP tool servers
+  -plain
+        plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n
   -resume string
         continue an earlier single-agent session: its id, its directory, or 'latest' (this project's newest)
   -role-model value
@@ -1431,7 +1460,7 @@ answer `unknown command`.
 | `1` | the command failed: any error the command returns is printed as `sleipnir: <error>` on stderr. This includes an unreadable or invalid configuration, a stopped budget (`stopped: the budget of $50.00 is exhausted ...`, which says how to raise it), a reached step limit, an agent that repeated one failing call until the harness stopped it (`agent stuck`), a prompt blocked by a hook, and a failed `doctor` probe |
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
 | `3` | unfinished: a swarm's manager stopped with work left undone (running workers, submissions nobody judged, tasks nobody finished); what was done is in place, and `run --json` names what was left in `unfinished` |
-| `130`, `143` | interrupted: the command was ended by Ctrl-C (SIGINT) or by SIGTERM (128 plus the signal, the shell's convention) and printed `sleipnir: interrupted` |
+| `130`, `143` | interrupted: the command was ended by Ctrl-C (SIGINT) or by SIGTERM (128 plus the signal, the shell's convention) and printed `sleipnir: interrupted`; for a `chat`, only while its session was still being made |
 | `75` | try again later (`EX_TEMPFAIL`): `rl rollout` or `rl eval` in which **no** rollout completed (the endpoint was down, every attempt failed, or the spend cap was reached). Rerunning into the same `--out` resumes; a benchmark script loops on this status. A run in which some rollouts completed exits 0 and reports its infrastructure failures in the summary |
 
 A model that ends its turn normally is a success (`0`) whatever the task's outcome; check the result (`run --json`, the

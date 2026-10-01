@@ -11,8 +11,16 @@ they are not screenshots of working code. As each piece lands, real recordings r
 
 ## Where things stand
 
-Today `chat` is a line REPL: no colour, no spinner or status line, no markdown, no diffs, typed `y/a/n` approvals
-(`internal/session/sink.go`, `cmd/sleipnir/chat.go`). `sleipnir inspect` is a browser dashboard. Everything below is to be built.
+`sleipnir chat` on a terminal is the inline program of the first screen below (`internal/tui/app`, `chat*.go`, started by
+`cmd/sleipnir/chat_tty.go`): the scrollback and the live region as described (the status line with its saved ≈ $, the prompt stack
+bar with its sweep and TTL clock, the sparkline with its marks, the input box, the footer), markdown, tool lines and diffs with line
+numbers, the fold of a compaction and the break alarm, the permission dialog, and the editor with persistent history, the `/`
+palette, `@path` completion, paste chips and typing ahead; `ctrl+t` and `ctrl+o`; `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1`
+and `NO_COLOR` are honoured, and Unicode or ASCII follows the locale. Not built: the `!` shell line, `/cache`, syntax colouring of
+code blocks (the markdown renderer has the hook, the chat passes none) and the inline progress view of `run --swarm`. Where the
+chat cannot be drawn on (a pipe, a file, `TERM=dumb`) or with `--plain` it is still the line REPL it was, byte for byte, with typed
+`y/a/n` approvals (`internal/session/sink.go`, `cmd/sleipnir/chat.go`). `sleipnir inspect` is a browser dashboard.
+Of the rest, what is built is said where it is described.
 
 ## Principles
 
@@ -60,7 +68,9 @@ sparkline, the input box, the footer.
   the turn and never the session, a second press on an empty prompt quits, `ctrl+d` quits, `shift+tab` cycles the
   permission mode.
 - *Permission dialog:* a box with the command or the diff and three keys, `1` yes, `2` yes and do not ask again for this
-  prefix (per-project, see `SECURITY.md`), `3` no and say what to do instead; arrows and enter work too.
+  exact request for the session (a project's tool server: for the project, see `SECURITY.md`), `3` no and say what to do
+  instead; arrows and enter work too, and `esc` is no. Letters never answer: a question takes keys only after the keyboard has
+  been quiet for a moment since it appeared (what is typed ahead, or half typed, goes to the prompt and cannot approve anything).
 - *Panels on demand:* `ctrl+t` the stack in detail (layer, tokens, hash, cached, last change, TTL), `/cache` explains the last
   miss in words, `/context` the token grid by layer, `/agents` the swarm board.
 
