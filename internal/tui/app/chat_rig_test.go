@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -35,14 +36,16 @@ import (
 
 // vtBridge is the writer the renderer writes to: it feeds the emulator and checks each frame.
 type vtBridge struct {
-	t  testing.TB
-	mu sync.Mutex
-	v  *vt.Term
+	t   testing.TB
+	mu  sync.Mutex
+	v   *vt.Term
+	raw []byte // everything that was written, as written
 }
 
 func (b *vtBridge) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.raw = append(b.raw, p...)
 	b.v.Write(p)
 	if !b.v.Idle() {
 		b.t.Errorf("a frame ended inside an escape sequence: %q", p)
@@ -276,7 +279,11 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 	if o.noAttach {
 		r.shows("Starting")
 	} else {
-		r.shows("◆ sleipnir", "default")
+		mark := "◆"
+		if !o.look.Unicode {
+			mark = "<>"
+		}
+		r.shows(mark+" sleipnir", "default")
 	}
 	return r
 }
@@ -306,6 +313,13 @@ func (r *chatRig) screen() string {
 		rows = rows[:len(rows)-1]
 	}
 	return strings.Join(rows, "\n")
+}
+
+// written is every byte the program has written to the terminal.
+func (r *chatRig) written() []byte {
+	r.bridge.mu.Lock()
+	defer r.bridge.mu.Unlock()
+	return append([]byte(nil), r.bridge.raw...)
 }
 
 // live is the screen only, as the terminal shows it now.
@@ -400,6 +414,48 @@ func (r *chatRig) step(dt time.Duration) {
 	case r.tickCh <- now:
 	case <-time.After(time.Minute):
 		r.t.Fatalf("the program did not take the tick (a hang guard); the screen:\n%s", r.screen())
+	}
+	r.send(ping)
+}
+
+// resize changes the size of the window: the terminal is the new size first, then the program is told, as a terminal does it.
+func (r *chatRig) resize(cols, rows int) {
+	r.t.Helper()
+	r.bridge.mu.Lock()
+	r.bridge.v.Resize(cols, rows)
+	r.bridge.mu.Unlock()
+	r.cols, r.rows = cols, rows
+	select {
+	case r.sizes <- term.Size{Width: cols, Height: rows}:
+	case <-time.After(time.Minute):
+		r.t.Fatalf("the program did not take the new size (a hang guard); the screen:\n%s", r.screen())
+	}
+	r.send(ping)
+}
+
+// at sets the clock of the program.
+func (r *chatRig) at(t time.Time) {
+	r.mu.Lock()
+	r.now = t
+	r.mu.Unlock()
+}
+
+// emit adds events to the session's log, and returns when the program has taken them and drawn what they changed.
+func (r *chatRig) emit(es ...events.Event) {
+	r.t.Helper()
+	for _, e := range es {
+		select {
+		case r.log <- e:
+		default:
+			r.t.Fatal("the log's channel is full")
+		}
+	}
+	deadline := time.Now().Add(time.Minute)
+	for len(r.log) > 0 { // the program takes them one event at a time, and draws after the last
+		if time.Now().After(deadline) {
+			r.t.Fatalf("the program did not take the events (a hang guard); the screen:\n%s", r.screen())
+		}
+		runtime.Gosched()
 	}
 	r.send(ping)
 }

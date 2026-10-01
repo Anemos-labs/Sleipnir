@@ -383,7 +383,7 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 	case statusTool:
 		word = "Running"
 		if s.detail != "" {
-			word += " " + s.detail
+			word += " " + clean(s.detail)
 		}
 	case statusAsking:
 		glyph, st = k.g.ask, k.st.warn
@@ -398,7 +398,7 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 	case statusCommand:
 		word = "Running"
 		if s.detail != "" {
-			word += " " + s.detail
+			word += " " + clean(s.detail)
 		}
 	}
 	if s.flash {
@@ -489,9 +489,9 @@ func (k *chatLook) toolRows(v *liveView, w int) []cell.Line {
 		}
 		var r row
 		if t.worker {
-			r.add(k.st.dim, "["+clean(t.agent)+"] ")
+			r.add(k.st.dim, "["+k.agentTag(t.agent)+"] ")
 		}
-		r.add(gst, glyph+" ").add(k.st.info.With(cell.Bold), t.title)
+		r.add(gst, glyph+" ").add(k.st.info.With(cell.Bold), clean(t.title))
 		tail := ""
 		if t.elapsed >= time.Second {
 			tail = "  " + duration(t.elapsed.Round(time.Second))
@@ -500,7 +500,7 @@ func (k *chatLook) toolRows(v *liveView, w int) []cell.Line {
 			tail += "  waiting for your answer"
 		}
 		if room := w - r.w - 1 - cell.StringWidth(tail); t.summary != "" && room > 3 {
-			r.add(cell.Style{}, " ").add(cell.Style{}, cutCells(t.summary, room, k.g.ellipsis))
+			r.add(cell.Style{}, " ").add(cell.Style{}, cutCells(clean(t.summary), room, k.g.ellipsis))
 		}
 		r.add(k.st.dim, tail)
 		out = append(out, k.fit(r.line(), w))
@@ -516,7 +516,7 @@ func (k *chatLook) foldLine(v *liveView, w int) cell.Line {
 	var r row
 	r.add(k.st.accent, k.g.compact+" compacting ")
 	if f.who != "" {
-		r.add(k.st.dim, "["+clean(f.who)+"] ")
+		r.add(k.st.dim, "["+k.agentTag(f.who)+"] ")
 	}
 	r.add(k.st.accent.Without(cell.Bold), strings.Repeat(full, cells)+strings.Repeat(" ", foldWidth-cells)).
 		add(cell.Style{}, " "+widget.Tokens(foldTokens(f.before, f.after, f.progress))).

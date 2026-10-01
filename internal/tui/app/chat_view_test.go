@@ -1,0 +1,356 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/reee344/sleipnir/internal/events"
+	"github.com/reee344/sleipnir/internal/tui/cell"
+	"github.com/reee344/sleipnir/internal/tui/input"
+	"github.com/reee344/sleipnir/internal/tui/state/statetest"
+	"github.com/reee344/sleipnir/internal/tui/widget"
+)
+
+// What the chat shows besides the conversation: the size of the window, the look it is given, what the session's log adds (the prompt
+// stack, the hit ratio, a compaction, a cache break) and the panels a key opens.
+
+// sessionLog is what a session's log holds after n requests of the main agent: each reads more of the cache than the one before,
+// except the one at brk (1-based), which misses. The clock it ends on is b.Now().
+func sessionLog(b *statetest.Builder, n, brk int) []events.Event {
+	var out []events.Event
+	emit := func(e events.Event) { out = append(out, e) }
+	emit(b.Emit("", events.TypeSessionStart, map[string]any{"model": "mock-1", "version": "0.1.0"}))
+	secs := func(i int) []statetest.Sec {
+		return []statetest.Sec{{Name: "shared", Tokens: 3200, BP: true}, {Name: "role", Tokens: 300}, {Name: "notes", Tokens: 600 + 40*i, BP: i > 1}, {Name: "spine", Tokens: 900}}
+	}
+	for i := 1; i <= n; i++ {
+		req := fmt.Sprintf("r%d", i)
+		b.Advance(8 * time.Second)
+		emit(b.Request("main", req, "mock-1", "pk1", secs(i)...))
+		b.Advance(2 * time.Second)
+		read, in := 4000+400*i, 600
+		if i == 1 {
+			read, in = 0, 5000
+		}
+		if i == brk {
+			emit(b.Emit("main", events.TypeCacheAnomaly, map[string]any{"kind": "low_hit", "diverged": "notes", "req": req, "expected_read": 4000 + 400*i, "actual_read": 900, "missed": 3000 + 400*i}))
+			read, in = 900, 5000
+		}
+		emit(b.Response("main", req, "mock-1", in, read, 0, 200, 0.0031))
+	}
+	return out
+}
+
+func TestChatDrawsThePromptStackAndTheHitRatioFromTheLog(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 100, rows: 30})
+	if s := r.visible(); strings.Contains(s, "cached") || strings.Contains(s, "hit ratio per request") {
+		t.Fatalf("a chat that has sent no prompt has no stack to draw:\n%s", s)
+	}
+	b := statetest.NewBuilder()
+	log := sessionLog(b, 4, 0)
+	r.at(b.Now().Add(48 * time.Second))
+	r.emit(log...)
+	s := r.visible()
+	for _, want := range []string{"prompt ", "% cached", "warm 4:12", "G1", "hit ratio per request", "4 requests", "saved ≈"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the live region lacks %q:\n%s", want, s)
+		}
+	}
+	if !strings.ContainsAny(s, "▁▂▃▄▅▆▇█") {
+		t.Errorf("the hit ratio is a sparkline:\n%s", s)
+	}
+	r.ctrl('t')
+	s = r.shows("the prompt stack")
+	for _, want := range []string{"shared", "role", "notes", "spine"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("ctrl+t lists the layers, %q is missing:\n%s", want, s)
+		}
+	}
+}
+
+func TestChatCtrlTBeforeAnyPromptSaysSo(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	r.ctrl('t')
+	r.shows("no prompt has been sent yet")
+	if strings.Contains(r.screen(), "the prompt stack") {
+		t.Error("there is no stack to show")
+	}
+}
+
+func TestChatACacheBreakIsAWarningInTheScrollback(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 100, rows: 30})
+	b := statetest.NewBuilder()
+	log := sessionLog(b, 4, 3)
+	r.at(b.Now().Add(5 * time.Second))
+	r.emit(log...)
+	s := r.shows("⚠ cache break in notes (low_hit) · read 900 of 5.2k expected")
+	if strings.Count(s, "cache break") != 1 {
+		t.Errorf("a break is said once:\n%s", s)
+	}
+	// the hit ratio's sparkline marks the request that missed
+	if !strings.Contains(r.visible(), "⚠") {
+		t.Errorf("the sparkline marks the request that broke the cache:\n%s", r.visible())
+	}
+	// more of the log does not say it again
+	more := statetest.NewBuilder().At(b.Now())
+	r.emit(more.Request("main", "r9", "mock-1", "pk1", statetest.Sec{Name: "shared", Tokens: 3200, BP: true}), more.Response("main", "r9", "mock-1", 100, 3000, 0, 50, 0.001))
+	if got := strings.Count(r.screen(), "cache break"); got != 1 {
+		t.Errorf("a break that was said is not said again, %d times:\n%s", got, r.screen())
+	}
+}
+
+func compactionLog(b *statetest.Builder) []events.Event {
+	b.Advance(time.Second)
+	return []events.Event{
+		b.Emit("main", events.TypeCompactPlan, map[string]any{"decision": "start", "warm": false}),
+		b.Emit("main", events.TypeCompactCommit, map[string]any{"reason": "the thread outgrew its budget", "removed_turns": 14, "removed_tokens": 29000,
+			"retained_tokens": 2200, "snap_tokens": 31200, "spine_added": 180}),
+	}
+}
+
+// A compaction is a fold that plays in the live region for a while, and then it is one line in the scrollback.
+func TestChatACompactionFoldsAndLeavesOneLine(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 100, rows: 30, tickClock: true})
+	b := statetest.NewBuilder()
+	log := sessionLog(b, 2, 0)
+	r.at(b.Now().Add(time.Second))
+	r.step(0) // the program has no clock but the ticks: this is the time it is
+	r.emit(log...)
+	r.emit(compactionLog(b)...)
+	s := r.shows("◆ compacting")
+	if strings.Contains(s, "◆ compacted") {
+		t.Errorf("the record comes when the fold is over:\n%s", s)
+	}
+	for range foldFrames {
+		r.step(66 * time.Millisecond)
+	}
+	s = r.shows("◆ compacted")
+	if strings.Contains(r.visible(), "◆ compacting") {
+		t.Errorf("the fold is gone from the live region:\n%s", s)
+	}
+	if !strings.Contains(s, "31.2k") || !strings.Contains(s, "2.4k") || strings.Count(s, "◆ compacted") != 1 {
+		t.Errorf("the record says what the thread was and is, once:\n%s", s)
+	}
+}
+
+// Without animation there is no fold to watch: the record is written at once.
+func TestChatACompactionWithoutAnimationIsTheRecordAtOnce(t *testing.T) {
+	look := defaultLook()
+	look.Anim = false
+	r := startChat(t, rigOpts{cols: 100, rows: 30, look: look})
+	b := statetest.NewBuilder()
+	r.at(b.Now().Add(time.Hour))
+	r.emit(sessionLog(b, 2, 0)...)
+	r.emit(compactionLog(b)...)
+	s := r.shows("◆ compacted")
+	if strings.Contains(s, "◆ compacting") {
+		t.Errorf("nothing folds without animation:\n%s", s)
+	}
+}
+
+func TestChatTheSpinnerTurnsOnlyWithAnimation(t *testing.T) {
+	spin := func(look Look) map[string]bool {
+		r := startChat(t, rigOpts{cols: 80, rows: 24, look: look, tickClock: true})
+		started := make(chan struct{})
+		r.host.turn = func(ctx context.Context, goal string) TurnResult {
+			close(started)
+			<-ctx.Done()
+			return TurnResult{Err: ctx.Err()}
+		}
+		r.submit("go")
+		<-started
+		seen := map[string]bool{}
+		glyph := regexp.MustCompile(`(?m)^(\S) [A-Z][a-z]+…`)
+		for range 12 {
+			r.step(70 * time.Millisecond)
+			if m := glyph.FindStringSubmatch(r.visible()); m != nil {
+				seen[m[1]] = true
+			}
+		}
+		return seen
+	}
+	moving := spin(defaultLook())
+	if len(moving) < 3 {
+		t.Errorf("the spinner turns through its frames: %v", moving)
+	}
+	still := defaultLook()
+	still.Anim = false
+	if got := spin(still); len(got) != 1 || !got["●"] {
+		t.Errorf("the spinner stands still, as a dot: %v", got)
+	}
+}
+
+func TestChatFollowsTheSizeOfTheWindow(t *testing.T) {
+	// Where a terminal re-wraps the rows it had (most do) or cuts them (xterm), the program draws the live region again at the new
+	// width, with nothing of the old one left on the screen. (A window that gets so much narrower and shorter that the old region no
+	// longer fits it leaves a ghost in the scrollback, where nothing can erase it: the sizes here are a person's, not a stress test.)
+	for _, reflow := range []bool{true, false} {
+		t.Run(fmt.Sprintf("reflow=%v", reflow), func(t *testing.T) {
+			r := startChat(t, rigOpts{cols: 80, rows: 24})
+			r.bridge.v.SetReflow(reflow)
+			r.host.turn = func(ctx context.Context, goal string) TurnResult {
+				r.sink.Text("main", "The answer is long enough that it has to wrap when the window gets narrower, and it is printed once, before the window changes.\n")
+				r.sink.Response("main", nil, 0)
+				return TurnResult{Steps: 1}
+			}
+			r.submit("go")
+			r.shows("1 step")
+			box := func(w int) string { return "╭" + strings.Repeat("─", w-2) + "╮" }
+			for _, size := range [][2]int{{60, 24}, {100, 30}, {70, 20}, {80, 24}} {
+				cols, rows := size[0], size[1]
+				r.resize(cols, rows)
+				vis := r.visible()
+				if n := strings.Count(vis, box(cols)); n != 1 {
+					t.Errorf("at %d columns the input's box is one row of %d cells; the screen:\n%s", cols, cols, vis)
+				}
+				if n := strings.Count(vis, "╭"); n != 1 {
+					t.Errorf("at %d columns there are %d boxes on the screen (a ghost of the one before):\n%s", cols, n, vis)
+				}
+				for i, row := range strings.Split(vis, "\n") {
+					if w := cell.StringWidth(row); w > cols {
+						t.Errorf("row %d is %d cells wide on a screen of %d: %q", i, w, cols, row)
+					}
+				}
+				if n := strings.Count(vis, "❯ Type a goal"); n != 1 {
+					t.Errorf("at %d columns the prompt is on the screen %d times:\n%s", cols, n, vis)
+				}
+			}
+			// what is typed while the window changes is not lost, and the cursor is where the text is
+			r.typeText("hello")
+			r.resize(60, 20)
+			x, y, shown := r.bridge.v.Cursor()
+			rows := r.bridge.v.Rows()
+			if !shown || !strings.Contains(rows[y], "❯ hello") || x != 4+len("hello") {
+				t.Errorf("the cursor after the resize is at (%d,%d), row %q", x, y, rows[y])
+			}
+		})
+	}
+}
+
+// NO_COLOR: the terminal is drawn on, and nothing is coloured. Attributes (bold, dim, reverse) say what colour would have.
+func TestChatInMonochromeWritesNoColour(t *testing.T) {
+	look := Look{Theme: widget.MonoTheme(), Palette: widget.MonoPalette(), Unicode: true, Anim: false}
+	r := startChat(t, rigOpts{look: look, cols: 100, rows: 30})
+	gate := make(chan struct{})
+	call := toolCall("c1", "edit", map[string]any{"path": "/work/proj/a.go", "old_string": "a", "new_string": "b"})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		r.sink.Text("main", "# Title\n\nSome **bold** and `code`.\n\n```go\nfunc main() {}\n```\n")
+		r.sink.ToolStart("main", call)
+		<-gate
+		r.sink.ToolEnd("main", call, okResult("Edited", map[string]any{"diff": "@@ -1,1 +1,1 @@\n-a\n+b", "added": 1, "removed": 1}), time.Second)
+		r.sink.Notice("main", "warn", "a warning")
+		return TurnResult{Steps: 1, CostUSD: 0.01}
+	}
+	r.submit("go")
+	r.shows("Edit a.go")
+	close(gate)
+	r.shows("1 step")
+	b := statetest.NewBuilder()
+	r.at(b.Now().Add(time.Minute))
+	r.emit(sessionLog(b, 3, 2)...)
+	raw := string(r.written())
+	if strings.Contains(raw, "\x1b[38") || strings.Contains(raw, "\x1b[48") {
+		t.Errorf("a colour was written")
+	}
+	for _, m := range regexp.MustCompile("\x1b\\[([0-9;]*)m").FindAllStringSubmatch(raw, -1) {
+		for _, p := range strings.Split(m[1], ";") {
+			switch p {
+			case "", "0", "1", "2", "3", "4", "7", "22", "23", "24", "27":
+			default:
+				t.Fatalf("SGR %q is not an attribute but a colour or something else: %q", p, m[0])
+			}
+		}
+	}
+	if !strings.Contains(raw, "\x1b[1m") || !strings.Contains(raw, "\x1b[2m") {
+		t.Error("bold and dim carry the emphasis the colours do not")
+	}
+}
+
+// Where only ASCII is trusted nothing else is written: not a bullet, not a box corner, not an arrow.
+func TestChatInASCIIWritesNothingElse(t *testing.T) {
+	look := Look{Theme: widget.DefaultTheme().WithASCII(true), Palette: widget.DefaultPalette(), Unicode: false, Anim: true}
+	r := startChat(t, rigOpts{look: look, cols: 100, rows: 30, tickClock: true})
+	call := toolCall("c1", "bash", map[string]any{"command": "go test ./..."})
+	edit := toolCall("c2", "edit", map[string]any{"path": "/work/proj/a.go", "old_string": "a", "new_string": "b"})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		r.sink.Text("main", "# Title\n\n- one\n- two\n\n> quote\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```go\nfunc main() {}\n```\n")
+		r.sink.ToolStart("main", call)
+		r.sink.ToolEnd("main", call, okResult("ok  \texample.com/orders\t0.3s\n[exit code 0]", map[string]any{"exit_code": 0}), 1400*time.Millisecond)
+		r.sink.ToolStart("main", edit)
+		r.sink.ToolEnd("main", edit, okResult("Edited", map[string]any{"diff": "@@ -1,1 +1,1 @@\n-a\n+b", "added": 1, "removed": 1}), 30*time.Millisecond)
+		r.sink.Notice("main", "warn", "a warning")
+		return TurnResult{Steps: 2, CostUSD: 0.01, HitRatio: 0.5}
+	}
+	r.submit("go")
+	r.shows("2 steps")
+	b := statetest.NewBuilder()
+	r.at(b.Now().Add(time.Minute))
+	r.emit(append(sessionLog(b, 3, 2), compactionLog(b)...)...)
+	for range foldFrames {
+		r.step(66 * time.Millisecond)
+	}
+	r.shows("<> compacted")
+	r.ctrl('t')
+	r.typeText("/")
+	for i, c := range r.written() {
+		if c >= 0x80 {
+			t.Fatalf("byte %d of what was written is %#x, which is not ASCII; around it: %q", i, c, r.written()[max(i-40, 0):min(i+20, len(r.written()))])
+		}
+	}
+}
+
+// The window is short and the answer is long: what is final goes into the scrollback in order, once, and the live region keeps to its
+// share of the terminal.
+func TestChatALongAnswerInAShortWindowIsPrintedOnceAndInOrder(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 60, rows: 10})
+	gate := make(chan struct{})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		for i := 1; i <= 40; i++ {
+			r.sink.Text("main", fmt.Sprintf("paragraph %d says something of some length so that it takes a line or two of the window.\n\n", i))
+		}
+		<-gate
+		r.sink.Response("main", nil, 0)
+		return TurnResult{Steps: 1}
+	}
+	r.submit("go")
+	r.shows("paragraph 40")
+	if rows := r.bridge.v.Rows(); len(rows) != 10 {
+		t.Fatalf("the screen has %d rows", len(rows))
+	}
+	for i := 1; i <= 40; i++ {
+		if n := strings.Count(r.screen(), fmt.Sprintf("paragraph %d says", i)); n != 1 {
+			t.Fatalf("paragraph %d is on the screen %d times:\n%s", i, n, r.screen())
+		}
+	}
+	close(gate)
+	s := r.shows("1 step")
+	last := -1
+	for i := 1; i <= 40; i++ {
+		at := strings.Index(s, fmt.Sprintf("paragraph %d says", i))
+		if at < last {
+			t.Fatalf("paragraph %d is out of order", i)
+		}
+		last = at
+	}
+}
+
+// A question that is taller than the window is cut to fit it, and its options are always where they can be read.
+func TestChatAQuestionIsCutToTheHeightOfAShortWindow(t *testing.T) {
+	for _, rows := range []int{6, 8, 12, 20} {
+		r := startChat(t, rigOpts{cols: 70, rows: rows})
+		ans := r.ask(bashRequest(strings.Repeat("echo a long command line that wraps; ", 30)))
+		s := r.shows("1. Yes")
+		if got := len(strings.Split(r.visible(), "\n")); got != rows {
+			t.Errorf("the screen has %d rows, want %d", got, rows)
+		}
+		if !strings.Contains(s, "3. No") {
+			t.Errorf("with %d rows the options of the question are all on the screen:\n%s", rows, r.visible())
+		}
+		r.press(input.RuneKey('3', 0))
+		decision(t, ans)
+	}
+}

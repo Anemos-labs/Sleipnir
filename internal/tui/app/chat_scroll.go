@@ -113,7 +113,7 @@ func (k *chatLook) noticeLines(agent, level, msg string, width int, main bool) [
 	}
 	lead := "  " + glyph + " "
 	if !main && agent != "" {
-		lead += "[" + clean(agent) + "] "
+		lead += "[" + k.agentTag(agent) + "] "
 	}
 	pad := strings.Repeat(" ", cell.StringWidth(lead))
 	var out []cell.Line
@@ -140,7 +140,7 @@ func (k *chatLook) foldRecord(c state.Compaction, who string, width int) []cell.
 	var r row
 	r.add(k.st.accent, k.g.compact+" compacted ")
 	if who != "" {
-		r.add(k.st.dim, "["+clean(who)+"] ")
+		r.add(k.st.dim, "["+k.agentTag(who)+"] ")
 	}
 	full, small := k.foldGlyphs()
 	r.add(cell.Style{}, widget.Tokens(c.Before)).add(k.st.accent.Without(cell.Bold), " "+strings.Repeat(full, foldWidth)+" ")
@@ -209,7 +209,7 @@ func (k *chatLook) anomalyLines(a state.Anomaly, who string, width int) []cell.L
 	var r row
 	r.add(k.st.bad, k.g.warn+" cache break")
 	if who != "" {
-		r.add(k.st.dim, " ["+clean(who)+"]")
+		r.add(k.st.dim, " ["+k.agentTag(who)+"]")
 	}
 	if a.Layer != "" {
 		r.add(k.st.dim, " in ").add(cell.Style{}, clean(a.Layer))

@@ -72,7 +72,7 @@ func toolTitle(name string) string {
 }
 
 // summaryKeys are the arguments that say what a call is about, in the order they are looked for.
-var summaryKeys = []string{"command", "path", "file_path", "pattern", "url", "query", "title", "action", "name", "id"}
+var summaryKeys = []string{"command", "pattern", "path", "file_path", "url", "query", "title", "action", "name", "id"}
 
 // toolSummary is what a call was asked to do, on one line: the command, the path, the pattern. Paths under cwd are shown relative to
 // it.
@@ -188,7 +188,7 @@ func (k *chatLook) toolLines(t doneTool, width int) (lines []cell.Line, exp *exp
 	// the call line: ● Name summary  ✓ 1.4s
 	var head row
 	if t.worker {
-		head.add(k.st.dim, "["+clean(t.agent)+"] ")
+		head.add(k.st.dim, "["+k.agentTag(t.agent)+"] ")
 	}
 	head.add(bulletSt, k.g.bullet+" ").add(k.st.info.With(cell.Bold), toolTitle(name))
 	status := mark + " " + duration(t.took)

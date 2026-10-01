@@ -155,7 +155,7 @@ func (k *chatLook) requestBody(r perm.Request, call *toolRun, inner int, cwd str
 			body = append(body, cell.Styled(k.st.dim, "  "+relPath(cwd, clean(p))))
 		}
 	}
-	if who := clean(r.Agent); who != "" && who != "main" {
+	if who := k.agentTag(r.Agent); who != "" && who != "main" {
 		title += " " + k.g.dot + " " + who
 	}
 	if why != "" {

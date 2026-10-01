@@ -426,6 +426,11 @@ func (m *chatModel) dropQuestion(q *question) {
 
 func (m *chatModel) editorKey(k input.Key) {
 	m.syncEditorWidth()
+	if k.IsRune('t', input.Ctrl) {
+		// The stack panel (docs/UX.md). The editor would transpose two characters with it, and a person who wants that has the arrows.
+		m.printStack()
+		return
+	}
 	if k.Is(input.Enter, 0) && m.menuIsExact() {
 		// A command typed out in full is not completed, it is sent: enter would accept the one candidate (which is what was typed,
 		// and a space), and the person would have to press it again.
@@ -504,20 +509,23 @@ func (m *chatModel) interrupt() {
 	m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, QuitHint)})
 }
 
-// cancelRun cancels what runs, and with it the questions it asks.
+// cancelRun cancels what runs, and with it the questions it asks: the turn's, or the session's while it is being made (a tool server
+// of the project asks whether it may start, and the start waits for the answer).
 func (m *chatModel) cancelRun() {
 	switch {
 	case m.running != nil:
 		m.running.cancel()
-		for _, d := range m.dialogs {
-			d.answer(noAnswer)
-		}
-		m.dialogs = nil
-		for _, t := range m.tools {
-			t.asking = false
-		}
 	case !m.attached && m.c.CancelStart != nil:
 		m.c.CancelStart()
+	default:
+		return
+	}
+	for _, d := range m.dialogs {
+		d.answer(noAnswer)
+	}
+	m.dialogs = nil
+	for _, t := range m.tools {
+		t.asking = false
 	}
 }
 
@@ -539,8 +547,6 @@ func (m *chatModel) unhandled(k input.Key) {
 		}
 	case k.Is(input.Tab, input.Shift):
 		m.cycleMode()
-	case k.IsRune('t', input.Ctrl):
-		m.printStack()
 	case k.IsRune('o', input.Ctrl):
 		m.expandLast()
 	}
@@ -707,7 +713,9 @@ func (m *chatModel) runEnded(e runEnd) {
 func (m *chatModel) turnEnded(r *run, res TurnResult) {
 	snap := m.snapshot()
 	saved := snap.Totals.Savings.SavedUSD - r.base.saved
-	m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, saved, m.cols)})
+	if res.Steps > 0 || res.CostUSD > 0 { // a turn that was cancelled before the model answered did nothing worth a record
+		m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, saved, m.cols)})
+	}
 	switch {
 	case res.Err == nil:
 	case errors.Is(res.Err, context.Canceled):
@@ -1183,10 +1191,16 @@ func (m *chatModel) printStack() {
 		o.CachedTokens = 0
 	}
 	o.BreakAt = breakLayer(a, layers)
-	lines := indentLines(widget.StackTable(layers, o, m.k.Palette), cell.Text("  "))
+	table := widget.StackTable(layers, o, m.k.Palette)
 	if left, total, ok := ttlOf(sn, "agent", a.ID); ok {
-		lines = append(lines, cell.Join(cell.Text("  "), widget.TTL(left, total, max(m.cols-2, 8), m.k.Palette)))
+		table = append(table, m.k.ttlLine(left, total, max(m.cols-2, 8)))
 	}
+	if !m.k.Unicode {
+		for i := range table {
+			table[i] = asciiLine(table[i])
+		}
+	}
+	lines := indentLines(table, cell.Text("  "))
 	m.syncStream()
 	m.block(bkToolBody, append([]cell.Line{cell.Styled(m.k.st.dim, "  "+m.k.g.compact+" the prompt stack")}, lines...))
 }

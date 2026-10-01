@@ -92,3 +92,21 @@ func (k *chatLook) fit(l cell.Line, w int) cell.Line {
 	}
 	return l.Truncate(w, k.g.ellipsis)
 }
+
+// asciiGlyphs are the pictures the signature widgets draw (bars, marks, the clock), each with the one ASCII character that stands in
+// for it, so that a table keeps its columns where only ASCII is trusted.
+var asciiGlyphs = strings.NewReplacer("█", "#", "▓", "=", "▒", ":", "░", "-", "▏", "|", "⚠", "!", "…", ".", "◕", "o", "◔", "o", "▰", "#", "▱", "-",
+	"▶", ">", "▷", ">", "▹", ">", "·", "-", "◆", "*", "↻", "~", "▁", "_", "▂", ".", "▃", ":", "▄", "-", "▅", "=", "▆", "+", "▇", "*")
+
+// asciiLine is l with those pictures replaced.
+func asciiLine(l cell.Line) cell.Line {
+	out := make(cell.Line, len(l))
+	for i, sp := range l {
+		out[i] = cell.Span{Text: asciiGlyphs.Replace(sp.Text), Style: sp.Style}
+	}
+	return out
+}
+
+// agentTag is an agent's name as it stands in front of a line. The names of a swarm are short; one that is not is cut, so that it
+// cannot take the whole of a line.
+func (k *chatLook) agentTag(name string) string { return cutCells(clean(name), 16, k.g.ellipsis) }
