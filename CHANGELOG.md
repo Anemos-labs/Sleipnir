@@ -385,7 +385,8 @@ defect the runs showed, with the evidence, and what changed.
 - **A write over an existing file showed the whole file as added.** The approval now diffs against what the file holds.
 - **A verify command over the whole repository stalled an isolated swarm.** The run says so at the start (`--verify` without `{dirs}`)
   and names the command to use.
-- **"Don't ask again" for `go test ./a` asked again for `go test ./b`.** For the runner commands (`go test|build|vet`, `npm test|run`, `pytest`,
+- **"Don't ask again" for an edit never fired, and for `go test ./a` asked again for `go test ./b`.** A yes for the session to an edit inside the project is a yes to edits
+  inside it. For the runner commands (`go test|build|vet`, `npm test|run`, `pytest`,
   `cargo test|build|check`, `make`, `git add|commit|status`) the second answer remembers the prefix for the session; anything else stays exact.
 - `/status` and `/permissions` in the chat: the model, mode and session at a glance, and every rule in force, what you allowed with "don't ask again" among
   them. Both answer beside a running turn.

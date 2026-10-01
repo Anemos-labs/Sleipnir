@@ -278,25 +278,25 @@ func TestRememberPathsAndWeb(t *testing.T) {
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
 
-	// A write in default mode asks; remembering allows that exact file only.
-	w := f.request(write("{root}/new.go"))
+	// A write outside the project asks; remembering allows that exact file only (inside it, the project: TestRememberSessionOfAnEditInTheProjectIsTheProject).
+	w := f.request(write("{out}/new.go"))
 	e.Check(bg, w)
 	if d := e.Check(bg, w); !d.Allow || rec.count() != 1 {
 		t.Errorf("repeat write: %+v prompts %d", d, rec.count())
 	}
-	e.Check(bg, f.request(write("{root}/other.go")))
+	e.Check(bg, f.request(write("{out}/other.go")))
 	if rec.count() != 2 {
 		t.Errorf("another file must prompt: %d", rec.count())
 	}
 
 	// A path with glob characters is remembered literally.
-	tricky := f.request(write("{root}/app/[id]/page.tsx"))
+	tricky := f.request(write("{out}/app/[id]/page.tsx"))
 	e.Check(bg, tricky)
 	if d := e.Check(bg, tricky); !d.Allow {
 		t.Errorf("remembered [id] path not matched again: %+v (rules %q)", d, e.Rules(Allow))
 	}
 	n := rec.count()
-	e.Check(bg, f.request(write("{root}/app/i/page.tsx"))) // what an unescaped [id] class would also match
+	e.Check(bg, f.request(write("{out}/app/i/page.tsx"))) // what an unescaped [id] class would also match
 	if rec.count() != n+1 {
 		t.Error("an escaped path rule must not act as a glob")
 	}
@@ -600,13 +600,56 @@ func TestRememberSessionOfARunnerCommandIsItsPrefix(t *testing.T) {
 	}
 }
 
-func TestRememberedAs(t *testing.T) {
-	for cmd, want := range map[string]string{
-		"go test ./a": "go test", "npm run build": "npm run", "pytest -x": "pytest", "git commit -m x": "git commit",
-		"go run .": "", "bash x.sh": "", "rm -rf x": "", "curl x": "", "go test ./a && go vet": "", "FOO=1 go test": "", "sudo go test": "",
-	} {
-		if got := RememberedAs(cmd); got != want {
-			t.Errorf("%q: %q, want %q", cmd, got, want)
-		}
+// The question says what the second option remembers, and what it says is what it does.
+func TestRememberSessionIsNamedInTheQuestion(t *testing.T) {
+	f := newFixture(t)
+	var seen []string
+	rec := &promptRecorder{answer: func(_ int, r Request) Decision {
+		seen = append(seen, r.Remembers)
+		return Decision{Allow: true, Remember: ScopeSession}
+	}}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	e.Check(bg, f.request(bash("go test ./a")))
+	e.Check(bg, f.request(bash("bash x.sh")))
+	e.Check(bg, f.request(bash("FOO=1 go test ./a")))
+	want := []string{`"go test" commands`, "", ""}
+	if fmt.Sprint(seen) != fmt.Sprint(want) {
+		t.Errorf("Remembers = %q, want %q", seen, want)
+	}
+}
+
+// An edit is never repeated exactly, so a yes for the session to an edit inside the project is a yes to edits inside the project; an
+// edit outside it, and a no, stay exact.
+func TestRememberSessionOfAnEditInTheProjectIsTheProject(t *testing.T) {
+	f := newFixture(t)
+	var said string
+	rec := &promptRecorder{answer: func(_ int, r Request) Decision {
+		said = r.Remembers
+		return Decision{Allow: true, Remember: ScopeSession}
+	}}
+	e := askEngine(t, f, Config{Ask: []string{"Edit(./secrets/**)"}}, rec.prompt)
+	if d := e.Check(bg, f.request(write("{root}/src/new1.go"))); !d.Allow {
+		t.Fatal(d)
+	}
+	if said != "edits in this project" {
+		t.Errorf("Remembers = %q", said)
+	}
+	if d := e.Check(bg, f.request(write("{root}/other/new2.go"))); !d.Allow || rec.count() != 1 {
+		t.Errorf("a second edit in the project: %+v, prompts %d", d, rec.count())
+	}
+	// what the project keeps asked about stays asked about, whatever was allowed
+	n := rec.count()
+	e.Check(bg, f.request(write("{root}/secrets/k.txt")))
+	if rec.count() != n+1 {
+		t.Error("an edit the project keeps asked about was allowed by the rule for the project")
+	}
+	if d := e.Check(bg, f.request(write("{root}/.git/hooks/pre-commit"))); d.Allow {
+		t.Error("an edit of a git hook was allowed by the rule for the project")
+	}
+	if d := e.Check(bg, f.request(write("{out}/x.txt"))); !d.Allow || rec.count() != n+2 || said != "" {
+		t.Errorf("an edit outside the project: %+v, prompts %d, Remembers %q", d, rec.count(), said)
+	}
+	if d := e.Check(bg, f.request(write("{out}/y.txt"))); rec.count() != n+3 {
+		t.Errorf("another edit outside is asked about again: %+v, prompts %d", d, rec.count())
 	}
 }

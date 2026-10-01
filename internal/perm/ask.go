@@ -144,6 +144,9 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	// The human sees Summary and nothing else; tell them why they are asked.
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)
+	if !v.askRule && len(v.rem) > 0 {
+		_, shown.Remembers = e.widen(v.rem[0])
+	}
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
 		var cancel context.CancelFunc
@@ -184,12 +187,9 @@ func (e *Engine) remember(d Decision, v verdict) {
 	for _, rule := range v.rem {
 		if !d.Allow {
 			rule.Action = Deny
-		} else if d.Remember == ScopeSession && rule.Tool == "Bash" {
-			// A yes for the rest of the session to a runner command is a yes to the runner (go test ./a, then ./b),
-			// not to that exact line. A no, and anything kept beyond the session, stay exact.
-			if p := RememberedAs(rule.Pattern); p != "" {
-				rule.Pattern = p + ":*"
-			}
+		} else if d.Remember == ScopeSession {
+			// A no, and anything kept beyond the session, stay exact; a yes for the session may be wider (see widen).
+			rule, _ = e.widen(rule)
 		}
 		e.AddRule(d.Remember, rule)
 	}

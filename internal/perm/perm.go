@@ -218,6 +218,10 @@ type Request struct {
 	Writes  bool     `json:"writes,omitempty"`  // mutates workspace or system
 	Network bool     `json:"network,omitempty"` // reaches the network
 	Risk    Risk     `json:"risk,omitempty"`
+
+	// Remembers is set by the engine on a question: what a yes for the rest of the session would remember when it is more than this
+	// exact request, in words ("go test" commands, edits in this project). Empty: the exact request.
+	Remembers string `json:"remembers,omitempty"`
 }
 
 // Scope says how long a remembered decision lasts.

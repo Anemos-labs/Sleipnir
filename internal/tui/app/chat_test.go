@@ -562,7 +562,7 @@ func TestChatAQuestionIsADialogAndEachKeyAnswersIt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := startChat(t, rigOpts{})
 			ans := r.ask(bashRequest("go test ./..."))
-			s := r.shows("Run a command", "$ go test ./...", "1. Yes", "2. Yes, and don't ask again for \"go test\" commands this session", "3. No, and tell Sleipnir what to do instead", "not on the allow list")
+			s := r.shows("Run a command", "$ go test ./...", "1. Yes", "2. Yes, and don't ask again for this command this session", "3. No, and tell Sleipnir what to do instead", "not on the allow list")
 			if !strings.Contains(s, "❯ 1. Yes") {
 				t.Errorf("the choice starts on yes:\n%s", s)
 			}
@@ -1156,5 +1156,17 @@ func TestStatusAndPermissionsAnswerBesideATurn(t *testing.T) {
 	}
 	if isLookCommand("/compact") {
 		t.Error("/compact changes the thread")
+	}
+}
+
+// What the engine says a yes would remember is what the second option says.
+func TestChatTheSecondOptionNamesWhatItRemembers(t *testing.T) {
+	opts, _ := dialogOptions(perm.Request{Tool: "bash", Command: "go test ./a", Remembers: `"go test" commands`})
+	if got := opts[1].Label; got != `Yes, and don't ask again for "go test" commands this session` {
+		t.Errorf("label %q", got)
+	}
+	opts, _ = dialogOptions(perm.Request{Tool: "edit"})
+	if got := opts[1].Label; got != "Yes, and don't ask again for this change this session" {
+		t.Errorf("label %q", got)
 	}
 }

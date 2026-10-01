@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/reee344/sleipnir/internal/shellparse"
@@ -30,17 +31,34 @@ func RunnerPrefix(argv []string) (prefix string, ok bool) {
 	return "", false
 }
 
-// RememberedAs is what "don't ask again" would remember for a shell command line, in words for the question: "go test" when the
-// line is one of the runner commands (the prefix is remembered), "" when it is the exact line.
-func RememberedAs(command string) string {
-	an := shellparse.Parse(command)
-	if !an.Parsed || len(an.Commands) != 1 {
-		return ""
+// widen is what "don't ask again" for the rest of the session remembers in place of the exact rule, and how to say it to the person:
+// the prefix of a runner command (go test ./a, then ./b), or the project's files for an edit inside the workspace (one edit is
+// never repeated exactly). The rule is returned as it was when nothing is wider, with an empty phrase.
+func (e *Engine) widen(r Rule) (Rule, string) {
+	switch r.Tool {
+	case "Bash":
+		an := shellparse.Parse(r.Pattern)
+		if !an.Parsed || len(an.Commands) != 1 {
+			return r, ""
+		}
+		s := an.Commands[0]
+		if len(s.Env) > 0 || len(s.Wrappers) > 0 || s.Program == "" {
+			return r, ""
+		}
+		if p, ok := RunnerPrefix(append([]string{s.Program}, s.Args...)); ok {
+			r.Pattern = p + ":*"
+			return r, `"` + p + `" commands`
+		}
+	case "Edit":
+		if strings.Contains(r.Pattern, `\`) || !filepath.IsAbs(r.Pattern) {
+			return r, ""
+		}
+		for _, root := range e.rs.roots {
+			if root.real != "" && root.real != "/" && root.real != e.rs.homeReal && inside(root.real, r.Pattern) {
+				r.Pattern = escapeGlob(root.real) + "/**"
+				return r, "edits in this project"
+			}
+		}
 	}
-	s := an.Commands[0]
-	if len(s.Env) > 0 || len(s.Wrappers) > 0 || s.Program == "" {
-		return ""
-	}
-	p, _ := RunnerPrefix(append([]string{s.Program}, s.Args...))
-	return p
+	return r, ""
 }
