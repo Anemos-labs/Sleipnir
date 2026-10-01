@@ -204,7 +204,9 @@ func TestNestingTooDeep(t *testing.T) {
 			if got := nestingTooDeep(tt.src); got != tt.want {
 				t.Errorf("nestingTooDeep = %v, want %v", got, tt.want)
 			}
-			if d := time.Since(start); d > 3*time.Second {
+			// A hang guard, not a stopwatch: work that grew with the square of 100,000 elements takes hours, and a loaded machine
+			// (the suite three times at once, a busy runner) takes seconds for a linear pass.
+			if d := time.Since(start); d > time.Minute {
 				t.Errorf("pre-scan took %v", d)
 			}
 		})
@@ -261,7 +263,9 @@ func TestHTMLAdversarial(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			start := time.Now()
 			got, _ := htmlToTextBudget(tt.src, mustURL(t, "https://example.com/"), tt.budget)
-			if d := time.Since(start); d > 12*time.Second {
+			// A hang guard (see TestNestingTooDeep): the parse enforces its own budget and falls back to flat text, which is what the
+			// short budgets above are for; this only says that nothing hangs.
+			if d := time.Since(start); d > 2*time.Minute {
 				t.Fatalf("took %v", d)
 			}
 			if !strings.Contains(got, tt.contains) {

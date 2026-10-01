@@ -17,7 +17,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/reee344/sleipnir/internal/ptytest"
 )
@@ -454,8 +453,10 @@ func TestPlainChatALineTypedAheadIsNotTheAnswer(t *testing.T) {
 	c.expect("@hello")
 	// The terminal has the line. Wait for the chat to have read it too (a chat that reads the
 	// terminal while a turn runs does, at once; one that does not never will, so a wait that
-	// runs out is not a failure here: what follows is).
-	if err := c.term.WaitInputRead(5 * time.Second); err != nil && !errors.Is(err, ptytest.ErrTimeout) {
+	// runs out is not a failure here: what follows is). The wait is the hang guard: it ends the
+	// moment the line is read, and five seconds were not enough on a loaded machine, where the
+	// test then went on with a line the chat had not read yet and failed for it.
+	if err := c.term.WaitInputRead(e2eGuard); err != nil && !errors.Is(err, ptytest.ErrTimeout) {
 		t.Fatal(err)
 	}
 	held.release() // the model asks for approval

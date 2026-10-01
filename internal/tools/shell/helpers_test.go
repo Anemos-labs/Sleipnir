@@ -178,6 +178,9 @@ func pidAlive(pid int) bool {
 
 func waitFor(t *testing.T, what string, within time.Duration, cond func() bool) {
 	t.Helper()
+	// The bound is a hang guard: the wait ends as soon as the condition holds, so a longer one costs nothing when it does. Ten
+	// seconds failed on a loaded machine (a runner with other jobs, three suites at once) for a reason that was not a defect.
+	within = max(within, time.Minute)
 	deadline := time.Now().Add(within)
 	for !cond() {
 		if time.Now().After(deadline) {
