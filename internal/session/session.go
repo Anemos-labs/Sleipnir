@@ -78,6 +78,8 @@ type Options struct {
 	// Permissions.
 	Mode     perm.Mode
 	Prompter perm.Prompter
+	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
+	AskTimeout time.Duration
 	// Allow are rules that need no question in this run, on top of the configuration's (sleipnir run --allow): what the person
 	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
 	Allow []string
@@ -496,7 +498,7 @@ func (s *Session) buildPerm() error {
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, TreeParents: extra,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
-		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), Audit: s.auditPermission,
+		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)

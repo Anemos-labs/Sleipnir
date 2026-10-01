@@ -91,6 +91,10 @@ The first release.
 - A repetition guard: an agent that makes the same call with the same failing result eight times among its last twenty
   calls is stopped (`agent stuck`), after being told at the fourth. A first run against a real 2B model made two hundred
   requests over two refused commands.
+- `run` and `swarm` take `--ask-timeout`: a question to the person that nobody has answered in that time is refused (as when there is no one to
+  ask, and the log says `by: no one`), and the worker is told in a fixed sentence that nothing was approved and what it can do instead. The time
+  counts from the moment the person is asked, not from the moment the request arrived behind other questions. Found by a swarm left alone for
+  two hours at a question about a path the model had guessed; without the flag the question waits as it always did.
 - A run with no one to ask (`run`, a swarm, a rollout) says so in every refusal that needs approval, so a model stops looking
   for another way to the same action instead of spending its steps on it.
 - Every model of a session, roles' models included, is described from its endpoint's catalogue when the built-in table

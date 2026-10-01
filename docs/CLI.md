@@ -262,7 +262,10 @@ Ctrl-C (or SIGTERM) ends a run: it prints `sleipnir: interrupted` and exits with
 verification in an isolated swarm is still applied first, and a second Ctrl-C quits at once, with no end in the log. A run has no time
 limit of its own: an endpoint that is down is waited for, and a swarm that nothing can move stays up with its workers `stuck` (its
 spend is the only thing `--budget-usd` bounds, and nothing is spent). An unattended run takes the shell's: `timeout 2h sleipnir swarm
-...` is SIGTERM when the time is up, which ends it as above, work that was verified applied first.
+...` is SIGTERM when the time is up, which ends it as above, work that was verified applied first. A question to the person waits for
+them, however long (a worker held at one is shown as such, and the watchdog names the question at ten minutes); `--ask-timeout 10m`
+refuses a question that nobody has answered in that time, and tells the worker so in words it can act on (nothing was approved: use an
+action that is allowed, or finish and say which permission was needed), which is what a run that is left alone wants.
 
 `sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a manager with up to N workers. N comes
 first and must be 1 or more (anything else is an error that shows an example); the flags are `run`'s, and
@@ -278,6 +281,8 @@ Runs one goal through the harness. The prompt may be '-' to read stdin.
 flags:
   -allow value
         a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, never install or run); more in docs/CONFIGURATION.md
+  -ask-timeout duration
+        refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone
   -budget-usd float
         stop when spend reaches this many US dollars
   -capture

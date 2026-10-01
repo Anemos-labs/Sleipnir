@@ -82,6 +82,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	roleModels := kvFlags{}
 	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x)")
 	allow := allowFlags(fs)
+	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {
 		if name == "swarm" {
 			fmt.Fprint(os.Stderr, "usage: sleipnir swarm <workers> [flags] <prompt | ->\n\nRuns one goal with a team: a manager and up to <workers> workers (the same as run --swarm <workers>).\nThe prompt may be '-' to read stdin.\n\nflags:\n")
@@ -110,9 +111,13 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		return errors.New(name + ": a prompt is required")
 	}
 
+	if *askTimeout < 0 {
+		return fmt.Errorf("%s: --ask-timeout must not be negative", name)
+	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	o := session.Options{
-		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
+		AskTimeout: *askTimeout,
+		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
 		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),

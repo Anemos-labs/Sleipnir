@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Config configures an Engine.
@@ -39,6 +40,11 @@ type Config struct {
 	// Prompter is asked when a request needs a human decision. With no
 	// Prompter such requests are denied ("approval required").
 	Prompter Prompter
+	// AskTimeout, when positive, is how long a question may wait for its answer, counted from the moment the Prompter is given it (a
+	// question that waited its turn behind another is not charged for that). One that nobody answers is refused, by "no one" as when
+	// there is no Prompter, and the refusal says so: a worker held at a question for hours, with the person away, is held for nothing.
+	// Zero waits for ever, which is right where the person is at the keys.
+	AskTimeout time.Duration
 	// Persist is called (outside any engine lock) when a project-scope rule is
 	// added, so the caller can write it to the project's settings.
 	Persist func(Scope, Rule)
@@ -343,7 +349,7 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 	d := e.resolveAsk(ctx, r, v)
 	by := "user"
 	switch {
-	case e.cfg.Prompter == nil:
+	case e.cfg.Prompter == nil, !d.Allow && strings.Contains(d.Reason, askTimedOut):
 		by = "no one"
 	case !d.Allow && strings.HasPrefix(d.Reason, "approval canceled"):
 		by = "canceled"

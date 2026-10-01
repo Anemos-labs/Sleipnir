@@ -628,6 +628,33 @@ func TestRunAsksOnTheTerminal(t *testing.T) {
 	}
 }
 
+// A run that is left alone says how long a question may wait (--ask-timeout): nobody answers, the write is refused, the model is told so in
+// words it can act on, and the run goes on to its end instead of waiting for a person who is not there (dogfood 4 waited two hours).
+func TestRunAskTimeoutRefusesAQuestionNobodyAnswers(t *testing.T) {
+	m := startModel(t)
+	m.on("@write", writes("approved.txt"))
+	w := newWorld(t, m.url())
+	term := ptytest.Start(t, w.cmd("run", "--ask-timeout", "300ms", "@write"))
+	c := &chatTerm{t: t, w: w, term: term}
+	c.expect("allow? [y]es once / [a]lways this session / [n]o: ") // the question is on the screen, and nobody types
+	c.expect("2 steps")                                            // the tool call, then the answer: the run went on
+	c.exited(0)
+	if exists(filepath.Join(w.project, "approved.txt")) {
+		t.Error("the write was done though nobody answered")
+	}
+	res := m.toolResults()
+	if len(res) != 1 || !strings.Contains(res[0], "nobody answered within 300ms") || !strings.Contains(res[0], "finish and say which permission you needed") {
+		t.Errorf("the model was told %q, want a refusal that says nobody answered", res)
+	}
+}
+
+// A negative time is a mistake that is said, not a run that does not wait.
+func TestRunAskTimeoutMustNotBeNegative(t *testing.T) {
+	w := newWorld(t, "")
+	r := w.run("", "run", "--ask-timeout", "-5s", "hi")
+	assertRun(t, r, 1, nil, []string{"--ask-timeout must not be negative"})
+}
+
 // Ctrl-C while the question is open ends the run like any Ctrl-C: the question goes with it, nothing is written, the run says it was
 // interrupted and the log has its end. (Dogfood 4 left a swarm at a question for two hours; the Ctrl-C that finally came ended its
 // process with no end in its log.)

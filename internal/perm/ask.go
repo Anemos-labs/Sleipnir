@@ -80,6 +80,13 @@ func canceledDecision(ctx context.Context) Decision {
 // program that runs the tests) before it gave up. The text is fixed, so it costs the cache nothing.
 const noOneToAsk = " (this run has no one to ask, so nothing can be approved: use an action that is allowed, or finish and say which permission you needed)"
 
+// askTimedOut and noAnswerInTime frame the refusal of a question that nobody answered in the time it was given. The sentences are fixed,
+// so they cost the cache nothing, and they say what the model can do: the person is not there.
+const (
+	askTimedOut    = " (nobody answered within "
+	noAnswerInTime = ", so nothing was approved: use an action that is allowed, or finish and say which permission you needed)"
+)
+
 // declinedAdvice ends the refusal that a person gave. A model told only "denied by user" made the same change a moment later with
 // another tool (the first real chat session: an edit that was refused came back as an apply_patch, and the person was asked a
 // second time). The sentence is fixed, so it costs the cache nothing, and it is said only of a refusal by a person: not of a
@@ -137,9 +144,20 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	// The human sees Summary and nothing else; tell them why they are asked.
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)
-	d = e.cfg.Prompter(ctx, shown)
+	pctx := ctx
+	if e.cfg.AskTimeout > 0 {
+		var cancel context.CancelFunc
+		pctx, cancel = context.WithTimeout(ctx, e.cfg.AskTimeout)
+		defer cancel()
+	}
+	d = e.cfg.Prompter(pctx, shown)
 	if ctx.Err() != nil {
 		return canceledDecision(ctx)
+	}
+	if pctx.Err() != nil && !d.Allow && d.Reason == "no answer" {
+		// the time ran out and the prompter gave up on it (an answer that arrived as it did stands: it is not "no answer")
+		p.canceled = false
+		return Decision{Reason: "approval required: " + v.reason + askTimedOut + e.cfg.AskTimeout.String() + noAnswerInTime}
 	}
 	p.canceled = false
 	if d.Reason == "" {
