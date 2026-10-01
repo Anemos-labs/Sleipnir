@@ -121,7 +121,7 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
 13. **A flake of `TestQueueSurvivesRandomCancellations`** (`internal/workspace`), seen once on 2026-10-01 under load (the whole suite at once; alone it takes 2 s and has
    passed every time): the final submission failed with `gitx: merge: locked: ... .git/worktrees/_integration/ORIG_HEAD.lock: File exists`. Either a killed
    `git merge` left its lock and `restore`/`rebuild` did not clear it (a rollback that falls back to a rebuild takes about 11 s, and the failing run took 14 s), or a
-   cancelled git was still running when the next one started, in which case removing the lock would be wrong. Find out which (run the test under
+   cancelled git was still running when the next one started, in which case removing the lock would be wrong. Not reproduced once: twelve runs under `-race` with eight busy loops on four cores all passed. Find out which (run the test under
    `-race -count=20` with the rest of the suite loading the machine) before touching it; a deterministic test must fail on the parent, which a stale lock alone does not
    (the rebuild masks it).
 
