@@ -114,6 +114,16 @@ after `rl reward --redetect-hacks` changed what it reads; it is the first item o
 other models' runs (minimax-m2.7, qwen, and the compaction soft-limit experiment `compB`/`compC`) were stopped part way by a restart of the
 machine and are resumable (`docs/ROADMAP.md`, section 4).
 
+### The hack rate, looked at again (a third run)
+
+`dev1` is the current build (2026-10-01, Go 1.25.1, the same model, one sample of each of 52 tasks of the rebuilt suite: `encoding/base64`
+left the corpus, see `bench/stdmini/packages.txt`, so it is not the same 48 tasks): pass 52% [39, 65], US$0.0012 an episode, hit 68%,
+**hack rate 2% (1 of 52)**, and `rl reward --redetect-hacks` scores it the same. The 8.3% of `after1` is not reproduced, and with
+one sample of each task the two cannot be told apart from noise (1 of 52 and 12 of 144 differ by about five points, an interval wider than
+that). Taken together: the pass rate is where it was (55%, 51%, 52%), the hack rate is not shown to have risen, and the open item is
+closed as *not reproduced*; a second run with three samples per task would settle it, and `rl compare` against `core1` needs the same
+suite. 27% of episodes said they were done and failed the verifier (`FALSEDONE`), and 19 of 71 attempts ended without an answer.
+
 ## Caveats
 
 - **The endpoint is a staging marketplace** (`api-staging.impossiblecarrot.cc`): latency of 10 to 30 seconds a request, HTTP 503
