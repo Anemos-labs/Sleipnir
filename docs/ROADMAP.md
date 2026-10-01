@@ -7,10 +7,53 @@ how to start each item, and what bit the people before you. Read `AGENTS.md`, `d
 Written on 2026-10-01 at commit `6df3162` plus the remembered-trust work (section 2), by the agent that built most of what is in
 the repository, at the point where the owner's budget for the week ran out.
 
-Taken over on 2026-10-01 by the agent that works on it now. Since the handoff, from real use (`docs/DOGFOOD.md` rows 43 to 46): reasoning
-written into the answer, a private `$TMPDIR` (G5c), prefix and project-wide "don't ask again" (G5b), `/status` and `/permissions` (G5d,
-half), the diff of a write over an existing file, the bell at a question, strict-mode `set` and `go mod` in the allow lists, a warning for
-`--verify` without `{dirs}` in an isolated swarm, and the benchmark's own build (Go 1.25 corpus, a partial corpus left behind, `--key-file`).
+## Second handoff (2026-10-01, the end of the second agent's session)
+
+Read this block first; the rest of the page is the first handoff, brought up to date where the second agent's work changed it.
+
+**What the second agent did, and what it found.** It ran the harness on real models (the owner's Heimdall key: deepseek-v4-flash, glm-5.3-flash, qwen3.8-flash-next,
+minimax-m2.7; Go, Python, Node and Rust tasks; single agent, swarm, the chat in tmux, resume, forced compaction, the 52-task benchmark `dev1`) and mined what it
+cost (`sleipnir friction`). `docs/DOGFOOD.md` rows 43 to 52 are the defects, each fixed with a test that fails on the parent, and `CHANGELOG.md` says them in the
+user's words: reasoning written into the answer, a private `$TMPDIR` (G5c), prefix and project-wide "don't ask again" (G5b), `/status`, `/permissions` and `/trust`
+(G5d, done), the diff of a write over an existing file, the bell at a question, strict-mode `set`, `go mod init|tidy` and `cd "$(pwd)"` no longer refused, safer
+`--allow` hints, a warning for `--verify` without `{dirs}` in an isolated swarm and `{dirs}` of a task with no scope taken from `git status`, a garbled tool call replayed as
+`{}` (it ended a run on a strict endpoint), the cache-break warning said three times and then once, and the benchmark's own build (Go 1.25 corpus, a half-built corpus
+left behind, `--key-file`). The hack-rate regression of the first benchmark did **not** reproduce (2% on the current build, `docs/BENCHMARKS.md`). The organisation is
+`anemos-labs` everywhere (module path `github.com/anemos-labs/sleipnir`).
+
+**Where the work lives.** On `main`. The platform put the second agent on the branch `claude/sleepy-bohr-mqt46a` and the owner cannot change a session's branch, so
+**a successor will start on that branch**: keep it equal to `main` (`git push origin main:claude/sleepy-bohr-mqt46a` is a fast-forward; do your work on `main`, or on that branch and
+push it to `main` too) until the owner has made `main` the default branch and deleted the others. The push proxy of an agent session accepts pushes and refuses `git push --delete`
+(the connection drops), and the GitHub tools have no delete-branch call, so the cleanup is the owner's. Do not open a pull request unless asked.
+
+**What is waiting on the owner** (section 3): make `main` the default branch (the default is still `claude/intelligent-ptolemy-zp1wbt`), delete the three other branches
+(that one, `claude/sleepy-bohr-mqt46a`, and a Dependabot branch whose PR needs Go 1.26), and put a person or team in `.github/CODEOWNERS` (it names `@reee344`).
+CI could not be started on 2026-10-01 (`workflow_dispatch` answered 404, no workflow was registered): the work was checked on Linux with `scripts/check.sh`
+(the whole suite under `-race`, formatting, vet and a cross-compile of every release target, all green at the last commit), never on macOS or Windows runners.
+Once `main` is the default, run `ci` and `nightly` from the Actions tab and read them first.
+
+**Credentials.** The Heimdall key the owner gave the second agent was limited to US$50 and expires in a week; it is not in the repository and must never be. Ask the owner for
+a key if you need one. `scripts/bench.sh --key-file FILE` takes the key alone in a 0600 file. A whole day of real use cost under US$0.20.
+
+**The method that worked, and the traps in this sandbox.**
+- Use the thing, not only the tests: `sleipnir run`/`swarm`/`chat` (in `tmux` for the chat) on a small real task in a scratch directory, then `sleipnir friction ~/.sleipnir/sessions` and
+  read the events of a failing session (`events.jsonl`; the seq numbers in friction point at them). Several of the defects were found by a run that "worked" and by reading
+  the log after it. Fix the top of the list, each with a test that fails on the parent (run it there with `git stash -- file`), then run the whole suite.
+- A fix that cannot be shown to fail first is a guess: a queue-lock fix was written and reverted because its test also passed without it (item 13 below).
+- Run the whole suite before you commit anything that changes text the UI or the goldens show (two e2e and golden tests broke on a changed dialog label, found late), and `gofmt -l .`
+  before every commit (one commit went in unformatted). Check a number before it goes into a document: a row of the friction ledger was written with a count that was a guess and had to be corrected.
+- `go test -race ./...` takes about twelve minutes here. Run it as **one background command whose own completion notifies you** and read its output file; a foreground `until` loop is killed at
+  ten minutes, a background watcher is killed at its time limit and its notification does not wake you with the result, and `pkill -f PATTERN` kills your own shell if the pattern is in your command line.
+- Plain `go` here is 1.25.0; `bench/build.sh` needs `GOTOOLCHAIN=go1.25.1` (the corpus uses a package that imports `internal/byteorder` under 1.25.0) and a full git history (`git fetch --unshallow`). The benchmark
+  needs `~/.sleipnir-bench` and about 13 minutes to build and 100 minutes to run 53 tasks with three at a time.
+- The endpoint is a marketplace: 503s, a prefix cache that serves some of the prompt and then none, models that stop in the middle of a sentence. A weak run is usually the model, not the harness; the harness's part is what the
+  refusal or the error told the model (name the field, name the workspace, say what to do instead).
+- A `/goal` stop hook may be active in a session like this one: it demands an open-ended "life mission" and repeats its verdict whenever the agent stops. It cannot be satisfied by a statement. The owner can end it with `/goal clear`;
+  if it loops, say that once and stop reporting.
+
+**Open, in the order to take it** (section 4 has the detail): the benchmark's other models and a three-sample run of the current build to settle the hack rate (item 1); the Go standard library reads that an
+unattended run is refused (a policy decision: `cd /usr/local/go*/src/...` is the largest group of refusals after guessed paths); learning each endpoint's normal hit ratio for `cache.anomaly` (item 8);
+the flake of `TestQueueSurvivesRandomCancellations` (item 13, not reproduced in twelve loaded runs). Decided against: `/clear` (a new chat gets the same cache for nothing; item 4).
 
 ## 1. Start here
 
@@ -31,7 +74,7 @@ half), the diff of a write over an existing file, the bell at a question, strict
   coverage, `govulncheck`) has found real bugs on its early runs (section 2): read it, and when it fails keep the failing input as a seed.
 - **Where things are.** The harness: `internal/{agent,kv,swarm,session,perm,tools,provider}`; the terminal: `internal/tui/*`,
   `cmd/sleipnir/chat*.go`; the RL environment: `internal/rl`; the benchmark: `bench/`, `scripts/bench.sh`; the repository's own
-  invariants as tests: `internal/repocheck`; the friction ledger of everything real use found: `docs/DOGFOOD.md` (rows 1 to 42).
+  invariants as tests: `internal/repocheck`; the friction ledger of everything real use found: `docs/DOGFOOD.md` (rows 1 to 52).
 
 ## 2. State at the handoff
 
