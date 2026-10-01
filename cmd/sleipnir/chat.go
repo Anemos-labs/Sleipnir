@@ -430,6 +430,14 @@ func printPermissions(w io.Writer, s *session.Session) {
 	}
 }
 
+// costText is a cost to four places, and "<$0.0001" for a cost that is not nothing and would show as $0.0000.
+func costText(usd float64) string {
+	if usd > 0 && usd < 0.00005 {
+		return "<$0.0001"
+	}
+	return fmt.Sprintf("$%.4f", usd)
+}
+
 func printCost(w io.Writer, s *session.Session) {
 	var u core.Usage
 	var usd float64
@@ -442,8 +450,8 @@ func printCost(w io.Writer, s *session.Session) {
 	case s.Agent != nil:
 		u, usd = s.Agent.Usage()
 	}
-	fmt.Fprintf(w, "input %d (uncached) + %d cached-read + %d cache-write · output %d · hit %.0f%% · $%.4f\n",
-		u.InputTokens, u.CacheReadTokens, u.CacheWriteTokens(), u.OutputTokens, u.HitRatio()*100, usd)
+	fmt.Fprintf(w, "input %d (uncached) + %d cached-read + %d cache-write · output %d · hit %.0f%% · %s\n",
+		u.InputTokens, u.CacheReadTokens, u.CacheWriteTokens(), u.OutputTokens, u.HitRatio()*100, costText(usd))
 }
 
 // compactNow folds the thread on request and says what happened. focus tells the compactor

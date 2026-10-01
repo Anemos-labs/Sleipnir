@@ -219,3 +219,11 @@ func TestStatusAndPermissionsCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestCostTextNeverShowsARealCostAsNothing(t *testing.T) {
+	for usd, want := range map[float64]string{0: "$0.0000", 0.00002: "<$0.0001", 0.0001: "$0.0001", 0.0141: "$0.0141"} {
+		if got := costText(usd); got != want {
+			t.Errorf("costText(%v) = %q, want %q", usd, got, want)
+		}
+	}
+}
