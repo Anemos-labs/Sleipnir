@@ -21,7 +21,7 @@ func TestSuggestAllowNamesTheSubcommandAndSkipsWhatIsHarmless(t *testing.T) {
 		{`npm install left-pad`, []string{"Bash(npm install:*)"}},
 		{`cargo build --release`, []string{"Bash(cargo build:*)"}},
 		{`CGO_ENABLED=0 make -j4 test`, []string{"Bash(make:*)"}}, // the first argument is a flag: no subcommand to name
-		{`python -c 'print(1)'`, nil}, // a rule for an interpreter is a rule to run anything
+		{`python -c 'print(1)'`, nil},                             // a rule for an interpreter is a rule to run anything
 		{`python wordfreq.py sample.txt 3`, []string{"Bash(python wordfreq.py:*)"}},
 		{`python3 - <<'EOF'
 print(1)
