@@ -412,7 +412,7 @@ type TaskCheck func(s *Snapshot, t Task) error
 func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	title := cleanText(spec.Title, maxTitleRunes)
 	if title == "" {
-		return Task{}, fmt.Errorf("task needs a title")
+		return Task{}, fmt.Errorf(`task needs a title: pass it in the "title" field`)
 	}
 	if len(d.Tasks) >= b.lim.MaxTasks {
 		return Task{}, fmt.Errorf("the board already holds %d tasks (limit %d): reuse or finish existing tasks instead of creating more", len(d.Tasks), b.lim.MaxTasks)
