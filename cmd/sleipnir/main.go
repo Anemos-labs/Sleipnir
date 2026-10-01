@@ -172,11 +172,23 @@ func reportError(w io.Writer, err error) int {
 		return 0
 	}
 	fmt.Fprintln(w, "sleipnir:", tools.SanitizeForTerminal(err.Error()))
+	if h := authHint(err); h != "" {
+		fmt.Fprintln(w, h)
+	}
 	var ee *exitError
 	if errors.As(err, &ee) && ee.code > 0 {
 		return ee.code
 	}
 	return 1
+}
+
+// authHint says what to do about a key the provider refused: enter it again, and check whether an environment variable is the one in use (it
+// wins over the stored key, so a stale export is the usual reason a fresh login seems to change nothing). Empty for any other error.
+func authHint(err error) string {
+	if pe, ok := provider.AsError(err); ok && pe.Kind == provider.ErrAuth {
+		return "The provider refused the key. Enter it again with `sleipnir login`; if a key variable is set in your environment it wins over the stored one (`env | grep API_KEY`)."
+	}
+	return ""
 }
 
 // extraCommands lets other files in this package register subcommands.

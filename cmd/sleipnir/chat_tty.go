@@ -164,6 +164,9 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 	if errors.Is(err, agent.ErrBudget) {
 		out.Message = tools.SanitizeForTerminal(budgetStopped(h.s, res).Error())
 	}
+	if hint := authHint(err); hint != "" {
+		out.Message = tools.SanitizeForTerminal(err.Error()) + "\n" + hint
+	}
 	return out
 }
 

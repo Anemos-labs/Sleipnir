@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -253,5 +254,19 @@ func TestLoginRefusesWhatTakesNoKeyAndLogoutForgets(t *testing.T) {
 	}
 	if keys, _ := config.StoredKeys(home); len(keys) != 0 {
 		t.Errorf("after logout: %v", keys)
+	}
+}
+
+func TestARefusedKeyTellsThePersonWhatToDo(t *testing.T) {
+	var out bytes.Buffer
+	err := &provider.Error{Kind: provider.ErrAuth, Status: 401, Message: "Missing or invalid API key"}
+	reportError(&out, err)
+	if !strings.Contains(out.String(), "sleipnir login") || !strings.Contains(out.String(), "wins over the stored one") {
+		t.Errorf("%s", out.String())
+	}
+	out.Reset()
+	reportError(&out, errors.New("something else"))
+	if strings.Contains(out.String(), "login") {
+		t.Errorf("only a refused key gets the hint: %s", out.String())
 	}
 }
