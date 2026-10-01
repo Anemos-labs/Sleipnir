@@ -73,10 +73,10 @@ sparkline, the input box, the footer.
 - *Cache sparkline:* hit ratio per request, `⚠` a cache break, `◆` a compaction, `↻` an epoch.
 - *Input:* multi-line (`alt+enter`, or `\` then enter), bracketed paste (a large paste becomes a `[pasted 312 lines]` chip),
   history (up/down, `ctrl+r` search, persisted), `/` commands with a filterable palette, `@path` completion, `!` for a shell
-  line, typing ahead while the agent works (queued, delivered at the turn's end), `esc` (twice to clear), `ctrl+c` cancels
+  line, typing ahead while the agent works (queued, delivered at the turn's end; the commands that only look, such as `/cost`, answer at once), `esc` (twice to clear), `ctrl+c` cancels
   the turn and never the session, a second press on an empty prompt quits, `ctrl+d` quits, `shift+tab` cycles the
   permission mode.
-- *Permission dialog:* a box with the command or the diff and three keys, `1` yes, `2` yes and do not ask again for this
+- *Permission dialog:* a box with the command or the diff (all of it: what does not fit the window is written into the scrollback in full) and three keys, `1` yes, `2` yes and do not ask again for this
   exact request for the session (a project's tool server: for the project, see `SECURITY.md`), `3` no and say what to do
   instead; arrows and enter work too, and `esc` is no. Letters never answer: a question takes keys only after the keyboard has
   been quiet for a moment since it appeared (what is typed ahead, or half typed, goes to the prompt and cannot approve anything).

@@ -189,7 +189,8 @@ does), says how to quit, and a second Ctrl-C within two seconds, with nothing ty
 with status 0. The other commands (`run`, `swarm`, `inspect`, ...) keep one meaning for Ctrl-C: it cancels the command.
 
 **Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal (the
-program shows the first of them under the status line as `⏎ queued: ...`). It is never the answer to an approval question: in the
+program shows the first of them under the status line as `⏎ queued: ...`; the program answers the slash commands that only look, `/cost`,
+`/context`, `/agents`, `/help`, `/skills`, `/recon`, and `/mode` and `/mcp` without an argument, at once, beside the turn). It is never the answer to an approval question: in the
 program a question takes only keys pressed after it has been quiet for a moment, as above; in the line chat it takes the first
 line typed after it was shown, so a `y` that was typed for something else cannot approve an action, and a line typed ahead is not
 lost to a question either. A question that Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is
