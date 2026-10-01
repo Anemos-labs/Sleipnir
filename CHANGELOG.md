@@ -100,6 +100,15 @@ The first release.
   endpoint said (`server (http 502): The provider returned an error … [provider X]; retrying in 877ms`), and a cache-miss
   warning says when the prompt prefix did not change, so the miss was the endpoint's (a real marketplace served 5% to 96% of an
   identical prefix, request after request).
+- A streaming request that the endpoint answers with the whole completion as JSON (a gateway whose upstream does not stream) is read
+  as that, and a 200 whose body is an HTML page (a proxy, a captive portal, a gateway whose service is away) is a server failure that
+  quotes the page, not "the stream ended". These two came from `internal/provider/chaos`, a handler that wraps any provider and
+  breaks it the way the real endpoint was seen to (a 503 whose JSON says the database is away, a 502 with an HTML page, a 429 with a
+  Retry-After, a connection reset, a response cut off after half of it or ended without its last frame, a server that says
+  nothing, one that says nothing halfway), deterministic for a seed. The agent is run through every fault at each request of a run
+  and through eighty random mixtures (a thousand nightly): it ends with the answer, runs each tool once and leaves a thread that can
+  be sent, unless the endpoint gave it the right to stop (a request that got no response twice is not tried a third time, a failure
+  that is not an outage is tried six times). The mixtures found nothing in the agent.
 
 ### Tools, permissions and extensions
 

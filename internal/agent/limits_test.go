@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"sync"
@@ -61,11 +63,26 @@ type limRig struct {
 
 func newLimRig(t *testing.T, mutate func(*agent.Config), fts []fakeTool, r mock.Responder) *limRig {
 	t.Helper()
+	return newLimRigOver(t, mutate, fts, r, nil, nil)
+}
+
+// newLimRigOver is newLimRig over an endpoint that wrap puts something in front of (a handler that fails the way real ones do), with
+// a client whose configuration tune adjusts (the timeouts that a stall has to outlast).
+func newLimRigOver(t *testing.T, mutate func(*agent.Config), fts []fakeTool, r mock.Responder, wrap func(http.Handler) http.Handler, tune func(*openaichat.Config)) *limRig {
+	t.Helper()
 	agent.RetryBase = time.Millisecond
 	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, r)
-	ts := srv.Start()
+	var h http.Handler = srv.Handler()
+	if wrap != nil {
+		h = wrap(h)
+	}
+	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
-	client := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Options: openaichat.Options{SessionHeader: true, CacheKeyBody: true}})
+	ccfg := openaichat.Config{Name: "mock", BaseURL: ts.URL, Options: openaichat.Options{SessionHeader: true, CacheKeyBody: true}}
+	if tune != nil {
+		tune(&ccfg)
+	}
+	client := openaichat.New(ccfg)
 	reg := tools.NewRegistry()
 	for _, f := range fts {
 		reg.Register(f)

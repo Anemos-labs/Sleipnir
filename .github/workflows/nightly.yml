@@ -1,9 +1,10 @@
 name: nightly
 
 # What is too slow or too random for every push: every fuzz target for a few minutes, the whole suite under the race
-# detector three times, coverage, the drift checks, and a vulnerability scan (a new advisory appears on a day when
-# nobody pushes). Nothing here blocks a merge; a red run is a thing to look at in the morning. A fuzz failure uploads the
-# input that made it, which becomes a regression seed once the bug is fixed.
+# detector three times, the agent against a thousand random mixtures of endpoint faults, coverage, the drift checks, and
+# a vulnerability scan (a new advisory appears on a day when nobody pushes). Nothing here blocks a merge; a red run is a
+# thing to look at in the morning. A fuzz failure uploads the input that made it, which becomes a regression seed once
+# the bug is fixed.
 on:
   schedule:
     - cron: "17 3 * * *"
@@ -83,6 +84,24 @@ jobs:
       # -count=3 runs every test three times in one process: what a test leaves behind (a goroutine, a file, a package
       # variable) shows up as the second run failing. -shuffle=on finds the tests that depend on another one's order.
       - run: go test -race -count=3 -shuffle=on -timeout 100m ./...
+
+  chaos:
+    name: the agent against a thousand random mixtures of endpoint faults
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Every push runs eighty seeds. A failing seed is a failing run on any machine (internal/provider/chaos): the test prints
+      # what the endpoint did, request by request, and what the person was told.
+      - run: go test -race -count=1 -timeout 25m -run TestARandomMixtureOfFaultsIsSurvived ./internal/agent
+        env:
+          SLEIPNIR_CHAOS_SEEDS: "1000"
 
   coverage:
     name: coverage
