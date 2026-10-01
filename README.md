@@ -234,7 +234,7 @@ make build test race lint sim
 scripts/check.sh                       # what CI runs (make check): format, tidy, dependency list, pins, generated docs, vet, build, race tests, cross-compiles
 ```
 
-Go 1.24, standard library plus `golang.org/x/{net,sys,term}`. See `AGENTS.md` and `docs/BUILDING.md`.
+Go 1.25, standard library plus `golang.org/x/{net,sys,term}`. See `AGENTS.md` and `docs/BUILDING.md`.
 
 ## License
 
