@@ -85,10 +85,9 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
    works (`sleipnir doctor`) before planning around it.
 2. *(G5b, prefix-scoped "don't ask again", is done: `docs/SECURITY.md`, "Don't ask again for a runner command".)*
 3. *(G5c, a private `$TMPDIR` for the session, is done: `docs/SECURITY.md`, section 2.)*
-4. **G5d, slash commands.** `/status` (model, mode, directory, session, trust, tool servers, budget), `/permissions` (mode, rules, what was
-   remembered), `/trust` (what `sleipnir trust` shows), `/clear` (fold the thread and keep the pinned prefix: a declared, priced rebase, like
-   `/compact`). `cmd/sleipnir/chat.go` (`slash`, the line chat) and `cmd/sleipnir/chat_tty.go` (`chatSlashCommands`, the program, which also decides which
-   commands answer at once during a turn in `internal/tui/app/chat.go`); `docs/CLI.md` lists them.
+4. **G5d, slash commands: `/trust` and `/clear` are left** (`/status` and `/permissions` are done). `/trust` (what `sleipnir trust` shows) and `/clear` (fold the
+   thread and keep the pinned prefix: a declared, priced rebase, like `/compact`). `cmd/sleipnir/chat.go` (`slashTo`, the line chat), `cmd/sleipnir/chat_tty.go`
+   (`chatCommands`) and `isLookCommand` in `internal/tui/app/chat.go`; `docs/CLI.md` lists them.
 5. **F2, the scale ladder and a soak on a real endpoint.** Write a generator of synthetic Go projects of N packages (3, 10, 25, 50 per worker;
    it was designed as `bench/synth/gen.sh` and is not in the repository) and run a swarm on each with `--isolation worktree --verify "go test
    {dirs}"`: tasks a minute, governor 429s, merge-queue latency, memory; then `kill -9` and `--resume`. `internal/session/scale_test.go` is the

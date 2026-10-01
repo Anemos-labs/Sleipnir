@@ -228,6 +228,8 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 }
 
 const chatHelp = `/help              this text (and your custom commands and skills)
+/status            model, mode, session, budget and cost at a glance
+/permissions       the mode and the rules in force, among them what you allowed this session
 /cost              tokens, cost and cache hit ratio so far
 /context           layer sizes of the current prompt (what is pinned, what is thread)
 /compact [focus]   fold the older thread now (optionally: what to keep in view); a declared, priced rebase
@@ -269,6 +271,10 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 			break
 		}
 		printMCP(s, stderr)
+	case "/status":
+		printStatus(stderr, s)
+	case "/permissions":
+		printPermissions(stderr, s)
 	case "/cost":
 		printCost(stderr, s)
 	case "/context":
@@ -380,6 +386,39 @@ func printSkills(s *session.Session, w io.Writer) {
 			who = " (you only)"
 		}
 		fmt.Fprintf(w, "  %-20s %s%s\n", k.Name, firstText(k.Summary(), 90), who)
+	}
+}
+
+// printStatus is /status: what a person looks for when unsure what this session is doing.
+func printStatus(w io.Writer, s *session.Session) {
+	kind := "single agent"
+	if s.Swarm != nil {
+		kind = "swarm"
+	}
+	fmt.Fprintf(w, "model    %s (%s)\nmode     %s\nsession  %s (%s)\n", s.Model.ID, kind, s.Perm.Mode(), s.ID, tildePath(s.Dir))
+	if b := s.Budget(); b > 0 {
+		fmt.Fprintf(w, "budget   $%.2f\n", b)
+	}
+	printCost(w, s)
+}
+
+// printPermissions is /permissions: the mode and every rule in force, so that "what did I allow?" has an answer. Rules that came from
+// "don't ask again" are in the allow list with the rest.
+func printPermissions(w io.Writer, s *session.Session) {
+	fmt.Fprintln(w, "mode:", s.Perm.Mode())
+	for _, a := range []perm.Action{perm.Deny, perm.Ask, perm.Allow} {
+		rules := s.Perm.Rules(a)
+		if len(rules) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "%s (%d):\n", a, len(rules))
+		for i, r := range rules {
+			if i == 40 {
+				fmt.Fprintf(w, "  ... %d more\n", len(rules)-i)
+				break
+			}
+			fmt.Fprintln(w, "  "+tools.SanitizeForTerminal(r))
+		}
 	}
 }
 

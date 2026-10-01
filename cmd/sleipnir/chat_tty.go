@@ -185,6 +185,8 @@ type chatCommand struct{ name, args, desc string }
 
 var chatCommands = []chatCommand{
 	{"help", "", "this text (and your custom commands and skills)"},
+	{"status", "", "model, mode, session, budget and cost at a glance"},
+	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},
 	{"cost", "", "tokens, cost and cache hit ratio so far"},
 	{"context", "", "layer sizes of the current prompt"},
 	{"compact", "[focus]", "fold the older thread now"},

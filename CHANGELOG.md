@@ -387,6 +387,8 @@ defect the runs showed, with the evidence, and what changed.
   and names the command to use.
 - **"Don't ask again" for `go test ./a` asked again for `go test ./b`.** For the runner commands (`go test|build|vet`, `npm test|run`, `pytest`,
   `cargo test|build|check`, `make`, `git add|commit|status`) the second answer remembers the prefix for the session; anything else stays exact.
+- `/status` and `/permissions` in the chat: the model, mode and session at a glance, and every rule in force, what you allowed with "don't ask again" among
+  them. Both answer beside a running turn.
 - **Bash refusals were the biggest waste.** In 94 episodes on four models, 77% hit a permission refusal and there were 197 in all:
   45% `cd` to a path the model guessed (`/workspace`, `/repo`, `/home/user`), 14% paths the engine cannot know (`$(pwd)`,
   `$OLDPWD`, a loop variable), 6% scratch files in `/tmp`, 10% `sed -n 'N,Mp' file`, the way models read a range of lines.

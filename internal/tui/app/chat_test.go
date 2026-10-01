@@ -1147,3 +1147,14 @@ func TestChatAWriteOverAFileShowsWhatItRemoves(t *testing.T) {
 	r.press(input.RuneKey('3', 0))
 	decision(t, ans)
 }
+
+func TestStatusAndPermissionsAnswerBesideATurn(t *testing.T) {
+	for _, line := range []string{"/status", "/permissions", "/cost"} {
+		if !isLookCommand(line) {
+			t.Errorf("%s only looks and should answer at once", line)
+		}
+	}
+	if isLookCommand("/compact") {
+		t.Error("/compact changes the thread")
+	}
+}

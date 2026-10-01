@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/reee344/sleipnir/internal/agent"
+	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/provider/mock"
 	"github.com/reee344/sleipnir/internal/session"
 )
@@ -196,5 +197,25 @@ func TestTildePath(t *testing.T) {
 	}
 	if _, err := os.UserHomeDir(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// /status and /permissions answer what a person asks when unsure: what is this session, and what did I allow.
+func TestStatusAndPermissionsCommands(t *testing.T) {
+	s := chatSession(t, false, nil)
+	s.Perm.AddRule(perm.ScopeSession, perm.Rule{Action: perm.Allow, Tool: "Bash", Pattern: "go test:*"})
+	var out strings.Builder
+	slashTo(context.Background(), s, "/status", &out, &out)
+	for _, want := range []string{"model    ", "mode     " + string(s.Perm.Mode()), "session  " + s.ID, "input "} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("/status lacks %q:\n%s", want, out.String())
+		}
+	}
+	out.Reset()
+	slashTo(context.Background(), s, "/permissions", &out, &out)
+	for _, want := range []string{"mode: " + string(s.Perm.Mode()), "allow (", "Bash(go test:*)"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("/permissions lacks %q:\n%s", want, out.String())
+		}
 	}
 }
