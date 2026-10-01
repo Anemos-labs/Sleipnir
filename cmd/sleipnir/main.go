@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -38,11 +39,11 @@ func main() {
 	// provider keys out of the environment, so no command the harness starts inherits them; every reader
 	// goes through harden.Secret (harden.TestReadersOfCredentialsUseSecret).
 	harden.Process(harden.MoveKeys())
-	if len(os.Args) < 2 {
+	cmd, args := defaultToChat(os.Args[1:], term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())))
+	if cmd == "" {
 		usage(os.Stderr)
 		os.Exit(2)
 	}
-	cmd, args := os.Args[1], os.Args[2:]
 	// Ctrl-C and SIGTERM cancel the process's context, and with it whatever a command is doing:
 	// that is what Ctrl-C means for a command that does one thing. A command that does many
 	// (chat: a turn at a time) handles Ctrl-C itself, and its context is cancelled by SIGTERM
@@ -85,6 +86,26 @@ func main() {
 	if code := reportError(os.Stderr, err); code != 0 {
 		os.Exit(code)
 	}
+}
+
+// defaultToChat is the command and arguments for a command line: what was typed, except that on a terminal `sleipnir` alone, or
+// followed by flags (`sleipnir --model heimdall/x`), opens the chat in the current directory. Where there is no terminal (a script, a
+// pipe) the bare command stays a usage error, and "" says so.
+func defaultToChat(argv []string, tty bool) (cmd string, args []string) {
+	if len(argv) == 0 {
+		if tty {
+			return "chat", nil
+		}
+		return "", nil
+	}
+	switch argv[0] {
+	case "-h", "--help", "-v", "--version":
+	default:
+		if strings.HasPrefix(argv[0], "-") && tty {
+			return "chat", argv
+		}
+	}
+	return argv[0], argv[1:]
 }
 
 // interruptContext is the context of a command that does one thing: Ctrl-C and SIGTERM cancel it. caught says which signal did, if
@@ -171,7 +192,7 @@ Commands:
   init      write a starter .sleipnir/config.json and AGENTS.md for this project
   config    show the effective configuration and where each value came from
   sessions  list recorded sessions (sessions prune: delete the old ones)
-  chat      interactive session (slash commands, Ctrl-C cancels a turn)
+  chat      interactive session in the current directory (what "sleipnir" alone opens on a terminal; slash commands, Ctrl-C cancels a turn)
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
   schedule  goals to run on a schedule (cron): add, list, rm
   daemon    start the scheduled goals that are due (once a half minute; --once for a cron job)

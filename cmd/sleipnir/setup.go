@@ -13,10 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
-	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -30,10 +31,10 @@ func init() {
 // cmdInit writes a starter project configuration and instruction file. It only
 // ever creates files that do not exist, and merges through config.Save, which
 // refuses to produce a configuration that would not load.
-func cmdInit(_ context.Context, args []string) error {
+func cmdInit(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	user := fs.Bool("user", false, "write ~/.sleipnir/config.json instead of the project's")
-	model := fs.String("model", "", "default model, e.g. heimdall/deepseek/deepseek-v4.1-flash")
+	model := fs.String("model", "", "default model as provider/model (see `sleipnir models`); without it the chat asks your provider on its first run")
 	localURL := fs.String("local-url", "", "with --user: also add a provider named local at this URL, a self-hosted server such as vLLM or SGLang (http://127.0.0.1:8000/v1); it records token ids for RL")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -51,19 +52,21 @@ func cmdInit(_ context.Context, args []string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("init: %s already exists; edit it, or use `sleipnir config` to inspect it", path)
 	}
-	def := *model
-	if def == "" {
-		switch {
-		case harden.Secret("HEIMDALL_API_KEY") != "":
-			def = "heimdall/deepseek/deepseek-v4.1-flash"
-		case harden.Secret("OPENROUTER_API_KEY") != "":
-			def = "openrouter/deepseek/deepseek-chat"
-		case harden.Secret("OPENAI_API_KEY") != "":
-			def = "openai/gpt-5-mini"
+	if *user && *model == "" && *localURL == "" && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+		// On a terminal this is the first-time setup the chat runs by itself: ask the provider, write the file (pick.go).
+		var chosen string
+		if err := ensureModel(ctx, &chosen, bufio.NewReader(os.Stdin), os.Stderr, true); err != nil {
+			return err
+		}
+		if chosen != "" {
+			return nil
 		}
 	}
+	// No model name is written into the harness (they change every month): without --model, the chat asks the provider what it has on
+	// the first run and keeps the answer (pick.go).
+	def := *model
 	if def == "" && *user {
-		fmt.Fprintln(os.Stderr, "no provider key is set: the recommended start is `export HEIMDALL_API_KEY=...` and running `sleipnir init --user` again (or pass --model provider/model)")
+		fmt.Fprintln(os.Stderr, "no model is set: `sleipnir` asks your provider which models it has on its first run and keeps your choice; or pass --model provider/model here")
 	}
 	// Project files are part of a repository and may be someone else's, so the
 	// settings that decide where keys and prompts go (providers, permission

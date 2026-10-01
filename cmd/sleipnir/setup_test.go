@@ -52,15 +52,15 @@ func sub(m map[string]any, keys ...string) any {
 	return cur
 }
 
-func TestInitUserWritesTheProvidersTheModelAndTheMode(t *testing.T) {
+func TestInitUserWritesTheModeAndNoGuessedModel(t *testing.T) {
 	_, home := projectDir(t)
 	t.Setenv("HEIMDALL_API_KEY", "test-key-value")
 	if err := cmdInit(context.Background(), []string{"--user"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg := readJSON(t, filepath.Join(home, ".sleipnir", "config.json"))
-	if got := sub(cfg, "models", "default"); got != "heimdall/deepseek/deepseek-v4.1-flash" {
-		t.Errorf("the default model detected from the key was not written: %v", got)
+	if got := sub(cfg, "models", "default"); got != nil {
+		t.Errorf("no model name is written into the harness: without --model the first run asks the provider (pick.go), got %v", got)
 	}
 	if got := sub(cfg, "providers"); got != nil {
 		t.Errorf("init --user must not invent a provider (a `local` one would become the only configured provider and take every bare model id): %v", got)

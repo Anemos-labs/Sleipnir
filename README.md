@@ -118,14 +118,14 @@ sleipnir replay latest                 # play a recorded session back as the coc
 # 2. point it at a model. Heimdall is the recommended start; built in too: OpenRouter, OpenAI, Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra,
 #    and local servers with no key (ollama/<model>, lmstudio/, llamacpp/, vllm/). Any other OpenAI-compatible or Anthropic Messages endpoint is a config entry.
 export HEIMDALL_API_KEY=...            # or OPENROUTER_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / TOGETHER_API_KEY / ...
-sleipnir init --user                   # your providers and permission mode (project files cannot set these unless trusted)
+sleipnir                               # first run: asks your provider which models it has, writes ~/.sleipnir/config.json, opens the chat (no model name is built in)
 cd your-project && sleipnir init       # shareable project settings, AGENTS.md (used once you trust the project: below)
 sleipnir trust                         # what this project's own files would add to every prompt; `trust add` keeps your yes until one of them changes
 sleipnir models qwen --tools           # every provider with a key at once: search words, --reasoning, --max-price, --min-context, favorites (models fav add REF)
 sleipnir doctor --model <model> --deep # measures streaming, tools, cache reporting, granularity, warm-up needs
 
 # 3. work
-sleipnir chat                          # interactive; /model (a searchable menu) /status /permissions /trust /cost /context /compact /agents /rewind /diff /plan; --resume ID or --continue
+sleipnir chat                          # (the same as `sleipnir` alone on a terminal) interactive; /model (a searchable menu) /status /permissions /trust /cost /context /compact /agents /rewind /diff /plan; --resume ID or --continue
 sleipnir run "fix the failing test in ./server"
 sleipnir swarm 8 "add pagination to every list endpoint and update the client" --verify "make test"
 sleipnir swarm 8 "..." --verify "make test" --isolation worktree   # each writer in its own git worktree; finished work goes through a verifying merge queue

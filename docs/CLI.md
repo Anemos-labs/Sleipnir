@@ -48,10 +48,10 @@ Never overwrites: if the file exists it stops and points you to `sleipnir config
   a starter `AGENTS.md` (only if absent), and the line `.sleipnir/config.local.json` appended to `.gitignore`. A project
   starts with a model only when you pass `--model`, because the model you would detect depends on whose keys are in
   your shell.
-* `--user`: `~/.sleipnir/config.json` (mode 0600) with `permissions.mode` `default` and `models.default` from
-  `--model`, or detected from the key in your environment (`HEIMDALL_API_KEY` gives
-  `heimdall/deepseek/deepseek-v4.1-flash`, `OPENROUTER_API_KEY` gives `openrouter/deepseek/deepseek-chat`,
-  `OPENAI_API_KEY` gives `openai/gpt-5-mini`). It defines no provider: the three marketplaces are built in.
+* `--user`: `~/.sleipnir/config.json` (mode 0600) with `permissions.mode` `default` and `models.default` from `--model`. Without `--model`, on a
+  terminal, it is the first-time setup that the chat also runs by itself when no model is configured: it asks your provider (the providers whose key is set)
+  which models it serves right now, lets you search and choose, and writes the file. Sleipnir knows no model names: they change too often. It defines no
+  provider: the built-in ones (Heimdall, OpenRouter, OpenAI, Anthropic, ...) need only their key variable.
   `--local-url URL` adds one named `local` for a self-hosted server (vLLM, SGLang) with `capture_tokens`; that entry is
   then the only configured provider, which changes where bare model ids go (`docs/CONFIGURATION.md` section 6).
 
@@ -60,8 +60,8 @@ Never overwrites: if the file exists it stops and points you to `sleipnir config
 Usage of init:
   -local-url string
         with --user: also add a provider named local at this URL, a self-hosted server such as vLLM or SGLang (http://127.0.0.1:8000/v1); it records token ids for RL
-  -model string
-        default model, e.g. heimdall/deepseek/deepseek-v4.1-flash
+  -model sleipnir models
+        default model as provider/model (see sleipnir models); without it the chat asks your provider on its first run
   -user
         write ~/.sleipnir/config.json instead of the project's
 ```

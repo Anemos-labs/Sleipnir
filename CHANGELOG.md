@@ -232,6 +232,11 @@ The first release.
 
 ### Interfaces
 
+- `sleipnir` alone, or followed by flags (`sleipnir --model provider/model`), opens the chat in the current directory when it runs on a terminal; a script or a
+  pipe still gets the usage message.
+- First-time setup: with no model configured, the chat asks the provider (the catalogue it serves right now: Sleipnir knows no model names) which model to use, with
+  search words and numbers, and writes `~/.sleipnir/config.json` with that model and the permission mode, saying where. It is asked once. With no key at all it prints
+  a short guide, Heimdall first. `sleipnir init --user` is the same setup on a terminal; the model it used to guess from the key is gone.
 - `sleipnir schedule add --cron "0 9 * * 1-5" "summarize yesterday's commits"` keeps a goal in `~/.sleipnir/schedule.json`; `sleipnir daemon` (or `daemon --once`
   from cron or a systemd timer) starts each job that is due as a headless `sleipnir run` of its own, with its model, directory, permission mode and budget
   (default US$1 a run), one hour at most, its output in `~/.sleipnir/schedule-logs/`. A daemon that was down starts an overdue job once, not once per missed slot.

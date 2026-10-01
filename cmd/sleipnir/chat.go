@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -65,6 +66,11 @@ func cmdChat(ctx context.Context, args []string) error {
 	plain := fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n")
 	noAnim := fs.Bool("no-anim", false, "no animation: the spinner stands still, and nothing sweeps, folds or flashes (also SLEIPNIR_ANIM=0, REDUCE_MOTION=1 and NO_COLOR)")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	// Nothing says which model to use: ask the provider what it has, once (pick.go).
+	asking := bufio.NewReader(os.Stdin)
+	if err := ensureModel(ctx, model, asking, os.Stderr, term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))); err != nil {
 		return err
 	}
 	sessionOptions := func(spec string) session.Options {

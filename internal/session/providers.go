@@ -22,6 +22,10 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
 )
 
+// ErrNoModel is what ResolveModel returns when nothing names a model: no flag, no configuration, no SLEIPNIR_MODEL. The chat answers it
+// by asking the provider which models it has (the harness knows no model names: they change too often).
+var ErrNoModel = errors.New("no model configured")
+
 // ModelRef names a model on a provider.
 type ModelRef struct{ Provider, Model string }
 
@@ -160,7 +164,7 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 		ref = cfg.Models.Default
 	}
 	if ref == "" {
-		return ModelRef{}, fmt.Errorf("no model configured. Recommended start: export HEIMDALL_API_KEY, then `sleipnir init --user` picks a model (`sleipnir models` lists what is available).\nOr pass --model provider/model, set SLEIPNIR_MODEL, or write a model into your config with `sleipnir init --user --model provider/model`")
+		return ModelRef{}, fmt.Errorf("%w. Recommended start: export HEIMDALL_API_KEY, then `sleipnir init --user` picks a model (`sleipnir models` lists what is available).\nOr pass --model provider/model, set SLEIPNIR_MODEL, or write a model into your config with `sleipnir init --user --model provider/model`", ErrNoModel)
 	}
 	if i := strings.IndexByte(ref, '/'); i > 0 {
 		if p, ok := lookupProvider(cfg, ref[:i]); ok {
