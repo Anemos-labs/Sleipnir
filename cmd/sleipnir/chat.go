@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/reee344/sleipnir/internal/perm"
 	"github.com/reee344/sleipnir/internal/session"
 	"github.com/reee344/sleipnir/internal/tools"
+	"github.com/reee344/sleipnir/internal/tui/app"
 )
 
 func init() {
@@ -27,8 +29,8 @@ func init() {
 	ownsInterrupt["chat"] = true
 }
 
-// quitHint is what a first Ctrl-C at the prompt says.
-const quitHint = "(press Ctrl-C again within 2 seconds to quit, or type /exit)"
+// quitHint is what a first Ctrl-C at the prompt says: the same line in the chat on a terminal and in this one.
+const quitHint = app.QuitHint
 
 // cmdChat is the interactive loop: type a goal, watch the agent work, steer with
 // slash commands.
@@ -58,8 +60,32 @@ func cmdChat(ctx context.Context, args []string) error {
 	roleModels := kvFlags{}
 	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)")
 	resume := resumeFlags(fs)
+	allow := allowFlags(fs)
+	plain := fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n")
+	noAnim := fs.Bool("no-anim", false, "no animation: the spinner stands still, and nothing sweeps, folds or flashes (also SLEIPNIR_ANIM=0, REDUCE_MOTION=1 and NO_COLOR)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	sessionOptions := func(spec string) session.Options {
+		return chatOptions(session.Options{
+			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
+			TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
+			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
+			Allow: expandAllow(*allow),
+		})
+	}
+	// On a terminal that can be drawn on the chat is a program (internal/tui/app): a live region with a status line, the prompt
+	// stack and the input, markdown, diffs, a dialog for approvals. Anything else, a pipe, a file, TERM=dumb or --plain, gets the
+	// line chat below, byte for byte what it has always printed.
+	if !*plain && app.CanDrawChat(os.Stdin, os.Stdout, os.Getenv) {
+		dir := *cwd
+		if dir == "" {
+			dir, _ = os.Getwd()
+		}
+		if abs, err := filepath.Abs(dir); err == nil {
+			dir = abs
+		}
+		return chatOnTerminal(ctx, chatTTY{resume: resume, options: sessionOptions, cwd: dir, verbose: *verbose, noAnim: *noAnim})
 	}
 	// From here on Ctrl-C is this command's: registered before anything slow starts, so that
 	// it never meets the default action, which would end the process.
@@ -72,11 +98,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	}
 	isTerminal := term.IsTerminal(int(os.Stdin.Fd()))
 	lines := newStdinLines(os.Stdin, !isTerminal)
-	o := chatOptions(session.Options{
-		Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
-		TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
-		Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
-	})
+	o := sessionOptions(spec)
 	if isTerminal {
 		o.Prompter = session.LinePrompter(lines.Answer, os.Stderr)
 	}
@@ -220,68 +242,75 @@ const chatHelp = `/help              this text (and your custom commands and ski
 
 // slash handles a slash command. It reports whether to quit, and the prompt to
 // send when the command was a custom one (or a skill) that expanded into text.
+// It writes to the process's standard streams, as the line chat always has.
 func slash(ctx context.Context, s *session.Session, line string) (quit bool, send string) {
+	return slashTo(ctx, s, line, os.Stdout, os.Stderr)
+}
+
+// slashTo is slash with the streams given: what a command says goes to stderr (a diff, which is output, goes to stdout). The chat on a
+// terminal gives both the same buffer, because nothing but its program may write to the terminal.
+func slashTo(ctx context.Context, s *session.Session, line string, stdout, stderr io.Writer) (quit bool, send string) {
 	f := strings.Fields(line)
 	switch f[0] {
 	case "/exit", "/quit":
 		return true, ""
 	case "/help", "/?":
-		fmt.Fprintln(os.Stderr, chatHelp)
-		printCustom(s, os.Stderr)
+		fmt.Fprintln(stderr, chatHelp)
+		printCustom(s, stderr)
 	case "/skills":
-		printSkills(s, os.Stderr)
+		printSkills(s, stderr)
 	case "/mcp":
 		if len(f) == 3 && f[1] == "reconnect" {
 			if err := s.MCPReconnect(f[2]); err != nil {
-				fmt.Fprintln(os.Stderr, "mcp:", err)
+				fmt.Fprintln(stderr, "mcp:", err)
 			} else {
-				fmt.Fprintln(os.Stderr, "reconnecting", f[2])
+				fmt.Fprintln(stderr, "reconnecting", f[2])
 			}
 			break
 		}
-		printMCP(s, os.Stderr)
+		printMCP(s, stderr)
 	case "/cost":
-		printCost(s)
+		printCost(stderr, s)
 	case "/context":
-		printContext(s)
+		printContext(stderr, s)
 	case "/compact":
-		compactNow(ctx, s, strings.TrimSpace(strings.TrimPrefix(line, f[0])), os.Stderr)
+		compactNow(ctx, s, strings.TrimSpace(strings.TrimPrefix(line, f[0])), stderr)
 	case "/agents":
-		printAgents(s)
+		printAgents(stderr, s)
 	case "/plan":
 		s.Perm.SetMode(perm.ModePlan)
-		fmt.Fprintln(os.Stderr, "plan mode: read-only")
+		fmt.Fprintln(stderr, "plan mode: read-only")
 	case "/mode":
 		if len(f) < 2 {
-			fmt.Fprintln(os.Stderr, "mode:", s.Perm.Mode())
+			fmt.Fprintln(stderr, "mode:", s.Perm.Mode())
 			break
 		}
 		switch m := perm.Mode(f[1]); m {
 		case perm.ModeDefault, perm.ModeAcceptEdits, perm.ModePlan, perm.ModeBypass:
 			s.Perm.SetMode(m)
-			fmt.Fprintln(os.Stderr, "mode:", m)
+			fmt.Fprintln(stderr, "mode:", m)
 		default:
-			fmt.Fprintln(os.Stderr, "unknown mode; use default, accept-edits, plan or bypass")
+			fmt.Fprintln(stderr, "unknown mode; use default, accept-edits, plan or bypass")
 		}
 	case "/rewind":
-		rewind(s, f[1:])
+		rewind(stderr, s, f[1:])
 	case "/diff":
-		showDiff(s, f[1:])
+		showDiff(stdout, stderr, s, f[1:])
 	case "/recon":
 		if s.Shared != nil {
-			fmt.Fprintln(os.Stderr, tools.SanitizeForTerminal(s.Shared.Text()))
+			fmt.Fprintln(stderr, tools.SanitizeForTerminal(s.Shared.Text()))
 		}
 	default:
 		args := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
 		prompt, notices, ok, err := expandSlash(ctx, s, strings.TrimPrefix(f[0], "/"), args)
 		for _, n := range notices {
-			fmt.Fprintln(os.Stderr, "note:", n)
+			fmt.Fprintln(stderr, "note:", n)
 		}
 		switch {
 		case err != nil:
-			fmt.Fprintf(os.Stderr, "%s: %v\n", f[0], err)
+			fmt.Fprintf(stderr, "%s: %v\n", f[0], err)
 		case !ok:
-			fmt.Fprintf(os.Stderr, "unknown command %s; try /help\n", f[0])
+			fmt.Fprintf(stderr, "unknown command %s; try /help\n", f[0])
 		default:
 			return false, prompt
 		}
@@ -354,7 +383,7 @@ func printSkills(s *session.Session, w io.Writer) {
 	}
 }
 
-func printCost(s *session.Session) {
+func printCost(w io.Writer, s *session.Session) {
 	var u core.Usage
 	var usd float64
 	switch {
@@ -366,7 +395,7 @@ func printCost(s *session.Session) {
 	case s.Agent != nil:
 		u, usd = s.Agent.Usage()
 	}
-	fmt.Fprintf(os.Stderr, "input %d (uncached) + %d cached-read + %d cache-write · output %d · hit %.0f%% · $%.4f\n",
+	fmt.Fprintf(w, "input %d (uncached) + %d cached-read + %d cache-write · output %d · hit %.0f%% · $%.4f\n",
 		u.InputTokens, u.CacheReadTokens, u.CacheWriteTokens(), u.OutputTokens, u.HitRatio()*100, usd)
 }
 
@@ -386,7 +415,7 @@ func compactNow(ctx context.Context, s *session.Session, focus string, w io.Writ
 	}
 }
 
-func printContext(s *session.Session) {
+func printContext(w io.Writer, s *session.Session) {
 	var a *agent.Agent
 	if s.Swarm != nil {
 		a = s.Swarm.Manager()
@@ -394,12 +423,12 @@ func printContext(s *session.Session) {
 		a = s.Agent
 	}
 	if a == nil {
-		fmt.Fprintln(os.Stderr, "no agent yet; send a goal first")
+		fmt.Fprintln(w, "no agent yet; send a goal first")
 		return
 	}
 	est := core.NewBytesEstimator()
 	st := a.Stack()
-	row := func(name string, tokens int) { fmt.Fprintf(os.Stderr, "  %-16s %7d tokens\n", name, tokens) }
+	row := func(name string, tokens int) { fmt.Fprintf(w, "  %-16s %7d tokens\n", name, tokens) }
 	row("constitution", st.Const.Tokens(est))
 	row("shared pin", st.Shared.Tokens(est))
 	row("role pin", st.RoleL.Tokens(est))
@@ -408,22 +437,22 @@ func printContext(s *session.Session) {
 	row("thread (verbatim)", st.Thread.Tokens(est))
 }
 
-func printAgents(s *session.Session) {
+func printAgents(w io.Writer, s *session.Session) {
 	if s.Swarm == nil {
-		fmt.Fprintln(os.Stderr, "single agent session (start with --swarm N for a team)")
+		fmt.Fprintln(w, "single agent session (start with --swarm N for a team)")
 		return
 	}
 	snap := s.Swarm.Board.Snapshot()
 	sort.Slice(snap.Agents, func(i, j int) bool { return snap.Agents[i].ID < snap.Agents[j].ID })
 	for _, a := range snap.Agents {
-		fmt.Fprintf(os.Stderr, "  %-8s %-10s %-8s %-4s %s\n", a.ID, a.Role, a.State, a.Task, firstText(a.Line, 80))
+		fmt.Fprintf(w, "  %-8s %-10s %-8s %-4s %s\n", a.ID, a.Role, a.State, a.Task, firstText(a.Line, 80))
 	}
 	for _, t := range snap.Tasks {
-		fmt.Fprintf(os.Stderr, "  %-4s %-8s %-8s %s\n", t.ID, t.Status, t.Owner, firstText(t.Title, 80))
+		fmt.Fprintf(w, "  %-4s %-8s %-8s %s\n", t.ID, t.Status, t.Owner, firstText(t.Title, 80))
 	}
 	if s.Swarm.MailmanEnabled() {
 		st := s.Swarm.MailmanStats()
-		fmt.Fprintf(os.Stderr, "  mailman: %d worker messages taken, %d digests covering %d, %d delivered directly, %d waiting\n",
+		fmt.Fprintf(w, "  mailman: %d worker messages taken, %d digests covering %d, %d delivered directly, %d waiting\n",
 			st.Parcels, st.Digests, st.Digested, st.Direct, st.Pending)
 	}
 }
@@ -439,37 +468,37 @@ func firstText(s string, n int) string {
 	return s
 }
 
-func rewind(s *session.Session, args []string) {
+func rewind(w io.Writer, s *session.Session, args []string) {
 	if len(args) == 0 {
 		list := s.Ckpt.List()
 		if len(list) == 0 {
-			fmt.Fprintln(os.Stderr, "no checkpoints yet")
+			fmt.Fprintln(w, "no checkpoints yet")
 		}
 		for _, c := range list {
-			fmt.Fprintf(os.Stderr, "  %s  %s  %d files  %s\n", c.ID, c.Time.Format("15:04:05"), len(c.Files), c.Label)
+			fmt.Fprintf(w, "  %s  %s  %d files  %s\n", c.ID, c.Time.Format("15:04:05"), len(c.Files), c.Label)
 		}
 		return
 	}
 	rep, err := s.Ckpt.Restore(args[0], checkpoint.RestoreOpts{})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "rewind:", err)
+		fmt.Fprintln(w, "rewind:", err)
 		return
 	}
-	fmt.Fprintln(os.Stderr, rep.Summary())
+	fmt.Fprintln(w, rep.Summary())
 }
 
-func showDiff(s *session.Session, args []string) {
+func showDiff(stdout, stderr io.Writer, s *session.Session, args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: /diff <checkpoint id>")
+		fmt.Fprintln(stderr, "usage: /diff <checkpoint id>")
 		return
 	}
 	diffs, err := s.Ckpt.Diff(args[0])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "diff:", err)
+		fmt.Fprintln(stderr, "diff:", err)
 		return
 	}
 	for _, d := range diffs {
-		fmt.Fprintf(os.Stdout, "%s (%s)\n%s\n", tools.SanitizeForTerminal(d.Path), d.Status, tools.SanitizeForTerminal(d.Unified))
+		fmt.Fprintf(stdout, "%s (%s)\n%s\n", tools.SanitizeForTerminal(d.Path), d.Status, tools.SanitizeForTerminal(d.Unified))
 	}
 }
 

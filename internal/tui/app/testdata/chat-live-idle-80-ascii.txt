@@ -1,0 +1,6 @@
+80 columns, 5 rows, cursor at row 2 column 49
+prompt 4.0k 93% cached  warm 4m12s
++------------------------------------------------------------------------------+
+| > now add a test for page 0 and a negative size                              |
++------------------------------------------------------------------------------+
+accept-edits - ctrl+t stack - / commands    mock/mock-1 - 20260102-030405-abcdef

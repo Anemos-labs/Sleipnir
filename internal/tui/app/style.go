@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/reee344/sleipnir/internal/tools"
 	"github.com/reee344/sleipnir/internal/tui/cell"
 	"github.com/reee344/sleipnir/internal/tui/widget"
 )
@@ -109,12 +110,10 @@ func lastStyle(l cell.Line) cell.Style {
 // do more than print it. The state package already does this for what it keeps; the views do it again for what they put together.
 func clean(s string) string {
 	var b strings.Builder
-	for _, r := range strings.ToValidUTF8(s, "\uFFFD") {
+	for _, r := range tools.SanitizeForTerminal(s) { // escape sequences whole, controls, invisible and reordering characters, bad UTF-8
 		switch {
 		case r == '\n' || r == '\t' || r == '\r':
 			b.WriteByte(' ')
-		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == 0x200b || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069):
-			// dropped
 		default:
 			b.WriteRune(r)
 		}
