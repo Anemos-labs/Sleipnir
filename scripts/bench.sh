@@ -20,7 +20,7 @@
 #   --max-spend-usd X  spend cap of the whole run, failed attempts included (default 2)
 #   --seed N           run seed (default 1)
 #   --attempts N       invocations before giving up (default 24); each one resumes what is unfinished
-#   --key-file FILE    a shell file exporting the endpoint key (must be mode 0600); never printed or logged
+#   --key-file FILE    the endpoint key: the key alone, or a shell file exporting it (mode 0600); never printed or logged
 #   --api-key-env NAME variable holding the key (default: HEIMDALL_API_KEY)
 #   --pin-cpus LIST    run the benchmark on these cpus (taskset -c), e.g. 0,1
 #   --min-free-gb N    refuse to start, and pause between attempts, below this much free disk (default 3)
@@ -116,8 +116,14 @@ if [ -n "$KEYFILE" ]; then
   [ -f "$KEYFILE" ] || die "--key-file: $KEYFILE does not exist"
   perms=$(ls -ld "$KEYFILE" | cut -c2-10)
   [ "$perms" = "rw-------" ] || die "--key-file must be mode 0600 (it is $perms)"
-  # shellcheck disable=SC1090 # the file is the user's own
-  . "$KEYFILE"
+  if grep -q '^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}[A-Za-z_][A-Za-z0-9_]*=' "$KEYFILE"; then
+    # shellcheck disable=SC1090 # the file is the user's own
+    . "$KEYFILE"
+  else
+    # just the key: running it as a command would print it in the error
+    keyval=$(tr -d '[:space:]' < "$KEYFILE")
+    export "$KEYENV=$keyval"
+  fi
 fi
 eval "keyval=\${$KEYENV:-}"
 [ -n "$keyval" ] || die "no API key: export $KEYENV or pass --key-file"

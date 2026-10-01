@@ -33,7 +33,7 @@ what runs: `smoke` (about 8 tasks, minutes), `core` (the regular suite), `swarm`
 
 ```sh
 bench/build.sh                                   # once per Go version: the suite, admitted
-export HEIMDALL_API_KEY=...                      # or --key-file FILE (mode 0600; never printed or logged)
+export HEIMDALL_API_KEY=...                      # or --key-file FILE (the key alone or a shell file exporting it; mode 0600; never printed or logged)
 scripts/bench.sh run --model heimdall/deepseek/deepseek-v4.1-flash --tag '!swarm,!long' --group 3 \
     --concurrency 3 --rpm 110 --budget-usd 0.25 --max-spend-usd 3 --out RUNDIR
 scripts/bench.sh ab --model M --bin-a OLD --bin-b NEW --group 3        # two binaries, alternating sample by sample
