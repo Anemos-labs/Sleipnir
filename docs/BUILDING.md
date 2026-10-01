@@ -18,8 +18,9 @@ version of "how code here is written". Read it before touching a package.
   dependency is essential, write a stdlib fallback and say so in your report. CI runs
   `go mod tidy -diff`, so a change that leaves the files untidy fails.
 - Check your work with: `gofmt -l cmd internal` (must print nothing), `go vet ./...`,
-  `go test -race -count=1 ./<your packages>/...`. `scripts/check.sh` runs what CI runs
-  (format, tidy, vet, build, race tests, cross-compiles).
+  `go test -race -count=1 ./<your packages>/...`. `scripts/check.sh` (`make check`) runs what CI runs (format, tidy,
+  `go mod verify`, the dependency and action-pin checks, generated docs, vet, build, race tests, cross-compiles);
+  `docs/REPO-SETUP.md` lists everything CI and GitHub check and what each check is linked to.
 
 ## Layout
 
@@ -105,6 +106,7 @@ internal/rl             RL vocabulary: the harness as an environment
   rl/harness            runs rollouts through the real assembly (internal/session) against a policy endpoint
 
 internal/testutil       test helpers shared by suites: the goroutine-leak check (`CheckLeaks`, `VerifyNone`); no product code imports it
+internal/repocheck      the repository's own invariants as tests (links resolve, actions are pinned, the required check is a job, CODEOWNERS and goreleaser agree with the tree); no product code
 ```
 
 ## Style
@@ -141,9 +143,10 @@ internal/testutil       test helpers shared by suites: the goroutine-leak check 
   person reads it: `internal/tui/vt` is given what it wrote and the test waits for what the screen shows
   (`cmd/sleipnir/e2e_chat_test.go`, `e2e_watch_test.go`); `internal/tui/app` runs the programs on a scripted terminal and session,
   with the keys, the ticks and the size sent by the test, so that nothing waits for a clock.
-- CI runs the suite on Linux (as an ordinary user, not root) and macOS (`.github/workflows/ci.yml`, also runnable by
-  hand from the Actions tab); Windows is built, not tested. Things the first runs found, so that the next test does not
-  repeat them:
+- CI runs the suite with `-race` on Linux (amd64 and arm64, as an ordinary user, not root) and macOS with the Go of `go.mod`,
+  on Linux with the newest stable Go too (`.github/workflows/ci.yml`, also runnable by hand from the Actions tab); Windows
+  runs without `-race` as an informational job that blocks nothing, and every shipped platform is built and vetted. Things
+  the first runs found, so that the next test does not repeat them:
   - a temp directory can sit behind a symlink (macOS: `/var` is `/private/var`): compare resolved paths
     (`filepath.EvalSymlinks`), and never assume that a path a tool prints is the one you gave it;
   - a file system can be case-insensitive (macOS default) and can refuse names that are not UTF-8: probe for it and skip or

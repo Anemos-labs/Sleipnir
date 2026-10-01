@@ -260,6 +260,26 @@ The first release.
   each of those calls to what it is, and how `Render` grows with the thread to linear; `scripts/perf.sh` runs the benchmarks and
   `bench/tools/benchcmp` compares two runs (a slowdown only when the two ranges do not overlap). `docs/BUILDING.md`, Performance.
 
+### Repository automation
+
+- **One gate, one release path.** `ci` (lint and drift checks, `-race` tests on Linux amd64 and arm64 and macOS with the Go of `go.mod` and on
+  Linux with the newest Go, the allocation gates, Windows for information, build and vet for every shipped platform, the cache-policy
+  guards, govulncheck, dependency review, actionlint, zizmor) ends in one required check, `ci-gate`. After `ci` passes on `main`,
+  `release` plans the release (`scripts/release-plan.sh`: conventional commit titles give the version, docs, tests and CI alone release
+  nothing), builds with goreleaser without publishing, makes SBOMs and provenance attestations, and creates the GitHub release with
+  generated notes. It does nothing until the repository variable `AUTO_RELEASE` is `true`, and never without a `LICENSE`. Every action
+  is pinned to a commit.
+- **Drift fails a check.** The dependency allow-list (`scripts/check-deps.sh`), SHA pins (`scripts/check-pins.sh`), a prompt-byte change
+  without its CHANGELOG entry (`scripts/check-declared.sh`), and `internal/repocheck` (links, the ruleset against the jobs it names,
+  CODEOWNERS, platforms, the installer against goreleaser, the Go version in the documents, tests CI would never run), all in
+  `scripts/check.sh` and `make check`.
+- **Protection is in the repository.** Rulesets for `main` and for `v*` tags (`.github/rulesets`), `scripts/protect-main.sh`
+  (`--dry-run`) for the merge, security and Actions settings, CodeQL, Dependabot, CODEOWNERS, a conventional-title check with labels
+  for the release notes, a vulnerability-reporting section in `docs/SECURITY.md`; `docs/REPO-SETUP.md` gives the order of the steps
+  that only the owner can take.
+- Fixed on the way: the allocation gates ran in no CI job (every test run used `-race`, which they are not built under); `go vet` for
+  Windows failed on the signal test of `cmd/sleipnir`; two tests that Go 1.26 broke.
+
 ### Found by running it on real models
 
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a

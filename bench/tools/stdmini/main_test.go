@@ -148,7 +148,10 @@ func TestBuildIsDeterministicAndStandsAlone(t *testing.T) {
 		t.Skip("no git")
 	}
 	list := filepath.Join(t.TempDir(), "list.txt")
-	if err := os.WriteFile(list, []byte("go/scanner\ngo/token !example_test.go\ncontainer/list\n"), 0o644); err != nil {
+	// net/mail imports net/textproto. (Not go/scanner and go/token: go/scanner imports an internal package from Go 1.26 on, so
+	// it is no longer self-contained there, which the CI leg with the newest Go found. The list of the real corpus,
+	// bench/stdmini/packages.txt, is pinned to the Go version of the suite lock, bench/suite.json.)
+	if err := os.WriteFile(list, []byte("net/mail\nnet/textproto\ncontainer/list\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var sums, revs [2]string
@@ -169,12 +172,12 @@ func TestBuildIsDeterministicAndStandsAlone(t *testing.T) {
 		}
 		sums[i], revs[i] = sum, rev
 		if i == 0 {
-			b, err := os.ReadFile(filepath.Join(out, "go", "scanner", "scanner.go"))
+			b, err := os.ReadFile(filepath.Join(out, "net", "mail", "message.go"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(b), `"stdmini/go/token"`) || strings.Contains(string(b), "\t\"go/token\"") {
-				t.Errorf("go/scanner still imports the standard go/token")
+			if !strings.Contains(string(b), `"stdmini/net/textproto"`) || strings.Contains(string(b), "\t\"net/textproto\"") {
+				t.Errorf("net/mail still imports the standard net/textproto")
 			}
 			if st, err := gitOut(out, "status", "--porcelain"); err != nil || strings.TrimSpace(st) != "" {
 				t.Errorf("the corpus must be one clean commit: %q %v", st, err)

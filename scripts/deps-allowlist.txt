@@ -1,0 +1,14 @@
+# The modules Sleipnir may depend on (AGENTS.md: the dependency set is deliberately tiny: stdlib + x/net, x/sys, x/term).
+# scripts/check-deps.sh holds go.mod, go.sum, `go list -m all` and the packages the build compiles to this list.
+#
+#   direct  may be required by go.mod and may supply packages to the build
+#   graph   may appear in the module graph because a direct module's go.mod requires it, but no package of it may be built
+#
+# Derived from go.sum and `go list -m all` when this file was made: go.sum names the three direct modules; the graph
+# also holds x/crypto and x/text (golang.org/x/net's own requirements), of which the build compiles nothing.
+# A line is added only with a decision, in the change that needs it (this directory is owned in .github/CODEOWNERS).
+direct golang.org/x/net
+direct golang.org/x/sys
+direct golang.org/x/term
+graph  golang.org/x/crypto
+graph  golang.org/x/text

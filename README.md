@@ -8,6 +8,11 @@
 **A coding-agent harness for OpenAI-style and Anthropic-style endpoints, built around one idea: the prompt cache is
 the shared memory of a team of agents.**
 
+[![ci](https://github.com/reee344/Sleipnir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/reee344/Sleipnir/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/reee344/Sleipnir/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/reee344/Sleipnir/actions/workflows/codeql.yml)
+[![release](https://img.shields.io/github/v/release/reee344/Sleipnir?include_prereleases&sort=semver)](https://github.com/reee344/Sleipnir/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/reee344/Sleipnir)](go.mod)
+
 Odin's eight-legged horse: one manager brain, many legs. Sleipnir is designed to run **10, 20, 50 agents over one
 repository** without briefing them, without re-reading the project fifty times, and without letting context bloat eat the
 bill.
@@ -218,6 +223,7 @@ hardened on each OS and how to confine harder.
 * `docs/SWARM-PROTOCOL.md` - board, mail, leases, roles, warm gate, verifier-gated done
 * `docs/TRAINING-DATA.md` - the RL environment, rewards, formats, governance
 * `docs/VALIDATION.md` - validating against real endpoints
+* `docs/REPO-SETUP.md` - the GitHub side: protected `main`, what CI enforces, releases, and every setting to apply
 * `docs/research/` - the landscape, provider caching and swarm/training research this design rests on
 * `docs/reviews/` - adversarial reviews and what was done about them
 
@@ -225,7 +231,7 @@ hardened on each OS and how to confine harder.
 
 ```sh
 make build test race lint sim
-scripts/check.sh                       # what CI runs: format, tidy, vet, build, race tests, cross-compiles
+scripts/check.sh                       # what CI runs (make check): format, tidy, dependency list, pins, generated docs, vet, build, race tests, cross-compiles
 ```
 
 Go 1.25, standard library plus `golang.org/x/{net,sys,term}`. See `AGENTS.md` and `docs/BUILDING.md`.

@@ -34,7 +34,10 @@ func TestInterruptContextIsCancelledByTheSignalAndSaysWhich(t *testing.T) {
 	if caught() != nil || ctx.Err() != nil {
 		t.Fatal("cancelled before any signal")
 	}
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+	switch ok, err := sendSignalToSelf(syscall.SIGTERM); {
+	case !ok:
+		t.Skip("a process cannot be sent a signal on this platform")
+	case err != nil:
 		t.Fatal(err)
 	}
 	select {

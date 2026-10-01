@@ -1,0 +1,58 @@
+name: codeql
+
+# CodeQL "advanced setup": this file is the one place CodeQL is configured. The repository's "default setup" (Settings >
+# Advanced Security > Code scanning) must stay OFF: with both, GitHub refuses the results of this workflow
+# (docs/REPO-SETUP.md, step 4). Go is analysed from a build, the workflows themselves (the "actions" language) without one.
+# The ruleset in .github/rulesets/main.json blocks a merge that adds a high or critical alert. It does so for Dependabot's
+# pull requests too, so the push trigger stays on main alone: a push run of a Dependabot branch is read-only, cannot upload
+# its results, and the codeql action says so in a warning (its pull_request run can).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write # uploads the results
+      actions: read # CodeQL reads the workflow run it belongs to
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {language: go, build-mode: autobuild}
+          - {language: actions, build-mode: none}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Go from go.mod, for the build
+        if: matrix.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: "/language:${{ matrix.language }}"

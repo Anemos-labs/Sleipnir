@@ -1,0 +1,39 @@
+# Dependabot keeps the two things that can change under us current: the Go modules, and the actions that every workflow
+# pins to a commit SHA (it rewrites the SHA and the "# vX.Y.Z" comment after it together; scripts/check-pins.sh and the
+# tests in internal/repocheck insist on that form). A module that arrives through an update must still be on
+# scripts/deps-allowlist.txt, or the update fails ci: that is the point of the list.
+# Titles are "build(deps): ..." so that they are valid conventional commits (.github/workflows/pr.yml labels them
+# dependencies). Each update waits a week after the release, so that a version pulled for a bad reason is not proposed.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      go-modules:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - dependencies
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - dependencies
+    cooldown:
+      default-days: 7

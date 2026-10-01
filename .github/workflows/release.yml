@@ -1,28 +1,210 @@
 name: release
 
-# Runs only when a version tag is pushed. Nothing here publishes on its own.
-on:
-  push:
-    tags: ["v*"]
+# A merge to main that passes ci is released by this workflow, but only when the repository variable AUTO_RELEASE is
+# "true" and the repository has a LICENSE (scripts/release-plan.sh decides, and says why when it does not). Three jobs:
+#   plan     reads git: is there something to release, and as which version?          (contents: read)
+#   build    goreleaser builds the archives without publishing anything; SBOMs and build-provenance attestations
+#            are made; the files are uploaded as a workflow artifact                   (id-token and attestations: write)
+#   publish  the only job that can write: it creates the GitHub release and its tag, with notes generated from
+#            .github/release.yml, from the files that build made                       (contents: write)
+# A manual run (Actions tab, "Run workflow") is a dry run unless dry_run is unticked: it plans and builds a snapshot, and
+# publishes and attests nothing. docs/REPO-SETUP.md says how to switch the automatic release on.
+on: # zizmor: ignore[dangerous-triggers] workflow_run is guarded: the plan job runs only for a successful ci run of a push to this repository's main
+  # Only when ci finished on main. The conditions on the plan job repeat what matters, because head_branch is also "main"
+  # for a pull request from a fork's own main branch.
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Plan and build a snapshot only: publish nothing, attest nothing"
+        type: boolean
+        default: true
 
-permissions:
-  contents: write
+permissions: {}
+
+# One release at a time, and a release that has started is never cancelled. A run that is waiting is replaced by a newer
+# one, which releases everything since the last tag, so nothing is lost.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GOTOOLCHAIN: local
 
 jobs:
-  goreleaser:
+  plan:
+    name: plan
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      previous: ${{ steps.plan.outputs.previous }}
+      reason: ${{ steps.plan.outputs.reason }}
+      sha: ${{ steps.commit.outputs.sha }}
+      mode: ${{ steps.mode.outputs.mode }}
     steps:
-      - uses: actions/checkout@v4
+      # The commit ci passed on (for a manual run: the commit the run was started on), with every tag and all history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-      - name: test
-        run: go test -race -count=1 -timeout 20m ./...
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --clean
+          persist-credentials: false
+      - name: the commit that is planned
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: plan
+        id: plan
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTO_RELEASE: ${{ vars.AUTO_RELEASE }}
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/release-plan.sh
+      # release: publish this commit. snapshot: a manual dry run, which builds but publishes nothing. none: stop after the plan.
+      # Only main is ever published from, and only an explicit dry_run=false from the Actions tab publishes by hand.
+      - name: what the rest of the run does
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+          RELEASE: ${{ steps.plan.outputs.release }}
+          REF: ${{ github.ref }}
+        run: |
+          mode=none
+          if [ "$EVENT" = workflow_dispatch ] && [ "$DRY_RUN_INPUT" != false ]; then
+            mode=snapshot
+          elif [ "$RELEASE" = true ] && [ "$REF" = refs/heads/main ]; then
+            mode=release
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+      - name: summary
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          RELEASE: ${{ steps.plan.outputs.release }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          PREVIOUS: ${{ steps.plan.outputs.previous }}
+          REASON: ${{ steps.plan.outputs.reason }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          {
+            echo "### Release plan"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| run does | $MODE |"
+            echo "| release | $RELEASE |"
+            echo "| tag | ${TAG:-none} |"
+            echo "| previous release | ${PREVIOUS:-none} |"
+            echo "| commit | $SHA |"
+            echo "| reason | $REASON |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: build
+    needs: plan
+    if: needs.plan.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # the attestation is signed with this workflow's identity
+      attestations: write # and stored with the repository
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      SHA: ${{ needs.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # The newest Go, not go.mod's: that is the oldest Go the project builds with, and usually one that is no longer
+      # supported; ci's go.mod legs prove it still builds. The stable leg of ci is required, so a release is built with a Go
+      # that has just passed the whole suite.
+      # No cache: what a release job restores must not be something a pull request could have planted.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      - name: syft, for the SBOMs that .goreleaser.yaml asks for
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      # goreleaser reads the version from a tag on the commit. The tag is local: nothing is pushed, the release API creates
+      # the real one in the publish job.
+      - name: tag the commit locally
+        if: needs.plan.outputs.mode == 'release'
+        run: git tag "$TAG" "$SHA"
+      - name: goreleaser, release build without publishing
+        if: needs.plan.outputs.mode == 'release'
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: v2.18.2
+          args: release --clean --skip=publish
+      - name: goreleaser, snapshot
+        if: needs.plan.outputs.mode == 'snapshot'
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: v2.18.2
+          args: release --snapshot --clean
+      - name: gather what is published
+        run: |
+          mkdir release-assets
+          cp dist/*.tar.gz dist/*.zip dist/*.sbom.json dist/checksums.txt release-assets/
+          ls -l release-assets
+      - name: attest build provenance
+        if: needs.plan.outputs.mode == 'release'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/*.tar.gz
+            release-assets/*.zip
+            release-assets/checksums.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish
+    needs: [plan, build]
+    if: needs.plan.outputs.mode == 'release' && needs.plan.outputs.release == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # creates the release and its tag: the only write access in this workflow
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      SHA: ${{ needs.plan.outputs.sha }}
+      PREVIOUS: ${{ needs.plan.outputs.previous }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: release-assets
+      # The tag does not exist yet: this call creates it at the commit that was built (so --verify-tag is not passed).
+      # With files to upload, gh creates the release as a draft, uploads every file, publishes it last, and deletes the
+      # draft if an upload fails: there is never a half-filled release, and a failed run can simply be run again. A release
+      # that exists makes the job do nothing.
+      - name: create the release and its tag
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG is already released: nothing to do"
+            exit 0
+          fi
+          set -- "$TAG" release-assets/* --target "$SHA" --title "$TAG" --generate-notes --latest
+          if [ -n "$PREVIOUS" ]; then set -- "$@" --notes-start-tag "$PREVIOUS"; fi
+          gh release create "$@"

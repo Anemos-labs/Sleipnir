@@ -419,14 +419,16 @@ func TestParametersCannotReachTheFilesystem(t *testing.T) {
 		{"/api/events?since=1e9", []int{400}},
 		{"/api/events?agent=" + strings.Repeat("c", 600), []int{400}},
 		{"/api/events?type=%00", []int{400}},
-		{"/../../secret.txt", []int{301, 404}},
-		{"/%2e%2e/%2e%2e/secret.txt", []int{301, 404}},
-		{"/js/../../../secret.txt", []int{301, 404}},
+		// a redirect to the cleaned path is fine (the mux sends 301 before Go 1.26, 307 from it); what matters is what the
+		// body holds, which is checked for every row below
+		{"/../../secret.txt", []int{301, 307, 308, 404}},
+		{"/%2e%2e/%2e%2e/secret.txt", []int{301, 307, 308, 404}},
+		{"/js/../../../secret.txt", []int{301, 307, 308, 404}},
 		{"/js/..%2f..%2f..%2fsecret.txt", []int{404}},
-		{"//secret.txt", []int{301, 404}},
+		{"//secret.txt", []int{301, 307, 308, 404}},
 		{"/..;/secret.txt", []int{404}},
 		{"/js/", []int{404}},
-		{"/index.html/../../secret.txt", []int{301, 404}},
+		{"/index.html/../../secret.txt", []int{301, 307, 308, 404}},
 		{"/.git/config", []int{404}},
 		{"/go.mod", []int{404}},
 	}

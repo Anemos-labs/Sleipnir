@@ -28,7 +28,16 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# One SBOM (SPDX JSON) per archive, published next to it. syft is installed by .github/workflows/release.yml, which
+# attests the archives and checksums.txt as well.
+sboms:
+  - artifacts: archive
+    args: ["$artifact", "--output", "spdx-json=$document"]
+
+# Nothing in this file publishes or writes release notes. .github/workflows/release.yml builds with --skip=publish and
+# creates the release with `gh release create --generate-notes`, so the notes come from .github/release.yml (labels set by
+# .github/workflows/pr.yml from the pull request titles) and a release is made in exactly one place, behind one gate.
 changelog:
-  use: github
-  filters:
-    exclude: ["^docs:", "^test:", "^chore:"]
+  disable: true
+release:
+  disable: true
