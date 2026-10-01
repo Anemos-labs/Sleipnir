@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -242,6 +243,68 @@ func TestRolloutsToTrainingData(t *testing.T) {
 }
 
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
+
+// A rollout that the wall clock ends is a budget episode. It did not say it was done: it is not counted among the false claims
+// (the FALSEDONE column of a report) and its reward does not carry the penalty for them. On the first benchmark run the harness
+// answered "done" for every run the clock cut off, 51 of 349, and both were wrong for all of them.
+func TestARolloutThatTheClockEndsIsABudgetEpisodeAndNotAFalseDone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end")
+	}
+	repo := newRepo(t)
+	head, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Skip(err)
+	}
+	task := rl.Task{
+		ID: "demo-slow", Kind: rl.TaskFix,
+		Repo:     rl.RepoSpec{Path: repo, Commit: strings.TrimSpace(string(head))},
+		Prompt:   "Add returns the wrong result. Fix it and check with the tests.",
+		Verifier: rl.Verifier{Cmd: "go test ./...", TimeoutS: 120, Protected: []string{"*_test.go"}},
+		Budget:   rl.Budget{Steps: 10000, Requests: 10000, WallS: 4}, // the clock is the only limit that can end this run
+	}
+	if err := env.ValidateTask(task); err != nil {
+		t.Fatal(err)
+	}
+	pol := startPolicy(t, func(c *mock.Call) mock.Reply {
+		time.Sleep(50 * time.Millisecond)
+		return mock.Reply{Text: "still working", ToolCalls: []mock.ToolCall{call("c"+itoa(turns(c)), "bash", map[string]any{"command": "echo still working"})}}
+	})
+	ws, err := env.NewWorkspaces(env.WorkspaceOptions{
+		Root: t.TempDir(), RepoBase: "/", DisableNetIsolation: true,
+		SetEnv: map[string]string{"GOCACHE": goCache(t), "GOFLAGS": "-mod=mod", "GOTOOLCHAIN": "local"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	pipe := &harness.Pipeline{Harness: rl.HarnessRef{Version: "test"}, Reward: reward.DefaultConfig()}
+	rn := &env.Runner{
+		Harness: &harness.Harness{NewProvider: injected(pol.url)}, Extract: pipe.Extract, Score: pipe.Score,
+		Workspaces: ws, Out: filepath.Join(t.TempDir(), "clock"), Concurrency: 1, InfraRetries: -1, MaxWall: 5 * time.Minute,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute) // a hang guard
+	defer cancel()
+	sum, err := rn.Rollout(ctx, []rl.Task{task}, 1, env.RolloutOpts{
+		RunID: "clock", Policy: env.PolicySpec{Model: "mock-1"}, Seed: 5, KeepEpisodes: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Completed != 1 || len(sum.Results) != 1 || sum.Results[0].Episode == nil {
+		t.Fatalf("the rollout did not complete: %+v (infra: %+v)", sum, sum.InfraErrors)
+	}
+	ep := sum.Results[0].Episode
+	if ep.Outcome.Claimed != "budget" {
+		t.Errorf("claimed %q: a run the clock cut off claimed nothing, and the episode says the budget ended it", ep.Outcome.Claimed)
+	}
+	if !slices.Contains(ep.Flags, rl.FlagBudgetExceeded) {
+		t.Errorf("flags %v lack %s", ep.Flags, rl.FlagBudgetExceeded)
+	}
+	if c := ep.Reward.Components[reward.CompHonestDone]; c < 0 {
+		t.Errorf("a run that never said it was done carries the false-claim penalty %v: %v", c, ep.Reward.Components)
+	}
+}
 
 // TestRecallTaskIsJudgedOnTheFinalMessage runs a generated memory task: the
 // agent reads a fact, reads other files, and must state the fact. The verdict

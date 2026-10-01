@@ -154,10 +154,15 @@ func (h *Harness) result(ctx context.Context, res *session.Result, runErr error,
 		return out, nil
 	}
 	// The runner owns wall-clock and cancellation: it knows which one ended the
-	// run, and it turns a deadline it set into a budget outcome.
-	if ctx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+	// run, and it turns a deadline it set into a budget outcome, but only when
+	// nothing was claimed: a run that was cut off did not say it was done.
+	if ctx.Err() != nil {
+		out.Claimed = ""
 		return out, ctx.Err()
 	}
+	// Not the run's context, whatever the error wraps: a provider that gave up
+	// waiting wraps context.DeadlineExceeded too, and is the endpoint's fault
+	// (classified below), not a normal ending.
 	out.Err = runErr
 	switch {
 	case lim.exhausted() || errors.Is(runErr, agent.ErrBudget) || isStepLimit(runErr):

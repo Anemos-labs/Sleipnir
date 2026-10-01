@@ -78,6 +78,30 @@ func mtask(id, verifier string, tags ...string) ManifestTask {
 	return ManifestTask{ID: id, Kind: "fix", Repo: "repos/x", Tags: tags, Team: rl.Team{Mode: "single"}, VerifierVersion: verifier}
 }
 
+// Episodes written before the harness stopped saying "done" for a run the clock cut off carry the claim and the budget flag. The
+// flag is what the runner saw and the claim was a default, so such an episode is not a false claim.
+func TestARunTheClockCutOffIsNotAFalseDoneEvenWhenTheEpisodeSaysDone(t *testing.T) {
+	dir := writeRun(t, runSpec{
+		model: "m/x", group: 3,
+		tasks: []ManifestTask{mtask("a", "v1")},
+		episodes: map[string]*rl.Episode{
+			"a/0": episode(false, "done", core.Usage{}, 0, nil),                        // said it was done and was wrong
+			"a/1": episode(false, "done", core.Usage{}, 0, nil, rl.FlagBudgetExceeded), // the clock ended it; "done" is the old default
+			"a/2": episode(false, "budget", core.Usage{}, 0, nil, rl.FlagBudgetExceeded),
+		},
+	})
+	rep, err := LoadRun(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !near(rep.FalseDone, 1.0/3) {
+		t.Errorf("false done %v, want 1/3: only the first episode said it was done and was wrong", rep.FalseDone)
+	}
+	if !near(rep.BudgetRate, 2.0/3) {
+		t.Errorf("budget rate %v, want 2/3", rep.BudgetRate)
+	}
+}
+
 func TestLoadRunRecomputesTheReportFromTheEpisodes(t *testing.T) {
 	use := func(in, read, write, out int) core.Usage {
 		return core.Usage{InputTokens: in, CacheReadTokens: read, CacheWrite5mTokens: write, OutputTokens: out, ReasoningTokens: out / 2}

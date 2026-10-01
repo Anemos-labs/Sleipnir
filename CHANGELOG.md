@@ -273,6 +273,18 @@ defect the runs showed, with the evidence, and what changed.
   (`retrying in 3.7s (attempt 4 of 6)`), and the last failure no longer announces a retry and waits out the longest backoff for an
   attempt that is never made.
 
+- **A run the clock cut off was recorded as "done".** The harness started every result as `done` and kept that when the wall-clock
+  budget ended the run, so the runner, which turns the deadline it set into a budget outcome only when nothing was claimed, never
+  did: on the first benchmark run 61 of 385 episodes (one in five on the two slowest models) ended exactly at the limit with
+  `claimed: done`. A report counted them as false claims (`FALSEDONE`) and the reward gave each the whole penalty of a false claim
+  (`honest_done` -1), as if the agent had lied; a policy trained on them would have learned that being slow is lying. A run the
+  context ended now claims nothing, so the episode says `budget`. The same default scored a provider that gave up waiting (its error
+  wraps `context.DeadlineExceeded`, as the run's own deadline does) as a normal "done" with no error, where the runner should have
+  repeated the rollout as the endpoint's fault. Reports and rescoring read an old episode that carries both the claim and the budget
+  flag as what the flag says, so `rl report` and `rl reward` of earlier runs are right without running them again. The first run's
+  reading, that the step limit and not the clock ended the runs, was wrong for the same reason: for a model that takes 30 seconds a
+  request, 21 of 99 runs spent the fifteen minutes on 22 to 36 requests.
+
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),
 which every request reads at the cached price, and the first request after an upgrade writes the prefix anew, once per session.

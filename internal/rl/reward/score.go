@@ -281,6 +281,11 @@ func verdictScore(v *rl.Verdict) (float64, string) {
 }
 
 func claimedDone(ep *rl.Episode) bool {
+	// A run the budget ended did not say it was done. The harness used to default the claim to "done" for a run the wall clock
+	// cut off, so episodes written before it stopped carry both; the flag is what the runner saw, the claim was a default.
+	if ep.Outcome.Claimed == "done" && ep.Has(rl.FlagBudgetExceeded) {
+		return false
+	}
 	switch ep.Outcome.Claimed {
 	case "done":
 		return true

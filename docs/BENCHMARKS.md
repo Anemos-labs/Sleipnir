@@ -76,10 +76,12 @@ metric regresses beyond a margin.
 2. **The primary metric is pass@1 on the tasks both ran**, with its paired interval; the protocol metrics (steps, requests, wall time,
    tool errors, refused calls) say why. Cost and cache hit ratio are reported and never gated: the endpoint's prefix cache is erratic
    and the prices are tiny.
-3. **Steps are the scarce resource.** A step is a turn of the model. On the first run, a fifth to a quarter of the episodes of the two
-   weaker models ended at the 40-step limit and failed; those that passed finished in a median of nine to thirteen steps. Anything
-   that wastes steps (a refused command, a file read in many small windows, a compaction that makes the agent read again) is paid
-   for in pass rate, not in dollars.
+3. **Steps and time are the scarce resources.** A step is a turn of the model. On the first run 107 of 385 episodes (28%) ended on
+   a budget: 46 on the step or request limit, 61 on the fifteen-minute clock (a model that takes 30 seconds a request cannot make
+   forty steps in 900 seconds; the slowest spent the clock on 22 to 36 requests). The episodes that passed finished in a median of
+   nine to thirteen steps. Anything that wastes a step or a wait (a refused command, a file read in many small windows, a compaction
+   that makes the agent read again, a request that took a minute) is paid for in pass rate, not in dollars, and on a slow model a
+   comparison of two builds is partly a comparison of how many requests each needs inside the clock.
 4. A change that cannot be shown to help on the suite is a hypothesis, and says so in the CHANGELOG.
 
 ## What a run found
@@ -96,8 +98,10 @@ wrong type. Each is a fix with a test that failed first; the second run measures
   the stable prefix and often not the thread (every `cache.anomaly` of a run says what was expected and what was read). A run is
   resumable for this reason, and the rollouts that hit an outage are repeated, not scored as failures.
 - **One shared machine.** CPU contention slows `go test` in the workspaces; a rollout that hits its wall-clock budget because of it is
-  a failure that is not the harness's. On the first run every budget exhaustion was the step limit, none the clock; check that before
-  reading a failure.
+  a failure that is not the harness's. On the first run 61 of the 107 budget exhaustions were the clock, and the machine was not why:
+  an agent's time is mostly spent waiting for the endpoint. Read the `budget_exceeded` flag with the number of requests and the time
+  per request before blaming either. (Those episodes were recorded as claiming to be done, which counted them as false claims;
+  `docs/DOGFOOD.md` row 28.)
 - **The sandbox has no network isolation**, so tasks with `network=false` run with host networking; the verifiers do not need it.
 - **Reading the standard library's own source** (`/usr/local/go*/src`) is refused to the agents: on the mutation tasks the original is
   the answer, a diff away.

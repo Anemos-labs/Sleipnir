@@ -150,7 +150,9 @@ func TestSanitizeForTerminalIsLinearOnHostileInput(t *testing.T) {
 	for name, in := range hostile {
 		start := time.Now()
 		out := SanitizeForTerminal(in)
-		if d := time.Since(start); d > 3*time.Second {
+		// A hang guard, not a stopwatch: a scanner that looked past the next escape would need hours for this much input,
+		// where a machine at a load of a hundred needs seconds (4 s was seen, and a 3 s bound failed for good then).
+		if d := time.Since(start); d > time.Minute {
 			t.Errorf("%s: %v for %d bytes", name, d, len(in))
 		}
 		head := out[:min(len(out), 1<<16)]

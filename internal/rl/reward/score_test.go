@@ -109,9 +109,12 @@ func TestScoreEpisodeComponents(t *testing.T) {
 		{name: "protocol saturates", task: &rl.Task{},
 			mod:  func(ep *rl.Episode) { ep.Signals = map[string]float64{rl.SigStaleWrites: 1000} },
 			want: map[string]float64{CompProtocol: -1}, total: 1.1 - 0.1},
-		{name: "budget_exceeded counts as one breach", task: &rl.Task{},
-			mod:  func(ep *rl.Episode) { ep.Flags = append(ep.Flags, rl.FlagBudgetExceeded) },
-			want: map[string]float64{CompProtocol: -0.1}, total: 1.1 - 0.1*0.1},
+		{name: "budget_exceeded counts as one breach, and a run the budget ended did not claim to be done", task: &rl.Task{},
+			mod: func(ep *rl.Episode) {
+				ep.Outcome.Claimed = "budget"
+				ep.Flags = append(ep.Flags, rl.FlagBudgetExceeded)
+			},
+			want: map[string]float64{CompProtocol: -0.1, CompHonestDone: 0}, total: 1.0 - 0.1*0.1},
 		{name: "invalid tool calls are derived from the completions when no signal exists", task: &rl.Task{},
 			mod: func(ep *rl.Episode) {
 				ep.Agents[0].Steps[0].Completion.Turn.Blocks = []core.Block{
@@ -129,6 +132,13 @@ func TestScoreEpisodeComponents(t *testing.T) {
 				ep.Signals = map[string]float64{rl.SigDoneAccepted: 1}
 			},
 			want: map[string]float64{CompHonestDone: 1}, total: 1.1},
+		{name: "the budget ended the run although the claim says done (episodes written before the harness stopped defaulting to it)", task: &rl.Task{},
+			mod: func(ep *rl.Episode) {
+				ep.Outcome.Verifier = failing()
+				ep.Flags = append(ep.Flags, rl.FlagBudgetExceeded)
+			},
+			// no false-claim penalty; the budget breach is still a protocol event, as it always was (0.1 of the weight 0.1)
+			want: map[string]float64{CompOutcome: 0, CompHonestDone: 0, CompProtocol: -0.1}, total: -0.01},
 		{name: "blocked is not a done claim", task: &rl.Task{},
 			mod: func(ep *rl.Episode) {
 				ep.Outcome.Claimed = "blocked"

@@ -2,8 +2,8 @@ package traj_test
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
-	"time"
 
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/rl"
@@ -11,13 +11,8 @@ import (
 	"github.com/reee344/sleipnir/internal/rl/traj/trajtest"
 )
 
-// TestScale builds a long run (4000 main steps, periodic compaction, 6 agents) and
-// checks the pipeline stays roughly linear: it must finish in seconds, not
-// minutes.
-func TestScale(t *testing.T) {
-	if testing.Short() {
-		t.Skip("scale test")
-	}
+// buildLongRun is a manager and five workers, each taking steps steps, with a compaction every sixty.
+func buildLongRun(steps int) *trajtest.Run {
 	b := trajtest.New()
 	mgr := b.SpawnRoot("mgr", "manager", "m")
 	mgr.User("go")
@@ -26,7 +21,6 @@ func TestScale(t *testing.T) {
 		agents = append(agents, b.Spawn("mgr", fmt.Sprintf("w-%d", i), "backend", "m", fmt.Sprintf("T%d", i)))
 		agents[len(agents)-1].User("work")
 	}
-	const steps = 700
 	turnID := make([]int, len(agents))
 	for s := 0; s < steps; s++ {
 		for i, a := range agents {
@@ -38,23 +32,44 @@ func TestScale(t *testing.T) {
 			}
 		}
 	}
-	start := time.Now()
+	return b
+}
+
+// mallocsOf is the number of allocations that the whole pipeline (open, verify the replay, extract the episode) makes for a run,
+// and the number of steps the episode has.
+func mallocsOf(t *testing.T, b *trajtest.Run) (mallocs uint64, steps int) {
+	t.Helper()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
 	r := traj.OpenWith(b.Events(), b.Blobs)
 	if ms := r.Verify(); len(ms) != 0 {
 		t.Fatal(ms[0])
 	}
-	verify := time.Since(start)
 	ep, err := r.Episode(traj.Options{Policy: rl.PolicyRef{Model: "m"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	total := time.Since(start)
-	n := 0
+	runtime.ReadMemStats(&after)
 	for _, a := range ep.Agents {
-		n += len(a.Steps)
+		steps += len(a.Steps)
 	}
-	t.Logf("%d events, %d steps: verify %v, episode %v total", len(b.Events()), n, verify, total)
-	if total > 20*time.Second {
-		t.Fatalf("pipeline too slow: %v", total)
+	return after.Mallocs - before.Mallocs, steps
+}
+
+// TestScale builds a long run (4,200 steps over six agents, periodic compaction) and checks that the pipeline stays roughly
+// linear: twice the run costs about twice the work, not four times. The work is counted in allocations, which do not depend on how
+// busy the machine is; a stopwatch here failed for good whenever the machine was.
+func TestScale(t *testing.T) {
+	if testing.Short() {
+		t.Skip("scale test")
+	}
+	small, smallSteps := mallocsOf(t, buildLongRun(350))
+	big, bigSteps := mallocsOf(t, buildLongRun(700))
+	t.Logf("%d steps: %d allocations; %d steps: %d allocations", smallSteps, small, bigSteps, big)
+	if bigSteps < smallSteps*19/10 {
+		t.Fatalf("the long run has %d steps, the short one %d: the runs are not the sizes the test means", bigSteps, smallSteps)
+	}
+	if ratio := float64(big) / float64(small); ratio > 3 {
+		t.Errorf("twice the steps cost %.1f times the allocations: the pipeline is no longer linear in the run", ratio)
 	}
 }
