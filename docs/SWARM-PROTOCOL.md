@@ -121,7 +121,7 @@ whose swarm is shut down is never held (those paths end before, or without, cons
 own changes, so a command over the whole repository (`go test ./...`) fails on every directory that belongs to a task not yet
 merged, and tasks that each wait for the others never merge: a real swarm of three workers deadlocked that way until its manager
 folded them into one task. `{dirs}` in the command stands for the directories the task's scope covers (`go test {dirs}` becomes
-`go test ./p01 ./p05`; a task with no scope, or one whose scope reaches the top of the repository, gets `./...`), for the worker's
+`go test ./p01 ./p05`; a task with no scope gets the directories its tree has changed (`git status`), and `./...` when there are none; so does one whose scope reaches the top of the repository), for the worker's
 gate and for the merge queue's check alike, so each task is verified on its own directories and the merged result on the same
 ones. Only plain relative paths are ever inserted (the scope is text a model wrote), and a command without the token is run as it
 is. A worker in an isolated tree whose command has no `{dirs}` is told, when it fails, that its tree holds only its own changes

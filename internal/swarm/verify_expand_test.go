@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -111,5 +112,42 @@ func TestAnIsolatedWorkersVerifyFailureSaysItsTreeHoldsOnlyItsOwnWork(t *testing
 	}
 	if h := s.isolatedVerifyHint(nil); h != "" {
 		t.Errorf("no member, no hint: %q", h)
+	}
+}
+
+// A task with no scope is verified on what its tree has changed, not on the whole repository.
+func TestChangedFilesAreWhatGitSaysAndFeedDirs(t *testing.T) {
+	root := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.email=a@b", "-c", "user.name=x"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git: %v: %s", err, out)
+		}
+	}
+	write := func(name, text string) {
+		t.Helper()
+		p := filepath.Join(root, name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("init", "-q")
+	write("old/a.go", "package old\n")
+	write("keep/k.go", "package keep\n")
+	run("add", "-A")
+	run("commit", "-qm", "base")
+	write("old/a.go", "package old // changed\n")
+	write("stack/stack.go", "package stack\n")
+	got := changedFiles(context.Background(), root)
+	if want := "old/a.go stack/stack.go"; strings.Join(got, " ") != want {
+		t.Fatalf("changed %q, want %q", got, want)
+	}
+	if cmd := ExpandVerify("go test {dirs}", root, got); cmd != "go test ./old ./stack" {
+		t.Errorf("command %q", cmd)
+	}
+	if got := changedFiles(context.Background(), t.TempDir()); got != nil {
+		t.Errorf("a directory that is not a repository changed %q", got)
 	}
 }

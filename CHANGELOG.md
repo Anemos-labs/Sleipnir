@@ -396,6 +396,8 @@ defect the runs showed, with the evidence, and what changed.
   gets the rule for that script, and the programs that cannot be named safely get none.
 - **A garbled tool call ended a run.** Arguments the model cut off or garbled were sent back in the history as they were, and an endpoint that checks the
   history (`function.arguments must be valid JSON`) refused every request after that. They are replayed as `{}`; the tool result says what went wrong.
+- **A task with no file scope stalled an isolated swarm even with `{dirs}`.** `{dirs}` is now the directories the worker's tree has changed when the task has no
+  scope, instead of the whole repository.
 - `/status`, `/permissions` and `/trust` in the chat: the model, mode and session at a glance, and every rule in force, what you allowed with "don't ask again" among
   them. Both answer beside a running turn.
 - **`cd "$(pwd)"` was refused.** The model's way to say "here" was the largest group of refusals of a benchmark run. The exact text `$(pwd)` is read as

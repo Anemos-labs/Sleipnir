@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -36,6 +37,11 @@ type verifyResult struct {
 func (s *Swarm) verify(ctx context.Context, dir string, files []string) verifyResult {
 	if s.cfg.VerifyCmd == "" {
 		return verifyResult{ok: true}
+	}
+	if len(files) == 0 && strings.Contains(s.cfg.VerifyCmd, verifyDirsToken) {
+		// a task with no scope would be verified on the whole repository, which an isolated worker cannot pass until the others
+		// are merged: verify what it changed instead
+		files = changedFiles(ctx, dir)
 	}
 	cmd := ExpandVerify(s.cfg.VerifyCmd, dir, files)
 	if s.cfg.Verify == nil {
@@ -81,6 +87,29 @@ func (s *Swarm) verify(ctx context.Context, dir string, files []string) verifyRe
 	}
 }
 
+// changedFiles is the paths git reports as changed in dir (modified, added, untracked), or nil when it cannot say.
+func changedFiles(ctx context.Context, dir string) []string {
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, "git", "-C", dir, "status", "--porcelain", "-z", "--untracked-files=all").Output()
+	if err != nil {
+		return nil
+	}
+	var files []string
+	recs := strings.Split(string(out), "\x00")
+	for i := 0; i < len(recs); i++ {
+		r := recs[i]
+		if len(r) < 4 {
+			continue
+		}
+		files = append(files, r[3:])
+		if r[0] == 'R' || r[0] == 'C' { // a rename carries its source as the next record
+			i++
+		}
+	}
+	return files
+}
+
 // verifyDirsToken stands, in a verify command, for the directories a task may touch.
 const verifyDirsToken = "{dirs}"
 
@@ -94,7 +123,7 @@ const maxVerifyDirs = 40
 // tree holds only its own changes, so a command over the whole repository fails until every part
 // is merged, and parts that each wait for the others never are: a real swarm of three workers
 // deadlocked that way on `go test ./...` and only recovered when its manager folded the tasks
-// into one. Without a scope, or when the scope reaches the top of the repository or is wider than
+// into one. Without a scope the directories the worker's tree has changed (git status) are used; when there are none, or when the scope reaches the top of the repository or is wider than
 // maxVerifyDirs directories, {dirs} is ./... (everything, as before). A command without the token
 // is returned as it is.
 //
