@@ -52,10 +52,11 @@ var selfExe = sync.OnceValues(os.Executable)
 // world is a private user of the command.
 type world struct {
 	t       *testing.T
-	home    string // $HOME: the user's configuration lives here
-	state   string // $SLEIPNIR_HOME: sessions, catalogue cache
-	tmp     string // $TMPDIR
-	project string // the working directory of every command; a .sleipnir directory marks it as a project root
+	home    string   // $HOME: the user's configuration lives here
+	state   string   // $SLEIPNIR_HOME: sessions, catalogue cache
+	tmp     string   // $TMPDIR
+	project string   // the working directory of every command; a .sleipnir directory marks it as a project root
+	extra   []string // more of the child's environment, as NAME=value (a locale, NO_COLOR)
 }
 
 // newWorld makes a world. With a provider URL the user's configuration has a provider named
@@ -96,7 +97,7 @@ func (w *world) writeUserConfig(cfg map[string]any) {
 // env is the whole environment of a child. PATH is the caller's, for git, sh and stty.
 // GORACE: an instrumented binary sleeps a second at exit unless told not to.
 func (w *world) env() []string {
-	return []string{
+	return append([]string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + w.home,
 		"SLEIPNIR_HOME=" + w.state,
@@ -104,7 +105,7 @@ func (w *world) env() []string {
 		"TERM=xterm",
 		"GORACE=atexit_sleep_ms=0",
 		e2eChildEnv + "=1",
-	}
+	}, w.extra...)
 }
 
 // cmd is `sleipnir args...` in the project, in a private environment.
