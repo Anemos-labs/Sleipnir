@@ -27,7 +27,7 @@ half), the diff of a write over an existing file, the bell at a question, strict
 - **Branches and CI.** Work is on `claude/intelligent-ptolemy-zp1wbt` (the default branch until the owner makes `main` the default,
   section 3). CI does **not** run on a branch that is not `main`: start `ci.yml` and `nightly.yml` with `workflow_dispatch` and read the
   jobs (the GitHub MCP tools: `actions_run_trigger`, `actions_list`, `get_job_logs`; there is no `gh`). `ci-gate` is the one required
-  check. The nightly run (fuzz, the suite three times under `-race` shuffled, a thousand chaos seeds, a twenty-thousand-step soak,
+  check. On 2026-10-01 `workflow_dispatch` of `ci.yml` on `anemos-labs/sleipnir` answered 404 and `list_workflows` found none: GitHub had no workflow registered for the repository (the default branch had none; the owner's step 1 of section 3 comes before CI can be started from here), so the work since the handoff was checked on Linux only, with the whole suite under `-race`. The nightly run (fuzz, the suite three times under `-race` shuffled, a thousand chaos seeds, a twenty-thousand-step soak,
   coverage, `govulncheck`) has found real bugs on its early runs (section 2): read it, and when it fails keep the failing input as a seed.
 - **Where things are.** The harness: `internal/{agent,kv,swarm,session,perm,tools,provider}`; the terminal: `internal/tui/*`,
   `cmd/sleipnir/chat*.go`; the RL environment: `internal/rl`; the benchmark: `bench/`, `scripts/bench.sh`; the repository's own
