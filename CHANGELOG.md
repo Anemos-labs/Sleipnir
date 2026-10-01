@@ -210,6 +210,12 @@ The first release.
   dashboard: layers, hit ratio, compactions, swarm, cost; for a swarm also its worktrees and merge queue, the mailman and
   the manager's supervision).
 
+- Performance of what runs on every request is measured: benchmarks of `kv.Render` (every route and hot mode, and a thread of 200
+  exchanges), `core.Canonical`, the event log (emit and scan), the SSE reader, `perm.Check`, the board and the governor, grep, and the
+  project survey; allocation gates as ordinary tests (`allocs_gate_test.go`, not under `-race`) hold the number of allocations of
+  each of those calls to what it is, and how `Render` grows with the thread to linear; `scripts/perf.sh` runs the benchmarks and
+  `bench/tools/benchcmp` compares two runs (a slowdown only when the two ranges do not overlap). `docs/BUILDING.md`, Performance.
+
 ### Found by running it on real models
 
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
