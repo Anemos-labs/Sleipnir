@@ -71,9 +71,12 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
 | `internal/skills`, `internal/commands`, `internal/agentdefs`, `internal/hooks`, `internal/mcp` | the ecosystem: skills (listing in the shared layer, bodies on demand), slash commands, markdown role definitions, hooks, the MCP client |
 | `internal/workspace`, `internal/gitx` | git worktrees per writer and the verifying merge queue; the only gateway to the git binary |
 | `internal/session` | assembles provider, tools, permissions, checkpoints, layers (constitution, shared pin from `recon` + instruction files, role pins), event log and one agent or a swarm; the CLI, the RL harness and tests all build sessions the same way |
+| `internal/tui` | the terminal interface (`docs/UX.md`): `term` (raw mode, capabilities), `cell` and `render` (what a screen is made of, drawn inline or full-screen), `input` (the editor), `widget`s, `state` (every figure on screen is a reduction of the session log), `vt` (the emulator the tests read the screen through), `svg` (recordings) and `app`, the programs: the inline `chat`, `watch`, `replay`. The programs read the log and receive a sink and a prompter that only forward; nothing in them changes what the model sees |
+| `internal/friction`, `internal/stats`, `bench/` | the measuring side: the friction miner over event logs (`sleipnir friction`), the statistics of reports (Wilson intervals, paired bootstrap), and the benchmark suite (fixtures, lock file, `scripts/bench.sh`; `docs/BENCHMARKS.md`) |
+| `internal/ptytest` | a pseudo-terminal harness for running the real binary in tests |
 | `internal/inspect`, `internal/demo` | the cache inspector (a read-only model of a session log and a web dashboard); the scripted team behind `sleipnir demo` |
 | `internal/rl` | RL vocabulary (`Episode`, `Step`, `Task`, rewards, flags) and its subpackages: `env` (tasks, isolated rollouts, clean-checkout verifier, task generators, eval, rollout server), `traj` (event log -> episode, exact prompt replay), `reward` (components, hack detectors, repricing, probes), `adv` (group advantages), `export` (steps, tokens, groups, sft, dpo, kto, atif), `redact`, `recall` (memory tasks), `harness` (implements `env.Harness` on `session`: the rollout runs the real assembly under a fixed config, a scrubbed shell environment, refused prompts and hard budgets) |
-| `cmd/sleipnir` | the binary: every command, the chat loop, the RL subcommands |
+| `cmd/sleipnir` | the binary: every command, the chat (the inline program on a terminal, the line REPL on a pipe or with `--plain`), the RL subcommands |
 
 ## One request, end to end
 

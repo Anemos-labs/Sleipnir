@@ -29,11 +29,15 @@ type dialog struct {
 	q     *question
 	sel   int
 	armAt time.Time // keys answer from this moment
-	opts  []widget.DialogOption
-	mcp   bool // the question is whether to start a project's tool server, which has its own answers
-	title string
-	body  []cell.Line
-	width int // the width body was laid out for
+	// shownAt is when the question appeared, and toolKey the call it is about (empty when the program has not seen it start): the time
+	// between them and the answer is not part of the call's duration.
+	shownAt time.Time
+	toolKey string
+	opts    []widget.DialogOption
+	mcp     bool // the question is whether to start a project's tool server, which has its own answers
+	title   string
+	body    []cell.Line
+	width   int // the width body was laid out for
 }
 
 // defaultAnswerAfter is the pause before a question takes an answer from the keyboard.
@@ -187,6 +191,14 @@ func splitWhy(summary string) (what, why string) {
 	return s, ""
 }
 
+// What a person is asked to allow is shown in full: the dialog fits it to the window (fitBody), and what does not fit is written into
+// the scrollback whole (ask). These are only the bounds beyond which a request is absurd, not what is shown: the first real approval was
+// of a 65-line file, which showed twelve lines and "53 more lines", with nowhere to read them.
+const (
+	approvalDiffRows = 5000 // lines of one change
+	approvalEdits    = 200  // edits of one call
+)
+
 // changeBody shows what a file tool is about to do: the path, then the change as a diff where the call says what it is.
 func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner int, cwd string) []cell.Line {
 	path := ""
@@ -222,19 +234,19 @@ func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner 
 			pairs = append(pairs, pair{e.Old, e.New})
 		}
 		for i, p := range pairs {
-			if i >= 4 {
+			if i >= approvalEdits {
 				body = append(body, cell.Styled(k.st.dim, count(len(pairs)-i, "more edit", "more edits")))
 				break
 			}
-			body = append(body, widget.Diff("", p.old, p.new, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: 12})...)
+			body = append(body, widget.Diff("", p.old, p.new, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: approvalDiffRows})...)
 		}
 	case "write":
 		if content, ok := stringField(call.input, "content"); ok {
-			body = append(body, widget.Diff("", "", content, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: 12})...)
+			body = append(body, widget.Diff("", "", content, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: approvalDiffRows})...)
 		}
 	case "apply_patch":
 		if patch, ok := stringField(call.input, "patch"); ok {
-			body = append(body, widget.UnifiedDiffWith(patchToUnified(patch), inner, k.Theme, widget.DiffOptions{MaxLines: 24})...)
+			body = append(body, widget.UnifiedDiffWith(patchToUnified(patch), inner, k.Theme, widget.DiffOptions{MaxLines: approvalDiffRows})...)
 		}
 	}
 	return body

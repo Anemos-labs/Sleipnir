@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/core"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/perm"
@@ -86,6 +87,8 @@ func RunChat(ctx context.Context, c ChatConfig) (end ChatEnd, err error) {
 			m.drainMsgs()
 		case e := <-m.runDone:
 			m.runEnded(e)
+		case e := <-m.asideDone:
+			m.asideEnded(e)
 		}
 		if m.over {
 			break
@@ -162,6 +165,9 @@ type toolRun struct {
 	input  json.RawMessage
 	since  time.Time
 	asking bool
+	// waited is how long a person was asked about this call: the time its question was on the screen. A tool's duration is what it
+	// took to do its work, and the first real write said "6m12s" because the person went for coffee.
+	waited time.Duration
 }
 
 // foldAnim is a compaction that is being folded, in the live region, before it is written into the scrollback.
@@ -202,10 +208,11 @@ type chatModel struct {
 	attached bool
 	complete input.Completer
 
-	running *run
-	runDone chan runEnd
-	queue   []queued
-	turns   int
+	running   *run
+	runDone   chan runEnd
+	asideDone chan asideEnd // the output of a slash command that only looks, answered beside a turn that runs
+	queue     []queued
+	turns     int
 
 	last    blockKind
 	stream  answerStream
@@ -243,7 +250,7 @@ func newChatModel(ctx context.Context, c ChatConfig) *chatModel {
 		c.AnswerAfter = 0
 	}
 	m := &chatModel{c: c, ctx: ctx, scr: c.Screen, k: newChatLook(c.Look), st: state.New(), mem: NewMemory(),
-		tools: map[string]*toolRun{}, runDone: make(chan runEnd, 1)}
+		tools: map[string]*toolRun{}, runDone: make(chan runEnd, 1), asideDone: make(chan asideEnd, 8)}
 	m.cols, m.rows = c.Screen.Size()
 	m.now = m.clock()
 	m.snap = m.st.SnapshotAt(m.now)
@@ -418,6 +425,10 @@ func (m *chatModel) removeQuestions(drop func(*dialog) bool) {
 	for _, d := range m.dialogs {
 		if !drop(d) {
 			kept = append(kept, d)
+			continue
+		}
+		if t := m.tools[d.toolKey]; t != nil && d.toolKey != "" {
+			t.waited += max(m.clock().Sub(d.shownAt), 0) // the call was waiting for this person, and not at work
 		}
 	}
 	m.dialogs = kept
@@ -597,10 +608,67 @@ func (m *chatModel) submit(text string) {
 		return
 	}
 	if m.busy() || len(m.queue) > 0 {
+		if m.attached && m.busy() && isLookCommand(text) {
+			m.aside(text) // a cost that is told when the turn is over is told too late
+			return
+		}
 		m.queue = append(m.queue, queued{text: text}) // typed ahead: sent when the turn ends, and never the answer to a question
 		return
 	}
 	m.dispatch(text)
+}
+
+// isLookCommand reports whether a line is a slash command that only looks: it changes nothing, so it answers at once, beside the
+// turn that runs, where every other line waits for that turn to end. /mode and /mcp only look when they have no argument.
+func isLookCommand(line string) bool {
+	f := strings.Fields(line)
+	if len(f) == 0 {
+		return false
+	}
+	switch f[0] {
+	case "/cost", "/context", "/agents", "/help", "/?", "/skills", "/recon":
+		return true
+	case "/mode", "/mcp":
+		return len(f) == 1
+	}
+	return false
+}
+
+// asideEnd is what a command that was answered beside a turn wrote.
+type asideEnd struct{ out string }
+
+// aside answers a slash command that only looks while a turn runs: it is written into the scrollback as it was asked, and its output
+// follows when it has it. It is not a run: nothing is cancelled by it and nothing waits for it.
+func (m *chatModel) aside(line string) {
+	m.syncStream()
+	m.block(bkPrompt, m.k.promptLines(line, m.cols))
+	ctx, host := m.ctx, m.host
+	go func() {
+		var out lockedBuffer
+		defer func() {
+			if p := recover(); p != nil {
+				fmt.Fprintf(&out, "%s: panicked: %v\n", strings.Fields(line)[0], p)
+			}
+			select {
+			case m.asideDone <- asideEnd{out: out.String()}:
+			default: // eight answers are waiting and the program is not taking them: the person has gone
+			}
+		}()
+		host.Command(ctx, line, &out)
+	}()
+}
+
+// asideEnded writes what a command that was answered beside a turn said.
+func (m *chatModel) asideEnded(e asideEnd) {
+	if e.out == "" {
+		return
+	}
+	var lines []cell.Line
+	for _, l := range textLines(e.out) {
+		lines = append(lines, cell.Text(l))
+	}
+	m.syncStream()
+	m.block(bkNote, lines)
 }
 
 // dispatch sends a line: a slash command runs, anything else is a goal.
@@ -868,6 +936,9 @@ func (m *chatModel) notice(x chatMsg) {
 	if strings.EqualFold(x.level, "info") && !m.c.Verbose {
 		return
 	}
+	if strings.HasPrefix(x.text, agent.CacheMissNoticePrefix) {
+		return // the log's cache.anomaly is drawn as a break (anomalyLines), with the same numbers and the cause: twice is noise
+	}
 	m.syncStream()
 	m.block(bkNote, m.k.noticeLines(x.agent, x.level, x.text, m.cols, m.isMain(x.agent) || x.agent == ""))
 }
@@ -885,7 +956,8 @@ func (m *chatModel) toolStart(x chatMsg) {
 
 func (m *chatModel) toolEnd(x chatMsg) {
 	key := toolKey(x.agent, x.call.ToolID)
-	if _, ok := m.tools[key]; ok {
+	if t, ok := m.tools[key]; ok {
+		x.took = max(x.took-t.waited, 0) // what it took to do the work: the time a person was asked is not the tool's
 		delete(m.tools, key)
 		for i, k := range m.toolSeq {
 			if k == key {
@@ -1155,10 +1227,11 @@ func (m *chatModel) stepFolds() {
 // ask puts a question on the screen.
 func (m *chatModel) ask(q *question) {
 	opts, mcp := dialogOptions(q.req)
-	d := &dialog{q: q, opts: opts, mcp: mcp, armAt: m.clock().Add(m.c.AnswerAfter)}
+	d := &dialog{q: q, opts: opts, mcp: mcp, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
 	m.dialogs = append(m.dialogs, d)
 	if t := m.callOf(q.req); t != nil {
 		t.asking = true
+		d.toolKey = t.key
 	}
 	// A request that is too tall for the live region is written into the scrollback whole, so that what was approved is on record
 	// and can be read; the dialog shows its beginning and its end.

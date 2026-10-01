@@ -366,6 +366,25 @@ defect the runs showed, with the evidence, and what changed.
   worker's notices count as signs of life, so the watchdog does not cancel a worker for the quiet of a retried call; and a benchmark
   rollout opts out (the runner repeats a rollout that ended for the endpoint's fault, and waiting inside it would spend the run's own
   clock and end it as a budget episode). The backoff of a request retried for minutes no longer overflows its shift.
+- **The chat's first real session** (the inline chat program on a model, a Python fixture, in tmux) found three things its tests could not.
+  A write that asked for approval showed twelve lines of a 65-line file and `… 53 more lines`, with nowhere to read the rest: what a
+  person is asked to allow is now shown whole (the dialog shows what fits the window, and a change that does not fit is written into
+  the scrollback in full, as a long command already was). A tool call that waited for the person was shown as slow (`✓ 6m12s` for a
+  write that took milliseconds, `✗ 2m00s` for a test run): the time a question was on the screen is no longer the call's. And every
+  cache break was printed twice, as the break line and as the agent's own notice; the line says it once now, with whose miss it is (a
+  prompt that did not change is the endpoint's).
+- **A refused change came back by another tool.** The person said no to an edit; the model answered "permission denied, let me use
+  apply_patch instead" and asked for the same change again. The refusal a person gives now ends with a fixed sentence that says what
+  it means (the person said no: do not make it another way, say what you wanted and ask what they want instead), and only a
+  person's refusal does: not a question that nobody answered, and not a policy.
+- **`/cost` typed during a turn waited for the turn.** In the chat program every line typed while the agent works is queued, slash
+  commands included, so a question about the spend was answered after the fifteen minutes it was asked about. The commands that only
+  look (`/cost`, `/context`, `/agents`, `/help`, `/skills`, `/recon`, and `/mode` and `/mcp` without an argument) answer at once,
+  beside the turn; what changes something, and every goal, still waits for it.
+- **A test of the log's order failed once in six runs under the race detector** (`request be-1.c1 deltas against unknown base
+  "be-1.8"`): the manifest of the next request was advanced before the request was logged, so a compaction fork that started on its
+  own goroutine could log a request whose base was not in the log yet. The state is advanced after the event now, so a reader that
+  follows the log as it grows always meets a base before its request.
 
 *Pricing the prompt change* (`sleipnir sim --mode pins`, the Anthropic-like cache model, 20 workers): the constitution grows by
 382 bytes (about 95 tokens: 829 to 924 for one agent, 1,064 to 1,159 for a swarm; about 1.6% of a first request of 5,900 tokens),

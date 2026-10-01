@@ -224,7 +224,12 @@ func (k *chatLook) anomalyLines(a state.Anomaly, who string, width int) []cell.L
 		r.add(k.st.dim, " "+k.g.dot+" cost ").add(k.st.warn, widget.USD(a.MissUSD))
 	}
 	out := []cell.Line{k.fit(r.line(), width)}
-	if n := clean(a.Note); n != "" {
+	n := clean(a.Note)
+	if n == "" && a.Layer == "" && a.Kind == "low_hit" {
+		// The guard found no layer that changed, so the prompt was what it had been: whose miss it is.
+		n = "the prompt prefix did not change: the endpoint did not serve it"
+	}
+	if n != "" {
 		out = append(out, paragraph(k.st.dim, "  "+n, width)...)
 	}
 	return out

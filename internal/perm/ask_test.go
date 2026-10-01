@@ -66,6 +66,37 @@ func TestAskWithAPrompterNeverSaysNoOneCanAnswer(t *testing.T) {
 	}
 }
 
+// A person who said no is not asked to be asked again by another route: the refusal tells the model so. What nobody answered, and
+// what a prompter refused for its own reason, is not a person's no and does not say it.
+func TestARefusalByAPersonTellsTheModelNotToMakeTheChangeAnotherWay(t *testing.T) {
+	f := newFixture(t)
+	for _, c := range []struct {
+		reason string
+		advice bool
+	}{
+		{"denied by user", true},
+		{"", true}, // a prompter that gave no reason: the engine says the user declined
+		{"no answer", false},
+		{"not today", false},
+	} {
+		rec := &promptRecorder{answer: func(n int, r Request) Decision { return Decision{Allow: false, Reason: c.reason} }}
+		e := askEngine(t, f, Config{}, rec.prompt)
+		d := e.Check(bg, f.request(bash("make")))
+		if d.Allow {
+			t.Fatalf("reason %q: allowed", c.reason)
+		}
+		if got := strings.Contains(d.Reason, "the person said no to this"); got != c.advice {
+			t.Errorf("reason %q: advice = %v, want %v (%q)", c.reason, got, c.advice, d.Reason)
+		}
+	}
+	// an approval is never touched
+	rec := &promptRecorder{answer: func(n int, r Request) Decision { return Decision{Allow: true, Reason: "allowed by user"} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	if d := e.Check(bg, f.request(bash("make"))); !d.Allow || d.Reason != "allowed by user" {
+		t.Errorf("an approval = %+v", d)
+	}
+}
+
 func TestAskAnswers(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(n int, r Request) Decision {

@@ -80,6 +80,12 @@ func canceledDecision(ctx context.Context) Decision {
 // program that runs the tests) before it gave up. The text is fixed, so it costs the cache nothing.
 const noOneToAsk = " (this run has no one to ask, so nothing can be approved: use an action that is allowed, or finish and say which permission you needed)"
 
+// declinedAdvice ends the refusal that a person gave. A model told only "denied by user" made the same change a moment later with
+// another tool (the first real chat session: an edit that was refused came back as an apply_patch, and the person was asked a
+// second time). The sentence is fixed, so it costs the cache nothing, and it is said only of a refusal by a person: not of a
+// question that nobody answered, and not of a policy.
+const declinedAdvice = " (the person said no to this: do not make it another way, with another tool or command; say what you wanted and ask what they want instead)"
+
 // resolveAsk turns an "ask" outcome into a Decision by consulting the human.
 func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict) Decision {
 	if e.cfg.Prompter == nil {
@@ -142,6 +148,9 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 		} else {
 			d.Reason = "declined by the user"
 		}
+	}
+	if !d.Allow && (d.Reason == "denied by user" || d.Reason == "declined by the user") {
+		d.Reason += declinedAdvice
 	}
 	e.remember(d, v)
 	return d

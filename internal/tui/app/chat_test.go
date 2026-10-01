@@ -866,6 +866,119 @@ func TestChatALongRequestIsWrittenWholeIntoTheScrollback(t *testing.T) {
 	decision(t, ans)
 }
 
+// What a person is asked to allow is read before it is allowed. The first real approval was of a 65-line file: the dialog showed twelve
+// lines and "53 more lines", and nothing anywhere showed the rest. A change that does not fit is written into the scrollback whole,
+// as a long command is, and the dialog shows its beginning and its end.
+func TestChatAWriteThatDoesNotFitIsWrittenWholeBeforeItIsAllowed(t *testing.T) {
+	r := startChat(t, rigOpts{rows: 24})
+	var lines []string
+	for i := 1; i <= 60; i++ {
+		lines = append(lines, fmt.Sprintf("setting%02d = %d", i, i*7))
+	}
+	call := toolCall("w1", "write", map[string]any{"path": "/work/proj/config.py", "content": strings.Join(lines, "\n") + "\n"})
+	ans := make(chan perm.Decision, 1)
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		r.sink.ToolStart("main", call)
+		ans <- r.prompt(ctx, perm.Request{Agent: "main", Tool: "write", Paths: []string{"/work/proj/config.py"}, Summary: "write config.py [a new file]"})
+		return TurnResult{Steps: 1}
+	}
+	r.submit("write it")
+	s := r.shows("1. Yes", "needs your answer")
+	if strings.Contains(s, " more lines") {
+		t.Errorf("the change was cut to a fixed number of lines, with the rest named and not shown:\n%s", s)
+	}
+	if !strings.Contains(s, "more: the whole of it is in the scrollback above") {
+		t.Errorf("the dialog does not say that the whole of the change is above it:\n%s", s)
+	}
+	for _, want := range []string{"setting01 = 7", "setting60 = 420"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("an end of the change is not on the screen (%q):\n%s", want, s)
+		}
+	}
+	if n := strings.Count(s, "setting30 = 210"); n != 1 {
+		t.Errorf("a line from the middle is %d times on the screen, once, in the scrollback:\n%s", n, s)
+	}
+	r.press(input.RuneKey('3', 0))
+	decision(t, ans)
+}
+
+// A tool's duration is the time it worked. A call that waited for a person is not the slower for it: the first real write said
+// "6m12s", and most of it was a person who had gone to fetch coffee.
+func TestChatTheTimeAQuestionWaitedIsNotTheToolsTime(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	call := toolCall("w1", "write", map[string]any{"path": "/work/proj/a.py", "content": "x = 1\n"})
+	t0 := time.Unix(1_700_000_000, 0)
+	answered := make(chan struct{})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		r.at(t0)
+		r.sink.ToolStart("main", call)
+		r.at(t0.Add(2 * time.Second)) // the question appears
+		d := r.prompt(ctx, perm.Request{Agent: "main", Tool: "write", Paths: []string{"/work/proj/a.py"}, Summary: "write a.py [a new file]"})
+		if !d.Allow {
+			t.Errorf("the question was not allowed: %+v", d)
+		}
+		close(answered)
+		// the tool does its work in five seconds, and the agent measured the whole of it, the minute of a person reading included
+		r.sink.ToolEnd("main", call, okResult("Created a.py", map[string]any{"created": true}), 65*time.Second)
+		return TurnResult{Steps: 1}
+	}
+	r.submit("write it")
+	r.shows("1. Yes", "Write a file")
+	r.at(t0.Add(62 * time.Second)) // a minute of a person reading it
+	r.press(input.RuneKey('1', 0))
+	select {
+	case <-answered:
+	case <-time.After(time.Minute):
+		t.Fatal("the question was not answered (a hang guard)")
+	}
+	s := r.shows("● Write a.py")
+	if strings.Contains(s, "1m05s") || strings.Contains(s, "1m00s") {
+		t.Errorf("the call took the time its question waited:\n%s", s)
+	}
+	if !strings.Contains(s, "● Write a.py  ✓ 5.0s") {
+		t.Errorf("the call took 5 s of work (65 s, less the 60 s a person was asked):\n%s", s)
+	}
+}
+
+// A slash command that only looks answers at once, beside a turn that runs: the first real session queued /cost behind a fifteen minute
+// turn, which is a cost told too late. Every other line waits for the turn, as it always did.
+func TestChatACommandThatOnlyLooksAnswersWhileATurnRuns(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	release := make(chan struct{})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return TurnResult{Steps: 1}
+	}
+	r.host.command = func(ctx context.Context, line string, out io.Writer) CommandResult {
+		fmt.Fprintf(out, "answered %s\n", line)
+		return CommandResult{}
+	}
+	r.submit("a long goal")
+	r.until("the turn to start", func(string) bool { return len(r.host.seen()) == 1 })
+	for _, line := range []string{"/cost", "/context", "/mode", "/mcp"} {
+		r.submit(line)
+		r.shows("answered " + line)
+	}
+	if got := r.host.seen(); len(got) != 1 {
+		t.Errorf("the session was given %v: a command that looks is not a goal", got)
+	}
+	// what changes something waits for the turn, and so does a goal typed ahead
+	r.submit("/mode plan")
+	r.submit("/compact")
+	r.submit("a goal typed ahead")
+	s := r.shows("queued")
+	for _, line := range []string{"answered /mode plan", "answered /compact"} {
+		if strings.Contains(s, line) {
+			t.Errorf("%q ran while the turn was running, and changes something:\n%s", line, s)
+		}
+	}
+	close(release)
+	r.shows("answered /mode plan", "answered /compact")
+}
+
 // ---- the prompt ----
 
 func TestChatAPasteOfManyLinesIsAChipAndIsSentWhole(t *testing.T) {

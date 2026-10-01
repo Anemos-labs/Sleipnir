@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/reee344/sleipnir/internal/agent"
 	"github.com/reee344/sleipnir/internal/events"
 	"github.com/reee344/sleipnir/internal/tui/cell"
 	"github.com/reee344/sleipnir/internal/tui/input"
@@ -100,6 +101,28 @@ func TestChatACacheBreakIsAWarningInTheScrollback(t *testing.T) {
 	r.emit(more.Request("main", "r9", "mock-1", "pk1", statetest.Sec{Name: "shared", Tokens: 3200, BP: true}), more.Response("main", "r9", "mock-1", 100, 3000, 0, 50, 0.001))
 	if got := strings.Count(r.screen(), "cache break"); got != 1 {
 		t.Errorf("a break that was said is not said again, %d times:\n%s", got, r.screen())
+	}
+}
+
+// A break whose prompt did not change is the endpoint's: the break line says so, and the agent's own notice, which said the same
+// thing in other words, is not printed under it. The first real chat showed both, one under the other, for every break.
+func TestChatACacheBreakTheEndpointCausedIsSaidOnceWithItsCause(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 100, rows: 30})
+	b := statetest.NewBuilder()
+	log := sessionLog(b, 3, 0)
+	b.Advance(8 * time.Second)
+	log = append(log, b.Request("main", "r4", "mock-1", "pk1", statetest.Sec{Name: "shared", Tokens: 3200, BP: true}))
+	log = append(log, b.Emit("main", events.TypeCacheAnomaly, map[string]any{"kind": "low_hit", "diverged": "", "req": "r4", "expected_read": 6033, "actual_read": 3840, "missed": 2193}))
+	log = append(log, b.Response("main", "r4", "mock-1", 3000, 3840, 0, 200, 0.0031))
+	r.at(b.Now().Add(2 * time.Second))
+	r.sink.Notice("main", "warn", agent.CacheMissNoticePrefix+" ~6033 tokens read from cache, got 3840 (the prompt prefix did not change: the endpoint did not serve it)")
+	r.emit(log...)
+	s := r.shows("⚠ cache break (low_hit) · read 3.8k of 6.0k expected")
+	if strings.Contains(s, "cache miss: expected") {
+		t.Errorf("the agent's notice says again what the break line says:\n%s", s)
+	}
+	if n := strings.Count(s, "the endpoint did not serve it"); n != 1 {
+		t.Errorf("the cause is on the screen %d times, once, under the break line:\n%s", n, s)
 	}
 }
 

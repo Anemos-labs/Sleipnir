@@ -247,7 +247,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 			if !check.Drift {
 				why = " (the prompt prefix did not change: the endpoint did not serve it)"
 			}
-			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("cache miss: expected ~%d tokens read from cache, got %d%s", expected, u.CacheReadTokens, why))
+			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf(CacheMissNoticePrefix+" ~%d tokens read from cache, got %d%s", expected, u.CacheReadTokens, why))
 		}
 	}
 	// The endpoint changed the request behind our back (dropped a thinking block
@@ -349,10 +349,6 @@ func (a *Agent) recordRequest(reqID string, r *kv.Rendered, hot []core.Block, c 
 	if err != nil {
 		// Logging must never stop the agent; the recipe below is still recorded.
 		a.cfg.Sink.Notice(a.cfg.ID, "warn", "could not record prompt manifest: "+err.Error())
-	} else if advance {
-		a.mu.Lock()
-		a.man = next
-		a.mu.Unlock()
 	}
 	role := a.cfg.Role
 	if kind == KindCompactor {
@@ -367,6 +363,14 @@ func (a *Agent) recordRequest(reqID string, r *kv.Rendered, hot []core.Block, c 
 		"tools": len(r.Prompt.Tools), "renderer": kv.RendererVersion,
 		"manifest": man, "wire_hash": man.Wire,
 	})
+	// The next request is encoded against this one only once this one is in the log: a compaction fork that starts on its own goroutine
+	// reads a.man, and with it advanced first it could log a request whose base is not in the log yet (seen under the race detector on a
+	// loaded machine). A reader that follows the log as it grows then always meets a request's base before the request.
+	if err == nil && advance {
+		a.mu.Lock()
+		a.man = next
+		a.mu.Unlock()
+	}
 }
 
 // responsePayload adds the action itself to a model.response: the assistant turn
@@ -453,6 +457,10 @@ func retryNotice(pe *provider.Error, delay time.Duration) string {
 	}
 	return fmt.Sprintf("%s; retrying in %s", what, delay.Round(time.Millisecond))
 }
+
+// CacheMissNoticePrefix starts the notice an agent gives when a response read much less from the cache than its prompt promised. A
+// program that draws cache breaks from the log (the chat on a terminal) leaves the notice out: it says what the break line says.
+const CacheMissNoticePrefix = "cache miss: expected"
 
 // outage says whether a failure is the endpoint being down or overloaded: it answered with a status of 500 or more, or with 429.
 // Those are the failures that a wait cures. Nothing that came with no status is one: the endpoint may not exist.
