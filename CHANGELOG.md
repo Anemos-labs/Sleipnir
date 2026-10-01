@@ -392,6 +392,8 @@ defect the runs showed, with the evidence, and what changed.
 - A notice of the session itself (not of an agent) no longer prints as `[] warn: ...`.
 - A chat says the first three cache breaks that are the endpoint's own (the prompt did not change), then one line that it will not say more; a break caused by
   a changed layer is always said. (Roadmap item 8, plateau learning, would do better.)
+- The hint after a run that had nobody to ask no longer suggests `--allow 'Bash(python:*)'` or `Bash(rm:*)` (rules to run anything): an interpreter run on a script
+  gets the rule for that script, and the programs that cannot be named safely get none.
 - `/status`, `/permissions` and `/trust` in the chat: the model, mode and session at a glance, and every rule in force, what you allowed with "don't ask again" among
   them. Both answer beside a running turn.
 - **`cd "$(pwd)"` was refused.** The model's way to say "here" was the largest group of refusals of a benchmark run. The exact text `$(pwd)` is read as

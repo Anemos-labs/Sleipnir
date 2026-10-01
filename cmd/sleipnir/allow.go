@@ -75,6 +75,11 @@ var harmless = map[string]bool{
 	"diff": true, "cut": true, "tr": true, "which": true, "date": true, "basename": true, "dirname": true,
 }
 
+// interpreters run any program they are given, and neverSuggested are the programs whose blanket rule would be as bad (or a rule for
+// which is a decision to make by hand): suggestAllow names no rule for them, but for an interpreter run on a script, that script.
+var interpreters = map[string]bool{"python": true, "python3": true, "node": true, "ruby": true, "perl": true, "php": true, "bash": true, "sh": true, "zsh": true}
+var neverSuggested = map[string]bool{"sudo": true, "doas": true, "rm": true, "curl": true, "wget": true, "ssh": true, "scp": true, "xargs": true, "eval": true, "dd": true, "chmod": true, "chown": true}
+
 // suggestAllow is the rules that would let a refused command run: one for each program in it that is not harmless, naming the
 // subcommand of the tools that have them (go test, cargo build). A command that cannot be read gets none.
 func suggestAllow(command string) []string {
@@ -87,7 +92,15 @@ func suggestAllow(command string) []string {
 			continue
 		}
 		pattern := prog
-		if subcommandTools[prog] && len(c.Args) > 0 && !strings.HasPrefix(c.Args[0], "-") {
+		if interpreters[prog] {
+			// a rule for python alone is a rule to run anything: only a script that is a plain file name, as the rule for that script
+			if len(c.Args) == 0 || strings.HasPrefix(c.Args[0], "-") || strings.ContainsAny(c.Args[0], "$`\\\"' ") {
+				continue
+			}
+			pattern += " " + c.Args[0]
+		} else if neverSuggested[prog] {
+			continue
+		} else if subcommandTools[prog] && len(c.Args) > 0 && !strings.HasPrefix(c.Args[0], "-") {
 			pattern += " " + c.Args[0]
 		}
 		rule := "Bash(" + pattern + ":*)"
