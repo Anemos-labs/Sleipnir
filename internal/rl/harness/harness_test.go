@@ -524,6 +524,64 @@ func TestCancellationIsPassedThroughForTheRunnerToInterpret(t *testing.T) {
 	l.Close()
 }
 
+// A run that the wall clock cuts off has claimed nothing. The runner turns the deadline it set into a budget outcome only when
+// the harness left the claim empty; "done" there made 51 of the 349 episodes of the first benchmark run (all the ones that ran
+// out the clock) false "done" claims, which the FALSEDONE metric counted and the reward's honest-done term punished.
+func TestARunThatTheContextEndsClaimsNothing(t *testing.T) {
+	repo := newRepo(t)
+	started := make(chan struct{}, 1)
+	pol := startPolicy(t, func(c *mock.Call) mock.Reply {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		time.Sleep(100 * time.Millisecond)
+		return mock.Reply{Text: "again", ToolCalls: []mock.ToolCall{call("c"+string(rune('a'+turns(c))), "bash", map[string]any{"command": "echo hi"})}}
+	})
+	h := &harness.Harness{NewProvider: injected(pol.url)}
+	sp := spec(t, repo, "loop")
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { <-started; cancel() }()
+	res, err := h.Run(ctx, sp)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want the context error, got %v", err)
+	}
+	if res.Claimed != "" {
+		t.Errorf("a run that was cut off claimed %q: the runner reads an empty claim as the budget ending it, and any other as the agent's word", res.Claimed)
+	}
+}
+
+// A provider that gave up waiting is the endpoint's fault, not the policy's, even though its error wraps context.DeadlineExceeded:
+// the run's own context is alive, so Run returns the error (the runner repeats a rollout when it does, and scores nothing) and
+// not a normal ending, which was scored as the agent's "done".
+func TestAProviderTimeoutWhileTheRunIsAliveIsAnInfrastructureError(t *testing.T) {
+	repo := newRepo(t)
+	agent.RetryBase = time.Millisecond
+	h := &harness.Harness{NewProvider: func(env.RunSpec) (provider.Provider, cost.Model, error) {
+		m := cost.Model{ID: "mock-1", ContextTokens: 1_000_000, MaxOutput: 4096, Cache: cost.OpenAICacheModel(),
+			Price: cost.Price{InputPerM: 4, OutputPerM: 20, CacheReadPerM: 1, CacheWrite5mPerM: 4, CacheWrite1hPerM: 4}}
+		return timingOut{}, m, nil
+	}}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute) // a hang guard, never the thing that ends the run
+	defer cancel()
+	res, err := h.Run(ctx, spec(t, repo, "anything"))
+	if err == nil {
+		t.Fatalf("a provider that timed out ended the run as a normal result, %+v: it is a fault of the endpoint", res)
+	}
+	if res.Claimed == "done" {
+		t.Errorf("claimed %q although nothing was done", res.Claimed)
+	}
+}
+
+// timingOut is a provider whose every request runs out of time, as an endpoint that never answers does.
+type timingOut struct{}
+
+func (timingOut) Profile() provider.Profile { return provider.Profile{Name: "timing-out"} }
+
+func (timingOut) Do(context.Context, *provider.Request, func(provider.Event)) (*provider.Response, error) {
+	return nil, &provider.Error{Kind: provider.ErrTimeout, Message: "no answer in time", Err: context.DeadlineExceeded}
+}
+
 func TestSwarmTaskRunsAManagerAndRecordsAgents(t *testing.T) {
 	repo := newRepo(t)
 	pol := startPolicy(t, func(c *mock.Call) mock.Reply {

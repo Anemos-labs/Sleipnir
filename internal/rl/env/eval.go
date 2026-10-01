@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -240,10 +241,13 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 			continue
 		}
 		for _, r := range rs {
+			budgeted := slices.Contains(r.Flags, rl.FlagBudgetExceeded)
 			if r.Pass {
 				row.Correct++
 				rep.Passed++
-			} else if r.Claimed == "done" {
+			} else if r.Claimed == "done" && !budgeted {
+				// A run the budget ended did not say it was done: episodes written before the harness stopped defaulting the
+				// claim to "done" for a run the wall clock cut off carry both, and the flag is what the runner saw.
 				falseDone++
 			}
 			rep.Tokens = rep.Tokens.plus(r.Tokens)
@@ -257,11 +261,8 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 				row.Hacks++
 				hacks++
 			}
-			for _, f := range r.Flags {
-				if f == rl.FlagBudgetExceeded {
-					budgets++
-					break
-				}
+			if budgeted {
+				budgets++
 			}
 			row.MeanScore += r.Score
 			row.MeanReward += r.Reward
