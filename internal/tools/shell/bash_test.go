@@ -1281,3 +1281,14 @@ func TestCwdNoteCannotBeForged(t *testing.T) {
 		t.Errorf("printable = %q", got)
 	}
 }
+
+// Options.Tmp is the TMPDIR of every command, whatever the harness process had.
+func TestBashTmpdirIsTheSessions(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", "/somewhere/else")
+	h := newHarness(t, Options{Tmp: tmp})
+	res := h.bash(h.env("main"), "printf %s \"$TMPDIR\"").Text
+	if !strings.Contains(res, tmp) || strings.Contains(res, "/somewhere/else") {
+		t.Fatalf("TMPDIR = %q, want %q", res, tmp)
+	}
+}

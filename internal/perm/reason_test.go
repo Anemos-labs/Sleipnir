@@ -2,6 +2,8 @@ package perm
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -47,5 +49,31 @@ func TestRefusalWithoutAWorkspaceDoesNotInventOne(t *testing.T) {
 	d := e.Check(context.Background(), f.request(read("{out}/secret.txt")))
 	if d.Allow || strings.Contains(d.Reason, "()") {
 		t.Errorf("allow=%v reason=%q", d.Allow, d.Reason)
+	}
+}
+
+// With a private scratch directory, $TMPDIR is known to the engine, is inside the
+// workspace, and the refusal of any other place says where scratch files go.
+func TestPrivateTmpdirIsKnownAndNamedInTheRefusal(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.root, "..", "scratch-"+filepath.Base(f.root))
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ = filepath.EvalSymlinks(tmp)
+	e := f.engine(t, Config{Mode: ModeAcceptEdits, Tmp: tmp})
+	for _, cmd := range []string{`echo x > "$TMPDIR/a"`, `echo x > ${TMPDIR}/a`, "echo x > " + tmp + "/a"} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
+			t.Errorf("%s: %s", cmd, d.Reason)
+		}
+	}
+	d := e.Check(context.Background(), f.request(write("{out}/new.txt")))
+	if d.Allow || !strings.Contains(d.Reason, "scratch files go in $TMPDIR ("+tmp+")") {
+		t.Errorf("reason %q", d.Reason)
+	}
+	// Without one, $TMPDIR is a variable the engine cannot know.
+	e = f.engine(t, Config{Mode: ModeAcceptEdits})
+	if d := e.Check(context.Background(), f.request(bash(`echo x > "$TMPDIR/a"`))); d.Allow {
+		t.Errorf("allowed without a scratch directory: %s", d.Reason)
 	}
 }

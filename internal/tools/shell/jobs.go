@@ -128,7 +128,7 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 		path:  sh.path,
 		args:  append(append([]string(nil), sh.flags...), command),
 		dir:   dir,
-		env:   commandEnv(m.baseEnv(), env.Agent, dir, m.opts.PassEnv),
+		env:   m.env(env.Agent, dir),
 		sink:  buf,
 		merge: m.opts.MergeStreams,
 	})

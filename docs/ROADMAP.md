@@ -90,10 +90,7 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
    unknown. The engine already understands `Bash(prefix:*)` (`internal/perm/rule.go`) and still asks for its high-risk flags. Write down in
    `docs/SECURITY.md` what a prefix rule adds over the exact one (flags such as `go test -exec` run a program of the model's choosing; the
    answer is that a test run already executes whatever tests the repository has, and an unattended session never gets the rule).
-3. **G5c, a private `$TMPDIR` for the session.** 6% of the permission refusals in the first benchmark were scratch files in `/tmp`
-   (`docs/DOGFOOD.md` row 4). Create `<state>/sessions/<id>/tmp` (0700), set `TMPDIR` for shell commands (`internal/tools/shell/env.go`), add it
-   to `perm.Config.ExtraRoots`, and make the refusal of a path in `/tmp` name it (`internal/perm/judge.go`). The constitution already says to
-   keep scratch files in the repository, so no prompt byte has to change.
+3. *(G5c, a private `$TMPDIR` for the session, is done: `docs/SECURITY.md`, section 2.)*
 4. **G5d, slash commands.** `/status` (model, mode, directory, session, trust, tool servers, budget), `/permissions` (mode, rules, what was
    remembered), `/trust` (what `sleipnir trust` shows), `/clear` (fold the thread and keep the pinned prefix: a declared, priced rebase, like
    `/compact`). `cmd/sleipnir/chat.go` (`slash`, the line chat) and `cmd/sleipnir/chat_tty.go` (`chatSlashCommands`, the program, which also decides which

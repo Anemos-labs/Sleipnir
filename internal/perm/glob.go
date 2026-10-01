@@ -15,6 +15,7 @@ import (
 // outside is outside, and a link into ~/.ssh is ~/.ssh.
 type resolver struct {
 	home, homeReal string
+	tmp            string     // the session's private scratch directory (Config.Tmp), "" when it has none
 	roots          []rootPair // workspace roots: Root first, then any extras
 	// treeBases are "<tree parent>/*" (each parent lexical and resolved): relative
 	// patterns are anchored at every per-agent tree as well as at the root.

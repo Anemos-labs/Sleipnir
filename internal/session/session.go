@@ -160,6 +160,7 @@ type Session struct {
 	cfg  *config.Config
 
 	ID, Dir string
+	tmp     string // the private TMPDIR of the session's commands (under Dir); "" when the run brings its own environment
 	Log     *events.Log
 	Blobs   events.Blobs
 
@@ -322,6 +323,13 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	}
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return nil, err
+	}
+	if o.ShellEnv == nil {
+		// Commands get a private TMPDIR: the scratch files of a build or a test run are
+		// otherwise refused in the shared /tmp (and would be readable there).
+		if tmp := filepath.Join(s.Dir, "tmp"); os.MkdirAll(tmp, 0o700) == nil {
+			s.tmp = tmp
+		}
 	}
 	unlock, err := lockDir(s.Dir)
 	if err != nil {
@@ -501,7 +509,7 @@ func (s *Session) buildPerm() error {
 	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), TreeParents: extra,
+		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
 	})
@@ -625,7 +633,7 @@ func (s *Session) build(ctx context.Context) error {
 
 	reg := tools.NewRegistry()
 	fs.Register(reg)
-	s.shell = shell.NewManager(shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap})
+	s.shell = shell.NewManager(shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp})
 	shell.Register(reg, s.shell)
 	if !o.NoWeb {
 		// ConfigFromEnv routes through HTTPS_PROXY when one is set (sandboxed and

@@ -823,3 +823,38 @@ func TestTextSinkStripsTerminalEscapes(t *testing.T) {
 		t.Errorf("ordinary text must survive: %q", out.String())
 	}
 }
+
+// TestScratchFilesGoToThePrivateTmpdir: a command's TMPDIR is a directory of the
+// session, inside the workspace for the permission engine, so `mktemp` and `go build -o
+// $TMPDIR/x` need no question in accept-edits mode (a quarter of the refusals of the
+// first benchmark and most of those of the second were scratch files in /tmp).
+func TestScratchFilesGoToThePrivateTmpdir(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if assistantTurns(c) == 0 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{
+				call("m", "bash", map[string]any{"command": `echo scratch > "$TMPDIR/x.txt" && cat "$TMPDIR/x.txt"`}),
+			}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	o := opts(t, repo, client, model)
+	o.Home = t.TempDir()
+	o.Mode = perm.ModeAcceptEdits
+	o.Prompter = func(ctx context.Context, r perm.Request) perm.Decision {
+		t.Errorf("asked: %+v", r)
+		return perm.Decision{}
+	}
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(s.Dir, "tmp", "x.txt"))
+	if err != nil || string(b) != "scratch\n" {
+		t.Fatalf("scratch file: %q, %v", b, err)
+	}
+}

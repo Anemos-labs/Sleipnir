@@ -23,6 +23,9 @@ type Options struct {
 	// the harness process's own ("K=V" entries). RL rollouts pass a private HOME
 	// and TMPDIR with no credentials at all. The secret scrub still runs over it.
 	BaseEnv []string
+	// Tmp, when set, is the directory commands get as TMPDIR: a scratch place of the
+	// session's own, so that a build or test run does not write to the shared /tmp.
+	Tmp string
 	// Wrap is an argv prefix every command runs under: the shell is started as
 	// Wrap[0] Wrap[1:]... <shell> <flags> <script>. It is how a rollout is given a
 	// network-less namespace (see internal/rl/env NetPrefix) without the shell
@@ -113,6 +116,9 @@ func NewManager(opts ...Options) *Manager {
 		}
 		if x.Shell != "" {
 			o.Shell = x.Shell
+		}
+		if x.Tmp != "" {
+			o.Tmp = x.Tmp
 		}
 		if x.MaxOutputBytes != 0 {
 			o.MaxOutputBytes = x.MaxOutputBytes
@@ -261,4 +267,19 @@ func detectShell(override string) (shellInfo, error) {
 		}
 	}
 	return shellInfo{}, errors.New("no usable shell found (looked for " + strings.Join(candidates, ", ") + ")")
+}
+
+// env is the environment of a command of agent in dir.
+func (m *Manager) env(agent, dir string) []string {
+	env := commandEnv(m.baseEnv(), agent, dir, m.opts.PassEnv)
+	if m.opts.Tmp == "" {
+		return env
+	}
+	out := env[:0:0]
+	for _, kv := range env {
+		if name, _, _ := strings.Cut(kv, "="); name != "TMPDIR" {
+			out = append(out, kv)
+		}
+	}
+	return append(out, "TMPDIR="+m.opts.Tmp)
 }

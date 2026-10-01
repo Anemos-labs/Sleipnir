@@ -360,10 +360,14 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 // outsideWorkspace is the phrase for a path that is not under the workspace. It names the workspace: a model that guessed
 // a path ("/root/repo") learns from the refusal where it is working, instead of guessing again.
 func (ev *evaluator) outsideWorkspace() string {
+	out := "outside the workspace"
 	if r := ev.rs.root(); r.lex != "" {
-		return "outside the workspace (" + r.lex + ")"
+		out += " (" + r.lex + ")"
 	}
-	return "outside the workspace"
+	if ev.rs.tmp != "" {
+		out += "; scratch files go in $TMPDIR (" + ev.rs.tmp + ")"
+	}
+	return out
 }
 
 // ruleHits reports whether a path rule covers the access. Deny and ask rules

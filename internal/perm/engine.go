@@ -23,6 +23,9 @@ type Config struct {
 	// steer a later session): what the person trusted, their settings and skills and the record of every session are in it. A write
 	// there asks, in every mode, as a write to ~/.sleipnir does; an unattended session refuses it.
 	StateDir string
+	// Tmp is the session's private scratch directory: a workspace root, and what $TMPDIR and ${TMPDIR} stand for in a command
+	// (the shell tool sets TMPDIR to it).
+	Tmp string
 	// ExtraRoots are further directories treated as part of the workspace
 	// (per-agent git worktrees, scratch directories).
 	ExtraRoots []string
@@ -213,6 +216,10 @@ func NewEngine(cfg Config) (*Engine, error) {
 		home, _ = os.UserHomeDir()
 	}
 	rs := newResolver(home, cfg.Root, append(append([]string(nil), cfg.ExtraRoots...), cfg.TreeParents...))
+	if cfg.Tmp != "" {
+		rs.tmp = cleanAbs(cfg.Tmp)
+		rs.roots = append(rs.roots, rootPair{lex: rs.tmp, real: realPath(rs.tmp)})
+	}
 	rs.addTreeParents(cfg.TreeParents)
 	e := &Engine{cfg: cfg, rs: rs, mode: mode, roles: map[string]*profile{}, persisted: map[Rule]bool{}}
 	var err error

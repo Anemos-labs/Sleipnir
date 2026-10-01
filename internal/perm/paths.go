@@ -8,7 +8,8 @@ import (
 )
 
 // expandWord expands the parts of a shell word that a permission check can
-// know: a leading tilde, $HOME / ${HOME} and $PWD / ${PWD}. dynamic reports that
+// know: a leading tilde, $HOME / ${HOME}, $PWD / ${PWD} and, when the session has a
+// private scratch directory, $TMPDIR / ${TMPDIR}. dynamic reports that
 // something else (another variable, a substitution, ~user) is left, in which
 // case the word does not name a file the engine can judge; partial is then the
 // text before the first unknown piece, so "~/.ssh/$KEY" is still seen to be
@@ -65,6 +66,11 @@ func (rs *resolver) expandWord(w, cwd string) (out, partial string, dynamic bool
 				return "", b.String(), true
 			}
 			b.WriteString(rs.home)
+		case "TMPDIR":
+			if rs.tmp == "" {
+				return "", b.String(), true
+			}
+			b.WriteString(rs.tmp)
 		case "PWD":
 			if cwd == "" {
 				return "", b.String(), true
