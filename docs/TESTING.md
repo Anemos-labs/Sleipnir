@@ -47,7 +47,7 @@ actions, the declared-change check, the generated documents (`docs/CLI.md`, the 
 tests of the scripts, the suite under `-race` on Linux (amd64 and arm64) and macOS with the Go of `go.mod` and on Linux amd64 with
 the newest stable Go, the allocation gates (the one leg that runs them: they are not built under `-race`), every release platform
 built and vetted, the cache-policy guards, `govulncheck`, dependency review on pull requests, `actionlint` and `zizmor`, and
-`internal/repocheck` (it runs with the suite). Informational: Windows; the nightly run (every fuzz target for three minutes, the
+`internal/repocheck` (it runs with the suite). Informational: Windows (every package but those `scripts/windows-excluded.txt` lists, with the reason for each); the nightly run (every fuzz target for three minutes, the
 suite three times under `-race` in shuffled order, coverage, the drift checks again, `govulncheck` again); `bench/build.sh --check`
 and the benchmark itself (by hand, they need a key). `docs/REPO-SETUP.md` has the whole list and what each guards.
 

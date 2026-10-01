@@ -1,0 +1,14 @@
+# Line ends are part of what this repository compares byte for byte: golden files, the recorded gallery, the scripts the CI
+# runs. git must never rewrite them for a system, so every text file is LF in the repository and LF in the checkout (on Windows
+# as well: core.autocrlf would otherwise write CRLF into the goldens and every golden test would fail at its first line).
+* text=auto eol=lf
+
+# Recordings of terminals keep the bytes they were captured with, carriage returns included.
+internal/tui/vt/testdata/** -text
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.gz binary

@@ -72,6 +72,13 @@ The first release.
 - Bounded by default: a swarm has a built-in budget (US$50, `swarm.budget_usd`, only you can raise or remove it), a
   ceiling on its size (`swarm.max_agents`), and peer mail can wake one worker only 40 times per task; budget checks fail
   closed. Read-only roles are denied the background-job tools by name.
+- The bound on peer mail counts every run that mail starts, not only the ones that find the worker idle. Mail left waiting by a run
+  that ended (it came in while the worker ran, or in the moment after the board said idle and before the harness looked at the
+  inbox) started a run that nothing counted, so two workers whose mail always arrived while the other was running could keep each
+  other going. The first run on GitHub caught it once (four runs where the bound is three; one in about a hundred under load, and
+  every failure was that restart). The harness now knows who wrote what is waiting, the manager's and the harness's mail still
+  always start a run, and the check, the wake and the count are one step. The tests send the mail from the worker's own last event
+  and hold the model's reply while it arrives, so the moment is theirs and not luck's.
 
 ### Providers
 
@@ -279,6 +286,16 @@ The first release.
   that only the owner can take.
 - Fixed on the way: the allocation gates ran in no CI job (every test run used `-race`, which they are not built under); `go vet` for
   Windows failed on the signal test of `cmd/sleipnir`; two tests that Go 1.26 broke.
+- Found by the first run on GitHub: the swarm bound above; `ptytest` on macOS (the system takes the terminal from every holder when
+  the program that leads its session exits, so "what did it leave unread" has no answer after an exit there, and a program that
+  had read its line and exited was reported as not having read it); `replay` and `watch` told to stop by SIGTERM exiting 0 instead
+  of 143 now and then (the end of the keys, which `ReadKeys` causes when the context ends, and the end of the context were ready
+  together and `select` chose between them at random: the signal counted as the person's `q`; the chat had the same coin toss
+  between "exit" and "interrupted" as the reason a session ended); and every golden file checked out with CRLF on Windows
+  (`.gitattributes` pins LF for the whole repository, and `internal/repocheck` keeps that line from going). The Windows run, which
+  failed in 26 packages (the rest of them for POSIX assumptions: paths, file modes, a shell, a finer clock), now tests every package
+  but those `scripts/windows-excluded.txt` lists with a reason each, so a red Windows run means something that worked stopped, or a
+  new package that never did; taking a package off the list is how it is ported.
 
 ### Found by running it on real models
 

@@ -143,7 +143,7 @@ Anything but exactly `true` keeps releases off. Delete the variable to stop them
 | Documents agree with code | A stale `docs/CLI.md`, a stale simulator block in the README, a recording that no longer matches the interface | `ci.yml`, `nightly.yml` | `sh scripts/gen-cli-docs.sh --check`, `make readme-sim` |
 | Tests | A regression on Linux (amd64 and arm64), macOS, with the Go of `go.mod` and with the newest stable Go, under the race detector | `ci.yml` `test` | `go test -race -count=1 ./...` |
 | Allocation gates | A hot path that allocates more than it is held to. These tests are not built under `-race`, so one more step runs them without it | `ci.yml` `test` | `go test -run Allocations ./...` |
-| Windows run (informational) | Windows breakage, seen but not blocking | `ci.yml` `windows` | `go test ./...` |
+| Windows run (informational) | Windows breakage, seen but not blocking | `ci.yml` `windows` | `go test` of every package but those `scripts/windows-excluded.txt` names (with a reason each; `internal/repocheck` keeps the list honest) |
 | Cross-compile and vet | A file for another platform that stopped compiling; release day finding out | `ci.yml` `cross` | `sh scripts/check.sh` |
 | Cache-policy guards | A policy change that makes the cache model lose | `ci.yml` `sim` | `make sim` |
 | govulncheck | A known vulnerability in a dependency or the standard library that the code reaches | `ci.yml` `security`, `nightly.yml` | `go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...` |

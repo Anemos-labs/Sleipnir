@@ -1,0 +1,23 @@
+# The packages whose tests the Windows job of ci.yml does not run, and why. Everything else is run there (scripts/windows-packages.sh),
+# so a package added tomorrow is tested on Windows until someone decides it cannot be. The job is informational: it blocks nothing.
+# Taking a package off this list is the way to port it; internal/repocheck keeps every entry naming a package that exists.
+#
+# Sorted, one module-relative package per line, a reason after the #.
+cmd/sleipnir                  # end-to-end tests drive a POSIX terminal and shell
+internal/agentdefs            # permission rules in the tests are written as POSIX paths
+internal/checkpoint           # POSIX file modes, and unreadable files that Windows does not refuse
+internal/config               # POSIX file modes (0600) that Windows does not keep
+internal/demo                 # the demo's repository is built with POSIX paths and a POSIX shell
+internal/events               # the blob store's damage tests rely on POSIX file semantics (open files can be replaced)
+internal/memory               # unreadable files that Windows does not refuse
+internal/perm                 # the permission engine reads POSIX paths and shell syntax (docs/SECURITY.md, section 4)
+internal/provider/anthropic   # a timing test needs a clock finer than Windows gives (0s elapsed)
+internal/provider/openaichat  # a timing test needs a clock finer than Windows gives
+internal/rl/env               # workspaces, diffs and verifiers use POSIX paths, symlinks and a POSIX shell
+internal/rl/env/taskgen       # mines git history into POSIX workspaces
+internal/rl/harness           # the rollout harness's workspaces are POSIX paths
+internal/rl/traj              # trajectories record POSIX workspace paths
+internal/session              # recon tests create file names Windows does not allow, and POSIX paths
+internal/shellparse           # differential tests against bash
+internal/swarm                # isolation tests compare POSIX paths
+internal/tools/fs             # file modes, symlinks and open-file semantics of POSIX

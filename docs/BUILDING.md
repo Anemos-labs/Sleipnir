@@ -145,7 +145,8 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
   with the keys, the ticks and the size sent by the test, so that nothing waits for a clock.
 - CI runs the suite with `-race` on Linux (amd64 and arm64, as an ordinary user, not root) and macOS with the Go of `go.mod`,
   on Linux with the newest stable Go too (`.github/workflows/ci.yml`, also runnable by hand from the Actions tab); Windows
-  runs without `-race` as an informational job that blocks nothing, and every shipped platform is built and vetted. Things
+  runs without `-race` as an informational job that blocks nothing (every package but the ones `scripts/windows-excluded.txt` lists, each
+  with the POSIX assumption its tests make: taking one off the list is how it is ported), and every shipped platform is built and vetted. Things
   the first runs found, so that the next test does not repeat them:
   - a temp directory can sit behind a symlink (macOS: `/var` is `/private/var`): compare resolved paths
     (`filepath.EvalSymlinks`), and never assume that a path a tool prints is the one you gave it;
@@ -166,7 +167,17 @@ internal/repocheck      the repository's own invariants as tests (links resolve,
     by a clock; a scaling test (`requireLinear`) repeats a failing measurement before it counts;
   - several git processes in one repository trip over each other in ways one process never sees (a worktree being
     created has an empty `commondir` for a moment); `internal/gitx` waits those out, and
-    `TestConcurrentWorktreeCommandsDoNotFail` is what to extend when git shows a new one.
+    `TestConcurrentWorktreeCommandsDoNotFail` is what to extend when git shows a new one;
+  - a `select` between a context and a channel that the context closes (`ReadKeys`, `mergeInterrupts`) chooses at random when both are
+    ready, so a loop that treats the channel's end as "the user quit" reports a signal as a quit now and then: ask `ctx.Err()` first. A
+    test makes both ready before the loop starts and runs it a few hundred times (`internal/tui/app/signal_race_test.go`);
+  - a status that a worker shows ("idle") is set before the harness has finished with the worker's last run: a test that sends the
+    next message the moment it sees it meets the harness in that moment. Make the moment the test's own (a hook on the event the run
+    ends with, a model reply that is held) rather than hoping to hit it, and wait for an absence only with a generous quiet time
+    (`internal/swarm/wakebound_test.go`);
+  - macOS takes a terminal from every holder when the process that leads its session exits, so a question put to the terminal after
+    that has no answer (`internal/ptytest`, `WaitInputRead`); Windows checks text files out with CRLF unless `.gitattributes` says
+    not (every golden test failed at its first line, with a diff that looked identical).
   A load test finds what a quiet machine hides: run three `go test -race -count=1 ./...` at once (a CI runner runs several
   packages at a time) and read every failure as a finding, not as noise.
   To see what the runners see before pushing, run the test binaries as an unprivileged user with a symlinked `TMPDIR`
