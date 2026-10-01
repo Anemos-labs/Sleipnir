@@ -97,7 +97,7 @@ func (w *world) writeUserConfig(cfg map[string]any) {
 // env is the whole environment of a child. PATH is the caller's, for git, sh and stty.
 // GORACE: an instrumented binary sleeps a second at exit unless told not to.
 func (w *world) env() []string {
-	return append([]string{
+	env := []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + w.home,
 		"SLEIPNIR_HOME=" + w.state,
@@ -105,7 +105,14 @@ func (w *world) env() []string {
 		"TERM=xterm",
 		"GORACE=atexit_sleep_ms=0",
 		e2eChildEnv + "=1",
-	}, w.extra...)
+	}
+	// A test binary built for coverage that runs as the command says on its stderr that it has nowhere to write its counters, which is
+	// what these tests read (the nightly coverage run failed every one of them that looks at stderr). Told where, it says nothing.
+	if testing.CoverMode() != "" {
+		env = append(env, "GOCOVERDIR="+filepath.Join(w.tmp, "covdata"))
+		os.MkdirAll(filepath.Join(w.tmp, "covdata"), 0o755)
+	}
+	return append(env, w.extra...)
 }
 
 // cmd is `sleipnir args...` in the project, in a private environment.

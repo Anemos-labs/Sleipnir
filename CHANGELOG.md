@@ -324,6 +324,12 @@ The first release.
   milliseconds after the commit before them (one run in sixteen). A real `worktree add` is locked while it initializes, and
   everything the product runs is hardened with `maintenance.auto=false`, so the product was never exposed; the fixtures now run the
   same way.
+- Found by the first nightly run (twenty seconds a fuzz target; the suite three times under `-race` in shuffled order, a thousand chaos
+  seeds and `govulncheck` passed): `GuardFrame` let `<live <live>0</live>` through with two opening tags, because it ended a frame's opening
+  tag at the first `>` and took whatever came before it as the tag's own (a `<` inside the tag now makes the text escaped whole; the frames the
+  harness writes are unchanged and no golden file moved); the event log's fuzz target had a different idea of "a log at its last sequence number"
+  than the log has (Open's own record of damage takes a number too); and every end-to-end test that reads a command's stderr failed under the
+  coverage run, since a test binary built for coverage that runs as the command says on stderr that it has nowhere to write its counters.
 
 ### Found by running it on real models
 
