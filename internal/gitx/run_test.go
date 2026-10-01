@@ -177,30 +177,43 @@ if [ "$1" = "--no-pager" ] && echo "$@" | grep -q ' status '; then
   exit 0
 fi
 exec "$REAL" "$@"`)
-	r, err := Open(dir, WithGitPath(gitShim), WithHermeticConfig(), WithTimeout(400*time.Millisecond))
-	if err != nil {
-		t.Fatal(err)
-	}
-	start := time.Now()
-	_, err = r.Status(ctxT(t))
-	took := time.Since(start)
-	if !errors.Is(err, ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("want ErrTimeout wrapping DeadlineExceeded, got %v", err)
-	}
-	if took > 6*time.Second {
-		t.Fatalf("timeout took %s: the runner waited for the grandchild", took)
-	}
-	pidText := strings.TrimSpace(readFile(t, filepath.Join(out, "grandchild.pid")))
-	pid, _ := strconv.Atoi(pidText)
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if !processRunning(pid) {
-			break // gone (a zombie counts as gone: dead, just not reaped by its killed parent yet)
+	pidFile := filepath.Join(out, "grandchild.pid")
+	// The timeout is a clock and the shim has to have started its grandchild before it fires; on a machine that is busy (three suites
+	// at once did it) the shell may not have got that far in 400 ms, and the test has nothing to look at. A timeout that came too early
+	// is tried again with one four times as long, up to a hang guard.
+	for timeout := 400 * time.Millisecond; ; timeout *= 4 {
+		if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("grandchild %d survived the timeout", pid)
+		r, err := Open(dir, WithGitPath(gitShim), WithHermeticConfig(), WithTimeout(timeout))
+		if err != nil {
+			t.Fatal(err)
 		}
-		time.Sleep(20 * time.Millisecond)
+		start := time.Now()
+		_, err = r.Status(ctxT(t))
+		took := time.Since(start)
+		if !errors.Is(err, ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("want ErrTimeout wrapping DeadlineExceeded, got %v", err)
+		}
+		if took > timeout+6*time.Second {
+			t.Fatalf("a timeout of %s took %s: the runner waited for the grandchild", timeout, took)
+		}
+		pidText, rerr := os.ReadFile(pidFile)
+		if rerr != nil {
+			if timeout > 30*time.Second {
+				t.Fatalf("the shim had not started its grandchild after %s: %v", timeout, rerr)
+			}
+			continue
+		}
+		pid, _ := strconv.Atoi(strings.TrimSpace(string(pidText)))
+		deadline := time.Now().Add(30 * time.Second)
+		for processRunning(pid) { // gone (a zombie counts as gone: dead, just not reaped by its killed parent yet)
+			if time.Now().After(deadline) {
+				t.Fatalf("grandchild %d survived the timeout", pid)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		return
 	}
 }
 

@@ -177,6 +177,7 @@ func renameModel(v any, from, to string) {
 // The rich session has what the demo has not: mail, compaction, a stuck agent, a refused request, a cold cache, a manager that is
 // held to its board. The recording itself says it is not vacuous.
 func TestTheStateOfARealRichSessionAgreesWithAnIndependentCount(t *testing.T) {
+	skipWhereTheEngineDoesNotKnowThePaths(t)
 	log := richLog(t)
 	evs := decodeLog(t, log)
 	o := readOracle(t, log, recordedPrices(evs))

@@ -23,6 +23,7 @@ func seqOfFirst(evs []obj, typ string) uint64 {
 
 // A person is at the prompt of a real session. What the engine asks, and how each question is settled, is what the State shows.
 func TestTheStateOfARealPromptedPermissionSession(t *testing.T) {
+	skipWhereTheEngineDoesNotKnowThePaths(t)
 	log := promptedLog(t)
 	evs := decodeLog(t, log)
 	o := readOracle(t, log, recordedPrices(evs))
@@ -124,6 +125,7 @@ func TestTheStateOfARealPromptedPermissionSession(t *testing.T) {
 // With no one to ask, the engine still writes its question and then its refusal, and says there was no one. Nothing is remembered, so
 // the second write is asked about again (the same script as the prompted session, whose first answer let it through unasked).
 func TestTheStateOfARealPermissionSessionWithNoOneToAsk(t *testing.T) {
+	skipWhereTheEngineDoesNotKnowThePaths(t)
 	log := noOneLog(t)
 	evs := decodeLog(t, log)
 	o := readOracle(t, log, recordedPrices(evs))

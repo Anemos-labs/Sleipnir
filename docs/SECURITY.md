@@ -166,8 +166,14 @@ tools). Keep `os.TempDir()` writable inside the sandbox, or `cd` stops persistin
   visible to commands. Real mitigations are `sandbox-exec` through `Wrap` (deprecated by Apple, still works; not tested here), a
   container or VM, and short-lived, narrowly scoped keys.
 * **Windows.** No hardening of the harness process at all. The shell is PowerShell or `cmd`, and the permission engine's shell
-  analysis is written for POSIX syntax, so its verdicts on those command lines are not reliable. There is no tested wrapper: run
-  the harness inside WSL2 (then it is Linux) or a container.
+  analysis is written for POSIX syntax, so its verdicts on those command lines are not reliable. Its *paths* are POSIX too: it
+  writes and matches them with slashes and resolves symlinks from `/`, so on Windows it takes every path, the project's own
+  included, for one outside the workspace, and matches no credential directory (`~\.ssh`, `~\.aws`). In the default mode every read
+  asks, in plan mode a scout cannot read at all, and the bypass mode does not keep the promise made above (no mode overrides a
+  protected path). The first Windows run of CI showed it (the sessions that three tests of `internal/tui/state` record do not do what
+  their script says there, and the tests skip with this reason). Porting it is one path representation inside `internal/perm` and a
+  conversion wherever it touches the file system; until then there is no tested wrapper: run the harness inside WSL2 (then it is
+  Linux) or a container.
 * **Everywhere.** A same-user process can read what the user can read. The harness cannot change that; sandboxing does.
 
 ## 5. Reading the code
