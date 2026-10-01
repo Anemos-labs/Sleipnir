@@ -96,14 +96,14 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 	ask.ed = chatEditor(t, k, cols, "", goldenCommands)
 	ask.status = statusView{kind: statusAsking, elapsed: 20 * time.Second}
 	req := perm.Request{Agent: "main", Tool: "bash", Command: "go test -race ./...", Summary: "run a command [not on the allow list]"}
-	title, body := k.requestBody(req, nil, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj")
+	title, body := k.requestBody(req, nil, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj", "")
 	opts, _ := dialogOptions(req)
 	ask.dlg = &dialogView{title: title, body: body, options: opts, armed: true}
 
 	askEdit := ask
 	call := &toolRun{name: "edit", input: mustJSON(map[string]any{"path": "/work/proj/orders/list.go", "old_string": "offset := page * size", "new_string": "offset := (page - 1) * size"})}
 	req = perm.Request{Agent: "main", Tool: "edit", Paths: []string{"/work/proj/orders/list.go"}, Summary: "edit orders/list.go [outside the allow list]"}
-	title, body = k.requestBody(req, call, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj")
+	title, body = k.requestBody(req, call, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj", "")
 	opts, _ = dialogOptions(req)
 	askEdit.dlg = &dialogView{title: title, body: body, options: opts, sel: 1, armed: false}
 
@@ -111,7 +111,7 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 	req = perm.Request{Tool: perm.ToolProjectTrust, Cwd: "/work/proj", Risk: perm.RiskHigh, Summary: "use this project's own instructions and settings?\n" +
 		"AGENTS.md: instructions, 1.3 KB\n.sleipnir/config.json: settings, 212 B\n.claude/skills/ (3 files): skills, 4.1 KB\n\n" +
 		"These are added to every prompt and can start tool servers and run hooks. The repository's code is not covered by the answer. [changed since you trusted it: AGENTS.md changed]"}
-	title, body = k.requestBody(req, nil, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj")
+	title, body = k.requestBody(req, nil, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj", "")
 	opts, _ = dialogOptions(req)
 	askTrust.dlg = &dialogView{title: title, body: body, options: opts, armed: true}
 

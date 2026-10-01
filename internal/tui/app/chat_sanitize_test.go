@@ -66,7 +66,7 @@ func blocksOf(k *chatLook, h string, w int) map[string][]cell.Line {
 	for _, tool := range []string{"bash", "edit", "write", "apply_patch", "web_fetch", "mcp-server", h} {
 		req := perm.Request{Agent: h, Tool: tool, Command: h, Summary: h + " [" + h + "]", Paths: []string{h}, Cwd: h}
 		call := &toolRun{name: tool, input: in}
-		title, body := k.requestBody(req, call, max(w-4, 1), h)
+		title, body := k.requestBody(req, call, max(w-4, 1), h, "")
 		out["question/"+tool+" title"] = []cell.Line{cell.Text(title)}
 		out["question/"+tool] = body
 		opts, _ := dialogOptions(req)

@@ -1232,6 +1232,9 @@ func (m *chatModel) stepFolds() {
 func (m *chatModel) ask(q *question) {
 	opts, kind := dialogOptions(q.req)
 	d := &dialog{q: q, opts: opts, kind: kind, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
+	if strings.EqualFold(q.req.Tool, "write") {
+		d.current = currentText(q.req.Paths)
+	}
 	m.dialogs = append(m.dialogs, d)
 	if m.c.Bell != nil {
 		m.c.Bell()
@@ -1242,7 +1245,7 @@ func (m *chatModel) ask(q *question) {
 	}
 	// A request that is too tall for the live region is written into the scrollback whole, so that what was approved is on record
 	// and can be read; the dialog shows its beginning and its end.
-	title, body := m.k.requestBody(q.req, m.callOf(q.req), widget.BoxInnerWidth(m.cols, widget.BoxHardWrap()), m.info.Cwd)
+	title, body := m.k.requestBody(q.req, m.callOf(q.req), widget.BoxInnerWidth(m.cols, widget.BoxHardWrap()), m.info.Cwd, d.current)
 	if _, cut := m.k.fitBody(body, m.dialogRows()); cut > 0 {
 		m.syncStream()
 		rec := []cell.Line{cell.Styled(m.k.st.warn, m.k.g.ask+" "+title+": needs your answer")}
@@ -1382,7 +1385,7 @@ func (m *chatModel) queueTexts() []string {
 }
 
 func (m *chatModel) dialogView(d *dialog) *dialogView {
-	title, body := m.k.requestBody(d.q.req, m.callOf(d.q.req), widget.BoxInnerWidth(m.cols, widget.BoxHardWrap()), m.info.Cwd)
+	title, body := m.k.requestBody(d.q.req, m.callOf(d.q.req), widget.BoxInnerWidth(m.cols, widget.BoxHardWrap()), m.info.Cwd, d.current)
 	body, _ = m.k.fitBody(body, m.dialogRows())
 	return &dialogView{title: title, body: body, options: d.opts, sel: d.sel, armed: d.armed(m.clock()), more: len(m.dialogs) - 1}
 }

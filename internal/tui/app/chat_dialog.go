@@ -41,7 +41,8 @@ type dialog struct {
 	kind    dialogKind
 	title   string
 	body    []cell.Line
-	width   int // the width body was laid out for
+	width   int    // the width body was laid out for
+	current string // what the file of a write holds as the question appears: what the preview is a change of
 }
 
 // defaultAnswerAfter is the pause before a question takes an answer from the keyboard.
@@ -155,7 +156,7 @@ func (d *dialog) choose(k input.Key) (idx int, chosen bool) {
 //
 // call is the tool call the question is about, when the program has seen it start: the file tools do not send their arguments with
 // the question, so what an edit would change is read from the call.
-func (k *chatLook) requestBody(r perm.Request, call *toolRun, inner int, cwd string) (title string, body []cell.Line) {
+func (k *chatLook) requestBody(r perm.Request, call *toolRun, inner int, cwd, current string) (title string, body []cell.Line) {
 	what, why := splitWhy(r.Summary)
 	tool := strings.ToLower(r.Tool)
 	switch {
@@ -206,7 +207,7 @@ func (k *chatLook) requestBody(r perm.Request, call *toolRun, inner int, cwd str
 		}
 	case tool == "edit" || tool == "write" || tool == "apply_patch":
 		title = map[string]string{"edit": "Edit a file", "write": "Write a file", "apply_patch": "Apply a patch"}[tool]
-		body = k.changeBody(tool, r, call, inner, cwd)
+		body = k.changeBody(tool, r, call, inner, cwd, current)
 	case tool == "web_fetch":
 		title = "Fetch a page"
 		body = plainBody(what)
@@ -260,7 +261,7 @@ const (
 )
 
 // changeBody shows what a file tool is about to do: the path, then the change as a diff where the call says what it is.
-func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner int, cwd string) []cell.Line {
+func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner int, cwd, current string) []cell.Line {
 	path := ""
 	if len(r.Paths) > 0 {
 		path = relPath(cwd, clean(r.Paths[0]))
@@ -302,7 +303,7 @@ func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner 
 		}
 	case "write":
 		if content, ok := stringField(call.input, "content"); ok {
-			body = append(body, widget.Diff("", currentText(r.Paths), content, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: approvalDiffRows})...)
+			body = append(body, widget.Diff("", current, content, inner, k.Theme, widget.DiffOptions{NoHeader: true, NoLineNumbers: true, MaxLines: approvalDiffRows})...)
 		}
 	case "apply_patch":
 		if patch, ok := stringField(call.input, "patch"); ok {
