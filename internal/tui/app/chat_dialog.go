@@ -67,6 +67,20 @@ func dialogOptions(r perm.Request) (opts []widget.DialogOption, mcp bool) {
 	}, false
 }
 
+// AnswerFor is what a key decides when it is pressed at the dialog of a question: the digits 1 to 3 are the dialog's options (yes; yes
+// and do not ask again for this exact request this session; no), in the order the dialog lists them, and any other key decides nothing
+// (ok is false): there is no letter that answers. It is the dialog's own table. The recording of a chat (sleipnir chat-record) answers
+// the questions of its session with it, so that what the session was told is what the dialog would have told it, and the player
+// of the recording (PlayChat) checks that the program, given the same key, decides the same.
+func AnswerFor(r perm.Request, k input.Key) (dec perm.Decision, ok bool) {
+	opts, mcp := dialogOptions(r)
+	if !isChoice(k, len(opts)) {
+		return perm.Decision{}, false
+	}
+	d := &dialog{mcp: mcp}
+	return d.decision(int(k.R - '1')), true
+}
+
 // decision is the answer option i stands for.
 func (d *dialog) decision(i int) perm.Decision {
 	switch {
