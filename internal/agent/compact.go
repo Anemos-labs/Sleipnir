@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider"
@@ -179,6 +180,18 @@ func (a *Agent) overWindow(st kv.State) bool {
 	return st.ContextWindow > 0 && float64(st.PromptTokens) >= 0.85*float64(st.ContextWindow)
 }
 
+// stackPrefixTokens is the size of the tools and the three stable layers of s.
+func (a *Agent) stackPrefixTokens(s kv.Stack) int {
+	prefix := 0
+	for _, t := range s.Tools {
+		prefix += a.est.Tokens(t.Name) + a.est.Tokens(t.Description) + a.est.Tokens(string(t.InputSchema)) + 8
+	}
+	for _, l := range []*kv.Layer{s.Const, s.Shared, s.RoleL} {
+		prefix += l.Tokens(a.est)
+	}
+	return prefix
+}
+
 // plannerStateLocked measures the agent for the planner, in tokens as sent.
 // Callers hold a.mu.
 func (a *Agent) plannerStateLocked() kv.State {
@@ -187,13 +200,7 @@ func (a *Agent) plannerStateLocked() kv.State {
 	prof := a.cfg.Provider.Profile()
 	caps := a.caps(prof)
 	z := kv.Sizer{Est: a.est, Caps: caps}
-	prefix := 0
-	for _, t := range s.Tools {
-		prefix += a.est.Tokens(t.Name) + a.est.Tokens(t.Description) + a.est.Tokens(string(t.InputSchema)) + 8
-	}
-	for _, l := range []*kv.Layer{s.Const, s.Shared, s.RoleL} {
-		prefix += l.Tokens(a.est)
-	}
+	prefix := a.stackPrefixTokens(s)
 	notes, spine := s.Notes.Tokens(a.est), s.Spine.Tokens(a.est)
 	thread := z.Turns(s.Thread.Turns)
 	w := a.cfg.Model.Price.Weights()
@@ -339,7 +346,8 @@ func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*rea
 // /compact): they are typed by the person driving the agent, so they may steer the
 // compactor, unlike text the agent found in tool output.
 func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus string) (*readyPatch, error) {
-	prof := a.cfg.Provider.Profile()
+	prov, model := a.compactorFor(snap)
+	prof := prov.Profile()
 	pol := a.applyPolicy()
 	instr := kv.Instruction(&snap, a.est, pol)
 	if focus = strings.TrimSpace(focus); focus != "" {
@@ -363,10 +371,10 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	snapLive := z.Turns(snap.Thread.Turns)
 	rp := &readyPatch{epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, snapLive: snapLive}
 	var patch *kv.Patch
-	resp, err := a.call(ctx, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil)
+	resp, err := a.callOn(ctx, prov, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil)
 	if err == nil {
-		a.account(resp, label)
-		w := a.cfg.Model.Price.Weights()
+		a.account(resp, label, model)
+		w := model.Price.Weights()
 		rp.itc = float64(resp.Usage.InputTokens) + w.Read*float64(resp.Usage.CacheReadTokens) +
 			w.Write5m*float64(resp.Usage.CacheWriteTokens()) + float64(resp.Usage.OutputTokens)*w.Output
 		// Only what the model said, never its reasoning: a thinking block that
@@ -411,9 +419,23 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	return rp, nil
 }
 
+// compactorFor picks who writes the patch for snap: the session's compactor model while the thread fits its
+// window with room for the answer, else the agent's own.
+func (a *Agent) compactorFor(snap kv.Stack) (provider.Provider, cost.Model) {
+	c := a.cfg.Compactor
+	if c == nil {
+		return a.cfg.Provider, a.cfg.Model
+	}
+	z := kv.Sizer{Est: a.est, Caps: a.caps(c.Profile())}
+	if w := a.cfg.CompactorModel.ContextTokens; w > 0 && z.Turns(snap.Thread.Turns)+a.stackPrefixTokens(snap) < w*3/4 {
+		return c, a.cfg.CompactorModel
+	}
+	return a.cfg.Provider, a.cfg.Model
+}
+
 // account books a side request (compactor, curator) against the agent.
-func (a *Agent) account(resp *provider.Response, label string) {
-	usd := a.cfg.Model.Price.USD(resp.Usage)
+func (a *Agent) account(resp *provider.Response, label string, model cost.Model) {
+	usd := model.Price.USD(resp.Usage)
 	if resp.CostUSD != nil {
 		usd = *resp.CostUSD
 	}

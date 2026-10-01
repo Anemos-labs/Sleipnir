@@ -493,6 +493,11 @@ func retryDelay(attempt int, pe *provider.Error, waited, patience time.Duration)
 
 // call performs a provider request with retry and rate-limit gating.
 func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
+	return a.callOn(ctx, a.cfg.Provider, req, prio, on)
+}
+
+// callOn is call on a named provider: the compactor's, when the session gives it a model of its own.
+func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
 	var last error
 	var waited time.Duration // how long the outage has been waited out, for OutagePatience
 	for attempt := 0; ; attempt++ {
@@ -500,7 +505,7 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 		if err != nil {
 			return nil, err
 		}
-		resp, err := a.cfg.Provider.Do(ctx, req, on)
+		resp, err := prov.Do(ctx, req, on)
 		if resp != nil {
 			rel(&resp.Usage, err)
 		} else {

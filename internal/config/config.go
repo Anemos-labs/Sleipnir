@@ -156,6 +156,8 @@ type Models struct {
 	Default string `json:"default,omitempty"`
 	// Roles maps a role name to "provider/model".
 	Roles map[string]string `json:"roles,omitempty"`
+	// Favorites are "provider/model" references the model listing (`sleipnir models`) puts first.
+	Favorites []string `json:"favorites,omitempty"`
 }
 
 // Permissions configures the permission engine.

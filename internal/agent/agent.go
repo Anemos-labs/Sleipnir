@@ -112,7 +112,13 @@ type Config struct {
 	Model cost.Model
 
 	Provider provider.Provider
-	Tools    *tools.Registry
+	// Compactor, when set, writes the compaction patches in place of Provider (a cheaper model
+	// for the summaries). It pays full price for the thread it reads, since it shares no cache with
+	// the agent, so it is used only while the thread fits CompactorModel's window; past that the
+	// agent's own model compacts.
+	Compactor      provider.Provider
+	CompactorModel cost.Model
+	Tools          *tools.Registry
 	// ToolSpecs is the frozen, sorted tool list every agent in the session sends.
 	ToolSpecs []core.ToolSpec
 

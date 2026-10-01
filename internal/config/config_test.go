@@ -107,7 +107,7 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 		"Cache":       {"shared_ttl", "min_layer_for_breakpoint", "compact_threshold_tokens", "thread_soft_limit_tokens", "hot_max_tokens", "affinity_shards"},
 		"Swarm":       {"max_agents", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "budget_usd"},
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts"},
-		"Models":      {"default", "roles"},
+		"Models":      {"default", "roles", "favorites"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles"},
 		"Provider":    {"dialect", "base_url", "api_key_env", "headers", "options", "allow_hosts", "allow_insecure_http"},
 		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "hooks", "mcp"},

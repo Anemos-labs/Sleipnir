@@ -140,6 +140,9 @@ func DefaultConfig() Config {
 type Deps struct {
 	Provider provider.Provider
 	Model    cost.Model
+	// Compactor and CompactorModel are agent.Config's, for every agent.
+	Compactor      provider.Provider
+	CompactorModel cost.Model
 	// OutagePatience is agent.Config.OutagePatience for every agent of the swarm.
 	OutagePatience time.Duration
 	Registry       *tools.Registry

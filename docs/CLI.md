@@ -560,17 +560,32 @@ never trusted here.
 
 <!-- flags: models -->
 ```text
-Usage of models:
+usage: sleipnir models [words...] [flags]
+       sleipnir models fav [add|rm] provider/model...
+
+Lists the models of every provider whose key is set (and Heimdall), as references that --model takes. Each word narrows the
+search (all must appear, any case). Favorites, marked *, come first.
+
   -all
         include non-chat models
   -api-key-env string
         environment variable holding the API key
   -base-url string
         API base URL (overrides the provider default)
+  -fav
+        only favorites
   -filter string
-        only ids containing this text
+        only ids containing this text (same as a word)
+  -max-price float
+        only models with an output price of at most this many dollars per million tokens
+  -min-context string
+        only models with at least this context window (128k, 1m)
   -provider string
         heimdall | openrouter | openai | custom (default: auto-detect)
+  -reasoning
+        only models with configurable reasoning
+  -tools
+        only models that accept tools
 ```
 <!-- /flags -->
 

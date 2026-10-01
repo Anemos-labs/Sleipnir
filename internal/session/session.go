@@ -686,8 +686,12 @@ func (s *Session) build(ctx context.Context) error {
 		s.Registry, s.Specs = reg, specs
 		s.budget = o.BudgetUSD
 		role := soloRole()
+		comp, compModel, err := s.buildCompactor(ctx, o)
+		if err != nil {
+			return err
+		}
 		a, err := agent.New(agent.Config{
-			ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Tools: reg, ToolSpecs: specs,
+			ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, Tools: reg, ToolSpecs: specs,
 			Const: constLayer, Shared: shared, RoleL: role.Layer(),
 			Params: params, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
 			Guard: writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
@@ -740,8 +744,12 @@ func (s *Session) build(ctx context.Context) error {
 	sc.HoldManager, sc.WakeManager = !o.Interactive, o.Interactive
 	sc.Mailman = s.mailmanOn()
 
+	comp, compModel, err := s.buildCompactor(ctx, o)
+	if err != nil {
+		return err
+	}
 	deps := swarm.Deps{
-		Provider: s.Provider, Model: s.Model, Registry: reg,
+		Provider: s.Provider, Model: s.Model, Compactor: comp, CompactorModel: compModel, Registry: reg,
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
@@ -755,6 +763,9 @@ func (s *Session) build(ctx context.Context) error {
 		}
 		deps.RoleModels = map[string]swarm.RoleModel{}
 		for role, ref := range o.RoleModels {
+			if role == CompactorRole {
+				continue
+			}
 			mr, err := ResolveModel(s.cfg, ref)
 			if err != nil {
 				return fmt.Errorf("role model %s=%s: %w", role, ref, err)
@@ -798,7 +809,7 @@ func (s *Session) build(ctx context.Context) error {
 		sort.Strings(names)
 		for _, role := range names {
 			ref := s.cfg.Models.Roles[role]
-			if _, set := deps.RoleModels[role]; set || ref == "" {
+			if _, set := deps.RoleModels[role]; set || ref == "" || role == CompactorRole {
 				continue
 			}
 			mr, err := ResolveModel(s.cfg, ref)
@@ -842,12 +853,37 @@ func checkSwarmSize(cfg *config.Config, o Options) error {
 	return fmt.Errorf("swarm: %d agents requested (a manager and %d workers) but swarm.max_agents caps a session at %d; raise swarm.max_agents or ask for fewer workers", o.MaxAgents, o.MaxAgents-1, ceil)
 }
 
+// CompactorRole is the name under which models.roles and --role-model give the model that writes the
+// compaction summaries. It is not a swarm role (no agent has it), so it is handled apart from the others.
+const CompactorRole = "compactor"
+
+// buildCompactor builds the model named for the compactor (--role-model compactor=M, else models.roles.compactor),
+// or nothing when none is named, in which case every agent compacts on its own model and its own cache.
+func (s *Session) buildCompactor(ctx context.Context, o Options) (provider.Provider, cost.Model, error) {
+	ref := o.RoleModels[CompactorRole]
+	if ref == "" {
+		ref = s.cfg.Models.Roles[CompactorRole]
+	}
+	if ref == "" {
+		return nil, cost.Model{}, nil
+	}
+	mr, err := ResolveModel(s.cfg, ref)
+	if err != nil {
+		return nil, cost.Model{}, fmt.Errorf("compactor model %s: %w", ref, err)
+	}
+	p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: o.CaptureTokens})
+	if err != nil {
+		return nil, cost.Model{}, fmt.Errorf("compactor model %s: %w", ref, err)
+	}
+	return p, s.describe(ctx, p, m), nil
+}
+
 // checkRoleModels refuses a role model override for a role the session does not have:
 // it would never apply, and the person would believe a worker ran on the model they
 // named. (models.roles in the configuration is not checked this way: a file may serve
 // projects whose roles differ.)
 func (s *Session) checkRoleModels(overrides map[string]string) error {
-	known := map[string]bool{}
+	known := map[string]bool{CompactorRole: true}
 	for name := range s.ext.roles {
 		known[name] = true
 	}

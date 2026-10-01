@@ -12,11 +12,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sort"
-	"strings"
 	"sync"
 	"syscall"
-	"text/tabwriter"
 	"time"
 
 	"golang.org/x/term"
@@ -24,7 +21,6 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/provider"
-	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/provider/probe"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -293,66 +289,6 @@ func envLabel(s providerSpec) string {
 		return "none"
 	}
 	return "$" + s.keyEnv
-}
-
-func cmdModels(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("models", flag.ExitOnError)
-	pf := addProviderFlags(fs)
-	all := fs.Bool("all", false, "include non-chat models")
-	filter := fs.String("filter", "", "only ids containing this text")
-	fs.Parse(args)
-	baseURL := ""
-	if pf.baseURL != "" {
-		baseURL = pf.baseURL
-	} else {
-		cfg, _, cerr := config.Load(config.LoadOpts{UntrustedProject: true})
-		if cerr != nil {
-			return cerr
-		}
-		name := strings.ToLower(pf.provider)
-		if name == "" {
-			if d, derr := session.DefaultProvider(cfg); derr == nil {
-				name = d
-			} else {
-				name = "heimdall" // the catalogue is public
-			}
-		}
-		b, _, ok := session.ProviderInfo(cfg, name)
-		if !ok || b == "" {
-			return fmt.Errorf("models: unknown provider %q", name)
-		}
-		baseURL = b
-	}
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	entries, err := gateway.Fetch(cctx, &http.Client{Timeout: 30 * time.Second}, baseURL)
-	if err != nil {
-		return err
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Model.ID < entries[j].Model.ID })
-	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "MODEL\tCONTEXT\t$/M IN\t$/M CACHED\t$/M OUT\tTOOLS\tREASONING")
-	for _, e := range entries {
-		if !*all && !e.IsChat() {
-			continue
-		}
-		if *filter != "" && !strings.Contains(e.Model.ID, *filter) {
-			continue
-		}
-		p := e.Model.Price
-		fmt.Fprintf(tw, "%s\t%s\t%.4f\t%.4f\t%.4f\t%v\t%v\n", e.Model.ID, human(e.Model.ContextTokens), p.InputPerM, p.CacheReadPerM, p.OutputPerM, e.SupportsTools(), e.SupportsReasoning())
-	}
-	return tw.Flush()
-}
-
-func human(n int) string {
-	switch {
-	case n >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(n)/1e6)
-	case n >= 1000:
-		return fmt.Sprintf("%dk", n/1000)
-	}
-	return fmt.Sprint(n)
 }
 
 func cmdMock(ctx context.Context, args []string) error {

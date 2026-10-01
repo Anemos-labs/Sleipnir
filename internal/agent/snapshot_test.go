@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
 )
 
 func workLoop(steps int) mock.Responder {
@@ -236,5 +239,65 @@ func TestCompactNowOnAFreshAgentSaysThereIsNothingToFold(t *testing.T) {
 	rep, err := r.agent.CompactNow(context.Background(), "")
 	if err != nil || rep.Mode != "none" {
 		t.Fatalf("%+v %v", rep, err)
+	}
+}
+
+// A compactor model of its own writes the summary: the agent's endpoint sees no compactor request, the other
+// one sees exactly one, and the cost of it is booked at the compactor model's price. A thread that does not fit
+// the compactor's window is compacted by the agent's own model instead.
+func TestACompactorModelWritesTheSummaryWhileTheThreadFitsItsWindow(t *testing.T) {
+	var mu sync.Mutex
+	var compactorCalls int
+	csrv := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		compactorCalls++
+		mu.Unlock()
+		n := 0
+		for _, m := range c.Messages {
+			if m.Role == "assistant" {
+				n++
+			}
+		}
+		return mock.Reply{Text: compactorPatch(2*n - 3)(c)}
+	})
+	ts := csrv.Start()
+	t.Cleanup(ts.Close)
+	prof := openaichat.DefaultProfile("compactor", ts.URL)
+	cclient := openaichat.New(openaichat.Config{Name: "compactor", BaseURL: ts.URL, Profile: &prof})
+
+	run := func(window int) (mainCompactions int, compactions int) {
+		mu.Lock()
+		compactorCalls = 0
+		mu.Unlock()
+		cm := cost.Fallback("small-compactor")
+		cm.ContextTokens = window
+		pl := kv.DefaultPlanner()
+		pl.SoftThreadTokens, pl.HardThreadTokens = 1_000_000, 2_000_000
+		var own int
+		r := newRig(t, rigOpts{planner: pl, compactor: cclient, compactorModel: cm}, scriptedWork(8, func(c *mock.Call) string {
+			own++
+			n := 0
+			for _, m := range c.Messages {
+				if m.Role == "assistant" {
+					n++
+				}
+			}
+			return compactorPatch(2*n - 3)(c)
+		}))
+		if _, err := r.agent.Run(context.Background(), "build everything"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.agent.CompactNow(context.Background(), ""); err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return own, compactorCalls
+	}
+	if own, theirs := run(200_000); own != 0 || theirs != 1 {
+		t.Errorf("a thread that fits the compactor's window: the agent's own model compacted %d times, the compactor %d (want 0 and 1)", own, theirs)
+	}
+	if own, theirs := run(1_000); own != 1 || theirs != 0 {
+		t.Errorf("a thread too big for the compactor's window: own %d, compactor %d (want 1 and 0)", own, theirs)
 	}
 }

@@ -98,6 +98,9 @@ func providerNames(cfg *config.Config) []string {
 	return out
 }
 
+// ProviderNames lists the configured and built-in providers, sorted.
+func ProviderNames(cfg *config.Config) []string { return providerNames(cfg) }
+
 func lookupProvider(cfg *config.Config, name string) (config.Provider, bool) {
 	b, isBuiltin := builtinProviders[name]
 	if cfg != nil {

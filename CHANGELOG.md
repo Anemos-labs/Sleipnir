@@ -82,6 +82,11 @@ The first release.
 
 ### Providers
 
+- Built in beside Heimdall, OpenRouter and OpenAI: Anthropic, the open-weight hosts Together, Fireworks, Groq, Cerebras and DeepInfra
+  (each needs only its key variable), and the local servers Ollama, LM Studio, llama.cpp and vLLM (no key: `ollama/qwen3:8b`).
+  A marketplace id that starts with `openai/` or `anthropic/` goes to your default provider when that vendor's own key is not set.
+- A model of its own for the compaction summaries: `models.roles.compactor` or `--role-model compactor=M`. It is used while the
+  thread fits its window and falls back to the agent's own model otherwise.
 - OpenAI-style chat completions (OpenAI, marketplaces such as Heimdall and OpenRouter, vLLM, SGLang), with reasoning
   replay, optional token-id capture, and exact gateway costs.
 - Native Anthropic Messages adapter with explicit cache breakpoints and per-gateway limits declared as options.
