@@ -160,10 +160,13 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   swarm that has shut down is refused to the sender (`mail.drop` is logged; the sender's rate budget is returned). An
   idle worker is woken by mail; the manager queues it for its next turn.
 * **A bound on peer wakes.** Each wake is a whole run, so two workers answering each other would keep each other
-  running for as long as the budget lasts. Peer mail may wake one worker at most 40 times for its current task
+  running for as long as the budget lasts. Peer mail may start at most 40 runs of one worker for its current task
   (`Config.MaxMailWakes`); past that the mail is still delivered and waits in the inbox, a `swarm.wake_limit` event is
   logged, and the manager is told once. A new task starts the count again. The manager's own mail and the harness's never
-  count.
+  count. A run counts whether the mail found the worker idle or was left waiting by a run that ended (mail that came in
+  while the worker ran, or as it finished): the harness knows who wrote what is still unread, and restarts a worker for the
+  manager's or its own mail without the bound, for another worker's only within it. Held mail is read by the next run of any
+  cause.
 * **Bounded inbox.** An agent's inbox holds at most 12 waiting messages; further mail is coalesced per sender and kind
   into one digest that goes in when the inbox has drained, so a manager between turns cannot be buried.
 * **Optional mailman mode** (`swarm.mailman`, `--mailman`, default off): worker mail takes a detour that pays off when many

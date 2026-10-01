@@ -52,6 +52,7 @@ func TestTheSameTeamWithoutIsolationStillWorks(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer s.Close()
+			sc.watch(s, nil)
 			res, err := s.Run(context.Background(), "add three files")
 			if err != nil {
 				t.Fatal(err)
@@ -109,6 +110,7 @@ func TestCommitOptionCommitsTheVerifiedResultOntoTheBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	sc.watch(s, sink)
 	if _, err := s.Run(context.Background(), "add three files"); err != nil {
 		t.Fatal(err)
 	}

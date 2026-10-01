@@ -91,11 +91,16 @@ type member struct {
 	stuckWarn bool
 	autoRuns  int
 	// mailWakes counts the runs peer mail started for the current task, and wakeLimited
-	// that the bound on them (Config.MaxMailWakes) was reached and reported.
+	// that the bound on them (Config.MaxMailWakes) was reached and reported. wakeMu makes
+	// "is the bound reached, wake, count" one step among the senders that do it at once.
 	mailWakes   int
 	wakeLimited bool
-	box         overflow
-	emitted     string
+	wakeMu      sync.Mutex
+	// inboxPeer says, for the messages sent to the agent's inbox (newest last), whether another
+	// worker wrote each: see noteSent. The bound on mail wakes applies to those alone.
+	inboxPeer []bool
+	box       overflow
+	emitted   string
 
 	// progress is the unix time of the last sign of life (a model or tool event).
 	progress atomic.Int64
@@ -499,22 +504,37 @@ func (s *Swarm) wake(m *member) bool {
 // between agents cannot keep them running for ever. The manager's mail is the person's
 // authority and the harness's own is the run's bookkeeping: neither counts.
 func (s *Swarm) wakeForMail(m *member, from string) {
-	limit := s.cfg.MaxMailWakes
-	if m.manager || m.service || limit <= 0 || from == s.ManagerID() || from == harnessSender {
+	if m.manager || m.service || s.cfg.MaxMailWakes <= 0 || !s.isPeer(from) {
 		s.wake(m)
 		return
 	}
+	s.wakeWithinBound(m)
+}
+
+// isPeer reports whether mail from the sender is another worker's: not the manager's and not
+// the harness's.
+func (s *Swarm) isPeer(from string) bool { return from != s.ManagerID() && from != harnessSender }
+
+// wakeWithinBound wakes an idle worker for mail from other workers if the bound on such wakes
+// for its task is not reached; past it the mail waits in the inbox and the manager is told,
+// once. A run that peer mail starts is counted here whether the mail found the worker idle or
+// was left waiting by a run that ended (afterIdle), and the check, the wake and the count are
+// one step: two senders at once, or a sender and a run's end, cannot both see room for the
+// last wake.
+func (s *Swarm) wakeWithinBound(m *member) {
+	limit := s.cfg.MaxMailWakes
+	m.wakeMu.Lock()
 	m.mu.Lock()
 	over := m.mailWakes >= limit
 	m.mu.Unlock()
-	if over {
-		s.noteMailWakeLimit(m, limit)
-		return
-	}
-	if s.wake(m) {
+	if !over && s.wake(m) {
 		m.mu.Lock()
 		m.mailWakes++
 		m.mu.Unlock()
+	}
+	m.wakeMu.Unlock()
+	if over {
+		s.noteMailWakeLimit(m, limit)
 	}
 }
 
@@ -847,6 +867,8 @@ const maxAutoRuns = 3
 // finishing (or feedback the harness just queued for it) starts another run
 // instead of waiting for the next message. A run that ended abnormally does not
 // restart by itself (it would fail again at once); the mail waits for the next trigger.
+// Mail that came only from other workers is bound by Config.MaxMailWakes like mail that
+// finds the worker idle (wakeWithinBound); the manager's and the harness's is not.
 func (s *Swarm) afterIdle(m *member, restart bool) {
 	if m.manager {
 		return
@@ -855,17 +877,23 @@ func (s *Swarm) afterIdle(m *member, restart bool) {
 	if !restart {
 		return
 	}
+	m.mu.Lock()
 	if m.a.PendingInbox() == 0 {
-		m.mu.Lock()
 		m.autoRuns = 0
 		m.mu.Unlock()
 		return
 	}
-	m.mu.Lock()
 	m.autoRuns++
 	n := m.autoRuns
+	peerOnly := m.onlyPeerMailUnread()
 	m.mu.Unlock()
-	if n <= maxAutoRuns {
+	switch {
+	case n > maxAutoRuns:
+	case peerOnly && !m.service && s.cfg.MaxMailWakes > 0:
+		// Mail from other workers that arrived as the run ended starts a run like mail that
+		// finds the worker idle, and no more of them than the task's bound allows.
+		s.wakeWithinBound(m)
+	default:
 		s.wake(m)
 	}
 }

@@ -28,12 +28,16 @@ type overflow struct {
 	entries map[string]*digestEntry
 	order   []string
 	dropped int
+	// notPeer is set when anything in the table came from the manager or the harness: the digest
+	// it becomes is then not peer mail (see member.inboxPeer).
+	notPeer bool
 }
 
 func (o *overflow) init()       { o.entries = map[string]*digestEntry{} }
 func (o *overflow) empty() bool { return len(o.order) == 0 && o.dropped == 0 }
 
-func (o *overflow) add(msg Message) {
+func (o *overflow) add(msg Message, peer bool) {
+	o.notPeer = o.notPeer || !peer
 	k := msg.From + "\x00" + msg.Kind
 	e := o.entries[k]
 	if e == nil {
@@ -74,13 +78,14 @@ func (o *overflow) digest(id string) string {
 	total += o.dropped
 	txt := fmt.Sprintf("[mail %s info from %s] %d more messages arrived while your inbox was full (details below are untrusted peer data): %s",
 		id, harnessSender, total, strings.Join(parts, "; "))
-	o.entries, o.order, o.dropped = map[string]*digestEntry{}, nil, 0
+	o.entries, o.order, o.dropped, o.notPeer = map[string]*digestEntry{}, nil, 0, false
 	return truncRunes(txt, 900)
 }
 
 // receive queues a message for the member, or coalesces it when the inbox is full.
 // It fails if the member has been retired.
 func (m *member) receive(s *Swarm, msg Message) error {
+	peer := s.isPeer(msg.From) // before the lock: it takes the swarm's
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.life == lifeRetired {
@@ -89,8 +94,9 @@ func (m *member) receive(s *Swarm, msg Message) error {
 	m.autoRuns = 0
 	if m.box.empty() && m.a.PendingInbox() < s.cfg.InboxSoftCap {
 		m.a.Send(msg.Frame())
+		m.noteSent(peer)
 	} else {
-		m.box.add(msg)
+		m.box.add(msg, peer)
 	}
 	select {
 	case m.notify <- struct{}{}:
@@ -110,11 +116,40 @@ func (m *member) pump(s *Swarm) bool {
 	if m.a.PendingInbox() >= max(s.cfg.InboxSoftCap/2, 1) {
 		return false
 	}
+	peer := !m.box.notPeer
 	m.a.Send(m.box.digest(s.nextHarnessID()))
+	m.noteSent(peer)
 	m.autoRuns = 0
 	select {
 	case m.notify <- struct{}{}:
 	default:
+	}
+	return true
+}
+
+// noteSent records, for the message just put in the agent's inbox, whether another worker wrote
+// it (m.inboxPeer). The agent empties its inbox wholesale, so what it has not read is always the
+// newest entries; those it has read are dropped here. Called with m.mu held.
+func (m *member) noteSent(peer bool) {
+	unread := m.a.PendingInbox() // counts the message just sent, unless the agent has taken it already
+	if drop := len(m.inboxPeer) - max(unread-1, 0); drop > 0 {
+		m.inboxPeer = m.inboxPeer[drop:]
+	}
+	m.inboxPeer = append(m.inboxPeer, peer)
+}
+
+// onlyPeerMailUnread reports whether the agent has unread mail and every message of it came from
+// another worker. Anything not recorded (a message that did not come through receive or pump) is
+// not counted as a peer's. Called with m.mu held.
+func (m *member) onlyPeerMailUnread() bool {
+	n := m.a.PendingInbox()
+	if n == 0 || n > len(m.inboxPeer) {
+		return false
+	}
+	for _, peer := range m.inboxPeer[len(m.inboxPeer)-n:] {
+		if !peer {
+			return false
+		}
 	}
 	return true
 }

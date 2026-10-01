@@ -6,6 +6,7 @@ package session_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -125,6 +126,7 @@ type isoScript struct {
 	mu       sync.Mutex
 	arrived  map[string]bool
 	gate     chan struct{}
+	diag     func() string       // says where the swarm is, for a barrier that gives up (watch)
 	listing  map[string]string   // agent -> what `ls` and `pwd` showed in its working directory
 	extras   map[string][]string // agent -> what came back for its extra calls
 	firstReq map[string]string
@@ -153,7 +155,44 @@ func (sc *isoScript) barrier(id string) {
 	select {
 	case <-gate:
 	case <-time.After(60 * time.Second):
-		sc.t.Errorf("%s waited for the other workers in vain: %d of %d arrived", id, len(sc.arrived), sc.workers)
+		sc.mu.Lock()
+		arrived, diag := len(sc.arrived), sc.diag
+		sc.mu.Unlock()
+		where := ""
+		if diag != nil {
+			where = "\n" + diag()
+		}
+		sc.t.Errorf("%s waited for the other workers in vain: %d of %d arrived%s", id, arrived, sc.workers, where)
+	}
+}
+
+// watch makes a barrier that gives up say where the swarm was: what each agent was doing, what each task's status was, and what the
+// person had been told. A worker that never arrives is a worker that never started or that stopped early, and the first run on macOS
+// showed that the failure alone does not say which.
+func (sc *isoScript) watch(s *session.Session, n *notices) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.diag = func() string {
+		var sb strings.Builder
+		snap := s.Swarm.Board.Snapshot()
+		sb.WriteString("agents:\n")
+		for _, a := range snap.Agents {
+			fmt.Fprintf(&sb, "  %s (%s) %s on %q: %s\n", a.ID, a.Role, a.State, a.Task, a.Line)
+		}
+		sb.WriteString("tasks:\n")
+		for _, t := range snap.Tasks {
+			fmt.Fprintf(&sb, "  %s %s owner %q attempts %d: %s\n", t.ID, t.Status, t.Owner, t.Attempts, t.Line)
+		}
+		if n != nil {
+			n.mu.Lock()
+			logs := append([]string(nil), n.logs...)
+			n.mu.Unlock()
+			if len(logs) > 40 {
+				logs = logs[len(logs)-40:]
+			}
+			sb.WriteString("what the person was told:\n  " + strings.Join(logs, "\n  "))
+		}
+		return sb.String()
 	}
 }
 
@@ -375,6 +414,7 @@ func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *t
 		t.Fatal(err)
 	}
 	defer s.Close()
+	sc.watch(s, sink)
 
 	res, err := s.Run(context.Background(), "make the seven changes")
 	if err != nil {
