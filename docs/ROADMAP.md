@@ -24,8 +24,8 @@ half), the diff of a write over an existing file, the bell at a question, strict
   A test for a bug must fail on the parent commit (run it there and see). Margins in tests are hang guards, not timings
   (`docs/BUILDING.md`, Tests). No tag, no release and no `LICENSE` without the owner. No credentials in any commit; the benchmark key
   goes in a 0600 file and is passed to the child process only. Do not put model names in commits.
-- **Branches and CI.** Work is on `claude/intelligent-ptolemy-zp1wbt` (the default branch until the owner makes `main` the default,
-  section 3). CI does **not** run on a branch that is not `main`: start `ci.yml` and `nightly.yml` with `workflow_dispatch` and read the
+- **Branches and CI.** Work is on `main`, which exists on the remote (created 2026-10-01 from the tip of the old development branch) and is not yet the default branch (the owner's step 1 in section 3; the
+  old branches `claude/intelligent-ptolemy-zp1wbt`, `claude/sleepy-bohr-mqt46a` and the Dependabot one are to be deleted there: the push proxy of an agent session refuses to delete a branch). CI does **not** run on a branch that is not `main`: start `ci.yml` and `nightly.yml` with `workflow_dispatch` and read the
   jobs (the GitHub MCP tools: `actions_run_trigger`, `actions_list`, `get_job_logs`; there is no `gh`). `ci-gate` is the one required
   check. On 2026-10-01 `workflow_dispatch` of `ci.yml` on `anemos-labs/sleipnir` answered 404 and `list_workflows` found none: GitHub had no workflow registered for the repository (the default branch had none; the owner's step 1 of section 3 comes before CI can be started from here), so the work since the handoff was checked on Linux only, with the whole suite under `-race`. The nightly run (fuzz, the suite three times under `-race` shuffled, a thousand chaos seeds, a twenty-thousand-step soak,
   coverage, `govulncheck`) has found real bugs on its early runs (section 2): read it, and when it fails keep the failing input as a seed.

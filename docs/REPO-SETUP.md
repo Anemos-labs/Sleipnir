@@ -30,15 +30,9 @@ rights applies them once, in the order of section 2. After that GitHub does the 
 ### Step 1. Make `main` the default branch
 
 The workflows trigger on `main`, and `release.yml` starts from a `workflow_run` event, which GitHub only delivers for a
-workflow file on the default branch. The rulesets apply to the default branch. The repository has one branch today
-(`claude/intelligent-ptolemy-zp1wbt`). Either rename it: **Settings > General > Default branch**, the pencil next to the
-branch name, enter `main`. GitHub retargets open pull requests. Or create `main` from its tip and switch:
-
-```sh
-git push origin claude/intelligent-ptolemy-zp1wbt:refs/heads/main
-```
-
-then **Settings > General > Default branch**, the arrows icon, choose `main`, Update. Make sure the tip holds this work
+workflow file on the default branch. The rulesets apply to the default branch. `main` exists (it holds the whole of this work), and the default is still the old development branch (`claude/intelligent-ptolemy-zp1wbt`).
+Switch it: **Settings > General > Default branch**, the arrows icon, choose `main`, Update. Then delete the other branches (**Code > Branches**): the old
+development branch cannot be deleted while it is the default. Make sure the tip holds this work
 (`.github/`, `scripts/`, `internal/repocheck/`) before you do; the required check `ci-gate` has to exist on `main`.
 
 Either way, let `ci` and `codeql` run once on `main` before step 3: a push that creates the branch starts them, a rename
