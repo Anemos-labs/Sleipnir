@@ -199,6 +199,7 @@ The left column is where the truth is written; the right columns are the copy an
 | The drift checks in `scripts/` | `ci.yml` and `scripts/check.sh` | `TestDriftChecksAreWired` | `go test` |
 | The interface code | The recorded demo, when `scripts/record-demo.sh` exists | `scripts/record-demo.sh --check` | lint, nightly |
 | The version of govulncheck | Both workflows that run it | `TestToolVersionsAgree` | `go test` |
+| The `go` line of `go.mod` | The Go version that `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `docs/BUILDING.md` state (the workflows read `go.mod` themselves) | `TestDocumentsStateTheGoVersionOfGoMod` | `go test` |
 
 Versions that only a person can move, because Dependabot cannot see a version inside a command: goreleaser (`release.yml`,
 `version:`), govulncheck and actionlint (`@v...` in `ci.yml`, `nightly.yml`), zizmor (`version:` in `ci.yml`). Bump them on
