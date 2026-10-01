@@ -193,3 +193,36 @@ func TestFailingCommandsThatDifferAreNotALoop(t *testing.T) {
 		t.Fatalf("agent.stuck events for commands that were not repeating: %d, %d", nudges, stops)
 	}
 }
+
+// A failing test run followed by an edit of the test alone reaches the model as a note in the results of that edit, once. An edit of the
+// code instead says nothing.
+func TestEditingOnlyTheTestAfterAFailingRunIsNotedToTheModel(t *testing.T) {
+	for _, tc := range []struct {
+		edit string
+		want bool
+	}{{"cache_test.go", true}, {"cache.go", false}} {
+		failing := fakeTool{name: "bash", run: func(json.RawMessage) *tools.Result {
+			return &tools.Result{Text: "--- FAIL: TestEvict\n[exit code 1]", Meta: map[string]any{"exit_code": 1, "timed_out": false}}
+		}}
+		editor := fakeTool{name: "edit", run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: "edited"} }}
+		var sawNote bool
+		r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{failing, editor}, steps: 10}, func(c *mock.Call) mock.Reply {
+			if strings.Contains(c.LastUser(), "[harness] The last test run failed and you changed only test files") {
+				sawNote = true
+			}
+			switch assistantTurns(c) {
+			case 0:
+				return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "bash", `{"command":"go test ./..."}`)}}
+			case 1:
+				return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "edit", `{"path":"`+tc.edit+`"}`)}}
+			}
+			return mock.Reply{Text: "done"}
+		})
+		if _, err := r.agent.Run(context.Background(), "fix the cache"); err != nil {
+			t.Fatal(err)
+		}
+		if sawNote != tc.want {
+			t.Errorf("editing %s: the model saw the note: %v, want %v", tc.edit, sawNote, tc.want)
+		}
+	}
+}

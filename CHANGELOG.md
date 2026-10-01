@@ -124,6 +124,8 @@ The first release.
 
 ### Tools, permissions and extensions
 
+- A model whose test run fails and that then edits only test files is told once, in the results of that edit, to change a test only when it contradicts
+  the task and otherwise to fix the code (a small model will often rewrite the test to match its bug). The prompt is not touched.
 - File, shell, web and recall tools; every agent sends the same tool list and roles are restricted at run time by the
   permission engine (modes, rules, shell-syntax analysis, role profiles, hard denies for credentials).
 - Skills (listing in the shared layer, loaded on demand), custom slash commands, markdown role definitions, hooks

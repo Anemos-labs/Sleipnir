@@ -302,6 +302,7 @@ type Agent struct {
 	rollValid    bool
 	anomStreak   int
 	rep          repeatGuard // the run's failed calls (see repeat.go); used by run only
+	tests        testGuard   // a failing test run followed by edits to tests only (see testguard.go); used by run only
 
 	// Hot tail persistence (kv.HotPersist).
 	hotFP  string // fingerprint of the newest persisted notice ("" when none)
@@ -609,6 +610,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
 	}
 	a.rep.reset()
+	a.tests.reset()
 	phase := "between" // what a cancellation interrupted, for agent.cancel
 	defer func() {
 		if err := ctx.Err(); err != nil {
@@ -703,6 +705,9 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			blocks = append(blocks, extra...)
 		}
 		note, stuck := a.rep.observeExits(a.cfg.ID, calls, results, exitFailed)
+		if tn := a.tests.observe(calls, exitFailed); tn != "" && note == "" {
+			note = tn
+		}
 		if note != "" && stuck == nil {
 			blocks = append(blocks, core.Text(note))
 			a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "note": note})
