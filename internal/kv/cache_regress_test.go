@@ -1023,13 +1023,57 @@ func TestCacheEcon_RenderMergesAdjacentUserTurnsAtStart(t *testing.T) {
 		t.Fatalf("want one user message, got %d messages", len(r2.Prompt.Messages))
 	}
 	b1, b2 := r1.Prompt.Messages[0].Blocks, r2.Prompt.Messages[0].Blocks
-	if len(b2) != len(b1)+1 || b2[len(b2)-1].Text != "build it (retry)" {
+	if len(b2) != len(b1)+1 || strings.TrimLeft(b2[len(b2)-1].Text, "\n") != "build it (retry)" {
 		t.Fatalf("the second user turn must be appended as a block: %d -> %d blocks", len(b1), len(b2))
 	}
 	for i := range b1 {
 		if b1[i].Text != b2[i].Text {
 			t.Fatalf("block %d changed: the merge must be append-only", i)
 		}
+	}
+}
+
+// Two user messages with nothing between them (the person pressed Ctrl-C while the model was thinking and typed something else) reach the
+// provider as one message, and a chat template that lays the parts of a message end to end ran them together: "fix the parserdo the
+// scanner instead". The second is set off from the first by a blank line, in the text of its own block: the bytes before it are the
+// ones that were sent, and a block of nothing but whitespace is refused by some providers, so the separator is not a block of its own.
+func TestRenderSetsAdjacentUserMessagesApart(t *testing.T) {
+	s := cxStack(t, "be-1", cxSizes{constT: 300, shared: 300})
+	th := NewThread()
+	th.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text("start")}})
+	th.Append(core.Turn{Role: core.RoleAssistant, Blocks: []core.Block{core.Text("started")}})
+	th.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text("fix the parser")}}) // cancelled before an answer
+	r1 := cxRender(s, th, DefaultPolicy())
+	th.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text("do the scanner instead")}})
+	r2 := cxRender(s, th, DefaultPolicy())
+
+	m1, m2 := r1.Prompt.Messages, r2.Prompt.Messages
+	if len(m2) != len(m1) {
+		t.Fatalf("one message more: %d -> %d messages (the two user turns must merge)", len(m1), len(m2))
+	}
+	last1, last2 := m1[len(m1)-1], m2[len(m2)-1]
+	if last2.Role != core.RoleUser || len(last2.Blocks) != len(last1.Blocks)+1 {
+		t.Fatalf("the second turn is a block of the same message: %d -> %d blocks", len(last1.Blocks), len(last2.Blocks))
+	}
+	for i := range last1.Blocks {
+		if last1.Blocks[i].Text != last2.Blocks[i].Text {
+			t.Fatalf("block %d changed: what was sent before must stay as it was sent", i)
+		}
+	}
+	added := last2.Blocks[len(last2.Blocks)-1].Text
+	if added != "\n\ndo the scanner instead" {
+		t.Errorf("the added block is %q: it must start with a blank line and keep the person's words as they were typed", added)
+	}
+	// a turn that follows tool results is not run together with anything: tool results are messages of their own on the wire
+	th2 := NewThread()
+	th2.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text("start")}})
+	th2.Append(core.Turn{Role: core.RoleAssistant, Blocks: []core.Block{core.ToolUse("c1", "bash", []byte(`{"command":"ls"}`))}})
+	th2.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginTool, Blocks: []core.Block{core.ToolResult("c1", false, core.Text("a.go"))}})
+	th2.Append(core.Turn{Role: core.RoleUser, Origin: core.OriginUser, Blocks: []core.Block{core.Text("now the scanner")}})
+	r3 := cxRender(s, th2, DefaultPolicy())
+	m3 := r3.Prompt.Messages
+	if got := m3[len(m3)-1].Blocks; got[len(got)-1].Text != "now the scanner" {
+		t.Errorf("text after a tool result needs no separator, the result is not text: %q", got[len(got)-1].Text)
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 // RendererVersion identifies the prompt layout. Bump it whenever Render would
 // produce different bytes for the same stack, so logged prompts and training data
 // can be tied to the layout the model was actually served with.
-const RendererVersion = "sleipnir-kv/2"
+const RendererVersion = "sleipnir-kv/3"
 
 // RenderOpts are the per-request inputs to Render that are not part of the
 // agent's persistent stack.
@@ -151,7 +151,14 @@ func Render(s *Stack, o RenderOpts) *Rendered {
 			// stray double user turn (a retry after a failed first request, a
 			// retained region that opens with two user turns) must not reach the
 			// provider as two adjacent messages. Appending to the previous message
-			// keeps the render append-only.
+			// keeps the render append-only. When both end and begin in text (a person cancelled a
+			// request and typed another), the second is set off by a blank line, in the text of its
+			// block: chat templates that lay the parts of a message end to end ran the two together,
+			// and a block of nothing but whitespace is refused by some providers. Nothing sent
+			// before changes, and the words keep the bytes they were typed with.
+			if role == core.RoleUser && endsInText(msgs[n-1]) && len(blocks) > 0 && blocks[0].Kind == core.BlockText && blocks[0].Text != "" {
+				blocks[0].Text = "\n\n" + blocks[0].Text
+			}
 			msgs[n-1].Blocks = append(msgs[n-1].Blocks, blocks...)
 			continue
 		}
@@ -197,6 +204,11 @@ func Render(s *Stack, o RenderOpts) *Rendered {
 		}
 	}
 	return &Rendered{Prompt: p, Sections: sections, ThreadFrom: threadFrom, PrefixKey: s.PrefixKey(), Caps: o.Caps, Rolling: rolling}
+}
+
+// endsInText reports whether the last block of a message is text.
+func endsInText(m core.Message) bool {
+	return len(m.Blocks) > 0 && m.Blocks[len(m.Blocks)-1].Kind == core.BlockText
 }
 
 // renderBlocks converts a turn's blocks to wire-ready blocks, dropping thinking

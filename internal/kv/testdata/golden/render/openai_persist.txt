@@ -180,13 +180,19 @@ T-2 [doing] fe-1 · render the page footer
 <<<
 (no output)
 >>>
-@@ message 8 role=user turn=15 clear_at=- blocks=1
-@@ block 8.0 kind=text text_bytes=78
+@@ message 8 role=user turn=15 clear_at=- blocks=2
+@@ block 8.0 kind=text text_bytes=31
 <<<
+wait, leave the page size alone
+>>>
+@@ block 8.1 kind=text text_bytes=80
+<<<
+
+
 [mail m3 from fe-1]
 The footer needs the total count: keep it in the response.
 >>>
 
 == digests (of every non-zero field, whether or not it is printed above)
-model_visible_sha256: 44c236b292d3091eedc33b0b2d765da4ccbffdf834f7d1fd2fbcc881108e6444
-rendered_sha256: 984dfc47861ebf0847f2a6db0a9eb0c7aff8db9ac7761e969d56b0a28a79c47d
+model_visible_sha256: bd59df67f96780a56940bc6c49edb517e752695c14a1f6011310fbcfd6d2e70b
+rendered_sha256: a767da1da47016cd9289454fa9fd1ddc15cddb895098e8d5b78a3e159f5788f3

@@ -21,6 +21,12 @@ The first release.
   and declared rebases.
 - `sleipnir sim`: a policy simulator with printed assumptions, and the rule it found: layering wins when the shared
   pin is dense.
+- Declared layout change `sleipnir-kv/3`: two user messages in a row (a request cancelled while the model was thinking, then another
+  one) still reach the provider as one message, as the providers require, and the second is now set off from the first by a blank line
+  (in the text of its own block: a block of nothing but whitespace is refused by some providers). A chat template that lays the parts
+  of a message end to end ran them together ("fix the parserdo the scanner instead"). No layer G0-G2 changes and nothing that was
+  sent before does, so no session pays for it; only a thread with such a pair renders differently. The canonical session of the render
+  goldens has such a pair now.
 
 ### Swarm
 
@@ -98,6 +104,9 @@ The first release.
 
 ### Sessions
 
+- `sleipnir sessions prune` deletes recorded sessions that are old (`--older-than`, 30 days), except the newest `--keep` (20) and any written
+  to in the last ten minutes, and lists them with their sizes instead unless it is given `--yes`. Nothing deleted a session before, and
+  a benchmark or a daily user has thousands within a year. A directory that has no event log is never touched.
 - Every finished turn saves a snapshot of the agent (thread, notes, spine) in the event log. `sleipnir chat|run --resume
   <id|latest>` (or `--continue`) picks the conversation up where it stopped, in the same session directory and log; the
   first request writes the cached prefix again, once, and says so. Swarm sessions cannot be resumed yet.
