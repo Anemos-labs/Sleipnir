@@ -106,7 +106,9 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
    lease guard → checkpoint → file-state staleness check. Results are truncated with a recall handle.
 8. Loop, or return the final answer. A call that fails the same way (same tool, same arguments, same result) eight
    times among the last twenty calls ends the run with `agent stuck`; the model is told once, in its results turn, at the
-   fourth (`agent.stuck` events). A step limit and a budget are the backstops; this notices that nothing changes.
+   fourth (`agent.stuck` events). Refusals of a run with nobody to ask (`run`, `swarm`, a rollout) count together, whatever was
+   asked, among the last twenty calls: a model that is refused tries another command each time, so no call repeats; it is told
+   at five of the twenty and the run ends at ten. A step limit and a budget are the backstops; this notices that nothing changes.
 
 ## Providers
 

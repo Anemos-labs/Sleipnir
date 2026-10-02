@@ -50,7 +50,7 @@ func TestAskWithoutPrompterDenies(t *testing.T) {
 		t.Errorf("the reason should say what needs approval: %q", d.Reason)
 	}
 	// A run nobody can answer says so: the model then stops looking for another way to the same action.
-	if !strings.Contains(d.Reason, "no one to ask") {
+	if !strings.Contains(d.Reason, "no one to ask") || !IsNoOneToAsk(d.Reason) {
 		t.Errorf("the refusal does not say that nothing can be approved: %q", d.Reason)
 	}
 }
@@ -61,7 +61,7 @@ func TestAskWithAPrompterNeverSaysNoOneCanAnswer(t *testing.T) {
 	rec := &promptRecorder{answer: func(n int, r Request) Decision { return Decision{Allow: false, Reason: "not today"} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
 	d := e.Check(bg, f.request(bash("make")))
-	if d.Allow || strings.Contains(d.Reason, "no one to ask") {
+	if d.Allow || strings.Contains(d.Reason, "no one to ask") || IsNoOneToAsk(d.Reason) {
 		t.Fatalf("got %+v", d)
 	}
 }

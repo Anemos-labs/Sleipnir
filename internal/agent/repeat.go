@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // The repetition guard.
@@ -33,6 +34,14 @@ const (
 	repeatStop   = 8
 )
 
+// Refusals of a run with nobody to ask count together, whatever was asked, among the last repeatWindow calls: a model that is refused and
+// tries another command each time makes no call twice, but every one of them hits the same wall. Five of twenty is told so, once; ten of
+// twenty ends the run. A worker that is refused now and then in a long run of other work never gets there.
+const (
+	refusalNudge = 5
+	refusalStop  = 10
+)
+
 // durationRe finds the durations a command prints ("0.004s", "12ms", "1m3s" as its 1m and 3s).
 var durationRe = regexp.MustCompile(`\b\d+(?:\.\d+)?(?:ns|µs|μs|us|ms|s|m|h)\b`)
 
@@ -41,8 +50,10 @@ var durationRe = regexp.MustCompile(`\b\d+(?:\.\d+)?(?:ns|µs|μs|us|ms|s|m|h)\b
 var ErrStuck = errors.New("agent stuck")
 
 type repeatGuard struct {
-	recent []string // keys of the failed calls among the last repeatWindow calls ("" for a call that did not fail)
-	nudged map[string]bool
+	recent        []string // keys of the failed calls among the last repeatWindow calls ("" for a call that did not fail)
+	nudged        map[string]bool
+	refused       []bool // for the last repeatWindow calls: was it refused by a run with nobody to ask?
+	refusalNudged bool
 }
 
 func (g *repeatGuard) reset() { *g = repeatGuard{} }
@@ -62,6 +73,26 @@ func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, 
 	for i, call := range calls {
 		if i >= len(results) {
 			break
+		}
+		g.refused = append(g.refused, results[i].IsError && perm.IsNoOneToAsk(results[i].PlainText()))
+		if len(g.refused) > repeatWindow {
+			g.refused = g.refused[len(g.refused)-repeatWindow:]
+		}
+		refusals := 0
+		for _, r := range g.refused {
+			if r {
+				refusals++
+			}
+		}
+		switch {
+		case refusals >= refusalStop && stop == nil:
+			stop = fmt.Errorf("agent %s: %w: %d of its last %d actions were refused and this run has no one to ask", agentID, ErrStuck, refusals, len(g.refused))
+		case refusals >= refusalNudge && !g.refusalNudged && note == "":
+			g.refusalNudged = true
+			note = fmt.Sprintf("[harness] %d of your last %d actions were refused, and nobody is here to approve them: another way to the same action "+
+				"(a script, another command, a program that runs it) will be refused too. Finish with what you could check, and say which permission you needed.", refusals, len(g.refused))
+		case refusals < refusalNudge:
+			g.refusalNudged = false // a new burst may be told again
 		}
 		key := ""
 		byExit := i < len(exitFailed) && exitFailed[i] && !results[i].IsError

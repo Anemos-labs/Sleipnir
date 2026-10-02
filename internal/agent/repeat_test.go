@@ -13,6 +13,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -84,6 +85,42 @@ func TestARunThatRepeatsOneFailingCallIsNudgedThenStopped(t *testing.T) {
 				if turn.Role != core.RoleUser || turn.Blocks[0].Kind != core.BlockToolResult {
 					t.Errorf("turn %d: the note is not with the tool results: %+v", i, turn)
 				}
+			}
+		}
+	}
+	if notes != 1 {
+		t.Fatalf("%d notes in the thread, want 1", notes)
+	}
+	if n, s := stuckEvents(r); n != 1 || s != 1 {
+		t.Fatalf("agent.stuck events: %d nudges and %d stops, want 1 and 1", n, s)
+	}
+}
+
+// A model that is refused and has nobody to ask tries another command each time: the refusals count together. It is told at the fifth,
+// once, and the run ends at the tenth with the last results in the thread (glm-5.3-flash made 23 of them in five minutes before this).
+func TestARunWhoseEveryWayIsRefusedIsNudgedThenStopped(t *testing.T) {
+	refusing := fakeTool{name: "bash", run: func(in json.RawMessage) *tools.Result {
+		return tools.Errorf("permission denied: approval required: accept-edits mode: %s%s", in, perm.NoOneToAsk)
+	}}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{refusing}, steps: 100}, func(c *mock.Call) mock.Reply {
+		return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "bash", fmt.Sprintf(`{"command":"go test ./p%d"}`, assistantTurns(c)))}}
+	})
+	res, err := r.agent.Run(context.Background(), "fix it and run the tests")
+	if !errors.Is(err, agent.ErrStuck) || !strings.Contains(err.Error(), "10 of its last 10 actions were refused and this run has no one to ask") {
+		t.Fatalf("err = %v, want ErrStuck after ten refusals", err)
+	}
+	if res.Steps != 10 {
+		t.Fatalf("the run took %d steps, want 10", res.Steps)
+	}
+	snap := r.agent.Thread().Snapshot()
+	if verr := kv.Validate(snap.Turns); verr != nil {
+		t.Fatalf("the thread is not valid after a stop: %v", verr)
+	}
+	notes := 0
+	for _, turn := range snap.Turns {
+		for _, b := range turn.Blocks {
+			if b.Kind == core.BlockText && strings.HasPrefix(b.Text, "[harness] 5 of your last 5 actions were refused") {
+				notes++
 			}
 		}
 	}

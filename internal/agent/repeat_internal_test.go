@@ -2,10 +2,12 @@ package agent
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 func callOf(name, args string) core.Block { return core.ToolUse("id", name, []byte(args)) }
@@ -136,5 +138,86 @@ func TestRepeatGuardIgnoresDurationsOfACommandThatFailed(t *testing.T) {
 		if note, stop := h.observeExits("a", []core.Block{callOf("bash", `{"command":"go test"}`)}, []core.Block{ok("ok")}, []bool{false}); note != "" || stop != nil {
 			t.Fatalf("a command that succeeded was counted: %q %v", note, stop)
 		}
+	}
+}
+
+// refusal is what a run with nobody to ask answers to a command that needs a yes (the ending is perm's own, so that the two cannot drift).
+func refusal(cmd string) core.Block {
+	return failed("permission denied: approval required: accept-edits mode: " + cmd + ": it is not on the read-only list" + perm.NoOneToAsk)
+}
+
+// A model that is refused an action and has nobody to ask tries another command each time, so no call repeats and the loop above never
+// saw it: glm-5.3-flash made 23 refusals in five minutes (go test, go test ./..., a program of its own that runs the tests). Refusals of a
+// run with no one to ask count together among the last repeatWindow calls: one note at the fifth, the run ends at the tenth.
+func TestRepeatGuardCountsRefusalsThatDiffer(t *testing.T) {
+	var g repeatGuard
+	var notes []string
+	var stop error
+	for i := 1; i <= refusalStop && stop == nil; i++ {
+		cmd := fmt.Sprintf("go test ./pkg%d", i)
+		var note string
+		note, stop = g.observe("be-1", []core.Block{callOf("bash", `{"command":"`+cmd+`"}`)}, []core.Block{refusal(cmd)})
+		if note != "" {
+			notes = append(notes, note)
+		}
+		if i < refusalStop && stop != nil {
+			t.Fatalf("stopped at refusal %d: %v", i, stop)
+		}
+	}
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], "[harness] 5 of your last 5 actions were refused") || !strings.Contains(notes[0], "nobody is here to approve") {
+		t.Fatalf("notes = %q, want one, at the fifth refusal", notes)
+	}
+	if !errors.Is(stop, ErrStuck) || !strings.Contains(stop.Error(), "10 of its last 10 actions were refused") || !strings.Contains(stop.Error(), "be-1") {
+		t.Fatalf("stop = %v", stop)
+	}
+}
+
+// Only refusals of that kind count, and only among the last twenty calls: a worker that is refused now and then in a long run of other
+// work (a refused install among a hundred reads and edits) is not stuck; errors of other kinds that differ are a model trying things; a
+// refusal that a person gave (it can be asked again) is not "nobody to ask"; and the guard is reset for each run.
+func TestRepeatGuardRefusalsAreOfOneKindAndRecent(t *testing.T) {
+	var g repeatGuard
+	for i := 0; i < 3*refusalStop; i++ { // other errors, and a person's no
+		cmd := fmt.Sprintf("go test ./pkg%d", i)
+		res := failed("exit status 2: no such file " + cmd)
+		if i%2 == 1 {
+			res = failed("permission denied: denied by user" + " " + cmd)
+		}
+		if note, stop := g.observe("a", []core.Block{callOf("bash", `{"command":"`+cmd+`"}`)}, []core.Block{res}); note != "" || stop != nil {
+			t.Fatalf("batch %d: note %q stop %v", i, note, stop)
+		}
+	}
+	for i := 0; i < 60; i++ { // one refusal in six, for a long time: never five among the last twenty
+		var calls, results []core.Block
+		if i%6 == 0 {
+			cmd := fmt.Sprintf("pip install p%d", i)
+			calls, results = []core.Block{callOf("bash", `{"command":"`+cmd+`"}`)}, []core.Block{refusal(cmd)}
+		} else {
+			calls, results = []core.Block{callOf("edit", fmt.Sprintf(`{"path":"f%d"}`, i))}, []core.Block{worked("ok")}
+		}
+		if note, stop := g.observe("a", calls, results); note != "" || stop != nil {
+			t.Fatalf("a refusal in six, batch %d: note %q stop %v", i, note, stop)
+		}
+	}
+	g.reset() // the next run
+	for i := 0; i < refusalNudge-1; i++ {
+		cmd := fmt.Sprintf("go build ./p%d", i)
+		if note, stop := g.observe("a", []core.Block{callOf("bash", `{"command":"`+cmd+`"}`)}, []core.Block{refusal(cmd)}); note != "" || stop != nil {
+			t.Fatalf("after a reset, refusal %d: note %q stop %v", i+1, note, stop)
+		}
+	}
+	// A burst that comes later is told again once the first has left the window.
+	for i := 0; i < repeatWindow; i++ {
+		g.observe("a", []core.Block{callOf("read", `{"path":"go.mod"}`)}, []core.Block{worked("ok")})
+	}
+	var told int
+	for i := 0; i < refusalNudge; i++ {
+		cmd := fmt.Sprintf("go vet ./p%d", i)
+		if note, _ := g.observe("a", []core.Block{callOf("bash", `{"command":"`+cmd+`"}`)}, []core.Block{refusal(cmd)}); note != "" {
+			told++
+		}
+	}
+	if told != 1 {
+		t.Fatalf("a later burst was told %d times, want once", told)
 	}
 }

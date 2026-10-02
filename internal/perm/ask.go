@@ -74,11 +74,17 @@ func canceledDecision(ctx context.Context) Decision {
 	return Decision{Reason: "approval canceled: " + ctx.Err().Error()}
 }
 
-// noOneToAsk ends the refusal of a run that has nobody to ask (run, swarm, a rollout). A model
+// NoOneToAsk ends the refusal of a run that has nobody to ask (run, swarm, a rollout). A model
 // told only "approval required" spends its steps on other ways to the same action: a first run
 // against a real model made twenty-four tool calls of that kind (a script, another command, a
 // program that runs the tests) before it gave up. The text is fixed, so it costs the cache nothing.
-const noOneToAsk = " (this run has no one to ask, so nothing can be approved: use an action that is allowed, or finish and say which permission you needed)"
+const NoOneToAsk = " (" + noOneToAskPhrase + ", so nothing can be approved: use an action that is allowed, or finish and say which permission you needed)"
+
+// noOneToAskPhrase is how that refusal says it; IsNoOneToAsk tells it from any other, for whoever counts them.
+const noOneToAskPhrase = "this run has no one to ask"
+
+// IsNoOneToAsk says whether text, a tool's refusal, is that of a run with nobody to ask.
+func IsNoOneToAsk(text string) bool { return strings.Contains(text, noOneToAskPhrase) }
 
 // askTimedOut and noAnswerInTime frame the refusal of a question that nobody answered in the time it was given. The sentences are fixed,
 // so they cost the cache nothing, and they say what the model can do: the person is not there.
@@ -96,7 +102,7 @@ const declinedAdvice = " (the person said no to this: do not make it another way
 // resolveAsk turns an "ask" outcome into a Decision by consulting the human.
 func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict) Decision {
 	if e.cfg.Prompter == nil {
-		return Decision{Reason: "approval required: " + v.reason + noOneToAsk}
+		return Decision{Reason: "approval required: " + v.reason + NoOneToAsk}
 	}
 	key := promptKey(r)
 	for {

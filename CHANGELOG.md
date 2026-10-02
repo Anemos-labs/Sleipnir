@@ -122,6 +122,11 @@ The first release.
 - A test an agent writes is not tampering with the verifier when the verifier is `node --test test/*.test.js`: the pattern handed to an interpreter was taken for the script it runs, so
   any new file under it was flagged `hack:verifier_touched`, which zeroed the episode's reward and kept it out of a training export (2 of 94 episodes of the last benchmark; one had
   passed its verifier). A script under an interpreter is still the verifier, and so is a test file named exactly.
+- A model that is refused and has nobody to ask no longer spends the run on ways round the refusal. `sleipnir run --mode accept-edits` refuses `go test` (nobody can say yes): glm-5.3-flash made
+  23 more attempts in five minutes (another command each time, so the guard against a repeated call never saw a loop), and minimax-m2.7, unable to run the tests, traced its fix by hand and reported it
+  correct (it was not). The refusals of a run with no one to ask now count together, among the last twenty actions: at five the model is told once that nobody is here to approve and to finish saying which
+  permission it needed, and at ten the run ends ("10 of its last 10 actions were refused and this run has no one to ask"), with the usual list of what to `--allow`. A worker that is refused
+  now and then in a long run of other work never gets there.
 - `/fav [provider/model]` stars a model, or unstars it (the session's own when none is named), from the chat: the `/model` menu puts it first at once, `sleipnir models` lists it first, and
   it is kept as `models.favorites` in the user's own configuration (in the session's home, not the machine's: the tests prove it). Favorites could only be changed by `sleipnir models fav add|rm`.
 - The chat's lines for the manager's coordination say what was done: `Spawn backend · T1` (who was started, on which task) and `Task accept T1` (the action and the task) where
