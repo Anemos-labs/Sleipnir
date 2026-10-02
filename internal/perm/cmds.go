@@ -32,6 +32,8 @@ func analyseSafe(prog string, args []string) safeAnalysis {
 		return analyseGit(args)
 	case "go":
 		return analyseGo(args)
+	case "gofmt":
+		return analyseGofmt(args)
 	case "find":
 		return analyseFind(args)
 	case "sed":
@@ -221,6 +223,30 @@ var goValueFlags = map[string]bool{
 
 func pathLike(s string) bool {
 	return strings.Contains(s, "/") || s == "." || s == ".." || strings.HasPrefix(s, "~")
+}
+
+// analyseGofmt allows gofmt as a check: -l lists the files whose format differs and -d prints the difference, and neither writes. -w writes
+// the files back, and the profile flags write files of their own, so those ask like any other change.
+func analyseGofmt(args []string) safeAnalysis {
+	out := safeAnalysis{ok: true}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
+			out.uses = append(out.uses, pathUse{raw: a}) // a file or a directory to read
+			continue
+		}
+		name, _, hasVal := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		switch name {
+		case "l", "d", "e", "s":
+		case "r": // a rewrite rule, the next word
+			if !hasVal {
+				i++
+			}
+		default:
+			return safeAnalysis{why: "gofmt -" + name + " is not on the read-only list (-w writes the files)"}
+		}
+	}
+	return out
 }
 
 func analyseGo(args []string) safeAnalysis {
