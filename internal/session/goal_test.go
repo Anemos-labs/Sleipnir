@@ -45,7 +45,11 @@ func TestAGoalIsJudgedOnEvidenceAndSentOnWithWhatIsMissing(t *testing.T) {
 	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
 		t.Fatal(err)
 	}
+	before := s.Cost()
 	note, next := s.GoalTurn(context.Background(), g, nil)
+	if s.Cost() <= before {
+		t.Errorf("the judge's request is not in the session's cost: %v before, %v after", before, s.Cost())
+	}
 	if !strings.Contains(note, "goal not met yet: nothing was run") || !strings.Contains(note, "continuation 1 of 20") {
 		t.Errorf("the note after a claim with no work: %q", note)
 	}

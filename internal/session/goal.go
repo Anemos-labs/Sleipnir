@@ -43,6 +43,13 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, len(evidence) > 0, err
 	}
+	usd := s.Model.Price.USD(resp.Usage)
+	if resp.CostUSD != nil {
+		usd = *resp.CostUSD // the gateway's own figure, when it gives one
+	}
+	s.mu.Lock()
+	s.judgeUSD += usd
+	s.mu.Unlock()
 	v, _ = goal.ParseVerdict(resp.Turn.PlainText())
 	return v, len(evidence) > 0, nil
 }

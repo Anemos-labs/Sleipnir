@@ -163,6 +163,8 @@ type Session struct {
 	// newSolo builds the single agent again on the session's current Provider and Model (SwitchModel).
 	newSolo func() (*agent.Agent, error)
 	plans   *plan.Store // each agent's plan, which a standing goal reads as its requirements (goal.go)
+	// judgeUSD is what a standing goal's judge has cost (goal.go), under mu.
+	judgeUSD float64
 	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
 	modelRef string
 	cfg      *config.Config
@@ -1207,14 +1209,17 @@ func (s *Session) Close() error {
 }
 
 func (s *Session) cost() float64 {
+	s.mu.Lock()
+	judge := s.judgeUSD // what a standing goal's judge has cost (goal.go): it is the session's spend, and not any agent's
+	s.mu.Unlock()
 	if s.Swarm != nil {
-		return s.Swarm.TotalCost()
+		return s.Swarm.TotalCost() + judge
 	}
 	if s.Agent != nil {
 		_, c := s.Agent.Usage()
-		return c
+		return c + judge
 	}
-	return 0
+	return judge
 }
 
 // plannerFor is the compaction planner that the cache settings ask for. A soft limit that is set above the default hard one would never
