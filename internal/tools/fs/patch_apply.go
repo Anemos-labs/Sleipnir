@@ -517,36 +517,40 @@ func (ApplyPatch) Run(ctx context.Context, c *tools.Call) (*tools.Result, error)
 		}
 	}
 
-	// One permission request per distinct file, in patch order, all before any
-	// read or write.
-	asked := map[string]bool{}
-	ask := func(summary, path string) *tools.Result {
-		if asked[path] {
-			return nil
+	// One permission request for the patch, naming every file it changes, in patch order, before any read or write: a patch that creates a
+	// file and its test was two questions, and "don't ask again" could not help the second. The engine judges each path of the request.
+	var summaries, askPaths []string
+	seen := map[string]bool{}
+	add := func(summary string, ps ...string) {
+		summaries = append(summaries, summary)
+		for _, p := range ps {
+			if !seen[p] {
+				seen[p] = true
+				askPaths = append(askPaths, p)
+			}
 		}
-		asked[path] = true
-		return k.authorize(summary, true, perm.RiskMedium, path)
 	}
 	for i, op := range ops {
 		t := targets[i]
-		var r *tools.Result
 		switch op.kind {
 		case opAdd:
-			r = ask("create "+t.disp, t.path)
+			add("create "+t.disp, t.path)
 		case opDelete:
-			r = ask("delete "+t.disp, t.path)
+			add("delete "+t.disp, t.path)
 		case opUpdate:
 			if t.move != "" {
-				if r = ask("move "+t.disp+" -> "+t.moveDisp, t.path); r == nil {
-					r = ask("move "+t.disp+" -> "+t.moveDisp, t.move)
-				}
+				add("move "+t.disp+" -> "+t.moveDisp, t.path, t.move)
 			} else {
-				r = ask("patch "+t.disp, t.path)
+				add("patch "+t.disp, t.path)
 			}
 		}
-		if r != nil {
-			return r, nil
-		}
+	}
+	summary := summaries[0]
+	if len(summaries) > 1 {
+		summary = strings.Join(summaries, ", ")
+	}
+	if r := k.authorize(clip(summary, 300), true, perm.RiskMedium, askPaths...); r != nil {
+		return r, nil
 	}
 
 	paths := make([]string, 0, len(ops)*2)

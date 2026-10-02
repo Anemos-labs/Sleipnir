@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -216,5 +217,34 @@ func TestSessionsListFitsTheTerminal(t *testing.T) {
 func TestOneLineCLICutsWholeCharacters(t *testing.T) {
 	if got := oneLineCLI("ça va très bien aujourd'hui", 6); got != "ça va …" || !utf8.ValidString(got) {
 		t.Errorf("got %q", got)
+	}
+}
+
+// A session in which nothing was asked (a chat opened and closed, what /new leaves behind) has nothing to resume or to read: the list does
+// not show it, and still shows as many of the others as it was asked for.
+func TestSessionsListSkipsSessionsInWhichNothingWasAsked(t *testing.T) {
+	dir := t.TempDir()
+	write := func(id, log string, age time.Duration) {
+		d := filepath.Join(dir, id)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(d, "events.jsonl")
+		if err := os.WriteFile(p, []byte(log), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		when := time.Now().Add(-age)
+		_ = os.Chtimes(d, when, when)
+	}
+	start := `{"seq":1,"type":"session.start","data":{"model":"m/x"}}` + "\n"
+	write("20261002-000001-aaaaaa", start+`{"seq":2,"type":"user.input","data":{"text":"the real goal"}}`+"\n", 3*time.Hour)
+	write("20261002-000002-bbbbbb", start, 2*time.Hour) // opened and closed
+	write("20261002-000003-cccccc", start, 1*time.Hour) // what /new left
+	var o, n bytes.Buffer
+	if err := printSessions(&o, &n, dir, 1); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(o.String(), "the real goal") || strings.Contains(o.String(), "bbbbbb") || strings.Contains(o.String(), "cccccc") {
+		t.Errorf("the listing of one session:\n%s", o.String())
 	}
 }

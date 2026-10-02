@@ -273,3 +273,11 @@ func TestWeightsDoNotHideAnInvalidPrice(t *testing.T) {
 		}
 	}
 }
+
+func TestDollarsShowsWhatIsWorthLessThanACent(t *testing.T) {
+	for in, want := range map[float64]string{0: "$0.00", 0.00003: "<$0.0001", 0.0006: "$0.0006", 0.0099: "$0.0099", 0.01: "$0.01", 5: "$5.00", 50: "$50.00", -0.0006: "-$0.0006"} {
+		if got := Dollars(in); got != want {
+			t.Errorf("Dollars(%v) = %q, want %q", in, got, want)
+		}
+	}
+}

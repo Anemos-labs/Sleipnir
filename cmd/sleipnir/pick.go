@@ -111,6 +111,7 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	}
 	sources := usableSources(cfg, false)
 	typedKey := false
+	typedRef := "" // a model the person typed, for a provider that lists none
 	if len(sources) == 0 {
 		fmt.Fprintln(out, "Welcome to Sleipnir. It needs a model provider, and none has a key yet.")
 		local := localSources(ctx, cfg)
@@ -126,7 +127,14 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 		}
 		if len(sources) == 0 {
 			if sources = usableSources(cfg, false); len(sources) == 0 {
-				return errors.New("the key was saved, but no provider with a model list is ready: `sleipnir models --provider NAME` shows why")
+				if !typedKey {
+					return errors.New("the key was saved, but no provider with a model list is ready: `sleipnir models --provider NAME` shows why")
+				}
+				// The provider just chosen lists no models here (Anthropic's own protocol, say): the person types the model, and the key and the
+				// model are tried together by the one small request below.
+				if typedRef, err = askModelID(in, out, name); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -137,23 +145,25 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	if firstTime {
 		fmt.Fprintln(out, wrapFor(out, "First-time setup: choose a model; your settings are kept in "+tildePath(cfgPath)+"."))
 	}
-	names := make([]string, len(sources))
-	for i, src := range sources {
-		names[i] = src.name
-	}
-	fmt.Fprintf(out, "Asking %s what it offers...\n", strings.Join(names, ", "))
-	rows, errs := fetchModels(ctx, sources)
-	if len(rows) == 0 {
-		for i, e := range errs {
-			if e != nil {
-				fmt.Fprintf(out, "%s: %v\n", names[i], e)
-			}
+	ref := typedRef
+	if ref == "" {
+		names := make([]string, len(sources))
+		for i, src := range sources {
+			names[i] = src.name
 		}
-		return nil
-	}
-	ref, err := pickModel(in, out, rows, favoriteSet(cfg))
-	if err != nil {
-		return err
+		fmt.Fprintf(out, "Asking %s what it offers...\n", strings.Join(names, ", "))
+		rows, errs := fetchModels(ctx, sources)
+		if len(rows) == 0 {
+			for i, e := range errs {
+				if e != nil {
+					fmt.Fprintf(out, "%s: %v\n", names[i], e)
+				}
+			}
+			return nil
+		}
+		if ref, err = pickModel(in, out, rows, favoriteSet(cfg)); err != nil {
+			return err
+		}
 	}
 	if typedKey {
 		if err := checkKey(ctx, cfg, ref, out); err != nil {
@@ -173,6 +183,20 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	}
 	*model = ref
 	return nil
+}
+
+// askModelID asks for the id of a model on a provider that lists none here, and returns it as provider/model. An empty line is no choice.
+func askModelID(in *bufio.Reader, out io.Writer, provider string) (string, error) {
+	fmt.Fprint(out, wrapFor(out, provider+" lists no models here. Type the id of the model to use, as its documentation spells it (an empty line stops):")+" ")
+	line, _ := in.ReadString('\n')
+	id := strings.TrimSpace(line)
+	if id == "" {
+		return "", errors.New("no model chosen: run `sleipnir --model " + provider + "/MODEL` when you know which")
+	}
+	if strings.HasPrefix(id, provider+"/") {
+		return id, nil
+	}
+	return provider + "/" + id, nil
 }
 
 // modelTable is the rows of a model menu: each reference, the context window, the output price and whether it takes tools, in columns as

@@ -295,15 +295,23 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		rows = append(rows, r)
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
-	if len(rows) > n {
-		rows = rows[:n]
-	}
-	for i := range rows { // read the logs of the rows shown, not of every session ever recorded
-		r := &rows[i]
+	// Read the logs of the rows shown, not of every session ever recorded; a session in which nothing was asked (a chat opened and closed, what
+	// /new leaves behind) has nothing to resume or to read, and is not listed.
+	shown := rows[:0:0]
+	for i := range rows {
+		if len(shown) == n || i >= 4*n+20 {
+			break
+		}
+		r := rows[i]
 		d := filepath.Join(root, r.id)
 		summarize(filepath.Join(d, "events.jsonl"), &r.model, &r.prompt, &r.cost)
+		if r.prompt == "" {
+			continue
+		}
 		r.resumable = session.Resumable(d)
+		shown = append(shown, r)
 	}
+	rows = shown
 	width := termWidth(out)
 	for _, r := range rows {
 		mark := " "

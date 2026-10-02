@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -87,6 +88,12 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 	}
 	if !has("--model") && s.ModelRef() != "" {
 		args = append(args, "--model", s.ModelRef())
+	}
+	// What the person allowed while the session ran goes with it: it is the same session that continues, and asked for the same go test again.
+	for _, rule := range s.Perm.Granted() {
+		if !slices.Contains(args, rule) {
+			args = append(args, "--allow", rule)
+		}
 	}
 	if !has("--mode") {
 		args = append(args, "--mode", string(s.Perm.Mode()))

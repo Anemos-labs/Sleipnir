@@ -202,7 +202,7 @@ func (f *FileState) HasRead(agent, path string) bool {
 
 // NotReadMessage is what an agent is told when it changes a file it has not read.
 func NotReadMessage(path string) string {
-	return path + " has not been read by you yet; read it before modifying it"
+	return path + " has not been read by you yet; read it with the read tool before modifying it (a cat in a shell does not count)"
 }
 
 // CheckFresh verifies agent may modify path whose content on disk is current.

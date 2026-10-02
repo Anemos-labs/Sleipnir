@@ -39,3 +39,11 @@ func TestRetryNoticeBoundsWhatTheEndpointSaid(t *testing.T) {
 		t.Fatalf("unexpected notice: %q", got)
 	}
 }
+
+func TestTokenCountIsReadableAtEverySize(t *testing.T) {
+	for in, want := range map[int]string{0: "0", 669: "669", 999: "999", 1000: "1.0k", 2400: "2.4k", 9999: "10.0k", 10_000: "10k", 31_200: "31k"} {
+		if got := tokenCount(in); got != want {
+			t.Errorf("tokenCount(%d) = %q, want %q", in, got, want)
+		}
+	}
+}

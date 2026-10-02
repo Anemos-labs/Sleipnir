@@ -124,65 +124,76 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 		}
 		return extras[i].name, nil
 	}
-	if pick == nil && arrowOK() {
-		var labels []string
-		for _, c := range choices {
-			if c.name == "heimdall" {
-				c.name += "  (recommended)"
+	named := pick != nil // `sleipnir login heimdall` names it: an empty key is then an error, and not a return to a list
+	for {
+		if pick == nil && arrowOK() {
+			var labels []string
+			for _, c := range choices {
+				if c.name == "heimdall" {
+					c.name += "  (recommended)"
+				}
+				labels = append(labels, c.name)
 			}
-			labels = append(labels, c.name)
-		}
-		for _, e := range extras {
-			labels = append(labels, describe(e))
-		}
-		i, err := selectRows(in, out, "Which provider will you use?", labels, labels, true, pickRows) // thirty or so: typing narrows them
-		if err != nil {
-			return "", errors.New("login: cancelled")
-		}
-		if i >= len(choices) {
-			return chooseExtra(i - len(choices))
-		}
-		pick = &choices[i]
-	}
-	for pick == nil {
-		fmt.Fprintln(out, "Which provider will you use?")
-		for i, c := range choices {
-			note := ""
-			if c.name == "heimdall" {
-				note = "  (recommended)"
+			for _, e := range extras {
+				labels = append(labels, describe(e))
 			}
-			fmt.Fprintf(out, "  %2d. %s%s\n", i+1, c.name, note)
+			i, err := selectRows(in, out, "Which provider will you use?", labels, labels, true, pickRows) // thirty or so: typing narrows them
+			if err != nil {
+				return "", errors.New("login: cancelled")
+			}
+			if i >= len(choices) {
+				return chooseExtra(i - len(choices))
+			}
+			pick = &choices[i]
 		}
-		for i, e := range extras {
-			fmt.Fprintf(out, "  %2d. %s\n", len(choices)+i+1, describe(e))
+		for pick == nil {
+			fmt.Fprintln(out, "Which provider will you use?")
+			for i, c := range choices {
+				note := ""
+				if c.name == "heimdall" {
+					note = "  (recommended)"
+				}
+				fmt.Fprintf(out, "  %2d. %s%s\n", i+1, c.name, note)
+			}
+			for i, e := range extras {
+				fmt.Fprintf(out, "  %2d. %s\n", len(choices)+i+1, describe(e))
+			}
+			fmt.Fprint(out, "Number (q to quit): ")
+			line, err := in.ReadString('\n')
+			line = strings.TrimSpace(line)
+			if strings.EqualFold(line, "q") || line == "" && err != nil {
+				return "", errors.New("login: cancelled")
+			}
+			var n int
+			if _, serr := fmt.Sscanf(line, "%d", &n); serr == nil && n >= 1 && n <= len(choices) {
+				pick = &choices[n-1]
+			} else if serr == nil && n > len(choices) && n <= len(choices)+len(extras) {
+				return chooseExtra(n - len(choices) - 1)
+			}
 		}
-		fmt.Fprint(out, "Number (q to quit): ")
-		line, err := in.ReadString('\n')
-		line = strings.TrimSpace(line)
-		if strings.EqualFold(line, "q") || line == "" && err != nil {
-			return "", errors.New("login: cancelled")
+		back := ""
+		if !named {
+			back = "; an empty line goes back to the list"
 		}
-		var n int
-		if _, serr := fmt.Sscanf(line, "%d", &n); serr == nil && n >= 1 && n <= len(choices) {
-			pick = &choices[n-1]
-		} else if serr == nil && n > len(choices) && n <= len(choices)+len(extras) {
-			return chooseExtra(n - len(choices) - 1)
+		fmt.Fprint(out, wrapFor(out, fmt.Sprintf("Paste your %s key (hidden; kept in %s, readable by you only%s):", pick.name, tildePath(config.AuthPath(userHome())), back))+" ")
+		key, err := secret()
+		if ctx.Err() != nil {
+			return "", ctx.Err() // Ctrl-C at the prompt: the interrupt the command reports
 		}
+		if err == nil && key == "" && !named {
+			pick = nil // nothing typed: the list again, not the end of the program
+			continue
+		}
+		if err != nil || key == "" {
+			return "", errors.New("login: no key entered")
+		}
+		if err := config.SaveStoredKey(userHome(), pick.env, key); err != nil {
+			return "", fmt.Errorf("login: %w", err)
+		}
+		harden.Provide(pick.env, key)
+		fmt.Fprintln(out, wrapFor(out, fmt.Sprintf("Saved. (%s in the environment still takes precedence over it.)", pick.env)))
+		return pick.name, nil
 	}
-	fmt.Fprint(out, wrapFor(out, fmt.Sprintf("Paste your %s key (hidden; kept in %s, readable by you only):", pick.name, tildePath(config.AuthPath(userHome()))))+" ")
-	key, err := secret()
-	if ctx.Err() != nil {
-		return "", ctx.Err() // Ctrl-C at the prompt: the interrupt the command reports
-	}
-	if err != nil || key == "" {
-		return "", errors.New("login: no key entered")
-	}
-	if err := config.SaveStoredKey(userHome(), pick.env, key); err != nil {
-		return "", fmt.Errorf("login: %w", err)
-	}
-	harden.Provide(pick.env, key)
-	fmt.Fprintln(out, wrapFor(out, fmt.Sprintf("Saved. (%s in the environment still takes precedence over it.)", pick.env)))
-	return pick.name, nil
 }
 
 // signInChatGPT signs the person in with the browser (OpenAI's "Sign in with ChatGPT"). Where the browser cannot be opened the address it

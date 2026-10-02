@@ -17,6 +17,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -295,7 +296,7 @@ func stdinHasData(f *os.File) bool {
 // should be visible when the run starts (a swarm's is on by default).
 func budgetLabel(s *session.Session) string {
 	if b := s.Budget(); b > 0 {
-		return fmt.Sprintf(" · budget $%.2f", b)
+		return " · budget " + cost.Dollars(b)
 	}
 	return ""
 }
@@ -305,13 +306,13 @@ func budgetLabel(s *session.Session) string {
 func budgetStopped(s *session.Session, res *session.Result) error {
 	spent := ""
 	if res != nil {
-		spent = fmt.Sprintf(" ($%.2f spent)", res.CostUSD)
+		spent = " (" + cost.Dollars(res.CostUSD) + " spent)"
 	}
 	hint := "raise it with --budget-usd"
 	if s.Swarm != nil {
 		hint = "raise it with --budget-usd or swarm.budget_usd (0 removes the cap)"
 	}
-	return fmt.Errorf("stopped: the budget of $%.2f is exhausted%s; %s", s.Budget(), spent, hint)
+	return fmt.Errorf("stopped: the budget of %s is exhausted%s; %s", cost.Dollars(s.Budget()), spent, hint)
 }
 
 // endReasonOf is the SessionEnd reason of a run that returned err: how it ended, for

@@ -255,7 +255,7 @@ func recapLines(turns []core.Turn) []string {
 		switch {
 		case t.Role == core.RoleUser && (t.Origin == "" || t.Origin == core.OriginUser):
 			if txt := strings.TrimSpace(kv.AnswerText(t)); txt != "" {
-				goal = txt
+				goal, answer = txt, "" // an answer belongs to the goal before it: a goal that was cancelled has none
 			}
 		case t.Role == core.RoleAssistant:
 			if txt := strings.TrimSpace(kv.AnswerText(t)); txt != "" {
@@ -269,6 +269,8 @@ func recapLines(turns []core.Turn) []string {
 	}
 	if answer != "" {
 		out = append(out, "it said: "+oneLineCLI(tools.SanitizeForTerminal(answer), 240))
+	} else if goal != "" {
+		out = append(out, "it had not answered yet: that turn was interrupted")
 	}
 	return out
 }

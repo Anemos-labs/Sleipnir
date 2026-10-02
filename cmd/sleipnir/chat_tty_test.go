@@ -244,3 +244,22 @@ func TestCostTextNeverShowsARealCostAsNothing(t *testing.T) {
 		}
 	}
 }
+
+// /allow tests says what it allowed: the build and test commands of the usual toolchains, not the first two rules of a list that begins with
+// Go (a trial of a Node project could not tell whether npm was covered). Typed with nothing, it says what tests means.
+func TestAllowTestsSaysWhatItCovers(t *testing.T) {
+	s := chatSession(t, false, nil)
+	h := &sessionHost{s: s}
+	var out strings.Builder
+	h.Command(context.Background(), "/allow tests", &out)
+	for _, want := range []string{"allowed for this session: the build and test commands", "npm", "pytest", "cargo", "go,"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("/allow tests said %q, which lacks %q", out.String(), want)
+		}
+	}
+	out.Reset()
+	h.Command(context.Background(), "/allow", &out)
+	if !strings.Contains(out.String(), "tests is the build and test commands") {
+		t.Errorf("/allow with nothing does not say what tests is: %q", out.String())
+	}
+}

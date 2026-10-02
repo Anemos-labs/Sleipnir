@@ -112,6 +112,7 @@ type Engine struct {
 	allow, ask, deny []*crule
 	roles            map[string]*profile
 	persisted        map[Rule]bool // rules already handed to Config.Persist
+	granted          []string      // the allow rules added while the session ran (what the person said yes to), in order
 	confined         map[string]rootPair
 }
 
@@ -305,6 +306,9 @@ func (e *Engine) AddRule(scope Scope, rule Rule) {
 	if !dup {
 		// Copy on write: evaluations in flight keep reading the old slice.
 		*list = append(append(make([]*crule, 0, len(*list)+1), *list...), c)
+		if rule.Action == Allow {
+			e.granted = append(e.granted, rule.String())
+		}
 	}
 	// A rule is persisted once, even if it was first added for the session and
 	// is promoted to the project later; repeats would only duplicate settings.
@@ -377,6 +381,14 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 	}
 	e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: by})
 	return d
+}
+
+// Granted are the allow rules added while the session ran (/allow, and "don't ask again"), in the order they were given: what a session that
+// starts again in its place has to be told, or the person is asked what they have already answered.
+func (e *Engine) Granted() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return append([]string(nil), e.granted...)
 }
 
 // Rules returns the active rules of one action as text, sorted; it is for

@@ -192,6 +192,19 @@ The first release.
   were Go's `Post "http://...": dial tcp ...: connect: connection refused`.
 - A model the provider does not have (a 404) and an account with no credit (a 402) say what to do ("`sleipnir models` lists the names it has", "/model"
   in the chat; "add funds there, or choose another model"), as a refused key already did.
+- From three more trials (a Node project in the chat, interrupts and session commands, the real first run):
+  - First run: an empty line at the prompt for a key goes back to the list of providers (it ended the program, as a stray Enter did); a provider
+    that lists no models here (Anthropic's own protocol) asks for the model id and tries the key and the model together with the one small
+    request (it ended with "the key was saved, but no provider with a model list is ready", and a refused key stayed saved).
+  - A patch that changes several files is one permission question that names them all (it was one per file: creating a file and its test asked
+    twice). A patch the policy refuses for any file is refused whole, before any write.
+  - What the person allowed while the session ran (`/allow`, "don't ask again") goes with `/swarm`, `/model`, `/restart` and `/login`: the session
+    continues, and it asked for `go test` again after each.
+  - `sleipnir --continue` without a terminal says what to type (`sleipnir chat --continue`); the resume recap no longer pairs the last goal with
+    the answer to an earlier one when that goal was cancelled; `sleipnir sessions` does not list a session in which nothing was asked.
+  - A budget or a bill under a cent is "$0.0006", not "$0.00" (`cost.Dollars`); `/compact` says "669→146 tokens" and not "0k→0k"; `/allow tests` says
+    it covers the build and test commands of go, cargo, npm, pytest and the rest (it printed the first two Go rules), and `/allow` alone says what
+    tests is; an edit of a file that was only `cat` in a shell says that the read tool is what counts.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

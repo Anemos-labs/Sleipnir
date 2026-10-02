@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -701,11 +702,14 @@ func TestApplyPatchRecordsFileStateForWrittenFiles(t *testing.T) {
 	contains(t, mustErr(t, run(t, Edit{}, b, map[string]any{"path": "n.txt", "old_string": "two", "new_string": "x"})), "not been read")
 }
 
-func TestApplyPatchPermissionsAreCheckedPerFileBeforeAnyWrite(t *testing.T) {
+// The request of a patch names every file it changes, and one that the policy refuses for any of them refuses the whole patch, before any write.
+func TestApplyPatchPermissionsAreCheckedForEveryFileBeforeAnyWrite(t *testing.T) {
 	env := testEnv(t)
 	h := &hooks{denyPerm: func(r perm.Request) string {
-		if len(r.Paths) == 1 && strings.HasSuffix(r.Paths[0], "secret.txt") {
-			return "secret.txt is protected"
+		for _, p := range r.Paths {
+			if strings.HasSuffix(p, "secret.txt") {
+				return "secret.txt is protected"
+			}
 		}
 		return ""
 	}}
@@ -717,19 +721,17 @@ func TestApplyPatchPermissionsAreCheckedPerFileBeforeAnyWrite(t *testing.T) {
 		"*** Update File: a.txt", "@@", "-a", "+A",
 		"*** Update File: secret.txt", "@@", "-s", "+S",
 		"*** Add File: z.txt", "+z")}))
-	contains(t, text, "permission denied (patch secret.txt): secret.txt is protected")
+	contains(t, text, "permission denied (patch a.txt, patch secret.txt, create z.txt): secret.txt is protected")
 	notContains(t, text, "\ns\n")
 	if after := snapshotTree(t, env.Cwd); !reflect.DeepEqual(before, after) {
 		t.Errorf("tree changed")
 	}
 	reqs := h.Requests()
-	if len(reqs) != 2 {
-		t.Fatalf("permission was asked %d times (should stop at the denial): %+v", len(reqs), reqs)
+	if len(reqs) != 1 {
+		t.Fatalf("permission was asked %d times for one patch: %+v", len(reqs), reqs)
 	}
-	for i, want := range []string{"a.txt", "secret.txt"} {
-		if r := reqs[i]; r.Tool != "apply_patch" || !r.Writes || len(r.Paths) != 1 || r.Paths[0] != filepath.Join(env.Cwd, want) {
-			t.Errorf("request %d = %+v", i, r)
-		}
+	if r := reqs[0]; r.Tool != "apply_patch" || !r.Writes || len(r.Paths) != 3 || r.Paths[0] != filepath.Join(env.Cwd, "a.txt") || r.Paths[1] != filepath.Join(env.Cwd, "secret.txt") {
+		t.Errorf("request = %+v", r)
 	}
 	for _, l := range h.Log() {
 		if strings.HasPrefix(l, "guard.") || strings.HasPrefix(l, "snap:") {
@@ -738,7 +740,7 @@ func TestApplyPatchPermissionsAreCheckedPerFileBeforeAnyWrite(t *testing.T) {
 	}
 }
 
-func TestApplyPatchPermissionRequestsForMovesAndDeletes(t *testing.T) {
+func TestApplyPatchPermissionRequestOfMovesAndDeletesIsOne(t *testing.T) {
 	env := testEnv(t)
 	h := &hooks{}
 	withHooks(env, h)
@@ -748,13 +750,19 @@ func TestApplyPatchPermissionRequestsForMovesAndDeletes(t *testing.T) {
 		"*** Update File: a.txt", "*** Move to: sub/b.txt", "@@", "-a", "+b",
 		"*** Delete File: d.txt",
 		"*** Add File: n.txt", "+n")}))
-	var summaries []string
-	for _, r := range h.Requests() {
-		summaries = append(summaries, fmt.Sprintf("%s|%s", r.Summary, filepath.Base(r.Paths[0])))
+	reqs := h.Requests()
+	if len(reqs) != 1 {
+		t.Fatalf("%d requests for one patch: %+v", len(reqs), reqs)
 	}
-	want := []string{"move a.txt -> sub/b.txt|a.txt", "move a.txt -> sub/b.txt|b.txt", "delete d.txt|d.txt", "create n.txt|n.txt"}
-	if !reflect.DeepEqual(summaries, want) {
-		t.Errorf("requests = %v, want %v", summaries, want)
+	var bases []string
+	for _, p := range reqs[0].Paths {
+		bases = append(bases, filepath.Base(p))
+	}
+	if want := "move a.txt -> sub/b.txt, delete d.txt, create n.txt"; reqs[0].Summary != want {
+		t.Errorf("summary = %q, want %q", reqs[0].Summary, want)
+	}
+	if want := []string{"a.txt", "b.txt", "d.txt", "n.txt"}; !reflect.DeepEqual(bases, want) {
+		t.Errorf("paths = %v, want %v", bases, want)
 	}
 }
 
@@ -996,4 +1004,34 @@ func TestApplyPatchDeleteRemovesASymlinkNotItsTarget(t *testing.T) {
 			t.Errorf("link target = %q", target)
 		}
 	})
+}
+
+// recordPerm records the requests it is asked and allows them.
+type recordPerm struct {
+	mu   sync.Mutex
+	reqs []perm.Request
+}
+
+func (r *recordPerm) Check(_ context.Context, q perm.Request) perm.Decision {
+	r.mu.Lock()
+	r.reqs = append(r.reqs, q)
+	r.mu.Unlock()
+	return perm.Decision{Allow: true}
+}
+
+// A patch that changes several files is one question, naming them all: it was one question per file, so creating a file and its test
+// asked twice, and "don't ask again" could not help the second.
+func TestAPatchOfSeveralFilesIsOneQuestion(t *testing.T) {
+	env := testEnv(t)
+	rec := &recordPerm{}
+	env.Perm = rec
+	patch := "*** Begin Patch\n*** Add File: hello.go\n+package hello\n*** Add File: hello_test.go\n+package hello\n*** End Patch"
+	mustOK(t, run(t, ApplyPatch{}, env, map[string]any{"patch": patch}))
+	if len(rec.reqs) != 1 {
+		t.Fatalf("%d questions for one patch, want 1: %+v", len(rec.reqs), rec.reqs)
+	}
+	q := rec.reqs[0]
+	if len(q.Paths) != 2 || !q.Writes || !strings.Contains(q.Summary, "hello.go") || !strings.Contains(q.Summary, "hello_test.go") {
+		t.Errorf("the question names %v and says %q", q.Paths, q.Summary)
+	}
 }

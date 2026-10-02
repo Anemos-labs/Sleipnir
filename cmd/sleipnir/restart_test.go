@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
@@ -95,6 +96,26 @@ func TestRestartArgsKeepModelAndModeAndDecideWhatResumes(t *testing.T) {
 	}
 	if res, ok := h.programCommand("/resume", &out); !ok || !contains(res.Restart, "--continue") {
 		t.Errorf("/resume: %+v %v", res, ok)
+	}
+}
+
+// What the person allowed while the session ran (/allow, "don't ask again") goes with the restart: the session continues, and it asked
+// for the same go test again after /swarm, /model and /restart.
+func TestRestartArgsCarryWhatTheSessionAllowed(t *testing.T) {
+	s := chatSession(t, false, nil)
+	s.Perm.AddRule(perm.ScopeSession, perm.Rule{Action: perm.Allow, Tool: "Bash", Pattern: "go test:*"})
+	s.Perm.AddRule(perm.ScopeSession, perm.Rule{Action: perm.Allow, Tool: "Bash", Pattern: "go test:*"}) // said twice: carried once
+	args, err := restartArgs(s, []string{"--no-mcp"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(args, "Bash(go test:*)") || count(args, "--allow") != 1 {
+		t.Errorf("the grant is not in %v", args)
+	}
+	// And a person who names the rule again is not asked twice.
+	args, _ = restartArgs(s, []string{"--allow", "Bash(go test:*)"}, false)
+	if count(args, "Bash(go test:*)") != 1 {
+		t.Errorf("the rule is given twice: %v", args)
 	}
 }
 
@@ -301,6 +322,11 @@ func TestRecapLinesSayWhereAResumedConversationWas(t *testing.T) {
 	want := []string{"you asked: fix the failing test in slug", "it said: Fixed: slug.go joined with _"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("recap %q, want %q: the harness's own turns are not what the person asked", got, want)
+	}
+	// A goal that was cancelled has no answer, and the answer of the goal before it is not the answer to this one.
+	cancelled := append(turns[:4:4], core.Turn{Role: core.RoleUser, Blocks: []core.Block{core.Text("run the tests")}})
+	if got := recapLines(cancelled); len(got) != 2 || got[0] != "you asked: run the tests" || !strings.Contains(got[1], "had not answered") {
+		t.Errorf("a goal that was cancelled: %q", got)
 	}
 	if got := recapLines(nil); len(got) != 0 {
 		t.Errorf("a conversation with no turns recaps %q", got)

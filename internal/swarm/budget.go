@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
 // The swarm budget (Config.BudgetUSD) is a ledger over every agent the swarm has
@@ -41,7 +42,7 @@ func (s *Swarm) budgetErr() error {
 		return nil
 	}
 	s.budgetExceeded(tc)
-	return fmt.Errorf("swarm budget of $%.2f is exhausted ($%.2f spent): %w: %w", s.cfg.BudgetUSD, tc, errSwarmBudget, agent.ErrBudget)
+	return fmt.Errorf("swarm budget of %s is exhausted (%s spent): %w: %w", cost.Dollars(s.cfg.BudgetUSD), cost.Dollars(tc), errSwarmBudget, agent.ErrBudget)
 }
 
 // errSwarmBudget marks a stop caused by the swarm-wide budget: no task or worker
@@ -56,7 +57,7 @@ func (s *Swarm) budgetExceeded(spent float64) {
 	s.emit("swarm.budget", map[string]any{"budget_usd": s.cfg.BudgetUSD, "spent_usd": spent})
 	s.goTracked(func() {
 		n := s.stopWorkers("swarm budget exhausted", false)
-		s.notifyManager(fmt.Sprintf("Swarm budget of $%.2f is exhausted ($%.2f spent): %d running worker(s) were stopped and their tasks returned to todo. Nothing more will run; report to the user.", s.cfg.BudgetUSD, spent, n))
+		s.notifyManager(fmt.Sprintf("Swarm budget of %s is exhausted (%s spent): %d running worker(s) were stopped and their tasks returned to todo. Nothing more will run; report to the user.", cost.Dollars(s.cfg.BudgetUSD), cost.Dollars(spent), n))
 	})
 }
 

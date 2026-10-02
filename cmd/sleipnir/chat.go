@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -396,7 +397,7 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 	case "/allow":
 		rules := expandAllow(f[1:])
 		if len(rules) == 0 {
-			fmt.Fprintln(stderr, "usage: /allow tests | /allow 'Bash(go test:*)' | /allow 'Edit(src/**)' ...: allow for the rest of this session what would otherwise ask")
+			fmt.Fprintln(stderr, "usage: /allow tests | /allow 'Bash(go test:*)' | /allow 'Edit(src/**)' ...: allow for the rest of this session what would otherwise ask; tests is the build and test commands of most projects ("+testsPresetSummary+")")
 			break
 		}
 		var done []string
@@ -408,7 +409,9 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 			}
 		}
 		switch {
-		case len(done) > 4: // the "tests" preset: fourteen rules are one idea
+		case slices.Contains(f[1:], testsPreset) && len(done) >= len(testsAllow): // the "tests" preset: its rules are one idea, and not a Go one
+			fmt.Fprintf(stderr, "allowed for this session: the build and test commands (%s; %d rules)\n", testsPresetSummary, len(done))
+		case len(done) > 4:
 			fmt.Fprintf(stderr, "allowed for this session: %d rules, among them %s, %s\n", len(done), done[0], done[1])
 		case len(done) > 0:
 			fmt.Fprintf(stderr, "allowed for this session: %s\n", strings.Join(done, ", "))

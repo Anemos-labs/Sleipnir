@@ -416,3 +416,72 @@ func unsetProviderKeys(t *testing.T) {
 		}
 	}
 }
+
+// A provider that lists no models here (Anthropic's own protocol) was a dead end of the first run: "the key was saved, but no provider with a
+// model list is ready". The person types the model; the key and the model are tried together by the one small request, and the choice is kept.
+func TestFirstRunWithAProviderThatListsNoModelsAsksForTheModel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound) // whatever it is asked, it is not a refusal of the key
+	}))
+	defer ts.Close()
+	_, home := projectDir(t)
+	unsetProviderKeys(t)
+	t.Setenv("ANTHROPIC_BASE_URL", ts.URL)
+	t.Cleanup(func() { harden.Provide("ANTHROPIC_API_KEY", "") })
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	n := slices.IndexFunc(loginChoices(cfg), func(c loginChoice) bool { return c.name == "anthropic" }) + 1
+	var model string
+	var out bytes.Buffer
+	in := bufio.NewReader(strings.NewReader(fmt.Sprintf("%d\nclaude-test-1\n", n)))
+	if err := ensureModel(context.Background(), &model, in, &out, func() (string, error) { return "sk-ant-x", nil }, true); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if model != "anthropic/claude-test-1" || !strings.Contains(out.String(), "lists no models here") {
+		t.Fatalf("%q\n%s", model, out.String())
+	}
+	if c := readJSON(t, filepath.Join(home, ".sleipnir", "config.json")); sub(c, "models", "default") != "anthropic/claude-test-1" {
+		t.Errorf("the choice is not kept: %v", c)
+	}
+	// An empty line is no choice, and says how to choose later.
+	var model2 string
+	out.Reset()
+	os.Remove(filepath.Join(home, ".sleipnir", "config.json")) // the first choice is forgotten: this is a first run again
+	harden.Provide("ANTHROPIC_API_KEY", "")
+	in = bufio.NewReader(strings.NewReader(fmt.Sprintf("%d\n\n", n)))
+	err := ensureModel(context.Background(), &model2, in, &out, func() (string, error) { return "sk-ant-x", nil }, true)
+	if err == nil || !strings.Contains(err.Error(), "no model chosen") || model2 != "" {
+		t.Errorf("an empty line: %q %v", model2, err)
+	}
+}
+
+// An empty line at the prompt for a key goes back to the list of providers (it ended the whole program: "login: no key entered", as did a
+// stray Enter), unless the provider was named on the command line, where it is an error as before.
+func TestAnEmptyKeyGoesBackToTheListOfProviders(t *testing.T) {
+	_, _ = projectDir(t)
+	unsetProviderKeys(t)
+	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	calls := 0
+	secret := func() (string, error) {
+		calls++
+		if calls == 1 {
+			return "", nil
+		}
+		return "sk-second-try", nil
+	}
+	var out bytes.Buffer
+	name, err := login(context.Background(), bufio.NewReader(strings.NewReader("1\n1\n")), &out, secret, cfg, "", nil)
+	if err != nil || name != "heimdall" || calls != 2 {
+		t.Fatalf("%q %v after %d prompts\n%s", name, err, calls, out.String())
+	}
+	if n := strings.Count(out.String(), "Which provider will you use?"); n != 2 {
+		t.Errorf("the list was shown %d times, want 2:\n%s", n, out.String())
+	}
+	if !strings.Contains(out.String(), "an empty line goes back to the list") {
+		t.Errorf("the prompt does not say how to go back:\n%s", out.String())
+	}
+	// Named on the command line, an empty key is an error.
+	if _, err := login(context.Background(), bufio.NewReader(strings.NewReader("")), &bytes.Buffer{}, func() (string, error) { return "", nil }, cfg, "heimdall", nil); err == nil || !strings.Contains(err.Error(), "no key entered") {
+		t.Errorf("a named provider: %v", err)
+	}
+}

@@ -244,3 +244,19 @@ func Fallback(id string) Model {
 		Cache: anthropicCache(1024),
 	}
 }
+
+// Dollars is an amount as a person reads it: cents for what is worth cents, and four decimals for less than a cent ("$0.0006"), so that a
+// budget or a bill of a tenth of a cent is not "$0.00" (a run on a cheap model costs that much, and a budget of that size was shown as $0.00).
+func Dollars(x float64) string {
+	switch {
+	case x < 0:
+		return "-" + Dollars(-x)
+	case x == 0:
+		return "$0.00"
+	case x < 0.0001:
+		return "<$0.0001"
+	case x < 0.01:
+		return fmt.Sprintf("$%.4f", x)
+	}
+	return fmt.Sprintf("$%.2f", x)
+}

@@ -537,7 +537,7 @@ func (a *Agent) applyCommit(rp *readyPatch, why string) error {
 		}
 		a.cfg.OnPromote(a.cfg.ID, props)
 	}
-	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("compacted %d turns (%dk→%dk tokens)", res.RemovedTurns, res.SnapTokens/1000, (res.SpineAdded+res.RetainedTokens)/1000))
+	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("compacted %d turns (%s→%s tokens)", res.RemovedTurns, tokenCount(res.SnapTokens), tokenCount(res.SpineAdded+res.RetainedTokens)))
 	a.saveSnapshot()
 	return nil
 }
@@ -702,4 +702,16 @@ func (a *Agent) CompactNow(ctx context.Context, focus string) (CompactReport, er
 	}
 	rep.TokensAfter = z.Turns(a.thread.Snapshot().Turns)
 	return rep, nil
+}
+
+// tokenCount is a number of tokens as a person reads it: whole below a thousand, one decimal below ten thousand, then thousands ("669", "2.4k",
+// "31k"). It was thousands rounded down, which made a small conversation "0k→0k tokens".
+func tokenCount(n int) string {
+	switch {
+	case n < 1000:
+		return fmt.Sprintf("%d", n)
+	case n < 10_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return fmt.Sprintf("%dk", n/1000)
 }

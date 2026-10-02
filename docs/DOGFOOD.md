@@ -111,6 +111,30 @@ Open: `run` against a dead endpoint retries for 62 seconds before it says anythi
 per-session scratch directory of row 4; in the chat, narrowing the window re-wraps what the terminal drew (a code block that was
 written padded to the old width comes back double spaced).
 
+## Fresh-eyes trials
+
+The author of a change knows where everything is, and uses the program the way it was meant to be used. An agent that is given only the binary
+(no source, no instructions beyond a task and a scratch project) uses it differently, and says what it liked, what it did not, and where it got
+stuck. On 2026-10-02 eight such trials were run, in `tmux` on their own socket (`tmux -L NAME`, so that two trials never share a server), on
+real projects (Go, Python, Node), most of them against a real model through a small forwarding proxy that held the key (the trial's address
+and a dummy key are all it was given: the key is never in its transcript or on its disk):
+
+| Trial | What it found, that was fixed |
+|---|---|
+| no key, no model: every keyless command | the top-level help said nothing of the team of eight or how to start; a mistake printed forty lines of flags above the one line that said what was wrong; Ctrl-C at the hidden prompt for a key did nothing |
+| the chat against an echo endpoint | `/resume` offered no list; the resume banner said how many turns and nothing of what they were |
+| the chat, a real model, Go | a 4-minute wait that looked like thinking; Esc left the manager "stuck"; questions for harmless commands |
+| the chat, Python | about 25 questions in a quarter of an hour for variants of one test run; a write approved and then refused "read it first" |
+| headless `swarm 8` on six packages | the cap of four writers kept the team from being eight and deadlocked it against a verifier over the repository |
+| the chat, Node | a patch of two files asked twice; `/allow tests` read as a Go setting |
+| interrupts, `/new`, `/resume`, `/model` | session grants lost on `/swarm` and `/restart`; a recap that paired a cancelled goal with an older answer; an empty session in the list; "$0.00" for a budget of a tenth of a cent |
+| the real first run | an empty key ended the program; Anthropic (no model list) was a dead end |
+
+What it cost: about $0.01 of model time in all, and about a quarter of an hour of an agent's time per trial. What it found that no test had:
+every row above was a surprise. What it did not find, and what is still open, is in `docs/ROADMAP.md` (the findings list). To repeat it, give an
+agent the binary, a scratch project, a tmux socket of its own and the instructions "use it as a newcomer, report what you liked, what you
+did not, concrete bugs with the keys you pressed and what you saw", and read the report as a list of leads to check by hand, not as facts.
+
 ## Scenarios to run by hand in tmux
 
 `send-keys` and `capture-pane` drive a real terminal; each has a pass criterion and is repeated on every release candidate.

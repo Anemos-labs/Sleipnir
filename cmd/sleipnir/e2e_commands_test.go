@@ -67,6 +67,7 @@ func TestCommandExitStatus(t *testing.T) {
 	}{
 		{"no command", nil, 2, nil, []string{"Usage:", "Every day:"}},
 		{"an unknown command", []string{"bogus"}, 2, []string{"!Every day:"}, []string{`unknown command "bogus"`, "sleipnir -h lists the commands", "!Every day:"}},
+		{"an option without a terminal", []string{"--continue"}, 2, nil, []string{"--continue is an option", "try `sleipnir chat --continue`"}},
 		{"help", []string{"help"}, 0, []string{"Every day:", "chat", "run"}, []string{"!Every day:"}},
 		{"--help", []string{"--help"}, 0, []string{"Every day:"}, nil},
 		{"-h", []string{"-h"}, 0, []string{"Every day:"}, nil},
@@ -295,7 +296,7 @@ func TestRunOutput(t *testing.T) {
 	t.Run("a spent budget is an error", func(t *testing.T) {
 		// The first request costs more than this, so the second one (after the tool) is not made.
 		r := w.run("", "run", "--budget-usd", "0.001", "@tool")
-		assertRun(t, r, 1, nil, []string{"sleipnir: stopped: the budget of $0.00 is exhausted", "raise it with --budget-usd"})
+		assertRun(t, r, 1, nil, []string{"sleipnir: stopped: the budget of $0.0010 is exhausted", "raise it with --budget-usd"})
 	})
 	t.Run("sessions lists what ran", func(t *testing.T) {
 		r := w.run("", "sessions")

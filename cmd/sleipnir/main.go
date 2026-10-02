@@ -80,7 +80,12 @@ func main() {
 			err = handler(ctx, args)
 			break
 		}
-		fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q (sleipnir -h lists the commands)\n", cmd)
+		if strings.HasPrefix(cmd, "-") {
+			// an option where a command goes: the chat takes it on a terminal, and elsewhere it is named
+			fmt.Fprintf(os.Stderr, "sleipnir: %s is an option, and without a terminal there is no command to give it to: try `sleipnir chat %s` (sleipnir -h lists the commands)\n", cmd, cmd)
+		} else {
+			fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q (sleipnir -h lists the commands)\n", cmd)
+		}
 		os.Exit(2)
 	}
 	if sig := caught(); sig != nil && errors.Is(err, context.Canceled) {
