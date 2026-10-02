@@ -249,6 +249,8 @@ const chatHelp = `/help              this text (and your custom commands and ski
 /allow <rule>      allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)
 /verbose [on|off]  show or hide notices and tool errors (--verbose)
 /anim [on|off]     turn the motion on or off (--no-anim)
+/new               start the conversation again, empty (the same model and mode)
+/resume [id]       continue an earlier session: the newest of this project, or the id /sessions shows
 /restart [flags]   start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)
 /swarm <n> [flags] start again as a manager with up to n workers: /swarm 8 --verify "go test {dirs}" --isolation worktree
 /sessions          the newest sessions; resume one with sleipnir --resume <id>

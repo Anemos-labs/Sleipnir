@@ -63,3 +63,41 @@ func TestProgramCommandsAnswerWithoutASession(t *testing.T) {
 		t.Error("/cost is not a program command")
 	}
 }
+
+// /new, /resume and /restart build the arguments of the chat that follows: the model and the mode stay, a fresh conversation resumes nothing,
+// and the person's own --resume is not doubled.
+func TestRestartArgsKeepModelAndModeAndDecideWhatResumes(t *testing.T) {
+	s := chatSession(t, false, nil)
+	args, err := restartArgs(s, []string{"--no-mcp"}, false)
+	if err != nil || !contains(args, "--no-mcp") || !contains(args, "--mode") {
+		t.Fatalf("%v %v", args, err)
+	}
+	if args, _ := restartArgs(s, nil, true); contains(args, "--resume") || contains(args, "--continue") {
+		t.Errorf("/new must start empty: %v", args)
+	}
+	if args, _ := restartArgs(s, []string{"--resume", "20260101-000000-abcdef"}, false); count(args, "--resume") != 1 {
+		t.Errorf("the person's --resume is the only one: %v", args)
+	}
+	if _, err := restartArgs(s, []string{"fix the bug"}, false); err == nil {
+		t.Error("a goal after /restart is refused: it is typed at the prompt")
+	}
+	h := &sessionHost{s: s}
+	var out strings.Builder
+	if res, ok := h.programCommand("/resume 20260101-000000-abcdef", &out); !ok || !contains(res.Restart, "--resume") {
+		t.Errorf("/resume ID: %+v %v", res, ok)
+	}
+	if res, ok := h.programCommand("/resume", &out); !ok || !contains(res.Restart, "--continue") {
+		t.Errorf("/resume: %+v %v", res, ok)
+	}
+}
+
+func contains(xs []string, x string) bool { return count(xs, x) > 0 }
+
+func count(xs []string, x string) (n int) {
+	for _, v := range xs {
+		if v == x {
+			n++
+		}
+	}
+	return
+}

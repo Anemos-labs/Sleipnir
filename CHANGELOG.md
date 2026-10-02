@@ -240,7 +240,7 @@ The first release.
 ### Interfaces
 
 - Every flag of `sleipnir chat` has an equivalent inside the chat: `/budget`, `/allow`, `/verbose`, `/anim`, `/sessions`, `/cwd`, and `/restart [flags]` and
-  `/swarm <n> [flags]` for the flags that decide the shape of a session (the chat starts again with them, keeping the conversation when it is a single agent).
+  `/new`, `/resume [id]`, and `/swarm <n> [flags]` for the flags that decide the shape of a session (the chat starts again with them, keeping the conversation when it is a single agent).
   `docs/CLI.md` has the table, flag by flag.
 - `sleipnir` alone, or followed by flags (`sleipnir --model provider/model`), opens the chat in the current directory when it runs on a terminal; a script or a
   pipe still gets the usage message.

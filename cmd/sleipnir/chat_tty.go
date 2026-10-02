@@ -218,6 +218,21 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 			return app.CommandResult{Anim: v}, true
 		}
 		return app.CommandResult{}, true
+	case "/new", "/resume":
+		var typed []string
+		switch {
+		case f[0] == "/resume" && len(f) > 1:
+			typed = []string{"--resume", f[1]}
+		case f[0] == "/resume":
+			typed = []string{"--continue"}
+		}
+		args, err := restartArgs(h.s, typed, f[0] == "/new")
+		if err != nil {
+			fmt.Fprintln(out, f[0]+":", err)
+			return app.CommandResult{}, true
+		}
+		fmt.Fprintf(out, "restarting: sleipnir chat %s\n", strings.Join(args, " "))
+		return app.CommandResult{Restart: args}, true
 	case "/restart", "/swarm":
 		rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
 		if f[0] == "/swarm" {
@@ -227,7 +242,7 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 			}
 			rest = "--swarm " + rest
 		}
-		args, err := restartArgs(h.s, splitArgs(rest))
+		args, err := restartArgs(h.s, splitArgs(rest), false)
 		if err != nil {
 			fmt.Fprintln(out, f[0]+":", err)
 			return app.CommandResult{}, true
@@ -265,6 +280,8 @@ var chatCommands = []chatCommand{
 	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},
 	{"verbose", "[on|off]", "show or hide notices and tool errors"},
 	{"anim", "[on|off]", "turn the motion on or off"},
+	{"new", "", "start the conversation again, empty (the same model and mode)"},
+	{"resume", "[id]", "continue an earlier session: the newest of this project, or the id /sessions shows"},
 	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
 	{"swarm", "<n> [flags]", "start again as a manager with up to n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},

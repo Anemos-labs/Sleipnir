@@ -1646,6 +1646,7 @@ flags:
 | `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |
 | `/verbose [on\|off]` · `/anim [on\|off]` | show or hide notices and tool errors · turn the motion on or off |
 | `/sessions` · `/cwd` | the newest sessions (resume one with `sleipnir --resume <id>`) · the directory the session works in |
+| `/new` · `/resume [id]` | start the conversation again, empty · continue an earlier session (the newest of this project, or the id `/sessions` shows) |
 | `/restart [flags]` | start the chat again with other flags; the model and mode stay, and the conversation comes along when it can (a single agent) |
 | `/swarm <n> [flags]` | start again as a manager with up to `n` workers: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
 | `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan` or `bypass` |
@@ -1675,7 +1676,7 @@ chat with it, which keeps the conversation when it is a single agent.
 | `--budget-usd` | `/budget` |
 | `--allow` | `/allow` |
 | `--verbose` · `--no-anim` | `/verbose` · `/anim` |
-| `--resume`, `--continue` | `/sessions` lists them; `/restart --resume ID` |
+| `--resume`, `--continue` | `/sessions` lists them; `/resume [id]` |
 | `--cwd` | `/cwd` shows it; `/restart --cwd DIR` |
 | `--swarm`, `--verify`, `--isolation`, `--commit`, `--mailman`, `--role-model` | `/swarm <n> [flags]`, `/restart [flags]` |
 | `--trust-project`, `--no-mcp` | `/restart --trust-project`, `/restart --no-mcp` (`/trust` and `/mcp` show what they cover) |
