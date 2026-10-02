@@ -666,12 +666,18 @@ func firstText(s string, n int) string {
 
 func rewind(w io.Writer, s *session.Session, args []string) {
 	if len(args) == 0 {
-		list := s.Ckpt.List()
-		if len(list) == 0 {
-			fmt.Fprintln(w, "no checkpoints yet")
-		}
-		for _, c := range list {
+		n := 0
+		for _, c := range s.Ckpt.List() {
+			if len(c.Files) == 0 { // a checkpoint that touched nothing has nothing to put back
+				continue
+			}
 			fmt.Fprintf(w, "  %s  %s  %d files  %s\n", c.ID, c.Time.Format("15:04:05"), len(c.Files), c.Label)
+			n++
+		}
+		if n == 0 {
+			fmt.Fprintln(w, "no checkpoints yet (one is kept for each turn that changes a file)")
+		} else {
+			fmt.Fprintln(w, "/rewind ID puts the files back as they were; /diff ID shows what changed")
 		}
 		return
 	}
