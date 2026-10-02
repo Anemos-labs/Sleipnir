@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -395,6 +396,65 @@ func TestStuckMailmanIsBypassedAfterTheBound(t *testing.T) {
 	}
 	// The run that never answered is stopped (twice the bound), and the mailman is free again.
 	rvWait(t, "the mailman's run to be stopped", func() bool { return r.idle("mm-1") })
+}
+
+// holdEvents is an Emitter that keeps the first event of one type back until it is opened, and says when one is waiting.
+type holdEvents struct {
+	events.Emitter
+	typ     string
+	waiting chan struct{}
+	gate    chan struct{}
+	arrived sync.Once
+	opened  sync.Once
+}
+
+func newHoldEvents(inner events.Emitter, typ string) *holdEvents {
+	return &holdEvents{Emitter: inner, typ: typ, waiting: make(chan struct{}), gate: make(chan struct{})}
+}
+
+func (h *holdEvents) open() { h.opened.Do(func() { close(h.gate) }) }
+
+func (h *holdEvents) Emit(agent, typ string, data any, opts ...events.Opt) (uint64, error) {
+	if typ == h.typ {
+		h.arrived.Do(func() { close(h.waiting) })
+		<-h.gate
+	}
+	return h.Emitter.Emit(agent, typ, data, opts...)
+}
+
+// The count of parcels delivered directly is not raised before the event that says so is in the log, as the digest's count is not: whoever
+// sees the count finds the event. (A test that waited for the count and then read the log missed the event now and then, on a loaded machine.)
+func TestDirectDeliveryIsLoggedBeforeItIsCounted(t *testing.T) {
+	cfg := Config{MailmanQuiet: 15 * time.Millisecond, MailmanMax: 40 * time.Millisecond, MailmanBound: 100 * time.Millisecond}
+	mm := func(ctx context.Context, c *rvCall) rvReply {
+		rvBlock(ctx, make(chan struct{})) // never answers
+		return rvReply{Text: "late"}
+	}
+	var hold *holdEvents
+	r := mailmanRig(t, cfg, mm, nil, func(d *Deps) {
+		hold = newHoldEvents(d.Events, events.TypeMailDirect)
+		d.Events = hold
+	})
+	t.Cleanup(hold.open)
+	to := r.team(1)
+	for k := 0; k < 3; k++ {
+		if _, err := r.sw.Router.Send(fmt.Sprintf("w-%d", k), to[0], "info", fmt.Sprintf("update %d", k)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case <-hold.waiting: // the parcels are delivered; their event is about to be written
+	case <-time.After(30 * time.Second):
+		t.Fatal("no parcel was delivered directly")
+	}
+	if st := r.sw.MailmanStats(); st.Direct != 0 {
+		t.Fatalf("%d parcels are counted as delivered directly while the event that says so is not in the log", st.Direct)
+	}
+	hold.open()
+	mailSettled(t, r, 3)
+	if len(r.log.OfType(events.TypeMailDirect)) == 0 {
+		t.Error("the direct delivery left no event")
+	}
 }
 
 // A mailman that cannot run (its model fails) costs nothing but delay: its parcels are

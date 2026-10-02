@@ -661,12 +661,12 @@ func (mr *mailroom) deliverDirect(ps []*parcel, reason string) {
 		s.emitAs(p.msg.To, events.TypeMailDeliver, map[string]any{"id": p.msg.ID, "from": p.msg.From})
 		ids = append(ids, p.msg.ID)
 	}
+	if len(ids) > 0 { // the event first, then the count: whoever sees the count finds the event, as with a digest
+		s.emit(events.TypeMailDirect, map[string]any{"reason": reason, "n": len(ids), "ids": firstN(ids, 30)})
+	}
 	mr.mu.Lock()
 	mr.stats.Direct += len(ids)
 	mr.mu.Unlock()
-	if len(ids) > 0 {
-		s.emit(events.TypeMailDirect, map[string]any{"reason": reason, "n": len(ids), "ids": firstN(ids, 30)})
-	}
 }
 
 // undeliverable tells the senders of parcels that could not be delivered (their
