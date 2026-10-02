@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -184,7 +185,7 @@ func TestModelOfThePlanNeedsASignInBeforeTheChatEnds(t *testing.T) {
 	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.MaxAgents = true, 4 }, nil)}
 	var out strings.Builder
 	res, ok := team.programCommand("/model chatgpt/some-model", &out)
-	if !ok || res.Restart != nil || !strings.Contains(out.String(), "sleipnir login chatgpt") {
+	if !ok || res.Restart != nil || !strings.Contains(out.String(), "/login chatgpt") {
 		t.Errorf("not signed in: nothing restarts, and the way to sign in is named: %v %q", res.Restart, out.String())
 	}
 }
@@ -221,5 +222,65 @@ func TestModelInATeamStartsItAgainOnTheNewModel(t *testing.T) {
 	}
 	if _, ok := team.programCommand("/model", &out); ok {
 		t.Error("/model alone only shows the model")
+	}
+}
+
+// /login cannot be hosted by the program (a key is typed hidden, a browser sign-in prints an address): it ends the chat as a restart that
+// signs in first and then comes back, a single agent with its conversation and its mode, a team starting again.
+func TestLoginInTheChatLeavesItToSignInAndComesBack(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	solo := &sessionHost{s: chatSession(t, false, nil)}
+	var out strings.Builder
+	res, ok := solo.programCommand("/login groq", &out)
+	if !ok || res.Restart == nil || !contains(res.Restart, "--mode") || count(res.Restart, "--swarm") != 1 || !reflect.DeepEqual(solo.first, []string{"login", "groq"}) ||
+		!strings.Contains(out.String(), "comes back where you were") {
+		t.Errorf("/login groq: restart %v, first %v\n%s", res.Restart, solo.first, out.String())
+	}
+	for _, line := range []string{"/login chatgpt", "/login"} { // the plan, and the menu that asks
+		solo.first, out = nil, strings.Builder{}
+		if res, ok = solo.programCommand(line, &out); !ok || res.Restart == nil || len(solo.first) == 0 || solo.first[0] != "login" {
+			t.Errorf("%s: restart %v, first %v\n%s", line, res.Restart, solo.first, out.String())
+		}
+	}
+	// a name that takes no key, and too many words, end nothing
+	for line, want := range map[string]string{"/login nonsense": "not a provider that takes a key", "/login a b": "usage: /login [provider]"} {
+		solo.first, out = nil, strings.Builder{}
+		if res, ok = solo.programCommand(line, &out); !ok || res.Restart != nil || solo.first != nil || !strings.Contains(out.String(), want) {
+			t.Errorf("%s: restart %v, first %v, said %q (want %q)", line, res.Restart, solo.first, out.String(), want)
+		}
+	}
+	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.MaxAgents = true, 4 }, nil)}
+	out = strings.Builder{}
+	if res, ok = team.programCommand("/login", &out); !ok || !contains(res.Restart, "--swarm") || contains(res.Restart, "--resume") || !strings.Contains(out.String(), "team starts again") {
+		t.Errorf("a team starts again, with no conversation to resume: %v\n%s", res.Restart, out.String())
+	}
+}
+
+// What runs on the terminal before the chat comes back is run first, whatever it comes to, and the process ends with the chat's status.
+func TestTheCommandThatRunsFirstIsFollowedByTheChat(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in program is a shell script")
+	}
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "log")
+	stub := filepath.Join(dir, "sleipnir")
+	script := "#!/bin/sh\necho \"$*\" >> \"$STUB_LOG\"\n[ \"$1\" = login ] && exit 3\n[ \"$1\" = chat ] && exit 5\nexit 0\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STUB_LOG", logFile)
+	code, err := runChildren(stub, []string{"--model", "x/y", "--mode", "default"}, []string{"login", "heimdall"})
+	got, _ := os.ReadFile(logFile)
+	if err != nil || code != 5 || string(got) != "login heimdall\nchat --model x/y --mode default\n" {
+		t.Errorf("status %d, error %v, ran:\n%s", code, err, got)
+	}
+	os.Remove(logFile)
+	if code, err = runChildren(stub, nil, nil); err != nil || code != 5 {
+		t.Errorf("nothing first: status %d, error %v", code, err)
+	}
+	if got, _ = os.ReadFile(logFile); string(got) != "chat\n" {
+		t.Errorf("nothing runs before the chat when there is nothing to run: %q", got)
 	}
 }

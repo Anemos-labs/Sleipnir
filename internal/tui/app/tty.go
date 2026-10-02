@@ -84,16 +84,18 @@ func RunTTY(ctx context.Context, src Source, o TTYOptions) error {
 	if caps.Color == term.ColorNone {
 		pal = widget.MonoPalette()
 	}
+	reader := term.NewReader(in)
+	defer reader.Cancel() // no read of this program is left waiting on the terminal when it ends
 	return Run(ctx, Config{
-		Src: src, Screen: render.NewScreen(out, caps), Keys: ReadKeys(ctx, in), Sizes: sizes, Tick: ticker.C,
+		Src: src, Screen: render.NewScreen(out, caps), Keys: ReadKeys(ctx, reader), Sizes: sizes, Tick: ticker.C,
 		Pal: pal, NoAnim: o.NoAnim || !caps.Anim, View: o.View, Agent: o.Agent, QuitLive: o.QuitLive, QuitEnded: o.QuitEnded,
 	})
 }
 
 // ReadKeys reads r (a terminal in raw mode) and sends the keys it decodes. The channel closes when r ends or fails or ctx is done.
 // A lone Esc is told from the start of an escape sequence by waiting for the grace time the decoder asks for; a read that blocks
-// cannot be interrupted, so the goroutine that does it may outlive ctx until the next byte arrives (or the process ends, which is
-// what follows a full-screen program).
+// cannot be interrupted, so the goroutine that does it may outlive ctx until the next byte arrives: a program that is followed by
+// another one on the same terminal reads through a term.Reader and cancels it.
 func ReadKeys(ctx context.Context, r io.Reader) <-chan input.Key {
 	out := make(chan input.Key, 16)
 	chunks := make(chan []byte)

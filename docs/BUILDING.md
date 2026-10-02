@@ -212,7 +212,9 @@ The scripted recordings below are made from a mock model; they show the harness 
 
 **Look at every picture you make.** A recording is only done once its frames have been seen in a browser, at the moments that matter (a menu is
 up, a row is highlighted, a dialog asks): `node scripts/svg2png.mjs docs/media/real-first-run.svg /tmp/f.png --at 2` writes the frame at second 2, and
-the image is then opened and read. Text that is checked only as text misses what a person sees (a highlighted row drawn white on white passed every
+the image is then opened and read. For a screen that is not in a recording yet, `scripts/look.sh OUT.png [--key NAME | --type TEXT | --pause SECONDS]... -- sleipnir ...`
+runs the command in a real terminal under tmux, presses the keys, and writes what the terminal showed as a PNG (`--home DIR` is the home it runs in, empty by default;
+the key of a provider comes from the environment). Text that is checked only as text misses what a person sees (a highlighted row drawn white on white passed every
 test and shipped).
 
 The animated SVGs in the README (`docs/media/*.svg`, with PNG stills) are the terminal interface's own screens, drawn by the code from a

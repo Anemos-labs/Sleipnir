@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -56,38 +57,9 @@ func cmdTermSVG(_ context.Context, args []string) error {
 	}
 	defer tf.Close()
 
-	term := vt.New(*cols, *rows)
-	var frames []svg.Frame
-	var at, last time.Duration
-	off := 0
-	sc := bufio.NewScanner(tf)
-	for sc.Scan() {
-		f := strings.Fields(sc.Text())
-		if len(f) != 3 || f[0] != "O" {
-			continue // headers, input and signals
-		}
-		delay, err1 := strconv.ParseFloat(f[1], 64)
-		n, err2 := strconv.Atoi(f[2])
-		if err1 != nil || err2 != nil || n < 0 || off+n > len(data) {
-			return fmt.Errorf("term-svg: the timing file does not match the log at %q", sc.Text())
-		}
-		d := time.Duration(delay * float64(time.Second))
-		if d > *maxGap {
-			d = *maxGap
-		}
-		at += d
-		term.Write(data[off : off+n])
-		off += n
-		if len(frames) == 0 || at-last >= *minStep {
-			frames = append(frames, svg.Capture(term, at))
-			last = at
-		}
-	}
-	if last != at { // the last change is always on screen
-		frames = append(frames, svg.Capture(term, at))
-	}
-	if len(frames) == 0 {
-		return errors.New("term-svg: nothing was recorded")
+	frames, at, err := recordedFrames(data, tf, *cols, *rows, *maxGap, *minStep)
+	if err != nil {
+		return err
 	}
 	th := svg.DefaultTheme()
 	th.Title = *title
@@ -110,4 +82,51 @@ func cmdTermSVG(_ context.Context, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "term-svg: wrote %s (%d frames, %s)\n", *out, len(frames), (at + *hold).Round(100*time.Millisecond))
 	return nil
+}
+
+// recordedFrames plays what script wrote (data, with timing, its --log-timing) into a terminal emulator and takes a frame of it at most
+// every minStep, a wait longer than maxGap shortened to it. It returns the frames and the length of the recording. Output that comes
+// within a step of the last frame is on the screen at the next frame; when nothing comes for a step after it, it has a frame of its own at
+// the moment it ended, because the screen stood still in that state (a picture taken in a pause must show the screen as it was).
+func recordedFrames(data []byte, timing io.Reader, cols, rows int, maxGap, minStep time.Duration) ([]svg.Frame, time.Duration, error) {
+	term := vt.New(cols, rows)
+	var frames []svg.Frame
+	var at, last time.Duration
+	dirty := false // output written since the last frame
+	off := 0
+	sc := bufio.NewScanner(timing)
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) != 3 || f[0] != "O" {
+			continue // headers, input and signals
+		}
+		delay, err1 := strconv.ParseFloat(f[1], 64)
+		n, err2 := strconv.Atoi(f[2])
+		if err1 != nil || err2 != nil || n < 0 || off+n > len(data) {
+			return nil, 0, fmt.Errorf("term-svg: the timing file does not match the log at %q", sc.Text())
+		}
+		d := time.Duration(delay * float64(time.Second))
+		if d > maxGap {
+			d = maxGap
+		}
+		if dirty && d >= minStep {
+			frames = append(frames, svg.Capture(term, at)) // the screen stood still from the last output until this one
+			last, dirty = at, false
+		}
+		at += d
+		term.Write(data[off : off+n])
+		off += n
+		dirty = true
+		if len(frames) == 0 || at-last >= minStep {
+			frames = append(frames, svg.Capture(term, at))
+			last, dirty = at, false
+		}
+	}
+	if dirty { // the last change is always on screen
+		frames = append(frames, svg.Capture(term, at))
+	}
+	if len(frames) == 0 {
+		return nil, 0, errors.New("term-svg: nothing was recorded")
+	}
+	return frames, at, nil
 }

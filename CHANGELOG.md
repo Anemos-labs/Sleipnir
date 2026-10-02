@@ -260,6 +260,13 @@ The first release.
 
 ### Interfaces
 
+- `/login [provider]` in the chat: add a key, or sign in with your ChatGPT plan, without another terminal. The chat ends, `sleipnir login` runs on the terminal (a key
+  is typed hidden; a browser sign-in prints its address), and the chat comes back, a single agent with its conversation, a team starting again. A name that is not a
+  provider ends nothing. A key the provider refused, a model of a provider that has none and a ChatGPT sign-in that has ended now say `/login` where they said
+  `sleipnir login`.
+- `scripts/look.sh` takes `--pause SECONDS` for a screen that comes late (a program that starts another one), and `sleipnir term-svg` takes a frame of a screen that stood
+  still: output that ended within a step of the last frame had none until the next output came, so a picture taken in a pause showed the screen before the end of the
+  burst (the chat that came back after `/login` was missing from its own picture).
 - `/model` works in the default chat. It was refused for a team, and the chat on a terminal is a team now: `/model REF` starts the team again on
   that model (its roles that name their own model are kept) and the model menu opens after `/model `. `/model` and `/roles` check the reference
   first (an unknown provider, a provider without a key), so a typo cannot end the chat. Found by looking at the palette picture and typing `/model `.
@@ -454,6 +461,12 @@ The first release.
 
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
 defect the runs showed, with the evidence, and what changed.
+
+- **The first keys typed after a restart were lost.** `/restart`, `/swarm`, `/new`, `/resume`, `/roles` and `/model` (for a team) end the chat program and start the chat again in a child
+  that has the terminal. The program's read of the keyboard cannot be called off, and it stayed waiting in the process that had ended: it took the first line typed for the new
+  chat (typing `abc` right after `/restart` showed nothing; `def` after it arrived), and at the key prompt of `/login` it took the whole line, the key. The keyboard is now read
+  through `term.Reader`, which is stopped for good when the program ends (`select(2)` on the terminal and a pipe; macOS's poll and kqueue do not work with terminals). Found while
+  building `/login`; a test in `internal/tui/term` on a pty, and an end-to-end test that types after a restart (it failed for the whole hang guard on the parent).
 
 - **The recordings had no colour, and a highlighted menu row was unreadable.** `internal/tui/svg` put the default text colour in a CSS rule
   (`text{fill:…}`), which beats the `fill` attribute of every text element in a browser: no cell's own colour ever showed in a picture, and

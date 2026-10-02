@@ -67,9 +67,9 @@ func (s *Session) CheckModel(ref string) (string, error) {
 	case !ok:
 		return "", fmt.Errorf("unknown provider %q (known: %s)", mr.Provider, strings.Join(providerNames(s.cfg), ", "))
 	case p.Auth == config.AuthChatGPTPlan && !ProviderReady(p):
-		return "", fmt.Errorf("provider %q is not signed in: `sleipnir login %s`", mr.Provider, mr.Provider)
+		return "", fmt.Errorf("provider %q is not signed in: /login %s", mr.Provider, mr.Provider)
 	case p.APIKeyEnv != "" && p.APIKey() == "":
-		return "", fmt.Errorf("provider %q has no key: `sleipnir login %s`, or set %s", mr.Provider, mr.Provider, p.APIKeyEnv)
+		return "", fmt.Errorf("provider %q has no key: /login %s, or set %s", mr.Provider, mr.Provider, p.APIKeyEnv)
 	}
 	return mr.String(), nil
 }

@@ -1,13 +1,14 @@
 #!/bin/sh
 # Look at a screen: run a command in a real terminal, press keys, and write what the terminal showed as a PNG, in colour, to open and read.
 #
-#   scripts/look.sh OUT.png [--cols N] [--rows N] [--wait SECONDS] [--home DIR] [--cwd DIR] [--key NAME | --type TEXT]... -- COMMAND [ARGS...]
+#   scripts/look.sh OUT.png [--cols N] [--rows N] [--wait SECONDS] [--home DIR] [--cwd DIR] [--key NAME | --type TEXT | --pause SECONDS]... -- COMMAND [ARGS...]
 #
 #   scripts/look.sh /tmp/menu.png --key Down --key Down -- sleipnir login
-#   scripts/look.sh /tmp/stats.png --home ~/.sleipnir-look --type 'hello' --key Enter --wait 20 --key C-t -- sleipnir --swarm 0
+#   scripts/look.sh /tmp/stats.png --home ~/.sleipnir-look --type 'hello' --key Enter --pause 20 --key C-t -- sleipnir --swarm 0
 #
 # --key is a tmux key name (Enter, Down, Escape, C-t, ...) and --type literal text, typed a character at a time; they are pressed in the order
-# given, with --wait seconds (default 3) before the first and after the last, and a short pause between. The picture is the last thing the
+# given, with --wait seconds (default 3) before the first and after the last, a short pause between, and --pause SECONDS where a screen
+# takes longer to come (a program that starts another one). The picture is the last thing the
 # terminal showed. `sleipnir` in the command is bin/sleipnir, built here; HOME is a fresh empty one unless --home says another (a key for a
 # provider comes from the environment, which the command inherits). Needs tmux, script (util-linux), go and node with Playwright's Chromium.
 # It is what AGENTS.md means by looking at what you make: text taken from a terminal has no colour, and a highlight that is white on white
@@ -31,6 +32,7 @@ while [ "$#" -gt 0 ]; do
     --cwd) shift; cwd=${1:?} ;;
     --key) shift; printf 'key\t%s\n' "${1:?}" >> "$tmp/actions" ;;
     --type) shift; printf 'type\t%s\n' "${1:?}" >> "$tmp/actions" ;;
+    --pause) shift; printf 'pause\t%s\n' "${1:?}" >> "$tmp/actions" ;;
     --) shift; break ;;
     -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "look: unknown option $1 (try --help)" >&2; exit 2 ;;
@@ -54,6 +56,7 @@ sleep "$wait"
 while IFS="$(printf '\t')" read -r kind arg; do
   case "$kind" in
     key) tmux send-keys -t "$s" "$arg" ;;
+    pause) sleep "$arg" ;;
     type) printf '%s' "$arg" | awk 'BEGIN{ORS=""} {for(i=1;i<=length($0);i++) print substr($0,i,1) "\n"}' | while IFS= read -r ch; do
         if [ -z "$ch" ]; then tmux send-keys -t "$s" Space; else tmux send-keys -t "$s" -l -- "$ch"; fi
         sleep 0.04

@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/provider"
@@ -172,7 +173,7 @@ func reportError(w io.Writer, err error) int {
 		return 0
 	}
 	fmt.Fprintln(w, "sleipnir:", tools.SanitizeForTerminal(err.Error()))
-	if h := authHint(err); h != "" {
+	if h := authHint(err, "`sleipnir login`"); h != "" {
 		fmt.Fprintln(w, h)
 	}
 	var ee *exitError
@@ -182,11 +183,13 @@ func reportError(w io.Writer, err error) int {
 	return 1
 }
 
-// authHint says what to do about a key the provider refused: enter it again, and check whether an environment variable is the one in use (it
-// wins over the stored key, so a stale export is the usual reason a fresh login seems to change nothing). Empty for any other error.
-func authHint(err error) string {
-	if pe, ok := provider.AsError(err); ok && pe.Kind == provider.ErrAuth {
-		return "The provider refused the key. Enter it again with `sleipnir login`; if a key variable is set in your environment it wins over the stored one (`env | grep API_KEY`)."
+// authHint says what to do about a key the provider refused: enter it again (how names the way to, where the person is: `sleipnir login` on
+// the command line, /login in the chat), and check whether an environment variable is the one in use (it wins over the stored key, so a stale
+// export is the usual reason a fresh login seems to change nothing). Empty for any other error, and for a ChatGPT sign-in that has ended: that
+// error says so itself.
+func authHint(err error, how string) string {
+	if pe, ok := provider.AsError(err); ok && pe.Kind == provider.ErrAuth && !chatgptauth.IsSignInError(err) {
+		return "The provider refused the key. Enter it again with " + how + "; if a key variable is set in your environment it wins over the stored one (`env | grep API_KEY`)."
 	}
 	return ""
 }

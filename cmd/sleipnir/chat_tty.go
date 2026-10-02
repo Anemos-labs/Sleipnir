@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -64,6 +65,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 	attach := make(chan app.ChatAttach, 1)
 	startDone := make(chan made, 1)
 	cwd := f.cwd
+	host := &sessionHost{} // its session is made below; what a command leaves on it (host.first) is read when the program has ended
 	go func() {
 		s, err := session.New(startCtx, o)
 		if err == nil && startCtx.Err() != nil {
@@ -72,6 +74,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			s.Close()
 			s, err = nil, startCtx.Err()
 		}
+		host.s = s
 		startDone <- made{s, err}
 		if err != nil {
 			attach <- app.ChatAttach{Err: err}
@@ -79,7 +82,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		}
 		log, _ := s.Log.Subscribe(4096)
 		models := modelChoices(startCtx)
-		attach <- app.ChatAttach{Host: &sessionHost{s: s}, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd, Models: models}
+		attach <- app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd, Models: models}
 	}()
 
 	var hist *input.History
@@ -109,7 +112,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		printIntegration(os.Stderr, finishRun(ctx, s), false)
 		s.Close()
 		if end == app.ChatRestart && restartTo != nil {
-			runAgain(restartTo) // a command asked for the chat again with other flags (/restart, /swarm): it ends this process
+			runAgain(restartTo, host.first) // a command asked for the chat again with other flags (/restart, /swarm, /login): it ends this process
 		}
 	}()
 	switch end {
@@ -154,8 +157,12 @@ func tildePath(p string) string {
 	return p
 }
 
-// sessionHost is a session as the chat program sees it.
-type sessionHost struct{ s *session.Session }
+// sessionHost is a session as the chat program sees it. first is a command to run on the terminal before the chat comes back (/login:
+// a key is typed hidden and a browser sign-in prints its address, which the program cannot host while it owns the terminal).
+type sessionHost struct {
+	s     *session.Session
+	first []string
+}
 
 // Turn runs a goal. What the model says, the tools it calls and what they answer reach the screen through the sink; what comes back
 // is how it ended, and the program draws the record of it.
@@ -168,7 +175,7 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 	if errors.Is(err, agent.ErrBudget) {
 		out.Message = tools.SanitizeForTerminal(budgetStopped(h.s, res).Error())
 	}
-	if hint := authHint(err); hint != "" {
+	if hint := authHint(err, "/login"); hint != "" {
 		out.Message = tools.SanitizeForTerminal(err.Error()) + "\n" + hint
 	}
 	return out
@@ -250,6 +257,33 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		}
 		fmt.Fprintf(out, "restarting: sleipnir chat %s\n", strings.Join(args, " "))
 		return app.CommandResult{Restart: args}, true
+	case "/login":
+		// The terminal is the program's while it runs, and a key is typed hidden or a browser sign-in prints its address: so the chat is
+		// left, `sleipnir login` runs on the terminal, and the chat comes back (a single agent with its conversation, a team starts again).
+		if len(f) > 2 {
+			fmt.Fprintln(out, "usage: /login [provider]: sign in, or paste a key, for a provider (none named: a menu asks); chatgpt is your ChatGPT plan")
+			return app.CommandResult{}, true
+		}
+		cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true})
+		if err == nil && len(f) == 2 {
+			err = loginName(cfg, f[1])
+		}
+		if err != nil {
+			fmt.Fprintln(out, strings.TrimPrefix(tools.SanitizeForTerminal(err.Error()), "login: "))
+			return app.CommandResult{}, true
+		}
+		args, err := restartArgs(h.s, nil, false)
+		if err != nil {
+			fmt.Fprintln(out, "login:", err)
+			return app.CommandResult{}, true
+		}
+		h.first = append([]string{"login"}, f[1:]...)
+		if h.s.Swarm != nil {
+			fmt.Fprintln(out, "leaving the chat to sign in; the team starts again after it (its conversation does not carry over)")
+		} else {
+			fmt.Fprintln(out, "leaving the chat to sign in; it comes back where you were")
+		}
+		return app.CommandResult{Restart: args}, true
 	case "/model":
 		if len(f) < 2 || h.s.Swarm == nil { // a single agent moves its own conversation: slashTo
 			return app.CommandResult{}, false
@@ -326,6 +360,7 @@ var chatCommands = []chatCommand{
 	{"compact", "[focus]", "fold the older thread now"},
 	{"agents", "", "the team's agents and tasks (ctrl+g)"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
+	{"login", "[provider]", "add a key, or sign in with your ChatGPT plan, for a provider; the chat comes back where you were (a team starts again)"},
 	{"budget", "[usd|off]", "show or set the dollar budget for the turns from now on"},
 	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},
 	{"verbose", "[on|off]", "show or hide notices and tool errors"},

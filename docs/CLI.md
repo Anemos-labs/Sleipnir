@@ -1654,6 +1654,7 @@ flags:
 | `/sessions` · `/cwd` | the newest sessions (resume one with `sleipnir --resume <id>`) · the directory the session works in |
 | `/new` · `/resume [id]` | start the conversation again, empty · continue an earlier session (the newest of this project, or the id `/sessions` shows) |
 | `/restart [flags]` | start the chat again with other flags; the model, mode and the flags the session started with (a team stays a team) stay, and the conversation comes along when it can (a single agent) |
+| `/login [provider]` | add a key, or sign in with your ChatGPT plan (`/login chatgpt`), without leaving for another terminal: the chat ends, `sleipnir login` runs on the terminal (the key is typed hidden, a browser sign-in prints its address), and the chat comes back, a single agent with its conversation, a team starting again. A name that is not a provider ends nothing |
 | `/roles [role=model]` | which model each role runs on and where it came from; name one to change it (restarts, keeping the rest) |
 | `/swarm <n> [flags]` | start again as a manager with up to `n` workers: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
 | `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan` or `bypass` |
@@ -1666,8 +1667,8 @@ flags:
 | `/<name> [args]` | a custom command from `commands/`, or a skill; `docs/EXTENDING.md` sections 2 and 3 |
 
 A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. Reserved names some of which
-are not implemented (`/clear`, `/config`, `/doctor`, `/hooks`, `/init`, `/login`, `/logout`, `/memory`,
-`/resume`, `/skill`, `/usage`) cannot be used for custom commands and currently
+are not implemented (`/clear`, `/config`, `/doctor`, `/hooks`, `/init`, `/logout`, `/memory`,
+`/skill`, `/usage`) cannot be used for custom commands and currently
 answer `unknown command`.
 
 ### Inside the chat: every starting flag

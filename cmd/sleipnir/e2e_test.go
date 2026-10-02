@@ -38,7 +38,11 @@ const e2eChildEnv = "SLEIPNIR_E2E_CHILD"
 // runAsSleipnir is what the test binary does in a child process: main(), on the arguments
 // after the program name.
 func runAsSleipnir() {
-	os.Unsetenv(e2eChildEnv)
+	// A chat starts itself again (/restart, /login): the new one is this test binary too, so a chat keeps the marker; any other command
+	// does not hand it on to what it runs.
+	if len(os.Args) < 2 || os.Args[1] != "chat" {
+		os.Unsetenv(e2eChildEnv)
+	}
 	os.Args = append([]string{"sleipnir"}, os.Args[1:]...)
 	main()
 }

@@ -517,7 +517,7 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		return nil, cost.Model{}, err
 	}
 	if p.APIKeyEnv != "" && key == "" {
-		msg := fmt.Sprintf("provider %q needs %s to be set", ref.Provider, p.APIKeyEnv)
+		msg := fmt.Sprintf("provider %q needs %s to be set (`sleipnir login %s` keeps a key; in the chat, /login %s)", ref.Provider, p.APIKeyEnv, ref.Provider, ref.Provider)
 		// A marketplace model id can start with a provider's name (openai/gpt-oss-20b on a marketplace is
 		// not the OpenAI API): say how to reach it through the default provider.
 		if d, err := defaultProvider(cfg); err == nil && d != ref.Provider {

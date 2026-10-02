@@ -61,6 +61,20 @@ func readSecret(in *bufio.Reader) (string, error) {
 // chatgptName is the provider that signs in with a browser, with no key: the person's ChatGPT plan.
 const chatgptName = "chatgpt"
 
+// loginName checks a provider named for login: one that takes a key, or the ChatGPT plan. No name is fine: the menu asks.
+func loginName(cfg *config.Config, name string) error {
+	if name == "" || strings.EqualFold(name, chatgptName) {
+		return nil
+	}
+	choices := loginChoices(cfg)
+	for _, c := range choices {
+		if c.name == strings.ToLower(name) {
+			return nil
+		}
+	}
+	return fmt.Errorf("login: %q is not a provider that takes a key (those that do: %s; chatgpt signs in with a browser; a local server needs none)", name, joinNames(choices))
+}
+
 // login asks which provider (unless named), reads its key, and stores it in ~/.sleipnir/auth.json and in this process. It returns the
 // provider's name. A server on this machine needs no key, and a ChatGPT plan is signed in with the browser: both are offered after the
 // providers that take a key.
@@ -72,11 +86,11 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 			pick = &choices[i]
 		}
 	}
+	if err := loginName(cfg, name); err != nil {
+		return "", err
+	}
 	if strings.EqualFold(name, chatgptName) {
 		return chatgptName, signInChatGPT(ctx, in, out)
-	}
-	if name != "" && pick == nil {
-		return "", fmt.Errorf("login: %q is not a provider that takes a key (those that do: %s; chatgpt signs in with a browser; a local server needs none)", name, joinNames(choices))
 	}
 	extras := []modelSource{{name: chatgptName, plan: true}}
 	extras = append(extras, local...)

@@ -118,24 +118,40 @@ func looksLikeFlagValue(typed []string, word string) bool {
 }
 
 // runAgain starts `sleipnir chat` with args as a child that has this process's terminal, waits for it, and ends this process with its
-// status. The child gets the provider keys this process holds out of the environment (jobEnv). Ctrl-C is the child's: it is ignored here.
-func runAgain(args []string) {
+// status. first, when there is one, is a command run the same way before it (`login`): what it says, and a Ctrl-C at its prompt, are its
+// own, and the chat comes back either way. The children get the provider keys this process holds out of the environment (jobEnv).
+// Ctrl-C is theirs: it is ignored here.
+func runAgain(args, first []string) {
 	self, err := os.Executable()
 	if err != nil {
 		reportError(os.Stderr, err)
 		os.Exit(1)
 	}
 	signal.Ignore(os.Interrupt)
-	cmd := exec.Command(self, append([]string{"chat"}, args...)...)
-	cmd.Env = jobEnv(os.Environ())
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
+	code, err := runChildren(self, args, first)
+	if err != nil {
+		reportError(os.Stderr, err)
+	}
+	os.Exit(code)
+}
+
+// runChildren runs first (when there is one) and then `chat args` with the program at self, and returns the chat's exit status.
+func runChildren(self string, args, first []string) (int, error) {
+	child := func(args []string) error {
+		cmd := exec.Command(self, args...)
+		cmd.Env = jobEnv(os.Environ())
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		return cmd.Run()
+	}
+	if first != nil {
+		_ = child(first)
+	}
+	if err := child(append([]string{"chat"}, args...)); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			os.Exit(ee.ExitCode())
+			return ee.ExitCode(), nil
 		}
-		reportError(os.Stderr, err)
-		os.Exit(1)
+		return 1, err
 	}
-	os.Exit(0)
+	return 0, nil
 }

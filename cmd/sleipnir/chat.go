@@ -270,6 +270,7 @@ const chatHelp = `conversation
 
 model and cost
 /model [ref]       show the model, or change it (a team starts again on it)
+/login [provider]  add a key, or sign in with ChatGPT; the chat comes back (a team starts again)
 /budget [usd|off]  the dollar budget for the turns from now on
 /cost              tokens, cost and cache hit ratio so far
 /stats             the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers

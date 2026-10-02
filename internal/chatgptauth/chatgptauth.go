@@ -39,7 +39,7 @@ const (
 )
 
 // ErrNotConnected means this machine has no ChatGPT login.
-var ErrNotConnected = errors.New("not signed in with ChatGPT: run `sleipnir login chatgpt`")
+var ErrNotConnected = errors.New("not signed in with ChatGPT: run `sleipnir login chatgpt` (/login chatgpt in the chat)")
 
 // Path is where the connection is kept, under the home directory.
 func Path(home string) string { return filepath.Join(home, ".sleipnir", "chatgpt.json") }
@@ -190,6 +190,12 @@ type refreshError struct {
 func (e *refreshError) Error() string   { return e.msg }
 func (e *refreshError) Temporary() bool { return e.temporary }
 
+// IsSignInError says whether err is the sign-in itself failing (none, or ended): an error that already tells the person to sign in again.
+func IsSignInError(err error) bool {
+	var re *refreshError
+	return errors.Is(err, ErrNotConnected) || errors.As(err, &re)
+}
+
 // Token implements openairesp.Authorizer: the access token, renewed first when it expires within two minutes.
 func (s *Store) Token(ctx context.Context) (string, error) {
 	s.mu.Lock()
@@ -227,7 +233,7 @@ func (s *Store) refreshLocked(ctx context.Context) error {
 		return nil
 	}
 	if s.c.RefreshToken == "" || s.c.ClientID == "" {
-		return &refreshError{msg: "the ChatGPT sign-in has no refresh token: run `sleipnir login chatgpt`"}
+		return &refreshError{msg: "the ChatGPT sign-in has no refresh token: run `sleipnir login chatgpt` (/login chatgpt in the chat)"}
 	}
 	d, err := s.discover(ctx)
 	if err != nil {
@@ -247,7 +253,7 @@ func (s *Store) refreshLocked(ctx context.Context) error {
 				}
 				return s.refreshLocked(ctx)
 			}
-			return &refreshError{msg: "the ChatGPT sign-in has ended (" + te.Error() + "): run `sleipnir login chatgpt`"}
+			return &refreshError{msg: "the ChatGPT sign-in has ended (" + te.Error() + "): run `sleipnir login chatgpt` (/login chatgpt in the chat)"}
 		}
 		return &refreshError{msg: "renewing the ChatGPT sign-in: " + err.Error(), temporary: true}
 	}
