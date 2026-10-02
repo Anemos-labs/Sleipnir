@@ -211,6 +211,7 @@ type chatModel struct {
 	info     ChatInfo
 	attached bool
 	complete input.Completer
+	menus    map[string]bool // the commands whose first argument is chosen from a menu: typed bare, they open it
 
 	running   *run
 	runDone   chan runEnd
@@ -319,13 +320,16 @@ func (m *chatModel) attach(a ChatAttach) {
 		m.snapOK = false
 	}
 	var cs []input.Completer
+	m.menus = map[string]bool{}
 	if a.Models != nil {
+		m.menus["/model"] = true
 		cs = append(cs, input.Choices("model", a.Models))
 		if a.Roles != nil {
 			cs = append(cs, input.RoleModels("roles", a.Roles, a.Models))
 		}
 	}
 	if a.Sessions != nil {
+		m.menus["/resume"] = true
 		cs = append(cs, input.Choices("resume", a.Sessions))
 	}
 	if len(a.Commands) > 0 {
@@ -654,6 +658,14 @@ func (m *chatModel) submit(text string) {
 		return
 	}
 	if m.attached && m.page(text, true) {
+		return
+	}
+	if m.menus[text] && !m.busy() && len(m.queue) == 0 {
+		// `/model` and `/resume` alone would only print where the menu is (or, for /resume, start the last session at once): the person
+		// is shown the menu, as if they had typed the space that opens it.
+		for _, r := range text + " " {
+			m.handle(input.RuneKey(r, 0))
+		}
 		return
 	}
 	if m.busy() || len(m.queue) > 0 {

@@ -1286,3 +1286,19 @@ func TestChatALongTurnRingsTheBellWhenItEnds(t *testing.T) {
 		t.Errorf("a turn of 45 seconds rang the bell %d times, want 1", n)
 	}
 }
+
+// `/resume` alone shows the menu of earlier sessions, as `/resume ` does (a trial typed it bare and found nothing that said a menu was one space away;
+// the command itself would have started the last session at once).
+func TestABareResumeOpensItsMenu(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	r.typeText("/resume")
+	r.enter() // the first Enter takes the command's own completion, the second sends it
+	r.enter()
+	s := r.until("the menu", func(s string) bool { return strings.Contains(s, "20260101-000000-aaaaaa") })
+	if got := r.host.commands; len(got) != 0 {
+		t.Errorf("the host was asked %q: /resume alone must show the menu, not run", got)
+	}
+	if !strings.Contains(s, "❯ /resume") {
+		t.Errorf("the prompt holds the command, ready for a choice:\n%s", s)
+	}
+}

@@ -262,7 +262,7 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 
 const chatHelp = `conversation
 /new               start again, empty (same model and mode)
-/resume [id]       continue an earlier session: the newest here, or pick one
+/resume [id]       pick an earlier session from a menu, and continue it
 /sessions          the newest sessions
 /compact [focus]   fold the older thread now; focus says what to keep in view
 /rewind [id]       list checkpoints, or restore files to before a turn
@@ -270,7 +270,7 @@ const chatHelp = `conversation
 /exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)
 
 model and cost
-/model [ref]       show the model, or change it (a team starts again on it)
+/model [ref]       pick a model from a menu; a team starts again on it
 /fav [ref]         star a model, or unstar it; starred ones lead in /model
 /login [provider]  add a key, or sign in with ChatGPT (the chat comes back)
 /budget [usd|off]  the dollar budget for the turns from now on

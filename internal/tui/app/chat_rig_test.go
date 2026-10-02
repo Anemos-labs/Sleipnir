@@ -297,7 +297,10 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 func (r *chatRig) attachSession() {
 	r.attach <- ChatAttach{Host: r.host, Events: r.log, Info: ChatInfo{Version: "0.1.0", Model: "mock/mock-1", Cwd: "/work/proj", SessionID: "20260102-030405-abcdef", Swarm: r.team > 1, Agents: r.team},
 		Commands: []input.Command{{Name: "help", Description: "this text"}, {Name: "cost", Description: "tokens, cost and cache hit ratio so far"},
-			{Name: "compact", Args: "[focus]", Description: "fold the older thread now"}, {Name: "exit", Description: "quit"}}}
+			{Name: "compact", Args: "[focus]", Description: "fold the older thread now"}, {Name: "exit", Description: "quit"}},
+		Sessions: func() []input.Choice {
+			return []input.Choice{{Text: "20260101-000000-aaaaaa", Detail: "2m ago $0.0001 fix the two failing tests"}}
+		}}
 }
 
 // frame waits for the next frame the program draws.
