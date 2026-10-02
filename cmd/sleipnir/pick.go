@@ -114,11 +114,11 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	if len(sources) == 0 {
 		fmt.Fprintln(out, "Welcome to Sleipnir. It needs a model provider, and none has a key yet.")
 		local := localSources(ctx, cfg)
-		name, err := login(in, out, secret, cfg, "", local)
+		name, err := login(ctx, in, out, secret, cfg, "", local)
 		if err != nil {
 			return err
 		}
-		typedKey = true
+		typedKey = name != chatgptName // a sign-in has no key to try
 		for _, l := range local {
 			if l.name == name { // a local server was chosen: no key to keep
 				sources, typedKey = []modelSource{l}, false
@@ -185,7 +185,7 @@ func modelLine(r modelRow, fav map[string]bool) string {
 	if fav[r.Ref] {
 		star = " *"
 	}
-	return fmt.Sprintf("%-44s %6s ctx  $%.3g/M out%s%s", r.Ref, human(r.Model.ContextTokens), r.Model.Price.OutputPerM, tools, star)
+	return fmt.Sprintf("%-44s %6s ctx  %s%s%s", r.Ref, human(r.Model.ContextTokens), priceOut(r), tools, star)
 }
 
 // checkKey sends one small request with the key just typed, because a catalogue is often public and answers whatever the key is. Only

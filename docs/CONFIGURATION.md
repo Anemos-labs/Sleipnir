@@ -222,7 +222,8 @@ the built-in provider: its URL, dialect, key variable, options and headers stay.
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `dialect` | string | `openai-chat` | yes | The wire protocol: `openai-chat` (OpenAI-style chat completions) or `anthropic` (Messages API). `openai-responses` passes validation but the adapter is not built yet: a session that uses it stops with an error that says so |
+| `dialect` | string | `openai-chat` | yes | The wire protocol: `openai-chat` (OpenAI-style chat completions), `anthropic` (Messages API) or `openai-responses` (OpenAI's Responses API: `{"dialect": "openai-responses"}` on an `openai`-style provider with a key; options `reasoning_summary` (`auto`, `concise`, `detailed`: ask for the reasoning's summary), `extra_body`, and the timeouts of the others) |
+| `auth` | string | none (an API key) | yes | `chatgpt-plan`: the provider is a ChatGPT plan, signed in with `sleipnir login chatgpt` (the built-in provider `chatgpt` is one). There is no key; the dialect is `openai-responses`; where the token goes is the provider's own `base_url`, never an environment variable's or a project file's |
 | `base_url` | string | none | yes | Absolute http(s) URL, required for every provider that is not built in. `openai-chat` posts to `<base_url>/chat/completions`. `anthropic` posts to `<base_url>/v1/messages`, or to `<base_url>/messages` when the URL already ends in `/v1`. A trailing `/` is ignored. Credentials inside the URL produce a warning. A key is sent over `https`, or over plain `http` to loopback only, unless `allow_insecure_http` says otherwise; a redirect is followed only within the original scheme, host and port |
 | `allow_hosts` | list of strings | none | yes | **User file only.** Hosts, besides the provider's own, that may receive its key when the URL arrives through the environment (`<NAME>_BASE_URL`) or a project file: `"gateway.example.com"` or `"gateway.example.com:8443"`, case-insensitive. A refusal prints the exact snippet to add |
 | `allow_insecure_http` | bool | `false` | yes | **User file only.** Lets the key travel over plain `http` to a host that is not this machine (a trusted LAN proxy). Warned about by `sleipnir config` |
@@ -684,7 +685,8 @@ mock`, which imitates vLLM's token ids); your server's answer is the one that co
 | `no provider configured: set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY) or define one under "providers" ...` | a bare model id and no default provider (section 6), or no built-in key set |
 | `provider "x" needs NAME to be set` | the provider's `api_key_env` variable is empty in this shell |
 | `provider "x" has no base_url` | a configured provider without `base_url` |
-| `provider "x" uses the openai-responses dialect, whose native adapter is not built yet ...` | use `openai-chat` or `anthropic` |
+| `not signed in with ChatGPT: run sleipnir login chatgpt` | a model of the `chatgpt` provider was asked for with no sign-in (or after `sleipnir logout chatgpt`) |
+| `the ChatGPT sign-in has ended (...): run sleipnir login chatgpt` | the issuer refused to renew the sign-in (revoked, or unused for long): sign in again |
 | `ignored security-sensitive settings from the project's config (...)` | the project file set gated keys; `--trust-project` applies them (section 4) |
 | `unknown key "modles" (did you mean "models"?); it is kept but has no effect` | a misspelled key; nothing reads it |
 | `bypass mode turns off permission prompts; use it only inside a sandbox` | `permissions.mode` is `bypass` |

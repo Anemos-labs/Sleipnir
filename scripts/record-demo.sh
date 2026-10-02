@@ -99,7 +99,8 @@ if [ "$mode" = check ]; then
   done
   for f in "$media"/*.svg; do
     name=$(basename "$f")
-    case "$name" in logo*|favicon*) continue ;; esac
+    # the logos are drawn by hand, and the real-* recordings are of real sessions (scripts/record-real.sh): neither comes from the gallery
+    case "$name" in logo*|favicon*|real-*) continue ;; esac
     [ -f "$out/$name" ] || { echo "record-demo: $media/$name is not in $manifest" >&2; bad=1; }
   done
   [ "$bad" -eq 0 ] && echo "record-demo: the recordings are what the code draws"

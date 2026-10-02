@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -314,16 +313,8 @@ func (c *Client) failure(parent context.Context, wd *provider.Watchdog, err erro
 	return transportError(parent, err)
 }
 
-// keyTransportError is the refusal to send an API key where it would cross the
-// network unencrypted (or where the URL is unusable). It is never retried.
-func keyTransportError(err error) *provider.Error {
-	msg := err.Error()
-	var ins *provider.InsecureKeyError
-	if errors.As(err, &ins) {
-		msg += "; use an https URL or a loopback address, or allow it deliberately for this provider (allow_insecure_http in your user config)"
-	}
-	return &provider.Error{Kind: provider.ErrBadRequest, Message: provider.SanitizeText(msg, 0), Err: err, NoRetry: true}
-}
+// keyTransportError is the refusal to send an API key where it would cross the network unencrypted; see provider.KeyTransportError.
+func keyTransportError(err error) *provider.Error { return provider.KeyTransportError(err) }
 
 // rawUsageOf extracts the usage object of a response body verbatim, for the audit
 // record; an object too large to keep is replaced by a marker.
@@ -345,93 +336,14 @@ func fallbackToolID(name, args string, n int) string {
 	return "call_" + hex.EncodeToString(sum[:6])
 }
 
-// transportError classifies a failure that happened below HTTP. parent is the
-// caller's context: its cancellation is "cancelled" (which the agent does not
-// retry: it has stopped anyway), its deadline a timeout.
+// transportError classifies a failure that happened below HTTP; see provider.TransportError.
 func transportError(parent context.Context, err error) *provider.Error {
-	msg := provider.SanitizeText(err.Error(), 0)
-	if errors.Is(parent.Err(), context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-		return &provider.Error{Kind: provider.ErrNetwork, Message: "request cancelled", Err: err}
-	}
-	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() {
-		return &provider.Error{Kind: provider.ErrTimeout, Message: msg, Err: err}
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return &provider.Error{Kind: provider.ErrTimeout, Message: msg, Err: err}
-	}
-	return &provider.Error{Kind: provider.ErrNetwork, Message: msg, Err: err}
+	return provider.TransportError(parent, err)
 }
 
-// errorEnvelope covers the shapes gateways and vendors use.
-type errorEnvelope struct {
-	Error struct {
-		Code     json.RawMessage `json:"code"`
-		Type     string          `json:"type"`
-		Message  string          `json:"message"`
-		Metadata struct {
-			ErrorType       string `json:"error_type"`
-			ProviderMessage string `json:"provider_message"`
-			ProviderName    string `json:"provider_name"`
-		} `json:"metadata"`
-	} `json:"error"`
-}
-
+// mapHTTPError turns a non-200 answer into a provider error; see provider.HTTPError.
 func mapHTTPError(status int, h http.Header, body []byte) *provider.Error {
-	e := &provider.Error{Status: status, Raw: provider.CapRaw(body)}
-	var env errorEnvelope
-	_ = json.Unmarshal(body, &env)
-	msg := env.Error.Message
-	if msg == "" {
-		msg = strings.TrimSpace(string(body))
-		if len(msg) > 400 {
-			msg = msg[:400]
-		}
-	}
-	if pm := env.Error.Metadata.ProviderMessage; pm != "" {
-		msg += " (" + pm + ")"
-	}
-	// A marketplace names the provider whose attempt failed: with several behind one model id, that
-	// is what tells a person to route around it (a whole provider was down for a real swarm run).
-	if pn := env.Error.Metadata.ProviderName; pn != "" {
-		msg += " [provider " + pn + "]"
-	}
-	// The text is the endpoint's, and it goes to the event log, the terminal and
-	// possibly to other agents: bounded, and stripped of control characters,
-	// escape sequences and invisible characters.
-	msg = provider.SanitizeText(msg, provider.MaxErrorText)
-	if msg == "" {
-		msg = strings.TrimSpace(fmt.Sprintf("HTTP %d %s", status, http.StatusText(status)))
-	}
-	e.Message = msg
-	if d, ok := provider.ParseRetryAfter(h.Get("Retry-After"), time.Now(), 0); ok {
-		e.RetryAfter = d
-	}
-	lower := strings.ToLower(msg)
-	switch {
-	case status == 401 || status == 403:
-		e.Kind = provider.ErrAuth
-	case status == 402:
-		e.Kind = provider.ErrPayment
-	case status == 408:
-		e.Kind = provider.ErrTimeout
-	case status == 429:
-		e.Kind = provider.ErrRateLimit
-	case status == 529:
-		e.Kind = provider.ErrOverloaded
-	case status >= 500:
-		e.Kind = provider.ErrServer
-	case status == 400 || status == 404 || status == 413 || status == 422:
-		e.Kind = provider.ErrBadRequest
-		if strings.Contains(lower, "context length") || strings.Contains(lower, "context_length") ||
-			strings.Contains(lower, "maximum context") || strings.Contains(lower, "too many tokens") ||
-			strings.Contains(lower, "exceeds the context") || status == 413 {
-			e.Kind = provider.ErrContextLength
-		}
-	default:
-		e.Kind = provider.ErrUnknown
-	}
-	return e
+	return provider.HTTPError(status, h, body)
 }
 
 func mapInBandError(e *apiError) *provider.Error {
@@ -482,20 +394,5 @@ func (c *Client) String() string {
 
 var _ = core.Text
 
-// htmlText is the words of a page, roughly: its tags taken out and its white space folded, enough for a one-line message.
-func htmlText(page string) string {
-	var sb strings.Builder
-	inTag := false
-	for _, r := range page {
-		switch {
-		case r == '<':
-			inTag = true
-			sb.WriteByte(' ')
-		case r == '>':
-			inTag = false
-		case !inTag:
-			sb.WriteRune(r)
-		}
-	}
-	return strings.Join(strings.Fields(sb.String()), " ")
-}
+// htmlText is the words of a page, roughly; see provider.HTMLText.
+func htmlText(page string) string { return provider.HTMLText(page) }

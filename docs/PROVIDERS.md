@@ -4,7 +4,7 @@
 |---|---|---|
 | OpenAI-style chat completions (OpenAI, Heimdall, OpenRouter, vLLM, SGLang, ...) | supported; measured against Heimdall (nine models, `docs/VALIDATION.md`) | automatic prefix caching, routing key for engine affinity, exact gateway costs, reasoning replay, optional token capture |
 | Anthropic Messages (Anthropic, and gateways that speak it) | implemented: dialect `anthropic` (`docs/CONFIGURATION.md`) | explicit breakpoints (max 4, 20-block lookback, 5m/1h TTL), preserved thinking, turn-scoped hot tail; per-gateway switches for what a route drops (`cache_control`, thinking, mid-conversation system text); measure your endpoint with `sleipnir doctor --deep`; one live measurement, of Heimdall's `/messages` route |
-| OpenAI Responses | not built yet (`openai-responses` is accepted in config, but a session that uses it stops with an error) | |
+| OpenAI Responses (`openai-responses`: OpenAI's own newer route, and a ChatGPT plan) | implemented (`internal/provider/openairesp`): stateless (`store: false`), reasoning kept encrypted and sent back, OpenAI's automatic prefix cache with the cache key; tested against scripted streams and a fake endpoint, **not yet run on a live key or a live plan** | the plan's preview rules are followed as documented (tools in one namespace, no output limit or sampling parameters) |
 
 
 ## Subscription logins (a plan instead of an API key)
@@ -16,11 +16,17 @@ Checked on 2026-10-02 against the providers' own pages; terms change, so read th
   Console or a supported cloud provider", that third parties may not "route requests through Free, Pro, or Max plan credentials on behalf of their users", and
   may not "collect, store, or intermediate Claude.ai credentials or session tokens"; it may enforce this without notice (the press reported such blocks from January 2026). Use an API
   key (`sleipnir login anthropic`), or a cloud provider's Claude.
-* **ChatGPT (Plus, Pro): allowed through OpenAI's own route, not built yet.** "Sign in with ChatGPT" has a token-sharing mode for open-source and locally hosted
-  apps ([docs](https://developers.openai.com/siwc/token-sharing-open-source)): OAuth with PKCE and dynamic client registration, no client secret, scope
+* **ChatGPT (Plus, Pro): allowed through OpenAI's own route, and built: `sleipnir login chatgpt`.** "Sign in with ChatGPT" has a token-sharing mode for open-source and
+  locally hosted apps ([docs](https://developers.openai.com/siwc/token-sharing-open-source)): OAuth with PKCE and dynamic client registration, no client secret, scope
   `chatgpt.tokens.use.direct` against `https://api.openai.com/v1`, for "eligible Responses API requests" only, a weekly cap per app set by the user, and
-  marked as a preview. It needs the OpenAI Responses dialect first (the table above), then a `sleipnir login openai --plan` that runs the flow
-  (`docs/ROADMAP.md`). Use the registration the documentation describes, not the Codex CLI's own client id.
+  marked as a preview. `internal/chatgptauth` does the sign-in (the browser opens on OpenAI's page; where there is none, the address it ends on is pasted), keeps the
+  tokens in `~/.sleipnir/chatgpt.json` (mode 0600; the tools of a session never see it, and the model's own reads of it ask), renews the access token before it
+  expires (the refresh token rotates, so renewals are serialized and a renewal another process made is taken from the file), and `sleipnir logout chatgpt` revokes it.
+  The provider is `chatgpt`: models are `chatgpt/<slug>` from the plan's own list (`sleipnir models --provider chatgpt`, the menus), they cost nothing per token (the
+  plan's limits apply, and a limit that is reached is not retried), and the registration is this app's own, not the Codex CLI's. **It has been built from the documentation
+  and tested against a fake issuer and a fake endpoint; it has not met a real account yet**, so the first real sign-in is a test: `sleipnir doctor --model chatgpt/<slug>
+  --deep` says what the endpoint does, and an error from it is shown as it came. The preview's rules (`developers.openai.com/siwc/token-sharing-open-source/preview-limitations`)
+  are followed as written: `store: false` and streaming, no `max_output_tokens`, `temperature` or the other refused parameters, and the function tools in one namespace.
 
 ## Built in
 

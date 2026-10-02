@@ -84,6 +84,14 @@ The first release.
 
 ### Providers
 
+- **The OpenAI Responses dialect** (`openai-responses`, `internal/provider/openairesp`): OpenAI's newer route with an API key, stateless (`store: false`), the
+  reasoning kept encrypted and sent back with the items it came with, the automatic prefix cache and its cache key, streamed events with limits and the
+  adapter contract of the others (`providertest`). The shared error handling of the OpenAI-style adapters moved into `internal/provider`.
+- **A ChatGPT plan instead of an API key** (`sleipnir login chatgpt`, provider `chatgpt`, `internal/chatgptauth`): OpenAI's "Sign in with ChatGPT" token sharing for
+  open-source apps, as its documentation describes it: OpenID discovery, PKCE with a loopback redirect, dynamic client registration (this app's own, not the Codex
+  CLI's), a host id, a refresh token that rotates (renewals are serialized and a renewal another process made is taken from the file), revocation on logout; the plan's
+  model list, no price shown, a limit that is reached is not retried. Built from the documentation and tested against a fake issuer and a fake endpoint: **it has not
+  met a real account yet** (`docs/PROVIDERS.md`). A Claude plan is not offered: Anthropic's terms do not allow it.
 - Five more providers are built in: Gemini (`GEMINI_API_KEY`), Mistral, xAI, DeepSeek's own API and Hugging Face's router (`HF_TOKEN`). `docs/PROVIDERS.md` lists every built-in provider with its key
   variable, its endpoint and what has actually been verified: only Heimdall has been run on a live key.
 - A server that cuts the prompt off is noticed. Ollama's OpenAI-compatible endpoint reads only as much as the model's window (4096 tokens on a small graphics card) and says nothing,

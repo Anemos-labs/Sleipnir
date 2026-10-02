@@ -35,7 +35,7 @@ chat at once, a team of eight agents (`--swarm 0` for a single agent). `sleipnir
 ## What you get
 
 * **Any provider, local or hosted.** Heimdall (recommended), OpenRouter, OpenAI, Anthropic, Gemini, Mistral, xAI, DeepSeek, Hugging Face, Together, Fireworks, Groq, Cerebras, DeepInfra, and local
-  servers (Ollama, LM Studio, llama.cpp, vLLM) with no key. A searchable list of every model with filters and favorites: `/model` in the chat,
+  servers (Ollama, LM Studio, llama.cpp, vLLM) with no key. Your ChatGPT plan works too: `sleipnir login chatgpt` signs in with the browser, no key. A searchable list of every model with filters and favorites: `/model` in the chat,
   `sleipnir models`. [Providers](docs/PROVIDERS.md)
 * **One model by default, a model per job when you choose.** A frontier manager, an open-weight backend, a small model that writes the compaction
   summaries: `--role-model`, or `models.roles`. [Configuration](docs/CONFIGURATION.md)

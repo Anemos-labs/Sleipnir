@@ -15,12 +15,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/anthropic"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
 	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+	"github.com/anemos-labs/sleipnir/internal/provider/openairesp"
 )
 
 // ErrNoModel is what ResolveModel returns when nothing names a model: no flag, no configuration, no SLEIPNIR_MODEL. The chat answers it
@@ -35,6 +37,8 @@ func (m ModelRef) String() string { return m.Provider + "/" + m.Model }
 // builtinProviders are the endpoints Sleipnir knows without configuration. Each
 // is used only when its key variable is set.
 var builtinProviders = map[string]config.Provider{
+	// A ChatGPT plan, signed in with `sleipnir login chatgpt` (OpenAI's "Sign in with ChatGPT"): no key, the Responses API, billed to the plan.
+	"chatgpt": {Dialect: config.DialectOpenAIResponses, Auth: config.AuthChatGPTPlan, BaseURL: chatgptauth.Resource},
 	"heimdall": {
 		Dialect: config.DialectOpenAIChat, BaseURL: "https://api-staging.impossiblecarrot.cc/api/v1", APIKeyEnv: "HEIMDALL_API_KEY",
 		// Heimdall pins a conversation to the engine that served it when it is told
@@ -283,12 +287,26 @@ func defaultProvider(cfg *config.Config) (string, error) {
 			return n, nil
 		}
 	}
-	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra", "mistral", "gemini", "xai", "deepseek", "huggingface"} {
-		if p, ok := lookupProvider(cfg, n); ok && p.APIKey() != "" {
+	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra", "mistral", "gemini", "xai", "deepseek", "huggingface", "chatgpt"} {
+		if p, ok := lookupProvider(cfg, n); ok && ProviderReady(p) {
 			return n, nil
 		}
 	}
 	return "", fmt.Errorf("no provider has a key: run `sleipnir login` (Heimdall is the recommended provider), or set HEIMDALL_API_KEY or the key of another provider (OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), name a local server (ollama/<model>), or define a provider under \"providers\" in your config")
+}
+
+// ProviderReady says whether a provider can be used now: its key is set, or (a ChatGPT plan) there is a sign-in on this machine.
+func ProviderReady(p config.Provider) bool {
+	if p.Auth == config.AuthChatGPTPlan {
+		return chatgptauth.Connected(chatgptPath())
+	}
+	return p.APIKey() != ""
+}
+
+// chatgptPath is where this machine's ChatGPT sign-in is kept.
+func chatgptPath() string {
+	home, _ := os.UserHomeDir()
+	return chatgptauth.Path(home)
 }
 
 // ProviderOptions are per-session knobs for building a client.
@@ -377,6 +395,47 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 	return client
 }
 
+// planEndpoint is where a ChatGPT sign-in is sent: the provider's own address, and nowhere an environment variable or a project file
+// names, because the token that goes there is the person's plan.
+func planEndpoint(p config.Provider) (string, error) {
+	if p.BaseURLFromProject {
+		return "", errors.New("a project file cannot say where a ChatGPT sign-in is sent")
+	}
+	if p.BaseURL == "" {
+		return "", errors.New("the ChatGPT provider has no base_url")
+	}
+	return p.BaseURL, nil
+}
+
+// buildResponses constructs a Responses-API client: OpenAI's own with a key, or with a ChatGPT plan's sign-in. Options:
+//
+//	reasoning_summary   "auto", "concise" or "detailed": ask for the readable summary of the reasoning (some models need the organisation verified)
+//	extra_body          members merged into every request
+//	first_byte_timeout_sec, stream_idle_timeout_sec, request_timeout_sec, stream_timeout_sec  as for the other dialects
+func buildResponses(ref ModelRef, p config.Provider, base, key string, o ProviderOptions) (provider.Provider, error) {
+	var auth openairesp.Authorizer = openairesp.StaticKey(key)
+	plan := p.Auth == config.AuthChatGPTPlan
+	if plan {
+		st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptPath()})
+		if err != nil {
+			return nil, err
+		}
+		auth = st
+	}
+	oo := openairesp.Options{Plan: plan, ReasoningSummary: optString(p.Options, "reasoning_summary")}
+	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
+		oo.ExtraBody = extra
+	}
+	return openairesp.New(openairesp.Config{
+		Name: ref.Provider, BaseURL: base, Auth: auth, Headers: p.Headers, Options: oo,
+		HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders, AllowInsecureHTTP: p.AllowInsecureHTTP,
+		FirstByteTimeout:  optSeconds(p.Options, "first_byte_timeout_sec"),
+		StreamIdleTimeout: optSeconds(p.Options, "stream_idle_timeout_sec"),
+		RequestTimeout:    optSeconds(p.Options, "request_timeout_sec"),
+		Limits:            provider.StreamLimits{MaxDuration: optSeconds(p.Options, "stream_timeout_sec")},
+	}), nil
+}
+
 // buildAnthropic constructs a Messages-API client: Anthropic itself, or a
 // gateway that speaks its wire format (a marketplace's /messages route). What a
 // gateway does not forward is declared in the provider's options:
@@ -447,7 +506,13 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 	// environment or a project file cannot point a key at a host the provider is not
 	// known to use, and no key crosses the network unencrypted, unless the user's own
 	// configuration says so. A refusal explains how to allow it; it never downgrades.
-	base, err := endpointOf(ref.Provider, p, key)
+	var base string
+	var err error
+	if p.Auth == config.AuthChatGPTPlan {
+		base, err = planEndpoint(p)
+	} else {
+		base, err = endpointOf(ref.Provider, p, key)
+	}
 	if err != nil {
 		return nil, cost.Model{}, err
 	}
@@ -472,8 +537,9 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		}
 		client = buildAnthropic(ref, p, base, key, o)
 	case config.DialectOpenAIResponses:
-		return nil, cost.Model{}, fmt.Errorf("provider %q uses the %s dialect, whose native adapter is not built yet; use the endpoint's chat-completions route (dialect %q) or its Messages route (dialect %q)",
-			ref.Provider, p.EffectiveDialect(), config.DialectOpenAIChat, config.DialectAnthropic)
+		if client, err = buildResponses(ref, p, base, key, o); err != nil {
+			return nil, cost.Model{}, err
+		}
 	default:
 		return nil, cost.Model{}, fmt.Errorf("provider %q: unknown dialect %q", ref.Provider, p.Dialect)
 	}
@@ -485,6 +551,9 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		// An unknown model on a chat endpoint gets the endpoint's own cache
 		// behaviour; prices stay an estimate until the catalogue supplies them.
 		m.Cache = prof.Cache
+		if p.Auth == config.AuthChatGPTPlan {
+			m.Price = cost.Price{} // a plan is paid for by the month: what the tokens come to is not a bill
+		}
 		if p.APIKeyEnv == "" && localBase(base) {
 			// A server on this machine (Ollama, LM Studio, llama.cpp, vLLM) costs nothing per token, and its catalogue lists ids only: no price to
 			// show, and no window. The window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off

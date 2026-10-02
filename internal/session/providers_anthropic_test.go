@@ -60,10 +60,18 @@ func TestBuildProviderAnthropicNeedsItsKeyAndCannotCaptureTokens(t *testing.T) {
 	}
 }
 
-func TestBuildProviderResponsesDialectIsNotBuiltYet(t *testing.T) {
-	cfg := &config.Config{Providers: map[string]config.Provider{"r": {Dialect: config.DialectOpenAIResponses, BaseURL: "https://x/v1"}}}
-	_, _, err := session.BuildProvider(cfg, session.ModelRef{Provider: "r", Model: "m"}, session.ProviderOptions{})
-	if err == nil || !strings.Contains(err.Error(), "not built yet") {
-		t.Fatalf("got %v", err)
+func TestBuildProviderResponsesDialectWithAKey(t *testing.T) {
+	cfg := &config.Config{Providers: map[string]config.Provider{"r": {Dialect: config.DialectOpenAIResponses, BaseURL: "https://x/v1", APIKeyEnv: "SLEIPNIR_TEST_RESPONSES_KEY"}}}
+	t.Setenv("SLEIPNIR_TEST_RESPONSES_KEY", "")
+	if _, _, err := session.BuildProvider(cfg, session.ModelRef{Provider: "r", Model: "m"}, session.ProviderOptions{}); err == nil || !strings.Contains(err.Error(), "SLEIPNIR_TEST_RESPONSES_KEY") {
+		t.Fatalf("a missing key must name the variable: %v", err)
+	}
+	t.Setenv("SLEIPNIR_TEST_RESPONSES_KEY", "test-key-value")
+	p, _, err := session.BuildProvider(cfg, session.ModelRef{Provider: "r", Model: "m"}, session.ProviderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prof := p.Profile(); prof.Dialect != "openai-responses" {
+		t.Fatalf("dialect %q", prof.Dialect)
 	}
 }

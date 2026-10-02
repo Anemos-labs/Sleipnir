@@ -176,6 +176,19 @@ func TestDefaultTeamAndASoloRestartStaysSolo(t *testing.T) {
 	}
 }
 
+// A model of the ChatGPT plan cannot be used before there is a sign-in, and the chat says so before it ends anything.
+func TestModelOfThePlanNeedsASignInBeforeTheChatEnds(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	t.Setenv("TOGETHER_API_KEY", "k")
+	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.MaxAgents = true, 4 }, nil)}
+	var out strings.Builder
+	res, ok := team.programCommand("/model chatgpt/some-model", &out)
+	if !ok || res.Restart != nil || !strings.Contains(out.String(), "sleipnir login chatgpt") {
+		t.Errorf("not signed in: nothing restarts, and the way to sign in is named: %v %q", res.Restart, out.String())
+	}
+}
+
 // A team has no single model, but it has a default one, and the chat is a team by default: /model must work there. It starts the team
 // again on the new model (keeping the roles that name their own), and a reference that cannot be used is refused before anything is ended.
 func TestModelInATeamStartsItAgainOnTheNewModel(t *testing.T) {

@@ -45,7 +45,7 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
                 ▼                   │
                kv  ─ layers · stack · renderer · breakpoints · guard · patch/apply · planner · archive
                 │
-            provider adapters (openaichat · anthropic) ─► endpoints        (openai-responses: not built)
+            provider adapters (openaichat · openairesp · anthropic) ─► endpoints
                 │
         events (append-only JSONL) + blobs (content-addressed)   ◄── every layer above writes here
 ```
@@ -118,8 +118,8 @@ thinking, turn-scoped system messages; what a gateway drops is declared per prov
 Anthropic-style route may not forward `cache_control` or report cache usage (`docs/research/02-provider-caching.md`), so
 `sleipnir doctor --deep` measures a real endpoint (streaming, tools, whether cached tokens are reported, block granularity by
 gcd of read-count differences, minimum cached prefix, whether a parallel burst over a cold prefix shares anything,
-reasoning round-trips, rate-limit headers) and refines the profile. An `openai-responses` adapter is not built; it is
-accepted in configuration and a session that uses it stops with an error that says so.
+reasoning round-trips, rate-limit headers) and refines the profile. The `openai-responses` adapter (`internal/provider/openairesp`) serves OpenAI's Responses
+API with an API key, and a ChatGPT plan signed in with `internal/chatgptauth` (`docs/PROVIDERS.md`).
 
 The endpoint is not trusted (`docs/SECURITY.md`): a key goes only where the user allowed (`provider.CheckEndpoint`),
 redirects stay on the origin, a response is bounded as it is read, a silent server is timed out, and usage, costs and

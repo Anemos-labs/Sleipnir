@@ -177,10 +177,10 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
 10. **The `internal/perm` Windows port** or the decision not to ship Windows. `internal/perm` assumes slash-separated absolute paths in
     `inside`, `splitSegs`, `realPath` and `credentialDirs`. The port is one internal slash representation and a conversion at the file-system calls;
     `scripts/windows-excluded.txt` lists what the Windows job skips, and taking a package off that list is how it is ported.
-11. **OpenAI Responses dialect** (`openai-responses` is accepted in config and stops with an error), and a second live measurement of the
-    Anthropic route (`docs/VALIDATION.md`).
-    Then **a ChatGPT plan as a login** (`sleipnir login openai --plan`): OpenAI's "Sign in with ChatGPT" token sharing for open-source apps takes only
-    Responses requests, so it waits for the dialect (`docs/PROVIDERS.md`, "Subscription logins"). A Claude plan is not an option: Anthropic's terms forbid it.
+11. **The first live run of the OpenAI Responses dialect and of the ChatGPT plan login** (`sleipnir login chatgpt`, `chatgpt/<slug>`; both are built, and
+    tested against fakes only: `docs/PROVIDERS.md`, "Subscription logins"), and a second live measurement of the Anthropic route (`docs/VALIDATION.md`). What a
+    real account may show: whether the plan's preview takes the tools in a namespace as written, which model slugs it lists, the window of each model (the harness
+    assumes a cautious one: `options.context_window`), how fast the plan's weekly limit is reached by a team of eight. A Claude plan is not an option: Anthropic's terms forbid it.
 12. **The macOS flake** (a session isolate test where a third worker never reached the barrier; once in a CI run, never again in the three that
     followed; diagnostics are in the test, wait for a recurrence and read them before changing anything).
 13. **A flake of `TestQueueSurvivesRandomCancellations`** (`internal/workspace`), seen once on 2026-10-01 under load (the whole suite at once; alone it takes 2 s and has

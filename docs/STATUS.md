@@ -9,7 +9,7 @@ and after its own fixes on a fixed suite of verifiable tasks (`docs/BENCHMARKS.m
 rate within noise, and one measure that got worse and is open), and used for real work: a register of forty-two findings from the benchmark,
 the end-to-end tests and four logged sessions, each with a fix and a test (`docs/DOGFOOD.md`).
 
-Not done: a first release (the version is unreleased and no licence is chosen yet), Windows support for the permission engine, the OpenAI
-Responses dialect, the scale ladder on a live endpoint and the rest of the planned dogfooding, and the second half of the benchmark. Those and
+Not done: a first release (the version is unreleased and no licence is chosen yet), Windows support for the permission engine, a live run of the OpenAI
+Responses dialect and of the ChatGPT plan login (both built, tested against fakes), the scale ladder on a live endpoint and the rest of the planned dogfooding, and the second half of the benchmark. Those and
 what the owner has to switch on are in **`docs/ROADMAP.md`**, which is where an agent or a person picking this up should start.
 

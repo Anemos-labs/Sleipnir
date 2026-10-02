@@ -16,7 +16,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
@@ -83,6 +85,12 @@ func usableProviders(cfg *config.Config, withPublic bool) []string {
 	var out []string
 	for _, n := range session.ProviderNames(cfg) {
 		p, ok := session.LookupProvider(cfg, n)
+		if ok && p.Auth == config.AuthChatGPTPlan { // a ChatGPT plan has no key: the sign-in is what makes it usable
+			if session.ProviderReady(p) {
+				out = append(out, n)
+			}
+			continue
+		}
 		if !ok || p.EffectiveDialect() != config.DialectOpenAIChat {
 			continue
 		}
@@ -104,7 +112,7 @@ func localSources(ctx context.Context, cfg *config.Config) []modelSource {
 		}
 		base, _, _ := session.ProviderInfo(cfg, n)
 		if u, err := url.Parse(base); err == nil && provider.IsLoopbackHost(u.Hostname()) {
-			cand = append(cand, modelSource{n, base})
+			cand = append(cand, modelSource{name: n, base: base})
 		}
 	}
 	up := make([]bool, len(cand))
@@ -176,14 +184,14 @@ search (all must appear, any case). Favorites, marked *, come first.
 	var sources []modelSource
 	switch {
 	case pf.baseURL != "":
-		sources = []modelSource{{"", pf.baseURL}}
+		sources = []modelSource{{name: "", base: pf.baseURL}}
 	case pf.provider != "" && !strings.EqualFold(pf.provider, "all"):
 		name := strings.ToLower(pf.provider)
 		b, _, ok := session.ProviderInfo(cfg, name)
 		if !ok || b == "" {
 			return fmt.Errorf("models: unknown provider %q", name)
 		}
-		sources = []modelSource{{name, b}}
+		sources = []modelSource{{name: name, base: b}}
 	default:
 		sources = append(usableSources(cfg, true), localSources(ctx, cfg)...)
 	}
@@ -214,14 +222,19 @@ search (all must appear, any case). Favorites, marked *, come first.
 	return nil
 }
 
-// modelSource is one catalogue to ask: the provider's name ("" for a bare endpoint) and its base URL.
-type modelSource struct{ name, base string }
+// modelSource is one catalogue to ask: the provider's name ("" for a bare endpoint) and its base URL. A ChatGPT plan's list needs the
+// sign-in's token and is shaped differently, so it is asked another way (planModels).
+type modelSource struct {
+	name, base string
+	plan       bool
+}
 
 func usableSources(cfg *config.Config, withPublic bool) []modelSource {
 	var out []modelSource
 	for _, n := range usableProviders(cfg, withPublic) {
 		b, _, _ := session.ProviderInfo(cfg, n)
-		out = append(out, modelSource{n, b})
+		p, _ := session.LookupProvider(cfg, n)
+		out = append(out, modelSource{name: n, base: b, plan: p.Auth == config.AuthChatGPTPlan})
 	}
 	return out
 }
@@ -237,7 +250,13 @@ func fetchModels(ctx context.Context, sources []modelSource) (all []modelRow, er
 			defer wg.Done()
 			cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			es, err := gateway.Fetch(cctx, &http.Client{Timeout: 30 * time.Second}, src.base)
+			var es []gateway.Entry
+			var err error
+			if src.plan {
+				es, err = planModels(cctx)
+			} else {
+				es, err = gateway.Fetch(cctx, &http.Client{Timeout: 30 * time.Second}, src.base)
+			}
 			errs[i] = err
 			for _, e := range es {
 				ref := e.Model.ID
@@ -255,6 +274,35 @@ func fetchModels(ctx context.Context, sources []modelSource) (all []modelRow, er
 		}
 	}
 	return all, errs
+}
+
+// planProvider marks the models of a ChatGPT plan in a catalogue entry: they are paid for by the plan, so no price is shown for them.
+const planProvider = "chatgpt-plan"
+
+// planModels is the model list of the ChatGPT plan that is signed in: the models it offers, with no price and no window (the list says
+// neither: the harness assumes a cautious window, options.context_window says the real one).
+func planModels(ctx context.Context) ([]gateway.Entry, error) {
+	st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptauth.Path(userHome())})
+	if err != nil {
+		return nil, err
+	}
+	ms, err := st.Models(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gateway.Entry, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, gateway.Entry{Model: cost.Model{ID: m.Slug, Provider: planProvider}, Modality: "text->text", Supported: []string{"tools", "reasoning_effort"}})
+	}
+	return out, nil
+}
+
+// priceOut is the output price of a row as the tables show it: a plan's models say "plan".
+func priceOut(r modelRow) string {
+	if r.Model.Provider == planProvider {
+		return "plan"
+	}
+	return fmt.Sprintf("$%.3g/M out", r.Model.Price.OutputPerM)
 }
 
 // modelChoices starts fetching the catalogues of every usable provider in the background and returns what `/model ` completes
@@ -280,7 +328,7 @@ func modelChoices(ctx context.Context) func() []input.Choice {
 			if !r.IsChat() {
 				continue
 			}
-			d := fmt.Sprintf("%s ctx, $%.3g/M out", human(r.Model.ContextTokens), r.Model.Price.OutputPerM)
+			d := fmt.Sprintf("%s ctx, %s", human(r.Model.ContextTokens), priceOut(r))
 			if r.SupportsReasoning() {
 				d += ", reasoning"
 			}

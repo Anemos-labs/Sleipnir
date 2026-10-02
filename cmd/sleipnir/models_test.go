@@ -14,8 +14,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
@@ -238,12 +241,12 @@ func TestLoginRefusesWhatTakesNoKeyAndLogoutForgets(t *testing.T) {
 	_, home := projectDir(t)
 	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
 	in := bufio.NewReader(strings.NewReader(""))
-	if _, err := login(in, &bytes.Buffer{}, nosecret, cfg, "ollama", nil); err == nil || !strings.Contains(err.Error(), "takes a key") {
+	if _, err := login(context.Background(), in, &bytes.Buffer{}, nosecret, cfg, "ollama", nil); err == nil || !strings.Contains(err.Error(), "takes a key") {
 		t.Errorf("a local server has no key to store: %v", err)
 	}
 	t.Setenv("GROQ_API_KEY", "")
 	t.Cleanup(func() { harden.Provide("GROQ_API_KEY", "") })
-	if name, err := login(in, &bytes.Buffer{}, func() (string, error) { return " sk-groq \n", nil }, cfg, "Groq", nil); err != nil || name != "groq" {
+	if name, err := login(context.Background(), in, &bytes.Buffer{}, func() (string, error) { return " sk-groq \n", nil }, cfg, "Groq", nil); err != nil || name != "groq" {
 		t.Fatalf("%q %v", name, err)
 	}
 	keys, _ := config.StoredKeys(home)
@@ -321,7 +324,7 @@ func TestFirstRunFindsALocalServerAndNeedsNoKey(t *testing.T) {
 	var out bytes.Buffer
 	// The hosted providers take a key; the running local server is the choice after them.
 	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
-	n := len(loginChoices(cfg)) + 1
+	n := len(loginChoices(cfg)) + 2 // after the providers that take a key and the ChatGPT plan
 	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader(fmt.Sprintf("%d\n1\n", n))), &out, nosecret, true); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
@@ -365,5 +368,44 @@ func TestFirstRunRefusesAKeyTheProviderRejects(t *testing.T) {
 	}
 	if harden.Secret("HEIMDALL_API_KEY") != "" {
 		t.Error("the rejected key is still in use")
+	}
+}
+
+// A ChatGPT plan has no key: the sign-in is what makes it usable. It is offered by the login menu (after the providers that take a key and
+// before a local server), asked for its models with the sign-in's token, and its models are marked as the plan's, with no price.
+func TestTheChatGPTPlanIsUsableOnlyWhenSignedInAndItsModelsSayPlan(t *testing.T) {
+	_, home := projectDir(t)
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	if slices.Contains(usableProviders(cfg, false), "chatgpt") {
+		t.Error("not signed in, the plan is not usable")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	conn := `{"version":1,"host_id":"urn:uuid:x","client_id":"c","access_token":"at","expires_at_ms":` + strconv.FormatInt(time.Now().Add(time.Hour).UnixMilli(), 10) + `,"refresh_token":"rt"}`
+	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "chatgpt.json"), []byte(conn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(usableProviders(cfg, false), "chatgpt") {
+		t.Fatal("signed in, the plan is usable")
+	}
+	var plan modelSource
+	for _, s := range usableSources(cfg, false) {
+		if s.name == "chatgpt" {
+			plan = s
+		}
+	}
+	if !plan.plan {
+		t.Errorf("the source says it is a plan's: %+v", plan)
+	}
+	row := modelRow{Ref: "chatgpt/gpt-x", Entry: gateway.Entry{Model: cost.Model{ID: "gpt-x", Provider: planProvider}, Modality: "text->text", Supported: []string{"tools"}}}
+	if got := modelLine(row, nil); !strings.Contains(got, "plan") || strings.Contains(got, "$") {
+		t.Errorf("a plan's model has no price: %q", got)
+	}
+	if got := priceOut(modelRow{Entry: gateway.Entry{Model: cost.Model{Price: cost.Price{OutputPerM: 2.5}}}}); got != "$2.5/M out" {
+		t.Errorf("a priced model keeps its price: %q", got)
 	}
 }

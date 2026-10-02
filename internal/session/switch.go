@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -65,6 +66,8 @@ func (s *Session) CheckModel(ref string) (string, error) {
 	switch {
 	case !ok:
 		return "", fmt.Errorf("unknown provider %q (known: %s)", mr.Provider, strings.Join(providerNames(s.cfg), ", "))
+	case p.Auth == config.AuthChatGPTPlan && !ProviderReady(p):
+		return "", fmt.Errorf("provider %q is not signed in: `sleipnir login %s`", mr.Provider, mr.Provider)
 	case p.APIKeyEnv != "" && p.APIKey() == "":
 		return "", fmt.Errorf("provider %q has no key: `sleipnir login %s`, or set %s", mr.Provider, mr.Provider, p.APIKeyEnv)
 	}

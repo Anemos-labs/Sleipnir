@@ -82,6 +82,12 @@ func (v *validator) provider(name string, p Provider) {
 	if p.Dialect != "" && !slices.Contains(dialects, p.Dialect) {
 		v.err(append(slices.Clone(base), "dialect"), "unknown dialect %q (valid: %s)", p.Dialect, strings.Join(dialects, ", "))
 	}
+	switch {
+	case p.Auth != "" && p.Auth != AuthChatGPTPlan:
+		v.err(append(slices.Clone(base), "auth"), "unknown auth %q (valid: %s, or leave it out for an API key)", p.Auth, AuthChatGPTPlan)
+	case p.Auth == AuthChatGPTPlan && p.Dialect != "" && p.Dialect != DialectOpenAIResponses:
+		v.err(append(slices.Clone(base), "auth"), "a ChatGPT plan is used through the %s dialect", DialectOpenAIResponses)
+	}
 	if p.BaseURL != "" {
 		v.baseURL(append(slices.Clone(base), "base_url"), p.BaseURL)
 	}

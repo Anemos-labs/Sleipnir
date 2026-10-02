@@ -74,6 +74,9 @@ const (
 	DialectOpenAIResponses = "openai-responses"
 )
 
+// AuthChatGPTPlan is Provider.Auth for a ChatGPT plan: "Sign in with ChatGPT" instead of an API key.
+const AuthChatGPTPlan = "chatgpt-plan"
+
 // Config is the whole configuration. The zero value is usable: every field's
 // zero value means "use the built-in default" (Defaults spells the defaults out
 // where the config itself owns the decision).
@@ -104,8 +107,11 @@ type Provider struct {
 	BaseURL string `json:"base_url,omitempty"`
 	// APIKeyEnv names the environment variable holding the API key. The key
 	// itself is never stored in configuration.
-	APIKeyEnv string            `json:"api_key_env,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
+	APIKeyEnv string `json:"api_key_env,omitempty"`
+	// Auth says how requests are authorised when it is not an API key: "chatgpt-plan" is a ChatGPT plan, signed in with
+	// `sleipnir login chatgpt` (the openai-responses dialect). Empty: the API key.
+	Auth    string            `json:"auth,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 	// Options are provider-specific request options, passed through untouched.
 	Options map[string]any `json:"options,omitempty"`
 

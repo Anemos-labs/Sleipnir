@@ -109,7 +109,7 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts"},
 		"Models":      {"default", "roles", "favorites"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles"},
-		"Provider":    {"dialect", "base_url", "api_key_env", "headers", "options", "allow_hosts", "allow_insecure_http"},
+		"Provider":    {"dialect", "base_url", "api_key_env", "auth", "headers", "options", "allow_hosts", "allow_insecure_http"},
 		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "hooks", "mcp"},
 	}
 	types := map[string]reflect.Type{

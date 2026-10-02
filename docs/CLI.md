@@ -598,12 +598,17 @@ Asks which provider you have a key for (Heimdall, the recommended one, is first)
 (`echo "$KEY" | sleipnir login heimdall`). The first run of `sleipnir` does this by itself when no provider has a key. An environment variable of the key's usual name
 (`HEIMDALL_API_KEY`) takes precedence over the stored one. `sleipnir logout <provider>` removes it.
 
+`sleipnir login chatgpt` signs in with your **ChatGPT plan** instead of a key (OpenAI's "Sign in with ChatGPT": the browser opens on OpenAI's page and comes back to a port of
+this machine; where no browser can be opened, the address it would end on is pasted). The tokens are kept in `~/.sleipnir/chatgpt.json` (mode 0600), renewed when they are due, and
+`sleipnir logout chatgpt` revokes them. The provider is `chatgpt` (`--model chatgpt/<slug>`, `sleipnir models --provider chatgpt`, the menus); the plan pays for the requests and its
+usage limits apply (`docs/PROVIDERS.md`, "Subscription logins": what it is, what it is not, and that it has not yet met a real account).
+
 <!-- flags: login -->
 ```text
 usage: sleipnir login [provider]
 
 Asks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in
-~/.sleipnir/auth.json, readable by you only. From a pipe the key is the first line of stdin:
+~/.sleipnir/auth.json, readable by you only. `sleipnir login chatgpt` signs in with your ChatGPT plan instead (a browser, no key). From a pipe the key is the first line of stdin:
   echo "$KEY" | sleipnir login heimdall
 An environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.
 ```

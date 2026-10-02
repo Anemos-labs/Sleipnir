@@ -61,6 +61,8 @@ var credentialDirs = []string{"/.ssh", "/.aws", "/.gnupg", "/.config/gcloud"}
 var guardedHome = []string{
 	"/.netrc", "/.git-credentials", "/.npmrc", "/.pypirc", "/.docker/config.json",
 	"/.kube/config", "/.config/gh/hosts.yml",
+	// the harness's own keys and sign-ins: a model that can read them can be talked into sending them
+	"/.sleipnir/auth.json", "/.sleipnir/chatgpt.json",
 }
 
 var hardSystemFiles = []string{"/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/master.passwd", "/etc/security/opasswd"}
