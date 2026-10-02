@@ -13,6 +13,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
 )
 
 func TestSplitArgsHonoursQuotesAndNothingElse(t *testing.T) {
@@ -335,5 +336,36 @@ func TestResumeWithNothingToResumeStaysInTheChat(t *testing.T) {
 		if !ok || res.Restart != nil || !strings.Contains(out.String(), "resume:") {
 			t.Errorf("%s: handled %v, restart %v, said %q", line, ok, res.Restart, out.String())
 		}
+	}
+}
+
+// /goal in the chat: setting one says how to stop it and sends the goal; pause, resume and clear do what they say, and the state is in the session log.
+func TestGoalCommandSetsPausesResumesAndClears(t *testing.T) {
+	h := &sessionHost{s: chatSession(t, false, nil)}
+	run := func(line string) (app.CommandResult, string) {
+		var out strings.Builder
+		res, ok := h.programCommand(line, &out)
+		if !ok {
+			t.Fatalf("%s was not handled", line)
+		}
+		return res, out.String()
+	}
+	if res, out := run("/goal"); res.Send != "" || !strings.Contains(out, "no goal") {
+		t.Errorf("no goal yet: %+v %q", res, out)
+	}
+	res, out := run("/goal make the tests pass")
+	if !strings.Contains(res.Send, "make the tests pass") || !strings.Contains(out, "Esc pauses it") || h.goal == nil {
+		t.Errorf("setting a goal: %+v %q", res, out)
+	}
+	run("/goal pause")
+	if h.goal.Paused == "" {
+		t.Error("pause did not pause")
+	}
+	if res, _ := run("/goal resume"); !strings.Contains(res.Send, "continuation") || h.goal.Paused != "" {
+		t.Errorf("resume: %+v paused %q", res, h.goal.Paused)
+	}
+	run("/goal clear")
+	if h.goal != nil {
+		t.Error("clear left the goal")
 	}
 }

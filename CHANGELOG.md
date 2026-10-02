@@ -223,6 +223,7 @@ The first release.
 - `/resume` with nothing to resume says so and stays in the chat (it restarted it, and the restart ended with the error); a mistyped slash command says "did you mean /model?".
 - `doctor` on an endpoint that does not answer stops after the plain request: the same connection error was printed once per probe.
 - A new `/goal` starts without the plan of the one before (its steps were shown as the new goal's requirements).
+- Setting a `/goal` says that Esc pauses it and `/goal` says where it stands (a trial did not find either).
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).
