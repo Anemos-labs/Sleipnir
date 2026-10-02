@@ -133,28 +133,22 @@ if [ "$SCENARIO" = first-run ]; then
   typist "$key"; sleep 0.8; tmux send-keys -t $s Enter
   waitfor 'type to search' 60; sleep 2.5
   typist "$SEARCH"; sleep 1.2; tmux send-keys -t $s Enter # typing narrows the list, enter chooses the highlighted row
-  waitfor 'Type a goal' 60; sleep 2
-  typist "/allow tests"; sleep 0.6; tmux send-keys -t $s Enter; sleep 1.5
-  typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
-  waitfor '[0-9]+ steps? .*cache hit' 300
-  sleep 3
-else
-  waitfor 'Type a goal' 60
-  sleep 1.5
-  typist "/allow tests"; sleep 0.6; tmux send-keys -t $s Enter; sleep 1.5
-  typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
-  # the run: answer every question with 1, until the turn's summary line shows
-  i=0
-  while [ "$i" -lt 900 ]; do
-    p=$(pane)
-    if printf '%s' "$p" | grep -q 'esc says no'; then sleep 1.6; tmux send-keys -t $s 1; sleep 1; fi
-    if printf '%s' "$p" | grep -Eq '[0-9]+ steps? .*cache hit' && ! printf '%s' "$p" | grep -q 'esc to interrupt'; then break; fi
-    sleep 0.5; i=$((i + 1))
-  done
-  [ "$i" -lt 900 ] || { echo "record-real: the turn did not end in 450 s" >&2; pane >&2; exit 1; }
-  echo "record-real: the turn took about $((i / 2)) s" >&2
-  sleep 3
 fi
+waitfor 'Type a goal' 60
+sleep 1.5
+typist "/allow tests"; sleep 0.6; tmux send-keys -t $s Enter; sleep 1.5
+typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
+# the run: answer every question with 1, until the turn's summary line shows
+i=0
+while [ "$i" -lt 900 ]; do
+  p=$(pane)
+  if printf '%s' "$p" | grep -q 'esc says no'; then sleep 1.6; tmux send-keys -t $s 1; sleep 1; fi
+  if printf '%s' "$p" | grep -Eq '[0-9]+ steps? .*cache hit' && ! printf '%s' "$p" | grep -q 'esc to interrupt'; then break; fi
+  sleep 0.5; i=$((i + 1))
+done
+[ "$i" -lt 900 ] || { echo "record-real: the turn did not end in 450 s" >&2; pane >&2; exit 1; }
+echo "record-real: the turn took about $((i / 2)) s" >&2
+sleep 3
 typist "/exit"; sleep 0.5; tmux send-keys -t $s Enter
 i=0; while [ ! -e "$tmp/done" ] && [ "$i" -lt 60 ]; do sleep 0.5; i=$((i + 1)); done
 "$BIN" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$OUT" --cols "$COLS" --rows "$ROWS" --max-gap "$MAXGAP" ${STILL:+--still "$STILL" ${STILLAT:+--still-at "$STILLAT"}} --title "sleipnir  ($MODEL, a real session)"
