@@ -174,3 +174,22 @@ func oneLine(s string, max int) string {
 	}
 	return s
 }
+
+// Plain is what a person typed, out of a message the harness sent for a goal: the goal of Start without the note after it, and the goal of a
+// Continuation with a mark that it is one. A message that is neither comes back as it is. A recap of a resumed chat shows this, not the harness's words.
+func Plain(msg string) string {
+	if strings.HasPrefix(msg, "[standing goal, continuation") {
+		const mark = "widen):\n"
+		if i := strings.Index(msg, mark); i >= 0 {
+			rest := msg[i+len(mark):]
+			if j := strings.Index(rest, "\n\n"); j >= 0 {
+				rest = rest[:j]
+			}
+			return rest + " (goal, going on)"
+		}
+	}
+	if i := strings.Index(msg, "\n\n[standing goal:"); i >= 0 {
+		return msg[:i]
+	}
+	return msg
+}

@@ -86,3 +86,18 @@ func TestAContinuationSaysWhatIsMissing(t *testing.T) {
 		t.Errorf("the judge was not shown the plan, the answer and the evidence:\n%s", p)
 	}
 }
+
+// The words the harness adds to a goal's messages are not what a person asked: a recap shows the goal only.
+func TestPlainIsWhatThePersonTyped(t *testing.T) {
+	g := New("make the tests pass")
+	if got := Plain(Start(g)); got != "make the tests pass" {
+		t.Errorf("the start of a goal: %q", got)
+	}
+	g.Turns = 1
+	if got := Plain(Continuation(g, nil, Verdict{Kind: Continue, Reason: "no test ran", Left: []string{"run them"}})); got != "make the tests pass (goal, going on)" {
+		t.Errorf("a continuation: %q", got)
+	}
+	if got := Plain("fix the bug"); got != "fix the bug" {
+		t.Errorf("an ordinary message: %q", got)
+	}
+}

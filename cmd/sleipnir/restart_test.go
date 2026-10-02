@@ -400,3 +400,15 @@ func TestRecapLeavesOutCodeFences(t *testing.T) {
 		t.Errorf("the recap: %q", got)
 	}
 }
+
+// A goal's messages carry the harness's own words; the recap of a resumed chat shows only what the person typed.
+func TestRecapShowsTheGoalNotTheHarnessWords(t *testing.T) {
+	turns := []core.Turn{
+		{Role: core.RoleUser, Blocks: []core.Block{core.Text("make the tests pass\n\n[standing goal: before you begin, write what it requires as steps]")}},
+		{Role: core.RoleAssistant, Blocks: []core.Block{core.Text("done")}},
+	}
+	got := strings.Join(recapLines(turns), "\n")
+	if strings.Contains(got, "standing goal") || !strings.Contains(got, "you asked: make the tests pass") {
+		t.Errorf("the recap: %q", got)
+	}
+}

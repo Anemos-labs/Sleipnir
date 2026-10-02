@@ -265,12 +265,12 @@ var codeFence = regexp.MustCompile("```[A-Za-z0-9_+-]*")
 // recapLines say where a resumed conversation was: the last thing the person asked and the start of what it answered. The screen would be
 // empty otherwise, and whoever comes back to a session should see what it was doing.
 func recapLines(turns []core.Turn) []string {
-	var goal, answer string
+	var asked, answer string
 	for _, t := range turns {
 		switch {
 		case t.Role == core.RoleUser && (t.Origin == "" || t.Origin == core.OriginUser):
 			if txt := strings.TrimSpace(kv.AnswerText(t)); txt != "" {
-				goal, answer = txt, "" // an answer belongs to the goal before it: a goal that was cancelled has none
+				asked, answer = txt, "" // an answer belongs to the goal before it: a goal that was cancelled has none
 			}
 		case t.Role == core.RoleAssistant:
 			if txt := strings.TrimSpace(kv.AnswerText(t)); txt != "" {
@@ -279,12 +279,12 @@ func recapLines(turns []core.Turn) []string {
 		}
 	}
 	var out []string
-	if goal != "" {
-		out = append(out, "you asked: "+oneLineCLI(tools.SanitizeForTerminal(goal), 160))
+	if asked != "" {
+		out = append(out, "you asked: "+oneLineCLI(tools.SanitizeForTerminal(goal.Plain(asked)), 160))
 	}
 	if answer != "" {
 		out = append(out, "it said: "+oneLineCLI(codeFence.ReplaceAllString(tools.SanitizeForTerminal(answer), ""), 240))
-	} else if goal != "" {
+	} else if asked != "" {
 		out = append(out, "it had not answered yet: that turn was interrupted")
 	}
 	return out
