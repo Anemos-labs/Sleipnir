@@ -140,7 +140,7 @@ func TestChatACacheBreakIsAWarningInTheScrollback(t *testing.T) {
 // A break whose prompt did not change is the endpoint's: the break line says so, and the agent's own notice, which said the same
 // thing in other words, is not printed under it. The first real chat showed both, one under the other, for every break.
 func TestChatACacheBreakTheEndpointCausedIsSaidOnceWithItsCause(t *testing.T) {
-	r := startChat(t, rigOpts{cols: 100, rows: 30})
+	r := startChat(t, rigOpts{cols: 100, rows: 30, verbose: true}) // not said on the page unless it cost money or notices are asked for
 	b := statetest.NewBuilder()
 	log := sessionLog(b, 3, 0)
 	b.Advance(8 * time.Second)
@@ -448,10 +448,10 @@ func TestChatAQuestionSurvivesAResize(t *testing.T) {
 	}
 }
 
-// An endpoint whose cache misses all the time would put a break line under every answer. Three are said, then one line says that the
-// rest are not, and the next ones are left to /cost and the inspector.
+// An endpoint whose cache misses all the time would put a break line under every answer. With the notices asked for (/verbose) three are
+// said, then one line says that the rest are not, and the next ones are left to /stats and the inspector; without, none is said (below).
 func TestChatTheEndpointsOwnCacheBreaksAreSaidThreeTimes(t *testing.T) {
-	r := startChat(t, rigOpts{cols: 100, rows: 40})
+	r := startChat(t, rigOpts{cols: 100, rows: 40, verbose: true})
 	b := statetest.NewBuilder()
 	log := sessionLog(b, 1, 0)
 	for i := 2; i <= 7; i++ {
@@ -469,5 +469,34 @@ func TestChatTheEndpointsOwnCacheBreaksAreSaidThreeTimes(t *testing.T) {
 	}
 	if n := strings.Count(s, "further misses are not said here"); n != 1 {
 		t.Errorf("the note is said %d times, once", n)
+	}
+}
+
+// The chat page is for what a person can act on. A miss of the endpoint's own cache, with the prompt unchanged, is not that unless it cost
+// real money: it is not said on the page (it is on /stats), and it is said when it did cost.
+func TestChatTheEndpointsOwnCacheBreaksAreNotOnThePageUnlessTheyCostMoney(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		missed int // tokens the endpoint should have served from its cache; the mock's list price makes 5000 of them two cents
+		want   bool
+	}{{"cheap", 500, false}, {"material", 5000, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := startChat(t, rigOpts{cols: 100, rows: 40})
+			b := statetest.NewBuilder()
+			log := sessionLog(b, 1, 0)
+			for i := 2; i <= 4; i++ {
+				req := fmt.Sprintf("r%d", i)
+				b.Advance(8 * time.Second)
+				log = append(log, b.Request("main", req, "mock-1", "pk1", statetest.Sec{Name: "shared", Tokens: 3200, BP: true}))
+				log = append(log, b.Emit("main", events.TypeCacheAnomaly, map[string]any{"kind": "low_hit", "diverged": "", "req": req, "expected_read": 6033, "actual_read": 100, "missed": tc.missed}))
+				log = append(log, b.Response("main", req, "mock-1", 3000, 100, 0, 200, 0.0031))
+			}
+			r.at(b.Now().Add(2 * time.Second))
+			r.emit(log...)
+			s := r.screen()
+			if got := strings.Contains(s, "⚠ cache break"); got != tc.want {
+				t.Errorf("a miss of %d tokens: said on the page = %v, want %v:\n%s", tc.missed, got, tc.want, s)
+			}
+		})
 	}
 }

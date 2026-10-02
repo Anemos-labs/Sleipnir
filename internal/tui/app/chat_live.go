@@ -297,8 +297,8 @@ func (k *chatLook) queueLine(v *liveView, w int) cell.Line {
 
 // ---- the footer ----
 
-// footer is the mode, the keys that are not obvious, and on the right the model and the session. When the width is short the keys
-// give way first, then the session, then the model.
+// footer is the mode, the keys that are not obvious, and on the right the model and the session. When the width is short the session
+// gives way first (it is on /status, and a person does not read it), then the keys one at a time, the least needed first, then the model.
 func (k *chatLook) footer(v *liveView, w int) cell.Line {
 	// the keys of the screens that matter: the stats page, the team's agents (only a team has them), the commands
 	hints := []string{
@@ -318,14 +318,13 @@ func (k *chatLook) footer(v *liveView, w int) cell.Line {
 		hints = []string{k.g.dot + " " + clean(v.hint)}
 	}
 	model, session := clean(v.model), clean(v.session)
-	rights := []string{}
+	var rights []string // with the model, the longest first; the line with none is the last resort
 	if model != "" && session != "" {
 		rights = append(rights, model+" "+k.g.dot+" "+session)
 	}
 	if model != "" {
 		rights = append(rights, model)
 	}
-	rights = append(rights, "")
 	build := func(hint, right string) (cell.Line, int) {
 		var left row
 		left.add(k.modeStyle(v.mode), clean(v.mode))
@@ -339,12 +338,16 @@ func (k *chatLook) footer(v *liveView, w int) cell.Line {
 		}
 		return left.line(), left.w + 2 + cell.StringWidth(right)
 	}
-	// the keys give way before the session does
-	for _, right := range rights {
-		for _, hint := range hints {
-			if l, n := build(hint, right); n <= w || (right == "" && hint == "") {
+	for _, hint := range hints {
+		for _, right := range rights {
+			if l, n := build(hint, right); n <= w {
 				return alignRight(l, cell.Styled(k.st.dim, right), w)
 			}
+		}
+	}
+	for _, hint := range hints { // not even the shortest keys fit beside the model: the keys without it
+		if l, n := build(hint, ""); n <= w || hint == "" {
+			return alignRight(l, cell.Styled(k.st.dim, ""), w)
 		}
 	}
 	l, _ := build("", "")

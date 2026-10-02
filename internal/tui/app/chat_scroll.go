@@ -16,23 +16,42 @@ import (
 
 // bannerLines is the start of the chat: what this is, which model, where, and how to get about.
 func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
-	var l1 row
-	l1.add(k.st.accent, k.g.compact+" sleipnir")
-	if v := clean(info.Version); v != "" {
-		l1.add(k.st.dim, " "+v)
-	}
+	// The line is brand, version, model, directory, budget, team. What cannot be left out is the brand, the model and the size of the team
+	// (nothing else says the chat is one); the budget comes next, then the version, and the directory takes what room is left, keeping its
+	// tail, which is the part that says which project this is. On a narrow screen the parts that do not fit are dropped, not cut off the end.
+	brand := k.g.compact + " sleipnir"
+	var model, budget, team, version string
 	if m := clean(info.Model); m != "" {
-		l1.add(cell.Style{}, "  ").add(k.st.info, m)
-	}
-	if c := clean(info.Cwd); c != "" {
-		l1.add(k.st.dim, "  "+c)
-	}
-	if b := clean(info.Budget); b != "" {
-		l1.add(k.st.dim, "  "+k.g.dot+" "+b)
+		model = "  " + m
 	}
 	if info.Agents > 1 {
-		l1.add(k.st.dim, "  "+k.g.dot+" team of "+strconv.Itoa(info.Agents))
+		team = "  " + k.g.dot + " team of " + strconv.Itoa(info.Agents)
 	}
+	if b := clean(info.Budget); b != "" {
+		budget = "  " + k.g.dot + " " + b
+	}
+	if v := clean(info.Version); v != "" {
+		version = " " + v
+	}
+	room := width - cell.StringWidth(brand+model+team)
+	fits := func(s string) string {
+		if w := cell.StringWidth(s); s != "" && w <= room {
+			room -= w
+			return s
+		}
+		return ""
+	}
+	budget, version = fits(budget), fits(version)
+	var cwd string
+	if c := clean(info.Cwd); c != "" && room >= 10 {
+		cwd = "  " + k.shortenPath(c, room-2)
+	}
+	var l1 row
+	l1.add(k.st.accent, brand).add(k.st.dim, version)
+	if model != "" {
+		l1.add(cell.Style{}, "  ").add(k.st.info, strings.TrimPrefix(model, "  "))
+	}
+	l1.add(k.st.dim, cwd).add(k.st.dim, budget).add(k.st.dim, team)
 	out := []cell.Line{k.fit(l1.line(), width)}
 	if info.Resumed != "" {
 		out = append(out, paragraph(k.st.dim, "  "+info.Resumed, width)...)
@@ -40,6 +59,22 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	help := "Type a goal, / for commands, @ for files. Esc interrupts a turn; Ctrl-C twice at the prompt, Ctrl-D or /exit quits."
 	out = append(out, paragraph(k.st.dim, help, width)...)
 	return out
+}
+
+// shortenPath cuts a directory to at most max cells, keeping its tail and starting it at a separator where it can ("…/clients/acme/app").
+func (k *chatLook) shortenPath(p string, max int) string {
+	if cell.StringWidth(p) <= max {
+		return p
+	}
+	rs := []rune(p)
+	for len(rs) > 1 && cell.StringWidth(k.g.ellipsis)+cell.StringWidth(string(rs)) > max {
+		rs = rs[1:]
+	}
+	tail := string(rs)
+	if i := strings.IndexAny(tail, `/\`); i > 0 && i < len(tail)/2 {
+		tail = tail[i:] // not half a directory name
+	}
+	return k.g.ellipsis + tail
 }
 
 // promptLines is what the person sent, as the scrollback keeps it: behind the prompt mark, bold, every line under the first indented

@@ -16,4 +16,4 @@
 │   3. No, leave them out (esc)                            │
 ╰──────────────────────────────────────────────────────────╯
   1 2 3 or ↑↓ enter  ·  esc says no  ·  ctrl+c cancels
-accept-edits            mock/mock-1 · 20260102-030405-abcdef
+accept-edits · ctrl+t stats · / commands         mock/mock-1

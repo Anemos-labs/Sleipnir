@@ -927,7 +927,7 @@ func TestCacheEcon_LowHitAlarmFiresOnEveryLargeMiss(t *testing.T) {
 
 // A miss the guard cannot explain by a change of the prompt is the endpoint's: the notice says so, so
 // a person does not go looking for a bug in the harness (a real marketplace served 5% to 96% of an
-// identical prefix, request after request).
+// identical prefix, request after request). It is information, not a warning: nothing for the person to do.
 func TestCacheEcon_MissNoticeSaysTheEndpointDidNotServeAnUnchangedPrefix(t *testing.T) {
 	prov := &cxProv{prof: cxAnthropicProfile()}
 	inner := cxWorkModel(10, nil)
@@ -956,7 +956,7 @@ func TestCacheEcon_MissNoticeSaysTheEndpointDidNotServeAnUnchangedPrefix(t *test
 	if len(misses) != 1 { // one per run of consecutive misses
 		t.Fatalf("want one cache-miss notice, got %q", sink.all())
 	}
-	if !strings.HasPrefix(misses[0], "warn: cache miss: expected ~") || !strings.Contains(misses[0], "(the prompt prefix did not change: the endpoint did not serve it)") {
+	if !strings.HasPrefix(misses[0], "info: cache miss: expected ~") || !strings.Contains(misses[0], "(the prompt prefix did not change: the endpoint did not serve it)") {
 		t.Fatalf("the notice does not say whose miss it is: %q", misses[0])
 	}
 }

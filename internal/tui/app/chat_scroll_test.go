@@ -332,3 +332,30 @@ func TestBannerSaysHowBigTheTeamIs(t *testing.T) {
 		t.Errorf("solo:\n%s\nteam:\n%s", solo, team)
 	}
 }
+
+// A long directory gives way, keeping its tail, so that the model, the budget and the size of the team are always on the line: they were
+// cut off the end of it, where nobody could tell the chat was a team. On a narrow screen what does not fit is left out (the directory first,
+// then the version, then the budget), not cut off the end.
+func TestBannerShortensALongDirectoryNotTheBudgetOrTheTeam(t *testing.T) {
+	k := goldenLook(true)
+	info := ChatInfo{Version: "dev", Model: "deepseek/deepseek-v4-flash", Cwd: "/Users/someone/dev/work/clients/acme-corp/platform/services/billing-api",
+		Budget: "budget $50.00", Swarm: true, Agents: 8}
+	for _, width := range []int{120, 100, 90, 80, 60, 52} {
+		first := plainLines(k.bannerLines(info, width))[0]
+		if !strings.Contains(first, "team of 8") || !strings.Contains(first, "deepseek-v4-flash") || cell.StringWidth(first) > width {
+			t.Errorf("width %d: the team and the model are on the line, which fits (%d cells):\n%s", width, cell.StringWidth(first), first)
+		}
+		if width >= 80 && !strings.Contains(first, "budget $50.00") {
+			t.Errorf("width %d: the budget is on the line:\n%s", width, first)
+		}
+		if width >= 90 && width < 110 && (!strings.Contains(first, "…/") || !strings.Contains(first, "billing-api")) {
+			t.Errorf("width %d: the directory is cut at its front and keeps its tail:\n%s", width, first)
+		}
+	}
+	if first := plainLines(k.bannerLines(info, 300))[0]; !strings.Contains(first, info.Cwd) {
+		t.Errorf("a wide screen shows the whole directory:\n%s", first)
+	}
+	if first := plainLines(k.bannerLines(info, 80))[0]; strings.Contains(first, "acme") || strings.Contains(first, "…") {
+		t.Errorf("with no room for a useful piece of the directory, none of it is shown:\n%s", first)
+	}
+}

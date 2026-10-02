@@ -1174,6 +1174,10 @@ func (m *chatModel) snapshot() *state.Snapshot {
 // maxEndpointBreaksShown is how many cache breaks that are the endpoint's own the scrollback says before it says that it will not say more.
 const maxEndpointBreaksShown = 3
 
+// materialMissUSD is what a cache break that is the endpoint's own must have cost, at list price, to be said in the scrollback without /verbose:
+// on a cheap endpoint it is a fraction of a cent, nothing the person can act on, and the chat page is for what they can.
+const materialMissUSD = 0.01
+
 // scanSnapshot finds what the log has added that the scrollback should say: a compaction, a cache break.
 func (m *chatModel) scanSnapshot() {
 	sn := m.snap
@@ -1226,7 +1230,11 @@ func (m *chatModel) scanSnapshot() {
 			m.anomalySeen = max(m.anomalySeen, f.seq)
 			m.syncStream()
 			if f.anom.Layer == "" && f.anom.Kind == "low_hit" {
-				// the prompt did not change: it is the endpoint's cache, and on some it breaks all the time
+				// the prompt did not change: it is the endpoint's cache, and on some it breaks all the time. The person cannot mend it: it is
+				// said when it cost real money or when they asked for the notices (/verbose); /stats has the hit ratio and the inspector each miss
+				if !m.c.Verbose && !(f.anom.MissKnown && f.anom.MissUSD >= materialMissUSD) {
+					continue
+				}
 				m.endpointBreaks++
 				if m.endpointBreaks > maxEndpointBreaksShown {
 					if m.endpointBreaks == maxEndpointBreaksShown+1 {

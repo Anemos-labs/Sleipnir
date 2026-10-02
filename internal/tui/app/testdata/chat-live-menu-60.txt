@@ -4,4 +4,4 @@
 ╰──────────────────────────────────────────────────────────╯
 ▸ /cost     tokens, cost and cache hit ratio so far
   /compact  [focus]  fold the older thread now
-accept-edits            mock/mock-1 · 20260102-030405-abcdef
+accept-edits · ctrl+t stats · / commands         mock/mock-1

@@ -82,7 +82,10 @@ statistic is on the chat page.
 
 - *Status line:* spinner with a verb, elapsed time, tokens in and out, cost, `esc to interrupt`.
 - *Footer:* the permission mode, the keys of the pages (`ctrl+t stats`, and for a team `ctrl+g agents`, then `/ commands`), the model and
-  the session. The keys are named there because a page that cannot be found is not there.
+  the session. The keys are named there because a page that cannot be found is not there; on a narrow screen the session goes first
+  (`/status` has it), then the keys one at a time, then the model. The banner does the same with its line: the directory gives way (it keeps its
+  tail) before the budget and the size of the team do. A miss of the endpoint's own cache is not said on the page unless it cost real money
+  or `/verbose` is on; a break that the harness caused (a layer changed) always is.
 - *Stats page* (`ctrl+t`, or `/stats`): written into the scrollback, so it stays there as a record: what the session cost, the tokens
   in and out, how much of the prompts the provider served from its cache and **what that saved at list price** (measured cache-read
   tokens × (input − read price); labelled as such), and the prompt stack layer by layer (G0–G6 sized by tokens, bright = served from

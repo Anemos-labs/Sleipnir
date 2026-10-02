@@ -14,4 +14,4 @@
 ╭──────────────────────────────────────────────────────────╮
 │ ❯ Type a goal, / for commands, @ for files               │
 ╰──────────────────────────────────────────────────────────╯
-accept-edits            mock/mock-1 · 20260102-030405-abcdef
+accept-edits · ctrl+t stats · / commands         mock/mock-1

@@ -246,11 +246,12 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 		if streak == 0 {
 			// Whose miss it is: a prompt that changed under a stable layer was already reported
 			// above, so a miss the guard did not explain is the endpoint not serving the prefix it was sent.
-			why := ""
+			why, level := "", "warn"
 			if !check.Drift {
-				why = " (the prompt prefix did not change: the endpoint did not serve it)"
+				// the endpoint's own miss is information (the person cannot mend it; --verbose and /stats have it), a change of the prompt is a warning
+				why, level = " (the prompt prefix did not change: the endpoint did not serve it)", "info"
 			}
-			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf(CacheMissNoticePrefix+" ~%d tokens read from cache, got %d%s", expected, u.CacheReadTokens, why))
+			a.cfg.Sink.Notice(a.cfg.ID, level, fmt.Sprintf(CacheMissNoticePrefix+" ~%d tokens read from cache, got %d%s", expected, u.CacheReadTokens, why))
 		}
 	}
 	// The endpoint changed the request behind our back (dropped a thinking block

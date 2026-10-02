@@ -266,6 +266,11 @@ The first release.
 
 ### Interfaces
 
+- The chat page keeps what matters on a narrow screen and what a person can act on: the banner's directory gives way (keeping its tail) before the budget and the size of the team, which were
+  cut off the end of the line; the footer drops the session id before the keys of the pages (`ctrl+t stats · ctrl+g agents · / commands`); and a miss of the endpoint's own cache with the
+  prompt unchanged is no longer said under every answer (three warnings and a note on an endpoint like Heimdall's, whose cache serves a third of the repeats, cost less than a cent
+  between them): it is said when it cost a cent or more, or with `/verbose`; the agent's notice for it is information, not a warning. A break the harness caused (a layer changed) is
+  always a warning. Found by watching a real team work in `scripts/look.sh`.
 - `/login [provider]` in the chat: add a key, or sign in with your ChatGPT plan, without another terminal. The chat ends, `sleipnir login` runs on the terminal (a key
   is typed hidden; a browser sign-in prints its address), and the chat comes back, a single agent with its conversation, a team starting again. A name that is not a
   provider ends nothing. A key the provider refused, a model of a provider that has none and a ChatGPT sign-in that has ended now say `/login` where they said

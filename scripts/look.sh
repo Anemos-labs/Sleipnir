@@ -21,7 +21,16 @@ out=${1:?usage: scripts/look.sh OUT.png [options] -- COMMAND}
 shift
 cols=110 rows=34 wait=3 home= cwd=
 tmp=$(mktemp -d)
-trap 'tmux kill-session -t "look-$$" 2>/dev/null || true; [ -n "${LOOK_KEEP:-}" ] || rm -rf "$tmp"' EXIT
+# stop ends the run: the tmux session does not take script (and the program on its terminal) with it, so they are ended by their own pid
+# (found by script's first argument and the log it writes, not by a pattern over every command line)
+stop() {
+  tmux kill-session -t "look-$$" 2>/dev/null || true
+  for p in $(ps -eo pid,args | awk -v t="$tmp/o" '$2 == "script" && index($0, t) { print $1 }'); do
+    pkill -TERM -P "$p" 2>/dev/null || true
+    kill -TERM "$p" 2>/dev/null || true
+  done
+}
+trap 'stop; [ -n "${LOOK_KEEP:-}" ] || rm -rf "$tmp"' EXIT
 : > "$tmp/actions"
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -67,7 +76,13 @@ done < "$tmp/actions"
 sleep "$wait"
 # the picture is the moment the waiting ended: ending the terminal makes the program say it was cancelled, and that is not what was looked at
 at=$(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN { printf "%.2fs", b - a - 0.3 }')
-tmux kill-session -t "$s" 2>/dev/null || true
+stop
 sleep 1
-"$root/bin/sleipnir" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$tmp/all.svg" --cols "$cols" --rows "$rows" --max-gap 1h --still "$tmp/still.svg" --still-at "$at" --hold 1s >/dev/null
+# script may still be writing the end of its log for a moment (the timing file can be ahead of the log): try again
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  "$root/bin/sleipnir" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$tmp/all.svg" --cols "$cols" --rows "$rows" --max-gap 1h --still "$tmp/still.svg" --still-at "$at" --hold 1s >/dev/null 2>"$tmp/err" && break
+  grep -q 'does not match the log' "$tmp/err" || { cat "$tmp/err" >&2; exit 1; }
+  sleep 1
+done
+[ -s "$tmp/still.svg" ] || { cat "$tmp/err" >&2; exit 1; }
 node "$root/scripts/svg2png.mjs" "$tmp/still.svg" "$out" --scale 1
