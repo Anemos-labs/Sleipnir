@@ -37,11 +37,50 @@ type waker struct {
 	wakes   int       // automatic runs since the last human input
 	told    bool      // the person was told the bound was reached
 	stopped bool      // the swarm shut down
+	held    bool      // the person interrupted: no automatic run until they write again
+	epoch   uint64    // counts the person's inputs: a hold from a run that began before the latest one is out of date
+	endRun  func()    // ends the manager's run that the harness started (a wake), nil when there is none
+}
+
+// hold stops the automatic runs until a person writes: they pressed Esc, and a manager woken to "check the board" because their workers were
+// stopped is the opposite of what that asks. epoch is the count of inputs when the run that was interrupted began: if the person has written
+// since (the hold comes from a goroutine that was slow), they have already asked for more and nothing is held.
+func (w *waker) hold(epoch uint64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.epoch != epoch {
+		return
+	}
+	w.held = true
+	if w.timer != nil {
+		w.timer.Stop()
+		w.timer = nil
+	}
+}
+
+// setRun names what ends the manager's run that the harness started; nil when it is over.
+func (w *waker) setRun(end func()) {
+	w.mu.Lock()
+	w.endRun = end
+	w.mu.Unlock()
+}
+
+func (w *waker) heldNow() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.held
+}
+
+func (w *waker) epochNow() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.epoch
 }
 
 func (w *waker) reset() {
 	w.mu.Lock()
-	w.wakes, w.told = 0, false
+	w.wakes, w.told, w.held = 0, false, false
+	w.epoch++
 	w.mu.Unlock()
 }
 
@@ -78,7 +117,7 @@ func (s *Swarm) managerEvent() {
 	w := &s.wk
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.stopped {
+	if w.stopped || w.held {
 		return
 	}
 	now := time.Now()
@@ -126,7 +165,7 @@ func (s *Swarm) tryWake() {
 	}
 	w := &s.wk
 	w.mu.Lock()
-	if w.stopped {
+	if w.stopped || w.held {
 		w.mu.Unlock()
 		return
 	}
@@ -179,6 +218,28 @@ func (s *Swarm) track(fn func()) bool {
 	}()
 	return true
 }
+
+// supersedeWake ends a run the harness started (a wake), so that a person's goal can have the manager: the wake was for what happened while
+// they were away, and what they say comes first. The workers are left to what they are doing. It reports whether the manager is free now.
+func (s *Swarm) supersedeWake(m *member) bool {
+	w := &s.wk
+	w.mu.Lock()
+	end := w.endRun
+	w.mu.Unlock()
+	if end == nil {
+		return false
+	}
+	end()
+	for deadline := time.Now().Add(supersedeWait); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if s.reserveManager(m) {
+			return true
+		}
+	}
+	return false
+}
+
+// supersedeWait is how long a person's goal waits for a wake run it ended to let go of the manager (a request in flight is cancelled at once).
+const supersedeWait = 10 * time.Second
 
 // reserveManager claims the idle manager for a run (the same compare-and-set as a
 // worker's reserve): false when it is already running.

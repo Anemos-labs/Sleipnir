@@ -496,6 +496,12 @@ defect the runs showed, with the evidence, and what changed.
   terminal they are written to, the menus cut a row that is too long (with an ellipsis) and say what was chosen on one line, and the model menu's columns are as wide as its longest row
   needs (the price column was one character short for "$0.019", so "tools" moved). Tests drive the menu at a width of forty and check every line.
 
+- **Esc did not stop a team.** Found by pressing it in the default chat with three workers running: the workers were stopped and their tasks went back to todo, and a second and a half later the
+  swarm woke the manager for those very changes ("While you were idle: T1 went back to todo; ...") and it checked the board and started the workers again. Then the next goal was answered
+  "error: the manager is already running", because the wake run was still on. An interrupt now holds the automatic wakes until the person writes again (`waker.hold`, with the count of the person's
+  inputs, so that a slow goroutine cannot hold what a later input has released), and a goal typed during a wake run ends that run (the workers are left alone) and has the manager
+  (`supersedeWake`). Three tests in `internal/swarm` that failed on the parent: the wake after the interrupt, the goal during a wake run, and the release by the next goal.
+
 - **The pages of a resumed chat were empty.** After `sleipnir --continue` the agents page said "the team starts with your first goal" and the stats page began at zero, though the manager
   was back with its fourteen turns and the board with three merged tasks. The chat draws its pages from a state made of the events that come after it attaches to the session, and a
   resumed session's history is in its log only. The chat now folds the log of the earlier runs into the state before it starts (a log of up to 64 MB; past that the pages start empty), a

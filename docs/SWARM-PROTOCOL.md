@@ -361,6 +361,11 @@ failed or stopped, a task reached review, mail arrived for it), the swarm starts
   (`--budget-usd` still applies to the wake run like any other).
 * **Bounded.** At most 8 automatic runs between two human inputs (`RunManager`, or steering sent with `Session.Send`); the
   person is told once when the bound is reached (`swarm.wake.paused`) and the count starts again when they write.
+* **Stopped by the person, started again by the person.** Ctrl-C or Esc on a turn stops the workers and puts their tasks back to todo, and
+  that is the one change of the board the manager is not woken for: no automatic run starts until the person writes again (it did, a
+  second and a half later, and the team went back to work in a chat that had just been stopped). And a goal the person types while the
+  manager is in a run the harness started (a wake) ends that run, leaving the workers alone, and has the manager: it is not answered
+  "the manager is already running".
 * **Harness-written and inert.** The note (`While you were idle: T1 is in review (be-1); T2 failed; mail is waiting for you.
   Check the board, ...`) holds ids and status words only, never text an agent wrote. It arrives as harness mail, not as a user
   turn: a user turn would be folded by compaction into the manager's `instructions` as something the person asked for, once

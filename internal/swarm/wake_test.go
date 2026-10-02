@@ -337,3 +337,135 @@ func TestWakeItemsAreIdsAndStatusesOnly(t *testing.T) {
 		t.Fatal("text an agent wrote reached the harness's note")
 	}
 }
+
+// A person who presses Esc wants the team to stop. The workers are stopped and their tasks go back to todo, and that is not news the manager
+// is woken for: it was, a second and a half later it checked the board and started the workers again, in a chat the person had just stopped.
+func TestAnInterruptedTeamIsNotWokenToCheckTheBoard(t *testing.T) {
+	hold := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-hold:
+		default:
+			close(hold)
+		}
+	})
+	r := newRVRigWith(t, Config{WakeManager: true, WakeQuiet: 100 * time.Millisecond, WakeMax: 2 * time.Second, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" {
+			switch {
+			case c.Sees(wakeMarker):
+				return rvReply{Text: "woken"}
+			case c.Assistants == 0:
+				return rvReply{Tools: []rvToolCall{{"spawn", map[string]any{"role": "backend", "task": "one"}}}}
+			}
+			rvBlock(ctx, hold) // waiting for its worker when the person presses Esc
+			return rvReply{Text: "never said"}
+		}
+		rvBlock(ctx, hold)
+		return rvReply{Text: "never said"}
+	}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_, _ = r.sw.RunManager(ctx, "go")
+		close(done)
+	}()
+	rvWait(t, "the worker to be at work and the manager waiting", func() bool { return r.prov.callsFor("be-1") >= 1 && managerCalls(r) >= 2 })
+	cancel() // Esc
+	<-done
+	time.Sleep(600 * time.Millisecond) // the wake quiet period is 100 ms: a wake would have started by now
+	if n := r.sw.Wakes(); n != 0 || managerCalls(r) != 2 {
+		t.Fatalf("after the interrupt the manager was woken %d time(s) and made %d requests (2 before it)", n, managerCalls(r))
+	}
+	if tk, ok := r.sw.Board.Snapshot().Task("T1"); !ok || tk.Status != StatusTodo {
+		t.Errorf("the worker's task went back to todo: %+v", tk)
+	}
+}
+
+// What the person writes next starts the team again: the interrupt holds the automatic runs only until they do.
+func TestTheNextGoalAfterAnInterruptWakesTheTeamAgain(t *testing.T) {
+	hold := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-hold:
+		default:
+			close(hold)
+		}
+	})
+	r := newRVRigWith(t, Config{WakeManager: true, WakeQuiet: 100 * time.Millisecond, WakeMax: 2 * time.Second, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" {
+			if c.Sees("again") {
+				return rvReply{Text: "second goal done"}
+			}
+			rvBlock(ctx, hold)
+			return rvReply{Text: "never said"}
+		}
+		return rvReply{Text: "x"}
+	}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_, _ = r.sw.RunManager(ctx, "go")
+		close(done)
+	}()
+	rvWait(t, "the manager to be at the model", func() bool { return managerCalls(r) >= 1 })
+	cancel()
+	<-done
+	res, err := r.sw.RunManager(context.Background(), "again")
+	if err != nil || res.Text != "second goal done" {
+		t.Fatalf("the next goal: %v %v", res, err)
+	}
+	if r.sw.wk.heldNow() {
+		t.Error("a person wrote: the automatic runs may start again")
+	}
+}
+
+// A person who writes while the manager is in a run the harness started (a wake: a worker finished while they were away) is not answered "the
+// manager is already running": the wake was for what happened without them, and what they say comes first. The wake run ends, the workers are
+// left alone, and the goal is the manager's.
+func TestAGoalTypedDuringAWakeRunTakesTheManager(t *testing.T) {
+	gate := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-gate:
+		default:
+			close(gate)
+		}
+	})
+	wakeAt := make(chan struct{}, 1)
+	r := newRVRigWith(t, Config{WakeManager: true, WakeQuiet: 100 * time.Millisecond, WakeMax: 2 * time.Second, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" {
+			switch {
+			case c.Sees("second goal"):
+				return rvReply{Text: "second goal done"}
+			case c.Sees(wakeMarker):
+				select {
+				case wakeAt <- struct{}{}:
+				default:
+				}
+				<-ctx.Done() // the wake run is in a request when the person writes
+				return rvReply{Text: "never said"}
+			case c.Assistants == 0:
+				return rvReply{Tools: []rvToolCall{{"spawn", map[string]any{"role": "backend", "task": "one"}}}}
+			}
+			return rvReply{Text: "one worker is on it"}
+		}
+		if c.Assistants == 0 {
+			rvBlock(ctx, gate)
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "done"}}}}
+		}
+		return rvReply{Text: "summary"}
+	}, nil)
+	if _, err := r.sw.RunManager(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	close(gate) // the worker finishes while the person is away: the manager is woken
+	select {
+	case <-wakeAt:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the manager was never woken")
+	}
+	res, err := r.sw.RunManager(context.Background(), "second goal")
+	if err != nil || res == nil || res.Text != "second goal done" {
+		t.Fatalf("a goal typed during a wake run: %v, %v", res, err)
+	}
+}

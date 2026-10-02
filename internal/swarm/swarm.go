@@ -527,7 +527,7 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, err
 	if m == nil {
 		return nil, errors.New("the manager is gone")
 	}
-	if !s.reserveManager(m) {
+	if !s.reserveManager(m) && !s.supersedeWake(m) {
 		return nil, errors.New("the manager is already running")
 	}
 	s.HumanInput()
@@ -538,8 +538,22 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, err
 // framed (a wake note) that is queued for the manager's first step; goal is the
 // person's input, or "" for a run the harness started.
 func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (res *agent.Result, err error) {
-	stop := context.AfterFunc(ctx, func() { s.stopWorkers("interrupted", false) })
+	epoch := s.wk.epochNow()
+	stop := context.AfterFunc(ctx, func() {
+		s.wk.hold(epoch) // first: stopping the workers is an event the manager would be woken for
+		s.stopWorkers("interrupted", false)
+	})
 	defer stop()
+	// A run the harness started (a wake, which comes with a note as mail) can be ended by a person's goal without stopping the workers: it has a
+	// context of its own.
+	runCtx := ctx
+	if mail != "" {
+		var end context.CancelFunc
+		runCtx, end = context.WithCancel(ctx)
+		defer end()
+		s.wk.setRun(end)
+		defer s.wk.setRun(nil)
+	}
 	m.setState(s, "running", "planning")
 	if mail != "" {
 		m.a.Send(mail)
@@ -552,7 +566,7 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 				s.emitAs(m.id, "agent.panic", map[string]any{"id": m.id, "panic": fmt.Sprint(r), "stack": string(st)})
 			}
 		}()
-		res, err = m.a.Run(ctx, goal)
+		res, err = m.a.Run(runCtx, goal)
 	}()
 	s.releaseManager(m)
 	state := "done"
