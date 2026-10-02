@@ -437,7 +437,7 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		}
 	case "/mode":
 		if len(f) < 2 {
-			fmt.Fprintln(stderr, "mode:", s.Perm.Mode())
+			fmt.Fprintln(stderr, "mode:", s.Perm.Mode(), "(change it: /mode default | accept-edits | plan | bypass | yolo)")
 			break
 		}
 		switch m := perm.Mode(f[1]); m {

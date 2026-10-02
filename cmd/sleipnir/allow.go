@@ -113,9 +113,7 @@ func noOneToAskNote(mode perm.Mode, allow []string) string {
 	}
 	switch mode {
 	case perm.ModeDefault, "":
-		return "no terminal to ask on: edits and commands that need an answer are refused. --mode accept-edits --allow " + testsPreset + " lets the usual ones through."
-	case perm.ModeAcceptEdits:
-		return "no terminal to ask on: commands that need an answer are refused. --allow " + testsPreset + " lets the build and test commands through."
+		return "no terminal to ask on: edits and commands that need an answer are refused. --mode accept-edits lets the edits and the usual build and test commands through."
 	}
 	return ""
 }
