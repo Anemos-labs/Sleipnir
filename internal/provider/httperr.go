@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -95,7 +96,34 @@ func TransportError(parent context.Context, err error) *Error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Kind: ErrTimeout, Message: msg, Err: err}
 	}
-	return &Error{Kind: ErrNetwork, Message: msg, Err: err}
+	return &Error{Kind: ErrNetwork, Message: plainNetwork(err, msg), Err: err}
+}
+
+// plainNetwork says a failure to reach the endpoint in words a person can act on ("cannot connect to 127.0.0.1:9: connection refused (is the
+// server running?)") where Go's own text is `Post "http://127.0.0.1:9/api/v1/chat/completions": dial tcp 127.0.0.1:9: connect: connection
+// refused`. What it does not recognise it leaves as it is.
+func plainNetwork(err error, msg string) string {
+	host := ""
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		if u, perr := url.Parse(ue.URL); perr == nil {
+			host = u.Host
+		}
+	}
+	if host == "" {
+		return msg
+	}
+	lower := strings.ToLower(msg)
+	var dns *net.DNSError
+	switch {
+	case strings.Contains(lower, "connection refused") || strings.Contains(lower, "actively refused"):
+		return "cannot connect to " + host + ": connection refused (is the server running, and is the address right?)"
+	case errors.As(err, &dns):
+		return "cannot find " + host + " (" + dns.Err + "): check the address and your network"
+	case strings.Contains(lower, "certificate"):
+		return "the certificate of " + host + " is not accepted (" + SanitizeText(ue.Err.Error(), 120) + ")"
+	}
+	return msg
 }
 
 // KeyTransportError is the refusal to send a key where it would cross the network unencrypted (or where the URL is unusable). It is
