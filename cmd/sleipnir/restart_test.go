@@ -388,3 +388,15 @@ func TestChangedLineSaysWhatARunChanged(t *testing.T) {
 		}
 	}
 }
+
+// The recap of a resumed chat is a line of words: the fences of a code block in the answer are left out of it.
+func TestRecapLeavesOutCodeFences(t *testing.T) {
+	turns := []core.Turn{
+		{Role: core.RoleUser, Blocks: []core.Block{core.Text("fix it")}},
+		{Role: core.RoleAssistant, Blocks: []core.Block{core.Text("Done:\n```python\nx = 1\n```\nand tested")}},
+	}
+	got := strings.Join(recapLines(turns), "\n")
+	if strings.Contains(got, "```") || !strings.Contains(got, "x = 1") {
+		t.Errorf("the recap: %q", got)
+	}
+}

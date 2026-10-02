@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -258,6 +259,9 @@ func chatInfo(s *session.Session, cwd string) app.ChatInfo {
 	return info
 }
 
+// codeFence is the marker of a code block in an answer (and its language): in the one line of a recap it is noise.
+var codeFence = regexp.MustCompile("```[A-Za-z0-9_+-]*")
+
 // recapLines say where a resumed conversation was: the last thing the person asked and the start of what it answered. The screen would be
 // empty otherwise, and whoever comes back to a session should see what it was doing.
 func recapLines(turns []core.Turn) []string {
@@ -279,7 +283,7 @@ func recapLines(turns []core.Turn) []string {
 		out = append(out, "you asked: "+oneLineCLI(tools.SanitizeForTerminal(goal), 160))
 	}
 	if answer != "" {
-		out = append(out, "it said: "+oneLineCLI(tools.SanitizeForTerminal(answer), 240))
+		out = append(out, "it said: "+oneLineCLI(codeFence.ReplaceAllString(tools.SanitizeForTerminal(answer), ""), 240))
 	} else if goal != "" {
 		out = append(out, "it had not answered yet: that turn was interrupted")
 	}
@@ -288,9 +292,9 @@ func recapLines(turns []core.Turn) []string {
 
 // resumedLine says what a resumed session brought back. A team's workers are not among it: nothing of them was running.
 func resumedLine(s *session.Session, a *agent.Agent) string {
-	line := fmt.Sprintf("resumed: %d turns restored; the first request writes the cached prefix again, once", len(a.Stack().Thread.Turns))
+	line := fmt.Sprintf("resumed: %d turns restored; the first request writes the cached prefix again, once. The mode and what /allow let through start again", len(a.Stack().Thread.Turns))
 	if s.Swarm != nil {
-		line = fmt.Sprintf("resumed: the manager's %d turns and the board are back (its workers are not: what they held is todo again); the first request writes the cached prefix again, once", len(a.Stack().Thread.Turns))
+		line = fmt.Sprintf("resumed: the manager's %d turns and the board are back (its workers are not: what they held is todo again); the first request writes the cached prefix again, once. The mode and what /allow let through start again", len(a.Stack().Thread.Turns))
 	}
 	return line
 }

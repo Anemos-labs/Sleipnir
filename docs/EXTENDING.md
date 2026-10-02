@@ -625,7 +625,7 @@ directory itself: same id, the log and checkpoints continue, and `/rewind` still
 What it does not restore, or does differently:
 
 * **The provider cache.** The first request writes the cached prefix again, once: a declared rebase, priced like any
-  other. Chat says so: `resumed: 4 turns restored; the first request writes the cached prefix again, once`. Thinking
+  other. Chat says so: `resumed: 4 turns restored; the first request writes the cached prefix again, once. The mode and what /allow let through start again`. Thinking
   blocks bound to the old prefix are dropped where the route binds them.
 * **The shared layers** are rebuilt from the project as it is now: an edited `AGENTS.md`, new skills or changed config
   take effect.
