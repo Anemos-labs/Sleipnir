@@ -53,8 +53,7 @@ a dozen tests and real managers write terse titles: it is a hint. Writes under `
 8. Findings of the trials by agents that had only the binary (2026-10-02), not yet done: (a) *(done: a `for` loop over a literal list of workspace paths is judged per word, `docs/SECURITY.md`.)* (b) A verifier over the whole repository
    (`--verify "go test ./..."`) makes every worker's `task done` wait for the others; the cap is fixed, but the gate could be judged on the
    worker's own directories when the command has no `{dirs}`, or the manager told so. (c) `ctrl+t` and `ctrl+g` print their page into the
-   scrollback as `> /stats`; a page that is opened and left was asked for twice and is not done. (d) The first screen could say what the team
-   of eight is for (a manager that plans, workers that write in parallel) in one line.
+   scrollback as `> /stats`; a page that is opened and left was asked for twice and is not done. (d) *(done: the banner says it in one line.)*
    Ideas from reading eight other harnesses (crush, opencode, codex, aider, goose, hermes-agent, gemini-cli, cline), not yet built: `/btw QUESTION`
    (a side question on a copy of the prefix, out of the log), `/export` to Markdown, `$EDITOR` for a long prompt, `/title` and `/fork`, the
    files-changed count and the three-way choice (conversation, code, both) in `/rewind`, a standing `/goal`, `/init` and `/doctor` inside the chat.
