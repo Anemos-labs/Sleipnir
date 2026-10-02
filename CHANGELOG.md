@@ -172,6 +172,21 @@ The first release.
   print. `gofmt -w` (writes the files) and the profile flags still ask. A trial with a real model was asked about `gofmt -l . ; go vet`.
 - `sleipnir --continue` (and `/resume`) shows where the conversation was under the banner: the last thing you asked and the start of what it
   answered. The screen was empty, and the only sign of the earlier work was a count of turns.
+- From two more trials by agents that had only the binary, one in the chat on a Python project and one running `swarm 8` headless:
+  - A team of eight can have all its workers writing at once (the cap was four): the manager of `swarm 8 ... --verify "go test ./..."` could not
+    start its fifth worker, and the four that had finished their part waited for the two packages nobody was working on (4m42s for six
+    one-line functions). The cap is now the team's workers (at least four); the leases keep two writers off the same files.
+  - Declared change of the manager's role layer (the constant prefix is untouched): one line, "size the team to the job": a change of a few
+    lines or inside one or two files is the manager's own or one worker's. A trial had a manager spawn two workers for a trivial change.
+    Cost: about 45 tokens in the manager's first request of a session, once (a few thousandths of a cent).
+  - "Yes, and don't ask again" for `python3 -m unittest`, `python -m pytest`, `yarn test`, `pnpm test`, `mvn test`, `gradle test` and `dotnet
+    test` remembers the command and not the exact line, as it does for `go test` (about 25 questions in a quarter of an hour, most of them
+    for variants of one test run).
+  - A write or an edit of a file of the project that was not read is refused before the person is asked: the question was asked, approved
+    and then answered "read it first", and the same diff was asked about again.
+  - `/allow` typed while a turn runs takes effect at once (it waited for the end of the turn, behind the questions it was meant to stop).
+  - The live output of `run` and `swarm` says why a call was refused (a `spawn` over the cap, a `task done` that the verifier rejected),
+    not only that it was: the ✗ had no reason without --verbose.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

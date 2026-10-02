@@ -451,6 +451,9 @@ func (s *Swarm) Roles() Roles { return s.roles }
 // MaxAgents is the most agents the swarm registers, the manager included.
 func (s *Swarm) MaxAgents() int { return s.cfg.MaxAgents }
 
+// MaxWriters is how many agents that may modify files can run at once.
+func (s *Swarm) MaxWriters() int { return s.cfg.MaxWriters }
+
 // ManagerID returns the manager's agent id.
 func (s *Swarm) ManagerID() string {
 	s.mu.Lock()

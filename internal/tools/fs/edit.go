@@ -121,6 +121,9 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if msg != "" {
 		return k.fail("%s", msg), nil
 	}
+	if r := k.unread(canon, disp); r != nil {
+		return r, nil
+	}
 	if r := k.authorize("edit "+disp, true, perm.RiskMedium, canon); r != nil {
 		return r, nil
 	}

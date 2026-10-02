@@ -1,12 +1,14 @@
 package fs
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -404,5 +406,41 @@ func TestWriteSerialisesConcurrentWritersOfOneFile(t *testing.T) {
 	want := strings.Repeat(string(rune('A'+winner)), 1000) + "\n"
 	if got := readFileT(t, p); got != want {
 		t.Errorf("file does not hold the winner's content")
+	}
+}
+
+// askCounter is a permission policy that allows everything and counts the questions.
+type askCounter struct{ n int32 }
+
+func (a *askCounter) Check(context.Context, perm.Request) perm.Decision {
+	atomic.AddInt32(&a.n, 1)
+	return perm.Decision{Allow: true}
+}
+
+// A change to a file the agent has not read is refused before the person is asked: the question was asked, approved, and then answered
+// "read it first", so the same diff was asked about twice.
+func TestAChangeToAnUnreadFileIsRefusedBeforeThePersonIsAsked(t *testing.T) {
+	env := testEnv(t)
+	asks := &askCounter{}
+	env.Perm = asks
+	p := filepath.Join(env.Cwd, "f.txt")
+	writeFile(t, p, "original\n")
+	for name, in := range map[string]struct {
+		tool  tools.Tool
+		input map[string]any
+	}{
+		"write": {Write{}, map[string]any{"path": "f.txt", "content": "new\n"}},
+		"edit":  {Edit{}, map[string]any{"path": "f.txt", "old_string": "original", "new_string": "new"}},
+	} {
+		text := mustErr(t, run(t, in.tool, env, in.input))
+		contains(t, text, "f.txt has not been read by you yet")
+		if n := atomic.LoadInt32(&asks.n); n != 0 {
+			t.Errorf("%s: the person was asked %d times about a change that could not be made", name, n)
+		}
+	}
+	// A file that is not there needs no read, and is asked about as before.
+	mustOK(t, run(t, Write{}, env, map[string]any{"path": "g.txt", "content": "x\n"}))
+	if n := atomic.LoadInt32(&asks.n); n != 1 {
+		t.Errorf("creating a file asked %d times, want 1", n)
 	}
 }

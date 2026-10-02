@@ -10,12 +10,13 @@ import (
 // runnerPrefixes are the commands a person doing test-driven work runs over and over with different arguments (go test ./a, go test
 // ./b): "don't ask again" for one of them remembers the prefix and not the exact line. Each is a program and, where the program runs
 // anything it is told to, the subcommand: a rule for "go" alone would let go run a program of the model's choosing. Never in this
-// table: shells, interpreters, rm, sudo, curl or anything unknown. Flags that run a program of the model's choosing (go test -exec)
+// table: shells, interpreters given a program (python -m unittest and -m pytest run the tests, and are here; python -c and python script.py are not), rm, sudo, curl or anything unknown. Flags that run a program of the model's choosing (go test -exec)
 // are still asked about by the engine, and a test run executes whatever tests the repository has anyway.
 var runnerPrefixes = [][]string{
 	{"go", "test"}, {"go", "build"}, {"go", "vet"},
 	{"npm", "test"}, {"npm", "run"},
-	{"pytest"},
+	{"pytest"}, {"python", "-m", "pytest"}, {"python3", "-m", "pytest"}, {"python", "-m", "unittest"}, {"python3", "-m", "unittest"},
+	{"yarn", "test"}, {"pnpm", "test"}, {"mvn", "test"}, {"gradle", "test"}, {"dotnet", "test"}, {"dotnet", "build"},
 	{"cargo", "test"}, {"cargo", "build"}, {"cargo", "check"},
 	{"make"},
 	{"git", "add"}, {"git", "commit"}, {"git", "status"},

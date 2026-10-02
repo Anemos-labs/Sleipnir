@@ -126,3 +126,22 @@ func TestRoleModelWithoutASwarmWarns(t *testing.T) {
 		t.Fatalf("no warning about the ignored --role-model; notices: %v", sink.logs)
 	}
 }
+
+// A team of eight can have all its workers writing at once: the cap of four concurrent writers left a manager unable to start the fifth
+// worker of "--swarm 8" (and, with a verifier over the whole repository, deadlocked the four that had finished their part).
+func TestEveryWorkerOfATeamMayWriteAtOnce(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	for _, agents := range []int{3, 8, 12} {
+		o := opts(t, repo, client, model)
+		o.Swarm, o.MaxAgents = true, agents
+		s, err := session.New(context.Background(), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := s.Swarm.MaxWriters(), max(4, agents-1); got != want {
+			t.Errorf("a team of %d may have %d writers at once, want %d", agents, got, want)
+		}
+		s.Close()
+	}
+}

@@ -128,7 +128,9 @@ func (s *TextSink) ToolEnd(a string, call core.Block, res *tools.Result, took ti
 		who = "[" + a + "] "
 	}
 	fmt.Fprintf(s.log, "%s%s %s (%s)\n", who, mark, toolSummary(call), how)
-	if s.Verbose && res.Failed() {
+	// A call the tool refused says why, always: a ✗ with no reason (a spawn the writer cap refused, a task not done because the verifier
+	// failed) left a person reading a log unable to tell what had gone wrong. The last lines of a command that failed are for --verbose.
+	if res.Failed() && (s.Verbose || res.IsError) {
 		if res.IsError {
 			fmt.Fprintf(s.log, "    %s\n", firstLine(res.Text, 200))
 		} else {

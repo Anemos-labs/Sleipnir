@@ -249,6 +249,22 @@ func similarPath(path, disp string) string {
 	return ""
 }
 
+// unread refuses a change to a file of the project that exists and that this agent has not read, before the person is asked about it: the
+// answer is a certain "read it first", and it came after an approval that was given for nothing. Only the project's own files are looked at
+// here (a path outside it, which the policy may refuse, is not touched before the policy has been asked).
+func (k *call) unread(canon, disp string) *tools.Result {
+	if k.env.Files.HasRead(k.env.Agent, canon) {
+		return nil
+	}
+	if _, in := relWithin(k.env.Root, canon); !in {
+		return nil
+	}
+	if fi, err := os.Lstat(canon); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxFileBytes {
+		return nil // not there, not a file, or too big to read: the tool says which, as it always did
+	}
+	return k.fail("%s", tools.NotReadMessage(disp))
+}
+
 // freshness runs FileState's staleness check for a file whose current bytes are
 // current, and rewrites the path in its message to the display spelling.
 func (k *call) freshness(path, disp string, current []byte, requireRead bool) *tools.Result {

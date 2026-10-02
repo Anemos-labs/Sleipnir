@@ -35,7 +35,7 @@ func TestTextSinkMarksAFailedCommandAndSaysHowItEnded(t *testing.T) {
 		{"success", &tools.Result{Text: "ok", Meta: map[string]any{"exit_code": 0}}, "✓ bash go test (1s)"},
 		{"exit 1", &tools.Result{Text: "FAIL", Meta: map[string]any{"exit_code": 1}}, "✗ bash go test (1s, exit 1)"},
 		{"a timeout", &tools.Result{Text: "stopped", Meta: map[string]any{"exit_code": -1, "timed_out": true}}, "✗ bash go test (1s, timed out)"},
-		{"a tool error", &tools.Result{Text: "no such file", IsError: true}, "✗ bash go test (1s)"},
+		{"a tool error", &tools.Result{Text: "no such file", IsError: true}, "✗ bash go test (1s)\n    no such file"}, // a refusal says why, without --verbose
 		{"no result", nil, "✓ bash go test (1s)"},
 	} {
 		log.Reset()

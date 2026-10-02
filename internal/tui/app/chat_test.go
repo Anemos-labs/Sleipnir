@@ -1150,7 +1150,9 @@ func TestChatAWriteOverAFileShowsWhatItRemoves(t *testing.T) {
 }
 
 func TestStatusAndPermissionsAnswerBesideATurn(t *testing.T) {
-	for _, line := range []string{"/status", "/permissions", "/cost"} {
+	// /allow is asked for when the questions pile up, and takes effect for the very next one: queued behind the turn it came after the
+	// turn's last question (a trial typed it while a turn was busy and it ran at the end).
+	for _, line := range []string{"/status", "/permissions", "/cost", "/allow tests", "/allow Bash(go test:*)"} {
 		if !isLookCommand(line) {
 			t.Errorf("%s only looks and should answer at once", line)
 		}

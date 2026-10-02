@@ -659,15 +659,16 @@ func (m *chatModel) submit(text string) {
 	m.dispatch(text)
 }
 
-// isLookCommand reports whether a line is a slash command that only looks: it changes nothing, so it answers at once, beside the
-// turn that runs, where every other line waits for that turn to end. /mode and /mcp only look when they have no argument.
+// isLookCommand reports whether a line is a slash command that answers at once, beside the turn that runs, where every other line waits
+// for that turn to end: one that only looks, and /allow, which changes the rules of the session and is typed when questions pile up.
+// /mode and /mcp only look when they have no argument.
 func isLookCommand(line string) bool {
 	f := strings.Fields(line)
 	if len(f) == 0 {
 		return false
 	}
 	switch f[0] {
-	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust":
+	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow":
 		return true
 	case "/mode", "/mcp":
 		return len(f) == 1

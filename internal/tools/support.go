@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -191,6 +192,19 @@ func (f *FileState) RecordWrite(agent, path string, content []byte, now time.Tim
 	e.seen[agent] = h
 }
 
+// HasRead says whether agent has read (or written) path.
+func (f *FileState) HasRead(agent, path string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.entry(path).seen[agent]
+	return ok
+}
+
+// NotReadMessage is what an agent is told when it changes a file it has not read.
+func NotReadMessage(path string) string {
+	return path + " has not been read by you yet; read it before modifying it"
+}
+
 // CheckFresh verifies agent may modify path whose content on disk is current.
 // requireRead demands that the agent has read the file at all.
 func (f *FileState) CheckFresh(agent, path string, current []byte, requireRead bool) error {
@@ -201,7 +215,7 @@ func (f *FileState) CheckFresh(agent, path string, current []byte, requireRead b
 	seen, ok := e.seen[agent]
 	switch {
 	case !ok && requireRead:
-		return fmt.Errorf("%s has not been read by you yet; read it before modifying it", path)
+		return errors.New(NotReadMessage(path))
 	case !ok:
 		return nil
 	case seen == h:

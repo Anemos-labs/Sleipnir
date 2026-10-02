@@ -698,3 +698,32 @@ func TestAQuestionQueuedBehindAnotherIsSettledByItsAnswer(t *testing.T) {
 		t.Errorf("the person was asked %d times, want 1: the second was covered by the answer to the first", rec.count())
 	}
 }
+
+// A person running a Python project's tests is asked once, not for every variant: "don't ask again" for python3 -m unittest remembers that
+// and not the line, while an interpreter given a program of its own, or another module, is still asked about.
+func TestRememberSessionOfAPythonTestRunIsItsPrefix(t *testing.T) {
+	f := newFixture(t)
+	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	if d := e.Check(bg, f.request(bash("python3 -m unittest -v"))); !d.Allow {
+		t.Fatal(d)
+	}
+	if got := e.Rules(Allow); len(got) != 1 || got[0] != "Bash(python3 -m unittest:*)" {
+		t.Fatalf("rules after remember: %q", got)
+	}
+	for _, cmd := range []string{"python3 -m unittest discover -s tests", "python3 -m unittest -v 2>&1 | tail -20", "python3 -m unittest test_x.T.test_a"} {
+		if d := e.Check(bg, f.request(bash(cmd))); !d.Allow {
+			t.Errorf("%s: %+v", cmd, d)
+		}
+	}
+	if rec.count() != 1 {
+		t.Errorf("prompted %d times, want 1", rec.count())
+	}
+	for _, cmd := range []string{"python3 -c 'print(1)'", "python3 script.py", "python3 -m http.server", "python -m unittest"} {
+		before := rec.count()
+		e.Check(bg, f.request(bash(cmd)))
+		if rec.count() != before+1 {
+			t.Errorf("%q was not asked about", cmd)
+		}
+	}
+}
