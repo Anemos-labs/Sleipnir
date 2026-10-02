@@ -762,3 +762,15 @@ func TestAVariableFileNameIsExplainedInPlainWords(t *testing.T) {
 		t.Errorf("the question says %q", got)
 	}
 }
+
+// A compound line of runner commands ("go vet ./a && go test ./a") that is allowed for the session remembers each command by its prefix: the
+// same line for another package (what a worker does next) is not a new question.
+func TestACompoundOfRunnersIsRememberedByPrefix(t *testing.T) {
+	f := newFixture(t)
+	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	e.Check(bg, f.request(bash("go vet ./a && go test ./a")))
+	if d := e.Check(bg, f.request(bash("go vet ./b && go test ./b"))); !d.Allow || rec.count() != 1 {
+		t.Errorf("the same line for another package: %+v after %d questions", d, rec.count())
+	}
+}
