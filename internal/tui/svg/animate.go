@@ -181,7 +181,7 @@ func Animated(frames []Frame, th Theme, o Options) string {
 	fmt.Fprintf(&b, `<style>%s.a{opacity:0;animation-duration:%ss;animation-iteration-count:%s;animation-timing-function:step-end;%s}%s</style>`+"\n",
 		commonCSS(th), num(total.Seconds()), iter, fill, css.String())
 	chrome(&b, th, w, h, top)
-	fmt.Fprintf(&b, `<g transform="translate(%s %s)">`+"\n", num(th.Padding), num(th.Padding+top))
+	b.WriteString(gridOpen(th, top))
 	b.WriteString(body.String())
 	b.WriteString("</g>\n</svg>\n")
 	return b.String()

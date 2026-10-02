@@ -439,6 +439,12 @@ The first release.
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
 defect the runs showed, with the evidence, and what changed.
 
+- **The recordings had no colour, and a highlighted menu row was unreadable.** `internal/tui/svg` put the default text colour in a CSS rule
+  (`text{fill:…}`), which beats the `fill` attribute of every text element in a browser: no cell's own colour ever showed in a picture, and
+  the dark text of a reversed cell (the highlighted row of a menu) was drawn light on a light bar, white on white. Found by looking at the
+  README picture, not by a test; the default colour is now the grid group's, a test refuses a stylesheet that sets one, and every picture of
+  `docs/media` was drawn again. The menu also paints one frame per write, so it no longer shows half drawn.
+
 - **Reasoning written into the answer.** An endpoint that does not separate reasoning can leave the model's thoughts in the answer, closed by a
   bare `</think>`. They are now a thinking block, and the answer starts after the tag.
 - The refusal of a read outside the workspace no longer says where scratch files go (that hint is for writes).

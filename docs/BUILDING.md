@@ -210,6 +210,11 @@ what the terminal showed with its timing, and `sleipnir term-svg` playing that i
 `internal/tui/svg`. It costs a few cents and about a minute, so redo it whenever the interface changes enough to show: `docs/media/real-chat.svg` is the README's picture.
 The scripted recordings below are made from a mock model; they show the harness around a model and are labelled so in `docs/GALLERY.md`.
 
+**Look at every picture you make.** A recording is only done once its frames have been seen in a browser, at the moments that matter (a menu is
+up, a row is highlighted, a dialog asks): `node scripts/svg2png.mjs docs/media/real-first-run.svg /tmp/f.png --at 2` writes the frame at second 2, and
+the image is then opened and read. Text that is checked only as text misses what a person sees (a highlighted row drawn white on white passed every
+test and shipped).
+
 The animated SVGs in the README (`docs/media/*.svg`, with PNG stills) are the terminal interface's own screens, drawn by the code from a
 recorded session and by nothing else: no one types, edits or photographs them. `docs/media/gallery.json` is the one manifest (which
 screen, how big, which stretch, which stills); `sleipnir replay --gallery`, `scripts/record-demo.sh` and the tests all read it, so a

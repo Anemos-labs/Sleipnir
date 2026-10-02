@@ -63,12 +63,14 @@ func selectRows(in *bufio.Reader, out io.Writer, title string, labels, keys []st
 		}
 	}
 	draw := func() {
+		// one write per frame: a terminal paints what it is given, and a frame written line by line is seen half drawn
+		var f strings.Builder
 		if drawn > 0 {
-			fmt.Fprintf(out, "\x1b[%dA", drawn)
+			fmt.Fprintf(&f, "\x1b[%dA", drawn)
 		}
-		fmt.Fprint(out, "\r\x1b[J")
+		f.WriteString("\r\x1b[J")
 		lines := 0
-		line := func(s string) { fmt.Fprint(out, s, "\r\n"); lines++ }
+		line := func(s string) { f.WriteString(s + "\r\n"); lines++ }
 		head := title
 		if searchable {
 			head += "  search: " + string(query) + "_"
@@ -99,6 +101,7 @@ func selectRows(in *bufio.Reader, out io.Writer, title string, labels, keys []st
 		}
 		line("\x1b[2m" + hint + "\x1b[0m")
 		drawn = lines
+		io.WriteString(out, f.String())
 	}
 	filter()
 	for {

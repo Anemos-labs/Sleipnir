@@ -164,7 +164,7 @@ func Static(f Frame, th Theme) string {
 	header(&b, th, w, h, top)
 	b.WriteString(`<style>` + commonCSS(th) + `</style>` + "\n")
 	chrome(&b, th, w, h, top)
-	b.WriteString(fmt.Sprintf(`<g transform="translate(%s %s)">`+"\n", num(th.Padding), num(th.Padding+top)))
+	b.WriteString(gridOpen(th, top))
 	for y, row := range f.Rows {
 		drawRow(&b, th, row, y, 0, "")
 	}
@@ -188,9 +188,18 @@ func chrome(b *strings.Builder, th Theme, w, h, top float64) {
 	}
 }
 
+// commonCSS is the type of the grid. It sets no colour: a CSS rule beats the fill attribute of a text element, so a colour set here
+// would turn every cell's own colour (and the dark text on a reversed cell) into the default one. The default colour is the
+// attribute of the grid's group (gridOpen), which a text's own fill attribute overrides.
 func commonCSS(th Theme) string {
-	return fmt.Sprintf(`text{font-family:%s;font-size:%spx;font-variant-ligatures:none;font-variant-emoji:text;fill:%s}.b{font-weight:700}.i{font-style:italic}`,
-		th.Font, num(th.FontSize), th.Foreground)
+	return fmt.Sprintf(`g text{font-family:%s;font-size:%spx;font-variant-ligatures:none;font-variant-emoji:text}.b{font-weight:700}.i{font-style:italic}`,
+		th.Font, num(th.FontSize))
+}
+
+// gridOpen opens the group that holds the grid: shifted by the padding and the title bar, with the terminal's own foreground as the
+// colour of every text that has none of its own.
+func gridOpen(th Theme, top float64) string {
+	return fmt.Sprintf(`<g fill="%s" transform="translate(%s %s)">`+"\n", th.Foreground, num(th.Padding), num(th.Padding+top))
 }
 
 // drawRow draws a row of cells, or a stretch of one that starts at column x0: backgrounds, geometry for blocks and lines, then the

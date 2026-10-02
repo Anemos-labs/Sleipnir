@@ -223,6 +223,32 @@ func TestColoursReachTheDocument(t *testing.T) {
 	}
 }
 
+// A CSS rule beats the fill attribute of a text element in every browser, so a stylesheet that sets a colour for text turns every
+// cell's own colour into the default one: the dark text of a reversed cell (a highlighted menu row) was drawn light on a light bar,
+// and no colour showed in any recording. The default colour belongs to the grid's group, where a text's own fill overrides it.
+func TestNoStylesheetRuleOverridesACellsColour(t *testing.T) {
+	f := frame(0, "x")
+	f.Rows[0][0].Style = cell.Style{}.With(cell.Reverse)
+	style := regexp.MustCompile(`(?s)<style>(.*?)</style>`)
+	for name, doc := range map[string]string{
+		"static":   Static(f, Theme{Title: "t"}),
+		"animated": Animated([]Frame{f, frame(time.Second, "y")}, Theme{Title: "t"}, Options{}),
+	} {
+		wellFormed(t, doc)
+		m := style.FindStringSubmatch(doc)
+		if m == nil || strings.Contains(m[1], "fill:") || strings.Contains(m[1], "color:") {
+			t.Errorf("%s: the stylesheet sets a colour (it would override every text's own):\n%.600s", name, doc)
+		}
+		th := DefaultTheme()
+		if !strings.Contains(doc, `<g fill="`+th.Foreground+`" transform=`) {
+			t.Errorf("%s: the grid's group carries no default colour:\n%.600s", name, doc)
+		}
+		if !strings.Contains(doc, `fill="`+th.Background+`">x</text>`) {
+			t.Errorf("%s: the reversed cell's text is not drawn in the background colour:\n%s", name, doc)
+		}
+	}
+}
+
 func TestHostileTextCannotBreakTheDocument(t *testing.T) {
 	f := frame(0, "a\x00b\x1b[31mc\u0085d</text><script>alert(1)</script>")
 	doc := Static(f, Theme{Title: `"><script>`})
