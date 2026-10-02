@@ -495,6 +495,16 @@ func retryDelay(attempt int, pe *provider.Error, waited, patience time.Duration)
 	return delay, true
 }
 
+// sayRetry says whether the retry after attempt (counted from 0) is announced to the person: each of the usual attempts is, and while an outage is
+// waited out after them, the first and then one in each half minute of waiting. announced is the half minute of the last such notice (-1: none).
+func sayRetry(attempt int, waited time.Duration, announced int) (say bool, half int) {
+	if attempt < maxAttempts-1 {
+		return true, -1 // the usual attempts are all said, and do not use up a half minute
+	}
+	half = int(waited / (30 * time.Second))
+	return half > announced, half
+}
+
 // call performs a provider request with retry and rate-limit gating.
 func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
 	return a.callOn(ctx, a.cfg.Provider, req, prio, on)
@@ -504,6 +514,7 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
 	var last error
 	var waited time.Duration // how long the outage has been waited out, for OutagePatience
+	announced := -1          // the half-minute of waiting that the last notice of the patient phase was made in
 	for attempt := 0; ; attempt++ {
 		rel, err := a.cfg.Limiter.Acquire(ctx, prio)
 		if err != nil {
@@ -532,7 +543,12 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 		if attempt >= maxAttempts-1 {
 			of = fmt.Sprintf("attempt %d, waited %s of %s for the endpoint", attempt+2, waited.Round(time.Second), a.cfg.OutagePatience.Round(time.Second))
 		}
-		a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("%s (%s)", retryNotice(pe, delay), of))
+		// The first six attempts are each said; while an outage is waited out after them, a line a half minute is enough (a person watching saw
+		// seven lines of the same 503 in a minute, and the status line already says how long the model has not answered).
+		if say, half := sayRetry(attempt, waited, announced); say {
+			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("%s (%s)", retryNotice(pe, delay), of))
+			announced = half
+		}
 		a.emit(events.TypeModelError, map[string]any{
 			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
 		})

@@ -47,3 +47,24 @@ func TestTokenCountIsReadableAtEverySize(t *testing.T) {
 		}
 	}
 }
+
+// While an outage is waited out, a retry is announced once in each half minute and not every time: seven lines of the same 503 in a minute
+// filled a person's screen, and the status line says how long the model has not answered.
+func TestRetriesInALongOutageAreAnnouncedOnceInHalfAMinute(t *testing.T) {
+	announced := -1
+	var said []int
+	for attempt, waited := 0, time.Duration(0); attempt < 14; attempt++ {
+		waited += min(time.Duration(1<<attempt)*time.Second, 10*time.Second)
+		if say, half := sayRetry(attempt, waited, announced); say {
+			said = append(said, attempt)
+			announced = half
+		}
+	}
+	// attempts 0 to 4 are the usual ones; 5 is the first the outage adds; then one for each half minute of waiting
+	if len(said) > 9 || said[0] != 0 || said[4] != 4 || said[5] != 5 {
+		t.Errorf("announced the retries after attempts %v", said)
+	}
+	if len(said) >= 14 {
+		t.Errorf("every retry was announced: %v", said)
+	}
+}

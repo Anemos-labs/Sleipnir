@@ -30,8 +30,10 @@ func TestAnEndpointThatIsDownForALongTimeIsWaitedOut(t *testing.T) {
 		t.Errorf("%d requests, want 10", got)
 	}
 	notices := r.sink.all()
-	if len(notices) != 9 {
-		t.Fatalf("%d notices, want one before each of the nine repeats:\n%s", len(notices), strings.Join(notices, "\n"))
+	// Five before the repeats of the usual six attempts, and one for the wait that only patience allows: the next only when half a minute has gone
+	// (these delays are milliseconds, so the other three repeats are not announced).
+	if len(notices) != 6 {
+		t.Fatalf("%d notices, want 6:\n%s", len(notices), strings.Join(notices, "\n"))
 	}
 	// The first six attempts count as they always did; the ones that only patience allows say how long is waited and how long is left.
 	if !strings.HasSuffix(notices[0], "(attempt 2 of 6)") || !strings.HasSuffix(notices[4], "(attempt 6 of 6)") {
