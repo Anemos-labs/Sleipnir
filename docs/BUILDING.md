@@ -109,6 +109,13 @@ internal/testutil       test helpers shared by suites: the goroutine-leak check 
 internal/repocheck      the repository's own invariants as tests (links resolve, actions are pinned, the required check is a job, CODEOWNERS and goreleaser agree with the tree); no product code
 ```
 
+## Finding what has been forgotten
+
+`scripts/heatmap.sh` colours every file by when it last changed (rank among all files, red the coldest tenth, green the hottest): a table by directory in
+the terminal (`--since-days N` keeps the directories untouched for N days, `--files N` lists the coldest files), or `--html FILE` for a page with one square per
+file, its area the file's lines. Run it before choosing what to polish: a user-facing feature that is red has not been looked at since it was written, so
+**use it** (run the command, read what it prints) before trusting that its tests mean it works. A mass reformat makes everything hot; read the files.
+
 ## Style
 
 - Comments explain *why* (invariants, cache/consistency reasoning, security stance), not
