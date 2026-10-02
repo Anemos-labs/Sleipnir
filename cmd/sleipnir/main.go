@@ -208,37 +208,39 @@ Usage:
   sleipnir <command> [flags]
 
 Commands:
-  init      write a starter .sleipnir/config.json and AGENTS.md for this project
+  init      write a starter config and AGENTS.md for this project
   config    show the effective configuration and where each value came from
   sessions  list recorded sessions (sessions prune: delete the old ones)
-  login     store a provider's API key, or sign in with your ChatGPT plan (asked for on the first run); logout removes it
-  chat      interactive session in the current directory (what "sleipnir" alone opens on a terminal; slash commands, Ctrl-C cancels a turn)
-  run       run a goal through the harness (single agent; --swarm N for a manager with workers)
+  login     store a key, or sign in with your ChatGPT plan; logout removes it
+  chat      interactive session: what "sleipnir" alone opens on a terminal
+  run       run a goal (one agent; --swarm N for a manager with workers)
   schedule  goals to run on a schedule (cron): add, list, rm
-  daemon    start the scheduled goals that are due (once a half minute; --once for a cron job)
+  daemon    run the scheduled goals that are due (--once for a cron job)
   swarm     shorthand for run --swarm: sleipnir swarm <agents> "<goal>"
-  recon     print the deterministic project survey that seeds the shared prompt layer
+  recon     print the project survey that seeds the shared prompt layer
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test
-  trust     the project's own instructions and settings: what they are, and remember your yes until they change
-  inspect   the cache inspector: a live or after-the-fact dashboard of a recorded session (layers, hit ratio, swarm, cost)
-  watch     the terminal's view of a session as it is written: the swarm cockpit, each agent's cache, mail, board
-  replay    play a recorded session back on those screens; --record writes an animated SVG, --final a text screen
-  rl        the RL environment: taskgen, rollout, eval, serve, reward, report, compare, export, verify (see: sleipnir rl help)
-  friction  rank what slowed recorded sessions down: refusals, failed tool calls, stuck runs, retries, repeated reads
-  doctor    probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs
+  trust     a project's own instructions and settings: show, remember your yes
+  inspect   the cache inspector: a dashboard of a session, live or recorded
+  watch     a session as it is written: the swarm cockpit, caches, mail, board
+  replay    play a recorded session back; --record writes an SVG, --final text
+  rl        the RL environment: rollout, eval, report, export (rl help)
+  friction  rank what slowed recorded sessions down: refusals, errors, retries
+  doctor    probe an endpoint: streaming, tools, prefix cache, warm-up
   models    list models and prices from a marketplace catalogue
-  demo      a scripted team of 10+ agents on a mock endpoint: see the shared cache and the bill, no key needed
-  mock      run the built-in mock provider (deterministic, cache-faithful) for demos and tests
-  sim       simulate cache policies: what layering buys and where it stops paying
+  demo      a scripted team on a mock endpoint: the shared cache and the bill
+  mock      the built-in mock provider, for demos and tests
+  sim       simulate cache policies: what layering buys, and where it stops
   version   print version
 
 `)
 	fmt.Fprint(w, providerParagraph())
-	fmt.Fprint(w, `A bare model id goes to the default provider: the only one configured, else the first hosted one whose key variable
-(HEIMDALL_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from
-~/.sleipnir/auth.json (sleipnir login stores it there, mode 0600). Every command takes -h.
-`)
+	fmt.Fprintln(w, wrapWords("A bare model id goes to the default provider: the only one configured, else the first hosted one whose key variable "+
+		"(HEIMDALL_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from "+
+		"~/.sleipnir/auth.json (sleipnir login stores it there, mode 0600). Every command takes -h.", usageWidth))
 }
+
+// usageWidth is the widest line of the usage text: most terminal windows open at 80 columns, and a longer line is broken in the middle of a word.
+const usageWidth = 78
 
 // providerParagraph says which providers are built in, for the usage text: from the table itself, so that it cannot fall behind it.
 func providerParagraph() string {
@@ -259,7 +261,7 @@ func providerParagraph() string {
 	text := "A model is written provider/model. Built in: " + strings.Join(hosted, ", ") +
 		"; your ChatGPT plan (" + strings.Join(plan, ", ") + ": sleipnir login chatgpt, no key); and the local servers " + strings.Join(local, ", ") +
 		" (no key); or a provider from your config."
-	return wrapWords(text, 110) + "\n"
+	return wrapWords(text, usageWidth) + "\n\n"
 }
 
 // wrapWords breaks text into lines of at most width characters, at spaces.

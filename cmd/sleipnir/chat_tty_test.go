@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -43,6 +44,19 @@ func TestChatHelpListsEveryCommandOfThePalette(t *testing.T) {
 			t.Errorf("the palette entry %+v is empty or repeated", c)
 		}
 		seen[c.name] = true
+	}
+}
+
+// /help is for a terminal of 80 columns, the size most windows open at: a line that is longer is broken with its rest at the left edge, under
+// the names, and a description that starts a column early is the one that was typed wrong.
+func TestChatHelpFitsEightyColumnsAndLinesUp(t *testing.T) {
+	for _, line := range strings.Split(chatHelp, "\n") {
+		if n := utf8.RuneCountInString(line); n > 79 {
+			t.Errorf("%d characters: %q", n, line)
+		}
+		if strings.HasPrefix(line, "/") && len(line) > 19 && (line[18] != ' ' || line[19] == ' ') {
+			t.Errorf("the description does not start in column 19: %q", line)
+		}
 	}
 }
 

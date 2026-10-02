@@ -269,26 +269,26 @@ const chatHelp = `conversation
 /exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)
 
 model and cost
-/model [ref]       show the model, or change it (a team starts again on it, the manager's conversation comes along)
-/fav [ref]         star a model, or unstar it (this one when none is named): starred models come first in /model
-/login [provider]  add a key, or sign in with ChatGPT; the chat comes back where you were
+/model [ref]       show the model, or change it (a team starts again on it)
+/fav [ref]         star a model, or unstar it; starred ones lead in /model
+/login [provider]  add a key, or sign in with ChatGPT (the chat comes back)
 /budget [usd|off]  the dollar budget for the turns from now on
 /cost              tokens, cost and cache hit ratio so far
-/stats             the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers
+/stats             the stats page (ctrl+t): cost, cache, savings, layers
 /context           what each layer of the prompt weighs
 /status            model, mode, session, budget and cost at a glance
 
 permissions
 /mode <m>          default | accept-edits | plan | bypass   (/plan = plan)
-/allow <rule>      allow for this session what would otherwise ask: tests, Bash(go test:*)
+/allow <rule>      allow, this session, what would ask: tests, Bash(go test:*)
 /permissions       the mode and the rules in force
 /trust             this project's own instructions and settings, and your yes
 
 a team, and the program
 /roles [role=m]    which model each role runs on; change one (restarts)
 /swarm <n> [flags] start again as a team of n agents (the manager included)
-/restart [flags]   start again with other flags: --no-mcp, --trust-project, --cwd DIR
-/agents           the team's agents and tasks (ctrl+g)
+/restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
+/agents            the team's agents and tasks (ctrl+g)
 /verbose [on|off]  notices and tool errors
 /anim [on|off]     motion
 /cwd               the directory this session works in

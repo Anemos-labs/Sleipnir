@@ -127,11 +127,10 @@ func TestTheUsageNamesEveryBuiltInProvider(t *testing.T) {
 			t.Errorf("the usage text lacks %q:\n%s", want, buf.String())
 		}
 	}
+	// Most terminal windows open at 80 columns, and a longer line is broken in the middle of a word.
 	for _, line := range strings.Split(buf.String(), "\n") {
-		if strings.HasPrefix(line, "A model is written") || strings.Contains(line, "servers jan") {
-			if len(line) > 112 {
-				t.Errorf("a line of the provider paragraph is %d characters: %q", len(line), line)
-			}
+		if n := len([]rune(line)); n > 79 {
+			t.Errorf("a line of the usage text is %d characters: %q", n, line)
 		}
 	}
 }
