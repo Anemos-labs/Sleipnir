@@ -437,6 +437,10 @@ func (t *waitTool) Spec() core.ToolSpec {
 	}
 }
 
+// quietAfter is how long a team goes without a task changing state before the manager's wait says so: a verifier that fails for a reason no task
+// owns kept a trial's team waiting, and waiting again, for twenty minutes.
+var quietAfter = 5 * time.Minute
+
 func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if r := t.s.refuseService(c.Env.Role); r != nil {
 		return r, nil
@@ -487,6 +491,9 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		ch := s.Board.Changed() // before the snapshot, so no change is missed
 		cur := s.Board.Snapshot()
 		digest := diffSnapshots(base, cur)
+		if len(digest) > 0 {
+			s.quietSince.Store(0)
+		}
 		pending := false
 		if m != nil {
 			m.pump(s) // coalesced mail moves into the inbox as soon as there is room, so "mail arrived" is true
@@ -507,7 +514,15 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return c.Env.Finish(waitReport(cur, digest, "mail arrived (delivered with this result)"), false), nil
 		case timedOut:
 			s.setSeen(me, cur)
-			return c.Env.Finish(waitReport(cur, digest, fmt.Sprintf("timed out after %s", timeout.Round(time.Second))), false), nil
+			why := fmt.Sprintf("timed out after %s", timeout.Round(time.Second))
+			if len(digest) == 0 {
+				now := time.Now().UnixNano()
+				s.quietSince.CompareAndSwap(0, now-int64(timeout)) // the quiet began when this wait did, at the latest
+				if q := time.Duration(now - s.quietSince.Load()); q >= quietAfter {
+					why += fmt.Sprintf("; no task has changed state for %s: waiting again will not change that. Look at what the workers are stuck on (agents, task list, what a verifier prints), tell them, or end the run and say what is stuck", q.Round(time.Minute))
+				}
+			}
+			return c.Env.Finish(waitReport(cur, digest, why), false), nil
 		}
 		select {
 		case <-ctx.Done():

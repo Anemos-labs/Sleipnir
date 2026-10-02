@@ -624,3 +624,24 @@ func TestVerifierCancelledMidVerificationSettlesTheTask(t *testing.T) {
 		})
 	}
 }
+
+// A wait that times out with nothing having changed, for long, says so and says that waiting again will not change it: a verifier that failed
+// for a reason no task owned kept a trial's team in `wait` for twenty minutes.
+func TestAQuietBoardIsNamedByTheWait(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r.sw.StartManager()
+	r.sw.Board.CreateTask("mgr", TaskSpec{Title: "t"})
+	r.sw.Board.Assign("mgr", "be-1", "T1")
+	wait := func() string {
+		return r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 3}).Text
+	}
+	if got := wait(); !strings.Contains(got, "timed out after 3s") || strings.Contains(got, "waiting again will not change") {
+		t.Errorf("a first quiet wait: %q", got)
+	}
+	old := quietAfter
+	quietAfter = time.Second
+	defer func() { quietAfter = old }()
+	if got := wait(); !strings.Contains(got, "no task has changed state for") || !strings.Contains(got, "waiting again will not change") {
+		t.Errorf("a wait after a long quiet: %q", got)
+	}
+}

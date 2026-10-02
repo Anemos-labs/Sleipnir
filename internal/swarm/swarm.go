@@ -212,6 +212,8 @@ type Swarm struct {
 	Gov    *Governor
 	Gate   *WarmGate
 
+	quietSince atomic.Int64 // unix nanoseconds when the board last had a quiet wait with nothing changed since; 0 when something changed
+
 	spawnMu  sync.Mutex // serialises admission: spawn, reuse and the limits they enforce
 	sharedMu sync.Mutex // serialises SetShared
 

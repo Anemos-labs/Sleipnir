@@ -55,8 +55,7 @@ a dozen tests and real managers write terse titles: it is a hint. Writes under `
    worker's own directories when the command has no `{dirs}`, or the manager told so. (c) `ctrl+t` and `ctrl+g` print their page into the
    scrollback; they no longer print `> /stats` in front of it (nobody typed it), but a page that is opened and left, rather than written into the scrollback, is not done. (d) *(done: the banner says it in one line.)*
    Found by the trials of 2026-10-02 evening with a real model (deepseek-v4.1-flash), not yet done: (e) a team in worktrees with `--verify 'npm test'` (no `{dirs}`) stalled for 22 minutes on a verifier
-   that failed for a reason outside every task (`node --test test/` on Node 22): nothing noticed that no task had moved for minutes, and `--budget-usd` could not, at $0.006. A "no task has
-   changed state for N minutes" stop (or note to the manager) would have ended it; the start-up warning about `{dirs}` is accurate but says only "warn". (f) `--allow tests` does not cover a
+   that failed for a reason outside every task (`node --test test/` on Node 22): nothing noticed that no task had moved for minutes, and `--budget-usd` could not, at $0.006. The manager's `wait` now says, after five quiet minutes, that no task has changed state and that waiting again will not change that (a stop is still not built); the start-up warning about `{dirs}` is accurate but says only "warn". (f) `--allow tests` does not cover a
    test command with a redirect to a file in /tmp (`npm test > /tmp/o 2>&1; echo $?`), which the models write. (g) The manager made two tasks for five independent modules: right for the
    job, and a sign that the "size the team" line works; whether it is too shy for a larger one wants a measured run.
    Ideas from reading eight other harnesses (crush, opencode, codex, aider, goose, hermes-agent, gemini-cli, cline), not yet built: `/btw QUESTION`
