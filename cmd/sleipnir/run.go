@@ -17,10 +17,12 @@ import (
 	"golang.org/x/term"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 func init() {
@@ -189,6 +191,9 @@ func runCommand(ctx context.Context, name string, args []string) error {
 			_ = json.NewEncoder(os.Stdout).Encode(out)
 		case !*quiet:
 			fmt.Fprintln(os.Stderr, "\n"+runSummary(os.Stderr, time.Since(start), res))
+			if s.Ckpt != nil {
+				fmt.Fprintln(os.Stderr, changedLine(s.Ckpt.List()))
+			}
 			printRefusals(os.Stderr, s.RefusedWithNoOneToAsk(), s.Cwd())
 		}
 	}
@@ -435,4 +440,27 @@ func runSummary(out io.Writer, took time.Duration, res *session.Result) string {
 		return line + "\n   " + tildePath(res.Dir)
 	}
 	return line + " · " + res.Dir
+}
+
+// changedLine is the line after a run's summary that says which files it changed (the checkpoints of the session know), or that it changed none:
+// a run that was refused its edits ends with a diagnosis, and a person reading the summary alone could not tell.
+func changedLine(list []checkpoint.Info) string {
+	seen := map[string]bool{}
+	var files []string
+	for _, cp := range list {
+		for _, f := range cp.Files {
+			if !seen[f] {
+				seen[f] = true
+				files = append(files, f)
+			}
+		}
+	}
+	switch n := len(files); {
+	case n == 0:
+		return "   no file was changed"
+	case n <= 5:
+		return "   changed: " + tools.SanitizeForTerminal(strings.Join(files, ", "))
+	default:
+		return fmt.Sprintf("   changed: %s and %d more", tools.SanitizeForTerminal(strings.Join(files[:5], ", ")), n-5)
+	}
 }

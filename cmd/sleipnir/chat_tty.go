@@ -529,7 +529,7 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		}
 		fmt.Fprintf(out, "the team starts again on %s (the manager's conversation comes along, the workers' does not; /roles changes one role)\nrestarting: sleipnir chat %s\n", f[1], strings.Join(args, " "))
 		return app.CommandResult{Restart: args}, true
-	case "/new", "/resume":
+	case "/new", "/clear", "/resume":
 		var typed []string
 		switch {
 		case f[0] == "/resume" && len(f) > 1:
@@ -547,7 +547,7 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 				return app.CommandResult{}, true
 			}
 		}
-		args, err := restartArgs(h.s, typed, f[0] == "/new")
+		args, err := restartArgs(h.s, typed, f[0] != "/resume")
 		if err != nil {
 			fmt.Fprintln(out, f[0]+":", err)
 			return app.CommandResult{}, true
@@ -608,6 +608,7 @@ var chatCommands = []chatCommand{
 	{"anim", "[on|off]", "turn the motion on or off"},
 	{"roles", "[role=model]", "which model each role runs on; change one (the chat restarts with it)"},
 	{"new", "", "start the conversation again, empty (the same model and mode)"},
+	{"clear", "", "the same as /new"},
 	{"resume", "[id]", "continue an earlier session: the newest of this project, or one of the earlier ones listed as you type"},
 	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
 	{"swarm", "<n> [flags]", "start again as a team of n agents, the manager included: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},

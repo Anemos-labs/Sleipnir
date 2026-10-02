@@ -263,6 +263,7 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 const chatHelp = `conversation
 /goal TEXT         work until it is met, judged on evidence (/goal: status)
 /new               start again, empty (same model and mode)
+/clear             the same as /new
 /resume [id]       pick an earlier session from a menu, and continue it
 /sessions          the newest sessions
 /compact [focus]   fold the older thread now; focus says what to keep in view

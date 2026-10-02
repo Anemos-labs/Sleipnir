@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -367,5 +368,23 @@ func TestGoalCommandSetsPausesResumesAndClears(t *testing.T) {
 	run("/goal clear")
 	if h.goal != nil {
 		t.Error("clear left the goal")
+	}
+}
+
+// A run's last lines say which files it changed, or that it changed none (a run refused its edits ends with a diagnosis and a summary that look alike).
+func TestChangedLineSaysWhatARunChanged(t *testing.T) {
+	cp := func(files ...string) checkpoint.Info { return checkpoint.Info{Files: files} }
+	for _, tc := range []struct {
+		list []checkpoint.Info
+		want string
+	}{
+		{nil, "   no file was changed"},
+		{[]checkpoint.Info{cp()}, "   no file was changed"},
+		{[]checkpoint.Info{cp("a.py"), cp("a.py", "b.py")}, "   changed: a.py, b.py"},
+		{[]checkpoint.Info{cp("1", "2", "3", "4", "5", "6", "7")}, "   changed: 1, 2, 3, 4, 5 and 2 more"},
+	} {
+		if got := changedLine(tc.list); got != tc.want {
+			t.Errorf("%v: %q, want %q", tc.list, got, tc.want)
+		}
 	}
 }
