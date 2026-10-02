@@ -48,6 +48,20 @@ func (s *shopScript) sec(n float64) time.Duration {
 	return time.Duration(n * s.scale * float64(time.Second))
 }
 
+// begun reports whether the agent has made its first request: it is on the roster by then, which is what mail needs of its recipient. The workers
+// are spawned in one batch, and on a slow machine an early writer could reach its mail before a later one was spawned ("no agent fe-1").
+func (s *shopScript) begun(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.step[id] > 0
+}
+
+// waitFor makes the agent's next request the same step again after a short wait in tool time.
+func (s *shopScript) waitFor(id, why string) mock.Reply {
+	s.again(id)
+	return mock.Reply{Text: why, ToolCalls: []mock.ToolCall{bashCall(fmt.Sprintf("b%d", time.Now().UnixNano()%1000), fmt.Sprintf("sleep %.1f", s.sec(0.5).Seconds()))}}
+}
+
 func (s *shopScript) mark(name string) {
 	s.mu.Lock()
 	s.marks[name] = true
@@ -97,7 +111,7 @@ func (s *shopScript) respond(c *mock.Call) mock.Reply {
 		r = s.scout(id, n)
 	case "backend":
 		if id == "be-1" {
-			r = s.catalogue(n)
+			r = s.catalogue(id, n)
 		} else {
 			r = s.cart(id, n)
 		}
@@ -222,12 +236,15 @@ func (s *shopScript) scout(id string, n int) mock.Reply {
 
 // ---- the catalogue (be-1): reads a lot, tells the web what it will serve, builds for longer than the cache stays warm ----
 
-func (s *shopScript) catalogue(n int) mock.Reply {
+func (s *shopScript) catalogue(id string, n int) mock.Reply {
 	switch n {
 	case 0:
 		return mock.Reply{Text: "The catalogue is the piece the others lean on, so I read everything about it first: the API, the items and their rules.", ToolCalls: []mock.ToolCall{
 			readCall("r1", "docs/api.md"), readCall("r2", "data/items.json"), readCall("r3", "data/schema.md")}}
 	case 1:
+		if !s.begun("fe-1") {
+			return s.waitFor(id, "The web worker is not here yet; I cannot tell it anything.")
+		}
 		return mock.Reply{Text: "Telling the web what I will serve, then the types.", ToolCalls: []mock.ToolCall{
 			mailCall("m1", "fe-1", "contract", "catalogue: GET /items answers {items:[{id,name,price_cents,stock,tags}], next}; the port is catalogue.DefaultPort, defined once in shop/catalogue, so please do not define your own."),
 			writeCall("w1", "shop/catalogue/items.go", catalogueItemsGo)}}
@@ -303,6 +320,9 @@ func (s *shopScript) tester(id string, n int) mock.Reply {
 	case 0:
 		return mock.Reply{Text: "The smoke tests need the API and the design rules in front of me.", ToolCalls: []mock.ToolCall{readCall("r1", "docs/api.md"), readCall("r2", "docs/design.md")}}
 	case 1:
+		if !s.begun("be-2") {
+			return s.waitFor(id, "The cart's author is not here yet; I cannot ask.")
+		}
 		return mock.Reply{Text: "One thing I cannot take from the documents, so I ask, and write the script meanwhile.", ToolCalls: []mock.ToolCall{
 			mailCall("m1", "be-2", "request", "cart: for a line of 3 at 333 cents, is /cart/total 999 or 1000? I assume the sum is exact and rounding happens once at the end."),
 			writeCall("w1", "tests/smoke.sh", smokeSh)}}
