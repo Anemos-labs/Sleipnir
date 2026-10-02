@@ -24,8 +24,8 @@ func TestNewEngineValidation(t *testing.T) {
 		{"bad glob", Config{Ask: []string{"Read(src/[)"}}, "malformed"},
 		{"negation", Config{Deny: []string{"Read(!x)"}}, "negated"},
 		{"bad tool name", Config{Allow: []string{"Ba sh(x)"}}, "invalid character"},
-		{"bad mode", Config{Mode: "yolo"}, "unknown mode"},
-		{"bad role mode", Config{Roles: map[string]RoleProfile{"r": {Mode: "yolo"}}}, `role "r"`},
+		{"bad mode", Config{Mode: "paranoid"}, "unknown mode"},
+		{"bad role mode", Config{Roles: map[string]RoleProfile{"r": {Mode: "paranoid"}}}, `role "r"`},
 		{"bad role rule", Config{Roles: map[string]RoleProfile{"r": {Deny: []string{"Bash("}}}}, `role "r"`},
 	} {
 		cfg := tc.cfg

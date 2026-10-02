@@ -107,13 +107,14 @@ type Engine struct {
 	rs  *resolver
 	pr  prompts
 
-	mu               sync.RWMutex
-	mode             Mode
-	allow, ask, deny []*crule
-	roles            map[string]*profile
-	persisted        map[Rule]bool // rules already handed to Config.Persist
-	granted          []string      // the allow rules added while the session ran (what the person said yes to), in order
-	confined         map[string]rootPair
+	mu                sync.RWMutex
+	mode              Mode
+	allow, ask, deny  []*crule
+	tests, allowEdits []*crule // tests: the build and test commands (TestsAllow): allowed while the mode is accept-edits, as an edit inside the project is; allowEdits: allow + tests, what accept-edits judges by
+	roles             map[string]*profile
+	persisted         map[Rule]bool // rules already handed to Config.Persist
+	granted           []string      // the allow rules added while the session ran (what the person said yes to), in order
+	confined          map[string]rootPair
 }
 
 // Confine binds an agent to one directory of the workspace (a git worktree of its
@@ -233,6 +234,10 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if e.allow, err = compileList(Allow, cfg.Allow, rs); err != nil {
 		return nil, err
 	}
+	if e.tests, err = compileList(Allow, TestsAllow, rs); err != nil {
+		return nil, err
+	}
+	e.allowEdits = withTests(e.allow, e.tests)
 	ask := cfg.Ask
 	if cfg.StateDir != "" {
 		ask = append(append([]string(nil), ask...), "Edit("+escapeGlob(cleanAbs(cfg.StateDir))+"/**)")
@@ -314,6 +319,7 @@ func (e *Engine) AddRule(scope Scope, rule Rule) {
 		*list = append(append(make([]*crule, 0, len(*list)+1), *list...), c)
 		if rule.Action == Allow {
 			e.granted = append(e.granted, rule.String())
+			e.allowEdits = withTests(e.allow, e.tests)
 		}
 	}
 	// A rule is persisted once, even if it was first added for the session and
@@ -334,6 +340,9 @@ func (e *Engine) snapshot(role string) (sess, prof *view) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	sess = &view{mode: e.mode, deny: e.deny, ask: e.ask, allow: e.allow}
+	if e.mode == ModeAcceptEdits { // accept-edits lets the builds and tests of the project through, as it does the edits: Deny and Ask rules still win
+		sess.allow = e.allowEdits
+	}
 	if p, ok := e.roles[role]; ok && role != "" {
 		cat := func(a, b []*crule) []*crule {
 			return append(append(make([]*crule, 0, len(a)+len(b)), a...), b...)
@@ -347,6 +356,9 @@ func (e *Engine) snapshot(role string) (sess, prof *view) {
 			// it: the session's allow rules do not carve exceptions out of the
 			// role's mode, only the role's own Allow rules do.
 			prof.allow = append([]*crule(nil), p.allow...)
+		}
+		if prof.mode == ModeAcceptEdits {
+			prof.allow = withTests(prof.allow, e.tests)
 		}
 	}
 	return sess, prof
@@ -417,4 +429,9 @@ func (e *Engine) Rules(a Action) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// withTests is the allow list and the build and test rules in one new slice.
+func withTests(allow, tests []*crule) []*crule {
+	return append(append(make([]*crule, 0, len(allow)+len(tests)), allow...), tests...)
 }

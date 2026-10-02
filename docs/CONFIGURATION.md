@@ -405,7 +405,7 @@ The engine decides every tool call before it runs. A request is settled by the f
 | Mode | Behaviour |
 |---|---|
 | `default` | Reads inside the workspace and read-only shell commands are allowed; everything else asks |
-| `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) |
+| `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) and the commands that build and test a project (`go test`, `npm test`, `cargo build`, `pytest`, `make test`… the `--allow tests` list); `ask` and `deny` rules still win |
 | `plan` | Read-only. Writes, network access and commands that are not provably read-only are refused with a message that says to present a plan. An `allow` rule still carves an exception (say `Edit(docs/plan.md)`) |
 | `bypass` | Full control without asking, except about the very dangerous: the high-risk class (`sudo`, a recursive delete of the workspace, home or `/`, or of a path only known when the command runs such as `rm -rf "$DIR"`, a forced push to a shared branch, disk tools, shutdown) still asks. Hard denies, `deny` rules, guarded paths without an `allow` rule and `ask` rules still apply |
 | `yolo` | Never asks anything, for runs with nobody there: what `bypass` allows, and the high-risk class too. Hard denies, `deny` rules and guarded paths still refuse, and so does a rule that would have asked (an `ask` rule): refusing is not a question. For sandboxes. `--continue` never brings `bypass` or `yolo` back |

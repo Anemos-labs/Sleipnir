@@ -181,7 +181,7 @@ type Mode string
 const (
 	// ModeDefault allows reads inside the workspace and asks for the rest.
 	ModeDefault Mode = "default"
-	// ModeAcceptEdits also allows file edits inside the workspace.
+	// ModeAcceptEdits also allows file edits inside the workspace and the commands that build and test a project (TestsAllow).
 	ModeAcceptEdits Mode = "accept-edits"
 	// ModePlan is read-only: anything that writes or executes is denied.
 	ModePlan Mode = "plan"

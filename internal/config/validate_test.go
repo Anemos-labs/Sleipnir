@@ -168,7 +168,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "permission modes",
 			mutate: func(c *Config) {
-				c.Permissions = Permissions{Mode: "yolo", Roles: map[string]RolePermissions{"a": {Mode: "plan"}, "b": {Mode: "nope"}}}
+				c.Permissions = Permissions{Mode: "paranoid", Roles: map[string]RolePermissions{"a": {Mode: "plan"}, "b": {Mode: "nope"}}}
 			},
 			wantErr:  []string{"permissions.mode", "permissions.roles.b.mode"},
 			contains: map[string]string{"permissions.mode": "valid: default, accept-edits, plan, bypass, yolo"},

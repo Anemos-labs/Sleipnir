@@ -10,7 +10,7 @@ import (
 )
 
 // Every tool call is judged before it runs; the allocations of the judgement are held to what they are, with a fifth to spare
-// (measured: 107 for a read-only command, 269 for a pipeline of three, 71 for a read inside the workspace). Time is
+// (measured: 201 for a read-only command, 457 for a pipeline of three, 71 for a read inside the workspace; accept-edits judges by the thirty-odd build and test rules too). Time is
 // BenchmarkCheckBash's, and does not fail a build.
 func TestCheckAllocationsAreHeld(t *testing.T) {
 	root := t.TempDir()
@@ -29,8 +29,8 @@ func TestCheckAllocationsAreHeld(t *testing.T) {
 		req  Request
 		max  float64
 	}{
-		{"read-only command", Request{Agent: "be-1", Tool: "bash", Command: "ls -la internal/kv", Cwd: root}, 130},
-		{"pipeline", Request{Agent: "be-1", Tool: "bash", Command: "go test ./... 2>&1 | grep -v '^ok' | head -50", Cwd: root}, 330},
+		{"read-only command", Request{Agent: "be-1", Tool: "bash", Command: "ls -la internal/kv", Cwd: root}, 250},
+		{"pipeline", Request{Agent: "be-1", Tool: "bash", Command: "go test ./... 2>&1 | grep -v '^ok' | head -50", Cwd: root}, 550},
 		{"read inside", Request{Agent: "be-1", Tool: "read", Paths: []string{filepath.Join(root, "internal/kv/render.go")}}, 90},
 	} {
 		got := testing.AllocsPerRun(30, func() { _ = e.Check(context.Background(), c.req) })

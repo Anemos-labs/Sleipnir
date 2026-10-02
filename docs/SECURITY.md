@@ -48,7 +48,7 @@ project" below).
 
 **What the harness does about it**
 
-* *Permissions are code, not a prompt* (`internal/perm`): modes (`default`, `accept-edits`, `plan`, `bypass`), allow/deny/ask
+* *Permissions are code, not a prompt* (`internal/perm`): modes (`default`, `accept-edits`, `plan`, `bypass`, `yolo`), allow/deny/ask
   rules, shell-syntax analysis that judges every simple command including those in substitutions, hard denies that no
   mode lifts (`~/.ssh` keys, `~/.aws`, `~/.gnupg`, `/proc/*/environ`, `.git` writes, system directories), guarded paths
   (`.env`), role profiles that can only tighten, and no prompter means deny. Every file, web and shell tool asks the engine

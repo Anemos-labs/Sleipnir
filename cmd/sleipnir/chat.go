@@ -282,7 +282,7 @@ model and cost
 /status            model, mode, session, budget and cost at a glance
 
 permissions
-/mode <m>          default | accept-edits | plan | bypass | yolo   (/plan = plan)
+/mode <m>          default | accept-edits | plan | bypass | yolo (/plan = plan)
 /allow <rule>      allow, this session, what would ask: tests, Bash(go test:*)
 /permissions       the mode and the rules in force
 /trust             this project's own instructions and settings, and your yes

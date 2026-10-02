@@ -67,7 +67,7 @@ func TestPermissionFlags(t *testing.T) {
 	if _, allow, _ = (&policyFlags{allow: "none"}).permissions(); allow == nil || len(allow) != 0 {
 		t.Fatalf("none must mean no rules, not the defaults: %#v", allow)
 	}
-	if _, _, err = (&policyFlags{permMode: "yolo"}).permissions(); err == nil {
+	if _, _, err = (&policyFlags{permMode: "paranoid"}).permissions(); err == nil {
 		t.Fatal("an unknown permission mode was accepted")
 	}
 }
