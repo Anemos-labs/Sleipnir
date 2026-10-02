@@ -344,14 +344,18 @@ func (e *Engine) snapshot(role string) (sess, prof *view) {
 
 // Check implements Requester.
 func (e *Engine) Check(ctx context.Context, r Request) Decision {
-	sess, prof := e.snapshot(r.Role)
-	v := e.evaluate(sess, r)
-	if prof != nil {
-		if pv := e.evaluate(prof, r); pv.kind > v.kind {
-			pv.reason = "role " + r.Role + ": " + pv.reason
-			v = pv
+	judge := func() verdict {
+		sess, prof := e.snapshot(r.Role)
+		v := e.evaluate(sess, r)
+		if prof != nil {
+			if pv := e.evaluate(prof, r); pv.kind > v.kind {
+				pv.reason = "role " + r.Role + ": " + pv.reason
+				v = pv
+			}
 		}
+		return v
 	}
+	v := judge()
 	switch v.kind {
 	case vAllow:
 		return Decision{Allow: true, Reason: v.reason}
@@ -361,9 +365,11 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		return d
 	}
 	e.audit(Audit{Kind: "ask", Request: r, Reason: v.reason})
-	d := e.resolveAsk(ctx, r, v)
+	d := e.resolveAsk(ctx, r, v, judge)
 	by := "user"
 	switch {
+	case strings.HasPrefix(d.Reason, settledEarlier):
+		by = "policy"
 	case e.cfg.Prompter == nil, !d.Allow && strings.Contains(d.Reason, askTimedOut):
 		by = "no one"
 	case !d.Allow && strings.HasPrefix(d.Reason, "approval canceled"):

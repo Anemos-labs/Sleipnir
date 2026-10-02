@@ -173,8 +173,8 @@ func (a *Agent) env() *tools.Env {
 // runOne executes one call, never panicking and never returning an empty result.
 func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, exitFailed bool) {
 	start := time.Now()
-	a.cfg.Sink.ToolStart(a.cfg.ID, call)
 	name := a.toolNameFor(call.ToolName)
+	a.cfg.Sink.ToolStart(a.cfg.ID, a.shownCall(call))
 	callEvent := map[string]any{"id": call.ToolID, "name": call.ToolName, "input": json.RawMessage(call.Input)}
 	if name != call.ToolName {
 		callEvent["as"] = name // what the model wrote is kept as it wrote it; this is the tool that ran
@@ -288,7 +288,7 @@ func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Durat
 			res.Meta = withErrorKind(res.Meta, classifyToolError(res.Text))
 		}
 	}
-	a.cfg.Sink.ToolEnd(a.cfg.ID, call, res, took)
+	a.cfg.Sink.ToolEnd(a.cfg.ID, a.shownCall(call), res, took)
 	a.emit(events.TypeToolResult, map[string]any{
 		"id": call.ToolID, "name": call.ToolName, "error": res.IsError, "chars": len(res.Text),
 		"truncated": res.Truncated, "handle": res.Handle, "ref": res.FullRef, "full_chars": res.FullChars, "ms": took.Milliseconds(), "meta": res.Meta,
@@ -297,6 +297,12 @@ func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Durat
 }
 
 var _ = fmt.Sprintf
+
+// shownCall is a call as the person is shown it: the tool it meant, not its name with a piece of the model's chat format stuck to it.
+func (a *Agent) shownCall(c core.Block) core.Block {
+	c.ToolName = a.toolNameFor(c.ToolName)
+	return c
+}
 
 // toolNameFor is the tool a call's name means (see repairToolName).
 func (a *Agent) toolNameFor(name string) string {

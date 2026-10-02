@@ -159,6 +159,10 @@ The first release.
   line that says what is wrong and where the flags are listed, not forty lines of flags above it (`run` and `swarm` give an example);
   Ctrl-C at the hidden prompt for a key ends the login at once (the first press did nothing, the second killed the process with the
   terminal's echo off); the demo says "a handbook of 8 topics" (it said "a 8-topic") and suggests `swarm 8`.
+- A team asks several permission questions at once and the person answers them one at a time: "Yes, and don't ask again" to the first now
+  settles the ones queued behind it that the new rule covers (it did not: a team of three asked the same kind of edit and `go test` question
+  three times each, seen live). A tool name with a piece of the model's chat format stuck to it (`apply_patch<|channel|>commentary`) is shown
+  in the feed, the agents table and the evidence of what an agent did as the tool that ran.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

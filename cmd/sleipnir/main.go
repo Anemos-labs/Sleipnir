@@ -405,7 +405,7 @@ func cmdDoctor(ctx context.Context, args []string) error {
 	trust := fs.Bool("trust-project", false, "apply provider settings from the project's config (they are ignored by default)")
 	fs.Parse(args)
 	if *model == "" {
-		return fmt.Errorf("doctor: --model is required (see `sleipnir models`)")
+		return fmt.Errorf("doctor: --model is required, as in `sleipnir doctor --model heimdall/MODEL` (`sleipnir models` lists them; the key comes from `sleipnir login` or the provider's environment variable)")
 	}
 	rec := &headerRecorder{}
 	var client provider.Provider

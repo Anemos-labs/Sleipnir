@@ -93,6 +93,9 @@ const (
 	noAnswerInTime = ", so nothing was approved: use an action that is allowed, or finish and say which permission you needed)"
 )
 
+// settledEarlier begins the reason of a question that an answer given while it waited decided, so that it is not asked.
+const settledEarlier = "settled by an earlier answer: "
+
 // declinedAdvice ends the refusal that a person gave. A model told only "denied by user" made the same change a moment later with
 // another tool (the first real chat session: an edit that was refused came back as an apply_patch, and the person was asked a
 // second time). The sentence is fixed, so it costs the cache nothing, and it is said only of a refusal by a person: not of a
@@ -100,7 +103,7 @@ const (
 const declinedAdvice = " (the person said no to this: do not make it another way, with another tool or command; say what you wanted and ask what they want instead)"
 
 // resolveAsk turns an "ask" outcome into a Decision by consulting the human.
-func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict) Decision {
+func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict, again func() verdict) Decision {
 	if e.cfg.Prompter == nil {
 		return Decision{Reason: "approval required: " + v.reason + NoOneToAsk}
 	}
@@ -126,12 +129,12 @@ func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict) Decision 
 		p := &pending{done: make(chan struct{})}
 		e.pr.inflight[key] = p
 		e.pr.mu.Unlock()
-		return e.lead(ctx, key, p, r, v)
+		return e.lead(ctx, key, p, r, v, again)
 	}
 }
 
 // lead runs the prompt on behalf of every caller waiting on p.
-func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v verdict) (d Decision) {
+func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v verdict, again func() verdict) (d Decision) {
 	p.canceled = true // stays true if the prompter panics
 	defer func() {
 		p.d = d
@@ -147,6 +150,15 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	}
 	defer func() { <-e.pr.sem }()
 
+	// The questions are asked one at a time, and the person may have answered one of them "and don't ask again" while this one waited
+	// (a team of eight asks several at once): the rules may settle it now.
+	if nv := again(); nv.kind != vAsk {
+		p.canceled = false
+		if nv.kind == vAllow {
+			return Decision{Allow: true, Reason: settledEarlier + nv.reason}
+		}
+		return Decision{Reason: settledEarlier + nv.reason}
+	}
 	// The human sees Summary and nothing else; tell them why they are asked.
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)

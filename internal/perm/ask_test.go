@@ -653,3 +653,48 @@ func TestRememberSessionOfAnEditInTheProjectIsTheProject(t *testing.T) {
 		t.Errorf("another edit outside is asked about again: %+v, prompts %d", d, rec.count())
 	}
 }
+
+// A team asks several questions at once and the person answers them one at a time. "Yes, and don't ask again" to the first settles the
+// ones queued behind it that the new rule covers: the person is not asked what they have just answered.
+func TestAQuestionQueuedBehindAnotherIsSettledByItsAnswer(t *testing.T) {
+	f := newFixture(t)
+	onScreen, answer := make(chan struct{}), make(chan struct{})
+	rec := &promptRecorder{answer: func(n int, r Request) Decision {
+		if n == 1 {
+			close(onScreen)
+			<-answer
+		}
+		return Decision{Allow: true, Remember: ScopeSession}
+	}}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	var wg sync.WaitGroup
+	got := make([]Decision, 2)
+	ask := func(i int, cmd string) {
+		defer wg.Done()
+		got[i] = e.Check(bg, f.request(bash(cmd)))
+	}
+	wg.Add(1)
+	go ask(0, "go test ./a")
+	<-onScreen
+	wg.Add(1)
+	go ask(1, "go test ./b")
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) { // the second is in the queue
+		e.pr.mu.Lock()
+		n := len(e.pr.inflight)
+		e.pr.mu.Unlock()
+		if n == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the second question never queued")
+		}
+	}
+	close(answer)
+	wg.Wait()
+	if !got[0].Allow || !got[1].Allow {
+		t.Fatalf("decisions %+v", got)
+	}
+	if rec.count() != 1 {
+		t.Errorf("the person was asked %d times, want 1: the second was covered by the answer to the first", rec.count())
+	}
+}

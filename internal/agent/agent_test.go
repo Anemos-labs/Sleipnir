@@ -61,7 +61,8 @@ type rigOpts struct {
 	blobs     events.Blobs
 	capture   bool // ask the (mock) endpoint for token ids and logprobs
 	hooks     agent.Hooks
-	notes     *kv.Layer // the agent's notes at the start (a swarm worker's assignment)
+	notes     *kv.Layer  // the agent's notes at the start (a swarm worker's assignment)
+	sink      agent.Sink // what the person is told; nil means nothing
 
 	verifyHint     string            // the project's test command
 	planOpen       func(string) int  // how many steps of the agent's plan are open
@@ -115,7 +116,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 		Events: log, Planner: opts.planner, NoCompaction: opts.noCompact, Notes: opts.notes,
 		SessionID: "testsession", MaxSteps: opts.steps, BudgetUSD: opts.budget,
 		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture, Hooks: opts.hooks,
-		Compactor: opts.compactor, CompactorModel: opts.compactorModel, PlanOpen: opts.planOpen, VerifyHint: opts.verifyHint,
+		Compactor: opts.compactor, CompactorModel: opts.compactorModel, PlanOpen: opts.planOpen, VerifyHint: opts.verifyHint, Sink: opts.sink,
 	})
 	if err != nil {
 		t.Fatal(err)
