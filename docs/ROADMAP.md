@@ -40,6 +40,12 @@ a dozen tests and real managers write terse titles: it is a hint. Writes under `
 3. `sleipnir init --user --brain` presets (a role's model is chosen in the chat from a menu now: `/roles ` completes the role, then its model). Done in the third session since the list was written: `/login` in the chat (the chat ends, `sleipnir login` runs on the terminal, the chat comes back), and the check of a key when it is typed (a one-token request: Heimdall's catalogue is public, so listing models proves nothing).
 4. A `sleipnir agent` profile (memory on, scheduler on, conservative permissions, budget caps) and a skill-writer tool; a gateway adapter (webhook first).
 5. The model-facing `schedule` tool (a model creates its own follow-ups), after the daemon has run for a few days.
+6. The mined tasks of the suite (`sl-*`, 12 of the 47 `core`): their hidden tests name symbols that the prompt does not (`MaxWireSeed`, an exported constant of the commit). Of the 13 failing episodes of build d on
+   `deepseek-v4.1-flash` (2026-10-02), five were `undefined:` build errors of the hidden test, and most of the rest the fifteen-minute clock, so `mined` is a floor and not a measure. Admission could compile the hidden tests
+   against the starting tree and compare the `undefined:` names with the prompt, and tag or drop the task.
+7. `reasoning_effort` (and the thinking budget of the other dialects) is a request parameter that no flag or setting sets (`core.Params.Effort` is read by the wire and written by nothing): a reasoning model's turn is the clock of
+   a task (about 30 s a request for `deepseek-v4.1-flash` on Heimdall). Try `low` on the mutation and mined tasks and read pass rate against wall time before offering a flag.
+8. The flags' own help (`sleipnir chat -h`) prints each description as one line of up to 370 characters (the flag package's format): wrap it to the terminal in one place for the 21 flag sets (`docs/CLI.md` is generated from it).
 
 ## Second handoff (2026-10-01, the end of the second agent's session)
 
