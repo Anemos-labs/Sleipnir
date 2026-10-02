@@ -28,7 +28,9 @@ chat at once. `sleipnir run "fix the failing test"` does one goal without the ch
 
 <p align="center"><img src="docs/media/real-chat.svg" alt="A real session: /allow tests, then a goal; the model reads the test and the code, rewrites Slugify, the edit asks and is approved with the key 1, go test passes. Real model, real tools, real timing." width="760"></p>
 
-*Both pictures are real sessions, recorded as they happened by `scripts/record-real.sh` (a real model, real tools, a person typing; waits longer than 1.5 s are shortened).*
+<p align="center"><img src="docs/media/real-swarm.svg" alt="A real swarm: a manager and three workers, each in its own git worktree, implement three small packages in parallel; the cockpit shows each agent's prompt (the shared part bright), the task board, the merge queue and the bill. Shown six times faster than it happened." width="760"></p>
+
+*All three are real sessions, recorded as they happened by `scripts/record-real.sh` (a real model, real tools, a person typing; in the first two, waits longer than 1.5 s are shortened; the swarm's cockpit is drawn from its event log, six times faster than it ran: two and a half minutes, $0.0005).*
 
 ## What you get
 

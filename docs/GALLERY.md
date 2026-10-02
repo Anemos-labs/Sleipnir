@@ -6,6 +6,10 @@ Two kinds of picture are here. The **real recordings** (`real-*.svg`, made by `s
 
 *The first run, in a directory with no configuration: `scripts/record-real.sh --scenario first-run --search v4-flash --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-first-run.svg`.*
 
+<p align="center"><img src="media/real-swarm.svg" alt="A real swarm: a manager and three workers in git worktrees, three tasks merged, drawn from the session's event log six times faster than it ran" width="760"></p>
+
+*A real team on three small packages: `scripts/record-real.sh --scenario swarm --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-swarm.svg` (SPEED=6 by default).*
+
 <p align="center"><img src="media/real-chat.svg" alt="A real session of the chat: /allow tests, a goal, the model reads and edits, the edit is approved with the key 1, go test passes" width="760"></p>
 
 *The chat in a small Go project with a failing test, on a real model: `scripts/record-real.sh --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-chat.svg`.*

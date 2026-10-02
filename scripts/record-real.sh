@@ -107,6 +107,7 @@ if [ "$SCENARIO" = swarm ]; then
   (cd "$proj" && env -u $KEYENV HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 3 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
   tail -3 "$tmp/swarm.out" >&2
   id=$(ls -t "$home/.sleipnir/sessions" | head -1)
+  HOME=$home "$BIN" replay "$id" --final --cols "$COLS" --rows 36 >&2 || true
   HOME=$home "$BIN" replay "$id" --record "$OUT" --cols "$COLS" --rows 36 --speed "$SPEED"
   exit 0
 fi
