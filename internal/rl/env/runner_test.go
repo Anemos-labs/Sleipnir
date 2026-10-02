@@ -55,7 +55,7 @@ func newRunnerFixture(t *testing.T, mut ...func(*runnerFixture)) *runnerFixture 
 	f.out = filepath.Join(t.TempDir(), "runs", "r001")
 	f.r = &Runner{
 		Harness: f.h, Workspaces: f.m, Out: f.out, Concurrency: 3,
-		RetryBackoff: time.Millisecond, StopGrace: 300 * time.Millisecond,
+		RetryBackoff: time.Millisecond, StopGrace: 5 * time.Second,
 		Extract: func(runDir string, task rl.Task, sample int, group string) (*rl.Episode, error) {
 			f.extract.Add(1)
 			return MinimalExtractor(runDir, task, sample, group)
