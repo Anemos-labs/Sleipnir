@@ -223,7 +223,7 @@ func TestShowTextFitting(t *testing.T) {
 }
 
 func TestShowMoney(t *testing.T) {
-	cases := map[float64]string{0: "$0.000", 0.012: "$0.012", 0.9999: "$1.000", 1.5: "$1.50", 12.345: "$12.35", 99.99: "$99.99", 123.4: "$123", -4: "$0.000", math.NaN(): "$0.000", 1e12: "$1e9+"}
+	cases := map[float64]string{0: "$0.000", 0.012: "$0.012", 0.0003: "$0.0003", 0.9999: "$1.000", 1.5: "$1.50", 12.345: "$12.35", 99.99: "$99.99", 123.4: "$123", -4: "$0.000", math.NaN(): "$0.000", 1e12: "$1e9+"}
 	for f, want := range cases {
 		if got := showMoney(f); got != want {
 			t.Errorf("showMoney(%v) = %q, want %q", f, got, want)

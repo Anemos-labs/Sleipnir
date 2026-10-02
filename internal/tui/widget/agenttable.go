@@ -9,12 +9,14 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
-// showMoney writes dollars the way the UI does: $0.012, $12.34, $123. Negative and NaN are $0.000.
+// showMoney writes dollars the way the UI does: $0.012, $12.34, $123 ($0.0003 for a cost under a twentieth of a cent, so that it does not read as nothing). Negative and NaN are $0.000.
 func showMoney(f float64) string {
 	if f != f || f < 0 {
 		f = 0
 	}
 	switch {
+	case f > 0 && f < 0.0005: // a real cost must not read as nothing
+		return "$" + strconv.FormatFloat(f, 'f', 4, 64)
 	case f < 1:
 		return "$" + strconv.FormatFloat(f, 'f', 3, 64)
 	case f < 100:
