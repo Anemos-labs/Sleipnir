@@ -1203,7 +1203,8 @@ func TestChatACommandCanRestartTheChatWithOtherFlags(t *testing.T) {
 		fmt.Fprintln(out, "restarting")
 		return CommandResult{Restart: []string{"--swarm", "8", "--model", "p/m"}}
 	}
-	r.submit("/swarm 8")
+	r.typeText("/swarm 8")
+	r.keys <- input.SpecialKey(input.Enter, 0) // the command ends the chat: nothing is taken after it
 	if e := r.wait(); e.end != ChatRestart {
 		t.Fatalf("ended %+v", e)
 	}
