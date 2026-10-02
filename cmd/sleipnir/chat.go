@@ -555,14 +555,14 @@ func printStatus(w io.Writer, s *session.Session) {
 // "don't ask again" are in the allow list with the rest.
 func printPermissions(w io.Writer, s *session.Session) {
 	fmt.Fprintln(w, "mode:", s.Perm.Mode())
-	for _, a := range []perm.Action{perm.Deny, perm.Ask, perm.Allow} {
+	for _, a := range []perm.Action{perm.Allow, perm.Deny, perm.Ask} { // what a person gave first: deny and ask lists open with the built-in protections
 		rules := s.Perm.Rules(a)
 		if len(rules) == 0 {
 			continue
 		}
 		fmt.Fprintf(w, "%s (%d):\n", a, len(rules))
 		for i, r := range rules {
-			if i == 40 {
+			if i == 40 || a != perm.Allow && i == 6 {
 				fmt.Fprintf(w, "  ... %d more\n", len(rules)-i)
 				break
 			}
