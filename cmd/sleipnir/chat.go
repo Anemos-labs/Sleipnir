@@ -49,15 +49,16 @@ const quitHint = app.QuitHint
 // The input is owned by one reader, stdinLines (chat_input.go): the prompt reads goals and an
 // approval question reads its answer from it, and a line typed while a turn runs waits for the
 // prompt instead of answering a question that comes later.
-// defaultAgents is the size of the team of the chat on a terminal when --swarm is not given: eight agents in all, the manager and seven workers.
+// defaultAgents is the size of the team of the chat on a terminal when --swarm is not given: eight agents in all, the manager included (the
+// horse has eight legs). --swarm N is always a number of agents in all.
 const defaultAgents = 8
 
 // defaultTeam is the size of that team, kept under the ceiling the person's own settings put on a session (swarm.max_agents).
 func defaultTeam() int {
-	n := defaultAgents - 1 // --swarm counts workers; the manager is the eighth agent
+	n := defaultAgents
 	if cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true}); err == nil {
-		if c := cfg.Swarm.MaxAgents; c > 0 && n+1 > c {
-			n = c - 1
+		if c := cfg.Swarm.MaxAgents; c > 0 && n > c {
+			n = c
 		}
 	}
 	return n
@@ -68,7 +69,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	cwd := fs.String("cwd", "", "working directory")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass")
-	swarmN := fs.Int("swarm", 0, "chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling); on a terminal the default is a team of "+strconv.Itoa(defaultAgents)+" agents (the manager and "+strconv.Itoa(defaultAgents-1)+" workers), --swarm 0 is a single agent")
+	swarmN := fs.Int("swarm", 0, "chat as a team of N agents in all, the manager included (config swarm.max_agents is the ceiling); on a terminal the default is "+strconv.Itoa(defaultAgents)+", --swarm 0 (or 1) is a single agent")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
@@ -92,7 +93,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	}
 	sessionOptions := func(spec string) session.Options {
 		return chatOptions(session.Options{
-			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 0, MaxAgents: *swarmN + 1,
+			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 1, MaxAgents: *swarmN,
 			TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
 			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
 			Allow: expandAllow(*allow),
@@ -282,7 +283,7 @@ permissions
 
 a team, and the program
 /roles [role=m]    which model each role runs on; change one (restarts)
-/swarm <n> [flags] start again as a manager with up to n workers
+/swarm <n> [flags] start again as a team of n agents (the manager included)
 /restart [flags]   start again with other flags: --no-mcp, --trust-project, --cwd DIR
 /agents            the swarm board: agents and tasks
 /verbose [on|off]  notices and tool errors

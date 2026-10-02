@@ -868,14 +868,14 @@ func (s *Session) build(ctx context.Context) error {
 
 // checkSwarmSize refuses a swarm larger than swarm.max_agents allows. The setting is
 // a ceiling that the user's file or the environment puts on every session; a request
-// for more (--swarm N asks for a manager and N workers) would otherwise override it
+// for more (--swarm N asks for N agents, the manager included) would otherwise override it
 // without a word.
 func checkSwarmSize(cfg *config.Config, o Options) error {
 	ceil := cfg.Swarm.MaxAgents
 	if !o.Swarm || ceil <= 0 || o.MaxAgents <= ceil {
 		return nil
 	}
-	return fmt.Errorf("swarm: %d agents requested (a manager and %d workers) but swarm.max_agents caps a session at %d; raise swarm.max_agents or ask for fewer workers", o.MaxAgents, o.MaxAgents-1, ceil)
+	return fmt.Errorf("swarm: %d agents requested (the manager included) but swarm.max_agents caps a session at %d; raise swarm.max_agents or ask for fewer agents", o.MaxAgents, ceil)
 }
 
 // CompactorRole is the name under which models.roles and --role-model give the model that writes the

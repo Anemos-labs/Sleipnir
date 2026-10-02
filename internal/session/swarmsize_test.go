@@ -34,7 +34,7 @@ func TestSwarmSizeIsBoundedBySwarmMaxAgents(t *testing.T) {
 	if err == nil {
 		t.Fatal("a swarm over swarm.max_agents was started")
 	}
-	for _, want := range []string{"9 agents requested", "8 workers", "swarm.max_agents caps a session at 4"} {
+	for _, want := range []string{"9 agents requested", "the manager included", "swarm.max_agents caps a session at 4"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
 		}

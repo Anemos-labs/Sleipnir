@@ -91,7 +91,7 @@ Flags are applied by the commands themselves, after the merge, and always win ov
 | `--model M` | `models.default` (and `SLEIPNIR_MODEL`) | `chat`, `run`, `swarm`, `doctor`, `rl rollout`, `rl eval` |
 | `--mode M` | `permissions.mode` (role profiles under `permissions.roles` still apply) | `chat`, `run`, `swarm` |
 | `--budget-usd N` | `swarm.budget_usd` (and, with `--swarm`, the built-in cap), and it also caps a single agent. Zero, negative and NaN are not budgets: `0` is the same as leaving the flag out, and the others are refused. To run a swarm without a cap set `swarm.budget_usd` to 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` | `chat`, `run`, `swarm` |
-| `--swarm N` | the swarm size: a manager plus up to N workers. `swarm.max_agents` is the ceiling: a request for more agents (N+1) than it allows is refused before anything starts | `chat`, `run` |
+| `--swarm N` | the team size: N agents in all, the manager included. `swarm.max_agents` is the ceiling: a request for more agents than it allows is refused before anything starts | `chat`, `run` |
 | `--role-model role=M` | the model of one role (repeatable). A role the session does not have is an error (`no role named "backnd"`, with the roles it has); without `--swarm` there is only one agent and the flag draws a warning | `run`, `swarm`, `rl rollout`, `rl eval` |
 | `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
 | `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
@@ -291,7 +291,7 @@ The swarm's warm gate (the first request of a swarm writes the shared prefix bef
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `max_agents` | integer | `0` (no ceiling) | yes | The ceiling on the size of a session's swarm, the manager included. `--swarm N` asks for a manager and N workers and is refused when N+1 is more than this (`swarm: 9 agents requested (a manager and 8 workers) but swarm.max_agents caps a session at 4`); a smaller request is honoured. It is how a user file keeps a stray `--swarm 50` from spending a budget. `0` sets no ceiling |
+| `max_agents` | integer | `0` (no ceiling) | yes | The ceiling on the size of a session's swarm, the manager included. `--swarm N` asks for N agents and is refused when N is more than this (`swarm: 9 agents requested (the manager included) but swarm.max_agents caps a session at 4`); a smaller request is honoured. It is how a user file keeps a stray `--swarm 50` from spending a budget. `0` sets no ceiling |
 | `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
 | `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
 | `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in your cache directory, whatever the configuration says |

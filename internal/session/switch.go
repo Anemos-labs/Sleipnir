@@ -149,7 +149,7 @@ func (s *Session) StartFlags() []string {
 	o := s.opts
 	var f []string
 	if o.Swarm {
-		f = append(f, "--swarm", strconv.Itoa(o.MaxAgents-1))
+		f = append(f, "--swarm", strconv.Itoa(o.MaxAgents))
 	} else {
 		f = append(f, "--swarm", "0") // a single agent stays one: the default on a terminal is a team
 	}

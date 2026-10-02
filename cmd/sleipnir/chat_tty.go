@@ -265,7 +265,7 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
 		if f[0] == "/swarm" {
 			if len(f) < 2 {
-				fmt.Fprintln(out, "usage: /swarm <workers> [flags]: start again as a manager with up to that many workers, e.g. /swarm 8 --verify \"go test {dirs}\" --isolation worktree")
+				fmt.Fprintln(out, "usage: /swarm <agents> [flags]: start again as a team of up to that many agents, the manager included, e.g. /swarm 8 --verify \"go test {dirs}\" --isolation worktree")
 				return app.CommandResult{}, true
 			}
 			rest = "--swarm " + rest
@@ -312,7 +312,7 @@ var chatCommands = []chatCommand{
 	{"new", "", "start the conversation again, empty (the same model and mode)"},
 	{"resume", "[id]", "continue an earlier session: the newest of this project, or the id /sessions shows"},
 	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
-	{"swarm", "<n> [flags]", "start again as a manager with up to n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
+	{"swarm", "<n> [flags]", "start again as a team of n agents, the manager included: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
 	{"cwd", "", "the directory this session works in"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass"},

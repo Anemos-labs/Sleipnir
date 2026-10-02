@@ -66,7 +66,7 @@ func TestSwarmShorthandUnderstandsHelpAndBadCounts(t *testing.T) {
 		if code != 0 {
 			t.Errorf("swarm %s exited %d:\n%s", arg, code, out)
 		}
-		for _, want := range []string{"usage: sleipnir swarm <workers>", "-verify", "-isolation", "-budget-usd"} {
+		for _, want := range []string{"usage: sleipnir swarm <agents>", "-verify", "-isolation", "-budget-usd"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("swarm %s: the usage lacks %q:\n%s", arg, want, out)
 			}
@@ -77,7 +77,7 @@ func TestSwarmShorthandUnderstandsHelpAndBadCounts(t *testing.T) {
 	}
 	for _, bad := range []string{"fix the login", "0", "-3"} {
 		err := cmdSwarm(context.Background(), []string{bad, "goal"})
-		if err == nil || !strings.Contains(err.Error(), "the first argument is the number of workers") || !strings.Contains(err.Error(), bad) {
+		if err == nil || !strings.Contains(err.Error(), "the first argument is the number of agents") || !strings.Contains(err.Error(), bad) {
 			t.Errorf("swarm %q: %v", bad, err)
 		}
 	}

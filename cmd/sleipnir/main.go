@@ -213,7 +213,7 @@ Commands:
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
   schedule  goals to run on a schedule (cron): add, list, rm
   daemon    start the scheduled goals that are due (once a half minute; --once for a cron job)
-  swarm     shorthand for run --swarm: sleipnir swarm <workers> "<goal>"
+  swarm     shorthand for run --swarm: sleipnir swarm <agents> "<goal>"
   recon     print the deterministic project survey that seeds the shared prompt layer
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test
   trust     the project's own instructions and settings: what they are, and remember your yes until they change

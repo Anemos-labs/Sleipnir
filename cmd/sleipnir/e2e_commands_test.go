@@ -80,7 +80,7 @@ func TestCommandExitStatus(t *testing.T) {
 		{"an unknown flag of init", []string{"init", "--bogus"}, 2, nil, []string{"flag provided but not defined: -bogus"}},
 		{"a malformed value of a flag", []string{"run", "--max-steps", "many", "x"}, 2, nil, []string{"invalid value", "max-steps"}},
 		{"run with no goal", []string{"run"}, 1, nil, []string{"sleipnir: run: a prompt is required"}},
-		{"swarm with a bad count", []string{"swarm", "many", "goal"}, 1, nil, []string{"the first argument is the number of workers"}},
+		{"swarm with a bad count", []string{"swarm", "many", "goal"}, 1, nil, []string{"the first argument is the number of agents"}},
 		{"doctor without a model", []string{"doctor"}, 1, nil, []string{"sleipnir: doctor: --model is required"}},
 		{"doctor without an endpoint", []string{"doctor", "--model", "m", "--provider", "custom"}, 1, nil, []string{`provider "custom" needs --base-url`}},
 		{"init --local-url without --user", []string{"init", "--local-url", "http://127.0.0.1:1/v1"}, 1, nil, []string{"--local-url goes with --user"}},

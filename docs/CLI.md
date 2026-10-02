@@ -190,7 +190,7 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 
 ### `sleipnir chat`
 
-Interactive session. On a terminal chat without `--swarm` is a team of eight agents, a manager and seven workers (kept under `swarm.max_agents`), and it does a small job itself; `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
+Interactive session. On a terminal chat without `--swarm` is a team of eight agents, the manager included (kept under `swarm.max_agents`), and it does a small job itself; `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
 program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
 the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, what the cache saved
 at list price, `esc to interrupt`), the prompt stack bar and the hit ratio of every request, the input box, and a footer with the
@@ -270,7 +270,7 @@ Usage of chat:
   -role-model value
         role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
   -swarm int
-        chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling); on a terminal the default is a team of 8 agents (the manager and 7 workers), --swarm 0 is a single agent
+        chat as a team of N agents in all, the manager included (config swarm.max_agents is the ceiling); on a terminal the default is 8, --swarm 0 (or 1) is a single agent
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
@@ -308,8 +308,8 @@ them, however long (a worker held at one is shown as such, and the watchdog name
 refuses a question that nobody has answered in that time, and tells the worker so in words it can act on (nothing was approved: use an
 action that is allowed, or finish and say which permission was needed), which is what a run that is left alone wants.
 
-`sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a manager with up to N workers. N comes
-first and must be 1 or more (anything else is an error that shows an example); the flags are `run`'s, and
+`sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a team of N agents, the manager included. N comes
+first and must be 2 or more (anything else is an error that shows an example); the flags are `run`'s, and
 `sleipnir swarm -h` prints them under swarm's own usage line. `swarm.max_agents` in the configuration is the ceiling: a
 request for more than it allows (N+1 agents) is refused before anything starts.
 
@@ -363,7 +363,7 @@ flags:
   -session-dir string
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int
-        run a manager with up to N workers instead of a single agent (config swarm.max_agents is the ceiling)
+        run a team of N agents in all, the manager included, instead of a single agent (config swarm.max_agents is the ceiling)
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
@@ -1178,7 +1178,7 @@ Budgets and cost accounting, for runs against a real endpoint:
 * `--rpm` paces the policy requests of **all** rollouts to one rate; a swarm's governor limits one swarm, so without it
   `--concurrency` multiplies the endpoint's limit.
 * `--mode single` runs every task as one agent, swarm tasks too (the baseline a swarm is compared with); `--mode swarm:N`
-  is `--swarm N`. A team of N workers is N+1 agents with the manager.
+  is `--swarm N`. N counts the manager.
 * Rerunning into an `--out` that holds a run of another policy, seed, team or verifier is refused (`--force` starts over):
   finished rollouts are resumed, and mixing them with new ones reports two experiments as one.
 
@@ -1230,7 +1230,7 @@ flags:
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
   -mode string
-        who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager with N workers, the same as --swarm N) | empty: what each task's team says
+        who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a team of N agents, the same as --swarm N) | empty: what each task's team says
   -model string
         the policy: provider/model or a bare id for the default provider (default: config models.default)
   -n int
@@ -1258,7 +1258,7 @@ flags:
   -set-env value
         NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
   -swarm int
-        run a manager with up to N workers instead of a single agent (default: what the task's team says)
+        run a team of N agents in all, the manager included, instead of a single agent (default: what the task's team says)
   -tag string
         comma-separated tags a task must carry (prefix a tag with ! to exclude it)
   -target-price string
@@ -1334,7 +1334,7 @@ flags:
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
   -mode string
-        who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager with N workers, the same as --swarm N) | empty: what each task's team says
+        who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a team of N agents, the same as --swarm N) | empty: what each task's team says
   -model string
         the policy: provider/model or a bare id for the default provider (default: config models.default)
   -n int
@@ -1364,7 +1364,7 @@ flags:
   -set-env value
         NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
   -swarm int
-        run a manager with up to N workers instead of a single agent (default: what the task's team says)
+        run a team of N agents in all, the manager included, instead of a single agent (default: what the task's team says)
   -tag string
         comma-separated tags a task must carry (prefix a tag with ! to exclude it)
   -target-price string

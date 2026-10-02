@@ -4,7 +4,7 @@
 #   scripts/record-real.sh --scenario chat|first-run|swarm --model provider/model --out docs/media/real-chat.svg [--key-env HEIMDALL_API_KEY] [--goal TEXT] [--max-gap 1.5s]
 #   STILL=file.svg [STILLAT=40s] in the environment also writes one moment as a static SVG
 #
-# --scenario swarm runs a real team (a manager and three workers in git worktrees, a verifier) on three small independent tasks and draws the session's
+# --scenario swarm runs a real team (a manager and three workers (four agents) in git worktrees, a verifier) on three small independent tasks and draws the session's
 # event log as the cockpit with `sleipnir replay --record`, SPEED (default 6) times faster than it happened. --scenario first-run starts with no configuration at all: the first provider chosen with the arrows and enter, the key typed at the hidden prompt, --search WORDS typed to narrow the model list, enter, then a one-line goal. A temporary project with a failing test and a temporary home (which receives the key from the environment variable named by --key-env, in its own
 # auth.json, and is removed afterwards) are made; tmux runs `sleipnir` under script(1), which writes everything the terminal showed with its timing;
 # a typist (this script) types `/allow tests`, then the goal, answers the approval question with the key 1, and ends the chat; `sleipnir term-svg`
@@ -103,7 +103,7 @@ if [ "$SCENARIO" = swarm ]; then
   git -C "$proj" add -A && git -C "$proj" -c user.name=rec -c user.email=rec@example.com commit -qm "three stubs"
   SG="Each of the packages a, b and c has one function that panics with todo, and a test. Implement all three in parallel, one worker for each package, and make go test ./... pass."
   [ "$GOAL" != "$DEFAULTGOAL" ] || GOAL=$SG
-  (cd "$proj" && env -u $KEYENV HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 3 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
+  (cd "$proj" && env -u $KEYENV HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 4 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
   tail -3 "$tmp/swarm.out" >&2
   id=$(ls -t "$home/.sleipnir/sessions" | head -1)
   HOME=$home "$BIN" replay "$id" --final --cols "$COLS" --rows 36 >&2 || true
@@ -134,6 +134,7 @@ if [ "$SCENARIO" = first-run ]; then
   waitfor 'type to search' 60; sleep 2.5
   typist "$SEARCH"; sleep 1.2; tmux send-keys -t $s Enter # typing narrows the list, enter chooses the highlighted row
   waitfor 'Type a goal' 60; sleep 2
+  typist "/allow tests"; sleep 0.6; tmux send-keys -t $s Enter; sleep 1.5
   typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
   waitfor '[0-9]+ steps? .*cache hit' 300
   sleep 3

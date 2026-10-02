@@ -232,7 +232,7 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 	o.OutagePatience = -1
 	if !spec.Single && (spec.Swarm || task.Team.Mode == "swarm") {
 		o.Swarm = true
-		// A team size counts workers (`run --swarm N` is N workers and a manager, and a composite task's
+		// A team size counts workers here (`run --swarm N` is N agents, so N-1 workers: cmd/sleipnir converts, and a composite task's
 		// team is one worker per part); MaxAgents counts the manager too. Passing N as it stood gave a task
 		// of three parts two workers.
 		if n := firstPositive(spec.Agents, task.Team.Agents); n > 0 {

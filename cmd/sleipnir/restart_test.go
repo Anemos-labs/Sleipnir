@@ -60,7 +60,7 @@ func TestProgramCommandsAnswerWithoutASession(t *testing.T) {
 		t.Errorf("/anim maybe: %+v %q", res, out.String())
 	}
 	out.Reset()
-	if res, _ = h.programCommand("/swarm", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /swarm <workers>") {
+	if res, _ = h.programCommand("/swarm", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /swarm <agents>") {
 		t.Errorf("/swarm alone: %+v %q", res, out.String())
 	}
 	if _, ok := h.programCommand("/cost", &out); ok {
@@ -139,8 +139,8 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 	if !contains(res.Restart, "backend=together/a") || !contains(res.Restart, "--role-model") {
 		t.Errorf("changing a worker's model restarts with the flag: %v", res.Restart)
 	}
-	if !contains(res.Restart, "--swarm") || !contains(res.Restart, "2") {
-		t.Errorf("a team stays a team (--swarm 2) after a role change: %v", res.Restart)
+	if !contains(res.Restart, "--swarm") || !contains(res.Restart, "3") {
+		t.Errorf("a team stays a team (--swarm 3, three agents in all) after a role change: %v", res.Restart)
 	}
 	// the role named on the line beats the one the session started with
 	t.Setenv("TOGETHER_API_KEY", "k")
@@ -154,12 +154,12 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 	}
 }
 
-// On a terminal the chat is a team of eight agents (a manager and seven workers) unless --swarm says otherwise; the person's own ceiling (swarm.max_agents) is
+// On a terminal the chat is a team of eight agents, the manager included unless --swarm says otherwise; the person's own ceiling (swarm.max_agents) is
 // kept, and a single agent that restarts stays a single agent.
 func TestDefaultTeamAndASoloRestartStaysSolo(t *testing.T) {
 	_, home := projectDir(t)
-	if n := defaultTeam(); n != 7 {
-		t.Errorf("default team = %d workers, want 7 (eight agents with the manager)", n)
+	if n := defaultTeam(); n != 8 {
+		t.Errorf("default team = %d agents, want 8", n)
 	}
 	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
 		t.Fatal(err)
@@ -167,8 +167,8 @@ func TestDefaultTeamAndASoloRestartStaysSolo(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "config.json"), []byte(`{"swarm":{"max_agents":4}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if n := defaultTeam(); n != 3 {
-		t.Errorf("under a ceiling of 4 agents the team is a manager and 3 workers, got %d workers", n)
+	if n := defaultTeam(); n != 4 {
+		t.Errorf("under a ceiling of 4 agents the team is 4 agents, got %d", n)
 	}
 	args, _ := restartArgs(chatSession(t, false, nil), nil, true)
 	if !slices.Contains(args, "--swarm") || args[slices.Index(args, "--swarm")+1] != "0" {
