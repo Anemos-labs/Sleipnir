@@ -206,3 +206,31 @@ func primarySnapshot(dir, want string) (snap *agent.Snapshot, from string, err e
 	}
 	return nil, "", err
 }
+
+// EarlierSessions are the directories of the sessions of this project that can be continued, newest first, at most n; the session itself
+// is not among them. It reads only the head of a log, and only of the newest few hundred sessions.
+func (s *Session) EarlierSessions(n int) []string {
+	sessions := filepath.Join(stateRoot(s.opts.Home), "sessions")
+	ents, err := os.ReadDir(sessions)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range ents {
+		if e.IsDir() && e.Name() != s.ID {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names))) // ids start with a timestamp
+	names = names[:min(len(names), 300)]
+	var out []string
+	for _, name := range names {
+		d := filepath.Join(sessions, name)
+		if li := inspectLog(d); li.root == s.opts.Root && li.resumable() {
+			if out = append(out, d); len(out) == n {
+				break
+			}
+		}
+	}
+	return out
+}

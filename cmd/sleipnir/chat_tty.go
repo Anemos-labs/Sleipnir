@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
@@ -82,7 +84,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			return
 		}
 		log, _ := s.Log.Subscribe(4096) // before the past is read: what comes between is in both, and the state ignores an event it has seen
-		a := app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, State: pastState(s), Commands: chatSlashCommands(s), Root: cwd, Roles: roleChoices(s)}
+		a := app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, State: pastState(s), Commands: chatSlashCommands(s), Root: cwd, Roles: roleChoices(s), Sessions: resumeChoices(s)}
 		if host.menu = modelChoices(startCtx, s.Home()); host.menu != nil {
 			a.Models = host.menu.Choices
 		}
@@ -186,6 +188,47 @@ func roleChoices(s *session.Session) func() []input.Choice {
 		}
 		return out
 	}
+}
+
+// resumeChoices is what `/resume ` completes to: the earlier sessions of this project that can be continued, newest first, each with when it
+// was, what it cost and what was asked first. They are read in the background (a log can be large) and the list is empty until then.
+func resumeChoices(s *session.Session) func() []input.Choice {
+	var mu sync.Mutex
+	var list []input.Choice
+	go func() {
+		var out []input.Choice
+		for _, d := range s.EarlierSessions(12) {
+			var model, prompt string
+			var usd float64
+			summarize(filepath.Join(d, "events.jsonl"), &model, &prompt, &usd)
+			detail := fmt.Sprintf("$%.4f  %s", usd, prompt)
+			if fi, err := os.Stat(d); err == nil {
+				detail = ago(time.Since(fi.ModTime())) + "  " + detail
+			}
+			out = append(out, input.Choice{Text: filepath.Base(d), Detail: detail})
+		}
+		mu.Lock()
+		list = out
+		mu.Unlock()
+	}()
+	return func() []input.Choice {
+		mu.Lock()
+		defer mu.Unlock()
+		return list
+	}
+}
+
+// ago says how long ago something was, in the largest unit that is at least one: "5m ago", "3h ago", "2d ago".
+func ago(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 }
 
 // chatInfo is what the banner says about a session.
@@ -444,7 +487,7 @@ var chatCommands = []chatCommand{
 	{"anim", "[on|off]", "turn the motion on or off"},
 	{"roles", "[role=model]", "which model each role runs on; change one (the chat restarts with it)"},
 	{"new", "", "start the conversation again, empty (the same model and mode)"},
-	{"resume", "[id]", "continue an earlier session: the newest of this project, or the id /sessions shows"},
+	{"resume", "[id]", "continue an earlier session: the newest of this project, or one of the earlier ones listed as you type"},
 	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
 	{"swarm", "<n> [flags]", "start again as a team of n agents, the manager included: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},

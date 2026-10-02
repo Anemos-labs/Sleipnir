@@ -134,3 +134,24 @@ func TestE2EChatRolesMenu(t *testing.T) {
 	u.ctrlD()
 	u.exited(0)
 }
+
+// `/resume ` offers the earlier sessions of this project to choose from, as `/model ` offers models: when it was, what it cost, what was asked.
+func TestE2EChatResumeCompletesTheEarlierSessions(t *testing.T) {
+	m := startModel(t)
+	m.on("@hello", say("hi there"))
+	w := newWorld(t, m.url())
+	u := startUI(t, w, "--swarm", "4")
+	u.send("@hello")
+	u.expect("hi there")
+	u.ready()
+	u.ctrlD()
+	u.exited(0)
+
+	u = startUI(t, w, "--swarm", "4")
+	u.ready()
+	u.typeText("/resume ")
+	u.expect("just now", "@hello")
+	u.typeText("\x15") // ctrl+u: Ctrl-D quits only from an empty prompt
+	u.ctrlD()
+	u.exited(0)
+}

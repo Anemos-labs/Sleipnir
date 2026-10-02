@@ -261,7 +261,7 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 
 const chatHelp = `conversation
 /new               start again, empty (same model and mode)
-/resume [id]       continue an earlier session (the newest here, or an id)
+/resume [id]       continue an earlier session: the newest here, or pick one
 /sessions          the newest sessions
 /compact [focus]   fold the older thread now; focus says what to keep in view
 /rewind [id]       list checkpoints, or restore files to before a turn

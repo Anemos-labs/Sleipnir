@@ -325,6 +325,9 @@ func (m *chatModel) attach(a ChatAttach) {
 			cs = append(cs, input.RoleModels("roles", a.Roles, a.Models))
 		}
 	}
+	if a.Sessions != nil {
+		cs = append(cs, input.Choices("resume", a.Sessions))
+	}
 	if len(a.Commands) > 0 {
 		cs = append(cs, input.SlashCommands(a.Commands))
 	}

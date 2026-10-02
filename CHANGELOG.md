@@ -163,6 +163,8 @@ The first release.
   settles the ones queued behind it that the new rule covers (it did not: a team of three asked the same kind of edit and `go test` question
   three times each, seen live). A tool name with a piece of the model's chat format stuck to it (`apply_patch<|channel|>commentary`) is shown
   in the feed, the agents table and the evidence of what an agent did as the tool that ran.
+- `/resume ` in the chat lists the earlier sessions of the project as you type (when, what it cost, what was asked first), as `/model ` lists
+  models; it only restarted into the newest one, and a trial by someone new to it found no way to choose.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

@@ -97,7 +97,10 @@ type ChatAttach struct {
 	// Roles is what `/roles ` completes to: each role that can run on a model of its own, with the model it runs on now as the detail;
 	// after the "=" of one, the models are Models. Nil offers nothing.
 	Roles func() []input.Choice
-	Err   error
+	// Sessions is what `/resume ` completes to: the earlier sessions of this project that can be continued, with when, what they cost and
+	// what was asked as the detail. It answers from memory and may be empty while they are being read. Nil offers nothing.
+	Sessions func() []input.Choice
+	Err      error
 }
 
 // ChatConfig is what the chat program is made of. Everything that touches the world is given: the screen, the keys, the size
