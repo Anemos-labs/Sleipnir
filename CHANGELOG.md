@@ -126,6 +126,9 @@ The first release.
 
 ### Tools, permissions and extensions
 
+- An answer given after code was changed and before any test ran is sent back once, with the project's own test command from the survey (`go test ./...`), to run it and
+  fix what fails or to say why it cannot. Edits to documentation do not arm it, and a project whose test command the survey could not find is not nagged. On the benchmark's first
+  build 21% of the answers that said "done" were wrong; **whether this lowers that is not measured yet** (`docs/ROADMAP.md`): if the benchmark says it does not, take it out.
 - A `plan` tool, and the harness keeps the plan: the model sets a short list of steps (pending, doing, done), the list is shown back at the end of every request in the
   hot tail (never cached, so it costs the cache nothing), the chat's tool line says how far along it is, and an answer given while steps are open is sent back once to finish
   them or change the plan. The constitution gains one line (plan first for a task of three steps or more) and every agent's tool list one tool: a declared change of the

@@ -255,3 +255,43 @@ func TestARunWithOpenPlanStepsIsSentBackOnce(t *testing.T) {
 		t.Errorf("a finished plan: %+v %v %d", res, err, notes)
 	}
 }
+
+// An answer given after code was changed and before any test ran is sent back once with the project's test command; a test run, an edit of
+// documentation only, or a project with no test command is not nagged.
+func TestAnAnswerAfterAnEditWithNoTestRunIsSentBackToRunTheTests(t *testing.T) {
+	type step struct{ tool, args string }
+	for _, tc := range []struct {
+		name  string
+		hint  string
+		steps []step
+		want  int // the number of times the model saw the note
+	}{
+		{"edit then answer", "go test ./...", []step{{"edit", `{"path":"a.go"}`}}, 1},
+		{"edit, test, answer", "go test ./...", []step{{"edit", `{"path":"a.go"}`}, {"bash", `{"command":"go test ./..."}`}}, 0},
+		{"test, edit, answer", "go test ./...", []step{{"bash", `{"command":"go test ./..."}`}, {"edit", `{"path":"a.go"}`}}, 1},
+		{"a doc only", "go test ./...", []step{{"edit", `{"path":"README.md"}`}}, 0},
+		{"no test command known", "", []step{{"edit", `{"path":"a.go"}`}}, 0},
+		{"no edit at all", "go test ./...", nil, 0},
+	} {
+		editor := fakeTool{name: "edit", run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: "edited"} }}
+		bash := fakeTool{name: "bash", run: func(json.RawMessage) *tools.Result {
+			return &tools.Result{Text: "ok\n[exit code 0]", Meta: map[string]any{"exit_code": 0, "timed_out": false}}
+		}}
+		var saw int
+		r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{editor, bash}, steps: 12, verifyHint: tc.hint}, func(c *mock.Call) mock.Reply {
+			if strings.Contains(c.LastUser(), "[harness] You changed code and have not run the tests since. Run `go test ./...`") {
+				saw++
+			}
+			if n := assistantTurns(c); n < len(tc.steps) {
+				return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, tc.steps[n].tool, tc.steps[n].args)}}
+			}
+			return mock.Reply{Text: "done"}
+		})
+		if _, err := r.agent.Run(context.Background(), "change it"); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if saw != tc.want {
+			t.Errorf("%s: the model saw the note %d times, want %d", tc.name, saw, tc.want)
+		}
+	}
+}

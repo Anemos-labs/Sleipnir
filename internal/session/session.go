@@ -715,8 +715,8 @@ func (s *Session) build(ctx context.Context) error {
 					}
 					return nil
 				},
-				PlanOpen: plans.Open,
-				Guard:    writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
+				PlanOpen: plans.Open, VerifyHint: s.testCommand(),
+				Guard: writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
 				Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
 				Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 				MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
@@ -1220,4 +1220,18 @@ func plannerFor(c config.Cache) kv.Planner {
 		p.HardThreadTokens = p.SoftThreadTokens
 	}
 	return p
+}
+
+// testCommand is the project's test command as the survey found it ("" when it found none): what an answer that follows an edit and no test run is
+// sent back to run.
+func (s *Session) testCommand() string {
+	if s.Recon == nil {
+		return ""
+	}
+	for _, c := range s.Recon.Commands {
+		if strings.Contains(c, "test") {
+			return c
+		}
+	}
+	return ""
 }

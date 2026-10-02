@@ -130,6 +130,9 @@ type Config struct {
 
 	Params core.Params
 	Hot    HotSource
+	// VerifyHint is the project's test command ("go test ./...", from the survey): with it, an answer given after code was changed and before any
+	// test ran is sent back once to run it. Empty: no such check.
+	VerifyHint string
 	// PlanOpen says how many steps of the agent's plan are not done (nil: there is no plan tool). A run that would end with some is sent back once.
 	PlanOpen func(agent string) int
 	// HotMode requests a hot-tail mechanism. The zero value (kv.HotInline) lets
@@ -623,10 +626,11 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	// its job to finish: an interactive agent's Run returns after every answer.
 	stop := context.AfterFunc(ctx, a.cancelCompaction)
 	defer stop()
-	vetoes := 0     // Stop hooks that sent the agent back to work in this run
-	mailRounds := 0 // times a finished answer was reopened because mail arrived meanwhile
-	cutoffs := 0    // responses in a row that the output limit cut off
-	planNudges := 0 // times a finished answer was sent back because the plan still had open steps
+	vetoes := 0       // Stop hooks that sent the agent back to work in this run
+	mailRounds := 0   // times a finished answer was reopened because mail arrived meanwhile
+	cutoffs := 0      // responses in a row that the output limit cut off
+	planNudges := 0   // times a finished answer was sent back because the plan still had open steps
+	verifyNudges := 0 // times a finished answer was sent back because code was changed and no test ran since
 	if len(input) > 0 {
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
@@ -723,6 +727,14 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 				a.pushUser(core.OriginSystem, []core.Block{core.Text(note)})
 				continue
 			}
+			// Code changed, no test run since: the answer would claim a result nobody looked at. Once, with the project's own command.
+			if a.cfg.VerifyHint != "" && a.tests.unverified() && verifyNudges < maxVerifyNudges {
+				verifyNudges++
+				note := fmt.Sprintf("[harness] You changed code and have not run the tests since. Run `%s` and fix what fails, or say plainly why you cannot, before you give your answer.", a.cfg.VerifyHint)
+				a.emit(events.TypeAgentStuck, map[string]any{"phase": "verify", "note": note})
+				a.pushUser(core.OriginSystem, []core.Block{core.Text(note)})
+				continue
+			}
 			u, c := a.Usage()
 			_, res.CostUSD = u, c
 			res.Compactions = a.comp.count
@@ -775,6 +787,9 @@ func inputEvent(origin core.Origin, blocks []core.Block) map[string]any {
 	}
 	return m
 }
+
+// maxVerifyNudges is how many times one Run sends a finished answer back to run the tests.
+const maxVerifyNudges = 1
 
 // maxPlanNudges is how many times one Run sends a finished answer back for the open steps of its plan.
 const maxPlanNudges = 1

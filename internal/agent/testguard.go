@@ -25,6 +25,9 @@ var (
 type testGuard struct {
 	failed bool // a test command failed and the code has not been edited since
 	nudged bool // already told, for this failure
+
+	edited   bool // code was changed in this run
+	ranSince bool // and a test command has run since the last such change
 }
 
 func (g *testGuard) reset() { *g = testGuard{} }
@@ -53,6 +56,13 @@ func editedPaths(call core.Block) []string {
 	return out
 }
 
+// docPathRe are the files whose edit does not call for running the tests.
+var docPathRe = regexp.MustCompile(`(?i)(\.(md|markdown|txt|rst|adoc)|(^|/)(docs?|license|changelog)[^/]*)$`)
+
+// unverified reports whether code was changed in this run and no test command has run since: the answer is about to claim a result nobody
+// looked at (a fifth of the answers on the benchmark that said "done" were wrong).
+func (g *testGuard) unverified() bool { return g.edited && !g.ranSince }
+
 // observe takes one batch of calls and their results (exitFailed as in repeatGuard) and returns the note to hand the model, if any.
 func (g *testGuard) observe(calls []core.Block, exitFailed []bool) string {
 	var note string
@@ -62,6 +72,7 @@ func (g *testGuard) observe(calls []core.Block, exitFailed []bool) string {
 				Command string `json:"command"`
 			}
 			if json.Unmarshal(call.Input, &in) == nil && testCmdRe.MatchString(in.Command) {
+				g.ranSince = true
 				failed := i < len(exitFailed) && exitFailed[i]
 				if failed != g.failed {
 					g.nudged = false
@@ -71,6 +82,11 @@ func (g *testGuard) observe(calls []core.Block, exitFailed []bool) string {
 			continue
 		}
 		paths := editedPaths(call)
+		for _, p := range paths {
+			if !docPathRe.MatchString(p) {
+				g.edited, g.ranSince = true, false
+			}
+		}
 		if len(paths) == 0 || !g.failed {
 			continue
 		}
