@@ -231,6 +231,7 @@ func (r *runner) tools(ctx context.Context) error {
 	calls := resp.Turn.ToolCalls()
 	if len(calls) == 0 {
 		r.note("model did not call the offered tool")
+		r.cfg.Log("    ! it answered, but did not call the offered tool") // the line above says ✓: the request worked, the capability is not there
 		return nil
 	}
 	r.rep.Findings.Tools = true

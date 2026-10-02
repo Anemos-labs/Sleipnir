@@ -416,15 +416,16 @@ func addProviderFlags(fs *flag.FlagSet) *providerFlags {
 func cmdDoctor(ctx context.Context, args []string) error {
 	fs := newFlagSet("doctor", flag.ExitOnError)
 	pf := addProviderFlags(fs)
-	model := fs.String("model", "", "model to probe: provider/model, or a bare id for the default provider (required)")
+	model := fs.String("model", "", "model to probe: provider/model, or a bare id for the default provider (default: the configured model; required with --base-url)")
 	deep := fs.Bool("deep", false, "also measure cache granularity, minimum prefix and warm-up needs (more requests)")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	noKey := fs.Bool("no-affinity", false, "do not send a conversation/cache key")
 	capture := fs.Bool("capture", false, "also check token-id capture (self-hosted policy servers; RL data)")
 	trust := fs.Bool("trust-project", false, "apply provider settings from the project's config (they are ignored by default)")
 	fs.Parse(args)
-	if *model == "" {
-		return fmt.Errorf("doctor: --model is required, as in `sleipnir doctor --model heimdall/MODEL` (`sleipnir models` lists them; the key comes from `sleipnir login` or the provider's environment variable)")
+	// With no --model the configured one is probed (ResolveModel says what to do when there is none); an endpoint given by flags has no configuration.
+	if *model == "" && (pf.baseURL != "" || pf.provider != "") {
+		return usageError(fs, "doctor: --model is required with --base-url or --provider, as in `sleipnir doctor --base-url URL --model MODEL`")
 	}
 	rec := &headerRecorder{}
 	var client provider.Provider

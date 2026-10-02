@@ -86,7 +86,7 @@ func TestCommandExitStatus(t *testing.T) {
 		{"a malformed value of a flag", []string{"run", "--max-steps", "many", "x"}, 2, nil, []string{"invalid value", "max-steps"}},
 		{"run with no goal", []string{"run"}, 1, nil, []string{"sleipnir: run: a prompt is required"}},
 		{"swarm with a bad count", []string{"swarm", "many", "goal"}, 1, nil, []string{"the first argument is the number of agents"}},
-		{"doctor without a model", []string{"doctor"}, 1, nil, []string{"sleipnir: doctor: --model is required"}},
+		{"doctor of an endpoint without a model", []string{"doctor", "--base-url", "http://127.0.0.1:1/v1"}, 1, nil, []string{"--model is required with --base-url"}},
 		{"doctor without an endpoint", []string{"doctor", "--model", "m", "--provider", "custom"}, 1, nil, []string{`provider "custom" needs --base-url`}},
 		{"init --local-url without --user", []string{"init", "--local-url", "http://127.0.0.1:1/v1"}, 1, nil, []string{"--local-url goes with --user"}},
 		{"demo with too few topics", []string{"demo", "--topics", "1"}, 1, nil, []string{"demo: --topics must be between 2 and 32"}},
@@ -636,4 +636,13 @@ func TestSim(t *testing.T) {
 			t.Errorf("the same arguments gave different output:\n%s\n--- and ---\n%s", r.stdout, again.stdout)
 		}
 	})
+}
+
+// With no --model, doctor probes the model that is configured, as run and chat use it; with none configured it says what to do about that.
+func TestDoctorProbesTheConfiguredModel(t *testing.T) {
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, nil)
+	ts := srv.Start()
+	defer ts.Close()
+	assertRun(t, newWorld(t, ts.URL+"/v1").run("", "doctor"), 0, []string{"Endpoint probe for mock-1"}, nil)
+	assertRun(t, newWorld(t, "").run("", "doctor"), 1, nil, []string{"no model configured", "sleipnir login"})
 }

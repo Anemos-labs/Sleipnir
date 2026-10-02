@@ -208,3 +208,21 @@ func TestReportFailureIsAnEndpointThatAnsweredNothing(t *testing.T) {
 		}
 	}
 }
+
+// A model that answers the tools request without calling the tool is a request that worked and a capability that is missing: the live log says
+// both, so that a line saying ✓ is not followed by a summary saying NO with nothing in between.
+func TestProbeSaysWhenTheModelDidNotCallTheTool(t *testing.T) {
+	srv := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	ts := srv.Start()
+	defer ts.Close()
+
+	var logs []string
+	c := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL})
+	rep, err := probe.Run(context.Background(), probe.Config{Provider: c, Model: "mock-1", CacheKey: true, Log: func(s string) { logs = append(logs, s) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Findings.Tools || !strings.Contains(strings.Join(logs, "\n"), "did not call the offered tool") {
+		t.Fatalf("tools=%v, log:\n%s", rep.Findings.Tools, strings.Join(logs, "\n"))
+	}
+}

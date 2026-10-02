@@ -541,7 +541,7 @@ Usage of doctor:
   -json
         print the report as JSON
   -model string
-        model to probe: provider/model, or a bare id for the default provider (required)
+        model to probe: provider/model, or a bare id for the default provider (default: the configured model; required with --base-url)
   -no-affinity
         do not send a conversation/cache key
   -provider string
