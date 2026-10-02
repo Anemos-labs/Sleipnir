@@ -84,6 +84,12 @@ The first release.
 
 ### Providers
 
+- Sixteen more providers are built in, and two more local servers: SambaNova, Hyperbolic, Nebius, Novita, NVIDIA, Parasail, Baseten, Chutes, SiliconFlow, Ollama Cloud and OpenCode Zen (hosts of
+  open-weight models); Moonshot, Z.ai, MiniMax and DashScope (the labs of Kimi, GLM, MiniMax and Qwen) and Cohere's compatibility route; SGLang and Jan on this machine. Every base URL was asked
+  for `GET /models` and answered (a catalogue, or the 401 that asks for a key); none has run on a live key (`docs/PROVIDERS.md`). The provider menu of the first run and `/login` is searchable now
+  (it has thirty rows), a bare model id goes to any provider that has a key when none of the usual ones does (a ChatGPT plan comes after them all), and the usage text (`sleipnir` with no arguments)
+  lists the providers from the table itself, a test keeps `docs/PROVIDERS.md` naming every one of them with its key variable, and the tests that start like a first run clear the key of every provider
+  instead of a list of ten.
 - **The OpenAI Responses dialect** (`openai-responses`, `internal/provider/openairesp`): OpenAI's newer route with an API key, stateless (`store: false`), the
   reasoning kept encrypted and sent back with the items it came with, the automatic prefix cache and its cache key, streamed events with limits and the
   adapter contract of the others (`providertest`). The shared error handling of the OpenAI-style adapters moved into `internal/provider`.

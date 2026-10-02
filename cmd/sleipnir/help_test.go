@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // -h is a success: the flag package has printed the usage, and there is nothing to
@@ -107,4 +109,29 @@ func runSelf(t *testing.T, test, child, arg string) (string, int) {
 		}
 	}
 	return out.String(), code
+}
+
+// The usage text names every provider that is built in, from the table itself (the plan and the local servers among them), so that a provider
+// added to the table is one a person finds in `sleipnir` with no arguments.
+func TestTheUsageNamesEveryBuiltInProvider(t *testing.T) {
+	var buf bytes.Buffer
+	usage(&buf)
+	text := strings.Join(strings.Fields(buf.String()), " ")
+	for _, name := range session.ProviderNames(nil) {
+		if !strings.Contains(text, name) {
+			t.Errorf("the usage text does not name %s", name)
+		}
+	}
+	for _, want := range []string{"heimdall (recommended)", "chatgpt: sleipnir login chatgpt, no key", "local servers"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the usage text lacks %q:\n%s", want, buf.String())
+		}
+	}
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.HasPrefix(line, "A model is written") || strings.Contains(line, "servers jan") {
+			if len(line) > 112 {
+				t.Errorf("a line of the provider paragraph is %d characters: %q", len(line), line)
+			}
+		}
+	}
 }

@@ -74,6 +74,24 @@ var hostedOpenWeights = map[string][2]string{
 	"deepseek":  {"https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"},
 	// Hugging Face's router: one key, the open-weight models of many hosts (a model id is org/name, so a marketplace's id and its own do not clash).
 	"huggingface": {"https://router.huggingface.co/v1", "HF_TOKEN"},
+	// More hosts of open-weight models. Each base URL answered `GET /models` on 2026-10-02 (a catalogue, or the 401 that says a key is needed).
+	"sambanova":    {"https://api.sambanova.ai/v1", "SAMBANOVA_API_KEY"},
+	"hyperbolic":   {"https://api.hyperbolic.xyz/v1", "HYPERBOLIC_API_KEY"},
+	"nebius":       {"https://api.tokenfactory.nebius.com/v1", "NEBIUS_API_KEY"},
+	"novita":       {"https://api.novita.ai/openai/v1", "NOVITA_API_KEY"},
+	"nvidia":       {"https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY"},
+	"parasail":     {"https://api.parasail.io/v1", "PARASAIL_API_KEY"},
+	"baseten":      {"https://inference.baseten.co/v1", "BASETEN_API_KEY"},
+	"chutes":       {"https://llm.chutes.ai/v1", "CHUTES_API_KEY"},
+	"siliconflow":  {"https://api.siliconflow.com/v1", "SILICONFLOW_API_KEY"},
+	"ollama-cloud": {"https://ollama.com/v1", "OLLAMA_API_KEY"},
+	"opencode":     {"https://opencode.ai/zen/v1", "OPENCODE_API_KEY"},
+	// The labs' own APIs of open-weight families (Kimi, GLM, MiniMax, Qwen) and Cohere's compatibility route.
+	"moonshot":  {"https://api.moonshot.ai/v1", "MOONSHOT_API_KEY"},
+	"zai":       {"https://api.z.ai/api/paas/v4", "ZAI_API_KEY"},
+	"minimax":   {"https://api.minimax.io/v1", "MINIMAX_API_KEY"},
+	"dashscope": {"https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "DASHSCOPE_API_KEY"},
+	"cohere":    {"https://api.cohere.ai/compatibility/v1", "COHERE_API_KEY"},
 }
 
 // localServers run on this machine and need no key: `ollama/qwen3:8b` is enough. They are never picked
@@ -83,6 +101,8 @@ var localServers = map[string]string{
 	"lmstudio": "http://localhost:1234/v1",
 	"llamacpp": "http://localhost:8080/v1",
 	"vllm":     "http://localhost:8000/v1",
+	"sglang":   "http://localhost:30000/v1",
+	"jan":      "http://localhost:1337/v1",
 }
 
 func init() {
@@ -280,17 +300,26 @@ func trustedBaseURLs(name string, p config.Provider) []string {
 func DefaultProvider(cfg *config.Config) (string, error) { return defaultProvider(cfg) }
 
 // defaultProvider picks the provider a bare model id is sent to: the only
-// configured one, else the first built-in whose key is set.
+// configured one, else the first built-in whose key is set (the usual ones in a
+// fixed order, then any other by name), else a ChatGPT plan that is signed in.
 func defaultProvider(cfg *config.Config) (string, error) {
 	if cfg != nil && len(cfg.Providers) == 1 {
 		for n := range cfg.Providers {
 			return n, nil
 		}
 	}
-	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra", "mistral", "gemini", "xai", "deepseek", "huggingface", "chatgpt"} {
+	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra", "mistral", "gemini", "xai", "deepseek", "huggingface"} {
 		if p, ok := lookupProvider(cfg, n); ok && ProviderReady(p) {
 			return n, nil
 		}
+	}
+	for _, n := range providerNames(cfg) { // any other that takes a key and has one, in alphabetical order
+		if p, ok := lookupProvider(cfg, n); ok && p.APIKeyEnv != "" && ProviderReady(p) {
+			return n, nil
+		}
+	}
+	if p, ok := lookupProvider(cfg, "chatgpt"); ok && ProviderReady(p) { // a plan is the last resort: a key someone set says more
+		return "chatgpt", nil
 	}
 	return "", fmt.Errorf("no provider has a key: run `sleipnir login` (Heimdall is the recommended provider), or set HEIMDALL_API_KEY or the key of another provider (OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), name a local server (ollama/<model>), or define a provider under \"providers\" in your config")
 }

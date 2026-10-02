@@ -211,7 +211,7 @@ Commands:
   init      write a starter .sleipnir/config.json and AGENTS.md for this project
   config    show the effective configuration and where each value came from
   sessions  list recorded sessions (sessions prune: delete the old ones)
-  login     store a provider's API key (asked for on the first run); logout removes it
+  login     store a provider's API key, or sign in with your ChatGPT plan (asked for on the first run); logout removes it
   chat      interactive session in the current directory (what "sleipnir" alone opens on a terminal; slash commands, Ctrl-C cancels a turn)
   run       run a goal through the harness (single agent; --swarm N for a manager with workers)
   schedule  goals to run on a schedule (cron): add, list, rm
@@ -232,12 +232,54 @@ Commands:
   sim       simulate cache policies: what layering buys and where it stops paying
   version   print version
 
-A model is written provider/model. Built in: heimdall (recommended), openrouter, openai, anthropic,
-together, fireworks, groq, cerebras, deepinfra, mistral, gemini, xai, deepseek, huggingface, and the local servers ollama, lmstudio, llamacpp and
-vllm (no key); or a provider from your config. A bare model id goes to the default provider: the only
-one configured, else the first hosted one whose key variable (HEIMDALL_API_KEY, OPENROUTER_API_KEY,
-OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from ~/.sleipnir/auth.json (sleipnir login stores it there, mode 0600). Every command takes -h.
 `)
+	fmt.Fprint(w, providerParagraph())
+	fmt.Fprint(w, `A bare model id goes to the default provider: the only one configured, else the first hosted one whose key variable
+(HEIMDALL_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from
+~/.sleipnir/auth.json (sleipnir login stores it there, mode 0600). Every command takes -h.
+`)
+}
+
+// providerParagraph says which providers are built in, for the usage text: from the table itself, so that it cannot fall behind it.
+func providerParagraph() string {
+	var hosted, local, plan []string
+	for _, n := range session.ProviderNames(nil) {
+		p, _ := session.LookupProvider(nil, n)
+		switch {
+		case p.Auth == config.AuthChatGPTPlan:
+			plan = append(plan, n)
+		case p.APIKeyEnv == "":
+			local = append(local, n)
+		case n == "heimdall":
+			hosted = append([]string{"heimdall (recommended)"}, hosted...)
+		default:
+			hosted = append(hosted, n)
+		}
+	}
+	text := "A model is written provider/model. Built in: " + strings.Join(hosted, ", ") +
+		"; your ChatGPT plan (" + strings.Join(plan, ", ") + ": sleipnir login chatgpt, no key); and the local servers " + strings.Join(local, ", ") +
+		" (no key); or a provider from your config."
+	return wrapWords(text, 110) + "\n"
+}
+
+// wrapWords breaks text into lines of at most width characters, at spaces.
+func wrapWords(text string, width int) string {
+	var b strings.Builder
+	line := 0
+	for _, w := range strings.Fields(text) {
+		switch {
+		case line == 0:
+		case line+1+len(w) > width:
+			b.WriteByte('\n')
+			line = 0
+		default:
+			b.WriteByte(' ')
+			line++
+		}
+		b.WriteString(w)
+		line += len(w)
+	}
+	return b.String()
 }
 
 func addProviderFlags(fs *flag.FlagSet) *providerFlags {

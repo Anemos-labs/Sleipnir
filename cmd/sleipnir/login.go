@@ -117,7 +117,7 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 		for _, e := range extras {
 			labels = append(labels, describe(e))
 		}
-		i, err := selectRows(in, out, "Which provider will you use?", labels, labels, false, pickRows)
+		i, err := selectRows(in, out, "Which provider will you use?", labels, labels, true, pickRows) // thirty or so: typing narrows them
 		if err != nil {
 			return "", errors.New("login: cancelled")
 		}

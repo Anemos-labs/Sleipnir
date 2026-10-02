@@ -9,6 +9,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -207,9 +208,7 @@ func TestFirstRunWithNoKeyAsksForTheKeyAndKeepsIt(t *testing.T) {
 	}))
 	defer ts.Close()
 	_, home := projectDir(t)
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY"} {
-		t.Setenv(k, "")
-	}
+	unsetProviderKeys(t)
 	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
 	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
 	var model string
@@ -310,9 +309,7 @@ func TestFirstRunFindsALocalServerAndNeedsNoKey(t *testing.T) {
 	}))
 	defer ts.Close()
 	_, home := projectDir(t)
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY"} {
-		t.Setenv(k, "")
-	}
+	unsetProviderKeys(t)
 	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -352,9 +349,7 @@ func TestFirstRunRefusesAKeyTheProviderRejects(t *testing.T) {
 	}))
 	defer ts.Close()
 	_, home := projectDir(t)
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY"} {
-		t.Setenv(k, "")
-	}
+	unsetProviderKeys(t)
 	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
 	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
 	var model string
@@ -407,5 +402,17 @@ func TestTheChatGPTPlanIsUsableOnlyWhenSignedInAndItsModelsSayPlan(t *testing.T)
 	}
 	if got := priceOut(modelRow{Entry: gateway.Entry{Model: cost.Model{Price: cost.Price{OutputPerM: 2.5}}}}); got != "$2.5/M out" {
 		t.Errorf("a priced model keeps its price: %q", got)
+	}
+}
+
+// unsetProviderKeys clears the key variable of every provider that takes one, and SLEIPNIR_MODEL, so that a test starts like a first run
+// whatever the machine it runs on has set.
+func unsetProviderKeys(t *testing.T) {
+	t.Helper()
+	t.Setenv("SLEIPNIR_MODEL", "")
+	for _, n := range session.ProviderNames(nil) {
+		if _, env, ok := session.ProviderInfo(nil, n); ok && env != "" {
+			t.Setenv(env, "")
+		}
 	}
 }

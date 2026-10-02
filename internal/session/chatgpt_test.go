@@ -112,15 +112,17 @@ func TestAChatGPTSignInIsNeverSentWhereAProjectOrTheEnvironmentSays(t *testing.T
 // A bare model id goes to the first provider that is ready, and the ChatGPT plan is the last of them.
 func TestTheChatGPTPlanIsTheLastDefaultProvider(t *testing.T) {
 	signedIn(t)
-	for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY", "MISTRAL_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY", "DEEPSEEK_API_KEY", "HF_TOKEN"} {
-		t.Setenv(k, "")
-	}
+	unsetProviderKeys(t)
 	if got, err := session.DefaultProvider(config.Defaults()); err != nil || got != "chatgpt" {
 		t.Errorf("the only provider that is ready: %q %v", got, err)
 	}
+	t.Setenv("NEBIUS_API_KEY", "k") // not one of the usual ones: any provider with a key comes before the plan
+	if got, _ := session.DefaultProvider(config.Defaults()); got != "nebius" {
+		t.Errorf("a key comes before the plan: %q", got)
+	}
 	t.Setenv("GROQ_API_KEY", "k")
 	if got, _ := session.DefaultProvider(config.Defaults()); got != "groq" {
-		t.Errorf("a key comes before the plan: %q", got)
+		t.Errorf("the usual providers come before the others: %q", got)
 	}
 }
 
@@ -130,6 +132,16 @@ func TestConfigRefusesAnUnknownAuthAndAPlanOnTheWrongDialect(t *testing.T) {
 		cfg.Providers = map[string]config.Provider{"x": p}
 		if issues := cfg.Validate(); len(issues) == 0 {
 			t.Errorf("accepted %+v", p)
+		}
+	}
+}
+
+// unsetProviderKeys clears the key variable of every provider that takes one.
+func unsetProviderKeys(t *testing.T) {
+	t.Helper()
+	for _, n := range session.ProviderNames(nil) {
+		if _, env, ok := session.ProviderInfo(nil, n); ok && env != "" {
+			t.Setenv(env, "")
 		}
 	}
 }

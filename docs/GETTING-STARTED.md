@@ -8,8 +8,8 @@ sleipnir demo                          # no key, no network: on a terminal, watc
 sleipnir demo --scenario handbook      # a one-second survey by a scripted team and the bill, as text (what a pipe gets)
 sleipnir replay latest                 # play a recorded session back as the cockpit; `sleipnir watch` shows one being written
 
-# 2. point it at a model. Heimdall is the recommended start; built in too: OpenRouter, OpenAI, Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra,
-#    and local servers with no key (ollama/<model>, lmstudio/, llamacpp/, vllm/). Any other OpenAI-compatible or Anthropic Messages endpoint is a config entry.
+# 2. point it at a model. Heimdall is the recommended start; built in too: OpenRouter, OpenAI, Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra and about twenty more
+#    (docs/PROVIDERS.md), and local servers with no key (ollama/<model>, lmstudio/, llamacpp/, vllm/, sglang/, jan/). Any other OpenAI-compatible or Anthropic Messages endpoint is a config entry.
 sleipnir login                         # paste a key (again): kept in ~/.sleipnir/auth.json, mode 0600; or export HEIMDALL_API_KEY / OPENROUTER_API_KEY / ... instead (it wins)
 sleipnir login chatgpt                 # or sign in with your ChatGPT plan (a browser, no key): models are chatgpt/<slug>. In the chat, /login does either
 cd your-project && sleipnir init       # shareable project settings, AGENTS.md (used once you trust the project: below)
