@@ -151,6 +151,12 @@ The first release.
 - A repetition guard: an agent that makes the same call with the same failing result eight times among its last twenty
   calls is stopped (`agent stuck`), after being told at the fourth. A first run against a real 2B model made two hundred
   requests over two refused commands.
+- A message that holds the markup of a tool call (`<|call|>`, `to=functions.read`, `<tool_call>`) and no call is not taken for the
+  answer: the model is told what it wrote and asked to call again or to answer in words, twice at most in a run. gpt-oss-20b through a
+  gateway that does not parse its format ended a run this way, with the work undone and exit status 0.
+- An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
+  sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
+  while the model was only asked to run the tests.
 - `run` and `swarm` take `--ask-timeout`: a question to the person that nobody has answered in that time is refused (as when there is no one to
   ask, and the log says `by: no one`), and the worker is told in a fixed sentence that nothing was approved and what it can do instead. The time
   counts from the moment the person is asked, not from the moment the request arrived behind other questions. Found by a swarm left alone for

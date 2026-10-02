@@ -635,6 +635,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	cutoffs := 0      // responses in a row that the output limit cut off
 	planNudges := 0   // times a finished answer was sent back because the plan still had open steps
 	verifyNudges := 0 // times a finished answer was sent back because code was changed and no test ran since
+	leakNudges := 0   // times an answer was sent back because it held the markup of a tool call and no call
 	if len(input) > 0 {
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
@@ -700,6 +701,14 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		cutoffs = 0
 		if len(calls) == 0 {
 			res.Text = kv.AnswerText(turn) // what the model said, not its reasoning
+			// A call written as text is not an answer (leak.go): the model is told what it wrote, and the work goes on.
+			if m := leakedCall(res.Text); m != "" && leakNudges < maxLeakNudges {
+				leakNudges++
+				note := fmt.Sprintf("[harness] Your last message was not an answer: it held part of your chat format (%s) where a tool call should be, and no tool ran. Make the call again, one call, with its arguments as JSON, or give your answer in plain words.", m)
+				a.emit(events.TypeAgentStuck, map[string]any{"phase": "leak", "note": note})
+				a.pushUser(core.OriginSystem, []core.Block{core.Text(note)})
+				continue
+			}
 			// Mail or steering that arrived while this answer was being produced would
 			// be stranded: the run is ending and nothing else reads the inbox. Read it
 			// now. The thread ends with an assistant turn, so the next step turns it

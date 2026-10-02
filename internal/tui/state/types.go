@@ -156,7 +156,8 @@ type Agent struct {
 }
 
 // Stuck is what agent.stuck said: the repetition guard told the agent it was repeating one failing call (phase "nudge", at the
-// fourth failure) or ended its run (phase "stop", at the eighth).
+// fourth failure) or ended its run (phase "stop", at the eighth). The other phases of agent.stuck (plan, verify, leak) send an answer
+// back; no call failed, so they are a line of the feed (sentBack) and leave this alone.
 type Stuck struct {
 	Phase  string    `json:"phase,omitempty"` // the last phase seen
 	Nudges int       `json:"nudges,omitempty"`

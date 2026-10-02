@@ -109,6 +109,9 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
    fourth (`agent.stuck` events). Refusals of a run with nobody to ask (`run`, `swarm`, a rollout) count together, whatever was
    asked, among the last twenty calls: a model that is refused tries another command each time, so no call repeats; it is told
    at five of the twenty and the run ends at ten. A step limit and a budget are the backstops; this notices that nothing changes.
+   An answer that holds the markup of a chat format where a call should be (`<|call|>`, `to=functions.read`, `<tool_call>`: a
+   gateway that does not parse the model's format) is not an answer: it is sent back twice at most (`internal/agent/leak.go`,
+   `agent.stuck` with `phase: "leak"`), then taken as it was.
 
 ## Providers
 

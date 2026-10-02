@@ -215,6 +215,9 @@ func readOracle(t testing.TB, log []byte, price prices) *oracle {
 		case "cache.anomaly":
 			o.anomalies[agent]++
 		case "agent.stuck":
+			if _, back := sentBack[d.str("phase")]; back {
+				break // an answer sent back, not a repeated call
+			}
 			if d.str("phase") == "stop" {
 				o.stops[agent]++
 			} else {

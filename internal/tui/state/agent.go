@@ -368,6 +368,13 @@ func (s *State) onAgentEnd(e events.Event, t time.Time) {
 	s.line(e.Seq, t, a.ID, FeedEnd, glyph, text, a.Evidence)
 }
 
+// sentBack says why an agent's answer was sent back, by the phase of the agent.stuck that records it.
+var sentBack = map[string]string{
+	"plan":   "the answer was sent back: the plan still has open steps",
+	"verify": "the answer was sent back: code changed and no tests ran",
+	"leak":   "the message was sent back: it was a tool call written as text",
+}
+
 func (s *State) onStuck(e events.Event, t time.Time) {
 	var p struct {
 		Phase string `json:"phase"`
@@ -377,8 +384,13 @@ func (s *State) onStuck(e events.Event, t time.Time) {
 	if !s.decode(e.Data, maxPayload, &p) {
 		return
 	}
-	a := s.agent(e.Agent, t)
 	note := clean(firstOf(p.Note, p.Error), textLine)
+	if text, ok := sentBack[p.Phase]; ok {
+		// The loop sent an answer back; no call failed, so the agent is not stuck.
+		s.line(e.Seq, t, e.Agent, FeedNote, GlyphInfo, text, note)
+		return
+	}
+	a := s.agent(e.Agent, t)
 	if a != nil {
 		a.Stuck.Phase = clip(p.Phase, textID)
 		a.Stuck.Note, a.Stuck.At = note, t

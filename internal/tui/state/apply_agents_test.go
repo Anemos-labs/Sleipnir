@@ -231,6 +231,29 @@ func TestAStuckAgentShowsItUntilACallSucceeds(t *testing.T) {
 	}
 }
 
+// The loop sends an answer back for an open plan, for tests not run, and for a call written as text (phases plan, verify, leak): no call
+// failed, so the agent is not stuck and the feed does not say that it is.
+func TestAnAnswerSentBackIsNotAStuckAgent(t *testing.T) {
+	for phase, want := range map[string]string{"plan": "plan", "verify": "tests", "leak": "tool call"} {
+		b := newB()
+		st := New()
+		apply(t, st, b.Spawn("w-1", "backend", "T1", "mgr"))
+		apply(t, st, b.Request("w-1", "w-1.1", "m", "pk", secShared()))
+		apply(t, st, b.Emit("w-1", events.TypeAgentStuck, map[string]any{"phase": phase, "note": "[harness] sent back"}))
+		sn := st.Snapshot()
+		a := agentOf(t, sn, "w-1")
+		if a.Status == StatusStuck || a.Stuck.Active || a.Stuck.Nudges != 0 {
+			t.Errorf("%s: %s %+v: no call failed", phase, a.Status, a.Stuck)
+		}
+		if feedHas(sn, FeedStuck, "w-1", "") || feedHas(sn, FeedNote, "w-1", "failed") {
+			t.Errorf("%s: the feed says a call failed: %v", phase, sn.Feed)
+		}
+		if !feedHas(sn, FeedNote, "w-1", want) {
+			t.Errorf("%s: no line about it in the feed: %v", phase, sn.Feed)
+		}
+	}
+}
+
 func TestAWorkerIsDoneWhenItsTaskIsAcceptedInEitherOrder(t *testing.T) {
 	for _, acceptFirst := range []bool{false, true} {
 		t.Run(fmt.Sprintf("acceptFirst=%v", acceptFirst), func(t *testing.T) {
