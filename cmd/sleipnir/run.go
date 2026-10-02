@@ -194,6 +194,11 @@ func runCommand(ctx context.Context, name string, args []string) error {
 			if s.Ckpt != nil {
 				fmt.Fprintln(os.Stderr, changedLine(s.Ckpt.List()))
 			}
+			if s.Swarm != nil {
+				if l := verifyLine(*verify, s.Swarm.VerifyRuns); l != "" {
+					fmt.Fprintln(os.Stderr, l)
+				}
+			}
 			printRefusals(os.Stderr, s.RefusedWithNoOneToAsk(), s.Cwd())
 		}
 	}
@@ -440,6 +445,22 @@ func runSummary(out io.Writer, took time.Duration, res *session.Result) string {
 		return line + "\n   " + tildePath(res.Dir)
 	}
 	return line + " · " + res.Dir
+}
+
+// verifyLine says, after a swarm run that had a --verify command, that the harness ran it and what came of it: a person otherwise cannot tell
+// the gate from the workers' own test runs. It is empty without a command, and says so when the command never ran.
+func verifyLine(cmd string, runs func() (ran, failed int)) string {
+	if cmd == "" {
+		return ""
+	}
+	ran, failed := runs()
+	switch {
+	case ran == 0:
+		return "   verify `" + cmd + "`: the gate never ran (no task reached done)"
+	case failed == 0:
+		return fmt.Sprintf("   verify `%s`: the gate ran %d times and passed every time", cmd, ran)
+	}
+	return fmt.Sprintf("   verify `%s`: the gate ran %d times; %d failed and the work was sent back", cmd, ran, failed)
 }
 
 // changedLine is the line after a run's summary that says which files it changed (the checkpoints of the session know), or that it changed none:

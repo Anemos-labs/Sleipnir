@@ -412,3 +412,23 @@ func TestRecapShowsTheGoalNotTheHarnessWords(t *testing.T) {
 		t.Errorf("the recap: %q", got)
 	}
 }
+
+// A swarm run that had a --verify command says that the gate ran, and what came of it.
+func TestVerifyLineSaysWhatTheGateDid(t *testing.T) {
+	runs := func(ran, failed int) func() (int, int) { return func() (int, int) { return ran, failed } }
+	for _, c := range []struct {
+		cmd         string
+		ran, failed int
+		want        string
+	}{
+		{"", 3, 0, ""},
+		{"go test ./...", 0, 0, "the gate never ran"},
+		{"go test ./...", 5, 0, "ran 5 times and passed every time"},
+		{"go test ./...", 5, 2, "2 failed and the work was sent back"},
+	} {
+		got := verifyLine(c.cmd, runs(c.ran, c.failed))
+		if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
+			t.Errorf("verifyLine(%q, %d, %d) = %q, want it to hold %q", c.cmd, c.ran, c.failed, got, c.want)
+		}
+	}
+}

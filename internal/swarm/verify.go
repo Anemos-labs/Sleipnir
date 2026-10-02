@@ -35,6 +35,22 @@ type verifyResult struct {
 //
 // files is the task's scope, used to expand {dirs} in the command (ExpandVerify).
 func (s *Swarm) verify(ctx context.Context, dir string, files []string) verifyResult {
+	vr := s.runVerify(ctx, dir, files)
+	if s.cfg.VerifyCmd != "" && !vr.infra {
+		s.verifyRan.Add(1)
+		if !vr.ok {
+			s.verifyFailed.Add(1)
+		}
+	}
+	return vr
+}
+
+// VerifyRuns is how many times the verify command ran (a run that could not start, or was cut off, is not counted) and how many of them failed.
+func (s *Swarm) VerifyRuns() (ran, failed int) {
+	return int(s.verifyRan.Load()), int(s.verifyFailed.Load())
+}
+
+func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verifyResult {
 	if s.cfg.VerifyCmd == "" {
 		return verifyResult{ok: true}
 	}

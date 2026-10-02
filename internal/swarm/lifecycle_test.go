@@ -702,6 +702,32 @@ func TestSinkPanicIsContained(t *testing.T) {
 	rvWait(t, "T1 to reach review despite the sink", func() bool { tk, _ := r.sw.Board.Snapshot().Task("T1"); return tk.Status == StatusReview })
 }
 
+// What the verify gate did is counted, so that a run can say it ran: how many times the command was run and how many of them failed.
+func TestTheVerifyGateCountsItsRuns(t *testing.T) {
+	var n atomic.Int32
+	cfg := Config{MaxWriters: 4, VerifyCmd: "go test ./...", Verify: func(ctx context.Context, dir, cmd string) (string, int, error) {
+		if n.Add(1) == 1 {
+			return "FAIL", 1, nil
+		}
+		return "ok", 0, nil
+	}}
+	r := newRVRig(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "backend" && c.Assistants < 2 {
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "x"}}}}
+		}
+		return rvReply{Text: "summary"}
+	})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "worker idle", func() bool { return r.idle(id) })
+	if ran, failed := r.sw.VerifyRuns(); ran != 2 || failed != 1 {
+		t.Fatalf("VerifyRuns() = %d ran, %d failed; want 2 and 1", ran, failed)
+	}
+}
+
 // The verifier runs under a harness deadline: a verifier that hangs (and ignores its
 // context) neither blocks done past the deadline nor fails the task: an infrastructure
 // problem is reported as such.

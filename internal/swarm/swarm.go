@@ -230,9 +230,10 @@ type Swarm struct {
 	lastSeen map[string]*Snapshot // per agent: the board at the end of its last wait
 	wg       sync.WaitGroup
 
-	verifySem  chan struct{}
-	hseq       atomic.Int64
-	budgetOnce atomic.Bool
+	verifySem               chan struct{}
+	verifyRan, verifyFailed atomic.Int32 // runs of the verify command, and those that failed (VerifyRuns)
+	hseq                    atomic.Int64
+	budgetOnce              atomic.Bool
 
 	wk      waker                    // waking an idle manager (wake.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
