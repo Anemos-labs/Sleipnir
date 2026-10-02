@@ -81,7 +81,7 @@ func TestCommandExitStatus(t *testing.T) {
 		{"run -h", []string{"run", "-h"}, 0, nil, []string{"usage: sleipnir run", "-budget-usd"}},
 		{"chat -h", []string{"chat", "-h"}, 0, nil, []string{"Usage of chat", "-resume"}},
 		{"an unknown flag of run", []string{"run", "--bogus", "x"}, 2, nil, []string{"flag provided but not defined: -bogus", "usage: sleipnir run"}},
-		{"an unknown flag of chat", []string{"chat", "--bogus"}, 2, nil, []string{"flag provided but not defined: -bogus", "Usage of chat"}},
+		{"an unknown flag of chat", []string{"chat", "--bogus"}, 2, nil, []string{"flag provided but not defined: -bogus", "sleipnir chat -h lists the flags", "!Usage of chat"}},
 		{"an unknown flag of init", []string{"init", "--bogus"}, 2, nil, []string{"flag provided but not defined: -bogus"}},
 		{"a malformed value of a flag", []string{"run", "--max-steps", "many", "x"}, 2, nil, []string{"invalid value", "max-steps"}},
 		{"run with no goal", []string{"run"}, 1, nil, []string{"sleipnir: run: a prompt is required"}},

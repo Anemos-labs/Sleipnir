@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -15,6 +16,12 @@ const trustProjectHelp = "trust this project: apply its security-sensitive confi
 func newFlagSet(name string, h flag.ErrorHandling) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, h)
 	fs.Usage = func() {
+		// The flag package calls this after it has printed what is wrong (a flag that does not exist) and for -h alike. Forty lines of flags
+		// under a typo hide the one line that says so: they are for the person who asked.
+		if !helpAsked(os.Args) {
+			fmt.Fprintf(fs.Output(), "(sleipnir %s -h lists the flags)\n", name)
+			return
+		}
 		fmt.Fprintf(fs.Output(), "Usage of %s:\n", name)
 		printFlags(fs)
 	}
@@ -94,4 +101,14 @@ func oneOf(flagName, v string, allowed ...string) error {
 		}
 	}
 	return fmt.Errorf("--%s must be one of %s, got %q", flagName, strings.Join(allowed, ", "), v)
+}
+
+// helpAsked reports whether the command line asks for help: -h, -help or --help as a word of its own.
+func helpAsked(args []string) bool {
+	for _, a := range args {
+		if a == "-h" || a == "-help" || a == "--h" || a == "--help" {
+			return true
+		}
+	}
+	return false
 }

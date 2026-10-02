@@ -84,6 +84,7 @@ func TestPrintHelpFitsATerminalAndLeavesAFileAlone(t *testing.T) {
 }
 
 func TestPrintFlagsFitsTheTerminalAndKeepsThePipeAsItWas(t *testing.T) {
+	askHelp(t)
 	build := func() (*flag.FlagSet, *bytes.Buffer) {
 		var out bytes.Buffer
 		fs := newFlagSet("x", flag.ContinueOnError)
@@ -246,5 +247,28 @@ func TestSessionsListSkipsSessionsInWhichNothingWasAsked(t *testing.T) {
 	}
 	if !strings.Contains(o.String(), "the real goal") || strings.Contains(o.String(), "bbbbbb") || strings.Contains(o.String(), "cccccc") {
 		t.Errorf("the listing of one session:\n%s", o.String())
+	}
+}
+
+// askHelp makes the command line of the test one that asks for help, which is when a flag set prints its flags (not for a typo).
+func askHelp(t *testing.T) {
+	t.Helper()
+	old := os.Args
+	os.Args = []string{"sleipnir", "x", "-h"}
+	t.Cleanup(func() { os.Args = old })
+}
+
+// A flag that does not exist is answered with one line saying where the flags are, not with all of them: -h is what lists them.
+func TestATypoedFlagDoesNotPrintEveryFlag(t *testing.T) {
+	var out bytes.Buffer
+	fs := newFlagSet("x", flag.ContinueOnError)
+	fs.SetOutput(&out)
+	fs.String("model", "", "the model")
+	if err := fs.Parse([]string{"--modle", "m"}); err == nil {
+		t.Fatal("a flag that does not exist parsed")
+	}
+	got := out.String()
+	if !strings.Contains(got, "not defined: -modle") || !strings.Contains(got, "sleipnir x -h lists the flags") || strings.Contains(got, "the model") {
+		t.Errorf("the answer to a typo:\n%s", got)
 	}
 }
