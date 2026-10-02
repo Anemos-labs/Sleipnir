@@ -161,7 +161,7 @@ func cmdChat(ctx context.Context, args []string) error {
 		s.Close()
 	}()
 
-	fmt.Fprintf(os.Stderr, "sleipnir %s · %s%s · %s · session %s\n", version, s.Model.ID, budgetLabel(s), modeName(s), s.ID)
+	fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, fmt.Sprintf("sleipnir %s · %s%s · %s · session %s", version, s.Model.ID, budgetLabel(s), modeName(s), s.ID)))
 	if a := s.Main(); s.Resumed() && a != nil {
 		fmt.Fprintln(os.Stderr, resumedLine(s, a))
 	}

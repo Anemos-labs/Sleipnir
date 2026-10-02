@@ -481,6 +481,9 @@ The first release.
 - `scripts/look.sh` ends the program it looks at with SIGKILL, and before the terminal goes. Told to end (the terminal hung up), the chat clears the live region it drew,
   `script` logged that, and a picture of the last moment was of a screen with the banner and nothing else: found by a menu that was on the real screen (tmux said so) and not in
   the picture. Choosing a time for the picture did not work: script's timing file does not always carry the wait before the end.
+- `scripts/look.sh` quotes every word of the command it runs (it joined them with spaces, so a goal with brackets in it was a syntax error of the shell), and `docs/UX.md` no longer says that
+  `sleipnir swarm` draws a live region of its own: it never did (found by looking at it at 80 columns); it prints one line for each tool call. The header of `run`, `swarm` and the line chat
+  breaks at spaces to the terminal's width (the session id was cut in two at 80 columns).
 - The agent tests' rig closes its agent when a test ends. A compaction a test never waited for (a second turn starts one) was still running
   when the mock endpoint was closed and the next test began, and read `agent.RetryBase` in its retry while that test's rig wrote it: `-race`
   failed two tests that did nothing wrong, once in a full run of the packages together on a busy machine.

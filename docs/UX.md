@@ -107,8 +107,10 @@ statistic is on the chat page.
 - *Pages on demand:* `ctrl+t` the stats page, `ctrl+g` the agents page, `/context` the token grid by layer; `/cache` explains the last
   miss in words (not built). They answer at once, in a turn or not.
 
-**Swarm progress (inline).** `run --swarm` and `swarm` in a terminal show a compact live region: one line per active agent
-(glyph, role, tool, tokens, hit %), the merge queue, the spend bar; `sleipnir watch` is the full thing.
+**Swarm progress (`run --swarm`, `swarm`).** One line for each tool call as it ends (a worker's line starts with its id, `[be-2]`), then the answer and
+the bill; there is no live region of their own (it was written here before it was built, and the page now says what the program does).
+`sleipnir watch SESSION` is the cockpit, live or after the fact, and the chat, which is a team by default, shows the same lines in its scrollback
+above its own live region.
 
 **Watch (full screen).** The cockpit in the sketch: title bar with wall time, agents, spend, hit ratio; the eight-legged horse
 (eight legs are eight workers: a leg lifts while its worker runs a tool, the gait follows the load, idle is a standing
