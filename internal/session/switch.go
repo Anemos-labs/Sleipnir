@@ -112,7 +112,12 @@ func (s *Session) RoleModels() []RoleModel {
 		if s.mailmanOn() {
 			names = append(names, swarm.MailmanRoleName)
 		}
-		sort.Strings(names)
+		sort.Slice(names, func(i, j int) bool { // the manager leads, the rest by name
+			if (names[i] == "manager") != (names[j] == "manager") {
+				return names[i] == "manager"
+			}
+			return names[i] < names[j]
+		})
 		for _, name := range names {
 			m, from := def, "the session's model"
 			switch {
