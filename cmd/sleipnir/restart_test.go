@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"github.com/anemos-labs/sleipnir/internal/session"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +9,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 func TestSplitArgsHonoursQuotesAndNothingElse(t *testing.T) {
@@ -282,5 +284,25 @@ func TestTheCommandThatRunsFirstIsFollowedByTheChat(t *testing.T) {
 	}
 	if got, _ = os.ReadFile(logFile); string(got) != "chat\n" {
 		t.Errorf("nothing runs before the chat when there is nothing to run: %q", got)
+	}
+}
+
+// A resumed chat says where the conversation was: the last thing the person asked and the start of what it answered (the screen was empty).
+func TestRecapLinesSayWhereAResumedConversationWas(t *testing.T) {
+	turns := []core.Turn{
+		{Role: core.RoleUser, Blocks: []core.Block{core.Text("first goal")}},
+		{Role: core.RoleAssistant, Blocks: []core.Block{core.Text("did the first")}},
+		{Role: core.RoleUser, Blocks: []core.Block{core.Text("fix the failing test\nin slug")}},
+		{Role: core.RoleAssistant, Blocks: []core.Block{core.Text("Fixed: slug.go joined with _")}},
+		{Role: core.RoleUser, Origin: core.OriginSystem, Blocks: []core.Block{core.Text("[harness] a note")}},
+		{Role: core.RoleUser, Origin: core.OriginTool, Blocks: []core.Block{core.ToolResult("c1", false, core.Text("ok"))}},
+	}
+	got := recapLines(turns)
+	want := []string{"you asked: fix the failing test in slug", "it said: Fixed: slug.go joined with _"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("recap %q, want %q: the harness's own turns are not what the person asked", got, want)
+	}
+	if got := recapLines(nil); len(got) != 0 {
+		t.Errorf("a conversation with no turns recaps %q", got)
 	}
 }

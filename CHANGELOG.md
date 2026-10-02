@@ -170,6 +170,8 @@ The first release.
   instead of a playful verb: a trial with a real model saw "Reasoning..." for four minutes of an endpoint that had not answered.
 - `gofmt -l .`, `gofmt -d` and `gofmt -s -l` run without a question in the default mode, as `go vet` and `go build` do: they read files and
   print. `gofmt -w` (writes the files) and the profile flags still ask. A trial with a real model was asked about `gofmt -l . ; go vet`.
+- `sleipnir --continue` (and `/resume`) shows where the conversation was under the banner: the last thing you asked and the start of what it
+  answered. The screen was empty, and the only sign of the earlier work was a count of turns.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

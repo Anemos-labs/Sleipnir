@@ -55,6 +55,9 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	out := []cell.Line{k.fit(l1.line(), width)}
 	if info.Resumed != "" {
 		out = append(out, paragraph(k.st.dim, "  "+info.Resumed, width)...)
+		for _, l := range info.Recap {
+			out = append(out, paragraph(k.st.dim, "  "+clean(l), width)...)
+		}
 	}
 	help := "Type a goal, / for commands, @ for files. Esc interrupts a turn; Ctrl-C twice at the prompt, Ctrl-D or /exit quits."
 	out = append(out, paragraph(k.st.dim, help, width)...)

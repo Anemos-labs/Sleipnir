@@ -23,6 +23,8 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -240,8 +242,35 @@ func chatInfo(s *session.Session, cwd string) app.ChatInfo {
 	}
 	if a := s.Main(); s.Resumed() && a != nil {
 		info.Resumed = resumedLine(s, a)
+		info.Recap = recapLines(a.Stack().Thread.Turns)
 	}
 	return info
+}
+
+// recapLines say where a resumed conversation was: the last thing the person asked and the start of what it answered. The screen would be
+// empty otherwise, and whoever comes back to a session should see what it was doing.
+func recapLines(turns []core.Turn) []string {
+	var goal, answer string
+	for _, t := range turns {
+		switch {
+		case t.Role == core.RoleUser && (t.Origin == "" || t.Origin == core.OriginUser):
+			if txt := strings.TrimSpace(kv.AnswerText(t)); txt != "" {
+				goal = txt
+			}
+		case t.Role == core.RoleAssistant:
+			if txt := strings.TrimSpace(kv.AnswerText(t)); txt != "" {
+				answer = txt
+			}
+		}
+	}
+	var out []string
+	if goal != "" {
+		out = append(out, "you asked: "+oneLineCLI(tools.SanitizeForTerminal(goal), 160))
+	}
+	if answer != "" {
+		out = append(out, "it said: "+oneLineCLI(tools.SanitizeForTerminal(answer), 240))
+	}
+	return out
 }
 
 // resumedLine says what a resumed session brought back. A team's workers are not among it: nothing of them was running.

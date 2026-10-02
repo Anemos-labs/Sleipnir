@@ -72,7 +72,9 @@ type ChatInfo struct {
 	// Budget is "budget $5.00" (or ""), Resumed the sentence about a session that was continued (or "").
 	Budget  string
 	Resumed string
-	Swarm   bool
+	// Recap says where a resumed conversation was (the last thing asked, the start of the answer), one line each; none for a new session.
+	Recap []string
+	Swarm bool
 	// Agents is the size of the team, the manager included, when the session is one (0 for a single agent): the banner says it.
 	Agents int
 }
