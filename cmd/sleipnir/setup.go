@@ -37,7 +37,7 @@ func cmdInit(ctx context.Context, args []string) error {
 	fs := newFlagSet("init", flag.ExitOnError)
 	user := fs.Bool("user", false, "write ~/.sleipnir/config.json instead of the project's")
 	model := fs.String("model", "", "default model as provider/model (see `sleipnir models`); without it the chat asks your provider on its first run")
-	localURL := fs.String("local-url", "", "with --user: also add a provider named local at this URL, a self-hosted server such as vLLM or SGLang (http://127.0.0.1:8000/v1); it records token ids for RL")
+	localURL := fs.String("local-url", "", "with --user: also add a provider named local at this URL, any server that speaks the OpenAI chat API: vLLM, SGLang, a proxy or gateway (http://127.0.0.1:8000/v1); then --model local/NAME. It records token ids for RL")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
