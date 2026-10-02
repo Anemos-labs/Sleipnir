@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -557,5 +558,56 @@ func TestRecallStillWorksForFoldedTurnsAndHandlesAfterAResume(t *testing.T) {
 	}
 	if !strings.Contains(all, "a long line of output") {
 		t.Errorf("recall of the handle %s found nothing after the resume:\n%s", handle, all)
+	}
+}
+
+// --continue goes on under the rules the session had: the allow rules a person gave ("don't ask again", /allow) and a mode they chose are read back
+// from the log, so that the same go test is not asked again. A mode on the new command line wins, and bypass is never brought back.
+func TestResumeKeepsThePermissionsTheSessionHad(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+
+	o := opts(t, repo, client, model)
+	o.Dir, o.Mode = dir, perm.ModeDefault
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule, _ := perm.ParseRule(perm.Allow, "Bash(go test:*)")
+	s1.Perm.AddRule(perm.ScopeSession, rule)
+	s1.Perm.SetMode(perm.ModeAcceptEdits)
+	if _, err := s1.Run(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	resume := func(mode perm.Mode) *session.Session {
+		o2 := opts(t, repo, client, model)
+		o2.Resume, o2.Mode = dir, mode
+		s2, err := session.New(context.Background(), o2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s2
+	}
+	s2 := resume(perm.ModeDefault)
+	if got := s2.Perm.Granted(); len(got) != 1 || got[0] != "Bash(go test:*)" {
+		t.Errorf("the rule given before --continue: %v", got)
+	}
+	if s2.Perm.Mode() != perm.ModeAcceptEdits {
+		t.Errorf("the mode before --continue: %v", s2.Perm.Mode())
+	}
+	if m, n := s2.RestoredPermissions(); m != "accept-edits" || n != 1 {
+		t.Errorf("RestoredPermissions: %q %d", m, n)
+	}
+	s2.Close() // one process at a time has a session
+	// a mode asked for now wins, and bypass is not carried over
+	s3 := resume(perm.ModePlan)
+	defer s3.Close()
+	if s3.Perm.Mode() != perm.ModePlan {
+		t.Errorf("a mode on the new command line: %v", s3.Perm.Mode())
 	}
 }

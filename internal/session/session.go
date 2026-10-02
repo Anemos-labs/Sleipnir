@@ -165,6 +165,10 @@ type Session struct {
 	plans   *plan.Store // each agent's plan, which a standing goal reads as its requirements (goal.go)
 	// judgeUSD is what a standing goal's judge has cost (goal.go), under mu.
 	judgeUSD float64
+
+	lastPerm      string // the permission state last written to the log (keepPermissions)
+	restoredMode  string // what a resumed session got back (restorePermissions)
+	restoredRules int
 	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
 	modelRef string
 	cfg      *config.Config
@@ -417,6 +421,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			s.Log.Close()
 			return nil, fmt.Errorf("resume: %w", err)
 		}
+		s.restorePermissions()
 	}
 	built = true
 	return s, nil
@@ -1054,6 +1059,7 @@ func (s *Session) result(res *agent.Result, err error) (*Result, error) {
 	// The answer a person has just read is in the log on disk: the log flushes in the background, which left the last
 	// events of a turn in its buffer for a moment (a reader that looked then saw a log without the tool results of the turn
 	// that had just ended, and a crash in that moment lost them).
+	s.keepPermissions()
 	if s.Log != nil {
 		_ = s.Log.Flush()
 	}

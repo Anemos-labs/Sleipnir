@@ -228,7 +228,7 @@ The first release.
 - `/rewind` lists only the checkpoints that changed a file, and says how to use one (a trial saw a list of "0 files" with no hint).
 - A command that exits 0 and says that no test ran ("Ran 0 tests", "collected 0 items", "no tests to run") gets a note under its exit code, so that the model does not report it as a passing run (a trial's model did).
 - The agents page shows an agent whose run ended in an error as stopped by an error, not as "thinking".
-- The line a resumed chat opens with says that the mode and what `/allow` let through start again, and the recap of the last answer leaves out code fences.
+- `--continue` and `/resume` go on under the rules the session had: the permission mode (not bypass; a mode on the new command line wins) and the allow rules a person gave (`/allow`, "don't ask again") are written to the log as `perm.state` when a turn ends and come back with the session, so the same `go test` is not asked again. The line a resumed chat opens with says what came back; the recap of the last answer leaves out code fences.
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).

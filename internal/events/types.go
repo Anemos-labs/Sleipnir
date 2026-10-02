@@ -49,6 +49,10 @@ const (
 	TypePermAsk    = "perm.ask"
 	TypePermDecide = "perm.decide"
 
+	// TypePermState is the permission mode and the allow rules a person has given so far (/allow, "don't ask again"), written when a turn ends and
+	// they have changed: a resumed session reads the last one, so that --continue goes on under the rules it had.
+	TypePermState = "perm.state"
+
 	// Cache engine.
 	TypeLayerCommit   = "layer.commit"
 	TypeCachePlan     = "cache.plan"
