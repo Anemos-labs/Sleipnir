@@ -393,12 +393,12 @@ the page moves into a cookie). `--json` prints the summary and exits instead.
 
 <!-- flags: inspect -->
 ```text
-usage: sleipnir inspect [flags] DIR
+usage: sleipnir inspect [flags] [SESSION | DIR]
 
 Serves a read-only web dashboard for the cache engine and the swarm, built from
 the session's event log: hit ratios, prompt layers per request, compactions,
 cache anomalies, swarm coordination and cost against a no-cache and a naive
-baseline. DIR is a session directory (events.jsonl and blobs/), or a directory of
+baseline. With nothing named it is the newest session; a SESSION is an id (or the start of one), as "sleipnir replay" takes. A DIR is a session directory (events.jsonl and blobs/), or a directory of
 sessions to browse, such as the output of `sleipnir rl rollout`. While the session
 is still writing, the page follows the log live.
 

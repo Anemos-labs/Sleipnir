@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -32,12 +33,12 @@ func cmdInspect(ctx context.Context, args []string) error {
 	session := fs.String("session", "", "with --json on a directory of sessions: the session to summarise (its id from the list)")
 	interval := fs.Duration("interval", time.Second, "how often live logs are polled")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `usage: sleipnir inspect [flags] DIR
+		fmt.Fprint(os.Stderr, `usage: sleipnir inspect [flags] [SESSION | DIR]
 
 Serves a read-only web dashboard for the cache engine and the swarm, built from
 the session's event log: hit ratios, prompt layers per request, compactions,
 cache anomalies, swarm coordination and cost against a no-cache and a naive
-baseline. DIR is a session directory (events.jsonl and blobs/), or a directory of
+baseline. With nothing named it is the newest session; a SESSION is an id (or the start of one), as "sleipnir replay" takes. A DIR is a session directory (events.jsonl and blobs/), or a directory of
 sessions to browse, such as the output of `+"`sleipnir rl rollout`"+`. While the session
 is still writing, the page follows the log live.
 
@@ -65,11 +66,18 @@ flags:
 		dirs = append(dirs, fs.Arg(0))
 		rest = fs.Args()[1:]
 	}
-	if len(dirs) != 1 {
+	if len(dirs) > 1 {
 		fs.Usage()
-		return errors.New("inspect: exactly one directory is required")
+		return errors.New("inspect: at most one session or directory is taken")
 	}
-	root := dirs[0]
+	arg := "latest"
+	if len(dirs) == 1 {
+		arg = dirs[0]
+	}
+	root, err := inspectRoot(arg)
+	if err != nil {
+		return fmt.Errorf("inspect: %w", err)
+	}
 
 	if *asJSON {
 		return inspectJSON(root, *session)
@@ -160,4 +168,17 @@ func openBrowser(u string) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// inspectRoot is the directory the dashboard serves for what the person named: an existing directory as it is (a session's own, or a
+// directory of sessions to browse), anything else a session as `replay` and `watch` find it (an id, the start of one, "latest").
+func inspectRoot(arg string) (string, error) {
+	if fi, err := os.Stat(arg); err == nil && fi.IsDir() {
+		return arg, nil
+	}
+	log, err := sessionLog(arg)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(log), nil
 }

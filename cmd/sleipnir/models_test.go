@@ -270,3 +270,30 @@ func TestARefusedKeyTellsThePersonWhatToDo(t *testing.T) {
 		t.Errorf("only a refused key gets the hint: %s", out.String())
 	}
 }
+
+func TestInspectTakesASessionIdOrLatestLikeReplay(t *testing.T) {
+	_, home := projectDir(t)
+	t.Setenv("SLEIPNIR_HOME", home)
+	for _, id := range []string{"20260101-000001-aaaaaa", "20260101-000002-bbbbbb"} {
+		d := filepath.Join(home, "sessions", id)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "events.jsonl"), []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := inspectRoot("20260101-000001"); err != nil || filepath.Base(got) != "20260101-000001-aaaaaa" {
+		t.Errorf("the start of an id: %q %v", got, err)
+	}
+	if got, err := inspectRoot("latest"); err != nil || filepath.Base(got) == "" {
+		t.Errorf("latest: %q %v", got, err)
+	}
+	dir := t.TempDir()
+	if got, err := inspectRoot(dir); err != nil || got != dir {
+		t.Errorf("a directory stays as it is: %q %v", got, err)
+	}
+	if _, err := inspectRoot("nonsense-id"); err == nil || !strings.Contains(err.Error(), "no session") {
+		t.Errorf("nothing: %v", err)
+	}
+}
