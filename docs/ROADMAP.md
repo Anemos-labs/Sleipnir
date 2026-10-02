@@ -7,7 +7,16 @@ how to start each item, and what bit the people before you. Read `AGENTS.md`, `d
 Written on 2026-10-01 at commit `6df3162` plus the remembered-trust work (section 2), by the agent that built most of what is in
 the repository, at the point where the owner's budget for the week ran out.
 
-## Third session (2026-10-01): what was added, and what is next
+## Third session (2026-10-01 and 2026-10-02): what was added, and what is next
+
+**Added on 2026-10-02** (`CHANGELOG.md` has each): the OpenAI Responses dialect (`internal/provider/openairesp`) and a ChatGPT plan as a provider (`sleipnir login chatgpt`,
+`internal/chatgptauth`; **built from OpenAI's documentation and tested against a fake issuer and a fake endpoint, never on a real account**: the first real sign-in is the test, and
+the issuer's discovery document, read live, matches what the code expects); `/login` in the chat; the first keys typed after a restart were being lost (a read of the keyboard that could
+not be called off: `term.Reader`); sixteen more hosted providers and two local servers, a searchable provider menu; the chat page on a narrow screen (the banner keeps the team and the budget,
+the footer keeps the keys, the endpoint's own cache misses are not said unless they cost money); `edit` says where a block stops matching and `read` finds a mangled directory;
+`scripts/look.sh` (a command in a real terminal, keys, a PNG) and `term-svg` frames of a screen that stood still; arrow-key menus, the default team of eight (`--swarm N` counts the manager).
+**Heimdall dropped `deepseek/deepseek-v4-flash` on 2026-10-02** (503 `no_route`; `deepseek-v4.1-flash` is its successor): the numbers in `docs/BENCHMARKS.md` are of the old model, and
+the A/B in progress is on the new one.
 
 **Added** (each with a test that fails without it; `CHANGELOG.md` says them for the user): built-in providers (Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra,
 and the keyless local servers Ollama, LM Studio, llama.cpp, vLLM); `models.roles.compactor` (a model of its own for the summaries, used while the thread fits its window);
@@ -23,7 +32,7 @@ one. Integer arguments given as strings stay refused (five tests and the web too
 a dozen tests and real managers write terse titles: it is a hint. Writes under `~/.sleipnir` ask in every mode, so `run` cannot save a memory unattended: by design.
 
 **Open, in the order to take it:**
-1. The benchmark refresh (`docs/BENCHMARKS.md`, README numbers): the corpus is now 60 tasks (47 `core`), the lock in `bench/suite.json` is written; an A/B of the build before this session against the current one ran into `$BENCH_HOME/runs/*ab-session3` (read `scripts/bench.sh status`, then `sleipnir rl compare`), and the tables in the README and `docs/BENCHMARKS.md` still say 48 tasks.
+1. The benchmark refresh (`docs/BENCHMARKS.md`, README numbers): the corpus is now 60 tasks (47 `core`), the lock in `bench/suite.json` is written. One sample of 47 tasks has a 95% interval of about ±14 points (the same build scored 55% and 62% on two runs), so a difference of less than fifteen points cannot be seen: use two or three samples. `$BENCH_HOME/runs/*v41-b0` (the login build) and `*v41-d` (the build of 2026-10-02) were started together on `deepseek-v4.1-flash`, two samples of the 47 core tasks each (read `scripts/bench.sh status`, then `sleipnir rl compare`); the tables in the README and `docs/BENCHMARKS.md` still say 48 tasks and the old model.
 2. The verify gate is built (`internal/agent/testguard.go`, `unverified`): an answer after an edit and before any test run is sent back once. Measure it: the A/B in `$BENCH_HOME/runs/*ab-session3*` has A (the build before the session: 53% pass, 21% false done on 47 core tasks, deepseek-v4-flash) and B (the build at the login commit); build the current `main` as C and run `scripts/bench.sh ab --bin-a B --bin-b C`. Keep the gate and the `plan` tool only if the pass rate or the false-done rate says so.
 3. A menu to change one role's model in the chat (`/roles` shows the table and takes `role=model`; a menu like `/model`'s is not built); `sleipnir init --user --brain` presets. Done in the third session since the list was written: `/login` in the chat (the chat ends, `sleipnir login` runs on the terminal, the chat comes back), and the check of a key when it is typed (a one-token request: Heimdall's catalogue is public, so listing models proves nothing).
 4. A `sleipnir agent` profile (memory on, scheduler on, conservative permissions, budget caps) and a skill-writer tool; a gateway adapter (webhook first).
