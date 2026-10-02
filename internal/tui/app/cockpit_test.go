@@ -157,3 +157,10 @@ func TestCockpitShowsAnAgentThatIsHeldAtAQuestion(t *testing.T) {
 		t.Errorf("a refusal is something that needs a look: %+v", d.Feed[0])
 	}
 }
+
+// An agent whose run ended in an error is not "thinking": a trial's manager sat on "stuck thinking" after the provider could not be reached.
+func TestAnAgentThatEndedInAnErrorIsNotThinking(t *testing.T) {
+	if got := doing(state.Agent{Status: state.StatusError}, nil); strings.Contains(got, "thinking") || got == "" {
+		t.Errorf("an agent that ended in an error: %q", got)
+	}
+}
