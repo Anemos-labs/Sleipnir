@@ -2,6 +2,10 @@
 
 Two kinds of picture are here. The **real recordings** (`real-*.svg`, made by `scripts/record-real.sh`) are real sessions: a real model, real tools, real timing, a person typing; only waits longer than 1.5 s are shortened. The **scripted demos** below them are drawn from a mock model that follows a script (they show the harness around the model, not a model); they were made first and are kept because they show the swarm.
 
+<p align="center"><img src="media/real-first-run.svg" alt="The first run: provider, key, a live model search, the config file, the chat" width="760"></p>
+
+*The first run, in a directory with no configuration: `scripts/record-real.sh --scenario first-run --search v4-flash --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-first-run.svg`.*
+
 <p align="center"><img src="media/real-chat.svg" alt="A real session of the chat: /allow tests, a goal, the model reads and edits, the edit is approved with the key 1, go test passes" width="760"></p>
 
 *The chat in a small Go project with a failing test, on a real model: `scripts/record-real.sh --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-chat.svg`.*

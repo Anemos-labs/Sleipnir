@@ -1,10 +1,11 @@
 #!/bin/sh
 # Record a REAL session of the chat for docs/media: a real model, real tools, real timing, nothing scripted but the person's keys.
 #
-#   scripts/record-real.sh --model provider/model --out docs/media/real-chat.svg [--key-env HEIMDALL_API_KEY] [--goal TEXT] [--max-gap 1.5s]
+#   scripts/record-real.sh --scenario chat|first-run --model provider/model --out docs/media/real-chat.svg [--key-env HEIMDALL_API_KEY] [--goal TEXT] [--max-gap 1.5s]
 #   STILL=file.svg [STILLAT=40s] in the environment also writes one moment as a static SVG
 #
-# A temporary project with a failing test and a temporary home (which receives the key from the environment variable named by --key-env, in its own
+# --scenario first-run starts with no configuration at all: provider 1, the key typed at the hidden prompt, --search WORDS to find --model in
+# the list, then a one-line goal. A temporary project with a failing test and a temporary home (which receives the key from the environment variable named by --key-env, in its own
 # auth.json, and is removed afterwards) are made; tmux runs `sleipnir` under script(1), which writes everything the terminal showed with its timing;
 # a typist (this script) types `/allow tests`, then the goal, answers the approval question with the key 1, and ends the chat; `sleipnir term-svg`
 # plays the recording into the repository's own terminal emulator and writes the animated SVG. A wait longer than --max-gap is shortened to it
@@ -15,6 +16,7 @@ export LC_ALL
 cd "$(dirname "$0")/.."
 
 STILL=${STILL:-} STILLAT=${STILLAT:-}
+SCENARIO=chat SEARCH=
 MODEL= OUT= KEYENV=HEIMDALL_API_KEY MAXGAP=1500ms COLS=110 ROWS=30
 GOAL="Slugify turns \"Hello, World!\" into \"hello,-world!\" and the test in slug_test.go fails. Fix it so the tests pass, and run them."
 while [ "$#" -gt 0 ]; do
@@ -24,6 +26,8 @@ while [ "$#" -gt 0 ]; do
     --out) shift; OUT=${1:?} ;;
     --key-env) shift; KEYENV=${1:?} ;;
     --goal) shift; GOAL=${1:?} ;;
+    --scenario) shift; SCENARIO=${1:?} ;;
+    --search) shift; SEARCH=${1:?} ;;
     --max-gap) shift; MAXGAP=${1:?} ;;
     *) echo "record-real: unknown option $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -36,14 +40,19 @@ for t in tmux script go git; do command -v "$t" >/dev/null || { echo "record-rea
 
 BIN=$(pwd)/bin/sleipnir
 go build -o "$BIN" ./cmd/sleipnir
-tmp=$(mktemp -d)
+tmp=/tmp/rec # a short, tidy path: it shows in the picture
+rm -rf "$tmp"
+mkdir -p "$tmp"
 trap 'tmux kill-session -t sleipnir-rec 2>/dev/null || true; sleep 1; rm -rf "$tmp" 2>/dev/null || true' EXIT
 home=$tmp/home proj=$tmp/slug
 mkdir -p "$home/.sleipnir" "$proj"
 umask 077
-printf '{"%s":"%s"}\n' "$KEYENV" "$key" > "$home/.sleipnir/auth.json"
+if [ "$SCENARIO" = chat ]; then
+  printf '{"%s":"%s"}\n' "$KEYENV" "$key" > "$home/.sleipnir/auth.json"
+  umask 022
+  printf '{"models":{"default":"%s"},"permissions":{"mode":"default"}}\n' "$MODEL" > "$home/.sleipnir/config.json"
+fi
 umask 022
-printf '{"models":{"default":"%s"},"permissions":{"mode":"default"}}\n' "$MODEL" > "$home/.sleipnir/config.json"
 cat > "$proj/go.mod" <<'GO'
 module example.com/slug
 
@@ -95,21 +104,35 @@ typist() { # one key at a time, as a hand would
     sleep 0.045
   done
 }
-waitfor 'Type a goal' 60
-sleep 1.5
-typist "/allow tests"; sleep 0.6; tmux send-keys -t $s Enter; sleep 1.5
-typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
-# the run: answer every question with 1, until the turn's summary line shows
-i=0
-while [ "$i" -lt 900 ]; do
-  p=$(pane)
-  if printf '%s' "$p" | grep -q 'esc says no'; then sleep 1.6; tmux send-keys -t $s 1; sleep 1; fi
-  if printf '%s' "$p" | grep -Eq '[0-9]+ steps? .*cache hit' && ! printf '%s' "$p" | grep -q 'esc to interrupt'; then break; fi
-  sleep 0.5; i=$((i + 1))
-done
-[ "$i" -lt 900 ] || { echo "record-real: the turn did not end in 450 s" >&2; pane >&2; exit 1; }
-echo "record-real: the turn took about $((i / 2)) s" >&2
-sleep 3
+if [ "$SCENARIO" = first-run ]; then
+  waitfor 'Number \(q to quit\)' 60; sleep 2
+  typist "1"; sleep 0.5; tmux send-keys -t $s Enter
+  waitfor 'Paste your' 20; sleep 2
+  typist "$key"; sleep 0.8; tmux send-keys -t $s Enter
+  waitfor 'words to search' 60; sleep 2.5
+  typist "$SEARCH"; sleep 0.8; tmux send-keys -t $s Enter; sleep 2
+  typist "1"; sleep 0.5; tmux send-keys -t $s Enter
+  waitfor 'Type a goal' 60; sleep 2
+  typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
+  waitfor '[0-9]+ steps? .*cache hit' 300
+  sleep 3
+else
+  waitfor 'Type a goal' 60
+  sleep 1.5
+  typist "/allow tests"; sleep 0.6; tmux send-keys -t $s Enter; sleep 1.5
+  typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
+  # the run: answer every question with 1, until the turn's summary line shows
+  i=0
+  while [ "$i" -lt 900 ]; do
+    p=$(pane)
+    if printf '%s' "$p" | grep -q 'esc says no'; then sleep 1.6; tmux send-keys -t $s 1; sleep 1; fi
+    if printf '%s' "$p" | grep -Eq '[0-9]+ steps? .*cache hit' && ! printf '%s' "$p" | grep -q 'esc to interrupt'; then break; fi
+    sleep 0.5; i=$((i + 1))
+  done
+  [ "$i" -lt 900 ] || { echo "record-real: the turn did not end in 450 s" >&2; pane >&2; exit 1; }
+  echo "record-real: the turn took about $((i / 2)) s" >&2
+  sleep 3
+fi
 typist "/exit"; sleep 0.5; tmux send-keys -t $s Enter
 i=0; while [ ! -e "$tmp/done" ] && [ "$i" -lt 60 ]; do sleep 0.5; i=$((i + 1)); done
 "$BIN" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$OUT" --cols "$COLS" --rows "$ROWS" --max-gap "$MAXGAP" ${STILL:+--still "$STILL" ${STILLAT:+--still-at "$STILLAT"}} --title "sleipnir  ($MODEL, a real session)"
