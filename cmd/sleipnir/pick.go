@@ -40,6 +40,17 @@ func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]
 	if len(chat) == 0 {
 		return "", errors.New("the provider lists no chat models")
 	}
+	if arrowOK() {
+		labels, keys := make([]string, len(chat)), make([]string, len(chat))
+		for i, r := range chat {
+			labels[i], keys[i] = modelLine(r, fav), r.Ref
+		}
+		i, err := selectRows(in, out, "Which model?", labels, keys, true, pickRows)
+		if err != nil {
+			return "", errors.New("no model chosen")
+		}
+		return chat[i].Ref, nil
+	}
 	words := []string(nil)
 	for {
 		var shown []modelRow
@@ -53,11 +64,7 @@ func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]
 			shown = shown[:pickRows]
 		}
 		for i, r := range shown {
-			tools := ""
-			if r.SupportsTools() {
-				tools = "  tools"
-			}
-			fmt.Fprintf(out, "  %2d. %-44s %6s ctx  $%.3g/M out%s\n", i+1, r.Ref, human(r.Model.ContextTokens), r.Model.Price.OutputPerM, tools)
+			fmt.Fprintf(out, "  %2d. %s\n", i+1, modelLine(r, fav))
 		}
 		switch {
 		case total == 0:
@@ -155,4 +162,17 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	}
 	*model = ref
 	return nil
+}
+
+// modelLine is one row of the model menu: the reference, the context window, the output price, and whether it takes tools.
+func modelLine(r modelRow, fav map[string]bool) string {
+	tools := ""
+	if r.SupportsTools() {
+		tools = "  tools"
+	}
+	star := ""
+	if fav[r.Ref] {
+		star = " *"
+	}
+	return fmt.Sprintf("%-44s %6s ctx  $%.3g/M out%s%s", r.Ref, human(r.Model.ContextTokens), r.Model.Price.OutputPerM, tools, star)
 }

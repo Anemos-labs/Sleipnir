@@ -70,6 +70,26 @@ func login(in *bufio.Reader, out io.Writer, secret func() (string, error), cfg *
 	if name != "" && pick == nil {
 		return "", fmt.Errorf("login: %q is not a provider that takes a key (those that do: %s; a local server needs none)", name, joinNames(choices))
 	}
+	if pick == nil && arrowOK() {
+		var labels []string
+		for _, c := range choices {
+			if c.name == "heimdall" {
+				c.name += "  (recommended)"
+			}
+			labels = append(labels, c.name)
+		}
+		for _, l := range local {
+			labels = append(labels, l.name+"  (running on this machine, no key)")
+		}
+		i, err := selectRows(in, out, "Which provider will you use?", labels, labels, false, pickRows)
+		if err != nil {
+			return "", errors.New("login: cancelled")
+		}
+		if i >= len(choices) {
+			return local[i-len(choices)].name, nil
+		}
+		pick = &choices[i]
+	}
 	for pick == nil {
 		fmt.Fprintln(out, "Which provider will you use?")
 		for i, c := range choices {

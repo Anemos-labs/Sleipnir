@@ -252,6 +252,8 @@ The first release.
 
 ### Interfaces
 
+- The first-run menus (which provider, which model) are driven by the arrow keys with the chosen row highlighted: Enter chooses, Esc quits,
+  typing narrows the model list, a digit jumps in the short provider list. Where there is no terminal they keep their typed form (numbers, words).
 - `/roles` shows which model each role runs on and where it came from, and `/roles role=model` changes one. A restart (`/restart`,
   `/new`, `/resume`, `/roles`) now keeps the flags the session started with (`--swarm`, `--verify`, `--isolation`, `--role-model`
   and so on) unless the line changes them: found by use, a role change from a team chat used to come back as a single agent.
