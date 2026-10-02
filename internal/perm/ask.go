@@ -163,7 +163,7 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)
 	if !v.askRule && len(v.rem) > 0 {
-		_, shown.Remembers = e.widen(v.rem[0])
+		shown.Remembers = e.rememberPhrase(v.rem)
 	}
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
@@ -211,4 +211,30 @@ func (e *Engine) remember(d Decision, v verdict) {
 		}
 		e.AddRule(d.Remember, rule)
 	}
+}
+
+// rememberPhrase says what a yes for the rest of the session would remember, in the words of the dialog's option: for one command the wider
+// phrase when there is one ("go test" commands), and for a line of several commands each of them, since a line of "npm test; rm -rf /tmp/x" that
+// is allowed remembers both, and "npm test commands" alone would hide the second.
+func (e *Engine) rememberPhrase(rem []Rule) string {
+	if len(rem) == 1 {
+		_, phrase := e.widen(rem[0])
+		return phrase
+	}
+	var parts []string
+	for _, r := range rem {
+		if _, phrase := e.widen(r); phrase != "" {
+			parts = append(parts, phrase)
+			continue
+		}
+		parts = append(parts, `"`+clipRunes(r.Pattern, 50)+`"`)
+	}
+	return strings.Join(parts, " and ")
+}
+
+func clipRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
 }

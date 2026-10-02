@@ -774,3 +774,15 @@ func TestACompoundOfRunnersIsRememberedByPrefix(t *testing.T) {
 		t.Errorf("the same line for another package: %+v after %d questions", d, rec.count())
 	}
 }
+
+// A line of several commands says, in the question, that a yes for the session remembers each of them: "npm test commands" alone hid the rm that came with it.
+func TestTheQuestionOfACompoundLineNamesEveryCommandItRemembers(t *testing.T) {
+	f := newFixture(t)
+	var shown string
+	rec := &promptRecorder{answer: func(_ int, r Request) Decision { shown = r.Remembers; return Decision{Allow: true} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	e.Check(bg, f.request(bash("npm test 2>&1 | tail -3; rm -rf /tmp/notesmoke")))
+	if !strings.Contains(shown, `"npm test" commands`) || !strings.Contains(shown, "rm -rf /tmp/notesmoke") {
+		t.Errorf("the question says it remembers %q", shown)
+	}
+}
