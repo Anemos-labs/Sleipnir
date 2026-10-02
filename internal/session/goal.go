@@ -26,6 +26,14 @@ func (s *Session) GoalPlan() []plan.Item {
 	return s.plans.Get(a.ID())
 }
 
+// ClearGoalPlan empties the plan of the agent the person talks to: a new goal starts with none, so that the steps of the one before are not shown
+// as its requirements (to the judge, to the agent, and in /goal).
+func (s *Session) ClearGoalPlan() {
+	if a := s.Main(); a != nil && s.plans != nil {
+		s.plans.Set(a.ID(), nil)
+	}
+}
+
 // JudgeGoal asks the model whether the turn that just ended met the goal. It sees the goal, the plan, the last answer and the results of the
 // tool calls of the turn (not the whole thread: a judge that reads everything is as slow as the work). worked says whether the turn called
 // any tool. A judge that fails or cannot be read says "continue": it must not end work that is not done, and the limits of the goal still hold.

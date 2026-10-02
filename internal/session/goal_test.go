@@ -130,3 +130,30 @@ func TestAGoalComesBackPausedWhenTheSessionIsResumed(t *testing.T) {
 		t.Errorf("a cleared goal came back: %+v", got)
 	}
 }
+
+// A new goal starts without the plan of the one before: its steps were shown as the new goal's requirements.
+func TestANewGoalStartsWithoutTheOldPlan(t *testing.T) {
+	repo := newRepo(t)
+	var asked int
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if asked++; asked > 1 {
+			return mock.Reply{Text: "planned"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{call("p1", "plan", map[string]any{"items": []map[string]any{{"step": "write the README", "status": "done"}}})}}
+	})
+	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Run(context.Background(), "plan it"); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.GoalPlan()) != 1 {
+		t.Fatalf("the plan tool did not set a plan: %v", s.GoalPlan())
+	}
+	s.ClearGoalPlan()
+	if got := s.GoalPlan(); len(got) != 0 {
+		t.Errorf("the old plan is still there: %v", got)
+	}
+}

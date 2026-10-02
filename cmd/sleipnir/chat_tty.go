@@ -395,6 +395,7 @@ func (h *sessionHost) goalCommand(f []string, line string, out io.Writer) app.Co
 		return app.CommandResult{Send: goal.Continuation(g, h.s.GoalPlan(), goal.Verdict{Kind: goal.Continue, Reason: g.Reason})}
 	}
 	h.goal = goal.New(arg)
+	h.s.ClearGoalPlan()
 	return app.CommandResult{Send: goal.Start(h.goal)}
 }
 
