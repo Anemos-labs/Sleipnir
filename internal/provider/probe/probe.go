@@ -137,6 +137,9 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 		if err := s(ctx); err != nil && ctx.Err() != nil {
 			return r.rep, ctx.Err()
 		}
+		if len(r.rep.Steps) == 1 && !r.rep.Steps[0].OK {
+			break // not even the plain request was answered: the other probes would say the same thing again
+		}
 	}
 	if cfg.Headers != nil {
 		if h := cfg.Headers(); h != nil && h.Get("X-RateLimit-Limit") != "" {

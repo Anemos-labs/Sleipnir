@@ -226,3 +226,18 @@ func TestProbeSaysWhenTheModelDidNotCallTheTool(t *testing.T) {
 		t.Fatalf("tools=%v, log:\n%s", rep.Findings.Tools, strings.Join(logs, "\n"))
 	}
 }
+
+// An endpoint that does not answer the plain request is said so once: the other probes would repeat the same error four times.
+func TestProbeStopsWhenTheEndpointDoesNotAnswerAtAll(t *testing.T) {
+	srv := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	ts := srv.Start()
+	ts.Close() // nothing listens any more
+	c := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL})
+	rep, err := probe.Run(context.Background(), probe.Config{Provider: c, Model: "mock-1", CacheKey: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Steps) != 1 || rep.Failure() == nil {
+		t.Fatalf("%d steps ran against a dead endpoint: %+v", len(rep.Steps), rep.Steps)
+	}
+}
