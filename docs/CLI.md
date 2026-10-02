@@ -256,7 +256,7 @@ Usage of chat:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -mode string
-        permissions: default | accept-edits | plan | bypass
+        permissions: default | accept-edits | plan | bypass | yolo
   -model string
         model: provider/model or a bare id for the default provider
   -no-anim
@@ -345,7 +345,7 @@ flags:
   -max-steps int
         step limit for a single agent (default 200)
   -mode string
-        permissions: default | accept-edits | plan | bypass (default: config, then default)
+        permissions: default | accept-edits | plan | bypass | yolo (default: config, then default)
   -model string
         model: provider/model or a bare id for the default provider (default: config models.default)
   -no-mcp
@@ -636,7 +636,7 @@ flags of add:
   -cwd string
         working directory of the run (default: the current directory)
   -mode string
-        permissions of the run: default | accept-edits | plan | bypass. The default refuses whatever needs a person to say yes, since nobody is there
+        permissions of the run: default | accept-edits | plan | bypass | yolo. The default refuses whatever needs a person to say yes, since nobody is there
   -model string
         model for the run (default: your configured default)
 ```
@@ -1658,7 +1658,7 @@ flags:
 | `/login [provider]` | add a key, or sign in with your ChatGPT plan (`/login chatgpt`), without leaving for another terminal: the chat ends, `sleipnir login` runs on the terminal (the key is typed hidden, a browser sign-in prints its address), and the chat comes back where you were (a team's manager and its board too). A name that is not a provider ends nothing |
 | `/roles [role=model]` | which model each role runs on and where it came from; name one to change it (restarts, keeping the rest). A menu opens after `/roles ` with the roles and what each runs on, and after the `=` of one the models, typing filters them |
 | `/swarm <n> [flags]` | start again as a manager with up to `n` workers: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
-| `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan` or `bypass` |
+| `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan`, `bypass` or `yolo` |
 | `/plan` | shorthand for `/mode plan` (read-only) |
 | `/rewind [id]` | list checkpoints; with an id, restore files to how they were before that turn |
 | `/diff <id>` | show what changed since a checkpoint |

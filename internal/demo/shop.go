@@ -100,7 +100,7 @@ func runShop(ctx context.Context, o Options) (*Report, error) {
 	s, err := session.New(ctx, session.Options{
 		Cwd: ws, Root: ws, Home: filepath.Join(dir, "home"), Dir: sdir, Config: cfg,
 		Provider: client, ModelInfo: &m, Model: m.ID, ContextWindow: m.ContextTokens,
-		Mode: perm.ModeBypass, NoWeb: true, TrustProject: true, Offline: true,
+		Mode: perm.ModeYolo, NoWeb: true, TrustProject: true, Offline: true,
 		Swarm: true, MaxAgents: 12, Isolation: config.IsolationWorktree, Verify: "sh verify.sh",
 	})
 	if err != nil {

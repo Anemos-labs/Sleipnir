@@ -169,9 +169,15 @@ func modeRank(m Mode) int {
 		return 2
 	case ModeBypass:
 		return 3
+	case ModeYolo:
+		return 4
 	}
 	return -1
 }
+
+// free says whether a mode lets everything through without a question (bypass and yolo); bypass still asks about the high-risk class, which
+// is the one thing the two differ in besides how a rule that asks is treated.
+func free(m Mode) bool { return m == ModeBypass || m == ModeYolo }
 
 func validMode(m Mode) bool { return modeRank(m) >= 0 }
 

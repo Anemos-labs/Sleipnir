@@ -129,7 +129,7 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 	s, err := session.New(ctx, session.Options{
 		Cwd: ws, Root: ws, Home: filepath.Join(dir, "home"), Dir: sdir,
 		Provider: client, ModelInfo: &m, Model: m.ID,
-		Mode: perm.ModeBypass, NoWeb: true, TrustProject: true, Offline: true,
+		Mode: perm.ModeYolo, NoWeb: true, TrustProject: true, Offline: true,
 		Swarm: true, MaxAgents: o.Topics + 8,
 	})
 	if err != nil {

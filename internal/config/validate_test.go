@@ -171,7 +171,7 @@ func TestValidate(t *testing.T) {
 				c.Permissions = Permissions{Mode: "yolo", Roles: map[string]RolePermissions{"a": {Mode: "plan"}, "b": {Mode: "nope"}}}
 			},
 			wantErr:  []string{"permissions.mode", "permissions.roles.b.mode"},
-			contains: map[string]string{"permissions.mode": "valid: default, accept-edits, plan, bypass"},
+			contains: map[string]string{"permissions.mode": "valid: default, accept-edits, plan, bypass, yolo"},
 		},
 		{
 			name:     "bypass warns",

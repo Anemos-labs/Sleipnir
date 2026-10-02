@@ -160,7 +160,8 @@ func TestToolRequests(t *testing.T) {
 		{name: "writes without paths denied in plan", mode: ModePlan, req: rq{tool: "Deploy", writes: true}, want: "deny"},
 		{name: "tool risk high asks even for reads", req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "ask", why: "high risk"},
 		{name: "tool risk high overridden by explicit rule", allow: []string{"Read(main.go)"}, req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "allow"},
-		{name: "tool risk high in bypass is allowed", mode: ModeBypass, req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "allow"},
+		{name: "tool risk high in bypass still asks", mode: ModeBypass, req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "ask", why: "high risk"},
+		{name: "tool risk high in yolo is allowed", mode: ModeYolo, req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskHigh}, want: "allow"},
 		{name: "tool risk medium is not special", req: rq{tool: "Read", paths: []string{R + "main.go"}, risk: RiskMedium}, want: "allow"},
 
 		// --- file rules ---
@@ -187,6 +188,8 @@ func TestToolRequests(t *testing.T) {
 		{name: "ask rule forces prompt", ask: []string{"Read(src/**)"}, req: read(R + "src/a.go"), want: "ask", why: "requires approval"},
 		{name: "ask rule beats allow rule", allow: []string{"Read"}, ask: []string{"Read(src/**)"}, req: read(R + "src/a.go"), want: "ask"},
 		{name: "ask rule applies in bypass", mode: ModeBypass, ask: []string{"Edit(docs/**)"}, req: write(R + "docs/README.md"), want: "ask"},
+		{name: "yolo never asks: an ask rule refuses", mode: ModeYolo, ask: []string{"Edit(docs/**)"}, req: write(R + "docs/README.md"), want: "deny", why: "yolo mode never asks"},
+		{name: "yolo allows what bypass allows", mode: ModeYolo, req: write("{out}/new.go"), want: "allow", why: "yolo"},
 		{name: "deny beats ask beats allow", allow: []string{"Read"}, ask: []string{"Read"}, deny: []string{"Read(src/**)"}, req: read(R + "src/a.go"), want: "deny"},
 		{name: "glob question mark", deny: []string{"Read(src/?.go)"}, req: read(R + "src/a.go"), want: "deny"},
 		{name: "glob class", deny: []string{"Read(src/[ab].go)"}, req: read(R + "src/b.go"), want: "deny"},

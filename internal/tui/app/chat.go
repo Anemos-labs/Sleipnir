@@ -625,8 +625,8 @@ func (m *chatModel) unhandled(k input.Key) {
 	}
 }
 
-// modeCycle is the order shift+tab steps through the permission modes. bypass is never stepped into: it is asked for by name.
-var modeCycle = map[string]string{"default": "accept-edits", "accept-edits": "plan", "plan": "default", "bypass": "default"}
+// modeCycle is the order shift+tab steps through the permission modes. bypass and yolo are never stepped into: they are asked for by name.
+var modeCycle = map[string]string{"default": "accept-edits", "accept-edits": "plan", "plan": "default", "bypass": "default", "yolo": "default"}
 
 func (m *chatModel) cycleMode() {
 	if m.host == nil {

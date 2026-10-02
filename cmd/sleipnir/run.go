@@ -65,7 +65,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	fs := newFlagSet(name, flag.ExitOnError)
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider (default: config models.default)")
 	cwd := fs.String("cwd", "", "working directory (default: current)")
-	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass (default: config, then default)")
+	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo (default: config, then default)")
 	swarmN := fs.Int("swarm", 0, "run a team of N agents in all, the manager included, instead of a single agent (config swarm.max_agents is the ceiling)")
 	maxSteps := fs.Int("max-steps", 0, "step limit for a single agent (default 200)")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")

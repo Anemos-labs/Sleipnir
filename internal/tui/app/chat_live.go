@@ -365,7 +365,7 @@ func (k *chatLook) modeStyle(mode string) cell.Style {
 		return k.st.good
 	case "plan":
 		return k.st.info
-	case "bypass":
+	case "bypass", "yolo":
 		return k.st.bad
 	}
 	return k.st.dim

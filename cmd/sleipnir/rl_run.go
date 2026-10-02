@@ -108,10 +108,10 @@ func (p *policyFlags) permissions() (perm.Mode, []string, error) {
 	var mode perm.Mode
 	switch p.permMode {
 	case "":
-	case "accept-edits", "default", "plan", "bypass":
+	case "accept-edits", "default", "plan", "bypass", "yolo":
 		mode = perm.Mode(p.permMode)
 	default:
-		return "", nil, fmt.Errorf("--perm-mode %q: want accept-edits, default, plan or bypass", p.permMode)
+		return "", nil, fmt.Errorf("--perm-mode %q: want accept-edits, default, plan, bypass or yolo", p.permMode)
 	}
 	switch strings.TrimSpace(p.allow) {
 	case "":

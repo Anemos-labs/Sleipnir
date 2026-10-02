@@ -129,12 +129,15 @@ func (ev *evaluator) judge(u *unit) verdict {
 		return deny("denied by rule " + r.String())
 	}
 	if r := ev.restrictMatch(ev.v.ask, u, all); r != nil {
+		if ev.v.mode == ModeYolo { // yolo never asks: a rule that would have asked refuses instead
+			return deny("yolo mode never asks, and rule " + r.String() + " requires approval; allow it with an Allow rule or leave yolo")
+		}
 		v := ask("rule "+r.String()+" requires approval", nil)
 		v.askRule = true
 		return v
 	}
 	mode := ev.v.mode
-	if u.high != nil && mode != ModeBypass && !ev.overridesRisk(u) {
+	if u.high != nil && mode != ModeYolo && !ev.overridesRisk(u) {
 		if mode == ModePlan {
 			return deny(planReason(u.high.why))
 		}
@@ -173,7 +176,7 @@ func clipText(s string, n int) string {
 
 func (ev *evaluator) decideCommand(u *unit) verdict {
 	mode := ev.v.mode
-	if mode != ModeBypass {
+	if !free(mode) {
 		switch {
 		case u.envBad != "":
 			r := "environment assignment " + u.envBad + " can change what runs"
@@ -196,8 +199,8 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 	case rule != nil:
 		res = allow("allowed by rule " + rule.String())
 		res.explicit = !rule.blanket
-	case mode == ModeBypass:
-		res = allow("bypass mode")
+	case free(mode):
+		res = allow(string(mode) + " mode")
 	case u.class == cmdSafe:
 		res = allow(ev.modeReason(genericSafe))
 	case u.class == cmdFSWrite && mode == ModeAcceptEdits:
@@ -212,7 +215,7 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 	if res.kind == vDeny {
 		return res
 	}
-	if rule == nil && mode != ModeBypass && (u.class == cmdSafe || u.class == cmdFSWrite) {
+	if rule == nil && !free(mode) && (u.class == cmdSafe || u.class == cmdFSWrite) {
 		for _, a := range u.accesses {
 			res = combineAccess(res, ev.accessVerdict(a, u))
 		}
@@ -235,7 +238,7 @@ func (ev *evaluator) modeReason(s string) string { return string(ev.v.mode) + " 
 // combineAccess is combine, except that an access-level reason replaces the
 // generic reason of a command-level allow.
 func combineAccess(res, av verdict) verdict {
-	if res.kind == vAllow && av.kind == vAllow && !strings.HasPrefix(av.reason, "bypass") {
+	if res.kind == vAllow && av.kind == vAllow && !strings.HasPrefix(av.reason, "bypass") && !strings.HasPrefix(av.reason, "yolo") {
 		out := combine(res, av)
 		if strings.HasSuffix(res.reason, genericSafe) || strings.HasSuffix(res.reason, genericFSWrite) {
 			out.reason = av.reason
@@ -248,7 +251,7 @@ func combineAccess(res, av verdict) verdict {
 func (ev *evaluator) decideTool(u *unit) verdict {
 	r := *u.req
 	mode := ev.v.mode
-	if u.dyn != "" && mode != ModeBypass { // too many paths to judge one by one
+	if u.dyn != "" && !free(mode) { // too many paths to judge one by one
 		if mode == ModePlan {
 			return deny(planReason(u.dyn))
 		}
@@ -267,8 +270,8 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 			what += " to " + h
 		}
 		switch mode {
-		case ModeBypass:
-			res = allow("bypass mode")
+		case ModeBypass, ModeYolo:
+			res = allow(string(mode) + " mode")
 		case ModePlan:
 			res = deny(planReason(what + " is not allowed"))
 		default:
@@ -276,8 +279,8 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 		}
 	case len(u.accesses) == 0 && r.Writes:
 		switch mode {
-		case ModeBypass:
-			res = allow("bypass mode")
+		case ModeBypass, ModeYolo:
+			res = allow(string(mode) + " mode")
 		case ModePlan:
 			res = deny(planReason(r.Tool + " changes state"))
 		default:
@@ -285,8 +288,8 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 		}
 	case len(u.accesses) == 0 && strings.HasPrefix(normTool(r.Tool), "mcp"):
 		switch mode {
-		case ModeBypass:
-			res = allow("bypass mode")
+		case ModeBypass, ModeYolo:
+			res = allow(string(mode) + " mode")
 		case ModePlan:
 			res = deny(planReason("the effects of " + r.Tool + " are unknown"))
 		default:
@@ -317,8 +320,8 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	rem := func() []Rule { return ev.rememberAccess(a, u) } // only needed when it asks
 	if a.dynamic {
 		switch {
-		case mode == ModeBypass:
-			return allow("bypass mode")
+		case free(mode):
+			return allow(string(mode) + " mode")
 		case mode == ModePlan && a.write:
 			return deny(planReason("cannot tell which file " + quote(a.raw) + " is"))
 		}
@@ -333,8 +336,8 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		return v
 	}
 	switch mode {
-	case ModeBypass:
-		return allow("bypass mode")
+	case ModeBypass, ModeYolo:
+		return allow(string(mode) + " mode")
 	case ModePlan:
 		if a.write {
 			return deny(planReason("it would write " + a.raw))

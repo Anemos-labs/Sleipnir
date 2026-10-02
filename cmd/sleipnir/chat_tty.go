@@ -632,7 +632,7 @@ var chatCommands = []chatCommand{
 	{"swarm", "<n> [flags]", "start again as a team of n agents, the manager included: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
 	{"cwd", "", "the directory this session works in"},
-	{"mode", "<m>", "default | accept-edits | plan | bypass"},
+	{"mode", "<m>", "default | accept-edits | plan | bypass | yolo"},
 	{"plan", "", "plan mode: read-only"},
 	{"rewind", "[id]", "list checkpoints, or restore files to before a turn"},
 	{"diff", "<id>", "show what changed since a checkpoint"},

@@ -70,7 +70,7 @@ type evaluator struct {
 func (e *Engine) evaluate(v *view, r Request) verdict {
 	ev := &evaluator{e: e, v: v, rs: e.rs, r: r, globBudget: 20000}
 	res := ev.run()
-	if r.Risk == RiskHigh && res.kind == vAllow && !res.explicit && v.mode != ModeBypass {
+	if r.Risk == RiskHigh && res.kind == vAllow && !res.explicit && v.mode != ModeYolo {
 		if v.mode == ModePlan {
 			return deny(planReason("the tool marked this action high risk"))
 		}
@@ -157,7 +157,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 	if why == "" && tooMany {
 		why = fmt.Sprintf("it has more than %d commands, too many to check", maxUnits)
 	}
-	if why == "" || res.kind == vDeny || ev.v.mode == ModeBypass {
+	if why == "" || res.kind == vDeny || free(ev.v.mode) {
 		return res
 	}
 	if ev.v.mode == ModePlan {
@@ -399,6 +399,9 @@ func (ev *evaluator) highRisk(u *unit) *riskInfo {
 		for _, a := range u.accesses {
 			if a.write && !a.dynamic && ev.broad(a.real) {
 				return &riskInfo{why: "recursive delete of " + a.raw, markers: mk}
+			}
+			if a.write && a.dynamic { // rm -rf $DIR: what it deletes is only known when it runs, and an empty variable is "/" or "."
+				return &riskInfo{why: "recursive delete of " + a.raw + ", a path that is only known when the command runs", markers: mk}
 			}
 		}
 		for _, p := range fsWriteSpecs["rm"].scan(args).pos {

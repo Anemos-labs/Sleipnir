@@ -77,7 +77,7 @@ func scheduleAddFlags() (*flag.FlagSet, *addOpts) {
 	fs.StringVar(&o.cron, "cron", "", `when: five fields "minute hour day-of-month month day-of-week", or @hourly, @daily, @weekly (required)`)
 	fs.StringVar(&o.model, "model", "", "model for the run (default: your configured default)")
 	fs.StringVar(&o.dir, "cwd", "", "working directory of the run (default: the current directory)")
-	fs.StringVar(&o.mode, "mode", "", "permissions of the run: default | accept-edits | plan | bypass. The default refuses whatever needs a person to say yes, since nobody is there")
+	fs.StringVar(&o.mode, "mode", "", "permissions of the run: default | accept-edits | plan | bypass | yolo. The default refuses whatever needs a person to say yes, since nobody is there")
 	fs.Float64Var(&o.budget, "budget-usd", 1, "stop a run at this many dollars (0: no limit)")
 	return fs, &o
 }

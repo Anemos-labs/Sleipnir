@@ -20,7 +20,7 @@ var (
 
 var (
 	dialects   = []string{DialectAnthropic, DialectOpenAIChat, DialectOpenAIResponses}
-	permModes  = []perm.Mode{perm.ModeDefault, perm.ModeAcceptEdits, perm.ModePlan, perm.ModeBypass}
+	permModes  = []perm.Mode{perm.ModeDefault, perm.ModeAcceptEdits, perm.ModePlan, perm.ModeBypass, perm.ModeYolo}
 	cacheTTLs  = []string{"5m", "1h"}
 	isolations = []string{IsolationNone, "shared", IsolationWorktree}
 )
@@ -198,8 +198,11 @@ func (v *validator) mode(segs []string, mode string) {
 		v.err(segs, "unknown permission mode %q (valid: %s)", mode, strings.Join(names, ", "))
 		return
 	}
-	if perm.Mode(mode) == perm.ModeBypass {
-		v.warn(segs, "bypass mode turns off permission prompts; use it only inside a sandbox")
+	switch perm.Mode(mode) {
+	case perm.ModeBypass:
+		v.warn(segs, "bypass mode turns off permission prompts except for very dangerous commands; use it only where a mistake is cheap")
+	case perm.ModeYolo:
+		v.warn(segs, "yolo mode never asks anything, dangerous commands included; use it only inside a sandbox")
 	}
 }
 

@@ -565,7 +565,7 @@ func TestChatSlashCommandsFromAPipe(t *testing.T) {
 		"/cost              tokens, cost and cache hit ratio so far",
 		"constitution", "thread (verbatim)",
 		"single agent session",
-		"mode: default", "mode: plan", "unknown mode; use default, accept-edits, plan or bypass", "plan mode: read-only",
+		"mode: default", "mode: plan", "unknown mode; use default, accept-edits, plan, bypass or yolo", "plan mode: read-only",
 		"no checkpoints yet (one is kept for each turn that changes a file)", "!cp_0001", `rewind: checkpoint: unknown checkpoint: "nope"`,
 		"usage: /diff <checkpoint id>", `diff: checkpoint: unknown checkpoint: "nope"`,
 		"## project", "no skills", "no MCP servers in this session", "nothing to compact yet",

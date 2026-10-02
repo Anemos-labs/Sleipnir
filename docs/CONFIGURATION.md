@@ -110,7 +110,7 @@ sleipnir: ~/.sleipnir/config.json:7:28: swarm.max_agents: expected an integer, g
 ~/.sleipnir/config.json:3:48: providers.acme.base_url: must be an absolute http(s) URL such as https://api.example.com/v1
 ~/.sleipnir/config.json:3:86: providers.acme.api_key_env: must be the NAME of an environment variable (letters, digits and underscores), not the key itself
 ~/.sleipnir/config.json:5:26: models.default: must look like "provider/model", got "gpt-5"
-~/.sleipnir/config.json:6:28: permissions.mode: unknown permission mode "yolo" (valid: default, accept-edits, plan, bypass)
+~/.sleipnir/config.json:6:28: permissions.mode: unknown permission mode "paranoid" (valid: default, accept-edits, plan, bypass, yolo)
 ~/.sleipnir/config.json:6:46: permissions.allow[0]: rule "Bash(git status": missing closing parenthesis
 ~/.sleipnir/config.json:7:49: swarm.budget_usd: must be zero (no limit) or a positive amount
 ```
@@ -133,7 +133,7 @@ Settings that could send your API key to another host, run commands or widen wha
 | `providers.<name>.headers` | can add credentials or route requests |
 | `providers.<name>.options` | provider-specific behaviour, may hold URLs |
 | `providers.<name>.allow_hosts`, `.allow_insecure_http` | say where your key may go: dropped from **every** project layer, trusted or not (section 6) |
-| `permissions.mode` | `bypass` turns off every prompt |
+| `permissions.mode` | `bypass` and `yolo` turn off the prompts |
 | `permissions.allow` | pre-approves actions |
 | `permissions.roles.<role>.mode`, `.allow` | the same, per role |
 | `hooks` | runs commands |
@@ -263,7 +263,7 @@ gateway's, not the fallback's. `sleipnir models` prints a marketplace catalogue 
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `mode` | string | `default` | yes | `default`, `accept-edits`, `plan` or `bypass`. `--mode` and `SLEIPNIR_PERMISSION_MODE` override it. `bypass` warns: use it only in a sandbox |
+| `mode` | string | `default` | yes | `default`, `accept-edits`, `plan`, `bypass` or `yolo`. `--mode` and `SLEIPNIR_PERMISSION_MODE` override it. `bypass` and `yolo` warn: `bypass` still asks about the very dangerous, `yolo` never asks and belongs in a sandbox |
 | `allow` | list of rules | `[]` | yes | Actions that need no question |
 | `ask` | list of rules | `[]` | yes | Actions that always ask, whatever the mode or the allow list says |
 | `deny` | list of rules | `[]` | yes | Actions that are refused, in every mode |
@@ -407,7 +407,8 @@ The engine decides every tool call before it runs. A request is settled by the f
 | `default` | Reads inside the workspace and read-only shell commands are allowed; everything else asks |
 | `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) |
 | `plan` | Read-only. Writes, network access and commands that are not provably read-only are refused with a message that says to present a plan. An `allow` rule still carves an exception (say `Edit(docs/plan.md)`) |
-| `bypass` | Allows everything except hard denies, `deny` rules, guarded paths without an `allow` rule, and `ask` rules. For sandboxes |
+| `bypass` | Full control without asking, except about the very dangerous: the high-risk class (`sudo`, a recursive delete of the workspace, home or `/`, or of a path only known when the command runs such as `rm -rf "$DIR"`, a forced push to a shared branch, disk tools, shutdown) still asks. Hard denies, `deny` rules, guarded paths without an `allow` rule and `ask` rules still apply |
+| `yolo` | Never asks anything, for runs with nobody there: what `bypass` allows, and the high-risk class too. Hard denies, `deny` rules and guarded paths still refuse, and so does a rule that would have asked (an `ask` rule): refusing is not a question. For sandboxes. `--continue` never brings `bypass` or `yolo` back |
 
 Switch a running chat with `/mode <m>` or `/plan`.
 
@@ -689,7 +690,8 @@ mock`, which imitates vLLM's token ids); your server's answer is the one that co
 | `the ChatGPT sign-in has ended (...): run sleipnir login chatgpt` | the issuer refused to renew the sign-in (revoked, or unused for long): sign in again |
 | `ignored security-sensitive settings from the project's config (...)` | the project file set gated keys; `--trust-project` applies them (section 4) |
 | `unknown key "modles" (did you mean "models"?); it is kept but has no effect` | a misspelled key; nothing reads it |
-| `bypass mode turns off permission prompts; use it only inside a sandbox` | `permissions.mode` is `bypass` |
+| `bypass mode turns off permission prompts except for very dangerous commands; use it only where a mistake is cheap` | `permissions.mode` is `bypass` |
+| `yolo mode never asks anything, dangerous commands included; use it only inside a sandbox` | `permissions.mode` is `yolo` |
 | `provider: auth (http 401): Missing or invalid API key` | the key variable is empty, wrong or expired. `sleipnir doctor --model provider/model` shows the answer without starting a session |
 | `429` from the endpoint | lower `swarm.requests_per_minute` |
 | `server (http 503): ... retrying in 28s (attempt 9, waited 4m0s of 5m0s for the endpoint)` | the endpoint answered that it is down or overloaded (a status of 500 or more, or 429). Every failure gets six attempts; for this kind the agent goes on, a wait of at most half a minute between attempts, until the waits add up to five minutes (`session.DefaultOutagePatience`), and then the run ends with the error. Ctrl-C stops the wait. A refusal of the request (400, 401, 403, 404) and a failure with no status (a misspelt URL, a refused connection) are not waited for |

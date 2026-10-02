@@ -69,7 +69,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	fs := newFlagSet("chat", flag.ExitOnError)
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	cwd := fs.String("cwd", "", "working directory")
-	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass")
+	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo")
 	swarmN := fs.Int("swarm", 0, "chat as a team of N agents in all, the manager included (config swarm.max_agents is the ceiling); on a terminal the default is "+strconv.Itoa(defaultAgents)+", --swarm 0 (or 1) is a single agent")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
@@ -282,7 +282,7 @@ model and cost
 /status            model, mode, session, budget and cost at a glance
 
 permissions
-/mode <m>          default | accept-edits | plan | bypass   (/plan = plan)
+/mode <m>          default | accept-edits | plan | bypass | yolo   (/plan = plan)
 /allow <rule>      allow, this session, what would ask: tests, Bash(go test:*)
 /permissions       the mode and the rules in force
 /trust             this project's own instructions and settings, and your yes
@@ -441,11 +441,11 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 			break
 		}
 		switch m := perm.Mode(f[1]); m {
-		case perm.ModeDefault, perm.ModeAcceptEdits, perm.ModePlan, perm.ModeBypass:
+		case perm.ModeDefault, perm.ModeAcceptEdits, perm.ModePlan, perm.ModeBypass, perm.ModeYolo:
 			s.Perm.SetMode(m)
 			fmt.Fprintln(stderr, "mode:", m)
 		default:
-			fmt.Fprintln(stderr, "unknown mode; use default, accept-edits, plan or bypass")
+			fmt.Fprintln(stderr, "unknown mode; use default, accept-edits, plan, bypass or yolo")
 		}
 	case "/rewind":
 		rewind(stderr, s, f[1:])

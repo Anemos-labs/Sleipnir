@@ -79,7 +79,11 @@
 //     provably read-only command is denied with a message that says so. Allow
 //     rules still carve exceptions (say, Edit(docs/plan.md)).
 //   - ModeBypass: allows everything except hard denies, Deny rules, guarded
-//     paths without an Allow rule, and Ask rules. Meant for sandboxes.
+//     paths without an Allow rule, Ask rules, and the high-risk class below,
+//     which still asks.
+//   - ModeYolo: never asks. Allows what bypass allows and the high-risk class
+//     too; hard denies, Deny rules, guarded paths and Ask rules are refused
+//     (with the reason) instead of asked about. For runs with nobody there.
 //
 // # Shell commands
 //
@@ -181,8 +185,14 @@ const (
 	ModeAcceptEdits Mode = "accept-edits"
 	// ModePlan is read-only: anything that writes or executes is denied.
 	ModePlan Mode = "plan"
-	// ModeBypass allows everything except hard denies. For sandboxes only.
+	// ModeBypass gives full control without asking, except about the very dangerous: the high-risk class (sudo, a recursive delete of the
+	// workspace, home or "/" or of a path only known when the command runs, a forced push to a shared branch, disk tools, shutdown) still
+	// asks. Hard denies and Deny rules still refuse.
 	ModeBypass Mode = "bypass"
+	// ModeYolo never asks anything: what bypass allows, and the dangerous too. Hard denies and Deny rules still refuse (a refusal is not a
+	// question), and so does a rule that would have asked (an Ask rule, a guarded path without an Allow rule). For a run with nobody there,
+	// in a sandbox.
+	ModeYolo Mode = "yolo"
 )
 
 // Risk is a tool's own estimate of how dangerous an action is.

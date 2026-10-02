@@ -682,7 +682,7 @@ Edit(./.sleipnir/**)   Edit(./.claude/**)   Edit(./.git/hooks/**)   Edit(./.git/
 Edit(~/.sleipnir/**)   Edit(~/.claude/**)
 ```
 
-A write there **always asks, in every mode, `bypass` included**, and an unattended run refuses it
+A write there **always asks, in every mode, `bypass` included** (`yolo`, which never asks, refuses it), and an unattended run refuses it
 (`approval required: rule Edit(./.sleipnir/**) requires approval`). It covers the file tools and shell redirections
 (`echo x > .sleipnir/notes.txt` asks). Answering `a` ("always this session") does not remember it: a question that comes
 from an Ask rule is asked every time. Writes under `.git/` are refused outright by a separate built-in protection (use

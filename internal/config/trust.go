@@ -16,7 +16,7 @@ var sensitivePaths = [][]string{
 	{"providers", "*", "api_key_env"}, // chooses which environment variable is sent
 	{"providers", "*", "headers"},     // can add credentials or route requests
 	{"providers", "*", "options"},     // provider-specific behaviour, may hold URLs
-	{"permissions", "mode"},           // "bypass" turns off every prompt
+	{"permissions", "mode"},           // "bypass" and "yolo" turn off the prompts
 	{"permissions", "allow"},          // pre-approves actions
 	{"permissions", "roles", "*", "mode"},
 	{"permissions", "roles", "*", "allow"},

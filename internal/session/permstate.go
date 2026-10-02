@@ -26,7 +26,7 @@ func (s *Session) keepPermissions() {
 }
 
 // restorePermissions gives a resumed session the rules its log ends with. A mode the person chose on this command line (anything but the default)
-// wins over the one in the log, and bypass is never brought back: that is said again, on purpose, each time.
+// wins over the one in the log, and bypass and yolo are never brought back: they are said again, on purpose, each time.
 func (s *Session) restorePermissions() {
 	var last struct {
 		Mode  string   `json:"mode"`
@@ -42,7 +42,7 @@ func (s *Session) restorePermissions() {
 	if !found {
 		return
 	}
-	if m := perm.Mode(last.Mode); s.Perm.Mode() == perm.ModeDefault && m != perm.ModeBypass && m != "" && m != perm.ModeDefault {
+	if m := perm.Mode(last.Mode); s.Perm.Mode() == perm.ModeDefault && m != perm.ModeBypass && m != perm.ModeYolo && m != "" && m != perm.ModeDefault {
 		s.Perm.SetMode(m)
 		s.restoredMode = last.Mode
 	}

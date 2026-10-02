@@ -168,7 +168,7 @@ type Models struct {
 
 // Permissions configures the permission engine.
 type Permissions struct {
-	// Mode is "default", "accept-edits", "plan" or "bypass" (see perm.Mode).
+	// Mode is "default", "accept-edits", "plan", "bypass" or "yolo" (see perm.Mode).
 	Mode  string   `json:"mode,omitempty"`
 	Allow []string `json:"allow,omitempty"`
 	Ask   []string `json:"ask,omitempty"`
