@@ -88,7 +88,7 @@ func TestEveryHelpFitsAnEightyColumnTerminal(t *testing.T) {
 }
 
 func TestReportsFitAnEightyColumnTerminal(t *testing.T) {
-	root, err := os.MkdirTemp("", "w") // a short path: one that is wider than the terminal cannot be broken
+	root, err := os.MkdirTemp("/tmp", "w") // a short path (macOS's $TMPDIR is 50 characters): a path wider than the terminal cannot be broken
 	if err != nil {
 		t.Fatal(err)
 	}
