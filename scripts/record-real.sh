@@ -1,10 +1,11 @@
 #!/bin/sh
 # Record a REAL session of the chat for docs/media: a real model, real tools, real timing, nothing scripted but the person's keys.
 #
-#   scripts/record-real.sh --scenario chat|first-run --model provider/model --out docs/media/real-chat.svg [--key-env HEIMDALL_API_KEY] [--goal TEXT] [--max-gap 1.5s]
+#   scripts/record-real.sh --scenario chat|first-run|swarm --model provider/model --out docs/media/real-chat.svg [--key-env HEIMDALL_API_KEY] [--goal TEXT] [--max-gap 1.5s]
 #   STILL=file.svg [STILLAT=40s] in the environment also writes one moment as a static SVG
 #
-# --scenario first-run starts with no configuration at all: provider 1, the key typed at the hidden prompt, --search WORDS to find --model in
+# --scenario swarm runs a real team (a manager and three workers in git worktrees, a verifier) on three small independent tasks and draws the session's
+# event log as the cockpit with `sleipnir replay --record`, SPEED (default 6) times faster than it happened. --scenario first-run starts with no configuration at all: provider 1, the key typed at the hidden prompt, --search WORDS to find --model in
 # the list, then a one-line goal. A temporary project with a failing test and a temporary home (which receives the key from the environment variable named by --key-env, in its own
 # auth.json, and is removed afterwards) are made; tmux runs `sleipnir` under script(1), which writes everything the terminal showed with its timing;
 # a typist (this script) types `/allow tests`, then the goal, answers the approval question with the key 1, and ends the chat; `sleipnir term-svg`
@@ -16,9 +17,10 @@ export LC_ALL
 cd "$(dirname "$0")/.."
 
 STILL=${STILL:-} STILLAT=${STILLAT:-}
-SCENARIO=chat SEARCH=
+SCENARIO=chat SEARCH= SPEED=${SPEED:-6}
 MODEL= OUT= KEYENV=HEIMDALL_API_KEY MAXGAP=1500ms COLS=110 ROWS=30
-GOAL="Slugify turns \"Hello, World!\" into \"hello,-world!\" and the test in slug_test.go fails. Fix it so the tests pass, and run them."
+DEFAULTGOAL="Slugify turns \"Hello, World!\" into \"hello,-world!\" and the test in slug_test.go fails. Fix it so the tests pass, and run them."
+GOAL=$DEFAULTGOAL
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
@@ -47,7 +49,7 @@ trap 'tmux kill-session -t sleipnir-rec 2>/dev/null || true; sleep 1; rm -rf "$t
 home=$tmp/home proj=$tmp/slug
 mkdir -p "$home/.sleipnir" "$proj"
 umask 077
-if [ "$SCENARIO" = chat ]; then
+if [ "$SCENARIO" != first-run ]; then
   printf '{"%s":"%s"}\n' "$KEYENV" "$key" > "$home/.sleipnir/auth.json"
   umask 022
   printf '{"models":{"default":"%s"},"permissions":{"mode":"default"}}\n' "$MODEL" > "$home/.sleipnir/config.json"
@@ -58,6 +60,7 @@ module example.com/slug
 
 go 1.24
 GO
+if [ "$SCENARIO" != swarm ]; then
 cat > "$proj/slug.go" <<'GO'
 package slug
 
@@ -86,8 +89,27 @@ func TestSlugify(t *testing.T) {
 	}
 }
 GO
+fi
 git -C "$proj" init -q && git -C "$proj" add -A && git -C "$proj" -c user.name=rec -c user.email=rec@example.com commit -qm "start"
-(cd "$proj" && go test ./... >/dev/null 2>&1) || true # warm the build cache: the recording shows the tests, not the toolchain
+[ "$SCENARIO" = swarm ] || (cd "$proj" && go test ./... >/dev/null 2>&1) || true # warm the build cache: the recording shows the tests, not the toolchain
+
+if [ "$SCENARIO" = swarm ]; then
+  for pkg in a b c; do mkdir -p "$proj/$pkg"; done
+  printf 'package a\n\n// Reverse returns s with its runes in reverse order.\nfunc Reverse(s string) string { panic("todo") }\n' > "$proj/a/a.go"
+  printf 'package a\n\nimport "testing"\n\nfunc TestReverse(t *testing.T) {\n\tif got := Reverse("héllo"); got != "olléh" {\n\t\tt.Fatalf("got %%q", got)\n\t}\n}\n' > "$proj/a/a_test.go"
+  printf 'package b\n\n// Fib returns the nth Fibonacci number, with Fib(0) = 0 and Fib(1) = 1.\nfunc Fib(n int) int { panic("todo") }\n' > "$proj/b/b.go"
+  printf 'package b\n\nimport "testing"\n\nfunc TestFib(t *testing.T) {\n\tif got := Fib(10); got != 55 {\n\t\tt.Fatalf("got %%d", got)\n\t}\n}\n' > "$proj/b/b_test.go"
+  printf 'package c\n\n// Dedup returns xs without repeated values, keeping the first of each, in order.\nfunc Dedup(xs []int) []int { panic("todo") }\n' > "$proj/c/c.go"
+  printf 'package c\n\nimport (\n\t"reflect"\n\t"testing"\n)\n\nfunc TestDedup(t *testing.T) {\n\tif got := Dedup([]int{3, 1, 3, 2, 1}); !reflect.DeepEqual(got, []int{3, 1, 2}) {\n\t\tt.Fatalf("got %%v", got)\n\t}\n}\n' > "$proj/c/c_test.go"
+  git -C "$proj" add -A && git -C "$proj" -c user.name=rec -c user.email=rec@example.com commit -qm "three stubs"
+  SG="Each of the packages a, b and c has one function that panics with todo, and a test. Implement all three in parallel, one worker for each package, and make go test ./... pass."
+  [ "$GOAL" != "$DEFAULTGOAL" ] || GOAL=$SG
+  (cd "$proj" && env -u $KEYENV HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 3 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
+  tail -3 "$tmp/swarm.out" >&2
+  id=$(ls -t "$home/.sleipnir/sessions" | head -1)
+  HOME=$home "$BIN" replay "$id" --record "$OUT" --cols "$COLS" --rows 36 --speed "$SPEED"
+  exit 0
+fi
 
 s=sleipnir-rec
 tmux kill-session -t $s 2>/dev/null || true

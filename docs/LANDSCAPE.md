@@ -19,9 +19,16 @@ moves monthly, so treat a row as a lead to verify, not a fact to quote.
 * Open-weight models: tool calls that arrive as plain text under the wrong parser, repeated plans that never act, editing before reading, small models generating invalid tool calls far more often than large ones ([AgentFloor](https://arxiv.org/pdf/2605.00334), [Modal's survey](https://modal.com/resources/best-open-source-models-autonomous-coding-agents)).
 * Hermes: slow, busy start-up; hard caps on memory that return an error; a CLI-first setup that assumes a server ([review](https://www.eesel.ai/blog/hermes-agent-review)).
 
+## What the harness literature says helps (read 2026-10-02)
+
+* **A plan the harness owns.** A tool that holds a todo list, with the current plan shown back to the model before every turn, and a first action of "write the plan" for any task of about three steps or more. For a 30B open-weight model planning raised the SWE-Bench success rate by 11.6 points, and a predefined, fixed tool set by 15.0 ([Beyond the Model](https://arxiv.org/abs/2609.32459), [An Empirical Study of Harness Design](https://arxiv.org/html/2609.20804v1)). Sleipnir has no plan tool yet; it is the best-evidenced thing to build next, and the tool list is already fixed and identical for every agent.
+* **Verification inside the edit.** Edits are the most common failed tool call; returning the compiler's verdict with the edit result saves the separate verify step and the model's habit of skipping it.
+* **Closed-loop repair of tool calls** lifts weak models across sizes: the harness fixes what it can and says plainly what it could not.
+* **Self-improving skills** (Hermes writes skills from complex repeatable work and nudges itself to save memory) work best with a person correcting, and a self-written skill can drift into unsafe behaviour ([Practice Makes Unsafe](https://arxiv.org/pdf/2608.12851)): a skill the model writes should be shown to the person before it is kept, as Sleipnir's memory notes are.
+
 ## What follows for Sleipnir
 
 1. Every flag of the chat has an equivalent inside it, so nobody restarts to change a setting (`docs/CLI.md`, "Inside the chat").
 2. Sessions are a first-class thing to list, resume and start anew from inside the chat (opencode's `/sessions` and `/new`); branching a session (pi's `/fork`) is worth building on top of `agent.Snapshot`, which already restores a thread.
-3. A weak model needs the harness to do its planning checks: briefs, guards and a verifier, not a longer prompt.
+3. A weak model needs the harness to do its planning: a `plan` tool whose list is shown back every turn, briefs, guards and a verifier, not a longer prompt.
 4. Setup is a conversation that ends with a working chat (done: `sleipnir`), and a key is never a reason to leave the terminal.
