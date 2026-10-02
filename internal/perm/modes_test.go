@@ -32,3 +32,28 @@ func TestYoloIsAModeAndTheMostPermissiveOne(t *testing.T) {
 		t.Error("free is bypass and yolo, and no other mode")
 	}
 }
+
+// The third answer of a question about a build or test command allows the builds and tests of the project for the session: the next worker's
+// go build, gofmt -w or npm test is not asked, and a command the set does not cover still is.
+func TestTheThirdAnswerAllowsBuildsAndTestsForTheSession(t *testing.T) {
+	f := newFixture(t)
+	var offers []bool
+	rec := &promptRecorder{answer: func(_ int, r Request) Decision {
+		offers = append(offers, r.OffersTests)
+		return Decision{Allow: true, Remember: ScopeSession, Preset: PresetTests}
+	}}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	e.Check(bg, f.request(bash("go test ./a")))
+	if len(offers) != 1 || !offers[0] {
+		t.Fatalf("the question about go test offers the third answer: %v", offers)
+	}
+	for _, cmd := range []string{"go build ./b", "gofmt -w x.go", "npm test", "cargo test", "pytest -q"} {
+		if d := e.Check(bg, f.request(bash(cmd))); !d.Allow || rec.count() != 1 {
+			t.Errorf("%s after the third answer: %+v, %d questions", cmd, d, rec.count())
+		}
+	}
+	e.Check(bg, f.request(bash("curl https://example.com/x")))
+	if rec.count() != 2 || len(offers) != 2 || offers[1] {
+		t.Errorf("a command outside the set asks, and does not offer it: %d questions, offers %v", rec.count(), offers)
+	}
+}

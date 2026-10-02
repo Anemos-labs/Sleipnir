@@ -52,9 +52,10 @@ const defaultAnswerAfter = 350 * time.Millisecond
 type dialogKind int
 
 const (
-	kindAction dialogKind = iota // a tool call that needs a person's word
-	kindMCP                      // whether to start a project's tool server
-	kindTrust                    // whether to use the project's own instructions and settings
+	kindAction      dialogKind = iota // a tool call that needs a person's word
+	kindMCP                           // whether to start a project's tool server
+	kindTrust                         // whether to use the project's own instructions and settings
+	kindActionTests                   // a build or test command: a fourth answer allows them all for the session
 )
 
 // dialogOptions are the three answers of a question. The second one is what the old prompt called "always": it remembers the
@@ -89,6 +90,14 @@ func dialogOptions(r perm.Request) (opts []widget.DialogOption, kind dialogKind)
 	if r.Remembers != "" {
 		what = r.Remembers
 	}
+	if r.OffersTests { // a worker's go test is the first of many: one yes may cover the builds and tests of every worker
+		return []widget.DialogOption{
+			{Label: "Yes"},
+			{Label: "Yes, and don't ask again for " + what + " this session"},
+			{Label: "Yes, and allow builds and tests (go, npm, cargo, pytest, make…) for this session"},
+			{Label: "No, and tell Sleipnir what to do instead", Hint: "(esc)", Keys: []string{"esc"}},
+		}, kindActionTests
+	}
 	return []widget.DialogOption{
 		{Label: "Yes"},
 		{Label: "Yes, and don't ask again for " + what + " this session"},
@@ -121,6 +130,8 @@ func (d *dialog) decision(i int) perm.Decision {
 		return perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}
 	case i == 1:
 		return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
+	case i == 2 && d.kind == kindActionTests:
+		return perm.Decision{Allow: true, Reason: "builds and tests allowed by user for the session", Remember: perm.ScopeSession, Preset: perm.PresetTests}
 	}
 	return perm.Decision{Allow: false, Reason: "denied by user"}
 }

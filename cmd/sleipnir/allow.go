@@ -37,18 +37,9 @@ const testsPreset = "tests"
 
 const testsPresetSummary = "go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run"
 
-// testsAllow is the preset --allow tests: the commands that build and test a project. They run the project's own code, as running
-// its tests is meant to, and nothing else: no package installs, no downloads, no interpreter given a program of its own.
-var testsAllow = []string{
-	"Bash(go test:*)", "Bash(go build:*)", "Bash(go vet:*)", "Bash(gofmt:*)", "Bash(go mod init:*)", "Bash(go mod tidy:*)",
-	"Bash(cargo test:*)", "Bash(cargo build:*)", "Bash(cargo check:*)", "Bash(cargo clippy:*)", "Bash(cargo fmt:*)",
-	"Bash(npm test:*)", "Bash(npm run test:*)", "Bash(npm run build:*)", "Bash(npm run lint:*)", "Bash(pnpm test:*)", "Bash(yarn test:*)",
-	"Bash(node --test:*)",
-	"Bash(pytest:*)", "Bash(python -m pytest:*)", "Bash(python3 -m pytest:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)",
-	"Bash(mvn test:*)", "Bash(mvn -q test:*)", "Bash(gradle test:*)", "Bash(./gradlew test:*)",
-	"Bash(dotnet test:*)", "Bash(dotnet build:*)",
-	"Bash(make test:*)", "Bash(make check:*)", "Bash(make build:*)", "Bash(make lint:*)", "Bash(ctest:*)",
-}
+// testsAllow is the preset --allow tests: the commands that build and test a project (the list is in package perm, where the third answer of a
+// question about such a command uses it too).
+var testsAllow = perm.TestsAllow
 
 // expandAllow turns the names of sets of rules into the rules; anything else is a rule as it is written.
 func expandAllow(in []string) []string {

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -164,6 +165,7 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	shown.Summary = withWhy(r.Summary, v.reason)
 	if !v.askRule && len(v.rem) > 0 {
 		shown.Remembers = e.rememberPhrase(v.rem)
+		shown.OffersTests = e.offersTests(v.rem)
 	}
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
@@ -199,6 +201,9 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 // the request pass (or, for a refusal, fail). An answer to a question that a
 // user ask rule caused is not remembered: the rule would ask again anyway.
 func (e *Engine) remember(d Decision, v verdict) {
+	if d.Allow && d.Preset != "" { // "allow builds and tests for this session": one yes for every worker's go test, go build and the like
+		e.addPreset(d.Preset)
+	}
 	if d.Remember == ScopeOnce || v.askRule {
 		return
 	}
@@ -230,6 +235,17 @@ func (e *Engine) rememberPhrase(rem []Rule) string {
 		parts = append(parts, `"`+clipRunes(r.Pattern, 50)+`"`)
 	}
 	return strings.Join(parts, " and ")
+}
+
+// offersTests says whether a question is about a build or test command that the tests preset covers, so that the dialog may offer to allow them
+// all for the session.
+func (e *Engine) offersTests(rem []Rule) bool {
+	for _, r := range rem {
+		if w, _ := e.widen(r); w.Tool == "Bash" && slices.Contains(TestsAllow, w.String()) {
+			return true
+		}
+	}
+	return false
 }
 
 func clipRunes(s string, n int) string {

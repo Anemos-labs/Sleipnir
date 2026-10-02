@@ -567,7 +567,11 @@ func (k *chatLook) dialogHint(d *dialogView, w int) cell.Line {
 		sep := "  " + k.g.dot + "  "
 		keys := func(or string, enter string, rest ...string) cell.Line {
 			var r row
-			r.add(k.st.dim, "  ").add(k.st.accent, "1 2 3").add(k.st.dim, or).add(k.st.accent, k.upDown()).
+			nums := "1 2 3"
+			if len(d.options) == 4 { // a question about a build or test command has a fourth answer
+				nums = "1 2 3 4"
+			}
+			r.add(k.st.dim, "  ").add(k.st.accent, nums).add(k.st.dim, or).add(k.st.accent, k.upDown()).
 				add(k.st.dim, enter).add(k.st.accent, "enter")
 			for _, t := range rest {
 				r.add(k.st.dim, sep+t)

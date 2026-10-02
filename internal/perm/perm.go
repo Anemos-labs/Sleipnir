@@ -232,6 +232,9 @@ type Request struct {
 	// Remembers is set by the engine on a question: what a yes for the rest of the session would remember when it is more than this
 	// exact request, in words ("go test" commands, edits in this project). Empty: the exact request.
 	Remembers string `json:"remembers,omitempty"`
+	// OffersTests is set by the engine on a question about a build or test command (one of the commands the tests preset covers): the
+	// dialog then has a fourth answer, "allow builds and tests for this session", which comes back as Decision.Preset.
+	OffersTests bool `json:"offers_tests,omitempty"`
 }
 
 // Scope says how long a remembered decision lasts.
@@ -249,6 +252,9 @@ type Decision struct {
 	Reason string `json:"reason,omitempty"`
 	// Remember asks the engine to persist this answer as a rule.
 	Remember Scope `json:"remember,omitempty"`
+	// Preset names a set of allow rules the answer adds for the rest of the session (PresetTests: the build and test commands of most
+	// projects), so that one yes covers every worker's go test, go build and the like.
+	Preset string `json:"preset,omitempty"`
 }
 
 // Requester is what tools call before acting.
