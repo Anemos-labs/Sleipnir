@@ -680,7 +680,14 @@ func TestStableConnectionsResetTheFailureCount(t *testing.T) {
 		runTool(t, tl, env, `{}`)
 		waitState(t, m, "srv", StateReady)
 	}
-	if st := statusOf(m, "srv"); st.State != StateReady {
+	// The last crash may not have been noticed yet when its tool call returned (the state is still the old Ready): wait for the fifth restart to
+	// have happened, and for the server to be ready again. A server that had run out of failures would be failed for good, and never get there.
+	var st ServerStatus
+	waitFor(t, "five restarts, and the server ready again", func() bool {
+		st = statusOf(m, "srv")
+		return st.Restarts >= 5 && st.State == StateReady
+	})
+	if st.State != StateReady {
 		t.Errorf("%+v: five crashes, each after a stable spell, must not exhaust MaxFailures=2", st)
 	}
 }
