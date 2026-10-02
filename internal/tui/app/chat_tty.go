@@ -24,6 +24,7 @@ type ChatTTYOptions struct {
 	NoAnim bool
 	// Verbose, MainAgent, History, CancelStart are ChatConfig's.
 	Verbose     bool
+	RestartTo   *[]string
 	MainAgent   string
 	History     *input.History
 	CancelStart func()
@@ -97,7 +98,7 @@ func RunChatTTY(ctx context.Context, link *ChatLink, attach <-chan ChatAttach, o
 	}
 	return RunChat(ctx, ChatConfig{
 		Bell: bell, Screen: scr, Keys: keys, Sizes: sizes, Tick: ticker.C, Attach: attach, Link: link, Now: time.Now,
-		Look: look, MainAgent: o.MainAgent, Verbose: o.Verbose, History: o.History, CancelStart: o.CancelStart,
+		Look: look, MainAgent: o.MainAgent, Verbose: o.Verbose, History: o.History, CancelStart: o.CancelStart, RestartTo: o.RestartTo, AnimAllowed: caps.Anim,
 	})
 }
 

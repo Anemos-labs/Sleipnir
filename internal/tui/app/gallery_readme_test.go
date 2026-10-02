@@ -28,29 +28,37 @@ func TestTheGalleryHasTheRecordingOfTheChat(t *testing.T) {
 	}
 }
 
-// What the README shows is what the gallery lists. A recording that is made and checked against the code but left out of the README is a
-// picture nobody sees, and a README that embeds a file the gallery does not make is one that goes stale.
-func TestTheReadmeEmbedsEveryRecordingOfTheGallery(t *testing.T) {
+// What the gallery page shows is what the gallery lists. A recording that is made and checked against the code but left out of the page is a
+// picture nobody sees, and a page that embeds a file the gallery does not make is one that goes stale. (The README is short and embeds
+// only what it chooses, which must exist and be drawn by the gallery; the gallery page embeds all of it.)
+func TestTheGalleryPageEmbedsEveryRecordingOfTheGallery(t *testing.T) {
 	recs, err := LoadGallery(repoFile(t, galleryManifest))
 	if err != nil {
 		t.Fatal(err)
+	}
+	listed := map[string]bool{}
+	for _, r := range recs {
+		listed[r.Name] = true
+	}
+	page, err := os.ReadFile(repoFile(t, "docs/GALLERY.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	embedded := map[string]bool{}
+	for _, m := range regexp.MustCompile(`<img[^>]*src="media/([A-Za-z0-9_-]+)\.svg"`).FindAllStringSubmatch(string(page), -1) {
+		embedded[m[1]] = true
+	}
+	for name := range listed {
+		if !embedded[name] {
+			t.Errorf("docs/GALLERY.md does not embed media/%s.svg, which the gallery draws", name)
+		}
 	}
 	readme, err := os.ReadFile(repoFile(t, "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	embedded := map[string]bool{}
 	for _, m := range regexp.MustCompile(`<img[^>]*src="docs/media/([A-Za-z0-9_-]+)\.svg"`).FindAllStringSubmatch(string(readme), -1) {
-		embedded[m[1]] = true
-	}
-	listed := map[string]bool{}
-	for _, r := range recs {
-		listed[r.Name] = true
-		if !embedded[r.Name] {
-			t.Errorf("README.md does not embed docs/media/%s.svg, which the gallery draws", r.Name)
-		}
-	}
-	for name := range embedded {
+		name := m[1]
 		if _, err := os.Stat(repoFile(t, "docs/media/"+name+".svg")); err != nil {
 			t.Errorf("README.md embeds docs/media/%s.svg: %v", name, err)
 		}

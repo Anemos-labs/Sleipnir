@@ -827,6 +827,23 @@ func (m *chatModel) commandEnded(e runEnd) {
 	if e.cmd.Model != "" {
 		m.info.Model = e.cmd.Model
 	}
+	switch e.cmd.Verbose {
+	case "on":
+		m.c.Verbose = true
+	case "off":
+		m.c.Verbose = false
+	}
+	switch e.cmd.Anim {
+	case "on":
+		m.k.Anim = m.c.AnimAllowed // the terminal's own wish (NO_COLOR, REDUCE_MOTION, SLEIPNIR_ANIM=0) still stands
+	case "off":
+		m.k.Anim = false
+	}
+	if e.cmd.Restart != nil && m.c.RestartTo != nil {
+		*m.c.RestartTo = e.cmd.Restart
+		m.quit(ChatRestart)
+		return
+	}
 	if e.cmd.Quit {
 		m.quit(ChatQuit)
 		return

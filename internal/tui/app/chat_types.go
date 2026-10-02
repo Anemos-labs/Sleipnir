@@ -56,6 +56,10 @@ type CommandResult struct {
 	Send string
 	// Model, when set, is the model the session runs on now (after /model), for the footer.
 	Model string
+	// Verbose and Anim are "on" or "off" to change what the program shows (/verbose, /anim); "" leaves it.
+	Verbose, Anim string
+	// Restart, when not nil, ends the program as ChatRestart: the arguments the caller starts the chat again with (/restart, /swarm).
+	Restart []string
 }
 
 // ChatInfo is what the banner and the footer say about the session.
@@ -111,6 +115,10 @@ type ChatConfig struct {
 	Look      Look
 	MainAgent string
 	Verbose   bool
+	// RestartTo receives the arguments of a restart (see CommandResult.Restart) before the program ends as ChatRestart; nil refuses restarts.
+	RestartTo *[]string
+	// AnimAllowed is whether the terminal and the environment allow motion at all, which /anim on may turn back on after --no-anim or /anim off.
+	AnimAllowed bool
 	// History is where the prompts are remembered (nil: in memory only).
 	History *input.History
 	// CancelStart cancels the making of the session, for Ctrl-C and Esc while it is being made.
@@ -131,6 +139,8 @@ const (
 	ChatQuit ChatEnd = "exit"
 	// ChatInterrupted: a second Ctrl-C at the prompt, or the process was told to stop.
 	ChatInterrupted ChatEnd = "interrupted"
+	// ChatRestart: a command asked for the chat to start again with other flags; ChatConfig.RestartTo holds them.
+	ChatRestart ChatEnd = "restart"
 	// ChatFailed: the session could not be made, or the screen failed.
 	ChatFailed ChatEnd = "error"
 )

@@ -54,6 +54,9 @@ func TestEveryCommandOfThePaletteIsAnswered(t *testing.T) {
 			continue
 		}
 		var out strings.Builder
+		if _, ok := (&sessionHost{s: s}).programCommand("/"+c.name, &out); ok {
+			continue // a command of the terminal program, answered by the host (restart.go): /swarm alone says its usage
+		}
 		slashTo(context.Background(), s, "/"+c.name, &out, &out)
 		if strings.Contains(out.String(), "unknown command") {
 			t.Errorf("/%s is in the palette and the chat does not know it: %q", c.name, out.String())

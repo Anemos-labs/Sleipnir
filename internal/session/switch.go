@@ -7,6 +7,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // SwitchModel moves the single agent to another model between turns, keeping its thread, notes, spine and bill. The agent is
@@ -44,7 +45,39 @@ func (s *Session) SwitchModel(ctx context.Context, ref string) (string, error) {
 	if _, aerr := agent.RebuildArchive(s.Dir, fresh.ID(), s.archive); aerr != nil {
 		s.notice("", "/model: the archive could not be re-indexed, so recall of folded turns may miss: "+aerr.Error())
 	}
-	s.Agent = fresh
+	s.Agent, s.modelRef = fresh, mr.String()
 	s.Log.Emit("", events.TypeModelSwitch, map[string]any{"from": oldModel.ID, "to": m.ID, "provider": mr.Provider})
 	return mr.String(), nil
 }
+
+// SetBudget changes the dollar budget of the single agent for the turns that follow (0 removes it): the chat's /budget. A swarm's budget is
+// the session's, fixed when it starts.
+func (s *Session) SetBudget(usd float64) error {
+	if s.Swarm != nil || s.Agent == nil {
+		return errors.New("a swarm's budget is set when it starts (--budget-usd or swarm.budget_usd)")
+	}
+	if err := s.Agent.SetBudget(usd); err != nil {
+		return err
+	}
+	s.budget = usd
+	return nil
+}
+
+// AllowForSession adds an allow rule for the rest of the session, in the form --allow takes: Bash(go test:*), Edit(src/**), WebFetch(docs.example.com).
+func (s *Session) AllowForSession(rule string) error {
+	r, err := perm.ParseRule(perm.Allow, rule)
+	if err != nil {
+		return err
+	}
+	s.Perm.AddRule(perm.ScopeSession, r)
+	return nil
+}
+
+// Cost is what the session has spent, in dollars.
+func (s *Session) Cost() float64 { return s.cost() }
+
+// Cwd is the directory the session works in.
+func (s *Session) Cwd() string { return s.opts.Cwd }
+
+// ModelRef is the provider/model the session runs on, as --model takes it ("" when the provider was handed in as a value).
+func (s *Session) ModelRef() string { return s.modelRef }

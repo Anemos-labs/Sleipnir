@@ -1193,3 +1193,61 @@ func TestChatAQuestionRingsTheBell(t *testing.T) {
 	r.press(input.RuneKey('3', 0))
 	decision(t, ans)
 }
+
+// A command can ask for the chat to start again with other flags: the program ends as ChatRestart with the arguments handed over, and
+// without a place to put them (a caller that does not restart) the request is ignored rather than ending the chat.
+func TestChatACommandCanRestartTheChatWithOtherFlags(t *testing.T) {
+	var to []string
+	r := startChat(t, rigOpts{restartTo: &to})
+	r.host.command = func(ctx context.Context, line string, out io.Writer) CommandResult {
+		fmt.Fprintln(out, "restarting")
+		return CommandResult{Restart: []string{"--swarm", "8", "--model", "p/m"}}
+	}
+	r.submit("/swarm 8")
+	if e := r.wait(); e.end != ChatRestart {
+		t.Fatalf("ended %+v", e)
+	}
+	if strings.Join(to, " ") != "--swarm 8 --model p/m" {
+		t.Errorf("the arguments: %v", to)
+	}
+
+	r2 := startChat(t, rigOpts{})
+	r2.host.command = func(ctx context.Context, line string, out io.Writer) CommandResult {
+		if line == "/status" {
+			fmt.Fprintln(out, "ran /status")
+			return CommandResult{}
+		}
+		fmt.Fprintln(out, "asked")
+		return CommandResult{Restart: []string{"--no-mcp"}}
+	}
+	r2.submit("/restart --no-mcp")
+	r2.shows("asked")
+	r2.submit("/status")
+	r2.shows("ran /status")
+}
+
+// /verbose and /anim change what the program shows from then on; /anim on does not override a terminal that wants no motion.
+func TestChatVerboseAndAnimResultsChangeTheProgram(t *testing.T) {
+	m := &chatModel{c: ChatConfig{AnimAllowed: true, Look: defaultLook()}, k: newChatLook(defaultLook())}
+	m.commandEnded(runEnd{cmd: CommandResult{Anim: "off"}})
+	if m.k.Anim {
+		t.Error("/anim off")
+	}
+	m.commandEnded(runEnd{cmd: CommandResult{Anim: "on"}})
+	if !m.k.Anim {
+		t.Error("/anim on")
+	}
+	m.commandEnded(runEnd{cmd: CommandResult{Verbose: "on"}})
+	if !m.c.Verbose {
+		t.Error("/verbose on")
+	}
+	m.commandEnded(runEnd{cmd: CommandResult{Verbose: "off"}})
+	if m.c.Verbose {
+		t.Error("/verbose off")
+	}
+	m.c.AnimAllowed = false // NO_COLOR, REDUCE_MOTION or SLEIPNIR_ANIM=0
+	m.commandEnded(runEnd{cmd: CommandResult{Anim: "on"}})
+	if m.k.Anim {
+		t.Error("the terminal's wish for no motion stands over /anim on")
+	}
+}

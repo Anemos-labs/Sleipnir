@@ -1641,6 +1641,13 @@ flags:
 | `/context` | token size of each prompt layer: constitution, shared pin, role pin, notes, spine, verbatim thread |
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
 | `/agents` | the swarm board (agents and tasks); in a single-agent session it says so |
+| `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it) |
+| `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |
+| `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |
+| `/verbose [on\|off]` · `/anim [on\|off]` | show or hide notices and tool errors · turn the motion on or off |
+| `/sessions` · `/cwd` | the newest sessions (resume one with `sleipnir --resume <id>`) · the directory the session works in |
+| `/restart [flags]` | start the chat again with other flags; the model and mode stay, and the conversation comes along when it can (a single agent) |
+| `/swarm <n> [flags]` | start again as a manager with up to `n` workers: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
 | `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan` or `bypass` |
 | `/plan` | shorthand for `/mode plan` (read-only) |
 | `/rewind [id]` | list checkpoints; with an id, restore files to how they were before that turn |
@@ -1651,9 +1658,28 @@ flags:
 | `/<name> [args]` | a custom command from `commands/`, or a skill; `docs/EXTENDING.md` sections 2 and 3 |
 
 A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. Reserved names some of which
-are not implemented (`/clear`, `/config`, `/doctor`, `/hooks`, `/init`, `/login`, `/logout`, `/mcp`, `/memory`, `/model`,
+are not implemented (`/clear`, `/config`, `/doctor`, `/hooks`, `/init`, `/login`, `/logout`, `/memory`,
 `/resume`, `/skill`, `/usage`) cannot be used for custom commands and currently
 answer `unknown command`.
+
+### Inside the chat: every starting flag
+
+Every flag you can start `sleipnir chat` with can be changed from inside it, so nobody leaves the window to change a setting. A flag that is
+a setting of the running session changes it at once; a flag that decides the *shape* of a session (a swarm, tool servers, trust) restarts the
+chat with it, which keeps the conversation when it is a single agent.
+
+| flag | inside the chat |
+|---|---|
+| `--model` | `/model` (menu) |
+| `--mode` | `/mode`, `shift+tab` |
+| `--budget-usd` | `/budget` |
+| `--allow` | `/allow` |
+| `--verbose` · `--no-anim` | `/verbose` · `/anim` |
+| `--resume`, `--continue` | `/sessions` lists them; `/restart --resume ID` |
+| `--cwd` | `/cwd` shows it; `/restart --cwd DIR` |
+| `--swarm`, `--verify`, `--isolation`, `--commit`, `--mailman`, `--role-model` | `/swarm <n> [flags]`, `/restart [flags]` |
+| `--trust-project`, `--no-mcp` | `/restart --trust-project`, `/restart --no-mcp` (`/trust` and `/mcp` show what they cover) |
+| `--plain` | none: it is how a pipe is served, not a setting of the terminal chat |
 
 ## Exit codes
 

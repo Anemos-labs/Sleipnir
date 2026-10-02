@@ -89,7 +89,8 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 	if home, herr := os.UserHomeDir(); herr == nil {
 		hist, _ = input.OpenHistory(filepath.Join(stateDir(home), "history.jsonl")) // never nil; one that cannot be read or written still serves this session
 	}
-	end, err := app.RunChatTTY(ctx, link, attach, app.ChatTTYOptions{NoAnim: f.noAnim, Verbose: f.verbose, MainAgent: mainAgent, History: hist, CancelStart: cancelStart})
+	var restartTo []string
+	end, err := app.RunChatTTY(ctx, link, attach, app.ChatTTYOptions{RestartTo: &restartTo, NoAnim: f.noAnim, Verbose: f.verbose, MainAgent: mainAgent, History: hist, CancelStart: cancelStart})
 
 	// the program is over and the terminal is ours again; the session is whatever the start came to
 	cancelled := startCtx.Err() != nil // Ctrl-C while the session was being made (the program cancels the start), or SIGTERM
@@ -110,9 +111,12 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		// the person is told what happened.
 		printIntegration(os.Stderr, finishRun(ctx, s), false)
 		s.Close()
+		if end == app.ChatRestart && restartTo != nil {
+			runAgain(restartTo) // a command asked for the chat again with other flags (/restart, /swarm): it ends this process
+		}
 	}()
 	switch end {
-	case app.ChatQuit:
+	case app.ChatRestart, app.ChatQuit:
 		s.SetEndReason(session.EndExit)
 	case app.ChatInterrupted:
 		s.SetEndReason(session.EndInterrupted)
@@ -173,6 +177,9 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 // Command runs a slash command. Both of its streams are the one the program is given, so that they come back in the order they were
 // written and nothing reaches the terminal but through the program.
 func (h *sessionHost) Command(ctx context.Context, line string, out io.Writer) app.CommandResult {
+	if res, ok := h.programCommand(line, out); ok {
+		return res
+	}
 	before := h.s.Model.ID
 	quit, send := slashTo(ctx, h.s, line, out, out)
 	res := app.CommandResult{Quit: quit, Send: send}
@@ -180,6 +187,55 @@ func (h *sessionHost) Command(ctx context.Context, line string, out io.Writer) a
 		res.Model = h.s.Model.ID
 	}
 	return res
+}
+
+// programCommand runs the slash commands that act on the terminal program, not the session: /verbose and /anim change what is shown, and
+// /restart and /swarm start the chat again with other flags (the ones that decide the shape of a session: a swarm, its isolation, its
+// verifier, tool servers, trust), carrying the conversation over when it can be.
+func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandResult, bool) {
+	f := strings.Fields(line)
+	onOff := func(name string) (string, bool) {
+		if len(f) < 2 {
+			return "on", true
+		}
+		switch strings.ToLower(f[1]) {
+		case "on", "off":
+			return strings.ToLower(f[1]), true
+		}
+		fmt.Fprintf(out, "usage: %s [on|off]\n", name)
+		return "", false
+	}
+	switch f[0] {
+	case "/verbose":
+		if v, ok := onOff("/verbose"); ok {
+			fmt.Fprintf(out, "verbose: %s (notices and tool errors %s)\n", v, map[string]string{"on": "are shown", "off": "show only warnings"}[v])
+			return app.CommandResult{Verbose: v}, true
+		}
+		return app.CommandResult{}, true
+	case "/anim":
+		if v, ok := onOff("/anim"); ok {
+			fmt.Fprintf(out, "animation: %s\n", v)
+			return app.CommandResult{Anim: v}, true
+		}
+		return app.CommandResult{}, true
+	case "/restart", "/swarm":
+		rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
+		if f[0] == "/swarm" {
+			if len(f) < 2 {
+				fmt.Fprintln(out, "usage: /swarm <workers> [flags]: start again as a manager with up to that many workers, e.g. /swarm 8 --verify \"go test {dirs}\" --isolation worktree")
+				return app.CommandResult{}, true
+			}
+			rest = "--swarm " + rest
+		}
+		args, err := restartArgs(h.s, splitArgs(rest))
+		if err != nil {
+			fmt.Fprintln(out, f[0]+":", err)
+			return app.CommandResult{}, true
+		}
+		fmt.Fprintf(out, "restarting: sleipnir chat %s\n", strings.Join(args, " "))
+		return app.CommandResult{Restart: args}, true
+	}
+	return app.CommandResult{}, false
 }
 
 // Mode is the permission mode in force.
@@ -205,6 +261,14 @@ var chatCommands = []chatCommand{
 	{"compact", "[focus]", "fold the older thread now"},
 	{"agents", "", "swarm board: agents and tasks"},
 	{"model", "[provider/model]", "show the model, or move this conversation to another one (the prompt cache starts over)"},
+	{"budget", "[usd|off]", "show or set the dollar budget for the turns from now on"},
+	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},
+	{"verbose", "[on|off]", "show or hide notices and tool errors"},
+	{"anim", "[on|off]", "turn the motion on or off"},
+	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
+	{"swarm", "<n> [flags]", "start again as a manager with up to n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
+	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
+	{"cwd", "", "the directory this session works in"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass"},
 	{"plan", "", "plan mode: read-only"},
 	{"rewind", "[id]", "list checkpoints, or restore files to before a turn"},

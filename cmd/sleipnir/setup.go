@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -253,7 +254,12 @@ func cmdSessions(_ context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	root := *dir
+	return printSessions(os.Stdout, os.Stderr, *dir, *n)
+}
+
+// printSessions lists the newest n sessions of the directory dir ("" for the default one), their lines to out and the note to errw.
+func printSessions(out, errw io.Writer, dir string, n int) error {
+	root := dir
 	if root == "" {
 		home := os.Getenv("SLEIPNIR_HOME")
 		if home == "" {
@@ -264,7 +270,7 @@ func cmdSessions(_ context.Context, args []string) error {
 	}
 	ents, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
-		fmt.Fprintln(os.Stderr, "no sessions yet")
+		fmt.Fprintln(errw, "no sessions yet")
 		return nil
 	}
 	if err != nil {
@@ -288,8 +294,8 @@ func cmdSessions(_ context.Context, args []string) error {
 		rows = append(rows, r)
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].when.After(rows[j].when) })
-	if len(rows) > *n {
-		rows = rows[:*n]
+	if len(rows) > n {
+		rows = rows[:n]
 	}
 	for i := range rows { // read the logs of the rows shown, not of every session ever recorded
 		r := &rows[i]
@@ -302,10 +308,10 @@ func cmdSessions(_ context.Context, args []string) error {
 		if r.resumable {
 			mark = "↺"
 		}
-		fmt.Printf("%s %s  %-28s $%-8.4f %s\n", mark, r.id, r.model, r.cost, r.prompt)
+		fmt.Fprintf(out, "%s %s  %-28s $%-8.4f %s\n", mark, r.id, r.model, r.cost, r.prompt)
 	}
 	if len(rows) > 0 {
-		fmt.Fprintln(os.Stderr, "↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project's newest)")
+		fmt.Fprintln(errw, "↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project's newest)")
 	}
 	return nil
 }

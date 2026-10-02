@@ -160,7 +160,9 @@ type Session struct {
 	opts Options
 	// newSolo builds the single agent again on the session's current Provider and Model (SwitchModel).
 	newSolo func() (*agent.Agent, error)
-	cfg     *config.Config
+	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
+	modelRef string
+	cfg      *config.Config
 
 	ID, Dir string
 	tmp     string // the private TMPDIR of the session's commands (under Dir); "" when the run brings its own environment
@@ -462,7 +464,7 @@ func (s *Session) buildProvider(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.Provider, s.Model = p, s.describe(ctx, p, m)
+	s.Provider, s.Model, s.modelRef = p, s.describe(ctx, p, m), ref.String()
 	return nil
 }
 

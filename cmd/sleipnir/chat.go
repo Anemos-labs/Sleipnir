@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -243,6 +245,14 @@ const chatHelp = `/help              this text (and your custom commands and ski
 /compact [focus]   fold the older thread now (optionally: what to keep in view); a declared, priced rebase
 /agents            swarm board: agents and tasks
 /model [ref]       show the model, or move this conversation to another (provider/model; the prompt cache starts over; sleipnir models lists them)
+/budget [usd|off]  show or set the dollar budget for the turns from now on
+/allow <rule>      allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)
+/verbose [on|off]  show or hide notices and tool errors (--verbose)
+/anim [on|off]     turn the motion on or off (--no-anim)
+/restart [flags]   start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)
+/swarm <n> [flags] start again as a manager with up to n workers: /swarm 8 --verify "go test {dirs}" --isolation worktree
+/sessions          the newest sessions; resume one with sleipnir --resume <id>
+/cwd               the directory this session works in
 /mode <m>          default | accept-edits | plan | bypass   (/plan = plan mode)
 /rewind            list checkpoints;  /rewind <id> restores files to before that turn
 /diff <id>         show what changed since a checkpoint
@@ -310,6 +320,53 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 			fmt.Fprintln(stderr, tools.SanitizeForTerminal(err.Error()))
 		} else {
 			fmt.Fprintf(stderr, "model: %s (the conversation carries over; the prompt cache starts over)\n", ref)
+		}
+	case "/budget":
+		if len(f) < 2 {
+			if b := s.Budget(); b > 0 {
+				fmt.Fprintf(stderr, "budget: $%.2f, spent $%.4f (change it with /budget <dollars>, /budget off removes it)\n", b, s.Cost())
+			} else {
+				fmt.Fprintf(stderr, "budget: none, spent $%.4f (set one with /budget <dollars>)\n", s.Cost())
+			}
+			break
+		}
+		usd, err := parseBudget(f[1])
+		if err == nil {
+			err = s.SetBudget(usd)
+		}
+		switch {
+		case err != nil:
+			fmt.Fprintln(stderr, "budget:", err)
+		case usd == 0:
+			fmt.Fprintln(stderr, "budget: removed")
+		default:
+			fmt.Fprintf(stderr, "budget: $%.2f for the turns from now on (spent so far $%.4f)\n", usd, s.Cost())
+		}
+	case "/allow":
+		rules := expandAllow(f[1:])
+		if len(rules) == 0 {
+			fmt.Fprintln(stderr, "usage: /allow tests | /allow 'Bash(go test:*)' | /allow 'Edit(src/**)' ...: allow for the rest of this session what would otherwise ask")
+			break
+		}
+		var done []string
+		for _, r := range rules {
+			if err := s.AllowForSession(r); err != nil {
+				fmt.Fprintf(stderr, "allow %s: %v\n", tools.SanitizeForTerminal(r), err)
+			} else {
+				done = append(done, tools.SanitizeForTerminal(r))
+			}
+		}
+		switch {
+		case len(done) > 4: // the "tests" preset: fourteen rules are one idea
+			fmt.Fprintf(stderr, "allowed for this session: %d rules, among them %s, %s\n", len(done), done[0], done[1])
+		case len(done) > 0:
+			fmt.Fprintf(stderr, "allowed for this session: %s\n", strings.Join(done, ", "))
+		}
+	case "/cwd":
+		fmt.Fprintf(stderr, "cwd: %s (a session works in one directory: start sleipnir there, or /restart --cwd DIR)\n", tildePath(s.Cwd()))
+	case "/sessions":
+		if err := printSessions(stdout, stderr, "", 10); err != nil {
+			fmt.Fprintln(stderr, "sessions:", err)
 		}
 	case "/mode":
 		if len(f) < 2 {
@@ -608,4 +665,17 @@ func mcpPromptArgs(p mcp.PromptEntry, line string) map[string]string {
 		out[free[i]] = w
 	}
 	return out
+}
+
+// parseBudget reads a dollar amount for /budget: "5", "$5", "0.50"; "off", "none" and "0" remove the budget.
+func parseBudget(s string) (float64, error) {
+	t := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(s), "$"))
+	if t == "off" || t == "none" {
+		return 0, nil
+	}
+	v, err := strconv.ParseFloat(t, 64)
+	if err != nil || v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("want dollars such as 5 or 0.50, or off; got %q", s)
+	}
+	return v, nil
 }

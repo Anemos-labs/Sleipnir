@@ -261,6 +261,25 @@ type Result struct {
 	Compactions int
 }
 
+// Budget is the agent's dollar budget (0: none), and SetBudget changes it for the runs that follow: the chat's /budget. A value that is
+// not a number, or negative, is refused for the reason New refuses it.
+func (a *Agent) Budget() float64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.BudgetUSD
+}
+
+// SetBudget sets the budget; 0 removes it.
+func (a *Agent) SetBudget(usd float64) error {
+	if math.IsNaN(usd) || math.IsInf(usd, 0) || usd < 0 {
+		return fmt.Errorf("the budget must be zero (none) or a positive amount, got %v", usd)
+	}
+	a.mu.Lock()
+	a.cfg.BudgetUSD = usd
+	a.mu.Unlock()
+	return nil
+}
+
 // ErrBudget is returned when an agent exhausts its dollar budget.
 var ErrBudget = errors.New("agent budget exhausted")
 
@@ -628,10 +647,10 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		if a.life.Err() != nil {
 			return res, ErrClosed
 		}
-		if a.cfg.BudgetUSD > 0 {
+		if b := a.Budget(); b > 0 {
 			// Written so that a cost that is not a number stops the run instead of
 			// slipping under the limit (a comparison with NaN is false either way).
-			if _, c := a.Usage(); !(c < a.cfg.BudgetUSD) {
+			if _, c := a.Usage(); !(c < b) {
 				return res, ErrBudget
 			}
 		}
