@@ -24,7 +24,7 @@ var allTypes = []string{
 	events.TypeMailmanState, events.TypeWorkspaceCreate, events.TypeWorkspaceRemove, events.TypeWorkspacePrune, events.TypeWorkspaceCommit,
 	events.TypeWorkspaceReset, events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail,
 	events.TypeMergeRolledBack, events.TypeMergeRejected, events.TypeMergeFastFwd, events.TypeTaskMerge, events.TypeSwarmIntegration,
-	events.TypeUserInput, events.TypeUserSteer, events.TypeOutcome, events.TypeAgentCancel,
+	events.TypeUserInput, events.TypeUserSteer, events.TypeOutcome, events.TypeAgentCancel, events.TypePermState, events.TypeModelSwitch, "goal.state",
 	"agent.assign", "agent.panic", "agent.abandon", "mail.drop", "notice", "swarm.budget", "swarm.shutdown", "supervisor.panic", "sink.panic",
 	"tool.panic", "tool.timeout", "tool.spill", "tool.budget", "hook.run", "x.never.heard.of.it", "",
 }
@@ -528,5 +528,18 @@ func TestASnapshotIsImmutableAndSharesNothing(t *testing.T) {
 	}
 	if got := js(st.Snapshot()); got != want {
 		t.Fatalf("writing to a snapshot reached the State")
+	}
+}
+
+// Every event type the harness writes is one the State knows: the session's permission state, a model switch and a standing goal's state are in the
+// log of a real session and nothing the UI shows. (perm.state was written for a day before the state knew it, and every real-session test said so.)
+func TestTheStateKnowsTheEventsASessionWritesAboutItself(t *testing.T) {
+	b := newB()
+	st := New()
+	apply(t, st, b.Emit("", events.TypePermState, map[string]any{"mode": "accept-edits", "allow": []string{"Bash(go test:*)"}}))
+	apply(t, st, b.Emit("", events.TypeModelSwitch, map[string]any{"from": "a", "to": "b", "provider": "p"}))
+	apply(t, st, b.Emit("", "goal.state", map[string]any{"goal": map[string]any{"Objective": "x"}}))
+	if s := st.Stats(); s.Unknown != 0 || s.Events != 3 {
+		t.Errorf("unknown %d of %d events: %v", s.Unknown, s.Events, s.UnknownTypes)
 	}
 }

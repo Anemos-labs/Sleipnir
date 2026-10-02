@@ -254,7 +254,8 @@ func (s *State) apply(e events.Event) {
 		s.onRestore(e, t)
 
 	case events.TypeTurnAppend, events.TypeAgentSnapshot, events.TypeCachePlan, events.TypeRecall,
-		events.TypeOutcome, "tool.spill", "tool.budget", "hook.run":
+		events.TypeOutcome, "tool.spill", "tool.budget", "hook.run",
+		events.TypePermState, events.TypeModelSwitch, "goal.state":
 		// Known, and nothing the UI shows: the transcript is the conversation's, not the state's.
 	default:
 		s.stats.Unknown++
