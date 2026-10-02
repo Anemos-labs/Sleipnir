@@ -270,6 +270,7 @@ const chatHelp = `conversation
 
 model and cost
 /model [ref]       show the model, or change it (a team starts again on it, the manager's conversation comes along)
+/fav [ref]         star a model, or unstar it (this one when none is named): starred models come first in /model
 /login [provider]  add a key, or sign in with ChatGPT; the chat comes back where you were
 /budget [usd|off]  the dollar budget for the turns from now on
 /cost              tokens, cost and cache hit ratio so far
@@ -361,6 +362,16 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		} else {
 			fmt.Fprintf(stderr, "model: %s (the conversation carries over; the prompt cache starts over)\n", ref)
 		}
+	case "/fav":
+		ref := s.ModelRef()
+		if len(f) > 1 {
+			ref = f[1]
+		}
+		if len(f) > 2 || ref == "" {
+			fmt.Fprintln(stderr, "usage: /fav [provider/model]: star the model, or unstar it; this session's model when none is named")
+			break
+		}
+		fmt.Fprintln(stderr, favoriteLine(nil, s.Home(), ref))
 	case "/budget":
 		if len(f) < 2 {
 			if b := s.Budget(); b > 0 {

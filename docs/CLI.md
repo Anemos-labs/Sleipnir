@@ -1648,6 +1648,7 @@ flags:
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
 | `/agents` | the team's agents and tasks (`ctrl+g`); in a single-agent session it says so |
 | `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it). A team starts again on the new model, with the manager's conversation (the workers start again) and the roles that name their own model kept; the reference is checked first, so a typo or a provider without a key ends nothing. `/roles role=model` checks its references the same way |
+| `/fav [ref]` | star a model, or unstar it (the session's own when none is named): a starred model comes first in the `/model` menu and in `sleipnir models`, and is kept as `models.favorites` in your own configuration |
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |
 | `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |
 | `/verbose [on\|off]` · `/anim [on\|off]` | show or hide notices and tool errors · turn the motion on or off |

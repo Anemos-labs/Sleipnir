@@ -82,8 +82,11 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			return
 		}
 		log, _ := s.Log.Subscribe(4096) // before the past is read: what comes between is in both, and the state ignores an event it has seen
-		attach <- app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, State: pastState(s), Commands: chatSlashCommands(s), Root: cwd,
-			Models: modelChoices(startCtx), Roles: roleChoices(s)}
+		a := app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, State: pastState(s), Commands: chatSlashCommands(s), Root: cwd, Roles: roleChoices(s)}
+		if host.menu = modelChoices(startCtx, s.Home()); host.menu != nil {
+			a.Models = host.menu.Choices
+		}
+		attach <- a
 	}()
 
 	var hist *input.History
@@ -152,6 +155,25 @@ func pastState(s *session.Session) *state.State {
 	return st
 }
 
+// favoriteLine stars the model ref names, or unstars it, and says which: through the menu /model completes from when there is one, so that
+// the order of it changes at once.
+func favoriteLine(menu *modelMenu, home, ref string) string {
+	var starred bool
+	var err error
+	if menu != nil {
+		starred, err = menu.Toggle(ref)
+	} else {
+		starred, err = toggleFavorite(home, ref)
+	}
+	switch {
+	case err != nil:
+		return "fav: " + tools.SanitizeForTerminal(err.Error())
+	case starred:
+		return "starred " + tools.SanitizeForTerminal(ref) + ": it comes first in /model and in `sleipnir models` (/fav again unstars it)"
+	}
+	return "unstarred " + tools.SanitizeForTerminal(ref)
+}
+
 // roleChoices is what `/roles ` completes to: the roles that can run on a model of their own (the default is /model's), each with the model it
 // runs on now and where that came from.
 func roleChoices(s *session.Session) func() []input.Choice {
@@ -208,6 +230,7 @@ func tildePath(p string) string {
 type sessionHost struct {
 	s     *session.Session
 	first []string
+	menu  *modelMenu // what /model completes from, and /fav changes (nil until the session is made, and when the configuration cannot be read)
 }
 
 // Turn runs a goal. What the model says, the tools it calls and what they answer reach the screen through the sink; what comes back
@@ -270,6 +293,17 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 			fmt.Fprintf(out, "animation: %s\n", v)
 			return app.CommandResult{Anim: v}, true
 		}
+		return app.CommandResult{}, true
+	case "/fav":
+		ref := h.s.ModelRef()
+		if len(f) > 1 {
+			ref = f[1]
+		}
+		if len(f) > 2 || ref == "" {
+			fmt.Fprintln(out, "usage: /fav [provider/model]: star the model, or unstar it; this session's model when none is named")
+			return app.CommandResult{}, true
+		}
+		fmt.Fprintln(out, favoriteLine(h.menu, h.s.Home(), ref))
 		return app.CommandResult{}, true
 	case "/roles":
 		if len(f) == 1 {
@@ -402,6 +436,7 @@ var chatCommands = []chatCommand{
 	{"compact", "[focus]", "fold the older thread now"},
 	{"agents", "", "the team's agents and tasks (ctrl+g)"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
+	{"fav", "[provider/model]", "star a model, or unstar it (this one when none is named): starred models come first in /model and `sleipnir models`"},
 	{"login", "[provider]", "add a key, or sign in with your ChatGPT plan, for a provider; the chat comes back where you were"},
 	{"budget", "[usd|off]", "show or set the dollar budget for the turns from now on"},
 	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},

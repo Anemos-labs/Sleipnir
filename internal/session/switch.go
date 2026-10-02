@@ -103,6 +103,9 @@ func (s *Session) Cost() float64 { return s.cost() }
 // Cwd is the directory the session works in.
 func (s *Session) Cwd() string { return s.opts.Cwd }
 
+// Home is the home directory the session reads and writes the user's own files under (~/.sleipnir).
+func (s *Session) Home() string { return s.opts.Home }
+
 // ModelRef is the provider/model the session runs on, as --model takes it ("" when the provider was handed in as a value).
 func (s *Session) ModelRef() string { return s.modelRef }
 

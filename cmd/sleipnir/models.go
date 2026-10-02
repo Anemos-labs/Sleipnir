@@ -305,47 +305,107 @@ func priceOut(r modelRow) string {
 	return fmt.Sprintf("$%.3g/M out", r.Model.Price.OutputPerM)
 }
 
-// modelChoices starts fetching the catalogues of every usable provider in the background and returns what `/model ` completes
-// from: favorites first, then by reference. It answers from memory, and with nothing until the first catalogue has come.
-func modelChoices(ctx context.Context) func() []input.Choice {
-	cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true})
+// modelMenu is what `/model ` completes from: the chat models of every provider with a key, favorites first, then by reference. /fav stars
+// and unstars one, in the user's own configuration and in the menu.
+type modelMenu struct {
+	home string
+	mu   sync.Mutex
+	rows []modelRow
+	fav  map[string]bool
+	list []input.Choice
+}
+
+// modelChoices starts fetching the catalogues of every usable provider in the background and returns the menu they make. It answers from
+// memory, and with nothing until the first catalogue has come.
+func modelChoices(ctx context.Context, home string) *modelMenu {
+	cfg, _, err := config.Load(config.LoadOpts{Home: home, UntrustedProject: true})
 	if err != nil {
 		return nil
 	}
-	var mu sync.Mutex
-	var list []input.Choice
+	m := &modelMenu{home: home, fav: favoriteSet(cfg)}
 	go func() {
 		rows, _ := fetchModels(ctx, append(usableSources(cfg, false), localSources(ctx, cfg)...))
-		fav := favoriteSet(cfg)
-		sort.SliceStable(rows, func(i, j int) bool {
-			if fi, fj := fav[rows[i].Ref], fav[rows[j].Ref]; fi != fj {
-				return fi
-			}
-			return rows[i].Ref < rows[j].Ref
-		})
-		var out []input.Choice
-		for _, r := range rows {
-			if !r.IsChat() {
-				continue
-			}
-			d := fmt.Sprintf("%s ctx, %s", human(r.Model.ContextTokens), priceOut(r))
-			if r.SupportsReasoning() {
-				d += ", reasoning"
-			}
-			if fav[r.Ref] {
-				d = "* " + d
-			}
-			out = append(out, input.Choice{Text: r.Ref, Detail: d})
-		}
-		mu.Lock()
-		list = out
-		mu.Unlock()
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.rows = rows
+		m.rebuild()
 	}()
-	return func() []input.Choice {
-		mu.Lock()
-		defer mu.Unlock()
-		return list
+	return m
+}
+
+// rebuild orders the models and describes them; the caller holds the lock.
+func (m *modelMenu) rebuild() {
+	rows := slices.Clone(m.rows)
+	sort.SliceStable(rows, func(i, j int) bool {
+		if fi, fj := m.fav[rows[i].Ref], m.fav[rows[j].Ref]; fi != fj {
+			return fi
+		}
+		return rows[i].Ref < rows[j].Ref
+	})
+	var out []input.Choice
+	for _, r := range rows {
+		if !r.IsChat() {
+			continue
+		}
+		d := fmt.Sprintf("%s ctx, %s", human(r.Model.ContextTokens), priceOut(r))
+		if r.SupportsReasoning() {
+			d += ", reasoning"
+		}
+		if m.fav[r.Ref] {
+			d = "* " + d
+		}
+		out = append(out, input.Choice{Text: r.Ref, Detail: d})
 	}
+	m.list = out
+}
+
+// Choices is the list `/model ` completes from.
+func (m *modelMenu) Choices() []input.Choice {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.list
+}
+
+// Toggle stars the model that ref names, or unstars it when it was starred, and reports which. The choice is kept in the user's
+// configuration (models.favorites, which `sleipnir models` lists first too) and the menu is ordered again at once.
+func (m *modelMenu) Toggle(ref string) (bool, error) {
+	starred, err := toggleFavorite(m.home, ref)
+	if err != nil {
+		return false, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if starred {
+		m.fav[ref] = true
+	} else {
+		delete(m.fav, ref)
+	}
+	m.rebuild()
+	return starred, nil
+}
+
+// toggleFavorite adds ref to the favorites of the user's configuration under home, or removes it when it is there.
+func toggleFavorite(home, ref string) (bool, error) {
+	if _, _, ok := config.SplitModelRef(ref); !ok {
+		return false, fmt.Errorf("%q is not a provider/model reference (see `sleipnir models`)", ref)
+	}
+	cfg, _, err := config.Load(config.LoadOpts{Home: home, UntrustedProject: true})
+	if err != nil {
+		return false, err
+	}
+	favs := slices.Clone(cfg.Models.Favorites)
+	starred := !slices.Contains(favs, ref)
+	if starred {
+		favs = append(favs, ref)
+	} else {
+		favs = slices.DeleteFunc(favs, func(x string) bool { return x == ref })
+	}
+	return starred, saveFavorites(home, favs)
+}
+
+// saveFavorites writes the favorites into the user's configuration under home.
+func saveFavorites(home string, favs []string) error {
+	return config.Save(config.UserConfigPath(home), map[string]any{"models": map[string]any{"favorites": favs}})
 }
 
 func favoriteSet(cfg *config.Config) map[string]bool {
@@ -412,7 +472,7 @@ func cmdFavorites(w io.Writer, args []string) error {
 		}
 	}
 	home, _ := os.UserHomeDir()
-	if err := config.Save(config.UserConfigPath(home), map[string]any{"models": map[string]any{"favorites": favs}}); err != nil {
+	if err := saveFavorites(home, favs); err != nil {
 		return err
 	}
 	fmt.Fprintf(w, "%d favorite(s)\n", len(favs))
