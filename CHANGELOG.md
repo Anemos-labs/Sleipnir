@@ -84,6 +84,8 @@ The first release.
 
 ### Providers
 
+- Five more providers are built in: Gemini (`GEMINI_API_KEY`), Mistral, xAI, DeepSeek's own API and Hugging Face's router (`HF_TOKEN`). `docs/PROVIDERS.md` lists every built-in provider with its key
+  variable, its endpoint and what has actually been verified: only Heimdall has been run on a live key.
 - A server that cuts the prompt off is noticed. Ollama's OpenAI-compatible endpoint reads only as much as the model's window (4096 tokens on a small graphics card) and says nothing,
   so a weak setup shows up as a model that forgets its instructions and calls tools as plain text. For a model whose window was never told, when the prompt grows by 5% and the tokens
   the server reports do not, the harness says so once, names the window it saw, keeps the conversation inside it from then on, and points at `OLLAMA_CONTEXT_LENGTH` and

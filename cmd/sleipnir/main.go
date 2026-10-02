@@ -38,7 +38,7 @@ func main() {
 	// First, before anything reads a key or starts a command: see docs/SECURITY.md. MoveKeys takes the
 	// provider keys out of the environment, so no command the harness starts inherits them; every reader
 	// goes through harden.Secret (harden.TestReadersOfCredentialsUseSecret).
-	harden.Process(harden.MoveKeys())
+	harden.Process(harden.MoveKeys("HF_TOKEN")) // a key that does not end in API_KEY is named
 	// Keys the person stored with `sleipnir login`: held in memory beside the ones moved out of the environment.
 	if err := config.LoadStoredKeys(userHome()); err != nil {
 		fmt.Fprintln(os.Stderr, "sleipnir:", err)
@@ -230,7 +230,7 @@ Commands:
   version   print version
 
 A model is written provider/model. Built in: heimdall (recommended), openrouter, openai, anthropic,
-together, fireworks, groq, cerebras, deepinfra, and the local servers ollama, lmstudio, llamacpp and
+together, fireworks, groq, cerebras, deepinfra, mistral, gemini, xai, deepseek, huggingface, and the local servers ollama, lmstudio, llamacpp and
 vllm (no key); or a provider from your config. A bare model id goes to the default provider: the only
 one configured, else the first hosted one whose key variable (HEIMDALL_API_KEY, OPENROUTER_API_KEY,
 OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from ~/.sleipnir/auth.json (sleipnir login stores it there, mode 0600). Every command takes -h.

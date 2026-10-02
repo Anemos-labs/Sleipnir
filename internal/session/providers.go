@@ -64,6 +64,12 @@ var hostedOpenWeights = map[string][2]string{
 	"groq":      {"https://api.groq.com/openai/v1", "GROQ_API_KEY"},
 	"cerebras":  {"https://api.cerebras.ai/v1", "CEREBRAS_API_KEY"},
 	"deepinfra": {"https://api.deepinfra.com/v1/openai", "DEEPINFRA_API_KEY"},
+	"mistral":   {"https://api.mistral.ai/v1", "MISTRAL_API_KEY"},
+	"gemini":    {"https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY"},
+	"xai":       {"https://api.x.ai/v1", "XAI_API_KEY"},
+	"deepseek":  {"https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"},
+	// Hugging Face's router: one key, the open-weight models of many hosts (a model id is org/name, so a marketplace's id and its own do not clash).
+	"huggingface": {"https://router.huggingface.co/v1", "HF_TOKEN"},
 }
 
 // localServers run on this machine and need no key: `ollama/qwen3:8b` is enough. They are never picked
@@ -171,7 +177,7 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 		if p, ok := lookupProvider(cfg, ref[:i]); ok {
 			// "anthropic/claude-x" is also a marketplace id: with no key for that provider and a
 			// default provider that has one, the whole string is the marketplace's model id.
-			if d, derr := defaultProvider(cfg); derr == nil && d != ref[:i] && (ref[:i] == "anthropic" || ref[:i] == "openai") && p.APIKey() == "" {
+			if d, derr := defaultProvider(cfg); derr == nil && d != ref[:i] && (ref[:i] == "anthropic" || ref[:i] == "openai" || ref[:i] == "deepseek") && p.APIKey() == "" {
 				return ModelRef{Provider: d, Model: ref}, nil
 			}
 			return ModelRef{Provider: ref[:i], Model: ref[i+1:]}, nil
@@ -277,7 +283,7 @@ func defaultProvider(cfg *config.Config) (string, error) {
 			return n, nil
 		}
 	}
-	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra"} {
+	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra", "mistral", "gemini", "xai", "deepseek", "huggingface"} {
 		if p, ok := lookupProvider(cfg, n); ok && p.APIKey() != "" {
 			return n, nil
 		}

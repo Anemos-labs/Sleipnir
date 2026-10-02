@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/provider"
@@ -318,11 +319,13 @@ func TestFirstRunFindsALocalServerAndNeedsNoKey(t *testing.T) {
 	}
 	var model string
 	var out bytes.Buffer
-	// 9 hosted providers take a key; the running local server is the tenth choice.
-	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("10\n1\n")), &out, nosecret, true); err != nil {
+	// The hosted providers take a key; the running local server is the choice after them.
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	n := len(loginChoices(cfg)) + 1
+	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader(fmt.Sprintf("%d\n1\n", n))), &out, nosecret, true); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if model != "ollama/llama3:8b" || !strings.Contains(out.String(), "10. ollama  (running on this machine, no key)") {
+	if model != "ollama/llama3:8b" || !strings.Contains(out.String(), fmt.Sprintf("%d. ollama  (running on this machine, no key)", n)) {
 		t.Fatalf("%q\n%s", model, out.String())
 	}
 	if _, err := os.Stat(filepath.Join(home, ".sleipnir", "auth.json")); err == nil {
