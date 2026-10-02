@@ -687,6 +687,28 @@ func rewind(w io.Writer, s *session.Session, args []string) {
 		return
 	}
 	fmt.Fprintln(w, rep.Summary())
+	if n := rewindNote(rep); n != "" {
+		s.Send(n)
+	}
+}
+
+// rewindNote is what the agent is told after a /rewind: the files that were put back no longer hold the edits it remembers making, and a trial
+// found it quoting one of them as if it were still on disk. Empty when nothing was changed.
+func rewindNote(rep checkpoint.RestoreReport) string {
+	if rep.DryRun {
+		return ""
+	}
+	var files []string
+	for _, f := range rep.Files {
+		if f.Outcome == checkpoint.OutcomeDone && f.Action != checkpoint.ActionRmdir {
+			files = append(files, f.Path)
+		}
+	}
+	if len(files) == 0 {
+		return ""
+	}
+	return "Notice from the harness: the person rewound the project's files to checkpoint " + rep.ID + " (/rewind). These were put back as they were before the edits you made after it, so they no longer hold those edits: " +
+		tools.SanitizeForTerminal(strings.Join(files, ", ")) + ". Read them again before you rely on what you remember of them."
 }
 
 func showDiff(stdout, stderr io.Writer, s *session.Session, args []string) {

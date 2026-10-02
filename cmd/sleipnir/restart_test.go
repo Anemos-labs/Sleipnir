@@ -432,3 +432,21 @@ func TestVerifyLineSaysWhatTheGateDid(t *testing.T) {
 		}
 	}
 }
+
+// A /rewind puts files back; the model is told which, or it goes on quoting the edit it remembers as if it were on disk.
+func TestRewindNoteNamesTheFilesPutBack(t *testing.T) {
+	rep := checkpoint.RestoreReport{ID: "cp_0002", Files: []checkpoint.FileResult{
+		{Path: "avg.py", Action: checkpoint.ActionRestore, Outcome: checkpoint.OutcomeDone},
+		{Path: "old.txt", Action: checkpoint.ActionRestore, Outcome: checkpoint.OutcomeUnchanged},
+	}}
+	n := rewindNote(rep)
+	if !strings.Contains(n, "avg.py") || strings.Contains(n, "old.txt") || !strings.Contains(n, "cp_0002") || !strings.Contains(n, "Read") {
+		t.Errorf("the note is %q", n)
+	}
+	if n := rewindNote(checkpoint.RestoreReport{ID: "cp_0001"}); n != "" {
+		t.Errorf("nothing was put back and the note is %q", n)
+	}
+	if n := rewindNote(checkpoint.RestoreReport{ID: "cp_0001", DryRun: true, Files: rep.Files}); n != "" {
+		t.Errorf("a dry run changed nothing and the note is %q", n)
+	}
+}
