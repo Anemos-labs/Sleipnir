@@ -497,7 +497,8 @@ defect the runs showed, with the evidence, and what changed.
   ending "$0.01/M ou" and "t  tools", the confirmation broken before its semicolon. A line wider than the terminal is broken by the terminal wherever the column falls, and a menu that
   counts its rows to draw them again (the arrow-key menus of the first run and `sleipnir login`) counts a wrapped row twice. The messages are now broken at spaces to the width of the
   terminal they are written to, the menus cut a row that is too long (with an ellipsis) and say what was chosen on one line, and the model menu's columns are as wide as its longest row
-  needs (the price column was one character short for "$0.019", so "tools" moved). Tests drive the menu at a width of forty and check every line.
+  needs (the price column was one character short for "$0.019", so "tools" moved). Tests drive the menu at a width of forty and check every line. The explanations that `init`, `trust`,
+  `inspect` and the refusals of `run` print break at spaces the same way.
 
 - **Esc did not stop a team.** Found by pressing it in the default chat with three workers running: the workers were stopped and their tasks went back to todo, and a second and a half later the
   swarm woke the manager for those very changes ("While you were idle: T1 went back to todo; ...") and it checked the board and started the workers again. Then the next goal was answered

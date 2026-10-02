@@ -142,6 +142,6 @@ func printRefusals(w io.Writer, refused []session.RefusedCommand) {
 		for _, rule := range rules[:min(len(rules), 3)] {
 			flags = append(flags, "--allow '"+rule+"'")
 		}
-		fmt.Fprintf(w, "to let them through next time: %s (or --allow %s for the build and test commands of most projects)\n", strings.Join(flags, " "), testsPreset)
+		fmt.Fprintln(w, wrapFor(w, fmt.Sprintf("to let them through next time: %s (or --allow %s for the build and test commands of most projects)", strings.Join(flags, " "), testsPreset)))
 	}
 }

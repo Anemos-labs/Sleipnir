@@ -98,7 +98,7 @@ flags:
 	fmt.Fprintf(os.Stderr, "sleipnir inspect: serving %s\n", root)
 	fmt.Println(u)
 	if *token != "" {
-		fmt.Fprintln(os.Stderr, "sleipnir inspect: the URL carries the access token; it is stored in a cookie and removed from the address bar on first load")
+		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, "sleipnir inspect: the URL carries the access token; it is stored in a cookie and removed from the address bar on first load"))
 	}
 	if ta, ok := ln.Addr().(*net.TCPAddr); ok && !ta.IP.IsLoopback() {
 		fmt.Fprintf(os.Stderr, "sleipnir inspect: listening on %s, not only on loopback\n", ta)

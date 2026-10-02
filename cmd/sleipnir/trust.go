@@ -128,12 +128,12 @@ func trustShow(w io.Writer, ledger *trust.Ledger, home, dir string) error {
 	state, entry := ledger.Check(dir, fp)
 	switch state {
 	case trust.Trusted:
-		fmt.Fprintf(w, "\ntrusted since %s, for exactly these files: a session started here uses them without asking (`sleipnir trust forget` ends it)\n", entry.Saved)
+		fmt.Fprintln(w, "\n"+wrapFor(w, fmt.Sprintf("trusted since %s, for exactly these files: a session started here uses them without asking (`sleipnir trust forget` ends it)", entry.Saved)))
 	case trust.Changed:
-		fmt.Fprintf(w, "\nyou trusted this directory on %s, and these files are not the ones you saw: %s\nThey are not used until you say yes again (`sleipnir trust add`, or the question at the start of a chat).\n",
-			entry.Saved, trust.DescribeChanges(trust.Changes(entry, fp)))
+		fmt.Fprintln(w, "\n"+wrapFor(w, fmt.Sprintf("you trusted this directory on %s, and these files are not the ones you saw: %s", entry.Saved, trust.DescribeChanges(trust.Changes(entry, fp)))))
+		fmt.Fprintln(w, wrapFor(w, "They are not used until you say yes again (`sleipnir trust add`, or the question at the start of a chat)."))
 	default:
-		fmt.Fprintln(w, "\nnot trusted: a chat asks about these at its start, and a run leaves them out unless you pass --trust-project or run `sleipnir trust add`")
+		fmt.Fprintln(w, "\n"+wrapFor(w, "not trusted: a chat asks about these at its start, and a run leaves them out unless you pass --trust-project or run `sleipnir trust add`"))
 	}
 	return nil
 }

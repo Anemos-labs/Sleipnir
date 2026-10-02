@@ -68,7 +68,7 @@ func cmdInit(ctx context.Context, args []string) error {
 	// the first run and keeps the answer (pick.go).
 	def := *model
 	if def == "" && *user {
-		fmt.Fprintln(os.Stderr, "no model is set: `sleipnir` asks your provider which models it has on its first run and keeps your choice; or pass --model provider/model here")
+		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, "no model is set: `sleipnir` asks your provider which models it has on its first run and keeps your choice; or pass --model provider/model here"))
 	}
 	// Project files are part of a repository and may be someone else's, so the
 	// settings that decide where keys and prompts go (providers, permission
@@ -123,7 +123,7 @@ func cmdInit(ctx context.Context, args []string) error {
 		}
 	}
 	if !*user {
-		fmt.Fprintln(os.Stderr, "providers and the permission mode live in your user config: `sleipnir init --user` (project files cannot set them unless trusted)")
+		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, "providers and the permission mode live in your user config: `sleipnir init --user` (project files cannot set them unless trusted)"))
 	}
 	fmt.Fprintln(os.Stderr, "next: sleipnir doctor --model <model> --deep, then sleipnir chat")
 	return nil
