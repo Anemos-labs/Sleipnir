@@ -407,8 +407,12 @@ func (p *parser) endHeader() {
 	p.skipHeader = false
 	words := p.header
 	p.header = nil
+	loopVar := ""
 	for i, w := range words {
 		if w == "in" && i >= 1 {
+			if i == 1 && isName(words[0]) {
+				loopVar = words[0]
+			}
 			words = words[i+1:]
 			break
 		}
@@ -427,8 +431,23 @@ func (p *parser) endHeader() {
 		raw = p.src[p.headerTok.start:p.headerTok.end]
 	}
 	p.out = append(p.out, Simple{
-		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested,
+		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar,
 	})
 	p.have = true
 	p.flush()
+}
+
+// isName reports whether s is a shell variable name: a letter or an underscore, then letters, digits and underscores.
+func isName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
 }

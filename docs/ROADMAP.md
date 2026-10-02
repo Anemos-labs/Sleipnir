@@ -50,15 +50,14 @@ a dozen tests and real managers write terse titles: it is a hint. Writes under `
    the clock of a task (about 30 s a request for `deepseek-v4.1-flash` on Heimdall). Measured on 2026-10-02 on that route (a ten-line Slugify prompt, `max_tokens` 2500, three requests each with no effort, `low` and
    `high`): two of the three requests of every arm spent the whole 2500 tokens on reasoning (`finish_reason: length`) and the seconds did not follow the setting (39 to 75, 70 to 79, 70 to 105), so this route does
    not honour it and **no flag was built**. Try again on a route that documents the setting (OpenAI, Anthropic) before offering one.
-8. Findings of the trials by agents that had only the binary (2026-10-02), not yet done: (a) a `for` loop over a literal list of workspace
-   paths (`for f in p1/p1.go p2/p2.go; do cat "$f"; done`, the loop a model writes first) is refused in a run with nobody to ask, "cannot tell
-   statically which path $f is": `shellparse` reports the word list as the pseudo-command `for` and the body mentions only `$f`, so binding the
-   variable to each word of a list with no expansions (and judging the body once per word) would let it through; it changes the parser's
-   contract and is checked by the differential test against bash, so it wants its own session. (b) A verifier over the whole repository
+8. Findings of the trials by agents that had only the binary (2026-10-02), not yet done: (a) *(done: a `for` loop over a literal list of workspace paths is judged per word, `docs/SECURITY.md`.)* (b) A verifier over the whole repository
    (`--verify "go test ./..."`) makes every worker's `task done` wait for the others; the cap is fixed, but the gate could be judged on the
    worker's own directories when the command has no `{dirs}`, or the manager told so. (c) `ctrl+t` and `ctrl+g` print their page into the
    scrollback as `> /stats`; a page that is opened and left was asked for twice and is not done. (d) The first screen could say what the team
    of eight is for (a manager that plans, workers that write in parallel) in one line.
+   Ideas from reading eight other harnesses (crush, opencode, codex, aider, goose, hermes-agent, gemini-cli, cline), not yet built: `/btw QUESTION`
+   (a side question on a copy of the prefix, out of the log), `/export` to Markdown, `$EDITOR` for a long prompt, `/title` and `/fork`, the
+   files-changed count and the three-way choice (conversation, code, both) in `/rewind`, a standing `/goal`, `/init` and `/doctor` inside the chat.
 
 ## Second handoff (2026-10-01, the end of the second agent's session)
 

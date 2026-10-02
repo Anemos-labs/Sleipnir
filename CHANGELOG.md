@@ -208,6 +208,11 @@ The first release.
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).
+- A `for` loop over files that are written out (`for f in p1/p1.go p2/p2.go; do cat "$f"; done`, the commonest first command of a model) is judged as
+  the commands it expands to, one for each word of its list, and no longer asks "cannot tell statically which path $f is" (and is no longer refused
+  in a run with nobody to ask). Only where it is sound: plain words, a lower-case variable that one loop sets and nothing else assigns, nothing in
+  the line that can change variables (`read`, `eval`, `export`, `IFS` ...); `docs/SECURITY.md`. The explanations that a person is shown for a command
+  the engine cannot check say "is a file name that is only known when the command runs, so it cannot be checked beforehand".
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

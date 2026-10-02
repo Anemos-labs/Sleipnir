@@ -155,6 +155,15 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
 
 A yes for the rest of the session is an exact rule (`Bash(mytool build ./x)`), except for edits inside the project and for a short table of runner commands (`internal/perm/runner.go`: `go test|build|vet`, `npm test|run`, `pytest`, `cargo test|build|check`, `make`, `git add|commit|status`), where it is the prefix (`Bash(go test:*)`): a person doing test-driven work is not asked again for every package. An edit is never repeated exactly, so a yes to an edit inside the project (`Edit(<root>/**)`) is a yes to edits inside it, as accept-edits mode would give; an edit outside the project stays exact, and what the project keeps asked about (`ask` rules, the protected configuration directories) or denied (`.git`, credentials) stays so, whatever was allowed. The dialog names what it remembers ("don't ask again for "go test" commands", "...for edits in this project"), the engine tells it (`Request.Remembers`). What this adds: any arguments, among them flags such as `go test -exec`, which run a program of the model's choosing. A test run already executes whatever tests the repository has (a model that can write a test file can run anything through `go test`), so the prefix gives up little that the exact rule did not. What it does not cover stays asked about: another subcommand (`go run`), a chain (`go test ./a && rm -rf x`), a command with environment assignments or wrappers (`sudo`, `timeout`). It is never offered for shells, interpreters, `rm`, `sudo`, `curl` or anything not in the table; a no stays exact, nothing beyond the session is widened, and an unattended session has nobody to give the yes.
 
+### A loop over files that are written out
+
+`for f in p1/p1.go p2/p2.go; do cat "$f"; done` names its files in its list, so each command of its body is judged as the command it will be, once for
+each word (`internal/perm/loopvars.go`). It is done only where it is sound: the words are plain (no variable, substitution, quote, space or shell
+syntax), at most sixteen, the variable is lower case (not `PATH` or `HOME`), exactly one loop sets it and nothing else in the line assigns it, nothing
+in the line can change variables behind the analysis' back (`read`, `mapfile`, `eval`, `declare`, `export`, `printf -v`, `((`, an `IFS`), and a use that
+is not a plain `$f` (`${f%.go}`) stays dynamic. A loop over `~/.ssh/id_rsa`, or over a path outside the workspace, is denied or asked about like the
+command it expands to; a list that is not written out (`for f in $(ls)`) asks as before.
+
 ## 2. What is scrubbed and hardened, per OS
 
 Call `harden.Process()` first thing in `main` (`cmd/sleipnir` does). It never fails: what could not be done is in its `Status`.

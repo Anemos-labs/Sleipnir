@@ -82,6 +82,9 @@ type Simple struct {
 	Nested bool
 	// Piped marks a command that reads from the previous command's pipe.
 	Piped bool
+	// LoopVar is the variable of a for/select loop, on the pseudo-command "for" whose Args are the loop's word list ("f" in
+	// `for f in a b c`); empty everywhere else, and for a loop with no word list.
+	LoopVar string
 }
 
 // Analysis is the result of Parse.

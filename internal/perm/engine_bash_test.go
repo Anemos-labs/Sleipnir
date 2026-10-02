@@ -32,7 +32,7 @@ var safeCommands = []string{
 	`test -f main.go && echo yes`, `[ -d src ] && ls src`, `[[ -f main.go && -d src ]] && echo ok`,
 	`ls $(pwd)`, `cd "$(pwd)" && ls`, `set -e`, `set -eu`, `set -euo pipefail`, `set -o pipefail`, `set +e`,
 	`true`, `false`, `:`, `sleep 1`, `seq 1 3`, `id -u`, `nproc`, `sha256sum main.go`, `md5sum main.go src/a.go`,
-	`for f in a b c; do echo $f; done`, `for i in 1 2 3; do echo $i; done`, `for f in $LIST; do echo $f; done`, `for f in src/*.go; do echo $f; done`,
+	`for f in a b c; do echo $f; done`, `for f in main.go src/a.go; do cat "$f"; done`, `for d in src docs; do ls $d; done`, `for f in main.go src/a.go; do echo "== $f =="; head -3 "$f"; done`, `for f in src/*.go; do wc -l "$f"; done`, `for f in main.go; do cat ${f}; done`, `for i in 1 2 3; do echo $i; done`, `for f in $LIST; do echo $f; done`, `for f in src/*.go; do echo $f; done`,
 	`for f in *; do echo $f; done`, `for f in link-*; do echo $f; done`, `for f in *; do echo $f; done`, `if [ -f main.go ]; then echo yes; fi`,
 	`while false; do :; done`, `(cd src && ls)`, `{ ls; pwd; }`, `! grep -q x main.go`, `FOO=bar`, `LC_ALL=C sort main.go`,
 	`LANG=C ls`, `TZ=UTC date`, `cat "$HOME/proj/main.go"`, `cat ~/proj/main.go`, `ls ${HOME}/proj`, `ls $PWD`,
@@ -59,7 +59,7 @@ func TestBashAllowlist(t *testing.T) {
 		`git reset --hard`, `git clean -fd`, `git config user.name x`, `git -c core.pager=sh log`, `git --exec-path=/nonexistent log`, `cd .. && ls`, `echo hi | tee /dev/null`,
 		`git diff --output=out.patch`, `git log --output=x`, `git diff --ext-diff`, `go test ./...`, `go env -w X=1`, `go env -u X`,
 		`go build -o bin/x ./cmd`, `go build -toolexec=echo ./...`, `go build -ldflags=-extld=sh ./...`, `go build -gcflags=-N ./...`, `go vet -asmflags=x ./...`, `go list -compiler gccgo ./...`, `go vet -vettool=./x ./...`, `go get x`, `go mod tidy`, `go run .`,
-		`gofmt -w .`, `gofmt -w main.go`, `gofmt -l -w .`, `gofmt -cpuprofile=x main.go`, `gofmt -memprofile x main.go`, `gofmt -l /etc`, `go install ./...`, `go generate ./...`, `find . -exec rm {} \;`, `find . -delete`, `find . -fprint out`, `find . -ok rm {} \;`,
+		`for f in main.go; do f=/etc/passwd; cat $f; done`, `for f in main.go; do read f; cat "$f"; done`, `IFS=m; for f in main.go; do cat $f; done`, `for f in /tmp/outside; do cat "$f"; done`, `for f in main.go; do cat "${f%.go}"; done`, `for f in $LIST; do cat "$f"; done`, `for f in main.go; do printf -v f x; cat $f; done`, `for f in main.go; do cat "$f" > "$f.out"; done`, `for f in main.go; do eval x; cat $f; done`, `export f=/tmp/outside; (for f in main.go; do :; done); cat $f`, `f=/tmp/outside; for f in main.go; do :; done | cat; cat $f`, `for f in main.go; do :; done; for f in /tmp/outside; do cat $f; done; cat $f`, `for F in main.go; do cat $F; done`, `gofmt -w .`, `gofmt -w main.go`, `gofmt -l -w .`, `gofmt -cpuprofile=x main.go`, `gofmt -memprofile x main.go`, `gofmt -l /etc`, `go install ./...`, `go generate ./...`, `find . -exec rm {} \;`, `find . -delete`, `find . -fprint out`, `find . -ok rm {} \;`,
 		`find . -execdir rm {} \;`, `find -L . -name x`, `grep -R foo .`, `rg --pre cat foo`, `rg -z foo`, `rg -L foo`, `rg --hostname-bin x foo`,
 		`sort -o out main.go`, `sort --output=out main.go`, `sort --compress-program=sh main.go`, `tree -o out`, `tree -l`,
 		`date -s 2020-01-01`, `date 010203042020`, `uniq a b`, `file -C`, `sed -i s/a/b/ main.go`, `awk '{print}' main.go`,
@@ -108,6 +108,7 @@ func TestBashAllowlist(t *testing.T) {
 
 	deny := []string{
 		// credentials by every spelling
+		`for f in ~/.ssh/id_rsa; do cat "$f"; done`, `for f in main.go ~/.aws/credentials; do cat $f; done`, `for d in .ssh; do cat ~/$d/id_rsa; done`,
 		`cat ~/.ssh/id_rsa`, `cat "$HOME/.aws/credentials"`, `cat $HOME/.ssh/id_rsa`, `cat ${HOME}/.ssh/id_rsa`, `cat '~/.ssh/id_rsa'`,
 		`cat "~/.ssh/id_rsa"`, `head -c 100 ~/.ssh/id_rsa`, `tail ~/.ssh/id_rsa`, `wc ~/.ssh/id_rsa`, `stat ~/.ssh/id_rsa`, `file ~/.ssh/id_rsa`,
 		`cat {home}/.ssh/id_rsa`, `cat ../.ssh/id_rsa`, `cat ../../home/.ssh/id_rsa`, `cat src/../../.ssh/id_rsa`, `cat ~/.ssh/../.ssh/id_rsa`,

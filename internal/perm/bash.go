@@ -133,6 +133,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 		return deny("built-in protection: fork bomb")
 	}
 	an := shellparse.Parse(cmd)
+	an.Commands = bindLoopVars(cmd, an.Commands)
 	// Judging costs file-system lookups per command; a line with thousands of
 	// commands is checked up to a bound and then never auto-allowed.
 	tooMany := len(an.Commands) > maxUnits
@@ -163,10 +164,10 @@ func (ev *evaluator) bash(cmd string) verdict {
 		return deny(planReason("cannot verify that the command is read-only: " + why))
 	}
 	if res.kind == vAllow {
-		return ask("cannot be checked statically: "+why, nil)
+		return ask("cannot be checked beforehand: "+why, nil)
 	}
 	res.rem = nil // remembering one command would not stop the construct asking again
-	res.reason = "cannot be checked statically: " + why + "; " + res.reason
+	res.reason = "cannot be checked beforehand: " + why + "; " + res.reason
 	return res
 }
 

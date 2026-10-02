@@ -322,7 +322,7 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		case mode == ModePlan && a.write:
 			return deny(planReason("cannot tell which file " + quote(a.raw) + " is"))
 		}
-		return ask("cannot tell statically which path "+quote(a.raw)+" is", nil)
+		return ask(quote(a.raw)+" is a file name that is only known when the command runs, so it cannot be checked beforehand", nil)
 	}
 	if a.write && !a.read && harmlessDevice(fold(a.real)) {
 		return allow("harmless device")

@@ -726,3 +726,17 @@ func TestFieldsAndQuote(t *testing.T) {
 		t.Errorf("Join = %q", got)
 	}
 }
+
+func TestALoopsVariableIsReportedWithItsWordList(t *testing.T) {
+	an := Parse(`for f in p1/a.go p2/b.go; do cat "$f"; done`)
+	if len(an.Commands) < 2 || an.Commands[0].Program != "for" || an.Commands[0].LoopVar != "f" || len(an.Commands[0].Args) != 2 {
+		t.Fatalf("%+v", an.Commands)
+	}
+	for _, line := range []string{`for ((i=0;i<3;i++)); do echo $i; done`, `echo f in a b`, `for f; do echo $f; done`} {
+		for _, c := range Parse(line).Commands {
+			if c.LoopVar != "" {
+				t.Errorf("%q: %+v", line, c)
+			}
+		}
+	}
+}

@@ -727,3 +727,17 @@ func TestRememberSessionOfAPythonTestRunIsItsPrefix(t *testing.T) {
 		}
 	}
 }
+
+// What a person is told when a command names a file by a variable is words they can act on, not "cannot tell statically which path is".
+func TestAVariableFileNameIsExplainedInPlainWords(t *testing.T) {
+	f := newFixture(t)
+	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: false} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	e.Check(bg, f.request(bash(`for f in $LIST; do cat "$f"; done`)))
+	if rec.count() != 1 {
+		t.Fatalf("asked %d times", rec.count())
+	}
+	if got := rec.requests[0].Summary; !strings.Contains(got, `"$f" is a file name that is only known when the command runs`) || strings.Contains(got, "statically") {
+		t.Errorf("the question says %q", got)
+	}
+}
