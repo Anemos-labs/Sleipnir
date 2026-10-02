@@ -135,7 +135,7 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	_, statErr := os.Stat(cfgPath)
 	firstTime := errors.Is(statErr, os.ErrNotExist)
 	if firstTime {
-		fmt.Fprintln(out, "First-time setup: choose a model; your settings are kept in "+cfgPath+".")
+		fmt.Fprintln(out, "First-time setup: choose a model; your settings are kept in "+tildePath(cfgPath)+".")
 	}
 	names := make([]string, len(sources))
 	for i, src := range sources {
@@ -167,9 +167,9 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	if err := config.Save(cfgPath, patch); err != nil {
 		fmt.Fprintf(out, "(not saved: %v)\n", err)
 	} else if firstTime {
-		fmt.Fprintf(out, "Wrote %s. Using %s; change it with /model, edit the file, or see `sleipnir config`.\n", cfgPath, ref)
+		fmt.Fprintf(out, "Wrote %s. Using %s; change it with /model, edit the file, or see `sleipnir config`.\n", tildePath(cfgPath), ref)
 	} else {
-		fmt.Fprintf(out, "Using %s, and keeping it as your default in %s (change it with /model).\n", ref, cfgPath)
+		fmt.Fprintf(out, "Using %s, and keeping it as your default in %s (change it with /model).\n", ref, tildePath(cfgPath))
 	}
 	*model = ref
 	return nil

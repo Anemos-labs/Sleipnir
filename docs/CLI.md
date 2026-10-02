@@ -192,23 +192,23 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 
 Interactive session. On a terminal chat without `--swarm` is a team of eight agents, the manager included (kept under `swarm.max_agents`), and it does a small job itself; `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
 program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
-the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, what the cache saved
-at list price, `esc to interrupt`), the prompt stack bar and the hit ratio of every request, the input box, and a footer with the
-permission mode, the model and the session (`docs/UX.md` describes each). From a pipe or a file, with `TERM=dumb`, or with
+the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, `esc to interrupt`), the
+input box, and a footer with the permission mode, the keys of the pages (`ctrl+t` stats, `ctrl+g` agents for a team) and the model and
+the session (`docs/UX.md` describes each). The page carries no statistic: cost, cache hit and what the cache saved are on the stats page. From a pipe or a file, with `TERM=dumb`, or with
 `--plain`, it is the line chat: no colour, no redrawing, a prompt `› `, a goal per line until the input ends, and an action that
 needs approval is refused (with `--plain` on a terminal it asks `allow? [y]es once / [a]lways this session / [n]o`). `--resume
 ID|latest` and `--continue` continue a single-agent session (`--swarm 0`) (`docs/EXTENDING.md` section 6). Slash commands are listed below.
 
 A question rings the terminal's bell once as it appears (`SLEIPNIR_BELL=0` silences it), so that a person in another window sees it in the tab.
 `NO_COLOR` takes the colours away and keeps the program (bold, dim and reverse say what a colour would). `--no-anim`,
-`SLEIPNIR_ANIM=0` and `REDUCE_MOTION=1` stand the spinner still and drop the sweep of the stack bar, the fold of a compaction and
+`SLEIPNIR_ANIM=0` and `REDUCE_MOTION=1` stand the spinner still and drop the fold of a compaction and
 the flash of a cache break (`NO_COLOR` does the same). The glyphs are Unicode where the locale (`LC_ALL`, `LC_CTYPE`, `LANG`) says
 UTF-8 and ASCII otherwise.
 
 **Keys.** Enter sends; a line that ends in `\`, `alt+enter` and `ctrl+j` continue it on the next. A paste of many lines is a chip
 (`[pasted text #1 +50 lines]`) that is sent whole. Up, Down and `ctrl+r` recall the history, which is kept in `history.jsonl` in the
 state directory. `/` opens the palette of commands, `@` completes a path, `shift+tab` steps through the permission modes (never into
-`bypass`), `ctrl+t` writes the prompt stack layer by layer into the scrollback, and `ctrl+o` writes the whole of the newest output
+`bypass`), `ctrl+t` writes the stats page into the scrollback (the same as `/stats`), `ctrl+g` the agents page of a team (the same as `/agents`), and `ctrl+o` writes the whole of the newest output
 that was shown collapsed (a tool's long output is its first and last lines).
 
 **Approvals.** A tool that needs approval puts a box in the live region: the command, or the change as a diff, and why it asks.
@@ -1638,9 +1638,10 @@ flags:
 | `/permissions` | the mode and every rule in force (deny, ask, allow), among them what you allowed with "don't ask again" |
 | `/trust` | what the project's own instructions and settings are, and whether you trusted them (`sleipnir trust` does the same, and can add or forget) |
 | `/cost` | tokens (uncached, cached-read, cache-write, output), cache hit ratio and cost so far |
+| `/stats` | the stats page (`ctrl+t`): cost, tokens, cache hit, what the cache saved at list price, the prompt layer by layer |
 | `/context` | token size of each prompt layer: constitution, shared pin, role pin, notes, spine, verbatim thread |
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
-| `/agents` | the swarm board (agents and tasks); in a single-agent session it says so |
+| `/agents` | the team's agents and tasks (`ctrl+g`); in a single-agent session it says so |
 | `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it) |
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |
 | `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |

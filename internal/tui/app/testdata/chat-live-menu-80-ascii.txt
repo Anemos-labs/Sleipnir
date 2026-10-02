@@ -1,8 +1,7 @@
-80 columns, 7 rows, cursor at row 2 column 7
-prompt 4.0k 93% cached  warm 4m12s
+80 columns, 6 rows, cursor at row 1 column 7
 +------------------------------------------------------------------------------+
 | > /co                                                                        |
 +------------------------------------------------------------------------------+
 > /cost     tokens, cost and cache hit ratio so far
   /compact  [focus]  fold the older thread now
-accept-edits - ctrl+t stack - / commands    mock/mock-1 - 20260102-030405-abcdef
+accept-edits - ctrl+t stats - / commands    mock/mock-1 - 20260102-030405-abcdef

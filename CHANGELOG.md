@@ -252,6 +252,11 @@ The first release.
 
 ### Interfaces
 
+- The chat page is as clean as it can be: the status line, the input and the footer. What the cache saved, the prompt stack bar and the hit
+  ratio sparkline are gone from it, and so is the cache hit of a turn's record (`── 12s · 7 steps · $0.08`). They are on the stats page, `ctrl+t`
+  or `/stats` (cost, tokens, cache hit, what it saved at list price, the prompt layer by layer), and a team has the agents page, `ctrl+g` or
+  `/agents`, the cockpit's table in the chat. The footer names both keys (`default · ctrl+t stats · ctrl+g agents · / commands`), and the
+  banner says the size of the team. Asked for after looking at the README picture, where nothing said how to reach any other page.
 - `--swarm N` (and `swarm N`, `/swarm N`, `--mode swarm:N`) now counts agents in all, the manager included, so the number is the number of
   agents you see; it counted workers before. The name is the horse with eight legs, and eight is the default team.
 - The chat on a terminal is a team of eight agents by default, the manager included (kept under `swarm.max_agents`; it does a small job

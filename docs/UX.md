@@ -26,10 +26,10 @@ pseudo-terminal and read the screen through the terminal emulator. The demo that
 `sleipnir demo --scenario shop`.
 
 `sleipnir chat` on a terminal is the inline program of the first screen below (`internal/tui/app`, `chat*.go`, started by
-`cmd/sleipnir/chat_tty.go`): the scrollback and the live region as described (the status line with its saved ≈ $, the prompt stack
-bar with its sweep and TTL clock, the sparkline with its marks, the input box, the footer), markdown, tool lines and diffs with line
+`cmd/sleipnir/chat_tty.go`): the scrollback and the live region as described (the status line, the input box and the footer: the page
+is kept as clean as it can be, and the statistics are one key away, on the stats page), markdown, tool lines and diffs with line
 numbers, the fold of a compaction and the break alarm, the permission dialog, and the editor with persistent history, the `/`
-palette, `@path` completion, paste chips and typing ahead; `ctrl+t` and `ctrl+o`; `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1`
+palette, `@path` completion, paste chips and typing ahead; `ctrl+t` (stats), `ctrl+g` (agents) and `ctrl+o`; `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1`
 and `NO_COLOR` are honoured, and Unicode or ASCII follows the locale. Not built: the `!` shell line, `/cache`, syntax colouring of
 code blocks (the markdown renderer has the hook, the chat passes none) and the inline progress view of `run --swarm`. Where the
 chat cannot be drawn on (a pipe, a file, `TERM=dumb`) or with `--plain` it is still the line REPL it was, byte for byte, with typed
@@ -42,7 +42,7 @@ command of `scripts/record-demo.sh --new-chat`). The session behind it is a real
 the permission engine, the cache planner, the accounting) against the mock endpoint, with a script for the model and one for the
 person; what it shows is a goal typed and sent, an answer streamed as markdown, the tool lines (a failing `go test`, an edit as a
 diff, the tests passing), a permission question that a letter does not answer (it lands in the input box) and `1` does, the status
-line, the stack bar with its clock, the sparkline with a `⚠`, a compaction folding into one line, and a Ctrl-C that cancels a turn and
+line, the footer with the keys of the pages, a compaction folding into one line, and a Ctrl-C that cancels a turn and
 keeps the session. It is checked against the code like the others (`scripts/record-demo.sh --check`, `go test ./internal/tui/app`).
 Of the rest, what is built is said where it is described.
 
@@ -77,15 +77,19 @@ Of the rest, what is built is said where it is described.
 **Chat (inline).** Scrollback: the banner; the prompt you typed; assistant text streamed as markdown (headings, lists, code
 blocks, inline code); tool calls as `● Bash go test ./...  ✓ 1.4s` with the result beneath (`⎿`), long output collapsed
 with `ctrl+o` to expand; edits as real diffs with line numbers; compactions as a one-line fold animation that stays as a
-record; notices and retries (`(retrying: 429, in 4 s)`). Live region: the status line, the prompt stack bar, the cache
-sparkline, the input box, the footer.
+record; notices and retries (`(retrying: 429, in 4 s)`). Live region: the status line, the input box, the footer, and nothing else: no
+statistic is on the chat page.
 
-- *Status line:* spinner with a verb, elapsed time, tokens in and out, cost, **saved ≈ $ at list price** (measured cache-read
-  tokens × (input − read price); labelled as such), `esc to interrupt`.
-- *Prompt stack bar:* G0–G6 sized by tokens and coloured by volatility (cold blue to hot red); bright = served from cache, dim =
-  paid in full; `▏` marks a provider cache breakpoint; the bar sweeps when a response shows the prefix matched; a TTL clock
-  drains while idle and warns before the prefix goes cold.
-- *Cache sparkline:* hit ratio per request, `⚠` a cache break, `◆` a compaction, `↻` an epoch.
+- *Status line:* spinner with a verb, elapsed time, tokens in and out, cost, `esc to interrupt`.
+- *Footer:* the permission mode, the keys of the pages (`ctrl+t stats`, and for a team `ctrl+g agents`, then `/ commands`), the model and
+  the session. The keys are named there because a page that cannot be found is not there.
+- *Stats page* (`ctrl+t`, or `/stats`): written into the scrollback, so it stays there as a record: what the session cost, the tokens
+  in and out, how much of the prompts the provider served from its cache and **what that saved at list price** (measured cache-read
+  tokens × (input − read price); labelled as such), and the prompt stack layer by layer (G0–G6 sized by tokens, bright = served from
+  cache, dim = paid in full, `▏` a provider cache breakpoint, the layer that broke in red) with the cache's clock. None of it is on the
+  chat page: the cache is what this harness is built on, but a person who is working is not helped by watching it.
+- *Agents page* (`ctrl+g`, or `/agents`; a team only): the table of the cockpit, every agent with its state, what it is doing, the
+  size of its prompt, its cost and its hit ratio, and the count of the tasks on the board. `sleipnir watch` is the same, full screen.
 - *Input:* multi-line (`alt+enter`, or `\` then enter), bracketed paste (a large paste becomes a `[pasted 312 lines]` chip),
   history (up/down, `ctrl+r` search, persisted), `/` commands with a filterable palette, `@path` completion, `!` for a shell
   line, typing ahead while the agent works (queued, delivered at the turn's end; the commands that only look, such as `/cost`, answer at once), `esc` (twice to clear), `ctrl+c` cancels
@@ -95,8 +99,8 @@ sparkline, the input box, the footer.
   exact request for the session (a project's tool server: for the project, see `SECURITY.md`), `3` no and say what to do
   instead; arrows and enter work too, and `esc` is no. Letters never answer: a question takes keys only after the keyboard has
   been quiet for a moment since it appeared (what is typed ahead, or half typed, goes to the prompt and cannot approve anything).
-- *Panels on demand:* `ctrl+t` the stack in detail (layer, tokens, hash, cached, last change, TTL), `/cache` explains the last
-  miss in words, `/context` the token grid by layer, `/agents` the swarm board.
+- *Pages on demand:* `ctrl+t` the stats page, `ctrl+g` the agents page, `/context` the token grid by layer; `/cache` explains the last
+  miss in words (not built). They answer at once, in a turn or not.
 
 **Swarm progress (inline).** `run --swarm` and `swarm` in a terminal show a compact live region: one line per active agent
 (glyph, role, tool, tokens, hit %), the merge queue, the spend bar; `sleipnir watch` is the full thing.
@@ -118,6 +122,9 @@ When the team is done its last screen stays, the other screens can be looked at,
 stops the team. Off a terminal, or with `--plain`, it is the text report.
 
 ## The animations (each is a pure function of state and frame)
+
+The cockpit (`sleipnir watch`, `sleipnir demo`) has all of them. The chat page has the spinner, the fold of a compaction and the flash
+of a break alarm; the stack bar, the clock and the sparkline, and so the sweep, the warm-up and the TTL drain, are not on it.
 
 | Name | Trigger | What you see | Means |
 |---|---|---|---|

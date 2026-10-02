@@ -37,7 +37,11 @@ func selectRows(in *bufio.Reader, out io.Writer, title string, labels, keys []st
 	if err != nil {
 		return 0, err
 	}
-	defer restore()
+	io.WriteString(out, "\x1b[?25l") // no cursor block under the menu
+	defer func() {
+		io.WriteString(out, "\x1b[?25h")
+		restore()
+	}()
 	var (
 		query   []rune
 		cur     int

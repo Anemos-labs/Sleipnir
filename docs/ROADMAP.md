@@ -179,6 +179,8 @@ Each item says where to start and what done looks like. Add a row to `docs/DOGFO
     `scripts/windows-excluded.txt` lists what the Windows job skips, and taking a package off that list is how it is ported.
 11. **OpenAI Responses dialect** (`openai-responses` is accepted in config and stops with an error), and a second live measurement of the
     Anthropic route (`docs/VALIDATION.md`).
+    Then **a ChatGPT plan as a login** (`sleipnir login openai --plan`): OpenAI's "Sign in with ChatGPT" token sharing for open-source apps takes only
+    Responses requests, so it waits for the dialect (`docs/PROVIDERS.md`, "Subscription logins"). A Claude plan is not an option: Anthropic's terms forbid it.
 12. **The macOS flake** (a session isolate test where a third worker never reached the barrier; once in a CI run, never again in the three that
     followed; diagnostics are in the test, wait for a recurrence and read them before changing anything).
 13. **A flake of `TestQueueSurvivesRandomCancellations`** (`internal/workspace`), seen once on 2026-10-01 under load (the whole suite at once; alone it takes 2 s and has

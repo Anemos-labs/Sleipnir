@@ -43,7 +43,7 @@ chat at once, a team of eight agents (`--swarm 0` for a single agent). `sleipnir
   read first; a test rewritten to match a bug is called out; "done" is the harness's word, after a verifier passed. [Why](docs/WHY.md)
 * **Teams that share a cache.** A manager and up to dozens of workers over one repository, each in its own git worktree, finished work through a
   verifying merge queue. [Swarm protocol](docs/SWARM-PROTOCOL.md)
-* **You see what it costs.** Tokens, dollars, and what the cache saved, live; compaction at the cheapest moment, never a surprise rewrite.
+* **You see what it costs.** Tokens and dollars on the status line, and one key (`ctrl+t`) for the stats page: what the cache saved, the prompt layer by layer; compaction at the cheapest moment, never a surprise rewrite.
   [Cache design](docs/CACHE-DESIGN.md), [what the layering buys](docs/CACHE-ECONOMICS.md)
 * **Memory and schedules.** Notes it keeps across sessions (each one asks first); goals on a cron schedule that run headless. [Extending](docs/EXTENDING.md)
 * **Safe to point at a repository you did not write.** A permission engine, project trust, keys held out of every tool's environment.

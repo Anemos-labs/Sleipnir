@@ -1,13 +1,9 @@
 {fg=dim}● {/}Fixed. {fg=info}List{/} computed the offset from a zero-based page; pages are one-based, so page 1 skipped the
   first {fg=info}size{/} rows.
 {b,fg=accent}● {/}{b,fg=info}Bash{/} go test ./orders/... -run TestList -count=1{fg=dim}  3.0s{/}
-{fg=accent}● Reading…{/}  {fg=dim}14s{/}  {fg=dim}↑48.3k ↓2.1k{/}  $0.0021  {fg=G3}saved ≈ $0.31 at list price{/}                 {fg=dim}esc to interrupt{/}
-{fg=dim}prompt 4.0k {/}{fg=#7498e8}█████████████████████████████████{/}{b,fg=G1}▏{/}{fg=#2cb6d2}███{/}{fg=#94c069}█▓{/}{d,fg=G3}░░░░░░{/}{b,fg=G3}▏{/}{d,fg=G4}░░░░░░░░░{/}{fg=G3} 93% cached{/}  {fg=G3}◕{/} {fg=G3}warm{/} 4:12 {fg=G3}▰▰▰▰▰▰▰{/}{fg=faint}▱{/}
-                            {b,fg=G1}G1{/}                {b,fg=G2}G2{/}    {b,fg=G3}G3{/}       {b,fg=G4}G4{/}
-          {b,fg=G6}⚠{/}{b,fg=accent}◆{/}
-{fg=dim}cache {/}{b,fg=G6}▁{/}{fg=G3}▇██{/}{b,fg=G6}▃{/}{fg=G4}▇{/}{fg=G3}█{/}{fg=dim}  hit ratio per request · 7 requests · saved ≈ {/}{fg=G3}$0.13{/}{fg=dim} at list price{/}
+{fg=accent}● Reading…{/}  {fg=dim}14s{/}  {fg=dim}↑48.3k ↓2.1k{/}  $0.0021                                              {fg=dim}esc to interrupt{/}
 {fg=faint}╭──────────────────────────────────────────────────────────────────────────────────────────────────╮{/}
 {fg=faint}│{/} {b,fg=#a78bfa}❯ {/}{i,fg=x244}Type a goal, / for commands, @ for files{/}                                                       {fg=faint}│{/}
 {fg=faint}╰──────────────────────────────────────────────────────────────────────────────────────────────────╯{/}
 {fg=dim}⏎ queued: {/}{i}“and run the race detector”{/}
-{fg=G3}accept-edits{/}{fg=dim} · ctrl+t stack · ctrl+o expand · / commands{/}        {fg=dim}mock/mock-1 · 20260102-030405-abcdef{/}
+{fg=G3}accept-edits{/}{fg=dim} · ctrl+t stats · / commands{/}                        {fg=dim}mock/mock-1 · 20260102-030405-abcdef{/}

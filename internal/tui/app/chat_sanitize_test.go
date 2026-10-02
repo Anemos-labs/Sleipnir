@@ -77,7 +77,7 @@ func blocksOf(k *chatLook, h string, w int) map[string][]cell.Line {
 	ed := input.NewEditor(input.Options{Prompt: k.g.prompt + " ", Placeholder: h, Theme: &th})
 	ed.SetWidth(max(w-4, 1))
 	ed.Handle(input.PasteKey(h))
-	lv := liveView{cols: w, rows: 24, status: statusView{kind: statusTool, detail: h, elapsed: 3 * time.Second, tokIn: 1000, tokOut: 20, cost: 0.01, saved: 0.5},
+	lv := liveView{cols: w, rows: 24, status: statusView{kind: statusTool, detail: h, elapsed: 3 * time.Second, tokIn: 1000, tokOut: 20, cost: 0.01},
 		tools: []toolView{{agent: h, title: h, summary: h, worker: true, elapsed: 2 * time.Second}, {title: h, summary: h, asking: true}},
 		fold:  &foldView{who: h, before: 31000, after: 2000, progress: 0.4},
 		queue: []string{h, "(quit when this is done)"},

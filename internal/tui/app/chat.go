@@ -137,7 +137,7 @@ type runEnd struct {
 // totalsBase is what the session had used when a turn began, so that the status line can say what this turn has used.
 type totalsBase struct {
 	prompt, output int64
-	cost, saved    float64
+	cost           float64
 }
 
 // queued is something typed ahead: a line, or a Ctrl-D (the end of the input), in the order it was typed.
@@ -457,9 +457,14 @@ func (m *chatModel) removeQuestions(drop func(*dialog) bool) {
 
 func (m *chatModel) editorKey(k input.Key) {
 	m.syncEditorWidth()
+	// The two pages of the footer, the keys that are the commands typed out. The editor would transpose two characters with ctrl+t, and a
+	// person who wants that has the arrows.
 	if k.IsRune('t', input.Ctrl) {
-		// The stack panel (docs/UX.md). The editor would transpose two characters with it, and a person who wants that has the arrows.
-		m.printStack()
+		m.submit("/stats")
+		return
+	}
+	if k.IsRune('g', input.Ctrl) {
+		m.submit("/agents")
 		return
 	}
 	if k.Is(input.Enter, 0) && m.menuIsExact() {
@@ -615,6 +620,9 @@ func (m *chatModel) submit(text string) {
 	if text == "" {
 		return
 	}
+	if m.attached && m.page(text) {
+		return
+	}
 	if m.busy() || len(m.queue) > 0 {
 		if m.attached && m.busy() && isLookCommand(text) {
 			m.aside(text) // a cost that is told when the turn is over is told too late
@@ -634,7 +642,7 @@ func isLookCommand(line string) bool {
 		return false
 	}
 	switch f[0] {
-	case "/cost", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust":
+	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust":
 		return true
 	case "/mode", "/mcp":
 		return len(f) == 1
@@ -800,10 +808,8 @@ func (m *chatModel) runEnded(e runEnd) {
 }
 
 func (m *chatModel) turnEnded(r *run, res TurnResult) {
-	snap := m.snapshot()
-	saved := snap.Totals.Savings.SavedUSD - r.base.saved
 	if res.Steps > 0 || res.CostUSD > 0 { // a turn that was cancelled before the model answered did nothing worth a record
-		m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, saved, m.cols)})
+		m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, m.cols)})
 	}
 	switch {
 	case res.Err == nil:
@@ -865,7 +871,7 @@ func (m *chatModel) since(t time.Time) time.Duration {
 // totalsNow is what the session has used so far.
 func (m *chatModel) totalsNow() totalsBase {
 	t := m.snapshot().Totals
-	return totalsBase{prompt: t.Tokens.Prompt(), output: t.Tokens.Output, cost: t.CostUSD, saved: t.Savings.SavedUSD}
+	return totalsBase{prompt: t.Tokens.Prompt(), output: t.Tokens.Output, cost: t.CostUSD}
 }
 
 // ---- what the session says while it works ----
@@ -1224,7 +1230,7 @@ func (m *chatModel) scanSnapshot() {
 				m.endpointBreaks++
 				if m.endpointBreaks > maxEndpointBreaksShown {
 					if m.endpointBreaks == maxEndpointBreaksShown+1 {
-						m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, "  "+m.k.g.warn+" this endpoint's cache keeps missing the prompt prefix; further misses are not said here (/cost has the hit ratio, `sleipnir inspect` each one)")})
+						m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, "  "+m.k.g.warn+" this endpoint's cache keeps missing the prompt prefix; further misses are not said here (/stats has the hit ratio, `sleipnir inspect` each one)")})
 					}
 					continue
 				}
@@ -1316,32 +1322,97 @@ func callOf(t *toolRun) core.Block {
 
 // ---- panels on demand ----
 
-// printStack is ctrl+t: the prompt stack layer by layer, written into the scrollback.
-func (m *chatModel) printStack() {
+// page answers the two commands that are pages, /stats and /agents (the keys ctrl+t and ctrl+g type them): they are drawn from what the
+// program already knows, so they answer at once, in a turn or not, and the host is not asked. It reports whether the line was one.
+func (m *chatModel) page(line string) bool {
+	f := strings.Fields(line)
+	if len(f) != 1 || (f[0] != "/stats" && f[0] != "/agents") {
+		return false
+	}
+	m.syncStream()
+	m.block(bkPrompt, m.k.promptLines(line, m.cols))
+	if f[0] == "/stats" {
+		m.printStats()
+	} else {
+		m.printTeam()
+	}
+	return true
+}
+
+// printStats is the stats page, written into the scrollback: what the session cost, how much of its prompts the provider served from its
+// cache and what that saved (at list price, which is not the bill), and the prompt stack layer by layer. The chat page carries none
+// of it, so that the page stays clean.
+func (m *chatModel) printStats() {
 	sn := m.snapshot()
-	a := stackAgent(&liveView{snap: sn})
-	if a == nil {
-		m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, "  no prompt has been sent yet")})
+	t, st := sn.Totals, m.k.st
+	if t.Responses == 0 {
+		m.block(bkNote, []cell.Line{cell.Styled(st.dim, "  nothing has been sent yet")})
 		return
 	}
-	layers := promptLayers(a, m.mem.g0est())
-	o := widget.NewStackOpts(max(m.cols-2, 20), a.Stack.Read)
-	if !a.Stack.Answered {
-		o.CachedTokens = 0
+	pad := func(label string) string { return fmt.Sprintf("  %-7s", label) }
+	var cost, cache row
+	cost.add(st.dim, pad("cost")).add(cell.Style{}, widget.USD(t.CostUSD)).
+		add(st.dim, " "+m.k.g.dot+" "+widget.Tokens(int(t.Tokens.Prompt()))+" in, "+widget.Tokens(int(t.Tokens.Output))+" out "+m.k.g.dot+" "+count(t.Responses, "request", "requests"))
+	cache.add(st.dim, pad("cache")).add(hitStyle(st, t.HitRatio()), widget.Percent(t.HitRatio())).add(st.dim, " of the prompts came from the provider's cache")
+	if s := t.Savings; s.Known() && s.SavedUSD > 0 {
+		lead := " " + m.k.g.dot + " saved " + m.k.g.approx + " "
+		if !s.Complete() {
+			lead = " " + m.k.g.dot + " saved at least "
+		}
+		cache.add(st.dim, lead).add(st.good, widget.USD(s.SavedUSD)).add(st.dim, " at list price")
 	}
-	o.BreakAt = breakLayer(a, layers)
-	table := widget.StackTable(layers, o, m.k.Palette)
-	if left, total, ok := ttlOf(sn, "agent", a.ID); ok {
-		table = append(table, m.k.ttlLine(left, total, max(m.cols-2, 8)))
+	out := []cell.Line{cell.Styled(st.dim, "  "+m.k.g.compact+" stats"), m.k.fit(cost.line(), m.cols), m.k.fit(cache.line(), m.cols)}
+	if a := stackAgent(&liveView{snap: sn}); a != nil {
+		layers := promptLayers(a, m.mem.g0est())
+		o := widget.NewStackOpts(max(m.cols-4, 20), a.Stack.Read)
+		if !a.Stack.Answered {
+			o.CachedTokens = 0
+		}
+		o.BreakAt = breakLayer(a, layers)
+		table := widget.StackTable(layers, o, m.k.Palette)
+		if left, total, ok := ttlOf(sn, "agent", a.ID); ok {
+			table = append(table, m.k.ttlLine(left, total, max(m.cols-4, 8)))
+		}
+		out = append(out, cell.Styled(st.dim, "  the prompt, layer by layer"))
+		out = append(out, indentLines(table, cell.Text("  "))...)
 	}
 	if !m.k.Unicode {
-		for i := range table {
-			table[i] = asciiLine(table[i])
+		for i := range out {
+			out[i] = asciiLine(out[i])
 		}
 	}
-	lines := indentLines(table, cell.Text("  "))
-	m.syncStream()
-	m.block(bkToolBody, append([]cell.Line{cell.Styled(m.k.st.dim, "  "+m.k.g.compact+" the prompt stack")}, lines...))
+	m.block(bkToolBody, out)
+}
+
+// printTeam is the agents page, written into the scrollback: every agent of the team, what it is doing, how big its prompt is, what it
+// has cost and how much of it the cache served, and the count of the tasks on the board; the table of the cockpit (`sleipnir watch`),
+// which shows the same with more room. A single agent has no team to show.
+func (m *chatModel) printTeam() {
+	st := m.k.st
+	if !m.info.Swarm {
+		m.block(bkNote, []cell.Line{cell.Styled(st.dim, "  a single agent: /swarm 8 starts a team of eight")})
+		return
+	}
+	sn := m.snapshot()
+	rows := agentRows(sn, CockpitOptions{})
+	if len(rows) == 0 {
+		m.block(bkNote, []cell.Line{cell.Styled(st.dim, fmt.Sprintf("  the team starts with your first goal: a manager, and the %d workers it can spawn", max(m.info.Agents-1, 1)))})
+		return
+	}
+	c := sn.Board.Counts
+	var head row
+	head.add(st.dim, "  "+m.k.g.compact+" "+count(len(rows), "agent", "agents")).
+		add(st.dim, fmt.Sprintf(" %s tasks: %d todo, %d running, %d verifying, %d merged", m.k.g.dot, c.Todo, c.Running, c.Verifying, c.Merged))
+	if c.Failed > 0 {
+		head.add(st.bad, fmt.Sprintf(", %d failed", c.Failed))
+	}
+	out := append([]cell.Line{m.k.fit(head.line(), m.cols)}, indentLines(widget.AgentTable(rows, max(m.cols-4, 20), m.frame, m.k.Palette), cell.Text("  "))...)
+	if !m.k.Unicode {
+		for i := range out {
+			out[i] = asciiLine(out[i])
+		}
+	}
+	m.block(bkToolBody, out)
 }
 
 // expandLast is ctrl+o: the whole of the newest output that was collapsed, written into the scrollback.
@@ -1379,7 +1450,7 @@ func (m *chatModel) draw() error {
 // liveView gathers what the live region shows.
 func (m *chatModel) liveView(tail []cell.Line) liveView {
 	sn := m.snapshot()
-	v := liveView{cols: m.cols, rows: m.rows, frame: m.frame, tail: tail, snap: sn, agent: "", mem: m.mem,
+	v := liveView{cols: m.cols, rows: m.rows, frame: m.frame, tail: tail, snap: sn, agent: "", team: m.info.Swarm,
 		ed: m.ed.View(m.edWidthOr()), queue: m.queueTexts(), hint: m.hint}
 	if m.host != nil {
 		v.mode = m.host.Mode()
@@ -1447,7 +1518,7 @@ func (m *chatModel) statusView(sn *state.Snapshot) statusView {
 	}
 	t := sn.Totals
 	s.tokIn, s.tokOut = max(t.Tokens.Prompt()-r.base.prompt, 0), max(t.Tokens.Output-r.base.output, 0)
-	s.cost, s.saved = max(t.CostUSD-r.base.cost, 0), max(t.Savings.SavedUSD-r.base.saved, 0)
+	s.cost = max(t.CostUSD-r.base.cost, 0)
 	s.kind = statusThinking
 	if a, ok := sn.Focused(""); ok {
 		switch {

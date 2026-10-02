@@ -1,8 +1,7 @@
-80 columns, 7 rows, cursor at row 4 column 4
+80 columns, 6 rows, cursor at row 3 column 4
 <> compacting ####         9.6k -> 2.4k
 * Compacting...  31s  ^61.2k v900                               esc to interrupt
-prompt 4.0k 93% cached  warm 4m12s
 +------------------------------------------------------------------------------+
 | > Type a goal, / for commands, @ for files                                   |
 +------------------------------------------------------------------------------+
-accept-edits - ctrl+t stack - / commands    mock/mock-1 - 20260102-030405-abcdef
+accept-edits - ctrl+t stats - / commands    mock/mock-1 - 20260102-030405-abcdef

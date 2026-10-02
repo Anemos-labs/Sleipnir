@@ -182,6 +182,7 @@ func (h *fakeHost) seen() []string {
 
 type chatRig struct {
 	t      *testing.T
+	team   int // the size of the team the session is, 0 for a single agent
 	bridge *vtBridge
 	scr    *testScreen
 	host   *fakeHost
@@ -222,6 +223,7 @@ type rigOpts struct {
 	bell        func()
 	restartTo   *[]string
 	animAllowed bool
+	team        int // the session is a team of this many agents, the manager included (0: a single agent)
 }
 
 func defaultLook() Look {
@@ -247,6 +249,7 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 	r := &chatRig{t: t, host: &fakeHost{}, link: NewChatLink(), cols: o.cols, rows: o.rows,
 		keys: make(chan input.Key), sizes: make(chan term.Size), tickCh: make(chan time.Time), attach: make(chan ChatAttach, 1),
 		log: make(chan events.Event, 1024), done: make(chan chatExit, 1), now: time.Unix(1_700_000_000, 0)}
+	r.team = o.team
 	r.bridge = &vtBridge{t: t, v: vt.New(o.cols, o.rows)}
 	r.scr = &testScreen{Inline: render.NewInline(r.bridge, caps, render.WithBracketedPaste()), frames: make(chan struct{}, 1<<16)}
 	r.sink = r.link.Sink()
@@ -292,7 +295,7 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 }
 
 func (r *chatRig) attachSession() {
-	r.attach <- ChatAttach{Host: r.host, Events: r.log, Info: ChatInfo{Version: "0.1.0", Model: "mock/mock-1", Cwd: "/work/proj", SessionID: "20260102-030405-abcdef"},
+	r.attach <- ChatAttach{Host: r.host, Events: r.log, Info: ChatInfo{Version: "0.1.0", Model: "mock/mock-1", Cwd: "/work/proj", SessionID: "20260102-030405-abcdef", Swarm: r.team > 1, Agents: r.team},
 		Commands: []input.Command{{Name: "help", Description: "this text"}, {Name: "cost", Description: "tokens, cost and cache hit ratio so far"},
 			{Name: "compact", Args: "[focus]", Description: "fold the older thread now"}, {Name: "exit", Description: "quit"}}}
 }

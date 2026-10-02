@@ -1,8 +1,4 @@
-60 columns, 10 rows, cursor at row 5 column 7
-prompt 4.0k ████████▏█▓▏░░░ 93% cached  ◕ warm 4:12 ▰▰▰▰▰▰▰▱
-            G1 G2 G3 G4
-          ⚠◆
-cache ▁▇██▃▇█  hit ratio per request · 7 requests · saved ≈…
+60 columns, 6 rows, cursor at row 1 column 7
 ╭──────────────────────────────────────────────────────────╮
 │ ❯ /co                                                    │
 ╰──────────────────────────────────────────────────────────╯

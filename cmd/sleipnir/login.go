@@ -115,7 +115,7 @@ func login(in *bufio.Reader, out io.Writer, secret func() (string, error), cfg *
 			return local[n-len(choices)-1].name, nil
 		}
 	}
-	fmt.Fprintf(out, "Paste your %s key (it is not shown; it is kept in %s, readable by you only): ", pick.name, config.AuthPath(userHome()))
+	fmt.Fprintf(out, "Paste your %s key (hidden; kept in %s, readable by you only): ", pick.name, tildePath(config.AuthPath(userHome())))
 	key, err := secret()
 	if err != nil || key == "" {
 		return "", errors.New("login: no key entered")

@@ -133,6 +133,9 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 func chatInfo(s *session.Session, cwd string) app.ChatInfo {
 	info := app.ChatInfo{Version: version, Model: s.Model.ID, Cwd: tildePath(cwd), SessionID: s.ID, Swarm: s.Swarm != nil,
 		Budget: strings.TrimPrefix(budgetLabel(s), " · ")}
+	if s.Swarm != nil {
+		info.Agents = s.Swarm.MaxAgents()
+	}
 	if s.Resumed() && s.Agent != nil {
 		info.Resumed = fmt.Sprintf("resumed: %d turns restored; the first request writes the cached prefix again, once", len(s.Agent.Stack().Thread.Turns))
 	}
@@ -300,9 +303,10 @@ var chatCommands = []chatCommand{
 	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},
 	{"trust", "", "this project's own instructions and settings: what they are, and whether you trusted them"},
 	{"cost", "", "tokens, cost and cache hit ratio so far"},
+	{"stats", "", "the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers"},
 	{"context", "", "layer sizes of the current prompt"},
 	{"compact", "[focus]", "fold the older thread now"},
-	{"agents", "", "swarm board: agents and tasks"},
+	{"agents", "", "the team's agents and tasks (ctrl+g)"},
 	{"model", "[provider/model]", "show the model, or move this conversation to another one (the prompt cache starts over)"},
 	{"budget", "[usd|off]", "show or set the dollar budget for the turns from now on"},
 	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},

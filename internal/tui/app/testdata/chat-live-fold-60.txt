@@ -1,10 +1,6 @@
-60 columns, 10 rows, cursor at row 7 column 4
+60 columns, 6 rows, cursor at row 3 column 4
 ◆ compacting ▓▓▓▓         9.6k → 2.4k
 ● Compacting…  31s  ↑61.2k ↓900             esc to interrupt
-prompt 4.0k ████████▏█▓▏░░░ 93% cached  ◕ warm 4:12 ▰▰▰▰▰▰▰▱
-            G1 G2 G3 G4
-          ⚠◆
-cache ▁▇██▃▇█  hit ratio per request · 7 requests · saved ≈…
 ╭──────────────────────────────────────────────────────────╮
 │ ❯ Type a goal, / for commands, @ for files               │
 ╰──────────────────────────────────────────────────────────╯

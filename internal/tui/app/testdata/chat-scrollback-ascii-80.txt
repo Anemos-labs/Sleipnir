@@ -43,7 +43,7 @@ the prompt, Ctrl-D or /exit quits.
 
 * Fixed: `go test` passes now, `go vet` has one finding left.
 
--- 0s - 4 steps - $0.01 - cache hit 50%
+-- 0s - 4 steps - $0.01
 
 > slow
 (cancelled)
@@ -54,4 +54,4 @@ ran /cost
 +------------------------------------------------------------------------------+
 | > Type a goal, / for commands, @ for files                                   |
 +------------------------------------------------------------------------------+
-default - ctrl+t stack - / commands         mock/mock-1 - 20260102-030405-abcdef
+default - ctrl+t stats - / commands         mock/mock-1 - 20260102-030405-abcdef

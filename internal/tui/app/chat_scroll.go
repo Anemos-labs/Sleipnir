@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	}
 	if b := clean(info.Budget); b != "" {
 		l1.add(k.st.dim, "  "+k.g.dot+" "+b)
+	}
+	if info.Agents > 1 {
+		l1.add(k.st.dim, "  "+k.g.dot+" team of "+strconv.Itoa(info.Agents))
 	}
 	out := []cell.Line{k.fit(l1.line(), width)}
 	if info.Resumed != "" {
@@ -235,16 +239,13 @@ func (k *chatLook) anomalyLines(a state.Anomaly, who string, width int) []cell.L
 	return out
 }
 
-// turnSummary is the record a turn leaves: how long it took, how many steps, what it cost, what the cache did and what it saved.
-func (k *chatLook) turnSummary(elapsed time.Duration, res TurnResult, saved float64, width int) cell.Line {
+// turnSummary is the record a turn leaves: how long it took, how many steps and what it cost. What the cache did is on the stats page.
+func (k *chatLook) turnSummary(elapsed time.Duration, res TurnResult, width int) cell.Line {
 	parts := []string{duration(elapsed.Round(time.Second))}
 	if res.Steps > 0 {
 		parts = append(parts, count(res.Steps, "step", "steps"))
 	}
-	parts = append(parts, widget.USD(res.CostUSD), "cache hit "+widget.Percent(res.HitRatio))
-	if saved > 0 {
-		parts = append(parts, "saved "+k.g.approx+" "+widget.USD(saved))
-	}
+	parts = append(parts, widget.USD(res.CostUSD))
 	text := k.g.rule + " " + strings.Join(parts, " "+k.g.dot+" ")
 	return k.fit(cell.Styled(k.st.dim, text), width)
 }

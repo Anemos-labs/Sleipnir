@@ -17,16 +17,16 @@ import (
 //	● the words that are still arriving (markdown that is not final yet)
 //	◆ compacting 31.2k ▓▓▓▓▓▓▓ → 12.4k          a thread being folded
 //	⠙ Bash go test ./...  3.2s                   a tool that is running
-//	⠹ Thinking…  14s  ↑48.3k ↓2.1k  $0.0021  saved ≈ $0.31  esc to interrupt
-//	prompt 48.3k ████████▓░░░░▏░░  93% cached  ◕ warm 4:12 ▰▰▰▰▱▱▱▱
-//	            G0      G1    G2  G3  G4       G5
-//	cache ▁▃▇█▇▇█  hit ratio per request · 7 requests
+//	⠹ Thinking…  14s  ↑48.3k ↓2.1k  $0.0021  esc to interrupt
 //	╭────────────────────────────────────────╮
 //	│ ❯ the prompt, and what is typed ahead  │
 //	╰────────────────────────────────────────╯
 //	  completion menu, the Esc hint
 //	⏎ queued: "and run the race detector"
-//	default · ctrl+t stack · / commands                    heimdall/model · session
+//	default · ctrl+t stats · ctrl+g agents · / commands    heimdall/model · session
+//
+// The page is kept as clean as it can be: what the cache saved, the prompt stack and the hit ratio are statistics, and they are on the
+// stats page (ctrl+t, /stats), one key away, not in every frame.
 //
 // It is made by one function of a liveView, so that a golden file can hold it at 60, 80 and 120 columns.
 
@@ -54,7 +54,6 @@ type statusView struct {
 	tokIn   int64
 	tokOut  int64
 	cost    float64
-	saved   float64
 	flash   bool // a cache break: the line is in the alarm style for a moment
 }
 
@@ -96,8 +95,8 @@ type liveView struct {
 	fold   *foldView
 
 	snap  *state.Snapshot
-	agent string // whose prompt the stack bar shows
-	mem   *Memory
+	agent string // whose prompt the stats page shows
+	team  bool   // the session is a team: the footer names the key of the agents page
 
 	ed        input.View
 	editorOn  bool // the editor takes keys (false: nothing can be typed)
@@ -125,10 +124,6 @@ const (
 	posFold
 	posTools
 	posStatus
-	posStackBar
-	posStackLabels
-	posSparkMarks
-	posSparkBars
 	posInput
 	posBelow
 	posInputUnder
@@ -181,18 +176,6 @@ func (k *chatLook) liveLines(v *liveView) liveOut {
 	}
 	if v.status.kind != statusNone {
 		parts = append(parts, livePart{pos: posStatus, prio: 1, lines: []cell.Line{k.statusLine(v, w)}})
-	}
-	if a := stackAgent(v); a != nil && v.dlg == nil {
-		if bar, labels := k.stackRows(v, a, w); bar != nil {
-			parts = append(parts, livePart{pos: posStackBar, prio: 3, lines: []cell.Line{bar}})
-			if labels != nil {
-				parts = append(parts, livePart{pos: posStackLabels, prio: 6, lines: []cell.Line{labels}})
-			}
-		}
-		if marks, bars := k.sparkRows(v, a, w); bars != nil {
-			parts = append(parts, livePart{pos: posSparkMarks, prio: 5, lines: []cell.Line{marks}})
-			parts = append(parts, livePart{pos: posSparkBars, prio: 4, lines: []cell.Line{bars}})
-		}
 	}
 	if len(v.tools) > 0 {
 		all := k.toolRows(v, w)
@@ -317,10 +300,19 @@ func (k *chatLook) queueLine(v *liveView, w int) cell.Line {
 // footer is the mode, the keys that are not obvious, and on the right the model and the session. When the width is short the keys
 // give way first, then the session, then the model.
 func (k *chatLook) footer(v *liveView, w int) cell.Line {
+	// the keys of the screens that matter: the stats page, the team's agents (only a team has them), the commands
 	hints := []string{
-		k.g.dot + " ctrl+t stack " + k.g.dot + " ctrl+o expand " + k.g.dot + " / commands",
-		k.g.dot + " ctrl+t stack " + k.g.dot + " / commands",
+		k.g.dot + " ctrl+t stats " + k.g.dot + " / commands",
+		k.g.dot + " ctrl+t stats",
 		"",
+	}
+	if v.team {
+		hints = []string{
+			k.g.dot + " ctrl+t stats " + k.g.dot + " ctrl+g agents " + k.g.dot + " / commands",
+			k.g.dot + " ctrl+t stats " + k.g.dot + " ctrl+g agents",
+			k.g.dot + " ctrl+t stats",
+			"",
+		}
 	}
 	if v.hint != "" {
 		hints = []string{k.g.dot + " " + clean(v.hint)}
@@ -373,7 +365,7 @@ func (k *chatLook) modeStyle(mode string) cell.Style {
 
 // ---- the status line ----
 
-// statusLine is what the agent is doing, for how long, what it has used and what the cache has saved, and how to stop it.
+// statusLine is what the agent is doing, for how long, what it has used, and how to stop it.
 func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 	s := v.status
 	glyph, st := k.g.still, k.st.accent
@@ -427,12 +419,6 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 	if s.cost > 0 {
 		segs = append(segs, seg{widget.USD(s.cost), cell.Style{}, 2})
 	}
-	savedText, savedShort := "", ""
-	if s.saved > 0 {
-		savedShort = fmt.Sprintf("saved %s %s", k.g.approx, widget.USD(s.saved))
-		savedText = savedShort + " at list price"
-		segs = append(segs, seg{savedText, k.st.good, 3})
-	}
 	hint := "esc to interrupt"
 	segs = append(segs, seg{hint, k.st.dim, 4})
 
@@ -452,13 +438,6 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 	fits := func() bool {
 		l, r := build()
 		return l.w+2+r.Width() <= w || (r.Width() == 0 && l.w <= w)
-	}
-	if !fits() { // "at list price" is the first to go: the ≈ and the word saved say what it is
-		for i := range segs {
-			if segs[i].text == savedText && savedShort != "" {
-				segs[i].text = savedShort
-			}
-		}
 	}
 	for rank := 5; rank >= 1 && !fits(); rank-- {
 		kept := segs[:0:0]
@@ -545,68 +524,6 @@ func stackAgent(v *liveView) *state.Agent {
 	return &a
 }
 
-// stackRows is the prompt as a bar of the layers G0 to G6, sized by tokens: bright where the provider served it from its cache, dim
-// where it was paid in full, ▏ after a cache breakpoint, a light that sweeps along it when an answer says how much matched, the layer that
-// broke in red, and on the right how much was cached and how long the cache will last. Under it, the names of the layers.
-func (k *chatLook) stackRows(v *liveView, a *state.Agent, w int) (bar, labels cell.Line) {
-	stk := a.Stack
-	layers := promptLayers(a, v.mem.g0est())
-	if len(layers) == 0 {
-		return nil, nil
-	}
-	total := 0
-	for _, l := range layers {
-		total += l.Tokens
-	}
-	if stk.Answered && stk.Prompt > 0 {
-		total = stk.Prompt
-	}
-	left := "prompt " + widget.Tokens(total) + " "
-	var right row
-	if stk.Answered && stk.Prompt > 0 {
-		right.add(hitStyle(k.st, float64(stk.Read)/float64(stk.Prompt)), " "+widget.Percent(float64(stk.Read)/float64(stk.Prompt))+" cached")
-	}
-	var ttl cell.Line
-	if lft, tot, ok := ttlOf(v.snap, "agent", a.ID); ok {
-		ttl = k.ttlLine(lft, tot, 26)
-	}
-	if ttl != nil {
-		right.add(cell.Style{}, "  ").addLine(ttl)
-	}
-	lead := cell.StringWidth(left)
-	barW := w - lead - right.w
-	if !k.Unicode || barW < 10 { // a bar that narrow says nothing: the words do
-		var r row
-		r.add(k.st.dim, strings.TrimRight(left, " "))
-		for _, sp := range right.line() {
-			r.add(sp.Style, sp.Text)
-		}
-		return k.fit(r.line(), w), nil
-	}
-	o := widget.NewStackOpts(barW, stk.Read)
-	if !stk.Answered {
-		o.CachedTokens = 0
-	}
-	if stk.Answered && k.Anim && stk.RespSeq != 0 && stk.Prompt > 0 {
-		if age := v.mem.born().Age(stk.RespSeq, v.frame); age < sweepFrames {
-			o.Sweep = float64(stk.Read) / float64(stk.Prompt) * float64(age+1) / sweepFrames
-		}
-	}
-	o.BreakAt = breakLayer(a, layers)
-	if lft, tot, ok := ttlOf(v.snap, "agent", a.ID); ok && tot > 0 {
-		o.Warm = float64(lft) / float64(tot)
-	}
-	b, lb := widget.StackBar(layers, o, k.Palette)
-	var r row
-	r.add(k.st.dim, left).addLine(b).addLine(right.line())
-	bar = k.fit(r.line(), w)
-	if lb != nil {
-		labels = cell.Join(cell.Spaces(lead, cell.Style{}), lb)
-		labels = k.fit(labels, w)
-	}
-	return bar, labels
-}
-
 // ttlLine is how long the provider will keep the prompt: the clock of widget.TTL, or in words where the glyphs cannot be trusted.
 func (k *chatLook) ttlLine(left, total time.Duration, w int) cell.Line {
 	if k.Unicode {
@@ -620,46 +537,6 @@ func (k *chatLook) ttlLine(left, total time.Duration, w int) cell.Line {
 		st = k.st.warn
 	}
 	return cell.Styled(st, "warm "+widget.Duration(left.Round(time.Second)))
-}
-
-// sparkRows is the hit ratio of every request as a row of bars, with a cache break (⚠), a compaction (◆) and a new epoch (↻) marked
-// above the request they came before.
-func (k *chatLook) sparkRows(v *liveView, a *state.Agent, w int) (marks, bars cell.Line) {
-	ratios := a.Hits.Ratios
-	if len(ratios) == 0 || !k.Unicode {
-		return nil, nil
-	}
-	const label = "cache "
-	var mk []widget.Mark
-	for _, m := range a.Hits.Marks {
-		i := m.At - a.Hits.First
-		if i < 0 || i >= len(ratios) {
-			continue
-		}
-		kind := widget.MarkEpoch
-		switch m.Kind {
-		case state.MarkAnomaly:
-			kind = widget.MarkBreak
-		case state.MarkCompaction:
-			kind = widget.MarkCompact
-		}
-		mk = append(mk, widget.Mark{At: i, Kind: kind})
-	}
-	room := min(len(ratios), 32, max(w-len(label)-24, 8))
-	vals := ratios
-	lines := widget.Spark(vals, room, mk, k.Palette)
-	if len(lines) != 2 {
-		return nil, nil
-	}
-	n := a.Hits.Len()
-	var note row
-	note.add(k.st.dim, fmt.Sprintf("  hit ratio per request %s %s", k.g.dot, count(n, "request", "requests")))
-	if s := v.snap.Totals.Savings; s.Known() && s.SavedUSD > 0 {
-		note.add(k.st.dim, " "+k.g.dot+" saved "+k.g.approx+" ").add(k.st.good, widget.USD(s.SavedUSD)).add(k.st.dim, " at list price")
-	}
-	var bl row
-	bl.add(k.st.dim, label).addLine(lines[1]).addLine(note.line())
-	return cell.Join(cell.Spaces(len(label), cell.Style{}), lines[0]), k.fit(bl.line(), w)
 }
 
 // ---- the permission dialog ----

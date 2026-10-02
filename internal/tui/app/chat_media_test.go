@@ -193,9 +193,7 @@ func TestTheCommittedChatPlaysIntoTheScreensTheRecordingShows(t *testing.T) {
 		{"the banner", []string{"◆ sleipnir", "/work/orders-api", "Type a goal"}, false},
 		{"the goal being typed", []string{"│ ❯ the pagination"}, false},
 		{"the goal sent", []string{"❯ the pagination test in ./orders is failing, fix it", "esc to interrupt"}, false},
-		{"the stack bar before the first answer", []string{"prompt ", "G1"}, false},
 		{"a tool line", []string{"● Read orders/list.go", "89 lines"}, false},
-		{"the stack bar, cached, and the clock", []string{"% cached", "warm "}, false},
 		{"the failing tests", []string{"● Bash go test ./orders/...", "✗", "exit 1", "--- FAIL: TestListFirstPage"}, false},
 		{"the question", []string{"Edit a file", "orders/list.go", "(page - 1) * size", "1 2 3 answers"}, false},
 		{"a letter at the question lands in the input box, and the question stays", []string{"Edit a file", "1 2 3 answers", "│ ❯ y "}, false},
@@ -205,8 +203,7 @@ func TestTheCommittedChatPlaysIntoTheScreensTheRecordingShows(t *testing.T) {
 		{"the fold's record", []string{"◆ compacted", "→", "spine +1 resume"}, true},
 		{"the cache break", []string{"⚠ cache break", "read 0 of"}, true},
 		{"the answer as markdown", []string{"● Fixed", "• the offset is", "│ go"}, false},
-		{"the end of the turn", []string{"── ", "7 steps", "saved ≈"}, false},
-		{"the hit ratio with its marks", []string{"hit ratio per request", "7 requests"}, false},
+		{"the end of the turn", []string{"── ", "7 steps", "$0.08"}, false},
 		{"the second goal", []string{"❯ yes, add a test for page 0"}, false},
 		{"the cancel", []string{"(cancelled)"}, false},
 	}
@@ -225,18 +222,6 @@ func TestTheCommittedChatPlaysIntoTheScreensTheRecordingShows(t *testing.T) {
 			t.Errorf("%s is first on screen %d, before steps that come before it (screen %d)", s.what, i, alongsideAt)
 		}
 		at = max(at, i, alongsideAt)
-	}
-	// the sparkline's marks are over the bars of the requests that had them: a compaction and a break
-	if i := firstShowing(t, scr, "hit ratio per request", "7 requests"); i >= 0 {
-		var marks string
-		for _, line := range strings.Split(scr[i], "\n") {
-			if strings.Contains(line, "◆") && strings.Contains(line, "⚠") && !strings.Contains(line, "cache break") && !strings.Contains(line, "compacted") {
-				marks = line
-			}
-		}
-		if marks == "" {
-			t.Errorf("no line of the sparkline marks both a compaction (◆) and a break (⚠):\n%s", scr[i])
-		}
 	}
 	// the footer (mode, model, session) is on every screen from the banner on, and the last screen is the prompt waiting
 	for i := firstShowing(t, scr, "◆ sleipnir"); i < len(scr); i++ {

@@ -1,11 +1,7 @@
-120 columns, 10 rows, cursor at row 5 column 7
-prompt 4.0k █████████████████████████████████████████████▏██████▓░░░░░░░░▏░░░░░░░░░░░░░ 93% cached  ◕ warm 4:12 ▰▰▰▰▰▰▰▱
-                                  G1                       G2      G3          G4
-          ⚠◆
-cache ▁▇██▃▇█  hit ratio per request · 7 requests · saved ≈ $0.13 at list price
+120 columns, 6 rows, cursor at row 1 column 7
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ ❯ /co                                                                                                                │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ▸ /cost     tokens, cost and cache hit ratio so far
   /compact  [focus]  fold the older thread now
-accept-edits · ctrl+t stack · ctrl+o expand · / commands                            mock/mock-1 · 20260102-030405-abcdef
+accept-edits · ctrl+t stats · / commands                                            mock/mock-1 · 20260102-030405-abcdef

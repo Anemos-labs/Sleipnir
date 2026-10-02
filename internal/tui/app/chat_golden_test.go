@@ -78,15 +78,15 @@ var goldenCommands = []input.Command{{Name: "help", Description: "this text"}, {
 
 // liveFixtures are the moments of a chat the golden files hold.
 func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView {
-	sn, mem := chatSession(t)
-	base := liveView{cols: cols, rows: rows, snap: sn, mem: mem, mode: "accept-edits", model: "mock/mock-1", session: "20260102-030405-abcdef", editorOn: true}
+	sn, _ := chatSession(t)
+	base := liveView{cols: cols, rows: rows, snap: sn, mode: "accept-edits", model: "mock/mock-1", session: "20260102-030405-abcdef", editorOn: true}
 
 	idle := base
 	idle.ed = chatEditor(t, k, cols, "now add a test for page 0 and a negative size", goldenCommands)
 
 	busy := base
 	busy.ed = chatEditor(t, k, cols, "", goldenCommands)
-	busy.status = statusView{kind: statusThinking, seed: 1, elapsed: 14 * time.Second, tokIn: 48300, tokOut: 2100, cost: 0.0021, saved: 0.31}
+	busy.status = statusView{kind: statusThinking, seed: 1, elapsed: 14 * time.Second, tokIn: 48300, tokOut: 2100, cost: 0.0021}
 	md := widget.Markdown("Fixed. `List` computed the offset from a zero-based page; pages are one-based, so page 1 skipped the first `size` rows.", max(cols-2, 1), k.Theme)
 	busy.tail = k.answerLines(md, 0)
 	busy.tools = []toolView{{title: "Bash", summary: "go test ./orders/... -run TestList -count=1", elapsed: 3 * time.Second}}
@@ -99,6 +99,9 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 	title, body := k.requestBody(req, nil, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj", "")
 	opts, _ := dialogOptions(req)
 	ask.dlg = &dialogView{title: title, body: body, options: opts, armed: true}
+
+	team := idle // a team: the footer names the key of the agents page
+	team.team = true
 
 	askEdit := ask
 	call := &toolRun{name: "edit", input: mustJSON(map[string]any{"path": "/work/proj/orders/list.go", "old_string": "offset := page * size", "new_string": "offset := (page - 1) * size"})}
@@ -125,7 +128,7 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 
 	starting := liveView{cols: cols, rows: rows, status: statusView{kind: statusStarting}, ed: chatEditor(t, k, cols, "", nil), mode: "default"}
 
-	return map[string]liveView{"idle": idle, "busy": busy, "ask": ask, "askedit": askEdit, "asktrust": askTrust, "fold": fold, "menu": menu, "starting": starting}
+	return map[string]liveView{"idle": idle, "busy": busy, "ask": ask, "askedit": askEdit, "asktrust": askTrust, "fold": fold, "menu": menu, "starting": starting, "team": team}
 }
 
 // dump is a live region as the golden file holds it: the rows, and where the cursor is.
@@ -200,8 +203,8 @@ func TestChatLiveRegionFitsEveryTerminal(t *testing.T) {
 	}
 }
 
-// What the colours say: a layer that came from the cache is bright and one that was paid for is dim, a cache break is red, the
-// status line has the harness's violet, and what is saved is green.
+// What the colours say: the status line has the harness's violet, and the chat page carries no statistics (no stack bar, no hit ratio,
+// nothing the cache saved: they are on the stats page).
 func TestChatLiveRegionStyled(t *testing.T) {
 	k := newChatLook(Look{Theme: widget.DefaultTheme(), Palette: widget.DefaultPalette(), Unicode: true, Anim: false})
 	fx := liveFixtures(t, k, 100, 30)
@@ -215,29 +218,12 @@ func TestChatLiveRegionStyled(t *testing.T) {
 	widgettest.Golden(t, *update, "testdata/chat-live-busy-100-styled.txt", got)
 
 	// the properties the golden file shows, stated
-	var bar cell.Line
 	for _, l := range out.lines {
-		if strings.HasPrefix(l.Plain(), "prompt ") {
-			bar = l
+		for _, no := range []string{"prompt ", "saved", "hit ratio", "cached", "warm"} {
+			if strings.Contains(l.Plain(), no) {
+				t.Errorf("the chat page carries a statistic (%q), which belongs on the stats page:\n%s", no, got)
+			}
 		}
-	}
-	if bar == nil {
-		t.Fatal("no stack bar in the live region")
-	}
-	var bright, dim bool
-	for _, sp := range bar {
-		if strings.Contains(sp.Text, "█") && sp.Style.FG != (cell.Color{}) && !sp.Style.Has(cell.Dim) {
-			bright = true
-		}
-		if strings.Contains(sp.Text, "░") && sp.Style.Has(cell.Dim) {
-			dim = true
-		}
-	}
-	if !bright || !dim {
-		t.Errorf("the bar has a bright cached part (%v) and a dim paid one (%v):\n%s", bright, dim, widgettest.FlattenStyledWith([]cell.Line{bar}, names))
-	}
-	if !anyStyled(out.lines, func(sp cell.Span) bool { return strings.Contains(sp.Text, "saved") && sp.Style.FG == pal.Good }) {
-		t.Errorf("what the cache saved is green:\n%s", got)
 	}
 	if !anyStyled(out.lines, func(sp cell.Span) bool {
 		return strings.Contains(sp.Text, "Thinking") || strings.Contains(sp.Text, "…") && sp.Style.FG == pal.Accent

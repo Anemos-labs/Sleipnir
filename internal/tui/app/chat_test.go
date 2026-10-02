@@ -32,11 +32,11 @@ func TestChatFooterBeforeTheSessionIsMadeStartsWithTheKeys(t *testing.T) {
 	r := startChat(t, rigOpts{noAttach: true})
 	var footer string
 	for _, row := range strings.Split(r.visible(), "\n") {
-		if strings.Contains(row, "ctrl+t stack") {
+		if strings.Contains(row, "ctrl+t stats") {
 			footer = row
 		}
 	}
-	if !strings.HasPrefix(footer, "ctrl+t stack") {
+	if !strings.HasPrefix(footer, "ctrl+t stats") {
 		t.Errorf("the footer is %q, which should begin with the keys", footer)
 	}
 }
@@ -44,7 +44,7 @@ func TestChatFooterBeforeTheSessionIsMadeStartsWithTheKeys(t *testing.T) {
 func TestChatDrawsItsFirstScreen(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	s := r.screen()
-	for _, want := range []string{"◆ sleipnir 0.1.0", "mock/mock-1", "/work/proj", "╭", "❯ Type a goal", "╰", "default", "ctrl+t stack", "20260102-030405-abcdef"} {
+	for _, want := range []string{"◆ sleipnir 0.1.0", "mock/mock-1", "/work/proj", "╭", "❯ Type a goal", "╰", "default", "ctrl+t stats", "/ commands", "20260102-030405-abcdef"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the first screen lacks %q:\n%s", want, s)
 		}
@@ -79,7 +79,7 @@ func TestChatTypingSubmitAndTheGoalReachesTheSession(t *testing.T) {
 		t.Errorf("the status line says that the agent works:\n%s", s)
 	}
 	close(done)
-	s = r.shows("1 step", "$0.0041", "cache hit 50%")
+	s = r.shows("1 step", "$0.0041")
 	if strings.Contains(s, "esc to interrupt") {
 		t.Errorf("the status line goes when the turn is over:\n%s", s)
 	}
@@ -1010,7 +1010,7 @@ func TestChatHistoryRecallsAndIsKept(t *testing.T) {
 	r := startChat(t, rigOpts{history: hist})
 	r.submit("first goal")
 	r.until("the goal", func(string) bool { return len(r.host.seen()) == 1 })
-	r.shows("cache hit")
+	r.shows("1 step")
 	r.special(input.Up)
 	if s := r.screen(); strings.Count(s, "first goal") != 2 {
 		t.Errorf("Up brings back the last prompt into the input:\n%s", s)

@@ -225,16 +225,20 @@ func TestNoticeLinesHangUnderTheirSign(t *testing.T) {
 func TestTurnSummaryIsOneLine(t *testing.T) {
 	k := goldenLook(true)
 	res := TurnResult{Steps: 3, CostUSD: 0.0123, HitRatio: 0.5}
-	got := k.turnSummary(1400*time.Millisecond, res, 0.31, 100).Plain()
-	for _, want := range []string{"──", duration(time.Second), "3 steps", widget.USD(0.0123), "cache hit " + widget.Percent(0.5), "saved ≈ " + widget.USD(0.31)} {
+	got := k.turnSummary(1400*time.Millisecond, res, 100).Plain()
+	for _, want := range []string{"──", duration(time.Second), "3 steps", widget.USD(0.0123)} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the summary %q lacks %q", got, want)
 		}
 	}
-	if got := k.turnSummary(time.Second, TurnResult{Steps: 1}, 0, 100).Plain(); strings.Contains(got, "saved") || !strings.Contains(got, "1 step") || strings.Contains(got, "1 steps") {
-		t.Errorf("nothing saved, nothing said: %q", got)
+	// what the cache did and what it saved are statistics: they are on the stats page, not in every turn's record
+	if strings.Contains(got, "cache") || strings.Contains(got, "saved") {
+		t.Errorf("the summary carries statistics: %q", got)
 	}
-	if w := k.turnSummary(time.Hour, res, 1, 20).Width(); w > 20 {
+	if got := k.turnSummary(time.Second, TurnResult{Steps: 1}, 100).Plain(); !strings.Contains(got, "1 step") || strings.Contains(got, "1 steps") {
+		t.Errorf("one step: %q", got)
+	}
+	if w := k.turnSummary(time.Hour, res, 20).Width(); w > 20 {
 		t.Errorf("the summary is cut to the window: %d cells", w)
 	}
 }
@@ -316,5 +320,15 @@ func TestTextLinesTabsAndEscapes(t *testing.T) {
 	}
 	if got := cutCells("abc", 0, "…"); got != "" {
 		t.Errorf("cutCells to nothing: %q", got)
+	}
+}
+
+// The banner says when the chat is a team and how big: the default chat is one, and nothing else on the screen says so.
+func TestBannerSaysHowBigTheTeamIs(t *testing.T) {
+	k := goldenLook(true)
+	solo := strings.Join(plainLines(k.bannerLines(ChatInfo{Version: "dev", Model: "m", Cwd: "/p"}, 100)), "\n")
+	team := strings.Join(plainLines(k.bannerLines(ChatInfo{Version: "dev", Model: "m", Cwd: "/p", Swarm: true, Agents: 8}, 100)), "\n")
+	if strings.Contains(solo, "team") || !strings.Contains(team, "team of 8") {
+		t.Errorf("solo:\n%s\nteam:\n%s", solo, team)
 	}
 }

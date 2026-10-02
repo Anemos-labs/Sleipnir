@@ -46,39 +46,76 @@ func sessionLog(b *statetest.Builder, n, brk int) []events.Event {
 	return out
 }
 
-func TestChatDrawsThePromptStackAndTheHitRatioFromTheLog(t *testing.T) {
+// The chat page is as clean as it can be: nothing about the cache is on it, whatever the log says. The statistics are one key away,
+// and the footer says which key.
+func TestChatPageCarriesNoStatisticsAndTheStatsPageHoldsThem(t *testing.T) {
 	r := startChat(t, rigOpts{cols: 100, rows: 30})
-	if s := r.visible(); strings.Contains(s, "cached") || strings.Contains(s, "hit ratio per request") {
-		t.Fatalf("a chat that has sent no prompt has no stack to draw:\n%s", s)
-	}
 	b := statetest.NewBuilder()
 	log := sessionLog(b, 4, 0)
 	r.at(b.Now().Add(48 * time.Second))
 	r.emit(log...)
 	s := r.visible()
-	for _, want := range []string{"prompt ", "% cached", "warm 4:12", "G1", "hit ratio per request", "4 requests", "saved ≈"} {
-		if !strings.Contains(s, want) {
-			t.Errorf("the live region lacks %q:\n%s", want, s)
+	for _, no := range []string{"prompt ", "cached", "warm", "G1", "hit ratio", "requests", "saved"} {
+		if strings.Contains(s, no) {
+			t.Errorf("the chat page carries a statistic (%q):\n%s", no, s)
 		}
 	}
-	if !strings.ContainsAny(s, "▁▂▃▄▅▆▇█") {
-		t.Errorf("the hit ratio is a sparkline:\n%s", s)
+	if !strings.Contains(s, "ctrl+t stats") {
+		t.Errorf("the footer names the key of the stats page:\n%s", s)
 	}
 	r.ctrl('t')
-	s = r.shows("the prompt stack")
-	for _, want := range []string{"shared", "role", "notes", "spine"} {
+	s = r.shows("❯ /stats", "◆ stats", "cost", "$0.01", "4 requests", "saved ≈", "at list price", "the prompt, layer by layer")
+	for _, want := range []string{"shared", "role", "notes", "spine", "of the prompts came from the provider's cache"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("ctrl+t lists the layers, %q is missing:\n%s", want, s)
+			t.Errorf("the stats page lacks %q:\n%s", want, s)
 		}
+	}
+	// the same page, typed out
+	r2 := startChat(t, rigOpts{cols: 100, rows: 30})
+	r2.at(b.Now().Add(48 * time.Second))
+	r2.emit(log...)
+	r2.typeText("/stats")
+	r2.enter()
+	r2.shows("◆ stats", "saved ≈")
+	if got := r2.host.commands; len(got) != 0 {
+		t.Errorf("the page is drawn by the program, the host was asked %q", got)
 	}
 }
 
-func TestChatCtrlTBeforeAnyPromptSaysSo(t *testing.T) {
+func TestChatStatsPageBeforeAnyPromptSaysSo(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	r.ctrl('t')
-	r.shows("no prompt has been sent yet")
-	if strings.Contains(r.screen(), "the prompt stack") {
+	r.shows("nothing has been sent yet")
+	if strings.Contains(r.screen(), "layer by layer") {
 		t.Error("there is no stack to show")
+	}
+}
+
+// The agents page is the cockpit's table, in the chat: who is in the team and what each one is doing. A single agent has no team, and
+// the footer names the key only for a team.
+func TestChatAgentsPageShowsTheTeamAndASingleAgentHasNone(t *testing.T) {
+	solo := startChat(t, rigOpts{cols: 100, rows: 30})
+	if strings.Contains(solo.visible(), "ctrl+g") {
+		t.Errorf("a single agent has no agents page:\n%s", solo.visible())
+	}
+	solo.press(input.RuneKey('g', input.Ctrl))
+	solo.shows("a single agent: /swarm 8 starts a team of eight")
+
+	r := startChat(t, rigOpts{cols: 100, rows: 30, team: 8})
+	if !strings.Contains(r.visible(), "ctrl+t stats") || !strings.Contains(r.visible(), "ctrl+g agents") {
+		t.Errorf("the footer of a team names both pages:\n%s", r.visible())
+	}
+	r.press(input.RuneKey('g', input.Ctrl))
+	r.shows("the team starts with your first goal: a manager, and the 7 workers it can spawn")
+	b := statetest.NewBuilder()
+	log := sessionLog(b, 2, 0)
+	log = append(log, b.Spawn("w1", "backend", "T1", "main"), b.Spawn("w2", "tester", "T2", "main"))
+	r.at(b.Now().Add(2 * time.Second))
+	r.emit(log...)
+	r.press(input.RuneKey('g', input.Ctrl))
+	s := r.shows("❯ /agents", "3 agents", "tasks:", "AGENT", "backend", "tester")
+	if strings.Contains(s, "a single agent") {
+		t.Errorf("a team is not a single agent:\n%s", s)
 	}
 }
 
@@ -91,10 +128,6 @@ func TestChatACacheBreakIsAWarningInTheScrollback(t *testing.T) {
 	s := r.shows("⚠ cache break in notes (low_hit) · read 900 of 5.2k expected")
 	if strings.Count(s, "cache break") != 1 {
 		t.Errorf("a break is said once:\n%s", s)
-	}
-	// the hit ratio's sparkline marks the request that missed
-	if !strings.Contains(r.visible(), "⚠") {
-		t.Errorf("the sparkline marks the request that broke the cache:\n%s", r.visible())
 	}
 	// more of the log does not say it again
 	more := statetest.NewBuilder().At(b.Now())

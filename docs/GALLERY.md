@@ -40,10 +40,9 @@ of its output), an edit as a diff with line numbers, the tests passing. The edit
 key `1`: it takes numbers (and the arrows and enter), never letters, because a letter is what a half-typed sentence is made of and a
 sentence must not be able to answer for you. The person's hand goes to `y` first, as it does at other tools' prompts; it lands in the
 input box and the question says why (your typing goes to the prompt until you pause), so it is deleted, and `1` answers. Under the
-thread is what only this harness shows: the status line (spinner, verb,
-elapsed time, tokens, cost, and what the cache saved at list price), the prompt stack bar, bright where the provider read it from its
-cache, with the cache's clock, and the hit-ratio sparkline with `⚠` where the provider lost its cache (the line above it says what the
-miss cost) and `◆` where the thread was folded into a one-line resume, which stays in the scrollback as a record. A second goal ends
+thread is the status line (spinner, verb, elapsed time, tokens, cost), the input and a footer that names the keys of the stats page
+(`ctrl+t`) and, for a team, the agents page (`ctrl+g`); the statistics are not on the page. `◆` marks where the thread was folded into a
+one-line resume, which stays in the scrollback as a record. A second goal ends
 in Ctrl-C, which cancels the turn and keeps the session.
 
 *What is real and what is scripted.* The picture is the chat program itself, the code `sleipnir chat` runs, drawn into a terminal

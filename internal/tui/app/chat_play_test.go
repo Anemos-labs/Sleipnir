@@ -184,7 +184,7 @@ func TestPlayChatShowsTheSessionAsTheTranscriptTellsIt(t *testing.T) {
 		{"the question", []string{"Edit a file", "1 2 3 answers", "waiting for your answer"}},
 		// the edit's own time: the 1.9 s the person took to answer are the question's, not the tool's (the line says so while it waits)
 		{"the edit as a diff", []string{"● Edit a.go", "✓ 0s", "+1 −1", "(page - 1) * size"}},
-		{"the end of the turn", []string{"── 5.0s", "3 steps", "$0.01", "cache hit 80%"}},
+		{"the end of the turn", []string{"── 5.0s", "3 steps", "$0.01"}},
 		{"the second goal sent", []string{"❯ again", "esc to interrupt"}},
 		{"the words that were cut", []string{"I will start by looking at"}},
 		{"the cancel", []string{"(cancelled)"}},
@@ -200,9 +200,13 @@ func TestPlayChatShowsTheSessionAsTheTranscriptTellsIt(t *testing.T) {
 	if last := scr[len(scr)-1]; strings.Contains(last, "esc to interrupt") || !strings.Contains(last, "(cancelled)") {
 		t.Errorf("when the turn is over the status line is gone and the prompt waits:\n%s", last)
 	}
-	// the stack bar and the clock are drawn from the events, the question hides them, and the spinner turns
-	if i := firstShowing(t, scr, "prompt 5.0k", "% cached", "hit ratio per request"); i < 0 {
-		t.Error("no stack")
+	// the chat page carries no statistics, and the spinner turns
+	for _, s := range scr {
+		for _, no := range []string{"prompt 5.0k", "% cached", "hit ratio per request", "saved ≈"} {
+			if strings.Contains(s, no) {
+				t.Fatalf("a screen of the chat page carries a statistic (%q):\n%s", no, s)
+			}
+		}
 	}
 	glyphs := map[string]bool{}
 	for _, s := range scr {

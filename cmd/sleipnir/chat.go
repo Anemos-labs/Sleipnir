@@ -272,6 +272,7 @@ model and cost
 /model [ref]       show the model, or move this conversation to another one
 /budget [usd|off]  the dollar budget for the turns from now on
 /cost              tokens, cost and cache hit ratio so far
+/stats             the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers
 /context           what each layer of the prompt weighs
 /status            model, mode, session, budget and cost at a glance
 
@@ -285,7 +286,7 @@ a team, and the program
 /roles [role=m]    which model each role runs on; change one (restarts)
 /swarm <n> [flags] start again as a team of n agents (the manager included)
 /restart [flags]   start again with other flags: --no-mcp, --trust-project, --cwd DIR
-/agents            the swarm board: agents and tasks
+/agents           the team's agents and tasks (ctrl+g)
 /verbose [on|off]  notices and tool errors
 /anim [on|off]     motion
 /cwd               the directory this session works in
@@ -337,6 +338,9 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		}
 	case "/cost":
 		printCost(stderr, s)
+	case "/stats": // in the terminal program the page is drawn by the program itself (internal/tui/app, page); this is the line chat's
+		printCost(stderr, s)
+		printContext(stderr, s)
 	case "/context":
 		printContext(stderr, s)
 	case "/compact":

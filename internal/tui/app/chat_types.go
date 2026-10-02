@@ -72,6 +72,8 @@ type ChatInfo struct {
 	Budget  string
 	Resumed string
 	Swarm   bool
+	// Agents is the size of the team, the manager included, when the session is one (0 for a single agent): the banner says it.
+	Agents int
 }
 
 // ChatAttach is the session, once it is made: the host, what to say about it, the log to follow and the commands to complete. A

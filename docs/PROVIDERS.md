@@ -7,6 +7,21 @@
 | OpenAI Responses | not built yet (`openai-responses` is accepted in config, but a session that uses it stops with an error) | |
 
 
+## Subscription logins (a plan instead of an API key)
+
+Checked on 2026-10-02 against the providers' own pages; terms change, so read them again before building anything on this.
+
+* **Claude (Pro, Max): not supported, on purpose.** Anthropic's [legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance) says OAuth
+  authentication is "intended exclusively" for Claude's own apps, that developers building products or tools "should use API key authentication through Claude
+  Console or a supported cloud provider", that third parties may not "route requests through Free, Pro, or Max plan credentials on behalf of their users", and
+  may not "collect, store, or intermediate Claude.ai credentials or session tokens"; it may enforce this without notice (the press reported such blocks from January 2026). Use an API
+  key (`sleipnir login anthropic`), or a cloud provider's Claude.
+* **ChatGPT (Plus, Pro): allowed through OpenAI's own route, not built yet.** "Sign in with ChatGPT" has a token-sharing mode for open-source and locally hosted
+  apps ([docs](https://developers.openai.com/siwc/token-sharing-open-source)): OAuth with PKCE and dynamic client registration, no client secret, scope
+  `chatgpt.tokens.use.direct` against `https://api.openai.com/v1`, for "eligible Responses API requests" only, a weekly cap per app set by the user, and
+  marked as a preview. It needs the OpenAI Responses dialect first (the table above), then a `sleipnir login openai --plan` that runs the flow
+  (`docs/ROADMAP.md`). Use the registration the documentation describes, not the Codex CLI's own client id.
+
 ## Built in
 
 Name a model as `provider/model`. A key comes from its variable, else from `~/.sleipnir/auth.json` (`sleipnir login`); the variable wins. `sleipnir models` lists the

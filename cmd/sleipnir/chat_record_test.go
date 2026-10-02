@@ -204,7 +204,7 @@ func TestChatRecordMakesATranscriptThatTheChatProgramPlays(t *testing.T) {
 		"● Read orders/list.go", "● Bash go test ./orders/...", "exit 1", "--- FAIL: TestListFirstPage", // the tools and the failing tests
 		"Edit a file", "1 2 3 answers", "● Edit orders/list.go", "+1 −1", // the question and the diff
 		"◆ compacting", "◆ compacted", "⚠ cache break", // the compaction and the break
-		"7 steps", "saved ≈", "(cancelled)", // the end of the first turn and the second turn's cancel
+		"7 steps", "(cancelled)", // the end of the first turn and the second turn's cancel
 	} {
 		if !strings.Contains(seen.String(), want) {
 			t.Errorf("no screen of the recording shows %q", want)

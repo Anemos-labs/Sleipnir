@@ -1,7 +1,5 @@
-80 columns, 6 rows, cursor at row 3 column 4
-◆ compacting ▓▓▓▓         9.6k → 2.4k
-● Compacting…  31s  ↑61.2k ↓900                                 esc to interrupt
+80 columns, 4 rows, cursor at row 1 column 49
 ╭──────────────────────────────────────────────────────────────────────────────╮
-│ ❯ Type a goal, / for commands, @ for files                                   │
+│ ❯ now add a test for page 0 and a negative size                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-accept-edits · ctrl+t stats · / commands    mock/mock-1 · 20260102-030405-abcdef
+accept-edits · ctrl+t stats                 mock/mock-1 · 20260102-030405-abcdef

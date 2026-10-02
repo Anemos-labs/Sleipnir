@@ -7,7 +7,7 @@
 # --scenario swarm runs a real team (a manager and three workers (four agents) in git worktrees, a verifier) on three small independent tasks and draws the session's
 # event log as the cockpit with `sleipnir replay --record`, SPEED (default 6) times faster than it happened. --scenario first-run starts with no configuration at all: the first provider chosen with the arrows and enter, the key typed at the hidden prompt, --search WORDS typed to narrow the model list, enter, then a one-line goal. A temporary project with a failing test and a temporary home (which receives the key from the environment variable named by --key-env, in its own
 # auth.json, and is removed afterwards) are made; tmux runs `sleipnir` under script(1), which writes everything the terminal showed with its timing;
-# a typist (this script) types `/allow tests`, then the goal, answers the approval question with the key 1, and ends the chat; `sleipnir term-svg`
+# a typist (this script) types `/allow tests`, then the goal, answers the approval question with the key 1, opens the stats page (ctrl+t) and the agents page (ctrl+g), and ends the chat; `sleipnir term-svg`
 # plays the recording into the repository's own terminal emulator and writes the animated SVG. A wait longer than --max-gap is shortened to it
 # (the model thinks for seconds, and the picture would be still): the pictures say so. Costs a few cents; needs tmux, script (util-linux), go, git.
 set -eu
@@ -149,6 +149,8 @@ done
 [ "$i" -lt 900 ] || { echo "record-real: the turn did not end in 450 s" >&2; pane >&2; exit 1; }
 echo "record-real: the turn took about $((i / 2)) s" >&2
 sleep 3
+# the two pages the footer names: ctrl+t is the stats page, ctrl+g the agents page
+tmux send-keys -t $s C-t; sleep 3.5; tmux send-keys -t $s C-g; sleep 4
 typist "/exit"; sleep 0.5; tmux send-keys -t $s Enter
 i=0; while [ ! -e "$tmp/done" ] && [ "$i" -lt 60 ]; do sleep 0.5; i=$((i + 1)); done
 "$BIN" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$OUT" --cols "$COLS" --rows "$ROWS" --max-gap "$MAXGAP" ${STILL:+--still "$STILL" ${STILLAT:+--still-at "$STILLAT"}} --title "sleipnir  ($MODEL, a real session)"

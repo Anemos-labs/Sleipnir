@@ -345,8 +345,8 @@ func TestE2EChatIsAProgramOnATerminal(t *testing.T) {
 		t.Errorf("what was sent is in the scrollback:\n%s", all)
 	}
 	all = u.turnsDone(1)
-	if !strings.Contains(all, "1 step") || !strings.Contains(all, "cache hit") {
-		t.Errorf("the turn leaves a record:\n%s", all)
+	if !strings.Contains(all, "1 step") || strings.Contains(all, "cache hit") || strings.Contains(all, "saved") {
+		t.Errorf("the turn leaves a record, without statistics (they are on the stats page):\n%s", all)
 	}
 	u.ready()
 	u.ctrlD()
