@@ -196,14 +196,20 @@ func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 // It returns how many turns it indexed. A damaged tail of the log is not an error
 // (the same rule as LatestSnapshot).
 func RebuildArchive(dir, agentID string, ar *kv.Archive) (int, error) {
+	return RebuildArchiveFrom(dir, agentID, agentID, ar)
+}
+
+// RebuildArchiveFrom is RebuildArchive for turns that one agent appended and another now holds: a session of a team resumed as one agent,
+// or the other way round. The turns of from in the log are indexed under to.
+func RebuildArchiveFrom(dir, from, to string, ar *kv.Archive) (int, error) {
 	n := 0
 	err := events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
-		if e.Type != events.TypeTurnAppend || e.Agent != agentID {
+		if e.Type != events.TypeTurnAppend || e.Agent != from {
 			return nil
 		}
 		var t core.Turn
 		if json.Unmarshal(e.Data, &t) == nil && t.ID > 0 {
-			if ar.Put(agentID, t) == nil {
+			if ar.Put(to, t) == nil {
 				n++
 			}
 		}

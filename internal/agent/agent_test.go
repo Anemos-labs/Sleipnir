@@ -120,6 +120,9 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A compaction still running when its test ends (a second turn can start one the test never waits for) reads RetryBase while
+	// the next test's rig writes it: -race fails a test that did nothing wrong, and only when the machine is busy.
+	t.Cleanup(func() { _ = a.Close() })
 	return &rig{t: t, srv: srv, agent: a, log: log, tools: reg, client: client}
 }
 

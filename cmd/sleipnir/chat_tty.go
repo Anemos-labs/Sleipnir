@@ -136,10 +136,19 @@ func chatInfo(s *session.Session, cwd string) app.ChatInfo {
 	if s.Swarm != nil {
 		info.Agents = s.Swarm.MaxAgents()
 	}
-	if s.Resumed() && s.Agent != nil {
-		info.Resumed = fmt.Sprintf("resumed: %d turns restored; the first request writes the cached prefix again, once", len(s.Agent.Stack().Thread.Turns))
+	if a := s.Main(); s.Resumed() && a != nil {
+		info.Resumed = resumedLine(s, a)
 	}
 	return info
+}
+
+// resumedLine says what a resumed session brought back. A team's workers are not among it: nothing of them was running.
+func resumedLine(s *session.Session, a *agent.Agent) string {
+	line := fmt.Sprintf("resumed: %d turns restored; the first request writes the cached prefix again, once", len(a.Stack().Thread.Turns))
+	if s.Swarm != nil {
+		line = fmt.Sprintf("resumed: the manager's %d turns and the board are back (its workers are not: what they held is todo again); the first request writes the cached prefix again, once", len(a.Stack().Thread.Turns))
+	}
+	return line
 }
 
 // tildePath shows a path under the home directory as ~/....
@@ -278,28 +287,24 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 			return app.CommandResult{}, true
 		}
 		h.first = append([]string{"login"}, f[1:]...)
-		if h.s.Swarm != nil {
-			fmt.Fprintln(out, "leaving the chat to sign in; the team starts again after it (its conversation does not carry over)")
-		} else {
-			fmt.Fprintln(out, "leaving the chat to sign in; it comes back where you were")
-		}
+		fmt.Fprintln(out, "leaving the chat to sign in; it comes back where you were")
 		return app.CommandResult{Restart: args}, true
 	case "/model":
 		if len(f) < 2 || h.s.Swarm == nil { // a single agent moves its own conversation: slashTo
 			return app.CommandResult{}, false
 		}
-		// A team runs on its roles' models, and the default of them all is this one: changing it starts the team again (what it said and did is
-		// kept in its session and its checkout, its conversation is not carried over), with the roles that name their own model kept.
+		// A team runs on its roles' models, and the default of them all is this one: changing it starts the team again, with the roles that
+		// name their own model kept and the manager's conversation carried over (the workers' is not: nothing of them is running).
 		if _, err := h.s.CheckModel(f[1]); err != nil {
 			fmt.Fprintln(out, "model:", tools.SanitizeForTerminal(err.Error()))
 			return app.CommandResult{}, true
 		}
-		args, err := restartArgs(h.s, []string{"--model", f[1]}, true)
+		args, err := restartArgs(h.s, []string{"--model", f[1]}, false)
 		if err != nil {
 			fmt.Fprintln(out, "model:", err)
 			return app.CommandResult{}, true
 		}
-		fmt.Fprintf(out, "the team starts again on %s (its conversation does not carry over; /roles changes one role)\nrestarting: sleipnir chat %s\n", f[1], strings.Join(args, " "))
+		fmt.Fprintf(out, "the team starts again on %s (the manager's conversation comes along, the workers' does not; /roles changes one role)\nrestarting: sleipnir chat %s\n", f[1], strings.Join(args, " "))
 		return app.CommandResult{Restart: args}, true
 	case "/new", "/resume":
 		var typed []string
@@ -360,7 +365,7 @@ var chatCommands = []chatCommand{
 	{"compact", "[focus]", "fold the older thread now"},
 	{"agents", "", "the team's agents and tasks (ctrl+g)"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
-	{"login", "[provider]", "add a key, or sign in with your ChatGPT plan, for a provider; the chat comes back where you were (a team starts again)"},
+	{"login", "[provider]", "add a key, or sign in with your ChatGPT plan, for a provider; the chat comes back where you were"},
 	{"budget", "[usd|off]", "show or set the dollar budget for the turns from now on"},
 	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},
 	{"verbose", "[on|off]", "show or hide notices and tool errors"},

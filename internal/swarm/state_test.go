@@ -1093,6 +1093,73 @@ func TestBoardIsRebuiltFromTheLog(t *testing.T) {
 	}
 }
 
+// A resumed team starts where the last one stopped: the tasks of the old board (what was somebody's is todo again, what was done stays), the
+// pending notes, the ids counting on, and the log of old and new together replays to this board.
+func TestARestoredBoardStartsWhereTheLastOneStopped(t *testing.T) {
+	log := events.NewMemLog()
+	old := NewBoard(log)
+	t1, _ := old.CreateTask("mgr", TaskSpec{Title: "paginate /users", Role: "backend", Files: []string{"api/**"}})
+	t2, _ := old.CreateTask("mgr", TaskSpec{Title: "table UI", Deps: []string{t1.ID}})
+	t3, _ := old.CreateTask("mgr", TaskSpec{Title: "docs"})
+	t4, _ := old.CreateTask("mgr", TaskSpec{Title: "benchmarks"})
+	_ = old.Assign("mgr", "be-1", t1.ID)
+	_ = old.Submit("be-1", t1.ID, "cursor pagination", "edited 2")
+	_ = old.Accept("mgr", t1.ID, "lgtm")
+	_ = old.Claim("fe-1", t2.ID)
+	_ = old.Block("fe-1", t2.ID, "waiting for the API")
+	_ = old.Assign("mgr", "dc-1", t3.ID) // doing
+	_ = old.Claim("be-2", t4.ID)
+	_ = old.Submit("be-2", t4.ID, "numbers", "ran them") // review
+	_, _ = old.AddNote("be-1", "shared", "", "the API pages by cursor")
+	prev, err := ReplayBoard(log.All())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nb := NewBoard(log) // the resumed session appends to the same log
+	back := nb.Restore(prev)
+	if got := strings.Join(back, ","); got != "T2,T3,T4" {
+		t.Errorf("the tasks put back are %q, want T2,T3,T4 (blocked, doing and in review)", got)
+	}
+	live := nb.Snapshot()
+	for _, c := range []struct {
+		id     string
+		status TaskStatus
+		owner  string
+	}{{"T1", StatusDone, "be-1"}, {"T2", StatusTodo, ""}, {"T3", StatusTodo, ""}, {"T4", StatusTodo, ""}} {
+		task, ok := live.Task(c.id)
+		if !ok || task.Status != c.status || task.Owner != c.owner {
+			t.Errorf("%s after the restore: %+v (found %v), want %s owned by %q", c.id, task, ok, c.status, c.owner)
+		}
+	}
+	if task, _ := live.Task("T3"); task.Line != resumedLine || task.Title != "docs" {
+		t.Errorf("a task put back says why and keeps its title: %+v", task)
+	}
+	if len(live.Notes) != 1 || live.Notes[0].Text != "the API pages by cursor" {
+		t.Errorf("the pending note is kept: %+v", live.Notes)
+	}
+	// the ids go on counting: nothing the resumed manager creates collides with what is in the log
+	if next, err := nb.CreateTask("mgr", TaskSpec{Title: "one more"}); err != nil || next.ID != "T5" {
+		t.Errorf("the next task is %q (%v), want T5", next.ID, err)
+	}
+	// and the log, the old part and the new, replays to this board
+	got, err := ReplayBoard(log.All())
+	if err != nil {
+		t.Fatal(err)
+	}
+	live = nb.Snapshot()
+	if got.Version != live.Version || !reflect.DeepEqual(got.Tasks, live.Tasks) || !reflect.DeepEqual(got.Notes, live.Notes) {
+		t.Errorf("the log of the old and the new board replays to something else:\n replay: %+v\n live:   %+v", got, live)
+	}
+	// a board that holds tasks is left as it is
+	if again := nb.Restore(prev); len(again) != 0 || len(nb.Snapshot().Tasks) != 5 {
+		t.Errorf("a second restore changed the board: %v, %d tasks", again, len(nb.Snapshot().Tasks))
+	}
+	if nb.Restore(nil) != nil {
+		t.Error("restoring nothing put something back")
+	}
+}
+
 // An agent that acts on a task that is not its own is told what to do about it. The first real swarm run had a manager that
 // read "T1 belongs to nobody", could find no way to drop a duplicate task, and went on for four turns; the answer names the way.
 func TestTheAnswerToAnAgentThatDoesNotOwnATaskSaysWhatToDo(t *testing.T) {

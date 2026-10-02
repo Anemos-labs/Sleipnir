@@ -108,8 +108,8 @@ The first release.
   `/model` menu list their models. A model on a keyless server of this machine costs nothing and is assumed to have an 8192-token window (a catalogue of ids only does not say, and
   Ollama cuts a longer prompt off silently), which `providers.<name>.options.context_window` raises. A catalogue entry that carries nothing no longer replaces a known price and window with zeros.
 - `/model provider/model` in the chat moves the conversation to another model, keeping the thread, notes, spine and bill (the agent is
-  rebuilt and the old one's snapshot restored: the same path as a resume). `/model ` opens a menu of every model of the providers whose key is set (favorites first, typing filters it with the same fuzzy match as the commands); `/model` alone shows the current one. A swarm is refused;
-  its workers run on their roles' models. The errors of a first run now say Heimdall is the recommended start.
+  rebuilt and the old one's snapshot restored: the same path as a resume). `/model ` opens a menu of every model of the providers whose key is set (favorites first, typing filters it with the same fuzzy match as the commands); `/model` alone shows the current one. In a team the chat starts the team again on that model,
+  with the manager's conversation (a team's workers run on their roles' models). The errors of a first run now say Heimdall is the recommended start.
 - Built in beside Heimdall, OpenRouter and OpenAI: Anthropic, the open-weight hosts Together, Fireworks, Groq, Cerebras and DeepInfra
   (each needs only its key variable), and the local servers Ollama, LM Studio, llama.cpp and vLLM (no key: `ollama/qwen3:8b`).
   A marketplace id that starts with `openai/` or `anthropic/` goes to your default provider when that vendor's own key is not set.
@@ -200,7 +200,7 @@ The first release.
   a benchmark or a daily user has thousands within a year. A directory that has no event log is never touched.
 - Every finished turn saves a snapshot of the agent (thread, notes, spine) in the event log. `sleipnir chat|run --resume
   <id|latest>` (or `--continue`) picks the conversation up where it stopped, in the same session directory and log; the
-  first request writes the cached prefix again, once, and says so. Swarm sessions cannot be resumed yet.
+  first request writes the cached prefix again, once, and says so. A team's session resumes too: its manager's conversation and its board; the workers start again.
 - `/compact [focus]` folds the older thread on request, with an optional hint about what to keep in view; it is a declared
   and priced rebase like any other, and fires the PreCompact and PostCompact hooks.
 - `sleipnir sessions` marks the sessions that can be continued.
@@ -467,11 +467,22 @@ The first release.
   bound twice that, and a result of four kilobytes kept for every step fails it by three times). It first said 17 KB a step, which was
   the test's own blob store: held in memory it kept every result, where a session keeps them on disk. With the store on disk a heap
   profile accounted for all of the growth, the index and the set of blobs already verified (which is bounded); the harness leaks nothing.
+- The agent tests' rig closes its agent when a test ends. A compaction a test never waited for (a second turn starts one) was still running
+  when the mock endpoint was closed and the next test began, and read `agent.RetryBase` in its retry while that test's rig wrote it: `-race`
+  failed two tests that did nothing wrong, once in a full run of the packages together on a busy machine.
 
 ### Found by running it on real models
 
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
 defect the runs showed, with the evidence, and what changed.
+
+- **A team's session could not be resumed, and `sleipnir sessions` said it could.** Found by running `sleipnir --continue` in the default chat: "resuming into a swarm is not
+  supported yet". The chat on a terminal is a team, so `--continue`, `--resume ID`, `/resume` and the restart that `/model` and `/login` make had nothing to come back to (`/model` started
+  the team over with an empty conversation). A team's session now resumes: the manager's conversation (the snapshot of its last finished turn) and the board (replayed from the log;
+  a task that was being worked on, reviewed or blocked goes back to todo with nobody on it, and the board says that the session was resumed), and the workers start again, since
+  what a worker knew was about a task it no longer holds. A session that ran its team in git worktrees (`--isolation`) is refused with that reason, as its worktrees are not rebuilt. A
+  session can be continued in another shape (a single agent's conversation as a team's manager, and the other way round). `/model` in a team keeps the manager's conversation and
+  `/login` comes back where you were. Tests for the board, the session and the chat (`TestE2EChatTeamResumesWithContinue` fails on the parent).
 
 - **Two refusals that told a weak model nothing.** Read from the 47 episodes of the first A/B run (`sleipnir friction`, and the tool errors in the trajectories). An `edit` whose `old_string` was a
   block with one wrong line in it was answered "the closest line is line 219 (100% similar)": every line of the block exists, so the closest is exact, and the model could not tell which line was wrong. It

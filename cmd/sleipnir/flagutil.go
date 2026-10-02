@@ -15,7 +15,7 @@ const trustProjectHelp = "trust this project: apply its security-sensitive confi
 // gives the resume request for session.Options.Resume: "" for a new session, a
 // session id or directory, or "latest" (the newest session of this project).
 func resumeFlags(fs *flag.FlagSet) func() (string, error) {
-	spec := fs.String("resume", "", "continue an earlier single-agent session: its id, its directory, or 'latest' (this project's newest)")
+	spec := fs.String("resume", "", "continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)")
 	cont := fs.Bool("continue", false, "continue this project's newest session (same as --resume latest)")
 	return func() (string, error) {
 		switch {

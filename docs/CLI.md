@@ -197,7 +197,7 @@ input box, and a footer with the permission mode, the keys of the pages (`ctrl+t
 the session (`docs/UX.md` describes each). The page carries no statistic: cost, cache hit and what the cache saved are on the stats page. From a pipe or a file, with `TERM=dumb`, or with
 `--plain`, it is the line chat: no colour, no redrawing, a prompt `› `, a goal per line until the input ends, and an action that
 needs approval is refused (with `--plain` on a terminal it asks `allow? [y]es once / [a]lways this session / [n]o`). `--resume
-ID|latest` and `--continue` continue a single-agent session (`--swarm 0`) (`docs/EXTENDING.md` section 6). Slash commands are listed below.
+ID|latest` and `--continue` continue an earlier session, a team's included (`docs/EXTENDING.md` section 6). Slash commands are listed below.
 
 A question rings the terminal's bell once as it appears (`SLEIPNIR_BELL=0` silences it), so that a person in another window sees it in the tab.
 `NO_COLOR` takes the colours away and keeps the program (bold, dim and reverse say what a colour would). `--no-anim`,
@@ -266,7 +266,7 @@ Usage of chat:
   -plain
         plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n
   -resume string
-        continue an earlier single-agent session: its id, its directory, or 'latest' (this project's newest)
+        continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
         role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
   -swarm int
@@ -357,7 +357,7 @@ flags:
   -quiet
         print only the final answer
   -resume string
-        continue an earlier single-agent session: its id, its directory, or 'latest' (this project's newest)
+        continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
         role=model override, repeatable (e.g. manager=heimdall/x)
   -session-dir string

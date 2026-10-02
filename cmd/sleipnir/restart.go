@@ -45,8 +45,9 @@ func splitArgs(s string) []string {
 }
 
 // restartArgs are the arguments to start `sleipnir chat` again with, from the flags a person typed after /restart: what they did not say
-// stays as it is now (the model, the permission mode), and the conversation comes along (--resume) unless the new shape is a swarm,
-// which cannot resume, the person said what to resume themselves, or fresh says to start it empty (/new).
+// stays as it is now (the model, the permission mode), and the conversation comes along (--resume: a single agent's, or a team manager's)
+// unless the person said what to resume themselves, asked for worktrees (a session is resumed in its own directory, which a new set of
+// worktrees would share), or fresh says to start it empty (/new).
 func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, error) {
 	has := func(name string) bool {
 		for _, a := range typed {
@@ -90,7 +91,7 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 	if !has("--mode") {
 		args = append(args, "--mode", string(s.Perm.Mode()))
 	}
-	if !fresh && !has("--swarm") && !has("--resume") && !has("--continue") && s.Swarm == nil && session.Resumable(s.Dir) {
+	if !fresh && !has("--resume") && !has("--continue") && !has("--isolation") && session.Resumable(s.Dir) {
 		args = append(args, "--resume", s.ID)
 	}
 	return args, nil

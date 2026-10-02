@@ -13,6 +13,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 func TestResumeContinuesTheConversationAndTheLog(t *testing.T) {
@@ -167,11 +168,11 @@ func TestResumeErrorsAreClear(t *testing.T) {
 	if _, err := session.New(context.Background(), o); err == nil || !strings.Contains(err.Error(), "no snapshot") {
 		t.Errorf("resuming a session without a snapshot: %v", err)
 	}
-	// Swarms are not resumable yet, and say so.
+	// A team's session that never finished a turn has none either.
 	o = opts(t, repo, client, model)
 	o.Swarm, o.Resume = true, empty
-	if _, err := session.New(context.Background(), o); err == nil || !strings.Contains(err.Error(), "swarm") {
-		t.Errorf("resuming a swarm: %v", err)
+	if _, err := session.New(context.Background(), o); err == nil || !strings.Contains(err.Error(), "no snapshot") {
+		t.Errorf("resuming a team's session without a snapshot: %v", err)
 	}
 }
 
@@ -218,42 +219,174 @@ func TestCompactThroughTheSession(t *testing.T) {
 
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 
-// A swarm session cannot be resumed yet. "latest" must not pick one (its
-// snapshots are the manager's), and naming one says why it cannot be continued.
-func TestResumeSkipsAndExplainsSwarmSessions(t *testing.T) {
+// A team's session can be resumed (its manager's snapshot is what comes back) unless it worked in git worktrees, whose branches a second run
+// of the same session would share. "latest" picks the newest that can be, and naming one that cannot says why.
+func TestResumeOfTeamSessionsAndOfIsolatedOnes(t *testing.T) {
 	home, root := t.TempDir(), t.TempDir()
 	sessions := filepath.Join(home, ".sleipnir", "sessions")
-	forge := func(id string, swarm bool) string {
+	forge := func(id, agent string, swarm bool, isolation string) string {
 		dir := filepath.Join(sessions, id)
 		l, err := events.Open(dir, id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		l.Emit("", events.TypeSessionStart, map[string]any{"swarm": swarm, "root": root})
-		l.Emit("mgr", events.TypeAgentSnapshot, map[string]any{"blob": "x"})
+		start := map[string]any{"swarm": swarm, "root": root}
+		if isolation != "" {
+			start["isolation"] = isolation
+		}
+		l.Emit("", events.TypeSessionStart, start)
+		l.Emit(agent, events.TypeAgentSnapshot, map[string]any{"blob": "x"})
 		if err := l.Close(); err != nil {
 			t.Fatal(err)
 		}
 		return dir
 	}
-	single := forge("20260101-000000-aaaaaa", false)
-	swarm := forge("20260102-000000-bbbbbb", true) // newer, but not resumable
+	single := forge("20260101-000000-aaaaaa", "main", false, "")
+	team := forge("20260102-000000-bbbbbb", "mgr", true, "")
+	isolated := forge("20260103-000000-cccccc", "mgr", true, "worktree") // the newest, but not resumable
+	workersOnly := forge("20260104-000000-dddddd", "be-1", true, "")     // a worker saved a snapshot, the manager never did
 
 	got, err := session.ResolveResume(home, root, "latest")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != single {
-		t.Errorf("latest = %s, want the newest resumable session %s", got, single)
+	if got != team {
+		t.Errorf("latest = %s, want the newest session that can be resumed, the team's %s", got, team)
 	}
-	if !session.Resumable(single) || session.Resumable(swarm) {
-		t.Errorf("Resumable: single=%v swarm=%v", session.Resumable(single), session.Resumable(swarm))
-	}
-	for _, spec := range []string{"20260102-000000-bbbbbb", swarm} {
-		if _, err := session.ResolveResume(home, root, spec); err == nil || !strings.Contains(err.Error(), "swarm session") {
-			t.Errorf("resume %q: %v, want an explanation that swarm sessions cannot be resumed", spec, err)
+	for name, c := range map[string]struct {
+		dir  string
+		want bool
+	}{"single": {single, true}, "team": {team, true}, "isolated": {isolated, false}, "workers only": {workersOnly, false}} {
+		if got := session.Resumable(c.dir); got != c.want {
+			t.Errorf("Resumable(%s) = %v, want %v", name, got, c.want)
 		}
 	}
+	if _, err := session.ResolveResume(home, root, "20260103-000000-cccccc"); err == nil || !strings.Contains(err.Error(), "git worktrees") {
+		t.Errorf("an isolated team's session: %v, want the reason it cannot be resumed", err)
+	}
+	if _, err := session.ResolveResume(home, root, "20260104-000000-dddddd"); err == nil || !strings.Contains(err.Error(), "no snapshot") {
+		t.Errorf("a team whose manager never finished a turn: %v", err)
+	}
+	if d, err := session.ResolveResume(home, root, "20260102-000000-bbbbbb"); err != nil || d != team {
+		t.Errorf("a team's session by its id: %s %v", d, err)
+	}
+}
+
+// The default chat is a team, so it has to be resumable: the manager comes back with what it was told and what it did (its conversation, its
+// notes), and the board with it, the tasks that were somebody's todo again because nothing of the workers is running. A session of a single
+// agent can be resumed as a team and the other way round.
+func TestResumeATeamBringsBackTheManagerAndTheBoard(t *testing.T) {
+	repo := newRepo(t)
+	home := t.TempDir()
+	t.Setenv("SLEIPNIR_HOME", home)
+	var prompts []string
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		var all []string
+		for _, m := range c.Messages {
+			all = append(all, m.Content)
+		}
+		prompts = append(prompts, strings.Join(all, "\n"))
+		if strings.Contains(c.LastUser(), "plan the work") && assistantTurns(c) == 0 {
+			return mock.Reply{Text: "planning", ToolCalls: []mock.ToolCall{
+				call("t1", "task", map[string]any{"action": "create", "title": "write the handler", "description": "the HTTP handler"}),
+				call("t2", "task", map[string]any{"action": "create", "title": "write the docs", "description": "the README section"}),
+			}}
+		}
+		return mock.Reply{Text: "noted"}
+	})
+	o := opts(t, repo, client, model)
+	o.Dir, o.Home = "", home
+	o.Swarm, o.MaxAgents, o.Interactive = true, 4, true
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s1.Run(context.Background(), "plan the work: the handler and the docs, codeword PINEAPPLE"); err != nil {
+		t.Fatal(err)
+	}
+	id, dir := s1.ID, s1.Dir
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !session.Resumable(dir) {
+		t.Fatal("a team's session that finished a turn can be resumed")
+	}
+
+	o2 := opts(t, repo, client, model)
+	o2.Dir, o2.Home = "", home
+	o2.Swarm, o2.MaxAgents, o2.Interactive, o2.Resume = true, 4, true, "latest"
+	s2, err := session.New(context.Background(), o2)
+	if err != nil {
+		t.Fatalf("a team's session is resumed as a team: %v", err)
+	}
+	defer s2.Close()
+	if s2.ID != id || s2.Dir != dir {
+		t.Errorf("a resumed team continues under its own session: %s %s, want %s %s", s2.ID, s2.Dir, id, dir)
+	}
+	if m := s2.Main(); m == nil || len(m.Stack().Thread.Turns) < 2 {
+		t.Fatalf("the manager comes back with its thread: %+v", m)
+	}
+	snap := s2.Swarm.Board.Snapshot()
+	if len(snap.Tasks) != 2 || snap.Tasks[0].Title != "write the handler" || snap.Tasks[1].Title != "write the docs" {
+		t.Fatalf("the board comes back: %+v", snap.Tasks)
+	}
+	if _, err := s2.Run(context.Background(), "what was the codeword?"); err != nil {
+		t.Fatal(err)
+	}
+	last := prompts[len(prompts)-1]
+	for _, want := range []string{"codeword PINEAPPLE", "write the handler", "what was the codeword?"} {
+		if !strings.Contains(last, want) {
+			t.Errorf("the resumed manager does not see %q", want)
+		}
+	}
+	// tasks go on from where the old board stopped
+	if next, err := s2.Swarm.Board.CreateTask("mgr", swarm.TaskSpec{Title: "one more"}); err != nil || next.ID != "T3" {
+		t.Errorf("the next task is %q (%v), want T3", next.ID, err)
+	}
+}
+
+// A session of a team can be resumed as a single agent (the manager's thread is handed to the one agent), and a single agent's as a team.
+func TestResumeAcrossTheShapeOfASession(t *testing.T) {
+	repo := newRepo(t)
+	home := t.TempDir()
+	t.Setenv("SLEIPNIR_HOME", home)
+	var prompts []string
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		var all []string
+		for _, m := range c.Messages {
+			all = append(all, m.Content)
+		}
+		prompts = append(prompts, strings.Join(all, "\n"))
+		return mock.Reply{Text: "noted"}
+	})
+	run := func(label string, shape func(*session.Options), goal string) {
+		t.Helper()
+		o := opts(t, repo, client, model)
+		o.Dir, o.Home = "", home
+		shape(&o)
+		s, err := session.New(context.Background(), o)
+		if err != nil {
+			t.Fatalf("%s: %v", label, err)
+		}
+		defer s.Close()
+		if _, err := s.Run(context.Background(), goal); err != nil {
+			t.Fatalf("%s: %v", label, err)
+		}
+		last := prompts[len(prompts)-1]
+		if strings.Contains(goal, "CODEWORD") {
+			return
+		}
+		for _, want := range []string{"codeword PINEAPPLE", "reminds"} {
+			if !strings.Contains(last, want) {
+				t.Errorf("%s: the resumed agent does not see %q", label, want)
+			}
+		}
+	}
+	team := func(o *session.Options) { o.Swarm, o.MaxAgents, o.Interactive = true, 4, true }
+	solo := func(o *session.Options) {}
+	run("team", team, "the codeword PINEAPPLE, CODEWORD")
+	run("resumed as a single agent", func(o *session.Options) { solo(o); o.Resume = "latest" }, "what reminds you of it?")
+	run("resumed again as a team", func(o *session.Options) { team(o); o.Resume = "latest" }, "and what reminds you of it now?")
 }
 
 // The model is a property of the run, not of the conversation: a session can be

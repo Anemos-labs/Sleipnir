@@ -12,6 +12,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // ResolveResume finds the session directory a resume request names: "latest" is
@@ -40,7 +41,7 @@ func ResolveResume(home, root, spec string) (string, error) {
 				return d, nil
 			}
 		}
-		return "", fmt.Errorf("no single-agent session of %s has a finished turn to resume from", root)
+		return "", fmt.Errorf("no session of %s has a finished turn to resume from", root)
 	case strings.ContainsAny(spec, `/\`):
 		if !hasLog(spec) {
 			return "", fmt.Errorf("%s is not a session directory (no events.jsonl)", spec)
@@ -59,16 +60,17 @@ func ResolveResume(home, root, spec string) (string, error) {
 func checkResumable(dir string) (string, error) {
 	li := inspectLog(dir)
 	switch {
-	case li.swarm:
-		return "", fmt.Errorf("%s was a swarm session, and swarm sessions cannot be resumed yet (its log and checkpoints stay for inspection)", dir)
-	case !li.snapshot:
-		return "", fmt.Errorf("%s has no snapshot: no turn finished, so there is nothing to resume from", dir)
+	case li.isolated:
+		return "", fmt.Errorf("%s ran its team in git worktrees, and such a session cannot be resumed yet (its log and checkpoints stay for inspection)", dir)
+	case !li.resumable():
+		return "", fmt.Errorf("%s has no snapshot of its agent (or manager): no turn finished, so there is nothing to resume from", dir)
 	}
 	return dir, nil
 }
 
-// Resumable reports whether the session in dir can be continued: a single-agent
-// session that finished at least one turn.
+// Resumable reports whether the session in dir can be continued: a session of one
+// agent, or of a team without worktrees, that finished at least one turn of the
+// agent a person talks to (the single agent, or the manager).
 func Resumable(dir string) bool { return inspectLog(dir).resumable() }
 
 func hasLog(dir string) bool {
@@ -93,19 +95,29 @@ func scanHead(dir string, fn func(events.Event) bool) {
 	}
 }
 
+// The agents a person talks to: a single agent is "main", and a team's manager is "mgr" (its role's short name).
+const (
+	soloAgent    = "main"
+	managerAgent = "mgr"
+)
+
 // logInfo is what a resume decision needs to know about a session log.
 type logInfo struct {
-	root     string // project root the session was started in ("" when unknown)
-	swarm    bool   // the session ran a swarm
-	snapshot bool   // an agent finished a turn and saved a snapshot
+	root     string          // project root the session was started in ("" when unknown)
+	swarm    bool            // the session ran a team
+	isolated bool            // the team worked in git worktrees
+	snaps    map[string]bool // the agents that saved a snapshot
 }
 
-func (l logInfo) resumable() bool { return l.snapshot && !l.swarm }
+// resumable: the agent a person talks to finished a turn, and the session did not isolate a team in worktrees.
+func (l logInfo) resumable() bool {
+	return (l.snaps[soloAgent] || l.snaps[managerAgent]) && !l.isolated
+}
 
 // inspectLog reads the head of a session log: session.start (the first one
-// decides root and swarm) and whether any snapshot exists.
+// decides root, swarm and isolation) and which agents saved a snapshot.
 func inspectLog(dir string) logInfo {
-	var li logInfo
+	li := logInfo{snaps: map[string]bool{}}
 	started := false
 	scanHead(dir, func(e events.Event) bool {
 		switch e.Type {
@@ -113,40 +125,84 @@ func inspectLog(dir string) logInfo {
 			if !started {
 				started = true
 				var d struct {
-					Root  string `json:"root"`
-					Swarm bool   `json:"swarm"`
+					Root      string `json:"root"`
+					Swarm     bool   `json:"swarm"`
+					Isolation string `json:"isolation"`
 				}
 				_ = json.Unmarshal(e.Data, &d)
-				li.root, li.swarm = d.Root, d.Swarm
+				li.root, li.swarm, li.isolated = d.Root, d.Swarm, d.Isolation != ""
 			}
 		case events.TypeAgentSnapshot:
-			li.snapshot = true
+			li.snaps[e.Agent] = true
 		}
-		return !(started && li.snapshot)
+		return !(started && li.resumable())
 	})
 	return li
 }
 
-// restore brings the single agent back from the session's newest snapshot.
+// restore brings back the agent a person talks to (the single agent, or a team's manager) from the session's newest snapshot of it, and for
+// a team its board. A session of one shape can be resumed as the other: the snapshot is a thread, notes and a bill, which any agent can
+// take (every agent has the same tools), so it is handed to the agent this session has. A team's workers are not brought back, since nothing
+// of them is running: the tasks they held are todo again.
 func (s *Session) restore() error {
+	a, from := s.Agent, ""
 	if s.Swarm != nil {
-		return errors.New("resuming a swarm session is not supported yet: start a new one (its log and checkpoints stay)")
+		m, err := s.Swarm.StartManager()
+		if err != nil {
+			return err
+		}
+		a = m
 	}
-	snap, err := agent.LatestSnapshot(s.Dir, s.Agent.ID())
+	snap, from, err := primarySnapshot(s.Dir, a.ID())
 	if err != nil {
 		return err
 	}
-	if err := s.Agent.Restore(*snap); err != nil {
+	if err := a.Restore(*snap); err != nil {
 		return err
 	}
 	// What the restored thread points at must still resolve: folded turns (recall
 	// turns=...) and truncated output (recall handle=...) live in the blob store,
 	// their indexes in memory.
-	if _, err := agent.RebuildArchive(s.Dir, s.Agent.ID(), s.archive); err != nil {
+	if _, err := agent.RebuildArchiveFrom(s.Dir, from, a.ID(), s.archive); err != nil {
 		s.notice("", "resume: the archive could not be re-indexed, so recall of folded turns may miss: "+err.Error())
 	}
 	if _, err := agent.RebuildHandles(s.Dir, s.handles); err != nil {
 		s.notice("", "resume: recall handles could not be restored: "+err.Error())
 	}
+	if s.Swarm != nil {
+		var evs []events.Event
+		err := events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
+			if e.Type == events.TypeBoardOp {
+				evs = append(evs, e)
+			}
+			return nil
+		})
+		var ce *events.CorruptError
+		if err != nil && !errors.As(err, &ce) {
+			s.notice("", "resume: the board could not be read: "+err.Error())
+		} else if prev, err := swarm.ReplayBoard(evs); err != nil {
+			s.notice("", "resume: the board could not be rebuilt: "+err.Error())
+		} else {
+			s.Swarm.Board.Restore(prev)
+		}
+	}
 	return nil
+}
+
+// primarySnapshot is the newest snapshot of the agent called want in a session directory, or, when that agent never saved one, of the other
+// agent a person talks to (a session of a team resumed as one agent, and the other way round), made over to want. from names whose it was.
+func primarySnapshot(dir, want string) (snap *agent.Snapshot, from string, err error) {
+	snap, err = agent.LatestSnapshot(dir, want)
+	if err == nil {
+		return snap, want, nil
+	}
+	other := managerAgent
+	if want == managerAgent {
+		other = soloAgent
+	}
+	if alt, aerr := agent.LatestSnapshot(dir, other); aerr == nil {
+		alt.Agent = want
+		return alt, other, nil
+	}
+	return nil, "", err
 }

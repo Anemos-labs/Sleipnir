@@ -613,9 +613,9 @@ checkpoints/     file snapshots taken before each turn, for /rewind and /diff
 ```
 
 **Resume.** `chat --resume ID` (an id, a session directory, or `latest`) and `chat --continue` (the same as
-`--resume latest`) continue an earlier single-agent session; `run` takes the same flags: `sleipnir run --continue "now
+`--resume latest`) continue an earlier session, of a single agent or of a team; `run` takes the same flags: `sleipnir run --continue "now
 add tests"`. `latest` is the newest session **of this project** (matched by the project root recorded at its start) that
-finished at least one turn. Giving both flags is an error.
+finished at least one turn of the agent you talk to (the single agent, or the team's manager). Giving both flags is an error.
 
 What a resume restores: the agent's conversation as of its last snapshot (snapshots are written at the end of every
 turn and after every compaction, so after a compaction it is the retained turns), its notes and spine (the folded
@@ -634,10 +634,13 @@ What it does not restore, or does differently:
 * **File-read state.** After a resume an edit needs a fresh `read` of the file first, which is what the staleness check
   exists to guarantee.
 
-**Swarm sessions cannot be resumed yet.** A session that ran a swarm, and `--resume ... --swarm`, are refused
-(`... was a swarm session, and swarm sessions cannot be resumed yet (its log and checkpoints stay for inspection)`,
-`resuming into a swarm is not supported yet: start a new swarm session`). A session that never finished a turn has no
-snapshot (`has no snapshot: no turn finished, so there is nothing to resume from`).
+**A team's session** (the chat on a terminal is one by default) is resumed as the manager's conversation and the board: the manager comes back with its
+thread, notes and spine, the tasks come back with their results, and a task that was somebody's (doing, in review, blocked) is todo again with no owner,
+because none of the workers is running (`resumed: the manager's 4 turns and the board are back (its workers are not: what they held is todo again)`). New
+tasks go on numbering after the old ones. The shape is yours to choose again: a team's session resumed with `--swarm 0` hands the manager's thread to the one
+agent, and a single agent's resumed as a team hands its thread to the manager. A session that ran its team in git worktrees (`--isolation worktree`) is
+refused (`... ran its team in git worktrees, and such a session cannot be resumed yet`: its branches would be shared with a second run), and so is one whose
+agent never finished a turn (`has no snapshot of its agent (or manager): no turn finished, so there is nothing to resume from`).
 
 `sleipnir inspect <session dir>` opens a read-only dashboard over any recorded session, resumable or not.
 

@@ -281,9 +281,6 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		o.Now = time.Now
 	}
 	if o.Resume != "" {
-		if o.Swarm {
-			return nil, errors.New("resuming into a swarm is not supported yet: start a new swarm session (an earlier session's log and checkpoints stay)")
-		}
 		dir, err := ResolveResume(o.Home, o.Root, o.Resume)
 		if err != nil {
 			return nil, err
@@ -1105,6 +1102,14 @@ func (s *Session) Compact(ctx context.Context, focus string) (agent.CompactRepor
 
 // Resumed reports whether this session continues an earlier one.
 func (s *Session) Resumed() bool { return s.opts.Resume != "" }
+
+// Main is the agent a person talks to: the single agent, or a team's manager (nil until it has started, which a resumed team's does at once).
+func (s *Session) Main() *agent.Agent {
+	if s.Swarm != nil {
+		return s.Swarm.Manager()
+	}
+	return s.Agent
+}
 
 // Send steers a running agent (or the manager) with a message at its next turn
 // boundary.

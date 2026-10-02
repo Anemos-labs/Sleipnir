@@ -162,8 +162,8 @@ func cmdChat(ctx context.Context, args []string) error {
 	}()
 
 	fmt.Fprintf(os.Stderr, "sleipnir %s · %s%s · %s · session %s\n", version, s.Model.ID, budgetLabel(s), modeName(s), s.ID)
-	if s.Resumed() {
-		fmt.Fprintf(os.Stderr, "resumed: %d turns restored; the first request writes the cached prefix again, once\n", len(s.Agent.Stack().Thread.Turns))
+	if a := s.Main(); s.Resumed() && a != nil {
+		fmt.Fprintln(os.Stderr, resumedLine(s, a))
 	}
 	fmt.Fprintln(os.Stderr, "Type a goal, or /help. Ctrl-C cancels the current turn (twice at the prompt quits); /exit or Ctrl-D quits.")
 	for {
@@ -269,8 +269,8 @@ const chatHelp = `conversation
 /exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)
 
 model and cost
-/model [ref]       show the model, or change it (a team starts again on it)
-/login [provider]  add a key, or sign in with ChatGPT; the chat comes back (a team starts again)
+/model [ref]       show the model, or change it (a team starts again on it, the manager's conversation comes along)
+/login [provider]  add a key, or sign in with ChatGPT; the chat comes back where you were
 /budget [usd|off]  the dollar budget for the turns from now on
 /cost              tokens, cost and cache hit ratio so far
 /stats             the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers

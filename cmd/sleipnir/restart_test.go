@@ -226,7 +226,7 @@ func TestModelInATeamStartsItAgainOnTheNewModel(t *testing.T) {
 }
 
 // /login cannot be hosted by the program (a key is typed hidden, a browser sign-in prints an address): it ends the chat as a restart that
-// signs in first and then comes back, a single agent with its conversation and its mode, a team starting again.
+// signs in first and then comes back, a single agent or a team's manager with its conversation and its mode.
 func TestLoginInTheChatLeavesItToSignInAndComesBack(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -253,8 +253,8 @@ func TestLoginInTheChatLeavesItToSignInAndComesBack(t *testing.T) {
 	}
 	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.MaxAgents = true, 4 }, nil)}
 	out = strings.Builder{}
-	if res, ok = team.programCommand("/login", &out); !ok || !contains(res.Restart, "--swarm") || contains(res.Restart, "--resume") || !strings.Contains(out.String(), "team starts again") {
-		t.Errorf("a team starts again, with no conversation to resume: %v\n%s", res.Restart, out.String())
+	if res, ok = team.programCommand("/login", &out); !ok || !contains(res.Restart, "--swarm") || contains(res.Restart, "--resume") || !strings.Contains(out.String(), "comes back where you were") {
+		t.Errorf("a team comes back as a team (with nothing to resume yet: it has not finished a turn): %v\n%s", res.Restart, out.String())
 	}
 }
 

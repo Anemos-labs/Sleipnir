@@ -985,6 +985,48 @@ func (b *Board) RequeueOwned(agent, reason string) []Task {
 	return out
 }
 
+// resumedLine is what a task says when a resumed team finds nobody on it.
+const resumedLine = "the session was resumed: nobody is on it"
+
+// Restore gives an empty board the tasks and the pending notes of an earlier session's (ReplayBoard of its log): a resumed team starts
+// where the last one stopped. Nothing is running, so a task that was somebody's (doing, review, blocked) is todo again with no owner,
+// and one that was done or failed stays so. It returns the ids it put back. The ids go on counting where the old board stopped, and the
+// whole is one "requeue" operation naming the tasks put back, so that ReplayBoard of the log, the old part and the new, equals this board.
+// A board that already holds tasks or notes is left as it is.
+func (b *Board) Restore(prev *Snapshot) []string {
+	if prev == nil {
+		return nil
+	}
+	var back []string
+	_ = b.mutate("harness", "requeue", func(d *draft) error {
+		if len(d.Tasks) > 0 || len(d.Notes) > 0 {
+			return errNoChange
+		}
+		d.Version = prev.Version + 1
+		tasks := append([]Task(nil), prev.Tasks...)
+		for i, t := range tasks {
+			switch t.Status {
+			case StatusDoing, StatusReview, StatusBlocked:
+				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", resumedLine, d.Version
+				back = append(back, t.ID)
+			}
+			tasks[i] = t
+			if n, err := strconv.Atoi(strings.TrimPrefix(t.ID, "T")); err == nil && n > b.next {
+				b.next = n
+			}
+		}
+		d.Tasks, d.ct = tasks, true
+		d.Notes, d.cn = append([]Note(nil), prev.Notes...), true
+		for _, n := range d.Notes {
+			b.note = max(b.note, n.ID)
+		}
+		d.set("tasks", back)
+		d.set("line", resumedLine)
+		return nil
+	})
+	return back
+}
+
 // AddNote records a fact proposed for the shared context. Identical text is
 // ignored, so several agents discovering the same convention add it once (for a
 // shared note whichever role found it). An agent may have only a few notes
