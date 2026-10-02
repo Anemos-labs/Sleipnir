@@ -497,6 +497,19 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	return m.a, nil
 }
 
+// StartIdleManager is StartManager for a manager that has nothing to do yet: a resumed team's is back with its conversation and waits for the
+// next goal, so it is done (as after any turn), not running. RunManager marks it running again when the goal comes.
+func (s *Swarm) StartIdleManager() (*agent.Agent, error) {
+	a, err := s.StartManager()
+	if err != nil {
+		return nil, err
+	}
+	if m := s.get(a.ID()); m != nil {
+		m.setState(s, "done", "")
+	}
+	return a, nil
+}
+
 // RunManager runs the manager on a goal and returns its final answer. If ctx ends
 // while it runs, the workers are stopped too (their tasks go back to todo). A panic
 // in the manager's run is returned as an error.

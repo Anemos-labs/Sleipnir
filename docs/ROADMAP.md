@@ -16,8 +16,8 @@ not be called off: `term.Reader`); sixteen more hosted providers and two local s
 the footer keeps the keys, the endpoint's own cache misses are not said unless they cost money); `edit` says where a block stops matching and `read` finds a mangled directory;
 `scripts/look.sh` (a command in a real terminal, keys, a PNG) and `term-svg` frames of a screen that stood still; arrow-key menus, the default team of eight (`--swarm N` counts the manager);
 a team's session resumes (`--continue`, `/resume`, and the restart that `/model` and `/login` make: the manager's conversation and the board come back, the workers start again; a team in git worktrees still cannot be resumed).
-**Heimdall dropped `deepseek/deepseek-v4-flash` on 2026-10-02** (503 `no_route`; `deepseek-v4.1-flash` is its successor): the numbers in `docs/BENCHMARKS.md` are of the old model, and
-the A/B in progress is on the new one.
+**Heimdall's route for `deepseek/deepseek-v4-flash` was down for hours on 2026-10-02** (503 `no_route`, while its catalogue went on listing the model; it answers again at 07:35 UTC, so it was
+an outage and not a removal): the A/B in progress was started on `deepseek-v4.1-flash` for that reason, and the numbers in `docs/BENCHMARKS.md` are of `deepseek-v4-flash`.
 
 **Added** (each with a test that fails without it; `CHANGELOG.md` says them for the user): built-in providers (Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra,
 and the keyless local servers Ollama, LM Studio, llama.cpp, vLLM); `models.roles.compactor` (a model of its own for the summaries, used while the thread fits its window);

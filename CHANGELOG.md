@@ -482,6 +482,13 @@ The first release.
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
 defect the runs showed, with the evidence, and what changed.
 
+- **The pages of a resumed chat were empty.** After `sleipnir --continue` the agents page said "the team starts with your first goal" and the stats page began at zero, though the manager
+  was back with its fourteen turns and the board with three merged tasks. The chat draws its pages from a state made of the events that come after it attaches to the session, and a
+  resumed session's history is in its log only. The chat now folds the log of the earlier runs into the state before it starts (a log of up to 64 MB; past that the pages start empty), a
+  session that is resumed is not "ended" any more (the log holds the end of the run before: `session.start` clears it, and so does the agent that is brought back, since `session.start`
+  waits for the first goal), and a resumed manager is done, not "thinking", until a goal comes (`Swarm.StartIdleManager`). Found by looking at the agents page of the session the team-resume
+  change had just made resumable; a test in the state package for each of the two states, one in the swarm package, and an end-to-end test that opens the page after `--continue`.
+
 - **A team's session could not be resumed, and `sleipnir sessions` said it could.** Found by running `sleipnir --continue` in the default chat: "resuming into a swarm is not
   supported yet". The chat on a terminal is a team, so `--continue`, `--resume ID`, `/resume` and the restart that `/model` and `/login` make had nothing to come back to (`/model` started
   the team over with an empty conversation). A team's session now resumes: the manager's conversation (the snapshot of its last finished turn) and the board (replayed from the log;

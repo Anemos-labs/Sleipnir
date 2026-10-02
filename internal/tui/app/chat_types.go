@@ -8,6 +8,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
@@ -90,6 +91,9 @@ type ChatAttach struct {
 	// Models is what `/model ` completes to (the catalogues of the providers, favorites first); it answers from memory and may be empty
 	// while the catalogues are still being fetched. Nil offers nothing.
 	Models func() []input.Choice
+	// State is what the session had done before this run of the chat, for a session that is resumed (state.FoldInto of its log): the agents,
+	// the board and the bill of the pages that show them. Nil starts them empty, which is right for a session that has no past.
+	State *state.State
 	// Roles is what `/roles ` completes to: each role that can run on a model of its own, with the model it runs on now as the detail;
 	// after the "=" of one, the models are Models. Nil offers nothing.
 	Roles func() []input.Choice

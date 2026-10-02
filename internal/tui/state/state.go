@@ -250,7 +250,10 @@ func (s *State) apply(e events.Event) {
 		events.TypeMergeRejected, events.TypeMergeFastFwd, events.TypeTaskMerge, events.TypeSwarmIntegration:
 		s.onMerge(e, t)
 
-	case events.TypeTurnAppend, events.TypeAgentSnapshot, events.TypeAgentRestore, events.TypeCachePlan, events.TypeRecall,
+	case events.TypeAgentRestore:
+		s.sess.Ended, s.sess.EndedAt, s.sess.EndReason, s.sess.EndCostUSD = false, time.Time{}, "", 0 // a resumed session goes on (its session.start waits for a goal)
+
+	case events.TypeTurnAppend, events.TypeAgentSnapshot, events.TypeCachePlan, events.TypeRecall,
 		events.TypeOutcome, "tool.spill", "tool.budget", "hook.run":
 		// Known, and nothing the UI shows: the transcript is the conversation's, not the state's.
 	default:

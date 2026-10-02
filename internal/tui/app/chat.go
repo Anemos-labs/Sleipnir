@@ -313,6 +313,11 @@ func (m *chatModel) attach(a ChatAttach) {
 		return
 	}
 	m.host, m.info, m.attached, m.events = a.Host, a.Info, true, a.Events
+	if a.State != nil {
+		m.st = a.State
+		m.markSeen() // what the session did before is on the pages, and none of it is news to print
+		m.snapOK = false
+	}
 	var cs []input.Completer
 	if a.Models != nil {
 		cs = append(cs, input.Choices("model", a.Models))
@@ -334,6 +339,20 @@ func (m *chatModel) attach(a ChatAttach) {
 		return
 	}
 	m.drainQueue()
+}
+
+// markSeen takes the compactions and the cache breaks the state already holds for ones that were printed: a resumed session's state is made
+// of the events of the run before, and scanSnapshot prints what it has not seen.
+func (m *chatModel) markSeen() {
+	sn := m.st.SnapshotAt(m.clock())
+	for i := range sn.Agents {
+		for _, c := range sn.Agents[i].Compacts {
+			m.compactSeen = max(m.compactSeen, c.Seq)
+		}
+		for _, an := range sn.Agents[i].Anomalies {
+			m.anomalySeen = max(m.anomalySeen, an.Seq)
+		}
+	}
 }
 
 // firstCompleter asks each completer in turn and takes the first that has candidates: the slash commands answer a word that starts

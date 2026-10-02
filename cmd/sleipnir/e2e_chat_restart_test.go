@@ -81,6 +81,8 @@ func TestE2EChatTeamResumesWithContinue(t *testing.T) {
 
 	u = startUI(t, w, "--swarm", "4", "--continue")
 	u.expect("resumed: the manager's 2 turns and the board are back")
+	u.send("/agents") // the page of the team knows the manager is there (it said the team starts with the first goal)
+	u.expect("1 of 4 agents started", "mgr")
 	u.send("@again")
 	u.expect("and again")
 	u.ready()

@@ -147,7 +147,7 @@ func inspectLog(dir string) logInfo {
 func (s *Session) restore() error {
 	a, from := s.Agent, ""
 	if s.Swarm != nil {
-		m, err := s.Swarm.StartManager()
+		m, err := s.Swarm.StartIdleManager()
 		if err != nil {
 			return err
 		}

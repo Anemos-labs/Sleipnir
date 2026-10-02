@@ -52,6 +52,30 @@ func TestSessionStartAndEnd(t *testing.T) {
 	}
 }
 
+// A session that is resumed appends to the log of the run before, which ended: the second session.start says it is going on again, and a page
+// that folds the whole log (a resumed chat does, to show what the session had done) must not call it over.
+func TestAResumedSessionIsNotOver(t *testing.T) {
+	b := newB()
+	b.Emit("", events.TypeSessionStart, startPayload(nil))
+	b.Advance(sec(2))
+	b.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": 0.5, "reason": "completed"})
+	b.Advance(sec(60))
+	b.Emit("", events.TypeSessionStart, startPayload(map[string]any{"resumed": true}))
+	s := fold(t, b.Events()...).Snapshot().Session
+	if s.Ended || s.EndReason != "" || s.EndCostUSD != 0 || !s.Resumed {
+		t.Errorf("a session that started again: %s", js(s))
+	}
+
+	// Its session.start comes with the first goal; the agent that is brought back says the session goes on before that.
+	b2 := newB()
+	b2.Emit("", events.TypeSessionStart, startPayload(nil))
+	b2.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": 0.5, "reason": "completed"})
+	b2.Emit("mgr", events.TypeAgentRestore, map[string]any{"turns": 14, "requests": 7})
+	if s := fold(t, b2.Events()...).Snapshot().Session; s.Ended {
+		t.Errorf("a session whose agent was restored is over: %s", js(s))
+	}
+}
+
 func TestSingleAgentSessionIsNotASwarm(t *testing.T) {
 	b := newB()
 	b.Emit("", events.TypeSessionStart, startPayload(map[string]any{"swarm": false}))

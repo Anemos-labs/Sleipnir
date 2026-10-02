@@ -64,6 +64,7 @@ func (s *State) onSessionStart(e events.Event, t time.Time) {
 	ss.Renderer, ss.Mode = clip(p.Renderer, textID), clip(firstOf(p.Mode, p.PermMode), textID)
 	ss.Swarm = ss.Swarm || p.Swarm
 	ss.Isolation, ss.Mailman, ss.Resumed = clip(p.Isolation, textID), p.Mailman, p.Resumed
+	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD = false, time.Time{}, "", 0 // a resumed session goes on after the end of the run before
 	ss.ReconTokens, ss.SharedHash = clampTokens(p.ReconTokens), short(p.SharedHash)
 	s.recordModels(p.Models)
 	s.line(e.Seq, t, "", FeedSession, GlyphInfo, "session started: "+firstOf(ss.Model, "model unknown"), firstOf(ss.Provider, ""))

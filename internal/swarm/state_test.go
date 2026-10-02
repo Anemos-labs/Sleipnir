@@ -1229,3 +1229,23 @@ func TestAManagerThatClaimedATaskIsToldHowToHandItToAWorker(t *testing.T) {
 		t.Errorf("the task made again could not be given to a worker: %v", err)
 	}
 }
+
+// A resumed team's manager is back with its conversation and waits for the next goal: the agents page must not show it thinking.
+func TestAManagerStartedForAResumeIsDoneAndNotRunning(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	if _, err := r.sw.StartIdleManager(); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	for _, a := range r.sw.Board.Snapshot().Agents {
+		if a.ID == "mgr" {
+			state = a.State
+		}
+	}
+	if state != "done" {
+		t.Errorf("the manager of a resumed team is %q, want done", state)
+	}
+	if _, err := r.sw.RunManager(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+}

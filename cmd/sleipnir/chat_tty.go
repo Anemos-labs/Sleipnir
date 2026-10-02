@@ -26,6 +26,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
 // chatTTY is what the program needs from the flags.
@@ -80,9 +81,9 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			attach <- app.ChatAttach{Err: err}
 			return
 		}
-		log, _ := s.Log.Subscribe(4096)
-		models := modelChoices(startCtx)
-		attach <- app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd, Models: models, Roles: roleChoices(s)}
+		log, _ := s.Log.Subscribe(4096) // before the past is read: what comes between is in both, and the state ignores an event it has seen
+		attach <- app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, State: pastState(s), Commands: chatSlashCommands(s), Root: cwd,
+			Models: modelChoices(startCtx), Roles: roleChoices(s)}
 	}()
 
 	var hist *input.History
@@ -127,6 +128,28 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		return err
 	}
 	return nil
+}
+
+// maxPastBytes is the longest log of earlier runs a resumed chat reads to show what the session had done: past it the pages start empty, as
+// they do for a session that is new.
+const maxPastBytes = 64 << 20
+
+// pastState is what a resumed session had done before this run of the chat, for the pages that show the agents, the board and the bill: the
+// log of the earlier runs folded into a state. A session that is new has no past (nil), and neither has one whose log cannot be read.
+func pastState(s *session.Session) *state.State {
+	if !s.Resumed() {
+		return nil
+	}
+	path := filepath.Join(s.Dir, "events.jsonl")
+	if fi, err := os.Stat(path); err != nil || fi.Size() > maxPastBytes {
+		return nil
+	}
+	_ = s.Log.Flush() // what this run has written so far is in the file too
+	st := state.New()
+	if err := state.FoldInto(st, path, 0); err != nil {
+		return nil
+	}
+	return st
 }
 
 // roleChoices is what `/roles ` completes to: the roles that can run on a model of their own (the default is /model's), each with the model it
