@@ -127,6 +127,9 @@ The first release.
   correct (it was not). The refusals of a run with no one to ask now count together, among the last twenty actions: at five the model is told once that nobody is here to approve and to finish saying which
   permission it needed, and at ten the run ends ("10 of its last 10 actions were refused and this run has no one to ask"), with the usual list of what to `--allow`. A worker that is refused
   now and then in a long run of other work never gets there.
+- The list a run with no one to ask prints at its end names the edits that were refused as well as the commands, and the hint says what lets each through: `--mode accept-edits` for an edit, a
+  rule for a command. It listed only the commands, so a run whose edit was refused (`sleipnir run` in a cron job, a script) was told about `go test` and was refused its edit again the
+  next time; the model, meanwhile, had said "I applied the patch". `run --json` carries an edit as `{"Command":"","Path":"...","Times":n}` in `refused_no_one_to_ask`.
 - `/fav [provider/model]` stars a model, or unstars it (the session's own when none is named), from the chat: the `/model` menu puts it first at once, `sleipnir models` lists it first, and
   it is kept as `models.favorites` in the user's own configuration (in the session's home, not the machine's: the tests prove it). Favorites could only be changed by `sleipnir models fav add|rm`.
 - The chat's lines for the manager's coordination say what was done: `Spawn backend · T1` (who was started, on which task) and `Task accept T1` (the action and the task) where

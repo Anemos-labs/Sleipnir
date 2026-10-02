@@ -60,14 +60,31 @@ func TestTestsPresetIsValidAndNamesNoInterpreterOrInstaller(t *testing.T) {
 
 func TestPrintRefusalsSaysWhatWasRefusedAndHowToAllowIt(t *testing.T) {
 	var out bytes.Buffer
-	printRefusals(&out, nil)
+	printRefusals(&out, nil, "/w")
 	if out.Len() != 0 {
 		t.Fatalf("nothing was refused: %q", out.String())
 	}
-	printRefusals(&out, []session.RefusedCommand{{Command: "go test -race ./...", Times: 2}, {Command: "go vet ./...", Times: 1}})
+	printRefusals(&out, []session.RefusedCommand{{Command: "go test -race ./...", Times: 2}, {Command: "go vet ./...", Times: 1}}, "/w")
 	for _, want := range []string{"refused, because this run had no one to ask:", "go test -race ./... (2 times)", "go vet ./...\n", "--allow 'Bash(go test:*)' --allow 'Bash(go vet:*)'", "--allow tests"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the hint lacks %q:\n%s", want, out.String())
 		}
+	}
+}
+
+// An edit that was refused for want of anyone to ask is listed too, and what lets it through is the mode that accepts edits, not a rule for
+// a command (a run that was told only about `go test` was refused its edit again the next time).
+func TestPrintRefusalsNamesARefusedEditAndTheModeThatAcceptsEdits(t *testing.T) {
+	var out bytes.Buffer
+	printRefusals(&out, []session.RefusedCommand{{Path: "/w/pkg/slug.go", Times: 1}, {Command: "go test ./...", Times: 2}}, "/w")
+	for _, want := range []string{"  edit pkg/slug.go\n", "  go test ./... (2 times)\n", "--mode accept-edits --allow 'Bash(go test:*)'", "--allow tests"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the hint lacks %q:\n%s", want, out.String())
+		}
+	}
+	out.Reset()
+	printRefusals(&out, []session.RefusedCommand{{Path: "/w/a.go", Times: 3}, {Path: "/elsewhere/b.go", Times: 1}}, "/w")
+	if want := "refused, because this run had no one to ask:\n  edit a.go (3 times)\n  edit /elsewhere/b.go\nto let them through next time: --mode accept-edits\n"; out.String() != want {
+		t.Errorf("only edits:\n%q\nwant\n%q", out.String(), want)
 	}
 }

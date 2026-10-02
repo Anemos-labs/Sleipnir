@@ -180,7 +180,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 			_ = json.NewEncoder(os.Stdout).Encode(out)
 		case !*quiet:
 			fmt.Fprintln(os.Stderr, "\n"+runSummary(os.Stderr, time.Since(start), res))
-			printRefusals(os.Stderr, s.RefusedWithNoOneToAsk())
+			printRefusals(os.Stderr, s.RefusedWithNoOneToAsk(), s.Cwd())
 		}
 	}
 	if !*asJSON {

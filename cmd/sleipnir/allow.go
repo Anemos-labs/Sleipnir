@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -112,36 +113,61 @@ func suggestAllow(command string) []string {
 	return out
 }
 
-// printRefusals says, at the end of a run that had nobody to ask, which commands were refused for it and how to let them through.
-func printRefusals(w io.Writer, refused []session.RefusedCommand) {
+// printRefusals says, at the end of a run that had nobody to ask, which commands and edits were refused for it and how to let them through:
+// the mode that accepts edits for an edit, a rule for a command. Paths are shown as they are from cwd.
+func printRefusals(w io.Writer, refused []session.RefusedCommand, cwd string) {
 	if len(refused) == 0 {
 		return
 	}
 	fmt.Fprintln(w, "refused, because this run had no one to ask:")
 	var rules []string
 	seen := map[string]bool{}
+	edits := false
 	for _, r := range refused {
-		cmd := strings.Join(strings.Fields(r.Command), " ")
-		if len(cmd) > 100 {
-			cmd = cmd[:99] + "…"
+		what := ""
+		if r.Path != "" {
+			edits = true
+			what = "edit " + relativeTo(r.Path, cwd)
+		} else {
+			what = strings.Join(strings.Fields(r.Command), " ")
+			if len(what) > 100 {
+				what = what[:99] + "…"
+			}
+			for _, rule := range suggestAllow(r.Command) {
+				if !seen[rule] {
+					seen[rule] = true
+					rules = append(rules, rule)
+				}
+			}
 		}
 		times := ""
 		if r.Times > 1 {
 			times = fmt.Sprintf(" (%d times)", r.Times)
 		}
-		fmt.Fprintf(w, "  %s%s\n", cmd, times)
-		for _, rule := range suggestAllow(r.Command) {
-			if !seen[rule] {
-				seen[rule] = true
-				rules = append(rules, rule)
-			}
+		fmt.Fprintf(w, "  %s%s\n", what, times)
+	}
+	var flags []string
+	if edits {
+		flags = append(flags, "--mode accept-edits")
+	}
+	for _, rule := range rules[:min(len(rules), 3)] {
+		flags = append(flags, "--allow '"+rule+"'")
+	}
+	if len(flags) > 0 {
+		tail := ""
+		if len(rules) > 0 {
+			tail = fmt.Sprintf(" (or --allow %s for the build and test commands of most projects)", testsPreset)
+		}
+		fmt.Fprintln(w, wrapFor(w, "to let them through next time: "+strings.Join(flags, " ")+tail))
+	}
+}
+
+// relativeTo is path as it reads from dir when it lies under it, and with ~ for the home directory otherwise.
+func relativeTo(path, dir string) string {
+	if dir != "" {
+		if rel, err := filepath.Rel(dir, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return rel
 		}
 	}
-	if len(rules) > 0 {
-		var flags []string
-		for _, rule := range rules[:min(len(rules), 3)] {
-			flags = append(flags, "--allow '"+rule+"'")
-		}
-		fmt.Fprintln(w, wrapFor(w, fmt.Sprintf("to let them through next time: %s (or --allow %s for the build and test commands of most projects)", strings.Join(flags, " "), testsPreset)))
-	}
+	return tildePath(path)
 }
