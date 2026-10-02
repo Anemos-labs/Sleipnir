@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -49,7 +50,9 @@ func TestAddListRemoveRoundTripThroughTheFile(t *testing.T) {
 	if string(b) != want {
 		t.Errorf("file:\n%q\nwant\n%q", b, want)
 	}
-	if fi, _ := os.Stat(path); fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(path); err != nil {
+		t.Error(err)
+	} else if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 { // Windows keeps no POSIX modes
 		t.Errorf("mode %v: the notes are the user's, not the world's", fi.Mode().Perm())
 	}
 	if r := run(t, tool, allow, map[string]any{"action": "add", "text": "the user prefers TABLE-driven tests."}); r.Text != "already saved" {

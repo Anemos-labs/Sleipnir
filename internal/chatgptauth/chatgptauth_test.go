@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -188,7 +189,7 @@ func TestLoginFollowsTheProtocolAndKeepsTheSignInPrivate(t *testing.T) {
 		t.Errorf("who = %q", who)
 	}
 	fi, err := os.Stat(is.opts(dir).Path)
-	if err != nil || fi.Mode().Perm() != 0o600 {
+	if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) { // Windows keeps no POSIX modes
 		t.Errorf("the file is %v, %v: for its owner only", fi, err)
 	}
 	c, _ := readConnection(is.opts(dir).Path)

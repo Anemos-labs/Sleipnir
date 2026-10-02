@@ -3,6 +3,7 @@ package sched
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -26,7 +27,9 @@ func TestStoreAddListRemoveAndDue(t *testing.T) {
 	if _, err := s.Add(Job{Cron: "* * * * *", Goal: "  "}, t0); err == nil {
 		t.Error("a job without a goal was stored")
 	}
-	if fi, _ := os.Stat(s.Path); fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(s.Path); err != nil {
+		t.Error(err)
+	} else if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 { // Windows keeps no POSIX modes
 		t.Errorf("mode %v", fi.Mode().Perm())
 	}
 	jobs, _ := s.List()
