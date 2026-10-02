@@ -668,7 +668,7 @@ func isLookCommand(line string) bool {
 		return false
 	}
 	switch f[0] {
-	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow":
+	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow", "/steer":
 		return true
 	case "/mode", "/mcp":
 		return len(f) == 1
@@ -833,9 +833,15 @@ func (m *chatModel) runEnded(e runEnd) {
 	m.drainQueue()
 }
 
+// longTurn is how long a turn takes before its end rings the terminal's bell, as a question does.
+const longTurn = 30 * time.Second
+
 func (m *chatModel) turnEnded(r *run, res TurnResult) {
 	if res.Steps > 0 || res.CostUSD > 0 { // a turn that was cancelled before the model answered did nothing worth a record
 		m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, m.cols)})
+	}
+	if res.Err == nil && m.since(r.started) >= longTurn && m.c.Bell != nil {
+		m.c.Bell() // a turn of half a minute or more: whoever went to another window hears that it is over
 	}
 	switch {
 	case res.Err == nil:

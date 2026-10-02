@@ -263,3 +263,23 @@ func TestAllowTestsSaysWhatItCovers(t *testing.T) {
 		t.Errorf("/allow with nothing does not say what tests is: %q", out.String())
 	}
 }
+
+// /steer tells the agent something while its turn runs, without stopping it: the text rides with the next tool results. What was typed ahead
+// waited for the turn to end, which is too late for "use the other file".
+func TestSteerTellsTheRunningAgentWithoutStoppingIt(t *testing.T) {
+	s := chatSession(t, false, nil)
+	h := &sessionHost{s: s}
+	var out strings.Builder
+	h.Command(context.Background(), "/steer use the other file", &out)
+	if n := s.Main().PendingInbox(); n != 1 {
+		t.Fatalf("%d messages wait for the next step, want 1 (%q)", n, out.String())
+	}
+	if !strings.Contains(out.String(), "next step") {
+		t.Errorf("it does not say when the agent reads it: %q", out.String())
+	}
+	out.Reset()
+	h.Command(context.Background(), "/steer", &out)
+	if !strings.Contains(out.String(), "usage: /steer") || s.Main().PendingInbox() != 1 {
+		t.Errorf("with nothing to say: %q", out.String())
+	}
+}

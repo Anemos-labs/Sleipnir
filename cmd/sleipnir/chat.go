@@ -290,6 +290,7 @@ a team, and the program
 /swarm <n> [flags] start again as a team of n agents (the manager included)
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
 /agents            the team's agents and tasks (ctrl+g)
+/steer TEXT        tell the running turn something, without stopping it
 /verbose [on|off]  notices and tool errors
 /anim [on|off]     motion
 /cwd               the directory this session works in
@@ -350,6 +351,16 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		compactNow(ctx, s, strings.TrimSpace(strings.TrimPrefix(line, f[0])), stderr)
 	case "/agents":
 		printAgents(stderr, s)
+	case "/steer":
+		text := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
+		if text == "" {
+			fmt.Fprintln(stderr, "usage: /steer TEXT: tell the running turn something without stopping it (use the other file, skip the tests); it is read with the agent's next step")
+			break
+		}
+		if a := s.Main(); a != nil {
+			a.Steer(text)
+			fmt.Fprintln(stderr, "steering sent: the agent reads it with its next step")
+		}
 	case "/plan":
 		s.Perm.SetMode(perm.ModePlan)
 		fmt.Fprintln(stderr, "plan mode: read-only")

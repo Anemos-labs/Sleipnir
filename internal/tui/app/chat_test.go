@@ -1254,3 +1254,35 @@ func TestChatVerboseAndAnimResultsChangeTheProgram(t *testing.T) {
 		t.Error("the terminal's wish for no motion stands over /anim on")
 	}
 }
+
+// A turn that took half a minute or more rings the bell when it ends, as a question does: whoever went to another window hears it. A short
+// turn, and one that was cancelled, do not.
+func TestChatALongTurnRingsTheBellWhenItEnds(t *testing.T) {
+	var mu sync.Mutex
+	bells := 0
+	r := startChat(t, rigOpts{bell: func() { mu.Lock(); bells++; mu.Unlock() }})
+	count := func() int { mu.Lock(); defer mu.Unlock(); return bells }
+	release := make(chan struct{})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		<-release
+		return TurnResult{Steps: 1}
+	}
+	r.submit("short")
+	r.step(5 * time.Second)
+	release <- struct{}{}
+	r.shows("5.0s")
+	if n := count(); n != 0 {
+		t.Fatalf("a turn of five seconds rang the bell %d times", n)
+	}
+	r.submit("long")
+	r.step(45 * time.Second)
+	release <- struct{}{}
+	r.shows("45")
+	deadline := time.Now().Add(5 * time.Second)
+	for count() != 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := count(); n != 1 {
+		t.Errorf("a turn of 45 seconds rang the bell %d times, want 1", n)
+	}
+}

@@ -205,6 +205,9 @@ The first release.
   - A budget or a bill under a cent is "$0.0006", not "$0.00" (`cost.Dollars`); `/compact` says "669→146 tokens" and not "0k→0k"; `/allow tests` says
     it covers the build and test commands of go, cargo, npm, pytest and the rest (it printed the first two Go rules), and `/allow` alone says what
     tests is; an edit of a file that was only `cat` in a shell says that the read tool is what counts.
+- `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
+  at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
+  terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.
