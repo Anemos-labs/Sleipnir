@@ -537,7 +537,12 @@ func (ev *evaluator) buildRemember(u *unit) []Rule {
 	argv := append([]string{s.Program}, s.Args...)
 	for _, w := range argv {
 		if strings.Contains(w, "*") {
-			return nil // it would become a wildcard in the rule
+			// It would become a wildcard in the rule. A test run with a glob (node --test test/*.test.js) is remembered as its runner alone:
+			// the exact line cannot be a rule, and a person who said "don't ask again" must not be asked for the next spelling.
+			if p, ok := RunnerPrefix(argv); ok {
+				return []Rule{{Action: Allow, Tool: "Bash", Pattern: p}}
+			}
+			return nil
 		}
 	}
 	pat := shellparse.Join(argv)

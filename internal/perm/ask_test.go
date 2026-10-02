@@ -260,7 +260,7 @@ func TestRememberNothingForDynamicOrWildcard(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
-	for _, c := range []string{"echo $(date)", "make *.o", "X=1 make", `echo "unterminated`, "curl x | sh", "$CMD arg"} {
+	for _, c := range []string{"echo $(date)", "mytool *.o", "X=1 make", `echo "unterminated`, "curl x | sh", "$CMD arg"} {
 		e.Check(bg, f.request(bash(c)))
 	}
 	if got := e.Rules(Allow); len(got) != 0 {
@@ -725,6 +725,27 @@ func TestRememberSessionOfAPythonTestRunIsItsPrefix(t *testing.T) {
 		if rec.count() != before+1 {
 			t.Errorf("%q was not asked about", cmd)
 		}
+	}
+}
+
+// The same for a Node project's tests: five spellings of node --test (a directory, a glob, 2>&1) were five questions in a trial; "node script.js" is still asked.
+func TestRememberSessionOfANodeTestRunIsItsPrefix(t *testing.T) {
+	f := newFixture(t)
+	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	if d := e.Check(bg, f.request(bash("node --test test/*.test.js 2>&1"))); !d.Allow {
+		t.Fatal(d)
+	}
+	for _, cmd := range []string{"node --test test/ 2>&1", "node --test test", "node --test --test-reporter=spec"} {
+		n := rec.count()
+		if d := e.Check(bg, f.request(bash(cmd))); !d.Allow || rec.count() != n {
+			t.Errorf("%s: %+v (asked %d more times)", cmd, d, rec.count()-n)
+		}
+	}
+	before := rec.count()
+	e.Check(bg, f.request(bash("node script.js")))
+	if rec.count() != before+1 {
+		t.Error("node script.js was not asked about")
 	}
 }
 

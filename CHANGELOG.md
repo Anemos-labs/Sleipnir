@@ -212,6 +212,7 @@ The first release.
 - `sleipnir run` without a terminal and without `--allow` says so in its first lines (edits and commands that need an answer are refused; `--mode accept-edits --allow tests` lets the usual ones through), instead of only at the end, after the model has been refused a step at a time.
 - `sleipnir sessions` says how long ago each session was (`2h ago`) after its id, so the list can be read as a history.
 - `ctrl+t` and `ctrl+g` write their page without `/stats` or `/agents` typed out in front of it (nobody typed it); the commands typed by hand are shown as typed.
+- "Don't ask again" for a Node project's tests covers every spelling of `node --test` (a directory, a glob like `test/*.test.js`, `2>&1`): five of them were five questions in a trial. A test run with a glob in its arguments (`pytest tests/*.py`) is remembered as its runner too, where it was remembered as nothing.
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).
