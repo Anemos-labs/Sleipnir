@@ -84,6 +84,10 @@ The first release.
 
 ### Providers
 
+- A server that cuts the prompt off is noticed. Ollama's OpenAI-compatible endpoint reads only as much as the model's window (4096 tokens on a small graphics card) and says nothing,
+  so a weak setup shows up as a model that forgets its instructions and calls tools as plain text. For a model whose window was never told, when the prompt grows by 5% and the tokens
+  the server reports do not, the harness says so once, names the window it saw, keeps the conversation inside it from then on, and points at `OLLAMA_CONTEXT_LENGTH` and
+  `options.context_window`.
 - Local servers are found, not configured: the first run lists a running Ollama, LM Studio, llama.cpp or vLLM beside the hosted providers (no key), and `sleipnir models` and the
   `/model` menu list their models. A model on a keyless server of this machine costs nothing and is assumed to have an 8192-token window (a catalogue of ids only does not say, and
   Ollama cuts a longer prompt off silently), which `providers.<name>.options.context_window` raises. A catalogue entry that carries nothing no longer replaces a known price and window with zeros.

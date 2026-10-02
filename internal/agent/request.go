@@ -234,6 +234,9 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	}
 	a.mu.Unlock()
 	a.est.Observe(kv.PromptBytes(r.Prompt), totalIn)
+	if a.cfg.Model.Provider == "unknown" { // a model whose window nobody told the harness: a server that cuts the prompt off shows itself here
+		a.noteTruncation(kv.PromptBytes(r.Prompt), totalIn)
+	}
 
 	if anomaly {
 		a.emit(events.TypeCacheAnomaly, map[string]any{
@@ -558,4 +561,35 @@ func backoff(attempt int, retryAfter time.Duration) time.Duration {
 		d = retryAfter
 	}
 	return d
+}
+
+// noteTruncation notices a server that reads less of the prompt than it was sent (Ollama's OpenAI-compatible endpoint cuts the prompt to the
+// model's window, 4096 tokens on a small graphics card, without a word). The sign is in the usage it reports: the prompt grew between two
+// requests (by 5% of its bytes or more) and the tokens it reports did not (within 1%), at a size of 512 tokens or more. The window is then
+// that many tokens, rounded up to 256: the agent plans its compactions against it from now on, and says so once.
+func (a *Agent) noteTruncation(bytes, totalIn int) {
+	a.mu.Lock()
+	prevBytes, prevIn, done := a.truncBytes, a.truncIn, a.truncated
+	a.truncBytes, a.truncIn = bytes, totalIn
+	a.mu.Unlock()
+	if done || prevIn == 0 || totalIn < 512 {
+		return
+	}
+	diff := totalIn - prevIn
+	if diff < 0 {
+		diff = -diff
+	}
+	if float64(bytes) < 1.05*float64(prevBytes) || diff*100 > prevIn {
+		return
+	}
+	window := (totalIn + 255) / 256 * 256
+	a.mu.Lock()
+	a.truncated = true
+	if a.cfg.Model.ContextTokens == 0 || window < a.cfg.Model.ContextTokens {
+		a.cfg.Model.ContextTokens = window
+	}
+	a.mu.Unlock()
+	a.emit(events.TypeCacheAnomaly, map[string]any{"kind": "truncated_prompt", "reported_tokens": totalIn, "window": window})
+	a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the server read only about %d tokens of a prompt that grew: its context window is probably that small (Ollama's default is 4096 on a small card, and it cuts the rest off without telling anyone). "+
+		"Raise it in the server (OLLAMA_CONTEXT_LENGTH, or num_ctx in a Modelfile) and say so with providers.<name>.options.context_window. Meanwhile the conversation is kept inside %d tokens", totalIn, window))
 }

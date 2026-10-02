@@ -325,8 +325,12 @@ type Agent struct {
 	rollEpoch    uint64
 	rollValid    bool
 	anomStreak   int
-	rep          repeatGuard // the run's failed calls (see repeat.go); used by run only
-	tests        testGuard   // a failing test run followed by edits to tests only (see testguard.go); used by run only
+	// truncBytes, truncIn and truncated: the last prompt's size in bytes and in the tokens the server reported, and whether a server that cuts
+	// the prompt off has been noticed (noteTruncation).
+	truncBytes, truncIn int
+	truncated           bool
+	rep                 repeatGuard // the run's failed calls (see repeat.go); used by run only
+	tests               testGuard   // a failing test run followed by edits to tests only (see testguard.go); used by run only
 
 	// Hot tail persistence (kv.HotPersist).
 	hotFP  string // fingerprint of the newest persisted notice ("" when none)

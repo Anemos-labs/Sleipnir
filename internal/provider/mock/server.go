@@ -34,6 +34,10 @@ type Config struct {
 	// RPM simulates a per-key request limit over a sliding minute (0 = off).
 	RPM int
 
+	// ContextLimit makes the server behave like one whose window is smaller than the prompt (Ollama's default does): it reads only that many tokens
+	// and says so only in the usage it reports, which is capped at the limit (0 = off).
+	ContextLimit int
+
 	Now func() time.Time
 }
 

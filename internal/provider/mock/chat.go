@@ -82,6 +82,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			completion = 1
 		}
 	}
+	if lim := s.cfg.ContextLimit; lim > 0 && promptTokens > lim { // the usage a server that cut the prompt off reports
+		promptTokens = lim
+		cached = min(cached, lim)
+		stat.PromptTokens = lim
+	}
 	uncached := promptTokens - cached
 	price := s.cfg.Price
 	cst := (float64(uncached)*price.InputPerM + float64(cached)*price.CacheReadPerM + float64(completion)*price.OutputPerM) / 1e6

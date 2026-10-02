@@ -10,6 +10,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
@@ -293,5 +294,35 @@ func TestAnAnswerAfterAnEditWithNoTestRunIsSentBackToRunTheTests(t *testing.T) {
 		if saw != tc.want {
 			t.Errorf("%s: the model saw the note %d times, want %d", tc.name, saw, tc.want)
 		}
+	}
+}
+
+// A server whose window is smaller than the prompt reads only that much and reports only that much: when the prompt grows and the tokens
+// reported do not, the harness says so once, with the window it saw, for a model whose window it was never told.
+func TestAServerThatCutsThePromptOffIsNoticedOnce(t *testing.T) {
+	unknown := cost.Fallback("local-8b")
+	unknown.Cache = cost.OpenAICacheModel()
+	truncated := func(limit int) (kinds []string) {
+		r := newRig(t, rigOpts{noCompact: true, steps: 40, model: &unknown, mock: mock.Config{ContextLimit: limit}}, scriptedWork(8, func(*mock.Call) string { return "" }))
+		if _, err := r.agent.Run(context.Background(), "build everything"); err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range r.log.OfType(events.TypeCacheAnomaly) {
+			var p struct {
+				Kind   string
+				Window int
+			}
+			_ = json.Unmarshal(e.Data, &p)
+			if p.Kind == "truncated_prompt" {
+				kinds = append(kinds, fmt.Sprint(p.Window))
+			}
+		}
+		return kinds
+	}
+	if got := truncated(3500); len(got) != 1 || got[0] != "3584" {
+		t.Errorf("a server with a 3500-token window: %v (want one report of a 3584-token window)", got)
+	}
+	if got := truncated(0); len(got) != 0 {
+		t.Errorf("a server that reads the whole prompt: %v", got)
 	}
 }
