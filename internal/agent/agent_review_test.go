@@ -168,6 +168,13 @@ func TestConc_CompactorJobEndsWithACancelledRun(t *testing.T) {
 		if arvIsCompactor(req) {
 			compStarted <- struct{}{}
 			arvBlock(context.Background(), compGate) // the job's own context is what we are probing
+			// The run's context cancels the job from an AfterFunc, which runs on a goroutine of its own: reading the context at once
+			// found it live now and then on a slow runner (the Windows job). The wait is for the cancellation, and a job that outlives
+			// the run still ends it, as a bound.
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Second):
+			}
 			compCtxErrAfterCancel.Store(fmt.Sprint(ctx.Err()))
 			return arvText("not a patch"), warm
 		}
@@ -201,7 +208,7 @@ func TestConc_CompactorJobEndsWithACancelledRun(t *testing.T) {
 		t.Fatal("run did not stop")
 	}
 	close(compGate)
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) && compCtxErrAfterCancel.Load().(string) == "unset" {
 		time.Sleep(5 * time.Millisecond)
 	}

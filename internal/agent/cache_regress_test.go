@@ -1473,9 +1473,17 @@ func TestCacheEcon_SteeringSurvivesCompactionAndMailDoesNot(t *testing.T) {
 	if _, err := a.Run(context.Background(), "do the work"); err != nil {
 		t.Fatal(err)
 	}
-	// The compaction commits on its own goroutine, a moment after the run that asked for it: a fixed sleep missed it on a slow runner
-	// (the Windows job, once), so the test waits for the commit, and the bound is a hang guard.
-	waitFor(t, time.Minute, "setup: the compaction to commit", func() bool { return len(log.OfType(events.TypeCompactCommit)) > 0 })
+	// The patch is made by a job on a goroutine of its own and committed at a step boundary of a run: on a slow runner the run ended before
+	// the job did (the Windows job, twice; a wait for the commit alone is a wait for a boundary that never comes), and nothing is left to
+	// commit it. What the test is about holds for a compaction asked for by hand as well (the same propose and commit), which refuses while
+	// the job is still running: so it asks until one has committed, and the bound is a hang guard.
+	waitFor(t, time.Minute, "setup: a compaction to commit", func() bool {
+		if len(log.OfType(events.TypeCompactCommit)) > 0 {
+			return true
+		}
+		_, err := a.CompactNow(context.Background(), "")
+		return err == nil && len(log.OfType(events.TypeCompactCommit)) > 0
+	})
 	notes := a.Stack().Notes
 	seg, _ := notes.Segment("instructions")
 	if !strings.Contains(seg.Text, "do the work") || !strings.Contains(seg.Text, "never touch the billing package") {
