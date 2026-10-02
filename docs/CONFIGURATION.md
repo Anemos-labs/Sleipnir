@@ -455,7 +455,7 @@ Paths are compared after symlinks are followed, and an `allow` rule only ever ma
 backticks, `eval` and `sh -c` strings, and a line is allowed only if every part is. An `allow` rule sees the command as
 written (`./git` is not `git`); `deny` and `ask` rules also see through `sudo`, `env`, `nohup`, absolute paths and
 quoting. Commands the engine cannot analyse (variable-built names, unterminated quotes, `curl | sh`, ...) are never
-auto-allowed; only `bypass` lets them pass.
+auto-allowed; only `bypass` and `yolo` let them pass.
 
 ### Built-in protections
 

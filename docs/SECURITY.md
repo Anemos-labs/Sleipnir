@@ -134,8 +134,8 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
 
 * **It is not a sandbox.** A command the mode lets through runs as you, with your files, your network, your git credentials
   and your SSH agent. The permission engine judges commands by parsing them; parsing shell is best effort. A program you
-  approve (`go test`, `make`, `npm test`, `pytest`) runs the repository's code with full rights, and `bypass` mode turns asking
-  off. For a repository you do not trust, use a container, a VM or the wrapper in section 3, not the permission prompt.
+  approve (`go test`, `make`, `npm test`, `pytest`) runs the repository's code with full rights, and `bypass` and `yolo` modes turn asking
+  off (`accept-edits` already lets the build and test commands through). For a repository you do not trust, use a container, a VM or the wrapper in section 3, not the permission prompt.
 * **Same-user reach.** Section 2 closes `/proc/<pid>/environ`, `/proc/<pid>/mem` and ptrace of the harness for unprivileged
   same-user commands. It does not stop root or a process with `CAP_SYS_PTRACE`; it does not hide keys that live elsewhere: the
   environment of the shell that launched the harness (`/proc/<shell pid>/environ`), dotfiles and credential files, keyrings,
@@ -221,7 +221,7 @@ tools). Keep `os.TempDir()` writable inside the sandbox, or `cd` stops persistin
   analysis is written for POSIX syntax, so its verdicts on those command lines are not reliable. Its *paths* are POSIX too: it
   writes and matches them with slashes and resolves symlinks from `/`, so on Windows it takes every path, the project's own
   included, for one outside the workspace, and matches no credential directory (`~\.ssh`, `~\.aws`). In the default mode every read
-  asks, in plan mode a scout cannot read at all, and the bypass mode does not keep the promise made above (no mode overrides a
+  asks, in plan mode a scout cannot read at all, and the bypass and yolo modes do not keep the promise made above (no mode overrides a
   protected path). The first Windows run of CI showed it (the sessions that three tests of `internal/tui/state` record do not do what
   their script says there, and the tests skip with this reason). Porting it is one path representation inside `internal/perm` and a
   conversion wherever it touches the file system; until then there is no tested wrapper: run the harness inside WSL2 (then it is

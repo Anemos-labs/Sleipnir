@@ -1247,7 +1247,7 @@ flags:
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
-        permission mode of the agents: accept-edits (the default) | default | plan | bypass
+        permission mode of the agents: accept-edits (the default) | default | plan | bypass | yolo
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string
@@ -1351,7 +1351,7 @@ flags:
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
-        permission mode of the agents: accept-edits (the default) | default | plan | bypass
+        permission mode of the agents: accept-edits (the default) | default | plan | bypass | yolo
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string

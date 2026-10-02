@@ -70,7 +70,7 @@ func (p *policyFlags) register(fs *flag.FlagSet) {
 	fs.IntVar(&p.ctxTokens, "context-tokens", 0, "the policy's context window when a task does not set one")
 	fs.IntVar(&p.softLimit, "thread-soft-limit", 0, "the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout")
 	fs.StringVar(&p.mode, "mode", "", "who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a team of N agents, the same as --swarm N) | empty: what each task's team says")
-	fs.StringVar(&p.permMode, "perm-mode", "", "permission mode of the agents: accept-edits (the default) | default | plan | bypass")
+	fs.StringVar(&p.permMode, "perm-mode", "", "permission mode of the agents: accept-edits (the default) | default | plan | bypass | yolo")
 	fs.StringVar(&p.allow, "allow", "", "permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)")
 	fs.BoolVar(&p.ignoreRepo, "ignore-repo-instructions", false, "do not load AGENTS.md-style files of a task's repository into the agents' context")
 	fs.IntVar(&p.rpm, "rpm", 0, "pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits")
