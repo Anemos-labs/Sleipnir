@@ -162,6 +162,7 @@ type Session struct {
 	opts Options
 	// newSolo builds the single agent again on the session's current Provider and Model (SwitchModel).
 	newSolo func() (*agent.Agent, error)
+	plans   *plan.Store // each agent's plan, which a standing goal reads as its requirements (goal.go)
 	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
 	modelRef string
 	cfg      *config.Config
@@ -655,6 +656,7 @@ func (s *Session) build(ctx context.Context) error {
 	reg.Register(skilltool.New(s.Skills))
 	reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
 	plans := plan.NewStore() // each agent's plan: the plan tool sets it, the hot tail shows it back (internal/plan)
+	s.plans = plans
 	reg.Register(plantool.New(plans))
 	// MCP servers add their tools here, before the list is frozen: every agent of
 	// the session then sends the same tools array, byte for byte.

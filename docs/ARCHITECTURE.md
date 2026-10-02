@@ -113,6 +113,16 @@ major harnesses (tools, permissions, sessions, MCP, skills, hooks) and adds thre
    gateway that does not parse the model's format) is not an answer: it is sent back twice at most (`internal/agent/leak.go`,
    `agent.stuck` with `phase: "leak"`), then taken as it was.
 
+**A standing goal** (`/goal TEXT` in the chat; `internal/goal`, `session.GoalTurn`) is kept by the harness across turns and is not a repeat of
+the text. The first turn is told to write what the goal requires as steps with the `plan` tool, which the harness already shows back every
+request. After each turn a judge (a separate request with no tools, `goal:judge`, on the session's model) is shown the goal, those steps, the
+last answer and the results of the turn's last tool calls, and answers `done`, `continue` or `blocked` with a reason and what is missing; it is
+told that a claim is not evidence. `continue` sends the agent on with a message at the tail (the cached prefix is untouched) that names what is
+missing and the open steps. The loop ends by itself when the judge finds the goal met, when it says only a person can go on, after three turns
+without progress (no tool called, or the same reason again), after twenty continuations, when the turn is interrupted, or when the judge cannot be
+asked. `/goal` alone says where it stands; `pause`, `resume` and `clear` do what they say. A goal is not kept across a restart of the chat, and
+the judge's requests are not in the session's cost.
+
 ## Providers
 
 Two dialects, one `core.Prompt`. `openai-chat` speaks chat completions (OpenAI, Heimdall, OpenRouter, vLLM, SGLang, ...):

@@ -850,6 +850,10 @@ func (m *chatModel) runEnded(e runEnd) {
 		m.end, m.over = m.exiting, true
 		return
 	}
+	if r.kind == runTurn && e.turn.Next != "" && len(m.queue) == 0 && e.turn.Err == nil {
+		m.startTurn(e.turn.Next) // a goal that is not met sends the agent on; what the person typed meanwhile goes first
+		return
+	}
 	m.drainQueue()
 }
 
@@ -862,6 +866,9 @@ func (m *chatModel) turnEnded(r *run, res TurnResult) {
 	}
 	if res.Err == nil && m.since(r.started) >= longTurn && m.c.Bell != nil {
 		m.c.Bell() // a turn of half a minute or more: whoever went to another window hears that it is over
+	}
+	if res.Note != "" {
+		m.block(bkNote, paragraph(m.k.st.dim, "  "+res.Note, m.cols))
 	}
 	switch {
 	case res.Err == nil:

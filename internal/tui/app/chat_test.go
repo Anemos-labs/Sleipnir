@@ -1302,3 +1302,26 @@ func TestABareResumeOpensItsMenu(t *testing.T) {
 		t.Errorf("the prompt holds the command, ready for a choice:\n%s", s)
 	}
 }
+
+// A turn that comes back with a Next (a standing goal that is not met) is followed by that turn at once, without being echoed as something the
+// person typed, and its Note is said; what the person typed meanwhile goes first.
+func TestAGoalThatIsNotMetSendsTheAgentOn(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	var n int
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		n++
+		if n == 1 {
+			return TurnResult{Steps: 1, Note: "goal not met yet: no test was run (continuation 1 of 20)", Next: "[standing goal, continuation 1] run the tests"}
+		}
+		return TurnResult{Steps: 1, Note: "goal met: the tests pass"}
+	}
+	r.typeText("make the tests pass")
+	r.enter()
+	s := r.shows("goal not met yet: no test was run", "goal met: the tests pass")
+	if got := r.host.seen(); len(got) != 2 || got[1] != "[standing goal, continuation 1] run the tests" {
+		t.Errorf("the turns the host ran: %q", got)
+	}
+	if strings.Contains(s, "❯ [standing goal") {
+		t.Errorf("the continuation was echoed as if typed:\n%s", s)
+	}
+}

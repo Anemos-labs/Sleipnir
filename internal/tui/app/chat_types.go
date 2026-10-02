@@ -48,6 +48,10 @@ type TurnResult struct {
 	// says for one that failed. Message, when set, is what the person is told instead of "error: " and Err.
 	Err     error
 	Message string
+	// Note is a line to say after the turn (a standing goal's verdict), and Next a prompt to send at once that the person did not type: the next
+	// turn of a goal that is not met. It is not echoed as a goal; the note says why it is sent.
+	Note string
+	Next string
 }
 
 // CommandResult is what a slash command asked for: to end the chat, or to send a prompt (a custom command or a skill expanded into

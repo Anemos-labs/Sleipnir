@@ -24,6 +24,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -310,6 +311,7 @@ func tildePath(p string) string {
 // a key is typed hidden and a browser sign-in prints its address, which the program cannot host while it owns the terminal).
 type sessionHost struct {
 	s     *session.Session
+	goal  *goal.State // the standing goal (/goal), nil when there is none
 	first []string
 	menu  *modelMenu // what /model completes from, and /fav changes (nil until the session is made, and when the configuration cannot be read)
 }
@@ -328,7 +330,67 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 	if hint := providerHint(err, "/login"); hint != "" {
 		out.Message = tools.SanitizeForTerminal(err.Error()) + "\n" + hint
 	}
+	h.judgeGoal(ctx, err, &out)
 	return out
+}
+
+// judgeGoal is what a standing goal does after a turn (session.GoalTurn): the verdict becomes a note, and a goal that is not met the next turn.
+func (h *sessionHost) judgeGoal(ctx context.Context, err error, out *app.TurnResult) {
+	if h.goal == nil {
+		return
+	}
+	note, next := h.s.GoalTurn(ctx, h.goal, err)
+	out.Note, out.Next = note, next
+	if h.goal.Done {
+		h.goal = nil
+	}
+}
+
+// goalCommand is /goal: with text it sets the goal and starts on it; alone it says where the goal stands; pause, resume and clear are what they say.
+func (h *sessionHost) goalCommand(f []string, line string, out io.Writer) app.CommandResult {
+	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
+	g := h.goal
+	switch strings.ToLower(arg) {
+	case "":
+		if g == nil {
+			fmt.Fprintln(out, "no goal. /goal TEXT sets one: the harness keeps the agent going until a judge finds evidence that it is met")
+			return app.CommandResult{}
+		}
+		state := "active"
+		if g.Paused != "" {
+			state = "paused: " + g.Paused
+		}
+		fmt.Fprintf(out, "goal (%s): %s\ncontinuations %d of %d", state, tools.SanitizeForTerminal(g.Objective), g.Turns, g.Max)
+		if g.Reason != "" {
+			fmt.Fprintf(out, "; the judge's last word: %s", tools.SanitizeForTerminal(g.Reason))
+		}
+		fmt.Fprintln(out)
+		for _, st := range h.s.GoalPlan() {
+			fmt.Fprintf(out, "  [%s] %s\n", st.Status, tools.SanitizeForTerminal(st.Step))
+		}
+		return app.CommandResult{}
+	case "clear":
+		h.goal = nil
+		fmt.Fprintln(out, "goal cleared")
+		return app.CommandResult{}
+	case "pause":
+		if g != nil {
+			g.Paused = "paused by you"
+			fmt.Fprintln(out, "goal paused; /goal resume goes on")
+		}
+		return app.CommandResult{}
+	case "resume":
+		if g == nil {
+			fmt.Fprintln(out, "no goal to resume")
+			return app.CommandResult{}
+		}
+		g.Paused, g.Repeats = "", 0
+		g.Max = g.Turns + goal.MaxTurns // a goal that ran out of continuations gets as many again
+		g.Turns++
+		return app.CommandResult{Send: goal.Continuation(g, h.s.GoalPlan(), goal.Verdict{Kind: goal.Continue, Reason: g.Reason})}
+	}
+	h.goal = goal.New(arg)
+	return app.CommandResult{Send: goal.Start(h.goal)}
 }
 
 // Command runs a slash command. Both of its streams are the one the program is given, so that they come back in the order they were
@@ -363,6 +425,8 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		return "", false
 	}
 	switch f[0] {
+	case "/goal":
+		return h.goalCommand(f, line, out), true
 	case "/verbose":
 		if v, ok := onOff("/verbose"); ok {
 			fmt.Fprintf(out, "verbose: %s (notices and tool errors %s)\n", v, map[string]string{"on": "are shown", "off": "show only warnings"}[v])
@@ -508,6 +572,7 @@ type chatCommand struct{ name, args, desc string }
 
 var chatCommands = []chatCommand{
 	{"help", "", "this text (and your custom commands and skills)"},
+	{"goal", "[text|pause|resume|clear]", "keep working until a goal is met, judged on evidence"},
 	{"status", "", "model, mode, session, budget and cost at a glance"},
 	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},
 	{"trust", "", "this project's own instructions and settings: what they are, and whether you trusted them"},

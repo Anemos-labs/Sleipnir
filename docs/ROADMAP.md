@@ -61,7 +61,7 @@ a dozen tests and real managers write terse titles: it is a hint. Writes under `
    (h) The README's real recordings (`docs/media/real-*.svg`) predate the banner line about the team, the pages without a typed command, the bare `/model` menu and the "Waiting for the model" line. A re-recording on 2026-10-02 evening (`scripts/record-real.sh --scenario chat`) caught Heimdall in an outage (a minute of 503 retries, a 165 s turn) and was not used: record again when `sleipnir run --quiet "pong"` answers in a few seconds. The same picture shows that a long outage prints a line per retry in the scrollback (seven wrapped lines); this is done: after the six usual attempts a retry is said once in each half minute (3649c2d).
    Ideas from reading eight other harnesses (crush, opencode, codex, aider, goose, hermes-agent, gemini-cli, cline), not yet built: `/btw QUESTION`
    (a side question on a copy of the prefix, out of the log), `/export` to Markdown, `$EDITOR` for a long prompt, `/title` and `/fork`, the
-   files-changed count and the three-way choice (conversation, code, both) in `/rewind`, a standing `/goal`, `/init` and `/doctor` inside the chat.
+   files-changed count and the three-way choice (conversation, code, both) in `/rewind`, a standing `/goal` (done: `/goal`, see ARCHITECTURE), `/init` and `/doctor` inside the chat.
 
 ## Second handoff (2026-10-01, the end of the second agent's session)
 
