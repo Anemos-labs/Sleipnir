@@ -190,6 +190,8 @@ The first release.
 - An endpoint that cannot be reached is said in plain words ("cannot connect to 127.0.0.1:9: connection refused (is the server running, and is
   the address right?)", "cannot find HOST (no such host): check the address and your network") where the retry notices and the final error
   were Go's `Post "http://...": dial tcp ...: connect: connection refused`.
+- A model the provider does not have (a 404) and an account with no credit (a 402) say what to do ("`sleipnir models` lists the names it has", "/model"
+  in the chat; "add funds there, or choose another model"), as a refused key already did.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

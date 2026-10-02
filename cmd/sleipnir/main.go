@@ -174,7 +174,7 @@ func reportError(w io.Writer, err error) int {
 		return 0
 	}
 	fmt.Fprintln(w, wrapBlockFor(w, "sleipnir: "+tools.SanitizeForTerminal(err.Error())))
-	if h := authHint(err, "`sleipnir login`"); h != "" {
+	if h := providerHint(err, "`sleipnir login`"); h != "" {
 		fmt.Fprintln(w, wrapBlockFor(w, h))
 	}
 	var ee *exitError
@@ -184,13 +184,27 @@ func reportError(w io.Writer, err error) int {
 	return 1
 }
 
-// authHint says what to do about a key the provider refused: enter it again (how names the way to, where the person is: `sleipnir login` on
-// the command line, /login in the chat), and check whether an environment variable is the one in use (it wins over the stored key, so a stale
-// export is the usual reason a fresh login seems to change nothing). Empty for any other error, and for a ChatGPT sign-in that has ended: that
-// error says so itself.
-func authHint(err error, how string) string {
-	if pe, ok := provider.AsError(err); ok && pe.Kind == provider.ErrAuth && !chatgptauth.IsSignInError(err) {
+// providerHint says what to do about an error of the provider that a person can mend. A key it refused: enter it again (how names the way to,
+// where the person is: `sleipnir login` on the command line, /login in the chat), and check whether an environment variable is the one in use
+// (it wins over the stored key, so a stale export is the usual reason a fresh login seems to change nothing); but not for a ChatGPT sign-in that
+// has ended, which says so itself. A model it does not have (a 404): where the names are listed. An account with no credit (a 402). Empty for
+// any other error.
+func providerHint(err error, how string) string {
+	pe, ok := provider.AsError(err)
+	if !ok {
+		return ""
+	}
+	switch {
+	case pe.Kind == provider.ErrAuth && !chatgptauth.IsSignInError(err):
 		return "The provider refused the key. Enter it again with " + how + "; if a key variable is set in your environment it wins over the stored one (`env | grep API_KEY`)."
+	case pe.Kind == provider.ErrBadRequest && pe.Status == http.StatusNotFound:
+		list := "`sleipnir models`"
+		if strings.HasPrefix(how, "/") {
+			list = "/model"
+		}
+		return "The provider does not know this model. " + list + " lists the names it has."
+	case pe.Kind == provider.ErrPayment:
+		return "The account has no credit left at the provider: add funds there, or choose another model or provider."
 	}
 	return ""
 }
