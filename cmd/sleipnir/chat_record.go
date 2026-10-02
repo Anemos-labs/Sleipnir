@@ -89,8 +89,7 @@ func cmdChatRecord(ctx context.Context, args []string) error {
 		return err
 	}
 	if fs.NArg() != 0 || *out == "" {
-		fs.Usage()
-		return errors.New("chat-record: --out FILE is required and nothing else is taken")
+		return usageError(fs, "chat-record: --out FILE is required and nothing else is taken")
 	}
 	root := *dir
 	if root == "" {

@@ -35,7 +35,7 @@ func cmdSwarm(ctx context.Context, args []string) error {
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil || n < 2 {
-		return fmt.Errorf("swarm: the first argument is the number of agents, the manager included (2 or more), got %q; for example: sleipnir swarm 6 \"add a login page\" --verify \"go test ./...\"", args[0])
+		return fmt.Errorf("swarm: the first argument is the number of agents, the manager included (2 or more), got %q; for example: sleipnir swarm 8 \"add a login page\" --verify \"go test ./...\"", args[0])
 	}
 	return runCommand(ctx, "swarm", append([]string{"--swarm", args[0]}, args[1:]...))
 }
@@ -108,8 +108,11 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		fmt.Fprintln(os.Stderr, "sleipnir:", note)
 	}
 	if prompt == "" {
-		fs.Usage()
-		return errors.New(name + ": a prompt is required")
+		eg := `sleipnir run "fix the failing test"`
+		if name == "swarm" {
+			eg = `sleipnir swarm 8 "fix the failing test"`
+		}
+		return usageError(fs, name+`: a prompt is required, as in `+eg)
 	}
 
 	if *askTimeout < 0 {

@@ -154,6 +154,11 @@ The first release.
 - A message that holds the markup of a tool call (`<|call|>`, `to=functions.read`, `<tool_call>`) and no call is not taken for the
   answer: the model is told what it wrote and asked to call again or to answer in words, twice at most in a run. gpt-oss-20b through a
   gateway that does not parse its format ended a run this way, with the work undone and exit status 0.
+- First impressions, from a trial by an agent that had only the binary: `sleipnir -h` opens with what it is (a team of eight) and how to start,
+  and groups the commands by how often they are needed; an unknown command and a command line with no goal (or too many arguments) are one
+  line that says what is wrong and where the flags are listed, not forty lines of flags above it (`run` and `swarm` give an example);
+  Ctrl-C at the hidden prompt for a key ends the login at once (the first press did nothing, the second killed the process with the
+  terminal's echo off); the demo says "a handbook of 8 topics" (it said "a 8-topic") and suggests `swarm 8`.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

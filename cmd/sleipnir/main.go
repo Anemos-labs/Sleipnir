@@ -80,8 +80,7 @@ func main() {
 			err = handler(ctx, args)
 			break
 		}
-		fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q\n\n", cmd)
-		usage(os.Stderr)
+		fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q (sleipnir -h lists the commands)\n", cmd)
 		os.Exit(2)
 	}
 	if sig := caught(); sig != nil && errors.Is(err, context.Canceled) {
@@ -204,34 +203,46 @@ var extraCommands = map[string]func(context.Context, []string) error{}
 var ownsInterrupt = map[string]bool{}
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `sleipnir - a coding-agent harness with a shared multi-layer prompt cache
+	fmt.Fprint(w, `sleipnir - a team of eight coding agents that share one prompt cache
+
+Start:
+  cd your-project && sleipnir
+      The first run asks which provider to use (Heimdall is the recommended
+      one), takes its key and opens the chat: a manager and seven workers.
+      In the chat, ctrl+g shows the agents, ctrl+t the stats, /help the rest.
+  sleipnir run "fix the failing test"
+      One goal, no chat (sleipnir swarm 8 "..." runs the whole team).
 
 Usage:
   sleipnir <command> [flags]
 
-Commands:
-  init      write a starter config and AGENTS.md for this project
-  config    show the effective configuration and where each value came from
-  sessions  list recorded sessions (sessions prune: delete the old ones)
-  login     store a key, or sign in with your ChatGPT plan; logout removes it
+Every day:
   chat      interactive session: what "sleipnir" alone opens on a terminal
   run       run a goal (one agent; --swarm N for a manager with workers)
+  swarm     shorthand for run --swarm: sleipnir swarm <agents> "<goal>"
+  login     store a key, or sign in with your ChatGPT plan; logout removes it
+  models    list models and prices from a marketplace catalogue
+  sessions  list recorded sessions (sessions prune: delete the old ones)
+
+Set up a project:
+  init      write a starter config and AGENTS.md for this project
+  config    show the effective configuration and where each value came from
+  trust     a project's own instructions and settings: show, remember your yes
+  mcp       tool servers (Model Context Protocol): list, approve, revoke, test
   schedule  goals to run on a schedule (cron): add, list, rm
   daemon    run the scheduled goals that are due (--once for a cron job)
-  swarm     shorthand for run --swarm: sleipnir swarm <agents> "<goal>"
-  recon     print the project survey that seeds the shared prompt layer
-  mcp       tool servers (Model Context Protocol): list, approve, revoke, test
-  trust     a project's own instructions and settings: show, remember your yes
-  inspect   the cache inspector: a dashboard of a session, live or recorded
+
+Look at a session, or measure:
   watch     a session as it is written: the swarm cockpit, caches, mail, board
   replay    play a recorded session back; --record writes an SVG, --final text
-  rl        the RL environment: rollout, eval, report, export (rl help)
+  inspect   the cache inspector: a dashboard of a session, live or recorded
   friction  rank what slowed recorded sessions down: refusals, errors, retries
   doctor    probe an endpoint: streaming, tools, prefix cache, warm-up
-  models    list models and prices from a marketplace catalogue
   demo      a scripted team on a mock endpoint: the shared cache and the bill
-  mock      the built-in mock provider, for demos and tests
   sim       simulate cache policies: what layering buys, and where it stops
+  recon     print the project survey that seeds the shared prompt layer
+  rl        the RL environment: rollout, eval, report, export (rl help)
+  mock      the built-in mock provider, for demos and tests
   version   print version
 
 `)

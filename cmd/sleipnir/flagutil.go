@@ -21,6 +21,12 @@ func newFlagSet(name string, h flag.ErrorHandling) *flag.FlagSet {
 	return fs
 }
 
+// usageError is the error for a command line that makes no sense: what is wrong, and where the flags are listed. The flags themselves are
+// not printed with it (forty lines above the one that says what is wrong hid it).
+func usageError(fs *flag.FlagSet, msg string) error {
+	return fmt.Errorf("%s (sleipnir %s -h lists the flags)", msg, fs.Name())
+}
+
 // printFlags is fs.PrintDefaults with each description broken at spaces to the terminal's width when the output is a terminal (a flag's
 // description is one line, up to 370 characters). Anywhere else, a pipe or the generator of docs/CLI.md, it is PrintDefaults as it was.
 func printFlags(fs *flag.FlagSet) {

@@ -50,7 +50,7 @@ func TestE2EDemoShowsTheTeamAndKeepsTheLastScreenUntilQ(t *testing.T) {
 	if _, _, visible := after.Cursor(); !visible {
 		t.Error("the cursor is back after the program")
 	}
-	for _, want := range []string{"Sleipnir demo:", "a 2-topic handbook", "hit ratio", "See it again: sleipnir replay", "Try it on a real model"} {
+	for _, want := range []string{"Sleipnir demo:", "a handbook of 2 topics", "hit ratio", "See it again: sleipnir replay", "Try it on a real model"} {
 		if !strings.Contains(after.String(), want) {
 			t.Errorf("the report lacks %q:\n%s", want, after.String())
 		}

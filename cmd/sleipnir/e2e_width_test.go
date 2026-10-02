@@ -115,7 +115,7 @@ func TestReportsFitAnEightyColumnTerminal(t *testing.T) {
 		{[]string{"init"}, 1, "already exists"}, // an error that names a long path
 		{[]string{"schedule", "list"}, 0, "no scheduled jobs"},
 		{[]string{"sessions"}, 0, "Fix the failing test"},
-		{[]string{"run"}, 1, "usage: sleipnir run"}, // no goal: the usage, and the complaint
+		{[]string{"run"}, 1, "a prompt is required"}, // no goal: one line, with an example
 	} {
 		out, code := wide(t, w, tc.args...)
 		if code != tc.code || !strings.Contains(strings.Join(strings.Fields(out), " "), tc.want) { // a wrap may fall between the words of want

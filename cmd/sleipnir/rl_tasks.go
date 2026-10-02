@@ -68,8 +68,7 @@ func oneFile(fs *flag.FlagSet, args []string, name string) (string, error) {
 		return "", err
 	}
 	if len(pos) != 1 {
-		fs.Usage()
-		return "", fmt.Errorf("%s: pass exactly one tasks file", name)
+		return "", usageError(fs, fmt.Sprintf("%s: pass exactly one tasks file", name))
 	}
 	return pos[0], nil
 }

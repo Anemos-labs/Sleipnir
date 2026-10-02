@@ -196,8 +196,7 @@ flags:
 		return err // -h is flag.ErrHelp, which main takes for success
 	}
 	if len(pos) > 1 {
-		fs.Usage()
-		return errors.New("replay: at most one session")
+		return usageError(fs, "replay: at most one session")
 	}
 	if (*record != "" && *final) || (*gallery != "" && (*record != "" || *final)) {
 		return errors.New("replay: --record, --final and --gallery are alternatives")
@@ -325,8 +324,7 @@ flags:
 		return err // -h is flag.ErrHelp, which main takes for success
 	}
 	if len(pos) > 1 {
-		fs.Usage()
-		return errors.New("watch: at most one session")
+		return usageError(fs, "watch: at most one session")
 	}
 	view, err := app.ParseView(sf.view)
 	if err != nil {

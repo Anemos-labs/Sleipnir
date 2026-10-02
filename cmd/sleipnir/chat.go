@@ -88,7 +88,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	}
 	// Nothing says which model to use: ask the provider what it has, once (pick.go).
 	asking := bufio.NewReader(os.Stdin)
-	if err := ensureModel(ctx, model, asking, os.Stderr, func() (string, error) { return readSecret(asking) }, term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))); err != nil {
+	if err := ensureModel(ctx, model, asking, os.Stderr, func() (string, error) { return readSecret(ctx, asking) }, term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))); err != nil {
 		return err
 	}
 	sessionOptions := func(spec string) session.Options {

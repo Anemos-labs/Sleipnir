@@ -65,11 +65,11 @@ func TestCommandExitStatus(t *testing.T) {
 		code           int
 		stdout, stderr []string
 	}{
-		{"no command", nil, 2, nil, []string{"Usage:", "Commands:"}},
-		{"an unknown command", []string{"bogus"}, 2, []string{"!Commands:"}, []string{`unknown command "bogus"`, "Commands:"}},
-		{"help", []string{"help"}, 0, []string{"Commands:", "chat", "run"}, []string{"!Commands:"}},
-		{"--help", []string{"--help"}, 0, []string{"Commands:"}, nil},
-		{"-h", []string{"-h"}, 0, []string{"Commands:"}, nil},
+		{"no command", nil, 2, nil, []string{"Usage:", "Every day:"}},
+		{"an unknown command", []string{"bogus"}, 2, []string{"!Every day:"}, []string{`unknown command "bogus"`, "sleipnir -h lists the commands", "!Every day:"}},
+		{"help", []string{"help"}, 0, []string{"Every day:", "chat", "run"}, []string{"!Every day:"}},
+		{"--help", []string{"--help"}, 0, []string{"Every day:"}, nil},
+		{"-h", []string{"-h"}, 0, []string{"Every day:"}, nil},
 		{"version", []string{"version"}, 0, []string{"sleipnir dev (none)"}, nil},
 		{"--version", []string{"--version"}, 0, []string{"sleipnir dev (none)"}, nil},
 		{"-v", []string{"-v"}, 0, []string{"sleipnir dev (none)"}, nil},
@@ -88,7 +88,7 @@ func TestCommandExitStatus(t *testing.T) {
 		{"sim with an unknown mode", []string{"sim", "--mode", "nope"}, 1, nil, []string{`sim: unknown --mode "nope"`}},
 		{"sim with an unknown provider", []string{"sim", "--provider", "nope"}, 1, nil, []string{`sim: unknown --provider "nope"`}},
 		{"inspect with no sessions to show", []string{"inspect"}, 1, nil, []string{"inspect: no sessions yet"}},
-		{"inspect of two things", []string{"inspect", "a", "b"}, 1, nil, []string{"inspect: at most one session or directory is taken", "usage: sleipnir inspect"}},
+		{"inspect of two things", []string{"inspect", "a", "b"}, 1, nil, []string{"inspect: at most one session or directory is taken", "sleipnir inspect -h lists the flags"}},
 		{"models with an unknown provider", []string{"models", "--provider", "nope"}, 1, nil, []string{`models: unknown provider "nope"`}},
 		{"sessions with nothing recorded", []string{"sessions", "--dir", filepath.Join(w.tmp, "none")}, 0, nil, []string{"no sessions yet"}},
 	} {
@@ -364,7 +364,7 @@ func TestDemoAndInspect(t *testing.T) {
 	dir := filepath.Join(w.tmp, "demo")
 	r := w.run("", "demo", "--topics", "2", "--dir", dir)
 	assertRun(t, r, 0, []string{
-		"Sleipnir demo:", "a 2-topic handbook", "agents ", "model requests", "hit ratio", "cost ",
+		"Sleipnir demo:", "a handbook of 2 topics", "agents ", "model requests", "hit ratio", "cost ",
 		"Workspace: ", "Recorded session: ", "Try it on a real model",
 	}, nil)
 	session := filepath.Join(dir, "session")

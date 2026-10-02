@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -134,8 +133,7 @@ func rlReport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		return err
 	}
 	if len(paths) == 0 {
-		fs.Usage()
-		return errors.New("rl report: pass one or more run directories")
+		return usageError(fs, "rl report: pass one or more run directories")
 	}
 	switch *format {
 	case "table", "md", "json":
@@ -325,8 +323,7 @@ func rlCompare(_ context.Context, args []string, stdout, stderr io.Writer) error
 		return err
 	}
 	if len(paths) != 2 {
-		fs.Usage()
-		return errors.New("rl compare: pass two runs (or reports): A, the reference, then B")
+		return usageError(fs, "rl compare: pass two runs (or reports): A, the reference, then B")
 	}
 	if *format != "table" && *format != "json" {
 		return fmt.Errorf("rl compare: unknown format %q (table, json)", *format)

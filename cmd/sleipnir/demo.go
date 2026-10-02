@@ -18,7 +18,7 @@ import (
 func init() { extraCommands["demo"] = cmdDemo }
 
 // demoTrailer is the last thing the demo says, after its report.
-const demoTrailer = "\nTry it on a real model: sleipnir init --user && sleipnir swarm 6 \"<goal>\" --verify \"<your tests>\"\n"
+const demoTrailer = "\nTry it on a real model: sleipnir init --user && sleipnir swarm 8 \"<goal>\" --verify \"<your tests>\"\n"
 
 // cmdDemo runs a scripted team through the real harness against the built-in mock endpoint: no API key, no network. On a terminal
 // the team is watched in the live cockpit and the report follows when the person leaves it; anywhere else the report is all there is.

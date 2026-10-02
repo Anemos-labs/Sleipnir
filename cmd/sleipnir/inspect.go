@@ -67,8 +67,7 @@ flags:
 		rest = fs.Args()[1:]
 	}
 	if len(dirs) > 1 {
-		fs.Usage()
-		return errors.New("inspect: at most one session or directory is taken")
+		return usageError(fs, "inspect: at most one session or directory is taken")
 	}
 	arg := "latest"
 	if len(dirs) == 1 {

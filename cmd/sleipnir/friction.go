@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,8 +35,7 @@ func cmdFriction(_ context.Context, args []string, stdout, stderr io.Writer) err
 		return err
 	}
 	if len(paths) == 0 {
-		fs.Usage()
-		return errors.New("friction: pass a session, a directory of sessions or a run directory")
+		return usageError(fs, "friction: pass a session, a directory of sessions or a run directory")
 	}
 	rep, err := friction.Mine(paths, friction.Options{MinCount: *minCount, Examples: *examples})
 	if err != nil {

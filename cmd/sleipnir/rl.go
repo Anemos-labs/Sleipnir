@@ -128,8 +128,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		return err
 	}
 	if len(paths) == 0 {
-		fs.Usage()
-		return errors.New("rl export: pass one or more run directories (the --out of rl rollout)")
+		return usageError(fs, "rl export: pass one or more run directories (the --out of rl rollout)")
 	}
 	f := export.Format(*format)
 	if !validFormat(f) {
@@ -323,8 +322,7 @@ func rlExpand(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		return err
 	}
 	if len(paths) != 1 {
-		fs.Usage()
-		return errors.New("rl expand: pass exactly one canonical export")
+		return usageError(fs, "rl expand: pass exactly one canonical export")
 	}
 	in, err := os.Open(paths[0])
 	if err != nil {
@@ -367,8 +365,7 @@ func rlVerify(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		return err
 	}
 	if len(paths) == 0 {
-		fs.Usage()
-		return errors.New("rl verify: pass one or more run directories")
+		return usageError(fs, "rl verify: pass one or more run directories")
 	}
 	samples, err := findSamples(paths)
 	if err != nil {
@@ -419,8 +416,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		return nil
 	}
 	if len(paths) == 0 {
-		fs.Usage()
-		return errors.New("rl reward: pass one or more run directories")
+		return usageError(fs, "rl reward: pass one or more run directories")
 	}
 	cfg := reward.DefaultConfig()
 	if *rewards != "" {
@@ -531,8 +527,7 @@ func rlShow(_ context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(paths) == 0 || len(paths) > 2 {
-		fs.Usage()
-		return errors.New("rl show: pass a run directory, and optionally task/sample")
+		return usageError(fs, "rl show: pass a run directory, and optionally task/sample")
 	}
 	if len(paths) == 2 {
 		return showEpisode(filepath.Join(paths[0], filepath.FromSlash(paths[1])), *asJSON, stdout)

@@ -44,12 +44,30 @@ func loginChoices(cfg *config.Config) []loginChoice {
 	return out
 }
 
-// readSecret reads a key from the terminal without echoing it; from a pipe, one line.
-func readSecret(in *bufio.Reader) (string, error) {
+// readSecret reads a key from the terminal without echoing it; from a pipe, one line. A read at a terminal does not end when ctx does
+// (Ctrl-C): ReadPassword waits for the line, so the first Ctrl-C did nothing and the second killed the process with the terminal's echo
+// off. It is left to finish by itself, the terminal is put back as it was, and ctx's error is returned.
+func readSecret(ctx context.Context, in *bufio.Reader) (string, error) {
 	if fd := int(os.Stdin.Fd()); term.IsTerminal(fd) {
-		b, err := term.ReadPassword(fd)
-		fmt.Fprintln(os.Stderr)
-		return strings.TrimSpace(string(b)), err
+		saved, err := term.GetState(fd)
+		if err != nil {
+			return "", err
+		}
+		type typed struct {
+			b   []byte
+			err error
+		}
+		ch := make(chan typed, 1)
+		go func() { b, err := term.ReadPassword(fd); ch <- typed{b, err} }()
+		select {
+		case t := <-ch:
+			fmt.Fprintln(os.Stderr)
+			return strings.TrimSpace(string(t.b)), t.err
+		case <-ctx.Done():
+			_ = term.Restore(fd, saved)
+			fmt.Fprintln(os.Stderr)
+			return "", ctx.Err()
+		}
 	}
 	line, err := in.ReadString('\n')
 	if line == "" && err != nil {
@@ -153,6 +171,9 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 	}
 	fmt.Fprint(out, wrapFor(out, fmt.Sprintf("Paste your %s key (hidden; kept in %s, readable by you only):", pick.name, tildePath(config.AuthPath(userHome()))))+" ")
 	key, err := secret()
+	if ctx.Err() != nil {
+		return "", ctx.Err() // Ctrl-C at the prompt: the interrupt the command reports
+	}
 	if err != nil || key == "" {
 		return "", errors.New("login: no key entered")
 	}
@@ -208,7 +229,7 @@ func cmdLogin(ctx context.Context, args []string) error {
 		name = fs.Arg(0)
 	}
 	in := bufio.NewReader(os.Stdin)
-	picked, err := login(ctx, in, os.Stderr, func() (string, error) { return readSecret(in) }, cfg, name, nil)
+	picked, err := login(ctx, in, os.Stderr, func() (string, error) { return readSecret(ctx, in) }, cfg, name, nil)
 	if err != nil {
 		return err
 	}

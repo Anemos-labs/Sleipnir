@@ -137,7 +137,7 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 	}
 	defer s.Close()
 
-	fmt.Fprintf(out, "Sleipnir demo: a scripted team on a %d-topic handbook, against a cache-faithful mock endpoint.\n", o.Topics)
+	fmt.Fprintf(out, "Sleipnir demo: a scripted team writing a handbook of %d topics, against a cache-faithful mock endpoint.\n", o.Topics)
 	fmt.Fprintf(out, "Everything but the model is real: tools, permissions, layers, board, governor, warm gate, accounting.\n\n")
 
 	rctx, cancel := context.WithTimeout(ctx, o.Timeout)

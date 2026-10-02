@@ -82,7 +82,7 @@ done
 
 # --- what the binary offers
 {
-  run --help | awk '/^Commands:/ { on = 1; next } on && /^$/ { exit } on' | names_in \
+  run --help | awk '/^Every day:/ { on = 1 } /^A model is written/ { on = 0 } on' | names_in \
     | grep -v -x -e swarm -e version -e rl || true
   run rl help | names_in | grep -v -x -e taskgen -e tasks | sed 's/^/rl /' || true
   run rl taskgen help | names_in | sed 's/^/rl taskgen /'
