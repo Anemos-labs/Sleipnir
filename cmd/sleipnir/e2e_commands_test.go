@@ -59,6 +59,10 @@ func decode(t *testing.T, what, s string, v any) {
 func TestCommandExitStatus(t *testing.T) {
 	m := startModel(t)
 	w := newWorld(t, m.url())
+	empty := filepath.Join(w.tmp, "empty")
+	if err := os.MkdirAll(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name           string
 		args           []string
@@ -91,6 +95,7 @@ func TestCommandExitStatus(t *testing.T) {
 		{"inspect with no sessions to show", []string{"inspect"}, 1, nil, []string{"inspect: no sessions yet"}},
 		{"inspect of two things", []string{"inspect", "a", "b"}, 1, nil, []string{"inspect: at most one session or directory is taken", "sleipnir inspect -h lists the flags"}},
 		{"models with an unknown provider", []string{"models", "--provider", "nope"}, 1, nil, []string{`models: unknown provider "nope"`}},
+		{"sessions in a directory with only an empty chat", []string{"sessions", "--dir", empty}, 0, nil, []string{"no sessions yet"}},
 		{"sessions with nothing recorded", []string{"sessions", "--dir", filepath.Join(w.tmp, "none")}, 0, nil, []string{"no sessions yet"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

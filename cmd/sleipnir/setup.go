@@ -329,7 +329,9 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		}
 		fmt.Fprintln(out, head+prompt)
 	}
-	if len(rows) > 0 {
+	if len(rows) == 0 {
+		fmt.Fprintln(errw, "no sessions yet") // a directory that exists and holds nothing worth listing is the same as none
+	} else {
 		fmt.Fprintln(errw, wrapBlockFor(errw, "↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project's newest)"))
 	}
 	return nil
