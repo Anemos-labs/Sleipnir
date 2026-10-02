@@ -7,10 +7,12 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 func selectWith(t *testing.T, keys string, labels []string, searchable bool) (int, error) {
@@ -104,5 +106,35 @@ func TestModelTableLinesTheColumnsUp(t *testing.T) {
 	}
 	if one := modelLine(row("h/a/short", 0.01), nil); strings.Index(one, "131k") >= strings.Index(got[1], "131k") {
 		t.Errorf("a row by itself is not padded for the others: %q", one)
+	}
+}
+
+// The line a run ends on carries the session's directory, which is the long part of it: on a terminal that is too narrow for the whole line
+// the directory is under the rest, and ~ shortens it; not on a terminal (a pipe, a log) it stays one line, as scripts have always seen it.
+func TestRunSummaryMovesTheDirectoryDownWhenTheLineWouldWrap(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	res := &session.Result{Steps: 7, CostUSD: 0.0001, Dir: home + "/.sleipnir/sessions/20261002-082806-9e554f"}
+	old := termWidth
+	t.Cleanup(func() { termWidth = old })
+
+	termWidth = func(io.Writer) int { return 0 }
+	if got := runSummary(io.Discard, 70*time.Second, res); strings.Contains(got, "\n") || !strings.HasSuffix(got, " · "+res.Dir) {
+		t.Errorf("not a terminal: one line, the directory last: %q", got)
+	}
+	termWidth = func(io.Writer) int { return 400 }
+	if got := runSummary(io.Discard, 70*time.Second, res); strings.Contains(got, "\n") {
+		t.Errorf("a wide terminal has room for it: %q", got)
+	}
+	termWidth = func(io.Writer) int { return 80 }
+	got := runSummary(io.Discard, 70*time.Second, res)
+	lines := strings.Split(got, "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "── 1m10s · 7 steps · $0.0001") || lines[1] != "   ~/.sleipnir/sessions/20261002-082806-9e554f" {
+		t.Errorf("80 columns: the directory on a line of its own, with ~: %q", got)
+	}
+	for _, l := range lines {
+		if utf8.RuneCountInString(l) >= 80 {
+			t.Errorf("a line of %d characters on an 80-column terminal: %q", utf8.RuneCountInString(l), l)
+		}
 	}
 }

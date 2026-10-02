@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 
@@ -178,8 +179,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 			}
 			_ = json.NewEncoder(os.Stdout).Encode(out)
 		case !*quiet:
-			fmt.Fprintf(os.Stderr, "\n── %s · %d steps · $%.4f · cache hit %.0f%% · %d compactions · %s\n",
-				time.Since(start).Round(time.Second), res.Steps, res.CostUSD, res.Usage.HitRatio()*100, res.Compactions, res.Dir)
+			fmt.Fprintln(os.Stderr, "\n"+runSummary(os.Stderr, time.Since(start), res))
 			printRefusals(os.Stderr, s.RefusedWithNoOneToAsk())
 		}
 	}
@@ -416,4 +416,14 @@ func cmdRecon(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "[%d tokens, %d files considered]\n", r.Tokens, r.Files)
 	return nil
+}
+
+// runSummary is the line a run ends on: how long, how many steps, what it cost, and where the session is kept. On a terminal too narrow for all
+// of it on one line, the directory (the long part) is on a line of its own, under the rest, shortened with ~ where it can be.
+func runSummary(out io.Writer, took time.Duration, res *session.Result) string {
+	line := fmt.Sprintf("── %s · %d steps · $%.4f · cache hit %.0f%% · %d compactions", took.Round(time.Second), res.Steps, res.CostUSD, res.Usage.HitRatio()*100, res.Compactions)
+	if w := termWidth(out); w > 0 && utf8.RuneCountInString(line)+3+utf8.RuneCountInString(res.Dir) >= w {
+		return line + "\n   " + tildePath(res.Dir)
+	}
+	return line + " · " + res.Dir
 }

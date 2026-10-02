@@ -110,6 +110,8 @@ The first release.
 - `/model provider/model` in the chat moves the conversation to another model, keeping the thread, notes, spine and bill (the agent is
   rebuilt and the old one's snapshot restored: the same path as a resume). `/model ` opens a menu of every model of the providers whose key is set (favorites first, typing filters it with the same fuzzy match as the commands); `/model` alone shows the current one. In a team the chat starts the team again on that model,
   with the manager's conversation (a team's workers run on their roles' models). The errors of a first run now say Heimdall is the recommended start.
+- The line `sleipnir run` ends on (how long, steps, cost, cache, and the session's directory) puts the directory under the rest, shortened with `~`, when the terminal is too narrow for one line
+  (at 80 columns the long path made it three). On a pipe or a log it is the one line it always was.
 - `/fav [provider/model]` stars a model, or unstars it (the session's own when none is named), from the chat: the `/model` menu puts it first at once, `sleipnir models` lists it first, and
   it is kept as `models.favorites` in the user's own configuration (in the session's home, not the machine's: the tests prove it). Favorites could only be changed by `sleipnir models fav add|rm`.
 - The chat's lines for the manager's coordination say what was done: `Spawn backend · T1` (who was started, on which task) and `Task accept T1` (the action and the task) where
