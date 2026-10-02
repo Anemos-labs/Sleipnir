@@ -252,7 +252,7 @@ The first release.
 
 ### Interfaces
 
-- The chat on a terminal is a team by default: a manager that can spawn up to eight workers (kept under `swarm.max_agents`; it does a small job
+- The chat on a terminal is a team of eight agents by default, a manager and seven workers (kept under `swarm.max_agents`; it does a small job
   itself). `--swarm 0` is a single agent, and so are the line chat and a restart of a single agent. The first-run pictures in the README were
   recorded again with the arrow-key menus.
 - First-run setup and `sleipnir login` try the key just typed with one small request before keeping it: a catalogue is often public, so a typo used to be found

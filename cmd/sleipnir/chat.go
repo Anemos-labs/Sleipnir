@@ -49,12 +49,12 @@ const quitHint = app.QuitHint
 // The input is owned by one reader, stdinLines (chat_input.go): the prompt reads goals and an
 // approval question reads its answer from it, and a line typed while a turn runs waits for the
 // prompt instead of answering a question that comes later.
-// defaultWorkers is how many workers the manager of the chat on a terminal may spawn when --swarm is not given.
-const defaultWorkers = 8
+// defaultAgents is the size of the team of the chat on a terminal when --swarm is not given: eight agents in all, the manager and seven workers.
+const defaultAgents = 8
 
 // defaultTeam is the size of that team, kept under the ceiling the person's own settings put on a session (swarm.max_agents).
 func defaultTeam() int {
-	n := defaultWorkers
+	n := defaultAgents - 1 // --swarm counts workers; the manager is the eighth agent
 	if cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true}); err == nil {
 		if c := cfg.Swarm.MaxAgents; c > 0 && n+1 > c {
 			n = c - 1
@@ -68,7 +68,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	cwd := fs.String("cwd", "", "working directory")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass")
-	swarmN := fs.Int("swarm", 0, "chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling); on a terminal the default is a team of up to "+strconv.Itoa(defaultWorkers)+", --swarm 0 is a single agent")
+	swarmN := fs.Int("swarm", 0, "chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling); on a terminal the default is a team of "+strconv.Itoa(defaultAgents)+" agents (the manager and "+strconv.Itoa(defaultAgents-1)+" workers), --swarm 0 is a single agent")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")

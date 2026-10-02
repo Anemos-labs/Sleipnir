@@ -154,12 +154,12 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 	}
 }
 
-// On a terminal the chat is a team of up to eight workers unless --swarm says otherwise; the person's own ceiling (swarm.max_agents) is
+// On a terminal the chat is a team of eight agents (a manager and seven workers) unless --swarm says otherwise; the person's own ceiling (swarm.max_agents) is
 // kept, and a single agent that restarts stays a single agent.
 func TestDefaultTeamAndASoloRestartStaysSolo(t *testing.T) {
 	_, home := projectDir(t)
-	if n := defaultTeam(); n != 8 {
-		t.Errorf("default team = %d, want 8", n)
+	if n := defaultTeam(); n != 7 {
+		t.Errorf("default team = %d workers, want 7 (eight agents with the manager)", n)
 	}
 	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
 		t.Fatal(err)

@@ -190,7 +190,7 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 
 ### `sleipnir chat`
 
-Interactive session. On a terminal chat without `--swarm` is a team: a manager that can spawn up to eight workers (kept under `swarm.max_agents`), and it does a small job itself; `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
+Interactive session. On a terminal chat without `--swarm` is a team of eight agents, a manager and seven workers (kept under `swarm.max_agents`), and it does a small job itself; `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
 program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
 the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, what the cache saved
 at list price, `esc to interrupt`), the prompt stack bar and the hit ratio of every request, the input box, and a footer with the
@@ -270,7 +270,7 @@ Usage of chat:
   -role-model value
         role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
   -swarm int
-        chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling); on a terminal the default is a team of up to 8, --swarm 0 is a single agent
+        chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling); on a terminal the default is a team of 8 agents (the manager and 7 workers), --swarm 0 is a single agent
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
