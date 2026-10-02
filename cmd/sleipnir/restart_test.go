@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -148,5 +151,27 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 	args, _ := restartArgs(named, []string{"--role-model", "backend=together/c"}, false)
 	if contains(args, "backend=together/a") || !contains(args, "backend=together/c") || !contains(args, "scout=together/b") {
 		t.Errorf("roles merge, the typed one wins: %v", args)
+	}
+}
+
+// On a terminal the chat is a team of up to eight workers unless --swarm says otherwise; the person's own ceiling (swarm.max_agents) is
+// kept, and a single agent that restarts stays a single agent.
+func TestDefaultTeamAndASoloRestartStaysSolo(t *testing.T) {
+	_, home := projectDir(t)
+	if n := defaultTeam(); n != 8 {
+		t.Errorf("default team = %d, want 8", n)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "config.json"), []byte(`{"swarm":{"max_agents":4}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n := defaultTeam(); n != 3 {
+		t.Errorf("under a ceiling of 4 agents the team is a manager and 3 workers, got %d workers", n)
+	}
+	args, _ := restartArgs(chatSession(t, false, nil), nil, true)
+	if !slices.Contains(args, "--swarm") || args[slices.Index(args, "--swarm")+1] != "0" {
+		t.Errorf("a single agent restarts as one: %v", args)
 	}
 }

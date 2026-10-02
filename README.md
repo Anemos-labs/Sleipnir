@@ -21,10 +21,10 @@ cd your-project && sleipnir            # first run: pick a provider (Heimdall is
 ```
 
 That is all. The key is kept in `~/.sleipnir/auth.json` (mode 0600) and your choices in `~/.sleipnir/config.json`; the next `sleipnir` opens the
-chat at once. `sleipnir run "fix the failing test"` does one goal without the chat, `sleipnir swarm 8 "..."` runs a team. More in
+chat at once, a manager with up to eight workers (`--swarm 0` for a single agent). `sleipnir run "fix the failing test"` does one goal without the chat, `sleipnir swarm 8 "..."` runs a team. More in
 [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
 
-<p align="center"><img src="docs/media/real-first-run.svg" alt="The first run, recorded as it happened: sleipnir asks which provider, takes the key at a hidden prompt, lists the provider's models and filters them as you type, writes ~/.sleipnir/config.json and opens the chat; a one-line goal is answered. Real model, real timing." width="760"></p>
+<p align="center"><img src="docs/media/real-first-run.svg" alt="The first run, recorded as it happened: sleipnir asks which provider (arrow keys and enter), takes the key at a hidden prompt and tries it, lists the provider's models and narrows them as you type, writes ~/.sleipnir/config.json and opens the chat; a one-line goal is answered. Real model, real timing." width="760"></p>
 
 <p align="center"><img src="docs/media/real-chat.svg" alt="A real session: /allow tests, then a goal; the model reads the test and the code, rewrites Slugify, the edit asks and is approved with the key 1, go test passes. Real model, real tools, real timing." width="760"></p>
 

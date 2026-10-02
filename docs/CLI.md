@@ -190,14 +190,14 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 
 ### `sleipnir chat`
 
-Interactive session. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
+Interactive session. On a terminal chat without `--swarm` is a team: a manager that can spawn up to eight workers (kept under `swarm.max_agents`), and it does a small job itself; `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
 program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
 the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, what the cache saved
 at list price, `esc to interrupt`), the prompt stack bar and the hit ratio of every request, the input box, and a footer with the
 permission mode, the model and the session (`docs/UX.md` describes each). From a pipe or a file, with `TERM=dumb`, or with
 `--plain`, it is the line chat: no colour, no redrawing, a prompt `› `, a goal per line until the input ends, and an action that
 needs approval is refused (with `--plain` on a terminal it asks `allow? [y]es once / [a]lways this session / [n]o`). `--resume
-ID|latest` and `--continue` continue a single-agent session (`docs/EXTENDING.md` section 6). Slash commands are listed below.
+ID|latest` and `--continue` continue a single-agent session (`--swarm 0`) (`docs/EXTENDING.md` section 6). Slash commands are listed below.
 
 A question rings the terminal's bell once as it appears (`SLEIPNIR_BELL=0` silences it), so that a person in another window sees it in the tab.
 `NO_COLOR` takes the colours away and keeps the program (bold, dim and reverse say what a colour would). `--no-anim`,
@@ -270,7 +270,7 @@ Usage of chat:
   -role-model value
         role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
   -swarm int
-        chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling)
+        chat with a manager that can spawn up to N workers (config swarm.max_agents is the ceiling); on a terminal the default is a team of up to 8, --swarm 0 is a single agent
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose

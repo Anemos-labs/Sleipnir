@@ -5,8 +5,7 @@
 #   STILL=file.svg [STILLAT=40s] in the environment also writes one moment as a static SVG
 #
 # --scenario swarm runs a real team (a manager and three workers in git worktrees, a verifier) on three small independent tasks and draws the session's
-# event log as the cockpit with `sleipnir replay --record`, SPEED (default 6) times faster than it happened. --scenario first-run starts with no configuration at all: provider 1, the key typed at the hidden prompt, --search WORDS to find --model in
-# the list, then a one-line goal. A temporary project with a failing test and a temporary home (which receives the key from the environment variable named by --key-env, in its own
+# event log as the cockpit with `sleipnir replay --record`, SPEED (default 6) times faster than it happened. --scenario first-run starts with no configuration at all: the first provider chosen with the arrows and enter, the key typed at the hidden prompt, --search WORDS typed to narrow the model list, enter, then a one-line goal. A temporary project with a failing test and a temporary home (which receives the key from the environment variable named by --key-env, in its own
 # auth.json, and is removed afterwards) are made; tmux runs `sleipnir` under script(1), which writes everything the terminal showed with its timing;
 # a typist (this script) types `/allow tests`, then the goal, answers the approval question with the key 1, and ends the chat; `sleipnir term-svg`
 # plays the recording into the repository's own terminal emulator and writes the animated SVG. A wait longer than --max-gap is shortened to it
@@ -128,13 +127,12 @@ typist() { # one key at a time, as a hand would
   done
 }
 if [ "$SCENARIO" = first-run ]; then
-  waitfor 'Number \(q to quit\)' 60; sleep 2
-  typist "1"; sleep 0.5; tmux send-keys -t $s Enter
+  waitfor 'up/down move' 60; sleep 2
+  tmux send-keys -t $s Down; sleep 0.8; tmux send-keys -t $s Up; sleep 1; tmux send-keys -t $s Enter # the arrows move the highlight; Heimdall, the first row, is chosen
   waitfor 'Paste your' 20; sleep 2
   typist "$key"; sleep 0.8; tmux send-keys -t $s Enter
-  waitfor 'words to search' 60; sleep 2.5
-  typist "$SEARCH"; sleep 0.8; tmux send-keys -t $s Enter; sleep 2
-  typist "1"; sleep 0.5; tmux send-keys -t $s Enter
+  waitfor 'type to search' 60; sleep 2.5
+  typist "$SEARCH"; sleep 1.2; tmux send-keys -t $s Enter # typing narrows the list, enter chooses the highlighted row
   waitfor 'Type a goal' 60; sleep 2
   typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter
   waitfor '[0-9]+ steps? .*cache hit' 300

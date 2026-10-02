@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -45,7 +46,11 @@ type ui struct {
 func launch(t *testing.T, w *world, rows, cols int, args ...string) *ui {
 	t.Helper()
 	u := &ui{t: t, w: w, cols: cols, rows: rows, scr: vt.New(cols, rows)}
-	u.s = ptytest.Start(t, w.cmd(append([]string{"chat"}, args...)...), ptytest.Size(uint16(rows), uint16(cols)))
+	argv := append([]string{"chat"}, args...)
+	if !slices.Contains(args, "--swarm") { // on a terminal the default is a team; these tests are about one agent
+		argv = append(argv, "--swarm", "0")
+	}
+	u.s = ptytest.Start(t, w.cmd(argv...), ptytest.Size(uint16(rows), uint16(cols)))
 	return u
 }
 

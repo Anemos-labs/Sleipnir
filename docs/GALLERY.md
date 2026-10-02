@@ -4,7 +4,7 @@ Two kinds of picture are here. The **real recordings** (`real-*.svg`, made by `s
 
 <p align="center"><img src="media/real-first-run.svg" alt="The first run: provider, key, a live model search, the config file, the chat" width="760"></p>
 
-*The first run, in a directory with no configuration: `scripts/record-real.sh --scenario first-run --search v4-flash --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-first-run.svg`.*
+*The first run, in a directory with no configuration (the menus are driven with the arrow keys and enter, typing narrows the model list): `scripts/record-real.sh --scenario first-run --search v4-flash --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-first-run.svg`.*
 
 <p align="center"><img src="media/real-swarm.svg" alt="A real swarm: a manager and three workers in git worktrees, three tasks merged, drawn from the session's event log six times faster than it ran" width="760"></p>
 

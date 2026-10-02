@@ -252,6 +252,9 @@ The first release.
 
 ### Interfaces
 
+- The chat on a terminal is a team by default: a manager that can spawn up to eight workers (kept under `swarm.max_agents`; it does a small job
+  itself). `--swarm 0` is a single agent, and so are the line chat and a restart of a single agent. The first-run pictures in the README were
+  recorded again with the arrow-key menus.
 - First-run setup and `sleipnir login` try the key just typed with one small request before keeping it: a catalogue is often public, so a typo used to be found
   only at the first goal. A refusal (401, 403) ends the setup and the key is forgotten; any other failure lets it through.
 - The first-run menus (which provider, which model) are driven by the arrow keys with the chosen row highlighted: Enter chooses, Esc quits,
