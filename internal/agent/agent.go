@@ -130,6 +130,8 @@ type Config struct {
 
 	Params core.Params
 	Hot    HotSource
+	// PlanOpen says how many steps of the agent's plan are not done (nil: there is no plan tool). A run that would end with some is sent back once.
+	PlanOpen func(agent string) int
 	// HotMode requests a hot-tail mechanism. The zero value (kv.HotInline) lets
 	// the harness choose for the route: persist-on-change on models that enforce
 	// preserved thinking, turn-scoped where the provider supports it, inline
@@ -624,6 +626,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	vetoes := 0     // Stop hooks that sent the agent back to work in this run
 	mailRounds := 0 // times a finished answer was reopened because mail arrived meanwhile
 	cutoffs := 0    // responses in a row that the output limit cut off
+	planNudges := 0 // times a finished answer was sent back because the plan still had open steps
 	if len(input) > 0 {
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
@@ -711,6 +714,15 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 					continue
 				}
 			}
+			// A plan with steps still open is not a finished task. The model is asked once to finish them or to change the plan (a plan it
+			// no longer means is its to change); asked again, it would only learn to ignore the note.
+			if open := a.planOpen(); open > 0 && planNudges < maxPlanNudges {
+				planNudges++
+				note := fmt.Sprintf("[harness] Your plan still has %d open step(s) (see it above). Do them, or send the plan again with the steps that are done marked done and the ones you no longer mean removed, then give your answer.", open)
+				a.emit(events.TypeAgentStuck, map[string]any{"phase": "plan", "note": note})
+				a.pushUser(core.OriginSystem, []core.Block{core.Text(note)})
+				continue
+			}
 			u, c := a.Usage()
 			_, res.CostUSD = u, c
 			res.Compactions = a.comp.count
@@ -762,6 +774,17 @@ func inputEvent(origin core.Origin, blocks []core.Block) map[string]any {
 		m["assignment"] = strings.Join(card, "\n")
 	}
 	return m
+}
+
+// maxPlanNudges is how many times one Run sends a finished answer back for the open steps of its plan.
+const maxPlanNudges = 1
+
+// planOpen is how many steps of the agent's plan are open (0 with no plan, or when the session has no plan tool).
+func (a *Agent) planOpen() int {
+	if a.cfg.PlanOpen == nil {
+		return 0
+	}
+	return a.cfg.PlanOpen(a.cfg.ID)
 }
 
 // maxMailRounds is how many times one Run reopens a finished answer to read mail that

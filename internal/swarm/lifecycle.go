@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/anemos-labs/sleipnir/internal/plan"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -210,6 +211,14 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 				s.noteManagerSeen(snap) // what the manager has looked at (see wake.go)
 			}
 			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
+			if d.Plans != nil {
+				// the plan goes inside the board's own frame, before its closing tag, so the view stays one frame
+				if lines := plan.Lines(d.Plans.Get(agentID)); lines != "" {
+					if head, ok := strings.CutSuffix(strings.TrimSpace(txt), "</live>"); ok {
+						txt = head + "your plan:\n" + lines + "</live>"
+					}
+				}
+			}
 			return []core.Block{core.Text(txt)}
 		},
 		Events: d.Events, Blobs: d.Blobs, Archive: d.Archive, Files: d.Files, Guard: guardWithAfter{s.Leases, after}, Snap: snap,
@@ -218,6 +227,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		Workdir: workdir, Root: root, Limits: d.Limits,
 		Planner: d.Planner, KVPolicy: d.KVPolicy, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		OnPromote: s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
+		PlanOpen:  planOpen(d.Plans),
 		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: hooks, NoMailReopen: !isMgr, // a worker's mail is read by its next run (afterIdle), which owns what the mail changes
 	}
 	a, err := agent.New(cfg)
@@ -968,4 +978,12 @@ func (m *member) isActive() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.life == lifeRunning
+}
+
+// planOpen is the agent's view of the plan store: how many steps of an agent's plan are open (nil without a store).
+func planOpen(p *plan.Store) func(string) int {
+	if p == nil {
+		return nil
+	}
+	return p.Open
 }

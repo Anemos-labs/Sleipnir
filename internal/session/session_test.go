@@ -991,3 +991,34 @@ func TestSavedMemoryNotesReachTheNextSessionsSharedLayer(t *testing.T) {
 		t.Errorf("the shared layer lacks the saved notes:\n%s", got)
 	}
 }
+
+// The plan a model sets reaches its next request in the hot tail, and a plan with open steps sends a finished answer back once.
+func TestThePlanToolsListIsShownBackAndHoldsTheRunOpen(t *testing.T) {
+	repo := newRepo(t)
+	var sawPlan, sawNudge bool
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		last := c.LastUser()
+		sawPlan = sawPlan || strings.Contains(fmt.Sprint(c.Messages), "Your plan (the plan tool changes it)")
+		sawNudge = sawNudge || strings.Contains(last, "Your plan still has")
+		switch assistantTurns(c) {
+		case 0:
+			return mock.Reply{Text: "planning", ToolCalls: []mock.ToolCall{call("p1", "plan", map[string]any{"items": []map[string]string{
+				{"step": "read the code", "status": "done"}, {"step": "run the tests", "status": "pending"}}})}}
+		case 1:
+			return mock.Reply{Text: "that is all"} // a step is open: sent back
+		}
+		return mock.Reply{Text: "finished after the note"}
+	})
+	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	res, err := s.Run(context.Background(), "do three things")
+	if err != nil || !strings.Contains(res.Text, "finished after the note") {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if !sawPlan || !sawNudge {
+		t.Errorf("the plan was shown back: %v; the open step was noted: %v", sawPlan, sawNudge)
+	}
+}

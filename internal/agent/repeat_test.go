@@ -226,3 +226,32 @@ func TestEditingOnlyTheTestAfterAFailingRunIsNotedToTheModel(t *testing.T) {
 		}
 	}
 }
+
+// An answer given while the plan has open steps is sent back once, with a note that says what to do; the second answer ends the run (a
+// model that no longer means its plan is not held to it for ever).
+func TestARunWithOpenPlanStepsIsSentBackOnce(t *testing.T) {
+	open := 2
+	var notes int
+	r := newRig(t, rigOpts{noCompact: true, steps: 10, planOpen: func(string) int { return open }}, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.LastUser(), "[harness] Your plan still has 2 open step(s)") {
+			notes++
+		}
+		return mock.Reply{Text: "all done"}
+	})
+	res, err := r.agent.Run(context.Background(), "do the thing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if notes != 1 || res.Steps != 2 {
+		t.Errorf("the model saw the note %d times in %d steps; want once, in two", notes, res.Steps)
+	}
+	if n := len(r.log.OfType(events.TypeAgentStuck)); n != 1 {
+		t.Errorf("agent.stuck events: %d", n)
+	}
+	// With nothing open, the first answer ends the run.
+	open = 0
+	notes = 0
+	if res, err := r.agent.Run(context.Background(), "and again"); err != nil || res.Steps != 1 || notes != 0 {
+		t.Errorf("a finished plan: %+v %v %d", res, err, notes)
+	}
+}

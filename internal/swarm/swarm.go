@@ -18,6 +18,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -143,6 +144,8 @@ type Deps struct {
 	// Compactor and CompactorModel are agent.Config's, for every agent.
 	Compactor      provider.Provider
 	CompactorModel cost.Model
+	// Plans holds each agent's plan (internal/plan); nil: no plan tool.
+	Plans *plan.Store
 	// OutagePatience is agent.Config.OutagePatience for every agent of the swarm.
 	OutagePatience time.Duration
 	Registry       *tools.Registry

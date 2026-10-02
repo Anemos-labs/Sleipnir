@@ -63,6 +63,7 @@ type rigOpts struct {
 	hooks     agent.Hooks
 	notes     *kv.Layer // the agent's notes at the start (a swarm worker's assignment)
 
+	planOpen       func(string) int  // how many steps of the agent's plan are open
 	compactor      provider.Provider // a model of its own for the compaction summaries
 	compactorModel cost.Model
 }
@@ -113,7 +114,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 		Events: log, Planner: opts.planner, NoCompaction: opts.noCompact, Notes: opts.notes,
 		SessionID: "testsession", MaxSteps: opts.steps, BudgetUSD: opts.budget,
 		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture, Hooks: opts.hooks,
-		Compactor: opts.compactor, CompactorModel: opts.compactorModel,
+		Compactor: opts.compactor, CompactorModel: opts.compactorModel, PlanOpen: opts.planOpen,
 	})
 	if err != nil {
 		t.Fatal(err)

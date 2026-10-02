@@ -126,6 +126,11 @@ The first release.
 
 ### Tools, permissions and extensions
 
+- A `plan` tool, and the harness keeps the plan: the model sets a short list of steps (pending, doing, done), the list is shown back at the end of every request in the
+  hot tail (never cached, so it costs the cache nothing), the chat's tool line says how far along it is, and an answer given while steps are open is sent back once to finish
+  them or change the plan. The constitution gains one line (plan first for a task of three steps or more) and every agent's tool list one tool: a declared change of the
+  constant prefix, about 230 tokens written to the cache once for everyone (`internal/agent` golden files and the constitution bound moved with it). Why: a plan
+  the harness holds and repeats is the best-evidenced help for a small model (`docs/LANDSCAPE.md`). A swarm worker has the same tool; its plan rides inside the board's frame.
 - A command that starts with a `cd` to an absolute directory that does not exist (a weak model invents `/Users/someone/project` though it starts in the project) is
   answered at once, saying where commands run and to leave the `cd` out, instead of putting a question about a place that is not there to the person.
 - A model whose test run fails and that then edits only test files is told once, in the results of that edit, to change a test only when it contradicts

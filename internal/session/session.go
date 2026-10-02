@@ -34,12 +34,14 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/tools/fs"
 	"github.com/anemos-labs/sleipnir/internal/tools/memtool"
+	"github.com/anemos-labs/sleipnir/internal/tools/plantool"
 	"github.com/anemos-labs/sleipnir/internal/tools/recall"
 	"github.com/anemos-labs/sleipnir/internal/tools/shell"
 	"github.com/anemos-labs/sleipnir/internal/tools/skilltool"
@@ -655,6 +657,8 @@ func (s *Session) build(ctx context.Context) error {
 	// Always registered: the tool list must not depend on the project.
 	reg.Register(skilltool.New(s.Skills))
 	reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+	plans := plan.NewStore() // each agent's plan: the plan tool sets it, the hot tail shows it back (internal/plan)
+	reg.Register(plantool.New(plans))
 	// MCP servers add their tools here, before the list is frozen: every agent of
 	// the session then sends the same tools array, byte for byte.
 	s.startMCP(ctx, reg)
@@ -705,7 +709,14 @@ func (s *Session) build(ctx context.Context) error {
 				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, Tools: reg, ToolSpecs: specs,
 				Const: constLayer, Shared: shared, RoleL: role.Layer(),
 				Params: p, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
-				Guard: writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
+				Hot: func(id string) []core.Block {
+					if f := plan.Frame(plans.Get(id)); f != "" {
+						return []core.Block{core.Text(f)}
+					}
+					return nil
+				},
+				PlanOpen: plans.Open,
+				Guard:    writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
 				Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
 				Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 				MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
@@ -763,7 +774,7 @@ func (s *Session) build(ctx context.Context) error {
 		return err
 	}
 	deps := swarm.Deps{
-		Provider: s.Provider, Model: s.Model, Compactor: comp, CompactorModel: compModel, Registry: reg,
+		Provider: s.Provider, Model: s.Model, Compactor: comp, CompactorModel: compModel, Registry: reg, Plans: plans,
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,

@@ -81,6 +81,9 @@ func toolSummary(name string, input json.RawMessage, cwd string) string {
 	if len(input) == 0 || json.Unmarshal(input, &in) != nil {
 		return ""
 	}
+	if name == "plan" {
+		return planSummary(in)
+	}
 	for _, k := range summaryKeys {
 		v, _ := in[k].(string)
 		if strings.TrimSpace(v) == "" {
@@ -106,6 +109,29 @@ func toolSummary(name string, input json.RawMessage, cwd string) string {
 		return oneLineOf(v)
 	}
 	return ""
+}
+
+// planSummary is the line of the plan tool: how far along it is, and the step in hand.
+func planSummary(in map[string]any) string {
+	items, _ := in["items"].([]any)
+	if len(items) == 0 {
+		return ""
+	}
+	done, doing := 0, ""
+	for _, it := range items {
+		m, _ := it.(map[string]any)
+		switch st, _ := m["status"].(string); strings.ToLower(st) {
+		case "done", "completed", "complete", "finished":
+			done++
+		case "doing", "in_progress", "in-progress", "active":
+			doing, _ = m["step"].(string)
+		}
+	}
+	out := fmt.Sprintf("%d of %d done", done, len(items))
+	if strings.TrimSpace(doing) != "" {
+		out += " · now: " + doing
+	}
+	return oneLineOf(out)
 }
 
 // oneLineOf makes text one line: the first line, and a mark when there were more.
