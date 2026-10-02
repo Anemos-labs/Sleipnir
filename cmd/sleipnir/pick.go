@@ -9,8 +9,12 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
@@ -106,6 +110,7 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 		return nil
 	}
 	sources := usableSources(cfg, false)
+	typedKey := false
 	if len(sources) == 0 {
 		fmt.Fprintln(out, "Welcome to Sleipnir. It needs a model provider, and none has a key yet.")
 		local := localSources(ctx, cfg)
@@ -113,9 +118,10 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 		if err != nil {
 			return err
 		}
+		typedKey = true
 		for _, l := range local {
 			if l.name == name { // a local server was chosen: no key to keep
-				sources = []modelSource{l}
+				sources, typedKey = []modelSource{l}, false
 			}
 		}
 		if len(sources) == 0 {
@@ -149,6 +155,11 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	if err != nil {
 		return err
 	}
+	if typedKey {
+		if err := checkKey(ctx, cfg, ref, out); err != nil {
+			return err
+		}
+	}
 	patch := map[string]any{"models": map[string]any{"default": ref}}
 	if firstTime {
 		patch["permissions"] = map[string]any{"mode": "default"} // asks before it changes anything; `sleipnir config` shows the rest
@@ -175,4 +186,38 @@ func modelLine(r modelRow, fav map[string]bool) string {
 		star = " *"
 	}
 	return fmt.Sprintf("%-44s %6s ctx  $%.3g/M out%s%s", r.Ref, human(r.Model.ContextTokens), r.Model.Price.OutputPerM, tools, star)
+}
+
+// checkKey sends one small request with the key just typed, because a catalogue is often public and answers whatever the key is. Only
+// a refusal of the key itself (401, 403) counts: the key is then forgotten and the person told, so a typo is found here and not at the
+// first goal. Any other failure (a slow network, a busy model) says nothing about the key and is let through.
+func checkKey(ctx context.Context, cfg *config.Config, ref string, out io.Writer) error {
+	mr, err := session.ResolveModel(cfg, ref)
+	if err != nil {
+		return nil
+	}
+	p, _, err := session.BuildProvider(cfg, mr, session.ProviderOptions{})
+	if err != nil {
+		return nil
+	}
+	fmt.Fprint(out, "Checking the key... ")
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	prompt := &core.Prompt{Model: mr.Model, Params: core.Params{MaxTokens: 8}, Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("ping")}}}}
+	_, err = p.Do(ctx, &provider.Request{Prompt: prompt, Label: "login:check", NoStream: true}, nil)
+	var pe *provider.Error
+	if errors.As(err, &pe) && pe.Kind == provider.ErrAuth {
+		if _, env, ok := session.ProviderInfo(cfg, mr.Provider); ok && env != "" {
+			_ = config.SaveStoredKey(userHome(), env, "")
+			harden.Provide(env, "")
+		}
+		fmt.Fprintln(out, "refused.")
+		return fmt.Errorf("%s did not accept that key (%v); it was not kept: run `sleipnir login %s` to try again", mr.Provider, pe.Message, mr.Provider)
+	}
+	if err != nil {
+		fmt.Fprintln(out, "could not check it now.")
+		return nil
+	}
+	fmt.Fprintln(out, "ok.")
+	return nil
 }

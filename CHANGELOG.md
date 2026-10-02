@@ -252,6 +252,8 @@ The first release.
 
 ### Interfaces
 
+- First-run setup tries the key just typed with one small request before keeping it: a catalogue is often public, so a typo used to be found
+  only at the first goal. A refusal (401, 403) ends the setup and the key is forgotten; any other failure lets it through.
 - The first-run menus (which provider, which model) are driven by the arrow keys with the chosen row highlighted: Enter chooses, Esc quits,
   typing narrows the model list, a digit jumps in the short provider list. Where there is no terminal they keep their typed form (numbers, words).
 - `/roles` shows which model each role runs on and where it came from, and `/roles role=model` changes one. A restart (`/restart`,

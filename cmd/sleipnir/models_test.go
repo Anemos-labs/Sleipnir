@@ -335,3 +335,35 @@ func TestFirstRunFindsALocalServerAndNeedsNoKey(t *testing.T) {
 		t.Errorf("the config keeps the model beside the provider the person wrote: %v", cfg)
 	}
 }
+
+// A catalogue that lists models for anyone says nothing about the key, so the key just typed is tried with one small request: a refusal
+// ends the setup and the key is not kept, instead of the first goal failing later.
+func TestFirstRunRefusesAKeyTheProviderRejects(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusUnauthorized)
+			io.WriteString(w, `{"error":{"message":"Missing or invalid API key"}}`)
+			return
+		}
+		io.WriteString(w, `{"data":[{"id":"only-model"}]}`)
+	}))
+	defer ts.Close()
+	_, home := projectDir(t)
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
+	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
+	var model string
+	var out bytes.Buffer
+	err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("1\n1\n")), &out, func() (string, error) { return "sk-typo", nil }, true)
+	if err == nil || !strings.Contains(err.Error(), "did not accept that key") || model != "" {
+		t.Fatalf("%q %v\n%s", model, err, out.String())
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, ".sleipnir", "auth.json")); strings.Contains(string(b), "sk-typo") {
+		t.Errorf("the rejected key was kept: %s", b)
+	}
+	if harden.Secret("HEIMDALL_API_KEY") != "" {
+		t.Error("the rejected key is still in use")
+	}
+}
