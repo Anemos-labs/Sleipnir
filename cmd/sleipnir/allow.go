@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
@@ -111,6 +112,21 @@ func suggestAllow(command string) []string {
 		}
 	}
 	return out
+}
+
+// noOneToAskNote is what a run says first when nobody is there to answer and nothing lets the usual work through: in the default mode every edit
+// and every command that is not read-only is refused, and the model found that out by being refused, a step at a time, with the way out at the end.
+func noOneToAskNote(mode perm.Mode, allow []string) string {
+	if len(allow) > 0 {
+		return ""
+	}
+	switch mode {
+	case perm.ModeDefault, "":
+		return "no terminal to ask on: edits and commands that need an answer are refused. --mode accept-edits --allow " + testsPreset + " lets the usual ones through."
+	case perm.ModeAcceptEdits:
+		return "no terminal to ask on: commands that need an answer are refused. --allow " + testsPreset + " lets the build and test commands through."
+	}
+	return ""
 }
 
 // printRefusals says, at the end of a run that had nobody to ask, which commands and edits were refused for it and how to let them through:

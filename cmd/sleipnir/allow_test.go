@@ -88,3 +88,21 @@ func TestPrintRefusalsNamesARefusedEditAndTheModeThatAcceptsEdits(t *testing.T) 
 		t.Errorf("only edits:\n%q\nwant\n%q", out.String(), want)
 	}
 }
+
+// A run with nobody to ask says so first, when nothing lets the usual work through: the model otherwise finds out by being refused, a step at a time.
+func TestARunSaysUpFrontThatItCannotAsk(t *testing.T) {
+	if n := noOneToAskNote(perm.ModeDefault, nil); !strings.Contains(n, "no terminal to ask on") || !strings.Contains(n, "--allow tests") {
+		t.Errorf("the default mode says %q", n)
+	}
+	if n := noOneToAskNote(perm.ModeAcceptEdits, nil); !strings.Contains(n, "commands that need an answer") || strings.Contains(n, "edits and") {
+		t.Errorf("accept-edits says %q", n)
+	}
+	for name, n := range map[string]string{
+		"an --allow rule was given": noOneToAskNote(perm.ModeDefault, []string{"tests"}),
+		"bypass asks nothing":       noOneToAskNote(perm.ModeBypass, nil),
+	} {
+		if n != "" {
+			t.Errorf("%s, yet the run says %q", name, n)
+		}
+	}
+}

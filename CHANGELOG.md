@@ -209,6 +209,7 @@ The first release.
 - `sleipnir sessions` says "no sessions yet" when the directory exists but holds nothing worth listing (a fresh home after a chat that was opened and closed), not nothing at all.
 - `sleipnir doctor` with no `--model` probes the configured model (it asked for one even when a default was set), and its live log says when a model answered the tools request without calling the tool, instead of a ✓ followed by `tool calling NO`.
 - A flag that does not exist is answered with the one line that says so and where the flags are (`sleipnir chat -h lists the flags`), not with forty lines of flags under it; `-h` still lists them.
+- `sleipnir run` without a terminal and without `--allow` says so in its first lines (edits and commands that need an answer are refused; `--mode accept-edits --allow tests` lets the usual ones through), instead of only at the end, after the model has been refused a step at a time.
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).

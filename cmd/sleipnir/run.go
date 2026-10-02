@@ -156,6 +156,11 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	defer s.Close()
 	if !*quiet && !*asJSON {
 		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, fmt.Sprintf("sleipnir %s · %s%s · session %s", version, s.Model.ID, budgetLabel(s), s.ID)))
+		if !interactive {
+			if n := noOneToAskNote(perm.Mode(*mode), *allow); n != "" {
+				fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, n))
+			}
+		}
 	}
 	start := time.Now()
 	res, err := s.Run(ctx, prompt)
