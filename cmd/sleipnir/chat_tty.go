@@ -396,7 +396,7 @@ func (h *sessionHost) goalCommand(f []string, line string, out io.Writer) app.Co
 	}
 	h.goal = goal.New(arg)
 	h.s.ClearGoalPlan()
-	fmt.Fprintln(out, "goal set: it goes on until a judge finds evidence that it is met. Esc pauses it, /goal says where it stands")
+	fmt.Fprintln(out, "goal set: checked after each turn. Esc pauses it; /goal shows where it stands")
 	return app.CommandResult{Send: goal.Start(h.goal)}
 }
 
