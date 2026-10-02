@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"reflect"
 	"strings"
 	"testing"
@@ -100,4 +101,52 @@ func count(xs []string, x string) (n int) {
 		}
 	}
 	return
+}
+
+// /roles shows who runs on which model and where each choice came from; changing a role restarts with the flag, keeping the ones named before;
+// a single agent has one model, so only its compactor can be named.
+func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
+	solo := &sessionHost{s: chatSession(t, false, nil)}
+	var out strings.Builder
+	if _, ok := solo.programCommand("/roles", &out); !ok || !strings.Contains(out.String(), "default") || !strings.Contains(out.String(), "compactor") || !strings.Contains(out.String(), "no compactor model is set") {
+		t.Errorf("solo table:\n%s", out.String())
+	}
+	out.Reset()
+	if res, _ := solo.programCommand("/roles worker=a/b", &out); res.Restart != nil || !strings.Contains(out.String(), "single agent") {
+		t.Errorf("a single agent has no workers: %+v %q", res, out.String())
+	}
+	out.Reset()
+	if res, _ := solo.programCommand("/roles compactor=ollama/qwen3:8b", &out); !contains(res.Restart, "compactor=ollama/qwen3:8b") || !contains(res.Restart, "--role-model") {
+		t.Errorf("the compactor can be named: %+v %q", res, out.String())
+	}
+	out.Reset()
+	if res, _ := solo.programCommand("/roles nonsense", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /roles") {
+		t.Errorf("usage: %+v %q", res, out.String())
+	}
+	swarm := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) {
+		o.Swarm, o.MaxAgents = true, 3
+	}, nil)}
+	out.Reset()
+	swarm.programCommand("/roles", &out)
+	if !strings.Contains(out.String(), "manager") || !strings.Contains(out.String(), "backend") || !strings.Contains(out.String(), "the session's model") {
+		t.Errorf("a team's table names its roles and where each came from:\n%s", out.String())
+	}
+	out.Reset()
+	res, _ := swarm.programCommand("/roles backend=together/a", &out)
+	if !contains(res.Restart, "backend=together/a") || !contains(res.Restart, "--role-model") {
+		t.Errorf("changing a worker's model restarts with the flag: %v", res.Restart)
+	}
+	if !contains(res.Restart, "--swarm") || !contains(res.Restart, "2") {
+		t.Errorf("a team stays a team (--swarm 2) after a role change: %v", res.Restart)
+	}
+	// the role named on the line beats the one the session started with
+	t.Setenv("TOGETHER_API_KEY", "k")
+	named := chatSessionWith(t, false, nil, func(o *session.Options) {
+		o.Swarm, o.MaxAgents = true, 3
+		o.RoleModels = map[string]string{"backend": "together/a", "scout": "together/b"}
+	}, nil)
+	args, _ := restartArgs(named, []string{"--role-model", "backend=together/c"}, false)
+	if contains(args, "backend=together/a") || !contains(args, "backend=together/c") || !contains(args, "scout=together/b") {
+		t.Errorf("roles merge, the typed one wins: %v", args)
+	}
 }

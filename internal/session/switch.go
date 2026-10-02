@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // SwitchModel moves the single agent to another model between turns, keeping its thread, notes, spine and bill. The agent is
@@ -81,3 +84,96 @@ func (s *Session) Cwd() string { return s.opts.Cwd }
 
 // ModelRef is the provider/model the session runs on, as --model takes it ("" when the provider was handed in as a value).
 func (s *Session) ModelRef() string { return s.modelRef }
+
+// RoleModel is one line of the table of who runs on which model.
+type RoleModel struct {
+	Role  string // "default", a swarm role, or "compactor"
+	Model string // provider/model, or what stands in when none is named
+	From  string // where it came from: "--role-model", "an agent definition", "models.roles", "the session's model", "the agent's own model"
+}
+
+// RoleModels says which model each role runs on, in the order the precedence reads: the session's own, then each swarm role (flags beat an agent
+// definition, which beats models.roles), then the compactor. In a single-agent session only the default and the compactor apply.
+func (s *Session) RoleModels() []RoleModel {
+	def := s.modelRef
+	if def == "" {
+		def = s.Model.ID
+	}
+	out := []RoleModel{{"default", def, "the session's model"}}
+	if s.Swarm != nil {
+		defs := map[string]string{}
+		for _, d := range s.ext.defs {
+			defs[d.Name] = d.Model
+		}
+		names := make([]string, 0, len(s.Roles))
+		for name := range s.Roles {
+			names = append(names, name)
+		}
+		if s.mailmanOn() {
+			names = append(names, swarm.MailmanRoleName)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			m, from := def, "the session's model"
+			switch {
+			case s.opts.RoleModels[name] != "":
+				m, from = s.opts.RoleModels[name], "--role-model"
+			case defs[name] != "":
+				m, from = defs[name], "an agent definition"
+			case s.cfg.Models.Roles[name] != "":
+				m, from = s.cfg.Models.Roles[name], "models.roles"
+			}
+			out = append(out, RoleModel{name, m, from})
+		}
+	}
+	comp := RoleModel{CompactorRole, "", ""}
+	switch {
+	case s.opts.RoleModels[CompactorRole] != "":
+		comp.Model, comp.From = s.opts.RoleModels[CompactorRole], "--role-model"
+	case s.cfg.Models.Roles[CompactorRole] != "":
+		comp.Model, comp.From = s.cfg.Models.Roles[CompactorRole], "models.roles"
+	default:
+		comp.Model, comp.From = "(each agent's own)", "no compactor model is set"
+	}
+	return append(out, comp)
+}
+
+// StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, tool servers, trust,
+// the budget, the roles named by flags), for a restart that changes one thing and keeps the rest.
+func (s *Session) StartFlags() []string {
+	o := s.opts
+	var f []string
+	if o.Swarm {
+		f = append(f, "--swarm", strconv.Itoa(o.MaxAgents-1))
+	}
+	if o.Verify != "" {
+		f = append(f, "--verify", o.Verify)
+	}
+	if o.Isolation != "" {
+		f = append(f, "--isolation", o.Isolation)
+	}
+	if o.Commit {
+		f = append(f, "--commit")
+	}
+	if o.Mailman != nil {
+		f = append(f, "--mailman="+strconv.FormatBool(*o.Mailman))
+	}
+	if o.NoMCP {
+		f = append(f, "--no-mcp")
+	}
+	if o.TrustProject {
+		f = append(f, "--trust-project")
+	}
+	if o.BudgetUSD > 0 {
+		f = append(f, "--budget-usd", strconv.FormatFloat(o.BudgetUSD, 'f', -1, 64))
+	}
+	roles := make([]string, 0, len(o.RoleModels))
+	for role := range o.RoleModels {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	for _, role := range roles {
+		f = append(f, "--role-model", role+"="+o.RoleModels[role])
+	}
+	return f
+}

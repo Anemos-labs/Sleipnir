@@ -62,6 +62,28 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 		}
 	}
 	args := append([]string(nil), typed...)
+	// What the session was started with stays, unless the line says otherwise: a restart changes one thing and keeps the rest (a team stays a team).
+	flags := s.StartFlags()
+	for i := 0; i < len(flags); i++ {
+		name := strings.SplitN(flags[i], "=", 2)[0]
+		takesValue := !strings.Contains(flags[i], "=") && i+1 < len(flags) && !strings.HasPrefix(flags[i+1], "-")
+		if name == "--role-model" { // repeatable: the line's own role wins over the same role named before
+			if role, _, _ := strings.Cut(flags[i+1], "="); !roleNamed(typed, role) {
+				args = append(args, flags[i], flags[i+1])
+			}
+			i++
+			continue
+		}
+		if !has(name) {
+			args = append(args, flags[i])
+			if takesValue {
+				args = append(args, flags[i+1])
+			}
+		}
+		if takesValue {
+			i++
+		}
+	}
 	if !has("--model") && s.ModelRef() != "" {
 		args = append(args, "--model", s.ModelRef())
 	}
@@ -72,6 +94,16 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 		args = append(args, "--resume", s.ID)
 	}
 	return args, nil
+}
+
+// roleNamed reports whether typed already names a role's model (--role-model role=...).
+func roleNamed(typed []string, role string) bool {
+	for i, a := range typed {
+		if a == "--role-model" && i+1 < len(typed) && strings.HasPrefix(typed[i+1], role+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 // looksLikeFlagValue reports whether word is the value of the flag before it in typed (a number, a quoted command): anything that is not

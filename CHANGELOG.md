@@ -252,6 +252,9 @@ The first release.
 
 ### Interfaces
 
+- `/roles` shows which model each role runs on and where it came from, and `/roles role=model` changes one. A restart (`/restart`,
+  `/new`, `/resume`, `/roles`) now keeps the flags the session started with (`--swarm`, `--verify`, `--isolation`, `--role-model`
+  and so on) unless the line changes them: found by use, a role change from a team chat used to come back as a single agent.
 - Every flag of `sleipnir chat` has an equivalent inside the chat: `/budget`, `/allow`, `/verbose`, `/anim`, `/sessions`, `/cwd`, and `/restart [flags]` and
   `/new`, `/resume [id]`, and `/swarm <n> [flags]` for the flags that decide the shape of a session (the chat starts again with them, keeping the conversation when it is a single agent).
   `docs/CLI.md` has the table, flag by flag.

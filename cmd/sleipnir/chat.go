@@ -259,6 +259,7 @@ permissions
 /trust             this project's own instructions and settings, and your yes
 
 a team, and the program
+/roles [role=m]    which model each role runs on; change one (restarts)
 /swarm <n> [flags] start again as a manager with up to n workers
 /restart [flags]   start again with other flags: --no-mcp, --trust-project, --cwd DIR
 /agents            the swarm board: agents and tasks

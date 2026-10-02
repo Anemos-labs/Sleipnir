@@ -218,6 +218,34 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 			return app.CommandResult{Anim: v}, true
 		}
 		return app.CommandResult{}, true
+	case "/roles":
+		if len(f) == 1 {
+			fmt.Fprintln(out, "who runs on which model (change one with /roles role=provider/model; the chat restarts with it):")
+			for _, r := range h.s.RoleModels() {
+				fmt.Fprintf(out, "  %-10s %-44s %s\n", r.Role, r.Model, r.From)
+			}
+			return app.CommandResult{}, true
+		}
+		var typed []string
+		for _, kv := range f[1:] {
+			role, ref, ok := strings.Cut(kv, "=")
+			if !ok || role == "" || ref == "" {
+				fmt.Fprintln(out, "usage: /roles [role=provider/model ...]: show the table, or change roles (e.g. /roles manager=anthropic/claude-opus-5-5 compactor=ollama/qwen3:8b)")
+				return app.CommandResult{}, true
+			}
+			if h.s.Swarm == nil && role != session.CompactorRole {
+				fmt.Fprintf(out, "roles: a single agent runs on one model (/model); a team has roles: /swarm 8 first. Only the compactor can differ here: /roles compactor=%s\n", ref)
+				return app.CommandResult{}, true
+			}
+			typed = append(typed, "--role-model", role+"="+ref)
+		}
+		args, err := restartArgs(h.s, typed, false)
+		if err != nil {
+			fmt.Fprintln(out, "roles:", err)
+			return app.CommandResult{}, true
+		}
+		fmt.Fprintf(out, "restarting: sleipnir chat %s\n", strings.Join(args, " "))
+		return app.CommandResult{Restart: args}, true
 	case "/new", "/resume":
 		var typed []string
 		switch {
@@ -280,6 +308,7 @@ var chatCommands = []chatCommand{
 	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},
 	{"verbose", "[on|off]", "show or hide notices and tool errors"},
 	{"anim", "[on|off]", "turn the motion on or off"},
+	{"roles", "[role=model]", "which model each role runs on; change one (the chat restarts with it)"},
 	{"new", "", "start the conversation again, empty (the same model and mode)"},
 	{"resume", "[id]", "continue an earlier session: the newest of this project, or the id /sessions shows"},
 	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},

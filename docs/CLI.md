@@ -1647,7 +1647,8 @@ flags:
 | `/verbose [on\|off]` · `/anim [on\|off]` | show or hide notices and tool errors · turn the motion on or off |
 | `/sessions` · `/cwd` | the newest sessions (resume one with `sleipnir --resume <id>`) · the directory the session works in |
 | `/new` · `/resume [id]` | start the conversation again, empty · continue an earlier session (the newest of this project, or the id `/sessions` shows) |
-| `/restart [flags]` | start the chat again with other flags; the model and mode stay, and the conversation comes along when it can (a single agent) |
+| `/restart [flags]` | start the chat again with other flags; the model, mode and the flags the session started with (a team stays a team) stay, and the conversation comes along when it can (a single agent) |
+| `/roles [role=model]` | which model each role runs on and where it came from; name one to change it (restarts, keeping the rest) |
 | `/swarm <n> [flags]` | start again as a manager with up to `n` workers: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
 | `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan` or `bypass` |
 | `/plan` | shorthand for `/mode plan` (read-only) |
