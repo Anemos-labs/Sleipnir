@@ -130,7 +130,8 @@ func TestASessionHostRunsACommandIntoOneWriter(t *testing.T) {
 	h.Command(context.Background(), "/diff", &out) // usage goes to stderr
 	h.Command(context.Background(), "/rewind", &out)
 	h.Command(context.Background(), "/nothing", &out)
-	for _, want := range []string{"usage: /diff <checkpoint id>", "no checkpoints yet", "unknown command /nothing; try /help"} {
+	h.Command(context.Background(), "/modle", &out)
+	for _, want := range []string{"usage: /diff <checkpoint id>", "no checkpoints yet", "unknown command /nothing; try /help", "unknown command /modle; did you mean /model? try /help"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the output lacks %q:\n%s", want, out.String())
 		}

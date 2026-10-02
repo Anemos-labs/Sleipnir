@@ -89,14 +89,6 @@ func TestRestartArgsKeepModelAndModeAndDecideWhatResumes(t *testing.T) {
 	if _, err := restartArgs(s, []string{"fix the bug"}, false); err == nil {
 		t.Error("a goal after /restart is refused: it is typed at the prompt")
 	}
-	h := &sessionHost{s: s}
-	var out strings.Builder
-	if res, ok := h.programCommand("/resume 20260101-000000-abcdef", &out); !ok || !contains(res.Restart, "--resume") {
-		t.Errorf("/resume ID: %+v %v", res, ok)
-	}
-	if res, ok := h.programCommand("/resume", &out); !ok || !contains(res.Restart, "--continue") {
-		t.Errorf("/resume: %+v %v", res, ok)
-	}
 }
 
 // What the person allowed while the session ran (/allow, "don't ask again") goes with the restart: the session continues, and it asked
@@ -330,5 +322,18 @@ func TestRecapLinesSayWhereAResumedConversationWas(t *testing.T) {
 	}
 	if got := recapLines(nil); len(got) != 0 {
 		t.Errorf("a conversation with no turns recaps %q", got)
+	}
+}
+
+// /resume with nothing to resume says so and leaves the chat open: it used to restart the chat, which then ended with the error of a start that
+// could not happen.
+func TestResumeWithNothingToResumeStaysInTheChat(t *testing.T) {
+	h := &sessionHost{s: chatSession(t, false, nil)}
+	for _, line := range []string{"/resume", "/resume nosuchid"} {
+		var out strings.Builder
+		res, ok := h.programCommand(line, &out)
+		if !ok || res.Restart != nil || !strings.Contains(out.String(), "resume:") {
+			t.Errorf("%s: handled %v, restart %v, said %q", line, ok, res.Restart, out.String())
+		}
 	}
 }

@@ -241,3 +241,10 @@ func (s *Session) EarlierSessions(n int) []string {
 	}
 	return out
 }
+
+// CheckResume says whether a resume request (what /resume was given: "" or "latest", an id, a directory) names something that can be
+// resumed, so that a chat can say so and stay open instead of ending in the error of a start that cannot happen.
+func (s *Session) CheckResume(spec string) error {
+	_, err := ResolveResume(s.opts.Home, s.opts.Root, spec)
+	return err
+}

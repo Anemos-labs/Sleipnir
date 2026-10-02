@@ -464,7 +464,7 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		case err != nil:
 			fmt.Fprintf(stderr, "%s: %v\n", f[0], err)
 		case !ok:
-			fmt.Fprintf(stderr, "unknown command %s; try /help\n", f[0])
+			fmt.Fprintf(stderr, "unknown command %s; %stry /help\n", f[0], didYouMean(f[0]))
 		default:
 			return false, prompt
 		}
@@ -757,4 +757,40 @@ func parseBudget(s string) (float64, error) {
 		return 0, fmt.Errorf("want dollars such as 5 or 0.50, or off; got %q", s)
 	}
 	return v, nil
+}
+
+// didYouMean is "did you mean /model? " for a slash command that is a typo of one the chat has (a swapped or a missing letter), else "".
+func didYouMean(typed string) string {
+	name := strings.TrimPrefix(typed, "/")
+	for _, c := range chatCommands {
+		if len(name) >= 3 && editDistance(name, c.name) <= 2 && name != c.name {
+			return "did you mean /" + c.name + "? "
+		}
+	}
+	return ""
+}
+
+// editDistance is the number of single-letter changes, and swaps of two neighbours, between two words.
+func editDistance(a, b string) int {
+	d := make([][]int, len(a)+1)
+	for i := range d {
+		d[i] = make([]int, len(b)+1)
+		d[i][0] = i
+	}
+	for j := range d[0] {
+		d[0][j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost)
+			if i > 1 && j > 1 && a[i-1] == b[j-2] && a[i-2] == b[j-1] {
+				d[i][j] = min(d[i][j], d[i-2][j-2]+1)
+			}
+		}
+	}
+	return d[len(a)][len(b)]
 }

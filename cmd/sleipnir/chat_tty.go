@@ -535,6 +535,16 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		case f[0] == "/resume":
 			typed = []string{"--continue"}
 		}
+		if f[0] == "/resume" {
+			spec := ""
+			if len(f) > 1 {
+				spec = f[1]
+			}
+			if err := h.s.CheckResume(spec); err != nil { // the chat stays: a start that cannot happen would end it
+				fmt.Fprintln(out, "resume:", tools.SanitizeForTerminal(err.Error()))
+				return app.CommandResult{}, true
+			}
+		}
 		args, err := restartArgs(h.s, typed, f[0] == "/new")
 		if err != nil {
 			fmt.Fprintln(out, f[0]+":", err)
