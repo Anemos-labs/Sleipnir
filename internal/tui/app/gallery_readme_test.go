@@ -62,7 +62,7 @@ func TestTheGalleryPageEmbedsEveryRecordingOfTheGallery(t *testing.T) {
 		if _, err := os.Stat(repoFile(t, "docs/media/"+name+".svg")); err != nil {
 			t.Errorf("README.md embeds docs/media/%s.svg: %v", name, err)
 		}
-		if !listed[name] && !strings.HasPrefix(name, "logo") {
+		if !listed[name] && !strings.HasPrefix(name, "logo") && !strings.HasPrefix(name, "real-") {
 			t.Errorf("README.md embeds docs/media/%s.svg, which %s does not draw", name, galleryManifest)
 		}
 	}

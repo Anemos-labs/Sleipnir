@@ -205,6 +205,11 @@ file, its area the file's lines. Run it before choosing what to polish: a user-f
 
 ## Recordings
 
+**Real recordings first.** `scripts/record-real.sh` records a real chat: a temporary project with a failing test, a real model, tmux typing the keys, `script(1)` writing
+what the terminal showed with its timing, and `sleipnir term-svg` playing that into the repository's own terminal emulator (`internal/tui/vt`) and drawing the frames with
+`internal/tui/svg`. It costs a few cents and about a minute, so redo it whenever the interface changes enough to show: `docs/media/real-chat.svg` is the README's picture.
+The scripted recordings below are made from a mock model; they show the harness around a model and are labelled so in `docs/GALLERY.md`.
+
 The animated SVGs in the README (`docs/media/*.svg`, with PNG stills) are the terminal interface's own screens, drawn by the code from a
 recorded session and by nothing else: no one types, edits or photographs them. `docs/media/gallery.json` is the one manifest (which
 screen, how big, which stretch, which stills); `sleipnir replay --gallery`, `scripts/record-demo.sh` and the tests all read it, so a

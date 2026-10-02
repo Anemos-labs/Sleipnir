@@ -13,6 +13,10 @@ job when you want, and a team of agents that shares one prompt cache.**
 [![release](https://img.shields.io/github/v/release/Anemos-labs/Sleipnir?include_prereleases&sort=semver)](https://github.com/Anemos-labs/Sleipnir/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/Anemos-labs/Sleipnir)](go.mod)
 
+<p align="center"><img src="docs/media/real-chat.svg" alt="A real session, recorded as it happened: the first run's chat in a small Go project. /allow tests, then a goal; the model reads the test and the code, rewrites Slugify, the edit asks and is approved with the key 1, go test passes. Real model, real tools, real timing (waits longer than a second and a half are shortened)." width="760"></p>
+
+*A real session, recorded as it happened (`scripts/record-real.sh`): a real model on a real task. Waits longer than 1.5 s are shortened; nothing is scripted but the keys.*
+
 ## Quick start
 
 ```sh

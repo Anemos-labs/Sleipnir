@@ -1,5 +1,11 @@
 # Gallery
 
+Two kinds of picture are here. The **real recordings** (`real-*.svg`, made by `scripts/record-real.sh`) are real sessions: a real model, real tools, real timing, a person typing; only waits longer than 1.5 s are shortened. The **scripted demos** below them are drawn from a mock model that follows a script (they show the harness around the model, not a model); they were made first and are kept because they show the swarm.
+
+<p align="center"><img src="media/real-chat.svg" alt="A real session of the chat: /allow tests, a goal, the model reads and edits, the edit is approved with the key 1, go test passes" width="760"></p>
+
+*The chat in a small Go project with a failing test, on a real model: `scripts/record-real.sh --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-chat.svg`.*
+
 `sleipnir demo` (on a terminal; `--scenario shop` anywhere) runs a team of nine agents through the real harness against a mock
 endpoint (no key, no network, about twenty seconds; on a terminal you watch it happen in the live cockpit), and `sleipnir replay`
 plays any recorded session back. The pictures below are the terminal's own screens,
