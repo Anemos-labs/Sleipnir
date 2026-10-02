@@ -19,7 +19,7 @@ a team's session resumes (`--continue`, `/resume`, and the restart that `/model`
 `/roles ` is a menu (a role, then its model); the first run fits an 80-column terminal (messages break at spaces, menu rows are cut to the width, the model menu is a table: found by looking at `--cols 80`, which `scripts/look.sh` can do);
 `scripts/look.sh` kills the program it looks at before the terminal goes (told to end, the chat clears what it drew and the picture was of that).
 **Heimdall's route for `deepseek/deepseek-v4-flash` was down for hours on 2026-10-02** (503 `no_route`, while its catalogue went on listing the model; it answers again at 07:35 UTC, so it was
-an outage and not a removal): the A/B in progress was started on `deepseek-v4.1-flash` for that reason, and the numbers in `docs/BENCHMARKS.md` are of `deepseek-v4-flash`.
+an outage and not a removal): the A/B that was running was made on `deepseek-v4.1-flash` for that reason: the first comparisons in `docs/BENCHMARKS.md` are of `deepseek-v4-flash`, the second of `deepseek-v4.1-flash`.
 
 **Added** (each with a test that fails without it; `CHANGELOG.md` says them for the user): built-in providers (Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra,
 and the keyless local servers Ollama, LM Studio, llama.cpp, vLLM); `models.roles.compactor` (a model of its own for the summaries, used while the thread fits its window);
@@ -35,19 +35,25 @@ one. Integer arguments given as strings stay refused (five tests and the web too
 a dozen tests and real managers write terse titles: it is a hint. Writes under `~/.sleipnir` ask in every mode, so `run` cannot save a memory unattended: by design.
 
 **Open, in the order to take it:**
-1. The benchmark refresh (`docs/BENCHMARKS.md`, README numbers): the corpus is now 60 tasks (47 `core`), the lock in `bench/suite.json` is written. One sample of 47 tasks has a 95% interval of about ±14 points (the same build scored 55% and 62% on two runs), so a difference of less than fifteen points cannot be seen: use two or three samples. `$BENCH_HOME/runs/*v41-b0` (the login build) and `*v41-d` (the build of 2026-10-02) were started together on `deepseek-v4.1-flash`, two samples of the 47 core tasks each (read `scripts/bench.sh status`, then `sleipnir rl compare`); the tables in the README and `docs/BENCHMARKS.md` still say 48 tasks and the old model.
-2. The verify gate is built (`internal/agent/testguard.go`, `unverified`): an answer after an edit and before any test run is sent back once. Measure it: the A/B in `$BENCH_HOME/runs/*ab-session3*` has A (the build before the session: 53% pass, 21% false done on 47 core tasks, deepseek-v4-flash) and B (the build at the login commit); build the current `main` as C and run `scripts/bench.sh ab --bin-a B --bin-b C`. Keep the gate and the `plan` tool only if the pass rate or the false-done rate says so.
+1. The benchmark: the second comparison is in `docs/BENCHMARKS.md` (the build of the login work against the build of 2026-10-02, `deepseek-v4.1-flash`, two samples of the 47 `core` tasks each: the same on every
+   measure, pass 76.6% and 78.7%, the paired interval of the difference -3.2 to +8.5 points). That size cannot see a smaller difference; to see one, run three samples on two models (`scripts/bench.sh ab --group 3`)
+   after item 6, because a quarter of the suite is the mined tasks, which are a floor. The README carries no numbers.
+2. The verify gate and the `plan` tool were measured in that run and left in: the gate's note was sent in 6 of the 94 episodes (the JavaScript fixtures; all passed on both builds) and the plan tool was used in 12
+   (the same verdict as the earlier build in 11), so neither helps or hurts beyond what 94 episodes show. The gate never fired on a Go task: the model runs `go test` by itself.
 3. `sleipnir init --user --brain` presets (a role's model is chosen in the chat from a menu now: `/roles ` completes the role, then its model). Done in the third session since the list was written: `/login` in the chat (the chat ends, `sleipnir login` runs on the terminal, the chat comes back), and the check of a key when it is typed (a one-token request: Heimdall's catalogue is public, so listing models proves nothing).
 4. A `sleipnir agent` profile (memory on, scheduler on, conservative permissions, budget caps) and a skill-writer tool; a gateway adapter (webhook first).
 5. The model-facing `schedule` tool (a model creates its own follow-ups), after the daemon has run for a few days.
-6. The mined tasks of the suite (`sl-*`, 12 of the 47 `core`): their hidden tests name symbols that the prompt does not (`MaxWireSeed`, an exported constant of the commit). Of the 13 failing episodes of build d on
-   `deepseek-v4.1-flash` (2026-10-02), five were `undefined:` build errors of the hidden test, and most of the rest the fifteen-minute clock, so `mined` is a floor and not a measure. Admission could compile the hidden tests
-   against the starting tree and compare the `undefined:` names with the prompt, and tag or drop the task.
+6. The mined tasks of the suite (`sl-*`, 12 of the 47 `core`): their hidden tests name symbols that the prompt does not (`MaxWireSeed`, an exported constant of the commit). Of the 20 failing episodes of build d on
+   `deepseek-v4.1-flash` (2026-10-02), 16 were mined tasks, 13 ended on a budget and five were `undefined:` build errors of the hidden test, so `mined` (25% and 33% in the two builds) is a floor and not a measure.
+   Admission could compile the hidden tests against the starting tree and compare the `undefined:` names with the prompt, and tag or drop the task.
 7. `reasoning_effort` (and the thinking budget of the other dialects) is a request parameter that no flag or setting sets (`core.Params.Effort` is read by the wire and written by nothing), and a reasoning model's turn is
    the clock of a task (about 30 s a request for `deepseek-v4.1-flash` on Heimdall). Measured on 2026-10-02 on that route (a ten-line Slugify prompt, `max_tokens` 2500, three requests each with no effort, `low` and
    `high`): two of the three requests of every arm spent the whole 2500 tokens on reasoning (`finish_reason: length`) and the seconds did not follow the setting (39 to 75, 70 to 79, 70 to 105), so this route does
    not honour it and **no flag was built**. Try again on a route that documents the setting (OpenAI, Anthropic) before offering one.
 8. The flags' own help (`sleipnir chat -h`) prints each description as one line of up to 370 characters (the flag package's format): wrap it to the terminal in one place for the 21 flag sets (`docs/CLI.md` is generated from it).
+9. `hack:verifier_touched` flags the agent's own new test files when their names match the verifier's glob (`greenfield-js-csvtool`, both samples, both builds: 2 of 94 episodes; `internal/rl/reward/hack_config.go`,
+   `touchesRef`). A hard flag drops the episode from a training export, and writing tests is what a greenfield task asks for. A fix has to keep what the flag is for: a new test file can carry `.only` or a skip and
+   make the hidden tests not run, so flag a new file only when it holds such a marker or has a hidden file's path, and test both ways (`rl reward RUNDIR --redetect-hacks` rescoring the run).
 
 ## Second handoff (2026-10-01, the end of the second agent's session)
 

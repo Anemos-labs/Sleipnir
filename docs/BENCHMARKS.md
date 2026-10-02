@@ -5,7 +5,7 @@ the reason that matters most (a prompt change that costs ten points of pass rate
 verifiable tasks through the real binary against a real endpoint, scores each run by the project's own tests in a clean checkout,
 and compares two builds of the harness on the same models the same day.
 
-It is not a leaderboard. The tasks are small, the budgets are tight (40 steps, 100 requests, 15 minutes, US$0.25 a task) and the
+It is not a leaderboard. The tasks are small, the budgets are tight (mostly 40 steps, 80 to 100 requests and 15 minutes, US$0.25 a task) and the
 endpoint is a marketplace whose latency and prefix cache drift from hour to hour. What it measures well is the **difference**
 between two versions of the harness, run side by side: a number from one run says little, a paired comparison of two says
 whether a change helped.
@@ -18,9 +18,9 @@ give a byte-identical `tasks.jsonl`, identified by its sha256).
 
 | Part | Tasks | What it is |
 |---|---|---|
-| mutations | 28 | A real, tested package of the Go standard library ("std-mini": 18 self-contained packages copied from the local `GOROOT` at build time, with the imports rewritten; nothing of it is committed) with one bug injected (a flipped comparison, a negated condition, a swapped branch, a dropped nil check). The prompt names the failing tests; the agent finds and fixes the source. |
+| mutations | 24 | A real, tested package of the Go standard library ("std-mini": 28 self-contained packages copied from the local `GOROOT` at build time, with the imports rewritten; nothing of it is committed) with one bug injected (a flipped comparison, a negated condition, a swapped branch, a dropped nil check). The prompt names the failing tests; the agent finds and fixes the source. |
 | mined | 12 | Commits of this repository's own history from before `bench/` existed: the state before the commit, the task from its message, the tests from the commit as the verifier (hidden). |
-| fixtures | 12 of 17 | Small projects in Go, Python, JavaScript, Rust and Java with a hidden acceptance test (`bench/fixtures`, each `start`, `solution` and `hidden`; the three greenfield ones are built from a written spec). Only the standard toolchain of each language is used, and only fixtures that pass admission on the machine are in its suite: the first run's machine had Go, Python, Node and Java. |
+| fixtures | 17 | Small projects in Go, Python, JavaScript, Rust and Java with a hidden acceptance test (`bench/fixtures`, each `start`, `solution` and `hidden`; the three greenfield ones are built from a written spec). Only the standard toolchain of each language is used, and only fixtures that pass admission on the machine are in its suite: the first run's machine had Go, Python, Node and Java (12 of the 17), the machine of 2026-10-02 had Rust too (all 17). |
 | composite | 4 | Three-part tasks for a manager and workers (a swarm); the same task as a single agent is the baseline. |
 | recall | 3 | Memory tasks that overflow a small context window and need `recall`. |
 
@@ -124,12 +124,46 @@ that). Taken together: the pass rate is where it was (55%, 51%, 52%), the hack r
 closed as *not reproduced*; a second run with three samples per task would settle it, and `rl compare` against `core1` needs the same
 suite. 27% of episodes said they were done and failed the verifier (`FALSEDONE`), and 19 of 71 attempts ended without an answer.
 
+## The second comparison (2026-10-02): the build of the login work against the build forty commits later
+
+`heimdall/deepseek/deepseek-v4-flash` had no route on Heimdall for hours that morning (503 `no_route`, while its catalogue went on listing it; it answered
+again at 07:35 UTC), so this comparison is on `heimdall/deepseek/deepseek-v4.1-flash`, which answered. The 47 `core` tasks of the 60-task suite (`bench/suite.json`, lock
+written: 24 mutations, 4 composite, 12 mined, 17 fixtures and 3 recall tasks, 47 of them `core`), two samples of each, 94 episodes a run, both builds at the same time
+(`scripts/bench.sh`, four rollouts of each at once, one seed): `b0` is the build of commit `76d33bb` (2026-10-01 23:53 UTC, the first login work) and `d` the build of `443e984`
+(2026-10-02 06:25), forty commits later. No infrastructure error in either; a run cost about US$0.10. `sleipnir rl compare` (paired bootstrap over tasks, 2000 resamples):
+
+| Measure | b0 | d | Difference | Verdict |
+|---|---|---|---|---|
+| pass@1 | 76.6% | 78.7% | +2.1 points [-3.2, +8.5] | same |
+| pass^2 (both samples pass) | 70.2% | 74.5% | +4.3 [-4.3, +12.8] | same |
+| cost per episode | US$0.00108 | US$0.00106 | -US$0.00003 [-0.00015, +0.00009] | same |
+| requests per episode | 19.6 | 19.0 | -0.6 [-2.6, +1.3] | same |
+| steps per episode | 18.6 | 18.0 | -0.6 [-2.6, +1.3] | same |
+| wall time per episode | 460 s | 459 s | -1 s [-37, +33] | same |
+| hack rate | 2.1% | 2.1% | 0 | same |
+| said done and failed the verifier | 6 of 94 | 7 of 94 | | |
+
+What it says: nothing moved beyond noise, and nothing got worse (the paired interval of the pass rate is -3.2 to +8.5 points: a loss of more than three points is ruled out, a gain of
+up to eight is not). What the two features that were added in between did, counted in the episodes of `d`: the note
+"You changed code and have not run the tests since" was sent in 6 of the 94, all of them the JavaScript fixtures (`js-csv`, `js-eventemitter`, `js-slugify`, both samples),
+and all six passed on both builds; the `plan` tool was called in 12 (greenfield tasks and fixtures in four languages, and a mined task), with the same verdict as the same task and sample
+on `b0` in 11 of them and a loss in the other (`greenfield-py-todoapi`, sample 0). So neither is shown to help, and neither is shown to hurt; both stay, because they cost nothing
+(US$0.00106 against US$0.00108 an episode) and a harness for models that stop early has a use for them. The 21% of episodes that said done and failed on `deepseek-v4-flash` in the
+first A/B of the session did not appear on this model (6% and 7%): that is the model, not a build.
+
+By part (pass rate of `d`, `b0` in brackets): mutations 97% (94%), fixtures 91% (94%), mined 33% (25%). Of the 20 episodes of `d` that failed (22 of `b0`), 16 are mined tasks, 13 ended on
+a budget and seven said they were done. The mined tasks (`sl-*`, 12 of the 47) are a floor, not a measure: their hidden tests name symbols that the prompt does not (an exported constant of
+the commit), and five of the 20 failures of `d` were `undefined:` build errors of those hidden tests. The two flagged episodes of each run are the same task and samples in both builds, `greenfield-js-csvtool`, `hack:verifier_touched`: the agent
+wrote tests of its own (`test/conformance.local.test.js`, `test/readme.test.js`) whose names match the verifier's glob (`test/*.test.js`). That is a property of the detector and not of a build
+(`docs/ROADMAP.md` says what a fix has to keep: a new test file can carry `.only`).
+
 ## Caveats
 
 - **The endpoint is a staging marketplace** (`api-staging.impossiblecarrot.cc`): latency of 10 to 30 seconds a request, HTTP 503
   ("Database is temporarily unavailable", "Request ownership was lost") when many rollouts run at once, a prefix cache that serves
   the stable prefix and often not the thread (every `cache.anomaly` of a run says what was expected and what was read). A run is
-  resumable for this reason, and the rollouts that hit an outage are repeated, not scored as failures.
+  resumable for this reason, and the rollouts that hit an outage are repeated, not scored as failures. A model's whole route can go: `deepseek-v4-flash` answered
+  503 `no_route` for hours on 2026-10-02 while the catalogue listed it, and the comparison above was made on `deepseek-v4.1-flash` for that reason.
 - **One shared machine.** CPU contention slows `go test` in the workspaces; a rollout that hits its wall-clock budget because of it is
   a failure that is not the harness's. On the first run 61 of the 107 budget exhaustions were the clock, and the machine was not why:
   an agent's time is mostly spent waiting for the endpoint. Read the `budget_exceeded` flag with the number of requests and the time
