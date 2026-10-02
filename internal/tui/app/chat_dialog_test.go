@@ -1,12 +1,14 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
@@ -42,4 +44,24 @@ func TestTheStatusLineSaysWhenItIsWaitingForTheModel(t *testing.T) {
 	if got := line(0); strings.Contains(got, "Waiting for the model") {
 		t.Errorf("a request in its first seconds: %q", got)
 	}
+}
+
+// The status line in the real chat, not only drawn from a made-up status: a request that has gone unanswered for 80 s makes the live
+// status say so (the line was written and tested alone, and nothing in the chat ever set it).
+func TestTheChatSaysItIsWaitingForTheModelWhenARequestIsUnanswered(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 100, rows: 24})
+	done := make(chan struct{})
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		<-done
+		return TurnResult{Steps: 1}
+	}
+	defer close(done)
+	r.typeText("fix it")
+	r.enter()
+	r.until("the turn running", func(s string) bool { return strings.Contains(s, "esc to interrupt") })
+	b := statetest.NewBuilder()
+	r.emit(b.Request("main", "r1", "mock-1", "pk1", statetest.Sec{Name: "shared", Tokens: 3200, BP: true}))
+	r.at(b.Now())
+	r.step(80 * time.Second)
+	r.until("the wait named", func(s string) bool { return strings.Contains(s, "Waiting for the model (1m20s)") })
 }

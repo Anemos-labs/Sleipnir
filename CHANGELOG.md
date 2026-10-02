@@ -213,6 +213,7 @@ The first release.
 - `sleipnir sessions` says how long ago each session was (`2h ago`) after its id, so the list can be read as a history.
 - `ctrl+t` and `ctrl+g` write their page without `/stats` or `/agents` typed out in front of it (nobody typed it); the commands typed by hand are shown as typed.
 - "Don't ask again" for a Node project's tests covers every spelling of `node --test` (a directory, a glob like `test/*.test.js`, `2>&1`): five of them were five questions in a trial. A test run with a glob in its arguments (`pytest tests/*.py`) is remembered as its runner too, where it was remembered as nothing.
+- The chat now says "Waiting for the model (1m12s)" when a request has gone unanswered for 45 s. The line was written, and tested on its own, in an earlier change, but nothing in the live chat ever set it: a trial saw 3.5 minutes of "Weighing... Sketching..." from a slow endpoint.
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).

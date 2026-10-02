@@ -1596,6 +1596,11 @@ func (m *chatModel) statusView(sn *state.Snapshot) statusView {
 	if m.question() != nil || len(sn.Perms.Pending) > 0 {
 		s.kind = statusAsking
 	}
+	if a, ok := sn.Focused(""); ok && s.kind == statusThinking && !a.ReqSince.IsZero() {
+		if d := m.clock().Sub(a.ReqSince); d >= slowRequest { // an endpoint that has not answered: say so, it is not thinking
+			s.waiting = d
+		}
+	}
 	return s
 }
 
