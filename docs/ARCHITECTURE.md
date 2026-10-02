@@ -120,7 +120,7 @@ last answer and the results of the turn's last tool calls, and answers `done`, `
 told that a claim is not evidence. `continue` sends the agent on with a message at the tail (the cached prefix is untouched) that names what is
 missing and the open steps. The loop ends by itself when the judge finds the goal met, when it says only a person can go on, after three turns
 without progress (no tool called, or the same reason again), after twenty continuations, when the turn is interrupted, or when the judge cannot be
-asked. `/goal` alone says where it stands; `pause`, `resume` and `clear` do what they say. A goal is not kept across a restart of the chat. The judge's requests
+asked. `/goal` alone says where it stands; `pause`, `resume` and `clear` do what they say. Each change of the goal is a `goal.state` event in the session log; a resumed session brings the goal back paused ("the chat was restarted") and `/goal resume` goes on. The judge's requests
 are in the session's cost (`/cost`, the budget line), not in any agent's.
 
 ## Providers

@@ -81,6 +81,9 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			s, err = nil, startCtx.Err()
 		}
 		host.s = s
+		if err == nil {
+			host.goal = s.LoadGoal()
+		}
 		startDone <- made{s, err}
 		if err != nil {
 			attach <- app.ChatAttach{Err: err}
@@ -344,12 +347,14 @@ func (h *sessionHost) judgeGoal(ctx context.Context, err error, out *app.TurnRes
 	if h.goal.Done {
 		h.goal = nil
 	}
+	h.s.SaveGoal(h.goal)
 }
 
 // goalCommand is /goal: with text it sets the goal and starts on it; alone it says where the goal stands; pause, resume and clear are what they say.
 func (h *sessionHost) goalCommand(f []string, line string, out io.Writer) app.CommandResult {
 	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
 	g := h.goal
+	defer func() { h.s.SaveGoal(h.goal) }()
 	switch strings.ToLower(arg) {
 	case "":
 		if g == nil {

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/plan"
@@ -142,4 +144,41 @@ func short(s string, n int) string {
 		return string(r[:n-1]) + "…"
 	}
 	return s
+}
+
+// goalEvent is the log record of a standing goal; a nil goal says it was cleared or met.
+const goalEvent = "goal.state"
+
+// SaveGoal records the goal in the session log, so that a chat that is resumed (after /model, /login, a restart) still has it.
+func (s *Session) SaveGoal(g *goal.State) {
+	s.Log.Emit("", goalEvent, map[string]any{"goal": g})
+}
+
+// LoadGoal is the goal this session had when its log last said so, made paused ("the chat was restarted"): nothing runs until the person
+// says /goal resume. nil when there was none, or it was cleared or met.
+func (s *Session) LoadGoal() *goal.State {
+	if !s.Resumed() {
+		return nil
+	}
+	_ = s.Log.Flush()
+	var last *goal.State
+	_ = events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type != goalEvent {
+			return nil
+		}
+		var d struct {
+			Goal *goal.State `json:"goal"`
+		}
+		if json.Unmarshal(e.Data, &d) == nil {
+			last = d.Goal
+		}
+		return nil
+	})
+	if last != nil && last.Objective != "" && !last.Done {
+		if last.Paused == "" {
+			last.Paused = "the chat was restarted"
+		}
+		return last
+	}
+	return nil
 }

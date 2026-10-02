@@ -2,6 +2,8 @@ package session_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -88,5 +90,43 @@ func TestAnInterruptedTurnPausesTheGoal(t *testing.T) {
 	}
 	if note, next := s.GoalTurn(context.Background(), g, nil); note != "" || next != "" {
 		t.Errorf("a paused goal acted: %q %q", note, next)
+	}
+}
+
+// A goal outlives the chat that set it: after a restart it is back, paused, with its count; a goal that was met or cleared is not.
+func TestAGoalComesBackPausedWhenTheSessionIsResumed(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	resume := func(save func(*session.Session)) *goal.State {
+		o := opts(t, repo, client, model)
+		o.Dir = dir
+		if _, err := os.Stat(filepath.Join(dir, "events.jsonl")); err == nil {
+			o.Resume = dir
+		}
+		s, err := session.New(context.Background(), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		got := s.LoadGoal()
+		if save != nil {
+			if _, err := s.Run(context.Background(), "hi"); err != nil {
+				t.Fatal(err)
+			}
+			save(s)
+		}
+		return got
+	}
+	g := goal.New("ship it")
+	g.Turns = 3
+	resume(func(s *session.Session) { s.SaveGoal(g) })
+	got := resume(nil)
+	if got == nil || got.Objective != "ship it" || got.Turns != 3 || got.Paused == "" {
+		t.Fatalf("the goal after a restart: %+v", got)
+	}
+	resume(func(s *session.Session) { s.SaveGoal(nil) })
+	if got := resume(nil); got != nil {
+		t.Errorf("a cleared goal came back: %+v", got)
 	}
 }
