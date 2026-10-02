@@ -107,7 +107,7 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return fail(env, "bash: %v", err), nil
 	}
 
-	if msg := missingLeadingCd(command, m.startDir(env, base)); msg != "" {
+	if msg := missingLeadingCd(command, m.startDir(env, base), env.Root); msg != "" {
 		return fail(env, "bash: %s", msg), nil
 	}
 

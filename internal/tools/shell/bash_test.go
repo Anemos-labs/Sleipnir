@@ -1313,6 +1313,13 @@ func TestACdToAnInventedDirectoryIsAnsweredWithoutAskingAnyone(t *testing.T) {
 	if _, err := os.Stat(marker); err == nil {
 		t.Error("the command ran after a cd to nowhere")
 	}
+	// The project's own name is not a directory to enter from inside it.
+	name := filepath.Base(h.root)
+	env.Root = h.root
+	res := h.bash(env, "cd "+name+" 2>/dev/null; touch "+marker)
+	if !res.IsError || !strings.Contains(res.Text, "already in the project") {
+		t.Errorf("cd %s: %+v", name, res)
+	}
 	real := t.TempDir()
 	for _, cmd := range []string{"cd " + real + " && true", "cd sub 2>/dev/null; true", "true && cd /nonexistent/x || true", "echo cd /nonexistent/x"} {
 		if res := h.bash(env, cmd); strings.Contains(res.Text, "leave the cd out") {

@@ -176,19 +176,26 @@ func within(path, dir string) bool {
 }
 
 // leadingCd matches a command that starts by changing to one directory: cd DIR && ..., cd DIR; ..., or cd DIR alone.
-var leadingCd = regexp.MustCompile(`^\s*cd\s+(?:"([^"\n$` + "`" + `]+)"|'([^'\n]+)'|([^\s;&|<>"'$` + "`" + `\\]+))\s*(?:&&|;|\n|$)`)
+var leadingCd = regexp.MustCompile(`^\s*cd\s+(?:"([^"\n$` + "`" + `]+)"|'([^'\n]+)'|([^\s;&|<>"'$` + "`" + `\\]+))(?:\s+\d?>>?\s*\S+)*\s*(?:&&|;|\n|$)`)
 
 // missingLeadingCd is the answer to a command that starts with a cd to an absolute directory that does not exist, "" for any other
 // command. A weak model invents the directory (/Users/someone/project) although it starts in the project and its prompt says so; asking
 // the person to approve a read of a place that is not there would be a question with no answer worth giving, so it is refused at once,
 // saying where the command runs.
-func missingLeadingCd(command, dir string) string {
+func missingLeadingCd(command, dir, root string) string {
 	m := leadingCd.FindStringSubmatch(command)
 	if m == nil {
 		return ""
 	}
 	target := m[1] + m[2] + m[3]
 	if !filepath.IsAbs(target) {
+		// "cd myproject" from inside myproject: the survey names the project and a weak model takes the name for a directory to enter.
+		name := strings.TrimSuffix(filepath.ToSlash(target), "/")
+		if root != "" && name != "" && !strings.ContainsAny(name, "/.") && name == filepath.Base(root) {
+			if _, err := os.Stat(filepath.Join(dir, name)); errors.Is(err, os.ErrNotExist) {
+				return "you are already in the project (" + printable(name) + "): commands run in " + printable(dir) + ". Leave the cd out and use paths relative to it"
+			}
+		}
 		return ""
 	}
 	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
