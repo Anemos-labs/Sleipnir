@@ -87,7 +87,8 @@ func TestCommandExitStatus(t *testing.T) {
 		{"demo with too few topics", []string{"demo", "--topics", "1"}, 1, nil, []string{"demo: --topics must be between 2 and 32"}},
 		{"sim with an unknown mode", []string{"sim", "--mode", "nope"}, 1, nil, []string{`sim: unknown --mode "nope"`}},
 		{"sim with an unknown provider", []string{"sim", "--provider", "nope"}, 1, nil, []string{`sim: unknown --provider "nope"`}},
-		{"inspect without a directory", []string{"inspect"}, 1, nil, []string{"inspect: exactly one directory is required", "usage: sleipnir inspect"}},
+		{"inspect with no sessions to show", []string{"inspect"}, 1, nil, []string{"inspect: no sessions yet"}},
+		{"inspect of two things", []string{"inspect", "a", "b"}, 1, nil, []string{"inspect: at most one session or directory is taken", "usage: sleipnir inspect"}},
 		{"models with an unknown provider", []string{"models", "--provider", "nope"}, 1, nil, []string{`models: unknown provider "nope"`}},
 		{"sessions with nothing recorded", []string{"sessions", "--dir", filepath.Join(w.tmp, "none")}, 0, nil, []string{"no sessions yet"}},
 	} {

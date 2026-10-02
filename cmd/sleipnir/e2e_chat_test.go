@@ -1005,7 +1005,7 @@ func TestE2EChatSlashCommands(t *testing.T) {
 	u.send("/mode plan")
 	u.expect("mode: plan")
 	u.send("/help")
-	all := u.expect("/rewind            list checkpoints", "/exit              quit (also Ctrl-D, or Ctrl-C twice at the prompt)")
+	all := u.expect("/rewind [id]       list checkpoints", "/exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)")
 	if !strings.Contains(all, "/cost              tokens, cost and cache hit ratio so far") {
 		t.Errorf("the help is the line chat's:\n%s", all)
 	}

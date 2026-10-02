@@ -236,32 +236,41 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 	}
 }
 
-const chatHelp = `/help              this text (and your custom commands and skills)
-/status            model, mode, session, budget and cost at a glance
-/permissions       the mode and the rules in force, among them what you allowed this session
-/trust             this project's own instructions and settings: what they are, and whether you trusted them
+const chatHelp = `conversation
+/new               start again, empty (same model and mode)
+/resume [id]       continue an earlier session (the newest here, or an id)
+/sessions          the newest sessions
+/compact [focus]   fold the older thread now; focus says what to keep in view
+/rewind [id]       list checkpoints, or restore files to before a turn
+/diff <id>         what changed since a checkpoint
+/exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)
+
+model and cost
+/model [ref]       show the model, or move this conversation to another one
+/budget [usd|off]  the dollar budget for the turns from now on
 /cost              tokens, cost and cache hit ratio so far
-/context           layer sizes of the current prompt (what is pinned, what is thread)
-/compact [focus]   fold the older thread now (optionally: what to keep in view); a declared, priced rebase
-/agents            swarm board: agents and tasks
-/model [ref]       show the model, or move this conversation to another (provider/model; the prompt cache starts over; sleipnir models lists them)
-/budget [usd|off]  show or set the dollar budget for the turns from now on
-/allow <rule>      allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)
-/verbose [on|off]  show or hide notices and tool errors (--verbose)
-/anim [on|off]     turn the motion on or off (--no-anim)
-/new               start the conversation again, empty (the same model and mode)
-/resume [id]       continue an earlier session: the newest of this project, or the id /sessions shows
-/restart [flags]   start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)
-/swarm <n> [flags] start again as a manager with up to n workers: /swarm 8 --verify "go test {dirs}" --isolation worktree
-/sessions          the newest sessions; resume one with sleipnir --resume <id>
+/context           what each layer of the prompt weighs
+/status            model, mode, session, budget and cost at a glance
+
+permissions
+/mode <m>          default | accept-edits | plan | bypass   (/plan = plan)
+/allow <rule>      allow for this session what would otherwise ask: tests, Bash(go test:*)
+/permissions       the mode and the rules in force
+/trust             this project's own instructions and settings, and your yes
+
+a team, and the program
+/swarm <n> [flags] start again as a manager with up to n workers
+/restart [flags]   start again with other flags: --no-mcp, --trust-project, --cwd DIR
+/agents            the swarm board: agents and tasks
+/verbose [on|off]  notices and tool errors
+/anim [on|off]     motion
 /cwd               the directory this session works in
-/mode <m>          default | accept-edits | plan | bypass   (/plan = plan mode)
-/rewind            list checkpoints;  /rewind <id> restores files to before that turn
-/diff <id>         show what changed since a checkpoint
-/recon             show the project map pinned in the shared layer
-/skills            list the skills the model can load
-/mcp               MCP tool servers: state and tools (/mcp reconnect NAME); their prompts run as /mcp__server__prompt
-/exit              quit (also Ctrl-D, or Ctrl-C twice at the prompt)`
+
+what the model knows
+/recon             the project map in the shared layer
+/skills            the skills the model can load
+/mcp               tool servers: state and tools (/mcp reconnect NAME)
+/help              this text, and your custom commands and skills`
 
 // slash handles a slash command. It reports whether to quit, and the prompt to
 // send when the command was a custom one (or a skill) that expanded into text.
