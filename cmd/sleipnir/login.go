@@ -142,7 +142,7 @@ func userHome() string {
 }
 
 // cmdLogin stores a provider's API key: sleipnir login [provider]. With a pipe, the key is read from the first line of stdin.
-func cmdLogin(_ context.Context, args []string) error {
+func cmdLogin(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "usage: sleipnir login [provider]\n\nAsks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in\n~/.sleipnir/auth.json, readable by you only. From a pipe the key is the first line of stdin:\n  echo \"$KEY\" | sleipnir login heimdall\nAn environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.\n")
@@ -159,8 +159,19 @@ func cmdLogin(_ context.Context, args []string) error {
 		name = fs.Arg(0)
 	}
 	in := bufio.NewReader(os.Stdin)
-	_, err = login(in, os.Stderr, func() (string, error) { return readSecret(in) }, cfg, name, nil)
-	return err
+	picked, err := login(in, os.Stderr, func() (string, error) { return readSecret(in) }, cfg, name, nil)
+	if err != nil {
+		return err
+	}
+	// Try the key on the provider's first chat model: the catalogue is often public and says nothing about the key.
+	base, _, _ := session.ProviderInfo(cfg, picked)
+	rows, _ := fetchModels(ctx, []modelSource{{name: picked, base: base}})
+	for _, r := range rows {
+		if r.SupportsTools() {
+			return checkKey(ctx, cfg, r.Ref, os.Stderr)
+		}
+	}
+	return nil
 }
 
 // cmdLogout removes a stored key: sleipnir logout <provider>.
