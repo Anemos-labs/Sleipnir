@@ -118,7 +118,7 @@ func TestReportsFitAnEightyColumnTerminal(t *testing.T) {
 		{[]string{"run"}, 1, "usage: sleipnir run"}, // no goal: the usage, and the complaint
 	} {
 		out, code := wide(t, w, tc.args...)
-		if code != tc.code || !strings.Contains(out, tc.want) {
+		if code != tc.code || !strings.Contains(strings.Join(strings.Fields(out), " "), tc.want) { // a wrap may fall between the words of want
 			t.Errorf("sleipnir %s exited %d, want %d, and %q:\n%s", strings.Join(tc.args, " "), code, tc.code, tc.want, out)
 		}
 		fitsEighty(t, tc.args, out)
