@@ -110,6 +110,8 @@ The first release.
 - `/model provider/model` in the chat moves the conversation to another model, keeping the thread, notes, spine and bill (the agent is
   rebuilt and the old one's snapshot restored: the same path as a resume). `/model ` opens a menu of every model of the providers whose key is set (favorites first, typing filters it with the same fuzzy match as the commands); `/model` alone shows the current one. In a team the chat starts the team again on that model,
   with the manager's conversation (a team's workers run on their roles' models). The errors of a first run now say Heimdall is the recommended start.
+- The chat's lines for the manager's coordination say what was done: `Spawn backend · T1` (who was started, on which task) and `Task accept T1` (the action and the task) where
+  they said `Spawn` and `Task accept` alone, three times over in a team of three.
 - `/roles ` opens a menu in the chat: the roles that can run on a model of their own, each with the model it runs on now and where that came from, and, once one is chosen
   (it is inserted with its `=`), the menu of models that `/model` has, filtered as you type. A model per role was a flag (`--role-model`) or a line of `models.roles`, or `/roles
   role=model` typed whole; the choice is now made from the keys, in the chat. The editor keeps a menu open after a choice that ends in `=`, as it does after one that ends in `/`.
@@ -492,7 +494,8 @@ defect the runs showed, with the evidence, and what changed.
   was back with its fourteen turns and the board with three merged tasks. The chat draws its pages from a state made of the events that come after it attaches to the session, and a
   resumed session's history is in its log only. The chat now folds the log of the earlier runs into the state before it starts (a log of up to 64 MB; past that the pages start empty), a
   session that is resumed is not "ended" any more (the log holds the end of the run before: `session.start` clears it, and so does the agent that is brought back, since `session.start`
-  waits for the first goal), and a resumed manager is done, not "thinking", until a goal comes (`Swarm.StartIdleManager`). Found by looking at the agents page of the session the team-resume
+  waits for the first goal), and a resumed manager is done, not "thinking", until a goal comes (`Swarm.StartIdleManager`); the workers of a run that was killed (nothing ended their runs) are idle once the manager
+  is restored. Found by looking at the agents page of the session the team-resume
   change had just made resumable; a test in the state package for each of the two states, one in the swarm package, and an end-to-end test that opens the page after `--continue`.
 
 - **A team's session could not be resumed, and `sleipnir sessions` said it could.** Found by running `sleipnir --continue` in the default chat: "resuming into a swarm is not

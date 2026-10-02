@@ -93,6 +93,8 @@ statistic is on the chat page.
   chat page: the cache is what this harness is built on, but a person who is working is not helped by watching it.
 - *Agents page* (`ctrl+g`, or `/agents`; a team only): the table of the cockpit, every agent with its state, what it is doing, the
   size of its prompt, its cost and its hit ratio, and the count of the tasks on the board. `sleipnir watch` is the same, full screen.
+  In a chat that resumes a session, both pages start from the log of the earlier runs (the agents it had, the board, the bill), a manager that is back
+  is done and waits for the next goal, and the compactions and cache breaks of that log are not printed again as news.
 - *Input:* multi-line (`alt+enter`, or `\` then enter), bracketed paste (a large paste becomes a `[pasted 312 lines]` chip),
   history (up/down, `ctrl+r` search, persisted), `/` commands with a filterable palette, `@path` completion, `!` for a shell
   line, typing ahead while the agent works (queued, delivered at the turn's end; the commands that only look, such as `/cost`, answer at once), `esc` (twice to clear), `ctrl+c` cancels

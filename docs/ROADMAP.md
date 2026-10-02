@@ -15,7 +15,9 @@ the issuer's discovery document, read live, matches what the code expects); `/lo
 not be called off: `term.Reader`); sixteen more hosted providers and two local servers, a searchable provider menu; the chat page on a narrow screen (the banner keeps the team and the budget,
 the footer keeps the keys, the endpoint's own cache misses are not said unless they cost money); `edit` says where a block stops matching and `read` finds a mangled directory;
 `scripts/look.sh` (a command in a real terminal, keys, a PNG) and `term-svg` frames of a screen that stood still; arrow-key menus, the default team of eight (`--swarm N` counts the manager);
-a team's session resumes (`--continue`, `/resume`, and the restart that `/model` and `/login` make: the manager's conversation and the board come back, the workers start again; a team in git worktrees still cannot be resumed).
+a team's session resumes (`--continue`, `/resume`, and the restart that `/model` and `/login` make: the manager's conversation and the board come back, the workers start again; a team in git worktrees still cannot be resumed), and the pages of a resumed chat start from the log of the earlier runs;
+`/roles ` is a menu (a role, then its model); the first run fits an 80-column terminal (messages break at spaces, menu rows are cut to the width, the model menu is a table: found by looking at `--cols 80`, which `scripts/look.sh` can do);
+`scripts/look.sh` kills the program it looks at before the terminal goes (told to end, the chat clears what it drew and the picture was of that).
 **Heimdall's route for `deepseek/deepseek-v4-flash` was down for hours on 2026-10-02** (503 `no_route`, while its catalogue went on listing the model; it answers again at 07:35 UTC, so it was
 an outage and not a removal): the A/B in progress was started on `deepseek-v4.1-flash` for that reason, and the numbers in `docs/BENCHMARKS.md` are of `deepseek-v4-flash`.
 

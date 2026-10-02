@@ -4,15 +4,15 @@ Two kinds of picture are here. The **real recordings** (`real-*.svg`, made by `s
 
 <p align="center"><img src="media/real-first-run.svg" alt="The first run: provider, key, a live model search, the config file, the chat" width="760"></p>
 
-*The first run, in a directory with no configuration (the menus are driven with the arrow keys and enter, typing narrows the model list): `scripts/record-real.sh --scenario first-run --search v4-flash --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-first-run.svg`.*
+*The first run, in a directory with no configuration (the menus are driven with the arrow keys and enter, typing narrows the model list): `scripts/record-real.sh --scenario first-run --search v4.1-flash --model heimdall/deepseek/deepseek-v4.1-flash --out docs/media/real-first-run.svg`.*
 
 <p align="center"><img src="media/real-swarm.svg" alt="A real swarm: a manager and three workers in git worktrees, three tasks merged, drawn from the session's event log six times faster than it ran" width="760"></p>
 
-*A real team on three small packages: `scripts/record-real.sh --scenario swarm --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-swarm.svg` (SPEED=6 by default).*
+*A real team on three small packages: `scripts/record-real.sh --scenario swarm --model heimdall/deepseek/deepseek-v4.1-flash --out docs/media/real-swarm.svg` (SPEED=6 by default).*
 
-<p align="center"><img src="media/real-chat.svg" alt="A real session of the chat: /allow tests, a goal, the model reads and edits, the edit is approved with the key 1, go test passes" width="760"></p>
+<p align="center"><img src="media/real-chat.svg" alt="A real session of the default chat, a team of eight: /allow tests, one goal in three parts, the manager creates three tasks and starts three workers whose calls appear as they work, the edits are approved with the key 1, the tests pass, then the stats page and the agents page" width="760"></p>
 
-*The chat in a small Go project with a failing test, on a real model: `scripts/record-real.sh --model heimdall/deepseek/deepseek-v4-flash --out docs/media/real-chat.svg`.*
+*The chat (a manager that can start seven workers) in a small Go project with a failing test and two functions to add, on a real model; the typist answers every question with the key 1 and ends by opening the stats and agents pages: `scripts/record-real.sh --model heimdall/deepseek/deepseek-v4.1-flash --out docs/media/real-chat.svg --goal 'Slugify turns "Hello, World!" into "hello,-world!" and the test in slug_test.go fails. Fix it so the tests pass. Also add Reverse(s string) string in reverse.go and Truncate(s string, n int) string in truncate.go, each with a test. Give the three parts to three workers, then run the tests.'`.*
 
 `sleipnir demo` (on a terminal; `--scenario shop` anywhere) runs a team of nine agents through the real harness against a mock
 endpoint (no key, no network, about twenty seconds; on a terminal you watch it happen in the live cockpit), and `sleipnir replay`

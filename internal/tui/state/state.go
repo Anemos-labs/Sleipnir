@@ -251,7 +251,7 @@ func (s *State) apply(e events.Event) {
 		s.onMerge(e, t)
 
 	case events.TypeAgentRestore:
-		s.sess.Ended, s.sess.EndedAt, s.sess.EndReason, s.sess.EndCostUSD = false, time.Time{}, "", 0 // a resumed session goes on (its session.start waits for a goal)
+		s.onRestore(e, t)
 
 	case events.TypeTurnAppend, events.TypeAgentSnapshot, events.TypeCachePlan, events.TypeRecall,
 		events.TypeOutcome, "tool.spill", "tool.budget", "hook.run":

@@ -81,8 +81,13 @@ func toolSummary(name string, input json.RawMessage, cwd string) string {
 	if len(input) == 0 || json.Unmarshal(input, &in) != nil {
 		return ""
 	}
-	if name == "plan" {
+	switch name {
+	case "plan":
 		return planSummary(in)
+	case "spawn":
+		return spawnSummary(in)
+	case "task":
+		return taskSummary(in)
 	}
 	for _, k := range summaryKeys {
 		v, _ := in[k].(string)
@@ -109,6 +114,33 @@ func toolSummary(name string, input json.RawMessage, cwd string) string {
 		return oneLineOf(v)
 	}
 	return ""
+}
+
+// taskSummary is the line of the board's task tool: the title of the task made or changed, or what was done to which task ("accept T1").
+func taskSummary(in map[string]any) string {
+	if title, _ := in["title"].(string); strings.TrimSpace(title) != "" {
+		return oneLineOf(title)
+	}
+	action, _ := in["action"].(string)
+	id, _ := in["id"].(string)
+	return oneLineOf(strings.TrimSpace(action + " " + id))
+}
+
+// spawnSummary is the line of the spawn tool: who is started (a role, or the worker named to take new work) and on what (a task, by its
+// id or the title of the one to create).
+func spawnSummary(in map[string]any) string {
+	who, _ := in["role"].(string)
+	if a, _ := in["agent"].(string); strings.TrimSpace(who) == "" {
+		who = a
+	}
+	task, _ := in["task"].(string)
+	switch who, task = strings.TrimSpace(who), strings.TrimSpace(task); {
+	case who != "" && task != "":
+		return oneLineOf(who + " · " + task)
+	case task != "":
+		return oneLineOf(task)
+	}
+	return oneLineOf(who)
 }
 
 // planSummary is the line of the plan tool: how far along it is, and the step in hand.

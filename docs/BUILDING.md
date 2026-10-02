@@ -215,7 +215,9 @@ up, a row is highlighted, a dialog asks): `node scripts/svg2png.mjs docs/media/r
 the image is then opened and read. For a screen that is not in a recording yet, `scripts/look.sh OUT.png [--key NAME | --type TEXT | --pause SECONDS]... -- sleipnir ...`
 runs the command in a real terminal under tmux, presses the keys, and writes what the terminal showed as a PNG (`--home DIR` is the home it runs in, empty by default;
 the key of a provider comes from the environment). Text that is checked only as text misses what a person sees (a highlighted row drawn white on white passed every
-test and shipped).
+test and shipped). Two things it learned: look at `--cols 80` too, the size most terminal windows open at (the first run broke words in the middle there, and
+passed everything at 110); and a tmux server that is already running hands its own environment to a new session, so a provider's key can be there when the look was meant to start empty
+(`tmux kill-server` first, and type a key only after its prompt is on the screen: typed at another, it is sent to the model as a goal).
 
 The animated SVGs in the README (`docs/media/*.svg`, with PNG stills) are the terminal interface's own screens, drawn by the code from a
 recorded session and by nothing else: no one types, edits or photographs them. `docs/media/gallery.json` is the one manifest (which

@@ -80,16 +80,29 @@ func (s *State) onSessionEnd(e events.Event, t time.Time) {
 	}
 	ss := &s.sess
 	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD = true, t, clip(p.Reason, textID), usd(p.CostUSD)
-	// Whatever was still working has no more to do: the session is over. A worker whose task the manager had accepted, and that was
-	// still in the last turn of its run when the session ended (the manager is quicker than the worker's closing message), is done.
+	s.idleAgents("", t)
+	s.line(e.Seq, t, "", FeedSession, GlyphInfo, "session ended ("+firstOf(ss.EndReason, "other")+")", fmtUSD(ss.EndCostUSD))
+}
+
+// idleAgents ends the run of every agent that is still working but keep: whatever it was doing has no more to do, because the session is
+// over, or was picked up again by another process. A worker whose task the manager had accepted, and that was still in the last turn of its
+// run when the session ended (the manager is quicker than the worker's closing message), is done.
+func (s *State) idleAgents(keep string, t time.Time) {
 	for _, a := range s.agents {
-		if a.Status.Active() {
+		if a.ID != keep && a.Status.Active() {
 			s.endRun(a, runIdle, t)
 			s.settleDone(a)
 		}
 	}
 	s.dropAllAsks() // nobody is left to answer: a question of an agent that is not tracked, or of none, ends with the session
-	s.line(e.Seq, t, "", FeedSession, GlyphInfo, "session ended ("+firstOf(ss.EndReason, "other")+")", fmtUSD(ss.EndCostUSD))
+}
+
+// onRestore is an agent brought back from a snapshot: the session is resumed. Its log may hold a run that was cut short (a killed process
+// ends nothing), whose workers are not coming back; the others are idle.
+func (s *State) onRestore(e events.Event, t time.Time) {
+	ss := &s.sess
+	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD = false, time.Time{}, "", 0 // its session.start waits for a goal
+	s.idleAgents(e.Agent, t)
 }
 
 func (s *State) onUserInput(e events.Event, t time.Time) {

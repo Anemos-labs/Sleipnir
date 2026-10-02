@@ -26,11 +26,11 @@ chat at once, a team of eight agents (`--swarm 0` for a single agent). `sleipnir
 
 <p align="center"><img src="docs/media/real-first-run.svg" alt="The first run, recorded as it happened: sleipnir asks which provider (arrow keys and enter), takes the key at a hidden prompt and tries it, lists the provider's models and narrows them as you type, writes ~/.sleipnir/config.json and opens the chat; a one-line goal is answered. Real model, real timing." width="760"></p>
 
-<p align="center"><img src="docs/media/real-chat.svg" alt="A real session: /allow tests, then a goal; the model reads the test and the code, rewrites Slugify, the edit asks and is approved with the key 1, go test passes. Real model, real tools, real timing." width="760"></p>
+<p align="center"><img src="docs/media/real-chat.svg" alt="A real session of the default chat, a team of eight: /allow tests, then one goal in three parts; the manager reads the code, creates three tasks and starts three workers, whose calls appear as they work; the edits ask and are approved with the key 1; the tests pass; the stats page (ctrl+t) and the agents page (ctrl+g) end it. Real model, real tools, real timing." width="760"></p>
 
 <p align="center"><img src="docs/media/real-swarm.svg" alt="A real swarm: a manager and three workers, each in its own git worktree, implement three small packages in parallel; the cockpit shows each agent's prompt (the shared part bright), the task board, the merge queue and the bill. Shown six times faster than it happened." width="760"></p>
 
-*All three are real sessions, recorded as they happened by `scripts/record-real.sh` (a real model, real tools, a person typing; in the first two, waits longer than 1.5 s are shortened; the swarm's cockpit is drawn from its event log, six times faster than it ran: two and a half minutes, $0.0005).*
+*All three are real sessions, recorded as they happened by `scripts/record-real.sh` (a real model, real tools, a person typing; in the first two, waits longer than 1.5 s are shortened; the chat's team took two and a half minutes and $0.0006; the swarm's cockpit is drawn from its event log, six times faster than it ran: three minutes, $0.0006).*
 
 ## What you get
 
@@ -42,8 +42,8 @@ chat at once, a team of eight agents (`--swarm 0` for a single agent). `sleipnir
   summaries: `/roles` in the chat (a menu), `--role-model`, or `models.roles`. [Configuration](docs/CONFIGURATION.md)
 * **Made for models that are not perfect.** Plain, complete briefs for every worker; a stuck or looping model is stopped and told why; edits need a
   read first; a test rewritten to match a bug is called out; "done" is the harness's word, after a verifier passed. [Why](docs/WHY.md)
-* **Teams that share a cache.** A manager and up to dozens of workers over one repository, each in its own git worktree, finished work through a
-  verifying merge queue. [Swarm protocol](docs/SWARM-PROTOCOL.md)
+* **Teams that share a cache.** The chat is a manager that can start seven workers (more with `--swarm N`) over one repository: a task, a brief, a verifier before
+  "done"; with `--isolation worktree` each worker has its own git worktree and finished work goes through a verifying merge queue. [Swarm protocol](docs/SWARM-PROTOCOL.md)
 * **You see what it costs.** Tokens and dollars on the status line, and one key (`ctrl+t`) for the stats page: what the cache saved, the prompt layer by layer; compaction at the cheapest moment, never a surprise rewrite.
   [Cache design](docs/CACHE-DESIGN.md), [what the layering buys](docs/CACHE-ECONOMICS.md)
 * **Memory and schedules.** Notes it keeps across sessions (each one asks first); goals on a cron schedule that run headless. [Extending](docs/EXTENDING.md)

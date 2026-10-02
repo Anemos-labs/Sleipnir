@@ -76,6 +76,23 @@ func TestAResumedSessionIsNotOver(t *testing.T) {
 	}
 }
 
+// A team that was killed left its workers "running" in the log: nothing ended their runs. The session is picked up in another process, and the
+// manager that is brought back says so; the workers are not coming back, and the page must not show them working.
+func TestWorkersOfAKilledSessionAreNotWorkingOnceItIsResumed(t *testing.T) {
+	b := newB()
+	st := New()
+	apply(t, st, b.Emit("", events.TypeSessionStart, startPayload(nil)))
+	apply(t, st, b.Spawn("w-1", "scout", "T1", "mgr"))
+	apply(t, st, b.Request("w-1", "w-1.1", "m", "pk", secShared())) // in flight when the process was killed
+	if !agentOf(t, st.Snapshot(), "w-1").Status.Active() {
+		t.Fatalf("the test needs a worker that is working: %s", agentOf(t, st.Snapshot(), "w-1").Status)
+	}
+	apply(t, st, b.Emit("mgr", events.TypeAgentRestore, map[string]any{"turns": 14, "requests": 7}))
+	if s := agentOf(t, st.Snapshot(), "w-1").Status; s.Active() {
+		t.Errorf("a worker of the run before is %s after the manager was restored", s)
+	}
+}
+
 func TestSingleAgentSessionIsNotASwarm(t *testing.T) {
 	b := newB()
 	b.Emit("", events.TypeSessionStart, startPayload(map[string]any{"swarm": false}))
