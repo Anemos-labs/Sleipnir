@@ -6,13 +6,49 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
 
+// wideSpaces is the padding that lines the columns of a menu up.
+var wideSpaces = regexp.MustCompile(` {3,}`)
+
 // errSelectCancelled is what a menu returns when the person backs out (Esc, Ctrl-C, Ctrl-D).
 var errSelectCancelled = errors.New("cancelled")
+
+// termWidth is the width of the terminal that out is, or 0 when it is not one (a pipe, a test): there is then nothing to fit to.
+var termWidth = func(out io.Writer) int {
+	if f, ok := out.(*os.File); ok {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 0 {
+			return w
+		}
+	}
+	return 0
+}
+
+// fit cuts s to at most n characters, ending in an ellipsis when it was cut; n <= 0 leaves it whole. A line a terminal is given that is
+// wider than it is broken in the middle of a word, and a menu that counts its rows to draw them again counts that line twice.
+func fit(s string, n int) string {
+	r := []rune(s)
+	switch {
+	case n <= 0 || len(r) <= n:
+		return s
+	case n == 1:
+		return "…"
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// wrapFor is text broken at spaces to fit the terminal out is, and as it was when out is not one.
+func wrapFor(out io.Writer, text string) string {
+	if w := termWidth(out); w > 20 {
+		return wrapWords(text, w-1)
+	}
+	return text
+}
 
 // arrowOK says whether menus can be driven with the arrow keys: the process has a terminal on both ends. Elsewhere (a pipe, a test) the
 // menus keep their typed form, numbers and words.
@@ -66,6 +102,7 @@ func selectRows(in *bufio.Reader, out io.Writer, title string, labels, keys []st
 			cur = max(len(visible)-1, 0)
 		}
 	}
+	width := termWidth(out)
 	draw := func() {
 		// one write per frame: a terminal paints what it is given, and a frame written line by line is seen half drawn
 		var f strings.Builder
@@ -77,18 +114,22 @@ func selectRows(in *bufio.Reader, out io.Writer, title string, labels, keys []st
 		line := func(s string) { f.WriteString(s + "\r\n"); lines++ }
 		head := title
 		if searchable {
-			head += "  search: " + string(query) + "_"
+			q := []rune(string(query))
+			if width > 0 && len(q) > max(width-len(title)-14, 4) {
+				q = q[len(q)-max(width-len(title)-14, 4):] // a long query shows its end, where the typing is
+			}
+			head += "  search: " + string(q) + "_"
 		}
-		line(head)
+		line(fit(head, width-1))
 		start := 0
 		if cur >= rows {
 			start = cur - rows + 1
 		}
 		for r := start; r < len(visible) && r < start+rows; r++ {
 			if r == cur {
-				line("\x1b[7m > " + labels[visible[r]] + " \x1b[0m")
+				line("\x1b[7m > " + fit(labels[visible[r]], width-5) + " \x1b[0m")
 			} else {
-				line("   " + labels[visible[r]])
+				line("   " + fit(labels[visible[r]], width-4))
 			}
 		}
 		switch {
@@ -103,7 +144,7 @@ func selectRows(in *bufio.Reader, out io.Writer, title string, labels, keys []st
 		} else {
 			hint += ", a number jumps"
 		}
-		line("\x1b[2m" + hint + "\x1b[0m")
+		line("\x1b[2m" + fit(hint, width-1) + "\x1b[0m")
 		drawn = lines
 		io.WriteString(out, f.String())
 	}
@@ -122,7 +163,11 @@ func selectRows(in *bufio.Reader, out io.Writer, title string, labels, keys []st
 			if len(visible) == 0 {
 				continue
 			}
-			fmt.Fprintf(out, "\x1b[%dA\r\x1b[J%s %s\r\n", drawn, title, strings.TrimSpace(labels[visible[cur]]))
+			said := title + " " + wideSpaces.ReplaceAllString(strings.TrimSpace(labels[visible[cur]]), "  ") // the columns of the menu are not needed on one line
+			if width > 0 && utf8.RuneCountInString(said) > width-1 {
+				said = strings.ReplaceAll(said, "  ", " ")
+			}
+			fmt.Fprintf(out, "\x1b[%dA\r\x1b[J%s\r\n", drawn, fit(said, width-1))
 			return visible[cur], nil
 		case b == 0x1b:
 			if in.Buffered() == 0 {

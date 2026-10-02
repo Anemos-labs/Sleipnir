@@ -45,9 +45,9 @@ func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]
 		return "", errors.New("the provider lists no chat models")
 	}
 	if arrowOK() {
-		labels, keys := make([]string, len(chat)), make([]string, len(chat))
+		labels, keys := modelTable(chat, fav), make([]string, len(chat))
 		for i, r := range chat {
-			labels[i], keys[i] = modelLine(r, fav), r.Ref
+			keys[i] = r.Ref
 		}
 		i, err := selectRows(in, out, "Which model?", labels, keys, true, pickRows)
 		if err != nil {
@@ -67,8 +67,8 @@ func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]
 		if len(shown) > pickRows {
 			shown = shown[:pickRows]
 		}
-		for i, r := range shown {
-			fmt.Fprintf(out, "  %2d. %s\n", i+1, modelLine(r, fav))
+		for i, label := range modelTable(shown, fav) {
+			fmt.Fprintf(out, "  %2d. %s\n", i+1, label)
 		}
 		switch {
 		case total == 0:
@@ -135,7 +135,7 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	_, statErr := os.Stat(cfgPath)
 	firstTime := errors.Is(statErr, os.ErrNotExist)
 	if firstTime {
-		fmt.Fprintln(out, "First-time setup: choose a model; your settings are kept in "+tildePath(cfgPath)+".")
+		fmt.Fprintln(out, wrapFor(out, "First-time setup: choose a model; your settings are kept in "+tildePath(cfgPath)+"."))
 	}
 	names := make([]string, len(sources))
 	for i, src := range sources {
@@ -167,26 +167,38 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	if err := config.Save(cfgPath, patch); err != nil {
 		fmt.Fprintf(out, "(not saved: %v)\n", err)
 	} else if firstTime {
-		fmt.Fprintf(out, "Wrote %s. Using %s; change it with /model, edit the file, or see `sleipnir config`.\n", tildePath(cfgPath), ref)
+		fmt.Fprintln(out, wrapFor(out, fmt.Sprintf("Wrote %s. Using %s; change it with /model, edit the file, or see `sleipnir config`.", tildePath(cfgPath), ref)))
 	} else {
-		fmt.Fprintf(out, "Using %s, and keeping it as your default in %s (change it with /model).\n", ref, tildePath(cfgPath))
+		fmt.Fprintln(out, wrapFor(out, fmt.Sprintf("Using %s, and keeping it as your default in %s (change it with /model).", ref, tildePath(cfgPath))))
 	}
 	*model = ref
 	return nil
 }
 
-// modelLine is one row of the model menu: the reference, the context window, the output price, and whether it takes tools.
-func modelLine(r modelRow, fav map[string]bool) string {
-	tools := ""
-	if r.SupportsTools() {
-		tools = "  tools"
+// modelTable is the rows of a model menu: each reference, the context window, the output price and whether it takes tools, in columns as
+// wide as the longest of the rows needs (a reference past 48 characters sticks out of its column rather than push every other row's).
+func modelTable(rows []modelRow, fav map[string]bool) []string {
+	refW, priceW := 0, 0
+	for _, r := range rows {
+		refW, priceW = min(max(refW, len(r.Ref)), 48), max(priceW, len(priceOut(r)))
 	}
-	star := ""
-	if fav[r.Ref] {
-		star = " *"
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		tools := ""
+		if r.SupportsTools() {
+			tools = "  tools"
+		}
+		star := ""
+		if fav[r.Ref] {
+			star = " *"
+		}
+		out[i] = strings.TrimRight(fmt.Sprintf("%-*s %6s ctx  %-*s%s%s", refW, r.Ref, human(r.Model.ContextTokens), priceW, priceOut(r), tools, star), " ")
 	}
-	return fmt.Sprintf("%-44s %6s ctx  %s%s%s", r.Ref, human(r.Model.ContextTokens), priceOut(r), tools, star)
+	return out
 }
+
+// modelLine is one row of the model menu by itself.
+func modelLine(r modelRow, fav map[string]bool) string { return modelTable([]modelRow{r}, fav)[0] }
 
 // checkKey sends one small request with the key just typed, because a catalogue is often public and answers whatever the key is. Only
 // a refusal of the key itself (401, 403) counts: the key is then forgotten and the person told, so a typo is found here and not at the

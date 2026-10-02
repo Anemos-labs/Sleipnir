@@ -482,6 +482,12 @@ The first release.
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
 defect the runs showed, with the evidence, and what changed.
 
+- **The first run did not fit an 80-column terminal.** Seen by running it in a terminal of the default size: "your settings are kept in ~/.sleipnir/config.j" and "son.", a chosen model's line
+  ending "$0.01/M ou" and "t  tools", the confirmation broken before its semicolon. A line wider than the terminal is broken by the terminal wherever the column falls, and a menu that
+  counts its rows to draw them again (the arrow-key menus of the first run and `sleipnir login`) counts a wrapped row twice. The messages are now broken at spaces to the width of the
+  terminal they are written to, the menus cut a row that is too long (with an ellipsis) and say what was chosen on one line, and the model menu's columns are as wide as its longest row
+  needs (the price column was one character short for "$0.019", so "tools" moved). Tests drive the menu at a width of forty and check every line.
+
 - **The pages of a resumed chat were empty.** After `sleipnir --continue` the agents page said "the team starts with your first goal" and the stats page began at zero, though the manager
   was back with its fourteen turns and the board with three merged tasks. The chat draws its pages from a state made of the events that come after it attaches to the session, and a
   resumed session's history is in its log only. The chat now folds the log of the earlier runs into the state before it starts (a log of up to 64 MB; past that the pages start empty), a

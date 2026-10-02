@@ -151,7 +151,7 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 			return chooseExtra(n - len(choices) - 1)
 		}
 	}
-	fmt.Fprintf(out, "Paste your %s key (hidden; kept in %s, readable by you only): ", pick.name, tildePath(config.AuthPath(userHome())))
+	fmt.Fprint(out, wrapFor(out, fmt.Sprintf("Paste your %s key (hidden; kept in %s, readable by you only):", pick.name, tildePath(config.AuthPath(userHome()))))+" ")
 	key, err := secret()
 	if err != nil || key == "" {
 		return "", errors.New("login: no key entered")
@@ -160,7 +160,7 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 		return "", fmt.Errorf("login: %w", err)
 	}
 	harden.Provide(pick.env, key)
-	fmt.Fprintf(out, "Saved. (%s in the environment still takes precedence over it.)\n", pick.env)
+	fmt.Fprintln(out, wrapFor(out, fmt.Sprintf("Saved. (%s in the environment still takes precedence over it.)", pick.env)))
 	return pick.name, nil
 }
 
@@ -173,7 +173,7 @@ func signInChatGPT(ctx context.Context, in *bufio.Reader, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
-	fmt.Fprintf(out, "Signed in as %s. Your ChatGPT plan pays for the requests (its usage limits apply); `sleipnir logout chatgpt` ends the sign-in.\n", st.Who())
+	fmt.Fprintln(out, wrapFor(out, fmt.Sprintf("Signed in as %s. Your ChatGPT plan pays for the requests (its usage limits apply); `sleipnir logout chatgpt` ends the sign-in.", st.Who())))
 	return nil
 }
 
