@@ -1270,14 +1270,14 @@ func TestChatALongTurnRingsTheBellWhenItEnds(t *testing.T) {
 	r.submit("short")
 	r.step(5 * time.Second)
 	release <- struct{}{}
-	r.shows("5.0s")
+	r.shows("── 5.0s")
 	if n := count(); n != 0 {
 		t.Fatalf("a turn of five seconds rang the bell %d times", n)
 	}
 	r.submit("long")
 	r.step(45 * time.Second)
 	release <- struct{}{}
-	r.shows("45")
+	r.shows("── 45s")
 	deadline := time.Now().Add(5 * time.Second)
 	for count() != 1 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)

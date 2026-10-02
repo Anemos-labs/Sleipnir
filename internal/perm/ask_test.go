@@ -399,7 +399,7 @@ func TestIdenticalPendingPromptsAreCoalesced(t *testing.T) {
 	}
 	waitFor(t, "all callers to queue on one prompt", func() bool {
 		w, p := e.inflightWaiters()
-		return p == 1 && w == n-1
+		return p == 1 && w == n-1 && rec.count() >= 1 // the leader registers the question before it asks it
 	})
 	if rec.count() != 1 {
 		t.Fatalf("prompter called %d times while pending", rec.count())
