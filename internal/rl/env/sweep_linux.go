@@ -15,8 +15,10 @@ import (
 // the marker (environments are inherited) unless it scrubs its own, so this
 // finds most stragglers that killGroup cannot. It is a best-effort net: it
 // needs /proc, only sees processes the harness may read (same user), and a
-// determined process can clear its environment. Real containment needs a
-// container or a cgroup.
+// determined process can clear its environment. A process in the middle of
+// execve shows no environment (or half of it) for a few hundred microseconds,
+// so one started that very moment is missed; a daemon a run left behind is
+// long past it. Real containment needs a container or a cgroup.
 func sweepMarker(marker string) int {
 	needle := []byte(MarkerEnv + "=" + marker + "\x00")
 	ents, err := os.ReadDir("/proc")

@@ -193,6 +193,10 @@ file, its area the file's lines. Run it before choosing what to polish: a user-f
     next message the moment it sees it meets the harness in that moment. Make the moment the test's own (a hook on the event the run
     ends with, a model reply that is held) rather than hoping to hit it, and wait for an absence only with a generous quiet time
     (`internal/swarm/wakebound_test.go`);
+  - a process has no environment to read while it is in `execve`: `/proc/PID/environ` is empty, or half of it, for a few hundred
+    microseconds, so a sweep that looks the instant a pid is known (`sweepMarker`) missed a `sleep 100 &` about once in a hundred
+    runs on a busy machine (a CI arm64 runner, once). A test that needs a leftover process to be findable starts one that writes its
+    own pid after its last exec and then stops itself (`TestCleanupKillsLeftoverProcesses`); killing a process group has no such window;
   - macOS takes a terminal from every holder when the process that leads its session exits, so a question put to the terminal after
     that has no answer (`internal/ptytest`, `WaitInputRead`); Windows checks text files out with CRLF unless `.gitattributes` says
     not (every golden test failed at its first line, with a diff that looked identical).

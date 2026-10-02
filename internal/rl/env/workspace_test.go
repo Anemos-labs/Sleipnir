@@ -449,8 +449,10 @@ func TestCleanupKillsLeftoverProcesses(t *testing.T) {
 		t.Fatal(err)
 	}
 	pidFile := filepath.Join(t.TempDir(), "pid")
-	// A daemon the agent left behind, started with the workspace's environment.
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("sleep 100 & echo $! > %s; wait", pidFile))
+	// A daemon the agent left behind, started with the workspace's environment. It is a shell that writes its own pid and then stops
+	// itself, so nothing is exec'd after the pid appears: a process in the middle of execve shows no environment (or half of it) for
+	// a moment, and a `sleep &` swept the instant its pid is known was missed about once in a hundred runs on a busy machine.
+	cmd := exec.Command("sh", "-c", fmt.Sprintf(`sh -c 'echo $$ > %s; kill -STOP $$' & wait`, pidFile))
 	cmd.Dir = w.Dir
 	cmd.Env = w.Env()
 	configureProc(cmd)
