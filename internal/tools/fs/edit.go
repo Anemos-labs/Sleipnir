@@ -443,10 +443,54 @@ func missingHint(cur, old string) string {
 		return fmt.Sprintf("The same text exists ignoring whitespace at lines %d-%d; %s", first, last, why)
 	}
 
+	if start, ran, wrote, has, ok := divergence(fileLines, oldLines); ok {
+		first := fmt.Sprintf("The first %d lines of old_string match the file at lines %d-%d", ran, start, start+ran-1)
+		if ran == 1 {
+			first = fmt.Sprintf("The first line of old_string matches the file at line %d", start)
+		}
+		there := "the file has " + strconv.Quote(clip(has, 120)) + " there"
+		if start+ran > len(fileLines) {
+			there = "the file ends there"
+		}
+		return fmt.Sprintf("%s; line %d of old_string is %s but %s.", first, ran+1, strconv.Quote(clip(wrote, 120)), there)
+	}
 	if best, ok := closestLines(fileLines, topTargets(old, 3), similarityMinimum, hintScanBytes); ok {
 		return fmt.Sprintf("The closest line is line %d (%d%% similar): %s.", best.line, int(best.score*100), strconv.Quote(clip(fileLines[best.line-1], 160)))
 	}
 	return ""
+}
+
+// divergence finds where a block of old's lines is right and then is not: the place in the file where old's first lines match, line for
+// line, for the longest run, and the first line after the run (the one old has and the file does not). Most misses of a block are one wrong
+// line in it, and "the closest line is 100% similar" tells a model nothing about which. start is the file's line number (from 1) where the
+// run begins; ran is how many lines of old match. A run of one line counts only when that line says something (a bare "}" is everywhere).
+func divergence(file, old []string) (start, ran int, wrote, has string, ok bool) {
+	for len(old) > 0 && strings.TrimSpace(old[len(old)-1]) == "" {
+		old = old[:len(old)-1]
+	}
+	if len(old) < 2 {
+		return 0, 0, "", "", false
+	}
+	best := 0
+	for i := range file {
+		if file[i] != old[0] {
+			continue
+		}
+		n := 1
+		for n < len(old) && i+n < len(file) && file[i+n] == old[n] {
+			n++
+		}
+		if n > best {
+			best, start = n, i
+		}
+	}
+	if best == 0 || best == len(old) || (best == 1 && len(strings.TrimSpace(old[0])) < 12) {
+		return 0, 0, "", "", false
+	}
+	if start+best < len(file) {
+		has = file[start+best]
+	}
+	return start + 1, best, old[best], has, true
 }
 
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }

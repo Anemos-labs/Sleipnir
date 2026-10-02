@@ -158,6 +158,24 @@ func TestEditNotFoundHints(t *testing.T) {
 			want:    []string{"line-number prefixes"},
 		},
 		{
+			name:    "a block that is right until one line",
+			initial: "func f() {\n\ta := 1\n\tb := 2\n\treturn a + b\n}\n",
+			old:     "func f() {\n\ta := 1\n\tb := 3\n\treturn a + b\n}",
+			want:    []string{"first 2 lines of old_string match the file at lines 1-2", "line 3 of old_string is", `"\tb := 3"`, `"\tb := 2"`},
+		},
+		{
+			name:    "a block whose first line is right and second is not",
+			initial: "alpha beta gamma delta\nsecond line here\n",
+			old:     "alpha beta gamma delta\nsecond line there",
+			want:    []string{"first line of old_string matches the file at line 1", "line 2 of old_string is", `"second line there"`, `"second line here"`},
+		},
+		{
+			name:    "a block that runs past the end of the file",
+			initial: "alpha beta gamma delta\nsecond line here",
+			old:     "alpha beta gamma delta\nsecond line here\nthird line",
+			want:    []string{"first 2 lines of old_string match the file at lines 1-2", "line 3 of old_string is", `"third line"`, "the file ends there"},
+		},
+		{
 			name:    "closest line",
 			initial: "package main\n\nfunc calculateTotal(items []Item) int {\n\treturn 0\n}\n",
 			old:     "func calculateTotal(items []Items) int {",

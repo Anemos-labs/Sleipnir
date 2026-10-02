@@ -143,18 +143,37 @@ func (k *call) statFailure(path, disp string, err error) *tools.Result {
 
 // notFoundMessage explains a missing file and, when the directory holds
 // something similarly named, points at it: a typo or wrong case is by far the
-// most common reason a model asks for a file that is not there.
+// most common reason a model asks for a file that is not there. When the
+// directory is missing as well, it looks for a similarly named one where the
+// path first goes wrong (a mangled middle of a path is the other common case).
 func notFoundMessage(path, disp string) string {
 	dir := filepath.Dir(path)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Sprintf("file not found: %s (its directory does not exist either)", disp)
+		msg := fmt.Sprintf("file not found: %s (its directory does not exist either)", disp)
+		if alt := similarPath(path, disp); alt != "" {
+			msg += "; did you mean " + alt + "?"
+		}
+		return msg
 	}
 	msg := "file not found: " + disp
 	if len(entries) > 5000 {
 		return msg
 	}
-	base := filepath.Base(path)
+	names := similarNames(entries, filepath.Base(path))
+	if len(names) == 0 {
+		return msg
+	}
+	parent := filepath.Dir(disp)
+	for i, n := range names {
+		names[i] = safeName(filepath.ToSlash(filepath.Join(parent, n)))
+	}
+	return msg + "; did you mean " + strings.Join(names, ", ") + "?"
+}
+
+// similarNames are up to three of the entries whose names are close to base (the same but for case, one slip away, or alike enough), the
+// closest first.
+func similarNames(entries []os.DirEntry, base string) []string {
 	type cand struct {
 		name  string
 		score float64
@@ -176,9 +195,6 @@ func notFoundMessage(path, disp string) string {
 			cands = append(cands, cand{name, s})
 		}
 	}
-	if len(cands) == 0 {
-		return msg
-	}
 	sort.Slice(cands, func(i, j int) bool {
 		if cands[i].score != cands[j].score {
 			return cands[i].score > cands[j].score
@@ -188,12 +204,49 @@ func notFoundMessage(path, disp string) string {
 	if len(cands) > 3 {
 		cands = cands[:3]
 	}
-	parent := filepath.Dir(disp)
-	names := make([]string, len(cands))
+	out := make([]string, len(cands))
 	for i, c := range cands {
-		names[i] = safeName(filepath.ToSlash(filepath.Join(parent, c.name)))
+		out[i] = c.name
 	}
-	return msg + "; did you mean " + strings.Join(names, ", ") + "?"
+	return out
+}
+
+// similarPath looks, for a path whose directory is missing, at the nearest directory that exists and at the entry of it that the path's next
+// part was most likely meant to be (openaichar for openaichat), and answers with the path spelled as disp is when that file is there, else
+// with the directory. "" when nothing is close.
+func similarPath(path, disp string) string {
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(path)), "/")
+	dparts := strings.Split(filepath.ToSlash(filepath.Clean(disp)), "/")
+	for i := len(parts) - 1; i >= 1; i-- {
+		prefix := filepath.FromSlash(strings.Join(parts[:i], "/"))
+		if prefix == "" {
+			prefix = string(filepath.Separator)
+		}
+		entries, err := os.ReadDir(prefix)
+		if err != nil {
+			continue
+		}
+		if len(entries) > 5000 {
+			return ""
+		}
+		back := len(parts) - 1 - i // how many parts follow the one that is wrong
+		if back >= len(dparts) {
+			return ""
+		}
+		var out []string
+		for _, n := range similarNames(entries, parts[i]) {
+			full := filepath.Join(append([]string{prefix, n}, parts[i+1:]...)...)
+			shown := append([]string(nil), dparts...)
+			shown[len(dparts)-1-back] = n
+			if _, err := os.Stat(full); err == nil {
+				out = append(out, safeName(strings.Join(shown, "/")))
+			} else if back > 0 { // the wrong part is a directory: the directory is what to look in
+				out = append(out, safeName(strings.Join(shown[:len(dparts)-back], "/"))+"/")
+			}
+		}
+		return strings.Join(out, ", ")
+	}
+	return ""
 }
 
 // freshness runs FileState's staleness check for a file whose current bytes are

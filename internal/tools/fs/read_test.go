@@ -164,6 +164,7 @@ func TestReadErrors(t *testing.T) {
 	env := testEnv(t)
 	writeFile(t, filepath.Join(env.Cwd, "src", "main.go"), "package main\n")
 	writeFile(t, filepath.Join(env.Cwd, "small.txt"), "a\nb\n")
+	writeFile(t, filepath.Join(env.Cwd, "pkg", "store", "memory", "index.go"), "package memory\n")
 	tests := []struct {
 		name  string
 		input any
@@ -173,6 +174,9 @@ func TestReadErrors(t *testing.T) {
 		{"missing", map[string]any{"path": "nope.txt"}, []string{"file not found: nope.txt"}},
 		{"typo suggestion", map[string]any{"path": "src/main.gp"}, []string{"file not found", "did you mean src/main.go"}},
 		{"missing dir", map[string]any{"path": "nodir/x.txt"}, []string{"file not found: nodir/x.txt"}},
+		{"a directory with a slip, the file is there", map[string]any{"path": "sr/main.go"}, []string{"its directory does not exist either", "did you mean src/main.go?"}},
+		{"a directory with a slip, the file is not", map[string]any{"path": "sr/other.go"}, []string{"its directory does not exist either", "did you mean src/?"}},
+		{"a directory deep in the path with a slip", map[string]any{"path": "pkg/store/memry/index.go"}, []string{"did you mean pkg/store/memory/index.go?"}},
 		{"empty path", map[string]any{"path": ""}, []string{"path is required", `"path" field`}},
 		{"blank path", map[string]any{"path": "   "}, []string{"path is required"}},
 		{"nul in path", map[string]any{"path": "a\x00b"}, []string{"NUL"}},

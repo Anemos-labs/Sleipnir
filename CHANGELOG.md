@@ -468,6 +468,12 @@ The first release.
 A benchmark (`bench/`, `scripts/bench.sh`, `sleipnir rl report`) run on real models found what the tests did not. Each line is a
 defect the runs showed, with the evidence, and what changed.
 
+- **Two refusals that told a weak model nothing.** Read from the 47 episodes of the first A/B run (`sleipnir friction`, and the tool errors in the trajectories). An `edit` whose `old_string` was a
+  block with one wrong line in it was answered "the closest line is line 219 (100% similar)": every line of the block exists, so the closest is exact, and the model could not tell which line was wrong. It
+  now says where the block is right and where it stops: "the first 2 lines of old_string match the file at lines 1-2; line 3 of old_string is `b := 3` but the file has `b := 2` there". And a path whose
+  directory is mangled in the middle (`internal/provider/openaichar/limits_test.go`) said only that its directory does not exist; it now looks for the directory that was meant, and answers with the file when it is there
+  (`did you mean internal/provider/openaichat/limits_test.go?`) or the directory when it is not.
+
 - **The first keys typed after a restart were lost.** `/restart`, `/swarm`, `/new`, `/resume`, `/roles` and `/model` (for a team) end the chat program and start the chat again in a child
   that has the terminal. The program's read of the keyboard cannot be called off, and it stayed waiting in the process that had ended: it took the first line typed for the new
   chat (typing `abc` right after `/restart` showed nothing; `def` after it arrived), and at the key prompt of `/login` it took the whole line, the key. The keyboard is now read
