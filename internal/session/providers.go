@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -478,11 +479,30 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		// An unknown model on a chat endpoint gets the endpoint's own cache
 		// behaviour; prices stay an estimate until the catalogue supplies them.
 		m.Cache = prof.Cache
+		if p.APIKeyEnv == "" && localBase(base) {
+			// A server on this machine (Ollama, LM Studio, llama.cpp, vLLM) costs nothing per token, and its catalogue lists ids only: no price to
+			// show, and no window. The window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off
+			// without a word), so that compaction keeps the prompt inside what the server gives; options.context_window says the real one.
+			m.Price = cost.Price{}
+			m.ContextTokens = localContextWindow
+		}
+	}
+	if n := optInt(p.Options, "context_window"); n > 0 {
+		m.ContextTokens = n
 	}
 	if m.ContextTokens == 0 {
 		m.ContextTokens = 200_000
 	}
 	return client, m, nil
+}
+
+// localContextWindow is the window assumed for a model on a server of this machine that does not say (tokens).
+const localContextWindow = 8192
+
+// localBase reports whether a base URL is this machine.
+func localBase(base string) bool {
+	u, err := url.Parse(base)
+	return err == nil && provider.IsLoopbackHost(u.Hostname())
 }
 
 // catalogTTL is how long a downloaded model catalogue is trusted.
@@ -513,8 +533,16 @@ func enrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) (c
 	entries := loadCatalog(ctx, cacheDir, baseURL)
 	for _, e := range entries {
 		if e.Model.ID == m.ID || cost.Normalize(e.Model.ID) == cost.Normalize(m.ID) {
+			p := e.Model.Price
+			if e.Model.ContextTokens == 0 && p.InputPerM == 0 && p.OutputPerM == 0 {
+				// a catalogue that lists ids only (OpenAI's own, Ollama's, LM Studio's) knows nothing about the model: what is known stands
+				return m, false
+			}
 			out := e.Model // every entry has passed cost.Model.Validate (gateway.Parse, gateway.Vet)
 			out.ID = m.ID
+			if out.ContextTokens == 0 {
+				out.ContextTokens = m.ContextTokens
+			}
 			return out, true
 		}
 	}

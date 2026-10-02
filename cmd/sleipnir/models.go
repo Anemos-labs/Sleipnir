@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"sort"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
@@ -91,6 +93,42 @@ func usableProviders(cfg *config.Config, withPublic bool) []string {
 	return out
 }
 
+// localSources are the local servers (Ollama, LM Studio, llama.cpp, vLLM: providers with no key whose address is this machine) that answer with a
+// list of models right now. A server that is not running refuses at once, so asking costs nothing; it is asked for a second and a half at most.
+func localSources(ctx context.Context, cfg *config.Config) []modelSource {
+	var cand []modelSource
+	for _, n := range session.ProviderNames(cfg) {
+		p, ok := session.LookupProvider(cfg, n)
+		if !ok || p.APIKeyEnv != "" || p.EffectiveDialect() != config.DialectOpenAIChat {
+			continue
+		}
+		base, _, _ := session.ProviderInfo(cfg, n)
+		if u, err := url.Parse(base); err == nil && provider.IsLoopbackHost(u.Hostname()) {
+			cand = append(cand, modelSource{n, base})
+		}
+	}
+	up := make([]bool, len(cand))
+	var wg sync.WaitGroup
+	for i, c := range cand {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			defer cancel()
+			es, err := gateway.Fetch(cctx, &http.Client{Timeout: 1500 * time.Millisecond}, c.base)
+			up[i] = err == nil && len(es) > 0
+		}()
+	}
+	wg.Wait()
+	var out []modelSource
+	for i, c := range cand {
+		if up[i] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func cmdModels(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "fav" {
 		return cmdFavorites(os.Stdout, args[1:])
@@ -147,7 +185,7 @@ search (all must appear, any case). Favorites, marked *, come first.
 		}
 		sources = []modelSource{{name, b}}
 	default:
-		sources = usableSources(cfg, true)
+		sources = append(usableSources(cfg, true), localSources(ctx, cfg)...)
 	}
 
 	all, errs := fetchModels(ctx, sources)
@@ -229,7 +267,7 @@ func modelChoices(ctx context.Context) func() []input.Choice {
 	var mu sync.Mutex
 	var list []input.Choice
 	go func() {
-		rows, _ := fetchModels(ctx, usableSources(cfg, false))
+		rows, _ := fetchModels(ctx, append(usableSources(cfg, false), localSources(ctx, cfg)...))
 		fav := favoriteSet(cfg)
 		sort.SliceStable(rows, func(i, j int) bool {
 			if fi, fj := fav[rows[i].Ref], fav[rows[j].Ref]; fi != fj {
@@ -335,6 +373,8 @@ func cmdFavorites(w io.Writer, args []string) error {
 
 func human(n int) string {
 	switch {
+	case n <= 0:
+		return "?" // a catalogue that lists ids only (a local server) does not say
 	case n >= 1_000_000:
 		return fmt.Sprintf("%.1fM", float64(n)/1e6)
 	case n >= 1000:

@@ -237,12 +237,12 @@ func TestLoginRefusesWhatTakesNoKeyAndLogoutForgets(t *testing.T) {
 	_, home := projectDir(t)
 	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
 	in := bufio.NewReader(strings.NewReader(""))
-	if _, err := login(in, &bytes.Buffer{}, nosecret, cfg, "ollama"); err == nil || !strings.Contains(err.Error(), "takes a key") {
+	if _, err := login(in, &bytes.Buffer{}, nosecret, cfg, "ollama", nil); err == nil || !strings.Contains(err.Error(), "takes a key") {
 		t.Errorf("a local server has no key to store: %v", err)
 	}
 	t.Setenv("GROQ_API_KEY", "")
 	t.Cleanup(func() { harden.Provide("GROQ_API_KEY", "") })
-	if name, err := login(in, &bytes.Buffer{}, func() (string, error) { return " sk-groq \n", nil }, cfg, "Groq"); err != nil || name != "groq" {
+	if name, err := login(in, &bytes.Buffer{}, func() (string, error) { return " sk-groq \n", nil }, cfg, "Groq", nil); err != nil || name != "groq" {
 		t.Fatalf("%q %v", name, err)
 	}
 	keys, _ := config.StoredKeys(home)
@@ -295,5 +295,40 @@ func TestInspectTakesASessionIdOrLatestLikeReplay(t *testing.T) {
 	}
 	if _, err := inspectRoot("nonsense-id"); err == nil || !strings.Contains(err.Error(), "no session") {
 		t.Errorf("nothing: %v", err)
+	}
+}
+
+// Ollama (or another local server) is running and nothing has a key: the first run offers it beside the hosted providers, needs no key for it,
+// lists what it serves and keeps the choice; `sleipnir models` lists it too.
+func TestFirstRunFindsALocalServerAndNeedsNoKey(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"data":[{"id":"qwen3:8b"},{"id":"llama3:8b"}]}`)
+	}))
+	defer ts.Close()
+	_, home := projectDir(t)
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "DEEPINFRA_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(home, ".sleipnir", "config.json")
+	if err := os.WriteFile(cfgPath, []byte(`{"providers":{"ollama":{"base_url":"`+ts.URL+`/v1"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var model string
+	var out bytes.Buffer
+	// 9 hosted providers take a key; the running local server is the tenth choice.
+	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("10\n1\n")), &out, nosecret, true); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if model != "ollama/llama3:8b" || !strings.Contains(out.String(), "10. ollama  (running on this machine, no key)") {
+		t.Fatalf("%q\n%s", model, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(home, ".sleipnir", "auth.json")); err == nil {
+		t.Error("a local server has no key to keep")
+	}
+	if cfg := readJSON(t, cfgPath); sub(cfg, "models", "default") != "ollama/llama3:8b" || sub(cfg, "providers", "ollama", "base_url") == nil {
+		t.Errorf("the config keeps the model beside the provider the person wrote: %v", cfg)
 	}
 }

@@ -61,6 +61,7 @@ var commonOptions = map[string]optionSpec{
 	"request_timeout_sec":     {kind: optSeconds},
 	"extra_body":              {kind: optObject},
 	"capture_tokens":          {kind: optBool},
+	"context_window":          {kind: optInt}, // tokens: what the server really gives the model (a local server's catalogue does not say)
 }
 
 // chatOptions are the extras of the chat-completions dialect.

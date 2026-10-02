@@ -59,7 +59,7 @@ func readSecret(in *bufio.Reader) (string, error) {
 
 // login asks which provider (unless named), reads its key, and stores it in ~/.sleipnir/auth.json and in this process. It returns the
 // provider's name.
-func login(in *bufio.Reader, out io.Writer, secret func() (string, error), cfg *config.Config, name string) (string, error) {
+func login(in *bufio.Reader, out io.Writer, secret func() (string, error), cfg *config.Config, name string, local []modelSource) (string, error) {
 	choices := loginChoices(cfg)
 	var pick *loginChoice
 	for i := range choices {
@@ -71,13 +71,16 @@ func login(in *bufio.Reader, out io.Writer, secret func() (string, error), cfg *
 		return "", fmt.Errorf("login: %q is not a provider that takes a key (those that do: %s; a local server needs none)", name, joinNames(choices))
 	}
 	for pick == nil {
-		fmt.Fprintln(out, "Which provider do you have a key for?")
+		fmt.Fprintln(out, "Which provider will you use?")
 		for i, c := range choices {
 			note := ""
 			if c.name == "heimdall" {
 				note = "  (recommended)"
 			}
 			fmt.Fprintf(out, "  %2d. %s%s\n", i+1, c.name, note)
+		}
+		for i, l := range local { // a server running on this machine needs no key
+			fmt.Fprintf(out, "  %2d. %s  (running on this machine, no key)\n", len(choices)+i+1, l.name)
 		}
 		fmt.Fprint(out, "Number (q to quit): ")
 		line, err := in.ReadString('\n')
@@ -88,6 +91,8 @@ func login(in *bufio.Reader, out io.Writer, secret func() (string, error), cfg *
 		var n int
 		if _, serr := fmt.Sscanf(line, "%d", &n); serr == nil && n >= 1 && n <= len(choices) {
 			pick = &choices[n-1]
+		} else if serr == nil && n > len(choices) && n <= len(choices)+len(local) {
+			return local[n-len(choices)-1].name, nil
 		}
 	}
 	fmt.Fprintf(out, "Paste your %s key (it is not shown; it is kept in %s, readable by you only): ", pick.name, config.AuthPath(userHome()))
@@ -134,7 +139,7 @@ func cmdLogin(_ context.Context, args []string) error {
 		name = fs.Arg(0)
 	}
 	in := bufio.NewReader(os.Stdin)
-	_, err = login(in, os.Stderr, func() (string, error) { return readSecret(in) }, cfg, name)
+	_, err = login(in, os.Stderr, func() (string, error) { return readSecret(in) }, cfg, name, nil)
 	return err
 }
 

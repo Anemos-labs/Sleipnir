@@ -84,6 +84,9 @@ The first release.
 
 ### Providers
 
+- Local servers are found, not configured: the first run lists a running Ollama, LM Studio, llama.cpp or vLLM beside the hosted providers (no key), and `sleipnir models` and the
+  `/model` menu list their models. A model on a keyless server of this machine costs nothing and is assumed to have an 8192-token window (a catalogue of ids only does not say, and
+  Ollama cuts a longer prompt off silently), which `providers.<name>.options.context_window` raises. A catalogue entry that carries nothing no longer replaces a known price and window with zeros.
 - `/model provider/model` in the chat moves the conversation to another model, keeping the thread, notes, spine and bill (the agent is
   rebuilt and the old one's snapshot restored: the same path as a resume). `/model ` opens a menu of every model of the providers whose key is set (favorites first, typing filters it with the same fuzzy match as the commands); `/model` alone shows the current one. A swarm is refused;
   its workers run on their roles' models. The errors of a first run now say Heimdall is the recommended start.

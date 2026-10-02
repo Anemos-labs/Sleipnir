@@ -355,6 +355,7 @@ suspecting the endpoint.
 | `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
+| `context_window` | int | model-dependent | The context window, in tokens, that the server really gives the model. A catalogue that lists ids only (Ollama, LM Studio, llama.cpp, vLLM) does not say, so a model of a keyless server on this machine is assumed to have **8192** tokens and to cost nothing; say the real window here (`"providers": {"ollama": {"options": {"context_window": 32768}}}`, after raising `num_ctx` in Ollama itself, which cuts a longer prompt off without a word). Compaction keeps the prompt inside it |
 
 Both dialects also take the timeouts below. A silent server is cut off, so no request holds an agent for ever.
 

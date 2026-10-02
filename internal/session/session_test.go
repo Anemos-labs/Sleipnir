@@ -1022,3 +1022,45 @@ func TestThePlanToolsListIsShownBackAndHoldsTheRunOpen(t *testing.T) {
 		t.Errorf("the plan was shown back: %v; the open step was noted: %v", sawPlan, sawNudge)
 	}
 }
+
+// A model on a server of this machine (no key, a loopback address) costs nothing and, since its catalogue lists ids only, gets a cautious
+// window that options.context_window can raise; a model of a hosted provider keeps the conservative price estimate.
+func TestAModelOnALocalServerIsFreeAndHasACautiousWindow(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{
+		"local":  {Dialect: config.DialectOpenAIChat, BaseURL: "http://127.0.0.1:11434/v1"},
+		"big":    {Dialect: config.DialectOpenAIChat, BaseURL: "http://127.0.0.1:11434/v1", Options: map[string]any{"context_window": float64(32768)}},
+		"hosted": {Dialect: config.DialectOpenAIChat, BaseURL: "https://llm.example.com/v1", APIKeyEnv: "HOSTED_TEST_KEY"},
+	}
+	t.Setenv("HOSTED_TEST_KEY", "k")
+	build := func(provider string) cost.Model {
+		_, m, err := session.BuildProvider(cfg, session.ModelRef{Provider: provider, Model: "qwen3:8b"}, session.ProviderOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	if m := build("local"); m.Price.InputPerM != 0 || m.Price.OutputPerM != 0 || m.ContextTokens != 8192 {
+		t.Errorf("local: %+v", m)
+	}
+	if m := build("big"); m.ContextTokens != 32768 {
+		t.Errorf("options.context_window: %d", m.ContextTokens)
+	}
+	if m := build("hosted"); m.Price.OutputPerM == 0 || m.ContextTokens != 200_000 {
+		t.Errorf("hosted keeps the estimate: %+v", m)
+	}
+}
+
+// A catalogue that lists ids only knows nothing about a model: it must not replace the window and the price that were known with zeros.
+func TestAnIdsOnlyCatalogueDoesNotWipeWhatIsKnown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":[{"id":"qwen3:8b"}]}`)
+	}))
+	defer srv.Close()
+	m := cost.Fallback("qwen3:8b")
+	m.ContextTokens = 8192
+	got := session.EnrichModel(context.Background(), t.TempDir(), srv.URL, m)
+	if got.ContextTokens != 8192 || got.Price != m.Price {
+		t.Errorf("enriched from a catalogue with nothing in it: %+v", got)
+	}
+}

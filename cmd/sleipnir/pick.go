@@ -101,11 +101,20 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 	sources := usableSources(cfg, false)
 	if len(sources) == 0 {
 		fmt.Fprintln(out, "Welcome to Sleipnir. It needs a model provider, and none has a key yet.")
-		if _, err := login(in, out, secret, cfg, ""); err != nil {
+		local := localSources(ctx, cfg)
+		name, err := login(in, out, secret, cfg, "", local)
+		if err != nil {
 			return err
 		}
-		if sources = usableSources(cfg, false); len(sources) == 0 {
-			return errors.New("the key was saved, but no provider with a model list is ready: `sleipnir models --provider NAME` shows why")
+		for _, l := range local {
+			if l.name == name { // a local server was chosen: no key to keep
+				sources = []modelSource{l}
+			}
+		}
+		if len(sources) == 0 {
+			if sources = usableSources(cfg, false); len(sources) == 0 {
+				return errors.New("the key was saved, but no provider with a model list is ready: `sleipnir models --provider NAME` shows why")
+			}
 		}
 	}
 	home, _ := os.UserHomeDir()
