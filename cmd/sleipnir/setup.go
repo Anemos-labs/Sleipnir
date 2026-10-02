@@ -322,7 +322,7 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		if width > 0 && width < 110 {
 			model = "" // the widest column: a narrow terminal keeps the id, the cost and what was asked
 		}
-		head := fmt.Sprintf("%s %s  %s$%-8.4f ", mark, r.id, model, r.cost)
+		head := fmt.Sprintf("%s %s  %-9s %s$%-8.4f ", mark, r.id, ago(time.Since(r.when)), model, r.cost)
 		prompt := r.prompt
 		if width > 0 {
 			prompt = fit(prompt, width-1-utf8.RuneCountInString(head))

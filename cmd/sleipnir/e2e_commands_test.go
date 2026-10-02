@@ -309,7 +309,7 @@ func TestRunOutput(t *testing.T) {
 		if n := strings.Count(r.stdout, "mock-1"); n < 5 {
 			t.Errorf("sessions lists %d sessions of mock-1, want at least the five runs above:\n%s", n, r.stdout)
 		}
-		if !regexp.MustCompile(`(?m)^↺ \d{8}-\d{6}-[0-9a-f]+ +mock-1 +\$\d+\.\d{4} +@hello$`).MatchString(r.stdout) {
+		if !regexp.MustCompile(`(?m)^↺ \d{8}-\d{6}-[0-9a-f]+ +(?:just now|\d+[mhd] ago) +mock-1 +\$\d+\.\d{4} +@hello$`).MatchString(r.stdout) {
 			t.Errorf("no line of the expected shape in:\n%s", r.stdout)
 		}
 	})
