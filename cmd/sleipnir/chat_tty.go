@@ -193,11 +193,14 @@ func roleChoices(s *session.Session) func() []input.Choice {
 }
 
 // resumeChoices is what `/resume ` completes to: the earlier sessions of this project that can be continued, newest first, each with when it
-// was, what it cost and what was asked first. They are read in the background (a log can be large) and the list is empty until then.
+// was, what it cost and what was asked first. They are read in the background (a log can be large); a menu that is opened before they are read
+// waits for them for up to a second, because it would otherwise open empty and stay so until the next key (a slow machine did that in CI).
 func resumeChoices(s *session.Session) func() []input.Choice {
 	var mu sync.Mutex
 	var list []input.Choice
+	loaded := make(chan struct{})
 	go func() {
+		defer close(loaded)
 		var out []input.Choice
 		for _, d := range s.EarlierSessions(12) {
 			var model, prompt string
@@ -214,6 +217,10 @@ func resumeChoices(s *session.Session) func() []input.Choice {
 		mu.Unlock()
 	}()
 	return func() []input.Choice {
+		select {
+		case <-loaded:
+		case <-time.After(time.Second):
+		}
 		mu.Lock()
 		defer mu.Unlock()
 		return list
