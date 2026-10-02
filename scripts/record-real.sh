@@ -143,14 +143,15 @@ i=0
 while [ "$i" -lt 900 ]; do
   p=$(pane)
   if printf '%s' "$p" | grep -q 'esc says no'; then sleep 1.6; tmux send-keys -t $s 1; sleep 1; fi
-  if printf '%s' "$p" | grep -Eq '[0-9]+ steps? .*cache hit' && ! printf '%s' "$p" | grep -q 'esc to interrupt'; then break; fi
+  if printf '%s' "$p" | grep -Eq '[0-9]+ steps? .*\$[0-9]' && ! printf '%s' "$p" | grep -q 'esc to interrupt'; then break; fi
   sleep 0.5; i=$((i + 1))
 done
 [ "$i" -lt 900 ] || { echo "record-real: the turn did not end in 450 s" >&2; pane >&2; exit 1; }
 echo "record-real: the turn took about $((i / 2)) s" >&2
 sleep 3
-# the two pages the footer names: ctrl+t is the stats page, ctrl+g the agents page
-tmux send-keys -t $s C-t; sleep 3.5; tmux send-keys -t $s C-g; sleep 4
+if [ "$SCENARIO" = chat ]; then # the two pages the footer names: ctrl+t is the stats page, ctrl+g the agents page
+  tmux send-keys -t $s C-t; sleep 3.5; tmux send-keys -t $s C-g; sleep 4
+fi
 typist "/exit"; sleep 0.5; tmux send-keys -t $s Enter
 i=0; while [ ! -e "$tmp/done" ] && [ "$i" -lt 60 ]; do sleep 0.5; i=$((i + 1)); done
 "$BIN" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$OUT" --cols "$COLS" --rows "$ROWS" --max-gap "$MAXGAP" ${STILL:+--still "$STILL" ${STILLAT:+--still-at "$STILLAT"}} --title "sleipnir  ($MODEL, a real session)"

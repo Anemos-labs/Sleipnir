@@ -1401,7 +1401,11 @@ func (m *chatModel) printTeam() {
 	}
 	c := sn.Board.Counts
 	var head row
-	head.add(st.dim, "  "+m.k.g.compact+" "+count(len(rows), "agent", "agents")).
+	started := fmt.Sprintf("%d agents started", len(rows))
+	if m.info.Agents > len(rows) { // the manager spawns workers when a job wants them: how many of the team have been
+		started = fmt.Sprintf("%d of %d agents started", len(rows), m.info.Agents)
+	}
+	head.add(st.dim, "  "+m.k.g.compact+" "+started).
 		add(st.dim, fmt.Sprintf(" %s tasks: %d todo, %d running, %d verifying, %d merged", m.k.g.dot, c.Todo, c.Running, c.Verifying, c.Merged))
 	if c.Failed > 0 {
 		head.add(st.bad, fmt.Sprintf(", %d failed", c.Failed))

@@ -113,7 +113,7 @@ func TestChatAgentsPageShowsTheTeamAndASingleAgentHasNone(t *testing.T) {
 	r.at(b.Now().Add(2 * time.Second))
 	r.emit(log...)
 	r.press(input.RuneKey('g', input.Ctrl))
-	s := r.shows("❯ /agents", "3 agents", "tasks:", "AGENT", "backend", "tester")
+	s := r.shows("❯ /agents", "3 of 8 agents started", "tasks:", "AGENT", "backend", "tester")
 	if strings.Contains(s, "a single agent") {
 		t.Errorf("a team is not a single agent:\n%s", s)
 	}
