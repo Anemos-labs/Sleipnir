@@ -307,7 +307,8 @@ func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner 
 		}
 	case "apply_patch":
 		if patch, ok := stringField(call.input, "patch"); ok {
-			body = append(body, widget.UnifiedDiffWith(patchToUnified(patch), inner, k.Theme, widget.DiffOptions{MaxLines: approvalDiffRows})...)
+			// the diff names each file it changes: the path above it would say the same again
+			body = widget.UnifiedDiffWith(patchToUnified(patch), inner, k.Theme, widget.DiffOptions{MaxLines: approvalDiffRows})
 		}
 	}
 	return body

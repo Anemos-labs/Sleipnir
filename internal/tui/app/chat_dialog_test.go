@@ -1,0 +1,27 @@
+package app
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
+)
+
+// A patch names the files it changes in its own diff: the question must not put the path above it as well (it was said twice).
+func TestTheQuestionForAPatchNamesTheFileOnce(t *testing.T) {
+	k := goldenLook(true)
+	patch := "*** Begin Patch\n*** Update File: a/a.go\n@@\n-func Reverse(s string) string { panic(\"todo\") }\n+func Reverse(s string) string { return s }\n*** End Patch"
+	call := &toolRun{name: "apply_patch", input: mustJSON(map[string]any{"patch": patch})}
+	req := perm.Request{Agent: "be-1", Tool: "apply_patch", Paths: []string{"/work/a/a.go"}, Summary: "a/a.go [default mode: writing /work/a/a.go needs approval]"}
+	_, body := k.requestBody(req, call, 90, "/work", "")
+	n := 0
+	for _, l := range strings.Split(widgettest.Flatten(body), "\n") {
+		if strings.HasPrefix(l, "a/a.go") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d lines of the question begin with the file, want 1:\n%s", n, widgettest.Flatten(body))
+	}
+}
