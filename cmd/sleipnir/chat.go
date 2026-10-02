@@ -266,7 +266,7 @@ const chatHelp = `conversation
 /sessions          the newest sessions
 /compact [focus]   fold the older thread now; focus says what to keep in view
 /rewind [id]       list checkpoints, or restore files to before a turn
-/diff <id>         what changed since a checkpoint
+/diff [id]         what changed in the newest checkpoint, or in <id>
 /exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)
 
 model and cost
@@ -682,11 +682,24 @@ func rewind(w io.Writer, s *session.Session, args []string) {
 }
 
 func showDiff(stdout, stderr io.Writer, s *session.Session, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: /diff <checkpoint id>")
-		return
+	id := ""
+	if len(args) > 0 {
+		id = args[0]
+	} else {
+		// no id: the newest checkpoint that changed a file (a trial's person typed /diff after an edit and was told to look up an id first)
+		list := s.Ckpt.List()
+		for i := len(list) - 1; i >= 0 && id == ""; i-- {
+			if len(list[i].Files) > 0 {
+				id = list[i].ID
+			}
+		}
+		if id == "" {
+			fmt.Fprintln(stderr, "usage: /diff <checkpoint id>   (no checkpoint has changed a file yet)")
+			return
+		}
+		fmt.Fprintf(stderr, "checkpoint %s, the newest that changed a file\n", id)
 	}
-	diffs, err := s.Ckpt.Diff(args[0])
+	diffs, err := s.Ckpt.Diff(id)
 	if err != nil {
 		fmt.Fprintln(stderr, "diff:", err)
 		return

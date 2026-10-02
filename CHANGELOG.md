@@ -218,6 +218,7 @@ The first release.
 - A team's `wait` that times out after five minutes in which no task changed state says so, and that waiting again will not change it (look at what the workers are stuck on, or end the run): a trial's team waited twenty minutes on a verifier that failed for a reason no task owned. The note is in a tool result, not in the prompt.
 - `/model` and `/resume` typed bare open their menu (the same one `/model ` and `/resume ` open), where `/model` only printed the current model and `/resume` started the newest session at once; a trial found no hint that the menu was one space away. `/help` says so.
 - While an outage is waited out (after the six usual attempts) a retry is announced once in each half minute of waiting instead of every time: a minute of one endpoint's 503 was seven wrapped lines in the chat. The first six attempts are each said, as before, and the status line says how long the model has not answered.
+- `/diff` with no id shows the newest checkpoint that changed a file (it asked for an id, which `/rewind` had to list first).
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).

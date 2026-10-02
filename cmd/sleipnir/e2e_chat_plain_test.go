@@ -691,3 +691,12 @@ func TestRunCtrlCEndsTheRun(t *testing.T) {
 		t.Errorf("the session ended with reason %q (recorded: %v), want \"interrupted\"", got, ok)
 	}
 }
+
+// `/diff` with no id shows the newest checkpoint that changed a file, where it asked for an id that /rewind had to list first.
+func TestChatDiffWithoutAnIdShowsTheLastChange(t *testing.T) {
+	m := startModel(t)
+	m.on("@write", writes("approved.txt"))
+	w := newWorld(t, m.url())
+	r := w.run("@write\n/diff\n/quit\n", "chat", "--mode", "accept-edits")
+	assertRun(t, r, 0, nil, []string{"the newest that changed a file", "approved.txt"})
+}
