@@ -82,7 +82,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		}
 		log, _ := s.Log.Subscribe(4096)
 		models := modelChoices(startCtx)
-		attach <- app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd, Models: models}
+		attach <- app.ChatAttach{Host: host, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd, Models: models, Roles: roleChoices(s)}
 	}()
 
 	var hist *input.History
@@ -127,6 +127,20 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		return err
 	}
 	return nil
+}
+
+// roleChoices is what `/roles ` completes to: the roles that can run on a model of their own (the default is /model's), each with the model it
+// runs on now and where that came from.
+func roleChoices(s *session.Session) func() []input.Choice {
+	return func() []input.Choice {
+		var out []input.Choice
+		for _, r := range s.RoleModels() {
+			if r.Role != "default" {
+				out = append(out, input.Choice{Text: r.Role, Detail: r.Model + " · " + r.From})
+			}
+		}
+		return out
+	}
 }
 
 // chatInfo is what the banner says about a session.

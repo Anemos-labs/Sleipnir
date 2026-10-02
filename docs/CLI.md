@@ -1647,15 +1647,15 @@ flags:
 | `/context` | token size of each prompt layer: constitution, shared pin, role pin, notes, spine, verbatim thread |
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
 | `/agents` | the team's agents and tasks (`ctrl+g`); in a single-agent session it says so |
-| `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it). A team has no conversation to move: it starts again on the new model, with the roles that name their own kept; the reference is checked first, so a typo or a provider without a key ends nothing. `/roles role=model` checks its references the same way |
+| `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it). A team starts again on the new model, with the manager's conversation (the workers start again) and the roles that name their own model kept; the reference is checked first, so a typo or a provider without a key ends nothing. `/roles role=model` checks its references the same way |
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |
 | `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |
 | `/verbose [on\|off]` · `/anim [on\|off]` | show or hide notices and tool errors · turn the motion on or off |
 | `/sessions` · `/cwd` | the newest sessions (resume one with `sleipnir --resume <id>`) · the directory the session works in |
 | `/new` · `/resume [id]` | start the conversation again, empty · continue an earlier session (the newest of this project, or the id `/sessions` shows) |
-| `/restart [flags]` | start the chat again with other flags; the model, mode and the flags the session started with (a team stays a team) stay, and the conversation comes along when it can (a single agent) |
-| `/login [provider]` | add a key, or sign in with your ChatGPT plan (`/login chatgpt`), without leaving for another terminal: the chat ends, `sleipnir login` runs on the terminal (the key is typed hidden, a browser sign-in prints its address), and the chat comes back, a single agent with its conversation, a team starting again. A name that is not a provider ends nothing |
-| `/roles [role=model]` | which model each role runs on and where it came from; name one to change it (restarts, keeping the rest) |
+| `/restart [flags]` | start the chat again with other flags; the model, mode and the flags the session started with (a team stays a team) stay, and the conversation comes along (a single agent's, or a team's manager and its board; not into git worktrees) |
+| `/login [provider]` | add a key, or sign in with your ChatGPT plan (`/login chatgpt`), without leaving for another terminal: the chat ends, `sleipnir login` runs on the terminal (the key is typed hidden, a browser sign-in prints its address), and the chat comes back where you were (a team's manager and its board too). A name that is not a provider ends nothing |
+| `/roles [role=model]` | which model each role runs on and where it came from; name one to change it (restarts, keeping the rest). A menu opens after `/roles ` with the roles and what each runs on, and after the `=` of one the models, typing filters them |
 | `/swarm <n> [flags]` | start again as a manager with up to `n` workers: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
 | `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan` or `bypass` |
 | `/plan` | shorthand for `/mode plan` (read-only) |

@@ -22,13 +22,14 @@ shift
 cols=110 rows=34 wait=3 home= cwd=
 tmp=$(mktemp -d)
 # stop ends the run: the tmux session does not take script (and the program on its terminal) with it, so they are ended by their own pid
-# (found by script's first argument and the log it writes, not by a pattern over every command line)
+# (found by script's first argument and the log it writes, not by a pattern over every command line). The program is killed outright, and
+# first: told to end, it says it was cancelled and clears what it drew, which script would log, and the picture would be of that.
 stop() {
-  tmux kill-session -t "look-$$" 2>/dev/null || true
   for p in $(ps -eo pid,args | awk -v t="$tmp/o" '$2 == "script" && index($0, t) { print $1 }'); do
-    pkill -TERM -P "$p" 2>/dev/null || true
-    kill -TERM "$p" 2>/dev/null || true
+    pkill -KILL -P "$p" 2>/dev/null || true
+    kill -KILL "$p" 2>/dev/null || true
   done
+  tmux kill-session -t "look-$$" 2>/dev/null || true
 }
 trap 'stop; [ -n "${LOOK_KEEP:-}" ] || rm -rf "$tmp"' EXIT
 : > "$tmp/actions"
@@ -60,7 +61,6 @@ mkdir -p "$home" "$cwd"
 s=look-$$
 cmd=$(printf '%s ' "$@")
 tmux new-session -d -s "$s" -x "$cols" -y "$rows" "cd '$cwd' && env HOME='$home' PATH='$root/bin':\$PATH LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor script -q --flush --log-out '$tmp/o' --log-timing '$tmp/t' --logging-format advanced -c '$cmd'; touch '$tmp/done'"
-t0=$(date +%s.%N)
 sleep "$wait"
 while IFS="$(printf '\t')" read -r kind arg; do
   case "$kind" in
@@ -74,13 +74,11 @@ while IFS="$(printf '\t')" read -r kind arg; do
   sleep 0.8
 done < "$tmp/actions"
 sleep "$wait"
-# the picture is the moment the waiting ended: ending the terminal makes the program say it was cancelled, and that is not what was looked at
-at=$(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN { printf "%.2fs", b - a - 0.3 }')
 stop
 sleep 1
 # script may still be writing the end of its log for a moment (the timing file can be ahead of the log): try again
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  "$root/bin/sleipnir" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$tmp/all.svg" --cols "$cols" --rows "$rows" --max-gap 1h --still "$tmp/still.svg" --still-at "$at" --hold 1s >/dev/null 2>"$tmp/err" && break
+  "$root/bin/sleipnir" term-svg --log "$tmp/o" --timing "$tmp/t" --out "$tmp/all.svg" --cols "$cols" --rows "$rows" --max-gap 1h --still "$tmp/still.svg" --hold 1s >/dev/null 2>"$tmp/err" && break
   grep -q 'does not match the log' "$tmp/err" || { cat "$tmp/err" >&2; exit 1; }
   sleep 1
 done

@@ -14,7 +14,7 @@ const (
 
 // Candidate is one completion.
 type Candidate struct {
-	Text    string // replaces the text from the completer's `from` to the cursor; a Text that ends in "/" keeps the menu open
+	Text    string // replaces the text from the completer's `from` to the cursor; a Text that ends in "/" or "=" keeps the menu open (what follows is another choice)
 	Display string // what the menu shows; Text when empty
 	Detail  string // a dim description to its right
 }
@@ -334,7 +334,7 @@ func (e *Editor) adjustMenu() {
 }
 
 // acceptMenu replaces the word with the selected candidate. A candidate that ends in "/" (a directory) leaves the menu open
-// on what is inside it.
+// on what is inside it, and one that ends in "=" (a role of /roles) on the models it can be given.
 func (e *Editor) acceptMenu() {
 	m := e.menu
 	if m == nil || m.sel >= len(m.cands) || m.from > e.cur {
@@ -348,7 +348,7 @@ func (e *Editor) applyCandidate(from int, c Candidate) {
 	rs := []rune(c.Text)
 	e.replace(from, e.cur, rs, from+len(rs), grpNone)
 	e.closeMenu()
-	if strings.HasSuffix(c.Text, "/") {
+	if strings.HasSuffix(c.Text, "/") || strings.HasSuffix(c.Text, "=") {
 		e.openMenu()
 	}
 }

@@ -112,3 +112,23 @@ func TestE2EChatTeamModelSwitchKeepsTheConversation(t *testing.T) {
 	u.exited(0)
 	u.goals(m, "@hello", "@again")
 }
+
+// /roles opens a menu of the roles that can run on a model of their own, with what each runs on, and choosing one goes on to the menu of its
+// models: a role's model is chosen in the chat, and not by writing a flag.
+func TestE2EChatRolesMenu(t *testing.T) {
+	m := startModel(t)
+	w := newWorld(t, m.url())
+	u := startUI(t, w, "--swarm", "4")
+	u.ready()
+
+	u.typeText("/roles ")
+	u.expectVisible("manager", "backend", "the session's model")
+	u.typeText("comp") // the menu shows eight rows: the compactor is found by typing
+	u.expectVisible("compactor", "no compactor model is set")
+	u.typeText(keyTab)
+	u.expectVisible("> /roles compactor=")
+	u.ctrlC() // clears the line
+	u.ready()
+	u.ctrlD()
+	u.exited(0)
+}

@@ -316,6 +316,9 @@ func (m *chatModel) attach(a ChatAttach) {
 	var cs []input.Completer
 	if a.Models != nil {
 		cs = append(cs, input.Choices("model", a.Models))
+		if a.Roles != nil {
+			cs = append(cs, input.RoleModels("roles", a.Roles, a.Models))
+		}
 	}
 	if len(a.Commands) > 0 {
 		cs = append(cs, input.SlashCommands(a.Commands))

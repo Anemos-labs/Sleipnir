@@ -39,7 +39,7 @@ chat at once, a team of eight agents (`--swarm 0` for a single agent). `sleipnir
   servers (Ollama, LM Studio, llama.cpp, vLLM, SGLang, Jan) with no key. Your ChatGPT plan works too: `sleipnir login chatgpt` signs in with the browser, no key. A searchable list of every model with filters and favorites: `/model` in the chat,
   `sleipnir models`. [Providers](docs/PROVIDERS.md)
 * **One model by default, a model per job when you choose.** A frontier manager, an open-weight backend, a small model that writes the compaction
-  summaries: `--role-model`, or `models.roles`. [Configuration](docs/CONFIGURATION.md)
+  summaries: `/roles` in the chat (a menu), `--role-model`, or `models.roles`. [Configuration](docs/CONFIGURATION.md)
 * **Made for models that are not perfect.** Plain, complete briefs for every worker; a stuck or looping model is stopped and told why; edits need a
   read first; a test rewritten to match a bug is called out; "done" is the harness's word, after a verifier passed. [Why](docs/WHY.md)
 * **Teams that share a cache.** A manager and up to dozens of workers over one repository, each in its own git worktree, finished work through a

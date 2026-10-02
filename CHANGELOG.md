@@ -110,6 +110,9 @@ The first release.
 - `/model provider/model` in the chat moves the conversation to another model, keeping the thread, notes, spine and bill (the agent is
   rebuilt and the old one's snapshot restored: the same path as a resume). `/model ` opens a menu of every model of the providers whose key is set (favorites first, typing filters it with the same fuzzy match as the commands); `/model` alone shows the current one. In a team the chat starts the team again on that model,
   with the manager's conversation (a team's workers run on their roles' models). The errors of a first run now say Heimdall is the recommended start.
+- `/roles ` opens a menu in the chat: the roles that can run on a model of their own, each with the model it runs on now and where that came from, and, once one is chosen
+  (it is inserted with its `=`), the menu of models that `/model` has, filtered as you type. A model per role was a flag (`--role-model`) or a line of `models.roles`, or `/roles
+  role=model` typed whole; the choice is now made from the keys, in the chat. The editor keeps a menu open after a choice that ends in `=`, as it does after one that ends in `/`.
 - Built in beside Heimdall, OpenRouter and OpenAI: Anthropic, the open-weight hosts Together, Fireworks, Groq, Cerebras and DeepInfra
   (each needs only its key variable), and the local servers Ollama, LM Studio, llama.cpp and vLLM (no key: `ollama/qwen3:8b`).
   A marketplace id that starts with `openai/` or `anthropic/` goes to your default provider when that vendor's own key is not set.
@@ -467,6 +470,9 @@ The first release.
   bound twice that, and a result of four kilobytes kept for every step fails it by three times). It first said 17 KB a step, which was
   the test's own blob store: held in memory it kept every result, where a session keeps them on disk. With the store on disk a heap
   profile accounted for all of the growth, the index and the set of blobs already verified (which is bounded); the harness leaks nothing.
+- `scripts/look.sh` ends the program it looks at with SIGKILL, and before the terminal goes. Told to end (the terminal hung up), the chat clears the live region it drew,
+  `script` logged that, and a picture of the last moment was of a screen with the banner and nothing else: found by a menu that was on the real screen (tmux said so) and not in
+  the picture. Choosing a time for the picture did not work: script's timing file does not always carry the wait before the end.
 - The agent tests' rig closes its agent when a test ends. A compaction a test never waited for (a second turn starts one) was still running
   when the mock endpoint was closed and the next test began, and read `agent.RetryBase` in its retry while that test's rig wrote it: `-race`
   failed two tests that did nothing wrong, once in a full run of the packages together on a busy machine.
