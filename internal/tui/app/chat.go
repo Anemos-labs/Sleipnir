@@ -485,11 +485,11 @@ func (m *chatModel) editorKey(k input.Key) {
 	// The two pages of the footer, the keys that are the commands typed out. The editor would transpose two characters with ctrl+t, and a
 	// person who wants that has the arrows.
 	if k.IsRune('t', input.Ctrl) {
-		m.submit("/stats")
+		m.pageKey("/stats")
 		return
 	}
 	if k.IsRune('g', input.Ctrl) {
-		m.submit("/agents")
+		m.pageKey("/agents")
 		return
 	}
 	if k.Is(input.Enter, 0) && m.menuIsExact() {
@@ -498,6 +498,14 @@ func (m *chatModel) editorKey(k input.Key) {
 		m.handle(k)
 	}
 	m.handle(k)
+}
+
+// pageKey is a footer key: the page, without the command typed out in front of it (nobody typed it, and the page names itself).
+func (m *chatModel) pageKey(cmd string) {
+	if m.attached && m.page(cmd, false) {
+		return
+	}
+	m.submit(cmd)
 }
 
 // menuIsExact reports whether the completion menu is open on a candidate that is exactly the word that was typed.
@@ -645,7 +653,7 @@ func (m *chatModel) submit(text string) {
 	if text == "" {
 		return
 	}
-	if m.attached && m.page(text) {
+	if m.attached && m.page(text, true) {
 		return
 	}
 	if m.busy() || len(m.queue) > 0 {
@@ -1363,14 +1371,17 @@ func callOf(t *toolRun) core.Block {
 // ---- panels on demand ----
 
 // page answers the two commands that are pages, /stats and /agents (the keys ctrl+t and ctrl+g type them): they are drawn from what the
-// program already knows, so they answer at once, in a turn or not, and the host is not asked. It reports whether the line was one.
-func (m *chatModel) page(line string) bool {
+// program already knows, so they answer at once, in a turn or not, and the host is not asked. It reports whether the line was one. The line
+// is echoed as typed when echo says so (a key did not type it).
+func (m *chatModel) page(line string, echo bool) bool {
 	f := strings.Fields(line)
 	if len(f) != 1 || (f[0] != "/stats" && f[0] != "/agents") {
 		return false
 	}
 	m.syncStream()
-	m.block(bkPrompt, m.k.promptLines(line, m.cols))
+	if echo {
+		m.block(bkPrompt, m.k.promptLines(line, m.cols))
+	}
 	if f[0] == "/stats" {
 		m.printStats()
 	} else {

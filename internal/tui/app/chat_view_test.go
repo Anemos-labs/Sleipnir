@@ -64,11 +64,14 @@ func TestChatPageCarriesNoStatisticsAndTheStatsPageHoldsThem(t *testing.T) {
 		t.Errorf("the footer names the key of the stats page:\n%s", s)
 	}
 	r.ctrl('t')
-	s = r.shows("❯ /stats", "◆ stats", "cost", "$0.01", "4 requests", "saved ≈", "at list price", "the prompt, layer by layer")
+	s = r.shows("◆ stats", "cost", "$0.01", "4 requests", "saved ≈", "at list price", "the prompt, layer by layer")
 	for _, want := range []string{"shared", "role", "notes", "spine", "of the prompts came from the provider's cache"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the stats page lacks %q:\n%s", want, s)
 		}
+	}
+	if strings.Contains(s, "❯ /stats") {
+		t.Errorf("a key is not a command that was typed: the page does not start with it:\n%s", s)
 	}
 	// the same page, typed out
 	r2 := startChat(t, rigOpts{cols: 100, rows: 30})
@@ -76,7 +79,7 @@ func TestChatPageCarriesNoStatisticsAndTheStatsPageHoldsThem(t *testing.T) {
 	r2.emit(log...)
 	r2.typeText("/stats")
 	r2.enter()
-	r2.shows("◆ stats", "saved ≈")
+	r2.shows("❯ /stats", "◆ stats", "saved ≈") // what a person typed is shown as they typed it
 	if got := r2.host.commands; len(got) != 0 {
 		t.Errorf("the page is drawn by the program, the host was asked %q", got)
 	}
@@ -113,7 +116,7 @@ func TestChatAgentsPageShowsTheTeamAndASingleAgentHasNone(t *testing.T) {
 	r.at(b.Now().Add(2 * time.Second))
 	r.emit(log...)
 	r.press(input.RuneKey('g', input.Ctrl))
-	s := r.shows("❯ /agents", "3 of 8 agents started", "tasks:", "AGENT", "backend", "tester")
+	s := r.shows("3 of 8 agents started", "tasks:", "AGENT", "backend", "tester")
 	if strings.Contains(s, "a single agent") {
 		t.Errorf("a team is not a single agent:\n%s", s)
 	}
