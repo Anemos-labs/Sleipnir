@@ -226,6 +226,7 @@ The first release.
 - Setting a `/goal` says that Esc pauses it and `/goal` says where it stands (a trial did not find either).
 - `sleipnir run` ends with which files it changed, or "no file was changed" (a run that was refused its edits ended with a diagnosis and a summary that looked like a success). `/clear` is the same as `/new`.
 - `/rewind` lists only the checkpoints that changed a file, and says how to use one (a trial saw a list of "0 files" with no hint).
+- A command that exits 0 and says that no test ran ("Ran 0 tests", "collected 0 items", "no tests to run") gets a note under its exit code, so that the model does not report it as a passing run (a trial's model did).
 - `/steer TEXT` tells the running turn something without stopping it ("use the other file"): it is read with the agent's next step, and answers
   at once beside the turn. What was typed ahead waited for the turn to end. The end of a turn that took half a minute or more rings the
   terminal's bell, as a question does (ideas from reading crush, opencode, codex, aider, goose, hermes-agent, gemini-cli and cline).

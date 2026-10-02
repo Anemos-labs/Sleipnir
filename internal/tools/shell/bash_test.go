@@ -32,6 +32,7 @@ func TestBashBasics(t *testing.T) {
 		{name: "echo", command: "echo hello", want: "hello\n[exit code 0]"},
 		{name: "no trailing newline", command: "printf 'no newline'", want: "no newline\n[exit code 0]"},
 		{name: "no output", command: "true", want: "[exit code 0]"},
+		{name: "no test ran", command: "echo \"Ran 0 tests in 0.000s\"", want: "Ran 0 tests in 0.000s\n[exit code 0]\n" + noTestsNote},
 		{name: "exit 3 is not an error", command: "exit 3", want: "[exit code 3]"},
 		{name: "false", command: "false", want: "[exit code 1]"},
 		{name: "exit code survives the cwd trap", command: "cd /; exit 7", want: "[working directory reset to %ROOT%: / is outside the project root]\n[exit code 7]"},

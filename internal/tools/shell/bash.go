@@ -302,6 +302,9 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 	}
 	if exited {
 		marks = append(marks, fmt.Sprintf("[exit code %d]", st.code))
+		if st.code == 0 && noTestsRan(text) {
+			marks = append(marks, noTestsNote)
+		}
 	} else {
 		marks = append(marks, "[exit code unknown: the process did not exit after SIGKILL]")
 	}
