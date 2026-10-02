@@ -112,7 +112,9 @@ type Agent struct {
 	Tool        string    `json:"tool,omitempty"`
 	ToolSummary string    `json:"tool_summary,omitempty"`
 	ToolSince   time.Time `json:"tool_since,omitzero"`
-	OpenTools   int       `json:"open_tools,omitempty"`
+	// ReqSince is when the oldest main request still unanswered was sent (zero: none): a person is told when an endpoint takes long.
+	ReqSince  time.Time `json:"req_since,omitzero"`
+	OpenTools int       `json:"open_tools,omitempty"`
 
 	Spawned    time.Time `json:"spawned,omitzero"`
 	SpawnSeq   uint64    `json:"spawn_seq,omitempty"` // the seq of the agent.spawn, for the fork animation

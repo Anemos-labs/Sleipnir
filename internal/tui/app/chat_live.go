@@ -55,7 +55,12 @@ type statusView struct {
 	tokOut  int64
 	cost    float64
 	flash   bool // a cache break: the line is in the alarm style for a moment
+	// waiting is how long the request in flight has gone unanswered, once that is long (slowRequest): 0 before.
+	waiting time.Duration
 }
+
+// slowRequest is how long a model request goes unanswered before the status line says it is waiting for the model.
+const slowRequest = 45 * time.Second
 
 // toolView is a tool that is running.
 type toolView struct {
@@ -381,6 +386,9 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 		word = "Starting"
 	case statusThinking:
 		word = widget.Verb(s.seed, v.frame)
+		if s.waiting > 0 { // an endpoint that takes long: the playful word would say the model is busy thinking
+			word = "Waiting for the model (" + duration(s.waiting.Round(time.Second)) + ")"
+		}
 	case statusTool:
 		word = "Running"
 		if s.detail != "" {

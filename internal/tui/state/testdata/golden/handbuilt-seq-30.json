@@ -173,6 +173,7 @@
       "task": "T3",
       "status": "thinking",
       "line": "starting",
+      "req_since": "2026-01-02T03:04:08.1Z",
       "spawned": "2026-01-02T03:04:07.025Z",
       "spawn_seq": 23,
       "last_active": "2026-01-02T03:04:08.1Z",

@@ -3,8 +3,10 @@ package app
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
@@ -23,5 +25,21 @@ func TestTheQuestionForAPatchNamesTheFileOnce(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("%d lines of the question begin with the file, want 1:\n%s", n, widgettest.Flatten(body))
+	}
+}
+
+// A request that goes unanswered for long is called what it is: the status line said "Reasoning..." for four minutes of an endpoint that
+// had not answered, as if the model were thinking hard.
+func TestTheStatusLineSaysWhenItIsWaitingForTheModel(t *testing.T) {
+	k := goldenLook(true)
+	line := func(waiting time.Duration) string {
+		v := &liveView{cols: 100, rows: 24, status: statusView{kind: statusThinking, seed: 1, elapsed: 3 * time.Minute, waiting: waiting}}
+		return widgettest.Flatten([]cell.Line{k.statusLine(v, 100)})
+	}
+	if got := line(80 * time.Second); !strings.Contains(got, "Waiting for the model (1m20s)") {
+		t.Errorf("a request unanswered for 80 s: %q", got)
+	}
+	if got := line(0); strings.Contains(got, "Waiting for the model") {
+		t.Errorf("a request in its first seconds: %q", got)
 	}
 }

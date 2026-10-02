@@ -143,6 +143,13 @@ func (a *agentState) refresh() {
 		a.Tool, a.ToolSummary, a.ToolSince = "", "", time.Time{}
 	}
 	a.OpenTools, a.InFlight, a.Asking = len(a.tools), len(a.reqs), a.asks
+	a.ReqSince = time.Time{}
+	for _, r := range a.reqs {
+		if !r.side {
+			a.ReqSince = r.t
+			break
+		}
+	}
 }
 
 // syncBusy opens or closes the busy interval of the activity lane: the agent is busy while a model request or a tool call is

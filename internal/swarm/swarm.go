@@ -570,7 +570,10 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 	}()
 	s.releaseManager(m)
 	state := "done"
-	if err != nil {
+	switch {
+	case errors.Is(err, context.Canceled):
+		state = "idle" // the person interrupted it: it did not fail, and the next goal starts it again
+	case err != nil:
 		state = "failed"
 	}
 	m.setState(s, state, "")

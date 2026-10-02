@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
@@ -582,5 +583,22 @@ func TestTheToolThatRanIsTheOneShownWhenAModelsNameWasRepaired(t *testing.T) {
 	apply(t, st, b.Emit("w-1", events.TypeToolCall, map[string]any{"id": "c3", "name": "bash", "input": map[string]any{"command": "ls"}}))
 	if a := agentOf(t, st.Snapshot(), "w-1"); a.Tool != "bash" || a.ToolSummary != "ls" {
 		t.Errorf("shown doing %q %q", a.Tool, a.ToolSummary)
+	}
+}
+
+// The state says since when a main request has gone unanswered, so that a person is told when an endpoint takes long; an answer ends it.
+func TestTheStateSaysSinceWhenARequestWentUnanswered(t *testing.T) {
+	b := newB()
+	st := New()
+	apply(t, st, b.Spawn("w-1", "backend", "T1", "mgr"))
+	sent := b.Now()
+	apply(t, st, b.Request("w-1", "w-1.1", "m", "pk", secShared()))
+	b.Advance(90 * time.Second)
+	if a := agentOf(t, st.Snapshot(), "w-1"); !a.ReqSince.Equal(sent) {
+		t.Errorf("ReqSince = %v, want %v", a.ReqSince, sent)
+	}
+	apply(t, st, b.Response("w-1", "w-1.1", "m", 100, 0, 0, 10, 0.001))
+	if a := agentOf(t, st.Snapshot(), "w-1"); !a.ReqSince.IsZero() {
+		t.Errorf("ReqSince = %v after the answer, want none", a.ReqSince)
 	}
 }

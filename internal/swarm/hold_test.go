@@ -7,6 +7,7 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -593,5 +594,39 @@ func TestBudgetExhaustionIsNotHeld(t *testing.T) {
 	}
 	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 0 {
 		t.Fatalf("%d hold events for a run that was over budget", n)
+	}
+}
+
+// A person who presses Esc has not made the manager fail: it is idle, ready for the next goal. It was recorded as "failed", and the agents
+// page showed it as "stuck".
+func TestACancelledManagerRunLeavesTheManagerIdleNotFailed(t *testing.T) {
+	started := make(chan struct{}, 1)
+	r := newRVRigWith(t, Config{HoldManager: true}, func(ctx context.Context, c *rvCall) rvReply {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-ctx.Done()
+		return rvReply{Text: "late"}
+	}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, err := r.sw.RunManager(ctx, "go"); done <- err }()
+	<-started
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run did not stop")
+	}
+	last := ""
+	for _, e := range r.log.OfType(events.TypeAgentState) {
+		var d struct{ ID, State string }
+		if json.Unmarshal(e.Data, &d) == nil && d.ID == "mgr" {
+			last = d.State
+		}
+	}
+	if last != "idle" {
+		t.Errorf("the manager's state after a cancelled run is %q, want idle", last)
 	}
 }

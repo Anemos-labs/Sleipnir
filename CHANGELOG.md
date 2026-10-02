@@ -165,6 +165,9 @@ The first release.
   in the feed, the agents table and the evidence of what an agent did as the tool that ran.
 - `/resume ` in the chat lists the earlier sessions of the project as you type (when, what it cost, what was asked first), as `/model ` lists
   models; it only restarted into the newest one, and a trial by someone new to it found no way to choose.
+- After Esc the manager of a team was recorded as "failed" and the agents page showed it as "stuck"; an interrupted run is idle, ready for
+  the next goal. A model request that goes unanswered for 45 seconds is called that on the status line ("Waiting for the model (1m12s)")
+  instead of a playful verb: a trial with a real model saw "Reasoning..." for four minutes of an endpoint that had not answered.
 - An answer sent back for an open plan, for tests not run, or for a call written as text is shown as that in the feed ("the answer was
   sent back: ..."); it was shown as "stuck: the same call failed again and again", and the chat's status line said "Stuck on a failing call"
   while the model was only asked to run the tests.

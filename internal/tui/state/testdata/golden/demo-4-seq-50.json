@@ -76,6 +76,7 @@
       "task": "T1",
       "status": "thinking",
       "line": "starting",
+      "req_since": "2026-09-30T20:52:28.478048575Z",
       "spawned": "2026-09-30T20:52:28.475710247Z",
       "spawn_seq": 25,
       "last_active": "2026-09-30T20:52:28.478048575Z",
