@@ -246,12 +246,10 @@ func TestResumeOfTeamSessionsAndOfIsolatedOnes(t *testing.T) {
 	isolated := forge("20260103-000000-cccccc", "mgr", true, "worktree") // the newest, but not resumable
 	workersOnly := forge("20260104-000000-dddddd", "be-1", true, "")     // a worker saved a snapshot, the manager never did
 
-	got, err := session.ResolveResume(home, root, "latest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != team {
-		t.Errorf("latest = %s, want the newest session that can be resumed, the team's %s", got, team)
+	// "latest" is the newest session of the project: when that is a team in worktrees, which cannot be resumed, it says so and does not
+	// resume an older session in its place (a trial's --continue did, and brought back a "say hi" instead of the stalled team).
+	if d, err := session.ResolveResume(home, root, "latest"); err == nil || !strings.Contains(err.Error(), "20260103-000000-cccccc") || !strings.Contains(err.Error(), "git worktrees") {
+		t.Errorf("latest with a team in worktrees as the newest session: %s %v", d, err)
 	}
 	for name, c := range map[string]struct {
 		dir  string
@@ -269,6 +267,13 @@ func TestResumeOfTeamSessionsAndOfIsolatedOnes(t *testing.T) {
 	}
 	if d, err := session.ResolveResume(home, root, "20260102-000000-bbbbbb"); err != nil || d != team {
 		t.Errorf("a team's session by its id: %s %v", d, err)
+	}
+	// without the worktree session, "latest" passes by the session in which no manager finished a turn, and finds the team
+	if err := os.RemoveAll(isolated); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := session.ResolveResume(home, root, "latest"); err != nil || got != team {
+		t.Errorf("latest = %s %v, want the newest session that can be resumed, the team's %s", got, err, team)
 	}
 }
 

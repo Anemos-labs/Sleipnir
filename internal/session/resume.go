@@ -37,7 +37,14 @@ func ResolveResume(home, root, spec string) (string, error) {
 		sort.Sort(sort.Reverse(sort.StringSlice(names))) // ids start with a timestamp
 		for _, n := range names {
 			d := filepath.Join(sessions, n)
-			if li := inspectLog(d); li.root == root && li.resumable() {
+			li := inspectLog(d)
+			if li.root != root {
+				continue
+			}
+			if li.isolated { // the newest session of the project is the one meant: passing it by for an older one would resume other work, silently
+				return "", fmt.Errorf("the newest session of %s (%s) ran its team in git worktrees, and such a session cannot be resumed yet; --resume ID continues another one (`sleipnir sessions` lists them)", root, n)
+			}
+			if li.resumable() {
 				return d, nil
 			}
 		}
