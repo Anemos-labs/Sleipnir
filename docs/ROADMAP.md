@@ -43,8 +43,10 @@ a dozen tests and real managers write terse titles: it is a hint. Writes under `
 6. The mined tasks of the suite (`sl-*`, 12 of the 47 `core`): their hidden tests name symbols that the prompt does not (`MaxWireSeed`, an exported constant of the commit). Of the 13 failing episodes of build d on
    `deepseek-v4.1-flash` (2026-10-02), five were `undefined:` build errors of the hidden test, and most of the rest the fifteen-minute clock, so `mined` is a floor and not a measure. Admission could compile the hidden tests
    against the starting tree and compare the `undefined:` names with the prompt, and tag or drop the task.
-7. `reasoning_effort` (and the thinking budget of the other dialects) is a request parameter that no flag or setting sets (`core.Params.Effort` is read by the wire and written by nothing): a reasoning model's turn is the clock of
-   a task (about 30 s a request for `deepseek-v4.1-flash` on Heimdall). Try `low` on the mutation and mined tasks and read pass rate against wall time before offering a flag.
+7. `reasoning_effort` (and the thinking budget of the other dialects) is a request parameter that no flag or setting sets (`core.Params.Effort` is read by the wire and written by nothing), and a reasoning model's turn is
+   the clock of a task (about 30 s a request for `deepseek-v4.1-flash` on Heimdall). Measured on 2026-10-02 on that route (a ten-line Slugify prompt, `max_tokens` 2500, three requests each with no effort, `low` and
+   `high`): two of the three requests of every arm spent the whole 2500 tokens on reasoning (`finish_reason: length`) and the seconds did not follow the setting (39 to 75, 70 to 79, 70 to 105), so this route does
+   not honour it and **no flag was built**. Try again on a route that documents the setting (OpenAI, Anthropic) before offering one.
 8. The flags' own help (`sleipnir chat -h`) prints each description as one line of up to 370 characters (the flag package's format): wrap it to the terminal in one place for the 21 flag sets (`docs/CLI.md` is generated from it).
 
 ## Second handoff (2026-10-01, the end of the second agent's session)
