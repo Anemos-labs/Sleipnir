@@ -30,8 +30,6 @@ const (
 	MaxModelIDBytes = 256
 )
 
-func finite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }
-
 // Validate reports why p cannot be used to compute spend: every price must be a
 // finite number of dollars per million tokens, between zero and MaxPricePerM.
 func (p Price) Validate() error {

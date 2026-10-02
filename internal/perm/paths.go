@@ -106,10 +106,6 @@ func (c *cwdSet) add(d string) {
 	c.dirs = append(c.dirs, d)
 }
 
-func (c *cwdSet) clone() *cwdSet {
-	return &cwdSet{dirs: append([]string(nil), c.dirs...), unknown: c.unknown}
-}
-
 func hasGlob(s string) bool { return strings.ContainsAny(s, "*?[") }
 
 // resolve turns one file operand into the accesses it stands for: one per

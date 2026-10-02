@@ -100,14 +100,6 @@ func clampTokens(v int64) int {
 // clampInt bounds an int that came from a payload to [0, smallCount].
 func clampInt(v int) int { return clampTokens(int64(v)) }
 
-// clampTok bounds a token total to [0, maxTokens].
-func clampTok(v int) int64 {
-	if v < 0 {
-		return 0
-	}
-	return min(int64(v), maxTokens)
-}
-
 // usd turns a dollar figure from a payload into one that can be added: not a number, infinite or negative is nothing.
 func usd(f float64) float64 {
 	if math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {

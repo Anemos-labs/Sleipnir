@@ -386,13 +386,6 @@ func (s *Session) layerTokensLocked(r *req) ([7]int, bool) {
 	return l, known
 }
 
-func layerName(i int) string {
-	if i < 0 || i >= len(LayerKeys) {
-		return ""
-	}
-	return LayerKeys[i]
-}
-
 func changedNames(mask uint8) []string {
 	var out []string
 	for i := 0; i < 6; i++ {

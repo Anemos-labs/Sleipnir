@@ -409,11 +409,6 @@ func stripTestPrefix(s string) string {
 	return l
 }
 
-// similarNames reports whether two test names look like a rename of one another:
-// one contains the other ("Parse" -> "ParseHeaders"), or they share at least 60%
-// of the longer one as common prefix plus common suffix.
-func similarNames(a, b string) bool { return similarStripped(stripTestPrefix(a), stripTestPrefix(b)) }
-
 // similarStripped is similarNames on names already stripped of their prefix.
 func similarStripped(x, y string) bool {
 	if x == "" || y == "" {

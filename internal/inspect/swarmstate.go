@@ -298,13 +298,6 @@ func (b *boardTracker) current(actor string) *boardCall {
 	return q[len(q)-1].call
 }
 
-func (b *boardTracker) task(id string) *boardTask {
-	if id == "" {
-		return nil
-	}
-	return b.tasks[id]
-}
-
 func (b *boardTracker) ensure(id string, ts time.Time) *boardTask {
 	t := b.tasks[id]
 	if t == nil {

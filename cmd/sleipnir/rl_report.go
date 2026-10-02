@@ -73,8 +73,6 @@ func perEp(v float64, n int, format string) string {
 	return fmt.Sprintf(format, v)
 }
 
-func secs(ms float64) string { return fmt.Sprintf("%.0fs", ms/1000) }
-
 func mode(r env.Report) string {
 	if r.Identity != nil {
 		return r.Identity.Mode

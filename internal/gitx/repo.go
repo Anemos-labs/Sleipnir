@@ -233,11 +233,6 @@ func (r *Repo) run(ctx context.Context, c call) (*output, error) {
 	return r.s.exec(ctx, c)
 }
 
-// git is the short form for read-only commands.
-func (r *Repo) git(ctx context.Context, args ...string) (*output, error) {
-	return r.run(ctx, call{args: args})
-}
-
 // allowedSubcommands is what Git accepts. Network commands (fetch, pull, push,
 // clone, remote, submodule), config writes, gc, daemons and commands that write
 // files of their own choosing into the current directory (format-patch) are absent

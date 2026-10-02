@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -462,16 +461,6 @@ func (s *Session) logMetaLocked() LogMeta {
 		TornBytes: s.torn, BadLines: s.bad, Reloads: s.reloads, Schema: s.meta.schema, Updated: s.mtime,
 		Blobs: s.blobs.available(), Types: types,
 	}
-}
-
-// typeNames returns the event types seen, sorted.
-func (s *Session) typeNamesLocked() []string {
-	out := make([]string, 0, len(s.types))
-	for k := range s.types {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // ID is the session id as recorded in the log, falling back to the directory name.
