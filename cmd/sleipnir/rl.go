@@ -57,17 +57,17 @@ var rlCommands = map[string]func(context.Context, []string, io.Writer, io.Writer
 
 func cmdRL(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		fmt.Fprint(os.Stderr, rlUsage)
+		printHelp(os.Stderr, rlUsage)
 		return errors.New("rl: a command is required")
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
-		fmt.Fprint(os.Stdout, rlUsage)
+		printHelp(os.Stdout, rlUsage)
 		return nil
 	}
 	fn, ok := rlCommands[args[0]]
 	if !ok {
-		fmt.Fprint(os.Stderr, rlUsage)
+		printHelp(os.Stderr, rlUsage)
 		return fmt.Errorf("rl: unknown command %q", args[0])
 	}
 	return fn(ctx, args[1:], os.Stdout, os.Stderr)
@@ -76,11 +76,11 @@ func cmdRL(ctx context.Context, args []string) error {
 // newFlags makes a flag set that reports errors instead of exiting, so the
 // commands can be driven from tests.
 func newFlags(name string, stderr io.Writer, usage string) *flag.FlagSet {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs := newFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "usage: sleipnir %s\n\nflags:\n", usage)
-		fs.PrintDefaults()
+		printHelp(stderr, fmt.Sprintf("usage: sleipnir %s\n\nflags:\n", usage))
+		printFlags(fs)
 	}
 	return fs
 }

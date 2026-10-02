@@ -37,11 +37,11 @@ commands:
 // cmdMCP inspects and manages MCP servers without starting a session.
 func cmdMCP(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprint(os.Stderr, mcpUsage)
+		printHelp(os.Stderr, mcpUsage)
 		return nil
 	}
 	sub, rest := args[0], args[1:]
-	fs := flag.NewFlagSet("mcp "+sub, flag.ContinueOnError)
+	fs := newFlagSet("mcp "+sub, flag.ContinueOnError)
 	trust := fs.Bool("trust-project", false, "read the project's configuration (.sleipnir/config.json, .mcp.json)")
 	yes := fs.Bool("yes", false, "approve without asking (scripts: you have read `sleipnir mcp list`)")
 	cwd := fs.String("cwd", "", "working directory (default: current)")
@@ -74,7 +74,7 @@ func cmdMCP(ctx context.Context, args []string) error {
 	case "test":
 		return mcpTest(ctx, os.Stdout, os.Stderr, dir, names, *trust)
 	}
-	fmt.Fprint(os.Stderr, mcpUsage)
+	printHelp(os.Stderr, mcpUsage)
 	return fmt.Errorf("mcp: unknown command %q", sub)
 }
 

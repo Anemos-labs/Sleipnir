@@ -51,11 +51,11 @@ func cmdTrust(ctx context.Context, args []string) error {
 		sub, rest = args[0], args[1:]
 	}
 	if sub == "help" {
-		fmt.Fprint(os.Stderr, trustUsage)
+		printHelp(os.Stderr, trustUsage)
 		return nil
 	}
-	fs := flag.NewFlagSet("trust", flag.ContinueOnError)
-	fs.Usage = func() { fmt.Fprint(os.Stderr, trustUsage) }
+	fs := newFlagSet("trust", flag.ContinueOnError)
+	fs.Usage = func() { printHelp(os.Stderr, trustUsage) }
 	cwd := fs.String("cwd", "", "the directory to look at (default: the current one)")
 	yes := fs.Bool("yes", false, "add: do not ask")
 	all := fs.Bool("all", false, "forget: every project")
@@ -87,7 +87,7 @@ func cmdTrust(ctx context.Context, args []string) error {
 	case "list":
 		return trustList(os.Stdout, ledger, home)
 	}
-	fmt.Fprint(os.Stderr, trustUsage)
+	printHelp(os.Stderr, trustUsage)
 	return fmt.Errorf("trust: unknown command %q", sub)
 }
 

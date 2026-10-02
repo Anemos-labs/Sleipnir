@@ -15,6 +15,7 @@ import (
 	"sync"
 	"text/tabwriter"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
 	"github.com/anemos-labs/sleipnir/internal/config"
@@ -141,16 +142,16 @@ func cmdModels(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "fav" {
 		return cmdFavorites(os.Stdout, args[1:])
 	}
-	fs := flag.NewFlagSet("models", flag.ExitOnError)
+	fs := newFlagSet("models", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), `usage: sleipnir models [words...] [flags]
+		printHelp(fs.Output(), `usage: sleipnir models [words...] [flags]
        sleipnir models fav [add|rm] provider/model...
 
 Lists the models of every provider whose key is set (and Heimdall), as references that --model takes. Each word narrows the
 search (all must appear, any case). Favorites, marked *, come first.
 
 `)
-		fs.PrintDefaults()
+		printFlags(fs)
 	}
 	pf := addProviderFlags(fs)
 	var f modelFilter
@@ -416,8 +417,14 @@ func favoriteSet(cfg *config.Config) map[string]bool {
 	return m
 }
 
-// printModels writes the table: favorites first, then by reference.
+// printModels writes the table: favorites first, then by reference. On a terminal too narrow for it the columns that tell least go first
+// (REASONING, then the cached price, then the input price) and, as a last resort, a reference is cut short.
 func printModels(w io.Writer, all []modelRow, f modelFilter, fav map[string]bool) error {
+	return printModelsWidth(w, all, f, fav, termWidth(w))
+}
+
+// printModelsWidth is printModels for a terminal width (0: not a terminal, the whole table).
+func printModelsWidth(w io.Writer, all []modelRow, f modelFilter, fav map[string]bool, width int) error {
 	var rows []modelRow
 	for _, r := range all {
 		if f.keep(r, fav) {
@@ -430,15 +437,53 @@ func printModels(w io.Writer, all []modelRow, f modelFilter, fav map[string]bool
 		}
 		return rows[i].Ref < rows[j].Ref
 	})
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "MODEL\tCONTEXT\t$/M IN\t$/M CACHED\t$/M OUT\tTOOLS\tREASONING")
+	cells := [][]string{{"MODEL", "CONTEXT", "$/M IN", "$/M CACHED", "$/M OUT", "TOOLS", "REASONING"}}
 	for _, r := range rows {
 		name := r.Ref
 		if fav[r.Ref] {
 			name = "* " + name
 		}
 		p := r.Model.Price
-		fmt.Fprintf(tw, "%s\t%s\t%.4f\t%.4f\t%.4f\t%v\t%v\n", name, human(r.Model.ContextTokens), p.InputPerM, p.CacheReadPerM, p.OutputPerM, r.SupportsTools(), r.SupportsReasoning())
+		cells = append(cells, []string{name, human(r.Model.ContextTokens), fmt.Sprintf("%.4f", p.InputPerM), fmt.Sprintf("%.4f", p.CacheReadPerM),
+			fmt.Sprintf("%.4f", p.OutputPerM), fmt.Sprint(r.SupportsTools()), fmt.Sprint(r.SupportsReasoning())})
+	}
+	cols := []int{0, 1, 2, 3, 4, 5, 6}
+	if width > 0 {
+		widest := make([]int, len(cols))
+		for _, row := range cells {
+			for c, v := range row {
+				widest[c] = max(widest[c], utf8.RuneCountInString(v))
+			}
+		}
+		total := func() int { // the table's width: its columns and the two spaces between them
+			n := -2
+			for _, c := range cols {
+				n += widest[c] + 2
+			}
+			return n
+		}
+		for _, drop := range []int{6, 3, 2} {
+			if total() < width {
+				break
+			}
+			cols = slices.DeleteFunc(cols, func(c int) bool { return c == drop })
+		}
+		if over := total() - (width - 1); over > 0 {
+			keep := max(widest[0]-over, 16)
+			for _, row := range cells[1:] {
+				row[0] = fit(row[0], keep)
+			}
+		}
+	}
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	for _, row := range cells {
+		for i, c := range cols {
+			if i > 0 {
+				fmt.Fprint(tw, "\t")
+			}
+			fmt.Fprint(tw, row[c])
+		}
+		fmt.Fprintln(tw)
 	}
 	return tw.Flush()
 }

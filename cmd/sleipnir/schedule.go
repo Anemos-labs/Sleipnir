@@ -38,7 +38,7 @@ func cmdSchedule(_ context.Context, args []string) error {
 		fs, _ := scheduleAddFlags()
 		fs.SetOutput(os.Stdout)
 		fmt.Println("usage: sleipnir schedule [list]\n       sleipnir schedule add --cron EXPR [flags] <goal>\n       sleipnir schedule rm <id>\n\nflags of add:")
-		fs.PrintDefaults()
+		printFlags(fs)
 		return nil
 	case "add":
 		fs, o := scheduleAddFlags()
@@ -73,7 +73,7 @@ type addOpts struct {
 
 func scheduleAddFlags() (*flag.FlagSet, *addOpts) {
 	var o addOpts
-	fs := flag.NewFlagSet("schedule add", flag.ExitOnError)
+	fs := newFlagSet("schedule add", flag.ExitOnError)
 	fs.StringVar(&o.cron, "cron", "", `when: five fields "minute hour day-of-month month day-of-week", or @hourly, @daily, @weekly (required)`)
 	fs.StringVar(&o.model, "model", "", "model for the run (default: your configured default)")
 	fs.StringVar(&o.dir, "cwd", "", "working directory of the run (default: the current directory)")
@@ -88,7 +88,7 @@ func listJobs(w io.Writer, st sched.Store, now time.Time) error {
 		return err
 	}
 	if len(jobs) == 0 {
-		fmt.Fprintln(w, "no scheduled jobs: sleipnir schedule add --cron \"0 9 * * 1-5\" \"summarize yesterday's commits\"")
+		fmt.Fprintln(w, "no scheduled jobs. Add one:\n  sleipnir schedule add --cron \"0 9 * * 1-5\" \"summarize yesterday's commits\"")
 		return nil
 	}
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
@@ -114,7 +114,7 @@ func listJobs(w io.Writer, st sched.Store, now time.Time) error {
 // cmdDaemon starts the jobs that are due, once a half minute, until it is stopped. Each job is a headless `sleipnir run` of its own
 // (so a crash or a stuck run harms nothing else), its output in <state>/schedule-logs. It runs one job at a time.
 func cmdDaemon(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
+	fs := newFlagSet("daemon", flag.ExitOnError)
 	once := fs.Bool("once", false, "start what is due now, wait for it, and exit (for cron or a systemd timer)")
 	every := fs.Duration("every", 30*time.Second, "how often to look for due jobs")
 	if err := fs.Parse(args); err != nil {

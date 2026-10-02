@@ -114,6 +114,11 @@ The first release.
   right edge with the rest under the names, and the line of `/agents` started its description a column early. Tests hold every line of both to 79 characters and the descriptions to one column.
 - The line `sleipnir run` ends on (how long, steps, cost, cache, and the session's directory) puts the directory under the rest, shortened with `~`, when the terminal is too narrow for one line
   (at 80 columns the long path made it three). On a pipe or a log it is the one line it always was.
+- Every command's help, tables and errors fit an 80-column terminal. A flag's description was one line of up to 370 characters (`run -h`, `chat -h`), `sleipnir models` a table 99 wide,
+  and `rl help`, `login -h`, `config`, an error that names a path and the footer of `sleipnir sessions` broke in the middle of a word. Descriptions are now broken at spaces under their flag, a
+  paragraph written in lines of about the width is flowed again as a whole, `sleipnir models` drops the REASONING, cached-price and input-price columns, in that order, when the terminal is too
+  narrow for them, and `sleipnir sessions` drops the model and cuts the prompt with an ellipsis. On a pipe or in a file the text is as it was (`docs/CLI.md` is made from it). A test runs every
+  command's `-h` on a terminal of 80 columns.
 - `/fav [provider/model]` stars a model, or unstars it (the session's own when none is named), from the chat: the `/model` menu puts it first at once, `sleipnir models` lists it first, and
   it is kept as `models.favorites` in the user's own configuration (in the session's home, not the machine's: the tests prove it). Favorites could only be changed by `sleipnir models fav add|rm`.
 - The chat's lines for the manager's coordination say what was done: `Spawn backend · T1` (who was started, on which task) and `Task accept T1` (the action and the task) where

@@ -11,6 +11,31 @@ import (
 // session: what the flag lets a repository do is the same for all of them.
 const trustProjectHelp = "trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust"
 
+// newFlagSet is flag.NewFlagSet whose help is the flag package's own, with the descriptions fitted to the terminal (printFlags).
+func newFlagSet(name string, h flag.ErrorHandling) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, h)
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Usage of %s:\n", name)
+		printFlags(fs)
+	}
+	return fs
+}
+
+// printFlags is fs.PrintDefaults with each description broken at spaces to the terminal's width when the output is a terminal (a flag's
+// description is one line, up to 370 characters). Anywhere else, a pipe or the generator of docs/CLI.md, it is PrintDefaults as it was.
+func printFlags(fs *flag.FlagSet) {
+	out := fs.Output()
+	if termWidth(out) <= 20 {
+		fs.PrintDefaults()
+		return
+	}
+	var b strings.Builder
+	fs.SetOutput(&b)
+	fs.PrintDefaults()
+	fs.SetOutput(out)
+	printHelp(out, strings.ReplaceAll(b.String(), "\n    \t", "\n        "))
+}
+
 // resumeFlags registers --resume and --continue on fs. The returned function
 // gives the resume request for session.Options.Resume: "" for a new session, a
 // session id or directory, or "latest" (the newest session of this project).

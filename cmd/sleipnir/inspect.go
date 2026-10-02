@@ -25,7 +25,7 @@ func init() { extraCommands["inspect"] = cmdInspect }
 // session's event log (live or after the fact), or over a directory of sessions
 // such as `sleipnir rl rollout` output.
 func cmdInspect(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
+	fs := newFlagSet("inspect", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8787", "listen address; anything but a loopback address requires --token")
 	token := fs.String("token", harden.Secret("SLEIPNIR_INSPECT_TOKEN"), "access token (also read from $SLEIPNIR_INSPECT_TOKEN, which keeps it out of process listings); required for a non-loopback --addr")
 	open := fs.Bool("open", false, "open the dashboard in the default browser")
@@ -33,7 +33,7 @@ func cmdInspect(ctx context.Context, args []string) error {
 	session := fs.String("session", "", "with --json on a directory of sessions: the session to summarise (its id from the list)")
 	interval := fs.Duration("interval", time.Second, "how often live logs are polled")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `usage: sleipnir inspect [flags] [SESSION | DIR]
+		printHelp(os.Stderr, `usage: sleipnir inspect [flags] [SESSION | DIR]
 
 Serves a read-only web dashboard for the cache engine and the swarm, built from
 the session's event log: hit ratios, prompt layers per request, compactions,
@@ -47,7 +47,7 @@ the network.
 
 flags:
 `)
-		fs.PrintDefaults()
+		printFlags(fs)
 	}
 	// Flags may follow the directory (`inspect DIR --json`): parse, take one
 	// positional, and parse the rest.

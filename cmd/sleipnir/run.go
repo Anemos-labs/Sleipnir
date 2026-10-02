@@ -59,7 +59,7 @@ func cmdRun(ctx context.Context, args []string) error { return runCommand(ctx, "
 // runCommand is cmdRun under the name the person typed (run, or swarm for the
 // shorthand): the name shows in the usage.
 func runCommand(ctx context.Context, name string, args []string) error {
-	fs := flag.NewFlagSet(name, flag.ExitOnError)
+	fs := newFlagSet(name, flag.ExitOnError)
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider (default: config models.default)")
 	cwd := fs.String("cwd", "", "working directory (default: current)")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass (default: config, then default)")
@@ -86,11 +86,11 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {
 		if name == "swarm" {
-			fmt.Fprint(os.Stderr, "usage: sleipnir swarm <agents> [flags] <prompt | ->\n\nRuns one goal with a team of up to <agents> agents, the manager included (the same as run --swarm <agents>).\nThe prompt may be '-' to read stdin.\n\nflags:\n")
+			printHelp(os.Stderr, "usage: sleipnir swarm <agents> [flags] <prompt | ->\n\nRuns one goal with a team of up to <agents> agents, the manager included (the same as run --swarm <agents>).\nThe prompt may be '-' to read stdin.\n\nflags:\n")
 		} else {
-			fmt.Fprint(os.Stderr, "usage: sleipnir run [flags] <prompt | ->\n\nRuns one goal through the harness. The prompt may be '-' to read stdin.\n\nflags:\n")
+			printHelp(os.Stderr, "usage: sleipnir run [flags] <prompt | ->\n\nRuns one goal through the harness. The prompt may be '-' to read stdin.\n\nflags:\n")
 		}
-		fs.PrintDefaults()
+		printFlags(fs)
 	}
 	words, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -398,7 +398,7 @@ func printIntegration(w io.Writer, rep *swarm.IntegrationReport, quiet bool) {
 // cmdRecon prints the deterministic project survey that seeds the shared prompt
 // layer, so its size and content can be inspected before a run.
 func cmdRecon(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("recon", flag.ExitOnError)
+	fs := newFlagSet("recon", flag.ExitOnError)
 	budget := fs.Int("budget", 5000, "token budget for the survey")
 	if err := fs.Parse(args); err != nil {
 		return err

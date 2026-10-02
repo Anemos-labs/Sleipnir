@@ -175,7 +175,7 @@ func cmdReplay(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	gallery := fs.String("gallery", "", "draw every recording listed in this manifest (docs/media/gallery.json) into --out, from the session or, for the chat's, from the transcript the manifest names; the other flags that choose a screen are then the manifest's")
 	outDir := fs.String("out", ".", "with --gallery: the directory the recordings are written to")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: sleipnir replay [flags] [SESSION]
+		printHelp(stderr, `usage: sleipnir replay [flags] [SESSION]
 
 Plays a recorded session back the way the cockpit showed it: the swarm, its cache
 and its mail, drawn from the session's event log and nothing else. SESSION is a
@@ -189,7 +189,7 @@ text; neither needs a terminal.
 
 flags:
 `)
-		fs.PrintDefaults()
+		printFlags(fs)
 	}
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -304,7 +304,7 @@ func cmdWatch(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	sf.register(fs, false)
 	poll := fs.Duration("poll", state.DefaultPoll, "how often the log is looked at for new events")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: sleipnir watch [flags] [SESSION]
+		printHelp(stderr, `usage: sleipnir watch [flags] [SESSION]
 
 Shows a session as it is written: the swarm cockpit, the cache of each agent, the
 mail and the task board, drawn from the session's event log and nothing else, so it
@@ -318,7 +318,7 @@ prints a text screen and `+"`sleipnir inspect`"+` serves a web page instead.
 
 flags:
 `)
-		fs.PrintDefaults()
+		printFlags(fs)
 	}
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {

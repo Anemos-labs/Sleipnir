@@ -26,7 +26,7 @@ import (
 func init() { extraCommands["term-svg"] = cmdTermSVG }
 
 func cmdTermSVG(_ context.Context, args []string) error {
-	fs := flag.NewFlagSet("term-svg", flag.ContinueOnError)
+	fs := newFlagSet("term-svg", flag.ContinueOnError)
 	logf := fs.String("log", "", "the output log of script (--log-out)")
 	timing := fs.String("timing", "", "the timing file of script (--log-timing, --logging-format advanced)")
 	out := fs.String("out", "", "write the SVG here")

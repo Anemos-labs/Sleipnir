@@ -17,7 +17,7 @@ func init() { extraCommands["sim"] = cmdSim }
 // the event log of a real run records the quantities the simulator consumes, so
 // calibrate before quoting absolute savings.
 func cmdSim(_ context.Context, args []string) error {
-	fs := flag.NewFlagSet("sim", flag.ExitOnError)
+	fs := newFlagSet("sim", flag.ExitOnError)
 	agents := fs.Int("agents", 20, "concurrent workers")
 	provider := fs.String("provider", "anthropic", "cache model: anthropic (explicit breakpoints, 5m TTL, 1.25x writes) | marketplace (automatic prefix cache, no write premium)")
 	engines := fs.Int("engines", 3, "engines behind a marketplace provider")
@@ -25,7 +25,7 @@ func cmdSim(_ context.Context, args []string) error {
 	seed := fs.Int64("seed", 1, "workload seed")
 	asJSON := fs.Bool("json", false, "print machine-readable results")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `usage: sleipnir sim [flags]
+		printHelp(os.Stderr, `usage: sleipnir sim [flags]
 
 Replays one synthetic swarm workload under a plain harness (whole history, and
 with summary compaction) and under Sleipnir's layered policy, pricing every
@@ -39,7 +39,7 @@ modes:
 
 flags:
 `)
-		fs.PrintDefaults()
+		printFlags(fs)
 	}
 	if err := fs.Parse(args); err != nil {
 		return err

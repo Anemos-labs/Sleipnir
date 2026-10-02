@@ -156,14 +156,14 @@ func sizeText(n int64) string {
 
 // cmdSessionsPrune is `sleipnir sessions prune`.
 func cmdSessionsPrune(stdout, stderr io.Writer, args []string, now time.Time) error {
-	fset := flag.NewFlagSet("sessions prune", flag.ContinueOnError)
+	fset := newFlagSet("sessions prune", flag.ContinueOnError)
 	fset.SetOutput(stderr)
 	dir := fset.String("dir", "", "the directory that holds the sessions (default <state>/sessions, <state> being $SLEIPNIR_HOME or ~/.sleipnir)")
 	older := fset.String("older-than", "30d", "delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age)")
 	keep := fset.Int("keep", pruneDefaultKeep, "never delete the newest N sessions, whatever their age")
 	yes := fset.Bool("yes", false, "delete them (without it, the sessions that would go are listed and nothing is deleted)")
 	fset.Usage = func() {
-		fmt.Fprint(stderr, `usage: sleipnir sessions prune [flags]
+		printHelp(stderr, `usage: sleipnir sessions prune [flags]
 
 Deletes recorded sessions that are old: the event log, the blobs it points at and the checkpoints of each. The newest ones are
 kept whatever their age, and so is any session that was written to in the last ten minutes. Nothing is deleted without --yes;
@@ -171,7 +171,7 @@ without it the sessions that would go are listed, with their size.
 
 flags:
 `)
-		fset.PrintDefaults()
+		printFlags(fset)
 	}
 	if err := fset.Parse(args); err != nil {
 		return err // -h is flag.ErrHelp, which main takes for success

@@ -12,10 +12,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 
@@ -172,9 +174,9 @@ func reportError(w io.Writer, err error) int {
 	if err == nil || errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
-	fmt.Fprintln(w, "sleipnir:", tools.SanitizeForTerminal(err.Error()))
+	fmt.Fprintln(w, wrapBlockFor(w, "sleipnir: "+tools.SanitizeForTerminal(err.Error())))
 	if h := authHint(err, "`sleipnir login`"); h != "" {
-		fmt.Fprintln(w, h)
+		fmt.Fprintln(w, wrapBlockFor(w, h))
 	}
 	var ee *exitError
 	if errors.As(err, &ee) && ee.code > 0 {
@@ -284,6 +286,95 @@ func wrapWords(text string, width int) string {
 	return b.String()
 }
 
+// wrapBlock breaks text at spaces so that no line is wider than width. A paragraph written by hand in lines of about the width, one of
+// which is a little too long, is flowed again as a whole (a lone word is not left on a line of its own); text that fits is left exactly as
+// it was. A line that goes on is indented under where its own text began: after its indentation, or after a name and the padding behind
+// it ("  taskgen    make tasks ..."), so that a table keeps its columns. A word wider than width stays whole.
+func wrapBlock(text string, width int) string {
+	if width < 20 {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	var out []string
+	for i := 0; i < len(lines); {
+		j := i + 1
+		for j < len(lines) && continuesParagraph(lines[j-1], lines[j], width) {
+			j++
+		}
+		run, wide := lines[i:j], false
+		for _, l := range run {
+			wide = wide || utf8.RuneCountInString(l) > width
+		}
+		switch {
+		case !wide:
+			out = append(out, run...)
+		case len(run) == 1:
+			out = append(out, wrapLine(run[0], width))
+		default:
+			lead := run[0][:len(run[0])-len(strings.TrimLeft(run[0], " "))]
+			out = append(out, wrapLine(lead+strings.Join(strings.Fields(strings.Join(run, " ")), " "), width))
+		}
+		i = j
+	}
+	return strings.Join(out, "\n")
+}
+
+// continuesParagraph says whether next goes on from prev: both are running text with the same indentation, and prev is long enough to
+// have been broken by hand at the margin (a list of short lines is not one paragraph).
+func continuesParagraph(prev, next string, width int) bool {
+	if utf8.RuneCountInString(prev) < width*3/5 || strings.TrimSpace(next) == "" {
+		return false
+	}
+	indent := func(l string) int { return len(l) - len(strings.TrimLeft(l, " ")) }
+	return indent(prev) == indent(next) && isProse(prev) && isProse(next)
+}
+
+var listItem = regexp.MustCompile(`^([-*] |\d+[.)] )`)
+
+// isProse is false for a line with columns in it ("name   text"), an item of a list and a usage line.
+func isProse(line string) bool {
+	body := strings.TrimLeft(line, " ")
+	return !strings.Contains(body, "  ") && !listItem.MatchString(body) && !strings.HasPrefix(body, "usage: ")
+}
+
+func wrapLine(line string, width int) string {
+	if utf8.RuneCountInString(line) <= width {
+		return line
+	}
+	body := strings.TrimLeft(line, " ")
+	hang := len(line) - len(body)           // under the line's own first word
+	if strings.HasPrefix(body, "usage: ") { // a usage line goes on under the command, not under "usage:"
+		hang += len("usage: ")
+	} else if item := listItem.FindString(body); item != "" { // the item of a list, under its text
+		hang += len(item)
+	} else if i := strings.Index(body, "  "); i > 0 && i <= 24 {
+		if rest := strings.TrimLeft(body[i:], " "); rest != "" { // a name ("add [--yes]"), its padding, and the text it describes
+			hang = len(line) - len(rest)
+		}
+	}
+	if hang > width/2 {
+		hang = len(line) - len(body)
+	}
+	parts := strings.Split(wrapWords(line[hang:], width-hang), "\n")
+	parts[0] = line[:hang] + parts[0]
+	for i := 1; i < len(parts); i++ {
+		parts[i] = strings.Repeat(" ", hang) + parts[i]
+	}
+	return strings.Join(parts, "\n")
+}
+
+// wrapBlockFor is text with its lines fitted to the terminal out is (wrapBlock), and as it was when out is not one: a pipe, a file and
+// the generator of docs/CLI.md get the text the program wrote.
+func wrapBlockFor(out io.Writer, text string) string {
+	if w := termWidth(out); w > 20 {
+		return wrapBlock(text, w-1)
+	}
+	return text
+}
+
+// printHelp writes help text to w, its lines fitted to the terminal when w is one.
+func printHelp(w io.Writer, text string) { fmt.Fprint(w, wrapBlockFor(w, text)) }
+
 func addProviderFlags(fs *flag.FlagSet) *providerFlags {
 	pf := &providerFlags{}
 	fs.StringVar(&pf.provider, "provider", "", "heimdall | openrouter | openai | custom (default: auto-detect)")
@@ -293,7 +384,7 @@ func addProviderFlags(fs *flag.FlagSet) *providerFlags {
 }
 
 func cmdDoctor(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	fs := newFlagSet("doctor", flag.ExitOnError)
 	pf := addProviderFlags(fs)
 	model := fs.String("model", "", "model to probe: provider/model, or a bare id for the default provider (required)")
 	deep := fs.Bool("deep", false, "also measure cache granularity, minimum prefix and warm-up needs (more requests)")
@@ -379,7 +470,7 @@ func envLabel(s providerSpec) string {
 }
 
 func cmdMock(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("mock", flag.ExitOnError)
+	fs := newFlagSet("mock", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8089", "listen address")
 	engines := fs.Int("engines", 2, "number of independent engines (each with its own prefix cache)")
 	fs.Parse(args)

@@ -40,7 +40,7 @@ func rlTasks(ctx context.Context, args []string, stdout, stderr io.Writer) error
   check     prove each task is sound: the verifier fails on the start and passes with the reference solution
 `
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		printHelp(stderr, usage)
 		return errors.New("rl tasks: a command is required")
 	}
 	switch args[0] {
@@ -55,10 +55,10 @@ func rlTasks(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	case "check":
 		return tasksCheck(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, usage)
+		printHelp(stdout, usage)
 		return nil
 	}
-	fmt.Fprint(stderr, usage)
+	printHelp(stderr, usage)
 	return fmt.Errorf("rl tasks: unknown command %q", args[0])
 }
 
@@ -308,7 +308,7 @@ Every task is validated in the same environment rollouts use before it is writte
 the verifier must fail on the start state and pass with the reference solution.
 `
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		printHelp(stderr, usage)
 		return errors.New("rl taskgen: a generator is required")
 	}
 	switch args[0] {
@@ -323,10 +323,10 @@ the verifier must fail on the start state and pass with the reference solution.
 	case "fixture":
 		return taskgenFixture(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, usage)
+		printHelp(stdout, usage)
 		return nil
 	}
-	fmt.Fprint(stderr, usage)
+	printHelp(stderr, usage)
 	return fmt.Errorf("rl taskgen: unknown generator %q", args[0])
 }
 

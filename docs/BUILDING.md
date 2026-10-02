@@ -129,6 +129,13 @@ file, its area the file's lines. Run it before choosing what to polish: a user-f
 - No global mutable state. Anything shared across agents is protected and documented.
 - Deterministic output: sort map iteration, never embed timestamps or random ids in text
   that becomes part of a prompt.
+- What a command prints fits a terminal of 80 columns, which a window opens at and which breaks a longer line in the middle of a word.
+  Help text goes through `printHelp`, a flag set is made by `newFlagSet` and its flags are listed by `printFlags`, an error is
+  printed by `reportError`, and a table that can be wider than the terminal fits itself to `termWidth(out)` (`sleipnir models` drops its
+  least useful columns). All of them leave the text as it was when the output is not a terminal: `docs/CLI.md` is made from a pipe.
+  Write a paragraph in lines of 78 columns or fewer anyway; a line that runs over makes `wrapBlock` flow the paragraph again.
+  `cmd/sleipnir/e2e_width_test.go` runs every command's `-h` on a terminal of 80 columns, and a command added to the usage text is
+  covered by it.
 
 ## Tests
 

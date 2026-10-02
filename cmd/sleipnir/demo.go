@@ -23,7 +23,7 @@ const demoTrailer = "\nTry it on a real model: sleipnir init --user && sleipnir 
 // cmdDemo runs a scripted team through the real harness against the built-in mock endpoint: no API key, no network. On a terminal
 // the team is watched in the live cockpit and the report follows when the person leaves it; anywhere else the report is all there is.
 func cmdDemo(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("demo", flag.ExitOnError)
+	fs := newFlagSet("demo", flag.ExitOnError)
 	scenario := fs.String("scenario", "", "what the team does: handbook (survey a handbook and summarise it, a second or two) | shop (build a small shop in git worktrees: mail, a cache that goes cold, a stuck agent, a cache break, a merge that is sent back; about twenty seconds; needs git and sh) (default: shop with the live cockpit on a terminal, handbook otherwise)")
 	scale := fs.Float64("scale", 1, "shop: stretch (above 1) or squeeze (below 1) the time it takes, and the lifetime of its cache with it")
 	topics := fs.Int("topics", 8, "handbook: documents to survey and summarise (an even number, 2-32)")

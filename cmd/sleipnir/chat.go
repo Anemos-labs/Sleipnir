@@ -65,7 +65,7 @@ func defaultTeam() int {
 }
 
 func cmdChat(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("chat", flag.ExitOnError)
+	fs := newFlagSet("chat", flag.ExitOnError)
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	cwd := fs.String("cwd", "", "working directory")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass")

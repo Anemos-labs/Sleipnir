@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 
@@ -33,7 +34,7 @@ func init() {
 // ever creates files that do not exist, and merges through config.Save, which
 // refuses to produce a configuration that would not load.
 func cmdInit(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	fs := newFlagSet("init", flag.ExitOnError)
 	user := fs.Bool("user", false, "write ~/.sleipnir/config.json instead of the project's")
 	model := fs.String("model", "", "default model as provider/model (see `sleipnir models`); without it the chat asks your provider on its first run")
 	localURL := fs.String("local-url", "", "with --user: also add a provider named local at this URL, a self-hosted server such as vLLM or SGLang (http://127.0.0.1:8000/v1); it records token ids for RL")
@@ -131,7 +132,7 @@ func cmdInit(ctx context.Context, args []string) error {
 
 // cmdConfig shows the effective configuration and where each value came from.
 func cmdConfig(_ context.Context, args []string) error {
-	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	fs := newFlagSet("config", flag.ExitOnError)
 	trust := fs.Bool("trust-project", false, "apply security-sensitive settings from project files")
 	asJSON := fs.Bool("json", false, "print the effective configuration as JSON")
 	if err := fs.Parse(args); err != nil {
@@ -139,7 +140,7 @@ func cmdConfig(_ context.Context, args []string) error {
 	}
 	cfg, rep, err := config.Load(config.LoadOpts{UntrustedProject: !*trust})
 	if rep != nil && !*asJSON {
-		fmt.Fprint(os.Stderr, rep.String())
+		printHelp(os.Stderr, rep.String())
 	}
 	if err != nil {
 		return err
@@ -161,7 +162,7 @@ func cmdConfig(_ context.Context, args []string) error {
 		fmt.Fprintf(os.Stderr, "configuration is valid, with %d warning(s) listed above\n", warnings)
 	}
 	for _, line := range swarmSettings(cfg, rep) {
-		fmt.Fprintln(os.Stderr, line)
+		fmt.Fprintln(os.Stderr, wrapBlockFor(os.Stderr, line))
 	}
 	return nil
 }
@@ -248,7 +249,7 @@ func cmdSessions(_ context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "prune" {
 		return cmdSessionsPrune(os.Stdout, os.Stderr, args[1:], time.Now())
 	}
-	fs := flag.NewFlagSet("sessions", flag.ExitOnError)
+	fs := newFlagSet("sessions", flag.ExitOnError)
 	dir := fs.String("dir", "", "the directory that holds the sessions (default <state>/sessions, <state> being $SLEIPNIR_HOME or ~/.sleipnir)")
 	n := fs.Int("n", 20, "how many to list")
 	if err := fs.Parse(args); err != nil {
@@ -303,15 +304,25 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		summarize(filepath.Join(d, "events.jsonl"), &r.model, &r.prompt, &r.cost)
 		r.resumable = session.Resumable(d)
 	}
+	width := termWidth(out)
 	for _, r := range rows {
 		mark := " "
 		if r.resumable {
 			mark = "↺"
 		}
-		fmt.Fprintf(out, "%s %s  %-28s $%-8.4f %s\n", mark, r.id, r.model, r.cost, r.prompt)
+		model := fmt.Sprintf("%-28s ", r.model)
+		if width > 0 && width < 110 {
+			model = "" // the widest column: a narrow terminal keeps the id, the cost and what was asked
+		}
+		head := fmt.Sprintf("%s %s  %s$%-8.4f ", mark, r.id, model, r.cost)
+		prompt := r.prompt
+		if width > 0 {
+			prompt = fit(prompt, width-1-utf8.RuneCountInString(head))
+		}
+		fmt.Fprintln(out, head+prompt)
 	}
 	if len(rows) > 0 {
-		fmt.Fprintln(errw, "↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project's newest)")
+		fmt.Fprintln(errw, wrapBlockFor(errw, "↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project's newest)"))
 	}
 	return nil
 }
@@ -356,8 +367,8 @@ func summarize(path string, model, prompt *string, usd *float64) {
 
 func oneLineCLI(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
-	if len(s) > n {
-		s = s[:n] + "…"
+	if r := []rune(s); len(r) > n {
+		s = string(r[:n]) + "…"
 	}
 	return s
 }

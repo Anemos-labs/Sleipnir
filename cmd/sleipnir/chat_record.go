@@ -77,11 +77,11 @@ flags:
 `
 
 func cmdChatRecord(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("chat-record", flag.ContinueOnError)
+	fs := newFlagSet("chat-record", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, chatRecordUsage)
-		fs.PrintDefaults()
+		printHelp(os.Stderr, chatRecordUsage)
+		printFlags(fs)
 	}
 	out := fs.String("out", "", "write the transcript to this file (required)")
 	dir := fs.String("dir", "", "where to make the project and the session (default: a temporary directory, removed afterwards)")

@@ -192,9 +192,9 @@ func userHome() string {
 
 // cmdLogin stores a provider's API key: sleipnir login [provider]. With a pipe, the key is read from the first line of stdin.
 func cmdLogin(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("login", flag.ExitOnError)
+	fs := newFlagSet("login", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "usage: sleipnir login [provider]\n\nAsks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in\n~/.sleipnir/auth.json, readable by you only. `sleipnir login chatgpt` signs in with your ChatGPT plan instead (a browser, no key). From a pipe the key is the first line of stdin:\n  echo \"$KEY\" | sleipnir login heimdall\nAn environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.\n")
+		printHelp(os.Stderr, "usage: sleipnir login [provider]\n\nAsks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in\n~/.sleipnir/auth.json, readable by you only. `sleipnir login chatgpt` signs in with your ChatGPT plan instead (a browser, no key). From a pipe the key is the first line of stdin:\n  echo \"$KEY\" | sleipnir login heimdall\nAn environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		return err

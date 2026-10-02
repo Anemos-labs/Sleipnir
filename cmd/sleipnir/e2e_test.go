@@ -66,8 +66,12 @@ type world struct {
 // newWorld makes a world. With a provider URL the user's configuration has a provider named
 // mock at that URL and makes mock/mock-1 the default model; with "" there is no configuration.
 func newWorld(t *testing.T, providerURL string) *world {
+	return newWorldAt(t, t.TempDir(), providerURL)
+}
+
+// newWorldAt is newWorld in the directory root (a short one, when a test counts the columns of a path that a command prints).
+func newWorldAt(t *testing.T, root, providerURL string) *world {
 	t.Helper()
-	root := t.TempDir()
 	w := &world{t: t, home: filepath.Join(root, "home"), state: filepath.Join(root, "state"), tmp: filepath.Join(root, "tmp"), project: filepath.Join(root, "project")}
 	for _, d := range []string{w.home, w.state, w.tmp, filepath.Join(w.project, ".sleipnir")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
