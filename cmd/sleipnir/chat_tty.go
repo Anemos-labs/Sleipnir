@@ -78,10 +78,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			return
 		}
 		log, _ := s.Log.Subscribe(4096)
-		var models func() []input.Choice
-		if s.Swarm == nil { // /model is refused in a swarm
-			models = modelChoices(startCtx)
-		}
+		models := modelChoices(startCtx)
 		attach <- app.ChatAttach{Host: &sessionHost{s: s}, Info: chatInfo(s, cwd), Events: log, Commands: chatSlashCommands(s), Root: cwd, Models: models}
 	}()
 
@@ -240,6 +237,10 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 				fmt.Fprintf(out, "roles: a single agent runs on one model (/model); a team has roles: /swarm 8 first. Only the compactor can differ here: /roles compactor=%s\n", ref)
 				return app.CommandResult{}, true
 			}
+			if _, err := h.s.CheckModel(ref); err != nil {
+				fmt.Fprintf(out, "roles: %s=%s: %v\n", role, ref, err)
+				return app.CommandResult{}, true
+			}
 			typed = append(typed, "--role-model", role+"="+ref)
 		}
 		args, err := restartArgs(h.s, typed, false)
@@ -248,6 +249,23 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 			return app.CommandResult{}, true
 		}
 		fmt.Fprintf(out, "restarting: sleipnir chat %s\n", strings.Join(args, " "))
+		return app.CommandResult{Restart: args}, true
+	case "/model":
+		if len(f) < 2 || h.s.Swarm == nil { // a single agent moves its own conversation: slashTo
+			return app.CommandResult{}, false
+		}
+		// A team runs on its roles' models, and the default of them all is this one: changing it starts the team again (what it said and did is
+		// kept in its session and its checkout, its conversation is not carried over), with the roles that name their own model kept.
+		if _, err := h.s.CheckModel(f[1]); err != nil {
+			fmt.Fprintln(out, "model:", tools.SanitizeForTerminal(err.Error()))
+			return app.CommandResult{}, true
+		}
+		args, err := restartArgs(h.s, []string{"--model", f[1]}, true)
+		if err != nil {
+			fmt.Fprintln(out, "model:", err)
+			return app.CommandResult{}, true
+		}
+		fmt.Fprintf(out, "the team starts again on %s (its conversation does not carry over; /roles changes one role)\nrestarting: sleipnir chat %s\n", f[1], strings.Join(args, " "))
 		return app.CommandResult{Restart: args}, true
 	case "/new", "/resume":
 		var typed []string
@@ -307,7 +325,7 @@ var chatCommands = []chatCommand{
 	{"context", "", "layer sizes of the current prompt"},
 	{"compact", "[focus]", "fold the older thread now"},
 	{"agents", "", "the team's agents and tasks (ctrl+g)"},
-	{"model", "[provider/model]", "show the model, or move this conversation to another one (the prompt cache starts over)"},
+	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
 	{"budget", "[usd|off]", "show or set the dollar budget for the turns from now on"},
 	{"allow", "<rule>", "allow for the rest of this session what would otherwise ask: tests, Bash(go test:*), Edit(src/**)"},
 	{"verbose", "[on|off]", "show or hide notices and tool errors"},

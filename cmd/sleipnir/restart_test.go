@@ -109,6 +109,7 @@ func count(xs []string, x string) (n int) {
 // /roles shows who runs on which model and where each choice came from; changing a role restarts with the flag, keeping the ones named before;
 // a single agent has one model, so only its compactor can be named.
 func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
+	t.Setenv("TOGETHER_API_KEY", "k") // a role's model is checked before the chat is ended: its provider needs a key
 	solo := &sessionHost{s: chatSession(t, false, nil)}
 	var out strings.Builder
 	if _, ok := solo.programCommand("/roles", &out); !ok || !strings.Contains(out.String(), "default") || !strings.Contains(out.String(), "compactor") || !strings.Contains(out.String(), "no compactor model is set") {
@@ -143,7 +144,6 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 		t.Errorf("a team stays a team (--swarm 3, three agents in all) after a role change: %v", res.Restart)
 	}
 	// the role named on the line beats the one the session started with
-	t.Setenv("TOGETHER_API_KEY", "k")
 	named := chatSessionWith(t, false, nil, func(o *session.Options) {
 		o.Swarm, o.MaxAgents = true, 3
 		o.RoleModels = map[string]string{"backend": "together/a", "scout": "together/b"}
@@ -173,5 +173,40 @@ func TestDefaultTeamAndASoloRestartStaysSolo(t *testing.T) {
 	args, _ := restartArgs(chatSession(t, false, nil), nil, true)
 	if !slices.Contains(args, "--swarm") || args[slices.Index(args, "--swarm")+1] != "0" {
 		t.Errorf("a single agent restarts as one: %v", args)
+	}
+}
+
+// A team has no single model, but it has a default one, and the chat is a team by default: /model must work there. It starts the team
+// again on the new model (keeping the roles that name their own), and a reference that cannot be used is refused before anything is ended.
+func TestModelInATeamStartsItAgainOnTheNewModel(t *testing.T) {
+	t.Setenv("TOGETHER_API_KEY", "k")
+	t.Setenv("GROQ_API_KEY", "") // no key: a model of Groq cannot be used
+	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) {
+		o.Swarm, o.MaxAgents = true, 4
+		o.RoleModels = map[string]string{"scout": "together/small"}
+	}, nil)}
+	var out strings.Builder
+	res, ok := team.programCommand("/model together/big", &out)
+	if !ok || !contains(res.Restart, "--model") || !contains(res.Restart, "together/big") || !contains(res.Restart, "--swarm") || !contains(res.Restart, "scout=together/small") {
+		t.Fatalf("the team restarts on the new model, a team, with its roles: %v\n%s", res.Restart, out.String())
+	}
+	if count(res.Restart, "--model") != 1 {
+		t.Errorf("one --model, the new one: %v", res.Restart)
+	}
+	out.Reset()
+	if res, ok = team.programCommand("/model groq/zzz", &out); !ok || res.Restart != nil || !strings.Contains(out.String(), "model:") {
+		t.Errorf("a reference that cannot be used ends nothing: %v %q", res.Restart, out.String())
+	}
+	out.Reset()
+	if res, ok = team.programCommand("/roles scout=groq/zzz", &out); !ok || res.Restart != nil || !strings.Contains(out.String(), "roles: scout=groq/zzz") {
+		t.Errorf("a role's model that cannot be used ends nothing: %v %q", res.Restart, out.String())
+	}
+	// a single agent moves its own conversation, which is slashTo's, and without an argument /model only says which model it is
+	solo := &sessionHost{s: chatSession(t, false, nil)}
+	if _, ok := solo.programCommand("/model together/big", &out); ok {
+		t.Error("a single agent's /model is not a restart")
+	}
+	if _, ok := team.programCommand("/model", &out); ok {
+		t.Error("/model alone only shows the model")
 	}
 }

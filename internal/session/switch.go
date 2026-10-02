@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -16,7 +17,7 @@ import (
 // SwitchModel moves the single agent to another model between turns, keeping its thread, notes, spine and bill. The agent is
 // built again on the new provider and the snapshot of the old one is restored into it (the path a resume takes), so the next
 // request is a declared rebase: the new model has none of the old one's prompt cache. A swarm is refused: its workers run on
-// their roles' models (--role-model, models.roles), which is where to change them.
+// their roles' models (--role-model, models.roles), which is where to change them; the chat's /model starts a team again on another model.
 func (s *Session) SwitchModel(ctx context.Context, ref string) (string, error) {
 	if s.newSolo == nil || s.Swarm != nil {
 		return "", errors.New("/model changes the model of a single agent; a swarm runs on its roles' models (--role-model, models.roles)")
@@ -50,6 +51,23 @@ func (s *Session) SwitchModel(ctx context.Context, ref string) (string, error) {
 	}
 	s.Agent, s.modelRef = fresh, mr.String()
 	s.Log.Emit("", events.TypeModelSwitch, map[string]any{"from": oldModel.ID, "to": m.ID, "provider": mr.Provider})
+	return mr.String(), nil
+}
+
+// CheckModel resolves a model reference as --model and /model do, and changes nothing: the reference as the session names it, or why it
+// cannot be used (an unknown provider, no key for it). A command that restarts the chat checks first, so that a typo does not end it.
+func (s *Session) CheckModel(ref string) (string, error) {
+	mr, err := ResolveModel(s.cfg, ref)
+	if err != nil {
+		return "", err
+	}
+	p, ok := lookupProvider(s.cfg, mr.Provider)
+	switch {
+	case !ok:
+		return "", fmt.Errorf("unknown provider %q (known: %s)", mr.Provider, strings.Join(providerNames(s.cfg), ", "))
+	case p.APIKeyEnv != "" && p.APIKey() == "":
+		return "", fmt.Errorf("provider %q has no key: `sleipnir login %s`, or set %s", mr.Provider, mr.Provider, p.APIKeyEnv)
+	}
 	return mr.String(), nil
 }
 

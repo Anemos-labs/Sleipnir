@@ -252,6 +252,9 @@ The first release.
 
 ### Interfaces
 
+- `/model` works in the default chat. It was refused for a team, and the chat on a terminal is a team now: `/model REF` starts the team again on
+  that model (its roles that name their own model are kept) and the model menu opens after `/model `. `/model` and `/roles` check the reference
+  first (an unknown provider, a provider without a key), so a typo cannot end the chat. Found by looking at the palette picture and typing `/model `.
 - The chat page is as clean as it can be: the status line, the input and the footer. What the cache saved, the prompt stack bar and the hit
   ratio sparkline are gone from it, and so is the cache hit of a turn's record (`── 12s · 7 steps · $0.08`). They are on the stats page, `ctrl+t`
   or `/stats` (cost, tokens, cache hit, what it saved at list price, the prompt layer by layer), and a team has the agents page, `ctrl+g` or

@@ -269,7 +269,7 @@ const chatHelp = `conversation
 /exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)
 
 model and cost
-/model [ref]       show the model, or move this conversation to another one
+/model [ref]       show the model, or change it (a team starts again on it)
 /budget [usd|off]  the dollar budget for the turns from now on
 /cost              tokens, cost and cache hit ratio so far
 /stats             the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers
