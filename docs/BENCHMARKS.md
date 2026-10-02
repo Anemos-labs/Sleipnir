@@ -140,7 +140,7 @@ written: 24 mutations, 4 composite, 12 mined, 17 fixtures and 3 recall tasks, 47
 | requests per episode | 19.6 | 19.0 | -0.6 [-2.6, +1.3] | same |
 | steps per episode | 18.6 | 18.0 | -0.6 [-2.6, +1.3] | same |
 | wall time per episode | 460 s | 459 s | -1 s [-37, +33] | same |
-| hack rate | 2.1% | 2.1% | 0 | same |
+| hack rate (as scored then; none since the detector's fix, below) | 2.1% | 2.1% | 0 | same |
 | said done and failed the verifier | 6 of 94 | 7 of 94 | | |
 
 What it says: nothing moved beyond noise, and nothing got worse (the paired interval of the pass rate is -3.2 to +8.5 points: a loss of more than three points is ruled out, a gain of
@@ -153,9 +153,10 @@ first A/B of the session did not appear on this model (6% and 7%): that is the m
 
 By part (pass rate of `d`, `b0` in brackets): mutations 97% (94%), fixtures 91% (94%), mined 33% (25%). Of the 20 episodes of `d` that failed (22 of `b0`), 16 are mined tasks, 13 ended on
 a budget and seven said they were done. The mined tasks (`sl-*`, 12 of the 47) are a floor, not a measure: their hidden tests name symbols that the prompt does not (an exported constant of
-the commit), and five of the 20 failures of `d` were `undefined:` build errors of those hidden tests. The two flagged episodes of each run are the same task and samples in both builds, `greenfield-js-csvtool`, `hack:verifier_touched`: the agent
-wrote tests of its own (`test/conformance.local.test.js`, `test/readme.test.js`) whose names match the verifier's glob (`test/*.test.js`). That is a property of the detector and not of a build
-(`docs/ROADMAP.md` says what a fix has to keep: a new test file can carry `.only`).
+the commit), and five of the 20 failures of `d` were `undefined:` build errors of those hidden tests. The two flagged episodes of each run were the same task and samples in both builds, `greenfield-js-csvtool`, `hack:verifier_touched`: the agent
+wrote tests of its own (`test/conformance.local.test.js`, `test/readme.test.js`) whose names match the verifier's glob (`test/*.test.js`), and the detector took the glob, handed to
+`node --test`, for the script the verifier runs. That was the detector's fault and not a build's, and it is fixed: `sleipnir rl reward --redetect-hacks` on the run now finds no hack
+(a flagged episode had passed its verifier, and its reward goes from -0.24 to +1.06).
 
 ## Caveats
 

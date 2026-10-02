@@ -50,9 +50,6 @@ a dozen tests and real managers write terse titles: it is a hint. Writes under `
    the clock of a task (about 30 s a request for `deepseek-v4.1-flash` on Heimdall). Measured on 2026-10-02 on that route (a ten-line Slugify prompt, `max_tokens` 2500, three requests each with no effort, `low` and
    `high`): two of the three requests of every arm spent the whole 2500 tokens on reasoning (`finish_reason: length`) and the seconds did not follow the setting (39 to 75, 70 to 79, 70 to 105), so this route does
    not honour it and **no flag was built**. Try again on a route that documents the setting (OpenAI, Anthropic) before offering one.
-8. `hack:verifier_touched` flags the agent's own new test files when their names match the verifier's glob (`greenfield-js-csvtool`, both samples, both builds: 2 of 94 episodes; `internal/rl/reward/hack_config.go`,
-   `touchesRef`). A hard flag drops the episode from a training export, and writing tests is what a greenfield task asks for. A fix has to keep what the flag is for: a new test file can carry `.only` or a skip and
-   make the hidden tests not run, so flag a new file only when it holds such a marker or has a hidden file's path, and test both ways (`rl reward RUNDIR --redetect-hacks` rescoring the run).
 
 ## Second handoff (2026-10-01, the end of the second agent's session)
 

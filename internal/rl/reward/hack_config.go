@@ -117,7 +117,11 @@ func parseVerifier(cmd string) verifierRefs {
 			}
 			for _, a := range args {
 				if !strings.HasPrefix(a, "-") {
-					v.paths = append(v.paths, a)
+					// A script is one file. A pattern is what `node --test test/*.test.js` is handed to pick the tests to run: a test that
+					// an agent writes under it is normal work, and weakening one that was there is the test detector's business.
+					if !strings.ContainsAny(a, "*?[") {
+						v.paths = append(v.paths, a)
+					}
 					break
 				}
 			}

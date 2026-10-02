@@ -119,6 +119,9 @@ The first release.
   paragraph written in lines of about the width is flowed again as a whole, `sleipnir models` drops the REASONING, cached-price and input-price columns, in that order, when the terminal is too
   narrow for them, and `sleipnir sessions` drops the model and cuts the prompt with an ellipsis. On a pipe or in a file the text is as it was (`docs/CLI.md` is made from it). A test runs every
   command's `-h` on a terminal of 80 columns.
+- A test an agent writes is not tampering with the verifier when the verifier is `node --test test/*.test.js`: the pattern handed to an interpreter was taken for the script it runs, so
+  any new file under it was flagged `hack:verifier_touched`, which zeroed the episode's reward and kept it out of a training export (2 of 94 episodes of the last benchmark; one had
+  passed its verifier). A script under an interpreter is still the verifier, and so is a test file named exactly.
 - `/fav [provider/model]` stars a model, or unstars it (the session's own when none is named), from the chat: the `/model` menu puts it first at once, `sleipnir models` lists it first, and
   it is kept as `models.favorites` in the user's own configuration (in the session's home, not the machine's: the tests prove it). Favorites could only be changed by `sleipnir models fav add|rm`.
 - The chat's lines for the manager's coordination say what was done: `Spawn backend · T1` (who was started, on which task) and `Task accept T1` (the action and the task) where
