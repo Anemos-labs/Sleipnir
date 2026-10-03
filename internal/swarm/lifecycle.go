@@ -52,6 +52,7 @@ type runState struct {
 	tasks   map[string]uint64
 	cancel  context.CancelFunc
 	started time.Time
+	mailSeq uint64 // mail received before this run reserved the worker
 	reason  string // why the harness stopped the run ("" = it was not asked to stop)
 	count   bool   // whether that stop counts as a failed attempt at the task
 	abortAt time.Time
@@ -92,6 +93,7 @@ type member struct {
 	gateTries int
 	stuckWarn bool
 	autoRuns  int
+	mailSeq   uint64 // advances for each received message, including coalesced mail
 	// mailWakes counts the runs peer mail started for the current task, and wakeLimited
 	// that the bound on them (Config.MaxMailWakes) was reached and reported. wakeMu makes
 	// "is the bound reached, wake, count" one step among the senders that do it at once.
@@ -458,7 +460,7 @@ func (s *Swarm) reserve(m *member) (*runState, context.Context, bool) {
 	m.life = lifeRunning
 	m.runSeq++
 	ctx, cancel := context.WithCancel(root)
-	rs := &runState{id: m.runSeq, tasks: map[string]uint64{}, cancel: cancel, started: s.deps.Now()}
+	rs := &runState{id: m.runSeq, tasks: map[string]uint64{}, cancel: cancel, started: s.deps.Now(), mailSeq: m.mailSeq}
 	m.run = rs
 	m.stuckWarn = false
 	m.progress.Store(rs.started.UnixNano())
@@ -753,9 +755,6 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	default:
 		line = s.settleStopped(m, tasks, kind, why, count)
 	}
-	if line != "" {
-		s.notifyManager(line)
-	}
 	s.Leases.ReleaseAll(m.id)
 	s.Board.ClearAlertKey("stuck", "stuck:"+m.id)
 
@@ -773,10 +772,22 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	m.life = lifeIdle
 	m.idleAt = s.deps.Now()
 	m.task = currentTask(snap, m.id)
+	// A new message is a recovery trigger even if it arrived just before the
+	// failed run returned. Mail already present at reserve must not repeatedly
+	// restart a run that fails before it can drain its inbox (for example budget).
+	restart := kind == stopClean || (kind == stopFailed && m.mailSeq > rs.mailSeq)
 	m.mu.Unlock()
 	m.setState(s, state, stateLine)
 	s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
-	s.afterIdle(m, kind == stopClean)
+	if line == "" && (kind == stopFailed || (kind == stopHarness && count)) {
+		line = fmt.Sprintf("%s stopped (%s). Check task list for its current assignments; send recovery instructions or reassign unfinished work with spawn.", m.id, why)
+	}
+	// Publish the failure after making the worker available, so a manager's
+	// immediate recovery action can reserve it.
+	if line != "" {
+		s.notifyManager(line)
+	}
+	s.afterIdle(m, restart)
 	s.managerEvent() // a worker finished, failed or stopped: an idle manager may want to know
 }
 
@@ -925,8 +936,8 @@ const maxAutoRuns = 3
 
 // afterIdle runs when a worker becomes idle: mail that arrived while it was
 // finishing (or feedback the harness just queued for it) starts another run
-// instead of waiting for the next message. A run that ended abnormally does not
-// restart by itself (it would fail again at once); the mail waits for the next trigger.
+// instead of waiting for the next message. A failed run only restarts for mail
+// received since its reservation; existing unread mail cannot create a retry loop.
 // Mail that came only from other workers is bound by Config.MaxMailWakes like mail that
 // finds the worker idle (wakeWithinBound); the manager's and the harness's is not.
 func (s *Swarm) afterIdle(m *member, restart bool) {
