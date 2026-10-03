@@ -327,6 +327,13 @@ func (m *chatModel) attach(a ChatAttach) {
 		m.snapOK = false
 	}
 	var cs []input.Completer
+	cs = append(cs, input.Choices("effort", func() []input.Choice {
+		return []input.Choice{
+			{Text: "default", Detail: "let the model choose"},
+			{Text: "none"}, {Text: "minimal"}, {Text: "low"}, {Text: "medium"},
+			{Text: "high"}, {Text: "xhigh"}, {Text: "max"},
+		}
+	}))
 	m.menus = map[string]bool{}
 	if a.Models != nil {
 		m.menus["/model"] = true
@@ -726,14 +733,14 @@ func (m *chatModel) submit(text string) {
 
 // isLookCommand reports whether a line is a slash command that answers at once, beside the turn that runs, where every other line waits
 // for that turn to end: one that only looks, and /allow, which changes the rules of the session and is typed when questions pile up.
-// /mode and /mcp only look when they have no argument.
+// /effort safely updates subsequent requests. /mode and /mcp only look without arguments.
 func isLookCommand(line string) bool {
 	f := strings.Fields(line)
 	if len(f) == 0 {
 		return false
 	}
 	switch f[0] {
-	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow", "/steer":
+	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow", "/steer", "/effort":
 		return true
 	case "/mode", "/mcp":
 		return len(f) == 1

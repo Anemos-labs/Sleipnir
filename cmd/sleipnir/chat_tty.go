@@ -621,6 +621,7 @@ var chatCommands = []chatCommand{
 	{"agents", "", "the team's agents and tasks (ctrl+g: the cockpit)"},
 	{"steer", "TEXT", "tell the running turn something without stopping it: the agent reads it with its next step"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
+	{"effort", "[level]", "show or change reasoning effort; each model uses its closest supported level"},
 	{"fav", "[provider/model]", "star a model, or unstar it (this one when none is named): starred models come first in /model and `sleipnir models`"},
 	{"login", "[provider]", "add a key, or sign in with your ChatGPT plan, for a provider; the chat comes back where you were"},
 	{"budget", "[usd|off]", "show or set the dollar budget for the turns from now on"},

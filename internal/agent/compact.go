@@ -358,7 +358,7 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		instr = strings.Replace(instr, "</compactor-task>", line+"</compactor-task>", 1)
 	}
 	p := kv.ForkPrompt(&snap, kv.RenderOpts{
-		Caps: a.caps(prof), Policy: a.cfg.KVPolicy, Params: a.cfg.Params,
+		Caps: a.caps(prof), Policy: a.cfg.KVPolicy, Params: a.requestParams(prov, model.ID),
 		CacheKey: a.cacheKey(&snap), Est: a.est,
 	}, instr)
 	a.mu.Lock()
@@ -374,7 +374,22 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	snapLive := z.Turns(snap.Thread.Turns)
 	rp := &readyPatch{epoch: snap.Thread.Epoch, snapLen: len(snap.Thread.Turns), at: a.cfg.Now(), reason: reason, snapLive: snapLive}
 	var patch *kv.Patch
-	resp, err := a.callOn(ctx, prov, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil)
+	var resp *provider.Response
+	var err error
+	for attempt := 0; ; attempt++ {
+		resp, err = a.callOn(ctx, prov, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil)
+		if err == nil || a.cfg.Effort == nil || attempt >= 2 || !a.cfg.Effort.Recover(prov, model.ID, p.Params.Effort, err) {
+			break
+		}
+		p.Params = a.requestParams(prov, model.ID)
+		a.mu.Lock()
+		a.forkN++
+		label = fmt.Sprintf("%s.c%d", a.cfg.ID, a.forkN)
+		a.markPendingLocked(label)
+		a.mu.Unlock()
+		defer a.clearPending(label)
+		a.recordRequest(label, &kv.Rendered{Prompt: p}, nil, kv.Check{}, prof, KindCompactor, false)
+	}
 	if err == nil {
 		a.account(resp, label, model)
 		w := model.Price.Weights()

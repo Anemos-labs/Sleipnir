@@ -419,6 +419,11 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 		ReasoningEffortField: optString(p.Options, "reasoning_effort_field"),
 		CacheControlParts:    optBool(p.Options, "cache_control_parts"),
 	}
+	if _, configured := p.Options["reasoning_effort_field"]; !configured {
+		// No field is sent until the user chooses an effort. An explicit empty
+		// option still disables it for endpoints without this control.
+		oo.ReasoningEffortField = "reasoning_effort"
+	}
 	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
 		oo.ExtraBody = extra
 	}

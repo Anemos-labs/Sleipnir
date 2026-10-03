@@ -41,7 +41,7 @@ type Breakpoint struct {
 type Params struct {
 	MaxTokens  int      `json:"max_tokens,omitempty"`
 	Thinking   string   `json:"thinking,omitempty"`    // "", "adaptive", "off"
-	Effort     string   `json:"effort,omitempty"`      // "", low|medium|high|xhigh|max
+	Effort     string   `json:"effort,omitempty"`      // "", none|minimal|low|medium|high|xhigh|max
 	ToolChoice string   `json:"tool_choice,omitempty"` // "", "auto", "none"
 	Stop       []string `json:"stop,omitempty"`
 	// Temperature is ignored by models that reject sampling parameters.

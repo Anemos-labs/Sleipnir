@@ -10,6 +10,32 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
+func TestEffortChangesWhileTheTurnContinues(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	started, finish := make(chan struct{}), make(chan struct{})
+	r.host.turn = func(ctx context.Context, _ string) TurnResult {
+		close(started)
+		select {
+		case <-ctx.Done():
+			t.Error("effort cancelled the active turn")
+		case <-finish:
+		}
+		return TurnResult{}
+	}
+	r.host.command = func(_ context.Context, line string, out io.Writer) CommandResult {
+		if line != "/effort high" {
+			t.Errorf("command = %q", line)
+		}
+		io.WriteString(out, "effort: high")
+		return CommandResult{}
+	}
+	r.submit("work")
+	<-started
+	r.submit("/effort high")
+	r.shows("effort: high")
+	close(finish)
+}
+
 func TestGoalPauseInterruptsBeforeChangingGoalState(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	started, stopped := make(chan struct{}), make(chan struct{})

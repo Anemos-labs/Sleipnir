@@ -231,7 +231,7 @@ with status 0. The other commands (`run`, `swarm`, `inspect`, ...) keep one mean
 
 **Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal (the
 program shows the first of them under the status line as `⏎ queued: ...`; the program answers the slash commands that only look, `/cost`,
-`/context`, `/agents`, `/help`, `/skills`, `/recon`, `/status`, `/permissions`, `/trust`, and `/mode` and `/mcp` without an argument, at once, beside the turn). It is never the answer to an approval question: in the
+`/context`, `/agents`, `/help`, `/skills`, `/recon`, `/status`, `/permissions`, `/trust`, and `/mode` and `/mcp` without an argument, at once, beside the turn). The attached TUI also handles `/effort [level]` immediately: it changes subsequent requests while the current request finishes. Other typed lines remain queued. A queued line is never the answer to an approval question: in the
 program a question takes only keys pressed after it has been quiet for a moment, as above; in the line chat it takes the first
 line typed after it was shown, so a `y` that was typed for something else cannot approve an action, and a line typed ahead is not
 lost to a question either. A question that Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is
@@ -1677,6 +1677,7 @@ flags:
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
 | `/agents` | the team's agents and tasks written into the scrollback (`ctrl+g` is the cockpit); in a single-agent session it says so |
 | `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it). A team starts again on the new model, with the manager's conversation (the workers start again) and the roles that name their own model kept; the reference is checked first, so a typo or a provider without a key ends nothing. `/roles role=model` checks its references the same way |
+| `/effort [level]` | inspect or change reasoning effort for subsequent agent requests without restarting; each model uses its closest supported level. `default` restores the provider default. The preference survives session resume; changing it may invalidate the message cache |
 | `/fav [ref]` | star a model, or unstar it (the session's own when none is named): a starred model comes first in the `/model` menu and in `sleipnir models`, and is kept as `models.favorites` in your own configuration |
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |
 | `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |

@@ -144,6 +144,8 @@ type Config struct {
 	Notes  *kv.Layer
 
 	Params core.Params
+	// Effort is an optional session-wide preference read once per request.
+	Effort *provider.EffortSetting
 	Hot    HotSource
 	// VerifyHint is the project's test command ("go test ./...", from the survey): with it, an answer given after code was changed and before any
 	// test ran is sent back once to run it. Empty: no such check.
@@ -331,18 +333,20 @@ type Agent struct {
 	costUSD float64
 
 	// Cache state (see warm.go).
-	lastStart    time.Time
-	mainReqs     int  // completed main-thread requests
-	reportsCache bool // the provider has reported cache reads or writes at least once
-	lastMiss     bool // the previous request read far less than the guard expected
-	lastEstAll   int  // estimated and reported size of the previous main prompt,
-	lastTotalIn  int  // for scaling the guard's estimates to provider tokens
-	lastReqEpoch uint64
-	lastReqLen   int // thread length at the previous main request
-	rollRef      core.BlockRef
-	rollEpoch    uint64
-	rollValid    bool
-	anomStreak   int
+	lastStart         time.Time
+	mainReqs          int  // completed main-thread requests
+	reportsCache      bool // the provider has reported cache reads or writes at least once
+	lastMiss          bool // the previous request read far less than the guard expected
+	lastEstAll        int  // estimated and reported size of the previous main prompt,
+	lastTotalIn       int  // for scaling the guard's estimates to provider tokens
+	lastReqEpoch      uint64
+	lastReqLen        int    // thread length at the previous main request
+	renderEffort      string // effort of the previous rendered request, including failed attempts
+	hasRenderedEffort bool
+	rollRef           core.BlockRef
+	rollEpoch         uint64
+	rollValid         bool
+	anomStreak        int
 	// truncBytes, truncIn and truncated: the last prompt's size in bytes and in the tokens the server reported, and whether a server that cuts
 	// the prompt off has been noticed (noteTruncation).
 	truncBytes, truncIn int

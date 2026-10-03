@@ -5,6 +5,11 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Add `/effort` to inspect and change reasoning effort during chat, including
+  running teams. Map each model to its closest supported level and recover from
+  explicit effort validation errors with bounded retries. Preserve the preference
+  on resume. Effort changes declare a cache rebase and may invalidate the provider's
+  message cache; prompt text and tool schemas remain stable.
 - Bind watchdog cancellation and alerts to the worker run that was checked, so
   a delayed decision or alert cleanup cannot stop or clear warnings for its replacement.
 - Check composite benchmark tasks against all recorded reference patches instead

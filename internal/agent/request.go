@@ -30,14 +30,25 @@ const maxAttempts = 6
 // it is appended to.
 func (a *Agent) request(ctx context.Context) (*provider.Response, uint64, error) {
 	retriedContext, retriedBinding := false, false
+	effortRetries := 0
 	var opt reqOpt
 	for {
+		params := a.requestParams(a.cfg.Provider, a.cfg.Model.ID)
+		opt.params = params
 		resp, epoch, err := a.requestOnce(ctx, opt)
 		if err == nil {
 			return resp, epoch, nil
 		}
 		if pe, ok := provider.AsError(err); ok {
 			switch {
+			case a.cfg.Effort != nil && effortRetries < 2 && a.cfg.Effort.Recover(a.cfg.Provider, a.cfg.Model.ID, params.Effort, err):
+				effortRetries++
+				next := a.requestParams(a.cfg.Provider, a.cfg.Model.ID).Effort
+				if next == "" {
+					next = "provider default"
+				}
+				a.cfg.Sink.Notice(a.cfg.ID, "info", "reasoning effort adjusted to "+next+" for this model")
+				continue
 			// A prompt over the window is a compaction problem, not a failure: fold
 			// the thread mechanically (no model call needed) and try again once.
 			case pe.Kind == provider.ErrContextLength && !retriedContext && !a.cfg.NoCompaction:
@@ -64,9 +75,20 @@ func (a *Agent) request(ctx context.Context) (*provider.Response, uint64, error)
 
 // reqOpt carries per-attempt overrides.
 type reqOpt struct {
+	params core.Params
 	// dropBinding asks the endpoint to drop mismatching thinking blocks instead
 	// of failing (Request.BindingMode "drop_block"), when it has the control.
 	dropBinding bool
+}
+
+// requestParams snapshots generation settings for one model request, including
+// compaction on a different provider. The returned value stays stable in flight.
+func (a *Agent) requestParams(p provider.Provider, model string) core.Params {
+	params := a.cfg.Params
+	if a.cfg.Effort != nil {
+		params = a.cfg.Effort.Params(p, model, params)
+	}
+	return params
 }
 
 // recoverBinding strips thinking from the thread after the provider rejected a
@@ -101,6 +123,11 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	a.mu.Lock()
 	stack := a.stack
 	stack.Thread = a.thread.Snapshot()
+	effortChanged := a.hasRenderedEffort && a.renderEffort != opt.params.Effort
+	if effortChanged {
+		a.epoch++ // generation settings can invalidate provider message caches
+	}
+	a.renderEffort, a.hasRenderedEffort = opt.params.Effort, true
 	epoch := a.epoch + stack.Thread.Epoch
 	first := a.mainReqs == 0
 	a.reqN++
@@ -116,13 +143,16 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	scale := a.tokenScaleLocked()
 	a.mu.Unlock()
 	defer a.clearPending(reqID)
+	if effortChanged {
+		a.emit(events.TypeLayerCommit, map[string]any{"scope": "params", "reason": "reasoning effort changed", "effort": opt.params.Effort})
+	}
 
 	var hot []core.Block
 	if a.cfg.Hot != nil && caps.HotMode == kv.HotInline {
 		hot = a.hotBlocks()
 	}
 	r := kv.Render(&stack, kv.RenderOpts{
-		Hot: hot, Caps: caps, Policy: a.cfg.KVPolicy, Params: a.cfg.Params,
+		Hot: hot, Caps: caps, Policy: a.cfg.KVPolicy, Params: opt.params,
 		CacheKey: a.cacheKey(&stack), Est: a.est, PrevRolling: prevRolling,
 	})
 	check := a.guard.Observe(r, epoch, a.est)
@@ -138,7 +168,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	started := func(bool) {}
 	sharedWarm := false
 	if a.cfg.Gate != nil {
-		key := a.gateKey(&stack, prof)
+		key := a.gateKey(&stack, prof, r.Prompt.Params)
 		// A gate that can tell who is asking lets a request that outranks the primer of
 		// a cold prefix through at once, as the governor would (a manager's request must
 		// not wait for a worker that is still queued for its slot).
@@ -441,12 +471,11 @@ func (a *Agent) cacheKey(s *kv.Stack) string {
 // routes by key) and, inside it, the role prefix (the role pin too). The gate
 // elects one primer per level, so agents of a second role, or on a second shard,
 // are not released onto a prefix that is still cold for them.
-func (a *Agent) gateKey(s *kv.Stack, prof provider.Profile) string {
+func (a *Agent) gateKey(s *kv.Stack, prof provider.Profile, p core.Params) string {
 	shard := 0
 	if prof.Cache.KeyRouting {
 		shard = a.shard()
 	}
-	p := a.cfg.Params
 	shared := fmt.Sprintf("%s/%d/%s.%s.%s", s.GlobalKey().Short(), shard, p.Thinking, p.Effort, p.ToolChoice)
 	return shared + "|" + s.PrefixKey().Short()
 }
