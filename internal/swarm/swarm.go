@@ -28,10 +28,10 @@ type Config struct {
 	SessionID string
 	// MaxAgents bounds registered agents (running or idle).
 	MaxAgents int
-	// MaxWriters bounds agents whose roles may modify files that are running at
-	// once, including a worker reused for new work (spawn agent=...). Evidence from
-	// multi-agent coding studies is that peer writers on one codebase collide
-	// far more than they help; readers (review, research, test runs) scale.
+	// MaxWriters limits admission of new or reassigned writers in a shared tree,
+	// counting running non-manager workers whose roles may modify files. Mail
+	// wakeups bypass admission but count in later checks. Read-only roles and
+	// isolated worktrees are exempt from this limit.
 	MaxWriters int
 	// RPM/MaxConcurrent feed the shared request governor.
 	RPM           int
@@ -455,7 +455,7 @@ func (s *Swarm) Roles() Roles { return s.roles }
 // MaxAgents is the most agents the swarm registers, the manager included.
 func (s *Swarm) MaxAgents() int { return s.cfg.MaxAgents }
 
-// MaxWriters is how many agents that may modify files can run at once.
+// MaxWriters returns the writer admission limit for shared-tree spawns and reuse.
 func (s *Swarm) MaxWriters() int { return s.cfg.MaxWriters }
 
 // ManagerID returns the manager's agent id.

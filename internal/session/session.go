@@ -767,8 +767,8 @@ func (s *Session) build(ctx context.Context) error {
 	if o.MaxAgents > 0 {
 		sc.MaxAgents = o.MaxAgents
 	}
-	// Every worker of the team may write at once (at least four, the swarm's own default): the leases keep two of them off the same files,
-	// and a cap below the team's size left a manager of "--swarm 8" unable to start its fifth worker.
+	// Allow every worker slot to hold a writer, using at least the library default
+	// of four. Task scopes and write leases enforce file-level coordination.
 	sc.MaxWriters = max(sc.MaxWriters, sc.MaxAgents-1)
 	if v := s.cfg.Swarm.RequestsPerMinute; v > 0 {
 		sc.RPM = v
