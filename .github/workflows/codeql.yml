@@ -2,7 +2,7 @@ name: codeql
 
 # CodeQL "advanced setup": this file is the one place CodeQL is configured. The repository's "default setup" (Settings >
 # Advanced Security > Code scanning) must stay OFF: with both, GitHub refuses the results of this workflow
-# (docs/REPO-SETUP.md, step 4). Go is analysed from a build, the workflows themselves (the "actions" language) without one.
+# (docs/REPO-SETUP.md). Go is analysed from a build, the workflows themselves (the "actions" language) without one.
 # The ruleset in .github/rulesets/main.json blocks a merge that adds a high or critical alert. It does so for Dependabot's
 # pull requests too, so the push trigger stays on main alone: a push run of a Dependabot branch is read-only, cannot upload
 # its results, and the codeql action says so in a warning (its pull_request run can).

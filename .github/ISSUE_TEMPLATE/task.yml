@@ -1,0 +1,27 @@
+name: Development task
+description: Define a change with observable acceptance criteria.
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the user-visible problem and the behavior that should replace it.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Current behavior or reproduction
+      description: Include commands, expected versus actual results, and relevant files. Remove secrets and private session data.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that establish completion, including relevant platforms or providers.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and validation
+      description: State compatibility requirements, scope limits, and commands or manual checks that verify the change.

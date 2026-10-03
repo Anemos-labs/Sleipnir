@@ -74,9 +74,11 @@ func TestRulesetRequiresJobsOfCI(t *testing.T) {
 		t.Error("required_status_checks must be strict: a branch has to be up to date with main before it merges")
 	}
 	jobs := map[string]bool{}
-	for _, j := range workflowNamed(t, "ci.yml").Jobs {
-		if j.Name != "" && !strings.Contains(j.Name, "${{") {
-			jobs[j.Name] = true
+	for _, file := range []string{"ci.yml", "pr.yml"} {
+		for _, j := range workflowNamed(t, file).Jobs {
+			if j.Name != "" && !strings.Contains(j.Name, "${{") {
+				jobs[j.Name] = true
+			}
 		}
 	}
 	var fixed []string
@@ -85,13 +87,21 @@ func TestRulesetRequiresJobsOfCI(t *testing.T) {
 	}
 	sort.Strings(fixed)
 	jobList := strings.Join(fixed, ", ")
-	if len(p.Checks) != 1 || p.Checks[0].Context != "ci-gate" || p.Checks[0].IntegrationID != actionsAppID {
-		t.Errorf("the ruleset requires %+v; the design is the single check ci-gate from the GitHub Actions app (integration_id %d)", p.Checks, actionsAppID)
+	want := map[string]bool{"ci-gate": true, "conventional title": true}
+	if len(p.Checks) != len(want) {
+		t.Errorf("the ruleset requires %+v; want the CI gate and conventional title checks", p.Checks)
 	}
 	for _, c := range p.Checks {
-		if !jobs[c.Context] {
-			t.Errorf("the ruleset requires the check %q, but no job of ci.yml has that name (the jobs with a fixed name: %s): rename one of them, or every pull request waits for a check that never comes", c.Context, jobList)
+		if !want[c.Context] || c.IntegrationID != actionsAppID {
+			t.Errorf("unexpected required check %+v; require the CI gate and title from GitHub Actions", c)
 		}
+		delete(want, c.Context)
+		if !jobs[c.Context] {
+			t.Errorf("required check %q has no job in ci.yml or pr.yml (fixed names: %s)", c.Context, jobList)
+		}
+	}
+	if len(want) != 0 {
+		t.Errorf("missing required checks: %v", want)
 	}
 }
 
@@ -159,9 +169,12 @@ func TestTagsRulesetDesign(t *testing.T) {
 	for _, b := range r.BypassActors {
 		found[b.ActorType+":"+strconv.Itoa(b.ActorID)+":"+b.BypassMode] = true
 	}
-	for _, want := range []string{"Integration:15368:always", "RepositoryRole:5:always"} {
+	for _, want := range []string{"RepositoryRole:5:always"} {
 		if !found[want] {
-			t.Errorf("tags.json lacks the bypass actor %s (the Actions app, and the repository admin role)", want)
+			t.Errorf("tags.json lacks the recovery bypass actor %s (repository admins)", want)
 		}
+	}
+	if len(found) != 1 {
+		t.Errorf("tags.json has unexpected bypass actors: %v; tag creation needs no bypass", found)
 	}
 }

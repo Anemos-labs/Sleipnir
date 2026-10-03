@@ -17,7 +17,7 @@
 #   actions    the default workflow token is read-only and Actions cannot approve pull requests; workflows of every
 #              external contributor need approval
 # It needs gh, logged in as a repository admin (gh auth login), and jq. It never stores or prints a credential.
-# What the API cannot set is in docs/REPO-SETUP.md (step 4), with the menu path for each.
+# Review automation and cost controls are documented in docs/REPO-SETUP.md.
 set -eu
 LC_ALL=C
 export LC_ALL
@@ -102,7 +102,7 @@ default_branch_check() {
   fi
   db=$(gh api "repos/$repo" --jq .default_branch 2>/dev/null) || die "cannot read $repo: is the name right, and are you an administrator?"
   if [ "$db" != main ] && [ "$anybranch" = 0 ]; then
-    die "the default branch of $repo is '$db', not main: the rulesets would protect '$db'. Do step 1 of docs/REPO-SETUP.md first, or pass --any-default-branch"
+    die "the default branch of $repo is '$db', not main: the rulesets would protect '$db'. See docs/REPO-SETUP.md, or pass --any-default-branch"
   fi
 }
 
@@ -167,6 +167,7 @@ if [ -n "$failed" ]; then
 fi
 cat <<EOF
 
-All calls succeeded. By hand, still (docs/REPO-SETUP.md, step 4): CodeQL "default setup" must be off, and the repository variable
-AUTO_RELEASE stays unset until you want a merge to publish a release.
+All calls succeeded. Keep CodeQL "default setup" off when using the checked-in workflow.
+Set AUTO_RELEASE=true only when successful main CI should publish releases. Verify zero-dollar
+budgets and review-bot billing separately; see docs/REPO-SETUP.md.
 EOF

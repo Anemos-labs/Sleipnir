@@ -2,22 +2,22 @@
 # file that exists (internal/repocheck fails on a stale one after a rename). The ruleset does not require a code owner's
 # approval: the owner is the only maintainer and cannot approve their own pull request, so this asks for a review and
 # blocks nothing.
-*                                @reee344
+*                                @Thanos420NoScope
 
 # Hand-edited security zones: the prompt bytes that are a cache key, the trust boundaries, the permission engine, the
 # process hardening, what reads and writes the repository and the log, and everything that builds and releases.
-/internal/kv/                    @reee344
-/internal/core/canon.go          @reee344
-/internal/agent/prompt.go        @reee344
-/internal/perm/                  @reee344
-/internal/harden/                @reee344
-/internal/provider/endpoint.go   @reee344
-/internal/config/trust.go        @reee344
-/internal/events/log.go          @reee344
-/internal/checkpoint/            @reee344
-/internal/workspace/             @reee344
-/internal/gitx/                  @reee344
-/.github/                        @reee344
-/scripts/                        @reee344
-/go.mod                          @reee344
-/go.sum                          @reee344
+/internal/kv/                    @Thanos420NoScope
+/internal/core/canon.go          @Thanos420NoScope
+/internal/agent/prompt.go        @Thanos420NoScope
+/internal/perm/                  @Thanos420NoScope
+/internal/harden/                @Thanos420NoScope
+/internal/provider/endpoint.go   @Thanos420NoScope
+/internal/config/trust.go        @Thanos420NoScope
+/internal/events/log.go          @Thanos420NoScope
+/internal/checkpoint/            @Thanos420NoScope
+/internal/workspace/             @Thanos420NoScope
+/internal/gitx/                  @Thanos420NoScope
+/.github/                        @Thanos420NoScope
+/scripts/                        @Thanos420NoScope
+/go.mod                          @Thanos420NoScope
+/go.sum                          @Thanos420NoScope

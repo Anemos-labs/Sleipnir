@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+early_access: false
+enable_free_tier: true
+tone_instructions: "Be concise and impersonal. Report actionable defects with evidence and impact. Avoid praise, poems, progress narratives, and speculative refactors."
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: true
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+  path_instructions:
+    - path: "**/*.go"
+      instructions: >-
+        Follow AGENTS.md. Prioritize correctness, cancellation, races, resource leaks,
+        hostile input, and cross-platform behavior. Require regression evidence for
+        behavioral fixes. Do not propose dependencies or prose-only tests without a concrete need.
+    - path: "internal/{kv,agent,provider}/**"
+      instructions: >-
+        Treat stable prompt bytes and tool ordering as cache contracts. Inspect the
+        serialized provider request, message boundaries, reasoning replay, usage accounting,
+        and cache warm-up ordering. Internal prefix equality alone does not prove provider reuse.
+    - path: "internal/tui/**"
+      instructions: >-
+        Check that controls act on live state, cancellation reaches active work,
+        and overlays restore input correctly. Terminal changes need visual inspection
+        at normal and narrow sizes; text snapshots do not establish contrast.
+    - path: "**/*.md"
+      instructions: >-
+        Documentation must be timeless, impersonal, and supported by implemented behavior.
+        Flag development diaries, handoffs, and unmeasured performance claims.
+    - path: ".github/**"
+      instructions: >-
+        Use standard GitHub-hosted runners for this public repository. Do not introduce
+        paid services, larger runners, or metered model APIs. Keep actions SHA-pinned,
+        permissions minimal, and untrusted pull request content out of privileged execution.
+chat:
+  auto_reply: true
+issue_enrichment:
+  auto_enrich:
+    enabled: false
+  planning:
+    enabled: false
