@@ -366,9 +366,9 @@ func cacheFollowup(previous *core.Prompt, response *provider.Response, text stri
 	return &p
 }
 
-// granularity is the gcd of the differences between reported read counts. Raw
-// counts can share a large accidental factor; their differences only share the
-// true block size.
+// granularity estimates the reported token increment from the gcd of read-count
+// differences. Sparse samples can yield a multiple of the underlying increment;
+// identical counts or fewer than three samples do not establish one.
 func granularity(vals []int) int {
 	if len(vals) < 3 {
 		return 0
