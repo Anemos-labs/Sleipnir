@@ -63,8 +63,8 @@ type Findings struct {
 	CachedTokensReported bool    `json:"cached_tokens_reported"`
 	CacheWorks           bool    `json:"cache_works"`
 	CacheHitRatio        float64 `json:"cache_hit_ratio"`
-	// CacheRepeats is how many requests of the cache step repeated a prompt the endpoint had
-	// already seen (the identical repeat and the growth series), and CacheRepeatHits how many
+	// CacheRepeats is how many requests of the cache step reused a prefix the endpoint had
+	// already seen (the warm request and the growth series), and CacheRepeatHits how many
 	// of them read cached tokens. A cache spread over several engines hits on some and misses
 	// on others, and one request would say either.
 	CacheRepeats      int      `json:"cache_repeats"`
@@ -278,8 +278,11 @@ func filler(nonce string, n int) string {
 	return sb.String()
 }
 
+// cache measures sequential prefix reuse using the endpoint's boundary model.
+// Token-prefix engines also expose an estimate of their reported token increment.
 func (r *runner) cache(ctx context.Context) error {
 	r.cfg.Log("cache")
+	boundaries := r.cfg.Provider.Profile().Cache.MessageBoundaries
 	sys := filler(r.nonce, 12000) // ~3k tokens
 	p1 := r.prompt(sys, user("Say ok. #1"))
 	a, err := r.do(ctx, "cache-cold", p1, false)
@@ -288,6 +291,9 @@ func (r *runner) cache(ctx context.Context) error {
 	}
 	r.rep.Findings.BytesPerToken = float64(len(sys)) / float64(max(a.Usage.TotalInput(), 1))
 	p2 := r.prompt(sys, user("Say ok. #2"))
+	if boundaries {
+		p2 = cacheFollowup(p1, a, "Say ok. #2")
+	}
 	b, err := r.do(ctx, "cache-warm", p2, false)
 	if err != nil {
 		return err
@@ -306,21 +312,25 @@ func (r *runner) cache(ctx context.Context) error {
 		promptTokens += u.TotalInput()
 	}
 	tally(b.Usage)
-	// Granularity: send a series of prompts, each extending the previous system
-	// text by an uneven amount. Each request's reads then cover the previous
-	// prompt rounded down to a whole cache block, so the reported counts are
-	// different multiples of the block size and their gcd reveals it.
+	// Grow token-prefix prompts by uneven amounts to estimate the reported token
+	// increment. Message-boundary engines instead need the old message endings:
+	// keep the system and history intact and append each response and user turn.
 	var reads []int
 	text := sys + filler(r.nonce+"g", 4000)
 	cur := len(sys)
+	previous, response := p2, b
 	for _, inc := range []int{70, 130, 197, 310, 89, 421, 155, 263} {
 		cur += inc
 		p := r.prompt(text[:cur], user("Say ok."))
+		if boundaries {
+			p = cacheFollowup(previous, response, text[cur-inc:cur]+"\nSay ok.")
+		}
 		g, err := r.do(ctx, fmt.Sprintf("cache-grow-%d", inc), p, false)
 		if err != nil {
 			break
 		}
 		tally(g.Usage)
+		previous, response = p, g
 		if g.Usage.CacheReadTokens > 0 {
 			reads = append(reads, g.Usage.CacheReadTokens)
 		}
@@ -336,10 +346,24 @@ func (r *runner) cache(ctx context.Context) error {
 	case f.CacheRepeatHits < f.CacheRepeats:
 		r.note(fmt.Sprintf("%d of %d repeat requests hit the cache: hits are erratic (the endpoint may serve one conversation from more than one engine, or read a prefix only after some delay)", f.CacheRepeatHits, f.CacheRepeats))
 	}
-	if g := granularity(reads); g > 1 && g <= 512 {
-		f.CacheGranularity = g
+	if !boundaries {
+		if g := granularity(reads); g > 1 && g <= 512 {
+			f.CacheGranularity = g
+		}
 	}
 	return nil
+}
+
+// cacheFollowup preserves every sent message and appends the returned assistant
+// blocks and next user turn. Empty responses do not introduce empty messages.
+func cacheFollowup(previous *core.Prompt, response *provider.Response, text string) *core.Prompt {
+	p := *previous
+	p.Messages = append([]core.Message(nil), previous.Messages...)
+	if len(response.Turn.Blocks) > 0 {
+		p.Messages = append(p.Messages, core.Message{Role: core.RoleAssistant, Blocks: response.Turn.Blocks})
+	}
+	p.Messages = append(p.Messages, user(text))
+	return &p
 }
 
 // granularity is the gcd of the differences between reported read counts. Raw

@@ -474,10 +474,10 @@ func cmdDoctor(ctx context.Context, args []string) error {
 		client = c
 		where = fmt.Sprintf("%s (key from %s)", spec.baseURL, envLabel(spec))
 	}
-	fmt.Fprintf(os.Stderr, "probing %s at %s\n", probeModel, where)
+	fmt.Fprint(os.Stderr, wrapBlockFor(os.Stderr, fmt.Sprintf("probing %s at %s\n", probeModel, where)))
 	rep, err := probe.Run(ctx, probe.Config{
 		Provider: client, Model: probeModel, Deep: *deep, Headers: rec.get, CacheKey: !*noKey, Capture: *capture,
-		Log: func(s string) { fmt.Fprintln(os.Stderr, s) },
+		Log: func(s string) { fmt.Fprintln(os.Stderr, wrapBlockFor(os.Stderr, s)) },
 	})
 	if err != nil && rep == nil {
 		return err
@@ -490,7 +490,7 @@ func cmdDoctor(ctx context.Context, args []string) error {
 		}
 	} else {
 		fmt.Println()
-		fmt.Print(rep.Text())
+		fmt.Print(wrapBlockFor(os.Stdout, rep.Text()))
 	}
 	if err != nil {
 		return err
