@@ -80,6 +80,9 @@ func TestRLTasksCheckCompositeReferenceSolutions(t *testing.T) {
 		{"missing blob", meta([]string{hashes[0], strings.Repeat("a", 64)}), false, false, "reference solution"},
 		{"empty hash", meta([]string{hashes[0], ""}), false, false, "reference solution"},
 		{"invalid metadata", json.RawMessage(`{"gold_blobs":42}`), false, false, "metadata"},
+		{"empty list", meta([]string{}), false, false, "metadata"},
+		{"null list", meta(nil), false, false, "metadata"},
+		{"absent list", json.RawMessage(`{}`), false, true, "no reference solution recorded"},
 		{"unrecorded", nil, false, true, "no reference solution recorded"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

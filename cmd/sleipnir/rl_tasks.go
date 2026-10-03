@@ -249,8 +249,8 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 			v := verdict{ID: t.ID}
 			defer func() { verdicts[i] = v }()
 			var meta struct {
-				GoldBlob  string   `json:"gold_blob"`
-				GoldBlobs []string `json:"gold_blobs"`
+				GoldBlob  string          `json:"gold_blob"`
+				GoldBlobs json.RawMessage `json:"gold_blobs"`
 			}
 			if len(t.Meta) > 0 {
 				if err := json.Unmarshal(t.Meta, &meta); err != nil {
@@ -259,6 +259,15 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 				}
 			}
 			if len(meta.GoldBlobs) > 0 {
+				var refs []string
+				if err := json.Unmarshal(meta.GoldBlobs, &refs); err != nil {
+					v.Reason = fmt.Sprintf("invalid reference metadata: %v", err)
+					return
+				}
+				if len(refs) == 0 {
+					v.Reason = "invalid reference metadata: gold_blobs must not be empty"
+					return
+				}
 				if _, err := taskgen.ValidateComposite(ctx, t, gold, vo); err != nil {
 					v.Reason = err.Error()
 					return
