@@ -2,15 +2,10 @@
 
 package term
 
-import (
-	"os"
-	"sync"
-)
+import "os"
 
-// WatchResize is a stub on this platform: there is no SIGWINCH, so the channel never delivers a size and stop closes it.
-// A caller that needs resizes here polls GetSize. No goroutine is started.
+// WatchResize reports changes of the size of the terminal behind f. There is no SIGWINCH here, so the size is read a few times a second
+// (a window that is dragged wider or narrower is seen within a tenth of a second or so); see watchBySize for the rest.
 func WatchResize(f *os.File) (sizes <-chan Size, stop func()) {
-	out := make(chan Size)
-	var once sync.Once
-	return out, func() { once.Do(func() { close(out) }) }
+	return watchBySize(func() (Size, error) { return GetSize(f) }, pollInterval)
 }

@@ -23,7 +23,7 @@ import (
 //	╰────────────────────────────────────────╯
 //	  completion menu, the Esc hint
 //	⏎ queued: "and run the race detector"
-//	default · ctrl+t stats · ctrl+g agents · / commands    heimdall/model · session
+//	default · ctrl+t stats · ctrl+g cockpit · / commands    heimdall/model · session
 //
 // The page is kept as clean as it can be: what the cache saved, the prompt stack and the hit ratio are statistics, and they are on the
 // stats page (ctrl+t, /stats), one key away, not in every frame.
@@ -313,8 +313,8 @@ func (k *chatLook) footer(v *liveView, w int) cell.Line {
 	}
 	if v.team {
 		hints = []string{
-			k.g.dot + " ctrl+t stats " + k.g.dot + " ctrl+g agents " + k.g.dot + " / commands",
-			k.g.dot + " ctrl+t stats " + k.g.dot + " ctrl+g agents",
+			k.g.dot + " ctrl+t stats " + k.g.dot + " ctrl+g cockpit " + k.g.dot + " / commands",
+			k.g.dot + " ctrl+t stats " + k.g.dot + " ctrl+g cockpit",
 			k.g.dot + " ctrl+t stats",
 			"",
 		}

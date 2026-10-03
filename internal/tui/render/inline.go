@@ -2,6 +2,7 @@ package render
 
 import (
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -90,6 +91,13 @@ type Inline struct {
 	pasteOn bool
 	stale   bool // a resize has happened since the region was drawn
 
+	// a page of the whole screen (SetFull), drawn on the alternate screen while it is set
+	full     []cell.Line
+	fullOn   bool     // the terminal is on the alternate screen
+	fullRows []string // the rows as drawn there
+	fullCur  [3]int   // the caret as drawn: visible (0 or 1), row, column
+	fullWipe bool     // the terminal was resized while the page was up: clear it before drawing
+
 	closed bool
 	err    error
 	buf    []byte
@@ -158,6 +166,26 @@ func (r *Inline) SetLive(lines []cell.Line) {
 	}
 }
 
+// SetFull puts a page of the whole screen on the terminal's alternate screen, one line to a row from the top (a line wider than the
+// terminal is wrapped, and rows past the bottom are dropped), and SetFull(nil) takes it away again: the terminal then shows what it showed
+// before, the scrollback and the live region as they were, and what was printed in the meantime is written. While a page is up the live
+// region is not drawn and Print only waits. SetCursor places the cursor on the page, from its top left. A plain renderer ignores it.
+func (r *Inline) SetFull(lines []cell.Line) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.plain {
+		return
+	}
+	if lines == nil {
+		r.full = nil
+		return
+	}
+	r.full = make([]cell.Line, len(lines))
+	for i, l := range lines {
+		r.full[i] = sanitizeLine(l)
+	}
+}
+
 // SetCursor says where the cursor rests, in cells from the top left of the live region, after wrapping (a caller that supplies
 // lines wider than the terminal should wrap them first to know where the cursor belongs). A negative row hides the cursor,
 // which is also how it starts: a live region that is only a status line has nothing to edit. A row past the region is taken as
@@ -181,6 +209,10 @@ func (r *Inline) Resize(cols, rows int) {
 	r.cols, r.rows = cols, rows
 	if len(r.drawn) > 0 {
 		r.stale = true
+	}
+	if r.fullOn {
+		r.fullRows = nil // the page is drawn again whole: the alternate screen has no memory of what was on it at the old size
+		r.fullWipe = true
 	}
 }
 
@@ -207,6 +239,8 @@ func (r *Inline) Close() error {
 			r.writePlain(r.live)
 		}
 	} else {
+		r.full = nil
+		r.flushFull() // gives the alternate screen back
 		r.closeTerminal()
 	}
 	r.closed = true
@@ -297,8 +331,90 @@ func sameRows(a, b []row) bool {
 	return true
 }
 
+// flushFull draws the page of SetFull on the alternate screen, or leaves it. It reports whether the page holds the screen, in which case
+// nothing else is drawn.
+func (r *Inline) flushFull() bool {
+	if r.full == nil && !r.fullOn {
+		return false
+	}
+	var body []byte
+	if r.full == nil { // leaving: the terminal restores the screen, and the cursor is put as the live region wants it
+		body = append(body, altScreenOff...)
+		if r.hidden {
+			body = append(body, hideCursor...)
+		} else {
+			body = append(body, showCursor...)
+		}
+		r.fullOn, r.fullRows = false, nil
+		r.write(r.framed(body))
+		return false
+	}
+	var rows []row
+	for _, l := range r.full {
+		rows = append(rows, r.encodeRows(l)...)
+	}
+	if len(rows) > r.rows {
+		rows = rows[:r.rows]
+	}
+	if !r.fullOn {
+		body = append(body, altScreenOn...)
+		body = append(body, hideCursor...)
+		body = append(body, eraseScreen...)
+		r.fullOn, r.fullRows = true, nil
+		r.fullCur = [3]int{}
+	}
+	if r.fullWipe {
+		body = append(body, eraseScreen...)
+		r.fullWipe = false
+	}
+	for i, rw := range rows {
+		if i >= len(r.fullRows) || r.fullRows[i] != rw.enc {
+			body = append(body, "\x1b["+itoa(i+1)+";1H"...)
+			body = append(body, rw.enc...)
+			body = append(body, eraseToEOL...)
+		}
+	}
+	for i := len(rows); i < len(r.fullRows); i++ { // rows the page no longer has
+		body = append(body, "\x1b["+itoa(i+1)+";1H"...)
+		body = append(body, eraseToEOL...)
+	}
+	cur := [3]int{}
+	if r.caretOn {
+		cur = [3]int{1, min(max(r.caretR, 0), max(len(rows)-1, 0)), min(max(r.caretC, 0), r.cols-1)}
+	}
+	if len(body) == 0 && cur == r.fullCur {
+		return true // the page is as it was
+	}
+	r.fullRows = r.fullRows[:0]
+	for _, rw := range rows {
+		r.fullRows = append(r.fullRows, rw.enc)
+	}
+	if cur[0] == 1 {
+		body = append(body, "\x1b["+itoa(cur[1]+1)+";"+itoa(cur[2]+1)+"H"...)
+		body = append(body, showCursor...)
+	} else {
+		body = append(body, hideCursor...)
+	}
+	r.fullCur = cur
+	r.write(r.framed(body))
+	return true
+}
+
+// framed is a frame between the markers of synchronized output, on a terminal that has them.
+func (r *Inline) framed(body []byte) []byte {
+	if !r.syncOut {
+		return body
+	}
+	return append(append([]byte(syncBegin), body...), syncEnd...)
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
 // flushTerminal writes the frame for a terminal that takes escape sequences.
 func (r *Inline) flushTerminal() {
+	if r.flushFull() {
+		return
+	}
 	want, tr, tc, caretOn := r.layout()
 	full := len(r.pend) > 0 || r.stale
 	rowsChanged := full || !sameRows(r.drawn, want)

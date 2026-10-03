@@ -17,6 +17,7 @@ import (
 type ChatScreen interface {
 	Print(lines ...cell.Line)
 	SetLive(lines []cell.Line)
+	SetFull(lines []cell.Line) // a page of the whole screen on the alternate screen, until SetFull(nil)
 	SetCursor(row, col int)
 	Resize(cols, rows int)
 	Size() (cols, rows int)

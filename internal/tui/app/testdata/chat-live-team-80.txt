@@ -2,4 +2,4 @@
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ ❯ now add a test for page 0 and a negative size                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-accept-edits · ctrl+t stats · ctrl+g agents · / commands             mock/mock-1
+accept-edits · ctrl+t stats · ctrl+g cockpit · / commands            mock/mock-1

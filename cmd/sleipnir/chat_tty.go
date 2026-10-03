@@ -615,7 +615,7 @@ var chatCommands = []chatCommand{
 	{"stats", "", "the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers"},
 	{"context", "", "layer sizes of the current prompt"},
 	{"compact", "[focus]", "fold the older thread now"},
-	{"agents", "", "the team's agents and tasks (ctrl+g)"},
+	{"agents", "", "the team's agents and tasks (ctrl+g: the cockpit)"},
 	{"steer", "TEXT", "tell the running turn something without stopping it: the agent reads it with its next step"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
 	{"fav", "[provider/model]", "star a model, or unstar it (this one when none is named): starred models come first in /model and `sleipnir models`"},

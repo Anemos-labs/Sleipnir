@@ -299,7 +299,7 @@ a team, and the program
 /roles [role=m]    which model each role runs on; change one (restarts)
 /swarm <n> [flags] start again as a team of n agents (the manager included)
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
-/agents            the team's agents and tasks (ctrl+g)
+/agents            the team's agents and tasks (ctrl+g: cockpit)
 /steer TEXT        tell the running turn something, without stopping it
 /verbose [on|off]  notices and tool errors
 /anim [on|off]     motion

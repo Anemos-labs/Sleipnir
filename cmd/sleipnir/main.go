@@ -229,7 +229,8 @@ Start:
   cd your-project && sleipnir
       The first run asks which provider to use (Heimdall is the recommended
       one), takes its key and opens the chat: a manager and seven workers.
-      In the chat, ctrl+g shows the agents, ctrl+t the stats, /help the rest.
+      In the chat, ctrl+g shows the team's cockpit, ctrl+t the stats, /help
+      the rest.
   sleipnir run "fix the failing test"
       One goal, no chat (sleipnir swarm 8 "..." runs the whole team).
 

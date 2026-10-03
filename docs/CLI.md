@@ -193,7 +193,7 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 Interactive session. On a terminal chat without `--swarm` is a team of eight agents, the manager included (kept under `swarm.max_agents`), and it does a small job itself; `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
 program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
 the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, `esc to interrupt`), the
-input box, and a footer with the permission mode, the keys of the pages (`ctrl+t` stats, `ctrl+g` agents for a team) and the model and
+input box, and a footer with the permission mode, the keys of the pages (`ctrl+t` stats, `ctrl+g` cockpit for a team) and the model and
 the session (`docs/UX.md` describes each). The page carries no statistic: cost, cache hit and what the cache saved are on the stats page. From a pipe or a file, with `TERM=dumb`, or with
 `--plain`, it is the line chat: no colour, no redrawing, a prompt `› `, a goal per line until the input ends, and an action that
 needs approval is refused (with `--plain` on a terminal it asks `allow? [y]es once / [a]lways this session / [n]o`). `--resume
@@ -208,7 +208,7 @@ UTF-8 and ASCII otherwise.
 **Keys.** Enter sends; a line that ends in `\`, `alt+enter` and `ctrl+j` continue it on the next. A paste of many lines is a chip
 (`[pasted text #1 +50 lines]`) that is sent whole. Up, Down and `ctrl+r` recall the history, which is kept in `history.jsonl` in the
 state directory. `/` opens the palette of commands, `@` completes a path, `shift+tab` steps through the permission modes (never into
-`bypass`), `ctrl+t` writes the stats page into the scrollback (the same as `/stats`), `ctrl+g` the agents page of a team (the same as `/agents`), and `ctrl+o` writes the whole of the newest output
+`bypass`), `ctrl+t` writes the stats page into the scrollback (the same as `/stats`), `ctrl+g` the cockpit of a team (the horse, the agents, the board and the rest on a screen of its own, over the prompt; `/agents` writes the table into the scrollback), and `ctrl+o` writes the whole of the newest output
 that was shown collapsed (a tool's long output is its first and last lines).
 
 **Approvals.** A tool that needs approval puts a box in the live region: the command, or the change as a diff, and why it asks.
@@ -1646,7 +1646,7 @@ flags:
 | `/stats` | the stats page (`ctrl+t`): cost, tokens, cache hit, what the cache saved at list price, the prompt layer by layer |
 | `/context` | token size of each prompt layer: constitution, shared pin, role pin, notes, spine, verbatim thread |
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
-| `/agents` | the team's agents and tasks (`ctrl+g`); in a single-agent session it says so |
+| `/agents` | the team's agents and tasks written into the scrollback (`ctrl+g` is the cockpit); in a single-agent session it says so |
 | `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it). A team starts again on the new model, with the manager's conversation (the workers start again) and the roles that name their own model kept; the reference is checked first, so a typo or a provider without a key ends nothing. `/roles role=model` checks its references the same way |
 | `/fav [ref]` | star a model, or unstar it (the session's own when none is named): a starred model comes first in the `/model` menu and in `sleipnir models`, and is kept as `models.favorites` in your own configuration |
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |

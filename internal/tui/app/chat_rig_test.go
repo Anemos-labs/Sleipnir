@@ -90,7 +90,7 @@ func checkFrameVocabulary(tb testing.TB, p []byte) {
 				}
 			case 'h', 'l':
 				switch params {
-				case "?25", "?2026", "?2004":
+				case "?25", "?2026", "?2004", "?1049":
 				default:
 					tb.Errorf("unexpected mode %q", params)
 				}

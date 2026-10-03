@@ -29,7 +29,7 @@ pseudo-terminal and read the screen through the terminal emulator. The demo that
 `cmd/sleipnir/chat_tty.go`): the scrollback and the live region as described (the status line, the input box and the footer: the page
 is kept as clean as it can be, and the statistics are one key away, on the stats page), markdown, tool lines and diffs with line
 numbers, the fold of a compaction and the break alarm, the permission dialog, and the editor with persistent history, the `/`
-palette, `@path` completion, paste chips and typing ahead; `ctrl+t` (stats), `ctrl+g` (agents) and `ctrl+o`; `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1`
+palette, `@path` completion, paste chips and typing ahead; `ctrl+t` (stats), `ctrl+g` (the cockpit) and `ctrl+o`; `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1`
 and `NO_COLOR` are honoured, and Unicode or ASCII follows the locale. Not built: the `!` shell line, `/cache`, syntax colouring of
 code blocks (the markdown renderer has the hook, the chat passes none) and the inline progress view of `run --swarm`. Where the
 chat cannot be drawn on (a pipe, a file, `TERM=dumb`) or with `--plain` it is still the line REPL it was, byte for byte, with typed
@@ -81,7 +81,7 @@ record; notices and retries (`(retrying: 429, in 4 s)`). Live region: the status
 statistic is on the chat page.
 
 - *Status line:* spinner with a verb, elapsed time, tokens in and out, cost, `esc to interrupt`.
-- *Footer:* the permission mode, the keys of the pages (`ctrl+t stats`, and for a team `ctrl+g agents`, then `/ commands`), the model and
+- *Footer:* the permission mode, the keys of the pages (`ctrl+t stats`, and for a team `ctrl+g cockpit`, then `/ commands`), the model and
   the session. The keys are named there because a page that cannot be found is not there; on a narrow screen the session goes first
   (`/status` has it), then the keys one at a time, then the model. The banner does the same with its line: the directory gives way (it keeps its
   tail) before the budget and the size of the team do. A miss of the endpoint's own cache is not said on the page unless it cost real money
@@ -91,7 +91,8 @@ statistic is on the chat page.
   tokens × (input − read price); labelled as such), and the prompt stack layer by layer (G0–G6 sized by tokens, bright = served from
   cache, dim = paid in full, `▏` a provider cache breakpoint, the layer that broke in red) with the cache's clock. None of it is on the
   chat page: the cache is what this harness is built on, but a person who is working is not helped by watching it.
-- *Agents page* (`ctrl+g`, or `/agents`; a team only): the table of the cockpit, every agent with its state, what it is doing, the
+- *Cockpit* (`ctrl+g`; a team only): the screen of `sleipnir watch` (the horse and the prefix it carries, the agents, the gantt, the task board, the merge queue, the mail, the governor), drawn on the alternate screen with the prompt under it, so a message to the manager can be typed meanwhile. It opens by itself when the first worker of a turn starts, closes by itself when the turn ends or a question needs the person (and comes back when it is answered), and `ctrl+g` opens and closes it; a person who closed it keeps it closed for the turn. It needs 60 columns and 16 rows.
+- *Agents page* (`/agents`; a team only): the table of the cockpit, every agent with its state, what it is doing, the
   size of its prompt, its cost and its hit ratio, and the count of the tasks on the board. `sleipnir watch` is the same, full screen.
   In a chat that resumes a session, both pages start from the log of the earlier runs (the agents it had, the board, the bill), a manager that is back
   is done and waits for the next goal, and the compactions and cache breaks of that log are not printed again as news.
@@ -104,7 +105,7 @@ statistic is on the chat page.
   exact request for the session (a project's tool server: for the project, see `SECURITY.md`), `3` no and say what to do
   instead; arrows and enter work too, and `esc` is no. Letters never answer: a question takes keys only after the keyboard has
   been quiet for a moment since it appeared (what is typed ahead, or half typed, goes to the prompt and cannot approve anything).
-- *Pages on demand:* `ctrl+t` the stats page, `ctrl+g` the agents page, `/context` the token grid by layer; `/cache` explains the last
+- *Pages on demand:* `ctrl+t` the stats page, `ctrl+g` the cockpit, `/context` the token grid by layer; `/cache` explains the last
   miss in words (not built). They answer at once, in a turn or not.
 
 **Swarm progress (`run --swarm`, `swarm`).** One line for each tool call as it ends (a worker's line starts with its id, `[be-2]`), then the answer and

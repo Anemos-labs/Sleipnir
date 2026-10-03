@@ -105,17 +105,17 @@ func TestChatAgentsPageShowsTheTeamAndASingleAgentHasNone(t *testing.T) {
 	solo.shows("a single agent: /swarm 8 starts a team of eight")
 
 	r := startChat(t, rigOpts{cols: 100, rows: 30, team: 8})
-	if !strings.Contains(r.visible(), "ctrl+t stats") || !strings.Contains(r.visible(), "ctrl+g agents") {
+	if !strings.Contains(r.visible(), "ctrl+t stats") || !strings.Contains(r.visible(), "ctrl+g cockpit") {
 		t.Errorf("the footer of a team names both pages:\n%s", r.visible())
 	}
-	r.press(input.RuneKey('g', input.Ctrl))
+	r.submit("/agents")
 	r.shows("the team starts with your first message: a manager, and the 7 workers it can spawn")
 	b := statetest.NewBuilder()
 	log := sessionLog(b, 2, 0)
 	log = append(log, b.Spawn("w1", "backend", "T1", "main"), b.Spawn("w2", "tester", "T2", "main"))
 	r.at(b.Now().Add(2 * time.Second))
 	r.emit(log...)
-	r.press(input.RuneKey('g', input.Ctrl))
+	r.submit("/agents")
 	s := r.shows("3 of 8 agents started", "tasks:", "AGENT", "backend", "tester")
 	if strings.Contains(s, "a single agent") {
 		t.Errorf("a team is not a single agent:\n%s", s)

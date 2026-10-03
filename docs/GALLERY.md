@@ -41,7 +41,7 @@ key `1`: it takes numbers (and the arrows and enter), never letters, because a l
 sentence must not be able to answer for you. The person's hand goes to `y` first, as it does at other tools' prompts; it lands in the
 input box and the question says why (your typing goes to the prompt until you pause), so it is deleted, and `1` answers. Under the
 thread is the status line (spinner, verb, elapsed time, tokens, cost), the input and a footer that names the keys of the stats page
-(`ctrl+t`) and, for a team, the agents page (`ctrl+g`); the statistics are not on the page. `◆` marks where the thread was folded into a
+(`ctrl+t`) and, for a team, the cockpit (`ctrl+g`); the statistics are not on the page. `◆` marks where the thread was folded into a
 one-line resume, which stays in the scrollback as a record. A second goal ends
 in Ctrl-C, which cancels the turn and keeps the session.
 

@@ -235,6 +235,10 @@ type chatModel struct {
 	hint      string
 	hintUntil time.Time
 
+	cockpit     bool // the page of the whole screen is up: the team's cockpit above the prompt (chat_cockpit.go)
+	cockpitBack bool // a question closed the page: it comes back when the question is answered
+	cockpitTurn bool // this turn has had its say: the cockpit opened by itself, or the person closed it
+
 	exiting ChatEnd // the chat is ending: it waits for the run that is still going
 	over    bool
 	end     ChatEnd
@@ -491,6 +495,10 @@ func (m *chatModel) editorKey(k input.Key) {
 		return
 	}
 	if k.IsRune('g', input.Ctrl) {
+		if m.info.Swarm {
+			m.toggleCockpit()
+			return
+		}
 		m.pageKey("/agents")
 		return
 	}
@@ -774,6 +782,7 @@ func (m *chatModel) quit(reason ChatEnd) {
 
 func (m *chatModel) startTurn(goal string) {
 	m.turns++
+	m.cockpitTurn = false
 	ctx, cancel := context.WithCancel(m.ctx)
 	r := &run{kind: runTurn, cancel: cancel, started: m.clock(), base: m.totalsNow(), n: m.turns}
 	m.running = r
@@ -859,7 +868,8 @@ func (m *chatModel) runEnded(e runEnd) {
 const longTurn = 30 * time.Second
 
 func (m *chatModel) turnEnded(r *run, res TurnResult) {
-	if res.Steps > 0 || res.CostUSD > 0 { // a turn that was cancelled before the model answered did nothing worth a record
+	m.cockpit, m.cockpitBack = false, false // the answer is written into the scrollback, which the page hides
+	if res.Steps > 0 || res.CostUSD > 0 {   // a turn that was cancelled before the model answered did nothing worth a record
 		m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, m.cols)})
 	}
 	if res.Err == nil && m.since(r.started) >= longTurn && m.c.Bell != nil {
@@ -1004,6 +1014,10 @@ func (m *chatModel) draw() error {
 	m.snapshot() // may print what the log has added; before the tail is taken, which depends on what is printed
 	m.stepFolds()
 	tail := m.syncStream()
+	m.autoCockpit()
+	if m.drawCockpit() {
+		return m.scr.Flush()
+	}
 	v := m.liveView(tail)
 	out := m.k.liveLines(&v)
 	m.scr.SetLive(out.lines)
