@@ -7,7 +7,8 @@ include their cache implications.
 
 - Keep canceled verification runners within the configured concurrency limit
   until they exit. Include queue wait and scope discovery in the verification
-  deadline, and discard results received after that deadline.
+  deadline, and discard results received after that deadline. Serialize captured
+  stdout and stderr to prevent buffer races and preserve the combined output cap.
 - Bound repeated task-verification failures across explicit completion calls and
   implicit worker stops. Persist the repair count through recovery; after two
   repair retries, count a failed attempt and notify the manager with verifier
