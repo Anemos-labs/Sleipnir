@@ -138,3 +138,23 @@ func TestModelCatalogTableDistinguishesPlanFromTokenPrices(t *testing.T) {
 		})
 	}
 }
+
+func TestModelPriceFilterExcludesUnpricedPlans(t *testing.T) {
+	plan := row("chatgpt/gpt-fixture", 131072, 0, "tools")
+	plan.Model.Provider = planProvider
+	local := row("local/fixture", 8192, 0, "tools")
+	priced := row("api/priced", 32768, 2.5, "tools")
+	for _, tc := range []struct {
+		limit                           float64
+		wantPlan, wantLocal, wantPriced bool
+	}{
+		{0, true, true, true},
+		{1, false, true, false},
+		{2.5, false, true, true},
+	} {
+		f := modelFilter{MaxOut: tc.limit}
+		if f.keep(plan, nil) != tc.wantPlan || f.keep(local, nil) != tc.wantLocal || f.keep(priced, nil) != tc.wantPriced {
+			t.Errorf("limit %g: plan=%v, local=%v, priced=%v", tc.limit, f.keep(plan, nil), f.keep(local, nil), f.keep(priced, nil))
+		}
+	}
+}

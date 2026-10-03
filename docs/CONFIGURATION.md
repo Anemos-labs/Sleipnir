@@ -263,8 +263,9 @@ gateway's, not the fallback's. `sleipnir models` prints a marketplace catalogue 
 `--context-window N` on `run` overrides the window for one run.
 
 `sleipnir models --provider chatgpt` uses the saved ChatGPT sign-in. Its price
-columns say `plan`, because that catalog supplies no per-token prices. Tuning a
-built-in provider without setting `base_url` preserves its authentication mode.
+columns say `plan`, because that catalog supplies no per-token prices. A positive
+`--max-price` filter excludes these rows. Tuning a built-in provider without
+setting `base_url` preserves its authentication mode.
 An explicit `models --base-url URL` lists that endpoint without borrowing the
 ChatGPT sign-in token.
 

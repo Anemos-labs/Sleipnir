@@ -53,7 +53,7 @@ func (f modelFilter) keep(r modelRow, fav map[string]bool) bool {
 	if f.Tools && !r.SupportsTools() || f.Reasoning && !r.SupportsReasoning() || f.OnlyFavorite && !fav[r.Ref] {
 		return false
 	}
-	if f.MaxOut > 0 && r.Model.Price.OutputPerM > f.MaxOut || r.Model.ContextTokens < f.MinContext {
+	if f.MaxOut > 0 && (r.Model.Provider == planProvider || r.Model.Price.OutputPerM > f.MaxOut) || r.Model.ContextTokens < f.MinContext {
 		return false
 	}
 	ref := strings.ToLower(r.Ref)
