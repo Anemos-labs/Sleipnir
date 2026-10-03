@@ -1,9 +1,16 @@
-# Sleipnir
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/logo-wordmark-dark.svg">
+    <img src="docs/media/logo-wordmark.svg" alt="Sleipnir" width="620">
+  </picture>
+</h1>
 
 A terminal coding agent for local and hosted models. Work with one agent or let a
 manager divide a task among workers, review their results, and verify changes.
 
 [![CI](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/Anemos-labs/Sleipnir?sort=semver)](https://github.com/Anemos-labs/Sleipnir/releases)
 [Releases](https://github.com/Anemos-labs/Sleipnir/releases) ·
 [Getting started](docs/GETTING-STARTED.md) · [Configuration](docs/CONFIGURATION.md)
 
