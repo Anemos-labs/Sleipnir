@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -84,7 +85,7 @@ func main() {
 			// an option where a command goes: the chat takes it on a terminal, and elsewhere it is named
 			fmt.Fprintf(os.Stderr, "sleipnir: %s is an option, and without a terminal there is no command to give it to: try `sleipnir chat %s` (sleipnir -h lists the commands)\n", cmd, cmd)
 		} else {
-			fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q (sleipnir -h lists the commands)\n", cmd)
+			fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q; %s(sleipnir -h lists the commands)\n", cmd, nearCommand(cmd))
 		}
 		os.Exit(2)
 	}
@@ -518,4 +519,19 @@ func cmdMock(ctx context.Context, args []string) error {
 		return err
 	}
 	return nil
+}
+
+// nearCommand is "did you mean X? " for a mistyped command that is a letter or two from a real one, and empty otherwise (a trial typed `sesions`).
+func nearCommand(typed string) string {
+	names := []string{"doctor", "models", "mock"}
+	for n := range extraCommands {
+		names = append(names, n)
+	}
+	sort.Strings(names) // the same answer every time
+	for _, n := range names {
+		if len(typed) >= 3 && n != typed && editDistance(typed, n) <= 2 {
+			return "did you mean " + n + "? "
+		}
+	}
+	return ""
 }

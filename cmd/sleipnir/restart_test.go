@@ -450,3 +450,13 @@ func TestRewindNoteNamesTheFilesPutBack(t *testing.T) {
 		t.Errorf("a dry run changed nothing and the note is %q", n)
 	}
 }
+
+// A mistyped command is offered its near neighbour, as a mistyped slash command is.
+func TestNearCommandOffersTheRealOne(t *testing.T) {
+	if got := nearCommand("sesions"); !strings.Contains(got, "sessions") {
+		t.Errorf("nearCommand(sesions) = %q", got)
+	}
+	if got := nearCommand("xyzzy"); got != "" {
+		t.Errorf("nearCommand(xyzzy) = %q, want nothing", got)
+	}
+}
