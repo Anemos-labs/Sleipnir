@@ -169,6 +169,9 @@ func extendBuiltin(b, p config.Provider) config.Provider {
 	if p.APIKeyEnv == "" {
 		p.APIKeyEnv = b.APIKeyEnv
 	}
+	if p.Auth == "" {
+		p.Auth = b.Auth
+	}
 	p.Headers = mergeMaps(b.Headers, p.Headers)
 	p.Options = mergeMaps(b.Options, p.Options)
 	return p

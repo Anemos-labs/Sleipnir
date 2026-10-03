@@ -5,6 +5,10 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Preserve ChatGPT sign-in authentication when listing a provider's models or
+  tuning built-in provider options. Label plan model prices as `plan` instead of
+  zero dollars and exclude them from numeric price limits. Explicit catalog URLs
+  do not inherit sign-in credentials.
 - Include concurrent `doctor --deep` requests in request, usage, and reported-cost
   totals. Mark incomplete cost data as unavailable, retain failed warm-up samples,
   and stop later probes after cancellation.

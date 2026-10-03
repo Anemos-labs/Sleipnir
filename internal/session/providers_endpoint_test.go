@@ -380,6 +380,27 @@ func TestAnEntryThatOnlyTunesABuiltInProviderExtendsIt(t *testing.T) {
 	}
 }
 
+func TestTuningABuiltinPreservesItsAuthenticationMode(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		entry config.Provider
+		want  string
+	}{
+		{"empty", config.Provider{}, config.AuthChatGPTPlan},
+		{"options", config.Provider{Options: map[string]any{"context_window": 131072}}, config.AuthChatGPTPlan},
+		{"explicit auth", config.Provider{Auth: config.AuthChatGPTPlan}, config.AuthChatGPTPlan},
+		{"own endpoint", config.Provider{BaseURL: "https://my-gateway.example/v1"}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{Providers: map[string]config.Provider{"chatgpt": tc.entry}}
+			p, ok := session.LookupProvider(cfg, "chatgpt")
+			if !ok || p.Auth != tc.want {
+				t.Fatalf("auth = %q, want %q (provider exists: %v)", p.Auth, tc.want, ok)
+			}
+		})
+	}
+}
+
 func TestMissingBaseURLAndMissingKeyKeepTheirMessages(t *testing.T) {
 	clearProviderEnv(t)
 	cfg := &config.Config{Providers: map[string]config.Provider{

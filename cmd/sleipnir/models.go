@@ -53,7 +53,7 @@ func (f modelFilter) keep(r modelRow, fav map[string]bool) bool {
 	if f.Tools && !r.SupportsTools() || f.Reasoning && !r.SupportsReasoning() || f.OnlyFavorite && !fav[r.Ref] {
 		return false
 	}
-	if f.MaxOut > 0 && r.Model.Price.OutputPerM > f.MaxOut || r.Model.ContextTokens < f.MinContext {
+	if f.MaxOut > 0 && (r.Model.Provider == planProvider || r.Model.Price.OutputPerM > f.MaxOut) || r.Model.ContextTokens < f.MinContext {
 		return false
 	}
 	ref := strings.ToLower(r.Ref)
@@ -140,6 +140,8 @@ func localSources(ctx context.Context, cfg *config.Config) []modelSource {
 	return out
 }
 
+// cmdModels lists filtered models from selected catalogs using each provider's
+// authentication mode, or edits favorites in the user's configuration.
 func cmdModels(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "fav" {
 		return cmdFavorites(os.Stdout, args[1:])
@@ -194,7 +196,8 @@ search (all must appear, any case). Favorites, marked *, come first.
 		if !ok || b == "" {
 			return fmt.Errorf("models: unknown provider %q", name)
 		}
-		sources = []modelSource{{name: name, base: b}}
+		p, _ := session.LookupProvider(cfg, name)
+		sources = []modelSource{{name: name, base: b, plan: p.Auth == config.AuthChatGPTPlan}}
 	default:
 		sources = append(usableSources(cfg, true), localSources(ctx, cfg)...)
 	}
@@ -281,11 +284,13 @@ func fetchModels(ctx context.Context, sources []modelSource) (all []modelRow, er
 	return all, errs
 }
 
-// planProvider marks the models of a ChatGPT plan in a catalogue entry: they are paid for by the plan, so no price is shown for them.
+// planProvider marks catalog entries authenticated through ChatGPT. The catalog
+// supplies no per-token prices, so tables label their price cells "plan".
 const planProvider = "chatgpt-plan"
 
-// planModels is the model list of the ChatGPT plan that is signed in: the models it offers, with no price (the plan pays) and the window the
-// list gives, when it gives one (without it the table shows ? and the harness assumes a cautious window; options.context_window says the real one).
+// planModels lists the models available through the saved ChatGPT sign-in, with
+// context windows when supplied. Missing windows display as ?; session setup
+// uses a conservative fallback or an explicit options.context_window override.
 func planModels(ctx context.Context) ([]gateway.Entry, error) {
 	st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptauth.Path(userHome())})
 	if err != nil {
@@ -449,8 +454,12 @@ func printModelsWidth(w io.Writer, all []modelRow, f modelFilter, fav map[string
 			name = "* " + name
 		}
 		p := r.Model.Price
-		cells = append(cells, []string{name, human(r.Model.ContextTokens), fmt.Sprintf("%.4f", p.InputPerM), fmt.Sprintf("%.4f", p.CacheReadPerM),
-			fmt.Sprintf("%.4f", p.OutputPerM), fmt.Sprint(r.SupportsTools()), fmt.Sprint(r.SupportsReasoning())})
+		in, cached, out := fmt.Sprintf("%.4f", p.InputPerM), fmt.Sprintf("%.4f", p.CacheReadPerM), fmt.Sprintf("%.4f", p.OutputPerM)
+		if r.Model.Provider == planProvider {
+			in, cached, out = "plan", "plan", "plan"
+		}
+		cells = append(cells, []string{name, human(r.Model.ContextTokens), in, cached, out,
+			fmt.Sprint(r.SupportsTools()), fmt.Sprint(r.SupportsReasoning())})
 	}
 	cols := []int{0, 1, 2, 3, 4, 5, 6}
 	if width > 0 {
