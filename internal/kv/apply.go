@@ -50,6 +50,10 @@ type ApplyPolicy struct {
 	// ("recall tN"), and is reported in ApplyResult.UserTextCut.
 	UserInstructionMaxTokens int
 	TaskMaxTokens            int
+	// MaxAssignmentBytes bounds harness-owned assignment text independently of
+	// token-estimator calibration. Bounded task contracts must not start losing
+	// content merely because later provider usage changes the token estimate.
+	MaxAssignmentBytes int
 	// MaxInstructionTokens bounds the whole instructions section; the oldest
 	// entries move to the archive behind one pointer line when it overflows. It must
 	// stay well above TaskMaxTokens, or the task itself would be the first thing
@@ -92,6 +96,7 @@ func DefaultApplyPolicy() ApplyPolicy {
 		UserInstructionKey:       "instructions",
 		UserInstructionMaxTokens: 2000,
 		TaskMaxTokens:            8000,
+		MaxAssignmentBytes:       32000,
 		MaxInstructionTokens:     12000,
 		MaxSpineTokens:           3000,
 		MaxNoteOps:               64,
@@ -139,6 +144,9 @@ func (p ApplyPolicy) WithDefaults() ApplyPolicy {
 	}
 	if p.TaskMaxTokens == 0 {
 		p.TaskMaxTokens = d.TaskMaxTokens
+	}
+	if p.MaxAssignmentBytes == 0 {
+		p.MaxAssignmentBytes = d.MaxAssignmentBytes
 	}
 	if p.MaxInstructionTokens == 0 {
 		p.MaxInstructionTokens = d.MaxInstructionTokens
@@ -747,7 +755,7 @@ func applyNotes(s *Stack, p *Patch, turns []core.Turn, old []Unit, est core.Esti
 	// writers, and a task is never pinned as the user's instructions. A kickoff that
 	// carries no assignment block (the notes hold it since the spawn) pins nothing.
 	if id, text, ok := lastTask(turns, old); ok {
-		entry, cut := assignmentEntry(id, text, pol.TaskMaxTokens, est)
+		entry, cut := assignmentEntry(id, text, pol.MaxAssignmentBytes)
 		if sg := get("assignment"); sg.Text != entry {
 			sg.Text = entry
 			changed = true
@@ -877,22 +885,25 @@ func lastTask(turns []core.Turn, old []Unit) (id core.TurnID, text string, ok bo
 }
 
 // assignmentEntry formats an assignment for the notes: the card as the harness wrote
-// it, escaped like everything else that enters the notes, and cut to max tokens (head
+// it, escaped like everything else that enters the notes, and cut to max bytes (head
 // and tail around a marker that says where the rest is) if it is longer. cut describes
 // the cut for the report.
-func assignmentEntry(id core.TurnID, text string, max int, est core.Estimator) (entry, cut string) {
+func assignmentEntry(id core.TurnID, text string, max int) (entry, cut string) {
 	text = strings.TrimSpace(EscapeUntrusted(text))
-	tok := est.Tokens(text)
-	if max <= 0 || tok <= max {
+	if max <= 0 || len(text) <= max {
 		return text, ""
 	}
-	head, tail := headTail(text, max, est)
-	omitted := tok - est.Tokens(head) - est.Tokens(tail)
-	if omitted < 0 {
-		omitted = 0
+	headEnd, tailStart := max*2/3, len(text)-max/3
+	for headEnd > 0 && !utf8.RuneStart(text[headEnd]) {
+		headEnd--
 	}
-	entry = fmt.Sprintf("%s\n…[~%d tokens omitted; full text: recall t%d]…\n%s", head, omitted, id, tail)
-	return EscapeUntrusted(entry), fmt.Sprintf("t%d: %d tokens, kept about %d", id, tok, max)
+	for tailStart < len(text) && !utf8.RuneStart(text[tailStart]) {
+		tailStart++
+	}
+	entry = fmt.Sprintf("%s\n…[%d bytes omitted; full text: recall t%d]…\n%s", text[:headEnd], tailStart-headEnd, id, text[tailStart:])
+	// Cutting can move an inline heading to the start of a line or turn part of
+	// an ordinary tag into a structural tag. Defuse the resulting excerpt too.
+	return EscapeUntrusted(entry), fmt.Sprintf("t%d: %d bytes, kept at most %d", id, len(text), max)
 }
 
 // userEntries renders the human-authored text of a folded turn as instruction

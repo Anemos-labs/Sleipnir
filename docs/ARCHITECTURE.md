@@ -47,6 +47,9 @@ pauses the goal. Progress and continuation limits bound the loop.
 The manager creates scoped tasks and starts workers as needed. Workers share a
 tool list and project context; permissions restrict their actions at execution
 time. Task acceptance and optional verification belong to the harness.
+Planning tasks can publish agreements reviewed by the manager before dependent
+work starts. Accepted contracts are carried transitively in protected worker
+assignments, independently of the bounded live note buffer.
 [Team protocol](SWARM-PROTOCOL.md)
 
 ## Context and caching

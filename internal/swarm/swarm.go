@@ -695,12 +695,21 @@ func taskCard(t Task, agentID string, pin bool) string {
 			for _, f := range t.Files {
 				files = append(files, cleanText(f, maxScopeLen))
 			}
-			sb.WriteString("Scope: " + strings.Join(files, ", ") + " (edit only inside your scope: writes outside it are rejected; ask the manager to widen it)\n")
+			if t.Kind == TaskKindPlan {
+				sb.WriteString("Reference areas: " + strings.Join(files, ", ") + "\n")
+			} else {
+				sb.WriteString("Scope: " + strings.Join(files, ", ") + " (edit only inside your scope: writes outside it are rejected; ask the manager to widen it)\n")
+			}
 		}
 		if len(t.Deps) > 0 {
 			sb.WriteString("Depends on: " + cleanText(strings.Join(t.Deps, ", "), 120) + "\n")
 		}
-		sb.WriteString("When finished, call task done with a one-line result. The harness verifies your work before accepting it.")
+		sb.WriteString(agreementCard(t.Agreements))
+		if t.Kind == TaskKindPlan {
+			sb.WriteString("This is a read-only planning task. Gather input from affected roles; call task done with the full agreement field for manager review. Do not implement code.")
+		} else {
+			sb.WriteString("When finished, call task done with a one-line result. The harness verifies your work before accepting it.")
+		}
 		return sb.String()
 	}
 	return fmt.Sprintf("Begin task %s: %s. Your assignment and scope are in <my-notes>.", t.ID, title)

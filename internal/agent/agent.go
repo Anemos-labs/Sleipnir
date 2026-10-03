@@ -315,14 +315,15 @@ type Agent struct {
 	cfg Config
 	est core.Estimator
 
-	mu     sync.Mutex
-	stack  kv.Stack
-	thread *kv.Thread
-	guard  kv.Guard
-	epoch  uint64 // rebase counter fed to the guard (thread epoch is added to it)
-	inbox  []inboxMsg
-	reqN   int
-	forkN  int
+	mu                sync.Mutex
+	stack             kv.Stack
+	thread            *kv.Thread
+	guard             kv.Guard
+	epoch             uint64 // rebase counter fed to the guard (thread epoch is added to it)
+	inbox             []inboxMsg
+	pendingAssignment string // harness task card, appended at the next safe boundary
+	reqN              int
+	forkN             int
 	// pendingRequests distinguishes unaccounted responses from counters already
 	// reserved when a concurrent snapshot captures an in-flight request.
 	pendingRequests map[string]bool
@@ -492,6 +493,29 @@ func (a *Agent) Send(text string) { a.enqueue(text, !strings.HasPrefix(text, mai
 // copied into the instructions notes when its turn is compacted.
 func (a *Agent) Steer(text string) { a.enqueue(text, true) }
 
+// QueueAssignment replaces the pending harness assignment, without changing an
+// in-flight prompt. The next request carries it as task data; compaction preserves
+// it in assignment notes, never in the user's instructions.
+func (a *Agent) QueueAssignment(card string) {
+	a.mu.Lock()
+	a.pendingAssignment = card
+	a.mu.Unlock()
+}
+
+// drainAssignment publishes an assignment after tool results have been appended,
+// keeping call/result pairs intact and declaring its origin for compaction.
+func (a *Agent) drainAssignment() {
+	a.mu.Lock()
+	card := a.pendingAssignment
+	a.pendingAssignment = ""
+	a.mu.Unlock()
+	if card != "" {
+		blocks := []core.Block{kv.Task(card)}
+		a.pushUser(core.OriginTask, blocks)
+		a.emit(events.TypeUserInput, inputEvent(core.OriginTask, blocks))
+	}
+}
+
 // enqueue appends an inbox message and its steering flag under the agent lock.
 func (a *Agent) enqueue(text string, steer bool) {
 	a.mu.Lock()
@@ -636,6 +660,11 @@ func (a *Agent) RunTask(ctx context.Context, brief, assignment string) (*Result,
 		blocks = append(blocks, core.Text(brief))
 	}
 	if assignment != "" {
+		// An explicit new assignment supersedes an undelivered claim from a
+		// cancelled previous run, including one restored from a snapshot.
+		a.mu.Lock()
+		a.pendingAssignment = ""
+		a.mu.Unlock()
 		blocks = append(blocks, kv.Task(assignment))
 	}
 	return a.run(ctx, core.OriginTask, blocks)
@@ -698,6 +727,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.mu.Lock()
 		a.stepInRun = step
 		a.mu.Unlock()
+		a.drainAssignment()
 		a.boundary(ctx)
 		a.drainInbox(step == 0 && len(input) == 0)
 		if a.cfg.SnapshotEachStep {

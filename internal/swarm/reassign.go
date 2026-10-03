@@ -20,13 +20,13 @@ type runStart struct {
 // dependencies travel in the turn itself as a task block: the harness replaces the
 // assignment in the notes with it when the turn is folded away, and this text says which
 // assignment wins until then.
-const reassignBrief = "New assignment. It replaces the assignment in <my-notes>: the previous task is finished, do not continue it."
+const reassignBrief = "New assignment. It replaces the assignment in <my-notes> and includes any older unfinished tasks. Blocked tasks must be resumed before continuing; tasks no longer listed are not assigned to this run."
 
 // reassignStart is the start of a run that gives an existing worker a new task: the
 // brief above, then the card in the same form as the one a fresh worker's notes hold (an
 // isolated writer's includes the isolation card, so the replaced assignment keeps it).
-func reassignStart(t Task, m *member) runStart {
-	card := taskCard(t, m.id, true)
+func reassignStart(snap *Snapshot, m *member) runStart {
+	card := claimedCards(snap, m.id, nil)
 	if m.tree != nil {
 		card += isolationCard
 	}

@@ -91,7 +91,7 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 
 // assignFor builds the board operation that gives a task to an agent.
 func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []string) assignReq {
-	r := assignReq{by: req.By, agent: agentID, check: s.scopeCheck(role.ReadOnly)}
+	r := assignReq{by: req.By, agent: agentID, check: s.claimCheck(agentID, role.ReadOnly)}
 	if req.TaskID != "" {
 		r.id = strings.TrimSpace(req.TaskID)
 		if len(files) > 0 {
@@ -159,10 +159,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	s.emitAs(m.id, "agent.assign", map[string]any{"id": m.id, "role": m.role, "task": task.ID, "by": req.By})
-	start := runStart{brief: taskCard(task, m.id, false)}
-	if len(m.a.Thread().Snapshot().Turns) > 0 {
-		start = reassignStart(task, m)
-	}
+	start := reassignStart(s.Board.Snapshot(), m)
 	// A reused writer starts the new task from what has been merged since.
 	if note, err := s.syncTree(ctx, m); err != nil {
 		start.brief += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), 160) + ". Merge the integration branch yourself before you start, or ask the manager.)"
@@ -255,6 +252,9 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 // touch, and the queue enforces it.
 func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	return func(sn *Snapshot, t Task) error {
+		if t.Kind == TaskKindPlan && !readOnly {
+			return fmt.Errorf("%s is a read-only planning task: assign a scout, reviewer, or custom read-only role", t.ID)
+		}
 		if readOnly || len(t.Files) == 0 || s.isolated() {
 			return nil
 		}

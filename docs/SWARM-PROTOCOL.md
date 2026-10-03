@@ -39,16 +39,17 @@ paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create\*, list, claim, update, block, resume, done, accept\*, reject\*, reopen\*, fail\* | \* manager only; see section 4 |
+| `task` | create\*, list, get, claim, update, block, resume, done, accept\*, reject\*, reopen\*, fail\* | \* manager only; see section 4 |
 | `mail` | send | one recipient; typed; section 5 |
-| `note` | propose | a durable fact for the shared layer; staged, folded at an epoch |
+| `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | manager only; section 6 |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
 ## 3. The board
 
-Tasks: `id`, `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
-`result` (what the worker said), `evidence` (what the harness observed), `attempts`, `rev`. Statuses: `todo -> doing ->
+Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
+`result` (what the worker said), `evidence` (what the harness observed), `agreement` (a proposed contract),
+`agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`. Statuses: `todo -> doing ->
 review -> done`, with `blocked` and `failed` as side states.
 
 * The board is an **immutable snapshot with a version**; every operation produces a new snapshot under a single
@@ -75,8 +76,8 @@ review -> done`, with `blocked` and `failed` as side states.
   context size; cost). A model cannot claim to be "done" or "idle". The line shows the *kind* of tool in use ("running a
   command"), never its arguments.
 * Operations are events (`board.op`, section 11), so state can be rebuilt from the log.
-* Notes are *proposals*: visible immediately in the hot view of every agent, folded into the shared layer only at an
-  **epoch** (section 9).
+* Notes are *proposals*: eligible for the bounded hot view. Automatic folding into the shared layer is not implemented
+  (section 9); agreements use task dependencies instead.
 * **The board is bounded**, because every agent's prompt carries a rendering of it: 1000 tasks; titles 160 characters,
   descriptions 2000, at most 16 dependencies and 16 scope entries per task; 48 pending notes (8 per author, the oldest
   evicted, 300 characters each); 8 alerts, which expire after 2 minutes and are cleared when the conflict ends.
@@ -143,7 +144,7 @@ is. A worker in an isolated tree whose command has no `{dirs}` is told, when it 
 and that failures in files it did not touch may be another task's work: it should block the task and tell the manager instead of
 editing them.
 
-Rules: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
+Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
 bounded (a deadline covering scope discovery, queue wait, and execution, and at most `MaxVerifies` runs at once, two by default). A verifier
 that ignores cancellation retains its slot until it exits, but cannot hold the caller past the deadline; later callers
@@ -153,6 +154,45 @@ status), never what the worker wrote about itself. A test counts only if the pro
 test ok"` is not one), its status is the command's own (a test piped into `tail` or followed by another command is
 reported as masked), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output
 can never turn a failing test into a passing one. Dependencies are enforced on claim **and** on spawn.
+
+### Shared agreements before dependent work
+
+Agents share project context, not conversation histories. For parallel work that
+depends on common decisions, the manager creates a task with `kind="plan"` and
+assigns a scout, reviewer, or custom read-only role. Its owner
+gathers input from affected roles and submits a concise contract through
+`task(action="done", id="T1", text="contract ready", agreement="...")`.
+The contract names interfaces, shared components or abstractions, conventions,
+ownership, acceptance criteria, and reference files. Decisions within one role
+must also be consistent with contracts used by other roles.
+
+The manager reads the full proposal with `task(action="get", id="T1")`, resolves
+objections, and accepts it. Planning tasks require a nonempty agreement and a
+read-only owner; they do not run the code verifier, so an existing build failure
+cannot block agreement on its repair. A planner that stops without submitting
+receives at most two reminders, then its task is requeued or failed under the
+attempt limit. Implementation tasks
+declare `deps=["T1"]`; neither spawn nor claim can start them before acceptance.
+Foundation tasks can sit between planning and implementation. Accepted agreements
+are inherited transitively, deduplicated, and copied into protected assignment
+context for new, reused, and claiming workers. They survive private compaction
+and event-log recovery; they do not depend on the live note buffer. Task data
+cannot grant permissions or override user instructions.
+
+Each agreement is limited to 6,000 UTF-8 bytes and 40 lines. Combined inherited
+agreements are limited to 12,000 bytes including labels; excessive submissions
+or assignments are rejected with guidance instead of silently truncating a
+contract. Tasks assigned to one worker, including blocked work and worktree
+instructions, must fit 24,000 bytes of assignment text. Compaction preserves
+harness assignments up to a fixed 32,000-byte bound, independently of token
+estimator calibration. Human instruction token limits remain separate.
+
+Acceptance is immutable. A changed design needs a new planning task and explicit
+reassignment of affected work. The manager arranges review and resolves design
+conflicts; the harness enforces dependency order and context delivery, not the
+semantic quality of an agreement. Small independent tasks can proceed directly.
+Final review checks the assembled result against the agreement, including
+integration tests and rendered inspection where relevant.
 
 ## 5. Mail
 
@@ -298,13 +338,18 @@ and additively on success; one burst of simultaneous 429s counts as one rate-lim
 
 ## 9. Compaction and epochs across agents
 
-Each agent compacts privately (generational: thread -> spine, notes, masking). Facts an agent thinks the *team* should know
-become promotion proposals; they are visible at once through the hot view and folded into the shared (G1) or role (G2)
-layer only at an **epoch**: session start, a phase boundary, or when the swarm is idle. An epoch changes the shared
-prefix for everyone, so it is rare, batched, and self-warming (the first agent after it is the primer for the rest).
-Overlapping epochs are serialised, so every agent ends on the newest one, and a worker built during an epoch is brought
-up to it before it runs. Compactor patches can never rewrite the `instructions` notes, and text found in tool output is
-never promoted as an instruction.
+Each agent compacts privately (thread -> spine, notes, masking). Promotion
+proposals enter the bounded live note buffer as unverified facts. Automatic
+folding of these proposals into shared (G1) or role (G2) context is not implemented.
+The embedding API can explicitly replace shared context through `SetShared`;
+these updates are serialized and invalidate the affected prefix for every agent.
+A worker built during an update receives the newest layer before running.
+
+Compactor patches cannot rewrite harness-owned `instructions` or `assignment`
+notes. Accepted prerequisite agreements travel with the assignment. A newly
+claimed task is appended at a safe turn boundary and preserved when folded,
+without becoming a user instruction. Text in tool output is never promoted as
+an instruction.
 
 ## 10. Failure handling
 

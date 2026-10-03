@@ -55,21 +55,22 @@ type taskTool struct{ s *Swarm }
 func (t *taskTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "task",
-		Description: "Shared task board. Actions: list, claim (id), update (id, text = one-line status), " +
-			"done (id, text = one-line result: the harness checks your work, and runs the project's verifier when one is configured, before it reaches review), " +
-			"block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope), " +
+		Description: "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
+			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
+			"block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
-"action":{"type":"string","enum":["create","list","claim","update","done","block","resume","accept","reject","reopen","fail"]},
+"action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","accept","reject","reopen","fail"]},
 "id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"role":{"type":"string"},
+"kind":{"type":"string","enum":["work","plan"]},
 "deps":{"type":"array","items":{"type":"string"}},"files":{"type":"array","items":{"type":"string"}},
-"text":{"type":"string"}},"required":["action"]}`),
+"text":{"type":"string"},"agreement":{"type":"string"}},"required":["action"]}`),
 	}
 }
 
 type taskIn struct {
-	Action, ID, Title, Description, Role, Text string
-	Deps, Files                                []string
+	Action, ID, Title, Description, Role, Kind, Text, Agreement string
+	Deps, Files                                                 []string
 }
 
 func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
@@ -92,7 +93,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if err != nil {
 			return tools.Errorf("%v", err), nil
 		}
-		task, err := s.Board.CreateTask(me, TaskSpec{Title: in.Title, Desc: in.Description, Role: in.Role, Deps: in.Deps, Files: files})
+		task, err := s.Board.CreateTask(me, TaskSpec{Title: in.Title, Desc: in.Description, Role: in.Role, Kind: in.Kind, Deps: in.Deps, Files: files})
 		if err != nil {
 			return tools.Errorf("%v", err), nil
 		}
@@ -103,9 +104,19 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return text("created %s %q", task.ID, task.Title), nil
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil
+	case "get":
+		task, ok := s.Board.Snapshot().Task(in.ID)
+		if !ok {
+			return tools.Errorf("no task %s", in.ID), nil
+		}
+		data, err := json.MarshalIndent(task, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		return c.Env.Finish(string(data), false), nil
 	case "claim":
 		ro := s.roles[c.Env.Role].ReadOnly
-		if err := s.Board.claim(me, in.ID, s.scopeCheck(ro)); err != nil {
+		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
 			return tools.Errorf("%v", err), nil
 		}
 		s.trackClaim(me, in.ID)
@@ -166,7 +177,8 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 
 // done is a worker's request to finish. The harness decides: the task moves to
 // review only if it is the caller's, still doing, and the configured verifier
-// passes. The evidence recorded with the result is what the harness observed.
+// passes. Read-only planning tasks submit an agreement for manager review instead
+// of code verification. Evidence is what the harness observed.
 func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Result {
 	s, me := t.s, c.Env.Agent
 	task, ok := s.Board.Snapshot().Task(in.ID)
@@ -178,6 +190,18 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	}
 	if task.Status != StatusDoing {
 		return tools.Errorf("%s is %s, not doing", in.ID, task.Status)
+	}
+	if _, err := cleanAgreement(in.Agreement); err != nil {
+		return tools.Errorf("%v", err)
+	}
+	if task.Kind == TaskKindPlan {
+		if !s.roles[c.Env.Role].ReadOnly {
+			return tools.Errorf("a planning task can only be submitted by a read-only role")
+		}
+		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement); err != nil {
+			return tools.Errorf("%v", err)
+		}
+		return text("%s is in review. Its agreement requires the manager's acceptance; stop now.", task.ID)
 	}
 	ev := NewEvidence()
 	m := s.get(me)
@@ -226,7 +250,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.SubmitAt(me, in.ID, task.Rev, result, summary); err != nil {
+	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
@@ -234,8 +258,8 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 }
 
 // review is the manager's verdict on a task: accept (after the harness re-runs
-// the verifier: a task cannot become done without a pass), reject or reopen (back to
-// its worker with feedback, or to the pool when the worker is gone), fail.
+// the verifier for implementation, or checking a planning agreement), reject or
+// reopen (back to its worker with feedback, or to the pool when the worker is gone), fail.
 func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.Result {
 	s, me := t.s, c.Env.Agent
 	task, ok := s.Board.Snapshot().Task(in.ID)
@@ -246,6 +270,15 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 	case "accept":
 		if task.Status != StatusReview {
 			return tools.Errorf("%s is %s: a task is accepted from review, after its worker calls done", in.ID, task.Status)
+		}
+		if task.Kind == TaskKindPlan {
+			if task.Agreement == "" {
+				return tools.Errorf("%s has no agreement to accept", task.ID)
+			}
+			if err := s.Board.Accept(me, task.ID, in.Text); err != nil {
+				return tools.Errorf("%v", err)
+			}
+			return text("%s agreement accepted; dependent work may start", task.ID)
 		}
 		if s.hadTree(task.Owner) {
 			// Isolated run: the shared checkout does not hold the work yet, so the verifier
@@ -314,6 +347,9 @@ func renderTaskList(s *Snapshot) string {
 		if t.Evidence != "" {
 			sb.WriteString(" [" + t.Evidence + "]")
 		}
+		if t.Agreement != "" {
+			sb.WriteString(" [agreement: task get " + t.ID + "]")
+		}
 		sb.WriteByte('\n')
 	}
 	for _, a := range s.Agents {
@@ -372,7 +408,7 @@ func (t *noteTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "note",
 		Description: "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's " +
-			"board now and is folded into shared context later. scope: shared (default) or role.",
+			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["shared","role"]}},"required":["text"]}`),
 	}
 }

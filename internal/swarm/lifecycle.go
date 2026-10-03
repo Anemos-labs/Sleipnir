@@ -513,6 +513,11 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.gateTries = 0
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
+	card := claimedCards(s.Board.Snapshot(), agentID, nil)
+	if m.tree != nil {
+		card += isolationCard
+	}
+	m.a.QueueAssignment(card)
 }
 
 // launch starts the run goroutine of a reserved member.
@@ -832,6 +837,16 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		rev := tasks[id]
 		t, ok := s.Board.Snapshot().Task(id)
 		if !ok || t.Owner != m.id || t.Status != StatusDoing || t.Rev != rev {
+			continue
+		}
+		if t.Kind == TaskKindPlan {
+			if ctx.Err() != nil {
+				s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
+				continue
+			}
+			if note := s.settleUnsubmittedPlan(m, t); note != "" {
+				notes = append(notes, note)
+			}
 			continue
 		}
 		vr := s.verify(ctx, m.dir, t.Files)
