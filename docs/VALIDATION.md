@@ -60,6 +60,24 @@ whether every recorded request succeeded and supplied a cost. Missing cost data
 does not mean free usage. Failed or unreported warm-up samples leave the warm-up
 requirement undetermined.
 
+## Self-hosted endpoints
+
+Record the server build, model digest, chat template, context limit, cache mode,
+and number of request slots. An OpenAI-compatible API does not establish which
+cache behavior its server implements.
+
+Compare a cold request, an identical repeat, appended conversation and tool
+history, a concurrent worker batch, and a second batch with the same worker
+prefixes. A server with independent slot caches may reuse a sequential prefix
+while other slots still require cold prefills. The warm gate does not guarantee
+reuse across every slot or replica; routing and cache sharing belong to the
+server. Confirm reuse with reported usage and server prefill diagnostics.
+
+Include cold requests in the overall token-weighted ratio and report warm phases
+separately. Repeat after history restoration and compaction. A tiny model with
+prescribed tool history can check serialization and token accounting, but cannot
+establish tool selection, coding quality, or another model's cache behavior.
+
 [OpenAI caching](https://developers.openai.com/api/docs/guides/prompt-caching) ·
 [OpenAI cache diagnostics](https://developers.openai.com/api/docs/guides/prompt-caching/diagnostics) ·
 [Benchmarks](BENCHMARKS.md)

@@ -9,51 +9,49 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/agent"
 )
 
-// WarmGate stops a fan-out from paying for the same prefix many times.
+// WarmGate limits simultaneous requests over a presumed cold shared prefix.
 //
-// A provider only serves a cached prefix once some request has begun
-// responding, so N agents launched together over a cold shared prefix would all
-// prefill it at full price. The gate lets one request through as the primer,
-// holds the rest until the primer's first byte, then releases them to read what
-// it wrote. When the prefix is already warm nobody waits. No extra warm-up
-// request is needed: the first real request is the primer.
+// The gate lets one request through as the primer and holds the rest until the
+// caller signals response progress or completion. It then presumes the prefix
+// warm. This is a scheduling heuristic, not evidence of a server cache write:
+// independent slots or replicas can still prefill the same prefix. The first
+// real request is the primer; the gate sends no extra warm-up request.
 //
 // Keys and levels. The physical prefix a request needs is nested: the shared
-// prefix (tools, constitution, shared pin) on the engine its routing key pins
-// it to, then the role prefix (plus the role pin) inside it. A key is therefore
-// a list of levels joined by "|", outermost first, and the gate keeps one state
-// per level path ("a", "a|b"): a request must pass every level, being the primer
-// of each level that is cold. Agents of a second role are not released onto a
-// role prefix nobody has written yet, and agents on a second shard are not
-// released onto an engine that has never seen the shared one. A request that is
+// prefix (tools, constitution, shared pin) within a routing-key group, then the
+// role prefix (plus the role pin) inside it. A key is a list of levels joined
+// by "|", outermost first, and the gate keeps one state per level path ("a",
+// "a|b"): a request must pass every level, being the primer of each level that
+// is presumed cold. A second role primes its own level, and agents on a second
+// shard are not presumed to share the first shard's warmed prefix. A request that is
 // the primer at an outer level never waits at an inner one behind a request that
 // itself passed the outer level, so levels cannot deadlock.
 //
-// Timing. The provider measures an entry's lifetime from the start of the
-// request that wrote or last read it, so a level is presumed warm from that
-// request's start (not its first byte) for the lifetime less a safety margin.
+// Timing. A level is presumed warm from the request's start, rather than the
+// later response signal, for the configured lifetime less a safety margin.
 //
-// A stuck primer (a slow cold prefill, a hung connection) must neither hold the
-// swarm forever nor release it all at once onto a cold prefix. After maxWait
+// A stuck primer (a slow cold prefill, a hung connection) must not hold the
+// swarm forever. After maxWait
 // one waiter is released as a co-primer, after another maxWait two more, then
-// four, and so on: the first of them to see a first byte warms the level for
-// everyone still waiting, and at most a bounded number of duplicate cold
-// prefills is ever in flight.
+// four, and so on: the first successful response signal marks the level warm for
+// everyone still waiting. A stalled primer can accumulate co-primer releases
+// that callers consume in a burst. The downstream governor bounds outbound
+// concurrency when its MaxConcurrent setting is positive; zero is unlimited.
 //
 // Priority. The gate sits in front of the governor, which admits requests by
 // priority (the manager before workers before background work). A primer is only a
 // request that got to the gate first: it may still be queued for its slot behind
-// other traffic, and a follower that waits for its first byte waits for that queue
+// other traffic, and a follower waiting for its response waits for that queue
 // too, so without more the manager's request over a cold prefix would sit behind a
 // worker's (priority inversion). A request that outranks the one priming a level
 // therefore does not wait for it: it goes on as a co-primer, and the governor orders
-// the two as it always does. Whoever sees a first byte warms the level for everyone
+// the two as it always does. A successful response marks the level warm for everyone
 // still waiting. The price is one more cold prefill in flight, at most one per
 // priority class that outranks the primer (the class of a bypasser becomes the bar
 // for the next), against a manager stalled behind a queue. The bar only falls within
 // one priming generation (a new primer resets it) and a bypasser that fails does not
 // raise it again, so a retry of that class waits like any other request: for the
-// primer's first byte, or for the next co-primer release.
+// primer's response, or for the next co-primer release.
 type WarmGate struct {
 	ttl     time.Duration
 	margin  time.Duration
@@ -209,10 +207,10 @@ func (g *WarmGate) enter(ctx context.Context, path string, prio int) (gateHeld, 
 	}
 }
 
-// release settles a request's levels. On success every level it passed is warm
-// for a window measured from the request's start (a read refreshes the entry,
-// and a co-primer's first byte proves the prefix readable, waking the waiters);
-// a primer that ends, successfully or not, hands its level over.
+// release settles a request's levels. On success every level it passed is
+// presumed warm for a window measured from the request's start. A successful
+// co-primer also wakes waiters; this does not prove server-side reuse. A primer
+// that ends, successfully or not, hands its level over.
 func (g *WarmGate) release(held []gateHeld, ok bool, start time.Time) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

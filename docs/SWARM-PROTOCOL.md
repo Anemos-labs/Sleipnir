@@ -246,7 +246,7 @@ Limits, all enforced in code:
 | Limit | Default | Why |
 |---|---|---|
 | agents (running or idle) | 24 (config `swarm.max_agents`) | registration budget |
-| concurrent **writers** in the shared tree | the team's workers (agents − 1), at least 4 | overlapping agent changes conflict 20-42% of the time, which the leases and the scope-overlap refusal keep to different files; readers (reviewers, scouts, test runners) are unlimited. A cap of 4 left a manager of `--swarm 8` unable to start its fifth worker, and deadlocked the four that had finished when a verifier ran over the whole repository. Counts *running* writers, and applies to reuse via `agent=` too. A worker woken by mail is answering, not starting work, and is not counted. Isolated worktrees (section 7) lift it. |
+| writer admission in the shared tree | the team's workers (agents − 1), at least 4 | Checked when spawning or reassigning writers; counts running non-manager workers whose roles may write. Read-only roles are exempt from this check but remain subject to the agent limit. Mail wakeups bypass admission; a running writer woken by mail is counted by later spawn checks. Isolated worktrees bypass the writer admission limit. Scopes and write leases separately constrain file access. |
 | swarm budget (USD) | 50 (`swarm.budget_usd`; `--budget-usd`; 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` removes it) | a stop is an outcome, not a crash. The swarm budget is a ledger over running *and* retired agents; once spent, no request is admitted and running workers are stopped (their tasks return to todo, without counting as an attempt). It is on by default because a swarm can spend many times what one agent does, and a cap that is off is one nobody remembers to set; only you can raise it (a repository's file cannot). The run's header line shows it, and the stop message says how to raise it. A cost that is not a number counts as spent, so a hostile or broken endpoint cannot slip under the limit |
 | per-agent budget (USD) | unlimited | `Config.AgentBudgetUSD`, for library users; no configuration key sets it |
 | steps per assignment | 60-150 by role | runaway guard |
@@ -288,9 +288,10 @@ one pass. How it reaches the model depends on the provider (`docs/CACHE-DESIGN.m
 (turn-scoped system messages where the provider has them, otherwise appended only when it changes) so history stays
 append-only.
 
-The **warm gate** stops a fan-out from paying for one prefix N times: the first request over a cold prefix (keyed by the
-shared layers, the routing shard and the role layer) is the primer; followers wait for its first response byte and then
-read the cache. The **governor** admits requests by priority (manager > workers > background compaction, first come
+The **warm gate** coordinates requests over a presumed cold prefix, keyed by shared layers, routing shard, and role
+layer. The first request is the primer; followers normally wait for response progress or completion, with priority and
+timeout exceptions. The gate does not confirm a server cache write. Reuse depends on server routing and cache placement;
+independent slots or replicas may still need cold prefills. The **governor** admits requests by priority (manager > workers > background compaction, first come
 first served within a priority, with aging so background work is never starved) within the requests-per-minute budget,
 honours `Retry-After` up to a ceiling (60 s: an endpoint cannot freeze the swarm), and adapts multiplicatively on 429s
 and additively on success; one burst of simultaneous 429s counts as one rate-limit episode.
