@@ -253,7 +253,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	return func(sn *Snapshot, t Task) error {
 		if t.Kind == TaskKindPlan && !readOnly {
-			return fmt.Errorf("%s is a read-only planning task: assign a scout, reviewer, or custom read-only role", t.ID)
+			return fmt.Errorf("%s is a read-only planning task: the manager must use spawn with task=%s and role=scout, reviewer, or a custom read-only role; a writer cannot claim it", t.ID, t.ID)
 		}
 		if readOnly || len(t.Files) == 0 || s.isolated() {
 			return nil

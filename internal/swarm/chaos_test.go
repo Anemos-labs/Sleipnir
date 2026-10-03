@@ -625,13 +625,19 @@ func TestVerifierCancelledMidVerificationSettlesTheTask(t *testing.T) {
 	}
 }
 
-// A wait that times out with nothing having changed, for long, says so and says that waiting again will not change it: a verifier that failed
-// for a reason no task owned kept a trial's team in `wait` for twenty minutes.
+// A quiet board with an active worker still waits, but repeated timeouts report
+// the lack of task progress so the manager can investigate.
 func TestAQuietBoardIsNamedByTheWait(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	gate := make(chan struct{})
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		rvBlock(ctx, gate)
+		return rvReply{Text: "ok"}
+	})
+	t.Cleanup(func() { close(gate) })
 	r.sw.StartManager()
-	r.sw.Board.CreateTask("mgr", TaskSpec{Title: "t"})
-	r.sw.Board.Assign("mgr", "be-1", "T1")
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "t", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
 	wait := func() string {
 		return r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 3}).Text
 	}

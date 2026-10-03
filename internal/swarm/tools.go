@@ -493,8 +493,8 @@ func (t *waitTool) Spec() core.ToolSpec {
 	}
 }
 
-// quietAfter is how long a team goes without a task changing state before the manager's wait says so: a verifier that fails for a reason no task
-// owns kept a trial's team waiting, and waiting again, for twenty minutes.
+// quietAfter bounds quiet waits before the manager receives a warning that active
+// workers have not changed task state and may need intervention.
 var quietAfter = 5 * time.Minute
 
 func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
@@ -568,7 +568,12 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		case pending:
 			s.setSeen(me, cur)
 			return c.Env.Finish(waitReport(cur, digest, "mail arrived (delivered with this result)"), false), nil
-		case timedOut:
+		}
+		if reason := s.stalledWaitReason(me); reason != "" {
+			s.setSeen(me, cur)
+			return tools.Errorf("%s", reason), nil
+		}
+		if timedOut {
 			s.setSeen(me, cur)
 			why := fmt.Sprintf("timed out after %s", timeout.Round(time.Second))
 			if len(digest) == 0 {
@@ -590,6 +595,21 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			timedOut = true
 		}
 	}
+}
+
+// stalledWaitReason returns manager actions when unfinished work has no running
+// worker. Worker waits and empty boards remain available for future mail or work.
+func (s *Swarm) stalledWaitReason(agentID string) string {
+	if agentID != s.ManagerID() {
+		return ""
+	}
+	u := s.unfinishedWork()
+	if len(u.running) > 0 || u.empty() {
+		return ""
+	}
+	return "Cannot wait: no workers are running and work needs manager action (" + u.summary(holdListCap) + "). " +
+		"Use spawn to start or reuse a worker on an unstarted task; planning tasks need a scout, reviewer, or custom read-only role. " +
+		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
 }
 
 // taskIDs formats the first-to-last task ID range in snapshot order, or a label for an empty

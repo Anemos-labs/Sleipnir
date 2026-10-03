@@ -831,22 +831,25 @@ func TestWaitReportsTasksThatAppearedAndSettledBetweenWaits(t *testing.T) {
 
 // A crashed worker's task shows up in the manager's wait as returned to the pool.
 func TestWaitWakesForACrashedWorker(t *testing.T) {
+	gate := make(chan struct{})
 	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
 		if c.Role == "backend" {
+			rvBlock(ctx, gate)
 			panic("boom")
 		}
 		return rvReply{Text: "ok"}
 	})
 	r.sw.StartManager()
 	r.sw.Board.CreateTask("mgr", TaskSpec{Title: "risky"})
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
 	out := make(chan string, 1)
 	go func() {
 		out <- r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 10}).Text
 	}()
 	time.Sleep(50 * time.Millisecond)
-	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", By: "mgr"}); err != nil {
-		t.Fatal(err)
-	}
+	close(gate)
 	select {
 	case res := <-out:
 		// The round trip todo -> doing -> todo is no net change on the board, but the
