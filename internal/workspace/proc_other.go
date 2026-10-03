@@ -8,8 +8,8 @@ import (
 )
 
 // Non-Unix platforms: no /proc, no process groups. Liveness falls back to "assume
-// alive" (never prune a tree we cannot prove is abandoned) and a verifier is
-// killed by killing its leader.
+// alive" (never prune a tree we cannot prove is abandoned). Windows verification
+// uses a job object to contain and terminate descendants.
 
 func pidExists(pid int) bool {
 	if pid <= 0 {

@@ -103,7 +103,7 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	cmd.WaitDelay = 3 * time.Second
 
 	start := time.Now()
-	err := cmd.Run()
+	err := runVerifyCommand(cmd)
 	res.Duration = time.Since(start)
 	if cmd.Process != nil {
 		killGroup(cmd.Process.Pid) // reap background children the command left behind
