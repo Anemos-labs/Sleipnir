@@ -25,7 +25,7 @@ func TestChatCtrlGOpensTheCockpitAndGivesTheChatBack(t *testing.T) {
 
 	r.ctrl('g')
 	s := r.shows("ctrl+g back to the chat", "type to message the manager", "Message Sleipnir")
-	if !r.bridge.v.AltScreen() {
+	if !r.altScreen() {
 		t.Error("the cockpit is a page of the whole screen")
 	}
 	if !strings.Contains(s, "agents") {
@@ -33,7 +33,7 @@ func TestChatCtrlGOpensTheCockpitAndGivesTheChatBack(t *testing.T) {
 	}
 	r.ctrl('g')
 	r.shows("ctrl+g cockpit")
-	if r.bridge.v.AltScreen() {
+	if r.altScreen() {
 		t.Error("the alternate screen is left with the cockpit")
 	}
 }
@@ -43,7 +43,7 @@ func TestChatASingleAgentHasNoCockpit(t *testing.T) {
 	r := startChat(t, rigOpts{cols: 100, rows: 30})
 	r.ctrl('g')
 	r.shows("a single agent")
-	if r.bridge.v.AltScreen() {
+	if r.altScreen() {
 		t.Error("a single agent has no cockpit to show")
 	}
 }
@@ -63,7 +63,7 @@ func TestChatTheCockpitOpensWhenAWorkerStartsAndClosesWhenTheTurnEnds(t *testing
 	}
 	r.submit("build it")
 	<-started
-	if r.bridge.v.AltScreen() {
+	if r.altScreen() {
 		t.Fatal("the cockpit does not open before a worker has started")
 	}
 	b := statetest.NewBuilder()
@@ -73,11 +73,11 @@ func TestChatTheCockpitOpensWhenAWorkerStartsAndClosesWhenTheTurnEnds(t *testing
 	r.emit(log...)
 	r.step(100 * time.Millisecond)
 	r.shows("ctrl+g back to the chat")
-	if !r.bridge.v.AltScreen() {
+	if !r.altScreen() {
 		t.Fatal("a worker started: the cockpit opens")
 	}
 	close(finish)
-	r.until("the chat is back", func(string) bool { return !r.bridge.v.AltScreen() })
+	r.until("the chat is back", func(string) bool { return !r.altScreen() })
 }
 
 // A person who closed the cockpit during a turn does not have it opened again by the next worker.
@@ -98,12 +98,19 @@ func TestChatACockpitTheyClosedStaysClosedForTheTurn(t *testing.T) {
 	r.emit(log...)
 	r.step(100 * time.Millisecond)
 	r.ctrl('g') // closes it
-	r.until("closed", func(string) bool { return !r.bridge.v.AltScreen() })
+	r.until("closed", func(string) bool { return !r.altScreen() })
 	log2 := []events.Event{b.Spawn("fe-1", "frontend", "T2", "mgr"), b.Request("fe-1", "w2", "mock-1", "pk1")}
 	r.at(b.Now().Add(2 * time.Second))
 	r.emit(log2...)
 	r.step(100 * time.Millisecond)
-	if r.bridge.v.AltScreen() {
+	if r.altScreen() {
 		t.Error("the person closed the cockpit: another worker does not open it again")
 	}
+}
+
+// altScreen reports whether the terminal is on its alternate screen, as the program writes to it from another goroutine.
+func (r *chatRig) altScreen() bool {
+	r.bridge.mu.Lock()
+	defer r.bridge.mu.Unlock()
+	return r.bridge.v.AltScreen()
 }
