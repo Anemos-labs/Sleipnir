@@ -38,6 +38,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			Result  string            `json:"result"`
 			Evid    string            `json:"evidence"`
 			Att     int               `json:"attempts"`
+			Verify  int               `json:"verification_failures"`
 			Rev     uint64            `json:"rev"`
 			Files   []string          `json:"files"`
 			Title   string            `json:"title"`
@@ -83,6 +84,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			}
 			t.ID, t.Status, t.Owner, t.Line, t.Result, t.Evidence = m.Task, TaskStatus(m.Status), m.Owner, m.Line, m.Result, m.Evid
 			t.Attempts, t.Rev, t.Files = m.Att, m.Rev, m.Files
+			t.VerificationFailures = m.Verify
 			if m.Op == "create" || (m.Op == "assign" && m.Title != "") {
 				t.Title, t.Desc, t.Role, t.Deps = m.Title, m.Desc, m.Role, m.Deps
 			}

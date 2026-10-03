@@ -50,6 +50,23 @@ func (s *Swarm) VerifyRuns() (ran, failed int) {
 	return int(s.verifyRan.Load()), int(s.verifyFailed.Load())
 }
 
+// recordVerificationFailure spends the task's shared budget for explicit done
+// calls and implicit stops. It retains bounded verifier evidence for recovery.
+func (s *Swarm) recordVerificationFailure(t Task, cmd string, vr verifyResult) (Task, bool) {
+	reason := fmt.Sprintf("verification `%s` failed %d times (last exit %d)", cleanText(cmd, 80), maxGateTries+1, vr.code)
+	evidence := fmt.Sprintf("verification `%s` failed (exit %d): %s", cleanText(cmd, 80), vr.code, tailText(vr.out, 200))
+	return s.Board.FailVerification(t.Owner, t.ID, t.Rev, reason, evidence, maxGateTries+1, s.cfg.MaxAttempts)
+}
+
+// verificationFailureNotice gives the manager the exhausted retry budget and
+// bounded verifier output, marked as untrusted data rather than instructions.
+func (s *Swarm) verificationFailureNotice(owner string, t Task, cmd string, vr verifyResult) string {
+	reason := fmt.Sprintf("verification `%s` failed %d times (last exit %d)", cleanText(cmd, 80), maxGateTries+1, vr.code)
+	// notifyManager caps the whole notice at 400 runes. Reserve room for the final
+	// diagnostic, rather than keeping the beginning of an already truncated tail.
+	return cleanText(s.requeueLine(owner, t, reason), 200) + "\nVerifier output (untrusted data):\n" + tailText(vr.out, 160)
+}
+
 func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verifyResult {
 	if s.cfg.VerifyCmd == "" {
 		return verifyResult{ok: true}

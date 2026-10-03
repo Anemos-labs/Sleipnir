@@ -1,4 +1,4 @@
-// The task board: todo, running, verifying, merged, with a card for every task (docs/UX.md, "the task board"; swarm.png).
+// The task board groups cards by task state, including terminal failures.
 
 package widget
 
@@ -20,6 +20,8 @@ const (
 	ColVerifying
 	// ColMerged is a task that is in (✓).
 	ColMerged
+	// ColFailed is a task whose attempts were exhausted or which the manager failed (✗).
+	ColFailed
 )
 
 func (k ColKind) title() string {
@@ -30,6 +32,8 @@ func (k ColKind) title() string {
 		return "verifying"
 	case ColMerged:
 		return "merged"
+	case ColFailed:
+		return "failed"
 	}
 	return "todo"
 }
@@ -53,6 +57,8 @@ func (k ColKind) glyph() string {
 		return "◌"
 	case ColMerged:
 		return "✓"
+	case ColFailed:
+		return "✗"
 	}
 	return "▢"
 }
@@ -65,6 +71,8 @@ func (k ColKind) style(p Palette) (header, card cell.Style) {
 		return p.infoSt().With(cell.Bold), p.infoSt()
 	case ColMerged:
 		return p.layerSt(1).With(cell.Bold), p.goodSt()
+	case ColFailed:
+		return p.badSt().With(cell.Bold), p.badSt()
 	}
 	return p.warnSt().With(cell.Bold), p.dimSt()
 }
@@ -73,14 +81,15 @@ func (k ColKind) style(p Palette) (header, card cell.Style) {
 type KanbanCard struct {
 	ID    string // t3
 	Label string // what it is about: ord
-	// Failed is a task whose verification failed and that was bounced back: it stays in its column with ✗ in the alarm style.
+	// Failed marks a failed verification with ✗ in the alarm style. Terminal task
+	// failures belong in ColFailed; a recoverable bounce may remain in another column.
 	Failed bool
 }
 
 // KanbanCol is a column of the board.
 type KanbanCol struct {
 	Kind ColKind
-	// Title overrides the column's name (todo, running, verifying, merged).
+	// Title overrides the column's name (todo, running, verifying, merged, failed).
 	Title string
 	Cards []KanbanCard
 	// Count is the number in the header when it is not the number of cards: a list that was cut to what fits (the newest cards of

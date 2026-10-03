@@ -5,6 +5,12 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Bound repeated task-verification failures across explicit completion calls and
+  implicit worker stops. Persist the repair count through recovery; after two
+  repair retries, count a failed attempt and notify the manager with verifier
+  evidence. Cancellation and verifier infrastructure errors do not spend repair
+  retries. Show terminal failures in their own board column instead of counting
+  them as running tasks. Stable prompt layers and tool schemas are unchanged.
 - Preserve ChatGPT sign-in authentication when listing a provider's models or
   tuning built-in provider options. Label plan model prices as `plan` instead of
   zero dollars and exclude them from numeric price limits. Explicit catalog URLs

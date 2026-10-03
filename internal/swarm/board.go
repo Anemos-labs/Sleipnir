@@ -69,6 +69,9 @@ type Task struct {
 	Evidence string `json:"evidence,omitempty"`
 	// Attempts counts assignments that ended without the work reaching review.
 	Attempts int `json:"attempts,omitempty"`
+	// VerificationFailures counts failed verification gates in the current attempt.
+	// It survives interruption and resets after a successful submission or a counted attempt.
+	VerificationFailures int `json:"verification_failures,omitempty"`
 	// Rev identifies the current assignment: it changes whenever the task is
 	// (re)assigned, sent back or requeued, so a run that started under an earlier
 	// assignment can tell that it no longer owns the task.
@@ -306,6 +309,7 @@ func (d *draft) setTask(t Task) {
 	d.set("result", t.Result)
 	d.set("evidence", t.Evidence)
 	d.set("attempts", t.Attempts)
+	d.set("verification_failures", t.VerificationFailures)
 	d.set("rev", t.Rev)
 	d.set("files", t.Files)
 }
@@ -716,6 +720,7 @@ func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string) 
 			return fmt.Errorf("%s was reassigned while you worked on it", id)
 		}
 		t.Status, t.Line = StatusReview, ""
+		t.VerificationFailures = 0
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
 		d.tasks()[i] = t
 		d.setTask(t)
@@ -824,6 +829,7 @@ func (b *Board) Reopen(by, id string) error {
 			return fmt.Errorf("%s is %s: only a failed task can be reopened (a task in review is sent back with reject)", id, t.Status)
 		}
 		t.Status, t.Owner, t.Line, t.Result, t.Evidence, t.Attempts, t.Rev = StatusTodo, "", "", "", "", 0, d.Version
+		t.VerificationFailures = 0
 		d.tasks()[i] = t
 		d.setTask(t)
 		return nil
@@ -846,16 +852,54 @@ func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttemp
 		if t.Owner != agent || (t.Status != StatusDoing && t.Status != StatusBlocked) || (rev != 0 && t.Rev != rev) {
 			return errNoChange
 		}
-		if countAttempt {
-			t.Attempts++
+		t = requeuedTask(t, d.Version, reason, countAttempt, maxAttempts)
+		d.tasks()[i] = t
+		d.setTask(t)
+		out, applied = t, true
+		return nil
+	})
+	return out, applied
+}
+
+// requeuedTask releases an assignment or marks its final failure. Only a counted
+// attempt resets its verification budget; interruption preserves that budget.
+func requeuedTask(t Task, rev uint64, reason string, countAttempt bool, maxAttempts int) Task {
+	if countAttempt {
+		t.Attempts++
+		t.VerificationFailures = 0
+	}
+	t.Rev, t.Line = rev, ""
+	if maxAttempts > 0 && t.Attempts >= maxAttempts {
+		t.Status = StatusFailed
+		t.Result = cleanText(reason, maxResultRunes)
+	} else {
+		t.Status, t.Owner = StatusTodo, ""
+		t.Line = cleanText(reason, maxLineRunes)
+	}
+	return t
+}
+
+// FailVerification records a failed test gate only while agent owns the doing
+// assignment rev. At maxFailures (at least one), it atomically counts an attempt
+// and requeues or fails the task. Stale results make no change and return false.
+// Infrastructure failures and cancellation must not be passed to this method.
+func (b *Board) FailVerification(agent, id string, rev uint64, reason, evidence string, maxFailures, maxAttempts int) (Task, bool) {
+	var out Task
+	applied := false
+	_ = b.mutate("harness", "update", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return errNoChange
 		}
-		t.Rev, t.Line = d.Version, ""
-		if maxAttempts > 0 && t.Attempts >= maxAttempts {
-			t.Status = StatusFailed
-			t.Result = cleanText(reason, maxResultRunes)
-		} else {
-			t.Status, t.Owner = StatusTodo, ""
-			t.Line = cleanText(reason, maxLineRunes)
+		t := d.Tasks[i]
+		if t.Owner != agent || t.Status != StatusDoing || t.Rev != rev {
+			return errNoChange
+		}
+		t.VerificationFailures++
+		t.Evidence = cleanText(evidence, maxEvidRunes)
+		if t.VerificationFailures >= max(1, maxFailures) {
+			t = requeuedTask(t, d.Version, reason, true, maxAttempts)
+			d.set("op", "requeue") // preserve the board event contract used by live views
 		}
 		d.tasks()[i] = t
 		d.setTask(t)

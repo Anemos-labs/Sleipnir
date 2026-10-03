@@ -296,14 +296,18 @@ func lane8(r state.ActivityRow) ([]uint8, []widget.LaneMark) {
 	return out, lm
 }
 
-// kanban is the task board in the four columns of the design; a failed task stays in the column it failed in.
+// kanban groups tasks by their current state. Terminal failures get a separate
+// column only when present, so they never inflate the running count.
 func kanban(sn *state.Snapshot) []widget.KanbanCol {
 	cols := []widget.KanbanCol{{Kind: widget.ColTodo}, {Kind: widget.ColRunning}, {Kind: widget.ColVerifying}, {Kind: widget.ColMerged}}
+	failed := widget.KanbanCol{Kind: widget.ColFailed}
 	for _, t := range sn.Board.Tasks {
 		card := widget.KanbanCard{ID: t.ID, Label: taskLabel(t), Failed: t.State == state.TaskFailed}
 		switch t.State {
-		case state.TaskRunning, state.TaskFailed:
+		case state.TaskRunning:
 			cols[1].Cards = append(cols[1].Cards, card)
+		case state.TaskFailed:
+			failed.Cards = append(failed.Cards, card)
 		case state.TaskVerifying:
 			cols[2].Cards = append(cols[2].Cards, card)
 		case state.TaskMerged:
@@ -311,6 +315,9 @@ func kanban(sn *state.Snapshot) []widget.KanbanCol {
 		default:
 			cols[0].Cards = append(cols[0].Cards, card)
 		}
+	}
+	if len(failed.Cards) > 0 {
+		cols = append(cols, failed)
 	}
 	return cols
 }

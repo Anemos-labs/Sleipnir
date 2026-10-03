@@ -251,11 +251,11 @@ func TestStoppingWithoutDoneStillGoesThroughTheVerifier(t *testing.T) {
 	if !r.prov.sawEver("expected 10 got 11") {
 		t.Fatal("the worker never saw the verifier's output")
 	}
-	if n := mailSent(r, "verification `go test ./...` kept failing"); n != 1 {
+	if n := mailSent(r, "verification `go test ./...` failed 3 times"); n != 1 {
 		t.Fatalf("the manager got %d notices about the failed verification, want 1", n)
 	}
-	if mailSent(r, "expected 10 got 11") != maxGateTries {
-		t.Fatalf("the failure output went to someone other than the worker (%d mails carry it)", mailSent(r, "expected 10 got 11"))
+	if mailSent(r, "expected 10 got 11") != maxGateTries+1 {
+		t.Fatalf("failure output must reach the worker on each retry and the manager on exhaustion (%d mails carry it)", mailSent(r, "expected 10 got 11"))
 	}
 }
 

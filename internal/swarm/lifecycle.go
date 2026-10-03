@@ -39,8 +39,8 @@ const (
 // once; a throttled line is flushed when the interval ends).
 const statusThrottle = 750 * time.Millisecond
 
-// maxGateTries is how many times a worker that stopped without finishing is sent
-// back to work with the verifier's output before its task is requeued.
+// maxGateTries is the repair allowance after a failed gate. Explicit done calls
+// and implicit stops share the task's verification counter.
 const maxGateTries = 2
 
 // runState is one run of a member's agent. Its tasks are the assignments (id and
@@ -854,18 +854,16 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			_ = s.Board.SubmitAt(m.id, id, rev, summary, evid+"; verification could not run: "+cleanText(vr.err.Error(), 100))
 			notes = append(notes, fmt.Sprintf("%s reached review but the verifier could not run (%s)", id, cleanText(vr.err.Error(), 80)))
 		default:
-			m.mu.Lock()
-			m.gateTries++
-			tries := m.gateTries
-			m.mu.Unlock()
-			if tries <= maxGateTries {
+			next, applied := s.recordVerificationFailure(t, vcmd, vr)
+			if !applied {
+				continue
+			}
+			if next.Status == StatusDoing {
 				s.notify(m.id, "request", fmt.Sprintf("Not done: you stopped without finishing %s and verification `%s` failed (exit %d). Fix the failures, then call task done.\n%s",
 					id, cleanText(vcmd, 80), vr.code, tailText(vr.out, 1500)))
 				continue
 			}
-			if nt, applied := s.Board.Requeue(m.id, id, rev, fmt.Sprintf("verification failed %d times", tries), true, s.cfg.MaxAttempts); applied {
-				notes = append(notes, s.requeueLine(m.id, nt, fmt.Sprintf("verification `%s` kept failing", cleanText(vcmd, 60))))
-			}
+			notes = append(notes, s.verificationFailureNotice(m.id, next, vcmd, vr))
 		}
 	}
 	return strings.Join(notes, "; ")
@@ -962,11 +960,24 @@ func (s *Swarm) afterIdle(m *member, restart bool) {
 
 // stopRun asks a member's run to stop, giving the reason that finishRun will use.
 func (s *Swarm) stopRun(m *member, reason string, count bool) bool {
+	return s.stopRunFor(m, reason, count, "", 0)
+}
+
+// stopRunFor cancels only a run that still tracks the given assignment. An empty
+// task ID matches any run; stale verifier results cannot cancel a newer task.
+func (s *Swarm) stopRunFor(m *member, reason string, count bool, taskID string, rev uint64) bool {
 	m.mu.Lock()
 	rs := m.run
 	if rs == nil || m.life != lifeRunning {
 		m.mu.Unlock()
 		return false
+	}
+	if taskID != "" {
+		assignment, ok := rs.tasks[taskID]
+		if !ok || assignment != rev {
+			m.mu.Unlock()
+			return false
+		}
 	}
 	if rs.reason == "" {
 		rs.reason, rs.count = reason, count
