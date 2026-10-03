@@ -392,7 +392,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	s.Skills, s.Roles = s.ext.skills, s.ext.roles
 	for _, w := range s.ext.warnings {
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": w})
-		if o.Sink != nil {
+	}
+	if o.Sink != nil {
+		for _, w := range shownWarnings(s.ext.warnings) {
 			o.Sink.Notice("", "warn", w)
 		}
 	}

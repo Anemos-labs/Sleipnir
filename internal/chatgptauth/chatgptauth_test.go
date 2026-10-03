@@ -62,7 +62,7 @@ func newIssuer(t *testing.T) *issuer {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		io.WriteString(w, `{"models":[{"slug":"gpt-a","display_name":"GPT A","visibility":"list"},{"slug":"gpt-hidden","display_name":"H","visibility":"hide"},{"slug":"","visibility":"list"}]}`)
+		io.WriteString(w, `{"models":[{"slug":"gpt-a","display_name":"GPT A","visibility":"list","context_window":272000},{"slug":"gpt-hidden","display_name":"H","visibility":"hide"},{"slug":"","visibility":"list"}]}`)
 	})
 	return is
 }
@@ -414,7 +414,7 @@ func TestModelsAreTheOnesTheListOffers(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	ms, err := st.Models(context.Background())
-	if err != nil || len(ms) != 1 || ms[0].Slug != "gpt-a" || ms[0].DisplayName != "GPT A" {
+	if err != nil || len(ms) != 1 || ms[0].Slug != "gpt-a" || ms[0].DisplayName != "GPT A" || ms[0].ContextWindow != 272000 {
 		t.Errorf("%+v %v", ms, err)
 	}
 }

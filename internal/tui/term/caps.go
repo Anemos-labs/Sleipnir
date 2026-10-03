@@ -80,6 +80,16 @@ func Detect(env func(string) string, f *os.File) Caps {
 			}
 		}
 	}
+	if tty && f != nil && env != nil && env("TERM") == "" && enableVT(f) {
+		// a Windows console that says nothing of itself but understands sequences (it has just been asked to): a terminal, not a dumb one
+		inner := env
+		env = func(k string) string {
+			if k == "TERM" {
+				return "xterm-256color"
+			}
+			return inner(k)
+		}
+	}
 	return FromEnv(env, tty, w, h)
 }
 

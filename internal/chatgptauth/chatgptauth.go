@@ -465,8 +465,9 @@ func (s *Store) Logout(ctx context.Context) error {
 
 // Model is a model of the plan's list.
 type Model struct {
-	Slug        string
-	DisplayName string
+	Slug          string
+	DisplayName   string
+	ContextWindow int // tokens, when the list says (0 when it does not)
 }
 
 // Models lists the models the plan can use, as the API gives them: its answer is {"models":[{slug, display_name, visibility}]}, not the
@@ -499,6 +500,7 @@ func (s *Store) Models(ctx context.Context) ([]Model, error) {
 			Slug        string `json:"slug"`
 			DisplayName string `json:"display_name"`
 			Visibility  string `json:"visibility"`
+			Window      int    `json:"context_window"`
 		} `json:"models"`
 	}
 	if err := json.Unmarshal(b, &list); err != nil {
@@ -507,7 +509,7 @@ func (s *Store) Models(ctx context.Context) ([]Model, error) {
 	var out []Model
 	for _, m := range list.Models {
 		if m.Visibility == "list" && m.Slug != "" && len(m.Slug) <= 200 {
-			out = append(out, Model{Slug: m.Slug, DisplayName: clip(m.DisplayName, 200)})
+			out = append(out, Model{Slug: m.Slug, DisplayName: clip(m.DisplayName, 200), ContextWindow: max(m.Window, 0)})
 		}
 	}
 	return out, nil

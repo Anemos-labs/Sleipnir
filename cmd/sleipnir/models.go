@@ -280,8 +280,8 @@ func fetchModels(ctx context.Context, sources []modelSource) (all []modelRow, er
 // planProvider marks the models of a ChatGPT plan in a catalogue entry: they are paid for by the plan, so no price is shown for them.
 const planProvider = "chatgpt-plan"
 
-// planModels is the model list of the ChatGPT plan that is signed in: the models it offers, with no price and no window (the list says
-// neither: the harness assumes a cautious window, options.context_window says the real one).
+// planModels is the model list of the ChatGPT plan that is signed in: the models it offers, with no price (the plan pays) and the window the
+// list gives, when it gives one (without it the table shows ? and the harness assumes a cautious window; options.context_window says the real one).
 func planModels(ctx context.Context) ([]gateway.Entry, error) {
 	st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptauth.Path(userHome())})
 	if err != nil {
@@ -293,7 +293,7 @@ func planModels(ctx context.Context) ([]gateway.Entry, error) {
 	}
 	out := make([]gateway.Entry, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, gateway.Entry{Model: cost.Model{ID: m.Slug, Provider: planProvider}, Modality: "text->text", Supported: []string{"tools", "reasoning_effort"}})
+		out = append(out, gateway.Entry{Model: cost.Model{ID: m.Slug, Provider: planProvider, ContextTokens: m.ContextWindow}, Modality: "text->text", Supported: []string{"tools", "reasoning_effort"}})
 	}
 	return out, nil
 }

@@ -183,3 +183,23 @@ func (s *Session) allowRead(ctx context.Context, path string) error {
 	}
 	return nil
 }
+
+// maxShownWarnings is how many notes about extensions the screen gets before the rest are counted.
+const maxShownWarnings = 5
+
+// shownWarnings picks what the screen says of the notes found loading skills, commands, agents and hooks. All of them are in the session log.
+// A field a skill has that Sleipnir does not read ("homepage" in the skills of other tools) is harmless and is not shown; of the others the
+// first few are, and a line counts the rest (a person with a hundred skills of another tool otherwise saw a screenful before the chat began).
+func shownWarnings(all []string) []string {
+	var real []string
+	for _, w := range all {
+		if !strings.Contains(w, "unknown frontmatter field(s) ignored") {
+			real = append(real, w)
+		}
+	}
+	if len(real) <= maxShownWarnings {
+		return real
+	}
+	out := append([]string(nil), real[:maxShownWarnings]...)
+	return append(out, fmt.Sprintf("%d more notes about skills, commands and agents are in the session log", len(real)-maxShownWarnings))
+}
