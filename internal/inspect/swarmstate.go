@@ -54,6 +54,7 @@ type mailRec struct {
 	sent time.Time
 }
 
+// newSwarmState allocates indexes for board, mail, minute aggregates, and error tracking.
 func newSwarmState() swarmState {
 	return swarmState{
 		boardBy: map[string]int{}, mailKinds: map[string]int{}, pairs: map[[2]string]int{},
@@ -61,6 +62,7 @@ func newSwarmState() swarmState {
 	}
 }
 
+// minute returns or creates the mutable aggregation bucket for a timestamp's Unix minute.
 func (w *swarmState) minute(ts time.Time) *minuteBucket {
 	k := ts.Unix() / 60
 	m := w.minutes[k]
@@ -121,6 +123,8 @@ func (s *Session) onMailSend(raw json.RawMessage, agentID string, ts time.Time) 
 	}
 }
 
+// onMailDeliver validates a delivery event, updates aggregate counts, and records the first known
+// delivery latency.
 func (s *Session) onMailDeliver(raw json.RawMessage, ts time.Time) {
 	var p struct{ ID, From string }
 	if json.Unmarshal(raw, &p) != nil {
@@ -137,6 +141,8 @@ func (s *Session) onMailDeliver(raw json.RawMessage, ts time.Time) {
 
 // ---- leases and governor (logged generically) --------------------------------
 
+// onLease reads compatible lease field aliases into bounded recent history and updates total and
+// minute counters.
 func (s *Session) onLease(raw json.RawMessage, agentID string, ts time.Time) {
 	var m map[string]any
 	_ = json.Unmarshal(raw, &m)
@@ -180,6 +186,7 @@ func (s *Session) onGovernor(raw json.RawMessage) {
 	s.swarm.govLast = last
 }
 
+// firstNonEmpty returns the earliest nonempty argument or empty when all are empty.
 func firstNonEmpty(a ...string) string {
 	for _, s := range a {
 		if s != "" {
@@ -219,6 +226,8 @@ type pendingCall struct {
 	call *boardCall
 }
 
+// newBoardTracker initializes task, pending-call, and agent-assignment indexes for event
+// reconstruction.
 func newBoardTracker() *boardTracker {
 	return &boardTracker{tasks: map[string]*boardTask{}, pending: map[string][]*pendingCall{}, agentTask: map[string]string{}}
 }
@@ -250,6 +259,8 @@ func parseBoardCall(name string, input json.RawMessage) *boardCall {
 	return bc
 }
 
+// capStrings copies at most n entries into bounded single-line display strings; n must be
+// nonnegative.
 func capStrings(in []string, n int) []string {
 	if len(in) > n {
 		in = in[:n]
@@ -261,6 +272,8 @@ func capStrings(in []string, n int) []string {
 	return out
 }
 
+// onToolCall queues nonnil board-call metadata per agent, retaining at most the latest 16 pending
+// calls.
 func (b *boardTracker) onToolCall(agent, callID string, bc *boardCall) {
 	if bc == nil {
 		return
@@ -272,6 +285,8 @@ func (b *boardTracker) onToolCall(agent, callID string, bc *boardCall) {
 	b.pending[agent] = append(q, &pendingCall{id: callID, call: bc})
 }
 
+// onToolResult removes the matching pending board call for an agent and drops empty pending
+// queues.
 func (b *boardTracker) onToolResult(agent, callID string) {
 	q := b.pending[agent]
 	for i, pc := range q {
@@ -298,6 +313,8 @@ func (b *boardTracker) current(actor string) *boardCall {
 	return q[len(q)-1].call
 }
 
+// ensure returns an existing task or creates a todo task until the 20,000-task retention cap is
+// reached.
 func (b *boardTracker) ensure(id string, ts time.Time) *boardTask {
 	t := b.tasks[id]
 	if t == nil {
@@ -502,6 +519,8 @@ func (b *boardTracker) ensure2(id string, ts time.Time) *boardTask {
 	return b.ensure(id, ts)
 }
 
+// onSpawn records manager identity and assigns a spawned agent's task owner, role, and doing
+// state.
 func (b *boardTracker) onSpawn(id, role, task, by string, ts time.Time) {
 	if role == "manager" {
 		b.manager = id
@@ -520,6 +539,7 @@ func (b *boardTracker) onSpawn(id, role, task, by string, ts time.Time) {
 	_ = by
 }
 
+// onAgentEnd marks an owned task failed when its agent fails while the task is doing or in review.
 func (b *boardTracker) onAgentEnd(id, state string, ts time.Time) {
 	if state != "failed" {
 		return
@@ -529,6 +549,7 @@ func (b *boardTracker) onAgentEnd(id, state string, ts time.Time) {
 	}
 }
 
+// views copies board task views sorted by numeric task suffix and then task ID.
 func (b *boardTracker) views() []TaskView {
 	out := make([]*boardTask, 0, len(b.tasks))
 	for _, t := range b.tasks {

@@ -102,6 +102,8 @@ type chunkReader struct {
 	fail   error
 }
 
+// newChunkReader copies, sorts, and deduplicates valid interior split offsets while retaining the
+// supplied data slice.
 func newChunkReader(data []byte, cuts []int) *chunkReader {
 	cl := append([]int(nil), cuts...)
 	sort.Ints(cl)
@@ -145,6 +147,8 @@ type roundTripper struct {
 	status      int
 }
 
+// RoundTrip drains and closes the test request body and returns a fresh configured response body,
+// defaulting status to 200.
 func (t roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.Body != nil {
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -237,6 +241,8 @@ func detach(e provider.Event) provider.Event {
 	return e
 }
 
+// detachResp makes a shallow response copy with timing removed and an independent cost pointer for
+// stable test comparison.
 func detachResp(r *provider.Response) *provider.Response {
 	if r == nil {
 		return nil
@@ -295,6 +301,8 @@ func diffErr(a, b error) string {
 	return ""
 }
 
+// dumpResp renders a response as JSON for test diagnostics, with explicit nil and formatting
+// fallbacks.
 func dumpResp(r *provider.Response) string {
 	if r == nil {
 		return "<nil>"
@@ -306,6 +314,8 @@ func dumpResp(r *provider.Response) string {
 	return string(b)
 }
 
+// dumpEvent renders a provider event as JSON for test diagnostics, falling back to Go formatting
+// on encoding failure.
 func dumpEvent(e provider.Event) string {
 	b, err := json.Marshal(e)
 	if err != nil {
@@ -314,6 +324,8 @@ func dumpEvent(e provider.Event) string {
 	return string(b)
 }
 
+// dumpEvents concatenates event diagnostics and stops after an event takes the accumulated output
+// over 4000 bytes.
 func dumpEvents(evs []provider.Event) string {
 	var sb strings.Builder
 	for i, e := range evs {
@@ -396,6 +408,7 @@ func Check(tb testing.TB, o Outcome) {
 	checkResponse(tb, o)
 }
 
+// checkID reports a test failure when an identifier is unsafe for display or exceeds 256 bytes.
 func checkID(tb testing.TB, what, s string) {
 	tb.Helper()
 	if !Inert(s) || len(s) > 256 {
@@ -403,6 +416,7 @@ func checkID(tb testing.TB, what, s string) {
 	}
 }
 
+// truncate bounds test diagnostic strings to 120 bytes plus a truncation marker.
 func truncate(s string) string {
 	if len(s) > 120 {
 		return s[:120] + "..."

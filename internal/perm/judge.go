@@ -30,8 +30,13 @@ type verdict struct {
 	rem []Rule
 }
 
+// allow constructs an allowed verdict carrying the policy explanation.
 func allow(reason string) verdict { return verdict{kind: vAllow, reason: reason} }
-func deny(reason string) verdict  { return verdict{kind: vDeny, reason: reason} }
+
+// deny constructs a denied verdict carrying the policy explanation.
+func deny(reason string) verdict { return verdict{kind: vDeny, reason: reason} }
+
+// ask constructs an approval verdict and retains the rules eligible for remembering the answer.
 func ask(reason string, rem []Rule) verdict {
 	return verdict{kind: vAsk, reason: reason, rem: rem}
 }
@@ -87,6 +92,7 @@ type view struct {
 	role  string
 }
 
+// allAccesses returns an independent slice of command accesses followed by redirection accesses.
 func (u *unit) allAccesses() []access {
 	all := make([]access, 0, len(u.accesses)+len(u.redirs))
 	all = append(all, u.accesses...)
@@ -149,6 +155,7 @@ func (ev *evaluator) judge(u *unit) verdict {
 	return ev.decideCommand(u)
 }
 
+// quote renders a value as a Go-escaped quoted string for permission diagnostics.
 func quote(s string) string { return strconv.Quote(s) }
 
 // leavesConfinement says why an access breaks an agent's confinement to its own
@@ -166,6 +173,7 @@ func (rs *resolver) leavesConfinement(c rootPair, a access, agent string) string
 		" is elsewhere in the workspace (the shared checkout or another agent's tree). Use paths relative to your working directory"
 }
 
+// clipText retains at most n runes and appends an ellipsis when needed; n must be nonnegative.
 func clipText(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -424,6 +432,7 @@ func (ev *evaluator) restrictMatch(rules []*crule, u *unit, all []access) *crule
 	return nil
 }
 
+// accessAllowRule returns the first matching allow rule of the access's read or write class.
 func (ev *evaluator) accessAllowRule(a access) *crule {
 	for _, r := range ev.v.allow {
 		if (a.write && r.class == classWrite || !a.write && r.class == classRead) && ruleHits(r, a, false) {
@@ -447,6 +456,8 @@ func (ev *evaluator) explicitAllowAccess(a access) *crule {
 	return nil
 }
 
+// commandAllowRule rejects unresolved command context and prefers a matching specific Bash allow
+// rule over blanket rules.
 func (ev *evaluator) commandAllowRule(u *unit) *crule {
 	if u.simple == nil || u.envBad != "" || u.dyn != "" {
 		return nil
@@ -488,6 +499,8 @@ func (ev *evaluator) overridesRisk(u *unit) bool {
 	return false
 }
 
+// toolAllowRule prefers a matching specific web or other-tool allow rule, falling back to a
+// matching blanket rule.
 func (ev *evaluator) toolAllowRule(r Request) *crule {
 	var blanket *crule
 	for _, cr := range ev.v.allow {
@@ -555,6 +568,8 @@ func (ev *evaluator) buildRemember(u *unit) []Rule {
 	return []Rule{{Action: Allow, Tool: "Bash", Pattern: pat}}
 }
 
+// rememberAccess creates a path-specific approval for static tool or redirection access and
+// otherwise delegates to command approval generation.
 func (ev *evaluator) rememberAccess(a access, u *unit) []Rule {
 	if a.dynamic {
 		return nil

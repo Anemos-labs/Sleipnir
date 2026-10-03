@@ -181,6 +181,7 @@ const (
 	ErrPayment
 )
 
+// String returns the wire label for a defined error kind; an out-of-range kind panics.
 func (k ErrKind) String() string {
 	return [...]string{"unknown", "network", "timeout", "auth", "rate_limit", "overloaded", "server", "bad_request", "context_length", "thinking_binding", "refusal", "payment"}[k]
 }
@@ -202,6 +203,7 @@ type Error struct {
 	NoRetry bool
 }
 
+// Error formats provider kind and optional HTTP status with bounded, sanitized diagnostic text.
 func (e *Error) Error() string {
 	msg := SanitizeText(e.Message, MaxErrorText)
 	if e.Status != 0 {
@@ -210,6 +212,7 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("provider: %s: %s", e.Kind, msg)
 }
 
+// Unwrap exposes the underlying provider failure to errors.Is and errors.As.
 func (e *Error) Unwrap() error { return e.Err }
 
 // DefaultMaxRetryAfter caps how long a server may ask a client to wait.
@@ -244,6 +247,7 @@ func ParseRetryAfter(v string, now time.Time, max time.Duration) (d time.Duratio
 	return 0, false
 }
 
+// max0 clamps negative durations to zero.
 func max0(d time.Duration) time.Duration {
 	if d < 0 {
 		return 0

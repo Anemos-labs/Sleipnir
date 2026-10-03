@@ -80,6 +80,7 @@ type toolDelta struct {
 // The value is limited to 0..MaxUsageTokens again in usage.normalize.
 type tokens int
 
+// UnmarshalJSON uses the shared tolerant token-count parser and never returns a decoding error.
 func (t *tokens) UnmarshalJSON(b []byte) error {
 	*t = tokens(provider.ParseTokenCount(b))
 	return nil
@@ -219,6 +220,8 @@ type detailAcc struct {
 	hasText, hasSummary, hasData bool
 }
 
+// add appends present reasoning text, summary, and data fragments while remembering presence even
+// for empty fragments.
 func (d *detailAcc) add(it reasoningItem) {
 	if it.Text != nil {
 		d.text.WriteString(*it.Text)
@@ -285,8 +288,11 @@ type callAcc struct {
 	args     strings.Builder
 }
 
+// newAccumulator initializes chat stream state with the default stream limits.
 func newAccumulator() *accumulator { return newAccumulatorLimits(provider.StreamLimits{}) }
 
+// newAccumulatorLimits allocates independent reasoning and tool-call maps and normalizes stream
+// limits.
 func newAccumulatorLimits(lim provider.StreamLimits) *accumulator {
 	return &accumulator{details: map[int]*detailAcc{}, calls: map[int]*callAcc{}, lim: lim.Normalized()}
 }

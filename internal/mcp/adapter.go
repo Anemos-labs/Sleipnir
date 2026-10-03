@@ -185,6 +185,7 @@ func modelError(server string, err error) string {
 	return fmt.Sprintf("MCP call to %q failed: %s", server, msg)
 }
 
+// trimPrefix removes p only when it is an exact prefix of s.
 func trimPrefix(s, p string) string {
 	if len(s) >= len(p) && s[:len(p)] == p {
 		return s[len(p):]

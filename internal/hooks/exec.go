@@ -34,6 +34,8 @@ type sink struct {
 	cut   bool
 }
 
+// write counts all hook output bytes while retaining only the bounded prefix and recording
+// truncation under lock.
 func (s *sink) write(p []byte) int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -50,6 +52,8 @@ func (s *sink) write(p []byte) int64 {
 	return s.total
 }
 
+// snapshot returns an independent copy of captured hook output and its truncation flag under the
+// sink lock.
 func (s *sink) snapshot() ([]byte, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

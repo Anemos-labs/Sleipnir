@@ -266,6 +266,7 @@ func Validate(turns []core.Turn) error {
 	return nil
 }
 
+// keys returns map keys in unspecified iteration order regardless of their boolean values.
 func keys(m map[string]bool) []string {
 	var out []string
 	for k := range m {

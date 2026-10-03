@@ -275,6 +275,8 @@ func truncateRunes(s string, max int) (string, bool) {
 	return strings.TrimRight(cutRunes(s, keep), " \t\n") + truncMarker, true
 }
 
+// cutRunes returns a prefix ending at a rune boundary after at most n runes; n should be
+// nonnegative.
 func cutRunes(s string, n int) string {
 	for i := range s {
 		if n == 0 {
@@ -325,6 +327,7 @@ func newRedactor(secrets []string) *redactor {
 	return &redactor{rep: strings.NewReplacer(pairs...)}
 }
 
+// apply replaces configured secrets, leaving text unchanged for a nil or uninitialized redactor.
 func (r *redactor) apply(s string) string {
 	if r == nil || r.rep == nil {
 		return s

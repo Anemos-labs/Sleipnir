@@ -46,6 +46,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
+// init registers the chat-record command with the CLI dispatcher.
 func init() { extraCommands["chat-record"] = cmdChatRecord }
 
 const (
@@ -373,6 +374,7 @@ func (r *chatRecorder) put(rec app.ChatRecord) {
 	r.raw = append(r.raw, rawRec{rec: rec})
 }
 
+// sinkRecord identifies transcript kinds that come from the visible chat sink.
 func sinkRecord(kind string) bool {
 	switch kind {
 	case app.RecText, app.RecReset, app.RecToolStart, app.RecToolEnd, app.RecResponse, app.RecNotice:
@@ -445,6 +447,8 @@ func (r *chatRecorder) awaitCompaction(ctx context.Context) error {
 
 // The sink of the session, as the chat's own (app.ChatSink) is: what it is told is what the program is told.
 
+// Text records a chat delta and, at the configured playback cutoff, records a simulated Ctrl-C and
+// cancels the turn outside the recorder lock.
 func (r *chatRecorder) Text(a, d string) {
 	r.put(app.ChatRecord{Kind: app.RecText, Agent: a, Text: d})
 	r.mu.Lock()
@@ -461,13 +465,19 @@ func (r *chatRecorder) Text(a, d string) {
 	}
 }
 
+// Thinking omits reasoning events from chat recordings.
 func (r *chatRecorder) Thinking(string, string) {}
-func (r *chatRecorder) Reset(a string)          { r.put(app.ChatRecord{Kind: app.RecReset, Agent: a}) }
 
+// Reset records a reset event for the named agent.
+func (r *chatRecorder) Reset(a string) { r.put(app.ChatRecord{Kind: app.RecReset, Agent: a}) }
+
+// ToolStart records the agent and tool-call arguments when execution begins.
 func (r *chatRecorder) ToolStart(a string, call core.Block) {
 	r.put(app.ChatRecord{Kind: app.RecToolStart, Agent: a, Call: callOfBlock(call)})
 }
 
+// ToolEnd records tool identity, result fields, and elapsed milliseconds, representing a nil
+// result as an empty result record.
 func (r *chatRecorder) ToolEnd(a string, call core.Block, res *tools.Result, took time.Duration) {
 	cr := &app.ChatResult{}
 	if res != nil {
@@ -476,14 +486,18 @@ func (r *chatRecorder) ToolEnd(a string, call core.Block, res *tools.Result, too
 	r.put(app.ChatRecord{Kind: app.RecToolEnd, Agent: a, Call: callOfBlock(call), Result: cr, TookMS: took.Milliseconds()})
 }
 
+// Response records response completion and its cache-hit fraction without retaining the provider
+// response.
 func (r *chatRecorder) Response(a string, _ *provider.Response, hit float64) {
 	r.put(app.ChatRecord{Kind: app.RecResponse, Agent: a, Hit: hit})
 }
 
+// Notice records a diagnostic with its agent, severity, and message.
 func (r *chatRecorder) Notice(a, level, msg string) {
 	r.put(app.ChatRecord{Kind: app.RecNotice, Agent: a, Level: level, Text: msg})
 }
 
+// callOfBlock copies a tool block's identifier, name, and arguments into the recording format.
 func callOfBlock(b core.Block) *app.ChatCall {
 	return &app.ChatCall{ID: b.ToolID, Name: b.ToolName, Input: b.Input}
 }

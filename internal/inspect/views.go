@@ -11,6 +11,8 @@ import (
 // This file turns the model into the JSON views the API serves. Everything here
 // runs under s.mu (read) and never mutates the model.
 
+// stateLocked classifies the session as empty, ended, live, or idle from event state and recent
+// timestamps; the caller must hold the session lock.
 func (s *Session) stateLocked(now time.Time) string {
 	switch {
 	case s.events == 0:
@@ -56,6 +58,8 @@ func (s *Session) Summary() Summary {
 	return s.summaryLocked()
 }
 
+// summaryLocked assembles inspection totals, recent series, cost, swarm, RL, and warning views
+// under the session lock.
 func (s *Session) summaryLocked() Summary {
 	now := s.opts.Now()
 	state := s.stateLocked(now)
@@ -73,6 +77,8 @@ func (s *Session) summaryLocked() Summary {
 	return out
 }
 
+// compTotalsLocked copies compaction counters and recorded compactor cost; the caller must hold
+// the session lock.
 func (s *Session) compTotalsLocked() CompactionTotals {
 	c := &s.comp
 	return CompactionTotals{
@@ -106,6 +112,8 @@ func (s *Session) cacheStatsLocked() CacheStats {
 	return st
 }
 
+// costReportLocked computes modeled savings and reported-cost divergence only when all successful
+// requests have reported prices; the caller must hold the session lock.
 func (s *Session) costReportLocked() CostReport {
 	c := &s.costAgg
 	r := CostReport{
@@ -123,6 +131,8 @@ func (s *Session) costReportLocked() CostReport {
 	return r
 }
 
+// swarmTotalsLocked combines stored counters with current running/waiting agent counts; the caller
+// must hold the session lock.
 func (s *Session) swarmTotalsLocked() SwarmTotals {
 	w := &s.swarm
 	t := SwarmTotals{
@@ -224,6 +234,8 @@ func (s *Session) warningsLocked(state string, sum Summary) []string {
 
 // ---- agents -----------------------------------------------------------------------
 
+// agentStateLocked prioritizes failure, open requests, waits, completion, and recent activity to
+// derive display state under the session lock.
 func (s *Session) agentStateLocked(a *agent, now time.Time, sessionState string) string {
 	switch {
 	case a.ended && a.endState == "failed":
@@ -288,6 +300,8 @@ func (s *Session) Agents() []AgentView {
 	return s.agentsLocked()
 }
 
+// agentsLocked builds agent views in retained agent order using one current timestamp; the caller
+// must hold the session lock.
 func (s *Session) agentsLocked() []AgentView {
 	now := s.opts.Now()
 	st := s.stateLocked(now)
@@ -386,6 +400,7 @@ func (s *Session) layerTokensLocked(r *req) ([7]int, bool) {
 	return l, known
 }
 
+// changedNames maps the low six change-mask bits to layer names in layer order.
 func changedNames(mask uint8) []string {
 	var out []string
 	for i := 0; i < 6; i++ {
@@ -396,6 +411,8 @@ func changedNames(mask uint8) []string {
 	return out
 }
 
+// reqViewLocked projects request usage, latency, cache, cost, and layer metadata into the
+// inspection view under the session lock.
 func (s *Session) reqViewLocked(r *req) Req {
 	v := Req{
 		ID: r.id, Seq: r.seq, Rev: r.rev, Agent: r.agent.id, Role: firstNonEmpty(r.role, r.agent.role), Kind: r.kind, Model: r.model,
@@ -410,6 +427,7 @@ func (s *Session) reqViewLocked(r *req) Req {
 	return v
 }
 
+// shortHash retains at most 12 bytes of a hash for display.
 func shortHash(h string) string {
 	if len(h) > 12 {
 		return h[:12]
@@ -534,6 +552,8 @@ func (s *Session) Anomalies() AnomalyReport {
 	return rep
 }
 
+// layerKey maps the six rendered layer positions to their API names and returns empty for unknown
+// positions.
 func layerKey(i int) string {
 	switch i {
 	case 0:
@@ -655,6 +675,8 @@ func (s *Session) prevMainLocked(r *req) *req {
 	return nil
 }
 
+// nextMainLocked finds the next main request after r in its agent's sequence-sorted history; the
+// caller must hold the session lock.
 func (s *Session) nextMainLocked(r *req) *req {
 	rs := r.agent.reqs
 	i := sort.Search(len(rs), func(i int) bool { return rs[i].seq > r.seq })

@@ -25,6 +25,7 @@ type textJob struct {
 	prevTools  string
 }
 
+// overlap returns the nonnegative intersection length of the half-open intervals [a,b) and [c,d).
 func overlap(a, b, c, d int) int {
 	lo, hi := max(a, c), min(b, d)
 	if hi > lo {

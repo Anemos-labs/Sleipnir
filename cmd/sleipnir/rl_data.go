@@ -86,11 +86,15 @@ func findSamples(paths []string) ([]sample, error) {
 	return out, nil
 }
 
+// fileExists follows symlinks and reports a stat-able path that is not a directory; it does not
+// require a regular file.
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
 }
 
+// readEpisode reads and decodes episode.json from a run directory, attaching the filename to
+// decoding failures.
 func readEpisode(dir string) (*rl.Episode, error) {
 	b, err := os.ReadFile(filepath.Join(dir, "episode.json"))
 	if err != nil {
@@ -103,6 +107,8 @@ func readEpisode(dir string) (*rl.Episode, error) {
 	return &ep, nil
 }
 
+// readTask reads and decodes task.json from a run directory, attaching the filename to decoding
+// failures.
 func readTask(dir string) (*rl.Task, error) {
 	b, err := os.ReadFile(filepath.Join(dir, "task.json"))
 	if err != nil {
@@ -148,10 +154,13 @@ type runCache struct {
 	order []string
 }
 
+// newRunCache allocates an empty trajectory cache with the supplied entry limit.
 func newRunCache(max int) *runCache {
 	return &runCache{max: max, runs: map[string]*traj.Run{}}
 }
 
+// get opens trajectory runs under the cache lock and evicts oldest insertions beyond capacity;
+// hits do not change eviction order.
 func (c *runCache) get(dir string) (*traj.Run, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -177,6 +186,8 @@ type prompts struct {
 	cache *runCache
 }
 
+// Prompt loads a cached trajectory run and resolves a step's prompt, propagating load or
+// reconstruction errors.
 func (p prompts) Prompt(ep *rl.Episode, st *rl.Step) (*core.Prompt, error) {
 	run, err := p.cache.get(p.dir)
 	if err != nil {

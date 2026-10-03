@@ -24,6 +24,7 @@ type resolver struct {
 
 type rootPair struct{ lex, real string }
 
+// newResolver records cleaned lexical and resolved forms of home and nonempty allowed roots.
 func newResolver(home, root string, extra []string) *resolver {
 	rs := &resolver{home: cleanAbs(home)}
 	rs.homeReal = realPath(rs.home)
@@ -76,6 +77,8 @@ func (rs *resolver) anchor() []string {
 	return append(out, rs.treeBases...)
 }
 
+// cleanAbs cleans nonempty paths and makes relative paths absolute when the working directory can
+// be read.
 func cleanAbs(p string) string {
 	if p == "" {
 		return ""
@@ -173,6 +176,7 @@ func splitParent(p string) (dir, base string) {
 // cover everything inside.
 type pathGlob struct{ segs []string }
 
+// splitSegs splits a slash-separated path and discards empty segments.
 func splitSegs(p string) []string {
 	var out []string
 	for _, s := range strings.Split(p, "/") {
@@ -183,6 +187,8 @@ func splitSegs(p string) []string {
 	return out
 }
 
+// segMatch translates and matches a single path-segment glob, treating invalid patterns as
+// nonmatches.
 func segMatch(pat, seg string) bool {
 	ok, err := path.Match(goPattern(pat), seg)
 	return err == nil && ok
@@ -308,6 +314,7 @@ func (g *pathGlob) matches(p string) bool {
 	return false
 }
 
+// hasMeta detects glob operators or escape syntax in a pattern.
 func hasMeta(s string) bool { return strings.ContainsAny(s, `*?[\`) }
 
 // compilePathGlobs compiles a rule pattern into one glob per equivalent form
@@ -400,6 +407,7 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 	return out, nil
 }
 
+// uniq removes empty and duplicate strings while preserving input order.
 func uniq(vals ...string) []string {
 	var out []string
 	for _, v := range vals {

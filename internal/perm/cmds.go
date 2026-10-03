@@ -221,6 +221,7 @@ var goValueFlags = map[string]bool{
 	"covermode": true, "coverpkg": true, "buildvcs": true, "C": true,
 }
 
+// pathLike recognizes slash-containing paths, dot directories, and tilde-prefixed paths.
 func pathLike(s string) bool {
 	return strings.Contains(s, "/") || s == "." || s == ".." || strings.HasPrefix(s, "~")
 }
@@ -457,11 +458,13 @@ var dangerousEnvPrefixes = []string{
 	"GIT_", "GO", "CARGO_", "RUST", "XDG_", "SSH_", "SUDO_", "GCONV", "MALLOC_", "LESS", "MAN",
 }
 
+// envName extracts an assignment's variable name, removing the append-assignment plus suffix.
 func envName(assign string) string {
 	n, _, _ := strings.Cut(assign, "=")
 	return strings.TrimSuffix(n, "+")
 }
 
+// envBenign recognizes allowlisted environment assignments and locale variables prefixed LC_.
 func envBenign(assign string) bool {
 	n := envName(assign)
 	return benignEnv[n] || strings.HasPrefix(n, "LC_")
@@ -490,6 +493,8 @@ var networkPrograms = map[string]bool{
 	"ncat": true, "netcat": true, "telnet": true, "ftp": true, "ping": true, "dig": true, "nslookup": true,
 }
 
+// isNetwork recognizes known network programs and Git network subcommand tokens as a conservative
+// heuristic.
 func isNetwork(prog string, args []string) bool {
 	if networkPrograms[prog] {
 		return true
@@ -519,6 +524,8 @@ func hasShort(args []string, letters string) bool {
 	return false
 }
 
+// hasLong recognizes named long options both as standalone arguments and with equals-separated
+// values.
 func hasLong(args []string, names ...string) bool {
 	for _, a := range args {
 		for _, n := range names {
@@ -562,6 +569,7 @@ var sharedBranches = map[string]bool{
 	"production": true, "prod": true, "stable": true,
 }
 
+// sharedBranch recognizes configured shared branches and names prefixed with release or hotfix.
 func sharedBranch(name string) bool {
 	return sharedBranches[name] || strings.HasPrefix(name, "release") || strings.HasPrefix(name, "hotfix")
 }

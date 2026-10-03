@@ -517,10 +517,13 @@ const maskPrefix = "⟦masked"
 // output, and must not be able to opt out of masking and squeezing that way.
 var maskRe = regexp.MustCompile(`^⟦masked: [^\n]{0,240} · ~\d+ tokens · recall t\d+\.\d+⟧$`)
 
+// isMasked recognizes a single short result block containing the canonical masking marker.
 func isMasked(b core.Block) bool {
 	return len(b.Result) == 1 && len(b.Result[0].Text) <= 400 && maskRe.MatchString(b.Result[0].Text)
 }
 
+// maskBlock replaces tool-result content with a recall pointer while preserving tool ID and error
+// status.
 func maskBlock(b core.Block, turn core.TurnID, idx int, label string, tokens int) core.Block {
 	if label == "" {
 		label = "tool result"
@@ -997,6 +1000,7 @@ var (
 	pointerCount = regexp.MustCompile(`\((\d+) `)
 )
 
+// splitLines splits on newline bytes and returns nil for empty input.
 func splitLines(s string) []string {
 	if s == "" {
 		return nil
@@ -1065,6 +1069,7 @@ const pointerMark = "archived"
 // that merely looks similar is never mistaken for one and replaced.
 var pointerRe = regexp.MustCompile(`^(t\d+-t\d+ · \(\d+ earlier digests archived; recall turns="t\d+-t\d+"\)|- \(\d+ older instructions archived; recall[^)]*\)|- \(\d+ older lines archived to fit the notes budget\))$`)
 
+// isPointer recognizes entries that match the supported compacted-content pointer syntax.
 func isPointer(e string) bool { return pointerRe.MatchString(e) }
 
 var recallRange = regexp.MustCompile(`recall turns="t(\d+)-t(\d+)"`)

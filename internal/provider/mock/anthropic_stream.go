@@ -33,6 +33,7 @@ type aOut struct {
 	header    bool // the binding beta was sent: input_transformations is reported
 }
 
+// usageOf projects an explicit cache plan and output count into provider usage categories.
 func usageOf(plan *ExplicitPlan, out int) core.Usage {
 	return core.Usage{
 		InputTokens: plan.Uncached, CacheReadTokens: plan.Read,
@@ -125,6 +126,8 @@ type usageJSON struct {
 	ServiceTier              string            `json:"service_tier"`
 }
 
+// usageJSON builds Anthropic usage fields with separate five-minute and one-hour writes and the
+// supplied output count.
 func (o *aOut) usageJSON(outputTokens int) usageJSON {
 	return usageJSON{
 		InputTokens:              o.usage.InputTokens,
@@ -153,6 +156,7 @@ func (b respBlock) blockJSON() any {
 	return b.raw
 }
 
+// stopDetails emits mock refusal metadata only when the response is marked as a refusal.
 func (o *aOut) stopDetails() any {
 	if o.refusal {
 		return map[string]any{"type": "refusal", "category": nil, "explanation": nil}
@@ -276,6 +280,8 @@ func (a *AnthropicServer) writeStream(w http.ResponseWriter, q *aReq, reply Repl
 	send("message_stop", map[string]any{"type": "message_stop"})
 }
 
+// midStreamError emits a mock Anthropic error event using the configured fault or a default
+// overload message.
 func (a *AnthropicServer) midStreamError(send func(string, any), f *Fault) {
 	msg := f.Message
 	if msg == "" {

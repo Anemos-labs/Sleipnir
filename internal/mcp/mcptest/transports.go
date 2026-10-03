@@ -98,6 +98,7 @@ func (h *HTTP) ExpireSessions() {
 	h.mu.Unlock()
 }
 
+// newSID returns 12 random bytes encoded as a hexadecimal test session identifier.
 func newSID() string {
 	var b [12]byte
 	_, _ = rand.Read(b[:])

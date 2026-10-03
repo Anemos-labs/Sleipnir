@@ -12,6 +12,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/friction"
 )
 
+// init registers friction reporting with the process's standard output streams.
 func init() {
 	extraCommands["friction"] = func(ctx context.Context, args []string) error {
 		return cmdFriction(ctx, args, os.Stdout, os.Stderr)

@@ -279,6 +279,8 @@ func (p *procTransport) Close() error {
 	return nil
 }
 
+// terminateGroup requests graceful termination, escalates after the configured grace period, and
+// waits up to three more seconds for exit.
 func (p *procTransport) terminateGroup() {
 	termGroup(p.pid)
 	if p.waitGroupGone(p.grace) {
@@ -288,6 +290,8 @@ func (p *procTransport) terminateGroup() {
 	p.waitGroupGone(3 * time.Second)
 }
 
+// waitDone waits for transport completion until the supplied duration expires, releasing its timer
+// on return.
 func (p *procTransport) waitDone(d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -331,6 +335,7 @@ type tailBuffer struct {
 	max int
 }
 
+// Write retains only the latest max bytes under lock while reporting the entire input as consumed.
 func (t *tailBuffer) Write(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

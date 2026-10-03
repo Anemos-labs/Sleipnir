@@ -18,6 +18,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
+// init registers live watching and replay with the process's standard output streams.
 func init() {
 	extraCommands["watch"] = func(ctx context.Context, args []string) error { return cmdWatch(ctx, args, os.Stdout, os.Stderr) }
 	extraCommands["replay"] = func(ctx context.Context, args []string) error { return cmdReplay(ctx, args, os.Stdout, os.Stderr) }
@@ -86,6 +87,7 @@ func sessionLog(arg string) (string, error) {
 	return "", fmt.Errorf("no session %q (`sleipnir sessions` lists them; a path to a session directory or an events.jsonl works too)", arg)
 }
 
+// isRegular follows symlinks and reports whether a path names a regular file.
 func isRegular(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.Mode().IsRegular()
@@ -127,6 +129,7 @@ type screenFlags struct {
 	rows   int
 }
 
+// register binds screen-selection flags and, when requested, explicit viewport dimensions.
 func (s *screenFlags) register(fs *flag.FlagSet, withSize bool) {
 	fs.StringVar(&s.view, "view", "cockpit", "the screen to start on: cockpit, cache, mail or board (the keys o c m b change it)")
 	fs.StringVar(&s.agent, "agent", "", "the agent the cache view is about (default: the one that was answered last)")

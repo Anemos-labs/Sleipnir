@@ -81,6 +81,7 @@ func (rs *resolver) protect(a access) protection {
 	return best
 }
 
+// display substitutes a tilde for lexical or resolved home-directory prefixes at path boundaries.
 func (rs *resolver) display(p string) string {
 	for _, h := range uniq(rs.home, rs.homeReal) {
 		if h != "" && (p == h || strings.HasPrefix(p, h+"/")) {
@@ -202,6 +203,7 @@ func publicSSH(f, dir string) bool {
 		b == "config" || b == "authorized_keys"
 }
 
+// harmlessDevice checks whether a path falls within one of the explicitly permitted device paths.
 func harmlessDevice(f string) bool {
 	for _, d := range harmlessDevices {
 		if inside(d, f) {
@@ -255,6 +257,8 @@ func isEnvFile(base string) bool {
 	return true
 }
 
+// dynamicSuspect identifies sensitive credential, environment, and Git-metadata paths in
+// unresolved path text.
 func dynamicSuspect(raw string, write bool) string {
 	segs := splitSegs(fold(raw))
 	for i, sg := range segs {

@@ -183,6 +183,8 @@ func parseHeader(st *Status, line string) {
 	}
 }
 
+// addChange projects two-column porcelain status into staged and unstaged changes, retaining
+// rename paths and submodule identity.
 func addChange(st *Status, xy, sub, path, orig string) {
 	if len(xy) != 2 {
 		return

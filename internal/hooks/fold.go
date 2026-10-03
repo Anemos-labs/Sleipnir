@@ -90,6 +90,7 @@ func (f *folder) finish(res *Result) {
 	res.AdditionalContext = capText(strings.Join(f.contexts, "\n\n"), f.maxContext)
 }
 
+// appendNonEmpty appends s unchanged only when it contains non-whitespace text.
 func appendNonEmpty(list []string, s string) []string {
 	if strings.TrimSpace(s) == "" {
 		return list
@@ -97,6 +98,7 @@ func appendNonEmpty(list []string, s string) []string {
 	return append(list, s)
 }
 
+// joinCapped joins hook output with newlines before applying the combined text limit.
 func joinCapped(parts []string, max int) string {
 	return capText(strings.Join(parts, "\n"), max)
 }

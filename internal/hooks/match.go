@@ -50,6 +50,8 @@ func compileMatcher(s string) (*matcher, error) {
 	return &matcher{re: re}, nil
 }
 
+// simpleMatcher accepts only ASCII letters, digits, underscores, and pipes for the
+// literal-alternative matching path.
 func simpleMatcher(s string) bool {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -161,6 +163,7 @@ func matchTarget(ev Event, name string) (candidates []string, supported bool) {
 	return nil, false
 }
 
+// clip retains at most n runes and appends an ellipsis on truncation; n must be nonnegative.
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s

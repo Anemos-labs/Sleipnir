@@ -54,6 +54,8 @@ func envSupported(t reflect.Type) bool {
 	return t == listType
 }
 
+// envType maps supported reflected configuration types to environment-value descriptions, using
+// list for other kinds.
 func envType(t reflect.Type) string {
 	switch {
 	case t.Kind() == reflect.String:

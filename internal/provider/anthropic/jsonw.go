@@ -16,11 +16,22 @@ import (
 // cache or a preserved-thinking binding.
 type jw struct{ b []byte }
 
-func (w *jw) raw(p []byte)  { w.b = append(w.b, p...) }
-func (w *jw) lit(s string)  { w.b = append(w.b, s...) }
-func (w *jw) putc(c byte)   { w.b = append(w.b, c) }
-func (w *jw) str(s string)  { w.b = appendJSONString(w.b, s) }
-func (w *jw) num(n int)     { w.b = strconv.AppendInt(w.b, int64(n), 10) }
+// raw appends already-encoded bytes to the JSON output without validation or escaping.
+func (w *jw) raw(p []byte) { w.b = append(w.b, p...) }
+
+// lit appends a JSON literal verbatim; the caller supplies valid JSON syntax.
+func (w *jw) lit(s string) { w.b = append(w.b, s...) }
+
+// putc appends one syntax byte to the JSON output buffer.
+func (w *jw) putc(c byte) { w.b = append(w.b, c) }
+
+// str appends a quoted and escaped JSON string to the output buffer.
+func (w *jw) str(s string) { w.b = appendJSONString(w.b, s) }
+
+// num appends an integer in base ten without allocating an intermediate string.
+func (w *jw) num(n int) { w.b = strconv.AppendInt(w.b, int64(n), 10) }
+
+// bytes returns the writer's current backing slice without copying it.
 func (w *jw) bytes() []byte { return w.b }
 
 // member starts an object member; first says whether it is the object's first.

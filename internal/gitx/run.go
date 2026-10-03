@@ -283,8 +283,10 @@ type output struct {
 	truncated bool
 }
 
+// text converts captured standard output to a string without trimming it.
 func (o *output) text() string { return string(o.stdout) }
 
+// trimmed returns captured standard output with leading and trailing whitespace removed.
 func (o *output) trimmed() string { return strings.TrimSpace(string(o.stdout)) }
 
 // capWriter keeps at most max bytes but always reports the full write, so the
@@ -298,6 +300,8 @@ type capWriter struct {
 	onOver func()
 }
 
+// Write retains output within a positive byte cap, invokes the overflow callback once under lock,
+// and reports excess bytes consumed.
 func (w *capWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -316,12 +320,15 @@ func (w *capWriter) Write(p []byte) (int, error) {
 	return w.buf.Write(p)
 }
 
+// bytes returns the retained output slice under the writer lock; it shares storage and should be
+// read only after writes stop.
 func (w *capWriter) bytes() []byte {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.buf.Bytes()
 }
 
+// overflowed reports under the writer lock whether output exceeded the capture limit.
 func (w *capWriter) overflowed() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -392,6 +399,8 @@ func (s *settings) exec(ctx context.Context, c call) (*output, error) {
 	}
 }
 
+// opName extracts a readable Git operation, including supported subcommands; args must be
+// nonempty.
 func opName(args []string) string {
 	if len(args) >= 2 && (args[0] == "worktree" || args[0] == "stash" || args[0] == "sparse-checkout") && !strings.HasPrefix(args[1], "-") {
 		return args[0] + " " + args[1]

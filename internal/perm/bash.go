@@ -67,6 +67,8 @@ type evaluator struct {
 	globBudget int
 }
 
+// evaluate runs bounded permission analysis and escalates implicitly allowed high-risk actions to
+// ask or plan-mode denial unless in yolo mode.
 func (e *Engine) evaluate(v *view, r Request) verdict {
 	ev := &evaluator{e: e, v: v, rs: e.rs, r: r, globBudget: 20000}
 	res := ev.run()
@@ -79,6 +81,8 @@ func (e *Engine) evaluate(v *view, r Request) verdict {
 	return res
 }
 
+// run evaluates an extracted shell command when available and otherwise applies ordinary tool
+// permission rules.
 func (ev *evaluator) run() verdict {
 	if cmd, ok := ev.command(); ok {
 		return ev.bash(cmd)
@@ -86,6 +90,7 @@ func (ev *evaluator) run() verdict {
 	return ev.tool()
 }
 
+// isBashTool reports whether the normalized tool name belongs to the shell-command class.
 func isBashTool(tool string) bool { return classOf(tool) == classBash }
 
 // command returns the shell command line of the request, if it is one.
@@ -112,6 +117,8 @@ func (ev *evaluator) command() (string, bool) {
 	return "", true // a shell tool with nothing to run
 }
 
+// startDir resolves the request working directory against the permission root, falling back to the
+// root or current directory.
 func (ev *evaluator) startDir() string {
 	if c := ev.r.Cwd; c != "" {
 		if filepath.IsAbs(c) {
@@ -240,6 +247,8 @@ func evaluatesQuotedSubstitution(cmd string, an shellparse.Analysis) bool {
 	return false
 }
 
+// label builds a bounded single-line command label, reconstructing parsed words when raw command
+// text is unavailable.
 func label(s shellparse.Simple) string {
 	l := strings.TrimSpace(s.Raw)
 	if l == "" {
@@ -563,6 +572,7 @@ sub:
 	return nil
 }
 
+// startDirs wraps the evaluator's initial working directory as a single-candidate path set.
 func (ev *evaluator) startDirs() []string { return []string{ev.startDir()} }
 
 // isForkBomb recognises the classic  :(){ :|:& };:  and its renamed variants.

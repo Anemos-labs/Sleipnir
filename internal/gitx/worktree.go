@@ -311,6 +311,8 @@ func Init(ctx context.Context, dir string, bare bool, opts ...Option) (*Repo, er
 	return initRepo(ctx, s, dir, bare)
 }
 
+// initRepo creates a repository directory, initializes an empty-template main branch or bare
+// repository, and reopens it with the supplied Git settings.
 func initRepo(ctx context.Context, s settings, dir string, bare bool) (*Repo, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {

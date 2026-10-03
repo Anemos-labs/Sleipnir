@@ -67,6 +67,8 @@ type blockAcc struct {
 	block                           core.Block
 }
 
+// startString decodes the first matching start-block member as a string, returning empty for
+// absent or incompatible values.
 func (a *blockAcc) startString(key string) string {
 	for _, m := range a.members {
 		if m.key == key {
@@ -462,6 +464,8 @@ func (s *streamState) blockDelta(e sseEvent) error {
 	return nil
 }
 
+// blockStop finalizes an existing unfinished indexed block and emits its completion event when
+// finalization succeeds.
 func (s *streamState) blockStop(e sseEvent) {
 	if e.Index == nil {
 		return

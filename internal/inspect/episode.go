@@ -101,6 +101,8 @@ type episodeRead struct {
 	key  string
 }
 
+// setEpisodeLocked installs nonnil episode metadata and its cache key; the caller must hold the
+// session lock.
 func (s *Session) setEpisodeLocked(e *episodeRead) {
 	if e == nil {
 		return

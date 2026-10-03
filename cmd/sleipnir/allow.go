@@ -16,8 +16,11 @@ import (
 // refuses everything that would have asked, and this is how its owner says in advance what may go ahead.
 type allowFlag []string
 
+// String formats allow rules as a comma-separated list for flag help.
 func (a *allowFlag) String() string { return strings.Join(*a, ", ") }
 
+// Set appends a nonblank permission rule or rule-set name; semantic validation occurs after flag
+// parsing.
 func (a *allowFlag) Set(v string) error {
 	if strings.TrimSpace(v) == "" {
 		return fmt.Errorf("--allow wants a rule such as 'Bash(go test:*)', or the name of a set of them (tests)")

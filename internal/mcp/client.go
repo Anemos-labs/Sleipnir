@@ -240,6 +240,7 @@ func (c *Client) Stats() Stats {
 // Initialized returns the handshake result (nil before Initialize succeeded).
 func (c *Client) Initialized() *InitializeResult { return c.init.Load() }
 
+// logf forwards formatted diagnostics when the MCP client has a logging callback.
 func (c *Client) logf(format string, args ...any) {
 	if c.opts.Logf != nil {
 		c.opts.Logf(format, args...)
@@ -331,6 +332,8 @@ func (c *Client) handle(msg []byte) {
 // connection: one more is never going to be the valid one.
 const maxMalformedRun = 1000
 
+// malformed counts malformed messages and fails the client when the consecutive-malformation limit
+// is exceeded.
 func (c *Client) malformed() {
 	c.statMalformed.Add(1)
 	if c.badRun.Add(1) > maxMalformedRun {
@@ -338,6 +341,8 @@ func (c *Client) malformed() {
 	}
 }
 
+// handleOne decodes and routes an MCP request, notification, or response, resetting the
+// malformed-message streak for recognized envelopes.
 func (c *Client) handleOne(msg []byte) {
 	var env envelope
 	if err := json.Unmarshal(msg, &env); err != nil {
@@ -385,6 +390,8 @@ func (c *Client) response(env *envelope) {
 	p.ch <- r
 }
 
+// notification dispatches supported MCP notifications, ignores irrelevant lifecycle messages, and
+// counts unknown methods.
 func (c *Client) notification(env *envelope) {
 	switch env.Method {
 	case "notifications/progress":
@@ -438,6 +445,8 @@ func (c *Client) progress(params json.RawMessage) {
 	}
 }
 
+// logMessage decodes, sanitizes, and queues a server log callback, ignoring malformed messages or
+// absent logging handlers.
 func (c *Client) logMessage(params json.RawMessage) {
 	if c.opts.OnLog == nil {
 		return
@@ -485,6 +494,8 @@ func (c *Client) markDirty(k ListKind) {
 	}
 }
 
+// dispatchLoop serially invokes queued callbacks and coalesced list-change notifications until
+// client shutdown, containing callback panics.
 func (c *Client) dispatchLoop() {
 	defer c.bg.Done()
 	for {
@@ -537,6 +548,8 @@ func (c *Client) serverRequest(env *envelope) {
 	}
 }
 
+// rootList converts configured filesystem roots to file URI objects and includes optional display
+// names.
 func (c *Client) rootList() []map[string]string {
 	out := make([]map[string]string, 0, len(c.opts.Roots))
 	for _, r := range c.opts.Roots {
@@ -553,6 +566,8 @@ func (c *Client) rootList() []map[string]string {
 	return out
 }
 
+// replyLoop sends queued server-request replies with individual ten-second deadlines until
+// shutdown, ignoring send errors.
 func (c *Client) replyLoop() {
 	defer c.bg.Done()
 	for {
@@ -738,6 +753,7 @@ func (c *Client) abandon(id int64, p *pending, cause error, o callOpts) (json.Ra
 	return nil, cause
 }
 
+// forget removes a pending RPC ID under the client lock.
 func (c *Client) forget(id int64) {
 	c.mu.Lock()
 	delete(c.pending, id)
@@ -772,6 +788,8 @@ func (c *Client) sendCancel(id int64, cause error) {
 	}()
 }
 
+// notify encodes and sends an MCP notification, translating closed-transport failures through
+// client termination handling.
 func (c *Client) notify(ctx context.Context, method string, params any) error {
 	msg, err := marshalNotification(method, params)
 	if err != nil {

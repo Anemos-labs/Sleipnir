@@ -17,5 +17,8 @@ type exitError struct {
 	err  error
 }
 
+// Error exposes the wrapped diagnostic without adding the exit status to its text.
 func (e *exitError) Error() string { return e.err.Error() }
+
+// Unwrap exposes the underlying error for errors.Is and errors.As.
 func (e *exitError) Unwrap() error { return e.err }

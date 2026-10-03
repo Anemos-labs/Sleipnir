@@ -176,6 +176,7 @@ func (a *Agent) foldableUnits() int {
 	return len(kv.Units(a.thread.Snapshot().Turns)) - keep
 }
 
+// overWindow reports whether estimated prompt use reaches 85% of a known context window.
 func (a *Agent) overWindow(st kv.State) bool {
 	return st.ContextWindow > 0 && float64(st.PromptTokens) >= 0.85*float64(st.ContextWindow)
 }
@@ -598,6 +599,7 @@ func (a *Agent) emergencyCompact(ctx context.Context, reason string) error {
 	return a.commit(ctx, rp, "emergency: "+reason)
 }
 
+// firstID returns the oldest thread turn ID, or zero for an empty thread.
 func firstID(s kv.Stack) core.TurnID {
 	if len(s.Thread.Turns) == 0 {
 		return 0
@@ -605,6 +607,7 @@ func firstID(s kv.Stack) core.TurnID {
 	return s.Thread.Turns[0].ID
 }
 
+// lastID returns the newest thread turn ID, or zero for an empty thread.
 func lastID(s kv.Stack) core.TurnID {
 	if len(s.Thread.Turns) == 0 {
 		return 0
@@ -612,6 +615,7 @@ func lastID(s kv.Stack) core.TurnID {
 	return s.Thread.Turns[len(s.Thread.Turns)-1].ID
 }
 
+// modeName labels mask compaction explicitly and labels other modes as fork compaction.
 func modeName(m kv.Mode) string {
 	if m == kv.ModeMask {
 		return "mask"

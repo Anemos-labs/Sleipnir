@@ -152,6 +152,8 @@ func (a *Agent) budgetResults(results []core.Block, refused int) {
 	}
 }
 
+// readOnly resolves a tool's runtime name and reads its declared mutability; unknown tools are
+// treated as side-effect-free failures.
 func (a *Agent) readOnly(c core.Block) bool {
 	t, ok := a.cfg.Tools.Get(a.toolNameFor(c.ToolName))
 	if !ok {
@@ -160,6 +162,7 @@ func (a *Agent) readOnly(c core.Block) bool {
 	return t.Spec().ReadOnly
 }
 
+// env builds a defaulted tool environment from agent configuration with a no-op output callback.
 func (a *Agent) env() *tools.Env {
 	return (&tools.Env{
 		Agent: a.cfg.ID, Role: a.cfg.Role, Cwd: a.cfg.Workdir, Root: a.cfg.Root,

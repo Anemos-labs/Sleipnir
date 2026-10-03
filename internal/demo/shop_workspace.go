@@ -55,6 +55,8 @@ const shopAgents = `# Conventions
 - Run ` + "`sh verify.sh`" + ` before you say a task is done.
 `
 
+// shopFiles builds the initial synthetic shop workspace file map, including instructions,
+// verification scripts, and package placeholders.
 func shopFiles() map[string]string {
 	files := map[string]string{
 		"README.md":             "# Shop\n\nA small shop service: a catalogue, a cart and the web handlers for both.\n\nRun the checks with `sh verify.sh`.\n",
@@ -126,6 +128,8 @@ func shopAPIDoc() string {
 	return b.String()
 }
 
+// shopDesignDoc constructs deterministic design documentation used as input to the scripted shop
+// scenario.
 func shopDesignDoc() string {
 	paras := []string{
 		"The catalogue is read far more than it is written, so it is held in memory, loaded at start from data/items.json and saved back after every change. A crash loses at most the change in flight.",
@@ -170,6 +174,7 @@ func shopItems() string {
 	return b.String()
 }
 
+// shopSchemaDoc constructs the scripted shop's field types and validation-rule table.
 func shopSchemaDoc() string {
 	fields := []struct{ name, typ, rule string }{
 		{"id", "string", "sku- and three digits; never reused, even after an item is removed"},

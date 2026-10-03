@@ -97,12 +97,23 @@ type Resetter interface {
 // NopSink ignores everything.
 type NopSink struct{}
 
-func (NopSink) Text(string, string)                                      {}
-func (NopSink) Thinking(string, string)                                  {}
-func (NopSink) ToolStart(string, core.Block)                             {}
+// Text discards streamed model text when no output sink is needed.
+func (NopSink) Text(string, string) {}
+
+// Thinking discards streamed reasoning when no output sink is needed.
+func (NopSink) Thinking(string, string) {}
+
+// ToolStart discards tool-start notifications without affecting execution.
+func (NopSink) ToolStart(string, core.Block) {}
+
+// ToolEnd discards tool results and timing notifications without affecting execution.
 func (NopSink) ToolEnd(string, core.Block, *tools.Result, time.Duration) {}
-func (NopSink) Response(string, *provider.Response, float64)             {}
-func (NopSink) Notice(string, string, string)                            {}
+
+// Response discards response-completion and cache-hit notifications.
+func (NopSink) Response(string, *provider.Response, float64) {}
+
+// Notice discards diagnostics when no output sink is needed.
+func (NopSink) Notice(string, string, string) {}
 
 // Config assembles an agent. Fields marked shared point at session-wide
 // services; the rest are per agent.
@@ -470,6 +481,7 @@ func (a *Agent) Send(text string) { a.enqueue(text, !strings.HasPrefix(text, mai
 // copied into the instructions notes when its turn is compacted.
 func (a *Agent) Steer(text string) { a.enqueue(text, true) }
 
+// enqueue appends an inbox message and its steering flag under the agent lock.
 func (a *Agent) enqueue(text string, steer bool) {
 	a.mu.Lock()
 	a.inbox = append(a.inbox, inboxMsg{text: text, steer: steer})
@@ -581,6 +593,7 @@ func (a *Agent) pushResponse(resp *provider.Response, epoch uint64) core.Turn {
 	return t
 }
 
+// emit writes an agent event and reports logging failures to the sink as warnings.
 func (a *Agent) emit(typ string, data any) {
 	if _, err := a.cfg.Events.Emit(a.cfg.ID, typ, data); err != nil {
 		a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("event log write failed: %v", err))
@@ -858,6 +871,8 @@ func (a *Agent) Close() error {
 	return err
 }
 
+// withUsage returns a response turn with a copied usage record and fills its model from the
+// response when absent.
 func withUsage(r *provider.Response) core.Turn {
 	t := r.Turn
 	u := r.Usage
@@ -936,6 +951,8 @@ func (a *Agent) PendingInbox() int {
 // visible content changing: the board version and the context counter.
 var hotVolatile = regexp.MustCompile(`board="v\d+"| · ctx \d+k`)
 
+// defaultHotKey hashes block text after removing recognized volatile fragments, preserving block
+// boundaries with NUL separators.
 func defaultHotKey(blocks []core.Block) string {
 	var sb strings.Builder
 	for _, b := range blocks {

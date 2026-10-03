@@ -59,6 +59,8 @@ var toolClasses = func() map[string]toolClass {
 	return m
 }()
 
+// classOf normalizes a tool entry, recognizes MCP-prefixed names, and falls back to classOther for
+// unknown tools.
 func classOf(entry string) toolClass {
 	n := normTool(toolName(entry))
 	if strings.HasPrefix(n, "mcp") {
@@ -260,6 +262,7 @@ func letters(s string) string {
 	return b.String()
 }
 
+// truncate limits a string by bytes and may split UTF-8; n must be nonnegative.
 func truncate(s string, n int) string {
 	if len(s) > n {
 		return s[:n]

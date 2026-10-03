@@ -55,6 +55,8 @@ type Options struct {
 	Now     func() time.Time
 }
 
+// fill supplies missing authentication endpoints, app name, clock, and a timeout-limited HTTP
+// client that refuses redirects.
 func (o *Options) fill() {
 	if o.Issuer == "" {
 		o.Issuer = Issuer
@@ -91,10 +93,14 @@ type connection struct {
 	Scopes       []string  `json:"scopes,omitempty"`
 }
 
+// signedIn reports whether any access or refresh credential is stored; it does not check expiry.
 func (c *connection) signedIn() bool { return c.RefreshToken != "" || c.AccessToken != "" }
 
+// expires converts the stored Unix-millisecond expiry to a time value.
 func (c *connection) expires() time.Time { return time.UnixMilli(c.ExpiresAtMS) }
 
+// readConnection loads saved authentication state, treats a missing file as empty, and reports
+// malformed state with recovery guidance.
 func readConnection(path string) (connection, error) {
 	var c connection
 	b, err := os.ReadFile(path)
@@ -187,7 +193,10 @@ type refreshError struct {
 	temporary bool
 }
 
-func (e *refreshError) Error() string   { return e.msg }
+// Error returns the saved token-refresh diagnostic.
+func (e *refreshError) Error() string { return e.msg }
+
+// Temporary reports whether the refresh failure was classified as retryable.
 func (e *refreshError) Temporary() bool { return e.temporary }
 
 // IsSignInError says whether err is the sign-in itself failing (none, or ended): an error that already tells the person to sign in again.
@@ -214,6 +223,7 @@ func (s *Store) Token(ctx context.Context) (string, error) {
 	return s.c.AccessToken, nil
 }
 
+// usable rejects absent, previously refused, and near-expiry access tokens.
 func (s *Store) usable(c connection) bool {
 	return c.AccessToken != "" && !s.refused[c.AccessToken] && s.opts.Now().Add(refreshMargin).Before(c.expires())
 }
@@ -296,6 +306,8 @@ type tokenError struct {
 	temporary bool
 }
 
+// Error prefers an authentication error code over HTTP status and appends a bounded description
+// when available.
 func (e *tokenError) Error() string {
 	s := fmt.Sprintf("http %d", e.status)
 	if e.code != "" {
@@ -307,6 +319,8 @@ func (e *tokenError) Error() string {
 	return s
 }
 
+// clip replaces ASCII controls with spaces and limits diagnostic text by bytes, potentially
+// splitting UTF-8.
 func clip(s string, n int) string {
 	s = strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
@@ -320,6 +334,7 @@ func clip(s string, n int) string {
 	return s
 }
 
+// postToken submits a token form using the store's configured HTTP client.
 func (s *Store) postToken(ctx context.Context, endpoint string, form url.Values) (*tokenResponse, error) {
 	return postToken(ctx, s.opts.HTTP, endpoint, form)
 }
@@ -424,6 +439,7 @@ func discover(ctx context.Context, o Options) (*discovery, error) {
 	return &d, nil
 }
 
+// hostOf parses a URL and returns its host including port, or empty on parse failure.
 func hostOf(u string) string {
 	p, err := url.Parse(u)
 	if err != nil {

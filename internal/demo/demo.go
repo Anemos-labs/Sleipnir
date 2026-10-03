@@ -192,6 +192,8 @@ func writeWorkspace(root string, topics int) error {
 	return os.MkdirAll(filepath.Join(root, "summaries"), 0o755)
 }
 
+// filler generates deterministic synthetic rules for demo prompt volume; the text is fixture
+// content.
 func filler(i int) string {
 	var b strings.Builder
 	for j := 1; j <= 6; j++ {
@@ -216,13 +218,17 @@ type script struct {
 	mu     sync.Mutex
 }
 
+// newScript creates a demo script with the requested number of work topics.
 func newScript(topics int) *script { return &script{topics: topics} }
 
+// call JSON-encodes known demo arguments into a mock tool call; arguments must be
+// JSON-marshalable.
 func call(id, name string, args any) mock.ToolCall {
 	b, _ := json.Marshal(args)
 	return mock.ToolCall{ID: id, Name: name, Args: string(b)}
 }
 
+// assistantTurns counts assistant-role messages in a mock request.
 func assistantTurns(c *mock.Call) int {
 	n := 0
 	for _, m := range c.Messages {
@@ -276,6 +282,7 @@ func chunks(n, writers int) [][]int {
 	return out
 }
 
+// writers assigns one writer per two topics, bounded by the demo's writer limit.
 func (s *script) writers() int { return min(maxWriters, s.topics/2) }
 
 func (s *script) manager(c *mock.Call, n int) mock.Reply {
@@ -326,6 +333,7 @@ func (s *script) manager(c *mock.Call, n int) mock.Reply {
 	return mock.Reply{Text: fmt.Sprintf("Done: %d topics surveyed and summarised, and the summaries were reviewed.", s.topics)}
 }
 
+// spawnAll builds one scripted spawn call per task followed by a wait for all task IDs.
 func spawnAll(ids []string, role string, waitSec int) []mock.ToolCall {
 	var calls []mock.ToolCall
 	for i, id := range ids {
@@ -334,6 +342,8 @@ func spawnAll(ids []string, role string, waitSec int) []mock.ToolCall {
 	return append(calls, call("wait-"+role, "wait", map[string]any{"until": ids, "timeout_sec": waitSec}))
 }
 
+// scout returns scripted demo reads and task completion for a topic inferred from the supplied
+// task text.
 func (s *script) scout(n int, id, tid, text string) mock.Reply {
 	topic := "1"
 	if m := docRe.FindStringSubmatch(text); m != nil {
@@ -376,6 +386,8 @@ func (s *script) writer(n int, id, tid, text string) mock.Reply {
 	return mock.Reply{Text: "done " + id}
 }
 
+// reviewer returns the scripted demo review sequence: inspect summary line count, mark the task
+// done, then finish.
 func (s *script) reviewer(n int, id, tid string) mock.Reply {
 	switch n {
 	case 0:
@@ -440,6 +452,8 @@ func analyse(dir string, rep *Report) error {
 	return nil
 }
 
+// print renders demo outcomes, synthetic cache costs, stated pricing assumptions, and replay
+// locations.
 func (r *Report) print(w io.Writer, final string) {
 	fmt.Fprintf(w, "manager: %s\n\n", strings.TrimSpace(final))
 	fmt.Fprintf(w, "  agents             %d (1 manager, %d workers)\n", r.Agents, r.Agents-1)
@@ -455,6 +469,8 @@ func (r *Report) print(w io.Writer, final string) {
 	fmt.Fprintf(w, "Workspace: %s\nRecorded session: %s\nSee it again: sleipnir replay %s\n", r.Workspace, r.Dir, r.Dir)
 }
 
+// pctLess computes percentage reduction from a positive baseline, returning zero for nonpositive
+// baselines.
 func pctLess(actual, base float64) float64 {
 	if base <= 0 {
 		return 0

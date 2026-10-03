@@ -405,6 +405,8 @@ func normalizeMode(s string) (mode string, ok bool) {
 	return "", false
 }
 
+// firstLine returns the first nonblank body line after trimming whitespace and leading heading
+// markers.
 func firstLine(body string) string {
 	for _, ln := range strings.Split(body, "\n") {
 		if ln = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), "# ")); ln != "" {
@@ -414,6 +416,7 @@ func firstLine(body string) string {
 	return ""
 }
 
+// quoted formats bounded single-line values as quoted strings separated by commas.
 func quoted(in []string) string {
 	out := make([]string, len(in))
 	for i, s := range in {
@@ -422,6 +425,7 @@ func quoted(in []string) string {
 	return strings.Join(out, ", ")
 }
 
+// plainToken accepts nonempty printable ASCII tokens without whitespace up to 100 bytes.
 func plainToken(s string) bool {
 	if s == "" || len(s) > 100 {
 		return false

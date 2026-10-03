@@ -87,6 +87,7 @@ type Fault struct {
 	For time.Duration
 }
 
+// String formats a chaos fault with the status, byte cutoff, or duration relevant to its kind.
 func (f Fault) String() string {
 	switch f.Kind {
 	case Status:
@@ -322,8 +323,10 @@ type cutWriter struct {
 	stop  bool // nothing more is passed (Truncate)
 }
 
+// Unwrap exposes the underlying HTTP response writer to response-controller utilities.
 func (c *cutWriter) Unwrap() http.ResponseWriter { return c.ResponseWriter }
 
+// Flush forwards flushing only when the wrapped HTTP writer supports it.
 func (c *cutWriter) Flush() {
 	if fl, ok := c.ResponseWriter.(http.Flusher); ok {
 		fl.Flush()

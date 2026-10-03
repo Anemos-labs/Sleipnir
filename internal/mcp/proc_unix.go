@@ -22,8 +22,10 @@ func configureProc(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
+// termGroup sends SIGTERM to the child's process group and ignores signaling errors.
 func termGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGTERM) }
 
+// killGroup sends SIGKILL to the child's process group and ignores signaling errors.
 func killGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGKILL) }
 
 // groupAlive reports whether any live process remains in the group. Zombies do

@@ -24,6 +24,7 @@ type aErr struct {
 	msg    string
 }
 
+// badReq formats an Anthropic invalid_request_error with HTTP status 400.
 func badReq(format string, args ...any) *aErr {
 	return &aErr{status: 400, typ: "invalid_request_error", msg: fmt.Sprintf(format, args...)}
 }
@@ -31,6 +32,8 @@ func badReq(format string, args ...any) *aErr {
 // aCC is a parsed cache_control marker.
 type aCC struct{ ttl string } // "5m" or "1h"
 
+// duration selects the one-hour TTL only for an explicit 1h marker and otherwise selects the
+// five-minute TTL.
 func (c *aCC) duration(ttl5, ttl1 time.Duration) time.Duration {
 	if c != nil && c.ttl == "1h" {
 		return ttl1
@@ -56,6 +59,7 @@ type aBlock struct {
 	images    int
 }
 
+// isThinking recognizes both visible and redacted Anthropic thinking blocks.
 func (b aBlock) isThinking() bool { return b.typ == "thinking" || b.typ == "redacted_thinking" }
 
 type aMsg struct {
@@ -147,6 +151,8 @@ var aModels = []struct {
 	{"claude-3", aModel{known: true, budgetOnly: true}},
 }
 
+// modelRules selects normalized model-family behavior and supplies permissive modern defaults for
+// unknown mock model names.
 func modelRules(model string) aModel {
 	id := cost.Normalize(model)
 	for _, f := range aModels {
@@ -283,6 +289,7 @@ func parseRequest(body []byte, betas map[string]bool) (*aReq, *aErr) {
 	return q, nil
 }
 
+// sortedKeys returns JSON object keys in lexical order for deterministic mock processing.
 func sortedKeys(m map[string]json.RawMessage) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -292,6 +299,8 @@ func sortedKeys(m map[string]json.RawMessage) []string {
 	return keys
 }
 
+// unmarshalField decodes an existing JSON field into v and reports false for missing or malformed
+// values.
 func unmarshalField(m map[string]json.RawMessage, key string, v any) bool {
 	raw, ok := m[key]
 	return ok && json.Unmarshal(raw, v) == nil
@@ -448,6 +457,7 @@ func (q *aReq) parseOutputConfig() *aErr {
 	return nil
 }
 
+// contains reports exact string membership.
 func contains(ss []string, s string) bool {
 	for _, x := range ss {
 		if x == s {

@@ -30,6 +30,7 @@ import (
 // UnsetVarError reports a ${NAME} reference with no value and no default.
 type UnsetVarError struct{ Name string }
 
+// Error names the missing environment variable and shows the supported default-value syntax.
 func (e *UnsetVarError) Error() string {
 	return fmt.Sprintf("variable %s is not set (write ${%s:-default} to allow a default)", e.Name, e.Name)
 }
@@ -169,6 +170,7 @@ func expandRef(body string, env map[string]string, collect *[]string, depth int)
 	return v, nil
 }
 
+// validVarName requires an ASCII shell-style variable name whose first byte is not a digit.
 func validVarName(n string) bool {
 	if n == "" {
 		return false
@@ -191,6 +193,7 @@ func clipForError(s string) string {
 	return s
 }
 
+// sortedUnique returns deduplicated lexical string order and nil for empty input.
 func sortedUnique(in []string) []string {
 	if len(in) == 0 {
 		return nil

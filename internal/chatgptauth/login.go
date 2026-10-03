@@ -20,6 +20,7 @@ import (
 	"time"
 )
 
+// base64url encodes bytes with the URL-safe alphabet and no padding.
 func base64url(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 
 // LoginIO is what a sign-in needs from the person's side: somewhere to say things, a way to open the browser, and (where there is no
@@ -207,6 +208,7 @@ func Login(ctx context.Context, opts Options, lio LoginIO) (*Store, error) {
 	return &Store{opts: opts, c: c, endpoint: disc, refused: map[string]bool{}}, nil
 }
 
+// sha256Sum returns the full SHA-256 digest of the supplied string as a byte slice.
 func sha256Sum(s string) []byte {
 	h := sha256.Sum256([]byte(s))
 	return h[:]
@@ -242,10 +244,12 @@ func parseCallback(u *url.URL, method, host string, port int, state string) (cal
 	return callbackResult{code: code, clientID: q.Get("client_id")}, http.StatusOK
 }
 
+// page embeds the supplied title and body verbatim in the login callback HTML.
 func page(title, text string) string {
 	return "<!doctype html><meta charset=utf-8><title>" + title + "</title><body style=\"font:16px system-ui;margin:3em\"><h1>" + title + "</h1><p>" + text + "</p>"
 }
 
+// newHostID generates a cryptographically random version-4 UUID URN for OAuth host identity.
 func newHostID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

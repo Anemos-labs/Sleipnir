@@ -19,6 +19,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
+// init registers the login and logout authentication commands.
 func init() {
 	extraCommands["login"] = cmdLogin
 	extraCommands["logout"] = cmdLogout
@@ -212,6 +213,7 @@ func signInChatGPT(ctx context.Context, in *bufio.Reader, out io.Writer) error {
 	return nil
 }
 
+// joinNames formats login choice names in their existing order separated by commas.
 func joinNames(cs []loginChoice) string {
 	names := make([]string, len(cs))
 	for i, c := range cs {
@@ -220,6 +222,7 @@ func joinNames(cs []loginChoice) string {
 	return strings.Join(names, ", ")
 }
 
+// userHome returns the user's home directory, or empty if it cannot be determined.
 func userHome() string {
 	h, _ := os.UserHomeDir()
 	return h

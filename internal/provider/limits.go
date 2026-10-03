@@ -119,6 +119,7 @@ func ReadCapped(r io.Reader, max int64) ([]byte, error) {
 	return b, nil
 }
 
+// humanSize uses whole MiB or KiB for exact multiples and otherwise reports bytes.
 func humanSize(n int64) string {
 	switch {
 	case n >= 1<<20 && n%(1<<20) == 0:

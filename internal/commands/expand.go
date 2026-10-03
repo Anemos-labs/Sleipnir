@@ -125,6 +125,7 @@ type expansion struct {
 	notices  []string
 }
 
+// notice appends a formatted diagnostic to the command-expansion result.
 func (ex *expansion) notice(format string, args ...any) {
 	ex.notices = append(ex.notices, fmt.Sprintf(format, args...))
 }

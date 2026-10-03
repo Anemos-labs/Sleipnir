@@ -90,6 +90,7 @@ func marshalRequest(id int64, method string, params any) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// marshalNotification encodes a JSON-RPC notification without an ID and omits absent parameters.
 func marshalNotification(method string, params any) ([]byte, error) {
 	p, err := marshalParams(params)
 	if err != nil {
@@ -122,6 +123,8 @@ func marshalResult(id json.RawMessage, result any) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// marshalError encodes a JSON-RPC error with an already validated raw ID, using null for an absent
+// ID.
 func marshalError(id json.RawMessage, code int, message string) []byte {
 	msg, _ := json.Marshal(message)
 	var b bytes.Buffer
@@ -139,6 +142,8 @@ func marshalError(id json.RawMessage, code int, message string) []byte {
 	return b.Bytes()
 }
 
+// marshalParams omits nil or empty raw parameters, compacts raw JSON, and marshals other values
+// normally.
 func marshalParams(params any) ([]byte, error) {
 	if params == nil {
 		return nil, nil
@@ -198,6 +203,7 @@ const (
 const skimKeyCap = 16
 const skimIDCap = 64
 
+// isJSONSpace accepts exactly the four whitespace bytes permitted by JSON.
 func isJSONSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
 
 // feed consumes bytes of the message.
@@ -344,6 +350,7 @@ func (s *skimmer) step(c byte) {
 	}
 }
 
+// keyByte accumulates a bounded JSON key and marks overflow without retaining excess bytes.
 func (s *skimmer) keyByte(c byte) {
 	if len(s.key) >= skimKeyCap {
 		s.keyBad = true
@@ -352,6 +359,7 @@ func (s *skimmer) keyByte(c byte) {
 	s.key = append(s.key, c)
 }
 
+// idByte accumulates a bounded JSON-RPC ID and marks overflow without retaining excess bytes.
 func (s *skimmer) idByte(c byte) {
 	if len(s.id) >= skimIDCap {
 		s.idBad = true

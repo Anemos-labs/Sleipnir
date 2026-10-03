@@ -16,6 +16,7 @@ import (
 // to decode is a frame dropped, and a dropped usage report reads as "free". It is limited again in usage.normalize.
 type tokens int
 
+// UnmarshalJSON uses the shared tolerant token-count parser and never returns a decoding error.
 func (t *tokens) UnmarshalJSON(b []byte) error {
 	*t = tokens(provider.ParseTokenCount(b))
 	return nil
@@ -134,6 +135,7 @@ type accumulator struct {
 	lim provider.StreamLimits
 }
 
+// newAccumulator allocates response item and argument-size tracking with normalized stream limits.
 func newAccumulator(lim provider.StreamLimits) *accumulator {
 	return &accumulator{items: map[int]json.RawMessage{}, argBytes: map[int]int{}, lim: lim.Normalized()}
 }
@@ -235,6 +237,8 @@ func (a *accumulator) feed(e *event, begin time.Time, on func(provider.Event)) e
 	return nil
 }
 
+// note updates response identity and model from nonempty sanitized metadata, ignoring nil
+// responses.
 func (a *accumulator) note(r *response) {
 	if r == nil {
 		return
@@ -442,6 +446,7 @@ func mapAPIError(e *apiError) *provider.Error {
 	return pe
 }
 
+// mustJSON encodes a value known to be JSON-marshalable; encoding failures produce nil bytes.
 func mustJSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b

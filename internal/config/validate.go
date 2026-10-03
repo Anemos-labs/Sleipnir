@@ -27,6 +27,8 @@ var (
 
 type validator struct{ issues []Issue }
 
+// add appends a formatted validation issue and retains an independent copy of its configuration
+// path segments.
 func (v *validator) add(sev Severity, segs []string, format string, args ...any) {
 	v.issues = append(v.issues, Issue{
 		Severity: sev,
@@ -36,14 +38,17 @@ func (v *validator) add(sev Severity, segs []string, format string, args ...any)
 	})
 }
 
+// err appends an error-severity validation issue at the supplied field path.
 func (v *validator) err(segs []string, format string, args ...any) {
 	v.add(SeverityError, segs, format, args...)
 }
 
+// warn appends a warning-severity validation issue at the supplied field path.
 func (v *validator) warn(segs []string, format string, args ...any) {
 	v.add(SeverityWarning, segs, format, args...)
 }
 
+// seg constructs a field-path slice for validation diagnostics.
 func seg(parts ...string) []string { return parts }
 
 // Validate checks the values of a configuration and returns what it finds:
@@ -116,6 +121,8 @@ func (v *validator) provider(name string, p Provider) {
 	v.providerOptions(base, p)
 }
 
+// baseURL validates absolute HTTP(S) endpoints and warns about embedded credentials or
+// non-loopback plain HTTP.
 func (v *validator) baseURL(segs []string, raw string) {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
@@ -153,6 +160,7 @@ func allowHostProblem(s string) string {
 	return ""
 }
 
+// isLoopback accepts localhost names and literal loopback IP addresses without DNS resolution.
 func isLoopback(host string) bool {
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
@@ -186,6 +194,8 @@ func (v *validator) models(c *Config) {
 	}
 }
 
+// mode accepts unset permission modes, rejects unknown modes, and warns about bypass and yolo
+// behavior.
 func (v *validator) mode(segs []string, mode string) {
 	if mode == "" {
 		return
@@ -227,6 +237,8 @@ func (v *validator) rules(segs []string, action perm.Action, rules []string) {
 	}
 }
 
+// permissions validates global and per-role modes and rules, checking role names and allow/deny
+// overlap in sorted role order.
 func (v *validator) permissions(p Permissions) {
 	v.mode(seg("permissions", "mode"), p.Mode)
 	v.rules(seg("permissions", "allow"), perm.Allow, p.Allow)
@@ -257,12 +269,15 @@ func (v *validator) overlap(base []string, allow, deny []string) {
 	}
 }
 
+// nonNegative records a validation error at the supplied path when n is negative.
 func (v *validator) nonNegative(segs []string, n int) {
 	if n < 0 {
 		v.err(segs, "must not be negative, got %d", n)
 	}
 }
 
+// cache validates nonnegative cache budgets and limits and restricts explicit shared TTL values to
+// 5m or 1h.
 func (v *validator) cache(c Cache) {
 	v.nonNegative(seg("cache", "instruction_max_tokens"), c.InstructionMaxTokens)
 	if c.SharedTTL != "" && !slices.Contains(cacheTTLs, c.SharedTTL) {
@@ -275,6 +290,7 @@ func (v *validator) cache(c Cache) {
 	v.nonNegative(seg("cache", "affinity_shards"), c.AffinityShards)
 }
 
+// swarm validates concurrency limits, isolation mode, and a finite nonnegative dollar budget.
 func (v *validator) swarm(s Swarm) {
 	v.nonNegative(seg("swarm", "max_agents"), s.MaxAgents)
 	v.nonNegative(seg("swarm", "requests_per_minute"), s.RequestsPerMinute)
@@ -287,6 +303,8 @@ func (v *validator) swarm(s Swarm) {
 	}
 }
 
+// tools validates output and timeout bounds, checks timeout ordering, and diagnoses malformed web
+// host entries.
 func (v *validator) tools(t Tools) {
 	v.nonNegative(seg("tools", "max_output_chars"), t.MaxOutputChars)
 	v.nonNegative(seg("tools", "default_timeout_sec"), t.DefaultTimeoutSec)

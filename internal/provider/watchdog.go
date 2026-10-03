@@ -110,6 +110,8 @@ func (w *Watchdog) fire() {
 	w.cancel()
 }
 
+// fireTotal records a total-deadline timeout and cancels once, preserving an earlier watchdog
+// outcome.
 func (w *Watchdog) fireTotal() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -164,6 +166,7 @@ type watchReader struct {
 	w *Watchdog
 }
 
+// Read forwards data and reports watchdog progress only when bytes were received.
 func (a *watchReader) Read(p []byte) (int, error) {
 	n, err := a.r.Read(p)
 	if n > 0 {

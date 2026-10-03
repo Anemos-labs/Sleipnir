@@ -156,6 +156,8 @@ func renderResult(res *CallToolResult, blobs blobStore, attach bool, redact *red
 	return out
 }
 
+// linkLine formats a resource link with preferred name, URI, MIME type, and a bounded single-line
+// description.
 func linkLine(c Content) string {
 	var b strings.Builder
 	b.WriteString("[resource link: ")
@@ -174,6 +176,7 @@ func linkLine(c Content) string {
 	return b.String()
 }
 
+// orUnknown substitutes a no-uri label when a resource URI is absent.
 func orUnknown(s string) string {
 	if s == "" {
 		return "(no uri)"
@@ -181,6 +184,7 @@ func orUnknown(s string) string {
 	return s
 }
 
+// mimeSuffix returns a parenthesized MIME-type suffix or empty when the type is absent.
 func mimeSuffix(m string) string {
 	if m == "" {
 		return ""
@@ -199,6 +203,7 @@ func sameJSON(text string, want json.RawMessage) bool {
 	return err1 == nil && err2 == nil && bytes.Equal(a, b)
 }
 
+// humanBytes formats sizes using bytes, KiB, or MiB for MCP content diagnostics.
 func humanBytes(n int) string {
 	switch {
 	case n < 1<<10:

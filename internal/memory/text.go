@@ -70,8 +70,10 @@ func hiddenKind(r rune) int {
 // stripped counts what stripHidden removed, by kind.
 type stripped struct{ tags, bidi, zeroWidth, control int }
 
+// total sums all categories of removed hidden or control characters.
 func (s stripped) total() int { return s.tags + s.bidi + s.zeroWidth + s.control }
 
+// String summarizes nonzero counts of stripped unsafe character categories in fixed order.
 func (s stripped) String() string {
 	var parts []string
 	for _, p := range []struct {

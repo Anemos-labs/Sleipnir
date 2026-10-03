@@ -19,6 +19,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
+// init registers MCP server management with the CLI dispatcher.
 func init() { extraCommands["mcp"] = cmdMCP }
 
 const mcpUsage = `usage: sleipnir mcp <command> [flags]
@@ -205,9 +206,12 @@ func mcpTest(ctx context.Context, w, errw io.Writer, dir string, names []string,
 // noModel is the provider of a session that never talks to a model.
 type noModel struct{}
 
+// Profile identifies the placeholder provider used by sessions that have no model.
 func (noModel) Profile() provider.Profile {
 	return provider.Profile{Name: "none", Dialect: "openai-chat"}
 }
+
+// Do rejects inference requests because this session has no model provider.
 func (noModel) Do(context.Context, *provider.Request, func(provider.Event)) (*provider.Response, error) {
 	return nil, errors.New("no model in this session")
 }

@@ -32,10 +32,12 @@ const (
 	hashLen        = 8
 )
 
+// isNameChar accepts ASCII letters, digits, underscores, and hyphens in MCP tool names.
 func isNameChar(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-'
 }
 
+// isAlnum recognizes ASCII letters and decimal digits.
 func isAlnum(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }

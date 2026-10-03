@@ -74,6 +74,7 @@ type parser struct {
 	errs   []string
 }
 
+// errorf appends a hook parser error with source and location context.
 func (p *parser) errorf(where, format string, args ...any) {
 	prefix := "hooks: "
 	if p.source != "" {
@@ -82,6 +83,7 @@ func (p *parser) errorf(where, format string, args ...any) {
 	p.errs = append(p.errs, prefix+where+": "+fmt.Sprintf(format, args...))
 }
 
+// warnf appends a hook configuration warning with optional source context.
 func (p *parser) warnf(where, format string, args ...any) {
 	prefix := ""
 	if p.source != "" {
@@ -90,6 +92,7 @@ func (p *parser) warnf(where, format string, args ...any) {
 	p.set.warns = append(p.set.warns, prefix+where+": "+fmt.Sprintf(format, args...))
 }
 
+// isNull recognizes the JSON null literal with optional surrounding whitespace.
 func isNull(raw json.RawMessage) bool { return bytes.Equal(bytes.TrimSpace(raw), []byte("null")) }
 
 func (p *parser) event(key string, raw json.RawMessage) {
@@ -318,6 +321,7 @@ func (p *parser) hook(event, matcherText string, m *matcher, gi, hi int, where s
 	p.set.byEvent[event] = append(p.set.byEvent[event], h)
 }
 
+// contains reports an exact string match in the supplied list.
 func contains(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -376,6 +380,7 @@ func suggest(key string) string {
 	return ""
 }
 
+// editDistance computes byte-based Levenshtein distance for hook configuration suggestions.
 func editDistance(a, b string) int {
 	prev := make([]int, len(b)+1)
 	for j := range prev {

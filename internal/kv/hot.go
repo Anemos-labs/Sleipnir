@@ -38,6 +38,7 @@ const (
 // ClearAtNextUser is the Message.ClearAt value of a turn-scoped system message.
 const ClearAtNextUser = "next_user_message"
 
+// String names persistent and turn-scoped hot-layer modes and treats other values as inline.
 func (m HotMode) String() string {
 	switch m {
 	case HotPersist:
