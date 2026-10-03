@@ -17,9 +17,11 @@ export PATH="$HOME/.local/bin:$PATH"
 sleipnir --help
 ```
 
-Add the `export PATH` line to `~/.bashrc` (Bash) or `~/.zshrc` (Zsh) for new
-terminals. Installation is per user; installing as root does not install it
-for other accounts.
+For Bash, add the `export PATH` line to `~/.bashrc` for interactive non-login
+shells. Login shells read the first available file among `~/.bash_profile`,
+`~/.bash_login`, and `~/.profile`; if that file does not already set this PATH
+or source `~/.bashrc`, add the export there too. For Zsh, add it to `~/.zshrc`.
+Installation is per user; installing as root does not install it for other accounts.
 
 On Windows, put `sleipnir.exe` in a permanent folder, add that folder to your
 user `Path` through **Environment Variables**, and open a new terminal.

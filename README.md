@@ -28,8 +28,8 @@ cd your-project
 sleipnir
 ```
 
-Add the `export PATH` line to `~/.bashrc` (Bash) or `~/.zshrc` (Zsh) to keep it
-available in new terminals. [Windows and troubleshooting](docs/GETTING-STARTED.md#install)
+Save the PATH setting in your [shell startup file](docs/GETTING-STARTED.md#release-archive)
+to keep it available in new terminals. [Windows and troubleshooting](docs/GETTING-STARTED.md#install)
 
 The first run asks for a provider and model. Use `sleipnir login chatgpt` for a
 ChatGPT subscription, or `sleipnir login` for a provider API key. Local model
