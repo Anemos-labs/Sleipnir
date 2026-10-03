@@ -200,6 +200,7 @@ func csiKey(params []byte, fin byte) (Key, csiAction) {
 	return Key{}, actIgnore // focus in and out (CSI I, CSI O) and everything else we do not know
 }
 
+// cursorKey decodes a known cursor-key final byte and modifier, ignoring unsupported modifiers.
 func cursorKey(fin byte, mod int) (Key, csiAction) {
 	code, _ := finalKey(fin)
 	m, ok := modOf(mod)

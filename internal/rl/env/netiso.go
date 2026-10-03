@@ -32,6 +32,7 @@ func (n NetIsolation) wrap(shell string, inner []string) []string {
 	return append(out, inner...)
 }
 
+// shellJoin quotes each argument independently before joining them into a shell command line.
 func shellJoin(argv []string) string {
 	q := make([]string, len(argv))
 	for i, a := range argv {

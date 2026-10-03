@@ -198,6 +198,8 @@ func hunkRange(from, count int) string {
 	return fmt.Sprintf("%d,%d", from+1, count)
 }
 
+// diffText repairs invalid UTF-8 and bounds displayed diff text, adding an ellipsis when the
+// byte-length threshold is exceeded.
 func diffText(s string) string {
 	s = strings.ToValidUTF8(s, "\uFFFD")
 	if len(s) > maxDiffLineCh {

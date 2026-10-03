@@ -68,6 +68,7 @@ func BoxTruncate() BoxOpt { return func(c *boxCfg) { c.wrap = wrapCut } }
 // with ↳ (\ in ASCII), instead of breaking at spaces: for commands and code, which must be shown exactly as they are.
 func BoxHardWrap() BoxOpt { return func(c *boxCfg) { c.wrap = wrapCells } }
 
+// newBoxCfg applies nonnil box options in order over one-cell padding and word-wrap defaults.
 func newBoxCfg(opts []BoxOpt) boxCfg {
 	cfg := boxCfg{padX: 1, wrap: wrapWords}
 	for _, o := range opts {

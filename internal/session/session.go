@@ -429,6 +429,8 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	return s, nil
 }
 
+// newID combines a UTC timestamp with three random bytes to distinguish sessions started in the
+// same second.
 func newID(t time.Time) string {
 	var b [3]byte
 	_, _ = rand.Read(b[:])
@@ -956,6 +958,7 @@ func outagePatience(d time.Duration) time.Duration {
 	return d
 }
 
+// orDefault uses a positive value or the supplied fallback.
 func orDefault(v, d int) int {
 	if v > 0 {
 		return v
@@ -975,8 +978,11 @@ const soloPin = `You are working alone on the user's task. Understand it, make t
 // can tell an agent's last write from a human's later edit.
 type writeGuard struct{ store *checkpoint.Store }
 
+// BeforeWrite permits the write; this guard records completed writes rather than authorizing them.
 func (writeGuard) BeforeWrite(string, string) error { return nil }
-func (g writeGuard) AfterWrite(agent, path string)  { g.store.After(agent, path) }
+
+// AfterWrite records the agent and path in the checkpoint store after a write completes.
+func (g writeGuard) AfterWrite(agent, path string) { g.store.After(agent, path) }
 
 // Run gives the session a goal and returns when the agent (or manager) finishes.
 func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
@@ -1054,10 +1060,11 @@ func (s *Session) swarmContext(turn context.Context) context.Context {
 	return s.swarmCtx
 }
 
+// result persists permission decisions, attempts to flush the event log, and assembles the session
+// result with swarm totals when available, preserving the supplied error.
 func (s *Session) result(res *agent.Result, err error) (*Result, error) {
-	// The answer a person has just read is in the log on disk: the log flushes in the background, which left the last
-	// events of a turn in its buffer for a moment (a reader that looked then saw a log without the tool results of the turn
-	// that had just ended, and a crash in that moment lost them).
+	// Flush final turn events before returning so log readers can observe the
+	// completed turn without waiting for the background flush interval.
 	s.keepPermissions()
 	if s.Log != nil {
 		_ = s.Log.Flush()
@@ -1073,6 +1080,7 @@ func (s *Session) result(res *agent.Result, err error) (*Result, error) {
 	return out, err
 }
 
+// reconTokens returns the reconnaissance token estimate or zero for absent reconnaissance.
 func reconTokens(r *Recon) int {
 	if r == nil {
 		return 0
@@ -1080,6 +1088,8 @@ func reconTokens(r *Recon) int {
 	return r.Tokens
 }
 
+// oneLine collapses whitespace and clips by bytes before appending an ellipsis; it may split
+// UTF-8.
 func oneLine(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > n {
@@ -1213,6 +1223,7 @@ func (s *Session) Close() error {
 	return err
 }
 
+// cost returns agent or swarm spending plus the separately tracked goal-judge cost.
 func (s *Session) cost() float64 {
 	s.mu.Lock()
 	judge := s.judgeUSD // what a standing goal's judge has cost (goal.go): it is the session's spend, and not any agent's

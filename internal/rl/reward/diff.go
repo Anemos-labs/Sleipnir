@@ -79,6 +79,7 @@ func (f *fileDiff) path() string {
 	return f.oldPath
 }
 
+// eachLine visits every retained hunk line in order with its diff operation and text.
 func (f *fileDiff) eachLine(fn func(op byte, text string)) {
 	for i := range f.hunks {
 		for _, l := range f.hunks[i].lines {
@@ -121,6 +122,7 @@ type diffParser struct {
 	header   bool // the current file is still in its header (before the first @@)
 }
 
+// nextLine consumes one diff line, removes its line ending, and reports false at EOF.
 func (p *diffParser) nextLine() (string, bool) {
 	if p.pos >= len(p.text) {
 		return "", false
@@ -138,6 +140,7 @@ func (p *diffParser) nextLine() (string, bool) {
 	return strings.TrimSuffix(line, "\r"), true
 }
 
+// peek reads the next diff line without advancing the parser position.
 func (p *diffParser) peek() (string, bool) {
 	save := p.pos
 	l, ok := p.nextLine()
@@ -145,6 +148,7 @@ func (p *diffParser) peek() (string, bool) {
 	return l, ok
 }
 
+// run feeds all input lines into the diff parser and finalizes the last file.
 func (p *diffParser) run() {
 	for {
 		line, ok := p.nextLine()
@@ -156,6 +160,7 @@ func (p *diffParser) run() {
 	p.finish()
 }
 
+// start finalizes the previous file, resets hunk parsing state, and registers the new file diff.
 func (p *diffParser) start(f *fileDiff) {
 	p.finish()
 	p.cur = f
@@ -165,6 +170,8 @@ func (p *diffParser) start(f *fileDiff) {
 	p.files = append(p.files, f)
 }
 
+// finish clears the active file and hunk and resolves final file paths, doing nothing when no file
+// is active.
 func (p *diffParser) finish() {
 	if p.cur == nil {
 		return
@@ -362,6 +369,8 @@ func headerPath(s string) string {
 	return s
 }
 
+// closingQuote finds the byte offset of the closing double quote after an opening quote, skipping
+// escaped bytes; it returns -1 if none exists.
 func closingQuote(s string) int {
 	for i := 1; i < len(s); i++ {
 		switch s[i] {
@@ -460,6 +469,8 @@ func (p *diffParser) startHunk(line string) {
 	p.oldLeft, p.newLeft = oldCount, newCount
 }
 
+// parseRange parses a nonnegative unified-diff range, using a count of one when the comma and
+// count are omitted.
 func parseRange(s string) (start, count int, ok bool) {
 	a, b, hasCount := strings.Cut(s, ",")
 	st, err := strconv.Atoi(a)

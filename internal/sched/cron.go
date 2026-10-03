@@ -84,6 +84,8 @@ func parseField(s string, lo, hi int) (uint64, error) {
 	return set, nil
 }
 
+// dayMatches uses cron's OR rule when both day fields are restricted and AND when either is a
+// wildcard.
 func (c Cron) dayMatches(t time.Time) bool {
 	dom := c.dom&(1<<t.Day()) != 0
 	dow := c.dow&(1<<int(t.Weekday())) != 0

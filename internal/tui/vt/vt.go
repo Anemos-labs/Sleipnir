@@ -101,10 +101,12 @@ func (t *Term) init() {
 	t.p = parser{}
 }
 
+// clampSize limits terminal dimensions to the inclusive range from one to maxDim.
 func clampSize(cols, rows int) (int, int) {
 	return min(max(cols, 1), maxDim), min(max(rows, 1), maxDim)
 }
 
+// blankRows allocates terminal rows with independent zero-filled cell slices.
 func blankRows(cols, rows int) []vrow {
 	out := make([]vrow, rows)
 	for i := range out {
@@ -154,7 +156,9 @@ func (t *Term) SyncDepth() int { return t.syncDepth }
 
 // SyncBegins and SyncEnds count the CSI ? 2026 h and CSI ? 2026 l seen so far, so a test can assert one pair per frame.
 func (t *Term) SyncBegins() int { return t.syncBegins }
-func (t *Term) SyncEnds() int   { return t.syncEnds }
+
+// SyncEnds returns the number of synchronized-output endings observed by the terminal emulator.
+func (t *Term) SyncEnds() int { return t.syncEnds }
 
 // Cursor is the cursor's column and row on the visible screen (0-based, always inside it) and whether it is shown.
 func (t *Term) Cursor() (x, y int, visible bool) { return t.x, t.y, t.curVis }
@@ -203,6 +207,7 @@ func (t *Term) All() []string { return append(t.Scrollback(), t.Rows()...) }
 // String is the visible screen as text: Rows joined by newlines, without a final newline.
 func (t *Term) String() string { return strings.Join(t.Rows(), "\n") }
 
+// g returns the active main or alternate terminal screen.
 func (t *Term) g() *screen {
 	if t.alt {
 		return &t.altS

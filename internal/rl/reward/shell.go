@@ -42,6 +42,8 @@ func (c shellCmd) name() (string, int) {
 	return "", i
 }
 
+// isAssignment heuristically recognizes a nonempty name of Unicode letters, digits, or underscores
+// before an equals sign.
 func isAssignment(w string) bool {
 	eq := strings.IndexByte(w, '=')
 	if eq <= 0 {
@@ -55,6 +57,8 @@ func isAssignment(w string) bool {
 	return true
 }
 
+// baseName returns text after the final nonterminal slash, leaving trailing-slash inputs
+// unchanged.
 func baseName(w string) string {
 	if i := strings.LastIndexByte(w, '/'); i >= 0 && i+1 < len(w) {
 		return w[i+1:]
@@ -271,6 +275,7 @@ func parseShell(src string) []shellCmd {
 	return cmds
 }
 
+// isDigits reports whether s contains one or more ASCII decimal digits and nothing else.
 func isDigits(s string) bool {
 	if s == "" {
 		return false

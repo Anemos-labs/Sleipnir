@@ -18,6 +18,8 @@ type mdRenderer struct {
 	base cell.Style // the style text starts from: Text, or the block quote's
 }
 
+// newMDRenderer initializes Markdown rendering with theme glyphs, options, and the theme's base
+// text style.
 func newMDRenderer(th Theme, o MarkdownOptions) *mdRenderer {
 	return &mdRenderer{th: th, g: th.glyphs(), opts: o, base: th.Text}
 }
@@ -148,6 +150,8 @@ func (r *mdRenderer) code(b *mdBlock, w int) []cell.Line {
 	return []cell.Line{r.codeRow(nil, w)}
 }
 
+// codeRow adds the code gutter and background styling, padding painted code slabs to the requested
+// width.
 func (r *mdRenderer) codeRow(l cell.Line, w int) cell.Line {
 	slab := r.th.CodeBlock
 	bar := cell.Span{Text: r.g.codeBar + " ", Style: composeStyle(slab, r.th.Faint)}
@@ -201,6 +205,8 @@ func (r *mdRenderer) highlight(b *mdBlock) []cell.Line {
 	return got
 }
 
+// safeHighlight converts a highlighter panic into nil output so rendering can fall back to plain
+// text.
 func safeHighlight(h Highlighter, lang, code string) (out []cell.Line) {
 	defer func() {
 		if recover() != nil {
@@ -247,6 +253,8 @@ func mdTrimRight(l cell.Line) cell.Line {
 	return out
 }
 
+// quote renders nested quote blocks with styled gutters and flattens them when too little width
+// remains.
 func (r *mdRenderer) quote(b *mdBlock, w, listDepth int) []cell.Line {
 	bar := cell.Span{Text: r.g.quote + " ", Style: r.th.Quote}
 	inner := w - 2

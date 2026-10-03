@@ -55,6 +55,8 @@ type ref struct {
 	raw  string
 }
 
+// isLocalHost classifies empty hosts, loopback spellings, and local hostname suffixes for the
+// network detector; it does not resolve DNS.
 func isLocalHost(h string) bool {
 	return h == "localhost" || h == "0.0.0.0" || h == "::1" || strings.HasPrefix(h, "127.") ||
 		strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".localhost") || h == ""
@@ -99,6 +101,8 @@ func refsIn(text string) []ref {
 	return out
 }
 
+// parseRef extracts normalized host and repository identity from a URL, accepting git+ prefixes
+// and requiring a host.
 func parseRef(raw string) (ref, bool) {
 	s := strings.TrimPrefix(strings.TrimPrefix(raw, "git+"), "GIT+")
 	u, err := url.Parse(s)
@@ -181,6 +185,7 @@ func upstreamKeys(task *rl.Task, ep *rl.Episode) []string {
 	return uniqueStrings(keys)
 }
 
+// mustPath extracts a URL path after an optional git+ prefix and returns empty on parse failure.
 func mustPath(raw string) string {
 	u, err := url.Parse(strings.TrimPrefix(raw, "git+"))
 	if err != nil {
@@ -189,6 +194,7 @@ func mustPath(raw string) string {
 	return u.Path
 }
 
+// networkFailed checks the first 64 KiB of lowercased output for known network failure markers.
 func networkFailed(output string) bool {
 	low := strings.ToLower(output)
 	if len(low) > 1<<16 {

@@ -116,6 +116,8 @@ func (l *Leases) SetRoots(roots ...string) {
 	l.mu.Unlock()
 }
 
+// emit snapshots the lease event emitter under lock and records the action with optional path and
+// holder fields, ignoring emission errors.
 func (l *Leases) emit(agent, action, path, holder string) {
 	l.mu.Lock()
 	ev := l.ev
@@ -170,6 +172,7 @@ func (l *Leases) scopeOf(agent string) (scopes, ids []string, scoped bool) {
 	return scopes, ids, len(ids) > 0
 }
 
+// checkScope resolves a path relative to the lease root before checking the agent's allowed scope.
 func (l *Leases) checkScope(agent, path string) error {
 	rel, ok := l.rel(path)
 	return l.checkScopeAt(agent, path, rel, ok)
@@ -195,6 +198,8 @@ func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 		displayPath(path), strings.Join(ids, ", "), strings.Join(shown, ", "))
 }
 
+// displayPath abbreviates long paths to a 119-byte suffix preceded by an ellipsis; it may split
+// UTF-8.
 func displayPath(p string) string {
 	if len(p) > 120 {
 		p = "…" + p[len(p)-119:]

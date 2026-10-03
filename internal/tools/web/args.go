@@ -39,6 +39,7 @@ func parseArgs(raw json.RawMessage) (*args, error) {
 	return &args{m: m}, nil
 }
 
+// present distinguishes usable raw argument values from missing, empty, or JSON-null values.
 func (a *args) present(name string) (json.RawMessage, bool) {
 	v, ok := a.m[name]
 	if !ok {
@@ -120,6 +121,7 @@ func (a *args) integer(name string) (int64, bool, error) {
 	return int64(f), true, nil
 }
 
+// describe trims raw JSON and caps argument diagnostics at forty bytes plus an ellipsis.
 func describe(v json.RawMessage) string {
 	s := string(bytes.TrimSpace(v))
 	if len(s) > 40 {

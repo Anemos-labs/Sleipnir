@@ -237,6 +237,7 @@ func ScoreProbes(ep *rl.Episode, ps []Probe, resolve PromptText) ([]ProbeResult,
 
 // ---- windows and next steps ------------------------------------------------------------
 
+// firstMain returns the first main-step index or -1 when no main step exists.
 func firstMain(a *rl.Agent) int {
 	for i := range a.Steps {
 		if isMain(&a.Steps[i]) {
@@ -246,6 +247,8 @@ func firstMain(a *rl.Agent) int {
 	return -1
 }
 
+// prevMain searches backward before si for a main step and returns -1 when none exists; si must be
+// a valid boundary.
 func prevMain(a *rl.Agent, si int) int {
 	for i := si - 1; i >= 0; i-- {
 		if isMain(&a.Steps[i]) {
@@ -442,6 +445,8 @@ var (
 	trivialCmdRe = regexp.MustCompile(`^(?:ls|cd|pwd|cat|echo|head|tail|wc|true|false|clear|which|date|sleep|git (?:status|diff|log|add)|mkdir|touch)\b`)
 )
 
+// normPath normalizes separators and removes repeated leading ./ prefixes without resolving parent
+// segments.
 func normPath(p string) string {
 	p = slashPath(p)
 	for strings.HasPrefix(p, "./") {
@@ -450,6 +455,7 @@ func normPath(p string) string {
 	return p
 }
 
+// lastSegments retains the final n normalized path segments; n must be nonnegative.
 func lastSegments(p string, n int) string {
 	segs := splitSegs(p)
 	if len(segs) <= n {
@@ -458,6 +464,7 @@ func lastSegments(p string, n int) string {
 	return strings.Join(segs[len(segs)-n:], "/")
 }
 
+// baseOf returns the last nonempty, non-dot path segment or empty when none exists.
 func baseOf(p string) string {
 	segs := splitSegs(p)
 	if len(segs) == 0 {
@@ -547,6 +554,8 @@ func splitCommand(cmd string) []string {
 	return out
 }
 
+// failed recognizes a tool error or a failure in the last 64 KiB of output, preferring an explicit
+// exit code over failure words.
 func failed(c toolCall) bool {
 	if c.isError {
 		return true
@@ -820,6 +829,8 @@ func normalizeText(s string) string {
 	return strings.TrimRight(b.String(), " ")
 }
 
+// factFound reports whether a fact or any nonempty normalized alternative occurs in an already
+// normalized prompt.
 func factFound(normPrompt string, f Fact) bool {
 	if t := normalizeText(f.Text); t != "" && strings.Contains(normPrompt, t) {
 		return true

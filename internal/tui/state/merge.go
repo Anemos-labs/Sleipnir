@@ -18,6 +18,7 @@ type mergeState struct {
 	seen    bool
 }
 
+// newMergeState initializes bounded recent merge history.
 func newMergeState() mergeState { return mergeState{recent: newRing[MergeEntry](MergeCap)} }
 
 // taskRef reads the task id out of the name the swarm gives a submission, "T3: the task's title" (swarm.integrate), "" if it has none.
@@ -261,6 +262,8 @@ func (s *State) sharedSeen(hash string) bool {
 	return false
 }
 
+// noteShared retains distinct nonempty shared-prefix hashes up to MaxPrefixes, evicting the oldest
+// when full.
 func (s *State) noteShared(hash string) {
 	if hash == "" || s.sharedSeen(hash) {
 		return

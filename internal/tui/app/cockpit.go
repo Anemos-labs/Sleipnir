@@ -168,6 +168,7 @@ func sharedPrefix(sn *state.Snapshot, opt CockpitOptions) (layers []widget.Layer
 	return layers, left, ttl
 }
 
+// firstOf returns the first string or empty for an empty slice.
 func firstOf(s []string) string {
 	if len(s) == 0 {
 		return ""
@@ -336,6 +337,7 @@ func taskLabel(t state.Task) string {
 
 var stopWords = map[string]bool{"survey": true, "write": true, "review": true, "every": true, "with": true, "from": true, "that": true, "add": true}
 
+// short retains at most n runes without a truncation marker; n must be nonnegative.
 func short(s string, n int) string {
 	r := []rune(s)
 	if len(r) > n {

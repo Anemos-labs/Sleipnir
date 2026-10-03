@@ -312,6 +312,7 @@ func (k *call) beforeWrite(path, disp string) *tools.Result {
 	return nil
 }
 
+// afterWrite updates file-write tracking with the current time and then notifies the write guard.
 func (k *call) afterWrite(path string, data []byte) {
 	k.env.Files.RecordWrite(k.env.Agent, path, data, k.env.Now())
 	k.env.Guard.AfterWrite(k.env.Agent, path)

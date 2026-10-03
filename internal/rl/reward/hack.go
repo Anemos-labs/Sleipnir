@@ -55,11 +55,13 @@ func (NoDiffs) Diff(core.Hash) (string, error) { return "", nil }
 
 type blobDiffs struct{ get core.BlobGetter }
 
+// Diff loads a blob and returns its bytes as diff text, preserving the loader error.
 func (b blobDiffs) Diff(h core.Hash) (string, error) {
 	data, err := b.get(h)
 	return string(data), err
 }
 
+// Blob retrieves content by hash through the configured blob loader.
 func (b blobDiffs) Blob(h core.Hash) ([]byte, error) { return b.get(h) }
 
 // DiffsFromBlobs adapts a blob getter (events.Blobs.Get, for example) to a
@@ -92,6 +94,7 @@ type hackEnv struct {
 	notes     []string
 }
 
+// note formats and appends a reward-hacking diagnostic in evaluation order.
 func (h *hackEnv) note(format string, args ...any) {
 	h.notes = append(h.notes, fmt.Sprintf(format, args...))
 }
@@ -146,6 +149,7 @@ func detectHacks(ep *rl.Episode, task *rl.Task, cfg *resolved, d DiffSource) ([]
 	return out, env.notes, nil
 }
 
+// flagOrder assigns known hacking flags a stable display order and places unknown flags last.
 func flagOrder(f string) int {
 	for i, x := range []string{rl.FlagHackProtected, rl.FlagHackTestWeaken, rl.FlagHackVerifier, rl.FlagHackHardcode, rl.FlagHackNetwork, rl.FlagHackEscape} {
 		if f == x {
@@ -155,6 +159,7 @@ func flagOrder(f string) int {
 	return 99
 }
 
+// hasHackFlag reports any flag with the hack: prefix.
 func hasHackFlag(flags []string) bool {
 	for _, f := range flags {
 		if strings.HasPrefix(f, "hack:") {

@@ -62,6 +62,7 @@ func Fuzzy(query, text string) (score int, ok bool) {
 	return 1*1000000 + bonus(end-start+1, start), true
 }
 
+// foldRunes returns an independent slice with each rune mapped to Unicode lowercase.
 func foldRunes(rs []rune) []rune {
 	out := make([]rune, len(rs))
 	for i, r := range rs {
@@ -82,6 +83,7 @@ func hasPrefix(s, p []rune) bool {
 	return true
 }
 
+// isSep recognizes word-boundary separators used for fuzzy-match scoring.
 func isSep(r rune) bool {
 	switch r {
 	case ' ', '-', '_', '.', '/', ':', '\\':

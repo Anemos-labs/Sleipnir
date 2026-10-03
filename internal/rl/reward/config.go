@@ -125,6 +125,7 @@ func defaultWeights() map[string]float64 {
 	}
 }
 
+// defaultCaps returns an independent map of penalty, probe, and diagnostic limits.
 func defaultCaps() map[string]float64 {
 	return map[string]float64{
 		CapProtocol:  10,
@@ -143,6 +144,7 @@ func defaultCaps() map[string]float64 {
 	}
 }
 
+// defaultDetectors returns a new map enabling every supported reward-hacking detector.
 func defaultDetectors() map[string]bool {
 	m := map[string]bool{}
 	for _, n := range detectorNames() {
@@ -151,6 +153,7 @@ func defaultDetectors() map[string]bool {
 	return m
 }
 
+// detectorNames returns the supported reward-hacking detectors in configuration order.
 func detectorNames() []string {
 	return []string{DetProtected, DetTests, DetVerifier, DetHardcoded, DetNetwork, DetOutside, DetShim}
 }
@@ -450,6 +453,7 @@ func (c Config) resolveTarget() (cost.Model, error) {
 	return m, nil
 }
 
+// modelIsZero reports whether model identity, prices, cache modes, and cache TTLs are all unset.
 func modelIsZero(m cost.Model) bool {
 	return m.ID == "" && m.Price == (cost.Price{}) && !m.Cache.Explicit && !m.Cache.Auto && len(m.Cache.TTLs) == 0
 }
@@ -542,6 +546,7 @@ func (r *resolved) clipTotal(v float64) float64 {
 	return v
 }
 
+// cap returns the resolved cap for a detector, or zero if no entry exists.
 func (r *resolved) cap(name string) float64 { return r.caps[name] }
 
 // capDiv returns x/cap saturated to [0, 1]; a zero cap saturates on the first
@@ -559,8 +564,10 @@ func (r *resolved) frac(x float64, capName string) float64 {
 
 // ---- small shared helpers ----------------------------------------------------------
 
+// finite excludes NaN and both infinities from numeric configuration values.
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
+// sortedKeys returns lexical map-key order for deterministic scoring output.
 func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -570,6 +577,7 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
+// clamp01 bounds a score to [0, 1], treating NaN as zero.
 func clamp01(v float64) float64 {
 	switch {
 	case math.IsNaN(v):

@@ -204,6 +204,8 @@ func (m *Workspaces) Warnings() []string {
 	return append([]string(nil), m.warnings...)
 }
 
+// warn retains each distinct workspace warning once under lock and logs new warnings outside the
+// lock.
 func (m *Workspaces) warn(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	m.mu.Lock()
@@ -359,6 +361,7 @@ func dirFingerprint(ctx context.Context, dir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// hashHex returns a full SHA-256 digest of NUL-terminated parts for workspace identity.
 func hashHex(parts ...string) string {
 	h := sha256.New()
 	for _, p := range parts {
@@ -370,6 +373,8 @@ func hashHex(parts ...string) string {
 
 // ---- snapshot cache ----
 
+// snapshotKey hashes execution mode, source identity, subdirectory, and setup commands, then adds
+// the current invalidation generation.
 func (m *Workspaces) snapshotKey(task rl.Task, src *repoSource) string {
 	id := src.commit
 	if src.kind == "dir" {
@@ -461,6 +466,8 @@ func (m *Workspaces) getOrBuild(ctx context.Context, key string, task rl.Task, s
 	}
 }
 
+// loadOrBuild reuses a readable snapshot with an existing tree directory and rebuilds otherwise,
+// propagating build errors.
 func (m *Workspaces) loadOrBuild(ctx context.Context, key string, task rl.Task, src *repoSource) (*snapshot, error) {
 	if s, err := m.loadSnapshot(key); err == nil {
 		if fi, serr := os.Stat(s.tree); serr == nil && fi.IsDir() {
@@ -499,6 +506,8 @@ type Workspace struct {
 
 var labelRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
+// newID sanitizes task and label text, caps the readable prefix, and adds six random bytes for
+// workspace uniqueness.
 func (m *Workspaces) newID(task, label string) string {
 	name := labelRe.ReplaceAllString(task, "_")
 	if label != "" {
@@ -610,6 +619,8 @@ func (w *Workspace) Env() []string {
 	return w.mgr.commandEnv(w.Home, w.Tmp, w.task.Network, w.marker)
 }
 
+// commandEnv builds the scrubbed command environment with workspace paths, network policy, and
+// explicit pass-through overrides.
 func (m *Workspaces) commandEnv(home, tmp string, network bool, marker string) []string {
 	return BuildEnv(EnvSpec{
 		Home: home, Tmp: tmp, Network: network, Marker: marker, Base: m.baseEnv,

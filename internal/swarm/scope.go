@@ -125,6 +125,7 @@ func expandBraces(p string) ([]string, error) {
 	return nil, fmt.Errorf("scope %q has too many alternatives", p)
 }
 
+// hasMeta detects glob metacharacters in a path segment without validating their syntax.
 func hasMeta(seg string) bool { return strings.ContainsAny(seg, "*?[") }
 
 // segments splits a normalised pattern. A pattern whose last segment has no glob
@@ -289,6 +290,7 @@ func segsOverlap(a, b []string) bool {
 	}
 }
 
+// allGlobstar reports whether all remaining segments are **, including an empty segment list.
 func allGlobstar(s []string) bool {
 	for _, x := range s {
 		if x != "**" {

@@ -15,6 +15,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
+// showClamp bounds v to the inclusive interval lo through hi, assuming ordered bounds.
 func showClamp(v, lo, hi int) int {
 	if v < lo {
 		return lo
@@ -51,6 +52,7 @@ func showDiv(num, den int64) int {
 // showMaxTokens bounds token counts so that products with a width cannot overflow.
 const showMaxTokens = 1 << 40
 
+// showTok clamps token counts to the supported nonnegative display range.
 func showTok(n int) int {
 	if n < 0 {
 		return 0
@@ -284,6 +286,7 @@ func showPadL(s string, w int) string {
 	return s
 }
 
+// showRepeat repeats a string only for positive counts.
 func showRepeat(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -320,6 +323,7 @@ func (b *showRowBuf) add(st cell.Style, s string) *showRowBuf {
 	return b
 }
 
+// addLine appends styled spans to the display row through its width-tracking helper.
 func (b *showRowBuf) addLine(l cell.Line) *showRowBuf {
 	for _, sp := range l {
 		b.add(sp.Style, sp.Text)
@@ -333,6 +337,7 @@ func (b *showRowBuf) space(n int) *showRowBuf { return b.add(cell.Style{}, showR
 // padTo adds spaces until the row is w cells wide.
 func (b *showRowBuf) padTo(w int) *showRowBuf { return b.space(w - b.w) }
 
+// line returns the accumulated styled spans without copying their backing storage.
 func (b *showRowBuf) line() cell.Line { return b.spans }
 
 // showFit cuts a line to w cells with an ellipsis; w <= 0 gives nil.

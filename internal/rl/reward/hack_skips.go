@@ -46,6 +46,8 @@ type funcCtx struct {
 	guarded bool // a condition precedes the skip inside it
 }
 
+// isTestFuncName recognizes Go test, benchmark, fuzz, and example prefixes and Python's test
+// prefix.
 func isTestFuncName(name, lang string) bool {
 	switch lang {
 	case "go":
@@ -60,6 +62,8 @@ func isTestFuncName(name, lang string) bool {
 	return false
 }
 
+// fnDeclOf extracts the first function declaration name recognized by the Go, Python, or
+// JavaScript heuristic; unsupported languages return false.
 func fnDeclOf(lang, code string) (string, bool) {
 	var re *regexp.Regexp
 	switch lang {
@@ -78,6 +82,8 @@ func fnDeclOf(lang, code string) (string, bool) {
 	return "", false
 }
 
+// guardRe selects the Go or Python guard pattern, using the JavaScript pattern for other
+// languages.
 func guardRe(lang string) *regexp.Regexp {
 	switch lang {
 	case "go":
@@ -109,6 +115,8 @@ func replacesRemoved(name string, removed nameSet) bool {
 	return false
 }
 
+// reportable includes existing or unknown function contexts, replacement tests, and new helpers
+// without guards.
 func (c funcCtx) reportable(removed nameSet) bool {
 	switch {
 	case !c.known, !c.isNew:

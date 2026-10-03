@@ -101,6 +101,8 @@ const (
 	defaultGrace      = 2 * time.Second
 )
 
+// withDefaults returns an execution-policy copy with positive output and termination-grace
+// defaults.
 func (p ExecPolicy) withDefaults() ExecPolicy {
 	if p.MaxOutput <= 0 {
 		p.MaxOutput = defaultMaxOutput
@@ -205,6 +207,8 @@ func (s *LocalSandbox) Warnings() []string { return append([]string(nil), s.warn
 // NetIsolation reports the network isolation capability.
 func (s *LocalSandbox) NetIsolation() NetIsolation { return s.netIso }
 
+// runProbe runs a capability probe with a five-second deadline and a minimal environment,
+// including output in failures.
 func runProbe(ctx context.Context, name string, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -426,6 +430,7 @@ type capBuf struct {
 	dropped int64
 }
 
+// newCapBuf reserves half the output budget for each end, with a minimum of one byte per half.
 func newCapBuf(max int64) *capBuf {
 	h := int(max / 2)
 	if h < 1 {
@@ -461,12 +466,15 @@ func (b *capBuf) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+// truncated reports under the buffer lock whether any output bytes were dropped.
 func (b *capBuf) truncated() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.dropped > 0
 }
 
+// String snapshots retained output head and tail under lock, inserts dropped-byte counts, and
+// repairs invalid UTF-8.
 func (b *capBuf) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()

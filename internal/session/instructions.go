@@ -74,6 +74,8 @@ func fitInstructions(srcs []memory.Source, budget int, est core.Estimator) (stri
 	return kept, nil
 }
 
+// instructionCutNote names up to three truncated or omitted files with bounded UTF-8 paths and
+// directs the model to read their complete rules.
 func instructionCutNote(paths []string) string {
 	if len(paths) == 0 {
 		return ""

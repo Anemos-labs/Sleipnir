@@ -23,8 +23,11 @@ func pidExists(pid int) bool {
 	return true
 }
 
+// procStart returns zero when process start-time inspection is unavailable on this platform.
 func procStart(pid int) int64 { return 0 }
 
+// configureCmd makes context cancellation kill the started process on this platform; no process
+// group is created.
 func configureCmd(cmd *exec.Cmd) {
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
@@ -34,6 +37,8 @@ func configureCmd(cmd *exec.Cmd) {
 	}
 }
 
+// killGroup has no effect on platforms without workspace process-group termination support.
 func killGroup(pid int) {}
 
+// chownLike leaves destination ownership unchanged on platforms without ownership copying.
 func chownLike(dst string, fi os.FileInfo) {}

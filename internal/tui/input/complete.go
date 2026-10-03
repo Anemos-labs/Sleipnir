@@ -261,6 +261,7 @@ func (e *Editor) refreshMenu() {
 	e.openMenu()
 }
 
+// closeMenu clears an open completion menu, requests redraw, and emits one CompletionClosed event.
 func (e *Editor) closeMenu() {
 	if e.menu == nil {
 		return
@@ -344,6 +345,8 @@ func (e *Editor) acceptMenu() {
 	e.applyCandidate(m.from, m.cands[m.sel])
 }
 
+// applyCandidate replaces the completion range and reopens completion for directory or assignment
+// continuations.
 func (e *Editor) applyCandidate(from int, c Candidate) {
 	rs := []rune(c.Text)
 	e.replace(from, e.cur, rs, from+len(rs), grpNone)

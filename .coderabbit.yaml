@@ -10,6 +10,10 @@ reviews:
   in_progress_fortune: false
   poem: false
   enable_prompt_for_ai_agents: true
+  pre_merge_checks:
+    docstrings:
+      # Go production coverage is enforced by TestProductionDocCoverage in CI.
+      mode: "off"
   auto_review:
     enabled: true
     auto_incremental_review: true
@@ -20,6 +24,9 @@ reviews:
         Follow AGENTS.md. Prioritize correctness, cancellation, races, resource leaks,
         hostile input, and cross-platform behavior. Require regression evidence for
         behavioral fixes. Do not propose dependencies or prose-only tests without a concrete need.
+        Review doc comments for accurate behavior, side effects, error contracts, concurrency,
+        and invariants. CI enforces 90% coverage of named production Go functions and methods;
+        do not count tests toward that target or request comments that only repeat a name.
     - path: "internal/{kv,agent,provider}/**"
       instructions: >-
         Treat stable prompt bytes and tool ordering as cache contracts. Inspect the

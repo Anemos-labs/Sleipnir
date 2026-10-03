@@ -22,6 +22,7 @@ type boardState struct {
 	dropped int
 }
 
+// newBoardState initializes an empty board with note membership tracking.
 func newBoardState() boardState { return boardState{notes: map[int]struct{}{}} }
 
 // boardWire is what a board.op carries. Every operation names the task it changed and its whole state (internal/swarm/board.go

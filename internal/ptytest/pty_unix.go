@@ -22,6 +22,7 @@ func ctty() *syscall.SysProcAttr {
 // fine.
 func killGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGKILL) }
 
+// setWinsize applies terminal rows and columns through an ioctl on the controlled file descriptor.
 func setWinsize(f *os.File, rows, cols uint16) error {
 	return control(f, func(fd int) error {
 		return unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, &unix.Winsize{Row: rows, Col: cols})

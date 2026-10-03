@@ -94,6 +94,8 @@ type InfraRecord struct {
 	Message  string `json:"message"`
 }
 
+// summarise snapshots rollout results, fills unstarted slots as pending or cancelled, and attaches
+// final ledger spending.
 func (rn *run) summarise(cancelled bool) *Summary {
 	rn.mu.Lock()
 	results := make([]RolloutResult, len(rn.results))

@@ -71,6 +71,7 @@ func (m Message) Frame() string {
 // Kinds lists the valid message kinds.
 var Kinds = []string{"info", "request", "blocker", "answer", "contract"}
 
+// validKind checks a mail kind against the supported kind list.
 func validKind(k string) bool {
 	for _, x := range Kinds {
 		if x == k {
@@ -158,6 +159,8 @@ func (r *Router) nextID() string {
 	return fmt.Sprintf("m%d", r.seq)
 }
 
+// prune removes timestamps at or before cutoff in place, preserving the order of retained
+// timestamps.
 func prune(ts []time.Time, cutoff time.Time) []time.Time {
 	out := ts[:0]
 	for _, t := range ts {
@@ -205,6 +208,7 @@ func (r *Router) Sizes() (senders, pairs, recent int) {
 	return len(r.sender), len(r.pair), len(r.recent)
 }
 
+// dedupeKey combines a routing key and a truncated SHA-256 text digest, separated by a NUL byte.
 func dedupeKey(pk, text string) string {
 	sum := sha256.Sum256([]byte(text))
 	return pk + "\x00" + hex.EncodeToString(sum[:12])

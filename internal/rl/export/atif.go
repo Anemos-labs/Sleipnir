@@ -87,6 +87,8 @@ type atifFinal struct {
 	TotalSteps            int     `json:"total_steps"`
 }
 
+// writeATIF exports episodes with a root agent and marks them contributed only after successful
+// emission.
 func (x *exporter) writeATIF(work []*workEpisode) error {
 	for _, we := range work {
 		root := rootAgent(we.ep)
@@ -146,6 +148,7 @@ func (x *exporter) atifOf(we *workEpisode, root int) (atifTrajectory, error) {
 	return t, nil
 }
 
+// sessionID combines episode and agent identifiers with a slash for ATIF export.
 func sessionID(ep *rl.Episode, agent string) string { return ep.ID + "/" + agent }
 
 func (x *exporter) atifAgent(we *workEpisode, ai int, children map[string][]string) (atifTrajectory, error) {
@@ -260,6 +263,7 @@ func (x *exporter) instruction(c stepCtx) (string, bool) {
 	return "", false
 }
 
+// stamp formats nonzero timestamps in UTC RFC3339 with nanosecond precision and omits zero times.
 func stamp(t time.Time) string {
 	if t.IsZero() {
 		return ""

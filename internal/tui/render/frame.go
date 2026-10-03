@@ -29,10 +29,12 @@ type emitter struct {
 	maxRow   int // the last row of the region that exists on the terminal, below which a cursor-down move would go nowhere
 }
 
+// newEmitter initializes terminal output tracking at the supplied cursor and viewport dimensions.
 func newEmitter(buf []byte, cols, row, col, rows int) *emitter {
 	return &emitter{buf: buf, cols: cols, row: row, col: col, maxRow: rows - 1}
 }
 
+// raw appends bytes without updating the emitter's cursor or style tracking.
 func (e *emitter) raw(s string) { e.buf = append(e.buf, s...) }
 
 // origin starts counting again from the cursor: it is on the first row of a region that has no rows yet.
@@ -55,6 +57,7 @@ func (e *emitter) csiUp(n int) {
 	}
 }
 
+// gotoRow emits relative vertical cursor movement and updates the tracked row.
 func (e *emitter) gotoRow(row int) {
 	switch {
 	case row < e.row:
@@ -65,6 +68,8 @@ func (e *emitter) gotoRow(row int) {
 	e.row = row
 }
 
+// digits returns the length of an integer's decimal representation, including a minus sign if
+// present.
 func digits(n int) int { return len(strconv.Itoa(n)) }
 
 // gotoCol moves along the row with the shortest of carriage return, cursor forward, cursor back and absolute column.
@@ -95,6 +100,7 @@ func (e *emitter) gotoCol(col int) {
 	e.col = col
 }
 
+// moveTo moves the emitter cursor vertically and then horizontally.
 func (e *emitter) moveTo(row, col int) {
 	e.gotoRow(row)
 	e.gotoCol(col)

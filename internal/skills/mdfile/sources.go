@@ -148,6 +148,7 @@ func Sources(kind string, l Layout) ([]Source, []Warning) {
 	return out, warns
 }
 
+// isDir follows symlinks and reports whether the path names a directory.
 func isDir(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()

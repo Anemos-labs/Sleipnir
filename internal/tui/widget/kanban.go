@@ -88,6 +88,8 @@ type KanbanCol struct {
 	Count int
 }
 
+// title prefers a nonempty sanitized column title and otherwise uses the column kind's default
+// title.
 func (c KanbanCol) title() string {
 	if t := showClean(c.Title); t != "" {
 		return t

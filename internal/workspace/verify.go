@@ -162,6 +162,8 @@ type tailBuffer struct {
 	total   int64
 }
 
+// newTailBuffer allocates one eighth of its byte budget, capped at eight KiB, to the head and the
+// remainder to the tail.
 func newTailBuffer(max int) *tailBuffer {
 	head := max / 8
 	if head > 8<<10 {

@@ -61,6 +61,7 @@ func (b *Builder) Raw(agent, typ, data string) events.Event {
 	return b.add(agent, typ, json.RawMessage(data))
 }
 
+// add assigns the next fixture event sequence, stamps current builder time, and appends the event.
 func (b *Builder) add(agent, typ string, raw json.RawMessage) events.Event {
 	b.seq++
 	e := events.Event{Seq: b.seq, TS: b.t, Session: b.Session, Agent: agent, Type: typ, Data: raw}

@@ -80,6 +80,8 @@ func keptRatio(a *rl.Agent, si, ni int) (ratio float64, ok bool) {
 	return clamp01(float64(kept) / float64(thread)), true
 }
 
+// canProbe reports whether a configured prompt source or an inline step prompt is available for
+// recall probes.
 func (s *scorer) canProbe() bool {
 	if s.cfg.prompts != nil {
 		return true

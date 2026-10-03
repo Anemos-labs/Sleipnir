@@ -93,6 +93,7 @@ type waiter struct {
 	dead  bool       // cancelled while queued
 }
 
+// clampPrio limits a priority index to the supported queue range.
 func clampPrio(p int) int {
 	switch {
 	case p < 0:
@@ -282,6 +283,8 @@ func (g *Governor) dispatchLocked() {
 	}
 }
 
+// armLocked replaces the dispatch timer with a delay of at least one millisecond. The caller must
+// hold the governor lock; the callback reacquires it before dispatch.
 func (g *Governor) armLocked(d time.Duration) {
 	if d < time.Millisecond {
 		d = time.Millisecond

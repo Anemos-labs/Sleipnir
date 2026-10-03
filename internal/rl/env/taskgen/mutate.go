@@ -228,6 +228,7 @@ func Mutate(ctx context.Context, repoPath string, opts MutateOptions) ([]rl.Task
 	return tasks, rep, nil
 }
 
+// matchAny accepts the first matching path glob and treats malformed patterns as nonmatches.
 func matchAny(patterns []string, p string) bool {
 	for _, pat := range patterns {
 		if ok, _ := path.Match(pat, p); ok {
@@ -363,6 +364,8 @@ var buildFailureMarkers = []string{
 	"collected 0 items", "no tests ran",
 }
 
+// looksLikeBuildFailure searches for known build-failure markers as a heuristic over verifier
+// logs.
 func looksLikeBuildFailure(log string) bool {
 	for _, m := range buildFailureMarkers {
 		if strings.Contains(log, m) {

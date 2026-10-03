@@ -152,6 +152,7 @@ func clean(s string) string {
 	}, s)), " ")
 }
 
+// numbered formats notes as a one-based numbered list without a final newline.
 func numbered(notes []string) string {
 	var b strings.Builder
 	for i, n := range notes {
@@ -160,6 +161,7 @@ func numbered(notes []string) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// size estimates serialized note bytes from the header and per-note overhead.
 func size(notes []string) int {
 	n := len(header) + 1
 	for _, s := range notes {

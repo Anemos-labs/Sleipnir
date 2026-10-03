@@ -24,6 +24,8 @@ type InfraError struct {
 	Err error
 }
 
+// Error formats an infrastructure operation failure and uses a generic description when no cause
+// exists.
 func (e *InfraError) Error() string {
 	if e.Err == nil {
 		return "env: " + e.Op + ": infrastructure error"
@@ -31,6 +33,7 @@ func (e *InfraError) Error() string {
 	return "env: " + e.Op + ": " + e.Err.Error()
 }
 
+// Unwrap exposes the infrastructure error's underlying cause.
 func (e *InfraError) Unwrap() error { return e.Err }
 
 // Is makes errors.Is(err, ErrInfra) true for every InfraError.

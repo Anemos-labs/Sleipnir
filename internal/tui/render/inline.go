@@ -439,6 +439,7 @@ func (r *Inline) framed(body []byte) []byte {
 	return append(append([]byte(syncBegin), body...), syncEnd...)
 }
 
+// itoa formats an integer in decimal for terminal control sequences.
 func itoa(n int) string { return strconv.Itoa(n) }
 
 // flushTerminal writes the frame for a terminal that takes escape sequences.

@@ -72,6 +72,17 @@ Prompt changes affect cache reuse. Review golden diffs before accepting them.
 
 ## Documentation
 
+Doc comments cover at least 90% of named production Go functions and methods in
+`cmd/` and `internal/`. The check excludes `_test.go`, generated files, `testdata`,
+and vendored code, and includes every platform variant. Anonymous callbacks are
+not separate declarations. Run `go test ./internal/repocheck -run TestProductionDocCoverage -v`
+to inspect coverage. CI enforces the same check without external services.
+
+Comments describe observable behavior, return values, side effects, errors,
+ownership, and concurrency constraints where relevant. They must remain accurate
+when code changes. A percentage measures comment presence; review establishes
+whether the comment is useful. Avoid comments that merely repeat the function name.
+
 Describe current behavior, configuration, invariants, and limitations.
 Use timeless, impersonal language. Keep session narratives, handoffs, personal
 notes, and unsupported performance claims out of the repository. Git records

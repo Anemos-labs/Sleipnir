@@ -9,6 +9,7 @@ import (
 // so it favours speed and determinism over linguistic quality: Sørensen–Dice
 // over byte bigrams, ASCII case-folded.
 
+// fold lowercases ASCII uppercase bytes and leaves other bytes unchanged.
 func fold(c byte) byte {
 	if c >= 'A' && c <= 'Z' {
 		return c + 32
@@ -16,6 +17,7 @@ func fold(c byte) byte {
 	return c
 }
 
+// bigram packs two case-folded bytes into a lookup key; i and i+1 must be valid indices.
 func bigram(s string, i int) uint16 { return uint16(fold(s[i]))<<8 | uint16(fold(s[i+1])) }
 
 // diceStrings compares two short strings (file names).
@@ -88,6 +90,7 @@ type simScratch struct {
 	tcount int
 }
 
+// newSimScratch allocates reusable tables covering all possible byte bigrams.
 func newSimScratch() *simScratch {
 	return &simScratch{target: make([]bool, 1<<16), seen: make([]uint32, 1<<16)}
 }

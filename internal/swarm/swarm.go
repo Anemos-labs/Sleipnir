@@ -464,6 +464,7 @@ func (s *Swarm) ManagerID() string {
 	return s.manager
 }
 
+// currentShared reads the current shared prompt-layer pointer under the swarm lock.
 func (s *Swarm) currentShared() *kv.Layer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -641,6 +642,7 @@ type guardWithAfter struct {
 	after func(agent, path string)
 }
 
+// AfterWrite notifies the wrapped guard before invoking an optional additional write callback.
 func (g guardWithAfter) AfterWrite(agent, path string) {
 	g.Guard.AfterWrite(agent, path)
 	if g.after != nil {
@@ -656,6 +658,7 @@ func (s *Swarm) modelFor(role string) cost.Model {
 	return s.deps.Model
 }
 
+// spawnableRoles returns configured roles excluding the manager and service roles.
 func (s *Swarm) spawnableRoles() []string {
 	var out []string
 	for _, n := range s.roles.Names() {

@@ -76,6 +76,8 @@ func (x *exporter) renderChain(steps []stepCtx, objectArgs bool) (*chainView, er
 	return cv, nil
 }
 
+// sameJSON ignores insignificant JSON whitespace but preserves key order and numeric spelling;
+// identical raw bytes also match.
 func sameJSON(a, b json.RawMessage) bool {
 	if bytes.Equal(a, b) {
 		return true
@@ -162,6 +164,7 @@ func (x *exporter) persistentCount(p *core.Prompt, wp wirePrompt) (int, error) {
 	return len(sp.Messages), nil
 }
 
+// hasEphemeral reports whether any top-level message block is marked ephemeral.
 func hasEphemeral(p *core.Prompt) bool {
 	for _, m := range p.Messages {
 		for _, b := range m.Blocks {

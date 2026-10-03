@@ -38,12 +38,15 @@ func (s *Swarm) alive() error {
 	return nil
 }
 
+// isClosed reads the swarm shutdown flag under its lock.
 func (s *Swarm) isClosed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.closed
 }
 
+// writerCapError reports the active-writer limit and suggests ways to continue without adding a
+// concurrent writer.
 func writerCapError(active, limit int) error {
 	return fmt.Errorf("%d writers are already active (limit %d): concurrent writers collide on shared code. Wait for one to finish, reuse an idle worker, or use a read-only role (reviewer, scout) for this", active, limit)
 }
@@ -237,6 +240,7 @@ func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	}
 }
 
+// ownerReadOnly checks the owner's role in a board snapshot, returning false for an unknown owner.
 func (s *Swarm) ownerReadOnly(sn *Snapshot, owner string) bool {
 	a, ok := sn.Agent(owner)
 	if !ok {

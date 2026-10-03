@@ -150,6 +150,7 @@ func planTests(ctx context.Context, r *repo, parent, commit string, hidden []hid
 	return p, nil
 }
 
+// sortedKeys returns string map keys in lexical order.
 func sortedKeys(m map[string]int) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -253,6 +254,8 @@ func planGo(ctx context.Context, r *repo, parent, commit string, files []hiddenF
 	return plan{Setup: []string{setup}, Cmd: cmd}, nil
 }
 
+// planPython builds a sorted pytest command for Python files other than conftest.py, preferring
+// python3 when available.
 func planPython(files []hiddenFile) (plan, error) {
 	py := "python3"
 	if _, err := exec.LookPath("python3"); err != nil {
@@ -271,6 +274,8 @@ func planPython(files []hiddenFile) (plan, error) {
 	return plan{Cmd: py + " -m pytest -q -x -p no:cacheprovider " + strings.Join(args, " ")}, nil
 }
 
+// planJS requires repository test-script metadata and builds npm setup and test commands, using
+// npm ci when a lockfile exists.
 func planJS(ctx context.Context, r *repo, parent string, files []hiddenFile) (plan, error) {
 	if !r.exists(ctx, parent, "package.json") {
 		return plan{}, fmt.Errorf("no package.json at the repository root")

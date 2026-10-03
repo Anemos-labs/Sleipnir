@@ -222,6 +222,7 @@ func (s *Session) mcpChanged(c mcp.Change) {
 	s.notice("", fmt.Sprintf("mcp: server %q changed its tools (%s). This session keeps the tool list it started with, so its cache stays intact; start a new session to pick the change up", c.Server, c.Reason))
 }
 
+// closeMCP shuts down the session's MCP manager if initialized, ignoring shutdown errors.
 func (s *Session) closeMCP() {
 	if s.mcp != nil && s.mcp.mgr != nil {
 		_ = s.mcp.mgr.Close()
@@ -305,6 +306,8 @@ type approvalStore struct {
 
 const approvalsVersion = 1
 
+// openApprovals loads approvals in the supported format, returning an empty store when the file is
+// unavailable, malformed, or has an unsupported version.
 func openApprovals(path string) *approvalStore {
 	a := &approvalStore{path: path, m: map[string]map[string]string{}}
 	b, err := os.ReadFile(path)
@@ -321,6 +324,7 @@ func openApprovals(path string) *approvalStore {
 	return a
 }
 
+// has checks a project-root and fingerprint approval pair under the store lock.
 func (a *approvalStore) has(root, fp string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -328,6 +332,8 @@ func (a *approvalStore) has(root, fp string) bool {
 	return ok
 }
 
+// add updates in-memory approval state under lock and persists it; a save error does not roll back
+// the in-memory change.
 func (a *approvalStore) add(root, fp, name string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -338,6 +344,7 @@ func (a *approvalStore) add(root, fp, name string) error {
 	return a.saveLocked()
 }
 
+// remove deletes an approval and empty root buckets under lock, then persists the updated state.
 func (a *approvalStore) remove(root, fp string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

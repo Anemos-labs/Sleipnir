@@ -34,6 +34,7 @@ type track struct {
 	versions []*version
 }
 
+// newTrack initializes the animation version index without any recorded elements.
 func newTrack() *track { return &track{byKey: map[string]*version{}} }
 
 // see records that the version with this key is visible from start to end; mk makes it when it is new.

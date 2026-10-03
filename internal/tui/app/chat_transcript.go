@@ -103,6 +103,7 @@ type ChatCall struct {
 	Input json.RawMessage `json:"input,omitempty"`
 }
 
+// block converts a transcript tool call into the block fields consumed by the chat UI.
 func (c ChatCall) block() core.Block {
 	return core.Block{ToolID: c.ID, ToolName: c.Name, Input: c.Input}
 }
@@ -116,6 +117,7 @@ type ChatResult struct {
 	Meta      map[string]any `json:"meta,omitempty"`
 }
 
+// result converts recorded tool-result fields into a tools.Result, retaining its metadata map.
 func (r ChatResult) result() *tools.Result {
 	return &tools.Result{Text: r.Text, IsError: r.IsError, Truncated: r.Truncated, Handle: r.Handle, Meta: r.Meta}
 }
@@ -302,6 +304,8 @@ func (tw *ChatTranscriptWriter) Write(rec ChatRecord) error {
 	return tw.err
 }
 
+// put writes one JSON transcript record and retains any encoding or write error for the writer's
+// caller.
 func (tw *ChatTranscriptWriter) put(rec ChatRecord) {
 	b, err := json.Marshal(rec)
 	if err != nil {

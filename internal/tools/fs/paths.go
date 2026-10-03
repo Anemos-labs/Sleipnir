@@ -54,6 +54,8 @@ func absClean(cwd, p string) (string, error) {
 	return filepath.Clean(p), nil
 }
 
+// splitPath normalizes native separators and removes empty components while retaining dot and
+// parent components.
 func splitPath(p string) []string {
 	parts := strings.Split(filepath.ToSlash(p), "/")
 	out := parts[:0]

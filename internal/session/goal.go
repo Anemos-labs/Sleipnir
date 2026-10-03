@@ -147,6 +147,7 @@ func (s *Session) GoalTurn(ctx context.Context, g *goal.State, turnErr error) (n
 	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), goal.Continuation(g, s.GoalPlan(), v)
 }
 
+// short retains at most n runes including an ellipsis when truncated; n must be positive.
 func short(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n-1]) + "…"

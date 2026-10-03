@@ -15,6 +15,7 @@ type chip struct {
 	label string // what the view draws
 }
 
+// chipLabel returns a stored paste-chip label or a generic label for an invalid chip ID.
 func (e *Editor) chipLabel(r rune) string {
 	if id := chipID(r); id >= 0 && id < len(e.chips) {
 		return e.chips[id].label

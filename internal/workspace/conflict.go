@@ -44,6 +44,7 @@ type Conflict struct {
 	Truncated bool
 }
 
+// Error formats the merge-conflict diagnostic with its suggested resolution.
 func (c *Conflict) Error() string { return "workspace: merge conflict: " + c.Suggest }
 
 // FileConflict is the shape of the conflict in one file.
@@ -165,6 +166,7 @@ func contentHunks(ctx context.Context, r *gitx.Repo, u gitx.Unmerged, truncated 
 	return parseHunks(u.Path, merged), false, ""
 }
 
+// firstLine trims a diagnostic, selects its first line, and caps it at 200 bytes.
 func firstLine(s string) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexByte(s, '\n'); i >= 0 {

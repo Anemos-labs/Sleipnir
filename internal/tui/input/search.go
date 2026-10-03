@@ -40,6 +40,8 @@ func (e *Editor) Search() SearchState {
 	return st
 }
 
+// openSearch closes completion, initializes history search, requests redraw, and emits
+// SearchOpened.
 func (e *Editor) openSearch() {
 	e.closeMenu()
 	e.search = &search{idx: -1}
@@ -47,6 +49,7 @@ func (e *Editor) openSearch() {
 	e.emit(SearchOpened{})
 }
 
+// closeSearch clears incremental search state, requests redraw, and emits SearchClosed.
 func (e *Editor) closeSearch() {
 	e.search = nil
 	e.dirty = true

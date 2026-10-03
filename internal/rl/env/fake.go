@@ -35,27 +35,57 @@ type FakeStep struct {
 func FakeWrite(path, content string) FakeStep {
 	return FakeStep{Op: "write", Path: path, Data: content, Mode: 0o644}
 }
+
+// FakeWriteMode describes a file write with the requested permissions; a zero mode uses 0644 when
+// executed.
 func FakeWriteMode(path, content string, mode os.FileMode) FakeStep {
 	return FakeStep{Op: "write", Path: path, Data: content, Mode: mode}
 }
+
+// FakeAppend describes an append that creates a missing file with mode 0644.
 func FakeAppend(path, content string) FakeStep {
 	return FakeStep{Op: "append", Path: path, Data: content}
 }
+
+// FakeDelete describes recursive removal of a workspace-relative or absolute path.
 func FakeDelete(path string) FakeStep { return FakeStep{Op: "delete", Path: path} }
+
+// FakeChmod describes a permission change on the resolved path.
 func FakeChmod(path string, mode os.FileMode) FakeStep {
 	return FakeStep{Op: "chmod", Path: path, Mode: mode}
 }
+
+// FakeSymlink describes creation of a symlink at path with target preserved as supplied.
 func FakeSymlink(path, target string) FakeStep {
 	return FakeStep{Op: "symlink", Path: path, Data: target}
 }
-func FakeMkdir(path string) FakeStep     { return FakeStep{Op: "mkdir", Path: path} }
-func FakeExec(cmd string) FakeStep       { return FakeStep{Op: "exec", Data: cmd} }
+
+// FakeMkdir describes directory creation, including missing parents, with mode 0755.
+func FakeMkdir(path string) FakeStep { return FakeStep{Op: "mkdir", Path: path} }
+
+// FakeExec describes a sh -c command run in the rollout workspace with the rollout environment.
+func FakeExec(cmd string) FakeStep { return FakeStep{Op: "exec", Data: cmd} }
+
+// FakeSleep describes a delay that ends early when the run context is cancelled.
 func FakeSleep(d time.Duration) FakeStep { return FakeStep{Op: "sleep", Dur: d} }
-func FakeHang() FakeStep                 { return FakeStep{Op: "hang"} }
-func FakeHangForever() FakeStep          { return FakeStep{Op: "hang-forever"} }
-func FakePanic(msg string) FakeStep      { return FakeStep{Op: "panic", Data: msg} }
-func FakeInfra(msg string) FakeStep      { return FakeStep{Op: "infra", Data: msg} }
-func FakeAgentFail(msg string) FakeStep  { return FakeStep{Op: "agent-fail", Data: msg} }
+
+// FakeHang describes a step that waits for context cancellation and ends the rollout with a budget
+// claim.
+func FakeHang() FakeStep { return FakeStep{Op: "hang"} }
+
+// FakeHangForever describes a step that ignores cancellation until FakeHarness.Release closes;
+// without that channel it never returns.
+func FakeHangForever() FakeStep { return FakeStep{Op: "hang-forever"} }
+
+// FakePanic describes a step that panics with the supplied message when executed.
+func FakePanic(msg string) FakeStep { return FakeStep{Op: "panic", Data: msg} }
+
+// FakeInfra describes a step that ends the rollout with an infrastructure error.
+func FakeInfra(msg string) FakeStep { return FakeStep{Op: "infra", Data: msg} }
+
+// FakeAgentFail describes an agent failure with a gave_up claim, without classifying it as
+// infrastructure failure.
+func FakeAgentFail(msg string) FakeStep { return FakeStep{Op: "agent-fail", Data: msg} }
 
 // OnAttempt restricts a step to one attempt (1-based), which is how tests make
 // a rollout fail on the first try and succeed on the retry.
@@ -115,6 +145,8 @@ func (h *FakeHarness) MaxConcurrent() int {
 	return h.maxActive
 }
 
+// script selects a fake script by task/sample, then task, wildcard, and finally the default
+// script.
 func (h *FakeHarness) script(task string, sample int) FakeScript {
 	if s, ok := h.Scripts[fmt.Sprintf("%s/%d", task, sample)]; ok {
 		return s
@@ -197,7 +229,11 @@ type fakeEnd struct {
 	err    error
 }
 
+// Error returns the scripted rollout termination reason.
 func (e *fakeEnd) Error() string { return e.reason }
+
+// result uses the scripted termination result when supplied and otherwise preserves the base
+// rollout result.
 func (e *fakeEnd) result(base RunResult) RunResult {
 	if e.res != nil {
 		return *e.res

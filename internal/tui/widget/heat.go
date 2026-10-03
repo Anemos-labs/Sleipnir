@@ -34,6 +34,7 @@ const heatStateCount = 7
 // heatOrder is the order of the legend.
 var heatOrder = [heatStateCount]AgentState{StateThinking, StateTool, StateEdit, StateWait, StateIdle, StateDone, StateStuck}
 
+// valid maps unsupported agent-state values to idle.
 func (s AgentState) valid() AgentState {
 	if s >= heatStateCount {
 		return StateIdle

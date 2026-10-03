@@ -19,6 +19,7 @@ const (
 	dashNarrow                  // 60 to 69: two panels at the bottom
 )
 
+// dashModeFor selects full, compact, or narrow dashboard layout from terminal width.
 func dashModeFor(width int) dashMode {
 	switch {
 	case width >= 96:
@@ -361,6 +362,8 @@ func dashKanban(cols []KanbanCol, w, maxRows int, p Palette) []cell.Line {
 	return lines
 }
 
+// dashAbs returns an integer magnitude; callers must exclude the minimum int whose magnitude is
+// not representable.
 func dashAbs(n int) int {
 	if n < 0 {
 		return -n

@@ -38,6 +38,7 @@ func (p *inlineParser) closeBracket(i int) int {
 	return i + 1
 }
 
+// mdSpaceOrNL recognizes the space and newline bytes accepted by link parsing.
 func mdSpaceOrNL(c byte) bool { return c == ' ' || c == '\n' }
 
 // destination parses "url", "<url>" and an optional title after "(" (which is at i-1), up to and including ")". It returns
@@ -163,6 +164,8 @@ func isURIAutolink(s string) bool {
 	return true
 }
 
+// isEmailAutolink requires one internal at sign and excludes slash, colon, and backslash; it is a
+// lightweight Markdown check.
 func isEmailAutolink(s string) bool {
 	at := strings.IndexByte(s, '@')
 	if at < 1 || at == len(s)-1 || strings.ContainsAny(s, "/:\\") || strings.Count(s, "@") != 1 {

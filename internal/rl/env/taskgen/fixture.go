@@ -231,6 +231,8 @@ func (s FixtureSpec) validate(dirName string) error {
 	return nil
 }
 
+// safeID accepts only ASCII letters, digits, dots, underscores, and hyphens; empty input also
+// passes.
 func safeID(s string) bool {
 	for _, r := range s {
 		switch {
@@ -286,6 +288,7 @@ func readTree(root string) (map[string][]byte, error) {
 	return out, err
 }
 
+// sortedPaths returns file-map keys in lexical order.
 func sortedPaths(m map[string][]byte) []string {
 	ps := make([]string, 0, len(m))
 	for p := range m {
@@ -328,6 +331,8 @@ func writeFixtureRepo(ctx context.Context, g *env.Git, dir string, files map[str
 	return strings.TrimSpace(string(out)), nil
 }
 
+// writeFiles writes fixture files in sorted order, rejecting empty, slash-absolute, or double-dot
+// paths and making shebang files executable.
 func writeFiles(dir string, files map[string][]byte) error {
 	for _, p := range sortedPaths(files) {
 		if p == "" || strings.HasPrefix(p, "/") || strings.Contains(p, "..") {

@@ -139,6 +139,7 @@ func FromEnv(env func(string) string, tty bool, width, height int) Caps {
 	return c
 }
 
+// envInt reads a positive integer environment setting and otherwise returns the supplied default.
 func envInt(env func(string) string, key string, def int) int {
 	if n, err := strconv.Atoi(strings.TrimSpace(env(key))); err == nil && n > 0 {
 		return n
@@ -209,6 +210,7 @@ func basicVT(term string) bool {
 	return strings.HasPrefix(term, "vt") || term == "ansi" || term == "cygwin"
 }
 
+// animAllowed honors explicit animation disablement and non-off reduced-motion preferences.
 func animAllowed(env func(string) string) bool {
 	if isOff(env("SLEIPNIR_ANIM")) {
 		return false

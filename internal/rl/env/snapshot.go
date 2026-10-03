@@ -35,6 +35,8 @@ type SkippedPath struct {
 	Reason string `json:"reason"`
 }
 
+// randHex returns n random bytes as hexadecimal and panics if the entropy source fails; n must be
+// nonnegative.
 func randHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -447,6 +449,7 @@ func (m *Workspaces) hashTree(ctx context.Context, o hashOpts) (hashResult, erro
 // It is deliberately not an InfraError: the agent caused it.
 type limitError struct{ msg string }
 
+// Error returns the snapshot limit violation message.
 func (e *limitError) Error() string { return e.msg }
 
 // dirChecker memoises whether a directory path consists solely of real
@@ -458,6 +461,8 @@ type dirChecker struct {
 	memo map[string]bool
 }
 
+// ok recursively verifies that each directory component is a real directory under the opened root
+// and memoizes results under lock.
 func (d *dirChecker) ok(dir string) bool {
 	if dir == "." || dir == "" {
 		return true
@@ -588,6 +593,7 @@ type snapMeta struct {
 	Git      string        `json:"git,omitempty"`
 }
 
+// altObjects returns the snapshot's alternate Git object directory.
 func (s *snapshot) altObjects() string { return filepath.Join(s.base, "objects") }
 
 const gitConfigFile = `[user]
@@ -611,6 +617,7 @@ type SetupError struct {
 	Output   string
 }
 
+// Error formats setup failure status or timeout with a bounded tail of command output.
 func (e *SetupError) Error() string {
 	why := fmt.Sprintf("exit status %d", e.ExitCode)
 	if e.TimedOut {

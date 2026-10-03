@@ -150,4 +150,5 @@ func keyBefore(raw []byte, start int) string {
 	return key
 }
 
+// isJSONSpace recognizes exactly the four whitespace bytes permitted by JSON.
 func isJSONSpace(b byte) bool { return b == ' ' || b == '\t' || b == '\r' || b == '\n' }

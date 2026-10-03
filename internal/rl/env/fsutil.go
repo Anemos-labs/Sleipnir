@@ -279,6 +279,8 @@ type cloner struct {
 	strategy atomic.Int32 // index of the strategy that last worked
 }
 
+// cloneCommands returns platform-specific directory-copy commands in preference order, trying
+// filesystem cloning before ordinary copying where supported.
 func cloneCommands(src, dst string) [][]string {
 	s, d := src+string(filepath.Separator)+".", dst+string(filepath.Separator)
 	switch runtime.GOOS {

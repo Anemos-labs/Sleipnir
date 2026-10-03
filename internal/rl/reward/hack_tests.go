@@ -242,6 +242,7 @@ func analyzeTestChange(f *fileDiff, lang string, capAssert int) []string {
 	return reasons
 }
 
+// goBuildIgnore detects added Go build-tag lines containing an ignore, !test, or never field.
 func goBuildIgnore(added string) bool {
 	for _, line := range strings.Split(added, "\n") {
 		l := foldLine(line)
@@ -278,11 +279,13 @@ type nameSet struct {
 // exists to notice.
 const similarityBudget = 4_000_000
 
+// newNameSet initializes exact and stripped name indexes with a shared similarity-work budget.
 func newNameSet() nameSet {
 	b := similarityBudget
 	return nameSet{set: map[string]bool{}, strippedSet: map[string]bool{}, budget: &b}
 }
 
+// add records a name and its stripped form in ordered lists and membership indexes.
 func (ns *nameSet) add(name string) {
 	st := stripTestPrefix(name)
 	ns.list = append(ns.list, name)
@@ -399,6 +402,7 @@ func lostTests(removed, added nameSet) []string {
 
 var genericTestPrefixes = []string{"benchmark", "example", "fuzz", "test_", "test", "it ", "should "}
 
+// stripTestPrefix lowercases a name and removes the first recognized generic test prefix.
 func stripTestPrefix(s string) string {
 	l := strings.ToLower(s)
 	for _, p := range genericTestPrefixes {
@@ -429,6 +433,8 @@ func similarStripped(x, y string) bool {
 	return float64(pre+suf) >= 0.6*float64(longer)
 }
 
+// countLines counts all pattern matches on folded nonblank lines, not just the number of matching
+// lines.
 func countLines(re *regexp.Regexp, code string) int {
 	n := 0
 	for _, line := range strings.Split(code, "\n") {
@@ -440,6 +446,8 @@ func countLines(re *regexp.Regexp, code string) int {
 	return n
 }
 
+// countAssertions counts language-specific assertion patterns, counting at most one matching
+// assertion per Python line.
 func countAssertions(kit *testKit, code string) int {
 	if kit.lang != "py" {
 		// The patterns are token sequences without line anchors: one pass over the
@@ -458,6 +466,7 @@ func countAssertions(kit *testKit, code string) int {
 	return n
 }
 
+// firstN returns a shared slice of at most n strings; n must be nonnegative.
 func firstN(s []string, n int) []string {
 	if len(s) > n {
 		return s[:n]
@@ -465,6 +474,7 @@ func firstN(s []string, n int) []string {
 	return s
 }
 
+// clipText retains at most n runes and appends three dots on truncation; n must be nonnegative.
 func clipText(s string, n int) string {
 	r := []rune(s)
 	if len(r) > n {
@@ -632,6 +642,8 @@ func tautology(lang, named string) string {
 	return ""
 }
 
+// isLiteralTruthy recognizes true, one, and nonempty quoted spellings as a language-agnostic
+// heuristic.
 func isLiteralTruthy(s string) bool {
 	if s == "true" || s == "1" {
 		return true

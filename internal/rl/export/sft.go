@@ -84,6 +84,8 @@ func (x *exporter) sftEpisodes(work []*workEpisode) []*workEpisode {
 	return out
 }
 
+// writeSFT exports selected episodes by agent and continuous prompt chain, stopping on the first
+// unit failure.
 func (x *exporter) writeSFT(work []*workEpisode) error {
 	for _, we := range x.sftEpisodes(work) {
 		for ai := range we.ep.Agents {

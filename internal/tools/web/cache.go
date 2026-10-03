@@ -32,6 +32,7 @@ type cacheEntry struct {
 	size int64
 }
 
+// newCache initializes an empty LRU document cache with entry, byte, and TTL limits.
 func newCache(maxEntries int, maxBytes int64, ttl time.Duration) *cache {
 	return &cache{
 		ll:         list.New(),
@@ -78,6 +79,8 @@ func (c *cache) put(key string, doc *document, now time.Time) {
 	}
 }
 
+// removeLocked removes an LRU entry from its list and index and decrements byte accounting; the
+// caller must hold the cache lock.
 func (c *cache) removeLocked(el *list.Element) {
 	e := el.Value.(*cacheEntry)
 	c.ll.Remove(el)
@@ -85,6 +88,7 @@ func (c *cache) removeLocked(el *list.Element) {
 	c.bytes -= e.size
 }
 
+// len reads the number of retained cache entries under the cache lock.
 func (c *cache) len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -31,6 +31,8 @@ func (s *Swarm) refuseService(role string) *tools.Result {
 	return nil
 }
 
+// decode treats absent arguments as an empty JSON object and returns a tool error on decoding
+// failure.
 func decode(in json.RawMessage, v any) *tools.Result {
 	if len(in) == 0 {
 		in = json.RawMessage(`{}`)
@@ -41,6 +43,7 @@ func decode(in json.RawMessage, v any) *tools.Result {
 	return nil
 }
 
+// text formats a successful text-only tool result.
 func text(format string, args ...any) *tools.Result {
 	return &tools.Result{Text: fmt.Sprintf(format, args...)}
 }
@@ -311,6 +314,8 @@ func renderTaskList(s *Snapshot) string {
 
 type mailTool struct{ s *Swarm }
 
+// Spec declares the direct-agent mail tool schema and delivery contract without applying runtime
+// permissions.
 func (t *mailTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "mail",
@@ -350,6 +355,7 @@ func (t *mailTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) 
 
 type noteTool struct{ s *Swarm }
 
+// Spec declares the durable team-note schema with shared or role scope.
 func (t *noteTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "note",
@@ -383,6 +389,7 @@ type spawnTool struct{ s *Swarm }
 
 var taskID = regexp.MustCompile(`^T\d+$`)
 
+// Spec declares the worker spawn/reuse schema; manager authorization is enforced during execution.
 func (t *spawnTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "spawn",
@@ -427,6 +434,7 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 
 type waitTool struct{ s *Swarm }
 
+// Spec declares the read-only wait tool and its task-ID and timeout inputs.
 func (t *waitTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "wait",
@@ -536,6 +544,8 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	}
 }
 
+// taskIDs formats the first-to-last task ID range in snapshot order, or a label for an empty
+// board.
 func taskIDs(s *Snapshot) string {
 	if len(s.Tasks) == 0 {
 		return "none yet"
@@ -558,6 +568,7 @@ func (s *Swarm) baseFor(agentID string) *Snapshot {
 	return s.Board.Snapshot()
 }
 
+// setSeen records a board snapshot under the swarm lock only for a registered member.
 func (s *Swarm) setSeen(agentID string, snap *Snapshot) {
 	s.mu.Lock()
 	if _, ok := s.members[agentID]; ok {

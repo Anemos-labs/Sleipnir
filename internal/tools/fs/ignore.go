@@ -158,8 +158,11 @@ func (f *ignoreFile) decide(rel []string, isDir bool) (ignored, decided bool) {
 // ignoreStack is the chain of .gitignore files in effect: shallow first.
 type ignoreStack struct{ files []*ignoreFile }
 
+// push adds an ignore file to the active directory traversal scope.
 func (s *ignoreStack) push(f *ignoreFile) { s.files = append(s.files, f) }
-func (s *ignoreStack) pop()               { s.files = s.files[:len(s.files)-1] }
+
+// pop removes the innermost ignore file; the stack must be nonempty.
+func (s *ignoreStack) pop() { s.files = s.files[:len(s.files)-1] }
 
 // ignored evaluates a path given as segments relative to the walk origin.
 func (s *ignoreStack) ignored(segs []string, isDir bool) bool {

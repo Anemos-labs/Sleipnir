@@ -104,6 +104,7 @@ func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
 	return info, nil
 }
 
+// sayTrust emits a session-wide trust notice when a sink is configured.
 func sayTrust(o *Options, level, msg string) {
 	if o.Sink != nil {
 		o.Sink.Notice("", level, msg)

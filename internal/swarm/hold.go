@@ -60,6 +60,7 @@ type unfinishedWork struct {
 	idle []string
 }
 
+// empty reports whether every unfinished-work category is empty.
 func (u unfinishedWork) empty() bool {
 	return len(u.running)+len(u.review)+len(u.doing)+len(u.blocked)+len(u.todo) == 0
 }
@@ -190,12 +191,15 @@ func (h *holdHooks) BeforeCompact(ctx context.Context, agentID, role, reason str
 	}
 }
 
+// AfterCompact forwards compaction notifications only when the wrapped hooks implement
+// CompactionHooks.
 func (h *holdHooks) AfterCompact(ctx context.Context, agentID, role, reason string) {
 	if ch, ok := h.inner.(agent.CompactionHooks); ok {
 		ch.AfterCompact(ctx, agentID, role, reason)
 	}
 }
 
+// BeforeTool delegates to wrapped hooks when present and otherwise returns an empty outcome.
 func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.ToolHookOutcome {
 	if h.inner == nil {
 		return agent.ToolHookOutcome{}
@@ -203,6 +207,7 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 	return h.inner.BeforeTool(ctx, c)
 }
 
+// AfterTool delegates to wrapped hooks when present and otherwise returns an empty outcome.
 func (h *holdHooks) AfterTool(ctx context.Context, c agent.ToolHookCall, r *tools.Result) agent.ToolHookOutcome {
 	if h.inner == nil {
 		return agent.ToolHookOutcome{}

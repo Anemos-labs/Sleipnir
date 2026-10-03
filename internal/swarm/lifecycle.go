@@ -114,6 +114,7 @@ type member struct {
 	pubMu sync.Mutex
 }
 
+// touch atomically records the swarm clock's current time as the member's latest progress.
 func (m *member) touch(s *Swarm) { m.progress.Store(s.deps.Now().UnixNano()) }
 
 // panicError is what a run that panicked returns to finishRun.
@@ -122,6 +123,7 @@ type panicError struct {
 	stack []byte
 }
 
+// Error formats the value recovered from a worker panic.
 func (p *panicError) Error() string { return fmt.Sprintf("panic: %v", p.val) }
 
 // emit writes a swarm-level event. An emitter that panics or fails is contained.
@@ -130,6 +132,7 @@ func (s *Swarm) emit(typ string, data any) {
 	_, _ = s.deps.Events.Emit("swarm", typ, data)
 }
 
+// emitAs emits an event for the specified agent while suppressing emitter errors and panics.
 func (s *Swarm) emitAs(agentID, typ string, data any) {
 	defer func() { _ = recover() }()
 	_, _ = s.deps.Events.Emit(agentID, typ, data)
@@ -252,6 +255,7 @@ func (s *Swarm) register(m *member, builtShared *kv.Layer) {
 	}
 }
 
+// get reads a member pointer under the swarm lock, returning nil for unknown IDs.
 func (s *Swarm) get(id string) *member {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -307,6 +311,8 @@ func (m *member) setState(s *Swarm, state, line string) {
 	m.publish(s)
 }
 
+// flushLine clears the pending flush timer and dirty flag, records the push time, and publishes
+// outside the member lock only when progress changed.
 func (m *member) flushLine(s *Swarm) {
 	m.mu.Lock()
 	m.flushT = nil
@@ -319,6 +325,7 @@ func (m *member) flushLine(s *Swarm) {
 	}
 }
 
+// stopTimers stops and clears a member's pending flush timer under its lock.
 func (m *member) stopTimers() {
 	m.mu.Lock()
 	if m.flushT != nil {
@@ -362,6 +369,8 @@ type memberSink struct {
 	ev *Evidence
 }
 
+// safely recovers sink panics and records them as sink.panic events instead of unwinding the
+// worker.
 func (k *memberSink) safely(fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -371,16 +380,20 @@ func (k *memberSink) safely(fn func()) {
 	fn()
 }
 
+// Text records member progress before forwarding a text delta through the panic-safe sink wrapper.
 func (k *memberSink) Text(a, d string) {
 	k.m.touch(k.s)
 	k.safely(func() { k.Sink.Text(a, d) })
 }
 
+// Thinking records member progress before forwarding a reasoning delta through the panic-safe sink
+// wrapper.
 func (k *memberSink) Thinking(a, d string) {
 	k.m.touch(k.s)
 	k.safely(func() { k.Sink.Thinking(a, d) })
 }
 
+// Response records member progress before safely forwarding response metadata and cache usage.
 func (k *memberSink) Response(a string, r *provider.Response, hit float64) {
 	k.m.touch(k.s)
 	k.safely(func() { k.Sink.Response(a, r, hit) })
@@ -400,12 +413,16 @@ func (k *memberSink) Notice(a, level, msg string) {
 	k.safely(func() { k.Sink.Notice(a, level, msg) })
 }
 
+// ToolStart records progress, updates the member's running activity, and safely forwards the
+// tool-start notification.
 func (k *memberSink) ToolStart(a string, call core.Block) {
 	k.m.touch(k.s)
 	k.safely(func() { k.m.setState(k.s, "running", activity(call)) })
 	k.safely(func() { k.Sink.ToolStart(a, call) })
 }
 
+// ToolEnd records progress and evidence, restores running state after wait, and safely forwards
+// completion to the sink.
 func (k *memberSink) ToolEnd(a string, call core.Block, res *tools.Result, took time.Duration) {
 	k.m.touch(k.s)
 	k.safely(func() { k.ev.Observe(call, res, k.s.deps.Now()) })
@@ -594,6 +611,7 @@ func (s *Swarm) noteMailWakeLimit(m *member, limit int) {
 		m.id, limit, safeToken(taskLabel(task), 24)))
 }
 
+// taskLabel substitutes a generic task description when no task label is available.
 func taskLabel(s string) string {
 	if s == "" {
 		return "its task"
@@ -867,6 +885,8 @@ func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind,
 	return strings.Join(notes, "; ")
 }
 
+// requeueLine explains a task's terminal failure or return to todo with attempt counts and the
+// worker's stop reason.
 func (s *Swarm) requeueLine(agentID string, t Task, why string) string {
 	if t.Status == StatusFailed {
 		return fmt.Sprintf("%s failed after %d attempts: %s stopped (%s)", t.ID, t.Attempts, agentID, why)

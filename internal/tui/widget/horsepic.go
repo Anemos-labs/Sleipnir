@@ -16,6 +16,7 @@ type hpx struct {
 	leg int8
 }
 
+// empty reports whether a horse-picture pixel uses the blank or unset palette key.
 func (a hpx) empty() bool { return a.key == ' ' || a.key == 0 }
 
 // hpic is a sprite as a grid of pixels.
@@ -24,6 +25,7 @@ type hpic struct {
 	px   []hpx
 }
 
+// at reads a horse-picture pixel and treats out-of-bounds coordinates as blank.
 func (p hpic) at(x, y int) hpx {
 	if x < 0 || y < 0 || x >= p.w || y >= p.h {
 		return hpx{key: ' '}
@@ -44,7 +46,10 @@ var horseMarkLegs = [8]int{0, 1, 1, 2, 2, 3, 4, 5}
 // row (two pixel rows). It is worked out from the raw sprite without parsing it, so that choosing a size costs nothing.
 type horseBox struct{ x0, x1, y0, y1 int }
 
+// cols returns the horse picture bounding box's terminal-column span.
 func (b horseBox) cols() int { return b.x1 - b.x0 }
+
+// rows converts the horse picture's pixel height into terminal rows at two pixels per row.
 func (b horseBox) rows() int { return (b.y1 - b.y0) / 2 }
 
 // horseBoxOf is the box of a size; ok is false when there is no such size or it has no pixels.

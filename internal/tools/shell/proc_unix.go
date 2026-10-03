@@ -21,8 +21,10 @@ func configureCmd(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
+// termGroup sends SIGTERM to the Unix process group and ignores signaling errors.
 func termGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGTERM) }
 
+// killGroup sends SIGKILL to the Unix process group and ignores signaling errors.
 func killGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGKILL) }
 
 // groupAlive reports whether any live process remains in the group.
@@ -78,6 +80,8 @@ func liveMembers(pgid int) (alive, ok bool) {
 	return false, seen
 }
 
+// exitFrom translates Unix signal exits to 128+signal and preserves wait errors when no process
+// state exists.
 func exitFrom(ps *os.ProcessState, err error) exitStatus {
 	if ps == nil {
 		return exitStatus{code: -1, err: err}

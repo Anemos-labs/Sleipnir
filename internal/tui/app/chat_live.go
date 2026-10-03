@@ -227,6 +227,7 @@ func (k *chatLook) liveLines(v *liveView) liveOut {
 	return out
 }
 
+// fitAll allocates a line slice with each input line fitted to the available terminal width.
 func (k *chatLook) fitAll(ls []cell.Line, w int) []cell.Line {
 	out := make([]cell.Line, len(ls))
 	for i, l := range ls {
@@ -602,6 +603,7 @@ func (k *chatLook) dialogHint(d *dialogView, w int) cell.Line {
 	return k.fit(variants[len(variants)-1], w)
 }
 
+// upDown chooses Unicode or ASCII navigation hints according to terminal capability.
 func (k *chatLook) upDown() string {
 	if k.Unicode {
 		return "↑↓"

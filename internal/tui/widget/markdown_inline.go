@@ -93,6 +93,7 @@ var mdSpecial = func() (t [256]bool) {
 	return
 }()
 
+// flush emits buffered inline text as one token and resets the text builder.
 func (p *inlineParser) flush() {
 	if p.txt.Len() > 0 {
 		p.toks = append(p.toks, inlineTok{kind: tkText, text: p.txt.String()})
@@ -100,12 +101,14 @@ func (p *inlineParser) flush() {
 	}
 }
 
+// add flushes pending inline text, appends a token, and returns its index.
 func (p *inlineParser) add(t inlineTok) int {
 	p.flush()
 	p.toks = append(p.toks, t)
 	return len(p.toks) - 1
 }
 
+// mdASCIIPunct recognizes ASCII punctuation ranges used in Markdown escape handling.
 func mdASCIIPunct(c byte) bool {
 	return (c >= '!' && c <= '/') || (c >= ':' && c <= '@') || (c >= '[' && c <= '`') || (c >= '{' && c <= '~')
 }
@@ -229,6 +232,7 @@ func (p *inlineParser) codeSpan(i int) int {
 
 // ---- emphasis ----
 
+// mdLastRune returns the final rune or a newline sentinel for empty text.
 func mdLastRune(s string) rune {
 	if s == "" {
 		return '\n'
@@ -237,6 +241,7 @@ func mdLastRune(s string) rune {
 	return r
 }
 
+// mdFirstRune returns the first rune or a newline sentinel for empty text.
 func mdFirstRune(s string) rune {
 	if s == "" {
 		return '\n'
@@ -245,6 +250,7 @@ func mdFirstRune(s string) rune {
 	return r
 }
 
+// mdPunct includes Unicode punctuation and symbols when classifying Markdown delimiters.
 func mdPunct(r rune) bool { return unicode.IsPunct(r) || unicode.IsSymbol(r) }
 
 func (p *inlineParser) delimRun(i int) int {

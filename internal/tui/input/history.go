@@ -210,6 +210,7 @@ func keepNewest(entries []string, max int, budget int64) []string {
 	return entries
 }
 
+// encodeLine JSON-quotes a history entry and appends a newline for the history file.
 func encodeLine(text string) ([]byte, error) {
 	b, err := json.Marshal(text)
 	if err != nil {
@@ -339,6 +340,7 @@ func readLine(r *bufio.Reader) (line []byte, tooLong bool, err error) {
 	}
 }
 
+// trimEOL removes trailing CR and LF bytes, returning a slice of the input.
 func trimEOL(b []byte) []byte { return bytes.TrimRight(b, "\r\n") }
 
 // compact rewrites the file to the newest entries (merging what other sessions appended), through a temporary file in the

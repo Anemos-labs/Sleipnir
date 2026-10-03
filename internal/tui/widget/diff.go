@@ -23,6 +23,7 @@ type DiffOptions struct {
 	NoHeader bool
 }
 
+// context defaults zero context to two lines, negative values to none, and caps positive values.
 func (o DiffOptions) context() int {
 	switch {
 	case o.Context == 0:
@@ -33,6 +34,7 @@ func (o DiffOptions) context() int {
 	return min(o.Context, 1<<20)
 }
 
+// tabs defaults invalid tab widths to four and caps explicit widths at sixteen.
 func (o DiffOptions) tabs() int {
 	if o.TabWidth < 1 {
 		return 4
@@ -105,6 +107,8 @@ func Diff(path, before, after string, width int, th Theme, o DiffOptions) []cell
 	return diffRenderFiles([]dfFile{f}, width, th, o)
 }
 
+// splitDiffLines removes a final newline, splits lines, and strips trailing carriage returns;
+// empty input returns nil.
 func splitDiffLines(s string) []string {
 	if s == "" {
 		return nil
@@ -217,6 +221,8 @@ type dfLayout struct {
 	textW   int
 }
 
+// diffDigits returns the decimal width needed for a positive line number, using one digit for
+// nonpositive values.
 func diffDigits(n int) int { return len(strconv.Itoa(max(n, 1))) }
 
 func diffChooseLayout(width, maxOld, maxNew int, noNums bool) dfLayout {
@@ -324,6 +330,8 @@ func diffHeader(f dfFile, width int, th Theme) []cell.Line {
 	return []cell.Line{l}
 }
 
+// diffWrapNote wraps a styled diff note at the supplied cell width with no continuation
+// indentation.
 func diffWrapNote(l cell.Line, width int) []cell.Line { return l.Wrap(width, 0) }
 
 func diffSeparator(h dfHunk, hi int, lay dfLayout, width int, th Theme, g *glyphSet) cell.Line {

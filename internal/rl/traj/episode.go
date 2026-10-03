@@ -273,6 +273,7 @@ func (b *builder) collectAgents() {
 	}
 }
 
+// agentOf resolves the request's agent, using the legacy agent key for an omitted ID.
 func (b *builder) agentOf(q *reqInfo) *agentInfo {
 	if q.agent == "" {
 		return b.agents["agent"]
@@ -373,6 +374,7 @@ func (b *builder) finishStep(st *stepInfo, sp sharedInfo) {
 	}
 }
 
+// equalHashes compares hash sequences by length and order.
 func equalHashes(a, b []core.Hash) bool {
 	if len(a) != len(b) {
 		return false

@@ -66,6 +66,8 @@ func toolSummary(name string, in *toolInput) string {
 	return clean(v, textShort)
 }
 
+// toolStatus maps file mutations to editing and wait to waiting, using generic tool activity
+// otherwise.
 func toolStatus(name string) Status {
 	switch name {
 	case "edit", "write", "apply_patch":

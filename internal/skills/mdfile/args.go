@@ -183,6 +183,8 @@ func escapable(s string) bool {
 	return s[0] >= '1' && s[0] <= '9' || strings.HasPrefix(s, "ARGUMENTS")
 }
 
+// identChar recognizes an ASCII letter, digit, or underscore at a nonnegative byte index,
+// returning false beyond the string.
 func identChar(s string, i int) bool {
 	if i >= len(s) {
 		return false
@@ -191,6 +193,8 @@ func identChar(s string, i int) bool {
 	return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
+// smallInt parses one to three ASCII decimal digits without a sign, reporting false for any other
+// input.
 func smallInt(s string) (int, bool) {
 	if s == "" || len(s) > 3 {
 		return 0, false

@@ -147,6 +147,8 @@ func DefaultBoardLimits() BoardLimits {
 	return BoardLimits{MaxTasks: 1000, MaxNotes: 48, MaxNotesPerAgent: 8, MaxAlerts: 8, AlertTTL: 2 * time.Minute}
 }
 
+// withDefaults returns a copy with nonpositive task, note, alert, and alert-lifetime limits
+// replaced by defaults.
 func (l BoardLimits) withDefaults() BoardLimits {
 	d := DefaultBoardLimits()
 	if l.MaxTasks <= 0 {
@@ -246,6 +248,8 @@ type draft struct {
 	evt            map[string]any
 }
 
+// tasks copies the draft's task slice on first access so edits do not mutate the prior snapshot's
+// slice.
 func (d *draft) tasks() []Task {
 	if !d.ct {
 		d.Tasks = append(make([]Task, 0, len(d.Tasks)+1), d.Tasks...)
@@ -254,6 +258,8 @@ func (d *draft) tasks() []Task {
 	return d.Tasks
 }
 
+// agents copies the draft's agent slice on first access so edits do not mutate the prior
+// snapshot's slice.
 func (d *draft) agents() []AgentInfo {
 	if !d.ca {
 		d.Agents = append(make([]AgentInfo, 0, len(d.Agents)+1), d.Agents...)
@@ -262,6 +268,8 @@ func (d *draft) agents() []AgentInfo {
 	return d.Agents
 }
 
+// notes copies the draft's note slice on first access so edits do not mutate the prior snapshot's
+// slice.
 func (d *draft) notes() []Note {
 	if !d.cn {
 		d.Notes = append(make([]Note, 0, len(d.Notes)+1), d.Notes...)
@@ -270,6 +278,8 @@ func (d *draft) notes() []Note {
 	return d.Notes
 }
 
+// alerts copies the draft's alert slice on first access so edits do not mutate the prior
+// snapshot's slice.
 func (d *draft) alerts() []Alert {
 	if !d.cl {
 		d.Alerts = append(make([]Alert, 0, len(d.Alerts)+1), d.Alerts...)
@@ -345,6 +355,8 @@ func (b *Board) mutate(actor, op string, fn func(d *draft) error) error {
 	return nil
 }
 
+// enqueueLocked queues a board event, dropping the oldest pending event when full. The caller must
+// hold the board lock; true grants it responsibility for flushing the queue.
 func (b *Board) enqueueLocked(actor string, data map[string]any) bool {
 	if len(b.evq) >= maxPendingEvts {
 		b.evq = b.evq[1:]
@@ -387,6 +399,7 @@ func (b *Board) flush() {
 	}
 }
 
+// taskIdx returns the first task index matching an ID or -1 when absent.
 func taskIdx(s *Snapshot, id string) int {
 	for i := range s.Tasks {
 		if s.Tasks[i].ID == id {
@@ -469,6 +482,8 @@ func depsDone(s *Snapshot, t Task) (bool, Task) {
 	return true, Task{}
 }
 
+// depsError identifies an unresolved dependency and adds recovery guidance when the dependency
+// failed.
 func depsError(id string, dep Task) error {
 	if dep.Status == StatusFailed {
 		return fmt.Errorf("%s waits for %s, which failed: reopen it or re-plan", id, dep.ID)
@@ -1206,6 +1221,8 @@ func (b *Board) ClearAlertKey(kind, key string) {
 	})
 }
 
+// clearAlerts removes alerts selected by drop and marks the draft changed, returning errNoChange
+// when no alert is removed.
 func (d *draft) clearAlerts(drop func(Alert) bool) error {
 	keep := make([]Alert, 0, len(d.Alerts))
 	for _, a := range d.Alerts {
@@ -1220,6 +1237,7 @@ func (d *draft) clearAlerts(drop func(Alert) bool) error {
 	return nil
 }
 
+// ownerOrNone substitutes a readable nobody label for an unowned task.
 func ownerOrNone(o string) string {
 	if o == "" {
 		return "nobody"

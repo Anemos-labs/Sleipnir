@@ -182,14 +182,17 @@ func (m *Manager) begin() error {
 	return nil
 }
 
+// end releases one active-operation count previously acquired from the manager.
 func (m *Manager) end() { m.wg.Done() }
 
+// track adds a running process to the manager's shutdown registry under its lock.
 func (m *Manager) track(p *proc) {
 	m.mu.Lock()
 	m.procs[p] = struct{}{}
 	m.mu.Unlock()
 }
 
+// untrack removes a process from the manager's shutdown registry under its lock.
 func (m *Manager) untrack(p *proc) {
 	m.mu.Lock()
 	delete(m.procs, p)
@@ -238,6 +241,7 @@ type shellInfo struct {
 	posix bool     // understands the EXIT-trap wrapper used for cwd tracking
 }
 
+// shell detects the configured shell once and returns the cached result or detection error.
 func (m *Manager) shell() (shellInfo, error) {
 	m.shellOnce.Do(func() { m.sh, m.shErr = detectShell(m.opts.Shell) })
 	return m.sh, m.shErr

@@ -147,6 +147,7 @@ func (d *Doc) AddText(title, text string) {
 	fmt.Fprintf(&d.sb, "\n== %s\n%s\n", title, strings.TrimRight(text, "\n"))
 }
 
+// String returns the accumulated visual fixture document.
 func (d *Doc) String() string { return d.sb.String() }
 
 // RegisterUpdateFlag defines the -update flag of the repo's golden convention (go test ./pkg -update rewrites the golden

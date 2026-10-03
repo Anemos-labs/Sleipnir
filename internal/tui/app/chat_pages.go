@@ -59,6 +59,7 @@ func (m *chatModel) callOf(r perm.Request) *toolRun {
 	return best
 }
 
+// callOf projects the tool run's identity and input into a core block for presentation.
 func callOf(t *toolRun) core.Block {
 	return core.Block{ToolID: t.id, ToolName: t.name, Input: t.input}
 }

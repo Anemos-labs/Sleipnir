@@ -161,6 +161,7 @@ func summary(description, command string) string {
 	return s
 }
 
+// firstLine returns the first nonblank shell-output line with surrounding whitespace removed.
 func firstLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
@@ -210,6 +211,7 @@ func backgroundTimeout(sec float64, has bool) time.Duration {
 	return secondsToDuration(sec, 24*time.Hour)
 }
 
+// secondsToDuration converts seconds while capping values at the supplied duration ceiling.
 func secondsToDuration(sec float64, ceiling time.Duration) time.Duration {
 	if sec >= ceiling.Seconds() {
 		return ceiling
@@ -217,6 +219,8 @@ func secondsToDuration(sec float64, ceiling time.Duration) time.Duration {
 	return time.Duration(sec * float64(time.Second))
 }
 
+// fmtSeconds formats a duration as decimal seconds with an s suffix and no unnecessary trailing
+// digits.
 func fmtSeconds(d time.Duration) string {
 	return strconv.FormatFloat(d.Seconds(), 'f', -1, 64) + "s"
 }

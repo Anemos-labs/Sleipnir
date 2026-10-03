@@ -58,6 +58,7 @@ func MonoPalette() Palette { return Palette{Mono: true} }
 // noColour reports whether p draws without colours.
 func (p Palette) noColour() bool { return p.Mono || p == (Palette{}) }
 
+// showFG creates a style that sets only the foreground color.
 func showFG(c cell.Color) cell.Style { return cell.Style{FG: c} }
 
 // dimSt is secondary text: the Dim colour, or the Dim attribute when there is no colour to be dim in.
@@ -76,10 +77,19 @@ func (p Palette) faintSt() cell.Style {
 	return showFG(p.Faint)
 }
 
-func (p Palette) goodSt() cell.Style   { return showFG(p.Good) }
-func (p Palette) badSt() cell.Style    { return showFG(p.Bad).With(cell.Bold) }
-func (p Palette) warnSt() cell.Style   { return showFG(p.Warn) }
-func (p Palette) infoSt() cell.Style   { return showFG(p.Info) }
+// goodSt returns the palette's success foreground style.
+func (p Palette) goodSt() cell.Style { return showFG(p.Good) }
+
+// badSt returns the palette's error foreground style with bold emphasis.
+func (p Palette) badSt() cell.Style { return showFG(p.Bad).With(cell.Bold) }
+
+// warnSt returns the palette's warning foreground style.
+func (p Palette) warnSt() cell.Style { return showFG(p.Warn) }
+
+// infoSt returns the palette's informational foreground style.
+func (p Palette) infoSt() cell.Style { return showFG(p.Info) }
+
+// accentSt returns the palette's accent foreground style.
 func (p Palette) accentSt() cell.Style { return showFG(p.Accent) }
 
 // layerCol is the colour of prompt layer i; an index outside G0..G6 is clamped.

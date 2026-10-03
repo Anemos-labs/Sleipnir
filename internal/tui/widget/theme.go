@@ -95,6 +95,7 @@ var (
 	palSel     = cell.Hex("#283457")
 )
 
+// themeFG creates a foreground-only style for theme definitions.
 func themeFG(c cell.Color) cell.Style { return cell.Style{FG: c} }
 
 // DefaultTheme is the theme for dark terminals, in the palette of the design sketches.

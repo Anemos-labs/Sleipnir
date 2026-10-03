@@ -72,6 +72,7 @@ func verbHash(x uint64) uint64 {
 	return x ^ (x >> 31)
 }
 
+// gcdInt computes the greatest common divisor for nonnegative inputs using Euclid's algorithm.
 func gcdInt(a, b int) int {
 	for b != 0 {
 		a, b = b, a%b

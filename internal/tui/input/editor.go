@@ -47,16 +47,35 @@ type SearchClosed struct{}
 // give it a meaning of its own.
 type Unhandled struct{ Key Key }
 
-func (Submit) isEvent()           {}
-func (Interrupt) isEvent()        {}
-func (EOF) isEvent()              {}
-func (Redraw) isEvent()           {}
-func (Changed) isEvent()          {}
+// isEvent marks Submit as an editor event without runtime work.
+func (Submit) isEvent() {}
+
+// isEvent marks Interrupt as an editor event without runtime work.
+func (Interrupt) isEvent() {}
+
+// isEvent marks EOF as an editor event without runtime work.
+func (EOF) isEvent() {}
+
+// isEvent marks Redraw as an editor event without runtime work.
+func (Redraw) isEvent() {}
+
+// isEvent marks Changed as an editor event without runtime work.
+func (Changed) isEvent() {}
+
+// isEvent marks CompletionOpened as an editor event without runtime work.
 func (CompletionOpened) isEvent() {}
+
+// isEvent marks CompletionClosed as an editor event without runtime work.
 func (CompletionClosed) isEvent() {}
-func (SearchOpened) isEvent()     {}
-func (SearchClosed) isEvent()     {}
-func (Unhandled) isEvent()        {}
+
+// isEvent marks SearchOpened as an editor event without runtime work.
+func (SearchOpened) isEvent() {}
+
+// isEvent marks SearchClosed as an editor event without runtime work.
+func (SearchClosed) isEvent() {}
+
+// isEvent marks Unhandled as an editor event without runtime work.
+func (Unhandled) isEvent() {}
 
 // Options configures an Editor. The zero value is usable.
 type Options struct {
@@ -227,6 +246,8 @@ func (e *Editor) Reset() {
 	e.dirty = true
 }
 
+// resetInput clears the draft, cursor, chips, undo state, history navigation, and transient menus
+// while removing chip-backed kills.
 func (e *Editor) resetInput() {
 	e.buf, e.cur, e.want = nil, 0, -1
 	e.chips, e.chipBytes, e.lcache = nil, 0, nil
@@ -238,6 +259,7 @@ func (e *Editor) resetInput() {
 	e.lastKill, e.lastYank, e.lastGrp = false, false, grpNone
 }
 
+// emit appends an editor event to the pending output queue.
 func (e *Editor) emit(ev Event) { e.out = append(e.out, ev) }
 
 // Handle applies one key and returns what happened, in order. It never fails: a key it does not understand comes back as
@@ -290,6 +312,7 @@ func (e *Editor) dispatch(k Key) {
 	e.afterKey(typed)
 }
 
+// unhandled queues a key event for processing by the editor's caller.
 func (e *Editor) unhandled(k Key) { e.emit(Unhandled{Key: k}) }
 
 // runeKey handles a character key; it reports whether text was typed.
@@ -535,6 +558,7 @@ func (e *Editor) colOf(i int) int {
 	return col
 }
 
+// chipWidth returns a chip label's terminal-cell width or zero for ordinary runes.
 func (e *Editor) chipWidth(r rune) int {
 	if !isChip(r) {
 		return 0

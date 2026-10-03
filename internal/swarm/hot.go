@@ -307,6 +307,7 @@ func assemble(lines []hline, keep []bool, version uint64, agents, running, idle,
 	return sb.String()
 }
 
+// boolInt encodes true as one and false as zero.
 func boolInt(b bool) int {
 	if b {
 		return 1
@@ -314,6 +315,8 @@ func boolInt(b bool) int {
 	return 0
 }
 
+// taskLine formats task identity, status, owner, and bounded title and progress text, including
+// dependencies for pending tasks.
 func taskLine(t Task) string {
 	s := fmt.Sprintf("%s %s", t.ID, t.Status)
 	if t.Owner != "" {
@@ -329,6 +332,7 @@ func taskLine(t Task) string {
 	return s
 }
 
+// agentLine formats an agent's identity, state, optional task, and bounded activity description.
 func agentLine(a AgentInfo) string {
 	s := fmt.Sprintf("%s %s %s", a.ID, a.Role, a.State)
 	if a.Task != "" {

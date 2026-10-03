@@ -78,6 +78,7 @@ func joinDoc(lines []docLine) string {
 	return b.String()
 }
 
+// trimRightWS removes trailing spaces, tabs, and carriage returns for patch matching.
 func trimRightWS(s string) string { return strings.TrimRight(s, " \t\r") }
 
 // hunkStats counts changed lines.
@@ -238,6 +239,8 @@ func blockEOL(block []hunkLine, file []docLine, pos int, dominant string) string
 	return dominant
 }
 
+// matchExact compares a line sequence at a valid document offset; the caller must ensure the full
+// range exists.
 func matchExact(lines []docLine, seq []string, at int) bool {
 	for i, s := range seq {
 		if lines[at+i].text != s {
@@ -247,6 +250,8 @@ func matchExact(lines []docLine, seq []string, at int) bool {
 	return true
 }
 
+// matchTrimmed compares pretrimmed document lines with trailing-whitespace-normalized patch lines
+// at a valid range.
 func matchTrimmed(tr []string, seq []string, at int) bool {
 	for i, s := range seq {
 		if tr[at+i] != trimRightWS(s) {
@@ -309,6 +314,7 @@ func findAnchor(lines []docLine, anchor string, from int) int {
 	return -1
 }
 
+// quoteLine clips a diagnostic line before escaping it as a Go string literal.
 func quoteLine(s string) string { return strconv.Quote(clip(s, 120)) }
 
 func anchorMissing(disp string, hunkNo int, h patchHunk, anchor string, lines []docLine) string {

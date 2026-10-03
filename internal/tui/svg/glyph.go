@@ -263,6 +263,7 @@ func (s lineShape) draw(b *strings.Builder, x, y, w, h float64, fg string, dim b
 	}
 }
 
+// count returns the number of nonzero directional arms in a box-drawing shape.
 func (s lineShape) count() int {
 	n := 0
 	for _, a := range []uint8{s.l, s.r, s.u, s.d} {

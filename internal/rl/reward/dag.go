@@ -33,6 +33,8 @@ func RoleClass(role string) string { return roleClass(role) }
 // otherwise its agent's role.
 func StepRole(a *rl.Agent, s *rl.Step) string { return stepRole(a, s) }
 
+// stepRole classifies the explicit step role, then a service step kind, falling back to the
+// agent's role.
 func stepRole(a *rl.Agent, s *rl.Step) string {
 	if s.Role != "" {
 		return roleClass(s.Role)
@@ -59,6 +61,7 @@ func sig(ep *rl.Episode, name string) (float64, bool) {
 	return v, true
 }
 
+// sigOr uses an available episode signal and otherwise returns the supplied default.
 func sigOr(ep *rl.Episode, name string, def float64) float64 {
 	if v, ok := sig(ep, name); ok {
 		return v

@@ -62,6 +62,7 @@ var networkVars = []string{
 	"GIT_SSL_CAINFO", "PIP_CERT", "CARGO_HTTP_CAINFO", "GOPROXY", "GOINSECURE",
 }
 
+// localeFor chooses a UTF-8 locale for Linux and macOS and falls back to C elsewhere.
 func localeFor(goos string) string {
 	switch goos {
 	case "linux":
@@ -206,6 +207,8 @@ func sanitizePath(p string, deny []string) []string {
 	return out
 }
 
+// underAny compares p against cleaned root paths using native separator boundaries without
+// resolving p or symlinks.
 func underAny(p string, roots []string) bool {
 	for _, r := range roots {
 		if r == "" {

@@ -159,6 +159,7 @@ func (h *hookAdapter) BeforeCompact(ctx context.Context, agentID, role, reason s
 	}
 }
 
+// AfterCompact fires a PostCompact hook for automatic compaction with a bounded reason string.
 func (h *hookAdapter) AfterCompact(ctx context.Context, agentID, role, reason string) {
 	h.fire(ctx, hooks.Event{Name: hooks.PostCompact, Agent: agentID, Role: role, Extra: map[string]any{"trigger": "auto", "reason": clip(reason, 200)}})
 }
@@ -203,6 +204,7 @@ func (s *Session) agentHooks() agent.Hooks {
 	return s.hookAdapter
 }
 
+// mainAgent returns the manager ID for swarm sessions and the main ID otherwise.
 func (s *Session) mainAgent() string {
 	if s.opts.Swarm {
 		return "mgr"
@@ -218,6 +220,7 @@ func (s *Session) notice(agentID, msg string) {
 	}
 }
 
+// firstNonEmpty returns the first nonblank argument unchanged or empty when none exists.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {
@@ -227,6 +230,8 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
+// clip limits text by bytes and appends an ellipsis, potentially splitting UTF-8; n must be
+// nonnegative.
 func clip(s string, n int) string {
 	if len(s) > n {
 		return s[:n] + "…"

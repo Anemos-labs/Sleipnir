@@ -62,15 +62,22 @@ func (l *lexer) enter() bool {
 	return true
 }
 
+// leave decrements the lexer nesting depth after a matching enter.
 func (l *lexer) leave() { l.nest-- }
 
+// newLexer scans the full source with shared parser state and the supplied expansion depth.
 func newLexer(src string, st *state, depth int) *lexer {
 	return &lexer{src: src, end: len(src), st: st, depth: depth}
 }
 
-func isDigit(c byte) bool     { return c >= '0' && c <= '9' }
+// isDigit recognizes ASCII decimal digits in shell syntax.
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+// isNameStart accepts ASCII letters and underscore at the start of shell variable names.
 func isNameStart(c byte) bool { return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
-func isNameChar(c byte) bool  { return isNameStart(c) || isDigit(c) }
+
+// isNameChar accepts shell name-start characters and ASCII digits.
+func isNameChar(c byte) bool { return isNameStart(c) || isDigit(c) }
 
 // skipBlanks skips spaces, tabs and backslash-newline continuations.
 func (l *lexer) skipBlanks() {

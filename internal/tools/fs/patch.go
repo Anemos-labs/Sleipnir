@@ -70,6 +70,7 @@ const (
 	hdrEOF    = "*** End of File"
 )
 
+// isFileHeader recognizes add, delete, and update headers in the patch protocol.
 func isFileHeader(l string) bool {
 	return strings.HasPrefix(l, hdrAdd) || strings.HasPrefix(l, hdrDelete) || strings.HasPrefix(l, hdrUpdate)
 }
@@ -253,6 +254,7 @@ func parseHunks(body []string, i int, lineNo func(int) int) ([]patchHunk, int, s
 	return hunks, i, ""
 }
 
+// anchorText extracts optional anchor text from a unified hunk header or trims a simple @@ marker.
 func anchorText(l string) string {
 	if m := unifiedHdr.FindStringSubmatch(l); m != nil {
 		return strings.TrimSpace(m[1])

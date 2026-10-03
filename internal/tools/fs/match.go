@@ -123,6 +123,8 @@ func matchClass(p string, r rune) (bool, int) {
 	return false, -1
 }
 
+// classRune decodes a character-class rune, consuming an optional backslash; input must be
+// nonempty.
 func classRune(s string) (rune, int) {
 	if s[0] == '\\' && len(s) > 1 {
 		r, w := utf8.DecodeRuneInString(s[1:])
@@ -411,6 +413,7 @@ func compileGlob(pattern string) (*globPattern, error) {
 	return g, nil
 }
 
+// match accepts a segmented path if any compiled glob alternative matches it.
 func (g *globPattern) match(segs []string) bool {
 	for _, a := range g.alts {
 		if matchSegs(a, segs) {
@@ -420,6 +423,8 @@ func (g *globPattern) match(segs []string) bool {
 	return false
 }
 
+// couldContain reports whether any glob alternative could match below the supplied directory
+// prefix.
 func (g *globPattern) couldContain(dirSegs []string) bool {
 	for _, a := range g.alts {
 		if prefixMatch(a, dirSegs) {

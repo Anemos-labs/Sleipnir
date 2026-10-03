@@ -151,10 +151,12 @@ func (c Config) Validate() error {
 // UnknownKindError lists kind names that no rule implements.
 type UnknownKindError struct{ Kinds []string }
 
+// Error lists unknown redaction kinds and the supported group and rule names.
 func (e *UnknownKindError) Error() string {
 	return "redact: unknown kinds " + strings.Join(e.Kinds, ", ") + " (valid: " + strings.Join(append([]string{GroupTokens}, ruleOrder...), ", ") + ")"
 }
 
+// validKind accepts the token group or an explicitly supported redaction rule name.
 func validKind(k string) bool {
 	if k == GroupTokens {
 		return true
@@ -306,6 +308,8 @@ var tokenRE = regexp.MustCompile(`⟦redacted:[a-z0-9_]+:[0-9a-f]{6}⟧`)
 // plain text into an inert token, so it always terminates far earlier.
 const maxPasses = 16
 
+// run repeats redaction until no matches remain or the pass limit is reached, accumulating
+// per-kind replacement counts.
 func (r *Redactor) run(s string) (string, map[string]int) {
 	var counts map[string]int
 	for pass := 0; pass < maxPasses; pass++ {
@@ -399,6 +403,8 @@ func (r *Redactor) once(s string) (string, map[string]int) {
 	return sb.String(), counts
 }
 
+// allowed exempts a redaction when any allow pattern matches either the secret or its enclosing
+// span.
 func (r *Redactor) allowed(span, secret string) bool {
 	for _, re := range r.allow {
 		if re.MatchString(secret) || re.MatchString(span) {

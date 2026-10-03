@@ -82,6 +82,7 @@ func passAllowed(name string, pass []string) bool {
 	return false
 }
 
+// dropNUL removes NUL runes when used with strings.Map and preserves other runes.
 func dropNUL(r rune) rune {
 	if r == 0 {
 		return -1

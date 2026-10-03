@@ -95,6 +95,7 @@ func isClean(s string) (bool, int) {
 	return true, w
 }
 
+// startsWithMark reports whether the first decoded rune has zero terminal-cell width.
 func startsWithMark(s string) bool {
 	r, _ := utf8.DecodeRuneInString(s)
 	return cell.RuneWidth(r) == 0

@@ -123,6 +123,8 @@ var (
 	_ agent.Resetter = (*ChatSink)(nil)
 )
 
+// send forwards a chat message using a background context rather than a request's cancellation
+// context.
 func (s *ChatSink) send(m chatMsg) { s.l.send(context.Background(), m) }
 
 // Text forwards a piece of an agent's words.

@@ -83,6 +83,7 @@ func (rs Roles) Names() []string {
 	return out
 }
 
+// sortStrings sorts a small string slice in place using insertion sort.
 func sortStrings(s []string) {
 	for i := 1; i < len(s); i++ {
 		for j := i; j > 0 && strings.Compare(s[j], s[j-1]) < 0; j-- {

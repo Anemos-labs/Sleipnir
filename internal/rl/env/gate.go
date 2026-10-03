@@ -47,6 +47,7 @@ func ParseGate(s string) (Gate, error) {
 	return g, nil
 }
 
+// String formats an evaluation gate with optional absolute or percentage tolerance.
 func (g Gate) String() string {
 	switch {
 	case g.Tol == 0:

@@ -241,6 +241,7 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	a.refresh()
 }
 
+// addTokens accumulates every displayed usage category into the destination.
 func addTokens(dst *Tokens, u Tokens) {
 	dst.Input += u.Input
 	dst.CacheRead += u.CacheRead

@@ -29,6 +29,8 @@ type capture struct {
 	dropped int64
 }
 
+// newCapture reserves one quarter of the byte budget for the output head and the remainder for the
+// tail.
 func newCapture(total int) *capture {
 	head := total / 4
 	return &capture{headCap: head, tailCap: total - head}
@@ -88,6 +90,7 @@ type fgSink struct {
 	off bool
 }
 
+// newFGSink combines bounded output capture with a foreground streaming callback.
 func newFGSink(out func(stream, text string), capBytes int) *fgSink {
 	return &fgSink{cap: newCapture(capBytes), out: out}
 }
@@ -115,6 +118,7 @@ func (s *fgSink) callOut(stream, text string) {
 	s.out(stream, text)
 }
 
+// detach disables foreground streaming and releases its callback under the sink lock.
 func (s *fgSink) detach() {
 	s.mu.Lock()
 	s.off = true
@@ -139,6 +143,7 @@ type rolling struct {
 	max  int
 }
 
+// newRolling creates an empty output tail limited to max bytes.
 func newRolling(max int) *rolling { return &rolling{max: max} }
 
 func (r *rolling) write(_ string, p []byte) {
@@ -157,6 +162,7 @@ func (r *rolling) write(_ string, p []byte) {
 	}
 }
 
+// detach does nothing because a rolling background buffer has no live output callback to detach.
 func (r *rolling) detach() {}
 
 // read returns the bytes at or after absolute offset since, how many bytes

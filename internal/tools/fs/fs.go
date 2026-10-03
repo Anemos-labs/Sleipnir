@@ -103,6 +103,7 @@ func (k *call) fail(format string, args ...any) *tools.Result {
 	return k.env.Finish(fmt.Sprintf(format, args...), true)
 }
 
+// ok completes a filesystem call through its environment with a successful result.
 func (k *call) ok(text string) *tools.Result { return k.env.Finish(text, false) }
 
 // decode parses the tool input into dst. Unknown fields are tolerated (models

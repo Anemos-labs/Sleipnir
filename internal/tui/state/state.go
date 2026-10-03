@@ -402,6 +402,7 @@ func agentLess(a, b *Agent) bool {
 	return idLess(a.ID, b.ID)
 }
 
+// agentRank orders managers before ordinary workers and service agents after them.
 func agentRank(a *Agent) int {
 	switch {
 	case a.Role == "manager":

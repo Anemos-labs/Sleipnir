@@ -363,6 +363,7 @@ func oneLine(s string, maxRunes int) (out string, cut bool) {
 	return out, out != full
 }
 
+// quoteAll returns bounded single-line names surrounded by display quotes.
 func quoteAll(in []string) []string {
 	out := make([]string, len(in))
 	for i, s := range in {

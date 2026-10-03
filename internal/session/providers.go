@@ -32,6 +32,7 @@ var ErrNoModel = errors.New("no model configured")
 // ModelRef names a model on a provider.
 type ModelRef struct{ Provider, Model string }
 
+// String formats a model reference as provider/model.
 func (m ModelRef) String() string { return m.Provider + "/" + m.Model }
 
 // builtinProviders are the endpoints Sleipnir knows without configuration. Each
@@ -105,6 +106,7 @@ var localServers = map[string]string{
 	"jan":      "http://localhost:1337/v1",
 }
 
+// init registers built-in hosted and local OpenAI-compatible provider endpoints.
 func init() {
 	for n, v := range hostedOpenWeights {
 		builtinProviders[n] = config.Provider{Dialect: config.DialectOpenAIChat, BaseURL: v[0], APIKeyEnv: v[1]}
@@ -136,6 +138,8 @@ func providerNames(cfg *config.Config) []string {
 // ProviderNames lists the configured and built-in providers, sorted.
 func ProviderNames(cfg *config.Config) []string { return providerNames(cfg) }
 
+// lookupProvider resolves configured and built-in providers; a configured endpoint replaces the
+// built-in definition, while an entry without its own endpoint extends it.
 func lookupProvider(cfg *config.Config, name string) (config.Provider, bool) {
 	b, isBuiltin := builtinProviders[name]
 	if cfg != nil {
@@ -245,6 +249,7 @@ func envBaseURLVar(name string) string {
 	return strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_BASE_URL"
 }
 
+// envBaseURL reads and trims the provider-specific base URL environment override.
 func envBaseURL(name string) string { return strings.TrimSpace(os.Getenv(envBaseURLVar(name))) }
 
 // endpointOf resolves where provider name's requests go and checks that its API key
@@ -347,16 +352,20 @@ type ProviderOptions struct {
 	OnHeaders     func(http.Header)
 }
 
+// optBool reads a boolean option, returning false for absent keys or other value types.
 func optBool(m map[string]any, k string) bool {
 	b, _ := m[k].(bool)
 	return b
 }
 
+// optString reads a string option, returning empty for absent keys or other value types.
 func optString(m map[string]any, k string) string {
 	s, _ := m[k].(string)
 	return s
 }
 
+// optInt accepts int and float64 options, truncating fractional values, and returns zero for other
+// types.
 func optInt(m map[string]any, k string) int {
 	switch v := m[k].(type) {
 	case float64:
@@ -380,6 +389,8 @@ func optSeconds(m map[string]any, k string) time.Duration {
 	return time.Duration(min(f, 86400)) * time.Second
 }
 
+// optStrings reads a string slice option or filters strings from a mixed slice; a stored string
+// slice is returned without copying.
 func optStrings(m map[string]any, k string) []string {
 	var out []string
 	switch v := m[k].(type) {

@@ -44,6 +44,8 @@ type Lane struct {
 // ganttLevels are the nine levels of a lane cell, empty first.
 var ganttLevels = [9]string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 
+// level reads a lane bucket and clamps its intensity to zero through eight, returning zero outside
+// the retained range.
 func (l Lane) level(bucket int) int {
 	i := bucket - l.First
 	if i < 0 || i >= len(l.Levels) {

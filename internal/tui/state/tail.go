@@ -157,6 +157,7 @@ type tailer struct {
 	chunk                             []byte
 }
 
+// close closes and clears an open tail file, ignoring close errors.
 func (t *tailer) close() {
 	if t.f != nil {
 		t.f.Close()
@@ -218,6 +219,8 @@ func (t *tailer) poll() error {
 	return nil
 }
 
+// report sends current tailing progress to the optional callback, excluding an already delivered
+// buffer from Pending.
 func (t *tailer) report() {
 	if t.opt.OnPoll == nil {
 		return

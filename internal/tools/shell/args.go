@@ -39,6 +39,7 @@ func parseArgs(raw json.RawMessage) (*args, error) {
 	return &args{m: m}, nil
 }
 
+// shortErr bounds a nonnil error message to 160 bytes plus an ellipsis.
 func shortErr(err error) string {
 	s := err.Error()
 	if len(s) > 160 {

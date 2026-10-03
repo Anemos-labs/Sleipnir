@@ -11,6 +11,7 @@ import (
 
 // ---- what the session says while it works ----
 
+// isMain accepts every agent when MainAgent is unset, otherwise only that agent's feed.
 func (m *chatModel) isMain(agent string) bool { return m.c.MainAgent == "" || agent == m.c.MainAgent }
 
 func (m *chatModel) msg(x chatMsg) {
@@ -101,6 +102,8 @@ func (m *chatModel) drainEvents() {
 	}
 }
 
+// notice filters nonverbose info messages and duplicate cache-miss notices, then finishes
+// streaming text before rendering the notice.
 func (m *chatModel) notice(x chatMsg) {
 	if strings.EqualFold(x.level, "info") && !m.c.Verbose {
 		return
@@ -112,8 +115,11 @@ func (m *chatModel) notice(x chatMsg) {
 	m.block(bkNote, m.k.noticeLines(x.agent, x.level, x.text, m.cols, m.isMain(x.agent) || x.agent == ""))
 }
 
+// toolKey separates agent and call IDs with a NUL byte to form a composite lookup key.
 func toolKey(agent, id string) string { return agent + "\x00" + id }
 
+// toolStart creates or replaces tracked tool execution state and preserves first-seen display
+// order for duplicate IDs.
 func (m *chatModel) toolStart(x chatMsg) {
 	key := toolKey(x.agent, x.call.ToolID)
 	t := &toolRun{key: key, id: x.call.ToolID, agent: x.agent, name: x.call.ToolName, input: x.call.Input, since: m.clock()}

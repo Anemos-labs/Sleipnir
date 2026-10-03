@@ -22,6 +22,8 @@ type mdRunBuf struct {
 	open  bool
 }
 
+// add coalesces adjacent Markdown text with matching flags and closes the prior run when flags
+// change.
 func (b *mdRunBuf) add(text string, f uint8) {
 	if text == "" {
 		return
