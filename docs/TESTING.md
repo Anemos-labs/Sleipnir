@@ -42,7 +42,8 @@ whose only purpose is to enforce prose, test counts, or a preferred document lay
 Widget growth checks compare CPU work for an input and eight times that input.
 They use process CPU time on Unix and process CPU cycles on Windows, excluding
 scheduler wait time from the ratio. Control workloads verify that the check
-tolerates scheduling delays and detects quadratic growth.
+tolerates scheduling delays and detects quadratic growth. Other platforms use
+elapsed wall time and skip the scheduler-wait control.
 
 ## Terminal verification
 
