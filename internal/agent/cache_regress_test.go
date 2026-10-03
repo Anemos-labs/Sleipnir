@@ -1168,6 +1168,9 @@ func TestCacheEcon_ColdStartNoLongerForksAModelCall(t *testing.T) {
 
 func cxCompactionRun(t *testing.T, plain, reportCache bool, steps int, hard int) (log *events.MemLog, thread int, prov *cxProv) {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var a *agent.Agent
 	prov = &cxProv{prof: cxAnthropicProfile(), plain: plain}
 	if plain {
 		prov.prof.ReplayThinking = false
@@ -1177,6 +1180,14 @@ func cxCompactionRun(t *testing.T, plain, reportCache bool, steps int, hard int)
 		return `{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"did the early work"}],"mask":[],"notes":[],"promote":[]}`
 	})
 	prov.handle = func(p *cxProv, req *provider.Request) (*provider.Response, error) {
+		if !strings.Contains(cxLastUserText(req.Prompt), "<compactor-task>") {
+			// The planner runs between requests; give its background patch a
+			// deterministic completion point before the next boundary. An
+			// immediate mock response must not race the OS scheduler.
+			if err := agent.AwaitCompactionForTest(ctx, a); err != nil {
+				return nil, err
+			}
+		}
 		r, err := inner(p, req)
 		if r != nil && !reportCache {
 			r.Usage.InputTokens += r.Usage.CacheReadTokens
@@ -1186,14 +1197,13 @@ func cxCompactionRun(t *testing.T, plain, reportCache bool, steps int, hard int)
 	}
 	pl := kv.DefaultPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = hard/2, hard, hard/4
-	var a *agent.Agent
 	a, log = cxAgent(t, cxOpts{prov: prov, planner: pl, steps: steps + 20, toolOut: func(json.RawMessage) *tools.Result {
 		return &tools.Result{Text: strings.Repeat("ok line\n", 25)} // ~50 tokens: never worth masking
 	}})
-	if _, err := a.Run(context.Background(), "do the work"); err != nil {
+	t.Cleanup(func() { _ = a.Close() })
+	if _, err := a.Run(ctx, "do the work"); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
 	return log, a.Thread().Snapshot().Tokens(core.NewBytesEstimator()), prov
 }
 
