@@ -17,13 +17,19 @@ manager divide a task among workers, review their results, and verify changes.
 ## Install
 
 Download the archive for your platform from [Releases](https://github.com/Anemos-labs/Sleipnir/releases),
-extract it, and put `sleipnir` on your PATH. Or install with Go:
+then follow the [installation steps](docs/GETTING-STARTED.md#install).
+Or, with Go 1.25 or newer on Linux or macOS:
 
 ```sh
-go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
+GOBIN="$HOME/.local/bin" go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
+export PATH="$HOME/.local/bin:$PATH"
+sleipnir --help
 cd your-project
 sleipnir
 ```
+
+Save the PATH setting in your [shell startup file](docs/GETTING-STARTED.md#release-archive)
+to keep it available in new terminals. [Windows and troubleshooting](docs/GETTING-STARTED.md#install)
 
 The first run asks for a provider and model. Use `sleipnir login chatgpt` for a
 ChatGPT subscription, or `sleipnir login` for a provider API key. Local model
