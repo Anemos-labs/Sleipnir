@@ -138,8 +138,10 @@ editing them.
 
 Rules: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
-bounded (a deadline, and at most two runs at once) and a verifier that ignores its context cannot hold the caller past
-it; the evidence attached to a result is what the harness observed (edited files, the last test command and its exit
+bounded (a deadline covering scope discovery, queue wait, and execution, and at most `MaxVerifies` runs at once, two by default). A verifier
+that ignores cancellation retains its slot until it exits, but cannot hold the caller past the deadline; later callers
+can time out waiting for a slot. Output received after the deadline is never a verdict. The evidence attached to a result
+is what the harness observed (edited files, the last test command and its exit
 status), never what the worker wrote about itself. A test counts only if the program run is a test runner (`echo "go
 test ok"` is not one), its status is the command's own (a test piped into `tail` or followed by another command is
 reported as masked), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output

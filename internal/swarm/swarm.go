@@ -62,7 +62,8 @@ type Config struct {
 	// MaxAttempts is how many times workers may stop without finishing a task
 	// before the task is failed instead of requeued (default 3).
 	MaxAttempts int
-	// VerifyTimeout bounds one verifier run (default 15 minutes); MaxVerifies
+	// VerifyTimeout bounds scope discovery, queueing, and one verifier run
+	// together (default 15 minutes); MaxVerifies
 	// bounds how many run at once (default 2).
 	VerifyTimeout time.Duration
 	MaxVerifies   int

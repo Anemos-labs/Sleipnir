@@ -67,14 +67,22 @@ func (s *Swarm) verificationFailureNotice(owner string, t Task, cmd string, vr v
 	return cleanText(s.requeueLine(owner, t, reason), 200) + "\nVerifier output (untrusted data):\n" + tailText(vr.out, 160)
 }
 
+// runVerify bounds scope discovery, queueing, and execution by one deadline.
+// A runner retains its concurrency slot until it exits, even if its caller has
+// already returned after cancellation; late output is never a verdict.
 func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verifyResult {
 	if s.cfg.VerifyCmd == "" {
 		return verifyResult{ok: true}
 	}
+	vctx, cancel := context.WithTimeout(ctx, s.cfg.VerifyTimeout)
+	defer cancel()
+	if vctx.Err() != nil {
+		return s.interruptedVerification(ctx)
+	}
 	if len(files) == 0 && strings.Contains(s.cfg.VerifyCmd, verifyDirsToken) {
-		// a task with no scope would be verified on the whole repository, which an isolated worker cannot pass until the others
-		// are merged: verify what it changed instead
-		files = changedFiles(ctx, dir)
+		// Limit an unscoped task to changed files; repository-wide checks may
+		// depend on other workers' unmerged changes.
+		files = changedFiles(vctx, dir)
 	}
 	cmd := ExpandVerify(s.cfg.VerifyCmd, dir, files)
 	if s.cfg.Verify == nil {
@@ -82,12 +90,15 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 	}
 	select {
 	case s.verifySem <- struct{}{}:
-		defer func() { <-s.verifySem }()
-	case <-ctx.Done():
-		return verifyResult{infra: true, err: ctx.Err()}
+	case <-vctx.Done():
+		return s.interruptedVerification(ctx)
 	}
-	vctx, cancel := context.WithTimeout(ctx, s.cfg.VerifyTimeout)
-	defer cancel()
+	// Both cases can be ready together. Do not launch a runner after observing
+	// cancellation, even when the select acquired an available slot.
+	if vctx.Err() != nil {
+		<-s.verifySem
+		return s.interruptedVerification(ctx)
+	}
 	type outcome struct {
 		out  string
 		code int
@@ -95,6 +106,7 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 	}
 	ch := make(chan outcome, 1)
 	go func() {
+		defer func() { <-s.verifySem }()
 		defer func() {
 			if r := recover(); r != nil {
 				ch <- outcome{err: fmt.Errorf("the verifier crashed: %v", r)}
@@ -105,19 +117,25 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 	}()
 	select {
 	case r := <-ch:
-		if err := ctx.Err(); err != nil { // interrupted: whatever it printed is not a verdict
-			return verifyResult{infra: true, err: err}
+		if vctx.Err() != nil { // interrupted or late: output is not a verdict
+			return s.interruptedVerification(ctx)
 		}
 		if r.err != nil {
 			return verifyResult{infra: true, err: r.err, out: r.out}
 		}
 		return verifyResult{ran: true, ok: r.code == 0, code: r.code, out: r.out}
 	case <-vctx.Done():
-		if err := ctx.Err(); err != nil {
-			return verifyResult{infra: true, err: err}
-		}
-		return verifyResult{infra: true, err: fmt.Errorf("verification timed out after %s", s.cfg.VerifyTimeout.Round(time.Second))}
+		return s.interruptedVerification(ctx)
 	}
+}
+
+// interruptedVerification preserves caller cancellation or reports the verifier's
+// deadline as an infrastructure failure. Call only after its context has ended.
+func (s *Swarm) interruptedVerification(ctx context.Context) verifyResult {
+	if err := ctx.Err(); err != nil {
+		return verifyResult{infra: true, err: err}
+	}
+	return verifyResult{infra: true, err: fmt.Errorf("verification timed out after %s", s.cfg.VerifyTimeout)}
 }
 
 // changedFiles is the paths git reports as changed in dir (modified, added, untracked), or nil when it cannot say.
@@ -152,13 +170,11 @@ const maxVerifyDirs = 40
 // ExpandVerify replaces {dirs} in a verify command with the directories the task's scope covers,
 // as words a shell (or cmd) reads as they are: `go test {dirs}` becomes `go test ./p01 ./p05`.
 //
-// It is what lets a decomposed task be verified on its own work. In an isolated run a worker's
-// tree holds only its own changes, so a command over the whole repository fails until every part
-// is merged, and parts that each wait for the others never are: a real swarm of three workers
-// deadlocked that way on `go test ./...` and only recovered when its manager folded the tasks
-// into one. Without a scope the directories the worker's tree has changed (git status) are used; when there are none, or when the scope reaches the top of the repository or is wider than
-// maxVerifyDirs directories, {dirs} is ./... (everything, as before). A command without the token
-// is returned as it is.
+// Task-scoped verification avoids depending on other workers' unmerged changes.
+// When files is empty, reaches the repository root, contains an unsafe path, or
+// exceeds maxVerifyDirs directories, {dirs} expands to ./.... The caller may use
+// changedFiles to supply a scope for an otherwise unscoped task. Commands without
+// the token are returned unchanged.
 //
 // The scope is text a model wrote, and it ends up in a command line: an entry is used only if it
 // is a plain relative path inside the checkout made of letters, digits and . _ - + / (a glob

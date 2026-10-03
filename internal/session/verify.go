@@ -27,7 +27,10 @@ func runVerify(ctx context.Context, dir, cmd string) (string, int, error) {
 	c.Env = scrubEnv(os.Environ())
 	isolate(c)
 	var out bytes.Buffer
-	c.Stdout, c.Stderr = &limitedWriter{w: &out, max: 256 << 10}, &limitedWriter{w: &out, max: 256 << 10}
+	// os/exec serializes writes when both streams use the same comparable
+	// writer. Distinct wrappers would concurrently mutate the shared buffer.
+	w := &limitedWriter{w: &out, max: 256 << 10}
+	c.Stdout, c.Stderr = w, w
 	err := c.Run()
 	code := 0
 	if err != nil {
