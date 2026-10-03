@@ -67,6 +67,32 @@ func stream(body string) http.HandlerFunc {
 	}
 }
 
+func TestSessionRoutingUsesThePromptCacheKey(t *testing.T) {
+	ts := server(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Key string `json:"prompt_cache_key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		if got := r.Header.Get("session-id"); got != body.Key {
+			t.Errorf("routing header %q differs from cache key %q", got, body.Key)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, sse(created, completed))
+	})
+	c := client(ts, openairesp.StaticKey(""), openairesp.Options{})
+	for _, key := range []string{"team-one", "team-one", "team-two", ""} {
+		_, err := c.Do(context.Background(), &provider.Request{Prompt: &core.Prompt{
+			Model: "test", CacheKey: key,
+			Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("hello")}}},
+		}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func client(ts *httptest.Server, auth openairesp.Authorizer, o openairesp.Options) *openairesp.Client {
 	return openairesp.New(openairesp.Config{Name: "openai", BaseURL: ts.URL + "/v1", Auth: auth, Options: o})
 }
@@ -111,6 +137,33 @@ func TestAnAnswerIsStreamedAndAccountedFor(t *testing.T) {
 	}
 	if b := resp.Turn.Blocks[0]; b.WireFormat != openairesp.Dialect || !json.Valid(b.Wire) {
 		t.Errorf("the message is kept as it came, for a turn that has reasoning to go back with: %+v", b)
+	}
+}
+
+func TestCacheWritesAreCountedOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name, details      string
+		input, read, write int
+	}{
+		{"separate categories", `{"cached_tokens":800,"cache_write_tokens":300}`, 100, 800, 300},
+		{"overlapping counters are clamped", `{"cached_tokens":1000,"cache_write_tokens":1000}`, 0, 1000, 200},
+		{"negative writes", `{"cached_tokens":800,"cache_write_tokens":-1}`, 400, 800, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"status":"completed","usage":{"input_tokens":1200,"input_tokens_details":` + tc.details + `}}`
+			ts := server(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, body)
+			})
+			resp, _, err := do(t, client(ts, openairesp.StaticKey("k"), openairesp.Options{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			u := resp.Usage
+			if u.InputTokens != tc.input || u.CacheReadTokens != tc.read || u.CacheWrite5mTokens != tc.write || u.TotalInput() != 1200 {
+				t.Fatalf("usage: %+v", u)
+			}
+		})
 	}
 }
 

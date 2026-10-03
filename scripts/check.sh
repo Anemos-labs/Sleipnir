@@ -30,15 +30,15 @@ sh scripts/check-declared.sh "$base"
 echo "== docs/CLI.md lists every flag and command of the binary"
 sh scripts/gen-cli-docs.sh --check
 
-echo "== README's simulator block is current"
-readme_before=$(mktemp)
-trap 'rm -f "$readme_before"' EXIT INT TERM
-cp README.md "$readme_before"
+echo "== cache simulation documentation is current"
+simulation_before=$(mktemp)
+trap 'rm -f "$simulation_before"' EXIT INT TERM
+cp docs/CACHE-ECONOMICS.md "$simulation_before"
 sh scripts/readme-sim.sh
-if ! cmp -s "$readme_before" README.md; then
-  diff -u "$readme_before" README.md | head -40 || true
-  cp "$readme_before" README.md
-  echo "README.md's sim block is stale: run make readme-sim" >&2
+if ! cmp -s "$simulation_before" docs/CACHE-ECONOMICS.md; then
+  diff -u "$simulation_before" docs/CACHE-ECONOMICS.md | head -40 || true
+  cp "$simulation_before" docs/CACHE-ECONOMICS.md
+  echo "docs/CACHE-ECONOMICS.md's sim block is stale: run make readme-sim" >&2
   exit 1
 fi
 

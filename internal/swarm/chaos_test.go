@@ -1,6 +1,6 @@
 package swarm
 
-// Chaos, throttle and end-to-end tests (docs/reviews/swarm-concurrency.md): real
+// Chaos, throttle and end-to-end tests (docs/SWARM-PROTOCOL.md): real
 // agent runs over a fake provider while spawn/reuse/retire/mail race each other,
 // the status throttle, and the real fs tools under stolen leases. TestConc_* are
 // the repros of that review's findings, all fixed and ungated now; TestConcSound_*

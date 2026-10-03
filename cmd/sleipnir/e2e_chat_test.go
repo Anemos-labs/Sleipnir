@@ -81,7 +81,8 @@ func (u *ui) wait(what string, ok func(visible, all string) bool) (visible, all 
 	u.t.Helper()
 	deadline := time.Now().Add(e2eGuard)
 	for {
-		visible, all = u.visible(), u.all()
+		u.sync()
+		visible, all = strings.Join(u.scr.Rows(), "\n"), strings.Join(u.scr.All(), "\n")
 		if ok(visible, all) {
 			return visible, all
 		}
@@ -119,7 +120,12 @@ func containsAll(s string, words []string) bool {
 func (u *ui) ready() string {
 	u.t.Helper()
 	vis, _ := u.wait("a prompt that waits for a goal", func(vis, _ string) bool {
-		return strings.Contains(vis, "Message Sleipnir") && !strings.Contains(vis, "esc to interrupt")
+		// The welcome text also says "Message Sleipnir" and can arrive before
+		// the input frame. Wait for the completed frame's cursor in the prompt.
+		x, y, shown := u.scr.Cursor()
+		row := u.scr.Rows()[y]
+		prompt := strings.Contains(row, "> Message Sleipnir") || strings.Contains(row, "❯ Message Sleipnir")
+		return prompt && shown && x == 4 && u.scr.SyncDepth() == 0 && !strings.Contains(vis, "esc to interrupt")
 	})
 	return vis
 }

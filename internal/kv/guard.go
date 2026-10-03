@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"slices"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 )
@@ -25,12 +26,13 @@ import (
 // is a change too. Ephemeral blocks (the inline hot tail) are skipped: they sit
 // after the last marker and are not cached.
 type Guard struct {
-	prev      []core.Hash // per persistent block, wire order
-	prevTok   []int       // cumulative estimated tokens per block
-	prevSecs  []string    // layer name per block ("params","tools","const","shared",...)
-	prevMarks []int       // chain index of each cache marker of the previous request
-	prevAuto  bool        // the previous request had no markers because the provider caches automatically
-	epoch     uint64
+	prev         []core.Hash // per persistent block, wire order
+	prevTok      []int       // cumulative estimated tokens per block
+	prevSecs     []string    // layer name per block ("params","tools","const","shared",...)
+	prevMarks    []int       // chain index of each cache marker of the previous request
+	prevAuto     bool        // the previous request had no markers because the provider caches automatically
+	prevBoundary bool        // automatic entries end at complete eligible messages
+	epoch        uint64
 }
 
 // Check is the result of comparing consecutive requests.
@@ -39,11 +41,9 @@ type Check struct {
 	SharedBlocks int
 	// SharedTokens estimates the size of that prefix.
 	SharedTokens int
-	// ReadableTokens estimates what the provider can actually serve from cache
-	// for this request: all of SharedTokens on an automatic-cache provider, but
-	// only up to the highest cache marker of the previous request that lies inside
-	// the shared prefix on an explicit-cache one (an entry exists only where a
-	// marker was).
+	// ReadableTokens estimates a reusable prefix under the route's cache model:
+	// arbitrary prefixes, explicit markers, or complete message endings. This
+	// does not verify server entries, routing, retention, or API serialization.
 	ReadableTokens int
 	// TotalTokens estimates the size of the whole prompt (persistent blocks).
 	TotalTokens int
@@ -57,7 +57,7 @@ type Check struct {
 // relates to the previous one. epoch is the agent's rebase counter (thread
 // epoch plus shared-layer epoch); a changed epoch legitimizes a shorter prefix.
 func (g *Guard) Observe(r *Rendered, epoch uint64, est core.Estimator) Check {
-	hashes, toks, secs, marks := digest(r, est)
+	hashes, toks, secs, marks, endings := digest(r, est)
 	var c Check
 	if len(toks) > 0 {
 		c.TotalTokens = toks[len(toks)-1]
@@ -71,10 +71,15 @@ func (g *Guard) Observe(r *Rendered, epoch uint64, est core.Estimator) Check {
 		if n > 0 {
 			c.SharedTokens = toks[n-1]
 		}
-		if g.prevAuto {
+		if g.prevAuto && !g.prevBoundary {
 			c.ReadableTokens = c.SharedTokens
 		} else {
 			for _, m := range g.prevMarks {
+				// Extending a message preserves its text prefix but loses its
+				// previous ending. That ending cannot find the old entry.
+				if g.prevBoundary && !slices.Contains(endings, m) {
+					continue
+				}
 				if m < n && toks[m] > c.ReadableTokens {
 					c.ReadableTokens = toks[m]
 				}
@@ -93,12 +98,18 @@ func (g *Guard) Observe(r *Rendered, epoch uint64, est core.Estimator) Check {
 	}
 	g.prev, g.prevTok, g.prevSecs, g.epoch = hashes, toks, secs, epoch
 	g.prevMarks, g.prevAuto = marks, r.Caps.MaxBreakpoints == 0
+	g.prevBoundary = g.prevAuto && r.Caps.MessageBoundaries
+	if g.prevBoundary && len(endings) > 0 {
+		// Implicit mode writes the latest eligible ending, not every stable
+		// layer. Older server entries are unknown to this two-request guard.
+		g.prevMarks = endings[len(endings)-1:]
+	}
 	return c
 }
 
 // digest hashes every persistent block of the prompt in wire order and labels
 // each with the layer it came from.
-func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, secs []string, marks []int) {
+func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, secs []string, marks, endings []int) {
 	p := r.Prompt
 	total := 0
 	at := map[core.BlockRef]int{}
@@ -128,8 +139,10 @@ func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, sec
 		names[i] = s.Name
 	}
 	for mi, m := range p.Messages {
+		start, ephemeral := len(hashes), false
 		for bi, b := range m.Blocks {
 			if b.Ephemeral {
+				ephemeral = true
 				continue
 			}
 			label := "thread"
@@ -146,11 +159,14 @@ func digest(r *Rendered, est core.Estimator) (hashes []core.Hash, cum []int, sec
 			add(label, append(head, raw...), SentBlockTokens(b, est))
 			at[core.BlockRef{Msg: mi, Blk: bi}] = len(hashes) - 1
 		}
+		if m.Role == core.RoleUser && len(hashes) > start && !ephemeral {
+			endings = append(endings, len(hashes)-1)
+		}
 	}
 	for _, b := range p.Breakpoints {
 		if i, ok := at[b.After]; ok {
 			marks = append(marks, i)
 		}
 	}
-	return hashes, cum, secs, marks
+	return hashes, cum, secs, marks, endings
 }

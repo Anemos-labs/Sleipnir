@@ -8,7 +8,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
-// Anchor-state credit (GiGPO-style; docs/research/03-swarm-and-training.md B3.4).
+// Anchor-state credit (GiGPO-style; docs/TRAINING-DATA.md).
 //
 // A sample's reward is terminal, so within a rollout every step shares one
 // advantage. That is too coarse when several rollouts of the same task pass

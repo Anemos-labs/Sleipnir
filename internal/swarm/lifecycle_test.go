@@ -1,7 +1,7 @@
 package swarm
 
 // Regression tests for the swarm runtime's lifecycle and failure handling
-// (docs/reviews/swarm-concurrency.md, findings C-01 to C-05, C-10, C-14): mail that
+// (docs/SWARM-PROTOCOL.md, findings C-01 to C-05, C-10, C-14): mail that
 // arrives while a worker finishes, ownership and caps under concurrency, member
 // state transitions, containment of panics, budget and shutdown. Interleavings are
 // forced with locks and channels rather than left to scheduler luck.

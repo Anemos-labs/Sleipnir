@@ -1,7 +1,7 @@
 package swarm
 
 // Regression tests for the swarm's shared state: board, wait, router, leases,
-// governor, warm gate, hot view (docs/reviews/swarm-concurrency.md, C-06, C-11,
+// governor, warm gate, hot view (docs/SWARM-PROTOCOL.md, C-06, C-11,
 // C-12, C-15 to C-19). TestConcSound_* tests cover behaviour the review found sound.
 
 import (

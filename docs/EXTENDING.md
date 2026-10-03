@@ -83,7 +83,7 @@ important rules first and keep the total under 10 KB. `/recon` prints exactly wh
 ```text
 ## instructions
 ### ~/.sleipnir/SLEIPNIR.md (user)
-I prefer short answers. Never touch the vendor/ directory.
+Prefer short answers. Never touch the vendor/ directory.
 
 ### AGENTS.md (project, unverified)
 # Project rules
@@ -92,7 +92,7 @@ I prefer short answers. Never touch the vendor/ directory.
 Use tabs. Keep functions short.
 
 ### SLEIPNIR.local.md (local, unverified)
-My local note: use the staging database.
+Use the staging database.
 ```
 
 **Why `unverified`.** Anyone who can get a repository cloned can plant an `AGENTS.md` in it, and the model would

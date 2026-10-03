@@ -4,7 +4,7 @@
 // Public studies of agent-authored pull requests put textual conflicts at 20-42%
 // when changes overlap, and merging is only half the damage: two agents that edit
 // one working tree also read each other's half-finished files. The defence used
-// here is the "hybrid" of docs/research/03-swarm-and-training.md A4.3:
+// here is the "hybrid" of docs/SWARM-PROTOCOL.md:
 //
 //   - Every writer gets a private tree of its own (Manager.Create): a git worktree
 //     on its own branch, sharing the repository's object store, so creating one is

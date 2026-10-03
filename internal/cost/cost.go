@@ -38,6 +38,9 @@ type CacheModel struct {
 	// prefixes on its own. Some providers do both.
 	Explicit bool
 	Auto     bool
+	// MessageBoundaries means automatic entries end at complete messages,
+	// rather than arbitrary token prefixes. Previously sent messages must survive.
+	MessageBoundaries bool
 
 	MaxBreakpoints  int
 	LookbackBlocks  int

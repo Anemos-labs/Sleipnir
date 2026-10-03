@@ -14,8 +14,8 @@ type HotMode uint8
 const (
 	// HotInline appends the hot blocks (ephemeral) to the last user message,
 	// after the last cache breakpoint. They are rebuilt on every request and never
-	// persisted, so they cost the uncached rate each time and nothing else. It is
-	// the default and is only safe where earlier bytes are not bound to anything:
+	// persisted. It is only suitable where the cache can reuse shorter token
+	// prefixes and earlier bytes are not bound to anything:
 	// the next request removes them from a message an assistant turn was already
 	// produced against, which voids the signature of every thinking block after it.
 	HotInline HotMode = iota
@@ -53,6 +53,8 @@ func (m HotMode) String() string {
 // it); HotInline lets the harness choose:
 //
 //   - the provider has turn-scoped system messages: HotTurnScoped;
+//   - the provider caches complete messages: HotPersist (removing an inline
+//     tail would remove the previous request's cache boundary);
 //   - the model enforces preserved thinking and its profile replays thinking
 //     blocks: HotPersist (an inline tail would make every request after the first
 //     a thinking-binding error);
@@ -70,6 +72,8 @@ func ResolveHot(want HotMode, c Caps, preservedThinking bool) HotMode {
 	switch {
 	case c.TurnScopedSystem:
 		return HotTurnScoped
+	case c.MessageBoundaries:
+		return HotPersist
 	case preservedThinking && c.ReplayThinking:
 		return HotPersist
 	}

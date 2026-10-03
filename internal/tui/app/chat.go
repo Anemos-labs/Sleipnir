@@ -238,6 +238,8 @@ type chatModel struct {
 	cockpit     bool // the page of the whole screen is up: the team's cockpit above the prompt (chat_cockpit.go)
 	cockpitBack bool // a question closed the page: it comes back when the question is answered
 	cockpitTurn bool // this turn has had its say: the cockpit opened by itself, or the person closed it
+	statsOpen   bool
+	statsOffset int
 
 	exiting ChatEnd // the chat is ending: it waits for the run that is still going
 	over    bool
@@ -487,6 +489,27 @@ func (m *chatModel) removeQuestions(drop func(*dialog) bool) {
 }
 
 func (m *chatModel) editorKey(k input.Key) {
+	if m.statsOpen {
+		switch {
+		case k.IsRune('t', input.Ctrl), k.Is(input.Esc, 0):
+			m.statsOpen = false
+			return
+		case k.Is(input.Down, 0):
+			m.statsOffset++
+			return
+		case k.Is(input.Up, 0):
+			m.statsOffset = max(0, m.statsOffset-1)
+			return
+		case k.Is(input.PgDn, 0):
+			m.statsOffset += max(1, m.rows-3)
+			return
+		case k.Is(input.PgUp, 0):
+			m.statsOffset = max(0, m.statsOffset-max(1, m.rows-3))
+			return
+		default:
+			m.statsOpen = false
+		}
+	}
 	m.syncEditorWidth()
 	// The two pages of the footer, the keys that are the commands typed out. The editor would transpose two characters with ctrl+t, and a
 	// person who wants that has the arrows.
@@ -512,7 +535,7 @@ func (m *chatModel) editorKey(k input.Key) {
 
 // pageKey is a footer key: the page, without the command typed out in front of it (nobody typed it, and the page names itself).
 func (m *chatModel) pageKey(cmd string) {
-	if m.attached && m.page(cmd, false) {
+	if m.attached && m.page(cmd) {
 		return
 	}
 	m.submit(cmd)
@@ -663,7 +686,18 @@ func (m *chatModel) submit(text string) {
 	if text == "" {
 		return
 	}
-	if m.attached && m.page(text, true) {
+	if text == "/exit" {
+		m.quit(ChatQuit)
+		return
+	}
+	if m.running != nil && m.running.kind == runTurn && (text == "/goal pause" || text == "/goal clear") {
+		// Stop immediately, then change goal state after Turn and its judge have
+		// returned. Calling the host concurrently would race with the judge.
+		m.queue = append([]queued{{text: text}}, m.queue...)
+		m.cancelRun()
+		return
+	}
+	if m.attached && m.page(text) {
 		return
 	}
 	if m.menus[text] && !m.busy() && len(m.queue) == 0 {
@@ -868,6 +902,7 @@ func (m *chatModel) runEnded(e runEnd) {
 const longTurn = 30 * time.Second
 
 func (m *chatModel) turnEnded(r *run, res TurnResult) {
+	m.statsOpen = false
 	m.cockpit, m.cockpitBack = false, false // the answer is written into the scrollback, which the page hides
 	if res.Steps > 0 || res.CostUSD > 0 {   // a turn that was cancelled before the model answered did nothing worth a record
 		m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, m.cols)})
@@ -1014,6 +1049,9 @@ func (m *chatModel) draw() error {
 	m.snapshot() // may print what the log has added; before the tail is taken, which depends on what is printed
 	m.stepFolds()
 	tail := m.syncStream()
+	if m.drawStats() {
+		return m.scr.Flush()
+	}
 	m.autoCockpit()
 	if m.drawCockpit() {
 		return m.scr.Flush()

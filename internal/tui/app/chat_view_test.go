@@ -64,7 +64,7 @@ func TestChatPageCarriesNoStatisticsAndTheStatsPageHoldsThem(t *testing.T) {
 		t.Errorf("the footer names the key of the stats page:\n%s", s)
 	}
 	r.ctrl('t')
-	s = r.shows("◆ stats", "cost", "$0.01", "4 requests", "saved ≈", "at list price", "the prompt, layer by layer")
+	s = r.shows("◆ stats", "cost", "$0.01", "4 requests", "saved ≈", "at list price", "estimated prompt distribution by layer")
 	for _, want := range []string{"shared", "role", "notes", "spine", "of the prompts came from the provider's cache"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the stats page lacks %q:\n%s", want, s)
@@ -79,7 +79,12 @@ func TestChatPageCarriesNoStatisticsAndTheStatsPageHoldsThem(t *testing.T) {
 	r2.emit(log...)
 	r2.typeText("/stats")
 	r2.enter()
-	r2.shows("❯ /stats", "◆ stats", "saved ≈") // what a person typed is shown as they typed it
+	r2.shows("◆ stats", "saved ≈", "Esc / Ctrl+T back to chat")
+	r2.ctrl('t')
+	r2.shows("Message Sleipnir")
+	if r2.altScreen() {
+		t.Error("closing stats must restore the chat")
+	}
 	if got := r2.host.commands; len(got) != 0 {
 		t.Errorf("the page is drawn by the program, the host was asked %q", got)
 	}
@@ -109,14 +114,16 @@ func TestChatAgentsPageShowsTheTeamAndASingleAgentHasNone(t *testing.T) {
 		t.Errorf("the footer of a team names both pages:\n%s", r.visible())
 	}
 	r.submit("/agents")
-	r.shows("the team starts with your first message: a manager, and the 7 workers it can spawn")
+	r.shows("ctrl+g back to the chat")
+	if !r.altScreen() {
+		t.Fatal("/agents must open the live cockpit")
+	}
 	b := statetest.NewBuilder()
 	log := sessionLog(b, 2, 0)
 	log = append(log, b.Spawn("w1", "backend", "T1", "main"), b.Spawn("w2", "tester", "T2", "main"))
 	r.at(b.Now().Add(2 * time.Second))
 	r.emit(log...)
-	r.submit("/agents")
-	s := r.shows("3 of 8 agents started", "tasks:", "AGENT", "backend", "tester")
+	s := r.shows("AGENT", "backend", "tester")
 	if strings.Contains(s, "a single agent") {
 		t.Errorf("a team is not a single agent:\n%s", s)
 	}

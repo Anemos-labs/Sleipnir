@@ -26,7 +26,8 @@ type usage struct {
 	OutputTokens       tokens `json:"output_tokens"`
 	TotalTokens        tokens `json:"total_tokens"`
 	InputTokensDetails *struct {
-		CachedTokens tokens `json:"cached_tokens"`
+		CachedTokens     tokens `json:"cached_tokens"`
+		CacheWriteTokens tokens `json:"cache_write_tokens"`
 	} `json:"input_tokens_details"`
 	OutputTokensDetails *struct {
 		ReasoningTokens tokens `json:"reasoning_tokens"`
@@ -47,10 +48,14 @@ func (u *usage) normalize() core.Usage {
 	}
 	prompt := provider.ClampTokens(int(u.InputTokens))
 	cached := 0
+	written := 0
 	if u.InputTokensDetails != nil {
 		cached = min(provider.ClampTokens(int(u.InputTokensDetails.CachedTokens)), prompt)
+		written = min(provider.ClampTokens(int(u.InputTokensDetails.CacheWriteTokens)), prompt-cached)
 	}
-	out := core.Usage{InputTokens: prompt - cached, CacheReadTokens: cached, OutputTokens: provider.ClampTokens(int(u.OutputTokens))}
+	// Cache writes are a separate input category, not an additive charge.
+	// The legacy 5m bucket holds the adapter's base write rate, independent of TTL.
+	out := core.Usage{InputTokens: prompt - cached - written, CacheReadTokens: cached, CacheWrite5mTokens: written, OutputTokens: provider.ClampTokens(int(u.OutputTokens))}
 	if u.OutputTokensDetails != nil {
 		out.ReasoningTokens = min(provider.ClampTokens(int(u.OutputTokensDetails.ReasoningTokens)), out.OutputTokens)
 	}
@@ -149,7 +154,13 @@ func (a *accumulator) start(begin time.Time, on func(provider.Event)) {
 // feed applies one frame and emits streaming events. It returns a provider error for a failure the endpoint reports, and when the
 // response outgrows a limit.
 func (a *accumulator) feed(e *event, begin time.Time, on func(provider.Event)) error {
-	a.start(begin, on)
+	// Queue/acceptance events arrive before prefill has finished. Releasing the
+	// warm gate here sends followers onto a cache the primer has not written yet.
+	switch e.Type {
+	case "response.output_text.delta", "response.refusal.delta", "response.reasoning_summary_text.delta", "response.reasoning_text.delta",
+		"response.function_call_arguments.delta", "response.output_item.done", "response.completed", "response.incomplete":
+		a.start(begin, on)
+	}
 	switch e.Type {
 	case "response.created", "response.in_progress", "response.queued":
 		a.note(e.Response)

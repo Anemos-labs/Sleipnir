@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -35,12 +36,13 @@ func TestAnEndpointThatCannotBeReachedIsSaidInPlainWords(t *testing.T) {
 		t.Errorf("message %q still says Go's words", pe.Message)
 	}
 
-	req, _ = http.NewRequest(http.MethodPost, "http://no-such-host.invalid/v1/x", nil)
-	_, derr = http.DefaultClient.Do(req)
-	if derr != nil {
-		pe = TransportError(context.Background(), derr)
-		if !strings.Contains(pe.Message, "cannot find no-such-host.invalid") {
-			t.Errorf("a host that does not exist: %q", pe.Message)
-		}
+	// Exercise DNS error translation without depending on an external resolver's
+	// timeout, proxy configuration, or response to the reserved .invalid domain.
+	derr = &url.Error{Op: "Post", URL: "http://no-such-host.invalid/v1/x", Err: &net.DNSError{
+		Name: "no-such-host.invalid", Err: "no such host", IsNotFound: true,
+	}}
+	pe = TransportError(context.Background(), derr)
+	if !strings.Contains(pe.Message, "cannot find no-such-host.invalid") {
+		t.Errorf("a host that does not exist: %q", pe.Message)
 	}
 }

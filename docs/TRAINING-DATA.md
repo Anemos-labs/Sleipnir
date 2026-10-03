@@ -1,7 +1,7 @@
 # Training data and RL: the harness as an environment
 
 Sleipnir is built so that a model can be **reinforcement-trained on Sleipnir's own way of working**, not just
-fine-tuned on transcripts. "Our way of working" is more than code edits: it is the layered prompt (pins, notes, spine,
+fine-tuned on transcripts. The training target includes more than code edits: it is the layered prompt (pins, notes, spine,
 thread, hot tail), the task board, typed mail, `recall`, compaction patches, leases, verifier-gated `done`, and
 swarm dispatch without briefings. A model only learns those by acting inside the real harness and being scored on
 outcomes, so the harness is packaged as an RL environment:

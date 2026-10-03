@@ -58,11 +58,11 @@ jobs:
         run: sh scripts/check-declared.sh "$BASE"
       - name: docs/CLI.md lists every flag and command of the binary
         run: sh scripts/gen-cli-docs.sh --check
-      - name: README's simulator block is current
+      - name: Cache economics simulator block is current
         run: |
-          cp README.md /tmp/README.before
+          cp docs/CACHE-ECONOMICS.md /tmp/cache-economics.before
           sh scripts/readme-sim.sh
-          diff -u /tmp/README.before README.md || { echo "README.md's sim block is stale: run make readme-sim"; exit 1; }
+          diff -u /tmp/cache-economics.before docs/CACHE-ECONOMICS.md || { echo "docs/CACHE-ECONOMICS.md's sim block is stale: run make readme-sim"; exit 1; }
       - name: the recorded demo matches what the interface draws
         run: |
           if [ -f scripts/record-demo.sh ]; then sh scripts/record-demo.sh --check; fi

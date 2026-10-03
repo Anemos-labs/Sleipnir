@@ -1,6 +1,6 @@
 package events
 
-// Security regression tests for docs/reviews/security-robustness.md (events
+// Security regression tests for docs/SECURITY.md (events
 // findings S33-S36, part of F12).
 //
 // TestSec_S33..S36 pin the fixes; they began as repro tests that failed while

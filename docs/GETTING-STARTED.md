@@ -1,34 +1,84 @@
 # Getting started
 
-The short version is in the README: install, then `sleipnir`. This page is the rest of what the command line does.
+## Connect a model
+
+Run `sleipnir` from the project directory. The setup menu selects a provider,
+authenticates it, and lists available models.
+
+For a ChatGPT subscription:
 
 ```sh
-# 1. try it with no key and no network
-sleipnir demo                          # no key, no network: on a terminal, watch nine scripted agents build a shop in git worktrees (20 s, the live cockpit: the cache, the mail, the merge queue), then the bill
-sleipnir demo --scenario handbook      # a one-second survey by a scripted team and the bill, as text (what a pipe gets)
-sleipnir replay latest                 # play a recorded session back as the cockpit; `sleipnir watch` shows one being written
-
-# 2. point it at a model. Heimdall is the recommended start; built in too: OpenRouter, OpenAI, Anthropic, Together, Fireworks, Groq, Cerebras, DeepInfra and about twenty more
-#    (docs/PROVIDERS.md), and local servers with no key (ollama/<model>, lmstudio/, llamacpp/, vllm/, sglang/, jan/). Any other OpenAI-compatible or Anthropic Messages endpoint is a config entry.
-sleipnir login                         # paste a key (again): kept in ~/.sleipnir/auth.json, mode 0600; or export HEIMDALL_API_KEY / OPENROUTER_API_KEY / ... instead (it wins)
-sleipnir login chatgpt                 # or sign in with your ChatGPT plan (a browser, no key): models are chatgpt/<slug>. In the chat, /login does either
-cd your-project && sleipnir init       # shareable project settings, AGENTS.md (used once you trust the project: below)
-sleipnir trust                         # what this project's own files would add to every prompt; `trust add` keeps your yes until one of them changes
-sleipnir models qwen --tools           # every provider with a key at once: search words, --reasoning, --max-price, --min-context, favorites (models fav add REF)
-sleipnir doctor --model <model> --deep # measures streaming, tools, cache reporting, granularity, warm-up needs
-
-# 3. work
-sleipnir chat                          # (the same as `sleipnir` alone on a terminal) interactive; /model (a searchable menu) /roles (a model per role, also a menu) /status /permissions /trust /cost /context /compact /agents /rewind /diff /plan; --resume ID or --continue
-sleipnir run "fix the failing test in ./server"
-sleipnir swarm 8 "add pagination to every list endpoint and update the client" --verify "make test"
-sleipnir swarm 8 "..." --verify "make test" --isolation worktree   # each writer in its own git worktree; finished work goes through a verifying merge queue
-sleipnir swarm 8 "..." --verify "go test {dirs}" --isolation worktree   # {dirs}: each task is verified on the directories it may touch
-sleipnir swarm 8 "..." --budget-usd 20 # a swarm stops at US$50 unless you say otherwise (swarm.budget_usd; 0 in your own file removes the cap)
-sleipnir swarm 8 "..." --role-model manager=anthropic/claude-opus-5-5 --role-model compactor=heimdall/qwen/qwen3.8-flash-next   # a model per role; one model for all is the default
-sleipnir schedule add --cron "0 9 * * 1-5" "summarize yesterday's commits"; sleipnir daemon   # goals on a schedule, run headless
+sleipnir login chatgpt
 ```
 
-`sleipnir recon` prints the project map that seeds the shared layer (layout, build/test commands, package docs, ranked
-declarations); it is deliberately dense and budgeted (default 5k tokens) because the shared pin is read on every request of
-every agent.
+For an API key, use `sleipnir login`. Credentials are stored under
+`~/.sleipnir/`; do not put them in project files. [Providers](PROVIDERS.md)
+describes local servers and custom endpoints.
 
+## Start a task
+
+```sh
+cd your-project
+sleipnir
+```
+
+Describe the result and how it should be verified. The default team can start
+up to seven workers alongside the manager. Capacity is not the number currently
+working. Use `sleipnir --swarm 0` when you want one agent.
+
+A normal message runs one turn. A standing goal checks completion and continues
+when more work is needed:
+
+```text
+/goal Add pagination, test boundary cases, and run the documented examples.
+```
+
+Use `/goal` to inspect progress, Escape or `/goal pause` to interrupt and pause,
+and `/goal resume` to continue. The goal can also stop for missing user input,
+lack of progress, errors, or its continuation limit.
+
+## Review and control
+
+- Ctrl+G or `/agents`: live team view.
+- Ctrl+T or `/stats`: usage and cache panel; Escape returns to chat.
+- `/model` and `/roles`: select the session and role models.
+- `/permissions`: inspect rules. `/allow tests` allows recognized build and
+  test commands for the session; it does not permit arbitrary scripts.
+- `/diff`: inspect checkpoint changes. `/rewind` lists available checkpoints.
+- `/help`: command reference.
+
+Permission prompts apply to the named agent and operation. Trusting a project
+allows its configuration and extensions to participate; inspect `sleipnir trust`
+before saving that decision.
+
+## Headless work
+
+```sh
+sleipnir run "fix the failing test"
+sleipnir swarm 4 "implement the API and client" --verify "go test {dirs}"
+sleipnir swarm 4 "implement independent modules" --isolation worktree --verify "go test {dirs}"
+```
+
+Put flags before the task if your shell or command wrapper requires it.
+`{dirs}` scopes verification to a task's directories. A repository-wide verifier
+can fail on another worker's unfinished changes.
+
+## Resume
+
+```sh
+sleipnir sessions
+sleipnir --continue
+sleipnir chat --resume SESSION_ID
+```
+
+A resumed goal is paused; use `/goal resume` after reviewing its state.
+Worktree-isolated teams do not support resume.
+
+## Inspect usage
+
+The stats panel reports tokens returned by the provider. Cache hits are the
+cached share of input tokens, not the share of requests that hit. Prices may be
+unknown, and estimated savings are not an invoice.
+
+Use `sleipnir doctor --model PROVIDER/MODEL` to test an endpoint. Probes send
+model requests and consume the connected account's allowance.

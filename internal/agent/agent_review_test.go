@@ -1,10 +1,6 @@
 package agent_test
 
-// Adversarial review tests for the agent loop's failure handling
-// (docs/reviews/swarm-concurrency.md): inbox draining at Run exit, background
-// compactor lifetime, and the time-to-first-byte bound on a model request. All of
-// them are ordinary regression tests now (docs/reviews/tranche2-a.md and
-// tranche2-b.md).
+// Agent failure recovery: inbox draining, compactor lifetime, and request deadlines.
 
 import (
 	"context"

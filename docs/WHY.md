@@ -1,53 +1,23 @@
-# Why Sleipnir is built this way
+# Design rationale
 
-Odin's eight-legged horse: one manager brain, many legs. Sleipnir is designed to run **10, 20, 50 agents over one
-repository** without briefing them, without re-reading the project fifty times, and without letting context bloat eat the
-bill.
+Sleipnir combines a coding-agent loop with explicit team coordination and
+reconstructible session records.
 
-```
-G0 constitution + tools      frozen; identical bytes for every agent, every role
-G1 shared pin                project map + instructions; identical for every agent; changes only at epochs
-G2 role pin                  manager / backend / frontend / tester / reviewer / ...; shared by agents of a role
-G3 notes                     one agent's tenured facts, decisions, instructions
-G4 spine                     one agent's append-only one-line resumes of its own past
-G5 thread                    verbatim recent turns; append-only between compactions
-G6 hot                       always-fresh view of the swarm (board, mail); never cached, a few hundred tokens
-```
+A manager can divide independent work among scoped workers, then review and
+verify their results. Standing goals add an evidence check after each turn so
+an incomplete answer can trigger another pass.
 
-The layers are ordered by volatility, because provider prompt caches match **byte prefixes**: stable things sit deep and
-are cached once for everyone; active things sit near the end. A spawned worker inherits G0-G2 from the provider's cache
-for the price of a cache read plus a two-line assignment. Background compactors (forks of the agent's own request, so they
-read the same cache) fold old history into one-line resumes and promote important facts, and the harness commits each patch
-when the cache economics say so, or at a cold moment for free.
+Stable project context can reduce repeated orientation. Compaction bounds long
+histories while retaining older content through recall. Both mechanisms have
+costs: shared context is sent repeatedly, and compaction can rewrite a cached
+prefix. Their value depends on the workload and provider.
 
-## How it differs from a typical harness
+Permissions, checkpoints, stale-read checks, and optional worktrees constrain
+changes to the project. These are separate from the model's judgment.
 
-| | typical harness | Sleipnir |
-|---|---|---|
-| history | one growing list, cached at the end | layered by volatility; generational compaction; nothing is lost (`recall`) |
-| compaction | summarise everything, rewrite the prefix, hope | model proposes a *patch*, the harness validates and commits it at the cheapest moment; masking before summarising |
-| subagents | each has its own cache and re-explores the project; the manager writes long briefings | one shared prefix; a worker is assigned a task card and already knows the project |
-| coordination | JSON files, chat between agents | a typed board, rate-limited typed mail through a router, leases and scopes, harness-owned "done" |
-| cost control | hope | every change to a stable layer is a priced, declared event; a guard flags silent cache regressions |
-| training | export transcripts | the harness *is* an RL environment: exact-prompt trajectories, verifiable rewards, trainer-ready data |
+The event log supports interactive progress, replay, debugging, and trajectory
+export. Provider usage remains the source for observed cache hits; simulations
+help compare policies under declared assumptions.
 
-
-## Training a model on this way of working
-
-The harness records every model call's exact prompt (as content hashes), the completion, and, from a self-hosted policy
-server, token ids and logprobs. The RL pipeline turns that into trainer-ready data (`docs/TRAINING-DATA.md`):
-
-```sh
-sleipnir doctor --model my-policy --capture                      # does the server return token ids? are they prefix-stable?
-sleipnir rl taskgen git --repo ./myrepo -o tasks/all.jsonl       # tasks from history; each proven to fail before and pass after
-sleipnir rl taskgen recall --repo ./myrepo -o tasks/recall.jsonl # memory tasks that force compaction
-sleipnir rl tasks split tasks/all.jsonl --spec train:0.9,test:0.1   # whole repositories per split
-sleipnir rl rollout --tasks tasks/all.train.jsonl --model local/my-policy --group 8 --capture --out runs/r1
-sleipnir rl export runs/r1 --format steps --advantage grpo -o data/r1.steps.jsonl   # or tokens / groups / sft / dpo / kto / atif
-sleipnir rl eval --tasks tasks/all.test.jsonl --exclude tasks/all.train.jsonl --model local/my-policy
-sleipnir inspect runs/r1/<task>/0                                # the cache inspector works on every rollout
-```
-
-Rewards are verifier outcomes in a clean checkout the agent cannot tamper with, plus cost repriced for your target
-provider, protocol quality, and per-role signals (manager dispatch, compactor fidelity, mail usefulness).
-
+[Architecture](ARCHITECTURE.md) · [Cache design](CACHE-DESIGN.md) ·
+[Team protocol](SWARM-PROTOCOL.md)

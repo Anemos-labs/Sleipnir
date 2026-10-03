@@ -614,16 +614,8 @@ from that:
 }
 ```
 
-**What is and is not verified.** The URL, headers (`auth_style`, `betas`, `session_header_name`, custom headers),
-`cache_control` markers and `max_tokens` that the adapter sends for these options were checked against a local
-stand-in server; `no_turn_scoped_system` and `no_zero_max_tokens`, which only matter for a swarm's hot view and cache
-warm-ups, were read from the code, not exercised. **One live endpoint has been measured, once**: Heimdall's `/messages`
-route with exactly the options above (with `deepseek/deepseek-v4.1-flash`, September 2026). `doctor` found streaming,
-usage, and a tool-calling round trip working, no exact cost and no cache reads reported (as the route's documentation says:
-the bill is then priced from the endpoint's catalogue), and no reasoning exposed; a six-step agent task (list, write, read,
-run a command) completed and was priced from the catalogue. That says nothing about `betas`, `max_breakpoints`,
-`thinking_*` or `extra_body`, nor about any other gateway: how a real one reacts to `cache_control` is unmeasured, and
-the values above come from the marketplace's documentation plus that one measurement. Measure your own endpoint:
+Gateway support for cache markers, reasoning, and optional headers varies by route.
+Measure the configured endpoint before relying on those features:
 
 ```sh
 sleipnir doctor --model heimdall-messages/deepseek/deepseek-v4.1-flash --deep
@@ -632,12 +624,11 @@ sleipnir doctor --model heimdall-messages/deepseek/deepseek-v4.1-flash --deep
 `doctor` works with any configured provider, either dialect. It runs a series of real requests and reports whether
 streaming works, whether usage and exact cost are reported, whether tool calling round-trips, whether cached tokens are
 shown and how many of nine repeated prefixes hit the cache (`yes`; `partly` when some did and some did not, which is
-what an endpoint that serves one conversation from several engines looks like; or `NO`), the cache granularity and the
+a result that can reflect routing, eviction, or request changes; or `NO`), the cache granularity and the
 smallest cached size (`--deep`), whether a parallel burst needs a warm-up (`--deep`), whether reasoning is exposed, and (`--capture`) whether
 token ids come back. It prints the cost of the probe. Add `--json` for a machine-readable report, and `--no-affinity`
 to send no routing key. Acting on it: if `prefix cache works` is `NO` on the Messages route but `yes` on the chat route
-of the same marketplace, use the chat route (example (a)); the docs of the harness recommend that route for
-cache-aware runs on Heimdall (`docs/ARCHITECTURE.md`, `docs/VALIDATION.md`).
+of the same marketplace, use the chat route (example (a)); choose based on measurements for the required model and workload (`docs/VALIDATION.md`).
 
 ### (c) A local vLLM or SGLang policy server for RL data capture
 

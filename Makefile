@@ -19,12 +19,12 @@ lint:
 fmt:
 	gofmt -w cmd internal
 
-# What layering buys and where it stops paying (see docs/CACHE-DESIGN.md section 8).
+# What layering buys and where it stops paying (see docs/CACHE-ECONOMICS.md).
 sim:
 	go run ./cmd/sleipnir sim --mode scenarios
 	go run ./cmd/sleipnir sim --mode pins
 
-# Refresh the simulator results quoted in README.md.
+# Refresh the simulator results in docs/CACHE-ECONOMICS.md.
 readme-sim:
 	scripts/readme-sim.sh
 

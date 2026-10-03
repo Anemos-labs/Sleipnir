@@ -65,35 +65,35 @@ func callOf(t *toolRun) core.Block {
 
 // ---- panels on demand ----
 
-// page answers the two commands that are pages, /stats and /agents (the keys ctrl+t and ctrl+g type them): they are drawn from what the
-// program already knows, so they answer at once, in a turn or not, and the host is not asked. It reports whether the line was one. The line
-// is echoed as typed when echo says so (a key did not type it).
-func (m *chatModel) page(line string, echo bool) bool {
+// page opens live panels from session state without queuing a host command.
+func (m *chatModel) page(line string) bool {
 	f := strings.Fields(line)
 	if len(f) != 1 || (f[0] != "/stats" && f[0] != "/agents") {
 		return false
 	}
 	m.syncStream()
-	if echo {
-		m.block(bkPrompt, m.k.promptLines(line, m.cols))
-	}
 	if f[0] == "/stats" {
-		m.printStats()
+		m.statsOpen = !m.statsOpen
+		m.statsOffset = 0
+		if m.statsOpen {
+			m.cockpit, m.cockpitBack, m.cockpitTurn = false, false, true
+		}
+	} else if m.info.Swarm {
+		m.toggleCockpit()
 	} else {
-		m.printTeam()
+		m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, "  a single agent: /swarm 8 starts a team of eight")})
 	}
 	return true
 }
 
-// printStats is the stats page, written into the scrollback: what the session cost, how much of its prompts the provider served from its
-// cache and what that saved (at list price, which is not the bill), and the prompt stack layer by layer. The chat page carries none
-// of it, so that the page stays clean.
-func (m *chatModel) printStats() {
+// statsLines reports provider usage and estimated list-price savings.
+func (m *chatModel) statsLines() []cell.Line {
 	sn := m.snapshot()
 	t, st := sn.Totals, m.k.st
+	// Statistics are reading content; reserve muted colors for decorative hints.
+	st.dim = cell.Style{}
 	if t.Responses == 0 {
-		m.block(bkNote, []cell.Line{cell.Styled(st.dim, "  nothing has been sent yet")})
-		return
+		return []cell.Line{cell.Styled(st.dim, "  stats"), cell.Styled(st.dim, "  nothing has been sent yet")}
 	}
 	pad := func(label string) string { return fmt.Sprintf("  %-7s", label) }
 	var cost, cache row
@@ -115,11 +115,16 @@ func (m *chatModel) printStats() {
 			o.CachedTokens = 0
 		}
 		o.BreakAt = breakLayer(a, layers)
-		table := widget.StackTable(layers, o, m.k.Palette)
-		if left, total, ok := ttlOf(sn, "agent", a.ID); ok {
-			table = append(table, m.k.ttlLine(left, total, max(m.cols-4, 8)))
+		palette := m.k.Palette
+		if !palette.Mono && palette.Dim != (cell.Color{}) {
+			palette.Dim = cell.Hex("#9aa5ce")
 		}
-		out = append(out, cell.Styled(st.dim, "  the prompt, layer by layer"))
+		table := widget.StackTable(layers, o, palette)
+		if left, total, ok := ttlOf(sn, "agent", a.ID); ok {
+			label := cell.Text("estimated reuse window: ")
+			table = append(table, append(label, m.k.ttlLine(left, total, max(m.cols-4-label.Width(), 1))...))
+		}
+		out = append(out, cell.Styled(st.dim, "  estimated prompt distribution by layer"))
 		out = append(out, indentLines(table, cell.Text("  "))...)
 	}
 	if !m.k.Unicode {
@@ -127,42 +132,30 @@ func (m *chatModel) printStats() {
 			out[i] = asciiLine(out[i])
 		}
 	}
-	m.block(bkToolBody, out)
+	return out
 }
 
-// printTeam is the agents page, written into the scrollback: every agent of the team, what it is doing, how big its prompt is, what it
-// has cost and how much of it the cache served, and the count of the tasks on the board; the table of the cockpit (`sleipnir watch`),
-// which shows the same with more room. A single agent has no team to show.
-func (m *chatModel) printTeam() {
-	st := m.k.st
-	if !m.info.Swarm {
-		m.block(bkNote, []cell.Line{cell.Styled(st.dim, "  a single agent: /swarm 8 starts a team of eight")})
-		return
+// drawStats refreshes from the log without adding snapshots to the transcript.
+// Approval dialogs always take precedence over a read-only page.
+func (m *chatModel) drawStats() bool {
+	if m.question() != nil {
+		m.statsOpen = false
 	}
-	sn := m.snapshot()
-	rows := agentRows(sn, CockpitOptions{})
-	if len(rows) == 0 {
-		m.block(bkNote, []cell.Line{cell.Styled(st.dim, fmt.Sprintf("  the team starts with your first message: a manager, and the %d workers it can spawn", max(m.info.Agents-1, 1)))})
-		return
+	if !m.statsOpen {
+		return false
 	}
-	c := sn.Board.Counts
-	var head row
-	started := fmt.Sprintf("%d agents started", len(rows))
-	if m.info.Agents > len(rows) { // the manager spawns workers when a job wants them: how many of the team have been
-		started = fmt.Sprintf("%d of %d agents started", len(rows), m.info.Agents)
+	lines := m.statsLines()
+	height := max(1, m.rows-2)
+	m.statsOffset = min(m.statsOffset, max(0, len(lines)-height))
+	page := append([]cell.Line(nil), lines[m.statsOffset:min(len(lines), m.statsOffset+height)]...)
+	for len(page) < height {
+		page = append(page, cell.Line{})
 	}
-	head.add(st.dim, "  "+m.k.g.compact+" "+started).
-		add(st.dim, fmt.Sprintf(" %s tasks: %d todo, %d running, %d verifying, %d merged", m.k.g.dot, c.Todo, c.Running, c.Verifying, c.Merged))
-	if c.Failed > 0 {
-		head.add(st.bad, fmt.Sprintf(", %d failed", c.Failed))
-	}
-	out := append([]cell.Line{m.k.fit(head.line(), m.cols)}, indentLines(widget.AgentTable(rows, max(m.cols-4, 20), m.frame, m.k.Palette), cell.Text("  "))...)
-	if !m.k.Unicode {
-		for i := range out {
-			out[i] = asciiLine(out[i])
-		}
-	}
-	m.block(bkToolBody, out)
+	page = append(page, cell.Line{}, m.k.fit(cell.Text("  Esc / Ctrl+T back to chat | Up/Down scroll"), m.cols))
+	page = page[:min(len(page), max(1, m.rows))]
+	m.scr.SetFull(page)
+	m.scr.SetCursor(-1, 0)
+	return true
 }
 
 // expandLast is ctrl+o: the whole of the newest output that was collapsed, written into the scrollback.

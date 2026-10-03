@@ -11,7 +11,7 @@ import (
 
 // ATIFVersion is the schema_version written by the atif format. The format is a
 // subset of Harbor's Agent Trajectory Interchange Format as summarised in
-// docs/research/03-swarm-and-training.md (steps with tool_calls and observation,
+// docs/TRAINING-DATA.md (steps with tool_calls and observation,
 // metrics with token ids and logprobs, subagent_trajectories, context_management);
 // it has not been validated against Harbor's RFC and should be before it is
 // published as ATIF.

@@ -1,7 +1,7 @@
 package tools_test
 
 // Adversarial review of the session-wide recall handle table
-// (docs/reviews/swarm-concurrency.md). The repro asserted the correct behaviour and failed while
+// (docs/SWARM-PROTOCOL.md). The repro asserted the correct behaviour and failed while
 // the finding was open (it was gated behind SLEIPNIR_REVIEW=1); the finding is fixed, so it is an
 // ordinary regression test now.
 
