@@ -1,81 +1,22 @@
 package session
 
 import (
-	"bytes"
 	"context"
-	"errors"
-	"os"
-	"os/exec"
-	"runtime"
-	"strings"
 	"time"
 
-	"github.com/anemos-labs/sleipnir/internal/executil"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
-// runVerify runs the harness-owned verification command in dir and returns its
-// combined output and exit code. It is what lets "done" be decided by code: the
-// swarm calls it before a worker's task may leave "doing".
+// runVerify uses the integration verifier's command isolation, environment
+// scrubbing, and bounded head-and-tail output capture for task verification.
+// A nonzero exit is a test verdict; startup failures, cancellation, and timeouts
+// return errors so the swarm can distinguish them from failed tests.
 func runVerify(ctx context.Context, dir, cmd string) (string, int, error) {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
-	defer cancel()
-	var c *exec.Cmd
-	if runtime.GOOS == "windows" {
-		c = exec.CommandContext(ctx, "cmd", "/C", cmd)
-	} else {
-		c = exec.CommandContext(ctx, "sh", "-c", cmd)
+	res := workspace.RunShell(ctx, workspace.VerifyRequest{
+		Dir: dir, Cmd: cmd, Timeout: 20 * time.Minute, MaxOutput: 256 << 10,
+	})
+	if res.TimedOut {
+		return res.Output, res.ExitCode, context.DeadlineExceeded
 	}
-	c.Dir = dir
-	c.Env = scrubEnv(os.Environ())
-	isolate(c)
-	executil.ConfigureShell(c)
-	var out bytes.Buffer
-	// os/exec serializes writes when both streams use the same comparable
-	// writer. Distinct wrappers would concurrently mutate the shared buffer.
-	w := &limitedWriter{w: &out, max: 256 << 10}
-	c.Stdout, c.Stderr = w, w
-	err := c.Run()
-	code := 0
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			code, err = ee.ExitCode(), nil
-		}
-	}
-	return out.String(), code, err
-}
-
-// scrubEnv drops variables that look like credentials from a child environment.
-func scrubEnv(env []string) []string {
-	var out []string
-	for _, kv := range env {
-		k, _, _ := strings.Cut(kv, "=")
-		u := strings.ToUpper(k)
-		if strings.Contains(u, "KEY") || strings.Contains(u, "TOKEN") || strings.Contains(u, "SECRET") ||
-			strings.Contains(u, "PASSWORD") || strings.Contains(u, "CREDENTIAL") {
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
-}
-
-// limitedWriter stops accepting output past max bytes but keeps reporting success
-// so the child is not killed by a broken pipe.
-type limitedWriter struct {
-	w   *bytes.Buffer
-	max int
-}
-
-// Write retains only the output prefix that fits the configured cap while reporting all bytes
-// consumed.
-func (l *limitedWriter) Write(p []byte) (int, error) {
-	if room := l.max - l.w.Len(); room > 0 {
-		if len(p) > room {
-			l.w.Write(p[:room])
-		} else {
-			l.w.Write(p)
-		}
-	}
-	return len(p), nil
+	return res.Output, res.ExitCode, res.Err
 }

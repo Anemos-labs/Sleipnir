@@ -106,6 +106,13 @@ are recorded on the board and survive replay and interruption. A passing
 submission or a counted failed attempt resets the repair count. Infrastructure
 errors and cancellation do not consume this budget.
 
+Task verification retains up to 256 KiB of raw output from the beginning and end
+of the log, with an omission marker when the middle is discarded. Worker feedback
+and manager notices summarize that capture and include its retained end.
+Task and integration verification share command isolation and environment
+scrubbing; credential-like variables and inherited `GIT_*` settings are removed from verifier
+environments. Platform limits are listed in [Security](SECURITY.md).
+
 **In an isolated run** (section 14) the gate has a third step. After the evidence and the verifier (run in the worker's
 own tree) the harness commits the tree and submits it to the merge queue, which merges it onto the integration tip and
 verifies the *merged* result. The task reaches review only when that succeeded (`merged`, or `empty`: nothing to merge),

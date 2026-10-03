@@ -18,7 +18,7 @@ func TestRepeatedDoneFailuresReturnTheTaskToTheManager(t *testing.T) {
 			var verifies atomic.Int32
 			r := newRVRig(t, Config{MaxAttempts: maxAttempts, VerifyCmd: "go test ./...", Verify: func(context.Context, string, string) (string, int, error) {
 				verifies.Add(1)
-				return strings.Repeat("unrelated diagnostic\n", 100) + "--- FAIL: TestRequirement\nexpected 10 got 11", 1, nil
+				return strings.Repeat("x\n", 1000) + "--- FAIL: TestRequirement\nexpected 10 got 11", 1, nil
 			}}, func(ctx context.Context, c *rvCall) rvReply {
 				if c.Role == "manager" {
 					return rvReply{Text: "waiting"}
@@ -36,7 +36,7 @@ func TestRepeatedDoneFailuresReturnTheTaskToTheManager(t *testing.T) {
 			}
 			rvWait(t, "bounded verification recovery", func() bool {
 				task, _ := r.sw.Board.Snapshot().Task("T1")
-				return task.Status == want && r.idle(id)
+				return task.Status == want && r.idle(id) && mailSent(r, "verification `go test ./...` failed 3 times") > 0
 			})
 			task, _ := r.sw.Board.Snapshot().Task("T1")
 			if verifies.Load() != 3 || task.Attempts != 1 || !strings.Contains(task.Evidence, "expected 10 got 11") {
@@ -49,6 +49,35 @@ func TestRepeatedDoneFailuresReturnTheTaskToTheManager(t *testing.T) {
 				t.Fatalf("the final diagnostic did not reach the manager: %d notices", n)
 			}
 		})
+	}
+}
+
+func TestImplicitStopFeedbackRetainsFinalVerifierLines(t *testing.T) {
+	const diagnostic = "expected 10 got 11"
+	var repairsWithDiagnostic atomic.Int32
+	r := newRVRig(t, Config{VerifyCmd: "go test ./...", Verify: func(context.Context, string, string) (string, int, error) {
+		return strings.Repeat("x\r\n", 1000) + diagnostic, 1, nil
+	}}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role != "manager" && c.Assistants > 0 && c.Sees(diagnostic) {
+			repairsWithDiagnostic.Add(1)
+		}
+		return rvReply{Text: "finished"}
+	})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "Fix requirement", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "implicit verification recovery", func() bool {
+		task, _ := r.sw.Board.Snapshot().Task("T1")
+		return task.Status == StatusTodo && r.idle(id) && mailSent(r, "verification `go test ./...` failed 3 times") > 0
+	})
+	if got := repairsWithDiagnostic.Load(); got != 2 {
+		t.Fatalf("repair prompts with the final diagnostic = %d, want 2", got)
+	}
+	task, _ := r.sw.Board.Snapshot().Task("T1")
+	if !strings.Contains(task.Evidence, diagnostic) || mailSent(r, diagnostic) != 3 {
+		t.Fatalf("manager recovery lost verifier evidence: %+v", task)
 	}
 }
 

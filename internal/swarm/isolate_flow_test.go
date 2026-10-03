@@ -211,7 +211,9 @@ func TestBouncesAreBoundedAndTheTaskReturnsToThePool(t *testing.T) {
 	if tk.Attempts != 1 || tk.Owner != "" {
 		t.Fatalf("T1 = %+v, want todo with one attempt and no owner", tk)
 	}
-	rvWait(t, "the worker to stop", func() bool { return r.idle("be-1") })
+	rvWait(t, "the worker to stop and notify the manager", func() bool {
+		return r.idle("be-1") && mailSent(r.rvRig, "returned to todo") > 0
+	})
 	if n := r.q.Status().VerifyFailures; n != 2 {
 		t.Fatalf("%d merge attempts, want 2", n)
 	}

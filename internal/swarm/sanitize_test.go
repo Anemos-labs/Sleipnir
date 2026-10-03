@@ -33,3 +33,31 @@ func TestCleanTextDefusesEveryMarkerTheHarnessWrites(t *testing.T) {
 		t.Errorf("the result is %d runes, over the cap of 100", len([]rune(got)))
 	}
 }
+
+func TestVerifierTailPreservesFinalLinesWithinDisplayLimits(t *testing.T) {
+	const diagnostic = "[harness] <FAIL> \u202eexpected 10 got 11\x00"
+	const want = "(harness] ‹FAIL› expected 10 got 11"
+	for _, tc := range []struct {
+		name, prefix string
+		max          int
+	}{
+		{"line limit", strings.Repeat("x\n", 60), 1500},
+		{"rune limit", strings.Repeat("界", 300), 160},
+		{"both limits", strings.Repeat("x\n", 1000), 160},
+		{"CRLF", strings.Repeat("x\r\n", 1000), 200},
+		{"CR", strings.Repeat("x\r", 1000), 2000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tailText(tc.prefix+diagnostic, tc.max)
+			if !strings.HasSuffix(got, want) || !strings.HasPrefix(got, "…") {
+				t.Fatalf("final diagnostic or omission marker missing: %q", got)
+			}
+			if len([]rune(got)) > tc.max+2 || len(strings.Split(got, "\n")) > 40 {
+				t.Fatalf("tail exceeded its display limits: %q", got)
+			}
+		})
+	}
+	if got := tailText("setup\n"+diagnostic, 160); got != "setup\n"+want {
+		t.Fatalf("short output changed beyond sanitization: %q", got)
+	}
+}

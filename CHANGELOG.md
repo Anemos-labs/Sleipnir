@@ -6,6 +6,13 @@ include their cache implications.
 ## [Unreleased]
 
 - Show a stopped worker's recorded failure reason in its agent-table row.
+- Preserve the beginning and end of long task-verification logs, including the
+  final failure diagnostic. Use the same runner as integration verification for
+  bounded output capture, environment scrubbing, and process cleanup.
+  Keep the final verifier lines in worker retry prompts and manager notices when
+  output also exceeds their line limit.
+  Scrub inherited environment names containing a delimited `KEY` component,
+  including `SIGNING_KEY_CONTENT`, from task and integration verifiers.
 - Deliver recovery mail that arrives while a worker's request fails. New mail can
   wake the worker once; unread mail from before that run cannot create a retry
   loop. Report worker failures to the manager even after task submission, without
