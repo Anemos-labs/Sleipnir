@@ -6,7 +6,8 @@ include their cache implications.
 ## [Unreleased]
 
 - Preserve complete messages during `doctor` cache probes for message-boundary
-  providers. Grow the probe by appending responses and user turns, and avoid
+  providers, including concurrent warm-up bursts. Grow the sequential probe by
+  appending responses and user turns, and avoid
   interpreting rounded usage counts as cache-write block sizes. Probe history
   adds input tokens; ordinary session prompts and the renderer are unchanged.
 - Resume isolated teams with their original Git base, worker conversations and

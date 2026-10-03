@@ -40,7 +40,8 @@ evidence that a particular party caused it.
 
 For message-boundary providers, `doctor` keeps the system text and earlier
 messages intact and appends each response and follow-up. It does not infer a
-cache-write block size from these usage counts. Token-prefix providers retain
+cache-write block size from these usage counts. Its concurrent warm-up bursts
+repeat the same complete message prefix. Token-prefix providers retain
 the uneven text-growth probe used to estimate their reported token increment.
 
 ## Reporting

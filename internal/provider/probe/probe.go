@@ -501,6 +501,7 @@ func (r *runner) minPrefix(ctx context.Context) error {
 func (r *runner) warmup(ctx context.Context) error {
 	r.cfg.Log("warm-up")
 	sys := filler(r.nonce+"w", 12000)
+	boundaries := r.cfg.Provider.Profile().Cache.MessageBoundaries
 	burst := func(tag string) (cached, total int) {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
@@ -516,7 +517,13 @@ func (r *runner) warmup(ctx context.Context) error {
 				defer wg.Done()
 				ready.Done()
 				<-start
-				resp, err := r.cfg.Provider.Do(ctx, &provider.Request{Prompt: r.prompt(sys, user(fmt.Sprintf("Say ok. %s%d", tag, i)))}, nil)
+				text := fmt.Sprintf("Say ok. %s%d", tag, i)
+				if boundaries {
+					// Reuse the complete user-message ending written by the cold
+					// burst; changing it would test a different prefix each time.
+					text = "Say ok."
+				}
+				resp, err := r.cfg.Provider.Do(ctx, &provider.Request{Prompt: r.prompt(sys, user(text))}, nil)
 				if err != nil {
 					return
 				}
