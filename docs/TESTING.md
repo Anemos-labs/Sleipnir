@@ -19,7 +19,7 @@ verification, hooks, and shell tools; and concurrent verifier output capture:
 ```sh
 go test -count=1 -timeout 3m ./internal/session -run 'Test(SessionDirectoryLock|ASessionDirectoryHasOneWriter)'
 go test -count=1 -timeout 3m ./internal/executil
-go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsQuotedCommands|VerificationCombinesConcurrentOutput)'
+go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsQuotedCommands|VerificationCombinesConcurrentOutput|VerificationRetainsFinalFailure)'
 ```
 
 ## Coverage by layer
