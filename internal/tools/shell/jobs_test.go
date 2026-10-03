@@ -119,6 +119,13 @@ func TestJobExitsOnItsOwn(t *testing.T) {
 	if r := h.kill(env, id); r.IsError || r.Text != "job job_1 already exited (exit code 4)" {
 		t.Errorf("kill after exit = %+v", r)
 	}
+	// The output state becomes visible before the supervisor emits the exit
+	// event. Wait for completion before asserting the complete event sequence.
+	select {
+	case <-h.m.job(id).finished:
+	case <-time.After(10 * time.Second):
+		t.Fatal("job supervisor did not finish recording its exit")
+	}
 	evs := jobEvents(h)
 	if len(evs) != 2 || evs[1].Status != "exited" || evs[1].Exit == nil || *evs[1].Exit != 4 {
 		t.Errorf("events = %+v", evs)
