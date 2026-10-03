@@ -1,5 +1,62 @@
 # Getting started
 
+## Install
+
+### Release archive
+
+Download and extract the archive for your operating system and CPU from
+[Releases](https://github.com/Anemos-labs/Sleipnir/releases).
+
+On Linux or macOS, run these commands from the directory containing the extracted
+`sleipnir` binary:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 755 sleipnir "$HOME/.local/bin/sleipnir"
+export PATH="$HOME/.local/bin:$PATH"
+sleipnir --help
+```
+
+Add the `export PATH` line to `~/.bashrc` (Bash) or `~/.zshrc` (Zsh) for new
+terminals. Installation is per user; installing as root does not install it
+for other accounts.
+
+On Windows, put `sleipnir.exe` in a permanent folder, add that folder to your
+user `Path` through **Environment Variables**, and open a new terminal.
+Run `sleipnir --help` to verify. From its folder, PowerShell can also run it
+directly with `.\sleipnir.exe --help`.
+
+### With Go
+
+Go 1.25 or newer is required. On Linux or macOS, install to an explicit directory
+and add it to the current shell's PATH:
+
+```sh
+GOBIN="$HOME/.local/bin" go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
+export PATH="$HOME/.local/bin:$PATH"
+sleipnir --help
+```
+
+Keep the `export PATH` line in your shell's startup file as described above.
+On Windows, run `go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest`,
+then add Go's binary directory to your user `Path` and open a new terminal.
+Go uses `go env GOBIN` when set; otherwise it uses the `bin` directory under
+`go env GOPATH` (normally `%USERPROFILE%\go\bin` on Windows).
+
+### Command not found
+
+An installed binary must be in a directory listed in PATH. If an earlier
+`go install` used the default location, on Linux or macOS run:
+
+```sh
+export PATH="$(go env GOPATH)/bin:$PATH"
+sleipnir --help
+```
+
+If `go env GOBIN` prints a custom directory, add that directory instead.
+Keep the matching PATH setting in your shell's startup file. If the binary is
+absent, rerun the install command and check its error output before continuing.
+
 ## Connect a model
 
 Run `sleipnir` from the project directory. The setup menu selects a provider,
