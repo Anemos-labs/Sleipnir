@@ -188,9 +188,21 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if vr.infra {
 			return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
 		}
+		cmd := ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files)
+		next, applied := s.recordVerificationFailure(task, cmd, vr)
+		if !applied {
+			return tools.Errorf("%s changed assignment or status while verification ran", in.ID)
+		}
+		if next.Status != StatusDoing {
+			if m != nil {
+				s.stopRunFor(m, "verification retry limit reached", false, task.ID, task.Rev)
+			}
+			s.notifyManager(s.verificationFailureNotice(me, next, cmd, vr))
+			return tools.Errorf("Not done: verification failed %d times. %s is %s; the manager has the failure details. Stop now.", maxGateTries+1, in.ID, next.Status)
+		}
 		tail, _ := tools.Truncate(vr.out, 3000)
 		return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: verification `%s` failed (exit %d). Fix the failures and call done again.%s\n%s",
-			ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, s.isolatedVerifyHint(m), tail)}
+			cmd, vr.code, s.isolatedVerifyHint(m), tail)}
 	}
 	result := oneLine(in.Text, 120)
 	if result == "" {

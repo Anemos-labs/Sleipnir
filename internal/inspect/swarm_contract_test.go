@@ -1,12 +1,52 @@
 package inspect
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
+
+func TestVerificationRecoveryIsVisibleInInspectorAndTerminal(t *testing.T) {
+	for _, maxAttempts := range []int{1, 3} {
+		log := events.NewMemLog()
+		board := swarm.NewBoard(log)
+		task, err := board.CreateTask("mgr", swarm.TaskSpec{Title: "Fix requirement"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := board.Assign("mgr", "be-1", task.ID); err != nil {
+			t.Fatal(err)
+		}
+		task, _ = board.Snapshot().Task(task.ID)
+		for i := 0; i < 3; i++ {
+			board.FailVerification("be-1", task.ID, task.Rev, "verification failed 3 times", "expected 10 got 11", 3, maxAttempts)
+		}
+		tracker, terminal := newBoardTracker(), state.New()
+		for _, event := range log.All() {
+			var payload struct{ Op string }
+			if err := json.Unmarshal(event.Data, &payload); err != nil {
+				t.Fatal(err)
+			}
+			tracker.onBoardOp(event.Agent, payload.Op, event.Data, event.TS)
+			terminal.Apply(event)
+		}
+		want, _ := board.Snapshot().Task(task.ID)
+		inspected, drawn := tracker.views(), terminal.Snapshot().Board.Tasks
+		if len(inspected) != 1 || len(drawn) != 1 {
+			t.Fatalf("missing task: inspector=%+v terminal=%+v", inspected, drawn)
+		}
+		if inspected[0].Status != string(want.Status) || inspected[0].Owner != want.Owner || inspected[0].Attempts != want.Attempts || inspected[0].Evidence != want.Evidence {
+			t.Fatalf("inspector=%+v; live=%+v", inspected[0], want)
+		}
+		if drawn[0].Status != string(want.Status) || drawn[0].Owner != want.Owner || drawn[0].Attempts != want.Attempts || drawn[0].Evidence != want.Evidence {
+			t.Fatalf("terminal=%+v; live=%+v", drawn[0], want)
+		}
+	}
+}
 
 // The swarm logs the full state of a task on every board.op, and the inspector
 // must show what the live board held. This drives the real board through a

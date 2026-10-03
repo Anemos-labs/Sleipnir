@@ -16,6 +16,29 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
+func TestFailedTasksDoNotInflateTheRunningColumn(t *testing.T) {
+	sn := &state.Snapshot{Board: state.Board{Tasks: []state.Task{
+		{ID: "T1", Title: "active", State: state.TaskRunning},
+		{ID: "T2", Title: "failed", State: state.TaskFailed},
+	}}}
+	for _, width := range []int{80, 110} {
+		lines := widget.Kanban(kanban(sn), width, widget.DefaultPalette())
+		text := plainText(lines)
+		if !strings.Contains(text, "running 1") || !strings.Contains(text, "failed 1") || !strings.Contains(text, "✗ T2") {
+			t.Fatalf("failed task is counted as active at width %d:\n%s", width, text)
+		}
+		for _, line := range lines {
+			if line.Width() > width {
+				t.Fatalf("board exceeds %d columns", width)
+			}
+		}
+	}
+	sn.Board.Tasks = sn.Board.Tasks[:1]
+	if text := plainText(widget.Kanban(kanban(sn), 80, widget.DefaultPalette())); strings.Contains(text, "failed") {
+		t.Fatalf("an empty failure column takes up space:\n%s", text)
+	}
+}
+
 func demoSnapshot(t *testing.T) *state.Snapshot {
 	t.Helper()
 	st, err := state.Fold(statetest.DemoLogFile(t))
