@@ -2,9 +2,8 @@ package swarm
 
 // The bound on runs that peer mail starts (Config.MaxMailWakes) holds however the mail meets the
 // worker: when the worker is idle, while it runs, and in the moment between the end of a run (the
-// board already says idle) and the harness looking at what its inbox still holds. The first CI run
-// on GitHub failed once on the black-box test of the bound ("peer mail started 4 runs of the worker,
-// want exactly the bound of 3"): mail that came in that moment started a run that nothing counted.
+// board already says idle) and the harness looking at what its inbox still holds. Mail arriving
+// during terminal-event publication must count against the same bound as mail at any other time.
 //
 // Everything here makes the moment the test's own, not luck's: a hook on the event log sends the
 // mail from inside the worker's last event, and the model's reply is held while the mail arrives.
@@ -160,8 +159,8 @@ func TestPeerMailThatArrivesAsARunEndsStartsNoRunPastTheBound(t *testing.T) {
 		}}
 	})
 
-	// The first ping wakes the worker: the one wake the bound allows. As its run ends, after the
-	// worker is idle and before the harness has looked at its inbox, the late ping arrives.
+	// The first ping wakes the worker: the one wake the bound allows. As its run ends, while its
+	// terminal event is published and before the harness checks its inbox, the late ping arrives.
 	team.peer("the first ping")
 	rvWait(t, "the first ping to be answered", func() bool { return team.calls() >= 2 && team.idle(team.be) })
 	time.Sleep(wbQuiet)

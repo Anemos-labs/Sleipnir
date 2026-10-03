@@ -679,9 +679,16 @@ func (s *Swarm) startedBrief(ctx context.Context, m *member, brief string) strin
 }
 
 // forceIdle is the last resort when finishRun itself failed: the member must not
-// stay running forever.
+// stay running forever. Cleanup from an older run cannot alter its successor.
 func (s *Swarm) forceIdle(m *member, rs *runState) {
+	m.mu.Lock()
+	current := m.run == rs
+	m.mu.Unlock()
+	if !current {
+		return
+	}
 	s.Leases.ReleaseAll(m.id)
+	m.setState(s, "failed", "run ended abnormally")
 	m.mu.Lock()
 	if m.run == rs {
 		m.run = nil
@@ -689,7 +696,6 @@ func (s *Swarm) forceIdle(m *member, rs *runState) {
 		m.idleAt = s.deps.Now()
 	}
 	m.mu.Unlock()
-	m.setState(s, "failed", "run ended abnormally")
 }
 
 type stopKind int
@@ -768,17 +774,26 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 		m.mu.Unlock()
 		return
 	}
+	m.task = currentTask(snap, m.id)
+	m.mu.Unlock()
+	// Keep the run reserved until its terminal events are published. Otherwise
+	// mail or reassignment can start a new run whose status is overwritten by
+	// this run's late agent.end event.
+	m.setState(s, state, stateLine)
+	s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
+	m.mu.Lock()
+	if m.run != rs {
+		m.mu.Unlock()
+		return
+	}
 	m.run = nil
 	m.life = lifeIdle
 	m.idleAt = s.deps.Now()
-	m.task = currentTask(snap, m.id)
 	// A new message is a recovery trigger even if it arrived just before the
 	// failed run returned. Mail already present at reserve must not repeatedly
 	// restart a run that fails before it can drain its inbox (for example budget).
 	restart := kind == stopClean || (kind == stopFailed && m.mailSeq > rs.mailSeq)
 	m.mu.Unlock()
-	m.setState(s, state, stateLine)
-	s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
 	if line == "" && (kind == stopFailed || (kind == stopHarness && count)) {
 		line = fmt.Sprintf("%s stopped (%s). Check task list for its current assignments; send recovery instructions or reassign unfinished work with spawn.", m.id, why)
 	}
