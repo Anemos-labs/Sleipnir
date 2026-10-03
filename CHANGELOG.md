@@ -5,6 +5,8 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Bind watchdog cancellation and alerts to the worker run that was checked, so
+  a delayed decision or alert cleanup cannot stop or clear warnings for its replacement.
 - Check composite benchmark tasks against all recorded reference patches instead
   of skipping them. Reject malformed reference metadata during task admission.
   Exclude four mined tasks whose hidden tests require unspecified symbols and
