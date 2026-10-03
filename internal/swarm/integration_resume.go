@@ -161,7 +161,7 @@ func (s *Swarm) recoverApplication(ctx context.Context) error {
 		if pending.Branch != "" {
 			return fmt.Errorf("integration was interrupted and branch %s points at neither %s nor %s; preserve any newer work, then return that branch to one of those commits before resuming (no files changed; merged result: %s)", pending.Branch, pending.From, pending.To, q.Branch())
 		}
-		return fmt.Errorf("integration was interrupted and affected paths (%s) match neither the before commit %s nor after commit %s; save your edits, then make all affected paths match either commit before resuming. List those paths with git diff --name-only %s %s (no files changed; merged result: %s)",
+		return fmt.Errorf("integration was interrupted and affected paths (%s) match neither the before commit %s nor after commit %s; save your edits, then make all affected paths match either commit before resuming. List those paths with git diff --no-renames --name-only %s %s (no files changed; merged result: %s)",
 			cleanText(strings.Join(firstN(pending.Paths, 8), ", "), 300), pending.Before, pending.After, pending.Before, pending.After, q.Branch())
 	}
 	if applied {
