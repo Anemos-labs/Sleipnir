@@ -16,9 +16,11 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 func TestIsolatedTeamCrashHelper(t *testing.T) {
@@ -349,6 +351,133 @@ func TestIsolatedTeamResumeRetainsServiceSpending(t *testing.T) {
 	}
 	if _, ok := s.Swarm.Board.Snapshot().Agent("mail-1"); ok {
 		t.Fatal("service agent became a recovered worker")
+	}
+}
+
+func TestIsolatedTeamResumeDoesNotResurrectRetiredWorkers(t *testing.T) {
+	for _, preparedTree := range []bool{false, true} {
+		t.Run(fmt.Sprintf("prepared tree=%t", preparedTree), func(t *testing.T) {
+			repo := isoRepo(t)
+			client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ready"} })
+			o := isoOptions(t, repo, client, model, "retired-workers")
+			o.MaxAgents = 3 // manager, one existing worker, and one interrupted spawn
+			s, err := session.New(context.Background(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { s.Close() })
+			if _, err := s.Run(context.Background(), "remember this team"); err != nil {
+				t.Fatal(err)
+			}
+			spent := s.Swarm.TotalCost()
+			r, err := gitx.Open(repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mgr := &workspace.Manager{Repo: r, Dir: treesOf(o, s.ID), Prefix: "sleipnir/" + s.ID, Base: "sleipnir/" + s.ID + "/_resume"}
+			blobs, err := events.NewDirBlobs(filepath.Join(s.Dir, "blobs"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var retained []string
+			// Record retirement and spawn interruption boundaries with real board
+			// operations and released Git trees. Retired trees contain unmerged work;
+			// one retired task remains in review, while another was requeued.
+			for i := 1; i <= 6; i++ {
+				id := fmt.Sprintf("be-%d", i)
+				if i == 6 {
+					id = "orphan-1" // a leftover tree is not evidence of roster membership
+				}
+				if i != 4 || preparedTree {
+					tree, err := mgr.Create(context.Background(), id, workspace.CreateOptions{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					path := filepath.Join(mgr.Dir, id, "unfinished.txt")
+					if err := os.WriteFile(path, []byte(id+"\n"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+					if err := tree.Release(context.Background()); err != nil {
+						t.Fatal(err)
+					}
+					retained = append(retained, path)
+				}
+				if i == 6 {
+					continue
+				}
+				task, err := s.Swarm.Board.CreateTask("mgr", swarm.TaskSpec{Title: id + " work", Role: "backend"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := s.Swarm.Board.Assign("mgr", id, task.ID); err != nil {
+					t.Fatal(err)
+				}
+				s.Log.Emit(id, "agent.prepare", map[string]any{"id": id, "role": "backend", "task": task.ID})
+				if i <= 3 {
+					s.Swarm.Board.SetAgent(swarm.AgentInfo{ID: id, Role: "backend", State: "idle", Task: task.ID})
+					s.Log.Emit("swarm", events.TypeAgentSpawn, map[string]any{"id": id, "role": "backend", "task": task.ID})
+				}
+				if i == 1 || i == 3 {
+					if err := s.Swarm.Board.Submit(id, task.ID, "ready for review", ""); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if i <= 2 {
+					raw, _ := json.Marshal(agent.Snapshot{Version: 1, Agent: id, Role: "backend", CostUSD: 2})
+					hash, err := blobs.Put(raw)
+					if err != nil {
+						t.Fatal(err)
+					}
+					s.Log.Emit(id, events.TypeAgentSnapshot, map[string]any{"blob": hash})
+					s.Swarm.Board.RequeueOwned(id, "its worker was retired")
+					s.Swarm.Board.RemoveAgent(id)
+				}
+				if i == 5 {
+					s.Swarm.Board.RequeueOwned(id, "the worker could not be started")
+				}
+			}
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			o.Resume = s.Dir
+			resumed, err := session.New(context.Background(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resumed.Close()
+			snap := resumed.Swarm.Board.Snapshot()
+			if len(snap.Agents) != 3 {
+				t.Fatalf("unexpected recovered roster: %+v", snap.Agents)
+			}
+			for _, id := range []string{"be-3", "be-4"} {
+				if a, ok := snap.Agent(id); !ok || a.State != "idle" {
+					t.Fatalf("worker %s was not recovered idle: %+v", id, a)
+				}
+			}
+			for _, id := range []string{"T1", "T2", "T5"} {
+				if task, ok := snap.Task(id); !ok || task.Status != swarm.StatusTodo || task.Owner != "" {
+					t.Fatalf("retired or rolled-back task stayed reserved: %+v", task)
+				}
+			}
+			if task, _ := snap.Task("T4"); task.Owner != "be-4" || task.Status != swarm.StatusTodo {
+				t.Fatalf("interrupted spawn lost its assignment: %+v", task)
+			}
+			if got := resumed.Swarm.TotalCost(); got != spent+4 {
+				t.Fatalf("retired spending lost: got %g, want %g", got, spent+4)
+			}
+			for _, path := range retained {
+				if got := readFile(t, path); got != filepath.Base(filepath.Dir(path))+"\n" {
+					t.Fatalf("preserved tree changed: %s: %q", path, got)
+				}
+			}
+			if err := resumed.Swarm.Retire("be-3"); err != nil {
+				t.Fatal(err)
+			}
+			resumed.Swarm.Start(context.Background())
+			if id, err := resumed.Swarm.Spawn(swarm.SpawnReq{By: "mgr", Role: "backend", Title: "new assignment"}); err != nil || id != "be-6" {
+				t.Fatalf("worker IDs reused after recovery: %q, %v", id, err)
+			}
+		})
 	}
 }
 

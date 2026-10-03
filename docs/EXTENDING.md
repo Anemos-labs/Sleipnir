@@ -653,7 +653,9 @@ Git base, integration position and private worktrees. Workers start idle. Interr
 tasks still owned at interruption return to todo and remain reserved for that worker;
 `spawn task=T1` reuses it automatically. Tasks already released to the pool remain
 unassigned. Verification runs again before accepting unfinished
-work. Agent and task IDs continue from their recorded history, including retired agents.
+work. Retired workers remain retired even when their dirty trees or review tasks
+remain on disk; their spending and IDs stay in the session history. A spawn
+interrupted before roster registration recovers only while its task is still owned.
 
 Use `--resume ID` or `--continue` from the original working directory. The team must
 keep worktree isolation and its original patch or commit mode; commit mode also needs

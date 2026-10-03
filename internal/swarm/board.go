@@ -974,13 +974,13 @@ func (b *Board) RemoveAgent(id string) {
 	})
 }
 
-// RequeueOwned returns every doing or blocked task an agent owns to todo (the
-// agent is going away). It returns the tasks it changed.
+// RequeueOwned releases doing, blocked, and reserved todo tasks when their agent
+// goes away. Review results remain available. It returns the tasks it changed.
 func (b *Board) RequeueOwned(agent, reason string) []Task {
 	var out []Task
 	_ = b.mutate("harness", "requeue", func(d *draft) error {
 		for i, t := range d.Tasks {
-			if t.Owner == agent && (t.Status == StatusDoing || t.Status == StatusBlocked) {
+			if t.Owner == agent && (t.Status == StatusDoing || t.Status == StatusBlocked || t.Status == StatusTodo) {
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", cleanText(reason, maxLineRunes), d.Version
 				d.tasks()[i] = t
 				out = append(out, t)
@@ -1029,7 +1029,7 @@ func (b *Board) RestoreOwners(prev *Snapshot, owners map[string]string) []string
 		for i, t := range tasks {
 			switch t.Status {
 			case StatusDoing, StatusReview, StatusBlocked, StatusTodo:
-				if t.Status == StatusTodo && owners[t.ID] == "" {
+				if t.Status == StatusTodo && t.Owner == "" && owners[t.ID] == "" {
 					break
 				}
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version

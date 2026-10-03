@@ -228,6 +228,8 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	order := map[string]uint64{}
 	snaps := map[string]bool{}
 	selected := map[string]bool{}
+	prepared := map[string]bool{}
+	published := map[string]bool{}
 	for _, a := range prev.Agents {
 		if a.ID != managerAgent && a.Role != "mailman" {
 			selected[a.ID] = true
@@ -235,6 +237,14 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	}
 	for _, e := range evs {
 		switch e.Type {
+		case events.TypeBoardOp:
+			var op struct{ Op, Agent string }
+			if err := json.Unmarshal(e.Data, &op); err != nil {
+				return err
+			}
+			if op.Op == "agent" || op.Op == "agent-remove" {
+				published[op.Agent] = true
+			}
 		case events.TypeAgentSnapshot:
 			snaps[e.Agent] = true
 		case events.TypeAgentSpawn, "agent.assign", "agent.prepare":
@@ -245,20 +255,20 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 			if w.ID != "" && w.ID != managerAgent {
 				workers[w.ID] = swarm.RecoveredWorker{ID: w.ID, Role: w.Role, Task: w.Task}
 				order[w.ID] = e.Seq
+				if e.Type == "agent.prepare" {
+					prepared[w.ID] = true
+				}
 			}
-		}
-	}
-	trees, err := s.iso.mgr.List(context.Background())
-	if err != nil {
-		return err
-	}
-	for _, tree := range trees {
-		if !tree.Integration {
-			selected[tree.Agent] = true
 		}
 	}
 	for _, task := range prev.Tasks {
 		if task.Owner != "" && task.Owner != managerAgent && task.Status != swarm.StatusDone && task.Status != swarm.StatusFailed {
+			// A prepare record and an owned task recover the window before roster
+			// publication. Once published, only current roster membership counts:
+			// retired workers can leave both dirty trees and review tasks behind.
+			if !selected[task.Owner] && !(prepared[task.Owner] && !published[task.Owner]) {
+				continue
+			}
 			selected[task.Owner] = true
 			w := workers[task.Owner]
 			w.Task = task.ID
@@ -276,6 +286,7 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	for id, w := range workers {
 		ids[id] = w.Role
 		if snaps[id] {
+			var err error
 			w.Snapshot, err = agent.LatestSnapshot(s.Dir, id)
 			if err != nil {
 				return err

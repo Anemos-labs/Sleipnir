@@ -40,3 +40,37 @@ func TestResumeLeavesReleasedTasksAvailableForOtherWorkers(t *testing.T) {
 		})
 	}
 }
+
+func TestRecoveredTaskReservationIsReleasedWithItsWorker(t *testing.T) {
+	for _, retire := range []bool{false, true} {
+		name := "resume without owner"
+		if retire {
+			name = "retire idle recovered owner"
+		}
+		t.Run(name, func(t *testing.T) {
+			previous := NewBoard(nil)
+			task, err := previous.CreateTask("mgr", TaskSpec{Title: "interrupted work", Role: "backend"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := previous.Assign("mgr", "be-1", task.ID); err != nil {
+				t.Fatal(err)
+			}
+			recovered := NewBoard(nil)
+			recovered.RestoreOwners(previous.Snapshot(), map[string]string{task.ID: "be-1"})
+			if retire {
+				recovered.RequeueOwned("be-1", "its worker was retired")
+			} else {
+				next := NewBoard(nil)
+				next.Restore(recovered.Snapshot())
+				recovered = next
+			}
+			if got, _ := recovered.Snapshot().Task(task.ID); got.Status != StatusTodo || got.Owner != "" {
+				t.Fatalf("missing worker kept its reservation: %+v", got)
+			}
+			if err := recovered.Assign("mgr", "be-2", task.ID); err != nil {
+				t.Fatalf("released reservation blocked another worker: %v", err)
+			}
+		})
+	}
+}
