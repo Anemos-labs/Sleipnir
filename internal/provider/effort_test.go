@@ -96,3 +96,18 @@ func TestEffortUpdatesAreSafeDuringRequests(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestEffortRecoveryUsesTheFirstValidationList(t *testing.T) {
+	for _, message := range []string{
+		"Invalid effort max; expected one of: low, high. See documentation for supported values.",
+		"Invalid effort max; supported values: low, high. It must be a listed value.",
+	} {
+		var e provider.EffortSetting
+		e.Set("max")
+		p := openairesp.New(openairesp.Config{})
+		err := &provider.Error{Kind: provider.ErrBadRequest, Status: 400, Message: message}
+		if !e.Recover(p, "model", "max", err) || e.Params(p, "model", core.Params{}).Effort != "high" {
+			t.Fatalf("did not use the first accepted-level list: %s", message)
+		}
+	}
+}

@@ -150,16 +150,18 @@ func (e *EffortSetting) Recover(p Provider, model, used string, err error) bool 
 		return false
 	}
 	var levels []string
-	validation := false
+	first, tail := -1, 0
 	for _, marker := range []string{"supported values", "supported levels", "allowed values", "one of", "must be", "should be"} {
-		if _, tail, found := strings.Cut(msg, marker); found {
-			validation = true
-			for _, level := range effortValue.FindAllString(tail, -1) {
-				if level != used {
-					levels = append(levels, level)
-				}
+		if at := strings.Index(msg, marker); at >= 0 && (first < 0 || at < first) {
+			first, tail = at, at+len(marker)
+		}
+	}
+	validation := first >= 0
+	if validation {
+		for _, level := range effortValue.FindAllString(msg[tail:], -1) {
+			if level != used {
+				levels = append(levels, level)
 			}
-			break
 		}
 	}
 	if !validation && !strings.Contains(msg, "unsupported") && !strings.Contains(msg, "not supported") && !strings.Contains(msg, "invalid") && !strings.Contains(msg, "unknown parameter") && !strings.Contains(msg, "unrecognized") {
