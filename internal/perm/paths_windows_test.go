@@ -24,7 +24,7 @@ func TestWindowsWorkspaceGoPackagePatterns(t *testing.T) {
 		"go test -vettool tool ./...",
 		"go test -test.race ./...", "go test ./src -v ./...",
 		"go test ./src -run TestExample ./...", "cat ./...",
-		"go list ./.git./...", "go list ./NUL/...", "go list C:relative/...",
+		"go list ./.git./...", "go list ./NUL/...", "go list C:relative/...", "go list C:relative...",
 	} {
 		cases = append(cases, tc{name: command, mode: ModeBypass, req: bash(command), want: "deny"})
 	}

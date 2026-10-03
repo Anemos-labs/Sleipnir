@@ -94,7 +94,13 @@ func goPackageUse(raw string) pathUse {
 	if i := strings.Index(p, "..."); i >= 0 {
 		// Keep the slash: /... must remain the filesystem root, and link/../...
 		// must reach the resolver with its original traversal semantics.
-		p = p[:strings.LastIndexByte(p[:i], '/')+1]
+		end := strings.LastIndexByte(p[:i], '/') + 1
+		if end == 0 {
+			// A drive-relative or unresolved shell prefix is not a known parent
+			// tree. Preserve it for ordinary validation instead of dropping it.
+			return pathUse{raw: raw}
+		}
+		p = p[:end]
 	}
 	return pathUse{raw: p, tree: true}
 }
