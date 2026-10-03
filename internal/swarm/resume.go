@@ -80,7 +80,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 			}
 		}
 		card := "The previous process stopped. Inspect the task and current files before continuing; previous reads no longer authorize edits."
-		if hasTask {
+		if hasTask && task.Owner == w.ID {
 			card += "\n" + taskCard(task, w.ID, true)
 		}
 		if tree != nil {
@@ -97,11 +97,14 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 				return err
 			}
 		}
-		m.task, m.recovered = w.Task, true
+		m.recovered = true
+		if hasTask && task.Owner == w.ID {
+			m.task = w.Task
+		}
 		s.register(m, s.currentShared())
 		s.bindTree(m)
 		restored = append(restored, m)
-		if unfinished && (task.Owner == w.ID || task.Owner == "") && owners[task.ID] == "" {
+		if unfinished && task.Owner == w.ID && owners[task.ID] == "" {
 			owners[task.ID] = w.ID
 		}
 	}

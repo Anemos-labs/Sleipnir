@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -172,7 +173,11 @@ func (s *Session) restore() error {
 			evs = append(evs, e)
 			return nil
 		}); err != nil {
-			return fmt.Errorf("read team state: %w", err)
+			var corrupt *events.CorruptError
+			if s.iso != nil || !errors.As(err, &corrupt) {
+				return fmt.Errorf("read team state: %w", err)
+			}
+			// planIsolation already reported skipped lines for ordinary sessions.
 		}
 		prev, err := swarm.ReplayBoard(evs)
 		if err != nil {

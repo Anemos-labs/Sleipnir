@@ -92,7 +92,14 @@ func (s *Session) planIsolation(ctx context.Context) error {
 	if o.Resume != "" {
 		prior, applied, err = readIsolation(s.Dir)
 		if err != nil {
-			return err
+			var corrupt *events.CorruptError
+			info := inspectLog(s.Dir)
+			if !errors.As(err, &corrupt) || prior != nil || info.isolated || info.recovery {
+				return err
+			}
+			// Ordinary sessions have no durable checkout cursor to lose. Preserve
+			// their existing best-effort resume policy; isolated recovery is strict.
+			s.notice("", "resume: damaged event lines were skipped: "+err.Error())
 		}
 		if prior != nil {
 			if !o.Swarm || (explicit && mode != config.IsolationWorktree) {

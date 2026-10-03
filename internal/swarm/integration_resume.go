@@ -158,7 +158,11 @@ func (s *Swarm) recoverApplication(ctx context.Context) error {
 		}
 	}
 	if !applied && !untouched {
-		return fmt.Errorf("integration was interrupted and the affected files match neither its before nor after state; preserve your edits and reconcile %s before resuming (no files changed)", q.Branch())
+		if pending.Branch != "" {
+			return fmt.Errorf("integration was interrupted and branch %s points at neither %s nor %s; preserve any newer work, then return that branch to one of those commits before resuming (no files changed; merged result: %s)", pending.Branch, pending.From, pending.To, q.Branch())
+		}
+		return fmt.Errorf("integration was interrupted and affected paths (%s) match neither the before commit %s nor after commit %s; save your edits, then make all affected paths match either commit before resuming. List those paths with git diff --name-only %s %s (no files changed; merged result: %s)",
+			cleanText(strings.Join(firstN(pending.Paths, 8), ", "), 300), pending.Before, pending.After, pending.Before, pending.After, q.Branch())
 	}
 	if applied {
 		s.noteApplied(&IntegrationReport{Tip: pending.To, Files: pending.Paths}, pending.Branch)

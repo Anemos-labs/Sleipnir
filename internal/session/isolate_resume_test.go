@@ -351,3 +351,54 @@ func TestIsolatedTeamResumeRetainsServiceSpending(t *testing.T) {
 		t.Fatal("service agent became a recovered worker")
 	}
 }
+
+func TestResumeCorruptionPolicyPreservesIsolatedRecoveryState(t *testing.T) {
+	for _, name := range []string{"solo", "shared", "isolated"} {
+		t.Run(name, func(t *testing.T) {
+			repo := isoRepo(t)
+			client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ready"} })
+			o := isoOptions(t, repo, client, model, "corrupt-log")
+			o.Swarm = name != "solo"
+			if name != "isolated" {
+				o.Isolation = "none"
+			}
+			s, err := session.New(context.Background(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Run(context.Background(), "remember this"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			f, err := os.OpenFile(filepath.Join(s.Dir, "events.jsonl"), os.O_WRONLY|os.O_APPEND, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, writeErr := f.WriteString("malformed complete event\n")
+			closeErr := f.Close()
+			if writeErr != nil || closeErr != nil {
+				t.Fatalf("append damaged line: %v, %v", writeErr, closeErr)
+			}
+			o.Resume = s.Dir
+			resumed, err := session.New(context.Background(), o)
+			if name == "isolated" {
+				if err == nil {
+					resumed.Close()
+					t.Fatal("isolated recovery guessed across a lost event")
+				}
+				if refs := git(t, repo, "branch", "--list", "sleipnir/"+s.ID+"/*"); !strings.Contains(refs, "_resume") || !strings.Contains(refs, "_integration") {
+					t.Fatalf("recovery refs lost: %s", refs)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ordinary resume lost its corruption tolerance: %v", err)
+			}
+			if err := resumed.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

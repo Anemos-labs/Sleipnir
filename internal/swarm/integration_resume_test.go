@@ -108,7 +108,7 @@ func TestIntegrationResumePreservesEditsInAnAmbiguousCrash(t *testing.T) {
 	}
 	r.iso.SaveIntegration = func(IntegrationState) error { return nil }
 	restarted := &Swarm{deps: Deps{Isolation: r.iso}}
-	if err := restarted.RestoreIntegration(context.Background(), durable); err == nil || !strings.Contains(err.Error(), "neither") {
+	if err := restarted.RestoreIntegration(context.Background(), durable); err == nil || !strings.Contains(err.Error(), "neither") || !strings.Contains(err.Error(), durable.Pending.Before) || !strings.Contains(err.Error(), durable.Pending.After) || !strings.Contains(err.Error(), "resume.txt") {
 		t.Fatalf("want ambiguous recovery: %v", err)
 	}
 	if got := readText(t, path); got != "human edit after interruption\n" {
@@ -116,5 +116,15 @@ func TestIntegrationResumePreservesEditsInAnAmbiguousCrash(t *testing.T) {
 	}
 	if got := readText(t, filepath.Join(r.repo, "user.txt")); got != "uncommitted original\n" {
 		t.Fatalf("original dirty base lost: %q", got)
+	}
+	// Matching the named after state lets recovery complete without a second apply.
+	if err := os.WriteFile(path, []byte("verified worker change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.RestoreIntegration(context.Background(), durable); err != nil {
+		t.Fatal(err)
+	}
+	if report := restarted.Integrate(context.Background()); !report.Applied || len(report.Files) != 0 {
+		t.Fatalf("reconciled recovery: %+v", report)
 	}
 }

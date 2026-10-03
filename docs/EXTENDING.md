@@ -650,15 +650,18 @@ also resume as a single agent with `--swarm 0`, using the manager's conversation
 
 **An isolated team** restores the manager, worker conversations, task board, original
 Git base, integration position and private worktrees. Workers start idle. Interrupted
-tasks return to todo and remain reserved for the recovered worker; `spawn task=T1`
-reuses that worker automatically. Verification runs again before accepting unfinished
+tasks still owned at interruption return to todo and remain reserved for that worker;
+`spawn task=T1` reuses it automatically. Tasks already released to the pool remain
+unassigned. Verification runs again before accepting unfinished
 work. Agent and task IDs continue from their recorded history, including retired agents.
 
 Use `--resume ID` or `--continue` from the original working directory. The team must
 keep worktree isolation and its original patch or commit mode; commit mode also needs
 the original checked-out branch. The configured agent limit must fit the recovered
 roster. An active session cannot be taken over. Logs created without isolation
-recovery metadata are refused with an explanation.
+recovery metadata are refused with an explanation. Malformed complete log records
+also stop isolated recovery: a missing integration record cannot be safely guessed.
+Ordinary sessions retain best-effort recovery with a warning for skipped records.
 
 Isolated agents save context at complete tool-batch boundaries before model requests,
 including the initial input. A process killed during a model request can therefore
@@ -669,8 +672,9 @@ reported usage after the last context snapshot still counts toward spending.
 
 Checkout integration records its intent before writing. On resume, matching before
 or after file contents establish whether the patch ran; partial or conflicting
-contents stop recovery without overwriting edits. The error names the retained
-integration branch for manual reconciliation. Complete snapshots consume local disk;
+contents stop recovery without overwriting edits. The error names both comparison
+commits and the integration branch. After saving current edits, the affected paths
+must match either recorded state before recovery can continue. Complete snapshots consume local disk;
 `sleipnir sessions prune` removes selected histories and salvages remaining worker
 edits into Git branches before removing their cache directories.
 
