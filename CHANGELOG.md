@@ -5,6 +5,7 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Show a stopped worker's recorded failure reason in its agent-table row.
 - Deliver recovery mail that arrives while a worker's request fails. New mail can
   wake the worker once; unread mail from before that run cannot create a retry
   loop. Report worker failures to the manager even after task submission, without

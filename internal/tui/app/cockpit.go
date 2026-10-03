@@ -246,7 +246,10 @@ func doing(a state.Agent, tasks map[string]state.Task) string {
 	case state.StatusIdle:
 		return "waits for work"
 	case state.StatusError:
-		return "stopped by an error (see the feed)" // not "thinking": the request failed, and the model is not what is slow
+		if a.EndState == "failed" && a.Line != "" {
+			return strings.TrimPrefix(a.Line, "stopped with an error: ")
+		}
+		return "stopped by an error (see the feed)"
 	}
 	if a.Compacting {
 		return "folds its thread"
