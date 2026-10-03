@@ -119,6 +119,18 @@ func TestWindowsWorkspaceRootRelativeLinkEscape(t *testing.T) {
 	}
 }
 
+func TestWindowsWorkspaceDeviceLink(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass})
+	link := filepath.Join(f.root, "device-link")
+	if err := os.Symlink("NUL", link); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.Check(context.Background(), f.request(read(link))); outcome(d) != "deny" {
+		t.Fatalf("read through device link = %+v", d)
+	}
+}
+
 func TestWindowsGlobVolumeAndBoundaries(t *testing.T) {
 	f := newFixture(t)
 	budget := 1000
