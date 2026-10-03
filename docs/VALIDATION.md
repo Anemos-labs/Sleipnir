@@ -54,6 +54,12 @@ Use token-weighted cache ratios. Do not claim dollar savings without applicable
 prices, or extrapolate a short protocol probe into an end-to-end benchmark.
 Repeat paired measurements when endpoint conditions vary.
 
+`doctor` records concurrent warm-up requests alongside its sequential requests.
+Its JSON `total_usd` is the sum of reported costs, with `cost_complete` indicating
+whether every recorded request succeeded and supplied a cost. Missing cost data
+does not mean free usage. Failed or unreported warm-up samples leave the warm-up
+requirement undetermined.
+
 [OpenAI caching](https://developers.openai.com/api/docs/guides/prompt-caching) ·
 [OpenAI cache diagnostics](https://developers.openai.com/api/docs/guides/prompt-caching/diagnostics) ·
 [Benchmarks](BENCHMARKS.md)
