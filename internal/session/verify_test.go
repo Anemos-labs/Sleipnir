@@ -76,7 +76,33 @@ func TestVerificationRetainsFinalFailureDiagnostic(t *testing.T) {
 	}
 }
 
+func TestVerificationScrubsInheritedSecrets(t *testing.T) {
+	dir, command := verificationOutputCommand(t)
+	t.Setenv("TEST_VERIFY_ENVIRONMENT", "1")
+	for _, name := range []string{"KEY_CONTENT", "SIGNING_KEY_CONTENT", "SIGNING_KEY", "ACCESS_TOKEN", "API_KEY"} {
+		t.Setenv(name, "fixture-only")
+	}
+	t.Setenv("KEYBOARD_LAYOUT", "keep-me")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, code, err := runVerify(ctx, dir, command)
+	if err != nil || code != 0 {
+		t.Fatalf("verifier environment: code=%d err=%v output=%s", code, err, out)
+	}
+}
+
 func TestVerificationOutputProcessHelper(t *testing.T) {
+	if os.Getenv("TEST_VERIFY_ENVIRONMENT") == "1" {
+		for _, name := range []string{"KEY_CONTENT", "SIGNING_KEY_CONTENT", "SIGNING_KEY", "ACCESS_TOKEN", "API_KEY"} {
+			if _, present := os.LookupEnv(name); present {
+				t.Fatalf("inherited credential-like variable %s", name)
+			}
+		}
+		if os.Getenv("KEYBOARD_LAYOUT") != "keep-me" {
+			t.Fatal("ordinary verifier setting was removed")
+		}
+		return
+	}
 	value := os.Getenv("TEST_VERIFY_OUTPUT_LINES")
 	if value == "" {
 		return

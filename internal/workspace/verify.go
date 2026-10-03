@@ -131,7 +131,7 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	return res
 }
 
-var secretEnvName = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|(^|[_-])(key|pass|passphrase|pat|auth|authorization)$|^ssh_auth_sock$)`)
+var secretEnvName = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|(^|[_-])key([_-]|$)|(^|[_-])(pass|passphrase|pat|auth|authorization)$|^ssh_auth_sock$)`)
 
 // verifyEnv builds the verifier's environment from base.
 func verifyEnv(base []string, req VerifyRequest) []string {

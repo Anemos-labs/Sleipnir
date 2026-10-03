@@ -14,12 +14,13 @@ policy, action pinning, and release builds. CI configuration is in
 `.github/workflows/`. The broad Windows suite excludes packages listed with reasons
 in `scripts/windows-excluded.txt`. A required Windows runtime job checks session
 lock contention, release, and recovery after process death; command quoting across
-verification, hooks, and shell tools; and concurrent verifier output capture:
+verification, hooks, and shell tools; concurrent verifier output capture; and
+inherited credential filtering:
 
 ```sh
 go test -count=1 -timeout 3m ./internal/session -run 'Test(SessionDirectoryLock|ASessionDirectoryHasOneWriter)'
 go test -count=1 -timeout 3m ./internal/executil
-go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsQuotedCommands|VerificationCombinesConcurrentOutput|VerificationRetainsFinalFailure)'
+go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsQuotedCommands|VerificationCombinesConcurrentOutput|VerificationRetainsFinalFailure|VerificationScrubsInheritedSecrets)'
 ```
 
 ## Coverage by layer
