@@ -495,7 +495,7 @@ func (m *Manager) reclaimStale(ctx context.Context, agent, dest, branch string) 
 		// A missing directory: ours to clear only if its marker says so and its owner
 		// is gone.
 		mk := m.markerForPath(w.Path)
-		if mk == nil || !m.ownsMarker(mk) || mk.owner() == ownerAlive {
+		if mk == nil || !m.ownsMarker(mk) || mk.owner() != ownerDead {
 			return fmt.Errorf("%w: %s is registered at %s (missing) and is not ours to clear", ErrExists, nameOr(branch, dest), w.Path)
 		}
 		if err := m.st.base.WorktreeRemove(ctx, w.Path, true); err != nil {
@@ -575,7 +575,11 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if mk.Agent != agent || mk.Integration {
 		return nil, ErrExists
 	}
-	if mk.owner() == ownerAlive {
+	owner := mk.owner()
+	if owner == ownerUnknown {
+		return nil, ErrExists
+	}
+	if owner == ownerAlive {
 		if mk.PID != m.st.self.pid {
 			return nil, ErrExists
 		}
@@ -587,7 +591,7 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if err != nil {
 		return nil, err
 	}
-	if mk.owner() == ownerDead {
+	if owner == ownerDead {
 		// A process that died in the middle of a git command leaves its lock file; git
 		// never removes one by itself, and the tree's index would refuse every write.
 		// The owner is gone and the lock is inside the tree's own administrative
