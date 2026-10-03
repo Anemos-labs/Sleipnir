@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/executil"
 )
 
 // killReason records why the harness (rather than the command itself) ended a
@@ -80,6 +82,7 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 	cmd.Dir = sp.dir
 	cmd.Env = sp.env
 	configureCmd(cmd)
+	executil.ConfigureShell(cmd)
 
 	outR, outW, err := os.Pipe()
 	if err != nil {

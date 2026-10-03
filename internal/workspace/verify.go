@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/executil"
 )
 
 // VerifyRequest is one run of the verification command.
@@ -97,6 +99,7 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	buf := newTailBuffer(maxOut)
 	cmd.Stdout, cmd.Stderr = buf, buf // one writer: interleaving is preserved
 	configureCmd(cmd)
+	executil.ConfigureShell(cmd)
 	cmd.WaitDelay = 3 * time.Second
 
 	start := time.Now()

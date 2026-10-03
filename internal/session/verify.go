@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/executil"
 )
 
 // runVerify runs the harness-owned verification command in dir and returns its
@@ -26,6 +28,7 @@ func runVerify(ctx context.Context, dir, cmd string) (string, int, error) {
 	c.Dir = dir
 	c.Env = scrubEnv(os.Environ())
 	isolate(c)
+	executil.ConfigureShell(c)
 	var out bytes.Buffer
 	// os/exec serializes writes when both streams use the same comparable
 	// writer. Distinct wrappers would concurrently mutate the shared buffer.

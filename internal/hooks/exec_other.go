@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+
+	"github.com/anemos-labs/sleipnir/internal/executil"
 )
 
 // Non-Unix platforms (Windows in practice) have no process groups to signal.
@@ -17,7 +19,9 @@ import (
 // the process.
 func shellCommand(command string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
-		return exec.Command("cmd", "/C", command)
+		cmd := exec.Command("cmd", "/C", command)
+		executil.ConfigureShell(cmd)
+		return cmd
 	}
 	return exec.Command("sh", "-c", command)
 }
