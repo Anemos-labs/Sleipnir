@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 func TestManagerWaitReturnsActionableErrorWhenNoWorkerCanProgress(t *testing.T) {
@@ -103,5 +104,51 @@ func TestRepeatedImpossibleManagerWaitsStop(t *testing.T) {
 	}
 	if !r.prov.sawEver("Use spawn") {
 		t.Fatal("the model never received the way out")
+	}
+}
+
+func TestManagerWaitRechecksTasksThatSettleDuringStallDetection(t *testing.T) {
+	r := newRVRig(t, Config{}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "ok"} })
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	waited := agreementTask(t, r.sw.Board, "Awaited task")
+	if err := r.sw.Board.Assign("mgr", "be-1", waited.ID); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.setSeen("mgr", r.sw.Board.Snapshot())
+	other := agreementTask(t, r.sw.Board, "Other unfinished work")
+	if err := r.sw.Board.Assign("mgr", "be-2", other.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Block("be-2", other.ID, "needs a decision"); err != nil {
+		t.Fatal(err)
+	}
+	// The unseen blocked task resets quietSince after capturing cur. Hold the manager's
+	// mail lock to pause immediately afterward, before settled/stall checks.
+	m := r.sw.get("mgr")
+	m.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			m.mu.Unlock()
+		}
+	}()
+	r.sw.quietSince.Store(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result := make(chan *tools.Result, 1)
+	go func() {
+		result <- r.callTool(ctx, "wait", "mgr", "manager", map[string]any{"until": []string{waited.ID}})
+	}()
+	rvWait(t, "wait captured its board snapshot", func() bool { return r.sw.quietSince.Load() == 0 })
+	if err := r.sw.Board.Finish("be-1", waited.ID, StatusReview, "ready"); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Unlock()
+	locked = false
+	res := <-result
+	if res.IsError || !strings.Contains(res.Text, "all awaited tasks settled") {
+		t.Fatalf("wait used stale task state: %+v", res)
 	}
 }

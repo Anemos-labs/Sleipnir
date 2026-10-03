@@ -544,6 +544,9 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 
 	timedOut := false
 	for {
+		if ctx.Err() != nil {
+			return tools.Errorf("interrupted"), nil
+		}
 		ch := s.Board.Changed() // before the snapshot, so no change is missed
 		cur := s.Board.Snapshot()
 		digest := diffSnapshots(base, cur)
@@ -570,6 +573,11 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return c.Env.Finish(waitReport(cur, digest, "mail arrived (delivered with this result)"), false), nil
 		}
 		if reason := s.stalledWaitReason(me); reason != "" {
+			select {
+			case <-ch:
+				continue // recheck settled targets and unseen changes on the newer board
+			default:
+			}
 			s.setSeen(me, cur)
 			return tools.Errorf("%s", reason), nil
 		}
