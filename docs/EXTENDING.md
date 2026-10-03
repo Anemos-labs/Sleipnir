@@ -27,8 +27,8 @@ live in the `hooks` key of a Sleipnir config file, not in `.claude/settings.json
 **Trust.** Anything that arrives with a repository is untrusted until you pass `--trust-project` (`chat`, `run`,
 `swarm`). Without it Sleipnir reads only your own files. Skills, commands and agent directories that exist in the
 repository are named in a start-up warning (`skills: .sleipnir/skills: not loaded: it is part of the repository and the
-project is not trusted`; agent directories are only looked at in swarm sessions); project instruction files are skipped
-**without any message**. Trust decides who wrote a
+project is not trusted`; agent directories are only looked at in swarm sessions); skipped project instruction files
+are also reported. Trust decides who wrote a
 file, not what it may do: a trusted skill or command cannot grant itself a permission (`allowed-tools` is parsed and
 applied nowhere), and everything it makes the agent do goes through the permission engine.
 
@@ -72,11 +72,21 @@ deep, each file is included once, an imported file appears right after its impor
 indented code are examples, not imports. A refused import is reported and left out.
 
 **Cleaning and size.** BOM removed, line endings unified, HTML comments and hidden characters removed. One file is cut
-at 64 KB and all files together at 256 KB (at a line boundary, with a note). Then the whole instruction block, as one
-piece, is fitted to about **3,000 tokens (roughly 10 KB)**: it is cut at a line boundary from the **end** and closed
-with the line `(survey truncated)`. The end is where the most specific text sits (subdirectory files, then
-`SLEIPNIR.local.md`), so with a large `AGENTS.md` your local notes are the first thing to disappear, silently. Put the
-important rules first and keep the total under 10 KB. `/recon` prints exactly what the shared layer holds.
+at 64 KB and all files together at 256 KB (at a line boundary, with a note). The shared instruction allowance
+defaults to the smaller of **16,384 estimated tokens** and **one quarter of the initial main model's context window**.
+Later, more specific files receive room first; earlier files may be shortened at a line boundary or omitted.
+The prompt identifies overflow, and a startup warning lists the affected paths. `/recon` prints the loaded text.
+
+Set `cache.instruction_max_tokens` in configuration, or use an environment override:
+
+```sh
+SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS=24000 sleipnir
+```
+
+The allowance is selected once per session, keeping the shared bytes identical for all workers and across turns.
+Restart after changing it. An explicit allowance overrides automatic sizing; it must leave room for the other
+prompt layers and output on every model in the team. The file-size limits still apply. More instructions increase
+cold input and the stable prefix; provider cache reuse remains provider-dependent.
 
 **How it is rendered.** In the first user message of every agent, under `<shared-context>`:
 

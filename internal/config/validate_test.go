@@ -203,9 +203,9 @@ func TestValidate(t *testing.T) {
 		{
 			name: "cache",
 			mutate: func(c *Config) {
-				c.Cache = Cache{SharedTTL: "2h", MinLayerForBreakpoint: -1, CompactThresholdTokens: -1, ThreadSoftLimitTokens: -5, HotMaxTokens: -1, AffinityShards: -2}
+				c.Cache = Cache{InstructionMaxTokens: -1, SharedTTL: "2h", MinLayerForBreakpoint: -1, CompactThresholdTokens: -1, ThreadSoftLimitTokens: -5, HotMaxTokens: -1, AffinityShards: -2}
 			},
-			wantErr: []string{"cache.affinity_shards", "cache.compact_threshold_tokens", "cache.hot_max_tokens", "cache.min_layer_for_breakpoint", "cache.shared_ttl", "cache.thread_soft_limit_tokens"},
+			wantErr: []string{"cache.affinity_shards", "cache.compact_threshold_tokens", "cache.hot_max_tokens", "cache.instruction_max_tokens", "cache.min_layer_for_breakpoint", "cache.shared_ttl", "cache.thread_soft_limit_tokens"},
 		},
 		{
 			name: "cache ttl values",

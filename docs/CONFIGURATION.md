@@ -282,6 +282,7 @@ Tuning of the prompt-cache engine. A `0` means "use the engine's default".
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
+| `instruction_max_tokens` | integer | `0` (automatic) | yes | Instruction-file allowance in the shared layer. Automatic uses the smaller of 16,384 tokens and one quarter of the initial main model's context window. A positive value sets an explicit allowance; choose one that leaves room for tools, conversation, and output on every model in the team. Selected once per session; restart to apply changes |
 | `shared_ttl` | string | `5m` | yes | `5m` or `1h`: the lifetime requested for the shared and role layers on a provider with explicit breakpoints (the Messages dialect). `1h` costs more per cache write and pays for a swarm or a session that is used over more than five minutes. Chat-completions providers cache by prefix and have no such setting |
 | `min_layer_for_breakpoint` | integer | `1500` | yes | Do not place a cache breakpoint after a layer smaller than this many tokens. A `0` behaves like the default: a positive value is needed to change it. Single agents and every agent of a swarm |
 | `compact_threshold_tokens` | integer | `0` (60,000) | yes | Thread size at which compaction is forced whatever it costs |

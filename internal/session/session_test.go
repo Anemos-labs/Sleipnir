@@ -799,7 +799,7 @@ func TestInstructionFilesThatAreSkippedOrCutAreReported(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if got := sink.all(); !strings.Contains(got, "instruction files come to") || !strings.Contains(got, "3000") {
+	if got := sink.all(); !strings.Contains(got, "instruction files need about") || !strings.Contains(got, "16384") || !strings.Contains(got, "AGENTS.md") || !strings.Contains(got, "cache.instruction_max_tokens") {
 		t.Errorf("no notice about the cut: %q", got)
 	}
 	if txt := s.Shared.Text(); !strings.Contains(txt, "instruction files truncated") || strings.Contains(txt, "survey truncated") {

@@ -5,6 +5,14 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Allow up to 16,384 estimated instruction tokens by default, bounded to one
+  quarter of the initial model's context window, with an explicit
+  `cache.instruction_max_tokens` override. Preserve later instruction files
+  before earlier files when the allowance is exceeded, and identify the affected
+  paths. G1 changes for sessions whose instructions exceeded the old 3,000-token
+  limit: their first request uses a new shared prefix and may incur a cache write.
+  Subsequent turns retain identical instruction bytes; larger instructions add
+  input tokens. G0, tool schemas, and the renderer format are unchanged.
 - Send the Responses `session-id` routing header consistently with the body
   cache key, preserving affinity across related requests.
 - Preserve live-state notices in Responses history so later requests retain
