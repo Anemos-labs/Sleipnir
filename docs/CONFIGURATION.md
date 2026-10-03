@@ -262,6 +262,12 @@ event log records what each was described with (the numbers and where they came 
 gateway's, not the fallback's. `sleipnir models` prints a marketplace catalogue with prices.
 `--context-window N` on `run` overrides the window for one run.
 
+`sleipnir models --provider chatgpt` uses the saved ChatGPT sign-in. Its price
+columns say `plan`, because that catalog supplies no per-token prices. Tuning a
+built-in provider without setting `base_url` preserves its authentication mode.
+An explicit `models --base-url URL` lists that endpoint without borrowing the
+ChatGPT sign-in token.
+
 ### `permissions`
 
 | Key | Type | Default | Applied | Meaning |
