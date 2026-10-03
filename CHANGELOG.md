@@ -5,6 +5,8 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Label assigned task paths as `SCOPE` in the agent table. A write lease on one
+  file no longer appears as ownership of its enclosing directory.
 - Publish a worker's ending before allowing reassignment or mail recovery, so
   late terminal events cannot make its new run appear stopped. Ignore cleanup
   from an older run when a newer run owns the worker and its write leases.

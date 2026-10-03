@@ -13,7 +13,7 @@
 │          ▄▀ ▀▀▀▀▀▄▀▄▀█ ▀▀  ▀          │   m0  w1  w2  w3  w4  w5  w6  w7  w8  w9 w10 w11 w12 +37 │|
 │                                       │                                                          │|
 ├─ agents ──────────────────────────────┴──────────────────────────────────────────────────────────┤|
-│ AGENT        STATE   DOING                      PROMPT                 TOK    COST    ⛁ LEASE    │|
+│ AGENT        STATE   DOING                      PROMPT                 TOK    COST    ⛁ SCOPE    │|
 │ m0 manager   ⠹ think plan: split by endpoint    █████████████████▓░  12.1k  $0.012  96% —        │|
 │ w1 backend   ⚙ tool  go test ./orders/...       ███████████▏█████▓░  72.2k  $0.020  97% orders/* │|
 │ w7 docs      ⚠ stuck npm test - same failure    ████████████▏███▓░░  48.0k  $0.012  88% docs/*   │|

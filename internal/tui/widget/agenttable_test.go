@@ -28,7 +28,7 @@ func TestAgentTableGolden(t *testing.T) {
 	odd := []widget.AgentRow{
 		{ID: "a", State: widget.StateStuck},
 		{ID: "long-agent-name", Role: "very-long-role-name", RoleColor: 99, State: 77, Doing: "x", Shared: 1 << 40, Own: -5, Hit: math.NaN(), Cost: math.Inf(1)},
-		{ID: "b", Shared: 10, Own: 10, Hit: 5, Cost: -1, Lease: "docs/**/*.md"},
+		{ID: "b", Shared: 10, Own: 10, Hit: 5, Cost: -1, Scope: "docs/**/*.md"},
 	}
 	d.Add("odd rows", widget.AgentTable(odd, 84, 0, p), 84)
 	showGolden(t, "agenttable", &d)
@@ -50,8 +50,8 @@ func TestAgentTableColumnsGiveWayInOrder(t *testing.T) {
 	for w := 12; w <= 120; w++ {
 		headers[w] = widget.AgentTable(rows, w, 0, p)[0].Plain()
 	}
-	// a column that is there at a width is there at every wider width, and they go in the order lease, cost, tok, prompt
-	order := []string{"LEASE", "COST", "TOK", "PROMPT"}
+	// a column that is there at a width is there at every wider width, and they go in the order scope, cost, tok, prompt
+	order := []string{"SCOPE", "COST", "TOK", "PROMPT"}
 	for w := 12; w <= 120; w++ {
 		var gone []string
 		for _, col := range order {
@@ -64,11 +64,11 @@ func TestAgentTableColumnsGiveWayInOrder(t *testing.T) {
 		}
 		for i, col := range gone {
 			if order[i] != col {
-				t.Fatalf("width %d: %v have given way, but the order is lease, cost, tok, prompt", w, gone)
+				t.Fatalf("width %d: %v have given way, but the order is scope, cost, tok, prompt", w, gone)
 			}
 		}
 	}
-	for _, col := range []string{"LEASE", "PROMPT"} {
+	for _, col := range []string{"SCOPE", "PROMPT"} {
 		if !strings.Contains(headers[100], col) {
 			t.Errorf("everything fits at 100: no %s", col)
 		}
@@ -139,7 +139,7 @@ func TestAgentTableEdgeCases(t *testing.T) {
 	if widget.AgentTable(nil, 50, 0, p) != nil || widget.AgentTable(showSketchAgents(), 0, 0, p) != nil || widget.AgentTable(showSketchAgents(), -2, 0, p) != nil {
 		t.Error("no rows or no width draws nothing")
 	}
-	evil := []widget.AgentRow{{ID: "a\x1b[31m", Role: "b\nc", Doing: "\x1b]0;x\x07rm", Lease: "\t"}}
+	evil := []widget.AgentRow{{ID: "a\x1b[31m", Role: "b\nc", Doing: "\x1b]0;x\x07rm", Scope: "\t"}}
 	got := widget.AgentTable(evil, 60, 0, p)
 	showNoControl(t, "agent table", got)
 	if got := widget.AgentTable(showSketchAgents(), 100, -3, p); len(got) != 9 {

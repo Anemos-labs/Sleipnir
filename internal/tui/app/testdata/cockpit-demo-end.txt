@@ -10,7 +10,7 @@
 │            ▒▒▓▓▒ ▓▓▓▓▓▒▒▓             │   mgr    dc-1   dc-2   rv-1   sc-1   sc-2   sc-3   sc-4  │
 │                                       │                                                          │
 ├─ agents ──────────────────────────────┴──────────────────────────────────────────────────────────┤
-│ AGENT         STATE   DOING                        PROMPT                 TOK    COST    ⛁ LEASE │
+│ AGENT         STATE   DOING                        PROMPT                 TOK    COST    ⛁ SCOPE │
 │ mgr manager   ✓ done  done                         ███████████████████   5.8k  $0.053  98% —     │
 │ dc-1 docs     ✓ done  wrote summaries for topics … █▏███████████████▓░   5.2k  $0.032  97% —     │
 │ dc-2 docs     ✓ done  wrote summaries for topics … █▏███████████████▓░   5.2k  $0.032  97% —     │

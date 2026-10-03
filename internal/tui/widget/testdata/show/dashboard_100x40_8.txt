@@ -13,7 +13,7 @@
 │           ▄▀█▀   █▄▀▀█▀▄█             │    m0     w1     w2     w3     w4     w5     w6     w7   │|
 │                                       │                                                          │|
 ├─ agents ──────────────────────────────┴──────────────────────────────────────────────────────────┤|
-│ AGENT       STATE   DOING                       PROMPT                 TOK    COST    ⛁ LEASE    │|
+│ AGENT       STATE   DOING                       PROMPT                 TOK    COST    ⛁ SCOPE    │|
 │ m0 manager  ⠹ think plan: split by endpoint     █████████████████▓░  12.1k  $0.012  96% —        │|
 │ w1 backend  ⚙ tool  go test ./orders/...        ███████████▏█████▓░  72.2k  $0.020  97% orders/* │|
 │ w2 backend  ✎ edit  internal/users/list.go      ███████████▏█████▓░  69.6k  $0.018  95% users/*  │|

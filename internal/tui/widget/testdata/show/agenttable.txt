@@ -1,7 +1,7 @@
 # AgentTable: the agents of the sketch; the bar is the prompt (inherited, then own; bright = from the cache, ▓ where that ends, dim = paid)
 
 == eight agents, width 100 (width 100, 9 lines)
-AGENT       STATE   DOING                          PROMPT                  TOK    COST    ⛁ LEASE   |
+AGENT       STATE   DOING                          PROMPT                  TOK    COST    ⛁ SCOPE   |
 m0 manager  ⠋ think plan: split by endpoint        ██████████████████▓░  12.1k  $0.012  96% —       |
 w1 backend  ⚙ tool  go test ./orders/...           ███████████▏██████▓░  72.2k  $0.020  97% orders/*|
 w2 backend  ✎ edit  internal/users/list.go         ████████████▏█████▓░  69.6k  $0.018  95% users/* |
@@ -12,7 +12,7 @@ w6 reviewer ✓ done  approved t2                    █████████
 w7 docs     ⚠ stuck npm test - same failure        █████████████▏███▓░░  48.0k  $0.012  88% docs/*  |
 
 == eight agents, width 84 (width 84, 9 lines)
-AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ SCOPE   |
 m0 manager  ⠋ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
 w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
 w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
@@ -79,7 +79,7 @@ w7 docs     ⚠ stuck…|
 # the spinner of a thinking agent turns with the frame
 
 == frame 0 (width 84, 6 lines)
-AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ SCOPE   |
 m0 manager  ⠋ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
 w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
 w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
@@ -87,7 +87,7 @@ w3 frontend ✉ wait  schema: GET /orde… █████████▏██�
 w4 frontend ⠼ think paginate <Orders>  ████████▏█████▓░  44.6k  $0.014  94% web/ord |
 
 == frame 1 (width 84, 6 lines)
-AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ SCOPE   |
 m0 manager  ⠙ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
 w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
 w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
@@ -95,7 +95,7 @@ w3 frontend ✉ wait  schema: GET /orde… █████████▏██�
 w4 frontend ⠴ think paginate <Orders>  ████████▏█████▓░  44.6k  $0.014  94% web/ord |
 
 == frame 2 (width 84, 6 lines)
-AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ LEASE   |
+AGENT       STATE   DOING              PROMPT              TOK    COST    ⛁ SCOPE   |
 m0 manager  ⠹ think plan: split by en… ██████████████▓░  12.1k  $0.012  96% —       |
 w1 backend  ⚙ tool  go test ./orders/… █████████▏██████  72.2k  $0.020  97% orders/*|
 w2 backend  ✎ edit  internal/users/li… █████████▏████▓░  69.6k  $0.018  95% users/* |
@@ -104,7 +104,7 @@ w4 frontend ⠦ think paginate <Orders>  ████████▏████
 # odd rows
 
 == odd rows (width 84, 4 lines)
-AGENT          STATE   DOING       PROMPT              TOK    COST    ⛁ LEASE       |
+AGENT          STATE   DOING       PROMPT              TOK    COST    ⛁ SCOPE       |
 a              ⚠ stuck             ················      0  $0.000   0% —           |
 long-agent-na… ◌ idle  x           ░░░░░░░░░░░░░░░░ 10995…   $1e9+    — —           |
 b              ◌ idle              ████████▏███████     20  $0.000 100% docs/**/*.md|
