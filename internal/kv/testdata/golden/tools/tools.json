@@ -389,7 +389,7 @@
   },
   {
     "name": "task",
-    "description": "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
+    "description": "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
     "input_schema": {
       "properties": {
         "action": {
@@ -428,6 +428,13 @@
           "type": "array"
         },
         "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "work",
+            "plan"
+          ],
           "type": "string"
         },
         "role": {

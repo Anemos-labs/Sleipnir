@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -259,5 +260,87 @@ func TestAgreementRecoveryRebuildsAWorkerWithoutASnapshot(t *testing.T) {
 	}
 	if !strings.Contains(r.sw.get("be-1").a.Stack().Notes.Text(), "RECOVERED-CONTRACT") {
 		t.Fatal("recovered worker lost the accepted agreement")
+	}
+}
+
+func TestAgreementPlanCanBeReviewedWhileCodeVerificationFails(t *testing.T) {
+	var verifies atomic.Int32
+	r := newRVRig(t, Config{VerifyCmd: "broken build", Verify: func(context.Context, string, string) (string, int, error) {
+		verifies.Add(1)
+		return "existing compile error", 1, nil
+	}}, func(_ context.Context, c *rvCall) rvReply {
+		if c.Assistants == 0 {
+			return rvReply{Tools: []rvToolCall{{Name: "task", Args: map[string]any{
+				"action": "done", "id": "T1", "text": "contract proposed", "agreement": "Replace the obsolete interface in pkg/transport; all callers use Context.",
+			}}}}
+		}
+		return rvReply{Text: "ready for review"}
+	})
+	plan, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "Design the repair", Kind: TaskKindPlan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := secRevTool(t, r.sw, "task")
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: plan.ID, By: "mgr"}); err == nil {
+		t.Fatal("writer was assigned a read-only planning task")
+	}
+	if result := secRevCall(t, tool, "be-1", "backend", map[string]any{"action": "claim", "id": plan.ID}); !result.IsError {
+		t.Fatal("writer claimed a read-only planning task")
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: "scout", TaskID: plan.ID, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "planning owner idle", func() bool { return r.idle(id) })
+	got, _ := r.sw.Board.Snapshot().Task(plan.ID)
+	if got.Status != StatusReview || got.Agreement == "" || verifies.Load() != 0 {
+		t.Fatalf("planning ran code verification or lost its contract: %+v; verifier runs=%d", got, verifies.Load())
+	}
+	if result := secRevCall(t, tool, id, "scout", map[string]any{"action": "accept", "id": plan.ID}); !result.IsError {
+		t.Fatal("worker accepted its own plan")
+	}
+	if result := secRevCall(t, tool, "mgr", "manager", map[string]any{"action": "accept", "id": plan.ID}); result.IsError {
+		t.Fatalf("manager could not approve the plan with a broken build: %s", result.Text)
+	}
+	work := agreementTask(t, r.sw.Board, "Implement the repair", plan.ID)
+	if err := r.sw.Board.Assign("mgr", "be-1", work.ID); err != nil {
+		t.Fatal(err)
+	}
+	result := secRevCall(t, tool, "be-1", "backend", map[string]any{"action": "done", "id": work.ID, "agreement": "This is still implementation work."})
+	if !result.IsError || verifies.Load() != 1 {
+		t.Fatal("adding an agreement bypassed implementation verification")
+	}
+	replayed, err := ReplayBoard(r.log.All())
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, _ := replayed.Task(plan.ID)
+	if recovered.Kind != TaskKindPlan || recovered.Status != StatusDone || recovered.Agreement != got.Agreement {
+		t.Fatal("replay changed the planning gate")
+	}
+}
+
+func TestAgreementPlanWithoutSubmissionHasBoundedRecovery(t *testing.T) {
+	r := newRVRig(t, Config{MaxAttempts: 1, VerifyCmd: "must not run", Verify: func(context.Context, string, string) (string, int, error) {
+		t.Error("read-only planning ran implementation verification")
+		return "", 1, nil
+	}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "finished"} })
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	p, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "Propose a contract", Kind: TaskKindPlan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: "scout", TaskID: p.ID, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "planning retry bound", func() bool {
+		task, _ := r.sw.Board.Snapshot().Task(p.ID)
+		return task.Status == StatusFailed && r.idle(id)
+	})
+	if n := r.prov.callsFor(id); n != maxGateTries+1 {
+		t.Fatalf("planning made %d requests, want %d", n, maxGateTries+1)
 	}
 }

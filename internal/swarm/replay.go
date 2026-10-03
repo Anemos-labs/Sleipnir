@@ -46,6 +46,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			Title      string            `json:"title"`
 			Desc       string            `json:"desc"`
 			Role       string            `json:"role"`
+			Kind       string            `json:"kind"`
 			Deps       []string          `json:"deps"`
 			Agent      string            `json:"agent"`
 			State      string            `json:"state"`
@@ -90,6 +91,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			t.Agreement, t.Agreements = m.Agreement, m.Agreements
 			if m.Op == "create" || (m.Op == "assign" && m.Title != "") {
 				t.Title, t.Desc, t.Role, t.Deps = m.Title, m.Desc, m.Role, m.Deps
+				t.Kind = m.Kind
 			}
 			upsert(t)
 		case "agent":

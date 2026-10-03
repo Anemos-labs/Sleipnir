@@ -28,6 +28,9 @@ import (
 // TaskStatus is a task's lifecycle state.
 type TaskStatus string
 
+// TaskKindPlan identifies a read-only prerequisite whose deliverable is an agreement.
+const TaskKindPlan = "plan"
+
 const (
 	StatusTodo    TaskStatus = "todo"
 	StatusDoing   TaskStatus = "doing"
@@ -55,6 +58,7 @@ const (
 // Task is one unit of work.
 type Task struct {
 	ID     string     `json:"id"`
+	Kind   string     `json:"kind,omitempty"` // empty: implementation; plan: read-only agreement
 	Title  string     `json:"title"`
 	Desc   string     `json:"desc,omitempty"`
 	Status TaskStatus `json:"status"`
@@ -329,6 +333,7 @@ func (d *draft) setNewTask(t Task) {
 	d.set("title", t.Title)
 	d.set("desc", t.Desc)
 	d.set("role", t.Role)
+	d.set("kind", t.Kind)
 	d.set("deps", t.Deps)
 }
 
@@ -423,8 +428,8 @@ func taskIdx(s *Snapshot, id string) int {
 
 // TaskSpec describes a task to create.
 type TaskSpec struct {
-	Title, Desc, Role string
-	Deps, Files       []string
+	Title, Desc, Role, Kind string
+	Deps, Files             []string
 }
 
 // TaskCheck is evaluated inside the board's critical section on the task an
@@ -435,6 +440,12 @@ type TaskCheck func(s *Snapshot, t Task) error
 // createLocked validates a spec and appends the task. Nothing is modified when it
 // returns an error.
 func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
+	if spec.Kind == "work" {
+		spec.Kind = ""
+	}
+	if spec.Kind != "" && spec.Kind != TaskKindPlan {
+		return Task{}, fmt.Errorf("task kind must be work or plan")
+	}
 	title := cleanText(spec.Title, maxTitleRunes)
 	if title == "" {
 		return Task{}, fmt.Errorf(`task needs a title: pass it in the "title" field`)
@@ -463,7 +474,7 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	}
 	b.next++
 	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanBlock(spec.Desc, maxDescRunes), Status: StatusTodo,
-		Role: cleanText(spec.Role, maxRoleRunes), Deps: deps, Files: files}
+		Role: cleanText(spec.Role, maxRoleRunes), Kind: spec.Kind, Deps: deps, Files: files}
 	d.Tasks = append(d.tasks(), t)
 	return t, nil
 }
@@ -747,6 +758,9 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 		if rev != 0 && t.Rev != rev {
 			return fmt.Errorf("%s was reassigned while you worked on it", id)
 		}
+		if t.Kind == TaskKindPlan && agreement == "" {
+			return fmt.Errorf("%s is a planning task: submit the full contract with task done's agreement field", id)
+		}
 		t.Status, t.Line = StatusReview, ""
 		t.VerificationFailures = 0
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
@@ -758,7 +772,8 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 }
 
 // Accept marks a reviewed task done. Done is terminal: nothing changes it after.
-// Callers check authority (only the manager accepts) and run the verifier first.
+// Callers check authority (only the manager accepts) and verify implementation
+// tasks first. Planning tasks require a submitted agreement instead.
 func (b *Board) Accept(by, id, note string) error {
 	return b.mutate(by, "finish", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)

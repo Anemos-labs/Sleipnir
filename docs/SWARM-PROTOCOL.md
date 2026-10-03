@@ -47,7 +47,7 @@ paths outside the project).
 
 ## 3. The board
 
-Tasks: `id`, `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
+Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
 `result` (what the worker said), `evidence` (what the harness observed), `agreement` (a proposed contract),
 `agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`. Statuses: `todo -> doing ->
 review -> done`, with `blocked` and `failed` as side states.
@@ -144,7 +144,7 @@ is. A worker in an isolated tree whose command has no `{dirs}` is told, when it 
 and that failures in files it did not touch may be another task's work: it should block the task and tell the manager instead of
 editing them.
 
-Rules: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
+Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
 bounded (a deadline covering scope discovery, queue wait, and execution, and at most `MaxVerifies` runs at once, two by default). A verifier
 that ignores cancellation retains its slot until it exits, but cannot hold the caller past the deadline; later callers
@@ -158,7 +158,8 @@ can never turn a failing test into a passing one. Dependencies are enforced on c
 ### Shared agreements before dependent work
 
 Agents share project context, not conversation histories. For parallel work that
-depends on common decisions, the manager creates a planning task. Its owner
+depends on common decisions, the manager creates a task with `kind="plan"` and
+assigns a scout, reviewer, or custom read-only role. Its owner
 gathers input from affected roles and submits a concise contract through
 `task(action="done", id="T1", text="contract ready", agreement="...")`.
 The contract names interfaces, shared components or abstractions, conventions,
@@ -166,7 +167,11 @@ ownership, acceptance criteria, and reference files. Decisions within one role
 must also be consistent with contracts used by other roles.
 
 The manager reads the full proposal with `task(action="get", id="T1")`, resolves
-objections, and accepts it through the normal review gate. Implementation tasks
+objections, and accepts it. Planning tasks require a nonempty agreement and a
+read-only owner; they do not run the code verifier, so an existing build failure
+cannot block agreement on its repair. A planner that stops without submitting
+receives at most two reminders, then its task is requeued or failed under the
+attempt limit. Implementation tasks
 declare `deps=["T1"]`; neither spawn nor claim can start them before acceptance.
 Foundation tasks can sit between planning and implementation. Accepted agreements
 are inherited transitively, deduplicated, and copied into protected assignment

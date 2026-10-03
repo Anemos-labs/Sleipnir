@@ -115,3 +115,20 @@ func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 		return nil
 	}
 }
+
+// settleUnsubmittedPlan bounds reminders to publish a planning contract. A final
+// answer alone cannot mark the prerequisite complete or unlock implementation.
+func (s *Swarm) settleUnsubmittedPlan(m *member, t Task) string {
+	m.mu.Lock()
+	m.gateTries++
+	tries := m.gateTries
+	m.mu.Unlock()
+	if tries <= maxGateTries {
+		s.notify(m.id, "request", t.ID+" needs a reviewed agreement. Submit the full contract with task done's agreement field; a final answer alone does not finish planning.")
+		return ""
+	}
+	if next, applied := s.Board.Requeue(m.id, t.ID, t.Rev, "planning stopped without an agreement", true, s.cfg.MaxAttempts); applied {
+		return s.requeueLine(m.id, next, "no planning agreement was submitted")
+	}
+	return ""
+}

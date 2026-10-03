@@ -252,6 +252,9 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 // touch, and the queue enforces it.
 func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	return func(sn *Snapshot, t Task) error {
+		if t.Kind == TaskKindPlan && !readOnly {
+			return fmt.Errorf("%s is a read-only planning task: assign a scout, reviewer, or custom read-only role", t.ID)
+		}
 		if readOnly || len(t.Files) == 0 || s.isolated() {
 			return nil
 		}

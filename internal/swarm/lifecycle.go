@@ -835,6 +835,16 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if !ok || t.Owner != m.id || t.Status != StatusDoing || t.Rev != rev {
 			continue
 		}
+		if t.Kind == TaskKindPlan {
+			if ctx.Err() != nil {
+				s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
+				continue
+			}
+			if note := s.settleUnsubmittedPlan(m, t); note != "" {
+				notes = append(notes, note)
+			}
+			continue
+		}
 		vr := s.verify(ctx, m.dir, t.Files)
 		vcmd := ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files)
 		if ctx.Err() != nil { // the swarm is stopping: nothing failed
