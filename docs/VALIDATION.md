@@ -69,8 +69,8 @@ cache behavior its server implements.
 Compare a cold request, an identical repeat, appended conversation and tool
 history, a concurrent worker batch, and a second batch with the same worker
 prefixes. A server with independent slot caches may reuse a sequential prefix
-while other slots still require cold prefills. The warm gate cannot populate
-every slot or replica with one request; routing and cache sharing belong to the
+while other slots still require cold prefills. The warm gate does not guarantee
+reuse across every slot or replica; routing and cache sharing belong to the
 server. Confirm reuse with reported usage and server prefill diagnostics.
 
 Include cold requests in the overall token-weighted ratio and report warm phases

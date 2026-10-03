@@ -20,23 +20,23 @@ import (
 // Keys and levels. The physical prefix a request needs is nested: the shared
 // prefix (tools, constitution, shared pin) within a routing-key group, then the
 // role prefix (plus the role pin) inside it. A key is a list of levels joined
-// by "|", outermost first, and the gate keeps one state
-// per level path ("a", "a|b"): a request must pass every level, being the primer
-// of each level that is presumed cold. A second role primes its own level,
-// and agents on a second shard are not
-// presumed to share the first shard's warmed prefix. A request that is
+// by "|", outermost first, and the gate keeps one state per level path ("a",
+// "a|b"): a request must pass every level, being the primer of each level that
+// is presumed cold. A second role primes its own level, and agents on a second
+// shard are not presumed to share the first shard's warmed prefix. A request that is
 // the primer at an outer level never waits at an inner one behind a request that
 // itself passed the outer level, so levels cannot deadlock.
 //
 // Timing. A level is presumed warm from the request's start, rather than the
 // later response signal, for the configured lifetime less a safety margin.
 //
-// A stuck primer (a slow cold prefill, a hung connection) must neither hold the
-// swarm forever nor release it all at once onto a cold prefix. After maxWait
+// A stuck primer (a slow cold prefill, a hung connection) must not hold the
+// swarm forever. After maxWait
 // one waiter is released as a co-primer, after another maxWait two more, then
 // four, and so on: the first successful response signal marks the level warm for
-// everyone still waiting, and at most a bounded number of duplicate cold
-// prefills is ever in flight.
+// everyone still waiting. A stalled primer can accumulate co-primer releases
+// that callers consume in a burst. The downstream governor bounds outbound
+// concurrency when its MaxConcurrent setting is positive; zero is unlimited.
 //
 // Priority. The gate sits in front of the governor, which admits requests by
 // priority (the manager before workers before background work). A primer is only a
