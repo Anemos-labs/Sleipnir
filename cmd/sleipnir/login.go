@@ -114,7 +114,7 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 	extras = append(extras, local...)
 	describe := func(e modelSource) string {
 		if e.plan {
-			return e.name + "  (your ChatGPT plan: sign in with the browser, no key)"
+			return e.name + "  (your ChatGPT / OpenAI plan: sign in with the browser, no key)"
 		}
 		return e.name + "  (running on this machine, no key)"
 	}
@@ -129,8 +129,11 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 		if pick == nil && arrowOK() {
 			var labels []string
 			for _, c := range choices {
-				if c.name == "heimdall" {
+				switch c.name {
+				case "heimdall":
 					c.name += "  (recommended)"
+				case "openai":
+					c.name += "  (an API key, billed per use; a ChatGPT plan is the chatgpt row)"
 				}
 				labels = append(labels, c.name)
 			}
