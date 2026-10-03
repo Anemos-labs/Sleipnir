@@ -11,6 +11,9 @@ include their cache implications.
   late terminal events cannot make its new run appear stopped. Ignore cleanup
   from an older run when a newer run owns the worker and its write leases.
 - Show a stopped worker's recorded failure reason in its agent-table row.
+- Contain Windows task and integration verifiers in Job Objects so cancellation,
+  timeouts, and completed commands also terminate their remaining descendants.
+  Command startup fails if the job cannot be established.
 - Preserve the beginning and end of long task-verification logs, including the
   final failure diagnostic. Use the same runner as integration verification for
   bounded output capture, environment scrubbing, and process cleanup.
