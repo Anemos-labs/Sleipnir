@@ -41,7 +41,7 @@ the ruleset wants CodeQL results for the branch a pull request merges into, and 
 
 ### Step 2. Add a LICENSE
 
-No licence has been chosen yet, so none is added. Put `LICENSE` (or `LICENSE.md`, `LICENSE.txt`) at the repository root and
+The licence is the Business Source License 1.1 (`LICENSE`, with a US$10 million annual revenue limit as its Additional Use Grant, and Apache-2.0 from 2030-10-03). To use another, put `LICENSE` (or `LICENSE.md`, `LICENSE.txt`) at the repository root and
 replace "To be decided before the first release" in the README. Until then `scripts/release-plan.sh` answers
 `no LICENSE file: choose one before the first release` and nothing is ever released. Do this before step 3 (a push to an
 unprotected `main` is allowed) or as the first pull request after it.

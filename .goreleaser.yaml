@@ -23,7 +23,7 @@ archives:
     format_overrides:
       - {goos: windows, formats: [zip]}
     name_template: "sleipnir_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files: [README.md, CHANGELOG.md, docs/**/*]
+    files: [LICENSE, README.md, CHANGELOG.md, docs/**/*]
 
 checksum:
   name_template: checksums.txt

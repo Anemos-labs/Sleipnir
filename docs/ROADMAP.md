@@ -151,7 +151,7 @@ the flake of `TestQueueSurvivesRandomCancellations` (item 13, not reproduced in 
 | Tests | About 4,200 test functions, 100 fuzz targets, 435 golden and seed files (`docs/TESTING.md` holds the figures and `internal/repocheck` holds the page to them). |
 | Last feature | **Remembered project trust** (`sleipnir trust`, `internal/trust`): a yes to a project's own files is kept as a digest of them and ends when any file changes. `docs/SECURITY.md`, "Trusting a project". |
 | Dogfood | 4 sessions of a planned 15 (`docs/DOGFOOD.md`); each found 1 to 3 real defects, all fixed. |
-| Release | None yet. `sh scripts/release-plan.sh --dry-run` plans `v0.1.0` (first release); it is held only by what is the owner's: no `LICENSE` is chosen and `AUTO_RELEASE` is not `true` (section 3, steps 2 and 5). |
+| Release | None yet. `LICENSE` (Business Source License 1.1, free under US$10M annual revenue) is in; `AUTO_RELEASE` is set. The first release follows the next green ci run on `main`. |
 
 **The benchmark** (`docs/BENCHMARKS.md`; 48 tasks, three samples each, `heimdall/deepseek/deepseek-v4-flash`, the build before the
 fixes of `docs/DOGFOOD.md` rows 1 to 28 against the build after): pass@1 54.9% to 50.7% (the interval of the difference is -12.5 to +2.8
@@ -173,7 +173,7 @@ interval +0.7 to +13.9): the first thing to look at.** The runs were stopped by 
 In this order (`docs/REPO-SETUP.md` has the commands and says what each guards):
 
 1. Make `main` the default branch (Settings, Branches). Everything here is on a development branch that GitHub treats as the default.
-2. Choose a licence (Apache-2.0 or MIT) and add `LICENSE`; the release refuses to run without one.
+2. *(done: `LICENSE` is the Business Source License 1.1 with a US$10M revenue limit)*
 3. `sh scripts/protect-main.sh --dry-run`, then for real: the rulesets for `main` and `v*`, the merge settings, the dependency graph.
 4. The settings no script sets: turn off CodeQL's default setup (the repository has its own workflow), enable private vulnerability
    reporting, and upload `docs/media/social-preview.png` (Settings, Social preview). GitHub caches README images: a hard refresh shows the

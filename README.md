@@ -87,4 +87,4 @@ Go 1.25, standard library plus `golang.org/x/{net,sys,term}`. See `AGENTS.md` an
 
 ## License
 
-To be decided before the first release.
+Sleipnir is under the [Business Source License 1.1](LICENSE). In plain words: you may use, copy, change and share it, for free, including in production, as long as you and your affiliates together had less than US$10 million in annual revenue in your last fiscal year. Above that you need a commercial license from Anemos Labs. Each version turns into the Apache License 2.0 on 2030-10-03 (or four years after it is first published, if that comes first). It is source-available, not an OSI-approved open source license.
