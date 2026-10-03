@@ -78,6 +78,12 @@ conventional commit titles; documentation, test, and CI-only changes do not rele
 The release workflow produces binaries, generated release notes, SBOMs, and
 provenance attestations.
 
+An automatic release requires the CI commit to match the release workflow's
+signing identity. If `main` advances before CI finishes, the older run is skipped;
+a passing run for the newer commit includes the pending changes. Before
+publication, the workflow verifies asset checksums and checks each archive's
+attestation against the planned source commit and release workflow.
+
 ## Maintained configuration
 
 - Pin GitHub Actions to full commit SHAs, with version comments.

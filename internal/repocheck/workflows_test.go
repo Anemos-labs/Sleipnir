@@ -232,6 +232,9 @@ func TestReleaseIsGated(t *testing.T) {
 			t.Errorf("the plan job of release.yml lost a guard of its workflow_run trigger: %s (a fork's pull request from a branch named main would pass the branch filter)", cond)
 		}
 	}
+	if !strings.Contains(plan.If, "github.event.workflow_run.head_sha == github.sha") {
+		t.Error("release planning must skip a CI commit that differs from the signing workflow's source identity")
+	}
 	if !strings.Contains(body, "scripts/release-plan.sh") {
 		t.Error("release.yml does not run scripts/release-plan.sh: the decision to release would not be the tested one")
 	}
@@ -258,6 +261,17 @@ func TestReleaseIsGated(t *testing.T) {
 	}
 	if !strings.Contains(active(pub.Text), "gh release view") {
 		t.Error("the publish job must do nothing when the release exists (gh release view): a re-run would fail or publish twice")
+	}
+	pubScript := blocks(pub.Text)
+	verify := strings.Index(pubScript, "gh attestation verify")
+	create := strings.Index(pubScript, "gh release create")
+	if verify < 0 || create < 0 || verify > create {
+		t.Error("the publish job must verify artifact provenance before creating the release")
+	}
+	for _, check := range []string{"sha256sum -c checksums.txt", `--source-digest "$SHA"`, `--signer-workflow "$GH_REPO/.github/workflows/release.yml"`, "--deny-self-hosted-runners"} {
+		if !strings.Contains(pubScript, check) {
+			t.Errorf("the publish job lost an artifact verification constraint: %s", check)
+		}
 	}
 	for _, line := range strings.Split(blocks(rel.Text), "\n") {
 		if strings.Contains(line, "git push") {

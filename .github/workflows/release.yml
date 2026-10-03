@@ -1,6 +1,6 @@
 name: release
 
-# A merge to main that passes ci is released by this workflow, but only when the repository variable AUTO_RELEASE is
+# A main commit that passes ci and matches this workflow's source identity is released when AUTO_RELEASE is
 # "true" and the repository has a LICENSE (scripts/release-plan.sh decides, and says why when it does not). Three jobs:
 #   plan     reads git: is there something to release, and as which version?          (contents: read)
 #   build    goreleaser builds the archives without publishing anything; SBOMs and build-provenance attestations
@@ -10,8 +10,9 @@ name: release
 # A manual run (Actions tab, "Run workflow") is a dry run unless dry_run is unticked: it plans and builds a snapshot, and
 # publishes and attests nothing. docs/REPO-SETUP.md says how to switch the automatic release on.
 on: # zizmor: ignore[dangerous-triggers] workflow_run is guarded: the plan job runs only for a successful ci run of a push to this repository's main
-  # Only when ci finished on main. The conditions on the plan job repeat what matters, because head_branch is also "main"
-  # for a pull request from a fork's own main branch.
+  # The plan guards repeat the main-branch restriction because a fork can name its
+  # branch main. An older CI run is skipped when main advanced before this event:
+  # the OIDC signing identity belongs to github.sha, not workflow_run.head_sha.
   workflow_run:
     workflows: [ci]
     types: [completed]
@@ -42,6 +43,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_sha == github.sha &&
       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -129,6 +131,13 @@ jobs:
           ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: verify source identity
+        run: |
+          actual_sha=$(git rev-parse HEAD)
+          if [ "$actual_sha" != "$SHA" ] || [ "$actual_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::release source differs from the planned commit or signing identity"
+            exit 1
+          fi
       # The newest Go, not go.mod's: that is the oldest Go the project builds with, and usually one that is no longer
       # supported; ci's go.mod legs prove it still builds. The stable leg of ci is required, so a release is built with a Go
       # that has just passed the whole suite.
@@ -184,6 +193,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write # creates the release and its tag: the only write access in this workflow
+      attestations: read # verify the downloaded artifacts before publication
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -195,6 +205,14 @@ jobs:
         with:
           name: release-assets
           path: release-assets
+      - name: verify checksums and source provenance
+        run: |
+          (cd release-assets && sha256sum -c checksums.txt)
+          for asset in release-assets/*.tar.gz release-assets/*.zip release-assets/checksums.txt; do
+            gh attestation verify "$asset" --repo "$GH_REPO" \
+              --signer-workflow "$GH_REPO/.github/workflows/release.yml" \
+              --source-digest "$SHA" --deny-self-hosted-runners
+          done
       # The tag does not exist yet: this call creates it at the commit that was built (so --verify-tag is not passed).
       # With files to upload, gh creates the release as a draft, uploads every file, publishes it last, and deletes the
       # draft if an upload fails: there is never a half-filled release, and a failed run can simply be run again. A release
