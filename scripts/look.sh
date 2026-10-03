@@ -62,7 +62,7 @@ s=look-$$
 # the command is written to a file with every word quoted, so that a goal with spaces and brackets in it reaches the program as one word
 { printf 'exec'; for a in "$@"; do printf " '%s'" "$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"; done; printf '\n'; } > "$tmp/run.sh"
 cmd="sh $tmp/run.sh"
-tmux new-session -d -s "$s" -x "$cols" -y "$rows" "cd '$cwd' && env HOME='$home' PATH='$root/bin':\$PATH LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor script -q --flush --log-out '$tmp/o' --log-timing '$tmp/t' --logging-format advanced -c '$cmd'; touch '$tmp/done'"
+tmux new-session -d -s "$s" -x "$cols" -y "$rows" "cd '$cwd' && env HOME='$home' PATH='$root/bin':\"\$PATH\" LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor script -q --flush --log-out '$tmp/o' --log-timing '$tmp/t' --logging-format advanced -c '$cmd'; touch '$tmp/done'"
 sleep "$wait"
 while IFS="$(printf '\t')" read -r kind arg; do
   case "$kind" in

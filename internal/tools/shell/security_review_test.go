@@ -2,7 +2,7 @@
 
 package shell
 
-// Security review repros for docs/reviews/security-robustness.md (S38-S40, tranche 2).
+// Security review repros for docs/SECURITY.md (S38-S40, tranche 2).
 //
 // They asserted the SECURE behaviour and were gated behind SLEIPNIR_REVIEW=1 while the findings
 // were open; all three are fixed, so they are ordinary regression tests now (S38's and S39's fixes

@@ -1,10 +1,6 @@
 package agent_test
 
-// Regression tests for the prompt-cache economics review (docs/reviews/
-// cache-economics.md, findings R1-R20). They began as adversarial repros that
-// passed while a defect was present; they now assert the fixed behaviour and
-// must pass as they are. ColdStartNoLongerForksAModelCall was already a
-// regression test when the review was written.
+// Cache reuse, thinking binding, and failure recovery regressions.
 //
 // Instrument: cxProv is a fake provider that speaks the "anthropic" dialect and
 // enforces preserved thinking like the API does: a thinking block's signature is
@@ -925,10 +921,8 @@ func TestCacheEcon_LowHitAlarmFiresOnEveryLargeMiss(t *testing.T) {
 	}
 }
 
-// A miss the guard cannot explain by a change of the prompt is the endpoint's: the notice says so, so
-// a person does not go looking for a bug in the harness (a real marketplace served 5% to 96% of an
-// identical prefix, request after request). It is information, not a warning: nothing for the person to do.
-func TestCacheEcon_MissNoticeSaysTheEndpointDidNotServeAnUnchangedPrefix(t *testing.T) {
+// Internal prefix stability cannot establish the cause of a provider cache miss.
+func TestCacheEcon_MissNoticeDoesNotAssignAnUnverifiedCause(t *testing.T) {
 	prov := &cxProv{prof: cxAnthropicProfile()}
 	inner := cxWorkModel(10, nil)
 	prov.handle = func(p *cxProv, req *provider.Request) (*provider.Response, error) {
@@ -956,8 +950,8 @@ func TestCacheEcon_MissNoticeSaysTheEndpointDidNotServeAnUnchangedPrefix(t *test
 	if len(misses) != 1 { // one per run of consecutive misses
 		t.Fatalf("want one cache-miss notice, got %q", sink.all())
 	}
-	if !strings.HasPrefix(misses[0], "info: cache miss: expected ~") || !strings.Contains(misses[0], "(the prompt prefix did not change: the endpoint did not serve it)") {
-		t.Fatalf("the notice does not say whose miss it is: %q", misses[0])
+	if !strings.HasPrefix(misses[0], "info: cache miss: expected ~") || !strings.Contains(misses[0], "unverified") || strings.Contains(misses[0], "endpoint did not serve") {
+		t.Fatalf("the notice must separate the observation from its unknown cause: %q", misses[0])
 	}
 }
 

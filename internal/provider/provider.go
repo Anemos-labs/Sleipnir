@@ -55,12 +55,13 @@ type Profile struct {
 // KVCaps derives the renderer's view of the profile.
 func (p Profile) KVCaps() kv.Caps {
 	return kv.Caps{
-		Dialect:         p.Dialect,
-		MaxBreakpoints:  p.Cache.MaxBreakpoints,
-		LookbackBlocks:  p.Cache.LookbackBlocks,
-		MinPrefixTokens: p.Cache.MinPrefixTokens,
-		ReplayThinking:  p.ReplayThinking,
-		CacheKeys:       p.Cache.KeyRouting,
+		Dialect:           p.Dialect,
+		MaxBreakpoints:    p.Cache.MaxBreakpoints,
+		LookbackBlocks:    p.Cache.LookbackBlocks,
+		MinPrefixTokens:   p.Cache.MinPrefixTokens,
+		ReplayThinking:    p.ReplayThinking,
+		CacheKeys:         p.Cache.KeyRouting,
+		MessageBoundaries: p.Cache.MessageBoundaries,
 
 		TurnScopedSystem: p.TurnScopedSystem,
 	}

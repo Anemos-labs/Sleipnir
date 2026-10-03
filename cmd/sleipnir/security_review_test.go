@@ -1,6 +1,6 @@
 package main
 
-// Security review repro for docs/reviews/security-robustness.md (S45), now a regression
+// Security review repro for docs/SECURITY.md (S45), now a regression
 // test, with the cases the fix creates.
 
 import (

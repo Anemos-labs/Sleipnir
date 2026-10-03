@@ -1,6 +1,6 @@
 package memory
 
-// Security regression tests for docs/reviews/security-robustness.md (memory
+// Security regression tests for docs/SECURITY.md (memory
 // findings S41-S44).
 //
 // TestSec_S41..S43 and TestSecSound_S44 pin the fixes; they began as repro

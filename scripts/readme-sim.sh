@@ -1,12 +1,12 @@
 #!/bin/sh
-# Rewrites the block between <!-- SIM:BEGIN --> and <!-- SIM:END --> in README.md with
+# Rewrites the block between <!-- SIM:BEGIN --> and <!-- SIM:END --> in docs/CACHE-ECONOMICS.md with
 # fresh `sleipnir sim` output. The numbers come from a model with printed assumptions
 # (internal/kv/sim), not from a benchmark; docs/VALIDATION.md is the protocol for real endpoints.
 #   scripts/readme-sim.sh          (or: make readme-sim)
 set -eu
 cd "$(dirname "$0")/.."
 bin=$(mktemp)
-trap 'rm -f "$bin" "$bin.block" "$bin.readme"' EXIT
+trap 'rm -f "$bin" "$bin.block" "$bin.doc"' EXIT
 go build -o "$bin" ./cmd/sleipnir
 
 {
@@ -52,6 +52,6 @@ awk -v blockfile="$bin.block" '
   /<!-- SIM:BEGIN -->/ { while ((getline line < blockfile) > 0) print line; skip = 1; next }
   /<!-- SIM:END -->/   { skip = 0; next }
   !skip { print }
-' README.md > "$bin.readme"
-cat "$bin.readme" > README.md
-echo "README.md updated"
+' docs/CACHE-ECONOMICS.md > "$bin.doc"
+cat "$bin.doc" > docs/CACHE-ECONOMICS.md
+echo "docs/CACHE-ECONOMICS.md updated"

@@ -1,6 +1,6 @@
 package tools
 
-// Security review repros for docs/reviews/security-robustness.md (S32, S46), fixed and now
+// Security review repros for docs/SECURITY.md (S32, S46), fixed and now
 // ordinary regression tests.
 
 import (

@@ -1,214 +1,64 @@
-# The terminal interface
+# Terminal interface
 
-What `sleipnir chat`, `run`, `swarm`, `watch` and `replay` should look and feel like, why, and how it is built and tested.
-The swarm, the cache and the chat are real recordings of the program (`docs/media`, made by `scripts/record-demo.sh`, never drawn by
-hand: the cockpit's from the event log of a recorded session, the chat's by playing the chat program itself from a transcript of one);
-the storyboard is still a **design sketch** (`docs/design/ux/`, regenerated with `python3 make_sketches.py && node render.mjs ...`),
-which is not a screenshot of working code. As each piece lands, a real recording replaces its sketch: the chat's sketch
-(`design/ux/chat.png`, what the chat was designed from) was replaced by the recording below, and is kept only as the design.
+## Chat
 
-| | |
-|---|---|
-| ![the swarm, recorded](media/swarm.png) | ![the cache of one agent, recorded](media/cache.png) |
-| ![the chat, recorded: the end of a first answer](media/chat.png) | ![the chat, recorded: a letter typed at a question lands in the input box and the question stays](media/chat-ask.png) |
+Run `sleipnir` or `sleipnir chat` in a terminal. Conversation output goes to
+scrollback; the input, current activity, approval prompt, and key hints occupy
+the live region. `--plain` selects the line-oriented interface.
 
-The storyboard is still a sketch, not a recording:
+The model can stream text while input is edited. Ordinary messages submitted
+during a turn queue for the next turn. Inspection commands such as `/cost`
+answer during work.
 
-![storyboard, a sketch](design/ux/story.png)
+## Goals and interruption
 
-## Where things stand
+`/goal TEXT` starts a standing goal. The completion judge checks evidence after
+each turn and can request another pass. `/goal` shows its state and plan.
 
-Built and tested: the foundation (`term`, `cell`, `vt`, `render`, `input`), the widgets, the state reducer, the headless recorder and
-two programs, `sleipnir watch` (follows a session that is being written, for a second terminal or a tmux pane beside a run) and
-`sleipnir replay` (plays a recorded one on a clock of its own; `--record` writes an animated SVG and `--final` a text screen), each with
-four screens: the cockpit, the cache of one agent, the mail and the board with the merge queue. Their tests run the real command on a
-pseudo-terminal and read the screen through the terminal emulator. The demo that the recordings are made from is
-`sleipnir demo --scenario shop`.
+Escape or Ctrl+C during a turn cancels it. `/goal pause` and `/goal clear`
+interrupt first, then update goal state after the running turn has stopped.
+`/goal resume` continues a paused goal. `/exit` cancels active work and exits.
 
-`sleipnir chat` on a terminal is the inline program of the first screen below (`internal/tui/app`, `chat*.go`, started by
-`cmd/sleipnir/chat_tty.go`): the scrollback and the live region as described (the status line, the input box and the footer: the page
-is kept as clean as it can be, and the statistics are one key away, on the stats page), markdown, tool lines and diffs with line
-numbers, the fold of a compaction and the break alarm, the permission dialog, and the editor with persistent history, the `/`
-palette, `@path` completion, paste chips and typing ahead; `ctrl+t` (stats), `ctrl+g` (the cockpit) and `ctrl+o`; `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1`
-and `NO_COLOR` are honoured, and Unicode or ASCII follows the locale. Not built: the `!` shell line, `/cache`, syntax colouring of
-code blocks (the markdown renderer has the hook, the chat passes none) and the inline progress view of `run --swarm`. Where the
-chat cannot be drawn on (a pipe, a file, `TERM=dumb`) or with `--plain` it is still the line REPL it was, byte for byte, with typed
-`y/a/n` approvals (`internal/session/sink.go`, `cmd/sleipnir/chat.go`). `sleipnir inspect` is a browser dashboard.
+## Panels
 
-The chat has a recording of its own (`docs/media/chat.svg`, with stills), made the way the cockpit's are, with one difference that
-follows from what a chat is: a log of events cannot say what the person typed, so it is the chat program itself, run on a virtual clock
-in the emulator and given a transcript of a session (`docs/media/chat/transcript.jsonl`, made by `sleipnir chat-record`, a hidden
-command of `scripts/record-demo.sh --new-chat`). The session behind it is a real one (the harness, the real tools including `go test`,
-the permission engine, the cache planner, the accounting) against the mock endpoint, with a script for the model and one for the
-person; what it shows is a goal typed and sent, an answer streamed as markdown, the tool lines (a failing `go test`, an edit as a
-diff, the tests passing), a permission question that a letter does not answer (it lands in the input box) and `1` does, the status
-line, the footer with the keys of the pages, a compaction folding into one line, and a Ctrl-C that cancels a turn and
-keeps the session. It is checked against the code like the others (`scripts/record-demo.sh --check`, `go test ./internal/tui/app`).
-Of the rest, what is built is said where it is described.
+- Ctrl+G or `/agents` opens the team's live cockpit. Ctrl+G returns to chat.
+  The cockpit can open when workers start and closes for an approval or the
+  end of a turn.
+- Ctrl+T or `/stats` opens live token usage, cache reads, estimated cost, and
+  the current prompt layers. Escape or Ctrl+T returns to chat. Up/Down and
+  Page Up/Page Down scroll the panel.
+- `sleipnir watch` follows a session in a separate terminal.
+- `sleipnir replay` reads recorded events. It is not a live model run.
 
-## Principles
+Panels read the event log and do not append stale snapshots to conversation
+scrollback. Approval prompts take precedence over panels.
 
-1. **Inline first.** The chat is not a full-screen application: output goes to the terminal's scrollback (so copy, search,
-   tmux and SSH keep working) and only the last few lines, the *live region*, are redrawn in place. The one full-screen
-   view is the swarm cockpit (`sleipnir watch`), because a dashboard wants the whole screen.
-2. **The UI is a function of the event log.** Every pixel is a projection of `events.Event`s (`model.request`,
-   `model.response`, `tool.*`, `agent.*`, `board.op`, `mail.*`, `lease`, `compact.*`, `cache.*`, `governor`, `perm.*`):
-   the same stream the inspector and the RL exporters read. One reducer, `State = Reduce(State, Event)`, feeds the live chat,
-   `watch` (tailing a running session's log), `replay` (a recorded one, at any speed, with no key) and the README recordings
-   (rendered headless, deterministically). No second source of truth, no new instrumentation in the agent.
-3. **Show what only Sleipnir knows.** The prompt stack and its cache state; what the cache saved, measured; what a spawn
-   inherits; why a cache break happened. Everything else a harness shows (diffs, tool lines, approvals) is table stakes
-   and must be at least as good as the best harness you have used.
-4. **Motion is information, never decoration.** Every animation is driven by an event and means something (a sweep is a prefix
-   match, a fold is a compaction, a lifted leg is a running tool). At most ~15 frames per second, only the cells that change
-   are redrawn, and all of it is off with `--no-anim`, `SLEIPNIR_ANIM=0`, `REDUCE_MOTION=1`, `NO_COLOR`, `TERM=dumb` or a
-   non-terminal.
-5. **Everything degrades.** Truecolor, 256 colours, 16 colours, none; Unicode or ASCII; 60 to 200 columns; a resize at any
-   moment. Piped output and CI logs stay plain lines exactly as today (`--plain` forces it).
-6. **Untrusted text is data.** Model text, tool output, file contents and mail can carry escape sequences. Everything printed
-   passes `tools.SanitizeForTerminal`; the markdown renderer emits only sequences it generated; no OSC 52 (clipboard), no
-   OSC 8 links from model text, no images. Copying is an explicit command.
-7. **Deterministic and testable.** Time comes from an injectable clock; animations are pure functions of (state, frame); the
-   renderer is tested against a tiny VT emulator, so a golden screen is a plain text file.
-8. **The UI never changes what the model sees.** Prompt bytes, tool lists and cache behaviour are untouched (AGENTS.md).
+## Approval prompts
 
-## Screens
+Prompts identify the requesting agent, operation, and scope. Approval choices
+distinguish one operation from remembered rules and recognized project
+build/test commands. Input typed before a prompt becomes active must not approve it.
 
-**Chat (inline).** Scrollback: the banner; the prompt you typed; assistant text streamed as markdown (headings, lists, code
-blocks, inline code); tool calls as `● Bash go test ./...  ✓ 1.4s` with the result beneath (`⎿`), long output collapsed
-with `ctrl+o` to expand; edits as real diffs with line numbers; compactions as a one-line fold animation that stays as a
-record; notices and retries (`(retrying: 429, in 4 s)`). Live region: the status line, the input box, the footer, and nothing else: no
-statistic is on the chat page.
+Long operations must remain inspectable before approval. Displayed durations
+exclude time spent waiting for approval where that time is known.
 
-- *Status line:* spinner with a verb, elapsed time, tokens in and out, cost, `esc to interrupt`.
-- *Footer:* the permission mode, the keys of the pages (`ctrl+t stats`, and for a team `ctrl+g cockpit`, then `/ commands`), the model and
-  the session. The keys are named there because a page that cannot be found is not there; on a narrow screen the session goes first
-  (`/status` has it), then the keys one at a time, then the model. The banner does the same with its line: the directory gives way (it keeps its
-  tail) before the budget and the size of the team do. A miss of the endpoint's own cache is not said on the page unless it cost real money
-  or `/verbose` is on; a break that the harness caused (a layer changed) always is.
-- *Stats page* (`ctrl+t`, or `/stats`): written into the scrollback, so it stays there as a record: what the session cost, the tokens
-  in and out, how much of the prompts the provider served from its cache and **what that saved at list price** (measured cache-read
-  tokens × (input − read price); labelled as such), and the prompt stack layer by layer (G0–G6 sized by tokens, bright = served from
-  cache, dim = paid in full, `▏` a provider cache breakpoint, the layer that broke in red) with the cache's clock. None of it is on the
-  chat page: the cache is what this harness is built on, but a person who is working is not helped by watching it.
-- *Cockpit* (`ctrl+g`; a team only): the screen of `sleipnir watch` (the horse and the prefix it carries, the agents, the gantt, the task board, the merge queue, the mail, the governor), drawn on the alternate screen with the prompt under it, so a message to the manager can be typed meanwhile. It opens by itself when the first worker of a turn starts, closes by itself when the turn ends or a question needs the person (and comes back when it is answered), and `ctrl+g` opens and closes it; a person who closed it keeps it closed for the turn. It needs 60 columns and 16 rows.
-- *Agents page* (`/agents`; a team only): the table of the cockpit, every agent with its state, what it is doing, the
-  size of its prompt, its cost and its hit ratio, and the count of the tasks on the board. `sleipnir watch` is the same, full screen.
-  In a chat that resumes a session, both pages start from the log of the earlier runs (the agents it had, the board, the bill), a manager that is back
-  is done and waits for the next goal, and the compactions and cache breaks of that log are not printed again as news.
-- *Input:* multi-line (`alt+enter`, or `\` then enter), bracketed paste (a large paste becomes a `[pasted 312 lines]` chip),
-  history (up/down, `ctrl+r` search, persisted), `/` commands with a filterable palette, `@path` completion, `!` for a shell
-  line, typing ahead while the agent works (queued, delivered at the turn's end; the commands that only look, such as `/cost`, answer at once), `esc` (twice to clear), `ctrl+c` cancels
-  the turn and never the session, a second press on an empty prompt quits, `ctrl+d` quits, `shift+tab` cycles the
-  permission mode.
-- *Permission dialog:* a box with the command or the diff (all of it: what does not fit the window is written into the scrollback in full) and three keys, `1` yes, `2` yes and do not ask again for this
-  exact request for the session (a project's tool server: for the project, see `SECURITY.md`), `3` no and say what to do
-  instead; arrows and enter work too, and `esc` is no. Letters never answer: a question takes keys only after the keyboard has
-  been quiet for a moment since it appeared (what is typed ahead, or half typed, goes to the prompt and cannot approve anything).
-- *Pages on demand:* `ctrl+t` the stats page, `ctrl+g` the cockpit, `/context` the token grid by layer; `/cache` explains the last
-  miss in words (not built). They answer at once, in a turn or not.
+## Rendering requirements
 
-**Swarm progress (`run --swarm`, `swarm`).** One line for each tool call as it ends (a worker's line starts with its id, `[be-2]`), then the answer and
-the bill; there is no live region of their own (it was written here before it was built, and the page now says what the program does).
-`sleipnir watch SESSION` is the cockpit, live or after the fact, and the chat, which is a team by default, shows the same lines in its scrollback
-above its own live region.
+- Check at 80 columns, in short windows, and after resize.
+- Preserve readable highlights in color and monochrome modes.
+- Sanitize untrusted terminal text.
+- Keep focus, cursor position, and queued input visible.
+- Respect `NO_COLOR`, `REDUCE_MOTION`, `SLEIPNIR_ANIM=0`, and `--no-anim`.
+- Report active workers separately from team capacity.
+- Show observations as observations: cache estimates and unknown prices need
+  appropriate labels.
 
-**Watch (full screen).** The cockpit in the sketch: title bar with wall time, agents, spend, hit ratio; the eight-legged horse
-(eight legs are eight workers: a leg lifts while its worker runs a tool, the gait follows the load, idle is a standing
-horse; more than eight workers share the legs round-robin); the shared-prefix fan (one prefix, every rider); the agent table
-with a per-agent prompt bar (inherited part bright, own part dimmer, a dark bar is a lost cache); the swarm gantt (last 60 s
-per agent, `✉` mail, `◆` compaction, `⚠` stuck); the task board; the verified merge queue; mail; the governor; a live feed.
-At more than ~16 agents the table becomes a heatmap (one cell per agent, coloured by state) and arrows focus one agent.
+## Verification
 
-**Replay.** `sleipnir replay SESSION [--speed 8] [--until SEQ]` plays a recorded session through the same renderer, with
-the animations, and needs no key: the demo for people who have not got a provider yet, and the way a bug report becomes a
-movie.
+Terminal tests run the program against scripted sessions and inspect an emulator.
+Visual changes also require a real-terminal capture and image inspection.
+See [Building](BUILDING.md).
 
-**Demo.** `sleipnir demo` on a terminal runs a scripted team on the mock endpoint and shows it in the live cockpit (the same program
-as `watch`, over the log the harness is writing): nothing to install, no key, and the first thing a person sees of the product.
-When the team is done its last screen stays, the other screens can be looked at, and `q` leaves for the report; a `q` before the end
-stops the team. Off a terminal, or with `--plain`, it is the text report.
-
-## The animations (each is a pure function of state and frame)
-
-The cockpit (`sleipnir watch`, `sleipnir demo`) has all of them. The chat page has the spinner, the fold of a compaction and the flash
-of a break alarm; the stack bar, the clock and the sparkline, and so the sweep, the warm-up and the TTL drain, are not on it.
-
-| Name | Trigger | What you see | Means |
-|---|---|---|---|
-| Sweep | `model.response` with a cached prefix | a light runs along the stack bar to the match length, then the hit ratio counts up | the prefix matched this far |
-| Warm-up | first request of a prefix | the bar fills dim, then brightens on the next request | the cache was written, then read |
-| Fold | `compact.commit` | the thread block shrinks step by step into a one-line resume; savings printed beside it | a compaction, and what it saved |
-| Fork | `agent.spawn` | a new row appears; its bar fills from the left with the shared colours; only the task card is uncoloured | the worker inherits the prefix at read price |
-| Break alarm | `cache.anomaly`, a miss against an expected read | the layer that diverged lights red, the status line flashes once, the sparkline gets `⚠`; the cost of the miss is printed | exactly where and why the cache broke |
-| TTL drain | idle | the clock bar drains; turns amber at 60 s | the prefix is about to go cold |
-| Gait | tool running in a worker | its leg lifts; the horse's pace follows the number of busy workers | parallelism |
-| Mail | `mail.deliver` | an envelope glyph travels between the two rows | a message between agents |
-| Merge | `board.op` merge stages | a chip moves rebase, verify, merge; a conflict bounces it back | verified integration |
-| Spinner | waiting for the model | braille spinner with a verb that changes slowly | something is happening |
-
-Colour roles are fixed so a screenshot reads without a legend: G0–G6 cold to hot (indigo, blue, teal, green, yellow, orange,
-red); green is good (hit, pass), red is bad (miss, stuck, error), amber is waiting, violet is the harness itself.
-
-## How it is built
-
-Packages (all new; standard library, `golang.org/x/term`, `golang.org/x/sys` only):
-
-- `internal/tui/term`: capability detection (colour depth, Unicode, size, synchronized output `?2026`, bracketed paste),
-  raw mode, resize, `NO_COLOR`/`REDUCE_MOTION`/`SLEIPNIR_ANIM`; display width of runes (East Asian wide, emoji, combining).
-- `internal/tui/cell`: `Style`, `Span`, `Line`, wrapping and truncation by display width. No escape codes in here.
-- `internal/tui/render`: the renderer. Inline mode (scrollback printer + live region redrawn with cursor-up and erase,
-  wrapped in synchronized output) and full-screen mode (alternate screen, cell-diff). One mutex, one writer, frames coalesced.
-- `internal/tui/vt`: a minimal VT emulator (cursor movement, erase, SGR, scroll, wrap) used by the tests and by the headless
-  recorder; a frame of the UI is a `[]string` plus styles that can be compared with a golden file.
-- `internal/tui/widget`: pure `func(state, width, frame) []Line` widgets: spinner, stack bar, sparkline, TTL clock, gauge,
-  table, box, markdown, diff, dialog, horse, heatmap, gantt, kanban, merge chips, mail flow.
-- `internal/tui/state`: `State` and `Reduce(State, events.Event)`; also derives the **saved ≈ $** figure from `model.response`
-  usage and the price table, with the assumption printed.
-- `internal/tui/input`: the line editor (key decoding, editing, history, completion, paste) over a `Reader` of decoded keys.
-- `internal/tui/app`: the programs (chat, progress, watch, replay) that connect an event source (live sink, log tail,
-  recorded file) to the reducer and the renderer, and handle Ctrl-C per turn; and the player (`chat_play.go`) that runs the chat
-  on a virtual clock from a transcript of a session (`chat_transcript.go`), one record at a time, for the chat's recording.
-- `internal/tui/svg`: the headless recorder: replay a log with a virtual clock into frames and write an animated SVG (frames
-  are the vt screen; identical consecutive frames merged) plus PNG stills via headless Chromium.
-
-The live sink stays an `agent.Sink`, but it does not draw: it forwards to the same reducer as the log tail, so the chat and
-`watch SESSION` (run from another terminal) show the same thing.
-
-## Testing
-
-- **Screens as golden text files** (`testdata/*.screen`): feed a scripted event sequence to the reducer at fixed virtual
-  times, render to the VT emulator, compare. A changed pixel fails one named test; `-update` rewrites them (the same
-  convention as the prompt goldens).
-- **Renderer properties:** for random streams of "print N lines / update live region / resize", the emulator's final screen
-  equals the expected scrollback plus live region; no output larger than necessary (a no-change frame writes nothing).
-- **Width tables:** wide, combining and zero-width runes against known answers; wrapping never splits a cell.
-- **Sanitising:** fuzz the markdown and tool-output paths: no byte in the output stream may be an escape sequence the
-  renderer did not write.
-- **pty end-to-end** (`internal/ptytest`, from the pty tests): the real binary in a pseudo-terminal: Ctrl-C mid-turn, paste,
-  approval keys, resize, `--no-anim`, `NO_COLOR`, pipes stay plain.
-- **Performance:** a swarm of 50 agents emitting events at full speed renders at most 15 fps and keeps the agents' latency
-  unchanged (benchmark and an allocation gate on the reducer).
-
-## Media
-
-`scripts/record-demo.sh` draws the recordings of `docs/media` (animated SVG, CSS only) and their PNG stills from the event log of the
-recorded showcase session (`docs/media/showcase/events.jsonl`, from `sleipnir demo --scenario shop`) and, for the chat, from the
-transcript of a recorded chat session (`docs/media/chat/transcript.jsonl`), as the manifest `docs/media/gallery.json` lists them.
-`--new-session` runs the demo again first and `--new-chat` records the chat session again (about half a minute, no key, the `go`
-command); `--check` (and `go test ./internal/tui/app`) fail when the committed files are not what the code draws from the committed
-log and transcript, so a change in the UI that has not been recorded again is caught by CI, not by a reader. Recordings are generated
-from real sessions, never hand-edited: the model and the person in them are scripts, and the README says so. `docs/BUILDING.md` says
-how they are made and checked, and `docs/media/README.md` how the chat's is.
-
-## Order of work
-
-1. `term`, `cell`, `vt`, `render` (inline): the foundation, with the emulator-based tests.
-2. `widget` (markdown, diff, spinner, stack bar, sparkline, box, dialog) and `state` (reducer + saved-$): chat looks right.
-3. `input`: the editor, history, paste, completion; then the `app` chat program after the Ctrl-C and stdin fix (G1), which
-   touches the same files.
-4. Showpieces: sweep, fold, fork, break alarm, TTL; then the swarm widgets (horse, fan, gantt, heatmap, mail, merge) and `watch`.
-5. `replay`, the headless recorder, the demo scenario, `docs/media`, README.
-
-Acceptance: every screen above exists, is covered by a golden, degrades cleanly (`NO_COLOR`, `--plain`, pipe, 60 columns),
-and a recording of `sleipnir demo` is in the README.
+Committed recordings are fixtures with specific provenance.
+[Gallery](GALLERY.md) identifies scripted and real-model recordings; they are
+not a guarantee that the current interface or performance matches a capture.

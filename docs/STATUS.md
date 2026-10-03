@@ -1,15 +1,23 @@
-# Status
+# Capabilities and limitations
 
-Built and tested: the layered cache engine, the swarm (typed board and mail, leases, git-worktree isolation, a verifying merge queue),
-the terminal programs (`chat`, the `watch` cockpit, `replay`), MCP, skills, hooks, the RL environment, the permission engine and project
-trust. About 4,200 tests, 100 fuzz targets and a nightly run (every fuzz target, the suite three times under the race detector, a thousand
-random mixtures of endpoint faults, a twenty-thousand-step soak) back it; CI runs on Linux (amd64 and arm64) and macOS, and builds
-Windows, which is informational. It has been measured on real models (nine models of one marketplace, `docs/VALIDATION.md`), compared before
-and after its own fixes on a fixed suite of verifiable tasks (`docs/BENCHMARKS.md`, one model so far: about a third cheaper per task, the pass
-rate within noise, and one measure that got worse and is open), and used for real work: a register of forty-two findings from the benchmark,
-the end-to-end tests and four logged sessions, each with a fix and a test (`docs/DOGFOOD.md`).
+Sleipnir provides interactive chat, single-agent and team runs, standing goals,
+file and shell tools, permission rules, checkpoints, session logs, MCP, skills,
+hooks, and trajectory export.
 
-Not done: a first release (the version is unreleased and no licence is chosen yet), Windows support for the permission engine, a live run of the OpenAI
-Responses dialect and of the ChatGPT plan login (both built, tested against fakes), the scale ladder on a live endpoint and the rest of the planned dogfooding, and the second half of the benchmark. Those and
-what the owner has to switch on are in **`docs/ROADMAP.md`**, which is where an agent or a person picking this up should start.
+## Limitations
 
+- Cache reuse varies by endpoint and request structure. Simulations and mock
+  providers do not establish production hit rates or cost savings.
+- ChatGPT subscription requests have a different feature set from API-key
+  requests. Model availability comes from the signed-in account.
+- A zero dollar total can mean no price is configured. Subscription quota usage
+  is not measured in API dollars.
+- Session resume restores manager history and the task board; workers restart.
+  Teams using isolated Git worktrees cannot be resumed.
+- Shell execution and several tests assume POSIX behavior. Windows support is
+  incomplete; see `scripts/windows-excluded.txt`.
+- Verification depends on the configured command and task scope. A passing
+  command is evidence for what it checks, not proof of the entire objective.
+- Automatic shared-context refresh and task migration between workers are not implemented.
+
+[Roadmap](ROADMAP.md) · [Validation](VALIDATION.md)

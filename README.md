@@ -1,90 +1,93 @@
-<h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/logo-wordmark-dark.svg">
-    <img src="docs/media/logo-wordmark.svg" alt="Sleipnir: one manager brain, many legs" width="620">
-  </picture>
-</h1>
+# Sleipnir
 
-**A coding-agent harness made for open-weight models, local or hosted: one model for everything by default, a different model per
-job when you want, and a team of agents that shares one prompt cache.**
+A terminal coding agent for local and hosted models. Work with one agent or let a
+manager divide a task among workers, review their results, and verify changes.
 
-[![ci](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml)
-[![release](https://img.shields.io/github/v/release/Anemos-labs/Sleipnir?include_prereleases&sort=semver)](https://github.com/Anemos-labs/Sleipnir/releases)
-[![Go version](https://img.shields.io/github/go-mod/go-version/Anemos-labs/Sleipnir)](go.mod)
+[![CI](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml)
+[Releases](https://github.com/Anemos-labs/Sleipnir/releases) ·
+[Getting started](docs/GETTING-STARTED.md) · [Configuration](docs/CONFIGURATION.md)
 
-## Quick start
+## Install
+
+Download the archive for your platform from [Releases](https://github.com/Anemos-labs/Sleipnir/releases),
+extract it, and put `sleipnir` on your PATH. Or install with Go:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/anemos-labs/sleipnir/main/scripts/install.sh | sh   # or: go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
-cd your-project && sleipnir            # first run: pick a provider (Heimdall is the recommended one), paste its key, pick a model; you are then in the chat
+go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
+cd your-project
+sleipnir
 ```
 
-That is all (`sleipnir update` installs the latest release; the chat says at its start when there is one). The key is kept in `~/.sleipnir/auth.json` (mode 0600) and your choices in `~/.sleipnir/config.json`; the next `sleipnir` opens the
-chat at once, a team of eight agents (`--swarm 0` for a single agent). `sleipnir run "fix the failing test"` does one goal without the chat, `sleipnir swarm 8 "..."` runs a team. More in
-[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
+The first run asks for a provider and model. Use `sleipnir login chatgpt` for a
+ChatGPT subscription, or `sleipnir login` for a provider API key. Local model
+servers are supported too. See [Providers](docs/PROVIDERS.md).
 
-<p align="center"><img src="docs/media/real-first-run.svg" alt="The first run, recorded as it happened: sleipnir asks which provider (arrow keys and enter), takes the key at a hidden prompt and tries it, lists the provider's models and narrows them as you type, writes ~/.sleipnir/config.json and opens the chat; a one-line goal is answered. Real model, real timing." width="760"></p>
+## Work
 
-<p align="center"><img src="docs/media/real-chat.svg" alt="A real session of the default chat, a team of eight: /allow tests, then one goal in three parts; the manager reads the code, creates three tasks and starts three workers, whose calls appear as they work; the edits ask and are approved with the key 1; the tests pass; the stats page (ctrl+t) and the agents page (ctrl+g) end it. Real model, real tools, real timing." width="760"></p>
+Type a task in chat. The default team has capacity for one manager and seven
+workers; workers start when the manager needs them. Use `sleipnir --swarm 0`
+for a single agent.
 
-<p align="center"><img src="docs/media/real-swarm.svg" alt="A real swarm: a manager and three workers, each in its own git worktree, implement three small packages in parallel; the cockpit shows each agent's prompt (the shared part bright), the task board, the merge queue and the bill. Shown six times faster than it happened." width="760"></p>
+For work that needs several passes, enter:
 
-*All three are real sessions, recorded as they happened by `scripts/record-real.sh` (a real model, real tools, a person typing; in the first two, waits longer than 1.5 s are shortened; the chat's team took two and a half minutes and $0.0006; the swarm's cockpit is drawn from its event log, six times faster than it ran: three minutes, $0.0006).*
+```text
+/goal Implement pagination, add tests, and verify the examples in the README.
+```
 
-## What you get
+The harness checks the result after each turn and continues when evidence is
+missing. Escape interrupts the turn and pauses the goal. `/goal resume` continues it.
 
-* **Any provider, local or hosted.** Heimdall (recommended), OpenRouter, OpenAI, Anthropic, Gemini, Mistral, xAI, DeepSeek, Hugging Face, Together, Fireworks, Groq, Cerebras, DeepInfra, SambaNova,
-  Hyperbolic, Nebius, Novita, NVIDIA, Parasail, Baseten, SiliconFlow, Moonshot (Kimi), Z.ai (GLM), MiniMax, Qwen (DashScope), Cohere and more (`docs/PROVIDERS.md`), and local
-  servers (Ollama, LM Studio, llama.cpp, vLLM, SGLang, Jan) with no key. Your ChatGPT plan works too: `sleipnir login chatgpt` signs in with the browser, no key. A searchable list of every model with filters and favorites: `/model` in the chat (`/fav` stars one),
-  `sleipnir models`. [Providers](docs/PROVIDERS.md)
-* **One model by default, a model per job when you choose.** A frontier manager, an open-weight backend, a small model that writes the compaction
-  summaries: `/roles` in the chat (a menu), `--role-model`, or `models.roles`. [Configuration](docs/CONFIGURATION.md)
-* **Made for models that are not perfect.** Plain, complete briefs for every worker; a stuck or looping model is stopped and told why; edits need a
-  read first; a test rewritten to match a bug is called out; "done" is the harness's word, after a verifier passed. [Why](docs/WHY.md)
-* **Teams that share a cache.** The chat is a manager that can start seven workers (more with `--swarm N`) over one repository: a task, a brief, a verifier before
-  "done"; with `--isolation worktree` each worker has its own git worktree and finished work goes through a verifying merge queue. [Swarm protocol](docs/SWARM-PROTOCOL.md)
-* **You see what it costs.** Tokens and dollars on the status line, and one key (`ctrl+t`) for the stats page: what the cache saved, the prompt layer by layer; compaction at the cheapest moment, never a surprise rewrite.
-  [Cache design](docs/CACHE-DESIGN.md), [what the layering buys](docs/CACHE-ECONOMICS.md)
-* **Memory and schedules.** Notes it keeps across sessions (each one asks first); goals on a cron schedule that run headless. [Extending](docs/EXTENDING.md)
-* **Safe to point at a repository you did not write.** A permission engine, project trust, keys held out of every tool's environment.
-  [Security](docs/SECURITY.md)
-* **Yours to extend.** Skills, slash commands, agent definitions, hooks, MCP servers. [Extending](docs/EXTENDING.md), [MCP](docs/MCP.md)
-* **An RL environment.** The harness records exact-prompt trajectories with verifiable rewards. [Training data](docs/TRAINING-DATA.md)
+| Control | Action |
+|---|---|
+| `/model`, `/roles` | Choose models |
+| `/goal` | View the goal and its plan |
+| `/goal pause` | Interrupt and pause the goal |
+| Ctrl+G or `/agents` | Open the live team view |
+| Ctrl+T or `/stats` | Open live usage and cache statistics |
+| `/diff`, `/rewind` | Inspect or restore a checkpoint |
+| `/help` | List commands |
+
+Headless commands:
+
+```sh
+sleipnir run "fix the failing test"
+sleipnir swarm 4 "implement the API and client" --verify "go test {dirs}"
+sleipnir --continue
+```
+
+Permissions control edits and commands. Review each project's trust settings
+before allowing its hooks, configuration, or tool servers. [Security](docs/SECURITY.md)
+
+## Cache behavior
+
+Sleipnir keeps shared instructions stable and manages long conversations through
+compaction. Cache reuse still depends on the provider, model, request boundaries,
+and workload. A team does not guarantee shared cache hits or lower cost.
+
+The statistics panel uses provider-reported token usage. Cache expectations are
+estimates; a stable internal prefix does not prove that the API cached it.
+Simulation results are not measured savings. [Cache design](docs/CACHE-DESIGN.md) ·
+[Validation](docs/VALIDATION.md)
 
 ## Documentation
 
-| start here | |
-|---|---|
-| [Getting started](docs/GETTING-STARTED.md) | every command in a few lines |
-| [CLI reference](docs/CLI.md) | every command, flag and slash command (generated from `--help`) |
-| [Configuration](docs/CONFIGURATION.md) | where settings live, every key, permissions, trust |
-| [Providers](docs/PROVIDERS.md) | what is supported and how it is measured |
-| [Extending](docs/EXTENDING.md) · [MCP](docs/MCP.md) | instruction files, skills, commands, agents, hooks, sessions, tool servers |
-
-| how it works | |
-|---|---|
-| [Why it is built this way](docs/WHY.md) · [Architecture](docs/ARCHITECTURE.md) | the layers, the decisions, the package map |
-| [Cache design](docs/CACHE-DESIGN.md) · [Cache economics](docs/CACHE-ECONOMICS.md) | the planner, the guard, what it saves and where it does not |
-| [Swarm protocol](docs/SWARM-PROTOCOL.md) · [Security](docs/SECURITY.md) | board, mail, leases, verifier-gated done · the threat model |
-| [Gallery](docs/GALLERY.md) · [UX](docs/UX.md) | the terminal programs |
-
-| the project | |
-|---|---|
-| [Status](docs/STATUS.md) · [Roadmap](docs/ROADMAP.md) | what is built and tested, what is next (an agent or person picking this up starts at the roadmap) |
-| [Benchmarks](docs/BENCHMARKS.md) · [Validation](docs/VALIDATION.md) · [Dogfood](docs/DOGFOOD.md) | measured results, real endpoints, what real use found |
-| [Testing](docs/TESTING.md) · [Building](docs/BUILDING.md) · [Repo setup](docs/REPO-SETUP.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) | working on it |
-| [Research](docs/research/) · [Reviews](docs/reviews/) · [Landscape](docs/LANDSCAPE.md) | what the design rests on, and what other harnesses do |
+- [Getting started](docs/GETTING-STARTED.md), [CLI reference](docs/CLI.md), [configuration](docs/CONFIGURATION.md)
+- [Providers](docs/PROVIDERS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md)
+- [Architecture](docs/ARCHITECTURE.md), [team coordination](docs/SWARM-PROTOCOL.md), [terminal interface](docs/UX.md)
+- [Building](docs/BUILDING.md), [testing](docs/TESTING.md), [contributing](CONTRIBUTING.md)
+- [Limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md), [training data](docs/TRAINING-DATA.md)
 
 ## Development
 
-```sh
-make build test race lint
-scripts/check.sh                       # what CI runs
-```
+Go 1.25 or newer. Dependencies are limited to `golang.org/x/net`, `x/sys`, and `x/term`.
 
-Go 1.25, standard library plus `golang.org/x/{net,sys,term}`. See `AGENTS.md` and `docs/BUILDING.md`.
+```sh
+go build ./...
+go test -race -count=1 ./...
+go vet ./...
+```
 
 ## License
 
-Sleipnir is under the [Business Source License 1.1](LICENSE). In plain words: you may use, copy, change and share it, for free, including in production, as long as you and your affiliates together had less than US$10 million in annual revenue in your last fiscal year. Above that you need a commercial license from Anemos Labs. Each version turns into the Apache License 2.0 on 2030-10-03 (or four years after it is first published, if that comes first). It is source-available, not an OSI-approved open source license.
+[Business Source License 1.1](LICENSE). See the license for production-use terms
+and conversion to Apache 2.0.

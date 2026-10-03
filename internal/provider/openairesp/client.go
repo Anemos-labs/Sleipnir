@@ -120,7 +120,11 @@ func newTransport() *http.Transport {
 // DefaultProfile describes OpenAI's automatic prefix cache: no markers, a floor of 1024 tokens and steps of 128, kept for minutes.
 // `sleipnir doctor` measures the real numbers.
 func DefaultProfile(name, baseURL string) provider.Profile {
-	return provider.Profile{Name: name, Dialect: Dialect, BaseURL: baseURL, Cache: cost.OpenAICacheModel(), ReplayThinking: true, StreamUsage: true}
+	cache := cost.OpenAICacheModel()
+	// Preserve complete input messages. This also works on older token-prefix
+	// caches and does not depend on a hard-coded list of model names.
+	cache.MessageBoundaries = true
+	return provider.Profile{Name: name, Dialect: Dialect, BaseURL: baseURL, Cache: cache, ReplayThinking: true, StreamUsage: true}
 }
 
 // Profile implements provider.Provider.
@@ -179,6 +183,11 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 		}
 		hr.Header.Set("Content-Type", "application/json")
 		hr.Header.Set("Accept", "text/event-stream")
+		// Responses session affinity uses the routing header as well as the
+		// body cache key. Keep both stable across turns and related workers.
+		if p.CacheKey != "" {
+			hr.Header.Set("session-id", p.CacheKey)
+		}
 		if token != "" { // a server on this machine may take none
 			hr.Header.Set("Authorization", "Bearer "+token)
 		}

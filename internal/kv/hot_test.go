@@ -19,6 +19,7 @@ func TestResolveHotPicksTheMechanismForTheRoute(t *testing.T) {
 		got  HotMode
 	}{
 		{"plain route", HotInline, Caps{}, false, HotInline},
+		{"message-boundary cache preserves notices without thinking", HotInline, Caps{MessageBoundaries: true}, false, HotPersist},
 		{"preserved thinking replayed, no turn-scoped: persist on change", HotInline, Caps{ReplayThinking: true}, true, HotPersist},
 		{"preserved thinking but not replayed: nothing is bound", HotInline, Caps{}, true, HotInline},
 		{"replayed thinking on a model that does not enforce bindings", HotInline, Caps{ReplayThinking: true}, false, HotInline},

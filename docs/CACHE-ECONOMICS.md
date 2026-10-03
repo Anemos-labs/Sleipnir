@@ -1,4 +1,7 @@
-# What the layering buys, and where it does not
+# Cache policy simulation
+
+These synthetic scenarios compare policies under modeled cache behavior. They do
+not predict an endpoint hit rate. See [validation](VALIDATION.md) for measurement.
 
 <!-- SIM:BEGIN -->
 `sleipnir sim` replays one synthetic swarm workload (20 workers, 40 tasks, about 32 work steps per task; an agent
@@ -57,9 +60,3 @@ pins(k)    shared/role vs pin/explore   vs naive   vs n+sum
 The simulator is a model, not a benchmark: its assumptions are printed with every run, and it exists so that a change
 to the policy has to survive an explicit cost comparison (`go test ./internal/kv/sim` guards the shape of these results).
 <!-- SIM:END -->
-
-The result is a model with printed assumptions, not a benchmark, and it says where layering loses: **the shared pin must
-be dense** (roughly no larger than the orientation it replaces). `docs/VALIDATION.md` is the protocol for measuring the real
-thing on your endpoint, and holds the first real measurements (one marketplace, one model family: prompts that do not drift and
-workers that start warm, on an endpoint whose own cache is erratic).
-

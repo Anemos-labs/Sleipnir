@@ -1,7 +1,7 @@
 package agent_test
 
-// Security review repros for docs/reviews/security-robustness.md, now ungated regression
-// tests (docs/reviews/tranche2-b.md): every TestSec_S## test asserts the secure behaviour
+// Security review repros for docs/SECURITY.md, now ungated regression
+// tests (docs/CACHE-DESIGN.md): every TestSec_S## test asserts the secure behaviour
 // of one finding, and TestSecSound_* the behaviour the review found to be sound.
 
 import (

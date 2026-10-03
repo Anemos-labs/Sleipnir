@@ -27,6 +27,8 @@ type Caps struct {
 	ReplayThinking bool
 	// CacheKeys marks providers that route by an explicit key.
 	CacheKeys bool
+	// MessageBoundaries requires preserving message endings for implicit caching.
+	MessageBoundaries bool
 	// TurnScopedSystem: the provider accepts role=system messages with
 	// clear_at "next_user_message" (Message.ClearAt). Adapters without it fold
 	// such a message into ordinary user content.

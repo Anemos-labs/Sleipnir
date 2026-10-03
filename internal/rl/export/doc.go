@@ -141,8 +141,7 @@
 // results, metrics with tokens, cached tokens and token ids), subagent_trajectories
 // for every other agent (spawn calls reference them from their observation),
 // context_management on the first step of each new segment, and final_metrics. It
-// is a SUBSET of Harbor's ATIF as summarised in docs/research/03-swarm-and-
-// training.md; field names and the schema_version string have not been validated
+// is a SUBSET of Harbor's ATIF as summarised in docs/TRAINING-DATA.md; field names and the schema_version string have not been validated
 // against Harbor's RFC and must be before the output is published as ATIF.
 // Per-step cost_usd is omitted (the canonical step does not carry it); the total
 // is in final_metrics. No step is marked is_copied_context: Sleipnir agents do not

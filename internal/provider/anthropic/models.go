@@ -76,7 +76,7 @@ var (
 // families is ordered: the first matching prefix of the normalised model id
 // wins, so more specific ids come before their parents.
 //
-// Sources: docs/research/02-provider-caching.md section 3 and the Claude API
+// Sources: docs/PROVIDERS.md and the Claude API
 // reference (thinking and effort tables). Keep in step with internal/cost's
 // price table; that file owns economics, this one owns wire acceptance.
 var families = []struct {

@@ -1,7 +1,7 @@
 package kv
 
-// Security review repros for docs/reviews/security-robustness.md, now ungated
-// regression tests (docs/reviews/tranche2-b.md): every TestSec_S## test asserts the
+// Security review repros for docs/SECURITY.md, now ungated
+// regression tests (docs/CACHE-DESIGN.md): every TestSec_S## test asserts the
 // secure behaviour of one finding, and TestSecSound_* the behaviour the review found
 // to be sound. Further tests for the same findings, and for the edge cases the fixes
 // create, are in escape_test.go, parse_test.go, safety_test.go and archive_test.go.

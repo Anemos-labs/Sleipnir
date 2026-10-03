@@ -3,8 +3,7 @@
 Sleipnir gives a language model a shell, file tools and a network connection, on your machine and in your repositories.
 This page says what that setup protects against, what it does not, what is hardened on each OS, and how to confine it
 harder. It is blunt on purpose: a coding agent executes text that an attacker may have written, and nothing done inside
-the process changes that. The audit trail is `docs/reviews/`; `AGENTS.md` and `docs/ARCHITECTURE.md` have the rules
-the code follows.
+the process changes that. `AGENTS.md` and `docs/ARCHITECTURE.md` define the implementation contracts.
 
 ## Reporting a vulnerability
 
@@ -171,7 +170,7 @@ Call `harden.Process()` first thing in `main` (`cmd/sleipnir` does). It never fa
 | | Linux | macOS | Windows and others |
 |---|---|---|---|
 | Same-user process reads the harness's memory (`/proc/<pid>/mem`, ptrace) | Blocked for unprivileged processes: `prctl(PR_SET_DUMPABLE, 0)`. Not for root / `CAP_SYS_PTRACE`. Children are unaffected (`execve` resets the flag); the process can still use its own `/proc/self/{stat,status,maps,fd,exe,ns}`, only `environ` and `mem` are closed to it. Side effects: no core dumps, debuggers cannot attach | Debugger attach refused: `ptrace(PT_DENY_ATTACH)`. Best effort, compiled but not run in this repository's tests; it makes a process that is already being traced exit | Nothing |
-| The harness's initial environment | Values of credential-looking variables are erased in the kernel's copy (`/proc/<pid>/environ` shows `NAME=`), even against root; Go's own environment and every child are unaffected. Tested as an unprivileged user and as root | Not erased: `ps eww` / `sysctl kern.procargs2` show the environment of a same-user process, as far as we know. Keep keys out of it | Not erased; a same-user process can read it through the PEB. Keep keys out of it |
+| The harness's initial environment | Values of credential-looking variables are erased in the kernel's copy (`/proc/<pid>/environ` shows `NAME=`), even against root; Go's own environment and every child are unaffected. Tested as an unprivileged user and as root | Not erased: `ps eww` / `sysctl kern.procargs2` show the environment of a same-user process. Keep keys out of it | Not erased; a same-user process can read it through the PEB. Keep keys out of it |
 | Environment handed to commands | Scrubbed by name (`api key`, `secret`, `token`, `password`, `credential`, `private key`, trailing `_KEY`, `_PAT`, `_DSN`, `AUTH`, `COOKIE`, `_PWD`, `SSH_AUTH_SOCK`) and by value (a URL with a password, PEM private keys, `sk-`, GitHub, Slack, AWS, Google and JWT token shapes); proxy URLs keep their credentials. `PassEnv` lets named variables through; `BaseEnv` replaces the environment entirely | same | same |
 | ChatGPT sign-in | `sleipnir login chatgpt` keeps the sign-in (access, refresh and ID tokens, the client id OpenAI issued, a host id) in `~/.sleipnir/chatgpt.json` (mode 0600, written atomically). Only `internal/chatgptauth` reads it: the tools and child processes of a session never see a token, and the file is guarded like the other token files of the home directory (a model's read or write of it asks). The sign-in is sent to the provider's own address only: no environment variable and no project file can name another. The redirect is a loopback port that answers one request with the right state; an ID token is checked for issuer, audience, nonce and expiry (not its signature: it came straight from the token endpoint over TLS, which OpenID Connect allows to stand in for it). `sleipnir logout chatgpt` revokes the refresh token | same | same |
 | Stored keys | `sleipnir login` keeps a key in `~/.sleipnir/auth.json` (mode 0600, written atomically, never in `config.json`, which people share), keyed by the provider's key variable. At start `config.LoadStoredKeys` hands them to `harden.Provide`: they live in the process's memory like a moved key, an environment variable of the same name wins, and no tool or child process sees them. The file is under `~/.sleipnir`, so a model's write to it asks in every mode. It is as safe as the user's home directory: another program running as the same user can read it, as it can read `~/.ssh` | same | same |
@@ -209,12 +208,11 @@ tools). Keep `os.TempDir()` writable inside the sandbox, or `cd` stops persistin
 * `perm.ModePlan` (read-only) or a role profile is a policy for what the harness will run, not a confinement of what an
   approved program does.
 
-## 4. macOS and Windows, honestly
+## 4. Platform limitations
 
 * **macOS.** The initial environment of a same-user process is readable by other same-user processes (`ps eww`,
   `sysctl kern.procargs2`), and neither erasing nor `MoveKeys` can change what macOS reports for it; a key exported in the
-  shell that launched the harness is readable there too. There is no key-file or keychain support yet, so the key has to be in
-  the environment at start-up. `PT_DENY_ATTACH` stops debuggers, not `ps eww`. There are no PID namespaces: the harness stays
+  shell that launched the harness is readable there too. Use `sleipnir login` to load credentials from the protected auth file instead of exporting them at startup. `PT_DENY_ATTACH` stops debuggers, not `ps eww`. There are no PID namespaces: the harness stays
   visible to commands. Real mitigations are `sandbox-exec` through `Wrap` (deprecated by Apple, still works; not tested here), a
   container or VM, and short-lived, narrowly scoped keys.
 * **Windows.** No hardening of the harness process at all. The shell is PowerShell or `cmd`, and the permission engine's shell
@@ -222,14 +220,11 @@ tools). Keep `os.TempDir()` writable inside the sandbox, or `cd` stops persistin
   writes and matches them with slashes and resolves symlinks from `/`, so on Windows it takes every path, the project's own
   included, for one outside the workspace, and matches no credential directory (`~\.ssh`, `~\.aws`). In the default mode every read
   asks, in plan mode a scout cannot read at all, and the bypass and yolo modes do not keep the promise made above (no mode overrides a
-  protected path). The first Windows run of CI showed it (the sessions that three tests of `internal/tui/state` record do not do what
-  their script says there, and the tests skip with this reason). Porting it is one path representation inside `internal/perm` and a
-  conversion wherever it touches the file system; until then there is no tested wrapper: run the harness inside WSL2 (then it is
-  Linux) or a container.
+  protected path). Native Windows permission behavior requires further validation. Run the harness inside WSL2 or a Linux container for the Linux permission and hardening path.
 * **Everywhere.** A same-user process can read what the user can read. The harness cannot change that; sandboxing does.
 
 ## 5. Reading the code
 
 Process hardening: `internal/harden`. Permissions: `internal/perm`. Shell: `internal/tools/shell` (`env.go`, `jobs.go`).
 Files: `internal/tools/fs`. Web: `internal/tools/web` (`guard.go`). Instruction files: `internal/memory`. State:
-`internal/events`, `internal/checkpoint`. Findings and their status: `docs/reviews/`.
+`internal/events`, `internal/checkpoint`. Regression tests accompany these packages.

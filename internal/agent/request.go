@@ -190,7 +190,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	// the shared prefix is the expectation.
 	expected := int(float64(check.ReadableTokens) * scale)
 	firstCheck := false
-	if first && sharedWarm {
+	if first && sharedWarm && !prof.Cache.MessageBoundaries {
 		expected, firstCheck = r.SharedPrefixTokens(a.est), true
 	}
 
@@ -244,12 +244,11 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 			"missed": missed, "diverged": check.Diverged, "first_request": firstCheck,
 		})
 		if streak == 0 {
-			// Whose miss it is: a prompt that changed under a stable layer was already reported
-			// above, so a miss the guard did not explain is the endpoint not serving the prefix it was sent.
 			why, level := "", "warn"
 			if !check.Drift {
-				// the endpoint's own miss is information (the person cannot mend it; --verbose and /stats have it), a change of the prompt is a warning
-				why, level = " (the prompt prefix did not change: the endpoint did not serve it)", "info"
+				// The guard checks internal blocks, not the server's rendered prompt
+				// or cache boundaries. A stable prefix does not identify the cause.
+				why, level = " (internal prefix is stable; cache availability and API rendering are unverified)", "info"
 			}
 			a.cfg.Sink.Notice(a.cfg.ID, level, fmt.Sprintf(CacheMissNoticePrefix+" ~%d tokens read from cache, got %d%s", expected, u.CacheReadTokens, why))
 		}
@@ -419,14 +418,13 @@ func (a *Agent) shard() int {
 	return shard
 }
 
-// cacheKey is the provider routing key: requests that share it are pinned to
-// one engine, so agents with the same constitution and shared pin reuse one
-// resident copy of that prefix. Shards spread a large swarm over several
-// engines; each shard pays one cold prefill and then serves its agents.
+// cacheKey groups related requests for providers that use routing hints. A key
+// does not guarantee placement or cache reuse. Hash the whole session ID: its
+// first eight characters are a date shared by otherwise independent sessions.
 func (a *Agent) cacheKey(s *kv.Stack) string {
 	sid := a.cfg.SessionID
-	if len(sid) > 8 {
-		sid = sid[:8]
+	if sid != "" {
+		sid = core.HashString(sid).Short()
 	}
 	return fmt.Sprintf("sl:%s:%s:%d", sid, s.GlobalKey().Short(), a.shard())
 }

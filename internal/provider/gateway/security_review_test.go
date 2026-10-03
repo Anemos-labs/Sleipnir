@@ -1,6 +1,6 @@
 package gateway
 
-// Security review repro for docs/reviews/security-robustness.md, now a regression test.
+// Security review repro for docs/SECURITY.md, now a regression test.
 
 import (
 	"math"

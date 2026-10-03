@@ -1,6 +1,6 @@
 package swarm
 
-// Regression tests for the swarm findings of docs/reviews/security-robustness.md
+// Regression tests for the swarm findings of docs/SECURITY.md
 // (S10 to S22, S26b). TestSec_* assert the secure behaviour of what the review found
 // open and the swarm has since fixed; TestSecSound_* cover behaviour it found sound.
 

@@ -1,6 +1,6 @@
 package events
 
-// Adversarial review tests for the event log (docs/reviews/swarm-concurrency.md):
+// Adversarial review tests for the event log (docs/SWARM-PROTOCOL.md):
 // durability of the group commit, subscriber lifecycle, Close racing
 // Emit/Subscribe, and the blob store's trust in files it finds on disk. The two
 // defect repros (a burst's tail left in the buffer, Subscribe after Close) were

@@ -1,7 +1,7 @@
 package anthropic_test
 
 // Transport hardening of the Messages adapter: the same findings the chat adapter
-// fixed (docs/reviews/security-robustness.md S27, S28, S30, S31, S45, and C-08 of the
+// fixed (docs/SECURITY.md S27, S28, S30, S31, S45, and C-08 of the
 // concurrency review): redirects, usage and cost figures, response limits, error text,
 // key transport and time-to-first-byte.
 

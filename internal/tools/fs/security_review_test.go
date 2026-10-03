@@ -1,6 +1,6 @@
 package fs
 
-// Security review repro for docs/reviews/security-robustness.md. It asserted the SECURE
+// Security review repro for docs/SECURITY.md. It asserted the SECURE
 // behaviour while finding S50 was open; S50 is fixed (matchSegs is now a prefix/suffix compare or
 // a DP over (pattern segment, path segment)), so the gate is removed and this is a regression test.
 

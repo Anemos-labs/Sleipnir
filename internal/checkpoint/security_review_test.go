@@ -1,6 +1,6 @@
 package checkpoint
 
-// Security regression tests for docs/reviews/security-robustness.md (S37, part of F12):
+// Security regression tests for docs/SECURITY.md (S37, part of F12):
 // a checkpoint manifest is data an attacker may have written, so nothing in it may
 // steer Restore or Diff outside the project, and nothing in it may make them read or
 // write without bound. TestSec_S37* began as a repro that failed while the finding

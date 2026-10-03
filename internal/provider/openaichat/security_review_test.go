@@ -1,6 +1,6 @@
 package openaichat
 
-// Security review repros for docs/reviews/security-robustness.md. Every finding that used to be
+// Security review repros for docs/SECURITY.md. Every finding that used to be
 // gated behind SLEIPNIR_REVIEW=1 here (S26a, S27-S31) is fixed: TestSec_* are ordinary
 // regression tests of the secure behaviour, and TestSecSound_* check behaviour the review found
 // sound.

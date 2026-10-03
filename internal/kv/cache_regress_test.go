@@ -1,11 +1,6 @@
 package kv
 
-// Regression tests for the prompt-cache economics review (docs/reviews/
-// cache-economics.md, findings R1-R20). They were written as adversarial repros
-// that passed while a defect was present; they now assert the fixed behaviour and
-// must pass as they are. The two "sound" tests (structural soundness of
-// Apply/Commit/Render, breakpoint rules on random stacks) never had a defect and
-// guard what the review found correct.
+// Cache reuse and compaction regressions.
 //
 // Instruments: cxSim models Anthropic explicit caching (entries only at markers,
 // 20-position lookback where a run of tool_use / tool_result blocks is one
@@ -659,7 +654,7 @@ func TestCacheEcon_CommitStripsThinkingFromTheCarriedTail(t *testing.T) {
 func TestCacheEcon_UserInstructionGuarantees(t *testing.T) {
 	e := cxEst()
 
-	// Updated for S07 (docs/reviews/tranche2-b.md). This test used to pin the old
+	// Updated for S07 (docs/CACHE-DESIGN.md). This test used to pin the old
 	// bounds: a task over 2400 tokens lost its END, which is where a spec puts its
 	// constraints. What the user typed is now pinned in full up to TaskMaxTokens (8000
 	// by default); only a text beyond that is cut, and then it keeps its beginning AND

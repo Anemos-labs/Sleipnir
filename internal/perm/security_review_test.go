@@ -1,6 +1,6 @@
 package perm
 
-// Security review check for docs/reviews/security-robustness.md (ungated: it passes today).
+// Security review check for docs/SECURITY.md (ungated: it passes today).
 //
 // swarm.readOnlyCommand (a prefix allowlist with a metacharacter blacklist) is bypassed by
 // "git status; ...", newline, find -delete/-exec, go test -exec, rg --pre, ... (see
