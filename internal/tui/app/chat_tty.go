@@ -89,7 +89,7 @@ func RunChatTTY(ctx context.Context, link *ChatLink, attach <-chan ChatAttach, o
 	if rcaps.Color == term.ColorNone {
 		rcaps.Color = term.ColorANSI16
 	}
-	scr := render.NewInline(out, rcaps, render.WithBracketedPaste())
+	scr := render.NewInline(out, rcaps, inlineOptions(in, out)...)
 
 	reader := term.NewReader(in)
 	defer reader.Cancel() // the terminal is the next program's (the chat starts again after /restart): no read of this one may be left waiting on it
@@ -133,4 +133,14 @@ func mergeInterrupts(ctx context.Context, keys <-chan input.Key, sigint <-chan o
 		}
 	}()
 	return out
+}
+
+// inlineOptions are the renderer's options for the chat: the bottom-anchored region, and where it may start when the terminal says where
+// its cursor is (the shell's history then stays on the screen above the banner). The terminal is in raw mode already.
+func inlineOptions(in, out *os.File) []render.InlineOption {
+	opts := []render.InlineOption{render.WithBracketedPaste(), render.WithBottomAnchor()}
+	if row, ok := term.CursorRow(in, out, 300*time.Millisecond); ok {
+		opts = append(opts, render.WithStartRow(row))
+	}
+	return opts
 }

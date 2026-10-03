@@ -251,7 +251,7 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 		log: make(chan events.Event, 1024), done: make(chan chatExit, 1), now: time.Unix(1_700_000_000, 0)}
 	r.team = o.team
 	r.bridge = &vtBridge{t: t, v: vt.New(o.cols, o.rows)}
-	r.scr = &testScreen{Inline: render.NewInline(r.bridge, caps, render.WithBracketedPaste()), frames: make(chan struct{}, 1<<16)}
+	r.scr = &testScreen{Inline: render.NewInline(r.bridge, caps, render.WithBracketedPaste(), render.WithBottomAnchor()), frames: make(chan struct{}, 1<<16)}
 	r.sink = r.link.Sink()
 	r.prompt = r.link.Prompter()
 	ctx, cancel := context.WithCancel(context.Background())

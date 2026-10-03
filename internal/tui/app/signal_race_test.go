@@ -55,7 +55,7 @@ func TestChatEndedByItsContextIsInterruptedWhenTheKeysEndWithIt(t *testing.T) {
 	caps := term.Caps{Color: term.ColorTrueColor, Unicode: true, Width: 80, Height: 24, BracketedPaste: true}
 	for i := 0; i < raceRuns; i++ {
 		bridge := &vtBridge{t: t, v: vt.New(80, 24)}
-		scr := &testScreen{Inline: render.NewInline(bridge, caps, render.WithBracketedPaste()), frames: make(chan struct{}, 1<<10)}
+		scr := &testScreen{Inline: render.NewInline(bridge, caps, render.WithBracketedPaste(), render.WithBottomAnchor()), frames: make(chan struct{}, 1<<10)}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		keys := make(chan input.Key)
@@ -71,7 +71,7 @@ func TestChatEndedByItsContextIsInterruptedWhenTheKeysEndWithIt(t *testing.T) {
 func TestChatWhoseKeysEndWithoutTheContextHasQuit(t *testing.T) {
 	caps := term.Caps{Color: term.ColorTrueColor, Unicode: true, Width: 80, Height: 24, BracketedPaste: true}
 	bridge := &vtBridge{t: t, v: vt.New(80, 24)}
-	scr := &testScreen{Inline: render.NewInline(bridge, caps, render.WithBracketedPaste()), frames: make(chan struct{}, 1<<10)}
+	scr := &testScreen{Inline: render.NewInline(bridge, caps, render.WithBracketedPaste(), render.WithBottomAnchor()), frames: make(chan struct{}, 1<<10)}
 	keys := make(chan input.Key)
 	close(keys)
 	end, err := RunChat(context.Background(), ChatConfig{Screen: scr, Keys: keys, Sizes: make(chan term.Size), Tick: make(chan time.Time),

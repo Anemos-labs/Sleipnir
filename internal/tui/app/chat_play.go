@@ -224,7 +224,7 @@ func newChatPlayer(tr *ChatTranscript, o ChatPlayOptions) *chatPlayer {
 	p.vt = vt.New(o.Cols, o.Rows)
 	p.br = &playBridge{t: p.vt}
 	caps := term.Caps{Color: term.ColorTrueColor, Unicode: true, Anim: true, Width: o.Cols, Height: o.Rows, BracketedPaste: true}
-	p.scr = &playScreen{Inline: render.NewInline(p.br, caps, render.WithBracketedPaste()), frames: make(chan struct{}, 1<<16)}
+	p.scr = &playScreen{Inline: render.NewInline(p.br, caps, render.WithBracketedPaste(), render.WithBottomAnchor(), render.WithStartRow(playStartRow(o))), frames: make(chan struct{}, 1<<16)}
 	return p
 }
 
@@ -477,4 +477,12 @@ func (p *chatPlayer) endTurn(e *ChatTurnEnd) error {
 	}
 	p.host.release <- res
 	return p.await("the end of the turn")
+}
+
+// playStartRow is the row the program's cursor is on when it starts: under the shell's line, or the top.
+func playStartRow(o ChatPlayOptions) int {
+	if o.Shell == "-" {
+		return 0
+	}
+	return 1
 }

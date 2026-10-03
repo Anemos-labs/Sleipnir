@@ -10,6 +10,9 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/term"
 )
 
+// maxHistory is how many printed lines an anchored renderer keeps to repaint a resized screen from.
+const maxHistory = 2000
+
 // autoFlushLines is how many printed lines may wait for a frame before Print writes them itself, so that a caller that prints a
 // great deal and never flushes does not grow without bound.
 const autoFlushLines = 1000
@@ -19,6 +22,18 @@ type InlineOption func(*Inline)
 
 // KeepLive makes Close leave the last live region on the screen, in the scrollback, instead of erasing it.
 func KeepLive() InlineOption { return func(r *Inline) { r.keepLive = true } }
+
+// WithBottomAnchor makes the last row of the live region the last row of the terminal, whatever the region shows: the screen is
+// the content, a gap that what is printed fills before anything scrolls, and the region. The first frame scrolls what the terminal
+// showed into its scrollback, so that the region has the bottom to itself; a resize clears the screen and paints the last of what was
+// printed again at the new size (the renderer keeps it for that). Without it the region sits right under the last printed line and
+// moves down as the content grows, and its footer moves with every change of its height.
+func WithBottomAnchor() InlineOption { return func(r *Inline) { r.anchor = true } }
+
+// WithStartRow tells an anchored renderer the row of the terminal (counted from 0 at the top) its cursor is on when the first frame is
+// drawn, which is a fresh line: the content starts there and what the terminal showed above it stays. Without it (or with a negative
+// row) the first frame scrolls what the terminal showed into its scrollback instead, as it cannot know where the content may begin.
+func WithStartRow(row int) InlineOption { return func(r *Inline) { r.startRow = row } }
 
 // WithBracketedPaste makes the renderer switch bracketed paste on with its first frame and off in Close, on a terminal that has it
 // (Caps.BracketedPaste) and not for plain output. Writes from one place keep the mode and the terminal's state together: a
@@ -74,6 +89,13 @@ type Inline struct {
 
 	keepLive bool
 	paste    bool // bracketed paste was asked for and is possible
+	anchor   bool // WithBottomAnchor
+
+	// the anchored layout: the row after the last row of content, counted from the top of the terminal, and what was printed
+	cend     int
+	startRow int         // WithStartRow, or -1
+	placed   bool        // the first frame has put the region at the bottom
+	hist     []cell.Line // the lines printed, newest last, for a resize to repaint
 
 	cols, rows int
 
@@ -113,7 +135,8 @@ func NewInline(w io.Writer, caps term.Caps, opts ...InlineOption) *Inline {
 		caps.Height = term.DefaultHeight
 	}
 	r := &Inline{
-		w: w, cols: caps.Width, rows: caps.Height,
+		startRow: -1,
+		w:        w, cols: caps.Width, rows: caps.Height,
 		plain: caps.Dumb || caps.Color == term.ColorNone,
 		nl:    "\r\n",
 		cm:    newColorMap(caps.Color),
@@ -126,6 +149,7 @@ func NewInline(w io.Writer, caps term.Caps, opts ...InlineOption) *Inline {
 		o(r)
 	}
 	r.paste = r.paste && caps.BracketedPaste && !r.plain
+	r.anchor = r.anchor && !r.plain
 	return r
 }
 
@@ -145,7 +169,14 @@ func (r *Inline) Print(lines ...cell.Line) {
 		return
 	}
 	for _, l := range lines {
-		r.pend = append(r.pend, sanitizeLine(l))
+		s := sanitizeLine(l)
+		r.pend = append(r.pend, s)
+		if r.anchor {
+			r.hist = append(r.hist, s)
+		}
+	}
+	if len(r.hist) > 2*maxHistory {
+		r.hist = append([]cell.Line(nil), r.hist[len(r.hist)-maxHistory:]...)
 	}
 	if len(r.pend) >= autoFlushLines {
 		r.flushLocked()
@@ -417,6 +448,9 @@ func (r *Inline) flushTerminal() {
 	}
 	want, tr, tc, caretOn := r.layout()
 	full := len(r.pend) > 0 || r.stale
+	if r.anchor { // the region is at the bottom: a different height is a different place, and the first frame places it
+		full = full || len(want) != len(r.drawn) || !r.placed
+	}
 	rowsChanged := full || !sameRows(r.drawn, want)
 	// The cursor is the renderer's business only while there is a live region: with one, it is shown at the caret or, when
 	// the caller has set none, hidden (a status line has nothing to edit); with none, it is left alone and visible, so that a
@@ -444,6 +478,8 @@ func (r *Inline) flushTerminal() {
 		r.hidden = true
 	}
 	switch {
+	case full && r.anchor:
+		r.drawAnchored(e, want)
 	case full:
 		r.drawFull(e, want)
 	case rowsChanged:
@@ -494,6 +530,80 @@ func (r *Inline) drawFull(e *emitter, want []row) {
 		}
 		e.text(rw)
 	}
+}
+
+// drawAnchored draws the frame of an anchored renderer that is not a change of rows in place: the first one, one that prints, one that
+// changes the height of the region, or one after a resize. The content ends at the row cend; from there the screen is erased, what was
+// printed is written, and the region is drawn so that its last row is the last row of the terminal.
+func (r *Inline) drawAnchored(e *emitter, want []row) {
+	pend, abs := r.pend, 0
+	switch {
+	case r.placed && r.stale:
+		// the window was resized: the terminal may have wrapped or cut what it had, so the screen is cleared and the last of what was
+		// printed is written again at the new size
+		e.raw(eraseScreen)
+		e.raw("\x1b[H")
+		pend = r.historyTail(r.rows - len(want))
+	case !r.placed && r.startRow >= 0:
+		abs = min(r.startRow, r.rows-1) // the content starts where the cursor is, under what the terminal showed
+		e.raw("\r")
+	case !r.placed:
+		// scroll what the terminal shows into its scrollback, to have the bottom to ourselves; the cursor was on a fresh line, which
+		// the scroll takes to the top row
+		for i := 0; i < r.rows-1; i++ {
+			e.raw("\r\n")
+		}
+		e.csiUp(r.rows - 1)
+		e.raw("\r")
+	default:
+		up := r.rows - len(r.drawn) + r.cr - r.cend // the cursor is in the region, which is at the bottom
+		e.csiUp(up)
+		e.raw("\r")
+		e.raw(eraseBelow)
+		abs = r.cend
+	}
+	r.placed, r.stale = true, false
+	for _, l := range pend {
+		for _, pr := range r.encodeRows(l) {
+			e.raw(pr.enc)
+			e.raw("\r\n")
+			if abs < r.rows-1 {
+				abs++
+			}
+		}
+	}
+	n := len(want)
+	if n == 0 {
+		r.cend = abs
+		e.origin()
+		return
+	}
+	top := r.rows - n
+	if abs < top {
+		e.csi(top-abs, 'B') // the gap: the cursor goes down without scrolling anything
+	}
+	e.origin()
+	for i, rw := range want {
+		if i > 0 {
+			e.newline()
+		}
+		e.text(rw)
+	}
+	r.cend = min(abs, top)
+}
+
+// historyTail is the last of the printed lines that fit in rows terminal rows at the current width.
+func (r *Inline) historyTail(rows int) []cell.Line {
+	used, from := 0, len(r.hist)
+	for from > 0 {
+		h := len(wrapRows(r.hist[from-1], r.cols))
+		if used+h > rows {
+			break
+		}
+		used += h
+		from--
+	}
+	return r.hist[from:]
 }
 
 // reflowedAbove is how many rows a terminal that re-wraps its hard lines puts above the cursor, at the terminal's current
@@ -552,6 +662,9 @@ func (r *Inline) closeTerminal() {
 			e.newline()
 		} else {
 			e.gotoRow(0)
+			if r.anchor {
+				e.gotoRow(-(r.rows - len(r.drawn) - r.cend)) // up through the gap to the end of the content
+			}
 			e.raw("\r")
 			e.raw(eraseBelow)
 		}
