@@ -182,8 +182,10 @@ cannot grant permissions or override user instructions.
 Each agreement is limited to 6,000 UTF-8 bytes and 40 lines. Combined inherited
 agreements are limited to 12,000 bytes including labels; excessive submissions
 or assignments are rejected with guidance instead of silently truncating a
-contract. Multiple tasks claimed by one worker must fit 24,000 bytes of assignment
-text. The existing compaction assignment-token limit still applies.
+contract. Tasks assigned to one worker, including blocked work and worktree
+instructions, must fit 24,000 bytes of assignment text. Compaction preserves
+harness assignments up to a fixed 32,000-byte bound, independently of token
+estimator calibration. Human instruction token limits remain separate.
 
 Acceptance is immutable. A changed design needs a new planning task and explicit
 reassignment of affected work. The manager arranges review and resolves design

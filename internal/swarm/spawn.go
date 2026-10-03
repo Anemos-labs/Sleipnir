@@ -91,7 +91,7 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 
 // assignFor builds the board operation that gives a task to an agent.
 func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []string) assignReq {
-	r := assignReq{by: req.By, agent: agentID, check: s.scopeCheck(role.ReadOnly)}
+	r := assignReq{by: req.By, agent: agentID, check: s.claimCheck(agentID, role.ReadOnly)}
 	if req.TaskID != "" {
 		r.id = strings.TrimSpace(req.TaskID)
 		if len(files) > 0 {
@@ -159,7 +159,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	s.emitAs(m.id, "agent.assign", map[string]any{"id": m.id, "role": m.role, "task": task.ID, "by": req.By})
-	start := reassignStart(task, m)
+	start := reassignStart(s.Board.Snapshot(), m)
 	// A reused writer starts the new task from what has been merged since.
 	if note, err := s.syncTree(ctx, m); err != nil {
 		start.brief += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), 160) + ". Merge the integration branch yourself before you start, or ask the manager.)"

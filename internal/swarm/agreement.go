@@ -100,7 +100,7 @@ func claimedCards(s *Snapshot, agent string, candidate *Task) string {
 }
 
 // claimCheck combines scope enforcement with a limit on protected assignment data.
-// Refusing an excessive claim leaves the existing assignment and board unchanged.
+// It guards both claims and spawns, including reuse with older blocked tasks.
 func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 	check := s.scopeCheck(readOnly)
 	return func(snap *Snapshot, t Task) error {
@@ -109,8 +109,12 @@ func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 				return err
 			}
 		}
-		if len(claimedCards(snap, agent, &t)) > maxClaimedAssignmentBytes {
-			return fmt.Errorf("assignment context exceeds 24000 bytes: finish an owned task before claiming another")
+		card := claimedCards(snap, agent, &t)
+		if s.isolated() && !readOnly {
+			card += isolationCard
+		}
+		if len(card) > maxClaimedAssignmentBytes {
+			return fmt.Errorf("assignment context exceeds 24000 bytes: finish an owned task or assign another worker")
 		}
 		return nil
 	}

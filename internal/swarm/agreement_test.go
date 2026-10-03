@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -179,6 +180,11 @@ func TestAgreementSurvivesWorkerReuseAndCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	rvWait(t, "reused worker idle", func() bool { return r.idle(id) })
+	assertCompactedAssignment(t, r, id, contract)
+}
+
+func assertCompactedAssignment(t *testing.T, r *rvRig, id string, want ...string) {
+	t.Helper()
 	m := r.sw.get(id)
 	// Mechanical compaction is enough to prove the harness, rather than a model's
 	// summary, preserves the contract when its assignment turn is folded.
@@ -199,13 +205,75 @@ func TestAgreementSurvivesWorkerReuseAndCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	assignment, _ := res.Notes.Segment("assignment")
-	if !strings.Contains(assignment.Text, contract) {
-		t.Fatalf("compaction lost the accepted agreement: %s", assignment.Text)
-	}
 	ins, _ := res.Notes.Segment("instructions")
-	if strings.Contains(ins.Text, contract) {
-		t.Fatal("team agreement became a user instruction")
+	for _, text := range want {
+		if !strings.Contains(assignment.Text, text) {
+			t.Fatalf("compaction lost assignment text %.80q (%d bytes remain)", text, len(assignment.Text))
+		}
+		if strings.Contains(ins.Text, text) {
+			t.Fatal("assignment text became a user instruction")
+		}
 	}
+}
+
+func TestAgreementIsolatedClaimKeepsWorktreeInstructionsThroughCompaction(t *testing.T) {
+	const contract = "ISOLATED-CONTRACT: share a single transport implementation."
+	var next Task
+	r := newIsoRig(t, isoOpts{}, func(_ context.Context, c *rvCall) rvReply {
+		if c.Assistants == 0 {
+			return rvReply{Tools: []rvToolCall{{Name: "task", Args: map[string]any{"action": "claim", "id": next.ID}}}}
+		}
+		return rvReply{Text: "done"}
+	})
+	plan := agreementTask(t, r.sw.Board, "Agree on transport")
+	acceptAgreement(t, r.sw.Board, plan, "sc-planner", contract)
+	next = agreementTask(t, r.sw.Board, "Additional isolated work", plan.ID)
+	id := r.mustSpawn("backend", "Original isolated work")
+	rvWait(t, "isolated claiming worker idle", func() bool { return r.idle(id) })
+	assertCompactedAssignment(t, r.rvRig, id, contract, "Original isolated work", "Additional isolated work", strings.TrimSpace(isolationCard))
+}
+
+func TestAgreementReuseKeepsBlockedContractsAndRejectsExcessContext(t *testing.T) {
+	var current Task
+	r := newRVRig(t, Config{}, func(_ context.Context, c *rvCall) rvReply {
+		if c.Assistants%2 == 0 {
+			return rvReply{Tools: []rvToolCall{{Name: "task", Args: map[string]any{"action": "block", "id": current.ID, "text": "waiting for another dependency"}}}}
+		}
+		return rvReply{Text: "blocked"}
+	})
+	var id string
+	var contracts []string
+	for i := 0; i < 5; i++ {
+		plan := agreementTask(t, r.sw.Board, fmt.Sprintf("Plan %d", i))
+		contract := strings.TrimSpace(fmt.Sprintf("CONTRACT-%d: ", i) + strings.Repeat("shared interfaces; ", 280))
+		acceptAgreement(t, r.sw.Board, plan, "sc-planner", contract)
+		current = agreementTask(t, r.sw.Board, fmt.Sprintf("Work %d", i), plan.ID)
+		before := r.sw.Board.Snapshot()
+		worker, err := r.sw.Spawn(SpawnReq{Role: "backend", Agent: id, TaskID: current.ID, By: "mgr"})
+		if err != nil {
+			if i < 2 || !strings.Contains(err.Error(), "assignment context exceeds") {
+				t.Fatalf("unexpected reuse refusal at %d: %v", i, err)
+			}
+			if task, _ := r.sw.Board.Snapshot().Task(current.ID); task.Owner != "" || task.Status != StatusTodo {
+				t.Fatal("oversized assignment was partially published")
+			}
+			if !reflect.DeepEqual(before.Tasks, r.sw.Board.Snapshot().Tasks) {
+				t.Fatal("rejected reuse changed an existing task")
+			}
+			assertCompactedAssignment(t, r, id, contracts...)
+			return
+		}
+		id = worker
+		contracts = append(contracts, contract)
+		rvWait(t, "blocked worker idle", func() bool { return r.idle(id) })
+		if task, _ := r.sw.Board.Snapshot().Task(current.ID); task.Status != StatusBlocked {
+			t.Fatalf("worker did not block its task: %+v", task)
+		}
+		if i > 0 {
+			assertCompactedAssignment(t, r, id, contracts...)
+		}
+	}
+	t.Fatal("worker reuse bypassed the combined assignment bound")
 }
 
 func TestAgreementClaimDeliversAllOwnedTasksBeforeNextRequest(t *testing.T) {
