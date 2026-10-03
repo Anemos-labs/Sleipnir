@@ -94,6 +94,7 @@ func (m *member) receive(s *Swarm, msg Message) error {
 	if m.life == lifeRetired {
 		return fmt.Errorf("%s has been retired", m.id)
 	}
+	m.mailSeq++
 	m.autoRuns = 0
 	if m.box.empty() && m.a.PendingInbox() < s.cfg.InboxSoftCap {
 		m.a.Send(msg.Frame())

@@ -5,6 +5,11 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Deliver recovery mail that arrives while a worker's request fails. New mail can
+  wake the worker once; unread mail from before that run cannot create a retry
+  loop. Report worker failures to the manager even after task submission, without
+  undoing submitted work or newer assignments. Recovery appends mail to the
+  conversation; stable prompt layers and tool schemas are unchanged.
 - Preserve Windows `cmd` quoting for verification, hooks, and shell commands,
   including paths with spaces. Disable Command Processor AutoRun for those
   commands so registry startup commands do not alter harness execution.

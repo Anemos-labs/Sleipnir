@@ -15,8 +15,8 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
    conventions, its own notes). Coordination adds a few hundred tokens of *hot* view and the occasional mail.
 4. **Requests, not tokens, are scarce** on marketplaces (for example 600 requests/minute per key): a manager that
    sleeps (`wait`) instead of polling costs nothing; parallel read-only tool calls and batched edits save requests.
-5. **Failure is normal.** Workers time out, crash, get stuck, or lie. The protocol assumes it and recovers without
-   asking the model.
+5. **Failure is expected.** The harness settles stopped workers, releases their leases, and reports failures to
+   the manager. Provider retries are bounded; reassigning unfinished tasks remains the manager's responsibility.
 6. **Text one agent can influence is data to every other agent.** Task titles, notes, mail, status lines, alerts,
    file names and command lines are made single-line, bounded and inert before another agent sees them; nothing in
    them can forge a harness header, close a tag, grant permission or change a task's status.
@@ -311,6 +311,13 @@ never promoted as an instruction.
 | shutdown | agents are cancelled and awaited for at most 10 s; nothing new starts afterwards |
 | verifier flaky or broken | infra errors (could not run, timed out) are reported as such and never fail a task nor count as a pass; `--verify-repeats N` (on `rl tasks check` and `rl rollout`) requires unanimity |
 | forged or hostile mail | defused and framed as data; never grants anything |
+
+Workers receive mail queued during a failed run when they restart, before their
+next model request. New mail received during the failed run can trigger one
+restart, subject to the existing peer-mail wake limit. Previously unread mail
+does not trigger repeated failed runs; cancellation and explicit harness stops
+do not restart workers this way. Error notices also cover failures after task
+submission, while submitted work and newer task assignments remain intact.
 
 ## 11. Observability
 

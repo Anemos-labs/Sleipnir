@@ -75,6 +75,7 @@ type rvReply struct {
 	Text  string
 	Tools []rvToolCall
 	Usage core.Usage
+	Err   error
 }
 
 type rvProvider struct {
@@ -97,6 +98,9 @@ func (p *rvProvider) Do(ctx context.Context, req *provider.Request, on func(prov
 		on(provider.Event{Kind: provider.EvStart})
 	}
 	r := p.fn(ctx, c)
+	if r.Err != nil {
+		return nil, r.Err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, &provider.Error{Kind: provider.ErrNetwork, Message: "request cancelled", Err: err}
 	}

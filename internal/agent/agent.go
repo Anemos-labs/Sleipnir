@@ -695,7 +695,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.stepInRun = step
 		a.mu.Unlock()
 		a.boundary(ctx)
-		a.drainInbox()
+		a.drainInbox(step == 0 && len(input) == 0)
 		if a.cfg.SnapshotEachStep {
 			if err := a.writeSnapshot(true); err != nil {
 				return res, fmt.Errorf("save recovery snapshot: %w", err)
@@ -900,16 +900,20 @@ func withUsage(r *provider.Response) core.Turn {
 	return t
 }
 
-// drainInbox turns queued messages into a user turn when the thread currently
-// ends with an assistant turn (so roles alternate).
-func (a *Agent) drainInbox() {
-	snap := a.thread.Snapshot()
-	last := len(snap.Turns) - 1
-	for last >= 0 && snap.Turns[last].Role == core.RoleSystem {
-		last-- // a turn-scoped board view behind the user turn is part of that turn
-	}
-	if last >= 0 && snap.Turns[last].Role == core.RoleUser {
-		return // pending input will ride along with the next tool-results turn
+// drainInbox appends queued messages at an assistant boundary. An empty-input
+// run also drains before its first request: a failed request may have left a user
+// turn last. Existing turns remain unchanged. Within a run, mail behind a user
+// turn waits for tool results to preserve turn-scoped system-message placement.
+func (a *Agent) drainInbox(resuming bool) {
+	if !resuming {
+		snap := a.thread.Snapshot()
+		last := len(snap.Turns) - 1
+		for last >= 0 && snap.Turns[last].Role == core.RoleSystem {
+			last--
+		}
+		if last >= 0 && snap.Turns[last].Role == core.RoleUser {
+			return
+		}
 	}
 	if blocks := a.takeInbox(); len(blocks) > 0 {
 		origin := core.OriginMail
