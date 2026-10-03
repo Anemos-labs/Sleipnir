@@ -140,13 +140,12 @@ func Build(p *core.Prompt, o Options, warm bool) ([]byte, error) {
 	return core.MarshalStable(m)
 }
 
-// effort maps the harness's effort names to the API's: what it does not know it leaves to the model's default.
+// effort passes recognized effort names; model-specific ranges are selected by
+// the caller and refined from endpoint validation when necessary.
 func effort(e string) string {
 	switch e {
-	case "minimal", "low", "medium", "high", "xhigh":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max":
 		return e
-	case "max":
-		return "xhigh"
 	}
 	return ""
 }

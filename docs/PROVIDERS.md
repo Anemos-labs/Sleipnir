@@ -3,6 +3,27 @@
 A model is selected as `provider/model`. Run `sleipnir models` to discover models
 available through configured credentials and local servers.
 
+## Reasoning effort
+
+Use `/effort` in chat to inspect the setting, or `/effort high` to change it.
+Choices are `default`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and
+`max`. Unsupported levels map to the nearest accepted level, choosing the lower
+level on a tie. For example, `medium` maps to `low` on a model accepting only
+`low`, `high`, and `max`. The command reports the primary model's mapping; team
+roles use their own model's range.
+
+The change applies to subsequent agent requests and compaction, preserves the
+conversation, and is restored with the session. A request already in flight keeps
+its settings. `/effort default` lets the provider choose. Unrecognized values also
+select the provider default. Changing effort can invalidate a provider's message
+cache even though prompt text is unchanged.
+
+Known model ranges guide the initial choice. If an endpoint explicitly rejects
+effort, the harness uses its reported accepted levels or omits the parameter,
+with at most two correction attempts. Other errors retain their normal handling.
+Chat Completions sends `reasoning_effort` only when an effort is selected; setting
+the provider option `reasoning_effort_field` to an empty string disables it.
+
 ## Authentication
 
 `sleipnir login` configures a provider. API keys come from the provider's environment

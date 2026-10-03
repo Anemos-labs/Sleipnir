@@ -287,6 +287,7 @@ const chatHelp = `conversation
 
 model and cost
 /model [ref]       pick a model from a menu; a team starts again on it
+/effort [level]    show or change reasoning effort (closest supported level)
 /fav [ref]         star a model, or unstar it; starred ones lead in /model
 /login [provider]  add a key, or sign in with ChatGPT (the chat comes back)
 /budget [usd|off]  the dollar budget for the turns from now on
@@ -389,6 +390,23 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 			fmt.Fprintln(stderr, tools.SanitizeForTerminal(err.Error()))
 		} else {
 			fmt.Fprintf(stderr, "model: %s (the conversation carries over; the prompt cache starts over)\n", ref)
+		}
+	case "/effort":
+		if len(f) > 1 {
+			s.SetEffort(strings.Join(f[1:], " "))
+		}
+		wanted, applied := s.Effort()
+		if wanted == "" {
+			wanted = "default"
+		}
+		if applied == "" {
+			applied = "provider default"
+		}
+		fmt.Fprintf(stderr, "effort: %s (this model: %s)\n", wanted, applied)
+		if len(f) > 1 {
+			fmt.Fprintln(stderr, "Applies to subsequent requests; team roles use their closest supported level.")
+		} else {
+			fmt.Fprintln(stderr, "Choose: /effort default|none|minimal|low|medium|high|xhigh|max")
 		}
 	case "/fav":
 		ref := s.ModelRef()

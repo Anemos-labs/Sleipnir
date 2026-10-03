@@ -69,6 +69,7 @@ type rigOpts struct {
 	planOpen       func(string) int  // how many steps of the agent's plan are open
 	compactor      provider.Provider // a model of its own for the compaction summaries
 	compactorModel cost.Model
+	effort         *provider.EffortSetting
 }
 
 func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
@@ -79,7 +80,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 	t.Cleanup(ts.Close)
 	prof := openaichat.DefaultProfile("mock", ts.URL)
 	prof.CaptureTokens = opts.capture
-	client := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Profile: &prof, Options: openaichat.Options{SessionHeader: true, CacheKeyBody: true}})
+	client := openaichat.New(openaichat.Config{Name: "mock", BaseURL: ts.URL, Profile: &prof, Options: openaichat.Options{SessionHeader: true, CacheKeyBody: true, ReasoningEffortField: "reasoning_effort"}})
 
 	reg := tools.NewRegistry()
 	fts := opts.tools
@@ -114,7 +115,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 		ID:               "be-1", Role: "backend", Model: model, Provider: client, Tools: reg, ToolSpecs: specs,
 		Const:  kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: strings.Repeat("You are Sleipnir, a careful coding agent. ", 120)}}),
 		Shared: kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: strings.Repeat("The repo is a Go service with a users API. ", 150), Vol: kv.VolEpoch}}),
-		Params: core.Params{MaxTokens: 512},
+		Params: core.Params{MaxTokens: 512}, Effort: opts.effort,
 		Events: log, Planner: opts.planner, NoCompaction: opts.noCompact, Notes: opts.notes,
 		SessionID: "testsession", MaxSteps: opts.steps, BudgetUSD: opts.budget,
 		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture, Hooks: opts.hooks,

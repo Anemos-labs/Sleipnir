@@ -65,6 +65,15 @@ type Client struct {
 	keyErr  error // set when the API key must not be sent to BaseURL
 }
 
+// EffortLevels disables effort when the adapter was explicitly configured to
+// omit it; otherwise known model ranges guide selection.
+func (c *Client) EffortLevels(model string) ([]string, bool) {
+	if c.cfg.Options.ReasoningEffortField == "" {
+		return nil, true
+	}
+	return provider.ModelEfforts(model)
+}
+
 // New builds a Client.
 func New(cfg Config) *Client {
 	cfg.Options.defaults()

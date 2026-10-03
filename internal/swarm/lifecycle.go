@@ -206,7 +206,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens,
 		Const:         d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
-		Params: d.Params, OutagePatience: d.OutagePatience,
+		Params: d.Params, Effort: d.Effort, OutagePatience: d.OutagePatience,
 		Hot: func(agentID string) []core.Block {
 			if isSvc {
 				// The board is nothing to the mailman: it knows who it is, and that is all the

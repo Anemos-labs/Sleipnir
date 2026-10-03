@@ -166,6 +166,7 @@ type Deps struct {
 	Workdir string
 	Root    string
 	Params  core.Params
+	Effort  *provider.EffortSetting
 	Planner kv.Planner
 	// KVPolicy tunes breakpoint placement for every agent (kv.Policy); zero is
 	// kv.DefaultPolicy, as for a solo agent.

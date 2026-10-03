@@ -216,6 +216,7 @@ type Session struct {
 	refused   []refusedCommand
 
 	mu      sync.Mutex
+	effort  provider.EffortSetting
 	started bool
 	closed  bool
 	// endReason is why the session ended (SetEndReason), for the SessionEnd hooks.
@@ -367,6 +368,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	}
 	if s.Log, err = events.Open(s.Dir, s.ID); err != nil {
 		return nil, err
+	}
+	s.effort.Set(o.Params.Effort)
+	if o.Resume != "" {
+		s.restoreEffort()
 	}
 	if s.Blobs, err = events.NewDirBlobs(filepath.Join(s.Dir, "blobs")); err != nil {
 		return nil, err
@@ -730,7 +735,7 @@ func (s *Session) build(ctx context.Context) error {
 			return agent.New(agent.Config{
 				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, Tools: reg, ToolSpecs: specs,
 				Const: constLayer, Shared: shared, RoleL: role.Layer(),
-				Params: p, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
+				Params: p, Effort: &s.effort, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
 				Hot: func(id string) []core.Block {
 					if f := plan.Frame(plans.Get(id)); f != "" {
 						return []core.Block{core.Text(f)}
@@ -803,7 +808,7 @@ func (s *Session) build(ctx context.Context) error {
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
-		Workdir: o.Cwd, Root: o.Root, Params: params, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
+		Workdir: o.Cwd, Root: o.Root, Params: params, Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
 		OutagePatience: outagePatience(o.OutagePatience),
 	}

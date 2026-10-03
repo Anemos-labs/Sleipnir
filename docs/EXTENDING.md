@@ -256,7 +256,7 @@ grants no permission). `name`, `disable-model-invocation`, `user-invocable`, `ve
 `dir:` prefix, up to three deep (`frontend/lint.md` is `/frontend:lint`). Names start with a letter or digit and
 continue with letters, digits, `-`, `.`, `_` (64 characters). A command whose name is reserved for a built-in is
 skipped with a warning, and a duplicate name is shadowed by the first (section 0). Reserved, ignoring case: `agents`,
-`clear`, `compact`, `config`, `context`, `cost`, `diff`, `doctor`, `exit`, `help`, `hooks`, `init`, `login`, `logout`,
+`clear`, `compact`, `config`, `context`, `cost`, `diff`, `doctor`, `effort`, `exit`, `help`, `hooks`, `init`, `login`, `logout`,
 `mcp`, `memory`, `mode`, `model`, `permissions`, `plan`, `quit`, `recon`, `resume`, `rewind`, `skill`, `skills`,
 `status`, `trust`, `usage` (some are reserved but not implemented yet).
 

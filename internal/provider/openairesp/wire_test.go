@@ -113,7 +113,7 @@ func TestBuildWarmUpAsksForAsLittleAsTheAPITakes(t *testing.T) {
 }
 
 func TestEffortIsMappedAndUnknownOnesAreLeftToTheModel(t *testing.T) {
-	for in, want := range map[string]any{"low": "low", "xhigh": "xhigh", "max": "xhigh", "": nil, "ultra": nil} {
+	for in, want := range map[string]any{"none": "none", "low": "low", "xhigh": "xhigh", "max": "max", "": nil, "ultra": nil} {
 		p := basePrompt()
 		p.Params.Effort = in
 		r, _ := body(t, p, openairesp.Options{}, false)["reasoning"].(map[string]any)

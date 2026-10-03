@@ -98,6 +98,17 @@ type Client struct {
 	profile provider.Profile
 }
 
+// EffortLevels reports the model resolver's accepted levels. Unknown families
+// remain open to endpoint validation instead of inheriting another model's cap.
+func (c *Client) EffortLevels(model string) ([]string, bool) {
+	resolve := c.cfg.Options.Models
+	if resolve == nil {
+		resolve = DefaultModelInfo
+	}
+	info := resolve(model)
+	return info.Efforts, info.Known
+}
+
 // New builds a Client.
 func New(cfg Config) *Client {
 	if cfg.Name == "" {

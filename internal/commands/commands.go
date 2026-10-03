@@ -63,7 +63,7 @@ var nameRules = mdfile.NameRules{Max: maxNameLen, Upper: true, Dot: true, Unders
 func DefaultBuiltins() []string {
 	return []string{
 		"agents", "clear", "compact", "config", "context", "cost", "doctor", "exit", "help", "hooks", "init",
-		"login", "logout", "mcp", "memory", "model", "permissions", "plan", "quit", "resume", "rewind",
+		"login", "logout", "mcp", "memory", "model", "effort", "permissions", "plan", "quit", "resume", "rewind",
 		"skills", "status", "trust", "usage",
 	}
 }

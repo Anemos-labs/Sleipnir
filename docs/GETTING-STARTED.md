@@ -101,6 +101,7 @@ lack of progress, errors, or its continuation limit.
 - Ctrl+G or `/agents`: live team view.
 - Ctrl+T or `/stats`: usage and cache panel; Escape returns to chat.
 - `/model` and `/roles`: select the session and role models.
+- `/effort`: inspect reasoning effort; `/effort high` changes it without restarting.
 - `/permissions`: inspect rules. `/allow tests` allows recognized build and
   test commands for the session; it does not permit arbitrary scripts.
 - `/diff`: inspect checkpoint changes. `/rewind` lists available checkpoints.
