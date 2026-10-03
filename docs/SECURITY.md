@@ -216,11 +216,13 @@ tools). Keep `os.TempDir()` writable inside the sandbox, or `cd` stops persistin
   visible to commands. Real mitigations are `sandbox-exec` through `Wrap` (deprecated by Apple, still works; not tested here), a
   container or VM, and short-lived, narrowly scoped keys.
 * **Windows.** No hardening of the harness process at all. The shell is PowerShell or `cmd`, and the permission engine's shell
-  analysis is written for POSIX syntax, so its verdicts on those command lines are not reliable. Its *paths* are POSIX too: it
-  writes and matches them with slashes and resolves symlinks from `/`, so on Windows it takes every path, the project's own
-  included, for one outside the workspace, and matches no credential directory (`~\.ssh`, `~\.aws`). In the default mode every read
-  asks, in plan mode a scout cannot read at all, and the bypass and yolo modes do not keep the promise made above (no mode overrides a
-  protected path). Native Windows permission behavior requires further validation. Run the harness inside WSL2 or a Linux container for the Linux permission and hardening path.
+  analysis is written for POSIX syntax, so its verdicts on those command lines are not reliable. File-tool permissions normalize
+  native separators, preserve drive and UNC roots, follow symlinks and junctions, and enforce workspace boundaries, credential
+  protections, and worker confinement. Required Windows tests exercise local paths and real file tools; UNC root handling is
+  checked without a network share. Permission-rule patterns use forward slashes (`Read(C:/project/src/**)`); backslashes escape
+  glob characters. Device namespaces, alternate streams, drive-relative paths, and names ending in dots or spaces are refused.
+  Windows system-directory protection and shell analysis remain incomplete. Run the harness inside WSL2 or a Linux container
+  for the Linux permission and hardening path.
 * **Everywhere.** A same-user process can read what the user can read. The harness cannot change that; sandboxing does.
 
 ## 5. Reading the code

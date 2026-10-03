@@ -88,7 +88,18 @@ func cleanAbs(p string) string {
 			p = filepath.Join(wd, p)
 		}
 	}
-	return filepath.Clean(p)
+	return cleanPath(p)
+}
+
+// cleanPath keeps native path semantics while using slash-separated comparison forms.
+func cleanPath(p string) string { return filepath.ToSlash(filepath.Clean(p)) }
+
+// volumeRoot splits an absolute path into its filesystem root and uncleaned remainder.
+// Retaining the volume keeps drive and UNC paths anchored during component walks.
+func volumeRoot(p string) (root, rest string) {
+	p = filepath.ToSlash(p)
+	v := filepath.ToSlash(filepath.VolumeName(p))
+	return v + "/", strings.TrimPrefix(p[len(v):], "/")
 }
 
 // inside reports whether p (already resolved) is at or below dir.
@@ -99,7 +110,7 @@ func inside(dir, p string) bool {
 	if dir == "/" {
 		return true
 	}
-	return p == dir || strings.HasPrefix(p, dir+"/")
+	return p == dir || strings.HasPrefix(p, strings.TrimSuffix(dir, "/")+"/")
 }
 
 // inWorkspace reports whether a resolved path lies inside a workspace root.
@@ -117,13 +128,15 @@ func (rs *resolver) inWorkspace(real string) bool {
 // target) and components that do not exist (kept literally). ".." is applied to
 // the already resolved prefix, as the kernel does: "link/.." is the parent of
 // what link points to, not the directory containing link; p must therefore not
-// be cleaned lexically first. It never fails: on a symlink loop it returns p.
+// be cleaned lexically first. At the hop bound it returns the cleaned input on
+// POSIX (where the kernel also refuses the chain), and an empty, invalid path on
+// Windows, whose kernel can follow longer chains than this resolver permits.
 func realPath(p string) string {
 	if !filepath.IsAbs(p) {
-		return filepath.Clean(p)
+		return cleanPath(p)
 	}
-	rest := strings.Split(p[1:], "/")
-	resolved := "/"
+	resolved, tail := volumeRoot(p)
+	rest := strings.Split(tail, "/")
 	hops := 0
 	for len(rest) > 0 {
 		part := rest[0]
@@ -132,39 +145,48 @@ func realPath(p string) string {
 		case "", ".":
 			continue
 		case "..":
-			resolved = filepath.Dir(resolved)
+			resolved = cleanPath(filepath.Dir(resolved))
 			continue
 		}
-		next := filepath.Join(resolved, part)
+		next := cleanPath(filepath.Join(resolved, part))
 		fi, err := os.Lstat(next)
-		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-			resolved = next
+		if err != nil || !pathLink(fi) {
+			resolved = canonicalPath(next)
 			continue
 		}
 		if hops++; hops > 40 {
-			return filepath.Clean(p)
+			if filepath.Separator == '\\' {
+				return ""
+			}
+			return cleanPath(p)
 		}
 		target, err := os.Readlink(next)
 		if err != nil {
 			resolved = next
 			continue
 		}
+		target = filepath.ToSlash(target)
 		if filepath.IsAbs(target) {
-			resolved = "/"
+			resolved, target = volumeRoot(target)
+		} else if filepath.Separator == '\\' && strings.HasPrefix(target, "/") {
+			// A rooted Windows link keeps the volume, not the link's directory.
+			resolved = filepath.ToSlash(filepath.VolumeName(resolved)) + "/"
+			target = strings.TrimPrefix(target, "/")
 		}
 		rest = append(strings.Split(target, "/"), rest...)
 	}
-	return resolved
+	return canonicalPath(resolved)
 }
 
 // splitParent splits a path at its last slash without cleaning either part.
 func splitParent(p string) (dir, base string) {
+	p = filepath.ToSlash(p)
 	i := strings.LastIndexByte(p, '/')
 	switch {
 	case i < 0:
 		return ".", p
-	case i == 0:
-		return "/", p[1:]
+	case i == len(filepath.VolumeName(p)):
+		return p[:i+1], p[i+1:]
 	}
 	return p[:i], p[i+1:]
 }
@@ -337,15 +359,25 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 	}
 	var bases []string
 	rel := pat
+	absRoot := ""
 	switch {
 	case pat == "~" || strings.HasPrefix(pat, "~/"):
 		rel = strings.TrimPrefix(strings.TrimPrefix(pat, "~"), "/")
 		if rs != nil {
 			bases = uniq(rs.home, rs.homeReal)
 		}
+	case filepath.IsAbs(pat):
+		v := filepath.VolumeName(pat)
+		if filepath.Separator == '\\' && (strings.Contains(v, `\`) || strings.HasPrefix(pat[len(v):], `\`)) {
+			return nil, errors.New("use forward slashes in absolute permission patterns; backslashes escape glob characters")
+		}
+		absRoot = strings.TrimSuffix(canonicalPath(filepath.ToSlash(v)+"/"), "/") + "/"
+		rel = strings.TrimPrefix(pat[len(v):], "/")
+		bases = []string{absRoot}
 	case strings.HasPrefix(pat, "/"):
-		rel = strings.TrimPrefix(pat, "/")
-		bases = []string{"/"}
+		// Slash-rooted patterns retain their platform-independent glob meaning.
+		absRoot, rel = "/", strings.TrimPrefix(pat, "/")
+		bases = []string{absRoot}
 	case strings.HasPrefix(pat, "./") || strings.Contains(pat, "/"):
 		rel = strings.TrimPrefix(pat, "./")
 		if rs != nil {
@@ -391,15 +423,15 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 	}
 	// An absolute pattern may itself run through a symlink (/tmp -> /private/tmp):
 	// add the form with its literal prefix resolved.
-	if strings.HasPrefix(pat, "/") {
+	if absRoot != "" {
 		segs := splitSegs(rel)
 		k := 0
 		for k < len(segs) && !hasMeta(segs[k]) {
 			k++
 		}
 		if k > 0 {
-			pref := "/" + strings.Join(segs[:k], "/")
-			if r := realPath(pref); r != pref {
+			pref := absRoot + strings.Join(segs[:k], "/")
+			if r := realPath(pref); r != "" && r != pref {
 				add(append(splitSegs(r), segs[k:]...))
 			}
 		}
@@ -438,8 +470,9 @@ func shellSegMatch(pat, name string) bool {
 // A pattern that matches nothing yields no paths (the shell then passes the
 // pattern itself, which the caller checks literally).
 func expandGlob(pattern string, budget *int) (matches []string, ok bool) {
-	segs := splitSegs(pattern)
-	cur := []string{"/"}
+	root, tail := volumeRoot(pattern)
+	segs := splitSegs(tail)
+	cur := []string{root}
 	sawMeta := false
 	for i, seg := range segs {
 		last := i == len(segs)-1
