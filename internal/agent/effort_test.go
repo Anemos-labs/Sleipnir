@@ -7,9 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
 )
 
 func TestEffortFallbackPreservesConversationAndLearnsForLaterRequests(t *testing.T) {
@@ -86,5 +89,60 @@ func TestEffortUnsupportedParameterFallsBackOnceToDefault(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sent, []string{"high", ""}) {
 		t.Fatalf("effort requests: %v", sent)
+	}
+}
+
+func TestEffortCompactorCorrectionUsesItsOwnModelAndUniqueRequests(t *testing.T) {
+	var effort provider.EffortSetting
+	effort.Set("max")
+	var sent []string
+	server := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply {
+		var level string
+		_ = json.Unmarshal(c.Raw["reasoning_effort"], &level)
+		sent = append(sent, level)
+		if level == "max" {
+			return mock.Reply{Fault: &mock.Fault{Status: 400, Message: "Invalid reasoning_effort. Supported values: low, high."}}
+		}
+		n := 0
+		for _, message := range c.Messages {
+			if message.Role == "assistant" {
+				n++
+			}
+		}
+		return mock.Reply{Text: compactorPatch(2*n - 3)(c)}
+	})
+	ts := server.Start()
+	t.Cleanup(ts.Close)
+	client := openaichat.New(openaichat.Config{Name: "compactor", BaseURL: ts.URL, Options: openaichat.Options{ReasoningEffortField: "reasoning_effort"}})
+	model := cost.Fallback("small-compactor")
+	model.ContextTokens = 200_000
+	planner := kv.DefaultPlanner()
+	planner.SoftThreadTokens, planner.HardThreadTokens = 1_000_000, 2_000_000
+	r := newRig(t, rigOpts{effort: &effort, planner: planner, compactor: client, compactorModel: model}, scriptedWork(8, func(*mock.Call) string {
+		t.Error("compaction used the main model")
+		return ""
+	}))
+	if _, err := r.agent.Run(context.Background(), "build everything"); err != nil {
+		t.Fatal(err)
+	}
+	report, err := r.agent.CompactNow(context.Background(), "")
+	if err != nil || report.Mode != "model" || !reflect.DeepEqual(sent, []string{"max", "high"}) {
+		t.Fatalf("compaction report=%+v effort=%v error=%v", report, sent, err)
+	}
+	ids := map[string]bool{}
+	for _, event := range r.log.OfType(events.TypeModelRequest) {
+		var record struct {
+			ID string `json:"req"`
+		}
+		if err := json.Unmarshal(event.Data, &record); err != nil {
+			t.Fatal(err)
+		}
+		if record.ID == "" {
+			t.Fatal("request ID is empty")
+		}
+		if ids[record.ID] {
+			t.Fatalf("duplicate request ID %q", record.ID)
+		}
+		ids[record.ID] = true
 	}
 }
