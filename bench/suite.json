@@ -39,48 +39,70 @@
   "admit": {
     "repeats": 3
   },
-  "quarantine": [],
+  "quarantine": [
+    "sl-81caac08",
+    "sl-828c42bc",
+    "sl-b957b26d",
+    "sl-2515b34e"
+  ],
   "lock": {
-    "tasks": 60,
-    "tasks_sha256": "6ccdd88896ecc01870f1f4354d15dad92781fee03f7f12190ead1f3fffb02939",
+    "tasks": 56,
+    "tasks_sha256": "c3a13e67246397a3efca9bfc582ee18729f1f5f7d69eaa2555649b384fe9dd91",
     "stdmini": {
       "tree_sha256": "c8bb83c719a9139090871335fa4ac262edf68ba837617bbe48ac281e9ce9cabd",
       "commit": "b15682dd9c1c3aa4bd726765799a9e7a0f38d0f0"
     },
     "tags": {
       "boundary": 4,
-      "cmp-flip": 10,
+      "cmp-flip": 12,
       "composite": 4,
-      "core": 47,
+      "core": 43,
       "easy": 2,
       "feature": 7,
       "fix": 6,
       "fixture": 17,
-      "go": 48,
+      "go": 44,
       "greenfield": 3,
       "hard": 5,
       "java": 2,
       "javascript": 1,
       "js": 3,
       "k3": 4,
-      "logic-swap": 7,
+      "logic-swap": 6,
       "long": 3,
-      "medium": 21,
-      "mined": 12,
+      "medium": 17,
+      "mined": 8,
       "mutation": 28,
-      "negate": 12,
+      "negate": 11,
       "nil-check": 2,
       "node": 1,
       "python": 4,
       "recall": 3,
       "refactor": 1,
       "rust": 2,
-      "sl": 12,
+      "sl": 8,
       "sm": 28,
       "small": 1,
       "smoke": 6,
       "swarm": 4
     },
-    "quarantined": []
+    "quarantined": [
+      {
+        "id": "sl-81caac08",
+        "reason": "quarantined by the recipe"
+      },
+      {
+        "id": "sl-828c42bc",
+        "reason": "quarantined by the recipe"
+      },
+      {
+        "id": "sl-b957b26d",
+        "reason": "quarantined by the recipe"
+      },
+      {
+        "id": "sl-2515b34e",
+        "reason": "quarantined by the recipe"
+      }
+    ]
   }
 }

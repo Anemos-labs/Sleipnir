@@ -21,6 +21,20 @@ A verifier must test requirements specified by the prompt. Hidden tests that
 require unnamed symbols invalidate a comparison even when the reference
 solution passes. Exclude or repair such tasks before interpreting pass rates.
 
+The recipe excludes these mined tasks because their hidden tests require names
+absent from both the prompt and the starting code:
+
+| Task | Hidden requirement |
+|---|---|
+| `sl-81caac08` | The private `managerIsolationCard` constant and exact isolation-card wording |
+| `sl-828c42bc` | The exported `env.MaxWireSeed` constant, beyond the specified 31-bit seed range |
+| `sl-b957b26d` | The private `holdSettleMax` variable, `unfinishedWork.idle` field, and `windingDown` method |
+| `sl-2515b34e` | The exported `agent.DefaultToolTimeout` constant, beyond the specified configuration field and duration |
+
+These tasks must have their specifications or verifiers repaired and be admitted
+again before use in comparisons. Passing baseline/reference checks alone does not
+establish that a task's requirements are recoverable.
+
 ## Run
 
 Configure credentials through the provider's environment variable or the
