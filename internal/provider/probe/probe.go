@@ -89,7 +89,27 @@ type Report struct {
 	At       time.Time `json:"at"`
 	Steps    []Step    `json:"steps"`
 	Findings Findings  `json:"findings"`
-	TotalUSD float64   `json:"total_usd"`
+	// TotalUSD sums reported request costs. CostComplete is false if any step
+	// failed or omitted its cost; a zero subtotal does not establish free usage.
+	TotalUSD     float64 `json:"total_usd"`
+	CostComplete bool    `json:"cost_complete"`
+}
+
+// summarizeCosts derives cost totals and completeness from all recorded steps,
+// including requests that failed or completed before cancellation.
+func (r *Report) summarizeCosts() {
+	r.TotalUSD = 0
+	r.CostComplete = len(r.Steps) > 0
+	r.Findings.CostReported = false
+	for _, step := range r.Steps {
+		if !step.OK || step.Cost == nil {
+			r.CostComplete = false
+		}
+		if step.Cost != nil {
+			r.TotalUSD += *step.Cost
+			r.Findings.CostReported = true
+		}
+	}
 }
 
 // Failure says whether the probe found a usable endpoint: nil when the endpoint answered a plain request, else why it did not. What
@@ -123,6 +143,7 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
 	r := &runner{cfg: cfg, rep: &Report{Model: cfg.Model, At: time.Now().UTC()}, nonce: hex.EncodeToString(b)}
+	defer r.rep.summarizeCosts()
 	if cfg.CacheKey {
 		r.key = "probe-" + r.nonce
 	}
@@ -134,7 +155,13 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 		steps = append(steps, r.capture)
 	}
 	for _, s := range steps {
-		if err := s(ctx); err != nil && ctx.Err() != nil {
+		if ctx.Err() != nil {
+			return r.rep, ctx.Err()
+		}
+		// Capability failures are recorded by each step; cancellation stops the
+		// battery even when a step handles its request error as a finding.
+		_ = s(ctx)
+		if ctx.Err() != nil {
 			return r.rep, ctx.Err()
 		}
 		if len(r.rep.Steps) == 1 && !r.rep.Steps[0].OK {
@@ -172,17 +199,23 @@ func (r *runner) do(ctx context.Context, name string, p *core.Prompt, noStream b
 	st := Step{Name: name, Took: time.Since(start)}
 	if err != nil {
 		st.Detail = err.Error()
-		r.rep.Steps = append(r.rep.Steps, st)
-		r.cfg.Log(fmt.Sprintf("  ✗ %-14s %v", name, err))
+		r.recordStep(st)
 		return nil, err
 	}
 	st.OK, st.Usage, st.Cost = true, resp.Usage, resp.CostUSD
-	if resp.CostUSD != nil {
-		r.rep.TotalUSD += *resp.CostUSD
-	}
-	r.rep.Steps = append(r.rep.Steps, st)
-	r.cfg.Log(fmt.Sprintf("  ✓ %-14s %5dms  in=%d cached=%d out=%d", name, st.Took.Milliseconds(), resp.Usage.TotalInput(), resp.Usage.CacheReadTokens, resp.Usage.OutputTokens))
+	r.recordStep(st)
 	return resp, nil
+}
+
+// recordStep appends and logs a completed request. Callers serialize access to
+// the report and logger, including when requests execute concurrently.
+func (r *runner) recordStep(st Step) {
+	r.rep.Steps = append(r.rep.Steps, st)
+	if !st.OK {
+		r.cfg.Log(fmt.Sprintf("  ✗ %-14s %s", st.Name, st.Detail))
+		return
+	}
+	r.cfg.Log(fmt.Sprintf("  ✓ %-14s %5dms  in=%d cached=%d out=%d", st.Name, st.Took.Milliseconds(), st.Usage.TotalInput(), st.Usage.CacheReadTokens, st.Usage.OutputTokens))
 }
 
 // note appends a diagnostic to the probe report in discovery order.
@@ -209,10 +242,6 @@ func (r *runner) basic(ctx context.Context) error {
 	f := &r.rep.Findings
 	f.Streaming = !first.IsZero()
 	f.UsageReported = resp.Usage.TotalInput() > 0 && resp.Usage.OutputTokens > 0
-	f.CostReported = resp.CostUSD != nil
-	if resp.CostUSD != nil {
-		r.rep.TotalUSD += *resp.CostUSD
-	}
 	if !first.IsZero() {
 		f.TTFB = first.Sub(start).Round(time.Millisecond).String()
 	}
@@ -432,9 +461,6 @@ func (r *runner) capture(ctx context.Context) error {
 			st.Detail = err.Error()
 		} else {
 			st.OK, st.Usage, st.Cost = true, resp.Usage, resp.CostUSD
-			if resp.CostUSD != nil {
-				r.rep.TotalUSD += *resp.CostUSD
-			}
 		}
 		r.rep.Steps = append(r.rep.Steps, st)
 		return resp, err
@@ -502,15 +528,15 @@ func (r *runner) warmup(ctx context.Context) error {
 	r.cfg.Log("warm-up")
 	sys := filler(r.nonce+"w", 12000)
 	boundaries := r.cfg.Provider.Profile().Cache.MessageBoundaries
-	burst := func(tag string) (cached, total int) {
+	burst := func(tag string) (cached, total int, complete bool) {
 		var wg sync.WaitGroup
-		var mu sync.Mutex
+		steps := make([]Step, 4)
 		// The requests are meant to overlap: they wait for one another and are sent together, so that
 		// how far apart the goroutines happen to start does not decide whether the later ones find
 		// the prefix the earlier ones are still computing.
 		start := make(chan struct{})
 		var ready sync.WaitGroup
-		for i := 0; i < 4; i++ {
+		for i := range steps {
 			wg.Add(1)
 			ready.Add(1)
 			go func(i int) {
@@ -523,23 +549,46 @@ func (r *runner) warmup(ctx context.Context) error {
 					// burst; changing it would test a different prefix each time.
 					text = "Say ok."
 				}
-				resp, err := r.cfg.Provider.Do(ctx, &provider.Request{Prompt: r.prompt(sys, user(text))}, nil)
+				name := fmt.Sprintf("warmup-%s-%d", tag, i)
+				before := time.Now()
+				resp, err := r.cfg.Provider.Do(ctx, &provider.Request{Prompt: r.prompt(sys, user(text)), Label: "probe:" + name}, nil)
+				st := Step{Name: name, Took: time.Since(before)}
 				if err != nil {
-					return
+					st.Detail = err.Error()
+				} else {
+					st.OK, st.Usage, st.Cost = true, resp.Usage, resp.CostUSD
 				}
-				mu.Lock()
-				cached += resp.Usage.CacheReadTokens
-				total += resp.Usage.TotalInput()
-				mu.Unlock()
+				steps[i] = st
 			}(i)
 		}
 		ready.Wait()
 		close(start)
 		wg.Wait()
+		complete = true
+		for _, st := range steps {
+			r.recordStep(st)
+			complete = complete && st.OK && st.Usage.TotalInput() > 0
+			cached += st.Usage.CacheReadTokens
+			total += st.Usage.TotalInput()
+		}
 		return
 	}
-	coldHit, coldTot := burst("cold")
-	warmHit, warmTot := burst("warm")
+	coldHit, coldTot, coldOK := burst("cold")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !coldOK {
+		r.note("warm-up result unavailable: a cold burst request failed or did not report input usage")
+		return nil
+	}
+	warmHit, warmTot, warmOK := burst("warm")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !warmOK {
+		r.note("warm-up result unavailable: a warm burst request failed or did not report input usage")
+		return nil
+	}
 	needed := coldTot > 0 && float64(coldHit)/float64(coldTot) < 0.25 && warmTot > 0 && float64(warmHit)/float64(warmTot) > 0.5
 	r.rep.Findings.WarmupNeeded = &needed
 	r.cfg.Log(fmt.Sprintf("  cold burst hit %d/%d, warm burst hit %d/%d", coldHit, coldTot, warmHit, warmTot))
@@ -599,7 +648,14 @@ func (rep *Report) Text() string {
 		fmt.Fprintf(&sb, "  rate limit           %s\n", f.RateLimit)
 	}
 	fmt.Fprintf(&sb, "  bytes per token      %.2f\n", f.BytesPerToken)
-	fmt.Fprintf(&sb, "  probe cost           $%.6f over %d requests\n", rep.TotalUSD, len(rep.Steps))
+	switch {
+	case rep.CostComplete:
+		fmt.Fprintf(&sb, "  probe cost           $%.6f over %d requests\n", rep.TotalUSD, len(rep.Steps))
+	case f.CostReported:
+		fmt.Fprintf(&sb, "  probe cost           $%.6f reported; total unavailable (%d requests)\n", rep.TotalUSD, len(rep.Steps))
+	default:
+		fmt.Fprintf(&sb, "  probe cost           total unavailable (%d requests; endpoint supplied no costs)\n", len(rep.Steps))
+	}
 	notes := append([]string(nil), f.Notes...)
 	sort.Strings(notes)
 	for _, n := range notes {

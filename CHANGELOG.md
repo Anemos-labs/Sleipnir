@@ -5,6 +5,9 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Include concurrent `doctor --deep` requests in request, usage, and reported-cost
+  totals. Mark incomplete cost data as unavailable, retain failed warm-up samples,
+  and stop later probes after cancellation.
 - Preserve complete messages during `doctor` cache probes for message-boundary
   providers, including concurrent warm-up bursts. Grow the sequential probe by
   appending responses and user turns, and avoid
