@@ -5,6 +5,12 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Carry reviewed task agreements into dependent assignments, including transitive
+  prerequisites, compaction, worker reuse, and recovery. Add full task retrieval
+  and preserve tasks claimed during a run as harness assignments. Team guidance
+  calls for shared decisions before dependent implementation and review of the
+  assembled result. Swarm constitution, manager role, and coordination tool bytes
+  change once on upgrade; agreements do not rewrite shared project context per request.
 - Add `/effort` to inspect and change reasoning effort during chat, including
   running teams. Map each model to its closest supported level and recover from
   explicit effort validation errors with bounded retries. Preserve the preference

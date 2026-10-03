@@ -264,7 +264,7 @@
   },
   {
     "name": "note",
-    "description": "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's board now and is folded into shared context later. scope: shared (default) or role.",
+    "description": "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role.",
     "input_schema": {
       "properties": {
         "scope": {
@@ -389,13 +389,14 @@
   },
   {
     "name": "task",
-    "description": "Shared task board. Actions: list, claim (id), update (id, text = one-line status), done (id, text = one-line result: the harness checks your work, and runs the project's verifier when one is configured, before it reaches review), block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
+    "description": "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
     "input_schema": {
       "properties": {
         "action": {
           "enum": [
             "create",
             "list",
+            "get",
             "claim",
             "update",
             "done",
@@ -406,6 +407,9 @@
             "reopen",
             "fail"
           ],
+          "type": "string"
+        },
+        "agreement": {
           "type": "string"
         },
         "deps": {

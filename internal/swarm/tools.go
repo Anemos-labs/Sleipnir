@@ -55,21 +55,21 @@ type taskTool struct{ s *Swarm }
 func (t *taskTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "task",
-		Description: "Shared task board. Actions: list, claim (id), update (id, text = one-line status), " +
-			"done (id, text = one-line result: the harness checks your work, and runs the project's verifier when one is configured, before it reaches review), " +
+		Description: "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
+			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
-"action":{"type":"string","enum":["create","list","claim","update","done","block","resume","accept","reject","reopen","fail"]},
+"action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","accept","reject","reopen","fail"]},
 "id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"role":{"type":"string"},
 "deps":{"type":"array","items":{"type":"string"}},"files":{"type":"array","items":{"type":"string"}},
-"text":{"type":"string"}},"required":["action"]}`),
+"text":{"type":"string"},"agreement":{"type":"string"}},"required":["action"]}`),
 	}
 }
 
 type taskIn struct {
-	Action, ID, Title, Description, Role, Text string
-	Deps, Files                                []string
+	Action, ID, Title, Description, Role, Text, Agreement string
+	Deps, Files                                           []string
 }
 
 func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
@@ -103,9 +103,19 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return text("created %s %q", task.ID, task.Title), nil
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil
+	case "get":
+		task, ok := s.Board.Snapshot().Task(in.ID)
+		if !ok {
+			return tools.Errorf("no task %s", in.ID), nil
+		}
+		data, err := json.MarshalIndent(task, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		return c.Env.Finish(string(data), false), nil
 	case "claim":
 		ro := s.roles[c.Env.Role].ReadOnly
-		if err := s.Board.claim(me, in.ID, s.scopeCheck(ro)); err != nil {
+		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
 			return tools.Errorf("%v", err), nil
 		}
 		s.trackClaim(me, in.ID)
@@ -179,6 +189,9 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if task.Status != StatusDoing {
 		return tools.Errorf("%s is %s, not doing", in.ID, task.Status)
 	}
+	if _, err := cleanAgreement(in.Agreement); err != nil {
+		return tools.Errorf("%v", err)
+	}
 	ev := NewEvidence()
 	m := s.get(me)
 	if m != nil {
@@ -226,7 +239,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.SubmitAt(me, in.ID, task.Rev, result, summary); err != nil {
+	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
@@ -314,6 +327,9 @@ func renderTaskList(s *Snapshot) string {
 		if t.Evidence != "" {
 			sb.WriteString(" [" + t.Evidence + "]")
 		}
+		if t.Agreement != "" {
+			sb.WriteString(" [agreement: task get " + t.ID + "]")
+		}
 		sb.WriteByte('\n')
 	}
 	for _, a := range s.Agents {
@@ -372,7 +388,7 @@ func (t *noteTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "note",
 		Description: "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's " +
-			"board now and is folded into shared context later. scope: shared (default) or role.",
+			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["shared","role"]}},"required":["text"]}`),
 	}
 }

@@ -513,6 +513,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.gateTries = 0
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
+	m.a.QueueAssignment(claimedCards(s.Board.Snapshot(), agentID, nil))
 }
 
 // launch starts the run goroutine of a reserved member.

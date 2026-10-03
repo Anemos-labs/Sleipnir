@@ -700,6 +700,7 @@ func taskCard(t Task, agentID string, pin bool) string {
 		if len(t.Deps) > 0 {
 			sb.WriteString("Depends on: " + cleanText(strings.Join(t.Deps, ", "), 120) + "\n")
 		}
+		sb.WriteString(agreementCard(t.Agreements))
 		sb.WriteString("When finished, call task done with a one-line result. The harness verifies your work before accepting it.")
 		return sb.String()
 	}

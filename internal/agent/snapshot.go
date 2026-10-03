@@ -51,7 +51,8 @@ type Snapshot struct {
 	Usage       core.Usage  `json:"usage"`
 	CostUSD     float64     `json:"cost_usd"`
 	// PendingRequests have reserved IDs but their usage is not included above.
-	PendingRequests []string `json:"pending_requests,omitempty"`
+	PendingRequests   []string `json:"pending_requests,omitempty"`
+	PendingAssignment string   `json:"pending_assignment,omitempty"`
 }
 
 // LayerState is a layer's content, enough to rebuild it.
@@ -91,7 +92,8 @@ func (a *Agent) Snapshot() Snapshot {
 		Spine: layerState(a.stack.Spine), Notes: layerState(a.stack.Notes),
 		Epoch: a.epoch, Requests: a.reqN, Forks: a.forkN, Compactions: a.comp.count,
 		Usage: a.usage, CostUSD: a.costUSD,
-		PendingRequests: slices.Sorted(maps.Keys(a.pendingRequests)),
+		PendingRequests:   slices.Sorted(maps.Keys(a.pendingRequests)),
+		PendingAssignment: a.pendingAssignment,
 	}
 }
 
@@ -127,6 +129,7 @@ func (a *Agent) Restore(s Snapshot) error {
 	a.epoch = s.Epoch + 1
 	a.reqN, a.forkN, a.comp.count = s.Requests, s.Forks, s.Compactions
 	a.usage, a.costUSD = s.Usage, s.CostUSD
+	a.pendingAssignment = s.PendingAssignment
 	a.man = core.ManifestState{} // the next request is encoded in full: a new segment of the log
 	if a.cfg.Provider.Profile().ReplayThinking && a.cfg.ApplyPolicy.StripThinking {
 		a.thread.Rewrite(func(t core.Turn) (core.Turn, bool) { return kv.StripThinkingTurn(t) })

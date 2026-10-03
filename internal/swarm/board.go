@@ -67,6 +67,12 @@ type Task struct {
 	// Evidence is what the harness observed (edited files, the last test command
 	// and its exit status). Only the harness writes it.
 	Evidence string `json:"evidence,omitempty"`
+	// Agreement is the proposed contract submitted with the result. Only acceptance
+	// makes it available to dependent tasks; accepted tasks cannot be changed.
+	Agreement string `json:"agreement,omitempty"`
+	// Agreements snapshots the accepted contracts inherited at assignment, including
+	// transitive prerequisites. It is immutable while the task is owned.
+	Agreements []TaskAgreement `json:"agreements,omitempty"`
 	// Attempts counts assignments that ended without the work reaching review.
 	Attempts int `json:"attempts,omitempty"`
 	// VerificationFailures counts failed verification gates in the current attempt.
@@ -308,6 +314,8 @@ func (d *draft) setTask(t Task) {
 	d.set("line", t.Line)
 	d.set("result", t.Result)
 	d.set("evidence", t.Evidence)
+	d.set("agreement", t.Agreement)
+	d.set("agreements", t.Agreements)
 	d.set("attempts", t.Attempts)
 	d.set("verification_failures", t.VerificationFailures)
 	d.set("rev", t.Rev)
@@ -517,6 +525,11 @@ func (b *Board) claim(agent, id string, check TaskCheck) error {
 		if ok, dep := depsDone(d.Snapshot, t); !ok {
 			return depsError(id, dep)
 		}
+		agreements, err := inheritedAgreements(d.Snapshot, t)
+		if err != nil {
+			return err
+		}
+		t.Agreements = agreements
 		if check != nil {
 			if err := check(d.Snapshot, t); err != nil {
 				return err
@@ -595,6 +608,11 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 		if ok, dep := depsDone(d.Snapshot, t); !ok {
 			return depsError(t.ID, dep)
 		}
+		agreements, err := inheritedAgreements(d.Snapshot, t)
+		if err != nil {
+			return err
+		}
+		t.Agreements = agreements
 		if r.check != nil {
 			if err := r.check(d.Snapshot, t); err != nil {
 				return err
@@ -708,6 +726,16 @@ func (b *Board) Submit(agent, id, result, evidence string) error {
 
 // SubmitAt is Submit that applies only to the assignment rev (0: any).
 func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string) error {
+	return b.submitAgreementAt(agent, id, rev, result, evidence, "")
+}
+
+// submitAgreementAt atomically submits a result and its optional contract for review.
+// Oversized contracts are rejected rather than silently losing constraints.
+func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence, agreement string) error {
+	agreement, err := cleanAgreement(agreement)
+	if err != nil {
+		return err
+	}
 	return b.mutate(agent, "finish", func(d *draft) error {
 		i, t, err := owned(d, agent, id)
 		if err != nil {
@@ -722,6 +750,7 @@ func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string) 
 		t.Status, t.Line = StatusReview, ""
 		t.VerificationFailures = 0
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
+		t.Agreement = agreement
 		d.tasks()[i] = t
 		d.setTask(t)
 		return nil

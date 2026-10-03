@@ -159,10 +159,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	s.emitAs(m.id, "agent.assign", map[string]any{"id": m.id, "role": m.role, "task": task.ID, "by": req.By})
-	start := runStart{brief: taskCard(task, m.id, false)}
-	if len(m.a.Thread().Snapshot().Turns) > 0 {
-		start = reassignStart(task, m)
-	}
+	start := reassignStart(task, m)
 	// A reused writer starts the new task from what has been merged since.
 	if note, err := s.syncTree(ctx, m); err != nil {
 		start.brief += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), 160) + ". Merge the integration branch yourself before you start, or ask the manager.)"
