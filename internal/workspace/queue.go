@@ -297,8 +297,12 @@ func (m *Manager) removeStaleIntegration(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !mk.Integration || mk.owner() == ownerAlive {
+	owner := mk.owner()
+	if !mk.Integration || owner == ownerAlive {
 		return fmt.Errorf("%w: the integration tree at %s belongs to a running session", ErrExists, dest)
+	}
+	if owner == ownerUnknown {
+		return fmt.Errorf("%w: the owner of the integration tree at %s cannot be verified as stopped", ErrExists, dest)
 	}
 	m.mu.Lock()
 	delete(m.trees, integrationName)
