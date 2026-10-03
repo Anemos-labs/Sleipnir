@@ -480,7 +480,10 @@ type failed struct {
 	msg  string
 }
 
+// Error prefixes the PTY failure detail with its error category.
 func (f *failed) Error() string { return f.kind.Error() + ": " + f.msg }
+
+// Unwrap exposes the PTY failure category for errors.Is comparisons.
 func (f *failed) Unwrap() error { return f.kind }
 
 // visible makes control characters readable in a failure message: a terminal's output
@@ -516,6 +519,8 @@ func (s *Session) Close() {
 	})
 }
 
+// waitFor waits until a channel is ready or the duration elapses without distinguishing the
+// outcome.
 func waitFor(ch <-chan struct{}, d time.Duration) {
 	t := time.NewTimer(d)
 	defer t.Stop()

@@ -54,6 +54,7 @@ func regexKind(re *regexp.Regexp, hints ...string) detector {
 	}
 }
 
+// containsAny reports whether any supplied substring appears in the text.
 func containsAny(s string, subs []string) bool {
 	for _, x := range subs {
 		if strings.Contains(s, x) {
@@ -106,6 +107,8 @@ var (
 	pemOpenRE = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----(?:[ \t]*\r?\n[ \t]*(?:[A-Za-z0-9+/=]{16,}|[A-Za-z][A-Za-z0-9-]*: [^\r\n]*))+`)
 )
 
+// detectPrivateKey finds complete or open-ended PEM private-key spans using the normalized work
+// text and original secret bytes.
 func detectPrivateKey(_ *Redactor, s, work string) []span {
 	if !strings.Contains(work, "-----BEGIN") {
 		return nil
@@ -124,6 +127,8 @@ func detectPrivateKey(_ *Redactor, s, work string) []span {
 
 var urlCredRE = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9+.\-]{1,20}://([^\s/:@'"<>]+):([^\s/@'"<>]{3,})@`)
 
+// detectURLCred finds password spans in URL credentials after filtering placeholder-like
+// credentials.
 func detectURLCred(_ *Redactor, s, work string) []span {
 	if !strings.Contains(work, "://") {
 		return nil
@@ -222,6 +227,7 @@ var (
 	kvFlagRE = regexp.MustCompile(`(?i)(?:^|[\s"'])--((?:password|passwd|pwd|secret|token|api[_\-]?key|access[_\-]?token|auth[_\-]?token|client[_\-]?secret))(?:=|[ \t]+)` + kvValue)
 )
 
+// detectKV finds accepted secret values in key/value assignments and command-line flag forms.
 func detectKV(_ *Redactor, s, work string) []span {
 	if !strings.ContainsAny(work, ":=") && !strings.Contains(work, "--") {
 		return nil
@@ -289,6 +295,7 @@ func kvValueOK(v string, quoted bool, key, sep string) bool {
 	return true
 }
 
+// isLettersOnly requires nonempty text made entirely of Unicode letters.
 func isLettersOnly(v string) bool {
 	for _, r := range v {
 		if !unicode.IsLetter(r) {
@@ -363,6 +370,7 @@ func isPlaceholder(v string) bool {
 	return true
 }
 
+// isNumeric requires a nonempty sequence of ASCII decimal digits.
 func isNumeric(v string) bool {
 	for _, r := range v {
 		if r < '0' || r > '9' {
@@ -372,6 +380,8 @@ func isNumeric(v string) bool {
 	return v != ""
 }
 
+// isURLWithoutCreds recognizes HTTP and WebSocket scheme prefixes and rejects any text containing
+// an at sign; it is not a full URL validator.
 func isURLWithoutCreds(v string) bool {
 	lv := strings.ToLower(v)
 	return (strings.HasPrefix(lv, "http://") || strings.HasPrefix(lv, "https://") || strings.HasPrefix(lv, "ws://") || strings.HasPrefix(lv, "wss://")) && !strings.Contains(v, "@")
@@ -415,6 +425,8 @@ var (
 	uuidRE         = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 )
 
+// detectEntropy finds high-entropy candidates only when a nearby key also indicates secret-bearing
+// content.
 func detectEntropy(_ *Redactor, s, work string) []span {
 	if len(work) < 20 {
 		return nil
@@ -496,6 +508,7 @@ func isWordy(c string) bool {
 	return letters > 0 && float64(wordy) >= 0.7*float64(letters)
 }
 
+// isHex requires a nonempty sequence of ASCII hexadecimal digits.
 func isHex(c string) bool {
 	if c == "" {
 		return false
@@ -542,6 +555,8 @@ var commonTLD = map[string]bool{
 	"biz": true, "xyz": true, "tech": true, "cloud": true, "online": true, "site": true, "tv": true, "sh": true,
 }
 
+// detectEmail identifies accepted email addresses outside URL userinfo and lowercases secret
+// identity for consistent replacement tokens.
 func detectEmail(_ *Redactor, s, work string) []span {
 	if !strings.Contains(work, "@") {
 		return nil
@@ -591,6 +606,7 @@ func emailOK(m string) bool {
 
 var ipv4RE = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 
+// mustPrefixes parses fixed network prefixes and panics on invalid configuration literals.
 func mustPrefixes(ss ...string) []netip.Prefix {
 	out := make([]netip.Prefix, len(ss))
 	for i, s := range ss {
@@ -636,6 +652,7 @@ func detectIPv4(_ *Redactor, s, work string) []span {
 	return out
 }
 
+// publicV4 accepts IPv4 addresses outside the configured nonpublic prefix ranges.
 func publicV4(a netip.Addr) bool {
 	if !a.Is4() {
 		return false
@@ -703,14 +720,21 @@ func detectIPv6(_ *Redactor, s, work string) []span {
 	return out
 }
 
+// isV6Char accepts hexadecimal digits, colons, and dots while scanning a possible IPv6 address; it
+// does not validate the address.
 func isV6Char(b byte) bool {
 	return b >= '0' && b <= '9' || b >= 'a' && b <= 'f' || b >= 'A' && b <= 'F' || b == ':' || b == '.'
 }
 
+// isDigit recognizes ASCII decimal digits.
 func isDigit(b byte) bool { return b >= '0' && b <= '9' }
+
+// isLetter recognizes ASCII letters in either case.
 func isLetter(b byte) bool {
 	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 }
+
+// isAlnum recognizes ASCII letters and decimal digits.
 func isAlnum(b byte) bool { return isDigit(b) || isLetter(b) }
 
 // ---- home directories -------------------------------------------------------
@@ -720,6 +744,8 @@ var (
 	homeWinRE  = regexp.MustCompile(`(?i)[A-Za-z]:(?:\\{1,2}|/)Users(?:\\{1,2}|/)([^\\/\s"'<>|:*?]+)`)
 )
 
+// detectPath identifies usernames in Unix and Windows home paths while excluding relative paths
+// and direct home-directory files where recognized.
 func detectPath(r *Redactor, s, work string) []span {
 	var out []span
 	if strings.Contains(work, "/home/") || strings.Contains(work, "/Users/") {
@@ -754,6 +780,8 @@ func fileLike(name string) bool {
 	return false
 }
 
+// pathSpan trims sentence punctuation and skips generic or already replaced usernames before
+// appending a home-path redaction span.
 func (r *Redactor) pathSpan(out []span, s string, a, b int) []span {
 	// A sentence-ending dot or dash is not part of the user name.
 	for b > a+1 && (s[b-1] == '.' || s[b-1] == '-') {

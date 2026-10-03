@@ -15,6 +15,7 @@ type mailState struct {
 	mailman Mailman
 }
 
+// newMailState initializes bounded mail history and its message-ID index.
 func newMailState() mailState {
 	return mailState{ring: newRing[MailMsg](MailCap), byID: map[string]int{}}
 }
@@ -192,6 +193,7 @@ func (s *State) onMailDirect(e events.Event, t time.Time) {
 	s.mail.counts.Direct += min(n, smallCount)
 }
 
+// onMailBatch increments the aggregate mail-batch count for an observed event.
 func (s *State) onMailBatch(e events.Event, t time.Time) { s.mail.counts.Batches++ }
 
 func (s *State) onMailman(e events.Event, t time.Time) {

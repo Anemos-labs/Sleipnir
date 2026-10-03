@@ -73,6 +73,7 @@ type lockedWriter struct {
 	w  io.Writer
 }
 
+// Write serializes writes to the underlying stream and preserves its byte count and error.
 func (l *lockedWriter) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

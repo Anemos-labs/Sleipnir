@@ -321,6 +321,8 @@ type quietAfter struct {
 	left int // flushes that still reach the client
 }
 
+// Flush forwards a bounded number of HTTP flushes, then waits for cancellation to simulate a
+// stalled response.
 func (q *quietAfter) Flush() {
 	if q.left <= 0 {
 		<-q.ctx.Done()
@@ -342,6 +344,7 @@ func (c *ChatScenario) UserConfig(url string) map[string]any {
 	}
 }
 
+// chatCall builds a mock tool invocation with JSON-encoded arguments for the chat script.
 func chatCall(id, name string, args map[string]any) mock.ToolCall { return jsonCall(id, name, args) }
 
 var chatUnitRe = regexp.MustCompile(`(?m)^\s+t(\d+)(?:-t(\d+))? · ([^·]*) · (.*)$`)

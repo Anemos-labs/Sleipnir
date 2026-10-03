@@ -34,6 +34,8 @@ func (t *Term) Resize(cols, rows int) {
 	t.pending = t.pending && t.x == cols-1
 }
 
+// moveToKeepPending clamps the cursor while preserving pending wrap only if its requested column
+// survives unchanged.
 func (t *Term) moveToKeepPending(x, y int) {
 	p := t.pending
 	t.moveTo(x, y)

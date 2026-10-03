@@ -60,6 +60,7 @@ func detectInjection(s string) string {
 	return ""
 }
 
+// containsAny reports whether any supplied substring occurs in s.
 func containsAny(s string, subs []string) bool {
 	for _, sub := range subs {
 		if strings.Contains(s, sub) {

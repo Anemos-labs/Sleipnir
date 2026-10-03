@@ -17,6 +17,7 @@ type Tokens struct {
 	Reasoning  int `json:"reasoning,omitempty"` // the reasoning share of Output, when the provider says
 }
 
+// tokensOf copies provider usage into rollout accounting, combining cache-write token categories.
 func tokensOf(u core.Usage) Tokens {
 	return Tokens{Input: u.InputTokens, CacheRead: u.CacheReadTokens, CacheWrite: u.CacheWriteTokens(), Output: u.OutputTokens, Reasoning: u.ReasoningTokens}
 }
@@ -33,6 +34,7 @@ func (t Tokens) HitRatio() float64 {
 	return 0
 }
 
+// plus returns component-wise token totals without changing either operand.
 func (t Tokens) plus(o Tokens) Tokens {
 	return Tokens{t.Input + o.Input, t.CacheRead + o.CacheRead, t.CacheWrite + o.CacheWrite, t.Output + o.Output, t.Reasoning + o.Reasoning}
 }

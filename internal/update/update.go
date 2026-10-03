@@ -44,6 +44,7 @@ type Options struct {
 	Agent     string // the User-Agent
 }
 
+// api uses a trimmed API override or the public GitHub API endpoint.
 func (o Options) api() string {
 	if o.API != "" {
 		return strings.TrimRight(o.API, "/")
@@ -51,6 +52,7 @@ func (o Options) api() string {
 	return "https://api.github.com"
 }
 
+// repo selects the configured update repository or the built-in repository.
 func (o Options) repo() string {
 	if o.Repo != "" {
 		return o.Repo
@@ -58,6 +60,7 @@ func (o Options) repo() string {
 	return Repo
 }
 
+// client uses an injected HTTP client or a new client with a twenty-second timeout.
 func (o Options) client() *http.Client {
 	if o.HTTP != nil {
 		return o.HTTP
@@ -65,6 +68,7 @@ func (o Options) client() *http.Client {
 	return &http.Client{Timeout: 20 * time.Second}
 }
 
+// now uses an injected update clock or the system clock.
 func (o Options) now() time.Time {
 	if o.Now != nil {
 		return o.Now()
@@ -72,6 +76,7 @@ func (o Options) now() time.Time {
 	return time.Now()
 }
 
+// goos selects an explicit release platform or the running OS.
 func (o Options) goos() string {
 	if o.GOOS != "" {
 		return o.GOOS
@@ -79,6 +84,7 @@ func (o Options) goos() string {
 	return runtime.GOOS
 }
 
+// goarch selects an explicit release architecture or the running architecture.
 func (o Options) goarch() string {
 	if o.GOARCH != "" {
 		return o.GOARCH
@@ -328,6 +334,7 @@ func Install(ctx context.Context, o Options, rel Release, exe string) error {
 	return replace(exe, exeBytes)
 }
 
+// checksumOf finds a named checksum entry, accepting an optional binary-file asterisk marker.
 func checksumOf(sums, name string) string {
 	for _, line := range strings.Split(sums, "\n") {
 		f := strings.Fields(line)

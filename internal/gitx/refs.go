@@ -47,6 +47,7 @@ func cleanRelPath(op, p string) (string, error) {
 	return c, nil
 }
 
+// notFound creates a Git lookup error with the missing object's description and exit status 1.
 func notFound(op, what string) error {
 	return &Error{Kind: KindNotFound, Op: op, ExitCode: 1, Detail: what}
 }
@@ -329,6 +330,8 @@ func parseCommit(sha string, raw []byte) Commit {
 	return c
 }
 
+// parsePerson extracts a Git person's name, email, and Unix timestamp in UTC, preserving malformed
+// identities as a name-only value.
 func parsePerson(s string) Person {
 	var p Person
 	lt := strings.LastIndex(s, " <")

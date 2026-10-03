@@ -23,6 +23,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/rl/recall"
 )
 
+// init registers task generation and task-file inspection commands.
 func init() {
 	rlCommands["taskgen"] = rlTaskgen
 	rlCommands["tasks"] = rlTasks
@@ -62,6 +63,7 @@ func rlTasks(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	return fmt.Errorf("rl tasks: unknown command %q", args[0])
 }
 
+// oneFile parses interspersed flags and requires exactly one positional tasks-file argument.
 func oneFile(fs *flag.FlagSet, args []string, name string) (string, error) {
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -73,6 +75,8 @@ func oneFile(fs *flag.FlagSet, args []string, name string) (string, error) {
 	return pos[0], nil
 }
 
+// tasksValidate loads exactly one tasks file through normal validation and reports its valid task
+// count.
 func tasksValidate(args []string, stdout, stderr io.Writer) error {
 	fs := newFlags("rl tasks validate", stderr, "rl tasks validate FILE")
 	file, err := oneFile(fs, args, "rl tasks validate")
@@ -111,6 +115,7 @@ func tasksStats(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+// orStr returns the default when s is empty.
 func orStr(s, d string) string {
 	if s == "" {
 		return d
@@ -331,7 +336,10 @@ the verifier must fail on the start state and pass with the reference solution.
 
 type multiFlag []string
 
-func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
+// String joins repeated flag values with commas for flag formatting.
+func (m *multiFlag) String() string { return strings.Join(*m, ",") }
+
+// Set appends one flag occurrence without splitting or validating its value.
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 // genCommon are the flags every generator shares.
@@ -345,6 +353,7 @@ type genCommon struct {
 	rig                                   rigFlags
 }
 
+// register binds common task-generation, verifier, output, and rig options to a flag set.
 func (g *genCommon) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.repo, "repo", "", "the repository to generate from (a local path)")
 	fs.StringVar(&g.repoPath, "repo-path", "", repoPathUsage)
@@ -362,6 +371,8 @@ func (g *genCommon) register(fs *flag.FlagSet) {
 	g.rig.register(fs)
 }
 
+// stores opens the hidden-verifier blob store at the configured location or beside the output
+// tasks file.
 func (g *genCommon) stores() (hidden events.Blobs, blobsDir string, err error) {
 	// --blobs (a rig flag): the store for hidden verifier files and reference
 	// solutions; it must travel with the tasks file.
@@ -678,6 +689,7 @@ func taskgenFixture(ctx context.Context, args []string, stdout, stderr io.Writer
 	return nil
 }
 
+// dedupeStrings removes empty and duplicate strings while preserving first occurrence order.
 func dedupeStrings(in []string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -690,6 +702,7 @@ func dedupeStrings(in []string) []string {
 	return out
 }
 
+// parseDate accepts YYYY-MM-DD in UTC and treats empty input as an unset time.
 func parseDate(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil

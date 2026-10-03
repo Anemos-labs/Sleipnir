@@ -24,6 +24,7 @@ func (s *Swarm) supervise(ctx context.Context) {
 	}
 }
 
+// guard recovers a supervisor callback panic and records its location and value as an event.
 func (s *Swarm) guard(what string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {

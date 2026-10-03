@@ -330,6 +330,7 @@ func (e *NestedRepoError) Error() string {
 		len(e.Paths), strings.Join(list, ", "), more)
 }
 
+// Is makes nested-repository errors match the ErrNestedRepo sentinel.
 func (e *NestedRepoError) Is(target error) bool { return target == ErrNestedRepo }
 
 // maxCommittedEntries bounds how many changed files checkCommitted examines; a

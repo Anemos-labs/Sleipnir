@@ -42,6 +42,8 @@ type superviseState struct {
 	lastHold, lastWake                     string
 }
 
+// iso initializes isolation indexes on first use, marks isolation data observed, and returns
+// mutable state.
 func (w *swarmState) iso() *isoState {
 	if w.isolation.queue == nil {
 		w.isolation.queue = map[string]int{}
@@ -51,6 +53,8 @@ func (w *swarmState) iso() *isoState {
 	return &w.isolation
 }
 
+// mm initializes direct-mail counts on first use, marks mailman data observed, and returns mutable
+// state.
 func (w *swarmState) mm() *mailmanState {
 	if w.mailman.direct == nil {
 		w.mailman.direct = map[string]int{}
@@ -59,6 +63,7 @@ func (w *swarmState) mm() *mailmanState {
 	return &w.mailman
 }
 
+// sup marks supervision data as observed and returns the swarm's supervision state for updates.
 func (w *swarmState) sup() *superviseState {
 	w.supervise.seen = true
 	return &w.supervise
@@ -176,6 +181,7 @@ func (s *Session) onTaskMerge(ev *events.Event, ts time.Time) {
 	}
 }
 
+// onIntegration decodes a workspace integration event and stores its sanitized latest summary.
 func (s *Session) onIntegration(raw json.RawMessage, ts time.Time) {
 	var p struct {
 		Branch, Tip, Reason string

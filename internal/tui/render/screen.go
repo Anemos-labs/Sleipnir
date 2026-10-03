@@ -60,6 +60,7 @@ const (
 	maxViewRows = 1000
 )
 
+// clampView bounds each viewport dimension to at least one cell and its supported maximum.
 func clampView(cols, rows int) (int, int) {
 	return min(max(cols, 1), maxViewCols), min(max(rows, 1), maxViewRows)
 }
@@ -84,6 +85,7 @@ func (s *Screen) Size() (cols, rows int) {
 	return s.cols, s.rows
 }
 
+// write skips empty output and stops writing after the first recorded screen error.
 func (s *Screen) write(b []byte) {
 	if s.err != nil || len(b) == 0 {
 		return
@@ -141,6 +143,7 @@ func (s *Screen) Resize(cols, rows int) {
 	s.prev, s.spare = nil, nil
 }
 
+// blankGrid allocates independent zero-filled cell rows for the requested nonnegative dimensions.
 func blankGrid(cols, rows int) [][]Cell {
 	g := make([][]Cell, rows)
 	for i := range g {
@@ -291,6 +294,7 @@ func firstChar(t string) string {
 	return sb.String()
 }
 
+// charWidth returns the terminal-cell width of the first decoded rune in t.
 func charWidth(t string) int {
 	r, _ := utf8.DecodeRuneInString(t)
 	return cell.RuneWidth(r)

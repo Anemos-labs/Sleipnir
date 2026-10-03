@@ -191,6 +191,7 @@ func isInfra(err error) bool {
 	return false
 }
 
+// isStepLimit recognizes the step-limit diagnostic in a nonnil error's text.
 func isStepLimit(err error) bool { return strings.Contains(err.Error(), "step limit") }
 
 // options translates a RunSpec into session options.
@@ -258,6 +259,7 @@ func hostOf(raw string) string {
 	return u.Host
 }
 
+// nonEmpty substitutes JSON null for absent raw JSON without validating nonempty input.
 func nonEmpty(b json.RawMessage) json.RawMessage {
 	if len(b) == 0 {
 		return json.RawMessage("null")
@@ -265,6 +267,7 @@ func nonEmpty(b json.RawMessage) json.RawMessage {
 	return b
 }
 
+// firstPositive returns the first value greater than zero or zero when none exists.
 func firstPositive(vs ...int) int {
 	for _, v := range vs {
 		if v > 0 {
@@ -274,6 +277,7 @@ func firstPositive(vs ...int) int {
 	return 0
 }
 
+// mode uses an explicit harness permission mode or defaults to accept-edits.
 func (h *Harness) mode() perm.Mode {
 	if h.Mode != "" {
 		return h.Mode
@@ -407,6 +411,8 @@ func samplingBody(raw json.RawMessage, seed int64) map[string]any {
 	return body
 }
 
+// decodeSampling decodes a JSON object and returns nil for absent, null, or malformed sampling
+// options.
 func decodeSampling(raw json.RawMessage) map[string]any {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
@@ -418,6 +424,7 @@ func decodeSampling(raw json.RawMessage) map[string]any {
 	return m
 }
 
+// number accepts only float64 values, as produced by default JSON number decoding.
 func number(v any) (float64, bool) {
 	f, ok := v.(float64)
 	return f, ok
@@ -458,6 +465,7 @@ func visibleVerify(t rl.Task) string {
 
 var unsafeID = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
+// sessionID sanitizes the task ID and combines it with sample and one-based attempt numbers.
 func sessionID(spec env.RunSpec) string {
 	id := unsafeID.ReplaceAllString(spec.Task.ID, "-")
 	if id == "" {
@@ -516,4 +524,5 @@ func unanswered(err error) bool {
 	return errors.As(err, &pe) && pe.Retryable()
 }
 
+// exhausted atomically reports whether the request limit has been reached.
 func (l *limited) exhausted() bool { return l.hit.Load() }

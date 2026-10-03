@@ -137,6 +137,7 @@ func Sanitize(s string) (string, Hidden) {
 	return b.String(), h
 }
 
+// joinerIsLegit requires joinable neighboring runes on both sides of the indexed joiner.
 func joinerIsLegit(rs []rune, i int) bool {
 	if i == 0 || i+1 >= len(rs) {
 		return false
@@ -419,6 +420,7 @@ func CheckName(name string, r NameRules) error {
 	return nil
 }
 
+// nameHint describes the characters and starting characters permitted by the name rules.
 func nameHint(r NameRules) string {
 	s := "lower-case letters, digits and hyphens"
 	if r.Upper {
@@ -433,6 +435,7 @@ func nameHint(r NameRules) string {
 	return s + " (starting with a letter or digit)"
 }
 
+// clip retains at most n runes and appends an ellipsis when truncated; n must be nonnegative.
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -492,6 +495,8 @@ func SplitList(s string) []string {
 	return dedupe(out)
 }
 
+// dedupe removes duplicate strings in place, preserving the order of first occurrence and reusing
+// the input's backing array.
 func dedupe(in []string) []string {
 	if len(in) < 2 {
 		return in

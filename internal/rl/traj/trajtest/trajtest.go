@@ -175,6 +175,7 @@ func (a *Agent) User(text string) {
 	a.stream = append(a.stream, Tokenize(text)...)
 }
 
+// push assigns a fixture turn ID and timestamp, appends the turn, and emits its append event.
 func (a *Agent) push(t core.Turn) core.Turn {
 	t.ID = a.nextTurn
 	a.nextTurn++
@@ -373,6 +374,7 @@ func (a *Agent) SyncShared(shared string) {
 	}
 }
 
+// plain concatenates each turn block's plain text with a trailing space per block.
 func plain(t core.Turn) string {
 	var sb strings.Builder
 	for _, b := range t.Blocks {
@@ -408,6 +410,8 @@ func (a *Agent) render(model, hot string) *core.Prompt {
 	return p
 }
 
+// recordRequest stores a fixture prompt manifest and emits a model request, optionally advancing
+// the agent's manifest chain; manifest construction errors panic.
 func (a *Agent) recordRequest(req string, p *core.Prompt, kind, role string, advance bool) {
 	man, next, err := core.BuildManifest(p, a.man, req, func(b []byte) (core.Hash, error) { return a.run.Blobs.Put(b) })
 	if err != nil {
@@ -428,6 +432,8 @@ func (a *Agent) recordRequest(req string, p *core.Prompt, kind, role string, adv
 	})
 }
 
+// response builds a synthetic response payload with fixture usage and cost, omits latency for side
+// requests, and applies extra fields last.
 func (a *Agent) response(req, model string, u core.Usage, stop core.StopReason, completion core.Hash, extra map[string]any, side bool) map[string]any {
 	m := map[string]any{
 		"req": req, "id": "gen-" + req, "model": model, "provider": "fake", "usage": u, "cost_usd": float64(u.InputTokens+u.OutputTokens) / 1e6,
@@ -447,11 +453,14 @@ func (a *Agent) response(req, model string, u core.Usage, stop core.StopReason, 
 // turn as returned, before the thread stamps ids and usage on it.
 func completionTurn(t core.Turn) core.Turn { return t }
 
+// withUsage returns a turn copy pointing to a copy of the supplied usage record.
 func withUsage(t core.Turn, u core.Usage) core.Turn {
 	t.Usage = &u
 	return t
 }
 
+// putJSON stably encodes fixture data into blob storage, panicking on encoding failure and
+// ignoring blob-store errors.
 func (a *Agent) putJSON(v any) core.Hash {
 	b, err := core.MarshalStable(v)
 	if err != nil {
@@ -461,6 +470,7 @@ func (a *Agent) putJSON(v any) core.Hash {
 	return h
 }
 
+// mustJSON quotes a fixture string as JSON.
 func mustJSON(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)

@@ -116,6 +116,7 @@ func normTool(s string) string {
 	return strings.NewReplacer("_", "", "-", "", " ", "").Replace(s)
 }
 
+// classOf normalizes a tool name before looking up its permission class.
 func classOf(tool string) toolClass { return toolClasses[normTool(tool)] }
 
 // crule is a Rule ready to match.
@@ -334,6 +335,8 @@ func urlHost(r Request) string {
 	return ""
 }
 
+// requestURL extracts the first nonempty URL-like string field from valid object arguments,
+// returning empty otherwise.
 func requestURL(r Request) string {
 	var m map[string]any
 	if len(r.Input) == 0 || json.Unmarshal(r.Input, &m) != nil {

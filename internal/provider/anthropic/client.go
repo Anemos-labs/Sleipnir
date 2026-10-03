@@ -413,6 +413,8 @@ func decodeBody(b []byte) (*result, error) {
 	return res, nil
 }
 
+// unparseable wraps a response parse failure as a provider server error with sanitized text and
+// bounded raw response bytes.
 func unparseable(err error, body []byte) *provider.Error {
 	raw := body
 	if len(raw) > 4096 {
@@ -477,6 +479,7 @@ func (c *Client) setHeaders(hr *http.Request, req *provider.Request, required []
 	}
 }
 
+// splitBetas trims comma-separated beta names and discards empty entries.
 func splitBetas(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {
@@ -503,6 +506,8 @@ func mergeBetas(lists ...[]string) []string {
 	return out
 }
 
+// messagesURL appends the Anthropic messages path while avoiding a duplicate trailing v1
+// component.
 func messagesURL(base string) string {
 	base = strings.TrimRight(base, "/")
 	if strings.HasSuffix(base, "/v1") {

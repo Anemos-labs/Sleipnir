@@ -275,6 +275,7 @@ func (k *chatLook) toolLines(t doneTool, width int) (lines []cell.Line, exp *exp
 	return append(lines, body...), exp
 }
 
+// statusStyle selects the error or success style for a tool outcome.
 func (k *chatLook) statusStyle(failed bool) cell.Style {
 	if failed {
 		return k.st.bad
@@ -324,6 +325,7 @@ func (k *chatLook) toolExtra(kind toolKind, t doneTool) string {
 	return ""
 }
 
+// minusSign chooses a Unicode minus sign when supported and ASCII otherwise.
 func minusSign(k *chatLook) string {
 	if k.Unicode {
 		return "−"
@@ -382,6 +384,7 @@ func (k *chatLook) toolBody(kind toolKind, t doneTool, width int) ([]cell.Line, 
 	return k.outputLines(t, kind, width, false)
 }
 
+// pathOf reads a tool input's path field, falling back to file_path only when path is unavailable.
 func pathOf(input json.RawMessage) string {
 	if p, ok := stringField(input, "path"); ok {
 		return p

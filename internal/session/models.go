@@ -59,6 +59,7 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 	return m
 }
 
+// noteModel retains the first description per model ID until the recording limit is reached.
 func (s *Session) noteModel(m cost.Model, src string) {
 	if s.described == nil {
 		s.described = map[string]described{}

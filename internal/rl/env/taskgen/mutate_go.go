@@ -28,6 +28,7 @@ type MutationInfo struct {
 	New  string `json:"new"`
 }
 
+// info copies a mutation's location and before/after text into serializable metadata.
 func (m Mutation) info() *MutationInfo {
 	return &MutationInfo{File: m.File, Op: m.Op, Line: m.Line, Old: m.Old, New: m.New}
 }

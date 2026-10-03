@@ -95,6 +95,8 @@ func (m *Matcher) MatchWhich(p string) (string, bool) {
 	return "", false
 }
 
+// splitFold normalizes slash conventions, cleans a rooted path, and returns lowercase rune
+// segments for matching.
 func splitFold(p string) [][]rune {
 	p = path.Clean("/" + strings.ReplaceAll(p, "\\", "/"))
 	p = strings.TrimPrefix(p, "/")
@@ -109,6 +111,7 @@ func splitFold(p string) [][]rune {
 	return out
 }
 
+// foldRunes returns a new rune slice with Unicode lowercase mapping applied.
 func foldRunes(s string) []rune {
 	r := []rune(s)
 	for i, c := range r {

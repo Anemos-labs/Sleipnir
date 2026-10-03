@@ -111,6 +111,7 @@ func (m *Memory) Seed(sn *state.Snapshot) {
 	m.g0(sn)
 }
 
+// g0 retains the smallest positive unsectioned token estimate observed across agent stacks.
 func (m *Memory) g0(sn *state.Snapshot) {
 	for _, a := range sn.Agents {
 		if u := a.Stack.Unsectioned; u > 0 && (m.G0 == 0 || u < m.G0) {
@@ -119,6 +120,7 @@ func (m *Memory) g0(sn *state.Snapshot) {
 	}
 }
 
+// born returns animation birth metadata or nil for absent animation memory.
 func (m *Memory) born() Born {
 	if m == nil {
 		return nil
@@ -126,6 +128,7 @@ func (m *Memory) born() Born {
 	return m.Born
 }
 
+// g0est returns the retained unsectioned token estimate or zero for absent animation memory.
 func (m *Memory) g0est() int {
 	if m == nil {
 		return 0

@@ -16,4 +16,5 @@ func configureProc(cmd *exec.Cmd) (finish func()) {
 	return func() {}
 }
 
+// killGroup performs no process-group signaling on this platform.
 func killGroup(pid int) {}

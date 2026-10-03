@@ -181,6 +181,8 @@ func readEvents(path string) (evs []events.Event, torn bool, bad []int, err erro
 	return evs, torn, bad, nil
 }
 
+// newRun initializes prompt caches, normalizes the supplied events, and builds the request and
+// response indexes.
 func newRun(evs []events.Event, blobs events.Blobs) *Run {
 	r := &Run{
 		blobs:     blobs,

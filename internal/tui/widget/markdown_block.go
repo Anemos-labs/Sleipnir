@@ -56,6 +56,7 @@ type mdItem struct {
 	kids []mdBlock
 }
 
+// mdIndent counts leading ASCII spaces in a Markdown line.
 func mdIndent(s string) int {
 	n := 0
 	for n < len(s) && s[n] == ' ' {
@@ -64,6 +65,7 @@ func mdIndent(s string) int {
 	return n
 }
 
+// mdBlank reports whether a Markdown line consists entirely of recognized indentation.
 func mdBlank(s string) bool { return mdIndent(s) == len(s) }
 
 // mdParse parses lines (tabs already expanded) into blocks.
@@ -375,6 +377,8 @@ func (z *mdLazy) feed(line string) {
 
 // ---- blocks ----
 
+// mdFirstWord extracts the language-like prefix of a code-fence info string before whitespace or
+// an attribute brace.
 func mdFirstWord(info string) string {
 	if i := strings.IndexAny(info, " \t{"); i >= 0 {
 		info = info[:i]
@@ -382,6 +386,7 @@ func mdFirstWord(info string) string {
 	return info
 }
 
+// mdStripIndent removes up to n leading indentation bytes; n must be nonnegative.
 func mdStripIndent(line string, n int) string {
 	k := min(mdIndent(line), n)
 	return line[k:]
@@ -522,6 +527,7 @@ func mdItemAt(lines []string, i, depth int, m mdMarker) (mdItem, int) {
 	return it, end
 }
 
+// mdIsMarker reports whether a line begins with a recognized Markdown list marker.
 func mdIsMarker(line string) bool { _, ok := mdListMarker(line); return ok }
 
 func mdParagraph(lines []string, i, depth int) (mdBlock, int) {

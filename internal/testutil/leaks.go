@@ -218,6 +218,8 @@ func CheckLeaks(m *testing.M, ignore ...string) int {
 	return checkLeaks(m.Run, ignore)
 }
 
+// checkLeaks preserves test failures and otherwise fails the suite if unignored goroutines remain
+// after the settling window.
 func checkLeaks(run func() int, ignore []string) int {
 	if code := run(); code != 0 {
 		return code

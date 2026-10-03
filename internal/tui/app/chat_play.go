@@ -115,6 +115,7 @@ type playBridge struct {
 	t  *vt.Term
 }
 
+// Write serializes playback bytes into the terminal bridge.
 func (b *playBridge) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -127,6 +128,8 @@ type playScreen struct {
 	frames chan struct{}
 }
 
+// Flush flushes inline output, then sends a frame notification even on flush failure; it waits for
+// the notification channel to accept the signal.
 func (s *playScreen) Flush() error {
 	err := s.Inline.Flush()
 	s.frames <- struct{}{}
@@ -145,6 +148,8 @@ type playHost struct {
 	quit    chan struct{}
 }
 
+// newPlayHost initializes playback coordination channels and defaults an empty permission mode to
+// default.
 func newPlayHost(mode string) *playHost {
 	if mode == "" {
 		mode = "default"
@@ -165,14 +170,17 @@ func (h *playHost) Turn(ctx context.Context, goal string) TurnResult {
 	}
 }
 
+// Command performs no operation in transcript playback and returns an empty command result.
 func (h *playHost) Command(context.Context, string, io.Writer) CommandResult { return CommandResult{} }
 
+// Mode reads the playback host's permission mode under its lock.
 func (h *playHost) Mode() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.mode
 }
 
+// SetMode stores and returns the playback permission mode under the host lock.
 func (h *playHost) SetMode(m string) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -217,6 +225,8 @@ type playAsk struct {
 	want ChatAsk
 }
 
+// newChatPlayer initializes transcript channels, a virtual terminal, and a true-color inline
+// rendering surface without starting playback.
 func newChatPlayer(tr *ChatTranscript, o ChatPlayOptions) *chatPlayer {
 	p := &chatPlayer{tr: tr, o: o, link: NewChatLink(), keys: make(chan input.Key), tick: make(chan time.Time), attach: make(chan ChatAttach, 1),
 		log: make(chan events.Event), done: make(chan playExit, 1)}
@@ -234,6 +244,7 @@ type playExit struct {
 	err error
 }
 
+// String formats the playback end state together with its error.
 func (e playExit) String() string { return fmt.Sprintf("%s, %v", e.end, e.err) }
 
 // clock is the virtual time: the epoch and what has passed since.
@@ -241,6 +252,7 @@ func (p *chatPlayer) clock() time.Time {
 	return p.tr.Epoch.Add(time.Duration(p.nowNS.Load()))
 }
 
+// setClock atomically replaces the playback clock's elapsed nanoseconds.
 func (p *chatPlayer) setClock(d time.Duration) { p.nowNS.Store(int64(d)) }
 
 func (p *chatPlayer) close() {

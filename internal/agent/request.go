@@ -395,6 +395,8 @@ func (a *Agent) responsePayload(p map[string]any, resp *provider.Response) map[s
 	return p
 }
 
+// storeLayerTexts persists nonempty stable layer text from the current stack to blob storage,
+// ignoring storage errors.
 func (a *Agent) storeLayerTexts(r *kv.Rendered) {
 	s := a.Stack()
 	for _, l := range []*kv.Layer{s.Const, s.Shared, s.RoleL, s.Notes, s.Spine} {
@@ -562,6 +564,8 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 	return nil, last
 }
 
+// backoff computes bounded exponential retry delay with jitter and honors a larger Retry-After
+// value up to MaxRetryAfter; attempt must be nonnegative.
 func backoff(attempt int, retryAfter time.Duration) time.Duration {
 	d := RetryBase << min(attempt, 16) // the shift is bounded: a request that is retried for minutes must not overflow it
 	if d > 60*time.Second || d <= 0 {

@@ -30,6 +30,7 @@ type Mismatch struct {
 	Detail string
 }
 
+// Error formats a trajectory mismatch with request identity when available.
 func (m Mismatch) Error() string {
 	if m.Req == "" {
 		return "traj: " + m.Kind + ": " + m.Detail
@@ -198,6 +199,8 @@ func (r *Run) toolsOf(h core.Hash) ([]core.ToolSpec, error) {
 	return append([]core.ToolSpec(nil), specs...), nil
 }
 
+// systemOf loads and decodes a system block by hash, memoizing it under the run's cache lock;
+// missing or malformed blobs return an error.
 func (r *Run) systemOf(h core.Hash) (core.Block, error) {
 	r.mu.Lock()
 	blk, ok := r.sysMem[h]

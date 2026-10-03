@@ -431,6 +431,7 @@ func editedPaths(tool string, in map[string]any) []string {
 	return nil
 }
 
+// parseObject decodes a JSON object and returns nil for empty or malformed input.
 func parseObject(raw json.RawMessage) map[string]any {
 	var m map[string]any
 	if len(raw) == 0 || json.Unmarshal(raw, &m) != nil {
@@ -439,6 +440,8 @@ func parseObject(raw json.RawMessage) map[string]any {
 	return m
 }
 
+// canonicalJSON canonicalizes valid JSON, preserves malformed bytes, and returns empty for absent
+// input.
 func canonicalJSON(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""

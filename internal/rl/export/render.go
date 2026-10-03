@@ -78,6 +78,7 @@ type wireMsg struct {
 	Blocks []core.Block `json:"blocks"`
 }
 
+// messageBytes stably encodes only a message's role and blocks, excluding other message metadata.
 func messageBytes(m core.Message) ([]byte, error) {
 	return core.MarshalStable(wireMsg{Role: m.Role, Blocks: m.Blocks})
 }
@@ -92,6 +93,8 @@ func (x *exporter) redactText(s string) (string, bool) {
 	return x.red.Changed(s)
 }
 
+// redactRaw redacts nonempty JSON when a redactor is configured and reports whether output bytes
+// changed.
 func (x *exporter) redactRaw(raw json.RawMessage) (json.RawMessage, bool) {
 	if x.red == nil || len(raw) == 0 {
 		return raw, false
@@ -133,6 +136,8 @@ func (x *exporter) redactBlock(b core.Block) (core.Block, bool) {
 	return b, changed
 }
 
+// redactBlocks applies configured redaction to a new block slice and reports any change; without a
+// redactor it returns the original slice.
 func (x *exporter) redactBlocks(bs []core.Block) ([]core.Block, bool) {
 	if x.red == nil {
 		return bs, false

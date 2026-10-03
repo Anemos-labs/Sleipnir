@@ -12,8 +12,13 @@ type wbuf struct {
 	v, m []byte
 }
 
+// raw appends a byte that remains eligible for brace expansion.
 func (w *wbuf) raw(c byte) { w.v = append(w.v, c); w.m = append(w.m, 0) }
+
+// lit appends a byte and marks it protected from brace expansion.
 func (w *wbuf) lit(c byte) { w.v = append(w.v, c); w.m = append(w.m, 1) }
+
+// litStr appends every byte of s as protected literal text.
 func (w *wbuf) litStr(s string) {
 	for i := 0; i < len(s); i++ {
 		w.lit(s[i])
@@ -470,6 +475,7 @@ func (l *lexer) ansiC(w *wbuf) {
 	l.pos = l.end
 }
 
+// hexVal decodes one ASCII hexadecimal digit, returning -1 for any other byte.
 func hexVal(c byte) int {
 	switch {
 	case c >= '0' && c <= '9':

@@ -180,6 +180,8 @@ func shopCounts(dir string) (ShopCounts, error) {
 // CountShop is shopCounts for callers outside the package (the command's report and the tests of the recorded session).
 func CountShop(dir string) (ShopCounts, error) { return shopCounts(dir) }
 
+// printShop renders scripted shop outcomes, merge and mail counts, and synthetic cache statistics
+// with their assumptions.
 func (r *Report) printShop(w io.Writer, final string, c ShopCounts) {
 	fmt.Fprintf(w, "manager: %s\n\n", strings.TrimSpace(final))
 	fmt.Fprintf(w, "  agents             %d (1 manager, %d workers)\n", r.Agents, r.Agents-1)

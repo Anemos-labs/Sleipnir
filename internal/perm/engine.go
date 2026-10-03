@@ -75,6 +75,7 @@ type Audit struct {
 	By string
 }
 
+// audit forwards a permission decision to the optional audit callback.
 func (e *Engine) audit(a Audit) {
 	if e.cfg.Audit != nil {
 		e.cfg.Audit(a)
@@ -147,6 +148,8 @@ func (e *Engine) Unconfine(agent string) {
 	e.mu.Unlock()
 }
 
+// confinement reads an agent's registered root pair under a read lock; an empty agent ID is never
+// confined.
 func (e *Engine) confinement(agent string) (rootPair, bool) {
 	if agent == "" {
 		return rootPair{}, false
@@ -180,8 +183,11 @@ func modeRank(m Mode) int {
 // is the one thing the two differ in besides how a rule that asks is treated.
 func free(m Mode) bool { return m == ModeBypass || m == ModeYolo }
 
+// validMode reports whether the permission mode has a defined ordering rank.
 func validMode(m Mode) bool { return modeRank(m) >= 0 }
 
+// stricter selects the more restrictive ranked permission mode, ignoring an empty or unrecognized
+// second mode.
 func stricter(a, b Mode) Mode {
 	if b == "" || modeRank(b) < 0 {
 		return a
@@ -192,6 +198,8 @@ func stricter(a, b Mode) Mode {
 	return a
 }
 
+// compileList parses and compiles permission rules in order, returning the first failure without a
+// partial rule list.
 func compileList(action Action, list []string, rs *resolver) ([]*crule, error) {
 	out := make([]*crule, 0, len(list))
 	for _, s := range list {

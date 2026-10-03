@@ -287,6 +287,7 @@ func (s *Server) Handler() http.Handler {
 	return s.recoverer(s.auth(mux))
 }
 
+// recoverer wraps HTTP handling with panic logging and a generic internal-error response.
 func (s *Server) recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -325,6 +326,8 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	})
 }
 
+// httpError sends the supplied HTTP status and a JSON error object, ignoring response-write
+// errors.
 func httpError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -441,6 +444,8 @@ func (s *Server) resolveTask(raw json.RawMessage) (rl.Task, int, error) {
 	return t, 0, nil
 }
 
+// pathAllowed requires successful absolute-path and symlink resolution before checking configured
+// root-prefix boundaries.
 func (s *Server) pathAllowed(p string) bool {
 	abs, err := filepath.Abs(p)
 	if err != nil {
@@ -767,6 +772,7 @@ loop:
 	writeLine(streamLine{Type: "done", RunID: runID})
 }
 
+// errString returns the error message or a generic run-failed label when the error is nil.
 func errString(err error) string {
 	if err == nil {
 		return "run failed"

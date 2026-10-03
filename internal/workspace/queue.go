@@ -26,6 +26,7 @@ const (
 	StrategyRebase
 )
 
+// String names the rebase strategy explicitly and treats other strategies as merge.
 func (s Strategy) String() string {
 	if s == StrategyRebase {
 		return "rebase"
@@ -145,6 +146,7 @@ func (r *Result) Err() error {
 // VerifyError is a failed verification as an error.
 type VerifyError struct{ Result VerifyResult }
 
+// Error reports failed workspace verification with its summary and captured output.
 func (e *VerifyError) Error() string {
 	return "workspace: verification failed: " + e.Result.Summary() + "\n" + e.Result.Output
 }
@@ -349,14 +351,17 @@ func (q *Queue) Status() QueueStatus {
 	return st
 }
 
+// emit forwards merge-queue events through the configured event hook.
 func (q *Queue) emit(typ, agent, task string, data map[string]any) {
 	q.opts.OnEvent.emit(typ, agent, task, data)
 }
 
+// author returns the merge queue's Git author identity stamped with the manager clock.
 func (q *Queue) author() gitx.Author {
 	return gitx.Author{Name: "Sleipnir merge queue", Email: "queue@sleipnir.invalid", When: q.m.now()}
 }
 
+// setPhase updates a queue entry's phase under the queue lock.
 func (q *Queue) setPhase(e *QueueEntry, phase string) {
 	q.mu.Lock()
 	e.Phase = phase
@@ -491,6 +496,8 @@ func (q *Queue) Submit(ctx context.Context, s Submission) (*Result, error) {
 	return q.integrate(ctx, s, entry)
 }
 
+// oneLine collapses whitespace and truncates by bytes without an omission marker; max must be
+// nonnegative.
 func oneLine(s string, max int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > max {
@@ -729,6 +736,7 @@ func (q *Queue) publish(ctx context.Context, after, prev, agent string) error {
 	return fmt.Errorf("workspace: publishing the integration branch failed: %w", err)
 }
 
+// firstN returns a shared prefix of at most n strings; n must be nonnegative.
 func firstN(s []string, n int) []string {
 	if len(s) > n {
 		return s[:n]
@@ -736,6 +744,8 @@ func firstN(s []string, n int) []string {
 	return s
 }
 
+// tailOf retains the last n bytes with a leading truncation marker when needed; n must be
+// nonnegative.
 func tailOf(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -743,6 +753,7 @@ func tailOf(s string, n int) string {
 	return "..." + s[len(s)-n:]
 }
 
+// reject marks a result rejected, updates the counter under lock, and emits its rejection reason.
 func (q *Queue) reject(res *Result, reason string) *Result {
 	res.Outcome, res.Reason = OutcomeRejected, reason
 	q.mu.Lock()
@@ -752,6 +763,8 @@ func (q *Queue) reject(res *Result, reason string) *Result {
 	return res
 }
 
+// empty marks a result empty, updates the counter under lock, and emits a rejection event tagged
+// as empty.
 func (q *Queue) empty(res *Result, reason string) *Result {
 	res.Outcome, res.Reason = OutcomeEmpty, reason
 	q.mu.Lock()

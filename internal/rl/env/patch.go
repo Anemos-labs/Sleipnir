@@ -225,6 +225,7 @@ func filterPatch(files []PatchFile, protected *Matcher, hidden map[string]bool) 
 // so it is the agent's failure, not an infrastructure error.
 type errPatchRejected struct{ msg string }
 
+// Error returns the reason a patch was rejected.
 func (e *errPatchRejected) Error() string { return e.msg }
 
 // applyPatch applies a filtered patch inside dir. `git apply` never touches

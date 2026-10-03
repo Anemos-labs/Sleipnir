@@ -167,6 +167,7 @@ func (Glob) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	return res, nil
 }
 
+// dirTime returns an entry's modification time or zero when its metadata cannot be read.
 func dirTime(e entry) time.Time {
 	if info, err := e.dir.Info(); err == nil {
 		return info.ModTime()

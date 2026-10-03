@@ -102,6 +102,8 @@ func FindRoot(cwd string) (root string, found bool) {
 	return findRoot(cwd, home)
 }
 
+// findRoot walks upward from an absolute working directory to the nearest project marker and
+// reports whether one was found.
 func findRoot(cwd, home string) (string, bool) {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
@@ -119,6 +121,8 @@ func findRoot(cwd, home string) (string, bool) {
 	}
 }
 
+// isProjectRoot accepts a .git entry or a .sleipnir directory, excluding the home directory for
+// the latter case.
 func isProjectRoot(dir, home string) bool {
 	if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
 		return true
@@ -130,6 +134,8 @@ func isProjectRoot(dir, home string) bool {
 	return !sameDir(dir, home)
 }
 
+// sameDir compares nonempty cleaned paths and otherwise uses filesystem identity, following
+// symlinks.
 func sameDir(a, b string) bool {
 	if a == "" || b == "" {
 		return false
@@ -158,6 +164,8 @@ func readConfigFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+// pathReason removes the outer filesystem path wrapper from a nonnil error for concise
+// diagnostics.
 func pathReason(err error) string {
 	var pe *fs.PathError
 	if errors.As(err, &pe) {
@@ -349,6 +357,7 @@ func markProjectBaseURLs(cfg *Config, m *merger, byPath map[string]*layer) {
 	}
 }
 
+// hasError reports whether any configuration issue has error severity.
 func hasError(issues []Issue) bool {
 	for _, is := range issues {
 		if is.Severity == SeverityError {

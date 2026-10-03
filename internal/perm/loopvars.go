@@ -156,6 +156,7 @@ func expandBound(s shellparse.Simple, bound map[string][]string) []shellparse.Si
 	}
 }
 
+// containsName checks exact membership in a variable-name list.
 func containsName(names []string, n string) bool {
 	for _, x := range names {
 		if x == n {
@@ -193,6 +194,7 @@ func substituteVar(w, name, value string) (string, bool) {
 	return b.String(), true
 }
 
+// isNameByte accepts ASCII letters, digits, and underscores while scanning shell variable names.
 func isNameByte(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }

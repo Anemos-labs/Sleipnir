@@ -20,6 +20,8 @@ const (
 	KindMap
 )
 
+// String returns a kind description suitable for validation errors, using unknown for unrecognized
+// values.
 func (k Kind) String() string {
 	switch k {
 	case KindNull:
@@ -106,6 +108,7 @@ func NewFields(m Value) (*Fields, error) {
 	return f, nil
 }
 
+// errorf appends a frontmatter field error with a source line when available.
 func (f *Fields) errorf(v Value, key, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	if v.Line > 0 {
@@ -216,6 +219,7 @@ func (f *Fields) List(key string) ([]string, bool) {
 	return nil, false
 }
 
+// describe quotes a bounded string value or names the value's nonstring kind.
 func describe(v Value) string {
 	if v.Kind == KindString {
 		return strconv.Quote(clip(v.Str, 30))

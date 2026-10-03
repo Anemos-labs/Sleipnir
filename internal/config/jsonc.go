@@ -27,6 +27,7 @@ const (
 	nObject
 )
 
+// String names JSON node kinds in diagnostic prose, using null for the null or unknown kind.
 func (k nodeKind) String() string {
 	switch k {
 	case nBool:
@@ -118,11 +119,14 @@ func lineCol(src []byte, off int) (line, col int) {
 	return line, utf8.RuneCount(src[start:off]) + 1
 }
 
+// issueAt translates a source byte offset into a line and column and formats a configuration
+// issue.
 func (p *parser) issueAt(off int, sev Severity, format string, args ...any) Issue {
 	line, col := lineCol(p.src, off)
 	return Issue{Severity: sev, Source: p.file, Line: line, Col: col, Message: fmt.Sprintf(format, args...)}
 }
 
+// errAt constructs an error-severity parser diagnostic at the supplied byte offset.
 func (p *parser) errAt(off int, format string, args ...any) error {
 	return p.issueAt(off, SeverityError, format, args...)
 }
@@ -200,10 +204,12 @@ func (p *parser) value() (*node, error) {
 	return nil, p.errAt(p.pos, "unexpected %s; a value was expected", p.describeAt(p.pos))
 }
 
+// isWordStart accepts an ASCII letter or underscore as the first byte of a bare word.
 func isWordStart(c byte) bool {
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
+// isWordByte accepts ASCII letters, digits, and underscores inside a bare word.
 func isWordByte(c byte) bool { return isWordStart(c) || (c >= '0' && c <= '9') }
 
 // word parses true, false or null and explains anything else that looks like an
@@ -366,6 +372,8 @@ func (p *parser) escape(b *strings.Builder) error {
 	return nil
 }
 
+// hex4 parses exactly four hexadecimal source bytes and advances only on success; it does not
+// validate Unicode surrogate pairing.
 func (p *parser) hex4() (rune, bool) {
 	if p.pos+4 > len(p.src) {
 		return 0, false
@@ -388,6 +396,7 @@ func (p *parser) unclosed(start int, open byte) error {
 	return p.errAt(len(p.src), "unexpected end of file: the %s opened on line %d is never closed", what, line)
 }
 
+// enter increments parser depth and returns a positioned error when the nesting limit is exceeded.
 func (p *parser) enter(start int) error {
 	p.depth++
 	if p.depth > maxNesting {

@@ -396,6 +396,8 @@ type cappedBuffer struct {
 	kill     func()
 }
 
+// Write rejects a chunk that would exceed the grep output cap, marks overflow, and invokes
+// optional process cancellation.
 func (b *cappedBuffer) Write(p []byte) (int, error) {
 	if b.buf.Len()+len(p) > b.max {
 		b.overflow = true
@@ -407,7 +409,10 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 	return b.buf.Write(p)
 }
 
-func (b *cappedBuffer) Len() int      { return b.buf.Len() }
+// Len returns the number of retained bytes in the capped grep buffer.
+func (b *cappedBuffer) Len() int { return b.buf.Len() }
+
+// Bytes returns the retained grep bytes, sharing the buffer's storage.
 func (b *cappedBuffer) Bytes() []byte { return b.buf.Bytes() }
 
 // ---------------------------------------------------------------------------
@@ -627,6 +632,7 @@ type grepOutput struct {
 	groups      int
 }
 
+// add appends one grep output line when capacity remains and otherwise marks the output full.
 func (o *grepOutput) add(s string) bool {
 	if len(o.lines) >= o.limit {
 		o.full = true

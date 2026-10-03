@@ -113,6 +113,7 @@ type Runner struct {
 	engines   map[string]*perm.Engine
 }
 
+// maxStdout uses a positive configured stdout limit or the default capture limit.
 func (r *Runner) maxStdout() int {
 	if r.MaxStdout > 0 {
 		return r.MaxStdout
@@ -120,6 +121,7 @@ func (r *Runner) maxStdout() int {
 	return DefaultMaxStdout
 }
 
+// maxStderr uses a positive configured stderr limit or the default capture limit.
 func (r *Runner) maxStderr() int {
 	if r.MaxStderr > 0 {
 		return r.MaxStderr
@@ -127,6 +129,7 @@ func (r *Runner) maxStderr() int {
 	return DefaultMaxStderr
 }
 
+// maxRaw uses a positive configured raw-output limit or its default.
 func (r *Runner) maxRaw() int64 {
 	if r.MaxRawOutput > 0 {
 		return r.MaxRawOutput
@@ -134,6 +137,7 @@ func (r *Runner) maxRaw() int64 {
 	return DefaultMaxRawOutput
 }
 
+// maxContext uses a positive configured hook-context limit or its default.
 func (r *Runner) maxContext() int {
 	if r.MaxContext > 0 {
 		return r.MaxContext
@@ -141,6 +145,7 @@ func (r *Runner) maxContext() int {
 	return DefaultMaxContext
 }
 
+// maxPayload uses a positive configured hook-payload limit or its default.
 func (r *Runner) maxPayload() int {
 	if r.MaxPayload > 0 {
 		return r.MaxPayload
@@ -148,6 +153,7 @@ func (r *Runner) maxPayload() int {
 	return DefaultMaxPayload
 }
 
+// maxParallel uses a positive configured hook concurrency limit or its default.
 func (r *Runner) maxParallel() int {
 	if r.MaxParallel > 0 {
 		return r.MaxParallel
@@ -174,6 +180,7 @@ func (r *Runner) acquire(ctx context.Context) (release func(), ok bool) {
 	}
 }
 
+// killGrace uses a positive configured termination grace period or its default.
 func (r *Runner) killGrace() time.Duration {
 	if r.KillGrace > 0 {
 		return r.KillGrace
@@ -181,6 +188,7 @@ func (r *Runner) killGrace() time.Duration {
 	return DefaultKillGrace
 }
 
+// pipeGrace uses a positive configured pipe-drain grace period or its default.
 func (r *Runner) pipeGrace() time.Duration {
 	if r.PipeGrace > 0 {
 		return r.PipeGrace
@@ -205,6 +213,7 @@ func (r *Runner) timeoutFor(h Hook) time.Duration {
 	return min(t, limit)
 }
 
+// failClosed prefers an explicit hook-level setting over the runner-wide failure policy.
 func (r *Runner) failClosed(h Hook) bool {
 	if h.FailClosed != nil {
 		return *h.FailClosed
@@ -506,6 +515,8 @@ func (r *Runner) gate(ctx context.Context, h Hook) string {
 	return "the user did not approve this hook"
 }
 
+// cached reads a saved approval decision under the runner lock and distinguishes denial from a
+// missing entry.
 func (r *Runner) cached(key string) (approved, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -539,6 +550,8 @@ func (r *Runner) conditionHolds(ctx context.Context, h Hook, ev Event) bool {
 	return !d.Allow && strings.HasPrefix(d.Reason, "denied by rule ")
 }
 
+// condEngine caches permission engines for hook conditions under lock, including failed parses,
+// using the condition as a deny rule for matching.
 func (r *Runner) condEngine(cond string) (*perm.Engine, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

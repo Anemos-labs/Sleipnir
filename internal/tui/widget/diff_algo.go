@@ -230,6 +230,7 @@ func diffTokenize(s string) (toks []string, offs []int) {
 	return toks, offs
 }
 
+// diffWordRune groups underscores and Unicode letters or digits into diff words.
 func diffWordRune(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
 
 // wordMarks finds what changed between two lines that replace one another: the byte ranges of the tokens each line does not

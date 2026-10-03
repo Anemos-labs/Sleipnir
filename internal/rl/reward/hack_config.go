@@ -369,6 +369,8 @@ func makefileChanges(f *fileDiff, targets []string) []string {
 	return reasons
 }
 
+// targetNames extracts lowercase make target names, excluding blank lines, comments, and uppercase
+// special-target declarations.
 func targetNames(line string) []string {
 	line = strings.TrimSpace(line)
 	if line == "" || strings.HasPrefix(line, "#") {
@@ -388,6 +390,8 @@ func targetNames(line string) []string {
 	return out
 }
 
+// touchesTargets reports whether any named target is selected, or all targets are selected by the
+// any flag.
 func touchesTargets(names []string, named map[string]bool, any bool) bool {
 	if any {
 		return true
@@ -570,6 +574,8 @@ func followedByCode(rest []diffLine) bool {
 	return false
 }
 
+// langOfPath selects the heuristic lexer from the file extension, defaulting to JavaScript syntax
+// for unrecognized extensions.
 func langOfPath(p string) string {
 	switch strings.ToLower(path.Ext(p)) {
 	case ".go":

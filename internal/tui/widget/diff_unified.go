@@ -80,6 +80,8 @@ func parseUnified(patch string, tabw int) []dfFile {
 	return p.files
 }
 
+// udLastField extracts the final whitespace-separated diff header field and removes quote and
+// diff-path prefixes.
 func udLastField(s string) string {
 	f := strings.Fields(s)
 	if len(f) == 0 {
@@ -102,6 +104,8 @@ func gitDiffPath(rest string) string {
 	return udLastField("x " + rest)
 }
 
+// stripDiffPrefix removes a tab-separated timestamp, surrounding whitespace, and a leading a/ or
+// b/ path marker.
 func stripDiffPrefix(p string) string {
 	if i := strings.IndexByte(p, '\t'); i >= 0 {
 		p = p[:i] // `diff -u` puts a timestamp after a tab
@@ -127,6 +131,8 @@ func (p *udParser) flushLoose() {
 	p.loose = nil
 }
 
+// startFile completes pending diff output and starts a file with a sanitized path and reset header
+// context.
 func (p *udParser) startFile(path string) {
 	p.endHunk()
 	p.flushLoose()
@@ -315,6 +321,7 @@ func (p *udParser) add(kind byte, text string) {
 	p.hunk.lines = append(p.hunk.lines, l)
 }
 
+// endHunk computes word pairing within budget, appends the active hunk to its file, and clears it.
 func (p *udParser) endHunk() {
 	if p.hunk == nil {
 		return

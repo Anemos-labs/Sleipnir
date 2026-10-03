@@ -28,9 +28,16 @@ const (
 	zwj          = 0x200d
 )
 
-func isChip(r rune) bool    { return r >= chipBase && r < chipBase+0x1000 }
-func chipRune(id int) rune  { return chipBase + rune(id) }
-func chipID(r rune) int     { return int(r - chipBase) }
+// isChip recognizes runes in the editor's reserved 4096-rune chip range.
+func isChip(r rune) bool { return r >= chipBase && r < chipBase+0x1000 }
+
+// chipRune encodes a chip ID as a reserved rune; callers must keep IDs within the chip range.
+func chipRune(id int) rune { return chipBase + rune(id) }
+
+// chipID decodes the ID of a rune already known to represent a chip.
+func chipID(r rune) int { return int(r - chipBase) }
+
+// isSpecial identifies newline, tab, and chip runes that need special editor layout.
 func isSpecial(r rune) bool { return r == '\n' || r == '\t' || isChip(r) }
 
 // isMark reports a rune that attaches to the one before it: zero width and not a control of ours.

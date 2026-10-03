@@ -138,6 +138,7 @@ func newModel(c Config) *model {
 	return m
 }
 
+// snapshot captures UI state at the source's current live or replay time.
 func (m *model) snapshot() *state.Snapshot { return m.src.State().SnapshotAt(m.src.Now()) }
 
 // resize lays the screen out for a new size of the terminal.
@@ -237,6 +238,8 @@ func (m *model) seek(d time.Duration) {
 	}
 }
 
+// seekTo seeks replay state when available and reseeds animation state after success, ignoring
+// seek failures.
 func (m *model) seekTo(to time.Duration) {
 	if m.rep == nil {
 		return

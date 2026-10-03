@@ -72,6 +72,7 @@ type mailBatch struct {
 	swept   bool                 // the bound took some parcels away: the run counts as failed
 }
 
+// waiting returns recipients with unresolved messages in the batch's original recipient order.
 func (b *mailBatch) waiting() []string {
 	var out []string
 	for _, to := range b.order {
@@ -120,6 +121,7 @@ type mailroom struct {
 	stats     MailmanStats
 }
 
+// newMailroom binds an empty mailroom to its owning swarm.
 func newMailroom(s *Swarm) *mailroom { return &mailroom{s: s} }
 
 // MailmanEnabled reports whether mail is routed through a mailman.
@@ -133,6 +135,8 @@ func (s *Swarm) MailmanStats() MailmanStats {
 	return s.mail.snapshot()
 }
 
+// snapshot copies mailman counters under lock and includes queued plus unresolved in-batch
+// messages in Pending.
 func (mr *mailroom) snapshot() MailmanStats {
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
@@ -198,6 +202,8 @@ func (mr *mailroom) divert(m Message) bool {
 	return true
 }
 
+// inBatchLocked counts unresolved current-batch messages or returns zero; the caller must hold the
+// mailroom lock.
 func (mr *mailroom) inBatchLocked() int {
 	if mr.cur == nil {
 		return 0
@@ -227,12 +233,15 @@ func (mr *mailroom) armLocked(now time.Time) {
 	mr.timer = time.AfterFunc(delay, func() { mr.fire(gen) })
 }
 
+// rearm reschedules mailroom work using the swarm clock while holding the mailroom lock.
 func (mr *mailroom) rearm() {
 	mr.mu.Lock()
 	mr.armLocked(mr.s.deps.Now())
 	mr.mu.Unlock()
 }
 
+// fire ignores stale or stopped timer generations and schedules current mail dispatch outside the
+// mailroom lock.
 func (mr *mailroom) fire(gen uint64) {
 	mr.mu.Lock()
 	if gen != mr.timerGen || mr.stopped {
@@ -463,6 +472,7 @@ func (mr *mailroom) fail(why string) {
 	}
 }
 
+// succeeded resets the consecutive mailman failure count under the mailroom lock.
 func (mr *mailroom) succeeded() {
 	mr.mu.Lock()
 	mr.strikes = 0
@@ -527,6 +537,7 @@ func (mr *mailroom) runEnded(rs *runState, why string) {
 	mr.rearm()
 }
 
+// firstNonEmpty uses a unless empty, then b.
 func firstNonEmpty(a, b string) string {
 	if a != "" {
 		return a

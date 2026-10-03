@@ -33,6 +33,8 @@ func stdBase(prog string) string {
 // name, and rules and allowlists keyed by name must not treat them as such.
 func ProgramName(prog string) string { return stdBase(prog) }
 
+// isAssignment reports whether a word begins with a valid shell variable name followed by an
+// equals sign.
 func isAssignment(a string) bool {
 	eq := strings.IndexByte(a, '=')
 	if eq <= 0 || !isNameStart(a[0]) {

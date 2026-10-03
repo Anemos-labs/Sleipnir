@@ -96,6 +96,8 @@ func errText(err error) string {
 	return err.Error()
 }
 
+// isLoopback accepts localhost case-insensitively and literal loopback IPs without resolving
+// hostnames.
 func isLoopback(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true

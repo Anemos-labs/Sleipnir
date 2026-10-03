@@ -19,6 +19,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/trust"
 )
 
+// init registers project trust management with the CLI dispatcher.
 func init() { extraCommands["trust"] = cmdTrust }
 
 const trustUsage = `usage: sleipnir trust [command] [flags]
@@ -103,6 +104,8 @@ func projectFootprint(home, dir string) (*trust.Footprint, error) {
 	return trust.Scan(root, dir, home)
 }
 
+// shortDigest removes an optional sha256: prefix and retains at most the first 12 bytes for
+// display.
 func shortDigest(d string) string {
 	d = strings.TrimPrefix(d, "sha256:")
 	if len(d) > 12 {
@@ -168,6 +171,8 @@ func trustAdd(in io.Reader, w io.Writer, ledger *trust.Ledger, home, dir string,
 	return nil
 }
 
+// trustForget removes one or all saved project approvals and reports the change, propagating
+// ledger failures.
 func trustForget(w io.Writer, ledger *trust.Ledger, dir string, all bool) error {
 	if all {
 		n, err := ledger.ForgetAll()
@@ -224,6 +229,7 @@ func trustList(w io.Writer, ledger *trust.Ledger, home string) error {
 	return tw.Flush()
 }
 
+// plural selects the singular form only for a count of one.
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return one

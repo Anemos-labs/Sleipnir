@@ -55,6 +55,8 @@ func NewTextSink(out, log io.Writer, main string, verbose bool) *TextSink {
 // escape sequences and control characters (newline and tab stay).
 type termSafe struct{ w io.Writer }
 
+// Write sanitizes text for terminal display and reports the original byte count on success or zero
+// on write failure.
 func (t termSafe) Write(p []byte) (int, error) {
 	if _, err := io.WriteString(t.w, tools.SanitizeForTerminal(string(p))); err != nil {
 		return 0, err
@@ -62,8 +64,12 @@ func (t termSafe) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// isMain accepts every agent when no main agent is configured; otherwise it matches the configured
+// ID.
 func (s *TextSink) isMain(a string) bool { return s.Main == "" || a == s.Main }
 
+// Text writes main-agent text under the sink lock, buffering leading whitespace until content
+// arrives and removing leading blank lines.
 func (s *TextSink) Text(a, d string) {
 	if !s.isMain(a) {
 		return
@@ -95,8 +101,10 @@ func trimBlankLines(s string) string {
 	}
 }
 
+// Thinking discards reasoning deltas in the plain text sink.
 func (s *TextSink) Thinking(string, string) {}
 
+// endLine writes a newline only when streamed output is currently mid-line and clears that state.
 func (s *TextSink) endLine() {
 	if s.midLine {
 		fmt.Fprintln(s.out)
@@ -104,6 +112,7 @@ func (s *TextSink) endLine() {
 	}
 }
 
+// ToolStart stores the latest tool summary for an agent under the text sink lock.
 func (s *TextSink) ToolStart(a string, call core.Block) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -187,6 +196,8 @@ func (s *TextSink) Notice(a, level, msg string) {
 	fmt.Fprintf(s.log, "[%s] %s: %s\n", a, level, msg)
 }
 
+// toolSummary combines tool name with the first useful known input field, bounded to a single
+// display line.
 func toolSummary(call core.Block) string {
 	var in map[string]any
 	_ = json.Unmarshal(call.Input, &in)
@@ -198,6 +209,7 @@ func toolSummary(call core.Block) string {
 	return call.ToolName
 }
 
+// firstLine marks omitted lines and clips the resulting display text by bytes.
 func firstLine(s string, n int) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i] + " …"
@@ -235,19 +247,28 @@ type JSONSink struct {
 // NewJSONSink writes NDJSON to w.
 func NewJSONSink(w io.Writer) *JSONSink { return &JSONSink{enc: json.NewEncoder(w)} }
 
+// emit serializes one JSON event under the sink lock, ignoring encoder write errors.
 func (s *JSONSink) emit(v map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_ = s.enc.Encode(v)
 }
 
+// Text emits an agent-tagged JSON text delta.
 func (s *JSONSink) Text(a, d string) { s.emit(map[string]any{"type": "text", "agent": a, "text": d}) }
+
+// Thinking emits an agent-tagged JSON reasoning delta.
 func (s *JSONSink) Thinking(a, d string) {
 	s.emit(map[string]any{"type": "thinking", "agent": a, "text": d})
 }
+
+// ToolStart emits tool identity and raw JSON input before execution.
 func (s *JSONSink) ToolStart(a string, c core.Block) {
 	s.emit(map[string]any{"type": "tool_start", "agent": a, "id": c.ToolID, "name": c.ToolName, "input": json.RawMessage(c.Input)})
 }
+
+// ToolEnd emits a JSON completion record with duration and, when a result exists, failure status,
+// optional exit code, and bounded output.
 func (s *JSONSink) ToolEnd(a string, c core.Block, r *tools.Result, took time.Duration) {
 	m := map[string]any{"type": "tool_end", "agent": a, "id": c.ToolID, "name": c.ToolName, "ms": took.Milliseconds()}
 	if r != nil {
@@ -265,6 +286,8 @@ func (s *JSONSink) ToolEnd(a string, c core.Block, r *tools.Result, took time.Du
 // only matters for one that does not; a script that wants more reads the session's log.
 const maxJSONOutput = 64 << 10
 
+// clipOutput retains a UTF-8-aligned prefix within n bytes and appends shown/total byte counts; n
+// must be nonnegative.
 func clipOutput(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -280,9 +303,12 @@ func clipOutput(s string, n int) string {
 // it is to be dropped.
 func (s *JSONSink) Reset(a string) { s.emit(map[string]any{"type": "reset", "agent": a}) }
 
+// Response emits provider usage, cache hit ratio, and stop reason for a completed response.
 func (s *JSONSink) Response(a string, r *provider.Response, hit float64) {
 	s.emit(map[string]any{"type": "response", "agent": a, "usage": r.Usage, "hit_ratio": hit, "stop": r.Stop})
 }
+
+// Notice emits a structured agent notice with its severity and message.
 func (s *JSONSink) Notice(a, level, msg string) {
 	s.emit(map[string]any{"type": "notice", "agent": a, "level": level, "message": msg})
 }

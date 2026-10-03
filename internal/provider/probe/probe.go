@@ -149,6 +149,8 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 	return r.rep, nil
 }
 
+// prompt constructs a probe prompt with the configured model, cache key, optional system text, and
+// a 256-token output limit.
 func (r *runner) prompt(system string, msgs ...core.Message) *core.Prompt {
 	p := &core.Prompt{Model: r.cfg.Model, Params: core.Params{MaxTokens: 256}, CacheKey: r.key}
 	if system != "" {
@@ -158,6 +160,7 @@ func (r *runner) prompt(system string, msgs ...core.Message) *core.Prompt {
 	return p
 }
 
+// user wraps probe text in a single-block user message.
 func user(s string) core.Message {
 	return core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text(s)}}
 }
@@ -182,6 +185,7 @@ func (r *runner) do(ctx context.Context, name string, p *core.Prompt, noStream b
 	return resp, nil
 }
 
+// note appends a diagnostic to the probe report in discovery order.
 func (r *runner) note(s string) { r.rep.Findings.Notes = append(r.rep.Findings.Notes, s) }
 
 func (r *runner) basic(ctx context.Context) error {
@@ -356,6 +360,8 @@ func granularity(vals []int) int {
 	return g
 }
 
+// gcd computes the nonnegative greatest common divisor of representable signed inputs using
+// Euclid's algorithm.
 func gcd(a, b int) int {
 	for b != 0 {
 		a, b = b, a%b
@@ -366,6 +372,8 @@ func gcd(a, b int) int {
 	return a
 }
 
+// reasoning sends a low-effort probe and records observed reasoning blocks and wire details,
+// retaining request failures as notes.
 func (r *runner) reasoning(ctx context.Context) error {
 	r.cfg.Log("reasoning")
 	p := r.prompt("", user("What is 17 * 23? Think it through."))

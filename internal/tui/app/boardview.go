@@ -137,6 +137,7 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 	return out
 }
 
+// padTo pads or fits a string to the requested terminal-cell width.
 func padTo(s string, n int) string {
 	w := cell.StringWidth(s)
 	if w >= n {
@@ -145,6 +146,7 @@ func padTo(s string, n int) string {
 	return s + strings.Repeat(" ", n-w)
 }
 
+// fitString fits plain text to the requested terminal-cell width using the shared line fitter.
 func fitString(s string, n int) string { return fit(cell.Text(s), n).Plain() }
 
 // mailView is the mail with the room the cockpit cannot give it: every message the ring still holds with what it cost the reader,

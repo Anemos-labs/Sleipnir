@@ -10,6 +10,7 @@ import (
 
 // ---- the log ----
 
+// event applies an event to chat state and invalidates the cached snapshot.
 func (m *chatModel) event(e events.Event) {
 	m.st.Apply(e)
 	m.snapOK = false
@@ -106,6 +107,7 @@ func (m *chatModel) scanSnapshot() {
 	}
 }
 
+// printFold finishes pending streamed output before displaying a compaction record.
 func (m *chatModel) printFold(c state.Compaction, who string) {
 	m.syncStream()
 	m.block(bkNote, m.k.foldRecord(c, who, m.cols))

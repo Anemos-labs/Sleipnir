@@ -25,6 +25,8 @@ func tok(n int) int {
 	return (n + 3) / 4
 }
 
+// hashParts hashes NUL-terminated parts and returns the first sixteen SHA-256 bytes as
+// hexadecimal.
 func hashParts(parts ...string) string {
 	h := sha256.New()
 	for _, p := range parts {
@@ -34,6 +36,7 @@ func hashParts(parts ...string) string {
 	return hex.EncodeToString(h.Sum(nil)[:16])
 }
 
+// canon returns canonical JSON when possible and preserves the original bytes as text on failure.
 func canon(raw []byte) string {
 	if c, err := core.Canonical(raw); err == nil {
 		return string(c)
@@ -165,6 +168,7 @@ func (a *AnthropicServer) explicitRequest(q *aReq, dropped map[dropKey]bool) (Ex
 	return req, nil
 }
 
+// imageTokens uses the positive configured synthetic image token count or defaults to 1000.
 func (a *AnthropicServer) imageTokens() int {
 	if a.acfg.ImageTokens > 0 {
 		return a.acfg.ImageTokens
@@ -187,11 +191,15 @@ type recorder struct {
 	rec  string // record before the current message
 }
 
+// canonBlock canonicalizes a mock cache record after removing cache-control markers so marker
+// movement does not change the key.
 func canonBlock(b aBlock) string {
 	// cache_control never enters the record: markers can move freely.
 	return canon(stripCC(b.raw))
 }
 
+// stripCC removes top-level cache_control from parseable JSON and returns stable encoding,
+// preserving original input on failure.
 func stripCC(raw []byte) []byte {
 	m, err := parseObject(raw)
 	if err != nil {
@@ -205,6 +213,8 @@ func stripCC(raw []byte) []byte {
 	return out
 }
 
+// canonMsg hashes role, thinking-clear boundary, and canonical nonthinking blocks for mock
+// conversation binding.
 func canonMsg(m aMsg) string {
 	var parts []string
 	parts = append(parts, m.role, m.clearAt)
@@ -217,6 +227,8 @@ func canonMsg(m aMsg) string {
 	return hashParts(parts...)
 }
 
+// baseRecord hashes tools as an order-independent set and system blocks in order for mock
+// signature binding.
 func (q *aReq) baseRecord() string {
 	var tools []string
 	for _, t := range q.tools {
@@ -261,10 +273,12 @@ func (a *AnthropicServer) sign(model, record, text string) string {
 	return fmt.Sprintf("sig1.%s.%s.%s", tag, record[:24], a.mac(tag, record[:24], text))
 }
 
+// mac derives a keyed signature over the tag, record, and text and keeps its first 16 characters.
 func (a *AnthropicServer) mac(tag, record, text string) string {
 	return hashParts(a.acfg.SignatureKey, tag, record, text)[:16]
 }
 
+// modelTag returns an eight-character hash tag shared by case variants of a model name.
 func modelTag(model string) string {
 	return hashParts("model", strings.ToLower(model))[:8]
 }
@@ -278,6 +292,8 @@ const (
 	sigOtherConversation
 )
 
+// verify checks mock signature integrity, model binding, and conversation binding; record must
+// contain at least 24 bytes.
 func (a *AnthropicServer) verify(sig, model, record, text string) sigCheck {
 	parts := strings.Split(sig, ".")
 	if len(parts) != 4 || parts[0] != "sig1" || parts[3] != a.mac(parts[1], parts[2], text) {
@@ -371,6 +387,8 @@ func (a *AnthropicServer) checkBinding(q *aReq) bindingOutcome {
 	return out
 }
 
+// parseObject decodes the first JSON object while preserving numeric spelling with json.Number; it
+// does not check for trailing values.
 func parseObject(raw []byte) (map[string]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()

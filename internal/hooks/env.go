@@ -115,4 +115,5 @@ func (r *Runner) hookEnv(event string, ev Event) []string {
 	return append(kept, forced...)
 }
 
+// noNUL removes NUL bytes before a value is used in a hook environment.
 func noNUL(s string) string { return strings.ReplaceAll(s, "\x00", "") }

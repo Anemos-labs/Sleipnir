@@ -49,6 +49,8 @@ const (
 	caseBody    // reading commands up to ";;"
 )
 
+// parseTokens runs a shell parser over the supplied tokens with shared state and returns collected
+// simple commands.
 func parseTokens(st *state, src string, toks []token, depth int, top, nested bool) []Simple {
 	p := &parser{st: st, src: src, toks: toks, depth: depth, top: top, nested: nested}
 	p.run()
@@ -346,6 +348,7 @@ func (p *parser) finish() {
 	p.flush()
 }
 
+// flush moves pending simple commands into output and clears the pending queue.
 func (p *parser) flush() {
 	if len(p.pending) > 0 {
 		p.out = append(p.out, p.pending...)

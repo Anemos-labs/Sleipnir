@@ -283,6 +283,7 @@ type lineReader struct {
 	max int
 }
 
+// newLineReader creates a 64 KiB buffered reader with the supplied line-size limit.
 func newLineReader(r io.Reader, max int) *lineReader {
 	return &lineReader{r: bufio.NewReaderSize(r, 64<<10), max: max}
 }
@@ -324,6 +325,8 @@ func (lr *lineReader) next() (line []byte, n int, complete, tooLong bool, err er
 	}
 }
 
+// kept returns the line reader's retained buffer unless the line exceeded the limit, in which case
+// it returns nil.
 func (lr *lineReader) kept(tooLong bool) []byte {
 	if tooLong {
 		return nil
@@ -443,6 +446,8 @@ func (l *Log) commitLocked() error {
 	return nil
 }
 
+// flushBufferLocked flushes buffered events and updates the last-flush time even on failure; the
+// caller must hold the log lock.
 func (l *Log) flushBufferLocked() error {
 	err := l.w.Flush()
 	l.lastFl = time.Now()
@@ -544,6 +549,7 @@ type CorruptError struct {
 	First int // 1-based line number of the first
 }
 
+// Error reports how many corrupt event lines were skipped and the first affected line number.
 func (e *CorruptError) Error() string {
 	return fmt.Sprintf("events: %d corrupt line(s) skipped (first: line %d)", e.Lines, e.First)
 }

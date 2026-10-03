@@ -37,6 +37,7 @@ func (s *Session) newEpisode(a *agent, ts time.Time, seq uint64) *compaction {
 	return ep
 }
 
+// step records at most the first 64 steps of a compaction episode.
 func (ep *compaction) step(ts time.Time, seq uint64, kind, text string) {
 	if len(ep.Steps) >= 64 {
 		return
@@ -99,6 +100,7 @@ func (s *Session) onCompactPlan(ev *events.Event, ts time.Time) {
 	}
 }
 
+// warmText formats a cache-warmth suffix, omitting it when warmth is unknown.
 func warmText(w *bool) string {
 	switch {
 	case w == nil:

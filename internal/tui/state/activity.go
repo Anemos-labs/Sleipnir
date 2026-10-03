@@ -10,11 +10,13 @@ type actRow struct {
 	mark [ActivitySeconds]uint8  // the Act* bits of what happened in it
 }
 
+// slot maps signed seconds into the nonnegative circular activity-history index.
 func slot(sec int64) int {
 	n := int64(ActivitySeconds)
 	return int(((sec % n) + n) % n)
 }
 
+// floorDiv rounds signed integer division toward negative infinity; b must be nonzero.
 func floorDiv(a, b int64) int64 {
 	q := a / b
 	if a%b != 0 && (a < 0) != (b < 0) {

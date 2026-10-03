@@ -263,6 +263,7 @@ func (p *proc) awaitGroupGone() {
 	}
 }
 
+// leaderDone polls process-leader completion without blocking.
 func (p *proc) leaderDone() bool {
 	select {
 	case <-p.done:
@@ -272,6 +273,7 @@ func (p *proc) leaderDone() bool {
 	}
 }
 
+// pumpsFinished polls stdout/stderr pump completion without blocking.
 func (p *proc) pumpsFinished() bool {
 	select {
 	case <-p.pumpsDone:

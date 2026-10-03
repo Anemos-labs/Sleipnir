@@ -36,11 +36,13 @@ type Tree struct {
 	removed atomic.Bool
 }
 
+// isRemoved atomically reports whether the worktree was removed.
 func (t *Tree) isRemoved() bool { return t.removed.Load() }
 
 // Repo returns the git handle for the tree (for callers that need Status, Log ...).
 func (t *Tree) Repo() *gitx.Repo { return t.repo }
 
+// check returns ErrRemoved after worktree removal and nil otherwise.
 func (t *Tree) check() error {
 	if t.isRemoved() {
 		return ErrRemoved
@@ -129,6 +131,7 @@ func (e *TooLargeError) Error() string {
 		len(e.Files), e.Limit, strings.Join(list, ", "), more)
 }
 
+// Is makes worktree size-limit errors match the ErrTooLarge sentinel.
 func (e *TooLargeError) Is(target error) bool { return target == ErrTooLarge }
 
 // Commit records everything the agent changed on the tree's branch and returns
@@ -248,6 +251,8 @@ func (t *Tree) AbortUpdate(ctx context.Context) error {
 	return t.repo.Abort(ctx)
 }
 
+// shortRef abbreviates long slash-free references to eight bytes while preserving branch-like
+// references.
 func shortRef(ref string) string {
 	if len(ref) >= 40 && !strings.ContainsAny(ref, "/") {
 		return ref[:8]

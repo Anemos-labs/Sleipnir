@@ -25,6 +25,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
+// init registers single-agent runs, swarm runs, and repository reconnaissance.
 func init() {
 	extraCommands["run"] = cmdRun
 	extraCommands["swarm"] = cmdSwarm
@@ -45,7 +46,11 @@ func cmdSwarm(ctx context.Context, args []string) error {
 
 type kvFlags map[string]string
 
+// String formats the accumulated key/value overrides as a Go map for flag display.
 func (k kvFlags) String() string { return fmt.Sprint(map[string]string(k)) }
+
+// Set stores a nonempty role=model pair in an initialized map, replacing any prior value for the
+// role.
 func (k kvFlags) Set(v string) error {
 	name, val, ok := strings.Cut(v, "=")
 	if !ok || name == "" || val == "" {
@@ -344,6 +349,7 @@ func endReasonOf(ctx context.Context, err error) string {
 	return session.EndError
 }
 
+// errString returns an empty string for nil and the error message otherwise.
 func errString(err error) string {
 	if err == nil {
 		return ""
@@ -363,6 +369,7 @@ func isolationFlags(fs *flag.FlagSet) (isolation *string, commit *bool) {
 // and leaving it out leaves the configuration in charge.
 type triBool struct{ set, val bool }
 
+// String distinguishes an unset or nil tri-state flag from explicitly true or false values.
 func (t *triBool) String() string {
 	if t == nil || !t.set {
 		return ""
@@ -370,6 +377,7 @@ func (t *triBool) String() string {
 	return strconv.FormatBool(t.val)
 }
 
+// Set parses a boolean and marks the flag explicitly set only when parsing succeeds.
 func (t *triBool) Set(v string) error {
 	b, err := strconv.ParseBool(v)
 	if err != nil {
@@ -379,6 +387,7 @@ func (t *triBool) Set(v string) error {
 	return nil
 }
 
+// IsBoolFlag permits the flag parser to accept the flag without an explicit value.
 func (t *triBool) IsBoolFlag() bool { return true }
 
 // mailmanFlag registers --mailman (run, swarm and chat share it) and returns what to put

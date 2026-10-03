@@ -14,6 +14,8 @@ type wireStyle struct {
 	attr   cell.Attr
 }
 
+// wire resolves foreground and background colors for the terminal while preserving style
+// attributes.
 func (m *colorMap) wire(s cell.Style) wireStyle {
 	return wireStyle{fg: m.resolve(s.FG), bg: m.resolve(s.BG), attr: s.Attr}
 }

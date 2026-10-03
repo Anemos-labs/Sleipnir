@@ -237,6 +237,7 @@ func NewManager(opts Options) *Manager {
 	return m
 }
 
+// logf forwards manager diagnostics to the optional logging callback.
 func (m *Manager) logf(format string, args ...any) {
 	if m.opts.Logf != nil {
 		m.opts.Logf(format, args...)
@@ -247,6 +248,7 @@ func (m *Manager) logf(format string, args ...any) {
 // serves the servers that did connect and keeps retrying the others.
 type StartError struct{ Failed map[string]error }
 
+// Error formats failed MCP server starts in sorted server-name order.
 func (e *StartError) Error() string {
 	var parts []string
 	for _, k := range sortedKeys(e.Failed) {
@@ -255,6 +257,7 @@ func (e *StartError) Error() string {
 	return "mcp: " + fmt.Sprint(len(e.Failed)) + " server(s) did not start: " + strings.Join(parts, "; ")
 }
 
+// Unwrap exposes all MCP startup failures in deterministic server-name order.
 func (e *StartError) Unwrap() []error {
 	out := make([]error, 0, len(e.Failed))
 	for _, k := range sortedKeys(e.Failed) {
@@ -327,6 +330,7 @@ func (m *Manager) Close() error {
 	return nil
 }
 
+// serverByName reads the server registry under a read lock and returns nil for unknown names.
 func (m *Manager) serverByName(name string) *server {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -420,6 +424,7 @@ func (m *Manager) toolsChanged() (core.Hash, bool) {
 	return h, m.hasBaseline && h != m.baseline
 }
 
+// notify invokes the optional manager change callback and logs recovered callback panics.
 func (m *Manager) notify(c Change) {
 	if m.opts.OnChange == nil {
 		return
@@ -535,6 +540,8 @@ func (m *Manager) ReadResource(ctx context.Context, server, uri string) (*ReadRe
 	return c.ReadResource(ctx, uri)
 }
 
+// clientFor resolves a configured server and waits for its client, returning ErrUnknownServer for
+// missing names.
 func (m *Manager) clientFor(ctx context.Context, server string) (*Client, error) {
 	s := m.serverByName(server)
 	if s == nil {
@@ -570,6 +577,8 @@ type server struct {
 	red           *redactor // secrets of the expanded entry, for redacting results
 }
 
+// newServer initializes connecting state, coalescing channels, and an initial secret redactor
+// before any connection is made.
 func newServer(m *Manager, name string, cfg ServerConfig) *server {
 	s := &server{
 		m: m, name: name, cfg: cfg, state: StateConnecting,
@@ -582,12 +591,15 @@ func newServer(m *Manager, name string, cfg ServerConfig) *server {
 	return s
 }
 
+// setState updates server state and its diagnostic together under the server lock.
 func (s *server) setState(st State, errText string) {
 	s.mu.Lock()
 	s.state, s.errText = st, errText
 	s.mu.Unlock()
 }
 
+// status copies server lifecycle and discovery metadata under lock, including an independent
+// warnings slice.
 func (s *server) status() ServerStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -611,6 +623,7 @@ func (s *server) redactor() *redactor {
 	return s.red
 }
 
+// callTimeout prefers a positive server-specific timeout over the manager default.
 func (s *server) callTimeout() time.Duration {
 	if s.cfg.Timeout > 0 {
 		return s.cfg.Timeout
@@ -663,7 +676,10 @@ func (s *server) awaitClient(ctx context.Context) (*Client, error) {
 // fatalError marks a failure that retrying cannot fix.
 type fatalError struct{ err error }
 
+// Error exposes the diagnostic wrapped as a fatal MCP failure.
 func (e *fatalError) Error() string { return e.err.Error() }
+
+// Unwrap preserves the underlying fatal MCP error for error inspection.
 func (e *fatalError) Unwrap() error { return e.err }
 
 // gate decides whether the server may be started at all.
@@ -702,6 +718,8 @@ func (s *server) gate() error {
 	return s.recordApproval(true, nil)
 }
 
+// recordApproval saves a known approval decision under the server lock and returns the supplied
+// error unchanged.
 func (s *server) recordApproval(ok bool, err error) error {
 	s.mu.Lock()
 	s.approvalKnown, s.approved = true, ok
@@ -709,6 +727,7 @@ func (s *server) recordApproval(ok bool, err error) error {
 	return err
 }
 
+// scopeLabel names user scope explicitly and labels other scopes as project-scoped.
 func scopeLabel(sc Scope) string {
 	if sc == ScopeUser {
 		return "user"
@@ -854,6 +873,7 @@ func (s *server) park(ctx context.Context) bool {
 	}
 }
 
+// currentClient reads the active MCP client pointer under the server lock; it can be nil.
 func (s *server) currentClient() *Client {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -884,6 +904,8 @@ func (s *server) errorText(err error) string {
 	return s.redactor().apply(msg)
 }
 
+// shutdown detaches the client and marks the server closed under lock, then closes the detached
+// client outside the lock.
 func (s *server) shutdown() {
 	s.mu.Lock()
 	c := s.client
@@ -990,6 +1012,8 @@ func isFatalDial(err error) bool {
 		errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) || errors.Is(err, exec.ErrNotFound)
 }
 
+// listTools tolerates an absent optional tools endpoint and prefixes other warnings with the
+// server name.
 func (s *server) listTools(ctx context.Context, c *Client) ([]Tool, []string, error) {
 	list, warns, err := c.ListTools(ctx)
 	if optionalMissing(err) {
@@ -998,6 +1022,8 @@ func (s *server) listTools(ctx context.Context, c *Client) ([]Tool, []string, er
 	return list, prefixAll(s.name, warns), err
 }
 
+// listPrompts tolerates an absent optional prompts endpoint and prefixes other warnings with the
+// server name.
 func (s *server) listPrompts(ctx context.Context, c *Client) ([]Prompt, []string, error) {
 	list, warns, err := c.ListPrompts(ctx)
 	if optionalMissing(err) {
@@ -1013,6 +1039,7 @@ func optionalMissing(err error) bool {
 	return errors.Is(err, ErrUnsupported) || errors.As(err, &rpc) && rpc.Code == CodeMethodNotFound
 }
 
+// prefixAll returns a new warning slice with each warning attributed to its MCP server.
 func prefixAll(name string, in []string) []string {
 	out := make([]string, len(in))
 	for i, w := range in {

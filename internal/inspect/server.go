@@ -218,6 +218,8 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// checkListenAddr validates host:port syntax and requires a token before serving inspection data
+// on a non-loopback address.
 func checkListenAddr(addr, token string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -267,6 +269,8 @@ func allowedHosts(addr string, hasToken bool) map[string]bool {
 	return m
 }
 
+// hostAllowed normalizes the request hostname and checks the host allowlist, allowing all hosts
+// only when no list is configured.
 func (s *Server) hostAllowed(hostport string) bool {
 	if s.hosts == nil {
 		return true
@@ -287,6 +291,7 @@ func (s *Server) tokenEqual(given string) bool {
 	return subtle.ConstantTimeCompare(sum[:], s.tokenSum[:]) == 1
 }
 
+// cookieEqual compares a supplied cookie against the stored bytes with constant-time comparison.
 func (s *Server) cookieEqual(given string) bool {
 	return subtle.ConstantTimeCompare([]byte(given), s.cookieVal) == 1
 }
@@ -330,6 +335,8 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request) bool {
 
 // ---- responses ------------------------------------------------------------------------
 
+// writeJSON encodes before sending headers, HTML-escapes log text, disables caching, and sends a
+// generic error if encoding fails.
 func (s *Server) writeJSON(w http.ResponseWriter, status int, v any) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf) // HTML-escapes <, > and &: log strings stay inert even if sniffed
@@ -345,6 +352,8 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, v any) {
 	_, _ = w.Write(buf.Bytes())
 }
 
+// fail writes an uncached JSON error response with the specified status, ignoring response-write
+// errors.
 func (s *Server) fail(w http.ResponseWriter, status int, msg string) {
 	h := w.Header()
 	h.Set("Content-Type", "application/json; charset=utf-8")
@@ -354,10 +363,13 @@ func (s *Server) fail(w http.ResponseWriter, status int, msg string) {
 	_, _ = w.Write(append(b, '\n'))
 }
 
+// handleHealth replies with HTTP 200 and a JSON health indicator.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleStatic serves known embedded assets with ETags, mapping the root path to index.html and
+// honoring conditional requests.
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	if p == "/" {
@@ -383,6 +395,8 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 
 const maxParam = 512
 
+// handleSessions returns the registered session list and uses a relative current-session marker in
+// single-session mode.
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	current := ""
 	if e := s.reg.only(); e != nil {
@@ -430,6 +444,7 @@ func (s *Server) withSession(fn func(http.ResponseWriter, *http.Request, *Sessio
 	}
 }
 
+// handleAgent validates agent ID length and returns agent detail or a JSON not-found response.
 func (s *Server) handleAgent(w http.ResponseWriter, r *http.Request, sess *Session) {
 	id := r.PathValue("id")
 	if len(id) > maxParam {
@@ -457,6 +472,7 @@ func uintParam(r *http.Request, name string, def, max uint64) (uint64, error) {
 	return min(n, max), nil
 }
 
+// textParam reads a query value and rejects oversized values or embedded NUL bytes.
 func textParam(r *http.Request, name string) (string, error) {
 	v := r.URL.Query().Get(name)
 	if len(v) > maxParam || strings.ContainsRune(v, 0) {
@@ -497,6 +513,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request, sess *Se
 	s.writeJSON(w, http.StatusOK, sess.Requests(q))
 }
 
+// handleLayers requires a valid request ID and optionally includes layer text for text=1 or
+// text=true.
 func (s *Server) handleLayers(w http.ResponseWriter, r *http.Request, sess *Session) {
 	id, err := textParam(r, "req")
 	if err != nil || id == "" {

@@ -40,6 +40,7 @@ type Backend interface {
 // Named is optionally implemented by a Backend.
 type Named interface{ Name() string }
 
+// backendName uses the backend's declared name when supported and its Go type otherwise.
 func backendName(b Backend) string {
 	if n, ok := b.(Named); ok {
 		return n.Name()
@@ -136,6 +137,7 @@ func callJSON(client *http.Client, backend string, req *http.Request, out any) e
 	return nil
 }
 
+// shortJSONErr caps a nonnil JSON error message at 120 bytes plus an ellipsis.
 func shortJSONErr(err error) string {
 	s := err.Error()
 	if len(s) > 120 {
@@ -156,6 +158,7 @@ type Brave struct {
 // NewBrave returns a Brave backend using key.
 func NewBrave(key string) *Brave { return &Brave{APIKey: key} }
 
+// Name returns the Brave search provider's configuration identifier.
 func (b *Brave) Name() string { return "brave" }
 
 func (b *Brave) Search(ctx context.Context, query string, max int) ([]SearchResult, error) {
@@ -209,6 +212,7 @@ type Tavily struct {
 // NewTavily returns a Tavily backend using key.
 func NewTavily(key string) *Tavily { return &Tavily{APIKey: key} }
 
+// Name returns the Tavily search provider's configuration identifier.
 func (t *Tavily) Name() string { return "tavily" }
 
 func (t *Tavily) Search(ctx context.Context, query string, max int) ([]SearchResult, error) {
@@ -260,6 +264,7 @@ type SearXNG struct {
 // NewSearXNG returns a SearXNG backend for the instance at baseURL.
 func NewSearXNG(baseURL string) *SearXNG { return &SearXNG{BaseURL: baseURL} }
 
+// Name returns the SearXNG search provider's configuration identifier.
 func (s *SearXNG) Name() string { return "searxng" }
 
 func (s *SearXNG) Search(ctx context.Context, query string, max int) ([]SearchResult, error) {
@@ -377,6 +382,7 @@ func (t *searchTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 	return res, nil
 }
 
+// clipRunesPlain limits text to n runes without adding a truncation marker; n must be nonnegative.
 func clipRunesPlain(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n])

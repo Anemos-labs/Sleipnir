@@ -54,6 +54,7 @@ type Warning struct {
 	Message string
 }
 
+// String formats a serialization warning as its code followed by its message.
 func (w Warning) String() string { return w.Code + ": " + w.Message }
 
 // Options tunes rendering. The zero value is the full-featured first-party API:
@@ -98,6 +99,8 @@ type Options struct {
 	ExtraBody map[string]any
 }
 
+// defaults supplies output-token and breakpoint limits and the default model-capability lookup
+// when unset.
 func (o *Options) defaults() {
 	if o.DefaultMaxTokens <= 0 {
 		o.DefaultMaxTokens = 8192
@@ -190,10 +193,12 @@ type builder struct {
 	thinkingReplayed bool
 }
 
+// warn appends a formatted serialization warning while preserving its machine-readable code.
 func (b *builder) warn(code, format string, args ...any) {
 	b.warns = append(b.warns, Warning{Code: code, Message: fmt.Sprintf(format, args...)})
 }
 
+// need records a beta header once, preserving first-use order.
 func (b *builder) need(beta string) {
 	for _, x := range b.betas {
 		if x == beta {
@@ -203,11 +208,14 @@ func (b *builder) need(beta string) {
 	b.betas = append(b.betas, beta)
 }
 
+// add appends a rendered block and returns its zero-based index.
 func (b *builder) add(rb rblock) int {
 	b.blocks = append(b.blocks, rb)
 	return len(b.blocks) - 1
 }
 
+// run renders tools, system, and messages, rejects an empty conversation, places cache
+// breakpoints, and assembles request bytes with warnings and beta headers.
 func (b *builder) run(stream bool) (*Built, error) {
 	if err := b.renderTools(); err != nil {
 		return nil, err
@@ -266,6 +274,8 @@ func (b *builder) renderTools() error {
 	return nil
 }
 
+// renderSystem accepts only text system blocks, dropping blank ones with diagnostics while
+// tracking source-to-wire references.
 func (b *builder) renderSystem() error {
 	for i, blk := range b.p.System {
 		ref := core.BlockRef{Sys: true, Msg: 0, Blk: i}
@@ -287,6 +297,8 @@ func (b *builder) renderSystem() error {
 // ---------------------------------------------------------------------------
 // messages
 
+// renderMessages dispatches each prompt message by role and stops at the first unsupported role or
+// rendering error.
 func (b *builder) renderMessages() error {
 	for mi, m := range b.p.Messages {
 		var err error
@@ -307,6 +319,8 @@ func (b *builder) renderMessages() error {
 	return nil
 }
 
+// drop records why a source block was omitted and maps its reference to the preceding rendered
+// block.
 func (b *builder) drop(ref core.BlockRef, why string) {
 	b.refs[ref] = len(b.blocks) - 1
 	b.drops[ref] = why
@@ -548,6 +562,8 @@ func (b *builder) systemMessage(mi int, m core.Message) error {
 // ---------------------------------------------------------------------------
 // blocks
 
+// textBlock builds an open text-block JSON prefix eligible for cache markers; the enclosing
+// builder completes the object.
 func textBlock(text, label string) rblock {
 	var w jw
 	w.lit(`{"type":"text","text":`)
@@ -629,6 +645,7 @@ func (b *builder) toolResult(blk core.Block, label string) (rblock, error) {
 	return rb, nil
 }
 
+// appendElem inserts a comma before an array element when n indicates a preceding element.
 func appendElem(dst, elem []byte, n int) []byte {
 	if n > 0 {
 		dst = append(dst, ',')
@@ -696,6 +713,8 @@ func (b *builder) imageJSON(blk core.Block) ([]byte, error) {
 	return w.bytes(), nil
 }
 
+// parseDataURL splits a data URL into media type and payload and requires a base64 parameter; it
+// does not decode or validate the payload.
 func parseDataURL(u string) (mediaType, data string, err error) {
 	rest := strings.TrimPrefix(u, "data:")
 	head, payload, ok := strings.Cut(rest, ",")
@@ -998,6 +1017,8 @@ func (b *builder) assemble(stream bool) ([]byte, error) {
 	return w.bytes(), nil
 }
 
+// writeBlock writes a rendered block prefix, appends optional cache-control metadata, and closes
+// the JSON object.
 func (b *builder) writeBlock(w *jw, idx int) {
 	rb := &b.blocks[idx]
 	w.raw(rb.prefix)
@@ -1107,6 +1128,7 @@ func wireObject(raw []byte) (prefix []byte, members, ok bool) {
 	return raw[:len(raw)-1], len(inner) > 0, true
 }
 
+// isJSONObject requires syntactically valid JSON whose first non-whitespace byte opens an object.
 func isJSONObject(raw []byte) bool {
 	t := bytes.TrimSpace(raw)
 	return len(t) > 0 && t[0] == '{' && json.Valid(t)
@@ -1116,6 +1138,8 @@ func isJSONObject(raw []byte) bool {
 // non-whitespace text").
 func blank(s string) bool { return strings.TrimSpace(s) == "" }
 
+// trunc retains at most n bytes and appends three dots; it may split UTF-8 and requires
+// nonnegative n.
 func trunc(s string, n int) string {
 	if len(s) <= n {
 		return s

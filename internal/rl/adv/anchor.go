@@ -36,6 +36,8 @@ type anchorRef struct {
 	ret float64
 }
 
+// anchorKey groups by wire hash when available unless depth grouping is requested; otherwise it
+// combines tree, prefix, and ordinal identity.
 func anchorKey(smp *sample, st *rl.Step, ordinal int, by string) string {
 	if by != AnchorByDepth && st.Prompt.WireHash != "" {
 		return "w|" + smp.group + "|" + smp.role + "|" + string(st.Prompt.WireHash)

@@ -11,6 +11,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// platformHarden erases selected Linux environment bytes before disabling dumpability, recording
+// failures and respecting the dumpability opt-out.
 func platformHarden(optOut bool) Status {
 	var st Status
 	// Erase first: opening /proc/self/mem needs the process to be dumpable, which

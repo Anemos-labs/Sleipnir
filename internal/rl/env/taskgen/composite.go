@@ -144,10 +144,13 @@ func prepareComponent(t rl.Task, seed int64) (component, bool) {
 	return component{t: t, meta: m, files: files, key: key}, true
 }
 
+// sameBase compares repository identity, commit, subdirectory, and network policy to determine
+// whether tasks share an execution base.
 func sameBase(a, b rl.Task) bool {
 	return env.RepoKey(a) == env.RepoKey(b) && a.Repo.Commit == b.Repo.Commit && a.Repo.Subdir == b.Repo.Subdir && a.Network == b.Network
 }
 
+// copySet copies all map keys into a new set with true values.
 func copySet(s map[string]bool) map[string]bool {
 	out := make(map[string]bool, len(s))
 	for k := range s {
@@ -156,6 +159,7 @@ func copySet(s map[string]bool) map[string]bool {
 	return out
 }
 
+// overlaps reports whether any file key is true in the existing union set.
 func overlaps(union, files map[string]bool) bool {
 	for f := range files {
 		if union[f] {

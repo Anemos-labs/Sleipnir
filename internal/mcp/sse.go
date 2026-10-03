@@ -34,6 +34,8 @@ type sseReader struct {
 	lastID  string
 }
 
+// newSSEReader configures bounded SSE line scanning with space for the data prefix and no server
+// retry value yet.
 func newSSEReader(r io.Reader, maxEvent int) *sseReader {
 	sc := bufio.NewScanner(r)
 	// A line is "data: " plus payload, so allow a little over the event limit.
@@ -126,6 +128,8 @@ func (r *sseReader) Next() (*sseEvent, error) {
 	return nil, io.EOF
 }
 
+// dispatch constructs an SSE event only when data was received, remembers a nonempty event ID, and
+// resets per-event state on return.
 func (r *sseReader) dispatch() *sseEvent {
 	defer func() {
 		r.event, r.id, r.retry, r.hasData = "", "", -1, false

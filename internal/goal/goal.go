@@ -167,6 +167,8 @@ func (g *State) Apply(v Verdict, worked bool) Action {
 	return Resume
 }
 
+// oneLine collapses whitespace and caps text at max runes including an ellipsis; max must be
+// positive.
 func oneLine(s string, max int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > max {

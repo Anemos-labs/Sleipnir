@@ -22,4 +22,5 @@ func NewReader(f *os.File) Reader { return newReader(f) }
 // plainReader is a Reader that cannot be stopped: a read of the file, and a Cancel that does nothing.
 type plainReader struct{ *os.File }
 
+// Cancel cannot interrupt a plain file reader and therefore has no effect.
 func (plainReader) Cancel() {}

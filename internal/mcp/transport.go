@@ -70,6 +70,7 @@ const DefaultMaxMessageBytes = 16 << 20
 // range (-32000..-32099) and RPCError.Is maps it to ErrMessageTooLarge.
 const codeTooLarge = -32090
 
+// tooLargeResponse constructs a JSON-RPC size-limit error while preserving the request identifier.
 func tooLargeResponse(id []byte, limit int) []byte {
 	return marshalError(id, codeTooLarge, fmt.Sprintf("response exceeds the %d byte message limit", limit))
 }
@@ -205,6 +206,7 @@ func (t *StreamTransport) Ended() bool {
 	}
 }
 
+// closedErr returns ErrClosed with the transport's recorded cause when one exists.
 func (t *StreamTransport) closedErr() error {
 	if c := t.cause.Load(); c != nil {
 		return &closedError{cause: *c}
@@ -246,6 +248,7 @@ func (t *StreamTransport) Close() error {
 	return nil
 }
 
+// drop reports a stream transport drop through the optional callback.
 func (t *StreamTransport) drop(reason string) {
 	if t.opts.OnDrop != nil {
 		t.opts.OnDrop(reason)

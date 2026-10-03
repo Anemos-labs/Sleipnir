@@ -44,6 +44,7 @@ var (
 	webTools   = setOf("webfetch", "fetch", "websearch", "browse", "httpget", "httprequest", "curl", "fetchurl", "openurl")
 )
 
+// setOf builds a membership map with duplicate names collapsed.
 func setOf(names ...string) map[string]bool {
 	m := make(map[string]bool, len(names))
 	for _, n := range names {
@@ -52,9 +53,14 @@ func setOf(names ...string) map[string]bool {
 	return m
 }
 
+// isWrite reports whether the tool name belongs to the configured write-tool set.
 func (c toolCall) isWrite() bool { return writeTools[c.name] }
+
+// isShell reports whether the tool name belongs to the shell-tool set.
 func (c toolCall) isShell() bool { return shellTools[c.name] }
-func (c toolCall) isWeb() bool   { return webTools[c.name] }
+
+// isWeb reports whether the tool name belongs to the web-tool set.
+func (c toolCall) isWeb() bool { return webTools[c.name] }
 
 // callsOf lists a step's tool calls in order.
 func callsOf(ai, si int, st *rl.Step) []toolCall {
@@ -124,6 +130,8 @@ func inputStrings(raw json.RawMessage, keys ...string) []string {
 	return out
 }
 
+// inputString returns the first extracted string from the supported input fields or empty when
+// none exists.
 func inputString(raw json.RawMessage, keys ...string) string {
 	if s := inputStrings(raw, keys...); len(s) > 0 {
 		return s[0]
@@ -174,8 +182,11 @@ func patchPaths(body string) []string {
 	return out
 }
 
+// commandOf reads a command string from the supported command, cmd, script, or code input fields.
 func commandOf(c toolCall) string { return inputString(c.input, "command", "cmd", "script", "code") }
 
+// uniqueStrings returns distinct nonempty strings in input order without overwriting input
+// elements.
 func uniqueStrings(in []string) []string {
 	seen := make(map[string]bool, len(in))
 	out := in[:0:0]

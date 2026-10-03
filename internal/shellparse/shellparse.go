@@ -112,6 +112,7 @@ type state struct {
 	dead  bool
 }
 
+// problem records only the first parse problem and marks the analysis incomplete.
 func (st *state) problem(msg string) {
 	if st.an.Parsed {
 		st.an.Parsed = false

@@ -99,6 +99,7 @@ func (c *Catalog) LoadForUser(name, args string) (Loaded, error) {
 // or another error to explain a refusal.
 func anyone(*Skill) error { return nil }
 
+// forModel hides skills that disable model invocation by returning the unknown-skill error.
 func forModel(s *Skill) error {
 	if s.DisableModelInvocation {
 		return errUnknown
@@ -106,6 +107,7 @@ func forModel(s *Skill) error {
 	return nil
 }
 
+// forUser rejects skills that cannot be invoked directly by the user.
 func forUser(s *Skill) error {
 	if !s.UserInvocable {
 		return fmt.Errorf("skill %q can only be used by the model, not invoked directly", s.Name)
@@ -176,6 +178,8 @@ func (c *Catalog) find(name string, allow func(*Skill) error) (*Skill, error) {
 	return nil, c.unknown(name, allow)
 }
 
+// candidates finds permitted qualified skill names with a case-insensitive suffix matching the
+// requested short name.
 func (c *Catalog) candidates(name string, allow func(*Skill) error) []string {
 	var out []string
 	for i := range c.skills {

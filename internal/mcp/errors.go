@@ -46,6 +46,7 @@ type RPCError struct {
 	Data    json.RawMessage
 }
 
+// Error formats the MCP server's numeric error code and message.
 func (e *RPCError) Error() string {
 	return fmt.Sprintf("mcp: server error %d: %s", e.Code, e.Message)
 }
@@ -69,14 +70,22 @@ type timeoutError struct {
 	total  bool // the absolute cap fired, not the inactivity timer
 }
 
+// Error distinguishes a total request deadline from a missing-response timeout and rounds elapsed
+// time to milliseconds.
 func (e *timeoutError) Error() string {
 	if e.total {
 		return fmt.Sprintf("mcp: %s still running after %s; gave up", e.method, e.after.Round(time.Millisecond))
 	}
 	return fmt.Sprintf("mcp: no response to %s within %s", e.method, e.after.Round(time.Millisecond))
 }
-func (e *timeoutError) Timeout() bool   { return true }
+
+// Timeout identifies this error as a timeout for net.Error-compatible callers.
+func (e *timeoutError) Timeout() bool { return true }
+
+// Temporary classifies this timeout as a temporary failure.
 func (e *timeoutError) Temporary() bool { return true }
+
+// Is lets errors.Is match the timeout against context.DeadlineExceeded.
 func (e *timeoutError) Is(target error) bool {
 	return target == context.DeadlineExceeded
 }
@@ -85,12 +94,15 @@ func (e *timeoutError) Is(target error) bool {
 // holds while the cause (exit status, EOF, session expiry) stays inspectable.
 type closedError struct{ cause error }
 
+// Error formats ErrClosed and appends an underlying cause when present.
 func (e *closedError) Error() string {
 	if e.cause == nil {
 		return ErrClosed.Error()
 	}
 	return ErrClosed.Error() + ": " + e.cause.Error()
 }
+
+// Unwrap exposes both ErrClosed and the underlying cause so either can match errors.Is.
 func (e *closedError) Unwrap() []error {
 	if e.cause == nil {
 		return []error{ErrClosed}

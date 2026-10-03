@@ -25,6 +25,8 @@ var ErrContaminated = errors.New("evaluation tasks overlap the training set")
 // ContaminationError lists the overlapping task ids.
 type ContaminationError struct{ IDs []string }
 
+// Error reports training-set contamination, displaying at most ten overlapping task IDs and the
+// remaining count.
 func (e *ContaminationError) Error() string {
 	ids := e.IDs
 	more := ""
@@ -35,6 +37,7 @@ func (e *ContaminationError) Error() string {
 	return fmt.Sprintf("%v: %d task(s) also appear in the training set: %s%s", ErrContaminated, len(e.IDs), strings.Join(ids, ", "), more)
 }
 
+// Is makes contamination errors match the ErrContaminated sentinel.
 func (e *ContaminationError) Is(target error) bool { return target == ErrContaminated }
 
 // EvalOptions configures Eval.
@@ -585,6 +588,7 @@ func CompareWith(a, b Report, o CompareOptions) Comparison {
 	return c
 }
 
+// label combines model and run ID when both exist and otherwise uses whichever is available.
 func label(r Report) string {
 	switch {
 	case r.Model != "" && r.RunID != "":
@@ -636,8 +640,10 @@ func bootstrapMean(d []float64, o CompareOptions) (low, high, p float64) {
 // that changes when the toolchain does could not be reproduced.
 type splitMix struct{ s uint64 }
 
+// newSplitMix initializes a deterministic generator at the supplied seed.
 func newSplitMix(seed uint64) *splitMix { return &splitMix{s: seed} }
 
+// next advances SplitMix64 state and returns its next deterministic pseudorandom value.
 func (r *splitMix) next() uint64 {
 	r.s += 0x9e3779b97f4a7c15
 	z := r.s

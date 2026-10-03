@@ -74,6 +74,8 @@ type agentState struct {
 	failed     failure // its newest failed model request, until something else of its own happens
 }
 
+// newAgentState initializes bounded activity histories and marks an agent as starting at the
+// supplied time.
 func newAgentState(id string, t time.Time) *agentState {
 	a := &agentState{
 		hits: newRing[float64](HistCap), marks: newRing[Mark](MarkCap),

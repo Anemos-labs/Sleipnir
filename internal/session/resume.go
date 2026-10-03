@@ -90,6 +90,7 @@ func checkResumable(dir string) (string, error) {
 // agent a person talks to (the single agent, or the manager).
 func Resumable(dir string) bool { return inspectLog(dir).resumable() }
 
+// hasLog reports whether events.jsonl exists and is not a directory in a session directory.
 func hasLog(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, "events.jsonl"))
 	return err == nil && !st.IsDir()

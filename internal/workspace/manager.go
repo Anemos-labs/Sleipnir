@@ -32,6 +32,7 @@ const (
 	ModeCopy
 )
 
+// String names explicit worktree and copy modes and returns auto for other values.
 func (m Mode) String() string {
 	switch m {
 	case ModeWorktree:
@@ -121,6 +122,7 @@ var livePaths sync.Map // tree path -> *Manager
 // a swarm start-up into a retry storm.
 var repoLocks sync.Map // common dir -> *sync.Mutex
 
+// lockFor returns the process-wide mutex associated with a common Git directory, creating it once.
 func lockFor(commonDir string) *sync.Mutex {
 	l, _ := repoLocks.LoadOrStore(commonDir, &sync.Mutex{})
 	return l.(*sync.Mutex)
@@ -164,6 +166,7 @@ func (m *Manager) TreesDir() string {
 	return m.st.dirReal
 }
 
+// now uses the workspace manager's injected clock or the system clock.
 func (m *Manager) now() time.Time {
 	if m.Clock != nil {
 		return m.Clock()
@@ -171,10 +174,12 @@ func (m *Manager) now() time.Time {
 	return time.Now()
 }
 
+// emit forwards a workspace event through the manager's configured event hook.
 func (m *Manager) emit(typ, agent, task string, data map[string]any) {
 	m.OnEvent.emit(typ, agent, task, data)
 }
 
+// maxFileBytes normalizes negative limits to unlimited and defaults zero to 64 MiB.
 func (m *Manager) maxFileBytes() int64 {
 	switch {
 	case m.MaxFileBytes < 0:
@@ -185,6 +190,7 @@ func (m *Manager) maxFileBytes() int64 {
 	return m.MaxFileBytes
 }
 
+// maxDiffBytes defaults nonpositive diff limits to 64 MiB.
 func (m *Manager) maxDiffBytes() int {
 	if m.MaxDiffBytes <= 0 {
 		return 64 << 20
@@ -523,6 +529,7 @@ func (m *Manager) reclaimStale(ctx context.Context, agent, dest, branch string) 
 	return m.st.base.DeleteBranch(ctx, branch)
 }
 
+// nameOr prefers a nonempty first name over its fallback.
 func nameOr(a, b string) string {
 	if a != "" {
 		return a
@@ -530,6 +537,8 @@ func nameOr(a, b string) string {
 	return b
 }
 
+// integrationRef returns the fully qualified local branch ref for the session's integration
+// branch.
 func (m *Manager) integrationRef() string {
 	return "refs/heads/" + m.st.prefix + "/" + integrationName
 }
@@ -755,6 +764,7 @@ func scanAdminDirs(commonDir string) adminSet {
 	return out
 }
 
+// find returns the first administrative entry whose worktree path matches, or nil when absent.
 func (s adminSet) find(treePath string) *adminEntry {
 	for i := range s {
 		if samePath(s[i].tree, treePath) {

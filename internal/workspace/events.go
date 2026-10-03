@@ -58,6 +58,7 @@ func EmitTo(e events.Emitter) EventFunc {
 	}
 }
 
+// emit invokes a nonnil workspace event callback with the supplied event fields.
 func (f EventFunc) emit(typ, agent, task string, data map[string]any) {
 	if f == nil {
 		return

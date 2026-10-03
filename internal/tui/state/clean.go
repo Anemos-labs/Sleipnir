@@ -181,6 +181,7 @@ func natLess(a, b string) bool {
 	return len(a) < len(b)
 }
 
+// isDigit recognizes ASCII decimal digits in event text.
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // digits splits the leading run of digits off s, without its leading zeros.
@@ -234,8 +235,10 @@ type ring[T any] struct {
 	total int // elements ever pushed
 }
 
+// newRing initializes an empty ring with the supplied retention capacity.
 func newRing[T any](capacity int) ring[T] { return ring[T]{cap: capacity} }
 
+// len returns the number of retained ring entries, not the lifetime insertion count.
 func (r *ring[T]) len() int { return len(r.buf) }
 
 // push appends v, overwriting the oldest element when the ring is full.
@@ -281,6 +284,8 @@ func (r *ring[T]) slice() []T {
 	return out
 }
 
+// reset discards retained entries and resets ring position and lifetime count, preserving
+// capacity.
 func (r *ring[T]) reset() { r.buf, r.head, r.total = nil, 0, 0 }
 
 // revise edits the newest element that match accepts, if the ring still holds one: a later event can explain an earlier one, and

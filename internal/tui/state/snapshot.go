@@ -73,6 +73,7 @@ func (s *State) SnapshotAt(now time.Time) *Snapshot {
 	return snap
 }
 
+// cloneCounts returns an independent count map or nil for an empty map.
 func cloneCounts(m map[string]int) map[string]int {
 	if len(m) == 0 {
 		return nil
@@ -104,6 +105,7 @@ func (a *agentState) view(scope []string) Agent {
 	return v
 }
 
+// copyOf returns an independent shallow slice copy or nil for empty input.
 func copyOf[T any](in []T) []T {
 	if len(in) == 0 {
 		return nil
@@ -134,6 +136,7 @@ func (s *State) scopes() map[string][]string {
 	return out
 }
 
+// leaseSnapshot copies lease counters and returns held leases sorted by path.
 func (s *State) leaseSnapshot() Leases {
 	out := Leases{Conflicts: s.leases.conflicts, ScopeViolations: s.leases.scope, Overlaps: s.leases.overlaps}
 	for _, l := range s.leases.held {
@@ -143,6 +146,7 @@ func (s *State) leaseSnapshot() Leases {
 	return out
 }
 
+// govSnapshot copies governor counters and computes the request rate at now.
 func (s *State) govSnapshot(now time.Time) Governor {
 	g := &s.gov
 	return Governor{Episodes: g.episodes, RatePerMin: g.rate, PauseUntil: g.pauseUntil, LastAt: g.lastAt, Inflight: g.inflight, Queued: g.queued,

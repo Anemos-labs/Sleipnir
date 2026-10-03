@@ -100,6 +100,7 @@ type flowParser struct {
 	p    *yparser
 }
 
+// top parses one flow value and rejects trailing text after whitespace and comments.
 func (f *flowParser) top(depth int) (Value, error) {
 	v, err := f.value(depth)
 	if err != nil {
@@ -112,6 +113,7 @@ func (f *flowParser) top(depth int) (Value, error) {
 	return v, nil
 }
 
+// skip advances over whitespace and hash comments whose marker follows whitespace.
 func (f *flowParser) skip() {
 	for f.i < len(f.s) {
 		c := f.s[f.i]

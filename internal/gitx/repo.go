@@ -177,8 +177,11 @@ func (r *Repo) begin(ctx context.Context) (*batch, error) {
 	return &batch{r: r, ov: ov}, nil
 }
 
+// runDir returns the repository root used as the working directory for Git commands.
 func (r *Repo) runDir() string { return r.root }
 
+// pin returns the worktree root for non-bare repositories and no pinned directory for bare
+// repositories.
 func (r *Repo) pin() string {
 	if r.bare {
 		return ""

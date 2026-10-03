@@ -275,6 +275,7 @@ func newChatModel(ctx context.Context, c ChatConfig) *chatModel {
 	return m
 }
 
+// themePtr returns a pointer to a copy of the supplied input theme.
 func themePtr(t input.Theme) *input.Theme { return &t }
 
 // clock is the time the program goes by: the clock it was given, else the latest tick.
@@ -300,6 +301,8 @@ func (m *chatModel) finish() {
 	m.c.Link.Close()
 }
 
+// answer attempts a nonblocking permission response and discards it when the answer channel cannot
+// accept it.
 func (d *dialog) answer(dec perm.Decision) {
 	select {
 	case d.q.ans <- dec:
@@ -455,6 +458,7 @@ func (m *chatModel) answerQuestion(d *dialog, dec perm.Decision) {
 	m.dropQuestion(d.q)
 }
 
+// dropQuestion removes dialogs that refer to the specified question object.
 func (m *chatModel) dropQuestion(q *question) {
 	m.removeQuestions(func(d *dialog) bool { return d.q == q })
 }
@@ -674,6 +678,7 @@ func (m *chatModel) cycleMode() {
 // hintFor is how long a line of the program's own stays in the footer.
 const hintFor = 2 * time.Second
 
+// setHint replaces the transient hint and restarts its display lifetime using the model clock.
 func (m *chatModel) setHint(s string) {
 	m.hint, m.hintUntil = s, m.clock().Add(hintFor)
 }
@@ -860,12 +865,14 @@ type lockedBuffer struct {
 	b  bytes.Buffer
 }
 
+// Write appends bytes under the buffer lock and returns the underlying write result.
 func (l *lockedBuffer) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.b.Write(p)
 }
 
+// String reads the accumulated text under the buffer lock.
 func (l *lockedBuffer) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -989,6 +996,7 @@ func (m *chatModel) block(kind blockKind, lines []cell.Line) {
 	m.print(kind, lines)
 }
 
+// print writes styled lines to the chat screen and records their block kind for subsequent layout.
 func (m *chatModel) print(kind blockKind, lines []cell.Line) {
 	m.scr.Print(lines...)
 	m.last = kind
@@ -1089,6 +1097,7 @@ func (m *chatModel) liveView(tail []cell.Line) liveView {
 	return v
 }
 
+// edWidthOr uses the measured editor width when positive and otherwise the terminal width.
 func (m *chatModel) edWidthOr() int {
 	if m.edWidth > 0 {
 		return m.edWidth
@@ -1108,6 +1117,8 @@ func (m *chatModel) queueTexts() []string {
 	return out
 }
 
+// dialogView renders the selected permission question within available width and height and
+// captures its current options and armed state.
 func (m *chatModel) dialogView(d *dialog) *dialogView {
 	title, body := m.k.requestBody(d.q.req, m.callOf(d.q.req), widget.BoxInnerWidth(m.cols, widget.BoxHardWrap()), m.info.Cwd, d.current)
 	body, _ = m.k.fitBody(body, m.dialogRows())

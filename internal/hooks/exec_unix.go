@@ -23,8 +23,10 @@ func configureCmd(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
+// termGroup sends SIGTERM to the process group identified by pid and ignores signaling errors.
 func termGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGTERM) }
 
+// killGroup sends SIGKILL to the process group identified by pid and ignores signaling errors.
 func killGroup(pid int) { _ = syscall.Kill(-pid, syscall.SIGKILL) }
 
 // exitStatus follows the shell convention: the exit code, or 128+N when signal N

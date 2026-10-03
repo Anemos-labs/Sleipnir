@@ -19,6 +19,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/inspect"
 )
 
+// init registers the session inspector command with the CLI dispatcher.
 func init() { extraCommands["inspect"] = cmdInspect }
 
 // cmdInspect serves the embedded cache inspector: a read-only dashboard over a
@@ -152,6 +153,8 @@ func inspectURL(a net.Addr, token string) string {
 	return u
 }
 
+// openBrowser starts the platform URL opener and reaps it asynchronously, returning only startup
+// errors.
 func openBrowser(u string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {

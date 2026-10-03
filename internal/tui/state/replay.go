@@ -126,6 +126,7 @@ func (r *Player) peek() bool {
 	return true
 }
 
+// finish marks playback done and calls its stop function at most once.
 func (r *Player) finish() {
 	r.done = true
 	if r.stop != nil {

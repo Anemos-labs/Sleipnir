@@ -61,6 +61,8 @@ type limitedWriter struct {
 	max int
 }
 
+// Write retains only the output prefix that fits the configured cap while reporting all bytes
+// consumed.
 func (l *limitedWriter) Write(p []byte) (int, error) {
 	if room := l.max - l.w.Len(); room > 0 {
 		if len(p) > room {

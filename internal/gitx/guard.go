@@ -119,6 +119,7 @@ func (s *settings) driverOverrides(ctx context.Context, dir, workTree, gitDir st
 	return ov, nil
 }
 
+// sortedKeys returns sorted map keys regardless of their boolean values.
 func sortedKeys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

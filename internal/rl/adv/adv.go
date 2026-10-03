@@ -156,6 +156,7 @@ func (s Spec) validate() error {
 	return nil
 }
 
+// anchorWeight substitutes a weight of one for an unset zero value.
 func (s Spec) anchorWeight() float64 {
 	if s.AnchorWeight == 0 {
 		return 1
@@ -163,6 +164,7 @@ func (s Spec) anchorWeight() float64 {
 	return s.AnchorWeight
 }
 
+// gamma substitutes a discount factor of one for an unset zero value.
 func (s Spec) gamma() float64 {
 	if s.Gamma == 0 {
 		return 1
@@ -170,6 +172,7 @@ func (s Spec) gamma() float64 {
 	return s.Gamma
 }
 
+// anchorMin substitutes a minimum anchor group size of two for an unset zero value.
 func (s Spec) anchorMin() int {
 	if s.AnchorMin == 0 {
 		return 2
@@ -177,6 +180,7 @@ func (s Spec) anchorMin() int {
 	return s.AnchorMin
 }
 
+// eps returns the configured nonzero numerical tolerance or DefaultEps.
 func (s Spec) eps() float64 {
 	if s.Eps == 0 {
 		return DefaultEps
@@ -247,6 +251,8 @@ func Groups(eps []*rl.Episode, by string) map[string][]*rl.Episode {
 	return out
 }
 
+// taskKey prefers explicit task identity, otherwise deriving it from the episode ID before the
+// final slash.
 func taskKey(ep *rl.Episode) string {
 	switch {
 	case ep.TaskID != "":
@@ -278,6 +284,8 @@ func policyKey(ep *rl.Episode) string {
 	return b.String()
 }
 
+// groupKey groups episodes by task or explicit group when requested, otherwise combining task and
+// policy identity.
 func groupKey(ep *rl.Episode, by string) string {
 	switch by {
 	case GroupByTask:
@@ -309,6 +317,8 @@ type sample struct {
 	zs    []float64 // per-step anchor correction (anchor method)
 }
 
+// sortKey orders samples by episode ID, then zero-padded agent and step indices separated by NUL
+// bytes.
 func (s *sample) sortKey() string { return fmt.Sprintf("%s\x00%06d\x00%06d", s.ep.ID, s.ai, s.si) }
 
 // singleCall roles are trained per call, each with its own reward.
@@ -333,6 +343,7 @@ func callReward(ep *rl.Episode, a *rl.Agent, st *rl.Step, role string) (float64,
 	return 0, false
 }
 
+// eligible rejects episodes carrying any hard flag and reports the first such flag.
 func eligible(ep *rl.Episode) (bool, string) {
 	for _, f := range ep.Flags {
 		if rl.HardFlag(f) {
@@ -437,6 +448,8 @@ func meanStd(v []float64) (mean, std float64) {
 	return mean, math.Sqrt(sum(dev) / float64(n-1))
 }
 
+// spread returns minimum and maximum values, or positive and negative infinity respectively for
+// empty input.
 func spread(v []float64) (lo, hi float64) {
 	lo, hi = math.Inf(1), math.Inf(-1)
 	for _, x := range v {
@@ -599,6 +612,7 @@ func Apply(eps []*rl.Episode, s Spec) (Report, error) {
 	return rep, nil
 }
 
+// sortedSet returns sorted map keys regardless of their boolean values.
 func sortedSet(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

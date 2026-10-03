@@ -133,6 +133,8 @@ type colorMap struct {
 	cache map[uint32]uint8
 }
 
+// newColorMap initializes color quantization for the terminal depth with an empty RGB lookup
+// cache.
 func newColorMap(d term.ColorDepth) *colorMap {
 	return &colorMap{depth: d, cache: map[uint32]uint8{}}
 }

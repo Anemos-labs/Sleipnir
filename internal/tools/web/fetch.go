@@ -111,6 +111,7 @@ type document struct {
 	crossHost  bool
 }
 
+// size estimates document cache cost from retained string bytes plus a fixed metadata allowance.
 func (d *document) size() int64 {
 	return int64(len(d.text)+len(d.title)+len(d.url)+len(d.requested)) + 256
 }
@@ -184,6 +185,8 @@ type routedTransport struct {
 	proxy           func(*http.Request) (*url.URL, error)
 }
 
+// RoundTrip uses the proxied transport when proxy selection succeeds with a URL and otherwise uses
+// the direct transport.
 func (t routedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if u, err := t.proxy(req); err == nil && u != nil {
 		return t.proxied.RoundTrip(req)
@@ -212,6 +215,7 @@ func (*fetchTool) Spec() core.ToolSpec {
 	}
 }
 
+// fail formats and completes an unsuccessful web-tool result through the environment.
 func fail(env *tools.Env, format string, args ...any) *tools.Result {
 	return env.Finish(fmt.Sprintf(format, args...), true)
 }
@@ -348,6 +352,8 @@ func startsWithPort(rest string) bool {
 	return rest != "" && rest[0] >= '0' && rest[0] <= '9'
 }
 
+// cacheKey lowercases the URL scheme and host while retaining the request path and query;
+// fragments are excluded.
 func cacheKey(u *url.URL) string {
 	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + u.RequestURI()
 }
@@ -361,6 +367,7 @@ type httpStatusError struct {
 	Snippet string
 }
 
+// Error formats HTTP status and URL and appends a response snippet when available.
 func (e *httpStatusError) Error() string {
 	msg := fmt.Sprintf("HTTP %d %s for %s", e.Status, http.StatusText(e.Status), e.URL)
 	if e.Snippet != "" {
@@ -371,10 +378,13 @@ func (e *httpStatusError) Error() string {
 
 type tooLargeError struct{ limit int64 }
 
+// Error reports the response-size limit that prevented fetching content.
 func (e *tooLargeError) Error() string {
 	return fmt.Sprintf("the response is larger than %s; not fetched", humanBytes(e.limit))
 }
 
+// humanBytes uses exact whole MiB when possible, otherwise whole KiB or bytes for size
+// diagnostics.
 func humanBytes(n int64) string {
 	if n >= 1<<20 && n%(1<<20) == 0 {
 		return fmt.Sprintf("%d MiB", n>>20)
@@ -387,10 +397,12 @@ func humanBytes(n int64) string {
 
 type unsupportedError struct{ ctype string }
 
+// Error identifies an unsupported content type and the formats web_fetch accepts.
 func (e *unsupportedError) Error() string {
 	return fmt.Sprintf("unsupported content-type %q: web_fetch reads HTML, JSON and text only", e.ctype)
 }
 
+// isRedirect recognizes the five HTTP redirect statuses followed by web_fetch.
 func isRedirect(code int) bool {
 	switch code {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
@@ -471,6 +483,7 @@ func (f *fetcher) fetch(ctx context.Context, start *url.URL) (*document, error) 
 	}
 }
 
+// portOf uses an explicit URL port, then 443 for HTTPS and 80 otherwise.
 func portOf(u *url.URL) string {
 	if p := u.Port(); p != "" {
 		return p
@@ -481,6 +494,7 @@ func portOf(u *url.URL) string {
 	return "80"
 }
 
+// clip bounds bytes and repairs a truncated UTF-8 prefix before appending an ellipsis.
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -521,6 +535,7 @@ func (f *fetcher) readDocument(resp *http.Response, final *url.URL) (*document, 
 	return doc, nil
 }
 
+// clipRunes retains at most n runes and adds an ellipsis when truncated; n must be nonnegative.
 func clipRunes(s string, n int) string {
 	if utf8.RuneCountInString(s) <= n {
 		return s
@@ -570,6 +585,7 @@ func (f *fetcher) describeError(err error) string {
 	return msg
 }
 
+// unwrapURLError removes an outer URL-operation wrapper and otherwise preserves the error.
 func unwrapURLError(err error) error {
 	var ue *url.Error
 	if errors.As(err, &ue) {
@@ -578,6 +594,7 @@ func unwrapURLError(err error) error {
 	return err
 }
 
+// fmtDuration formats a duration in decimal seconds with an s suffix.
 func fmtDuration(d time.Duration) string {
 	return strconv.FormatFloat(d.Seconds(), 'f', -1, 64) + "s"
 }

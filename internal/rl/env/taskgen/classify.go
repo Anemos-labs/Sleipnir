@@ -21,6 +21,8 @@ const (
 	TestSupport
 )
 
+// String names source, test, and test-support file classifications, using other for remaining
+// values.
 func (k Kind) String() string {
 	switch k {
 	case Source:
@@ -135,6 +137,7 @@ func Classify(p string) (lang string, kind Kind) {
 	return "", Other
 }
 
+// containsSeq reports whether two directory names occur consecutively in the supplied order.
 func containsSeq(dirs []string, a, b string) bool {
 	for i := 0; i+1 < len(dirs); i++ {
 		if dirs[i] == a && dirs[i+1] == b {

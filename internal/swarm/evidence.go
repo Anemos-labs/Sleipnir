@@ -202,6 +202,7 @@ func (e *Evidence) Counts() (edits, reads, calls int) {
 	return edits, e.reads, e.calls
 }
 
+// base copies path basenames using either slash convention, preserving input order.
 func base(paths []string) []string {
 	out := make([]string, len(paths))
 	for i, p := range paths {
@@ -213,6 +214,8 @@ func base(paths []string) []string {
 	return out
 }
 
+// jsonString returns the first nonempty string at the requested object keys, or an empty string
+// for invalid JSON or no match.
 func jsonString(in json.RawMessage, keys ...string) string {
 	var m map[string]any
 	if json.Unmarshal(in, &m) != nil {
@@ -226,6 +229,8 @@ func jsonString(in json.RawMessage, keys ...string) string {
 	return ""
 }
 
+// firstLine trims surrounding whitespace and limits the first line to max runes, including an
+// ellipsis when truncated. max must be positive.
 func firstLine(s string, max int) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexByte(s, '\n'); i >= 0 {

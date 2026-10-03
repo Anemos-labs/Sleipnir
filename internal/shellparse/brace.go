@@ -121,6 +121,7 @@ func braceStructure(v, m []byte) (match []int, commas map[int][]int) {
 	return match, commas
 }
 
+// allUnquoted reports whether every quote-mask byte is zero, including for an empty mask.
 func allUnquoted(m []byte) bool {
 	for _, c := range m {
 		if c != 0 {
@@ -130,6 +131,7 @@ func allUnquoted(m []byte) bool {
 	return true
 }
 
+// cat3 independently concatenates three value slices and their corresponding quote masks.
 func cat3(av, am, bv, bm, cv, cm []byte) (v, m []byte) {
 	v = make([]byte, 0, len(av)+len(bv)+len(cv))
 	m = make([]byte, 0, len(v))
@@ -210,13 +212,17 @@ func braceSeq(body string) (elems []string, ok bool, tooBig bool) {
 	return nil, false, false
 }
 
+// padded recognizes multi-character numbers with a leading zero after an optional minus sign.
 func padded(s string) bool {
 	s = strings.TrimPrefix(s, "-")
 	return len(s) > 1 && s[0] == '0'
 }
 
+// isAlpha recognizes ASCII letters for brace expansion.
 func isAlpha(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
+// abs returns the absolute integer value; callers must exclude the minimum int whose magnitude is
+// not representable.
 func abs(x int) int {
 	if x < 0 {
 		return -x

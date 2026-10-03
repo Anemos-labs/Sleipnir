@@ -242,6 +242,7 @@ func MergeFile(ctx context.Context, ours, base, theirs []byte, oursLabel, baseLa
 	return out.stdout, out.exit, nil
 }
 
+// clip limits diagnostic text to n bytes and appends a truncation notice; n must be nonnegative.
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s

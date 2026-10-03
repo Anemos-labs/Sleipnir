@@ -135,6 +135,8 @@ const maxBraceAlternatives = 64
 // exists to prevent.
 const maxPatternBytes = 1024
 
+// compileGlobs expands bounded brace alternatives and compiles valid globs, skipping oversized or
+// invalid patterns.
 func compileGlobs(patterns []string) globSet {
 	var out globSet
 	for _, raw := range patterns {
@@ -266,6 +268,7 @@ func (s globSet) matchAnywhere(p string) (string, bool) {
 	return "", false
 }
 
+// splitSegs splits slash paths, dropping empty and dot segments but preserving parent segments.
 func splitSegs(p string) []string {
 	var out []string
 	for _, s := range strings.Split(p, "/") {
@@ -276,6 +279,8 @@ func splitSegs(p string) []string {
 	return out
 }
 
+// matches evaluates the glob against path segments, requiring anchored patterns to start at the
+// path root.
 func (g glob) matches(ps []string) bool { return g.matchesAt(ps, false) }
 
 // matchesAt is matches, optionally letting an anchored pattern start at any

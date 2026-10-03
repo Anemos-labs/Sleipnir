@@ -49,6 +49,7 @@ type cset struct {
 
 var anySet = cset{neg: true}
 
+// has tests rune membership in the character-class intervals and applies class negation.
 func (c cset) has(r rune) bool {
 	in := false
 	for _, x := range c.rs {
@@ -192,6 +193,7 @@ func parseClass(s string) (cset, int) {
 	return cset{}, -1
 }
 
+// classRune decodes a character-class rune with an optional escape prefix; input must be nonempty.
 func classRune(s string) (rune, int) {
 	if s[0] == '\\' && len(s) > 1 {
 		r, w := utf8.DecodeRuneInString(s[1:])
@@ -400,6 +402,7 @@ func ValidateScope(scope []string) error {
 	return nil
 }
 
+// quote bounds and sanitizes scope text before surrounding it with display quotes.
 func quote(s string) string {
 	if len(s) > 60 {
 		s = s[:60] + "..."
@@ -492,6 +495,7 @@ func Match(pattern, file string) bool {
 	return sp.match(segs)
 }
 
+// match accepts a segmented path when any compiled scope alternative matches.
 func (sp *scopePattern) match(segs []string) bool {
 	for _, a := range sp.alts {
 		if matchSegs(a, segs) {

@@ -136,6 +136,8 @@ func referenceTools(s *Server) []Tool {
 	}
 }
 
+// askResult formats a test client interaction, preferring transport errors over RPC errors and
+// successful results.
 func askResult(res json.RawMessage, e map[string]any, err error) *Result {
 	switch {
 	case err != nil:

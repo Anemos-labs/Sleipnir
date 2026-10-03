@@ -164,6 +164,8 @@ func safeLines(ss []string) []string {
 	return out
 }
 
+// projectLine summarizes repository name, file count, and up to four languages for reconnaissance
+// output.
 func projectLine(root string, r *Recon) string {
 	var parts []string
 	for i, l := range r.Languages {
@@ -315,6 +317,8 @@ var extLang = map[string]string{
 	".lua": "lua", ".ex": "elixir", ".exs": "elixir", ".zig": "zig", ".dart": "dart", ".vue": "vue", ".svelte": "svelte",
 }
 
+// languageOf looks up the language by case-insensitive file extension, returning empty for unknown
+// extensions.
 func languageOf(p string) string { return extLang[strings.ToLower(path.Ext(p))] }
 
 // isNoise marks files that add size but no structure: tests, generated and
@@ -425,6 +429,8 @@ var (
 	reCargoName = regexp.MustCompile(`(?m)^name\s*=\s*"([^"]+)"`)
 )
 
+// readSmall reads at most max bytes from a regular file relative to root, returning the bytes read
+// or an empty string when it cannot open or inspect the file. max must be nonnegative.
 func readSmall(root, rel string, max int64) string {
 	f, err := os.Open(filepath.Join(root, rel))
 	if err != nil {
@@ -440,6 +446,7 @@ func readSmall(root, rel string, max int64) string {
 	return string(buf[:n])
 }
 
+// min64 returns the smaller signed 64-bit integer.
 func min64(a, b int64) int64 {
 	if a < b {
 		return a
@@ -447,6 +454,7 @@ func min64(a, b int64) int64 {
 	return b
 }
 
+// has binary-searches a sorted filename list for an exact name.
 func has(files []string, name string) bool {
 	i := sort.SearchStrings(files, name)
 	return i < len(files) && files[i] == name
@@ -569,11 +577,14 @@ func detectManifests(root string, files []string) (text string, cmds []string) {
 	return sb.String(), dedupe(cmds)
 }
 
+// dirHas binary-searches a sorted filename list for any entry with the supplied prefix.
 func dirHas(files []string, prefix string) bool {
 	i := sort.SearchStrings(files, prefix)
 	return i < len(files) && strings.HasPrefix(files[i], prefix)
 }
 
+// firstN returns all entries when they fit or copies the first n and appends a remaining-count
+// label.
 func firstN(s []string, n int) []string {
 	if len(s) <= n {
 		return s
@@ -582,6 +593,8 @@ func firstN(s []string, n int) []string {
 	return append(out, fmt.Sprintf("+%d more", len(s)-n))
 }
 
+// dedupe returns the first occurrence of each string in input order without modifying the input
+// slice.
 func dedupe(s []string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -847,6 +860,7 @@ func packageDocs(root string, texts map[string]string, indeg map[string]int, bud
 	return sb.String()
 }
 
+// symbolCap allocates a larger symbol allowance to files with higher reconnaissance scores.
 func symbolCap(score float64) int {
 	switch {
 	case score >= 12:
@@ -858,6 +872,8 @@ func symbolCap(score float64) int {
 	}
 }
 
+// limitSyms returns all symbols when they fit or copies the first n and appends a compact
+// remaining-count label.
 func limitSyms(s []string, n int) []string {
 	if len(s) <= n {
 		return s
@@ -908,6 +924,8 @@ func extractSymbols(lang, text string) []string {
 	return out
 }
 
+// isExportedGo checks for an ASCII uppercase first letter after an optional receiver prefix; it
+// does not implement full Unicode Go export rules.
 func isExportedGo(name string) bool {
 	if i := strings.IndexByte(name, '.'); i >= 0 {
 		name = name[i+1:]

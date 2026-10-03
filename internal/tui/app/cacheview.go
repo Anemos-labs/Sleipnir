@@ -152,6 +152,7 @@ func hitOf(stk state.Stack) float64 {
 	return float64(stk.Read) / float64(stk.Prompt)
 }
 
+// plural selects the singular display label only for one item.
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return one
@@ -159,6 +160,8 @@ func plural(n int, one, many string) string {
 	return many
 }
 
+// roleStyle selects a role color cyclically from the palette and applies bold; RoleColors must be
+// nonempty.
 func roleStyle(p widget.Palette, role string) cell.Style {
 	i := roleColor(role)
 	return cell.Style{FG: p.RoleColors[i%len(p.RoleColors)], Attr: cell.Bold}

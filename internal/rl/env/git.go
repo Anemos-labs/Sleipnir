@@ -123,6 +123,8 @@ type GitError struct {
 	Err    error
 }
 
+// Error formats a Git failure using at most eight arguments and the last 600 stderr bytes, falling
+// back to the underlying error.
 func (e *GitError) Error() string {
 	args := e.Args
 	if len(args) > 8 {
@@ -138,6 +140,7 @@ func (e *GitError) Error() string {
 	return fmt.Sprintf("git %s: %s", strings.Join(args, " "), msg)
 }
 
+// Unwrap exposes the underlying Git execution error.
 func (e *GitError) Unwrap() error { return e.Err }
 
 // ErrOutputLimit is returned when a command's output exceeds the caller's limit.
@@ -286,6 +289,8 @@ type limitWriter struct {
 	exceeded bool
 }
 
+// Write rejects an entire chunk that would exceed a positive output limit, otherwise forwarding it
+// and tracking attempted bytes.
 func (l *limitWriter) Write(p []byte) (int, error) {
 	if l.max > 0 && l.n+int64(len(p)) > l.max {
 		l.exceeded = true
@@ -301,6 +306,7 @@ type tailBuffer struct {
 	buf []byte
 }
 
+// Write retains the last max bytes of Git output and reports all input bytes consumed.
 func (t *tailBuffer) Write(p []byte) (int, error) {
 	t.buf = append(t.buf, p...)
 	if len(t.buf) > t.max {
@@ -309,6 +315,7 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// String returns the retained output tail, replacing invalid UTF-8 sequences with question marks.
 func (t *tailBuffer) String() string { return strings.ToValidUTF8(string(t.buf), "?") }
 
 // ---- helpers over Git ----

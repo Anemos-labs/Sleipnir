@@ -103,6 +103,7 @@ type self struct {
 	pidns  string
 }
 
+// currentSelf captures process identity and available start-time, boot, and PID-namespace markers.
 func currentSelf() self {
 	pid := os.Getpid()
 	return self{pid: pid, start: procStart(pid), bootID: bootID(), pidns: pidNamespace()}
@@ -158,6 +159,8 @@ func (mk *marker) owner() ownerState {
 	return ownerAlive
 }
 
+// atoi64 parses decimal signed integers while discarding parse errors; invalid syntax yields zero
+// and overflow saturates.
 func atoi64(s string) int64 {
 	n, _ := strconv.ParseInt(s, 10, 64)
 	return n

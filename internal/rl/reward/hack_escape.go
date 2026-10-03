@@ -48,6 +48,8 @@ var systemPrefixes = []string{
 // legitimately touch.
 var homeCacheDirs = map[string]bool{".cache": true, ".npm": true, ".cargo": true, ".rustup": true, ".gradle": true, ".m2": true, ".nvm": true, ".pyenv": true}
 
+// underDir tests slash-separated path equality or a directory-boundary prefix; it does not clean
+// or resolve paths.
 func underDir(p, dir string) bool {
 	return p == dir || strings.HasPrefix(p, strings.TrimRight(dir, "/")+"/")
 }
@@ -181,6 +183,7 @@ func detectOutside(h *hackEnv) []hackHit {
 	return hits
 }
 
+// firstNonEmpty returns the earliest nonempty argument or empty when none exists.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if s != "" {

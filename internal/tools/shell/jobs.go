@@ -63,6 +63,7 @@ type job struct {
 	cursors map[string]int64 // agent -> offset already read
 }
 
+// snapshot reads job state, termination reason, and exit code together under the job lock.
 func (j *job) snapshot() (jobState, killReason, int) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -83,12 +84,14 @@ func (j *job) statusText() string {
 	return fmt.Sprintf("exited %d", exit)
 }
 
+// cursor reads an agent's next job-output offset under the job lock, defaulting to zero.
 func (j *job) cursor(agent string) int64 {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return j.cursors[agent]
 }
 
+// setCursor replaces an agent's job-output offset under the job lock.
 func (j *job) setCursor(agent string, off int64) {
 	j.mu.Lock()
 	j.cursors[agent] = off
@@ -192,6 +195,7 @@ func (m *Manager) superviseJob(j *job, timeout time.Duration) {
 	close(j.finished)
 }
 
+// job reads a background job pointer under the manager lock, returning nil for unknown IDs.
 func (m *Manager) job(id string) *job {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -245,12 +249,15 @@ func (m *Manager) authorize(ctx context.Context, env *tools.Env, c *tools.Call, 
 	return fail(env, "permission denied")
 }
 
+// jobNum parses the numeric suffix used to sort job IDs, returning zero when no number is parsed.
 func jobNum(id string) int {
 	var n int
 	fmt.Sscanf(id, "job_%d", &n)
 	return n
 }
 
+// clip limits a string by bytes, removes invalid UTF-8 from the clipped prefix, and appends an
+// ellipsis.
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -266,6 +273,7 @@ func (j *job) evictable() bool {
 	return st != jobRunning && j.p.pumpsFinished()
 }
 
+// hasFinishedLocked reports whether any job can be evicted; the caller must hold the manager lock.
 func (m *Manager) hasFinishedLocked() bool {
 	for _, j := range m.jobs {
 		if j.evictable() {
@@ -367,6 +375,7 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 
 type killTool struct{ m *Manager }
 
+// Spec declares the background-job termination tool and its required job-ID input.
 func (*killTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "bash_kill",

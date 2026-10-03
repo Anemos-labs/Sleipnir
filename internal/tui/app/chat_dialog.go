@@ -244,6 +244,7 @@ func (k *chatLook) requestBody(r perm.Request, call *toolRun, inner int, cwd, cu
 	return title, body
 }
 
+// plainBody converts split text lines into unstyled terminal-cell lines.
 func plainBody(s string) []cell.Line {
 	var out []cell.Line
 	for _, l := range textLines(s) {

@@ -108,6 +108,7 @@ func notesPressure(s *Stack, est core.Estimator, pol ApplyPolicy) string {
 // doubt.
 func quote(s string, n int) string { return strconv.Quote(EscapeLine(s, n)) }
 
+// idRange formats one turn ID or an inclusive pair of turn IDs for references.
 func idRange(from, to core.TurnID) string {
 	if from == to {
 		return fmt.Sprintf("t%d", from)
@@ -115,10 +116,13 @@ func idRange(from, to core.TurnID) string {
 	return fmt.Sprintf("t%d-t%d", from, to)
 }
 
+// unitTokens estimates the turns in a unit's half-open range; its indexes must address the
+// supplied slice.
 func unitTokens(z Sizer, turns []core.Turn, u Unit) int {
 	return z.Turns(turns[u.Start:u.End])
 }
 
+// humanTokens abbreviates counts of at least 1000 using one decimal place and a k suffix.
 func humanTokens(n int) string {
 	if n >= 1000 {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)

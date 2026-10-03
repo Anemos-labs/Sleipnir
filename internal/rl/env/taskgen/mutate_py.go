@@ -30,9 +30,13 @@ type pyTok struct {
 var pyOps3 = []string{"**=", "//=", ">>=", "<<=", "..."}
 var pyOps2 = []string{"==", "!=", "<=", ">=", "->", ":=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**", "//", "<<", ">>", "@="}
 
+// isPyIdentStart accepts ASCII letters, underscore, and non-ASCII bytes for the mutation scanner;
+// it does not validate Unicode identifiers.
 func isPyIdentStart(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
 }
+
+// isPyIdentChar accepts an identifier-start byte or an ASCII digit in the Python mutation scanner.
 func isPyIdentChar(c byte) bool { return isPyIdentStart(c) || c >= '0' && c <= '9' }
 
 // lexPython tokenizes src, skipping comments and string literals (triple-quoted,
@@ -242,6 +246,8 @@ func PythonMutations(file string, src []byte) []Mutation {
 	return out
 }
 
+// isPyKeyword recognizes the expression-boundary words used by the mutation scanner, rather than
+// the complete Python keyword set.
 func isPyKeyword(s string) bool {
 	switch s {
 	case "return", "and", "or", "not", "in", "is", "if", "elif", "else", "while", "for", "yield", "await", "assert", "lambda", "print":

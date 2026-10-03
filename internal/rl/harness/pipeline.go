@@ -85,6 +85,8 @@ func (p *Pipeline) Score(ep *rl.Episode, task *rl.Task, runDir string) error {
 	return reward.Score(ep, task, cfg, reward.DiffsFromBlobs(blobs.Get))
 }
 
+// keep caches a trajectory run under lock and evicts oldest insertions beyond maxKept without
+// refreshing order for replacements.
 func (p *Pipeline) keep(dir string, run *traj.Run) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -101,6 +103,8 @@ func (p *Pipeline) keep(dir string, run *traj.Run) {
 	}
 }
 
+// take removes and returns a cached trajectory run and its order entry under lock, returning nil
+// when absent.
 func (p *Pipeline) take(dir string) *traj.Run {
 	p.mu.Lock()
 	defer p.mu.Unlock()

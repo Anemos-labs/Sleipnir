@@ -55,7 +55,10 @@ type yamlLine struct {
 	tab    bool   // indentation continues with a tab (an error where it matters)
 }
 
-func (l yamlLine) blank() bool   { return l.text == "" }
+// blank reports whether a parsed YAML line has empty text.
+func (l yamlLine) blank() bool { return l.text == "" }
+
+// comment identifies parsed YAML lines whose text begins with a comment marker.
 func (l yamlLine) comment() bool { return l.text != "" && l.text[0] == '#' }
 
 // SyntaxError is a located frontmatter error.
@@ -64,6 +67,7 @@ type SyntaxError struct {
 	Msg  string
 }
 
+// Error prefixes a YAML syntax message with its line number when known.
 func (e *SyntaxError) Error() string {
 	if e.Line > 0 {
 		return fmt.Sprintf("line %d: %s", e.Line, e.Msg)
@@ -71,6 +75,7 @@ func (e *SyntaxError) Error() string {
 	return e.Msg
 }
 
+// errAt formats a syntax error with the source line responsible for it.
 func errAt(line int, format string, args ...any) error {
 	return &SyntaxError{Line: line, Msg: fmt.Sprintf(format, args...)}
 }
@@ -124,6 +129,8 @@ func parseYAML(region string, firstNo int) (Value, error) {
 	return v, nil
 }
 
+// peek returns the pending or next meaningful YAML line, advancing past blank lines and comments;
+// it returns nil at EOF.
 func (p *yparser) peek() *yamlLine {
 	if p.pend != nil {
 		return p.pend
@@ -139,6 +146,7 @@ func (p *yparser) peek() *yamlLine {
 	return nil
 }
 
+// next consumes a pending synthetic line before advancing the underlying line index.
 func (p *yparser) next() {
 	if p.pend != nil {
 		p.pend = nil
@@ -147,6 +155,8 @@ func (p *yparser) next() {
 	p.i++
 }
 
+// count increments parsed frontmatter values and returns a positioned error when the complexity
+// cap is exceeded.
 func (p *yparser) count(line int) error {
 	p.nodes++
 	if p.nodes > maxNodes {
@@ -155,6 +165,7 @@ func (p *yparser) count(line int) error {
 	return nil
 }
 
+// isSeqItem recognizes a bare dash or a dash followed by a space as a YAML sequence marker.
 func isSeqItem(t string) bool { return t == "-" || strings.HasPrefix(t, "- ") }
 
 // splitKey splits "key: rest". The colon must be followed by a space or end the

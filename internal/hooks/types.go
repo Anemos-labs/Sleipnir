@@ -107,6 +107,7 @@ func redactURL(raw string) string {
 	return u.String()
 }
 
+// oneLine collapses whitespace runs to single spaces and removes surrounding whitespace.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // Set is the parsed hook configuration. It is immutable and safe for concurrent
@@ -281,6 +282,7 @@ type HookError struct {
 	Message string
 }
 
+// Error prefixes a hook diagnostic with the hook's name.
 func (e HookError) Error() string { return e.Hook + ": " + e.Message }
 
 // Run records what happened to one hook.

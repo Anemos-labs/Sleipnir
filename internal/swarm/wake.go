@@ -65,18 +65,21 @@ func (w *waker) setRun(end func()) {
 	w.mu.Unlock()
 }
 
+// heldNow reads the manager hold flag under the waker lock.
 func (w *waker) heldNow() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.held
 }
 
+// epochNow reads the current wake generation under the waker lock.
 func (w *waker) epochNow() uint64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.epoch
 }
 
+// reset clears wake and hold bookkeeping and advances the generation under the waker lock.
 func (w *waker) reset() {
 	w.mu.Lock()
 	w.wakes, w.told, w.held = 0, false, false
@@ -84,6 +87,7 @@ func (w *waker) reset() {
 	w.mu.Unlock()
 }
 
+// stop marks the waker stopped and cancels its pending timer under lock.
 func (w *waker) stop() {
 	w.mu.Lock()
 	w.stopped = true
@@ -253,6 +257,7 @@ func (s *Swarm) reserveManager(m *member) bool {
 	return true
 }
 
+// releaseManager transitions a member to idle under its lifecycle lock.
 func (s *Swarm) releaseManager(m *member) {
 	m.mu.Lock()
 	m.life = lifeIdle

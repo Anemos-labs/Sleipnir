@@ -22,6 +22,7 @@ type blobStore struct {
 	present bool
 }
 
+// openBlobs constructs a blob reader rooted at the supplied directory without opening files yet.
 func openBlobs(root string) *blobStore { return &blobStore{root: root} }
 
 // available reports whether the blobs directory exists. The answer is cached

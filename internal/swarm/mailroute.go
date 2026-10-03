@@ -33,7 +33,10 @@ type overflow struct {
 	notPeer bool
 }
 
-func (o *overflow) init()       { o.entries = map[string]*digestEntry{} }
+// init allocates the digest-entry map before overflow entries are collected.
+func (o *overflow) init() { o.entries = map[string]*digestEntry{} }
+
+// empty requires both the ordered overflow entries and dropped-message count to be empty.
 func (o *overflow) empty() bool { return len(o.order) == 0 && o.dropped == 0 }
 
 func (o *overflow) add(msg Message, peer bool) {

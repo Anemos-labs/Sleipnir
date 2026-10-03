@@ -8,6 +8,7 @@ import (
 // renderer that erases while a background is active shows up in the screen's styles.
 func (t *Term) blank() vcell { return vcell{style: cell.Style{BG: t.sty.BG}} }
 
+// newRow allocates a terminal-width row filled with the current erase style.
 func (t *Term) newRow() vrow {
 	r := vrow{cells: make([]vcell, t.cols)}
 	if b := t.blank(); b != (vcell{}) {
@@ -81,6 +82,7 @@ func (t *Term) attachMark(r rune) {
 	c.text += string(r)
 }
 
+// lineFeed clears pending wrap and moves down one row, scrolling at the bottom edge.
 func (t *Term) lineFeed() {
 	t.pending = false
 	if t.y == t.rows-1 {
@@ -90,6 +92,7 @@ func (t *Term) lineFeed() {
 	}
 }
 
+// reverseIndex clears pending wrap and moves up one row, scrolling down at the top edge.
 func (t *Term) reverseIndex() {
 	t.pending = false
 	if t.y == 0 {
@@ -113,12 +116,16 @@ func (t *Term) scrollUp(n int) {
 	t.trimScrollback()
 }
 
+// trimScrollback discards excess oldest rows and copies retained rows to release the old backing
+// array.
 func (t *Term) trimScrollback() {
 	if over := len(t.sb) - t.sbMax; over > 0 {
 		t.sb = append([]vrow(nil), t.sb[over:]...)
 	}
 }
 
+// scrollDown shifts the active screen downward by a bounded row count and inserts blank rows at
+// the top.
 func (t *Term) scrollDown(n int) {
 	g := t.g()
 	n = min(max(n, 0), t.rows)
@@ -214,12 +221,14 @@ func (t *Term) eraseDisplay(mode int) {
 	}
 }
 
+// moveTo clamps the cursor to the terminal grid and clears pending line wrap.
 func (t *Term) moveTo(x, y int) {
 	t.x = min(max(x, 0), t.cols-1)
 	t.y = min(max(y, 0), t.rows-1)
 	t.pending = false
 }
 
+// saveCursor records position, pending wrap, and style for a subsequent cursor restore.
 func (t *Term) saveCursor() {
 	t.saved = cursorState{x: t.x, y: t.y, pending: t.pending, style: t.sty, ok: true}
 }

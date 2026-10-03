@@ -212,6 +212,7 @@ func DescribeChanges(cs []Change) string {
 	return joinWords(parts)
 }
 
+// joinWords joins display fragments with comma-space separators.
 func joinWords(parts []string) string {
 	out := ""
 	for i, p := range parts {

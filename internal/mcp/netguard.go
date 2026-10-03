@@ -55,12 +55,16 @@ type blockedError struct {
 	Reason string
 }
 
+// Error describes a blocked address and includes the original hostname when it differs from the
+// resolved address.
 func (e *blockedError) Error() string {
 	if e.Host == e.Addr.String() || e.Host == "" {
 		return fmt.Sprintf("blocked: %s is a %s address", e.Addr, e.Reason)
 	}
 	return fmt.Sprintf("blocked: %s resolves to %s, a %s address", e.Host, e.Addr, e.Reason)
 }
+
+// Unwrap exposes ErrBlocked so callers can recognize network-policy refusals.
 func (e *blockedError) Unwrap() error { return ErrBlocked }
 
 var (
@@ -254,6 +258,8 @@ type guard struct {
 	dial   func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
+// newGuard initializes DNS resolution and TCP dialing with fixed timeouts and the requested
+// private-network policy.
 func newGuard(allowPrivate bool) *guard {
 	d := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
 	return &guard{
@@ -447,12 +453,15 @@ func sameOriginRedirects(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+// sameOrigin compares URL schemes case-insensitively and compares normalized hosts and effective
+// ports.
 func sameOrigin(a, b *url.URL) bool {
 	return strings.EqualFold(a.Scheme, b.Scheme) &&
 		normalizeHost(a.Hostname()) == normalizeHost(b.Hostname()) &&
 		effectivePort(a) == effectivePort(b)
 }
 
+// effectivePort returns an explicit URL port or defaults to 443 for HTTPS and 80 otherwise.
 func effectivePort(u *url.URL) string {
 	if p := u.Port(); p != "" {
 		return p

@@ -40,6 +40,8 @@ type row struct {
 	w int
 }
 
+// add appends a nonempty styled span and updates terminal-cell width, returning the row for
+// chaining.
 func (r *row) add(st cell.Style, s string) *row {
 	if s == "" {
 		return r
@@ -49,6 +51,7 @@ func (r *row) add(st cell.Style, s string) *row {
 	return r
 }
 
+// addLine appends all spans from a line while updating row width.
 func (r *row) addLine(l cell.Line) *row {
 	for _, sp := range l {
 		r.add(sp.Style, sp.Text)
@@ -56,6 +59,7 @@ func (r *row) addLine(l cell.Line) *row {
 	return r
 }
 
+// space appends positive amounts of unstyled padding and ignores nonpositive counts.
 func (r *row) space(n int) *row {
 	if n > 0 {
 		r.add(cell.Style{}, strings.Repeat(" ", n))
@@ -63,6 +67,7 @@ func (r *row) space(n int) *row {
 	return r
 }
 
+// line returns the row's accumulated styled cells without copying their storage.
 func (r *row) line() cell.Line { return r.l }
 
 // fit cuts a line to w cells, with an ellipsis when something was cut.
@@ -99,6 +104,7 @@ func fit(l cell.Line, w int) cell.Line {
 	return append(out, cell.Span{Text: "…", Style: lastStyle(out)})
 }
 
+// lastStyle returns the final span's style or an empty style for an empty line.
 func lastStyle(l cell.Line) cell.Style {
 	if len(l) == 0 {
 		return cell.Style{}

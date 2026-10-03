@@ -72,8 +72,11 @@ type Guard interface {
 // NoGuard permits everything.
 type NoGuard struct{}
 
+// BeforeWrite allows all writes when no write guard is installed.
 func (NoGuard) BeforeWrite(string, string) error { return nil }
-func (NoGuard) AfterWrite(string, string)        {}
+
+// AfterWrite discards write notifications when no write guard is installed.
+func (NoGuard) AfterWrite(string, string) {}
 
 // Snapshotter records a file's prior state before it is modified so edits can
 // be rewound (checkpoints).

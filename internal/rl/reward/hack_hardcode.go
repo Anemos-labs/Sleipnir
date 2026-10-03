@@ -196,6 +196,7 @@ func mergeConcats(lits []literal, src string) []literal {
 	return out
 }
 
+// concatGap accepts whitespace and at most one plus sign between adjacent string literals.
 func concatGap(gap string) bool {
 	plus := 0
 	for i := 0; i < len(gap); i++ {
@@ -261,8 +262,11 @@ func decodeEscapes(s string) string {
 	return b.String()
 }
 
+// normLiteral folds line formatting and lowercases a literal for hardcoding comparisons.
 func normLiteral(s string) string { return strings.ToLower(foldLine(s)) }
 
+// usableLiteral excludes common literals, then accepts numbers or strings meeting the rune-length
+// threshold.
 func usableLiteral(l literal, minLen int) bool {
 	if commonLiterals[l.norm] {
 		return false

@@ -167,6 +167,7 @@ func (s *Server) NotifyToolsChanged() { s.broadcast("notifications/tools/list_ch
 // NotifyPromptsChanged sends notifications/prompts/list_changed.
 func (s *Server) NotifyPromptsChanged() { s.broadcast("notifications/prompts/list_changed") }
 
+// broadcast snapshots test sessions under lock and sends a notification to each outside the lock.
 func (s *Server) broadcast(method string) {
 	s.mu.Lock()
 	ss := make([]*session, 0, len(s.sessions))
@@ -216,6 +217,8 @@ func (s *Server) Sessions() int {
 	return len(s.sessions)
 }
 
+// capabilities returns an explicit test capability map or default discovery and logging
+// capabilities.
 func (s *Server) capabilities() map[string]any {
 	if s.Capabilities != nil {
 		return s.Capabilities
@@ -286,6 +289,7 @@ type session struct {
 	init     bool
 }
 
+// newSession initializes test RPC bookkeeping and registers the session under the server lock.
 func (s *Server) newSession(id string) *session {
 	ss := &session{s: s, id: id, waiting: map[string]chan json.RawMessage{}, inflight: map[string]context.CancelFunc{}, crashFn: func() {}}
 	s.mu.Lock()
@@ -294,6 +298,7 @@ func (s *Server) newSession(id string) *session {
 	return ss
 }
 
+// close unregisters a test session and cancels all of its in-flight requests.
 func (ss *session) close() {
 	ss.s.mu.Lock()
 	delete(ss.s.sessions, ss)
@@ -305,6 +310,7 @@ func (ss *session) close() {
 	ss.mu.Unlock()
 }
 
+// crash invokes the configured failure injection for this mock server session.
 func (ss *session) crash() { ss.crashFn() }
 
 // maxBacklog bounds what a session keeps for a channel that is not open yet.
@@ -380,6 +386,7 @@ type rpcIn struct {
 	Error  json.RawMessage `json:"error"`
 }
 
+// idKey removes edge quotes, then surrounding whitespace, from mock request identifiers.
 func idKey(raw json.RawMessage) string { return strings.TrimSpace(strings.Trim(string(raw), `"`)) }
 
 // process handles one incoming message. A request is answered on out; when sync
@@ -439,6 +446,7 @@ func (ss *session) notification(m rpcIn) {
 	}
 }
 
+// errorResponse encodes a JSON-RPC error, using null when no request ID is supplied.
 func errorResponse(id json.RawMessage, code int, msg string) []byte {
 	if len(id) == 0 {
 		id = json.RawMessage("null")
@@ -447,6 +455,7 @@ func errorResponse(id json.RawMessage, code int, msg string) []byte {
 	return b
 }
 
+// resultResponse encodes a JSON-RPC success response; fixture results must be JSON-marshalable.
 func resultResponse(id json.RawMessage, result any) []byte {
 	b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
 	return b
@@ -653,6 +662,8 @@ func (s *Server) ToolNames() []string {
 	return append([]string(nil), s.order...)
 }
 
+// sortedEnv returns a sorted copy of the current process environment for deterministic fixture
+// output.
 func sortedEnv() []string {
 	env := os.Environ()
 	sort.Strings(env)

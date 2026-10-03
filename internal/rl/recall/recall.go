@@ -240,6 +240,7 @@ func task(f fact, fillers []string, commit, repoPath string, n int, o Options) r
 	}
 }
 
+// langOf recognizes lowercase .go and .py extensions for recall question generation.
 func langOf(p string) string {
 	switch path.Ext(p) {
 	case ".go":
@@ -264,10 +265,13 @@ func skipPath(p string) bool {
 		strings.HasSuffix(base, ".pb.go") || strings.Contains(base, "generated") || base == "__init__.py" || base == "conftest.py"
 }
 
+// validText accepts valid UTF-8 with no NUL bytes for recall indexing.
 func validText(b []byte) bool {
 	return !bytes.Contains(b, []byte{0}) && utf8.Valid(b)
 }
 
+// unquote removes outer bytes from recognized quoted literals without unescaping them; numeric
+// spelling is preserved.
 func unquote(lit string) string {
 	if len(lit) >= 2 && (lit[0] == '"' || lit[0] == '\'') {
 		return lit[1 : len(lit)-1]
@@ -275,9 +279,11 @@ func unquote(lit string) string {
 	return lit // numbers are asked as written, hexadecimal included
 }
 
+// keyed hashes the decimal seed and NUL-separated parts to produce a deterministic ordering key.
 func keyed(seed int64, parts ...string) string {
 	h := core.HashString(strconv.FormatInt(seed, 10) + "\x00" + strings.Join(parts, "\x00"))
 	return string(h)
 }
 
+// shortHash returns an abbreviated content hash of the supplied text.
 func shortHash(s string) string { return core.HashString(s).Short() }

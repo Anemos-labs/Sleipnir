@@ -57,6 +57,8 @@ func firstMainAfter(a *agentInfo, seq uint64) *stepInfo {
 	return a.main[i]
 }
 
+// spawnEdges links each child spawn to the parent's preceding main request, falling back to the
+// parent agent when no request precedes it.
 func (b *builder) spawnEdges() {
 	for _, sp := range b.v.spawns {
 		if sp.parent == "" {
@@ -121,6 +123,8 @@ func (b *builder) compactEdges() {
 	}
 }
 
+// promoteEdges links note-producing requests between shared-epoch boundaries to the new epoch,
+// emitting one edge per request per epoch.
 func (b *builder) promoteEdges() {
 	prev := uint64(0)
 	n := 0

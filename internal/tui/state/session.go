@@ -23,6 +23,7 @@ func (s *State) onLogOpen(e events.Event) {
 	}
 }
 
+// onLogCorrupt adds a bounded corrupt-line count from a valid event payload.
 func (s *State) onLogCorrupt(e events.Event) {
 	var p struct {
 		CorruptLines int `json:"corrupt_lines"`
@@ -133,6 +134,7 @@ func (s *State) onUserInput(e events.Event, t time.Time) {
 	s.line(e.Seq, t, e.Agent, FeedInput, GlyphInput, text, "")
 }
 
+// onUserSteer decodes and sanitizes steering text before adding an input entry to the event feed.
 func (s *State) onUserSteer(e events.Event, t time.Time) {
 	var p struct {
 		Text string `json:"text"`
@@ -169,6 +171,7 @@ type leaseState struct {
 	overlaps  int
 }
 
+// newLeaseState initializes the index of currently held leases.
 func newLeaseState() leaseState { return leaseState{held: map[string]Lease{}} }
 
 // relPath shows a path relative to the project root when it lies under it.
@@ -182,6 +185,7 @@ func relPath(root, p string) string {
 	return p
 }
 
+// root prefers the session repository root and falls back to its working directory.
 func (s *State) root() string { return firstOf(s.sess.Root, s.sess.Cwd) }
 
 func (s *State) onLease(e events.Event, t time.Time) {
@@ -255,6 +259,7 @@ func (a *agentState) addLease(path string, s *State) {
 	a.leaseOrder = append(a.leaseOrder, path)
 }
 
+// dropLease removes the first matching path from an agent's lease display order.
 func (a *agentState) dropLease(path string) {
 	for i, p := range a.leaseOrder {
 		if p == path {
@@ -298,6 +303,7 @@ type govState struct {
 	}
 }
 
+// slot60 maps any signed second count into a nonnegative slot in a 60-entry ring.
 func slot60(sec int64) int { return int(((sec % 60) + 60) % 60) }
 
 // noteRequest counts a model request in its second, for the requests-per-minute figure.

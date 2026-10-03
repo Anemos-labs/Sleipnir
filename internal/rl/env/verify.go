@@ -179,6 +179,7 @@ func VerifierVersion(t rl.Task) string {
 	return "v1-" + hex.EncodeToString(h.Sum(nil))[:12]
 }
 
+// needsCommand reports whether the verifier has a nonblank command.
 func needsCommand(t rl.Task) bool { return strings.TrimSpace(t.Verifier.Cmd) != "" }
 
 // Verify judges the agent's work in ws. See the section comment above.
@@ -251,6 +252,8 @@ func VerifyBaseline(ctx context.Context, task rl.Task, opts VerifyOptions) (Resu
 	return res, nil
 }
 
+// brokenExit identifies missing runs, signal termination, and shell execution failures 126 or 127
+// in the last verification run.
 func brokenExit(r Result) bool {
 	if len(r.Runs) == 0 {
 		return true
@@ -259,6 +262,8 @@ func brokenExit(r Result) bool {
 	return last.Signal != 0 || last.ExitCode == 126 || last.ExitCode == 127
 }
 
+// describeBroken prefers rejection, timeout, or signal diagnostics before falling back to an
+// executable-failure hint.
 func describeBroken(r Result) string {
 	switch {
 	case r.Rejected != "":
@@ -304,6 +309,8 @@ func CheckTask(ctx context.Context, task rl.Task, gold []byte, opts VerifyOption
 	return rep, nil
 }
 
+// goldFailure prefers a rejection reason and otherwise formats the exit status with the last 800
+// log bytes.
 func goldFailure(r Result) string {
 	if r.Rejected != "" {
 		return r.Rejected
@@ -328,6 +335,7 @@ type verifyInput struct {
 	opts     VerifyOptions
 }
 
+// modeName identifies expectation-only tasks or the parsed command verifier mode.
 func modeName(t rl.Task) string {
 	if !needsCommand(t) {
 		return "expect"
@@ -561,6 +569,8 @@ func lastLineScore(stdout string) (float64, bool) {
 	return math.Max(0, math.Min(1, s)), true
 }
 
+// judgeExpect scores the fraction of required substrings present, optionally ignoring case, and
+// passes only when all match; Contains must be nonempty.
 func judgeExpect(e Expect, answer string) (score float64, pass bool) {
 	hay := answer
 	if e.Fold {
@@ -700,6 +710,8 @@ func (m *Workspaces) writeHidden(dir string, hidden map[string]string, blobs eve
 	return names, nil
 }
 
+// logHeader formats verifier identity, outcome, protected-path changes, skipped files, and
+// warnings before detailed run output.
 func (m *Workspaces) logHeader(task rl.Task, r Result) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "task: %s\nverifier: %s (%s)\ncommand: %s\n", task.ID, r.Version, r.Mode, task.Verifier.Cmd)
@@ -720,6 +732,7 @@ func (m *Workspaces) logHeader(task rl.Task, r Result) string {
 	return b.String()
 }
 
+// finishRejected formats the rejection log before applying the common result finalization path.
 func finishRejected(res Result, opts VerifyOptions) (Result, error) {
 	res.Log = fmt.Sprintf("rejected: %s\n", res.Rejected)
 	return finishResult(res, opts)

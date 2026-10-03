@@ -7,4 +7,5 @@ import (
 	"os"
 )
 
+// copyOwner leaves ownership unchanged on platforms without the ownership-copy implementation.
 func copyOwner(*os.File, iofs.FileInfo) {}

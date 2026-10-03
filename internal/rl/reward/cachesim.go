@@ -65,6 +65,7 @@ type node struct {
 	long bool
 }
 
+// chainKey hashes a fixed-width parent key followed by a segment ID into sixteen bytes.
 func chainKey(parent [16]byte, id string) (k [16]byte) {
 	h := sha256.New()
 	h.Write(parent[:])
@@ -369,6 +370,8 @@ func (c *Cache) roundHit(hit int) int {
 	return hit
 }
 
+// ttfb estimates first-byte latency from billed tokens and caps it at a positive recorded response
+// latency.
 func (c *Cache) ttfb(billed int, inf reqInfo) time.Duration {
 	base, per := defaultTTFBBase, defaultTTFBPerKTok
 	if c.o.TTFBBaseMs > 0 {

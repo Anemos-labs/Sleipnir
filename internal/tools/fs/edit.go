@@ -181,6 +181,8 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	return out, nil
 }
 
+// createViaEdit commits a new file and reports its line and byte counts, propagating commit
+// failures as tool results.
 func (k *call) createViaEdit(canon, disp, content string) *tools.Result {
 	if r := k.commit(canon, disp, []byte(content), nil); r != nil {
 		return r
@@ -317,6 +319,8 @@ func localEOL(s string, from, to int, dominant string) string {
 	return dominant
 }
 
+// eolAt identifies CRLF when the indexed newline follows a carriage return and otherwise returns
+// LF.
 func eolAt(s string, nl int) string {
 	if nl > 0 && s[nl-1] == '\r' {
 		return "\r\n"
@@ -361,6 +365,8 @@ func findAll(s, sub string, limit int) []int {
 	return out
 }
 
+// lineNumbers maps sorted valid byte offsets to one-based line numbers by counting intervening
+// newlines.
 func lineNumbers(s string, starts []int) []int {
 	out := make([]int, len(starts))
 	line, pos := 1, 0
@@ -496,6 +502,7 @@ func divergence(file, old []string) (start, ran int, wrote, has string, ok bool)
 	return start + 1, best, old[best], has, true
 }
 
+// squash normalizes all whitespace runs to single spaces for edit comparisons.
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // whitespaceTwin looks for a run of file lines equal to old's lines once all
@@ -558,7 +565,10 @@ func describeWhitespace(fileLine, oldLine string, lineNo int) string {
 	return fmt.Sprintf("line %d differs in the spacing inside the line.", lineNo)
 }
 
-func leadingWS(s string) string  { return s[:len(s)-len(strings.TrimLeft(s, " \t"))] }
+// leadingWS returns the initial run of spaces and tabs without copying the string.
+func leadingWS(s string) string { return s[:len(s)-len(strings.TrimLeft(s, " \t"))] }
+
+// trailingWS returns the final run of spaces and tabs without copying the string.
 func trailingWS(s string) string { return s[len(strings.TrimRight(s, " \t")):] }
 
 func describeWS(ws string) string {

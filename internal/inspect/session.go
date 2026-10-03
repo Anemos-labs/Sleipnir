@@ -38,6 +38,8 @@ type Options struct {
 	Name string
 }
 
+// fill supplies default inspection retention limits, prices, clock, and live-session window for
+// unset options.
 func (o *Options) fill() {
 	if o.MaxRequests <= 0 {
 		o.MaxRequests = 60000
@@ -269,6 +271,8 @@ type lineReader struct {
 	over bool
 }
 
+// newLineReader wraps an existing buffered reader with its initial byte offset and line-size
+// limit.
 func newLineReader(r *bufio.Reader, off int64, max int) *lineReader {
 	return &lineReader{r: r, off: off, max: max}
 }
@@ -451,6 +455,8 @@ func (s *Session) Log() LogMeta {
 	return s.logMetaLocked()
 }
 
+// logMetaLocked copies log counters and per-event-type totals into a view; the caller must hold
+// the session lock.
 func (s *Session) logMetaLocked() LogMeta {
 	types := make(map[string]int64, len(s.types))
 	for k, v := range s.types {
@@ -470,6 +476,8 @@ func (s *Session) ID() string {
 	return s.idLocked()
 }
 
+// idLocked selects the explicit session ID, event metadata ID, or directory basename; the caller
+// must hold the session lock.
 func (s *Session) idLocked() string {
 	if s.opts.ID != "" {
 		return s.opts.ID
@@ -480,6 +488,8 @@ func (s *Session) idLocked() string {
 	return filepath.Base(s.dir)
 }
 
+// nameLocked selects the explicit display name, directory basename, or resolved ID; the caller
+// must hold the session lock.
 func (s *Session) nameLocked() string {
 	if s.opts.Name != "" {
 		return s.opts.Name

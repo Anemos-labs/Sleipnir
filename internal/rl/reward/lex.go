@@ -31,6 +31,8 @@ type lexSyntax struct {
 	rustQuote   bool // ' may be a lifetime; only 'x' and '\x..' are literals
 }
 
+// syntaxFor selects comment and string delimiters for the heuristic lexer, defaulting to
+// JavaScript-like syntax.
 func syntaxFor(lang string) lexSyntax {
 	switch lang {
 	case "py":

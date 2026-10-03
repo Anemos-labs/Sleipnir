@@ -173,10 +173,13 @@ func Static(f Frame, th Theme) string {
 	return b.String()
 }
 
+// header writes the opening SVG element with explicit dimensions, viewBox, and image role.
 func header(b *strings.Builder, th Theme, w, h, top float64) {
 	fmt.Fprintf(b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %s %s" width="%s" height="%s" role="img">`+"\n", num(w), num(h), num(w), num(h))
 }
 
+// chrome writes the SVG background and optional terminal title bar with escaped title and font
+// text.
 func chrome(b *strings.Builder, th Theme, w, h, top float64) {
 	fmt.Fprintf(b, `<rect width="%s" height="%s" rx="10" fill="%s"/>`+"\n", num(w), num(h), th.Background)
 	if th.Title != "" {
@@ -344,6 +347,7 @@ func classes(s cell.Style) string {
 	return ` class="` + strings.Join(c, " ") + `"`
 }
 
+// opacity returns the SVG opacity attribute used for dim text and otherwise no attribute.
 func opacity(s cell.Style) string {
 	if s.Has(cell.Dim) {
 		return ` opacity="0.62"`
@@ -351,6 +355,8 @@ func opacity(s cell.Style) string {
 	return ""
 }
 
+// rowVisible recognizes rows with text or painted/decorated cells, including visually significant
+// blank cells.
 func rowVisible(row []Cell) bool {
 	for _, c := range row {
 		if (c.Text != "" && c.Text != " ") || c.Style.BG.Kind != cell.KindDefault || c.Style.Has(cell.Reverse) || c.Style.Has(cell.Underline) || c.Style.Has(cell.Strike) {
@@ -365,6 +371,8 @@ func sameInk(a, b cell.Style) bool {
 	return a.FG == b.FG && a.BG == b.BG && a.Attr&(cell.Dim|cell.Reverse) == b.Attr&(cell.Dim|cell.Reverse)
 }
 
+// cellFG resolves a cell's theme foreground, substituting its background when reverse video is
+// active.
 func cellFG(th Theme, c Cell) string {
 	fg, bg := th.hex(c.Style.FG, th.Foreground), th.hex(c.Style.BG, th.Background)
 	if c.Style.Has(cell.Reverse) {
@@ -384,6 +392,8 @@ func cellBG(th Theme, c Cell) (string, bool) {
 	return th.hex(c.Style.BG, th.Background), true
 }
 
+// drawCursor emits a translucent cursor rectangle only when enabled and within the frame's row
+// range.
 func drawCursor(b *strings.Builder, th Theme, f Frame) {
 	if !f.CursorOn || f.CursorY < 0 || f.CursorY >= len(f.Rows) {
 		return

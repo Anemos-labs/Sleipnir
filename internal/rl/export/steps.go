@@ -129,6 +129,7 @@ type stepMeta struct {
 	License        string          `json:"license,omitempty"`
 }
 
+// metaOf collects step and episode provenance, cache, usage, and training metadata for export.
 func (x *exporter) metaOf(c stepCtx) stepMeta {
 	ep := c.we.ep
 	return stepMeta{
@@ -164,6 +165,8 @@ type stepRecord struct {
 // recordID names a sample: "<episode id>#<step id>".
 func recordID(ep *rl.Episode, st *rl.Step) string { return ep.ID + "#" + st.ID }
 
+// advantageOf omits an unconfigured zero advantage and otherwise returns a pointer to a value
+// copy.
 func (x *exporter) advantageOf(st *rl.Step) *float64 {
 	if x.o.Advantage == nil && st.Advantage == 0 {
 		return nil

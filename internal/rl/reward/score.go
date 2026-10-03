@@ -68,6 +68,7 @@ type scorer struct {
 	hack  bool
 }
 
+// note formats and appends a score diagnostic in evaluation order.
 func (s *scorer) note(format string, args ...any) {
 	s.notes = append(s.notes, fmt.Sprintf(format, args...))
 }
@@ -225,6 +226,8 @@ func (s *scorer) run() error {
 	return nil
 }
 
+// finalNotes limits diagnostics to the configured cap, reserving the last entry for the omitted
+// count when truncation is needed.
 func (s *scorer) finalNotes() []string {
 	limit := int(s.cfg.cap(CapMaxNotes))
 	if limit <= 0 {
@@ -238,6 +241,7 @@ func (s *scorer) finalNotes() []string {
 	return append(kept, fmt.Sprintf("(+%d more notes)", len(notes)-limit+1))
 }
 
+// copyComps allocates an independent copy of score components.
 func copyComps(m map[string]float64) map[string]float64 {
 	out := make(map[string]float64, len(m))
 	for k, v := range m {
@@ -246,6 +250,7 @@ func copyComps(m map[string]float64) map[string]float64 {
 	return out
 }
 
+// mean computes an arithmetic mean and returns zero for empty input.
 func mean(v []float64) float64 {
 	if len(v) == 0 {
 		return 0
@@ -280,9 +285,11 @@ func verdictScore(v *rl.Verdict) (float64, string) {
 	return sc, note
 }
 
+// claimedDone recognizes an explicit completion claim or, when absent, completion signals; a
+// budget-exceeded flag invalidates an explicit done claim.
 func claimedDone(ep *rl.Episode) bool {
-	// A run the budget ended did not say it was done. The harness used to default the claim to "done" for a run the wall clock
-	// cut off, so episodes written before it stopped carry both; the flag is what the runner saw, the claim was a default.
+	// Stored episodes can contain both an explicit done claim and budget
+	// exhaustion. The runner's budget flag takes precedence over that claim.
 	if ep.Outcome.Claimed == "done" && ep.Has(rl.FlagBudgetExceeded) {
 		return false
 	}
@@ -390,6 +397,8 @@ func (s *scorer) protocolEvents() float64 {
 
 var testCmdRe = regexp.MustCompile(`(?i)\b(go test|go vet|npm (run )?test|npx (jest|vitest)|pnpm test|yarn test|pytest|python -m pytest|cargo test|make (test|check)|mvn test|gradle test|dotnet test|ctest|rspec|phpunit)\b`)
 
+// squash trims leading and trailing whitespace and joins whitespace-separated fields with single
+// spaces.
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // workerTerms adds evidence, reread and scope to a worker's components.
@@ -499,6 +508,8 @@ func (s *scorer) mailComponents() map[string]float64 {
 	return out
 }
 
+// outcomeScore suppresses verifier reward when hacking is detected and otherwise uses the verifier
+// score.
 func (s *scorer) outcomeScore() float64 {
 	if s.hack {
 		return 0

@@ -64,8 +64,11 @@ type table struct {
 	entries map[core.Hash]segmentEntry
 }
 
+// newTable creates an empty content-hash index for canonical segment entries.
 func newTable() *table { return &table{entries: map[core.Hash]segmentEntry{}} }
 
+// add deduplicates segment bodies by content hash, copying bytes and preserving the kind from the
+// first insertion.
 func (t *table) add(kind string, body []byte) core.Hash {
 	h := core.HashBytes(body)
 	if _, ok := t.entries[h]; !ok {
@@ -74,6 +77,8 @@ func (t *table) add(kind string, body []byte) core.Hash {
 	return h
 }
 
+// write emits canonical segment entries in sorted content-hash order and stops on the first write
+// failure.
 func (t *table) write(w io.Writer) error {
 	hs := make([]string, 0, len(t.entries))
 	for h := range t.entries {
@@ -88,6 +93,8 @@ func (t *table) write(w io.Writer) error {
 	return nil
 }
 
+// writeLine encodes one JSON line without HTML escaping and writes it only after encoding
+// succeeds.
 func writeLine(w io.Writer, v any) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

@@ -44,8 +44,13 @@ var errConfig = errors.New("invalid configuration")
 
 type configError struct{ err error }
 
-func (e *configError) Error() string        { return e.err.Error() }
-func (e *configError) Unwrap() error        { return e.err }
+// Error exposes the underlying MCP configuration diagnostic.
+func (e *configError) Error() string { return e.err.Error() }
+
+// Unwrap preserves the underlying configuration error for errors.Is and errors.As.
+func (e *configError) Unwrap() error { return e.err }
+
+// Is classifies this error as errConfig for sentinel matching.
 func (e *configError) Is(target error) bool { return target == errConfig }
 
 // redactedError carries an error whose text has been scrubbed of secrets while
@@ -55,9 +60,14 @@ type redactedError struct {
 	err error
 }
 
+// Error returns the redacted diagnostic rather than the underlying error text.
 func (e *redactedError) Error() string { return e.msg }
+
+// Unwrap preserves the original error for programmatic matching while Error remains redacted.
 func (e *redactedError) Unwrap() error { return e.err }
 
+// redactErr redacts an error's display text only when needed and preserves its original error
+// chain.
 func redactErr(r *redactor, err error) error {
 	if err == nil || r == nil {
 		return err

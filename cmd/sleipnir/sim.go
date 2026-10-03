@@ -10,6 +10,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/kv/sim"
 )
 
+// init registers the cache-policy simulator with the CLI dispatcher.
 func init() { extraCommands["sim"] = cmdSim }
 
 // cmdSim runs the cache-policy simulator: what layering buys, and where it stops

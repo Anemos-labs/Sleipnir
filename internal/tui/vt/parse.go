@@ -213,6 +213,7 @@ func (t *Term) escInter(b byte) {
 	}
 }
 
+// startCSI resets control-sequence parameter state and enters CSI parsing.
 func (t *Term) startCSI() {
 	p := &t.p
 	p.state = sCSI
@@ -222,6 +223,8 @@ func (t *Term) startCSI() {
 	p.inter = p.inter[:0]
 }
 
+// pushParam retains a parameter within the count limit, represents omission as -1, and resets the
+// current parameter accumulator.
 func (p *parser) pushParam() {
 	if len(p.params) < maxParams {
 		v := -1
@@ -296,6 +299,7 @@ func (t *Term) csiIgnore(b byte) {
 	}
 }
 
+// startString initializes an OSC or other terminal string sequence and clears its payload state.
 func (t *Term) startString(osc bool) {
 	p := &t.p
 	p.state = sStr

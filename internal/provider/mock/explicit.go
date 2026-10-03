@@ -51,6 +51,7 @@ const (
 	TierMessages
 )
 
+// String names explicit cache tiers and returns a question mark for unknown values.
 func (t Tier) String() string {
 	switch t {
 	case TierTools:
@@ -69,6 +70,7 @@ type TierTokens struct{ Tools, System, Messages int }
 // Total is the sum over all tiers.
 func (t TierTokens) Total() int { return t.Tools + t.System + t.Messages }
 
+// add accumulates tokens in tools or system tiers, assigning other tiers to messages.
 func (t *TierTokens) add(tier Tier, n int) {
 	switch tier {
 	case TierTools:
@@ -108,6 +110,8 @@ type ExplicitConfig struct {
 	ParamsAheadOfTools func(model string) bool
 }
 
+// defaults fills missing explicit-cache clock, lookback, breakpoint, TTL, and minimum-prefix
+// settings.
 func (c *ExplicitConfig) defaults() {
 	if c.Now == nil {
 		c.Now = time.Now
@@ -216,6 +220,7 @@ type explicitWrite struct {
 // ExplicitError is a request the API rejects with HTTP 400.
 type ExplicitError struct{ Msg string }
 
+// Error returns the explicit cache failure message.
 func (e *ExplicitError) Error() string { return e.Msg }
 
 // EntryInfo describes one resident entry (for tests).
@@ -257,6 +262,7 @@ func NewExplicitEngine(cfg ExplicitConfig) *ExplicitEngine {
 	return &ExplicitEngine{cfg: cfg, entries: map[string]*explicitEntry{}}
 }
 
+// minPrefix uses a positive model-specific cache minimum or falls back to the configured default.
 func (e *ExplicitEngine) minPrefix(model string) int {
 	if e.cfg.MinPrefix != nil {
 		if n := e.cfg.MinPrefix(model); n > 0 {
@@ -266,6 +272,8 @@ func (e *ExplicitEngine) minPrefix(model string) int {
 	return e.cfg.DefaultMinPrefix
 }
 
+// chainHash extends a prefix key with NUL-separated parts and returns twelve SHA-256 bytes as
+// hexadecimal.
 func chainHash(prev string, parts ...string) string {
 	h := sha256.New()
 	h.Write([]byte(prev))
@@ -420,6 +428,7 @@ func (e *ExplicitEngine) Lookup(req ExplicitRequest, start time.Time) (*Explicit
 	return pl, nil
 }
 
+// overlap returns the nonnegative intersection length of two half-open token intervals.
 func overlap(lo, hi, a, b int) int {
 	s, t := max(lo, a), min(hi, b)
 	if t > s {
@@ -428,6 +437,7 @@ func overlap(lo, hi, a, b int) int {
 	return 0
 }
 
+// later returns the later timestamp, retaining a when timestamps are equal.
 func later(a, b time.Time) time.Time {
 	if b.After(a) {
 		return b
@@ -512,6 +522,8 @@ func (e *ExplicitEngine) Publish(pl *ExplicitPlan) {
 	e.evictLocked()
 }
 
+// removeLocked removes a cache entry, subtracts its owned tokens, and adjusts the surviving
+// parent's child count; the caller must hold the engine lock.
 func (e *ExplicitEngine) removeLocked(en *explicitEntry) {
 	delete(e.entries, en.key)
 	e.tokens -= en.own

@@ -36,6 +36,8 @@ type Bill struct {
 	ITE         float64 `json:"ite"`
 }
 
+// add accumulates another bill's request count, token categories, and equivalent-token charges
+// into b.
 func (b *Bill) add(o Bill) {
 	b.Requests += o.Requests
 	b.Uncached += o.Uncached
@@ -214,6 +216,7 @@ func RepriceWith(ep *rl.Episode, target cost.Model, o RepriceOptions) (Repriced,
 	return out, nil
 }
 
+// fillITE recomputes weighted input-token-equivalent costs and their total from raw token counts.
 func fillITE(b *Bill, w cost.Weights) {
 	b.UncachedITE = float64(b.Uncached)
 	b.ReadITE = w.Read * float64(b.Read)
@@ -222,12 +225,14 @@ func fillITE(b *Bill, w cost.Weights) {
 	b.ITE = b.UncachedITE + b.ReadITE + b.WriteITE + b.OutputITE
 }
 
+// addTo accumulates a bill into a map entry, including keys that have no existing bill.
 func addTo(m map[string]Bill, key string, b Bill) {
 	cur := m[key]
 	cur.add(b)
 	m[key] = cur
 }
 
+// kindName treats an omitted step kind as the legacy main kind.
 func kindName(s *rl.Step) string {
 	if s.Kind == "" {
 		return rl.KindMain
@@ -250,6 +255,7 @@ type stepInfo struct {
 	gen bool
 }
 
+// promptTokens prefers recorded prompt size, then positive total input usage, and otherwise zero.
 func promptTokens(st *rl.Step) int {
 	if st.Prompt.Tokens > 0 {
 		return st.Prompt.Tokens
@@ -282,7 +288,10 @@ func outputTokens(st *rl.Step) int {
 	return n
 }
 
+// isFork identifies compactor and mailman steps for fork-specific repricing.
 func isFork(st *rl.Step) bool { return st.Kind == rl.KindCompactor || st.Kind == rl.KindMailman }
+
+// isMain treats an omitted step kind as the legacy main-agent kind.
 func isMain(st *rl.Step) bool { return st.Kind == rl.KindMain || st.Kind == "" }
 
 // collectSteps flattens the episode into stepInfo in agent/step order and
@@ -556,6 +565,7 @@ type generation struct {
 	prompt    int
 }
 
+// last returns the final generation node's key or a zero key for an empty generation.
 func (g *generation) last() [16]byte {
 	if n := len(g.nodes); n > 0 {
 		return g.nodes[n-1].key
@@ -653,6 +663,7 @@ func planRequests(ep *rl.Episode, infos []stepInfo, shared map[string]int, targe
 	return reqs
 }
 
+// routeKey uses shared-prefix identity when available and agent identity otherwise.
 func routeKey(prefix string, ai int) string {
 	if prefix != "" {
 		return "p:" + prefix
@@ -660,10 +671,13 @@ func routeKey(prefix string, ai int) string {
 	return "a:" + strconv.Itoa(ai)
 }
 
+// privateID constructs a deterministic private-segment identifier from agent, generation, and
+// segment indices.
 func privateID(ai, gen, idx int) string {
 	return "a" + strconv.Itoa(ai) + "/g" + strconv.Itoa(gen) + "/n" + strconv.Itoa(idx)
 }
 
+// lastCum returns the last node's cumulative token count or zero for an empty chain.
 func lastCum(nodes []node) int {
 	if n := len(nodes); n > 0 {
 		return nodes[n-1].cum

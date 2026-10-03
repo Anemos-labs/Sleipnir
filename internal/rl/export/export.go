@@ -171,6 +171,7 @@ type Stats struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
+// drop initializes drop statistics if needed and increments the supplied reason.
 func (s *Stats) drop(reason string) {
 	if s.Drops == nil {
 		s.Drops = map[string]int{}
@@ -178,12 +179,14 @@ func (s *Stats) drop(reason string) {
 	s.Drops[reason]++
 }
 
+// warn retains at most the first 20 export warnings.
 func (s *Stats) warn(msg string) {
 	if len(s.Warnings) < 20 {
 		s.Warnings = append(s.Warnings, msg)
 	}
 }
 
+// bump initializes a counter map if needed and adds n to the selected key.
 func bump(m *map[string]int, k string, n int) {
 	if *m == nil {
 		*m = map[string]int{}
@@ -285,6 +288,8 @@ func newExporter(w io.Writer, o Options) (*exporter, error) {
 	return x, nil
 }
 
+// finishStats counts contributing episodes and accumulates only redactions performed during this
+// export.
 func (x *exporter) finishStats() {
 	for _, we := range x.work {
 		if we.contributed {
@@ -453,6 +458,7 @@ func cloneEpisode(ep *rl.Episode) *rl.Episode {
 	return &c
 }
 
+// cloneReward copies reward component maps and notes so export edits do not mutate their source.
 func cloneReward(r rl.Reward) rl.Reward {
 	if r.Components != nil {
 		m := make(map[string]float64, len(r.Components))
@@ -489,6 +495,7 @@ func (x *exporter) dropFlatGroups(work []*workEpisode) []*workEpisode {
 	return out
 }
 
+// addDrop adds a reason count and returns the map, allocating it when nil.
 func addDrop(m map[string]int, k string, n int) map[string]int {
 	if m == nil {
 		m = map[string]int{}

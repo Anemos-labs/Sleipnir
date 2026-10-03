@@ -417,6 +417,7 @@ func marshalSorted(v any) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
+// sortedKeys returns string map keys in lexical order for deterministic configuration processing.
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

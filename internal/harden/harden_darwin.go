@@ -4,6 +4,8 @@ package harden
 
 import "golang.org/x/sys/unix"
 
+// platformHarden denies debugger attachment on macOS unless opted out and reports that environment
+// memory remains readable.
 func platformHarden(optOut bool) Status {
 	var st Status
 	// ptrace(PT_DENY_ATTACH) refuses debugger attach. It exits the process if a

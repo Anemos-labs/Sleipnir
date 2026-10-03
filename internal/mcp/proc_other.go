@@ -13,16 +13,21 @@ import (
 // This is deliberately minimal: taskkill /T walks the process tree, which is
 // the closest equivalent, and anything else degrades to killing the leader.
 
+// configureProc leaves process attributes unchanged on this platform.
 func configureProc(cmd *exec.Cmd) {}
 
+// termGroup requests non-forced process-tree termination through taskkill.
 func termGroup(pid int) { taskkill(pid, false) }
 
+// killGroup requests forced process-tree termination through taskkill.
 func killGroup(pid int) { taskkill(pid, true) }
 
 // groupAlive cannot be answered cheaply here; reporting false makes shutdown
 // rely on the leader alone.
 func groupAlive(pid int) bool { return false }
 
+// taskkill terminates a Windows process tree with optional force and falls back to killing one
+// process elsewhere, ignoring errors.
 func taskkill(pid int, force bool) {
 	if runtime.GOOS != "windows" {
 		if p, err := os.FindProcess(pid); err == nil {

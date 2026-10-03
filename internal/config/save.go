@@ -128,6 +128,7 @@ func checkWritable(path string, doc []byte, m *merger) error {
 	return nil
 }
 
+// marshalIndent encodes JSON with two-space indentation, no HTML escaping, and a final newline.
 func marshalIndent(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

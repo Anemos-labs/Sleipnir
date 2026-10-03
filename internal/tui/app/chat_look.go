@@ -68,6 +68,8 @@ type chatLook struct {
 	mono bool
 }
 
+// newChatLook derives chat styles and selects glyphs from the configured palette, theme, and
+// Unicode capability.
 func newChatLook(l Look) *chatLook {
 	k := &chatLook{Look: l, st: stylesOf(l.Palette), g: &asciiChat, mono: l.Theme.Mono}
 	if l.Unicode {

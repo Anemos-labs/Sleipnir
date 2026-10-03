@@ -135,6 +135,7 @@ type scanner struct {
 	visited int   // directory entries looked at
 }
 
+// add appends a trust fingerprint file while budget remains and otherwise marks the scan partial.
 func (s *scanner) add(f File) {
 	if s.files <= 0 {
 		s.fp.Partial = true
@@ -217,6 +218,7 @@ func (s *scanner) tree(r *os.Root, dir string, kind Kind) {
 	})
 }
 
+// sumOf returns the full hexadecimal SHA-256 digest used to identify trusted content.
 func sumOf(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -284,6 +286,7 @@ func (f *Footprint) Describe() string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// plural selects the singular form only for a count of one.
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return one
@@ -291,6 +294,7 @@ func plural(n int, one, many string) string {
 	return many
 }
 
+// size formats trust file sizes using binary multiples labeled B, KB, and MB.
 func size(n int64) string {
 	switch {
 	case n < 1<<10:

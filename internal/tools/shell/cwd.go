@@ -70,12 +70,14 @@ func baseDir(env *tools.Env) (string, error) {
 
 type missingDirError struct{ dir string }
 
+// Error identifies a configured working directory that is absent or not a directory.
 func (e *missingDirError) Error() string {
 	return "working directory " + e.dir + " does not exist or is not a directory"
 }
 
 type noCwdError struct{}
 
+// Error reports that the agent has no configured working directory.
 func (noCwdError) Error() string { return "no working directory is configured for this agent" }
 
 var errNoCwd error = noCwdError{}
@@ -134,6 +136,7 @@ func printable(p string) string {
 	}, strings.ToValidUTF8(p, "?"))
 }
 
+// isDir follows symlinks and reports whether the path names a directory.
 func isDir(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
@@ -156,6 +159,8 @@ func insideBounds(dir string, env *tools.Env) bool {
 	return false
 }
 
+// resolve makes a path absolute and resolves symlinks when possible, falling back to a cleaned
+// path.
 func resolve(p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		p = abs

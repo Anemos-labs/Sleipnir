@@ -44,6 +44,7 @@ type dpoCand struct {
 // rewardGap is the smallest reward difference that makes a pair worth training on.
 const rewardGap = 1e-9
 
+// writeDPO writes step preferences before episode preferences and stops on the first export error.
 func (x *exporter) writeDPO(work []*workEpisode) error {
 	if err := x.dpoSteps(work); err != nil {
 		return err
@@ -150,6 +151,7 @@ func pickPair(cands []dpoCand) (best, worst *dpoCand) {
 	return nil, nil
 }
 
+// shortHash returns the abbreviated content hash used in DPO output.
 func shortHash(h core.Hash) string { return h.Short() }
 
 // dpoEpisodes pairs, per task, the best and the worst episode by reward, comparing
@@ -268,6 +270,7 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 	return nil
 }
 
+// samePrompt compares tools and ordered messages using whitespace-insensitive JSON comparison.
 func samePrompt(a, b wirePrompt) bool {
 	if len(a.Messages) != len(b.Messages) || !sameJSON(a.Tools, b.Tools) {
 		return false

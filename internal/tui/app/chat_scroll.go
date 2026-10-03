@@ -175,6 +175,7 @@ func (k *chatLook) noticeLines(agent, level, msg string, width int, main bool) [
 	return out
 }
 
+// noticeAttr dims informational or unclassified notices and leaves other levels unmodified.
 func (k *chatLook) noticeAttr(level string) cell.Attr {
 	if strings.EqualFold(level, "info") || level == "" {
 		return cell.Dim

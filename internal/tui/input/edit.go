@@ -181,6 +181,8 @@ func (e *Editor) redoCmd() {
 	e.afterHistoryJump()
 }
 
+// afterHistoryJump ends undo grouping, marks the editor dirty, and closes completion after a
+// history change.
 func (e *Editor) afterHistoryJump() {
 	e.thisGrp = grpNone
 	e.dirty = true
@@ -198,8 +200,11 @@ func (e *Editor) typeRune(r rune) bool {
 	return true
 }
 
+// newline inserts a newline at the cursor as a separate undo group.
 func (e *Editor) newline() { e.replace(e.cur, e.cur, []rune{'\n'}, e.cur+1, grpNone) }
 
+// backspace deletes the preceding editor text unit with backward-delete undo grouping, doing
+// nothing at the start.
 func (e *Editor) backspace() {
 	if e.cur == 0 {
 		return
@@ -208,6 +213,8 @@ func (e *Editor) backspace() {
 	e.replace(from, e.cur, nil, from, grpBack)
 }
 
+// deleteForward deletes the next editor text unit with forward-delete undo grouping, doing nothing
+// at the end.
 func (e *Editor) deleteForward() {
 	if e.cur >= len(e.buf) {
 		return
@@ -240,6 +247,7 @@ func (e *Editor) killRange(from, to int, forward bool) {
 	e.replace(from, to, nil, from, grpNone)
 }
 
+// killToEOL kills through the end of the line, including the newline when already at line end.
 func (e *Editor) killToEOL() {
 	end := lineEnd(e.buf, e.cur)
 	if e.cur == end && end < len(e.buf) {
@@ -248,6 +256,7 @@ func (e *Editor) killToEOL() {
 	e.killRange(e.cur, end, true)
 }
 
+// killToBOL kills back to line start, including the preceding newline when already at line start.
 func (e *Editor) killToBOL() {
 	start := lineStart(e.buf, e.cur)
 	if e.cur == start && start > 0 {
@@ -256,7 +265,10 @@ func (e *Editor) killToBOL() {
 	e.killRange(start, e.cur, false)
 }
 
-func (e *Editor) killWordBack()    { e.killRange(wordStart(e.buf, e.cur), e.cur, false) }
+// killWordBack removes text from the previous word boundary to the cursor into the kill buffer.
+func (e *Editor) killWordBack() { e.killRange(wordStart(e.buf, e.cur), e.cur, false) }
+
+// killWordForward removes text from the cursor to the next word boundary into the kill buffer.
 func (e *Editor) killWordForward() { e.killRange(e.cur, wordEnd(e.buf, e.cur), true) }
 
 // yank inserts the newest kill at the cursor.

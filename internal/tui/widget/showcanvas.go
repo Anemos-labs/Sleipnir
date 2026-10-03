@@ -20,6 +20,7 @@ type showCanvasCell struct {
 
 type showCanvas struct{ cells []showCanvasCell }
 
+// newShowCanvas allocates a blank one-row canvas, treating negative widths as zero.
 func newShowCanvas(w int) *showCanvas {
 	if w < 0 {
 		w = 0

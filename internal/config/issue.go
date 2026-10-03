@@ -15,6 +15,7 @@ const (
 	SeverityError
 )
 
+// String returns error for SeverityError and warning for other severity values.
 func (s Severity) String() string {
 	if s == SeverityError {
 		return "error"
@@ -101,10 +102,13 @@ func fmtPath(segs []string) string {
 	return b.String()
 }
 
+// isIndexSeg recognizes a bracketed, nonempty sequence of decimal digits in a field path.
 func isIndexSeg(s string) bool {
 	return len(s) >= 3 && s[0] == '[' && s[len(s)-1] == ']' && strings.Trim(s[1:len(s)-1], "0123456789") == ""
 }
 
+// plainSeg accepts nonempty ASCII configuration path segments containing letters, digits,
+// underscores, or hyphens.
 func plainSeg(s string) bool {
 	if s == "" {
 		return false
@@ -119,6 +123,7 @@ func plainSeg(s string) bool {
 	return true
 }
 
+// cloneSegs allocates an independent path-segment slice containing segs followed by more.
 func cloneSegs(segs []string, more ...string) []string {
 	out := make([]string, 0, len(segs)+len(more))
 	out = append(out, segs...)

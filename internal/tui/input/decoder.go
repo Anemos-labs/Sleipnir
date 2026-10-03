@@ -66,6 +66,7 @@ type Decoder struct {
 	strBytes   int  // payload bytes of that string seen so far
 }
 
+// maxPaste uses a positive configured paste-byte limit or the default limit.
 func (d *Decoder) maxPaste() int {
 	if d.MaxPaste > 0 {
 		return d.MaxPaste

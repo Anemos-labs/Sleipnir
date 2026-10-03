@@ -142,6 +142,8 @@ func Control(lines []cell.Line) (where string, found bool) {
 	return "", false
 }
 
+// invisible recognizes zero-width and direction-control runes excluded by widget-output
+// validation.
 func invisible(r rune) bool {
 	switch {
 	case r == 0x00AD, r == 0x180E, r == 0x200B, r == 0x2060, r == 0xFEFF:

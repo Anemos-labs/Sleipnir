@@ -39,6 +39,8 @@ func MustCanonical(raw json.RawMessage) json.RawMessage {
 // stable inputs.
 func MarshalStable(v any) ([]byte, error) { return marshalNoEscape(v) }
 
+// marshalNoEscape encodes JSON without HTML escaping or a final newline and normalizes
+// replacement-character escapes.
 func marshalNoEscape(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

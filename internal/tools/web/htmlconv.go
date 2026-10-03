@@ -87,6 +87,8 @@ type budgetReader struct {
 	deadline time.Time
 }
 
+// Read checks the parse deadline before each underlying read; it does not interrupt a read already
+// in progress.
 func (b *budgetReader) Read(p []byte) (int, error) {
 	if time.Now().After(b.deadline) {
 		return 0, errParseBudget
@@ -143,12 +145,16 @@ type mdWriter struct {
 	bullet    string   // marker awaiting the first line of a list item
 }
 
+// newMD initializes a Markdown writer at a blank line with the requested inline mode.
 func newMD(inline bool) *mdWriter { return &mdWriter{atLine: true, lastBlank: true, inline: inline} }
 
+// String returns generated Markdown with surrounding whitespace removed.
 func (w *mdWriter) String() string { return strings.TrimSpace(w.sb.String()) }
 
+// pushPrefix adds a nested line prefix for subsequent Markdown output.
 func (w *mdWriter) pushPrefix(p string) { w.prefix = append(w.prefix, p) }
 
+// popPrefix removes the innermost Markdown line prefix, leaving an empty stack unchanged.
 func (w *mdWriter) popPrefix() {
 	if len(w.prefix) > 0 {
 		w.prefix = w.prefix[:len(w.prefix)-1]
@@ -316,6 +322,7 @@ func firstLines(s string, n int) string {
 	return s[:idx]
 }
 
+// children converts a node's children in document order at the supplied traversal depth.
 func (c *conv) children(n *html.Node, w *mdWriter, depth int) {
 	for ch := n.FirstChild; ch != nil; ch = ch.NextSibling {
 		c.walk(ch, w, depth)
@@ -546,6 +553,7 @@ func escapeLinkText(s string) string {
 	return strings.NewReplacer("[", `\[`, "]", `\]`).Replace(s)
 }
 
+// oneLine collapses whitespace into single spaces and trims both ends.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // codeSpan wraps s in backticks, using a longer fence when s contains some.
@@ -784,6 +792,7 @@ func hasBlockDescendant(n *html.Node) bool {
 
 // ------------------------------------------------------------------ helpers
 
+// attr returns the first matching HTML attribute value or empty when absent.
 func attr(n *html.Node, key string) string {
 	for _, a := range n.Attr {
 		if a.Key == key {
@@ -793,6 +802,7 @@ func attr(n *html.Node, key string) string {
 	return ""
 }
 
+// hasAttr checks HTML attribute presence independently of its value.
 func hasAttr(n *html.Node, key string) bool {
 	for _, a := range n.Attr {
 		if a.Key == key {
@@ -838,6 +848,8 @@ func findFirst(root *html.Node, name string) *html.Node {
 	return nil
 }
 
+// findFirstChild returns the first immediate element child with the requested name, without
+// recursive search.
 func findFirstChild(n *html.Node, name string) *html.Node {
 	for ch := n.FirstChild; ch != nil; ch = ch.NextSibling {
 		if ch.Type == html.ElementNode && ch.Data == name {

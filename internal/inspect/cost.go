@@ -138,6 +138,7 @@ func (p *priceInfo) noCache(u core.Usage) Money {
 	return m
 }
 
+// add accumulates every monetary component and the total into the receiver.
 func (m *Money) add(o Money) {
 	m.Uncached += o.Uncached
 	m.Read += o.Read
@@ -157,6 +158,7 @@ type costAgg struct {
 	compUSD   float64
 }
 
+// newCostAgg creates an empty accumulator with zeroed cost totals.
 func newCostAgg() costAgg { return costAgg{} }
 
 // cacheAgg accumulates cache statistics over the whole log.
@@ -247,6 +249,7 @@ func (s *Session) pricesUsedLocked() []PriceUsed {
 	return out
 }
 
+// pct returns savings as a fraction of a positive baseline, or zero for a nonpositive baseline.
 func pct(saved, base float64) float64 {
 	if base <= 0 {
 		return 0
@@ -254,6 +257,7 @@ func pct(saved, base float64) float64 {
 	return saved / base
 }
 
+// ratio divides a by a positive denominator, returning zero otherwise.
 func ratio(a, b int64) float64 {
 	if b <= 0 {
 		return 0
@@ -261,6 +265,7 @@ func ratio(a, b int64) float64 {
 	return float64(a) / float64(b)
 }
 
+// fmtK abbreviates values of at least 1000 using one decimal place and a k suffix.
 func fmtK(n int) string {
 	if n >= 1000 {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)

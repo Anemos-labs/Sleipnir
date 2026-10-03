@@ -115,8 +115,10 @@ func stripInvisible(s string) string {
 	}, s)
 }
 
+// invisible uses the shared tool-output classification for invisible Unicode characters.
 func invisible(r rune) bool { return tools.Invisible(r) }
 
+// looksJSON accepts syntactically valid JSON arrays and objects, excluding scalar JSON values.
 func looksJSON(body []byte) bool {
 	t := bytes.TrimSpace(body)
 	return len(t) > 0 && (t[0] == '{' || t[0] == '[') && json.Valid(t)
@@ -204,8 +206,11 @@ func decodeText(b []byte, label string, isHTML bool) string {
 	return toValidUTF8(b)
 }
 
+// toValidUTF8 replaces invalid UTF-8 sequences with the Unicode replacement character.
 func toValidUTF8(b []byte) string { return strings.ToValidUTF8(string(b), "�") }
 
+// decodeUTF16 decodes complete byte pairs in the supplied endianness and ignores a trailing
+// unpaired byte.
 func decodeUTF16(b []byte, order binary.ByteOrder) string {
 	u := make([]uint16, 0, len(b)/2)
 	for i := 0; i+1 < len(b); i += 2 {

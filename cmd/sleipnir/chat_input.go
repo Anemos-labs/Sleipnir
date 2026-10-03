@@ -315,6 +315,7 @@ type interrupts struct {
 	idle   chan struct{}      // poked when Ctrl-C is pressed at the prompt
 }
 
+// newInterrupts creates interrupt state with wall-clock timing and a buffered idle notification.
 func newInterrupts() *interrupts {
 	return &interrupts{now: time.Now, idle: make(chan struct{}, 1)}
 }

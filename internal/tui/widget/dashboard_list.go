@@ -132,6 +132,7 @@ func dashList(d DashboardData, width, height int, frame int, p Palette) []cell.L
 	return out
 }
 
+// dashStatesOf copies agent display states in input order.
 func dashStatesOf(agents []AgentRow) []AgentState {
 	out := make([]AgentState, len(agents))
 	for i, a := range agents {

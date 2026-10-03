@@ -517,6 +517,8 @@ type permPayload struct {
 	By      string
 }
 
+// key groups permission friction by tool, normalized reason, and normalized command when present;
+// paths are not part of the key.
 func (p permPayload) key() string {
 	switch {
 	case p.Command != "":
@@ -527,10 +529,13 @@ func (p permPayload) key() string {
 	return p.Tool + " — " + normalise(clip(p.Reason, 90))
 }
 
+// detail selects command, paths, or reason in that order, collapses whitespace, and clips the
+// diagnostic to 160 runes.
 func (p permPayload) detail() string {
 	return clip(firstNonEmpty(p.Command, strings.Join(p.Paths, " "), p.Reason), 160)
 }
 
+// clip collapses whitespace and limits text to n runes including an ellipsis; n must be positive.
 func clip(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > n {
@@ -539,6 +544,7 @@ func clip(s string, n int) string {
 	return s
 }
 
+// firstNonEmpty returns the earliest nonempty string, or empty when none exists.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if s != "" {

@@ -139,12 +139,14 @@ type headerRecorder struct {
 	h  http.Header
 }
 
+// set stores an independent copy of response headers under the recorder lock.
 func (r *headerRecorder) set(h http.Header) {
 	r.mu.Lock()
 	r.h = h.Clone()
 	r.mu.Unlock()
 }
 
+// get returns the stored header map under the lock; callers must not mutate the returned map.
 func (r *headerRecorder) get() http.Header {
 	r.mu.Lock()
 	defer r.mu.Unlock()

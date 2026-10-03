@@ -87,6 +87,7 @@ type EndpointError struct {
 	msg string
 }
 
+// Error returns the endpoint policy diagnostic stored in this error.
 func (e *EndpointError) Error() string { return e.msg }
 
 // CheckEndpoint applies the rules above. It returns nil when the endpoint may
@@ -186,6 +187,8 @@ func CredentialHeaders(h map[string]string) []string {
 	return out
 }
 
+// sourceName describes where endpoint configuration came from, sanitizing environment-variable
+// names.
 func (e Endpoint) sourceName() string {
 	switch e.Source {
 	case SourceEnv:
@@ -198,6 +201,8 @@ func (e Endpoint) sourceName() string {
 	return "its configuration"
 }
 
+// sourceClause attributes an endpoint to a bounded, sanitized environment-variable name when
+// applicable.
 func (e Endpoint) sourceClause() string {
 	if e.Source == SourceEnv && e.EnvVar != "" {
 		return " from " + SanitizeText(e.EnvVar, 64)

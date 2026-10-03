@@ -160,6 +160,8 @@ type fileEntry struct {
 // NewFileState returns an empty tracker.
 func NewFileState() *FileState { return &FileState{files: map[string]*fileEntry{}} }
 
+// entry returns or creates mutable file tracking with an initialized per-agent seen-hash map;
+// callers synchronize access.
 func (f *FileState) entry(path string) *fileEntry {
 	e, ok := f.files[path]
 	if !ok {

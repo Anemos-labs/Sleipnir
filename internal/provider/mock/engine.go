@@ -48,6 +48,7 @@ type EngineConfig struct {
 	TTL time.Duration
 }
 
+// defaults assigns a 16-token cache block size when none is configured.
 func (c *EngineConfig) defaults() {
 	if c.BlockTokens == 0 {
 		c.BlockTokens = 16

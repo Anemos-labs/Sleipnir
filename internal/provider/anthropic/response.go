@@ -35,6 +35,7 @@ type wireUsage struct {
 // as "free". normalize limits the value to 0..provider.MaxUsageTokens.
 type tokens int
 
+// UnmarshalJSON uses the shared tolerant token-count parser and never returns a decoding error.
 func (t *tokens) UnmarshalJSON(b []byte) error {
 	*t = tokens(provider.ParseTokenCount(b))
 	return nil
@@ -299,6 +300,7 @@ func blockFromRaw(raw json.RawMessage) (core.Block, bool) {
 	return core.Block{Kind: core.BlockKind(head.Type), Wire: wire, WireFormat: Dialect}, true
 }
 
+// quoted returns an independent JSON string encoding using the Anthropic wire writer.
 func quoted(s string) json.RawMessage {
 	var w jw
 	w.str(s)
@@ -352,6 +354,8 @@ func mergeRawUsage(dst map[string]json.RawMessage, raw json.RawMessage) {
 	}
 }
 
+// encodeRawUsage writes raw usage fields in sorted key order and returns independent bytes, or nil
+// for no fields.
 func encodeRawUsage(m map[string]json.RawMessage) json.RawMessage {
 	if len(m) == 0 {
 		return nil

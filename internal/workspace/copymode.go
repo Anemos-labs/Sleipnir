@@ -121,6 +121,8 @@ func (m *Manager) deriveCopy(ctx context.Context, st mstate) (mstate, error) {
 	return st, nil
 }
 
+// reopenShadow opens a shadow repository with the existing repository's configuration when
+// available.
 func (m *Manager) reopenShadow(ctx context.Context, shadow string) (*gitx.Repo, error) {
 	if m.Repo != nil {
 		return m.Repo.Reopen(ctx, shadow)

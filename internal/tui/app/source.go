@@ -69,8 +69,13 @@ func OpenLive(ctx context.Context, path string, o LiveOptions) *LiveSource {
 	return l
 }
 
-func (l *LiveSource) State() *state.State   { return l.st }
-func (l *LiveSource) Now() time.Time        { return l.clock() }
+// State returns the live source's shared mutable state object.
+func (l *LiveSource) State() *state.State { return l.st }
+
+// Now reads the live source's configured clock.
+func (l *LiveSource) Now() time.Time { return l.clock() }
+
+// Advance has no effect on a live source, whose clock advances independently.
 func (l *LiveSource) Advance(time.Duration) {}
 
 // Err is the error that ended the follower, nil while it runs.
@@ -135,15 +140,21 @@ func (r *ReplaySource) reopen() error {
 	return nil
 }
 
+// State returns the replay player's current state object.
 func (r *ReplaySource) State() *state.State { return r.pl.State() }
-func (r *ReplaySource) Now() time.Time      { return r.pl.Now() }
+
+// Now returns the replay player's current simulated time.
+func (r *ReplaySource) Now() time.Time { return r.pl.Now() }
 
 // Advance plays dt of the screen's time, which is dt times the speed of the recording.
 func (r *ReplaySource) Advance(dt time.Duration) {
 	r.pl.Advance(time.Duration(float64(dt) * r.speed))
 }
 
+// Err returns the replay player's terminal error, if any.
 func (r *ReplaySource) Err() error { return r.pl.Err() }
+
+// Close closes an initialized replay player and is harmless when no player exists.
 func (r *ReplaySource) Close() error {
 	if r.pl != nil {
 		return r.pl.Close()
@@ -159,8 +170,11 @@ func (r *ReplaySource) SetSpeed(v float64) { r.speed = min(max(v, 1.0/16), 256) 
 
 // Faster and Slower step the speed through 0.25 0.5 1 2 4 8 16 32 64.
 func (r *ReplaySource) Faster() { r.step(+1) }
+
+// Slower moves replay speed down one supported step.
 func (r *ReplaySource) Slower() { r.step(-1) }
 
+// step adjusts replay speed by a bounded number of supported speed steps.
 func (r *ReplaySource) step(d int) {
 	i := 0
 	for j, v := range replaySpeeds { // the nearest speed of the list
@@ -173,7 +187,9 @@ func (r *ReplaySource) step(d int) {
 
 // Elapsed is how far into the recording the clock is, Total how long it is (0 when it holds one moment).
 func (r *ReplaySource) Elapsed() time.Duration { return r.pl.Elapsed() }
-func (r *ReplaySource) Total() time.Duration   { return r.total }
+
+// Total returns the recorded replay duration.
+func (r *ReplaySource) Total() time.Duration { return r.total }
 
 // Done reports whether every event has been played.
 func (r *ReplaySource) Done() bool { return r.pl.Done() }

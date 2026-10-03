@@ -59,6 +59,7 @@ type tokenLogprob struct {
 	TopLogprobs []string `json:"top_logprobs"`
 }
 
+// finishReason maps internal stop reasons to training-export finish labels, defaulting to stop.
 func finishReason(s core.StopReason) string {
 	switch s {
 	case core.StopToolUse:

@@ -59,6 +59,8 @@ type Report struct {
 	Duration    time.Duration  `json:"duration_ns"`
 }
 
+// reject counts a rejection reason and retains details for at most the first 2000 rejected
+// commits.
 func (r *Report) reject(commit, subject, reason, detail string) {
 	if r.Rejected == nil {
 		r.Rejected = map[string]int{}
@@ -351,6 +353,8 @@ func withDefaults(o GitOptions, abs string) GitOptions {
 
 var idBadRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
+// sanitizeID replaces unsupported ID characters, trims edge punctuation, supplies a fallback, and
+// caps the result at sixty bytes.
 func sanitizeID(s string) string {
 	s = strings.Trim(idBadRe.ReplaceAllString(s, "-"), "-._")
 	if s == "" {
@@ -362,6 +366,7 @@ func sanitizeID(s string) string {
 	return s
 }
 
+// containsFold checks case-insensitive string membership using Unicode folding.
 func containsFold(list []string, s string) bool {
 	for _, x := range list {
 		if strings.EqualFold(x, s) {
@@ -624,6 +629,7 @@ func validate(ctx context.Context, t *rl.Task, gold []byte, opts GitOptions) (*R
 	return nil, err
 }
 
+// firstLine returns text before the first newline without trimming other whitespace.
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i]
@@ -631,6 +637,8 @@ func firstLine(s string) string {
 	return s
 }
 
+// tail retains at most the last n bytes and prefixes an ellipsis when truncated; n must be
+// nonnegative.
 func tail(s string, n int) string {
 	if len(s) > n {
 		return "..." + s[len(s)-n:]
@@ -671,6 +679,7 @@ func protectedInfra(lang string) []string {
 	return ci
 }
 
+// dedupe removes empty and duplicate strings in first-seen order.
 func dedupe(in []string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -683,6 +692,7 @@ func dedupe(in []string) []string {
 	return out
 }
 
+// sizeTag classifies change size using both file count and changed-line thresholds.
 func sizeTag(files, lines int) string {
 	switch {
 	case files <= 3 && lines <= 60:
@@ -708,4 +718,5 @@ func deriveBudget(sourceFiles, lines int, override rl.Budget) rl.Budget {
 	return b
 }
 
+// clamp bounds v to the inclusive interval from lo to hi; callers must supply lo <= hi.
 func clamp(v, lo, hi int) int { return max(lo, min(hi, v)) }

@@ -14,6 +14,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/update"
 )
 
+// init registers the binary updater with the CLI dispatcher.
 func init() { extraCommands["update"] = cmdUpdate }
 
 // updateOptions say where the last check of the releases is kept.
@@ -63,6 +64,8 @@ background; SLEIPNIR_NO_UPDATE_CHECK=1 turns that off). A build from source is t
 update itself instead.
 `
 
+// cmdUpdate parses check-only mode, resolves the running executable through symlinks when
+// possible, and invokes release update handling.
 func cmdUpdate(ctx context.Context, args []string) error {
 	fs := newFlagSet("update", flag.ExitOnError)
 	fs.Usage = func() { printHelp(os.Stdout, updateHelp) }

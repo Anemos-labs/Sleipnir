@@ -112,6 +112,8 @@ func (s *Swarm) isolated() bool {
 // tree); merges have their own bounds inside the queue.
 const gitTimeout = 3 * time.Minute
 
+// runCtx reads the swarm's root context under lock and falls back to a background context before
+// initialization.
 func (s *Swarm) runCtx() context.Context {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -193,6 +195,7 @@ func (s *Swarm) afterResume(ctx context.Context, caller string, byManager bool, 
 	return ": " + msg
 }
 
+// unbindTree removes lease and permission confinement for a member with an assigned worktree.
 func (s *Swarm) unbindTree(m *member) {
 	if m.tree == nil {
 		return
@@ -400,6 +403,7 @@ func (s *Swarm) verifyBounce(ctx context.Context, m *member, vr *workspace.Verif
 	return fmt.Sprintf("Not done: your work merged cleanly with what other agents landed, but verification `%s` failed on the merged result (exit %d). %s\n%s", cmd, code, state, tailText(out, 2000))
 }
 
+// recordMerge stores a task's merge record under the swarm lock, replacing any prior record.
 func (s *Swarm) recordMerge(t Task, r mergeRec) {
 	s.mu.Lock()
 	s.merged[t.ID] = r
@@ -440,11 +444,13 @@ func (s *Swarm) giveUpMerge(m *member, t Task, why string) string {
 	return fmt.Sprintf("Not done: your work could not be merged after %d attempts. The task returns to the manager; stop now.", s.cfg.MaxAttempts)
 }
 
+// isDir follows symlinks and reports whether the path names a directory.
 func isDir(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
 }
 
+// short retains at most eight bytes of a commit hash for display.
 func short(sha string) string {
 	if len(sha) > 8 {
 		return sha[:8]
@@ -452,6 +458,7 @@ func short(sha string) string {
 	return sha
 }
 
+// firstN returns a shared prefix of at most n strings; n must be nonnegative.
 func firstN(s []string, n int) []string {
 	if len(s) > n {
 		return s[:n]
@@ -683,6 +690,7 @@ func (s *Swarm) applyMerged(m *member) {
 	s.managerNotice(m, level, rep.Message)
 }
 
+// listFiles formats at most eight cleaned filenames and appends the count of omitted files.
 func listFiles(files []string) string {
 	shown := firstN(files, 8)
 	txt := cleanText(strings.Join(shown, ", "), 300)
@@ -692,6 +700,7 @@ func listFiles(files []string) string {
 	return txt
 }
 
+// firstLineOf trims input, selects its first line, and sanitizes it within the requested bound.
 func firstLineOf(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
@@ -748,6 +757,7 @@ func (s *Swarm) Finish(ctx context.Context) *IntegrationReport {
 	return rep
 }
 
+// unbindTreeByAgent removes an agent's lease binding and optional permission confinement.
 func (s *Swarm) unbindTreeByAgent(id string) {
 	s.Leases.UnbindTree(id)
 	if c, ok := s.deps.Perm.(interface{ Unconfine(agent string) }); ok {

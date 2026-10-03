@@ -357,6 +357,7 @@ func evalLoose(p string) string {
 	return filepath.Join(evalLoose(parent), filepath.Base(p))
 }
 
+// samePathLoose compares paths after best-effort canonicalization by evalLoose.
 func samePathLoose(a, b string) bool { return evalLoose(a) == evalLoose(b) }
 
 // inside reports whether p is dir or lies under it.

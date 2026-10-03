@@ -70,6 +70,7 @@ func (e Entry) IsChat() bool {
 	return e.Modality == "" || strings.HasSuffix(e.Modality, "->text")
 }
 
+// has reports exact membership in a provider capability list.
 func has(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -179,6 +180,7 @@ func entryOf(m rawModel) (Entry, error) {
 // capability makes one capability word printable and bounded.
 func capability(s string) string { return provider.SanitizeText(s, maxCapabilityBytes) }
 
+// capabilities normalizes at most maxSupported capability entries and drops unrecognized values.
 func capabilities(in []string) []string {
 	if len(in) > maxSupported {
 		in = in[:maxSupported]

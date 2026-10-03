@@ -299,6 +299,7 @@ type run struct {
 	lastSave time.Time
 }
 
+// now uses the runner's injected clock when configured and the system clock otherwise.
 func (r *Runner) now() time.Time {
 	if r.Now != nil {
 		return r.Now()
@@ -306,12 +307,15 @@ func (r *Runner) now() time.Time {
 	return time.Now()
 }
 
+// logf forwards rollout diagnostics when a logging callback is configured.
 func (r *Runner) logf(format string, args ...any) {
 	if r.Logf != nil {
 		r.Logf(format, args...)
 	}
 }
 
+// retries disables infrastructure retries for negative values, defaults zero to two, and preserves
+// positive values.
 func (r *Runner) retries() int {
 	switch {
 	case r.InfraRetries < 0:
@@ -322,6 +326,7 @@ func (r *Runner) retries() int {
 	return r.InfraRetries
 }
 
+// stopGrace uses a positive configured stop grace period or defaults to thirty seconds.
 func (r *Runner) stopGrace() time.Duration {
 	if r.StopGrace > 0 {
 		return r.StopGrace
@@ -329,6 +334,8 @@ func (r *Runner) stopGrace() time.Duration {
 	return 30 * time.Second
 }
 
+// wallFor prefers a positive task wall budget, then the runner limit; zero defaults to one hour
+// and negative runner limits disable it.
 func (r *Runner) wallFor(t rl.Task) time.Duration {
 	if t.Budget.WallS > 0 {
 		return time.Duration(t.Budget.WallS) * time.Second
@@ -441,6 +448,8 @@ feed:
 	return sum, nil
 }
 
+// emit serializes progress callbacks under the run lock and fills current time, run ID, and
+// completion counts.
 func (rn *run) emit(p Progress) {
 	if rn.r.Progress == nil {
 		return
@@ -486,6 +495,7 @@ func (rn *run) sampleDir(task string, sample int) string {
 	return filepath.Join(rn.out, task, strconv.Itoa(sample))
 }
 
+// groupID combines the task ID with an explicit grouping suffix or the current run ID.
 func (rn *run) groupID(task string) string {
 	suffix := rn.opts.Group
 	if suffix == "" {
@@ -581,6 +591,8 @@ type stage struct {
 	n  string
 }
 
+// set changes the current rollout stage and emits progress with task, sample, and attempt
+// identifiers.
 func (s *stage) set(name string, attempt int) {
 	s.n = name
 	s.rn.emit(Progress{Type: "rollout.stage", Task: s.j.task.ID, Sample: s.j.sample, Stage: name, Attempt: attempt})
@@ -814,6 +826,8 @@ func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration)
 
 // ---- artefacts ----
 
+// writeTaskFiles atomically writes redacted task and environment metadata, including snapshot
+// identity, file limits, and warnings.
 func (rn *run) writeTaskFiles(dir string, task rl.Task, ws *Workspace) error {
 	if err := writeJSONAtomic(filepath.Join(dir, "task.json"), redactTask(task)); err != nil {
 		return err
@@ -835,6 +849,7 @@ func (rn *run) writeTaskFiles(dir string, task rl.Task, ws *Workspace) error {
 	return writeJSONAtomic(filepath.Join(dir, "env.json"), env)
 }
 
+// fileSizeLimit substitutes the default file-size limit only when the configured value is zero.
 func fileSizeLimit(l Limits) int64 {
 	if l.FileSize == 0 {
 		return DefaultFileSizeLimit
@@ -861,6 +876,8 @@ func redactTask(t rl.Task) rl.Task {
 	return t
 }
 
+// stripURLCredentials removes user info, query, and fragment from parseable URLs with hosts; other
+// input is returned unchanged.
 func stripURLCredentials(s string) string {
 	if u, err := url.Parse(s); err == nil && u.Host != "" {
 		u.User = nil
@@ -891,6 +908,8 @@ type outcomePayload struct {
 	Message         string    `json:"message,omitempty"`
 }
 
+// verifierOutcome projects verifier results and the agent's claim into the event payload,
+// including rejection and repeat metadata.
 func verifierOutcome(r Result, claimed string) outcomePayload {
 	return outcomePayload{
 		Kind: "verifier", Pass: r.Pass, Score: r.Score, Version: r.Version, Detail: r.LogBlob, Ms: r.Ms,
@@ -939,6 +958,8 @@ func (rn *run) writeInfraEpisode(j job, dir, msg string, wallMs int64) {
 	rn.writeInfraEpisodeNoEvents(j, dir, msg, wallMs)
 }
 
+// writeInfraEpisodeNoEvents makes a best-effort standalone infrastructure-failure episode when
+// normal event recording is unavailable.
 func (rn *run) writeInfraEpisodeNoEvents(j job, dir, msg string, wallMs int64) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
@@ -950,6 +971,7 @@ func (rn *run) writeInfraEpisodeNoEvents(j job, dir, msg string, wallMs int64) {
 	_ = writeJSONAtomic(filepath.Join(dir, "episode.json"), ep)
 }
 
+// stubEpisode constructs minimal rollout provenance and timing for a job without trajectory data.
 func (rn *run) stubEpisode(j job) *rl.Episode {
 	t := j.task
 	ep := &rl.Episode{
@@ -962,6 +984,7 @@ func (rn *run) stubEpisode(j job) *rl.Episode {
 	return ep
 }
 
+// firstNonEmpty returns the earliest nonempty argument or empty when none exists.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if s != "" {
@@ -971,6 +994,8 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
+// policyRef captures model, endpoint host, sampling, and optional per-role models for episode
+// provenance.
 func (rn *run) policyRef() rl.PolicyRef {
 	p := rl.PolicyRef{Model: rn.policy.Model, Endpoint: endpointHost(rn.policy.BaseURL), Sampling: rn.policy.Sampling}
 	if len(rn.opts.RoleModels) > 0 {
@@ -1157,6 +1182,7 @@ func rewardSumCount(ep *rl.Episode, role string) int {
 	return n
 }
 
+// writeJSONAtomic writes indented JSON plus a newline atomically with mode 0644.
 func writeJSONAtomic(p string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -1236,6 +1262,8 @@ func (rn *run) checkResumable() error {
 		rn.out, strings.Join(diffs, "; "))
 }
 
+// compactJSON removes insignificant JSON whitespace, labels absent JSON as none, and preserves
+// malformed input verbatim.
 func compactJSON(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return "none"
@@ -1247,6 +1275,8 @@ func compactJSON(raw json.RawMessage) string {
 	return buf.String()
 }
 
+// sameJSON compares compacted JSON text; it ignores formatting whitespace but does not normalize
+// object-key order or numeric spelling.
 func sameJSON(a, b json.RawMessage) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
@@ -1254,6 +1284,8 @@ func sameJSON(a, b json.RawMessage) bool {
 	return compactJSON(a) == compactJSON(b)
 }
 
+// sameRoleModels compares map lengths and model values, assuming stored role-model values are
+// nonempty.
 func sameRoleModels(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false

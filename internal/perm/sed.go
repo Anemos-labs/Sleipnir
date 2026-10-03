@@ -104,8 +104,10 @@ type sedParser struct {
 	i int
 }
 
+// done reports whether the sed parser cursor has reached the end of its input.
 func (p *sedParser) done() bool { return p.i >= len(p.s) }
 
+// skip advances past consecutive bytes in set without passing the end of the sed expression.
 func (p *sedParser) skip(set string) {
 	for !p.done() && strings.IndexByte(set, p.s[p.i]) >= 0 {
 		p.i++
@@ -158,6 +160,7 @@ func (p *sedParser) command() string {
 	return ""
 }
 
+// firstNonEmptyString prefers a unless it is empty.
 func firstNonEmptyString(a, b string) string {
 	if a != "" {
 		return a
@@ -212,6 +215,7 @@ func (p *sedParser) address() (had bool, why string) {
 	return false, ""
 }
 
+// number consumes consecutive decimal digits and reports whether at least one was consumed.
 func (p *sedParser) number() bool {
 	start := p.i
 	for !p.done() && p.s[p.i] >= '0' && p.s[p.i] <= '9' {

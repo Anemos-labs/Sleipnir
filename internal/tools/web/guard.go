@@ -34,6 +34,8 @@ type blockedError struct {
 	Reason string
 }
 
+// Error explains an address block, including the resolving hostname when distinct from the
+// address.
 func (e *blockedError) Error() string {
 	if e.Host == e.Addr.String() || e.Host == "" {
 		return fmt.Sprintf("blocked: %s is a %s address", e.Addr, e.Reason)
@@ -47,7 +49,11 @@ type lookupError struct {
 	Err  error
 }
 
+// Error identifies the hostname whose lookup failed without exposing the underlying resolver
+// detail.
 func (e *lookupError) Error() string { return "could not resolve host " + strconv.Quote(e.Host) }
+
+// Unwrap exposes the underlying host-resolution error.
 func (e *lookupError) Unwrap() error { return e.Err }
 
 var (
@@ -201,6 +207,7 @@ func allNumeric(labels []string) bool {
 	return true
 }
 
+// isHex recognizes ASCII hexadecimal digits in either case.
 func isHex(c rune) bool {
 	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
 }
@@ -239,6 +246,7 @@ func parseRule(s string) (hostRule, bool) {
 	return r, r.host != ""
 }
 
+// matches enforces an optional port and then checks an exact host or precompiled hostname suffix.
 func (r hostRule) matches(host, port string) bool {
 	if r.port != "" && r.port != port {
 		return false
@@ -276,6 +284,8 @@ func newGuard(allowPrivate bool, allow []string) *guard {
 	return g
 }
 
+// normalizeHost trims whitespace and a final DNS dot, lowercases the hostname, and applies ASCII
+// folding.
 func normalizeHost(h string) string {
 	return asciiFold(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(h)), "."))
 }

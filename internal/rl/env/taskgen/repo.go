@@ -16,10 +16,14 @@ type repo struct {
 	gitDir string
 }
 
+// git runs Git against the repository's explicit git directory, returning captured output or the
+// execution error.
 func (r *repo) git(ctx context.Context, args ...string) ([]byte, error) {
 	return r.g.Run(ctx, "", nil, append([]string{"--git-dir=" + r.gitDir}, args...)...)
 }
 
+// gitIn runs Git against the repository directory with optional input and environment overrides,
+// bounding captured output to one GiB.
 func (r *repo) gitIn(ctx context.Context, stdin []byte, extraEnv []string, args ...string) ([]byte, error) {
 	var in *bytes.Reader
 	if stdin != nil {
@@ -42,6 +46,7 @@ func (r *repo) exists(ctx context.Context, rev, path string) bool {
 	return err == nil
 }
 
+// resolve resolves a revision to a commit in the repository's Git directory.
 func (r *repo) resolve(ctx context.Context, rev string) (string, error) {
 	return r.g.ResolveCommit(ctx, r.gitDir, rev)
 }

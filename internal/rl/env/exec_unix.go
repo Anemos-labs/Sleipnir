@@ -27,6 +27,7 @@ func configureProc(c *exec.Cmd) {
 // own descendants (or nobody).
 func signalGroup(pid, sig int) { _ = syscall.Kill(-pid, syscall.Signal(sig)) }
 
+// killGroup sends SIGKILL to the process group identified by pid.
 func killGroup(pid int) { signalGroup(pid, sigKill) }
 
 // exitInfo decodes a wait status: the exit code, or 128+N and N for a process

@@ -118,6 +118,8 @@ func creditExhausted(lower string) bool {
 	return strings.Contains(lower, "credit balance is too low")
 }
 
+// contextTooLong recognizes provider context-overflow phrases in text the caller has already
+// lowercased.
 func contextTooLong(lower string) bool {
 	for _, s := range []string{
 		"prompt is too long", "context window", "context length", "maximum context",
@@ -161,6 +163,7 @@ func thinkingBinding(lower string) bool {
 	return false
 }
 
+// firstNonEmpty returns the earliest nonempty string or empty when none exists.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if s != "" {
@@ -224,6 +227,7 @@ func parseRetryAfter(h http.Header, now time.Time, max time.Duration, useReset b
 	return 0
 }
 
+// maxDur returns the largest duration in a nonempty slice.
 func maxDur(ds []time.Duration) time.Duration {
 	m := ds[0]
 	for _, d := range ds[1:] {
@@ -232,6 +236,7 @@ func maxDur(ds []time.Duration) time.Duration {
 	return m
 }
 
+// minDur returns the smallest duration in a nonempty slice.
 func minDur(ds []time.Duration) time.Duration {
 	m := ds[0]
 	for _, d := range ds[1:] {

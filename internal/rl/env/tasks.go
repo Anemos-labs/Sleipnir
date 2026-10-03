@@ -34,6 +34,7 @@ type TaskError struct {
 	Msg   string
 }
 
+// Error formats task validation details with optional source line, task ID, and field name.
 func (e *TaskError) Error() string {
 	var b strings.Builder
 	if e.Line > 0 {
@@ -302,6 +303,8 @@ func validateAll(tasks []rl.Task, lines []int) error {
 	return joinLimited(errs, 25)
 }
 
+// joinLimited joins at most limit errors and a count of remaining problems; no errors returns nil
+// and limit must be nonnegative.
 func joinLimited(errs []error, limit int) error {
 	if len(errs) == 0 {
 		return nil
@@ -337,6 +340,7 @@ type PassMode struct {
 	Regex *regexp.Regexp // for PassRegex
 }
 
+// String names regex and JSON-score verification modes, defaulting other values to exit0.
 func (m PassMode) String() string {
 	switch m.Kind {
 	case PassRegex:
@@ -484,6 +488,8 @@ func readLine(br *bufio.Reader, max int) ([]byte, error) {
 	}
 }
 
+// decodeTaskLine decodes a task with unknown-field rejection and rejects additional values
+// detected after the first JSON value.
 func decodeTaskLine(line []byte) (rl.Task, error) {
 	var t rl.Task
 	dec := json.NewDecoder(bytes.NewReader(line))
@@ -589,6 +595,7 @@ func Filter(tasks []rl.Task, tags, ids []string, n int, seed int64) []rl.Task {
 	return out
 }
 
+// hasTags requires every positive tag and excludes every tag prefixed with an exclamation mark.
 func hasTags(t rl.Task, want []string) bool {
 	for _, w := range want {
 		neg := strings.HasPrefix(w, "!")
@@ -607,6 +614,8 @@ func hasTags(t rl.Task, want []string) bool {
 	return true
 }
 
+// matchIDs accepts all IDs for an empty filter and otherwise matches exact IDs or valid path
+// globs.
 func matchIDs(id string, ids []string) bool {
 	if len(ids) == 0 {
 		return true
@@ -635,6 +644,8 @@ func RepoKey(t rl.Task) string {
 	return path.Clean(strings.ReplaceAll(p, "\\", "/"))
 }
 
+// normalizeRepoURL collapses URL and SCP-style repository spellings into host/path identity,
+// removing credentials, trailing slash, and .git suffix.
 func normalizeRepoURL(u string) string {
 	s := strings.TrimSpace(u)
 	if scpURLRe.MatchString(s) { // git@host:org/repo.git
