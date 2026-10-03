@@ -177,6 +177,87 @@ func TestLatestSnapshotReadsTheSessionDirectory(t *testing.T) {
 	}
 }
 
+type failingSnapshotBlobs struct{ events.Blobs }
+
+func (b failingSnapshotBlobs) Put(data []byte) (core.Hash, error) {
+	var snap agent.Snapshot
+	if json.Unmarshal(data, &snap) == nil && snap.Version != 0 && snap.Agent != "" {
+		return "", fmt.Errorf("snapshot storage unavailable")
+	}
+	return b.Blobs.Put(data)
+}
+
+func TestSnapshotPersistenceFailureStopsBeforeModelAndTools(t *testing.T) {
+	r := newRig(t, rigOpts{snapSteps: true, blobs: failingSnapshotBlobs{events.NewMemBlobs()}}, workLoop(1))
+	if _, err := r.agent.Run(context.Background(), "make a change"); err == nil || !strings.Contains(err.Error(), "snapshot storage unavailable") {
+		t.Fatalf("snapshot failure: %v", err)
+	}
+	if len(r.log.OfType(events.TypeModelRequest)) != 0 {
+		t.Fatal("a request ran without a recoverable boundary")
+	}
+}
+
+func TestLatestSnapshotKeepsPostSnapshotIDsAndSpending(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobs, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := agent.Snapshot{Version: 1, Agent: "main", Requests: 2, Forks: 1, NextTurn: 3,
+		Usage: core.Usage{InputTokens: 3}, CostUSD: 3, PendingRequests: []string{"main.2", "main.c1"}}
+	data, _ := json.Marshal(snap)
+	hash, err := blobs.Put(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Emit("main", events.TypeModelResponse, map[string]any{"req": "main.1", "usage": core.Usage{InputTokens: 3}, "cost_usd": 3})
+	// A side request can finish while a captured snapshot is being serialized.
+	log.Emit("main", events.TypeModelResponse, map[string]any{"req": "main.c1", "usage": core.Usage{InputTokens: 11}, "cost_usd": 11})
+	log.Emit("main", events.TypeAgentSnapshot, map[string]any{"blob": hash})
+	for id, price := range map[string]int{"main.2": 5, "main.3": 7, "main.c2": 13} {
+		log.Emit("main", events.TypeModelResponse, map[string]any{"req": id, "usage": core.Usage{InputTokens: price}, "cost_usd": price})
+	}
+	log.Emit("main", events.TypeModelRequest, map[string]any{"req": "main.4"})
+	log.Emit("main", events.TypeTurnAppend, core.Turn{ID: 9, Role: core.RoleAssistant})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := agent.LatestSnapshot(dir, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.CostUSD != 39 || restored.Usage.InputTokens != 39 || restored.Requests != 4 || restored.Forks != 2 || restored.NextTurn != 10 || len(restored.PendingRequests) != 0 {
+		t.Fatalf("lost or double-counted interrupted work: %+v", restored)
+	}
+	if len(restored.Turns) != 0 {
+		t.Fatal("recovery fabricated a completed tool batch")
+	}
+}
+
+func TestSnapshotEachStepKeepsCompletedToolBatches(t *testing.T) {
+	r := newRig(t, rigOpts{noCompact: true, snapSteps: true}, workLoop(3))
+	if _, err := r.agent.Run(context.Background(), "record each step"); err != nil {
+		t.Fatal(err)
+	}
+	snapshots := r.log.OfType(events.TypeAgentSnapshot)
+	if len(snapshots) != 5 {
+		t.Fatalf("got %d snapshots, want initial, three tool batches and final", len(snapshots))
+	}
+	var initial struct {
+		Turns int `json:"turns"`
+	}
+	if err := json.Unmarshal(snapshots[0].Data, &initial); err != nil {
+		t.Fatal(err)
+	}
+	if initial.Turns != 1 {
+		t.Fatalf("initial snapshot has %d turns", initial.Turns)
+	}
+}
+
 func TestCompactNowFoldsTheThreadOnRequestAndKeepsWorking(t *testing.T) {
 	var sawFocus bool
 	pl := kv.DefaultPlanner()

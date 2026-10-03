@@ -91,6 +91,35 @@ func TestE2EChatTeamResumesWithContinue(t *testing.T) {
 	u.goals(m, "@hello", "@again")
 }
 
+func TestE2EChatIsolatedTeamResumesWithContinue(t *testing.T) {
+	m := startModel(t)
+	m.on("@hello", say("hi there"))
+	m.on("@again", say("and again"))
+	w := newWorld(t, m.url())
+	w.project = isoGitRepo(t, m.url())
+
+	u := startUI(t, w, "--swarm", "4", "--isolation", "worktree", "--trust-project")
+	u.send("@hello")
+	u.expect("hi there")
+	u.ready()
+	u.ctrlD()
+	u.exited(0)
+
+	u = startUI(t, w, "--swarm", "4", "--continue", "--trust-project")
+	u.expect("resumed: the manager's 2 turns, board and worker worktrees are restored", "you asked: @hello", "it said: hi there")
+	u.send("@again")
+	u.expect("and again")
+	u.ready()
+	u.send("/restart --isolation worktree")
+	u.wait("the isolated team again, resumed", func(_, all string) bool {
+		i := strings.LastIndex(all, "restarting:")
+		return i >= 0 && strings.Contains(all[i:], "resumed: the manager's 4 turns")
+	})
+	u.ctrlD()
+	u.exited(0)
+	u.goals(m, "@hello", "@again")
+}
+
 // /model in a team starts it again on the other model, and the manager's conversation goes with it (it did not: "its conversation does not
 // carry over").
 func TestE2EChatTeamModelSwitchKeepsTheConversation(t *testing.T) {

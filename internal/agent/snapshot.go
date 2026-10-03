@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -18,8 +22,9 @@ const snapshotVersion = 1
 
 // Snapshot is what a later process needs to resume this agent: its thread, notes
 // and spine, and the counters that keep request ids and cost totals continuous.
-// It is written as a blob at the end of every Run and after every compaction
-// commit, and referenced by an agent.snapshot event.
+// It is written as a blob at the end of every Run, after every compaction commit,
+// and before requests when SnapshotEachStep is set. An agent.snapshot event
+// references each distinct snapshot.
 //
 // The cached prefix is not part of it. A resumed agent renders the shared layers
 // from the project as it is now, which may differ from the session's, so
@@ -45,6 +50,8 @@ type Snapshot struct {
 	Compactions int         `json:"compactions"`
 	Usage       core.Usage  `json:"usage"`
 	CostUSD     float64     `json:"cost_usd"`
+	// PendingRequests have reserved IDs but their usage is not included above.
+	PendingRequests []string `json:"pending_requests,omitempty"`
 }
 
 // LayerState is a layer's content, enough to rebuild it.
@@ -84,6 +91,7 @@ func (a *Agent) Snapshot() Snapshot {
 		Spine: layerState(a.stack.Spine), Notes: layerState(a.stack.Notes),
 		Epoch: a.epoch, Requests: a.reqN, Forks: a.forkN, Compactions: a.comp.count,
 		Usage: a.usage, CostUSD: a.costUSD,
+		PendingRequests: slices.Sorted(maps.Keys(a.pendingRequests)),
 	}
 }
 
@@ -134,37 +142,90 @@ func (a *Agent) Restore(s Snapshot) error {
 // changed since the last one. A failure is reported and never stops the agent: a
 // missing snapshot costs a resume, not the work in hand.
 func (a *Agent) saveSnapshot() {
+	if err := a.writeSnapshot(false); err != nil {
+		a.cfg.Sink.Notice(a.cfg.ID, "warn", "snapshot: "+err.Error())
+	}
+}
+
+// writeSnapshot records a complete conversation boundary. With flush set, the
+// disk log must persist it before another model request can lead to tool writes.
+func (a *Agent) writeSnapshot(flush bool) error {
 	snap := a.Snapshot()
 	b, err := json.Marshal(snap)
 	if err != nil {
-		a.cfg.Sink.Notice(a.cfg.ID, "warn", "snapshot: "+err.Error())
-		return
+		return err
 	}
 	h, err := a.cfg.Blobs.Put(b)
 	if err != nil {
-		a.cfg.Sink.Notice(a.cfg.ID, "warn", "snapshot: "+err.Error())
-		return
+		return err
 	}
 	a.mu.Lock()
 	same := a.lastSnap == h
-	a.lastSnap = h
 	a.mu.Unlock()
-	if same {
-		return
+	if !same {
+		if _, err := a.cfg.Events.Emit(a.cfg.ID, events.TypeAgentSnapshot, map[string]any{"blob": h, "turns": len(snap.Turns), "bytes": len(b), "requests": snap.Requests}); err != nil {
+			return err
+		}
+		a.mu.Lock()
+		a.lastSnap = h
+		a.mu.Unlock()
 	}
-	a.emit(events.TypeAgentSnapshot, map[string]any{"blob": h, "turns": len(snap.Turns), "bytes": len(b), "requests": snap.Requests})
+	if flush {
+		if log, ok := a.cfg.Events.(interface{ Flush() error }); ok {
+			return log.Flush()
+		}
+	}
+	return nil
 }
 
 // LatestSnapshot finds the newest snapshot of agentID in a session directory
 // (its events.jsonl and blobs/), for resuming. A missing snapshot is an error
-// naming the reason; an old session that never finished a turn has none.
+// naming the reason. Request counters and reported usage after that snapshot are
+// recovered from the log without replaying partially completed tool batches.
 func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 	blobs, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
 	if err != nil {
 		return nil, err
 	}
 	var last core.Hash
+	var requests, forks int
+	var nextTurn core.TurnID
+	responses := map[string]struct {
+		Req     string     `json:"req"`
+		Usage   core.Usage `json:"usage"`
+		CostUSD float64    `json:"cost_usd"`
+	}{}
 	err = events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
+		if e.Agent != agentID {
+			return nil
+		}
+		switch e.Type {
+		case events.TypeTurnAppend:
+			var turn struct {
+				ID core.TurnID `json:"id"`
+			}
+			if json.Unmarshal(e.Data, &turn) == nil {
+				nextTurn = max(nextTurn, turn.ID+1)
+			}
+		case events.TypeModelRequest, events.TypeModelResponse:
+			var response struct {
+				Req     string     `json:"req"`
+				Usage   core.Usage `json:"usage"`
+				CostUSD float64    `json:"cost_usd"`
+			}
+			if err := json.Unmarshal(e.Data, &response); err != nil {
+				return err
+			}
+			n, side := requestNumber(agentID, response.Req)
+			if side {
+				forks = max(forks, n)
+			} else {
+				requests = max(requests, n)
+			}
+			if e.Type == events.TypeModelResponse {
+				responses[response.Req] = response
+			}
+		}
 		if e.Type == events.TypeAgentSnapshot && e.Agent == agentID {
 			var d struct {
 				Blob core.Hash `json:"blob"`
@@ -190,7 +251,45 @@ func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return nil, fmt.Errorf("snapshot %s: %w", last.Short(), err)
 	}
+	for _, id := range slices.Sorted(maps.Keys(responses)) {
+		response := responses[id]
+		n, side := requestNumber(agentID, response.Req)
+		if slices.Contains(s.PendingRequests, response.Req) || (!side && n > s.Requests) || (side && n > s.Forks) {
+			s.Usage = s.Usage.Add(response.Usage)
+			s.CostUSD += response.CostUSD
+		}
+	}
+	s.Requests, s.Forks, s.NextTurn = max(s.Requests, requests), max(s.Forks, forks), max(s.NextTurn, nextTurn)
+	s.PendingRequests = nil // no request from the old process will finish in this one
 	return &s, nil
+}
+
+// requestNumber parses the stable main and compactor request IDs used in the log.
+func requestNumber(agentID, id string) (n int, side bool) {
+	suffix, ok := strings.CutPrefix(id, agentID+".")
+	if !ok {
+		return 0, false
+	}
+	if rest, ok := strings.CutPrefix(suffix, "c"); ok {
+		suffix, side = rest, true
+	}
+	n, _ = strconv.Atoi(suffix)
+	return n, side
+}
+
+// markPendingLocked reserves a request for recovery accounting under a.mu.
+func (a *Agent) markPendingLocked(id string) {
+	if a.pendingRequests == nil {
+		a.pendingRequests = map[string]bool{}
+	}
+	a.pendingRequests[id] = true
+}
+
+// clearPending drops an ended request that no longer needs recovery accounting.
+func (a *Agent) clearPending(id string) {
+	a.mu.Lock()
+	delete(a.pendingRequests, id)
+	a.mu.Unlock()
 }
 
 // RebuildArchive re-indexes every turn an agent appended to a session log, so that

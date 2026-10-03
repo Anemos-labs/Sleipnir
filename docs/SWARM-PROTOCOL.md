@@ -386,8 +386,9 @@ the repository.
 
 **Trees.** Every *writer* gets `<cache>/sleipnir/worktrees/<session id>/<agent>` on branch `sleipnir/<session id>/<agent>`,
 created at the integration tip when the worker is spawned (`internal/workspace`). `<cache>` is the per-user cache directory
-(`$XDG_CACHE_HOME`, or `~/.cache`): the trees are large and disposable, and the state directory is out because `~/.sleipnir`
-is a protected configuration directory. The trees start from what the person sees now, *uncommitted edits included* (a
+(`$XDG_CACHE_HOME`, or `~/.cache`). These trees retain unfinished work between runs; use session pruning to salvage edits
+before removing them. The state directory is excluded because `~/.sleipnir` is a protected configuration directory.
+The trees start from what the person sees now, *uncommitted edits included* (a
 snapshot commit that no branch of theirs points at), and the result is applied on top of exactly that. A session started in
 a subdirectory keeps its writers in the same subdirectory of their trees. The manager and the read-only roles keep the
 checkout: the manager does not edit files in an isolated run (anything it wrote there would bypass the merge queue; it spawns a
@@ -443,11 +444,23 @@ has been merged to the person's checkout, incrementally (`swarm.integration`; th
 If applying fails (the person edited the same files meanwhile) nothing is changed, the integration branch stays, and the
 report says which branch and the one command that gets the result (`git diff --binary <base> <branch> | git apply --3way`, or
 `git merge <branch>` with `--commit`). `Session.Finish` ends the run (also called by `Close`): it stops the swarm, applies what
-remains, removes every tree that holds nothing unmerged (one that does is kept and named), and deletes the integration branches
-once their result is in the checkout. The CLI prints the report (`integration: ...`, and under `"integration"` in `--json`).
-**A killed session** leaves its trees; the next isolated session of the repository cleans up at its start (`Manager.Prune`): the
-trees of dead sessions are committed onto their own branches and removed, a branch holding commits that exist nowhere else is
-kept and named, and a tree whose owner is still running is never touched.
+remains and closes the temporary integration tree. Worker trees and the original base
+and integration references remain available for `--resume`. The CLI prints the report
+(`integration: ...`, and under `"integration"` in `--json`).
+
+**Recovery.** A stopped or killed session keeps its worker trees, including uncommitted
+edits. Startup cleanup skips namespaces with a `sleipnir/<session>/_resume` recovery
+reference, as well as trees whose owners are alive or cannot be verified as stopped.
+Resume restores workers as idle and reserves their unfinished tasks. It uses the original
+base and applies only changes beyond the recorded integration position. An interrupted
+application is reconciled against recorded before/after contents; ambiguous edits are
+preserved and reported. [Session recovery](EXTENDING.md#6-sessions-list-resume-continue)
+
+`sleipnir sessions prune` previews removal without changing anything. With `--yes`, it
+locks each selected session, salvages worker edits into commits, removes its cache trees
+and history, and keeps branches containing unique work. A live session is never removed
+based solely on the age of its log. Legacy tree namespaces without recovery references
+retain the startup salvage behavior.
 
 **Costs.** One checkout per writer (disk and the time of `git worktree add`, paid at spawn), one verifier run per merge (in the
 integration tree, serial), and a worker that finishes second can be sent back. In exchange the writer cap and the scope-overlap

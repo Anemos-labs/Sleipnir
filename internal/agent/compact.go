@@ -364,7 +364,9 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	a.mu.Lock()
 	a.forkN++
 	label := fmt.Sprintf("%s.c%d", a.cfg.ID, a.forkN)
+	a.markPendingLocked(label)
 	a.mu.Unlock()
+	defer a.clearPending(label)
 	a.recordRequest(label, &kv.Rendered{Prompt: p, Sections: nil}, nil, kv.Check{}, prof, KindCompactor, false)
 	a.emit(events.TypeCompactPatch, map[string]any{"stage": "request", "reason": reason, "thread_from": firstID(snap), "thread_to": lastID(snap)})
 
@@ -443,6 +445,7 @@ func (a *Agent) account(resp *provider.Response, label string, model cost.Model)
 	a.mu.Lock()
 	a.usage = a.usage.Add(resp.Usage)
 	a.costUSD += usd
+	delete(a.pendingRequests, label)
 	a.mu.Unlock()
 	a.emit(events.TypeModelResponse, a.responsePayload(map[string]any{
 		"req": label, "id": resp.ID, "model": resp.Model, "usage": resp.Usage, "cost_usd": usd,

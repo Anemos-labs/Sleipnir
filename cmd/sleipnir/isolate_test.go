@@ -136,8 +136,8 @@ func TestRunSwarmWithWorktreeIsolationAppliesAndReportsTheResult(t *testing.T) {
 	if now, _ := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output(); string(now) != string(head) {
 		t.Error("HEAD moved without --commit")
 	}
-	if out, _ := exec.Command("git", "-C", repo, "branch", "--list", "sleipnir/*").Output(); len(out) != 0 {
-		t.Errorf("branches were left behind: %s", out)
+	if out, err := exec.Command("git", "-C", repo, "branch", "--list", "sleipnir/*").Output(); err != nil || !bytes.Contains(out, []byte("/_resume")) || !bytes.Contains(out, []byte("/_integration")) {
+		t.Errorf("recovery references are missing: %s (%v)", out, err)
 	}
 }
 

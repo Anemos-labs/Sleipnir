@@ -68,6 +68,17 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 	if req.TaskID == "" && strings.TrimSpace(req.Title) == "" {
 		return "", errors.New("spawn needs a task id or a title")
 	}
+	if req.Agent == "" && req.TaskID != "" {
+		if task, ok := s.Board.Snapshot().Task(strings.TrimSpace(req.TaskID)); ok && task.Owner != "" {
+			if m := s.get(task.Owner); m != nil {
+				m.mu.Lock()
+				if m.recovered {
+					req.Agent = m.id
+				}
+				m.mu.Unlock()
+			}
+		}
+	}
 	files, err := s.normScopes(req.Files)
 	if err != nil {
 		return "", err
@@ -144,6 +155,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	}
 	m.mu.Lock()
 	m.task, m.gateTries = task.ID, 0
+	m.recovered = false
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	s.emitAs(m.id, "agent.assign", map[string]any{"id": m.id, "role": m.role, "task": task.ID, "by": req.By})
@@ -190,6 +202,16 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	undo := func(err error) (string, error) {
 		s.Board.Requeue(id, task.ID, task.Rev, "the worker could not be started", false, s.cfg.MaxAttempts)
 		return "", err
+	}
+	if s.isolated() && s.deps.Isolation.Resumable {
+		if _, err := s.deps.Events.Emit(id, "agent.prepare", map[string]any{"id": id, "role": role.Name, "task": task.ID}); err != nil {
+			return undo(err)
+		}
+		if log, ok := s.deps.Events.(interface{ Flush() error }); ok {
+			if err := log.Flush(); err != nil {
+				return undo(err)
+			}
+		}
 	}
 	var tree *workspace.Tree
 	card := taskCard(task, id, true)

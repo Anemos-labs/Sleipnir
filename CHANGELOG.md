@@ -5,6 +5,12 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Resume isolated teams with their original Git base, worker conversations and
+  unfinished worktrees. Preserve task ownership and applied integration positions;
+  reconcile interrupted checkout writes without overwriting ambiguous edits. Keep
+  recovery state until explicit session pruning, which salvages unique worker work.
+  Recovery rebuilds shared context through the existing declared rebase; stable
+  prompt layers, tool schemas and the renderer format are unchanged.
 - Allow up to 16,384 estimated instruction tokens by default, bounded to one
   quarter of the initial model's context window, with an explicit
   `cache.instruction_max_tokens` override. Preserve later instruction files

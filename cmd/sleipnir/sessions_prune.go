@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // A session is a directory of the state directory: its event log, the blobs the log points at, the checkpoints. Nothing deletes one,
@@ -228,10 +231,18 @@ flags:
 			failed++ // not under the sessions directory: never delete
 			continue
 		}
-		if err := os.RemoveAll(it.path); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		report, err := session.RemoveStoredSession(ctx, it.path)
+		cancel()
+		if err != nil {
 			fmt.Fprintf(stderr, "sessions prune: %s: %v\n", it.id, err)
 			failed++
 			continue
+		}
+		if report != nil {
+			for _, kept := range report.BranchesKept {
+				fmt.Fprintf(stdout, "  kept Git branch %s: %s\n", kept.Branch, kept.Reason)
+			}
 		}
 		freed += it.bytes
 	}

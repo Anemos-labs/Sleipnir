@@ -219,8 +219,8 @@ func TestCompactThroughTheSession(t *testing.T) {
 
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 
-// A team's session can be resumed (its manager's snapshot is what comes back) unless it worked in git worktrees, whose branches a second run
-// of the same session would share. "latest" picks the newest that can be, and naming one that cannot says why.
+// Legacy isolated sessions lack the original base and integration-mode metadata.
+// "latest" reports that limitation instead of silently choosing an older session.
 func TestResumeOfTeamSessionsAndOfIsolatedOnes(t *testing.T) {
 	home, root := t.TempDir(), t.TempDir()
 	sessions := filepath.Join(home, ".sleipnir", "sessions")
@@ -248,7 +248,7 @@ func TestResumeOfTeamSessionsAndOfIsolatedOnes(t *testing.T) {
 
 	// "latest" is the newest session of the project: when that is a team in worktrees, which cannot be resumed, it says so and does not
 	// resume an older session in its place (a trial's --continue did, and brought back a "say hi" instead of the stalled team).
-	if d, err := session.ResolveResume(home, root, "latest"); err == nil || !strings.Contains(err.Error(), "20260103-000000-cccccc") || !strings.Contains(err.Error(), "git worktrees") {
+	if d, err := session.ResolveResume(home, root, "latest"); err == nil || !strings.Contains(err.Error(), "20260103-000000-cccccc") || !strings.Contains(err.Error(), "recovery metadata") {
 		t.Errorf("latest with a team in worktrees as the newest session: %s %v", d, err)
 	}
 	for name, c := range map[string]struct {
@@ -259,7 +259,7 @@ func TestResumeOfTeamSessionsAndOfIsolatedOnes(t *testing.T) {
 			t.Errorf("Resumable(%s) = %v, want %v", name, got, c.want)
 		}
 	}
-	if _, err := session.ResolveResume(home, root, "20260103-000000-cccccc"); err == nil || !strings.Contains(err.Error(), "git worktrees") {
+	if _, err := session.ResolveResume(home, root, "20260103-000000-cccccc"); err == nil || !strings.Contains(err.Error(), "recovery metadata") {
 		t.Errorf("an isolated team's session: %v, want the reason it cannot be resumed", err)
 	}
 	if _, err := session.ResolveResume(home, root, "20260104-000000-dddddd"); err == nil || !strings.Contains(err.Error(), "no snapshot") {

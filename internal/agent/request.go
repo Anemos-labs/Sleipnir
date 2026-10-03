@@ -105,6 +105,8 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	first := a.mainReqs == 0
 	a.reqN++
 	n := a.reqN
+	reqID := fmt.Sprintf("%s.%d", a.cfg.ID, n)
+	a.markPendingLocked(reqID)
 	var prevRolling *core.BlockRef
 	if a.rollValid && a.rollEpoch == epoch {
 		r := a.rollRef
@@ -113,6 +115,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	rebased := !first && epoch != a.lastReqEpoch
 	scale := a.tokenScaleLocked()
 	a.mu.Unlock()
+	defer a.clearPending(reqID)
 
 	var hot []core.Block
 	if a.cfg.Hot != nil && caps.HotMode == kv.HotInline {
@@ -130,7 +133,6 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 		a.cfg.Sink.Notice(a.cfg.ID, "warn", "prompt prefix changed without a declared rebase (layer "+check.Diverged+"); cache will miss")
 	}
 
-	reqID := fmt.Sprintf("%s.%d", a.cfg.ID, n)
 	a.recordRequest(reqID, r, hot, check, prof, KindMain, true)
 
 	started := func(bool) {}
@@ -200,6 +202,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	expectedCold := !first && ttl > 0 && a.cfg.Planner.IsCold(prevStart, start, ttl)
 	a.usage = a.usage.Add(u)
 	a.costUSD += usd
+	delete(a.pendingRequests, reqID)
 	a.lastStart = start
 	a.mainReqs++
 	a.reportsCache = a.reportsCache || u.CacheReadTokens > 0 || u.CacheWriteTokens() > 0

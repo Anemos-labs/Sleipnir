@@ -1160,6 +1160,34 @@ func TestARestoredBoardStartsWhereTheLastOneStopped(t *testing.T) {
 	}
 }
 
+func TestRestoredTaskReservationsSurviveEventReplay(t *testing.T) {
+	log := events.NewMemLog()
+	old := NewBoard(log)
+	task, err := old.CreateTask("mgr", TaskSpec{Title: "finish private edits", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Assign("mgr", "be-1", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	board := NewBoard(log)
+	board.RestoreOwners(old.Snapshot(), map[string]string{task.ID: "be-1"})
+	replayed, err := ReplayBoard(log.All())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := replayed.Task(task.ID)
+	if !ok || got.Owner != "be-1" || got.Status != StatusTodo || !reflect.DeepEqual(replayed.Tasks, board.Snapshot().Tasks) {
+		t.Fatalf("lost recovered reservation: %+v", got)
+	}
+	if err := board.Assign("mgr", "be-2", task.ID); err == nil {
+		t.Fatal("another worker took the reserved task")
+	}
+	if err := board.Assign("mgr", "be-1", task.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // An agent that acts on a task that is not its own is told what to do about it. The first real swarm run had a manager that
 // read "T1 belongs to nobody", could find no way to drop a duplicate task, and went on for four turns; the answer names the way.
 func TestTheAnswerToAnAgentThatDoesNotOwnATaskSaysWhatToDo(t *testing.T) {

@@ -290,11 +290,14 @@ func recapLines(turns []core.Turn) []string {
 	return out
 }
 
-// resumedLine says what a resumed session brought back. A team's workers are not among it: nothing of them was running.
+// resumedLine describes the recovered conversation, task board and idle workers.
 func resumedLine(s *session.Session, a *agent.Agent) string {
 	line := fmt.Sprintf("resumed: %d turns restored; the first request writes the cached prefix again, once", len(a.Stack().Thread.Turns))
 	if s.Swarm != nil {
 		line = fmt.Sprintf("resumed: the manager's %d turns and the board are back (its workers are not: what they held is todo again); the first request writes the cached prefix again, once", len(a.Stack().Thread.Turns))
+		if s.WorktreeIsolation() {
+			line = fmt.Sprintf("resumed: the manager's %d turns, board and worker worktrees are restored; workers are idle until their tasks restart; the first request writes the cached prefix again, once", len(a.Stack().Thread.Turns))
+		}
 	}
 	if mode, n := s.RestoredPermissions(); mode != "" || n > 0 {
 		var back []string

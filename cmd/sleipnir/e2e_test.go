@@ -362,7 +362,8 @@ func (m *scriptedModel) respond(c *mock.Call) mock.Reply {
 	// are the goal alone; a goal whose turn was cancelled (nothing answered it) is still in the
 	// message that the next goal is added to, a blank line between; and a swarm's manager is given the board after
 	// the goal. Anything else around it is input that ended up in the goal by mistake (a
-	// half-typed line that was not discarded, for one).
+	// half-typed line that was not discarded, for one). Isolated managers also
+	// carry their private integration instructions in my-notes before the goal.
 	front := text[:at]
 	for name := range m.turns {
 		front = strings.ReplaceAll(front, name, "")
@@ -370,7 +371,7 @@ func (m *scriptedModel) respond(c *mock.Call) mock.Reply {
 	// the goal that follows an unanswered one is set off from it by a blank line (sleipnir-kv/3)
 	front = strings.TrimRight(front, "\n")
 	after := text[at+len(goal):]
-	if (front != "" && !strings.HasSuffix(front, "</role-context>")) || (after != "" && !strings.HasPrefix(after, "<live board=")) {
+	if (front != "" && !strings.HasSuffix(front, "</role-context>") && !strings.HasSuffix(front, "</my-notes>")) || (after != "" && !strings.HasPrefix(after, "<live board=")) {
 		m.stray = append(m.stray, "…"+front[max(0, len(front)-60):]+"⟦"+goal+"⟧"+oneLineCLI(after, 60))
 	}
 	m.mu.Unlock()

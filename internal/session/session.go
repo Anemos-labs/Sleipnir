@@ -293,6 +293,12 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			return nil, err
 		}
 		o.Dir, o.ID = dir, filepath.Base(dir)
+		if prior := inspectLog(dir); prior.isolated && prior.recovery {
+			if prior.id == "" || prior.id == "." || prior.id == ".." || strings.ContainsAny(prior.id, "/\\\x00\r\n") {
+				return nil, errors.New("invalid session id in isolation recovery metadata")
+			}
+			o.ID = prior.id
+		}
 	}
 	tinfo, err := resolveTrust(ctx, &o)
 	if err != nil {
@@ -353,6 +359,12 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		}
 	}()
 	s.unlock = unlock
+	if _, err := os.Stat(filepath.Join(s.Dir, prunedMarker)); err == nil {
+		return nil, errors.New("this session is being pruned and cannot be resumed")
+	}
+	if o.Resume != "" && !hasLog(s.Dir) {
+		return nil, errors.New("this session was removed before it could be resumed")
+	}
 	if s.Log, err = events.Open(s.Dir, s.ID); err != nil {
 		return nil, err
 	}
@@ -420,6 +432,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	}
 	if o.Resume != "" {
 		if err := s.restore(); err != nil {
+			if s.Swarm != nil {
+				s.Swarm.Shutdown()
+			}
 			s.Log.Close()
 			return nil, fmt.Errorf("resume: %w", err)
 		}

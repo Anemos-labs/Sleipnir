@@ -139,8 +139,8 @@ func TestCommitOptionCommitsTheVerifiedResultOntoTheBranch(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if out := git(t, repo, "branch", "--list", "sleipnir/*"); out != "" {
-		t.Errorf("branches were left behind:\n%s", out)
+	if out := git(t, repo, "branch", "--list", "sleipnir/*"); !strings.Contains(out, "_resume") || !strings.Contains(out, "_integration") {
+		t.Errorf("recovery refs missing:\n%s", out)
 	}
 	if got := git(t, repo, "rev-parse", "HEAD"); got != head {
 		t.Error("closing moved the branch")
@@ -481,8 +481,8 @@ func TestResultThatCannotBeAppliedStaysOnItsBranch(t *testing.T) {
 	if got := git(t, repo, "show", "sleipnir/s-late/_integration:d1.txt"); got != "made by be-1" {
 		t.Errorf("the result is not on its branch: %q", got)
 	}
-	if ents, _ := os.ReadDir(treesOf(o, "s-late")); len(ents) != 0 {
-		t.Errorf("trees were left behind: %v", ents)
+	if ents, _ := os.ReadDir(treesOf(o, "s-late")); len(ents) != 1 || ents[0].Name() != "be-1" {
+		t.Errorf("worker recovery tree missing: %v", ents)
 	}
 }
 
