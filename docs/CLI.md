@@ -591,6 +591,35 @@ search (all must appear, any case). Favorites, marked *, come first.
 ```
 <!-- /flags -->
 
+### `sleipnir update`
+
+`sleipnir update` installs the latest release over the program that is running: it asks GitHub for the latest release of the repository, downloads the
+archive for this machine (`sleipnir_<version>_<os>_<arch>.tar.gz`, `.zip` on Windows), checks its SHA-256 against the release's `checksums.txt`, and replaces
+the binary (a download that does not match is thrown away and nothing changes). `--check` only says whether a newer release is out. A chat that is open
+keeps running the old version until it is restarted. A build from source says how to update itself (`go install ...@latest`, or `git pull`) and changes nothing.
+
+The chat says so at its start, in one line under the banner, when a newer release is out: `A newer Sleipnir is out: v0.1.5, 43 commits ahead of yours. Run
+`sleipnir update`.` It looks at most once a day, in the background, after the chat has started, and the line is read from what the last look kept
+(`~/.sleipnir/update.json`), so nothing waits for the network and nothing asks a question. The only request is for the latest release of the repository to
+`api.github.com`, with a user agent that names the version; `SLEIPNIR_NO_UPDATE_CHECK=1` turns the looking off (the command still works when asked).
+The checksum comes from the same release as the archive, so it guards the download, not the release (`gh attestation verify` checks the release's build
+provenance).
+
+<!-- flags: update -->
+```text
+usage: sleipnir update [--check]
+
+Installs the latest release over this binary: downloads the archive for this machine from the
+GitHub release, checks it against the release's checksums.txt, and replaces the program. A chat
+that is open keeps running the old one until it is restarted. --check only says whether a newer
+release is out.
+
+The chat says, at its start, when a newer release is out (it looks once a day, in the
+background; SLEIPNIR_NO_UPDATE_CHECK=1 turns that off). A build from source is told how to
+update itself instead.
+```
+<!-- /flags -->
+
 ### `sleipnir login`
 
 Asks which provider you have a key for (Heimdall, the recommended one, is first) and for the key, which it does not echo, and keeps it in

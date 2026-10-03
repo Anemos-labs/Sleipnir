@@ -176,6 +176,9 @@ type is an error that names the variable (`env:SLEIPNIR_SWARM_MAX_AGENTS: swarm.
 | `SLEIPNIR_PERMISSION_MODE` | `permissions.mode` |
 | `SLEIPNIR_<SECTION>_<FIELD>` | any scalar or list field of a section, named by its JSON path in upper case |
 
+`SLEIPNIR_NO_UPDATE_CHECK` is not a setting but a switch: when it is set, the chat does not look (once a day, in the background) for a newer release to say so at
+its start (`sleipnir update`, in `docs/CLI.md`).
+
 The last form covers: `SLEIPNIR_MODELS_DEFAULT`, `SLEIPNIR_PERMISSIONS_MODE`, `SLEIPNIR_PERMISSIONS_ALLOW`,
 `SLEIPNIR_PERMISSIONS_ASK`, `SLEIPNIR_PERMISSIONS_DENY`, `SLEIPNIR_CACHE_SHARED_TTL`,
 `SLEIPNIR_CACHE_MIN_LAYER_FOR_BREAKPOINT`, `SLEIPNIR_CACHE_COMPACT_THRESHOLD_TOKENS`,

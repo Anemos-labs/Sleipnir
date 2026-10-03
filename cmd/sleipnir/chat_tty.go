@@ -248,7 +248,7 @@ func ago(d time.Duration) string {
 // chatInfo is what the banner says about a session.
 func chatInfo(s *session.Session, cwd string) app.ChatInfo {
 	info := app.ChatInfo{Version: version, Model: s.Model.ID, Cwd: tildePath(cwd), SessionID: s.ID, Swarm: s.Swarm != nil,
-		Budget: strings.TrimPrefix(budgetLabel(s), " · ")}
+		Budget: strings.TrimPrefix(budgetLabel(s), " · "), Update: updateNotice()}
 	if s.Swarm != nil {
 		info.Agents = s.Swarm.MaxAgents()
 	}

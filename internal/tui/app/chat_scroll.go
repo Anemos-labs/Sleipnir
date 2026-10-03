@@ -64,6 +64,9 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	if info.Agents > 1 && info.Resumed == "" {
 		out = append(out, paragraph(k.st.dim, "The manager plans and hands parts to workers that write in parallel; a small job it does itself.", width)...)
 	}
+	if info.Update != "" {
+		out = append(out, paragraph(k.st.info, clean(info.Update), width)...)
+	}
 	return out
 }
 

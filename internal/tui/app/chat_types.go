@@ -80,6 +80,8 @@ type ChatInfo struct {
 	// Recap says where a resumed conversation was (the last thing asked, the start of the answer), one line each; none for a new session.
 	Recap []string
 	Swarm bool
+	// Update is one line that says a newer release is out (and how to get it), or "": the banner shows it, dim, and nothing waits for it.
+	Update string
 	// Agents is the size of the team, the manager included, when the session is one (0 for a single agent): the banner says it.
 	Agents int
 }

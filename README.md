@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/anemos-labs/sleipnir/main/scripts/i
 cd your-project && sleipnir            # first run: pick a provider (Heimdall is the recommended one), paste its key, pick a model; you are then in the chat
 ```
 
-That is all. The key is kept in `~/.sleipnir/auth.json` (mode 0600) and your choices in `~/.sleipnir/config.json`; the next `sleipnir` opens the
+That is all (`sleipnir update` installs the latest release; the chat says at its start when there is one). The key is kept in `~/.sleipnir/auth.json` (mode 0600) and your choices in `~/.sleipnir/config.json`; the next `sleipnir` opens the
 chat at once, a team of eight agents (`--swarm 0` for a single agent). `sleipnir run "fix the failing test"` does one goal without the chat, `sleipnir swarm 8 "..."` runs a team. More in
 [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
 

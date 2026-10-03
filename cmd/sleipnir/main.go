@@ -85,7 +85,11 @@ func main() {
 			// an option where a command goes: the chat takes it on a terminal, and elsewhere it is named
 			fmt.Fprintf(os.Stderr, "sleipnir: %s is an option, and without a terminal there is no command to give it to: try `sleipnir chat %s` (sleipnir -h lists the commands)\n", cmd, cmd)
 		} else {
-			fmt.Fprintf(os.Stderr, "sleipnir: unknown command %q; %s(sleipnir -h lists the commands)\n", cmd, nearCommand(cmd))
+			msg := fmt.Sprintf("sleipnir: unknown command %q", cmd)
+			if n := strings.TrimSpace(nearCommand(cmd)); n != "" {
+				msg += "; " + n
+			}
+			fmt.Fprintf(os.Stderr, "%s (sleipnir -h lists the commands)\n", msg)
 		}
 		os.Exit(2)
 	}
@@ -244,6 +248,7 @@ Every day:
   login     store a key, or sign in with your ChatGPT plan; logout removes it
   models    list models and prices from a marketplace catalogue
   sessions  list recorded sessions (sessions prune: delete the old ones)
+  update    install the latest release (the chat says when there is one)
 
 Set up a project:
   init      write a starter config and AGENTS.md for this project

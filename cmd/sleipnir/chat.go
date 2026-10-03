@@ -87,6 +87,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	checkForUpdateInBackground()
 	// Nothing says which model to use: ask the provider what it has, once (pick.go).
 	asking := bufio.NewReader(os.Stdin)
 	if err := ensureModel(ctx, model, asking, os.Stderr, func() (string, error) { return readSecret(ctx, asking) }, term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))); err != nil {
@@ -175,6 +176,9 @@ func cmdChat(ctx context.Context, args []string) error {
 		fmt.Fprintln(os.Stderr, resumedLine(s, a))
 	}
 	fmt.Fprintln(os.Stderr, "Type a message, or /help. Ctrl-C cancels the current turn (twice at the prompt quits); /exit or Ctrl-D quits.")
+	if n := updateNotice(); n != "" {
+		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, n))
+	}
 	for {
 		if ctx.Err() != nil { // SIGTERM, in the middle of a turn or not
 			s.SetEndReason(session.EndInterrupted)
