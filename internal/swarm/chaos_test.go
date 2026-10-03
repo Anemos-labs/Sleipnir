@@ -421,10 +421,17 @@ func TestSetStateNeverLeavesTheBoardStale(t *testing.T) {
 func TestConcSound_WaitWakesPromptlyOnBoardChangeAndOnMail(t *testing.T) {
 	for _, name := range []string{"board", "mail"} {
 		t.Run(name, func(t *testing.T) {
-			r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+			gate := make(chan struct{})
+			r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+				rvBlock(ctx, gate)
+				return rvReply{Text: "ok"}
+			})
+			t.Cleanup(func() { close(gate) })
 			r.sw.StartManager()
 			r.sw.Board.CreateTask("mgr", TaskSpec{Title: "t"})
-			r.sw.Board.Assign("mgr", "be-1", "T1")
+			if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", By: "mgr"}); err != nil {
+				t.Fatal(err)
+			}
 			res := make(chan string, 1)
 			go func() {
 				res <- r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 30}).Text
@@ -437,9 +444,16 @@ func TestConcSound_WaitWakesPromptlyOnBoardChangeAndOnMail(t *testing.T) {
 				r.sw.Router.Send("be-1", "manager", "blocker", "need a decision")
 			}
 			select {
-			case <-res:
+			case got := <-res:
 				if d := time.Since(start); d > 3*time.Second { // asleep to its 30 s timeout is what this is not
 					t.Fatalf("wait took %v to notice a %s event", d, name)
+				}
+				want := "T1 → review"
+				if name == "mail" {
+					want = "mail arrived"
+				}
+				if !strings.Contains(got, want) {
+					t.Fatalf("wait returned %q, want event %q", got, want)
 				}
 			case <-time.After(5 * time.Second):
 				t.Fatalf("wait did not wake on a %s event", name)
