@@ -174,7 +174,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	if a := s.Main(); s.Resumed() && a != nil {
 		fmt.Fprintln(os.Stderr, resumedLine(s, a))
 	}
-	fmt.Fprintln(os.Stderr, "Type a goal, or /help. Ctrl-C cancels the current turn (twice at the prompt quits); /exit or Ctrl-D quits.")
+	fmt.Fprintln(os.Stderr, "Type a message, or /help. Ctrl-C cancels the current turn (twice at the prompt quits); /exit or Ctrl-D quits.")
 	for {
 		if ctx.Err() != nil { // SIGTERM, in the middle of a turn or not
 			s.SetEndReason(session.EndInterrupted)

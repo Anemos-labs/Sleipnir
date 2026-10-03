@@ -44,7 +44,7 @@ func TestChatFooterBeforeTheSessionIsMadeStartsWithTheKeys(t *testing.T) {
 func TestChatDrawsItsFirstScreen(t *testing.T) {
 	r := startChat(t, rigOpts{})
 	s := r.screen()
-	for _, want := range []string{"◆ sleipnir 0.1.0", "mock/mock-1", "/work/proj", "╭", "❯ Type a goal", "╰", "default", "ctrl+t stats", "/ commands", "20260102-030405-abcdef"} {
+	for _, want := range []string{"◆ sleipnir 0.1.0", "mock/mock-1", "/work/proj", "╭", "❯ Message Sleipnir", "╰", "default", "ctrl+t stats", "/ commands", "20260102-030405-abcdef"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the first screen lacks %q:\n%s", want, s)
 		}

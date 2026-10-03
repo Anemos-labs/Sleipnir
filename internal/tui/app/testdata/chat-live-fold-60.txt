@@ -2,6 +2,6 @@
 ◆ compacting ▓▓▓▓         9.6k → 2.4k
 ● Compacting…  31s  ↑61.2k ↓900             esc to interrupt
 ╭──────────────────────────────────────────────────────────╮
-│ ❯ Type a goal, / for commands, @ for files               │
+│ ❯ Message Sleipnir, / for commands, @ for files          │
 ╰──────────────────────────────────────────────────────────╯
 accept-edits · ctrl+t stats · / commands         mock/mock-1

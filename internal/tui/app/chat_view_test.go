@@ -109,7 +109,7 @@ func TestChatAgentsPageShowsTheTeamAndASingleAgentHasNone(t *testing.T) {
 		t.Errorf("the footer of a team names both pages:\n%s", r.visible())
 	}
 	r.press(input.RuneKey('g', input.Ctrl))
-	r.shows("the team starts with your first goal: a manager, and the 7 workers it can spawn")
+	r.shows("the team starts with your first message: a manager, and the 7 workers it can spawn")
 	b := statetest.NewBuilder()
 	log := sessionLog(b, 2, 0)
 	log = append(log, b.Spawn("w1", "backend", "T1", "main"), b.Spawn("w2", "tester", "T2", "main"))
@@ -274,7 +274,7 @@ func TestChatFollowsTheSizeOfTheWindow(t *testing.T) {
 						t.Errorf("row %d is %d cells wide on a screen of %d: %q", i, w, cols, row)
 					}
 				}
-				if n := strings.Count(vis, "❯ Type a goal"); n != 1 {
+				if n := strings.Count(vis, "❯ Message Sleipnir"); n != 1 {
 					t.Errorf("at %d columns the prompt is on the screen %d times:\n%s", cols, n, vis)
 				}
 			}

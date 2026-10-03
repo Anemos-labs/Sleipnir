@@ -59,7 +59,7 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 			out = append(out, paragraph(k.st.dim, "  "+clean(l), width)...)
 		}
 	}
-	help := "Type a goal, / for commands, @ for files. Esc interrupts a turn; Ctrl-C twice at the prompt, Ctrl-D or /exit quits."
+	help := "Message Sleipnir, / for commands, @ for files. Esc interrupts a turn; Ctrl-C twice at the prompt, Ctrl-D or /exit quits."
 	out = append(out, paragraph(k.st.dim, help, width)...)
 	if info.Agents > 1 && info.Resumed == "" {
 		out = append(out, paragraph(k.st.dim, "The manager plans and hands parts to workers that write in parallel; a small job it does itself.", width)...)

@@ -1,6 +1,6 @@
 120 columns, 5 rows, cursor at row 2 column 4
 ● Starting…                                                                                             esc to interrupt
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ❯ Type a goal, / for commands, @ for files                                                                           │
+│ ❯ Message Sleipnir, / for commands, @ for files                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 default · ctrl+t stats · / commands

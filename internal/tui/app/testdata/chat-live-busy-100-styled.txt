@@ -3,7 +3,7 @@
 {b,fg=accent}● {/}{b,fg=info}Bash{/} go test ./orders/... -run TestList -count=1{fg=dim}  3.0s{/}
 {fg=accent}● Reading…{/}  {fg=dim}14s{/}  {fg=dim}↑48.3k ↓2.1k{/}  $0.0021                                              {fg=dim}esc to interrupt{/}
 {fg=faint}╭──────────────────────────────────────────────────────────────────────────────────────────────────╮{/}
-{fg=faint}│{/} {b,fg=#a78bfa}❯ {/}{i,fg=x244}Type a goal, / for commands, @ for files{/}                                                       {fg=faint}│{/}
+{fg=faint}│{/} {b,fg=#a78bfa}❯ {/}{i,fg=x244}Message Sleipnir, / for commands, @ for files{/}                                                  {fg=faint}│{/}
 {fg=faint}╰──────────────────────────────────────────────────────────────────────────────────────────────────╯{/}
 {fg=dim}⏎ queued: {/}{i}“and run the race detector”{/}
 {fg=G3}accept-edits{/}{fg=dim} · ctrl+t stats · / commands{/}                        {fg=dim}mock/mock-1 · 20260102-030405-abcdef{/}

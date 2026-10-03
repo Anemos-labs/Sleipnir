@@ -119,7 +119,7 @@ func containsAll(s string, words []string) bool {
 func (u *ui) ready() string {
 	u.t.Helper()
 	vis, _ := u.wait("a prompt that waits for a goal", func(vis, _ string) bool {
-		return strings.Contains(vis, "Type a goal") && !strings.Contains(vis, "esc to interrupt")
+		return strings.Contains(vis, "Message Sleipnir") && !strings.Contains(vis, "esc to interrupt")
 	})
 	return vis
 }
@@ -322,7 +322,7 @@ func TestE2EChatIsAProgramOnATerminal(t *testing.T) {
 	u := startUI(t, w)
 
 	vis := u.visible()
-	for _, want := range []string{"sleipnir", "mock-1", "Type a goal, / for commands, @ for files", "+---", "| > Type a goal", "default"} {
+	for _, want := range []string{"sleipnir", "mock-1", "Message Sleipnir, / for commands, @ for files", "+---", "| > Message Sleipnir", "default"} {
 		if !strings.Contains(vis, want) {
 			t.Errorf("the first screen lacks %q:\n%s", want, vis)
 		}
@@ -363,7 +363,7 @@ func TestE2EChatDrawsWithGlyphsWhereTheLocaleHasThem(t *testing.T) {
 	w.extra = []string{"LANG=C.UTF-8"}
 	u := startUI(t, w)
 	vis := u.visible()
-	for _, want := range []string{"◆ sleipnir", "╭", "╰", "❯ Type a goal"} {
+	for _, want := range []string{"◆ sleipnir", "╭", "╰", "❯ Message Sleipnir"} {
 		if !strings.Contains(vis, want) {
 			t.Errorf("the first screen lacks %q:\n%s", want, vis)
 		}
@@ -796,7 +796,7 @@ func TestE2EChatLettersDoNotAnswerAQuestion(t *testing.T) {
 	u.expectVisible("| > yanYAN", "Write a file", "1. Yes")
 	u.typeText(keyCtrlU) // the line is gone, and the question has waited for a quiet keyboard again
 	u.wait("an empty prompt under a question that takes answers", func(vis, _ string) bool {
-		return strings.Contains(vis, "Type a goal") && strings.Contains(vis, "esc says no") && strings.Contains(vis, "Write a file")
+		return strings.Contains(vis, "Message Sleipnir") && strings.Contains(vis, "esc says no") && strings.Contains(vis, "Write a file")
 	})
 	if exists(filepath.Join(w.project, "approved.txt")) {
 		t.Fatal("a letter approved the write")
@@ -1057,7 +1057,7 @@ func TestE2EChatFollowsTheSizeOfTheWindow(t *testing.T) {
 		u.resize(rows, cols)
 		vis, _ := u.wait(fmt.Sprintf("a frame of %d columns", cols), func(vis, _ string) bool {
 			// the top and the bottom of the box are two rows of the width of the window, and nothing of an older frame is left
-			return strings.Count(vis, box(cols)) == 2 && strings.Count(vis, "+--") == 2 && strings.Count(vis, "| > Type a goal") == 1
+			return strings.Count(vis, box(cols)) == 2 && strings.Count(vis, "+--") == 2 && strings.Count(vis, "| > Message Sleipnir") == 1
 		})
 		for i, row := range strings.Split(vis, "\n") {
 			if n := len([]rune(row)); n > cols {

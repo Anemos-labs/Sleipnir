@@ -214,7 +214,7 @@ func TestChatRecordMakesATranscriptThatTheChatProgramPlays(t *testing.T) {
 		t.Error("no screen of the recording shows a letter in the input box while the question is up: the person's y should land there and answer nothing")
 	}
 	last := frameText(frames[len(frames)-1])
-	if !strings.Contains(last, "Type a goal") || strings.Contains(last, "esc to interrupt") {
+	if !strings.Contains(last, "Message Sleipnir") || strings.Contains(last, "esc to interrupt") {
 		t.Errorf("the session does not end at the prompt, waiting:\n%s", last)
 	}
 }

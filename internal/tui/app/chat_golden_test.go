@@ -60,7 +60,7 @@ func chatSession(t testing.TB) (sn *state.Snapshot, mem *Memory) {
 func chatEditor(t testing.TB, k *chatLook, cols int, text string, cmds []input.Command) input.View {
 	t.Helper()
 	th := k.inputTheme()
-	ed := input.NewEditor(input.Options{Prompt: k.g.prompt + " ", Placeholder: "Type a goal, / for commands, @ for files", Theme: &th,
+	ed := input.NewEditor(input.Options{Prompt: k.g.prompt + " ", Placeholder: "Message Sleipnir, / for commands, @ for files", Theme: &th,
 		Completer: input.SlashCommands(cmds)})
 	inner := widget.BoxInnerWidth(cols)
 	if inner < 10 {

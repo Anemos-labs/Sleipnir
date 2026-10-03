@@ -19,7 +19,7 @@ func TestE2EChatKeysTypedAfterARestartReachTheNewChat(t *testing.T) {
 	u.send("/restart")
 	u.wait("the chat again", func(_, all string) bool {
 		i := strings.LastIndex(all, "restarting:")
-		return i >= 0 && strings.Count(all[i:], "Type a goal") >= 2
+		return i >= 0 && strings.Count(all[i:], "Message Sleipnir") >= 2
 	})
 	u.typeText("@hello")
 	u.expectVisible("| > @hello")
@@ -51,7 +51,7 @@ func TestE2EChatLoginTakesTheKeyAndTheChatComesBack(t *testing.T) {
 	u.enter()
 	u.wait("the chat again", func(_, all string) bool {
 		i := strings.LastIndex(all, "Saved.")
-		return i >= 0 && strings.Count(all[i:], "Type a goal") >= 2
+		return i >= 0 && strings.Count(all[i:], "Message Sleipnir") >= 2
 	})
 	if b, err := os.ReadFile(filepath.Join(w.home, ".sleipnir", "auth.json")); err != nil || !strings.Contains(string(b), "the-typed-key") {
 		t.Errorf("the key that was typed is not in auth.json: %q, %v", b, err)

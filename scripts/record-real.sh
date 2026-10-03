@@ -134,7 +134,7 @@ if [ "$SCENARIO" = first-run ]; then
   waitfor 'type to search' 60; sleep 2.5
   typist "$SEARCH"; sleep 1.2; tmux send-keys -t $s Enter # typing narrows the list, enter chooses the highlighted row
 fi
-waitfor 'Type a goal' 60
+waitfor 'Message Sleipnir' 60
 sleep 1.5
 typist "/allow tests"; sleep 0.6; tmux send-keys -t $s Enter; sleep 1.5
 typist "$GOAL"; sleep 0.8; tmux send-keys -t $s Enter

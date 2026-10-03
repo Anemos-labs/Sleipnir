@@ -1,6 +1,6 @@
 <> sleipnir 0.1.0  mock/mock-1  /work/proj
-Type a goal, / for commands, @ for files. Esc interrupts a turn; Ctrl-C twice at
-the prompt, Ctrl-D or /exit quits.
+Message Sleipnir, / for commands, @ for files. Esc interrupts a turn; Ctrl-C
+twice at the prompt, Ctrl-D or /exit quits.
 
 > fix the failing test in orders
 
@@ -52,6 +52,6 @@ the prompt, Ctrl-D or /exit quits.
 ran /cost
 (press Ctrl-C again within 2 seconds to quit, or type /exit)
 +------------------------------------------------------------------------------+
-| > Type a goal, / for commands, @ for files                                   |
+| > Message Sleipnir, / for commands, @ for files                              |
 +------------------------------------------------------------------------------+
 default - ctrl+t stats - / commands         mock/mock-1 - 20260102-030405-abcdef

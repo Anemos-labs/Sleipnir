@@ -190,7 +190,7 @@ func TestTheCommittedChatPlaysIntoTheScreensTheRecordingShows(t *testing.T) {
 		alongside bool
 	}{
 		{"the program starting", []string{"$ sleipnir chat", "Starting"}, false},
-		{"the banner", []string{"◆ sleipnir", "/work/orders-api", "Type a goal"}, false},
+		{"the banner", []string{"◆ sleipnir", "/work/orders-api", "Message Sleipnir"}, false},
 		{"the goal being typed", []string{"│ ❯ the pagination"}, false},
 		{"the goal sent", []string{"❯ the pagination test in ./orders is failing, fix it", "esc to interrupt"}, false},
 		{"a tool line", []string{"● Read orders/list.go", "89 lines"}, false},
@@ -230,7 +230,7 @@ func TestTheCommittedChatPlaysIntoTheScreensTheRecordingShows(t *testing.T) {
 			break
 		}
 	}
-	if last := scr[len(scr)-1]; strings.Contains(last, "esc to interrupt") || !strings.Contains(last, "Type a goal") {
+	if last := scr[len(scr)-1]; strings.Contains(last, "esc to interrupt") || !strings.Contains(last, "Message Sleipnir") {
 		t.Errorf("the last screen is the prompt, waiting:\n%s", last)
 	}
 	// What the pictures must never be: a status line that begins with a blank where its spinner should be, a row wider than the screen,

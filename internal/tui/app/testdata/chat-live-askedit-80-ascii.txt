@@ -13,6 +13,6 @@
 +------------------------------------------------------------------------------+
   your typing goes to the prompt until you pause, so that it cannot answer this
 +------------------------------------------------------------------------------+
-| > Type a goal, / for commands, @ for files                                   |
+| > Message Sleipnir, / for commands, @ for files                              |
 +------------------------------------------------------------------------------+
 accept-edits - ctrl+t stats - / commands    mock/mock-1 - 20260102-030405-abcdef

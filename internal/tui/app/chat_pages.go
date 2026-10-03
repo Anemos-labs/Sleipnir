@@ -142,7 +142,7 @@ func (m *chatModel) printTeam() {
 	sn := m.snapshot()
 	rows := agentRows(sn, CockpitOptions{})
 	if len(rows) == 0 {
-		m.block(bkNote, []cell.Line{cell.Styled(st.dim, fmt.Sprintf("  the team starts with your first goal: a manager, and the %d workers it can spawn", max(m.info.Agents-1, 1)))})
+		m.block(bkNote, []cell.Line{cell.Styled(st.dim, fmt.Sprintf("  the team starts with your first message: a manager, and the %d workers it can spawn", max(m.info.Agents-1, 1)))})
 		return
 	}
 	c := sn.Board.Counts

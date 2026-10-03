@@ -259,7 +259,7 @@ func newChatModel(ctx context.Context, c ChatConfig) *chatModel {
 	m.now = m.clock()
 	m.snap = m.st.SnapshotAt(m.now)
 	prompt := m.k.g.prompt + " "
-	m.ed = input.NewEditor(input.Options{History: c.History, Prompt: prompt, Placeholder: "Type a goal, / for commands, @ for files", Theme: themePtr(m.k.inputTheme()),
+	m.ed = input.NewEditor(input.Options{History: c.History, Prompt: prompt, Placeholder: "Message Sleipnir, / for commands, @ for files", Theme: themePtr(m.k.inputTheme()),
 		Completer: input.CompleterFunc(func(line string, cursor int) (int, []input.Candidate) {
 			if m.complete == nil {
 				return 0, nil
