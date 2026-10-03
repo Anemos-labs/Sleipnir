@@ -105,6 +105,14 @@ func cmdChat(ctx context.Context, args []string) error {
 		fs.Visit(func(f *flag.Flag) { given = given || f.Name == "swarm" })
 		if !given {
 			*swarmN = defaultTeam()
+			// a session that is continued keeps its shape: one that ran as a single agent is not brought back as a team of eight with its budget
+			if spec, _ := resume(); spec != "" {
+				home, _ := os.UserHomeDir()
+				root, _ := filepath.Abs(*cwd)
+				if team, known := session.ResumedAsTeam(home, root, spec); known && !team {
+					*swarmN = 0
+				}
+			}
 		}
 	}
 	// On a terminal that can be drawn on the chat is a program (internal/tui/app): a live region with a status line, the prompt

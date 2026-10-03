@@ -269,6 +269,16 @@ func TestResumeOfTeamSessionsAndOfIsolatedOnes(t *testing.T) {
 	if d, err := session.ResolveResume(home, root, "20260102-000000-bbbbbb"); err != nil || d != team {
 		t.Errorf("a team's session by its id: %s %v", d, err)
 	}
+	// a resumed session keeps its shape unless the person says another: a single agent comes back as one, a team as a team
+	if isTeam, ok := session.ResumedAsTeam(home, root, "20260101-000000-aaaaaa"); !ok || isTeam {
+		t.Errorf("ResumedAsTeam(single) = %v, %v; want false, true", isTeam, ok)
+	}
+	if isTeam, ok := session.ResumedAsTeam(home, root, "20260102-000000-bbbbbb"); !ok || !isTeam {
+		t.Errorf("ResumedAsTeam(team) = %v, %v; want true, true", isTeam, ok)
+	}
+	if _, ok := session.ResumedAsTeam(home, root, "nosuch"); ok {
+		t.Error("ResumedAsTeam of a session that does not exist is known")
+	}
 	// without the worktree session, "latest" passes by the session in which no manager finished a turn, and finds the team
 	if err := os.RemoveAll(isolated); err != nil {
 		t.Fatal(err)

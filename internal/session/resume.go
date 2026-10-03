@@ -63,6 +63,16 @@ func ResolveResume(home, root, spec string) (string, error) {
 	}
 }
 
+// ResumedAsTeam says what shape the session a resume request names had: a team (true) or a single agent (false). known is false when the request
+// names no session that can be resumed (the caller goes on with the default and the resume reports why it cannot).
+func ResumedAsTeam(home, root, spec string) (team, known bool) {
+	dir, err := ResolveResume(home, root, spec)
+	if err != nil {
+		return false, false
+	}
+	return inspectLog(dir).swarm, true
+}
+
 // checkResumable refuses a session that cannot be continued, in words that say why.
 func checkResumable(dir string) (string, error) {
 	li := inspectLog(dir)
