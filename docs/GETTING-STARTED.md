@@ -131,7 +131,12 @@ sleipnir chat --resume SESSION_ID
 ```
 
 A resumed goal is paused; use `/goal resume` after reviewing its state.
-Worktree-isolated teams do not support resume.
+For a worktree-isolated team, resume from the original working directory with
+the same isolation and integration mode. Worker conversations, worktrees, and
+unfinished assignments are restored; workers start idle so the manager can
+continue their tasks. Older sessions without isolation recovery metadata cannot
+be resumed. See [session recovery](EXTENDING.md#6-sessions-list-resume-continue)
+for recovery requirements and interrupted edits.
 
 ## Inspect usage
 
