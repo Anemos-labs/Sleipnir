@@ -107,6 +107,22 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.go == 'mod'
         run: go test -count=1 -timeout 10m -run 'Allocations' ./...
 
+  # Session ownership is required on Windows even though the broader suite below
+  # still excludes packages with POSIX-only fixtures.
+  windows-session:
+    name: windows session ownership
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: session contention, release, and crash recovery
+        run: go test -count=1 -timeout 3m ./internal/session -run 'Test(SessionDirectoryLock|ASessionDirectoryHasOneWriter)'
+
   # Informational: Windows is supported best effort (docs/SECURITY.md, section 4). A red run here is worth a look and never
   # blocks a merge: the job is not in the gate's needs. It tests every package except those that scripts/windows-excluded.txt
   # names, with the reason for each (their tests assume a POSIX shell, paths, file modes or clock), so a red run is a package
@@ -225,7 +241,7 @@ jobs:
   gate:
     name: ci-gate
     if: always()
-    needs: [lint, test, cross, sim, security, workflows]
+    needs: [lint, test, windows-session, cross, sim, security, workflows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
