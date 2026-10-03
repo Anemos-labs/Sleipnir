@@ -188,6 +188,9 @@ type RolePermissions struct {
 // Cache tunes the prompt-cache engine. Token values of 0 mean "use the
 // engine's default"; the comments name the kv setting each maps to.
 type Cache struct {
+	// InstructionMaxTokens caps instruction files in the shared layer. Zero uses
+	// up to 16384 tokens, limited to a quarter of the initial model's context.
+	InstructionMaxTokens int `json:"instruction_max_tokens"`
 	// SharedTTL is the lifetime requested for cache entries on the shared and
 	// role layers: "5m" or "1h".
 	SharedTTL string `json:"shared_ttl,omitempty"`

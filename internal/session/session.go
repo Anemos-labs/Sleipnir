@@ -576,9 +576,10 @@ func (s *Session) buildShared(ctx context.Context) error {
 	}
 	s.Memory = srcs
 	if txt := memory.Render(srcs); strings.TrimSpace(txt) != "" {
-		fitted := fitTokensNote(txt, instructionBudget, est, "(instruction files truncated to fit the shared layer: the rest is in the files)\n")
-		if fitted != txt {
-			s.notice("", fmt.Sprintf("instruction files come to %d tokens and the shared layer takes %d: everything after the cut (the later files, project notes before local ones) is left out; shorten them, or read them with the file tools", est.Tokens(txt), instructionBudget))
+		budget := instructionTokenBudget(s.cfg.Cache.InstructionMaxTokens, s.Model.ContextTokens)
+		fitted, cut := fitInstructions(srcs, budget, est)
+		if len(cut) > 0 {
+			s.notice("", fmt.Sprintf("instruction files need about %d tokens; the limit is %d. Truncated or omitted: %s. Later, more specific files take precedence. Increase cache.instruction_max_tokens (SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS) and restart, or shorten the files; /recon shows the loaded text", est.Tokens(txt), budget, strings.Join(cut, ", ")))
 		}
 		segs = append(segs, kv.Segment{Key: "instructions", Text: fitted, Vol: kv.VolEpoch})
 	}
@@ -590,10 +591,6 @@ func (s *Session) buildShared(ctx context.Context) error {
 	}
 	return nil
 }
-
-// instructionBudget is how many tokens of instruction files the shared layer
-// carries. It is read on every request of every agent, so it is bounded.
-const instructionBudget = 3000
 
 // skippedSources lists (up to three) the paths in all that are not in kept.
 func skippedSources(all, kept []memory.Source) []string {

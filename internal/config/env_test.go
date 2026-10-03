@@ -95,6 +95,15 @@ func TestEnvironmentSetsEveryKindOfValue(t *testing.T) {
 	}
 }
 
+func TestInstructionBudgetEnvironmentOverridesFile(t *testing.T) {
+	p := newProj(t)
+	p.project(`{"cache":{"instruction_max_tokens":3000}}`)
+	cfg, rep := p.mustLoad(withEnv("SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS=24000"))
+	if cfg.Cache.InstructionMaxTokens != 24000 || rep.Origins["cache.instruction_max_tokens"] != "env:SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS" {
+		t.Fatalf("instruction limit or origin not applied: %+v %+v", cfg.Cache, rep.Origins)
+	}
+}
+
 func TestEnvironmentBoolSpellings(t *testing.T) {
 	p := newProj(t)
 	for _, v := range []string{"1", "true", "TRUE", "Yes", "on"} {

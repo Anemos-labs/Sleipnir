@@ -264,6 +264,7 @@ func (v *validator) nonNegative(segs []string, n int) {
 }
 
 func (v *validator) cache(c Cache) {
+	v.nonNegative(seg("cache", "instruction_max_tokens"), c.InstructionMaxTokens)
 	if c.SharedTTL != "" && !slices.Contains(cacheTTLs, c.SharedTTL) {
 		v.err(seg("cache", "shared_ttl"), "must be \"5m\" or \"1h\", got %q", c.SharedTTL)
 	}
