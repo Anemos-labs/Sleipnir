@@ -76,6 +76,8 @@ rebases. Bound reasoning is removed atomically with incompatible history changes
 A warm gate limits simultaneous cold starts. It waits for generated response
 content or completion, rather than a Responses queue/acceptance event.
 This is a scheduling heuristic; it does not confirm a cache entry exists.
+Independent server slots or replicas may each need a cold prefill. Warming one
+does not ensure the next concurrent request reaches that cache.
 
 Cache keys group related requests. They use the whole session identity and a
 stable shared-prefix hash. Providers may use them as routing hints; they do not
