@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,8 +42,8 @@ func ResolveResume(home, root, spec string) (string, error) {
 			if li.root != root {
 				continue
 			}
-			if li.isolated { // the newest session of the project is the one meant: passing it by for an older one would resume other work, silently
-				return "", fmt.Errorf("the newest session of %s (%s) ran its team in git worktrees, and such a session cannot be resumed yet; --resume ID continues another one (`sleipnir sessions` lists them)", root, n)
+			if li.isolated && !li.recovery {
+				return "", fmt.Errorf("the newest session of %s (%s) predates isolated-team recovery metadata; its worktrees and log remain available for inspection", root, n)
 			}
 			if li.resumable() {
 				return d, nil
@@ -77,17 +78,16 @@ func ResumedAsTeam(home, root, spec string) (team, known bool) {
 func checkResumable(dir string) (string, error) {
 	li := inspectLog(dir)
 	switch {
-	case li.isolated:
-		return "", fmt.Errorf("%s ran its team in git worktrees, and such a session cannot be resumed yet (its log and checkpoints stay for inspection)", dir)
+	case li.isolated && !li.recovery:
+		return "", fmt.Errorf("%s predates isolated-team recovery metadata; its worktrees, log and checkpoints remain available for inspection", dir)
 	case !li.resumable():
 		return "", fmt.Errorf("%s has no snapshot of its agent (or manager): no turn finished, so there is nothing to resume from", dir)
 	}
 	return dir, nil
 }
 
-// Resumable reports whether the session in dir can be continued: a session of one
-// agent, or of a team without worktrees, that finished at least one turn of the
-// agent a person talks to (the single agent, or the manager).
+// Resumable reports whether a session has primary-agent context and, when it
+// uses private worktrees, the isolation metadata needed to recover its base.
 func Resumable(dir string) bool { return inspectLog(dir).resumable() }
 
 // hasLog reports whether events.jsonl exists and is not a directory in a session directory.
@@ -121,15 +121,17 @@ const (
 
 // logInfo is what a resume decision needs to know about a session log.
 type logInfo struct {
+	id       string          // original session id, independent of a custom log directory
 	root     string          // project root the session was started in ("" when unknown)
 	swarm    bool            // the session ran a team
 	isolated bool            // the team worked in git worktrees
+	recovery bool            // the log fixes the original isolation base and mode
 	snaps    map[string]bool // the agents that saved a snapshot
 }
 
-// resumable: the agent a person talks to finished a turn, and the session did not isolate a team in worktrees.
+// resumable requires a primary snapshot and any necessary isolation metadata.
 func (l logInfo) resumable() bool {
-	return (l.snaps[soloAgent] || l.snaps[managerAgent]) && !l.isolated
+	return (l.snaps[soloAgent] || l.snaps[managerAgent]) && (!l.isolated || l.recovery)
 }
 
 // inspectLog reads the head of a session log: session.start (the first one
@@ -139,6 +141,9 @@ func inspectLog(dir string) logInfo {
 	started := false
 	scanHead(dir, func(e events.Event) bool {
 		switch e.Type {
+		case isolationEvent:
+			li.recovery = true
+			li.id = e.Session
 		case events.TypeSessionStart:
 			if !started {
 				started = true
@@ -158,11 +163,37 @@ func inspectLog(dir string) logInfo {
 	return li
 }
 
-// restore brings back the agent a person talks to (the single agent, or a team's manager) from the session's newest snapshot of it, and for
-// a team its board. A session of one shape can be resumed as the other: the snapshot is a thread, notes and a bill, which any agent can
-// take (every agent has the same tools), so it is handed to the agent this session has. A team's workers are not brought back, since nothing
-// of them is running: the tasks they held are todo again.
+// restore recovers the primary conversation and task board. Isolated teams also
+// recover their integration cursor and idle workers. Shared-tree sessions may
+// switch between a solo agent and a manager; isolated sessions keep their shape.
 func (s *Session) restore() error {
+	var evs []events.Event
+	if s.Swarm != nil {
+		if err := events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
+			evs = append(evs, e)
+			return nil
+		}); err != nil {
+			var corrupt *events.CorruptError
+			if s.iso != nil || !errors.As(err, &corrupt) {
+				return fmt.Errorf("read team state: %w", err)
+			}
+			// planIsolation already reported skipped lines for ordinary sessions.
+		}
+		prev, err := swarm.ReplayBoard(evs)
+		if err != nil {
+			return err
+		}
+		if s.iso != nil && s.iso.resume != nil {
+			if err := s.Swarm.RestoreIntegration(context.Background(), s.iso.applied); err != nil {
+				return err
+			}
+			if err := s.restoreWorkers(prev, evs); err != nil {
+				return err
+			}
+		} else {
+			s.Swarm.Board.Restore(prev)
+		}
+	}
 	a, from := s.Agent, ""
 	if s.Swarm != nil {
 		m, err := s.Swarm.StartIdleManager()
@@ -187,21 +218,93 @@ func (s *Session) restore() error {
 	if _, err := agent.RebuildHandles(s.Dir, s.handles); err != nil {
 		s.notice("", "resume: recall handles could not be restored: "+err.Error())
 	}
-	if s.Swarm != nil {
-		var evs []events.Event
-		err := events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
-			if e.Type == events.TypeBoardOp {
-				evs = append(evs, e)
+	return nil
+}
+
+// restoreWorkers joins roster, assignment, tree and snapshot records before any
+// model runs. Retired IDs and costs remain part of the session's history.
+func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error {
+	workers := map[string]swarm.RecoveredWorker{}
+	order := map[string]uint64{}
+	snaps := map[string]bool{}
+	selected := map[string]bool{}
+	prepared := map[string]bool{}
+	published := map[string]bool{}
+	for _, a := range prev.Agents {
+		if a.ID != managerAgent && a.Role != "mailman" {
+			selected[a.ID] = true
+		}
+	}
+	for _, e := range evs {
+		switch e.Type {
+		case events.TypeBoardOp:
+			var op struct{ Op, Agent string }
+			if err := json.Unmarshal(e.Data, &op); err != nil {
+				return err
 			}
-			return nil
-		})
-		var ce *events.CorruptError
-		if err != nil && !errors.As(err, &ce) {
-			s.notice("", "resume: the board could not be read: "+err.Error())
-		} else if prev, err := swarm.ReplayBoard(evs); err != nil {
-			s.notice("", "resume: the board could not be rebuilt: "+err.Error())
-		} else {
-			s.Swarm.Board.Restore(prev)
+			if op.Op == "agent" || op.Op == "agent-remove" {
+				published[op.Agent] = true
+			}
+		case events.TypeAgentSnapshot:
+			snaps[e.Agent] = true
+		case events.TypeAgentSpawn, "agent.assign", "agent.prepare":
+			var w struct{ ID, Role, Task string }
+			if err := json.Unmarshal(e.Data, &w); err != nil {
+				return err
+			}
+			if w.ID != "" && w.ID != managerAgent {
+				workers[w.ID] = swarm.RecoveredWorker{ID: w.ID, Role: w.Role, Task: w.Task}
+				order[w.ID] = e.Seq
+				if e.Type == "agent.prepare" {
+					prepared[w.ID] = true
+				}
+			}
+		}
+	}
+	for _, task := range prev.Tasks {
+		if task.Owner != "" && task.Owner != managerAgent && task.Status != swarm.StatusDone && task.Status != swarm.StatusFailed {
+			// A prepare record and an owned task recover the window before roster
+			// publication. Once published, only current roster membership counts:
+			// retired workers can leave both dirty trees and review tasks behind.
+			if !selected[task.Owner] && !(prepared[task.Owner] && !published[task.Owner]) {
+				continue
+			}
+			selected[task.Owner] = true
+			w := workers[task.Owner]
+			w.Task = task.ID
+			workers[task.Owner] = w
+		}
+	}
+	for id := range selected {
+		if workers[id].Role == "" {
+			return fmt.Errorf("cannot recover %s: its worker role was not recorded", id)
+		}
+	}
+	ids := map[string]string{}
+	var restored []swarm.RecoveredWorker
+	var retiredCost float64
+	for id, w := range workers {
+		ids[id] = w.Role
+		if snaps[id] {
+			var err error
+			w.Snapshot, err = agent.LatestSnapshot(s.Dir, id)
+			if err != nil {
+				return err
+			}
+		}
+		if selected[id] {
+			restored = append(restored, w)
+		} else if w.Snapshot != nil {
+			retiredCost += w.Snapshot.CostUSD
+		}
+	}
+	sort.Slice(restored, func(i, j int) bool { return order[restored[i].ID] > order[restored[j].ID] })
+	if err := s.Swarm.RestoreTeam(context.Background(), prev, restored, ids, retiredCost); err != nil {
+		return err
+	}
+	for _, w := range restored {
+		if _, err := agent.RebuildArchiveFrom(s.Dir, w.ID, w.ID, s.archive); err != nil {
+			s.notice(w.ID, "resume: archive could not be restored: "+err.Error())
 		}
 	}
 	return nil

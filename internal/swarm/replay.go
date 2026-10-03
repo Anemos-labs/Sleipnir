@@ -29,31 +29,32 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			continue
 		}
 		var m struct {
-			Op      string   `json:"op"`
-			Version uint64   `json:"version"`
-			Task    string   `json:"task"`
-			Status  string   `json:"status"`
-			Owner   string   `json:"owner"`
-			Line    string   `json:"line"`
-			Result  string   `json:"result"`
-			Evid    string   `json:"evidence"`
-			Att     int      `json:"attempts"`
-			Rev     uint64   `json:"rev"`
-			Files   []string `json:"files"`
-			Title   string   `json:"title"`
-			Desc    string   `json:"desc"`
-			Role    string   `json:"role"`
-			Deps    []string `json:"deps"`
-			Agent   string   `json:"agent"`
-			State   string   `json:"state"`
-			Ctx     int      `json:"ctx_tokens"`
-			Cost    float64  `json:"cost_usd"`
-			Note    int      `json:"note"`
-			Text    string   `json:"text"`
-			Scope   string   `json:"scope"`
-			Evicted []int    `json:"evicted"`
-			Notes   []int    `json:"notes"`
-			Tasks   []string `json:"tasks"`
+			Op      string            `json:"op"`
+			Version uint64            `json:"version"`
+			Task    string            `json:"task"`
+			Status  string            `json:"status"`
+			Owner   string            `json:"owner"`
+			Line    string            `json:"line"`
+			Result  string            `json:"result"`
+			Evid    string            `json:"evidence"`
+			Att     int               `json:"attempts"`
+			Rev     uint64            `json:"rev"`
+			Files   []string          `json:"files"`
+			Title   string            `json:"title"`
+			Desc    string            `json:"desc"`
+			Role    string            `json:"role"`
+			Deps    []string          `json:"deps"`
+			Agent   string            `json:"agent"`
+			State   string            `json:"state"`
+			Ctx     int               `json:"ctx_tokens"`
+			Cost    float64           `json:"cost_usd"`
+			Note    int               `json:"note"`
+			Text    string            `json:"text"`
+			Scope   string            `json:"scope"`
+			Evicted []int             `json:"evicted"`
+			Notes   []int             `json:"notes"`
+			Tasks   []string          `json:"tasks"`
+			Owners  map[string]string `json:"owners"`
 		}
 		if err := json.Unmarshal(e.Data, &m); err != nil {
 			return nil, fmt.Errorf("board.op #%d: %w", e.Seq, err)
@@ -68,7 +69,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 					for _, id := range m.Tasks {
 						if i, ok := taskAt[id]; ok {
 							t := snap.Tasks[i]
-							t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", m.Line, m.Version
+							t.Status, t.Owner, t.Line, t.Rev = StatusTodo, m.Owners[id], m.Line, m.Version
 							snap.Tasks[i] = t
 						}
 					}

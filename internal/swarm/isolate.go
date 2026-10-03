@@ -58,6 +58,11 @@ import (
 
 // Isolation is the workspace side of an isolated swarm.
 type Isolation struct {
+	// Resumable retains worker trees and integration refs when the session stops.
+	Resumable bool
+	// SaveIntegration durably records the checkout application cursor. A failure
+	// before applying prevents the write; an interrupted write is reconciled on resume.
+	SaveIntegration func(IntegrationState) error
 	// Manager creates the trees; its Repo is the user's repository.
 	Manager *workspace.Manager
 	// Queue integrates finished trees onto the integration branch.
@@ -65,6 +70,9 @@ type Isolation struct {
 	// Commit makes Finish move the user's branch to the integration tip (commits)
 	// instead of applying the result as a patch to the working tree.
 	Commit bool
+	// CheckoutBranch prevents commit-mode integration from moving a different
+	// branch after the user switches branches during a session. Empty disables it.
+	CheckoutBranch string
 	// Subdir is the directory the session works in relative to the repository root
 	// (slash-separated, "" for the root itself). A tree is a checkout of the whole
 	// repository; a session started in a subdirectory keeps its writers in the same
@@ -216,7 +224,9 @@ func (s *Swarm) retireTree(m *member) {
 	s.unbindTree(m)
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
-	_ = m.tree.Remove(ctx, false)
+	if err := m.tree.Remove(ctx, false); err != nil && s.deps.Isolation.Resumable {
+		_ = m.tree.Release(ctx)
+	}
 }
 
 // syncTree brings the integration tip into a member's tree, so it sees the work that
@@ -486,12 +496,11 @@ type IntegrationReport struct {
 	// is one command that gets it.
 	Message string `json:"message"`
 	Hint    string `json:"hint,omitempty"`
-	// Kept lists worker trees that still hold work that is merged nowhere; the next
-	// session's cleanup commits it onto their branches and removes the directories.
+	// Kept lists trees whose cleanup or release failed. Resumable sessions retain
+	// their worker trees normally, without listing each as a cleanup failure.
 	Kept []string `json:"kept,omitempty"`
-	// BranchKept says the integration branch (and the base branch it starts from) stay
-	// in the repository. Once the result is in the checkout they are deleted: their
-	// commits are there, or on the user's branch, and nothing is lost.
+	// BranchKept says recovery references remain, either for a resumed session or
+	// because its result could not be applied safely.
 	BranchKept bool `json:"branch_kept,omitempty"`
 }
 
@@ -512,6 +521,7 @@ type applyState struct {
 	files     map[string]bool
 	committed string // the user's branch, once the result was committed onto it
 	warned    string // the last failure the person was told of (it is not repeated)
+	pending   *IntegrationAttempt
 }
 
 // Integrate puts the integration branch's verified work that the user's checkout
@@ -531,6 +541,9 @@ func (s *Swarm) Integrate(ctx context.Context) *IntegrationReport {
 	defer s.apply.mu.Unlock()
 
 	rep := &IntegrationReport{Branch: q.Branch(), Base: q.Base(), Tip: q.Tip()}
+	if err := s.recoverApplication(ctx); err != nil {
+		return s.notApplied(rep, iso, err.Error())
+	}
 	from := s.apply.applied
 	if from == "" {
 		from = rep.Base
@@ -557,6 +570,9 @@ func (s *Swarm) Integrate(ctx context.Context) *IntegrationReport {
 	}
 	if d.Empty() { // commits that add up to no change
 		s.apply.applied = rep.Tip
+		if err := s.saveIntegration(); err != nil {
+			return s.notApplied(rep, iso, "could not save integration position: "+err.Error())
+		}
 		rep.Applied = true
 		rep.Message = "The integration branch's commits change nothing in your checkout."
 		return rep
@@ -587,6 +603,9 @@ func (s *Swarm) Integrate(ctx context.Context) *IntegrationReport {
 			}
 		}
 	}
+	if err := s.prepareApplication(ctx, rep, from, d); err != nil {
+		return s.notApplied(rep, iso, "could not record integration recovery state: "+err.Error())
+	}
 	if err := repo.ApplyWith(ctx, d.Patch, gitx.ApplyOptions{}); err != nil {
 		return s.notApplied(rep, iso, "applying it failed: "+firstLineOf(err.Error(), 200))
 	}
@@ -596,21 +615,47 @@ func (s *Swarm) Integrate(ctx context.Context) *IntegrationReport {
 		}
 	}
 	s.noteApplied(rep, "")
+	s.apply.pending = nil
 	rep.Applied = true
 	rep.Message = appliedMessage(rep, rep.Files, "")
+	if err := s.saveIntegration(); err != nil {
+		rep.Message += " The files were applied, but saving the recovery position failed: " + cleanText(err.Error(), 200)
+	}
 	s.emit(events.TypeSwarmIntegration, map[string]any{"branch": rep.Branch, "tip": rep.Tip, "applied": true, "files": firstN(rep.Files, 50)})
 	return rep
 }
 
 // applyCommits moves the user's branch to the integration tip.
 func (s *Swarm) applyCommits(ctx context.Context, rep *IntegrationReport, iso *Isolation) *IntegrationReport {
+	if iso.SaveIntegration != nil {
+		repo := iso.Manager.Repository()
+		head, err := repo.Head(ctx)
+		if err != nil {
+			return s.notApplied(rep, iso, err.Error())
+		}
+		branch, err := repo.Branch(ctx)
+		if err != nil {
+			return s.notApplied(rep, iso, err.Error())
+		}
+		if branch == "" || (iso.CheckoutBranch != "" && branch != iso.CheckoutBranch) {
+			return s.notApplied(rep, iso, "the checkout is no longer on the session's original branch")
+		}
+		s.apply.pending = &IntegrationAttempt{From: head, To: rep.Tip, Branch: branch, Paths: rep.Files}
+		if err := s.saveIntegration(); err != nil {
+			return s.notApplied(rep, iso, "could not save integration intent: "+err.Error())
+		}
+	}
 	res, err := iso.Queue.FastForward(ctx)
 	if err != nil {
 		return s.notApplied(rep, iso, firstLineOf(err.Error(), 300))
 	}
 	s.noteApplied(rep, res.Branch)
+	s.apply.pending = nil
 	rep.Applied, rep.Committed = true, true
 	rep.Message = appliedMessage(rep, rep.Files, res.Branch)
+	if err := s.saveIntegration(); err != nil {
+		rep.Message += " The commits were applied, but saving the recovery position failed: " + cleanText(err.Error(), 200)
+	}
 	s.emit(events.TypeSwarmIntegration, map[string]any{"branch": rep.Branch, "tip": rep.Tip, "applied": true, "committed": true, "files": firstN(rep.Files, 50)})
 	return rep
 }
@@ -709,11 +754,10 @@ func firstLineOf(s string, n int) string {
 	return cleanText(s, n)
 }
 
-// Finish ends an isolated run: it stops the swarm, applies the result (Integrate),
-// removes the trees that hold nothing unmerged, and closes the merge queue. When the
-// result reached the checkout the integration and base branches are deleted too
-// (their commits are in the checkout, or on the user's branch); otherwise they stay.
-// It is idempotent and returns nil for a swarm that is not isolated.
+// Finish stops an isolated run, applies verified work, and closes the merge queue.
+// Resumable sessions release ownership but retain worker trees and recovery refs.
+// Other callers remove safely merged trees and refs. It is idempotent and returns
+// nil for a swarm that is not isolated.
 func (s *Swarm) Finish(ctx context.Context) *IntegrationReport {
 	s.Shutdown()
 	if !s.isolated() {
@@ -737,13 +781,25 @@ func (s *Swarm) Finish(ctx context.Context) *IntegrationReport {
 		}
 	}
 	for _, t := range iso.Manager.Trees() {
+		if m := s.get(t.Agent); m != nil && m.isActive() {
+			rep.Kept = append(rep.Kept, t.Agent+": still stopping")
+			continue
+		}
 		s.unbindTreeByAgent(t.Agent)
+		if iso.Resumable {
+			if err := t.Release(ctx); err != nil {
+				rep.Kept = append(rep.Kept, t.Agent+": "+err.Error())
+			}
+			continue
+		}
 		if err := t.Remove(ctx, false); err != nil {
 			rep.Kept = append(rep.Kept, fmt.Sprintf("%s (branch %s)", t.Agent, t.Branch))
 		}
 	}
 	_ = iso.Queue.Close(ctx)
-	if rep.Applied && len(rep.Kept) == 0 {
+	if iso.Resumable {
+		rep.BranchKept = true
+	} else if rep.Applied && len(rep.Kept) == 0 {
 		repo := iso.Manager.Repository()
 		for _, b := range []string{rep.Branch, strings.TrimSuffix(rep.Branch, "_integration") + "_base"} {
 			_ = repo.DeleteBranch(ctx, b)

@@ -57,6 +57,7 @@ type rigOpts struct {
 	model     *cost.Model
 	tools     []fakeTool
 	steps     int
+	snapSteps bool
 	budget    float64
 	blobs     events.Blobs
 	capture   bool // ask the (mock) endpoint for token ids and logprobs
@@ -109,7 +110,8 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 	}
 	log := events.NewMemLog()
 	a, err := agent.New(agent.Config{
-		ID: "be-1", Role: "backend", Model: model, Provider: client, Tools: reg, ToolSpecs: specs,
+		SnapshotEachStep: opts.snapSteps,
+		ID:               "be-1", Role: "backend", Model: model, Provider: client, Tools: reg, ToolSpecs: specs,
 		Const:  kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: strings.Repeat("You are Sleipnir, a careful coding agent. ", 120)}}),
 		Shared: kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: strings.Repeat("The repo is a Go service with a users API. ", 150), Vol: kv.VolEpoch}}),
 		Params: core.Params{MaxTokens: 512},

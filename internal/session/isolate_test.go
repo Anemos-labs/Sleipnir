@@ -385,7 +385,7 @@ func eventTypes(t *testing.T, dir string) map[string]int {
 // file, two whose changes are each fine and wrong together. Every one gets a tree of its
 // own; the conflict and the verifier failure come back to the worker that was second;
 // the checkout ends with the merged, verified result as uncommitted edits, exactly what
-// the same team leaves in a shared tree; the trees are gone.
+// the same team leaves in a shared tree; worker state remains available for resume.
 func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *testing.T) {
 	repo := isoRepo(t)
 	head := git(t, repo, "rev-parse", "HEAD")
@@ -535,15 +535,16 @@ func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *t
 		t.Fatal(err)
 	}
 
-	// Cleaned up: no trees, no branches, no registrations.
-	if ents, _ := os.ReadDir(trees); len(ents) != 0 {
-		t.Errorf("the session's trees were left behind: %v", ents)
+	// The transient integration tree is removed. Worker trees and recovery refs
+	// remain, so this team can continue with its original base and conversations.
+	if ents, _ := os.ReadDir(trees); len(ents) != 7 {
+		t.Errorf("worker recovery trees missing: %v", ents)
 	}
-	if out := git(t, repo, "worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 1 {
-		t.Errorf("worktrees are still registered:\n%s", out)
+	if out := git(t, repo, "worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 8 {
+		t.Errorf("unexpected recovery worktrees:\n%s", out)
 	}
-	if out := git(t, repo, "branch", "--list", "sleipnir/*"); out != "" {
-		t.Errorf("branches were left behind:\n%s", out)
+	if out := git(t, repo, "branch", "--list", "sleipnir/*"); !strings.Contains(out, "_resume") || !strings.Contains(out, "_integration") {
+		t.Errorf("recovery refs missing:\n%s", out)
 	}
 	if got := statusLines(t, repo); len(got) != len(want) {
 		t.Errorf("closing changed the checkout: %v", got)

@@ -644,13 +644,41 @@ What it does not restore, or does differently:
 * **File-read state.** After a resume an edit needs a fresh `read` of the file first, which is what the staleness check
   exists to guarantee.
 
-**A team's session** (the chat on a terminal is one by default) is resumed as the manager's conversation and the board: the manager comes back with its
-thread, notes and spine, the tasks come back with their results, and a task that was somebody's (doing, in review, blocked) is todo again with no owner,
-because none of the workers is running (`resumed: the manager's 4 turns and the board are back (its workers are not: what they held is todo again)`). New
-tasks go on numbering after the old ones. The shape is yours to choose again: a team's session resumed with `--swarm 0` hands the manager's thread to the one
-agent, and a single agent's resumed as a team hands its thread to the manager. A session that ran its team in git worktrees (`--isolation worktree`) is
-refused (`... ran its team in git worktrees, and such a session cannot be resumed yet`: its branches would be shared with a second run), and so is one whose
-agent never finished a turn (`has no snapshot of its agent (or manager): no turn finished, so there is nothing to resume from`).
+**A shared-tree team** restores the manager's conversation and task board. Interrupted
+tasks return to todo without an owner; completed tasks keep their results. It can
+also resume as a single agent with `--swarm 0`, using the manager's conversation.
+
+**An isolated team** restores the manager, worker conversations, task board, original
+Git base, integration position and private worktrees. Workers start idle. Interrupted
+tasks still owned at interruption return to todo and remain reserved for that worker;
+`spawn task=T1` reuses it automatically. Tasks already released to the pool remain
+unassigned. Verification runs again before accepting unfinished
+work. Retired workers remain retired even when their dirty trees or review tasks
+remain on disk; their spending and IDs stay in the session history. A spawn
+interrupted before roster registration recovers only while its task is still owned.
+
+Use `--resume ID` or `--continue` from the original working directory. The team must
+keep worktree isolation and its original patch or commit mode; commit mode also needs
+the original checked-out branch. The configured agent limit must fit the recovered
+roster. An active session cannot be taken over. Logs created without isolation
+recovery metadata are refused with an explanation. Malformed complete log records
+also stop isolated recovery: a missing integration record cannot be safely guessed.
+Ordinary sessions retain best-effort recovery with a warning for skipped records.
+
+Isolated agents save context at complete tool-batch boundaries before model requests,
+including the initial input. A process killed during a model request can therefore
+resume even before its first final answer. A tool batch interrupted midway is not
+replayed automatically: files already written remain in the worker's tree and must
+be inspected before continuing. Recorded request and turn IDs are not reused, and
+reported usage after the last context snapshot still counts toward spending.
+
+Checkout integration records its intent before writing. On resume, matching before
+or after file contents establish whether the patch ran; partial or conflicting
+contents stop recovery without overwriting edits. The error names both comparison
+commits and the integration branch. After saving current edits, the affected paths
+must match either recorded state before recovery can continue. Complete snapshots consume local disk;
+`sleipnir sessions prune` removes selected histories and salvages remaining worker
+edits into Git branches before removing their cache directories.
 
 `sleipnir inspect <session dir>` opens a read-only dashboard over any recorded session, resumable or not.
 

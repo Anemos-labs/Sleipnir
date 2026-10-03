@@ -28,32 +28,33 @@ func newBoardState() boardState { return boardState{notes: map[int]struct{}{}} }
 // boardWire is what a board.op carries. Every operation names the task it changed and its whole state (internal/swarm/board.go
 // setTask), so that the log can rebuild the board; the operands of the other ops are the agent's status, a note or an alert.
 type boardWire struct {
-	Op        string   `json:"op"`
-	Version   uint64   `json:"version"`
-	Task      string   `json:"task"`
-	Status    string   `json:"status"`
-	Owner     string   `json:"owner"`
-	Line      string   `json:"line"`
-	Result    string   `json:"result"`
-	Evidence  string   `json:"evidence"`
-	Attempts  int64    `json:"attempts"`
-	Rev       *uint64  `json:"rev"`
-	Files     []string `json:"files"`
-	Title     string   `json:"title"`
-	Role      string   `json:"role"`
-	Deps      []string `json:"deps"`
-	Agent     string   `json:"agent"`
-	State     string   `json:"state"`
-	CtxTokens int64    `json:"ctx_tokens"`
-	Note      int      `json:"note"`
-	Evicted   []int    `json:"evicted"`
-	Notes     []int    `json:"notes"`
-	Tasks     []string `json:"tasks"`
-	Kind      string   `json:"kind"`
-	Text      string   `json:"text"`
-	Key       string   `json:"key"`
-	Dropped   int      `json:"dropped"`
-	N         int      `json:"n"`
+	Op        string            `json:"op"`
+	Version   uint64            `json:"version"`
+	Task      string            `json:"task"`
+	Status    string            `json:"status"`
+	Owner     string            `json:"owner"`
+	Owners    map[string]string `json:"owners"`
+	Line      string            `json:"line"`
+	Result    string            `json:"result"`
+	Evidence  string            `json:"evidence"`
+	Attempts  int64             `json:"attempts"`
+	Rev       *uint64           `json:"rev"`
+	Files     []string          `json:"files"`
+	Title     string            `json:"title"`
+	Role      string            `json:"role"`
+	Deps      []string          `json:"deps"`
+	Agent     string            `json:"agent"`
+	State     string            `json:"state"`
+	CtxTokens int64             `json:"ctx_tokens"`
+	Note      int               `json:"note"`
+	Evicted   []int             `json:"evicted"`
+	Notes     []int             `json:"notes"`
+	Tasks     []string          `json:"tasks"`
+	Kind      string            `json:"kind"`
+	Text      string            `json:"text"`
+	Key       string            `json:"key"`
+	Dropped   int               `json:"dropped"`
+	N         int               `json:"n"`
 }
 
 func (s *State) onBoardOp(e events.Event, t time.Time) {
@@ -201,7 +202,7 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 				}
 				if ts := s.tasks[clip(tid, textID)]; ts != nil {
 					s.setStatus(ts, "todo", t, e.Seq)
-					ts.Owner, ts.Line = "", clean(p.Line, textShort)
+					ts.Owner, ts.Line = clip(p.Owners[tid], textID), clean(p.Line, textShort)
 					ts.Rev = p.Version
 				}
 			}

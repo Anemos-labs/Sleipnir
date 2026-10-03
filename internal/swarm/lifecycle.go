@@ -80,6 +80,7 @@ type member struct {
 	mu        sync.Mutex
 	life      life
 	task      string // the assignment shown in its status
+	recovered bool   // idle worker recovered with its task and private tree
 	run       *runState
 	runSeq    uint64
 	state     string
@@ -199,7 +200,8 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		hooks = &holdHooks{inner: d.Hooks, s: s, m: m}
 	}
 	cfg := agent.Config{
-		ID: id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
+		SnapshotEachStep: s.isolated() && s.deps.Isolation.Resumable,
+		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens,
 		Const:         d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
 		Params: d.Params, OutagePatience: d.OutagePatience,

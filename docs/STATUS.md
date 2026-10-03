@@ -12,8 +12,10 @@ hooks, and trajectory export.
   requests. Model availability comes from the signed-in account.
 - A zero dollar total can mean no price is configured. Subscription quota usage
   is not measured in API dollars.
-- Session resume restores manager history and the task board; workers restart.
-  Teams using isolated Git worktrees cannot be resumed.
+- Isolated-team resume restores worker contexts and worktrees as idle, reserving
+  unfinished tasks for their workers. Sessions without isolation recovery metadata
+  cannot be resumed. Interrupted checkout writes with ambiguous file state require
+  manual reconciliation; recovery preserves the files and reports the branch.
 - Shell execution and several tests assume POSIX behavior. Windows support is
   incomplete; see `scripts/windows-excluded.txt`.
 - Verification depends on the configured command and task scope. A passing

@@ -12,7 +12,6 @@ tracks unfinished product work; implementation history belongs in Git.
   cannot make progress. Provide actionable reasons and bounded recovery.
 - Strengthen Windows support for shell analysis, process cleanup, and terminal
   behavior. The Windows test exclusions identify remaining portability gaps.
-- Support restoring teams that use isolated Git worktrees.
 
 ## Interaction
 

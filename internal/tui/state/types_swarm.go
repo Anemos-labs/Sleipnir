@@ -150,7 +150,8 @@ type MergeQueue struct {
 	Waiting []MergeEntry `json:"waiting,omitempty"`
 	Recent  []MergeEntry `json:"recent,omitempty"`
 	Counts  MergeCounts  `json:"counts"`
-	// Trees is the number of worktrees alive: workspace.create less workspace.remove.
+	// Trees counts existing worktrees, including trees retained for resume:
+	// workspace.create less workspace.remove.
 	Trees       int          `json:"trees,omitempty"`
 	Integration *Integration `json:"integration,omitempty"`
 	// Seen is true once the log holds any worktree or merge event.

@@ -974,13 +974,13 @@ func (b *Board) RemoveAgent(id string) {
 	})
 }
 
-// RequeueOwned returns every doing or blocked task an agent owns to todo (the
-// agent is going away). It returns the tasks it changed.
+// RequeueOwned releases doing, blocked, and reserved todo tasks when their agent
+// goes away. Review results remain available. It returns the tasks it changed.
 func (b *Board) RequeueOwned(agent, reason string) []Task {
 	var out []Task
 	_ = b.mutate("harness", "requeue", func(d *draft) error {
 		for i, t := range d.Tasks {
-			if t.Owner == agent && (t.Status == StatusDoing || t.Status == StatusBlocked) {
+			if t.Owner == agent && (t.Status == StatusDoing || t.Status == StatusBlocked || t.Status == StatusTodo) {
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", cleanText(reason, maxLineRunes), d.Version
 				d.tasks()[i] = t
 				out = append(out, t)
@@ -1000,8 +1000,8 @@ func (b *Board) RequeueOwned(agent, reason string) []Task {
 	return out
 }
 
-// resumedLine is what a task says when a resumed team finds nobody on it.
-const resumedLine = "the session was resumed: nobody is on it"
+// resumedLine explains why an interrupted task is waiting after recovery.
+const resumedLine = "the session was resumed: waiting to restart"
 
 // Restore gives an empty board the tasks and the pending notes of an earlier session's (ReplayBoard of its log): a resumed team starts
 // where the last one stopped. Nothing is running, so a task that was somebody's (doing, review, blocked) is todo again with no owner,
@@ -1009,6 +1009,13 @@ const resumedLine = "the session was resumed: nobody is on it"
 // whole is one "requeue" operation naming the tasks put back, so that ReplayBoard of the log, the old part and the new, equals this board.
 // A board that already holds tasks or notes is left as it is.
 func (b *Board) Restore(prev *Snapshot) []string {
+	return b.RestoreOwners(prev, nil)
+}
+
+// RestoreOwners restores tasks and notes while reserving interrupted tasks for
+// workers whose private worktrees were recovered. Reserved tasks are todo, so no
+// worker is reported as running until explicitly started again.
+func (b *Board) RestoreOwners(prev *Snapshot, owners map[string]string) []string {
 	if prev == nil {
 		return nil
 	}
@@ -1021,8 +1028,11 @@ func (b *Board) Restore(prev *Snapshot) []string {
 		tasks := append([]Task(nil), prev.Tasks...)
 		for i, t := range tasks {
 			switch t.Status {
-			case StatusDoing, StatusReview, StatusBlocked:
-				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", resumedLine, d.Version
+			case StatusDoing, StatusReview, StatusBlocked, StatusTodo:
+				if t.Status == StatusTodo && t.Owner == "" && owners[t.ID] == "" {
+					break
+				}
+				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
 				back = append(back, t.ID)
 			}
 			tasks[i] = t
@@ -1037,6 +1047,9 @@ func (b *Board) Restore(prev *Snapshot) []string {
 		}
 		d.set("tasks", back)
 		d.set("line", resumedLine)
+		if len(owners) > 0 {
+			d.set("owners", owners)
+		}
 		return nil
 	})
 	return back

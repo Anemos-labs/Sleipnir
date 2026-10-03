@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"context"
+	"os"
 	"strings"
 )
 
@@ -65,4 +66,38 @@ func (r *Repo) ApplyWith(ctx context.Context, patch string, opts ApplyOptions) e
 	args = append(args, "-")
 	_, err := r.run(ctx, call{args: args, stdin: strings.NewReader(patch), mutating: !opts.Check})
 	return err
+}
+
+// PatchedTree computes the tree produced by applying patch to base. It uses a
+// temporary index and never changes the working tree, real index, or references.
+func (r *Repo) PatchedTree(ctx context.Context, base, patch string) (string, error) {
+	if err := validateRev("patched tree", base); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(patch) == "" || len(patch) > maxPatchBytes || strings.ContainsRune(patch, 0) {
+		return "", newErr(KindInvalid, "patched tree", "invalid or oversized patch")
+	}
+	f, err := os.CreateTemp("", "sleipnir-apply-index-*")
+	if err != nil {
+		return "", err
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		os.Remove(name)
+		return "", err
+	}
+	defer os.Remove(name)
+	defer os.Remove(name + ".lock")
+	env := []string{"GIT_INDEX_FILE=" + name}
+	if _, err := r.run(ctx, call{args: []string{"read-tree", base}, env: env}); err != nil {
+		return "", err
+	}
+	if _, err := r.run(ctx, call{args: []string{"apply", "--cached", "--whitespace=nowarn", "-"}, env: env, stdin: strings.NewReader(patch)}); err != nil {
+		return "", err
+	}
+	out, err := r.run(ctx, call{args: []string{"write-tree"}, env: env})
+	if err != nil {
+		return "", err
+	}
+	return out.trimmed(), nil
 }

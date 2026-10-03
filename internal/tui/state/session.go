@@ -99,7 +99,7 @@ func (s *State) idleAgents(keep string, t time.Time) {
 }
 
 // onRestore is an agent brought back from a snapshot: the session is resumed. Its log may hold a run that was cut short (a killed process
-// ends nothing), whose workers are not coming back; the others are idle.
+// ends nothing). Recovered workers stay idle until their tasks restart.
 func (s *State) onRestore(e events.Event, t time.Time) {
 	ss := &s.sess
 	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD = false, time.Time{}, "", 0 // its session.start waits for a goal

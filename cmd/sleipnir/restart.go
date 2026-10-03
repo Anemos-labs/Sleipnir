@@ -47,8 +47,8 @@ func splitArgs(s string) []string {
 
 // restartArgs are the arguments to start `sleipnir chat` again with, from the flags a person typed after /restart: what they did not say
 // stays as it is now (the model, the permission mode), and the conversation comes along (--resume: a single agent's, or a team manager's)
-// unless the person said what to resume themselves, asked for worktrees (a session is resumed in its own directory, which a new set of
-// worktrees would share), or fresh says to start it empty (/new).
+// unless the person selected another session, changed isolation mode, or requested
+// a fresh conversation with /new.
 func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, error) {
 	has := func(name string) bool {
 		for _, a := range typed {
@@ -98,7 +98,19 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 	if !has("--mode") {
 		args = append(args, "--mode", string(s.Perm.Mode()))
 	}
-	if !fresh && !has("--resume") && !has("--continue") && !has("--isolation") && session.Resumable(s.Dir) {
+	changedIsolation := false
+	for i, arg := range typed {
+		name, value, equal := strings.Cut(arg, "=")
+		if name != "--isolation" && name != "-isolation" {
+			continue
+		}
+		if !equal && i+1 < len(typed) {
+			value = typed[i+1]
+		}
+		value = strings.ToLower(strings.TrimSpace(value))
+		changedIsolation = (value == "worktree") != s.WorktreeIsolation()
+	}
+	if !fresh && !has("--resume") && !has("--continue") && !changedIsolation && session.Resumable(s.Dir) {
 		args = append(args, "--resume", s.ID)
 	}
 	return args, nil

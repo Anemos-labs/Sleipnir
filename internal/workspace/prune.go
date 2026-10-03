@@ -15,6 +15,12 @@ import (
 
 // PruneOptions tunes Prune.
 type PruneOptions struct {
+	// RequireInactive leaves the entire namespace untouched if any matching
+	// worktree has a live or uncertain owner. The check holds the repository lock.
+	RequireInactive bool
+	// KeepPrefixes preserves every tree and ref in these exact session namespaces,
+	// including stopped owners. Callers use it for sessions that can be resumed.
+	KeepPrefixes []string
 	// Force also removes stale trees that have uncommitted changes and deletes
 	// stale branches that hold commits nowhere else. It destroys work; the default
 	// never does.
@@ -87,6 +93,16 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 	if err != nil {
 		return nil, err
 	}
+	if opts.RequireInactive {
+		for _, e := range entries {
+			if !keptPrefix(e.mk.Prefix, opts.KeepPrefixes) && e.mk.owner() != ownerDead {
+				rep.Live++
+			}
+		}
+		if rep.Live > 0 {
+			return rep, nil
+		}
+	}
 	all, err := m.st.base.Worktrees(ctx)
 	if err != nil {
 		return nil, err
@@ -103,6 +119,9 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 	for _, e := range entries {
 		mk := e.mk
 		act := PruneAction{Agent: mk.Agent, Path: e.wt.Path, Branch: mk.Branch}
+		if keptPrefix(mk.Prefix, opts.KeepPrefixes) {
+			continue
+		}
 		if st := mk.owner(); st == ownerAlive || st == ownerUnknown {
 			rep.Live++
 			protected[mk.Prefix+"/"+integrationName] = true
@@ -138,6 +157,9 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 	}
 	for _, r := range refs {
 		act := PruneAction{Branch: r.Name}
+		if keptPrefix(r.Name, opts.KeepPrefixes) {
+			continue
+		}
 		if attached[r.Name] || protected[r.Name] {
 			continue
 		}
@@ -168,9 +190,22 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 	return rep, nil
 }
 
+// keptPrefix matches a namespace or a child ref without matching a similar name.
+func keptPrefix(name string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if name == prefix || strings.HasPrefix(name, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // pruneHalfCreated removes the registrations that died before they got a marker
 // (see orphan.go). The repository lock is held by the caller.
 func (m *Manager) pruneHalfCreated(ctx context.Context, opts PruneOptions, rep *PruneReport) {
+	if keptPrefix(m.st.prefix, opts.KeepPrefixes) {
+		return
+	}
 	ents, err := os.ReadDir(m.st.dirReal)
 	if err != nil {
 		return

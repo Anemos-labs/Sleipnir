@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -30,7 +32,8 @@ import (
 //	<cache>/sleipnir/worktrees/<session id>/_integration  the merge queue's tree
 //
 // where <cache> is the platform's per-user cache directory ($XDG_CACHE_HOME or
-// ~/.cache on Linux): large, disposable, re-creatable data belongs there. The state
+// ~/.cache on Linux). Worker edits remain there until session pruning salvages
+// them into Git branches; removing a cache tree manually can lose uncommitted work. The state
 // directory (~/.sleipnir) is out: it is a protected configuration directory, where
 // every write asks for approval in every mode. Nothing in the configuration chooses
 // the location either: a project's config file must not be able to point where a
@@ -54,6 +57,8 @@ type isoPlan struct {
 	mgr     *workspace.Manager
 	queue   *workspace.Queue
 	ownsDir bool // the session created dir
+	resume  *isolationRecord
+	applied swarm.IntegrationState
 }
 
 // isolationMode is the effective mode ("none" or "worktree") and whether the person
@@ -81,6 +86,34 @@ func (s *Session) planIsolation(ctx context.Context) error {
 	mode, explicit, err := s.isolationMode()
 	if err != nil {
 		return err
+	}
+	var prior *isolationRecord
+	var applied swarm.IntegrationState
+	if o.Resume != "" {
+		prior, applied, err = readIsolation(s.Dir)
+		if err != nil {
+			var corrupt *events.CorruptError
+			info := inspectLog(s.Dir)
+			if !errors.As(err, &corrupt) || prior != nil || info.isolated || info.recovery {
+				return err
+			}
+			// Ordinary sessions have no durable checkout cursor to lose. Preserve
+			// their existing best-effort resume policy; isolated recovery is strict.
+			s.notice("", "resume: damaged event lines were skipped: "+err.Error())
+		}
+		if prior != nil {
+			if !o.Swarm || (explicit && mode != config.IsolationWorktree) {
+				return errors.New("this session must resume as a team with worktree isolation")
+			}
+			if o.Commit && !prior.Commit {
+				return errors.New("this session applied uncommitted edits; its integration mode cannot change on resume")
+			}
+			if !samePathLoose(o.Root, prior.Root) || !samePathLoose(o.Cwd, prior.Cwd) {
+				return fmt.Errorf("resume this isolated team from its original directory: %s", prior.Cwd)
+			}
+			mode, o.Commit = config.IsolationWorktree, prior.Commit
+			s.opts.Isolation, s.opts.Commit = mode, prior.Commit
+		}
 	}
 	if o.Commit && mode != config.IsolationWorktree {
 		return errors.New("commit needs worktree isolation (--isolation worktree, or swarm.isolation in the configuration)")
@@ -144,6 +177,29 @@ func (s *Session) planIsolation(ctx context.Context) error {
 		return fmt.Errorf("worktree isolation keeps its trees under %s, which is inside a protected configuration directory (every write there asks for approval): set XDG_CACHE_HOME to a directory outside it", top)
 	}
 	plan := &isoPlan{commit: o.Commit, repo: repo, top: top, dir: dir, prefix: "sleipnir/" + s.ID}
+	if prior != nil {
+		if prior.Prefix != plan.prefix || !samePathLoose(prior.Dir, dir) {
+			return fmt.Errorf("the session's worktrees belong at %s; restore the original cache location before resuming", prior.Dir)
+		}
+		base, err := repo.BranchSHA(ctx, plan.prefix+"/_resume")
+		if err != nil || base != prior.Base {
+			return fmt.Errorf("the session's recovery reference %s/_resume is missing or changed; its worktrees were left untouched", plan.prefix)
+		}
+		tip, err := repo.BranchSHA(ctx, plan.prefix+"/_integration")
+		if err != nil {
+			return fmt.Errorf("the session's integration reference is missing: %w", err)
+		}
+		if ok, err := repo.IsAncestor(ctx, base, tip); err != nil || !ok {
+			return errors.New("the session's integration branch no longer descends from its original base")
+		}
+		if prior.Commit {
+			branch, err := repo.Branch(ctx)
+			if err != nil || branch != prior.Branch {
+				return fmt.Errorf("resume this commit-mode session on its original branch %s", prior.Branch)
+			}
+		}
+		plan.resume, plan.applied = prior, applied
+	}
 	if rel, err := filepath.Rel(realRoot, evalLoose(o.Cwd)); err == nil && rel != "." && filepath.IsLocal(rel) {
 		plan.subdir = filepath.ToSlash(rel)
 	}
@@ -188,10 +244,8 @@ func sourceDirty(ctx context.Context, repo *gitx.Repo) (bool, error) {
 	return tree != head, nil
 }
 
-// buildIsolation makes the workspace manager and the merge queue and returns what the
-// swarm needs. It first sweeps up after sessions that died without cleaning (their
-// trees, once their process is gone, are committed onto their own branches and
-// removed; branches that hold work that exists nowhere else are kept and reported).
+// buildIsolation creates or reopens the team's merge queue. Cleanup preserves
+// resumable namespaces; older unpinned trees are salvaged before removal.
 func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) {
 	p := s.iso
 	if p == nil {
@@ -207,6 +261,9 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		Snapshot: !p.commit,
 		OnEvent:  workspace.EmitTo(s.Log),
 	}
+	if p.resume != nil {
+		mgr.Base, mgr.Snapshot = p.resume.Base, false
+	}
 	if v := s.opts.Verify; v != "" && !strings.Contains(v, "{dirs}") && s.opts.Swarm && s.opts.Sink != nil {
 		// Every worker's tree holds only its own task's changes, so a command over the whole
 		// repository fails on the others' bugs until they are merged, and they wait for each
@@ -217,7 +274,7 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		}
 		s.opts.Sink.Notice("", "warn", "--verify has no {dirs} and the workers have trees of their own: a check of the whole repository cannot pass until every task is merged, so tasks that wait on each other may stall; name the directories of the task with {dirs}, as in "+hint)
 	}
-	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify})
+	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify, Resume: p.resume != nil})
 	if err != nil {
 		if errors.Is(err, workspace.ErrNoCommits) {
 			return nil, errors.New("worktree isolation starts every tree from a commit, and the repository has none yet: commit the project first")
@@ -225,10 +282,36 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		return nil, fmt.Errorf("worktree isolation: %w", err)
 	}
 	p.mgr, p.queue = mgr, q
-	return &swarm.Isolation{Manager: mgr, Queue: q, Commit: p.commit, Subdir: p.subdir, Checkpoints: s.treeCheckpoints}, nil
+	branch, err := p.repo.Branch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if p.resume == nil {
+		record := isolationRecord{Version: 1, Root: s.opts.Root, Cwd: s.opts.Cwd, Dir: p.dir, Prefix: p.prefix,
+			Base: q.Base(), Commit: p.commit, Branch: branch}
+		if err := p.repo.CreateBranch(ctx, p.prefix+"/_resume", q.Base()); err != nil {
+			return nil, err
+		}
+		if _, err := s.Log.Emit("", isolationEvent, record); err != nil {
+			return nil, err
+		}
+		if err := s.Log.Flush(); err != nil {
+			return nil, err
+		}
+	}
+	return &swarm.Isolation{Manager: mgr, Queue: q, Commit: p.commit, Subdir: p.subdir, Checkpoints: s.treeCheckpoints,
+		Resumable: true, CheckoutBranch: branch, SaveIntegration: func(state swarm.IntegrationState) error {
+			if _, err := s.Log.Emit("swarm", integrationStateEvent, state); err != nil {
+				return err
+			}
+			return s.Log.Flush()
+		}}, nil
 }
 
-// pruneStale cleans up after crashed sessions of this repository. It never touches a
+// WorktreeIsolation reports whether this session's workers use private worktrees.
+func (s *Session) WorktreeIsolation() bool { return s.iso != nil }
+
+// pruneStale cleans up unpinned stale workspaces of this repository. It never touches a
 // tree whose owner is running, and never destroys work: uncommitted changes are
 // committed onto the tree's branch first, and a branch with commits that exist nowhere
 // else is kept. What it kept is worth a line to the person.
@@ -236,7 +319,18 @@ func (s *Session) pruneStale(ctx context.Context, p *isoPlan) {
 	sweeper := &workspace.Manager{Repo: p.repo, Dir: p.top, Prefix: "sleipnir", OnEvent: workspace.EmitTo(s.Log)}
 	pctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	rep, err := sweeper.Prune(pctx, workspace.PruneOptions{Salvage: true})
+	refs, err := p.repo.Branches(pctx, "sleipnir/")
+	if err != nil {
+		s.tell("warn", "could not inspect recovery references: "+err.Error())
+		return
+	}
+	keep := []string{p.prefix}
+	for _, ref := range refs {
+		if strings.HasSuffix(ref.Name, "/_resume") {
+			keep = append(keep, strings.TrimSuffix(ref.Name, "/_resume"))
+		}
+	}
+	rep, err := sweeper.Prune(pctx, workspace.PruneOptions{Salvage: true, KeepPrefixes: keep})
 	if err != nil {
 		s.tell("warn", "could not clean up worktrees left by earlier sessions: "+firstLine(err.Error(), 200))
 		return
@@ -284,7 +378,7 @@ func (s *Session) treeCheckpoints(agent, dir string) (tools.Snapshotter, func(ag
 
 // Finish ends an isolated run: the swarm stops, the verified result reaches the
 // person's checkout (as uncommitted edits, or as commits with Options.Commit), the
-// trees that hold nothing unmerged are removed and the merge queue closes. The report
+// worker trees are retained for resume and the merge queue closes. The report
 // says what happened; when the result could not be applied it names the branch that
 // holds it and the one command that gets it. It is safe to call more than once (the
 // report of the first call is returned again) and returns nil for a session that is
@@ -323,13 +417,67 @@ func (s *Session) releaseIsolation() {
 	defer cancel()
 	if p.queue != nil {
 		_ = p.queue.Close(ctx)
-		repo := p.repo
-		_ = repo.DeleteBranch(ctx, p.queue.Branch())
-		_ = repo.DeleteBranch(ctx, p.prefix+"/_base")
+		if p.resume == nil {
+			repo := p.repo
+			_ = repo.DeleteBranch(ctx, p.queue.Branch())
+			_ = repo.DeleteBranch(ctx, p.prefix+"/_base")
+			_ = repo.DeleteBranch(ctx, p.prefix+"/_resume")
+		}
+	}
+	if p.mgr != nil {
+		for _, tree := range p.mgr.Trees() {
+			_ = tree.Release(ctx)
+		}
 	}
 	if p.ownsDir {
 		_ = os.Remove(p.dir) // only if it is empty
 	}
+}
+
+// isolationRecord fixes the original checkout, base and integration mode for every
+// continuation. Recovery never derives a new base from today's dirty checkout.
+type isolationRecord struct {
+	Version int    `json:"version"`
+	Root    string `json:"root"`
+	Cwd     string `json:"cwd"`
+	Dir     string `json:"dir"`
+	Prefix  string `json:"prefix"`
+	Base    string `json:"base"`
+	Commit  bool   `json:"commit"`
+	Branch  string `json:"branch"`
+}
+
+const isolationEvent = "session.isolation"
+const integrationStateEvent = "swarm.integration_state"
+
+// readIsolation reads recovery metadata strictly. A corrupt log or unsupported
+// version cannot authorize modifying a previous session's worktrees.
+func readIsolation(dir string) (*isolationRecord, swarm.IntegrationState, error) {
+	var record *isolationRecord
+	var state swarm.IntegrationState
+	err := events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
+		switch e.Type {
+		case isolationEvent:
+			var rec isolationRecord
+			if err := json.Unmarshal(e.Data, &rec); err != nil {
+				return err
+			}
+			if rec.Version != 1 || rec.Base == "" || rec.Root == "" || rec.Cwd == "" || rec.Dir == "" || rec.Prefix == "" {
+				return errors.New("unsupported or incomplete isolation recovery record")
+			}
+			if record != nil && *record != rec {
+				return errors.New("conflicting isolation recovery records")
+			}
+			record = &rec
+		case integrationStateEvent:
+			state = swarm.IntegrationState{}
+			if err := json.Unmarshal(e.Data, &state); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return record, state, err
 }
 
 // tell logs a notice and shows it through the sink.

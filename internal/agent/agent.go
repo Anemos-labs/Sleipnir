@@ -118,9 +118,13 @@ func (NopSink) Notice(string, string, string) {}
 // Config assembles an agent. Fields marked shared point at session-wide
 // services; the rest are per agent.
 type Config struct {
-	ID    string
-	Role  string
-	Model cost.Model
+	// SnapshotEachStep saves resumable context before each model request, after
+	// all results from the preceding tool batch have been appended. This also
+	// protects the first run of an isolated team that has never returned an answer.
+	SnapshotEachStep bool
+	ID               string
+	Role             string
+	Model            cost.Model
 
 	Provider provider.Provider
 	// Compactor, when set, writes the compaction patches in place of Provider (a cheaper model
@@ -317,6 +321,9 @@ type Agent struct {
 	inbox  []inboxMsg
 	reqN   int
 	forkN  int
+	// pendingRequests distinguishes unaccounted responses from counters already
+	// reserved when a concurrent snapshot captures an in-flight request.
+	pendingRequests map[string]bool
 	// man is the manifest state the next main request's prompt is delta-encoded
 	// against (see core.BuildManifest).
 	man     core.ManifestState
@@ -653,6 +660,11 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
 	}
+	if a.cfg.SnapshotEachStep {
+		if err := a.writeSnapshot(true); err != nil {
+			return res, fmt.Errorf("save recovery snapshot: %w", err)
+		}
+	}
 	a.rep.reset()
 	a.tests.reset()
 	phase := "between" // what a cancellation interrupted, for agent.cancel
@@ -684,6 +696,11 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.mu.Unlock()
 		a.boundary(ctx)
 		a.drainInbox()
+		if a.cfg.SnapshotEachStep {
+			if err := a.writeSnapshot(true); err != nil {
+				return res, fmt.Errorf("save recovery snapshot: %w", err)
+			}
+		}
 
 		phase = "model"
 		resp, epoch, err := a.request(ctx)
