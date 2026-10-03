@@ -68,7 +68,7 @@ func showRandAgents(r *rand.Rand, n int) []widget.AgentRow {
 		}
 		rows[i] = widget.AgentRow{
 			ID: showText(r), Role: showText(r), RoleColor: showInt(r), State: widget.AgentState(r.Intn(10)), Doing: showText(r),
-			Shared: showInt(r), Own: showInt(r), Hit: showFloat(r), Cost: showFloat(r), Lease: showText(r),
+			Shared: showInt(r), Own: showInt(r), Hit: showFloat(r), Cost: showFloat(r), Scope: showText(r),
 			Levels: lv, LevelsFrom: showInt(r) % 100, Marks: marks,
 		}
 	}

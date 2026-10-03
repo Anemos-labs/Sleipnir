@@ -1,5 +1,5 @@
 // The agent table of the cockpit: one row per agent with its state, what it is doing, a small bar of its prompt (what it
-// inherited, what is its own, what came from the cache), its size, cost, hit ratio and lease (swarm.png, "agents").
+// inherited, what is its own, what came from the cache), its size, cost, hit ratio and scope (swarm.png, "agents").
 
 package widget
 
@@ -87,7 +87,7 @@ type agentTableCol struct {
 
 // AgentTable draws the agents as a header and a row each, width cells wide:
 //
-//	AGENT        STATE    DOING                 PROMPT                TOK   COST    ⛁  LEASE
+//	AGENT        STATE    DOING                 PROMPT                TOK   COST    ⛁  SCOPE
 //	m0 manager   ⠹ think  plan: split by ep…    ██████▏████▓░░░░░   53.3k  $0.012  96%  —
 //	w1 backend   ⚙ tool   go test ./orders/…    ██████▏███████▓░    72.2k  $0.020  97%  orders/*
 //
@@ -96,18 +96,18 @@ type agentTableCol struct {
 // lost cache); the hit ratio is coloured green, amber or red and Bold, and the stuck ones stand out by their state. Idle and
 // finished agents are dim.
 //
-// When the width is short the lease goes first, then the cost, the size and the prompt bar, and the doing column gives up its
+// When the width is short the scope goes first, then the cost, the size and the prompt bar, and the doing column gives up its
 // room; everything is cut to fit. No agents, or a width <= 0, draws nothing. Text from outside is cleaned of control characters.
 func AgentTable(rows []AgentRow, width int, frame int, p Palette) []cell.Line {
 	if width <= 0 || len(rows) == 0 {
 		return nil
 	}
-	agentW, leaseW := 6, 5
+	agentW, scopeW := 6, 5
 	for _, r := range rows {
 		agentW = max(agentW, cell.StringWidth(showClean(r.ID))+1+cell.StringWidth(showClean(r.Role)))
-		leaseW = max(leaseW, cell.StringWidth(showClean(r.Lease)))
+		scopeW = max(scopeW, cell.StringWidth(showClean(r.Scope)))
 	}
-	agentW, leaseW = min(agentW, 14), min(leaseW, 12)
+	agentW, scopeW = min(agentW, 14), min(scopeW, 12)
 	cols := []agentTableCol{
 		{key: "agent", title: "AGENT", w: agentW},
 		{key: "state", title: "STATE", w: 7},
@@ -116,7 +116,7 @@ func AgentTable(rows []AgentRow, width int, frame int, p Palette) []cell.Line {
 		{key: "tok", title: "TOK", w: 6, right: true, drop: 3},
 		{key: "cost", title: "COST", w: 7, right: true, drop: 2},
 		{key: "hit", title: "⛁", w: 4, right: true},
-		{key: "lease", title: "LEASE", w: leaseW, drop: 1},
+		{key: "scope", title: "SCOPE", w: scopeW, drop: 1},
 	}
 	// the room that is left, once the other columns and the spaces between all of them are paid for, is the doing column's
 	room := func() int {
@@ -188,9 +188,9 @@ func AgentTable(rows []AgentRow, width int, frame int, p Palette) []cell.Line {
 		if r.Hit == r.Hit {
 			hit = cell.Styled(agentHitStyle(r.Hit, p), strconv.Itoa((showPermille(r.Hit)+5)/10)+"%")
 		}
-		lease := showClean(r.Lease)
-		if lease == "" {
-			lease = "—"
+		scope := showClean(r.Scope)
+		if scope == "" {
+			scope = "—"
 		}
 		cells := map[string]cell.Line{
 			"agent": cell.Join(cell.Styled(p.roleSt(r.RoleColor), showClean(r.ID)), cell.Text(" "+showClean(r.Role))),
@@ -199,7 +199,7 @@ func AgentTable(rows []AgentRow, width int, frame int, p Palette) []cell.Line {
 			"tok":   cell.Text(showTokens(showTok(r.Shared) + showTok(r.Own))),
 			"cost":  cell.Text(showMoney(r.Cost)),
 			"hit":   hit,
-			"lease": cell.Styled(p.dimSt(), lease),
+			"scope": cell.Styled(p.dimSt(), scope),
 		}
 		for _, c := range cols {
 			if c.key == "bar" {

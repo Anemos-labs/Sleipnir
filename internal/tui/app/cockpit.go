@@ -1,7 +1,6 @@
 package app
 
 import (
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -204,7 +203,7 @@ func agentRows(sn *state.Snapshot, opt CockpitOptions) []widget.AgentRow {
 		}
 		r := widget.AgentRow{
 			ID: a.ID, Role: a.Role, RoleColor: roleColor(a.Role), State: status(a),
-			Doing: doing(a, tasks), Shared: shared, Own: own, Hit: a.Stack.Hit, Cost: a.CostUSD, Lease: lease(a),
+			Doing: doing(a, tasks), Shared: shared, Own: own, Hit: a.Stack.Hit, Cost: a.CostUSD, Scope: scope(a),
 		}
 		if lane, ok := lanes[a.ID]; ok {
 			r.Levels, r.Marks = lane8(lane)
@@ -263,15 +262,14 @@ func doing(a state.Agent, tasks map[string]state.Task) string {
 	return "thinking"
 }
 
-// lease is what an agent owns: its scope, else the first file it holds.
-func lease(a state.Agent) string {
+// scope summarizes the paths assigned to the agent's current tasks. A write
+// lease on an individual file does not assign its enclosing directory.
+func scope(a state.Agent) string {
 	switch {
 	case len(a.Scope) == 1:
 		return a.Scope[0]
 	case len(a.Scope) > 1:
 		return a.Scope[0] + " +" + strconv.Itoa(len(a.Scope)-1)
-	case len(a.Leases) > 0:
-		return path.Dir(a.Leases[0]) + "/*"
 	}
 	return ""
 }

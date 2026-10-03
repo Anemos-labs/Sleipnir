@@ -22,8 +22,8 @@ type AgentRow struct {
 	// Hit is the share of its last request that was served from the cache, 0..1. A dark tail in the agent's bar is what it lost.
 	Hit  float64
 	Cost float64 // dollars spent so far
-	// Lease is what it owns (orders/*).
-	Lease string
+	// Scope summarizes assigned task paths (orders/*), independently of write leases.
+	Scope string
 	// Levels is the agent's activity for the gantt, a bucket a second, 0 to 8; Levels[i] is the bucket LevelsFrom+i (see Lane).
 	Levels     []uint8
 	LevelsFrom int

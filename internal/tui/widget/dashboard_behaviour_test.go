@@ -390,7 +390,7 @@ func showHostileDashboard() widget.DashboardData {
 	d.Title = next()
 	for i := range d.Agents {
 		a := &d.Agents[i]
-		a.ID, a.Role, a.Doing, a.Lease = next(), next(), next(), next()
+		a.ID, a.Role, a.Doing, a.Scope = next(), next(), next(), next()
 	}
 	for i := range d.Kanban {
 		d.Kanban[i].Title = next()

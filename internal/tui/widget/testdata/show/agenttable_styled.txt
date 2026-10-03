@@ -1,7 +1,7 @@
 # role colours on the ids, state colours on the states, hit: good from 93%!,(MISSING) warn from 89%!,(MISSING) else bad and Bold; the bar: G0..G2 inherited, the role colour for its own part
 
 == m0, w1 and w7 at width 84
-{dim|AGENT}      {dim|STATE}   {dim|DOING}               {dim|PROMPT}              {dim|TOK}    {dim|COST}    {dim|⛁} {dim|LEASE}
+{dim|AGENT}      {dim|STATE}   {dim|DOING}               {dim|PROMPT}              {dim|TOK}    {dim|COST}    {dim|⛁} {dim|SCOPE}
 {r0+b|m0} manager {accent|⠋ think} plan: split by end… {r0|██████████████▓}{r0+d|░}  12.1k  $0.012  {good|96%} {dim|—}
 {r1+b|w1} backend {good|⚙ tool}  go test ./orders/.… {G0|███}{G1|███}{G2|███}{r1+b|▏}{r1|██████}  72.2k  $0.020  {good|97%} {dim|orders/*}
 {r5+b|w7} docs    {bad+b|⚠ stuck} npm test - same fa… {G0|████}{G1|███}{G2|███}{r5+b|▏}{r5|██▓}{r5+d|░░}  48.0k  $0.012  {bad+b|88%} {dim|docs/*}

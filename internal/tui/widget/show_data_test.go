@@ -22,7 +22,7 @@ func showSketchAgents() []widget.AgentRow {
 		own      int
 		cost     float64
 		hit      float64
-		lease    string
+		scope    string
 		bias     float64
 	}{
 		{"m0", "manager", 0, widget.StateThinking, "plan: split by endpoint", 0, 12100, 0.012, 0.96, "", 0.7},
@@ -38,7 +38,7 @@ func showSketchAgents() []widget.AgentRow {
 	for i, s := range specs {
 		rows[i] = widget.AgentRow{
 			ID: s.id, Role: s.role, RoleColor: s.color, State: s.state, Doing: s.doing,
-			Shared: s.shared, Own: s.own, Hit: s.hit, Cost: s.cost, Lease: s.lease,
+			Shared: s.shared, Own: s.own, Hit: s.hit, Cost: s.cost, Scope: s.scope,
 			Levels: showLane(showRand(int64(100+i)), widget.GanttBuckets, s.bias, s.state == widget.StateDone),
 		}
 	}
@@ -96,7 +96,7 @@ func showSwarm(n int, seed int64) []widget.AgentRow {
 	states := []widget.AgentState{widget.StateThinking, widget.StateTool, widget.StateTool, widget.StateEdit, widget.StateWait, widget.StateIdle,
 		widget.StateDone, widget.StateThinking, widget.StateTool, widget.StateStuck}
 	doing := []string{"go test ./...", "internal/orders/list.go", "waits for t3", "paginate <Orders>", "review t9", "docs/api.md"}
-	leases := []string{"", "orders/*", "users/*", "web/api", "docs/*"}
+	scopes := []string{"", "orders/*", "users/*", "web/api", "docs/*"}
 	for i := len(rows); i < n; i++ {
 		ro := roles[r.Intn(len(roles))]
 		st := states[r.Intn(len(states))]
@@ -107,7 +107,7 @@ func showSwarm(n int, seed int64) []widget.AgentRow {
 		rows = append(rows, widget.AgentRow{
 			ID: fmt.Sprintf("w%d", i), Role: ro.name, RoleColor: ro.color, State: st, Doing: doing[r.Intn(len(doing))],
 			Shared: 41200, Own: own, Hit: 0.85 + float64(r.Intn(14))/100, Cost: float64(own) * 0.0000005,
-			Lease:  leases[r.Intn(len(leases))],
+			Scope:  scopes[r.Intn(len(scopes))],
 			Levels: showLane(r, widget.GanttBuckets, 0.3+float64(r.Intn(60))/100, st == widget.StateDone),
 		})
 	}
