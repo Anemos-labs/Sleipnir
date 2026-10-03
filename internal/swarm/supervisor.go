@@ -83,20 +83,23 @@ func (s *Swarm) watch(m *member, rs *runState, now time.Time) {
 	if s.cfg.StuckAfter <= 0 || rs == nil {
 		return
 	}
-	quiet := now.Sub(time.Unix(0, m.progress.Load()))
 	m.mu.Lock()
+	if m.run != rs || m.life != lifeRunning {
+		m.mu.Unlock()
+		return
+	}
+	quiet := now.Sub(time.Unix(0, m.progress.Load()))
 	warned := m.stuckWarn
 	aborted := rs.abortAt
 	question := ""
 	if m.asking > 0 {
 		question = m.askWhat
 	}
-	m.mu.Unlock()
+	var cancel, abandon bool
+	var warning string
 	switch {
 	case !aborted.IsZero():
-		if now.Sub(aborted) > s.cfg.StuckGrace {
-			s.abandon(m, rs)
-		}
+		abandon = now.Sub(aborted) > s.cfg.StuckGrace
 	case quiet > 2*s.cfg.StuckAfter:
 		why := fmt.Sprintf("stuck: no progress for %s", quiet.Round(time.Second))
 		if question != "" {
@@ -104,21 +107,42 @@ func (s *Swarm) watch(m *member, rs *runState, now time.Time) {
 			// (and the person, through it) can tell it from a worker that hung.
 			why = fmt.Sprintf("stopped after %s without an answer to its question to the person: %s", quiet.Round(time.Second), question)
 		}
-		if s.stopRun(m, why, true) {
-			m.mu.Lock()
-			rs.abortAt = now
-			m.mu.Unlock()
+		if rs.reason == "" {
+			rs.reason, rs.count = why, true
 		}
+		rs.abortAt = now
+		cancel = true
 	case quiet > s.cfg.StuckAfter && !warned:
-		m.mu.Lock()
 		m.stuckWarn = true
-		m.mu.Unlock()
-		msg := fmt.Sprintf("%s has made no progress for %s", m.id, quiet.Round(time.Second))
+		warning = fmt.Sprintf("%s has made no progress for %s", m.id, quiet.Round(time.Second))
 		if question != "" {
-			msg = fmt.Sprintf("%s has waited %s for the person to answer: %s", m.id, quiet.Round(time.Second), question)
+			warning = fmt.Sprintf("%s has waited %s for the person to answer: %s", m.id, quiet.Round(time.Second), question)
 		}
-		s.Board.RaiseAlertKey("stuck", "stuck:"+m.id, msg)
 	}
+	m.mu.Unlock()
+	// Decisions belong to the run checked under the lock. A successor may reserve
+	// this member before cancellation or board publication finishes.
+	switch {
+	case abandon:
+		s.abandon(m, rs)
+	case cancel:
+		rs.cancel()
+	case warning != "":
+		key := stuckAlertKey(m.id, rs.id)
+		s.Board.RaiseAlertKey("stuck", key, warning)
+		m.mu.Lock()
+		current := m.run == rs && m.life == lifeRunning
+		m.mu.Unlock()
+		if !current {
+			s.Board.ClearAlertKey("stuck", key)
+		}
+	}
+}
+
+// stuckAlertKey identifies one run's warning so late cleanup cannot erase a
+// successor's alert, and a late publication can remove only its own warning.
+func stuckAlertKey(agentID string, runID uint64) string {
+	return fmt.Sprintf("stuck:%s:%d", agentID, runID)
 }
 
 // abandon settles a run the harness has given up waiting for and retires its worker.
@@ -136,7 +160,7 @@ func (s *Swarm) abandon(m *member, rs *runState) {
 	m.mu.Unlock()
 	rs.cancel()
 	line := s.settleStopped(m, tasks, stopFailed, "stuck: it did not stop when told to", true)
-	s.Board.ClearAlertKey("stuck", "stuck:"+m.id)
+	s.Board.ClearAlertKey("stuck", stuckAlertKey(m.id, rs.id))
 	s.detach(m)
 	s.emitAs(m.id, "agent.abandon", map[string]any{"id": m.id})
 	if line != "" {

@@ -762,7 +762,7 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 		line = s.settleStopped(m, tasks, kind, why, count)
 	}
 	s.Leases.ReleaseAll(m.id)
-	s.Board.ClearAlertKey("stuck", "stuck:"+m.id)
+	s.Board.ClearAlertKey("stuck", stuckAlertKey(m.id, rs.id))
 
 	state, stateLine := "idle", ""
 	if kind == stopFailed || (kind == stopHarness && count) {
