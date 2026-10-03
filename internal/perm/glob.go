@@ -163,6 +163,10 @@ func realPath(p string) string {
 		target = filepath.ToSlash(target)
 		if filepath.IsAbs(target) {
 			resolved, target = volumeRoot(target)
+		} else if filepath.Separator == '\\' && strings.HasPrefix(target, "/") {
+			// A rooted Windows link keeps the volume, not the link's directory.
+			resolved = filepath.ToSlash(filepath.VolumeName(resolved)) + "/"
+			target = strings.TrimPrefix(target, "/")
 		}
 		rest = append(strings.Split(target, "/"), rest...)
 	}
@@ -362,7 +366,8 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 		if filepath.Separator == '\\' && (strings.Contains(v, `\`) || strings.HasPrefix(pat[len(v):], `\`)) {
 			return nil, errors.New("use forward slashes in absolute permission patterns; backslashes escape glob characters")
 		}
-		absRoot, rel = filepath.ToSlash(v)+"/", strings.TrimPrefix(pat[len(v):], "/")
+		absRoot = strings.TrimSuffix(canonicalPath(filepath.ToSlash(v)+"/"), "/") + "/"
+		rel = strings.TrimPrefix(pat[len(v):], "/")
 		bases = []string{absRoot}
 	case strings.HasPrefix(pat, "/"):
 		// Slash-rooted patterns retain their platform-independent glob meaning.

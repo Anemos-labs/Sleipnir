@@ -25,6 +25,7 @@ func TestWindowsWorkspacePermissions(t *testing.T) {
 		{name: "git metadata", mode: ModeBypass, req: write(filepath.Join(f.root, ".git", "HEAD")), want: "deny"},
 		{name: "private key", mode: ModeBypass, req: read(filepath.Join(f.home, ".ssh", "id_rsa")), want: "deny"},
 		{name: "absolute deny", deny: []string{"Read(" + filepath.ToSlash(f.root) + "/src/**)"}, req: read(filepath.Join(f.root, "src", "a.go")), want: "deny"},
+		{name: "lowercase drive wildcard deny", deny: []string{"Read(" + strings.ToLower(filepath.VolumeName(f.root)) + "/**)"}, req: read(filepath.Join(f.root, "src", "a.go")), want: "deny"},
 		{name: "relative deny", deny: []string{"Read(src/**)"}, req: read(filepath.Join(f.root, "src", "a.go")), want: "deny"},
 		{name: "absolute outside allow", allow: []string{"Read(" + filepath.ToSlash(f.outside) + "/secret.txt)"}, req: read(filepath.Join(f.outside, "secret.txt")), want: "allow"},
 		{name: "explicit env allow", allow: []string{"Read(" + filepath.ToSlash(f.root) + "/.env)"}, req: read(filepath.Join(f.root, ".env")), want: "allow"},
@@ -99,6 +100,22 @@ func TestWindowsJunctionEscape(t *testing.T) {
 	e := f.engine(t, Config{Mode: ModeAcceptEdits})
 	if d := e.Check(context.Background(), f.request(write(filepath.Join(link, "new.txt")))); outcome(d) != "ask" {
 		t.Fatalf("write through junction = %+v", d)
+	}
+}
+
+func TestWindowsWorkspaceRootRelativeLinkEscape(t *testing.T) {
+	f := newFixture(t)
+	outside := filepath.Join(f.outside, "secret.txt")
+	link := filepath.Join(f.root, "root-relative-link")
+	if err := os.Symlink(strings.TrimPrefix(outside, filepath.VolumeName(outside)), link); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(link); err != nil || string(b) != "outside" {
+		t.Fatalf("root-relative link fixture: %q, %v", b, err)
+	}
+	e := f.engine(t, Config{Mode: ModeAcceptEdits})
+	if d := e.Check(context.Background(), f.request(read(link))); outcome(d) != "ask" {
+		t.Fatalf("read through root-relative link = %+v", d)
 	}
 }
 
