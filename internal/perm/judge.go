@@ -104,6 +104,9 @@ func (u *unit) allAccesses() []access {
 func (ev *evaluator) judge(u *unit) verdict {
 	all := u.allAccesses()
 	for _, a := range all {
+		if a.invalid != "" {
+			return deny(a.invalid + ": " + a.raw)
+		}
 		if a.dynamic {
 			if why := dynamicSuspect(a.raw, a.write); why != "" {
 				return deny("built-in protection: " + why)

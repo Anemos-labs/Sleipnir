@@ -119,6 +119,9 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 	if raw == "" || raw == "-" {
 		return nil
 	}
+	if why := pathProblem(raw); why != "" {
+		return []access{{raw: raw, invalid: why}}
+	}
 	base := access{
 		raw: raw, read: !u.write || u.both, write: u.write || u.both,
 		tree: u.tree, content: u.content, nameOnly: u.nameOnly,
@@ -131,16 +134,16 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 		a := base
 		a.dynamic = dyn
 		if !dyn {
-			a.lex, a.real = filepath.Clean(unclean), realPath(unclean)
+			a.lex, a.real = cleanPath(unclean), realPath(unclean)
 			if dir, name := splitParent(unclean); u.noFollow && name != "" && name != ".." && name != "." {
-				a.real = filepath.Join(realPath(dir), name)
+				a.real = cleanPath(filepath.Join(realPath(dir), name))
 			}
 		}
 		return a
 	}
 	var out []access
 	one := func(cwd string) {
-		w, partial, dyn := ev.rs.expandWord(raw, cwd)
+		w, partial, dyn := ev.rs.expandWord(filepath.ToSlash(raw), cwd)
 		if dyn {
 			a := mk("", true)
 			if partial != "" {
@@ -154,7 +157,7 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 					if !strings.HasSuffix(partial, "/") {
 						dir = filepath.Dir(partial)
 					}
-					a.prefix, a.lex = true, filepath.Clean(dir)
+					a.prefix, a.lex = true, cleanPath(dir)
 					a.real = realPath(a.lex)
 				}
 			}
@@ -222,7 +225,7 @@ func (ev *evaluator) cdTo(cw *cwdSet, target string) *cwdSet {
 		if !filepath.IsAbs(w) {
 			w = filepath.Join(d, w)
 		}
-		next.add(filepath.Clean(w))
+		next.add(cleanPath(w))
 	}
 	return next
 }

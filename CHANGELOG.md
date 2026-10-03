@@ -5,6 +5,11 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Resolve native Windows workspace paths consistently for file permissions, including
+  existing and new files, symlink and junction targets, protected files, explicit
+  rules, and worker confinement. Require native permission and file-tool regressions
+  in CI. Permission patterns use forward slashes; unsupported Windows path namespaces
+  and aliases are refused. Shell-analysis limitations remain unchanged.
 - Carry reviewed task agreements into dependent assignments, including transitive
   prerequisites, compaction, worker reuse, and recovery. Add full task retrieval
   and preserve tasks claimed during a run as harness assignments. Team guidance

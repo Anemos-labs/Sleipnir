@@ -9,6 +9,7 @@ import (
 // access is one file-system touch a request would make.
 type access struct {
 	raw     string // as written, for messages
+	invalid string // unsupported native path semantics; always refused
 	lex     string // absolute and cleaned, symlinks not followed ("" if unresolved)
 	real    string // symlinks followed
 	read    bool   // reads the path (or might: arguments of unknown commands)

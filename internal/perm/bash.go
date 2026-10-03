@@ -122,7 +122,7 @@ func (ev *evaluator) command() (string, bool) {
 func (ev *evaluator) startDir() string {
 	if c := ev.r.Cwd; c != "" {
 		if filepath.IsAbs(c) {
-			return filepath.Clean(c)
+			return cleanPath(c)
 		}
 		return cleanAbs(filepath.Join(ev.rs.root().lex, c))
 	}

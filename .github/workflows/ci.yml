@@ -108,7 +108,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.go == 'mod'
         run: go test -count=1 -timeout 10m -run 'Allocations' ./...
 
-  # Session ownership and command execution are required on Windows even though the broader suite below
+  # Session ownership, file permissions, and command execution are required on Windows even though the broader suite below
   # still excludes packages with POSIX-only fixtures.
   windows-session:
     name: windows runtime
@@ -123,6 +123,8 @@ jobs:
           go-version-file: go.mod
       - name: session contention, release, and crash recovery
         run: go test -count=1 -timeout 3m ./internal/session -run 'Test(SessionDirectoryLock|ASessionDirectoryHasOneWriter)'
+      - name: workspace permissions and real file tools
+        run: go test -count=1 -timeout 3m ./internal/perm ./internal/session -run 'TestWindows(Workspace|Junction|Glob)'
       - name: shell quoting and verifier output
         run: |
           go test -count=1 -timeout 3m ./internal/executil

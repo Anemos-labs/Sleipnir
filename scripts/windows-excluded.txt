@@ -10,7 +10,7 @@ internal/config               # POSIX file modes (0600) that Windows does not ke
 internal/demo                 # the demo's repository is built with POSIX paths and a POSIX shell
 internal/events               # the blob store's damage tests rely on POSIX file semantics (open files can be replaced)
 internal/memory               # unreadable files that Windows does not refuse
-internal/perm                 # the permission engine reads POSIX paths and shell syntax (docs/SECURITY.md, section 4)
+internal/perm                 # broad fixtures assume POSIX shell syntax and system paths; native path regressions run in required Windows CI
 internal/provider/anthropic   # a timing test needs a clock finer than Windows gives (0s elapsed)
 internal/provider/openaichat  # a timing test needs a clock finer than Windows gives
 internal/rl/env               # workspaces, diffs and verifiers use POSIX paths, symlinks and a POSIX shell

@@ -15,11 +15,13 @@ policy, action pinning, and release builds. CI configuration is in
 in `scripts/windows-excluded.txt`. A required Windows runtime job checks session
 lock contention, release, and recovery after process death; command quoting across
 verification, hooks, and shell tools; concurrent verifier output capture;
-inherited credential filtering; and verifier descendant cleanup after
+inherited credential filtering; native workspace reads and writes, path rules,
+protected files, symlink and junction escapes, and worker confinement; and verifier descendant cleanup after
 cancellation, timeout, and normal exit:
 
 ```sh
 go test -count=1 -timeout 3m ./internal/session -run 'Test(SessionDirectoryLock|ASessionDirectoryHasOneWriter)'
+go test -count=1 -timeout 3m ./internal/perm ./internal/session -run 'TestWindows(Workspace|Junction|Glob)'
 go test -count=1 -timeout 3m ./internal/executil
 go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsVerification|WindowsQuotedCommands|VerificationCombinesConcurrentOutput|VerificationRetainsFinalFailure|VerificationScrubsInheritedSecrets)'
 ```
