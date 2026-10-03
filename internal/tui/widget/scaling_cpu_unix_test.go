@@ -7,12 +7,14 @@ import (
 	"time"
 )
 
-// processCPUTime is the CPU time (user and system, all threads) the process has used so far. ok is false when the system
-// does not say.
-func processCPUTime() (d time.Duration, ok bool) {
+const workUnit = "CPU ns"
+const workResolution = uint64(500 * time.Microsecond)
+
+// processWork reads cumulative user and kernel CPU nanoseconds for all threads.
+func processWork() (uint64, error) {
 	var ru syscall.Rusage
-	if syscall.Getrusage(syscall.RUSAGE_SELF, &ru) != nil {
-		return 0, false
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+		return 0, err
 	}
-	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano()), true
+	return uint64(ru.Utime.Nano() + ru.Stime.Nano()), nil
 }

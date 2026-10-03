@@ -39,6 +39,11 @@ Use a focused test while fixing a bug, then run the relevant package suites.
 A regression test should demonstrate the original failure. Do not add tests
 whose only purpose is to enforce prose, test counts, or a preferred document layout.
 
+Widget growth checks compare CPU work for an input and eight times that input.
+They use process CPU time on Unix and process CPU cycles on Windows, excluding
+scheduler wait time from the ratio. Control workloads verify that the check
+tolerates scheduling delays and detects quadratic growth.
+
 ## Terminal verification
 
 Inspect changes in a real terminal at narrow and wide sizes. Open generated
