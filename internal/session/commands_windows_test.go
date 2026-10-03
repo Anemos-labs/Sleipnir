@@ -16,6 +16,50 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
+func TestWindowsWorkspaceGoCommands(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"go.mod":         "module example.com/permissionfixture\n\ngo 1.24\n",
+		"answer.go":      "package fixture\nfunc Answer() int { return 42 }\n",
+		"answer_test.go": "package fixture\nimport \"testing\"\nfunc TestAnswer(t *testing.T) { if Answer() != 42 { t.Fatal(\"answer\") } }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("GOPROXY", "off")
+	t.Setenv("GOTOOLCHAIN", "local")
+	t.Setenv("GOENV", "off")
+	t.Setenv("GOWORK", "off")
+	t.Setenv("GOFLAGS", "")
+	e, err := perm.NewEngine(perm.Config{Root: dir, Home: t.TempDir(), StateDir: filepath.Join(dir, ".sleipnir"), Mode: perm.ModeAcceptEdits})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := shell.NewManager(shell.Options{Shell: "cmd"})
+	t.Cleanup(m.Shutdown)
+	r := tools.NewRegistry()
+	shell.Register(r, m)
+	tool, ok := r.Get("bash")
+	if !ok {
+		t.Fatal("bash tool missing")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	for _, command := range []string{"go test -count=1 ./...", "go list ./...", "go vet ./...", "go build ./..."} {
+		t.Run(command, func(t *testing.T) {
+			raw, err := json.Marshal(map[string]any{"command": command, "timeout": 60})
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := tool.Run(ctx, &tools.Call{Name: "bash", Input: raw, Env: &tools.Env{Root: dir, Cwd: dir, Perm: e}})
+			if err != nil || res.IsError || res.Meta["exit_code"] != 0 {
+				t.Fatalf("Go command through permission engine: result=%+v err=%v", res, err)
+			}
+		})
+	}
+}
+
 func TestWindowsQuotedCommandsAcrossRunners(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "command fixture.cmd")

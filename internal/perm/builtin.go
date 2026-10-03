@@ -8,16 +8,17 @@ import (
 
 // access is one file-system touch a request would make.
 type access struct {
-	raw     string // as written, for messages
-	invalid string // unsupported native path semantics; always refused
-	lex     string // absolute and cleaned, symlinks not followed ("" if unresolved)
-	real    string // symlinks followed
-	read    bool   // reads the path (or might: arguments of unknown commands)
-	write   bool   // mutates the path (or might: arguments of unknown commands)
-	tree    bool   // reaches everything below the path: recursive walk, delete, archive
-	content bool   // reads file contents during that walk (grep -r), not just names
-	dynamic bool   // could not be resolved statically
-	prefix  bool   // dynamic, but lex/real hold the directory its known prefix points into
+	raw        string // as written, for messages
+	invalid    string // unsupported native path semantics; always refused
+	lex        string // absolute and cleaned, symlinks not followed ("" if unresolved)
+	real       string // symlinks followed
+	read       bool   // reads the path (or might: arguments of unknown commands)
+	write      bool   // mutates the path (or might: arguments of unknown commands)
+	tree       bool   // reaches everything below the path: recursive walk, delete, archive
+	content    bool   // reads file contents during that walk (grep -r), not just names
+	dynamic    bool   // could not be resolved statically
+	prefix     bool   // dynamic, but lex/real hold the directory its known prefix points into
+	unresolved bool   // module resolution can select any path; explicit restrictions apply conservatively
 	// nameOnly: only names and metadata are looked at (ls, stat, find, a for
 	// loop's word list), so files whose secrecy is in their contents are not at risk.
 	nameOnly bool

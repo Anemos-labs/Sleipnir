@@ -336,6 +336,9 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		case mode == ModePlan && a.write:
 			return deny(planReason("cannot tell which file " + quote(a.raw) + " is"))
 		}
+		if a.unresolved {
+			return ask("Go resolves package "+quote(a.raw)+" through module configuration; use a local package path such as ./... or approve the command", nil)
+		}
 		return ask(quote(a.raw)+" is a file name that is only known when the command runs, so it cannot be checked beforehand", nil)
 	}
 	if a.write && !a.read && harmlessDevice(fold(a.real)) {
@@ -389,14 +392,18 @@ func (ev *evaluator) outsideWorkspace(write bool) string {
 // either way; an allow rule needs the resolved path to match, so a symlink
 // cannot borrow the permission of the place it looks like.
 func ruleHits(r *crule, a access, restrict bool) bool {
-	if r.blanket {
+	if r.blanket || restrict && a.unresolved {
 		return true
 	}
 	for _, g := range r.globs {
-		if restrict && a.lex != "" && g.matches(a.lex) {
+		matches := g.matches
+		if restrict && a.tree {
+			matches = g.overlapsTree
+		}
+		if restrict && a.lex != "" && matches(a.lex) {
 			return true
 		}
-		if a.real != "" && g.matches(a.real) {
+		if a.real != "" && matches(a.real) {
 			return true
 		}
 	}

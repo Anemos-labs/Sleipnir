@@ -9,6 +9,42 @@ import (
 	"testing"
 )
 
+// TestWindowsWorkspaceGoPackagePatterns keeps package analysis in required
+// Windows CI alongside the native path protections it must preserve.
+func TestWindowsWorkspaceGoPackagePatterns(t *testing.T) {
+	testGoPackagePermissions(t)
+	f := newFixture(t)
+	var cases []tc
+	for _, command := range []string{
+		"go build -o ./... ./src/...", "go test -o=./... ./src/...",
+		"go list -modfile ./... ./src/...", "go list -overlay=./... ./src/...",
+		"go test ./src/... -args ./...", "go test -- ./...",
+		"go test -custom ./...", "go test -custom=value ./...",
+		"go test -f ./...", "go test -m ./...",
+		"go test -vettool tool ./...",
+		"go test -test.race ./...", "go test ./src -v ./...",
+		"go test ./src -run TestExample ./...", "cat ./...",
+		"go list ./.git./...", "go list ./NUL/...", "go list C:relative/...",
+	} {
+		cases = append(cases, tc{name: command, mode: ModeBypass, req: bash(command), want: "deny"})
+	}
+	cases = append(cases,
+		tc{name: "literal read", mode: ModeBypass, req: read("./..."), want: "deny"},
+		tc{name: "literal write", mode: ModeBypass, req: write("./..."), want: "deny"},
+		tc{name: "native package", req: bash(`go list '.\src\...'`), want: "allow"},
+		tc{name: "absolute package", req: bash("go list '" + filepath.ToSlash(f.root) + "/src/...'"), want: "allow"},
+		tc{name: "test prefix value", mode: ModeAcceptEdits, req: bash("go test -test.run TestExample ./..."), want: "allow"},
+		tc{name: "test regex is not a file", mode: ModeAcceptEdits, req: bash("go test -run ./... ./src/..."), want: "allow"},
+		tc{name: "buildvcs boolean", req: bash("go list -buildvcs ./..."), want: "allow"},
+		tc{name: "list terminator", req: bash("go list -- ./..."), want: "allow"},
+	)
+	runCases(t, f, cases)
+	e := f.engine(t, Config{Mode: ModeAcceptEdits})
+	if d := e.Check(context.Background(), f.request(bash("go test $(echo ./...)"))); d.Allow {
+		t.Fatalf("command substitution was allowed: %+v", d)
+	}
+}
+
 func TestWindowsWorkspacePermissions(t *testing.T) {
 	f := newFixture(t)
 	cases := []tc{

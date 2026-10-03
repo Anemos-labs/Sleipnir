@@ -313,6 +313,11 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 			uses = append([]pathUse{{raw: s.Program}}, uses...)
 		}
 	}
+	if u.name == "go" && u.dyn == "" {
+		if goUses, ok := goPathUses(s.Args); ok {
+			uses = goUses
+		}
+	}
 	if len(uses) > maxOperands {
 		// Beyond this the operands are not looked at one by one; the command is
 		// simply never auto-allowed. Protections still see the first ones.

@@ -135,7 +135,8 @@ type pathUse struct {
 	tree     bool
 	content  bool
 	// nameOnly: only names and metadata are looked at, not contents.
-	nameOnly bool
+	nameOnly   bool
+	unresolved bool // package/module selector with no statically known filesystem location
 }
 
 // analyse applies the spec to args: it returns the files the command reads, or
