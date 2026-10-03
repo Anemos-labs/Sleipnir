@@ -2,6 +2,8 @@ package cost
 
 import "time"
 
+// anthropicCache constructs the explicit-cache policy with four breakpoints, twenty-block
+// lookback, and five-minute or one-hour TTLs.
 func anthropicCache(minPrefix int) CacheModel {
 	return CacheModel{
 		Explicit:         true,
@@ -30,6 +32,8 @@ func openaiCache() CacheModel {
 	}
 }
 
+// claude constructs catalog pricing and cache policy, deriving write prices from input price and
+// preserving the supplied thinking capability.
 func claude(id string, ctx, maxOut int, in, out, read float64, minPrefix int, pt bool) Model {
 	return Model{
 		ID: id, Provider: "anthropic", ContextTokens: ctx, MaxOutput: maxOut,

@@ -102,6 +102,8 @@ func ParseTurnID(s string) (core.TurnID, error) {
 	return core.TurnID(n), nil
 }
 
+// parseRange accepts a turn-range reference or a single turn ID; range endpoints are parsed
+// without ordering validation.
 func parseRange(s string) (from, to core.TurnID, err error) {
 	if m := rangeRef.FindStringSubmatch(s); m != nil {
 		a, _ := strconv.ParseInt(m[1], 10, 64)

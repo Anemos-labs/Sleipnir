@@ -13,6 +13,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
+// init registers RL report generation and comparison commands.
 func init() {
 	rlCommands["report"] = rlReport
 	rlCommands["compare"] = rlCompare
@@ -49,6 +50,7 @@ type column struct {
 	get  func(env.Report) string
 }
 
+// label prefers a report's run ID, then model name, and uses a dash when both are absent.
 func label(r env.Report) string {
 	switch {
 	case r.RunID != "":
@@ -59,6 +61,8 @@ func label(r env.Report) string {
 	return "-"
 }
 
+// pct formats an existing fractional metric as a whole percent, using a dash when there are no
+// episodes.
 func pct(v float64, n int) string {
 	if n == 0 {
 		return "-"
@@ -66,6 +70,8 @@ func pct(v float64, n int) string {
 	return fmt.Sprintf("%.0f%%", 100*v)
 }
 
+// perEp formats an already computed metric, using a dash when there are no episodes; it does not
+// divide by n.
 func perEp(v float64, n int, format string) string {
 	if n == 0 {
 		return "-"
@@ -73,6 +79,7 @@ func perEp(v float64, n int, format string) string {
 	return fmt.Sprintf(format, v)
 }
 
+// mode returns report identity mode or a dash when identity metadata is absent.
 func mode(r env.Report) string {
 	if r.Identity != nil {
 		return r.Identity.Mode
@@ -112,6 +119,7 @@ var reportColumns = []column{
 	{"HACK", func(r env.Report) string { return pct(r.HackRate, r.Completed) }},
 }
 
+// firstOr returns s unless it is empty, in which case it returns the fallback.
 func firstOr(s, or string) string {
 	if s != "" {
 		return s
@@ -258,6 +266,7 @@ func printTable(w io.Writer, heads []string, rows [][]string, md bool) {
 // gateFlag collects --gate values: repeatable, and comma-separated too.
 type gateFlag []env.Gate
 
+// String serializes configured evaluation gates in order as a comma-separated flag value.
 func (g *gateFlag) String() string {
 	parts := make([]string, len(*g))
 	for i, x := range *g {
@@ -266,6 +275,8 @@ func (g *gateFlag) String() string {
 	return strings.Join(parts, ",")
 }
 
+// Set parses and appends comma-separated gates, stopping on the first error while retaining any
+// earlier additions.
 func (g *gateFlag) Set(s string) error {
 	for _, part := range splitList(s) {
 		x, err := env.ParseGate(part)
@@ -277,6 +288,8 @@ func (g *gateFlag) Set(s string) error {
 	return nil
 }
 
+// fmtMetric chooses units and precision from metric-name suffixes, including milliseconds
+// converted to seconds.
 func fmtMetric(name string, v float64) string {
 	switch {
 	case strings.HasSuffix(name, "_wall_ms"):
@@ -291,6 +304,8 @@ func fmtMetric(name string, v float64) string {
 	return fmt.Sprintf("%.3f", v)
 }
 
+// fmtDelta formats a metric change and prefixes a plus sign unless the formatted value is
+// negative.
 func fmtDelta(name string, v float64) string {
 	s := fmtMetric(name, v)
 	if !strings.HasPrefix(s, "-") {

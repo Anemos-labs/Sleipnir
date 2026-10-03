@@ -151,6 +151,8 @@ func effort(e string) string {
 	return ""
 }
 
+// renderMessage maps system messages to developer wire items, dispatches supported roles, and
+// rejects other roles.
 func renderMessage(m core.Message, o Options) ([]json.RawMessage, error) {
 	switch m.Role {
 	case core.RoleAssistant:
@@ -166,6 +168,8 @@ func renderMessage(m core.Message, o Options) ([]json.RawMessage, error) {
 // item marshals one input item.
 func item(v any) (json.RawMessage, error) { return core.MarshalStable(v) }
 
+// messageItem encodes a wire message containing one text-bearing content part with the supplied
+// role and type.
 func messageItem(role, partType, text string) (json.RawMessage, error) {
 	return item(map[string]any{"type": "message", "role": role, "content": []map[string]any{{"type": partType, "text": text}}})
 }
@@ -225,6 +229,7 @@ func renderAssistant(m core.Message, o Options) ([]json.RawMessage, error) {
 	return out, nil
 }
 
+// replayable reports whether a block retains nonempty wire data in this provider's dialect.
 func replayable(b core.Block) bool { return b.WireFormat == Dialect && len(b.Wire) > 0 }
 
 // renderUser emits the tool results first (a result goes right after the call it answers), then the rest of the turn as one message.
@@ -256,6 +261,8 @@ func renderUser(m core.Message, role string) ([]json.RawMessage, error) {
 	return out, nil
 }
 
+// toolResultText concatenates text children and prefixes error results unless they already begin
+// with Error.
 func toolResultText(b core.Block) string {
 	var sb strings.Builder
 	for _, c := range b.Result {

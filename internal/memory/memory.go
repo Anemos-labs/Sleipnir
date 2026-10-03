@@ -280,6 +280,7 @@ func newLoader(o Opts) (*loader, error) {
 	return ld, nil
 }
 
+// close releases the loader's project root handle if one was opened, ignoring close errors.
 func (ld *loader) close() {
 	if ld.proj != nil && ld.proj.root != nil {
 		ld.proj.root.Close()
@@ -483,6 +484,8 @@ func cutAt(b []byte, n int) []byte {
 	return b
 }
 
+// unwrapPath removes an outer filesystem path wrapper while preserving other errors, including
+// nil.
 func unwrapPath(err error) error {
 	var pe *fs.PathError
 	if errors.As(err, &pe) {

@@ -12,6 +12,7 @@ import (
 // spec, whichever agent takes it and whenever (common random numbers).
 type pool struct{ next, total int }
 
+// take allocates the next zero-based simulated work item until the pool is exhausted.
 func (p *pool) take() (int, bool) {
 	if p.next < p.total {
 		p.next++
@@ -31,6 +32,7 @@ func waves(w Workload) (n, per int) {
 	return n, per
 }
 
+// gap uses a positive workload wave gap or defaults to twelve minutes.
 func gap(w Workload) time.Duration {
 	if w.WaveGap > 0 {
 		return w.WaveGap
@@ -208,6 +210,8 @@ type primerGate struct {
 
 type gateState struct{ ready, warmUntil time.Duration }
 
+// newPrimerGate initializes per-key primer state with a refresh margin of one fifth of TTL capped
+// at twenty seconds.
 func newPrimerGate(enabled bool, ttl time.Duration) *primerGate {
 	margin := ttl / 5
 	if margin > 20*time.Second {
@@ -537,6 +541,8 @@ func maskableTokens(segs []seg, minTokens, masked int) int {
 	return n
 }
 
+// layeredSegs constructs simulated stable layers, optional spine, thread segments, and volatile
+// hot content in cache-prefix order.
 func layeredSegs(w Workload, id string, notesVer, spineVer, notesTok, spineTok int, thread []seg, hot int) []seg {
 	segs := []seg{
 		{"G0", w.ConstTokens, false},

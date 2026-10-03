@@ -182,6 +182,8 @@ func typeGroup(k kind) kind {
 	return k
 }
 
+// describe formats a checkpoint entry's kind, including symlink target or special-file notes when
+// applicable.
 func describe(st state) string {
 	switch st.Kind {
 	case kLink:
@@ -366,6 +368,7 @@ func diffMiddle(a, b []string) []byte {
 	return patience(ia, ib)
 }
 
+// replaceAll builds a diff script that deletes every old item before inserting every new item.
 func replaceAll(na, nb int) []byte {
 	return append(bytes.Repeat([]byte{'d'}, na), bytes.Repeat([]byte{'i'}, nb)...)
 }

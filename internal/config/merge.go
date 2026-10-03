@@ -22,6 +22,8 @@ type layer struct {
 // findings about a value point at the value.
 func (l *layer) position(is *Issue) { l.positionAt(is, true) }
 
+// positionAt fills an issue's source line and column from its path, optionally preferring the
+// property key, and leaves unresolvable positions unchanged.
 func (l *layer) positionAt(is *Issue, preferKey bool) {
 	if l.root == nil || l.src == nil {
 		return
@@ -48,10 +50,12 @@ type merger struct {
 	kind    string            // kind of the layer being merged
 }
 
+// newMerger initializes independent maps for merged values, origins, and source texts.
 func newMerger() *merger {
 	return &merger{tree: map[string]any{}, origins: map[string]string{}, sources: map[string]string{}}
 }
 
+// okey joins field-path segments with NUL separators for internal origin-map keys.
 func okey(segs []string) string { return strings.Join(segs, "\x00") }
 
 // opaque reports whether the value at segs is treated as a unit that replaces
@@ -184,6 +188,7 @@ func (m *merger) originFor(segs []string) string {
 	return ""
 }
 
+// deepCopy recursively copies generic JSON maps and slices while retaining scalar values.
 func deepCopy(v any) any {
 	switch t := v.(type) {
 	case map[string]any:

@@ -123,6 +123,8 @@ func (c ServerConfig) EffectiveType() string {
 	return ""
 }
 
+// normalizeType accepts supported MCP transport aliases after case and separator normalization,
+// returning empty for unknown types.
 func normalizeType(t string) string {
 	switch strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(t))) {
 	case "stdio":
@@ -175,6 +177,7 @@ type Issue struct {
 	Fatal bool
 }
 
+// Error formats an MCP configuration issue with quoted server and field context when present.
 func (i Issue) Error() string {
 	var b strings.Builder
 	b.WriteString("mcp config: ")
@@ -264,6 +267,7 @@ func ParseWith(raw map[string]json.RawMessage, o ParseOptions) (map[string]Serve
 	return servers, issues
 }
 
+// hasFatal reports whether any MCP configuration issue prevents startup.
 func hasFatal(is []Issue) bool {
 	for _, i := range is {
 		if i.Fatal {
@@ -273,6 +277,8 @@ func hasFatal(is []Issue) bool {
 	return false
 }
 
+// badServerName returns a diagnostic for empty, padded, oversized, or unsafe server names and
+// empty for valid names.
 func badServerName(name string) string {
 	switch {
 	case name == "" || strings.TrimSpace(name) != name:
@@ -320,6 +326,7 @@ var ignoredFields = map[string]string{
 	"$schema":     "ignored",
 }
 
+// normKey lowercases a configuration key and removes underscores and hyphens for alias matching.
 func normKey(k string) string {
 	return strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(k))
 }
@@ -527,6 +534,7 @@ func parseEntry(name string, raw json.RawMessage, scope Scope) (ServerConfig, []
 	return cfg, issues
 }
 
+// isNull recognizes the JSON null literal after removing surrounding whitespace.
 func isNull(v json.RawMessage) bool { return string(bytes.TrimSpace(v)) == "null" }
 
 // stringMap decodes an object of scalar values. Numbers and booleans are
@@ -641,6 +649,8 @@ func parseDuration(raw json.RawMessage) (time.Duration, error) {
 	return d, nil
 }
 
+// secondsToDuration converts bounded nonnegative seconds and returns -1 for NaN or values outside
+// the configuration limit.
 func secondsToDuration(secs float64) time.Duration {
 	if secs != secs || secs < 0 || secs > maxConfigTimout.Seconds() { // NaN, negative, absurd: caller range-checks
 		return -1
@@ -701,6 +711,7 @@ func editDistance(a, b string) int {
 	return prev[len(rb)]
 }
 
+// sortedKeys returns lexical map-key order for deterministic MCP configuration processing.
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -824,6 +835,8 @@ func (c ServerConfig) Validate() error {
 	return nil
 }
 
+// validEnvName accepts nonempty keys of at most 256 bytes that contain neither equals signs nor
+// NULs.
 func validEnvName(k string) bool {
 	return k != "" && len(k) <= 256 && !strings.ContainsAny(k, "=\x00")
 }

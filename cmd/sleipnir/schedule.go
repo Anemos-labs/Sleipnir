@@ -17,11 +17,14 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/sched"
 )
 
+// init registers schedule management and daemon commands.
 func init() {
 	extraCommands["schedule"] = cmdSchedule
 	extraCommands["daemon"] = cmdDaemon
 }
 
+// scheduleStore returns the schedule file location under the user's state directory without
+// opening it.
 func scheduleStore() sched.Store {
 	home, _ := os.UserHomeDir()
 	return sched.Store{Path: filepath.Join(stateDir(home), "schedule.json")}
@@ -71,6 +74,8 @@ type addOpts struct {
 	budget                 float64
 }
 
+// scheduleAddFlags registers schedule creation options with unattended permission and one-dollar
+// budget defaults.
 func scheduleAddFlags() (*flag.FlagSet, *addOpts) {
 	var o addOpts
 	fs := newFlagSet("schedule add", flag.ExitOnError)

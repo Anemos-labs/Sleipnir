@@ -301,14 +301,18 @@ func fakeTokenize(text string) []int32 {
 	return ids
 }
 
+// fakeLogprob derives a repeatable synthetic log probability from a token ID; it is not a model
+// likelihood.
 func fakeLogprob(id int32) float64 { return -0.05 - float64(id%17)/20 }
 
+// record appends a completed mock call's statistics under the server lock.
 func (s *Server) record(st CallStat) {
 	s.mu.Lock()
 	s.stats = append(s.stats, st)
 	s.mu.Unlock()
 }
 
+// pieces splits nonempty text into chunks of at most n runes; n must be positive.
 func pieces(s string, n int) []string {
 	if s == "" {
 		return nil
@@ -326,6 +330,7 @@ func pieces(s string, n int) []string {
 	return out
 }
 
+// sleep delays only for positive durations.
 func sleep(d time.Duration) {
 	if d > 0 {
 		time.Sleep(d)
@@ -346,4 +351,5 @@ func pause(ctx context.Context, d time.Duration) {
 	}
 }
 
+// itoa formats an integer in base ten for mock wire output.
 func itoa(n int) string { return strconv.Itoa(n) }

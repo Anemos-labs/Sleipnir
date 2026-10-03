@@ -30,6 +30,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
 )
 
+// init registers interactive chat and delegates interrupt handling to that command.
 func init() {
 	extraCommands["chat"] = cmdChat
 	ownsInterrupt["chat"] = true
@@ -240,6 +241,7 @@ func chatOptions(o session.Options) session.Options {
 	return o
 }
 
+// modeName formats the session permission mode and adds a swarm indicator when a swarm is active.
 func modeName(s *session.Session) string {
 	m := string(s.Perm.Mode())
 	if s.Swarm != nil {
@@ -536,6 +538,8 @@ func printCustom(s *session.Session, w io.Writer) {
 	}
 }
 
+// printSkills lists available skills with bounded summaries and user-only markers, or explains
+// where to place skill files when none exist.
 func printSkills(s *session.Session, w io.Writer) {
 	if s.Skills == nil || s.Skills.Len() == 0 {
 		fmt.Fprintln(w, "no skills (put SKILL.md files under .sleipnir/skills/<name>/ or ~/.sleipnir/skills/<name>/)")
@@ -591,6 +595,8 @@ func costText(usd float64) string {
 	return fmt.Sprintf("$%.4f", usd)
 }
 
+// printCost shows single-agent usage and cost, or manager usage alongside total swarm cost for
+// team sessions.
 func printCost(w io.Writer, s *session.Session) {
 	var u core.Usage
 	var usd float64
@@ -645,6 +651,8 @@ func printContext(w io.Writer, s *session.Session) {
 	row("thread (verbatim)", st.Thread.Tokens(est))
 }
 
+// printAgents lists swarm agents in ID order, board tasks, and optional mailman totals;
+// single-agent sessions receive a brief explanation.
 func printAgents(w io.Writer, s *session.Session) {
 	if s.Swarm == nil {
 		fmt.Fprintln(w, "single agent session (start with --swarm N for a team)")

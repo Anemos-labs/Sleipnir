@@ -156,11 +156,15 @@ type checkpoint struct {
 	index map[string]*fileRec
 }
 
+// add appends a file record and indexes it by path; callers must initialize the index and prevent
+// duplicate records.
 func (c *checkpoint) add(r *fileRec) {
 	c.files = append(c.files, r)
 	c.index[r.Path] = r
 }
 
+// remove deletes a checkpoint path from both the index and ordered records; absent paths have no
+// effect.
 func (c *checkpoint) remove(key string) {
 	if _, ok := c.index[key]; !ok {
 		return
@@ -280,6 +284,7 @@ func (s *Store) Warnings() []string {
 	return out
 }
 
+// warnf retains bounded checkpoint warnings and counts additional warnings after the storage cap.
 func (s *Store) warnf(format string, args ...any) {
 	if len(s.warnings) >= maxWarnings {
 		s.warnMore++
@@ -288,6 +293,7 @@ func (s *Store) warnf(format string, args ...any) {
 	s.warnings = append(s.warnings, fmt.Sprintf(format, args...))
 }
 
+// cpID formats a checkpoint sequence with at least four decimal digits.
 func cpID(seq int) string { return fmt.Sprintf("cp_%04d", seq) }
 
 // normalizeID accepts "cp_0003", "cp_3", "0003" and "3".
@@ -461,6 +467,8 @@ func (s *Store) validState(st *state) error {
 	return nil
 }
 
+// persistLocked atomically writes one checkpoint manifest with mode 0600; the caller must hold the
+// store lock.
 func (s *Store) persistLocked(cp *checkpoint) error {
 	doc := cpDoc{V: manifestVersion, ID: cp.ID, Seq: cp.Seq, Label: cp.Label, Time: cp.Time, Files: append([]*fileRec{}, cp.files...)}
 	data, err := json.Marshal(doc)
@@ -473,6 +481,8 @@ func (s *Store) persistLocked(cp *checkpoint) error {
 	return nil
 }
 
+// persistMetaLocked atomically saves the manifest version and next checkpoint ID with mode 0600;
+// the caller must hold the store lock.
 func (s *Store) persistMetaLocked() error {
 	data, err := json.Marshal(metaDoc{V: manifestVersion, Next: s.next})
 	if err != nil {
@@ -484,6 +494,8 @@ func (s *Store) persistMetaLocked() error {
 	return nil
 }
 
+// cleanLabel normalizes whitespace, removes unsafe text, and bounds checkpoint labels by rune
+// count.
 func cleanLabel(label string) string {
 	label = cleanText(strings.Join(strings.Fields(label), " "), 4*maxLabelRunes)
 	if r := []rune(label); len(r) > maxLabelRunes {
@@ -698,6 +710,8 @@ func (s *Store) snapshot(agent, abs string) error {
 	}
 }
 
+// newRecord captures a path's pre-write state, stores regular-file bytes by hash, and tracks
+// missing parents for new paths.
 func (s *Store) newRecord(agent, abs, key string, now time.Time) (*fileRec, error) {
 	st, data := s.capture(abs)
 	if st.Kind == kFile {

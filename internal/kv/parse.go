@@ -148,8 +148,11 @@ func objectFields(c []byte) (map[string]json.RawMessage, error) {
 	return m, nil
 }
 
+// isJSONNull recognizes a JSON null value after trimming surrounding whitespace.
 func isJSONNull(b json.RawMessage) bool { return strings.TrimSpace(string(b)) == "null" }
 
+// isEmptyJSONList accepts a valid empty JSON array or null; invalid JSON and nonempty arrays
+// return false.
 func isEmptyJSONList(b json.RawMessage) bool {
 	var l []json.RawMessage
 	return json.Unmarshal(b, &l) == nil && len(l) == 0

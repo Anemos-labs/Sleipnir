@@ -347,6 +347,8 @@ type CallToolResult struct {
 	IsError bool
 }
 
+// decodeCallToolResult validates the outer tool-result object, retains nonnull structured content,
+// and decodes each content item.
 func decodeCallToolResult(raw json.RawMessage) (*CallToolResult, error) {
 	var w struct {
 		Content           []json.RawMessage `json:"content"`
@@ -408,6 +410,8 @@ func decodeResource(raw json.RawMessage) (Resource, bool) {
 	return r, true
 }
 
+// decodeResourceTemplate requires a URI template and bounds and sanitizes descriptive fields,
+// rejecting malformed input.
 func decodeResourceTemplate(raw json.RawMessage) (ResourceTemplate, bool) {
 	var w struct {
 		URITemplate string `json:"uriTemplate"`
@@ -558,6 +562,7 @@ func (r *GetPromptResult) Text() string {
 	return strings.Join(parts, "\n\n")
 }
 
+// orDefault substitutes d only when s is empty.
 func orDefault(s, d string) string {
 	if s == "" {
 		return d

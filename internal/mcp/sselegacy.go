@@ -68,6 +68,8 @@ func (t *sseTransport) Start(h Handler) error {
 	return nil
 }
 
+// fail records and signals the first legacy SSE failure and notifies the close handler unless its
+// context was already cancelled.
 func (t *sseTransport) fail(err error) {
 	t.mu.Lock()
 	first := !t.failed

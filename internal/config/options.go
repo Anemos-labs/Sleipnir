@@ -25,6 +25,7 @@ const (
 	optObject
 )
 
+// String returns a user-facing description of the expected provider option type.
 func (k optKind) String() string {
 	switch k {
 	case optBool:
@@ -161,6 +162,8 @@ func (v *validator) providerOptions(base []string, p Provider) {
 	}
 }
 
+// otherDialect selects OpenAI Chat for Anthropic input and Anthropic otherwise for cross-dialect
+// diagnostics.
 func otherDialect(d string) string {
 	if d == DialectAnthropic {
 		return DialectOpenAIChat

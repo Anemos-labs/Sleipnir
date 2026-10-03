@@ -331,6 +331,8 @@ func rawUsageOf(body []byte) json.RawMessage {
 	return append(json.RawMessage(nil), r.Usage...)
 }
 
+// fallbackToolID hashes tool name, arguments, and call index into a deterministic ID when the
+// provider omits one.
 func fallbackToolID(name, args string, n int) string {
 	sum := sha256.Sum256([]byte(name + "\x00" + args + "\x00" + strconv.Itoa(n)))
 	return "call_" + hex.EncodeToString(sum[:6])
@@ -378,6 +380,7 @@ func mapInBandError(e *apiError) *provider.Error {
 	return pe
 }
 
+// mustJSON encodes a value known to be JSON-marshalable; encoding failures produce nil bytes.
 func mustJSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b

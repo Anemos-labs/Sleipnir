@@ -24,6 +24,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/rl/traj"
 )
 
+// init registers the reinforcement-learning command group with the CLI dispatcher.
 func init() { extraCommands["rl"] = cmdRL }
 
 const rlUsage = `usage: sleipnir rl <command> [flags] [args]
@@ -55,6 +56,8 @@ var rlCommands = map[string]func(context.Context, []string, io.Writer, io.Writer
 	"show":   rlShow,
 }
 
+// cmdRL dispatches registered RL subcommands, prints requested help, and reports missing or
+// unknown commands with usage.
 func cmdRL(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		printHelp(os.Stderr, rlUsage)
@@ -85,6 +88,7 @@ func newFlags(name string, stderr io.Writer, usage string) *flag.FlagSet {
 	return fs
 }
 
+// splitList splits comma-separated values, trims whitespace, and discards empty entries.
 func splitList(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {
@@ -220,6 +224,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	return nil
 }
 
+// validFormat reports whether an export format appears in the supported format list.
 func validFormat(f export.Format) bool {
 	for _, x := range export.Formats() {
 		if x == f {
@@ -229,6 +234,7 @@ func validFormat(f export.Format) bool {
 	return false
 }
 
+// formatNames joins supported export format names for command help and errors.
 func formatNames() string {
 	var n []string
 	for _, f := range export.Formats() {
@@ -295,6 +301,7 @@ func printExportStats(w io.Writer, st export.Stats, out string) {
 	}
 }
 
+// kvLine formats integer counters in sorted key order and labels empty maps as none.
 func kvLine(m map[string]int) string {
 	if len(m) == 0 {
 		return "none"
@@ -495,6 +502,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	return nil
 }
 
+// hasHack reports whether an episode carries any flag with the hack: prefix.
 func hasHack(ep *rl.Episode) bool {
 	for _, f := range ep.Flags {
 		if strings.HasPrefix(f, "hack:") {
@@ -632,6 +640,8 @@ func showEpisode(dir string, asJSON bool, w io.Writer) error {
 	return nil
 }
 
+// componentLine wraps formatted score components in parentheses, omitting the wrapper for an empty
+// map.
 func componentLine(m map[string]float64) string {
 	if len(m) == 0 {
 		return ""
@@ -639,6 +649,7 @@ func componentLine(m map[string]float64) string {
 	return "(" + floatLine(m) + ")"
 }
 
+// floatLine formats score components in sorted key order with three significant digits.
 func floatLine(m map[string]float64) string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

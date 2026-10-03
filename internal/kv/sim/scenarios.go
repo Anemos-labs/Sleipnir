@@ -52,6 +52,8 @@ type Row struct {
 	WallLayered   time.Duration
 }
 
+// pct computes the percentage change of a relative to b; a meaningful percentage requires a
+// nonzero baseline.
 func pct(a, b float64) float64 { return (a/b - 1) * 100 }
 
 // RunScenario compares the layered policy with both baselines on one workload.

@@ -41,6 +41,7 @@ type scanned struct {
 	flags map[string][]string // option -> values it was given ("" for switches)
 }
 
+// has reports whether any named flag was encountered, regardless of its values.
 func (s *scanned) has(names ...string) bool {
 	for _, n := range names {
 		if _, ok := s.flags[n]; ok {
@@ -50,6 +51,7 @@ func (s *scanned) has(names ...string) bool {
 	return false
 }
 
+// values concatenates recorded flag values in the requested flag-name order.
 func (s *scanned) values(names ...string) []string {
 	var out []string
 	for _, n := range names {
@@ -58,6 +60,7 @@ func (s *scanned) values(names ...string) []string {
 	return out
 }
 
+// inList checks for an exact string in a list.
 func inList(list []string, x string) bool {
 	for _, l := range list {
 		if l == x {

@@ -74,6 +74,8 @@ type evInfo struct {
 	} `json:"usage"`
 }
 
+// infoOf decodes pacing metadata from an optional event, ignoring malformed fields and leaving
+// defaults where unavailable.
 func infoOf(r *app.ChatRecord) evInfo {
 	var i evInfo
 	if r.Event != nil {
@@ -159,12 +161,14 @@ func (z *pacer) place(rec app.ChatRecord, at time.Duration) {
 	z.write(rec, at)
 }
 
+// write appends a transcript record with a timestamp no earlier than the previous record.
 func (z *pacer) write(rec app.ChatRecord, at time.Duration) {
 	rec.T = max(at.Milliseconds(), z.last)
 	z.last = rec.T
 	z.out = append(z.out, rec)
 }
 
+// hold queues a delayed record in due-time order, preserving insertion order for ties.
 func (z *pacer) hold(rec app.ChatRecord, due time.Duration) {
 	z.held = append(z.held, heldRec{rec, due})
 	sort.SliceStable(z.held, func(i, j int) bool { return z.held[i].due < z.held[j].due })

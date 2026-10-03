@@ -30,6 +30,7 @@ type testGuard struct {
 	ranSince bool // and a test command has run since the last such change
 }
 
+// reset clears the test guard's accumulated verification state.
 func (g *testGuard) reset() { *g = testGuard{} }
 
 // editedPaths are the files a write, edit or patch call names.

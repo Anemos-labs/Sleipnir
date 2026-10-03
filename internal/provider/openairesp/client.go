@@ -293,6 +293,8 @@ func httpError(status int, h http.Header, body []byte) *provider.Error {
 	return pe
 }
 
+// fallbackToolID hashes tool name, arguments, and call index into a deterministic ID when the
+// provider omits one.
 func fallbackToolID(name, args string, n int) string {
 	sum := sha256.Sum256([]byte(name + "\x00" + args + "\x00" + strconv.Itoa(n)))
 	return "call_" + hex.EncodeToString(sum[:6])

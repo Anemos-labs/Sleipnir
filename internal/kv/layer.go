@@ -43,6 +43,7 @@ const (
 	KindSpine
 )
 
+// String returns a stable layer-kind name or a question mark for unknown values.
 func (k Kind) String() string {
 	switch k {
 	case KindConst:
@@ -203,6 +204,7 @@ func segmentText(kind Kind, text string) string {
 	return escapeProtocol(text)
 }
 
+// tagFor chooses the prompt wrapper tag for a layer kind, using context for unrecognized kinds.
 func tagFor(k Kind) string {
 	switch k {
 	case KindShared:

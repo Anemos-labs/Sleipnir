@@ -15,6 +15,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
 )
 
+// init registers the scripted demo command with the CLI dispatcher.
 func init() { extraCommands["demo"] = cmdDemo }
 
 // demoTrailer is the last thing the demo says, after its report.
@@ -74,6 +75,7 @@ func pickScenario(asked string, cockpit, tools bool) string {
 	return "handbook"
 }
 
+// haveCommands reports whether every requested executable can be found on PATH.
 func haveCommands(names ...string) bool {
 	for _, n := range names {
 		if _, err := exec.LookPath(n); err != nil {

@@ -34,6 +34,7 @@ type pending struct {
 	waiters  int32 // callers coalesced onto this prompt (observed by tests)
 }
 
+// init allocates the single-prompt semaphore and the in-flight prompt index.
 func (p *prompts) init() {
 	p.sem = make(chan struct{}, 1)
 	p.inflight = map[string]*pending{}
@@ -71,6 +72,8 @@ func withWhy(summary, reason string) string {
 	return summary + " [" + reason + "]"
 }
 
+// canceledDecision creates a denied approval result; the supplied context must already be
+// canceled.
 func canceledDecision(ctx context.Context) Decision {
 	return Decision{Reason: "approval canceled: " + ctx.Err().Error()}
 }
@@ -248,6 +251,7 @@ func (e *Engine) offersTests(rem []Rule) bool {
 	return false
 }
 
+// clipRunes caps a string at n runes including an ellipsis when truncated; n must be positive.
 func clipRunes(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n-1]) + "…"

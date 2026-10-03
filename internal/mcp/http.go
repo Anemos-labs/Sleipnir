@@ -127,6 +127,7 @@ func (t *httpTransport) SetProtocolVersion(v string) {
 	t.mu.Unlock()
 }
 
+// drop reports a transport drop through the optional callback.
 func (t *httpTransport) drop(reason string) {
 	if t.onDrop != nil {
 		t.onDrop(reason)
@@ -190,6 +191,7 @@ func (t *httpTransport) request(ctx context.Context, method string, body []byte,
 	return req, nil
 }
 
+// noteSuccess resets the consecutive HTTP failure count under the transport lock.
 func (t *httpTransport) noteSuccess() {
 	t.mu.Lock()
 	t.failures = 0
@@ -211,6 +213,8 @@ func (t *httpTransport) noteFailure(err error) {
 	}
 }
 
+// captureSession accepts only bounded visible-ASCII session IDs and records the first valid ID
+// under the transport lock.
 func (t *httpTransport) captureSession(resp *http.Response) {
 	sid := resp.Header.Get(hdrSession)
 	if sid == "" || len(sid) > 256 {
@@ -228,6 +232,7 @@ func (t *httpTransport) captureSession(resp *http.Response) {
 	t.mu.Unlock()
 }
 
+// hasSession checks under the transport lock whether the server assigned a session ID.
 func (t *httpTransport) hasSession() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -336,6 +341,8 @@ func (t *httpTransport) handle(resp *http.Response, isRequest bool, reqID []byte
 	return false, httpStatusError(code)
 }
 
+// redirectHost returns a cleaned redirect hostname or a generic label when no host can be
+// extracted.
 func redirectHost(resp *http.Response) string {
 	if loc, err := resp.Location(); err == nil && loc.Host != "" {
 		return cleanText(loc.Host)
@@ -343,6 +350,8 @@ func redirectHost(resp *http.Response) string {
 	return "another location"
 }
 
+// httpStatusError formats common MCP HTTP failures with status-specific authentication, URL, or
+// rate-limit guidance.
 func httpStatusError(code int) error {
 	msg := fmt.Sprintf("server returned HTTP %d %s", code, http.StatusText(code))
 	switch code {
@@ -358,6 +367,7 @@ func httpStatusError(code int) error {
 	return errors.New(msg)
 }
 
+// deliver forwards a received message to the optional HTTP transport message handler.
 func (t *httpTransport) deliver(msg []byte) {
 	if t.h.Message != nil {
 		t.h.Message(msg)
@@ -512,6 +522,7 @@ type idleReader struct {
 	d     time.Duration
 }
 
+// Read forwards bytes from the underlying reader and resets the idle timer only when data arrives.
 func (i *idleReader) Read(p []byte) (int, error) {
 	n, err := i.r.Read(p)
 	if n > 0 {

@@ -187,6 +187,7 @@ func (s *Store) captureFile(abs string, fi fs.FileInfo, st state) (state, []byte
 	return st, data
 }
 
+// humanBytes formats checkpoint sizes using binary multiples labeled B, KB, MB, and GB.
 func humanBytes(n int64) string {
 	switch {
 	case n >= 1<<30:

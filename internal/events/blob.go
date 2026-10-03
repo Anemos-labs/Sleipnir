@@ -147,12 +147,15 @@ func (d *DirBlobs) intact(p string, h core.Hash, size int) bool {
 	return true
 }
 
+// forget invalidates the cached verification result for a blob hash under the store lock.
 func (d *DirBlobs) forget(h core.Hash) {
 	d.mu.Lock()
 	delete(d.verified, h)
 	d.mu.Unlock()
 }
 
+// markVerified caches a blob verification result under lock, clearing the verification cache when
+// its capacity is reached.
 func (d *DirBlobs) markVerified(h core.Hash) {
 	d.mu.Lock()
 	if len(d.verified) >= maxVerified {

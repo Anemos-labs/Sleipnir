@@ -37,6 +37,8 @@ type shopScript struct {
 	marks map[string]bool
 }
 
+// newShopScript initializes independent step and milestone maps, defaulting nonpositive timing
+// scales to one.
 func newShopScript(scale float64) *shopScript {
 	if scale <= 0 {
 		scale = 1
@@ -44,6 +46,7 @@ func newShopScript(scale float64) *shopScript {
 	return &shopScript{scale: scale, step: map[string]int{}, marks: map[string]bool{}}
 }
 
+// sec converts script seconds to a duration using the configured playback scale.
 func (s *shopScript) sec(n float64) time.Duration {
 	return time.Duration(n * s.scale * float64(time.Second))
 }
@@ -62,12 +65,14 @@ func (s *shopScript) waitFor(id, why string) mock.Reply {
 	return mock.Reply{Text: why, ToolCalls: []mock.ToolCall{bashCall(fmt.Sprintf("b%d", time.Now().UnixNano()%1000), fmt.Sprintf("sleep %.1f", s.sec(0.5).Seconds()))}}
 }
 
+// mark records completion of a named scripted milestone under the script lock.
 func (s *shopScript) mark(name string) {
 	s.mu.Lock()
 	s.marks[name] = true
 	s.mu.Unlock()
 }
 
+// marked reads a scripted milestone's completion flag under the script lock.
 func (s *shopScript) marked(name string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -134,23 +139,34 @@ func (s *shopScript) again(id string) {
 	s.mu.Unlock()
 }
 
+// jsonCall encodes known script arguments into a mock tool call; arguments must be
+// JSON-marshalable.
 func jsonCall(id, name string, args any) mock.ToolCall {
 	b, _ := json.Marshal(args)
 	return mock.ToolCall{ID: id, Name: name, Args: string(b)}
 }
 
+// readCall constructs a scripted read-tool invocation for a path.
 func readCall(id, path string) mock.ToolCall {
 	return jsonCall(id, "read", map[string]any{"path": path})
 }
+
+// bashCall constructs a scripted shell-tool invocation for a command.
 func bashCall(id, cmd string) mock.ToolCall {
 	return jsonCall(id, "bash", map[string]any{"command": cmd})
 }
+
+// writeCall constructs a scripted file write with its complete replacement contents.
 func writeCall(id, path, body string) mock.ToolCall {
 	return jsonCall(id, "write", map[string]any{"path": path, "content": body})
 }
+
+// mailCall constructs a scripted mail invocation with recipient, kind, and text.
 func mailCall(id, to, kind, text string) mock.ToolCall {
 	return jsonCall(id, "mail", map[string]any{"to": to, "kind": kind, "text": text})
 }
+
+// doneCall constructs a task-completion invocation with the task identifier and completion text.
 func doneCall(id, task, text string) mock.ToolCall {
 	return jsonCall(id, "task", map[string]any{"action": "done", "id": task, "text": text})
 }
@@ -213,6 +229,8 @@ func (s *shopScript) manager(n int) mock.Reply {
 
 // ---- the scouts ----
 
+// scout returns predetermined shop survey reads and findings for the requested scout ID and script
+// step.
 func (s *shopScript) scout(id string, n int) mock.Reply {
 	reads := map[string][]string{"sc-1": {"docs/api.md"}, "sc-2": {"data/items.json", "data/schema.md"}, "sc-3": {"docs/design.md"}}
 	report := map[string]string{
@@ -315,6 +333,8 @@ func (s *shopScript) web(id string, n int) mock.Reply {
 
 // ---- the tester (ts-1): asks the cart's author a question ----
 
+// tester sequences the scripted shop test worker through reading, coordination, test creation,
+// verification, and task completion.
 func (s *shopScript) tester(id string, n int) mock.Reply {
 	switch n {
 	case 0:
@@ -336,6 +356,8 @@ func (s *shopScript) tester(id string, n int) mock.Reply {
 
 // ---- the reviewer ----
 
+// reviewer returns the scripted shop review sequence, running verification before reporting task
+// T8 complete.
 func (s *shopScript) reviewer(id string, n int) mock.Reply {
 	switch n {
 	case 0:

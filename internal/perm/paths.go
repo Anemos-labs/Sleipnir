@@ -93,6 +93,8 @@ type cwdSet struct {
 	unknown bool // some cd could not be followed
 }
 
+// add retains up to eight distinct possible working directories and marks further possibilities
+// unknown.
 func (c *cwdSet) add(d string) {
 	for _, x := range c.dirs {
 		if x == d {
@@ -106,6 +108,7 @@ func (c *cwdSet) add(d string) {
 	c.dirs = append(c.dirs, d)
 }
 
+// hasGlob detects wildcard or character-class openers in a path expression.
 func hasGlob(s string) bool { return strings.ContainsAny(s, "*?[") }
 
 // resolve turns one file operand into the accesses it stands for: one per
@@ -254,6 +257,7 @@ func (ev *evaluator) redirAccesses(rds []shellparse.Redirect, cw *cwdSet) []acce
 	return out
 }
 
+// allDigits requires a nonempty sequence of ASCII decimal digits.
 func allDigits(s string) bool {
 	if s == "" {
 		return false

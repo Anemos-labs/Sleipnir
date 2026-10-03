@@ -140,6 +140,8 @@ func (s *Session) agentFor(id string, ts time.Time) *agent {
 	return a
 }
 
+// noteModel records up to 24 distinct nonempty model names and sets the primary model on first
+// observation.
 func (s *Session) noteModel(m string) {
 	if m == "" {
 		return
@@ -219,6 +221,8 @@ func (s *Session) onSpawn(raw json.RawMessage, ts time.Time) {
 	}
 }
 
+// onAgentEnd validates an end payload, records bounded evidence, and updates task failure state
+// for the ended agent.
 func (s *Session) onAgentEnd(raw json.RawMessage, ts time.Time) {
 	var p struct{ ID, State, Evidence string }
 	if json.Unmarshal(raw, &p) != nil || p.ID == "" {
@@ -233,6 +237,8 @@ func (s *Session) onAgentEnd(raw json.RawMessage, ts time.Time) {
 	s.board.onAgentEnd(p.ID, p.State, ts)
 }
 
+// onAgentState updates activity text and lifecycle state from a best-effort decoded event, falling
+// back to envelope agent identity.
 func (s *Session) onAgentState(ev *events.Event, ts time.Time) {
 	var p struct{ ID, State, Line string }
 	_ = json.Unmarshal(ev.Data, &p)
@@ -251,6 +257,7 @@ func (s *Session) onAgentState(ev *events.Event, ts time.Time) {
 	}
 }
 
+// onLayerCommit tracks shared synchronization and epoch transitions as pending agent rebases.
 func (s *Session) onLayerCommit(ev *events.Event, ts time.Time) {
 	var p struct{ Scope, Reason string }
 	_ = json.Unmarshal(ev.Data, &p)
@@ -506,6 +513,7 @@ func (s *Session) compareLayers(r *req, prev *req) {
 	}
 }
 
+// sectionHash returns the first matching request-section hash, or empty if no section matches.
 func (r *req) sectionHash(name string) string {
 	for _, sec := range r.sections {
 		if sec.name == name {
@@ -810,6 +818,8 @@ func (s *Session) onToolCall(ev *events.Event, ts time.Time) {
 	s.board.onToolCall(a.id, p.ID, bc)
 }
 
+// tool returns a mutable tool aggregate, folding new tool names into an other bucket once the
+// distinct-name cap is reached.
 func (a *agent) tool(name string) *toolAgg {
 	t := a.tools[name]
 	if t == nil {
@@ -997,6 +1007,7 @@ type rlState struct {
 	renderers   []string
 }
 
+// noteRenderer retains up to eight distinct renderer versions in first-seen order.
 func (r *rlState) noteRenderer(v string) {
 	for _, x := range r.renderers {
 		if x == v {
@@ -1008,6 +1019,8 @@ func (r *rlState) noteRenderer(v string) {
 	}
 }
 
+// onOutcome validates and bounds outcome metadata and retains only the most recent outcome
+// records.
 func (s *Session) onOutcome(ev *events.Event, ts time.Time) {
 	var p struct {
 		Kind    string  `json:"kind"`

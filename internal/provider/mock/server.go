@@ -220,6 +220,8 @@ func (s *Server) CacheOutage(d time.Duration) {
 // Router exposes the router for tests that inspect engines.
 func (s *Server) Router() *Router { return s.router }
 
+// handleModels serves the mock model's fixed context, pricing, and supported-parameter metadata as
+// JSON.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"data":[{"id":"mock-1","context_length":1000000,"pricing":{"prompt":"0.000004","completion":"0.00002","input_cache_read":"0.000001"},"supported_parameters":["tools","reasoning_effort"]}]}`)
@@ -256,6 +258,7 @@ func (s *Server) rateLimit(w http.ResponseWriter) bool {
 	return limited
 }
 
+// writeErr sends a mock JSON provider error with the requested HTTP status and error type.
 func writeErr(w http.ResponseWriter, status int, msg, typ string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -402,6 +405,7 @@ func validateOrder(msgs []Msg) error {
 	return nil
 }
 
+// keysOf returns sorted map keys regardless of their boolean values.
 func keysOf(m map[string]bool) []string {
 	var out []string
 	for k := range m {

@@ -148,6 +148,7 @@ func KindOf(err error) Kind {
 	return KindOther
 }
 
+// newErr creates a classified Git error with formatted detail and no process exit status.
 func newErr(kind Kind, op, format string, args ...any) *Error {
 	return &Error{Kind: kind, Op: op, ExitCode: -1, Detail: fmt.Sprintf(format, args...)}
 }

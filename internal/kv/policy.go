@@ -204,6 +204,8 @@ type Decision struct {
 	Reason string
 }
 
+// write selects an explicit positive write multiplier, then the five-minute multiplier, and
+// otherwise one.
 func (s State) write() float64 {
 	switch {
 	case s.Write > 0:
@@ -218,6 +220,8 @@ func (s State) write() float64 {
 // on thresholds alone.
 func (s State) priced() bool { return s.W.Read > 0 }
 
+// pressure reports hard thread-size or context-window pressure, prioritizing the thread limit when
+// both apply.
 func (s State) pressure(p Planner) (string, bool) {
 	switch {
 	case s.ThreadTokens >= p.HardThreadTokens:
@@ -381,6 +385,8 @@ func (p Planner) ShouldCommit(s State, o Outcome) Decision {
 	return Decision{NetITE: net, Reason: fmt.Sprintf("would not pay back within %.0f turns; waiting for a cold moment", n)}
 }
 
+// paybackTurns estimates turns needed to repay a positive penalty, using 1e9 when per-turn savings
+// are nonpositive.
 func paybackTurns(penalty, perTurn float64) float64 {
 	if perTurn <= 0 {
 		return 1e9

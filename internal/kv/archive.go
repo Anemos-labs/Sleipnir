@@ -98,6 +98,7 @@ func (a *Archive) Put(agent string, t core.Turn) error {
 	return nil
 }
 
+// sizeU32 saturates an integer size into the uint32 range, mapping negative values to zero.
 func sizeU32(n int) uint32 {
 	if n < 0 {
 		return 0
@@ -298,6 +299,8 @@ func tailBytes(s string, n int) string {
 	return s[from:]
 }
 
+// searchText builds searchable turn text from prose, reasoning, tool names/arguments, and tool
+// results with block separators.
 func searchText(t core.Turn) string {
 	var sb strings.Builder
 	for _, b := range t.Blocks {
@@ -324,6 +327,8 @@ type clipper struct {
 	full bool
 }
 
+// add appends archive text until a positive byte limit is reached, cutting at a UTF-8 boundary and
+// ignoring later additions once full.
 func (c *clipper) add(s string) {
 	if c.full {
 		return

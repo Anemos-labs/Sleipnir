@@ -33,6 +33,8 @@ type SnapshotOptions struct {
 	AllowSuspicious bool
 }
 
+// defaults supplies positive MCP snapshot limits for descriptions, schemas, tool counts, and total
+// bytes.
 func (o *SnapshotOptions) defaults() {
 	if o.MaxDescriptionChars <= 0 {
 		o.MaxDescriptionChars = 600
@@ -76,6 +78,7 @@ func (s *Snapshot) Specs() []core.ToolSpec {
 	return out
 }
 
+// cloneSpec copies a tool specification and allocates independent input-schema bytes.
 func cloneSpec(sp core.ToolSpec) core.ToolSpec {
 	sp.InputSchema = append(json.RawMessage(nil), sp.InputSchema...)
 	return sp
@@ -147,6 +150,7 @@ type candidate struct {
 	size         int
 }
 
+// measure records the combined byte size of the candidate's name, description, and schema.
 func (c *candidate) measure() { c.size = len(c.name) + len(c.desc) + len(c.schema) }
 
 // buildSnapshot is a pure function of its inputs: the same server tool lists and
@@ -254,6 +258,7 @@ func buildSnapshot(m *Manager, servers []serverTools, o SnapshotOptions) *Snapsh
 	return snap
 }
 
+// collisionList formats colliding server/tool names in lexical order.
 func collisionList(group []*candidate) string {
 	names := make([]string, len(group))
 	for i, c := range group {

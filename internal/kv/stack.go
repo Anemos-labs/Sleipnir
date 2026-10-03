@@ -174,6 +174,8 @@ func PromptTokens(p *core.Prompt, est core.Estimator) int {
 	return n
 }
 
+// blockBytes estimates content bytes recursively, including tool names and input but excluding
+// block metadata.
 func blockBytes(b core.Block) int {
 	switch b.Kind {
 	case core.BlockToolUse:

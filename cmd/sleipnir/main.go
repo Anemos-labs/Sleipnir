@@ -412,6 +412,8 @@ func wrapBlockFor(out io.Writer, text string) string {
 // printHelp writes help text to w, its lines fitted to the terminal when w is one.
 func printHelp(w io.Writer, text string) { fmt.Fprint(w, wrapBlockFor(w, text)) }
 
+// addProviderFlags registers provider, base URL, and API-key environment overrides and returns
+// their bound values.
 func addProviderFlags(fs *flag.FlagSet) *providerFlags {
 	pf := &providerFlags{}
 	fs.StringVar(&pf.provider, "provider", "", "heimdall | openrouter | openai | custom (default: auto-detect)")
@@ -500,6 +502,8 @@ func cmdDoctor(ctx context.Context, args []string) error {
 	return nil
 }
 
+// envLabel formats an API-key environment variable for display, or none when no variable is
+// configured.
 func envLabel(s providerSpec) string {
 	if s.keyEnv == "" {
 		return "none"
@@ -507,6 +511,8 @@ func envLabel(s providerSpec) string {
 	return "$" + s.keyEnv
 }
 
+// cmdMock serves the local mock provider with configured independent cache engines and shuts it
+// down when the context ends.
 func cmdMock(ctx context.Context, args []string) error {
 	fs := newFlagSet("mock", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8089", "listen address")

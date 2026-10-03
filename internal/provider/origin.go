@@ -25,6 +25,8 @@ type RedirectError struct {
 	Target string
 }
 
+// Error identifies a rejected cross-origin redirect and explains why credentials and prompt data
+// were not forwarded.
 func (e *RedirectError) Error() string {
 	return "the endpoint redirected the request to another origin (" + e.Target +
 		"); the prompt and headers are never re-sent to a different origin"
@@ -94,8 +96,11 @@ func SameOrigin(a, b *url.URL) bool {
 	return strings.EqualFold(a.Scheme, b.Scheme) && hostOf(a) == hostOf(b) && portOf(a) == portOf(b)
 }
 
+// hostOf removes the port and a trailing DNS dot and lowercases the URL hostname for comparison.
 func hostOf(u *url.URL) string { return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".") }
 
+// portOf returns an explicit port or the standard HTTP/HTTPS port, leaving other schemes without a
+// default.
 func portOf(u *url.URL) string {
 	if p := u.Port(); p != "" {
 		return p
@@ -109,6 +114,7 @@ func portOf(u *url.URL) string {
 	return ""
 }
 
+// originOf combines a lowercased scheme with the URL's existing host, including its port.
 func originOf(u *url.URL) string {
 	return strings.ToLower(u.Scheme) + "://" + u.Host
 }
@@ -131,6 +137,8 @@ func IsLoopbackHost(host string) bool {
 // host other than this machine.
 type InsecureKeyError struct{ Host string }
 
+// Error reports refusal to send an API key over plain HTTP, sanitizing and bounding the displayed
+// hostname.
 func (e *InsecureKeyError) Error() string {
 	return "refusing to send an API key over plain http to " + SanitizeText(e.Host, 256) +
 		": the key would cross the network unencrypted"

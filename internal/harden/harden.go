@@ -160,6 +160,7 @@ func dumpableRequested() bool {
 // their key from.
 var providerKeyName = regexp.MustCompile(`(?i)api[_-]?key$`)
 
+// listed checks for an exact name in a list without normalization.
 func listed(name string, names []string) bool {
 	for _, n := range names {
 		if n == name {
@@ -169,6 +170,8 @@ func listed(name string, names []string) bool {
 	return false
 }
 
+// moveLocked saves an existing environment variable in held storage and unsets it; the caller must
+// hold the hardening lock.
 func moveLocked(name string) {
 	if v, ok := os.LookupEnv(name); ok {
 		held[name] = v
@@ -176,6 +179,8 @@ func moveLocked(name string) {
 	}
 }
 
+// sortedHeld returns saved environment-variable names in lexical order; the caller must
+// synchronize access to held.
 func sortedHeld() []string {
 	names := make([]string, 0, len(held))
 	for n := range held {

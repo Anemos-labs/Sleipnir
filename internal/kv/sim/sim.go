@@ -196,6 +196,8 @@ type cacheSim struct {
 	pins    map[string]int
 }
 
+// newCache initializes independent simulated cache engines and affinity pins, using at least one
+// engine.
 func newCache(p Provider) *cacheSim {
 	c := &cacheSim{p: p, pins: map[string]int{}}
 	n := p.Engines
@@ -208,6 +210,8 @@ func newCache(p Provider) *cacheSim {
 	return c
 }
 
+// route assigns requests round-robin and pins nonempty affinity keys to their first assigned
+// engine.
 func (c *cacheSim) route(affinityKey string) int {
 	if len(c.engines) == 1 {
 		return 0
@@ -224,6 +228,8 @@ func (c *cacheSim) route(affinityKey string) int {
 	return c.rr % len(c.engines)
 }
 
+// chainHash deterministically extends the simulator's noncryptographic prefix hash with an item
+// ID.
 func chainHash(prev uint64, id string) uint64 {
 	h := prev*1099511628211 + 14695981039346656037
 	for i := 0; i < len(id); i++ {
@@ -352,11 +358,22 @@ type actor struct {
 
 type queue []*actor
 
-func (q queue) Len() int             { return len(q) }
-func (q queue) Less(i, j int) bool   { return q[i].next < q[j].next }
-func (q queue) Swap(i, j int)        { q[i], q[j] = q[j], q[i]; q[i].idx, q[j].idx = i, j }
-func (q *queue) Push(x any)          { a := x.(*actor); a.idx = len(*q); *q = append(*q, a) }
-func (q *queue) Pop() any            { o := *q; n := len(o); a := o[n-1]; *q = o[:n-1]; return a }
+// Len returns the number of actors currently held by the scheduler heap.
+func (q queue) Len() int { return len(q) }
+
+// Less orders actors by their next scheduled event time.
+func (q queue) Less(i, j int) bool { return q[i].next < q[j].next }
+
+// Swap exchanges heap entries and updates both actors' recorded heap indexes.
+func (q queue) Swap(i, j int) { q[i], q[j] = q[j], q[i]; q[i].idx, q[j].idx = i, j }
+
+// Push appends an actor and records its index; the heap package restores ordering.
+func (q *queue) Push(x any) { a := x.(*actor); a.idx = len(*q); *q = append(*q, a) }
+
+// Pop removes the final actor after the heap package moves the selected entry there.
+func (q *queue) Pop() any { o := *q; n := len(o); a := o[n-1]; *q = o[:n-1]; return a }
+
+// durSec converts fractional seconds to a duration, truncating fractional nanoseconds.
 func durSec(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
 
 // runner is shared bookkeeping for a simulation run.
@@ -370,6 +387,7 @@ type runner struct {
 	end    time.Duration
 }
 
+// newRunner creates a simulator with a fresh provider cache and labeled result totals.
 func newRunner(w Workload, p Provider, name string) *runner {
 	return &runner{w: w, p: p, cache: newCache(p), res: Result{Policy: name, Provider: p.Name}}
 }
@@ -395,6 +413,8 @@ func (r *runner) bill(now time.Duration, eng int, segs []seg, bp []int, outToken
 	return ttfb
 }
 
+// finish computes average context, peak requests in a one-minute window, and simulated wall time
+// before returning results.
 func (r *runner) finish() Result {
 	if r.res.Requests > 0 {
 		r.res.AvgContext = r.sumCtx / float64(r.res.Requests)

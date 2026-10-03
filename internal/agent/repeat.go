@@ -56,6 +56,7 @@ type repeatGuard struct {
 	refusalNudged bool
 }
 
+// reset clears the repeated-call guard's accumulated state.
 func (g *repeatGuard) reset() { *g = repeatGuard{} }
 
 // observe records a batch of calls and their results. It returns the note to hand the model

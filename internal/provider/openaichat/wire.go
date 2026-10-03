@@ -44,6 +44,8 @@ type Options struct {
 	CaptureTokens bool
 }
 
+// defaults fills missing chat-wire role and token-limit field names without replacing explicit
+// options.
 func (o *Options) defaults() {
 	if o.SystemRole == "" {
 		o.SystemRole = "system"
@@ -228,6 +230,8 @@ func renderSystem(blocks []core.Block, role string, bpAt map[core.BlockRef]core.
 	return message{Role: role, Content: parts}
 }
 
+// renderMessage dispatches assistant and user/system messages to their wire renderers, rejecting
+// unsupported roles.
 func renderMessage(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) ([]message, error) {
 	switch m.Role {
 	case core.RoleAssistant:
@@ -333,6 +337,8 @@ func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) 
 	return out, nil
 }
 
+// ttlString requests the one-hour wire TTL for breakpoints of at least thirty minutes, otherwise
+// leaving the default TTL implicit.
 func ttlString(bp core.Breakpoint) string {
 	if bp.TTL >= 30*time.Minute {
 		return "1h"
@@ -340,6 +346,8 @@ func ttlString(bp core.Breakpoint) string {
 	return ""
 }
 
+// toolResultText concatenates text children and prefixes error results unless they already begin
+// with Error.
 func toolResultText(b core.Block) string {
 	var sb strings.Builder
 	for _, c := range b.Result {

@@ -47,6 +47,7 @@ type checker struct {
 	issues []Issue
 }
 
+// report appends a schema issue with copied path segments and an optional source position.
 func (c *checker) report(sev Severity, off int, segs []string, format string, args ...any) {
 	is := Issue{
 		Severity: sev,
@@ -61,6 +62,7 @@ func (c *checker) report(sev Severity, off int, segs []string, format string, ar
 	c.issues = append(c.issues, is)
 }
 
+// wrongType records the expected and actual node types at the field's source offset.
 func (c *checker) wrongType(n *node, segs []string, want string) {
 	c.report(SeverityError, n.off, segs, "expected %s, got %s", want, n.kind)
 }
@@ -218,6 +220,8 @@ func closest(key string, cands []string) string {
 	return ""
 }
 
+// levenshtein computes rune-based edit distance with insertion, deletion, and substitution cost
+// one, using one previous row.
 func levenshtein(a, b string) int {
 	ra, rb := []rune(a), []rune(b)
 	prev := make([]int, len(rb)+1)

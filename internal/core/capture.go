@@ -61,6 +61,7 @@ type wireMsg struct {
 	Blocks  []Block `json:"blocks"`
 }
 
+// messageJSON serializes the message role, clear boundary, and blocks with stable JSON encoding.
 func messageJSON(m Message) ([]byte, error) {
 	return MarshalStable(wireMsg{Role: m.Role, ClearAt: m.ClearAt, Blocks: m.Blocks})
 }

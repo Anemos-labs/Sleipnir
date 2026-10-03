@@ -24,6 +24,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
+// init registers project initialization, configuration, and session-listing commands.
 func init() {
 	extraCommands["init"] = cmdInit
 	extraCommands["config"] = cmdConfig
@@ -375,6 +376,8 @@ func summarize(path string, model, prompt *string, usd *float64) {
 	}
 }
 
+// oneLineCLI collapses whitespace and bounds text by rune count, appending an ellipsis when
+// truncated; n must be nonnegative.
 func oneLineCLI(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > n {

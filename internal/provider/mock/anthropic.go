@@ -134,6 +134,7 @@ func (a *AnthropicServer) Reset() {
 	a.amu.Unlock()
 }
 
+// recordA stores Anthropic-specific statistics under lock and also records common call statistics.
 func (a *AnthropicServer) recordA(st AnthropicStat) {
 	a.amu.Lock()
 	a.astats = append(a.astats, st)
@@ -141,6 +142,7 @@ func (a *AnthropicServer) recordA(st AnthropicStat) {
 	a.Server.record(st.CallStat)
 }
 
+// writeAErr sends an Anthropic-shaped mock error with request identity and extra response headers.
 func writeAErr(w http.ResponseWriter, e *aErr, reqID string, extra http.Header) {
 	for k, v := range extra {
 		w.Header()[k] = v
@@ -383,6 +385,7 @@ func (q *aReq) call(n int, plan *ExplicitPlan) *Call {
 	return c
 }
 
+// firstNonEmpty returns the earliest nonempty argument or empty when none exists.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if s != "" {
@@ -392,6 +395,8 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
+// price prefers catalog model pricing and otherwise derives missing explicit-cache write prices
+// from configured mock input pricing.
 func (a *AnthropicServer) price(model string) cost.Price {
 	if m, ok := cost.Defaults().Lookup(model); ok {
 		return m.Price

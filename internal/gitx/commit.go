@@ -67,6 +67,7 @@ type UnmergedStage struct {
 	ID   string
 }
 
+// present reports whether the unmerged stage has an object identifier.
 func (s UnmergedStage) present() bool { return s.ID != "" }
 
 // Kind names the shape of the conflict from which sides exist.

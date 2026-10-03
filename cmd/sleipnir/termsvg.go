@@ -23,6 +23,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/vt"
 )
 
+// init registers terminal-log SVG conversion with the CLI dispatcher.
 func init() { extraCommands["term-svg"] = cmdTermSVG }
 
 func cmdTermSVG(_ context.Context, args []string) error {

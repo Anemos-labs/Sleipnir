@@ -44,6 +44,8 @@ type modelFilter struct {
 	All          bool // include models that do not produce text
 }
 
+// keep applies chat capability, tool, reasoning, favorite, price, context, and case-insensitive
+// search-word filters to a model row.
 func (f modelFilter) keep(r modelRow, fav map[string]bool) bool {
 	if !f.All && !r.IsChat() {
 		return false
@@ -230,6 +232,8 @@ type modelSource struct {
 	plan       bool
 }
 
+// usableSources resolves catalog endpoints and authentication modes for providers eligible for
+// model listing.
 func usableSources(cfg *config.Config, withPublic bool) []modelSource {
 	var out []modelSource
 	for _, n := range usableProviders(cfg, withPublic) {
@@ -409,6 +413,7 @@ func saveFavorites(home string, favs []string) error {
 	return config.Save(config.UserConfigPath(home), map[string]any{"models": map[string]any{"favorites": favs}})
 }
 
+// favoriteSet builds a membership map from configured model favorites.
 func favoriteSet(cfg *config.Config) map[string]bool {
 	m := map[string]bool{}
 	for _, r := range cfg.Models.Favorites {
@@ -524,6 +529,8 @@ func cmdFavorites(w io.Writer, args []string) error {
 	return nil
 }
 
+// human abbreviates positive context sizes and displays a question mark for missing or nonpositive
+// sizes.
 func human(n int) string {
 	switch {
 	case n <= 0:

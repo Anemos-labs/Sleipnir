@@ -55,6 +55,8 @@ type LayerState struct {
 	Segments []kv.Segment `json:"segments"`
 }
 
+// layerState snapshots a nonempty layer with an independent segment slice, returning nil for empty
+// layers.
 func layerState(l *kv.Layer) *LayerState {
 	if l.Empty() {
 		return nil
@@ -62,6 +64,7 @@ func layerState(l *kv.Layer) *LayerState {
 	return &LayerState{ID: l.ID, Kind: l.Kind, Version: l.Version, Segments: append([]kv.Segment(nil), l.Segments...)}
 }
 
+// layer reconstructs a KV layer from persisted state, preserving nil state as a nil layer.
 func (s *LayerState) layer() *kv.Layer {
 	if s == nil {
 		return nil

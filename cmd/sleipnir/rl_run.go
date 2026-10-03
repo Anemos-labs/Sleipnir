@@ -28,6 +28,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
+// init registers rollout, evaluation, and environment-server commands.
 func init() {
 	rlCommands["rollout"] = rlRollout
 	rlCommands["eval"] = rlEval
@@ -287,6 +288,7 @@ type rig struct {
 	closeF func()
 }
 
+// Close invokes the cleanup function associated with this rollout rig.
 func (r *rig) Close() { r.closeF() }
 
 // workspaces builds the workspace manager the flags describe.
@@ -357,11 +359,13 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 	return &rig{Runner: rn, Pipe: pipe, Reward: cfg, closeF: ws.Close}, nil
 }
 
+// dirExists follows symlinks and reports whether the path names an accessible directory.
 func dirExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
 }
 
+// stateDir honors a nonempty SLEIPNIR_HOME override or falls back to .sleipnir under home.
 func stateDir(home string) string {
 	if v := os.Getenv("SLEIPNIR_HOME"); v != "" {
 		return v
@@ -377,6 +381,7 @@ type taskSelection struct {
 	seed      int64
 }
 
+// register binds task-file, tag, ID, deterministic subset, and subset-seed flags to the selection.
 func (t *taskSelection) register(fs *flag.FlagSet) {
 	fs.StringVar(&t.file, "tasks", "", "tasks file (JSON lines)")
 	fs.StringVar(&t.tags, "tag", "", "comma-separated tags a task must carry (prefix a tag with ! to exclude it)")
@@ -385,6 +390,7 @@ func (t *taskSelection) register(fs *flag.FlagSet) {
 	fs.Int64Var(&t.seed, "task-seed", 0, "seed of the -n subset")
 }
 
+// load requires a tasks file, validates and filters it, and fails when the selection is empty.
 func (t *taskSelection) load() ([]rl.Task, error) {
 	if t.file == "" {
 		return nil, errors.New("--tasks is required")
@@ -400,6 +406,8 @@ func (t *taskSelection) load() ([]rl.Task, error) {
 	return tasks, nil
 }
 
+// progressPrinter returns a callback that prints rollout completions and retries with available
+// outcome details.
 func progressPrinter(w io.Writer) func(env.Progress) {
 	return func(p env.Progress) {
 		switch p.Type {
@@ -619,6 +627,8 @@ func printEvalReport(w io.Writer, r env.Report) {
 	}
 }
 
+// printComparison renders paired metric changes, confidence intervals, significance markers, and
+// unmatched task counts.
 func printComparison(w io.Writer, c env.Comparison) {
 	fmt.Fprintf(w, "\ncompared with the baseline %s (%d paired tasks, %.0f%% bootstrap intervals over tasks):\n", c.A, c.Paired, 100*c.Confidence)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -636,6 +646,7 @@ func printComparison(w io.Writer, c env.Comparison) {
 	}
 }
 
+// sortedKeys returns integer map keys in ascending order without modifying the map.
 func sortedKeys(m map[int]float64) []int {
 	ks := make([]int, 0, len(m))
 	for k := range m {
