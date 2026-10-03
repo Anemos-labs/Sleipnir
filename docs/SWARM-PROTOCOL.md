@@ -45,6 +45,12 @@ paths outside the project).
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | manager only; section 6 |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
+A manager waiting on unfinished work with no running workers receives an error
+with the task IDs and actions needed to advance them. Repeated identical errors
+are bounded by the agent's repetition guard. Active-worker waits still sleep;
+settled targets, pending mail, and unseen task changes are reported first. Empty
+boards and worker waits remain available for future work or messages.
+
 ## 3. The board
 
 Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),

@@ -5,6 +5,11 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Return an actionable error when a manager waits on unfinished work with no
+  running workers, allowing the repetition guard to bound repeated impossible
+  waits. Preserve waits for active workers, future work, mail, and settled targets.
+  Planning-task claim errors name the spawn action needed to start a read-only
+  owner. Stable prompt and tool-schema bytes are unchanged.
 - Resolve native Windows workspace paths consistently for file permissions, including
   existing and new files, symlink and junction targets, protected files, explicit
   rules, and worker confinement. Require native permission and file-tool regressions

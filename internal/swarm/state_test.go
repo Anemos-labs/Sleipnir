@@ -70,15 +70,21 @@ func TestBoardWaitLostWakeupStress(t *testing.T) {
 // wait reports what changed since the agent last looked, not since the tool was
 // called: a change between two waits (while the model is thinking) is not lost.
 func TestWaitToolReportsChangesBetweenWaits(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	gate := make(chan struct{})
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		rvBlock(ctx, gate)
+		return rvReply{Text: "ok"}
+	})
+	t.Cleanup(func() { close(gate) })
 	r.sw.StartManager()
 	b := r.sw.Board
 	b.CreateTask("mgr", TaskSpec{Title: "long task"})
 	b.CreateTask("mgr", TaskSpec{Title: "other task"})
-	b.Assign("mgr", "be-1", "T1")
-	b.Assign("mgr", "be-2", "T2")
-	r.sw.mu.Lock()
-	r.sw.mu.Unlock()
+	for _, id := range []string{"T1", "T2"} {
+		if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: id, By: "mgr"}); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	first := make(chan string, 1)
 	go func() {
