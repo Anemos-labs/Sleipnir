@@ -5,6 +5,9 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Publish a worker's ending before allowing reassignment or mail recovery, so
+  late terminal events cannot make its new run appear stopped. Ignore cleanup
+  from an older run when a newer run owns the worker and its write leases.
 - Show a stopped worker's recorded failure reason in its agent-table row.
 - Preserve the beginning and end of long task-verification logs, including the
   final failure diagnostic. Use the same runner as integration verification for
