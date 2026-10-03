@@ -239,7 +239,7 @@ func TestStoppingWithoutDoneStillGoesThroughTheVerifier(t *testing.T) {
 	}
 	rvWait(t, "the task to go back to the pool", func() bool {
 		tk, _ := r.sw.Board.Snapshot().Task("T1")
-		return tk.Status == StatusTodo && r.idle(id)
+		return tk.Status == StatusTodo && r.idle(id) && mailSent(r, "verification `go test ./...` failed 3 times") > 0
 	})
 	tk, _ := r.sw.Board.Snapshot().Task("T1")
 	if n := verifies.Load(); n != maxGateTries+1 {

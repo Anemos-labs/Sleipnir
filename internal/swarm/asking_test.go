@@ -9,8 +9,7 @@ import (
 
 // A worker that asks the person for an approval and gets no answer is stopped by the watchdog like any worker that shows no sign of
 // life (an attempt is counted: the next worker would ask the same), but the alert and the line the manager gets say what it was
-// waiting for. Found by running a swarm in a terminal that nobody was at: "stuck: no progress for 20m1s" was a question about a
-// command, left on the screen.
+// waiting for.
 func TestAWorkerWaitingForAnAnswerIsStoppedWithTheQuestionNamed(t *testing.T) {
 	clock := newFakeClock()
 	gate := make(chan struct{})
@@ -37,7 +36,9 @@ func TestAWorkerWaitingForAnAnswerIsStoppedWithTheQuestionNamed(t *testing.T) {
 	}
 	clock.Advance(10 * time.Minute)
 	r.sw.superviseOnce(clock.Now())
-	rvWait(t, "the run to be cancelled and settled", func() bool { return r.idle(id) })
+	rvWait(t, "the run to be cancelled and reported", func() bool {
+		return r.idle(id) && mailSent(r, "without an answer to its question to the person") > 0
+	})
 	tk, _ := r.sw.Board.Snapshot().Task("T1")
 	if tk.Status != StatusTodo || tk.Attempts != 1 {
 		t.Fatalf("T1 = %s attempts=%d, want todo after one attempt: the next worker would ask the same question", tk.Status, tk.Attempts)

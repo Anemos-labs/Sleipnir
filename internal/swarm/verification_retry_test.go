@@ -36,7 +36,7 @@ func TestRepeatedDoneFailuresReturnTheTaskToTheManager(t *testing.T) {
 			}
 			rvWait(t, "bounded verification recovery", func() bool {
 				task, _ := r.sw.Board.Snapshot().Task("T1")
-				return task.Status == want && r.idle(id)
+				return task.Status == want && r.idle(id) && mailSent(r, "verification `go test ./...` failed 3 times") > 0
 			})
 			task, _ := r.sw.Board.Snapshot().Task("T1")
 			if verifies.Load() != 3 || task.Attempts != 1 || !strings.Contains(task.Evidence, "expected 10 got 11") {
@@ -70,7 +70,7 @@ func TestImplicitStopFeedbackRetainsFinalVerifierLines(t *testing.T) {
 	}
 	rvWait(t, "implicit verification recovery", func() bool {
 		task, _ := r.sw.Board.Snapshot().Task("T1")
-		return task.Status == StatusTodo && r.idle(id)
+		return task.Status == StatusTodo && r.idle(id) && mailSent(r, "verification `go test ./...` failed 3 times") > 0
 	})
 	if got := repairsWithDiagnostic.Load(); got != 2 {
 		t.Fatalf("repair prompts with the final diagnostic = %d, want 2", got)

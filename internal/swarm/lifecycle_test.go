@@ -620,9 +620,10 @@ func TestWorkerPanicIsContained(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rvWait(t, "the crashed worker to be settled", func() bool {
+	rvWait(t, "the crashed worker to settle and notify the manager", func() bool {
 		a, _ := r.sw.Board.Snapshot().Agent(id)
-		return a.State == "failed" && r.idle(id)
+		// A worker becomes available before its failure notice is published.
+		return a.State == "failed" && r.idle(id) && mailSent(r, "crashed") > 0
 	})
 	tk, _ := r.sw.Board.Snapshot().Task("T1")
 	if tk.Status != StatusTodo || tk.Owner != "" || tk.Attempts != 1 {
