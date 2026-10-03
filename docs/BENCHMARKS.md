@@ -11,8 +11,11 @@ the suite under `BENCH_HOME` (default `~/.sleipnir-bench`).
 
 Tasks include standard-library mutations, repository-derived fixes, small
 language fixtures, multi-part team tasks, and memory/recall tasks.
-Admission requires the verifier to fail on the starting tree and pass on the
-reference solution.
+Code-task admission requires the verifier to fail on the starting tree and pass
+on the reference solution. Composite tasks apply all recorded component patches
+before checking the solution. Inspect `admit.json`: tasks without reference
+patches are reported as skipped, including recall tasks scored by an expected
+answer. A skipped check does not establish task soundness.
 
 A verifier must test requirements specified by the prompt. Hidden tests that
 require unnamed symbols invalidate a comparison even when the reference
