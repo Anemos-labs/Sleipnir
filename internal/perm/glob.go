@@ -128,7 +128,9 @@ func (rs *resolver) inWorkspace(real string) bool {
 // target) and components that do not exist (kept literally). ".." is applied to
 // the already resolved prefix, as the kernel does: "link/.." is the parent of
 // what link points to, not the directory containing link; p must therefore not
-// be cleaned lexically first. It never fails: on a symlink loop it returns p.
+// be cleaned lexically first. At the hop bound it returns the cleaned input on
+// POSIX (where the kernel also refuses the chain), and an empty, invalid path on
+// Windows, whose kernel can follow longer chains than this resolver permits.
 func realPath(p string) string {
 	if !filepath.IsAbs(p) {
 		return cleanPath(p)
@@ -153,6 +155,9 @@ func realPath(p string) string {
 			continue
 		}
 		if hops++; hops > 40 {
+			if filepath.Separator == '\\' {
+				return ""
+			}
 			return cleanPath(p)
 		}
 		target, err := os.Readlink(next)
@@ -426,7 +431,7 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 		}
 		if k > 0 {
 			pref := absRoot + strings.Join(segs[:k], "/")
-			if r := realPath(pref); r != pref {
+			if r := realPath(pref); r != "" && r != pref {
 				add(append(splitSegs(r), segs[k:]...))
 			}
 		}

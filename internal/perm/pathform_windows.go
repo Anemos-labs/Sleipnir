@@ -24,6 +24,9 @@ func canonicalPath(p string) string {
 // semantics cannot be represented by ordinary filesystem permission patterns.
 // Callers must reject these before expanding wildcards or appending a workspace.
 func pathProblem(p string) string {
+	if p == "" {
+		return "Windows path resolution exceeded the symbolic-link limit"
+	}
 	p = filepath.ToSlash(p)
 	if strings.HasPrefix(p, "//?/") || strings.HasPrefix(p, "//./") {
 		return "Windows device namespaces are not supported; use an ordinary absolute path"

@@ -131,6 +131,33 @@ func TestWindowsWorkspaceDeviceLink(t *testing.T) {
 	}
 }
 
+func TestWindowsWorkspaceLongLinkChain(t *testing.T) {
+	f := newFixture(t)
+	target := filepath.Join(f.home, ".ssh", "id_rsa")
+	for i := 0; i < 42; i++ {
+		link := filepath.Join(f.root, strings.Repeat("x", i+1))
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+		target = link
+	}
+	// Windows can follow chains beyond the resolver's work bound. Refusing only
+	// those rejected by the OS would leave a credential alias permitted here.
+	if b, err := os.ReadFile(target); err != nil || string(b) != "SECRET-PRIVATE-KEY" {
+		t.Fatalf("long-chain fixture: %q, %v", b, err)
+	}
+	e := f.engine(t, Config{Mode: ModeBypass})
+	if d := e.Check(context.Background(), f.request(read(target))); outcome(d) != "deny" {
+		t.Fatalf("long link chain = %+v", d)
+	}
+	// An unresolved absolute Allow pattern must not become the empty glob,
+	// which represents the entire filesystem.
+	e = f.engine(t, Config{Allow: []string{"Read(" + filepath.ToSlash(target) + ")"}})
+	if d := e.Check(context.Background(), f.request(read(filepath.Join(f.outside, "secret.txt")))); outcome(d) != "ask" {
+		t.Fatalf("unresolved rule allowed an unrelated outside file: %+v", d)
+	}
+}
+
 func TestWindowsGlobVolumeAndBoundaries(t *testing.T) {
 	f := newFixture(t)
 	budget := 1000

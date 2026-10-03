@@ -136,7 +136,12 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 		if !dyn {
 			a.lex, a.real = cleanPath(unclean), realPath(unclean)
 			if dir, name := splitParent(unclean); u.noFollow && name != "" && name != ".." && name != "." {
-				a.real = cleanPath(filepath.Join(realPath(dir), name))
+				parent := realPath(dir)
+				if why := pathProblem(parent); why != "" {
+					a.invalid = why
+					return a
+				}
+				a.real = cleanPath(filepath.Join(parent, name))
 			}
 			a.invalid = pathProblem(a.real)
 		}
