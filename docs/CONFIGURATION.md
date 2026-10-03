@@ -297,7 +297,9 @@ Tuning of the prompt-cache engine. A `0` means "use the engine's default".
 | `hot_max_tokens` | integer | `0` (900) | swarm | Cap on the always-fresh "hot" view a worker sees (the manager's is 2,200 and is not configurable) |
 | `affinity_shards` | integer | `0` (one key) | swarm | Spread a large swarm over this many provider routing keys |
 
-The swarm's warm gate (the first request of a swarm writes the shared prefix before the others are released) is always on.
+The swarm's warm gate is always on. It schedules requests using response signals and presumed prefix warmth;
+it does not verify server cache writes. Reuse depends on server routing and cache placement, so independent slots
+or replicas may still need cold prefills.
 
 ### `swarm`
 

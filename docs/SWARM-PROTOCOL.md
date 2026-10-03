@@ -288,9 +288,10 @@ one pass. How it reaches the model depends on the provider (`docs/CACHE-DESIGN.m
 (turn-scoped system messages where the provider has them, otherwise appended only when it changes) so history stays
 append-only.
 
-The **warm gate** stops a fan-out from paying for one prefix N times: the first request over a cold prefix (keyed by the
-shared layers, the routing shard and the role layer) is the primer; followers wait for its first response byte and then
-read the cache. The **governor** admits requests by priority (manager > workers > background compaction, first come
+The **warm gate** coordinates requests over a presumed cold prefix, keyed by shared layers, routing shard, and role
+layer. The first request is the primer; followers normally wait for response progress or completion, with priority and
+timeout exceptions. The gate does not confirm a server cache write. Reuse depends on server routing and cache placement;
+independent slots or replicas may still need cold prefills. The **governor** admits requests by priority (manager > workers > background compaction, first come
 first served within a priority, with aging so background work is never starved) within the requests-per-minute budget,
 honours `Retry-After` up to a ceiling (60 s: an endpoint cannot freeze the swarm), and adapts multiplicatively on 429s
 and additively on success; one burst of simultaneous 429s counts as one rate-limit episode.
