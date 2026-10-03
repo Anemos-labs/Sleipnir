@@ -11,12 +11,29 @@ the suite under `BENCH_HOME` (default `~/.sleipnir-bench`).
 
 Tasks include standard-library mutations, repository-derived fixes, small
 language fixtures, multi-part team tasks, and memory/recall tasks.
-Admission requires the verifier to fail on the starting tree and pass on the
-reference solution.
+Code-task admission requires the verifier to fail on the starting tree and pass
+on the reference solution. Composite tasks apply all recorded component patches
+before checking the solution. Inspect `admit.json`: tasks without reference
+patches are reported as skipped, including recall tasks scored by an expected
+answer. A skipped check does not establish task soundness.
 
 A verifier must test requirements specified by the prompt. Hidden tests that
 require unnamed symbols invalidate a comparison even when the reference
 solution passes. Exclude or repair such tasks before interpreting pass rates.
+
+The recipe excludes these mined tasks because their hidden tests require names
+absent from both the prompt and the starting code:
+
+| Task | Hidden requirement |
+|---|---|
+| `sl-81caac08` | The private `managerIsolationCard` constant and exact isolation-card wording |
+| `sl-828c42bc` | The exported `env.MaxWireSeed` constant, beyond the specified 31-bit seed range |
+| `sl-b957b26d` | The private `holdSettleMax` variable, `unfinishedWork.idle` field, and `windingDown` method |
+| `sl-2515b34e` | The exported `agent.DefaultToolTimeout` constant, beyond the specified configuration field and duration |
+
+These tasks must have their specifications or verifiers repaired and be admitted
+again before use in comparisons. Passing baseline/reference checks alone does not
+establish that a task's requirements are recoverable.
 
 ## Run
 

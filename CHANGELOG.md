@@ -5,6 +5,10 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Check composite benchmark tasks against all recorded reference patches instead
+  of skipping them. Reject malformed reference metadata during task admission.
+  Exclude four mined tasks whose hidden tests require unspecified symbols and
+  refresh the suite lock to 56 tasks.
 - Label assigned task paths as `SCOPE` in the agent table. A write lease on one
   file no longer appears as ownership of its enclosing directory.
 - Publish a worker's ending before allowing reassignment or mail recovery, so
