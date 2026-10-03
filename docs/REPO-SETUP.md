@@ -5,8 +5,8 @@
 [ci.yml](../.github/workflows/ci.yml) checks formatting, dependency drift, generated
 documentation, prompt-change declarations, tests, builds, and security tooling.
 The required checks are `ci-gate` and `conventional title`, both reported by
-GitHub Actions. Windows results are informational;
-see [platform limitations](SECURITY.md).
+GitHub Actions. Windows session ownership tests are required; the broader Windows
+suite is informational. See [platform limitations](SECURITY.md).
 
 [codeql.yml](../.github/workflows/codeql.yml) scans Go and workflows.
 [pr.yml](../.github/workflows/pr.yml) validates conventional pull request titles.

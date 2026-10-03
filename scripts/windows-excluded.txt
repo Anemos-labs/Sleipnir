@@ -17,7 +17,7 @@ internal/rl/env               # workspaces, diffs and verifiers use POSIX paths,
 internal/rl/env/taskgen       # mines git history into POSIX workspaces
 internal/rl/harness           # the rollout harness's workspaces are POSIX paths
 internal/rl/traj              # trajectories record POSIX workspace paths
-internal/session              # recon tests create file names Windows does not allow, and POSIX paths
+internal/session              # recon fixtures use POSIX paths and names; session ownership tests run in a separate required job
 internal/shellparse           # differential tests against bash
 internal/swarm                # isolation tests compare POSIX paths
 internal/tools/fs             # file modes, symlinks and open-file semantics of POSIX

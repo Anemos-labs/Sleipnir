@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -457,9 +456,6 @@ func TestResumeOnAnotherModel(t *testing.T) {
 // Two processes appending to one event log would interleave two histories under
 // one sequence; a resume of a session that is still running elsewhere must fail.
 func TestASessionDirectoryHasOneWriter(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("advisory directory locks are not used on this system")
-	}
 	repo := newRepo(t)
 	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
 	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
@@ -482,6 +478,28 @@ func TestASessionDirectoryHasOneWriter(t *testing.T) {
 		t.Fatalf("the directory must be free once its session closed: %v", err)
 	}
 	s2.Close()
+}
+
+func TestSessionDirectoryLockReleasedAfterFailedStart(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	o.Dir = filepath.Join(t.TempDir(), "session")
+	o.Isolation = "invalid"
+	if s, err := session.New(context.Background(), o); err == nil {
+		s.Close()
+		t.Fatal("invalid isolation mode unexpectedly started a session")
+	} else if !strings.Contains(err.Error(), "isolation") {
+		t.Fatalf("unexpected construction failure: %v", err)
+	}
+	o.Isolation = ""
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatalf("a failed start left the session locked: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Compaction is acceptable because it is reversible: recall brings folded turns
