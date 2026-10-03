@@ -7,105 +7,121 @@ import (
 	"time"
 )
 
-// Growth checks. A widget's work is linear in its input (or bounded by a cap), and the input that breaks that is hostile: a scan
-// for a closer from every opener, a prefix parsed again at every nesting level, a line built by concatenation. requireLinear pins
-// it without an absolute time limit, which a slow machine, the race detector or three suites at once would make flaky
-// (docs/BUILDING.md): it compares what fn costs for n units with what it costs for growthScale times as many.
-//
-// Three things make that comparison steady enough to fail only for code that is not linear. They were found by running these
-// tests as eight processes at once on four cores, where the first version (the wall clock, four times the size, a limit of
-// eight) failed in 20 of 32 runs of the three growth tests, and the version below in none of 56 (with and without the race
-// detector):
-//
-//   - The cost is the CPU time of the process, where the operating system counts it (see costStart), and not the time on the
-//     wall. A process that has to wait for a core still waits, and a run that is long enough to be descheduled waits more often
-//     than a short one, so the wall-clock ratio of linear code went up to 30 at four times the size (quadratic code gives 16)
-//     while its CPU-time ratio stayed where it is on an idle machine.
-//   - The garbage collector is off while fn runs. A run that allocates enough to start a collection pays for it and a smaller
-//     run does not, so linear code costs six to twelve times as much for four times the input with the collector on, and four
-//     to eight times with it off.
-//   - The larger input is growthScale times the smaller, not four times, and the limit is between what linear code costs (8 to
-//     18 times as much: the bigger run no longer fits in the CPU caches) and what quadratic code costs (40 to 64 times). At four
-//     times the size the two are 4 to 8 and 16, too close to tell apart on a machine that is not quiet.
+// Growth checks compare process work for n and 8n input units. Process CPU time
+// on Unix and CPU cycles on Windows exclude time waiting for a core. Other
+// systems fall back to monotonic elapsed time. The collector is disabled during
+// each measurement so a collection triggered by the larger input cannot skew
+// the ratio. Tests using this helper must not run in parallel.
 const (
 	growthScale = 8
 	growthLimit = 32
-
-	// A run that costs less than growthFloor is too short to say anything about (timer granularity, fixed costs), and a clock
-	// that cannot resolve growthResolution cannot tell the smaller run's cost from zero: it counts as this much.
-	growthFloor      = 20 * time.Millisecond
-	growthResolution = 500 * time.Microsecond
+	// Very short samples cannot establish excessive growth reliably.
+	growthFloor = 20 * time.Millisecond
 )
 
-// costMark is where a measurement began.
-type costMark struct {
-	wall  time.Time
-	cpu   time.Duration
-	cpuOK bool
+type workSample struct {
+	work uint64
+	wall time.Duration
 }
 
-// costStart marks the start of a measurement. What is measured is the CPU time of the process where the system reports it
-// (Linux, macOS and the other unix systems: processCPUTime) and the wall clock where it does not. Nothing else is running in
-// the process while fn runs (these tests are not parallel, and with the collector off no background worker is), so the CPU time
-// of the process is the CPU time of fn.
-func costStart() costMark {
-	cpu, ok := processCPUTime()
-	return costMark{wall: time.Now(), cpu: cpu, cpuOK: ok}
-}
-
-// elapsed is the cost since the mark.
-func (m costMark) elapsed() time.Duration {
-	if m.cpuOK {
-		if cpu, ok := processCPUTime(); ok {
-			return cpu - m.cpu
-		}
-	}
-	return time.Since(m.wall)
-}
-
-// measureCost runs fn reps times and returns the least cost of one run (see costStart). The garbage collector runs before every
-// run and is off during it. The least of several runs is the best estimate of what the code costs: noise only ever adds.
-func measureCost(reps int, fn func()) time.Duration {
+// measureCost returns the sample with the least process work. Counter failures
+// fail the test instead of mixing CPU work and wall time in the same comparison.
+func measureCost(t *testing.T, reps int, fn func()) workSample {
+	t.Helper()
 	old := debug.SetGCPercent(-1)
 	defer debug.SetGCPercent(old)
-	best := time.Duration(1 << 62)
+	best := workSample{work: ^uint64(0)}
 	for i := 0; i < reps; i++ {
 		runtime.GC()
-		start := costStart()
+		before, err := processWork()
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
 		fn()
-		best = min(best, start.elapsed())
+		wall := time.Since(start)
+		after, err := processWork()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after < before {
+			t.Fatal("process work counter went backwards")
+		}
+		if wall > 2*time.Minute {
+			t.Fatalf("scaling sample exceeded the hang guard: %s", wall)
+		}
+		if cost := after - before; cost < best.work {
+			best = workSample{work: cost, wall: wall}
+		}
 	}
 	return best
 }
 
-// requireLinear fails when fn(growthScale*n) costs far more than growthScale times fn(n), and runs fn on a quarter of n under
-// the race detector, which makes everything several times slower.
+// growsTooFast preserves the same 8x-input / 32x-work bound for each clock.
+// With a process counter, wall time only excludes tiny samples and does not
+// enter the work ratio.
+func growsTooFast(small, large workSample) bool {
+	return large.wall > growthFloor && float64(large.work) > growthLimit*float64(max(small.work, workResolution))
+}
+
+// requireLinear checks input growth, using a smaller workload under race builds.
 func requireLinear(t *testing.T, name string, n int, fn func(n int)) {
 	t.Helper()
 	requireLinearFrom(t, name, n, max(n/4, 1), fn)
 }
 
-// requireLinearFrom is requireLinear for a workload whose shape changes with its size (the diff search has a cap, and "a change
-// at every line" is a different case below it than above it): raceN is the n to use under the race detector, which must be in
-// the same regime as n. A verdict that is not yet a pass is measured again, up to four times, and the verdict is about the
-// least cost seen at each size, which can only come down with every measurement.
+// requireLinearFrom accepts a separate race workload for algorithms with size
+// dependent caps. Suspect ratios receive up to four rounds of measurements.
 func requireLinearFrom(t *testing.T, name string, n, raceN int, fn func(n int)) {
 	t.Helper()
 	reps := 3
 	if widgetUnderRace() {
 		n, reps = raceN, 2
 	}
-	small, large := time.Duration(1<<62), time.Duration(1<<62)
-	tooBig := func() bool { return large > growthFloor && large > growthLimit*max(small, growthResolution) }
-	for attempt := 0; attempt < 4 && (attempt == 0 || tooBig()); attempt++ {
-		small = min(small, measureCost(reps, func() { fn(n) }))
-		large = min(large, measureCost(reps, func() { fn(growthScale * n) }))
+	small, large := workSample{work: ^uint64(0)}, workSample{work: ^uint64(0)}
+	for attempt := 0; attempt < 4 && (attempt == 0 || growsTooFast(small, large)); attempt++ {
+		if sample := measureCost(t, reps, func() { fn(n) }); sample.work < small.work {
+			small = sample
+		}
+		if sample := measureCost(t, reps, func() { fn(growthScale * n) }); sample.work < large.work {
+			large = sample
+		}
 	}
-	t.Logf("%s: n=%d costs %v, %dn costs %v", name, n, small, growthScale, large)
-	if large > 2*time.Minute { // a hang guard, not a timing: what a complexity bomb does to a test that has no other limit
-		t.Errorf("%s: %d units cost %v", name, growthScale*n, large)
+	t.Logf("%s: n=%d costs %d %s, %dn costs %d %s", name, n, small.work, workUnit, growthScale, large.work, workUnit)
+	if growsTooFast(small, large) {
+		t.Errorf("%s: super-linear growth: %d %s for n=%d, %d %s for %dn", name, small.work, workUnit, n, large.work, workUnit, growthScale)
 	}
-	if tooBig() {
-		t.Errorf("%s: super-linear growth: %v for n=%d, %v for %dn", name, small, n, large, growthScale)
+}
+
+// scalingWork keeps a serial arithmetic dependency that cannot be elided.
+func scalingWork(n int) {
+	x := uint64(1)
+	for i := 0; i < n; i++ {
+		x = x*1664525 + uint64(i)
+	}
+	runtime.KeepAlive(x)
+}
+
+func TestScalingClockIgnoresSchedulerWait(t *testing.T) {
+	if workUnit == "wall ns" {
+		t.Skip("this platform has no process work counter")
+	}
+	const n = 500_000
+	small := measureCost(t, 3, func() { scalingWork(n) })
+	large := measureCost(t, 3, func() {
+		scalingWork(growthScale * n)
+		time.Sleep(50 * time.Millisecond) // delay only the larger sample, without CPU work
+	})
+	if small.work == 0 || growsTooFast(small, large) {
+		t.Fatalf("scheduler wait distorted linear work: small=%+v, large=%+v (%s)", small, large, workUnit)
+	}
+}
+
+func TestScalingClockRejectsQuadraticWork(t *testing.T) {
+	const n = 1500
+	small := measureCost(t, 3, func() { scalingWork(n * n) })
+	large := measureCost(t, 3, func() { scalingWork(growthScale * n * growthScale * n) })
+	if !growsTooFast(small, large) {
+		t.Fatalf("quadratic work escaped the growth check: small=%+v, large=%+v (%s)", small, large, workUnit)
 	}
 }

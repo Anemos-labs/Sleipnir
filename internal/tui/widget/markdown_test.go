@@ -435,7 +435,7 @@ func TestMarkdownEnormousInputs(t *testing.T) {
 	}
 }
 
-// The work is linear in the size of the input: four times the text takes about four times as long. Each unit is a shape
+// The work is linear in the size of the input. Each unit is a shape
 // that makes a markdown parser quadratic somewhere if it is written carelessly (repeated string concatenation, a scan for a
 // closer from every opener, a prefix re-parsed at every nesting level).
 func TestMarkdownScalesLinearly(t *testing.T) {
@@ -444,7 +444,7 @@ func TestMarkdownScalesLinearly(t *testing.T) {
 		"`a ``b ```c ", "https://a.b/c ", "&amp;&#35;&bogus; ", "```\ncode\n", "| a | b |\n|---|---|\n| 1 | 2 |\n", "a | b\n",
 	}
 	for _, unit := range units {
-		n := 12_000 / len(unit) // about 12 KB of text; the helper compares it with four times as much
+		n := 12_000 / len(unit) // about 12 KB of text; the helper compares it with eight times as much
 		requireLinear(t, "Markdown("+strconv.Quote(unit)+"*n)", n, func(n int) {
 			Markdown(strings.Repeat(unit, n), 80, DefaultTheme())
 		})
