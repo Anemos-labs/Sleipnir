@@ -12,11 +12,14 @@ gofmt -l cmd internal
 `scripts/check.sh` also checks generated files, module consistency, dependency
 policy, action pinning, and release builds. CI configuration is in
 `.github/workflows/`. The broad Windows suite excludes packages listed with reasons
-in `scripts/windows-excluded.txt`. A separate required Windows job runs session
-ownership tests for lock contention, release, and recovery after process death:
+in `scripts/windows-excluded.txt`. A required Windows runtime job checks session
+lock contention, release, and recovery after process death; command quoting across
+verification, hooks, and shell tools; and concurrent verifier output capture:
 
 ```sh
 go test -count=1 -timeout 3m ./internal/session -run 'Test(SessionDirectoryLock|ASessionDirectoryHasOneWriter)'
+go test -count=1 -timeout 3m ./internal/executil
+go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsQuotedCommands|VerificationCombinesConcurrentOutput)'
 ```
 
 ## Coverage by layer

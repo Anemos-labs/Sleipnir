@@ -5,6 +5,9 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Preserve Windows `cmd` quoting for verification, hooks, and shell commands,
+  including paths with spaces. Disable Command Processor AutoRun for those
+  commands so registry startup commands do not alter harness execution.
 - Keep canceled verification runners within the configured concurrency limit
   until they exit. Include queue wait and scope discovery in the verification
   deadline, and discard results received after that deadline. Serialize captured
