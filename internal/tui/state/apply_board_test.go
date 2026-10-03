@@ -19,6 +19,19 @@ func taskByID(t testing.TB, sn *Snapshot, id string) Task {
 	return Task{}
 }
 
+func TestRecoveredTaskReservationAppearsInTheBoard(t *testing.T) {
+	b, st := newB(), New()
+	apply(t, st, b.Emit("mgr", events.TypeBoardOp, taskOp("create", "T1", "doing", "be-1", 1, nil)))
+	apply(t, st, b.Emit("harness", events.TypeBoardOp, map[string]any{
+		"op": "requeue", "version": 2, "tasks": []string{"T1"},
+		"owners": map[string]string{"T1": "be-1"}, "line": "waiting to restart",
+	}))
+	got := taskByID(t, st.Snapshot(), "T1")
+	if got.Owner != "be-1" || got.Status != "todo" || got.Rev != 2 {
+		t.Fatalf("recovery reservation: %+v", got)
+	}
+}
+
 func TestBoardRebuildsTasksAndDerivesTheKanbanColumn(t *testing.T) {
 	b := newB()
 	st := New()
