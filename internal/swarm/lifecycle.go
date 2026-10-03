@@ -919,14 +919,23 @@ func sortedKeys(m map[string]uint64) []string {
 	return out
 }
 
-// tailText keeps the last max runes of a verifier's output, defused for display.
+// tailText keeps a verifier's final output within max runes and 40 lines, plus
+// an omission marker. It defuses harness markers and control characters.
 func tailText(s string, max int) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.TrimSpace(s)
 	r := []rune(s)
 	if len(r) > max {
 		s = "…" + string(r[len(r)-max:])
 	}
-	return cleanBlock(s, max+2)
+	lines := strings.Split(s, "\n")
+	if len(lines) > 40 {
+		// cleanBlock retains the first 40 lines. Choose the final 39 here,
+		// leaving one line for the omission marker so it cannot drop the end.
+		lines = append([]string{"…"}, lines[len(lines)-39:]...)
+	}
+	return cleanBlock(strings.Join(lines, "\n"), max+2)
 }
 
 // maxAutoRuns bounds how many runs in a row the harness starts on its own for one
