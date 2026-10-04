@@ -861,16 +861,25 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		}
 		evid := m.ev.Summary()
 		if vr.ok && m.tree != nil {
+			if s.checkTaskGate(t) != nil {
+				s.retryChangedScope(m, t)
+				continue
+			}
 			// Isolated run: the harness commits the tree and merges it on the worker's
 			// behalf, exactly as for a worker that calls done.
 			out := s.integrate(ctx, m, t)
+			if s.checkTaskGate(t) != nil {
+				s.retryChangedScope(m, t)
+				continue
+			}
 			switch {
 			case out.interrupted || ctx.Err() != nil:
 				s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
 				continue
 			case out.infra != nil:
-				_ = s.Board.SubmitAt(m.id, id, rev, summary, "NOT MERGED (the merge could not run: "+cleanText(out.infra.Error(), 100)+"); "+evid)
-				notes = append(notes, fmt.Sprintf("%s reached review but could not be merged (%s)", id, cleanText(out.infra.Error(), 80)))
+				if s.submitSettledTask(m, t, summary, "NOT MERGED (the merge could not run: "+cleanText(out.infra.Error(), 100)+"); "+evid) {
+					notes = append(notes, fmt.Sprintf("%s reached review but could not be merged (%s)", id, cleanText(out.infra.Error(), 80)))
+				}
 				continue
 			case out.bounce != "":
 				m.mu.Lock()
@@ -881,8 +890,10 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 					s.notify(m.id, "request", "You stopped without finishing "+id+". "+out.bounce)
 					continue
 				}
-				if nt, applied := s.Board.Requeue(m.id, id, rev, fmt.Sprintf("merge failed %d times", tries), true, s.cfg.MaxAttempts); applied {
+				if nt, applied := s.Board.Requeue(m.id, id, rev, fmt.Sprintf("merge failed %d times", tries), true, s.cfg.MaxAttempts, taskGateCheck(t)); applied {
 					notes = append(notes, s.requeueLine(m.id, nt, "its work kept failing to merge"))
+				} else {
+					s.retryChangedScope(m, t)
 				}
 				continue
 			}
@@ -890,13 +901,15 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		}
 		switch {
 		case vr.ok:
-			_ = s.Board.SubmitAt(m.id, id, rev, summary, evid)
+			s.submitSettledTask(m, t, summary, evid)
 		case vr.infra:
-			_ = s.Board.SubmitAt(m.id, id, rev, summary, evid+"; verification could not run: "+cleanText(vr.err.Error(), 100))
-			notes = append(notes, fmt.Sprintf("%s reached review but the verifier could not run (%s)", id, cleanText(vr.err.Error(), 80)))
+			if s.submitSettledTask(m, t, summary, evid+"; verification could not run: "+cleanText(vr.err.Error(), 100)) {
+				notes = append(notes, fmt.Sprintf("%s reached review but the verifier could not run (%s)", id, cleanText(vr.err.Error(), 80)))
+			}
 		default:
 			next, applied := s.recordVerificationFailure(t, vcmd, vr)
 			if !applied {
+				s.retryChangedScope(m, t)
 				continue
 			}
 			if next.Status == StatusDoing {

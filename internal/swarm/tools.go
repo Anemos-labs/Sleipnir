@@ -198,7 +198,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if !s.roles[c.Env.Role].ReadOnly {
 			return tools.Errorf("a planning task can only be submitted by a read-only role")
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement); err != nil {
+		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s is in review. Its agreement requires the manager's acceptance; stop now.", task.ID)
@@ -215,7 +215,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		cmd := ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files)
 		next, applied := s.recordVerificationFailure(task, cmd, vr)
 		if !applied {
-			return tools.Errorf("%s changed assignment or status while verification ran", in.ID)
+			return tools.Errorf("%s changed assignment, scope, or status while verification ran; inspect it and retry if needed", in.ID)
 		}
 		if next.Status != StatusDoing {
 			if m != nil {
@@ -234,9 +234,15 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	}
 	summary := ev.Summary()
 	if m != nil && m.tree != nil {
+		if err := s.checkTaskGate(task); err != nil {
+			return tools.Errorf("%v", err)
+		}
 		// Isolated run: the work is committed and goes through the merge queue, which
 		// verifies it merged with everything that landed before it.
 		out := s.integrate(ctx, m, task)
+		if err := s.checkTaskGate(task); err != nil {
+			return tools.Errorf("%v", err)
+		}
 		switch {
 		case out.interrupted:
 			return tools.Errorf("interrupted")
@@ -250,7 +256,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement); err != nil {
+	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement, taskGateCheck(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
@@ -275,7 +281,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if task.Agreement == "" {
 				return tools.Errorf("%s has no agreement to accept", task.ID)
 			}
-			if err := s.Board.Accept(me, task.ID, in.Text); err != nil {
+			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task)); err != nil {
 				return tools.Errorf("%v", err)
 			}
 			return text("%s agreement accepted; dependent work may start", task.ID)
@@ -285,7 +291,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			// is not re-run there. The merge queue verified the merged result; a task is
 			// accepted only if its work is in the integration branch.
 			if _, merged := s.mergedFor(task); !merged {
-				return tools.Errorf("%s was not accepted: its work is not in the integration branch (the merge did not run or did not succeed). Reject it so its worker resubmits, or fail it.", in.ID)
+				return tools.Errorf("%s was not accepted: work for its current assignment and scope is not in the integration branch (the merge did not run or did not succeed for that scope). Reject it so its worker resubmits, or fail it.", in.ID)
 			}
 		} else if vr := s.verify(ctx, c.Env.Cwd, task.Files); !vr.ok {
 			if vr.infra {
@@ -295,7 +301,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
 				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
 		}
-		if err := s.Board.Accept(me, in.ID, in.Text); err != nil {
+		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s accepted", in.ID)

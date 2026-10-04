@@ -105,9 +105,10 @@ const managerIsolationCard = "Isolation: every writer works in a private git wor
 
 // mergeRec is the harness's record that a task's work is in the integration branch.
 type mergeRec struct {
-	rev    uint64 // the assignment it belongs to
-	commit string // the integration commit
-	empty  bool   // there was nothing to merge
+	rev    uint64   // the assignment it belongs to
+	files  []string // the scope verified by the merge queue
+	commit string   // the integration commit
+	empty  bool     // there was nothing to merge
 }
 
 // isolated reports whether writers get worktrees of their own.
@@ -413,17 +414,21 @@ func (s *Swarm) verifyBounce(ctx context.Context, m *member, vr *workspace.Verif
 	return fmt.Sprintf("Not done: your work merged cleanly with what other agents landed, but verification `%s` failed on the merged result (exit %d). %s\n%s", cmd, code, state, tailText(out, 2000))
 }
 
-// recordMerge retains the newest assignment's merge record. A delayed result
-// from an older revision must not erase the evidence required to accept its successor.
+// recordMerge retains evidence for the current assignment and scope. Delayed
+// results cannot erase the record required to accept newer work.
 func (s *Swarm) recordMerge(t Task, r mergeRec) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.checkTaskGate(t) != nil {
+		return
+	}
 	if prior, ok := s.merged[t.ID]; !ok || prior.rev <= r.rev {
+		r.files = slices.Clone(t.Files)
 		s.merged[t.ID] = r
 	}
-	s.mu.Unlock()
 }
 
-// mergedFor reports whether the task's current assignment is in the integration
+// mergedFor reports whether the task's current assignment and scope are in the integration
 // branch (or had nothing to merge). "accept" requires it in an isolated run: the
 // merge queue's verification of the merged result is what stands in for the verifier
 // run in the shared tree.
@@ -431,7 +436,7 @@ func (s *Swarm) mergedFor(t Task) (mergeRec, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, ok := s.merged[t.ID]
-	return r, ok && r.rev == t.Rev
+	return r, ok && r.rev == t.Rev && slices.Equal(r.files, t.Files)
 }
 
 // countBounce counts the times this assignment came back from the merge queue.
@@ -447,9 +452,9 @@ func (s *Swarm) countBounce(t Task) int {
 // only its owning run. Stale failures cannot cancel a replacement assignment;
 // the manager hears of an applied requeue once.
 func (s *Swarm) giveUpMerge(m *member, t Task, why string) string {
-	nt, applied := s.Board.Requeue(m.id, t.ID, t.Rev, "its work could not be merged: "+why, true, s.cfg.MaxAttempts)
+	nt, applied := s.Board.Requeue(m.id, t.ID, t.Rev, "its work could not be merged: "+why, true, s.cfg.MaxAttempts, taskGateCheck(t))
 	if !applied {
-		return fmt.Sprintf("%s changed assignment or status while merging; the old failure does not change its current work.", t.ID)
+		return fmt.Sprintf("%s changed assignment, scope, or status while merging; the old failure does not change its current work.", t.ID)
 	}
 	s.stopRunFor(m, "its work could not be merged", false, t.ID, t.Rev)
 	s.notifyManager(s.requeueLine(m.id, nt, "its work could not be merged: "+why))

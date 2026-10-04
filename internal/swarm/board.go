@@ -736,13 +736,14 @@ func (b *Board) Submit(agent, id, result, evidence string) error {
 }
 
 // SubmitAt is Submit that applies only to the assignment rev (0: any).
-func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string) error {
-	return b.submitAgreementAt(agent, id, rev, result, evidence, "")
+// Additional checks run under the board lock before the task changes.
+func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string, checks ...TaskCheck) error {
+	return b.submitAgreementAt(agent, id, rev, result, evidence, "", checks...)
 }
 
 // submitAgreementAt atomically submits a result and its optional contract for review.
 // Oversized contracts are rejected rather than silently losing constraints.
-func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence, agreement string) error {
+func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence, agreement string, checks ...TaskCheck) error {
 	agreement, err := cleanAgreement(agreement)
 	if err != nil {
 		return err
@@ -757,6 +758,11 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 		}
 		if rev != 0 && t.Rev != rev {
 			return fmt.Errorf("%s was reassigned while you worked on it", id)
+		}
+		for _, check := range checks {
+			if err := check(d.Snapshot, t); err != nil {
+				return err
+			}
 		}
 		if t.Kind == TaskKindPlan && agreement == "" {
 			return fmt.Errorf("%s is a planning task: submit the full contract with task done's agreement field", id)
@@ -773,8 +779,9 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 
 // Accept marks a reviewed task done. Done is terminal: nothing changes it after.
 // Callers check authority (only the manager accepts) and verify implementation
-// tasks first. Planning tasks require a submitted agreement instead.
-func (b *Board) Accept(by, id, note string) error {
+// tasks first. Planning tasks require a submitted agreement instead. Additional
+// checks run under the board lock before acceptance.
+func (b *Board) Accept(by, id, note string, checks ...TaskCheck) error {
 	return b.mutate(by, "finish", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
@@ -783,6 +790,11 @@ func (b *Board) Accept(by, id, note string) error {
 		t := d.Tasks[i]
 		if t.Status != StatusReview {
 			return fmt.Errorf("%s is %s: only a task in review can be accepted", id, t.Status)
+		}
+		for _, check := range checks {
+			if err := check(d.Snapshot, t); err != nil {
+				return err
+			}
 		}
 		t.Status, t.Line = StatusDone, ""
 		if n := cleanText(note, maxResultRunes); n != "" {
@@ -893,7 +905,8 @@ func (b *Board) Reopen(by, id string) error {
 // stops without finishing it: back to todo for someone else (or failed once it
 // has used maxAttempts). It applies only if the agent still owns that assignment
 // (rev), so a run that ended late cannot undo a newer assignment.
-func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttempt bool, maxAttempts int) (Task, bool) {
+// Additional checks run under the board lock before requeueing.
+func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttempt bool, maxAttempts int, checks ...TaskCheck) (Task, bool) {
 	var out Task
 	applied := false
 	_ = b.mutate("harness", "requeue", func(d *draft) error {
@@ -904,6 +917,11 @@ func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttemp
 		t := d.Tasks[i]
 		if t.Owner != agent || (t.Status != StatusDoing && t.Status != StatusBlocked) || (rev != 0 && t.Rev != rev) {
 			return errNoChange
+		}
+		for _, check := range checks {
+			if err := check(d.Snapshot, t); err != nil {
+				return errNoChange
+			}
 		}
 		t = requeuedTask(t, d.Version, reason, countAttempt, maxAttempts)
 		d.tasks()[i] = t
@@ -936,7 +954,8 @@ func requeuedTask(t Task, rev uint64, reason string, countAttempt bool, maxAttem
 // assignment rev. At maxFailures (at least one), it atomically counts an attempt
 // and requeues or fails the task. Stale results make no change and return false.
 // Infrastructure failures and cancellation must not be passed to this method.
-func (b *Board) FailVerification(agent, id string, rev uint64, reason, evidence string, maxFailures, maxAttempts int) (Task, bool) {
+// Additional checks run under the board lock before spending a repair retry.
+func (b *Board) FailVerification(agent, id string, rev uint64, reason, evidence string, maxFailures, maxAttempts int, checks ...TaskCheck) (Task, bool) {
 	var out Task
 	applied := false
 	_ = b.mutate("harness", "update", func(d *draft) error {
@@ -947,6 +966,11 @@ func (b *Board) FailVerification(agent, id string, rev uint64, reason, evidence 
 		t := d.Tasks[i]
 		if t.Owner != agent || t.Status != StatusDoing || t.Rev != rev {
 			return errNoChange
+		}
+		for _, check := range checks {
+			if err := check(d.Snapshot, t); err != nil {
+				return errNoChange
+			}
 		}
 		t.VerificationFailures++
 		t.Evidence = cleanText(evidence, maxEvidRunes)

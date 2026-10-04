@@ -150,6 +150,13 @@ is. A worker in an isolated tree whose command has no `{dirs}` is told, when it 
 and that failures in files it did not touch may be another task's work: it should block the task and tell the manager instead of
 editing them.
 
+Verification results and merge records apply only to the assignment and scope
+that produced them. If the manager changes scope while a gate runs, its old
+result cannot submit the task, accept it, or spend a verification retry. An
+implicitly stopped worker receives a request to finish and verify the current
+scope. In isolation, changing scope after submission requires rejection and
+resubmission before acceptance can use a new matching merge record.
+
 Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
 bounded (a deadline covering scope discovery, queue wait, and execution, and at most `MaxVerifies` runs at once, two by default). A verifier
