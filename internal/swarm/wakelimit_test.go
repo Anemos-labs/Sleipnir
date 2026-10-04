@@ -69,10 +69,15 @@ func TestPeerMailCannotKeepAWorkerRunningForEver(t *testing.T) {
 	waitFor(t, "the manager's mail to wake the worker", func() bool { return count(be) > before })
 	waitFor(t, "the worker idle again", func() bool { return idle(be) })
 
-	// A new task starts the count again.
-	if _, err := r.sw.Spawn(swarm.SpawnReq{Role: "backend", Agent: be, Title: "More backend work", By: "mgr"}); err != nil {
-		t.Fatal(err)
-	}
+	// A new task starts the count again. The board's idle status is published
+	// before the ending run releases its reservation, so wait for actual reuse.
+	waitFor(t, "the worker available for a new task", func() bool {
+		_, err := r.sw.Spawn(swarm.SpawnReq{Role: "backend", Agent: be, Title: "More backend work", By: "mgr"})
+		if err != nil && !strings.Contains(err.Error(), "is still working; wait for it or spawn a new worker") {
+			t.Fatal(err)
+		}
+		return err == nil
+	})
 	waitFor(t, "the worker idle after its new task", func() bool { return idle(be) })
 	before = count(be)
 	if _, err := r.sw.Router.Send(fe, be, "info", "ping after the new task"); err != nil {
