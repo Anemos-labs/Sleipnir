@@ -5,6 +5,10 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Keep delayed task failures and merge results scoped to their original assignment.
+  Exhausted merge retries and manager failure actions cannot cancel a replacement
+  run, and an older merge record cannot erase a newer assignment's acceptance
+  evidence. Stable prompt and tool-schema bytes are unchanged.
 - Interpret Go package selectors separately from literal filenames, allowing
   recursive test, build, list, and vet commands on Windows. Preserve literal
   output flags and custom test arguments. Apply explicit deny and ask rules to

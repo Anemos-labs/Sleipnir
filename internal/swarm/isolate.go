@@ -413,10 +413,13 @@ func (s *Swarm) verifyBounce(ctx context.Context, m *member, vr *workspace.Verif
 	return fmt.Sprintf("Not done: your work merged cleanly with what other agents landed, but verification `%s` failed on the merged result (exit %d). %s\n%s", cmd, code, state, tailText(out, 2000))
 }
 
-// recordMerge stores a task's merge record under the swarm lock, replacing any prior record.
+// recordMerge retains the newest assignment's merge record. A delayed result
+// from an older revision must not erase the evidence required to accept its successor.
 func (s *Swarm) recordMerge(t Task, r mergeRec) {
 	s.mu.Lock()
-	s.merged[t.ID] = r
+	if prior, ok := s.merged[t.ID]; !ok || prior.rev <= r.rev {
+		s.merged[t.ID] = r
+	}
 	s.mu.Unlock()
 }
 
@@ -441,16 +444,15 @@ func (s *Swarm) countBounce(t Task) int {
 }
 
 // giveUpMerge returns a task whose work keeps failing to merge to the pool and stops
-// its worker; the manager hears of it once.
+// only its owning run. Stale failures cannot cancel a replacement assignment;
+// the manager hears of an applied requeue once.
 func (s *Swarm) giveUpMerge(m *member, t Task, why string) string {
-	line := ""
-	if nt, applied := s.Board.Requeue(m.id, t.ID, t.Rev, "its work could not be merged: "+why, true, s.cfg.MaxAttempts); applied {
-		line = s.requeueLine(m.id, nt, "its work could not be merged: "+why)
+	nt, applied := s.Board.Requeue(m.id, t.ID, t.Rev, "its work could not be merged: "+why, true, s.cfg.MaxAttempts)
+	if !applied {
+		return fmt.Sprintf("%s changed assignment or status while merging; the old failure does not change its current work.", t.ID)
 	}
-	s.stopRun(m, "its work could not be merged", false)
-	if line != "" {
-		s.notifyManager(line)
-	}
+	s.stopRunFor(m, "its work could not be merged", false, t.ID, t.Rev)
+	s.notifyManager(s.requeueLine(m.id, nt, "its work could not be merged: "+why))
 	return fmt.Sprintf("Not done: your work could not be merged after %d attempts. The task returns to the manager; stop now.", s.cfg.MaxAttempts)
 }
 

@@ -323,11 +323,11 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		s.notify(owner.id, "request", fmt.Sprintf("%s was sent back by the manager: %s. Fix it, then call task done again.", in.ID, cleanText(in.Text, 400)))
 		return text("%s sent back to %s with feedback", in.ID, task.Owner)
 	default: // fail
-		if err := s.Board.Fail(me, in.ID, in.Text); err != nil {
+		if err := s.Board.FailAt(me, in.ID, task.Rev, in.Text); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		if m := s.get(task.Owner); m != nil {
-			s.stopRun(m, "its task was failed by the manager", false)
+			s.stopRunFor(m, "its task was failed by the manager", false, task.ID, task.Rev)
 		}
 		return text("%s marked failed", in.ID)
 	}
