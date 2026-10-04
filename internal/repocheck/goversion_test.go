@@ -2,10 +2,11 @@ package repocheck
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
-// The Go version of the project is written in go.mod and in four documents. The workflows read it from go.mod
+// The Go version of the project is written in go.mod and in documents. The workflows read it from go.mod
 // (go-version-file), so they cannot drift; the documents can, and a contributor who reads "Go 1.25" in the README while go.mod
 // says 1.26 builds with the wrong toolchain or doubts the README.
 //
@@ -20,16 +21,30 @@ func TestDocumentsStateTheGoVersionOfGoMod(t *testing.T) {
 	want := m[1]
 	statement := regexp.MustCompile("\\bGo (1\\.\\d+)(?:,| or newer| coding-agent)|\\((1\\.\\d+), stdlib-first\\)|`go (1\\.\\d+)(?:\\.\\d+)?`")
 	n := 0
-	for _, f := range []string{"README.md", "AGENTS.md", "CONTRIBUTING.md", "docs/BUILDING.md"} {
+	for _, f := range treeFiles(t) {
+		if !strings.HasSuffix(f, ".md") || (strings.Contains(f, "/") && !strings.HasPrefix(f, "docs/")) {
+			continue
+		}
 		for _, s := range statement.FindAllStringSubmatch(read(t, f), -1) {
 			got := s[1] + s[2] + s[3]
 			n++
 			if got != want {
-				t.Errorf("%s says Go %s, but go.mod says go %s: change the documents with go.mod (README.md, AGENTS.md, CONTRIBUTING.md and docs/BUILDING.md state it)", f, got, want)
+				t.Errorf("%s says Go %s, but go.mod says go %s: update toolchain requirements with go.mod", f, got, want)
 			}
 		}
 	}
 	if n == 0 {
-		t.Fatal("none of README.md, AGENTS.md, CONTRIBUTING.md and docs/BUILDING.md states the Go version: the test is not reading them")
+		t.Fatal("no toolchain requirements found in repository documentation")
+	}
+}
+
+// Installation instructions must resolve the current release without a copied
+// version number; historical versions in compatibility notes and tests are valid.
+func TestInstallationDocsDoNotPinARelease(t *testing.T) {
+	pinned := regexp.MustCompile(`(?i)/releases/(?:tag|download)/v?\d+\.\d+\.\d+|github\.com/anemos-labs/sleipnir[^\s]*@v\d+\.\d+\.\d+`)
+	for _, name := range []string{"README.md", "docs/GETTING-STARTED.md"} {
+		if matches := pinned.FindAllString(read(t, name), -1); len(matches) > 0 {
+			t.Errorf("%s pins installation to %v: use releases/latest or @latest", name, matches)
+		}
 	}
 }

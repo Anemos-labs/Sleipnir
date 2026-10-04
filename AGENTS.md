@@ -21,6 +21,7 @@ Sleipnir is a Go 1.25 coding-agent harness: a layered, cache-aware prompt engine
   Real-endpoint validation is in `docs/VALIDATION.md`.
 
 - Documentation is timeless and impersonal. Describe usage, behavior, contracts, and limitations; omit development journals, agent handoffs, and anecdotal performance claims.
+- Keep public contracts aligned with their sources of truth in `docs/MAINTENANCE.md`. Use `make audit` to review file and surviving-line ages; age prioritizes inspection and is never a reason by itself to rewrite code.
 - Document production functions and methods with their behavior and relevant contracts. Keep doc-comment coverage at least 90% across non-generated Go declarations in `cmd/` and `internal/`, excluding `_test.go` and fixture directories. Run `go test ./internal/repocheck -run TestProductionDocCoverage -v`; review comment accuracy separately from the measured percentage.
 
 ## Development workflow

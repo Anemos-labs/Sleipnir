@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Repository age audit</title>
+<style>
+:root{color-scheme:dark;font:15px/1.5 system-ui;background:#10131b;color:#edf0f6}
+body{max-width:1400px;margin:0 auto;padding:30px}h1{font-size:30px;margin:0}h2{font-size:18px}p{max-width:100ch}
+.muted{color:#b2bdce}.warning{background:#432f19;padding:14px;border:1px solid #e7b869;border-radius:6px;white-space:pre-wrap}
+.controls{display:flex;flex-wrap:wrap;gap:20px;margin:24px 0}label{display:flex;flex-direction:column;gap:5px}
+input,select,button{font:inherit;background:#202738;color:inherit;border:1px solid #748299;border-radius:5px;padding:8px}
+input{min-width:270px}a{color:#afd3ff}button:focus-visible,a:focus-visible{outline:3px solid white;outline-offset:3px}
+.legend{height:10px;max-width:420px;background:linear-gradient(90deg,#ecc079,#7864b8);border-radius:4px}
+#heatmap{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:18px 0}
+.tile{padding:0;min-height:16px;min-width:16px;border:1px solid #ffffff55;border-radius:3px;cursor:pointer}
+.tile:hover{outline:2px solid white}.detail{background:#1a2030;border:1px solid #47536b;padding:20px;border-radius:8px;overflow-wrap:anywhere}
+table{border-collapse:collapse;width:100%;min-width:850px;font-variant-numeric:tabular-nums}th,td{padding:8px;text-align:left;border-bottom:1px solid #303a4f}td:first-child{min-width:260px;overflow-wrap:anywhere}
+.table-wrap{overflow:auto}.path{font-family:ui-monospace,monospace}#file-title{margin-top:0}footer{margin-top:28px;color:#b2bdce}
+@media(max-width:650px){body{padding:16px}input{min-width:0;width:100%}.controls label{width:100%}}
+</style>
+<h1>Repository age audit</h1>
+<p class="muted" id="summary"></p>
+<p>Age identifies code to review; it is not a quality or performance score. Line ages ignore whitespace changes and follow renames and detectable moves within a file. Blank lines are excluded; comments are included.</p>
+<div id="warnings"></div>
+<div class="controls">
+<label>Path contains<input id="filter" type="search" placeholder="internal/kv, README, scripts…"></label>
+<label>Category<select id="category"><option value="">All files</option><option>code</option><option>tests</option><option>docs</option><option>automation</option><option>fixtures</option><option>media</option><option>other</option></select></label>
+<label>Rank and color by<select id="metric"><option value="oldest">Oldest surviving line</option><option value="median">Median surviving line</option><option value="last_change">Last file modification</option></select></label>
+</div>
+<div class="legend"></div><p class="muted" id="legend"></p>
+<p id="count" aria-live="polite"></p><div id="heatmap" aria-label="Files, oldest first"></div>
+<section class="detail" aria-live="polite"><h2 id="file-title">Select a file</h2><p id="file-details">Each tile opens its dates and oldest surviving line locations.</p><div id="samples"></div></section>
+<h2>Review order</h2><p class="muted">The first 30 matching files. Use the filters to review each subsystem.</p>
+<div class="table-wrap"><table><thead><tr><th>File</th><th>Nonblank lines</th><th>Oldest line</th><th>Last modification</th><th>Line analysis</th></tr></thead><tbody id="rows"></tbody></table></div>
+<footer>Read from the pinned commit, not the working tree. Dates are Git committer dates and depend on repository history and clocks. Binary, non-UTF-8, symlink, submodule and files over 2 MiB retain file dates but have no line ages. No external scripts or services are used.</footer>
+<script>
+const report = {{.}};
+let selectedPath = '';
+const el = id => document.getElementById(id);
+const date = seconds => seconds ? new Date(seconds*1000).toISOString().slice(0,10) : '—';
+const age = seconds => seconds ? Math.max(0,(Date.parse(report.as_of)/1000-seconds)/86400).toFixed(1)+' days' : 'unavailable';
+const fileURL = (file,line) => report.source_url ? report.source_url+'/blob/'+report.revision+'/'+file.path.split('/').map(encodeURIComponent).join('/')+(line?'#L'+line:'') : '';
+function link(parent,label,url){const x=document.createElement(url?'a':'span');x.textContent=label;if(url){x.href=url;x.target='_blank';x.rel='noopener noreferrer'}parent.append(x)}
+el('summary').textContent=report.files.length.toLocaleString()+' tracked files · '+report.files.reduce((n,f)=>n+f.lines,0).toLocaleString()+' nonblank lines analyzed · revision '+report.revision+' · as of '+report.as_of;
+for(const message of [...report.warnings,...report.errors]){const p=document.createElement('p');p.className='warning';p.textContent=message;el('warnings').append(p)}
+function select(file){
+ selectedPath=file.path;
+ el('file-title').textContent=file.path;
+ el('file-details').textContent='Last modification: '+date(file.last_change)+' ('+age(file.last_change)+'). Oldest line: '+date(file.oldest)+'. Median line: '+date(file.median)+'. '+file.lines+' nonblank lines; '+file.bytes+' bytes. '+file.status+'.';
+ const target=el('samples');target.replaceChildren();link(target,'Open file at audited revision',fileURL(file));
+ if(file.samples?.length){const ul=document.createElement('ul');for(const sample of file.samples){const li=document.createElement('li');link(li,'Line '+sample.line+' · '+date(sample.time)+' · '+sample.commit.slice(0,12),fileURL(file,sample.line));ul.append(li)}target.append(ul)}
+}
+function render(){
+ const metric=el('metric').value,filter=el('filter').value.toLowerCase(),category=el('category').value;
+ const files=report.files.filter(f=>f.path.toLowerCase().includes(filter)&&(!category||f.category===category)).sort((a,b)=>(a[metric]||Infinity)-(b[metric]||Infinity)||a.path.localeCompare(b.path));
+ if(!files.some(f=>f.path===selectedPath)){selectedPath='';el('file-title').textContent='Select a file';el('file-details').textContent='Each tile opens its dates and oldest surviving line locations.';el('samples').replaceChildren()}
+ const times=files.map(f=>f[metric]).filter(Boolean),lo=times.reduce((a,b)=>Math.min(a,b),Infinity),hi=times.reduce((a,b)=>Math.max(a,b),-Infinity);
+ el('legend').textContent=times.length?'Older '+date(lo)+' → newer '+date(hi)+' · Gray: line age unavailable. Tile area approximates nonblank line count (capped).':'No dates for this filter.';
+ el('count').textContent=files.length+' files shown; '+times.length+' have the selected date.';
+ el('heatmap').replaceChildren();el('rows').replaceChildren();
+ for(const file of files){const tile=document.createElement('button');tile.className='tile';tile.type='button';tile.title=file.path+' · '+date(file[metric])+' · '+age(file[metric]);tile.setAttribute('aria-label',tile.title);const size=Math.min(95,Math.max(16,Math.sqrt(file.lines||1)*2));tile.style.width=tile.style.height=size+'px';const t=hi===lo?0:(file[metric]-lo)/(hi-lo);tile.style.background=file[metric]?'rgb('+[236,192,121].map((v,i)=>Math.round(v+([120,100,184][i]-v)*t)).join(',')+')':'#3e4a60';tile.onclick=()=>select(file);el('heatmap').append(tile)}
+ for(const file of files.slice(0,30)){const tr=document.createElement('tr');const td=document.createElement('td');const button=document.createElement('button');button.className='path';button.textContent=file.path;button.onclick=()=>select(file);td.append(button);tr.append(td);for(const value of [file.lines,date(file.oldest),date(file.last_change),file.status]){const td=document.createElement('td');td.textContent=value;tr.append(td)}el('rows').append(tr)}
+}
+for(const id of ['filter','category','metric'])el(id).addEventListener('input',render);
+render();
+</script>
+</html>
