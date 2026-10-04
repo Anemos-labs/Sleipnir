@@ -424,7 +424,9 @@ The engine decides every tool call before it runs. A request is settled by the f
 | `bypass` | Full control without asking, except about the very dangerous: the high-risk class (`sudo`, a recursive delete of the workspace, home or `/`, or of a path only known when the command runs such as `rm -rf "$DIR"`, a forced push to a shared branch, disk tools, shutdown) still asks. Hard denies, `deny` rules, guarded paths without an `allow` rule and `ask` rules still apply |
 | `yolo` | Never asks anything, for runs with nobody there: what `bypass` allows, and the high-risk class too. Hard denies, `deny` rules and guarded paths still refuse, and so does a rule that would have asked (an `ask` rule): refusing is not a question. For sandboxes. `--continue` never brings `bypass` or `yolo` back |
 
-Switch a running chat with `/mode <m>` or `/plan`.
+Switch a running chat with `/mode <m>` or `/plan`. `/plan <prompt>` also submits
+the prompt for read-only planning; bare `/plan` only changes the mode. Switch to
+`/mode accept-edits` and send an implementation request when the plan is ready.
 
 **When no human is available** (`run`/`swarm` with stdin not a terminal, or any unattended run) a question cannot be
 asked, so the action is refused with `approval required: <why>` and a fixed sentence saying that this run has no one to ask

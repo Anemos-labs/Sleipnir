@@ -5,6 +5,11 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Make `/plan <prompt>` submit a planning request after switching to plan mode,
+  preserving the supplied text and current team. Bare `/plan` remains a mode-only
+  command. The planning instruction is appended in the new user turn; stable
+  prompt layers and tool-schema bytes are unchanged.
+
 - Add `cache.compaction_mode=blocking` to finish an agent's automatic model
   compaction before its next request, avoiding overlapping copies of its history
   on endpoints with independent slot caches. Other agents remain concurrent;

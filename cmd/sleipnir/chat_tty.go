@@ -637,7 +637,7 @@ var chatCommands = []chatCommand{
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
 	{"cwd", "", "the directory this session works in"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass | yolo"},
-	{"plan", "", "plan mode: read-only"},
+	{"plan", "[prompt]", "switch to read-only mode; with a prompt, start planning it"},
 	{"rewind", "[id]", "list checkpoints, or restore files to before a turn"},
 	{"diff", "<id>", "show what changed since a checkpoint"},
 	{"recon", "", "show the project map pinned in the shared layer"},
