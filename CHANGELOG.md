@@ -12,6 +12,11 @@ they do not indicate whether a change has been released.
   or clear evidence of a failing run. A successful edit outside test files also
   clears a pending warning from the same batch. Existing advisory messages,
   stable prompt layers, and tool-schema bytes are unchanged.
+- Make `/plan <prompt>` submit a planning request after switching to plan mode,
+  preserving the supplied text and current team. Bare `/plan` remains a mode-only
+  command. The planning instruction is appended in the new user turn; stable
+  prompt layers and tool-schema bytes are unchanged.
+
 - Add `cache.compaction_mode=blocking` to finish an agent's automatic model
   compaction before its next request, avoiding overlapping copies of its history
   on endpoints with independent slot caches. Other agents remain concurrent;
