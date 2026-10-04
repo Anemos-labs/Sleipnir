@@ -86,4 +86,8 @@ whether the comment is useful. Avoid comments that merely repeat the function na
 Describe current behavior, configuration, invariants, and limitations.
 Use timeless, impersonal language. Keep session narratives, handoffs, personal
 notes, and unsupported performance claims out of the repository. Git records
-implementation history; the changelog records concise release changes.
+implementation history; the changelog records compatibility changes and links
+the versioned release history.
+
+[Maintenance](MAINTENANCE.md) lists sources of truth, automated drift checks,
+and the file/line age audit used to prioritize reviews.

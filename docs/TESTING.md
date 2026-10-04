@@ -39,6 +39,7 @@ go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsVerification|W
 | Leak, chaos and soak tests | Cleanup, endpoint failures and long sessions |
 | Allocation gates and benchmarks | Memory behavior and hot-path performance |
 | Repository checks | Links, workflows, platform and release configuration |
+| Code-age collector | Committed line attribution across formatting and renames, unusual paths, incomplete history, and safe report rendering; see [Maintenance](MAINTENANCE.md) |
 | Production doc coverage | At least 90% of named, non-generated Go functions and methods have doc comments; tests and fixtures are excluded |
 | Isolated-team recovery | Real process death with unfinished worker edits, original dirty base, integration cursors, ownership, mode validation and safe pruning |
 
