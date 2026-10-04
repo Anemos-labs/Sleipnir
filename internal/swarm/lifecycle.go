@@ -233,7 +233,8 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		Sink:    &memberSink{Sink: sink, s: s, m: m, ev: ev},
 		Workdir: workdir, Root: root, Limits: d.Limits,
 		Planner: d.Planner, KVPolicy: d.KVPolicy, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
-		OnPromote: s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
+		BlockingCompaction: d.BlockingCompaction,
+		OnPromote:          s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
 		PlanOpen:  planOpen(d.Plans),
 		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: hooks, NoMailReopen: !isMgr, // a worker's mail is read by its next run (afterIdle), which owns what the mail changes
 	}

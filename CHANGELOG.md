@@ -5,6 +5,12 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Add `cache.compaction_mode=blocking` to finish an agent's automatic model
+  compaction before its next request, avoiding overlapping copies of its history
+  on endpoints with independent slot caches. Other agents remain concurrent;
+  background compaction remains the default. Both modes retain the same commit
+  policy, cancellation, timeout and fallback. Stable prompt and tool-schema
+  bytes are unchanged; a blocking commit can rebase the next request earlier.
 - Bind task verification and merge evidence to the checked assignment and scope.
   Scope changes invalidate in-flight results without spending verification retries;
   implicit completion retries the current scope. Acceptance rejects obsolete

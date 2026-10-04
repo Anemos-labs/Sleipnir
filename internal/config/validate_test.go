@@ -214,6 +214,19 @@ func TestValidate(t *testing.T) {
 			},
 		},
 		{
+			name:    "invalid compaction mode",
+			mutate:  func(c *Config) { c.Cache.CompactionMode = "off" },
+			wantErr: []string{"cache.compaction_mode"},
+		},
+		{
+			name:   "blocking compaction",
+			mutate: func(c *Config) { c.Cache.CompactionMode = "blocking" },
+		},
+		{
+			name:   "background compaction",
+			mutate: func(c *Config) { c.Cache.CompactionMode = "background" },
+		},
+		{
 			name: "swarm",
 			mutate: func(c *Config) {
 				c.Swarm = Swarm{MaxAgents: -1, RequestsPerMinute: -1, MaxConcurrentRequests: -1, Isolation: "vm", BudgetUSD: -0.01}
