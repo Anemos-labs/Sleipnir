@@ -25,7 +25,7 @@ func TestProviderOptionReferenceMatchesConfiguration(t *testing.T) {
 		}
 	}
 	seen := map[string]bool{}
-	for _, row := range regexp.MustCompile("(?m)^\\| `([a-z_]+)` \\|").FindAllStringSubmatch(section, -1) {
+	for _, row := range regexp.MustCompile("(?m)^\\| `([a-z][a-z0-9_]+)` \\|").FindAllStringSubmatch(section, -1) {
 		name := row[1]
 		seen[name] = true
 		if !want[name] {
