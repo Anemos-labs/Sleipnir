@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Reject task actions that require an ID when it is omitted or blank. The error
+  identifies the missing field and explains how to find the task ID before
+  retrying; invalid calls leave the board unchanged. Role restrictions and
+  manager review remain enforced. Stable prompt and tool-schema bytes are unchanged.
 - Describe the detected command shell and operating system in frozen shared
   runtime context for every agent. The `bash` description no longer promises
   Bash execution or recommends `&&` for every shell. Tool-description (G0) and
