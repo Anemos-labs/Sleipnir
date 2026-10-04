@@ -16,7 +16,7 @@ hooks, and trajectory export.
   unfinished tasks for their workers. Sessions without isolation recovery metadata
   cannot be resumed. Interrupted checkout writes with ambiguous file state require
   manual reconciliation; recovery preserves the files and reports the branch.
-- Shell execution and several tests assume POSIX behavior. Windows support is
+- Several command-analysis paths and tests assume POSIX behavior. Windows support is
   incomplete; see `scripts/windows-excluded.txt`.
 - Verification depends on the configured command and task scope. A passing
   command is evidence for what it checks, not proof of the entire objective.

@@ -145,6 +145,8 @@ jobs:
           go test -count=1 -timeout 3m ./internal/executil
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=1 -timeout 3m ./internal/session -run 'Test(WindowsVerification|WindowsQuotedCommands|VerificationCombinesConcurrentOutput|VerificationRetainsFinalFailure|VerificationScrubsInheritedSecrets)'
+      - name: native shell guidance and provider context
+        run: go test -count=1 -timeout 3m ./internal/tools/shell ./internal/session -run '^TestRuntimeShell'
 
   # Informational: Windows is supported best effort (docs/SECURITY.md, section 4). A red run here is worth a look and never
   # blocks a merge: the job is not in the gate's needs. It tests every package except those that scripts/windows-excluded.txt

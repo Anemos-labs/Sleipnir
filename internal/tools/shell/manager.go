@@ -247,6 +247,37 @@ func (m *Manager) shell() (shellInfo, error) {
 	return m.sh, m.shErr
 }
 
+// RuntimeContext describes the host and the shell cached for command execution.
+// It resolves the executable without running it and omits machine-specific paths.
+// The result is stable for the lifetime of the manager and shared by all agents.
+func (m *Manager) RuntimeContext() string {
+	prefix := "Operating system: " + runtime.GOOS + ".\nCommand shell: "
+	sh, err := m.shell()
+	if err != nil {
+		return prefix + "unavailable. Shell tool calls will fail; file tools remain available."
+	}
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(sh.path)), ".exe")
+	var dialect, guidance string
+	switch name {
+	case "bash", "sh", "dash", "ksh", "zsh":
+		dialect = name
+		guidance = "Use this shell's syntax."
+	case "pwsh":
+		dialect = "PowerShell (pwsh)"
+		guidance = "Use PowerShell syntax. Unix utilities such as grep may be unavailable."
+	case "powershell":
+		dialect = "Windows PowerShell (powershell)"
+		guidance = "Use PowerShell syntax. The && and || operators are unavailable; run dependent commands separately and check their exit codes. Unix utilities such as grep may be unavailable."
+	case "cmd":
+		dialect = "cmd.exe"
+		guidance = "Use cmd syntax. Unix utilities such as grep may be unavailable."
+	default:
+		dialect = "custom shell (-c)"
+		guidance = "Check its supported syntax before using shell-specific features."
+	}
+	return prefix + dialect + ".\nThe bash tool runs commands directly in this shell; send commands without an extra shell wrapper. " + guidance
+}
+
 func detectShell(override string) (shellInfo, error) {
 	candidates := []string{"bash", "sh"}
 	if runtime.GOOS == "windows" {
@@ -260,7 +291,7 @@ func detectShell(override string) (shellInfo, error) {
 		if err != nil {
 			continue
 		}
-		name := strings.ToLower(strings.TrimSuffix(filepath.Base(path), ".exe"))
+		name := strings.TrimSuffix(strings.ToLower(filepath.Base(path)), ".exe")
 		switch name {
 		case "pwsh", "powershell":
 			return shellInfo{path: path, flags: []string{"-NoProfile", "-NonInteractive", "-Command"}}, nil

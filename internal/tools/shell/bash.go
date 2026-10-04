@@ -43,11 +43,11 @@ type bashTool struct{ m *Manager }
 func (*bashTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "bash",
-		Description: "Run a shell command (bash -c) and return its combined stdout and stderr followed by the exit code. " +
+		Description: "Run a command in the shell identified by the shared runtime context and return its combined stdout and stderr followed by the exit code. " +
 			"Each agent's working directory persists between calls. stdin is empty, so never run anything that waits for input. " +
 			"Long output is truncated and the result names a handle for paging through the rest. " +
 			"Set run_in_background for servers, watchers and long jobs: it returns a job id for bash_output and bash_kill. " +
-			"Use the dedicated tools for reading, searching and editing files, and chain steps with && to save calls.",
+			"Use the dedicated tools for reading, searching and editing files.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"command":{"type":"string","description":"Shell command to run"},` +
 			`"timeout":{"type":"number","description":"Seconds before the command is killed; omit for the default"},` +
