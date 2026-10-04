@@ -203,6 +203,9 @@ type Cache struct {
 	// ThreadSoftLimitTokens is the thread size at which compaction is considered
 	// (kv.Planner.SoftThreadTokens).
 	ThreadSoftLimitTokens int `json:"thread_soft_limit_tokens"`
+	// CompactionMode selects background (the default) or blocking model compaction.
+	// Blocking waits before the agent's next request; other agents remain concurrent.
+	CompactionMode string `json:"compaction_mode,omitempty"`
 	// HotMaxTokens caps the always-fresh "hot" layer.
 	HotMaxTokens int `json:"hot_max_tokens"`
 	// AffinityShards spreads a large swarm over several provider cache routing

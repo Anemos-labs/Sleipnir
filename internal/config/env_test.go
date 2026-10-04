@@ -104,6 +104,15 @@ func TestInstructionBudgetEnvironmentOverridesFile(t *testing.T) {
 	}
 }
 
+func TestCompactionModeEnvironmentOverridesFile(t *testing.T) {
+	p := newProj(t)
+	p.project(`{"cache":{"compaction_mode":"background"}}`)
+	cfg, rep := p.mustLoad(withEnv("SLEIPNIR_CACHE_COMPACTION_MODE=blocking"))
+	if cfg.Cache.CompactionMode != "blocking" || rep.Origins["cache.compaction_mode"] != "env:SLEIPNIR_CACHE_COMPACTION_MODE" {
+		t.Fatalf("compaction mode or origin not applied: %+v %+v", cfg.Cache, rep.Origins)
+	}
+}
+
 func TestEnvironmentBoolSpellings(t *testing.T) {
 	p := newProj(t)
 	for _, v := range []string{"1", "true", "TRUE", "Yes", "on"} {

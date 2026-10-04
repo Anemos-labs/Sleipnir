@@ -73,6 +73,13 @@ while other slots still require cold prefills. The warm gate does not guarantee
 reuse across every slot or replica; routing and cache sharing belong to the
 server. Confirm reuse with reported usage and server prefill diagnostics.
 
+Compare compaction with `cache.compaction_mode` set to `background` and
+`blocking`. Use a fresh server for each run and keep the model, workload,
+context limit, and slot count fixed. Inspect which slots serve the compactor
+and its agent's continuation. More cache RAM does not necessarily make an
+active slot's prefix available to another slot. Compare fresh input and
+elapsed time as well as cached input; blocking trades overlap for reuse.
+
 Include cold requests in the overall token-weighted ratio and report warm phases
 separately. Repeat after history restoration and compaction. A tiny model with
 prescribed tool history can check serialization and token accounting, but cannot
