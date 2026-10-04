@@ -217,7 +217,11 @@ files to exist. File-valued flags and custom test arguments retain literal path
 checks. An import path such as `example.com/project/...` has no statically known
 filesystem location: it requires command authorization and conservatively matches
 explicit read restrictions. Use local package paths when narrower checking is
-needed. These checks do not inspect dependencies or sandbox an approved test.
+needed. These commands require approval for `-overlay` in default and accept-edits
+modes even with a matching command allow rule; plan mode refuses them. The overlay
+JSON can redirect source reads to paths outside the command operands. Bypass and
+yolo modes retain their explicit authorization to run such commands. These checks
+do not inspect dependencies or sandbox an approved test.
 
 * **macOS.** The initial environment of a same-user process is readable by other same-user processes (`ps eww`,
   `sysctl kern.procargs2`), and neither erasing nor `MoveKeys` can change what macOS reports for it; a key exported in the

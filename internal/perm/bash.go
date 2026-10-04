@@ -316,6 +316,11 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	if u.name == "go" && u.dyn == "" {
 		if goUses, ok := goPathUses(s.Args); ok {
 			uses = goUses
+			if hasLong(s.Args[1:], "-overlay", "--overlay") {
+				// The JSON can redirect source reads outside the visible operands.
+				// This gate precedes command allow rules, including test presets.
+				u.dyn = "go -overlay replacement paths cannot be checked from the command; approval is required"
+			}
 		}
 	}
 	if len(uses) > maxOperands {

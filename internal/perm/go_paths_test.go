@@ -41,6 +41,12 @@ func testGoPackagePermissions(t *testing.T) {
 		{name: "named import needs location", req: bash("go list example.com/project/..."), want: "ask"},
 		{name: "named import authorized test", mode: ModeAcceptEdits, req: bash("go test example.com/project/..."), want: "allow"},
 		{name: "named import cannot bypass read deny", mode: ModeAcceptEdits, deny: []string{"Read(src/**)"}, req: bash("go test example.com/project/..."), want: "deny"},
+		{name: "overlay asks before test preset", mode: ModeAcceptEdits, req: bash("go test -overlay overlay.json ./..."), want: "ask", why: "replacement paths"},
+		{name: "overlay asks before explicit build allow", allow: []string{"Bash(go build:*)"}, req: bash("go build -overlay=overlay.json ./..."), want: "ask", why: "replacement paths"},
+		{name: "overlay asks for list", req: bash("go list --overlay=overlay.json ./..."), want: "ask", why: "replacement paths"},
+		{name: "overlay is not read only", mode: ModePlan, allow: []string{"Bash(go vet:*)"}, req: bash("go vet -overlay overlay.json ./..."), want: "deny", why: "replacement paths"},
+		{name: "overlay after custom flag still asks", mode: ModeAcceptEdits, req: bash("go test -custom value -overlay overlay.json ./src"), want: "ask", why: "replacement paths"},
+		{name: "overlay bypass is explicit", mode: ModeBypass, req: bash("go test -overlay overlay.json ./..."), want: "allow"},
 	})
 	t.Run("state directory is not a package output", func(t *testing.T) {
 		e := f.engine(t, Config{Mode: ModeAcceptEdits, StateDir: filepath.Join(f.root, ".sleipnir")})
