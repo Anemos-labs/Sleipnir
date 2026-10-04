@@ -598,8 +598,8 @@ archive for this machine (`sleipnir_<version>_<os>_<arch>.tar.gz`, `.zip` on Win
 the binary (a download that does not match is thrown away and nothing changes). `--check` only says whether a newer release is out. A chat that is open
 keeps running the old version until it is restarted. A build from source says how to update itself (`go install ...@latest`, or `git pull`) and changes nothing.
 
-The chat says so at its start, in one line under the banner, when a newer release is out: `A newer Sleipnir is out: v0.1.5, 43 commits ahead of yours. Run
-`sleipnir update`.` It looks at most once a day, in the background, after the chat has started, and the line is read from what the last look kept
+When a newer release is available, the chat shows its version and an instruction to run `sleipnir update` under the banner.
+It checks at most once a day, in the background, after the chat has started, and the line is read from what the last check kept
 (`~/.sleipnir/update.json`), so nothing waits for the network and nothing asks a question. The only request is for the latest release of the repository to
 `api.github.com`, with a user agent that names the version; `SLEIPNIR_NO_UPDATE_CHECK=1` turns the looking off (the command still works when asked).
 The checksum comes from the same release as the archive, so it guards the download, not the release (`gh attestation verify` checks the release's build
@@ -1688,7 +1688,7 @@ flags:
 | `/restart [flags]` | start the chat again with other flags; the model, mode and the flags the session started with (a team stays a team) stay, and the conversation comes along (a single agent's, or a team's manager and its board; not into git worktrees) |
 | `/login [provider]` | add a key, or sign in with your ChatGPT plan (`/login chatgpt`), without leaving for another terminal: the chat ends, `sleipnir login` runs on the terminal (the key is typed hidden, a browser sign-in prints its address), and the chat comes back where you were (a team's manager and its board too). A name that is not a provider ends nothing |
 | `/roles [role=model]` | which model each role runs on and where it came from; name one to change it (restarts, keeping the rest). A menu opens after `/roles ` with the roles and what each runs on, and after the `=` of one the models, typing filters them |
-| `/swarm <n> [flags]` | start again as a manager with up to `n` workers: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
+| `/swarm <n> [flags]` | start again with up to `n` agents, including the manager: `/swarm 8 --verify "go test {dirs}" --isolation worktree` |
 | `/mode [m]` | show the permission mode, or set `default`, `accept-edits`, `plan`, `bypass` or `yolo` |
 | `/plan` | shorthand for `/mode plan` (read-only) |
 | `/rewind [id]` | list checkpoints; with an id, restore files to how they were before that turn |

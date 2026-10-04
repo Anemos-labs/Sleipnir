@@ -1,16 +1,15 @@
 package repocheck
 
 import (
-	"regexp"
+	"strings"
 	"testing"
 )
 
-// The changelog is where a change to prompt bytes is declared and priced (scripts/check-declared.sh insists on an added
-// line there), and what a release's archive carries. It needs a place for new entries: an [Unreleased] section, or the
-// heading of the version in progress.
-func TestChangelogHasAHeadingForNewEntries(t *testing.T) {
+// Compatibility declarations travel with the source; the automatically published
+// GitHub releases own version history so no manual version rollover is required.
+func TestChangelogLinksTheCanonicalReleaseHistory(t *testing.T) {
 	text := read(t, "CHANGELOG.md")
-	if !regexp.MustCompile(`(?m)^## \[(Unreleased|[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\]`).MatchString(text) {
-		t.Error("CHANGELOG.md has no `## [Unreleased]` heading and no `## [X.Y.Z]` heading: there is no place for the entry that a change to prompt bytes needs")
+	if !strings.Contains(text, "https://github.com/Anemos-labs/Sleipnir/releases") {
+		t.Error("CHANGELOG.md must link the canonical versioned release history")
 	}
 }

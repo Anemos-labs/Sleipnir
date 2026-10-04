@@ -1,4 +1,4 @@
-.PHONY: build test race lint fmt sim readme-sim check release-plan clean
+.PHONY: build test race lint fmt sim readme-sim check audit release-plan clean
 
 build:
 	go build -trimpath -ldflags "-X main.version=$$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$$(git rev-parse --short HEAD 2>/dev/null || echo none)" -o bin/sleipnir ./cmd/sleipnir
@@ -33,6 +33,11 @@ readme-sim:
 # every platform that is released.
 check:
 	scripts/check.sh
+
+# Repository contracts plus committed file/line history; generated reports stay out of Git.
+audit:
+	go test -count=1 ./internal/repocheck ./cmd/codeage
+	go run ./cmd/codeage -require-full-history
 
 # What a merge to main would release from this checkout: the version, and why or why not. Writes nothing, asks nothing.
 release-plan:

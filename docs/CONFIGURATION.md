@@ -313,7 +313,9 @@ or replicas may still need cold prefills.
 | `mailman` | boolean | `false` | yes | Route worker mail through a mailman agent that digests bursts (`docs/SWARM-PROTOCOL.md`); `--mailman` overrides it. It runs on the session's model unless `--role-model mailman=<model>` names one |
 | `budget_usd` | number | `50` | swarm | Total spend cap for a swarm run, retired agents included; when spent, workers stop and no request is admitted. On by default, because a swarm can spend many times what one agent does; `0` (in your own file or `SLEIPNIR_SWARM_BUDGET_USD`) removes it. A project file cannot set it unless trusted (section 4). `--budget-usd` overrides it for one run and is the way to cap a single agent. The run's header line shows the cap, and the message when it is reached says how to raise it |
 
-At most four agents that may write files run at once (fixed; not configurable).
+Writer admission scales with the requested team's worker slots. Shared-workspace
+writers are also constrained by task scopes and leases; isolated worktrees have
+separate admission rules. See [Team protocol](SWARM-PROTOCOL.md#6-spawning-and-reuse).
 
 ### `tools`
 
@@ -366,7 +368,7 @@ suspecting the endpoint.
 | `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdall) |
 | `system_role` | string | `system` | Role name of the system message; `developer` for OpenAI reasoning models |
 | `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (16000, or the model's maximum if smaller) |
-| `reasoning_effort_field` | string | none | Any non-empty value lets a request's reasoning effort through as `reasoning_effort`. The harness does not set an effort in this version, so this has no effect in normal runs |
+| `reasoning_effort_field` | string | `reasoning_effort` | Any non-empty value lets the selected effort through as `reasoning_effort`; an explicit empty string disables it. No effort is sent until one is selected with `/effort`. The harness maps it to the closest level the model supports |
 | `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
@@ -395,8 +397,8 @@ Both dialects also take the timeouts below. A silent server is cut off, so no re
 | `no_zero_max_tokens` | bool | `false` | The gateway rejects `max_tokens: 0`; cache warm-ups use `1` |
 | `session_header_name` | string | none | Header that carries the routing key (for example `X-Session-Id`); Anthropic itself ignores it |
 | `default_max_tokens` | integer | `8192` | Used only when a request carries no `max_tokens`. The harness always sets one (16000, or the model's maximum if smaller), so this rarely matters |
-| `thinking_display` | string | none | Value of `thinking.display`, sent only when a request carries a `thinking` object. The harness does not turn thinking on itself; it adds such an object only for models that always think, to carry the binding control after a compaction |
-| `thinking_budget` | integer | `8192` | `budget_tokens` for models that do not have adaptive thinking. Only used when thinking is requested, which the harness does not do in this version |
+| `thinking_display` | string | none | Value of `thinking.display`, sent only when a request carries a `thinking` object. Replay binding can require such an object after compaction |
+| `thinking_budget` | integer | `8192` | `budget_tokens` when thinking is requested on a model that uses a token budget instead of adaptive thinking. Clamped below the request's output limit; thinking is omitted when the limit cannot fit the minimum budget |
 | `extra_body` | object | none | Members merged into the request body. Naming a member the adapter owns (`model`, `max_tokens`, `stream`, `thinking`, `output_config`, `temperature`, `stop_sequences`, `metadata`, `tool_choice`, `tools`, `system`, `messages`) is an error |
 
 `capture_tokens` on an `anthropic` provider is refused at startup: the Messages API returns no token ids or logprobs,
@@ -429,9 +431,8 @@ the prompt for read-only planning; bare `/plan` only changes the mode. Switch to
 `/mode accept-edits` and send an implementation request when the plan is ready.
 
 **When no human is available** (`run`/`swarm` with stdin not a terminal, or any unattended run) a question cannot be
-asked, so the action is refused with `approval required: <why>` and a fixed sentence saying that this run has no one to ask
-(a model that is not told keeps looking for another way to the same action: a real one spent twenty-four tool calls on
-that). A run that was refused something says so at its end, with the commands and the edits and what would let them through (`--mode accept-edits` for edits, a rule for a command). Give the
+asked, so the action is refused with `approval required: <why>` and a message explaining that approval is unavailable.
+A run that was refused something says so at its end, with the commands and the edits and what would let them through (`--mode accept-edits` for edits, a rule for a command). Give the
 run what it needs with `--allow` (repeatable, for this run only: `--allow 'Bash(go test:*)'`, or `--allow tests` for the build and
 test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet`,
 `gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint`, `pnpm test`, `yarn test`, `node --test`,
