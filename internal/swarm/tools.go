@@ -84,6 +84,18 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	in.ID = strings.TrimSpace(in.ID)
 	s, me := t.s, c.Env.Agent
 	isMgr := c.Env.Role == "manager"
+	// Validate required IDs before board operations; keep role refusals first.
+	switch in.Action {
+	case "accept", "reject", "reopen", "fail":
+		if !isMgr {
+			return tools.Errorf("only the manager can %s tasks", in.Action), nil
+		}
+		fallthrough
+	case "get", "claim", "update", "done", "block", "resume":
+		if in.ID == "" {
+			return tools.Errorf("task %s requires id: use the task ID from your assignment or call task with action=list to find it, then retry with id set", in.Action), nil
+		}
+	}
 	switch in.Action {
 	case "create":
 		if !isMgr {
@@ -145,9 +157,6 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		return text("%s resumed", in.ID), nil
 	case "accept", "reject", "reopen", "fail":
-		if !isMgr {
-			return tools.Errorf("only the manager can %s tasks", in.Action), nil
-		}
 		return t.review(ctx, c, in), nil
 	}
 	return tools.Errorf("unknown action %q", cleanText(in.Action, 30)), nil
