@@ -20,9 +20,8 @@ type Estimator interface {
 // BytesEstimator estimates tokens as bytes / ratio and self-calibrates from
 // provider usage reports with an exponential moving average.
 //
-// Usage reports are a free tokenizer: with cache breakpoints at known
-// positions, cache_read/cache_write counts reveal the exact token size of each
-// layer, which Observe folds into the ratio.
+// Observe calibrates the ratio from supplied byte and token totals. A whole
+// prompt usage report does not establish exact token counts for its layers.
 type BytesEstimator struct {
 	mu    sync.Mutex
 	ratio float64 // bytes per token

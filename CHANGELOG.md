@@ -1,9 +1,11 @@
 # Changelog
 
-Release entries describe behavior and compatibility changes. Prompt changes
-include their cache implications.
+[Releases](https://github.com/Anemos-labs/Sleipnir/releases) are the versioned
+release history, generated from merged pull requests and tied to their source
+commits. The notes below are cumulative compatibility and prompt-cache changes;
+they do not indicate whether a change has been released.
 
-## [Unreleased]
+## Compatibility changes
 
 - Bind task verification and merge evidence to the checked assignment and scope.
   Scope changes invalidate in-flight results without spending verification retries;

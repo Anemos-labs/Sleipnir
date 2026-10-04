@@ -70,6 +70,20 @@ jobs:
       - name: the tests of the scripts
         run: |
           for t in scripts/*_test.sh; do sh "$t" || exit 1; done
+      # Publish an age inventory for every main revision. It never changes source
+      # or treats old lines as failures; collection errors still fail this job.
+      - name: repository age audit
+        if: github.event_name != 'pull_request'
+        run: go run ./cmd/codeage -require-full-history
+      - name: upload repository age audit
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: code-age
+          path: .sleipnir/tmp/code-age/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
   test:
     name: test (${{ matrix.os }}, go ${{ matrix.go }})
