@@ -5,6 +5,13 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Interpret Go package selectors separately from literal filenames, allowing
+  recursive test, build, list, and vet commands on Windows. Preserve literal
+  output flags and custom test arguments. Apply explicit deny and ask rules to
+  descendants of recursive accesses; a child allow rule does not authorize its
+  parent tree. Require approval for Go overlays before build/test allow rules,
+  since their replacement paths are not visible in command operands. Stable
+  prompt and tool-schema bytes are unchanged.
 - Return an actionable error when a manager waits on unfinished work with no
   running workers, allowing the repetition guard to bound repeated impossible
   waits. Preserve waits for active workers, future work, mail, and settled targets.

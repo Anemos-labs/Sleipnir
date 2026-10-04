@@ -6,6 +6,46 @@ import (
 	"testing"
 )
 
+func TestPathGlobTreeOverlap(t *testing.T) {
+	for _, c := range []struct {
+		pattern, root string
+		want          bool
+	}{
+		{"/repo/private/**", "/repo", true},
+		{"/repo/private/**", "/repo/public", false},
+		{"/repo/*.go", "/repo", true},
+		{"/repo/*.go", "/repo/src", false},
+		{"/repo/**/secret", "/repo/a/b/c", true},
+		{"/repo/*/secret", "/repo/a/b/c", false},
+		{"/repo/**/a/**/b", "/repo/a/x/y", true},
+		{"/repo/**/a/b", "/repo/a/x", true},
+		{"/repo/private", "/repo/private/deep", true},
+		{"/repo/private", "/repo/private-other", false},
+		{"/repo/[ab]/secret", "/repo/a", true},
+		{"/repo/[ab]/secret", "/repo/c", false},
+		{`/repo/literal\[1\]/secret`, "/repo/literal[1]", true},
+		{`/repo/literal\[1\]/secret`, "/repo/literal1", false},
+		{"/**/secret", "/repo", true},
+		{"/", "/repo", true},
+	} {
+		g := pathGlob{segs: splitSegs(c.pattern)}
+		if got := g.overlapsTree(c.root); got != c.want {
+			t.Errorf("overlap(%q, %q) = %v, want %v", c.pattern, c.root, got, c.want)
+		}
+	}
+}
+
+func TestRecursivePathRules(t *testing.T) {
+	f := newFixture(t)
+	runCases(t, f, []tc{
+		{name: "recursive reader", deny: []string{"Read(src/**)"}, req: bash("rg needle ."), want: "deny"},
+		{name: "recursive remover", mode: ModeBypass, deny: []string{"Edit(src/a.go)"}, req: bash("rm -rf src"), want: "deny"},
+		{name: "nonexistent child", deny: []string{"Read(src/future.txt)"}, req: bash("find src"), want: "deny"},
+		{name: "child allow is not parent allow", allow: []string{"Read(../notes.txt)"}, req: bash("find .."), want: "ask"},
+		{name: "explicit allow cannot bypass deny", allow: []string{"Bash(rg:*)"}, deny: []string{"Read(src/*.go)"}, req: bash("rg needle ."), want: "deny"},
+	})
+}
+
 func TestMatchSegs(t *testing.T) {
 	for _, tc := range []struct {
 		pat  string

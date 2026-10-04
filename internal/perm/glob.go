@@ -336,6 +336,31 @@ func (g *pathGlob) matches(p string) bool {
 	return false
 }
 
+// overlapsTree reports whether the glob can match an ancestor or descendant of
+// p, without walking the filesystem. Remaining glob segments can describe a
+// descendant even when it does not exist yet. Only restrictive rules use this;
+// permission for one child must never authorize its entire parent tree.
+func (g *pathGlob) overlapsTree(p string) bool {
+	segs := splitSegs(p)
+	pi, si, starP, starS := 0, 0, -1, 0
+	for pi < len(g.segs) && si < len(segs) {
+		switch {
+		case g.segs[pi] == "**":
+			starP, starS = pi, si
+			pi++
+		case segMatch(g.segs[pi], segs[si]):
+			pi++
+			si++
+		case starP >= 0:
+			starS++
+			si, pi = starS, starP+1
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // hasMeta detects glob operators or escape syntax in a pattern.
 func hasMeta(s string) bool { return strings.ContainsAny(s, `*?[\`) }
 

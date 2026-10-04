@@ -119,6 +119,9 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 	if raw == "" || raw == "-" {
 		return nil
 	}
+	if u.unresolved {
+		return []access{{raw: raw, read: true, dynamic: true, unresolved: true}}
+	}
 	if why := pathProblem(raw); why != "" {
 		return []access{{raw: raw, invalid: why}}
 	}
