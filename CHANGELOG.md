@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Base verification reminders on tool outcomes. Refused edits no longer count
+  as code changes, and refused test commands no longer count as executed tests
+  or clear evidence of a failing run. A successful edit outside test files also
+  clears a pending warning from the same batch. Existing advisory messages,
+  stable prompt layers, and tool-schema bytes are unchanged.
 - Add `cache.compaction_mode=blocking` to finish an agent's automatic model
   compaction before its next request, avoiding overlapping copies of its history
   on endpoints with independent slot caches. Other agents remain concurrent;
