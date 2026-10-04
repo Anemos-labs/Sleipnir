@@ -327,7 +327,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			return tools.Errorf("%v", err)
 		}
 		if m := s.get(task.Owner); m != nil {
-			s.stopRun(m, "its task was failed by the manager", false)
+			s.stopRunFor(m, "its task was failed by the manager", false, task.ID, task.Rev)
 		}
 		return text("%s marked failed", in.ID)
 	}
