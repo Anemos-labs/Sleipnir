@@ -5,6 +5,10 @@ include their cache implications.
 
 ## [Unreleased]
 
+- Bind task verification and merge evidence to the checked assignment and scope.
+  Scope changes invalidate in-flight results without spending verification retries;
+  implicit completion retries the current scope. Acceptance rejects obsolete
+  evidence. Stable prompt and tool-schema bytes are unchanged.
 - Keep delayed task failures and merge results scoped to their original assignment.
   Exhausted merge retries and manager failure actions cannot cancel a replacement
   run, and an older merge record cannot erase a newer assignment's acceptance

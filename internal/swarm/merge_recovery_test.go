@@ -10,10 +10,23 @@ import (
 )
 
 func TestLateMergeRecordPreservesTheCurrentAssignment(t *testing.T) {
-	s := &Swarm{merged: map[string]mergeRec{}}
-	old := Task{ID: "T1", Rev: 4}
-	current := Task{ID: "T1", Rev: 9}
+	s := New(Config{}, Deps{}, nil)
+	task, err := s.Board.CreateTask("mgr", TaskSpec{Title: "implement"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Board.Assign("mgr", "be-1", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := s.Board.Snapshot().Task(task.ID)
 	s.recordMerge(old, mergeRec{rev: old.Rev, commit: "old integration"})
+	if err := s.Board.Unassign("mgr", task.ID, "reassign"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Board.Assign("mgr", "be-1", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	current, _ := s.Board.Snapshot().Task(task.ID)
 	s.recordMerge(current, mergeRec{rev: current.Rev, commit: "new integration"})
 	// An older queue result can finish publishing after the replacement's merge.
 	// Accepting the replacement must still find its own successful merge record.

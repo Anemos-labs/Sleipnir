@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -55,7 +56,49 @@ func (s *Swarm) VerifyRuns() (ran, failed int) {
 func (s *Swarm) recordVerificationFailure(t Task, cmd string, vr verifyResult) (Task, bool) {
 	reason := fmt.Sprintf("verification `%s` failed %d times (last exit %d)", cleanText(cmd, 80), maxGateTries+1, vr.code)
 	evidence := fmt.Sprintf("verification `%s` failed (exit %d): %s", cleanText(cmd, 80), vr.code, tailText(vr.out, 200))
-	return s.Board.FailVerification(t.Owner, t.ID, t.Rev, reason, evidence, maxGateTries+1, s.cfg.MaxAttempts)
+	return s.Board.FailVerification(t.Owner, t.ID, t.Rev, reason, evidence, maxGateTries+1, s.cfg.MaxAttempts, taskGateCheck(t))
+}
+
+// taskGateCheck binds verification and review evidence to the assignment and
+// scope that produced it. Scope changes deliberately do not replace a run's
+// assignment revision, so checking the revision alone is insufficient.
+func taskGateCheck(expected Task) TaskCheck {
+	return func(_ *Snapshot, current Task) error {
+		if current.ID != expected.ID || current.Owner != expected.Owner || current.Rev != expected.Rev {
+			return fmt.Errorf("%s changed assignment while it was being checked; inspect the task before retrying", expected.ID)
+		}
+		if !slices.Equal(current.Files, expected.Files) {
+			return fmt.Errorf("%s changed scope while it was being checked; verify the current scope and retry", expected.ID)
+		}
+		return nil
+	}
+}
+
+// checkTaskGate rejects an obsolete result before further merge or retry work.
+// The final board mutation repeats this check atomically.
+func (s *Swarm) checkTaskGate(expected Task) error {
+	snap := s.Board.Snapshot()
+	current, _ := snap.Task(expected.ID)
+	return taskGateCheck(expected)(snap, current)
+}
+
+// retryChangedScope wakes an implicitly stopped worker to check its current
+// scope. A replacement assignment or a settled task receives no stale feedback.
+func (s *Swarm) retryChangedScope(m *member, checked Task) {
+	current, ok := s.Board.Snapshot().Task(checked.ID)
+	if ok && current.Owner == m.id && current.Rev == checked.Rev && current.Status == StatusDoing && !slices.Equal(current.Files, checked.Files) {
+		s.notify(m.id, "request", fmt.Sprintf("%s changed scope while verification or merging ran. Read its current scope with task get, finish that scope, and call task done again; the old result did not complete the task.", checked.ID))
+	}
+}
+
+// submitSettledTask submits an implicit completion only for the checked scope,
+// arranging another worker run if a scope update made the result obsolete.
+func (s *Swarm) submitSettledTask(m *member, checked Task, result, evidence string) bool {
+	if err := s.Board.SubmitAt(m.id, checked.ID, checked.Rev, result, evidence, taskGateCheck(checked)); err != nil {
+		s.retryChangedScope(m, checked)
+		return false
+	}
+	return true
 }
 
 // verificationFailureNotice gives the manager the exhausted retry budget and
