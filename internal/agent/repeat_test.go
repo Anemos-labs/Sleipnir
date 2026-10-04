@@ -334,6 +334,61 @@ func TestAnAnswerAfterAnEditWithNoTestRunIsSentBackToRunTheTests(t *testing.T) {
 	}
 }
 
+func TestVerificationHintUsesToolOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		editError  bool
+		runTest    bool
+		testError  bool
+		testFailed bool
+		want       int
+	}{
+		{name: "refused edit", editError: true},
+		{name: "refused test after edit", runTest: true, testError: true, want: 1},
+		{name: "executed failing test", runTest: true, testFailed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			editor := fakeTool{name: "edit", run: func(json.RawMessage) *tools.Result {
+				if tc.editError {
+					return tools.Errorf("permission denied: edit was refused")
+				}
+				return &tools.Result{Text: "edited"}
+			}}
+			bash := fakeTool{name: "bash", run: func(json.RawMessage) *tools.Result {
+				if tc.testError {
+					return tools.Errorf("permission denied: command was refused")
+				}
+				exit := 0
+				if tc.testFailed {
+					exit = 1
+				}
+				return &tools.Result{Text: "test output", Meta: map[string]any{"exit_code": exit}}
+			}}
+			var notes int
+			r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{editor, bash}, steps: 8, verifyHint: "go test ./..."}, func(c *mock.Call) mock.Reply {
+				if strings.Contains(c.LastUser(), "[harness] You changed code and have not run the tests since.") {
+					notes++
+				}
+				switch assistantTurns(c) {
+				case 0:
+					return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "edit", `{"path":"a.go"}`)}}
+				case 1:
+					if tc.runTest {
+						return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "bash", `{"command":"go test ./..."}`)}}
+					}
+				}
+				return mock.Reply{Text: "finished"}
+			})
+			if _, err := r.agent.Run(context.Background(), "change the implementation and verify it"); err != nil {
+				t.Fatal(err)
+			}
+			if notes != tc.want {
+				t.Fatalf("verification reminders = %d, want %d", notes, tc.want)
+			}
+		})
+	}
+}
+
 // A server whose window is smaller than the prompt reads only that much and reports only that much: when the prompt grows and the tokens
 // reported do not, the harness says so once, with the window it saw, for a model whose window it was never told.
 func TestAServerThatCutsThePromptOffIsNoticedOnce(t *testing.T) {

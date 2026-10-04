@@ -10,11 +10,10 @@ import (
 
 // The test-weakening guard.
 //
-// A small model whose test fails will often decide that the test is wrong and rewrite it to agree with the code, and then
-// report success (a real 2B model did it on a ten-line cache). The guard watches for the sequence: a test command fails, and
-// the next edits touch only test files. It says so once per failing run, in the results turn like the repetition guard's
-// note, so the prompt prefix is not touched. It does not forbid anything: a test can be wrong. It asks the model to say
-// which line of the task the test contradicts, or to fix the code.
+// The guard notices a failing test command followed by successful edits to test
+// files only. It adds one advisory note per failure episode to the results turn,
+// leaving the prompt prefix unchanged. A test can be wrong: the note asks for the
+// contradicted requirement or an implementation fix rather than forbidding edits.
 
 var (
 	testCmdRe  = regexp.MustCompile(`\b(go test|pytest|py\.test|unittest|npm (run )?test|yarn test|pnpm test|jest|vitest|cargo test|make test|mvn test|gradle test|rspec|phpunit|mix test)\b`)
@@ -60,14 +59,19 @@ func editedPaths(call core.Block) []string {
 // docPathRe are the files whose edit does not call for running the tests.
 var docPathRe = regexp.MustCompile(`(?i)(\.(md|markdown|txt|rst|adoc)|(^|/)(docs?|license|changelog)[^/]*)$`)
 
-// unverified reports whether code was changed in this run and no test command has run since: the answer is about to claim a result nobody
-// looked at (a fifth of the answers on the benchmark that said "done" were wrong).
+// unverified reports whether a code edit succeeded in this run without a later
+// test command executing. It does not establish that tests passed or covered the edit.
 func (g *testGuard) unverified() bool { return g.edited && !g.ranSince }
 
-// observe takes one batch of calls and their results (exitFailed as in repeatGuard) and returns the note to hand the model, if any.
-func (g *testGuard) observe(calls []core.Block, exitFailed []bool) string {
+// observe uses aligned tool results to track executed tests and successful edits.
+// Refused, invalid, failed, or missing tool results leave the state unchanged;
+// an executed command with a nonzero exit still counts as a failing test run.
+func (g *testGuard) observe(calls, results []core.Block, exitFailed []bool) string {
 	var note string
 	for i, call := range calls {
+		if i >= len(results) || results[i].IsError {
+			continue
+		}
 		if call.ToolName == "bash" {
 			var in struct {
 				Command string `json:"command"`
@@ -99,7 +103,8 @@ func (g *testGuard) observe(calls []core.Block, exitFailed []bool) string {
 		}
 		switch {
 		case !onlyTests:
-			g.failed, g.nudged = false, false // the code changed: the next failure is a new one
+			g.failed, g.nudged = false, false // an edit outside tests starts a new failure episode
+			note = ""                         // this batch did not change only test files
 		case !g.nudged:
 			g.nudged = true
 			note = "[harness] The last test run failed and you changed only test files. Change a test only when it contradicts the task: " +

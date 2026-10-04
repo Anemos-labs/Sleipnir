@@ -182,6 +182,49 @@ func TestAConfigFileBeingWrittenIsWaitedFor(t *testing.T) {
 	}
 }
 
+func TestWorktreeAddRetriesMissingRefLockParent(t *testing.T) {
+	for _, wait := range []bool{false, true} {
+		t.Run(fmt.Sprint(wait), func(t *testing.T) {
+			dir := newRepo(t)
+			gitShim, evidence := shim(t, `
+case " $* " in
+  *" branch --no-track -- sleipnir/retry/worker "*)
+    echo attempt >> "$D/attempts"
+    if [ ! -f "$D/failed-once" ]; then
+      touch "$D/failed-once"
+      echo "fatal: cannot lock ref 'refs/heads/sleipnir/retry/worker': Unable to create '/repo/.git/refs/heads/sleipnir/retry/worker.lock': No such file or directory" >&2
+      exit 128
+    fi
+    ;;
+esac
+exec "$REAL" "$@"`)
+			lockWait := time.Duration(0)
+			if wait {
+				lockWait = 5 * time.Second
+			}
+			r := openRepo(t, dir, WithGitPath(gitShim), WithLockWait(lockWait))
+			path := filepath.Join(t.TempDir(), "worker")
+			err := r.WorktreeAdd(ctxT(t), WorktreeAddOptions{Path: path, Branch: "sleipnir/retry/worker", Commit: "HEAD"})
+			attempts := strings.Count(readFile(t, filepath.Join(evidence, "attempts")), "attempt\n")
+			if !wait {
+				if !errors.Is(err, ErrLocked) || attempts != 1 {
+					t.Fatalf("no-wait add: attempts=%d error=%v", attempts, err)
+				}
+				if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+					t.Fatalf("ref lock failure left a worktree: %v", statErr)
+				}
+				return
+			}
+			if err != nil || attempts != 2 {
+				t.Fatalf("retrying add: attempts=%d error=%v", attempts, err)
+			}
+			if branch, err := openRepo(t, path).Branch(ctxT(t)); err != nil || branch != "sleipnir/retry/worker" {
+				t.Fatalf("worktree branch=%q error=%v", branch, err)
+			}
+		})
+	}
+}
+
 // The real thing, not a planted entry: handles that add, remove and list the worktrees of one repository at
 // once (a swarm's managers, and a person's own git). Before the runner waited these moments out, three
 // seconds of it gave dozens of failures: an empty commondir being read, a commondir that vanished, the

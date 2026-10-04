@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Retry ref-lock creation when concurrent branch deletion removes its parent
+  directory. The existing lock-wait bound still applies; missing revisions,
+  permission failures, and ref-value conflicts are not treated as contention.
+  Prompt and tool-schema bytes are unchanged.
+- Base verification reminders on tool outcomes. Refused edits no longer count
+  as code changes, and refused test commands no longer count as executed tests
+  or clear evidence of a failing run. A successful edit outside test files also
+  clears a pending warning from the same batch. Existing advisory messages,
+  stable prompt layers, and tool-schema bytes are unchanged.
 - Make `/plan <prompt>` submit a planning request after switching to plan mode,
   preserving the supplied text and current team. Bare `/plan` remains a mode-only
   command. The planning instruction is appended in the new user turn; stable

@@ -842,7 +842,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			blocks = append(blocks, extra...)
 		}
 		note, stuck := a.rep.observeExits(a.cfg.ID, calls, results, exitFailed)
-		if tn := a.tests.observe(calls, exitFailed); tn != "" && note == "" {
+		if tn := a.tests.observe(calls, results, exitFailed); tn != "" && note == "" {
 			note = tn
 		}
 		if note != "" && stuck == nil {
