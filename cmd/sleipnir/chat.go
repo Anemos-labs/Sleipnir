@@ -297,7 +297,8 @@ model and cost
 /status            model, mode, session, budget and cost at a glance
 
 permissions
-/mode <m>          default | accept-edits | plan | bypass | yolo (/plan = plan)
+/mode <m>          default | accept-edits | plan | bypass | yolo
+/plan [prompt]     switch to read-only mode; with a prompt, start planning it
 /allow <rule>      allow, this session, what would ask: tests, Bash(go test:*)
 /permissions       the mode and the rules in force
 /trust             this project's own instructions and settings, and your yes
@@ -319,7 +320,7 @@ what the model knows
 /help              this text, and your custom commands and skills`
 
 // slash handles a slash command. It reports whether to quit, and the prompt to
-// send when the command was a custom one (or a skill) that expanded into text.
+// send when the command starts a task or expands a custom command or skill.
 // It writes to the process's standard streams, as the line chat always has.
 func slash(ctx context.Context, s *session.Session, line string) (quit bool, send string) {
 	return slashTo(ctx, s, line, os.Stdout, os.Stderr)
@@ -381,6 +382,9 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 	case "/plan":
 		s.Perm.SetMode(perm.ModePlan)
 		fmt.Fprintln(stderr, "plan mode: read-only")
+		if prompt := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0])); prompt != "" {
+			return false, "Plan the task below. Inspect the project and present a concrete plan; do not implement changes. Keep any delegated work read-only.\n\n" + prompt
+		}
 	case "/model":
 		if len(f) < 2 {
 			fmt.Fprintf(stderr, "model: %s (change it with /model provider/model; list them with `sleipnir models`)\n", s.Model.ID)
