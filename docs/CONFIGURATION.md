@@ -368,7 +368,7 @@ suspecting the endpoint.
 | `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdall) |
 | `system_role` | string | `system` | Role name of the system message; `developer` for OpenAI reasoning models |
 | `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (16000, or the model's maximum if smaller) |
-| `reasoning_effort_field` | string | none | Any non-empty value lets the selected effort through as `reasoning_effort`. Set effort with `/effort`; the harness maps it to the closest level the model supports |
+| `reasoning_effort_field` | string | `reasoning_effort` | Any non-empty value lets the selected effort through as `reasoning_effort`; an explicit empty string disables it. No effort is sent until one is selected with `/effort`. The harness maps it to the closest level the model supports |
 | `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
