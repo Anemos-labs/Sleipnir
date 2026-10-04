@@ -217,6 +217,13 @@ func classify(text string) Kind {
 	// X but expected Y" is a compare-and-swap miss, retrying it cannot help).
 	case has(".lock': file exists", ".lock\": file exists", "another git process seems to be running"):
 		return KindLocked
+	// Concurrent ref deletion can remove an empty parent directory between Git's
+	// directory creation and lock-file creation. Retry only that lock failure;
+	// missing revisions, index paths, permissions, and expected-value conflicts
+	// keep their ordinary classifications.
+	case strings.Contains(l, "cannot lock ref 'refs/") && strings.Contains(l, "unable to create '") &&
+		strings.Contains(l, ".lock': no such file or directory"):
+		return KindLocked
 	case worktreeAdminChanging(l):
 		return KindLocked
 	// The one lock git words without the name of the lock file: "error: could not lock config
