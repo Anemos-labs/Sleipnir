@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -149,6 +150,33 @@ func TestBlockingCompactionCancellationAndClosePreventForegroundRequest(t *testi
 			}
 			if foreground.Load() != 0 || a.comp.running {
 				t.Fatalf("foreground=%d compactor still running=%v", foreground.Load(), a.comp.running)
+			}
+		})
+	}
+}
+
+func TestBlockingCompactionExhaustsBudgetBeforeForegroundRequest(t *testing.T) {
+	for _, charge := range []float64{0.5, 0.75} {
+		t.Run(fmt.Sprint(charge), func(t *testing.T) {
+			forks, foreground := 0, 0
+			a, _ := newBlockingAgent(t, blockingProvider{do: func(_ context.Context, req *provider.Request) (*provider.Response, error) {
+				if !strings.Contains(req.Label, ".c") {
+					foreground++
+					return blockingReply("finished"), nil
+				}
+				forks++
+				resp := blockingReply(`{"keep_from":"t17","spine":[{"turns":"t1-t16","line":"Inspected implementation files and tests."}]}`)
+				resp.CostUSD = &charge
+				return resp, nil
+			}})
+			if err := a.SetBudget(0.5); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.Run(context.Background(), ""); !errors.Is(err, ErrBudget) {
+				t.Fatalf("got %v, want ErrBudget", err)
+			}
+			if _, spent := a.Usage(); spent != charge || forks != 1 || foreground != 0 {
+				t.Fatalf("spent=%v forks=%d foreground=%d", spent, forks, foreground)
 			}
 		})
 	}

@@ -740,6 +740,12 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		if a.life.Err() != nil {
 			return res, ErrClosed
 		}
+		// Compaction is charged to this agent and can consume the remaining budget.
+		if b := a.Budget(); b > 0 {
+			if _, c := a.Usage(); !(c < b) {
+				return res, ErrBudget
+			}
+		}
 		a.drainInbox(step == 0 && len(input) == 0)
 		if a.cfg.SnapshotEachStep {
 			if err := a.writeSnapshot(true); err != nil {
