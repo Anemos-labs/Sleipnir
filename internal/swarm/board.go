@@ -796,12 +796,21 @@ func (b *Board) Accept(by, id, note string) error {
 
 // Fail marks a task that is not done as failed.
 func (b *Board) Fail(by, id, reason string) error {
+	return b.FailAt(by, id, 0, reason)
+}
+
+// FailAt is Fail restricted to the assignment rev (0: any). A stale revision
+// returns an error without changing the task or publishing a board event.
+func (b *Board) FailAt(by, id string, rev uint64, reason string) error {
 	return b.mutate(by, "finish", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
 		}
 		t := d.Tasks[i]
+		if rev != 0 && t.Rev != rev {
+			return fmt.Errorf("%s changed assignment before it could be failed; inspect the task and retry if needed", id)
+		}
 		if t.Status == StatusDone || t.Status == StatusFailed {
 			return fmt.Errorf("%s is already %s", id, t.Status)
 		}

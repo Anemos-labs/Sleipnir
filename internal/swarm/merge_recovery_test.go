@@ -23,6 +23,43 @@ func TestLateMergeRecordPreservesTheCurrentAssignment(t *testing.T) {
 	}
 }
 
+func TestTaskFailureRejectsAReplacedAssignment(t *testing.T) {
+	for _, owner := range []string{"be-1", "be-2"} {
+		t.Run(owner, func(t *testing.T) {
+			b := NewBoard(events.Discard{})
+			task, err := b.CreateTask("mgr", TaskSpec{Title: "implement", Role: "backend"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := b.Assign("mgr", "be-1", task.ID); err != nil {
+				t.Fatal(err)
+			}
+			old, _ := b.Snapshot().Task(task.ID)
+			if _, applied := b.Requeue("be-1", old.ID, old.Rev, "worker stopped", true, 3); !applied {
+				t.Fatal("could not requeue the old assignment")
+			}
+			if err := b.Assign("mgr", owner, task.ID); err != nil {
+				t.Fatal(err)
+			}
+			before := b.Snapshot()
+			if err := b.FailAt("mgr", old.ID, old.Rev, "late failure"); err == nil {
+				t.Fatal("failure of the old assignment was applied to its replacement")
+			}
+			if b.Snapshot() != before {
+				t.Fatal("stale failure published a new board state")
+			}
+			current, _ := before.Task(task.ID)
+			if err := b.FailAt("mgr", current.ID, current.Rev, "current failure"); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := b.Snapshot().Task(task.ID)
+			if got.Status != StatusFailed || got.Result != "current failure" {
+				t.Fatalf("matching failure was not applied: %+v", got)
+			}
+		})
+	}
+}
+
 func TestLateTaskFailureDoesNotCancelReplacement(t *testing.T) {
 	for _, scenario := range []struct {
 		name             string
