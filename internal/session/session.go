@@ -426,6 +426,8 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		return nil, fmt.Errorf("checkpoints: %w", err)
 	}
 
+	// Detect the command shell for shared runtime guidance before building agents.
+	s.shell = shell.NewManager(shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp})
 	// Prompt layers, then tools, then the agent or swarm.
 	if err := s.buildShared(ctx); err != nil {
 		s.Log.Close()
@@ -572,10 +574,10 @@ var readOnlyRoleAllow = []string{
 // What a read-only role runs it runs in the foreground and reads from the result.
 var readOnlyRoleDeny = []string{"bash_output", "bash_kill"}
 
-// buildShared assembles the shared pin: the deterministic project survey plus the
-// project's own instruction files, both budgeted (see ReconOptions).
+// buildShared assembles runtime guidance and the budgeted project survey and
+// instruction files. Runtime guidance is frozen for the session.
 func (s *Session) buildShared(ctx context.Context) error {
-	var segs []kv.Segment
+	segs := []kv.Segment{{Key: "runtime", Text: s.shell.RuntimeContext(), Vol: kv.VolFrozen}}
 	est := core.NewBytesEstimator()
 	if !s.opts.NoRecon {
 		rc, err := BuildRecon(ctx, ReconOptions{Root: s.opts.Root, BudgetTokens: s.opts.ReconBudget, Est: est})
@@ -666,7 +668,6 @@ func (s *Session) build(ctx context.Context) error {
 
 	reg := tools.NewRegistry()
 	fs.Register(reg)
-	s.shell = shell.NewManager(shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp})
 	shell.Register(reg, s.shell)
 	if !o.NoWeb {
 		// ConfigFromEnv routes through HTTPS_PROXY when one is set (sandboxed and

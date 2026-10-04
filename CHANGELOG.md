@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Describe the detected command shell and operating system in frozen shared
+  runtime context for every agent. The `bash` description no longer promises
+  Bash execution or recommends `&&` for every shell. Tool-description (G0) and
+  shared-context (G1) bytes change once on upgrade and can require a fresh
+  provider cache prefill. Runtime guidance stays byte-identical within a
+  session; tool input schemas, default shell selection, and permission rules are
+  unchanged. Uppercase `.EXE` shell names retain their native invocation flags.
 - Retry ref-lock creation when concurrent branch deletion removes its parent
   directory. The existing lock-wait bound still applies; missing revisions,
   permission failures, and ref-value conflicts are not treated as contention.

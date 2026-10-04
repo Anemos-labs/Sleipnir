@@ -319,6 +319,13 @@ separate admission rules. See [Team protocol](SWARM-PROTOCOL.md#6-spawning-and-r
 
 ### `tools`
 
+The `bash` tool runs commands in the session's detected shell: `bash` or `sh`
+on POSIX systems, and `pwsh`, `powershell`, or `cmd` on Windows, in that order
+of availability. Every agent receives the operating system and selected shell
+in stable shared runtime context. Commands are executed directly in that shell;
+its syntax and available utilities apply. Shell selection does not change the
+tool list or permission rules.
+
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
 | `max_output_chars` | integer | `24000` | yes | Model-visible tool output is cut to this many characters (head and tail kept); the full text stays behind a `recall` handle |
