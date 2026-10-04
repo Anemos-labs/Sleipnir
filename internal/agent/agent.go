@@ -197,8 +197,11 @@ type Config struct {
 	// (RL rollouts against a self-hosted policy). Ignored by endpoints that
 	// cannot provide them.
 	CaptureTokens bool
-	// Compaction toggles background compaction (on by default via NewAgent).
+	// NoCompaction disables automatic compaction.
 	NoCompaction bool
+	// BlockingCompaction finishes automatic model compaction before this agent's
+	// next request. Other agents remain independent. False keeps background overlap.
+	BlockingCompaction bool
 	// OnPromote receives the facts a compactor proposes for the shared layers, after
 	// the harness has vetted them (kv.Apply: few, short, worded as facts, marked
 	// Unverified). Each Text starts with UnverifiedPrefix: a proposal is what a model
@@ -729,6 +732,14 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.mu.Unlock()
 		a.drainAssignment()
 		a.boundary(ctx)
+		// A blocking compaction can outlive the cancellation or closure of this run.
+		// Do not send a new foreground request after it returns in either case.
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		if a.life.Err() != nil {
+			return res, ErrClosed
+		}
 		a.drainInbox(step == 0 && len(input) == 0)
 		if a.cfg.SnapshotEachStep {
 			if err := a.writeSnapshot(true); err != nil {

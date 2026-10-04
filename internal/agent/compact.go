@@ -66,7 +66,7 @@ const compactionCooldown = 30 * time.Second
 // (Thinking is never stripped here: every rebase strips it in the same atomic
 // step that performs it, see commit and SyncShared.)
 func (a *Agent) boundary(ctx context.Context) {
-	if a.cfg.NoCompaction {
+	if a.cfg.NoCompaction || ctx.Err() != nil || a.life.Err() != nil {
 		return
 	}
 	a.mu.Lock()
@@ -95,28 +95,7 @@ func (a *Agent) boundary(ctx context.Context) {
 		}
 	}
 	if rp != nil {
-		// Priced against the live agent (hard and window pressure look at the live
-		// thread), on the region the patch covers plus the tail it will re-write.
-		a.mu.Lock()
-		o := a.outcomeLocked(rp)
-		a.mu.Unlock()
-		d := a.cfg.Planner.ShouldCommit(st, o)
-		a.emit(events.TypeCompactPlan, map[string]any{
-			"decision": "commit?", "yes": d.Yes, "net_ite": d.NetITE, "reason": d.Reason, "warm": st.Warm,
-			"thread_tokens": st.ThreadTokens, "snap_tokens": o.SnapTokens, "tail_tokens": o.TailTokens,
-			"age_ms": a.cfg.Now().Sub(rp.at).Milliseconds(), "held_requests": held,
-		})
-		if d.Yes {
-			if err := a.commit(ctx, rp, d.Reason); err != nil {
-				a.emit(events.TypeCompactReject, map[string]any{"reason": err.Error()})
-			}
-			return
-		}
-		// Held. The safety net still runs: a prompt about to blow the window cannot
-		// wait for an economic moment.
-		if a.overWindow(st) {
-			a.overWindowCompact(ctx, st)
-		}
+		a.considerCompaction(ctx, rp, st)
 		return
 	}
 	if running || cooling {
@@ -150,9 +129,43 @@ func (a *Agent) boundary(ctx context.Context) {
 			}
 		} else {
 			a.startCompaction(ctx, d.Reason)
+			if a.cfg.BlockingCompaction {
+				if ctx.Err() != nil || a.life.Err() != nil {
+					return
+				}
+				a.mu.Lock()
+				rp, st = a.comp.ready, a.plannerStateLocked()
+				a.mu.Unlock()
+				if rp != nil {
+					a.considerCompaction(ctx, rp, st)
+					return
+				}
+			}
 		}
 	}
 	if a.overWindow(st) {
+		a.overWindowCompact(ctx, st)
+	}
+}
+
+// considerCompaction applies the same commit policy to background and blocking
+// patches. Window pressure still invokes the safety net when a patch is held.
+func (a *Agent) considerCompaction(ctx context.Context, rp *readyPatch, st kv.State) {
+	a.mu.Lock()
+	o := a.outcomeLocked(rp)
+	held := a.reqN - rp.atReq
+	a.mu.Unlock()
+	d := a.cfg.Planner.ShouldCommit(st, o)
+	a.emit(events.TypeCompactPlan, map[string]any{
+		"decision": "commit?", "yes": d.Yes, "net_ite": d.NetITE, "reason": d.Reason, "warm": st.Warm,
+		"thread_tokens": st.ThreadTokens, "snap_tokens": o.SnapTokens, "tail_tokens": o.TailTokens,
+		"age_ms": a.cfg.Now().Sub(rp.at).Milliseconds(), "held_requests": held,
+	})
+	if d.Yes {
+		if err := a.commit(ctx, rp, d.Reason); err != nil {
+			a.emit(events.TypeCompactReject, map[string]any{"reason": err.Error()})
+		}
+	} else if a.overWindow(st) {
 		a.overWindowCompact(ctx, st)
 	}
 }
@@ -257,7 +270,8 @@ func (a *Agent) outcomeLocked(rp *readyPatch) kv.Outcome {
 	return o
 }
 
-// startCompaction launches the compactor in the background.
+// startCompaction runs a compactor job, in the background unless blocking mode
+// is selected. Both modes share cancellation, timeout, fallback and cleanup.
 //
 // The job belongs to the agent, not to the goroutine that happened to start it: it
 // runs on the agent's lifetime (Close cancels it and waits for it), it is cancelled when
@@ -285,7 +299,7 @@ func (a *Agent) startCompaction(ctx context.Context, reason string) {
 		cancel()
 	}
 
-	go func() {
+	job := func() {
 		defer a.jobs.Done()
 		defer cancel()
 		var (
@@ -316,7 +330,12 @@ func (a *Agent) startCompaction(ctx context.Context, reason string) {
 		if err != nil {
 			a.emit(events.TypeCompactReject, map[string]any{"reason": err.Error(), "stage": "propose"})
 		}
-	}()
+	}
+	if a.cfg.BlockingCompaction {
+		job()
+	} else {
+		go job()
+	}
 }
 
 // cancelCompaction cancels the compaction job in flight, if any.

@@ -71,6 +71,15 @@ total input even when the immediate hit rate falls.
 Compaction, shared-context updates, and reasoning-binding recovery are declared
 rebases. Bound reasoning is removed atomically with incompatible history changes.
 
+Automatic model compaction runs in the background by default. With
+`cache.compaction_mode: "blocking"`, each agent waits for its compactor and
+considers the resulting patch before its next request. The same thresholds,
+commit policy, protected context, timeout, and mechanical fallback apply.
+Other agents still run concurrently. This can avoid sending the same long
+history to a cold slot while its warm slot is occupied by the compactor, at
+the cost of waiting for that compaction. It does not pin a server slot or
+guarantee reuse between different agents.
+
 ## Team requests
 
 A warm gate limits simultaneous cold starts. It waits for generated response

@@ -286,6 +286,9 @@ func (v *validator) cache(c Cache) {
 	v.nonNegative(seg("cache", "min_layer_for_breakpoint"), c.MinLayerForBreakpoint)
 	v.nonNegative(seg("cache", "compact_threshold_tokens"), c.CompactThresholdTokens)
 	v.nonNegative(seg("cache", "thread_soft_limit_tokens"), c.ThreadSoftLimitTokens)
+	if c.CompactionMode != "" && c.CompactionMode != "background" && c.CompactionMode != "blocking" {
+		v.err(seg("cache", "compaction_mode"), "must be \"background\" or \"blocking\", got %q", c.CompactionMode)
+	}
 	v.nonNegative(seg("cache", "hot_max_tokens"), c.HotMaxTokens)
 	v.nonNegative(seg("cache", "affinity_shards"), c.AffinityShards)
 }

@@ -294,6 +294,7 @@ Tuning of the prompt-cache engine. A `0` means "use the engine's default".
 | `min_layer_for_breakpoint` | integer | `1500` | yes | Do not place a cache breakpoint after a layer smaller than this many tokens. A `0` behaves like the default: a positive value is needed to change it. Single agents and every agent of a swarm |
 | `compact_threshold_tokens` | integer | `0` (60,000) | yes | Thread size at which compaction is forced whatever it costs |
 | `thread_soft_limit_tokens` | integer | `0` (20,000) | yes | Thread size at which the planner starts considering a compaction |
+| `compaction_mode` | string | `background` | yes | `background` overlaps an agent's compactor with its next request. `blocking` waits for compaction and considers its patch before that agent continues; other agents remain concurrent. Useful for endpoints whose independent request slots cannot share an active prefix. Restart to apply |
 | `hot_max_tokens` | integer | `0` (900) | swarm | Cap on the always-fresh "hot" view a worker sees (the manager's is 2,200 and is not configurable) |
 | `affinity_shards` | integer | `0` (one key) | swarm | Spread a large swarm over this many provider routing keys |
 

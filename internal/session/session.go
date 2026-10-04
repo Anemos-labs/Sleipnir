@@ -746,7 +746,8 @@ func (s *Session) build(ctx context.Context) error {
 				Guard: writeGuard{store: s.Ckpt}, Snap: s.Ckpt, Handles: handles, Perm: s.Perm,
 				Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Limits: limits,
 				Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
-				MaxSteps: orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
+				BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
+				MaxSteps:           orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
 				Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience),
 			})
 		}
@@ -810,7 +811,8 @@ func (s *Session) build(ctx context.Context) error {
 		Snap: s.Ckpt, Handles: handles,
 		Workdir: o.Cwd, Root: o.Root, Params: params, Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
-		OutagePatience: outagePatience(o.OutagePatience),
+		OutagePatience:     outagePatience(o.OutagePatience),
+		BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
 	}
 	if len(o.RoleModels) > 0 {
 		if err := s.checkRoleModels(o.RoleModels); err != nil {

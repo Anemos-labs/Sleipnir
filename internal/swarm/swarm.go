@@ -168,6 +168,8 @@ type Deps struct {
 	Params  core.Params
 	Effort  *provider.EffortSetting
 	Planner kv.Planner
+	// BlockingCompaction serializes each agent with its own automatic compactor.
+	BlockingCompaction bool
 	// KVPolicy tunes breakpoint placement for every agent (kv.Policy); zero is
 	// kv.DefaultPolicy, as for a solo agent.
 	KVPolicy kv.Policy
