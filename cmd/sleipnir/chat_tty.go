@@ -250,7 +250,7 @@ func chatInfo(s *session.Session, cwd string) app.ChatInfo {
 	info := app.ChatInfo{Version: version, Model: s.Model.ID, Cwd: tildePath(cwd), SessionID: s.ID, Swarm: s.Swarm != nil,
 		Budget: strings.TrimPrefix(budgetLabel(s), " · "), Update: updateNotice()}
 	if s.Swarm != nil {
-		info.Agents = s.Swarm.MaxAgents()
+		info.Workers = s.Swarm.MaxWorkers()
 	}
 	if a := s.Main(); s.Resumed() && a != nil {
 		info.Resumed = resumedLine(s, a)
@@ -579,7 +579,7 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
 		if f[0] == "/swarm" {
 			if len(f) < 2 {
-				fmt.Fprintln(out, "usage: /swarm <agents> [flags]: start again as a team of up to that many agents, the manager included, e.g. /swarm 8 --verify \"go test {dirs}\" --isolation worktree")
+				fmt.Fprintln(out, "usage: /swarm <workers> [flags]: start again as a manager and up to that many workers, e.g. /swarm 8 --verify \"go test {dirs}\" --isolation worktree")
 				return app.CommandResult{}, true
 			}
 			rest = "--swarm " + rest
@@ -633,7 +633,7 @@ var chatCommands = []chatCommand{
 	{"clear", "", "the same as /new"},
 	{"resume", "[id]", "continue an earlier session: the newest of this project, or one of the earlier ones listed as you type"},
 	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
-	{"swarm", "<n> [flags]", "start again as a team of n agents, the manager included: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
+	{"swarm", "<n> [flags]", "start again as a manager and n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
 	{"cwd", "", "the directory this session works in"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass | yolo"},

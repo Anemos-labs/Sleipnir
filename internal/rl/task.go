@@ -41,8 +41,8 @@ type RepoSpec struct {
 
 // Team says who works on the task.
 type Team struct {
-	Mode   string   `json:"mode"` // single | swarm
-	Agents int      `json:"agents,omitempty"`
+	Mode   string   `json:"mode"`             // single | swarm
+	Agents int      `json:"agents,omitempty"` // workers; the manager is not counted
 	Roles  []string `json:"roles,omitempty"`
 }
 

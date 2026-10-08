@@ -229,9 +229,9 @@ func TestValidate(t *testing.T) {
 		{
 			name: "swarm",
 			mutate: func(c *Config) {
-				c.Swarm = Swarm{MaxAgents: -1, RequestsPerMinute: -1, MaxConcurrentRequests: -1, Isolation: "vm", BudgetUSD: -0.01}
+				c.Swarm = Swarm{MaxWorkers: -1, RequestsPerMinute: -1, MaxConcurrentRequests: -1, Isolation: "vm", BudgetUSD: -0.01}
 			},
-			wantErr: []string{"swarm.budget_usd", "swarm.isolation", "swarm.max_agents", "swarm.max_concurrent_requests", "swarm.requests_per_minute"},
+			wantErr: []string{"swarm.budget_usd", "swarm.isolation", "swarm.max_concurrent_requests", "swarm.max_workers", "swarm.requests_per_minute"},
 		},
 		{
 			name:     "tools",
@@ -313,7 +313,7 @@ func validFull() *Config {
 	c.Permissions = Permissions{Mode: "accept-edits", Allow: []string{"Read", "Bash(go test:*)"}, Ask: []string{"Bash"}, Deny: []string{"Bash(rm:*)"},
 		Roles: map[string]RolePermissions{"reviewer": {Mode: "plan", Allow: []string{"Read"}}}}
 	c.Cache = Cache{SharedTTL: "1h", MinLayerForBreakpoint: 1500, CompactThresholdTokens: 60000, ThreadSoftLimitTokens: 20000, HotMaxTokens: 2000, AffinityShards: 4}
-	c.Swarm = Swarm{MaxAgents: 8, RequestsPerMinute: 120, MaxConcurrentRequests: 16, Isolation: "worktree", BudgetUSD: 25}
+	c.Swarm = Swarm{MaxWorkers: 8, RequestsPerMinute: 120, MaxConcurrentRequests: 16, Isolation: "worktree", BudgetUSD: 25}
 	c.Tools = Tools{MaxOutputChars: 24000, DefaultTimeoutSec: 120, MaxTimeoutSec: 600, WebAllowHosts: []string{"docs.example.com"}}
 	return c
 }

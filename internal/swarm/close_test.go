@@ -27,7 +27,7 @@ func archiveSomeTurns(t *testing.T, r *rvRig, id string, n int) {
 }
 
 func TestRetireClosesTheAgentAndReleasesItsArchiveIndex(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 4, MaxAgents: 10}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r := newRVRig(t, Config{MaxWriters: 4, MaxWorkers: 10}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	if _, err := r.sw.StartManager(); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRetireClosesTheAgentAndReleasesItsArchiveIndex(t *testing.T) {
 }
 
 func TestShutdownClosesEveryAgentAndReleasesTheirArchiveIndexes(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 4, MaxAgents: 10}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r := newRVRig(t, Config{MaxWriters: 4, MaxWorkers: 10}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	if _, err := r.sw.StartManager(); err != nil {
 		t.Fatal(err)
 	}

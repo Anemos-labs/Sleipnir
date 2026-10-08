@@ -92,8 +92,10 @@ type Options struct {
 	OutagePatience time.Duration
 
 	// Swarm runs a manager plus workers instead of a single agent.
-	Swarm      bool
-	MaxAgents  int
+	Swarm bool
+	// Workers is the most workers the manager may run (--swarm N), the manager not counted; 0 is
+	// swarm.max_workers, or the swarm's own default when that is unset too.
+	Workers    int
 	Roles      swarm.Roles
 	Verify     string // command the harness runs before a worker's task may leave "doing"
 	RoleModels map[string]string
@@ -526,17 +528,18 @@ func (s *Session) buildPerm() error {
 			}
 		}
 	}
+	// The manager does not edit files (it plans, delegates and reviews; in an isolated run
+	// anything it wrote into the shared checkout would also bypass the merge queue), so the
+	// engine holds it to plan mode as well as the swarm's own check.
+	if _, ok := roles["manager"]; !ok {
+		roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny}
+	}
 	var extra []string
 	if s.iso != nil {
 		// The session's worktrees are part of the workspace, and the project's relative
 		// rules hold inside each of them: writers work there, each confined to its own
-		// (swarm.bindTree). The manager does not edit files in an isolated run (anything
-		// it wrote into the shared checkout would bypass the merge queue), so the engine
-		// holds it to plan mode as well as the swarm's own check.
+		// (swarm.bindTree).
 		extra = []string{s.iso.dir}
-		if _, ok := roles["manager"]; !ok {
-			roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny}
-		}
 	}
 	if s.mailmanOn() {
 		// The mailman is read-only and its one tool is mail (the swarm holds it to that);
@@ -766,17 +769,17 @@ func (s *Session) build(ctx context.Context) error {
 	// tools array, byte for byte.
 	sc := swarm.DefaultConfig()
 	sc.SessionID = s.ID
-	// swarm.max_agents is the ceiling (checkSwarmSize refused a larger request); a
+	// swarm.max_workers is the ceiling (checkSwarmSize refused a larger request); a
 	// size asked for on the command line may only be smaller.
-	if v := s.cfg.Swarm.MaxAgents; v > 0 {
-		sc.MaxAgents = v
+	if v := s.cfg.Swarm.MaxWorkers; v > 0 {
+		sc.MaxWorkers = v
 	}
-	if o.MaxAgents > 0 {
-		sc.MaxAgents = o.MaxAgents
+	if o.Workers > 0 {
+		sc.MaxWorkers = o.Workers
 	}
 	// Allow every worker slot to hold a writer, using at least the library default
 	// of four. Task scopes and write leases enforce file-level coordination.
-	sc.MaxWriters = max(sc.MaxWriters, sc.MaxAgents-1)
+	sc.MaxWriters = max(sc.MaxWriters, sc.MaxWorkers)
 	if v := s.cfg.Swarm.RequestsPerMinute; v > 0 {
 		sc.RPM = v
 	}
@@ -899,16 +902,16 @@ func (s *Session) build(ctx context.Context) error {
 	return nil
 }
 
-// checkSwarmSize refuses a swarm larger than swarm.max_agents allows. The setting is
+// checkSwarmSize refuses a swarm larger than swarm.max_workers allows. The setting is
 // a ceiling that the user's file or the environment puts on every session; a request
-// for more (--swarm N asks for N agents, the manager included) would otherwise override it
+// for more (--swarm N asks for a manager and N workers) would otherwise override it
 // without a word.
 func checkSwarmSize(cfg *config.Config, o Options) error {
-	ceil := cfg.Swarm.MaxAgents
-	if !o.Swarm || ceil <= 0 || o.MaxAgents <= ceil {
+	ceil := cfg.Swarm.MaxWorkers
+	if !o.Swarm || ceil <= 0 || o.Workers <= ceil {
 		return nil
 	}
-	return fmt.Errorf("swarm: %d agents requested (the manager included) but swarm.max_agents caps a session at %d; raise swarm.max_agents or ask for fewer agents", o.MaxAgents, ceil)
+	return fmt.Errorf("swarm: %d workers requested (and the manager) but swarm.max_workers caps a session at %d workers; raise swarm.max_workers or ask for fewer workers", o.Workers, ceil)
 }
 
 // CompactorRole is the name under which models.roles and --role-model give the model that writes the

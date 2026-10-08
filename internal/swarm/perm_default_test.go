@@ -24,7 +24,8 @@ func TestSwarmWithoutARequesterDeniesEveryAgentEverything(t *testing.T) {
 		return rvReply{Text: "finished"}
 	}, func(d *Deps) { d.Perm = nil })
 	r.sw.deps.Registry.Register(rvFakeTool{name: "probe", ro: true, run: func(ctx context.Context, c *tools.Call) *tools.Result {
-		d := c.Env.Perm.Check(ctx, perm.Request{Agent: c.Env.Agent, Tool: "bash", Command: "rm -rf ~", Writes: true})
+		// The probe runs as the manager, whose own role already refuses writes: a read reaches the missing policy.
+		d := c.Env.Perm.Check(ctx, perm.Request{Agent: c.Env.Agent, Tool: "read", Paths: []string{"README.md"}})
 		mu.Lock()
 		decision, asked = d, true
 		mu.Unlock()

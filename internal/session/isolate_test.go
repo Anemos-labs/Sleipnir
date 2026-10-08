@@ -349,7 +349,7 @@ func isoOptions(t *testing.T, repo string, client *openaichat.Client, model cost
 	home := t.TempDir()
 	o := opts(t, repo, client, model)
 	o.Home, o.ID = home, id
-	o.Swarm, o.MaxAgents = true, 12
+	o.Swarm, o.Workers = true, 11
 	o.Verify = "sh verify.sh"
 	o.Isolation = "worktree"
 	return o

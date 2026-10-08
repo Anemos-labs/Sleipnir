@@ -5,7 +5,7 @@ import "time"
 // The bounds of a State. A session of any length holds at most this much: when a cap is reached the oldest finished entry is
 // evicted (agents, tasks, prefixes) or overwritten (the rings), and what could not be kept is counted in Stats.
 const (
-	// MaxAgents bounds the agents a State tracks. A swarm is 10 to 50 agents (swarm.max_agents defaults to 24); when the cap
+	// MaxAgents bounds the agents a State tracks. A swarm is 10 to 50 agents (a swarm runs at most 24 workers unless swarm.max_workers says otherwise); when the cap
 	// is reached the agent that has been idle, done or failed the longest makes room for a new one, and a new agent is
 	// dropped (Stats.Dropped) only when all MaxAgents are active.
 	MaxAgents = 256

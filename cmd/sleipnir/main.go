@@ -227,12 +227,12 @@ var extraCommands = map[string]func(context.Context, []string) error{}
 var ownsInterrupt = map[string]bool{}
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `sleipnir - a team of eight coding agents that share one prompt cache
+	fmt.Fprint(w, `sleipnir - a manager and eight workers that share one prompt cache
 
 Start:
   cd your-project && sleipnir
       The first run asks which provider to use (Heimdall is the recommended
-      one), takes its key and opens the chat: a manager and seven workers.
+      one), takes its key and opens the chat: a manager and eight workers.
       In the chat, ctrl+g shows the team's cockpit, ctrl+t the stats, /help
       the rest.
   sleipnir run "fix the failing test"
@@ -243,8 +243,8 @@ Usage:
 
 Every day:
   chat      interactive session: what "sleipnir" alone opens on a terminal
-  run       run a goal (one agent; --swarm N for a manager with workers)
-  swarm     shorthand for run --swarm: sleipnir swarm <agents> "<goal>"
+  run       run a goal (one agent; --swarm N for a manager and N workers)
+  swarm     shorthand for run --swarm: sleipnir swarm <workers> "<goal>"
   login     store a key, or sign in with your ChatGPT plan; logout removes it
   models    list models and prices from a marketplace catalogue
   sessions  list recorded sessions (sessions prune: delete the old ones)

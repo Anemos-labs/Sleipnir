@@ -105,7 +105,7 @@ func TestEveryJSONTagIsSnakeCase(t *testing.T) {
 func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 	want := map[string][]string{
 		"Cache":       {"instruction_max_tokens", "shared_ttl", "min_layer_for_breakpoint", "compact_threshold_tokens", "thread_soft_limit_tokens", "compaction_mode", "hot_max_tokens", "affinity_shards"},
-		"Swarm":       {"max_agents", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "budget_usd"},
+		"Swarm":       {"max_workers", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "budget_usd"},
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts"},
 		"Models":      {"default", "roles", "favorites"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles"},
@@ -137,11 +137,11 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 
 func TestUnmarshalOverlaysOnAndPreservesUnknownKeys(t *testing.T) {
 	cfg := Defaults()
-	err := json.Unmarshal([]byte(`{"cache": {"hot_max_tokens": 5}, "swarm": {"max_agents": 7}, "future_feature": {"a": [1, 2]}, "$schema": "s"}`), cfg)
+	err := json.Unmarshal([]byte(`{"cache": {"hot_max_tokens": 5}, "swarm": {"max_workers": 7}, "future_feature": {"a": [1, 2]}, "$schema": "s"}`), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Cache.HotMaxTokens != 5 || cfg.Swarm.MaxAgents != 7 {
+	if cfg.Cache.HotMaxTokens != 5 || cfg.Swarm.MaxWorkers != 7 {
 		t.Fatalf("cfg = %+v", cfg)
 	}
 	if cfg.Cache.SharedTTL != "5m" || cfg.Cache.MinLayerForBreakpoint != 1500 || cfg.Swarm.Isolation != "none" {
@@ -204,7 +204,7 @@ func TestTopLevelKeysAreCaseSensitive(t *testing.T) {
 
 func TestUnmarshalRejectsWrongTypes(t *testing.T) {
 	var cfg Config
-	if err := json.Unmarshal([]byte(`{"swarm": {"max_agents": "x"}}`), &cfg); err == nil {
+	if err := json.Unmarshal([]byte(`{"swarm": {"max_workers": "x"}}`), &cfg); err == nil {
 		t.Fatal("expected a type error")
 	}
 	if err := json.Unmarshal([]byte(`[1]`), &cfg); err == nil {

@@ -439,10 +439,22 @@ func TestShowHorseGait(t *testing.T) {
 	if !got[0].Busy || got[1].Busy || !got[2].Busy || got[3].Busy || got[0].Color != 3 || got[1].Color != 4 || got[5].Color != 5 || got[7].Color != 7 {
 		t.Errorf("legs: %+v (a thinking agent is not running a tool; a leg with no agent keeps the colour of its place)", got)
 	}
-	// more than eight agents share the legs round robin: the ninth is on leg 0, the tenth on leg 1
+	// more than eight workers share the legs round robin: the ninth is on leg 0, the tenth on leg 1
 	nine := make([]AgentRow, 10)
 	nine[8].State, nine[9].State = StateTool, StateDone
 	if got = dashLegs(nine); !got[0].Busy || got[1].Busy {
 		t.Errorf("the ninth agent runs a tool on leg 0 and the tenth is done on leg 1: %+v", got)
+	}
+	// the legs are the workers: the manager and the mailman are no leg, so eight workers fill the eight legs and a ninth wraps
+	team := []AgentRow{{Role: "manager", RoleColor: 0, State: StateTool}, {Role: "mailman", RoleColor: 6, State: StateEdit}}
+	for k := 0; k < 9; k++ {
+		team = append(team, AgentRow{Role: "backend", RoleColor: 1})
+	}
+	if got = dashLegs(team); got[0].Busy || got[0].Color != 1 || got[7].Color != 1 {
+		t.Errorf("the manager or the mailman took a leg: %+v", got)
+	}
+	team[10].State = StateTool
+	if got = dashLegs(team); !got[0].Busy || got[1].Busy {
+		t.Errorf("the ninth worker runs a tool on leg 0: %+v", got)
 	}
 }

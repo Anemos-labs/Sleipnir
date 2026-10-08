@@ -26,8 +26,10 @@ import (
 // Config sizes and tunes a swarm.
 type Config struct {
 	SessionID string
-	// MaxAgents bounds registered agents (running or idle).
-	MaxAgents int
+	// MaxWorkers bounds the registered workers (running or idle). The manager and
+	// the harness's own service agents (the mailman) are not workers and do not
+	// count against it.
+	MaxWorkers int
 	// MaxWriters limits admission of new or reassigned writers in a shared tree,
 	// counting running non-manager workers whose roles may modify files. Mail
 	// wakeups bypass admission but count in later checks. Read-only roles and
@@ -126,7 +128,7 @@ type Config struct {
 // DefaultConfig returns sane limits for a laptop-sized swarm.
 func DefaultConfig() Config {
 	return Config{
-		MaxAgents: 24, MaxWriters: 4, RPM: 500, MaxConcurrent: 24,
+		MaxWorkers: 24, MaxWriters: 4, RPM: 500, MaxConcurrent: 24,
 		Hot: DefaultHotConfig(), Router: DefaultRouterConfig(), LeaseTTL: 10 * time.Minute,
 		IdleRetire: 15 * time.Minute,
 		Board:      DefaultBoardLimits(), MaxAttempts: 3, VerifyTimeout: 15 * time.Minute, MaxVerifies: 2,
@@ -258,8 +260,8 @@ type Swarm struct {
 // New builds a swarm. Call Start before spawning.
 func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	def := DefaultConfig()
-	if cfg.MaxAgents == 0 {
-		cfg.MaxAgents = def.MaxAgents
+	if cfg.MaxWorkers == 0 {
+		cfg.MaxWorkers = def.MaxWorkers
 	}
 	if cfg.MaxWriters == 0 {
 		cfg.MaxWriters = def.MaxWriters
@@ -455,8 +457,8 @@ func (s *Swarm) roster() []string {
 // Roles returns the role table.
 func (s *Swarm) Roles() Roles { return s.roles }
 
-// MaxAgents is the most agents the swarm registers, the manager included.
-func (s *Swarm) MaxAgents() int { return s.cfg.MaxAgents }
+// MaxWorkers is the most workers the swarm registers; the manager and the service agents are not counted.
+func (s *Swarm) MaxWorkers() int { return s.cfg.MaxWorkers }
 
 // MaxWriters returns the writer admission limit for shared-tree spawns and reuse.
 func (s *Swarm) MaxWriters() int { return s.cfg.MaxWriters }
@@ -735,7 +737,7 @@ type roleRequester struct {
 	inner perm.Requester
 	role  Role
 	// denyWrites, when set, makes the agent read-only whatever its role says, and is
-	// what it is told: read-only roles, and the manager of an isolated run.
+	// what it is told: read-only roles, the mailman and the manager.
 	denyWrites string
 	// strictShell applies the fallback allowlist to shell commands even when the
 	// permission engine is there to enforce the role's profile: a second, stricter
@@ -746,9 +748,8 @@ type roleRequester struct {
 	only map[string]bool
 }
 
-// isolatedManagerMsg is what the manager of an isolated run is told when it tries to
-// change a file.
-const isolatedManagerMsg = "in an isolated run the manager does not edit files: spawn a worker for the change (the harness verifies and merges its work)"
+// managerWritesMsg is what the manager is told when it tries to change a file.
+const managerWritesMsg = "the manager does not edit files: spawn a worker for the change (or reuse an idle one with spawn agent=...), then review its work"
 
 // readOnlyShellHint is added to a shell command's refusal: "the manager does not edit files" alone told a
 // manager that had only chained two reads with && (a real one, on its first action) that reading was
@@ -761,7 +762,12 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 		return perm.Decision{Allow: false, Reason: r.denyWrites}
 	}
 	if r.denyWrites != "" {
-		_, engine := r.inner.(*perm.Engine)
+		e, engine := r.inner.(*perm.Engine)
+		if engine && e.Mode() == perm.ModePlan {
+			// The session is planning: nothing is changed now, by anyone, and the engine's own refusal says so.
+			// The role's reason would send a manager off to spawn a worker for the change.
+			return r.inner.Check(ctx, req)
+		}
 		switch {
 		case req.Tool == "bash" && engine && !r.strictShell:
 			// The permission engine parses shell syntax and enforces the role's

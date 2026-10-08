@@ -85,7 +85,7 @@ func TestCommandExitStatus(t *testing.T) {
 		{"an unknown flag of init", []string{"init", "--bogus"}, 2, nil, []string{"flag provided but not defined: -bogus"}},
 		{"a malformed value of a flag", []string{"run", "--max-steps", "many", "x"}, 2, nil, []string{"invalid value", "max-steps"}},
 		{"run with no goal", []string{"run"}, 1, nil, []string{"sleipnir: run: a prompt is required"}},
-		{"swarm with a bad count", []string{"swarm", "many", "goal"}, 1, nil, []string{"the first argument is the number of agents"}},
+		{"swarm with a bad count", []string{"swarm", "many", "goal"}, 1, nil, []string{"the first argument is the number of workers"}},
 		{"doctor of an endpoint without a model", []string{"doctor", "--base-url", "http://127.0.0.1:1/v1"}, 1, nil, []string{"--model is required with --base-url"}},
 		{"doctor without an endpoint", []string{"doctor", "--model", "m", "--provider", "custom"}, 1, nil, []string{`provider "custom" needs --base-url`}},
 		{"init --local-url without --user", []string{"init", "--local-url", "http://127.0.0.1:1/v1"}, 1, nil, []string{"--local-url goes with --user"}},
@@ -121,7 +121,7 @@ func TestInit(t *testing.T) {
 			Models      struct{ Default string }
 			Permissions struct{ Deny []string }
 			Swarm       struct {
-				MaxAgents int `json:"max_agents"`
+				MaxWorkers int `json:"max_workers"`
 			}
 		}
 		b, err := os.ReadFile(filepath.Join(w.project, ".sleipnir", "config.json"))
@@ -129,7 +129,7 @@ func TestInit(t *testing.T) {
 			t.Fatal(err)
 		}
 		decode(t, "config.json", string(b), &cfg)
-		if cfg.Models.Default != "heimdall/vendor/model" || len(cfg.Permissions.Deny) != 2 || cfg.Swarm.MaxAgents != 12 {
+		if cfg.Models.Default != "heimdall/vendor/model" || len(cfg.Permissions.Deny) != 2 || cfg.Swarm.MaxWorkers != 12 {
 			t.Errorf("config.json: %s", b)
 		}
 		if _, err := os.Stat(filepath.Join(w.project, "AGENTS.md")); err != nil {
@@ -208,8 +208,9 @@ func TestConfig(t *testing.T) {
 		name, body string
 		want       []string
 	}{
-		{"a wrong type", `{"swarm": {"max_agents": "lots"}}`, []string{"config.json:1:", "swarm.max_agents", "expected an integer"}},
-		{"a syntax error", "{\n  \"swarm\": {\n    \"max_agents\": 3,,\n  }\n}\n", []string{"config.json:3:"}},
+		{"a wrong type", `{"swarm": {"max_workers": "lots"}}`, []string{"config.json:1:", "swarm.max_workers", "expected an integer"}},
+		{"a syntax error", "{\n  \"swarm\": {\n    \"max_workers\": 3,,\n  }\n}\n", []string{"config.json:3:"}},
+		{"the old name of the worker ceiling", `{"swarm": {"max_agents": 9}}`, []string{"config.json:1:", "swarm.max_agents: renamed to swarm.max_workers", `"max_workers": 8`}},
 		// Not "allow": the keys a project may not set without trust are dropped before they are
 		// read, so a typo in one is not reported.
 		{"a rule that does not parse", `{"permissions": {"deny": ["Bash(git status"]}}`, []string{"permissions.deny[0]", "missing closing parenthesis"}},

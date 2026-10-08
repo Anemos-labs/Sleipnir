@@ -82,14 +82,19 @@ func dashPick(agents []AgentRow, k int) []int {
 	return idx
 }
 
-// dashLegs are the eight legs of the horse: leg k is the agent k, and with more than eight agents they share the legs round
-// robin, a leg being busy while any of its agents runs a tool or edits.
+// dashLegs are the eight legs of the horse, and the legs are the workers: leg k is the worker k, and with more than eight
+// workers they share the legs round robin, a leg being busy while any of its workers runs a tool or edits. The manager rides
+// (it is in the fan of riders) and the mailman carries mail: neither is a leg.
 func dashLegs(agents []AgentRow) []Leg {
 	legs := make([]Leg, 8)
 	for k := range legs {
 		legs[k].Color = k
 	}
-	for i, a := range agents {
+	i := 0
+	for _, a := range agents {
+		if a.Role == "manager" || a.Role == "mailman" {
+			continue
+		}
 		l := &legs[i%8]
 		if i < 8 {
 			l.Color = a.RoleColor
@@ -97,6 +102,7 @@ func dashLegs(agents []AgentRow) []Leg {
 		if s := a.State.valid(); s == StateTool || s == StateEdit {
 			l.Busy = true
 		}
+		i++
 	}
 	return legs
 }

@@ -107,7 +107,7 @@ func TestChatAgentsPageShowsTheTeamAndASingleAgentHasNone(t *testing.T) {
 		t.Errorf("a single agent has no agents page:\n%s", solo.visible())
 	}
 	solo.press(input.RuneKey('g', input.Ctrl))
-	solo.shows("a single agent: /swarm 8 starts a team of eight")
+	solo.shows("a single agent: /swarm 8 starts a manager and eight workers")
 
 	r := startChat(t, rigOpts{cols: 100, rows: 30, team: 8})
 	if !strings.Contains(r.visible(), "ctrl+t stats") || !strings.Contains(r.visible(), "ctrl+g cockpit") {

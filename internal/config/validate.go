@@ -295,7 +295,7 @@ func (v *validator) cache(c Cache) {
 
 // swarm validates concurrency limits, isolation mode, and a finite nonnegative dollar budget.
 func (v *validator) swarm(s Swarm) {
-	v.nonNegative(seg("swarm", "max_agents"), s.MaxAgents)
+	v.nonNegative(seg("swarm", "max_workers"), s.MaxWorkers)
 	v.nonNegative(seg("swarm", "requests_per_minute"), s.RequestsPerMinute)
 	v.nonNegative(seg("swarm", "max_concurrent_requests"), s.MaxConcurrentRequests)
 	if s.Isolation != "" && !slices.Contains(isolations, s.Isolation) {

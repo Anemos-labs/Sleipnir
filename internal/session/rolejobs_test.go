@@ -18,7 +18,7 @@ func TestReadOnlyRolesAreDeniedTheJobToolsByName(t *testing.T) {
 	client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
 	o := opts(t, repo, client, model)
 	o.Mode = perm.ModeDefault
-	o.Swarm, o.MaxAgents = true, 5
+	o.Swarm, o.Workers = true, 4
 	s, err := session.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)

@@ -49,7 +49,7 @@ func FuzzParseJSONC(f *testing.F) {
 // valid configuration, never a panic.
 func FuzzLoadFile(f *testing.F) {
 	for _, seed := range []string{
-		`{}`, `{"cache": {"prewarm": false}}`, `{"providers": {"a": {"dialect": "x"}}}`, `{"swarm": {"max_agents": "x"}}`,
+		`{}`, `{"cache": {"prewarm": false}}`, `{"providers": {"a": {"dialect": "x"}}}`, `{"swarm": {"max_workers": "x"}}`,
 		`{"hooks": {"a": null}, "mcp": {"b": {"c": [1,2]}}}`, `{"models": {"roles": {"a": "b/c"}}}`, `[]`, `null`, `"str"`,
 		`{"permissions": {"allow": ["Bash(", "Read", ""]}}`, `{"$schema": 1, "zzz": {"a": [null]}}`,
 	} {

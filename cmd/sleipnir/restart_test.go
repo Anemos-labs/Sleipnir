@@ -66,7 +66,7 @@ func TestProgramCommandsAnswerWithoutASession(t *testing.T) {
 		t.Errorf("/anim maybe: %+v %q", res, out.String())
 	}
 	out.Reset()
-	if res, _ = h.programCommand("/swarm", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /swarm <agents>") {
+	if res, _ = h.programCommand("/swarm", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /swarm <workers>") {
 		t.Errorf("/swarm alone: %+v %q", res, out.String())
 	}
 	if _, ok := h.programCommand("/cost", &out); ok {
@@ -146,7 +146,7 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 		t.Errorf("usage: %+v %q", res, out.String())
 	}
 	swarm := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) {
-		o.Swarm, o.MaxAgents = true, 3
+		o.Swarm, o.Workers = true, 3
 	}, nil)}
 	out.Reset()
 	swarm.programCommand("/roles", &out)
@@ -159,11 +159,11 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 		t.Errorf("changing a worker's model restarts with the flag: %v", res.Restart)
 	}
 	if !contains(res.Restart, "--swarm") || !contains(res.Restart, "3") {
-		t.Errorf("a team stays a team (--swarm 3, three agents in all) after a role change: %v", res.Restart)
+		t.Errorf("a team stays a team (--swarm 3, a manager and three workers) after a role change: %v", res.Restart)
 	}
 	// the role named on the line beats the one the session started with
 	named := chatSessionWith(t, false, nil, func(o *session.Options) {
-		o.Swarm, o.MaxAgents = true, 3
+		o.Swarm, o.Workers = true, 3
 		o.RoleModels = map[string]string{"backend": "together/a", "scout": "together/b"}
 	}, nil)
 	args, _ := restartArgs(named, []string{"--role-model", "backend=together/c"}, false)
@@ -172,21 +172,21 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 	}
 }
 
-// On a terminal the chat is a team of eight agents, the manager included unless --swarm says otherwise; the person's own ceiling (swarm.max_agents) is
+// On a terminal the chat is a manager and eight workers unless --swarm says otherwise; the person's own ceiling (swarm.max_workers) is
 // kept, and a single agent that restarts stays a single agent.
 func TestDefaultTeamAndASoloRestartStaysSolo(t *testing.T) {
 	_, home := projectDir(t)
 	if n := defaultTeam(); n != 8 {
-		t.Errorf("default team = %d agents, want 8", n)
+		t.Errorf("default team = %d workers, want 8 (and the manager)", n)
 	}
 	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "config.json"), []byte(`{"swarm":{"max_agents":4}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "config.json"), []byte(`{"swarm":{"max_workers":4}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if n := defaultTeam(); n != 4 {
-		t.Errorf("under a ceiling of 4 agents the team is 4 agents, got %d", n)
+		t.Errorf("under a ceiling of 4 workers the team is a manager and 4 workers, got %d workers", n)
 	}
 	args, _ := restartArgs(chatSession(t, false, nil), nil, true)
 	if !slices.Contains(args, "--swarm") || args[slices.Index(args, "--swarm")+1] != "0" {
@@ -199,7 +199,7 @@ func TestModelOfThePlanNeedsASignInBeforeTheChatEnds(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	t.Setenv("TOGETHER_API_KEY", "k")
-	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.MaxAgents = true, 4 }, nil)}
+	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.Workers = true, 3 }, nil)}
 	var out strings.Builder
 	res, ok := team.programCommand("/model chatgpt/some-model", &out)
 	if !ok || res.Restart != nil || !strings.Contains(out.String(), "/login chatgpt") {
@@ -213,7 +213,7 @@ func TestModelInATeamStartsItAgainOnTheNewModel(t *testing.T) {
 	t.Setenv("TOGETHER_API_KEY", "k")
 	t.Setenv("GROQ_API_KEY", "") // no key: a model of Groq cannot be used
 	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) {
-		o.Swarm, o.MaxAgents = true, 4
+		o.Swarm, o.Workers = true, 3
 		o.RoleModels = map[string]string{"scout": "together/small"}
 	}, nil)}
 	var out strings.Builder
@@ -268,7 +268,7 @@ func TestLoginInTheChatLeavesItToSignInAndComesBack(t *testing.T) {
 			t.Errorf("%s: restart %v, first %v, said %q (want %q)", line, res.Restart, solo.first, out.String(), want)
 		}
 	}
-	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.MaxAgents = true, 4 }, nil)}
+	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.Workers = true, 3 }, nil)}
 	out = strings.Builder{}
 	if res, ok = team.programCommand("/login", &out); !ok || !contains(res.Restart, "--swarm") || contains(res.Restart, "--resume") || !strings.Contains(out.String(), "comes back where you were") {
 		t.Errorf("a team comes back as a team (with nothing to resume yet: it has not finished a turn): %v\n%s", res.Restart, out.String())

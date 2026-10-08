@@ -37,9 +37,10 @@ servers are supported too. See [Providers](docs/PROVIDERS.md).
 
 ## Work
 
-Type a task in chat. The default team has capacity for one manager and seven
-workers; workers start when the manager needs them. Use `sleipnir --swarm 0`
-for a single agent.
+Type a task in chat. The default team is one manager and up to eight workers;
+workers start when the manager needs them. The manager plans, delegates and
+reviews, and edits no file itself. `--swarm N` sets the number of workers, and
+`sleipnir --swarm 0` is a single agent.
 
 For work that needs several passes, enter:
 
@@ -64,7 +65,7 @@ Headless commands:
 
 ```sh
 sleipnir run "fix the failing test"
-sleipnir swarm 4 "implement the API and client" --verify "go test {dirs}"
+sleipnir swarm 3 "implement the API and client" --verify "go test {dirs}"
 sleipnir --continue
 ```
 

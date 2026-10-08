@@ -18,7 +18,7 @@ func TestEnvVarsDocumentTheMapping(t *testing.T) {
 		"SLEIPNIR_PERMISSION_MODE":       {Path: "permissions.mode", Type: "string"},
 		"SLEIPNIR_CACHE_SHARED_TTL":      {Path: "cache.shared_ttl", Type: "string"},
 		"SLEIPNIR_SWARM_MAILMAN":         {Path: "swarm.mailman", Type: "bool"},
-		"SLEIPNIR_SWARM_MAX_AGENTS":      {Path: "swarm.max_agents", Type: "integer"},
+		"SLEIPNIR_SWARM_MAX_WORKERS":     {Path: "swarm.max_workers", Type: "integer"},
 		"SLEIPNIR_SWARM_BUDGET_USD":      {Path: "swarm.budget_usd", Type: "number"},
 		"SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS": {Path: "tools.web_allow_hosts", Type: "list"},
 		"SLEIPNIR_PERMISSIONS_ALLOW":     {Path: "permissions.allow", Type: "list"},
@@ -53,7 +53,7 @@ func TestEnvironmentSetsEveryKindOfValue(t *testing.T) {
 		"SLEIPNIR_PERMISSION_MODE=plan",
 		"SLEIPNIR_CACHE_SHARED_TTL=1h",
 		"SLEIPNIR_CACHE_HOT_MAX_TOKENS=1234",
-		"SLEIPNIR_SWARM_MAX_AGENTS=12",
+		"SLEIPNIR_SWARM_MAX_WORKERS=12",
 		"SLEIPNIR_SWARM_BUDGET_USD=7.25",
 		"SLEIPNIR_SWARM_ISOLATION=worktree",
 		"SLEIPNIR_SWARM_MAILMAN=YES",
@@ -69,7 +69,7 @@ func TestEnvironmentSetsEveryKindOfValue(t *testing.T) {
 	if cfg.Cache.SharedTTL != "1h" || cfg.Cache.HotMaxTokens != 1234 {
 		t.Errorf("cache: %+v", cfg.Cache)
 	}
-	if cfg.Swarm.MaxAgents != 12 || cfg.Swarm.BudgetUSD != 7.25 || cfg.Swarm.Isolation != "worktree" || !cfg.Swarm.Mailman {
+	if cfg.Swarm.MaxWorkers != 12 || cfg.Swarm.BudgetUSD != 7.25 || cfg.Swarm.Isolation != "worktree" || !cfg.Swarm.Mailman {
 		t.Errorf("swarm: %+v", cfg.Swarm)
 	}
 	if !reflect.DeepEqual(cfg.Tools.WebAllowHosts, []string{"a.example.com", "b.example.com", "c.example.com"}) || !cfg.Tools.WebAllowPrivate {
@@ -81,7 +81,7 @@ func TestEnvironmentSetsEveryKindOfValue(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Models.Roles, map[string]string{"planner": "anthropic/opus", "code_reviewer": "openrouter/x/y"}) {
 		t.Errorf("roles: %v", cfg.Models.Roles)
 	}
-	if rep.Origins["swarm.max_agents"] != "env:SLEIPNIR_SWARM_MAX_AGENTS" || rep.Origins["models.roles.code_reviewer"] != "env:SLEIPNIR_MODEL_CODE_REVIEWER" {
+	if rep.Origins["swarm.max_workers"] != "env:SLEIPNIR_SWARM_MAX_WORKERS" || rep.Origins["models.roles.code_reviewer"] != "env:SLEIPNIR_MODEL_CODE_REVIEWER" {
 		t.Errorf("origins: %v", rep.Origins)
 	}
 	envInfo := LayerInfo{}
@@ -133,10 +133,10 @@ func TestEnvironmentBoolSpellings(t *testing.T) {
 
 func TestEnvironmentEmptyValuesAreUnsetAndOtherVariablesAreIgnored(t *testing.T) {
 	p := newProj(t)
-	p.user(`{"models": {"default": "file/model"}, "swarm": {"max_agents": 3}}`)
+	p.user(`{"models": {"default": "file/model"}, "swarm": {"max_workers": 3}}`)
 	cfg, rep := p.mustLoad(withEnv(
 		"SLEIPNIR_MODEL=", // empty: does not blank the file's value
-		"SLEIPNIR_SWARM_MAX_AGENTS=  ",
+		"SLEIPNIR_SWARM_MAX_WORKERS=  ",
 		"SLEIPNIR_HOME=/somewhere", // not a setting; the harness may use it for other things
 		"SLEIPNIR_DEBUG=1",
 		"SLEIPNIR_NOPE_NOTHING=x",
@@ -146,7 +146,7 @@ func TestEnvironmentEmptyValuesAreUnsetAndOtherVariablesAreIgnored(t *testing.T)
 		"SLEIPNIR_MODEL_EMPTYROLE=",
 		"garbage without equals",
 	))
-	if cfg.Models.Default != "file/model" || cfg.Swarm.MaxAgents != 3 {
+	if cfg.Models.Default != "file/model" || cfg.Swarm.MaxWorkers != 3 {
 		t.Fatalf("cfg = %+v %+v", cfg.Models, cfg.Swarm)
 	}
 	if len(cfg.Models.Roles) != 0 {
@@ -164,8 +164,8 @@ func TestEnvironmentEmptyValuesAreUnsetAndOtherVariablesAreIgnored(t *testing.T)
 
 func TestEnvironmentValuesAreTrimmed(t *testing.T) {
 	p := newProj(t)
-	cfg, _ := p.mustLoad(withEnv("SLEIPNIR_MODEL=  a/b\n", "SLEIPNIR_SWARM_MAX_AGENTS= 4 "))
-	if cfg.Models.Default != "a/b" || cfg.Swarm.MaxAgents != 4 {
+	cfg, _ := p.mustLoad(withEnv("SLEIPNIR_MODEL=  a/b\n", "SLEIPNIR_SWARM_MAX_WORKERS= 4 "))
+	if cfg.Models.Default != "a/b" || cfg.Swarm.MaxWorkers != 4 {
 		t.Fatalf("cfg = %+v %+v", cfg.Models, cfg.Swarm)
 	}
 }
@@ -181,21 +181,21 @@ func TestEnvironmentOrderDoesNotMatter(t *testing.T) {
 
 func TestEnvironmentBeatsFilesAndLosesToOverrides(t *testing.T) {
 	p := newProj(t)
-	p.local(`{"swarm": {"max_agents": 1}}`)
-	cfg, _ := p.mustLoad(withEnv("SLEIPNIR_SWARM_MAX_AGENTS=2"))
-	if cfg.Swarm.MaxAgents != 2 {
-		t.Fatalf("env should beat the local file: %d", cfg.Swarm.MaxAgents)
+	p.local(`{"swarm": {"max_workers": 1}}`)
+	cfg, _ := p.mustLoad(withEnv("SLEIPNIR_SWARM_MAX_WORKERS=2"))
+	if cfg.Swarm.MaxWorkers != 2 {
+		t.Fatalf("env should beat the local file: %d", cfg.Swarm.MaxWorkers)
 	}
-	cfg, _ = p.mustLoad(withEnv("SLEIPNIR_SWARM_MAX_AGENTS=2"), withOverrides(map[string]any{"swarm": map[string]any{"max_agents": 0}}))
-	if cfg.Swarm.MaxAgents != 0 {
-		t.Fatalf("an explicit override of 0 must beat env: %d", cfg.Swarm.MaxAgents)
+	cfg, _ = p.mustLoad(withEnv("SLEIPNIR_SWARM_MAX_WORKERS=2"), withOverrides(map[string]any{"swarm": map[string]any{"max_workers": 0}}))
+	if cfg.Swarm.MaxWorkers != 0 {
+		t.Fatalf("an explicit override of 0 must beat env: %d", cfg.Swarm.MaxWorkers)
 	}
 }
 
 func TestEnvironmentValueErrorsDoNotEchoLongValues(t *testing.T) {
 	p := newProj(t)
 	long := strings.Repeat("x", 500)
-	_, _, err := p.load(withEnv("SLEIPNIR_SWARM_MAX_AGENTS=" + long))
+	_, _, err := p.load(withEnv("SLEIPNIR_SWARM_MAX_WORKERS=" + long))
 	if err == nil {
 		t.Fatal("expected an error")
 	}

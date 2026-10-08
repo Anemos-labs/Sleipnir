@@ -28,8 +28,8 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 	if !s.isolated() {
 		return fmt.Errorf("worker recovery requires worktree isolation")
 	}
-	if len(workers)+1 > s.cfg.MaxAgents {
-		return fmt.Errorf("this team needs %d agent slots to recover its workers; resume with --swarm %d", len(workers)+1, len(workers)+1)
+	if len(workers) > s.cfg.MaxWorkers {
+		return fmt.Errorf("this team needs %d worker slots to recover its workers; resume with --swarm %d", len(workers), len(workers))
 	}
 	for _, w := range workers {
 		r, ok := s.roles[w.Role]

@@ -131,7 +131,7 @@ func TestMailmanSessionDigestsWorkerMailForTheManager(t *testing.T) {
 	})
 	yes := true
 	o := opts(t, repo, client, model)
-	o.Swarm, o.MaxAgents, o.Mailman = true, 8, &yes
+	o.Swarm, o.Workers, o.Mailman = true, 7, &yes
 	sink := &notices{}
 	o.Sink = sink
 	o.NewSink = func(string) agent.Sink { return sink }

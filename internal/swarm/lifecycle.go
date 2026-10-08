@@ -164,10 +164,10 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		rr.only = map[string]bool{"mail": true}
 	case r.ReadOnly:
 		rr.denyWrites = fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.Name)
-	case isMgr && s.isolated():
-		// Anything the manager wrote into the shared checkout of an isolated run would
-		// bypass the merge queue: it spawns a worker for changes instead.
-		rr.denyWrites, rr.strictShell = isolatedManagerMsg, true
+	case isMgr:
+		// The manager plans, delegates and reviews; workers make every change. In an
+		// isolated run a write of its own would also bypass the merge queue.
+		rr.denyWrites, rr.strictShell = managerWritesMsg, true
 	}
 	requester = rr
 	sink := agent.Sink(agent.NopSink{})

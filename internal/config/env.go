@@ -18,7 +18,7 @@ import (
 //	SLEIPNIR_PERMISSION_MODE    permissions.mode
 //	SLEIPNIR_<SECTION>_<FIELD>  any scalar or list field of a section, named by
 //	                            its JSON path in upper case: SLEIPNIR_CACHE_SHARED_TTL,
-//	                            SLEIPNIR_SWARM_MAX_AGENTS, SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS, ...
+//	                            SLEIPNIR_SWARM_MAX_WORKERS, SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS, ...
 //
 // Booleans accept 1/true/yes/on and 0/false/no/off; lists are comma-separated;
 // an empty value is treated as unset. Other SLEIPNIR_* variables are ignored
@@ -148,6 +148,11 @@ func envLayers(environ []string) ([]*layer, []Issue) {
 			continue
 		}
 		add(b.name, b.segs, v)
+	}
+	for _, r := range renamedSettings {
+		if raw, ok := vals[envName(r.from)]; ok && strings.TrimSpace(raw) != "" {
+			bad(envName(r.from), r.from, "%s", r.envMessage(raw))
+		}
 	}
 	for _, name := range sortedKeys(vals) {
 		if known[name] || !strings.HasPrefix(name, envRolePrefix) || strings.TrimSpace(vals[name]) == "" {

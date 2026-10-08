@@ -33,7 +33,7 @@ func TestTrustShowsWhatTheProjectHasAndRemembersItUntilItChanges(t *testing.T) {
 	assertRun(t, r, 0, []string{"nothing here that trust would unlock"}, nil)
 
 	writeProjectFile(t, w, "AGENTS.md", e2eInstruction+"\n")
-	writeProjectFile(t, w, ".sleipnir/config.json", `{"swarm":{"max_agents":3}}`+"\n")
+	writeProjectFile(t, w, ".sleipnir/config.json", `{"swarm":{"max_workers":3}}`+"\n")
 	writeProjectFile(t, w, ".claude/skills/review/SKILL.md", "---\nname: review\ndescription: review a change\n---\nLook.\n")
 
 	r = w.run("", "trust")

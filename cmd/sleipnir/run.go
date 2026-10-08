@@ -32,14 +32,14 @@ func init() {
 	extraCommands["recon"] = cmdRecon
 }
 
-// cmdSwarm is `run --swarm N`: the first argument is the number of agents in all, the manager included.
+// cmdSwarm is `run --swarm N`: the first argument is the number of workers; the manager comes on top.
 func cmdSwarm(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "-help" || args[0] == "--help" || args[0] == "help" {
 		return runCommand(ctx, "swarm", []string{"-h"}) // the flags of run, under swarm's own heading
 	}
 	n, err := strconv.Atoi(args[0])
-	if err != nil || n < 2 {
-		return fmt.Errorf("swarm: the first argument is the number of agents, the manager included (2 or more), got %q; for example: sleipnir swarm 8 \"add a login page\" --verify \"go test ./...\"", args[0])
+	if err != nil || n < 1 {
+		return fmt.Errorf("swarm: the first argument is the number of workers, the manager not counted (1 or more), got %q; for example: sleipnir swarm 8 \"add a login page\" --verify \"go test ./...\"", args[0])
 	}
 	return runCommand(ctx, "swarm", append([]string{"--swarm", args[0]}, args[1:]...))
 }
@@ -71,7 +71,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider (default: config models.default)")
 	cwd := fs.String("cwd", "", "working directory (default: current)")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo (default: config, then default)")
-	swarmN := fs.Int("swarm", 0, "run a team of N agents in all, the manager included, instead of a single agent (config swarm.max_agents is the ceiling)")
+	swarmN := fs.Int("swarm", 0, "run a manager and N workers instead of a single agent (config swarm.max_workers is the ceiling)")
 	maxSteps := fs.Int("max-steps", 0, "step limit for a single agent (default 200)")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
@@ -94,7 +94,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {
 		if name == "swarm" {
-			printHelp(os.Stderr, "usage: sleipnir swarm <agents> [flags] <prompt | ->\n\nRuns one goal with a team of up to <agents> agents, the manager included (the same as run --swarm <agents>).\nThe prompt may be '-' to read stdin.\n\nflags:\n")
+			printHelp(os.Stderr, "usage: sleipnir swarm <workers> [flags] <prompt | ->\n\nRuns one goal with a team: a manager and up to <workers> workers (the same as run --swarm <workers>).\nThe prompt may be '-' to read stdin.\n\nflags:\n")
 		} else {
 			printHelp(os.Stderr, "usage: sleipnir run [flags] <prompt | ->\n\nRuns one goal through the harness. The prompt may be '-' to read stdin.\n\nflags:\n")
 		}
@@ -127,9 +127,10 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		return fmt.Errorf("%s: --ask-timeout must not be negative", name)
 	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
+	team, workers := teamOf(*swarmN)
 	o := session.Options{
 		AskTimeout: *askTimeout,
-		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 1, MaxAgents: *swarmN,
+		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
 		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),

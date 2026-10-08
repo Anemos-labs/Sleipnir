@@ -82,8 +82,9 @@ type ChatInfo struct {
 	Swarm bool
 	// Update is one line that says a newer release is out (and how to get it), or "": the banner shows it, dim, and nothing waits for it.
 	Update string
-	// Agents is the size of the team, the manager included, when the session is one (0 for a single agent): the banner says it.
-	Agents int
+	// Workers is the number of workers of the team, the manager not counted, when the session is one (0 for a single agent): the
+	// banner says it.
+	Workers int
 }
 
 // ChatAttach is the session, once it is made: the host, what to say about it, the log to follow and the commands to complete. A

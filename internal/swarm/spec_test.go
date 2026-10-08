@@ -769,7 +769,7 @@ func TestGovernorAdmitHookRefusesAndRateLimitEventsAreOncePerEpisode(t *testing.
 func TestConfigDefaults(t *testing.T) {
 	s := New(Config{}, Deps{}, nil)
 	c := s.cfg
-	if c.MaxAgents != 24 || c.MaxWriters != 4 || c.MaxAttempts != 3 || c.InboxSoftCap != 12 || c.VerifyTimeout != 15*time.Minute || c.StuckAfter != 10*time.Minute ||
+	if c.MaxWorkers != 24 || c.MaxWriters != 4 || c.MaxAttempts != 3 || c.InboxSoftCap != 12 || c.VerifyTimeout != 15*time.Minute || c.StuckAfter != 10*time.Minute ||
 		c.ShutdownGrace != 10*time.Second || c.MaxVerifies != 2 || c.SuperviseEvery != time.Second {
 		t.Fatalf("defaults: %+v", c)
 	}

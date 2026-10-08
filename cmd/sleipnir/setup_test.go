@@ -130,7 +130,7 @@ func TestInitProjectWritesOnlyShareableSettings(t *testing.T) {
 			t.Errorf("the project config must not carry %s (ignored unless trusted, and the detected model depends on whose keys are set): %v", strings.Join(path, "."), v)
 		}
 	}
-	if sub(cfg, "permissions", "deny") == nil || sub(cfg, "swarm", "max_agents") == nil {
+	if sub(cfg, "permissions", "deny") == nil || sub(cfg, "swarm", "max_workers") == nil {
 		t.Errorf("shareable settings missing: %v", cfg)
 	}
 	if _, err := os.Stat(filepath.Join(proj, "AGENTS.md")); err != nil {

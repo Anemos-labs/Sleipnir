@@ -82,7 +82,7 @@ func TestSessionStartRecordsThePricesEveryModelWasDescribedWith(t *testing.T) {
 	o := session.Options{
 		Cwd: repo, Root: repo, Home: t.TempDir(), Dir: t.TempDir(), Config: cfg,
 		Model: "gw/acme/main", Mode: perm.ModeBypass, NoWeb: true, TrustProject: true,
-		Swarm: true, MaxAgents: 3, RoleModels: map[string]string{"reviewer": "other/acme/small"},
+		Swarm: true, Workers: 2, RoleModels: map[string]string{"reviewer": "other/acme/small"},
 	}
 	s, err := session.New(context.Background(), o)
 	if err != nil {

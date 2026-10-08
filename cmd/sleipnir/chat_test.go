@@ -104,8 +104,8 @@ func TestSlashHelpListsCustomCommands(t *testing.T) {
 // chat is the interactive command: its swarm is not held to its board and finished
 // work wakes the manager (session.Options.Interactive). run and swarm are batch runs.
 func TestChatSessionsAreInteractive(t *testing.T) {
-	o := chatOptions(session.Options{Swarm: true, MaxAgents: 5})
-	if !o.Interactive || !o.Swarm || o.MaxAgents != 5 {
+	o := chatOptions(session.Options{Swarm: true, Workers: 5})
+	if !o.Interactive || !o.Swarm || o.Workers != 5 {
 		t.Fatalf("chatOptions = %+v", o)
 	}
 	if (session.Options{}).Interactive {

@@ -24,8 +24,12 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	if m := clean(info.Model); m != "" {
 		model = "  " + m
 	}
-	if info.Agents > 1 {
-		team = "  " + k.g.dot + " team of " + strconv.Itoa(info.Agents)
+	if info.Workers > 0 {
+		workers := strconv.Itoa(info.Workers) + " workers"
+		team = "  " + k.g.dot + " manager + " + workers
+		if cell.StringWidth(brand+model+team) > width {
+			team = "  " + k.g.dot + " " + workers // a narrow screen keeps the number, which is what the team is
+		}
 	}
 	if b := clean(info.Budget); b != "" {
 		budget = "  " + k.g.dot + " " + b
@@ -61,8 +65,8 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	}
 	help := "Message Sleipnir, / for commands, @ for files. Esc interrupts a turn; Ctrl-C twice at the prompt, Ctrl-D or /exit quits."
 	out = append(out, paragraph(k.st.dim, help, width)...)
-	if info.Agents > 1 && info.Resumed == "" {
-		out = append(out, paragraph(k.st.dim, "The manager plans and hands parts to workers that write in parallel; a small job it does itself.", width)...)
+	if info.Workers > 0 && info.Resumed == "" {
+		out = append(out, paragraph(k.st.dim, "The manager plans, hands the parts to workers that write in parallel, and reviews their work; it edits no file itself.", width)...)
 	}
 	if info.Update != "" {
 		out = append(out, paragraph(k.st.info, clean(info.Update), width)...)
