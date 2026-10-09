@@ -426,7 +426,7 @@ func (c Config) Validate() error {
 		}
 	}
 	for i, root := range c.WorkspaceRoots {
-		if !strings.HasPrefix(root, "/") {
+		if !isAbsPath(root) {
 			bad("workspace_roots[%d]: must be an absolute path, got %q", i, root)
 		}
 	}

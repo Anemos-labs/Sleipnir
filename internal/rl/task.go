@@ -26,6 +26,10 @@ type Task struct {
 	Tags     []string `json:"tags,omitempty"`
 	// Network lets the agent reach the network; off by default.
 	Network bool `json:"network,omitempty"`
+	// Requires names the tools the task's setup and verifier run ("ruby",
+	// "cargo"; see env.KnownTools). Where one is not on the PATH the commands
+	// get, the task is skipped ("skipped: missing ruby"), not failed.
+	Requires []string `json:"requires,omitempty"`
 	// Meta is free-form provenance from the generator (source commit, seed).
 	Meta json.RawMessage `json:"meta,omitempty"`
 }
@@ -61,9 +65,14 @@ type Verifier struct {
 	// Protected are glob patterns the agent must not change; edits are discarded
 	// at verification and flagged.
 	Protected []string `json:"protected,omitempty"`
-	// Expect describes the answer for recall tasks: {"contains": [...]} matched
-	// against the agent's final message.
+	// Expect checks the agent's final message: {"contains": [...], "regex":
+	// "<RE2>", "fold": bool}; see env.Expect.
 	Expect json.RawMessage `json:"expect,omitempty"`
+	// BaselineScore is the json-score verifier's score on the untouched start,
+	// in [0, 1), as `rl tasks check` measured it. The outcome reward is the
+	// improvement over it, max(0, (s - b) / (1 - b)), so a verifier that gives
+	// the start partial credit does not pay for doing nothing. 0: none.
+	BaselineScore float64 `json:"baseline_score,omitempty"`
 }
 
 // Budget bounds an episode. Zero means the harness default.

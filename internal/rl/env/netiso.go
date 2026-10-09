@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -90,7 +91,7 @@ func detectNetIsolation(look func(string) (string, error), probe func(ctx contex
 func lookAny(look func(string) (string, error), names ...string) (string, error) {
 	var last error
 	for _, n := range names {
-		if strings.HasPrefix(n, "/") {
+		if strings.HasPrefix(n, "/") || filepath.IsAbs(n) {
 			if fi, err := os.Stat(n); err == nil && !fi.IsDir() {
 				return n, nil
 			}

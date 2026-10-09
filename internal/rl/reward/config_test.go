@@ -84,6 +84,12 @@ func TestParseConfig(t *testing.T) {
 		{name: "empty document", in: ``, wantErr: []string{"empty"}},
 		{name: "whitespace document", in: "  \n ", wantErr: []string{"empty"}},
 		{name: "relative workspace root", in: `{"workspace_roots":["work/tree"]}`, wantErr: []string{"workspace_roots[0]", "absolute"}},
+		{name: "windows workspace roots", in: `{"workspace_roots":["D:\\work\\tree","c:/work/other","\\\\server\\share\\tree"]}`, check: func(t *testing.T, c Config) {
+			if len(c.WorkspaceRoots) != 3 {
+				t.Errorf("roots: %q", c.WorkspaceRoots)
+			}
+		}},
+		{name: "drive-relative workspace root", in: `{"workspace_roots":["D:work"]}`, wantErr: []string{"workspace_roots[0]", "absolute"}},
 		{name: "negative engines", in: `{"reprice":{"engines":-1}}`, wantErr: []string{"reprice.engines"}},
 		{name: "several problems reported together", in: `{"weights":{"cost":-1,"nope":1},"caps":{"idle":-2}}`,
 			wantErr: []string{"weights.cost", "weights.nope", "caps.idle"}},

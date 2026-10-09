@@ -25,7 +25,10 @@ func cleanRel(p string) (clean string, escapes bool) {
 	if p == "" {
 		return "", false
 	}
-	abs := strings.HasPrefix(p, "/")
+	abs := isAbsSlash(p)
+	if abs && !strings.HasPrefix(p, "/") {
+		p = p[2:] // the drive letter: "C:/x" climbs out as "/x" does
+	}
 	c := path.Clean("/" + strings.TrimLeft(p, "/"))
 	// path.Clean of a rooted path cannot climb above "/", so detect the climb on
 	// the unrooted form.
@@ -43,11 +46,37 @@ func cleanRel(p string) (clean string, escapes bool) {
 	return c, escapes
 }
 
-// cleanAbs normalises an absolute path ("" for anything not absolute).
+// isAbsSlash reports whether a slash-separated path is absolute on some platform: rooted ("/x", and so a UNC
+// "//server/share") or carrying a drive letter ("C:/x"). It does not depend on the host, because a run recorded on
+// Windows may be scored on Linux and the reverse. A drive-relative "C:x" is not absolute.
+func isAbsSlash(p string) bool {
+	if strings.HasPrefix(p, "/") {
+		return true
+	}
+	return len(p) >= 3 && p[1] == ':' && p[2] == '/' && ('a' <= p[0] && p[0] <= 'z' || 'A' <= p[0] && p[0] <= 'Z')
+}
+
+// isAbsPath is isAbsSlash for a path in either separator style.
+func isAbsPath(p string) bool { return isAbsSlash(slashPath(p)) }
+
+// cleanAbs normalises an absolute path ("" for anything not absolute). Windows paths are case-insensitive, so a
+// path with a drive letter is returned with an upper-case letter and the rest lower-case ("D:/Work/Repo" and
+// "d:/work/repo" name one directory). A UNC path (two leading backslashes) keeps a "//" root, lower-cased the same
+// way, so "\\srv\share\x" ("//srv/share/x") is not "/srv/share/x" on the current drive. A path of forward slashes
+// is rooted whatever its leading slashes ("//etc/passwd" is "/etc/passwd" on Linux), which keeps the system
+// locations impossible to dodge with a doubled slash; a UNC path spelled with forward slashes is read that way too.
+// POSIX paths keep their case.
 func cleanAbs(p string) string {
+	raw := strings.TrimSpace(p)
 	p = slashPath(p)
-	if !strings.HasPrefix(p, "/") {
+	if !isAbsSlash(p) {
 		return ""
+	}
+	switch {
+	case p[0] != '/':
+		return strings.ToUpper(p[:1]) + ":" + strings.ToLower(path.Clean(p[2:]))
+	case strings.HasPrefix(raw, `\\`) && len(p) > 2 && p[2] != '/':
+		return "/" + strings.ToLower(path.Clean(p))
 	}
 	return path.Clean(p)
 }

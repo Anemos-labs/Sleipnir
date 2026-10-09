@@ -148,7 +148,16 @@ var (
 	ErrBaselineBroken = errors.New("verifier does not run cleanly on the starting commit")
 	// ErrGoldFails: the verifier fails even with the reference solution applied.
 	ErrGoldFails = errors.New("verifier fails with the reference solution applied")
+	// ErrBaselineMismatch: the start's score differs from Verifier.BaselineScore,
+	// so the reward would measure improvement from the wrong point (a json-score
+	// verifier that gives the start partial credit would pay for doing nothing).
+	ErrBaselineMismatch = errors.New("the start's score differs from verifier.baseline_score")
 )
+
+// baselineTolerance is how far a measured start score may be from the
+// recorded one: the recorded value is the same float64 written as JSON, so
+// only a verifier that scores the start differently disagrees.
+const baselineTolerance = 1e-6
 
 // VerifierVersion fingerprints everything that decides a verdict.
 func VerifierVersion(t rl.Task) string {
@@ -284,8 +293,11 @@ type CheckReport struct {
 }
 
 // CheckTask proves a task is sound: the verifier fails on the starting state
-// and passes with the reference solution (gold, a patch) applied. It is what
-// taskgen runs before it emits a task.
+// and passes with the reference solution (gold, a patch) applied, and the
+// start's score is the recorded Verifier.BaselineScore (0 when none is
+// recorded). It is what taskgen runs before it emits a task. A baseline
+// mismatch is reported last, as ErrBaselineMismatch with both verdicts in the
+// report, so a caller can record the measured score (rep.Baseline.Score).
 //
 // With Repeats above one a task is held to every run, whatever PassPolicy the rollouts use: the starting state must fail
 // each time (one pass is a task that rewards doing nothing some of the time) and the reference solution must pass each
@@ -305,6 +317,10 @@ func CheckTask(ctx context.Context, task rl.Task, gold []byte, opts VerifyOption
 	}
 	if !rep.Gold.Pass {
 		return rep, fmt.Errorf("%w: %s", ErrGoldFails, goldFailure(rep.Gold))
+	}
+	if s, b := rep.Baseline.Score, task.Verifier.BaselineScore; math.Abs(s-b) > baselineTolerance {
+		return rep, fmt.Errorf("%w: the start scores %.6g, verifier.baseline_score is %.6g (record the measured score: rl tasks check --calibrate)",
+			ErrBaselineMismatch, s, b)
 	}
 	return rep, nil
 }
@@ -428,7 +444,7 @@ func (m *Workspaces) verify(ctx context.Context, in verifyInput) (Result, error)
 			rr.Score = math.Min(rr.Score, expectScore)
 			rr.Pass = rr.Pass && expectPass
 			if !expectPass {
-				rr.Note = strings.TrimSpace(rr.Note + " answer does not contain the expected text")
+				rr.Note = strings.TrimSpace(rr.Note + " " + expectFailure)
 			}
 		}
 		res.Runs = append(res.Runs, rr)
@@ -569,9 +585,20 @@ func lastLineScore(stdout string) (float64, bool) {
 	return math.Max(0, math.Min(1, s)), true
 }
 
-// judgeExpect scores the fraction of required substrings present, optionally ignoring case, and
-// passes only when all match; Contains must be nonempty.
+// expectFailure is the note of an answer that fails its check.
+const expectFailure = "answer does not satisfy the expected-answer check"
+
+// judgeExpect scores an answer against an Expect from ParseExpect. The score is
+// the fraction of Contains strings present (optionally ignoring case), and 0
+// when a Regex does not match the trimmed answer; it passes only when every
+// check does.
 func judgeExpect(e Expect, answer string) (score float64, pass bool) {
+	if e.re != nil && !e.re.MatchString(strings.TrimSpace(answer)) {
+		return 0, false
+	}
+	if len(e.Contains) == 0 {
+		return 1, true
+	}
 	hay := answer
 	if e.Fold {
 		hay = strings.ToLower(hay)
@@ -587,6 +614,18 @@ func judgeExpect(e Expect, answer string) (score float64, pass bool) {
 		}
 	}
 	return float64(found) / float64(len(e.Contains)), found == len(e.Contains)
+}
+
+// describeExpect names the checks of an Expect for the verifier log.
+func describeExpect(e Expect) string {
+	var parts []string
+	if len(e.Contains) > 0 {
+		parts = append(parts, fmt.Sprintf("%d expected strings", len(e.Contains)))
+	}
+	if e.Regex != "" {
+		parts = append(parts, fmt.Sprintf("pattern %q", e.Regex))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // combineRuns folds repeated runs into one verdict. The score is the mean, so a
@@ -624,9 +663,9 @@ func verifyAnswerOnly(task rl.Task, opts VerifyOptions) (Result, error) {
 	score, pass := judgeExpect(e, opts.Answer)
 	res.Pass, res.Score = pass, score
 	res.Runs = []VerifyRun{{Pass: pass, Score: score}}
-	res.Log = fmt.Sprintf("===== answer check: pass=%v score=%.3f (%d expected strings)\n", pass, score, len(e.Contains))
+	res.Log = fmt.Sprintf("===== answer check: pass=%v score=%.3f (%s)\n", pass, score, describeExpect(e))
 	if !pass {
-		res.Runs[0].Note = "answer does not contain the expected text"
+		res.Runs[0].Note = expectFailure
 	}
 	return finishResult(res, opts)
 }

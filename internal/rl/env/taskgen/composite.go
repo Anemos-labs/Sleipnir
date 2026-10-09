@@ -330,23 +330,33 @@ func compositeScript(cmds []string) string {
 // (the store the generators wrote Meta.gold_blob to) and are concatenated, which
 // is valid because the components touch disjoint files.
 func ValidateComposite(ctx context.Context, comp rl.Task, gold events.Blobs, opts env.VerifyOptions) (env.CheckReport, error) {
+	patch, err := CompositePatch(comp, gold)
+	if err != nil {
+		return env.CheckReport{}, err
+	}
+	return env.CheckTask(ctx, comp, patch, opts)
+}
+
+// CompositePatch is the reference solution of a composite task: its
+// components' solutions from gold (Meta.gold_blobs), concatenated.
+func CompositePatch(comp rl.Task, gold events.Blobs) ([]byte, error) {
 	var m Meta
 	if err := json.Unmarshal(comp.Meta, &m); err != nil || len(m.GoldBlobs) == 0 {
-		return env.CheckReport{}, errors.New("the composite has no recorded reference solutions (generate its components with a gold blob store)")
+		return nil, errors.New("the composite has no recorded reference solutions (generate its components with a gold blob store)")
 	}
 	if gold == nil {
-		return env.CheckReport{}, errors.New("a gold blob store is required")
+		return nil, errors.New("a gold blob store is required")
 	}
 	var patch []byte
 	for _, h := range m.GoldBlobs {
 		b, err := gold.Get(core.Hash(h))
 		if err != nil {
-			return env.CheckReport{}, fmt.Errorf("reference solution %s: %w", core.Hash(h).Short(), err)
+			return nil, fmt.Errorf("reference solution %s: %w", core.Hash(h).Short(), err)
 		}
 		patch = append(patch, b...)
 		if len(b) > 0 && b[len(b)-1] != '\n' {
 			patch = append(patch, '\n')
 		}
 	}
-	return env.CheckTask(ctx, comp, patch, opts)
+	return patch, nil
 }

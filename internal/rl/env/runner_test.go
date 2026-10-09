@@ -629,6 +629,32 @@ func TestRolloutAgentFailureIsNotInfra(t *testing.T) {
 	}
 }
 
+// TestRolloutSkipsTasksWhoseToolsAreMissing: a task that requires a tool this machine lacks is neither run nor counted as
+// an infrastructure failure, leaves nothing on disk (a later run with the tool runs it), and the summary says why.
+func TestRolloutSkipsTasksWhoseToolsAreMissing(t *testing.T) {
+	f := newRunnerFixture(t, quickVerify)
+	f.m = newManager(t, func(o *WorkspaceOptions) { o.SetEnv["PATH"] = t.TempDir() })
+	f.r.Workspaces = f.m
+	needy := f.task
+	needy.ID, needy.Requires = "needs-ruby", []string{"ruby"}
+	sum := f.rollout([]rl.Task{needy}, 2, f.opts())
+	if sum.Skipped != 2 || sum.Completed != 0 || sum.Infra != 0 || len(f.h.Calls()) != 0 {
+		t.Fatalf("summary: skipped %d completed %d infra %d, harness calls %d", sum.Skipped, sum.Completed, sum.Infra, len(f.h.Calls()))
+	}
+	if r := sum.Results[0]; r.Status != StatusSkipped || r.Error != "missing ruby" {
+		t.Fatalf("result: %+v", r)
+	}
+	if len(sum.Skips) != 1 || sum.Skips[0] != (SkipRecord{Task: "needs-ruby", Rollouts: 2, Reason: "missing ruby"}) {
+		t.Fatalf("skips: %+v", sum.Skips)
+	}
+	if _, err := os.Stat(f.sampleDir("needs-ruby", 0)); !os.IsNotExist(err) {
+		t.Errorf("a skipped rollout must leave no sample directory: %v", err)
+	}
+	if rep := BuildReport([]rl.Task{needy}, sum.Results, 2); rep.Skipped != 2 || rep.Completed != 0 || rep.Infra != 0 {
+		t.Errorf("report: %+v", rep)
+	}
+}
+
 func TestRolloutRecallTaskUsesTheFinalMessage(t *testing.T) {
 	f := newRunnerFixture(t)
 	rt := f.task

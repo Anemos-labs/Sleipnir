@@ -331,11 +331,11 @@ func writeFixtureRepo(ctx context.Context, g *env.Git, dir string, files map[str
 	return strings.TrimSpace(string(out)), nil
 }
 
-// writeFiles writes fixture files in sorted order, rejecting empty, slash-absolute, or double-dot
+// writeFiles writes fixture files in sorted order, rejecting empty, absolute (rooted or with a volume name), or double-dot
 // paths and making shebang files executable.
 func writeFiles(dir string, files map[string][]byte) error {
 	for _, p := range sortedPaths(files) {
-		if p == "" || strings.HasPrefix(p, "/") || strings.Contains(p, "..") {
+		if p == "" || strings.HasPrefix(p, "/") || filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.Contains(p, "..") {
 			return fmt.Errorf("unsafe path %q", p)
 		}
 		full := filepath.Join(dir, filepath.FromSlash(p))

@@ -415,7 +415,7 @@ func progressPrinter(w io.Writer) func(env.Progress) {
 				line += fmt.Sprintf(" pass=%v", *p.Pass)
 			}
 			if p.Score != nil {
-				line += fmt.Sprintf(" reward=%.3f", *p.Score)
+				line += fmt.Sprintf(" score=%.3f", *p.Score)
 			}
 			if p.Error != "" {
 				line += ": " + p.Error
@@ -499,12 +499,18 @@ func rlRollout(ctx context.Context, args []string, stdout, stderr io.Writer) err
 // nothingCompleted is the error of a run in which not one rollout completed (every one failed for infrastructure reasons,
 // was capped or was cancelled): it exits with exitTempFail, so a script can resume the run later instead of reading an empty report as a
 // result. A run with some completed rollouts succeeds; infra failures are in the summary and the report's rates.
+//
+// A run in which every rollout was skipped (each task requires a tool this machine lacks) is an ordinary error: retrying
+// does not help until the tools are installed.
 func nothingCompleted(cmd string, sum *env.Summary) error {
 	if sum == nil || sum.Rollouts == 0 || sum.Completed > 0 || sum.Interrupted {
 		return nil
 	}
-	return &exitError{code: exitTempFail, err: fmt.Errorf("%s: no rollout completed (%d infrastructure failures, %d capped by the spend cap, %d cancelled); rerun into the same --out to resume",
-		cmd, sum.Infra, sum.Capped, sum.Cancelled)}
+	if sum.Skipped == sum.Rollouts {
+		return fmt.Errorf("%s: every rollout was skipped: the tasks require tools this machine lacks (see the summary)", cmd)
+	}
+	return &exitError{code: exitTempFail, err: fmt.Errorf("%s: no rollout completed (%d infrastructure failures, %d capped by the spend cap, %d cancelled, %d skipped for missing tools); rerun into the same --out to resume",
+		cmd, sum.Infra, sum.Capped, sum.Cancelled, sum.Skipped)}
 }
 
 // ---- rl eval ----
@@ -577,13 +583,20 @@ func rlEval(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 		return fmt.Errorf("rl eval: %w", err)
 	}
 	if rep.Rollouts > 0 && rep.Completed == 0 {
+		if rep.Skipped == rep.Rollouts {
+			return errors.New("rl eval: every rollout was skipped: the tasks require tools this machine lacks")
+		}
 		return &exitError{code: exitTempFail, err: fmt.Errorf("rl eval: no rollout completed (%d infrastructure failures); rerun into the same --out to resume", rep.Infra)}
 	}
 	return nil
 }
 
 func printEvalReport(w io.Writer, r env.Report) {
-	fmt.Fprintf(w, "eval %s of %s: %d tasks x %d samples; %d rollouts completed, %d infra failures\n", r.RunID, r.Model, r.Tasks, r.Samples, r.Completed, r.Infra)
+	fmt.Fprintf(w, "eval %s of %s: %d tasks x %d samples; %d rollouts completed, %d infra failures", r.RunID, r.Model, r.Tasks, r.Samples, r.Completed, r.Infra)
+	if r.Skipped > 0 {
+		fmt.Fprintf(w, ", %d skipped (missing tools)", r.Skipped)
+	}
+	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  pass@1 %.1f%%   mean score %.3f   mean reward %.3f   hack rate %.1f%%   budget rate %.1f%%\n", 100*r.PassAt1, r.MeanScore, r.MeanReward, 100*r.HackRate, 100*r.BudgetRate)
 	for _, k := range sortedKeys(r.PassHat) {
 		fmt.Fprintf(w, "  pass^%d %.1f%%   pass@%d %.1f%%\n", k, 100*r.PassHat[k], k, 100*r.PassAt[k])

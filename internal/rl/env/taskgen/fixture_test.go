@@ -200,3 +200,19 @@ func TestAFixtureTaskIsSoundInTheRolloutEnvironment(t *testing.T) {
 		t.Fatalf("the fixture task is unsound: %v", err)
 	}
 }
+
+// TestWriteFilesRefusesAbsolutePaths: a fixture file name that is absolute on this platform is not a repository path.
+func TestWriteFilesRefusesAbsolutePaths(t *testing.T) {
+	bad := []string{"/etc/x", "../x", ""}
+	if filepath.VolumeName(`C:\x`) != "" {
+		bad = append(bad, "C:/x", `C:\x`, `\\srv\share\x`)
+	}
+	for _, p := range bad {
+		if err := writeFiles(t.TempDir(), map[string][]byte{p: []byte("x")}); err == nil {
+			t.Errorf("writeFiles accepted %q", p)
+		}
+	}
+	if err := writeFiles(t.TempDir(), map[string][]byte{"a/b.txt": []byte("x")}); err != nil {
+		t.Errorf("a relative path is fine: %v", err)
+	}
+}

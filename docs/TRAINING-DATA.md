@@ -78,15 +78,17 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
  "repo": {"path": "/data/repos/mux", "commit": "a1b2c3d", "license": "BSD-3-Clause"},
  "setup": ["go mod download"],       // run once per task snapshot, result cached
  "prompt": "Requests with an encoded slash in the path 404. Fix it.",
- "team": {"mode": "single"},         // or {"mode":"swarm","agents":6,"roles":["backend","tests"]}
+ "team": {"mode": "single"},         // or {"mode":"swarm","agents":6,"roles":["backend","tester"]}
  "verifier": {
    "cmd": "go test ./... -run 'TestEncodedSlash|TestRoute' -count=1",
    "timeout_s": 300,
    "pass": "exit0",                  // exit0 | regex:<re> | json-score (last stdout line {"score":0..1})
+   "baseline_score": 0,              // json-score only: the untouched start's score, recorded by `rl tasks check --calibrate`
    "hidden": {"mux_hidden_test.go": "blob:9f2c..."},   // written only at verification time
    "protected": ["*_test.go", "go.mod", ".github/**"]   // agent edits here are discarded and flagged
  },
  "budget": {"steps": 80, "requests": 200, "ite": 400000, "wall_s": 1800, "context_window": 200000},
+ "requires": ["go"],                 // tools setup and verifier run; a machine without one skips the task
  "tags": ["go", "http", "small"]
 }
 ```
@@ -94,6 +96,21 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 * **Isolation.** Each rollout gets a fresh worktree (or a copy when the repo is not git) and its own event log
   directory. The verifier runs in a *separate clean checkout* with the agent's diff applied minus protected paths,
   plus the hidden files, so tampering with tests or the verifier has no effect (and is flagged).
+* **Answer checks.** `verifier.expect` judges the agent's final message, alone (no `cmd`) or together with a command:
+  `{"contains": ["..."], "regex": "<RE2>", "fold": true}`. Every `contains` string must occur in the answer; the score
+  is the fraction that do. `regex` must match the answer with surrounding white space trimmed (`^` and `$` anchor at the
+  ends of the whole answer unless the pattern turns on `(?m)`); it is a gate, so an answer that does not match scores 0
+  whatever `contains` found. `fold` makes both case-insensitive. At least one of the two is required, and an empty
+  string or a pattern that matches an empty answer is refused. A short answer needs the pattern: `{"contains": ["42"]}`
+  passes "maybe 42, or 142, or 420", while `{"regex": "^42\\.?$"}` (the whole answer is 42) and
+  `{"regex": "(?:^|[^0-9.])42(?:\\.0+)?[^0-9]*$"}` (the last number in the answer is 42) do not.
+* **Toolchains.** `requires` lists the executables the task's setup and verifier need, from a fixed list (`bash`,
+  `cargo`, `cc`, `clang`, `deno`, `dotnet`, `g++`, `gcc`, `go`, `gradle`, `java`, `javac`, `make`, `mvn`, `node`, `npm`,
+  `npx`, `perl`, `php`, `python3`, `ruby`, `rustc`, `sqlite3`, `tsc`; anything else is a validation error). They are
+  looked up on the PATH the task's commands get (after `--set-env` and `--pass-env`). Where one is missing, `rl tasks
+  check` reports the task `skipped: missing ruby` and `rl rollout`, `rl eval` and `rl serve` skip its rollouts with
+  status `skipped`: counted in the summary (`skipped`, `skips`), never run, never an infra error, and nothing is written,
+  so a later run on a machine with the tool runs them.
 * **Budgets** stop runaway episodes; a stop is an outcome (`budget_exceeded`) and is penalised, not silently
   dropped. `context_window` may be set low (for example 32k) to force frequent compaction and so generate dense
   compaction data.
@@ -122,6 +139,13 @@ the tasks file and never enters a workspace.
 * `sleipnir rl tasks validate|stats|filter|split|check FILE`: hygiene. `split` assigns whole repositories to
   train/val/test (deterministic), `check` re-proves every task sound, and `rl eval --exclude TRAIN` refuses to
   evaluate on anything in a training list.
+* `sleipnir rl tasks check --mutants FILE`: seeded regression checks of the verifiers. A check counts only if it passes
+  on the solved code *and* fails when part of the solution is taken away. Beyond failing on the start and passing with
+  the reference solution, the verifier is run once per solution file with that file left at its start content (the rest
+  of the solution applied; protected and hidden files are not mutated). A task whose verifier still passes such a
+  partial solution is reported `WEAK` with the file names, a warning: the verifier pays for unfinished work, or the
+  solution touches a file the task does not need. Files are taken in path order and each mutant is one verification
+  (all repeats must pass under `--verify-repeats`), so the result is deterministic.
 
 ### 3.3 Rollouts (`sleipnir rl rollout`)
 
@@ -146,7 +170,9 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   and its result says what was left. With `swarm.mailman` on, the mailman's work is data too: `mail.route` (parcels in),
   `mail.batch`, `mail.digest` (digest out, naming every original sender) and `mail.direct` (a delivery that bypassed it).
 * The agent's commands run in a scrubbed environment (private HOME and TMPDIR, no credentials, no network when the
-  host can isolate it); permission prompts are refused, as an unattended session would refuse them, and the rules let
+  host can isolate it; on Windows also the system variables such as SYSTEMROOT, PATHEXT and COMSPEC, with TEMP, TMP,
+  USERPROFILE and LOCALAPPDATA inside the private directories);
+  permission prompts are refused, as an unattended session would refuse them, and the rules let
   the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets
   (a stop is an outcome: `budget`), wall-clock is enforced by the runner, and infrastructure failures are retried and
   never become episodes.
@@ -196,12 +222,21 @@ without re-running anything.
 
 | Component | Definition | Default weight |
 |---|---|---:|
-| `outcome` | verifier score in [0,1] in the clean checkout; 0 if a hack detector fired | 1.0 |
+| `outcome` | verifier score in [0,1] in the clean checkout, as improvement over the start (below); 0 if a hack detector fired | 1.0 |
 | `honest_done` | +0.1 if the agent's `done` was accepted and the verifier passed; −0.2 if it claimed done and the verifier failed | 0.1 / −0.2 |
 | `cost` | −min(1, repriced ITE / budget.ite) under `--target-price` | 0.15 |
 | `requests` | −min(1, requests / budget.requests) | 0.05 |
 | `time` | −min(1, critical-path steps / budget.steps) | 0.05 |
 | `protocol` | −(invalid tool calls, rejected patches, lease/scope violations, stale writes, budget breaches) / cap | 0.1 |
+
+**Partial credit is measured from the start.** A `json-score` verifier may give the untouched start partial credit
+(a checker that finds three of four fields already right scores 0.75 before the agent does anything). With the start's
+score recorded as `verifier.baseline_score` = s0, `outcome` is max(0, (s - s0) / (1 - s0)): doing nothing earns 0,
+a full pass earns 1, and an answer worse than the start earns 0. The recorded verdict keeps the raw score s, and pass
+still means s = 1. s0 is a field of the task rather than a measurement at every rollout, so a reward never depends on
+how a flaky verifier scored the start that day and costs no extra verifier run: `rl tasks check` measures the start, fails
+a task whose recorded score differs from it (or that scores 1 at the start), and `--calibrate OUT` writes the tasks
+with the measured scores.
 
 **Role-specific:**
 
@@ -250,7 +285,8 @@ switches a component off). All keys are optional:
 `anthropic-opus`, `anthropic-sonnet`, `marketplace`, `no-cache`, `openai`) or a model id from the price tables. `clip`
 bounds every scalar reward (components stay raw). `detectors` switches individual hack detectors off (`protected`,
 `tests`, `verifier`, `hardcoded`, `network`, `outside`, `shim`; all run by default). `workspace_roots` tells the
-outside-the-worktree detector which directories an agent may write under. `reprice` tunes the counterfactual cache model
+outside-the-worktree detector which directories an agent may write under (absolute paths: `/work/rollouts`, or
+`D:\work\rollouts` or `\\server\share\rollouts` on Windows, whose paths are compared without regard to case). `reprice` tunes the counterfactual cache model
 (engines, capacity, time-to-first-byte model). Re-score a finished run without re-running anything:
 `sleipnir rl reward RUN_DIR --rewards rewards.json [--target-price marketplace] [--dry-run]`.
 
