@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -154,4 +155,35 @@ func TestRLRolloutAgainstADeadEndpointExitsWithTempFail(t *testing.T) {
 		t.Error(err)
 	}
 	_ = context.Background
+}
+
+// The user's provider entries (a name for a gateway with its reasoning effort, say) reach the
+// rollouts: --model resolves against them, and so must a role model, which the harness
+// resolves from the configuration it is given. Without them "my-gw/x" is sent to the policy
+// endpoint as a model id the gateway does not know.
+func TestRolloutsRunWithTheUsersProviderEntries(t *testing.T) {
+	_, home := projectDir(t)
+	cfgDir := filepath.Join(home, ".sleipnir")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	entry := `{"providers":{"my-gw":{"dialect":"openai-chat","base_url":"https://gw.example/api/v1","api_key_env":"MY_GW_KEY","options":{"extra_body":{"reasoning_effort":"xhigh"}}}}}`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.json"), []byte(entry), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := &policyFlags{model: "my-gw/some/model"}
+	fs := flag.NewFlagSet("rollout", flag.ContinueOnError)
+	spec, h, err := p.resolve(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Model != "some/model" || spec.BaseURL != "https://gw.example/api/v1" || spec.APIKeyEnv != "MY_GW_KEY" {
+		t.Errorf("policy = %+v", spec)
+	}
+	if h.Config == nil {
+		t.Fatal("the harness has no configuration, so a role model cannot name the user's providers")
+	}
+	if got, ok := h.Config.Providers["my-gw"]; !ok || got.BaseURL != "https://gw.example/api/v1" {
+		t.Errorf("the rollout configuration lacks the user's provider entry: %+v", h.Config.Providers)
+	}
 }

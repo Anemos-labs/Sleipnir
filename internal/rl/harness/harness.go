@@ -359,9 +359,13 @@ func (h *Harness) policyProviderConfig(spec env.RunSpec) (config.Provider, error
 		opts[k] = v
 	}
 	if body := samplingBody(pol.Sampling, spec.Seed); len(body) > 0 {
-		merged, _ := opts["extra_body"].(map[string]any)
-		if merged == nil {
-			merged = map[string]any{}
+		// The provider entry's own extra_body is shared by every rollout of this Harness, which
+		// run concurrently: merge into a copy, never into the entry's map.
+		merged := map[string]any{}
+		if shared, ok := opts["extra_body"].(map[string]any); ok {
+			for k, v := range shared {
+				merged[k] = v
+			}
 		}
 		for k, v := range body {
 			merged[k] = v

@@ -192,7 +192,12 @@ func (p *policyFlags) resolve(fs *flag.FlagSet) (env.PolicySpec, *harness.Harnes
 	if p.rpm < 0 {
 		return env.PolicySpec{}, nil, errors.New("--rpm must not be negative")
 	}
+	// Rollouts run on the defaults plus the user's provider entries: a role model
+	// (--role-model manager=my-alias/model) resolves against them, as --model does.
+	rolloutCfg := config.Defaults()
+	rolloutCfg.Providers = cfg.Providers
 	h := &harness.Harness{
+		Config:        rolloutCfg,
 		PolicyOptions: prov.Options, PolicyHeaders: prov.Headers, ContextTokens: p.ctxTokens, ThreadSoftLimit: p.softLimit,
 		// What the user's own provider entry allows, or what this command line says.
 		PolicyAllowInsecureHTTP: p.allowInsecureHTTP || prov.AllowInsecureHTTP, PolicyAllowHosts: prov.AllowHosts,
