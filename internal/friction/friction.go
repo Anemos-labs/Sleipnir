@@ -105,7 +105,7 @@ var hints = map[string]string{
 	ReRead:       "the same part of a file read again and again: did the answer get lost (truncation, compaction) or never used?",
 	RepeatedCall: "the same call over and over: polling, or a loop",
 	TeamStall:    "the team stopped making progress in a named way: a worker that only reads, a manager waiting on nobody, a task nobody owns, tasks blocked on each other, a submission nobody reviews; the detail says which tasks and agents",
-	OutputLimit:  "a response ended at the output limit:a model that rambles (look at the sampling temperature and at the text: a degenerate generation is mostly words that are not there) or a task that asks for one huge write; the agent asks the model to carry on twice and then stops with an error",
+	OutputLimit:  "a response ended at the output limit: a model that rambles (look at the sampling temperature and at the text: a degenerate generation is mostly words that are not there) or a task that asks for one huge write; the agent asks the model to carry on twice and then stops with an error",
 }
 
 var (

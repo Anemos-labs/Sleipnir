@@ -111,7 +111,8 @@ type member struct {
 	emitted   string
 
 	// retireOnIdle (under mu) retires the worker when its current run ends instead of
-	// restarting it: it handed over its own task (handover.go).
+	// restarting it: it handed over its own task (handover.go). A new run clears it, so a worker that
+	// stayed (it had unread mail) and was given work again is not retired at the end of that run.
 	retireOnIdle bool
 
 	// progress is the unix time of the last sign of life (a model or tool event).
@@ -486,6 +487,7 @@ func (s *Swarm) reserve(m *member) (*runState, context.Context, bool) {
 	ctx, cancel := context.WithCancel(root)
 	rs := &runState{id: m.runSeq, tasks: map[string]uint64{}, cancel: cancel, started: s.deps.Now(), mailSeq: m.mailSeq}
 	m.run = rs
+	m.retireOnIdle = false // a request to retire belongs to the run it was made in
 	m.stuckWarn = false
 	m.progress.Store(rs.started.UnixNano())
 	m.mu.Unlock()

@@ -336,6 +336,8 @@ and so may the manager, for any worker (one that stalled, section 10; the summar
 
 The board operation is the commit point. A failure before it (the tree cannot be committed, the successor cannot be
 made, the board changed) removes the successor's agent and tree and leaves the task with its owner; the error says so.
+A manager's handover stops the owner's run first: if the handover then fails, the owner is told to carry on with the task and
+starts again, and if the run has not ended within the stop grace, the task returns to the board when it does.
 A repeated request after it succeeded reports the same successor and changes nothing. In a resumable isolated run the
 successor is announced (`agent.prepare`) before its tree exists, so a session that stops after the commit point resumes
 it with its tree, as an interrupted spawn is resumed; the recap is not rebuilt then (the resumed worker gets the task

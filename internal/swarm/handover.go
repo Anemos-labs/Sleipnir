@@ -129,10 +129,11 @@ func (s *Swarm) Handover(ctx context.Context, req HandoverReq) (HandoverResult, 
 			pm.mu.Unlock()
 		}()
 	}
-	if running && !self {
+	stopped := running && !self
+	if stopped {
 		s.stopRun(pm, "its task was handed over", false)
 		if !s.waitIdle(ctx, pm, s.handoverStopWait()) {
-			return HandoverResult{}, fmt.Errorf("%s has not stopped yet; %s stays with it. Retry the handover in a moment", pm.id, t.ID)
+			return HandoverResult{}, fmt.Errorf("%s has not stopped yet; %s", pm.id, s.abandonHandover(pm, prs, t))
 		}
 	}
 
@@ -144,10 +145,30 @@ func (s *Swarm) Handover(ctx context.Context, req HandoverReq) (HandoverResult, 
 	res, err := h.run(shared)
 	if err != nil {
 		s.emitAs(req.By, events.TypeSwarmHandover, map[string]any{"phase": "abort", "task": t.ID, "rev": t.Rev, "from": pm.id, "to": to, "error": cleanText(err.Error(), 300)})
+		if cur, _ := s.Board.Snapshot().Task(t.ID); stopped && cur.Owner == pm.id && cur.Rev == t.Rev {
+			err = fmt.Errorf("%w; %s", err, s.abandonHandover(pm, prs, t)) // the task did not move
+		}
 		return HandoverResult{}, err
 	}
 	s.finishPredecessor(pm, self)
 	return res, nil
+}
+
+// abandonHandover settles what a failed handover left behind when the manager had stopped the task's owner: the
+// owner's run no longer settles the task, so nothing would, and the task would stay in doing under a worker that
+// is not running. A run that is still ending gets its claim back, and its end settles the task like any other
+// stop (the task goes back to the board). An owner that has stopped is told to carry on, which starts it again.
+// The returned words say which, for the manager.
+func (s *Swarm) abandonHandover(pm *member, prs *runState, t Task) string {
+	pm.mu.Lock()
+	if prs != nil && pm.run == prs {
+		prs.tasks[t.ID] = t.Rev
+		pm.mu.Unlock()
+		return fmt.Sprintf("%s was stopped for the handover and goes back to the board when its run ends: spawn a worker on it then", t.ID)
+	}
+	pm.mu.Unlock()
+	s.notify(pm.id, "info", fmt.Sprintf("The manager's handover of %s did not go through: the task stays yours, carry on with it.", t.ID))
+	return fmt.Sprintf("%s was stopped for the handover and has been told to carry on with %s", pm.id, t.ID)
 }
 
 // waitIdle waits until a member is no longer running, at most d.

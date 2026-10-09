@@ -7,8 +7,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // handoverEvents returns the phases of the swarm.handover events, in order.
@@ -279,3 +281,100 @@ func TestCrashAfterTheHandoverCommitPointIsResumable(t *testing.T) {
 type errFault string
 
 func (e errFault) Error() string { return "injected at " + string(e) }
+
+// A manager's handover stops the owner's run before it moves the task. When a later step fails, the task stays with
+// its owner, and the owner is told to carry on: otherwise it would sit in doing under a worker that is not running,
+// which no sweep reports.
+func TestAFailedManagerHandoverTellsTheStoppedOwnerToCarryOn(t *testing.T) {
+	r := newRVRig(t, stallCfg(), gatedWorkers(map[string][]rvReply{"be-1": {editReply}}))
+	r.sw.StartManager()
+	from, task := spawnWorker(t, r, "paginate users", 2)
+	r.sw.handoverFault = func(p string) error {
+		if p == "member" {
+			return errFault(p)
+		}
+		return nil
+	}
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "handover", "id": task.ID, "text": "continue"})
+	if !res.IsError || !strings.Contains(res.Text, "injected at member") || !strings.Contains(res.Text, from+" was stopped for the handover and has been told to carry on with "+task.ID) {
+		t.Fatalf("the manager is not told what became of the owner: %s", res.Text)
+	}
+	rvWait(t, "the owner to be started again with the note", func() bool {
+		return r.prov.callsFor(from) >= 3 && r.prov.sawEver("did not go through: the task stays yours, carry on with it")
+	})
+	got, _ := r.sw.Board.Snapshot().Task(task.ID)
+	if got.Owner != from || got.Status != StatusDoing || got.Rev != task.Rev {
+		t.Fatalf("the task moved: %+v (before %+v)", got, task)
+	}
+	if r.sw.get("be-2") != nil {
+		t.Fatal("a failed handover left a successor")
+	}
+}
+
+// An owner that is slow to stop is still ending when the handover gives up. The run no longer holds the task, so the
+// handover gives the claim back: the end of the run settles the task like any stop, and it returns to the board.
+func TestAManagerHandoverThatCannotStopTheOwnerReturnsTheTaskWhenItEnds(t *testing.T) {
+	release := make(chan struct{})
+	entered := make(chan struct{}, 1)
+	cfg := stallCfg()
+	cfg.StuckGrace = 50 * time.Millisecond
+	hang := rvReply{Tools: []rvToolCall{{Name: "hang", Args: map[string]any{}}}}
+	r := newRVRigWith(t, cfg, gatedWorkers(map[string][]rvReply{"be-1": {hang}}), nil)
+	r.sw.deps.Registry.Register(rvFakeTool{name: "hang", ro: true, run: func(ctx context.Context, c *tools.Call) *tools.Result {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release // does not return when the run is cancelled
+		return &tools.Result{Text: "released"}
+	}})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "paginate users", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	task, _ := r.sw.Board.Snapshot().Task("T1")
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "handover", "id": task.ID, "text": "continue"})
+	if !res.IsError || !strings.Contains(res.Text, id+" has not stopped yet") || !strings.Contains(res.Text, "goes back to the board when its run ends") {
+		close(release)
+		t.Fatalf("handover: %s", res.Text)
+	}
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Owner != id || got.Status != StatusDoing {
+		close(release)
+		t.Fatalf("before the run ends: %+v", got)
+	}
+	close(release)
+	rvWait(t, "the task to return to the board", func() bool {
+		got, _ := r.sw.Board.Snapshot().Task(task.ID)
+		return got.Status == StatusTodo && got.Owner == ""
+	})
+	if r.sw.get("be-2") != nil {
+		t.Fatal("a failed handover left a successor")
+	}
+}
+
+// A worker that stayed registered after handing over its own task (unread mail keeps it) and is given work again is
+// not retired at the end of that run.
+func TestAWorkerThatStayedAfterItsHandoverIsNotRetiredAtTheEndOfItsNextRun(t *testing.T) {
+	r := newRVRig(t, stallCfg(), gatedWorkers(map[string][]rvReply{"be-1": {editReply}}))
+	r.sw.StartManager()
+	id, _ := spawnWorker(t, r, "paginate users", 2)
+	m := r.sw.get(id)
+	r.sw.stopRun(m, "test", false)
+	rvWait(t, id+" to be idle", func() bool { return !m.isActive() })
+	m.mu.Lock()
+	m.retireOnIdle = true // as finishPredecessor leaves it when Retire is refused for unread mail
+	m.mu.Unlock()
+	rs, _, ok := r.sw.reserve(m)
+	if !ok {
+		t.Fatal("could not reserve the idle worker")
+	}
+	defer r.sw.unreserve(m, rs)
+	m.mu.Lock()
+	stale := m.retireOnIdle
+	m.mu.Unlock()
+	if stale {
+		t.Fatal("a new run kept the request to retire made in an earlier one")
+	}
+}
