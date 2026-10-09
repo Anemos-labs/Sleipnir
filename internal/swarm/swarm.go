@@ -746,6 +746,10 @@ type roleRequester struct {
 	// only, when set, is the whole list of tools the agent may call: the mailman may
 	// call mail, and nothing else, whatever the mode or the rules say.
 	only map[string]bool
+	// planOnly, when set (the manager's), is the permission engine's plan mode with no allow rule. While the session is planning, a request
+	// the engine allows only because of a rule the person wrote (Edit(docs/plan.md), Bash(rm:*)) is held to the agent's own policy all the
+	// same: the rule is the person's word for the session, not a lifting of what this agent may do.
+	planOnly *perm.Engine
 }
 
 // managerWritesMsg is what the manager is told when it tries to change a file.
@@ -766,7 +770,11 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 		if engine && e.Mode() == perm.ModePlan {
 			// The session is planning: nothing is changed now, by anyone, and the engine's own refusal says so.
 			// The role's reason would send a manager off to spawn a worker for the change.
-			return r.inner.Check(ctx, req)
+			d := r.inner.Check(ctx, req)
+			if !d.Allow || r.planOnly == nil || r.planOnly.Check(ctx, req).Allow {
+				return d
+			}
+			// Allowed by a rule alone: the agent's own policy below still applies.
 		}
 		switch {
 		case req.Tool == "bash" && engine && !r.strictShell:

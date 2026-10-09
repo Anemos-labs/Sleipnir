@@ -168,6 +168,9 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		// The manager plans, delegates and reviews; workers make every change. In an
 		// isolated run a write of its own would also bypass the merge queue.
 		rr.denyWrites, rr.strictShell = managerWritesMsg, true
+		if e, ok := requester.(*perm.Engine); ok {
+			rr.planOnly = e.PlanOnly()
+		}
 	}
 	requester = rr
 	sink := agent.Sink(agent.NopSink{})

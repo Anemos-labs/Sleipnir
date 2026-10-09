@@ -23,8 +23,11 @@ they do not indicate whether a change has been released.
   `sleipnir init` writes `"max_workers": 12`.
 - The manager edits no file in any run. It plans, delegates and reviews; its
   writes and writing shell commands are refused at run time with a pointer to
-  spawn a worker, in a shared checkout as in an isolated one, while it keeps
-  the same tool list as every other agent. The manager role pin (G2) changes
+  spawn a worker, in a shared checkout as in an isolated one, and in a session
+  in plan mode too: an allow rule the person wrote for the session (say
+  `Edit(docs/plan.md)`) opens its exception for the workers, not for the
+  manager. It keeps the same tool list as every other agent. The manager role
+  pin (G2) changes
   once to say so and can require a fresh provider cache prefill for the
   manager; other stable layers and tool-schema bytes are unchanged.
 - Reject task actions that require an ID when it is omitted or blank. The error
