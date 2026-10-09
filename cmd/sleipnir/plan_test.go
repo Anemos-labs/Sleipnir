@@ -21,7 +21,7 @@ func TestPlanCommandSubmitsPromptInPlanMode(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			s := chatSessionWith(t, false, nil, func(o *session.Options) {
 				o.Mode = perm.ModeYolo
-				o.Swarm, o.MaxAgents = team, 8
+				o.Swarm, o.Workers = team, 8
 			}, nil)
 			h := &sessionHost{s: s}
 			prompt := "Redo the website animations.\nUse 8 experts and one  shared design."

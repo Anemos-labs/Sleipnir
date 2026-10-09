@@ -29,7 +29,7 @@ func TestCacheSharedTTLReachesTheBreakpoints(t *testing.T) {
 				o.Config = cfg
 				o.Cwd, o.Root = repo, repo
 				if swarmed {
-					o.Swarm, o.MaxAgents = true, 3
+					o.Swarm, o.Workers = true, 2
 				}
 				s, err := session.New(context.Background(), o)
 				if err != nil {

@@ -172,7 +172,7 @@ func TestSwarmOverTheMessagesAPISharesItsPrefix(t *testing.T) {
 		return mock.Reply{Text: "done " + id}
 	})
 	o.Cwd, o.Root = repo, repo
-	o.Swarm, o.MaxAgents = true, workers+2
+	o.Swarm, o.Workers = true, workers+1
 	s, err := session.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)

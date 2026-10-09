@@ -65,41 +65,39 @@ func (p *policyFlags) register(fs *flag.FlagSet) {
 	fs.IntVar(&p.maxTokens, "max-tokens", 0, "completion limit per request (overrides --sampling)")
 	fs.BoolVar(&p.capture, "capture", false, "ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)")
 	fs.BoolVar(&p.allowInsecureHTTP, "allow-insecure-http", false, "let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default")
-	fs.IntVar(&p.swarm, "swarm", 0, "run a team of N agents in all, the manager included, instead of a single agent (default: what the task's team says)")
+	fs.IntVar(&p.swarm, "swarm", 0, "run a manager and N workers instead of a single agent (default: what the task's team says)")
 	fs.Var(p.roleModels, "role-model", "role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model")
 	fs.Int64Var(&p.seed, "seed", 0, "run seed; each rollout's sampling seed derives from it")
 	fs.IntVar(&p.ctxTokens, "context-tokens", 0, "the policy's context window when a task does not set one")
 	fs.IntVar(&p.softLimit, "thread-soft-limit", 0, "the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout")
-	fs.StringVar(&p.mode, "mode", "", "who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a team of N agents, the same as --swarm N) | empty: what each task's team says")
+	fs.StringVar(&p.mode, "mode", "", "who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager and N workers, the same as --swarm N) | empty: what each task's team says")
 	fs.StringVar(&p.permMode, "perm-mode", "", "permission mode of the agents: accept-edits (the default) | default | plan | bypass | yolo")
 	fs.StringVar(&p.allow, "allow", "", "permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)")
 	fs.BoolVar(&p.ignoreRepo, "ignore-repo-instructions", false, "do not load AGENTS.md-style files of a task's repository into the agents' context")
 	fs.IntVar(&p.rpm, "rpm", 0, "pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits")
 }
 
-// team is who works, from --mode and --swarm: a team of n agents in all (the harness counts workers: n-1), every task as a single agent, or (neither) what
+// team is who works, from --mode and --swarm: a manager and n workers, every task as a single agent, or (neither) what
 // each task's team says.
 func (p *policyFlags) team() (swarm bool, agents int, single bool, err error) {
 	switch {
 	case p.mode == "":
-		if p.swarm > 1 {
-			return true, p.swarm - 1, false, nil
-		}
-		return false, 0, false, nil
+		swarm, workers := teamOf(p.swarm)
+		return swarm, workers, false, nil
 	case p.mode == "single":
-		if p.swarm > 1 {
+		if p.swarm > 0 {
 			return false, 0, false, errors.New("--mode single and --swarm contradict each other")
 		}
 		return false, 0, true, nil
 	case strings.HasPrefix(p.mode, "swarm:"):
 		n, perr := strconv.Atoi(strings.TrimPrefix(p.mode, "swarm:"))
-		if perr != nil || n < 2 {
-			return false, 0, false, fmt.Errorf("--mode %q: want swarm:N with N agents, the manager included, at least 2", p.mode)
+		if perr != nil || n < 1 {
+			return false, 0, false, fmt.Errorf("--mode %q: want swarm:N with N workers, the manager not counted, at least 1", p.mode)
 		}
 		if p.swarm > 0 && p.swarm != n {
 			return false, 0, false, errors.New("--mode swarm:N and --swarm name different sizes")
 		}
-		return true, n - 1, false, nil
+		return true, n, false, nil
 	}
 	return false, 0, false, fmt.Errorf("--mode %q: want single or swarm:N", p.mode)
 }

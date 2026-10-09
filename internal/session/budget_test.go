@@ -21,7 +21,7 @@ func TestSwarmBudgetDefaultsFlagsAndBadValues(t *testing.T) {
 		cfg := config.Defaults()
 		o := opts(t, repo, client, model)
 		o.Config = cfg
-		o.Swarm, o.MaxAgents = true, 3
+		o.Swarm, o.Workers = true, 2
 		mutate(&o, cfg)
 		return session.New(context.Background(), o)
 	}

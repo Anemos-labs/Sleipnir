@@ -334,8 +334,8 @@ func TestTextLinesTabsAndEscapes(t *testing.T) {
 func TestBannerSaysHowBigTheTeamIs(t *testing.T) {
 	k := goldenLook(true)
 	solo := strings.Join(plainLines(k.bannerLines(ChatInfo{Version: "dev", Model: "m", Cwd: "/p"}, 100)), "\n")
-	team := strings.Join(plainLines(k.bannerLines(ChatInfo{Version: "dev", Model: "m", Cwd: "/p", Swarm: true, Agents: 8}, 100)), "\n")
-	if strings.Contains(solo, "team") || !strings.Contains(team, "team of 8") {
+	team := strings.Join(plainLines(k.bannerLines(ChatInfo{Version: "dev", Model: "m", Cwd: "/p", Swarm: true, Workers: 8}, 100)), "\n")
+	if strings.Contains(solo, "team") || !strings.Contains(team, "manager + 8 workers") {
 		t.Errorf("solo:\n%s\nteam:\n%s", solo, team)
 	}
 	// and what the team is for, once: a person who has never seen it should not have to guess why there are eight
@@ -350,16 +350,19 @@ func TestBannerSaysHowBigTheTeamIs(t *testing.T) {
 func TestBannerShortensALongDirectoryNotTheBudgetOrTheTeam(t *testing.T) {
 	k := goldenLook(true)
 	info := ChatInfo{Version: "dev", Model: "deepseek/deepseek-v4-flash", Cwd: "/Users/someone/dev/work/clients/acme-corp/platform/services/billing-api",
-		Budget: "budget $50.00", Swarm: true, Agents: 8}
+		Budget: "budget $50.00", Swarm: true, Workers: 8}
 	for _, width := range []int{120, 100, 90, 80, 60, 52} {
 		first := plainLines(k.bannerLines(info, width))[0]
-		if !strings.Contains(first, "team of 8") || !strings.Contains(first, "deepseek-v4-flash") || cell.StringWidth(first) > width {
+		if !strings.Contains(first, "8 workers") || !strings.Contains(first, "deepseek-v4-flash") || cell.StringWidth(first) > width {
 			t.Errorf("width %d: the team and the model are on the line, which fits (%d cells):\n%s", width, cell.StringWidth(first), first)
+		}
+		if width >= 80 && !strings.Contains(first, "manager + 8 workers") {
+			t.Errorf("width %d: the team is named as a manager and its workers:\n%s", width, first)
 		}
 		if width >= 80 && !strings.Contains(first, "budget $50.00") {
 			t.Errorf("width %d: the budget is on the line:\n%s", width, first)
 		}
-		if width >= 90 && width < 110 && (!strings.Contains(first, "…/") || !strings.Contains(first, "billing-api")) {
+		if width >= 100 && width < 110 && (!strings.Contains(first, "…/") || !strings.Contains(first, "billing-api")) {
 			t.Errorf("width %d: the directory is cut at its front and keeps its tail:\n%s", width, first)
 		}
 	}

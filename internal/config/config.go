@@ -31,7 +31,7 @@
 //	SLEIPNIR_PERMISSION_MODE    permissions.mode
 //	SLEIPNIR_<SECTION>_<FIELD>  any scalar or list field of a section, named by
 //	                            its JSON path in upper case, for example
-//	                            SLEIPNIR_CACHE_SHARED_TTL, SLEIPNIR_SWARM_MAX_AGENTS,
+//	                            SLEIPNIR_CACHE_SHARED_TTL, SLEIPNIR_SWARM_MAX_WORKERS,
 //	                            SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS
 //
 // Booleans accept 1/true/yes/on and 0/false/no/off, lists are comma-separated,
@@ -224,7 +224,9 @@ func (c Cache) SharedTTLDuration() time.Duration {
 // Swarm bounds multi-agent runs. A 0 means "no limit" (or the swarm's own
 // default) for every number.
 type Swarm struct {
-	MaxAgents             int `json:"max_agents"`
+	// MaxWorkers caps the workers of a session's swarm; the manager is not a worker
+	// and is not counted.
+	MaxWorkers            int `json:"max_workers"`
 	RequestsPerMinute     int `json:"requests_per_minute"`
 	MaxConcurrentRequests int `json:"max_concurrent_requests"`
 	// Isolation is "none" (the default: every agent edits the one working tree,

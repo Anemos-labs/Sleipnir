@@ -223,7 +223,7 @@ type rigOpts struct {
 	bell        func()
 	restartTo   *[]string
 	animAllowed bool
-	team        int // the session is a team of this many agents, the manager included (0: a single agent)
+	team        int // the session is a manager and this many workers (0: a single agent)
 }
 
 func defaultLook() Look {
@@ -295,7 +295,7 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 }
 
 func (r *chatRig) attachSession() {
-	r.attach <- ChatAttach{Host: r.host, Events: r.log, Info: ChatInfo{Version: "0.1.0", Model: "mock/mock-1", Cwd: "/work/proj", SessionID: "20260102-030405-abcdef", Swarm: r.team > 1, Agents: r.team},
+	r.attach <- ChatAttach{Host: r.host, Events: r.log, Info: ChatInfo{Version: "0.1.0", Model: "mock/mock-1", Cwd: "/work/proj", SessionID: "20260102-030405-abcdef", Swarm: r.team > 0, Workers: r.team},
 		Commands: []input.Command{{Name: "help", Description: "this text"}, {Name: "cost", Description: "tokens, cost and cache hit ratio so far"},
 			{Name: "compact", Args: "[focus]", Description: "fold the older thread now"}, {Name: "exit", Description: "quit"}},
 		Sessions: func() []input.Choice {

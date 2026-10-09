@@ -360,7 +360,7 @@ func TestIsolatedTeamResumeDoesNotResurrectRetiredWorkers(t *testing.T) {
 			repo := isoRepo(t)
 			client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ready"} })
 			o := isoOptions(t, repo, client, model, "retired-workers")
-			o.MaxAgents = 3 // manager, one existing worker, and one interrupted spawn
+			o.Workers = 2 // one existing worker and one interrupted spawn
 			s, err := session.New(context.Background(), o)
 			if err != nil {
 				t.Fatal(err)

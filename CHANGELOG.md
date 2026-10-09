@@ -7,6 +7,29 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Count workers, not the manager, in every team size a person types or reads.
+  `--swarm N`, `sleipnir swarm N`, `/swarm N` and `rl --mode swarm:N` mean a
+  manager and N workers again; `--swarm 0` is a single agent and
+  `sleipnir swarm` takes 1 or more. The chat on a terminal defaults to a
+  manager and eight workers, nine agents in all, and the banner says
+  `manager + N workers`. The cockpit's eight legs are the workers: the manager
+  rides and takes no leg, and a ninth worker shares the first leg. The
+  `swarm.max_agents` setting, which counted the manager, is replaced by
+  `swarm.max_workers` (and `SLEIPNIR_SWARM_MAX_WORKERS`), which does not; a
+  file or variable that still names `max_agents` is refused with the new key
+  and its value, `max_agents` minus one; the value 1 (the manager alone) has no
+  equal, since 0 means no ceiling, so its refusal asks for a worker count of 1
+  or more. The mailman no longer takes a worker's place under the cap, and
+  `sleipnir init` writes `"max_workers": 12`.
+- The manager edits no file in any run. It plans, delegates and reviews; its
+  writes and writing shell commands are refused at run time with a pointer to
+  spawn a worker, in a shared checkout as in an isolated one, and in a session
+  in plan mode too: an allow rule the person wrote for the session (say
+  `Edit(docs/plan.md)`) opens its exception for the workers, not for the
+  manager. It keeps the same tool list as every other agent. The manager role
+  pin (G2) changes
+  once to say so and can require a fresh provider cache prefill for the
+  manager; other stable layers and tool-schema bytes are unchanged.
 - Reject task actions that require an ID when it is omitted or blank. The error
   identifies the missing field and explains how to find the task ID before
   retrying; invalid calls leave the board unchanged. Role restrictions and

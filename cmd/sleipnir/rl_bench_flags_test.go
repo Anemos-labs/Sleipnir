@@ -24,18 +24,19 @@ func TestModeAndSwarmFlagsSayWhoWorks(t *testing.T) {
 		mode         string
 		swarm        int
 		wantSwarm    bool
-		wantAgents   int
+		wantWorkers  int
 		wantSingle   bool
 		wantErrMatch string
 	}{
 		{name: "the task's team", wantSwarm: false},
-		{name: "--swarm", swarm: 3, wantSwarm: true, wantAgents: 2},
-		{name: "swarm:N", mode: "swarm:5", wantSwarm: true, wantAgents: 4},
-		{name: "swarm:N agrees with --swarm", mode: "swarm:3", swarm: 3, wantSwarm: true, wantAgents: 2},
+		{name: "--swarm", swarm: 3, wantSwarm: true, wantWorkers: 3},
+		{name: "--swarm 1", swarm: 1, wantSwarm: true, wantWorkers: 1},
+		{name: "swarm:N", mode: "swarm:5", wantSwarm: true, wantWorkers: 5},
+		{name: "swarm:N agrees with --swarm", mode: "swarm:3", swarm: 3, wantSwarm: true, wantWorkers: 3},
 		{name: "single", mode: "single", wantSingle: true},
 		{name: "single against --swarm", mode: "single", swarm: 2, wantErrMatch: "contradict"},
 		{name: "swarm:N against --swarm", mode: "swarm:4", swarm: 2, wantErrMatch: "different sizes"},
-		{name: "swarm:0", mode: "swarm:0", wantErrMatch: "at least 2"},
+		{name: "swarm:0", mode: "swarm:0", wantErrMatch: "at least 1"},
 		{name: "swarm:x", mode: "swarm:x", wantErrMatch: "swarm:N"},
 		{name: "something else", mode: "duo", wantErrMatch: "single or swarm:N"},
 	} {
@@ -48,7 +49,7 @@ func TestModeAndSwarmFlagsSayWhoWorks(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || swarm != tc.wantSwarm || agents != tc.wantAgents || single != tc.wantSingle {
+			if err != nil || swarm != tc.wantSwarm || agents != tc.wantWorkers || single != tc.wantSingle {
 				t.Fatalf("team() = %v %d %v %v", swarm, agents, single, err)
 			}
 		})

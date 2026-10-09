@@ -311,7 +311,7 @@ func TestResumeATeamBringsBackTheManagerAndTheBoard(t *testing.T) {
 	})
 	o := opts(t, repo, client, model)
 	o.Dir, o.Home = "", home
-	o.Swarm, o.MaxAgents, o.Interactive = true, 4, true
+	o.Swarm, o.Workers, o.Interactive = true, 3, true
 	s1, err := session.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)
@@ -329,7 +329,7 @@ func TestResumeATeamBringsBackTheManagerAndTheBoard(t *testing.T) {
 
 	o2 := opts(t, repo, client, model)
 	o2.Dir, o2.Home = "", home
-	o2.Swarm, o2.MaxAgents, o2.Interactive, o2.Resume = true, 4, true, "latest"
+	o2.Swarm, o2.Workers, o2.Interactive, o2.Resume = true, 3, true, "latest"
 	s2, err := session.New(context.Background(), o2)
 	if err != nil {
 		t.Fatalf("a team's session is resumed as a team: %v", err)
@@ -397,7 +397,7 @@ func TestResumeAcrossTheShapeOfASession(t *testing.T) {
 			}
 		}
 	}
-	team := func(o *session.Options) { o.Swarm, o.MaxAgents, o.Interactive = true, 4, true }
+	team := func(o *session.Options) { o.Swarm, o.Workers, o.Interactive = true, 3, true }
 	solo := func(o *session.Options) {}
 	run("team", team, "the codeword PINEAPPLE, CODEWORD")
 	run("resumed as a single agent", func(o *session.Options) { solo(o); o.Resume = "latest" }, "what reminds you of it?")

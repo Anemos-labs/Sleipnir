@@ -82,7 +82,7 @@ func (m *chatModel) page(line string) bool {
 	} else if m.info.Swarm {
 		m.toggleCockpit()
 	} else {
-		m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, "  a single agent: /swarm 8 starts a team of eight")})
+		m.block(bkNote, []cell.Line{cell.Styled(m.k.st.dim, "  a single agent: /swarm 8 starts a manager and eight workers")})
 	}
 	return true
 }

@@ -231,15 +231,15 @@ func TestConcurrentSpawnRespectsWriterAndAgentCaps(t *testing.T) {
 		return int(n.Load()), w, tot
 	}
 	t.Run("writers", func(t *testing.T) {
-		ok, writers, _ := spawnMany(t, Config{MaxWriters: 2, MaxAgents: 40}, "backend")
+		ok, writers, _ := spawnMany(t, Config{MaxWriters: 2, MaxWorkers: 40}, "backend")
 		if ok != 2 || writers != 2 {
 			t.Fatalf("MaxWriters=2 but %d Spawn calls succeeded and %d writers are running", ok, writers)
 		}
 	})
 	t.Run("agents", func(t *testing.T) {
-		ok, _, total := spawnMany(t, Config{MaxWriters: 40, MaxAgents: 4}, "reviewer") // manager + 3
+		ok, _, total := spawnMany(t, Config{MaxWriters: 40, MaxWorkers: 3}, "reviewer")
 		if ok != 3 || total != 4 {
-			t.Fatalf("MaxAgents=4 but %d Spawn calls succeeded and %d agents are registered", ok, total)
+			t.Fatalf("MaxWorkers=3 but %d Spawn calls succeeded and %d agents (the manager and its workers) are registered", ok, total)
 		}
 	})
 }
@@ -247,7 +247,7 @@ func TestConcurrentSpawnRespectsWriterAndAgentCaps(t *testing.T) {
 // A task has one owner: of two spawns for it, one wins and the other is refused.
 func TestTwoWorkersCannotOwnTheSameTask(t *testing.T) {
 	gate := make(chan struct{})
-	r := newRVRig(t, Config{MaxAgents: 40}, func(ctx context.Context, c *rvCall) rvReply {
+	r := newRVRig(t, Config{MaxWorkers: 40}, func(ctx context.Context, c *rvCall) rvReply {
 		rvBlock(ctx, gate)
 		return rvReply{Text: "ok"}
 	})
@@ -278,7 +278,7 @@ func TestTwoWorkersCannotOwnTheSameTask(t *testing.T) {
 // Self-claim and spawn compete for one task through the same compare-and-set on the
 // board: exactly one of them wins, every time.
 func TestSelfClaimRacingSpawnHasOneWinner(t *testing.T) {
-	r := newRVRig(t, Config{MaxAgents: 200, MaxWriters: 200}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r := newRVRig(t, Config{MaxWorkers: 200, MaxWriters: 200}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	r.sw.StartManager()
 	for i := 0; i < 30; i++ {
 		tk, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: fmt.Sprintf("contested %d", i)})
@@ -343,7 +343,7 @@ func TestConcurrentClaimsRespectScopeOverlap(t *testing.T) {
 // Retire and mail-triggered runs race: whichever wins, the roster and the board
 // agree afterwards (no running ghost that is off the roster but back on the board).
 func TestRetireRacingWakeLeavesNoGhost(t *testing.T) {
-	r := newRVRig(t, Config{MaxAgents: 100, MaxWriters: 100, Router: looseRouter()}, func(ctx context.Context, c *rvCall) rvReply {
+	r := newRVRig(t, Config{MaxWorkers: 100, MaxWriters: 100, Router: looseRouter()}, func(ctx context.Context, c *rvCall) rvReply {
 		time.Sleep(200 * time.Microsecond)
 		return rvReply{Text: "ok"}
 	})
@@ -529,7 +529,7 @@ func TestRejectReachesTheWorkerOrPoolsTheTask(t *testing.T) {
 
 // A refused Spawn creates nothing: no task, no agent, no id consumed.
 func TestRefusedSpawnLeavesNothingBehind(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 1, MaxAgents: 3}, func(ctx context.Context, c *rvCall) rvReply {
+	r := newRVRig(t, Config{MaxWriters: 1, MaxWorkers: 2}, func(ctx context.Context, c *rvCall) rvReply {
 		time.Sleep(300 * time.Millisecond) // keep the first worker busy
 		return rvReply{Text: "ok"}
 	})
@@ -556,8 +556,8 @@ func TestRefusedSpawnLeavesNothingBehind(t *testing.T) {
 	if len(tasks) != 2 {
 		t.Fatalf("board has %d tasks, want the 2 that were started", len(tasks))
 	}
-	if _, err := r.sw.Spawn(SpawnReq{Role: "reviewer", Title: "one more", By: "mgr"}); err == nil || !strings.Contains(err.Error(), "agent limit") {
-		t.Fatalf("MaxAgents=3 must refuse the 4th agent: %v", err)
+	if _, err := r.sw.Spawn(SpawnReq{Role: "reviewer", Title: "one more", By: "mgr"}); err == nil || !strings.Contains(err.Error(), "worker limit") {
+		t.Fatalf("MaxWorkers=2 must refuse the third worker: %v", err)
 	}
 	if n := len(r.sw.Board.Snapshot().Tasks); n != 2 {
 		t.Fatalf("the refused spawn created a task (%d tasks)", n)
@@ -868,7 +868,7 @@ func TestManagerPersistsAcrossTurns(t *testing.T) {
 // members that are fully built and assigned, so a peer's mail cannot replace its
 // kickoff. Nothing is registered when the assignment fails either.
 func TestHalfBuiltWorkerIsNotRoutable(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 4, MaxAgents: 3}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r := newRVRig(t, Config{MaxWriters: 4, MaxWorkers: 2}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	r.sw.StartManager()
 	tk, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "the real work"})
 	b := r.sw.Board
@@ -907,7 +907,7 @@ func TestHalfBuiltWorkerIsNotRoutable(t *testing.T) {
 // Spawn and Retire hammering each other must never panic (a retired member used to
 // be dereferenced as nil) or leave a ghost behind.
 func TestRetireAndSpawnRaceDoesNotCrash(t *testing.T) {
-	r := newRVRig(t, Config{MaxAgents: 1 << 20, MaxWriters: 1 << 20}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r := newRVRig(t, Config{MaxWorkers: 1 << 20, MaxWriters: 1 << 20}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	r.sw.StartManager()
 	stop := make(chan struct{})
 	var wg sync.WaitGroup

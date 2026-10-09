@@ -99,6 +99,14 @@ func (c *checker) convert(n *node, t reflect.Type, segs []string, top bool) any 
 		for _, k := range n.keys {
 			m := n.mem[k]
 			f, ok := byName[k]
+			if r, renamed := renamedAt(cloneSegs(segs, k)); !ok && renamed {
+				old := ""
+				if m.val.kind == nNumber {
+					old = m.val.num
+				}
+				c.report(SeverityError, m.keyOff, cloneSegs(segs, k), "%s", r.fileMessage(old))
+				continue
+			}
 			if !ok {
 				if top {
 					out[k] = toValue(m.val) // preserved in Config.Extra

@@ -78,7 +78,7 @@ func TestFortyWorkerSwarmCompletes(t *testing.T) {
 	})
 	o := opts(t, repo, client, model)
 	o.Swarm = true
-	o.MaxAgents = workers + 2
+	o.Workers = workers + 1
 	s, err := session.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)

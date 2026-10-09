@@ -51,15 +51,19 @@ const quitHint = app.QuitHint
 // The input is owned by one reader, stdinLines (chat_input.go): the prompt reads goals and an
 // approval question reads its answer from it, and a line typed while a turn runs waits for the
 // prompt instead of answering a question that comes later.
-// defaultAgents is the size of the team of the chat on a terminal when --swarm is not given: eight agents in all, the manager included (the
-// horse has eight legs). --swarm N is always a number of agents in all.
-const defaultAgents = 8
+// defaultWorkers is the number of workers of the chat on a terminal when --swarm is not given; the manager comes on top.
+// --swarm N always counts workers.
+const defaultWorkers = 8
 
-// defaultTeam is the size of that team, kept under the ceiling the person's own settings put on a session (swarm.max_agents).
+// teamOf is what --swarm N asks for, in chat, run, swarm and rl alike: a manager and N workers, or a single agent for 0.
+func teamOf(n int) (swarm bool, workers int) { return n > 0, max(n, 0) }
+
+// defaultTeam is the number of workers of that team, kept under the ceiling the person's own settings put on a session
+// (swarm.max_workers).
 func defaultTeam() int {
-	n := defaultAgents
+	n := defaultWorkers
 	if cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true}); err == nil {
-		if c := cfg.Swarm.MaxAgents; c > 0 && n > c {
+		if c := cfg.Swarm.MaxWorkers; c > 0 && n > c {
 			n = c
 		}
 	}
@@ -71,7 +75,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	cwd := fs.String("cwd", "", "working directory")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo")
-	swarmN := fs.Int("swarm", 0, "chat as a team of N agents in all, the manager included (config swarm.max_agents is the ceiling); on a terminal the default is "+strconv.Itoa(defaultAgents)+", --swarm 0 (or 1) is a single agent")
+	swarmN := fs.Int("swarm", 0, "chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is "+strconv.Itoa(defaultWorkers)+" workers, --swarm 0 is a single agent")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
@@ -95,8 +99,9 @@ func cmdChat(ctx context.Context, args []string) error {
 		return err
 	}
 	sessionOptions := func(spec string) session.Options {
+		team, workers := teamOf(*swarmN)
 		return chatOptions(session.Options{
-			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: *swarmN > 1, MaxAgents: *swarmN,
+			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 			TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
 			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
 			Allow: expandAllow(*allow),
@@ -107,7 +112,7 @@ func cmdChat(ctx context.Context, args []string) error {
 		fs.Visit(func(f *flag.Flag) { given = given || f.Name == "swarm" })
 		if !given {
 			*swarmN = defaultTeam()
-			// a session that is continued keeps its shape: one that ran as a single agent is not brought back as a team of eight with its budget
+			// a session that is continued keeps its shape: one that ran as a single agent is not brought back as a manager and eight workers with its budget
 			if spec, _ := resume(); spec != "" {
 				home, _ := os.UserHomeDir()
 				root, _ := filepath.Abs(*cwd)
@@ -305,7 +310,7 @@ permissions
 
 a team, and the program
 /roles [role=m]    which model each role runs on; change one (restarts)
-/swarm <n> [flags] start again as a team of n agents (the manager included)
+/swarm <n> [flags] start again as a manager and n workers
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
 /agents            the team's agents and tasks (ctrl+g: cockpit)
 /steer TEXT        tell the running turn something, without stopping it

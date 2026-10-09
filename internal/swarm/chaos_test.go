@@ -35,7 +35,7 @@ import (
 // for two seconds. At quiescence the roster, the board and the mailboxes must
 // agree with each other.
 func TestSwarmChaosLeavesConsistentState(t *testing.T) {
-	r := newRVRig(t, Config{MaxAgents: 200, MaxWriters: 200,
+	r := newRVRig(t, Config{MaxWorkers: 200, MaxWriters: 200,
 		Router: RouterConfig{MaxPerMinute: 1 << 30, MaxPerPairPerMin: 1 << 30, MaxChars: 600, DedupeWindow: time.Nanosecond}},
 		func(ctx context.Context, c *rvCall) rvReply {
 			time.Sleep(time.Duration(rand.Intn(300)) * time.Microsecond)
@@ -198,7 +198,7 @@ func TestStatusThrottleFlushesTheTrailingLine(t *testing.T) {
 
 // State transitions are never throttled: the final "idle" always lands.
 func TestConcSound_ThrottleNeverDropsAStateChange(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 4, MaxAgents: 100}, func(ctx context.Context, c *rvCall) rvReply {
+	r := newRVRig(t, Config{MaxWriters: 4, MaxWorkers: 100}, func(ctx context.Context, c *rvCall) rvReply {
 		return rvReply{Tools: nil, Text: "ok"}
 	})
 	r.sw.StartManager()
@@ -557,7 +557,7 @@ func (b *rvBlockEmit) Emit(agentID, typ string, data any, opts ...events.Opt) (u
 // and registers later); that window was not reproduced.
 func TestConcurrentSetSharedLeavesAgentsOnTheSameEpoch(t *testing.T) {
 	be := &rvBlockEmit{Emitter: events.NewMemLog()}
-	r := newRVRigWith(t, Config{MaxAgents: 100, MaxWriters: 100}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} },
+	r := newRVRigWith(t, Config{MaxWorkers: 100, MaxWriters: 100}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} },
 		func(d *Deps) { d.Events = be })
 	r.sw.StartManager()
 	for i := 0; i < 24; i++ {

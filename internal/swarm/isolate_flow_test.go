@@ -296,7 +296,7 @@ func TestWritesOutsideTheOwnTreeAreRefused(t *testing.T) {
 		t.Fatalf("the manager's write in an isolated run: %v", err)
 	}
 	// And through the permission wrapper, whatever the engine would say.
-	rr := roleRequester{inner: perm.AllowAll{}, role: BuiltinRoles()["manager"], denyWrites: isolatedManagerMsg, strictShell: true}
+	rr := roleRequester{inner: perm.AllowAll{}, role: BuiltinRoles()["manager"], denyWrites: managerWritesMsg, strictShell: true}
 	for _, q := range []perm.Request{
 		{Tool: "write", Writes: true, Paths: []string{r.repo + "/a.txt"}},
 		{Tool: "bash", Command: "echo hi > a.txt", Writes: true},

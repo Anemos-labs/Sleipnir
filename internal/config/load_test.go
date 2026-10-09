@@ -148,7 +148,7 @@ func TestPrecedenceLowestToHighest(t *testing.T) {
 func TestReportNamesTheSourceOfEveryKey(t *testing.T) {
 	p := newProj(t)
 	userPath := p.user(`{"models": {"default": "u/m"}, "tools": {"max_output_chars": 100}}`)
-	projPath := p.project(`{"swarm": {"max_agents": 4}, "tools": {"default_timeout_sec": 30}}`)
+	projPath := p.project(`{"swarm": {"max_workers": 4}, "tools": {"default_timeout_sec": 30}}`)
 	localPath := p.local(`{"tools": {"max_output_chars": 200}}`)
 	_, rep := p.mustLoad(withEnv("SLEIPNIR_CACHE_SHARED_TTL=1h"))
 
@@ -165,7 +165,7 @@ func TestReportNamesTheSourceOfEveryKey(t *testing.T) {
 		"models.default":            userPath,
 		"tools.max_output_chars":    localPath,
 		"tools.default_timeout_sec": projPath,
-		"swarm.max_agents":          projPath,
+		"swarm.max_workers":         projPath,
 		"cache.shared_ttl":          "env:SLEIPNIR_CACHE_SHARED_TTL",
 	}
 	if !reflect.DeepEqual(rep.Origins, wantOrigins) {
@@ -192,12 +192,12 @@ func TestExplicitFalseAndZeroBeatLowerLayers(t *testing.T) {
 	p := newProj(t)
 	p.user(`{
 		"cache": {"hot_max_tokens": 900, "min_layer_for_breakpoint": 4000},
-		"swarm": {"max_agents": 5, "budget_usd": 12.5, "isolation": "worktree", "mailman": true},
+		"swarm": {"max_workers": 5, "budget_usd": 12.5, "isolation": "worktree", "mailman": true},
 		"tools": {"web_allow_private": true, "default_timeout_sec": 30}
 	}`)
 	p.project(`{
 		"cache": {"min_layer_for_breakpoint": 0},
-		"swarm": {"max_agents": 0, "budget_usd": 0, "mailman": false},
+		"swarm": {"max_workers": 0, "budget_usd": 0, "mailman": false},
 		"tools": {"web_allow_private": false}
 	}`)
 	cfg, _ := p.mustLoad()
@@ -208,7 +208,7 @@ func TestExplicitFalseAndZeroBeatLowerLayers(t *testing.T) {
 	if c.Cache.HotMaxTokens != 900 {
 		t.Errorf("cache: %+v (keys the project did not mention must keep the user's values)", c.Cache)
 	}
-	if c.Swarm.MaxAgents != 0 || c.Swarm.BudgetUSD != 0 || c.Swarm.Isolation != "worktree" || c.Swarm.Mailman {
+	if c.Swarm.MaxWorkers != 0 || c.Swarm.BudgetUSD != 0 || c.Swarm.Isolation != "worktree" || c.Swarm.Mailman {
 		t.Errorf("swarm: %+v (project's false/0 must win, isolation is not mentioned)", c.Swarm)
 	}
 	if c.Tools.WebAllowPrivate || c.Tools.DefaultTimeoutSec != 30 {
@@ -457,7 +457,7 @@ func TestSyntaxErrorFailsTheWholeLoad(t *testing.T) {
 
 func TestTypeErrorsNameFileLineAndFieldPath(t *testing.T) {
 	p := newProj(t)
-	src := "{\n  \"swarm\": {\n    \"max_agents\": \"eight\",\n    \"budget_usd\": true\n  },\n  \"models\": [1],\n  \"cache\": {\"shared_ttl\": 5, \"hot_max_tokens\": 1.5},\n  \"tools\": {\"web_allow_hosts\": [\"a\", 2, null]}\n}"
+	src := "{\n  \"swarm\": {\n    \"max_workers\": \"eight\",\n    \"budget_usd\": true\n  },\n  \"models\": [1],\n  \"cache\": {\"shared_ttl\": 5, \"hot_max_tokens\": 1.5},\n  \"tools\": {\"web_allow_hosts\": [\"a\", 2, null]}\n}"
 	path := p.project(src)
 	_, _, err := p.load()
 	if err == nil {
@@ -465,7 +465,7 @@ func TestTypeErrorsNameFileLineAndFieldPath(t *testing.T) {
 	}
 	got := err.Error()
 	for _, want := range []string{
-		path + ":" + at(t, src, `"eight"`) + ": swarm.max_agents: expected an integer, got a string",
+		path + ":" + at(t, src, `"eight"`) + ": swarm.max_workers: expected an integer, got a string",
 		path + ":" + at(t, src, `true`) + ": swarm.budget_usd: expected a number, got a boolean",
 		path + ":" + at(t, src, `[1]`) + ": models: expected an object, got a list",
 		path + ":" + at(t, src, `5,`) + ": cache.shared_ttl: expected a string, got a number",
@@ -488,7 +488,7 @@ func TestInvalidValuesAreAttributedToTheFileAndLineThatSuppliedThem(t *testing.T
 	projSrc := "{\n  \"swarm\": {\n    \"isolation\": \"container\"\n  }\n}"
 	userPath := p.user(userSrc)
 	projPath := p.project(projSrc)
-	_, _, err := p.load(withEnv("SLEIPNIR_SWARM_MAX_AGENTS=-3"))
+	_, _, err := p.load(withEnv("SLEIPNIR_SWARM_MAX_WORKERS=-3"))
 	if err == nil {
 		t.Fatal("expected errors")
 	}
@@ -497,7 +497,7 @@ func TestInvalidValuesAreAttributedToTheFileAndLineThatSuppliedThem(t *testing.T
 		userPath + ":" + at(t, userSrc, `"2h"`) + `: cache.shared_ttl: must be "5m" or "1h", got "2h"`,
 		userPath + ":" + at(t, userSrc, `"gpt"`) + `: providers.x.dialect: unknown dialect "gpt" (valid: anthropic, openai-chat, openai-responses)`,
 		projPath + ":" + at(t, projSrc, `"container"`) + `: swarm.isolation: must be "none" or "worktree", got "container"`,
-		`env:SLEIPNIR_SWARM_MAX_AGENTS: swarm.max_agents: must not be negative, got -3`,
+		`env:SLEIPNIR_SWARM_MAX_WORKERS: swarm.max_workers: must not be negative, got -3`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
@@ -517,13 +517,13 @@ func TestAHigherLayerCanFixWhatALowerLayerGotWrong(t *testing.T) {
 
 func TestTypeAndValueErrorsAreReportedTogether(t *testing.T) {
 	p := newProj(t)
-	proj := p.project(`{"swarm": {"max_agents": "eight"}, "cache": {"shared_ttl": "2h"}}`)
+	proj := p.project(`{"swarm": {"max_workers": "eight"}, "cache": {"shared_ttl": "2h"}}`)
 	_, _, err := p.load()
 	if err == nil {
 		t.Fatal("expected errors")
 	}
 	got := err.Error()
-	if !strings.Contains(got, proj+":1:") || !strings.Contains(got, "swarm.max_agents: expected an integer") || !strings.Contains(got, "cache.shared_ttl: must be") {
+	if !strings.Contains(got, proj+":1:") || !strings.Contains(got, "swarm.max_workers: expected an integer") || !strings.Contains(got, "cache.shared_ttl: must be") {
 		t.Fatalf("both kinds of error should appear in one run:\n%s", got)
 	}
 	if n := len(strings.Split(strings.TrimSpace(got), "\n")); n != 2 {
@@ -533,7 +533,7 @@ func TestTypeAndValueErrorsAreReportedTogether(t *testing.T) {
 
 func TestErrorsFromSeveralFilesAreAllReported(t *testing.T) {
 	p := newProj(t)
-	u := p.user(`{"swarm": {"max_agents": "x"}}`)
+	u := p.user(`{"swarm": {"max_workers": "x"}}`)
 	pr := p.project(`{"cache": {"hot_max_tokens": "yes"}}`)
 	l := p.local(`{"swarm": {"mailman": 3}}`)
 	_, _, err := p.load()
@@ -549,13 +549,13 @@ func TestErrorsFromSeveralFilesAreAllReported(t *testing.T) {
 
 func TestBadEnvironmentValuesAreErrors(t *testing.T) {
 	p := newProj(t)
-	_, _, err := p.load(withEnv("SLEIPNIR_SWARM_MAX_AGENTS=lots", "SLEIPNIR_SWARM_MAILMAN=maybe", "SLEIPNIR_SWARM_BUDGET_USD=abc"))
+	_, _, err := p.load(withEnv("SLEIPNIR_SWARM_MAX_WORKERS=lots", "SLEIPNIR_SWARM_MAILMAN=maybe", "SLEIPNIR_SWARM_BUDGET_USD=abc"))
 	if err == nil {
 		t.Fatal("expected errors")
 	}
 	got := err.Error()
 	for _, want := range []string{
-		`env:SLEIPNIR_SWARM_MAX_AGENTS: swarm.max_agents: expected an integer, got "lots"`,
+		`env:SLEIPNIR_SWARM_MAX_WORKERS: swarm.max_workers: expected an integer, got "lots"`,
 		`env:SLEIPNIR_SWARM_MAILMAN: swarm.mailman: expected true or false`,
 		`env:SLEIPNIR_SWARM_BUDGET_USD: swarm.budget_usd: expected a number, got "abc"`,
 	} {
@@ -567,20 +567,20 @@ func TestBadEnvironmentValuesAreErrors(t *testing.T) {
 
 func TestOverridesAreCheckedLikeAnyLayer(t *testing.T) {
 	p := newProj(t)
-	_, _, err := p.load(withOverrides(map[string]any{"swarm": map[string]any{"max_agents": "x"}}))
-	if err == nil || !strings.Contains(err.Error(), "overrides: swarm.max_agents: expected an integer, got a string") {
+	_, _, err := p.load(withOverrides(map[string]any{"swarm": map[string]any{"max_workers": "x"}}))
+	if err == nil || !strings.Contains(err.Error(), "overrides: swarm.max_workers: expected an integer, got a string") {
 		t.Fatalf("err = %v", err)
 	}
 	cfg, rep := p.mustLoad(withOverrides(map[string]any{
 		"tools":   map[string]any{"web_allow_hosts": []string{"a.example.com"}},
-		"swarm":   map[string]any{"max_agents": 3},
+		"swarm":   map[string]any{"max_workers": 3},
 		"bogus":   1,
 		"cache":   map[string]any{"hot_max_tokens": 77},
 		"models":  map[string]any{"roles": map[string]string{"x": "a/b"}},
 		"hooks":   map[string]any{"h": map[string]any{"cmd": "c"}},
 		"$schema": "x",
 	}))
-	if cfg.Swarm.MaxAgents != 3 || cfg.Cache.HotMaxTokens != 77 || cfg.Models.Roles["x"] != "a/b" || !reflect.DeepEqual(cfg.Tools.WebAllowHosts, []string{"a.example.com"}) {
+	if cfg.Swarm.MaxWorkers != 3 || cfg.Cache.HotMaxTokens != 77 || cfg.Models.Roles["x"] != "a/b" || !reflect.DeepEqual(cfg.Tools.WebAllowHosts, []string{"a.example.com"}) {
 		t.Fatalf("cfg = %+v", cfg)
 	}
 	if string(cfg.Extra["bogus"]) != "1" {

@@ -160,7 +160,7 @@ func TestSessionEndReasonDefaultsToOtherAndTheMailmanFiresNoSubagentHooks(t *tes
 	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "nothing to do"} })
 	yes := true
 	o := opts(t, repo, client, model)
-	o.Swarm, o.MaxAgents, o.Mailman = true, 4, &yes
+	o.Swarm, o.Workers, o.Mailman = true, 3, &yes
 	o.Config = hookConfig(t, map[string]string{
 		"SessionEnd":   "cat >> " + ends + "; echo >> " + ends,
 		"SubagentStop": "cat >> " + subStops + "; echo >> " + subStops,

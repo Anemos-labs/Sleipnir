@@ -9,7 +9,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
-func optionsOf(t *testing.T, sp env.RunSpec) (maxAgents int, budgetUSD float64) {
+func optionsOf(t *testing.T, sp env.RunSpec) (workers int, budgetUSD float64) {
 	t.Helper()
 	h := &Harness{NewProvider: func(env.RunSpec) (provider.Provider, cost.Model, error) { return nil, cost.Model{}, nil }}
 	cfg, err := h.config(sp)
@@ -20,26 +20,26 @@ func optionsOf(t *testing.T, sp env.RunSpec) (maxAgents int, budgetUSD float64) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return o.MaxAgents, o.BudgetUSD
+	return o.Workers, o.BudgetUSD
 }
 
-// A team size counts workers: `run --swarm 3` is three workers and a manager, and a composite task of three parts
-// has three workers. The session's MaxAgents counts the manager too.
-func TestATeamOfNWorkersIsNPlusOneAgents(t *testing.T) {
+// A team size counts workers: `--swarm 3` is three workers and a manager, and a composite task of three parts
+// has three workers. The session is asked for that many workers, as it stands.
+func TestATeamOfNWorkersIsNWorkers(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		spec env.RunSpec
 		want int
 	}{
-		{"from the task's team", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm", Agents: 3}}}, 4},
-		{"from the command line", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm", Agents: 3}}, Swarm: true, Agents: 5}, 6},
-		{"one worker", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm", Agents: 1}}}, 2},
+		{"from the task's team", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm", Agents: 3}}}, 3},
+		{"from the command line", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm", Agents: 3}}, Swarm: true, Agents: 5}, 5},
+		{"one worker", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm", Agents: 1}}}, 1},
 		{"no size: the session's own limit", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm"}}}, 0},
 		{"not a swarm", env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p"}, Agents: 3}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got, _ := optionsOf(t, tc.spec); got != tc.want {
-				t.Fatalf("MaxAgents = %d, want %d", got, tc.want)
+				t.Fatalf("Workers = %d, want %d", got, tc.want)
 			}
 		})
 	}

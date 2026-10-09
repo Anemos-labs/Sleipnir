@@ -581,7 +581,7 @@ func TestRouterReportsFailureForMailThatCannotBeDelivered(t *testing.T) {
 // A manager that is not running cannot be buried: the inbox holds a bounded number
 // of messages and the rest are coalesced into one digest.
 func TestManagerInboxIsBoundedAndCoalesced(t *testing.T) {
-	r := newRVRig(t, Config{MaxAgents: 100, InboxSoftCap: 8}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r := newRVRig(t, Config{MaxWorkers: 100, InboxSoftCap: 8}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
 	r.sw.StartManager()
 	now := time.Now()
 	r.sw.Router.now = func() time.Time { return now }

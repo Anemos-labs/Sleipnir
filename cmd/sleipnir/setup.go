@@ -96,7 +96,7 @@ func cmdInit(ctx context.Context, args []string) error {
 	} else {
 		patch = map[string]any{
 			"permissions": map[string]any{"deny": []string{"Read(./.env)", "Read(./secrets/**)"}},
-			"swarm":       map[string]any{"max_agents": 12, "isolation": "none"},
+			"swarm":       map[string]any{"max_workers": 12, "isolation": "none"},
 		}
 		// A project shares a model only when asked to: the detected default depends on
 		// whose keys are in this shell.

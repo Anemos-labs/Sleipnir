@@ -82,8 +82,9 @@ sleipnir
 ```
 
 Describe the result and how it should be verified. The default team can start
-up to seven workers alongside the manager. Capacity is not the number currently
-working. Use `sleipnir --swarm 0` when you want one agent.
+up to eight workers alongside the manager. Capacity is not the number currently
+working. `--swarm N` sets the number of workers; use `sleipnir --swarm 0` when
+you want one agent.
 
 A normal message runs one turn. A standing goal checks completion and continues
 when more work is needed:

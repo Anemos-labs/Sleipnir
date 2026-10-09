@@ -81,7 +81,7 @@ func recordRich() ([]byte, error) {
 		Cwd: ws, Root: ws, Home: filepath.Join(root, "home"), Dir: sdir,
 		Provider: client, ModelInfo: &model, Model: model.ID,
 		Mode: perm.ModeBypass, NoWeb: true, TrustProject: true, Offline: true, NoMCP: true,
-		Swarm: true, MaxAgents: 8, ContextWindow: richWindow,
+		Swarm: true, Workers: 7, ContextWindow: richWindow,
 	})
 	if err != nil {
 		return nil, err

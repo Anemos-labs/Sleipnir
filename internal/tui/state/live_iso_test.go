@@ -104,7 +104,7 @@ func recordIsolated() ([]byte, error) {
 		Cwd: repo, Root: repo, Home: filepath.Join(root, "home"), ID: "s-iso", Dir: sdir,
 		Provider: client, ModelInfo: &model, Model: model.ID,
 		Mode: perm.ModeBypass, NoWeb: true, TrustProject: true, Offline: true, NoMCP: true,
-		Swarm: true, MaxAgents: 12, Verify: "sh verify.sh", Isolation: "worktree",
+		Swarm: true, Workers: 11, Verify: "sh verify.sh", Isolation: "worktree",
 	})
 	if err != nil {
 		return nil, err

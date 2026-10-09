@@ -84,11 +84,11 @@ func secRevAgentState(r *secRevRig, id string) string {
 }
 
 // S18: MaxWriters is only checked on the "new agent" branch of Spawn. Reusing idle
-// workers (spawn agent=...) skips it, so the cap can be exceeded up to MaxAgents.
+// workers (spawn agent=...) skips it, so the cap can be exceeded up to MaxWorkers.
 func TestSec_S18_WriterCapBypassedByReusingIdleWriters(t *testing.T) {
 	var block atomic.Bool
 	release := make(chan struct{})
-	r := secRevNewRig(t, swarm.Config{SessionID: "s18", MaxWriters: 2, MaxAgents: 24}, func(c *mock.Call) mock.Reply {
+	r := secRevNewRig(t, swarm.Config{SessionID: "s18", MaxWriters: 2, MaxWorkers: 24}, func(c *mock.Call) mock.Reply {
 		if block.Load() {
 			<-release
 		}

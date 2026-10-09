@@ -50,7 +50,7 @@ func TestSaveMergesIntoAnExistingFileAndKeepsUnknownKeysAtAnyDepth(t *testing.T)
   "models": {"default": "old/model", "future_field": {"deep": [1, 2]}},
   "providers": {"a": {"dialect": "anthropic", "x_experimental": true}},
   "zz_unknown_top": {"keep": "me"},
-  "swarm": {"max_agents": 3,},
+  "swarm": {"max_workers": 3,},
 }`), 0o640); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestSaveMergesIntoAnExistingFileAndKeepsUnknownKeysAtAnyDepth(t *testing.T)
 	if a["dialect"] != "anthropic" || a["base_url"] != "https://a.example.com" || a["x_experimental"] != true {
 		t.Errorf("provider a = %v", a)
 	}
-	if !reflect.DeepEqual(v["zz_unknown_top"], map[string]any{"keep": "me"}) || v["swarm"].(map[string]any)["max_agents"] != float64(3) {
+	if !reflect.DeepEqual(v["zz_unknown_top"], map[string]any{"keep": "me"}) || v["swarm"].(map[string]any)["max_workers"] != float64(3) {
 		t.Errorf("untouched keys changed: %v", v)
 	}
 	if fi, _ := os.Stat(path); fi.Mode().Perm() != 0o640 {
@@ -136,7 +136,7 @@ func TestSaveAcceptsStructsAndTypedSlicesInPatches(t *testing.T) {
 	patch := map[string]any{
 		"models":      Models{Default: "a/b", Roles: map[string]string{"planner": "c/d"}},
 		"permissions": map[string]any{"allow": []string{"Read"}, "mode": "plan"},
-		"swarm":       map[string]int{"max_agents": 6},
+		"swarm":       map[string]int{"max_workers": 6},
 	}
 	if err := Save(path, patch); err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestSaveAcceptsStructsAndTypedSlicesInPatches(t *testing.T) {
 	_ = cfg
 	var v map[string]any
 	json.Unmarshal([]byte(readFile(t, path)), &v)
-	if v["swarm"].(map[string]any)["max_agents"] != float64(6) || v["models"].(map[string]any)["roles"].(map[string]any)["planner"] != "c/d" {
+	if v["swarm"].(map[string]any)["max_workers"] != float64(6) || v["models"].(map[string]any)["roles"].(map[string]any)["planner"] != "c/d" {
 		t.Fatalf("file = %v", v)
 	}
 }
@@ -165,7 +165,7 @@ func TestSaveRefusesToWriteAnInvalidConfiguration(t *testing.T) {
 		want  string
 	}{
 		{"bad enum", map[string]any{"cache": map[string]any{"shared_ttl": "9h"}}, `cache.shared_ttl: must be "5m" or "1h"`},
-		{"wrong type", map[string]any{"swarm": map[string]any{"max_agents": "many"}}, "swarm.max_agents: expected an integer, got a string"},
+		{"wrong type", map[string]any{"swarm": map[string]any{"max_workers": "many"}}, "swarm.max_workers: expected an integer, got a string"},
 		{"wrong shape", map[string]any{"models": []string{"x"}}, "models: expected an object, got a list"},
 		{"bad model ref", map[string]any{"models": map[string]any{"default": "nomodel"}}, "models.default: must look like"},
 		{"unencodable", map[string]any{"x": make(chan int)}, "cannot be encoded"},

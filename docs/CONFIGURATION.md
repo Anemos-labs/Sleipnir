@@ -74,15 +74,15 @@ Layers are merged by presence, not by value:
   inside a section are ignored with a warning. `$schema` and other `$`-prefixed top-level keys are editor metadata and
   never warn.
 
-Worked example. The user file sets nothing about the swarm; the project file has `"swarm": {"max_agents": 12}`; the
-local file has `"swarm": {"max_agents": 6}` and `"models": {"default": null}`; the shell exports
-`SLEIPNIR_SWARM_MAX_AGENTS=30`:
+Worked example. The user file sets nothing about the swarm; the project file has `"swarm": {"max_workers": 12}`; the
+local file has `"swarm": {"max_workers": 6}` and `"models": {"default": null}`; the shell exports
+`SLEIPNIR_SWARM_MAX_WORKERS=30`:
 
-| Source | `swarm.max_agents` |
+| Source | `swarm.max_workers` |
 |---|---|
 | project file | 12 |
 | + local file | 6 (and `models.default` from lower layers is removed) |
-| + `SLEIPNIR_SWARM_MAX_AGENTS=30` | 30 |
+| + `SLEIPNIR_SWARM_MAX_WORKERS=30` | 30 |
 
 Flags are applied by the commands themselves, after the merge, and always win over every layer:
 
@@ -91,7 +91,7 @@ Flags are applied by the commands themselves, after the merge, and always win ov
 | `--model M` | `models.default` (and `SLEIPNIR_MODEL`) | `chat`, `run`, `swarm`, `doctor`, `rl rollout`, `rl eval` |
 | `--mode M` | `permissions.mode` (role profiles under `permissions.roles` still apply) | `chat`, `run`, `swarm` |
 | `--budget-usd N` | `swarm.budget_usd` (and, with `--swarm`, the built-in cap), and it also caps a single agent. Zero, negative and NaN are not budgets: `0` is the same as leaving the flag out, and the others are refused. To run a swarm without a cap set `swarm.budget_usd` to 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` | `chat`, `run`, `swarm` |
-| `--swarm N` | the team size: N agents in all, the manager included. `swarm.max_agents` is the ceiling: a request for more agents than it allows is refused before anything starts | `chat`, `run` |
+| `--swarm N` | the team size: a manager and N workers (the manager is not counted). `0` is a single agent. `swarm.max_workers` is the ceiling: a request for more workers than it allows is refused before anything starts | `chat`, `run` |
 | `--role-model role=M` | the model of one role (repeatable). A role the session does not have is an error (`no role named "backnd"`, with the roles it has); without `--swarm` there is only one agent and the flag draws a warning | `run`, `swarm`, `rl rollout`, `rl eval` |
 | `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
 | `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
@@ -105,7 +105,7 @@ use double quotes. A number where an integer is expected must be an integer.
 Every problem in every layer is reported in one run, with file, line, column and field path, for example:
 
 ```text
-sleipnir: ~/.sleipnir/config.json:7:28: swarm.max_agents: expected an integer, got a string
+sleipnir: ~/.sleipnir/config.json:7:28: swarm.max_workers: expected an integer, got a string
 ~/.sleipnir/config.json:3:26: providers.acme.dialect: unknown dialect "openai" (valid: anthropic, openai-chat, openai-responses)
 ~/.sleipnir/config.json:3:48: providers.acme.base_url: must be an absolute http(s) URL such as https://api.example.com/v1
 ~/.sleipnir/config.json:3:86: providers.acme.api_key_env: must be the NAME of an environment variable (letters, digits and underscores), not the key itself
@@ -166,7 +166,7 @@ value are listed, and the security-sensitive settings the project made are named
 
 Each `SLEIPNIR_*` variable that names a setting is one entry above the files and below the flags. An empty value counts
 as unset, booleans accept `1/true/yes/on` and `0/false/no/off`, lists are comma-separated, and a value of the wrong
-type is an error that names the variable (`env:SLEIPNIR_SWARM_MAX_AGENTS: swarm.max_agents: expected an integer, got
+type is an error that names the variable (`env:SLEIPNIR_SWARM_MAX_WORKERS: swarm.max_workers: expected an integer, got
 "lots"`). Other `SLEIPNIR_*` variables are ignored. Providers, hooks and MCP servers can only be set in files.
 
 | Variable | Setting |
@@ -183,7 +183,7 @@ The last form covers: `SLEIPNIR_MODELS_DEFAULT`, `SLEIPNIR_PERMISSIONS_MODE`, `S
 `SLEIPNIR_PERMISSIONS_ASK`, `SLEIPNIR_PERMISSIONS_DENY`, `SLEIPNIR_CACHE_SHARED_TTL`,
 `SLEIPNIR_CACHE_MIN_LAYER_FOR_BREAKPOINT`, `SLEIPNIR_CACHE_COMPACT_THRESHOLD_TOKENS`,
 `SLEIPNIR_CACHE_THREAD_SOFT_LIMIT_TOKENS`, `SLEIPNIR_CACHE_HOT_MAX_TOKENS`, `SLEIPNIR_CACHE_AFFINITY_SHARDS`,
-`SLEIPNIR_SWARM_MAX_AGENTS`, `SLEIPNIR_SWARM_REQUESTS_PER_MINUTE`, `SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS`,
+`SLEIPNIR_SWARM_MAX_WORKERS`, `SLEIPNIR_SWARM_REQUESTS_PER_MINUTE`, `SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS`,
 `SLEIPNIR_SWARM_ISOLATION`, `SLEIPNIR_SWARM_MAILMAN`, `SLEIPNIR_SWARM_BUDGET_USD`, `SLEIPNIR_TOOLS_MAX_OUTPUT_CHARS`,
 `SLEIPNIR_TOOLS_DEFAULT_TIMEOUT_SEC`, `SLEIPNIR_TOOLS_MAX_TIMEOUT_SEC`, `SLEIPNIR_TOOLS_WEB_ALLOW_PRIVATE` and
 `SLEIPNIR_TOOLS_WEB_ALLOW_HOSTS`. (A variable that sets a gated key is yours, not the repository's, so the trust gate
@@ -306,7 +306,7 @@ or replicas may still need cold prefills.
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `max_agents` | integer | `0` (no ceiling) | yes | The ceiling on the size of a session's swarm, the manager included. `--swarm N` asks for N agents and is refused when N is more than this (`swarm: 9 agents requested (the manager included) but swarm.max_agents caps a session at 4`); a smaller request is honoured. It is how a user file keeps a stray `--swarm 50` from spending a budget. `0` sets no ceiling |
+| `max_workers` | integer | `0` (no ceiling) | yes | The ceiling on the workers of a session's swarm; the manager and the mailman are not counted. `--swarm N` asks for a manager and N workers and is refused when N is more than this (`swarm: 8 workers requested (and the manager) but swarm.max_workers caps a session at 4 workers`); a smaller request is honoured. It is how a user file keeps a stray `--swarm 50` from spending a budget. `0` sets no ceiling. The older key `max_agents` (and `SLEIPNIR_SWARM_MAX_AGENTS`), which counted the manager, is refused with the new key and its value, `max_agents` minus one |
 | `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
 | `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
 | `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in your cache directory, whatever the configuration says |

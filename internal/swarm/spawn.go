@@ -179,12 +179,17 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 		return "", err
 	}
 	s.mu.Lock()
-	total := len(s.members)
+	workers := 0
+	for _, m := range s.members {
+		if !m.manager && !m.service {
+			workers++
+		}
+	}
 	id := fmt.Sprintf("%s-%d", role.Short, s.seq[role.Name]+1)
 	shared := s.shared
 	s.mu.Unlock()
-	if total >= s.cfg.MaxAgents {
-		return "", fmt.Errorf("agent limit reached (%d); reuse an idle worker with spawn agent=… or wait", s.cfg.MaxAgents)
+	if workers >= s.cfg.MaxWorkers {
+		return "", fmt.Errorf("worker limit reached (%d); reuse an idle worker with spawn agent=… or wait", s.cfg.MaxWorkers)
 	}
 	if !role.ReadOnly && !s.isolated() {
 		// (An isolated run has no writer cap: every writer edits a tree of its own.)

@@ -23,7 +23,7 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
 
 ## 2. Roles and tools
 
-Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (coordinates, does not implement), `backend`,
+Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (plans, delegates and reviews; edits no file), `backend`,
 `frontend`, `fullstack`, `tester`, `docs` (writers), `reviewer`, `scout` (read-only). Users add roles with markdown
 files (`.sleipnir/agents/*.md`). With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
 spawnable, is on no roster, board or hot view, and may call `mail` and nothing else.
@@ -31,7 +31,8 @@ spawnable, is on no roster, board or hot view, and may call `mail` and nothing e
 **Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, skill, any MCP tools, frozen for the session, and the five
 swarm tools), so the provider caches the schemas once for the whole swarm. Roles are restricted at run time: the permission engine judges
 each call under the session posture *and* the role's profile (read-only roles run under the plan profile: writes and
-mutating commands are denied by the engine that understands shell syntax, not by a command allowlist), and swarm
+mutating commands are denied by the engine that understands shell syntax, not by a command allowlist; the manager runs
+under the plan profile too, and its shell is also held to the strict allowlist below, in every isolation mode), and swarm
 tools check the caller's role, which the harness puts in the call (`spawn`, `create`, `accept`, `reject`, `reopen`,
 `fail` and scope changes are manager-only). Without a permission engine (tests, embedding) read-only roles fall back
 to a strict allowlist of one plain inspection command (no operators, redirections, substitutions, exec flags, or
@@ -298,8 +299,8 @@ Limits, all enforced in code:
 
 | Limit | Default | Why |
 |---|---|---|
-| agents (running or idle) | 24 (config `swarm.max_agents`) | registration budget |
-| writer admission in the shared tree | the team's workers (agents − 1), at least 4 | Checked when spawning or reassigning writers; counts running non-manager workers whose roles may write. Read-only roles are exempt from this check but remain subject to the agent limit. Mail wakeups bypass admission; a running writer woken by mail is counted by later spawn checks. Isolated worktrees bypass the writer admission limit. Scopes and write leases separately constrain file access. |
+| workers (running or idle) | 24 (config `swarm.max_workers`; `--swarm N`) | registration budget; the manager and the mailman are not workers and are not counted |
+| writer admission in the shared tree | the team's workers, at least 4 | Checked when spawning or reassigning writers; counts running non-manager workers whose roles may write. Read-only roles are exempt from this check but remain subject to the worker limit. Mail wakeups bypass admission; a running writer woken by mail is counted by later spawn checks. Isolated worktrees bypass the writer admission limit. Scopes and write leases separately constrain file access. |
 | swarm budget (USD) | 50 (`swarm.budget_usd`; `--budget-usd`; 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` removes it) | a stop is an outcome, not a crash. The swarm budget is a ledger over running *and* retired agents; once spent, no request is admitted and running workers are stopped (their tasks return to todo, without counting as an attempt). It is on by default because a swarm can spend many times what one agent does, and a cap that is off is one nobody remembers to set; only you can raise it (a repository's file cannot). The run's header line shows it, and the stop message says how to raise it. A cost that is not a number counts as spent, so a hostile or broken endpoint cannot slip under the limit |
 | per-agent budget (USD) | unlimited | `Config.AgentBudgetUSD`, for library users; no configuration key sets it |
 | steps per assignment | 60-150 by role | runaway guard |
@@ -474,8 +475,8 @@ before removing them. The state directory is excluded because `~/.sleipnir` is a
 The trees start from what the person sees now, *uncommitted edits included* (a
 snapshot commit that no branch of theirs points at), and the result is applied on top of exactly that. A session started in
 a subdirectory keeps its writers in the same subdirectory of their trees. The manager and the read-only roles keep the
-checkout: the manager does not edit files in an isolated run (anything it wrote there would bypass the merge queue; it spawns a
-worker), and reviewers and scouts read the checkout, which holds a task's work only after it is applied, so they read merged
+checkout: the manager does not edit files in any run (in an isolated one anything it wrote there would also bypass the merge
+queue; it spawns a worker), and reviewers and scouts read the checkout, which holds a task's work only after it is applied, so they read merged
 work with `git show <commit>` (the commit is in the task's evidence).
 
 **Nothing in the prompt names a tree.** The tools print paths relative to the working directory, which are the project's
