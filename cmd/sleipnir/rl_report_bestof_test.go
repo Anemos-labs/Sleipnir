@@ -97,3 +97,45 @@ func TestRLReportPrintsEfficiencyOnlyWhereItWasMeasured(t *testing.T) {
 		t.Errorf("a measured zero is not printed:\n%s", out)
 	}
 }
+
+// A swarm run's report adds how its board closed tasks to the notes, and the JSON report carries the same counts; a
+// run without a board has neither.
+func TestRLReportShowsHowTheBoardClosedItsTasks(t *testing.T) {
+	dir := fakeRun(t, "run-c", "vendor/model-c", 1, 2, func(task, sample int) bool { return true })
+	closures := []map[string]int{{"done:verified": 2, "handed_off": 1}, {"done:verified": 1, "failed:superseded": 1}}
+	for s, c := range closures {
+		p := filepath.Join(dir, "task-00", string(rune('0'+s)), "episode.json")
+		var ep rl.Episode
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(b, &ep); err != nil {
+			t.Fatal(err)
+		}
+		ep.Outcome.Closures = c
+		if b, err = json.Marshal(ep); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := rlRun{t}
+	out := r.must(rlReport, dir)
+	if want := "board closures: done:verified 3, failed:superseded 1, handed_off 1"; !strings.Contains(out, want) {
+		t.Errorf("the report lacks %q:\n%s", want, out)
+	}
+	var rep env.Report
+	if err := json.Unmarshal([]byte(r.must(rlReport, dir, "--format", "json")), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Closures["done:verified"] != 3 || rep.Closures["failed:superseded"] != 1 || rep.Closures["handed_off"] != 1 {
+		t.Errorf("report closures = %v", rep.Closures)
+	}
+
+	plain := fakeRun(t, "run-d", "vendor/model-d", 1, 2, func(task, sample int) bool { return true })
+	if out := r.must(rlReport, plain); strings.Contains(out, "board closures") {
+		t.Errorf("a run without a board lists closures:\n%s", out)
+	}
+}

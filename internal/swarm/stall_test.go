@@ -217,6 +217,27 @@ func TestStallOrphanedTask(t *testing.T) {
 			t.Fatal("the finding outlived its condition")
 		}
 	})
+	t.Run("healthy: a spawn in progress is never one, however many sweeps see it", func(t *testing.T) {
+		r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+		r.sw.StartManager()
+		task, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "paginate users"})
+		done := r.sw.arrive("be-9") // as Spawn does between the assignment and the registration
+		if err := r.sw.Board.Assign("mgr", "be-9", task.ID); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 5; i++ {
+			r.sw.sweepStalls()
+		}
+		if n := raised(r, StallOrphanedTask); n != 0 {
+			t.Fatalf("a task of an agent that is arriving was found orphaned: %+v", stallEvents(r))
+		}
+		done() // the spawn failed or finished without registering: now it is one, on the second sweep
+		r.sw.sweepStalls()
+		r.sw.sweepStalls()
+		if _, ok := active(r, StallOrphanedTask); !ok {
+			t.Fatal("the mark outlived the spawn")
+		}
+	})
 	t.Run("healthy: a task owned by a running worker", func(t *testing.T) {
 		r := newRVRig(t, stallCfg(), gatedWorkers(nil))
 		r.sw.StartManager()

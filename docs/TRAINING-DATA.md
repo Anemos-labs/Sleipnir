@@ -80,7 +80,7 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
  "repo": {"path": "/data/repos/mux", "commit": "a1b2c3d", "license": "BSD-3-Clause"},
  "setup": ["go mod download"],       // run once per task snapshot, result cached
  "prompt": "Requests with an encoded slash in the path 404. Fix it.",
- "team": {"mode": "single"},         // or {"mode":"swarm","agents":6,"roles":["backend","tester"]}
+ "team": {"mode": "single"},         // or {"mode":"swarm","agents":6,"roles":["backend","tester"]}: 6 workers and a manager
  "verifier": {
    "cmd": "go test ./... -run 'TestEncodedSlash|TestRoute' -count=1",
    "timeout_s": 300,
@@ -111,8 +111,8 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
   `npx`, `perl`, `php`, `python3`, `ruby`, `rustc`, `sqlite3`, `tsc`; anything else is a validation error). They are
   looked up on the PATH the task's commands get (after `--set-env` and `--pass-env`). Where one is missing, `rl tasks
   check` reports the task `skipped: missing ruby` and `rl rollout`, `rl eval` and `rl serve` skip its rollouts with
-  status `skipped`: counted in the summary (`skipped`, `skips`), never run, never an infra error, and nothing is written,
-  so a later run on a machine with the tool runs them.
+  status `skipped`: counted in the summary (`skipped`, `skips`) and named in the notes of `rl report`, never run, never an
+  infra error, and nothing is written, so a later run on a machine with the tool runs them.
 * **Budgets** stop runaway episodes; a stop is an outcome (`budget_exceeded`) and is penalised, not silently
   dropped. `context_window` may be set low (for example 32k) to force frequent compaction and so generate dense
   compaction data.
@@ -414,7 +414,9 @@ time sees one episode, stores 0 and notes why. For example:
 **Run summaries.** `summary.json` and `sleipnir rl report` include `efficiency` (per completed episode: `tool_calls`,
 `stuck_warnings`, `stuck_stops`, `repeated_reads`, `final_answer_chars`, `waste`, and `loop_rate`, the share of
 episodes the guard stopped) and, per task, `best`: the best sample and its rank key. `rl report --tasks` prints a
-best-of-group table.
+best-of-group table. A team run's summary and report also carry `closures`: how the swarm board closed its tasks
+(`done:verified`, `failed:superseded`, `handed_off`, ...), summed over completed episodes; the report lists them in its
+notes.
 
 A typical best-of-4 pipeline:
 

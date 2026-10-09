@@ -225,6 +225,10 @@ func (s *Swarm) stallFindings() []Stall {
 	mgr := s.ManagerID()
 	s.mu.Lock()
 	views := make(map[string]memberView, len(s.members))
+	arriving := make(map[string]bool, len(s.arriving))
+	for id := range s.arriving {
+		arriving[id] = true
+	}
 	for id, m := range s.members {
 		m.mu.Lock()
 		v := memberView{running: m.life == lifeRunning, manager: m.manager, service: m.service}
@@ -280,8 +284,8 @@ func (s *Swarm) stallFindings() []Stall {
 		if !held || t.Owner == "" {
 			continue
 		}
-		if _, ok := views[t.Owner]; ok {
-			continue
+		if _, ok := views[t.Owner]; ok || arriving[t.Owner] {
+			continue // on the team, or being added to it (arrive)
 		}
 		key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
 		orphans[key] = true

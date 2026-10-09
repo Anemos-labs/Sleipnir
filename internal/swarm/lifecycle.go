@@ -274,6 +274,23 @@ func (s *Swarm) register(m *member, builtShared *kv.Layer) {
 	}
 }
 
+// arrive marks an agent ID as being added to the team and returns the function that ends the mark. A spawn or a handover
+// assigns the task to the new agent before it registers it, and a worktree is made in between: however many sweeps fall in
+// that interval, the task is not an orphan, so the stall sweep skips owners that are arriving.
+func (s *Swarm) arrive(id string) func() {
+	s.mu.Lock()
+	if s.arriving == nil {
+		s.arriving = map[string]bool{}
+	}
+	s.arriving[id] = true
+	s.mu.Unlock()
+	return func() {
+		s.mu.Lock()
+		delete(s.arriving, id)
+		s.mu.Unlock()
+	}
+}
+
 // get reads a member pointer under the swarm lock, returning nil for unknown IDs.
 func (s *Swarm) get(id string) *member {
 	s.mu.Lock()

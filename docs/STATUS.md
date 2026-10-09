@@ -23,7 +23,5 @@ hooks, and trajectory export.
 - Automatic shared-context refresh is not implemented. Tasks move between workers only
   when a worker or the manager hands one over; the stall sweep names stalled work but
   does not move or requeue it on its own.
-- In a shared tree the manager is told not to implement, but its edits are not refused
-  at run time; in an isolated run they are.
 
 [Roadmap](ROADMAP.md) · [Validation](VALIDATION.md)

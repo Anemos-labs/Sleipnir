@@ -65,11 +65,19 @@ func LoadRun(dir string) (Report, error) {
 
 	var results []RolloutResult
 	var id Identity
-	pending, unreadable := 0, 0
+	pending, unreadable, skipped := 0, 0, 0
+	skips := skippedRollouts(dir)
 	for _, t := range tasks {
 		for s := 0; s < group; s++ {
 			raw, err := os.ReadFile(filepath.Join(dir, t.ID, strconv.Itoa(s), "episode.json"))
 			if err != nil {
+				// A skipped rollout leaves no episode (its task requires a tool this machine lacks): the run's
+				// summary says so, and it is not one that has yet to run.
+				if skips[t.ID] > 0 {
+					skips[t.ID]--
+					skipped++
+					continue
+				}
 				pending++
 				continue
 			}
@@ -93,7 +101,7 @@ func LoadRun(dir string) (Report, error) {
 
 	rep := BuildReport(tasks, results, group)
 	rep.RunID, rep.Model, rep.Created = m.RunID, m.Policy.Model, m.Updated
-	rep.Pending = pending
+	rep.Pending, rep.Skipped = pending, skipped
 	if unreadable > 0 {
 		pending += unreadable
 		rep.Pending = pending
@@ -107,6 +115,26 @@ func LoadRun(dir string) (Report, error) {
 		rep.Attempts = &a
 	}
 	return rep, nil
+}
+
+// skippedRollouts reads how many rollouts of each task the run's summary records as skipped for a missing tool, or nil
+// when there is no readable summary. Skipped rollouts write no episode, so the summary is the only record of them.
+func skippedRollouts(dir string) map[string]int {
+	b, err := os.ReadFile(filepath.Join(dir, "summary.json"))
+	if err != nil {
+		return nil
+	}
+	var s struct {
+		Skips []SkipRecord `json:"skips"`
+	}
+	if json.Unmarshal(b, &s) != nil {
+		return nil
+	}
+	out := map[string]int{}
+	for _, k := range s.Skips {
+		out[k.Task] += k.Rollouts
+	}
+	return out
 }
 
 // modeOf says how the run's teams were made up.

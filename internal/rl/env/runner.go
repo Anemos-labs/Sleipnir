@@ -260,6 +260,8 @@ type RolloutResult struct {
 	RepeatedReads    int         `json:"repeated_reads,omitempty"`
 	FinalAnswerChars int         `json:"final_answer_chars,omitempty"`
 	Rank             *rl.RankKey `json:"rank_key,omitempty"`
+	// Closures counts the typed reasons the swarm board closed its tasks for (rl.Outcome.Closures), for a team run.
+	Closures map[string]int `json:"closures,omitempty"`
 	// ProtectedTouched are protected paths the agent's diff changed.
 	ProtectedTouched []string             `json:"protected_touched,omitempty"`
 	Error            string               `json:"error,omitempty"`
@@ -1139,6 +1141,7 @@ func ResultFromEpisode(ep *rl.Episode, tags []string) RolloutResult {
 		res.Verified, res.Pass, res.Score, res.VerifyMs = true, v.Pass, v.Score, v.Ms
 	}
 	efficiencyFields(&res, ep)
+	res.Closures = cloneClosures(ep.Outcome.Closures)
 	roles := map[string]*RoleStats{}
 	rewardSum := map[string]float64{}
 	mainSteps, allSteps := 0, 0
