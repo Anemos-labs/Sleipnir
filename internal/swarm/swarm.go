@@ -228,8 +228,11 @@ type Swarm struct {
 	spawnMu  sync.Mutex // serialises admission: spawn, reuse and the limits they enforce
 	sharedMu sync.Mutex // serialises SetShared
 
-	mu       sync.Mutex
-	members  map[string]*member
+	mu      sync.Mutex
+	members map[string]*member
+	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
+	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
+	arriving map[string]bool
 	seq      map[string]int
 	manager  string
 	shared   *kv.Layer

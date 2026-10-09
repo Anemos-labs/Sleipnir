@@ -198,6 +198,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 			return "", writerCapError(w, s.cfg.MaxWriters)
 		}
 	}
+	defer s.arrive(id)() // from the assignment until the agent is registered (or the spawn is undone)
 	task, err := s.Board.assignTask(s.assignFor(req, id, role, files))
 	if err != nil {
 		return "", err

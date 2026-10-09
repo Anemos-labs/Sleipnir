@@ -213,6 +213,7 @@ func (h *handover) fault(phase string) error {
 // of the successor, undoing what it made if a step before the board operation fails.
 func (h *handover) run(shared *kv.Layer) (res HandoverResult, err error) {
 	s, t, pm := h.s, h.task, h.pm
+	defer s.arrive(h.to)() // the board gives the successor the task before it is registered
 	committed := false
 	defer func() {
 		if err != nil && !committed {
