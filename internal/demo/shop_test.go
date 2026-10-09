@@ -3,6 +3,7 @@ package demo
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
@@ -100,6 +102,40 @@ func TestTheShopTeamBuildsTheShopThroughTheMergeQueue(t *testing.T) {
 	}
 	if sn.Totals.Compactions < 1 {
 		t.Errorf("compactions in the log: %d", sn.Totals.Compactions)
+	}
+
+	// The team is the default one while the pieces are built: the reviewer is on it before the first writer reports, and it runs its
+	// checks only after the last writer's piece went through the merge queue.
+	var reviewerSpawn, lastDone, firstCheck uint64
+	if err := events.Scan(filepath.Join(rep.Dir, "events.jsonl"), func(e events.Event) error {
+		var p struct {
+			ID    string
+			Name  string
+			Input struct{ Action, Command string }
+		}
+		if json.Unmarshal(e.Data, &p) != nil {
+			return nil
+		}
+		switch {
+		case e.Type == events.TypeAgentSpawn && p.ID == "rv-1":
+			reviewerSpawn = e.Seq
+		case e.Type == events.TypeToolCall && p.Name == "task" && p.Input.Action == "done" && e.Agent != "rv-1" && e.Agent != "mgr" && !strings.HasPrefix(e.Agent, "sc-"):
+			lastDone = e.Seq // a writer's done call: the last one is the last piece
+		case e.Type == events.TypeToolCall && e.Agent == "rv-1" && p.Name == "bash" && firstCheck == 0 && !strings.HasPrefix(p.Input.Command, "sleep"):
+			firstCheck = e.Seq // not its waits, which are a sleep in tool time
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if reviewerSpawn == 0 || lastDone == 0 || firstCheck == 0 {
+		t.Fatalf("the log lacks the reviewer's spawn (%d), a writer's done (%d) or the reviewer's first check (%d)", reviewerSpawn, lastDone, firstCheck)
+	}
+	if reviewerSpawn > lastDone {
+		t.Errorf("the reviewer joined (seq %d) after the last writer was done (seq %d): the team was not eight workers while the pieces were built", reviewerSpawn, lastDone)
+	}
+	if firstCheck < lastDone {
+		t.Errorf("the reviewer ran a check (seq %d) before the last piece was merged (seq %d)", firstCheck, lastDone)
 	}
 }
 
