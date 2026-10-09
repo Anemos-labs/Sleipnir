@@ -315,10 +315,17 @@ func boolInt(b bool) int {
 	return 0
 }
 
-// taskLine formats task identity, status, owner, and bounded title and progress text, including
-// dependencies for pending tasks.
+// taskLine formats task identity, status (with its closure reason, or the task it is
+// blocked on), owner, and bounded title and progress text, including dependencies for
+// pending tasks.
 func taskLine(t Task) string {
 	s := fmt.Sprintf("%s %s", t.ID, t.Status)
+	if !t.Closure.IsZero() {
+		s += ":" + t.Closure.String()
+	}
+	if t.BlockedOn != "" {
+		s += " on " + t.BlockedOn
+	}
 	if t.Owner != "" {
 		s += " " + t.Owner
 	}

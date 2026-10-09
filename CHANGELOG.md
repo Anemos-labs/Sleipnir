@@ -30,6 +30,40 @@ they do not indicate whether a change has been released.
   pin (G2) changes
   once to say so and can require a fresh provider cache prefill for the
   manager; other stable layers and tool-schema bytes are unchanged.
+- Hand a worker's task to a fresh worker. `task handover` (the owner, with a
+  required summary, or the manager for any worker) stops the predecessor, gives
+  the doing task to a new worker of the same role with a recap the harness
+  builds from the task, the predecessor's edits or tree, its attempt history
+  and the summary (framed as data), and retires the predecessor once it holds
+  nothing else. In an isolated run the predecessor's tree is committed and the
+  successor's tree starts at that commit, so the merge queue merges both. One
+  board `assign` operation, recording `handed_off(successor)`, is the commit
+  point: a failure before it leaves the task with its owner and removes the
+  successor's agent and tree; a repeated request reports the same successor.
+  `swarm.handover` events record each attempt. The `task` tool's description and
+  action enum (G0) change once on upgrade, identically for every agent; the
+  recap is part of the successor's private notes, never a shared layer.
+- Name team stalls. A sweep on the supervisor's tick finds workers that own a
+  doing task but take `swarm.Config.StallTurns` (default 12) model turns without
+  a progress call, refused manager waits while no worker runs, tasks owned by
+  agents that are not on the team, blocked tasks waiting on each other, and
+  submissions left in review for that many manager turns. Each finding is raised
+  once as a `swarm.stall` event, is cleared when its condition ends, and nudges
+  the agent that can act by harness mail (a refused wait is its own nudge).
+  `friction` reports them under `swarm.stall`; `Swarm.Stalls` and
+  `Swarm.StallCounts` expose them to embedders. Stable prompt layers and
+  tool-schema bytes are unchanged; nudges arrive as ordinary harness mail.
+- Close tasks with typed reasons. Done tasks record `verified` or `agreed`;
+  failed tasks record `blocked_on(task)`, `superseded(task)`, `canceled`,
+  `denied`, `verifier` or the harness's `exhausted`. `task fail` requires
+  `reason` (and `target` for the reasons that name a task) and refuses anything
+  else with the list of reasons, leaving the board unchanged. `task block` takes
+  an optional `target`, the task it waits for. Board events, `task get`, the task
+  list, the live view and replay carry the closure; RL episode outcomes count
+  them under `closures`. Library callers of `Board.Fail` and `Board.FailAt` pass
+  a `Closure`. The `task` tool's description and input schema (G0) change once on
+  upgrade, identically for every agent, and can require a fresh provider cache
+  prefill; stable prompt layers are unchanged.
 - Reject task actions that require an ID when it is omitted or blank. The error
   identifies the missing field and explains how to find the task ID before
   retrying; invalid calls leave the board unchanged. Role restrictions and

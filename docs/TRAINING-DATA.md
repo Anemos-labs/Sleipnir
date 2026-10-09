@@ -53,6 +53,8 @@ lease operation. RL adds these fields (all content-addressed blobs; unique text 
 | `model.response` | `completion` (blob: the assistant turn incl. provider-native blocks), `tokens` (blob: `TokenTrace`, when captured), `retries`, `sampling` | the action, its token ids and logprobs |
 | `agent.spawn` | `role`, `parent`, `model`, `task`, `scope` | lineage / who trained as what |
 | `outcome` | `kind` (`verifier`, `review`, `human`, `protocol`), `score`, `pass`, `detail` (blob), `verifier_version` | reward inputs |
+| `board.op` | `closure` (`{kind, target}` on done and failed tasks), `blocked_on`; on a handover, `from` and `assignment_closure` | typed task outcomes, counted in `outcome.closures` |
+| `swarm.stall` | `action` (`raise`, `clear`), `kind`, `task`, `agent`, `notify`, `detail` | named coordination stalls |
 
 **Manifest.** A prompt is stored as a manifest of blob hashes: `tools` (one blob, identical for every agent), the
 `system` blocks, and the messages. Because prompts are append-only between rebases, messages are delta-encoded
@@ -206,6 +208,9 @@ Step    { id, kind, epoch, segment, prompt(manifest ref), completion, tokens?, u
 Edge    { kind: spawn | mail | compact | promote | lease | board, from, to, ref }
 ```
 
+* `outcome.closures` counts each task's final typed closure as `status:kind` (`done:verified`,
+  `failed:superseded`) and each handed-over assignment as `handed_off`; a reopened task counts only by how it
+  finally closed.
 * `segment` increments at every declared rebase; steps of one segment share an append-only prefix.
 * `edges` make the swarm a DAG: a worker's first step points at the manager step that spawned it; a mail delivery
   points from sender step to recipient step; a compaction commit points from the compactor call to the first step

@@ -93,7 +93,9 @@ func TestInspectorShowsWhatTheLiveBoardHeld(t *testing.T) {
 	must(b.Block("te-1", t2.ID, "waiting for the fixture"))
 
 	must(b.Assign("mgr", "dw-1", t3.ID))
-	must(b.Fail("mgr", t3.ID, "the docs move to another repository"))
+	canceled, err := swarm.NewClosure(swarm.CloseCanceled, "")
+	must(err)
+	must(b.Fail("mgr", t3.ID, canceled, "the docs move to another repository"))
 
 	must(b.Assign("mgr", "be-2", t4.ID))
 	live := b.Snapshot()

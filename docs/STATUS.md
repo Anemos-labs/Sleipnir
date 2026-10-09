@@ -20,6 +20,10 @@ hooks, and trajectory export.
   incomplete; see `scripts/windows-excluded.txt`.
 - Verification depends on the configured command and task scope. A passing
   command is evidence for what it checks, not proof of the entire objective.
-- Automatic shared-context refresh and task migration between workers are not implemented.
+- Automatic shared-context refresh is not implemented. Tasks move between workers only
+  when a worker or the manager hands one over; the stall sweep names stalled work but
+  does not move or requeue it on its own.
+- In a shared tree the manager is told not to implement, but its edits are not refused
+  at run time; in an isolated run they are.
 
 [Roadmap](ROADMAP.md) · [Validation](VALIDATION.md)

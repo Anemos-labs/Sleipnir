@@ -86,6 +86,12 @@ type Task struct {
 	// (re)assigned, sent back or requeued, so a run that started under an earlier
 	// assignment can tell that it no longer owns the task.
 	Rev uint64 `json:"rev,omitempty"`
+	// Closure is the typed reason a done or failed task was closed. The board sets
+	// it on exactly those statuses and clears it when a task is reopened.
+	Closure Closure `json:"closure,omitzero"`
+	// BlockedOn is the task a blocked task waits for, when its owner named one. It is
+	// kept only while the task is blocked.
+	BlockedOn string `json:"blocked_on,omitempty"`
 }
 
 // AgentInfo is an agent's public status.
@@ -324,6 +330,29 @@ func (d *draft) setTask(t Task) {
 	d.set("verification_failures", t.VerificationFailures)
 	d.set("rev", t.Rev)
 	d.set("files", t.Files)
+	d.set("closure", t.Closure)
+	d.set("blocked_on", t.BlockedOn)
+}
+
+// put stores a task an operation changed and records it on the operation's event.
+// It holds the board's closure invariants: a done or failed task carries a closure
+// whose status is its own, any other task carries none, and only a blocked task
+// names what it is blocked on. A violation is a harness bug and changes nothing.
+func (d *draft) put(i int, t Task) error {
+	switch t.Status {
+	case StatusDone, StatusFailed:
+		if t.Closure.Status() != t.Status {
+			return fmt.Errorf("internal error: %s cannot become %s with closure %q", t.ID, t.Status, t.Closure.String())
+		}
+	default:
+		t.Closure = Closure{}
+	}
+	if t.Status != StatusBlocked {
+		t.BlockedOn = ""
+	}
+	d.tasks()[i] = t
+	d.setTask(t)
+	return nil
 }
 
 // setNewTask is setTask for a task that has just been created: it also records the
@@ -547,9 +576,7 @@ func (b *Board) claim(agent, id string, check TaskCheck) error {
 			}
 		}
 		t.Owner, t.Status, t.Line, t.Rev = agent, StatusDoing, "", d.Version
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -630,21 +657,21 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 			}
 		}
 		t.Owner, t.Status, t.Line, t.Rev = r.agent, StatusDoing, "", d.Version
-		d.tasks()[i] = t
+		if err := d.put(i, t); err != nil {
+			return err
+		}
 		if r.id == "" {
 			d.setNewTask(t)
-		} else {
-			d.setTask(t)
 		}
-		out = t
+		out = d.Tasks[i]
 		return nil
 	})
 	return out, err
 }
 
-// Finish moves a task to a final-ish state: review (Submit), done (Accept, the
-// result is appended as the reviewer's note) or failed (Fail). It exists for
-// callers that do not need the operation-specific forms.
+// Finish moves a task to review (Submit) or done (Accept, the result is appended as
+// the reviewer's note). It exists for callers that do not need the operation-specific
+// forms. Failing a task needs a typed reason: use Fail.
 func (b *Board) Finish(agent, id string, status TaskStatus, result string) error {
 	switch status {
 	case StatusReview:
@@ -652,7 +679,7 @@ func (b *Board) Finish(agent, id string, status TaskStatus, result string) error
 	case StatusDone:
 		return b.Accept(agent, id, result)
 	case StatusFailed:
-		return b.Fail(agent, id, result)
+		return fmt.Errorf("failing %s needs a closure reason: use Fail", id)
 	}
 	return fmt.Errorf("bad final status %q", status)
 }
@@ -678,9 +705,7 @@ func (b *Board) SetScope(by, id string, files []string, check TaskCheck) error {
 				return err
 			}
 		}
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -723,9 +748,7 @@ func (b *Board) Update(agent, id, line string) error {
 			return errNoChange
 		}
 		t.Line = line
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -771,9 +794,7 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 		t.VerificationFailures = 0
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
 		t.Agreement = agreement
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -797,23 +818,30 @@ func (b *Board) Accept(by, id, note string, checks ...TaskCheck) error {
 			}
 		}
 		t.Status, t.Line = StatusDone, ""
+		t.Closure = closeAs(CloseVerified)
+		if t.Kind == TaskKindPlan {
+			t.Closure = closeAs(CloseAgreed)
+		}
 		if n := cleanText(note, maxResultRunes); n != "" {
 			t.Result = truncRunes(strings.TrimSpace(t.Result+" · "+n), 2*maxResultRunes)
 		}
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
-// Fail marks a task that is not done as failed.
-func (b *Board) Fail(by, id, reason string) error {
-	return b.FailAt(by, id, 0, reason)
+// Fail marks a task that is not done as failed, for the typed reason c (which must
+// be a reason that fails a task) and an optional one-line note.
+func (b *Board) Fail(by, id string, c Closure, note string) error {
+	return b.FailAt(by, id, 0, c, note)
 }
 
 // FailAt is Fail restricted to the assignment rev (0: any). A stale revision
-// returns an error without changing the task or publishing a board event.
-func (b *Board) FailAt(by, id string, rev uint64, reason string) error {
+// returns an error without changing the task or publishing a board event. A target
+// task of the reason (blocked_on, superseded) must exist and be another task.
+func (b *Board) FailAt(by, id string, rev uint64, c Closure, note string) error {
+	if c.Status() != StatusFailed {
+		return fmt.Errorf("%q is not a reason to fail a task", c.String())
+	}
 	return b.mutate(by, "finish", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
@@ -826,14 +854,60 @@ func (b *Board) FailAt(by, id string, rev uint64, reason string) error {
 		if t.Status == StatusDone || t.Status == StatusFailed {
 			return fmt.Errorf("%s is already %s", id, t.Status)
 		}
-		t.Status, t.Line, t.Rev = StatusFailed, "", d.Version
-		if r := cleanText(reason, maxResultRunes); r != "" {
+		if tg := c.Target(); tg != "" {
+			if tg == id {
+				return fmt.Errorf("%s cannot be %s itself: name the other task", id, c.Kind())
+			}
+			if taskIdx(d.Snapshot, tg) < 0 {
+				return fmt.Errorf("%s names %s, which does not exist (tasks: %s)", c.Kind(), tg, taskIDs(d.Snapshot))
+			}
+		}
+		t.Status, t.Line, t.Rev, t.Closure = StatusFailed, "", d.Version, c
+		if r := cleanText(note, maxResultRunes); r != "" {
 			t.Result = r
 		}
-		d.tasks()[i] = t
-		d.setTask(t)
+		return d.put(i, t)
+	})
+}
+
+// Handover moves a doing task from one worker to another in one compare-and-set: it
+// applies only while from owns assignment rev. The task gets a new rev and keeps its
+// attempts, verification count and inherited agreements (a handover is not a failed
+// attempt). The "assign" event names the predecessor (from) and the ended
+// assignment's closure, handed_off(to).
+func (b *Board) Handover(by, id string, rev uint64, from, to string, check TaskCheck) (Task, error) {
+	c, err := NewClosure(CloseHandedOff, to)
+	if err != nil {
+		return Task{}, err
+	}
+	var out Task
+	err = b.mutate(by, "assign", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return fmt.Errorf("no task %s", id)
+		}
+		t := d.Tasks[i]
+		if t.Owner != from || t.Status != StatusDoing || t.Rev != rev {
+			return fmt.Errorf("%s changed (owner, status or assignment) before it could be handed over; inspect it and retry", id)
+		}
+		if from == to {
+			return fmt.Errorf("%s cannot be handed over to its own owner", id)
+		}
+		if check != nil {
+			if err := check(d.Snapshot, t); err != nil {
+				return err
+			}
+		}
+		t.Owner, t.Rev, t.Line = to, d.Version, ""
+		if err := d.put(i, t); err != nil {
+			return err
+		}
+		d.set("from", from)
+		d.set("assignment_closure", c)
+		out = d.Tasks[i]
 		return nil
 	})
+	return out, err
 }
 
 // SendBack returns a reviewed task to its owner (a rejection with feedback).
@@ -852,8 +926,9 @@ func (b *Board) SendBack(by, id, feedback string) (Task, error) {
 			return fmt.Errorf("%s has no owner to send feedback to", id)
 		}
 		t.Status, t.Line, t.Rev = StatusDoing, cleanText(feedback, maxLineRunes), d.Version
-		d.tasks()[i] = t
-		d.setTask(t)
+		if err := d.put(i, t); err != nil {
+			return err
+		}
 		out = t
 		return nil
 	})
@@ -876,9 +951,7 @@ func (b *Board) Unassign(by, id, reason string) error {
 		}
 		t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", cleanText(reason, maxLineRunes), d.Version
 		t.Result, t.Evidence = "", ""
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -895,9 +968,7 @@ func (b *Board) Reopen(by, id string) error {
 		}
 		t.Status, t.Owner, t.Line, t.Result, t.Evidence, t.Attempts, t.Rev = StatusTodo, "", "", "", "", 0, d.Version
 		t.VerificationFailures = 0
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -923,25 +994,27 @@ func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttemp
 				return errNoChange
 			}
 		}
-		t = requeuedTask(t, d.Version, reason, countAttempt, maxAttempts)
-		d.tasks()[i] = t
-		d.setTask(t)
+		t = requeuedTask(t, d.Version, reason, countAttempt, maxAttempts, CloseExhausted)
+		if err := d.put(i, t); err != nil {
+			return err
+		}
 		out, applied = t, true
 		return nil
 	})
 	return out, applied
 }
 
-// requeuedTask releases an assignment or marks its final failure. Only a counted
-// attempt resets its verification budget; interruption preserves that budget.
-func requeuedTask(t Task, rev uint64, reason string, countAttempt bool, maxAttempts int) Task {
+// requeuedTask releases an assignment or marks its final failure, closed as kind.
+// Only a counted attempt resets its verification budget; interruption preserves
+// that budget.
+func requeuedTask(t Task, rev uint64, reason string, countAttempt bool, maxAttempts int, kind ClosureKind) Task {
 	if countAttempt {
 		t.Attempts++
 		t.VerificationFailures = 0
 	}
 	t.Rev, t.Line = rev, ""
 	if maxAttempts > 0 && t.Attempts >= maxAttempts {
-		t.Status = StatusFailed
+		t.Status, t.Closure = StatusFailed, closeAs(kind)
 		t.Result = cleanText(reason, maxResultRunes)
 	} else {
 		t.Status, t.Owner = StatusTodo, ""
@@ -975,11 +1048,12 @@ func (b *Board) FailVerification(agent, id string, rev uint64, reason, evidence 
 		t.VerificationFailures++
 		t.Evidence = cleanText(evidence, maxEvidRunes)
 		if t.VerificationFailures >= max(1, maxFailures) {
-			t = requeuedTask(t, d.Version, reason, true, maxAttempts)
+			t = requeuedTask(t, d.Version, reason, true, maxAttempts, CloseVerifier)
 			d.set("op", "requeue") // preserve the board event contract used by live views
 		}
-		d.tasks()[i] = t
-		d.setTask(t)
+		if err := d.put(i, t); err != nil {
+			return err
+		}
 		out, applied = t, true
 		return nil
 	})
@@ -987,7 +1061,13 @@ func (b *Board) FailVerification(agent, id string, rev uint64, reason, evidence 
 }
 
 // Block marks the owner's doing task blocked with a reason.
-func (b *Board) Block(agent, id, reason string) error {
+func (b *Board) Block(agent, id, reason string) error { return b.BlockOn(agent, id, "", reason) }
+
+// BlockOn is Block that also names the task this one waits for (on; "" for none).
+// The stall sweep follows these links to find tasks blocked on each other. The named
+// task must exist and be another task.
+func (b *Board) BlockOn(agent, id, on, reason string) error {
+	on = strings.TrimSpace(on)
 	return b.mutate(agent, "block", func(d *draft) error {
 		i, t, err := owned(d, agent, id)
 		if err != nil {
@@ -996,10 +1076,16 @@ func (b *Board) Block(agent, id, reason string) error {
 		if t.Status != StatusDoing {
 			return fmt.Errorf("%s is %s, not doing", id, t.Status)
 		}
-		t.Status, t.Line = StatusBlocked, cleanText(reason, maxLineRunes)
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		if on != "" {
+			if on == id {
+				return fmt.Errorf("%s cannot be blocked on itself: target names the task it waits for", id)
+			}
+			if taskIdx(d.Snapshot, on) < 0 {
+				return fmt.Errorf("%s waits for %s, which does not exist (tasks: %s)", id, cleanText(on, 20), taskIDs(d.Snapshot))
+			}
+		}
+		t.Status, t.Line, t.BlockedOn = StatusBlocked, cleanText(reason, maxLineRunes), on
+		return d.put(i, t)
 	})
 }
 
@@ -1014,9 +1100,7 @@ func (b *Board) Resume(agent, id string) error {
 			return fmt.Errorf("%s is %s, not blocked", id, t.Status)
 		}
 		t.Status, t.Line = StatusDoing, ""
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -1032,9 +1116,7 @@ func (b *Board) Unblock(by, id string) error {
 			return fmt.Errorf("%s is %s, not blocked", id, t.Status)
 		}
 		t.Status, t.Line = StatusDoing, ""
-		d.tasks()[i] = t
-		d.setTask(t)
-		return nil
+		return d.put(i, t)
 	})
 }
 
@@ -1103,6 +1185,7 @@ func (b *Board) RequeueOwned(agent, reason string) []Task {
 		for i, t := range d.Tasks {
 			if t.Owner == agent && (t.Status == StatusDoing || t.Status == StatusBlocked || t.Status == StatusTodo) {
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", cleanText(reason, maxLineRunes), d.Version
+				t.BlockedOn = ""
 				d.tasks()[i] = t
 				out = append(out, t)
 			}
@@ -1154,6 +1237,7 @@ func (b *Board) RestoreOwners(prev *Snapshot, owners map[string]string) []string
 					break
 				}
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
+				t.BlockedOn = ""
 				back = append(back, t.ID)
 			}
 			tasks[i] = t

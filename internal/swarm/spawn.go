@@ -158,6 +158,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	m.recovered = false
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
+	m.madeProgress()
 	s.emitAs(m.id, "agent.assign", map[string]any{"id": m.id, "role": m.role, "task": task.ID, "by": req.By})
 	start := reassignStart(s.Board.Snapshot(), m)
 	// A reused writer starts the new task from what has been merged since.

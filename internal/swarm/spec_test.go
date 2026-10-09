@@ -209,7 +209,7 @@ func TestTaskToolAuthority(t *testing.T) {
 	if r := call("mgr", "manager", map[string]any{"action": "resume", "id": "T1"}); r.IsError {
 		t.Fatalf("manager resume: %s", r.Text)
 	}
-	if r := call("mgr", "manager", map[string]any{"action": "fail", "id": "T1", "text": "cancelled"}); r.IsError {
+	if r := call("mgr", "manager", map[string]any{"action": "fail", "id": "T1", "reason": "canceled", "text": "cancelled"}); r.IsError {
 		t.Fatal(r.Text)
 	}
 	if r := call("mgr", "manager", map[string]any{"action": "reopen", "id": "T1"}); r.IsError {

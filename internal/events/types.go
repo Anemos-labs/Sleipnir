@@ -85,6 +85,14 @@ const (
 	// swarm.wake_limit: peer mail woke one worker as often as the bound allows for its
 	// current task (payload: limit, task); further mail waits in its inbox.
 	TypeSwarmWakeLimit = "swarm.wake_limit"
+	// swarm.stall: the stall sweep raised or cleared a named finding (payload: action
+	// = raise | clear, kind, task, agent, notify, detail). A finding is raised once
+	// while its condition holds.
+	TypeSwarmStall = "swarm.stall"
+	// swarm.handover: a worker's task moved, or failed to move, to a fresh worker
+	// (payload: phase = begin | done | abort, task, rev, from, to, by; closure on done,
+	// error on abort). The board.op of the move is the commit point.
+	TypeSwarmHandover = "swarm.handover"
 
 	// Mailman mode (swarm.mailman). mail.route: a worker's message was accepted by the
 	// router and handed to the mailman's ledger instead of being delivered (payload: id,

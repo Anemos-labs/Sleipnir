@@ -63,6 +63,20 @@ func (b *builder) outcome() rl.Outcome {
 		out.Labels = append(out.Labels, fmt.Sprintf("user_steer:%d", b.v.steers))
 	}
 	sort.Strings(out.Labels)
+	for _, c := range b.v.closures {
+		if c != "" {
+			if out.Closures == nil {
+				out.Closures = map[string]int{}
+			}
+			out.Closures[c]++
+		}
+	}
+	if b.v.handoffs > 0 {
+		if out.Closures == nil {
+			out.Closures = map[string]int{}
+		}
+		out.Closures["handed_off"] += b.v.handoffs
+	}
 	return out
 }
 

@@ -311,6 +311,11 @@ type Outcome struct {
 	// Claimed is what the team said: "done" | "blocked" | "gave_up" | "budget" | "".
 	Claimed string   `json:"claimed,omitempty"`
 	Labels  []string `json:"labels,omitempty"`
+	// Closures counts the typed closure reasons the harness recorded on the board
+	// (swarm.Closure): each task's final closure as "status:kind" ("done:verified",
+	// "failed:superseded"), and each handed-over assignment as "handed_off". A task
+	// reopened later counts only by how it finally closed.
+	Closures map[string]int `json:"closures,omitempty"`
 	// Diff is the blob holding the final patch (minus protected paths).
 	Diff core.Hash `json:"diff,omitempty"`
 }
