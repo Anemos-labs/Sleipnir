@@ -203,24 +203,30 @@ func (s *shopScript) manager(n int) mock.Reply {
 			{"Cart: lines, and a total in whole cents rounded once at the end", "backend", []string{"shop/cart/**"}},
 			{"Web: the handlers for the catalogue and the cart, JSON with snake_case keys", "frontend", []string{"shop/web/**"}},
 			{"Smoke tests: start the service, fill a cart, read the total, check out", "tester", []string{"tests/**"}},
+			// The reviewer joins the team with the writers, so that all eight workers are on it while the pieces are built (one
+			// leg each in the cockpit); it reads the conventions at once and waits for the merged result (see reviewer).
+			{"Review what was merged against AGENTS.md and run the shop's checks", "reviewer", nil},
 		}
 		for i, w := range ws {
-			calls = append(calls, jsonCall(fmt.Sprintf("c%d", i+1), "task", map[string]any{"action": "create", "title": w.title, "role": w.role, "files": w.files}))
+			args := map[string]any{"action": "create", "title": w.title, "role": w.role}
+			if w.files != nil {
+				args["files"] = w.files
+			}
+			calls = append(calls, jsonCall(fmt.Sprintf("c%d", i+1), "task", args))
 		}
 		for i, w := range ws {
 			calls = append(calls, jsonCall(fmt.Sprintf("sp%d", i+1), "spawn", map[string]any{"role": w.role, "task": fmt.Sprintf("T%d", 4+i)}))
 		}
 		calls = append(calls, jsonCall("w2", "wait", map[string]any{"until": []string{"T4", "T5", "T6", "T7"}, "timeout_sec": 180}))
-		return mock.Reply{Text: "The surveys agree with each other. Four workers, each in a tree of its own: the catalogue, the cart, the web handlers and the smoke tests. The merge queue will say if their pieces disagree.", ToolCalls: calls}
+		return mock.Reply{Text: "The surveys agree with each other. Four workers, each in a tree of its own: the catalogue, the cart, the web handlers and the smoke tests. The merge queue will say if their pieces disagree. A reviewer joins them now, reads the conventions and waits for what gets merged.", ToolCalls: calls}
 	case 2:
 		var calls []mock.ToolCall
+		s.mark("pieces merged") // the reviewer, already on the team, may read the result now
 		for i := 4; i <= 7; i++ {
 			calls = append(calls, jsonCall(fmt.Sprintf("b%d", i), "task", map[string]any{"action": "accept", "id": fmt.Sprintf("T%d", i)}))
 		}
-		calls = append(calls, jsonCall("rv", "task", map[string]any{"action": "create", "title": "Review what was merged against AGENTS.md and run the shop's checks", "role": "reviewer"}))
-		calls = append(calls, jsonCall("sr", "spawn", map[string]any{"role": "reviewer", "task": "T8"}))
 		calls = append(calls, jsonCall("w3", "wait", map[string]any{"until": []string{"T8"}, "timeout_sec": 120}))
-		return mock.Reply{Text: "All four pieces are merged and verified. One reviewer to read the result against the conventions.", ToolCalls: calls}
+		return mock.Reply{Text: "All four pieces are merged and verified. The reviewer reads the result against the conventions.", ToolCalls: calls}
 	case 3:
 		return mock.Reply{Text: "Reviewed.", ToolCalls: []mock.ToolCall{jsonCall("ar", "task", map[string]any{"action": "accept", "id": "T8"})}}
 	}
@@ -356,13 +362,20 @@ func (s *shopScript) tester(id string, n int) mock.Reply {
 
 // ---- the reviewer ----
 
-// reviewer returns the scripted shop review sequence, running verification before reporting task
-// T8 complete.
+// reviewer returns the scripted shop review sequence: it joins the team with the writers and reads the conventions, waits (in tool
+// time, as the other workers do) until the manager has seen every piece merged, then runs verification before reporting task T8
+// complete.
 func (s *shopScript) reviewer(id string, n int) mock.Reply {
 	switch n {
 	case 0:
-		return mock.Reply{Text: "I look at what was merged and run the shop's checks.", ToolCalls: []mock.ToolCall{bashCall("v1", "git branch --list 'sleipnir/*' | wc -l"), bashCall("v2", "sh verify.sh")}}
+		return mock.Reply{Text: "The pieces are being built; I read the conventions I will hold them to.", ToolCalls: []mock.ToolCall{readCall("r0", "AGENTS.md")}}
 	case 1:
+		if !s.marked("pieces merged") {
+			s.again(id)
+			return mock.Reply{Text: "Nothing is merged yet; I wait for the writers.", ToolCalls: []mock.ToolCall{bashCall(fmt.Sprintf("b%d", time.Now().UnixNano()%1000), fmt.Sprintf("sleep %.1f", s.sec(2).Seconds()))}}
+		}
+		return mock.Reply{Text: "Everything is merged. I look at what was merged and run the shop's checks.", ToolCalls: []mock.ToolCall{bashCall("v1", "git branch --list 'sleipnir/*' | wc -l"), bashCall("v2", "sh verify.sh")}}
+	case 2:
 		return mock.Reply{Text: "Reporting.", ToolCalls: []mock.ToolCall{doneCall("d1", "T8", "the conventions hold: one DefaultPort, money in cents, every Go file starts with its package clause")}}
 	}
 	return mock.Reply{Text: "Reviewed: the conventions hold."}

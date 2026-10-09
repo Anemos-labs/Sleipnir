@@ -702,7 +702,8 @@ pipe, or `TERM=dumb`) prints the report and draws nothing.
 
 Two scenarios. `handbook` (a second or two, the default when nothing is watching): a manager, scouts and writers survey a handbook
 and summarise it, to show the shared prefix and the bill. `shop` (about twenty seconds, needs `git` and `sh`, the default on a
-terminal when both are there): nine agents build a small shop in git worktrees through the verifying merge queue, with worker mail,
+terminal when both are there): nine agents (the manager and eight workers: three scouts, four writers and a reviewer, all on the team
+while the pieces are built) build a small shop in git worktrees through the verifying merge queue, with worker mail,
 a worker that repeats a failing check until the harness says so, a compaction at a warm moment and one at a cold moment, the
 provider losing its cache for a few seconds, and a merge that is sent back; its cache lives 25 seconds instead of minutes so that it
 can be watched cooling. The recordings in the README are made from a session of it.
