@@ -15,8 +15,9 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
    conventions, its own notes). Coordination adds a few hundred tokens of *hot* view and the occasional mail.
 4. **Requests, not tokens, are scarce** on marketplaces (for example 600 requests/minute per key): a manager that
    sleeps (`wait`) instead of polling costs nothing; parallel read-only tool calls and batched edits save requests.
-5. **Failure is expected.** The harness settles stopped workers, releases their leases, and reports failures to
-   the manager. Provider retries are bounded; reassigning unfinished tasks remains the manager's responsibility.
+5. **Failure is expected.** The harness settles stopped workers, releases their leases, reports failures to
+   the manager, and names stalls it can see (section 10). Provider retries are bounded; reassigning unfinished
+   tasks, or handing a worker's task to a fresh worker, remains the manager's decision.
 6. **Text one agent can influence is data to every other agent.** Task titles, notes, mail, status lines, alerts,
    file names and command lines are made single-line, bounded and inert before another agent sees them; nothing in
    them can forge a harness header, close a tag, grant permission or change a task's status.
@@ -40,7 +41,7 @@ paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create\*, list, get, claim, update, block, resume, done, accept\*, reject\*, reopen\*, fail\* | \* manager only; see section 4 |
+| `task` | create\*, list, get, claim, update, block, resume, done, handover, accept\*, reject\*, reopen\*, fail\* | \* manager only; `fail` needs a typed `reason`; see sections 4 and 6 |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | manager only; section 6 |
@@ -56,8 +57,9 @@ boards and worker waits remain available for future work or messages.
 
 Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
 `result` (what the worker said), `evidence` (what the harness observed), `agreement` (a proposed contract),
-`agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`. Statuses: `todo -> doing ->
-review -> done`, with `blocked` and `failed` as side states.
+`agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`, `closure` (the typed reason
+a done or failed task closed, below) and `blocked_on` (the task a blocked task waits for, when its owner named one).
+Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side states.
 
 * The board is an **immutable snapshot with a version**; every operation produces a new snapshot under a single
   writer, and an operation that changes nothing produces nothing (no version, no wake-up). Readers (the hot-view
@@ -69,11 +71,12 @@ review -> done`, with `blocked` and `failed` as side states.
   | claim / spawn (assign) | todo, unowned, dependencies done, scope free | doing |
   | block / resume | doing / blocked (owner; the manager may resume) | blocked / doing |
   | submit (the gate, section 4) | doing (owner) | review |
-  | accept | review | done |
+  | handover (section 6) | doing (owner, or the manager) | doing (a fresh worker) |
+  | accept | review | done (`verified`, or `agreed` for a planning task) |
   | reject (send back) | review | doing (same owner) |
-  | fail | todo, doing, blocked, review | failed |
-  | reopen | failed | todo |
-  | requeue (the harness) | doing, blocked | todo, or failed after `MaxAttempts` |
+  | fail (with a reason) | todo, doing, blocked, review | failed |
+  | reopen | failed | todo (the closure is cleared) |
+  | requeue (the harness) | doing, blocked | todo, or failed (`exhausted`, or `verifier` after the gate's retries) after `MaxAttempts` |
 
   Every assignment gets a new `rev`; the harness settles a finished run only against the `rev` it started with, so a run
   that ends late can never undo a newer assignment (a reject, a reuse).
@@ -82,6 +85,24 @@ review -> done`, with `blocked` and `failed` as side states.
 * Agent status is **derived by the harness** from observed events (running, waiting, idle, done, failed; current task;
   context size; cost). A model cannot claim to be "done" or "idle". The line shows the *kind* of tool in use ("running a
   command"), never its arguments.
+* **Closures are typed.** A done or failed task carries exactly one reason from a closed set, and no other task
+  carries one; a reason that refers to a task or an agent always names it:
+
+  | Closure | Status | Set by | Target |
+  |---|---|---|---|
+  | `verified` | done | accept of an implementation task (verifier or merge record) | |
+  | `agreed` | done | accept of a planning task | |
+  | `blocked_on(T)` | failed | manager: it cannot proceed until another task does | task |
+  | `superseded(T)` | failed | manager: another task replaces it | task |
+  | `canceled` | failed | manager: no longer needed | |
+  | `denied` | failed | manager: the work is refused | |
+  | `verifier` | failed | manager, or the harness when verification keeps failing | |
+  | `exhausted` | failed | the harness: workers kept stopping until `MaxAttempts` | |
+  | `handed_off(A)` | (assignment only) | a handover: the assignment moved to agent A; the task stays doing | agent |
+
+  `task fail` without a valid `reason` (and `target` for `blocked_on` and `superseded`; the task must exist and be
+  another one) is refused with the list of reasons and changes nothing. `task block` takes an optional `target`, the
+  task it waits for. The closure is in `task get`, the task list, the live view and every `board.op` for the task.
 * Operations are events (`board.op`, section 11), so state can be rebuilt from the log.
 * Notes are *proposals*: eligible for the bounded hot view. Automatic folding into the shared layer is not implemented
   (section 9); agreements use task dependencies instead.
@@ -103,7 +124,7 @@ worker stops without done   the same gate runs on its behalf; on failure the wor
                             output (twice at most), then the task returns to todo and the manager is told once
 manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass)
 manager: reject / reopen    review -> doing with feedback (or todo when the worker is gone); reopen also failed -> todo
-manager: fail               failed  (its worker, if running, is stopped)
+manager: fail               failed  (with a typed reason, section 3; its worker, if running, is stopped)
 ```
 
 Explicit `done` calls and implicit stops share a budget of three failed test
@@ -295,6 +316,32 @@ overlap are checked and applied together, so concurrent spawns, reuses and self-
 agents one task. A refused spawn leaves nothing behind (no task, no agent, no consumed id). A new worker is registered
 (visible to the roster and to mail) only when it is built and assigned.
 
+### Handing a task over
+
+`task(action="handover", id="T3", text="...")` moves a doing task to a fresh worker of the same role. Its owner may
+call it (a worker whose context has degraded; it must write the summary: what is done, what is left, what it learned),
+and so may the manager, for any worker (one that stalled, section 10; the summary is then optional). The harness:
+
+1. stops the owner's run if the manager asked (and waits for it, at most `StuckGrace`), and takes the task out of
+   that run, so the run's end cannot requeue it;
+2. records the work: in an isolated run it commits the owner's tree and makes the successor's tree at that commit
+   (its branch descends from the owner's, so the merge queue of section 14 merges both, scope-checked as one
+   submission); in a shared tree the files stay where they are and the owner's recorded edits and last test are noted;
+3. writes the successor's assignment: the task card, then a recap (files changed, the commit, attempts and failed
+   verifications so far, the last progress line, and the summary framed as another agent's data), all in its private
+   notes;
+4. moves the task in one board operation (`assign`, with `from` and `assignment_closure: handed_off(successor)`): the
+   task stays doing, gets a new `rev`, and keeps its attempts, verification count and agreements;
+5. starts the successor, and retires the owner once it holds nothing else (at once, or when its own run ends).
+
+The board operation is the commit point. A failure before it (the tree cannot be committed, the successor cannot be
+made, the board changed) removes the successor's agent and tree and leaves the task with its owner; the error says so.
+A repeated request after it succeeded reports the same successor and changes nothing. In a resumable isolated run the
+successor is announced (`agent.prepare`) before its tree exists, so a session that stops after the commit point resumes
+it with its tree, as an interrupted spawn is resumed; the recap is not rebuilt then (the resumed worker gets the task
+card and the recovery note). `swarm.handover` events record each attempt (`begin`, then `done` or `abort`). A
+handover replaces one worker with another and does not consult the agent limit.
+
 Limits, all enforced in code:
 
 | Limit | Default | Why |
@@ -378,6 +425,30 @@ an instruction.
 | shutdown | agents are cancelled and awaited for at most 10 s; nothing new starts afterwards |
 | verifier flaky or broken | infra errors (could not run, timed out) are reported as such and never fail a task nor count as a pass; `--verify-repeats N` (on `rl tasks check` and `rl rollout`) requires unanimity |
 | forged or hostile mail | defused and framed as data; never grants anything |
+| a team that stops making progress | the stall sweep below names it and tells the agent that can act |
+
+### Named stalls
+
+The watchdog catches a worker that shows no sign of life; the repetition guard catches a model repeating one failing
+call. The stall sweep, on every supervisor tick, catches a team that is busy but not advancing. It reads only the
+board, the roster and per-agent turn counters (a turn is one model response), never a clock or model text, so the same
+state gives the same findings:
+
+| Kind | Holds when | Told |
+|---|---|---|
+| `claimed_no_progress` | a running worker owns a doing task and has taken `StallTurns` turns without a progress call: a successful call of a tool that is neither read-only nor a coordination tool (an edit, a command), or task `update`, `block`, `done`, `resume`, `claim` or `handover`. A new assignment restarts the count | the worker |
+| `manager_waiting_on_idle` | the manager's wait was refused (section 2) because no worker runs and work remains, and its latest coordination call is still `wait` | the manager, by the refusal itself |
+| `orphaned_task` | a doing or blocked task, or a todo task reserved for an agent, is owned by an agent that is not on the team, on two consecutive sweeps (a spawn in progress is not one) | the manager |
+| `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |
+| `review_starved` | a task has waited in review for `StallTurns` manager turns without the manager naming it in a task call | the manager |
+
+`StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is
+raised once while its condition holds: a `swarm.stall` event (`action: raise`) and one harness mail ("Stall check: ...",
+ids and counts only) that says what would end it. When the condition no longer holds the finding clears itself
+(`action: clear`); it can be raised again only after that. The sweep recovers nothing on its own: it names the
+condition and the agent that can act (by handing a task over, failing it with a reason, resuming one side of a
+cycle, or reviewing). `Swarm.Stalls` lists the findings that hold, `Swarm.StallCounts` how many of each kind were
+raised; `sleipnir friction` reports them under `swarm.stall`.
 
 Workers receive mail queued during a failed run when they restart, before their
 next model request. New mail received during the failed run can trigger one
@@ -391,15 +462,18 @@ submission, while submitted work and newer task assignments remain intact.
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
 release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
-`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `swarm.wake_limit` (peer mail stopped waking a worker), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
+`swarm.wake`/`swarm.wake.paused` (waking an idle manager), `swarm.wake_limit` (peer mail stopped waking a worker),
+`swarm.stall` (a named stall raised or cleared, section 10), `swarm.handover` (a handover's `begin`, `done` or `abort`,
+section 6), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
 mode, section 5), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
 `merge.queued`/`merged`/`conflict`/`verify_failed`/`rolled_back`/`rejected`/`fast_forward` (worktree isolation; the
 workspace layer emits them), `task.merge` (one submission's outcome, per task) and `swarm.integration` (the result reaching
 the checkout, or not), compaction and cache events. A `board.op` names its operation
 (`create`, `claim`, `assign`, `update`, `scope`, `finish`, `block`, `resume`, `requeue`, `agent`, `agent-remove`,
 `note`, `notes-take`, `alert`, `alert-clear`, `alert-expire`), the new version, and its operands (the task's status,
-owner, line, result, evidence, attempts, rev and scope, plus title, description, role and dependencies at creation; an
-agent's whole status; a note's text and scope), and events keep the order of the versions. `sleipnir inspect` shows the live board,
+owner, line, result, evidence, attempts, rev, scope, closure and blocked_on, plus title, description, role and
+dependencies at creation; for a handover's `assign`, the predecessor `from` and the `assignment_closure`; an agent's
+whole status; a note's text and scope), and events keep the order of the versions. `sleipnir inspect` shows the live board,
 per-agent context and hit ratio, mail and lease activity, and compaction timelines; the same log is the RL training
 corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction edges) is preserved.
 
@@ -420,10 +494,16 @@ corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction
 * `models.roles.mailman` in the configuration is not read (no role is: only `--role-model` and agent definitions choose a role's
   model today).
 
+**Resuming a board.** `ReplayBoard` rebuilds tasks (closures included), the roster and pending notes exactly from the
+`board.op` events (a test holds it to that). Resuming a team session (`internal/session`) replays the log with it at
+startup and gives the result to `Board.Restore` (shared tree: interrupted tasks return to todo) or `Swarm.RestoreTeam`
+(isolated: workers come back idle with their trees and reserved tasks; section 14). Alerts and stall findings are
+transient and are not rebuilt; the sweep finds a stall again if it still holds.
+
 **Not implemented.**
 
-* Resuming a session's board after a crash: `ReplayBoard` rebuilds tasks, the roster and pending notes exactly from the
-  `board.op` events (a test holds it to that), but nothing calls it at startup yet; alerts are transient and not rebuilt.
+* Automatic recovery from a named stall: the sweep names it and nudges the agent that can act; it does not hand over,
+  requeue or fail anything itself.
 * On a cold prefix a higher-priority follower (the manager) can wait behind a worker-priority primer, because the warm
   gate is entered before the governor; the fix belongs in the agent's request path or the gate.
 * A batch run's manager that ignores three vetoes still ends with work unfinished; the run says so, it does not keep going.
@@ -515,7 +595,10 @@ the integration tip and runs the verifier (`--verify`) on the merged result, and
 A bounce is rework like any other: after `MaxAttempts` (3) the task returns to `todo`, the worker is stopped and the manager is
 told once. A worker sees other agents' work only when it is merged: a new worker starts from the integration tip, and a reused
 worker, a resumed task and a bounced worker have their tree brought up to it. Nothing else crosses between trees, and there is
-no new tool: a worker that needs merged work blocks its task and says what it needs, as before.
+no new tool: a worker that needs merged work blocks its task and says what it needs, as before. The one exception is a
+handover (section 6): the owner's tree is committed on its own branch and the successor's tree starts at that commit, so
+unmerged work moves with the task. It reaches the integration branch only through the successor's `done`, like any
+other work; the owner's tree is removed when it retires, since its commits are on the successor's branch.
 
 **The end of the run.** When the manager stops (each turn of a chat session, the end of a batch run) the harness applies what
 has been merged to the person's checkout, incrementally (`swarm.integration`; the person is told at level `integrate`):

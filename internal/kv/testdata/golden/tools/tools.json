@@ -389,7 +389,7 @@
   },
   {
     "name": "task",
-    "description": "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
+    "description": "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. block (id, text = reason, optional target = the id of the task it waits for), resume (id), handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
     "input_schema": {
       "properties": {
         "action": {
@@ -402,6 +402,7 @@
             "done",
             "block",
             "resume",
+            "handover",
             "accept",
             "reject",
             "reopen",
@@ -437,7 +438,20 @@
           ],
           "type": "string"
         },
+        "reason": {
+          "enum": [
+            "blocked_on",
+            "superseded",
+            "canceled",
+            "denied",
+            "verifier"
+          ],
+          "type": "string"
+        },
         "role": {
+          "type": "string"
+        },
+        "target": {
           "type": "string"
         },
         "text": {

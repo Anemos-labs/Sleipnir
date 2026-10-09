@@ -59,6 +59,8 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			Notes      []int             `json:"notes"`
 			Tasks      []string          `json:"tasks"`
 			Owners     map[string]string `json:"owners"`
+			Closure    Closure           `json:"closure"`
+			BlockedOn  string            `json:"blocked_on"`
 		}
 		if err := json.Unmarshal(e.Data, &m); err != nil {
 			return nil, fmt.Errorf("board.op #%d: %w", e.Seq, err)
@@ -74,6 +76,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 						if i, ok := taskAt[id]; ok {
 							t := snap.Tasks[i]
 							t.Status, t.Owner, t.Line, t.Rev = StatusTodo, m.Owners[id], m.Line, m.Version
+							t.BlockedOn = ""
 							snap.Tasks[i] = t
 						}
 					}
@@ -89,6 +92,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			t.Attempts, t.Rev, t.Files = m.Att, m.Rev, m.Files
 			t.VerificationFailures = m.Verify
 			t.Agreement, t.Agreements = m.Agreement, m.Agreements
+			t.Closure, t.BlockedOn = m.Closure, m.BlockedOn
 			if m.Op == "create" || (m.Op == "assign" && m.Title != "") {
 				t.Title, t.Desc, t.Role, t.Deps = m.Title, m.Desc, m.Role, m.Deps
 				t.Kind = m.Kind

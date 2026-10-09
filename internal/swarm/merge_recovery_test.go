@@ -55,14 +55,14 @@ func TestTaskFailureRejectsAReplacedAssignment(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := b.Snapshot()
-			if err := b.FailAt("mgr", old.ID, old.Rev, "late failure"); err == nil {
+			if err := b.FailAt("mgr", old.ID, old.Rev, closeAs(CloseCanceled), "late failure"); err == nil {
 				t.Fatal("failure of the old assignment was applied to its replacement")
 			}
 			if b.Snapshot() != before {
 				t.Fatal("stale failure published a new board state")
 			}
 			current, _ := before.Task(task.ID)
-			if err := b.FailAt("mgr", current.ID, current.Rev, "current failure"); err != nil {
+			if err := b.FailAt("mgr", current.ID, current.Rev, closeAs(CloseCanceled), "current failure"); err != nil {
 				t.Fatal(err)
 			}
 			got, _ := b.Snapshot().Task(task.ID)
@@ -100,7 +100,7 @@ func TestLateTaskFailureDoesNotCancelReplacement(t *testing.T) {
 			fail := func() string {
 				if scenario.managerFailure {
 					return (&taskTool{s: s}).review(context.Background(), &tools.Call{Env: &tools.Env{Agent: "mgr"}},
-						taskIn{Action: "fail", ID: old.ID, Text: "abandon this attempt"}).Text
+						taskIn{Action: "fail", ID: old.ID, Reason: "canceled", Text: "abandon this attempt"}).Text
 				}
 				return s.giveUpMerge(m, old, "merge verification failed")
 			}

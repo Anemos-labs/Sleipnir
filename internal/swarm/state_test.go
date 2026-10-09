@@ -290,7 +290,7 @@ func TestManagerHotViewCostIsBoundedByFailedTasks(t *testing.T) {
 		for b.Snapshot() != nil && len(b.Snapshot().Tasks) < n {
 			tk, _ := b.CreateTask("mgr", TaskSpec{Title: fmt.Sprintf("attempt %d at the flaky migration", len(b.Snapshot().Tasks))})
 			b.Assign("mgr", "be-1", tk.ID)
-			b.Finish("be-1", tk.ID, StatusFailed, "agent stopped: context canceled")
+			b.Fail("be-1", tk.ID, closeAs(CloseExhausted), "agent stopped: context canceled")
 		}
 		est := &countingEstimator{Estimator: core.NewBytesEstimator().WithRatio(4)}
 		start := time.Now()
@@ -364,7 +364,7 @@ func TestBoardDoneIsTerminal(t *testing.T) {
 	try("update", b.Update("be-1", "T1", "still working"))
 	try("claim", b.Claim("be-2", "T1"))
 	try("assign", b.Assign("mgr", "be-2", "T1"))
-	try("fail", b.Fail("mgr", "T1", "no"))
+	try("fail", b.Fail("mgr", "T1", closeAs(CloseCanceled), "no"))
 	try("reopen", b.Reopen("mgr", "T1"))
 	try("accept", b.Accept("mgr", "T1", "again"))
 	try("unassign", b.Unassign("mgr", "T1", "x"))
@@ -413,8 +413,8 @@ func TestBoardTransitions(t *testing.T) {
 	if back.Status != StatusDoing || back.Owner != "be-1" || back.Line != "redo it" {
 		t.Fatalf("sent back = %+v", back)
 	}
-	expect("fail", b.Fail("mgr", "T1", "gave up"), false)
-	expect("fail again", b.Fail("mgr", "T1", "again"), true)
+	expect("fail", b.Fail("mgr", "T1", closeAs(CloseCanceled), "gave up"), false)
+	expect("fail again", b.Fail("mgr", "T1", closeAs(CloseCanceled), "again"), true)
 	expect("claim a failed task", b.Claim("be-3", "T1"), true)
 	expect("assign a failed task", b.Assign("mgr", "be-3", "T1"), true)
 	expect("reopen", b.Reopen("mgr", "T1"), false)
@@ -1057,7 +1057,7 @@ func TestBoardIsRebuiltFromTheLog(t *testing.T) {
 	_ = b.SetScope("mgr", t2.ID, []string{"web/**", "docs/ui.md"}, nil)
 	_, _ = b.Requeue("fe-1", t2.ID, 0, "crashed", true, 3)
 	_ = b.Assign("mgr", "dc-1", t3.ID)
-	_ = b.Fail("mgr", t3.ID, "not needed")
+	_ = b.Fail("mgr", t3.ID, closeAs(CloseCanceled), "not needed")
 	_ = b.Reopen("mgr", t3.ID)
 	_ = b.Assign("mgr", "dc-2", t3.ID)
 	_ = b.RequeueOwned("dc-2", "its worker was retired")
@@ -1253,7 +1253,7 @@ func TestAManagerThatClaimedATaskIsToldHowToHandItToAWorker(t *testing.T) {
 		t.Errorf("a task another agent holds: %v", err)
 	}
 	// and the way out works
-	if err := b.Fail("mgr", "T1", "claimed by mistake"); err != nil {
+	if err := b.Fail("mgr", "T1", closeAs(CloseCanceled), "claimed by mistake"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.CreateTask("mgr", TaskSpec{Title: "implement, again"}); err != nil {

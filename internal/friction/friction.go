@@ -41,6 +41,7 @@ const (
 	ReRead       = "file.reread"        // the same part of a file (path and range), unchanged in between, read three or more times in one session
 	RepeatedCall = "call.repeated"      // one identical call three or more times
 	OutputLimit  = "model.cutoff"       // a response that ended at the output limit (max_tokens): a full-length generation that did not finish
+	TeamStall    = "swarm.stall"        // the swarm's stall sweep named a stall (claimed_no_progress, orphaned_task, ...), by kind
 )
 
 // Severity, from what the pattern does to the work.
@@ -103,7 +104,8 @@ var hints = map[string]string{
 	CompactFail:  "a compaction patch did not validate: the compactor model, or a rule that is too strict",
 	ReRead:       "the same part of a file read again and again: did the answer get lost (truncation, compaction) or never used?",
 	RepeatedCall: "the same call over and over: polling, or a loop",
-	OutputLimit:  "a response ended at the output limit: a model that rambles (look at the sampling temperature and at the text: a degenerate generation is mostly words that are not there) or a task that asks for one huge write; the agent asks the model to carry on twice and then stops with an error",
+	TeamStall:    "the team stopped making progress in a named way: a worker that only reads, a manager waiting on nobody, a task nobody owns, tasks blocked on each other, a submission nobody reviews; the detail says which tasks and agents",
+	OutputLimit:  "a response ended at the output limit:a model that rambles (look at the sampling temperature and at the text: a degenerate generation is mostly words that are not there) or a task that asks for one huge write; the agent asks the model to carry on twice and then stops with an error",
 }
 
 var (
@@ -454,6 +456,11 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 			var d struct{ Kind string }
 			if json.Unmarshal(e.Data, &d) == nil {
 				add(session, CacheBreak, d.Kind, S1, ex(d.Kind), "")
+			}
+		case events.TypeSwarmStall:
+			var d struct{ Action, Kind, Task, Agent, Detail string }
+			if json.Unmarshal(e.Data, &d) == nil && d.Action == "raise" && d.Kind != "" {
+				add(session, TeamStall, d.Kind, S2, ex(firstNonEmpty(d.Detail, d.Kind)), "")
 			}
 		case events.TypeCompactReject:
 			var d struct{ Stage, Reason string }

@@ -28,6 +28,10 @@ type view struct {
 	steers    int // user.steer
 	anomalies int // cache.anomaly
 	budgetHit bool
+	// closures is each task's latest closure ("status:kind"; "" once reopened) and
+	// handoffs the assignments that were handed over, from board.op events.
+	closures map[string]string
+	handoffs int
 
 	sessionStart, sessionEnd *time.Time
 	turns                    map[string][]turnEv // agent -> turn.append in order
@@ -191,6 +195,8 @@ func (r *Run) buildView() *view {
 			}
 		case events.TypeOutcome:
 			v.outcomes = append(v.outcomes, parseOutcome(e))
+		case events.TypeBoardOp:
+			v.boardClosure(e)
 		case events.TypePermDecide:
 			if denied(e.Data) {
 				v.denials++
@@ -239,6 +245,35 @@ func (r *Run) buildView() *view {
 		}
 	}
 	return v
+}
+
+// boardClosure records the closure reasons a board.op carries: the task's own
+// closure (set on done and failed, absent otherwise, so a reopened task loses it)
+// and an assignment closure (a handover). Events without task state are ignored.
+func (v *view) boardClosure(e events.Event) {
+	var p struct {
+		Task    string `json:"task"`
+		Status  string `json:"status"`
+		Closure *struct {
+			Kind string `json:"kind"`
+		} `json:"closure"`
+		Assignment *struct {
+			Kind string `json:"kind"`
+		} `json:"assignment_closure"`
+	}
+	if json.Unmarshal(e.Data, &p) != nil || p.Task == "" || p.Status == "" {
+		return
+	}
+	if v.closures == nil {
+		v.closures = map[string]string{}
+	}
+	v.closures[p.Task] = ""
+	if p.Closure != nil && p.Closure.Kind != "" {
+		v.closures[p.Task] = p.Status + ":" + p.Closure.Kind
+	}
+	if p.Assignment != nil && p.Assignment.Kind != "" {
+		v.handoffs++
+	}
 }
 
 func parseOutcome(e events.Event) outcomeEv {

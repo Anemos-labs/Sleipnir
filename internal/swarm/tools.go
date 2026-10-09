@@ -57,20 +57,23 @@ func (t *taskTool) Spec() core.ToolSpec {
 		Name: "task",
 		Description: "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
 			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
-			"block (id, text = reason), resume (id). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), " +
-			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, text = reason).",
+			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
+			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), " +
+			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, " +
+			"fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
-"action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","accept","reject","reopen","fail"]},
+"action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","handover","accept","reject","reopen","fail"]},
 "id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"role":{"type":"string"},
 "kind":{"type":"string","enum":["work","plan"]},
 "deps":{"type":"array","items":{"type":"string"}},"files":{"type":"array","items":{"type":"string"}},
-"text":{"type":"string"},"agreement":{"type":"string"}},"required":["action"]}`),
+"text":{"type":"string"},"agreement":{"type":"string"},
+"reason":{"type":"string","enum":["blocked_on","superseded","canceled","denied","verifier"]},"target":{"type":"string"}},"required":["action"]}`),
 	}
 }
 
 type taskIn struct {
-	Action, ID, Title, Description, Role, Kind, Text, Agreement string
-	Deps, Files                                                 []string
+	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target string
+	Deps, Files                                                                 []string
 }
 
 func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
@@ -84,6 +87,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	in.ID = strings.TrimSpace(in.ID)
 	s, me := t.s, c.Env.Agent
 	isMgr := c.Env.Role == "manager"
+	s.noteCoordination(me, "task", in.ID)
 	// Validate required IDs before board operations; keep role refusals first.
 	switch in.Action {
 	case "accept", "reject", "reopen", "fail":
@@ -91,7 +95,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("only the manager can %s tasks", in.Action), nil
 		}
 		fallthrough
-	case "get", "claim", "update", "done", "block", "resume":
+	case "get", "claim", "update", "done", "block", "resume", "handover":
 		if in.ID == "" {
 			return tools.Errorf("task %s requires id: use the task ID from your assignment or call task with action=list to find it, then retry with id set", in.Action), nil
 		}
@@ -138,7 +142,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	case "done":
 		return t.done(ctx, c, in), nil
 	case "block":
-		if err := s.Board.Block(me, in.ID, in.Text); err != nil {
+		if err := s.Board.BlockOn(me, in.ID, in.Target, in.Text); err != nil {
 			return tools.Errorf("%v", err), nil
 		}
 		return text("%s marked blocked; tell the manager or the owner of what you need (mail)", in.ID), nil
@@ -156,6 +160,18 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return text("%s resumed%s", in.ID, s.afterResume(ctx, me, isMgr, in.ID)), nil
 		}
 		return text("%s resumed", in.ID), nil
+	case "handover":
+		task, _ := s.Board.Snapshot().Task(in.ID)
+		res, err := s.Handover(ctx, HandoverReq{By: me, Task: in.ID, Summary: in.Text})
+		switch {
+		case err != nil:
+			return tools.Errorf("%s was not handed over: %v", in.ID, err), nil
+		case res.Already:
+			return text("%s was already handed over to %s; nothing changed", in.ID, res.Successor), nil
+		case task.Owner == me:
+			return text("%s handed over to %s with your summary. Your run ends now: stop.", in.ID, res.Successor), nil
+		}
+		return text("%s handed over from %s to %s with a recap; %s is retired once it holds nothing else", in.ID, task.Owner, res.Successor, task.Owner), nil
 	case "accept", "reject", "reopen", "fail":
 		return t.review(ctx, c, in), nil
 	}
@@ -338,13 +354,17 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		s.notify(owner.id, "request", fmt.Sprintf("%s was sent back by the manager: %s. Fix it, then call task done again.", in.ID, cleanText(in.Text, 400)))
 		return text("%s sent back to %s with feedback", in.ID, task.Owner)
 	default: // fail
-		if err := s.Board.FailAt(me, in.ID, task.Rev, in.Text); err != nil {
+		c, err := managerFailClosure(in.Reason, in.Target)
+		if err != nil {
+			return tools.Errorf("%s was not failed: %v", in.ID, err)
+		}
+		if err := s.Board.FailAt(me, in.ID, task.Rev, c, in.Text); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		if m := s.get(task.Owner); m != nil {
 			s.stopRunFor(m, "its task was failed by the manager", false, task.ID, task.Rev)
 		}
-		return text("%s marked failed", in.ID)
+		return text("%s marked failed (%s)", in.ID, c.String())
 	}
 }
 
@@ -468,6 +488,7 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 	if c.Env.Role != "manager" {
 		return tools.Errorf("only the manager can spawn agents; ask the manager (mail) or claim a task instead"), nil
 	}
+	t.s.noteCoordination(c.Env.Agent, "spawn", "")
 	var in struct {
 		Role, Task, Brief, Agent string
 		Files                    []string
@@ -534,6 +555,7 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		timeout = 10 * time.Minute
 	}
 	s, me := t.s, c.Env.Agent
+	s.noteCoordination(me, "wait", "")
 	if len(in.Until) > 0 {
 		snap := s.Board.Snapshot()
 		var unknown []string
@@ -594,6 +616,7 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			default:
 			}
 			s.setSeen(me, cur)
+			s.waitRefused()
 			return tools.Errorf("%s", reason), nil
 		}
 		if timedOut {
@@ -707,6 +730,9 @@ func diffSnapshots(a, b *Snapshot) []string {
 				continue
 			}
 			line := fmt.Sprintf("%s → %s (%s)", t.ID, t.Status, t.Owner)
+			if !t.Closure.IsZero() {
+				line = fmt.Sprintf("%s → %s:%s (%s)", t.ID, t.Status, t.Closure.String(), t.Owner)
+			}
 			if t.Result != "" {
 				line += ": " + t.Result
 			} else if t.Line != "" {

@@ -110,8 +110,15 @@ type member struct {
 	box       overflow
 	emitted   string
 
+	// retireOnIdle (under mu) retires the worker when its current run ends instead of
+	// restarting it: it handed over its own task (handover.go).
+	retireOnIdle bool
+
 	// progress is the unix time of the last sign of life (a model or tool event).
 	progress atomic.Int64
+	// turns counts the agent's model responses, and quietFrom is the count at its last
+	// progress call or new assignment: the stall sweep's measure (stall.go).
+	turns, quietFrom atomic.Int64
 	// pubMu serialises status publication: whoever publishes last reads the
 	// newest state, so the board never keeps a stale one.
 	pubMu sync.Mutex
@@ -119,6 +126,9 @@ type member struct {
 
 // touch atomically records the swarm clock's current time as the member's latest progress.
 func (m *member) touch(s *Swarm) { m.progress.Store(s.deps.Now().UnixNano()) }
+
+// madeProgress restarts the stall sweep's count of turns without progress.
+func (m *member) madeProgress() { m.quietFrom.Store(m.turns.Load()) }
 
 // panicError is what a run that panicked returns to finishRun.
 type panicError struct {
@@ -401,9 +411,11 @@ func (k *memberSink) Thinking(a, d string) {
 	k.safely(func() { k.Sink.Thinking(a, d) })
 }
 
-// Response records member progress before safely forwarding response metadata and cache usage.
+// Response records member progress and counts the model turn before safely forwarding response
+// metadata and cache usage.
 func (k *memberSink) Response(a string, r *provider.Response, hit float64) {
 	k.m.touch(k.s)
+	k.m.turns.Add(1)
 	k.safely(func() { k.Sink.Response(a, r, hit) })
 }
 
@@ -421,19 +433,27 @@ func (k *memberSink) Notice(a, level, msg string) {
 	k.safely(func() { k.Sink.Notice(a, level, msg) })
 }
 
-// ToolStart records progress, updates the member's running activity, and safely forwards the
-// tool-start notification.
+// ToolStart records progress, notes the manager's coordination calls for the stall sweep,
+// updates the member's running activity, and safely forwards the tool-start notification.
 func (k *memberSink) ToolStart(a string, call core.Block) {
 	k.m.touch(k.s)
+	if k.m.manager {
+		k.safely(func() { k.s.noteCoordination(k.m.id, call.ToolName, jsonString(call.Input, "id")) })
+	}
 	k.safely(func() { k.m.setState(k.s, "running", activity(call)) })
 	k.safely(func() { k.Sink.ToolStart(a, call) })
 }
 
-// ToolEnd records progress and evidence, restores running state after wait, and safely forwards
-// completion to the sink.
+// ToolEnd records progress and evidence (including progress on a task, for the stall sweep),
+// restores running state after wait, and safely forwards completion to the sink.
 func (k *memberSink) ToolEnd(a string, call core.Block, res *tools.Result, took time.Duration) {
 	k.m.touch(k.s)
 	k.safely(func() { k.ev.Observe(call, res, k.s.deps.Now()) })
+	k.safely(func() {
+		if k.s.progressCall(call, res) {
+			k.m.madeProgress()
+		}
+	})
 	if call.ToolName == "wait" {
 		k.safely(func() { k.m.setState(k.s, "running", "reviewing results") })
 	}
@@ -517,6 +537,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.gateTries = 0
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
+	m.madeProgress()
 	card := claimedCards(s.Board.Snapshot(), agentID, nil)
 	if m.tree != nil {
 		card += isolationCard
@@ -802,6 +823,10 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	// failed run returned. Mail already present at reserve must not repeatedly
 	// restart a run that fails before it can drain its inbox (for example budget).
 	restart := kind == stopClean || (kind == stopFailed && m.mailSeq > rs.mailSeq)
+	retire := m.retireOnIdle
+	if retire {
+		restart = false
+	}
 	m.mu.Unlock()
 	if line == "" && (kind == stopFailed || (kind == stopHarness && count)) {
 		line = fmt.Sprintf("%s stopped (%s). Check task list for its current assignments; send recovery instructions or reassign unfinished work with spawn.", m.id, why)
@@ -812,6 +837,9 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 		s.notifyManager(line)
 	}
 	s.afterIdle(m, restart)
+	if retire {
+		_ = s.Retire(m.id) // unread mail keeps it; idle retirement takes it later
+	}
 	s.managerEvent() // a worker finished, failed or stopped: an idle manager may want to know
 }
 

@@ -89,6 +89,11 @@ type Config struct {
 	// in the inbox; the manager is told once, and the count starts again when the
 	// worker is given a new task. The manager's own mail and the harness's never count.
 	MaxMailWakes int
+	// StallTurns is how many model turns the stall sweep (stall.go) lets pass before a
+	// worker that owns a doing task without making progress on it, or a task waiting in
+	// review while the manager works on other things, is a finding (default 12;
+	// negative turns those two kinds off).
+	StallTurns int
 
 	// HoldManager makes a final answer of the manager wait for the board: while
 	// workers are running or tasks are unreviewed, the manager's Stop is vetoed with a
@@ -244,6 +249,13 @@ type Swarm struct {
 	wk      waker                    // waking an idle manager (wake.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
 	mail    *mailroom                // mailman mode (mailman.go); nil when it is off
+	stalls  stallState               // the stall sweep's memory (stall.go)
+
+	// handoffs remembers each task's latest completed handover (handover.go), so a
+	// repeated request is answered without a second one. handoverFault is a test hook
+	// that fails a handover at a named phase; nil in production.
+	handoffs      map[string]handoffRec
+	handoverFault func(phase string) error
 
 	// Worktree isolation (isolate.go): the harness's record of which task assignments
 	// reached the integration branch, how often each came back from the merge queue,
@@ -354,6 +366,8 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s := &Swarm{cfg: cfg, deps: deps, roles: roles, members: map[string]*member{}, seq: map[string]int{},
 		roleLay: map[string]*kv.Layer{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
 		verifySem: make(chan struct{}, cfg.MaxVerifies), merged: map[string]mergeRec{}, bounces: map[string]int{}, treeAgents: map[string]bool{}}
+	s.stalls.init()
+	s.handoffs = map[string]handoffRec{}
 	s.Board = NewBoard(deps.Events)
 	s.Board.SetClock(deps.Now)
 	s.Board.SetLimits(cfg.Board)
@@ -582,6 +596,7 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 		res, err = m.a.Run(runCtx, goal)
 	}()
 	s.releaseManager(m)
+	s.noteCoordination(m.id, "", "") // a manager that stopped is not waiting
 	state := "done"
 	switch {
 	case errors.Is(err, context.Canceled):

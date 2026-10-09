@@ -8,7 +8,8 @@ import (
 
 // The supervisor is one goroutine that does the swarm's periodic housekeeping:
 // enforcing the budget, expiring alerts and stale leases, moving coalesced mail
-// into inboxes, retiring long-idle workers, and watching for stuck ones. Each step
+// into inboxes, retiring long-idle workers, watching for stuck ones, and sweeping for
+// named stalls (stall.go). Each step
 // is contained: a failure in one member's check does not stop the rest.
 
 func (s *Swarm) supervise(ctx context.Context) {
@@ -51,6 +52,7 @@ func (s *Swarm) superviseOnce(now time.Time) {
 		m := m
 		s.guard("member "+m.id, func() { s.superviseMember(m, now) })
 	}
+	s.guard("stalls", s.sweepStalls)
 }
 
 func (s *Swarm) superviseMember(m *member, now time.Time) {

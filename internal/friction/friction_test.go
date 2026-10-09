@@ -163,6 +163,26 @@ func TestStuckCancelRetryCacheAndRepetitionAreFound(t *testing.T) {
 	}
 }
 
+// A stall the swarm's sweep named is a finding of its kind; that it cleared later is not another one.
+func TestTeamStallsAreFoundByKind(t *testing.T) {
+	stall := func(action, kind, task string) ev {
+		return ev{"swarm", events.TypeSwarmStall, map[string]any{"action": action, "kind": kind, "task": task, "detail": task + " detail"}}
+	}
+	dir := log(t, filepath.Join(t.TempDir(), "s1"),
+		stall("raise", "claimed_no_progress", "T1"), stall("clear", "claimed_no_progress", "T1"),
+		stall("raise", "claimed_no_progress", "T2"), stall("raise", "blocked_cycle", "T3"))
+	rep, err := Mine([]string{dir}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := find(rep, TeamStall, "claimed_no_progress"); f == nil || f.Count != 2 || f.Severity != S2 {
+		t.Errorf("claimed_no_progress: %+v", f)
+	}
+	if f := find(rep, TeamStall, "blocked_cycle"); f == nil || f.Count != 1 || len(f.Examples) != 1 || f.Examples[0].Detail != "T3 detail" {
+		t.Errorf("blocked_cycle: %+v", f)
+	}
+}
+
 // A file that was changed between two reads is not read "again": reading it after the edit is how a model checks its work.
 func TestReadingAFileAfterChangingItIsNotARepeat(t *testing.T) {
 	evs := []ev{

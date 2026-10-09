@@ -8,8 +8,11 @@ tracks unfinished product work; implementation history belongs in Git.
 - Validate cache reuse on each supported provider dialect using actual API
   payloads and reported usage. Cover tool loops, worker fan-out, cancellation,
   model changes, resume, and compaction.
-- Detect team stalls caused by repeated verification failures or tasks that
-  cannot make progress. Provide actionable reasons and bounded recovery.
+- Recover from named team stalls within a bound: hand a stalled worker's task
+  over, or return an orphaned task to the pool, without waiting for the manager.
+  Detection and the nudge to the responsible agent exist; recovery is manual.
+- Refuse the manager's file edits at run time in a shared tree, as an isolated
+  run already does: the manager delegates and reviews.
 - Strengthen Windows support for shell analysis, process cleanup, and terminal
   behavior. The Windows test exclusions identify remaining portability gaps.
 
