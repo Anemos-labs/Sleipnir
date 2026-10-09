@@ -40,7 +40,8 @@ type EnvSpec struct {
 	// "ARTIFACTORY_*") to copy from Base regardless of the allowlist. This is the
 	// operator's escape hatch, e.g. for a private registry token needed by setup.
 	PassEnv []string
-	// Set forces values last; it wins over everything.
+	// Set forces values last; it wins over everything. On Windows its names are matched without regard to case,
+	// like Base's.
 	Set map[string]string
 }
 
@@ -192,8 +193,20 @@ func buildEnv(s EnvSpec, goos string) []string {
 	if s.Marker != "" {
 		out[MarkerEnv] = s.Marker
 	}
-	for k, v := range s.Set {
-		out[k] = v
+	// Set names are folded like Base's on Windows, so Set["Path"] replaces PATH instead of sitting beside it
+	// (the child would get whichever spelling comes last). Sorted, so two spellings of one name resolve the
+	// same way on every run.
+	setKeys := make([]string, 0, len(s.Set))
+	for k := range s.Set {
+		setKeys = append(setKeys, k)
+	}
+	sort.Strings(setKeys)
+	for _, k := range setKeys {
+		name := k
+		if windows {
+			name = strings.ToUpper(k)
+		}
+		out[name] = s.Set[k]
 	}
 
 	keys := make([]string, 0, len(out))

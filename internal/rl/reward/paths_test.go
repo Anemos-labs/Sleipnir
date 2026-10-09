@@ -168,7 +168,13 @@ func TestGlobIsBoundedOnAdversarialPatterns(t *testing.T) {
 func TestCleanAbs(t *testing.T) {
 	tests := map[string]string{
 		"/a/b/../c": "/a/c", "/a//b": "/a/b", "rel/path": "", "": "", "/": "/", `\a\b`: "/a/b",
-		`d:\work\..\x`: "D:/x", "C:/..": "C:/", "C:/a//b/": "C:/a/b", "C:rel": "", `\\srv\share\x`: "/srv/share/x",
+		`d:\work\..\x`: "D:/x", "C:/..": "C:/", "C:/a//b/": "C:/a/b", "C:rel": "",
+		// Windows paths ignore case; POSIX paths do not.
+		`D:\Work\Repo\Pkg`: "D:/work/repo/pkg", `d:/WORK/repo`: "D:/work/repo", "/Work/Repo": "/Work/Repo",
+		// A UNC root stays apart from a path on the current drive; slashes alone never make one, so a doubled
+		// slash cannot hide a system location.
+		`\\srv\share\x`: "//srv/share/x", `\\SRV\Share\X\..\y`: "//srv/share/y", "//etc/passwd": "/etc/passwd",
+		`\\\etc\passwd`: "/etc/passwd",
 	}
 	for in, want := range tests {
 		if got := cleanAbs(in); got != want {

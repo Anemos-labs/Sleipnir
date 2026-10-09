@@ -59,15 +59,24 @@ func isAbsSlash(p string) bool {
 // isAbsPath is isAbsSlash for a path in either separator style.
 func isAbsPath(p string) bool { return isAbsSlash(slashPath(p)) }
 
-// cleanAbs normalises an absolute path ("" for anything not absolute). A drive letter is upper-cased, since
-// "d:/x" and "D:/x" name one directory.
+// cleanAbs normalises an absolute path ("" for anything not absolute). Windows paths are case-insensitive, so a
+// path with a drive letter is returned with an upper-case letter and the rest lower-case ("D:/Work/Repo" and
+// "d:/work/repo" name one directory). A UNC path (two leading backslashes) keeps a "//" root, lower-cased the same
+// way, so "\\srv\share\x" ("//srv/share/x") is not "/srv/share/x" on the current drive. A path of forward slashes
+// is rooted whatever its leading slashes ("//etc/passwd" is "/etc/passwd" on Linux), which keeps the system
+// locations impossible to dodge with a doubled slash; a UNC path spelled with forward slashes is read that way too.
+// POSIX paths keep their case.
 func cleanAbs(p string) string {
+	raw := strings.TrimSpace(p)
 	p = slashPath(p)
 	if !isAbsSlash(p) {
 		return ""
 	}
-	if p[0] != '/' {
-		return strings.ToUpper(p[:1]) + ":" + path.Clean(p[2:])
+	switch {
+	case p[0] != '/':
+		return strings.ToUpper(p[:1]) + ":" + strings.ToLower(path.Clean(p[2:]))
+	case strings.HasPrefix(raw, `\\`) && len(p) > 2 && p[2] != '/':
+		return "/" + strings.ToLower(path.Clean(p))
 	}
 	return path.Clean(p)
 }

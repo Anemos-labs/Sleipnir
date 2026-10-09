@@ -228,7 +228,25 @@ func TestBuildEnvWindows(t *testing.T) {
 			t.Errorf("%s=%q should not be in the command environment", k, v)
 		}
 	}
-	// The Unix build leaves Windows variables alone.
+	// A forced value replaces the variable whatever its case; two spellings of one name never both reach the child.
+	forced := buildEnv(EnvSpec{Home: home, Tmp: tmp, Base: base, Set: map[string]string{"Path": `D:\tools`, "Comspec": `D:\cmd.exe`}}, "windows")
+	seen := map[string]int{}
+	for _, kv := range forced {
+		k, _, _ := strings.Cut(kv, "=")
+		seen[strings.ToUpper(k)]++
+	}
+	for k, n := range seen {
+		if n != 1 {
+			t.Errorf("%s appears %d times in %v", k, n, forced)
+		}
+	}
+	if f := EnvMap(forced); f["PATH"] != `D:\tools` || f["COMSPEC"] != `D:\cmd.exe` || f["Path"] != "" || f["Comspec"] != "" {
+		t.Errorf("a mixed-case Set did not replace the variable: %v", f)
+	}
+	// The Unix build leaves Windows variables alone, and its names keep their case.
+	if u := EnvMap(buildEnv(EnvSpec{Home: home, Base: base, Set: map[string]string{"Path": "x"}}, "linux")); u["Path"] != "x" {
+		t.Errorf("linux folded a forced name: %v", u)
+	}
 	if u := EnvMap(buildEnv(EnvSpec{Home: home, Base: base}, "linux")); u["SYSTEMROOT"] != "" || u["TEMP"] != "" || u["PATH"] == bin {
 		t.Errorf("linux environment took Windows variables: %v", u)
 	}

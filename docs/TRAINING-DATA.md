@@ -286,7 +286,7 @@ switches a component off). All keys are optional:
 bounds every scalar reward (components stay raw). `detectors` switches individual hack detectors off (`protected`,
 `tests`, `verifier`, `hardcoded`, `network`, `outside`, `shim`; all run by default). `workspace_roots` tells the
 outside-the-worktree detector which directories an agent may write under (absolute paths: `/work/rollouts`, or
-`D:\work\rollouts` on Windows; the drive letter's case does not matter). `reprice` tunes the counterfactual cache model
+`D:\work\rollouts` or `\\server\share\rollouts` on Windows, whose paths are compared without regard to case). `reprice` tunes the counterfactual cache model
 (engines, capacity, time-to-first-byte model). Re-score a finished run without re-running anything:
 `sleipnir rl reward RUN_DIR --rewards rewards.json [--target-price marketplace] [--dry-run]`.
 

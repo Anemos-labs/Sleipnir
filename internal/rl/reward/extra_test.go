@@ -100,6 +100,34 @@ func TestProtectedPathsUnderWindowsWorkspaceRoots(t *testing.T) {
 	}
 }
 
+// A Windows path is the same location in any case, and a UNC share is not the path with the same words on the current
+// drive: "\\srv\share\repo" and "/srv/share/repo" are two places.
+func TestWindowsWorkspacePathsIgnoreCaseAndKeepUNCApart(t *testing.T) {
+	task := taskWith("go.mod", "tests/**")
+	score := func(root string, obs ...rl.Observation) *rl.Episode {
+		cfg := DefaultConfig()
+		cfg.WorkspaceRoots = []string{root}
+		ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(10, ""), withObs(obs...))))
+		mustScore(t, ep, task, cfg, nil)
+		return ep
+	}
+	if ep := score(`D:\Work\Repo`, writeObs(`d:\work\repo\pkg\a.go`)); hasFlag(ep, fEsc) || hasFlag(ep, fProt) {
+		t.Errorf("a lower-case spelling of the workspace is inside it: %v", ep.Flags)
+	}
+	if ep := score(`D:\Work\Repo`, writeObs(`d:\WORK\REPO\Tests\a.py`)); !hasFlag(ep, fProt) {
+		t.Errorf("a protected file reached through another case: %v", ep.Flags)
+	}
+	if ep := score(`\\srv\share\repo`, writeObs(`\\SRV\Share\repo\pkg\a.go`)); hasFlag(ep, fEsc) {
+		t.Errorf("a UNC workspace and the same share in another case: %v", ep.Flags)
+	}
+	if ep := score(`\\srv\share\repo`, writeObs("/srv/share/repo/pkg/a.go")); !hasFlag(ep, fEsc) {
+		t.Errorf("a path on the current drive is not inside a UNC workspace: %v", ep.Flags)
+	}
+	if ep := score("/srv/share/repo", writeObs(`\\srv\share\repo\pkg\a.go`)); !hasFlag(ep, fEsc) {
+		t.Errorf("a UNC path is not inside a rooted workspace: %v", ep.Flags)
+	}
+}
+
 func TestShellParsing(t *testing.T) {
 	type want struct {
 		name   string
