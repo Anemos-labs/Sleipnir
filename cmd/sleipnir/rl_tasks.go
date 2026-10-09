@@ -202,7 +202,9 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	var rf rigFlags
 	rf.register(fs)
 	goldDir := fs.String("gold", "", "blob store holding the reference solutions (default: --blobs)")
-	report := fs.String("report", "", "also write each task's verdict as JSON ({id, ok, skipped, reason}): a script can quarantine what failed")
+	report := fs.String("report", "", "also write each task's verdict as JSON ({id, ok, skipped, reason, baseline_score, missing, weak}): a script can quarantine what failed")
+	calibrate := fs.String("calibrate", "", "write the tasks to this file with verifier.baseline_score set to the start's measured score; a task whose recorded score differs is then not a failure")
+	mutants := fs.Bool("mutants", false, "also leave each file of the reference solution at its start content in turn and report the task weak (a warning) when the verifier still passes: one more verifier run per solution file")
 	file, err := oneFile(fs, args, "rl tasks check")
 	if err != nil {
 		return err
@@ -235,6 +237,14 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		OK      bool   `json:"ok"`
 		Skipped bool   `json:"skipped,omitempty"`
 		Reason  string `json:"reason,omitempty"`
+		// Baseline is the start's measured score, when the check got that far.
+		Baseline *float64 `json:"baseline_score,omitempty"`
+		// Recalibrated: --calibrate recorded a start score that differs from the task's.
+		Recalibrated bool `json:"recalibrated,omitempty"`
+		// Missing are the required tools (rl.Task.Requires) this machine lacks: the task was skipped.
+		Missing []string `json:"missing,omitempty"`
+		// Weak (--mutants) are the solution files the verifier does not miss: it still passes with each left at the start.
+		Weak []string `json:"weak,omitempty"`
 	}
 	verdicts := make([]verdict, len(tasks))
 	vo := env.VerifyOptions{Workspaces: ws, HiddenBlobs: hidden, Repeats: rf.verifyRepeats}
@@ -248,6 +258,26 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 			defer func() { <-sem }()
 			v := verdict{ID: t.ID}
 			defer func() { verdicts[i] = v }()
+			// judge turns CheckTask's outcome into the verdict: a start score that differs from the recorded one is what
+			// --calibrate is for.
+			judge := func(rep env.CheckReport, err error) {
+				if rep.Baseline.Version != "" {
+					s := rep.Baseline.Score
+					v.Baseline = &s
+				}
+				switch {
+				case err == nil:
+					v.OK = true
+				case errors.Is(err, env.ErrBaselineMismatch) && *calibrate != "":
+					v.OK, v.Recalibrated = true, true
+				default:
+					v.Reason = err.Error()
+				}
+			}
+			if missing := ws.MissingTools(t); len(missing) > 0 {
+				v.Skipped, v.Missing, v.Reason = true, missing, "missing "+strings.Join(missing, ", ")
+				return
+			}
 			var meta struct {
 				GoldBlob  string          `json:"gold_blob"`
 				GoldBlobs json.RawMessage `json:"gold_blobs"`
@@ -268,48 +298,87 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 					v.Reason = "invalid reference metadata: gold_blobs must not be empty"
 					return
 				}
-				if _, err := taskgen.ValidateComposite(ctx, t, gold, vo); err != nil {
+			}
+			var patch []byte
+			var err error
+			switch {
+			case len(meta.GoldBlobs) > 0:
+				if patch, err = taskgen.CompositePatch(t, gold); err != nil {
 					v.Reason = err.Error()
 					return
 				}
-				v.OK = true
-				return
-			}
-			if meta.GoldBlob == "" {
+			case meta.GoldBlob == "":
 				v.Skipped, v.Reason = true, "no reference solution recorded"
 				return
+			default:
+				if patch, err = gold.Get(core.Hash(meta.GoldBlob)); err != nil {
+					v.Reason = fmt.Sprintf("reference solution unavailable: %v", err)
+					return
+				}
 			}
-			patch, err := gold.Get(core.Hash(meta.GoldBlob))
-			if err != nil {
-				v.Reason = fmt.Sprintf("reference solution unavailable: %v", err)
-				return
+			judge(env.CheckTask(ctx, t, patch, vo))
+			if v.OK && *mutants {
+				if v.Weak, err = env.CheckMutants(ctx, t, patch, vo); err != nil {
+					v.OK, v.Reason = false, fmt.Sprintf("mutants: %v", err)
+				}
 			}
-			if _, err := env.CheckTask(ctx, t, patch, vo); err != nil {
-				v.Reason = err.Error()
-				return
-			}
-			v.OK = true
 		}()
 	}
 	wg.Wait()
-	var bad, skipped int
-	for _, v := range verdicts {
+	var bad, skipped, recal, missing, weak int
+	for i, v := range verdicts {
+		note := "" // "; WEAK: ...", appended to what an ok line says
+		if len(v.Weak) > 0 {
+			weak++
+			note = "; WEAK: the verifier still passes with " + strings.Join(v.Weak, ", ") + " left at the start"
+		}
 		switch {
+		case v.Skipped && len(v.Missing) > 0:
+			skipped++
+			missing++
+			fmt.Fprintf(stdout, "%s: skipped: %s\n", v.ID, v.Reason)
 		case v.Skipped:
 			skipped++
 			fmt.Fprintf(stdout, "%s: skipped (%s)\n", v.ID, v.Reason)
 		case !v.OK:
 			bad++
 			fmt.Fprintf(stdout, "%s: FAIL: %s\n", v.ID, v.Reason)
+		case v.Recalibrated:
+			recal++
+			fmt.Fprintf(stdout, "%s: ok (start scores %.6g, was recorded as %.6g: recalibrated%s)\n", v.ID, *v.Baseline, tasks[i].Verifier.BaselineScore, note)
+		case v.Baseline != nil && *v.Baseline > 0:
+			fmt.Fprintf(stdout, "%s: ok (start scores %.6g%s)\n", v.ID, *v.Baseline, note)
+		case note != "":
+			fmt.Fprintf(stdout, "%s: ok (%s)\n", v.ID, strings.TrimPrefix(note, "; "))
 		default:
 			fmt.Fprintf(stdout, "%s: ok\n", v.ID)
 		}
 	}
-	fmt.Fprintf(stdout, "%d tasks: %d ok, %d failed, %d skipped\n", len(tasks), len(tasks)-bad-skipped, bad, skipped)
+	fmt.Fprintf(stdout, "%d tasks: %d ok, %d failed, %d skipped", len(tasks), len(tasks)-bad-skipped, bad, skipped)
+	if missing > 0 {
+		fmt.Fprintf(stdout, " (%d for missing tools)", missing)
+	}
+	if *mutants {
+		fmt.Fprintf(stdout, ", %d weak", weak)
+	}
+	fmt.Fprintln(stdout)
 	if *report != "" {
 		if err := writeJSONFile(*report, verdicts); err != nil {
 			return err
 		}
+	}
+	if *calibrate != "" {
+		out := make([]rl.Task, len(tasks))
+		for i, t := range tasks {
+			if v := verdicts[i]; v.OK && v.Baseline != nil {
+				t.Verifier.BaselineScore = *v.Baseline
+			}
+			out[i] = t
+		}
+		if err := env.WriteTasks(*calibrate, out); err != nil {
+			return fmt.Errorf("rl tasks check: --calibrate: %w", err)
+		}
+		fmt.Fprintf(stdout, "wrote %s: %d tasks, %d recalibrated (tasks that were not checked keep what they had)\n", *calibrate, len(out), recal)
 	}
 	if bad > 0 {
 		return errors.New("rl tasks check: some tasks are unsound")

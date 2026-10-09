@@ -73,8 +73,26 @@ func localeFor(goos string) string {
 	return "C"
 }
 
+// windowsVars are copied on Windows when present: without them processes cannot find the system (SYSTEMROOT is
+// needed by sockets, crypto and Python's start-up), run a program by its bare name (PATHEXT) or start cmd.exe
+// (COMSPEC). They name system locations and hold no credentials.
+var windowsVars = []string{
+	"SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "OS",
+	"PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "NUMBER_OF_PROCESSORS",
+	"PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
+	"COMMONPROGRAMW6432", "PROGRAMDATA", "ALLUSERSPROFILE",
+}
+
 // BuildEnv returns the environment (sorted "K=V" entries) for a command.
-func BuildEnv(s EnvSpec) []string {
+//
+// On Windows variable names are case-insensitive ("Path" is PATH), so they are matched without regard to case and
+// written in upper case; the Windows system variables are passed on; TEMP and TMP point at Tmp; and USERPROFILE,
+// APPDATA and LOCALAPPDATA at Home, where the toolchains' default caches then live, as they do under HOME elsewhere.
+func BuildEnv(s EnvSpec) []string { return buildEnv(s, runtime.GOOS) }
+
+// buildEnv is BuildEnv for the operating system goos.
+func buildEnv(s EnvSpec, goos string) []string {
+	windows := goos == "windows"
 	base := map[string]string{}
 	src := s.Base
 	if src == nil {
@@ -82,6 +100,9 @@ func BuildEnv(s EnvSpec) []string {
 	}
 	for _, kv := range src {
 		if k, v, ok := strings.Cut(kv, "="); ok && k != "" {
+			if windows {
+				k = strings.ToUpper(k)
+			}
 			base[k] = v
 		}
 	}
@@ -103,7 +124,7 @@ func BuildEnv(s EnvSpec) []string {
 		"TMPDIR": tmp,
 		"USER":   "sleipnir", "LOGNAME": "sleipnir",
 		"SHELL": "/bin/sh",
-		"LANG":  localeFor(runtime.GOOS), "LC_ALL": localeFor(runtime.GOOS),
+		"LANG":  localeFor(goos), "LC_ALL": localeFor(goos),
 		"TZ":   "UTC",
 		"TERM": "dumb", "NO_COLOR": "1", "CI": "true",
 		"PAGER": "cat", "GIT_PAGER": "cat",
@@ -126,6 +147,21 @@ func BuildEnv(s EnvSpec) []string {
 			out[k] = v
 		}
 	}
+	if windows {
+		for _, k := range windowsVars {
+			if v, ok := base[k]; ok {
+				out[k] = v
+			}
+		}
+		out["TEMP"], out["TMP"] = tmp, tmp
+		out["USERPROFILE"] = home
+		out["APPDATA"] = filepath.Join(home, "AppData", "Roaming")
+		out["LOCALAPPDATA"] = filepath.Join(home, "AppData", "Local")
+		out["USERNAME"] = "sleipnir"
+		// Python reads and writes files in the ANSI code page unless told otherwise; elsewhere the UTF-8 locale
+		// makes it use UTF-8, and this does here.
+		out["PYTHONUTF8"] = "1"
+	}
 	if s.Network {
 		for _, k := range networkVars {
 			if v, ok := base[k]; ok {
@@ -141,6 +177,9 @@ func BuildEnv(s EnvSpec) []string {
 		if pat == "" {
 			continue
 		}
+		if windows {
+			pat = strings.ToUpper(pat)
+		}
 		for k, v := range base {
 			if k == pat {
 				out[k] = v
@@ -149,7 +188,7 @@ func BuildEnv(s EnvSpec) []string {
 			}
 		}
 	}
-	out["PATH"] = strings.Join(sanitizePath(base["PATH"], s.Deny), string(os.PathListSeparator))
+	out["PATH"] = strings.Join(sanitizePath(base["PATH"], s.Deny, goos, base["SYSTEMROOT"]), string(os.PathListSeparator))
 	if s.Marker != "" {
 		out[MarkerEnv] = s.Marker
 	}
@@ -174,7 +213,13 @@ func BuildEnv(s EnvSpec) []string {
 // entry (including ".") would let a repository file shadow a tool; a
 // world-writable entry would let any local user, including a sibling rollout,
 // plant one.
-func sanitizePath(p string, deny []string) []string {
+//
+// On Windows (goos) the mode bits say nothing: Go reports every directory as
+// 0777 and access is decided by ACLs, which are not inspected, so there only
+// relative, missing and denied entries are dropped, and systemRoot is the
+// fallback when nothing is left.
+func sanitizePath(p string, deny []string, goos, systemRoot string) []string {
+	windows := goos == "windows"
 	var out []string
 	seen := map[string]bool{}
 	for _, d := range filepath.SplitList(p) {
@@ -182,23 +227,31 @@ func sanitizePath(p string, deny []string) []string {
 			continue
 		}
 		d = filepath.Clean(d)
-		if seen[d] || underAny(d, deny) {
+		key := d
+		if windows {
+			key = strings.ToLower(d)
+		}
+		if seen[key] || underAny(d, deny) {
 			continue
 		}
 		fi, err := os.Stat(d)
 		if err != nil || !fi.IsDir() {
 			continue
 		}
-		if fi.Mode().Perm()&0o002 != 0 {
+		if !windows && fi.Mode().Perm()&0o002 != 0 {
 			continue
 		}
-		seen[d] = true
+		seen[key] = true
 		out = append(out, d)
 	}
 	if len(out) == 0 {
 		// A working default rather than an empty PATH, which would make the
 		// shell fall back to its own built-in search path.
-		for _, d := range []string{"/usr/local/bin", "/usr/bin", "/bin"} {
+		defaults := []string{"/usr/local/bin", "/usr/bin", "/bin"}
+		if windows && systemRoot != "" {
+			defaults = []string{filepath.Join(systemRoot, "System32"), systemRoot}
+		}
+		for _, d := range defaults {
 			if fi, err := os.Stat(d); err == nil && fi.IsDir() {
 				out = append(out, d)
 			}
@@ -208,13 +261,20 @@ func sanitizePath(p string, deny []string) []string {
 }
 
 // underAny compares p against cleaned root paths using native separator boundaries without
-// resolving p or symlinks.
+// resolving p or symlinks. On Windows the comparison ignores case, as the file system does.
 func underAny(p string, roots []string) bool {
+	fold := runtime.GOOS == "windows"
+	if fold {
+		p = strings.ToLower(p)
+	}
 	for _, r := range roots {
 		if r == "" {
 			continue
 		}
 		r = filepath.Clean(r)
+		if fold {
+			r = strings.ToLower(r)
+		}
 		if p == r || strings.HasPrefix(p, r+string(filepath.Separator)) {
 			return true
 		}

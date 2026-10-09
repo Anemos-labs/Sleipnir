@@ -25,7 +25,10 @@ func cleanRel(p string) (clean string, escapes bool) {
 	if p == "" {
 		return "", false
 	}
-	abs := strings.HasPrefix(p, "/")
+	abs := isAbsSlash(p)
+	if abs && !strings.HasPrefix(p, "/") {
+		p = p[2:] // the drive letter: "C:/x" climbs out as "/x" does
+	}
 	c := path.Clean("/" + strings.TrimLeft(p, "/"))
 	// path.Clean of a rooted path cannot climb above "/", so detect the climb on
 	// the unrooted form.
@@ -43,11 +46,28 @@ func cleanRel(p string) (clean string, escapes bool) {
 	return c, escapes
 }
 
-// cleanAbs normalises an absolute path ("" for anything not absolute).
+// isAbsSlash reports whether a slash-separated path is absolute on some platform: rooted ("/x", and so a UNC
+// "//server/share") or carrying a drive letter ("C:/x"). It does not depend on the host, because a run recorded on
+// Windows may be scored on Linux and the reverse. A drive-relative "C:x" is not absolute.
+func isAbsSlash(p string) bool {
+	if strings.HasPrefix(p, "/") {
+		return true
+	}
+	return len(p) >= 3 && p[1] == ':' && p[2] == '/' && ('a' <= p[0] && p[0] <= 'z' || 'A' <= p[0] && p[0] <= 'Z')
+}
+
+// isAbsPath is isAbsSlash for a path in either separator style.
+func isAbsPath(p string) bool { return isAbsSlash(slashPath(p)) }
+
+// cleanAbs normalises an absolute path ("" for anything not absolute). A drive letter is upper-cased, since
+// "d:/x" and "D:/x" name one directory.
 func cleanAbs(p string) string {
 	p = slashPath(p)
-	if !strings.HasPrefix(p, "/") {
+	if !isAbsSlash(p) {
 		return ""
+	}
+	if p[0] != '/' {
+		return strings.ToUpper(p[:1]) + ":" + path.Clean(p[2:])
 	}
 	return path.Clean(p)
 }

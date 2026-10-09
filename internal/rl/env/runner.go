@@ -189,7 +189,7 @@ type Progress struct {
 	Attempt int       `json:"attempt,omitempty"`
 	Done    int       `json:"done"`
 	Total   int       `json:"total"`
-	Status  string    `json:"status,omitempty"` // for rollout.done: ok, infra, cancelled, resumed
+	Status  string    `json:"status,omitempty"` // for rollout.done: ok, infra, cancelled, capped, skipped, resumed
 	Pass    *bool     `json:"pass,omitempty"`
 	Score   *float64  `json:"score,omitempty"`
 	Error   string    `json:"error,omitempty"`
@@ -217,6 +217,9 @@ const (
 	StatusCancelled = "cancelled"
 	// StatusCapped: not run, because the run's spend cap was reached (Runner.MaxSpendUSD).
 	StatusCapped = "capped"
+	// StatusSkipped: not run, because a tool the task requires (rl.Task.Requires) is not on the commands' PATH;
+	// Error says which ("missing ruby"). Nothing is written, so a later run where the tool exists runs it.
+	StatusSkipped = "skipped"
 )
 
 // RolloutResult is the per-rollout record kept in the summary.
@@ -534,6 +537,11 @@ func (rn *run) rollout(ctx context.Context, j job) (res RolloutResult) {
 	if rn.capReached() {
 		base.Status = StatusCapped
 		base.Error = fmt.Sprintf("the run's spend cap of $%.4g is reached", rn.r.MaxSpendUSD)
+		return base
+	}
+	if missing := rn.r.Workspaces.MissingTools(j.task); len(missing) > 0 {
+		base.Status = StatusSkipped
+		base.Error = "missing " + strings.Join(missing, ", ")
 		return base
 	}
 	rn.emit(Progress{Type: "rollout.start", Task: j.task.ID, Sample: j.sample})

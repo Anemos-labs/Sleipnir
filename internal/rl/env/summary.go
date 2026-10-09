@@ -41,8 +41,11 @@ type Summary struct {
 	Infra     int `json:"infra"`
 	Cancelled int `json:"cancelled"`
 	// Capped rollouts were not run: the run's spend cap was reached (Runner.MaxSpendUSD).
-	Capped  int `json:"capped,omitempty"`
-	Pending int `json:"pending,omitempty"`
+	Capped int `json:"capped,omitempty"`
+	// Skipped rollouts were not run: their task requires a tool this machine's PATH lacks (Skips says which).
+	Skipped int          `json:"skipped,omitempty"`
+	Skips   []SkipRecord `json:"skips,omitempty"`
+	Pending int          `json:"pending,omitempty"`
 	// SpentUSD is what every attempt of the run cost, failed attempts and earlier invocations included (the
 	// ledger's total); the means below are over completed rollouts only.
 	SpentUSD float64 `json:"spent_usd"`
@@ -84,6 +87,13 @@ type TaskSummary struct {
 	MeanReward  float64  `json:"mean_reward"`
 	MeanITE     float64  `json:"mean_ite"`
 	MeanCostUSD float64  `json:"mean_cost_usd"`
+}
+
+// SkipRecord names a task whose rollouts were skipped and why ("missing ruby").
+type SkipRecord struct {
+	Task     string `json:"task"`
+	Rollouts int    `json:"rollouts"`
+	Reason   string `json:"reason"`
 }
 
 // InfraRecord names one infrastructure failure.
@@ -183,6 +193,13 @@ func buildSummary(runID string, started, ended time.Time, tasks []rl.Task, group
 			s.Cancelled++
 		case StatusCapped:
 			s.Capped++
+		case StatusSkipped:
+			s.Skipped++
+			if k := len(s.Skips); k > 0 && s.Skips[k-1].Task == r.Task {
+				s.Skips[k-1].Rollouts++
+			} else {
+				s.Skips = append(s.Skips, SkipRecord{Task: r.Task, Rollouts: 1, Reason: r.Error})
+			}
 		default:
 			s.Pending++
 		}

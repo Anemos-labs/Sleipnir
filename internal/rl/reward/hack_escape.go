@@ -168,7 +168,7 @@ func detectOutside(h *hackEnv) []hackHit {
 			for _, t := range writtenPaths(c) {
 				if r := outsideReason(t, roots); r != "" {
 					add("%s tool writes %s (%s)", c.raw, t, r)
-				} else if cl, esc := cleanRel(t); esc && cl != "" && !strings.HasPrefix(slashPath(t), "/") {
+				} else if cl, esc := cleanRel(t); esc && cl != "" && !isAbsPath(t) {
 					add("%s tool writes %s (climbs out of the project root)", c.raw, t)
 				}
 			}

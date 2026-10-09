@@ -74,6 +74,32 @@ func TestProtectedPathsUnderKnownWorkspaceRoots(t *testing.T) {
 	}
 }
 
+// TestProtectedPathsUnderWindowsWorkspaceRoots is the Windows form of the test above: rollouts on Windows record
+// drive-letter roots and agents write backslashed paths, with either case of drive letter.
+func TestProtectedPathsUnderWindowsWorkspaceRoots(t *testing.T) {
+	task := taskWith("go.mod", "tests/**")
+	cfg := DefaultConfig()
+	cfg.WorkspaceRoots = []string{`D:\work\repo`}
+	run := func(obs ...rl.Observation) *rl.Episode {
+		ep := mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(10, ""), withObs(obs...))))
+		mustScore(t, ep, task, cfg, nil)
+		return ep
+	}
+	if ep := run(writeObs(`D:\work\repo\go.mod`)); !hasFlag(ep, fProt) {
+		t.Errorf("absolute path inside the workspace must be matched relative to it: %v", ep.Flags)
+	}
+	if ep := run(writeObs(`d:/work/repo/tests/a.py`)); !hasFlag(ep, fProt) {
+		t.Errorf("a lower-case drive letter names the same workspace: %v", ep.Flags)
+	}
+	if ep := run(writeObs(`D:\work\repo\pkg\a.go`)); hasFlag(ep, fProt) || hasFlag(ep, fEsc) {
+		t.Errorf("unprotected and inside: %v", ep.Flags)
+	}
+	ep := run(writeObs(`C:\elsewhere\go.mod`))
+	if hasFlag(ep, fProt) || !hasFlag(ep, fEsc) {
+		t.Errorf("a go.mod on another drive is an escape: %v", ep.Flags)
+	}
+}
+
 func TestShellParsing(t *testing.T) {
 	type want struct {
 		name   string

@@ -606,6 +606,16 @@ func TestVerifyExpectForRecallTasks(t *testing.T) {
 		{"case sensitive by default", `{"contains":["Needle"]}`, "needle", false, 0},
 		{"fold", `{"contains":["Needle"],"fold":true}`, "a NEEDLE here", true, 1},
 		{"empty answer", `{"contains":["x"]}`, "", false, 0},
+		// A short answer checked by "contains" passes inside any answer that mentions it; a regex can ask for more.
+		{"contains passes a ramble", `{"contains":["42"]}`, "maybe 42, or 142, or 420", true, 1},
+		{"whole answer", `{"regex":"^42\\.?$"}`, "  42.\n", true, 1},
+		{"whole answer refuses a ramble", `{"regex":"^42\\.?$"}`, "maybe 42, or 142, or 420", false, 0},
+		{"last number", `{"regex":"(?:^|[^0-9.])42(?:\\.0+)?[^0-9]*$"}`, "There are 42 ways.", true, 1},
+		{"last number refuses another last number", `{"regex":"(?:^|[^0-9.])42(?:\\.0+)?[^0-9]*$"}`, "42 or 43", false, 0},
+		{"last number refuses a longer number", `{"regex":"(?:^|[^0-9.])42(?:\\.0+)?[^0-9]*$"}`, "It is 142", false, 0},
+		{"regex fold", `{"regex":"^answer: yes$","fold":true}`, "Answer: YES", true, 1},
+		{"regex gates contains", `{"contains":["ways","total"],"regex":"(?:^|[^0-9])42[^0-9]*$"}`, "42 ways in total, or 43", false, 0},
+		{"regex and partial contains", `{"contains":["ways","total"],"regex":"(?:^|[^0-9])42[^0-9]*$"}`, "there are 42 ways", false, 0.5},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -636,7 +646,7 @@ func TestVerifyExpectForRecallTasks(t *testing.T) {
 // ---- flakiness ----
 
 func TestVerifyRepeatsAndPassPolicies(t *testing.T) {
-	counter := filepath.Join(t.TempDir(), "n")
+	counter := filepath.ToSlash(filepath.Join(t.TempDir(), "n")) // the shell reads it: no backslashes
 	// Fails on even runs. `state.txt` proves each repeat gets a fresh checkout.
 	cmd := fmt.Sprintf(`test ! -e state.txt || exit 9; touch state.txt; n=$(cat %[1]s 2>/dev/null || echo 0); n=$((n+1)); echo $n > %[1]s; [ $((n %% 2)) -eq 1 ]`, counter)
 	f := newVerifyFixture(t, func(tk *rl.Task) { tk.Verifier.Cmd = cmd })
@@ -681,7 +691,7 @@ func TestVerifyRepeatsAndPassPolicies(t *testing.T) {
 func TestCheckTaskRepeatsHoldBothSidesToEveryRun(t *testing.T) {
 	flaky := func(dir, condition string) string {
 		// Passes on odd runs only, and only where the condition holds; state outside the checkout counts the runs.
-		counter := filepath.Join(dir, "n")
+		counter := filepath.ToSlash(filepath.Join(dir, "n")) // the shell reads it: no backslashes
 		return fmt.Sprintf(`(%[2]s) || exit 1; n=$(cat %[1]s 2>/dev/null || echo 0); n=$((n+1)); echo $n > %[1]s; [ $((n %% 2)) -eq 1 ]`, counter, condition)
 	}
 	const isFixed = `[ "$(grep -A1 'if a > b' mathx.go | tail -1 | tr -d '[:space:]')" = returna ]`
@@ -774,6 +784,71 @@ func TestCheckTaskWithGoldPatch(t *testing.T) {
 	}
 	if _, err := CheckTask(ctxT(t), f.task, nil, VerifyOptions{Workspaces: f.m}); !errors.Is(err, ErrGoldFails) {
 		t.Fatalf("an empty gold patch must fail: %v", err)
+	}
+}
+
+// TestCheckTaskMeasuresTheStartScore: a json-score verifier that gives the untouched start partial credit is sound only
+// with that score recorded (the reward measures improvement over it), and a start that scores 1 is not sound at all.
+func TestCheckTaskMeasuresTheStartScore(t *testing.T) {
+	const isFixed = `[ "$(grep -A1 'if a > b' mathx.go | tail -1 | tr -d '[:space:]')" = returna ]`
+	f := newVerifyFixture(t, func(tk *rl.Task) {
+		tk.Verifier.Pass = "json-score"
+		tk.Verifier.Cmd = `if ` + isFixed + `; then echo '{"score": 1}'; else echo '{"score": 0.25}'; fi`
+	})
+	f.r.write("mathx.go", fixedMath)
+	fixCommit := f.r.commit("fix")
+	gold := []byte(f.r.git("diff", "--binary", "--full-index", "--no-renames", f.base, fixCommit, "--", "mathx.go") + "\n")
+	opts := VerifyOptions{Workspaces: f.m}
+
+	rep, err := CheckTask(ctxT(t), f.task, gold, opts)
+	if !errors.Is(err, ErrBaselineMismatch) || !strings.Contains(err.Error(), "0.25") {
+		t.Fatalf("an unrecorded start score must be reported with its value, got %v", err)
+	}
+	if rep.Baseline.Score != 0.25 || !rep.Gold.Pass {
+		t.Fatalf("the report must still carry both verdicts: baseline %+v gold %+v", rep.Baseline, rep.Gold)
+	}
+	recorded := f.task
+	recorded.Verifier.BaselineScore = 0.25
+	if _, err := CheckTask(ctxT(t), recorded, gold, opts); err != nil {
+		t.Fatalf("the recorded start score is sound: %v", err)
+	}
+	stale := f.task
+	stale.Verifier.BaselineScore = 0.5
+	if _, err := CheckTask(ctxT(t), stale, gold, opts); !errors.Is(err, ErrBaselineMismatch) {
+		t.Fatalf("a stale baseline must be reported, got %v", err)
+	}
+	full := f.task
+	full.Verifier.Cmd = `echo '{"score": 1}'`
+	if _, err := CheckTask(ctxT(t), full, gold, opts); !errors.Is(err, ErrBaselinePasses) {
+		t.Fatalf("a start that scores 1 makes the task unsound, got %v", err)
+	}
+}
+
+// TestCheckMutantsFindsWhatTheVerifierDoesNotMiss: a reference solution of two files whose verifier only looks at one is
+// weak in the other; a verifier that needs both is not; protected files of the solution are not mutated.
+func TestCheckMutantsFindsWhatTheVerifierDoesNotMiss(t *testing.T) {
+	const isFixed = `[ "$(grep -A1 'if a > b' mathx.go | tail -1 | tr -d '[:space:]')" = returna ]`
+	f := newVerifyFixture(t, func(tk *rl.Task) { tk.Verifier.Cmd = isFixed })
+	f.r.write("mathx.go", fixedMath)
+	f.r.write("NOTES.txt", "done\n")
+	f.r.write("mathx_test.go", "package mathx\n")
+	fixCommit := f.r.commit("fix")
+	gold := []byte(f.r.git("diff", "--binary", "--full-index", "--no-renames", f.base, fixCommit) + "\n")
+	opts := VerifyOptions{Workspaces: f.m}
+	if _, err := CheckTask(ctxT(t), f.task, gold, opts); err != nil {
+		t.Fatalf("the task itself is sound: %v", err)
+	}
+	weak, err := CheckMutants(ctxT(t), f.task, gold, opts)
+	if err != nil || !reflect.DeepEqual(weak, []string{"NOTES.txt"}) {
+		t.Fatalf("CheckMutants = %q, %v; want NOTES.txt, the file the verifier never reads (and not the protected test file)", weak, err)
+	}
+	strict := f.task
+	strict.Verifier.Cmd = isFixed + ` && grep -q done NOTES.txt`
+	if weak, err := CheckMutants(ctxT(t), strict, gold, opts); err != nil || len(weak) != 0 {
+		t.Fatalf("a verifier that needs every file is not weak: %q, %v", weak, err)
+	}
+	if weak, err := CheckMutants(ctxT(t), f.task, nil, opts); err != nil || len(weak) != 0 {
+		t.Fatalf("an empty solution has nothing to take away: %q, %v", weak, err)
 	}
 }
 

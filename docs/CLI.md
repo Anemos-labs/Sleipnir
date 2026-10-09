@@ -1094,7 +1094,15 @@ to named splits; `check` proves each task sound (the verifier fails on the start
 With `--verify-repeats N` the verifier runs N times in fresh checkouts and a task must fail on the start every time and
 pass with the solution every time: a start that passes once rewards doing nothing, a solution that fails once scores
 correct work inconsistently (a benchmark suite admits tasks this way). `--concurrency` checks tasks in parallel;
-`--report FILE` writes each verdict as JSON so a script can quarantine what failed.
+`--report FILE` writes each verdict as JSON so a script can quarantine what failed. The start's score must also equal
+the task's `verifier.baseline_score` (0 when absent): a `json-score` verifier that gives the untouched start partial
+credit fails the check until that score is recorded, because the reward measures improvement over it, and a start that
+scores 1 is unsound. `--calibrate OUT` writes the tasks with the measured start scores recorded. `--mutants` adds a
+seeded regression check of each verifier: for every file the reference solution changes (protected and hidden files
+aside), it leaves that file at its start content, keeps the rest of the solution, and runs the verifier; a task whose
+verifier still passes is reported `ok (WEAK: the verifier still passes with FILE left at the start)` and counted as weak.
+That is a warning, not a failure: the verifier pays for an unfinished solution, or the solution changes a file the task
+does not need. It is deterministic and costs one verifier run per solution file (and repeat).
 
 <!-- flags: rl tasks validate -->
 ```text
@@ -1153,6 +1161,8 @@ flags:
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
   -budget-usd float
         spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
+  -calibrate string
+        write the tasks to this file with verifier.baseline_score set to the start's measured score; a task whose recorded score differs is then not a failure
   -concurrency int
         rollouts in flight (default 1)
   -gold string
@@ -1169,12 +1179,14 @@ flags:
         step cap of one rollout whose task sets none
   -max-wall duration
         wall-clock cap of a rollout whose task sets none (default 1h)
+  -mutants
+        also leave each file of the reference solution at its start content in turn and report the task weak (a warning) when the verifier still passes: one more verifier run per solution file
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -report string
-        also write each task's verdict as JSON ({id, ok, skipped, reason}): a script can quarantine what failed
+        also write each task's verdict as JSON ({id, ok, skipped, reason, baseline_score, missing, weak}): a script can quarantine what failed
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string
@@ -1195,6 +1207,11 @@ flags:
 <!-- /flags -->
 
 ### `sleipnir rl rollout`
+
+A task whose `requires` names a tool that is not on the commands' PATH is not run: its rollouts are reported `skipped`
+with the reason (`skipped: <task> (8 rollouts): missing ruby`), counted apart from completed rollouts and infra errors, and
+leave nothing in `--out`, so rerunning on a machine with the tool runs them. `rl tasks check` reports such a task
+`skipped: missing ruby` and counts it among the skipped.
 
 Budgets and cost accounting, for runs against a real endpoint:
 
@@ -1731,7 +1748,7 @@ chat with it, which keeps the conversation when it is a single agent.
 | `2` | usage: no command, an unknown command, or an unknown or malformed flag (`sleipnir chat --bogus`) |
 | `3` | unfinished: a swarm's manager stopped with work left undone (running workers, submissions nobody judged, tasks nobody finished); what was done is in place, and `run --json` names what was left in `unfinished` |
 | `130`, `143` | interrupted: the command was ended by Ctrl-C (SIGINT) or by SIGTERM (128 plus the signal, the shell's convention) and printed `sleipnir: interrupted`; for a `chat`, only while its session was still being made |
-| `75` | try again later (`EX_TEMPFAIL`): `rl rollout` or `rl eval` in which **no** rollout completed (the endpoint was down, every attempt failed, or the spend cap was reached). Rerunning into the same `--out` resumes; a benchmark script loops on this status. A run in which some rollouts completed exits 0 and reports its infrastructure failures in the summary |
+| `75` | try again later (`EX_TEMPFAIL`): `rl rollout` or `rl eval` in which **no** rollout completed (the endpoint was down, every attempt failed, or the spend cap was reached). Rerunning into the same `--out` resumes; a benchmark script loops on this status. A run in which some rollouts completed exits 0 and reports its infrastructure failures in the summary; a run in which every rollout was skipped for missing tools exits 1, since rerunning does not help |
 
 A model that ends its turn normally is a success (`0`) whatever the task's outcome; check the result (`run --json`, the
 summary line, `sleipnir inspect`) or your own tests.

@@ -264,8 +264,25 @@ func mean(v []float64) float64 {
 
 // ---- episode components ---------------------------------------------------------------
 
-// verdictScore reads the verifier's score in [0, 1].
-func verdictScore(v *rl.Verdict) (float64, string) {
+// verdictScore reads the verifier's score in [0, 1] as improvement over the
+// task's recorded baseline (Verifier.BaselineScore, the score of the untouched
+// start): max(0, (s - s0) / (1 - s0)). A verifier that gives the start partial
+// credit then pays nothing for doing nothing, and a full pass is still 1. The
+// recorded verdict keeps the raw score.
+func verdictScore(v *rl.Verdict, baseline float64) (float64, string) {
+	sc, note := rawVerdictScore(v)
+	if v == nil || !(baseline > 0 && baseline < 1) {
+		return sc, note
+	}
+	cal := math.Max(0, (sc-baseline)/(1-baseline))
+	if note != "" {
+		note += "; "
+	}
+	return cal, note + fmt.Sprintf("verifier score %.3f over the start's baseline %.3f: outcome %.3f", sc, baseline, cal)
+}
+
+// rawVerdictScore reads the verifier's score in [0, 1].
+func rawVerdictScore(v *rl.Verdict) (float64, string) {
 	switch {
 	case v == nil:
 		return 0, "no verifier verdict: outcome is 0"
@@ -307,7 +324,7 @@ func (s *scorer) episodeComponents() map[string]float64 {
 	c := map[string]float64{}
 
 	// outcome
-	score, note := verdictScore(ep.Outcome.Verifier)
+	score, note := verdictScore(ep.Outcome.Verifier, t.Verifier.BaselineScore)
 	if note != "" {
 		s.note("%s", note)
 	}
@@ -514,6 +531,6 @@ func (s *scorer) outcomeScore() float64 {
 	if s.hack {
 		return 0
 	}
-	v, _ := verdictScore(s.ep.Outcome.Verifier)
+	v, _ := verdictScore(s.ep.Outcome.Verifier, s.task.Verifier.BaselineScore)
 	return v
 }

@@ -103,6 +103,11 @@
 //     zone, a sanitised PATH, and proxies only for tasks that have network.
 //     Tool caches (Go build and module cache, cargo, npm, pip) live under that
 //     HOME, so a cache poisoned by one run cannot reach another run's verifier.
+//     On Windows the system variables (SYSTEMROOT, WINDIR, COMSPEC, PATHEXT and
+//     the program directories) are passed on, TEMP and TMP name the private
+//     temporary directory, USERPROFILE, APPDATA and LOCALAPPDATA lie under the
+//     private HOME, and PATH entries are not filtered by permissions (Go reports
+//     every Windows directory as 0777; ACLs are not inspected).
 //   - Commands run in their own session and process group and are killed as a
 //     group on timeout or cancellation, with output capped at head plus tail and
 //     a hard kill for runaway output; stragglers that escaped the group are found

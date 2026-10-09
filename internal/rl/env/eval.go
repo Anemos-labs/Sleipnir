@@ -111,8 +111,10 @@ type Report struct {
 	Rollouts  int `json:"rollouts"`
 	Completed int `json:"completed"`
 	Infra     int `json:"infra"`
-	// Dropped lists tasks with no completed rollout (all infra errors); they are
-	// left out of every average.
+	// Skipped rollouts were not run: their task requires a tool this machine lacks.
+	Skipped int `json:"skipped,omitempty"`
+	// Dropped lists tasks with no completed rollout (all infra errors or
+	// skipped); they are left out of every average.
 	Dropped []string `json:"dropped,omitempty"`
 
 	// PassAt1 is the mean over tasks of the fraction of samples that passed.
@@ -223,6 +225,8 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 		case StatusInfra:
 			rep.Infra++
 			infra[r.Task]++
+		case StatusSkipped:
+			rep.Skipped++
 		}
 	}
 	if d := rep.Completed + rep.Infra; d > 0 {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -195,6 +196,16 @@ func validateTask(t rl.Task) []*TaskError {
 		}
 	}
 
+	// requires
+	for i, r := range t.Requires {
+		switch {
+		case !slices.Contains(KnownTools, r):
+			add(fmt.Sprintf("requires[%d]", i), "unknown tool %q (known: %s)", r, strings.Join(KnownTools, ", "))
+		case slices.Index(t.Requires, r) < i:
+			add(fmt.Sprintf("requires[%d]", i), "duplicate tool %q", r)
+		}
+	}
+
 	errs = append(errs, validateVerifier(t)...)
 	return errs
 }
@@ -219,8 +230,15 @@ func validateVerifier(t rl.Task) []*TaskError {
 	if v.TimeoutS < 0 || v.TimeoutS > maxTimeoutS {
 		add("timeout_s", "must be between 0 and %d", maxTimeoutS)
 	}
-	if _, err := parsePassMode(v.Pass); err != nil {
+	pm, err := parsePassMode(v.Pass)
+	if err != nil {
 		add("pass", "%v", err)
+	}
+	switch b := v.BaselineScore; {
+	case math.IsNaN(b) || b < 0 || b >= 1:
+		add("baseline_score", "must be in [0, 1), got %v (a start that scores 1 already passes: the task is unsound)", b)
+	case b > 0 && (err != nil || pm.Kind != PassJSONScore || !needsCommand(t)):
+		add("baseline_score", "only a json-score verifier gives the start partial credit")
 	}
 	for name, ref := range v.Hidden {
 		field := fmt.Sprintf("hidden[%q]", name)
@@ -376,16 +394,26 @@ func parsePassMode(s string) (PassMode, error) {
 	return PassMode{}, fmt.Errorf("unknown pass mode %q (want exit0, json-score or regex:<re>)", s)
 }
 
-// Expect is the decoded Verifier.Expect of a recall task: the final answer must
-// contain every listed string.
+// Expect is the decoded Verifier.Expect of an answer check: the final answer
+// must contain every string of Contains and, when Regex is set, match it.
 type Expect struct {
-	Contains []string `json:"contains"`
-	// Fold makes the comparison case-insensitive.
+	Contains []string `json:"contains,omitempty"`
+	// Regex is an RE2 pattern the final answer, with surrounding white space
+	// trimmed, must match; "^" and "$" anchor at the ends of the whole answer
+	// unless the pattern turns on (?m). It is a gate: an answer that does not
+	// match scores 0 whatever Contains finds. "contains" alone passes a short
+	// answer ("42") inside any answer that mentions it; "^42\.?$" (the whole
+	// answer) or "(?:^|[^0-9.])42(?:\.0+)?[^0-9]*$" (the last number) do not.
+	Regex string `json:"regex,omitempty"`
+	// Fold makes every comparison case-insensitive.
 	Fold bool `json:"fold,omitempty"`
+
+	re *regexp.Regexp
 }
 
-// ParseExpect strictly decodes Verifier.Expect. Unknown keys and an empty
-// "contains" list are errors: a typo must not turn into a check that passes
+// ParseExpect strictly decodes Verifier.Expect. Unknown keys, a check with
+// neither strings nor a pattern, an empty string and a pattern that matches an
+// empty answer are errors: a typo must not turn into a check that passes
 // vacuously.
 func ParseExpect(raw json.RawMessage) (Expect, error) {
 	var e Expect
@@ -397,13 +425,27 @@ func ParseExpect(raw json.RawMessage) (Expect, error) {
 	if dec.More() {
 		return Expect{}, errors.New("bad expect: trailing data")
 	}
-	if len(e.Contains) == 0 {
-		return Expect{}, errors.New("bad expect: \"contains\" must list at least one string")
+	if len(e.Contains) == 0 && e.Regex == "" {
+		return Expect{}, errors.New("bad expect: \"contains\" must list at least one string, or \"regex\" give a pattern")
 	}
 	for i, c := range e.Contains {
 		if c == "" {
 			return Expect{}, fmt.Errorf("bad expect: contains[%d] is empty (it would match any answer)", i)
 		}
+	}
+	if e.Regex != "" {
+		expr := e.Regex
+		if e.Fold {
+			expr = "(?i)" + expr
+		}
+		re, err := regexp.Compile(expr)
+		if err != nil {
+			return Expect{}, fmt.Errorf("bad expect: regex: %v", err)
+		}
+		if re.MatchString("") {
+			return Expect{}, fmt.Errorf("bad expect: regex %q matches an empty answer", e.Regex)
+		}
+		e.re = re
 	}
 	return e, nil
 }

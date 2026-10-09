@@ -26,6 +26,8 @@ func TestCleanRel(t *testing.T) {
 		{"../../etc/passwd", "etc/passwd", true},
 		{"a/../../b.go", "b.go", true},
 		{"/etc/passwd", "etc/passwd", true},
+		{`C:\Windows\system.ini`, "Windows/system.ini", true},
+		{"d:/x/../y", "y", true},
 		{"..", "", true},
 		{".", "", false},
 		{"", "", false},
@@ -166,6 +168,7 @@ func TestGlobIsBoundedOnAdversarialPatterns(t *testing.T) {
 func TestCleanAbs(t *testing.T) {
 	tests := map[string]string{
 		"/a/b/../c": "/a/c", "/a//b": "/a/b", "rel/path": "", "": "", "/": "/", `\a\b`: "/a/b",
+		`d:\work\..\x`: "D:/x", "C:/..": "C:/", "C:/a//b/": "C:/a/b", "C:rel": "", `\\srv\share\x`: "/srv/share/x",
 	}
 	for in, want := range tests {
 		if got := cleanAbs(in); got != want {

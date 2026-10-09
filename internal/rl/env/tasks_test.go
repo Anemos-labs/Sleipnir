@@ -95,6 +95,20 @@ func TestValidateTask(t *testing.T) {
 		{"expect empty string", func(t *rl.Task) { t.Verifier.Expect = json.RawMessage(`{"contains":[""]}`) }, "verifier.expect"},
 		{"expect typo", func(t *rl.Task) { t.Verifier.Expect = json.RawMessage(`{"contain":["x"]}`) }, "verifier.expect"},
 		{"expect null is absent", func(t *rl.Task) { t.Verifier.Expect = json.RawMessage(`null`) }, ""},
+		{"expect regex alone", func(t *rl.Task) { t.Verifier.Expect = json.RawMessage(`{"regex":"^42$"}`) }, ""},
+		{"expect regex and contains", func(t *rl.Task) {
+			t.Verifier.Expect = json.RawMessage(`{"contains":["ways"],"regex":"(?:^|[^0-9.])42[^0-9]*$","fold":true}`)
+		}, ""},
+		{"expect bad regex", func(t *rl.Task) { t.Verifier.Expect = json.RawMessage(`{"regex":"(42"}`) }, "verifier.expect: bad expect: regex"},
+		{"expect vacuous regex", func(t *rl.Task) { t.Verifier.Expect = json.RawMessage(`{"regex":"4?2?"}`) }, "matches an empty answer"},
+		{"expect nothing to check", func(t *rl.Task) { t.Verifier.Expect = json.RawMessage(`{"fold":true}`) }, "verifier.expect"},
+		{"baseline with json-score", func(t *rl.Task) { t.Verifier.Pass, t.Verifier.BaselineScore = "json-score", 0.25 }, ""},
+		{"baseline of one", func(t *rl.Task) { t.Verifier.Pass, t.Verifier.BaselineScore = "json-score", 1 }, "verifier.baseline_score"},
+		{"negative baseline", func(t *rl.Task) { t.Verifier.Pass, t.Verifier.BaselineScore = "json-score", -0.1 }, "verifier.baseline_score"},
+		{"baseline with exit0", func(t *rl.Task) { t.Verifier.BaselineScore = 0.25 }, "only a json-score verifier"},
+		{"requires known tools", func(t *rl.Task) { t.Requires = []string{"ruby", "cargo"} }, ""},
+		{"requires an unknown tool", func(t *rl.Task) { t.Requires = []string{"rubby"} }, "requires[0]: unknown tool"},
+		{"requires a tool twice", func(t *rl.Task) { t.Requires = []string{"go", "go"} }, "requires[1]: duplicate"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

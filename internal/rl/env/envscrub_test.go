@@ -2,8 +2,10 @@ package env
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -163,13 +165,17 @@ func TestSanitizePath(t *testing.T) {
 		"", ".", "relative/bin", "../bin", good, good + "/", good2, file,
 		filepath.Join(good, "does-not-exist"), worldWritable, inWorkspace, workspace, good,
 	}, string(os.PathListSeparator))
-	got := sanitizePath(p, []string{workspace})
+	got := sanitizePath(p, []string{workspace}, runtime.GOOS, os.Getenv("SYSTEMROOT"))
 	want := []string{good, good2}
+	if runtime.GOOS == "windows" {
+		// The mode bits are meaningless there (every directory reads as 0777), so they decide nothing.
+		want = append(want, worldWritable)
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sanitizePath = %q, want %q", got, want)
 	}
 	// Nothing usable: fall back to system directories, never to an empty PATH.
-	got = sanitizePath(".:relative", nil)
+	got = sanitizePath("."+string(os.PathListSeparator)+"relative", nil, runtime.GOOS, os.Getenv("SYSTEMROOT"))
 	if len(got) == 0 {
 		t.Fatal("empty PATH")
 	}
@@ -181,10 +187,74 @@ func TestSanitizePath(t *testing.T) {
 }
 
 func TestUnderAny(t *testing.T) {
-	if !underAny("/a/b/c", []string{"/x", "/a/b"}) || !underAny("/a/b", []string{"/a/b/"}) {
+	n := filepath.FromSlash
+	if !underAny(n("/a/b/c"), []string{n("/x"), n("/a/b")}) || !underAny(n("/a/b"), []string{n("/a/b/")}) {
 		t.Error("expected match")
 	}
-	if underAny("/a/bc", []string{"/a/b"}) || underAny("/a", []string{"/a/b", ""}) {
+	if underAny(n("/a/bc"), []string{n("/a/b")}) || underAny(n("/a"), []string{n("/a/b"), ""}) {
 		t.Error("prefix must respect path boundaries")
+	}
+	if runtime.GOOS == "windows" && !underAny(`c:\work\ws\bin`, []string{`C:\Work`}) {
+		t.Error("Windows paths differ in case only and name the same directory")
+	}
+}
+
+// TestBuildEnvWindows: a Windows host spells PATH "Path" and needs its system variables to start anything; the
+// command still sees no credential, and its temporary and profile directories are the private ones.
+func TestBuildEnvWindows(t *testing.T) {
+	bin, home, tmp := t.TempDir(), t.TempDir(), t.TempDir()
+	base := []string{
+		"Path=" + bin, "SystemRoot=C:\\Windows", "windir=C:\\Windows", "ComSpec=C:\\Windows\\system32\\cmd.exe",
+		"PATHEXT=.COM;.EXE;.BAT;.CMD", "ProgramFiles=C:\\Program Files", "NUMBER_OF_PROCESSORS=8",
+		"TEMP=C:\\Users\\operator\\AppData\\Local\\Temp", "USERPROFILE=C:\\Users\\operator",
+		"LOCALAPPDATA=C:\\Users\\operator\\AppData\\Local", "OPENAI_API_KEY=placeholder-not-a-secret",
+		"Private_Registry_Token=placeholder-not-a-secret",
+	}
+	m := EnvMap(buildEnv(EnvSpec{Home: home, Tmp: tmp, Base: base, PassEnv: []string{"private_registry_*"}}, "windows"))
+	want := map[string]string{
+		"PATH": bin, "SYSTEMROOT": `C:\Windows`, "WINDIR": `C:\Windows`, "COMSPEC": `C:\Windows\system32\cmd.exe`,
+		"PATHEXT": ".COM;.EXE;.BAT;.CMD", "PROGRAMFILES": `C:\Program Files`, "NUMBER_OF_PROCESSORS": "8",
+		"TEMP": tmp, "TMP": tmp, "TMPDIR": tmp, "HOME": home, "USERPROFILE": home,
+		"LOCALAPPDATA": filepath.Join(home, "AppData", "Local"), "APPDATA": filepath.Join(home, "AppData", "Roaming"),
+		"PYTHONUTF8": "1", "PRIVATE_REGISTRY_TOKEN": "placeholder-not-a-secret",
+	}
+	for k, v := range want {
+		if m[k] != v {
+			t.Errorf("%s = %q, want %q", k, m[k], v)
+		}
+	}
+	for _, k := range []string{"OPENAI_API_KEY", "Path"} {
+		if v, ok := m[k]; ok {
+			t.Errorf("%s=%q should not be in the command environment", k, v)
+		}
+	}
+	// The Unix build leaves Windows variables alone.
+	if u := EnvMap(buildEnv(EnvSpec{Home: home, Base: base}, "linux")); u["SYSTEMROOT"] != "" || u["TEMP"] != "" || u["PATH"] == bin {
+		t.Errorf("linux environment took Windows variables: %v", u)
+	}
+}
+
+// TestBuildEnvKeepsTheHostsToolsOnWindows runs against the real host: the scrubbed PATH must still reach the system
+// directory, or every verifier exits 127.
+func TestBuildEnvKeepsTheHostsToolsOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows only")
+	}
+	cmd, err := exec.LookPath("cmd")
+	if err != nil {
+		t.Skip("no cmd.exe on PATH")
+	}
+	m := EnvMap(BuildEnv(EnvSpec{Home: t.TempDir()}))
+	found := false
+	for _, d := range filepath.SplitList(m["PATH"]) {
+		if strings.EqualFold(d, filepath.Dir(cmd)) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("PATH %q lost %s", m["PATH"], filepath.Dir(cmd))
+	}
+	if m["SYSTEMROOT"] == "" || m["PATHEXT"] == "" || m["COMSPEC"] == "" {
+		t.Errorf("system variables missing: SYSTEMROOT=%q PATHEXT=%q COMSPEC=%q", m["SYSTEMROOT"], m["PATHEXT"], m["COMSPEC"])
 	}
 }

@@ -572,6 +572,9 @@ func printSummary(w io.Writer, s *env.Summary) {
 	if s.Capped > 0 {
 		fmt.Fprintf(w, ", %d not run (spend cap)", s.Capped)
 	}
+	if s.Skipped > 0 {
+		fmt.Fprintf(w, ", %d skipped (missing tools)", s.Skipped)
+	}
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  spent $%.4f in all (every attempt, failed ones included; ledger.jsonl)\n", s.SpentUSD)
 	fmt.Fprintf(w, "  pass rate %.1f%%   mean score %.3f   mean reward %.3f   hack rate %.1f%%   budget rate %.1f%%\n", 100*s.PassRate, s.MeanScore, s.MeanReward, 100*s.HackRate, 100*s.BudgetRate)
@@ -584,6 +587,9 @@ func printSummary(w io.Writer, s *env.Summary) {
 			fmt.Fprintf(tw, "%s\t%d\t%d\t%.0f\t%.3f\t$%.4f\n", t.ID, t.Samples, t.Passed, 100*t.PassRate, t.MeanReward, t.MeanCostUSD)
 		}
 		tw.Flush()
+	}
+	for _, e := range s.Skips {
+		fmt.Fprintf(w, "skipped: %s (%d rollouts): %s\n", e.Task, e.Rollouts, e.Reason)
 	}
 	for _, e := range s.InfraErrors {
 		fmt.Fprintf(w, "infra: %s/%d after %d attempts: %s\n", e.Task, e.Sample, e.Attempts, e.Message)
