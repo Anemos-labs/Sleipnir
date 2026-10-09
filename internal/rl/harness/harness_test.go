@@ -12,12 +12,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/provider"
@@ -682,4 +684,109 @@ func specWithPolicy(t *testing.T, repo string, pol env.PolicySpec) env.RunSpec {
 	sp := spec(t, repo, "anything")
 	sp.Policy = pol
 	return sp
+}
+
+// A provider entry's extra_body (a reasoning effort, say) is shared by every rollout that runs on
+// it. Rollouts run concurrently and each merges its sampling block and seed into the request body:
+// that merge must happen in a copy, or two rollouts write one map at once (a fatal error in Go)
+// and every rollout leaves its seed in the entry for the next.
+func TestConcurrentRolloutsNeverWriteIntoTheSharedProviderOptions(t *testing.T) {
+	pol := startPolicy(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	t.Setenv("RL_TEST_POLICY_KEY", "policy-key-for-test")
+	shared := map[string]any{"reasoning_effort": "high"}
+	h := &harness.Harness{PolicyOptions: map[string]any{"extra_body": shared}}
+	const rollouts = 6
+	var wg sync.WaitGroup
+	errs := make(chan error, rollouts)
+	for i := 0; i < rollouts; i++ {
+		repo := newRepo(t)
+		sp := spec(t, repo, "hello")
+		sp.Seed = int64(100 + i)
+		sp.Policy = env.PolicySpec{
+			Model: "mock-1", BaseURL: pol.url, APIKeyEnv: "RL_TEST_POLICY_KEY",
+			Sampling: json.RawMessage(`{"temperature":0.7,"top_p":0.9}`),
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := h.Run(context.Background(), sp)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(shared) != 1 || shared["reasoning_effort"] != "high" {
+		t.Errorf("the provider entry's extra_body was modified: %v", shared)
+	}
+	seeds := map[float64]bool{}
+	for _, b := range pol.bodies() {
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		if m["reasoning_effort"] != "high" {
+			t.Errorf("a request lost the entry's reasoning_effort: %s", b)
+		}
+		seed, _ := m["seed"].(float64)
+		seeds[seed] = true
+	}
+	if len(seeds) != rollouts {
+		t.Errorf("requests carried %d distinct seeds, want one per rollout (%d): %v", len(seeds), rollouts, seeds)
+	}
+}
+
+// A role model written with the name of one of the user's providers runs on that provider: the
+// harness is given the user's provider entries, so the name resolves instead of being sent to the
+// policy endpoint as part of a model id.
+func TestARoleModelResolvesAgainstTheConfiguredProviders(t *testing.T) {
+	repo := newRepo(t)
+	policy := startPolicy(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "policy"} })
+	managerEndpoint := startPolicy(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "the team has nothing to do"} })
+	t.Setenv("RL_TEST_POLICY_KEY", "policy-key-for-test")
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{"mgr-alias": {
+		Dialect: config.DialectOpenAIChat, BaseURL: managerEndpoint.url, APIKeyEnv: "RL_TEST_POLICY_KEY", AllowInsecureHTTP: true,
+	}}
+	h := &harness.Harness{Config: cfg, PolicyAllowInsecureHTTP: true}
+	sp := spec(t, repo, "coordinate the fix")
+	sp.Policy = env.PolicySpec{Model: "worker-model", BaseURL: policy.url, APIKeyEnv: "RL_TEST_POLICY_KEY"}
+	sp.Task.Kind = rl.TaskSwarm
+	sp.Task.Team = rl.Team{Mode: "swarm", Agents: 3, Roles: []string{"backend", "tester"}}
+	sp.Swarm, sp.Agents = true, 3
+	sp.RoleModels = map[string]string{"manager": "mgr-alias/manager-model"}
+	if res, err := h.Run(context.Background(), sp); err != nil || res.Claimed != "done" {
+		t.Fatalf("%+v %v", res, err)
+	}
+	bodies := managerEndpoint.bodies()
+	if len(bodies) == 0 {
+		t.Fatalf("the manager never reached its provider (the policy endpoint got %d requests, models: %s)", len(policy.bodies()), modelsOf(policy.bodies()))
+	}
+	if got := modelsOf(bodies); got != "manager-model" {
+		t.Errorf("the manager asked its provider for model %q, want manager-model", got)
+	}
+	if n := len(policy.bodies()); n != 0 {
+		t.Errorf("the policy endpoint got %d requests, models %s: the manager's model was sent there", n, modelsOf(policy.bodies()))
+	}
+}
+
+// modelsOf lists the distinct model ids of request bodies, comma-separated.
+func modelsOf(bodies [][]byte) string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, b := range bodies {
+		var m struct {
+			Model string `json:"model"`
+		}
+		if json.Unmarshal(b, &m) == nil && !seen[m.Model] {
+			seen[m.Model] = true
+			ids = append(ids, m.Model)
+		}
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ",")
 }
