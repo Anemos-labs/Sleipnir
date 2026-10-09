@@ -17,8 +17,10 @@ they do not indicate whether a change has been released.
   `swarm.max_agents` setting, which counted the manager, is replaced by
   `swarm.max_workers` (and `SLEIPNIR_SWARM_MAX_WORKERS`), which does not; a
   file or variable that still names `max_agents` is refused with the new key
-  and its value, `max_agents` minus one. The mailman no longer takes a worker's
-  place under the cap, and `sleipnir init` writes `"max_workers": 12`.
+  and its value, `max_agents` minus one; the value 1 (the manager alone) has no
+  equal, since 0 means no ceiling, so its refusal asks for a worker count of 1
+  or more. The mailman no longer takes a worker's place under the cap, and
+  `sleipnir init` writes `"max_workers": 12`.
 - The manager edits no file in any run. It plans, delegates and reviews; its
   writes and writing shell commands are refused at run time with a pointer to
   spawn a worker, in a shared checkout as in an isolated one, while it keeps

@@ -29,6 +29,25 @@ func TestTheOldNameOfTheWorkerCeilingIsRefusedWithTheNewOne(t *testing.T) {
 		t.Fatalf("an old value that is no number: %v", err)
 	}
 
+	// A value with no equal is never converted into one that changes what the person set: 1 meant "the manager alone", and a
+	// worker ceiling of 0 means no ceiling at all, so the refusal asks for a choice. 0 stays 0 (no ceiling before, none now).
+	for _, c := range []struct{ old, want string }{
+		{"1", `write "max_workers": a worker count of 1 or more (the old value 1 allowed no workers, and 0 means no ceiling; --swarm 0 runs a single agent) instead`},
+		{"2", `write "max_workers": 1 instead`},
+		{"0", `write "max_workers": 0 instead`},
+		{"-3", `write "max_workers": a worker count of 0 or more (a negative ceiling is not valid) instead`},
+	} {
+		p = newProj(t)
+		p.user(`{"swarm": {"max_agents": ` + c.old + `}}`)
+		if _, _, err = p.load(); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("max_agents %s: got %v\nwant a message containing %s", c.old, err, c.want)
+		}
+	}
+	p = newProj(t)
+	if _, _, err = p.load(withEnv("SLEIPNIR_SWARM_MAX_AGENTS=1")); err == nil || !strings.Contains(err.Error(), "set SLEIPNIR_SWARM_MAX_WORKERS=<a worker count of 1 or more") || strings.Contains(err.Error(), "MAX_WORKERS=0") {
+		t.Errorf("the old variable with the value 1: %v", err)
+	}
+
 	p = newProj(t)
 	p.user(`{"swarm": {"max_workers": 8}}`)
 	cfg, _, err := p.load()
