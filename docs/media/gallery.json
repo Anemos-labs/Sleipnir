@@ -4,7 +4,7 @@
     "caption": "The swarm cockpit: nine agents on one shared prefix, worker mail, a stuck agent, the provider losing its cache, and the merge queue sending one piece back.",
     "view": "cockpit",
     "cols": 100,
-    "rows": 44,
+    "rows": 46,
     "fps": 5,
     "hold": "4s",
     "still_at": 17
