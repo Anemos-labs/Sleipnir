@@ -383,16 +383,17 @@ groups format also lists every signal under `metrics` as `signal/<name>`.
 
 * `--format sft --select best` keeps the best verified episode of each group (`--top-k K` keeps the best K). The
   default, `--select all`, keeps every verified episode, best `--top-k` per task by reward, as before.
-* `--format dpo --pair best-worst` pairs rank 1 with rank last of each group, only when rank 1 is verified and its key
-  is strictly better than the rejected one's. Both pair units follow it: the episode unit compares what the root agent
+* `--format dpo --pair best-worst` pairs rank 1 with rank last of each group, only when rank 1 is verified, takes part in
+  the comparison (a prompt or a root chain that rank 1 does not have gives no pair) and its key is strictly better than
+  the rejected one's. Both pair units follow it: the episode unit compares what the root agent
   did after the shared first prompt, the step unit compares completions of an identical prompt within the group. The
   default, `--pair reward`, pairs by reward as before.
 * `--format groups` (or steps, tokens) with `--advantage grpo` gives the group-relative signal; add the efficiency
   components below to the reward to make it prefer cheap, clean passes.
 
 **Reward components.** Two opt-in components let GRPO advantages see efficiency. Both are gated by the verifier score
-(`score`, 0 for a hacked episode), so they only tell passing runs apart and a failed run is never penalised for its
-waste on top of failing. With weights λw and λi and the default outcome weight of 1, an episode's outcome part
+(`score`, 0 for a hacked episode) of a passing verdict, so they only tell passing runs apart and a failed run, partial
+credit or not, is never penalised for its waste on top of failing. With weights λw and λi and the default outcome weight of 1, an episode's outcome part
 becomes `score × (1 − λw·min(1, waste/caps.waste) − λi·ite_rel)`, where `ite_rel` places its ITE between the cheapest
 (0) and the dearest (1) run of its group.
 

@@ -364,3 +364,33 @@ func TestReadCounterCountsRereadsOfUnchangedParts(t *testing.T) {
 		t.Fatalf("Counts = %q %v", parts, counts)
 	}
 }
+
+// A write resets the reads of the same file, spelled relatively or absolutely, but never those of another file that only shares
+// the tail of its path.
+func TestChangedDoesNotMatchTwoRelativePathsBySuffix(t *testing.T) {
+	var c ReadCounter
+	read := func(p string) int { _, _, n := c.Read(p, json.RawMessage(`{"path":"`+p+`"}`)); return n }
+	read("a.go")
+	read("a.go")
+	read("/w/src/b.go")
+	read("/w/src/b.go")
+	c.Changed("src/a.go") // another file than a.go
+	if n := read("a.go"); n != 3 {
+		t.Errorf("a write to src/a.go reset the reads of a.go: the third read counts %d", n)
+	}
+	c.Changed("./a.go") // the same file
+	if n := read("a.go"); n != 1 {
+		t.Errorf("a write to ./a.go did not reset the reads of a.go: %d", n)
+	}
+	c.Changed("src/b.go") // the relative spelling of an absolute path it ends
+	if n := read("/w/src/b.go"); n != 1 {
+		t.Errorf("a write to src/b.go did not reset the reads of /w/src/b.go: %d", n)
+	}
+	c.Changed("/w/src/b.go")
+	read("src/b.go")
+	read("src/b.go")
+	c.Changed("/w/src/b.go") // the absolute spelling of a relative path
+	if n := read("src/b.go"); n != 1 {
+		t.Errorf("a write to /w/src/b.go did not reset the reads of src/b.go: %d", n)
+	}
+}

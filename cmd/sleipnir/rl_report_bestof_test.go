@@ -69,7 +69,31 @@ func TestRLReportNamesTheBestOfEachGroupAndTheEfficiencyMeans(t *testing.T) {
 		t.Fatalf("best of group = %+v, want the cache-friendly sample 1", best)
 	}
 	e := rep.Efficiency
+	if e == nil {
+		t.Fatal("the report has no efficiency")
+	}
 	if e.ToolCalls != 9 || e.StuckStops != 0.25 || e.LoopRate != 0.25 || e.RepeatedReads != 0.5 || e.Waste != 3 {
 		t.Fatalf("efficiency = %+v", e)
+	}
+}
+
+// A report saved before the efficiency signals existed has none: rl report must not print its missing means as measured zeros,
+// while a report that measured zeros still prints them.
+func TestRLReportPrintsEfficiencyOnlyWhereItWasMeasured(t *testing.T) {
+	write := func(name, body string) string {
+		p := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	const head = `{"schema":"sleipnir.rl.eval/2","run_id":"saved","tasks":1,"samples":2,"completed":2,"passed":1`
+	r := rlRun{t}
+	if out := r.must(rlReport, write("old.json", head+`}`)); strings.Contains(out, "per episode:") {
+		t.Errorf("a report without efficiency prints measured zeros:\n%s", out)
+	}
+	out := r.must(rlReport, write("measured.json", head+`,"efficiency":{"tool_calls":0,"waste":0}}`))
+	if !strings.Contains(out, "per episode: 0.0 tool calls") {
+		t.Errorf("a measured zero is not printed:\n%s", out)
 	}
 }

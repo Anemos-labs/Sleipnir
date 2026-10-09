@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -316,14 +317,35 @@ func (c *ReadCounter) Read(path string, input json.RawMessage) (part, what strin
 }
 
 // Changed records that path was written: every part of it starts over. The same file is spelled relatively and absolutely by
-// the same model, so a path matches when either one ends with the other.
+// the same model, so an absolute path matches a relative one when it ends with it; two relative paths are one file only when
+// they are equal ("a.go" and "src/a.go" are two).
 func (c *ReadCounter) Changed(path string) {
 	for part := range c.parts {
 		p, _, _ := strings.Cut(part, "\x00")
-		if p == path || strings.HasSuffix(p, "/"+strings.TrimPrefix(path, "./")) || strings.HasSuffix(path, "/"+strings.TrimPrefix(p, "./")) {
+		if samePath(p, path) {
 			c.parts[part] = 0
 		}
 	}
+}
+
+// samePath reports whether two paths a model used name one file: equal after cleaning, or an absolute path and a relative one
+// that is its tail.
+func samePath(a, b string) bool {
+	a, b = path.Clean(filepath.ToSlash(a)), path.Clean(filepath.ToSlash(b))
+	switch aa, ba := isAbsSlash(a), isAbsSlash(b); {
+	case a == b:
+		return true
+	case aa && !ba:
+		return strings.HasSuffix(a, "/"+b)
+	case ba && !aa:
+		return strings.HasSuffix(b, "/"+a)
+	}
+	return false
+}
+
+// isAbsSlash reports whether a slash path is rooted or carries a drive letter.
+func isAbsSlash(p string) bool {
+	return strings.HasPrefix(p, "/") || (len(p) >= 3 && p[1] == ':' && p[2] == '/')
 }
 
 // Counts returns the parts read so far, sorted, with how many times each was read since its file last changed.

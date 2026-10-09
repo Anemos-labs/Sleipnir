@@ -165,8 +165,9 @@ type Report struct {
 	CacheAnomalies float64 `json:"cache_anomalies_per_ep"`
 	// FalseDone is the share of episodes that claimed to be done and failed the verifier.
 	FalseDone float64 `json:"false_done_rate"`
-	// Efficiency holds the means of the best-of-n signals over completed episodes.
-	Efficiency Efficiency `json:"efficiency"`
+	// Efficiency holds the means of the best-of-n signals over completed episodes. It is absent from a report with no
+	// completed episode and from one written before the signals existed, so a saved report is never read as measured zeros.
+	Efficiency *Efficiency `json:"efficiency,omitempty"`
 	// Attempts and Identity come from the run directory (LoadRun); a report built from results alone leaves them empty.
 	Attempts *AttemptStats `json:"attempts,omitempty"`
 	Identity *Identity     `json:"identity,omitempty"`
@@ -314,7 +315,10 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 		rows = append(rows, row)
 	}
 	rep.PerTask = rows
-	rep.Efficiency = efficiencyOf(results)
+	if rep.Completed > 0 {
+		e := efficiencyOf(results)
+		rep.Efficiency = &e
+	}
 
 	var valid []TaskResult
 	for _, r := range rows {

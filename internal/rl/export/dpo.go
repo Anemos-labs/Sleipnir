@@ -157,6 +157,9 @@ func (x *exporter) pickPair(cands []dpoCand) (best, worst *dpoCand, why string) 
 		return a.c.we.ep.ID < b.c.we.ep.ID
 	})
 	best = &cands[0]
+	if ranked && best.c.we.rank.Position != 1 {
+		return nil, nil, "pair:best_not_rank_1" // rank 1 of the group has no candidate for this prompt
+	}
 	if ranked && !best.c.we.key.Verified {
 		return nil, nil, "pair:best_not_verified"
 	}
@@ -279,6 +282,9 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 		})
 		best, worst := views[0], views[len(views)-1]
 		switch {
+		case ranked && best.we.rank.Position != 1:
+			x.stats.drop("pair:best_not_rank_1") // rank 1 of the group has no usable root chain
+			continue
 		case ranked && !best.we.key.Verified:
 			x.stats.drop("pair:best_not_verified")
 			continue

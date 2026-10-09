@@ -113,3 +113,34 @@ func TestEfficiencyKnobsParse(t *testing.T) {
 		t.Fatalf("defaults %v %v", d.Weights, d.Caps)
 	}
 }
+
+// A failed verdict that scored partial credit still has nothing to say about efficiency: the components tell passing
+// runs apart, and a failed run is never penalised for its waste on top of failing.
+func TestEfficiencyComponentsIgnoreAFailedVerdictWithPartialCredit(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Weights[CompWaste], cfg.Weights[CompGroupITE] = 0.3, 0.2
+	friendly, hostile := paced("friendly", 10*time.Second), paced("hostile", 10*time.Minute)
+	ranges, err := GroupITE([]*rl.Episode{friendly, hostile}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := ranges["T@policy"]
+	cfg.GroupITE = &g
+	for _, tc := range []struct {
+		name    string
+		verdict *rl.Verdict
+		want    bool // penalised
+	}{
+		{"passed", passing(1), true},
+		{"failed with partial credit", &rl.Verdict{Kind: "verifier", Pass: false, Score: 0.6}, false},
+	} {
+		ep := paced("hostile", 10*time.Minute)
+		ep.Outcome.Verifier = tc.verdict
+		ep.Signals[rl.SigStuckStops], ep.Signals[rl.SigRepeatedReads] = 1, 4
+		mustScore(t, ep, &rl.Task{}, cfg, NoDiffs{})
+		penalised := ep.Reward.Components[CompWaste] < 0 && ep.Reward.Components[CompGroupITE] < 0
+		if penalised != tc.want {
+			t.Errorf("%s: waste %v, group_ite %v", tc.name, ep.Reward.Components[CompWaste], ep.Reward.Components[CompGroupITE])
+		}
+	}
+}

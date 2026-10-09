@@ -31,7 +31,8 @@ const (
 	CompTime       = "time"
 	CompProtocol   = "protocol"
 	// CompWaste and CompGroupITE are the efficiency components, both gated by
-	// the verifier score (they only tell passing runs apart) and off by default:
+	// the verifier score of a passing verdict (they only tell passing runs
+	// apart; a failed verdict with partial credit has none) and off by default:
 	// waste is -score * min(1, rl.Waste / caps.waste); group_ite is -score times
 	// the episode's ITE placed between the cheapest (0) and the dearest (1) of
 	// its rollout group, and needs Config.GroupITE.

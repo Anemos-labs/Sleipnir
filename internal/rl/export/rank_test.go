@@ -177,3 +177,32 @@ func TestSelectAndPairAreValidated(t *testing.T) {
 		}
 	}
 }
+
+// Rank 1 is the chosen side of a best-worst pair. When it has no candidate for a prompt (it asked something else) or no usable
+// chain (its model is not an allowed teacher), the best of those that remain is rank 2: that is not a rank 1 vs rank last pair.
+func TestPairBestWorstNeedsRankOneAmongTheCandidates(t *testing.T) {
+	o := export.DefaultOptions(export.FormatDPO)
+	o.Pair = export.PairBestWorst
+	for _, tc := range []struct {
+		name  string
+		first variant
+	}{
+		{"another prompt", variant{sample: 0, plan: "plan A", reward: 1, pass: true, ite: 100, user: "a different request"}},
+		{"not a usable teacher", variant{sample: 0, plan: "plan A", reward: 1, pass: true, ite: 100, model: "other-model"}},
+	} {
+		srcs := []export.Source{
+			rollout(t, tc.first),
+			rollout(t, variant{sample: 1, plan: "plan B", reward: 0.9, pass: true, ite: 500}),
+			rollout(t, variant{sample: 2, plan: "plan C", reward: 0, pass: false, ite: 900}),
+		}
+		out, st := run(t, srcs, o)
+		for _, r := range decode(t, out) {
+			if cr := r["chosen_rank"].(map[string]any); cr["position"].(float64) != 1 {
+				t.Errorf("%s: chosen side is rank %v: %v", tc.name, cr["position"], r["unit"])
+			}
+		}
+		if st.Drops["pair:best_not_rank_1"] == 0 {
+			t.Errorf("%s: no pair was refused for lacking rank 1 (drops %v, %d records)", tc.name, st.Drops, len(lines(out)))
+		}
+	}
+}

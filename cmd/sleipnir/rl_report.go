@@ -196,7 +196,7 @@ func rlReport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		if a := r.Attempts; a != nil && a.Wasted > 0 {
 			n = append(n, fmt.Sprintf("%d of %d attempts ended without an answer and cost $%.4f of $%.4f (%d of %d requests)", a.Wasted, a.Attempts, a.WastedUSD, a.SpentUSD, a.WastedRequests, a.Requests))
 		}
-		if e := r.Efficiency; r.Completed > 0 {
+		if e := r.Efficiency; e != nil && r.Completed > 0 { // a report saved before the signals existed has none: not zeros
 			n = append(n, fmt.Sprintf("per episode: %.1f tool calls, %.2f guard warnings, %.2f guard stops (%s looped), %.2f repeated reads, %.1f waste, %.0f answer chars",
 				e.ToolCalls, e.StuckWarnings, e.StuckStops, pct(e.LoopRate, r.Completed), e.RepeatedReads, e.Waste, e.FinalAnswerChars))
 		}
