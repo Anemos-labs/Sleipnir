@@ -32,6 +32,9 @@ type view struct {
 	// handoffs the assignments that were handed over, from board.op events.
 	closures map[string]string
 	handoffs int
+	// stuckWarnings and stuckStops count agent.stuck events of the repetition guard: its
+	// warnings (phase nudge, guard repeat or not named) and the runs it ended (phase stop).
+	stuckWarnings, stuckStops int
 
 	sessionStart, sessionEnd *time.Time
 	turns                    map[string][]turnEv // agent -> turn.append in order
@@ -205,6 +208,16 @@ func (r *Run) buildView() *view {
 			v.steers++
 		case events.TypeCacheAnomaly:
 			v.anomalies++
+		case events.TypeAgentStuck:
+			var p struct{ Phase, Guard, Note string }
+			if json.Unmarshal(e.Data, &p) == nil {
+				switch {
+				case p.Phase == "stop":
+					v.stuckStops++
+				case p.Phase == "nudge" && repeatNudge(p.Guard, p.Note):
+					v.stuckWarnings++
+				}
+			}
 		case events.TypeGovernor:
 			if strings.Contains(strings.ToLower(string(e.Data)), "budget") {
 				v.budgetHit = true
@@ -274,6 +287,16 @@ func (v *view) boardClosure(e events.Event) {
 	if p.Assignment != nil && p.Assignment.Kind != "" {
 		v.handoffs++
 	}
+}
+
+// repeatNudge reports whether an agent.stuck nudge came from the repetition guard. A log
+// written before nudges named their guard is read by the wording of the test-weakening
+// guard's note, the only other source of nudges (h).
+func repeatNudge(guard, note string) bool {
+	if guard != "" {
+		return guard == "repeat"
+	}
+	return !strings.Contains(note, "you changed only test files")
 }
 
 func parseOutcome(e events.Event) outcomeEv {

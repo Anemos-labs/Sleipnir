@@ -388,6 +388,9 @@ func TestRolloutFullPath(t *testing.T) {
 		if p.Type == "rollout.stage" {
 			stages[p.Stage] = true
 		}
+		if p.Type == "rollout.done" && (p.Status == StatusOK) != (p.Reward != nil) {
+			t.Errorf("rollout.done %s/%d status %s: reward %v (a completed rollout reports its reward, no other does)", p.Task, p.Sample, p.Status, p.Reward)
+		}
 	}
 	for _, st := range []string{"prepare", "agent", "verify", "extract", "score"} {
 		if !stages[st] {

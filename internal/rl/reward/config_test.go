@@ -259,3 +259,15 @@ func TestTargets(t *testing.T) {
 	w5, _ = writeWeights(auto)
 	near(t, "auto default write", w5, 1)
 }
+
+func TestAWorkspaceRootOfThisOSIsAccepted(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.WorkspaceRoots = []string{t.TempDir()} // a drive path on Windows
+	if _, err := cfg.resolve(); err != nil {
+		t.Fatalf("an absolute root of this OS: %v", err)
+	}
+	cfg.WorkspaceRoots = []string{filepath.Join("relative", "dir")}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "workspace_roots[0]") {
+		t.Errorf("a relative root: %v", err)
+	}
+}

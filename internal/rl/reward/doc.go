@@ -11,6 +11,8 @@
 //	Reprice    Episode + target price/cache model -> ITE, per agent, per step.
 //	Probes     compaction fidelity probes derived from the archived thread.
 //	Config     weights, caps, target price model; JSON loadable.
+//	GroupITE   the ITE range of each rollout group, for the group_ite component
+//	           (Config.GroupITE); rl reward sets it when that weight is not 0.
 //
 // # Design rules
 //

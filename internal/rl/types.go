@@ -58,6 +58,10 @@ const (
 	FlagTokenMismatch  = "token_mismatch"  // token trace failed the consistency check
 	FlagReplayMismatch = "replay_mismatch" // rebuilt prompt hash differs from the logged wire hash
 	FlagContaminated   = "contaminated"    // transcript contains verifier content or benchmark strings
+	// FlagLooped marks an episode in which the repetition guard ended a run (stuck_stops > 0). It
+	// is an outcome, not noise: exporters keep such episodes, and the best-of-n ranking and the
+	// waste reward component count the loop against them.
+	FlagLooped = "looped"
 )
 
 // HardFlag reports whether an episode with this flag must not be used for
@@ -98,6 +102,11 @@ const (
 	SigVerifierRuns     = "verifier_runs"   // times an agent ran the task's checks itself
 	SigDoneClaims       = "done_claims"
 	SigDoneAccepted     = "done_accepted"
+	SigToolCalls        = "tool_calls"         // tool calls of kept main steps, all agents
+	SigStuckWarnings    = "stuck_warnings"     // repetition-guard warnings (agent.stuck phase nudge, guard repeat)
+	SigStuckStops       = "stuck_stops"        // runs the repetition guard ended (agent.stuck phase stop)
+	SigRepeatedReads    = "repeated_reads"     // successful reads of a file part already read, with no change of the file in between
+	SigFinalAnswerChars = "final_answer_chars" // characters of the root agent's final answer; 0 when it gave none
 )
 
 // Episode is one complete run of a task by a team of one or more agents. It is

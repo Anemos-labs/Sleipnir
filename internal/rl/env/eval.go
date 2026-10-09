@@ -97,6 +97,8 @@ type TaskResult struct {
 	MeanRequests float64  `json:"mean_requests"`
 	MeanSteps    float64  `json:"mean_steps"`
 	MeanWallMs   float64  `json:"mean_wall_ms"`
+	// Best is the task's best completed sample by the best-of-n ranking.
+	Best *BestOfGroup `json:"best,omitempty"`
 }
 
 // Report is the result of an evaluation.
@@ -163,6 +165,8 @@ type Report struct {
 	CacheAnomalies float64 `json:"cache_anomalies_per_ep"`
 	// FalseDone is the share of episodes that claimed to be done and failed the verifier.
 	FalseDone float64 `json:"false_done_rate"`
+	// Efficiency holds the means of the best-of-n signals over completed episodes.
+	Efficiency Efficiency `json:"efficiency"`
 	// Attempts and Identity come from the run directory (LoadRun); a report built from results alone leaves them empty.
 	Attempts *AttemptStats `json:"attempts,omitempty"`
 	Identity *Identity     `json:"identity,omitempty"`
@@ -306,9 +310,11 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 		row.MeanRequests /= f
 		row.MeanSteps /= f
 		row.MeanWallMs /= f
+		row.Best = bestOf(rs)
 		rows = append(rows, row)
 	}
 	rep.PerTask = rows
+	rep.Efficiency = efficiencyOf(results)
 
 	var valid []TaskResult
 	for _, r := range rows {

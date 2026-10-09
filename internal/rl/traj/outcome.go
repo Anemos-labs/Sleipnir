@@ -172,7 +172,7 @@ func (b *builder) provenance(ep *rl.Episode) {
 }
 
 // flags sets the episode flags: infra_error, truncated, replay_mismatch,
-// weak_label, token_mismatch and budget_exceeded, sorted for stable output.
+// weak_label, token_mismatch, budget_exceeded and looped, sorted for stable output.
 func (b *builder) flags(ep *rl.Episode) {
 	for _, o := range b.v.outcomes {
 		if o.kind == "infra" && !o.pass {
@@ -193,6 +193,9 @@ func (b *builder) flags(ep *rl.Episode) {
 	}
 	if b.v.budgetHit {
 		ep.AddFlag(rl.FlagBudgetExceeded)
+	}
+	if b.v.stuckStops > 0 {
+		ep.AddFlag(rl.FlagLooped)
 	}
 	sort.Strings(ep.Flags)
 }

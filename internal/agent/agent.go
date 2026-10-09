@@ -842,12 +842,13 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			blocks = append(blocks, extra...)
 		}
 		note, stuck := a.rep.observeExits(a.cfg.ID, calls, results, exitFailed)
+		guard := "repeat"
 		if tn := a.tests.observe(calls, results, exitFailed); tn != "" && note == "" {
-			note = tn
+			note, guard = tn, "tests"
 		}
 		if note != "" && stuck == nil {
 			blocks = append(blocks, core.Text(note))
-			a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "note": note})
+			a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "guard": guard, "note": note})
 		}
 		a.pushUser(core.OriginTool, blocks)
 		if stuck != nil {

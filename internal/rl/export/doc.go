@@ -107,7 +107,7 @@
 //	task_id, group
 //	trajectories        one per (episode, agent, segment) and one per side call:
 //	                    id, episode, sample, agent, role, segment, steps,
-//	                    messages_and_choices, tools, reward, advantage, metrics
+//	                    messages_and_choices, tools, reward, advantage, metrics, rank
 //
 // messages_and_choices holds wire messages, with each model turn replaced by a
 // choice {finish_reason, index, message, logprobs}; logprobs.content lists
@@ -123,15 +123,26 @@
 // One record per step (only the completion trained) or, with PackSegments, per
 // (agent, segment) with every selected model turn trained. Episodes are selected
 // by verifier verdict (a failing verdict is out), reward >= MinReward and the best
-// TopK per task.
+// TopK per task by reward; with Select "best", the best TopK (default 1) verified
+// episodes of each rollout group by the best-of-n ranking (rl.CompareRank).
+//
+// Ranks. sft records, groups trajectories and both sides of a dpo pair carry the
+// episode's place in its rollout group (Episode.Group, else the task), among the
+// episodes that reached the format writer: {position (1 is the best), group_size,
+// key (rl.RankKey: verified, score, ite, waste, final_answer_chars)}.
 //
 // dpo (sleipnir.rl.dpo/1): {id, unit, task_id, role, prompt, chosen, rejected,
 // tools, chosen_reward, rejected_reward, chosen_episode, rejected_episode,
-// wire_hash}. unit "step": the same exact prompt (wire hash) with different
+// chosen_rank, rejected_rank, wire_hash}. unit "step": the same exact prompt (wire hash) with different
 // completions in different episodes, best against worst by episode reward (the gap
 // must be positive and chosen >= MinReward). unit "episode": per task, the best
 // and worst episode whose root agent never rebased and started from the same
-// prompt, comparing everything the root did after that prompt.
+// prompt, comparing everything the root did after that prompt; a pair whose two
+// continuations are equal is dropped (pair:same_continuation). With Pair
+// "best-worst" both units compare within one rollout group and order by the
+// best-of-n ranking instead of the reward: the chosen side is rank 1, which must
+// be verified, and the rejected side the lowest-ranked one with a strictly worse
+// rank key.
 //
 // kto (sleipnir.rl.kto/1): {prompt, completion, label, reward, ...}; label is the
 // episode's verifier verdict, or reward >= MinReward without one.

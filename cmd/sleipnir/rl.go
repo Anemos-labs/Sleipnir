@@ -110,7 +110,9 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	groupBy := fs.String("group-by", adv.GroupByTaskPolicy, "advantage baseline group: task | task+policy | group")
 	roles := fs.String("roles", "", "comma-separated roles to keep (worker, manager, reviewer, compactor, mailman); empty keeps all")
 	minReward := fs.Float64("min-reward", 0, "sft, dpo and kto: smallest episode reward that counts as a positive example")
-	topK := fs.Int("top-k", 0, "sft: keep the K best episodes per task (0 keeps all that qualify)")
+	topK := fs.Int("top-k", 0, "sft: keep the K best episodes per task (0 keeps all that qualify); with --select best, per group (0 means 1)")
+	selectEp := fs.String("select", export.SelectAll, "sft: all (every verified episode, --top-k by reward) | best (the best verified episode of each group by the best-of-n ranking)")
+	pair := fs.String("pair", export.PairReward, "dpo: reward (best vs worst reward) | best-worst (rank 1 vs rank last of each group; rank 1 verified and strictly better)")
 	keepFlagged := fs.Bool("keep-flagged", false, "export episodes with hard flags too (infra errors, truncation, reward hacking, ...)")
 	keepFlat := fs.Bool("keep-flat", false, "keep groups whose rewards are all equal (they carry no learning signal)")
 	keepWeak := fs.Bool("keep-weak", false, "keep episodes with no verifier verdict in the training formats")
@@ -155,6 +157,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	o := export.DefaultOptions(f)
 	o.Roles = splitList(*roles)
 	o.MinReward, o.TopK = *minReward, *topK
+	o.Select, o.Pair = *selectEp, *pair
 	o.DropFlagged = !*keepFlagged
 	o.KeepFlat, o.KeepWeak = *keepFlat, *keepWeak
 	o.TeacherOK = splitList(*teacher)
@@ -454,6 +457,17 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	if err != nil {
 		return fmt.Errorf("rl reward: %w", err)
 	}
+	// group_ite compares an episode with the rest of its rollout group, so the groups are priced first.
+	var groupITE map[string][2]float64
+	if cfg.Weights[reward.CompGroupITE] > 0 {
+		eps := make([]*rl.Episode, len(samples))
+		for i, s := range samples {
+			eps[i] = s.Episode
+		}
+		if groupITE, err = reward.GroupITE(eps, cfg); err != nil {
+			return fmt.Errorf("rl reward: %w", err)
+		}
+	}
 	cache := newRunCache(4)
 	var before, after float64
 	var n, hacks int
@@ -470,6 +484,9 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 			return fmt.Errorf("rl reward: %s: %w", s.Dir, err)
 		}
 		c := cfg
+		if g, ok := groupITE[rl.GroupKey(ep)]; ok {
+			c.GroupITE = &g
+		}
 		c.Prompts = promptText(cache, s.Dir)
 		// Where the run worked, from its own log: the detector cannot guess it (see traj.Run.WorkspaceRoots).
 		run, err := cache.get(s.Dir)

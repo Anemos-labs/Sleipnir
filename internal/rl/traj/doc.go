@@ -92,6 +92,14 @@
 //	                       that never had a done accepted (h, coarse)
 //	idle_ms                time spawned workers sat between an agent.end and their next request
 //	token_prefix_breaks    consecutive main steps in a segment whose token traces violate the strict prefix property
+//	tool_calls             tool calls of kept main steps, all agents
+//	stuck_warnings         agent.stuck nudges of the repetition guard (guard "repeat"; a log without the guard field is
+//	                       read by the note's wording (h)); test-weakening nudges and other phases are not counted
+//	stuck_stops            agent.stuck events of phase stop: runs the repetition guard ended
+//	repeated_reads         successful reads of the same part of a file (path and range) that the same agent already read,
+//	                       with no successful write of the file in between (friction.ReadCounter); a change made through
+//	                       the shell is not seen (h)
+//	final_answer_chars     characters of the root agent's last main step when it is a clean finish; 0 otherwise
 //
 // Tool error kinds are heuristic because tool.result carries no error kind. A
 // tool that puts meta["error_kind"] (stale, lease, scope, unknown_tool,
@@ -109,7 +117,8 @@
 // nor finished with a final answer), replay_mismatch (Verify found a problem that
 // touches exported data), weak_label (no verifier outcome), token_mismatch (a
 // token trace was present but inconsistent, or StrictTokens found a chain break),
-// budget_exceeded (a governor event mentions a budget).
+// budget_exceeded (a governor event mentions a budget), looped (the repetition guard ended a
+// run: stuck_stops > 0; a soft flag, never a reason to drop the episode).
 //
 // # Determinism
 //

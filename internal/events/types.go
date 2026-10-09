@@ -14,7 +14,8 @@ const (
 	TypeAgentState = "agent.state"
 	TypeAgentEnd   = "agent.end"
 	// TypeAgentStuck: the repetition guard told an agent it was repeating one failing call
-	// (phase "nudge") or ended its run for it (phase "stop").
+	// (phase "nudge") or ended its run for it (phase "stop"). A nudge names the guard that
+	// wrote it: "repeat" (the repetition guard) or "tests" (the test-weakening guard).
 	TypeAgentStuck = "agent.stuck"
 	// TypeAgentCancel: a run ended because its context was cancelled (a person's Ctrl-C, a harness deadline or
 	// budget). Payload: phase (what it was doing: "model", "tools" or "between"), cause ("canceled" or "deadline"), steps.

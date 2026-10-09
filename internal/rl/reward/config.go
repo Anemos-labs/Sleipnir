@@ -30,6 +30,13 @@ const (
 	CompRequests   = "requests"
 	CompTime       = "time"
 	CompProtocol   = "protocol"
+	// CompWaste and CompGroupITE are the efficiency components, both gated by
+	// the verifier score (they only tell passing runs apart) and off by default:
+	// waste is -score * min(1, rl.Waste / caps.waste); group_ite is -score times
+	// the episode's ITE placed between the cheapest (0) and the dearest (1) of
+	// its rollout group, and needs Config.GroupITE.
+	CompWaste    = "waste"
+	CompGroupITE = "group_ite"
 
 	// Worker.
 	CompEvidence = "evidence"
@@ -67,6 +74,7 @@ const (
 	CapReread    = "reread"
 	CapScope     = "scope"
 	CapRebase    = "rebase_cost" // ITE written by a commit's next request
+	CapWaste     = "waste"       // waste events (rl.WasteSignals) at which the waste penalty saturates
 
 	CapProbeFacts    = "probe_facts"      // facts sampled per compaction probe
 	CapHardcodeLen   = "hardcode_min_len" // shortest hidden literal the hardcode detector trusts
@@ -103,6 +111,8 @@ func defaultWeights() map[string]float64 {
 		CompRequests:   0.05,
 		CompTime:       0.05,
 		CompProtocol:   0.1,
+		CompWaste:      0,
+		CompGroupITE:   0,
 
 		CompEvidence: 0.1,
 		CompReread:   0.05,
@@ -136,6 +146,7 @@ func defaultCaps() map[string]float64 {
 		CapReread:    5,
 		CapScope:     3,
 		CapRebase:    60_000,
+		CapWaste:     10,
 
 		CapProbeFacts:    8,
 		CapHardcodeLen:   6,
@@ -215,6 +226,11 @@ type Config struct {
 	// empty the outside-worktree detector falls back to a deny list of system and
 	// dotfile locations (see hack_escape.go).
 	WorkspaceRoots []string `json:"workspace_roots,omitempty"`
+
+	// GroupITE is the [lowest, highest] repriced ITE of the episode's rollout
+	// group (see GroupITE), set by a caller that scores whole groups. Without it
+	// the group_ite component is 0, with a note when its weight is not.
+	GroupITE *[2]float64 `json:"-"`
 
 	// Prompts resolves a step's prompt text for fidelity probes. When nil, Score
 	// falls back to a DiffSource that also implements PromptSource, then to
@@ -469,6 +485,7 @@ type resolved struct {
 	reprice   RepriceOptions
 	roots     []string
 	prompts   PromptText
+	groupITE  *[2]float64
 }
 
 func (c Config) resolve() (*resolved, error) {
@@ -481,7 +498,7 @@ func (c Config) resolve() (*resolved, error) {
 	}
 	r := &resolved{
 		weights: defaultWeights(), caps: defaultCaps(), detectors: defaultDetectors(),
-		target: t, clip: c.Clip, probes: c.Probes, reprice: c.Reprice, prompts: c.Prompts,
+		target: t, clip: c.Clip, probes: c.Probes, reprice: c.Reprice, prompts: c.Prompts, groupITE: c.GroupITE,
 	}
 	for k, v := range c.Weights {
 		r.weights[k] = v
@@ -493,7 +510,12 @@ func (c Config) resolve() (*resolved, error) {
 		r.detectors[k] = v
 	}
 	for _, root := range c.WorkspaceRoots {
-		r.roots = append(r.roots, cleanAbs(root))
+		// cleanAbs expresses every root Validate accepts (slash-rooted, drive-letter and UNC paths). A
+		// root it cannot is left out, so a Config that skipped Validate is judged by the deny list alone,
+		// as it is without roots.
+		if cr := cleanAbs(root); cr != "" {
+			r.roots = append(r.roots, cr)
+		}
 	}
 	sort.Strings(r.roots)
 	return r, nil

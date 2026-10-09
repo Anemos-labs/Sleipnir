@@ -1,6 +1,7 @@
 package friction
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -339,5 +340,27 @@ func TestResponsesCutOffAtTheOutputLimitAreFound(t *testing.T) {
 	}
 	if rep.Requests != 3 {
 		t.Errorf("requests %d, want 3", rep.Requests)
+	}
+}
+
+func TestReadCounterCountsRereadsOfUnchangedParts(t *testing.T) {
+	var c ReadCounter
+	whole := json.RawMessage(`{"path":"/w/a.go"}`)
+	window := json.RawMessage(`{"path":"/w/a.go","offset":80}`)
+	for i, want := range []int{1, 2} {
+		if _, _, n := c.Read("/w/a.go", whole); n != want {
+			t.Fatalf("read %d of the whole file: n = %d, want %d", i+1, n, want)
+		}
+	}
+	if _, what, n := c.Read("/w/a.go", window); n != 1 || what != "/w/a.go (offset 80)" {
+		t.Fatalf("another range is another part: n = %d, what = %q", n, what)
+	}
+	c.Changed("a.go")
+	if _, _, n := c.Read("/w/a.go", whole); n != 1 {
+		t.Fatalf("a read after a change of the relatively spelled file starts over: n = %d", n)
+	}
+	parts, counts := c.Counts()
+	if len(parts) != 2 || counts[0] != 1 || counts[1] != 0 {
+		t.Fatalf("Counts = %q %v", parts, counts)
 	}
 }

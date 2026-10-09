@@ -284,7 +284,8 @@ switches a component off). All keys are optional:
 ```
 
 `weights` and `caps` are keyed by the component and cap names in `internal/rl/reward/config.go` (`outcome`,
-`honest_done`, `false_done`, `cost`, `requests`, `time`, `protocol`, `evidence`, `reread`, `scope`,
+`honest_done`, `false_done`, `cost`, `requests`, `time`, `protocol`, `waste`, `group_ite` (both off by default; see
+section 7.1), `evidence`, `reread`, `scope`,
 `parallel_efficiency`, `duplicate_work`, `conflicts`, `idle`, `over_spawn`, `valid`, `size`, `fidelity`, `rebase_cost`,
 `downstream`, `mail_useful`, `mail_spam`). `target` is a preset (`sleipnir rl reward -list-targets`: `anthropic-haiku`,
 `anthropic-opus`, `anthropic-sonnet`, `marketplace`, `no-cache`, `openai`) or a model id from the price tables. `clip`
@@ -329,12 +330,13 @@ default; `--keep-flat` keeps them.
 | `tokens` | step or segment | `{prompt_ids, response_ids, response_mask, old_logprobs, reward, advantage, group_id, role}`; segments are packed only if the prefix property verifies | verl, OpenRLHF, SkyRL, Tinker-style |
 | `groups` | task group | `{task, trajectories:[{messages_and_choices, tools, reward, metrics}]}` | ART / rLLM-style |
 | `sft` | step or episode | `{messages, tools, weights}` (OpenAI SFT shape; assistant `weight` marks trained turns) of the top-*k* verified episodes per task | rejection-sampling fine-tuning, warm start before RL |
-| `dpo` | step or episode | `{prompt, chosen, rejected}`: same prompt hash with different outcomes (compactor patches, anchor states) or same task with best vs worst episode | DPO / preference training |
+| `dpo` | step or episode | `{prompt, chosen, rejected}`: same prompt hash with different outcomes (compactor patches, anchor states) or same task with best vs worst episode (dropped when both continuations are equal) | DPO / preference training |
 | `kto` | step | `{prompt, completion, label}` | KTO / BCO |
 | `atif` | episode | Harbor ATIF trajectories with `subagent_trajectories` and `context_management` | interchange |
 | `canonical` | episode | `episode.json` records with a segment table (default) or inline prompts (`--inline`) | lossless archive; everything above derives from it |
 
-Common flags: `--roles worker,manager,compactor`, `--min-reward`, `--top-k N`, `--advantage grpo|rloo|broadcast|anchor|none`
+Common flags: `--roles worker,manager,compactor`, `--min-reward`, `--top-k N`, `--select all|best` (sft),
+`--pair reward|best-worst` (dpo; both in section 7.1), `--advantage grpo|rloo|broadcast|anchor|none`
 (default: grpo for steps, tokens and groups), `--group-by task|task+policy|group`, `--keep-flagged` (flagged episodes are
 dropped by default), `--keep-flat`, `--keep-weak`, `--no-redact` (redaction is on by default), `--redact-salt`,
 `--teacher MODEL,...` (provider-terms filter), `--licenses`, `--max-prompt-tokens`, `--max-samples`,
@@ -346,6 +348,82 @@ keeps everything exports infra failures, truncated runs and reward-hacked episod
 and references it by hash (`--table FILE` puts the table in its own file); `sleipnir rl expand EXPORT [--table FILE]`
 expands it byte for byte to the inline form. Shared prefixes are also flagged (`shared_prefix`, `shared_messages`) so
 trainers with prefix or tree packing compute the pinned layers once.
+
+## 7.1 Best-of-n selection and efficiency signals
+
+A task run several times (`rl rollout --group 4`) gives a rollout group: the episodes of one task under one policy
+snapshot (`Episode.Group`, else the task). One comparator, `rl.CompareRank` in `internal/rl/rank.go`, orders a group. It
+reads an `rl.RankKey` and compares these levels in order, the first difference deciding:
+
+| Level | Better | Field |
+|---|---|---|
+| 1 | verified pass first (a passing verifier verdict and no `hack:*` flag) | `verified` |
+| 2 | higher verifier score | `score` |
+| 3 | lower ITE (`Cost.ITE`, repriced under the scoring target, so cache reads cost less than fresh input); an unpriced episode ranks last | `ite` |
+| 4 | less waste: `stuck_warnings + stuck_stops + repeated_reads + tool_errors + invalid_tool_calls` | `waste` |
+| 5 | shorter final answer | `final_answer_chars` |
+
+Episodes equal on every level are ordered by episode id, so the order never depends on input order. The signals behind
+the key are derived from the event log for single agents and swarms alike, summed over every agent:
+
+| Signal | Definition |
+|---|---|
+| `tool_calls` | tool calls of kept main steps |
+| `stuck_warnings` | repetition-guard warnings (`agent.stuck`, phase `nudge`, guard `repeat`); test-weakening notes do not count |
+| `stuck_stops` | runs the repetition guard ended (`agent.stuck`, phase `stop`) |
+| `repeated_reads` | successful reads of a file part (path and range) the same agent had already read, with no successful write of the file in between; the detector is `friction.ReadCounter`, and a change made through the shell is not seen |
+| `final_answer_chars` | characters of the root agent's final answer; 0 when the run ended without one |
+
+An episode with `stuck_stops > 0` carries the flag `looped`. It is a soft flag: exporters keep the episode, and the
+ranking and the `waste` component count the loop against it.
+
+**Exports.** Every sft record, every groups trajectory and both sides of a dpo pair carry the episode's `rank`:
+`{position, group_size, key}`, where position 1 is the best episode of its group among those the export kept. The
+groups format also lists every signal under `metrics` as `signal/<name>`.
+
+* `--format sft --select best` keeps the best verified episode of each group (`--top-k K` keeps the best K). The
+  default, `--select all`, keeps every verified episode, best `--top-k` per task by reward, as before.
+* `--format dpo --pair best-worst` pairs rank 1 with rank last of each group, only when rank 1 is verified and its key
+  is strictly better than the rejected one's. Both pair units follow it: the episode unit compares what the root agent
+  did after the shared first prompt, the step unit compares completions of an identical prompt within the group. The
+  default, `--pair reward`, pairs by reward as before.
+* `--format groups` (or steps, tokens) with `--advantage grpo` gives the group-relative signal; add the efficiency
+  components below to the reward to make it prefer cheap, clean passes.
+
+**Reward components.** Two opt-in components let GRPO advantages see efficiency. Both are gated by the verifier score
+(`score`, 0 for a hacked episode), so they only tell passing runs apart and a failed run is never penalised for its
+waste on top of failing. With weights λw and λi and the default outcome weight of 1, an episode's outcome part
+becomes `score × (1 − λw·min(1, waste/caps.waste) − λi·ite_rel)`, where `ite_rel` places its ITE between the cheapest
+(0) and the dearest (1) run of its group.
+
+| Component | Definition | Default weight |
+|---|---|---:|
+| `waste` | −score × min(1, waste / `caps.waste`) (`caps.waste` defaults to 10) | 0 |
+| `group_ite` | −score × (ITE − group min) / (group max − group min); 0 for the cheapest run of its group, for a group with one ITE, and when scored without the group | 0 |
+
+Both components are always computed and stored, so a run can be re-weighted offline; with the default weights the
+rewards are unchanged. `group_ite` needs the ITE of the whole group: `sleipnir rl reward RUN --rewards rewards.json`
+prices every group first when the weight is not 0 (`reward.GroupITE` and `Config.GroupITE` in code). Scoring at rollout
+time sees one episode, stores 0 and notes why. For example:
+
+```json
+{ "weights": { "waste": 0.2, "group_ite": 0.2 }, "caps": { "waste": 10 } }
+```
+
+**Run summaries.** `summary.json` and `sleipnir rl report` include `efficiency` (per completed episode: `tool_calls`,
+`stuck_warnings`, `stuck_stops`, `repeated_reads`, `final_answer_chars`, `waste`, and `loop_rate`, the share of
+episodes the guard stopped) and, per task, `best`: the best sample and its rank key. `rl report --tasks` prints a
+best-of-group table.
+
+A typical best-of-4 pipeline:
+
+```
+sleipnir rl rollout --tasks tasks.jsonl --group 4 --model M --out runs/r1
+sleipnir rl reward runs/r1 --rewards efficiency.json          # optional: fills group_ite and waste
+sleipnir rl export runs/r1 --format sft --select best -o sft.jsonl
+sleipnir rl export runs/r1 --format dpo --pair best-worst -o dpo.jsonl
+sleipnir rl export runs/r1 --format groups --advantage grpo -o groups.jsonl
+```
 
 ## 8. Governance and data quality
 

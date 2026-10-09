@@ -370,6 +370,10 @@ func (s *scorer) episodeComponents() map[string]float64 {
 
 	// protocol
 	c[CompProtocol] = -s.cfg.frac(s.protocolEvents(), CapProtocol)
+
+	// waste, group_ite
+	c[CompWaste] = penalty(score * s.cfg.frac(rl.Waste(ep.Signals), CapWaste))
+	c[CompGroupITE] = penalty(score * s.groupITEFrac())
 	return c
 }
 

@@ -40,6 +40,8 @@ type trajectory struct {
 	Reward             float64            `json:"reward"`
 	Advantage          *float64           `json:"advantage,omitempty"`
 	Metrics            map[string]float64 `json:"metrics"`
+	// Rank places the trajectory's episode in its group by the best-of-n ranking.
+	Rank *rankInfo `json:"rank,omitempty"`
 }
 
 type choice struct {
@@ -188,7 +190,7 @@ func (x *exporter) trajectoryOf(unit []stepCtx) (trajectory, bool, error) {
 	return trajectory{
 		ID: last.we.ep.ID + "#" + last.ag.ID + ".seg" + fmt.Sprint(last.st.Segment) + firstIDSuffix(unit), Episode: last.we.ep.ID, Sample: last.we.ep.Sample,
 		Agent: last.ag.ID, Role: last.st.Role, Segment: last.st.Segment, Steps: ids, MessagesAndChoices: msgs, Tools: cv.tools,
-		Reward: reward, Advantage: x.advantageOf(last.st), Metrics: metrics,
+		Reward: reward, Advantage: x.advantageOf(last.st), Metrics: metrics, Rank: rankOf(last.we),
 	}, true, nil
 }
 

@@ -1621,6 +1621,8 @@ flags:
         output file (default: stdout)
   -pack
         tokens and sft: pack an agent's segment into one sequence when its token traces chain
+  -pair string
+        dpo: reward (best vs worst reward) | best-worst (rank 1 vs rank last of each group; rank 1 verified and strictly better) (default "reward")
   -reasoning string
         reasoning in completions: drop | field | keep (default "drop")
   -redact-salt string
@@ -1629,6 +1631,8 @@ flags:
         comma-separated roles to keep (worker, manager, reviewer, compactor, mailman); empty keeps all
   -seed int
         salt of the split assignment
+  -select string
+        sft: all (every verified episode, --top-k by reward) | best (the best verified episode of each group by the best-of-n ranking) (default "all")
   -split string
         assign whole repositories to splits, e.g. train:0.9,val:0.1
   -stats string
@@ -1640,7 +1644,7 @@ flags:
   -teacher string
         comma-separated non-policy models whose completions may be trained on (sft, dpo, kto); others are skipped
   -top-k int
-        sft: keep the K best episodes per task (0 keeps all that qualify)
+        sft: keep the K best episodes per task (0 keeps all that qualify); with --select best, per group (0 means 1)
 ```
 <!-- /flags -->
 
