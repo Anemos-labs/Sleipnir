@@ -196,6 +196,10 @@ func rlReport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		if a := r.Attempts; a != nil && a.Wasted > 0 {
 			n = append(n, fmt.Sprintf("%d of %d attempts ended without an answer and cost $%.4f of $%.4f (%d of %d requests)", a.Wasted, a.Attempts, a.WastedUSD, a.SpentUSD, a.WastedRequests, a.Requests))
 		}
+		if e := r.Efficiency; e != nil && r.Completed > 0 { // a report saved before the signals existed has none: not zeros
+			n = append(n, fmt.Sprintf("per episode: %.1f tool calls, %.2f guard warnings, %.2f guard stops (%s looped), %.2f repeated reads, %.1f waste, %.0f answer chars",
+				e.ToolCalls, e.StuckWarnings, e.StuckStops, pct(e.LoopRate, r.Completed), e.RepeatedReads, e.Waste, e.FinalAnswerChars))
+		}
 		if len(n) > 0 {
 			notes = append(notes, fmt.Sprintf("  %s: %s", label(r), strings.Join(n, "; ")))
 		}
@@ -234,6 +238,18 @@ func rlReport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 			}
 			fmt.Fprintf(w, "\n%s by task\n\n", label(r))
 			printTable(w, []string{"TASK", "TAGS", "PASSED", "$/EP", "REQ", "WALL"}, trows, md)
+			var brows [][]string
+			for _, t := range r.PerTask {
+				if b := t.Best; b != nil {
+					k := b.Key
+					brows = append(brows, []string{t.ID, fmt.Sprint(b.Sample), map[bool]string{true: "yes", false: "no"}[k.Verified],
+						fmt.Sprintf("%.2f", k.Score), fmt.Sprintf("%.0f", k.ITE), fmt.Sprintf("%.0f", k.Waste), fmt.Sprintf("%.0f", k.FinalAnswerChars)})
+				}
+			}
+			if len(brows) > 0 {
+				fmt.Fprintf(w, "\n%s best of group (verified, score, ITE, waste, answer length)\n\n", label(r))
+				printTable(w, []string{"TASK", "BEST", "VERIFIED", "SCORE", "ITE", "WASTE", "ANSWER"}, brows, md)
+			}
 		}
 	}
 	return nil

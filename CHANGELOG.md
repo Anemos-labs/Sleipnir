@@ -64,6 +64,17 @@ they do not indicate whether a change has been released.
   a `Closure`. The `task` tool's description and input schema (G0) change once on
   upgrade, identically for every agent, and can require a fresh provider cache
   prefill; stable prompt layers are unchanged.
+- Add best-of-n efficiency data to RL episodes and exports. Episodes gain the
+  signals `tool_calls`, `stuck_warnings`, `stuck_stops`, `repeated_reads` and
+  `final_answer_chars` and the soft flag `looped`; sft, dpo and groups records
+  gain a `rank` object; summaries and reports gain `efficiency` and per-task
+  `best`. `rl export` adds `--select best` and `--pair best-worst`, and rewards
+  gain the `waste` and `group_ite` components with weight 0. Existing reward
+  weights, and prompt and tool-schema bytes, are unchanged. The repetition
+  guard's `agent.stuck` nudges name their guard, and rollout progress lines
+  print `score=` and `reward=` separately. DPO episode pairs whose chosen and
+  rejected sides are identical are counted as `pair:same_continuation` and no
+  longer exported, in both pairing modes.
 - Reject task actions that require an ID when it is omitted or blank. The error
   identifies the missing field and explains how to find the task ID before
   retrying; invalid calls leave the board unchanged. Role restrictions and

@@ -25,18 +25,21 @@ type sftRecord struct {
 	Tools    json.RawMessage   `json:"tools,omitempty"`
 	Weights  []int             `json:"weights"`
 	Reward   float64           `json:"reward"`
+	Rank     *rankInfo         `json:"rank,omitempty"`
 	Split    string            `json:"split,omitempty"`
 	Meta     stepMeta          `json:"meta"`
 }
 
 // sftEpisodes selects the episodes rejection sampling keeps: verified (a passing
-// verifier verdict when there is one), reward at least MinReward, best TopK per
-// task.
+// verifier verdict when there is one), reward at least MinReward, then the best
+// TopK per task by reward or, with Select "best", the best TopK (default 1) per
+// rollout group by the best-of-n ranking.
 func (x *exporter) sftEpisodes(work []*workEpisode) []*workEpisode {
 	var ok []*workEpisode
 	for _, we := range work {
 		ep := we.ep
-		if v := ep.Outcome.Verifier; v != nil && !v.Pass {
+		// Best-of-group needs a verdict: a weak label cannot be the verified best.
+		if v := ep.Outcome.Verifier; v != nil && !v.Pass || x.o.Select == SelectBest && !we.key.Verified {
 			x.stats.drop("episode:not_verified")
 			continue
 		}
@@ -46,36 +49,47 @@ func (x *exporter) sftEpisodes(work []*workEpisode) []*workEpisode {
 		}
 		ok = append(ok, we)
 	}
+	if x.o.Select == SelectBest {
+		return x.topPer(work, ok, rl.GroupKey, max(x.o.TopK, 1), "episode:not_best_of_group", func(a, b *workEpisode) bool {
+			return a.rank.Position < b.rank.Position
+		})
+	}
 	if x.o.TopK <= 0 {
 		return ok
 	}
-	byTask := map[string][]*workEpisode{}
-	var tasks []string
-	for _, we := range ok {
-		if _, seen := byTask[we.ep.TaskID]; !seen {
-			tasks = append(tasks, we.ep.TaskID)
+	return x.topPer(work, ok, func(ep *rl.Episode) string { return ep.TaskID }, x.o.TopK, "episode:below_top_k", func(a, b *workEpisode) bool {
+		if a.ep.Reward.Total != b.ep.Reward.Total {
+			return a.ep.Reward.Total > b.ep.Reward.Total
 		}
-		byTask[we.ep.TaskID] = append(byTask[we.ep.TaskID], we)
+		return a.ep.ID < b.ep.ID
+	})
+}
+
+// topPer keeps the k first episodes of each bucket in the order less defines, counts the rest
+// under reason, and returns the kept ones in work's order.
+func (x *exporter) topPer(work, ok []*workEpisode, bucket func(*rl.Episode) string, k int, reason string, less func(a, b *workEpisode) bool) []*workEpisode {
+	byKey := map[string][]*workEpisode{}
+	var keys []string
+	for _, we := range ok {
+		key := bucket(we.ep)
+		if _, seen := byKey[key]; !seen {
+			keys = append(keys, key)
+		}
+		byKey[key] = append(byKey[key], we)
 	}
-	sort.Strings(tasks)
+	sort.Strings(keys)
 	var out []*workEpisode
-	for _, t := range tasks {
-		eps := byTask[t]
-		sort.SliceStable(eps, func(i, j int) bool {
-			if eps[i].ep.Reward.Total != eps[j].ep.Reward.Total {
-				return eps[i].ep.Reward.Total > eps[j].ep.Reward.Total
-			}
-			return eps[i].ep.ID < eps[j].ep.ID
-		})
+	for _, key := range keys {
+		eps := byKey[key]
+		sort.SliceStable(eps, func(i, j int) bool { return less(eps[i], eps[j]) })
 		for i, we := range eps {
-			if i < x.o.TopK {
+			if i < k {
 				out = append(out, we)
 			} else {
-				x.stats.drop("episode:below_top_k")
+				x.stats.drop(reason)
 			}
 		}
 	}
-	// Keep the deterministic source order for output.
 	pos := map[*workEpisode]int{}
 	for i, we := range work {
 		pos[we] = i
@@ -182,7 +196,7 @@ func (x *exporter) emitSFT(c stepCtx, used []stepCtx, msgs []json.RawMessage, to
 	}
 	rec := sftRecord{
 		Schema: SchemaSFT, ID: id, TaskID: c.we.ep.TaskID, GroupID: c.we.ep.Group, Sample: c.we.ep.Sample, Role: c.st.Role, Agent: c.ag.ID,
-		Segment: c.st.Segment, Steps: ids, Messages: wm, Tools: tools, Weights: weights, Reward: reward, Split: split, Meta: x.metaOf(c),
+		Segment: c.st.Segment, Steps: ids, Messages: wm, Tools: tools, Weights: weights, Reward: reward, Rank: rankOf(c.we), Split: split, Meta: x.metaOf(c),
 	}
 	unit := "step"
 	if len(used) > 1 || x.o.PackSegments && c.st.Kind == rl.KindMain {

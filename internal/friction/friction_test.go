@@ -1,6 +1,7 @@
 package friction
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -339,5 +340,57 @@ func TestResponsesCutOffAtTheOutputLimitAreFound(t *testing.T) {
 	}
 	if rep.Requests != 3 {
 		t.Errorf("requests %d, want 3", rep.Requests)
+	}
+}
+
+func TestReadCounterCountsRereadsOfUnchangedParts(t *testing.T) {
+	var c ReadCounter
+	whole := json.RawMessage(`{"path":"/w/a.go"}`)
+	window := json.RawMessage(`{"path":"/w/a.go","offset":80}`)
+	for i, want := range []int{1, 2} {
+		if _, _, n := c.Read("/w/a.go", whole); n != want {
+			t.Fatalf("read %d of the whole file: n = %d, want %d", i+1, n, want)
+		}
+	}
+	if _, what, n := c.Read("/w/a.go", window); n != 1 || what != "/w/a.go (offset 80)" {
+		t.Fatalf("another range is another part: n = %d, what = %q", n, what)
+	}
+	c.Changed("a.go")
+	if _, _, n := c.Read("/w/a.go", whole); n != 1 {
+		t.Fatalf("a read after a change of the relatively spelled file starts over: n = %d", n)
+	}
+	parts, counts := c.Counts()
+	if len(parts) != 2 || counts[0] != 1 || counts[1] != 0 {
+		t.Fatalf("Counts = %q %v", parts, counts)
+	}
+}
+
+// A write resets the reads of the same file, spelled relatively or absolutely, but never those of another file that only shares
+// the tail of its path.
+func TestChangedDoesNotMatchTwoRelativePathsBySuffix(t *testing.T) {
+	var c ReadCounter
+	read := func(p string) int { _, _, n := c.Read(p, json.RawMessage(`{"path":"`+p+`"}`)); return n }
+	read("a.go")
+	read("a.go")
+	read("/w/src/b.go")
+	read("/w/src/b.go")
+	c.Changed("src/a.go") // another file than a.go
+	if n := read("a.go"); n != 3 {
+		t.Errorf("a write to src/a.go reset the reads of a.go: the third read counts %d", n)
+	}
+	c.Changed("./a.go") // the same file
+	if n := read("a.go"); n != 1 {
+		t.Errorf("a write to ./a.go did not reset the reads of a.go: %d", n)
+	}
+	c.Changed("src/b.go") // the relative spelling of an absolute path it ends
+	if n := read("/w/src/b.go"); n != 1 {
+		t.Errorf("a write to src/b.go did not reset the reads of /w/src/b.go: %d", n)
+	}
+	c.Changed("/w/src/b.go")
+	read("src/b.go")
+	read("src/b.go")
+	c.Changed("/w/src/b.go") // the absolute spelling of a relative path
+	if n := read("src/b.go"); n != 1 {
+		t.Errorf("a write to /w/src/b.go did not reset the reads of src/b.go: %d", n)
 	}
 }

@@ -370,6 +370,15 @@ func (s *scorer) episodeComponents() map[string]float64 {
 
 	// protocol
 	c[CompProtocol] = -s.cfg.frac(s.protocolEvents(), CapProtocol)
+
+	// waste, group_ite: they tell passing runs apart, so a failed verdict gives them nothing to weigh even when it
+	// scored partial credit
+	gate := 0.0
+	if v != nil && v.Pass {
+		gate = score
+	}
+	c[CompWaste] = penalty(gate * s.cfg.frac(rl.Waste(ep.Signals), CapWaste))
+	c[CompGroupITE] = penalty(gate * s.groupITEFrac())
 	return c
 }
 

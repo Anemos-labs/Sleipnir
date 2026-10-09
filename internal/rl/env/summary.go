@@ -67,6 +67,8 @@ type Summary struct {
 	BudgetRate   float64 `json:"budget_rate"`
 	// InfraRate is infra / (completed + infra).
 	InfraRate float64 `json:"infra_rate"`
+	// Efficiency holds the means of the best-of-n signals over completed rollouts.
+	Efficiency Efficiency `json:"efficiency"`
 
 	PerTask     []TaskSummary   `json:"per_task"`
 	InfraErrors []InfraRecord   `json:"infra_errors,omitempty"`
@@ -87,6 +89,8 @@ type TaskSummary struct {
 	MeanReward  float64  `json:"mean_reward"`
 	MeanITE     float64  `json:"mean_ite"`
 	MeanCostUSD float64  `json:"mean_cost_usd"`
+	// Best is the task's best completed sample by the best-of-n ranking.
+	Best *BestOfGroup `json:"best,omitempty"`
 }
 
 // SkipRecord names a task whose rollouts were skipped and why ("missing ruby").
@@ -216,9 +220,14 @@ func buildSummary(runID string, started, ended time.Time, tasks []rl.Task, group
 	if d := s.Completed + s.Infra; d > 0 {
 		s.InfraRate = float64(s.Infra) / float64(d)
 	}
+	s.Efficiency = efficiencyOf(results)
+	byTask := map[string][]RolloutResult{}
+	for _, r := range results {
+		byTask[r.Task] = append(byTask[r.Task], r)
+	}
 	for i, t := range tasks {
 		a := per[i]
-		ts := TaskSummary{ID: t.ID, Repo: RepoKey(t), Tags: t.Tags, Samples: a.n, Passed: a.passed, Infra: a.infra}
+		ts := TaskSummary{ID: t.ID, Repo: RepoKey(t), Tags: t.Tags, Samples: a.n, Passed: a.passed, Infra: a.infra, Best: bestOf(byTask[t.ID])}
 		if a.n > 0 {
 			f := float64(a.n)
 			ts.PassRate, ts.MeanScore, ts.MeanReward = float64(a.passed)/f, a.score/f, a.reward/f

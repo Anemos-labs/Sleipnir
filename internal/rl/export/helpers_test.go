@@ -97,6 +97,8 @@ type variant struct {
 	extra    func(a *trajtest.Agent)
 	user     string // first user message (default: fix the bug in api/a.go)
 	input    string // arguments of the read call (default: {"path":"api/a.go"})
+	stuck    bool   // the repetition guard ends the run after extra: no final answer
+	ite      float64
 }
 
 // rollout records one single-agent run of task "T": user "fix the bug", a read
@@ -128,7 +130,12 @@ func rollout(t testing.TB, v variant) export.Source {
 	if v.extra != nil {
 		v.extra(a)
 	}
-	a.Step(trajtest.Call{Text: "fixed: " + v.plan})
+	if v.stuck {
+		b.Emit("solo", events.TypeAgentStuck, map[string]any{"phase": "stop", "error": "agent solo: agent stuck"})
+		b.Emit("swarm", events.TypeAgentEnd, map[string]any{"id": "solo", "state": "failed"})
+	} else {
+		a.Step(trajtest.Call{Text: "fixed: " + v.plan})
+	}
 	b.Outcome("verifier", v.pass, map[bool]float64{true: 1, false: 0}[v.pass])
 	run := traj.OpenWith(b.Events(), b.Blobs)
 	ep, err := run.Episode(traj.Options{TaskID: "T", Sample: v.sample, Policy: rl.PolicyRef{Model: "policy-1"}})
@@ -136,6 +143,7 @@ func rollout(t testing.TB, v variant) export.Source {
 		t.Fatal(err)
 	}
 	ep.Reward = rl.Reward{Total: v.reward, Components: map[string]float64{"outcome": v.reward}}
+	ep.Cost.ITE = v.ite
 	return export.Source{Episode: ep, Prompts: traj.Resolver{Run: run}}
 }
 

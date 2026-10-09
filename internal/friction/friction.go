@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -296,10 +297,73 @@ func readPart(path string, input json.RawMessage) (key, what string) {
 	return path + "\x00" + strings.Join(rng, ", "), path + " (" + strings.Join(rng, ", ") + ")"
 }
 
+// ReadCounter counts reads of the same part of a file (its path and the range the read call asked for) since that file last
+// changed. It is the repeated-read detector of Mine, exported so that other readers of event logs (the RL signals) count a
+// re-read the same way. The zero value is ready to use; it is not safe for concurrent use.
+type ReadCounter struct {
+	parts map[string]int
+}
+
+// Read records one read call of path with the call's raw input. It returns the part's key, the words for an example ("/w/a.go
+// (offset 81, limit 80)") and how many times that part has now been read since the file last changed: 2 or more is a re-read
+// of an unchanged file.
+func (c *ReadCounter) Read(path string, input json.RawMessage) (part, what string, n int) {
+	if c.parts == nil {
+		c.parts = map[string]int{}
+	}
+	part, what = readPart(path, input)
+	c.parts[part]++
+	return part, what, c.parts[part]
+}
+
+// Changed records that path was written: every part of it starts over. The same file is spelled relatively and absolutely by
+// the same model, so an absolute path matches a relative one when it ends with it; two relative paths are one file only when
+// they are equal ("a.go" and "src/a.go" are two).
+func (c *ReadCounter) Changed(path string) {
+	for part := range c.parts {
+		p, _, _ := strings.Cut(part, "\x00")
+		if samePath(p, path) {
+			c.parts[part] = 0
+		}
+	}
+}
+
+// samePath reports whether two paths a model used name one file: equal after cleaning, or an absolute path and a relative one
+// that is its tail.
+func samePath(a, b string) bool {
+	a, b = path.Clean(filepath.ToSlash(a)), path.Clean(filepath.ToSlash(b))
+	switch aa, ba := isAbsSlash(a), isAbsSlash(b); {
+	case a == b:
+		return true
+	case aa && !ba:
+		return strings.HasSuffix(a, "/"+b)
+	case ba && !aa:
+		return strings.HasSuffix(b, "/"+a)
+	}
+	return false
+}
+
+// isAbsSlash reports whether a slash path is rooted or carries a drive letter.
+func isAbsSlash(p string) bool {
+	return strings.HasPrefix(p, "/") || (len(p) >= 3 && p[1] == ':' && p[2] == '/')
+}
+
+// Counts returns the parts read so far, sorted, with how many times each was read since its file last changed.
+func (c *ReadCounter) Counts() (parts []string, n []int) {
+	for p := range c.parts {
+		parts = append(parts, p)
+	}
+	sort.Strings(parts)
+	for _, p := range parts {
+		n = append(n, c.parts[p])
+	}
+	return parts, n
+}
+
 func mineLog(path, session string, rep *Report, add func(session, category, key string, sev int, ex Example, req string)) error {
 	calls := map[string]call{}     // by tool call id
 	lastReq := map[string]string{} // the request each agent's last response answered, by agent
-	reads := map[string]int{}      // "read" calls per part of a file (path and range), since the file was last changed
+	var reads ReadCounter          // "read" calls per part of a file (path and range), since the file was last changed
 	same := map[string]int{}       // identical calls that did not fail (a failing call that is repeated is that failure's)
 	callKey := map[string]string{} // the key of each call, by id
 	readEx := map[string]Example{}
@@ -359,18 +423,11 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 			switch {
 			case d.Name == "read" && in.Path != "":
 				// a big file is read a window at a time: only the same part of it is read again
-				part, what := readPart(in.Path, d.Input)
-				reads[part]++
+				part, what, _ := reads.Read(in.Path, d.Input)
 				readEx[part] = ex("read " + what)
 			case (d.Name == "edit" || d.Name == "write") && in.Path != "":
-				// a file that was just changed is worth reading again: the count starts over (the same file is spelled
-				// relatively and absolutely by the same model)
-				for part := range reads {
-					p, _, _ := strings.Cut(part, "\x00")
-					if p == in.Path || strings.HasSuffix(p, "/"+strings.TrimPrefix(in.Path, "./")) || strings.HasSuffix(in.Path, "/"+strings.TrimPrefix(p, "./")) {
-						reads[part] = 0
-					}
-				}
+				// a file that was just changed is worth reading again: the count starts over
+				reads.Changed(in.Path)
 			}
 			if k := d.Name + " " + string(d.Input); len(k) < 4096 {
 				same[k]++
@@ -479,13 +536,9 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 		}
 	}
 	// Every repetition after the first was avoidable; the example is attached once.
-	parts := make([]string, 0, len(reads))
-	for p := range reads {
-		parts = append(parts, p)
-	}
-	sort.Strings(parts)
-	for _, p := range parts {
-		if n := reads[p]; n >= 3 {
+	parts, counts := reads.Counts()
+	for pi, p := range parts {
+		if n := counts[pi]; n >= 3 {
 			for i := 1; i < n; i++ {
 				ex := Example{}
 				if i == 1 {

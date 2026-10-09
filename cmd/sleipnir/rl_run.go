@@ -417,6 +417,9 @@ func progressPrinter(w io.Writer) func(env.Progress) {
 			if p.Score != nil {
 				line += fmt.Sprintf(" score=%.3f", *p.Score)
 			}
+			if p.Reward != nil {
+				line += fmt.Sprintf(" reward=%.3f", *p.Reward)
+			}
 			if p.Error != "" {
 				line += ": " + p.Error
 			}

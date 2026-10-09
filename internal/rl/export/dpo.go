@@ -29,6 +29,8 @@ type dpoRecord struct {
 	RejectedReward  float64           `json:"rejected_reward"`
 	ChosenEpisode   string            `json:"chosen_episode"`
 	RejectedEpisode string            `json:"rejected_episode"`
+	ChosenRank      *rankInfo         `json:"chosen_rank,omitempty"`
+	RejectedRank    *rankInfo         `json:"rejected_rank,omitempty"`
 	WireHash        core.Hash         `json:"wire_hash,omitempty"`
 	Split           string            `json:"split,omitempty"`
 }
@@ -68,6 +70,9 @@ func (x *exporter) dpoSteps(work []*workEpisode) error {
 			return nil
 		}
 		h := c.st.Prompt.WireHash
+		if x.o.Pair == PairBestWorst {
+			h += core.Hash("\x00" + rl.GroupKey(c.we.ep)) // compare within one rollout group only
+		}
 		if _, ok := byHash[h]; !ok {
 			hashes = append(hashes, h)
 		}
@@ -99,9 +104,9 @@ func (x *exporter) dpoSteps(work []*workEpisode) error {
 			rw, _ := rewardOf(c.we.ep, c.ag, c.st)
 			cands = append(cands, dpoCand{c: c, reward: rw, completion: r.completion, prompt: r.prompt})
 		}
-		best, worst := pickPair(cands)
+		best, worst, why := x.pickPair(cands)
 		if best == nil {
-			x.stats.drop("pair:no_reward_gap_or_same_completion")
+			x.stats.drop(why)
 			continue
 		}
 		if best.reward < x.o.MinReward {
@@ -110,10 +115,11 @@ func (x *exporter) dpoSteps(work []*workEpisode) error {
 		}
 		split := x.splitOf(best.c.we.ep)
 		rec := dpoRecord{
-			Schema: SchemaDPO, ID: "dpo:step:" + shortHash(h), Unit: "step", TaskID: best.c.we.ep.TaskID, Role: best.c.st.Role,
+			Schema: SchemaDPO, ID: "dpo:step:" + shortHash(best.c.st.Prompt.WireHash) + stepPairSuffix(x.o.Pair, best.c.we.ep), Unit: "step", TaskID: best.c.we.ep.TaskID, Role: best.c.st.Role,
 			Prompt: best.prompt.Messages, Chosen: []json.RawMessage{best.completion}, Rejected: []json.RawMessage{worst.completion},
 			Tools: best.prompt.Tools, ChosenReward: best.reward, RejectedReward: worst.reward,
-			ChosenEpisode: best.c.we.ep.ID, RejectedEpisode: worst.c.we.ep.ID, WireHash: h, Split: split,
+			ChosenEpisode: best.c.we.ep.ID, RejectedEpisode: worst.c.we.ep.ID, ChosenRank: rankOf(best.c.we), RejectedRank: rankOf(worst.c.we),
+			WireHash: best.c.st.Prompt.WireHash, Split: split,
 		}
 		if err := x.emit(rec, best.c.st.Role, "pair", split); err != nil {
 			return err
@@ -128,27 +134,59 @@ func (x *exporter) dpoSteps(work []*workEpisode) error {
 	return nil
 }
 
-// pickPair returns the highest-reward candidate and the lowest-reward candidate
-// whose completion differs from it and whose reward is strictly lower. Ties
-// break on episode id so the result is deterministic.
-func pickPair(cands []dpoCand) (best, worst *dpoCand) {
+// pickPair returns the chosen and rejected candidate of one prompt, or why there
+// is no pair. With Pair "reward" the chosen side is the highest-reward candidate
+// and the rejected side the lowest-reward one whose reward is strictly lower;
+// with "best-worst" they are rank 1 and the lowest-ranked candidate whose rank
+// key is strictly worse, and rank 1 must be verified. Either way the completions
+// must differ, and ties break on episode id so the result is deterministic.
+func (x *exporter) pickPair(cands []dpoCand) (best, worst *dpoCand, why string) {
 	if len(cands) < 2 {
-		return nil, nil
+		return nil, nil, "pair:no_reward_gap_or_same_completion"
 	}
+	ranked := x.o.Pair == PairBestWorst
 	sort.SliceStable(cands, func(i, j int) bool {
-		if cands[i].reward != cands[j].reward {
-			return cands[i].reward > cands[j].reward
+		a, b := &cands[i], &cands[j]
+		if ranked {
+			if c := rl.CompareRank(a.c.we.key, b.c.we.key); c != 0 {
+				return c < 0
+			}
+		} else if a.reward != b.reward {
+			return a.reward > b.reward
 		}
-		return cands[i].c.we.ep.ID < cands[j].c.we.ep.ID
+		return a.c.we.ep.ID < b.c.we.ep.ID
 	})
 	best = &cands[0]
+	if ranked && best.c.we.rank.Position != 1 {
+		return nil, nil, "pair:best_not_rank_1" // rank 1 of the group has no candidate for this prompt
+	}
+	if ranked && !best.c.we.key.Verified {
+		return nil, nil, "pair:best_not_verified"
+	}
 	for i := len(cands) - 1; i > 0; i-- {
 		w := &cands[i]
-		if best.reward-w.reward > rewardGap && !sameJSON(best.completion, w.completion) {
-			return best, w
+		gap := best.reward-w.reward > rewardGap
+		if ranked {
+			gap = rl.CompareRank(best.c.we.key, w.c.we.key) < 0
+		}
+		if gap && !sameJSON(best.completion, w.completion) {
+			return best, w, ""
 		}
 	}
-	return nil, nil
+	if ranked {
+		return nil, nil, "pair:no_rank_gap_or_same_completion"
+	}
+	return nil, nil, "pair:no_reward_gap_or_same_completion"
+}
+
+// stepPairSuffix distinguishes best-worst step pairs of the same prompt in
+// different rollout groups.
+func stepPairSuffix(pair string, ep *rl.Episode) string {
+	if pair != PairBestWorst {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(rl.GroupKey(ep)))
+	return ":" + hex.EncodeToString(sum[:4])
 }
 
 // shortHash returns the abbreviated content hash used in DPO output.
@@ -216,10 +254,14 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 			continue
 		}
 		v := &epView{we: we, cv: cv, first: first, reward: we.ep.Reward.Total}
-		if _, ok := byTask[we.ep.TaskID]; !ok {
-			tasks = append(tasks, we.ep.TaskID)
+		bucket := we.ep.TaskID
+		if x.o.Pair == PairBestWorst {
+			bucket = rl.GroupKey(we.ep)
 		}
-		byTask[we.ep.TaskID] = append(byTask[we.ep.TaskID], v)
+		if _, ok := byTask[bucket]; !ok {
+			tasks = append(tasks, bucket)
+		}
+		byTask[bucket] = append(byTask[bucket], v)
 	}
 	sort.Strings(tasks)
 	for _, t := range tasks {
@@ -227,14 +269,29 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 		if len(views) < 2 {
 			continue
 		}
+		ranked := x.o.Pair == PairBestWorst
 		sort.SliceStable(views, func(i, j int) bool {
-			if views[i].reward != views[j].reward {
+			if ranked {
+				if c := rl.CompareRank(views[i].we.key, views[j].we.key); c != 0 {
+					return c < 0
+				}
+			} else if views[i].reward != views[j].reward {
 				return views[i].reward > views[j].reward
 			}
 			return views[i].we.ep.ID < views[j].we.ep.ID
 		})
 		best, worst := views[0], views[len(views)-1]
-		if best.reward-worst.reward <= rewardGap {
+		switch {
+		case ranked && best.we.rank.Position != 1:
+			x.stats.drop("pair:best_not_rank_1") // rank 1 of the group has no usable root chain
+			continue
+		case ranked && !best.we.key.Verified:
+			x.stats.drop("pair:best_not_verified")
+			continue
+		case ranked && rl.CompareRank(best.we.key, worst.we.key) >= 0:
+			x.stats.drop("pair:no_rank_gap")
+			continue
+		case !ranked && best.reward-worst.reward <= rewardGap:
 			x.stats.drop("pair:no_reward_gap")
 			continue
 		}
@@ -250,13 +307,18 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 		if len(best.cv.msgs) <= n || len(worst.cv.msgs) <= n {
 			continue
 		}
+		if sameMessages(best.cv.msgs[n:], worst.cv.msgs[n:]) {
+			x.stats.drop("pair:same_continuation") // a pair of equal sides teaches nothing
+			continue
+		}
 		split := x.splitOf(best.we.ep)
 		sum := sha256.Sum256([]byte(best.we.ep.ID + "|" + worst.we.ep.ID))
 		rec := dpoRecord{
-			Schema: SchemaDPO, ID: "dpo:episode:" + hex.EncodeToString(sum[:6]), Unit: "episode", TaskID: t,
+			Schema: SchemaDPO, ID: "dpo:episode:" + hex.EncodeToString(sum[:6]), Unit: "episode", TaskID: best.we.ep.TaskID,
 			Role: best.cv.steps[0].st.Role, Prompt: best.first.Messages,
 			Chosen: best.cv.msgs[n:], Rejected: worst.cv.msgs[n:], Tools: best.first.Tools,
 			ChosenReward: best.reward, RejectedReward: worst.reward, ChosenEpisode: best.we.ep.ID, RejectedEpisode: worst.we.ep.ID,
+			ChosenRank: rankOf(best.we), RejectedRank: rankOf(worst.we),
 			WireHash: best.cv.steps[0].st.Prompt.WireHash, Split: split,
 		}
 		if err := x.emit(rec, rec.Role, "pair", split); err != nil {
@@ -272,11 +334,16 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 
 // samePrompt compares tools and ordered messages using whitespace-insensitive JSON comparison.
 func samePrompt(a, b wirePrompt) bool {
-	if len(a.Messages) != len(b.Messages) || !sameJSON(a.Tools, b.Tools) {
+	return sameJSON(a.Tools, b.Tools) && sameMessages(a.Messages, b.Messages)
+}
+
+// sameMessages reports whether two message lists are equal, message by message, as JSON.
+func sameMessages(a, b []json.RawMessage) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	for i := range a.Messages {
-		if !sameJSON(a.Messages[i], b.Messages[i]) {
+	for i := range a {
+		if !sameJSON(a[i], b[i]) {
 			return false
 		}
 	}

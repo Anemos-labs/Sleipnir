@@ -76,7 +76,17 @@ type Options struct {
 	// low rewards are the point.
 	MinReward float64
 	// TopK keeps the K best episodes per task for sft (0 keeps all that qualify).
+	// With Select "best" it is the number kept per rollout group (0 means 1).
 	TopK int
+	// Select chooses the sft episodes: "all" (or "", the default) keeps every
+	// verified episode, best TopK per task by reward; "best" keeps the best TopK
+	// (default 1) verified episodes of each rollout group by rl.CompareRank.
+	Select string
+	// Pair chooses the dpo pairs: "reward" (or "", the default) pairs best and
+	// worst by reward; "best-worst" pairs rank 1 with rank last of one rollout
+	// group by rl.CompareRank, only when rank 1 is verified and its rank key is
+	// strictly better.
+	Pair string
 	// DropFlagged drops episodes carrying a hard flag (rl.HardFlag: infra_error,
 	// truncated, replay_mismatch, contaminated, hack:*) and, for the training
 	// formats, weak-label episodes unless KeepWeak. token_mismatch counts only for
@@ -264,6 +274,16 @@ func newExporter(w io.Writer, o Options) (*exporter, error) {
 	if o.TopK < 0 || o.MaxSamples < 0 || o.MaxPromptTokens < 0 {
 		return nil, fmt.Errorf("%w: TopK, MaxSamples and MaxPromptTokens cannot be negative", ErrBadOptions)
 	}
+	switch o.Select {
+	case "", SelectAll, SelectBest:
+	default:
+		return nil, fmt.Errorf("%w: select must be %s or %s, not %q", ErrBadOptions, SelectAll, SelectBest, o.Select)
+	}
+	switch o.Pair {
+	case "", PairReward, PairBestWorst:
+	default:
+		return nil, fmt.Errorf("%w: pair must be %s or %s, not %q", ErrBadOptions, PairReward, PairBestWorst, o.Pair)
+	}
 	splits, err := parseSplit(o.Split)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadOptions, err)
@@ -378,6 +398,7 @@ func (x *exporter) run(srcs []Source) error {
 	}
 
 	x.work = work
+	rankWork(work)
 	switch x.o.Format {
 	case FormatSteps:
 		return x.writeSteps(work)
@@ -406,6 +427,9 @@ type workEpisode struct {
 	ep  *rl.Episode
 	// contributed is set when the episode produced at least one record.
 	contributed bool
+	// key and rank place the episode in its rollout group by the best-of-n ranking.
+	key  rl.RankKey
+	rank rankInfo
 }
 
 // episodeDrop names why an episode is excluded outright, or "".

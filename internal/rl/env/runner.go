@@ -191,8 +191,10 @@ type Progress struct {
 	Total   int       `json:"total"`
 	Status  string    `json:"status,omitempty"` // for rollout.done: ok, infra, cancelled, capped, skipped, resumed
 	Pass    *bool     `json:"pass,omitempty"`
-	Score   *float64  `json:"score,omitempty"`
-	Error   string    `json:"error,omitempty"`
+	Score   *float64  `json:"score,omitempty"` // verifier score, when there is a verdict
+	// Reward is the episode's scored reward (rollout.done of a completed rollout).
+	Reward *float64 `json:"reward,omitempty"`
+	Error  string   `json:"error,omitempty"`
 }
 
 // MaxWireSeed is the largest sampling seed every endpoint accepts: a signed 32-bit integer's.
@@ -251,6 +253,13 @@ type RolloutResult struct {
 	Retries        int    `json:"retries,omitempty"`
 	RequestErrors  int    `json:"request_errors,omitempty"`
 	CacheAnomalies int    `json:"cache_anomalies,omitempty"`
+	// Efficiency signals of the episode (rl.SigToolCalls ...) and its best-of-n rank key.
+	ToolCalls        int         `json:"tool_calls,omitempty"`
+	StuckWarnings    int         `json:"stuck_warnings,omitempty"`
+	StuckStops       int         `json:"stuck_stops,omitempty"`
+	RepeatedReads    int         `json:"repeated_reads,omitempty"`
+	FinalAnswerChars int         `json:"final_answer_chars,omitempty"`
+	Rank             *rl.RankKey `json:"rank_key,omitempty"`
 	// ProtectedTouched are protected paths the agent's diff changed.
 	ProtectedTouched []string             `json:"protected_touched,omitempty"`
 	Error            string               `json:"error,omitempty"`
@@ -482,6 +491,10 @@ func (rn *run) finishJob(j job, res RolloutResult) {
 	if res.Verified {
 		pass, score := res.Pass, res.Score
 		p.Pass, p.Score = &pass, &score
+	}
+	if res.Status == StatusOK {
+		reward := res.Reward
+		p.Reward = &reward
 	}
 	rn.emit(p)
 	// A live summary lets a watcher (the server's GET /v1/runs/{id}) see progress;
@@ -1125,6 +1138,7 @@ func ResultFromEpisode(ep *rl.Episode, tags []string) RolloutResult {
 	if v := ep.Outcome.Verifier; v != nil {
 		res.Verified, res.Pass, res.Score, res.VerifyMs = true, v.Pass, v.Score, v.Ms
 	}
+	efficiencyFields(&res, ep)
 	roles := map[string]*RoleStats{}
 	rewardSum := map[string]float64{}
 	mainSteps, allSteps := 0, 0

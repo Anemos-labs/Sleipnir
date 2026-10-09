@@ -6,8 +6,10 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/friction"
 	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
@@ -108,8 +110,11 @@ func (b *builder) deriveSignals() {
 	s[rl.SigCompactRejects] = float64(v.rejects)
 	s[rl.SigCacheAnomalies] = float64(v.anomalies)
 
-	// Tools.
+	// Tools and loops.
 	b.toolSignals(s)
+	s[rl.SigStuckWarnings] = float64(v.stuckWarnings)
+	s[rl.SigStuckStops] = float64(v.stuckStops)
+	s[rl.SigFinalAnswerChars] = float64(b.finalAnswerChars())
 
 	// Mail.
 	b.mailSignals(s)
@@ -191,6 +196,8 @@ func (b *builder) toolSignals(s map[string]float64) {
 		commitsBy[c.agent] = append(commitsBy[c.agent], c)
 	}
 	reads := map[string]map[string]*readState{} // agent -> path -> state
+	repeats := map[string]*friction.ReadCounter{}
+	var repeated float64
 
 	runs := append([]toolRun(nil), b.runs...)
 	sort.SliceStable(runs, func(i, j int) bool { return runs[i].seq < runs[j].seq })
@@ -276,6 +283,24 @@ func (b *builder) toolSignals(s map[string]float64) {
 				}
 			}
 		}
+		// Repeated reads: the same part of a file read again by the same agent with no successful write to it in between.
+		if t.has && !t.isErr {
+			rc := repeats[id]
+			if rc == nil {
+				rc = &friction.ReadCounter{}
+				repeats[id] = rc
+			}
+			if p, _ := in["path"].(string); t.name == "read" && p != "" {
+				if _, _, n := rc.Read(filepath.ToSlash(filepath.Clean(p)), t.input); n > 1 {
+					repeated++
+				}
+			}
+			if writeTools[t.name] {
+				for _, p := range editedPaths(t.name, in) {
+					rc.Changed(filepath.ToSlash(p))
+				}
+			}
+		}
 	}
 	for _, agents := range editors {
 		if len(agents) > 1 {
@@ -293,6 +318,24 @@ func (b *builder) toolSignals(s map[string]float64) {
 	s[rl.SigDoneAccepted] = accepted
 	s[rl.SigReReads] = reReads
 	s[rl.SigDuplicateWork] = dup
+	s[rl.SigToolCalls] = float64(len(runs))
+	s[rl.SigRepeatedReads] = repeated
+}
+
+// finalAnswerChars is the length in characters of the root agent's final answer: the text
+// of its last main step when that step is a clean finish, 0 when the run ended otherwise.
+func (b *builder) finalAnswerChars() int {
+	root := b.root()
+	if root == nil || !cleanFinish(root) {
+		return 0
+	}
+	n := 0
+	for _, blk := range root.main[len(root.main)-1].turn.Blocks {
+		if blk.Kind == core.BlockText {
+			n += utf8.RuneCountInString(blk.Text)
+		}
+	}
+	return n
 }
 
 // turnOfToolUse maps "<agent>\x00<tool id>" to the thread turn id of the assistant
