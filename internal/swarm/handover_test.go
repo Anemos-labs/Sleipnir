@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -315,6 +316,9 @@ func TestAFailedManagerHandoverTellsTheStoppedOwnerToCarryOn(t *testing.T) {
 // handover gives the claim back: the end of the run settles the task like any stop, and it returns to the board.
 func TestAManagerHandoverThatCannotStopTheOwnerReturnsTheTaskWhenItEnds(t *testing.T) {
 	release := make(chan struct{})
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) } // the hung tool must not outlive the test, whatever fails
+	t.Cleanup(free)
 	entered := make(chan struct{}, 1)
 	cfg := stallCfg()
 	cfg.StuckGrace = 50 * time.Millisecond
@@ -333,18 +337,22 @@ func TestAManagerHandoverThatCannotStopTheOwnerReturnsTheTaskWhenItEnds(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-entered
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the worker never called the tool that hangs")
+	}
 	task, _ := r.sw.Board.Snapshot().Task("T1")
 	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "handover", "id": task.ID, "text": "continue"})
 	if !res.IsError || !strings.Contains(res.Text, id+" has not stopped yet") || !strings.Contains(res.Text, "goes back to the board when its run ends") {
-		close(release)
+		free()
 		t.Fatalf("handover: %s", res.Text)
 	}
 	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Owner != id || got.Status != StatusDoing {
-		close(release)
+		free()
 		t.Fatalf("before the run ends: %+v", got)
 	}
-	close(release)
+	free()
 	rvWait(t, "the task to return to the board", func() bool {
 		got, _ := r.sw.Board.Snapshot().Task(task.ID)
 		return got.Status == StatusTodo && got.Owner == ""
