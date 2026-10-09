@@ -11,8 +11,6 @@ tracks unfinished product work; implementation history belongs in Git.
 - Recover from named team stalls within a bound: hand a stalled worker's task
   over, or return an orphaned task to the pool, without waiting for the manager.
   Detection and the nudge to the responsible agent exist; recovery is manual.
-- Refuse the manager's file edits at run time in a shared tree, as an isolated
-  run already does: the manager delegates and reviews.
 - Strengthen Windows support for shell analysis, process cleanup, and terminal
   behavior. The Windows test exclusions identify remaining portability gaps.
 

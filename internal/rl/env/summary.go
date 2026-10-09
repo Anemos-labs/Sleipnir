@@ -69,6 +69,9 @@ type Summary struct {
 	InfraRate float64 `json:"infra_rate"`
 	// Efficiency holds the means of the best-of-n signals over completed rollouts.
 	Efficiency Efficiency `json:"efficiency"`
+	// Closures sums, over completed rollouts, how the swarm board closed its tasks ("done:verified", "failed:superseded",
+	// "handed_off", ...). It is absent for runs of single agents.
+	Closures map[string]int `json:"closures,omitempty"`
 
 	PerTask     []TaskSummary   `json:"per_task"`
 	InfraErrors []InfraRecord   `json:"infra_errors,omitempty"`
@@ -221,6 +224,7 @@ func buildSummary(runID string, started, ended time.Time, tasks []rl.Task, group
 		s.InfraRate = float64(s.Infra) / float64(d)
 	}
 	s.Efficiency = efficiencyOf(results)
+	s.Closures = closuresOf(results)
 	byTask := map[string][]RolloutResult{}
 	for _, r := range results {
 		byTask[r.Task] = append(byTask[r.Task], r)

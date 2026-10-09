@@ -193,12 +193,18 @@ func rlReport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		if r.Infra > 0 {
 			n = append(n, fmt.Sprintf("%d failed for infrastructure reasons and are not counted in any rate", r.Infra))
 		}
+		if r.Skipped > 0 {
+			n = append(n, fmt.Sprintf("%d were skipped because their tasks require tools this machine lacks, and are not counted in any rate", r.Skipped))
+		}
 		if a := r.Attempts; a != nil && a.Wasted > 0 {
 			n = append(n, fmt.Sprintf("%d of %d attempts ended without an answer and cost $%.4f of $%.4f (%d of %d requests)", a.Wasted, a.Attempts, a.WastedUSD, a.SpentUSD, a.WastedRequests, a.Requests))
 		}
 		if e := r.Efficiency; e != nil && r.Completed > 0 { // a report saved before the signals existed has none: not zeros
 			n = append(n, fmt.Sprintf("per episode: %.1f tool calls, %.2f guard warnings, %.2f guard stops (%s looped), %.2f repeated reads, %.1f waste, %.0f answer chars",
 				e.ToolCalls, e.StuckWarnings, e.StuckStops, pct(e.LoopRate, r.Completed), e.RepeatedReads, e.Waste, e.FinalAnswerChars))
+		}
+		if len(r.Closures) > 0 {
+			n = append(n, "board closures: "+closureCounts(r.Closures))
 		}
 		if len(n) > 0 {
 			notes = append(notes, fmt.Sprintf("  %s: %s", label(r), strings.Join(n, "; ")))
@@ -253,6 +259,20 @@ func rlReport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		}
 	}
 	return nil
+}
+
+// closureCounts lists closure counts in key order: "done:verified 3, failed:superseded 1, handed_off 2".
+func closureCounts(c map[string]int) string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = fmt.Sprintf("%s %d", k, c[k])
+	}
+	return strings.Join(parts, ", ")
 }
 
 // printTable writes rows as an aligned text table or a markdown one.

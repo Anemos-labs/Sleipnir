@@ -67,14 +67,30 @@ they do not indicate whether a change has been released.
 - Add best-of-n efficiency data to RL episodes and exports. Episodes gain the
   signals `tool_calls`, `stuck_warnings`, `stuck_stops`, `repeated_reads` and
   `final_answer_chars` and the soft flag `looped`; sft, dpo and groups records
-  gain a `rank` object; summaries and reports gain `efficiency` and per-task
-  `best`. `rl export` adds `--select best` and `--pair best-worst`, and rewards
+  gain a `rank` object; summaries and reports gain `efficiency`, per-task
+  `best`, and, for team runs, the board's `closures` summed over episodes.
+  `rl export` adds `--select best` and `--pair best-worst`, and rewards
   gain the `waste` and `group_ite` components with weight 0. Existing reward
   weights, and prompt and tool-schema bytes, are unchanged. The repetition
   guard's `agent.stuck` nudges name their guard, and rollout progress lines
   print `score=` and `reward=` separately. DPO episode pairs whose chosen and
   rejected sides are identical are counted as `pair:same_continuation` and no
   longer exported, in both pairing modes.
+- Make RL tasks portable and their rewards honest about a start that already
+  scores. `verifier.expect.regex` gates an answer on a pattern;
+  `verifier.baseline_score` records the untouched start's score of a
+  `json-score` task, and the outcome becomes the improvement over it,
+  max(0, (s - s0) / (1 - s0)), so `rl tasks check` now fails a task whose start
+  scores something other than its recorded baseline (`--calibrate OUT` writes
+  the measured scores; a task without one keeps s0 = 0). `requires` lists the
+  tools a task needs: where one is missing the rollout gets the status
+  `skipped`, counted in summaries and reports and never an infra error, and a
+  run in which every rollout is skipped exits 1 rather than with the retry
+  status. `rl tasks check --mutants` warns when a verifier still passes with
+  part of the solution missing. A drive-letter path is absolute on every host
+  in reward scoring and `workspace_roots`, and Windows verifiers get a scrubbed
+  environment with the system variables they need. Prompt and tool-schema bytes
+  are unchanged.
 - Reject task actions that require an ID when it is omitted or blank. The error
   identifies the missing field and explains how to find the task ID before
   retrying; invalid calls leave the board unchanged. Role restrictions and

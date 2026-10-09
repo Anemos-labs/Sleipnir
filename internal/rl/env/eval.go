@@ -168,6 +168,8 @@ type Report struct {
 	// Efficiency holds the means of the best-of-n signals over completed episodes. It is absent from a report with no
 	// completed episode and from one written before the signals existed, so a saved report is never read as measured zeros.
 	Efficiency *Efficiency `json:"efficiency,omitempty"`
+	// Closures sums how the swarm board closed its tasks over completed episodes (see Summary.Closures).
+	Closures map[string]int `json:"closures,omitempty"`
 	// Attempts and Identity come from the run directory (LoadRun); a report built from results alone leaves them empty.
 	Attempts *AttemptStats `json:"attempts,omitempty"`
 	Identity *Identity     `json:"identity,omitempty"`
@@ -319,6 +321,7 @@ func BuildReport(tasks []rl.Task, results []RolloutResult, samples int) Report {
 		e := efficiencyOf(results)
 		rep.Efficiency = &e
 	}
+	rep.Closures = closuresOf(results)
 
 	var valid []TaskResult
 	for _, r := range rows {

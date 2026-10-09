@@ -479,6 +479,12 @@ func cloneEpisode(ep *rl.Episode) *rl.Episode {
 	}
 	c.Outcome.Reviews = append([]rl.Verdict(nil), ep.Outcome.Reviews...)
 	c.Outcome.Labels = append([]string(nil), ep.Outcome.Labels...)
+	if ep.Outcome.Closures != nil {
+		c.Outcome.Closures = make(map[string]int, len(ep.Outcome.Closures))
+		for k, v := range ep.Outcome.Closures {
+			c.Outcome.Closures[k] = v
+		}
+	}
 	return &c
 }
 
