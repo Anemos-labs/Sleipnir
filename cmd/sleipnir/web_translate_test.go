@@ -2,12 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -80,5 +83,37 @@ func TestStubTranslatorJournalsWhatItEmits(t *testing.T) {
 	defer mu.Unlock()
 	if len(frames) != 6 || frames[0].Type != "ev" || !frames[0].Critical {
 		t.Errorf("%d frames, first %+v", len(frames), frames[0])
+	}
+}
+
+// A field the page reads is set when the wire type has it and left alone when it does not; a pointer field takes a copy.
+func TestSetOptionalSetsWhatTheTypeHas(t *testing.T) {
+	var v struct {
+		Open       string
+		SessionDir *string
+	}
+	setOptional(&v, "Open", "providers")
+	setOptional(&v, "SessionDir", "/state/sessions/x")
+	setOptional(&v, "Missing", "x")
+	setOptional(&v, "Open", "") // a zero value sets nothing
+	if v.Open != "providers" || v.SessionDir == nil || *v.SessionDir != "/state/sessions/x" {
+		t.Errorf("%+v", v)
+	}
+}
+
+// A hint row names the Settings page that fixes a missing model or key.
+func TestHintsNameTheSettingsPage(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{session.ErrNoModel, "models"},
+		{fmt.Errorf("start: %w", session.ErrNoModel), "models"},
+		{errors.New(`provider "x" has no key: /login x, or set X_KEY`), "providers"},
+		{errors.New("disk full"), ""},
+	} {
+		if got := settingsFor(tc.err); got != tc.want {
+			t.Errorf("%v: %q, want %q", tc.err, got, tc.want)
+		}
 	}
 }

@@ -113,10 +113,11 @@ type idemEntry struct {
 	body   any
 }
 
-// trustIssued is a trust challenge that was issued: the directory and the footprint the person was shown.
+// trustIssued is a trust challenge that was issued: the scope its confirmation id is for (it binds the directory, the footprint and
+// whatever else the session raises).
 type trustIssued struct {
-	dir, digest string
-	at          time.Time
+	scope string
+	at    time.Time
 }
 
 // startWebHost is webHost: it builds the host and returns the function that registers its routes and the one that closes it.
@@ -177,6 +178,7 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 // questions wait with no page connected (0: forever).
 func (h *webHostImpl) newBridge(floor, grace time.Duration) *approvals.Bridge {
 	return approvals.New(approvals.Config{Floor: floor, Grace: grace, OnAsk: h.onAsk, OnAnswer: h.onAnswer, Change: h.pendingChange,
+		Where: h.where, OnRefused: h.refused,
 		SessionTime: func(tab string, at time.Time) float64 {
 			if t := h.tab(tab); t != nil {
 				return t.sessionTime(at)
@@ -381,21 +383,70 @@ func (h *webHostImpl) Active() string {
 // Questions lists the open questions of every tab, oldest first.
 func (h *webHostImpl) Questions() []wire.OpenQuestion { return h.bridge.Open() }
 
-// pendingChange is the change an edit of a tab asks to make (PARITY A1): its path and a unified diff of the file as it is now.
-func (h *webHostImpl) pendingChange(tab string, r perm.Request) (path, change string) {
+// pendingChange is the change an edit of a tab asks to make (PARITY A1): its path and a unified diff of the file as it is now; ok is
+// false when it cannot be shown (the question is then not asked).
+func (h *webHostImpl) pendingChange(tab string, r perm.Request) (path, change string, ok bool) {
 	t := h.tab(tab)
 	if t == nil {
-		return "", ""
+		return "", "", false
 	}
 	s := t.session()
 	if s == nil {
-		return "", ""
+		return "", "", false
 	}
-	pc, ok := s.PendingChange(r.Tool, r.Input)
+	input := r.Input
+	if len(input) == 0 {
+		input, _ = t.calls.input(r.Agent, r.Tool) // the request names the call; the call's input came through the sink
+	}
+	pc, ok := s.PendingChange(r.Tool, input)
 	if !ok {
-		return "", ""
+		return "", "", false
 	}
-	return pc.Path, pc.Change
+	if filepath.IsAbs(pc.Path) {
+		pc.Path = strings.TrimSuffix(h.where(tab, pc.Path), "/")
+	}
+	return pc.Path, pc.Change, true
+}
+
+// where renders a directory of a tab for a question: relative to the project root ("." for the root, "web/" below it); inside an
+// isolated worker's tree, "worktree <tree>/<path>"; elsewhere as it is.
+func (h *webHostImpl) where(tab, dir string) string {
+	if dir == "" {
+		return "."
+	}
+	t := h.tab(tab)
+	var s *session.Session
+	if t != nil {
+		s = t.session()
+	}
+	if s == nil {
+		return filepath.ToSlash(dir)
+	}
+	if m := s.Worktrees(); m != nil && m.TreesDir() != "" {
+		if rel, err := filepath.Rel(m.TreesDir(), dir); err == nil && filepath.IsLocal(rel) {
+			return "worktree " + filepath.ToSlash(rel) + "/"
+		}
+	}
+	rel, err := filepath.Rel(s.Root(), dir)
+	switch {
+	case err != nil || !filepath.IsLocal(rel) && rel != ".":
+		return filepath.ToSlash(dir)
+	case rel == ".":
+		return "."
+	}
+	return filepath.ToSlash(rel) + "/"
+}
+
+// refused reports, in the session's log (and so as a row of the tab), a request that was refused without being asked because its
+// question could not be shown whole.
+func (h *webHostImpl) refused(tab, agent, why string) {
+	t := h.tab(tab)
+	if t == nil {
+		return
+	}
+	if s := t.session(); s != nil && s.Log != nil {
+		_, _ = s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "a request of " + uiAgent(agent) + " was refused without being asked: " + why})
+	}
 }
 
 // onAsk hands a question to its tab's translator.
@@ -666,68 +717,82 @@ func d16(v any) string {
 	return hex.EncodeToString(sha256Sum(b))[:16]
 }
 
-// trustStep decides the trust of a directory for a new session that asks for --trust-project: trusted already, it goes on; else
-// the first request is answered 409 trust_required with the challenge, and the repeat with the challenge's confirmation id records
-// the trust (the footprint must not have changed in between). It reports false when it has answered the request; note is a row
-// for the session (a partial footprint is trusted for this session only).
-func (h *webHostImpl) trustStep(w http.ResponseWriter, r *http.Request, dir string) (ok bool, note string) {
+// gateNewSession authorizes what a new session raises (p): nothing raised goes on; trusting the project's files is answered first
+// with the trust challenge (409 trust_required: the files, and a confirmation id for the session's scope), whose repeat records the
+// trust as `sleipnir trust add` does; anything else raised needs the confirmation of its scope (428). It reports false when it has
+// answered the request; note is a row for the session (a partial footprint is trusted for this session only).
+func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p privileges) (note string, ok bool) {
+	reasons := p.reasons()
+	if len(reasons) == 0 {
+		return "", true
+	}
+	scope := newSessionScope(p)
 	home, _ := os.UserHomeDir()
-	root := rootOf(dir)
-	fp, err := trust.Scan(root, dir, home)
-	if err != nil || fp.Empty() {
-		return true, ""
-	}
+	var fp *trust.Footprint
 	ledger := trust.OpenLedger(session.TrustLedgerPath(home))
-	state, entry := ledger.Check(dir, fp)
-	if state == trust.Trusted {
-		return true, ""
-	}
-	scope := "trust:" + d16(map[string]string{"dir": dir, "digest": fp.Digest})
-	confirm := r.Header.Get(web.ConfirmHeader)
-	h.mu.Lock()
-	issued, known := h.trustIDs[confirm]
-	h.mu.Unlock()
-	if confirm == "" || (known && (issued.dir != dir || issued.digest != fp.Digest)) {
-		id := h.srv.IssueConfirm(r, scope)
-		if id == "" {
-			web.Error(w, http.StatusTooManyRequests, "rate_limited", "too many confirmations are outstanding")
-			return false, ""
+	if p.Trust != "" {
+		f, err := trust.Scan(rootOf(p.Dir), p.Dir, home)
+		if err != nil {
+			writeErr(w, werr(http.StatusConflict, "trust_required", "the project's files could not be read: "+clip(err.Error(), 200)))
+			return "", false
 		}
+		fp = f
+		confirm := r.Header.Get(web.ConfirmHeader)
 		h.mu.Lock()
-		for k, v := range h.trustIDs {
-			if time.Since(v.at) > 2*time.Minute {
-				delete(h.trustIDs, k)
-			}
-		}
-		h.trustIDs[id] = trustIssued{dir: dir, digest: fp.Digest, at: time.Now()}
+		issued, known := h.trustIDs[confirm]
 		h.mu.Unlock()
-		ch := wire.TrustChallenge{Dir: dir, Digest: fp.Digest, Partial: fp.Partial, Confirm: id, Scope: scope, Files: []wire.TrustFile{}}
-		if state == trust.Changed {
-			ch.Changed = trust.DescribeChanges(trust.Changes(entry, fp))
+		if confirm == "" || (known && issued.scope != scope) {
+			h.trustChallenge(w, r, scope, p.Dir, fp, ledger, known)
+			return "", false
 		}
-		for _, f := range fp.Files {
-			ch.Files = append(ch.Files, wire.TrustFile{Path: clip(f.Path, 4096), Kind: string(f.Kind), Bytes: f.Size, Hash: f.Sum})
-		}
-		msg := "trust the files of this project first"
-		if known {
-			msg = "the project's files changed since you were shown them: look again"
-		}
-		web.ErrorDetail(w, http.StatusConflict, "trust_required", msg, ch)
-		return false, ""
 	}
-	if !h.srv.RequireConfirm(w, r, scope) {
-		return false, ""
+	if err := authorize(r.Context(), scope, reasons); err != nil {
+		writeErr(w, err)
+		return "", false
+	}
+	if fp == nil {
+		return "", true
 	}
 	h.mu.Lock()
-	delete(h.trustIDs, confirm)
+	delete(h.trustIDs, r.Header.Get(web.ConfirmHeader))
 	h.mu.Unlock()
 	if fp.Partial {
-		return true, "this project has more files than can be remembered, so it is trusted for this session only"
+		return "this project has more files than can be remembered, so it is trusted for this session only", true
 	}
-	if err := ledger.Remember(dir, fp, time.Now()); err != nil {
-		return true, "trusted for this session; not remembered: " + clip(err.Error(), 200)
+	if err := ledger.Remember(p.Dir, fp, time.Now()); err != nil {
+		return "trusted for this session; not remembered: " + clip(err.Error(), 200), true
 	}
-	return true, ""
+	return "", true
+}
+
+// trustChallenge answers 409 trust_required: the files of the project that would be trusted, and a confirmation id for scope that
+// the repeated request sends as X-Confirm.
+func (h *webHostImpl) trustChallenge(w http.ResponseWriter, r *http.Request, scope, dir string, fp *trust.Footprint, ledger *trust.Ledger, again bool) {
+	id := h.srv.IssueConfirm(r, scope)
+	if id == "" {
+		web.Error(w, http.StatusTooManyRequests, "rate_limited", "too many confirmations are outstanding")
+		return
+	}
+	h.mu.Lock()
+	for k, v := range h.trustIDs {
+		if time.Since(v.at) > 2*time.Minute {
+			delete(h.trustIDs, k)
+		}
+	}
+	h.trustIDs[id] = trustIssued{scope: scope, at: time.Now()}
+	h.mu.Unlock()
+	ch := wire.TrustChallenge{Dir: dir, Digest: fp.Digest, Partial: fp.Partial, Confirm: id, Scope: scope, Files: []wire.TrustFile{}}
+	if state, entry := ledger.Check(dir, fp); state == trust.Changed {
+		ch.Changed = trust.DescribeChanges(trust.Changes(entry, fp))
+	}
+	for _, f := range fp.Files {
+		ch.Files = append(ch.Files, wire.TrustFile{Path: clip(f.Path, 4096), Kind: string(f.Kind), Bytes: f.Size, Hash: f.Sum})
+	}
+	msg := "trust the files of this project first"
+	if again {
+		msg = "the project's files, or what the session asks for, changed since you were shown them: look again"
+	}
+	web.ErrorDetail(w, http.StatusConflict, "trust_required", msg, ch)
 }
 
 // ---- idempotency ---------------------------------------------------------------------------------------------------------------
@@ -827,8 +892,19 @@ var tabIDRE = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
 // qidRE is the shape of a question id in a path.
 var qidRE = regexp.MustCompile(`^q_[a-z2-7]{26}$`)
 
-// writeErr answers a refusal.
-func writeErr(w http.ResponseWriter, err error) { web.WriteError(w, err) }
+// writeErr answers a refusal: a confirmation that is required is 428 confirm_required with the scope in X-Confirm-Scope and in the
+// detail ({"scope", "reasons"}); a confirmation that was refused has been answered already.
+func writeErr(w http.ResponseWriter, err error) {
+	var cr *confirmRequired
+	switch {
+	case errors.Is(err, errConfirmAnswered):
+	case errors.As(err, &cr):
+		w.Header().Set("X-Confirm-Scope", cr.Scope)
+		web.ErrorDetail(w, http.StatusPreconditionRequired, "confirm_required", "this action needs a confirmation: obtain an id for the scope and send it as X-Confirm", cr)
+	default:
+		web.WriteError(w, err)
+	}
+}
 
 // ok answers 200 with v.
 func ok(w http.ResponseWriter, v any) { _ = web.WriteJSON(w, http.StatusOK, v) }

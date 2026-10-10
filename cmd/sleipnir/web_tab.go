@@ -27,6 +27,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/web/approvals"
@@ -98,6 +99,7 @@ type webTab struct {
 	shownQueue int
 
 	sessMu sync.Mutex // calls into the session that are not safe beside each other (the budget, the model)
+	calls  callLog    // the tool call each agent started last
 	goals  goalLoop
 	wake   chan struct{}
 	ctx    context.Context
@@ -317,7 +319,10 @@ func (t *webTab) run(ctx context.Context, it queued) {
 	case it.op != nil:
 		it.op(ctx, s)
 	case it.line != "":
-		res := t.runCommand(ctx, s, it.line)
+		res, err := t.runCommand(ctx, s, it.line)
+		if err != nil {
+			res.Output = err.Error()
+		}
 		if res.Output != "" {
 			t.note("◇", strings.TrimRight(res.Output, "\n"))
 		}
@@ -402,7 +407,60 @@ func (t *webTab) runEnded(s *session.Session, res *session.Result, err error) {
 		if hint := providerHint(err, "Settings › Providers & login"); hint != "" {
 			msg += "\n" + hint
 		}
-		t.sys("⚠", msg)
+		t.emit(hintRow(msg, err))
+	}
+}
+
+// hintRow is a warning row that, when it is about a provider's key or a model, names the Settings page that sets it ("providers" or
+// "models", the page's "open" field: a button that opens it).
+func hintRow(text string, err error) *wire.Sys {
+	ev := &wire.Sys{Ch: "mgr", Glyph: "⚠", Text: clip(text, 2000)}
+	setOptional(ev, "Open", settingsFor(err))
+	return ev
+}
+
+// settingsFor is the Settings page that fixes an error of a provider or of the model ("" for any other error).
+func settingsFor(err error) string {
+	if err == nil {
+		return ""
+	}
+	if pe, ok := provider.AsError(err); ok {
+		switch {
+		case pe.Kind == provider.ErrAuth:
+			return "providers"
+		case pe.Kind == provider.ErrBadRequest && pe.Status == http.StatusNotFound:
+			return "models"
+		}
+	}
+	msg := err.Error()
+	switch {
+	case errors.Is(err, session.ErrNoModel):
+		return "models"
+	case strings.Contains(msg, "has no key") || strings.Contains(msg, "is not signed in") || strings.Contains(msg, "unknown provider"):
+		return "providers"
+	}
+	return ""
+}
+
+// setOptional sets a field of a wire value by name when the wire type has it, and does nothing otherwise: fields the page reads that
+// the wire package does not carry yet (sys "open", meta "sessionDir").
+func setOptional(v any, name string, value any) {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() || reflect.ValueOf(value).IsZero() {
+		return
+	}
+	f := rv.Elem().FieldByName(name)
+	if !f.IsValid() || !f.CanSet() {
+		return
+	}
+	val := reflect.ValueOf(value)
+	switch {
+	case val.Type().AssignableTo(f.Type()):
+		f.Set(val)
+	case f.Kind() == reflect.Pointer && val.Type().AssignableTo(f.Type().Elem()):
+		pv := reflect.New(f.Type().Elem())
+		pv.Elem().Set(val)
+		f.Set(pv)
 	}
 }
 
@@ -477,14 +535,14 @@ func (t *webTab) Command(ctx context.Context, req wire.CommandRequest) (wire.Com
 	if !knownCommand(s, name) {
 		return wire.CommandResult{}, werr(http.StatusNotFound, "unknown_command", "unknown command "+clip(name, 60)+": "+didYouMean(name)+"/ lists them")
 	}
-	if isLookLine(line) {
-		res := t.runCommand(ctx, s, line)
-		return res, nil
+	if isLookLine(line) || isImmediateLine(line) {
+		return t.runCommand(ctx, s, line)
 	}
 	var res wire.CommandResult
 	err := t.exclusive(ctx, func(s *session.Session) error {
-		res = t.runCommand(ctx, s, line)
-		return nil
+		var rerr error
+		res, rerr = t.runCommand(ctx, s, line)
+		return rerr
 	})
 	if errors.Is(err, errTabBusy) {
 		_, pos, _, qerr := t.enqueue(queued{text: oneLineCLI(line, 200), line: line})
@@ -494,6 +552,23 @@ func (t *webTab) Command(ctx context.Context, req wire.CommandRequest) (wire.Com
 		return wire.CommandResult{Output: fmt.Sprintf("queued (%d): it runs when the turn is over", pos)}, nil
 	}
 	return res, err
+}
+
+// isImmediateLine reports whether a slash line acts at once, beside a running turn, instead of waiting for it: a mode it names (as the
+// mode menu does) and the restart family (which ends the running turn, as Run settings do). These are the lines that can raise
+// privilege, so they are confirmed by the request that sent them and never run later on its behalf.
+func isImmediateLine(line string) bool {
+	f := strings.Fields(line)
+	if len(f) == 0 {
+		return false
+	}
+	switch f[0] {
+	case "/restart", "/swarm", "/new", "/clear", "/resume":
+		return true
+	case "/mode":
+		return len(f) > 1
+	}
+	return false
 }
 
 // knownCommand says whether a slash command exists in the tab: the chat's own, the custom commands, the skills and the prompts of the
@@ -551,12 +626,22 @@ func (l *webBuffer) String() string {
 
 // runCommand runs a slash command against the session and returns what it said: the host's own commands (the goal, the restart
 // family, the terminal's display settings) and then slashTo. A command that expands to a prompt (a custom command, a skill, a tool
-// server's prompt, /plan with a prompt) sends it as a message.
-func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string) wire.CommandResult {
+// server's prompt, /plan with a prompt) sends it as a message. The error is only a refusal for want of a confirmation (what the
+// command would raise is authorized as the dedicated routes authorize it) or by policy (403); any other failure is the command's
+// output.
+func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string) (wire.CommandResult, error) {
 	f := strings.Fields(line)
 	var out webBuffer
 	res := wire.CommandResult{Title: f[0]}
 	arg := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
+	failed := func(err error, prefix string) (wire.CommandResult, error) {
+		var we *wire.Error
+		if isAuthErr(err) || errors.As(err, &we) && we.Status == http.StatusForbidden {
+			return res, err // a refusal by policy is the request's answer, as on the dedicated routes
+		}
+		res.Output = prefix + err.Error()
+		return res, nil
+	}
 	switch f[0] {
 	case "/goal":
 		act := strings.ToLower(arg)
@@ -565,20 +650,20 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		case "":
 			goalCommandStatus(s, t.goals.State(), &out)
 			res.Output = out.String()
-			return res
+			return res, nil
 		case "pause", "resume", "clear":
 		default:
 			req = wire.GoalRequest{Action: "set", Text: arg}
 		}
 		if err := t.goalAction(ctx, s, req, false); err != nil {
-			res.Output = err.Error()
+			return failed(err, "")
 		}
-		return res
+		return res, nil
 	case "/new", "/clear":
 		if err := t.Restart(ctx, wire.RestartRequest{Kind: "new", Fresh: true}); err != nil {
-			res.Output = err.Error()
+			return failed(err, "")
 		}
-		return res
+		return res, nil
 	case "/resume":
 		flags := []string{"--continue"}
 		if arg != "" {
@@ -586,33 +671,33 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		}
 		if err := s.CheckResume(arg); err != nil {
 			res.Output = "resume: " + clip(err.Error(), 400)
-			return res
+			return res, nil
 		}
 		if err := t.restart(ctx, "resume", flags, true); err != nil {
-			res.Output = err.Error()
+			return failed(err, "")
 		}
-		return res
+		return res, nil
 	case "/restart", "/swarm":
 		rest := splitArgs(arg)
 		if f[0] == "/swarm" {
 			if len(rest) == 0 {
 				res.Output = "usage: /swarm <workers> [flags]: start again as a manager and up to that many workers, e.g. /swarm 8 --verify \"go test {dirs}\" --isolation worktree"
-				return res
+				return res, nil
 			}
 			n, err := strconv.Atoi(rest[0])
 			if err != nil || n < 0 {
 				res.Output = "/swarm: the number of workers is a number, got " + clip(rest[0], 40)
-				return res
+				return res, nil
 			}
 			if err := t.Restart(ctx, wire.RestartRequest{Kind: "swarm", Swarm: &n, Flags: rest[1:]}); err != nil {
-				res.Output = err.Error()
+				return failed(err, "")
 			}
-			return res
+			return res, nil
 		}
 		if err := t.Restart(ctx, wire.RestartRequest{Kind: "restart", Flags: rest}); err != nil {
-			res.Output = err.Error()
+			return failed(err, "")
 		}
-		return res
+		return res, nil
 	case "/roles":
 		if len(f) > 1 {
 			rm := map[string]string{}
@@ -620,46 +705,45 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 				role, ref, ok := strings.Cut(kv, "=")
 				if !ok || role == "" || ref == "" {
 					res.Output = "usage: /roles [role=provider/model ...]"
-					return res
+					return res, nil
 				}
 				rm[role] = ref
 			}
 			for role, ref := range rm {
 				if err := t.SetModel(ctx, wire.ModelRequest{Ref: ref, Role: role}); err != nil {
-					res.Output = err.Error()
-					return res
+					return failed(err, "")
 				}
 			}
-			return res
+			return res, nil
 		}
 		fmt.Fprintln(&out, "who runs on which model:")
 		for _, r := range s.RoleModels() {
 			fmt.Fprintf(&out, "  %-10s %-44s %s\n", r.Role, r.Model, r.From)
 		}
 		res.Output = out.String()
-		return res
+		return res, nil
 	case "/model":
 		if len(f) > 1 {
 			if err := t.SetModel(ctx, wire.ModelRequest{Ref: f[1]}); err != nil {
-				res.Output = err.Error()
+				return failed(err, "")
 			}
-			return res
+			return res, nil
 		}
 	case "/verbose", "/anim":
 		res.Output = f[0] + " is a setting of this page: Settings › Appearance & motion"
-		return res
+		return res, nil
 	case "/login":
 		res.Output = "sign in from Settings › Providers & login, or run `sleipnir login` in a terminal"
-		return res
+		return res, nil
 	case "/exit", "/quit":
 		res.Output = "close this session with × on its tab, or from the session menu"
-		return res
+		return res, nil
 	case "/mode":
 		if len(f) > 1 {
 			if err := t.SetMode(ctx, wire.ModeRequest{Mode: f[1]}); err != nil {
-				res.Output = err.Error()
+				return failed(err, "")
 			}
-			return res
+			return res, nil
 		}
 	case "/budget":
 		if len(f) > 1 {
@@ -668,32 +752,37 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 				_, err = t.setBudget(ctx, usd)
 			}
 			if err != nil {
-				res.Output = "budget: " + err.Error()
+				return failed(err, "budget: ")
 			}
-			return res
+			return res, nil
 		}
 	case "/effort":
 		if len(f) > 1 {
 			if _, err := t.SetEffort(ctx, wire.EffortRequest{Level: f[1]}); err != nil {
-				res.Output = err.Error()
+				return failed(err, "")
 			}
-			return res
+			return res, nil
 		}
 	case "/allow":
 		if len(f) > 1 {
-			for _, r := range f[1:] {
-				if _, err := t.AddRule(ctx, wire.RuleRequest{Effect: "allow", Rule: r, Origin: "/allow"}); err != nil {
-					fmt.Fprintln(&out, err.Error())
-				}
+			// one confirmation for the whole line: the rules it allows are authorized together
+			if _, err := t.addRules(ctx, "allow", f[1:], "/allow"); err != nil {
+				return failed(err, "")
 			}
-			res.Output = out.String()
-			return res
+			return res, nil
 		}
 	case "/steer":
 		if err := t.Steer(ctx, arg); err != nil {
-			res.Output = err.Error()
+			return failed(err, "")
 		}
-		return res
+		return res, nil
+	case "/rewind":
+		if len(f) > 1 {
+			// a restore puts files back as they were: the Workspace's restore route asks for the same confirmation
+			if err := authorize(ctx, "restore:"+t.id+":"+f[1], []string{"restore the files of checkpoint " + clip(f[1], 40)}); err != nil {
+				return failed(err, "")
+			}
+		}
 	case "/compact":
 		r, err := t.compact(ctx, s, arg)
 		if err != nil {
@@ -701,7 +790,7 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		} else {
 			res.Output = fmt.Sprintf("compacted: %d → %d tokens", r.TokensBefore, r.TokensAfter)
 		}
-		return res
+		return res, nil
 	}
 	t.sessMu.Lock()
 	quit, send := slashTo(ctx, s, line, &out, &out)
@@ -714,7 +803,7 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		}
 	}
 	t.publishMeta()
-	return res
+	return res, nil
 }
 
 // goalCommandStatus writes where the goal stands, as /goal alone does in the terminal.
@@ -977,7 +1066,7 @@ func modeText(m perm.Mode) (glyph, text string) {
 	return "◇", "mode: " + string(m)
 }
 
-// SetMode changes the permission mode (the route checked the confirmation for bypass and yolo).
+// SetMode changes the permission mode; bypass and yolo need the request's confirmation (scope "mode:<mode>:<tab>").
 func (t *webTab) SetMode(ctx context.Context, req wire.ModeRequest) error {
 	m := perm.Mode(req.Mode)
 	switch m {
@@ -988,6 +1077,11 @@ func (t *webTab) SetMode(ctx context.Context, req wire.ModeRequest) error {
 	s := t.session()
 	if s == nil {
 		return werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+	}
+	if (m == perm.ModeBypass || m == perm.ModeYolo) && s.Perm.Mode() != m {
+		if err := authorize(ctx, "mode:"+string(m)+":"+t.id, []string{"permission mode " + string(m)}); err != nil {
+			return err
+		}
 	}
 	s.Perm.SetMode(m)
 	webAction(s, "mode", string(m))
@@ -1281,57 +1375,89 @@ func actionOf(effect string) (perm.Action, bool) {
 	return perm.Allow, false
 }
 
-// AddRule adds a session rule (allow, deny, ask; "tests" expands to the tests preset).
+// AddRule adds a session rule (allow, deny, ask; "tests" expands to the tests preset). An allow rule the session does not have yet
+// raises its privilege and needs the request's confirmation.
 func (t *webTab) AddRule(ctx context.Context, req wire.RuleRequest) (wire.RuleResult, error) {
-	rule := strings.TrimSpace(req.Rule)
-	act, ok := actionOf(req.Effect)
-	switch {
-	case !ok:
+	return t.addRules(ctx, req.Effect, []string{req.Rule}, req.Origin)
+}
+
+// addRules adds session rules of one effect, all or none: the allow rules among them that the session does not have yet are
+// authorized together (scope "rules:<tab>:<d16 of the effect and the rules>").
+func (t *webTab) addRules(ctx context.Context, effect string, given []string, origin string) (wire.RuleResult, error) {
+	act, ok := actionOf(effect)
+	if !ok {
 		return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", "the effect is allow, deny or ask")
-	case rule == "":
-		return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", "a rule needs text, e.g. tests or Bash(go test:*)")
-	case len(rule) > maxRuleLen:
-		return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", "a rule is at most 500 characters")
 	}
 	s := t.session()
 	if s == nil {
 		return wire.RuleResult{}, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
 	}
-	origin := strings.TrimSpace(req.Origin)
+	origin = strings.TrimSpace(origin)
 	if origin == "" || len(origin) > 60 {
 		origin = "this session"
 	}
-	rules := []string{rule}
-	if rule == config.TestsPreset {
-		if act != perm.Allow {
+	type rule struct {
+		pr     perm.Rule
+		origin string
+	}
+	var parsed []rule
+	for _, r := range given {
+		r = strings.TrimSpace(r)
+		switch {
+		case r == "":
+			return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", "a rule needs text, e.g. tests or Bash(go test:*)")
+		case len(r) > maxRuleLen:
+			return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", "a rule is at most 500 characters")
+		case r == config.TestsPreset && act != perm.Allow:
 			return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", "tests is a set of allow rules")
 		}
-		rules, origin = config.ExpandAllow([]string{config.TestsPreset}), "the tests preset"
-	}
-	var parsed []perm.Rule
-	for _, r := range rules {
-		pr, err := perm.ParseRule(act, r)
-		if err != nil {
-			return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", clip(err.Error(), 300))
+		rules, o := []string{r}, origin
+		if r == config.TestsPreset {
+			rules, o = config.ExpandAllow([]string{config.TestsPreset}), "the tests preset"
 		}
-		parsed = append(parsed, pr)
+		for _, x := range rules {
+			pr, err := perm.ParseRule(act, x)
+			if err != nil {
+				return wire.RuleResult{}, werr(http.StatusBadRequest, "bad_rule", clip(err.Error(), 300))
+			}
+			parsed = append(parsed, rule{pr, o})
+		}
+	}
+	if act == perm.Allow {
+		have := baselineOfSession(s).allow
+		var raises []string
+		for _, r := range parsed {
+			if !have[r.pr.String()] && !slices.Contains(raises, r.pr.String()) {
+				raises = append(raises, r.pr.String())
+			}
+		}
+		slices.Sort(raises)
+		if len(raises) > 0 {
+			scope := "rules:" + t.id + ":" + d16(map[string]any{"effect": string(act), "rules": raises})
+			if err := authorize(ctx, scope, []string{"allow " + strings.Join(raises, ", ")}); err != nil {
+				return wire.RuleResult{}, err
+			}
+		}
 	}
 	t.mu.Lock()
-	for _, pr := range parsed {
-		key := string(act) + " " + pr.String()
+	for _, r := range parsed {
+		key := string(act) + " " + r.pr.String()
 		if _, seen := t.origins[key]; !seen {
-			t.origins[key] = origin
+			t.origins[key] = r.origin
 		}
 	}
 	t.mu.Unlock()
-	for _, pr := range parsed {
-		s.Perm.AddRule(perm.ScopeSession, pr)
+	for _, r := range parsed {
+		s.Perm.AddRule(perm.ScopeSession, r.pr)
 	}
-	webAction(s, "rule", string(act)+" "+rule)
-	if rule == config.TestsPreset {
-		t.sys("◇", fmt.Sprintf("%s this session: tests (%d rules) · from %s", act, len(parsed), origin))
-	} else {
-		t.sys("◇", fmt.Sprintf("%s this session: %s · from %s", act, clip(rule, maxRuleLen), origin))
+	webAction(s, "rule", string(act)+" "+strings.Join(given, " "))
+	for _, g := range given {
+		g = strings.TrimSpace(g)
+		if g == config.TestsPreset {
+			t.sys("◇", fmt.Sprintf("%s this session: tests (%d rules) · from the tests preset", act, len(config.ExpandAllow([]string{g}))))
+		} else {
+			t.sys("◇", fmt.Sprintf("%s this session: %s · from %s", act, clip(g, maxRuleLen), origin))
+		}
 	}
 	t.publishMeta()
 	return wire.RuleResult{Added: len(parsed)}, nil
@@ -1360,6 +1486,13 @@ func (t *webTab) RemoveRule(ctx context.Context, req wire.RuleRequest) (wire.Rul
 		return wire.RuleResult{}, werr(http.StatusNotFound, "no_rule", "there is no such rule in force")
 	case found.Fixed:
 		return wire.RuleResult{}, werr(http.StatusConflict, "fixed", "built in or from a file: change it there")
+	}
+	if found.Effect != string(perm.Allow) {
+		// taking back a deny or ask rule lets through what it held: it raises privilege
+		scope := "rules.remove:" + t.id + ":" + d16(map[string]any{"effect": found.Effect, "rule": found.Rule})
+		if err := authorize(ctx, scope, []string{"no longer " + found.Effect + " " + found.Rule}); err != nil {
+			return wire.RuleResult{}, err
+		}
 	}
 	if !s.Perm.RemoveRule(rule) {
 		return wire.RuleResult{}, werr(http.StatusNotFound, "no_rule", "there is no such session rule")
@@ -1535,6 +1668,9 @@ func (t *webTab) meta() wire.MetaPatch {
 		m.Rules = ptr([]wire.Rule{})
 	}
 	m.Cwd = ptr(o.Cwd)
+	if s != nil {
+		setOptional(&m, "SessionDir", s.Dir) // /status's session directory (PARITY A27)
+	}
 	m.Verify = ptr(o.Verify)
 	m.Commit = ptr(o.Commit)
 	m.Mailman = ptr(o.Mailman != nil && *o.Mailman)

@@ -111,6 +111,8 @@ type Say struct {
 	Stream bool   `json:"stream"`
 	Rate   int    `json:"rate,omitempty"`
 	Mid    string `json:"mid,omitempty"`
+	// Open names the settings page the line offers to open ("providers" or "models"), for a notice about a missing key or model.
+	Open string `json:"open,omitempty"`
 }
 
 // Sys is a system line in a channel: a notice, a lease conflict, an acknowledgment of a person's action.
@@ -121,6 +123,8 @@ type Sys struct {
 	Text  string `json:"text"`
 	Ag    string `json:"ag,omitempty"`
 	Task  string `json:"task,omitempty"`
+	// Open names the settings page the line offers to open ("providers" or "models"), for a notice about a missing key or model.
+	Open string `json:"open,omitempty"`
 }
 
 // Tool is a finished tool call of an agent.

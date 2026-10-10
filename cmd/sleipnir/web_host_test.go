@@ -275,9 +275,9 @@ func (r *webRig) do(method, path string, body any, hdr ...string) (int, []byte) 
 }
 
 // json sends a request and decodes the answer into v, failing unless the status is want.
-func (r *webRig) json(method, path string, body any, want int, v any) {
+func (r *webRig) json(method, path string, body any, want int, v any, hdr ...string) {
 	r.t.Helper()
-	code, b := r.do(method, path, body)
+	code, b := r.do(method, path, body, hdr...)
 	if code != want {
 		r.t.Fatalf("%s %s = %d %s, want %d", method, path, code, b, want)
 	}
@@ -567,8 +567,8 @@ func TestWebHostAsksThePageAndTakesItsAnswer(t *testing.T) {
 	ask := r.waitEv(tab.ID, "ask", nil)
 	q, _ := ask["q"].(map[string]any)
 	qid, _ := q["id"].(string)
-	if !qidRE.MatchString(qid) || q["kind"] != "edit" || q["agent"] != "mgr" {
-		t.Fatalf("ask %v", ask)
+	if !qidRE.MatchString(qid) || q["kind"] != "edit" || q["agent"] != "mgr" || q["cwd"] != "." || q["path"] != "notes.txt" || !strings.Contains(fmt.Sprint(q["change"]), "+hello") {
+		t.Fatalf("ask %v: want the change the write asks to make, its path, and the directory relative to the project", ask)
 	}
 	var open struct{ Questions []wire.OpenQuestion }
 	r.json("GET", "/api/questions", nil, 200, &open)
@@ -778,7 +778,8 @@ func TestWebHostSessionSettings(t *testing.T) {
 	r.waitEv(tab.ID, "sys", map[string]any{"glyph": "◇"})
 	r.json("POST", path+"/budget", wire.BudgetRequest{USD: -1}, 400, nil)
 	var added wire.RuleResult
-	r.json("POST", path+"/rules", wire.RuleRequest{Effect: "allow", Rule: "tests"}, 200, &added)
+	scope := r.needsConfirm("POST", path+"/rules", wire.RuleRequest{Effect: "allow", Rule: "tests"})
+	r.json("POST", path+"/rules", wire.RuleRequest{Effect: "allow", Rule: "tests"}, 200, &added, web.ConfirmHeader, r.confirmFor(scope))
 	if added.Added < 10 {
 		t.Errorf("the tests preset added %d rules", added.Added)
 	}

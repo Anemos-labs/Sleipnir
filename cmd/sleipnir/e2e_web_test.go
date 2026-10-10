@@ -538,8 +538,8 @@ func TestWebFixtureShopAsksAndTakesTheAnswer(t *testing.T) {
 	}
 	ask := frames.waitEv(tab, "ask", nil)
 	q := ask["q"].(map[string]any)
-	if q["agent"] != "fe-1" || !strings.Contains(fmt.Sprint(q["cmd"]), "npm install --save-dev vitest") || q["kind"] != "command" {
-		t.Fatalf("the question: %v", q)
+	if q["agent"] != "fe-1" || fmt.Sprint(q["cmd"]) != "npm install --save-dev vitest" || q["kind"] != "command" || !strings.HasPrefix(fmt.Sprint(q["cwd"]), "worktree ") {
+		t.Fatalf("the question: %v (the command whole, and the worker's tree named rather than its absolute path)", q)
 	}
 	qid := fmt.Sprint(q["id"])
 	// An answer sent the moment the question is seen is too soon (the floor is 350 ms; the host's unit tests hold it to the

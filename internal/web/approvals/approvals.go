@@ -20,13 +20,14 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -44,10 +45,16 @@ const (
 	DefaultMaxPerTab = 64
 	// MaxNote bounds the instruction that goes with a "no", in characters.
 	MaxNote = 2000
-	// maxText bounds a field of a question shown to the page, in bytes.
-	maxText = 16 << 10
-	// maxChange bounds the change a question shows, in bytes.
-	maxChange = 256 << 10
+	// MaxCommand is the longest command a question shows, in bytes: the shell tool's own limit (internal/tools/shell refuses a longer
+	// command), so that any command that can run can be shown whole. A longer one is refused without being asked.
+	MaxCommand = 100_000
+	// MaxChange is the longest change (a unified diff) a question shows, in bytes: the length at which the diff of a pending change
+	// is cut (internal/checkpoint). A change that was cut is refused without being asked.
+	MaxChange = 256 << 10
+	// maxField bounds every other field of a question, in bytes; a longer one is refused without being asked.
+	maxField = 16 << 10
+	// truncatedLine is the line with which internal/checkpoint ends a diff that it cut.
+	truncatedLine = "[diff truncated]"
 	// maxRemembered is how many answered ids are kept to tell "answered" from "no such question".
 	maxRemembered = 4096
 )
@@ -81,8 +88,15 @@ type Config struct {
 	// SessionTime gives the session time in seconds of a moment of a tab (the t0 of an open question); nil gives 0.
 	SessionTime func(tab string, at time.Time) float64
 	// Change gives the change an edit of a tab asks to make (a path relative to the project and a unified diff), for the
-	// question's body; nil shows the path only.
-	Change func(tab string, r perm.Request) (path, change string)
+	// question's body; ok is false when it cannot be shown, and the edit is then refused without being asked. Nil shows the path
+	// only.
+	Change func(tab string, r perm.Request) (path, change string, ok bool)
+	// Where renders a directory of a tab as the question shows it (relative to the project, or naming an isolated worker's tree);
+	// nil shows it relative to the prompter's root.
+	Where func(tab, dir string) string
+	// OnRefused reports a request that was refused without being asked because the question could not be shown whole (a command
+	// longer than MaxCommand, a change that was cut, a value shaped like a secret): agent is as the harness names it, why says so.
+	OnRefused func(tab, agent, why string)
 	// MaxPerTab bounds the open questions of a tab (DefaultMaxPerTab when zero).
 	MaxPerTab int
 }
@@ -185,7 +199,15 @@ func (b *Bridge) Prompter(tab, root string, describe func(agent string) (task, s
 		q := &question{id: id, tab: tab, agent: r.Agent, tests: r.OffersTests,
 			project: r.Tool == perm.ToolProjectTrust || r.Tool == perm.ToolMCPServer,
 			ans:     make(chan perm.Decision, 1)}
-		q.q = b.shape(tab, id, root, task, scope, r)
+		var unshown string
+		q.q, unshown = b.shape(tab, id, root, task, scope, r)
+		if unshown != "" {
+			// A person must never approve less than what will run: a question that cannot be shown whole is not asked.
+			if b.cfg.OnRefused != nil {
+				b.cfg.OnRefused(tab, r.Agent, unshown)
+			}
+			return perm.Decision{Allow: false, Reason: "approval required, and the question could not be shown to the person whole, so nothing was approved: " + unshown}
+		}
 
 		b.mu.Lock()
 		if b.closed {
@@ -457,16 +479,6 @@ func kindOf(r perm.Request) string {
 	return "other"
 }
 
-// setField sets a string field of a question by name when the wire type has it (change and path of PARITY A1).
-func setField(q *wire.Question, name, value string) {
-	if value == "" {
-		return
-	}
-	if f := reflect.ValueOf(q).Elem().FieldByName(name); f.IsValid() && f.CanSet() && f.Kind() == reflect.String {
-		f.SetString(value)
-	}
-}
-
 // splitWhy separates the engine's reason from a summary: the engine appends it as a last " [reason]".
 func splitWhy(summary string) (text, why string) {
 	s := strings.TrimRight(summary, " ")
@@ -494,27 +506,62 @@ func relDir(root, dir string) string {
 	return filepath.ToSlash(rel) + "/"
 }
 
-// clean is untrusted text as the page may show it: terminal controls removed, secret-shaped values masked, bounded.
-func (b *Bridge) clean(s string, n int) string {
-	s = b.mask.String(tools.SanitizeForTerminal(s))
-	if len(s) > n {
-		s = strings.ToValidUTF8(s[:n], "") + "…"
+// visible renders text for the page without hiding any of it: terminal controls (but newline and tab), the Unicode format characters
+// that reorder or hide text (bidirectional controls, zero-width characters, the byte order mark, line and paragraph separators) and
+// bytes that are not UTF-8 are written as escapes (\x1b, \u202e, \xff), never removed, so that the page shows what will run.
+func visible(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && n <= 1:
+			fmt.Fprintf(&b, "\\x%02x", s[i])
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
+			fmt.Fprintf(&b, "\\x%02x", r)
+		case unicode.Is(unicode.Cf, r) || r == 0x2028 || r == 0x2029:
+			fmt.Fprintf(&b, "\\u%04x", r)
+		default:
+			b.WriteRune(r)
+		}
+		i += n
 	}
-	return s
+	return b.String()
 }
 
-// shape builds the question the page shows (VOCAB.md 9).
-func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) wire.Question {
+// showWhole renders a field of a question: the text whole (visible), or why it cannot be shown: longer than limit bytes, or holding
+// a value shaped like a secret, which the page does not show.
+func (b *Bridge) showWhole(name, raw string, limit int) (string, string) {
+	if len(raw) > limit {
+		return "", fmt.Sprintf("the %s is %d bytes and the page shows at most %d: split it, or write it to a file and run that", name, len(raw), limit)
+	}
+	v := visible(raw)
+	if b.mask.String(v) != v {
+		return "", "the " + name + " holds a value shaped like a secret, which the page does not show: pass it through an environment variable or a file"
+	}
+	return v, ""
+}
+
+// shape builds the question the page shows (VOCAB.md 9), every field whole; unshown says why it cannot be shown whole (the request
+// is then refused without being asked).
+func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wire.Question, unshown string) {
 	kind := kindOf(r)
 	summary, why := splitWhy(r.Summary)
 	if r.Why != "" {
 		why = r.Why
 	}
-	cmd := r.Command
-	if cmd == "" || (kind != "command") {
-		cmd = summary
+	cmd, cmdName, cmdLimit := r.Command, "command", MaxCommand
+	if cmd == "" || kind != "command" {
+		cmd, cmdName, cmdLimit = summary, "request", maxField
 	}
-	cwd := relDir(root, r.Cwd)
+	where := func(dir string) string {
+		if b.cfg.Where != nil {
+			return b.cfg.Where(tab, dir)
+		}
+		return relDir(root, dir)
+	}
+	cwd := where(r.Cwd)
 	scopeText := "cwd " + cwd
 	if scope != "" {
 		scopeText += " (inside " + agentID(r.Agent) + "'s lease " + scope + ")"
@@ -530,29 +577,63 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) wire.Q
 			what = "this request"
 		}
 	}
-	rule := ""
-	if len(r.RememberRules) > 0 {
-		rule = r.RememberRules[0]
-	} else if r.Remembers == "" && kind == "command" && r.Command != "" && !strings.ContainsAny(r.Command, "\n") {
+	rule := strings.Join(r.RememberRules, ", ") // a "don't ask again" adds every one of them
+	if rule == "" && r.Remembers == "" && kind == "command" && r.Command != "" && !strings.ContainsAny(r.Command, "\n") {
 		rule = "Bash(" + r.Command + ")"
 	}
-	q := wire.Question{
-		ID: id, Agent: agentID(r.Agent), Task: b.clean(task, 64), Cmd: b.clean(cmd, maxText), Cwd: b.clean(cwd, 1024),
-		Why: b.clean(why, 600), Scope: b.clean(scopeText, 1024), What: b.clean(what, 300), Rule: b.clean(rule, 600),
-		Kind: kind, Tool: b.clean(r.Tool, 64), OffersTests: r.OffersTests,
+	q = wire.Question{ID: id, Agent: agentID(r.Agent), Kind: kind, OffersTests: r.OffersTests}
+	// Every field is shown whole or the question is not asked; an exact rule is as long as the command it names.
+	fields := []struct {
+		dst       *string
+		name, raw string
+		limit     int
+	}{
+		{&q.Cmd, cmdName, cmd, cmdLimit}, {&q.Cwd, "directory", cwd, 4096}, {&q.What, "remembered request", what, maxField},
+		{&q.Rule, "rule", rule, MaxCommand + maxField}, {&q.Why, "reason", why, maxField}, {&q.Scope, "scope", scopeText, maxField},
+		{&q.Task, "task", task, 256}, {&q.Tool, "tool", r.Tool, 256},
+	}
+	for _, f := range fields {
+		v, why := b.showWhole(f.name, f.raw, f.limit)
+		if why != "" {
+			return q, why
+		}
+		*f.dst = v
 	}
 	if kind == "edit" {
-		path, change := "", ""
+		path, change, ok := "", "", true
 		if b.cfg.Change != nil {
-			path, change = b.cfg.Change(tab, r)
+			path, change, ok = b.cfg.Change(tab, r)
+		}
+		switch {
+		case !ok:
+			return q, "the change it would make could not be shown"
+		case len(change) > MaxChange || hasLine(change, truncatedLine):
+			return q, fmt.Sprintf("the change is larger than the page shows (%d bytes): make it in smaller edits", MaxChange)
 		}
 		if path == "" && len(r.Paths) > 0 {
 			paths := append([]string(nil), r.Paths...)
 			sort.Strings(paths)
-			path = strings.TrimSuffix(relDir(root, paths[0]), "/")
+			path = strings.TrimSuffix(where(paths[0]), "/")
 		}
-		setField(&q, "Path", b.clean(path, 4096))
-		setField(&q, "Change", b.clean(change, maxChange))
+		p, why := b.showWhole("path", path, 4096)
+		if why != "" {
+			return q, why
+		}
+		c, why := b.showWhole("change", change, MaxChange)
+		if why != "" {
+			return q, why
+		}
+		q.Path, q.Change = p, c
 	}
-	return q
+	return q, ""
+}
+
+// hasLine reports whether text has a line that is exactly line.
+func hasLine(text, line string) bool {
+	for _, l := range strings.Split(text, "\n") {
+		if l == line {
+			return true
+		}
+	}
+	return false
 }

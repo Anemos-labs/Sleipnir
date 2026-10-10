@@ -6,15 +6,19 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -32,6 +36,51 @@ type startSpec struct {
 	integration string   // how the previous generation's isolated run ended
 	restart     bool     // a restart: the new generation says so
 	first       bool     // the first tab of the server: if it cannot start, it is removed
+}
+
+// callLog keeps the tool call each agent of a tab started last (the sink's ToolStart): a question about an edit shows the change of
+// that call, which the permission request itself does not carry.
+type callLog struct {
+	mu   sync.Mutex
+	last map[string]core.Block
+}
+
+// wrap returns a sink that records the calls it is told about and passes everything on.
+func (c *callLog) wrap(s agent.Sink) agent.Sink { return recordingSink{Sink: s, log: c} }
+
+// input is the input of the call of tool that agent started last, if that is its last call.
+func (c *callLog) input(agentID, tool string) (json.RawMessage, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	b, ok := c.last[agentID]
+	if !ok || b.ToolName != tool {
+		return nil, false
+	}
+	return b.Input, true
+}
+
+// recordingSink is a sink that records each tool call before passing it on.
+type recordingSink struct {
+	agent.Sink
+	log *callLog
+}
+
+// ToolStart records the call and passes it on.
+func (s recordingSink) ToolStart(agentID string, call core.Block) {
+	s.log.mu.Lock()
+	if s.log.last == nil {
+		s.log.last = map[string]core.Block{}
+	}
+	s.log.last[agentID] = call
+	s.log.mu.Unlock()
+	s.Sink.ToolStart(agentID, call)
+}
+
+// Reset passes a retried request on to a sink that takes it back.
+func (s recordingSink) Reset(agentID string) {
+	if r, ok := s.Sink.(agent.Resetter); ok {
+		r.Reset(agentID)
+	}
 }
 
 // mergeOptions lays parsed chat flags over a tab's base options: what flags say comes from them, what they cannot say (an injected
@@ -147,7 +196,7 @@ func (t *webTab) startGen(spec startSpec) error {
 		if root == "" {
 			root = rootOf(o.Cwd)
 		}
-		o.Sink, o.NewSink, o.Prompter = tr.Sink(), tr.NewSink, t.prompter(root)
+		o.Sink, o.NewSink, o.Prompter = t.calls.wrap(tr.Sink()), func(id string) agent.Sink { return t.calls.wrap(tr.NewSink(id)) }, t.prompter(root)
 		if o.AskTimeout == 0 {
 			o.AskTimeout = t.h.askTimeout
 		}
@@ -165,7 +214,7 @@ func (t *webTab) startGen(spec startSpec) error {
 	if err != nil {
 		t.cond.Broadcast()
 		t.mu.Unlock()
-		tr.Emit(&wire.Sys{Ch: "mgr", Glyph: "⚠", Text: clip("the session did not start: "+err.Error(), 2000)})
+		tr.Emit(hintRow("the session did not start: "+err.Error(), err))
 		t.publishMeta()
 		t.h.Publish(wire.Frame{Type: "tab", Data: wire.TabFrame{Op: "update", Tab: t.Summary()}, Critical: true})
 		return err
@@ -295,12 +344,10 @@ func typedFlag(typed []string, name string) string {
 	return ""
 }
 
-// restart checks the arguments the restart would start with, then ends the current generation and starts the next in the
-// background.
+// restart checks and authorizes the arguments the restart would start with (the staged launch flags included), then ends the current
+// generation and starts the next in the background.
 func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh bool) error {
-	for _, f := range t.stagedFlags() {
-		typed = append(typed, f)
-	}
+	typed = append(t.stagedFlags(), typed...) // what the line says wins over what Run settings staged
 	t.mu.Lock()
 	s, closed, busy, prev := t.s, t.closed, t.restarting || t.starting, append([]string(nil), t.args...)
 	t.mu.Unlock()
@@ -320,13 +367,37 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	if err != nil {
 		return werr(http.StatusBadRequest, "bad_flags", clip(err.Error(), 400))
 	}
-	if _, err := parseChatFlags(args); err != nil {
+	// The session stays in its directory unless the line names another (restartArgs does not carry --cwd).
+	var base baseline
+	if s != nil {
+		base = baselineOfSession(s)
+		if typedFlag(typed, "--cwd") == "" {
+			args = append(args, "--cwd", s.Cwd())
+		}
+	} else {
+		pf, _ := parseChatFlags(launchArgs(prev, nil))
+		base = baselineOfFlags(pf, cleanDir(firstNonEmpty(pf.cwd, t.h.d.Cwd)))
+	}
+	f, err := parseChatFlags(args)
+	if err != nil {
 		return werr(http.StatusBadRequest, "bad_flags", clip(err.Error(), 400))
 	}
 	if ref := typedFlag(typed, "--model"); ref != "" && s != nil {
 		if _, err := s.CheckModel(ref); err != nil {
 			return werr(http.StatusUnprocessableEntity, "model", clip(err.Error(), 400))
 		}
+	}
+	// Authorized here, on the arguments the next generation starts with: another directory must be a project of the server, and what
+	// they raise above this session needs the request's confirmation (web_authorize.go).
+	dir := cleanDir(firstNonEmpty(f.cwd, base.cwd))
+	if dir != cleanDir(base.cwd) {
+		if _, ok := t.h.isProject(ctx, dir); !ok {
+			return werr(http.StatusForbidden, "not_a_project", "start a session in one of the listed projects")
+		}
+	}
+	p := raised(f, base, dir)
+	if err := authorize(ctx, restartScope(t.id, p), p.reasons()); err != nil {
+		return err
 	}
 	t.mu.Lock()
 	if t.restarting || t.starting || t.closed {

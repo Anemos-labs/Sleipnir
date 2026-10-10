@@ -319,10 +319,24 @@ projects list: `--cwd`, each `--project`, the directories of the open sessions, 
 Asking for `--trust-project` on a project whose files are not trusted shows them first and records the answer, as `sleipnir
 trust add` does.
 
+What raises a session's privilege is checked where it takes effect, on what will take effect: the final arguments of a new
+session or a restart (the flags staged in Run settings included), the mode, the rules, whichever control or slash line asks for it.
+A dangerous mode (`bypass`, `yolo`), trusting a project's own files, an allow rule the session does not have yet, a `--verify`
+command and taking back a deny or ask rule each need a confirmation: the request is answered `428 confirm_required` with the scope
+in `X-Confirm-Scope` and in `detail.scope` (with `detail.reasons`), and is repeated with an id for that scope (`POST /api/confirm`)
+in `X-Confirm`. An id is good once, for one minute, for exactly what it was asked for. Any signed-in client can obtain one: the
+confirmation stops forged, replayed and stale requests and is where the page shows the person what is raised; it is not a second
+credential. A new session is measured against the server's own flags, a restart against the session it replaces. A restart into a
+directory that is not in the projects list is refused, as a new session there is.
+
 Questions are answered in the page: yes; yes and do not ask again this session (for a project's tool server or its own files: for
 the project); yes and allow the builds and tests of most projects for the session, when the question is about one of them; no,
-with an optional instruction that the agent reads with the refusal. An answer earlier than 350 ms after the question appeared, or
-after the session's previous answer, is refused, whatever the page does. A question nobody answered within `--ask-timeout` is
+with an optional instruction that the agent reads with the refusal. A question shows everything that would run: the whole
+command (up to the shell tool's own limit of 100,000 bytes), the whole change of an edit, every rule a "don't ask again" would add,
+with terminal controls and characters that reorder text shown as escapes rather than removed. A request whose question cannot be
+shown whole (longer than that, a change longer than 256 KiB, a value shaped like a secret, which the page does not show) is refused
+without being asked, and the session says so. An answer earlier than 350 ms after the question appeared, or after the session's
+previous answer, is refused, whatever the page does. A question nobody answered within `--ask-timeout` is
 refused (`0`, the default, waits), and so is every open question once no page has had the interface open for `--ask-grace`
 (one minute by default; `0` never refuses for that). Questions about a project's own files and its tool servers are not asked
 while a session starts: the New session dialog decides them before, and a tool server that needs approval stays off until it is

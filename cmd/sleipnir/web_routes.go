@@ -34,29 +34,8 @@ func (h *webHostImpl) tabRoute(srv *web.Server, pattern string, opts web.RouteOp
 			web.Error(w, http.StatusNotFound, "no_session", "no such session")
 			return
 		}
-		fn(w, r, t)
+		fn(w, withConfirmGate(srv, w, r), t) // a privilege the action raises is confirmed where it takes effect (web_authorize.go)
 	}, opts)
-}
-
-// raisesPrivilege reports whether restart flags raise privilege: a dangerous mode, or trusting the project's files.
-func raisesPrivilege(flags []string) bool {
-	for i, f := range flags {
-		name, val, eq := strings.Cut(strings.TrimLeft(f, "-"), "=")
-		switch name {
-		case "trust-project":
-			if !eq || val == "true" || val == "1" {
-				return true
-			}
-		case "mode":
-			if !eq && i+1 < len(flags) {
-				val = flags[i+1]
-			}
-			if val == "bypass" || val == "yolo" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // routes registers the host's routes on srv.
@@ -134,9 +113,6 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	h.tabRoute(srv, "POST /api/sessions/{id}/restart", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body wire.RestartRequest
 		if !web.DecodeJSON(w, r, &body) {
-			return
-		}
-		if raisesPrivilege(body.Flags) && !srv.RequireConfirm(w, r, "restart:"+t.id+":"+d16(body.Flags)) {
 			return
 		}
 		if err := t.Restart(r.Context(), body); err != nil {
@@ -257,9 +233,6 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	h.tabRoute(srv, "POST /api/sessions/{id}/mode", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body wire.ModeRequest
 		if !web.DecodeJSON(w, r, &body) {
-			return
-		}
-		if (body.Mode == string(perm.ModeBypass) || body.Mode == string(perm.ModeYolo)) && !srv.RequireConfirm(w, r, "mode:"+body.Mode+":"+t.id) {
 			return
 		}
 		if err := t.SetMode(r.Context(), body); err != nil {
@@ -432,7 +405,8 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		}
 		args = append(args, "--resume", body.Resume)
 	}
-	if _, err := parseChatFlags(args); err != nil {
+	f, err := parseChatFlags(args)
+	if err != nil {
 		writeErr(w, werr(http.StatusBadRequest, "bad_flags", clip(err.Error(), 400)))
 		return
 	}
@@ -442,13 +416,13 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	note := ""
-	if body.TrustProject {
-		okay, n := h.trustStep(w, r, dir)
-		if !okay {
-			return
-		}
-		note = n
+	// What the session raises above the server's own command line needs the person's confirmation (web_authorize.go); trusting the
+	// project's files shows them first (409 trust_required with the challenge).
+	base := baselineOfFlags(chatFlags{mode: h.d.Mode, verify: h.d.Verify, allow: h.d.Allow}, cleanDir(h.d.Cwd))
+	base.trusted = h.d.TrustProject && dir == cleanDir(h.d.Cwd)
+	note, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, base, dir))
+	if !okay {
+		return
 	}
 	t, err := h.addTab(strings.TrimSpace(body.Name), dir, h.base)
 	if err != nil {

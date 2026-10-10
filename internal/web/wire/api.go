@@ -172,6 +172,7 @@ type MetaPatch struct {
 	Launch       *string            `json:"launch,omitempty"`
 	StartedAt    *int64             `json:"startedAt,omitempty"`
 	Headless     *bool              `json:"headless,omitempty"`
+	SessionDir   *string            `json:"sessionDir,omitempty"`
 	AskTimeout   *string            `json:"askTimeout,omitempty"`
 	ResumedFrom  *RecordedSession   `json:"resumedFrom,omitempty"`
 	Queued       *[]QueuedLine      `json:"queued,omitempty"`
