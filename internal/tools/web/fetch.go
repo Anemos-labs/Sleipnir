@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +30,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/weburl"
 )
 
 // Config configures the web tools. The zero value is safe: private networks are
@@ -280,14 +280,21 @@ func (t *fetchTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, erro
 	doc, cached := f.cache.get(key, env.Now())
 	if !cached {
 		var herr *httpStatusError
-		doc, err = f.fetch(ctx, u)
+		var rerr *redirectRefusedError
+		doc, err = f.fetch(ctx, u, hopCheck(env))
 		switch {
+		case errors.As(err, &rerr):
+			return fail(env, "web_fetch: %v", rerr), nil
 		case errors.As(err, &herr):
 			return fail(env, "web_fetch: %v", herr), nil
 		case err != nil:
 			return fail(env, "web_fetch: %s", f.describeError(err)), nil
 		}
-		f.cache.put(key, doc, env.Now())
+		if !doc.crossHost {
+			// a page reached through another host was fetched on the authority of that
+			// hop's answer: it is not served to a later caller without asking again
+			f.cache.put(key, doc, env.Now())
+		}
 	}
 
 	text, meta, err := f.render(env, doc, offset, limit)
@@ -300,57 +307,10 @@ func (t *fetchTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, erro
 	return res, nil
 }
 
-var schemeLike = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
-
-// parseFetchURL validates and normalises what the model passed. It is tolerant
-// of a missing scheme ("example.com/page") and strict about everything that
-// could change where the request goes.
-func parseFetchURL(raw string) (*url.URL, error) {
-	raw = strings.TrimSpace(raw)
-	if len(raw) > maxURLLen {
-		return nil, fmt.Errorf("the URL is %d characters long; the limit is %d", len(raw), maxURLLen)
-	}
-	if strings.ContainsAny(raw, "\r\n\t\x00") {
-		return nil, errors.New("the URL contains control characters")
-	}
-	switch {
-	case strings.HasPrefix(raw, "//"):
-		raw = "https:" + raw
-	case strings.Contains(raw, "://"):
-	case schemeLike.MatchString(raw) && !startsWithPort(raw[strings.IndexByte(raw, ':')+1:]):
-		scheme := raw[:strings.IndexByte(raw, ':')]
-		return nil, fmt.Errorf("unsupported URL scheme %q: only http and https are allowed", scheme)
-	default:
-		raw = "https://" + raw
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		msg := err.Error()
-		if len(msg) > 200 {
-			msg = msg[:200] + "…"
-		}
-		return nil, fmt.Errorf("invalid URL: %s", msg)
-	}
-	switch strings.ToLower(u.Scheme) {
-	case "http", "https":
-	default:
-		return nil, fmt.Errorf("unsupported URL scheme %q: only http and https are allowed", u.Scheme)
-	}
-	if u.Hostname() == "" {
-		return nil, errors.New("the URL has no host")
-	}
-	if u.User != nil {
-		return nil, errors.New("URLs with embedded credentials are not supported")
-	}
-	u.Fragment, u.RawFragment = "", ""
-	return u, nil
-}
-
-// startsWithPort tells "localhost:8080/x" (host and port) from "mailto:x@y"
-// (scheme and path).
-func startsWithPort(rest string) bool {
-	return rest != "" && rest[0] >= '0' && rest[0] <= '9'
-}
+// parseFetchURL validates and normalises what the model passed (weburl.Parse: the
+// permission engine reads the URL with the same function, so a rule about a host is
+// judged against exactly what is fetched).
+func parseFetchURL(raw string) (*url.URL, error) { return weburl.Parse(raw) }
 
 // cacheKey lowercases the URL scheme and host while retaining the request path and query;
 // fragments are excluded.
@@ -412,13 +372,73 @@ func isRedirect(code int) bool {
 	return false
 }
 
-// fetch performs the GET, following up to maxRedirects redirects by hand.
-func (f *fetcher) fetch(ctx context.Context, start *url.URL) (*document, error) {
-	ctx, cancel := context.WithTimeout(ctx, f.timeout)
-	defer cancel()
+// hopFunc decides whether a redirect to another host may be followed (nil: it may).
+type hopFunc func(ctx context.Context, from, to *url.URL) error
+
+// redirectRefusedError is a redirect to another host that the permission engine did
+// not allow; its message names the host so that the model can ask for it explicitly.
+type redirectRefusedError struct {
+	to     *url.URL
+	reason string
+}
+
+// Error says where the redirect pointed and why it was not followed.
+func (e *redirectRefusedError) Error() string {
+	msg := "the page redirected to another host, " + weburl.Host(e.to) + " (" + clip(e.to.String(), 300) + "), and fetching it was not allowed"
+	if e.reason != "" {
+		msg += ": " + clip(e.reason, 300)
+	}
+	return msg + ". To read it, fetch that URL itself, which asks for it on its own"
+}
+
+// hopCheck asks the permission engine about a redirect to another host exactly as it
+// would be asked about a first fetch of that URL (a domain rule that allows it lets it
+// through, a deny rule refuses it, otherwise it is a question, refused when nobody can
+// answer).
+func hopCheck(env *tools.Env) hopFunc {
+	return func(ctx context.Context, from, to *url.URL) error {
+		in, err := json.Marshal(map[string]string{"url": to.String()})
+		if err != nil {
+			return err
+		}
+		summary := to.String()
+		if len(summary) > 300 {
+			summary = summary[:300] + "…"
+		}
+		dec := env.Perm.Check(ctx, perm.Request{
+			Agent:   env.Agent,
+			Role:    env.Role,
+			Tool:    "web_fetch",
+			Input:   in,
+			Summary: "fetch " + summary + " (a redirect from " + weburl.Host(from) + ")",
+			Network: true,
+		})
+		if !dec.Allow {
+			return &redirectRefusedError{to: to, reason: dec.Reason}
+		}
+		return nil
+	}
+}
+
+// sameSite reports whether a redirect stays on a host the fetch may already reach: the
+// same host up to case, a trailing dot and a leading "www.".
+func sameSite(a, b *url.URL) bool {
+	norm := func(u *url.URL) string { return strings.TrimPrefix(weburl.Host(u), "www.") }
+	return norm(a) == norm(b)
+}
+
+// fetch performs the GET, following up to maxRedirects redirects by hand. A redirect to
+// another host is followed only when allowHop allows it; the time it takes to decide (a
+// person may be asked) does not count against the fetch's timeout.
+func (f *fetcher) fetch(ctx context.Context, start *url.URL, allowHop hopFunc) (*document, error) {
+	parent := ctx
+	ctx, cancel := context.WithTimeout(parent, f.timeout)
+	stop := cancel // the timeout in force: a hop that asked starts a new one
+	defer func() { stop() }()
 
 	cur := start
 	crossHost := false
+	approved := []*url.URL{start} // hosts this fetch may reach
 	for hop := 0; ; hop++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, cur.String(), nil)
 		if err != nil {
@@ -466,6 +486,21 @@ func (f *fetcher) fetch(ctx context.Context, start *url.URL) (*document, error) 
 			next.Fragment, next.RawFragment = "", ""
 			if !strings.EqualFold(cur.Hostname(), next.Hostname()) {
 				crossHost = true
+			}
+			known := false
+			for _, a := range approved {
+				known = known || sameSite(a, next)
+			}
+			if !known && allowHop != nil {
+				if err := allowHop(parent, cur, next); err != nil {
+					return nil, err
+				}
+				approved = append(approved, next)
+				// the question may have taken a while: the rest of the fetch gets its own time
+				stop()
+				var again context.CancelFunc
+				ctx, again = context.WithTimeout(parent, f.timeout)
+				stop = again
 			}
 			cur = next
 			continue

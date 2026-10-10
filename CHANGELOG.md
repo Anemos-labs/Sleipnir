@@ -14,6 +14,20 @@ they do not indicate whether a change has been released.
   tells which of the two supplies a key. `sleipnir login` and `logout` name the
   environment variable only when it is the key in use, and a refusal of the
   environment's key no longer deletes the stored key that was never tried.
+- Web permission rules judge exactly what `web_fetch` fetches, and a redirect
+  to another host asks first. A rule read only the first of the fields `url`,
+  `uri`, `href` and `endpoint` that parsed, while the tool reads `url` after
+  trimming it, so a request could match a rule for one host and fetch another;
+  rules now judge only the tool's own `url`, normalised as the tool does, and a
+  URL the tool would refuse matches no allow rule and every domain or URL deny
+  or ask rule. URL-pattern rules match the normalised URL, so `docs.example/page`
+  matches `https://docs.example/*`. `web_fetch` asks before it follows a
+  redirect to another host (adding `www.`, an upgrade to https and a different
+  path on the same host are not asked about) and refuses it in a run with nobody
+  to ask; pages reached through such a redirect are not cached. Only
+  byte-identical permission requests share one answer to an open question, and
+  the file and memory tools' requests now carry the call's input, which
+  PermissionRequest hooks also receive.
 - `sleipnir web` serves the sessions in a browser on loopback (see `docs/CLI.md`
   and `docs/SECURITY.md` section 5). Behind it, several commands share their
   code with the web routes and behave as before: `models`, `fav`, `allow`,

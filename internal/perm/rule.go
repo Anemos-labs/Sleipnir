@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/weburl"
 )
 
 // Action is what a rule does when it matches.
@@ -314,66 +315,87 @@ func (c *crule) matchCommand(s shellparse.Simple, restrict bool) bool {
 	return false
 }
 
-// urlHost extracts the host a web request is aimed at from its Input.
-func urlHost(r Request) string {
-	if len(r.Input) == 0 {
-		return ""
+// webTarget is the URL a web request goes to, read as the tool that makes it reads it.
+// For a fetch tool (web_fetch and the names rules use for it) that is the "url" field
+// alone, normalised by weburl.Parse, the tool's own parser: a rule about a host is then
+// judged against exactly what is fetched. takesURL is true for such a tool; u is nil when
+// its "url" is missing or is not one the tool would fetch. A search tool takes no URL.
+// For any other tool (an MCP tool that reaches the network) the URL-like fields of its
+// input are read, and only a URL they all agree on counts: two fields that name
+// different hosts name none.
+func webTarget(r Request) (u *url.URL, takesURL bool) {
+	var m map[string]json.RawMessage
+	if len(r.Input) == 0 || json.Unmarshal(r.Input, &m) != nil {
+		m = nil
 	}
-	var m map[string]any
-	if json.Unmarshal(r.Input, &m) != nil {
-		return ""
+	str := func(k string) (string, bool) {
+		var s string
+		raw, ok := m[k]
+		return s, ok && json.Unmarshal(raw, &s) == nil
 	}
+	switch canonTool(normTool(r.Tool)) {
+	case "webfetch":
+		s, ok := str("url")
+		if !ok {
+			return nil, true
+		}
+		parsed, err := weburl.Parse(s)
+		if err != nil {
+			return nil, true
+		}
+		return parsed, true
+	case "websearch":
+		return nil, false
+	}
+	var found *url.URL
 	for _, k := range []string{"url", "uri", "href", "endpoint"} {
-		s, _ := m[k].(string)
-		if s == "" {
+		s, ok := str(k)
+		if !ok || s == "" {
 			continue
 		}
-		if !strings.Contains(s, "://") {
-			s = "//" + s
+		parsed, err := weburl.Parse(s)
+		if err != nil {
+			return nil, false
 		}
-		if u, err := url.Parse(s); err == nil && u.Hostname() != "" {
-			return strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+		if found != nil && weburl.Canonical(found) != weburl.Canonical(parsed) {
+			return nil, false
 		}
+		found = parsed
+	}
+	return found, false
+}
+
+// urlHost is the host a web request goes to (webTarget), as rules name hosts; "" when
+// there is none.
+func urlHost(r Request) string {
+	if u, _ := webTarget(r); u != nil {
+		return weburl.Host(u)
 	}
 	return ""
 }
 
-// requestURL extracts the first nonempty URL-like string field from valid object arguments,
-// returning empty otherwise.
-func requestURL(r Request) string {
-	var m map[string]any
-	if len(r.Input) == 0 || json.Unmarshal(r.Input, &m) != nil {
-		return ""
-	}
-	for _, k := range []string{"url", "uri", "href", "endpoint"} {
-		if s, _ := m[k].(string); s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
-// matchWeb reports whether a classWeb rule covers the request.
-func (c *crule) matchWeb(r Request) bool {
+// matchWeb reports whether a classWeb rule covers the request. A request of a fetch tool
+// whose URL the tool would not fetch matches no allow rule (it is asked about) and every
+// deny and ask rule that is about hosts or URLs (restrict).
+func (c *crule) matchWeb(r Request, restrict bool) bool {
 	if c.class != classWeb || !c.nameMatches(r.Tool) {
 		return false
 	}
-	switch {
-	case c.blanket:
+	if c.blanket {
 		return true
-	case c.domain != "":
-		host := urlHost(r)
-		if host == "" {
-			return false
-		}
+	}
+	u, takesURL := webTarget(r)
+	if u == nil {
+		return restrict && takesURL
+	}
+	if c.domain != "" {
+		host := weburl.Host(u)
 		if strings.HasPrefix(c.domain, "*.") {
 			return strings.HasSuffix(host, c.domain[1:])
 		}
 		return host == c.domain || strings.HasSuffix(host, "."+c.domain)
-	default:
-		u := requestURL(r)
-		return u != "" && wildMatch(c.urlPat, u)
 	}
+	return wildMatch(c.urlPat, weburl.Canonical(u))
 }
 
 // matchOther reports whether a classOther rule covers the request by name.

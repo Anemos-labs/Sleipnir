@@ -222,14 +222,14 @@ func TestDomainAndURLRules(t *testing.T) {
 		{"https://example.com/*", "https://example.com.evil/a", false},
 		{"", "https://anything", true},
 	} {
-		if got := mk(tc.pat).matchWeb(req(tc.url)); got != tc.want {
+		if got := mk(tc.pat).matchWeb(req(tc.url), false); got != tc.want {
 			t.Errorf("%q vs %q = %v, want %v", tc.pat, tc.url, got, tc.want)
 		}
 	}
-	if mk("domain:example.com").matchWeb(Request{Tool: "WebFetch"}) {
+	if mk("domain:example.com").matchWeb(Request{Tool: "WebFetch"}, false) {
 		t.Error("a request with no URL must not match a domain rule")
 	}
-	if mk("domain:example.com").matchWeb(Request{Tool: "Bash", Input: []byte(`{"url":"https://example.com"}`)}) {
+	if mk("domain:example.com").matchWeb(Request{Tool: "Bash", Input: []byte(`{"url":"https://example.com"}`)}, false) {
 		t.Error("a web rule must not match another tool")
 	}
 }

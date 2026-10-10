@@ -449,7 +449,7 @@ func (ev *evaluator) restrictMatch(rules []*crule, u *unit, all []access) *crule
 				}
 			}
 		case classWeb:
-			if u.tool && r.matchWeb(*u.req) {
+			if u.tool && r.matchWeb(*u.req, true) {
 				return r
 			}
 		default:
@@ -533,7 +533,7 @@ func (ev *evaluator) overridesRisk(u *unit) bool {
 func (ev *evaluator) toolAllowRule(r Request) *crule {
 	var blanket *crule
 	for _, cr := range ev.v.allow {
-		if !(cr.class == classWeb && cr.matchWeb(r) || cr.class == classOther && cr.matchOther(r)) {
+		if !(cr.class == classWeb && cr.matchWeb(r, false) || cr.class == classOther && cr.matchOther(r)) {
 			continue
 		}
 		if !cr.blanket {
