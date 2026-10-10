@@ -28,7 +28,7 @@
     const sh = SL.shell = SL.makeScope($('#app'), 'shell');
     ui.shell.mount(sh); ui.navMount(sh); SL.chat.mount(sh); ui.approvals.mount(sh); SL.link.bind(sh); SL.keys.mount(sh);
     sh.on('activated', S => { SL.views.show(S.ui.view || 'cockpit'); });
-    sh.on('ask-arrived', ({ S, q }) => { const act = SL.sessions.active; if (S !== act || SL.time.holdWanted()) { ui.toast((S === act ? 'a question is waiting behind the hold: ' : S.name + ': ') + q.agent + ' wants to run ' + q.cmd, 'warm'); const an = $('#announcer'); if (an) an.textContent = S.name + ': a question is waiting for you'; } paintTitle(); });
+    sh.on('ask-arrived', ({ S, q }) => { const act = SL.sessions.active; if (S !== act || SL.time.holdWanted()) { ui.toast((S === act ? 'a question is waiting behind the hold: ' : S.name + ': ') + q.agent + ' wants to run ' + SL.u.clip1(q.cmd, 80), 'warm'); const an = $('#announcer'); if (an) an.textContent = S.name + ': a question is waiting for you'; } paintTitle(); });
     sh.on('goal-met', S => { if (S !== SL.sessions.active) ui.toast(S.name + ': goal met', 'ok'); });
     sh.on('session-done', S => {
       const m = S.wm, f = m.final, start = (m.turnStart || 0); if (document.hidden && f && f.t - start >= 30) { TITLE.done = S.name; paintTitle(); }

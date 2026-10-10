@@ -79,17 +79,25 @@ open the address again; nothing is shown from the session until then.
   updating, saving a key) take a second step: the page asks for a single-use confirmation that is valid for one minute and
   for that action only. The server decides what a request raises from the settings that would take effect (a dangerous mode,
   allow rules the session does not have, a verify command, a project's own files, the removal of a deny or ask rule); the page
-  lists those reasons and asks before it sends the request again. Outside the New session dialog, a dangerous mode is
-  confirmed by typing its name; in that dialog, choosing the mode is the confirmation.
+  lists those reasons, with the request (method and path) and the scope it confirms, and asks before it sends the request
+  again. Outside the New session dialog, a dangerous mode is confirmed by typing its name; in that dialog, choosing the mode is
+  the confirmation. A confirmation covers what was shown: when an approved tool server's entry changed after its card was read,
+  nothing is confirmed, and the card shows the entry as it is now for a new approval.
+- Names in a session log (agents, tasks, questions) are shown only when they are plain words (letters, digits, `.`, `_`, `:`
+  and `-`, at most 64); any other name is shown as `invalid-id`.
 - The page sends no request to any other origin; the server's Content-Security-Policy would block it.
 
 ### Sessions and views
 
 One page shows every session the server hosts, one tab each in the session strip; a tab keeps running, and can ask questions,
 while another is in front. `+ New` starts a session with every chat flag, seeded from the flags `sleipnir web` was started
-with; its directory is one of the server's projects, never a free path, and a project whose own instructions are not trusted
-yet is asked about first. `↺ Resume` continues a recorded session; a recorded session can also be opened read-only, to replay
-it, or followed while another process writes it. With no session hosted, the page opens the New session dialog.
+with; its directory is one of the server's projects, never a free path, and the directory list names a project's trust when it
+is not trusted (`not trusted`, `changed since trusted`, `partial` when not every file could be scanned, `unreadable`). When the
+server answers that the project's own files need trust, for a new session and for a resume alike, the trust dialog lists every
+file it named, with their count and size, and each path that could not be read; its yes stays disabled until that list is on
+screen and repeats the request with the confirmation of exactly that list. A project that could not be read whole is trusted for
+that session only. `↺ Resume` continues a recorded session; a recorded session can also be opened read-only, to replay it, or
+followed while another process writes it. With no session hosted, the page opens the New session dialog.
 
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the first eight workers, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
@@ -113,11 +121,14 @@ and the tab's badge appear at once, with a toast when the question is behind the
 
 A question names the agent, its task, what it wants to do (run a command, edit or write a file, apply a patch, fetch a page,
 search the web), the working directory, the scope and why it asks; a change to a file is shown as a diff, which opens whole in a
-larger view. The answers are 1 yes, 2 yes and do not ask again for that kind of request in this session, and 3 no with an
-instruction for the agent; a build or test command also offers allowing builds and tests for the session, which takes key 3 and
-moves no to 4. Esc is no. The buttons and the keys work only after the keyboard has been quiet for 0.8 seconds since the
-question appeared or since the last key; text typed meanwhile goes to the message box and never answers. The server also refuses
-an answer given within 350 ms. The `Needs you` inbox answers questions of every session under the same rule.
+larger view. The command, the reason and the diff are shown whole, each in a box of its own scroll in which every line wraps;
+a long one is headed by its number of lines and bytes and a `Show the end` button. The answers are 1 yes, 2 yes and do not ask
+again for that kind of request in this session (the exact rules it adds are listed under it), and 3 no with an instruction for
+the agent; a build or test command also offers allowing builds and tests for the session, which takes key 3 and moves no to 4.
+Esc is no. The buttons and the keys work only after the keyboard has been quiet for 0.8 seconds since the question appeared on
+screen or since the last key; text typed meanwhile goes to the message box and never answers. A question that arrives while
+the rail is collapsed opens it; an answer key pressed while the question is not on screen opens it and answers nothing. The
+server also refuses an answer given within 350 ms. The `Needs you` inbox answers questions of every session under the same rule.
 
 ### Keys
 

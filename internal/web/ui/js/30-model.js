@@ -22,6 +22,38 @@
   const priceOf = id => id === 'mgr' ? D.prices.mgr : D.prices.worker;
   const MAIL_CAP = 400, HANDOVER_CAP = 100;
 
+  /* ---------------- what comes from the server, made plain once (it is data: a log can name anything) ---------------- */
+  const { safeId, okId } = SL.u, BAD = SL.u.BAD_ID;
+  const ID_FIELDS = ['id', 'cid', 'qid', 'ag', 'from', 'to', 'owner', 'head', 'task', 'ch', 'mid'], ID_LISTS = ['deps', 'left', 'agents'];
+  const NUM_FIELDS = ['rd', 'un', 'out', 'wr', 'ratio', 'p', 'o', 'rpm', 'r429', 'retries', 'inflight', 'queued', 'conflicts', 'bounced', 'read', 'expected', 'pct', 'ms', 'add', 'del', 'tok', 'ttl', 'turns', 'max', 'attempts', 'rate', 'reqSince', 'n'];
+  const STATES = new Set(['think', 'tool', 'edit', 'wait', 'ask', 'idle', 'done', 'stuck']);
+  const num = x => typeof x === 'number' && isFinite(x) ? x : (isFinite(+x) ? +x : 0);
+  /** An id field: a finite number stays (a count such as a compaction's from and to shares the name), a string is made plain, any other value is BAD_ID. */
+  const plainId = x => typeof x === 'number' ? (isFinite(x) ? x : BAD) : typeof x === 'string' ? safeId(x) : BAD;
+  /**
+   * Make one event from the server safe to keep (in place; running it again changes nothing). Every id (agent, task, question,
+   * message, checkpoint) is a plain id or SL.u.BAD_ID, so no id reaches markup, an attribute, a CSS variable or an object key as anything
+   * but a plain word; t, seq and every count are numbers; an agent's state is one the page draws (else idle); a page-local row (`local`, which
+   * carries markup the page made itself) is never accepted from the server: it becomes a plain system row. Returns ev.
+   */
+  function clean(ev) {
+    if (!ev || typeof ev !== 'object') return ev;
+    ev.t = num(ev.t); if (ev.seq != null) ev.seq = num(ev.seq);
+    NUM_FIELDS.forEach(k => { if (ev[k] != null && typeof ev[k] !== 'number') ev[k] = num(ev[k]); });
+    ID_FIELDS.forEach(k => { if (ev[k] != null && ev[k] !== '') ev[k] = plainId(ev[k]); });
+    ID_LISTS.forEach(k => { if (Array.isArray(ev[k])) ev[k] = ev[k].map(plainId); });
+    if (Array.isArray(ev.lines)) ev.lines = ev.lines.map(l => Array.isArray(l) ? [safeId(l[0]), l[1]] : ['', String(l)]);
+    if (ev.q && typeof ev.q === 'object') { const q = ev.q; ['id', 'agent', 'task'].forEach(k => { if (q[k] != null && q[k] !== '') q[k] = safeId(q[k]); }); }
+    if (ev.k === 'state' && !STATES.has(ev.s)) ev.s = 'idle';
+    if (ev.k === 'task' && ev.s != null && !okId(ev.s)) delete ev.s;
+    if (ev.k === 'local' || ev.who === 'local' || ev.html != null) { if (ev.k === 'local') ev.k = 'sys'; if (ev.who === 'local') ev.who = 'sys'; ev.text = String(ev.text != null ? ev.text : ev.title || ''); delete ev.html; }
+    return ev;
+  }
+  /** One roster entry from the server, made plain: its id, role and code are plain ids (the code names a colour variable). */
+  const cleanAgent = r => Object.assign({}, r, { id: safeId(String(r && r.id != null ? r.id : '')) || BAD, role: safeId(r && r.role) || 'agent', code: r && /^[A-Za-z0-9_-]{1,32}$/.test(String(r.code || '')) ? r.code : 'dim' });
+  /** A roster from the server, made plain, without a second entry for an id it already has. */
+  function cleanRoster(list) { const seen = {}; return (Array.isArray(list) ? list : []).filter(r => r && typeof r === 'object').map(cleanAgent).filter(r => seen[r.id] ? false : (seen[r.id] = true)); }
+
   /** Build an empty model for a session roster: [{id, role, code, nth, k, leg, scope, ro, spawn, model}]. The plan is sized by the
    *  first `plan` event (its steps); the counters of the additive vocabulary start at zero. */
   function newModel(S, opts) {
@@ -35,6 +67,7 @@
   /** Add one roster entry to a model (the per-agent part of newModel): used when a team grows while the page watches. A known id is
    *  left as it is. */
   function addAgent(m, r) {
+    if (!okId(r.id) || !okId(r.role)) r = cleanAgent(r);
     if (m.ag[r.id]) { Object.assign(m.ag[r.id], { role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model }); return m.ag[r.id]; }
     m.ag[r.id] = { id: r.id, role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model, state: 'idle', doing: r.id === 'mgr' ? 'waits for the first message' : 'not started',
       task: null, rd: 0, un: 0, out: 0, wr: 0, cost: null, saved: null, layers: null, reqSince: null, calls: 0, ratios: [], nreq: 0, lastReq: -999, segs: [], cur: null, spawned: r.id === 'mgr', spawnT: r.spawn, steered: null, stateT: 0 };
@@ -110,8 +143,8 @@
         break;
       }
       case 'plan': {
-        if (Array.isArray(ev.steps)) { m.planText = ev.steps.slice(); m.plan = ev.steps.map((_, i) => PLAN_ST[(ev.st || [])[i]] || 'pending'); }
-        else if (ev.n != null) m.plan[ev.n] = ev.s;
+        if (Array.isArray(ev.steps)) { m.planText = ev.steps.map(String); m.plan = ev.steps.map((_, i) => SL.u.own(PLAN_ST, (ev.st || [])[i]) || 'pending'); }
+        else if (Number.isInteger(ev.n) && ev.n >= 0 && ev.n < 1000) m.plan[ev.n] = SL.u.own(PLAN_ST, ev.s) || 'pending';
         break;
       }
       case 'verdict': m.verdict = ev.text; if (ev.kind !== undefined) m.verdictKind = ev.kind; m.left = Array.isArray(ev.left) ? ev.left.slice() : m.left; break;
@@ -147,7 +180,7 @@
       case 'ask': {
         const q = Object.assign({}, ev.q, { t0: ev.t, answered: null, choice: null }); m.qs.push(q); m.q = m.qs.find(x => !x.answered) || null;
         m.marks.push({ t: ev.t, id: q.agent, g: 'ask' });
-        push(m, ctx, 'mgr', { k: 'feed', ag: q.agent, g: 'ask', text: 'asks: ' + q.cmd, task: q.task, t: ev.t }, ev);
+        push(m, ctx, 'mgr', { k: 'feed', ag: q.agent, g: 'ask', text: 'asks: ' + SL.u.clip1(q.cmd, 200), task: q.task, t: ev.t }, ev);   /* the question itself shows the command whole */
         push(m, ctx, chOf(q.agent), { k: 'ask', ag: q.agent, q, t: ev.t }, ev);
         if (d) d.asks++;
         break;
@@ -156,7 +189,7 @@
         const q = m.qs.find(x => x.id === ev.qid);
         if (q) { q.answered = ev.choice; q.tAns = ev.t; q.note = ev.note; q.by = ev.by; }
         m.q = m.qs.find(x => !x.answered) || null;
-        if (q) push(m, ctx, 'mgr', { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + q.cmd, ag: q.agent, t: ev.t }, ev);
+        if (q) push(m, ctx, 'mgr', { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }, ev);
         break;
       }
       case 'queue': m.qHead = ev.head ? { task: ev.head, cmd: ev.cmd, step: ev.step, t0: (m.qHead && m.qHead.task === ev.head) ? m.qHead.t0 : ev.t, ms: ev.ms } : null; if (ev.conflicts != null) m.conflicts = ev.conflicts; if (ev.bounced != null) m.bounced = ev.bounced; break;
@@ -189,7 +222,7 @@
         push(m, ctx, chOf(ev.id), e, ev); if (!ev.code && ev.id !== 'mgr') push(m, ctx, 'mgr', Object.assign({}, e), ev);
         break;
       }
-      case 'diff': m.diff[ev.file] = ev; break;
+      case 'diff': if (typeof ev.file === 'string' && !(ev.file in Object.prototype)) m.diff[ev.file] = ev; break;
       case 'goal': { const g = { state: ev.s }; ['objective', 'turns', 'max', 'paused', 'reason'].forEach(k => { if (ev[k] !== undefined) g[k] = ev[k]; }); if (ev.s === 'active') g.paused = ev.paused || ''; m.goal = Object.assign({}, m.goal, g); break; }
       case 'final': m.final = { t: ev.t, steps: m.steps }; m.turn = false; push(m, ctx, 'mgr', { k: 'final', t: ev.t }, ev); break;
       case 'steer': {
@@ -222,7 +255,7 @@
       case 'stall': { const k = (ev.id || '') + '|' + ev.kind + '|' + (ev.task || ''); if (ev.s === 'clear') delete m.stalls[k]; else m.stalls[k] = ev; break; }
       case 'handover': m.handovers.push(ev); if (m.handovers.length > HANDOVER_CAP) m.handovers.shift(); break;
       case 'layers': if (A && Array.isArray(ev.toks)) A.layers = ev.toks.slice(0, 6); break;
-      case 'alert': { const k = ev.key || ev.kind; if (ev.s === 'clear') delete m.alerts[k]; else m.alerts[k] = { kind: ev.kind, text: ev.text, t: ev.t, at: ev.at }; break; }
+      case 'alert': { const k = String(ev.key || ev.kind || ''); if (k in Object.prototype) break; if (ev.s === 'clear') delete m.alerts[k]; else m.alerts[k] = { kind: ev.kind, text: ev.text, t: ev.t, at: ev.at }; break; }
       case 'mailstat': m.mailstat = ev; break;
       case 'digest': break;
       default: break;
@@ -264,6 +297,6 @@
 
   /** Plan step states of the server (internal/plan) as the plan box draws them. */
   const PLAN_ST = { pending: 'pending', doing: 'act', act: 'act', done: 'done', verify: 'verify', edit: 'edit', ask: 'ask', queued: 'queued' };
-  SL.model = { newModel, addAgent, reduce, reduceRange, isVisible, VISIBLE, CHAN_CAP };
+  SL.model = { newModel, addAgent, reduce, reduceRange, isVisible, VISIBLE, CHAN_CAP, clean, cleanRoster };
   SL.calc = calc;
 })(SL);

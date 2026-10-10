@@ -116,21 +116,15 @@
   });
   act('compact', (focus, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/compact', focus ? { focus } : {})); });
 
-  /* the workspace: reviewed marks, hunk reverts and restores are kept by the server (WsIndex); the Workspace cache refreshes after each */
+  /* the workspace: reviewed marks, hunk reverts and restores are kept by the server (WsIndex); the Workspace cache refreshes after each.
+     Undoing a hunk revert and undoing a restore are here; the reverts, restores and applies themselves are SL.ws.ops (scopes the server issues). */
   const WS = S => S.ws || (S.ws = { reviewed: {}, reverted: {}, restore: null });
   const wsRefresh = S => { if (SL.ws && typeof SL.ws.refresh === 'function') SL.ws.refresh(S); SL.bus.emit('ws-changed', S); };
   act('markReviewed', (path, cpid, on, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); const w = WS(S); if (on) w.reviewed[path] = cpid; else delete w.reviewed[path]; S.touch();   /* optimistic: the mark is the person's own */
     return send(api().put(tab(S) + '/ws/reviewed', { path, cp: cpid || '', on: !!on }), () => wsRefresh(S), () => { if (on) delete w.reviewed[path]; else w.reviewed[path] = cpid; S.touch(); return false; });
   });
-  /** opt: {from, to} of the diff the hunk was drawn from (the Workspace's current range); default base..live. */
-  act('revertHunk', (path, key, sid, opt) => {
-    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S);
-    const rg = Object.assign({ from: 'base', to: 'live' }, (SL.ws && typeof SL.ws.rangeOf === 'function' && SL.ws.rangeOf(S, path)) || {}, opt || {});
-    const body = { path, key, from: rg.from, to: rg.to };
-    return { ok: true, done: api().d16(body).then(d => api().post(tab(S) + '/ws/revert', body, { confirm: 'revert:' + S.id + ':' + d })).then(r => { if (r.ok) { WS(S).reverted[path + '#' + key] = r.data && r.data.id ? r.data.id : S.wt; wsRefresh(S); } else { fail(r); if (r.code === 'changed') wsRefresh(S); } return r; }) };
-  });
-  /** The id of a hunk revert the server recorded (the Workspace cache's reverted list), or what revertHunk kept. */
+  /** The id of a hunk revert the server recorded (the Workspace cache's reverted list), or one kept in the session's marks. */
   function revertId(S, path, key) {
     if (SL.ws && typeof SL.ws.revertId === 'function') { const id = SL.ws.revertId(S, path, key); if (id) return id; }
     const v = WS(S).reverted[path + '#' + key]; return typeof v === 'string' ? v : null;
@@ -139,11 +133,8 @@
     const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); const rid = (opt && opt.rid) || revertId(S, path, key); if (!rid) return { ok: false, why: 'nothing to undo' };
     return send(api().post(tab(S) + '/ws/revert/' + api().seg(rid) + '/undo'), () => { delete WS(S).reverted[path + '#' + key]; wsRefresh(S); }, r => { if (r.code === 'changed') wsRefresh(S); return false; });
   });
-  /** /rewind ID: a safety checkpoint first, then every file touched in ID or later is put back as it was when ID began. */
-  act('rewind', (id, sid) => {
-    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); const c = S.wm.ckpts.find(x => x.id === id); if (!c || c.skipped || c.safety) return { ok: false, why: 'nothing to put back' };
-    return send(api().post(tab(S) + '/ws/restore', { id, dryRun: false }, { confirm: 'restore:' + S.id + ':' + id }), plan => { plan = plan || {}; WS(S).restore = { to: id, files: (plan.files || []).map(f => f.path || f), at: S.wt, safety: plan.safety || '' }; S.touch(); wsRefresh(S); });
-  });
+  /* a hunk revert, a restore (/rewind ID) and applying verified work are the Workspace's (SL.ws.ops, 96b-ws-data.js): each previews, and
+     confirms the scope the server gave that preview; the two undos below need no preview */
   act('undoRewind', sid => {
     const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); if (!WS(S).restore && !(SL.ws && SL.ws.hasRestore && SL.ws.hasRestore(S))) return { ok: false, why: 'no restore to undo' };
     return send(api().post(tab(S) + '/ws/restore/undo', undefined, { confirm: 'restore.undo:' + S.id }), () => { WS(S).restore = null; S.touch(); wsRefresh(S); });
@@ -172,17 +163,33 @@
   SL.bus.on('sessions-changed', () => { if (want.id && SL.sessions.get(want.id)) { const id = want.id; want.id = null; ACT.switchSession(id); } });
   const slug = s => String(s || 'session').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'session';
   /**
-   * Start a session from the New session dialog. spec: NewSessionRequest fields. opt: {confirmId (a trust challenge's id), onTrust(challenge)
-   * (the server wants the trust step: the dialog asks and calls again with confirmId)}. Returns {ok, name, done} at once.
+   * The trust step of a request that starts a session (a new one or a resumed one). The page never decides that a project needs trust:
+   * the request goes first, and the server's 409 trust_required carries the challenge (every file it would trust, what could not be read,
+   * and a confirmation id). SL.ui.trustStep shows that challenge whole and resolves the id when the person says yes, or null; a yes
+   * repeats the request with the id. A challenge that comes again (the files changed meanwhile) is shown again, at most three times.
+   * post(confirmId) makes the request; also: what else the yes confirms, as the page knows it. Resolves the final API result
+   * (declined: true when the person said no).
+   */
+  function trusting(post, firstId, also) {
+    const go = (id, n) => post(id).then(r => {
+      if (r.ok || r.code !== 'trust_required' || n >= 3 || !SL.ui || typeof SL.ui.trustStep !== 'function') return r;
+      return SL.ui.trustStep(r.detail || {}, { message: r.message, also }).then(cid => cid ? go(cid, n + 1) : Object.assign(r, { declined: true }));
+    });
+    return go(firstId || '', 0);
+  }
+  /** What a new session raises besides trust, in the words of the trust step (one confirmation covers the session's settings). */
+  const raisesOf = spec => [].concat(spec.mode === 'bypass' || spec.mode === 'yolo' ? ['permission mode ' + spec.mode] : [], (spec.rules || []).length ? ['allow ' + spec.rules.join(', ')] : [], spec.verify ? ['run the verify command ' + spec.verify] : []);
+  /**
+   * Start a session from the New session dialog. spec: NewSessionRequest fields. opt: {confirmId}. The trust step, when the server asks
+   * for it, runs here (trusting). Returns {ok, name, done} at once.
    */
   act('newSession', (spec, opt) => {
     opt = opt || {}; const body = Object.assign({}, spec); delete body.launch; delete body.resumedFrom;
     if (!body.clientId) body.clientId = api().cid();
     const name = spec.name || slug((spec.cwd || '').split('/').filter(Boolean).pop());
-    const p = api().post('/api/sessions', body, opt.confirmId ? { confirmId: opt.confirmId } : undefined).then(r => {
+    const p = trusting(id => api().post('/api/sessions', body, id ? { confirmId: id } : undefined), opt.confirmId, raisesOf(spec)).then(r => {
       if (r.ok) { activateWhenReady(r.data && r.data.tab && r.data.tab.id); return r; }
-      if (r.code === 'trust_required' && opt.onTrust) { opt.onTrust(r.detail || {}, body); return r; }
-      fail(r); return r;
+      if (!r.declined) fail(r); return r;
     });
     return { ok: true, name, done: p };
   });
@@ -198,7 +205,8 @@
     const rec = recId === 'latest' ? SL.sessions.recorded.find(r => r.resumable) : SL.sessions.recorded.find(r => r.id === recId);
     if (!rec) return { ok: false, why: 'no recorded session to resume' }; if (!rec.resumable) return { ok: false, why: rec.id + ' cannot be resumed (older than the checkpoint window)' };
     const body = Object.assign({ from: recId === 'latest' ? 'latest' : rec.id }, opt && opt.name ? { name: opt.name } : {});
-    return send(api().post('/api/sessions/resume', body), d => activateWhenReady(d && d.tab && d.tab.id), r => { if (r.code === 'hosted' && r.detail && r.detail.tab) { ACT.switchSession(r.detail.tab.id || r.detail.tab); toast(r.message, 'warm'); return true; } return false; });
+    /* a resume asks for trust as a new session does (the same challenge): the same trust step */
+    return send(trusting(id => api().post('/api/sessions/resume', body, id ? { confirmId: id } : undefined)), d => activateWhenReady(d && d.tab && d.tab.id), r => { if (r.declined) return true; if (r.code === 'hosted' && r.detail && r.detail.tab) { ACT.switchSession(r.detail.tab.id || r.detail.tab); toast(r.message, 'warm'); return true; } return false; });
   });
   /** /swarm N, Run settings Apply, "run it again": the team starts again and the manager's conversation carries over (D-06). */
   act('restartTeam', (patch, sid) => {
@@ -246,7 +254,13 @@
     /* the server names the exact scope with the view (confirmScope); else the contract's mcp.approve:<d16 of {root, name, fingerprint}> */
     const raw = (s && s.raw) || {}, mv = SL.D.extra.mcp || {}, root = mv.root || (SL.D.extra.trust && SL.D.extra.trust.project && SL.D.extra.trust.project.dir) || S.meta.cwd;
     const scope = raw.confirmScope ? Promise.resolve(raw.confirmScope) : api().d16({ root, name, fingerprint: raw.fingerprint || '' }).then(d => 'mcp.approve:' + d);
-    return { ok: true, done: scope.then(sc => api().post(path, undefined, { confirm: sc })).then(r => { if (r.ok) out(r.data); else fail(r); return r; }) };
+    /* the confirmation covers exactly the entry the card showed: when the server's entry is another one now (.mcp.json was edited), nothing
+       is confirmed; the card is read again and shows the entry as it is, for a fresh approve */
+    return { ok: true, done: scope.then(sc => api().post(path, undefined, { confirm: sc, exact: true })).then(r => {
+      if (r.ok) out(r.data);
+      else if (r.code === 'scope_changed') { r.message = name + ' changed since its card was shown: look at it again, then approve it again'; G.mcpOut = G.mcpOut || {}; G.mcpOut[name] = { t: r.message, cls: 'warm' }; if (SL.data) SL.data.load('mcp', { force: true }); G.ver++; SL.bus.emit('mcp-changed'); fail(r); }
+      else fail(r);
+      return r; }) };
   });
 
   /** A recorded session opened read-only in its own tab (D-10), or followed while another process writes it (PARITY A7). */

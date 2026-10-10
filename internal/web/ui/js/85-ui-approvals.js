@@ -6,11 +6,43 @@
  * The same rule governs the inbox, which can answer a question of a background session. Several questions are asked one at a time.
  * The server keeps its own floor (350 ms, `409 too_soon`): the meter re-arms when it refuses. The header says what the question is
  * about (D-09); a question that offers it gets the TUI's fourth answer, builds and tests for the session (PARITY A2: on screen 3,
- * on the wire choice 4; No is 4 and Esc); an edit, a write or a patch shows the change it asks to make (PARITY A1). */
+ * on the wire choice 4; No is 4 and Esc); an edit, a write or a patch shows the change it asks to make (PARITY A1).
+ * What a question shows is shown whole and stays in reach: the command, the change and the reason each scroll on their own with every
+ * character wrapped, and a long one says how many lines and bytes it has and offers its end in one press (a dangerous last line is never
+ * below the fold unannounced). Answer 2 names the exact rules it remembers. A key answers only a question that is on screen: with the
+ * rail folded away, a question opens it, and a key press opens it instead of answering. */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $, $$, esc, agCol } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
-  const QUIET = 0.8, shown = {};          // wall ms at which a question's answer UI first appeared
+  const U = SL.u, { $, $$, esc, clip1 } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
+  const QUIET = 0.8, shown = Object.create(null);          // wall ms at which a question's answer UI was last seen to appear
+
+  /* ---------- long text: bounded, wrapped, counted, its end one press away ---------- */
+  const LONG_LINES = 4, LONG_BYTES = 280;
+  /** The UTF-8 length of s in bytes. */
+  function bytesOf(s) { s = String(s == null ? '' : s); let n = 0; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c < 0x80) n++; else if (c < 0x800) n += 2; else if (c >= 0xd800 && c < 0xdc00 && i + 1 < s.length) { n += 4; i++; } else n += 3; } return n; }
+  const sizeTxt = b => b < 1024 ? b + ' byte' + (b === 1 ? '' : 's') : b < 1048576 ? (b / 1024).toFixed(1) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
+  /** "N lines, M bytes" of a text. */
+  const lenTxt = s => { s = String(s == null ? '' : s); const n = s.split('\n').length; return n + ' line' + (n === 1 ? '' : 's') + ', ' + sizeTxt(bytesOf(s)); };
+  /** The line above a long block (more than LONG_LINES lines or LONG_BYTES bytes, or always with force): how long it is, and a button
+   *  that scrolls the block that follows to its end (and back). Empty for a short text. */
+  function lenLine(text, what, force) {
+    const s = String(text == null ? '' : text), n = s.split('\n').length, b = bytesOf(s); if (!force && n <= LONG_LINES && b <= LONG_BYTES) return '';
+    return '<div class="qlen"><span>' + (what ? esc(what) + ': ' : '') + lenTxt(s) + '</span><button class="btn sm" type="button" data-end aria-label="Show the end of ' + esc(what || 'the text') + '">Show the end ↓</button></div>';
+  }
+  /** Click handler for a container of long blocks: [data-end] scrolls the block after its line to the end, and from the end back to the start. */
+  function endClick(e) {
+    const b = e.target && e.target.closest ? e.target.closest('[data-end]') : null; if (!b) return; const ln = b.closest('.qlen'), blk = ln && ln.nextElementSibling; if (!blk) return;
+    const atEnd = blk.scrollTop + blk.clientHeight >= blk.scrollHeight - 2; blk.scrollTop = atEnd ? 0 : blk.scrollHeight; b.textContent = atEnd ? 'Show the end ↓' : 'Show the start ↑';
+  }
+  ui.longText = { line: lenLine, click: endClick, bytes: bytesOf, len: lenTxt, size: sizeTxt };
+  /** The rules a "don't ask again" remembers: the server joins several with ", " (outside parentheses); each is shown whole on its own line. */
+  function ruleList(rule) {
+    const s = String(rule == null ? '' : rule), out = []; if (!s) return out; let depth = 0, cur = '';
+    for (let i = 0; i < s.length; i++) { const c = s[i]; if (c === '(') depth++; else if (c === ')' && depth > 0) depth--; if (depth === 0 && c === ',' && s[i + 1] === ' ') { out.push(cur); cur = ''; i++; continue; } cur += c; }
+    out.push(cur); return out.filter(x => x.trim() !== '');
+  }
+  /** Under answer 2: the exact rule or rules it remembers, in small print. */
+  function ruleHtml(q) { const rs = ruleList(q.rule); return rs.length ? '<div class="qrule"><span>2 remembers ' + (rs.length > 1 ? 'these ' + rs.length + ' rules' : 'this rule') + ':</span>' + rs.map(r => '<code>' + esc(r) + '</code>').join('') + '</div>' : ''; }
 
   const TESTS = 'Yes, and allow builds and tests (go, npm, cargo, pytest, make…) for this session';
   const remembers = q => q.kind === 'trust' || q.kind === 'mcp';
@@ -42,17 +74,18 @@
     }).join('');
   }
   const counts = text => { let a = 0, d = 0; String(text || '').split('\n').forEach(l => { if (/^\+(?!\+\+ )/.test(l)) a++; else if (/^-(?!-- )/.test(l)) d++; }); return [a, d]; };
-  /** The change a question asks to make: a head with `Open it whole` and the diff, at most 40% of the rail's height. */
+  /** The change a question asks to make: a head with `Open it whole`, its length when long, and the diff in a block of its own scroll
+   *  (at most 30% of the window's height) whose long lines wrap. */
   function changeHtml(q) {
     if (!q.change) return ''; const [a, d] = counts(q.change);
-    return '<div class="qscope"><b>change</b>the change it asks to make' + (q.path ? ' · <span class="mono">' + esc(q.path) + '</span>' : '') + ' · <span class="ok">+' + a + '</span> <span class="err">−' + d + '</span> <button class="btn sm" type="button" data-whole="' + esc(q.id) + '">Open it whole</button></div><div class="diff qdiff" style="max-height:min(40vh,320px);margin:0 0 6px">' + diffLines(q.change) + '</div>';
+    return '<div class="qscope"><b>change</b>the change it asks to make' + (q.path ? ' · <span class="mono">' + esc(q.path) + '</span>' : '') + ' · <span class="ok">+' + a + '</span> <span class="err">−' + d + '</span> <button class="btn sm" type="button" data-whole="' + esc(q.id) + '">Open it whole</button></div>' + lenLine(q.change, 'the change') + '<div class="diff qdiff" style="max-height:min(30vh,240px);margin:0 0 6px">' + diffLines(q.change) + '</div>';
   }
-  function openWhole(q) { ui.modal({ title: 'The change', kicker: q.agent + (q.task ? ' · ' + q.task : ''), desc: (q.path || '') + ' · as the agent asks to make it', wide: true, color: 'var(--warm)', body: '<div class="diff">' + diffLines(q.change) + '</div>' }); }
+  function openWhole(q) { ui.modal({ title: 'The change', kicker: String(q.agent) + (q.task ? ' · ' + q.task : ''), desc: (q.path || '') + ' · as the agent asks to make it', wide: true, color: 'var(--warm)', body: '<div class="diff">' + diffLines(q.change) + '</div>' }); }
   const roTitle = S => S && S.readOnly ? (S.follow ? 'watching ' + S.sid + ' · read-only · the run belongs to another process' : 'a recorded session is read-only') : '';
   const opts = (q, pre, S) => { const ro = roTitle(S), dis = ro ? ' disabled title="' + esc(ro) + '"' : '', four = !!q.offersTests;
     return '<div class="qopts" data-q="' + esc(q.id) + '">' +
     '<button class="qopt" type="button" data-choice="1" aria-disabled="true"' + dis + '><kbd>1</kbd><span>Yes</span></button>' +
-    '<button class="qopt" type="button" data-choice="2" aria-disabled="true"' + dis + '><kbd>2</kbd><span>' + esc(choiceText(q, 2)) + '</span></button>' +
+    '<button class="qopt" type="button" data-choice="2" aria-disabled="true"' + dis + '><kbd>2</kbd><span>' + esc(choiceText(q, 2)) + '</span></button>' + ruleHtml(q) +
     (four ? '<button class="qopt" type="button" data-choice="4" aria-disabled="true"' + dis + '><kbd>3</kbd><span>' + esc(TESTS) + '</span></button>' : '') +
     '<button class="qopt no" type="button" data-choice="3" aria-disabled="true"' + dis + '><kbd>' + (four ? 4 : 3) + '</kbd><span>No, and tell Sleipnir what to do instead <small>(esc)</small></span></button></div>' +
     '<div class="qmeter" data-m="' + esc(q.id) + '"' + (four ? ' data-four="1"' : '') + '><span class="bar"><i></i></span><span class="qmt">your typing goes to the prompt until you pause</span></div>'; };
@@ -62,9 +95,15 @@
     const T = SL.time.T, t0 = Math.max(shown[qid] == null ? T.wall : shown[qid], T.quietSince), frac = Math.min(1, (T.wall - t0) / 1000 / QUIET);
     return { armed: frac >= 1, frac };
   }
+  /** Is el laid out and visible (not inside a folded rail, a hidden pane or anything else that is display:none or hidden)? */
+  function onScreen(el) { if (!el || !el.isConnected || !el.getClientRects().length) return false; const cs = getComputedStyle(el); return cs.visibility !== 'hidden' && cs.display !== 'none'; }
+  /** Bring the rail and its question on screen (the shell's own expand; on a phone, its pane). */
+  function openRail(pane) { if (!ui.rail) return; if (pane && ui.rail.open) ui.rail.open(); else if (ui.rail.expand) ui.rail.expand(); }
+  /** The question strip of the active session, when one is in the DOM. */
+  const stripEl = () => $('#qSlot .qstrip');
   function paintMeters(scopeEl) {
     $$('.qmeter', scopeEl).forEach(mt => {
-      const qid = mt.dataset.m; if (shown[qid] == null) shown[qid] = SL.time.T.wall; const a = arm(qid), S = SL.sessions.active, rep = S && S.replay;
+      const qid = mt.dataset.m; if (shown[qid] == null || !onScreen(mt)) shown[qid] = SL.time.T.wall; const a = arm(qid), S = SL.sessions.active, rep = S && S.replay;
       const ok = a.armed && !rep; mt.classList.toggle('ready', ok); $('.bar i', mt).style.width = (a.frac * 100) + '%';
       const t = rep ? 'replay: go live to answer' : ok ? (mt.dataset.four ? 'ready: press 1, 2, 3 or 4 (esc is 4)' : 'ready: press 1, 2 or 3 (esc is 3)') : 'your typing goes to the prompt until you pause'; const el = $('.qmt', mt); if (el.textContent !== t) el.textContent = t;
       const box = mt.previousElementSibling; if (box && box.classList.contains('qopts')) $$('.qopt', box).forEach(b => b.setAttribute('aria-disabled', ok ? 'false' : 'true'));
@@ -92,11 +131,13 @@
   /* ---------- the strip in the rail (active session) ---------- */
   function render(S, m) {
     const slot = $('#qSlot'), q = m ? calc.openQuestion(m) : null, done = m ? m.qs.filter(x => x.answered).slice(-1)[0] : null;
-    if (!q) { const key = done ? 'd' + done.id + done.answered : ''; if (slot._k !== key) { slot._k = key; slot.innerHTML = done && SL.time.T.wall - (shown['_d' + done.id] || (shown['_d' + done.id] = SL.time.T.wall)) < 8000 ? '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : keyOf(done, done.answered) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(done.cmd) + '</span></span></span></div>' : ''; } return; }
+    if (!q) { const key = done ? 'd' + done.id + done.answered : ''; if (slot._k !== key) { slot._k = key; slot.innerHTML = done && SL.time.T.wall - (shown['_d' + done.id] || (shown['_d' + done.id] = SL.time.T.wall)) < 8000 ? '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : keyOf(done, done.answered) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(clip1(done.cmd, 160)) + '</span></span></span></div>' : ''; } return; }
     const key = 'q' + q.id + '|' + calc.waiting(m) + '|' + S.id; if (slot._k === key && $('.qstrip', slot)) return; slot._k = key;
+    /* a question that arrives while the rail is folded away opens it: the full question is what the person answers */
+    const app = $('#app'); if (app && app.dataset.rail === 'min' && !S.replay) openRail(false);
     const A = m.ag[q.agent], waiting = calc.waiting(m) - 1;
     slot.innerHTML = '<section class="qstrip" role="group" aria-label="Approval question from ' + esc(q.agent) + '" aria-describedby="qWhy"><div class="qh"><div><span class="qk">' + esc(q.agent) + ' · ' + esc(A ? A.role : '') + (q.task ? ' · ' + esc(q.task) : '') + '</span><b>' + wants(q) + '</b></div><span class="qw">waiting for you: 0s</span></div>' + (waiting > 0 ? '<div class="qmore">+' + waiting + ' waiting: asked one at a time</div>' : '') +
-      cmdHtml(q) + changeHtml(q) + (q.scope ? '<div class="qscope"><b>scope</b>' + esc(q.scope) + '</div>' : '') + '<div class="qwhy" id="qWhy"><b>why it asks</b>' + esc(q.why) + '</div><div class="qbox">' + opts(q, null, S) + '</div></section>';
+      cmdHtml(q) + changeHtml(q) + (q.scope ? '<div class="qscope"><b>scope</b>' + esc(q.scope) + '</div>' : '') + whyHtml(q, 'qWhy') + '<div class="qbox">' + opts(q, null, S) + '</div></section>';
     const strip = $('.qstrip', slot), box = $('.qbox', strip), render2 = () => { box.innerHTML = opts(q, null, S); wire(); }; box._back = render2;
     const wb = $('[data-whole]', strip); if (wb) wb.addEventListener('click', () => openWhole(q));
     function wire() { $$('.qopt', box).forEach(b => b.addEventListener('click', () => answer(S, q, +b.dataset.choice, box))); }
@@ -104,13 +145,22 @@
   }
   /** Who closed a question when it was not the person (VOCAB 5.17 `by`). */
   const BY = { timeout: 'refused: nobody answered in time', canceled: 'refused: the turn was interrupted', closed: 'refused: the session closed', nobody: 'refused: no page was open to answer' };
-  /** The command line: every line of a multi-line command shows (PARITY A1); a one-line command keeps the strip's own layout. */
-  const cmdHtml = q => '<div class="qcmd"' + (/\n/.test(String(q.cmd || '')) ? ' style="white-space:pre-wrap"' : '') + '><i>' + esc(q.cwd || '.') + ' $</i> ' + esc(q.cmd) + '</div>';
-  ui.approvals = { render, arm, answer, paintMeters, shown, wants, choiceText, keyOf, choiceOfKey, diffLines };
-  /** Keys 1/2/3 and Esc answer the front question of the active session: only when armed. Returns true when consumed. */
+  /** The command: every line and every character of it (PARITY A1), in a block of its own scroll; a long one has its length and its end above it. */
+  const cmdHtml = q => lenLine(q.cmd, 'the command') + '<div class="qcmd qblk"><i>' + esc(q.cwd || '.') + ' $</i> ' + esc(q.cmd) + '</div>';
+  /** Why it asks, in a block of its own scroll (a reason can be as long as the command it explains). */
+  const whyHtml = (q, id) => lenLine(q.why, 'the reason') + '<div class="qwhy qblk"' + (id ? ' id="' + id + '"' : '') + '><b>why it asks</b>' + esc(q.why) + '</div>';
+  ui.approvals = { render, arm, answer, paintMeters, shown, wants, choiceText, keyOf, choiceOfKey, diffLines, ruleList, html: { cmd: cmdHtml, why: whyHtml, change: changeHtml, opts } };
+  /**
+   * Keys 1/2/3 (4 with the fourth answer) and Esc answer the front question of the active session: only when it is on screen and armed.
+   * Returns true when the key answered, 'opened' when the question was not on screen (the rail was folded away or another pane was in
+   * front): the key then opens the rail and starts the quiet period again instead of answering; false when the key is not for a question.
+   */
   ui.approvals.tryKey = function (key) {
     const S = SL.sessions.active, q = S && S.m ? calc.openQuestion(S.m) : null; if (!q) return false;
-    const a = arm(q.id); if (!a.armed || S.replay) return false; const slot = $('#qSlot'), box = $('.qbox', slot); if (box && box.dataset.tell) return false;
+    if (!(key === '1' || key === '2' || key === '3' || key === 'Escape' || (key === '4' && q.offersTests))) return false;
+    if (S.replay) return false;
+    if (!onScreen(stripEl())) { openRail(true); shown[q.id] = SL.time.T.wall; return 'opened'; }
+    const a = arm(q.id); if (!a.armed) return false; const slot = $('#qSlot'), box = $('.qbox', slot); if (box && box.dataset.tell) return false;
     if (key === '1' || key === '2' || key === '3' || (key === '4' && q.offersTests)) { answer(S, q, choiceOfKey(q, +key), box); return true; } if (key === 'Escape') { answer(S, q, 3, box); return true; } return false;
   };
   ui.approvals.pending = () => { const S = SL.sessions.active; return S && S.m ? calc.openQuestion(S.m) : null; };
@@ -122,7 +172,7 @@
     function html() {
       const nd = SL.sessions.needs();
       return '<div class="ibx-h"><b>Needs you</b><span class="dim">' + nd.length + ' open question' + (nd.length === 1 ? '' : 's') + ' · answering follows the same quiet-period rule</span><button class="btn sm" type="button" data-close>esc</button></div>' +
-        (nd.length ? nd.map(({ S, q, waiting }) => '<div class="ibx" data-sid="' + esc(S.id) + '" data-qid="' + esc(q.id) + '"><div class="ibx-t"><b style="color:var(--c-mgr)">' + esc(S.name) + '</b> <span class="dim">› ' + esc(q.agent) + (q.task ? ' · ' + q.task : '') + '</span>' + (waiting > 1 ? '<span class="tag warm">+' + (waiting - 1) + ' waiting</span>' : '') + '<button class="btn sm" type="button" data-open>Open session</button></div>' + cmdHtml(q) + changeHtml(q) + (q.scope ? '<div class="qscope"><b>scope</b>' + esc(q.scope) + '</div>' : '') + '<div class="qwhy"><b>why it asks</b>' + esc(q.why) + '</div><div class="qbox">' + opts(q, null, S) + '</div></div>').join('') : '<p class="stubnote" style="padding:14px 12px;margin:0">Nothing waits for you. A question in any session, background ones included, shows up here with a badge on its tab.</p>') +
+        (nd.length ? nd.map(({ S, q, waiting }) => '<div class="ibx" data-sid="' + esc(S.id) + '" data-qid="' + esc(q.id) + '"><div class="ibx-t"><b style="color:var(--c-mgr)">' + esc(S.name) + '</b> <span class="dim">› ' + esc(q.agent) + (q.task ? ' · ' + esc(q.task) : '') + '</span>' + (waiting > 1 ? '<span class="tag warm">+' + (waiting - 1) + ' waiting</span>' : '') + '<button class="btn sm" type="button" data-open>Open session</button></div>' + cmdHtml(q) + changeHtml(q) + (q.scope ? '<div class="qscope"><b>scope</b>' + esc(q.scope) + '</div>' : '') + whyHtml(q) + '<div class="qbox">' + opts(q, null, S) + '</div></div>').join('') : '<p class="stubnote" style="padding:14px 12px;margin:0">Nothing waits for you. A question in any session, background ones included, shows up here with a badge on its tab.</p>') +
         '<p class="ibx-f">Headless runs never ask: an action that needs approval is refused, with --ask-timeout shown.</p>';
     }
     function draw() {
@@ -136,10 +186,11 @@
     function toggle(btn) {
       if (pop) { close(); return; }
       btn = btn || $('#sInbox'); if (!btn) return;
-      pop = mk_('div', 'popover ibxpop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Needs you: open questions'); app.appendChild(pop); btn.setAttribute('aria-expanded', 'true'); draw();
+      pop = mk_('div', 'popover ibxpop'); pop.addEventListener('click', endClick); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Needs you: open questions'); app.appendChild(pop); btn.setAttribute('aria-expanded', 'true'); draw();
       const r = btn.getBoundingClientRect(), ar = app.getBoundingClientRect(); pop.style.top = (r.bottom - ar.top + 4) + 'px'; pop.style.right = Math.max(8, ar.right - r.right) + 'px';
     }
     const mk_ = (t, c) => { const e = document.createElement(t); e.className = c; return e; };
+    const slot = $('#qSlot'); if (slot) sc.listen(slot, 'click', endClick);
     sc.on('needs-changed', () => { if (pop) { const nd = SL.sessions.needs().length; draw(); if (!nd) { /* keep open: shows the empty state */ } } });
     sc.listen(document, 'pointerdown', e => { if (pop && !pop.contains(e.target) && !e.target.closest('#sInbox')) close(); });
     /* key 4: the fourth answer's No (94-keys.js routes 1, 2 and 3); the same rule as the other keys */

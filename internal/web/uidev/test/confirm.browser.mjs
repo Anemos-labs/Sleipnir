@@ -34,7 +34,7 @@ async function step(name, fn) { try { const r = await fn(); results.push(['ok', 
 /** the question the page shows now: its title, reasons, whether it wants the mode typed */
 const question = () => ev(`const s = document.querySelector('.sheet.confirm'); if (!s) return null; return { title: s.querySelector('.sh-h h2').textContent, text: s.querySelector('.sh-b').innerText.slice(0, 400), typed: !!s.querySelector('#cfType') };`);
 /** answer the open confirm with OK (typing the mode first when asked) */
-const okConfirm = async mode => { await ev(`const i = document.querySelector('.sheet.confirm #cfType'); if (i) { i.value = ${JSON.stringify(mode || '')}; i.dispatchEvent(new Event('input')); } document.querySelector('.sheet.confirm [data-ok]').click();`); };
+const okConfirm = async mode => { await ev(`const i = document.querySelector('.sheet.confirm #cfType'); if (i) { i.value = ${JSON.stringify(mode || '')}; i.dispatchEvent(new Event('input')); }`); await waitFor(`document.querySelector('.sheet.confirm [data-ok]:not([disabled])')`, 5000); await ev(`document.querySelector('.sheet.confirm [data-ok]').click();`); };
 const typeIn = (sel, v) => ev(`const i = document.querySelector(${JSON.stringify(sel)}); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true }));`);
 const composer = async line => { await ev(`const i = document.getElementById('input'); i.focus(); i.value = ${JSON.stringify(line)}; i.dispatchEvent(new Event('input'));`); await p.key('Escape'); await ev(`document.getElementById('input').focus()`); await p.key('Enter'); };
 try {
@@ -55,9 +55,9 @@ try {
     }
     await waitFor(`SL.sessions.list.some(S => S.name === ${JSON.stringify(name)})`, 30000);
     const S = await ev(`const S = SL.sessions.list.find(S => S.name === ${JSON.stringify(name)}); return { id: S.id, mode: S.meta.mode, rules: (S.meta.rules || []).map(r => r.rule), verify: S.meta.verify };`);
-    return { asked: await asks(), seen: seen.map(q => q.title + (q.typed ? ' (typed)' : '')), session: S };
+    return { asked: await asks(), seen: seen.map(q => q.title + (q.typed ? ' (typed)' : '')), texts: seen.map(q => q.text.replace(/\s+/g, ' ')), session: S };
   };
-  await step('new session with mode yolo', async () => { const r = await newSession('yolo-one', () => ev(`document.querySelector('[data-nsmode="yolo"]').click()`)); if (r.session.mode !== 'yolo') throw new Error('mode is ' + r.session.mode + ' ' + JSON.stringify(r)); if (!r.asked.some(a => a.reasons.includes('permission mode yolo'))) throw new Error('no question named the mode: ' + JSON.stringify(r)); return r; });
+  await step('new session with mode yolo', async () => { const r = await newSession('yolo-one', () => ev(`document.querySelector('[data-nsmode="yolo"]').click()`)); if (r.session.mode !== 'yolo') throw new Error('mode is ' + r.session.mode + ' ' + JSON.stringify(r)); if (!r.asked.some(a => a.reasons.includes('permission mode yolo'))) throw new Error('no question named the mode: ' + JSON.stringify(r)); if (!r.texts.some(t => /the request POST \/api\/sessions\s+its scope session:/i.test(t))) throw new Error('the question does not name the request and its scope: ' + JSON.stringify(r.texts)); return r; });
   await step('new session with an allow rule', async () => { const r = await newSession('allow-one', async () => { await typeIn('#nsRule', 'Bash(make lint:*)'); await ev(`document.getElementById('nsAddRule').click()`); }, 'orders-api'); if (!r.asked.some(a => a.reasons.some(x => /^allow .*make lint/.test(x)))) throw new Error('no question named the rule: ' + JSON.stringify(r)); return r; });
   await step('new session with a verify command', async () => { const r = await newSession('verify-one', () => typeIn('#nsVerify', 'go vet ./...'), 'docs-sweep'); if (!r.asked.some(a => a.reasons.some(x => /verify command go vet/.test(x)))) throw new Error('no question named the verify command: ' + JSON.stringify(r)); return r; });
   const shop = await ev(`return SL.sessions.list[0].id;`);

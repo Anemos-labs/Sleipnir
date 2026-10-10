@@ -56,7 +56,10 @@
   /**
    * One request. opts: confirm (a scope the caller already asked the person about: the id is obtained right before the request, and
    * once more if the server says it is no longer valid), confirmId (an id the server issued already, e.g. a trust challenge), timeout
-   * (ms), signal (an AbortSignal of the caller), noRetry (no 429 retry for a GET), noAsk (return a 428 without asking).
+   * (ms), signal (an AbortSignal of the caller), noRetry (no 429 retry for a GET), noAsk (return a 428 without asking), exact (with
+   * confirm: the person confirmed exactly that scope, for what the page showed; when the server wants another one, or no longer takes
+   * a fresh id for it, the request returns {code: 'scope_changed', scope (the server's, when it named one), expected} and never asks:
+   * the caller shows the thing again as it is now and asks again).
    */
   async function request(method, path, body, opts) {
     opts = opts || {};
@@ -68,6 +71,8 @@
       if (body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(body); }
     }
     let confirmed = opts.confirmId || '', scope = opts.confirm || '', asked = false, renewed = false;
+    const changed = (f, sc) => ({ ok: false, status: f.status, code: 'scope_changed', scope: sc, expected: opts.confirm || '', detail: f.detail,
+      message: 'what this confirms has changed since it was shown: look at it again, then confirm again' });
     const noId = { ok: false, status: 0, code: 'confirm_failed', message: 'the server did not issue a confirmation' };
     if (opts.confirm && !confirmed) {
       confirmed = await confirm(opts.confirm);
@@ -109,11 +114,13 @@
       if (res.status === 403 && f.code === 'confirm_invalid' && confirmed) {
         // An id expires after a minute: one fresh id for the same scope; then (an id for something else) the server names its scope.
         if (scope && !renewed) { renewed = true; confirmed = await confirm(scope); if (confirmed) continue; return noId; }
+        if (opts.exact) return changed(f, '');
         if (!asked) { confirmed = ''; scope = ''; continue; }
         return f;
       }
       if (res.status === 428 && f.code === 'confirm_required') {
         const sc = f.scope || (f.detail && typeof f.detail.scope === 'string' ? f.detail.scope : '');
+        if (opts.exact) return sc && sc !== opts.confirm ? changed(f, sc) : f;
         if (asked || !sc || opts.noAsk || typeof cfg.askConfirm !== 'function') return f;
         asked = true;
         let yes = false;

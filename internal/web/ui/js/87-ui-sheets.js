@@ -1,8 +1,10 @@
 /* 87-ui-sheets.js: SL.ui.sheets (goal, mode, context, help, history) and SL.ui.dialogs (new session, resume, rename). Each one reads
  * the active session and changes it only through SL.act; what it shows after an action is what the server sends back.
  * The New session dialog starts from the server's defaults (its flags and configuration, PARITY A4), offers the projects the server
- * allows (a new session never starts in a free path), and runs the trust step: the server's challenge is the "Trust this project?"
- * confirm, and the person's yes repeats the request with its confirmation id. */
+ * allows (a new session never starts in a free path). It never decides that a project needs trust: the request goes first, and the
+ * server's challenge (409 trust_required, for a new session and a resume alike) is the "Trust this project?" dialog (ui.trustStep), which
+ * lists every file the server sent and wakes its yes only once that list is on screen; the yes repeats the request with the challenge's
+ * own id. Any other confirmation the server asks for (428) is the dialog of askConfirm, with the server's reasons and the request. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, fmtK } = U, D = SL.D, calc = SL.calc, ui = SL.ui = SL.ui || {};
@@ -80,6 +82,10 @@
   const modePick = cur => '<div class="nsmodes" id="nsModes" role="radiogroup" aria-label="Permission mode">' + D.modes.map(mo => '<button type="button" class="nsmode' + (mo.danger ? ' dng' : '') + '" role="radio" data-nsmode="' + mo.id + '" aria-checked="' + (mo.id === cur) + '" tabindex="' + (mo.id === cur ? 0 : -1) + '"><span class="nm">' + (mo.danger ? '<i aria-hidden="true">⚠</i> ' : '') + mo.id + '</span><span class="nd">' + esc(mo.desc) + '</span></button>').join('') + '</div><div class="nswarn" id="nsWarn" role="status" hidden></div>';
   const MODE_WARN = { bypass: 'This session will not ask before it edits files or runs commands, except for the very dangerous ones. Use it only where a mistake is cheap. Nothing to type: choosing it here is the confirmation.', yolo: 'This session will never ask, dangerous commands included. Deny rules and guarded paths still refuse. Use it only inside a sandbox. Nothing to type: choosing it here is the confirmation.' };
   function paintMode(b, mode) { $$('[data-nsmode]', b).forEach(r => { const on = r.dataset.nsmode === mode; r.setAttribute('aria-checked', String(on)); r.tabIndex = on ? 0 : -1; }); const w = $('#nsWarn', b); if (w) { w.hidden = !MODE_WARN[mode]; w.textContent = MODE_WARN[mode] ? '⚠ ' + mode + ': ' + MODE_WARN[mode] : ''; w.dataset.mode = mode; } }
+  /** A project's trust as the directory list shows it: nothing when trusted or when there is nothing to trust, else the server's word
+   *  (untrusted, changed, partial: not every file could be scanned, unreadable: its files could not be read). */
+  const TRUST_WORD = { untrusted: 'not trusted', changed: 'changed since trusted', partial: 'partial: not every file could be scanned', unreadable: 'unreadable: its files could not be read' };
+  const trustWord = t => t && t !== 'trusted' && t !== 'none' ? ' · ' + (U.own(TRUST_WORD, t) || String(t)) : '';
   /** The seed of the New session dialog: the server's defaults (its flags over the configuration), else the mock's own values. */
   function seedOf() {
     const has = !!(SL.live && SL.live.defaults()), d = has ? SL.live.defaults() : {}, projects = (D.extra.projects || []), def = projects.find(p => p.default) || projects[0];
@@ -97,7 +103,7 @@
     const chk = (k, label) => '<label class="chk"><input type="checkbox" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + label + '</label>';
     ui.modal({ title: 'New session', kicker: '+ chat flags', desc: 'one tab = one sleipnir session: its own chat, team, log, directory and budget', wide: true, color: 'var(--ok)', focus: '#nsName', body:
       (st.resume ? '<p class="stubnote mono" style="margin:0 0 8px">resume ' + esc(st.resume) + '</p>' : '') +
-      '<div class="g2 ns"><div>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"')) + field('directory (--cwd)', '<select id="nsCwd" aria-label="Directory">' + projects().map(p => '<option value="' + esc(p.dir) + '"' + (p.dir === st.cwd ? ' selected' : '') + '>' + esc(p.dir) + '</option>').join('') + '</select>') +
+      '<div class="g2 ns"><div>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"')) + field('directory (--cwd)', '<select id="nsCwd" aria-label="Directory">' + projects().map(p => '<option value="' + esc(p.dir) + '"' + (p.dir === st.cwd ? ' selected' : '') + '>' + esc(p.dir) + esc(trustWord(p.trust)) + '</option>').join('') + '</select>') +
       field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select>') +
       field('workers (--swarm)', '<input id="nsSwarm" type="number" min="0" max="' + MAXW + '" value="' + st.swarm + '" aria-label="worker count"><span class="dim" id="nsSw"></span>') + field('isolation', seg('isolation', ['none', 'worktree'], st.isolation)) + field('verify (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command"')) + '</div><div>' +
       field('budget (--budget-usd)', inp('nsBudget', st.budget, 'inputmode="decimal" aria-label="Budget in dollars"'), 'a number, or off') + field('flags', chk('commit', '--commit') + chk('mailman', '--mailman') + chk('noMcp', '--no-mcp') + chk('trustProject', '--trust-project'), 'trust-project: the repository’s own instructions, skills and hooks are used (asked at the start, remembered by hash)') +
@@ -114,8 +120,7 @@
         sc.listen($('#nsStart', b), 'click', () => { const bud = st.budget === 'off' || st.budget === '' ? 0 : parseFloat(st.budget); if (st.budget !== 'off' && st.budget !== '' && !(bud > 0)) { ui.toast('the budget is a number of dollars, or off', 'err'); return; }
           const spec = { name: st.name.trim() || undefined, cwd: st.cwd, model: st.model, mode: st.mode, swarm: st.swarm, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: st.rules, trustProject: st.trustProject, noMcp: st.noMcp, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: st.roleModels };
           if (bud > 0) spec.budget = bud; if (st.resume) spec.resume = st.resume;
-          const proj = (D.extra.projects || []).find(p => p.dir === st.cwd), untrusted = st.trustProject && proj && proj.trust && proj.trust !== 'trusted';
-          close(); if (untrusted) trustThen(st.cwd, null, spec); else start(spec, null);
+          close(); start(spec);
         });
       } });
   };
@@ -133,11 +138,13 @@
       const path = String(o.path || '').split('?')[0], fromNew = o.method === 'POST' && path === '/api/sessions';
       const dm = ((o.reasons || []).map(r => /^permission mode (bypass|yolo)$/.exec(r)).find(Boolean) || [])[1], typed = !!dm && !fromNew;
       const t = ASK_TITLE.find(x => x[0].test(path)), S = SL.sessions && SL.sessions.active, who = S && !S.placeholder && !fromNew ? '<b>' + esc(S.name) + '</b>' : 'the session';
-      const list = (o.reasons || []).length ? '<ul class="plist">' + o.reasons.map(r => '<li><span class="pg">⚠</span><span class="pt">' + esc(r) + '</span></li>').join('') + '</ul>' : esc(o.message || 'this action needs a confirmation');
+      const rs = (o.reasons || []).map(String), list = rs.length ? '<ul class="plist">' + rs.map(r => '<li><span class="pg">⚠</span><span class="pt">' + esc(r) + '</span></li>').join('') + '</ul>' : esc(o.message || 'this action needs a confirmation');
+      /* the request it confirms, whole: the method and the path (with its query), and the scope the server named */
+      const req = '<p class="cf-req"><span class="dim">the request</span> <span class="mono">' + esc(String(o.method || '').toUpperCase()) + ' ' + esc(o.path || '') + '</span>' + (o.scope ? '<br><span class="dim">its scope</span> <span class="mono">' + esc(o.scope) + '</span>' : '') + '</p>';
       ui.modal({ title: t ? t[1] : 'Confirm', kicker: 'confirm', desc: '', color: 'var(--err)', cls: 'confirm', focus: typed ? '#cfType' : '[data-no]', onClose: () => finish(false),
-        body: '<p class="cf-t">This raises what ' + who + ' may do:</p><div class="cf-d">' + list + '</div>' + (typed ? '<div class="dangerbox"><span>' + esc(TYPE_TEXT[dm]) + '</span><input id="cfType" type="text" autocomplete="off" aria-label="Type the mode name to confirm"></div>' : '') + '<div class="row2"><button class="btn danger" type="button" data-ok' + (typed ? ' disabled' : '') + '>' + (typed ? 'Set it' : 'Yes, go ahead') + '</button><button class="btn" type="button" data-no>Cancel</button></div>',
+        body: '<p class="cf-t">This raises what ' + who + ' may do:</p>' + ui.longText.line(rs.join('\n'), 'the reasons') + '<div class="cf-d qblk">' + list + '</div>' + req + (typed ? '<div class="dangerbox"><span>' + esc(TYPE_TEXT[dm]) + '</span><input id="cfType" type="text" autocomplete="off" aria-label="Type the mode name to confirm"></div>' : '') + '<div class="row2"><button class="btn danger" type="button" data-ok' + (typed ? ' disabled' : '') + '>' + (typed ? 'Set it' : 'Yes, go ahead') + '</button><button class="btn" type="button" data-no>Cancel</button></div>',
         onMount(b, sc, close) {
-          const ok = $('[data-ok]', b);
+          const ok = $('[data-ok]', b); sc.listen(b, 'click', ui.longText.click);
           if (typed) { const i = $('#cfType', b); sc.listen(i, 'input', () => { ok.disabled = i.value.trim() !== dm; }); sc.listen(i, 'keydown', e => { if (e.key === 'Enter' && !ok.disabled) { e.preventDefault(); ok.click(); } }); }
           sc.listen(ok, 'click', () => { if (ok.disabled) return; finish(true); close(); }); sc.listen($('[data-no]', b), 'click', () => close());
         } });
@@ -146,19 +153,58 @@
   ui.askConfirm = askConfirm;
   if (SL.api && SL.api.cfg) SL.api.cfg.askConfirm = askConfirm;
 
-  /** Start the session; the server's trust challenge (409 trust_required) opens the trust confirm, whose yes repeats with its id. */
-  function start(spec, confirmId) {
-    const r = SL.act.newSession(spec, { confirmId, onTrust: ch => trustThen(spec.cwd, ch, spec) });
+  /** Start the session (the trust step and any other confirmation run inside SL.act.newSession). */
+  function start(spec) {
+    const r = SL.act.newSession(spec);
     if (refused(r)) return;
     r.done.then(res => { if (res.ok) ui.toast('started ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); });
   }
-  /** The mock's "Trust this project?" confirm. With a challenge in hand the yes repeats at once; without one the request goes first
-   *  and the server's challenge (which this yes already answered) is accepted straight away. */
-  function trustThen(dir, ch, spec) {
-    const files = ch && ch.files && ch.files.length ? ch.files.slice(0, 6).map(f => f.path).join(', ') + (ch.files.length > 6 ? ', …' : '') : '';
-    /* the yes also confirms what else the session raises (one confirmation covers the session's settings): say it */
-    const also = [].concat(spec.mode === 'bypass' || spec.mode === 'yolo' ? ['permission mode ' + spec.mode] : [], (spec.rules || []).length ? ['allow ' + spec.rules.join(', ')] : [], spec.verify ? ['run the verify command ' + spec.verify] : []);
-    ui.confirm({ title: 'Trust this project?', text: '<b>' + esc(dir) + '</b> brings its own instructions, skills and hooks. Use them in this session?', detail: (ch && ch.changed ? 'Since your last yes: ' + esc(ch.changed) + '. ' : 'You have not said yes to these files before. ') + 'The yes holds until one of them changes.' + (files ? '<br><span class="mono dim">' + esc(files) + '</span>' : '') + (also.length ? '<br>It also confirms: ' + also.map(a => '<span class="mono">' + esc(a) + '</span>').join(' · ') : ''), ok: 'Yes, trust these files',
-      run: () => { if (ch && ch.confirm) start(spec, ch.confirm); else { const r = SL.act.newSession(spec, { onTrust: c2 => start(spec, c2.confirm) }); if (refused(r)) return; r.done.then(res => { if (res.ok) ui.toast('started ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); }); } } });
+
+  /* ---------- the trust step: the server's challenge, whole ---------- */
+  const sizeOf = b => ui.longText.size(b > 0 ? b : 0);
+  /** The rows of the trust list: every file the server sent (its path, kind and size), and each path it could not read. */
+  const trustRows = files => files.map(f => f.kind === 'unread' ? '<li class="unread"><span class="mono">could not be read: ' + esc(f.path) + '</span></li>' : '<li><span class="mono">' + esc(f.path) + '</span><span class="dim">' + esc(f.kind || 'file') + ' · ' + sizeOf(+f.bytes || 0) + '</span></li>').join('');
+  /** The challenge as the dialog uses it: its files (objects only), the unread ones apart, its id, what else a yes confirms. */
+  function trustModel(ch, o) {
+    ch = ch && typeof ch === 'object' ? ch : {}; o = o || {};
+    const files = (Array.isArray(ch.files) ? ch.files : []).filter(f => f && typeof f === 'object'), unread = files.filter(f => f.kind === 'unread'), read = files.filter(f => f.kind !== 'unread');
+    return { ch, files, read, unread, id: typeof ch.confirm === 'string' ? ch.confirm : '', dir: String(ch.dir || o.dir || ''), bytes: read.reduce((n, f) => n + (+f.bytes > 0 ? +f.bytes : 0), 0),
+      also: [].concat(Array.isArray(ch.reasons) ? ch.reasons.map(String) : [], o.also || []), once: !!ch.partial || unread.length > 0, message: o.message ? String(o.message) : '' };
   }
+  /** The body of the trust dialog (the list itself is filled on mount, and the yes stays disabled until it is). */
+  function trustBody(t) {
+    const n = t.read.length;
+    return (t.message ? '<p class="cf-t">' + esc(t.message) + '</p>' : '') +
+      '<p class="cf-t"><b class="mono">' + esc(t.dir) + '</b> brings its own instructions, skills and hooks. Use them in this session?</p>' +
+      '<div class="cf-d">' + (t.ch.changed ? 'Since your last yes: ' + esc(t.ch.changed) + '. ' : 'You have not said yes to these files before. ') +
+      (t.once ? 'Part of this project could not be read, so a yes holds for this session only and is not remembered.' : 'The yes holds until one of them changes.') + '</div>' +
+      '<div class="qlen"><span>' + n + ' file' + (n === 1 ? '' : 's') + ', ' + sizeOf(t.bytes) + (t.unread.length ? ' · ' + t.unread.length + ' could not be read' : '') + '</span><button class="btn sm" type="button" data-end>Show the end ↓</button></div>' +
+      '<ol class="trlist qblk" id="trList" aria-label="The files you are asked to trust"></ol>' +
+      (t.ch.partial ? '<p class="cf-d">The scan stopped before it read the whole project: what it did not read is not listed, except the entries marked could not be read.</p>' : '') +
+      (t.also.length ? '<p class="cf-t">The yes also confirms:</p><ul class="plist qblk">' + t.also.map(a => '<li><span class="pg">⚠</span><span class="pt mono">' + esc(a) + '</span></li>').join('') + '</ul>' : '') +
+      (t.id ? '' : '<p class="cf-d err">The server sent no confirmation with these files: there is nothing to say yes to here.</p>') +
+      '<div class="row2"><button class="btn pri" type="button" data-ok disabled>Yes, trust these files</button><button class="btn" type="button" data-no>Cancel</button></div>';
+  }
+  /**
+   * The trust step (ch: the server's TrustChallenge; o: {message, also, dir}) -> Promise of the challenge's confirmation id when the person
+   * says yes, else null. Every file the server sent is listed (in a list of its own scroll, with a count), each path it could not read
+   * as such; the yes wakes only when the list is on screen with all of them and the challenge carries an id. Nothing is accepted that
+   * was not shown: the id resolved is the one of the challenge on screen.
+   */
+  function trustStep(ch, o) {
+    const t = trustModel(ch, o);
+    return new Promise(resolve => {
+      let done = false; const finish = v => { if (!done) { done = true; resolve(v); } };
+      ui.modal({ title: 'Trust this project?', kicker: 'trust', desc: '', color: 'var(--warm)', cls: 'confirm', focus: '[data-no]', onClose: () => finish(null), body: trustBody(t),
+        onMount(b, sc, close) {
+          const list = $('#trList', b), ok = $('[data-ok]', b);
+          list.innerHTML = trustRows(t.files); sc.listen(b, 'click', ui.longText.click);
+          const wake = () => { if (t.id && list.isConnected && list.children.length === t.files.length && list.getClientRects().length) ok.disabled = false; };
+          if (typeof requestAnimationFrame === 'function') requestAnimationFrame(wake); else wake();
+          sc.listen(ok, 'click', () => { if (ok.disabled) return; finish(t.id); close(); }); sc.listen($('[data-no]', b), 'click', () => close());
+        } });
+    });
+  }
+  trustStep.model = trustModel; trustStep.body = trustBody; trustStep.rows = trustRows;
+  ui.trustStep = trustStep;
 })(SL);

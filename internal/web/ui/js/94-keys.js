@@ -1,7 +1,8 @@
 /* 94-keys.js: SL.keys, the global keyboard handling (shell scope).
  * Esc precedence, in this order: (1) release a hold, (2) close an overlay (modal, inbox, session menu, drawer, slash menu), (3) answer a
  * question with choice 3 when the keyboard has been quiet, (4) leave a field, (5) interrupt the running turn (pauses the goal).
- * Answer keys 1/2/3 count only after the quiet period (see 85-ui-approvals.js); every other key press resets that period. */
+ * Answer keys 1/2/3 count only after the quiet period and only for a question on screen (see 85-ui-approvals.js: with the rail folded
+ * away the key opens it instead of answering); every other key press resets that period. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $ } = U, ui = SL.ui = SL.ui || {}, calc = SL.calc;

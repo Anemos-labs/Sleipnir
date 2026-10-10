@@ -40,8 +40,21 @@
   const copy = txt => { try { return navigator.clipboard.writeText(txt).then(() => true, () => false); } catch (e) { return Promise.resolve(false); } };
   /** Simple string template for the tiny HTML samples of the kit. */
   const ucfirst = s => s ? s[0].toUpperCase() + s.slice(1) : s;
-  /** Colour token of an agent: its own shade when the tokens define one (sc-1, be-2 ...), else its role colour. */
-  const agCol = id => id === 'you' ? 'var(--fg)' : id === 'mgr' ? 'var(--c-mgr)' : 'var(--a-' + id + ',var(--c-' + String(id).split('-')[0] + ',var(--dim)))';
-  SL.u = { agCol, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
+  /**
+   * Ids the server names (agents, tasks, roles) become object keys, data-* attributes, CSS variable names and words of markup. A plain
+   * id is 1 to 64 letters, digits, `.`, `_`, `:` or `-` and is not a name every object already has (`constructor`); anything else is
+   * BAD_ID, one placeholder that is safe everywhere. okId tells, safeId replaces (an absent value stays absent).
+   */
+  const ID_RE = /^[A-Za-z0-9._:-]{1,64}$/, BAD_ID = 'invalid-id';
+  const okId = x => typeof x === 'string' && ID_RE.test(x) && !(x in Object.prototype);
+  const safeId = x => x == null || x === '' ? x : okId(x) ? x : BAD_ID;
+  /** The value of key k of a lookup table only when the table itself has it (never what every object inherits). */
+  const own = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
+  /** The first line of s, at most n characters, with … when anything was left out: for a toast or a one-line summary. */
+  const clip1 = (s, n) => { s = String(s == null ? '' : s); const nl = s.indexOf('\n'), one = nl >= 0 ? s.slice(0, nl) : s; return one.length > n ? one.slice(0, n) + '…' : one + (nl >= 0 ? ' …' : ''); };
+  /** Colour token of an agent: its own shade when the tokens define one (sc-1, be-2 ...), else its role colour. Only a plain id (letters,
+   *  digits, `_` and `-`) is spliced into a variable name; any other value is the dim colour. */
+  const agCol = id => id === 'you' ? 'var(--fg)' : id === 'mgr' ? 'var(--c-mgr)' : typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? 'var(--a-' + id + ',var(--c-' + id.split('-')[0] + ',var(--dim)))' : 'var(--dim)';
+  SL.u = { agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
   SL.bus = makeBus();
 })(SL);

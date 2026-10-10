@@ -14,6 +14,20 @@
 .qstrip .qcmd i{color:var(--dim);font-style:normal}
 .qstrip .qwhy{font-size:12px;color:var(--fg2);line-height:1.3;margin-bottom:7px}
 .qstrip .qwhy b{color:var(--warm);font:600 10.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;margin-right:4px}
+/* the long parts of a question or a confirmation: each scrolls on its own and every character wraps; a long one has a line above it
+   with its length and a button to its end (.qlen); answer 2 shows the rules it remembers (.qrule); the trust list (.trlist) */
+.qblk{max-height:min(32vh,260px);overflow:auto;overflow-wrap:anywhere;white-space:pre-wrap}
+.qstrip .qblk{max-height:min(22vh,190px)}.qstrip .qwhy.qblk{max-height:min(12vh,100px)}   /* in the rail the answers stay in view under them */
+.qlen{display:flex;align-items:center;gap:8px;margin:6px 0 2px;font:600 10.5px/1.2 var(--f-num);color:var(--warm)}
+.qlen .btn{margin-left:auto}
+.diff.qdiff .ln{white-space:pre-wrap;min-width:0}.diff.qdiff .ln span{flex:1;min-width:0;overflow-wrap:anywhere}
+.qrule{margin:0 0 2px 31px;font:500 11px/1.35 var(--f-ui);color:var(--dim);max-height:7.6em;overflow:auto;overflow-wrap:anywhere}
+.qrule code{display:block;font:500 11px/1.35 var(--f-num);color:var(--fg2);white-space:pre-wrap}
+.trlist{list-style:none;margin:4px 0 8px;padding:6px 8px;background:var(--well);border:1px solid var(--line2);font:400 12px/1.4 var(--f-num);white-space:normal}
+.trlist li{display:flex;gap:8px;align-items:baseline}.trlist li .mono{flex:1;min-width:0;overflow-wrap:anywhere}.trlist li .dim{white-space:nowrap}
+.trlist li.unread .mono{color:var(--warm)}
+.cf-req{font:400 12px/1.6 var(--f-num);margin:6px 0 10px;overflow-wrap:anywhere}.cf-req .mono{color:var(--fg)}
+.cf-req .dim{font:600 10.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;margin-right:6px}
 .qopts{display:flex;flex-direction:column;gap:4px}
 .qopt{display:flex;gap:8px;align-items:flex-start;padding:4px 8px;border:1px solid var(--line2);background:var(--panel);text-align:left;font-size:12.5px;line-height:1.25;border-radius:2px;transition:background .15s,border-color .15s,opacity .2s}
 .qopt kbd{margin-top:1px;flex:none}

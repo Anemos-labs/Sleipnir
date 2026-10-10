@@ -20,17 +20,20 @@
 
   /** The derived clock fields of a meta patch: t0 (seconds since local midnight of startedAt) and started (hh:mm:ss). */
   function metaOf(patch) { const m = Object.assign({}, patch || {}); return m; }
-  const keyframeOf = list => (list || []).map(e => Object.assign({}, e, { seq: 0 }));
+  /** An event from the server as the page keeps it: a copy, made plain (SL.model.clean: plain ids, numeric clocks, no markup). */
+  const inbound = e => SL.model.clean(Object.assign({}, e));
+  const keyframeOf = list => (Array.isArray(list) ? list : []).filter(e => e && typeof e === 'object').map(e => Object.assign(inbound(e), { seq: 0 }));
+  const roster = list => SL.model.cleanRoster(list);
 
   /** Build or rebuild a session from a TabSnapshot. The session object (and its UI state) is kept when it exists. */
   function fromSnapshot(snap) {
     const t = snap.tab || {}, id = t.id; let S = ss().get(id);
     const meta = metaOf(snap.meta);
-    if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, gen: snap.gen || t.gen, cwd: t.cwd, headless: t.headless, order: t.order, meta, roster: snap.roster || [], recorded: t.kind === 'recorded', follow: !!t.follow });
-    else { S.name = t.name || S.name; S.sid = t.sid || S.sid; S.gen = snap.gen || t.gen || S.gen; S.order = t.order || S.order; Object.assign(S.meta, meta); S.roster = snap.roster || S.roster; if (t.headless) S.meta.headless = true; }
+    if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, gen: snap.gen || t.gen, cwd: t.cwd, headless: t.headless, order: t.order, meta, roster: roster(snap.roster), recorded: t.kind === 'recorded', follow: !!t.follow });
+    else { S.name = t.name || S.name; S.sid = t.sid || S.sid; S.gen = snap.gen || t.gen || S.gen; S.order = t.order || S.order; Object.assign(S.meta, meta); S.roster = snap.roster ? roster(snap.roster) : S.roster; if (t.headless) S.meta.headless = true; }
     ss().setStart(S);
     if (meta.queued) S.ui.queued = meta.queued.map(q => ({ id: q.id, text: q.text }));
-    const log = keyframeOf(snap.keyframe).concat((snap.events || []).map(e => Object.assign({}, e)));
+    const log = keyframeOf(snap.keyframe).concat((Array.isArray(snap.events) ? snap.events : []).filter(e => e && typeof e === 'object').map(inbound));
     log.sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
     S.reset(log, snap.seq || 0, snap.now || 0);
     if (Array.isArray(snap.hist)) S.hist = snap.hist.slice(-200);
@@ -66,7 +69,7 @@
     const rec = L.pending[id] = { frames: [], loading: null, overflow: false };
     rec.loading = recordedEvents(t.sid, 0).then(got => {
       if (L.pending[id] !== rec) return null;
-      const events = (got.events || []).map(e => Object.assign({}, e)).sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
+      const events = (got.events || []).filter(e => e && typeof e === 'object').map(inbound).sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
       let S = ss().get(id);
       if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, cwd: t.cwd, headless: t.headless, order: t.order != null ? t.order : 1000, recorded: true, follow: true, meta: { headless: !!t.headless }, roster: rosterOf(events) });
       else S.roster = rosterOf(events);
@@ -89,6 +92,7 @@
   /** One UI event of a tab: dropped when not newer; the world clock moves up to it; the world steps. */
   function applyEv(S, ev) {
     if (!ev || typeof ev !== 'object') return;
+    ev = inbound(ev);
     if (ev.seq && ev.seq <= S.lastSeq) return;
     if (S.follow) ensureAgents(S, ev);
     S.catchUp(ev.t || 0);
@@ -108,7 +112,7 @@
       if (p.rules && SL.data && SL.data.loaded && Object.keys(SL.data.loaded).some(k => k.indexOf('permissions|') === 0)) SL.data.load('permissions', { tab: S.id });
     },
     roster(d) {
-      const S = ss().get(d.tab); if (!S) return; S.roster = d.roster || [];
+      const S = ss().get(d.tab); if (!S) return; S.roster = roster(d.roster);
       S.roster.forEach(r => { SL.model.addAgent(S.wm, r); if (S.m) SL.model.addAgent(S.m, r); });
       SL.bus.emit('roster-changed', S); S.touch();
     },
@@ -240,7 +244,7 @@
     if (have) { SL.act.switchSession(id); return { ok: true, data: { tab: { id } } }; }
     const got = await recordedEvents(sid, 0);
     if (!got.ok) { if (SL.ui && SL.ui.toast) SL.ui.toast(got.r.message, 'err'); return got.r; }
-    const rec = (ss().recorded || []).find(x => x.id === sid) || {}, events = got.events.map(e => Object.assign({}, e));
+    const rec = (ss().recorded || []).find(x => x.id === sid) || {}, events = got.events.filter(e => e && typeof e === 'object').map(inbound);
     events.sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
     const S = ss().make({ id, name: rec.name || ('replay ' + sid.slice(9, 15)), sid, recorded: true, follow: !!opt.follow, order: 1e6, cwd: rec.cwd || '', meta: { model: rec.model || '', headless: !!opt.follow, startedAt: rec.lastWritten && rec.dur ? rec.lastWritten - rec.dur * 1000 : 0 }, roster: rosterOf(events) });
     const last = events.length ? events[events.length - 1] : null;
@@ -255,7 +259,7 @@
     const tick = async () => {
       if (S.closed) return;
       const got = await recordedEvents(S.sid, S.cursor);
-      if (got.ok && got.events.length) { const known = new Set(S.roster.map(r => r.id)); got.events.forEach(e => applyEv(S, Object.assign({}, e))); S.cursor = got.next; const ros = rosterOf(S.log); if (ros.some(r => !known.has(r.id))) { S.roster = ros; ros.forEach(r => { SL.model.addAgent(S.wm, r); if (S.m) SL.model.addAgent(S.m, r); }); SL.bus.emit('roster-changed', S); } }
+      if (got.ok && got.events.length) { const known = new Set(S.roster.map(r => r.id)); got.events.forEach(e => applyEv(S, e)); S.cursor = got.next; const ros = rosterOf(S.log); if (ros.some(r => !known.has(r.id))) { S.roster = ros; ros.forEach(r => { SL.model.addAgent(S.wm, r); if (S.m) SL.model.addAgent(S.m, r); }); SL.bus.emit('roster-changed', S); } }
       if (!S.closed) S.followTimer = setTimeout(tick, FOLLOW_MS);
     };
     S.followTimer = setTimeout(tick, FOLLOW_MS);
