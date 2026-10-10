@@ -98,13 +98,27 @@
   }
   /** The project's paths for @ completion (GET .../complete, at most 50, cached per tab and prefix); [] while they load. */
   const done = {}, asked = {};
+  /** The project's paths that complete `prefix` (for `@`): the answer the server gave within FRESH_MS, else what it gave before (or the
+   *  nearest shorter prefix's) while it is asked again; a change of the workspace forgets the session's answers. 'files-ready' says a
+   *  new answer is in. */
+  const FRESH_MS = 5000, KEEP = 200;
+  const clock = () => (SL.palette && typeof SL.palette.clock === 'function' ? SL.palette.clock() : Date.now());
   function files(prefix) {
-    const S = S_(); if (!S || S.readOnly) return []; prefix = String(prefix || ''); const k = S.id + '|' + prefix;
-    if (done[k]) return done[k];
-    if (!asked[k]) { asked[k] = true; SL.api.get(SL.api.tab(S.id) + '/complete?prefix=' + encodeURIComponent(prefix) + '&limit=50').then(r => { done[k] = r.ok && r.data && Array.isArray(r.data.paths) ? r.data.paths : []; if (!r.ok) delete asked[k]; SL.bus.emit('files-ready', k); }); }
+    const S = S_(); if (!S || S.readOnly) return []; prefix = String(prefix || ''); const k = S.id + '|' + prefix, d = done[k];
+    if (d && clock() - d.at < FRESH_MS) return d.paths;
+    if (!asked[k]) {
+      asked[k] = true;
+      SL.api.get(SL.api.tab(S.id) + '/complete?prefix=' + encodeURIComponent(prefix) + '&limit=50').then(r => {
+        delete asked[k]; if (r.ok || !done[k]) { delete done[k]; done[k] = { paths: r.ok && r.data && Array.isArray(r.data.paths) ? r.data.paths : [], at: r.ok ? clock() : 0 }; }
+        const ks = Object.keys(done); if (ks.length > KEEP) ks.slice(0, ks.length - KEEP).forEach(x => { delete done[x]; });
+        SL.bus.emit('files-ready', k);
+      });
+    }
+    if (d) return d.paths;
     const near = Object.keys(done).filter(x => x.indexOf(S.id + '|') === 0 && prefix.indexOf(x.slice(S.id.length + 1)) === 0).sort((a, b) => b.length - a.length)[0];
-    return near ? done[near] : [];
+    return near ? done[near].paths : [];
   }
+  SL.bus.on('ws-changed', S => { const p = (S && S.id ? S.id : '') + '|'; Object.keys(done).forEach(x => { if (!S || x.indexOf(p) === 0) delete done[x]; }); });
 
   /* ---------- the dialog (ctrl+k) ---------- */
   function open(q) {

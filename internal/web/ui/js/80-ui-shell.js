@@ -35,10 +35,12 @@
       txt('act', $('#vActN'), String(calc.active(m))); txt('actOf', $('#vActOf'), nW ? 'of ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'workers: the manager works alone');
       { const d = meta.mode === 'bypass' || meta.mode === 'yolo', gh = '<span class="hmode ' + (d ? 'dng' : meta.mode === 'default' ? '' : 'on') + '" title="permission mode: shift+tab cycles default, accept-edits, plan">' + (d ? '⚠ ' : '') + esc(meta.mode) + '</span> · rpm ' + (m.rpm || 0) + ' · 429s ' + (m.r429 || 0) + ' · retries ' + (m.retries || 0); const ge = $('#govTxt'); if (H.txt.gov !== gh) { H.txt.gov = gh; ge.innerHTML = gh; } }
       $('#vAct').parentNode.title = nW ? 'capacity ' + nW + ' workers · ' + calc.started(m) + ' started · ' + calc.active(m) + ' active (not idle, not done)' : 'swarm 0: one agent, no workers';
-      const b = $('#banner'); if (S.replay) { b.hidden = false; b.innerHTML = '<b>Replay</b><span>' + mmss(S.vt) + ' of ' + mmss(S.wt) + '</span><span>' + (S.replay.playing ? 'playing ' + S.replay.speed + 'x' : 'paused') + '</span><span class="dim">' + (S.recorded ? (S.follow ? 'watching ' + esc(S.sid) + ' · read-only · the run belongs to another process' : esc(S.sid) + ' · a recorded session, read-only') : 'the whole cockpit follows the log; actions act on the live session') + '</span><span class="sp"></span><button type="button" data-act="live">go live</button>'; }
-      else if (S.recorded) { b.hidden = false; b.innerHTML = '<b>' + (S.follow ? 'Watching' : 'Recorded') + '</b><span class="dim">' + (S.follow ? 'watching ' + esc(S.sid) + ' · read-only · the run belongs to another process' : esc(S.sid) + ' · a recorded session, read-only: ↺ Resume continues it') + '</span><span class="sp"></span>'; }
+      const cut = S.truncated ? '<span class="warm">showing the first ' + U.fmtN(S.truncated) + ' events: the log has more</span>' : '';
+      const b = $('#banner'); if (S.loading) { const sec = Math.max(0, Math.ceil((S.loading.next - Date.now()) / 1000)); b.hidden = false; b.innerHTML = '<b>Not loaded</b><span class="warm">could not load ' + esc(S.name) + ': ' + (sec ? 'retrying in ' + sec + ' s' : 'retrying') + '</span><span class="dim">' + esc(S.loading.why) + '</span><span class="sp"></span>'; }
+      else if (S.replay) { b.hidden = false; b.innerHTML = '<b>Replay</b><span>' + mmss(S.vt) + ' of ' + mmss(S.wt) + '</span><span>' + (S.replay.playing ? 'playing ' + S.replay.speed + 'x' : 'paused') + '</span><span class="dim">' + (S.recorded ? (S.follow ? 'watching ' + esc(S.sid) + ' · read-only · the run belongs to another process' : esc(S.sid) + ' · a recorded session, read-only') : 'the whole cockpit follows the log; actions act on the live session') + '</span>' + cut + '<span class="sp"></span><button type="button" data-act="live">go live</button>'; }
+      else if (S.recorded) { b.hidden = false; b.innerHTML = '<b>' + (S.follow ? 'Watching' : 'Recorded') + '</b><span class="dim">' + (S.follow ? 'watching ' + esc(S.sid) + ' · read-only · the run belongs to another process' : esc(S.sid) + ' · a recorded session, read-only: ↺ Resume continues it') + '</span>' + cut + '<span class="sp"></span>'; }
       else b.hidden = true;
-      const q = calc.openQuestion(m), qb = $('#qBanner'); qb.hidden = !q; if (q) $('#qBannerT').textContent = q.agent + ' asks: ' + q.cmd;
+      const q = calc.openQuestion(S.wm), qb = $('#qBanner');   /* questions come from the world model: never held back */ qb.hidden = !q; if (q) $('#qBannerT').textContent = q.agent + ' asks: ' + q.cmd;
       renderTabs(S); renderFooter(S, m); paintMode(S);
     });
     sc.frame((dtView, vt, S) => {
@@ -83,7 +85,7 @@
     function connHtml() {
       const L = SL.live, addr = esc(L.addr), st = L.state;
       if (st === 'open' || st === 'connecting') return '<span class="conn" id="conn" title="the page is served from loopback and carries a launch token; the token is held in this tab"><span class="on">●</span> ' + addr + ' <span class="cx">· loopback · token <span class="tk">✓</span></span></span>';
-      return '<span class="conn" id="conn" role="status" tabindex="0" style="color:var(--warm)" title="' + esc(st === 'down' ? 'the server is gone: ' + (L.why || 'it stopped') + '; the page tries again every 2 s' : 'the stream is down; the page reconnects by itself') + '"><span class="on" style="color:var(--warm)">○</span> ' + addr + ' <span class="cx" style="color:var(--warm)">· ' + (st === 'down' ? 'disconnected' : 'reconnecting') + '</span></span>';
+      return '<span class="conn" id="conn" role="status" tabindex="0" style="color:var(--warm)" title="' + esc(st === 'down' ? 'the server is gone: ' + (L.why || 'it stopped') + '; the page tries again every 2 s' : 'the stream is down; the page reconnects by itself') + '"><span class="on" style="color:var(--warm)">○</span> ' + addr + ' <span class="cx" style="color:var(--warm)">· ' + (st === 'down' ? (L.stopped ? 'the server stopped' : 'disconnected') : 'reconnecting') + '</span></span>';
     }
     sc.on('conn', () => { strip._sig = ''; renderStrip(); });
     function renderStrip() {
@@ -133,7 +135,7 @@
 
     /* ---- footer ---- */
     function renderFooter(S, m) {
-      const mg = m.ag.mgr, c = calc.totals(m), q = calc.openQuestion(m), slow = ui.waitingFor(mg, S.vt), word = m.goal.state === 'met' ? 'goal met' : q ? q.agent + ' waits for your answer' : mg.state === 'wait' ? 'manager waiting for the team' : S.replay ? 'replay' : slow ? 'manager ' + slow : 'manager ' + (mg.doing || mg.state);
+      const mg = m.ag.mgr, c = calc.totals(m), q = calc.openQuestion(S.wm), slow = ui.waitingFor(mg, S.vt), word = m.goal.state === 'met' ? 'goal met' : q ? q.agent + ' waits for your answer' : mg.state === 'wait' ? 'manager waiting for the team' : S.replay ? 'replay' : slow ? 'manager ' + slow : 'manager ' + (mg.doing || mg.state);
       const col = m.goal.state === 'met' ? 'var(--ok)' : q ? 'var(--warm)' : 'var(--mgr)', sl = $('#statusLine');
       const h = '<span class="dot" style="--c:' + col + '">●</span><span>' + esc(word) + '</span><span class="dim">·</span><span class="num">' + mmss(S.vt) + '</span><span class="dim">·</span><span class="num">↑' + U.fmtK(mg.rd + mg.un) + ' ↓' + U.fmtK(mg.out) + '</span><span class="dim">·</span><span class="num">' + fmtUsd(c.cost, 2) + '</span><span class="dim">·</span><span><kbd>esc</kbd> to interrupt</span>' + (m.goal.state === 'met' ? '<button class="btn sm" type="button" data-act="again">↺ run it again</button>' : '');
       if (sl._h !== h) { sl._h = h; sl.innerHTML = h; }

@@ -2,6 +2,7 @@
 // flow, 429 retries, timeouts, aborts, the network state, d16 and the stream's reopen.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { context, load, fakeFetch, FakeES, tick, plain } from './harness.mjs';
 
@@ -198,10 +199,13 @@ test('d16 is the first 16 hex of SHA-256 over canonical JSON (sorted keys, Go es
   assert.equal(SL.api.canonical(['b', 'a']), '["b","a"]');
 });
 
-test('cid counts up', () => {
-  const { SL } = setup(() => ({ status: 200 }));
-  assert.equal(SL.api.cid(), 'c1');
-  assert.equal(SL.api.cid(), 'c2');
+test('cid: a new random id for every action, never the same in two page loads (the server answers a repeated id with its first answer)', () => {
+  const a = setup(() => ({ status: 200 })).SL, b = setup(() => ({ status: 200 })).SL, seen = new Set();
+  for (const SL of [a, b]) for (let i = 0; i < 500; i++) { const id = SL.api.cid(); assert.match(id, /^c[0-9a-f-]{32,36}$/); assert.ok(!seen.has(id), 'repeated ' + id); seen.add(id); assert.ok(id.length <= 64, 'the server takes at most 64 characters'); }
+  /* without crypto.randomUUID (a page that is not a secure context): 128 bits from getRandomValues */
+  const ctx = context({ fetch: fakeFetch(() => ({ status: 200 })), crypto: { getRandomValues: x => webcrypto.getRandomValues(x), subtle: webcrypto.subtle } });
+  load(ctx, ['00-namespace.js', '00-util.js', 'api.js']);
+  const x = ctx.SL.api.cid(), y = ctx.SL.api.cid(); assert.match(x, /^c[0-9a-f]{32}$/); assert.notEqual(x, y);
 });
 
 test('stream: named frames, last id, states, and a reopen with ?after= after the browser gives up', async () => {

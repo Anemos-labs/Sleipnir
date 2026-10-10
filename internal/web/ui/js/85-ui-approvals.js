@@ -187,22 +187,34 @@
   function tellInstead(S, q, boxEl) {
     boxEl.innerHTML = '<div class="field" style="margin:0"><input class="tellIn" type="text" placeholder="tell Sleipnir what to do instead" aria-label="Tell Sleipnir what to do instead"></div><div class="row2"><button class="btn pri tellSend" type="button">Send to ' + esc(q.agent) + ' <kbd>⏎</kbd></button><button class="btn tellBack" type="button">Back <kbd>esc</kbd></button></div>';
     const inp = $('.tellIn', boxEl); inp.focus();
-    const send = () => { SL.act.answerQuestion(q.id, 3, inp.value.trim() || 'don’t do that: find another way', S.id); delete shown[q.id]; ui.toast('told ' + q.agent + ' what to do instead', 'ok'); };
+    const send = () => { delete boxEl.dataset.tell; SL.act.answerQuestion(q.id, 3, inp.value.trim() || 'don’t do that: find another way', S.id); delete shown[q.id]; ui.toast('told ' + q.agent + ' what to do instead', 'ok'); if (boxEl._afterTell) boxEl._afterTell(); };
     $('.tellSend', boxEl).addEventListener('click', send);
     inp.addEventListener('keydown', e => { SL.time.noteKey(); if (e.key === 'Enter') { e.preventDefault(); send(); } else if (e.key === 'Escape') { e.stopPropagation(); back(); } });
-    const back = () => { shown[q.id] = SL.time.T.wall; if (boxEl._back) boxEl._back(); delete boxEl.dataset.tell; };
+    const back = () => { shown[q.id] = SL.time.T.wall; delete boxEl.dataset.tell; if (boxEl._back) boxEl._back(); if (boxEl._afterTell) boxEl._afterTell(); };
     $('.tellBack', boxEl).addEventListener('click', back); boxEl.dataset.tell = '1';
   }
 
   /* ---------- the strip in the rail (active session) ---------- */
+  /** The "+N waiting" line of a strip that stays as it is. */
+  const moreText = n => n > 0 ? '+' + n + ' waiting: asked one at a time' : '';
+  /** Say a new question once (role=alert), never the ticking parts of the strip. */
+  function announce(text) { let st = $('#qStatus'); if (!st) { st = document.createElement('div'); st.id = 'qStatus'; st.className = 'sr'; st.setAttribute('role', 'alert'); document.body.appendChild(st); } st.textContent = text; }
+  /**
+   * Draw the front question of S from m, which is S's world model: a question is never held back by the hold, a pin, a pause or a scrub
+   * of the view. The strip is built once per question; another question arriving behind it changes only its "+N waiting" line, so a
+   * half-typed instruction (3: tell Sleipnir what to do instead), its focus and the blocks' scroll stay as they are.
+   */
   function render(S, m) {
     const slot = $('#qSlot'), q = m ? calc.openQuestion(m) : null, done = m ? m.qs.filter(x => x.answered).slice(-1)[0] : null;
     if (!q) { const key = done ? 'd' + done.id + done.answered : ''; if (slot._k !== key) { slot._k = key; slot.innerHTML = done && SL.time.T.wall - (shown['_d' + done.id] || (shown['_d' + done.id] = SL.time.T.wall)) < 8000 ? '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : keyOf(done, done.answered) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(clip1(done.cmd, 160)) + '</span></span></span></div>' : ''; } return; }
-    const key = 'q' + q.id + '|' + calc.waiting(m) + '|' + S.id; if (slot._k === key && $('.qstrip', slot)) return; slot._k = key;
+    const key = 'q' + q.id + '|' + S.id, waiting = calc.waiting(m) - 1, cur = $('.qstrip', slot);
+    if (slot._k === key && cur) { if (slot._w !== waiting) { slot._w = waiting; let mo = $('.qmore', cur); if (!mo && waiting > 0) { mo = document.createElement('div'); mo.className = 'qmore'; $('.qh', cur).after(mo); } if (mo) { mo.textContent = moreText(waiting); mo.hidden = !(waiting > 0); } } return; }
+    slot._k = key; slot._w = waiting;
     /* a question that arrives while the rail is folded away opens it: the full question is what the person answers */
     const app = $('#app'); if (app && app.dataset.rail === 'min' && !S.replay) openRail(false);
-    const A = m.ag[q.agent], waiting = calc.waiting(m) - 1;
-    slot.innerHTML = '<section class="qstrip" role="group" aria-label="Approval question from ' + esc(q.agent) + '" aria-describedby="qWhy"><div class="qh"><div><span class="qk">' + esc(q.agent) + ' · ' + esc(A ? A.role : '') + (q.task ? ' · ' + esc(q.task) : '') + '</span><b>' + wants(q) + '</b></div><span class="qw">waiting for you: 0s</span></div>' + (waiting > 0 ? '<div class="qmore">+' + waiting + ' waiting: asked one at a time</div>' : '') +
+    announce(q.agent + ' asks: ' + clip1(q.cmd, 200) + (waiting > 0 ? ' (' + waiting + ' more waiting)' : ''));
+    const A = m.ag[q.agent];
+    slot.innerHTML = '<section class="qstrip" role="group" aria-label="Approval question from ' + esc(q.agent) + '" aria-describedby="qWhy"><div class="qh"><div><span class="qk">' + esc(q.agent) + ' · ' + esc(A ? A.role : '') + (q.task ? ' · ' + esc(q.task) : '') + '</span><b>' + wants(q) + '</b></div><span class="qw">waiting for you: 0s</span></div>' + (waiting > 0 ? '<div class="qmore">' + moreText(waiting) + '</div>' : '') +
       cmdHtml(q) + changeHtml(q) + (q.scope ? '<div class="qscope"><b>scope</b><span class="qsv">' + mark(q.scope) + '</span></div>' : '') + whyHtml(q, 'qWhy') + '<div class="qbox">' + opts(q, null, S) + '</div></section>';
     const strip = $('.qstrip', slot), box = $('.qbox', strip), render2 = () => { box.innerHTML = opts(q, null, S); wire(); }; box._back = render2;
     const wb = $('[data-whole]', strip); if (wb) wb.addEventListener('click', () => openWhole(q));
@@ -222,14 +234,14 @@
    * front): the key then opens the rail and starts the quiet period again instead of answering; false when the key is not for a question.
    */
   ui.approvals.tryKey = function (key) {
-    const S = SL.sessions.active, q = S && S.m ? calc.openQuestion(S.m) : null; if (!q) return false;
+    const S = SL.sessions.active, q = S && S.wm ? calc.openQuestion(S.wm) : null; if (!q) return false;
     if (!(key === '1' || (key === '2' && offersTwo(q)) || key === '3' || key === 'Escape' || (key === '4' && q.offersTests))) return false;
     if (S.replay) return false;
     if (!onScreen(stripEl())) { openRail(true); shown[q.id] = SL.time.T.wall; return 'opened'; }
     const a = arm(q.id); if (!a.armed) return false; const slot = $('#qSlot'), box = $('.qbox', slot); if (box && box.dataset.tell) return false;
     if (key === '1' || key === '2' || key === '3' || (key === '4' && q.offersTests)) { answer(S, q, choiceOfKey(q, +key), box); return true; } if (key === 'Escape') { answer(S, q, 3, box); return true; } return false;
   };
-  ui.approvals.pending = () => { const S = SL.sessions.active; return S && S.m ? calc.openQuestion(S.m) : null; };
+  ui.approvals.pending = () => { const S = SL.sessions.active; return S && S.wm ? calc.openQuestion(S.wm) : null; };
 
   /* ---------- the inbox: open questions of every session ---------- */
   function mount(sc) {
@@ -241,10 +253,12 @@
         (nd.length ? nd.map(({ S, q, waiting }) => '<div class="ibx" data-sid="' + esc(S.id) + '" data-qid="' + esc(q.id) + '"><div class="ibx-t"><b style="color:var(--c-mgr)">' + esc(S.name) + '</b> <span class="dim">› ' + esc(q.agent) + (q.task ? ' · ' + esc(q.task) : '') + '</span>' + (waiting > 1 ? '<span class="tag warm">+' + (waiting - 1) + ' waiting</span>' : '') + '<button class="btn sm" type="button" data-open>Open session</button></div>' + cmdHtml(q) + changeHtml(q) + (q.scope ? '<div class="qscope"><b>scope</b><span class="qsv">' + mark(q.scope) + '</span></div>' : '') + whyHtml(q) + '<div class="qbox">' + opts(q, null, S) + '</div></div>').join('') : '<p class="stubnote" style="padding:14px 12px;margin:0">Nothing waits for you. A question in any session, background ones included, shows up here with a badge on its tab.</p>') +
         '<p class="ibx-f">Headless runs never ask: an action that needs approval is refused, with --ask-timeout shown.</p>';
     }
+    /** Redraw the inbox, unless an instruction is being written in it: then only once that is sent or put back (needs-changed meanwhile
+     *  marks it dirty), so another question arriving does not take the text or the focus. */
     function draw() {
-      if (!pop) return; pop.innerHTML = html();
+      if (!pop) return; if (pop.querySelector('.qbox[data-tell]')) { pop._dirty = true; return; } pop._dirty = false; pop.innerHTML = html();
       $$('.ibx', pop).forEach(row => { const S = SL.sessions.get(row.dataset.sid), q = S && S.wm.qs.find(x => x.id === row.dataset.qid && !x.answered); if (!q) return; const box = $('.qbox', row);
-        const rr = () => { box.innerHTML = opts(q, null, S); w(); }; box._back = rr; const wb = $('[data-whole]', row); if (wb) wb.addEventListener('click', () => openWhole(q)); const w = () => $$('.qopt', box).forEach(b => b.addEventListener('click', () => { const ok = answer(S, q, +b.dataset.choice, box); if (ok && +b.dataset.choice !== 3) sc.timeout(draw, 60); })); w(); shown[q.id] = SL.time.T.wall;
+        const rr = () => { box.innerHTML = opts(q, null, S); w(); }; box._back = rr; box._afterTell = () => { if (pop && pop._dirty) sc.timeout(draw, 0); }; const wb = $('[data-whole]', row); if (wb) wb.addEventListener('click', () => openWhole(q)); const w = () => $$('.qopt', box).forEach(b => b.addEventListener('click', () => { const ok = answer(S, q, +b.dataset.choice, box); if (ok && +b.dataset.choice !== 3) sc.timeout(draw, 60); })); w(); shown[q.id] = SL.time.T.wall;
         $('[data-open]', row).addEventListener('click', () => { close(); SL.act.switchSession(S.id); }); });
       $('[data-close]', pop).addEventListener('click', close);
     }
@@ -261,7 +275,7 @@
     sc.listen(document, 'pointerdown', e => { if (pop && !pop.contains(e.target) && !e.target.closest('#sInbox')) close(); });
     /* key 4: the fourth answer's No (94-keys.js routes 1, 2 and 3); the same rule as the other keys */
     sc.listen(document, 'keydown', e => { if (e.key !== '4' || e.ctrlKey || e.metaKey || e.altKey || ui.hasModal()) return; const t = e.target, inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); if (inField && !(t.id === 'input' && t.value === '')) return; const q = ui.approvals.pending(); if (q && q.offersTests && ui.approvals.tryKey('4')) { e.preventDefault(); e.stopPropagation(); } }, true);
-    sc.frame(() => { if (pop) paintMeters(pop); paintMeters($('#qSlot')); const q = ui.approvals.pending(); const w = $('#qSlot .qw'); if (q && w) { const S = SL.sessions.active, s = Math.max(0, Math.floor(S.vt - q.t0)) + 1, t = 'waiting for you: ' + (s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's'); if (w.textContent !== t) w.textContent = t; } });
+    sc.frame(() => { const SA = SL.sessions.active; if (SA && SA.wm) render(SA, SA.wm); if (pop) paintMeters(pop); paintMeters($('#qSlot')); const q = ui.approvals.pending(); const w = $('#qSlot .qw'); if (q && w) { const S = SL.sessions.active, s = Math.max(0, Math.floor(S.wt - q.t0)) + 1, t = 'waiting for you: ' + (s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's'); if (w.textContent !== t) w.textContent = t; } });
     ui.inbox = { toggle, close, isOpen: () => !!pop };
   }
   ui.approvals.mount = mount;

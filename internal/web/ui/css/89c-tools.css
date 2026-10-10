@@ -40,7 +40,9 @@
 .jobs .tbl td{vertical-align:top}.jg{max-width:300px}
 .slog{padding:0 12px 12px}.slog .term{min-height:240px;max-height:46vh}
 .schv .fld{grid-template-columns:90px minmax(0,1fr)}
-@container main (max-width:860px){.docv{grid-template-columns:minmax(0,1fr)}.g2s{grid-template-columns:minmax(0,1fr)}.dstep{grid-template-columns:16px minmax(0,1fr) 56px 80px 36px}.dstep .io{display:none}}
+/* a short window: each column of the doctor scrolls by itself, never cutting its form */
+.docv>*{min-height:0;overflow:auto}
+@container main (max-width:860px){.docv{grid-template-columns:minmax(0,1fr);height:auto;grid-auto-rows:min-content}.docv>*{overflow:visible}.dv-out{height:auto}.g2s{grid-template-columns:minmax(0,1fr)}.dstep{grid-template-columns:16px minmax(0,1fr) 56px 80px 36px}.dstep .io{display:none}}
 @container main (max-width:620px){.dstep{grid-template-columns:16px minmax(0,1fr) 56px}.dstep .hbar2,.dstep .hp{display:none}.tcards{grid-template-columns:minmax(0,1fr)}}
 /* Sessions: the recorded table keeps its ids on one line */
 .reclist .tbl td.mono{white-space:nowrap}

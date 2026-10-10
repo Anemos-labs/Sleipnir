@@ -62,7 +62,7 @@
     <div id="railSplit" class="rsplit" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the Radio rail" aria-valuemin="280" aria-valuemax="640" aria-valuenow="344"></div>
     <div class="ph rail-h"><h2>Manager</h2><span class="rm" id="railModel"></span><button class="holdchip" id="holdChip" type="button" hidden aria-pressed="false"></button><button class="railtog" id="railTog" type="button" aria-expanded="true" aria-controls="rail" title="Collapse the Radio rail"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr">Collapse the Radio rail</span></button></div>
     <button class="railmin" id="railMin" type="button" aria-label="Open the Radio rail" aria-controls="rail"><span class="rmv">RADIO</span><span class="rmb" id="railMinB" hidden></span></button>
-    <div id="qSlot" aria-live="assertive"></div>
+    <div id="qSlot"></div>
     <div class="planbox" id="planBox"></div>
     <div class="talkwrap"><div class="talk" id="talk" role="log" aria-label="Conversation" tabindex="0" data-hold="chat"></div><button class="newpill" id="newPill" type="button" hidden></button></div>
     <section class="feedwrap" id="feedWrap" aria-label="Team activity"><button class="feedh" id="feedTog" type="button" aria-expanded="true" aria-controls="feed"><span class="ft">Team activity</span><span class="fq">read-only</span><span class="fc" aria-hidden="true">▾</span></button><div class="talk feed" id="feed" role="log" aria-label="Team activity, read-only" tabindex="0" data-hold="chat"></div></section>
@@ -85,6 +85,7 @@
 <div id="overlayHost"></div>
 <div id="toasts" aria-live="polite"></div>
 <div id="announcer" class="sr" role="status" aria-live="polite"></div>
+<div id="qStatus" class="sr" role="alert"></div>
 <script src="js/00-namespace.js"></script>
 <script src="js/00-util.js"></script>
 <script src="js/api.js"></script>

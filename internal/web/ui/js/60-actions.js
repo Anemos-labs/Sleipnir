@@ -78,7 +78,9 @@
   act('removeRule', (rule, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/rules/remove', { rule })); });
 
   /* goals */
-  const goal = (S, body) => send(api().post(tab(S) + '/goal', body));
+  /** A goal action; the server says when it waits to run (queued: set and resume as the tab's next item, pause and clear while a turn
+   *  stops), and the page says so. */
+  const goal = (S, body) => send(api().post(tab(S) + '/goal', body), d => { if (d && d.queued) toast(body.action === 'set' || body.action === 'resume' ? 'the goal runs as the next item of ' + S.name : 'the goal is ' + (body.action === 'pause' ? 'paused' : 'cleared') + ' once the running turn stops', 'quiet'); });
   act('setGoal', (text, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; text = String(text || '').trim(); if (!text) return { ok: false, why: '/goal needs text' };
     if (why(S)) return refuse(S); return goal(S, { action: 'set', text });
@@ -217,7 +219,9 @@
     return send(api().post(tab(S) + '/restart', { kind: 'swarm', swarm: n, fresh: false }));
   });
   /** /restart [flags]: start again with other flags, the conversation carried. */
-  act('restart', (flags, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/restart', { kind: 'restart', fresh: false, flags: flags || [] })); });
+  /** A restart that the server refuses because another tab hosts that session (409 hosted, detail.tab) brings that tab forward. */
+  const hostedTab = r => { if (r.code === 'hosted' && r.detail && r.detail.tab) { ACT.switchSession(r.detail.tab.id || r.detail.tab); toast(r.message, 'warm'); return true; } return false; };
+  act('restart', (flags, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/restart', { kind: 'restart', fresh: false, flags: flags || [] }), null, hostedTab); });
   act('newChat', sid => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/restart', { kind: 'new', fresh: true })); });
   /** The prune preview is the client's arithmetic over the recorded list (the server's rule); apply confirms the exact ids. */
   act('pruneSessions', (older, keep, apply) => {

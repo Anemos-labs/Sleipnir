@@ -36,20 +36,32 @@ export function oracle(dir = path.join(here, 'mock', 'js')) {
  *  UTC, as scripts/web-parity.mjs sets it (Emulation.setTimezoneOverride). */
 const startedAt = t0 => Date.UTC(2026, 0, 2) + Math.round(t0 * 1000);
 
+/** The server sends a task, a goal, a verdict, a queue and a gauge as the whole state each time (a field it omits is empty); the
+ *  reference page's script sends what changed. Complete such an event from the reference model after it was reduced (w). */
+function whole(e, w) {
+  const T = e.k === 'task' && w.tasks[e.id];
+  if (T) Object.assign(e, { title: T.title, owner: T.owner || undefined, deps: T.deps && T.deps.length ? T.deps.slice() : undefined, scope: T.scope || '-', s: T.st, closure: T.closure || undefined, failed: T.failed || undefined, attempts: T.attempts || undefined });
+  if (e.k === 'goal') Object.assign(e, { s: w.goal.state, objective: w.goal.objective || undefined, turns: w.goal.turns || undefined, max: w.goal.max || undefined, paused: w.goal.paused || undefined, reason: w.goal.reason || undefined });
+  if (e.k === 'verdict') Object.assign(e, { kind: w.verdictKind || undefined, left: w.left && w.left.length ? w.left.slice() : undefined });
+  if (e.k === 'queue') Object.assign(e, { conflicts: w.conflicts || 0, bounced: w.bounced || 0 });
+  if (e.k === 'gov') Object.assign(e, { inflight: w.inflight || undefined, queued: w.queued || undefined });
+  if (e.k === 'warm' && !e.ttl && w.ttl) e.ttl = w.ttl;
+}
+
 /** A session of the reference page as a TabSnapshot: the whole scripted log, with the events the real server sends that the reference page computed itself. */
 export function snapshotOf(SL, S, order) {
   const D = SL.D, R = SL.model, log = S.log.slice().sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
   const keyframe = [{ t: 0, k: 'plan', seq: 0, steps: S.plan.slice(), st: S.plan.map(() => 'pending') }].concat(S.roster.map(r => ({ t: 0, k: 'layers', seq: 0, id: r.id, toks: D.layerToks(r.id) })));
   const W = R.newModel(S, { noChat: true }), events = []; let seq = 0;
   for (const e0 of log) {
-    const e = JSON.parse(JSON.stringify(e0)); delete e.seq; R.reduce(W, e0);
+    const e = JSON.parse(JSON.stringify(e0)); delete e.seq; R.reduce(W, e0); whole(e, W);
     e.seq = ++seq; events.push(e);
     if ((e.k === 'req' || e.k === 'use') && W.ag[e.id]) { const A = W.ag[e.id], c = SL.calc.agent(A); events.push({ t: e.t, k: 'use', seq: ++seq, id: e.id, rd: A.rd, un: A.un, out: A.out, wr: 0, cost: c.cost, saved: c.saved }); }
   }
   const m = S.meta, meta = { cwd: m.cwd, model: m.model, mode: m.mode, effort: m.effort, budget: m.budget, swarm: m.swarm, isolation: m.isolation, verify: m.verify, commit: m.commit, mailman: m.mailman, trustProject: m.trustProject, noMcp: m.noMcp, roleModels: m.roleModels, rules: m.rules, goalText: m.goalText, launch: m.launch, headless: !!m.headless, startedAt: startedAt(m.t0) };
   if (m.askTimeout) meta.askTimeout = m.askTimeout;
   const tab = { id: S.id, sid: S.sid, name: S.name, cwd: m.cwd, gen: 1, order, createdAt: startedAt(m.t0) }; if (m.headless) tab.headless = true;
-  return { tab, gen: 1, seq, now: S.wt, meta, roster: S.roster.map(r => ({ id: r.id, role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: !!r.ro, model: r.model, spawn: r.spawn || 0 })), keyframe, events, hist: [], questions: [] };
+  return { tab, gen: 1, seq, now: S.wt, metaV: 1, rosterV: 1, meta, roster: S.roster.map(r => ({ id: r.id, role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: !!r.ro, model: r.model, spawn: r.spawn || 0 })), keyframe, events, hist: [], questions: [] };
 }
 
 /** The catalogues of the pack in the API's shapes. */

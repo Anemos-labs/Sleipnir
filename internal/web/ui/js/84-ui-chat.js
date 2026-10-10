@@ -7,7 +7,7 @@
  * entry with a `mid` that is not done) keeps growing: its row reads the entry's current text every frame until the server ends it. */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $, $$, esc, mk, frag, tod, fmtK, fmtUsd, agCol, own } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
+  const U = SL.u, { $, $$, esc, mk, frag, tod, fmtK, fmtUsd, agCol, own, clip1 } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
   /** A number from an entry for markup: a finite number, else d (never the server's text). */
   const nm = (x, d) => typeof x === 'number' && isFinite(x) ? x : (d == null ? 0 : d);
   const ROW_CAP = 220;
@@ -190,14 +190,22 @@
       if (SLASH.mode === 'file') { const pos = inp.selectionStart, pre = inp.value.slice(0, pos).replace(/@[\w./-]*$/, '@' + c.name + ' '); inp.value = pre + inp.value.slice(pos); closeSlash(); inp.focus(); return; }
       closeSlash(); if (run && !c.args) { inp.value = ''; SL.palette.run(c, ''); } else { inp.value = c.name + ' '; inp.focus(); }
     }
+    /** Put a line that was not sent back into the composer (when nothing new was typed there meanwhile), with its pasted text. */
+    function restore(S, v, pasted) { if (S !== SL.sessions.active || inp.value.trim()) return false; inp.value = v; S.ui.draft = v; RS.pasted = pasted; autosize(); return true; }
     function submit() {
-      const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return; const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1;   /* the sent line is no draft to restore */ if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
+      const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return;
+      /* a replay never changes the session: the line stays in the composer */
+      if (v.charAt(0) !== '/' && S.replay) { ui.toast('go live to talk: a replay never changes the session (the line is kept)', 'warm'); return; }
+      const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
       if (v.charAt(0) === '/') { SL.palette.runLine(v); return; }
-      if (S.replay) { ui.toast('go live to talk: a replay never changes the session', 'warm'); return; }
       if (SL.time.holdWanted()) { SL.time.release(); SL.time.pin(false); S.hold.pinned = false; }
       /* the agent gets the pasted text; the transcript keeps the chips */
       const full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
-      const r = SL.act.send(v, undefined, full !== v ? { text: full } : undefined); if (r && r.ok === false && r.why) ui.toast(r.why, 'warm'); composerUpdate(S);
+      const r = SL.act.send(v, undefined, full !== v ? { text: full } : undefined);
+      /* until the server took it, the line is not gone: refused, it comes back into the composer */
+      if (r && r.ok === false) { restore(S, v, pasted); if (r.why) ui.toast(r.why, 'warm'); }
+      else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted') { const back = restore(S, v, pasted); if (!back) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); } });
+      composerUpdate(S);
     }
     sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
     sc.listen(inp, 'keydown', e => {
@@ -229,7 +237,7 @@
     ui.composeFocus = () => inp.focus();
 
     /* ---------- wiring ---------- */
-    sc.update((S, m) => { if (!S || !m) return; sync(false); renderPlan(S, m); composerUpdate(S); if (inp.value !== S.ui.draft && document.activeElement !== inp) inp.value = S.ui.draft || ''; ui.approvals.render(S, m); });
+    sc.update((S, m) => { if (!S || !m) return; sync(false); renderPlan(S, m); composerUpdate(S); if (inp.value !== S.ui.draft && document.activeElement !== inp) inp.value = S.ui.draft || ''; ui.approvals.render(S, S.wm); });
     sc.frame(frameFn);
     sc.on('activated', () => { TR.m = null; FD.m = null; sync(true); });
     sc.on('rebuilt', () => { TR.m = null; FD.m = null; });

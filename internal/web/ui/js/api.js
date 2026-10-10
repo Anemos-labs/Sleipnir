@@ -28,7 +28,6 @@
     askConfirm: null,
   };
   let reachable = true;
-  let cidN = 0;
   const bus = SL.bus;
 
   /** Only paths under /api/ are ever requested. */
@@ -163,8 +162,17 @@
     return Array.from(new Uint8Array(sum)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
   }
 
-  /** A client id for a request that creates something (a repeat within 60 s returns the first result). */
-  const cid = () => 'c' + (++cidN);
+  /**
+   * A client id for a request that creates something: the server answers a repeat of the same id within 60 s with its first answer, so
+   * the id is new for every action (128 random bits: unique across page loads and browser tabs) and the same for every retry of one
+   * action (the caller makes it once, with the request's body). Never Math.random: an id that repeats would drop a message silently.
+   */
+  function cid() {
+    const c = G.crypto;
+    if (c && typeof c.randomUUID === 'function') return 'c' + c.randomUUID();
+    const b = new Uint8Array(16); c.getRandomValues(b);
+    return 'c' + Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+  }
 
   /**
    * The page's one stream: EventSource on /api/stream?after=N. handlers: frame(type, data, id) for every named

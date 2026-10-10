@@ -96,8 +96,11 @@ is not trusted (`not trusted`, `changed since trusted`, `partial` when not every
 server answers that the project's own files need trust, for a new session and for a resume alike, the trust dialog lists every
 file it named, with their count and size, and each path that could not be read; its yes stays disabled until that list is on
 screen and repeats the request with the confirmation of exactly that list. A project that could not be read whole is trusted for
-that session only. `↺ Resume` continues a recorded session; a recorded session can also be opened read-only, to replay it, or
-followed while another process writes it. With no session hosted, the page opens the New session dialog.
+that session only. When the server does not start the session, the dialog opens again as it was, with the reason under its
+title; an allow rule typed but not added, and a role and model chosen but not added, are part of what starts. The dialog's
+command line quotes every value for a POSIX shell. `↺ Resume` continues a recorded session; a recorded session can also be
+opened read-only, to replay it, or followed while another process writes it; its first 400,000 events are read, and the banner
+says when the log has more. With no session hosted, the page opens the New session dialog.
 
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the first eight workers, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
@@ -106,7 +109,14 @@ only agent the person talks to, and a read-only feed of what the team does. Agen
 are read-only.
 
 The connection chip in the session strip shows the server's address. While the stream is down it reads `reconnecting` (the
-browser reconnects by itself), or `disconnected` after the server stopped; a new server run requires the new address.
+browser reconnects by itself), `the server stopped` after the server said it is stopping, or `disconnected`; a new server run
+requires the new address. A tab whose state could not be loaded says so in its banner and is fetched again (after 1, 2, 4 and
+8 seconds, then every 15). A message is kept: one the server refuses comes back into the message box. Error toasts stay until
+they are clicked away or for 12 seconds (the pointer over one pauses that); the last five stay on screen.
+
+Keys: an arrow, Home or End on the session tabs, the views rail, a menu or a list moves there and nowhere else; a key that an
+input method is composing with (Enter choosing a candidate) never sends, submits or runs a shortcut. A screen reader hears a
+question once when it arrives, never its ticking wait time, and a toast once.
 
 ### Hold and catch-up
 
@@ -114,7 +124,9 @@ The view keeps its own clock. While the pointer is over the conversation, keyboa
 the hold chip, or Space over the conversation), the view stops: nothing is appended, scrolled or typed, and the chip counts what
 arrived. Pointing at a stall or another linked item slows the view. On release, what is older than 18 seconds is folded into one
 digest row and the rest replays at up to six times speed. Questions are not held back: the question box, the `Needs you` count
-and the tab's badge appear at once, with a toast when the question is behind the hold or in another tab. The tab title shows
+and the tab's badge appear at once, also while the view is held, paused or scrubbed, with a toast when the question is behind the
+hold, in a paused view or in another tab. A form being typed in stays as it is when the team grows or the page fetches a tab
+again. The tab title shows
 `(? N)` while questions wait, unless Settings › Appearance turns the badge off.
 
 ### Approvals

@@ -1,5 +1,8 @@
 /* the component kit: buttons, segmented control, toggle, fields, tabs, meters, tooltips, popovers, terminal pane */
 .btn.sm{padding:2px 8px;font-size:11.5px}
+/* a small button keeps its look and takes a press of at least 24 x 24 px (an invisible area around it); so does a tab's close */
+.btn.sm,.stx{position:relative}
+.btn.sm::after,.stx::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,24px);height:max(100%,24px);transform:translate(-50%,-50%)}
 .btn.sm kbd{margin-left:2px}
 .field-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
 .field-row input,.field-row select,.field-row textarea,.fld input,.fld select,.fld textarea,.rq,.frow input{background:var(--bg);border:1px solid var(--line2);padding:6px 9px;font:500 13px var(--f-num);color:var(--bright);border-radius:2px;min-width:0}
@@ -41,7 +44,9 @@ textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 .term .tl.hd{color:var(--bright)}.term .prompt{color:var(--c-mgr)}.term .tl.ok{color:var(--ok)}.term .tl.warn{color:var(--warm)}.term .tl.bad,.term .tl.err{color:var(--err)}.term .tl.dim{color:var(--dim)}.term .tl.head{color:var(--fe);font-weight:700}
 .stubnote.hint2{margin-top:6px}
 .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:20px}.g2>*{min-width:0}
+/* a row of a field (an input or selects and Add) wraps inside its column instead of widening it */
+.fld .fc>.field-row{flex:1 1 100%;min-width:0}.fld .fc .field-row select{flex:1 1 110px;min-width:0;max-width:100%}.fld .fc .field-row input{flex:1 1 140px}
 .kv.keys2{grid-template-columns:minmax(120px,max-content) 1fr}
 .kv.keys2 dt{text-transform:none;font:500 11px var(--f-num);letter-spacing:0;color:var(--fg2)}
 .kv.keys2 dd{font-family:var(--f-ui);font-size:12.5px}

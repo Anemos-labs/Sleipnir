@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { webcrypto } from 'node:crypto';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'ui');
-export const JS = path.join(ROOT, 'js');
+/** The scripts under test: ui/js, or SL_UI_JS (another copy of them, e.g. an older revision to show that a test fails there). */
+export const JS = process.env.SL_UI_JS || path.join(ROOT, 'js');
 
 /** A fetch fake: routes is a function (method, path, init) -> {status, body, headers} or a Promise of it; calls are recorded. */
 export function fakeFetch(routes) {

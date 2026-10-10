@@ -18,10 +18,18 @@
   if (mq) (mq.addEventListener ? mq.addEventListener('change', ui.applyMotion) : mq.addListener(ui.applyMotion));
 
   /* ---------- toasts ---------- */
+  /**
+   * A toast: a line at the bottom left, spoken once by the toasts' live region. An error stays until it is dismissed (a click, or its ×)
+   * or for 12 s, and the pointer over it pauses that; any other toast goes after 3.6 s. The last TOAST_KEEP stay on screen.
+   */
+  const TOAST_KEEP = 5, TOAST_MS = 3600, TOAST_ERR_MS = 12000;
   ui.toast = function (msg, kind) {
-    const host = $('#toasts'); if (!host) return; const t = mk('div', { class: 'toast ' + (kind || '') }); t.textContent = msg; host.appendChild(t);
-    const id = setTimeout(() => t.remove(), 3600); t._id = id; while (host.children.length > 3) { clearTimeout(host.firstChild._id); host.firstChild.remove(); }
-    const an = $('#announcer'); if (an && kind !== 'quiet') an.textContent = msg;
+    const host = $('#toasts'); if (!host) return; const err = kind === 'err', t = mk('div', { class: 'toast ' + (kind || '') + (err ? ' sticky' : '') });
+    t.textContent = msg; host.appendChild(t);
+    const drop = () => { clearTimeout(t._id); t.remove(); }, arm = ms => { clearTimeout(t._id); t._id = setTimeout(drop, ms); };
+    arm(err ? TOAST_ERR_MS : TOAST_MS);
+    if (err) { const x = mk('button', { type: 'button', class: 'tx', 'aria-label': 'Dismiss' }); x.textContent = '×'; t.appendChild(x); t.addEventListener('click', drop); t.addEventListener('pointerenter', () => clearTimeout(t._id)); t.addEventListener('pointerleave', () => arm(TOAST_ERR_MS)); }
+    while (host.children.length > TOAST_KEEP) { clearTimeout(host.firstChild._id); host.firstChild.remove(); }
   };
 
   /* ---------- modal ---------- */
@@ -53,14 +61,22 @@
   };
 
   /* ---------- the session menu (rename / stop / close) ---------- */
+  /** The one open session menu, or null: every way it closes (an item, Escape, a press elsewhere, its button again) goes through
+   *  close(), which removes the two document listeners it added. */
+  const MENU = { cur: null };
+  function closeMenu(focusBtn) { const c = MENU.cur; if (!c) return false; MENU.cur = null; c.p.remove(); document.removeEventListener('pointerdown', c.away, true); document.removeEventListener('keydown', c.esck, true); if (focusBtn && c.btn && document.contains(c.btn)) c.btn.focus(); return true; }
+  ui.closeSessionMenu = closeMenu;
+  /** Toggle the session menu under btn: open it, or close it when it is open. */
   ui.sessionMenu = function (btn) {
-    const S = SL.sessions.active, app = $('#app'); const old = $('.sessmenu'); if (old) { old.remove(); return; }
+    if (MENU.cur) { closeMenu(false); return; }
+    const S = SL.sessions.active, app = $('#app');
     const p = mk('div', { class: 'popover sessmenu', role: 'menu' }, '<button role="menuitem" type="button" data-a="rename">Rename…</button><button role="menuitem" type="button" data-a="restart">Start the team again…</button><button role="menuitem" type="button" data-a="stop">Stop the run…</button><button role="menuitem" type="button" data-a="close" class="bad">Close this session…</button>');
     app.appendChild(p); const r = btn.getBoundingClientRect(), ar = app.getBoundingClientRect(); p.style.top = (r.bottom - ar.top + 4) + 'px'; p.style.left = Math.max(8, r.left - ar.left) + 'px'; $('button', p).focus();
-    const off = () => { p.remove(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esck, true); };
-    const away = e => { if (!p.contains(e.target)) off(); }, esck = e => { if (e.key === 'Escape') { e.stopPropagation(); off(); btn.focus(); } };
+    /* a press on the menu's own button is left to its click, which toggles: it does not close here and reopen there */
+    const away = e => { if (!p.contains(e.target) && !(btn.contains && btn.contains(e.target))) closeMenu(false); }, esck = e => { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(true); } };
+    MENU.cur = { p, btn, away, esck };
     document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', esck, true);
-    p.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a) return; off(); const k = a.dataset.a;
+    p.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a) return; closeMenu(false); const k = a.dataset.a;
       if (k === 'rename') ui.dialogs.rename(S);
       else if (k === 'restart') ui.settingsPage('run');
       else if (k === 'stop') ui.confirm({ title: 'Stop the run', text: 'Stop <b>' + esc(S.name) + '</b>? Every agent is interrupted and the goal is paused. The session stays open and its log is kept.', ok: 'Stop the run', danger: true, run: () => { const r2 = SL.act.interrupt('turn'); ui.toast(r2.ok ? 'stopped: the goal is paused' : (r2.why || 'nothing was running'), 'warm'); } });

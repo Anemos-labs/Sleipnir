@@ -65,7 +65,7 @@
   /* ---------- the rail's own state: items with badges ---------- */
   function badges(S) {
     const m = S && S.m, b = {}; if (!m) return b;
-    const q = calc.waiting(m); if (q) b.radio = ['? ' + q, 'warm', q + ' question' + (q > 1 ? 's' : '') + ' waiting'];
+    const q = calc.waiting(S.wm); if (q) b.radio = ['? ' + q, 'warm', q + ' question' + (q > 1 ? 's' : '') + ' waiting'];
     if (ui.ws && ui.ws.counts) { const c = ui.ws.counts(S); if (c && c.changed) b.changes = [String(c.changed), '', c.changed + ' changed file' + (c.changed > 1 ? 's' : '')]; if (c && c.ckpts) b.checkpoints = [String(c.ckpts), '', c.ckpts + ' checkpoint' + (c.ckpts > 1 ? 's' : '')]; }   // the Workspace index may not be here yet: no badge until it is
     if (m.anomalies.length) b.cache = SL.settings.cache === 'full' ? ['⚠ ' + m.anomalies.length, 'err', m.anomalies.length + ' cache anomaly'] : ['⚠', '', m.anomalies.length + ' cache anomaly'];
     if (m.mail.length) b.mail = [String(m.mail.length), '', m.mail.length + ' mails routed'];
@@ -172,7 +172,7 @@
     paintRail(false);
     /* the rail's mini state: a badge on the collapsed strip when a question waits or new rows arrived */
     const mb = $('#railMinB');
-    sc.update((S, m) => { if (!S || !m) return; const q = calc.waiting(m); mb.hidden = !q; mb.textContent = q ? '? ' + q : ''; $('#qBanner').classList.toggle('minq', !R.open); });
+    sc.update((S, m) => { if (!S || !m) return; const q = calc.waiting(S.wm); mb.hidden = !q; mb.textContent = q ? '? ' + q : ''; $('#qBanner').classList.toggle('minq', !R.open); });
   }
   /** an agent was picked (a stall, a leg, a gantt row, a task card, Enter on the selection): its read-only Details drawer opens. The person talks to the manager only. */
   ui.focusAgent = function (id) {

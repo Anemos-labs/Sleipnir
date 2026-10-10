@@ -97,7 +97,7 @@
   .qbanner[hidden]{display:none}.qbanner b{color:var(--warm);font-family:var(--f-num)}.qbanner .go{margin-left:auto;font:700 11px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--warm);white-space:nowrap}
   .view{padding:8px 16px 12px}
   .drawer{right:0;width:100%;top:auto;height:86%;bottom:0;border-left:0;border-top:1px solid var(--line2)}
-  .scrim{padding:3vh 8px 8px}.sh-h .d{display:none}
+  .scrim{padding:3vh 8px 8px}.sh-h .d{display:none}.sheet{max-height:calc(97vh - 60px)}   /* down to the bottom bar, no gap above it */
   #foot{padding:4px 16px;gap:2px 10px;height:auto;flex-wrap:wrap}#foot .model{display:none}
   #statusLine{font-size:11px;flex:1 1 100%;flex-wrap:wrap;gap:2px 6px;white-space:normal}#statusLine kbd{display:none}#foot .sp{display:none}.mockchip{margin-left:auto}
   .talkwrap{flex:none;min-height:220px}.talk{overflow:visible}

@@ -17,6 +17,12 @@
   const D = SL.D;
   const CHAN_CAP = 4500;          // entries kept per channel in memory (the DOM keeps far fewer)
   const MARK_CAP = 800, SEG_CAP = 1200;
+  /* every list a long stream grows is bounded: the ratios of an agent's requests (the count stays in nreq), the streamed messages still
+     open, the answered questions, the anomalies and the compactions */
+  const RATIO_CAP = 400, MID_CAP = 1000, QS_CAP = 300, ANOM_CAP = 500, COMPACT_CAP = 500;
+  /** Push a mark of the gantt (the cap holds for every kind). */
+  const addMark = (m, x) => { m.marks.push(x); if (m.marks.length > MARK_CAP) m.marks.splice(0, m.marks.length - MARK_CAP); };
+  const capList = (l, n) => { if (l.length > n) l.splice(0, l.length - n); };
   const VISIBLE = new Set(['say', 'sys', 'tool', 'note', 'mail', 'break', 'compact', 'ask', 'merge', 'steer', 'reply', 'refuse', 'interrupt', 'local']);
 
   const priceOf = id => id === 'mgr' ? D.prices.mgr : D.prices.worker;
@@ -60,7 +66,7 @@
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
       mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ckpts: [],
       reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0,
-      mids: {}, stalls: {}, handovers: [], alerts: {}, mailstat: null, ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
+      mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
     return m;
   }
@@ -80,7 +86,7 @@
     if (!m.chat) return;
     const list = m.chan[ch] || (m.chan[ch] = []);
     entry.id = ++m.nid; if (entry.t == null) entry.t = ev.t; if (ev && ev.at && entry.at == null) entry.at = ev.at;
-    if (ev && ev.mid && (entry.k === 'say' || entry.k === 'stream')) { entry.mid = ev.mid; (m.mids[ev.mid] = m.mids[ev.mid] || []).push(entry); }
+    if (ev && ev.mid && (entry.k === 'say' || entry.k === 'stream')) { entry.mid = ev.mid; if (!m.mids[ev.mid]) { m.mids[ev.mid] = []; m.midOrder.push(ev.mid); if (m.midOrder.length > MID_CAP) delete m.mids[m.midOrder.shift()]; } m.mids[ev.mid].push(entry); }
     if (ctx && ctx.digest) { entry.collapsed = true; if (ctx.digest.rows.length < 160) ctx.digest.rows.push({ ch, k: entry.k, t: entry.t, text: entry.text || entry.arg || (entry.name ? entry.name : '') || (entry.id2 || '') , who: entry.who || entry.ag || '' }); }
     list.push(entry);
     if (list.length > CHAN_CAP) { list.splice(0, 500); m.folded[ch] = (m.folded[ch] || 0) + 500; }
@@ -131,15 +137,13 @@
         if (prev !== ev.s && ['ask', 'done', 'stuck', 'idle', 'wait'].includes(ev.s) && ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'st', ag: ev.id, s: ev.s, text: A.doing, task: A.task, t: ev.t }, ev);
         break;
       }
-      case 'task': {
+      case 'task': {   /* each task event is the whole task (the server's TaskX): a field it omits is empty, never "as before" */
         let T = m.tasks[ev.id];
-        if (!T) { T = m.tasks[ev.id] = { id: ev.id, title: ev.title || ev.id, owner: ev.owner || null, deps: ev.deps || [], scope: ev.scope || '', st: 'todo', t: ev.t, ms: 0 }; m.torder.push(ev.id); }
+        if (!T) { T = m.tasks[ev.id] = { id: ev.id, title: ev.title || ev.id, owner: null, deps: [], scope: '', st: 'todo', t: ev.t, ms: 0 }; m.torder.push(ev.id); }
         if (ev.s) { T.st = ev.s; T.t = ev.t; if (ev.s === 'merged' && !m.merged.includes(ev.id)) m.merged.push(ev.id); }
-        if (ev.owner) T.owner = ev.owner;   /* a handover moves the card's owner; the server sends what changed */
-        if (ev.title) T.title = ev.title; if (Array.isArray(ev.deps)) T.deps = ev.deps.slice(); if (ev.scope) T.scope = ev.scope;
-        if (ev.closure !== undefined) T.closure = ev.closure;
-        if (ev.failed !== undefined) T.failed = !!ev.failed;
-        if (typeof ev.attempts === 'number') T.attempts = ev.attempts;
+        T.owner = ev.owner || null;   /* a handover moves the card's owner; a released task has none */
+        if (ev.title) T.title = ev.title; T.deps = Array.isArray(ev.deps) ? ev.deps.slice() : []; T.scope = ev.scope || '';
+        T.closure = ev.closure || ''; T.failed = !!ev.failed; T.attempts = typeof ev.attempts === 'number' ? ev.attempts : 0;
         break;
       }
       case 'plan': {
@@ -147,24 +151,24 @@
         else if (Number.isInteger(ev.n) && ev.n >= 0 && ev.n < 1000) m.plan[ev.n] = SL.u.own(PLAN_ST, ev.s) || 'pending';
         break;
       }
-      case 'verdict': m.verdict = ev.text; if (ev.kind !== undefined) m.verdictKind = ev.kind; m.left = Array.isArray(ev.left) ? ev.left.slice() : m.left; break;
+      case 'verdict': m.verdict = ev.text || ''; m.verdictKind = ev.kind || ''; m.left = Array.isArray(ev.left) ? ev.left.slice() : []; break;   /* the whole verdict: what it omits is empty */
       case 'req': {
         if (!A) break;
-        A.ratios.push(ev.ratio); A.nreq++; A.lastReq = ev.t;
+        A.ratios.push(ev.ratio); capList(A.ratios, RATIO_CAP); A.nreq++; A.lastReq = ev.t;
         if (!ev.hist) {
           const p = ev.p || Math.round((A.rd + A.un) / Math.max(1, A.nreq - 1)) || 1200;
           const rd = Math.round(p * ev.ratio); A.rd += rd; A.un += Math.round(p) - rd; A.out += ev.o || 0;
           m.lastReq = ev.t; m.reqLog.push({ t: ev.t, id: ev.id, ratio: ev.ratio }); if (m.reqLog.length > 200) m.reqLog.shift();
-          m.marks.push({ t: ev.t, id: ev.id, g: 'req' }); if (m.marks.length > MARK_CAP) m.marks.shift();
+          addMark(m, { t: ev.t, id: ev.id, g: 'req' });
         }
         break;
       }
-      case 'use': if (A) { A.rd = ev.rd; A.un = ev.un; A.out = ev.out; if (ev.wr != null) A.wr = ev.wr; if (typeof ev.cost === 'number') A.cost = ev.cost; if (typeof ev.saved === 'number') A.saved = ev.saved; if (ev.savedPartial !== undefined) A.savedPartial = !!ev.savedPartial; if (typeof ev.unpriced === 'number') A.unpriced = ev.unpriced; } break;
-      case 'warm': m.lastReq = ev.t; if (ev.ttl) m.ttl = ev.ttl; break;
-      case 'gov': m.rpm = ev.rpm; m.rpmHist.push({ t: ev.t, rpm: ev.rpm }); if (m.rpmHist.length > 60) m.rpmHist.shift(); if (ev.r429 != null) m.r429 = ev.r429; if (ev.retries != null) m.retries = ev.retries; if (ev.inflight != null) m.inflight = ev.inflight; if (ev.queued != null) m.queued = ev.queued; break;
+      case 'use': if (A) { A.rd = ev.rd; A.un = ev.un; A.out = ev.out; if (ev.wr != null) A.wr = ev.wr; if (typeof ev.cost === 'number') A.cost = ev.cost; if (typeof ev.saved === 'number') A.saved = ev.saved; A.savedPartial = !!ev.savedPartial; A.unpriced = typeof ev.unpriced === 'number' ? ev.unpriced : 0; } break;
+      case 'warm': m.lastReq = ev.t; m.ttl = ev.ttl || 0; break;
+      case 'gov': m.rpm = ev.rpm; m.rpmHist.push({ t: ev.t, rpm: ev.rpm }); if (m.rpmHist.length > 60) m.rpmHist.shift(); if (ev.r429 != null) m.r429 = ev.r429; if (ev.retries != null) m.retries = ev.retries; m.inflight = ev.inflight || 0; m.queued = ev.queued || 0; break;
       case 'mail': {
         m.mail.push({ t: ev.t, from: ev.from, to: ev.to, text: ev.text, at: ev.at, tok: ev.tok }); if (m.mail.length > MAIL_CAP) m.mail.shift();
-        m.marks.push({ t: ev.t, id: ev.from, g: 'mail' }); if (m.marks.length > MARK_CAP) m.marks.shift();
+        addMark(m, { t: ev.t, id: ev.from, g: 'mail' });
         const e = { k: 'mail', from: ev.from, to: ev.to, text: ev.text, t: ev.t };
         push(m, ctx, 'mail', e, ev); if (ev.from !== 'you') push(m, ctx, chOf(ev.from), Object.assign({}, e), ev); if (ev.to !== ev.from) push(m, ctx, chOf(ev.to), Object.assign({}, e), ev);
         push(m, ctx, 'mgr', { k: 'feed', ag: ev.from, g: 'mail', text: 'mail → ' + ev.to, task: A && A.task, to: ev.to, t: ev.t }, ev);
@@ -179,7 +183,7 @@
       }
       case 'ask': {
         const q = Object.assign({}, ev.q, { t0: ev.t, answered: null, choice: null }); m.qs.push(q); m.q = m.qs.find(x => !x.answered) || null;
-        m.marks.push({ t: ev.t, id: q.agent, g: 'ask' });
+        addMark(m, { t: ev.t, id: q.agent, g: 'ask' });
         push(m, ctx, 'mgr', { k: 'feed', ag: q.agent, g: 'ask', text: 'asks: ' + SL.u.clip1(q.cmd, 200), task: q.task, t: ev.t }, ev);   /* the question itself shows the command whole */
         push(m, ctx, chOf(q.agent), { k: 'ask', ag: q.agent, q, t: ev.t }, ev);
         if (d) d.asks++;
@@ -188,31 +192,32 @@
       case 'answer': {
         const q = m.qs.find(x => x.id === ev.qid);
         if (q) { q.answered = ev.choice; q.tAns = ev.t; q.note = ev.note; q.by = ev.by; }
+        if (m.qs.length > QS_CAP) { let drop = m.qs.length - QS_CAP; m.qs = m.qs.filter(x => !(x.answered && drop > 0 && drop-- > 0)); }   /* the oldest answered ones go; an open one never */
         m.q = m.qs.find(x => !x.answered) || null;
         /* a question the person answered, or one that closed without an answer (canceled, timed out, the session closed, no page open): a quiet row */
         if (q) push(m, ctx, 'mgr', ev.by && ev.by !== 'you' ? { k: 'sys', glyph: '⊘', text: 'refused without an answer (' + (SL.u.own(BY_WORD, ev.by) || 'closed') + '): ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }
           : { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }, ev);
         break;
       }
-      case 'queue': m.qHead = ev.head ? { task: ev.head, cmd: ev.cmd, step: ev.step, t0: (m.qHead && m.qHead.task === ev.head) ? m.qHead.t0 : ev.t, ms: ev.ms } : null; if (ev.conflicts != null) m.conflicts = ev.conflicts; if (ev.bounced != null) m.bounced = ev.bounced; break;
+      case 'queue': m.qHead = ev.head ? { task: ev.head, cmd: ev.cmd || '', step: ev.step || '', t0: (m.qHead && m.qHead.task === ev.head) ? m.qHead.t0 : ev.t, ms: ev.ms || 0 } : null; m.conflicts = ev.conflicts || 0; m.bounced = ev.bounced || 0; break;
       case 'merge': {
         const T = m.tasks[ev.id]; if (!T) break; T.st = 'merged'; T.ms = ev.ms; T.t = ev.t; if (!m.merged.includes(ev.id)) m.merged.push(ev.id);
-        m.marks.push({ t: ev.t, id: T.owner, g: 'merge' }); m.lastMerge = ev;
+        addMark(m, { t: ev.t, id: T.owner, g: 'merge' }); m.lastMerge = ev;
         push(m, ctx, 'mgr', { k: 'sys', glyph: '✓', text: ev.id + ' merged: rebase ✓ · ' + ev.cmd + ' ✓ ' + (ev.ms < 1000 ? ev.ms + 'ms' : (ev.ms / 1000).toFixed(1) + 's'), task: ev.id, ag: T.owner, t: ev.t }, ev);
         if (T.owner) push(m, ctx, chOf(T.owner), { k: 'note', ag: T.owner, g: 'done', text: ev.id + ' merged ✓ ' + ev.cmd + ' ' + (ev.ms / 1000).toFixed(1) + 's', task: ev.id, t: ev.t }, ev);
         if (d) d.merged.push(ev.id);
         break;
       }
       case 'break': {
-        m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why });
-        m.flash = { t: ev.t, id: ev.id }; m.lastBreakT = ev.t; m.marks.push({ t: ev.t, id: ev.id, g: 'break' });
+        m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why }); capList(m.anomalies, ANOM_CAP);
+        m.flash = { t: ev.t, id: ev.id }; m.lastBreakT = ev.t; addMark(m, { t: ev.t, id: ev.id, g: 'break' });
         push(m, ctx, 'mgr', { k: 'break', ag: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, t: ev.t }, ev);
         push(m, ctx, chOf(ev.id), { k: 'break', ag: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, t: ev.t }, ev);
         if (d) d.breaks++;
         break;
       }
       case 'compact': {
-        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct }); m.marks.push({ t: ev.t, id: ev.id, g: 'compact' });
+        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
         push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, t: ev.t }, ev);
         if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, t: ev.t }, ev);
         if (d) d.compacts++;
@@ -225,7 +230,7 @@
         break;
       }
       case 'diff': if (typeof ev.file === 'string' && !(ev.file in Object.prototype)) m.diff[ev.file] = ev; break;
-      case 'goal': { const g = { state: ev.s }; ['objective', 'turns', 'max', 'paused', 'reason'].forEach(k => { if (ev[k] !== undefined) g[k] = ev[k]; }); if (ev.s === 'active') g.paused = ev.paused || ''; m.goal = Object.assign({}, m.goal, g); break; }
+      case 'goal': m.goal = { state: ev.s, objective: ev.objective || '', turns: ev.turns || 0, max: ev.max || 0, paused: ev.paused || '', reason: ev.reason || '' }; break;   /* the whole goal: what it omits is empty */
       case 'final': m.final = { t: ev.t, steps: m.steps }; m.turn = false; push(m, ctx, 'mgr', { k: 'final', t: ev.t }, ev); break;
       case 'steer': {
         const e = { k: 'steer', to: ev.to, text: ev.text, t: ev.t };
@@ -244,13 +249,14 @@
         const e = { k: 'tool', ag: ev.id, name: ev.name, arg: ev.arg, out: '', ok: false, refused: true, reason: ev.reason, t: ev.t, task: A && A.task };
         push(m, ctx, chOf(ev.id), e, ev);
         push(m, ctx, 'mgr', { k: 'feed', ag: ev.id, g: 'x', text: 'refused: ' + ev.name + ' ' + (ev.arg || ''), t: ev.t }, ev);
-        m.marks.push({ t: ev.t, id: ev.id, g: 'refuse' });
+        addMark(m, { t: ev.t, id: ev.id, g: 'refuse' });
         break;
       }
       case 'more': {   /* a streaming message grows: every copy of it (chat and feed) and the agent's stream record */
         const list = m.mids[ev.mid];
         if (list) list.forEach(e => { if (ev.text) e.text += ev.text; if (ev.end) e.done = true; });
         Object.keys(m.streams).forEach(id => { const s = m.streams[id]; if (s.mid === ev.mid) { if (ev.text) s.text += ev.text; if (ev.end) s.done = true; } });
+        if (ev.end) delete m.mids[ev.mid];   /* an ended message takes no more text: its index is let go */
         break;
       }
       case 'turn': if (ev.s === 'start') { m.final = null; m.turn = true; m.turnStart = ev.t; } else if (ev.s === 'end') m.turn = false; break;

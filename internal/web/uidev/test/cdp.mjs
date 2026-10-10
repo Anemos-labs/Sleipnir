@@ -39,10 +39,11 @@ export async function open(file, { w = 1440, h = 900, scale = 1, reduced = false
   clearTimeout(startTimer);
   const port = new URL(wsURL).port, targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(), tab = targets.find(t => t.type === 'page');
   const ws = new WebSocket(tab.webSocketDebuggerUrl); await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-  let id = 0; const pending = new Map(), errors = [], logs = [], fontMisses = [];
+  let id = 0; const pending = new Map(), errors = [], logs = [], fontMisses = [], handlers = {};
   // The Google Fonts link cannot load offline (its host is mapped to a dead address so tests do not wait): recorded in fontMisses, not an app error.
   ws.onmessage = ev => { const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) { const { res, rej } = pending.get(m.id); pending.delete(m.id); m.error ? rej(new Error(m.error.message)) : res(m.result); return; }
+    if (m.method && handlers[m.method]) handlers[m.method].forEach(f => { try { f(m.params); } catch (e) { /* a handler's failure is its own */ } });
     if (m.method === 'Runtime.exceptionThrown') { const d = m.params.exceptionDetails; errors.push('exception: ' + (d.exception?.description || d.text)); }
     if (m.method === 'Runtime.consoleAPICalled') { const t = m.params.type, s = m.params.args.map(a => a.value ?? a.description).join(' '); if (t === 'error' || t === 'assert') errors.push('console.' + t + ': ' + s); else if (t === 'log') logs.push(s); }
     if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') { const msg = 'log: ' + m.params.entry.text + ' ' + (m.params.entry.url || ''); if (/fonts\.g(oogleapis|static)\.com/.test(msg)) fontMisses.push(msg); else errors.push(msg); } };
@@ -55,6 +56,8 @@ export async function open(file, { w = 1440, h = 900, scale = 1, reduced = false
   await send('Page.navigate', { url: (/^[a-z]+:/i.test(file) ? file : pathToFileURL(path.resolve(file)).href) + (query ? '?' + query : '') }); let loadTimer; await Promise.race([loaded, new Promise(r => { loadTimer = setTimeout(r, 20000); })]); clearTimeout(loadTimer); await new Promise(r => setTimeout(r, 600));
   const page = {
     errors, logs, fontMisses, send,
+    /** Call fn(params) for every DevTools event `method` (e.g. Fetch.requestPaused after Fetch.enable). */
+    on(method, fn) { (handlers[method] = handlers[method] || []).push(fn); },
     async eval(js) { const r = await send('Runtime.evaluate', { expression: js, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('eval: ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text) + '\n' + js.slice(0, 200)); return r.result?.value; },
     async shot(file) { const { data } = await send('Page.captureScreenshot', { format: 'png' }); fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true }); fs.writeFileSync(file, Buffer.from(data, 'base64')); return file; },
     viewport, sleep: ms => new Promise(r => setTimeout(r, ms)),

@@ -55,6 +55,9 @@
   /** Colour token of an agent: its own shade when the tokens define one (sc-1, be-2 ...), else its role colour. Only a plain id (letters,
    *  digits, `_` and `-`) is spliced into a variable name; any other value is the dim colour. */
   const agCol = id => id === 'you' ? 'var(--fg)' : id === 'mgr' ? 'var(--c-mgr)' : typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? 'var(--a-' + id + ',var(--c-' + id.split('-')[0] + ',var(--dim)))' : 'var(--dim)';
-  SL.u = { agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
+  /** Is this key event part of an input method's composition (a CJK candidate being chosen)? Its Enter picks a candidate: it never
+   *  sends, submits or runs a shortcut. */
+  const composing = e => !!e && (e.isComposing === true || e.keyCode === 229);
+  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
   SL.bus = makeBus();
 })(SL);

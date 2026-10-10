@@ -5,6 +5,7 @@
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk, sv, fmtK, fmtUsd, fmtMs, mmss, tod, hitCls, agCol } = U, calc = SL.calc, D = SL.D, ui = SL.ui = SL.ui || {};
+  const SPARK_N = 60;
   const SG = { think: ['◇', 'think'], tool: ['⚙', 'tool'], edit: ['✎', 'edit'], wait: ['✉', 'wait'], ask: ['?', 'ask'], idle: ['◌', 'idle'], done: ['✓', 'done'], stuck: ['⚠', 'stuck'] };
   ui.SG = SG;
 
@@ -106,7 +107,7 @@
       if (R.chip) { R.chip.textContent = A.id === 'mgr' ? R.chip.textContent : (A.task || '–'); R.chip.className = 'chip task' + (A.task && m.tasks[A.task] && m.tasks[A.task].st === 'merged' ? ' t-merged' : ''); if (A.id !== 'mgr') R.el.setAttribute('data-task', A.task || ''); }
       R.tok.innerHTML = fmtK(c.prompt) + '<span class="u"> tok</span>'; R.cost.textContent = fmtUsd(c.cost, 3); R.hit.textContent = c.prompt ? c.pct + '%' : '–'; R.hit.className = 'hit n-hit ' + (c.prompt ? hitCls(c.pct) : '');
       R.el.setAttribute('aria-label', A.id + ' ' + A.role + ', ' + w + ': ' + A.doing);
-      if (R.n !== A.ratios.length) { R.n = A.ratios.length; R.spark.innerHTML = sparkBars(A.ratios, 150, 40); }
+      if (R.n !== A.nreq) { R.n = A.nreq; R.spark.innerHTML = sparkBars(A.ratios.slice(-SPARK_N), 150, 40); }   /* the last SPARK_N requests: a long run draws no more bars */
     }
     /* ---- board, queue, mail, governor ---- */
     const B = ui.board.make(sc, q('.bcols'), false), qbody = q('.qbody'), mlist = q('.mlist');

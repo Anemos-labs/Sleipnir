@@ -94,15 +94,29 @@
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
     return { name: '', cwd, model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : has ? 'off' : '5', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 12, resume: '' };
   }
+  /** One argument for a POSIX shell: as it is when it holds only characters a shell leaves alone, else in single quotes (a single quote
+   *  inside becomes '\''). */
+  const shellQuote = a => { a = String(a == null ? '' : a); return /^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; };
+  ui.shellQuote = shellQuote;
+  /** The `sleipnir chat` command line of a New session state, every value quoted for a shell (Copy the command pastes it as it is); the
+   *  first goal follows as a comment, on one line. */
+  dialogs.cliLine = function (st) {
+    const q = shellQuote, f = ['sleipnir chat'];
+    if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); f.push('--swarm ' + q(st.swarm)); f.push('--isolation ' + q(st.isolation));
+    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false');
+    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
+    if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp');
+    return f.join(' ') + (st.goalText ? '\n  # then: /goal ' + String(st.goalText).replace(/[\r\n]+/g, ' ') : '');
+  };
   dialogs.newSession = function (seed) {
     if (SL.data) { SL.data.load('projects'); SL.data.load('models'); }
     const st = Object.assign(seedOf(), seed || {}), MAXW = st.maxWorkers;
     const projects = () => { const l = (D.extra.projects || []).slice(); if (st.cwd && !l.some(p => p.dir === st.cwd)) l.unshift({ dir: st.cwd, trust: '' }); return l; };
     const models = () => { const l = D.models.map(m => m.ref); if (st.model && l.indexOf(st.model) < 0) l.unshift(st.model); return l; };
-    const cli = () => { const f = ['sleipnir chat']; if (st.resume) f.push('--resume ' + st.resume); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + st.cwd); f.push('--model ' + st.model); f.push('--mode ' + st.mode); f.push('--swarm ' + st.swarm); f.push('--isolation ' + st.isolation); if (st.verify) f.push('--verify "' + st.verify + '"'); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + st.budget); Object.keys(st.roleModels).forEach(r => f.push('--role-model ' + r + '=' + st.roleModels[r])); st.rules.forEach(r => f.push('--allow ' + r)); if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp'); return f.join(' ') + (st.goalText ? '\n  # then: /goal ' + st.goalText : ''); };
+    const cli = () => dialogs.cliLine(st);
     const chk = (k, label) => '<label class="chk"><input type="checkbox" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + label + '</label>';
     ui.modal({ title: 'New session', kicker: '+ chat flags', desc: 'one tab = one sleipnir session: its own chat, team, log, directory and budget', wide: true, color: 'var(--ok)', focus: '#nsName', body:
-      (st.resume ? '<p class="stubnote mono" style="margin:0 0 8px">resume ' + esc(st.resume) + '</p>' : '') +
+      (st.error ? '<p class="nserr err" role="alert">' + esc(st.error) + '</p>' : '') + (st.resume ? '<p class="stubnote mono" style="margin:0 0 8px">resume ' + esc(st.resume) + '</p>' : '') +
       '<div class="g2 ns"><div>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"')) + field('directory (--cwd)', '<select id="nsCwd" aria-label="Directory">' + projects().map(p => '<option value="' + esc(p.dir) + '"' + (p.dir === st.cwd ? ' selected' : '') + '>' + esc(p.dir) + esc(trustWord(p.trust)) + '</option>').join('') + '</select>') +
       field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select>') +
       field('workers (--swarm)', '<input id="nsSwarm" type="number" min="0" max="' + MAXW + '" value="' + st.swarm + '" aria-label="worker count"><span class="dim" id="nsSw"></span>') + field('isolation', seg('isolation', ['none', 'worktree'], st.isolation)) + field('verify (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command"')) + '</div><div>' +
@@ -112,15 +126,21 @@
       onMount(b, sc, close) {
         const paint = () => { $('#nsCli', b).innerHTML = esc(cli()).replace(/--mode (bypass|yolo)/, '<span class="cli-danger">--mode $1</span>'); paintMode(b, st.mode); $('#nsSw', b).textContent = st.swarm === 0 ? ' single agent' : ' manager + ' + st.swarm + ' worker' + (st.swarm === 1 ? '' : 's') + (st.swarm > 8 ? ' (' + (st.swarm - 8) + ' share legs)' : ''); $('#nsRoleTags', b).innerHTML = Object.keys(st.roleModels).map(r => '<span class="tag">' + esc(r) + ' = ' + esc(st.roleModels[r]) + ' <button type="button" data-rmr="' + esc(r) + '" aria-label="remove ' + esc(r) + '">×</button></span>').join(''); $('#nsRules', b).innerHTML = st.rules.map((r, i) => '<span class="tag">' + esc(r) + ' <button type="button" data-rr="' + i + '" aria-label="remove ' + esc(r) + '">×</button></span>').join(''); }; paint();
         sc.listen(b, 'input', e => { const t = e.target; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsSwarm') st.swarm = Math.max(0, Math.min(MAXW, parseInt(t.value, 10) || 0)); else if (t.id === 'nsGoal') st.goalText = t.value; paint(); });
-        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsCwd') st.cwd = t.value; else if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
+        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsCwd') st.cwd = t.value; else if (t.id === 'nsModel') st.model = t.value; else if (t.id === 'nsRole' || t.id === 'nsRoleM') st.roleDirty = true; else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.listen(b, 'click', e => { const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; } const x = e.target.closest('[data-seg]'); if (x) { st[x.dataset.seg] = x.dataset.v; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; } const rr = e.target.closest('[data-rr]'); if (rr) { st.rules.splice(+rr.dataset.rr, 1); paint(); } const rm = e.target.closest('[data-rmr]'); if (rm) { delete st.roleModels[rm.dataset.rmr]; paint(); } if (e.target.closest('#nsAddRole')) { st.roleModels[$('#nsRole', b).value] = $('#nsRoleM', b).value; paint(); } });
         sc.listen($('#nsModes', b), 'keydown', e => { const k = e.key; if (!/^(Arrow(Up|Down|Left|Right)|Home|End)$/.test(k)) return; e.preventDefault(); const rs = $$('[data-nsmode]', b), f = rs.indexOf(document.activeElement), i = f >= 0 ? f : rs.findIndex(r => r.dataset.nsmode === st.mode), j = k === 'Home' ? 0 : k === 'End' ? rs.length - 1 : (i + (/Down|Right/.test(k) ? 1 : rs.length - 1)) % rs.length; st.mode = rs[j].dataset.nsmode; paint(); rs[j].focus(); });
         const addRule = () => { const v = $('#nsRule', b).value.trim(); if (v && !st.rules.includes(v)) { st.rules.push(v); $('#nsRule', b).value = ''; paint(); } }; sc.listen($('#nsAddRule', b), 'click', addRule); sc.listen($('#nsRule', b), 'keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addRule(); } });
         sc.listen($('#nsCopy', b), 'click', () => U.copy(cli()).then(ok => ui.toast(ok ? 'command copied' : 'copy is not available here', ok ? 'ok' : 'warm')));
         sc.listen($('#nsStart', b), 'click', () => { const bud = st.budget === 'off' || st.budget === '' ? 0 : parseFloat(st.budget); if (st.budget !== 'off' && st.budget !== '' && !(bud > 0)) { ui.toast('the budget is a number of dollars, or off', 'err'); return; }
+          /* what was typed or chosen but not added yet is part of what starts (an allow rule in its field, a role and model picked) */
+          const pend = $('#nsRule', b).value.trim(); if (pend && !st.rules.includes(pend)) st.rules.push(pend);
+          if (st.roleDirty && !Object.prototype.hasOwnProperty.call(st.roleModels, $('#nsRole', b).value)) st.roleModels[$('#nsRole', b).value] = $('#nsRoleM', b).value;
           const spec = { name: st.name.trim() || undefined, cwd: st.cwd, model: st.model, mode: st.mode, swarm: st.swarm, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: st.rules, trustProject: st.trustProject, noMcp: st.noMcp, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: st.roleModels };
           if (bud > 0) spec.budget = bud; if (st.resume) spec.resume = st.resume;
-          close(); start(spec);
+          /* the dialog gives way to the trust step and the confirmation; when the server does not start the session it opens again as it
+             was, with why under its title */
+          const again = Object.assign({}, st, { rules: st.rules.slice(), roleModels: Object.assign({}, st.roleModels), roleDirty: false });
+          close(); start(spec).then(res => { if (res && !res.ok) dialogs.newSession(Object.assign(again, { error: res.declined ? 'not started: the trust step or the confirmation was declined' : 'not started: ' + (res.message || res.why || 'the server refused it') })); });
         });
       } });
   };
@@ -154,10 +174,11 @@
   if (SL.api && SL.api.cfg) SL.api.cfg.askConfirm = askConfirm;
 
   /** Start the session (the trust step and any other confirmation run inside SL.act.newSession). */
+  /** Start the session; resolves the server's result ({ok:false, why} at once for a refusal on the page). */
   function start(spec) {
     const r = SL.act.newSession(spec);
-    if (refused(r)) return;
-    r.done.then(res => { if (res.ok) ui.toast('started ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); });
+    if (!r || r.ok === false) return Promise.resolve({ ok: false, why: r && r.why });
+    return r.done.then(res => { if (res.ok) ui.toast('started ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); return res; });
   }
 
   /* ---------- the trust step: the server's challenge, whole ---------- */

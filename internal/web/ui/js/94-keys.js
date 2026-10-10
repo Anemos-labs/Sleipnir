@@ -8,9 +8,12 @@
   const U = SL.u, { $ } = U, ui = SL.ui = SL.ui || {}, calc = SL.calc;
   const VIEW_KEYS = { o: 'cockpit', c: 'cache', m: 'mail', b: 'board', r: 'replay', s: 'sessions', ',': 'settings', '.': 'tools' };
   const typing = t => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  /** Widgets that move with the arrows and Home/End themselves. */
+  const OWNS_KEYS = '[role=tablist],[role=tab],[role=menu],[role=menubar],[role=listbox],[role=radiogroup],[role=tree],[role=grid],[role=slider],nav,select,input,textarea,[contenteditable]';
 
   function mount(sc) {
     sc.listen(document, 'keydown', e => {
+      if (U.composing(e)) return;
       const t = e.target, inField = typing(t), mod = e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta';
       if (ui.modeMenu && ui.modeMenu.isOpen() && !e.ctrlKey && !e.metaKey && !e.altKey && /^(Arrow(Up|Down|Left|Right)|Home|End|Enter| |Tab)$/.test(e.key)) return;   /* the open mode menu owns its keys */
       /* an approval takes a key only when the keyboard has been quiet; text typed ahead goes to the prompt */
@@ -35,6 +38,9 @@
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') { e.preventDefault(); const tk = $('#talk'); tk.classList.toggle('xo'); ui.toast(tk.classList.contains('xo') ? 'tool output expanded (ctrl+o)' : 'tool output collapsed'); return; }
       if (inField || ui.hasModal() || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key, S = SL.sessions.active;
+      /* the arrows, Home, End, Space, + and - belong to a widget that takes them (the session tabs, the views rail, a menu, a list, a
+         slider): the view's clock and the agent selection never take them from it */
+      if (/^(Arrow(Up|Down|Left|Right)|Home|End| |\+|=|-)$/.test(k) && t && t.closest && t.closest(OWNS_KEYS)) return;
       if (ui.nav && ui.nav.chord(k)) { e.preventDefault(); return; }
       if (k === '/') { e.preventDefault(); if (window.innerWidth <= 900 || getComputedStyle($('#rail')).display === 'none') SL.palette.open(''); else { ui.rail.expand(); const i = $('#input'); i.focus(); i.value = '/'; i.dispatchEvent(new Event('input')); } return; }
       if (k === '?') { e.preventDefault(); ui.sheets.help(); return; }
