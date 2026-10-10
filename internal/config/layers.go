@@ -9,9 +9,8 @@ import (
 
 // The effective configuration says what a setting is; the report (Report.Origins) says which layer supplied it last. Neither says
 // where each element of a merged list came from: a deny list holds the user's rules and the rules a project added to them, and a page
-// that lists the rules in force has to name the file of each. The per-layer view below replays the merge of one list over the layers
-// Load read, element by element, with Load's own rules (lists replace, a repository's deny and ask lists and hooks only add, null
-// removes).
+// that lists the rules in force has to name the file of each. The per-layer view below runs Load's own merge over the layers Load
+// read, one layer at a time, and follows each element of one list through it.
 
 // LayerValues is one configuration layer as Load applied it.
 type LayerValues struct {
@@ -46,52 +45,64 @@ type ListValue struct {
 	Kind, Source string
 }
 
-// listOrigins replays the merge of the list at segs over layers and returns its elements with their layers, in the order the merge
-// leaves them. It applies mergeObject's rules: an absent key changes nothing, null removes, a list replaces, and a list that a
-// repository may only add to (additive) gains the elements it does not already hold.
+// listOrigins traces the list at segs through the merge of layers and returns its elements with the layers that put them there, in
+// the order the merge leaves them. It does not restate the merge's rules: it runs the merge itself (merger.apply, the code Load runs)
+// one layer at a time and reads what each layer left at segs, so the two cannot disagree (a repository's null or scalar over a
+// section of additive lists is ignored, a copied section keeps its duplicates, an additive list keeps its elements and appends).
+// After a layer, the list is unchanged when the merge did not record that layer at segs; when it did, the elements the list had are
+// kept with their layers if the layer could only add to it (a repository's additive list) and they are still its first elements,
+// and every other element is the layer's.
 func listOrigins(layers []*layer, segs []string) []ListValue {
+	m := newMerger()
 	var cur []ListValue
 	for _, l := range layers {
-		v, present, cleared := lookupPath(l.tree, segs)
-		if cleared {
+		m.apply(l)
+		v, present := valueAt(m.tree, segs)
+		if !present || v == nil {
 			cur = nil
 			continue
 		}
-		if !present {
-			continue
-		}
-		repo := l.kind == "project" || l.kind == "local"
-		if repo && additive(segs) {
-			add, _ := v.([]any)
-			for _, a := range add {
-				dup := false
-				for _, c := range cur {
-					if reflect.DeepEqual(c.Value, a) {
-						dup = true
-						break
-					}
-				}
-				if !dup {
-					cur = append(cur, ListValue{Value: deepCopy(a), Kind: l.kind, Source: l.source})
-				}
-			}
-			continue
-		}
-		if v == nil {
-			cur = nil
-			continue
+		if m.origins[okey(segs)] != l.source {
+			continue // the layer did not touch the list
 		}
 		items, ok := v.([]any)
 		if !ok {
-			cur = []ListValue{{Value: deepCopy(v), Kind: l.kind, Source: l.source}} // not a list: it replaces as a whole
+			cur = []ListValue{{Value: deepCopy(v), Kind: l.kind, Source: l.source}} // not a list: one value, the layer's
 			continue
 		}
-		cur = cur[:0:0]
-		for _, it := range items {
-			cur = append(cur, ListValue{Value: deepCopy(it), Kind: l.kind, Source: l.source})
+		keep := 0
+		if (l.kind == "project" || l.kind == "local") && additive(segs) && len(cur) <= len(items) {
+			keep = len(cur)
+			for i := range cur {
+				if !reflect.DeepEqual(cur[i].Value, items[i]) {
+					keep = 0
+					break
+				}
+			}
 		}
+		next := make([]ListValue, 0, len(items))
+		next = append(next, cur[:keep]...)
+		for _, it := range items[keep:] {
+			next = append(next, ListValue{Value: deepCopy(it), Kind: l.kind, Source: l.source})
+		}
+		cur = next
 	}
 	return cur
+}
+
+// valueAt finds the value at segs in a merged tree.
+func valueAt(tree map[string]any, segs []string) (any, bool) {
+	var cur any = tree
+	for _, s := range segs {
+		mp, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		if cur, ok = mp[s]; !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 // lookupPath finds the value at segs in a layer's tree. present says the layer has the key; cleared says that a parent of it is null

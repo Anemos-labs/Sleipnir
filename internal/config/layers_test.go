@@ -306,3 +306,17 @@ func TestEnumsAndTheTestsPreset(t *testing.T) {
 		t.Errorf("expand: %q", got)
 	}
 }
+
+// A repository's null (or scalar) over the permissions section is ignored by the merge; the traced rules follow (the reviewed case).
+func TestRuleOriginsIgnoreARepositoryNullOverTheSection(t *testing.T) {
+	for _, local := range []string{`{"permissions":null}`, `{"hooks":null,"permissions":{"roles":null}}`} {
+		o := layerFixture(t, `{"permissions":{"deny":["Bash(rm:*)"]}}`, "", local)
+		got, err := RuleOrigins(o)
+		if err != nil {
+			t.Fatalf("%s: %v", local, err)
+		}
+		if rows := originRows(got); !reflect.DeepEqual(rows, []string{"deny * Bash(rm:*) <- user"}) {
+			t.Errorf("%s: %q", local, rows)
+		}
+	}
+}
