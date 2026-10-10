@@ -44,10 +44,10 @@
 {"t":4.95,"k":"mailstat","seq":44,"sent":2,"delivered":1,"dropped":0}
 {"t":5.1,"k":"sys","seq":45,"ch":"mgr","glyph":"⚠","text":"mail m2 was not delivered to sc-1: its run had ended","ag":"sc-1"}
 {"t":5.1,"k":"mailstat","seq":46,"sent":2,"delivered":1,"dropped":1}
-{"t":5.25,"k":"ckpt","seq":47,"at":1791633605100,"cid":"c01","ts":"08:00:05","files":0,"note":"turn 1: build the API","skipped":true}
-{"t":7.25,"k":"ckpt","seq":48,"at":1791633605250,"cid":"c01","ts":"08:00:05","files":2,"note":"turn 1: build the API","agents":["be-1"],"add":40,"del":2}
+{"t":5.25,"k":"ckpt","seq":47,"at":1791633605100,"cid":"c01","ts":"12:00:05","files":0,"note":"turn 1: build the API","skipped":true}
+{"t":7.25,"k":"ckpt","seq":48,"at":1791633605250,"cid":"c01","ts":"12:00:05","files":2,"note":"turn 1: build the API","agents":["be-1"],"add":40,"del":2}
 {"t":7.25,"k":"gov","seq":49,"rpm":4,"r429":0,"retries":0}
-{"t":7.4,"k":"ckpt","seq":50,"at":1791633607250,"cid":"c02","ts":"08:00:07","files":3,"note":"turn 2: handlers","safety":true,"agents":["be-1"]}
+{"t":7.4,"k":"ckpt","seq":50,"at":1791633607250,"cid":"c02","ts":"12:00:07","files":3,"note":"turn 2: handlers","safety":true,"agents":["be-1"]}
 {"t":7.55,"k":"stall","seq":51,"id":"be-1","task":"T1","kind":"claimed_no_progress","s":"raise","text":"be-1 claimed T1 9 minutes ago and has not reported progress"}
 {"t":7.55,"k":"sys","seq":52,"ch":"mgr","glyph":"⚠","text":"be-1 claimed T1 9 minutes ago and has not reported progress","ag":"be-1","task":"T1"}
 {"t":7.7,"k":"alert","seq":53,"s":"raise","kind":"stalled","key":"be-1","text":"be-1 has been quiet for 9 minutes"}

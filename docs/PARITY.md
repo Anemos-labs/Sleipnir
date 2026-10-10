@@ -61,7 +61,7 @@ flag changed.
 | `X exists in the web interface and not in the terminal interface` | build X in the terminal, or list it under `web_only`, with the reason |
 | `X under <list> is stale` | remove the entry: the difference is gone |
 | `webui.json is out of date` | `sh scripts/gen-webui-inventory.sh`, read the diff |
-| a fact differs | decide which interface is right, fix the other, then update the recorded facts (`go test ./internal/parity -run 'TestTerminalFacts|TestFactsStreamsAreCurrent' -update`) and keep both halves equal |
+| a fact differs | decide which interface is right, fix the other, then run `go test ./internal/parity -run TestTerminalFacts -update` and `go test ./internal/parity -run TestFactsStreamsAreCurrent -update`, and keep both halves equal |
 | a key differs | build the key in the other interface, or list it in `contract/keys.json`; record the terminal's keys with `go test ./internal/tui/app -run TestKeysParityTerminal -update` and the page's with `node internal/web/uidev/test/keys-parity.test.mjs --update` |
 
 Every guard has a test that proves it fails: a synthetic extra item on either side makes the comparison report it, and a contract

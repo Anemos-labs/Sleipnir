@@ -277,12 +277,18 @@ type chatProbe struct {
 	typed string // how the program looked before a character was typed
 }
 
-func (p *chatProbe) look(typed bool) string {
+func (p *chatProbe) look(typed bool) string { return p.view(typed, true) }
+
+// view is how the program looks now; withBytes adds how much the program has written, which only grows, so a comparison of two moments
+// that are meant to look alike leaves it out.
+func (p *chatProbe) view(typed, withBytes bool) string {
 	s := p.r.screen()
 	if typed {
 		return maskPrompt(s)
 	}
+	p.r.bridge.mu.Lock() // the program may still be drawing: the emulator's fields are read under the lock its writes take
 	x, y, vis := p.r.bridge.v.Cursor()
+	p.r.bridge.mu.Unlock()
 	p.r.host.mu.Lock()
 	host := fmt.Sprint(p.r.host.mode, len(p.r.host.goals), p.r.host.commands)
 	p.r.host.mu.Unlock()
@@ -290,7 +296,11 @@ func (p *chatProbe) look(typed bool) string {
 	if p.extra != nil {
 		extra = p.extra()
 	}
-	return fmt.Sprintf("%s\n--\ncursor %d,%d,%v alt %v host %s extra %s bytes %d", s, x, y, vis, p.r.altScreen(), host, extra, len(p.r.written()))
+	out := fmt.Sprintf("%s\n--\ncursor %d,%d,%v alt %v host %s extra %s", s, x, y, vis, p.r.altScreen(), host, extra)
+	if withBytes {
+		out += fmt.Sprint(" bytes ", len(p.r.written()))
+	}
+	return out
 }
 
 // barrier returns when the program has handled the key it was given, or reports that it ended.
@@ -310,7 +320,7 @@ func (p *chatProbe) barrier() (ended bool) {
 func (p *chatProbe) try(k input.Key, typed bool) (changed, quit bool) {
 	before := p.look(typed)
 	if typed {
-		p.typed = p.look(false)
+		p.typed = p.view(false, false)
 	}
 	p.r.send(k)
 	if p.barrier() {
@@ -321,7 +331,7 @@ func (p *chatProbe) try(k input.Key, typed bool) (changed, quit bool) {
 
 func (p *chatProbe) restore() bool {
 	p.r.send(input.SpecialKey(input.Backspace, 0))
-	return !p.barrier() && p.look(false) == p.typed
+	return !p.barrier() && p.view(false, false) == p.typed
 }
 
 func (p *chatProbe) stop() {

@@ -96,6 +96,9 @@ func TestToolRowsOfAgentsThatShareCallIDsAreKept(t *testing.T) {
 		if len(tools) != 2 {
 			t.Fatalf("%s: %d tool rows, want one for each agent: %v", name, len(tools), tools)
 		}
+		if tools[0]["id"] == tools[1]["id"] {
+			t.Fatalf("%s: both rows are %v's: %v", name, tools[0]["id"], tools)
+		}
 		for _, r := range tools {
 			switch r["id"] {
 			case "be-1":
