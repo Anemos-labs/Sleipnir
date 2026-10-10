@@ -193,7 +193,7 @@ func promptLayers(a *state.Agent, g0 int) []widget.Layer {
 	for _, bp := range stk.Breakpoints {
 		marked[bp.Label] = true
 	}
-	g0 = min(max(g0, 0), stk.Unsectioned)
+	g0 = state.LayerSplit(*a, g0)[0] // the constitution estimate, bounded by what the request did not size
 	layers := []widget.Layer{{Name: "G0 const", Tokens: g0, Breakpoint: marked["const"]}}
 	secs := append([]state.Section(nil), stk.Sections...)
 	rank := func(n string) int {

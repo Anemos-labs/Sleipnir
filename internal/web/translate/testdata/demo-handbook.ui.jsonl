@@ -1,0 +1,185 @@
+{"t":0.229,"k":"state","seq":1,"id":"mgr","s":"think","doing":"thinking","task":null}
+{"t":0.237,"k":"gov","seq":2,"rpm":1,"r429":0,"retries":0}
+{"t":0.243,"k":"req","seq":3,"id":"mgr","ratio":0,"p":4479,"o":144}
+{"t":0.243,"k":"use","seq":4,"id":"mgr","rd":0,"un":4479,"out":144,"wr":0,"cost":0.020796,"saved":0}
+{"t":0.243,"k":"layers","seq":5,"id":"mgr","toks":[4112,89,278,0,0,0]}
+{"t":0.243,"k":"warm","seq":6,"ttl":300}
+{"t":0.247,"k":"task","seq":7,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","scope":"-","s":"todo"}
+{"t":0.247,"k":"task","seq":8,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","scope":"-","s":"todo"}
+{"t":0.247,"k":"task","seq":9,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","scope":"-","s":"todo"}
+{"t":0.247,"k":"task","seq":10,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","scope":"-","s":"todo"}
+{"t":0.247,"k":"task","seq":11,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"running"}
+{"t":0.247,"k":"state","seq":12,"id":"sc-1","s":"think","doing":"thinking","task":"T1"}
+{"t":0.247,"k":"task","seq":13,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"running"}
+{"t":0.247,"k":"state","seq":14,"id":"sc-2","s":"think","doing":"thinking","task":"T2"}
+{"t":0.248,"k":"task","seq":15,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"running"}
+{"t":0.249,"k":"state","seq":16,"id":"sc-3","s":"think","doing":"thinking","task":"T3"}
+{"t":0.249,"k":"task","seq":17,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"running"}
+{"t":0.249,"k":"state","seq":18,"id":"sc-4","s":"think","doing":"thinking","task":"T4"}
+{"t":0.255,"k":"req","seq":19,"id":"sc-1","ratio":0.9437386569872959,"p":4408,"o":10}
+{"t":0.255,"k":"use","seq":20,"id":"sc-1","rd":4160,"un":248,"out":10,"wr":0,"cost":0.005352,"saved":0.00156}
+{"t":0.255,"k":"layers","seq":21,"id":"sc-1","toks":[4112,87,86,59,0,64]}
+{"t":0.255,"k":"warm","seq":22,"ttl":300}
+{"t":0.259,"k":"req","seq":23,"id":"sc-3","ratio":0.9655172413793104,"p":4408,"o":10}
+{"t":0.259,"k":"use","seq":24,"id":"sc-3","rd":4256,"un":152,"out":10,"wr":0,"cost":0.005064,"saved":0.001596}
+{"t":0.259,"k":"layers","seq":25,"id":"sc-3","toks":[4112,87,86,59,0,64]}
+{"t":0.259,"k":"warm","seq":26,"ttl":300}
+{"t":0.269,"k":"req","seq":27,"id":"sc-3","ratio":0.9294320137693631,"p":4648,"o":28}
+{"t":0.269,"k":"use","seq":28,"id":"sc-3","rd":8576,"un":480,"out":38,"wr":0,"cost":0.011255999999999999,"saved":0.003216}
+{"t":0.269,"k":"layers","seq":29,"id":"sc-3","toks":[4112,87,86,59,0,304]}
+{"t":0.269,"k":"warm","seq":30,"ttl":300}
+{"t":0.269,"k":"note","seq":31,"id":"sc-3","g":"done","text":"submitted T3","task":"T3"}
+{"t":0.269,"k":"task","seq":32,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"verify"}
+{"t":0.27,"k":"req","seq":33,"id":"sc-4","ratio":0.9655172413793104,"p":4408,"o":10}
+{"t":0.27,"k":"use","seq":34,"id":"sc-4","rd":4256,"un":152,"out":10,"wr":0,"cost":0.005064,"saved":0.001596}
+{"t":0.27,"k":"layers","seq":35,"id":"sc-4","toks":[4112,87,86,59,0,64]}
+{"t":0.27,"k":"req","seq":36,"id":"sc-2","ratio":0.9655172413793104,"p":4408,"o":10}
+{"t":0.27,"k":"use","seq":37,"id":"sc-2","rd":4256,"un":152,"out":10,"wr":0,"cost":0.005064,"saved":0.001596}
+{"t":0.27,"k":"layers","seq":38,"id":"sc-2","toks":[4112,87,86,59,0,64]}
+{"t":0.276,"k":"req","seq":39,"id":"sc-1","ratio":0.9294320137693631,"p":4648,"o":28}
+{"t":0.276,"k":"use","seq":40,"id":"sc-1","rd":8480,"un":576,"out":38,"wr":0,"cost":0.011543999999999999,"saved":0.0031799999999999997}
+{"t":0.276,"k":"layers","seq":41,"id":"sc-1","toks":[4112,87,86,59,0,304]}
+{"t":0.276,"k":"note","seq":42,"id":"sc-1","g":"done","text":"submitted T1","task":"T1"}
+{"t":0.276,"k":"task","seq":43,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"verify"}
+{"t":0.293,"k":"req","seq":44,"id":"sc-1","ratio":0.9667161331354674,"p":4717,"o":3}
+{"t":0.293,"k":"use","seq":45,"id":"sc-1","rd":13040,"un":733,"out":41,"wr":0,"cost":0.016791999999999998,"saved":0.004889999999999999}
+{"t":0.293,"k":"layers","seq":46,"id":"sc-1","toks":[4112,87,87,59,0,372]}
+{"t":0.293,"k":"warm","seq":47,"ttl":300}
+{"t":0.293,"k":"state","seq":48,"id":"mgr","s":"wait","doing":"waits","task":null}
+{"t":0.293,"k":"note","seq":49,"id":"sc-1","g":"done","text":"no files edited; no tests run","task":"T1"}
+{"t":0.293,"k":"req","seq":50,"id":"sc-2","ratio":0.9294320137693631,"p":4648,"o":28}
+{"t":0.293,"k":"use","seq":51,"id":"sc-2","rd":8576,"un":480,"out":38,"wr":0,"cost":0.011255999999999999,"saved":0.003216}
+{"t":0.293,"k":"layers","seq":52,"id":"sc-2","toks":[4112,87,86,59,0,304]}
+{"t":0.293,"k":"warm","seq":53,"ttl":300}
+{"t":0.293,"k":"note","seq":54,"id":"sc-2","g":"done","text":"submitted T2","task":"T2"}
+{"t":0.293,"k":"task","seq":55,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"verify"}
+{"t":0.294,"k":"req","seq":56,"id":"sc-3","ratio":0.9667161331354674,"p":4717,"o":3}
+{"t":0.294,"k":"use","seq":57,"id":"sc-3","rd":13136,"un":637,"out":41,"wr":0,"cost":0.016503999999999998,"saved":0.004926}
+{"t":0.294,"k":"layers","seq":58,"id":"sc-3","toks":[4112,87,86,59,0,373]}
+{"t":0.294,"k":"note","seq":59,"id":"sc-3","g":"done","text":"no files edited; no tests run","task":"T3"}
+{"t":0.295,"k":"req","seq":60,"id":"sc-4","ratio":0.9294320137693631,"p":4648,"o":28}
+{"t":0.295,"k":"use","seq":61,"id":"sc-4","rd":8576,"un":480,"out":38,"wr":0,"cost":0.011255999999999999,"saved":0.003216}
+{"t":0.295,"k":"layers","seq":62,"id":"sc-4","toks":[4112,87,86,59,0,304]}
+{"t":0.295,"k":"note","seq":63,"id":"sc-4","g":"done","text":"submitted T4","task":"T4"}
+{"t":0.295,"k":"task","seq":64,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"verify"}
+{"t":0.298,"k":"state","seq":65,"id":"sc-1","s":"idle","doing":"waits for work","task":"T1"}
+{"t":0.298,"k":"state","seq":66,"id":"sc-2","s":"think","doing":"starting","task":"T2","reqSince":0.297}
+{"t":0.3,"k":"req","seq":67,"id":"sc-2","ratio":0.9675366008911521,"p":4713,"o":3}
+{"t":0.3,"k":"use","seq":68,"id":"sc-2","rd":13136,"un":633,"out":41,"wr":0,"cost":0.016488,"saved":0.004926}
+{"t":0.3,"k":"layers","seq":69,"id":"sc-2","toks":[4112,87,87,59,0,368]}
+{"t":0.3,"k":"warm","seq":70,"ttl":300}
+{"t":0.3,"k":"state","seq":71,"id":"sc-3","s":"idle","doing":"waits for work","task":"T3"}
+{"t":0.3,"k":"state","seq":72,"id":"sc-4","s":"think","doing":"starting","task":"T4","reqSince":0.296}
+{"t":0.301,"k":"note","seq":73,"id":"sc-2","g":"done","text":"no files edited; no tests run","task":"T2"}
+{"t":0.303,"k":"req","seq":74,"id":"sc-4","ratio":0.9683584625185815,"p":4709,"o":3}
+{"t":0.303,"k":"use","seq":75,"id":"sc-4","rd":13136,"un":629,"out":41,"wr":0,"cost":0.016472,"saved":0.004926}
+{"t":0.303,"k":"layers","seq":76,"id":"sc-4","toks":[4112,87,87,59,0,364]}
+{"t":0.303,"k":"note","seq":77,"id":"sc-4","g":"done","text":"no files edited; no tests run","task":"T4"}
+{"t":0.307,"k":"req","seq":78,"id":"mgr","ratio":0.8778369844089204,"p":5067,"o":150}
+{"t":0.307,"k":"use","seq":79,"id":"mgr","rd":4448,"un":5098,"out":294,"wr":0,"cost":0.030719999999999997,"saved":0.001668}
+{"t":0.307,"k":"layers","seq":80,"id":"mgr","toks":[4112,87,271,0,0,597]}
+{"t":0.307,"k":"warm","seq":81,"ttl":300}
+{"t":0.307,"k":"task","seq":82,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"merged"}
+{"t":0.307,"k":"task","seq":83,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"merged"}
+{"t":0.307,"k":"task","seq":84,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"merged"}
+{"t":0.307,"k":"task","seq":85,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"merged"}
+{"t":0.307,"k":"task","seq":86,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"todo"}
+{"t":0.307,"k":"task","seq":87,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"todo"}
+{"t":0.307,"k":"task","seq":88,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running"}
+{"t":0.307,"k":"state","seq":89,"id":"dc-1","s":"think","doing":"thinking","task":"T5"}
+{"t":0.309,"k":"task","seq":90,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running"}
+{"t":0.309,"k":"state","seq":91,"id":"dc-2","s":"think","doing":"thinking","task":"T6"}
+{"t":0.311,"k":"req","seq":92,"id":"dc-1","ratio":0.9377817853922452,"p":4436,"o":21}
+{"t":0.311,"k":"use","seq":93,"id":"dc-1","rd":4160,"un":276,"out":21,"wr":0,"cost":0.005684,"saved":0.00156}
+{"t":0.311,"k":"layers","seq":94,"id":"dc-1","toks":[4112,87,73,102,0,62]}
+{"t":0.311,"k":"warm","seq":95,"ttl":300}
+{"t":0.319,"k":"req","seq":96,"id":"dc-2","ratio":0.953880764904387,"p":4445,"o":21}
+{"t":0.319,"k":"use","seq":97,"id":"dc-2","rd":4240,"un":205,"out":21,"wr":0,"cost":0.00548,"saved":0.00159}
+{"t":0.319,"k":"layers","seq":98,"id":"dc-2","toks":[4112,87,73,102,0,71]}
+{"t":0.319,"k":"warm","seq":99,"ttl":300}
+{"t":0.32,"k":"req","seq":100,"id":"dc-1","ratio":0.8849125660837739,"p":4918,"o":102}
+{"t":0.32,"k":"use","seq":101,"id":"dc-1","rd":8512,"un":842,"out":123,"wr":0,"cost":0.01434,"saved":0.003192}
+{"t":0.32,"k":"layers","seq":102,"id":"dc-1","toks":[4112,87,73,102,0,544]}
+{"t":0.32,"k":"warm","seq":103,"ttl":300}
+{"t":0.325,"k":"req","seq":104,"id":"dc-2","ratio":0.8849125660837739,"p":4918,"o":102}
+{"t":0.325,"k":"use","seq":105,"id":"dc-2","rd":8592,"un":771,"out":123,"wr":0,"cost":0.014136,"saved":0.003222}
+{"t":0.325,"k":"layers","seq":106,"id":"dc-2","toks":[4112,87,73,102,0,544]}
+{"t":0.325,"k":"warm","seq":107,"ttl":300}
+{"t":0.343,"k":"req","seq":108,"id":"dc-1","ratio":0.9497140603431276,"p":5071,"o":12}
+{"t":0.343,"k":"use","seq":109,"id":"dc-1","rd":13328,"un":1097,"out":135,"wr":0,"cost":0.020416,"saved":0.004998}
+{"t":0.343,"k":"layers","seq":110,"id":"dc-1","toks":[4112,87,72,102,0,698]}
+{"t":0.343,"k":"warm","seq":111,"ttl":300}
+{"t":0.351,"k":"state","seq":112,"id":"sc-1","s":"done","doing":"no files edited; no tests run","task":"T1"}
+{"t":0.351,"k":"state","seq":113,"id":"sc-2","s":"done","doing":"no files edited; no tests run","task":"T2"}
+{"t":0.351,"k":"state","seq":114,"id":"sc-3","s":"done","doing":"no files edited; no tests run","task":"T3"}
+{"t":0.351,"k":"state","seq":115,"id":"sc-4","s":"done","doing":"no files edited; no tests run","task":"T4"}
+{"t":0.358,"k":"req","seq":116,"id":"dc-2","ratio":0.9497140603431276,"p":5071,"o":12}
+{"t":0.358,"k":"use","seq":117,"id":"dc-2","rd":13408,"un":1026,"out":135,"wr":0,"cost":0.020212,"saved":0.005028}
+{"t":0.358,"k":"layers","seq":118,"id":"dc-2","toks":[4112,87,73,102,0,697]}
+{"t":0.358,"k":"warm","seq":119,"ttl":300}
+{"t":0.358,"k":"state","seq":120,"id":"dc-1","s":"tool","doing":"Bash wc -l summaries/*.md","task":"T5"}
+{"t":0.381,"k":"state","seq":121,"id":"dc-2","s":"think","doing":"starting","task":"T6"}
+{"t":0.387,"k":"req","seq":122,"id":"dc-2","ratio":0.9701696237083252,"p":5129,"o":21}
+{"t":0.387,"k":"use","seq":123,"id":"dc-2","rd":18384,"un":1179,"out":156,"wr":0,"cost":0.02622,"saved":0.006894000000000001}
+{"t":0.387,"k":"layers","seq":124,"id":"dc-2","toks":[4112,87,73,102,0,755]}
+{"t":0.387,"k":"warm","seq":125,"ttl":300}
+{"t":0.388,"k":"note","seq":126,"id":"dc-2","g":"done","text":"submitted T6","task":"T6"}
+{"t":0.388,"k":"task","seq":127,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"verify"}
+{"t":0.434,"k":"state","seq":128,"id":"dc-1","s":"think","doing":"starting","task":"T5"}
+{"t":0.434,"k":"state","seq":129,"id":"dc-2","s":"think","doing":"starting","task":"T6","reqSince":0.389}
+{"t":0.435,"k":"req","seq":130,"id":"dc-2","ratio":0.9701636188642926,"p":5195,"o":3}
+{"t":0.435,"k":"use","seq":131,"id":"dc-2","rd":23424,"un":1334,"out":159,"wr":0,"cost":0.03194,"saved":0.008784}
+{"t":0.435,"k":"layers","seq":132,"id":"dc-2","toks":[4112,87,73,102,0,821]}
+{"t":0.435,"k":"warm","seq":133,"ttl":300}
+{"t":0.436,"k":"note","seq":134,"id":"dc-2","g":"done","text":"edited 2 (topic-3.md, topic-4.md); no tests run","task":"T6"}
+{"t":0.438,"k":"req","seq":135,"id":"dc-1","ratio":0.9701696237083252,"p":5129,"o":21}
+{"t":0.438,"k":"use","seq":136,"id":"dc-1","rd":18304,"un":1250,"out":156,"wr":0,"cost":0.026424,"saved":0.006864}
+{"t":0.438,"k":"layers","seq":137,"id":"dc-1","toks":[4112,87,73,102,0,755]}
+{"t":0.438,"k":"warm","seq":138,"ttl":300}
+{"t":0.438,"k":"note","seq":139,"id":"dc-1","g":"done","text":"submitted T5","task":"T5"}
+{"t":0.438,"k":"task","seq":140,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"verify"}
+{"t":0.459,"k":"state","seq":141,"id":"mgr","s":"think","doing":"thinking","task":null}
+{"t":0.468,"k":"req","seq":142,"id":"dc-1","ratio":0.9709111924484685,"p":5191,"o":3}
+{"t":0.468,"k":"use","seq":143,"id":"dc-1","rd":23344,"un":1401,"out":159,"wr":0,"cost":0.032128,"saved":0.008754}
+{"t":0.468,"k":"layers","seq":144,"id":"dc-1","toks":[4112,87,73,102,0,817]}
+{"t":0.468,"k":"warm","seq":145,"ttl":300}
+{"t":0.469,"k":"note","seq":146,"id":"dc-1","g":"done","text":"edited 2 (topic-1.md, topic-2.md); no tests run","task":"T5"}
+{"t":0.469,"k":"req","seq":147,"id":"mgr","ratio":0.8935478040845835,"p":5533,"o":71}
+{"t":0.469,"k":"use","seq":148,"id":"mgr","rd":9392,"un":5687,"out":365,"wr":0,"cost":0.039439999999999996,"saved":0.003522}
+{"t":0.469,"k":"layers","seq":149,"id":"mgr","toks":[4112,87,272,0,0,1062]}
+{"t":0.469,"k":"warm","seq":150,"ttl":300}
+{"t":0.469,"k":"task","seq":151,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"merged"}
+{"t":0.469,"k":"task","seq":152,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"merged"}
+{"t":0.469,"k":"task","seq":153,"id":"T7","title":"Review every summary against the conventions","scope":"-","s":"todo"}
+{"t":0.469,"k":"task","seq":154,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"running"}
+{"t":0.469,"k":"state","seq":155,"id":"rv-1","s":"think","doing":"thinking","task":"T7"}
+{"t":0.474,"k":"req","seq":156,"id":"rv-1","ratio":0.9312737855383927,"p":4467,"o":13}
+{"t":0.474,"k":"use","seq":157,"id":"rv-1","rd":4160,"un":307,"out":13,"wr":0,"cost":0.005648,"saved":0.00156}
+{"t":0.474,"k":"layers","seq":158,"id":"rv-1","toks":[4112,88,137,63,0,67]}
+{"t":0.474,"k":"warm","seq":159,"ttl":300}
+{"t":0.874,"k":"state","seq":160,"id":"rv-1","s":"think","doing":"starting","task":"T7"}
+{"t":0.874,"k":"state","seq":161,"id":"mgr","s":"wait","doing":"waits","task":null}
+{"t":0.874,"k":"state","seq":162,"id":"dc-1","s":"done","doing":"edited 2 (topic-1.md, topic-2.md); no tests run","task":"T5"}
+{"t":0.874,"k":"state","seq":163,"id":"dc-2","s":"done","doing":"edited 2 (topic-3.md, topic-4.md); no tests run","task":"T6"}
+{"t":0.877,"k":"req","seq":164,"id":"rv-1","ratio":0.9698046181172292,"p":4504,"o":21}
+{"t":0.877,"k":"use","seq":165,"id":"rv-1","rd":8528,"un":443,"out":34,"wr":0,"cost":0.01098,"saved":0.003198}
+{"t":0.877,"k":"layers","seq":166,"id":"rv-1","toks":[4112,88,137,63,0,104]}
+{"t":0.877,"k":"warm","seq":167,"ttl":300}
+{"t":0.877,"k":"note","seq":168,"id":"rv-1","g":"done","text":"submitted T7","task":"T7"}
+{"t":0.877,"k":"task","seq":169,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"verify"}
+{"t":0.883,"k":"req","seq":170,"id":"rv-1","ratio":0.963855421686747,"p":4565,"o":3}
+{"t":0.883,"k":"use","seq":171,"id":"rv-1","rd":12928,"un":608,"out":37,"wr":0,"cost":0.0161,"saved":0.004848}
+{"t":0.883,"k":"layers","seq":172,"id":"rv-1","toks":[4112,87,137,63,0,166]}
+{"t":0.883,"k":"warm","seq":173,"ttl":300}
+{"t":0.883,"k":"note","seq":174,"id":"rv-1","g":"done","text":"no files edited; no tests run","task":"T7"}
+{"t":0.888,"k":"req","seq":175,"id":"mgr","ratio":0.9423210562890897,"p":5756,"o":12}
+{"t":0.888,"k":"use","seq":176,"id":"mgr","rd":14816,"un":6019,"out":377,"wr":0,"cost":0.046431999999999994,"saved":0.005556}
+{"t":0.888,"k":"layers","seq":177,"id":"mgr","toks":[4112,87,272,0,0,1285]}
+{"t":0.888,"k":"warm","seq":178,"ttl":300}
+{"t":0.888,"k":"task","seq":179,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"merged"}
+{"t":0.891,"k":"req","seq":180,"id":"mgr","ratio":0.9802152030544949,"p":5762,"o":18}
+{"t":0.891,"k":"use","seq":181,"id":"mgr","rd":20464,"un":6133,"out":395,"wr":0,"cost":0.05289599999999999,"saved":0.007674}
+{"t":0.891,"k":"layers","seq":182,"id":"mgr","toks":[4112,88,274,0,0,1288]}
+{"t":0.891,"k":"warm","seq":183,"ttl":300}
+{"t":3.891,"k":"state","seq":184,"id":"mgr","s":"wait","doing":"waits for the team","task":null}
+{"t":3.891,"k":"state","seq":185,"id":"rv-1","s":"done","doing":"no files edited; no tests run","task":"T7"}

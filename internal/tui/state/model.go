@@ -188,8 +188,9 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	} else {
 		model = s.priceOf(rq.model, clip(p.Model, textID), s.sess.Model)
 	}
+	priced := false
 	if usdv, ok := saving(model, u.CacheRead); ok {
-		saved = usdv
+		saved, priced = usdv, true
 		tot.Savings.SavedUSD += usdv
 		tot.Savings.PricedReadTokens += u.CacheRead
 	} else {
@@ -204,6 +205,9 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	addTokens(&a.Tokens, u)
 	a.CostUSD += cost
 	a.SavedUSD += saved
+	if !priced {
+		a.UnpricedReadTokens = min(a.UnpricedReadTokens+u.CacheRead, maxTokens)
+	}
 	if side {
 		a.SideRequests++
 		a.syncBusy(t)

@@ -50,6 +50,8 @@ type State struct {
 	prefixes map[string]*prefixState
 	anoms    ring[Anomaly]
 	shared   []string // the shared layers (G1 hashes) that requests have carried, oldest first
+	sup2     superviseState
+	hooks    hookState
 }
 
 // New returns an empty State.
@@ -88,6 +90,11 @@ func (s *State) init() {
 	s.prefixes = map[string]*prefixState{}
 	s.anoms = newRing[Anomaly](AnomalyLog)
 	s.shared = nil
+	s.sup2 = newSuperviseState()
+	s.hooks.agents, s.hooks.tasks = nil, nil
+	if s.hooks.notified != nil {
+		s.hooks.notified = map[string]Status{} // the agents are gone; the callbacks stay registered
+	}
 }
 
 // Reset forgets everything, as a log that was truncated or replaced needs. The options stay. Stats.Resets counts it.
@@ -106,18 +113,34 @@ func (s *State) Reset() {
 // limit, is ignored (Stats.Bad, Stats.TooBig), a field of the wrong type or a missing one leaves that part of the event out
 // and applies the rest, and a handler that panics is contained (Stats.Panics: a bug, and the tests require zero). An event
 // without a Seq is applied as it comes; one without a timestamp takes the State's clock.
+//
+// The callbacks registered with OnStatus and OnChange are called after the lock is released, before Apply returns.
 func (s *State) Apply(e events.Event) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.apply(e)
+	n, ok := s.takeNote(s.clock)
+	status, change := s.callbacks()
+	s.mu.Unlock()
+	if ok {
+		s.deliver(n, status, change)
+	}
 }
 
-// ApplyAll folds the events in order under one lock: the same as calling Apply for each.
+// ApplyAll folds the events in order under one lock: the same as calling Apply for each. The callbacks of OnStatus and OnChange are
+// called for each event, in order, once the lock is released.
 func (s *State) ApplyAll(evs []events.Event) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var notes []note
 	for i := range evs {
 		s.apply(evs[i])
+		if n, ok := s.takeNote(s.clock); ok {
+			notes = append(notes, n)
+		}
+	}
+	status, change := s.callbacks()
+	s.mu.Unlock()
+	for _, n := range notes {
+		s.deliver(n, status, change)
 	}
 }
 
@@ -244,6 +267,16 @@ func (s *State) apply(e events.Event) {
 		s.onPermDecide(e, t)
 	case events.TypeSwarmHold, events.TypeSwarmUnfinished, events.TypeSwarmWake, events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, "swarm.shutdown":
 		s.onSupervision(e, t)
+	case events.TypeSwarmStall:
+		s.onStall(e, t)
+	case events.TypeSwarmHandover:
+		s.onHandover(e, t)
+	case TypeGoalState:
+		s.onGoalState(e, t)
+	case TypeGoalJudge:
+		s.onGoalJudge(e, t)
+	case TypeCheckpoint, TypeCheckpointRestore:
+		s.onCheckpoint(e, t)
 
 	case events.TypeWorkspaceCreate, events.TypeWorkspaceRemove, events.TypeWorkspacePrune, events.TypeWorkspaceCommit, events.TypeWorkspaceReset,
 		events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail, events.TypeMergeRolledBack,
@@ -255,7 +288,7 @@ func (s *State) apply(e events.Event) {
 
 	case events.TypeTurnAppend, events.TypeAgentSnapshot, events.TypeCachePlan, events.TypeRecall,
 		events.TypeOutcome, "tool.spill", "tool.budget", "hook.run",
-		events.TypePermState, events.TypeModelSwitch, "goal.state", "agent.prepare", "session.isolation", "swarm.integration_state":
+		events.TypePermState, events.TypeModelSwitch, "agent.prepare", "session.isolation", "swarm.integration_state", TypeWebAction, "verify.run":
 		// Known, and nothing the UI shows: the transcript is the conversation's, not the state's.
 	default:
 		s.stats.Unknown++
@@ -339,6 +372,7 @@ func (s *State) agent(id string, t time.Time) *agentState {
 		return nil
 	}
 	if a := s.agents[id]; a != nil {
+		s.touchAgent(id)
 		return a
 	}
 	if len(s.agents) >= MaxAgents && !s.evictAgent() {
@@ -347,6 +381,7 @@ func (s *State) agent(id string, t time.Time) *agentState {
 	}
 	a := newAgentState(id, t)
 	s.agents[id] = a
+	s.touchAgent(id)
 	return a
 }
 
@@ -371,6 +406,7 @@ func (s *State) evictAgent() bool {
 // forget removes an agent and everything that refers to it by pointer or by membership.
 func (s *State) forget(a *agentState) {
 	delete(s.agents, a.ID)
+	s.touchAgent(a.ID)
 	if g := s.prefixes[a.prefix]; g != nil {
 		delete(g.riders, a.ID)
 	}

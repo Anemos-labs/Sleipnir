@@ -126,6 +126,9 @@ type Agent struct {
 	// CostUSD is what the responses reported (model.response cost_usd, the gateway's number when it gave one), compactor calls included.
 	CostUSD  float64 `json:"cost_usd"`
 	SavedUSD float64 `json:"saved_usd,omitempty"` // the saving of this agent's cache reads, at list price where the model's price is known
+	// UnpricedReadTokens are the cache-read tokens of this agent's responses whose model price is unknown: SavedUSD does not count
+	// them, so it is a lower bound when this is not zero.
+	UnpricedReadTokens int64 `json:"unpriced_read_tokens,omitempty"`
 	// CtxTokens is the context size the board last showed for it (board.op agent). The harness writes 0 there today
 	// (internal/swarm/lifecycle.go publish does not set it), so a gauge of how full a context is comes from Snapshot.ContextFill:
 	// the prompt of the agent's latest answered request over the window of its model.
