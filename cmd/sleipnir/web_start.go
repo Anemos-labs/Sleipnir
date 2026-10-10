@@ -403,9 +403,14 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	// they raise above this session needs the request's confirmation (web_authorize.go).
 	dir := cleanDir(firstNonEmpty(f.cwd, base.cwd))
 	if dir != cleanDir(base.cwd) {
-		if _, ok := t.h.isProject(ctx, dir); !ok {
+		proj, ok := t.h.isProject(ctx, dir)
+		if !ok {
 			return werr(http.StatusForbidden, "not_a_project", "start a session in one of the listed projects")
 		}
+		dir = proj.Dir // the listed project's own spelling
+	}
+	if f.resume != "" && f.resume != "latest" && !session.ValidID(f.resume) {
+		return werr(http.StatusBadRequest, "bad_flags", "--resume names a session of the server by its id, or latest")
 	}
 	p := raised(f, base, dir)
 	confirmed := t.recheckTrust(f, base, dir, &p)

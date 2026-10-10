@@ -763,3 +763,29 @@ func TestHostileDirectoryNamesCannotInjectPromptLines(t *testing.T) {
 		t.Fatalf("a directory name injected a fake block header:\n%s", out)
 	}
 }
+
+// A domain opens only paths below itself: a path that leaves it is refused before any file system call, for the user's directory (opened
+// by name) as for a project (opened through its os.Root).
+func TestDomainOpenRefusesAPathThatLeavesIt(t *testing.T) {
+	dir := t.TempDir()
+	tree(t, dir, map[string]string{"in/a.md": "x", "b.md": "y"})
+	sub := filepath.Join(dir, "in")
+	root, err := os.OpenRoot(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	for name, d := range map[string]*domain{"user": {dir: sub, user: true}, "project": {dir: sub, root: root}} {
+		f, err := d.open("a.md")
+		if err != nil {
+			t.Fatalf("%s: a file of the domain: %v", name, err)
+		}
+		f.Close()
+		for _, rel := range []string{"", "../b.md", "x/../../b.md", filepath.ToSlash(filepath.Join(dir, "b.md"))} {
+			if f, err := d.open(rel); err == nil {
+				f.Close()
+				t.Errorf("%s: open(%q) succeeded", name, rel)
+			}
+		}
+	}
+}

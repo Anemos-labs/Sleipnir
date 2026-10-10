@@ -239,7 +239,7 @@ request raises something says so. Bodies and answers are the `wire` types named;
 | `PATCH` | `/api/sessions/{id}` | Renames: `{name}`; answers `{tab}` | - |
 | `POST` | `/api/sessions/{id}/stop` | Interrupts the running turn; `409 idle` when none runs | - |
 | `DELETE` | `/api/sessions/{id}` | Closes the session; an isolated team's verified work is applied to the checkout first (`integration` in the answer). `409 last` for the only session | - |
-| `POST` | `/api/sessions/{id}/restart` | `wire.RestartRequest`: `kind` is `new`, `clear`, `swarm`, `restart`, `model` or `roles`; `flags` are what a person would type after `/restart` and win over the flags that `PATCH .../launch` staged; `new` and `clear` always start the chat empty, the others do so only with `fresh`. Answers `202 {gen}`; the tab starts its next generation in the background | When the final arguments raise privilege: `restart:<tab>:<d16>` |
+| `POST` | `/api/sessions/{id}/restart` | `wire.RestartRequest`: `kind` is `new`, `clear`, `swarm`, `restart`, `model` or `roles`; `flags` are what a person would type after `/restart` and win over the flags that `PATCH .../launch` staged (a `--cwd` other than the tab's own must name a listed project, else `403 not_a_project`; `--resume` takes a session id or `latest`, else `400 bad_flags`); `new` and `clear` always start the chat empty, the others do so only with `fresh`. Answers `202 {gen}`; the tab starts its next generation in the background | When the final arguments raise privilege: `restart:<tab>:<d16>` |
 
 ### Chat
 

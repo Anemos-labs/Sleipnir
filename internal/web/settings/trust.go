@@ -164,23 +164,29 @@ func unlocks(fp *trust.Footprint) string {
 	return "its " + strings.Join(kinds, ", ")
 }
 
-// allowedDir reports whether dir may be trusted from the page: the directory of a live tab, a project the server offers, or a
-// directory the ledger already holds (trusting it again after its files changed).
-func (s *service) allowedDir(r *http.Request, dir string) bool {
+// knownDir returns the server's own spelling of dir when it may be trusted from the page, and false otherwise: the directory of a
+// live tab, a project the server offers, or a directory the ledger already holds (trusting it again after its files changed). What
+// it returns is the server's value, the one that matched, never the page's: a handler that goes on with it hands the file system
+// only a directory the server itself named.
+func (s *service) knownDir(r *http.Request, dir string) (string, bool) {
 	if s.host != nil {
 		for _, t := range s.host.Tabs() {
 			if t.Cwd == dir {
-				return true
+				return t.Cwd, true
 			}
 		}
 		for _, p := range s.host.Projects(r.Context()) {
 			if d, ok := s.expand(p.Dir); ok && d == dir {
-				return true
+				return d, true
 			}
 		}
 	}
-	_, ok := s.ledger().All()[dir]
-	return ok
+	for held := range s.ledger().All() {
+		if held == dir {
+			return held, true
+		}
+	}
+	return "", false
 }
 
 // challengeOf scans dir and builds its trust challenge; with issue it also issues the confirmation for the challenge's scope and
@@ -213,12 +219,13 @@ func (s *service) challengeOf(r *http.Request, dir string, issue bool) (wire.Tru
 // confirmation id for the scope trust:<d16 of {dir, digest}> that POST /api/trust spends. A partial footprint (more than a scan
 // reads) cannot be trusted and carries no confirmation.
 func (s *service) handleTrustChallenge(w http.ResponseWriter, r *http.Request) {
-	dir, ok := s.expand(r.URL.Query().Get("dir"))
+	asked, ok := s.expand(r.URL.Query().Get("dir"))
 	if !ok {
 		web.WriteError(w, fail(http.StatusBadRequest, "bad_path", "dir must be an absolute directory"))
 		return
 	}
-	if !s.allowedDir(r, dir) {
+	dir, ok := s.knownDir(r, asked)
+	if !ok {
 		web.WriteError(w, fail(http.StatusForbidden, "not_a_project", "that directory is not one of the projects of this server"))
 		return
 	}
@@ -268,24 +275,25 @@ func (s *service) handleTrust(w http.ResponseWriter, r *http.Request) {
 		reply(w, trustReply{OK: true, Forgot: n}, nil)
 		return
 	}
-	dir, ok := s.expand(req.Dir)
+	asked, ok := s.expand(req.Dir)
 	if !ok {
 		web.WriteError(w, fail(http.StatusBadRequest, "bad_path", "dir must be an absolute directory"))
 		return
 	}
 	if !req.On {
 		unlock := config.WriteLock(ledgerPath)
-		had, err := s.ledger().Forget(dir)
+		had, err := s.ledger().Forget(asked)
 		unlock()
 		if err != nil {
 			web.Logf(r, "trust ledger not written")
 			web.WriteError(w, fail(http.StatusInternalServerError, "internal", "the trust ledger could not be written"))
 			return
 		}
-		reply(w, trustReply{OK: true, Dir: s.display(dir), Had: had}, nil)
+		reply(w, trustReply{OK: true, Dir: s.display(asked), Had: had}, nil)
 		return
 	}
-	if !s.allowedDir(r, dir) {
+	dir, ok := s.knownDir(r, asked)
+	if !ok {
 		web.WriteError(w, fail(http.StatusForbidden, "not_a_project", "that directory is not one of the projects of this server"))
 		return
 	}

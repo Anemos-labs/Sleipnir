@@ -1,7 +1,0 @@
-.env
-secrets/
-node_modules/
-bin/
-
-# Sleipnir local settings
-.sleipnir/config.local.json

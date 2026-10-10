@@ -104,10 +104,13 @@ type webTab struct {
 	sessMu sync.Mutex // calls into the session that are not safe beside each other (the budget, the model)
 	calls  callLog    // the tool call each agent started last
 	goals  goalLoop
-	wake   chan struct{}
-	ctx    context.Context
-	stop   context.CancelFunc
-	done   chan struct{}
+	// ends are what announces the end of the turns the item being run has run (final and turn end); the loop sends them once the tab
+	// is idle, so that a page that takes "turn end" for the end of the work finds nothing running.
+	ends []func()
+	wake chan struct{}
+	ctx  context.Context
+	stop context.CancelFunc
+	done chan struct{}
 }
 
 // newTab makes a tab and starts its turn goroutine; the caller starts its first generation.
@@ -243,8 +246,13 @@ func (t *webTab) loop() {
 		t.run(ctx, it)
 		t.mu.Lock()
 		t.active, t.cancel = false, nil
+		ends := t.ends
+		t.ends = nil
 		t.cond.Broadcast()
 		t.mu.Unlock()
+		for _, end := range ends {
+			end() // the end of a turn is announced once the tab is idle: what the page sees as over is over
+		}
 		t.publishMeta()
 	}
 }
@@ -335,7 +343,8 @@ func (t *webTab) run(ctx context.Context, it queued) {
 }
 
 // turn runs a turn of the agent the person talks to, with the goal's continuations, and reports it as the page expects: the
-// person's row, turn start, the run's events, the goal's verdicts, final and turn end.
+// person's row, turn start, the run's events and the goal's verdicts; final and turn end are left to the loop, which sends them when the
+// tab is idle (t.ends).
 func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display string, echo bool) {
 	if echo {
 		t.emit(&wire.Say{Who: "you", Text: clip(display, 16<<10)})
@@ -345,8 +354,12 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 	t.publishMeta()
 	err := t.goals.Turn(ctx, s, prompt, func(e goalEvent) { t.goalEvent(s, e) })
 	_ = err
-	t.emit(&wire.Final{}, &wire.Turn{S: "end"})
-	t.publishRoster()
+	t.mu.Lock()
+	t.ends = append(t.ends, func() {
+		t.emit(&wire.Final{}, &wire.Turn{S: "end"})
+		t.publishRoster()
+	})
+	t.mu.Unlock()
 }
 
 // addHist records a sent line for the history (ctrl+r, up arrow).

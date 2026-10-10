@@ -1,6 +1,0 @@
-anthropic-haiku
-anthropic-opus
-anthropic-sonnet
-marketplace
-no-cache
-openai

@@ -3,6 +3,7 @@ package checkpoint
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -37,7 +38,10 @@ func (s *Store) keyOf(path string) (string, error) {
 		return "", ErrOutsideRoot
 	}
 	key := s.keyFor(s.absolute(path))
-	if validKey(key) != nil {
+	// keyFor leaves a path outside the root absolute, and a ".." that leaves it in place: neither is a key. Local is
+	// tested on the key itself, before any other use of it, so that what follows (resolveKey, the file system) is only
+	// ever given a path below the root.
+	if !filepath.IsLocal(key) || validKey(key) != nil {
 		return "", ErrOutsideRoot
 	}
 	return key, nil

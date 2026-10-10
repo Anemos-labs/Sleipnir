@@ -356,11 +356,12 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, werr(http.StatusForbidden, "not_a_project", "start a session in one of the listed projects"))
 		return
 	}
-	dir := filepath.Clean(body.Cwd)
-	if _, ok := h.isProject(r.Context(), dir); !ok {
+	proj, ok := h.isProject(r.Context(), filepath.Clean(body.Cwd))
+	if !ok {
 		writeErr(w, werr(http.StatusForbidden, "not_a_project", "start a session in one of the listed projects"))
 		return
 	}
+	dir := proj.Dir // the listed project's own spelling, the one the server named: the request's is not used past this point
 	body.Cwd = dir
 	if body.Name != "" {
 		if err := validName(strings.TrimSpace(body.Name)); err != nil {
@@ -478,13 +479,15 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, werr(http.StatusForbidden, "not_a_project", "resume in one of the listed projects"))
 			return
 		}
-		if _, ok := h.isProject(r.Context(), filepath.Clean(body.Cwd)); !ok {
+		proj, ok := h.isProject(r.Context(), filepath.Clean(body.Cwd))
+		if !ok {
 			writeErr(w, werr(http.StatusForbidden, "not_a_project", "resume in one of the listed projects"))
 			return
 		}
-		cwd = filepath.Clean(body.Cwd)
+		cwd = proj.Dir // the listed project's own spelling, not the request's
 	}
 	home, _ := os.UserHomeDir()
+	which := "latest"
 	if from != "latest" {
 		if !session.ValidID(from) {
 			writeErr(w, werr(http.StatusNotFound, "no_session", "there is no such recorded session"))
@@ -494,8 +497,9 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, werr(http.StatusNotFound, "no_session", "there is no such recorded session"))
 			return
 		}
+		which = from // a session id: ValidID refused every other shape
 	}
-	dir, err := session.ResolveResume(home, rootOf(cwd), from)
+	dir, err := session.ResolveResume(home, rootOf(cwd), which)
 	if err != nil {
 		code, status := "not_resumable", http.StatusConflict
 		if from == "latest" {

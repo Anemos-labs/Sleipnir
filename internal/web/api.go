@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -66,17 +65,18 @@ func ErrorDetail(w http.ResponseWriter, status int, code, msg string, detail any
 // from a repository or a model stays inert even if a client misreads the content type. The
 // response is marked uncacheable.
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(v); err != nil {
+	b, err := json.Marshal(v)
+	if err != nil {
 		Error(w, http.StatusInternalServerError, "internal", "could not encode the response")
 		return err
 	}
+	b = append(b, '\n')
 	h := w.Header()
 	h.Set("Content-Type", jsonType)
 	h.Set("Cache-Control", "no-store")
-	h.Set("Content-Length", fmt.Sprint(buf.Len()))
+	h.Set("Content-Length", fmt.Sprint(len(b)))
 	w.WriteHeader(status)
-	_, _ = w.Write(buf.Bytes())
+	_, _ = w.Write(b)
 	return nil
 }
 

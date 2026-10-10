@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -77,7 +78,8 @@ func Replay(ctx context.Context, dir string, cfg Config) ([]json.RawMessage, err
 // journalOf is a translator's keyframe and retained events, in order.
 func journalOf(tr *Translator) []json.RawMessage {
 	kf, evs, _ := tr.j.snapshot()
-	out := make([]json.RawMessage, 0, len(kf)+len(evs))
+	out := make([]json.RawMessage, 0, len(kf))
+	out = slices.Grow(out, len(evs))
 	for _, r := range kf {
 		out = append(out, r)
 	}

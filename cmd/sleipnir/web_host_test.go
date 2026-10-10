@@ -875,6 +875,20 @@ func TestWebHostRoutesAreBehindTheEnvelope(t *testing.T) {
 	if code, _ := r.do("POST", "/api/sessions/"+tab.ID+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--mode", "yolo"}}); code != 428 {
 		t.Errorf("a restart into yolo without a confirmation = %d", code)
 	}
+	// A restart continues a session by its id (or latest): a directory, a relative path or a shape that is not an id is refused, as
+	// the Resume route refuses it.
+	for _, flags := range [][]string{{"--resume", t.TempDir()}, {"--resume=../sessions/x"}, {"--resume", "20261009-221530"}, {"--resume", ".."}} {
+		if code, body := r.do("POST", "/api/sessions/"+tab.ID+"/restart", wire.RestartRequest{Kind: "restart", Flags: flags}); code != 400 || !strings.Contains(string(body), "bad_flags") {
+			t.Errorf("a restart with %q = %d %s", flags, code, body)
+		}
+	}
+	// A directory that is not a listed project is refused whatever its spelling.
+	other := t.TempDir()
+	for _, flags := range [][]string{{"--cwd", other}, {"--cwd=" + other + "/."}} {
+		if code, body := r.do("POST", "/api/sessions/"+tab.ID+"/restart", wire.RestartRequest{Kind: "restart", Flags: flags}); code != 403 || !strings.Contains(string(body), "not_a_project") {
+			t.Errorf("a restart with %q = %d %s", flags, code, body)
+		}
+	}
 }
 
 // A new session that asks for the project's files is answered with the trust challenge first; the repeat with its confirmation

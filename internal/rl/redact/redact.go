@@ -65,8 +65,11 @@
 package redact
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -176,6 +179,10 @@ type Redactor struct {
 	allow       []*regexp.Regexp
 	placeholder string
 
+	// memoKey keys memoDigest: random for each Redactor, so the memo's digests are neither joinable
+	// between Redactors nor predictable by whoever supplies the texts.
+	memoKey [sha256.Size]byte
+
 	mu     sync.Mutex
 	stats  map[string]int
 	cache  map[[sha256.Size]byte]cacheEntry
@@ -205,6 +212,7 @@ func New(c Config) *Redactor {
 		stats:       map[string]int{},
 		cache:       map[[sha256.Size]byte]cacheEntry{},
 	}
+	_, _ = rand.Read(r.memoKey[:]) // never fails (Go 1.24): it ends the process when the system has no randomness
 	if r.placeholder == "" {
 		r.placeholder = "user"
 	}
@@ -272,7 +280,7 @@ func (r *Redactor) redactCounted(s string) (string, map[string]int) {
 	var key [sha256.Size]byte
 	memo := len(s) >= cacheMinLen
 	if memo {
-		key = sha256.Sum256([]byte(s))
+		key = r.memoDigest(s)
 		r.mu.Lock()
 		if e, ok := r.cache[key]; ok {
 			for k, n := range e.counts {
@@ -298,6 +306,18 @@ func (r *Redactor) redactCounted(s string) (string, map[string]int) {
 	}
 	r.mu.Unlock()
 	return out, counts
+}
+
+// memoDigest names a text in the memo: the HMAC-SHA256 of s under the Redactor's random memoKey. A memo hit returns the
+// redaction of the text the digest names, so the digest must be collision resistant; it is keyed because it only has to
+// mean something inside this Redactor. It is an index, not a stored credential: it never leaves the process, and the
+// texts are prompts and tool output whose secrets are keys and tokens (long random values), not passwords a person
+// chose, so no password-stretching function is called for.
+func (r *Redactor) memoDigest(s string) (d [sha256.Size]byte) {
+	mac := hmac.New(sha256.New, r.memoKey[:])
+	_, _ = io.WriteString(mac, s)
+	mac.Sum(d[:0])
+	return d
 }
 
 // tokenRE matches replacement tokens this package produced. They are masked

@@ -1,2 +1,0 @@
-wrote 12 tasks to tasks.jsonl (repositories in fixture-repos, hidden files and reference solutions in blobs)
-next: sleipnir rl tasks check tasks.jsonl, run from the directory that holds fixture-repos/ so the tasks' relative repositories resolve

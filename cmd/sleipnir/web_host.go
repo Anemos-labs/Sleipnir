@@ -749,7 +749,8 @@ func (h *webHostImpl) Projects(ctx context.Context) []wire.Project {
 	return out
 }
 
-// isProject reports whether dir is one of the directories a new session may start in.
+// isProject reports whether dir is one of the directories a new session may start in, and returns the listed project: its Dir is
+// the server's own spelling of the directory, which a caller goes on with in place of the request's.
 func (h *webHostImpl) isProject(ctx context.Context, dir string) (wire.Project, bool) {
 	clean := filepath.Clean(dir)
 	for _, p := range h.Projects(ctx) {

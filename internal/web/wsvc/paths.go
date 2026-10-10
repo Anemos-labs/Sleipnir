@@ -35,7 +35,10 @@ var (
 	errNoFile  = werr(http.StatusNotFound, "no_file", "there is no such file at that point")
 )
 
-// cleanRel validates a project-relative path the page sent and returns its clean form.
+// cleanRel validates a project-relative path the page sent and returns its clean form: slash-separated, not empty, not absolute,
+// with no ".." element that leaves the project, no NUL, backslash or control character, and nothing filepath.IsLocal refuses on
+// this platform. Every path the page names reaches the file system through it, and what it returns is the only form the rest of
+// the package (and the harness functions it calls) is given.
 func cleanRel(p string) (string, error) {
 	if p == "" || len(p) > maxPathBytes || !utf8.ValidString(p) || strings.ContainsAny(p, "\x00\\") || strings.HasPrefix(p, "/") {
 		return "", errBadPath
@@ -46,10 +49,14 @@ func cleanRel(p string) (string, error) {
 		}
 	}
 	c := path.Clean(p)
-	if c == "." || c == ".." || strings.HasPrefix(c, "../") || !filepath.IsLocal(filepath.FromSlash(c)) {
+	if c == "." || c == ".." || strings.HasPrefix(c, "../") {
 		return "", errBadPath
 	}
-	return c, nil
+	local := filepath.FromSlash(c)
+	if !filepath.IsLocal(local) {
+		return "", errBadPath
+	}
+	return filepath.ToSlash(local), nil
 }
 
 // hiddenPath reports whether a project path is never served whatever the rules say:

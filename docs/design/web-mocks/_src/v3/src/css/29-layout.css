@@ -1,8 +1,0 @@
-/* the Dock grid: HUD / session strip / nav + main + radio rail / footer. The rail's width is --rail: a viewport default, or the person's own (data-railc) */
-#app{--navw:64px;--rail:344px;height:100%;display:grid;grid-template-columns:var(--navw) minmax(0,1fr) var(--rail);grid-template-rows:auto auto minmax(0,1fr) auto;grid-template-areas:"hud hud hud" "strip strip strip" "nav main rail" "foot foot foot"}
-#app[data-navmode="wide"]{--navw:200px}
-#app[data-railc]{--rail:var(--railw)}
-#app[data-rail="min"]{--rail:46px}
-.views{flex:1;min-height:0;position:relative;container:main/inline-size}
-.view{position:absolute;inset:0;padding:var(--gap);overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
-.qbanner{display:none}

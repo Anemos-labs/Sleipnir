@@ -125,7 +125,7 @@ func New(cfg Config) (*Server, error) {
 		readHeaderTimeout: 10 * time.Second, readTimeout: 30 * time.Second, idleTimeout: 2 * time.Minute,
 	}
 	host, port, _ := net.SplitHostPort(cfg.Addr)
-	if n, err := strconv.Atoi(port); err == nil {
+	if n, err := strconv.ParseUint(port, 10, 16); err == nil { // a TCP port is 16 bits
 		s.port.Store(int32(n))
 	}
 	if !cfg.AllowNonLoopback {

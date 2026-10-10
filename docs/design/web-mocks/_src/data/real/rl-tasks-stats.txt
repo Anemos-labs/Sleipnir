@@ -1,7 +1,0 @@
-$ sleipnir rl tasks stats tasks.jsonl
-tasks.jsonl: 12 tasks in 12 repositories
-  kinds: feature=6 fix=5 refactor=1
-  teams: single=12
-  tags:  easy=1 feature=6 fix=5 fixture=12 go=4 hard=3 js=3 medium=8 python=3 refactor=1 rust=2 sample=12
-[exit 0]
-
