@@ -417,7 +417,11 @@ func raises(flags []string) bool {
 
 // newSession handles POST /api/sessions: the directory must be one of the projects, an untrusted project asks for the trust step.
 func (rt *router) newSession(w http.ResponseWriter, r *http.Request) {
-	var body wire.NewSessionRequest
+	var body struct {
+		wire.NewSessionRequest
+		Resume   string `json:"resume,omitempty"`
+		ClientID string `json:"clientId,omitempty"`
+	}
 	if !web.DecodeJSON(w, r, &body) {
 		return
 	}
@@ -459,7 +463,10 @@ func (rt *router) newSession(w http.ResponseWriter, r *http.Request) {
 
 // resume handles POST /api/sessions/resume: a recorded session, or "latest", in a new tab.
 func (rt *router) resume(w http.ResponseWriter, r *http.Request) {
-	var body wire.ResumeRequest
+	var body struct {
+		wire.ResumeRequest
+		ClientID string `json:"clientId,omitempty"`
+	}
 	if !web.DecodeJSON(w, r, &body) {
 		return
 	}
