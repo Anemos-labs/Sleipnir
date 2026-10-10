@@ -207,15 +207,16 @@ func (t *webTab) startGen(spec startSpec) error {
 		s, err = session.New(t.ctx, o)
 	}
 	t.mu.Lock()
-	t.starting = false
-	t.cond.Broadcast()
 	if err == nil && t.closed {
+		t.starting = false
+		t.cond.Broadcast()
 		t.mu.Unlock()
 		s.SetEndReason(session.EndExit)
 		s.Close()
 		return context.Canceled
 	}
 	if err != nil {
+		t.starting = false
 		t.cond.Broadcast()
 		t.mu.Unlock()
 		tr.Emit(hintRow("the session did not start: "+err.Error(), err))
@@ -274,6 +275,12 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 	if spec.note != "" {
 		t.sys("◇", spec.note)
 	}
+	// The tab starts taking requests only here: a request that ran between the session being published and the goal being loaded
+	// would set a goal that the load then replaced, and a restart would not yet know which files the person trusted.
+	t.mu.Lock()
+	t.starting = false
+	t.cond.Broadcast()
+	t.mu.Unlock()
 	t.note("◇", "ready: "+s.Model.ID+" · "+modeName(s)+" · session "+s.ID)
 	t.h.Publish(wire.Frame{Type: "tab", Data: wire.TabFrame{Op: "update", Tab: t.Summary()}, Critical: true})
 	t.publishMeta()

@@ -137,8 +137,8 @@ func (t *webTab) Summary() wire.TabSummary {
 // summaryLocked is Summary under the lock.
 func (t *webTab) summaryLocked() wire.TabSummary {
 	sum := wire.TabSummary{ID: t.id, Name: t.name, Gen: t.gen, CreatedAt: t.createdAt, Order: t.order, Cwd: t.cwdLocked(), Headless: t.base.AskTimeout > 0}
-	if t.s != nil {
-		sum.SID = t.s.ID
+	if t.s != nil && !t.starting {
+		sum.SID = t.s.ID // a tab is ready, and takes requests, once its start is over
 	}
 	return sum
 }
