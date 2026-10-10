@@ -378,16 +378,23 @@ func (t *Translator) notice(uid, level, msg string, ts float64, fromSink bool) {
 }
 
 // noticeAt sends a notice as a sys row of the agent's channel (the manager's for the session's own), once whichever side it came
-// from, within the rate limit. The notice of the sink that an event of the log has a row for takes the place of that row (pairs.go).
+// from, within the rate limit. The notice of the sink that an event of the log has a row for takes the place of that row (pairs.go),
+// when the notice is shown: one the rate limit holds back leaves the row to be shown instead.
 func (t *Translator) noticeAt(uid, level, msg string, ts float64, at int64, fromSink bool) {
 	if msg == "" {
 		return
 	}
+	if t.twin(uid, msg, fromSink, ts) {
+		if fromSink {
+			t.pairTaken(uid, level, msg) // the notice was shown from the log's side: it says what the row says
+		}
+		return
+	}
+	if !t.pass(ts) {
+		return
+	}
 	if fromSink {
 		t.pairTaken(uid, level, msg)
-	}
-	if t.twin(uid, msg, fromSink, ts) || !t.pass(ts) {
-		return
 	}
 	glyph := "◇"
 	if level == "warn" || level == "error" {

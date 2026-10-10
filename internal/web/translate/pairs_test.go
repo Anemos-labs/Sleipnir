@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -328,4 +329,26 @@ func TestPairsAreOneRowWithTheGoroutine(t *testing.T) {
 	waitFor(t, func() bool { return len(rows()) >= len(want) })
 	time.Sleep(2300 * time.Millisecond) // past the wait for a notice
 	sameRows(t, "the rows of the pairs", rows(), want...)
+}
+
+// A notice that the rate limit holds back does not take the place of its event's row: the row is shown when its wait is over, so that
+// something says what happened.
+func TestANoticeTheRateLimitHoldsBackLeavesItsRow(t *testing.T) {
+	tc := pairCases[0]
+	p := newHostedPair(t, tc)
+	for i := 0; i < gateMax; i++ { // the window's rows are used up
+		p.notice("mgr", "info", fmt.Sprintf("filler %d", i))
+	}
+	p.apply()
+	p.notice(tc.agent, tc.level, tc.notice) // held back by the limit
+	p.wait(pastTheKeep)                     // the window is over: the row of the event passes
+	feed := feedRowText(t, tc)
+	var gotRow, gotNotice bool
+	for _, r := range p.rows() {
+		gotRow = gotRow || r == feed
+		gotNotice = gotNotice || r == tc.notice
+	}
+	if !gotRow || gotNotice {
+		t.Errorf("the feed's row shown: %v, the held notice shown: %v; the rows are\n  %s", gotRow, gotNotice, strings.Join(p.rows(), "\n  "))
+	}
 }
