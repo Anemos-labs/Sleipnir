@@ -248,7 +248,8 @@ func TestSinkCallsOfAgentsThatShareCallIDsStaySeparate(t *testing.T) {
 // calls return at once; when it can go on, it reports the loss once and sends every agent's state, token table and layers afresh.
 func TestSinkNeverBlocks(t *testing.T) {
 	release := make(chan struct{})
-	var once sync.Once
+	var once, releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
 	var armed atomic.Bool
 	publish := func(f wire.Frame) {
 		if armed.Load() {
@@ -257,6 +258,7 @@ func TestSinkNeverBlocks(t *testing.T) {
 	}
 	tr := New(Config{Tab: "t", StartedAt: time.Now(), Publish: publish, Limits: Limits{SinkQueue: 1000}})
 	defer tr.Close()
+	defer unblock() // runs before Close: a frame that waits for the release must not outlive a test that failed first
 	// an agent the State knows, so that the fresh set has something in it
 	tr.mu.Lock()
 	b := newLog(time.Now())
@@ -268,14 +270,24 @@ func TestSinkNeverBlocks(t *testing.T) {
 	s := tr.Sink()
 	s.Text("be-1", "first ") // its frame blocks the goroutine
 	time.Sleep(20 * time.Millisecond)
+	// A call that blocks would never return, and a call that costs more than a few microseconds would show in a total of minutes: the
+	// bound is far above what a slow, shared machine takes (about 1.6 s under the race detector), so that only a block or a
+	// slowdown of the calls themselves fails.
+	done := make(chan struct{})
 	start := time.Now()
-	for i := 0; i < 100_000; i++ {
-		s.ToolStart("be-1", call("c", "bash", map[string]any{"command": "true"}))
+	go func() {
+		defer close(done)
+		for i := 0; i < 100_000; i++ {
+			s.ToolStart("be-1", call("c", "bash", map[string]any{"command": "true"}))
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Minute):
+		t.Fatalf("100,000 sink calls took more than a minute (a call blocks, or costs far more than it did)")
 	}
-	if d := time.Since(start); d > 5*time.Second {
-		t.Fatalf("100,000 sink calls took %v", d)
-	}
-	close(release)
+	t.Logf("100,000 sink calls took %v", time.Since(start))
+	unblock()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		_, evs, _, _ := tr.Journal()

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -203,6 +204,8 @@ func TestALossySubscriptionHealsWhenQuiet(t *testing.T) {
 	dir := t.TempDir()
 	log := openLog(t, dir, "s", time.Now)
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
 	var armed atomic.Bool
 	var held atomic.Bool
 	publish := func(f wire.Frame) {
@@ -212,6 +215,7 @@ func TestALossySubscriptionHealsWhenQuiet(t *testing.T) {
 	}
 	tr := New(Config{Tab: "t", Publish: publish})
 	defer tr.Close()
+	defer unblock() // runs before Close: a frame that waits for the release must not outlive a test that failed first
 	defer tr.Attach(log, dir)()
 	armed.Store(true)
 	const n = 3000 // 6,000 events: more than the subscription's 4,096
@@ -223,7 +227,7 @@ func TestALossySubscriptionHealsWhenQuiet(t *testing.T) {
 			waitFor(t, func() bool { return held.Load() })
 		}
 	}
-	close(release)
+	unblock()
 	waitFor(t, func() bool {
 		_, raws, _, _ := tr.Journal()
 		return strings.Count(string(lines(raws)), `"k":"req"`) == n
