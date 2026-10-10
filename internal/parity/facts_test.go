@@ -66,6 +66,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -530,6 +531,9 @@ func TestTerminalFacts(t *testing.T) {
 
 // The page stream of the team recording, which the JavaScript half reads, is what the translator makes of the log now.
 func TestFactsStreamsAreCurrent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stream holds POSIX paths, as the goldens of internal/web/translate do (scripts/windows-excluded.txt); the other systems compare it")
+	}
 	for _, r := range recordings {
 		if r.stream == "" {
 			continue
