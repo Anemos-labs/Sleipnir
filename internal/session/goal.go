@@ -61,8 +61,17 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	s.judgeUSD += usd
 	s.mu.Unlock()
 	v, _ = goal.ParseVerdict(resp.Turn.PlainText())
+	left := v.Left
+	if left == nil {
+		left = []string{}
+	}
+	s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left})
 	return v, len(evidence) > 0, nil
 }
+
+// judgeEvent is the log record of a judge's verdict: its kind, its reason and what it found missing, so that the history of a
+// session shows the verdicts a standing goal had.
+const judgeEvent = "goal.judge"
 
 // turnEvidence is the last answer and a line for each tool call since the person's last message, newest last: the tool, what it was asked
 // and how it ended.
@@ -117,12 +126,28 @@ func inputGist(in json.RawMessage) string {
 // is not met, the message that sends the agent on. A turn that was cancelled or failed pauses the goal, and so does a judge that cannot be
 // asked (the person resumes it or drops it). g is changed.
 func (s *Session) GoalTurn(ctx context.Context, g *goal.State, turnErr error) (note, next string) {
+	note, next, _ = s.GoalJudged(ctx, g, turnErr)
+	return note, next
+}
+
+// GoalJudgment is what the judge of a standing goal said after a turn: whether it was asked and answered (Judged), its verdict,
+// and the error when it could not be asked.
+type GoalJudgment struct {
+	Judged  bool
+	Verdict goal.Verdict
+	Err     error
+}
+
+// GoalJudged is GoalTurn with the judgment it was based on, for a host that shows the verdict as well as the note (the web
+// interface's plan box). Judged is false when no judge was asked: no goal, a goal that is paused or met, a turn that was cancelled
+// or failed.
+func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) (note, next string, j GoalJudgment) {
 	if g == nil || g.Paused != "" || g.Done {
-		return "", ""
+		return "", "", j
 	}
-	pause := func(why string) (string, string) {
+	pause := func(why string) (string, string, GoalJudgment) {
 		g.Paused = why
-		return "goal paused: " + why + ". /goal resume goes on, /goal clear drops it", ""
+		return "goal paused: " + why + ". /goal resume goes on, /goal clear drops it", "", j
 	}
 	switch {
 	case errors.Is(turnErr, context.Canceled):
@@ -132,19 +157,21 @@ func (s *Session) GoalTurn(ctx context.Context, g *goal.State, turnErr error) (n
 	}
 	v, worked, err := s.JudgeGoal(ctx, g)
 	if err != nil {
+		j.Err = err
 		return pause("the judge could not be asked (" + short(tools.SanitizeForTerminal(err.Error()), 100) + ")")
 	}
+	j.Judged, j.Verdict = true, v
 	reason := tools.SanitizeForTerminal(v.Reason)
 	switch g.Apply(v, worked) {
 	case goal.Stop:
-		return "goal met: " + reason, ""
+		return "goal met: " + reason, "", j
 	case goal.Pause:
-		return "goal paused: " + g.Paused + ". /goal resume goes on, /goal clear drops it", ""
+		return "goal paused: " + g.Paused + ". /goal resume goes on, /goal clear drops it", "", j
 	}
 	if reason == "" {
 		reason = "the judge's answer could not be read"
 	}
-	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), goal.Continuation(g, s.GoalPlan(), v)
+	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), goal.Continuation(g, s.GoalPlan(), v), j
 }
 
 // short retains at most n runes including an ellipsis when truncated; n must be positive.

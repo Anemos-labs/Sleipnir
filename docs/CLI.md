@@ -286,7 +286,8 @@ Usage of chat:
 `sleipnir web` serves the interface in a browser and prints the address to open as the first line on standard output; everything
 else it says goes to standard error. The server listens on `127.0.0.1:6969` (`--addr 127.0.0.1:0` picks a free port, and the line
 names the port that was bound), refuses any address that is not loopback, and stops with Ctrl-C (status 0). `--open` opens the
-address in the default browser.
+page in the default browser through the platform's opener; the opener is given a link that works once, for 30 seconds, and not the
+run token, because the arguments of a process can be read by every process of the user.
 
 ```text
 http://127.0.0.1:6969/?token=...
@@ -306,6 +307,26 @@ terminal. The page loads nothing from the network: its scripts, styles and fonts
 process with the same permissions as in the terminal, and with your rights; read `docs/SECURITY.md` section 5 before pointing
 anything but a browser on this machine at it. To use it from another machine, forward the port with SSH
 (`ssh -L 6969:127.0.0.1:6969 host`) and open the address there.
+
+The first session starts when the server starts, in `--cwd` with those defaults, as `sleipnir chat` would start
+(`--resume` and `--continue` included); when no model is configured and the terminal can ask, the chat's first-run setup runs
+before the address is printed. A first session that cannot start is reported on standard error, and the page opens with no
+session and offers a new one. Every session of the page runs in this one process; a restart (`/new`, `/clear`, `/swarm N`,
+`/restart`, a team's model or role change, Run settings Apply) closes the session first, an isolated team's verified work being
+applied to the checkout as at the end of a chat, and starts the next in the same tab. `/swarm N`, Apply and "run it again" carry
+the manager's conversation, as in the chat; `/new` and `/clear` start empty. A new session starts only in a directory of the
+projects list: `--cwd`, each `--project`, the directories of the open sessions, of the recorded sessions and of the trust ledger.
+Asking for `--trust-project` on a project whose files are not trusted shows them first and records the answer, as `sleipnir
+trust add` does.
+
+Questions are answered in the page: yes; yes and do not ask again this session (for a project's tool server or its own files: for
+the project); yes and allow the builds and tests of most projects for the session, when the question is about one of them; no,
+with an optional instruction that the agent reads with the refusal. An answer earlier than 350 ms after the question appeared, or
+after the session's previous answer, is refused, whatever the page does. A question nobody answered within `--ask-timeout` is
+refused (`0`, the default, waits), and so is every open question once no page has had the interface open for `--ask-grace`
+(one minute by default; `0` never refuses for that). Questions about a project's own files and its tool servers are not asked
+while a session starts: the New session dialog decides them before, and a tool server that needs approval stays off until it is
+approved and the session starts again.
 
 <!-- flags: web -->
 ```text
@@ -329,6 +350,10 @@ flags:
         listen address; only a loopback address is accepted (127.0.0.1:0 picks a free port) (default "127.0.0.1:6969")
   -allow value
         a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
+  -ask-grace duration
+        refuse the open questions when no page has had the interface open for this long (0 never refuses for that) (default 1m0s)
+  -ask-timeout duration
+        refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)
   -budget-usd float
         default spending limit of new sessions, in US dollars
   -commit
@@ -348,7 +373,9 @@ flags:
   -no-mcp
         start no MCP tool servers in new sessions
   -open
-        open the page in the default browser
+        open the page in the default browser, with a link that works once for 30 seconds (the run token stays out of the opener's arguments)
+  -project value
+        a directory a new session may also start in, repeatable (the page offers --cwd, the open sessions' and the recorded ones')
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
@@ -1802,10 +1829,9 @@ flags:
 | `/exit` (also `/quit`) | quit; Ctrl-D does the same, and so does Ctrl-C twice at the prompt |
 | `/<name> [args]` | a custom command from `commands/`, or a skill; `docs/EXTENDING.md` sections 2 and 3 |
 
-A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. Reserved names some of which
-are not implemented (`/clear`, `/config`, `/doctor`, `/hooks`, `/init`, `/logout`, `/memory`,
-`/skill`, `/usage`) cannot be used for custom commands and currently
-answer `unknown command`.
+A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. `/clear` is the same as `/new`. Reserved
+names that are not implemented (`/config`, `/doctor`, `/hooks`, `/init`, `/logout`, `/memory`, `/skill`, `/usage`) cannot be used
+for custom commands and answer `unknown command`.
 
 ### Inside the chat: every starting flag
 

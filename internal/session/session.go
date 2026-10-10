@@ -427,6 +427,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		s.Log.Close()
 		return nil, fmt.Errorf("checkpoints: %w", err)
 	}
+	s.logCheckpoints() // web_access.go: each checkpoint that begins or changes is a "checkpoint" log event
 
 	// Detect the command shell for shared runtime guidance before building agents.
 	s.shell = shell.NewManager(shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp})
@@ -1150,6 +1151,42 @@ func (s *Session) Compact(ctx context.Context, focus string) (agent.CompactRepor
 
 // Resumed reports whether this session continues an earlier one.
 func (s *Session) Resumed() bool { return s.opts.Resume != "" }
+
+// Options returns a copy of the options the session was built with (an in-process restart rebuilds a session from them);
+// Sink, NewSink and Prompter are cleared in the copy, and its maps and slices are copies that the caller may change. ID, Dir
+// and Resume are those the session was opened with: a resumed session has its directory in Dir.
+func (s *Session) Options() Options {
+	o := s.opts
+	o.Sink, o.NewSink, o.Prompter = nil, nil, nil
+	o.Allow = append([]string(nil), o.Allow...)
+	o.ShellEnv = append([]string(nil), o.ShellEnv...)
+	o.ShellWrap = append([]string(nil), o.ShellWrap...)
+	if s.opts.ShellEnv == nil {
+		o.ShellEnv = nil // nil inherits the process's environment; an empty copy would be an empty environment
+	}
+	if s.opts.ShellWrap == nil {
+		o.ShellWrap = nil
+	}
+	if o.RoleModels != nil {
+		rm := make(map[string]string, len(o.RoleModels))
+		for k, v := range o.RoleModels {
+			rm[k] = v
+		}
+		o.RoleModels = rm
+	}
+	if o.Meta != nil {
+		meta := make(map[string]any, len(o.Meta))
+		for k, v := range o.Meta {
+			meta[k] = v
+		}
+		o.Meta = meta
+	}
+	if o.Mailman != nil {
+		v := *o.Mailman
+		o.Mailman = &v
+	}
+	return o
+}
 
 // Main is the agent a person talks to: the single agent, or a team's manager (nil until it has started, which a resumed team's does at once).
 func (s *Session) Main() *agent.Agent {

@@ -72,23 +72,9 @@ func defaultTeam() int {
 
 func cmdChat(ctx context.Context, args []string) error {
 	fs := newFlagSet("chat", flag.ExitOnError)
-	model := fs.String("model", "", "model: provider/model or a bare id for the default provider")
-	cwd := fs.String("cwd", "", "working directory")
-	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo")
-	swarmN := fs.Int("swarm", 0, "chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is "+strconv.Itoa(defaultWorkers)+" workers, --swarm 0 is a single agent")
-	trust := fs.Bool("trust-project", false, trustProjectHelp)
-	verbose := fs.Bool("verbose", false, "print notices and tool errors")
-	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
-	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
-	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
-	isolation, commit := isolationFlags(fs)
-	mailman := mailmanFlag(fs)
-	roleModels := kvFlags{}
-	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)")
-	resume := resumeFlags(fs)
-	allow := allowFlags(fs)
-	plain := fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n")
-	noAnim := fs.Bool("no-anim", false, "no animation: the spinner stands still, and nothing sweeps, folds or flashes (also SLEIPNIR_ANIM=0, REDUCE_MOTION=1 and NO_COLOR)")
+	cf := registerChatFlags(fs) // chatflags.go: the same flags as `sleipnir web` parses for its sessions
+	model, cwd, mode, swarmN, trust, verbose, budget, noMCP, verify := cf.model, cf.cwd, cf.mode, cf.swarmN, cf.trust, cf.verbose, cf.budget, cf.noMCP, cf.verify
+	isolation, commit, mailman, roleModels, resume, allow, plain, noAnim := cf.isolation, cf.commit, cf.mailman, cf.roleModels, cf.resume, cf.allow, cf.plain, cf.noAnim
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

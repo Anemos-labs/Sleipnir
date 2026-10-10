@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -10,9 +12,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
 // webURL is what the first line of `sleipnir web` looks like: the bound port on loopback and a token of 256 bits.
@@ -338,5 +343,276 @@ func TestWebHelpListsTheChatFlagsItTakesAsDefaults(t *testing.T) {
 		if !strings.HasPrefix(line, " ") && len(line) > 78 {
 			t.Errorf("a prose line of %d characters: %q", len(line), line)
 		}
+	}
+}
+
+// A fake browser opener records the address it is started with. --open must hand it a launch code that works once, not the run token.
+func TestWebOpenHandsTheOpenerASingleUseCodeNotTheToken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("an interrupt cannot be sent to a process on Windows")
+	}
+	w := newWorld(t, "")
+	bin := filepath.Join(w.tmp, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	argv := filepath.Join(w.tmp, "opened.txt")
+	opener := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		opener = "open"
+	}
+	script := "#!/bin/sh\nprintf '%s\\n' \"$1\" > '" + argv + ".part' && mv '" + argv + ".part' '" + argv + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, opener), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	w.extra = append(w.extra, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	r := w.startWeb(t, "--open")
+	var opened string
+	deadline := time.Now().Add(e2eGuard)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(argv); err == nil {
+			opened = strings.TrimSpace(string(b))
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if opened == "" {
+		t.Fatalf("the opener was not started:\n%s", r.stderr.String())
+	}
+	m := regexp.MustCompile(`^http://127\.0\.0\.1:([1-9]\d*)/\?token=([A-Za-z0-9_-]{20,})$`).FindStringSubmatch(opened)
+	if m == nil || "http://127.0.0.1:"+m[1] != r.base {
+		t.Fatalf("the opener got %q, want the address of %s with a code", opened, r.base)
+	}
+	code := m[2]
+	if code == r.token || strings.Contains(opened, r.token) {
+		t.Fatalf("the opener's argument list holds the run token: %s", opened)
+	}
+	hc := noFollow()
+	get := func(path string, hdr map[string]string) *http.Response {
+		req, _ := http.NewRequest("GET", r.base+path, nil)
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		resp, err := hc.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	// As a bearer credential it is worth nothing.
+	if resp := get("/api/ping", map[string]string{"Authorization": "Bearer " + code}); resp.StatusCode != 401 {
+		t.Errorf("the launch code as a bearer token = %d", resp.StatusCode)
+	}
+	// It opens one session on the page URL ...
+	resp := get("/?token="+code, nil)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/" || len(resp.Cookies()) != 1 {
+		t.Fatalf("the launch code = %d, Location %q, %d cookies", resp.StatusCode, resp.Header.Get("Location"), len(resp.Cookies()))
+	}
+	// ... and then it is spent, while the run token is untouched.
+	if resp := get("/?token="+code, nil); resp.StatusCode != 401 {
+		t.Errorf("the launch code twice = %d", resp.StatusCode)
+	}
+	if resp := get("/?token="+r.token, nil); resp.StatusCode != http.StatusSeeOther {
+		t.Errorf("the run token after the launch code = %d", resp.StatusCode)
+	}
+	r.stop()
+	if strings.Contains(r.stderr.String(), code) || strings.Contains(r.stderr.String(), r.token) {
+		t.Errorf("a credential is on standard error:\n%s", r.stderr.String())
+	}
+}
+
+// signIn opens the printed address and returns the session cookie it was exchanged for, as a Cookie header value.
+func (r *runningWeb) signIn() string {
+	r.t.Helper()
+	resp, err := noFollow().Get(r.url)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	resp.Body.Close()
+	for _, c := range resp.Cookies() {
+		return c.Name + "=" + c.Value
+	}
+	r.t.Fatalf("no cookie from %d", resp.StatusCode)
+	return ""
+}
+
+// api is a request of the page: the cookie, and for a write its origin, the custom header and JSON.
+func (r *runningWeb) api(cookie, method, path string, body any, hdr ...string) (int, []byte) {
+	r.t.Helper()
+	var rd io.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		rd = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, r.base+path, rd)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
+	if method != http.MethodGet {
+		req.Header.Set("Origin", r.base)
+		req.Header.Set("X-Sleipnir-Web", "1")
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+	}
+	for i := 0; i+1 < len(hdr); i += 2 {
+		req.Header.Set(hdr[i], hdr[i+1])
+	}
+	resp, err := noFollow().Do(req)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, b
+}
+
+// pageStream opens the page's stream with the cookie from the hello's id.
+func (r *runningWeb) pageStream(cookie string, after uint64) *frameLog {
+	r.t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, r.base+"/api/stream?after="+strconv.FormatUint(after, 10), nil)
+	req.Header.Set("Cookie", cookie)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		r.t.Fatalf("stream = %d", resp.StatusCode)
+	}
+	r.t.Cleanup(func() { resp.Body.Close() })
+	return readFrames(r.t, resp.Body)
+}
+
+// noTokenIn fails when a file under dir holds the run token or the cookie's value.
+func noTokenIn(t *testing.T, dir string, secrets ...string) {
+	t.Helper()
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if fi, err := d.Info(); err != nil || fi.Size() > 8<<20 || !fi.Mode().IsRegular() {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil
+		}
+		for _, s := range secrets {
+			if s != "" && bytes.Contains(b, []byte(s)) {
+				t.Errorf("%s holds a credential of the server", p)
+			}
+		}
+		return nil
+	})
+}
+
+// The shop fixture: a team on the mock model whose frontend asks to install a package. The page signs in with the printed address,
+// opens the stream from the hello's id, sees the question, is refused an answer in the instant it appeared, answers after the floor,
+// and the worker goes on. No credential of the server reaches a file of the state directory or the project.
+func TestWebFixtureShopAsksAndTakesTheAnswer(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("the shop fixture needs git")
+	}
+	w := newWorld(t, "")
+	r := w.startWeb(t, "--fixture", "shop")
+	cookie := r.signIn()
+	if code, _ := r.api("", "GET", "/api/hello", nil); code != 401 {
+		t.Errorf("hello without the cookie = %d", code)
+	}
+	code, body := r.api(cookie, "GET", "/api/hello", nil)
+	var hello struct {
+		Tabs        []wire.TabSummary
+		StreamAfter uint64
+	}
+	if code != 200 || json.Unmarshal(body, &hello) != nil || len(hello.Tabs) != 1 {
+		t.Fatalf("hello = %d %s", code, body)
+	}
+	tab := hello.Tabs[0].ID
+	frames := r.pageStream(cookie, hello.StreamAfter)
+	if code, _ := r.api(cookie, "GET", "/api/sessions/"+tab+"/snapshot", nil); code != 200 {
+		t.Errorf("snapshot = %d", code)
+	}
+	ask := frames.waitEv(tab, "ask", nil)
+	q := ask["q"].(map[string]any)
+	if q["agent"] != "fe-1" || !strings.Contains(fmt.Sprint(q["cmd"]), "npm install --save-dev vitest") || q["kind"] != "command" {
+		t.Fatalf("the question: %v", q)
+	}
+	qid := fmt.Sprint(q["id"])
+	// An answer sent the moment the question is seen is too soon (the floor is 350 ms; the host's unit tests hold it to the
+	// millisecond with a longer one). On a machine loaded enough to take longer than that, it is simply the answer.
+	code, body = r.api(cookie, "POST", "/api/questions/"+qid+"/answer", wire.AnswerRequest{Choice: 1})
+	switch {
+	case code == 409 && strings.Contains(string(body), "too_soon"):
+		time.Sleep(400 * time.Millisecond)
+		if code, body := r.api(cookie, "POST", "/api/questions/"+qid+"/answer", wire.AnswerRequest{Choice: 1}); code != 200 {
+			t.Fatalf("the answer after the floor = %d %s", code, body)
+		}
+	case code != 200:
+		t.Fatalf("the answer = %d %s", code, body)
+	}
+	if code, _ := r.api(cookie, "POST", "/api/questions/"+qid+"/answer", wire.AnswerRequest{Choice: 1}); code != 409 {
+		t.Errorf("a second answer = %d", code)
+	}
+	frames.waitEv(tab, "answer", map[string]any{"qid": qid, "by": "you", "choice": 1})
+	frames.waitEv(tab, "state", map[string]any{"id": "fe-1"})
+	out := r.stop()
+	if out != "" {
+		t.Errorf("standard output after the address: %q", out)
+	}
+	noTokenIn(t, w.state, r.token, strings.TrimPrefix(cookie, "sleipnir_web="))
+	noTokenIn(t, w.project, r.token)
+}
+
+// The orders fixture: a single agent's turn reaches the page; a restart as a team starts a new generation; a second tab opens in a
+// project of the list; the last tab cannot be closed; Ctrl-C ends the server with status 0.
+func TestWebFixtureOrdersTurnRestartAndClose(t *testing.T) {
+	w := newWorld(t, "")
+	r := w.startWeb(t, "--fixture", "orders")
+	cookie := r.signIn()
+	_, body := r.api(cookie, "GET", "/api/hello", nil)
+	var hello struct {
+		Tabs        []wire.TabSummary
+		StreamAfter uint64
+	}
+	if err := json.Unmarshal(body, &hello); err != nil || len(hello.Tabs) != 1 {
+		t.Fatalf("hello %s", body)
+	}
+	tab := hello.Tabs[0].ID
+	frames := r.pageStream(cookie, 0)
+	frames.waitEv(tab, "say", map[string]any{"who": "you", "text": "add pagination to /orders"})
+	frames.waitEv(tab, "final", nil)
+	if code, body := r.api(cookie, "POST", "/api/sessions/"+tab+"/messages", wire.MessageRequest{Text: "and the pagination docs"}); code != 200 {
+		t.Fatalf("message = %d %s", code, body)
+	}
+	frames.waitEv(tab, "say", map[string]any{"who": "you", "text": "and the pagination docs"})
+	two := 2
+	if code, body := r.api(cookie, "POST", "/api/sessions/"+tab+"/restart", wire.RestartRequest{Kind: "swarm", Swarm: &two, Fresh: true}); code != 202 {
+		t.Fatalf("restart = %d %s", code, body)
+	}
+	frames.waitFor("reset to gen 2", func(f frame) bool { return f.event == "reset" && strings.Contains(string(f.data), `"gen":2`) })
+	frames.waitFor("meta of a team of 2", func(f frame) bool { return f.event == "meta" && strings.Contains(string(f.data), `"swarm":2`) })
+	zero := 0
+	code, body := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: w.project, Swarm: &zero})
+	if code != 201 {
+		t.Fatalf("a new session = %d %s", code, body)
+	}
+	if code, _ := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: w.tmp}); code != 403 {
+		t.Errorf("a directory that is not a project = %d", code)
+	}
+	var created struct{ Tab wire.TabSummary }
+	_ = json.Unmarshal(body, &created)
+	if code, body := r.api(cookie, "DELETE", "/api/sessions/"+tab, nil); code != 200 {
+		t.Errorf("closing the first tab = %d %s", code, body)
+	}
+	if code, body := r.api(cookie, "DELETE", "/api/sessions/"+created.Tab.ID, nil); code != 409 || !strings.Contains(string(body), "last") {
+		t.Errorf("closing the last tab = %d %s", code, body)
+	}
+	r.stop()
+	if strings.Contains(r.stderr.String(), r.token) {
+		t.Error("the token is on standard error")
 	}
 }

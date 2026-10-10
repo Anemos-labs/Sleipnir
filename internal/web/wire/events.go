@@ -259,6 +259,10 @@ type Question struct {
 	Kind        string `json:"kind"`
 	Tool        string `json:"tool,omitempty"`
 	OffersTests bool   `json:"offersTests,omitempty"`
+	// Path is the file an edit, write or patch asks to change, relative to the project, and Change the unified diff of that change
+	// (at most 256 KiB, cut with a note when longer): the page shows what the person is asked to allow (PARITY A1).
+	Path   string `json:"path,omitempty"`
+	Change string `json:"change,omitempty"`
 }
 
 // Ask opens a question.

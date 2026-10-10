@@ -360,65 +360,13 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 
 // judgeGoal is what a standing goal does after a turn (session.GoalTurn): the verdict becomes a note, and a goal that is not met the next turn.
 func (h *sessionHost) judgeGoal(ctx context.Context, err error, out *app.TurnResult) {
-	if h.goal == nil {
-		return
-	}
-	note, next := h.s.GoalTurn(ctx, h.goal, err)
-	out.Note, out.Next = note, next
-	if h.goal.Done {
-		h.goal = nil
-	}
-	h.s.SaveGoal(h.goal)
+	out.Note, out.Next, _ = judgeTurn(ctx, h.s, &h.goal, err) // web_goal.go, shared with the web interface
 }
 
 // goalCommand is /goal: with text it sets the goal and starts on it; alone it says where the goal stands; pause, resume and clear are what they say.
 func (h *sessionHost) goalCommand(f []string, line string, out io.Writer) app.CommandResult {
 	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
-	g := h.goal
-	defer func() { h.s.SaveGoal(h.goal) }()
-	switch strings.ToLower(arg) {
-	case "":
-		if g == nil {
-			fmt.Fprintln(out, "no goal. /goal TEXT sets one: the harness keeps the agent going until a judge finds evidence that it is met")
-			return app.CommandResult{}
-		}
-		state := "active"
-		if g.Paused != "" {
-			state = "paused: " + g.Paused
-		}
-		fmt.Fprintf(out, "goal (%s): %s\ncontinuations %d of %d", state, tools.SanitizeForTerminal(g.Objective), g.Turns, g.Max)
-		if g.Reason != "" {
-			fmt.Fprintf(out, "; the judge's last word: %s", tools.SanitizeForTerminal(g.Reason))
-		}
-		fmt.Fprintln(out)
-		for _, st := range h.s.GoalPlan() {
-			fmt.Fprintf(out, "  [%s] %s\n", st.Status, tools.SanitizeForTerminal(st.Step))
-		}
-		return app.CommandResult{}
-	case "clear":
-		h.goal = nil
-		fmt.Fprintln(out, "goal cleared")
-		return app.CommandResult{}
-	case "pause":
-		if g != nil {
-			g.Paused = "paused by you"
-			fmt.Fprintln(out, "goal paused; /goal resume goes on")
-		}
-		return app.CommandResult{}
-	case "resume":
-		if g == nil {
-			fmt.Fprintln(out, "no goal to resume")
-			return app.CommandResult{}
-		}
-		g.Paused, g.Repeats = "", 0
-		g.Max = g.Turns + goal.MaxTurns // a goal that ran out of continuations gets as many again
-		g.Turns++
-		return app.CommandResult{Send: goal.Continuation(g, h.s.GoalPlan(), goal.Verdict{Kind: goal.Continue, Reason: g.Reason})}
-	}
-	h.goal = goal.New(arg)
-	h.s.ClearGoalPlan()
-	fmt.Fprintln(out, "goal set: checked after each turn. Esc pauses it; /goal shows where it stands")
-	return app.CommandResult{Send: goal.Start(h.goal)}
+	return app.CommandResult{Send: goalCommandTo(h.s, &h.goal, arg, out)} // web_goal.go, shared with the web interface
 }
 
 // Command runs a slash command. Both of its streams are the one the program is given, so that they come back in the order they were
