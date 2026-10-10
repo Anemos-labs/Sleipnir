@@ -875,6 +875,18 @@ func (s *Store) List() []Info {
 	return out
 }
 
+// Infos is List without the line counts: it reads no file, so it is cheap enough for
+// a caller that only needs the ids, labels, times and file sets.
+func (s *Store) Infos() []Info {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Info, 0, len(s.cps))
+	for _, cp := range s.cps {
+		out = append(out, infoLocked(cp))
+	}
+	return out
+}
+
 // infoLocked describes one checkpoint without line counts; the caller holds the
 // store lock.
 func infoLocked(cp *checkpoint) Info {

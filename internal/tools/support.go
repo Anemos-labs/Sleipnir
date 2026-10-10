@@ -194,6 +194,18 @@ func (f *FileState) RecordWrite(agent, path string, content []byte, now time.Tim
 	e.seen[agent] = h
 }
 
+// LastWriter names the agent that last wrote path through a file tool (the path as the
+// tools record it: absolute). It never creates an entry.
+func (f *FileState) LastWriter(path string) (agent string, ok bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	e, found := f.files[path]
+	if !found || e.lastWriter == "" {
+		return "", false
+	}
+	return e.lastWriter, true
+}
+
 // HasRead says whether agent has read (or written) path.
 func (f *FileState) HasRead(agent, path string) bool {
 	f.mu.Lock()

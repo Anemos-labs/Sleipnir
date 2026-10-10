@@ -237,16 +237,48 @@ type VerifyOutput struct {
 	ExitCode int    `json:"exitCode"`
 	TimedOut bool   `json:"timedOut,omitempty"`
 	Output   string `json:"output"`
+	// Runs are every gate run of the task, oldest first (the last one is the fields above).
+	Runs []VerifyRun `json:"runs,omitempty"`
 }
 
-// AcceptRequest commits the verified, merged work of the team onto the person's branch now.
+// VerifyRun is one run of a task's verification gate: its attempt (1-based, in order),
+// the command, its exit status, how long it took (Ms) and when it ended (At, epoch ms),
+// where it ran (Gate "done" for a worker's done or a manager's accept in the shared
+// tree, "merge" for the merge queue of an isolated team), and the tail of its output.
+type VerifyRun struct {
+	Attempt   int    `json:"attempt"`
+	Cmd       string `json:"cmd"`
+	Exit      int    `json:"exit"`
+	OK        bool   `json:"ok"`
+	TimedOut  bool   `json:"timedOut,omitempty"`
+	Ms        int64  `json:"ms"`
+	At        int64  `json:"at"`
+	Agent     string `json:"agent,omitempty"`
+	Gate      string `json:"gate,omitempty"`
+	Out       string `json:"out"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// AcceptRequest commits the verified, merged work of the team onto the person's branch now. Mode "edits" applies it as
+// uncommitted edits instead ("" or "commits": commits); DryRun only reports what would happen (no confirmation needed).
 type AcceptRequest struct {
 	Message string `json:"message,omitempty"`
+	Mode    string `json:"mode,omitempty"`
+	DryRun  bool   `json:"dryRun,omitempty"`
 }
 
-// AcceptResult is the commit that accept made.
+// AcceptResult is the commit that accept made, or for a dry run what it would apply: the files and tasks, whether anything
+// verified is waiting, and whether commits are possible now (CommitBlocked says why not).
 type AcceptResult struct {
-	Commit string   `json:"commit"`
-	Files  []string `json:"files"`
-	Branch string   `json:"branch"`
+	Commit        string   `json:"commit"`
+	Files         []string `json:"files"`
+	Branch        string   `json:"branch"`
+	Tasks         []string `json:"tasks,omitempty"`
+	Applied       bool     `json:"applied,omitempty"`
+	Committed     bool     `json:"committed,omitempty"`
+	Waiting       bool     `json:"waiting,omitempty"`
+	CanCommit     bool     `json:"canCommit,omitempty"`
+	CommitBlocked string   `json:"commitBlocked,omitempty"`
+	Message       string   `json:"message,omitempty"`
+	DryRun        bool     `json:"dryRun,omitempty"`
 }
