@@ -30,6 +30,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/trust"
 	"github.com/anemos-labs/sleipnir/internal/update"
 	"github.com/anemos-labs/sleipnir/internal/web"
@@ -502,8 +503,8 @@ func (h *webHostImpl) addTab(name, cwd string, base session.Options) (*webTab, e
 	return t, nil
 }
 
-// removeTab ends a tab and takes it off the strip; it returns how an isolated run ended.
-func (h *webHostImpl) removeTab(t *webTab, by string) (rep string) {
+// removeTab ends a tab and takes it off the strip; it returns how an isolated run ended (nil when it was not one).
+func (h *webHostImpl) removeTab(t *webTab, by string) (rep *swarm.IntegrationReport) {
 	h.mu.Lock()
 	i := slices.Index(h.tabs, t)
 	if i >= 0 {
@@ -517,7 +518,7 @@ func (h *webHostImpl) removeTab(t *webTab, by string) (rep string) {
 	h.Publish(wire.Frame{Type: "tab", Data: wire.TabFrame{Op: "remove", Tab: sum}, Critical: true})
 	r := t.shutdown(by)
 	h.Publish(wire.Frame{Type: "recorded", Data: map[string]any{}})
-	return integrationText(r)
+	return r
 }
 
 // ---- projects ------------------------------------------------------------------------------------------------------------------

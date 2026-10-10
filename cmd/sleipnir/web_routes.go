@@ -126,8 +126,8 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		}
 		rep := h.removeTab(t, "closed")
 		body := map[string]any{"ok": true}
-		if rep != "" {
-			body["integration"] = rep
+		if rep != nil {
+			body["integration"] = session.Integration{Applied: rep.Applied, Committed: rep.Committed, Branch: rep.Branch, Message: rep.Message, Hint: rep.Hint}
 		}
 		ok(w, body)
 	})
