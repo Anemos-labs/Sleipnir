@@ -226,7 +226,9 @@ func modelLine(r modelRow, fav map[string]bool) string { return modelTable([]mod
 
 // checkKey sends one small request with the key just typed, because a catalogue is often public and answers whatever the key is. Only
 // a refusal of the key itself (401, 403) counts: the key is then forgotten and the person told, so a typo is found here and not at the
-// first goal. Any other failure (a slow network, a busy model) says nothing about the key and is let through.
+// first goal. Any other failure (a slow network, a busy model) says nothing about the key and is let through. A variable of the key's name
+// in the environment wins over the stored key, so the request then carries the variable's value: a refusal is reported as the variable's,
+// and the stored key, which was not tried, is kept.
 func checkKey(ctx context.Context, cfg *config.Config, ref string, out io.Writer) error {
 	mr, err := session.ResolveModel(cfg, ref)
 	if err != nil {
@@ -244,6 +246,11 @@ func checkKey(ctx context.Context, cfg *config.Config, ref string, out io.Writer
 	var pe *provider.Error
 	if errors.As(err, &pe) && pe.Kind == provider.ErrAuth {
 		if _, env, ok := session.ProviderInfo(cfg, mr.Provider); ok && env != "" {
+			if harden.SourceOf(env) == harden.SourceEnvironment {
+				// the environment wins, so the request carried its value and not the key just typed, which was never tried
+				fmt.Fprintln(out, "refused.")
+				return fmt.Errorf("%s did not accept the key in %s (%v); that variable takes precedence over the key just stored, which was kept: correct or unset %s", mr.Provider, env, pe.Message, env)
+			}
 			_ = config.SaveStoredKey(userHome(), env, "")
 			harden.Provide(env, "")
 		}

@@ -89,3 +89,73 @@ func TestKeysLeaveTheEnvironmentButStillReachTheirReaders(t *testing.T) {
 		t.Errorf("a key the configuration names must be read through Secret (and so moved too): found=%v, still in the environment=%v", got["custom_config_key"] == custom, got["custom_environ_has_key"])
 	}
 }
+
+const storedKeysHelperEnv = "SLEIPNIR_TEST_STOREDKEYS"
+
+// The child of TestAStoredKeyDoesNotReplaceTheKeyOfTheEnvironment: the first two statements of main, then
+// what each key resolves to and where it came from.
+func TestStoredKeysHelper(t *testing.T) {
+	if os.Getenv(storedKeysHelperEnv) != "1" {
+		t.Skip("helper process of TestAStoredKeyDoesNotReplaceTheKeyOfTheEnvironment")
+	}
+	harden.Process(harden.MoveKeys("HF_TOKEN"))
+	if err := config.LoadStoredKeys(userHome()); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, name := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "HF_TOKEN"} {
+		out[name] = harden.Secret(name)
+		out[name+"/source"] = harden.SourceOf(name).String()
+		out[name+"/environ"] = os.Getenv(name)
+	}
+	b, _ := json.Marshal(out)
+	os.Stdout.WriteString("\nSTOREDKEYS-RESULT " + string(b) + "\n")
+}
+
+// The order of main: the keys of the environment are moved into memory, then the stored keys are loaded. The
+// environment wins over the file, though the variable is gone from os.Getenv by then; a stored key is used where
+// the environment has none; and neither is left in the environment for a command to inherit.
+func TestAStoredKeyDoesNotReplaceTheKeyOfTheEnvironment(t *testing.T) {
+	home := t.TempDir()
+	// Assembled, not written out: nothing here is a credential.
+	fromEnv, fromFile := "canary-"+"environment-"+"value", "canary-"+"stored-"+"value"
+	for name, v := range map[string]string{"HEIMDALL_API_KEY": fromFile, "OPENROUTER_API_KEY": fromFile, "HF_TOKEN": fromFile} {
+		if err := config.SaveStoredKey(home, name, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestStoredKeysHelper$", "-test.v")
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"), "HOME=" + home, "USERPROFILE=" + home,
+		storedKeysHelperEnv + "=1",
+		"HEIMDALL_API_KEY=" + fromEnv, // a key in both places
+		"HF_TOKEN=" + fromEnv,         // named to MoveKeys, not ending in API_KEY
+		// OPENROUTER_API_KEY is stored only; OPENAI_API_KEY is nowhere
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("helper: %v\n%s\n%s", err, stdout.String(), stderr.String())
+	}
+	_, res, ok := strings.Cut(stdout.String(), "STOREDKEYS-RESULT ")
+	if !ok {
+		t.Fatalf("no result from the helper:\n%s\n%s", stdout.String(), stderr.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(strings.SplitN(res, "\n", 2)[0])), &got); err != nil {
+		t.Fatalf("result: %v\n%s", err, res)
+	}
+	for _, c := range []struct{ name, value, source string }{
+		{"HEIMDALL_API_KEY", fromEnv, "environment"},
+		{"HF_TOKEN", fromEnv, "environment"},
+		{"OPENROUTER_API_KEY", fromFile, "stored"},
+		{"OPENAI_API_KEY", "", "none"},
+	} {
+		if got[c.name] != c.value || got[c.name+"/source"] != c.source {
+			t.Errorf("%s: the key in use is the %s one (want %s): value correct=%v", c.name, got[c.name+"/source"], c.source, got[c.name] == c.value)
+		}
+		if got[c.name+"/environ"] != "" {
+			t.Errorf("%s is in the environment of the process", c.name)
+		}
+	}
+}

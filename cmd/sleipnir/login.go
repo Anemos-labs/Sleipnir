@@ -188,9 +188,18 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 			return "", fmt.Errorf("login: %w", err)
 		}
 		harden.Provide(pick.env, key)
-		fmt.Fprintln(out, wrapFor(out, fmt.Sprintf("Saved. (%s in the environment still takes precedence over it.)", pick.env)))
+		fmt.Fprintln(out, wrapFor(out, savedNotice(pick.env)))
 		return pick.name, nil
 	}
+}
+
+// savedNotice is what login says once a key is stored. When the variable of the key's name is set in the environment, that value is the
+// one this process uses (the environment wins over a stored key), and the notice says so; otherwise the stored key is the one in use.
+func savedNotice(env string) string {
+	if harden.SourceOf(env) == harden.SourceEnvironment {
+		return fmt.Sprintf("Saved. (%s in the environment still takes precedence over it.)", env)
+	}
+	return "Saved."
 }
 
 // signInChatGPT signs the person in with the browser (OpenAI's "Sign in with ChatGPT"). Where the browser cannot be opened the address it
@@ -257,6 +266,16 @@ func cmdLogin(ctx context.Context, args []string) error {
 	return nil
 }
 
+// removedNotice is what logout says once a provider's stored key is gone: it names the environment variable only when one is set and
+// so still supplies the key in use, which logout leaves alone.
+func removedNotice(provider, env string) string {
+	msg := "removed the stored key for " + provider
+	if harden.SourceOf(env) == harden.SourceEnvironment {
+		msg += fmt.Sprintf(" (%s in the environment is untouched and still in use)", env)
+	}
+	return msg
+}
+
 // cmdLogout removes a stored key: sleipnir logout <provider>.
 func cmdLogout(ctx context.Context, args []string) error {
 	if len(args) != 1 {
@@ -285,6 +304,6 @@ func cmdLogout(ctx context.Context, args []string) error {
 	if err := config.SaveStoredKey(userHome(), env, ""); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "removed the stored key for %s (a %s in the environment is untouched)\n", args[0], env)
+	fmt.Fprintln(os.Stderr, removedNotice(args[0], env))
 	return nil
 }

@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Keep a provider key from the environment in use when a key is also stored.
+  A key that `harden.MoveKeys` took out of the environment at start is no
+  longer replaced by the one `sleipnir login` stored, as documented: the
+  stored key is used only where the environment has none, and `harden.SourceOf`
+  tells which of the two supplies a key. `sleipnir login` and `logout` name the
+  environment variable only when it is the key in use, and a refusal of the
+  environment's key no longer deletes the stored key that was never tried.
 - `sleipnir web` serves the sessions in a browser on loopback (see `docs/CLI.md`
   and `docs/SECURITY.md` section 5). Behind it, several commands share their
   code with the web routes and behave as before: `models`, `fav`, `allow`,
