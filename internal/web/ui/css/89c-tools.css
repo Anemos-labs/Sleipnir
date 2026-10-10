@@ -1,0 +1,50 @@
+/* Tools: the catalogue, the doctor panel and the schedule panel */
+.toolsv,.schv{display:flex;flex-direction:column;gap:var(--gap);min-height:100%}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;flex:none}
+.toolbar input[type=search]{flex:1 1 260px;min-width:160px;background:var(--bg);border:1px solid var(--line2);padding:7px 10px;font:500 13px var(--f-num);color:var(--bright);border-radius:2px}
+.toolbar input:focus{border-color:var(--c-mgr)}
+.tgroups{display:flex;flex-direction:column;gap:14px}
+.tgh{display:flex;gap:12px;align-items:baseline;border-bottom:1px solid var(--line);padding:0 2px 5px;margin-bottom:8px}
+.tgh h2{margin:0;font:700 13px var(--f-lab);letter-spacing:.18em;text-transform:uppercase;color:var(--fg2)}
+.tcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:var(--gap)}
+.tcx{display:flex;flex-direction:column;gap:7px;background:var(--panel);border:1px solid var(--line);padding:10px 12px 10px;position:relative}
+.tcx:hover{border-color:var(--line2);background:var(--panel2)}
+.tcx header{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tcx header b{font:700 13.5px var(--f-num);color:var(--bright)}
+.tcx p{margin:0;font-size:12.5px;line-height:1.4;color:var(--fg2);flex:1;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.tcx .subs{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.chip.sub{cursor:pointer}.chip.sub:hover{border-color:var(--c-mgr);color:var(--bright)}
+.tcx footer{display:flex;gap:6px;flex-wrap:wrap}
+/* doctor */
+.docv{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:var(--gap);align-items:stretch;height:100%;min-height:0}
+.dv-out{height:100%;min-height:360px}
+.dbody{flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
+.dv-form .fld{grid-template-columns:96px minmax(0,1fr)}
+.dsteps{padding:0 12px 8px;min-height:120px}
+.dgrp{font:700 10.5px var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin:10px 0 3px;border-bottom:1px solid var(--line)}
+.dstep{display:grid;grid-template-columns:16px minmax(0,1.1fr) 62px minmax(0,1.5fr) 80px 38px;gap:8px;align-items:center;font:500 12px var(--f-num);padding:2px 0;color:var(--fg2);animation:rowin .5s ease-out}
+.dstep .g{color:var(--ok);font-weight:700}.dstep.bad .g{color:var(--err)}.dstep b{color:var(--bright);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dstep .ms{text-align:right;color:var(--dim)}.dstep .io{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dstep .hp{text-align:right;color:var(--ok)}
+.hbar2{display:block;height:6px;background:var(--panel2);border:1px solid var(--line2);position:relative;overflow:hidden}.hbar2 i{position:absolute;inset:0 auto 0 0;background:var(--ok)}
+.dline{font:500 12px/1.4 var(--f-num);padding:3px 0;color:var(--dim)}.dline.bad{color:var(--err)}.dline.warm{color:var(--warm)}
+.dmeter{height:3px;background:var(--panel2);margin:0 12px 6px}.dmeter i{display:block;height:100%;background:var(--warm);width:0;transition:width .15s}
+.dres{padding:0 12px 12px}
+.dverd{border:1px solid var(--ok-b);background:linear-gradient(180deg,var(--ok-a),transparent);padding:10px 12px}
+.dverd.bad{border-color:var(--err-b);background:linear-gradient(180deg,var(--err-a),transparent)}
+.dverd h3{margin:0 0 8px;font:700 13px var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--bright)}
+.dkv{display:grid;grid-template-columns:max-content 1fr;gap:3px 16px;margin:0;font:500 12.5px var(--f-num)}.dkv dt{color:var(--dim)}.dkv dd{margin:0;color:var(--fg)}.dkv dd.ok{color:var(--ok)}.dkv dd.err{color:var(--err)}
+.dsum{display:flex;gap:18px;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);flex-wrap:wrap}.dsum span{display:flex;flex-direction:column;gap:2px}.dsum small{font:600 10px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}.dsum b{font:600 13px var(--f-num);color:var(--bright)}
+/* schedule */
+.g2s{display:grid;grid-template-columns:minmax(300px,420px) minmax(0,1fr);gap:var(--gap);align-items:start}
+.dmn{gap:12px}
+.jobs .tbl td{vertical-align:top}.jg{max-width:300px}
+.slog{padding:0 12px 12px}.slog .term{min-height:240px;max-height:46vh}
+.schv .fld{grid-template-columns:90px minmax(0,1fr)}
+/* a short window: each column of the doctor scrolls by itself, never cutting its form */
+.docv>*{min-height:0;overflow:auto}
+@container main (max-width:860px){.docv{grid-template-columns:minmax(0,1fr);height:auto;grid-auto-rows:min-content}.docv>*{overflow:visible}.dv-out{height:auto}.g2s{grid-template-columns:minmax(0,1fr)}.dstep{grid-template-columns:16px minmax(0,1fr) 56px 80px 36px}.dstep .io{display:none}}
+@container main (max-width:620px){.dstep{grid-template-columns:16px minmax(0,1fr) 56px}.dstep .hbar2,.dstep .hp{display:none}.tcards{grid-template-columns:minmax(0,1fr)}}
+/* Sessions: the recorded table keeps its ids on one line */
+.reclist .tbl td.mono{white-space:nowrap}
+.reclist .tbl td.bright{min-width:140px}
+@container main (max-width:1150px){.sessv{grid-template-columns:minmax(0,1fr)}.livecards{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}}

@@ -17,6 +17,26 @@ var layerMeaning = map[string]string{
 	"thread": "An earlier turn of the thread was rewritten or removed outside a commit: thinking blocks stripped, a tool result masked, or two turns merged.",
 }
 
+// anomalyTitles is the one-line explanation of each kind of cache anomaly the harness reports (internal/agent request.go and
+// compact.go, the cache.anomaly event), in the words of a person reading a feed.
+var anomalyTitles = map[string]string{
+	"drift":             "the prompt prefix changed without a declared rebase: the cache misses from the changed layer on",
+	"low_hit":           "the prompt prefix did not change: the endpoint did not serve it",
+	"undeclared":        "a layer changed without a declared rebase",
+	"thinking_binding":  "the provider rejected a thinking block: the reasoning history was dropped and the request sent again",
+	"thinking_dropped":  "the provider dropped a thinking block: the prefix after it was written again",
+	"notes_over_budget": "the notes outgrew their budget: the oldest lines were evicted and the notes layer was written again",
+}
+
+// AnomalyTitle is the one-line explanation of a cache anomaly kind, as the inspector titles it: what the kind means, without the
+// figures of one occurrence. A kind it does not know is named as such.
+func AnomalyTitle(kind string) string {
+	if t, ok := anomalyTitles[kind]; ok {
+		return t
+	}
+	return "Cache anomaly (" + firstNonEmpty(kind, "unknown") + ")"
+}
+
 // explainLocked adds the evidence the log holds for an anomaly and writes the
 // explanation. It only states facts it can support: where the log cannot say
 // (a provider-side eviction, say) it lists what to rule out.

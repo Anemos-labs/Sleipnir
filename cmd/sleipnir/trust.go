@@ -14,7 +14,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/trust"
 )
@@ -92,16 +91,9 @@ func cmdTrust(ctx context.Context, args []string) error {
 	return fmt.Errorf("trust: unknown command %q", sub)
 }
 
-// projectFootprint reads what the project around dir would let the harness use.
+// projectFootprint reads what the project around dir would let the harness use (session.ProjectFootprint).
 func projectFootprint(home, dir string) (*trust.Footprint, error) {
-	root, _ := config.FindRoot(dir)
-	if root == "" {
-		root = dir
-	}
-	if abs, err := filepath.Abs(root); err == nil {
-		root = abs
-	}
-	return trust.Scan(root, dir, home)
+	return session.ProjectFootprint(home, dir)
 }
 
 // shortDigest removes an optional sha256: prefix and retains at most the first 12 bytes for
@@ -114,6 +106,7 @@ func shortDigest(d string) string {
 	return d
 }
 
+// trustShow prints what trust in dir's project would unlock and whether the person said yes to exactly those files.
 func trustShow(w io.Writer, ledger *trust.Ledger, home, dir string) error {
 	fp, err := projectFootprint(home, dir)
 	if err != nil {
@@ -141,6 +134,7 @@ func trustShow(w io.Writer, ledger *trust.Ledger, home, dir string) error {
 	return nil
 }
 
+// trustAdd shows dir's project files, asks (unless yes) and remembers them as trusted until any of them changes.
 func trustAdd(in io.Reader, w io.Writer, ledger *trust.Ledger, home, dir string, yes bool) error {
 	fp, err := projectFootprint(home, dir)
 	if err != nil {
@@ -194,6 +188,7 @@ func trustForget(w io.Writer, ledger *trust.Ledger, dir string, all bool) error 
 	return nil
 }
 
+// trustList prints every directory of the ledger with what its files are worth now (session.TrustNow).
 func trustList(w io.Writer, ledger *trust.Ledger, home string) error {
 	all := ledger.All()
 	if len(all) == 0 {
@@ -209,21 +204,7 @@ func trustList(w io.Writer, ledger *trust.Ledger, home string) error {
 	fmt.Fprintln(tw, "DIRECTORY\tSAVED\tFILES\tNOW")
 	for _, d := range dirs {
 		e := all[d]
-		now := "unchanged"
-		switch fi, err := os.Stat(d); {
-		case err != nil || !fi.IsDir():
-			now = "directory is gone"
-		default:
-			fp, err := projectFootprint(home, d)
-			switch {
-			case err != nil:
-				now = "cannot be read: " + err.Error()
-			default:
-				if st, _ := ledger.Check(d, fp); st != trust.Trusted {
-					now = "changed: " + trust.DescribeChanges(trust.Changes(e, fp))
-				}
-			}
-		}
+		now, _ := session.TrustNow(ledger, home, d, e)
 		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n", trust.Show(d), e.Saved, len(e.Files), now)
 	}
 	return tw.Flush()

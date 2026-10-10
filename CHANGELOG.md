@@ -14,6 +14,49 @@ they do not indicate whether a change has been released.
   tells which of the two supplies a key. `sleipnir login` and `logout` name the
   environment variable only when it is the key in use, and a refusal of the
   environment's key no longer deletes the stored key that was never tried.
+- Web permission rules judge exactly what `web_fetch` fetches, and a redirect
+  to another host asks first. A rule read only the first of the fields `url`,
+  `uri`, `href` and `endpoint` that parsed, while the tool reads `url` after
+  trimming it, so a request could match a rule for one host and fetch another;
+  rules now judge only the tool's own `url`, normalised as the tool does, and a
+  URL the tool would refuse matches no allow rule and every domain or URL deny
+  or ask rule. A URL-pattern rule matches the URL as given, as the tool fetches
+  it, without the `/` of an empty path, and without its scheme, so every pattern
+  that matched a fetched URL still does and `docs.example/page` also matches
+  `https://docs.example/*`; a pattern without a scheme matches every scheme. An
+  internationalised host is compared and fetched in its ASCII (punycode) form,
+  in rules and URLs alike, and a host that has none is refused. `web_fetch`
+  asks before it follows a redirect that leaves the site (another host, another
+  port, or from https down to http) and refuses it in a run with nobody to ask;
+  a redirect that stays on the site (adding `www.`, a trailing dot, an upgrade
+  to https, another path) is not asked about but is refused by a deny rule that
+  covers it. Pages reached through a redirect that left the site are not cached.
+  A shell command shares one answer to an open question with the same command
+  in the same directory; any other request does only when it is byte-identical.
+  The file and memory tools' requests now carry the call's input, which
+  PermissionRequest hooks also receive.
+- `sleipnir web` serves the sessions in a browser on loopback (see `docs/CLI.md`
+  and `docs/SECURITY.md` section 5). Behind it, several commands share their
+  code with the web routes and behave as before: `models`, `fav`, `allow`,
+  `trust`, `mcp`, `login`, `sessions prune`, `schedule` and `update`. Three
+  behaviors differ: a project or local configuration file can no longer remove
+  the user's deny and ask rules or hooks by setting `permissions`,
+  `permissions.roles`, one role's section or `hooks` to `null` (it could, and
+  the lists were add-only only below those keys); the approvals of a project's
+  tool servers are read again from the ledger before every check and change, so
+  an approval made in another process takes effect without a restart; and
+  `sleipnir daemon` holds a lock in the state directory, so a second daemon
+  refuses to start and a second `--once` run exits 0 saying so. Configuration
+  files are written under a lock per file. Session logs gain the event types
+  `checkpoint`, `goal.judge` and `verify.run`; readers that ignore unknown types
+  are unaffected. A `checkpoint` event carries the checkpoint's file count and
+  the file recorded last, never the whole list; one is written when a checkpoint
+  begins, each time its count has grown by an eighth since the last one (every
+  count up to 16), and at the end of every turn, so where the events fall in the
+  log depends only on the changes, never on timing. The terminal feed now shows `swarm.stall`, `swarm.handover`
+  and goal lines. A session the web host serves keeps a journal of the content
+  each agent writes, bounded at 256 MiB per session, which the browser's
+  per-line history reads; other sessions keep none.
 - Count workers, not the manager, in every team size a person types or reads.
   `--swarm N`, `sleipnir swarm N`, `/swarm N` and `rl --mode swarm:N` mean a
   manager and N workers again; `--swarm 0` is a single agent and

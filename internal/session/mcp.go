@@ -75,18 +75,8 @@ func (s *Session) startMCP(ctx context.Context, reg *tools.Registry) {
 		st.names[c.Fingerprint()] = name
 	}
 	s.mcp = st
-	env := mcp.EnvMap(os.Environ())
-	// Keys the harness holds itself (harden.MoveKeys) are no longer in the environment, and
-	// an entry that names ${SOME_API_KEY} must resolve as it always did: what a
-	// configuration may see is the same set as before, and approving a project entry still
-	// shows which variables it asks for.
-	for _, name := range harden.Held() {
-		if v, ok := harden.LookupSecret(name); ok {
-			env[name] = v
-		}
-	}
 	st.mgr = mcp.NewManager(mcp.Options{
-		Servers: servers, Env: env, Cwd: o.Cwd,
+		Servers: servers, Env: mcpEnv(), Cwd: o.Cwd,
 		Roots:    []mcp.Root{{Path: o.Root, Name: filepath.Base(o.Root)}},
 		Approve:  s.mcpApprove,
 		OnChange: s.mcpChanged,
@@ -117,6 +107,21 @@ func (s *Session) startMCP(ctx context.Context, reg *tools.Registry) {
 	for _, w := range st.snap.Warnings() {
 		s.notice("", "mcp: "+w)
 	}
+}
+
+// mcpEnv is what ${VAR} references in MCP entries resolve against: the process
+// environment, and the keys the harness holds itself (harden.MoveKeys took them out
+// of the environment, and an entry that names ${SOME_API_KEY} must resolve as it
+// always did: what a configuration may see is the same set as before, and approving
+// a project entry still shows which variables it asks for).
+func mcpEnv() map[string]string {
+	env := mcp.EnvMap(os.Environ())
+	for _, name := range harden.Held() {
+		if v, ok := harden.LookupSecret(name); ok {
+			env[name] = v
+		}
+	}
+	return env
 }
 
 // mcpServers reads the configured entries, split by where they came from.
@@ -297,69 +302,80 @@ func (s *Session) MCPPrompt(ctx context.Context, command string, args map[string
 // project root and the entry's fingerprint (so editing an entry asks again). It
 // lives in the user's state directory, never in the repository: a repository
 // must not be able to pre-approve itself.
+//
+// The file is the truth, not a copy in memory: every question reads it again,
+// and every change reads it, changes it and writes it back whole while holding
+// the file's write lock (config.WriteLock), so an approval another program wrote
+// (`sleipnir mcp approve` while a session runs) is seen at once and is never
+// written over by this process, and changes made in this process at the same
+// moment (several sessions of one server) all stay. Between processes the last
+// rename wins, as for the trust ledger.
 type approvalStore struct {
 	path string
-	mu   sync.Mutex
-	// root -> fingerprint -> server name (the name is only for humans)
-	m map[string]map[string]string
 }
 
 const approvalsVersion = 1
 
-// openApprovals loads approvals in the supported format, returning an empty store when the file is
-// unavailable, malformed, or has an unsupported version.
-func openApprovals(path string) *approvalStore {
-	a := &approvalStore{path: path, m: map[string]map[string]string{}}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return a
-	}
-	var doc struct {
-		Version  int                          `json:"version"`
-		Approved map[string]map[string]string `json:"approved"`
-	}
-	if json.Unmarshal(b, &doc) == nil && doc.Version == approvalsVersion && doc.Approved != nil {
-		a.m = doc.Approved
-	}
-	return a
+// approvalsFile is the format of mcp-approvals.json.
+type approvalsFile struct {
+	Version  int                          `json:"version"`
+	Approved map[string]map[string]string `json:"approved"` // root -> fingerprint -> server name (the name is only for humans)
 }
 
-// has checks a project-root and fingerprint approval pair under the store lock.
+// openApprovals returns the store kept at path. Nothing is read until it is asked.
+func openApprovals(path string) *approvalStore { return &approvalStore{path: path} }
+
+// load reads the approvals; a file that is missing, malformed or of another
+// version holds none.
+func (a *approvalStore) load() map[string]map[string]string {
+	b, err := os.ReadFile(a.path)
+	if err != nil {
+		return map[string]map[string]string{}
+	}
+	var doc approvalsFile
+	if json.Unmarshal(b, &doc) != nil || doc.Version != approvalsVersion || doc.Approved == nil {
+		return map[string]map[string]string{}
+	}
+	return doc.Approved
+}
+
+// has checks a project-root and fingerprint approval pair against the file as
+// it is now.
 func (a *approvalStore) has(root, fp string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	_, ok := a.m[root][fp]
+	_, ok := a.load()[root][fp]
 	return ok
 }
 
-// add updates in-memory approval state under lock and persists it; a save error does not roll back
-// the in-memory change.
+// add records an approval: the file is read again under its write lock, changed
+// and written back.
 func (a *approvalStore) add(root, fp, name string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.m[root] == nil {
-		a.m[root] = map[string]string{}
-	}
-	a.m[root][fp] = name
-	return a.saveLocked()
+	return a.update(func(m map[string]map[string]string) {
+		if m[root] == nil {
+			m[root] = map[string]string{}
+		}
+		m[root][fp] = name
+	})
 }
 
-// remove deletes an approval and empty root buckets under lock, then persists the updated state.
+// remove deletes an approval, and the project's bucket when it is left empty,
+// the same way.
 func (a *approvalStore) remove(root, fp string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	delete(a.m[root], fp)
-	if len(a.m[root]) == 0 {
-		delete(a.m, root)
-	}
-	return a.saveLocked()
+	return a.update(func(m map[string]map[string]string) {
+		delete(m[root], fp)
+		if len(m[root]) == 0 {
+			delete(m, root)
+		}
+	})
 }
 
-func (a *approvalStore) saveLocked() error {
-	b, err := json.MarshalIndent(struct {
-		Version  int                          `json:"version"`
-		Approved map[string]map[string]string `json:"approved"`
-	}{approvalsVersion, a.m}, "", "  ")
+// update reads the file under its write lock, applies change and writes the
+// result back atomically (a temporary file renamed over it, mode 0600).
+func (a *approvalStore) update(change func(map[string]map[string]string)) error {
+	unlock := config.WriteLock(a.path)
+	defer unlock()
+	m := a.load()
+	change(m)
+	b, err := json.MarshalIndent(approvalsFile{approvalsVersion, m}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -439,4 +455,111 @@ func MCPEntries(home, root string, trustProject bool) ([]MCPEntry, []mcp.Issue, 
 		out = append(out, MCPEntry{Name: n, Config: c, Fingerprint: fp, Trusted: c.Trust || c.Scope == mcp.ScopeUser, Approved: ap.Has(root, fp)})
 	}
 	return out, issues, nil
+}
+
+// ProjectMCPEntry finds the project entry name among the servers a session in root
+// would consider with the project trusted: what `mcp approve` and `mcp revoke` act
+// on. The error says when there is no such project entry, or when name is the
+// user's own entry, which needs no approval.
+func ProjectMCPEntry(home, root, name string) (MCPEntry, error) {
+	entries, _, err := MCPEntries(home, root, true)
+	if err != nil {
+		return MCPEntry{}, err
+	}
+	var e *MCPEntry
+	for i := range entries {
+		if entries[i].Name == name {
+			e = &entries[i]
+		}
+	}
+	if e == nil {
+		return MCPEntry{}, fmt.Errorf("no project MCP server %q (see: sleipnir mcp list --trust-project)", name)
+	}
+	if e.Trusted {
+		return MCPEntry{}, fmt.Errorf("%q is your own entry: it needs no approval", name)
+	}
+	return *e, nil
+}
+
+// MCPTestResult is what MCPTest found.
+type MCPTestResult struct {
+	// Servers is the state of every server that was considered, by name.
+	Servers []mcp.ServerStatus
+	// Tools are the tool names the started servers offered (the names the model
+	// would be sent, mcp__server__tool), sorted.
+	Tools []string
+	// Refused are the project entries that were not started because they are not
+	// approved for the project (nothing asks: approve them first).
+	Refused []string
+	// Issues are the problems found reading the entries.
+	Issues []mcp.Issue
+	// Elapsed is how long starting and listing took.
+	Elapsed time.Duration
+}
+
+// MCPTest starts the MCP servers a session started in dir would start (only those
+// named, when names is not empty), lists the tools they offer and stops them. It
+// creates no session and writes nothing: no session directory, no log, no
+// approval. A project entry (read only with trustProject) starts only when it is
+// already approved for the project; nobody is asked. An unknown name is an error.
+func MCPTest(ctx context.Context, home, dir string, names []string, trustProject bool) (*MCPTestResult, error) {
+	root, _ := config.FindRoot(dir)
+	if root == "" {
+		root = dir
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	cfg, rep, err := config.Load(config.LoadOpts{Cwd: dir, Root: root, Home: home, UntrustedProject: !trustProject})
+	if err != nil {
+		return nil, err
+	}
+	s := &Session{cfg: cfg, cfgRep: rep, opts: Options{Root: root, TrustProject: trustProject}}
+	servers, issues := s.mcpServers()
+	if len(names) > 0 {
+		chosen := map[string]mcp.ServerConfig{}
+		for _, n := range names {
+			c, ok := servers[n]
+			if !ok {
+				return nil, fmt.Errorf("no MCP server %q here (see: sleipnir mcp list)", n)
+			}
+			chosen[n] = c
+		}
+		servers = chosen
+	}
+	res := &MCPTestResult{Issues: issues}
+	if len(servers) == 0 {
+		return res, nil
+	}
+	ap := openApprovals(filepath.Join(stateRoot(home), "mcp-approvals.json"))
+	byFP := map[string]string{}
+	for n, c := range servers {
+		byFP[c.Fingerprint()] = n
+	}
+	var mu sync.Mutex
+	mgr := mcp.NewManager(mcp.Options{
+		Servers: servers, Env: mcpEnv(), Cwd: dir,
+		Roots: []mcp.Root{{Path: root, Name: filepath.Base(root)}},
+		Approve: func(c mcp.ServerConfig) bool {
+			if ap.has(root, c.Fingerprint()) {
+				return true
+			}
+			mu.Lock()
+			res.Refused = append(res.Refused, byFP[c.Fingerprint()])
+			mu.Unlock()
+			return false
+		},
+		ClientName: "sleipnir", ClientVersion: Version,
+	})
+	defer mgr.Close()
+	start := time.Now()
+	sctx, cancel := context.WithTimeout(ctx, mcpStartup)
+	defer cancel()
+	_ = mgr.Start(sctx) // a server that failed is in Status with its error
+	res.Elapsed = time.Since(start)
+	res.Servers = mgr.Status()
+	res.Tools = mgr.Snapshot().Names()
+	sort.Strings(res.Tools)
+	sort.Strings(res.Refused)
+	return res, nil
 }

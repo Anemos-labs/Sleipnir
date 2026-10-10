@@ -96,6 +96,7 @@ func (a *agentState) setTask(id string) {
 // settleDone turns an idle worker into a done one when the task it last held was accepted: its job is finished. It is called when
 // the worker goes idle and when the task is accepted, so the order of the two does not matter.
 func (s *State) settleDone(a *agentState) {
+	s.touchAgent(a.ID)
 	if a.run != runIdle || a.lastTask == "" {
 		return
 	}
@@ -181,6 +182,7 @@ func (a *agentState) endRun(r runState, t time.Time) {
 // permission questions it had put are no longer pending (the engine answers them "canceled" before a run ends, but a log may be
 // cut short, and a question must not outlive its asker).
 func (s *State) endRun(a *agentState, r runState, t time.Time) {
+	s.touchAgent(a.ID)
 	s.dropAsks(a)
 	a.endRun(r, t)
 }
@@ -188,6 +190,7 @@ func (s *State) endRun(a *agentState, r runState, t time.Time) {
 // halt sets the run state of an agent that has stopped working by a way that closes its spans itself (a final answer, a request
 // that failed or was cancelled): what it waited for is over as well, so its questions are not pending any more.
 func (s *State) halt(a *agentState, r runState) {
+	s.touchAgent(a.ID)
 	s.dropAsks(a)
 	a.run = r
 }

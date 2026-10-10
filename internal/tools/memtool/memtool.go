@@ -129,7 +129,7 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 
 func (t *Tool) authorize(ctx context.Context, c *tools.Call, summary string) *tools.Result {
 	d := c.Env.Perm.Check(ctx, perm.Request{
-		Agent: c.Env.Agent, Role: c.Env.Role, Tool: "memory", Summary: summary,
+		Agent: c.Env.Agent, Role: c.Env.Role, Tool: "memory", Summary: summary, Input: c.Input,
 		Paths: []string{t.path}, Writes: true, Risk: perm.RiskMedium,
 	})
 	if d.Allow {

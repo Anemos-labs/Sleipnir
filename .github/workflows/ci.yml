@@ -59,6 +59,10 @@ jobs:
         run: sh scripts/check-declared.sh "$BASE"
       - name: docs/CLI.md lists every flag and command of the binary
         run: sh scripts/gen-cli-docs.sh --check
+      - name: the web interface's CLI spec matches docs/CLI.md
+        run: sh scripts/gen-clispec.sh --check
+      - name: the web interface's JavaScript tests
+        run: node --test internal/web/uidev/test/*.test.mjs
       - name: Cache economics simulator block is current
         run: |
           cp docs/CACHE-ECONOMICS.md /tmp/cache-economics.before

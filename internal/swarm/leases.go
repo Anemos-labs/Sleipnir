@@ -434,6 +434,87 @@ func (l *Leases) HeldBy(agent string) []string {
 	return out
 }
 
+// LeaseInfo is one entry of the lease table as Snapshot reports it. In a shared tree it
+// is a write lease: Path is the absolute path the tools wrote, Holder the agent that
+// holds it, Last its last write and Expires when it lapses without another. In an
+// isolated run it is an advisory mark: Path is repository-relative, Agents every agent
+// that wrote it recently (Holder the latest), and Isolated is set.
+type LeaseInfo struct {
+	Path     string
+	Holder   string
+	Agents   []string
+	Last     time.Time
+	Expires  time.Time
+	Isolated bool
+}
+
+// Snapshot lists the leases in force (expired ones are left out), sorted by path.
+func (l *Leases) Snapshot() []LeaseInfo {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	var out []LeaseInfo
+	for p, cur := range l.held {
+		if now.Sub(cur.last) >= l.ttl {
+			continue
+		}
+		out = append(out, LeaseInfo{Path: p, Holder: cur.holder, Agents: []string{cur.holder}, Last: cur.last, Expires: cur.last.Add(l.ttl)})
+	}
+	for rel, m := range l.marks {
+		info := LeaseInfo{Path: rel, Isolated: true}
+		for a, at := range m {
+			if now.Sub(at) >= l.ttl {
+				continue
+			}
+			info.Agents = append(info.Agents, a)
+			if at.After(info.Last) || (at.Equal(info.Last) && a > info.Holder) {
+				info.Last, info.Holder = at, a
+			}
+		}
+		if len(info.Agents) == 0 {
+			continue
+		}
+		sort.Strings(info.Agents)
+		info.Expires = info.Last.Add(l.ttl)
+		out = append(out, info)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
+// LeaseScope is a task scope that covers a path: the task's owner, the task and the
+// scope entry that matched.
+type LeaseScope struct {
+	Agent, Task, Glob string
+}
+
+// Covering finds the task scope that covers a repository-relative path: a task in
+// progress whose scope matches it, as the guard would match a write by its owner
+// (the first such task in board order).
+func (l *Leases) Covering(rel string) (LeaseScope, bool) {
+	if l.board == nil || rel == "" {
+		return LeaseScope{}, false
+	}
+	for _, t := range l.board.Snapshot().Tasks {
+		if t.Status != StatusDoing || t.Owner == "" {
+			continue
+		}
+		for _, g := range t.Files {
+			if inScope([]string{g}, rel) {
+				return LeaseScope{Agent: t.Owner, Task: t.ID, Glob: g}, true
+			}
+		}
+	}
+	return LeaseScope{}, false
+}
+
+// Roots are the directories the guard makes absolute paths relative to.
+func (l *Leases) Roots() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.roots...)
+}
+
 // Len is the number of lease entries (held or expired but not yet swept).
 func (l *Leases) Len() int {
 	l.mu.Lock()

@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -260,4 +261,58 @@ func anchorText(l string) string {
 		return strings.TrimSpace(m[1])
 	}
 	return strings.TrimSpace(strings.TrimPrefix(l, "@@"))
+}
+
+// PatchOp is one operation of an apply_patch patch as the apply_patch tool reads it: Kind is "add", "delete" or "update", Path the
+// file it names as the patch writes it, Move the new name of an update that moves the file, Add the lines of an added file (without
+// their "+"), and Hunks the hunks of an update.
+type PatchOp struct {
+	Kind       string
+	Path, Move string
+	Add        []string
+	Hunks      []PatchHunk
+}
+
+// PatchHunk is one hunk of an update: the anchors (@@ lines) that locate it, its lines, and whether it must match at the end of the
+// file.
+type PatchHunk struct {
+	Anchors []string
+	Lines   []PatchLine
+	EOF     bool
+}
+
+// PatchLine is one line of a hunk: Op is ' ' (context), '-' (removed) or '+' (added), Text the line without it.
+type PatchLine struct {
+	Op   byte
+	Text string
+}
+
+// ParsePatch reads an apply_patch patch with the parser, and so the normalization (a heredoc wrapper, uniform indentation, CRLF line
+// ends, blank separators), of the apply_patch tool itself: what it returns is what the tool applies. The error is the tool's message.
+func ParsePatch(text string) ([]PatchOp, error) {
+	ops, msg := parsePatch(text)
+	if msg != "" {
+		return nil, errors.New(msg)
+	}
+	out := make([]PatchOp, 0, len(ops))
+	for _, op := range ops {
+		o := PatchOp{Path: op.path, Move: op.move, Add: append([]string(nil), op.add...)}
+		switch op.kind {
+		case opAdd:
+			o.Kind = "add"
+		case opDelete:
+			o.Kind = "delete"
+		default:
+			o.Kind = "update"
+		}
+		for _, h := range op.hunks {
+			ph := PatchHunk{Anchors: append([]string(nil), h.anchors...), EOF: h.eof, Lines: make([]PatchLine, 0, len(h.lines))}
+			for _, l := range h.lines {
+				ph.Lines = append(ph.Lines, PatchLine{Op: l.op, Text: l.text})
+			}
+			o.Hunks = append(o.Hunks, ph)
+		}
+		out = append(out, o)
+	}
+	return out, nil
 }

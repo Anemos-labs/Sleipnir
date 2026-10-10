@@ -542,11 +542,16 @@ func (s *Swarm) Integrate(ctx context.Context) *IntegrationReport {
 	if !s.isolated() {
 		return nil
 	}
-	iso := s.deps.Isolation
-	q := iso.Queue
 	s.apply.mu.Lock()
 	defer s.apply.mu.Unlock()
+	return s.integrateLocked(ctx, s.deps.Isolation.Commit)
+}
 
+// integrateLocked is Integrate for a caller that holds apply.mu; commit chooses commits
+// on the person's branch over a patch to the working tree.
+func (s *Swarm) integrateLocked(ctx context.Context, commit bool) *IntegrationReport {
+	iso := s.deps.Isolation
+	q := iso.Queue
 	rep := &IntegrationReport{Branch: q.Branch(), Base: q.Base(), Tip: q.Tip()}
 	if err := s.recoverApplication(ctx); err != nil {
 		return s.notApplied(rep, iso, err.Error())
@@ -572,7 +577,7 @@ func (s *Swarm) Integrate(ctx context.Context) *IntegrationReport {
 		rep.Files = append(rep.Files, f.Path)
 	}
 	sort.Strings(rep.Files)
-	if iso.Commit {
+	if commit {
 		return s.applyCommits(ctx, rep, iso)
 	}
 	if d.Empty() { // commits that add up to no change
@@ -826,4 +831,306 @@ func (s *Swarm) unbindTreeByAgent(id string) {
 	if c, ok := s.deps.Perm.(interface{ Unconfine(agent string) }); ok {
 		c.Unconfine(id)
 	}
+}
+
+// ---- accessors and the manual application (the web workspace) -------------------
+
+// Isolated reports whether writers work in worktrees of their own (Isolation is set and
+// complete).
+func (s *Swarm) Isolated() bool { return s.isolated() }
+
+// Workspace returns the isolated team's worktree manager and merge queue (nil, nil
+// without isolation).
+func (s *Swarm) Workspace() (*workspace.Manager, *workspace.Queue) {
+	if !s.isolated() {
+		return nil, nil
+	}
+	return s.deps.Isolation.Manager, s.deps.Isolation.Queue
+}
+
+// Files is the tracker of what each agent last read and wrote (nil when the swarm was
+// built without one).
+func (s *Swarm) Files() *tools.FileState { return s.deps.Files }
+
+// AppliedTip is the integration commit the person's checkout has (as edits or commits),
+// "" before anything was applied.
+func (s *Swarm) AppliedTip() string {
+	s.apply.mu.Lock()
+	defer s.apply.mu.Unlock()
+	return s.apply.applied
+}
+
+var (
+	// ErrNotIsolated is returned by Accept for a team whose writers share the checkout.
+	ErrNotIsolated = errors.New("swarm: the team works in the shared checkout; there is no merge queue to apply from")
+	// ErrNothingToAccept is returned by Accept when the checkout already has (and, for
+	// commits, has committed) everything verified.
+	ErrNothingToAccept = errors.New("swarm: nothing verified is waiting")
+	// ErrCheckoutDirty is returned by Accept when the checkout holds changes that are
+	// not the team's verified work.
+	ErrCheckoutDirty = errors.New("swarm: the checkout has uncommitted changes of its own")
+	// ErrBranchMoved is returned by Accept when the checkout is not on the session's
+	// branch, or that branch has commits the session did not start from.
+	ErrBranchMoved = errors.New("swarm: the checkout's branch moved")
+	// ErrAcceptChanged is returned by Accept when the verified work is not the one the
+	// caller expected (AcceptOptions.ExpectTip, ExpectFrom).
+	ErrAcceptChanged = errors.New("swarm: the verified work changed since it was shown")
+)
+
+// AcceptOptions choose how Accept puts the verified work into the person's checkout.
+type AcceptOptions struct {
+	// Commits puts it on the person's branch as commits: the branch moves to the
+	// integration tip (a fast-forward of a clean checkout), or, when the checkout holds
+	// the verified work as uncommitted edits already, those files are committed as one
+	// commit with Message. Without it the work is applied as uncommitted edits, as at
+	// the end of the run.
+	Commits bool
+	// Message is the commit message of a commit of applied edits ("" gives a default).
+	Message string
+	// DryRun reports what would happen and changes nothing.
+	DryRun bool
+	// ExpectTip and ExpectFrom, when ExpectTip is set, are the integration tip and the
+	// checkout's position a dry run reported: if either moved since, Accept changes
+	// nothing and fails with ErrAcceptChanged (the person confirmed another set of work).
+	ExpectTip, ExpectFrom string
+}
+
+// AcceptReport says what Accept did, or would do.
+type AcceptReport struct {
+	// Branch is the integration branch, Tip its verified tip, From what the checkout
+	// had before; Checkout the person's branch ("" when detached).
+	Branch, Tip, From, Checkout string
+	// Files are the paths the application changes (or commits); Tasks the tasks whose
+	// merges it brings.
+	Files, Tasks []string
+	// Waiting says there is verified work to apply or to commit.
+	Waiting bool
+	// CanCommit says Commits is possible now; CommitBlocked says why not (ErrCheckoutDirty
+	// or ErrBranchMoved).
+	CanCommit     bool
+	CommitBlocked error
+	// Applied and Committed say what happened; Commit is the commit the branch is on
+	// afterwards (for Commits).
+	Applied, Committed bool
+	Commit             string
+	Message            string
+	DryRun             bool
+}
+
+// Accept applies the verified work of an isolated team to the person's checkout now,
+// instead of waiting for the manager to stop or the session to end, and records it as
+// applied, so the automatic application later brings only what merges after it. With
+// AcceptOptions.Commits it needs the checkout on the session's branch, a branch with no
+// commits the session did not see (ErrBranchMoved), and no uncommitted change other
+// than the team's applied work (ErrCheckoutDirty); the checks are made, and their
+// outcome reported, in a dry run too. Errors other than the four of this package are
+// failures of the application itself, whose report says what to do.
+func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, error) {
+	if !s.isolated() {
+		return nil, ErrNotIsolated
+	}
+	iso := s.deps.Isolation
+	q := iso.Queue
+	repo := iso.Manager.Repository()
+	s.apply.mu.Lock()
+	defer s.apply.mu.Unlock()
+	if err := s.recoverApplication(ctx); err != nil {
+		return nil, err
+	}
+	rep := &AcceptReport{Branch: q.Branch(), Tip: q.Tip(), From: s.apply.applied, DryRun: o.DryRun}
+	if rep.From == "" {
+		rep.From = q.Base()
+	}
+	if !o.DryRun && o.ExpectTip != "" && (o.ExpectTip != rep.Tip || o.ExpectFrom != rep.From) {
+		return rep, ErrAcceptChanged
+	}
+	incoming := map[string]bool{}
+	if rep.Tip != rep.From {
+		d, err := repo.Diff(ctx, rep.From, gitx.DiffOptions{To: rep.Tip, Renames: true, MaxFiles: 1 << 20, NoPatch: true})
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range d.Files {
+			incoming[f.Path] = true
+			if f.OldPath != "" {
+				incoming[f.OldPath] = true
+			}
+		}
+		rep.Tasks = s.tasksLanded(rep.From)
+	}
+	st, err := repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all"})
+	if err != nil {
+		return nil, err
+	}
+	rep.Checkout = st.Branch
+	dirty := checkoutDirty(st, iso.Manager)
+	// A dirty file is the team's applied work when the integration applied it and it is
+	// still exactly what it applied; anything else is the person's own.
+	applied := map[string]bool{}
+	var foreign, candidates []string
+	for _, p := range dirty {
+		if s.apply.files[p] && s.apply.applied != "" {
+			candidates = append(candidates, p)
+		} else {
+			foreign = append(foreign, p)
+		}
+	}
+	if len(candidates) > 0 {
+		d, err := repo.Diff(ctx, s.apply.applied, gitx.DiffOptions{Paths: candidates, NoPatch: true, MaxFiles: 1 << 20})
+		if err != nil {
+			return nil, err
+		}
+		differ := map[string]bool{}
+		for _, f := range d.Files {
+			differ[f.Path] = true
+		}
+		for _, p := range candidates {
+			if differ[p] {
+				foreign = append(foreign, p)
+			} else {
+				applied[p] = true
+			}
+		}
+	}
+	files := map[string]bool{}
+	for p := range incoming {
+		files[p] = true
+	}
+	for p := range applied {
+		files[p] = true
+	}
+	rep.Files = slices.Sorted(maps.Keys(files))
+	rep.Waiting = len(incoming) > 0 || (len(applied) > 0 && len(foreign) == 0)
+	switch {
+	case st.Branch == "" || (iso.CheckoutBranch != "" && st.Branch != iso.CheckoutBranch):
+		rep.CommitBlocked = fmt.Errorf("%w: the checkout is not on the session's branch %s", ErrBranchMoved, cleanText(iso.CheckoutBranch, 80))
+	case len(foreign) > 0:
+		rep.CommitBlocked = fmt.Errorf("%w: %s", ErrCheckoutDirty, listFiles(foreign))
+	case len(dirty) == 0:
+		if ok, err := repo.IsAncestor(ctx, st.Head, rep.Tip); err != nil {
+			return nil, err
+		} else if !ok {
+			rep.CommitBlocked = fmt.Errorf("%w: %s has commits the session did not start from", ErrBranchMoved, cleanText(st.Branch, 80))
+		}
+	}
+	rep.CanCommit = rep.CommitBlocked == nil
+	if o.DryRun {
+		return rep, nil
+	}
+	if !o.Commits {
+		if len(incoming) == 0 {
+			return rep, ErrNothingToAccept
+		}
+		ir := s.integrateLocked(ctx, false)
+		rep.Applied, rep.Message = ir.Applied, ir.Message
+		if !ir.Applied {
+			return rep, errors.New(ir.Message)
+		}
+		return rep, nil
+	}
+	if !rep.Waiting {
+		return rep, ErrNothingToAccept
+	}
+	if rep.CommitBlocked != nil {
+		return rep, rep.CommitBlocked
+	}
+	if len(dirty) == 0 {
+		// A clean checkout: the branch moves to the tip, the agents' commits and all.
+		ir := s.integrateLocked(ctx, true)
+		rep.Applied, rep.Committed, rep.Message, rep.Commit = ir.Applied, ir.Committed, ir.Message, ir.Tip
+		if !ir.Applied {
+			return rep, errors.New(ir.Message)
+		}
+		return rep, nil
+	}
+	// The checkout holds the team's work as uncommitted edits: bring it up to the tip,
+	// check that those files are exactly the verified result, and commit them alone.
+	if len(incoming) > 0 {
+		ir := s.integrateLocked(ctx, false)
+		if !ir.Applied {
+			rep.Message = ir.Message
+			return rep, errors.New(ir.Message)
+		}
+	}
+	rep.Applied = true
+	if d, err := repo.Diff(ctx, rep.Tip, gitx.DiffOptions{Paths: rep.Files, NoPatch: true}); err != nil {
+		return rep, err
+	} else if !d.Empty() {
+		var odd []string
+		for _, f := range d.Files {
+			odd = append(odd, f.Path)
+		}
+		return rep, fmt.Errorf("%w: %s differ from the verified result", ErrCheckoutDirty, listFiles(odd))
+	}
+	msg := strings.TrimSpace(o.Message)
+	if msg == "" {
+		msg = "Apply the verified work of the team"
+		if len(rep.Tasks) > 0 {
+			msg += " (" + strings.Join(firstN(rep.Tasks, 12), ", ") + ")"
+		}
+	}
+	commit, err := repo.CommitPaths(ctx, msg, gitx.DefaultAuthor, rep.Files)
+	if err != nil {
+		return rep, err
+	}
+	if commit == "" {
+		return rep, ErrNothingToAccept
+	}
+	rep.Committed, rep.Commit = true, commit
+	s.apply.committed = st.Branch
+	rep.Message = fmt.Sprintf("Committed %d file(s) of the verified work on %s as %s.", len(rep.Files), st.Branch, short(commit))
+	s.emit(events.TypeSwarmIntegration, map[string]any{"branch": rep.Branch, "tip": rep.Tip, "applied": true, "committed": true, "commit": commit, "files": firstN(rep.Files, 50)})
+	return rep, nil
+}
+
+// tasksLanded lists the tasks of the merges after the integration commit from, in the
+// order they landed (the queue's ledger).
+func (s *Swarm) tasksLanded(from string) []string {
+	ledger := s.deps.Isolation.Queue.Status().Landed
+	start := 0
+	for i, l := range ledger {
+		if l.Commit == from {
+			start = i + 1
+		}
+	}
+	var out []string
+	for _, l := range ledger[start:] {
+		if l.Task != "" && !slices.Contains(out, l.Task) {
+			out = append(out, l.Task)
+		}
+	}
+	return out
+}
+
+// checkoutDirty lists the paths of the checkout with uncommitted changes, leaving out
+// the workspace manager's own directory when it lies inside the repository.
+func checkoutDirty(st *gitx.Status, m *workspace.Manager) []string {
+	seen := map[string]bool{}
+	add := func(p string) {
+		if p != "" {
+			seen[strings.TrimSuffix(p, "/")] = true
+		}
+	}
+	for _, c := range st.Staged {
+		add(c.Path)
+	}
+	for _, c := range st.Unstaged {
+		add(c.Path)
+	}
+	for _, c := range st.Conflicted {
+		add(c.Path)
+	}
+	dir := ""
+	if m != nil && m.Repo != nil {
+		if rel, err := filepath.Rel(m.Repo.Root(), m.Dir); err == nil && filepath.IsLocal(rel) {
+			dir = filepath.ToSlash(rel)
+		}
+	}
+	for _, u := range st.Untracked {
+		if dir != "" && (u == dir || strings.HasPrefix(u, dir+"/")) {
+			continue
+		}
+		add(u)
+	}
+	return slices.Sorted(maps.Keys(seen))
 }

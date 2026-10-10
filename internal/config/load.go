@@ -186,6 +186,13 @@ var configType = reflect.TypeOf(Config{})
 // with file, line, column and field path; it never returns a partial
 // configuration, because silently ignoring one layer could drop a deny rule.
 func Load(opts LoadOpts) (*Config, *Report, error) {
+	cfg, rep, _, err := load(opts)
+	return cfg, rep, err
+}
+
+// load is Load that also returns the layers it merged, lowest precedence first, for the per-layer views (LoadLayers, RuleOrigins);
+// they are nil when a file could not be read or parsed.
+func load(opts LoadOpts) (*Config, *Report, []*layer, error) {
 	rep := &Report{Sources: map[string]string{}, Origins: map[string]string{}}
 
 	home := opts.Home
@@ -294,7 +301,7 @@ func Load(opts LoadOpts) (*Config, *Report, error) {
 	}
 	rep.Warnings = warns
 	if fatal {
-		return nil, rep, errors.Join(errs...)
+		return nil, rep, nil, errors.Join(errs...)
 	}
 
 	// Values that failed their type check were dropped from their layer, so what
@@ -310,9 +317,9 @@ func Load(opts LoadOpts) (*Config, *Report, error) {
 	cfg, err := m.decode()
 	if err != nil {
 		if len(errs) > 0 {
-			return nil, rep, errors.Join(errs...)
+			return nil, rep, layers, errors.Join(errs...)
 		}
-		return nil, rep, fmt.Errorf("config: %w", err)
+		return nil, rep, layers, fmt.Errorf("config: %w", err)
 	}
 	markProjectBaseURLs(cfg, m, byPath)
 	var vwarns []Issue
@@ -333,10 +340,10 @@ func Load(opts LoadOpts) (*Config, *Report, error) {
 		}
 	}
 	if len(errs) > 0 {
-		return nil, rep, errors.Join(errs...) // warnings about a rejected configuration are noise
+		return nil, rep, layers, errors.Join(errs...) // warnings about a rejected configuration are noise
 	}
 	rep.Warnings = append(rep.Warnings, vwarns...)
-	return cfg, rep, nil
+	return cfg, rep, layers, nil
 }
 
 // markProjectBaseURLs records, on each provider, that its base URL was supplied by

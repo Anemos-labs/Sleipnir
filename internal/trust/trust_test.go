@@ -203,6 +203,9 @@ func TestScanDoesNotFollowALinkOutOfTheProjectAndSaysItCouldNotVouchForIt(t *tes
 		if !fp.Partial {
 			t.Fatalf("a settings file that is a link to a file outside the project is covered by the digest: %v", paths(fp))
 		}
+		if len(fp.Unread) != 1 || fp.Unread[0] != ".sleipnir/config.json" {
+			t.Errorf("the footprint does not say what it could not read: %q", fp.Unread)
+		}
 		if err := OpenLedger(filepath.Join(t.TempDir(), "trust.json")).Remember(p.root, fp, time.Now()); err == nil {
 			t.Fatal("a footprint that does not cover a file was remembered")
 		}

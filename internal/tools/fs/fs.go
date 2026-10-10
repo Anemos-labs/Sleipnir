@@ -267,6 +267,7 @@ func (k *call) authorize(summary string, writes bool, risk perm.Risk, paths ...s
 		Agent:   k.env.Agent,
 		Role:    k.env.Role,
 		Tool:    k.tool,
+		Input:   k.in, // what is asked about: two writes of one path with different content are two questions
 		Summary: summary,
 		Paths:   paths,
 		Writes:  writes,

@@ -56,6 +56,11 @@ func ResolveResume(home, root, spec string) (string, error) {
 		}
 		return checkResumable(spec)
 	default:
+		// spec has no separator here; what is left to refuse is a name that is not one session directory's (".." and,
+		// on Windows, a drive or a reserved device name).
+		if !filepath.IsLocal(spec) {
+			return "", fmt.Errorf("no session %q (looked in %s)", spec, sessions)
+		}
 		d := filepath.Join(sessions, spec)
 		if !hasLog(d) {
 			return "", fmt.Errorf("no session %q (looked in %s)", spec, sessions)

@@ -144,6 +144,7 @@ func TestResumeErrorsAreClear(t *testing.T) {
 	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
 	for spec, want := range map[string]string{
 		"no-such-id": "no session",
+		"..":         "no session",
 		"latest":     "no session",
 		t.TempDir():  "not a session directory",
 	} {

@@ -468,7 +468,7 @@ func (s *State) onPermDecide(e events.Event, t time.Time) {
 		d.Ask, d.Asked = ps.pending[at], true
 		d.WaitedMs = max(t.Sub(d.Ask.T).Milliseconds(), 0)
 		s.forgetAsk(at)
-		if a := s.agents[d.Ask.Agent]; a != nil {
+		if a := s.agentIfAny(d.Ask.Agent); a != nil {
 			a.active(t)
 			a.refresh()
 		}
@@ -531,7 +531,7 @@ func (s *State) forgetAsk(i int) {
 	ps := &s.perms
 	q := ps.pending[i]
 	ps.pending = slices.Delete(ps.pending, i, i+1)
-	if a := s.agents[q.Agent]; a != nil && a.asks > 0 {
+	if a := s.agentIfAny(q.Agent); a != nil && a.asks > 0 {
 		a.asks--
 		a.refresh()
 	}
@@ -559,6 +559,7 @@ func (s *State) dropAllAsks() {
 		if a.asks > 0 {
 			a.asks = 0
 			a.refresh()
+			s.touchAgent(a.ID)
 		}
 	}
 }

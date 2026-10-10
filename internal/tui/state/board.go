@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json"
 	"sort"
 	"strconv"
 	"time"
@@ -55,6 +56,11 @@ type boardWire struct {
 	Key       string            `json:"key"`
 	Dropped   int               `json:"dropped"`
 	N         int               `json:"n"`
+	// Closure, BlockedOn and VerificationFailures are part of the task's whole state (setTask); Kind is the alert's kind on an
+	// alert op and the task's kind on a create op.
+	Closure              json.RawMessage `json:"closure"`
+	BlockedOn            string          `json:"blocked_on"`
+	VerificationFailures int64           `json:"verification_failures"`
 }
 
 func (s *State) onBoardOp(e events.Event, t time.Time) {
@@ -77,7 +83,7 @@ func (s *State) onBoardOp(e events.Event, t time.Time) {
 			a.CtxTokens = clampTokens(p.CtxTokens)
 		}
 	case "agent-remove":
-		if a := s.agents[clip(firstOf(p.Agent, e.Agent), textID)]; a != nil {
+		if a := s.agentIfAny(firstOf(p.Agent, e.Agent)); a != nil {
 			a.Retired = true
 		}
 	case "note":
@@ -150,6 +156,7 @@ func (s *State) clearAlerts(kind, key string) {
 // the board is full the oldest finished task makes room; with none to spare the new one is dropped and nil is returned.
 func (s *State) task(id string) *taskState {
 	if t := s.tasks[id]; t != nil {
+		s.touchTask(id)
 		return t
 	}
 	if len(s.tasks) >= MaxTasks && !s.evictTask() {
@@ -158,6 +165,7 @@ func (s *State) task(id string) *taskState {
 	}
 	t := &taskState{Task: Task{ID: id, Status: "todo"}}
 	s.tasks[id] = t
+	s.touchTask(id)
 	return t
 }
 
@@ -176,6 +184,7 @@ func (s *State) evictTask() bool {
 		return false
 	}
 	delete(s.tasks, victim.ID)
+	s.touchTask(victim.ID)
 	s.stats.Dropped++
 	return true
 }
@@ -201,6 +210,8 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 					break
 				}
 				if ts := s.tasks[clip(tid, textID)]; ts != nil {
+					s.touchTask(ts.ID)
+					s.touchAgent(ts.Owner)
 					s.setStatus(ts, "todo", t, e.Seq)
 					ts.Owner, ts.Line = clip(p.Owners[tid], textID), clean(p.Line, textShort)
 					ts.Rev = p.Version
@@ -215,12 +226,15 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 	if ts == nil {
 		return
 	}
-	prev := ts.Status
+	prev, prevOwner := ts.Status, ts.Owner
 	full := p.Rev != nil
 	if p.Title != "" {
 		ts.Title = clean(p.Title, textLine)
 		ts.Role = clip(p.Role, textID)
 		ts.Deps = clipList(p.Deps, MaxDeps, textID)
+		if p.Op == "create" {
+			ts.Kind = clip(p.Kind, textID)
+		}
 	}
 	if full {
 		s.setStatus(ts, p.Status, t, e.Seq)
@@ -228,7 +242,18 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 		ts.Result, ts.Evidence = clean(p.Result, textLong), clean(p.Evidence, textLong)
 		ts.Attempts, ts.Rev = clampTokens(p.Attempts), *p.Rev
 		ts.Files = clipList(p.Files, MaxFiles, textPath)
+		ts.Closure, ts.BlockedOn = closureText(p.Closure), clip(p.BlockedOn, textID)
+		ts.VerificationFailures = clampTokens(p.VerificationFailures)
 	} else {
+		if c := closureText(p.Closure); c != "" {
+			ts.Closure = c
+		}
+		if p.BlockedOn != "" {
+			ts.BlockedOn = clip(p.BlockedOn, textID)
+		}
+		if p.VerificationFailures > 0 {
+			ts.VerificationFailures = clampTokens(p.VerificationFailures)
+		}
 		if p.Status != "" {
 			s.setStatus(ts, p.Status, t, e.Seq)
 		}
@@ -252,8 +277,10 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 		}
 	}
 	ts.Seq, ts.Updated = e.Seq, t
+	s.touchAgent(prevOwner) // the scope of the one who held it, and of the one who holds it, may have changed
+	s.touchAgent(ts.Owner)
 	if ts.Status == "done" && prev != "done" {
-		if a := s.agents[ts.Owner]; a != nil {
+		if a := s.agentIfAny(ts.Owner); a != nil {
 			s.settleDone(a) // its task was accepted: the worker's job is finished
 		}
 	}

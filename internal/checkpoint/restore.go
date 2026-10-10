@@ -180,18 +180,36 @@ type task struct {
 // Restore must not run while agents are still writing: it excludes concurrent
 // Before/Begin calls but cannot stop a tool that is already mid-write.
 func (s *Store) Restore(id string, opts RestoreOpts) (RestoreReport, error) {
+	var changed []string
+	defer func() { s.notify(changed...) }() // after the gate is released
 	if !opts.DryRun {
 		s.gate.Lock()
 		defer s.gate.Unlock()
 	}
+	rep, changed, err := s.restore(id, opts, restoreHook{})
+	return rep, err
+}
+
+// restoreHook lets a caller that holds the exclusive gate act around the writes of a
+// restore: before runs with the planned tasks before anything is written (an error
+// stops the restore with nothing changed), after once the files are written and the
+// records committed. Neither runs for a dry run.
+type restoreHook struct {
+	before func(idx int, tasks []*task) error
+	after  func(idx int, tasks []*task)
+}
+
+// restore is Restore for a caller that holds the exclusive gate (or none, for a dry
+// run). It also returns the checkpoints whose records changed.
+func (s *Store) restore(id string, opts RestoreOpts, hook restoreHook) (RestoreReport, []string, error) {
 	s.mu.Lock()
 	idx := s.indexLocked(id)
 	if idx < 0 {
 		s.mu.Unlock()
 		if strings.TrimSpace(id) == "" {
-			return RestoreReport{}, fmt.Errorf("%w: there are no checkpoints", ErrUnknownCheckpoint)
+			return RestoreReport{}, nil, fmt.Errorf("%w: there are no checkpoints", ErrUnknownCheckpoint)
 		}
-		return RestoreReport{}, fmt.Errorf("%w: %q", ErrUnknownCheckpoint, id)
+		return RestoreReport{}, nil, fmt.Errorf("%w: %q", ErrUnknownCheckpoint, id)
 	}
 	cpID := s.cps[idx].ID
 	items := s.planLocked(idx)
@@ -224,6 +242,11 @@ func (s *Store) Restore(id string, opts RestoreOpts) (RestoreReport, error) {
 	}
 	sort.SliceStable(dels, func(i, j int) bool { return depth(dels[i].it.key) > depth(dels[j].it.key) })
 	sort.SliceStable(puts, func(i, j int) bool { return depth(puts[i].it.key) < depth(puts[j].it.key) })
+	if !opts.DryRun && hook.before != nil {
+		if err := hook.before(idx, tasks); err != nil {
+			return RestoreReport{}, nil, err
+		}
+	}
 	if !opts.DryRun {
 		budget := maxRestoreBytes
 		for _, t := range append(dels, puts...) {
@@ -250,15 +273,22 @@ func (s *Store) Restore(id string, opts RestoreOpts) (RestoreReport, error) {
 	sort.SliceStable(rep.Files, func(i, j int) bool { return rep.Files[i].Path < rep.Files[j].Path })
 
 	if opts.DryRun {
-		return rep, nil
+		return rep, nil, nil
 	}
 	full := len(opts.OnlyPaths) == 0 && opts.OnlyAgent == ""
 	rewound := full && allSatisfied
-	if err := s.commitRestore(idx, satisfied, rewound); err != nil {
-		return rep, err
+	err := s.commitRestore(idx, satisfied, rewound)
+	rep.Rewound = rewound && err == nil
+	s.mu.Lock()
+	var changed []string
+	for _, cp := range s.cps[min(idx, len(s.cps)):] {
+		changed = append(changed, cp.ID)
 	}
-	rep.Rewound = rewound
-	return rep, nil
+	s.mu.Unlock()
+	if hook.after != nil {
+		hook.after(idx, tasks)
+	}
+	return rep, changed, err
 }
 
 // filter applies OnlyPaths/OnlyAgent. unmatched lists OnlyPaths entries that

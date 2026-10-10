@@ -51,8 +51,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
@@ -110,6 +112,11 @@ type Info struct {
 	// Unsaved lists files whose content could not be saved (too large,
 	// unreadable): rewinding will not restore them.
 	Unsaved []string `json:"unsaved,omitempty"`
+	// Added and Removed count the lines of the checkpoint's own change set (Changes):
+	// what was written while it was current. List fills them in; the Info given to
+	// OnChange leaves them zero, because counting reads the files.
+	Added   int `json:"added,omitempty"`
+	Removed int `json:"removed,omitempty"`
 }
 
 // fileRec is what one checkpoint knows about one path.
@@ -128,10 +135,21 @@ type fileRec struct {
 	// got its Before: the write will have created them, so rewinding removes
 	// them again (when empty). Top-most first.
 	NewDirs []string `json:"new_dirs,omitempty"`
+	// Writes is the write journal of the path in this checkpoint: one entry per
+	// write that After was told of, oldest first, with the content the write left
+	// (see Store.Writes). WritesLost counts entries that were not kept (over the
+	// cap, or dropped as invalid when the manifest was loaded): the journal of the
+	// path is then incomplete.
+	Writes     []jwrite `json:"writes,omitempty"`
+	WritesLost int      `json:"writes_lost,omitempty"`
 
 	// gen counts Before calls on this record (not persisted). After uses it to
 	// notice that another agent announced a write while it was fingerprinting.
 	gen uint64
+	// gapNext says that the file was changed by someone who is not recording
+	// between the last journaled write and the next Before (not persisted): the
+	// next journal entry is marked as following a gap.
+	gapNext bool
 }
 
 // touch notes another Before on an already-recorded path. The write that
@@ -213,6 +231,13 @@ type Store struct {
 	// rewound underneath it.
 	gate sync.RWMutex
 
+	// notifyMu serialises OnChange notifications, so that a listener sees them
+	// in the order the changes happened and each one describes the store as it
+	// is when it is delivered.
+	notifyMu sync.Mutex
+	// undoMu serialises the undo store (undo.go).
+	undoMu sync.Mutex
+
 	mu       sync.Mutex // guards everything below
 	now      func() time.Time
 	cps      []*checkpoint
@@ -220,6 +245,13 @@ type Store struct {
 	inflight map[string]*flight
 	warnings []string
 	warnMore int // warnings beyond maxWarnings
+	onChange []func(Info)
+	onEvent  []func(Event)
+	counts   map[[2]core.Hash]lineCount // line counts of content pairs (history.go)
+	// journalLeft is what the write journal may still save, in bytes (journal.go);
+	// journalOn says it was enabled.
+	journalLeft int64
+	journalOn   atomic.Bool
 }
 
 // New opens (creating if needed) the checkpoint store in dir. Existing
@@ -424,7 +456,7 @@ func (s *Store) validRecord(r *fileRec) error {
 	if err := s.validState(&r.Pre); err != nil {
 		return fmt.Errorf("recorded state: %w", err)
 	}
-	if r.Post != nil && s.validState(r.Post) != nil {
+	if r.Post != nil && !s.validFingerprint(r.Post) {
 		r.Post = nil // a fingerprint that does not check out is no fingerprint
 	}
 	r.NewDirs = slices.DeleteFunc(r.NewDirs, func(k string) bool { return validKey(k) != nil })
@@ -434,6 +466,7 @@ func (s *Store) validRecord(r *fileRec) error {
 	for i, a := range r.Agents {
 		r.Agents[i] = cleanText(a, 128)
 	}
+	s.vetJournal(r)
 	return nil
 }
 
@@ -511,8 +544,10 @@ func (s *Store) Begin(label string) (ID string) {
 	s.gate.RLock()
 	defer s.gate.RUnlock()
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.beginLocked(label).ID
+	ID = s.beginLocked(label).ID
+	s.mu.Unlock()
+	s.notify(ID)
+	return ID
 }
 
 // beginLocked persists on a best-effort basis: an empty checkpoint has nothing
@@ -664,6 +699,15 @@ func underRoot(root, p string) (string, bool) {
 
 func (s *Store) snapshot(agent, abs string) error {
 	key := s.keyFor(abs)
+	// With the write journal on: what is on disk now, to tell whether someone who is not
+	// recording changed the file since the last journaled write (a shell command, a
+	// person); taken before the lock, as it is a system call.
+	var fi os.FileInfo
+	var lerr error
+	journal := s.journalOn.Load()
+	if journal {
+		fi, lerr = os.Lstat(abs)
+	}
 	for {
 		s.mu.Lock()
 		cp := s.currentLocked()
@@ -671,6 +715,9 @@ func (s *Store) snapshot(agent, abs string) error {
 			// Already recorded in this checkpoint. Only attribution changes, and the
 			// pre-state is already safe on disk, so a failure to persist the extra
 			// agent name must not block this agent's edit.
+			if journal && len(rec.Writes) > 0 && rec.Post != nil && changedSince(*rec.Post, fi, lerr) {
+				rec.gapNext = true
+			}
 			if rec.touch(agent, s.now()) {
 				_ = s.persistLocked(cp)
 			}
@@ -706,6 +753,9 @@ func (s *Store) snapshot(agent, abs string) error {
 		s.mu.Unlock()
 		f.err = err
 		close(f.done)
+		if err == nil {
+			s.notifyPath(key, cp.ID) // the checkpoint's file set changed
+		}
 		return err
 	}
 }
@@ -754,12 +804,21 @@ func (s *Store) missingParents(abs string) []string {
 // agents left it, which lets Restore tell "the agents' last write" from "someone
 // edited the file afterwards" exactly. Without it Restore falls back to comparing
 // the file's mtime with the time of the last Before.
+//
+// With the write journal enabled (EnableJournal) it also records the write: the content
+// it left is saved in the blob store (up to maxJournalBytes a file, within the
+// journal's budget), so that who wrote each line can be told exactly later.
 func (s *Store) After(agent, path string) {
 	if path == "" || strings.ContainsRune(path, 0) {
 		return
 	}
 	s.gate.RLock()
 	defer s.gate.RUnlock()
+	s.after(agent, path)
+}
+
+// after is After for a caller that holds the gate (shared or exclusive).
+func (s *Store) after(agent, path string) {
 	for _, p := range s.chain(s.absolute(path)) {
 		key := s.keyFor(p)
 		// The write was announced in whichever checkpoint was current then, which
@@ -783,44 +842,196 @@ func (s *Store) After(agent, path string) {
 		// Fingerprinting reads the file, so it happens outside the lock. If another
 		// agent announced a write meanwhile (gen moved), what was read may already
 		// be stale: drop it and let that agent's own After record the truth.
-		st, _ := s.capture(p)
+		st, data := s.capture(p)
+		if !s.journalOn.Load() {
+			s.mu.Lock()
+			if rec.gen == gen {
+				rec.Post = &st
+				rec.Last = s.now()
+				_ = s.persistLocked(cp)
+			}
+			s.mu.Unlock()
+			continue
+		}
+		blob := s.journalBlob(st, data)
 		s.mu.Lock()
+		now := s.now()
+		w := jwrite{Agent: cleanText(agent, 128), At: now} // content unknown unless the fingerprint is this write's
 		if rec.gen == gen {
 			rec.Post = &st
-			rec.Last = s.now()
-			_ = s.persistLocked(cp)
+			rec.Last = now
+			w.Kind, w.Blob, w.Sum, w.Size, w.MTime = st.Kind, blob, st.Sum, st.Size, st.MTime
 		}
+		if rec.gapNext {
+			w.Gap, rec.gapNext = true, false
+		}
+		rec.journal(w)
+		_ = s.persistLocked(cp)
 		s.mu.Unlock()
 	}
 }
 
-// List returns every checkpoint, oldest first.
+// List returns every checkpoint, oldest first, with the line counts of each one's
+// own change set (Changes).
 func (s *Store) List() []Info {
+	s.mu.Lock()
+	out := make([]Info, 0, len(s.cps))
+	for _, cp := range s.cps {
+		out = append(out, infoLocked(cp))
+	}
+	s.mu.Unlock()
+	for i := range out {
+		if len(out[i].Files) == 0 {
+			continue
+		}
+		changes, err := s.Changes(out[i].ID)
+		if err != nil {
+			continue
+		}
+		for _, c := range changes {
+			out[i].Added += c.Added
+			out[i].Removed += c.Removed
+		}
+	}
+	return out
+}
+
+// Infos is List without the line counts: it reads no file, so it is cheap enough for
+// a caller that only needs the ids, labels, times and file sets.
+func (s *Store) Infos() []Info {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]Info, 0, len(s.cps))
 	for _, cp := range s.cps {
-		info := Info{ID: cp.ID, Label: cp.Label, Time: cp.Time, Files: []string{}, Agents: []string{}}
-		seen := map[string]bool{}
-		for _, r := range cp.files {
-			info.Files = append(info.Files, r.Path)
-			for _, a := range r.Agents {
-				if !seen[a] {
-					seen[a] = true
-					info.Agents = append(info.Agents, a)
-				}
-			}
-			switch r.Pre.Kind {
-			case kUnsaved, kOther:
-				info.Unsaved = append(info.Unsaved, r.Path)
-			}
-		}
-		sort.Strings(info.Files)
-		sort.Strings(info.Agents)
-		sort.Strings(info.Unsaved)
-		out = append(out, info)
+		out = append(out, infoLocked(cp))
 	}
 	return out
+}
+
+// infoLocked describes one checkpoint without line counts; the caller holds the
+// store lock.
+func infoLocked(cp *checkpoint) Info {
+	info := Info{ID: cp.ID, Label: cp.Label, Time: cp.Time, Files: []string{}, Agents: []string{}}
+	seen := map[string]bool{}
+	for _, r := range cp.files {
+		info.Files = append(info.Files, r.Path)
+		for _, a := range r.Agents {
+			if !seen[a] {
+				seen[a] = true
+				info.Agents = append(info.Agents, a)
+			}
+		}
+		switch r.Pre.Kind {
+		case kUnsaved, kOther:
+			info.Unsaved = append(info.Unsaved, r.Path)
+		}
+	}
+	sort.Strings(info.Files)
+	sort.Strings(info.Agents)
+	sort.Strings(info.Unsaved)
+	return info
+}
+
+// OnChange registers fn, called (outside the store's lock) when a checkpoint begins,
+// when its file set changes (a path is recorded in it for the first time), and when a
+// restore or an undo changes what the checkpoints hold. Calls are serialised and in
+// order; the Info describes the checkpoint as it is when fn runs, without line counts.
+// fn must return promptly and must not call the store's recording or restoring
+// methods (Before, After, Begin, Restore and the undo methods): it may run while one
+// of them holds the store.
+func (s *Store) OnChange(fn func(Info)) {
+	if fn == nil {
+		return
+	}
+	s.mu.Lock()
+	s.onChange = append(s.onChange, fn)
+	s.mu.Unlock()
+}
+
+// Event is what OnEvent reports of a change: the checkpoint, how many paths it holds
+// now, and the path recorded in it for the first time ("" when the checkpoint began, or
+// when a restore or an undo changed what it holds). It is cheap to make: no file list.
+type Event struct {
+	ID, Label string
+	Time      time.Time
+	Files     int
+	Path      string
+}
+
+// OnEvent registers fn, called (outside the store's lock) on the same changes as
+// OnChange, with an Event instead of the whole Info: a listener that only counts, or
+// logs the new path, costs nothing per file already recorded. The same rules hold as
+// for OnChange.
+func (s *Store) OnEvent(fn func(Event)) {
+	if fn == nil {
+		return
+	}
+	s.mu.Lock()
+	s.onEvent = append(s.onEvent, fn)
+	s.mu.Unlock()
+}
+
+// Agents lists the agents that wrote in a checkpoint, sorted (nil for an unknown id).
+func (s *Store) Agents(id string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx := s.indexLocked(id)
+	if idx < 0 || strings.TrimSpace(id) == "" {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, r := range s.cps[idx].files {
+		for _, a := range r.Agents {
+			if !seen[a] {
+				seen[a] = true
+				out = append(out, a)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// notify tells the listeners about each checkpoint id that still exists.
+func (s *Store) notify(ids ...string) { s.notifyPath("", ids...) }
+
+// notifyPath is notify for a change that recorded path for the first time.
+func (s *Store) notifyPath(path string, ids ...string) {
+	s.mu.Lock()
+	infoFns, eventFns := s.onChange, s.onEvent
+	s.mu.Unlock()
+	if len(infoFns)+len(eventFns) == 0 || len(ids) == 0 {
+		return
+	}
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		s.mu.Lock()
+		idx := s.indexLocked(id)
+		var info Info
+		var ev Event
+		if idx >= 0 {
+			cp := s.cps[idx]
+			ev = Event{ID: cp.ID, Label: cp.Label, Time: cp.Time, Files: len(cp.files), Path: path}
+			if len(infoFns) > 0 {
+				info = infoLocked(cp)
+			}
+		}
+		s.mu.Unlock()
+		if idx < 0 {
+			continue
+		}
+		for _, fn := range eventFns {
+			fn(ev)
+		}
+		for _, fn := range infoFns {
+			fn(info)
+		}
+	}
 }
 
 // indexLocked finds a checkpoint by id ("" means the latest). It returns -1

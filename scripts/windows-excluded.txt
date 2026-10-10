@@ -5,6 +5,7 @@
 # Sorted, one module-relative package per line, a reason after the #.
 cmd/sleipnir                  # end-to-end tests drive a POSIX terminal and shell
 internal/agentdefs            # permission rules in the tests are written as POSIX paths
+internal/catalog              # the catalogue cache is private to the user (POSIX file modes) and its tests read POSIX paths
 internal/checkpoint           # POSIX file modes, and unreadable files that Windows does not refuse
 internal/config               # POSIX file modes (0600) that Windows does not keep
 internal/demo                 # the demo's repository is built with POSIX paths and a POSIX shell
@@ -21,3 +22,8 @@ internal/session              # recon fixtures use POSIX paths and names; runtim
 internal/shellparse           # differential tests against bash
 internal/swarm                # isolation tests compare POSIX paths
 internal/tools/fs             # file modes, symlinks and open-file semantics of POSIX
+internal/web/runner           # starts POSIX commands in their own process group and scans /proc
+internal/web/settings         # POSIX file modes (0600) that Windows does not keep
+internal/web/tools            # runs the schedule daemon and POSIX commands as children
+internal/web/translate        # the goldens hold POSIX paths and the demo it follows runs a POSIX shell
+internal/web/wsvc             # git worktrees, symlinks and POSIX file modes in the workspace fixtures

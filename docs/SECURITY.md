@@ -238,8 +238,67 @@ do not inspect dependencies or sandbox an approved test.
   for the Linux permission and hardening path.
 * **Everywhere.** A same-user process can read what the user can read. The harness cannot change that; sandboxing does.
 
-## 5. Reading the code
+## 5. The web interface (`sleipnir web`)
 
-Process hardening: `internal/harden`. Permissions: `internal/perm`. Shell: `internal/tools/shell` (`env.go`, `jobs.go`).
+`sleipnir web` runs a web server on the machine, and what it serves can start agents, answer permission questions and change
+settings. A request that reaches it is therefore a request to run commands with the user's rights, and the server is built
+around who may make one. The code is `internal/web` (`doc.go` states the rules; `auth.go` is kept apart for review).
+
+**Who is considered.**
+
+1. *Other users of the machine.* Any local user can connect to a loopback port.
+2. *Other websites.* A page in the user's browser can send requests to `127.0.0.1`: cross-site forgery (a form or `fetch` aimed at
+   the server), DNS rebinding (a name that first resolves to the attacker and then to `127.0.0.1`), and a page served by
+   another program on the same host name but another port.
+3. *A prompt-injected agent* that shares the user's uid, and so can run `curl` against the port and read what the user can read.
+4. *Anything on the network*, if the server were reachable from it.
+
+**What stops them.**
+
+| Threat | Control |
+|---|---|
+| Reaching the server from a network | The command accepts a loopback `--addr` only, and the rule is enforced three times (the address is checked when the server is created, again on the address that was bound, and again when serving). A non-loopback address is refused with a pointer to an SSH tunnel. There is no TLS: traffic that left the machine would carry the token in the clear. |
+| Other local users, a prompt-injected agent | Every route but `/healthz` needs the run token or a session made from it. The token is 256 bits from `crypto/rand`, generated at start, compared in constant time, never taken from the command line or the environment (so it is in no `/proc/<pid>/cmdline` or `environ`) and printed only on the first line of standard output. Failed attempts are throttled for the whole server (10 a minute), without evaluating the attempt once the limit is reached, so the token cannot be guessed at line rate; sessions already made are not slowed. Attempts that arrive from another site (a page navigating the browser to the address) are counted on their own, so a page open in the same browser cannot use up the person's attempts. |
+| The browser opener's argument list | `--open` starts the platform's opener with the address as an argument, and every process of the user can read an argument list. The address it gets carries a *launch code*, not the run token: 128 random bits, accepted once, within 30 seconds, on the page URL only; it is no bearer credential, a rotation ends it, and a reuse counts as a failed attempt. The window in which an agent that watches process listings could use it is the time between the opener starting and the browser loading the page. |
+| Cookie theft by script, fixation | The cookie holds a random session id unrelated to the token; the server maps it to a session with an absolute expiry (24 hours), a logout and a rotation (`POST /api/auth/rotate` ends every session and the token itself). It is `HttpOnly` and `SameSite=Strict`, and `Secure` over TLS. The token in the address is accepted on `/` only (never on an API path), becomes a cookie, and the redirect that removes it always goes to `/` on the same origin. |
+| DNS rebinding | The `Host` header must be a loopback name or address on the port that was bound; anything else is 403. |
+| Cross-site forgery | Every request that is not GET or HEAD must carry an `Origin` equal to the server's own (scheme, host and port), `Sec-Fetch-Site` must not say `cross-site` or `same-site` (another port of the same host is same-site), a custom header `X-Sleipnir-Web: 1` (which forces a CORS preflight the server never answers), and a JSON content type when there is a body. A request with neither `Origin` nor fetch metadata is not from a browser and is accepted only with the bearer token, never with the cookie. GET routes do not change state. Subresource requests from other sites to GET routes are refused as well. |
+| A request or a client that costs too much | Header size, body size (per route, 64 KiB unless a route says otherwise), requests in flight, open streams, outstanding confirmations, sessions, topics, event size and every per-subscriber queue are bounded; connections have header and read timeouts; every response has a write deadline (a stream refreshes its own on each write); a client that stops reading is cut off. |
+| Paths, directories and ids the page names | A file path is a project-relative path in clean slash form (`cleanRel`: no absolute or drive form, no `..` that leaves the project, no NUL, backslash or control character, nothing `filepath.IsLocal` refuses) before anything else looks at it, and the checkpoint store tests the key it derives from it again. A directory (a new or resumed session, a restart's `--cwd`, a trust request) must be one of the server's listed projects, tabs or trust-ledger entries, and the server goes on with its own spelling of the match, never the page's. A session is named by an id of the shape `newID` makes, or `latest`. Permission rules and the "Would it ask?" tester take arbitrary patterns, paths and commands by design: the engine reads only link metadata and directory listings to judge them, and answers with a verdict. |
+| Injected markup | The Content-Security-Policy allows scripts, styles, fonts, images and connections from the server's own origin only (inline style attributes and `data:` images excepted), and forbids framing, forms and `<base>`; `nosniff`, frame denial, no referrer, same-origin opener and resource policies and `no-store` are on every response, errors and streams included. JSON is HTML-escaped. The page is built from files in the binary, which a test reads for inline script, inline handlers and remote references. |
+| Privilege escalation through the page | What raises privilege (bypass or yolo mode, trusting a project, an allow rule the session did not have, removing a deny or ask rule, a verify command, approving a tool server, adding a schedule, updating the binary, restoring files, and a command started from the page whose flags widen its own privileges) requires a second step: a confirmation id that is single use, valid for a minute, bound to the session that asked and to one scope. The decision is taken where the effect happens, on the final settings (typed flags over staged launch settings, the parsed value of every flag as Go's flag package reads it), so a slash line, a staged setting or a restart cannot get around it: the server answers 428 with the scope and the reasons, and the page asks the person. |
+| What a question shows | A permission question shows the whole command (up to the shell tool's own limit) and the whole change of an edit (up to 256 KiB), with control and bidirectional characters made visible. A command or change that is longer than the page can show is refused without asking, with the reason sent to the model; a value shaped like a secret is never sent to the page. A question that nobody answered is refused, after `--ask-timeout` or when no page has had the interface open for `--ask-grace`. |
+| Provider keys in commands the page starts | A command that needs the provider keys (the doctor, `models`, `run`, `swarm`, `rl`, scheduled jobs) receives them on an inherited pipe that it reads first thing in `main`, never in its environment, so they are not in `/proc/<pid>/environ` for the life of the command. A run that names its own endpoint (`--base-url`, `--api-key-env`, `--policy-host`) gets no keys. In the moment between the child starting and reading the pipe, a process of the same user could still open `/proc/<child>/fd/N`; that window is much narrower than the whole run. |
+| Leaks through logs and errors | Logs never carry bodies, query strings, the token, cookie values, confirmation ids or held provider keys (they are masked wherever they appear); a request cannot forge log lines; a panic is a generic 500 and a masked log line; error bodies are short, uncacheable JSON with no paths, no credentials and no body content (a rejected field is named, bounded and escaped). |
+
+**What the token protects.** Whoever holds it can do everything the page can do: read sessions, start agents, answer
+questions, change settings. It is a capability for the user's own browser and scripts, not a login among several users.
+`POST /api/auth/rotate` is the way to cut off every other holder (a shared screen, a pasted address): it ends all sessions and
+replaces the token without telling anyone the new one, and the browser that asked keeps working.
+
+**What it does not protect.**
+
+* **Another process of the same user** can read the terminal that printed the address, a file that standard output was
+  redirected to, the browser's cookie store and the browser's memory. Do not redirect the first line to a file an agent can read,
+  and do not run the command under a terminal recorder you do not control. The harness's own hardening (section 2) keeps the
+  token out of `/proc/<pid>/environ` and out of the memory of commands the model runs, not out of the terminal.
+* **Cookies are not isolated by port.** A browser sends the cookie to every port of the same host name. Another web server on
+  `localhost` or `127.0.0.1` that the user visits in the same browser profile receives it. `Origin` checks stop that server's pages
+  from acting through the browser, but a program that copies the cookie can replay it, since a non-browser client chooses its own
+  headers. Use a browser profile for this page, and rotate the token if another local server was visited.
+* **A local process can use up the sign-in throttle.** Eleven wrong tokens in a minute from any process of the machine make the next
+  sign-in with the right token wait out the minute (the 429 says how long). It cannot sign in, and sessions that exist are not
+  affected; a page of another site is counted apart and cannot do this through the browser.
+* **A confirmation is not a second credential.** Anything that can use the cookie can obtain a confirmation. It stops forged,
+  replayed and mistaken requests and makes escalation an explicit act; it does not stop a holder of the session.
+* **Plain HTTP.** On a network path the token and the cookie are visible. Use an SSH tunnel, not a bind to another address.
+* **Sessions run with the user's rights.** Everything in sections 1 to 4 applies to the agents the page starts, including the
+  modes that turn asking off. The page makes them easier to start; it does not change what they can do.
+* **Errors produced by Go's HTTP server before a handler runs** (a malformed request line, headers over the cap) are plain
+  responses without these headers.
+
+## 6. Reading the code
+
+Process hardening: `internal/harden`. Permissions: `internal/perm`. Shell: `internal/tools/shell` (`env.go`, `jobs.go`). Web interface: `internal/web` (`doc.go`, `auth.go`).
 Files: `internal/tools/fs`. Web: `internal/tools/web` (`guard.go`). Instruction files: `internal/memory`. State:
 `internal/events`, `internal/checkpoint`. Regression tests accompany these packages.

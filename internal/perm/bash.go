@@ -76,7 +76,7 @@ func (e *Engine) evaluate(v *view, r Request) verdict {
 		if v.mode == ModePlan {
 			return deny(planReason("the tool marked this action high risk"))
 		}
-		return ask("the tool marked this action high risk", nil)
+		return ask("the tool marked this action high risk", nil).protected(TierGuarded)
 	}
 	return res
 }
@@ -137,7 +137,7 @@ func (ev *evaluator) startDir() string {
 // see through is never auto-allowed.
 func (ev *evaluator) bash(cmd string) verdict {
 	if isForkBomb(cmd) {
-		return deny("built-in protection: fork bomb")
+		return deny("built-in protection: fork bomb").protected(TierHard)
 	}
 	an := shellparse.Parse(cmd)
 	an.Commands = bindLoopVars(cmd, an.Commands)

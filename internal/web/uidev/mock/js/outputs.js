@@ -1,0 +1,861 @@
+/* outputs.js: the command outputs of the reference page (S.outputs). A data file used by the reference page; the generated data is
+ * checked in. Load after data.js. */
+(function (root) {
+'use strict';
+var S = root.SLDATA;
+if (!S) throw new Error("outputs.js needs data.js first");
+var F = S.fmt;
+/* ---------------------------------------------------------------------------------------------------------------
+* outputs: S.outputs[cmdPath](flags, ctx) -> { lines:[{k,t}], exit, ms, card? }
+*   cmdPath  the command words joined by one space: 'init', 'sessions prune', 'rl taskgen git', ...
+*   flags    { flagName: value } (bool true, string, number; repeatable flags are arrays) and flags._ = [positional words]
+*   ctx      { state?, session? }  state: a mutable state from S.newState() (the module keeps its own default one);
+*            session: the live session to answer slash commands for, default the shop snapshot
+*   k        out (stdout), err (stderr), dim (secondary), head (a title row), ok, warn, bad
+* Base cases are REAL captures of bin/sleipnir (S.real); variants are derived by code from the sample state.
+* ------------------------------------------------------------------------------------------------------------- */
+var OUT = S.outputs = {};
+var MS = function (n) { return n; };
+var _state = null;
+/** newState(): a fresh mutable state for the command runner (trust ledger, MCP approvals, schedule, sessions, favourites, auth). */
+S.newState = function () {
+return {
+now: S.meta.sampleNow,
+sessions: S.sessions.all().map(function (x) { return S.clone(x); }),
+trust: S.clone(S.trust.ledger).map(function (e) { return e; }),
+mcpApproved: {},
+schedule: S.clone(S.schedule.jobs), scheduleSeq: 5,
+favourites: ['anthropic/claude-sonnet-5-5', 'anthropic/claude-haiku-5-5', 'heimdall/demo-model'],
+auth: { heimdall: 'stored', openrouter: 'none', openai: 'env', anthropic: 'env', chatgpt: 'signed-in' },
+projectInitialised: true, userConfigExists: true,
+rl: { tasksFile: true },
+};
+};
+S.resetState = function () { _state = S.newState(); return _state; };
+function st(ctx) { if (ctx && ctx.state) return ctx.state; if (!_state) _state = S.newState(); return _state; }
+function L(k, t) { return { k: k, t: t }; }
+function lines(k, text) { return String(text).split('\n').map(function (t) { return L(k, t); }); }
+function res(ls, exit, ms, card) { var r = { lines: ls, exit: exit || 0, ms: ms == null ? 40 : ms }; if (card) r.card = card; return r; }
+function bad(msg, exit) { return res([L('bad', 'sleipnir: ' + msg)], exit == null ? 1 : exit, 12); }
+function flag(fl, name, dflt) { if (!fl) return dflt; var v = fl[name]; if (v === undefined) v = fl['--' + name]; if (v === undefined || v === null || v === '') return dflt; return v; }
+function pos(fl) { return (fl && fl._) || []; }
+function ago(iso, now) { return Math.max(0, (Date.parse(now) - Date.parse(iso)) / 1000); }
+function oneLine(s, n) { s = String(s).split(/\s+/).filter(Boolean).join(' '); var r = Array.from(s); return r.length > n ? r.slice(0, n).join('') + '…' : s; }
+function realText(section, cmd, kind) { var b = S.realBlock(section, cmd); return b ? lines(kind || 'out', b.text) : null; }
+/** card(title, rows) */
+function card(title, rows) { return { title: title, rows: rows }; }
+function elapsed(ms) { return ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's'; }
+/** run(path, flags, ctx): look up and call an output; unknown paths answer with the binary's own usage error. */
+S.runOutput = function (path, flags, ctx) {
+var key = Array.isArray(path) ? path.join(' ') : String(path);
+var fn = OUT[key];
+if (!fn) return res([L('bad', 'sleipnir: unknown command "' + key.split(' ')[0] + '" (sleipnir -h lists the commands)')], 2, 5);
+return fn(flags || {}, ctx || {});
+};
+/* ---- help, version, usage errors ------------------------------------------------------------------------------------------ */
+OUT['help'] = function () { return res(lines('out', S.realBlock('basic', '--help').text), 0, 6); };
+OUT['version'] = function () { return res([L('out', S.update.version.string)], 0, 4, card('version', [['version', '0.3.2'], ['commit', '5b2fee0']])); };
+OUT['init'] = function (fl, ctx) {
+var s = st(ctx), user = !!flag(fl, 'user'), model = flag(fl, 'model', ''), local = flag(fl, 'local-url', '');
+if (local && !user) return bad('init: --local-url goes with --user (providers are set in your own config, not in a project\'s)');
+var path = user ? '~/.sleipnir/config.json' : '~/projects/shop/.sleipnir/config.json';
+if (user ? s.userConfigExists : s.projectInitialised) return bad('init: ' + path + ' already exists; edit it, or use `sleipnir config` to inspect it');
+var o = [];
+if (user && !model && !local) o.push(L('err', 'no model is set: `sleipnir` asks your provider which models it has on its first run and keeps your choice; or pass --model provider/model here'));
+o.push(L('err', 'wrote ' + path));
+if (!user) { o.push(L('err', 'wrote ~/projects/shop/AGENTS.md')); o.push(L('err', 'providers and the permission mode live in your user config: `sleipnir init --user` (project files cannot set them unless trusted)')); }
+o.push(L('err', 'next: sleipnir doctor --model <model> --deep, then sleipnir chat'));
+if (user) s.userConfigExists = true; else s.projectInitialised = true;
+var body = user ? JSON.stringify({ models: model ? { default: model } : undefined, permissions: { mode: 'default' }, providers: local ? { local: { base_url: local, options: { capture_tokens: true } } } : undefined }, null, 2) : S.real.initFiles.projectConfig;
+return res(o, 0, 31, card('init', [['wrote', path], ['content', body]]));
+};
+/* ---- config ---------------------------------------------------------------------------------------------------------------- */
+OUT['config'] = function (fl) {
+var json = !!flag(fl, 'json'), trusted = !!flag(fl, 'trust-project');
+if (json) {
+var key = trusted ? 'config --trust-project --json' : 'config --json';
+var b = S.realBlock('config', key);
+return res(lines('out', b.text), 0, 24, card('effective configuration', [['layers', 'defaults, user, project, local, env, flags'], ['keys', String(S.config.effective.length)]]));
+}
+var b2 = S.realBlock('config', trusted ? 'config --trust-project' : 'config');
+var o = lines('err', b2.text).map(function (l) { return /^configuration is valid/.test(l.t) ? L('ok', l.t) : /^security-sensitive|^warnings:/.test(l.t) ? L('warn', l.t) : l; });
+return res(o, 0, 22, card('config', [['project file', '~/projects/shop/.sleipnir/config.json'], ['user file', '~/.sleipnir/config.json'], ['project trusted for this run', trusted ? 'yes (--trust-project)' : 'no: its security-sensitive keys are ignored (permissions.allow)']]));
+};
+/* ---- sessions -------------------------------------------------------------------------------------------------------------- */
+OUT['sessions'] = function (fl, ctx) {
+var s = st(ctx), n = Number(flag(fl, 'n', 20));
+if (flag(fl, 'dir')) return res([L('err', 'no sessions yet')], 0, 8);
+var rows = s.sessions.slice().sort(function (a, b) { return a.lastWritten < b.lastWritten ? 1 : -1; }).filter(function (r) { return r.prompt; }).slice(0, n);
+if (!rows.length) return res([L('err', 'no sessions yet')], 0, 8);
+var o = rows.map(function (r) {
+return L('out', (r.resumable ? '↺' : ' ') + ' ' + r.id + '  ' + F.padR(F.ago(ago(r.lastWritten, s.now)), 9) + ' ' + F.padR(r.model, 28) + ' $' + F.padR(r.cost.toFixed(4), 8) + ' ' + oneLine(r.prompt, 70));
+});
+o.push(L('dim', '↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project\'s newest)'));
+return res(o, 0, 18, card('sessions', [['listed', String(rows.length) + ' of ' + s.sessions.length], ['resumable', String(rows.filter(function (r) { return r.resumable; }).length)]]));
+};
+/** parseAge(s) seconds, or null (REAL: cmd/sleipnir parseAge) */
+function parseAge(s) {
+s = String(s).trim();
+var m = /^([0-9.]+)(d|w)$/.exec(s);
+if (m) return parseFloat(m[1]) * (m[2] === 'd' ? 86400 : 604800);
+m = /^([0-9.]+)(h|m|s)$/.exec(s);
+if (m) return parseFloat(m[1]) * { h: 3600, m: 60, s: 1 }[m[2]];
+if (s === '0') return 0;
+return null;
+}
+/** planPrune(sessions, now, olderThan seconds, keep): REAL rules (cmd/sleipnir/sessions_prune.go): the newest `keep` are kept whatever their age, anything written in the last ten minutes is left alone. */
+S.planPrune = function (sessions, now, olderThan, keep) {
+var all = sessions.map(function (x) { return { id: x.id, mod: Date.parse(x.lastWritten), age: Math.max(0, (Date.parse(now) - Date.parse(x.lastWritten)) / 1000), bytes: x.size }; }).sort(function (a, b) { return b.mod - a.mod; });
+var p = { total: all.length, items: [], inUse: [], freed: 0, keptNewest: 0 };
+all.forEach(function (x, i) {
+if (i < keep) p.keptNewest++;
+else if (x.age < olderThan) { /* young enough */ }
+else if (x.age < 600) p.inUse.push(x.id);
+else { p.items.push(x); p.freed += x.bytes; }
+});
+p.items.reverse();   // oldest first
+return p;
+};
+OUT['sessions prune'] = function (fl, ctx) {
+var s = st(ctx), olderRaw = String(flag(fl, 'older-than', '30d')), keep = Number(flag(fl, 'keep', 20)), yes = !!flag(fl, 'yes');
+var age = parseAge(olderRaw);
+if (age === null) return bad('sessions prune: --older-than: "' + olderRaw + '" is not an age (try 30d, 36h or 2w)');
+if (keep < 0) return bad('sessions prune: --keep must not be negative');
+if (flag(fl, 'dir')) return res([L('err', 'no sessions yet')], 0, 6);
+var p = S.planPrune(s.sessions, s.now, age, keep);
+if (!p.items.length) return res([L('out', 'nothing to prune: ' + p.total + ' sessions, ' + p.keptNewest + ' of the newest kept, none older than ' + olderRaw + ' beyond those')], 0, 14, card('sessions prune', [['sessions', String(p.total)], ['would delete', '0']]));
+var o = p.items.map(function (it) { return L('out', '  ' + F.padR(it.id, 30) + ' ' + F.padL(F.ageText(it.age), 5) + ' old  ' + F.padL(F.sizeText(it.bytes), 8)); });
+o.push(L(yes ? 'warn' : 'out', (yes ? 'deleting ' : 'would delete ') + p.items.length + ' of ' + p.total + ' sessions (' + F.sizeText(p.freed) + '); the newest ' + p.keptNewest + ' are kept'));
+if (p.inUse.length) o.push(L('out', p.inUse.length + ' old enough but written to in the last ten minutes: left alone'));
+if (!yes) { o.push(L('dim', 'nothing deleted: run again with --yes')); return res(o, 0, 22, card('sessions prune (dry run)', [['would delete', p.items.length + ' of ' + p.total], ['freed', F.sizeText(p.freed)], ['kept', p.keptNewest + ' newest']])); }
+var gone = {}; p.items.forEach(function (it) { gone[it.id] = 1; });
+s.sessions = s.sessions.filter(function (x) { return !gone[x.id]; });
+o.push(L('ok', 'deleted ' + p.items.length + ' sessions, ' + F.sizeText(p.freed) + ' freed'));
+return res(o, 0, 210, card('sessions prune', [['deleted', String(p.items.length)], ['freed', F.sizeText(p.freed)], ['sessions left', String(s.sessions.length)]]));
+};
+/* ---- mcp ------------------------------------------------------------------------------------------------------------------- */
+function projectTrusted(s) { return s.trust.some(function (e) { return e.dir === '~/projects/shop' && e.state === 'trusted'; }); }
+function mcpEntries(s, trustProject, session) {
+var include = trustProject || (session && projectTrusted(s));   // REAL: `mcp list` reads project entries only with --trust-project; a session (mcp test, /mcp) also uses the trust ledger
+return S.mcp.servers.filter(function (v) { return v.trusted || include; }).sort(function (a, b) { return a.name < b.name ? -1 : 1; }).map(function (v) {
+var approved = v.trusted || !!s.mcpApproved[v.name];
+var stateTxt = v.trusted ? (v.disabled ? 'disabled' : 'trusted') : (approved ? 'approved' : 'needs approval');
+return { v: v, approved: approved, state: stateTxt, what: v.trusted ? 'stdio(command="' + v.command + '"' + (v.args ? ' args=' + v.args.length : '') + ' scope=user trusted)' : v.describe };
+});
+}
+OUT['mcp'] = function () { return res(lines('err', 'usage: sleipnir mcp <command> [flags]\n\nTool servers (the Model Context Protocol). Servers are configured under "mcp" in\nyour user configuration (trusted) or a project\'s (.sleipnir/config.json or\n.mcp.json; only read with --trust-project, and each entry needs your approval).\n\ncommands:\n  list [--trust-project]              the servers a session here would consider, where each came from and whether it may start\n  approve NAME [--yes]                remember a project entry for this project (shows what it would run and asks first)\n  revoke NAME                         forget an approval\n  test [NAME...] [--trust-project]    start the servers and list the tools they offer (project entries still need approval)'), 0, 5); };
+OUT['mcp list'] = function (fl, ctx) {
+var s = st(ctx), es = mcpEntries(s, !!flag(fl, 'trust-project'), false);
+var rows = [['NAME', 'FROM', 'STATE', 'WHAT IT DOES']].concat(es.map(function (e) { return [e.v.name, e.v.trusted ? 'your config' : 'this project', e.state, e.what]; }));
+return res(F.tabwriter(rows, 2).map(function (t, i) { return L(i ? 'out' : 'head', t); }), 0, 30, card('mcp', [['servers', String(es.length)], ['need approval', String(es.filter(function (e) { return e.state === 'needs approval'; }).length)]]));
+};
+OUT['mcp approve'] = function (fl, ctx) {
+var s = st(ctx), name = pos(fl)[0];
+if (pos(fl).length !== 1) return bad('mcp approve: exactly one server name is required');
+var v = S.mcp.servers.filter(function (x) { return x.name === name; })[0];
+if (!v) return bad('no project MCP server "' + name + '" (see: sleipnir mcp list --trust-project)');
+if (v.trusted) return bad('"' + name + '" is your own entry: it needs no approval');
+var o = [L('err', name + ' from ~/projects/shop'), L('err', '  it ' + v.describe)];
+if (!flag(fl, 'yes')) { o.push(L('err', 'approve this exact entry for this project? [y/N] ')); o.push(L('bad', 'sleipnir: not approved')); return res(o, 1, 15); }
+s.mcpApproved[name] = true;
+o.push(L('ok', 'approved "' + name + '" for this project (the approval ends when its entry changes)'));
+return res(o, 0, 21, card('mcp approve', [['server', name], ['project', '~/projects/shop']]));
+};
+OUT['mcp revoke'] = function (fl, ctx) {
+var s = st(ctx), name = pos(fl)[0];
+if (pos(fl).length !== 1) return bad('mcp revoke: exactly one server name is required');
+var v = S.mcp.servers.filter(function (x) { return x.name === name; })[0];
+if (!v) return bad('no project MCP server "' + name + '" (see: sleipnir mcp list --trust-project)');
+if (v.trusted) return bad('"' + name + '" is your own entry: it needs no approval');
+delete s.mcpApproved[name];
+return res([L('ok', 'approval for "' + name + '" forgotten')], 0, 12);
+};
+OUT['mcp test'] = function (fl, ctx) {
+var s = st(ctx), want = pos(fl), es = mcpEntries(s, !!flag(fl, 'trust-project'), true), o = [], badN = 0, tools = [];
+var pre = [];
+es.forEach(function (e) {
+var v = e.v;
+if (!v.trusted && !e.approved) { pre.push(L('warn', 'warn: mcp: server "' + v.name + '" did not start: mcp: server not approved: it was not approved')); return; }
+if (v.state === 'failed') pre.push(L('warn', 'warn: mcp: server "' + v.name + '" did not start: ' + v.error));
+});
+o = o.concat(pre);
+es.forEach(function (e) {
+var v = e.v;
+if (want.length && want.indexOf(v.name) < 0) return;
+if (v.disabled) { o.push(L('out', v.name + ': disabled')); return; }
+if (!v.trusted && !e.approved) { o.push(L('bad', v.name + ': refused — mcp: server not approved: it was not approved')); badN++; return; }
+if (v.state === 'failed') { o.push(L('bad', v.name + ': failed — ' + v.error)); badN++; return; }
+o.push(L('out', v.name + ': ready (' + v.server + ')'));
+v.toolNames.forEach(function (t) { tools.push('mcp__' + v.name + '__' + t); });
+});
+tools.sort().forEach(function (t) { o.push(L('dim', '  ' + t)); });
+o.push(L('out', tools.length + ' tools in the frozen list'));
+if (badN) o.push(L('bad', 'sleipnir: ' + badN + ' server(s) not ready'));
+return res(o, badN ? 1 : 0, 780, card('mcp test', [['tools', String(tools.length)], ['not ready', String(badN)]]));
+};
+/* ---- trust ------------------------------------------------------------------------------------------------------------------ */
+function shopEntry(s) { return s.trust.filter(function (e) { return e.dir === '~/projects/shop'; })[0]; }
+function footprint() { return S.trust.files.map(function (f) { return L('out', '  ' + f.path + ': ' + f.kind + ', ' + f.bytes + ' B'); }); }
+OUT['trust'] = function (fl, ctx) {
+var s = st(ctx), e = shopEntry(s), o = [L('head', '~/projects/shop')].concat(footprint());
+o.push(L('out', '  digest ' + S.trust.project.digest), L('out', ''));
+if (e && e.state === 'trusted') o.push(L('ok', 'trusted since ' + e.saved + ', for exactly these files: a session started here uses them without asking (`sleipnir trust forget` ends it)'));
+else o.push(L('warn', 'not trusted: a chat asks about these at its start, and a run leaves them out unless you pass --trust-project or run `sleipnir trust add`'));
+return res(o, 0, 14, card('trust', [['project', '~/projects/shop'], ['state', e && e.state === 'trusted' ? 'trusted (' + e.saved + ')' : 'not trusted'], ['digest', S.trust.project.digest]]));
+};
+OUT['trust add'] = function (fl, ctx) {
+var s = st(ctx), o = [L('head', '~/projects/shop')].concat(footprint());
+if (!flag(fl, 'yes')) { o.push(L('err', 'use exactly these files, in a session started here, until any of them changes? [y/N] ')); o.push(L('bad', 'sleipnir: not trusted')); return res(o, 1, 12); }
+var e = shopEntry(s);
+if (e) { e.state = 'trusted'; e.saved = s.now.slice(0, 10); e.now = 'unchanged'; e.files = S.trust.files.length; } else s.trust.push({ dir: '~/projects/shop', saved: s.now.slice(0, 10), files: S.trust.files.length, now: 'unchanged', state: 'trusted' });
+o.push(L('ok', 'trusted (digest ' + S.trust.project.digest + '): the answer ends when any of these files changes'));
+return res(o, 0, 18, card('trust add', [['project', '~/projects/shop'], ['files', String(S.trust.files.length)], ['digest', S.trust.project.digest]]));
+};
+OUT['trust forget'] = function (fl, ctx) {
+var s = st(ctx);
+if (flag(fl, 'all')) { var n = s.trust.length; s.trust = []; return res([L('out', 'forgot ' + n + ' ' + (n === 1 ? 'project' : 'projects'))], 0, 10); }
+var had = shopEntry(s);
+if (!had) return res([L('out', 'nothing was remembered for ~/projects/shop')], 0, 8);
+s.trust = s.trust.filter(function (e) { return e.dir !== '~/projects/shop'; });
+return res([L('ok', 'forgot ~/projects/shop: its files are not used until you say yes again')], 0, 11);
+};
+OUT['trust list'] = function (fl, ctx) {
+var s = st(ctx);
+if (!s.trust.length) return res([L('out', 'no project is trusted (`sleipnir trust add` in a project, or the question at the start of a chat)')], 0, 7);
+var rows = [['DIRECTORY', 'SAVED', 'FILES', 'NOW']].concat(s.trust.slice().sort(function (a, b) { return a.dir < b.dir ? -1 : 1; }).map(function (e) { return [e.dir, e.saved, String(e.files), e.now]; }));
+return res(F.tabwriter(rows, 2).map(function (t, i) { return L(i ? 'out' : 'head', t); }), 0, 9);
+};
+/* ---- schedule, daemon -------------------------------------------------------------------------------------------------------- */
+function jobsTable(s) {
+if (!s.schedule.length) return lines('out', 'no scheduled jobs. Add one:\n  sleipnir schedule add --cron "0 9 * * 1-5" "summarize yesterday\'s commits"');
+var rows = [['ID', 'CRON', 'NEXT', 'LAST', 'GOAL']].concat(s.schedule.map(function (j) {
+var nx = S.cronNext(j.cron, s.now), next = nx ? nx.slice(5, 7) + '-' + nx.slice(8, 10) + ' ' + nx.slice(11, 16) : '-';
+var last = j.lastRun ? j.lastRun.slice(5, 7) + '-' + j.lastRun.slice(8, 10) + ' ' + j.lastRun.slice(11, 16) + ' ' + j.lastExit : 'never';
+var goal = oneLine(j.goal, 400); if (goal.length > 60) goal = goal.slice(0, 59) + '…';
+return [j.id, j.cron, next, last, goal];
+}));
+return F.tabwriter(rows, 2).map(function (t, i) { return L(i ? 'out' : 'head', t); });
+}
+OUT['schedule'] = function (fl, ctx) { return res(jobsTable(st(ctx)), 0, 11, card('schedule', [['jobs', String(st(ctx).schedule.length)], ['daemon', S.schedule.daemon.running ? 'running (pid ' + S.schedule.daemon.pid + ')' : 'not running']])); };
+OUT['schedule add'] = function (fl, ctx) {
+var s = st(ctx), cron = flag(fl, 'cron', ''), goal = pos(fl).join(' ').trim();
+if (!cron) return bad('schedule add: --cron is required (five fields "minute hour day-of-month month day-of-week", or @hourly, @daily, @weekly)');
+if (!goal) return bad('schedule add: a goal is required');
+var nx = S.cronNext(cron, s.now);
+var f = String(cron).trim().split(/\s+/), names = ['minute', 'hour', 'day-of-month', 'month', 'day-of-week'], ranges = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]];
+if (!/^@(hourly|daily|weekly)$/.test(cron)) {
+if (f.length !== 5) return bad('schedule add: cron "' + cron + '": want five fields (minute hour day-of-month month day-of-week), got ' + f.length);
+for (var i = 0; i < 5; i++) { var m = /^\d+$/.exec(f[i]); if (m && (+f[i] < ranges[i][0] || +f[i] > ranges[i][1])) return bad('schedule add: cron "' + cron + '": ' + names[i] + ': "' + f[i] + '" is outside ' + ranges[i][0] + '-' + ranges[i][1]); }
+}
+if (!nx) return bad('schedule add: cron "' + cron + '": no run time in the next year');
+var id = 'j' + (s.scheduleSeq++);
+s.schedule.push({ id: id, cron: cron, goal: goal, dir: flag(fl, 'cwd', '~/projects/shop'), model: flag(fl, 'model', ''), mode: flag(fl, 'mode', ''), budgetUsd: Number(flag(fl, 'budget-usd', 1)), created: s.now, lastRun: '', lastExit: '', next: nx });
+return res([L('ok', id + ': runs next at ' + nx.slice(0, 10) + ' ' + nx.slice(11, 16) + '; `sleipnir daemon` starts the jobs that are due')], 0, 17, card('schedule add', [['id', id], ['cron', cron], ['next run', nx.replace('T', ' ').slice(0, 16)], ['mode', flag(fl, 'mode', 'default (refuses what needs a yes)')], ['budget', '$' + Number(flag(fl, 'budget-usd', 1)).toFixed(2)]]));
+};
+OUT['schedule rm'] = function (fl, ctx) {
+var s = st(ctx), id = pos(fl)[0];
+if (!id) return bad('schedule rm: want a job id (see `sleipnir schedule`)');
+var n = s.schedule.length; s.schedule = s.schedule.filter(function (j) { return j.id !== id; });
+if (s.schedule.length === n) return bad('schedule rm: no job "' + id + '"');
+return res([], 0, 9);
+};
+OUT['daemon'] = function (fl, ctx) {
+var s = st(ctx);
+if (flag(fl, 'once')) {
+var due = s.schedule.filter(function (j) { var nx = j.next || S.cronNext(j.cron, j.lastRun || j.created); return nx && nx <= s.now.slice(0, 19); });
+if (!due.length) return res([], 0, 30);
+var o = []; due.forEach(function (j) { o.push(L('err', 'sleipnir daemon: ' + j.id + ' starts: ' + oneLine(j.goal, 200))); o.push(L('err', 'sleipnir daemon: ' + j.id + ' ended: ok')); });
+return res(o, 0, 4200);
+}
+return res([L('err', 'sleipnir daemon: looking for due jobs every ' + flag(fl, 'every', '30s') + ' (ctrl-c stops it); jobs: ~/.sleipnir/schedule.json')], 0, 10, card('daemon', [['looking every', String(flag(fl, 'every', '30s'))], ['jobs', String(s.schedule.length)], ['logs', '~/.sleipnir/schedule-logs/']]));
+};
+/* ---- login, logout, models, update, doctor ----------------------------------------------------------------------------------- */
+var LOGIN_CHOICES = ['heimdall', 'openrouter', 'openai', 'anthropic', 'gemini', 'mistral', 'xai', 'deepseek', 'together', 'fireworks', 'groq', 'huggingface'];
+OUT['login'] = function (fl, ctx) {
+var s = st(ctx), name = (pos(fl)[0] || '').toLowerCase();
+if (!name) {
+var o = [L('out', 'Which provider will you use?')];
+LOGIN_CHOICES.forEach(function (c, i) { o.push(L('out', F.padL(i + 1, 3) + '. ' + c + (c === 'heimdall' ? '  (recommended)' : ''))); });
+o.push(L('out', F.padL(LOGIN_CHOICES.length + 1, 3) + '. chatgpt  (your ChatGPT / OpenAI plan: sign in with the browser, no key)'));
+o.push(L('out', F.padL(LOGIN_CHOICES.length + 2, 3) + '. local servers answering on this machine: vllm  (running on this machine, no key)'));
+o.push(L('err', 'Number (q to quit): '));
+return res(o, 0, 30);
+}
+if (name === 'chatgpt') { s.auth.chatgpt = 'signed-in'; return res([L('out', 'Signed in as ada@example.com. Your ChatGPT plan pays for the requests (its usage limits apply); `sleipnir logout chatgpt` ends the sign-in.')], 0, 2400, card('login', [['provider', 'chatgpt'], ['who', 'ada@example.com'], ['tokens', '~/.sleipnir/chatgpt.json (0600)']])); }
+var env = (S.providerKeyVars[name]);
+if (!env) return bad('login: "' + name + '" is not a provider that takes a key (heimdall, openrouter, openai, anthropic, ...; chatgpt signs in with the browser)');
+s.auth[name] = 'stored';
+return res([L('err', 'Paste your ' + name + ' key (hidden; kept in ~/.sleipnir/auth.json, readable by you only): Saved. (' + env + ' in the environment still takes precedence over it.)'), L('out', 'Checking the key... ok.')], 0, 1300, card('login', [['provider', name], ['key', 'stored in ~/.sleipnir/auth.json (0600)'], ['variable', env + ' wins if set']]));
+};
+OUT['logout'] = function (fl, ctx) {
+var s = st(ctx), name = (pos(fl)[0] || '').toLowerCase();
+if (!name) return bad('usage: sleipnir logout <provider>');
+if (name === 'chatgpt') { s.auth.chatgpt = 'none'; return res([L('err', 'signed out of ChatGPT, and the issuer was told to revoke the token')], 0, 420); }
+if (!S.providerKeyVars[name]) return bad('logout: "' + name + '" is not a provider that takes a key');
+s.auth[name] = 'none';
+return res([L('err', 'removed the stored key for ' + name + ' (a ' + S.providerKeyVars[name] + ' in the environment is untouched)')], 0, 9);
+};
+OUT['models'] = function (fl, ctx) {
+var s = st(ctx), minc = flag(fl, 'min-context') ? S.parseTokens(flag(fl, 'min-context')) : 0;
+if (flag(fl, 'min-context') && isNaN(minc)) return bad('models: --min-context: want a token count such as 128k, got "' + flag(fl, 'min-context') + '"');
+var words = pos(fl).slice(); if (flag(fl, 'filter')) words.push(flag(fl, 'filter'));
+var prov = flag(fl, 'provider', '');
+var favSet = {}; s.favourites.forEach(function (r) { favSet[r] = 1; });
+var rows = S.modelsFilter({ words: words, tools: !!flag(fl, 'tools'), reasoning: !!flag(fl, 'reasoning'), maxPrice: Number(flag(fl, 'max-price', 0)), minContext: minc, fav: !!flag(fl, 'fav'), all: !!flag(fl, 'all'), provider: prov })
+.map(function (m) { var c = S.clone(m); c.favourite = !!favSet[m.ref]; return c; })
+.sort(function (a, b) { return a.favourite !== b.favourite ? (a.favourite ? -1 : 1) : a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0; });
+var cells = [['MODEL', 'CONTEXT', '$/M IN', '$/M CACHED', '$/M OUT', 'TOOLS', 'REASONING']];
+rows.forEach(function (m) {
+// REAL: a catalogue that names no price prints 0.0000 (the UI says "price unknown"); a model without a cached-read price is read at its input price
+var p = m.plan ? ['plan', 'plan', 'plan'] : m.inPerM === null ? ['0.0000', '0.0000', '0.0000'] : [m.inPerM.toFixed(4), (m.cachedPerM === null ? m.inPerM : m.cachedPerM).toFixed(4), m.outPerM.toFixed(4)];
+cells.push([(m.favourite ? '* ' : '') + m.ref, S.humanTokens(m.context), p[0], p[1], p[2], String(m.tools), String(m.reasoning)]);
+});
+var o = F.tabwriter(cells, 2).map(function (t, i) { return L(i ? 'out' : 'head', t); });
+if (!rows.length) o.push(L('err', 'models: nothing matches (' + S.models.length + ' models listed by 6 provider(s); try fewer words or filters)'));
+return res(o, 0, 640, card('models', [['listed', String(rows.length)], ['favourites', String(s.favourites.length)], ['price unknown', String(rows.filter(function (m) { return !m.priceKnown; }).length) + ' (the CLI prints 0.0000 for them; the web UI says price unknown)']]));
+};
+OUT['models fav list'] = function (fl, ctx) { return res(st(ctx).favourites.map(function (r) { return L('out', r); }), 0, 10); };
+function favEdit(op) {
+return function (fl, ctx) {
+var s = st(ctx), refs = pos(fl);
+if (!refs.length) return bad('models fav: want `list`, `add provider/model...` or `rm provider/model...`');
+for (var i = 0; i < refs.length; i++) if (!/^[^/\s]+\/.+/.test(refs[i])) return bad('models fav: "' + refs[i] + '" is not a provider/model reference (see `sleipnir models`)');
+refs.forEach(function (r) { var k = s.favourites.indexOf(r); if (op === 'add' && k < 0) s.favourites.push(r); if (op === 'rm' && k >= 0) s.favourites.splice(k, 1); });
+return res([L('out', s.favourites.length + ' favorite(s)')], 0, 14);
+};
+}
+OUT['models fav add'] = favEdit('add'); OUT['models fav rm'] = favEdit('rm');
+OUT['update'] = function (fl) {
+var U = S.update;
+if (flag(fl, 'source')) return res([L('out', U.fromSource)], 0, 6);
+var o = [L('out', U.newer(U.current, U.latest, 0))];
+if (flag(fl, 'check')) { o.push(L('out', U.runHint)); return res(o, 0, 890, card('update', [['running', U.current], ['latest', U.latest], ['install', 'sleipnir update']])); }
+o.push(L('ok', U.done(U.exe, U.latest, U.releaseUrl)));
+return res(o, 0, 5200, card('update', [['from', U.current], ['to', U.latest], ['binary', U.exe], ['checksum', 'matched checksums.txt']]));
+};
+OUT['doctor'] = function (fl, ctx) {
+var model = String(flag(fl, 'model', '')), base = flag(fl, 'base-url', '');
+if (!model && (base || flag(fl, 'provider'))) return bad('doctor: --model is required with --base-url or --provider, as in `sleipnir doctor --base-url URL --model MODEL`', 2);
+var json = !!flag(fl, 'json'), deep = !!flag(fl, 'deep');
+var idx = 0;
+if (!model) model = 'anthropic/claude-sonnet-5-5';
+S.doctor.endpoints.forEach(function (e, i) { if (model === e.ref || model === e.report.model) idx = i; });
+if (/^anthropic\//.test(model)) idx = 0;
+if (base && /127\.0\.0\.1:8089|mock/.test(base + model)) {
+var m = S.doctor.render(-1);
+var out = [L('err', 'probing mock-1 at ' + base + ' (key from none)')].concat(m.log.map(function (t) { return L('dim', t); }), [L('out', '')], lines('out', m.text));
+return res(out, 0, 22, card('doctor', [['endpoint', base], ['cache works', 'yes (98%)'], ['granularity', '~16 tokens']]));
+}
+var e = S.doctor.endpoints[idx], r = S.doctor.render(idx);
+var where = e.where;
+var o = [L('err', 'probing ' + e.report.model + ' at ' + where)];
+if (!e.ok) {
+o.push(L('out', '')); o = o.concat(lines('out', r.text)); o.push(L('bad', e.failure));
+return res(o, 1, 130, card('doctor', [['endpoint', e.ref], ['result', 'failed: connection refused'], ['next', 'start the server, or check the address']]));
+}
+if (json) return res(lines('out', JSON.stringify(e.report, null, 2)), 0, 3900);
+var rep = e.report;
+if (!deep) {   // a probe without --deep stops after the reasoning check: no min-prefix, no warm-up, no granularity measurements
+rep = Object.assign({}, rep, { findings: Object.assign({}, rep.findings, { warmup_needed: null, min_cache_prefix: 0 }), stepsC: (rep.stepsC || []).filter(function (s) { return !/^(minp|warmup)/.test(s[0]); }) });
+r = { text: S.doctorText(rep), log: S.doctorSteps(rep) };
+}
+o = o.concat(r.log.map(function (t) { return L('dim', t); }), [L('out', '')], lines('out', r.text));
+var f = e.report.findings;
+return res(o, 0, 3900, card('doctor', [['endpoint', e.ref], ['streaming', 'yes (first byte ' + f.ttfb + ')'], ['tools', f.tools ? 'yes' : 'NO'], ['prefix cache', f.cache_works ? (f.cache_repeat_hits < f.cache_repeats ? 'partly' : 'yes') + ' (' + Math.round(f.cache_hit_ratio * 100) + '%)' : 'NO'], ['granularity', '~' + f.cache_granularity + ' tokens'], ['smallest cached size', '~' + f.min_cache_prefix + ' tokens'], ['warm-up needed', f.warmup_needed ? 'yes' : 'no']]));
+};
+/* ---- chat, run, swarm ---------------------------------------------------------------------------------------------------------- */
+OUT['chat'] = function (fl) {
+var swarm = flag(fl, 'swarm', null), n = swarm === null ? 8 : Number(swarm), model = flag(fl, 'model', 'anthropic/claude-sonnet-5-5'), mode = flag(fl, 'mode', 'default');
+var o = [
+L('head', 'sleipnir chat is an interactive session: in the web UI it is the Chat view.'),
+L('out', 'sleipnir 0.3.2 · ' + model + ' · ' + (n > 0 ? 'manager + ' + n + ' workers' : 'single agent') + ' · ' + mode),
+L('dim', 'Sessions → New session opens the same options as a form: cwd, model, mode, workers, isolation, verify, commit, mailman, role models, budget, allow rules, trust, no-mcp.'),
+L('dim', 'ctrl+t is the stats page, ctrl+g the team cockpit (alt+t and alt+g in the browser), / the command palette, Esc interrupts.'),
+];
+return res(o, 0, 8, card('chat', [['web view', 'Chat'], ['team', n > 0 ? 'manager + ' + n + ' workers' : 'single agent'], ['mode', mode], ['model', model], ['budget', flag(fl, 'budget-usd') ? '$' + Number(flag(fl, 'budget-usd')).toFixed(2) : 'none'], ['isolation', flag(fl, 'isolation', 'config swarm.isolation')]]));
+};
+function runScript(goal) {
+if (/pagin|orders|failing|fix/i.test(goal)) return {
+say: ['I\'ll start with the code the test exercises.', 'Now the tests, to see how they fail.', 'Two pagination tests fail. Let me read what they expect.', 'The offset is the bug: pages count from 1, so page 1 starts at row 0, not at row size. It should be (page - 1) * size.', 'Running the tests again.', 'They pass. One more look, for callers that worked around the old offset.'],
+tools: [['read orders/list.go', '2ms', 0], ['bash go test ./orders/...', '481ms', 1], ['read orders/list_test.go', '2ms', 0], ['edit orders/list.go', '3ms', 0], ['bash go test ./orders/...', '1.236s', 0], ['grep \\.List\\(', '21ms', 0]],
+final: '## Fixed\n\n`List` took its offset from the page number, but pages count from 1, so page 1 skipped the first `size` rows.\n\n- the offset is `(page - 1) * size` now\n- `go test ./orders/...` passes, and the HTTP handler already sends one-based pages',
+steps: 7, cost: 0.0464, hit: 70, took: '23s', changed: 'orders/list.go' };
+return { say: ['I\'ll look at the project map first, then the files the goal names.', 'Done reading; the change is small.'], tools: [['read AGENTS.md', '1ms', 0], ['grep ' + oneLine(goal, 24), '14ms', 0], ['edit docs/install.md', '3ms', 0]], final: 'Done: ' + oneLine(goal, 90) + '. I changed the places the search found and ran the project\'s checks.', steps: 5, cost: 0.0318, hit: 84, took: '17s', changed: 'docs/install.md' };
+}
+function runOut(fl, team) {
+var goal = pos(fl).join(' ').trim() || (flag(fl, 'resume') ? '(resumed)' : '');
+if (!goal) return bad('run: a goal is required (words, or - to read stdin)', 2);
+var mode = flag(fl, 'mode', 'default'), quiet = !!flag(fl, 'quiet'), json = !!flag(fl, 'json'), n = team ? Number(team) : Number(flag(fl, 'swarm', 0));
+var sc = runScript(goal), id = '20260102-030512-a41c0d', o = [];
+if (json) {
+o.push(L('out', JSON.stringify({ type: 'text', agent: 'main', text: sc.say[0] })));
+sc.tools.forEach(function (t, i) { o.push(L('out', JSON.stringify({ type: 'tool_start', id: 'call_' + (i + 1), name: t[0].split(' ')[0] }))); o.push(L('out', JSON.stringify({ type: 'tool_end', id: 'call_' + (i + 1), failed: !!t[2], ...(t[2] ? { exit_code: 1 } : {}) }))); });
+o.push(L('out', JSON.stringify({ type: 'result', text: sc.final, steps: sc.steps, cost_usd: sc.cost, hit_ratio: sc.hit / 100, compactions: 0, stop: 'end_turn', session: id, dir: '~/.sleipnir/sessions/' + id, elapsed_ms: 23000 })));
+return res(o, 0, 23000);
+}
+var noTerm = mode === 'default' ? 'no terminal to ask on: edits and commands that need an answer are refused. --mode accept-edits lets the edits and the usual build and test commands through.' : null;
+if (!quiet) {
+o.push(L('err', 'sleipnir 0.3.2 · ' + flag(fl, 'model', 'anthropic/claude-sonnet-5-5') + ' · session ' + id + (n > 0 ? ' · manager + ' + n + ' workers' : '')));
+if (noTerm) o.push(L('err', noTerm));
+var ti = 0;
+sc.say.forEach(function (t, i) { o.push(L('out', t)); if (sc.tools[i]) { var tl = sc.tools[i]; o.push(L(tl[2] ? 'warn' : 'dim', (tl[2] ? '✗ ' : '✓ ') + tl[0] + ' (' + tl[1] + (tl[2] ? ', exit 1' : '') + ')')); } });
+o.push(L('out', ''), L('out', sc.final));
+} else o.push(L('out', sc.final));
+var sumLine = '── ' + sc.took + ' · ' + sc.steps + ' steps · $' + sc.cost.toFixed(4) + ' · cache hit ' + sc.hit + '% · 0 compactions · ~/.sleipnir/sessions/' + id;
+o.push(L('err', sumLine));
+if (n > 0 && flag(fl, 'verify')) o.push(L('err', '   verify `' + flag(fl, 'verify') + '`: the gate ran 4 times and passed every time'));
+o.push(L('err', mode === 'plan' ? '   no file was changed' : '   changed: ' + sc.changed));
+return res(o, 0, 23000, card('run', [['session', id], ['steps', String(sc.steps)], ['cost', '$' + sc.cost.toFixed(4)], ['cache hit', sc.hit + '%'], ['changed', mode === 'plan' ? 'nothing (plan mode)' : sc.changed]]));
+}
+OUT['run'] = function (fl) { return runOut(fl, 0); };
+OUT['swarm'] = function (fl) {
+var n = Number(pos(fl)[0]);
+if (!(n >= 1)) return bad('swarm: want the number of workers first, 1 or more, as in `sleipnir swarm 8 "fix the failing test"`', 2);
+var f2 = Object.assign({}, fl); f2._ = pos(fl).slice(1);
+if (S.config && n > 12) return bad('swarm: ' + n + ' workers requested (and the manager) but swarm.max_workers caps a session at 12 workers');
+return runOut(f2, n);
+};
+/* ---- recon, inspect, watch, replay, demo, mock, sim, friction ------------------------------------------------------------------- */
+OUT['recon'] = function (fl) {
+var b = Number(flag(fl, 'budget', 5000)), keys = Object.keys(S.recon.budgets).map(Number).sort(function (a, c) { return a - c; });
+var pick = keys[0]; keys.forEach(function (k) { if (k <= b) pick = k; });
+var r = S.recon.budgets[pick];
+var o = lines('out', r.text); o.push(L('err', r.footer));
+var cd = [['budget', String(b)], ['tokens', String(r.tokens)], ['files considered', String(r.files)]];
+if (pick !== b) cd.push(['note', 'shown as captured at --budget ' + pick + ' (the survey is deterministic; other budgets are not precomputed)']);
+return res(o, 0, 120, card('recon', cd));
+};
+OUT['inspect'] = function (fl) {
+if (flag(fl, 'json')) return res(lines('out', JSON.stringify(S.inspect, null, 2)), 0, 80);
+var addr = flag(fl, 'addr', '127.0.0.1:8787');
+return res([L('out', 'http://' + addr + '/'), L('dim', 'serving a read-only dashboard over ' + (pos(fl)[0] || 'the newest session') + ' (GET only, loopback, loads nothing from the network); in the web UI this is the Cache view')], 0, 30, card('inspect', [['dashboard', 'http://' + addr + '/'], ['session', pos(fl)[0] || '20260102-030405-5eed01'], ['web view', 'Cache']]));
+};
+OUT['watch'] = function (fl) { return res([L('out', 'sleipnir watch is a terminal program: the swarm cockpit, the cache, the mail and the board drawn from a session\'s event log.'), L('dim', 'In the web UI it is the Cockpit view (views: ' + flag(fl, 'view', 'cockpit') + '; keys o c m b).')], 0, 6, card('watch', [['session', pos(fl)[0] || 'latest'], ['view', flag(fl, 'view', 'cockpit')], ['web view', 'Cockpit']])); };
+OUT['replay'] = function (fl) {
+if (flag(fl, 'final')) {
+var view = flag(fl, 'view', 'cockpit'), sc = S.replay.finalScreens[view] || S.replay.finalScreens.cockpit;
+return res(lines('out', sc.replace(/\n$/, '')), 0, 240, card('replay --final', [['session', pos(fl)[0] || '20260101-171204-7c1e3a'], ['view', S.replay.finalScreens[view] ? view : 'cockpit (the other views are drawn by the web UI)']]));
+}
+if (flag(fl, 'record')) return res([L('out', 'wrote ' + flag(fl, 'record') + ' (an animated SVG of the replay: CSS only, no script)')], 0, 900);
+return res([L('out', 'sleipnir replay plays a recorded session back on the same screens, on a clock of its own.'), L('dim', 'In the web UI it is the Replay view: space pauses, the arrows seek 10 s (shift: a minute), + and - change the speed, Home and End jump.')], 0, 6, card('replay', [['session', pos(fl)[0] || 'latest'], ['events', String(S.replay.shop.events.length) + ' distilled (of 661)'], ['duration', '20.7 s']]));
+};
+OUT['demo'] = function (fl) {
+var sc = flag(fl, 'scenario', 'shop');
+var t = sc === 'handbook' ? S.real.demo.handbook : S.real.demo.shop;
+var o = lines('out', t);
+return res(o, 0, sc === 'handbook' ? 900 : 20700, card('demo', [['scenario', sc], ['session', sc === 'handbook' ? '20260101-171310-d2f6b8' : '20260101-171204-7c1e3a'], ['see it again', 'sleipnir replay ' + (sc === 'handbook' ? '20260101-171310-d2f6b8' : '20260101-171204-7c1e3a')]]));
+};
+OUT['mock'] = function (fl) {
+var addr = flag(fl, 'addr', '127.0.0.1:8089'), eng = flag(fl, 'engines', 2);
+return res([L('out', 'mock provider on http://' + addr + ' (' + eng + ' engines); use --provider custom --base-url http://' + addr)], 0, 12);
+};
+function simKey(fl) {
+var G = S.sim.grid, mode = flag(fl, 'mode', 'compare'), prov = flag(fl, 'provider', 'anthropic'), ag = Number(flag(fl, 'agents', 20)), seed = Number(flag(fl, 'seed', 1));
+var near = function (arr, v) { var best = arr[0]; arr.forEach(function (x) { if (Math.abs(x - v) < Math.abs(best - v)) best = x; }); return best; };
+var a2 = near(G.agents, ag);
+var key = mode === 'agents' ? 'agents|' + prov + '|20|1' : mode === 'compare' ? 'compare|' + prov + '|' + a2 + '|' + (a2 === 20 && G.seeds.indexOf(seed) >= 0 ? seed : 1) : mode + '|' + prov + '|' + a2 + '|1';
+return { key: key, exact: a2 === ag && (mode !== 'compare' || a2 !== 20 || G.seeds.indexOf(seed) >= 0), used: { agents: a2 } };
+}
+OUT['sim'] = function (fl) {
+var mode = flag(fl, 'mode', 'compare'), prov = flag(fl, 'provider', 'anthropic');
+if (['compare', 'scenarios', 'pins', 'agents'].indexOf(mode) < 0) return bad('sim: unknown --mode "' + mode + '"');
+if (['anthropic', 'marketplace'].indexOf(prov) < 0) return bad('sim: unknown --provider "' + prov + '"');
+var k = simKey(fl);
+if (flag(fl, 'json')) {
+var jk = mode + '|' + prov, j = S.sim.json[jk] || S.sim.json[mode + '|anthropic'];
+return res(lines('out', JSON.stringify(j, null, 2)), 0, 70);
+}
+var text = S.sim.pool[S.sim.idx[k.key]];
+var o = lines('out', text.replace(/\n$/, ''));
+if (!k.exact) o.push(L('dim', '(sample: the model is run for --agents 20/50 and seeds 1-3; this is the nearest precomputed case, ' + k.used.agents + ' workers)'));
+var cd = [['mode', mode], ['provider', prov], ['assumptions', 'printed above: a model, not a benchmark']];
+return res(o, 0, 70 + Number(flag(fl, 'agents', 20)) * 4, card('sim', cd));
+};
+OUT['friction'] = function (fl) {
+var paths = pos(fl);
+if (!paths.length) return res([L('bad', 'sleipnir: friction: pass a session, a directory of sessions or a run directory'), L('dim', 'usage: sleipnir friction [flags] PATH...')], 2, 4);
+var rep = S.clone(S.friction.report), cat = flag(fl, 'category', ''), top = Number(flag(fl, 'top', 15)), minc = Number(flag(fl, 'min-count', 1)), ex = Number(flag(fl, 'examples', 3));
+rep.findings = rep.findings.filter(function (f) { return f.count >= minc; });
+if (cat) rep.findings = rep.findings.filter(function (f) { return f.category.indexOf(cat) === 0; });
+if (top > 0) rep.findings = rep.findings.slice(0, top);
+rep.findings.forEach(function (f) { f.examples = (f.examples || []).slice(0, ex); });
+if (flag(fl, 'json')) return res(lines('out', JSON.stringify(rep, null, 2)), 0, 40);
+return res(lines('out', S.frictionText(rep)), 0, 40, card('friction', [['sessions', String(rep.sessions)], ['requests', String(rep.requests)], ['findings', String(rep.findings.length)]]));
+};
+/* ---- index commands ------------------------------------------------------------------------------------------------------------ */
+OUT['rl'] = function () { return res(lines('out', 'sleipnir rl: the RL environment (docs/TRAINING-DATA.md): generate tasks, roll a policy out on them, score, export.\n\n  sleipnir rl taskgen <generator>    make tasks from history, authored fixtures, mutations or recall questions, or compose swarm tasks\n  sleipnir rl tasks <command> FILE   validate, filter, split and check task files\n  sleipnir rl rollout                run G samples per task with a policy and write a run directory\n  sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality\n  sleipnir rl serve                  HTTP rollout server for a trainer\n  sleipnir rl reward                 re-score a run directory with different reward weights\n  sleipnir rl report                 what runs measured: pass rate with its interval, cost, cache hits, friction\n  sleipnir rl compare                two runs or saved reports over the tasks both ran, with paired intervals and gates\n  sleipnir rl export                 write trainer-ready data\n  sleipnir rl expand                 turn a deduplicated canonical export back into inline form\n  sleipnir rl verify                 replay every recorded prompt and check it against its wire hash\n  sleipnir rl show                   summarise a run directory, or one episode of it'), 0, 4); };
+OUT['rl taskgen'] = function () { return res(lines('out', 'usage: sleipnir rl taskgen <generator> [flags]\n\n  git        mine a repository\'s history: a commit that changes source and tests becomes a task\n  mutate     inject bugs the project\'s own tests catch; the reverse patch is the reference solution\n  composite  combine independent tasks of one repository into swarm tasks\n  recall     memory tasks: read a fact early, read many other files, then state the fact exactly\n  fixture    hand-written tasks: a directory of fixtures, one subdirectory each'), 0, 4); };
+OUT['rl tasks'] = function () { return res(lines('out', 'usage: sleipnir rl tasks <validate|stats|filter|split|check> [flags] FILE'), 0, 4); };
+/* ---- rl: REAL captures of a small lab (12 fixture tasks, two scripted policies, G=4) ------------------------------------------------ */
+function rlBlocks(text) {   // "$ sleipnir rl ... \n output \n[exit N]\n" blocks of the captured files
+var out = {};
+String(text).split(/^\$ sleipnir /m).slice(1).forEach(function (b) {
+var nl = b.indexOf('\n'), cmd = b.slice(0, nl), body = b.slice(nl + 1), m = /\n?\[exit (\d+)\]\s*$/.exec(body);
+out[cmd] = { text: (m ? body.slice(0, m.index) : body).replace(/\n+$/, ''), exit: m ? +m[1] : 0 };
+});
+return out;
+}
+var RLB = {};
+['report', 'compare', 'show', 'evalTaskgen'].forEach(function (k) { var b = rlBlocks(S.real.rl[k]); Object.keys(b).forEach(function (c) { RLB[c] = b[c]; }); });
+function rlBlock(prefix) { var ks = Object.keys(RLB); for (var i = 0; i < ks.length; i++) if (ks[i].indexOf(prefix) === 0) return RLB[ks[i]]; return null; }
+function rlRun(name) { return S.rl.runs.filter(function (r) { return r.id === name.replace(/^.*\//, ''); })[0]; }
+function needsArg(cmd, what) { return bad('rl ' + cmd + ': ' + what, 2); }
+OUT['rl taskgen fixture'] = function (fl) {
+var dir = flag(fl, 'dir'), out = flag(fl, 'o', 'tasks.jsonl');
+if (!dir) return bad('rl taskgen fixture: --dir is required', 2);
+var ids = String(flag(fl, 'id', '')).split(',').filter(Boolean), all = S.rl.tasks.map(function (t) { return t.id; });
+var re = function (g) { return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'); };
+var sel = ids.length ? all.filter(function (id) { return ids.some(function (g) { return re(g).test(id); }); }) : all;
+if (!sel.length) return bad('rl taskgen fixture: no fixture matches --id ' + ids.join(','));
+return res([L('out', 'wrote ' + sel.length + ' tasks to ' + out + ' (repositories in fixture-repos, hidden files and reference solutions in blobs)'), L('err', 'next: sleipnir rl tasks check ' + out + ', run from the directory that holds fixture-repos/ so the tasks\' relative repositories resolve')], 0, 1800, card('rl taskgen fixture', [['tasks', String(sel.length)], ['file', out], ['repositories', 'fixture-repos/<id> (one commit each)']]));
+};
+OUT['rl taskgen git'] = function (fl) {
+if (!flag(fl, 'repo')) return bad('rl taskgen git: --repo is required', 2);
+var out = flag(fl, 'o', 'tasks.jsonl');
+return res([L('out', 'wrote 0 tasks to ' + out + ' (hidden files and reference solutions in blobs)'), L('out', '  examined 1 commits, 0 candidates, 0 accepted, in 0s'), L('err', 'next: sleipnir rl tasks split ' + out + ', then sleipnir rl rollout --tasks <train file> --model <policy>')], 0, 90, card('rl taskgen git', [['examined', '1 commit'], ['accepted', '0'], ['why', 'a commit must change source and tests; this history has none that does']]));
+};
+OUT['rl taskgen mutate'] = function (fl) {
+if (!flag(fl, 'repo')) return bad('rl taskgen mutate: --repo is required', 2);
+var mx = Number(flag(fl, 'max', 3)), b = rlBlock('rl taskgen mutate'), out = flag(fl, 'o', 'tasks.jsonl');
+var o = S.rl.mutate.slice(0, Math.min(3, mx || 3)).map(function (t, i, a) { return L('out', 'accepted ' + t.id + ' (' + (i + 1) + '/' + (mx || 3) + ')'); });
+var n = o.length;
+o.push(L('out', 'wrote ' + n + ' tasks to ' + out + ' (hidden files and reference solutions in blobs)'), L('out', '  examined 8 commits, 12 candidates, ' + n + ' accepted, in 26s'), L('out', '  rejected: the mutation survives: the project\'s tests still pass=4'), L('err', 'next: sleipnir rl tasks split ' + out + ', then sleipnir rl rollout --tasks <train file> --model <policy>'));
+return res(o, 0, 26000, card('rl taskgen mutate', [['accepted', String(n)], ['kinds', 'boundary, return-bool'], ['verifier', 'the project\'s own go test, per package']]));
+};
+OUT['rl taskgen composite'] = function (fl) {
+var k = Number(flag(fl, 'k', 3)), file = pos(fl)[0];
+if (!file) return bad('rl taskgen composite: want a TASKS file', 2);
+return res([L('out', 'wrote 0 composite tasks (' + k + ' components each) from 12 tasks to ' + flag(fl, 'o', file.replace(/\.jsonl$/, '') + '.composite.jsonl')), L('err', 'composite verifiers reuse the components\' hidden files: keep the blobs directory next to the output (copy or link it)')], 0, 40, card('rl taskgen composite', [['written', '0'], ['why', 'every task of the sample set lives in its own repository; composites combine independent tasks of one repository']]));
+};
+OUT['rl taskgen recall'] = function (fl) {
+if (!flag(fl, 'repo')) return bad('rl taskgen recall: --repo is required', 2);
+return bad('rl taskgen recall: recall: only 1 suitable source files at HEAD; need more than --files=' + flag(fl, 'files', 12));
+};
+OUT['rl tasks validate'] = function (fl) { var f = pos(fl)[0]; if (!f) return bad('rl tasks validate: want a tasks FILE', 2); return res([L('ok', f + ': 12 tasks, all valid')], 0, 22); };
+OUT['rl tasks stats'] = function (fl) { var f = pos(fl)[0]; if (!f) return bad('rl tasks stats: want a tasks FILE', 2); return res(lines('out', RLB_stats(f)), 0, 20); };
+function RLB_stats(f) { return f + ': 12 tasks in 12 repositories\n  kinds: feature=6 fix=5 refactor=1\n  teams: single=12\n  tags:  easy=1 feature=6 fix=5 fixture=12 go=4 hard=3 js=3 medium=8 python=3 refactor=1 rust=2 sample=12'; }
+OUT['rl tasks filter'] = function (fl) {
+var f = pos(fl)[0]; if (!f) return bad('rl tasks filter: want a tasks FILE', 2);
+var n = Number(flag(fl, 'n', 0)), tag = String(flag(fl, 'tag', '')), id = String(flag(fl, 'id', ''));
+var sel = S.rl.tasks.filter(function (t) {
+if (tag) { var ok = tag.split(',').every(function (x) { return x[0] === '!' ? t.tags.indexOf(x.slice(1)) < 0 : t.tags.indexOf(x) >= 0; }); if (!ok) return false; }
+if (id) { var gs = id.split(','); if (!gs.some(function (g) { return new RegExp('^' + g.replace(/\*/g, '.*') + '$').test(t.id); })) return false; }
+return true;
+});
+if (n > 0) sel = sel.slice(0, n);
+var o = []; if (!flag(fl, 'o') || flag(fl, 'o') === '/dev/stdout') sel.forEach(function (t) { o.push(L('dim', JSON.stringify({ id: t.id, kind: t.kind, repo: { path: t.repo, commit: t.commit }, tags: t.tags }).slice(0, 110) + '…')); });
+o.push(L('err', 'kept ' + sel.length + ' of 12 tasks'));
+return res(o, 0, 25);
+};
+OUT['rl tasks split'] = function (fl) {
+var f = pos(fl)[0]; if (!f) return bad('rl tasks split: want a tasks FILE', 2);
+var spec = String(flag(fl, 'spec', 'train:0.8,test:0.2')), parts = spec.split(',').map(function (p) { var q = p.split(':'); return [q[0], +q[1]]; });
+var prefix = flag(fl, 'out-prefix', f.replace(/\.jsonl$/, '')), ids = S.rl.tasks.map(function (t) { return t.id; }), o = [], i = 0;
+var tot = parts.reduce(function (a, p) { return a + p[1]; }, 0);
+parts.forEach(function (p, k) { var n = k === parts.length - 1 ? ids.length - i : Math.max(1, Math.round(ids.length * p[1] / tot)); i += n; o.push(L('out', prefix + '.' + p[0] + '.jsonl: ' + n + ' tasks from ' + n + ' repositories')); });
+return res(o, 0, 30);
+};
+OUT['rl tasks check'] = function (fl) {
+var f = pos(fl)[0]; if (!f) return bad('rl tasks check: want a tasks FILE', 2);
+var o = lines('out', S.real.rl.check).map(function (l) { return /: ok$/.test(l.t) ? L('ok', l.t) : l; });
+if (flag(fl, 'mutants')) o = o.map(function (l) { return /^(js-slugify|py-ini): ok$/.test(l.t) ? L('warn', l.t.replace(': ok', ': ok (WEAK: the verifier still passes with ' + (l.t[0] === 'j' ? 'src/slugify.js' : 'ini.py') + ' left at the start)')) : l; });
+return res(o, 0, 16400, card('rl tasks check', [['tasks', '12'], ['ok', '12'], ['failed', '0'], ['skipped', '0']]));
+};
+OUT['rl rollout'] = function (fl) {
+var model = String(flag(fl, 'model', 'sample-policy-v2')), v = /v1/.test(model) ? 1 : 2, run = rlRun('r00' + v);
+var out = flag(fl, 'out', 'runs/r00' + v), grp = Number(flag(fl, 'group', 4));
+if (!flag(fl, 'tasks')) return bad('rl rollout: --tasks is required', 2);
+var total = 12 * grp, o = [L('err', 'rolling out 12 tasks x ' + grp + ' samples with ' + model + ' (' + flag(fl, 'base-url', 'http://127.0.0.1:8000/v1') + ') into ' + out)];
+var rows = run.samples.filter(function (s) { return s[1] < grp; });
+rows.forEach(function (s, i) { o.push(L(s[2] ? 'ok' : 'dim', '[' + (i + 1) + '/' + total + '] ' + s[0] + '/' + s[1] + ' ok pass=' + (s[2] ? 'true' : 'false') + ' score=' + (s[2] ? '1.000' : '0.000'))); });
+o = o.concat(lines('out', S.real.rl['rolloutV' + v]));
+o.push(L('err', 'next: sleipnir rl export ' + out + ' --format steps -o data.jsonl'));
+return res(o, 0, run.durationMs, card('rl rollout', [['run', run.id], ['policy', model], ['rollouts', String(run.summary.rollouts)], ['pass rate', (run.summary.pass_rate * 100).toFixed(1) + '%'], ['spent', '$' + run.summary.spent_usd.toFixed(4)]]));
+};
+OUT['rl eval'] = function (fl) {
+if (!flag(fl, 'tasks')) return bad('rl eval: --tasks is required', 2);
+var b = rlBlock('rl eval');
+var o = lines('out', b.text.replace(/^\$ .*\n/, '')).map(function (l) { return /^\[\d\/6\]/.test(l.t) ? L('ok', l.t) : l; });
+return res(o, 0, 8100, card('rl eval', [['run', 'e001'], ['pass@1', '100.0%'], ['tasks', '3 held out (split test)'], ['contamination check', 'passed: none of them is in the training list']]));
+};
+OUT['rl serve'] = function (fl) { return res([L('err', 'rollout server on ' + flag(fl, 'addr', '127.0.0.1:8090') + ' (runs in ' + flag(fl, 'runs', 'runs') + ')')], 0, 25, card('rl serve', [['listening', flag(fl, 'addr', '127.0.0.1:8090')], ['endpoint', 'POST /v1/rollouts {task, policy:{base_url,model,sampling}, group, rewards}'], ['loopback', 'a token is required off loopback']])); };
+OUT['rl reward'] = function (fl) {
+if (flag(fl, 'list-targets')) return res(lines('out', S.real.rl.listTargets), 0, 6);
+var runs = pos(fl); if (!runs.length) return bad('rl reward: want RUN_DIR...', 2);
+var b = rlBlock('rl reward'), t = b.text.split('\n'), keep = t.slice(0, 9).concat(['…'], t.slice(-1));
+var o = keep.map(function (l, i) { return L(i === 0 ? 'head' : /^\d+ episodes/.test(l) ? 'ok' : 'out', l); });
+if (!flag(fl, 'dry-run')) o[o.length - 1] = L('ok', '48 episodes rescored: mean reward 0.569 -> 0.569, 0 with hack flags (episode.json rewritten)');
+return res(o, 0, 640, card('rl reward', [['episodes', '48'], ['mean reward', '0.569 -> 0.569'], ['target price', flag(fl, 'target-price', 'anthropic-haiku')]]));
+};
+OUT['rl report'] = function (fl) {
+var runs = pos(fl).map(function (p) { return p.replace(/^.*\//, ''); }).filter(Boolean);
+if (!runs.length) return bad('rl report: want RUN_DIR|REPORT.json...', 2);
+var fmt = String(flag(fl, 'format', 'table')), md = rlBlock('rl report --format md').text.split('\n');
+var rowOf = function (r) { return md.filter(function (l) { return l.indexOf('| ' + r + ' |') === 0; })[0]; };
+for (var i = 0; i < runs.length; i++) if (!rowOf(runs[i])) return bad('rl report: ' + runs[i] + ': no such run directory (the sample set has r001 and r002)');
+if (fmt === 'json') return res(lines('out', JSON.stringify(S.real.rl.reportR002, null, 2)), 0, 120);
+if (fmt === 'md') return res(lines('out', [md[0], md[1]].concat(runs.map(rowOf)).join('\n')), 0, 90);
+var cells = function (l) { return l.replace(/^\| /, '').replace(/ \|$/, '').split(' | '); };
+var hdr = cells(md[0]).map(function (h, i, a) { return h; });
+var tbl = F.tabwriter([hdr.map(function (h) { return h; })].concat(runs.map(function (r) { return cells(rowOf(r)); })), 2);
+var o = tbl.map(function (t, i) { return L(i ? 'out' : 'head', t); });
+o.push(L('out', ''), L('dim', 'PASS: passed episodes / completed ones, with a 95% Wilson interval; SOLVED: tasks that at least one sample passed; HIT: cache-read tokens / input tokens.'), L('dim', 'Friction is per completed episode: tool calls that failed (TOOLERR), malformed or unknown ones (INVALID), requests the endpoint did not answer and were repeated (RETRY).'));
+if (flag(fl, 'tasks') || flag(fl, 'by-tag')) {
+var full = rlBlock('rl report --tasks --by-tag').text.split('\n'), at = full.indexOf('r002 by tag');
+o.push(L('out', ''));
+full.slice(at).forEach(function (l) { if (/ by tag$/.test(l) && !flag(fl, 'by-tag')) return; o.push(L('out', l)); });
+}
+return res(o, 0, 150, card('rl report', runs.map(function (r) { var ru = rlRun(r); return [r + ' (' + ru.model + ')', (ru.summary.pass_rate * 100).toFixed(1) + '% pass, $' + ru.summary.mean_cost_usd.toFixed(4) + '/episode']; })));
+};
+OUT['rl compare'] = function (fl) {
+var p = pos(fl).map(function (x) { return x.replace(/^.*\//, ''); });
+if (p.length !== 2) return bad('rl compare: want two runs or saved reports (A B)', 2);
+var ab = p.join(' '), blk = ab === 'r001 r002' ? rlBlock('rl compare runs/r001') : ab === 'r002 r001' ? rlBlock('rl compare --gate') : null;
+if (!blk) return bad('rl compare: ' + p.join(', ') + ': the sample set has runs r001 and r002');
+if (String(flag(fl, 'format', 'table')) === 'json') return res(lines('out', JSON.stringify(S.real.rl.compareJson, null, 2)), 0, 150);
+var t = blk.text.split('\n'), cut = t.indexOf('gates:'); if (cut >= 0) t = t.slice(0, cut - 1);
+var o = t.map(function (l, i) { return L(/^(A|B) /.test(l) ? 'head' : /better$/.test(l) ? 'ok' : /worse$/.test(l) ? 'warn' : 'out', l); });
+var gates = [].concat(flag(fl, 'gate', [])); var failed = 0;
+if (gates.length) {
+o.push(L('out', ''), L('head', 'gates:'));
+String(gates.join(',')).split(',').forEach(function (g) {
+var m = /^pass_at_1:([0-9.]+)$/.exec(g);
+if (ab === 'r002 r001' && m && 0.125 > +m[1]) { failed++; o.push(L('bad', '  FAIL  ' + g + '     pass_at_1 got worse by 0.125 (A 0.7292, B 0.6042), more than the tolerance of ' + m[1] + ', and the interval [-0.2292, -0.04167] excludes zero')); }
+else o.push(L('ok', '  ok    ' + g + '     did not get worse beyond the tolerance (or the interval includes zero)'));
+});
+if (failed) o.push(L('bad', 'sleipnir: rl compare: ' + failed + ' of ' + gates.join(',').split(',').length + ' gates failed'));
+}
+return res(o, failed ? 1 : 0, 210, card('rl compare', [['A', p[0]], ['B', p[1]], ['pass@1', ab === 'r001 r002' ? '0.604 -> 0.729 (+0.125, better)' : '0.729 -> 0.604 (-0.125, worse)'], ['paired tasks', '12'], ['resamples', '2000']]));
+};
+OUT['rl export'] = function (fl) {
+var runs = pos(fl); if (!runs.length) return bad('rl export: want RUN_DIR...', 2);
+var fmt = String(flag(fl, 'format', 'steps')), out = flag(fl, 'o', '(stdout)'), mx = Number(flag(fl, 'max-samples', 0));
+var o;
+if (fmt === 'sft') o = lines('out', 'exported ' + (mx || 3) + ' sft records from 1 of 48 episodes to ' + out + '\n  tokens: 9013 prompt, 1331 response, 1331 trained\n  by role: worker=' + (mx || 3) + '\n  dropped: episode:not_verified=13');
+else if (fmt === 'steps') o = lines('out', 'exported ' + (mx || 2) + ' steps records from 1 of 48 episodes to ' + out + '\n  tokens: 4338 prompt, 34 response, 34 trained\n  by role: worker=' + (mx || 2) + '\n  dropped: episode:flat_group=16');
+else o = lines('out', 'exported 48 ' + fmt + ' records from 35 of 48 episodes to ' + out + '\n  by role: worker=48\n  dropped: episode:flat_group=13  (sample: only steps and sft were captured from the binary)');
+return res(o, 0, 380, card('rl export', [['format', fmt], ['records', String(mx || 2)], ['redaction', flag(fl, 'no-redact') ? 'off' : 'on (secrets and personal data)'], ['advantage', flag(fl, 'advantage', 'grpo')]]));
+};
+OUT['rl expand'] = function (fl) { if (!pos(fl)[0]) return bad('rl expand: want EXPORT.jsonl', 2); return res([L('err', 'expanded 2 episodes')], 0, 40); };
+OUT['rl verify'] = function (fl) { if (!pos(fl).length) return bad('rl verify: want RUN_DIR...', 2); return res([L('ok', 'verified 48 rollouts: 0 mismatches, 0 unreadable')], 0, 910, card('rl verify', [['rollouts', '48'], ['mismatches', '0'], ['meaning', 'every recorded prompt re-expands to its wire hash']])); };
+OUT['rl show'] = function (fl) {
+var p = pos(fl); if (!p.length) return bad('rl show: want RUN_DIR [TASK/SAMPLE]', 2);
+var run = p[0].replace(/^.*\//, ''), json = !!flag(fl, 'json');
+if (!rlRun(run)) return bad('rl show: ' + p[0] + ': no such run directory (the sample set has r001, r002)');
+if (p[1]) {
+if (json) return res(lines('out', JSON.stringify(S.rl.episode, null, 2)), 0, 30);
+var b = rlBlock('rl show runs/r002 go-lru/0'); return res(lines('out', b.text), 0, 30, card('rl show', [['episode', 'go-lru/0'], ['verifier', 'pass'], ['reward', '1.082'], ['cost', '$0.0097']]));
+}
+if (json) return res(lines('out', JSON.stringify(rlRun(run).summary, null, 2)), 0, 30);
+return res(lines('out', S.real.rl['rolloutV' + (run === 'r001' ? 1 : 2)]), 0, 30);
+};
+/* ---- slash commands that print (REAL formats: cmd/sleipnir/chat.go). ctx.session is a mutable session state (S.newSessionState()). ------------ */
+/** newSessionState(): the shop session at the snapshot, as the slash commands read and change it. */
+S.newSessionState = function () {
+return { id: S.session.id, dir: '~/.sleipnir/sessions/' + S.session.id, cwd: '~/projects/shop', model: S.session.model, mode: 'default', effort: 'default', budget: 5.00, verbose: false, anim: true,
+team: S.clone(S.team), swarm: true, rules: [], goal: { text: S.goal.text, state: 'active', paused: '', turns: 0, max: 20, reason: S.goal.judge.reason, plan: S.goal.plan.map(function (p) { return { step: p.step, status: p.status }; }) },
+checkpoints: [{ id: 'c07', time: '03:04:38', files: 3, label: 'T4 catalogue handler' }, { id: 'c06', time: '03:04:29', files: 1, label: 'T5 cart total in cents' }, { id: 'c05', time: '03:04:21', files: 2, label: 'seed items + loader' }, { id: 'c04', time: '03:04:12', files: 0, label: 'turn 1' }],
+roleModels: S.clone(S.roleModels.defaults), steered: [] };
+};
+var _sess = null;
+function ss(ctx) { if (ctx && ctx.session) return ctx.session; if (!_sess) _sess = S.newSessionState(); return _sess; }
+S.resetSessionState = function () { _sess = S.newSessionState(); return _sess; };
+function agentTotals(sx) { return S.totals(sx.team); }
+function costLine(sx) {
+if (!sx.swarm) { var a = sx.team[0]; return 'input ' + a.uncached + ' (uncached) + ' + a.read + ' cached-read + 0 cache-write · output ' + a.out + ' · hit ' + Math.round(a.read / a.prompt * 100) + '% · ' + F.usd4(S.costOf(a)); }
+var m = sx.team.filter(function (a) { return a.rider; })[0], t = agentTotals(sx);
+return 'input ' + m.uncached + ' (uncached) + ' + m.read + ' cached-read + 0 cache-write · output ' + m.out + ' · hit ' + Math.round(m.read / m.prompt * 100) + '% · ' + t.costText4;
+}
+OUT['/cost'] = function (fl, ctx) { return res([L('err', costLine(ss(ctx)))], 0, 3); };
+OUT['/context'] = function (fl, ctx) {
+var m = ss(ctx).team.filter(function (a) { return a.rider || a.id === 'main'; })[0] || ss(ctx).team[0], lt = m.layerTokens;
+var row = function (n, t) { return L('err', '  ' + F.padR(n, 16) + ' ' + F.padL(t, 7) + ' tokens'); };
+return res([row('constitution', lt.G0), row('shared pin', lt.G1), row('role pin', lt.G2), row('notes', lt.G3), row('spine', lt.G4), row('thread (verbatim)', lt.G5)], 0, 4);
+};
+OUT['/status'] = function (fl, ctx) {
+var sx = ss(ctx), o = [L('err', 'model    ' + sx.model + ' (' + (sx.swarm ? 'swarm' : 'single agent') + ')'), L('err', 'mode     ' + sx.mode), L('err', 'session  ' + sx.id + ' (' + sx.dir + ')')];
+if (sx.budget > 0) o.push(L('err', 'budget   $' + sx.budget.toFixed(2)));
+o.push(L('err', costLine(sx)));
+return res(o, 0, 4, card('status', [['model', sx.model], ['mode', sx.mode], ['session', sx.id], ['budget', sx.budget > 0 ? '$' + sx.budget.toFixed(2) : 'none'], ['cost', agentTotals(sx).costText4], ['hit (all agents)', agentTotals(sx).hitPct + '%']]));
+};
+OUT['/permissions'] = function (fl, ctx) {
+var sx = ss(ctx), P = S.permissions.rules, o = [L('err', 'mode: ' + sx.mode)];
+var allow = P.allow.map(function (r) { return r.rule; }).concat(sx.rules.map(function (r) { return r.rule; }));
+var deny = P.deny.map(function (r) { return r.rule; });
+var ask = P.ask.map(function (r) { return r.rule; });
+[['allow', allow, 40], ['deny', deny, 6], ['ask', ask, 6]].forEach(function (g) {
+if (!g[1].length) return;
+o.push(L('err', g[0] + ' (' + g[1].length + '):'));
+g[1].forEach(function (r, i) { if (i === g[2]) { o.push(L('dim', '  ... ' + (g[1].length - i) + ' more')); return; } if (i > g[2]) return; o.push(L('err', '  ' + r)); });
+});
+return res(o, 0, 5, card('permissions', [['mode', sx.mode], ['allow', String(allow.length)], ['deny', String(deny.length)], ['ask', String(ask.length)]]));
+};
+OUT['/trust'] = function (fl, ctx) { return OUT['trust'](fl, ctx); };
+OUT['/mcp'] = function (fl, ctx) {
+var w = pos(fl), s = st(ctx);
+if (w[0] === 'reconnect' && w[1]) return res([L('err', 'reconnecting ' + w[1])], 0, 5);
+var es = mcpEntries(s, false, true), o = [];
+es.forEach(function (e) {
+var v = e.v, ready = (v.trusted || e.approved) && v.state !== 'failed' && !v.disabled;
+var state = v.disabled ? 'disabled' : !v.trusted && !e.approved ? 'refused' : v.state === 'failed' ? 'failed' : 'ready';
+o.push(L(state === 'ready' ? 'err' : 'warn', '  ' + F.padR(v.name, 16) + ' ' + F.padR(state, 10) + ' ' + (ready ? v.tools : 0) + ' tools in this session' + (state === 'failed' ? ' — ' + v.error : state === 'refused' ? ' — mcp: server not approved: it was not approved' : '')));
+});
+o.push(L('err', 'prompts you can run:'), L('err', '  ' + F.padR(S.mcp.prompts[0].command, 32) + ' ' + S.mcp.prompts[0].description), L('err', 'the tool list is fixed for the session; /mcp reconnect NAME restarts a server that gave up'));
+return res(o, 0, 5);
+};
+OUT['/skills'] = function () { return res(S.skills.map(function (k) { return L('err', '  ' + F.padR(k.name, 20) + ' ' + oneLine(k.summary, 90) + (k.youOnly ? ' (you only)' : '')); }), 0, 3); };
+OUT['/sessions'] = function (fl, ctx) { return OUT['sessions']({ n: 10 }, ctx); };
+OUT['/cwd'] = function (fl, ctx) { return res([L('err', 'cwd: ' + ss(ctx).cwd + ' (a session works in one directory: start sleipnir there, or /restart --cwd DIR)')], 0, 2); };
+OUT['/rewind'] = function (fl, ctx) {
+var sx = ss(ctx), id = pos(fl)[0];
+if (!id) {
+var list = sx.checkpoints.filter(function (c) { return c.files > 0; });
+if (!list.length) return res([L('err', 'no checkpoints yet (one is kept for each turn that changes a file)')], 0, 3);
+return res(list.map(function (c) { return L('err', '  ' + c.id + '  ' + c.time + '  ' + c.files + ' files  ' + c.label); }).concat([L('dim', '/rewind ID puts the files back as they were; /diff ID shows what changed')]), 0, 4);
+}
+var cp = sx.checkpoints.filter(function (c) { return c.id === id; })[0];
+if (!cp) return res([L('bad', 'rewind: checkpoint: unknown checkpoint')], 0, 3);
+var n = S.diffSince('shop', id, 'now').length;
+return res([L('ok', 'checkpoint ' + id + ': restored ' + n)], 0, 38, card('rewind', [['checkpoint', id], ['files put back', String(n)], ['the agents are told', 'to read them again']]));
+};
+OUT['/diff'] = function (fl, ctx) {
+var sx = ss(ctx), id = pos(fl)[0], o = [];
+if (!id) { var c = sx.checkpoints.filter(function (x) { return x.files > 0; })[0]; if (!c) return res([L('err', 'usage: /diff <checkpoint id>   (no checkpoint has changed a file yet)')], 0, 3); id = c.id; o.push(L('err', 'checkpoint ' + id + ', the newest that changed a file')); }
+if (!sx.checkpoints.some(function (c) { return c.id === id; })) return res([L('bad', 'diff: checkpoint: unknown checkpoint')], 0, 3);
+S.diffSince('shop', id, 'now').forEach(function (f) {
+o.push(L('head', f.path + ' (' + f.status + ')'));
+S.unified(f).split('\n').forEach(function (t) { o.push(L(t[0] === '+' && t.slice(0, 3) !== '+++' ? 'ok' : t[0] === '-' && t.slice(0, 3) !== '---' ? 'bad' : t[0] === '@' ? 'dim' : 'out', t)); });
+});
+return res(o, 0, 12);
+};
+OUT['/recon'] = function () {
+var r = S.recon.budgets[5000], lsk = S.skills.filter(function (k) { return !k.youOnly; }).map(function (k) { return k.name + ': ' + k.summary; });
+var t = '<shared-context>\n## runtime\nOperating system: linux.\nCommand shell: bash.\nThe bash tool runs commands directly in this shell; send commands without an extra shell wrapper. Use this shell\'s syntax.\n\n## project\n' + r.text.replace(/^## project\n/, '').replace(/\n+$/, '') + '\n\n## instructions\n### AGENTS.md (project)\n' + S.config.files.agents.replace(/\n+$/, '') + '\n\n## skills\n<skills>\nLoad one with the skill tool when its description matches the task.\n' + lsk.join('\n') + '\n</skills>\n</shared-context>';
+return res(lines('err', t), 0, 6, card('recon', [['layer', 'G1 shared pin (' + F.tok(S.layers[1].tokens) + ' in the sample roster)'], ['survey', r.tokens + ' tokens (REAL, this sample project)'], ['files considered', String(r.files)]]));
+};
+OUT['/help'] = function () {
+var o = S.chatSlashText().split('\n').map(function (t) { return L(/^\//.test(t) || !t ? 'err' : 'head', t); });
+o.push(L('err', ''), L('head', 'custom commands:'));
+S.commands.forEach(function (c) { o.push(L('err', '/' + F.padR(c.name, 17) + ' ' + oneLine(c.description, 90))); });
+o.push(L('err', ''), L('head', 'skills (also loadable by the model; /skills lists them):'));
+return res(o, 0, 3);
+};
+/** chatSlashText(): the text of /help (REAL: chatHelp), from the generated spec when it is loaded, else the built-in copy. */
+S.chatSlashText = function () {
+var spec = S.cliSpec && S.cliSpec.chatSlash, out = [], group = '';
+if (!spec) return S.helpFallback;
+spec.forEach(function (c) { if (c.group !== group) { if (group) out.push(''); out.push(c.group); group = c.group; } out.push(F.padR(c.cmd + (c.args ? ' ' + c.args : ''), 18) + c.desc); });
+return out.join('\n');
+};
+S.helpFallback = 'conversation\n/goal TEXT         work until it is met, judged on evidence (/goal: status)\n/new               start again, empty (same model and mode)\n/clear             the same as /new\n/resume [id]       pick an earlier session from a menu, and continue it\n/sessions          the newest sessions\n/compact [focus]   fold the older thread now; focus says what to keep in view\n/rewind [id]       list checkpoints, or restore files to before a turn\n/diff [id]         what changed in the newest checkpoint, or in <id>\n/exit              quit (Ctrl-D, or Ctrl-C twice at the prompt)\n\nmodel and cost\n/model [ref]       pick a model from a menu; a team starts again on it\n/effort [level]    show or change reasoning effort (closest supported level)\n/fav [ref]         star a model, or unstar it; starred ones lead in /model\n/login [provider]  add a key, or sign in with ChatGPT (the chat comes back)\n/budget [usd|off]  the dollar budget for the turns from now on\n/cost              tokens, cost and cache hit ratio so far\n/stats             the stats page (ctrl+t): cost, cache, savings, layers\n/context           what each layer of the prompt weighs\n/status            model, mode, session, budget and cost at a glance\n\npermissions\n/mode <m>          default | accept-edits | plan | bypass | yolo\n/plan [prompt]     switch to read-only mode; with a prompt, start planning it\n/allow <rule>      allow, this session, what would ask: tests, Bash(go test:*)\n/permissions       the mode and the rules in force\n/trust             this project\'s own instructions and settings, and your yes\n\na team, and the program\n/roles [role=m]    which model each role runs on; change one (restarts)\n/swarm <n> [flags] start again as a manager and n workers\n/restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...\n/agents            the team\'s agents and tasks (ctrl+g: cockpit)\n/steer TEXT        tell the running turn something, without stopping it\n/verbose [on|off]  notices and tool errors\n/anim [on|off]     motion\n/cwd               the directory this session works in\n\nwhat the model knows\n/recon             the project map in the shared layer\n/skills            the skills the model can load\n/mcp               tool servers: state and tools (/mcp reconnect NAME)\n/help              this text, and your custom commands and skills';
+OUT['/agents'] = function (fl, ctx) {
+var sx = ss(ctx);
+if (!sx.swarm) return res([L('err', 'single agent session (start with --swarm N for a team)')], 0, 3);
+var o = sx.team.slice().sort(function (a, b) { return a.id < b.id ? -1 : 1; }).map(function (a) { return L('err', '  ' + F.padR(a.id, 8) + ' ' + F.padR(a.role, 10) + ' ' + F.padR(a.state, 8) + ' ' + F.padR(a.task || '', 4) + ' ' + oneLine(a.doing, 80)); });
+S.tasks.forEach(function (t) { o.push(L('err', '  ' + F.padR(t.id, 4) + ' ' + F.padR(t.status, 8) + ' ' + F.padR(t.owner || '', 8) + ' ' + oneLine(t.title, 80))); });
+return res(o, 0, 4, card('agents', [['team', S.teamSummary().banner], ['active', S.teamSummary().activeText], ['board', S.board.text]]));
+};
+OUT['/goal'] = function (fl, ctx) {
+var sx = ss(ctx), w = pos(fl), arg = w.join(' ').trim(), g = sx.goal;
+if (!arg) {
+if (!g) return res([L('err', 'no goal. /goal TEXT sets one: the harness keeps the agent going until a judge finds evidence that it is met')], 0, 3);
+var o = [L('err', 'goal (' + (g.paused ? 'paused: ' + g.paused : 'active') + '): ' + g.text), L('err', 'continuations ' + g.turns + ' of ' + g.max + (g.reason ? '; the judge\'s last word: ' + g.reason : ''))];
+g.plan.forEach(function (p) { o.push(L('err', '  [' + p.status + '] ' + p.step)); });
+return res(o, 0, 4);
+}
+var a = arg.toLowerCase();
+if (a === 'clear') { sx.goal = null; return res([L('err', 'goal cleared')], 0, 2); }
+if (a === 'pause') { if (g) { g.paused = 'paused by you'; return res([L('err', 'goal paused; /goal resume goes on')], 0, 2); } return res([], 0, 2); }
+if (a === 'resume') { if (!g) return res([L('err', 'no goal to resume')], 0, 2); g.paused = ''; g.max = g.turns + 20; g.turns++; return res([L('dim', '(sends the continuation: "[standing goal, continuation ' + g.turns + ' of at most ' + g.max + ']")')], 0, 2); }
+sx.goal = { text: arg, state: 'active', paused: '', turns: 0, max: 20, reason: '', plan: [] };
+return res([L('err', 'goal set: checked after each turn. Esc pauses it; /goal shows where it stands')], 0, 3);
+};
+OUT['/budget'] = function (fl, ctx) {
+var sx = ss(ctx), v = pos(fl)[0], spent = agentTotals(sx).cost;
+if (v === undefined) return res([L('err', sx.budget > 0 ? 'budget: $' + sx.budget.toFixed(2) + ', spent $' + spent.toFixed(4) + ' (change it with /budget <dollars>, /budget off removes it)' : 'budget: none, spent $' + spent.toFixed(4) + ' (set one with /budget <dollars>)')], 0, 2);
+if (v === 'off') { sx.budget = 0; return res([L('err', 'budget: removed')], 0, 2); }
+var usd = parseFloat(v);
+if (!(usd > 0)) return res([L('err', 'budget: want a dollar amount above zero (or off), got "' + v + '"')], 0, 2);
+sx.budget = usd;
+return res([L('err', 'budget: $' + usd.toFixed(2) + ' for the turns from now on (spent so far $' + spent.toFixed(4) + ')')], 0, 2);
+};
+OUT['/mode'] = function (fl, ctx) {
+var sx = ss(ctx), m = pos(fl)[0];
+if (!m) return res([L('err', 'mode: ' + sx.mode + ' (change it: /mode default | accept-edits | plan | bypass | yolo)')], 0, 2);
+if (['default', 'accept-edits', 'plan', 'bypass', 'yolo'].indexOf(m) < 0) return res([L('err', 'unknown mode; use default, accept-edits, plan, bypass or yolo')], 0, 2);
+sx.mode = m;
+return res([L(m === 'bypass' || m === 'yolo' ? 'warn' : 'err', 'mode: ' + m)], 0, 2);
+};
+OUT['/plan'] = function (fl, ctx) { ss(ctx).mode = 'plan'; return res([L('err', 'plan mode: read-only')], 0, 2); };
+OUT['/effort'] = function (fl, ctx) {
+var sx = ss(ctx), v = pos(fl).join(' ');
+if (v) sx.effort = v;
+var o = [L('err', 'effort: ' + sx.effort + ' (this model: ' + (sx.effort === 'default' ? 'provider default' : sx.effort) + ')')];
+o.push(L('err', v ? 'Applies to subsequent requests; team roles use their closest supported level.' : 'Choose: /effort default|none|minimal|low|medium|high|xhigh|max'));
+return res(o, 0, 2);
+};
+OUT['/model'] = function (fl, ctx) {
+var sx = ss(ctx), r = pos(fl)[0];
+if (!r) return res([L('err', 'model: ' + sx.model + ' (change it with /model provider/model; list them with `sleipnir models`)')], 0, 2);
+if (!S.models.some(function (m) { return m.ref === r; })) return res([L('err', 'model: unknown model "' + r + '" (see `sleipnir models`): nothing was changed')], 0, 3);
+sx.model = r;
+return res([L('err', 'model: ' + r + (sx.swarm ? ' (the team starts again on it, with the manager\'s conversation; the prompt cache starts over)' : ' (the conversation carries over; the prompt cache starts over)'))], 0, 14);
+};
+OUT['/roles'] = function (fl, ctx) {
+var sx = ss(ctx), w = pos(fl);
+if (w.length) {
+var kv = w[0].split('='); if (kv.length !== 2 || !kv[0] || !kv[1]) return res([L('err', 'usage: /roles [role=provider/model ...]: show the table, or change roles (e.g. /roles manager=anthropic/claude-opus-5-5 compactor=local/qwen-sample-32b)')], 0, 2);
+sx.roleModels[kv[0]] = kv[1];
+return res([L('err', 'restarting: sleipnir chat --role-model ' + kv[0] + '=' + kv[1])], 0, 20);
+}
+var o = [L('err', 'who runs on which model (change one with /roles role=provider/model; the chat restarts with the choice):')];
+S.roleModels.rows.forEach(function (r) {
+var m = r.role === 'default' || r.role === 'manager' ? sx.model : (sx.roleModels[r.role] && r.role !== 'compactor' ? sx.roleModels[r.role] : r.model);
+var from = (sx.roleModels[r.role] && r.role !== 'default' && r.role !== 'manager' && r.role !== 'compactor' && m !== r.model) ? '--role-model' : r.from;
+o.push(L('err', '  ' + F.padR(r.role, 10) + ' ' + F.padR(m, 44) + ' ' + from));
+});
+return res(o, 0, 3);
+};
+OUT['/allow'] = function (fl, ctx) {
+var sx = ss(ctx), w = pos(fl);
+if (!w.length) return res([L('err', 'usage: /allow tests | /allow \'Bash(go test:*)\' | /allow \'Edit(src/**)\' ...: allow for the rest of this session what would otherwise ask; tests is the build and test commands of most projects (' + S.permissions.testsPreset.summary + ')')], 0, 2);
+var rules = []; w.forEach(function (x) { if (x === 'tests') rules = rules.concat(S.permissions.testsPreset.rules); else rules.push(x); });
+rules.forEach(function (r) { if (!sx.rules.some(function (q) { return q.rule === r; })) sx.rules.push({ rule: r, origin: w.indexOf('tests') >= 0 ? 'this session (tests preset)' : 'this session', list: 'allow' }); });
+var done = rules, msg;
+if (w.indexOf('tests') >= 0 && done.length >= S.permissions.testsPreset.rules.length) msg = 'allowed for this session: the build and test commands (' + S.permissions.testsPreset.summary + '; ' + done.length + ' rules)';
+else if (done.length > 4) msg = 'allowed for this session: ' + done.length + ' rules, among them ' + done[0] + ', ' + done[1];
+else msg = 'allowed for this session: ' + done.join(', ');
+return res([L('err', msg)], 0, 3);
+};
+OUT['/fav'] = function (fl, ctx) { var s = st(ctx), ref = pos(fl)[0] || ss(ctx).model, i = s.favourites.indexOf(ref); if (i >= 0) { s.favourites.splice(i, 1); return res([L('err', ref + ' is no longer a favorite')], 0, 3); } s.favourites.push(ref); return res([L('err', ref + ' is now a favorite (starred models come first in /model and `sleipnir models`)')], 0, 3); };
+OUT['/verbose'] = function (fl, ctx) { var v = pos(fl)[0] || (ss(ctx).verbose ? 'off' : 'on'); ss(ctx).verbose = v === 'on'; return res([L('err', 'verbose: ' + v + ' (notices and tool errors ' + (v === 'on' ? 'are shown' : 'show only warnings') + ')')], 0, 2); };
+OUT['/anim'] = function (fl, ctx) { var v = pos(fl)[0] || (ss(ctx).anim ? 'off' : 'on'); ss(ctx).anim = v === 'on'; return res([L('err', 'animation: ' + v)], 0, 2); };
+OUT['/steer'] = function (fl, ctx) {
+var text = pos(fl).join(' ').trim();
+if (!text) return res([L('err', 'usage: /steer TEXT: tell the running turn something without stopping it (use the other file, skip the tests); it is read with the agent\'s next step')], 0, 2);
+ss(ctx).steered.push(text);
+return res([L('err', 'steering sent: the agent reads it with its next step')], 0, 2);
+};
+OUT['/compact'] = function (fl, ctx) {
+var focus = pos(fl).join(' ').trim();
+return res([L('err', 'compacted (fork): 4 turns folded, 2612 → 1104 tokens; the next request writes the cached prefix again, once'), ...(focus ? [L('dim', 'focus kept in view: ' + focus)] : [])], 0, 1800, card('compact', [['folded', '4 turns'], ['thread', '2.6k → 1.1k  -57%'], ['rebase', 'a declared, priced event: the next request writes the cached prefix again, once']]));
+};
+OUT['/swarm'] = function (fl) {
+var n = Number(pos(fl)[0]);
+if (!(n >= 0)) return res([L('err', 'usage: /swarm <n> [flags]: start again as a manager and n workers, e.g. /swarm 8 --verify "go test {dirs}" --isolation worktree')], 0, 2);
+if (n > 12) return res([L('bad', 'swarm: ' + n + ' workers requested (and the manager) but swarm.max_workers caps a session at 12 workers')], 0, 3);
+return res([L('err', 'restarting: sleipnir chat --swarm ' + n + ' ' + pos(fl).slice(1).join(' '))], 0, 20, card('swarm', [['workers', String(n)], ['legs', n > 8 ? '8 (worker 9 shares leg 1: +1)' : String(n)], ['the conversation', 'the manager\'s comes along']]));
+};
+OUT['/restart'] = function (fl) { return res([L('err', 'restarting: sleipnir chat ' + Object.keys(fl).filter(function (k) { return k !== '_'; }).map(function (k) { return '--' + k + (fl[k] === true ? '' : ' ' + fl[k]); }).join(' '))], 0, 20); };
+OUT['/new'] = function () { return res([L('err', 'new conversation (same model and mode)')], 0, 4); };
+OUT['/exit'] = function () { return res([L('err', 'bye')], 0, 2); };
+OUT['/stats'] = function (fl, ctx) {
+var a = OUT['/cost'](fl, ctx), b = OUT['/context'](fl, ctx), t = agentTotals(ss(ctx));
+var extra = [L('err', 'saved by the cache at list price: ~' + t.savedText3 + ' (est.)'), L('err', 'all agents: ' + F.tok(t.prompt) + ' prompt tokens, ' + F.tok(t.read) + ' read from the cache, hit ' + t.hitPct + '%, cost ' + t.costText4)];
+return res(a.lines.concat(b.lines, extra), 0, 6, card('stats', [['cost', t.costText4], ['hit', t.hitPct + '%'], ['saved (est.)', t.savedText3], ['compactions', '1'], ['cache breaks', '1']]));
+};
+OUT['/login'] = function (fl, ctx) { return OUT['login']({ _: pos(fl) }, ctx); };
+OUT['/resume'] = function (fl, ctx) { var id = pos(fl)[0]; if (!id) return OUT['sessions']({ n: 10 }, ctx); var r = st(ctx).sessions.filter(function (x) { return x.id.indexOf(id) === 0; })[0]; if (!r) return res([L('bad', 'resume: no session starts with "' + id + '"')], 1, 3); return res([L('err', 'resuming ' + r.id + (r.kind === 'team' ? ' (a team: its manager and its board)' : ''))], 0, 40); };
+OUT['/clear'] = OUT['/new'];
+
+})(typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : this);

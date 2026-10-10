@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // verifyResult is the outcome of the harness's verification gate.
@@ -44,6 +45,60 @@ func (s *Swarm) verify(ctx context.Context, dir string, files []string) verifyRe
 		}
 	}
 	return vr
+}
+
+// verifyFor is verify for the gate of task t: each run that started is also logged as
+// an EventVerifyRun.
+func (s *Swarm) verifyFor(ctx context.Context, t Task, dir string, files []string) verifyResult {
+	start := time.Now()
+	vr := s.verify(ctx, dir, files)
+	if s.cfg.VerifyCmd != "" && (vr.ran || vr.infra && ctx.Err() == nil) {
+		s.logVerifyRun(t, dir, files, vr, time.Since(start))
+	}
+	return vr
+}
+
+// EventVerifyRun is the log event of one run of the verification gate: {task, rev,
+// agent, cmd, exit_code, ok, ms, timed_out, infra, output (the blob of the output's tail,
+// at most maxVerifyRunOutput bytes), bytes (the whole output's size)}. History and the
+// web workspace read a task's gate runs from it.
+const EventVerifyRun = "verify.run"
+
+// maxVerifyRunOutput bounds the output kept for one gate run (the tail, as
+// merge.verify_failed keeps it).
+const maxVerifyRunOutput = 4000
+
+// logVerifyRun records one gate run in the session's log.
+func (s *Swarm) logVerifyRun(t Task, dir string, files []string, vr verifyResult, took time.Duration) {
+	out := vr.out
+	if vr.err != nil && out == "" {
+		out = vr.err.Error()
+	}
+	data := map[string]any{
+		"task": t.ID, "rev": t.Rev, "agent": t.Owner, "cmd": cleanText(ExpandVerify(s.cfg.VerifyCmd, dir, files), 400),
+		"exit_code": vr.code, "ok": vr.ok && vr.ran, "ms": took.Milliseconds(), "infra": vr.infra, "bytes": len(vr.out),
+	}
+	if vr.err != nil && strings.Contains(vr.err.Error(), "timed out") {
+		data["timed_out"] = true
+	}
+	if out != "" && s.deps.Blobs != nil {
+		if h, err := s.deps.Blobs.Put([]byte(tailBytes(out, maxVerifyRunOutput))); err == nil {
+			data["output"] = string(h)
+		}
+	}
+	s.emitAs(t.Owner, EventVerifyRun, data)
+}
+
+// tailBytes keeps the last max bytes of s, cut at a character boundary.
+func tailBytes(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	s = s[len(s)-max:]
+	for len(s) > 0 && !utf8.RuneStart(s[0]) {
+		s = s[1:]
+	}
+	return s
 }
 
 // VerifyRuns is how many times the verify command ran (a run that could not start, or was cut off, is not counted) and how many of them failed.

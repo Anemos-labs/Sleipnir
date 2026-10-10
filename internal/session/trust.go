@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/trust"
 )
@@ -45,6 +47,17 @@ type trustInfo struct {
 
 // TrustLedgerPath is where the answers are kept: the user's state directory, never the project.
 func TrustLedgerPath(home string) string { return filepath.Join(stateRoot(home), "trust.json") }
+
+// RememberTrust records fp as what the person trusts for cwd, in the ledger under home, while holding the ledger file's write lock
+// (config.WriteLock). Every writer of the ledger in this process goes through that lock (sessions that start at the same moment, the
+// web's trust routes), so none loses the yes another wrote: each trust.Ledger value has its own mutex, and the ledger reads, changes
+// and writes the whole file.
+func RememberTrust(home, cwd string, fp *trust.Footprint, now time.Time) error {
+	path := TrustLedgerPath(home)
+	unlock := config.WriteLock(path)
+	defer unlock()
+	return trust.OpenLedger(path).Remember(cwd, fp, now)
+}
 
 // resolveTrust decides whether the session may use what the project itself says (its instruction files, its settings, its skills):
 // the flag says so for one run; an answer that the person gave before holds for exactly the files they saw (a changed file voids it, and
@@ -88,7 +101,7 @@ func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
 	case d.Allow && d.Remember == perm.ScopeProject && !fp.Partial:
 		o.TrustProject = true
 		info.How = trustAskedAndSaved
-		if err := ledger.Remember(o.Cwd, fp, o.Now()); err != nil {
+		if err := RememberTrust(o.Home, o.Cwd, fp, o.Now()); err != nil {
 			info.How = trustAsked
 			sayTrust(o, "warn", "not remembered: "+err.Error())
 		}

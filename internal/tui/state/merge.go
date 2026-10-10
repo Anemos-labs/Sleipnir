@@ -192,6 +192,7 @@ func (s *State) finish(ent *MergeEntry) { s.merge.recent.push(*ent) }
 func (s *State) setQueued(id string, queued bool) {
 	if ts := s.tasks[id]; ts != nil {
 		ts.queued = queued
+		s.touchTask(id)
 	}
 }
 
@@ -199,6 +200,7 @@ func (s *State) setQueued(id string, queued bool) {
 func (s *State) landed(id, outcome, commit string) {
 	if ts := s.tasks[id]; ts != nil {
 		ts.Merge, ts.Commit = outcome, commit
+		s.touchTask(id)
 	}
 }
 

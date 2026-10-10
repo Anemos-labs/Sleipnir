@@ -32,17 +32,26 @@ type Task struct {
 	Status string    `json:"status"`
 	State  TaskState `json:"state"`
 	// Deps are the ids of the tasks it waits for, Files its scope.
-	Deps     []string  `json:"deps,omitempty"`
-	Files    []string  `json:"files,omitempty"`
-	Line     string    `json:"line,omitempty"`     // the latest one-line progress
-	Result   string    `json:"result,omitempty"`   // what the worker said when it finished
-	Evidence string    `json:"evidence,omitempty"` // what the harness observed
-	Attempts int       `json:"attempts,omitempty"`
-	Rev      uint64    `json:"rev,omitempty"`
-	Merge    string    `json:"merge,omitempty"`  // the merge queue's outcome for the current assignment: merged or empty
-	Commit   string    `json:"commit,omitempty"` // the integration commit, 12 characters
-	Seq      uint64    `json:"seq,omitempty"`    // the seq of the board.op that last changed it
-	Updated  time.Time `json:"updated,omitzero"`
+	Deps     []string `json:"deps,omitempty"`
+	Files    []string `json:"files,omitempty"`
+	Line     string   `json:"line,omitempty"`     // the latest one-line progress
+	Result   string   `json:"result,omitempty"`   // what the worker said when it finished
+	Evidence string   `json:"evidence,omitempty"` // what the harness observed
+	Attempts int      `json:"attempts,omitempty"`
+	// Closure is the board's typed closure of the task, as kind or kind(target): verified, agreed, blocked_on(T2), superseded(T7),
+	// canceled, denied, verifier, exhausted (a done or failed task; internal/swarm/closure.go). BlockedOn is the task a blocked task
+	// waits for, when its owner named one.
+	Closure   string `json:"closure,omitempty"`
+	BlockedOn string `json:"blocked_on,omitempty"`
+	// Kind is the task's kind as created (a planning task says "plan"); VerificationFailures counts the failed verification gates of
+	// its current attempt.
+	Kind                 string    `json:"kind,omitempty"`
+	VerificationFailures int       `json:"verification_failures,omitempty"`
+	Rev                  uint64    `json:"rev,omitempty"`
+	Merge                string    `json:"merge,omitempty"`  // the merge queue's outcome for the current assignment: merged or empty
+	Commit               string    `json:"commit,omitempty"` // the integration commit, 12 characters
+	Seq                  uint64    `json:"seq,omitempty"`    // the seq of the board.op that last changed it
+	Updated              time.Time `json:"updated,omitzero"`
 }
 
 // TaskCounts is the number of tasks in each column, and how many of them are blocked.

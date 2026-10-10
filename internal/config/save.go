@@ -27,6 +27,11 @@ import (
 // is the user's, and may name environment variables they would rather not
 // share); an existing file keeps its mode. A symlinked file (dotfiles) stays a
 // symlink: the file it points to is replaced.
+//
+// Within one process, Saves of the same file run one at a time (WriteLock on
+// the file the path resolves to), and each reads the file afresh, so two
+// goroutines that patch different keys both keep their change. Between
+// processes there is no lock: the later rename wins.
 func Save(path string, patch map[string]any) error {
 	if path == "" {
 		return errors.New("config: Save needs a path")
@@ -35,6 +40,7 @@ func Save(path string, patch map[string]any) error {
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		target = real
 	}
+	defer WriteLock(target)() // keyed by the file the path resolves to, also while the file is not there yet
 
 	existing := map[string]any{}
 	mode := fs.FileMode(0o600)

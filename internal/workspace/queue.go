@@ -202,9 +202,44 @@ type Queue struct {
 	closed  bool
 	active  *QueueEntry
 	waiting []*QueueEntry
+	// verifies are the verifications the queue ran, oldest first (at most maxLedger).
+	verifies []VerifyRecord
 }
 
 const maxLedger = 500
+
+// VerifyRecord is one verification the queue ran on a merged result: who submitted
+// what, when it finished, and the verifier's result (Result.OK: the merge went on to
+// be published; otherwise it was rolled back).
+type VerifyRecord struct {
+	Agent, Task string
+	At          time.Time
+	Result      VerifyResult
+}
+
+// Verifications lists the verifications the queue ran for a task (every task when
+// task is ""), oldest first; the queue keeps the last 500.
+func (q *Queue) Verifications(task string) []VerifyRecord {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var out []VerifyRecord
+	for _, v := range q.verifies {
+		if task == "" || v.Task == task {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// noteVerify keeps a verification's record.
+func (q *Queue) noteVerify(s Submission, vr VerifyResult, at time.Time) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.verifies = append(q.verifies, VerifyRecord{Agent: s.Agent, Task: s.Task, At: at, Result: vr})
+	if len(q.verifies) > maxLedger {
+		q.verifies = append([]VerifyRecord(nil), q.verifies[len(q.verifies)-maxLedger:]...)
+	}
+}
 
 func (o QueueOptions) withDefaults(m *Manager) QueueOptions {
 	if o.VerifyTimeout <= 0 {
@@ -648,6 +683,9 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 			Timeout: q.opts.VerifyTimeout, MaxOutput: q.opts.MaxVerifyOutput, Env: q.opts.VerifyEnv,
 		})
 		res.Verify = &vr
+		if ctx.Err() == nil {
+			q.noteVerify(s, vr, q.m.now())
+		}
 		if err := ctx.Err(); err != nil {
 			q.setPhase(entry, "rolling back")
 			if rerr := q.rollbackTo(ctx, prev); rerr != nil {

@@ -7,10 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,8 +21,6 @@ import (
 const (
 	pruneDefaultAge  = 30 * 24 * time.Hour
 	pruneDefaultKeep = 20
-	// pruneInUse is how recently a session's log must have been written for it to be taken for a session that is running.
-	pruneInUse = 10 * time.Minute
 )
 
 type pruneItem struct {
@@ -45,90 +40,22 @@ type prunePlan struct {
 }
 
 // planPrune decides what to delete from the sessions in root: every session whose newest file is older than olderThan, except the
-// newest keep sessions and any written to within pruneInUse of now. A directory without an events.jsonl is not a session and is left
-// alone (the state directory is the person's, and may hold other things), and so is anything that is not a plain directory.
+// newest keep sessions and any written to within ten minutes of now (session.PlanPruneDir, the rule the web interface applies too).
+// A directory without an events.jsonl is not a session and is left alone, and so is anything that is not a plain directory.
 func planPrune(root string, now time.Time, olderThan time.Duration, keep int) (*prunePlan, error) {
-	ents, err := os.ReadDir(root)
+	sp, err := session.PlanPruneDir(root, now, olderThan, keep, nil)
 	if err != nil {
 		return nil, err
 	}
-	type sess struct {
-		pruneItem
-		mod time.Time
+	p := &prunePlan{total: sp.Total, skipped: sp.Skipped, inUse: sp.InUse, freed: sp.Bytes, keptNewest: sp.KeptNewest}
+	for _, r := range sp.Delete {
+		p.items = append(p.items, pruneItem{id: r.ID, path: r.Dir, age: max(now.Sub(r.LastWritten), 0), bytes: r.Bytes})
 	}
-	var all []sess
-	p := &prunePlan{}
-	for _, e := range ents {
-		path := filepath.Join(root, e.Name())
-		fi, err := os.Lstat(path)
-		if err != nil || !fi.IsDir() { // a file, or a link somebody made: not ours to delete
-			continue
-		}
-		log, err := os.Stat(filepath.Join(path, "events.jsonl"))
-		if err != nil {
-			p.skipped = append(p.skipped, e.Name())
-			continue
-		}
-		mod := fi.ModTime()
-		if log.ModTime().After(mod) {
-			mod = log.ModTime()
-		}
-		all = append(all, sess{pruneItem{id: e.Name(), path: path, age: max(now.Sub(mod), 0)}, mod})
-	}
-	p.total = len(all)
-	sort.Slice(all, func(i, j int) bool { return all[i].mod.After(all[j].mod) }) // newest first
-	for i, s := range all {
-		switch {
-		case i < keep:
-			p.keptNewest++
-		case s.age < olderThan:
-		case s.age < pruneInUse:
-			p.inUse = append(p.inUse, s.id)
-		default:
-			s.bytes = dirSize(s.path)
-			p.items = append(p.items, s.pruneItem)
-			p.freed += s.bytes
-		}
-	}
-	for i, j := 0, len(p.items)-1; i < j; i, j = i+1, j-1 { // oldest first
-		p.items[i], p.items[j] = p.items[j], p.items[i]
-	}
-	sort.Strings(p.skipped)
 	return p, nil
 }
 
-// dirSize is the bytes of the regular files under dir; links are counted as themselves, never followed.
-func dirSize(dir string) int64 {
-	var n int64
-	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err == nil && d.Type().IsRegular() {
-			if fi, err := d.Info(); err == nil {
-				n += fi.Size()
-			}
-		}
-		return nil
-	})
-	return n
-}
-
-// parseAge reads a duration the way a person writes one for a directory of old things: 36h, 90m, 30d, 2w, or 0.
-func parseAge(s string) (time.Duration, error) {
-	s = strings.TrimSpace(s)
-	for suffix, unit := range map[string]time.Duration{"d": 24 * time.Hour, "w": 7 * 24 * time.Hour} {
-		if n, ok := strings.CutSuffix(s, suffix); ok {
-			v, err := strconv.ParseFloat(n, 64)
-			if err != nil || v < 0 {
-				return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", s)
-			}
-			return time.Duration(v * float64(unit)), nil
-		}
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil || d < 0 {
-		return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", s)
-	}
-	return d, nil
-}
+// parseAge reads a duration the way a person writes one for a directory of old things: 36h, 90m, 30d, 2w, or 0 (session.ParseAge).
+func parseAge(s string) (time.Duration, error) { return session.ParseAge(s) }
 
 // ageText is an age as a person reads it in a list: 3h, 12d, 5mo.
 func ageText(d time.Duration) string {
@@ -192,7 +119,7 @@ flags:
 	}
 	root := *dir
 	if root == "" {
-		root = sessionsRoot()
+		root = session.SessionsDir("")
 	}
 	plan, err := planPrune(root, now, age, *keep)
 	if errors.Is(err, fs.ErrNotExist) {

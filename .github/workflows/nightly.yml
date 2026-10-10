@@ -144,6 +144,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: sh scripts/gen-cli-docs.sh --check
+      - run: sh scripts/gen-clispec.sh --check
       - name: Cache economics simulator block is current
         run: |
           cp docs/CACHE-ECONOMICS.md /tmp/cache-economics.before

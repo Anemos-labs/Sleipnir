@@ -17,6 +17,7 @@
 /internal/checkpoint/            @Thanos420NoScope
 /internal/workspace/             @Thanos420NoScope
 /internal/gitx/                  @Thanos420NoScope
+/internal/web/                   @Thanos420NoScope
 /.github/                        @Thanos420NoScope
 /scripts/                        @Thanos420NoScope
 /go.mod                          @Thanos420NoScope

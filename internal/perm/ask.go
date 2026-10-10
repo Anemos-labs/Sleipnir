@@ -40,19 +40,30 @@ func (p *prompts) init() {
 	p.inflight = map[string]*pending{}
 }
 
-// promptKey identifies "the same request" for coalescing: same tool, command,
-// directory, paths and effects. The asking agent is deliberately not part of it.
+// promptKey identifies "the same request" for coalescing; the asking agent is
+// deliberately not part of it. A shell command is the same request when the tool,
+// command, directory, paths and effects are: its description or other input does not
+// change what runs. Any other request is the same only when it is byte-identical (tool,
+// directory, paths, effects, summary and input): two edits of one path with different
+// content are two questions, as the person answered for one content, not for another.
 func promptKey(r Request) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%t\x00%t\x00", r.Tool, r.Command, r.Cwd, r.Writes, r.Network)
 	paths := append([]string(nil), r.Paths...)
 	sort.Strings(paths)
+	if r.Command != "" {
+		fmt.Fprintf(h, "%s\x00%s\x00%s\x00%t\x00%t\x00", r.Tool, r.Command, r.Cwd, r.Writes, r.Network)
+		for _, p := range paths {
+			fmt.Fprintf(h, "p=%s\x00", p)
+		}
+		return hex.EncodeToString(h.Sum(nil))
+	}
+	fmt.Fprintf(h, "%d:%s\x00%d:%s\x00%t\x00%t\x00%d:%s\x00", len(r.Tool), r.Tool, len(r.Cwd), r.Cwd,
+		r.Writes, r.Network, len(r.Summary), r.Summary)
 	for _, p := range paths {
-		fmt.Fprintf(h, "p=%s\x00", p)
+		fmt.Fprintf(h, "p%d:%s\x00", len(p), p)
 	}
-	if r.Command == "" && len(r.Paths) == 0 {
-		h.Write(r.Input) // e.g. the URL of a fetch
-	}
+	in := sha256.Sum256(r.Input)
+	h.Write(in[:])
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -166,9 +177,11 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	// The human sees Summary and nothing else; tell them why they are asked.
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)
+	shown.Why = strings.TrimSpace(v.reason)
 	if !v.askRule && len(v.rem) > 0 {
 		shown.Remembers = e.rememberPhrase(v.rem)
 		shown.OffersTests = e.offersTests(v.rem)
+		shown.RememberRules = e.rememberRules(v.rem)
 	}
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
@@ -217,8 +230,26 @@ func (e *Engine) remember(d Decision, v verdict) {
 			// A no, and anything kept beyond the session, stay exact; a yes for the session may be wider (see widen).
 			rule, _ = e.widen(rule)
 		}
-		e.AddRule(d.Remember, rule)
+		origin := OriginRemembered
+		if d.Remember == ScopeProject {
+			origin = OriginProject
+		}
+		e.addRule(d.Remember, rule, origin)
 	}
+}
+
+// rememberRules are the rules a yes "and don't ask again" for the session would add
+// (remember, with the widening of a session answer), as text.
+func (e *Engine) rememberRules(rem []Rule) []string {
+	out := make([]string, 0, len(rem))
+	for _, r := range rem {
+		w, _ := e.widen(r)
+		w.Action = Allow
+		if s := w.String(); !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // rememberPhrase says what a yes for the rest of the session would remember, in the words of the dialog's option: for one command the wider

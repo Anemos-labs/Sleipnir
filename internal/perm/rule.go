@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/weburl"
 )
 
 // Action is what a rule does when it matches.
@@ -134,6 +135,9 @@ type crule struct {
 	domain string // classWeb: "domain:" rules
 	urlPat string // classWeb: other patterns are wildcards over the URL
 	wild   string // classOther: wildcard over Request.Summary
+
+	origin  string // where the rule came from (Classification.Origin)
+	runtime bool   // added while the session ran (AddRule): RemoveRule may remove it
 }
 
 // compileRule prepares r for matching. res may be nil (the pattern is then
@@ -174,6 +178,13 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 			c.blanket = true
 		case strings.HasPrefix(p, "domain:"):
 			c.domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(p, "domain:")), "."))
+			if rest, wild := strings.CutPrefix(c.domain, "*."); wild {
+				if a, ok := weburl.ASCIIName(rest); ok {
+					c.domain = "*." + a
+				}
+			} else if a, ok := weburl.ASCIIName(c.domain); ok {
+				c.domain = a
+			}
 			if c.domain == "" {
 				return nil, fmt.Errorf("perm: rule %s: empty domain", r)
 			}
@@ -311,66 +322,128 @@ func (c *crule) matchCommand(s shellparse.Simple, restrict bool) bool {
 	return false
 }
 
-// urlHost extracts the host a web request is aimed at from its Input.
-func urlHost(r Request) string {
-	if len(r.Input) == 0 {
-		return ""
+// webTarget is the URL a web request goes to, read as the tool that makes it reads it.
+// For a fetch tool (web_fetch and the names rules use for it) that is the "url" field
+// alone, normalised by weburl.Parse, the tool's own parser: a rule about a host is then
+// judged against exactly what is fetched. raw is that field as given, without the white
+// space around it. takesURL is true for such a tool; u is nil when its "url" is missing
+// or is not one the tool would fetch. A search tool takes no URL. For any other tool (an
+// MCP tool that reaches the network) the URL-like fields of its input are read, and only
+// a URL they all agree on counts: two fields that name different hosts name none.
+func webTarget(r Request) (u *url.URL, raw string, takesURL bool) {
+	var m map[string]json.RawMessage
+	if len(r.Input) == 0 || json.Unmarshal(r.Input, &m) != nil {
+		m = nil
 	}
-	var m map[string]any
-	if json.Unmarshal(r.Input, &m) != nil {
-		return ""
+	str := func(k string) (string, bool) {
+		var s string
+		field, ok := m[k]
+		if !ok {
+			return "", false
+		}
+		err := json.Unmarshal(field, &s)
+		return s, err == nil
 	}
+	switch canonTool(normTool(r.Tool)) {
+	case "webfetch":
+		s, ok := str("url")
+		if !ok {
+			return nil, "", true
+		}
+		parsed, err := weburl.Parse(s)
+		if err != nil {
+			return nil, "", true
+		}
+		return parsed, strings.TrimSpace(s), true
+	case "websearch":
+		return nil, "", false
+	}
+	var found *url.URL
 	for _, k := range []string{"url", "uri", "href", "endpoint"} {
-		s, _ := m[k].(string)
-		if s == "" {
+		s, ok := str(k)
+		if !ok || s == "" {
 			continue
 		}
-		if !strings.Contains(s, "://") {
-			s = "//" + s
+		parsed, err := weburl.Parse(s)
+		if err != nil {
+			return nil, "", false
 		}
-		if u, err := url.Parse(s); err == nil && u.Hostname() != "" {
-			return strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+		if found != nil && weburl.Canonical(found) != weburl.Canonical(parsed) {
+			return nil, "", false
 		}
+		found, raw = parsed, strings.TrimSpace(s)
+	}
+	return found, raw, false
+}
+
+// urlHost is the host a web request goes to (webTarget), as rules name hosts; "" when
+// there is none.
+func urlHost(r Request) string {
+	if u, _, _ := webTarget(r); u != nil {
+		return weburl.Host(u)
 	}
 	return ""
 }
 
-// requestURL extracts the first nonempty URL-like string field from valid object arguments,
-// returning empty otherwise.
-func requestURL(r Request) string {
-	var m map[string]any
-	if len(r.Input) == 0 || json.Unmarshal(r.Input, &m) != nil {
-		return ""
+// urlForms are the spellings of a URL a rule about URLs is matched against: the value
+// as the model gave it, the URL as the tool fetches it (weburl.Canonical), that without
+// the "/" of an empty path, and each of these without its scheme. A pattern written in
+// any of the forms rules have been written in ("https://docs.example",
+// "docs.example/*") matches the URL the tool fetches.
+func urlForms(u *url.URL, raw string) []string {
+	canon := weburl.Canonical(u)
+	forms := []string{raw, canon}
+	if u.RawQuery == "" && (u.Path == "" || u.Path == "/") {
+		forms = append(forms, strings.TrimSuffix(canon, "/"))
 	}
-	for _, k := range []string{"url", "uri", "href", "endpoint"} {
-		if s, _ := m[k].(string); s != "" {
-			return s
+	for _, f := range forms[1:] {
+		if _, rest, ok := strings.Cut(f, "://"); ok {
+			forms = append(forms, rest)
 		}
 	}
-	return ""
+	return forms
 }
 
-// matchWeb reports whether a classWeb rule covers the request.
-func (c *crule) matchWeb(r Request) bool {
+// matchWeb reports whether a classWeb rule covers the request. A request of a fetch tool
+// whose URL the tool would not fetch matches no allow rule (it is asked about) and every
+// deny and ask rule that is about hosts or URLs (restrict). A domain is compared in its
+// ASCII (punycode) form.
+func (c *crule) matchWeb(r Request, restrict bool) bool {
 	if c.class != classWeb || !c.nameMatches(r.Tool) {
 		return false
 	}
-	switch {
-	case c.blanket:
+	if c.blanket {
 		return true
-	case c.domain != "":
-		host := urlHost(r)
-		if host == "" {
-			return false
-		}
-		if strings.HasPrefix(c.domain, "*.") {
-			return strings.HasSuffix(host, c.domain[1:])
-		}
-		return host == c.domain || strings.HasSuffix(host, "."+c.domain)
-	default:
-		u := requestURL(r)
-		return u != "" && wildMatch(c.urlPat, u)
 	}
+	u, raw, takesURL := webTarget(r)
+	if u == nil {
+		return restrict && takesURL
+	}
+	return c.matchURL(u, raw, restrict)
+}
+
+// matchURL is matchWeb for one URL the tool would fetch (raw is the field it came from).
+// A host whose ASCII form cannot be made matches a domain only for a deny or ask rule.
+func (c *crule) matchURL(u *url.URL, raw string, restrict bool) bool {
+	if c.domain != "" {
+		host, valid := weburl.HostChecked(u)
+		return (valid || restrict) && c.domainHas(host)
+	}
+	for _, f := range urlForms(u, raw) {
+		if f != "" && wildMatch(c.urlPat, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// domainHas reports whether host (lower case, without a trailing dot) is the rule's
+// domain or under it.
+func (c *crule) domainHas(host string) bool {
+	if strings.HasPrefix(c.domain, "*.") {
+		return strings.HasSuffix(host, c.domain[1:])
+	}
+	return host == c.domain || strings.HasSuffix(host, "."+c.domain)
 }
 
 // matchOther reports whether a classOther rule covers the request by name.

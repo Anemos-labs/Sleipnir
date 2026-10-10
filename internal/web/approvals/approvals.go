@@ -1,0 +1,830 @@
+// Package approvals is the approvals bridge of `sleipnir web`: the perm.Prompter of each hosted session, which puts the
+// harness's questions to the page and waits for a person's answer.
+//
+// A question is never dropped: it waits until it is answered (POST /api/questions/{qid}/answer, through Bridge.Answer), or until
+// it ends for a reason the person can see in the answer it gets: the context that asked ended (an interrupt or a restart:
+// by "canceled"; the engine's --ask-timeout: by "timeout"), its tab was closed (by "closed"), or no page has had the stream open
+// for the grace period (by "nobody"). Every question has a random id of 130 bits, is answered once, and takes no answer earlier
+// than the floor (350 ms) after it was asked and after the previous answer of its tab: a script on the page that answers in the
+// instant the question appears is refused with too_soon, whatever the page itself enforces.
+//
+// The bridge does not choose what an answer means: choice 1 is yes, 2 yes and remember for the session (for a project's tool
+// server or its own files: for the project), 3 no with an optional instruction that the model reads with the refusal, and 4 (only
+// when the question offers it) yes and allow the builds and tests of most projects for the session; the page cannot pick a scope.
+// Choice 2 is offered only where it remembers something: a question about a project's tool server or its own files, or one whose Rule
+// names the rules the permission engine will add (OffersRemember); a question without one takes no choice 2.
+// Questions about the project's own files and its tool servers are refused without being asked while the session is starting:
+// the New session dialog decides those before the start.
+package approvals
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/base32"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/rl/redact"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/web/wire"
+)
+
+// Defaults of a Config.
+const (
+	// DefaultFloor is the least time between a question appearing (or the tab's previous answer) and an answer to it: the terminal
+	// chat's pause before a question takes a key.
+	DefaultFloor = 350 * time.Millisecond
+	// DefaultMaxPerTab bounds the questions of one tab that are open at once; more wait to be asked.
+	DefaultMaxPerTab = 64
+	// MaxNote bounds the instruction that goes with a "no", in characters.
+	MaxNote = 2000
+	// MaxCommand is the longest command a question shows, in bytes: the shell tool's own limit (internal/tools/shell refuses a longer
+	// command), so that any command that can run can be shown whole. A longer one is refused without being asked.
+	MaxCommand = 100_000
+	// MaxChange is the longest change (a unified diff) a question shows, in bytes: the length at which the diff of a pending change
+	// is cut (internal/checkpoint). A change that was cut is refused without being asked.
+	MaxChange = 256 << 10
+	// maxField bounds every other field of a question, in bytes; a longer one is refused without being asked.
+	maxField = 16 << 10
+	// truncatedLine is the line with which internal/checkpoint ends a diff that it cut.
+	truncatedLine = "[diff truncated]"
+	// maxRemembered is how many answered ids are kept to tell "answered" from "no such question".
+	maxRemembered = 4096
+	// DefaultMaxEncoded bounds a question once it is encoded as JSON for the page, in bytes: the event limit of `sleipnir web`'s
+	// stream (1 MiB) less room for the frame around the question. A larger question could not be delivered, so it is not asked.
+	DefaultMaxEncoded = 1<<20 - 16<<10
+	// unshownReason begins the refusal of a request whose question could not be shown to the person whole.
+	unshownReason = "approval required, and the question could not be shown to the person whole, so nothing was approved: "
+)
+
+// Who resolved a question other than a person (wire.Answer.By).
+const (
+	ByYou      = "you"
+	ByTimeout  = "timeout"
+	ByCanceled = "canceled"
+	ByClosed   = "closed"
+	ByNobody   = "nobody"
+)
+
+// noAnswer is the decision of a question that ended without an answer: a refusal that the engine words for the model (it turns it
+// into its "nobody answered in time" refusal when the ask timeout passed).
+var noAnswer = perm.Decision{Allow: false, Reason: "no answer"}
+
+// Config configures a Bridge.
+type Config struct {
+	// Floor is the least time between a question becoming answerable and an answer (DefaultFloor when zero).
+	Floor time.Duration
+	// Grace is how long the open questions wait when no page has a stream open; they are refused after it (by "nobody"). Zero
+	// never refuses for that.
+	Grace time.Duration
+	// Now is the clock (time.Now when nil).
+	Now func() time.Time
+	// OnAsk reports a question that was asked, OnAnswer one that was resolved (answered, refused, cancelled). They are called
+	// outside the bridge's lock and must not block for long. A question's OnAnswer comes after its OnAsk has returned, whatever
+	// resolved it; OnAsk must therefore not wait for the question to be resolved (Refuse it from another goroutine).
+	OnAsk    func(tab string, q wire.Question)
+	OnAnswer func(tab string, a wire.Answer)
+	// SessionTime gives the session time in seconds of a moment of a tab (the t0 of an open question); nil gives 0.
+	SessionTime func(tab string, at time.Time) float64
+	// Change gives the change an edit of a tab asks to make (a path relative to the project and a unified diff), for the
+	// question's body; ok is false when it cannot be shown, and the edit is then refused without being asked. Nil shows the path
+	// only.
+	Change func(tab string, r perm.Request) (path, change string, ok bool)
+	// Where renders a directory of a tab as the question shows it (relative to the project, or naming an isolated worker's tree);
+	// nil shows it relative to the prompter's root.
+	Where func(tab, dir string) string
+	// OnRefused reports a request that was refused without being asked because the question could not be shown whole (a command
+	// longer than MaxCommand, a change that was cut, a value shaped like a secret): agent is as the harness names it, why says so.
+	OnRefused func(tab, agent, why string)
+	// MaxPerTab bounds the open questions of a tab (DefaultMaxPerTab when zero).
+	MaxPerTab int
+	// MaxEncoded bounds a question encoded as JSON, in bytes (DefaultMaxEncoded when zero): the room an event of the page's stream
+	// leaves for it. A larger question is refused without being asked.
+	MaxEncoded int
+}
+
+// question is one open question.
+type question struct {
+	id      string
+	tab     string
+	agent   string // as the harness names it
+	q       wire.Question
+	tests   bool // the fourth answer is offered
+	project bool // a question about the project's files or a tool server: "remember" is for the project
+	created time.Time
+	ans     chan perm.Decision // buffered 1; written once, under the lock
+	asked   chan struct{}      // closed once OnAsk has reported the question: its answer is reported after it, never before
+	done    bool
+}
+
+// Bridge holds the open questions of every tab. Its methods are safe for concurrent use.
+type Bridge struct {
+	cfg Config
+
+	mu          sync.Mutex
+	open        map[string]*question
+	order       []*question // asked order, oldest first; resolved ones are removed
+	lastAnswer  map[string]time.Time
+	answered    map[string]bool
+	answeredQ   []string
+	slots       map[string]chan struct{}
+	pages       int
+	lonelySince time.Time // when the last page left (or the bridge was made); zero while a page is connected
+	closed      bool
+}
+
+// New returns a bridge.
+func New(cfg Config) *Bridge {
+	if cfg.Floor <= 0 {
+		cfg.Floor = DefaultFloor
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	if cfg.MaxPerTab <= 0 {
+		cfg.MaxPerTab = DefaultMaxPerTab
+	}
+	if cfg.MaxEncoded <= 0 {
+		cfg.MaxEncoded = DefaultMaxEncoded
+	}
+	return &Bridge{
+		cfg:  cfg,
+		open: map[string]*question{}, lastAnswer: map[string]time.Time{}, answered: map[string]bool{},
+		slots: map[string]chan struct{}{}, lonelySince: cfg.Now(),
+	}
+}
+
+// newID returns "q_" and 26 lowercase base32 characters of crypto/rand (130 bits).
+func newID() (string, error) {
+	var b [17]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	s := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:]))
+	return "q_" + s[:26], nil
+}
+
+// slot returns the semaphore that bounds the open questions of a tab.
+func (b *Bridge) slot(tab string) chan struct{} {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	s := b.slots[tab]
+	if s == nil {
+		s = make(chan struct{}, b.cfg.MaxPerTab)
+		b.slots[tab] = s
+	}
+	return s
+}
+
+// Prompter is the perm.Prompter of one tab. root is the project root (question paths are shown relative to it); describe gives an
+// agent's task and the globs of its scope ("" when it has none); starting reports whether the tab's session is still being made,
+// when questions about the project's own files and its tool servers are refused without being asked.
+func (b *Bridge) Prompter(tab, root string, describe func(agent string) (task, scope string), starting func() bool) perm.Prompter {
+	return func(ctx context.Context, r perm.Request) perm.Decision {
+		if (r.Tool == perm.ToolProjectTrust || r.Tool == perm.ToolMCPServer) && starting != nil && starting() {
+			return perm.Decision{Allow: false, Reason: "not asked while the session starts: the New session dialog decides this"}
+		}
+		slot := b.slot(tab)
+		select {
+		case slot <- struct{}{}:
+		case <-ctx.Done():
+			return noAnswer
+		}
+		defer func() { <-slot }()
+
+		id, err := newID()
+		if err != nil {
+			return perm.Decision{Allow: false, Reason: "no answer: the question could not be given an id"}
+		}
+		var task, scope string
+		if describe != nil {
+			task, scope = describe(r.Agent)
+		}
+		q := &question{id: id, tab: tab, agent: r.Agent, tests: r.OffersTests,
+			project: r.Tool == perm.ToolProjectTrust || r.Tool == perm.ToolMCPServer,
+			ans:     make(chan perm.Decision, 1), asked: make(chan struct{})}
+		var unshown string
+		q.q, unshown = b.shape(tab, id, root, task, scope, r)
+		if unshown == "" {
+			unshown = b.fits(q.q)
+		}
+		if unshown != "" {
+			// A person must never approve less than what will run: a question that cannot be shown whole is not asked.
+			if b.cfg.OnRefused != nil {
+				b.cfg.OnRefused(tab, r.Agent, unshown)
+			}
+			return perm.Decision{Allow: false, Reason: unshownReason + unshown}
+		}
+
+		b.mu.Lock()
+		if b.closed {
+			b.mu.Unlock()
+			return noAnswer
+		}
+		q.created = b.cfg.Now()
+		b.open[id] = q
+		b.order = append(b.order, q)
+		b.mu.Unlock()
+		if b.cfg.OnAsk != nil {
+			b.cfg.OnAsk(tab, q.q)
+		}
+		close(q.asked) // what resolves it from now on (or waited for this) reports its answer
+
+		select {
+		case d := <-q.ans:
+			return d
+		case <-ctx.Done():
+			by := ByCanceled
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				by = ByTimeout
+			}
+			if b.resolve(q, noAnswer, wire.Answer{QID: id, Choice: 3, By: by}) {
+				return noAnswer
+			}
+			return <-q.ans // answered in the same instant: the answer stands (the engine discards it if the turn is over)
+		}
+	}
+}
+
+// fits says why q cannot be delivered to the page, encoded as the stream encodes it (JSON, with <, > and & escaped), or "" when it
+// can.
+func (b *Bridge) fits(q wire.Question) string {
+	enc, err := json.Marshal(q)
+	switch {
+	case err != nil:
+		return "the question could not be encoded for the page"
+	case len(enc) > b.cfg.MaxEncoded:
+		return fmt.Sprintf("the question is %d bytes once encoded for the page, which takes at most %d: make the request smaller", len(enc), b.cfg.MaxEncoded)
+	}
+	return ""
+}
+
+// Refuse ends an open question that could not be delivered to the pages (its event could not be sent): the request is refused, why
+// says so (in the refusal and through Config.OnRefused), and the answer event says "canceled". It reports whether it ended one.
+func (b *Bridge) Refuse(qid, why string) bool {
+	b.mu.Lock()
+	q := b.open[qid]
+	b.mu.Unlock()
+	if q == nil {
+		return false
+	}
+	if !b.resolve(q, perm.Decision{Allow: false, Reason: unshownReason + why}, wire.Answer{QID: qid, Choice: 3, By: ByCanceled}) {
+		return false
+	}
+	if b.cfg.OnRefused != nil {
+		b.cfg.OnRefused(q.tab, q.agent, why)
+	}
+	return true
+}
+
+// OffersRemember reports whether a question takes choice 2: a question about a project's tool server or its own files remembers
+// for the project, and any other remembers only the rules its Rule names (the permission engine adds none for it otherwise).
+func OffersRemember(q wire.Question) bool {
+	return q.Kind == "trust" || q.Kind == "mcp" || q.Rule != ""
+}
+
+// resolve settles q with d and reports a's answer event, once; it reports whether this call settled it.
+func (b *Bridge) resolve(q *question, d perm.Decision, a wire.Answer) bool {
+	b.mu.Lock()
+	if q.done {
+		b.mu.Unlock()
+		return false
+	}
+	b.settleLocked(q, d)
+	b.mu.Unlock()
+	<-q.asked // a refusal in the instant of the asking is reported after the ask
+	if b.cfg.OnAnswer != nil {
+		b.cfg.OnAnswer(q.tab, a)
+	}
+	return true
+}
+
+// settleLocked marks q answered with d and forgets it as open.
+func (b *Bridge) settleLocked(q *question, d perm.Decision) {
+	q.done = true
+	q.ans <- d
+	delete(b.open, q.id)
+	for i, x := range b.order {
+		if x == q {
+			b.order = append(b.order[:i], b.order[i+1:]...)
+			break
+		}
+	}
+	b.answered[q.id] = true
+	b.answeredQ = append(b.answeredQ, q.id)
+	if len(b.answeredQ) > maxRemembered {
+		delete(b.answered, b.answeredQ[0])
+		b.answeredQ = b.answeredQ[1:]
+	}
+}
+
+// Open lists the open questions of every tab, oldest first.
+func (b *Bridge) Open() []wire.OpenQuestion {
+	b.mu.Lock()
+	qs := append([]*question(nil), b.order...)
+	b.mu.Unlock()
+	out := make([]wire.OpenQuestion, 0, len(qs))
+	for _, q := range qs {
+		oq := wire.OpenQuestion{Tab: q.tab, Q: q.q}
+		if b.cfg.SessionTime != nil {
+			oq.T0 = b.cfg.SessionTime(q.tab, q.created)
+		}
+		out = append(out, oq)
+	}
+	return out
+}
+
+// OpenFor lists the open questions of one tab, oldest first.
+func (b *Bridge) OpenFor(tab string) []wire.Question {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := []wire.Question{}
+	for _, q := range b.order {
+		if q.tab == tab {
+			out = append(out, q.q)
+		}
+	}
+	return out
+}
+
+// TabOf names the tab a question belongs to ("" when it is not open).
+func (b *Bridge) TabOf(qid string) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if q := b.open[qid]; q != nil {
+		return q.tab
+	}
+	return ""
+}
+
+// errorf is a *wire.Error.
+func errorf(status int, code, msg string, detail any) *wire.Error {
+	return &wire.Error{Status: status, Code: code, Msg: msg, Detail: detail}
+}
+
+// decision is what an answer means (the terminal dialog's table, internal/tui/app/chat_dialog.go).
+func decision(q *question, choice int, note string) perm.Decision {
+	switch {
+	case choice == 1:
+		return perm.Decision{Allow: true, Reason: "allowed by user"}
+	case choice == 2 && q.q.Kind == "mcp":
+		return perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}
+	case choice == 2 && q.q.Kind == "trust":
+		return perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}
+	case choice == 2:
+		return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
+	case choice == 4:
+		return perm.Decision{Allow: true, Reason: "builds and tests allowed by user for the session", Remember: perm.ScopeSession, Preset: perm.PresetTests}
+	}
+	return perm.Decision{Allow: false, Reason: perm.DeclinedWith(note)}
+}
+
+// Answer resolves a question with a person's answer: choice 1, 2 (only when OffersRemember), 3 (no, with an optional note of at
+// most MaxNote characters) or 4 (only when the question offers the tests preset). It refuses an answer earlier than the floor after the question was asked and
+// after the tab's previous answer (409 too_soon, with retryAfterMs), a second answer (409 answered) and an unknown id (404
+// no_question). Errors are *wire.Error.
+func (b *Bridge) Answer(ctx context.Context, qid string, req wire.AnswerRequest) (wire.AnswerResult, error) {
+	note := strings.TrimSpace(req.Note)
+	switch {
+	case req.Choice < 1 || req.Choice > 4:
+		return wire.AnswerResult{}, errorf(http.StatusBadRequest, "bad_choice", "the answer is 1, 2, 3 or 4", nil)
+	case note != "" && req.Choice != 3:
+		return wire.AnswerResult{}, errorf(http.StatusBadRequest, "bad_choice", "a note goes with answer 3 (no) only", nil)
+	case utf8.RuneCountInString(note) > MaxNote:
+		return wire.AnswerResult{}, errorf(http.StatusBadRequest, "bad_choice", "the note is longer than 2,000 characters", nil)
+	}
+	note = tools.SanitizeForTerminal(note)
+	b.mu.Lock()
+	q := b.open[qid]
+	if q == nil {
+		answered := b.answered[qid]
+		b.mu.Unlock()
+		if answered {
+			return wire.AnswerResult{}, errorf(http.StatusConflict, "answered", "this question was already answered", nil)
+		}
+		return wire.AnswerResult{}, errorf(http.StatusNotFound, "no_question", "there is no such question", nil)
+	}
+	if req.Choice == 4 && !q.tests {
+		b.mu.Unlock()
+		return wire.AnswerResult{}, errorf(http.StatusBadRequest, "bad_choice", "this question does not offer the builds and tests answer", nil)
+	}
+	if req.Choice == 2 && !OffersRemember(q.q) {
+		b.mu.Unlock()
+		return wire.AnswerResult{}, errorf(http.StatusBadRequest, "bad_choice", "this question does not offer to remember the answer: nothing would be remembered", nil)
+	}
+	now := b.cfg.Now()
+	armAt := q.created
+	if last := b.lastAnswer[q.tab]; last.After(armAt) {
+		armAt = last
+	}
+	armAt = armAt.Add(b.cfg.Floor)
+	if now.Before(armAt) {
+		b.mu.Unlock()
+		wait := armAt.Sub(now)
+		ms := wait.Milliseconds()
+		if time.Duration(ms)*time.Millisecond < wait {
+			ms++
+		}
+		return wire.AnswerResult{}, errorf(http.StatusConflict, "too_soon", "the question takes an answer a moment after it appears; answer again", map[string]int64{"retryAfterMs": ms})
+	}
+	d := decision(q, req.Choice, note)
+	b.lastAnswer[q.tab] = now
+	b.settleLocked(q, d)
+	b.mu.Unlock()
+	<-q.asked
+	rule := ""
+	if req.Choice == 2 {
+		rule = q.q.Rule
+	}
+	if b.cfg.OnAnswer != nil {
+		b.cfg.OnAnswer(q.tab, wire.Answer{QID: qid, Choice: req.Choice, Note: note, By: ByYou, Rule: rule})
+	}
+	return wire.AnswerResult{OK: true, Rule: rule}, nil
+}
+
+// cancel refuses the open questions that match, as by.
+func (b *Bridge) cancel(match func(*question) bool, by string) {
+	b.mu.Lock()
+	var hit []*question
+	for _, q := range b.order {
+		if match(q) {
+			hit = append(hit, q)
+		}
+	}
+	b.mu.Unlock()
+	for _, q := range hit {
+		b.resolve(q, noAnswer, wire.Answer{QID: q.id, Choice: 3, By: by})
+	}
+}
+
+// CancelTab refuses every open question of a tab (by: "closed" or "canceled").
+func (b *Bridge) CancelTab(tab, by string) {
+	b.cancel(func(q *question) bool { return q.tab == tab }, by)
+}
+
+// CancelAgent refuses the open questions of one agent of a tab (an interrupt refuses those of the agent the person talks to). The
+// agent is named as the harness names it; "" and "main" are the questions of the single agent and of the session itself.
+func (b *Bridge) CancelAgent(tab, agent, by string) {
+	b.cancel(func(q *question) bool {
+		if q.tab != tab {
+			return false
+		}
+		if agent == "main" || agent == "" {
+			return q.agent == "main" || q.agent == ""
+		}
+		return q.agent == agent
+	}, by)
+}
+
+// Connected tells the bridge how many pages have a stream open now; the host calls it periodically. When none has been connected
+// for Config.Grace, every open question is refused (by "nobody").
+func (b *Bridge) Connected(n int, at time.Time) {
+	b.mu.Lock()
+	switch {
+	case n > 0:
+		b.pages, b.lonelySince = n, time.Time{}
+	case b.pages > 0 || b.lonelySince.IsZero():
+		b.pages, b.lonelySince = 0, at
+	}
+	refuse := b.cfg.Grace > 0 && b.pages == 0 && !b.lonelySince.IsZero() && at.Sub(b.lonelySince) >= b.cfg.Grace && len(b.order) > 0
+	b.mu.Unlock()
+	if refuse {
+		b.cancel(func(*question) bool { return true }, ByNobody)
+	}
+}
+
+// Close refuses every open question (by "closed") and every question asked afterwards.
+func (b *Bridge) Close() {
+	b.mu.Lock()
+	b.closed = true
+	b.mu.Unlock()
+	b.cancel(func(*question) bool { return true }, ByClosed)
+}
+
+// ---- shaping a question for the page ----
+
+// agentID is the agent as the page names it: the single agent is the manager's place.
+func agentID(a string) string {
+	if a == "" || a == "main" {
+		return "mgr"
+	}
+	return a
+}
+
+// kindOf is the question's kind for its header (wire.Question.Kind): trust, mcp, command, edit, read, web or other.
+func kindOf(r perm.Request) string {
+	switch strings.ToLower(r.Tool) {
+	case perm.ToolProjectTrust:
+		return "trust"
+	case perm.ToolMCPServer:
+		return "mcp"
+	case "bash", "bash_output", "bash_kill":
+		return "command"
+	case "write", "edit", "apply_patch":
+		return "edit"
+	case "read", "glob", "grep", "ls":
+		return "read"
+	case "web_fetch", "web_search":
+		return "web"
+	}
+	return "other"
+}
+
+// splitWhy separates the engine's reason from a summary: the engine appends it as a last " [reason]".
+func splitWhy(summary string) (text, why string) {
+	s := strings.TrimRight(summary, " ")
+	if strings.HasSuffix(s, "]") {
+		if i := strings.LastIndex(s, " ["); i >= 0 {
+			return s[:i], s[i+2 : len(s)-1]
+		}
+	}
+	return summary, ""
+}
+
+// relDir is a directory relative to the project root with a trailing slash, "." for the root itself, or the directory as it is
+// when it is outside the project.
+func relDir(root, dir string) string {
+	if dir == "" || root == "" {
+		return "."
+	}
+	rel, err := filepath.Rel(root, dir)
+	switch {
+	case err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)):
+		return filepath.ToSlash(dir)
+	case rel == ".":
+		return "."
+	}
+	return filepath.ToSlash(rel) + "/"
+}
+
+// visible renders text for the page without hiding any of it: every rune that would not show as itself (see hidden) and every byte
+// that is not UTF-8 is written as an escape (\x1b, \u202e, \U000e0100, \xff), never removed, so that the page shows what will run.
+// Newline and tab stay.
+func visible(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && n <= 1:
+			fmt.Fprintf(&b, "\\x%02x", s[i])
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case hidden(r):
+			switch {
+			case r < 0x80:
+				fmt.Fprintf(&b, "\\x%02x", r)
+			case r <= 0xffff:
+				fmt.Fprintf(&b, "\\u%04x", r)
+			default:
+				fmt.Fprintf(&b, "\\U%08x", r)
+			}
+		default:
+			b.WriteString(s[i : i+n])
+		}
+		i += n
+	}
+	return b.String()
+}
+
+// hidden reports a rune that a page or a terminal would not show as itself: the C0 and C1 controls and DEL; every rune that is not
+// graphic (format characters such as the bidirectional controls, zero-width characters and the byte order mark; the line and
+// paragraph separators; private-use and unassigned code points); the default-ignorable ones that are (the Hangul fillers, the
+// combining grapheme joiner) and the variation selectors; the braille blank; and anything else that tools.SanitizeForTerminal, which
+// cleans text for display elsewhere, would remove or replace.
+func hidden(r rune) bool {
+	switch {
+	case r < 0x80:
+		return r < 0x20 || r == 0x7f
+	case !unicode.IsGraphic(r), unicode.In(r, unicode.Other_Default_Ignorable_Code_Point, unicode.Variation_Selector), r == 0x2800,
+		tools.Invisible(r):
+		return true
+	}
+	s := string(r)
+	return tools.SanitizeForTerminal(s) != s
+}
+
+// SecretKinds are the kinds of values shaped like secrets (internal/rl/redact) that the page never shows: provider keys and other
+// tokens, JWTs, private keys, credentials in URLs, bearer values, key=value secrets and high-entropy values next to a key-like word.
+// The translator masks with the same kinds, so that a question the bridge lets through is one it would not alter.
+func SecretKinds() []string {
+	return []string{redact.GroupTokens, redact.KindJWT, redact.KindPrivateKey, redact.KindURLCred, redact.KindBearer, redact.KindSecret,
+		redact.KindEntropy}
+}
+
+// SecretSalt is the salt of the page's redaction tokens.
+const SecretSalt = "sleipnir-web"
+
+// secrets recognises values shaped like secrets, which the page never shows.
+var secrets = redact.New(redact.Config{Salt: SecretSalt, Kinds: SecretKinds()})
+
+// Shown renders text that a person decides on (a question's field, what a confirmation raises) whole: visible, at most limit bytes
+// of the original, and free of values shaped like secrets (in the text as it is, as the page shows it, and as it reads once the
+// characters that hide are removed). When it cannot be shown so, why says so in a sentence about name, and the caller must not ask
+// the person at all.
+func Shown(name, raw string, limit int) (shown, why string) {
+	if len(raw) > limit {
+		return "", fmt.Sprintf("the %s is %d bytes and the page shows at most %d: split it, or write it to a file and run that", name, len(raw), limit)
+	}
+	v := visible(raw)
+	for _, s := range []string{v, raw, tools.SanitizeForTerminal(raw)} {
+		if _, changed := secrets.Changed(s); changed {
+			return "", "the " + name + " holds a value shaped like a secret, which the page does not show: pass it through an environment variable or a file"
+		}
+	}
+	return v, ""
+}
+
+// showWhole is Shown for a field of a question.
+func (b *Bridge) showWhole(name, raw string, limit int) (string, string) {
+	return Shown(name, raw, limit)
+}
+
+// webText is the whole of what a web fetch or search asks for, from the call's input (its summary is cut to a line): "fetch <url>",
+// "search the web for <query>"; "" when the input cannot be read.
+func webText(r perm.Request) string {
+	var in map[string]json.RawMessage
+	if json.Unmarshal(r.Input, &in) != nil {
+		return ""
+	}
+	str := func(key string) (string, bool) {
+		var v string
+		raw, ok := in[key]
+		return v, ok && json.Unmarshal(raw, &v) == nil
+	}
+	switch r.Tool {
+	case "web_fetch":
+		if u, ok := str("url"); ok {
+			return "fetch " + u
+		}
+	case "web_search":
+		if q, ok := str("query"); ok {
+			return "search the web for " + strconv.Quote(q)
+		}
+	}
+	return ""
+}
+
+// mcpPrefix begins the name of every tool of a tool server (internal/mcp): "mcp__<server>__<tool>".
+const mcpPrefix = "mcp__"
+
+// mcpCall is the whole of a call of a tool server's tool, from the call's input (its summary is a short digest): the server and the
+// tool as the harness names them, and the arguments as indented JSON. ok is false for another tool; text is "" when the arguments
+// cannot be read.
+func mcpCall(r perm.Request) (server, tool, text string, ok bool) {
+	rest, ok := strings.CutPrefix(r.Tool, mcpPrefix)
+	if !ok {
+		return "", "", "", false
+	}
+	server, tool, found := strings.Cut(rest, "__")
+	if !found {
+		server, tool = rest, ""
+	}
+	args := bytes.TrimSpace(r.Input)
+	if len(args) == 0 || string(args) == "null" {
+		args = []byte("{}")
+	}
+	var pretty bytes.Buffer
+	if !json.Valid(args) || json.Indent(&pretty, args, "", "  ") != nil {
+		return server, tool, "", true
+	}
+	text = "MCP " + server + "/" + tool + " with no arguments"
+	if p := pretty.String(); p != "{}" {
+		text = "MCP " + server + "/" + tool + " with the arguments\n" + p
+	}
+	return server, tool, text, true
+}
+
+// shape builds the question the page shows (wire.Question), every field whole; unshown says why it cannot be shown whole (the request
+// is then refused without being asked).
+func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wire.Question, unshown string) {
+	kind := kindOf(r)
+	summary, why := splitWhy(r.Summary)
+	if r.Why != "" {
+		why = r.Why
+	}
+	cmd, cmdName, cmdLimit := r.Command, "command", MaxCommand
+	if cmd == "" || kind != "command" {
+		cmd, cmdName, cmdLimit = summary, "request", maxField
+	}
+	if full := webText(r); kind == "web" && full != "" {
+		cmd = full // the URL or the query whole: the summary is cut, and a path or a query can carry data to an allowed host
+	}
+	server, tool, call, isMCP := mcpCall(r)
+	if isMCP {
+		if call == "" {
+			return wire.Question{}, "the arguments of the tool call cannot be read"
+		}
+		// The arguments whole (the summary is a digest of them), bounded as a command is: the longest text a question asks a person
+		// to read through.
+		cmd, cmdName, cmdLimit = call, "tool call", MaxCommand
+	}
+	where := func(dir string) string {
+		if b.cfg.Where != nil {
+			return b.cfg.Where(tab, dir)
+		}
+		return relDir(root, dir)
+	}
+	cwd := where(r.Cwd)
+	scopeText := "cwd " + cwd
+	if scope != "" {
+		scopeText += " (inside " + agentID(r.Agent) + "'s lease " + scope + ")"
+	}
+	what := r.Remembers
+	if what == "" {
+		switch kind {
+		case "command":
+			what = "this command"
+		case "edit":
+			what = "this change"
+		default:
+			what = "this request"
+		}
+	}
+	// The rules a "don't ask again" adds, every one of them, as the engine writes them; none means that answer is not offered.
+	rule := strings.Join(r.RememberRules, ", ")
+	if isMCP && rule == r.Tool {
+		what = "every call of " + server + "/" + tool + ", whatever its arguments"
+	}
+	q = wire.Question{ID: id, Agent: agentID(r.Agent), Kind: kind, OffersTests: r.OffersTests}
+	// Every field is shown whole or the question is not asked; an exact rule is as long as the command it names.
+	fields := []struct {
+		dst       *string
+		name, raw string
+		limit     int
+	}{
+		{&q.Cmd, cmdName, cmd, cmdLimit}, {&q.Cwd, "directory", cwd, 4096}, {&q.What, "remembered request", what, maxField},
+		{&q.Rule, "rule", rule, MaxCommand + maxField}, {&q.Why, "reason", why, maxField}, {&q.Scope, "scope", scopeText, maxField},
+		{&q.Task, "task", task, 256}, {&q.Tool, "tool", r.Tool, 256},
+	}
+	for _, f := range fields {
+		v, why := b.showWhole(f.name, f.raw, f.limit)
+		if why != "" {
+			return q, why
+		}
+		*f.dst = v
+	}
+	if kind == "edit" {
+		path, change, ok := "", "", true
+		if b.cfg.Change != nil {
+			path, change, ok = b.cfg.Change(tab, r)
+		}
+		switch {
+		case !ok:
+			return q, "the change it would make could not be shown"
+		case len(change) > MaxChange || hasLine(change, truncatedLine):
+			return q, fmt.Sprintf("the change is larger than the page shows (%d bytes): make it in smaller edits", MaxChange)
+		case hasLinePrefix(change, checkpoint.UnshownPrefix):
+			return q, "the file it changes is there and cannot be shown as text, so the change cannot be shown"
+		case hasLinePrefix(change, checkpoint.UnreadPatchPrefix):
+			return q, "the patch cannot be read as the apply_patch tool reads it, so the change cannot be shown"
+		}
+		if path == "" && len(r.Paths) > 0 {
+			paths := append([]string(nil), r.Paths...)
+			sort.Strings(paths)
+			path = strings.TrimSuffix(where(paths[0]), "/")
+		}
+		p, why := b.showWhole("path", path, 4096)
+		if why != "" {
+			return q, why
+		}
+		c, why := b.showWhole("change", change, MaxChange)
+		if why != "" {
+			return q, why
+		}
+		q.Path, q.Change = p, c
+	}
+	return q, ""
+}
+
+// hasLinePrefix reports whether text has a line that begins with prefix.
+func hasLinePrefix(text, prefix string) bool {
+	for _, l := range strings.Split(text, "\n") {
+		if strings.HasPrefix(l, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasLine reports whether text has a line that is exactly line.
+func hasLine(text, line string) bool {
+	for _, l := range strings.Split(text, "\n") {
+		if l == line {
+			return true
+		}
+	}
+	return false
+}

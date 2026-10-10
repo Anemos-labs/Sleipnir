@@ -334,6 +334,9 @@ func (c *cutWriter) Flush() {
 }
 
 func (c *cutWriter) Write(p []byte) (int, error) {
+	if h := c.ResponseWriter.Header(); h.Get("Content-Type") == "" {
+		h.Set("Content-Type", "application/octet-stream") // never left to Go's sniffing of the body
+	}
 	if c.stop {
 		return len(p), nil // the handler thinks it wrote; the client never sees it
 	}

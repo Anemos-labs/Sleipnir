@@ -233,7 +233,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if m != nil {
 		ev = m.ev
 	}
-	if vr := s.verify(ctx, c.Env.Cwd, task.Files); !vr.ok {
+	if vr := s.verifyFor(ctx, task, c.Env.Cwd, task.Files); !vr.ok {
 		if vr.infra {
 			return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
 		}
@@ -318,7 +318,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if _, merged := s.mergedFor(task); !merged {
 				return tools.Errorf("%s was not accepted: work for its current assignment and scope is not in the integration branch (the merge did not run or did not succeed for that scope). Reject it so its worker resubmits, or fail it.", in.ID)
 			}
-		} else if vr := s.verify(ctx, c.Env.Cwd, task.Files); !vr.ok {
+		} else if vr := s.verifyFor(ctx, task, c.Env.Cwd, task.Files); !vr.ok {
 			if vr.infra {
 				return tools.Errorf("%s was not accepted: verification could not run (%v). Retry, or reject it.", in.ID, cleanText(vr.err.Error(), 200))
 			}

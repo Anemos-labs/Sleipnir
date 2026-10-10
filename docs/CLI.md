@@ -28,6 +28,7 @@ remember the answer), `sleipnir trust add` says it without a session, and the an
 | `config` | show the effective configuration and where each value came from |
 | `sessions` | list recorded sessions; `sessions prune` deletes the old ones |
 | `chat` | interactive session with slash commands |
+| `web` | the interface in a browser, on this machine: sessions, workspace and settings |
 | `run` | run one goal (a single agent, or a manager with workers) |
 | `swarm` | shorthand for `run --swarm` |
 | `recon` | print the project survey that seeds the shared prompt layer |
@@ -277,6 +278,140 @@ Usage of chat:
         print notices and tool errors
   -verify string
         swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'
+```
+<!-- /flags -->
+
+### `sleipnir web`
+
+`sleipnir web` serves the interface in a browser and prints the address to open as the first line on standard output; everything
+else it says goes to standard error. The server listens on `127.0.0.1:6969` (`--addr 127.0.0.1:0` picks a free port, and the line
+names the port that was bound), refuses any address that is not loopback, and stops with Ctrl-C (status 0). `--open` opens the
+page in the default browser through the platform's opener; the opener is given a link that works once, for 30 seconds, and not the
+run token, because the arguments of a process can be read by every process of the user.
+
+```text
+http://127.0.0.1:6969/?token=...
+```
+
+The token in the address is 256 random bits, made when the command starts, valid for that run only, and accepted nowhere else:
+there is no flag or environment variable that sets it, and it appears only on that line. The page exchanges it for a session
+cookie (HttpOnly, SameSite=Strict, 24 hours) and removes it from the address bar; the server keeps the sessions, so a session can
+be ended without ending the run. A browser without a session is told to open the address again. A script uses the same token as
+`Authorization: Bearer <token>`; every request other than GET also needs `X-Sleipnir-Web: 1` and, with a body, `Content-Type:
+application/json`. `GET /healthz` answers without a token and says nothing but `{"ok":true}`; `GET /api/ping` needs one. The routes,
+the confirmation protocol and the event stream the page uses are listed in [Web API](WEB-API.md); that interface is the page's and
+may change between releases.
+
+The chat flags (`--model`, `--mode`, `--swarm`, `--budget-usd`, `--isolation`, `--verify`, `--commit`, `--mailman`, `--role-model`,
+`--allow`, `--trust-project`, `--no-mcp`, `--resume`, `--continue`) and `--cwd` are the defaults of the sessions started in the
+page, and mean what they mean in `chat`; without `--swarm` a new session is a manager and eight workers, as in the chat on a
+terminal. The page loads nothing from the network: its scripts, styles and fonts are in the binary. Sessions run in this
+process with the same permissions as in the terminal, and with your rights; read `docs/SECURITY.md` section 5 before pointing
+anything but a browser on this machine at it. To use it from another machine, forward the port with SSH
+(`ssh -L 6969:127.0.0.1:6969 host`) and open the address there.
+
+The first session starts once the server holds its address, in `--cwd` with those defaults, as `sleipnir chat` would start
+(`--resume` and `--continue` included); when no model is configured and the terminal can ask, the chat's first-run setup runs
+before the address is printed. A run that cannot bind its address starts no session and changes nothing. Ctrl-C closes every
+session, waiting for the closes already under way (an isolated team's verified work is applied first), and records them as
+interrupted, as the terminal chat does. A first session that cannot start is reported on standard error, and the page opens with no
+session and offers a new one. Every session of the page runs in this one process; a restart (`/new`, `/clear`, `/swarm N`,
+`/restart`, a team's model or role change, Run settings Apply) closes the session first, an isolated team's verified work being
+applied to the checkout as at the end of a chat, and starts the next in the same tab. `/swarm N`, Apply and "run it again" carry
+the manager's conversation, as in the chat; `/new` and `/clear` start empty. A new session starts only in a directory of the
+projects list: `--cwd`, each `--project`, the directories of the open sessions, of the recorded sessions and of the trust ledger.
+Asking for `--trust-project` on a project whose files are not trusted shows them first and records the answer, as `sleipnir
+trust add` does.
+
+What raises a session's privilege is checked where it takes effect, on what will take effect: the final arguments of a new
+session or a restart (the flags staged in Run settings included), the mode, the rules, whichever control or slash line asks for it.
+A dangerous mode (`bypass`, `yolo`), trusting a project's own files, an allow rule the session does not have yet, a `--verify`
+command and taking back a deny or ask rule each need a confirmation: the request is answered `428 confirm_required` with the scope
+in `X-Confirm-Scope` and in `detail.scope` (with `detail.reasons`), and is repeated with an id for that scope (`POST /api/confirm`)
+in `X-Confirm`. An id is good once, for one minute, for exactly what it was asked for. Any signed-in client can obtain one: the
+confirmation stops forged, replayed and stale requests and is where the page shows the person what is raised; it is not a second
+credential. A new session or a resume is measured against the server's own flags, a restart against the session it replaces; trust
+given to one directory does not follow a session into another, so a restart or a resume in another project asks for that project's
+files. A restart that keeps trusting its project reads the project's files again, and when they are not the ones confirmed for the
+session (an agent rewrote `AGENTS.md`), it needs a confirmation that names what changed before it starts. A restart into a directory that is not in the projects list is refused, as a new session there is. A project whose own files
+cannot all be read (a link that leaves it, more files than a scan reads) is listed as `partial`, never as having nothing to trust;
+trusting it names what could not be read and lasts for that session only.
+
+Questions are answered in the page: yes; yes and do not ask again this session (for a project's tool server or its own files: for
+the project), offered only when that answer remembers a rule, and showing exactly the rules it adds; yes and allow the builds and tests of most projects for the session, when the question is about one of them; no,
+with an optional instruction that the agent reads with the refusal. A question shows everything that would run: the whole
+command (up to the shell tool's own limit of 100,000 bytes), the whole change of an edit, every rule a "don't ask again" would add,
+with terminal controls and characters that reorder text or show as nothing shown as escapes rather than removed. A request whose
+question cannot be shown whole (longer than that, a change longer than 256 KiB, a value shaped like a secret, which the page does not
+show, a write over a file that cannot be shown as text, a patch the `apply_patch` tool cannot read, a question larger than the
+page's stream carries) is refused without being asked, and the session says so; so is a question whose event could not be sent. A web
+fetch or search is shown with its whole URL or query, a tool server's tool call with its whole arguments (its "don't ask again"
+covers every call of that tool, whatever the arguments), a patch as the `apply_patch` tool reads it, and the change of a write
+through a link is drawn against the file the link leads to. An answer earlier than 350 ms after the question appeared, or after the session's
+previous answer, is refused, whatever the page does. A question nobody answered within `--ask-timeout` is
+refused (`0`, the default, waits), and so is every open question once no page has had the interface open for `--ask-grace`
+(one minute by default; `0` never refuses for that). Questions about a project's own files and its tool servers are not asked
+while a session starts: the New session dialog decides them before, and a tool server that needs approval stays off until it is
+approved and the session starts again.
+
+<!-- flags: web -->
+```text
+usage: sleipnir web [flags]
+
+Serves the interface in a browser, on this machine: chat sessions with a
+manager and workers, approvals, the workspace and the settings. The first line
+printed on standard output is the address to open. It carries a token that is
+valid for this run only; the page exchanges it for a session cookie and
+removes it from the address bar.
+
+The server binds to loopback and refuses any other address. It runs the same
+sessions, with the same permissions, as the terminal chat, with your rights: a
+process or a person who can read that address can act as you. To use it from
+another machine, forward the port with SSH.
+
+The chat flags are the defaults of the sessions started in the page.
+
+flags:
+  -addr string
+        listen address; only a loopback address is accepted (127.0.0.1:0 picks a free port) (default "127.0.0.1:6969")
+  -allow value
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
+  -ask-grace duration
+        refuse the open questions when no page has had the interface open for this long (0 never refuses for that) (default 1m0s)
+  -ask-timeout duration
+        refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)
+  -budget-usd float
+        default spending limit of new sessions, in US dollars
+  -commit
+        swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)
+  -continue
+        continue this project's newest session (same as --resume latest)
+  -cwd string
+        working directory of the sessions started in the page (default: the current directory)
+  -isolation string
+        swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
+  -mailman
+        swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
+  -mode string
+        default permissions of new sessions: default | accept-edits | plan | bypass | yolo
+  -model string
+        default model of new sessions: provider/model or a bare id for the default provider
+  -no-mcp
+        start no MCP tool servers in new sessions
+  -open
+        open the page in the default browser, with a link that works once for 30 seconds (the run token stays out of the opener's arguments)
+  -project value
+        a directory a new session may also start in, repeatable (the page offers --cwd, the open sessions' and the recorded ones')
+  -resume string
+        continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
+  -role-model value
+        role=model override for new sessions, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
+  -swarm int
+        new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers, --swarm 0 is a single agent
+  -trust-project
+        trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
+  -verify string
+        swarm: command the harness runs before a worker's task may leave 'doing' (see sleipnir chat -h); {dirs} stands for the directories the task may touch
 ```
 <!-- /flags -->
 
@@ -1720,10 +1855,9 @@ flags:
 | `/exit` (also `/quit`) | quit; Ctrl-D does the same, and so does Ctrl-C twice at the prompt |
 | `/<name> [args]` | a custom command from `commands/`, or a skill; `docs/EXTENDING.md` sections 2 and 3 |
 
-A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. Reserved names some of which
-are not implemented (`/clear`, `/config`, `/doctor`, `/hooks`, `/init`, `/logout`, `/memory`,
-`/skill`, `/usage`) cannot be used for custom commands and currently
-answer `unknown command`.
+A line that starts with `/` and matches nothing prints `unknown command /x; try /help`. `/clear` is the same as `/new`. Reserved
+names that are not implemented (`/config`, `/doctor`, `/hooks`, `/init`, `/logout`, `/memory`, `/skill`, `/usage`) cannot be used
+for custom commands and answer `unknown command`.
 
 ### Inside the chat: every starting flag
 

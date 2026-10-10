@@ -241,7 +241,7 @@ func (r *Repo) run(ctx context.Context, c call) (*output, error) {
 // files of their own choosing into the current directory (format-patch) are absent
 // on purpose.
 var allowedSubcommands = map[string]bool{
-	"add": true, "apply": true, "branch": true, "cat-file": true, "checkout": true, "cherry-pick": true,
+	"add": true, "apply": true, "blame": true, "branch": true, "cat-file": true, "checkout": true, "cherry-pick": true,
 	"clean": true, "commit": true, "commit-tree": true, "diff": true, "diff-files": true, "diff-index": true,
 	"diff-tree": true, "for-each-ref": true, "log": true, "ls-files": true,
 	"ls-tree": true, "merge": true, "merge-base": true, "merge-file": true, "merge-tree": true,
@@ -276,6 +276,9 @@ var deniedOptions = map[string][]string{
 	"show":        diffLike,
 	"rev-list":    diffLike,
 	"cat-file":    {"--textconv", "--filters"},
+	// blame reads the file named by --contents, --ignore-revs-file and -S: paths of the
+	// caller's choosing (BlameContents passes content on stdin itself).
+	"blame": {"--contents", "--ignore-revs-file", "--textconv", "--output", "--ext-diff"},
 }
 
 var diffLike = []string{"--output", "--ext-diff", "--textconv", "--show-signature", "--open-files-in-pager"}
@@ -304,6 +307,9 @@ func checkGitArgs(args []string) error {
 		// (runs a program) for the subcommands that create commits. They may be bundled
 		// (-ix, -aS) or carry an attached value (-Skeyid).
 		if len(a) > 1 && a[0] == '-' {
+			if sub == "blame" && strings.ContainsRune(a, 'S') {
+				return newErr(KindInvalid, sub, "option %q is not allowed", a)
+			}
 			switch sub {
 			case "rebase":
 				if strings.ContainsRune(a, 'x') {

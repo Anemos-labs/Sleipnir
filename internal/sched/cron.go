@@ -1,5 +1,6 @@
 // Package sched runs the agent on a schedule: a job is a goal, a model and a cron expression, kept in a JSON file; the daemon
-// (cmd/sleipnir/daemon.go) starts a headless `sleipnir run` for every job that is due. This file is the cron expression: five
+// (Tick and RunJob, run by `sleipnir daemon` and by `sleipnir web`) starts a headless `sleipnir run` for every job that is due, and
+// one lock file (Lock) keeps two daemons from starting the same job. This file is the cron expression: five
 // fields (minute hour day-of-month month day-of-week), each "*", a number, a range "a-b", a list "a,b", and "/n" steps ("*/15",
 // "10-30/5"). Day-of-week is 0-6 with 0 Sunday (7 is Sunday too); a day matches when both day fields match, or, if both are
 // restricted, when either does, as in cron. "@hourly", "@daily" and "@weekly" are shorthands. Times are in the location given.
@@ -47,6 +48,7 @@ func ParseCron(expr string) (Cron, error) {
 	return c, nil
 }
 
+// parseField parses one field of an expression (lists, ranges, steps, *) into the bit set of the values it names within lo..hi.
 func parseField(s string, lo, hi int) (uint64, error) {
 	var set uint64
 	for _, part := range strings.Split(s, ",") {

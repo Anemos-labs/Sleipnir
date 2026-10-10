@@ -86,6 +86,21 @@ func additive(segs []string) bool {
 	return false
 }
 
+// holdsAdditive reports whether the value at segs is a section that contains additive lists: permissions, permissions.roles, one
+// role's section and hooks. A repository may add inside such a section but must not unset it or replace it by a scalar or a list,
+// because that would take the user's deny and ask rules or hooks with it.
+func holdsAdditive(segs []string) bool {
+	switch len(segs) {
+	case 1:
+		return segs[0] == "permissions" || segs[0] == "hooks"
+	case 2:
+		return segs[0] == "permissions" && segs[1] == "roles"
+	case 3:
+		return segs[0] == "permissions" && segs[1] == "roles"
+	}
+	return false
+}
+
 // repoSupplied reports whether the layer being merged arrives with a repository.
 func (m *merger) repoSupplied() bool { return m.kind == "project" || m.kind == "local" }
 
@@ -126,6 +141,9 @@ func (m *merger) mergeObject(dst, src map[string]any, segs []string, source stri
 	for _, k := range sortedKeys(src) {
 		v := src[k]
 		p := cloneSegs(segs, k)
+		if _, isMap := v.(map[string]any); m.repoSupplied() && holdsAdditive(p) && !isMap {
+			continue
+		}
 		if m.repoSupplied() && additive(p) {
 			// A repository adds to these lists and cannot take from them: null and
 			// an empty list change nothing, a longer list appends.

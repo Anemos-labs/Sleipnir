@@ -1,0 +1,154 @@
+package wire
+
+// CLISpec is every `sleipnir` command with its flags, as the runner builds forms from it. It is generated from docs/CLI.md (see
+// internal/web/clispec): GeneratedFrom and Generator name its source, Commands are the commands, ChatSlash the chat's slash commands
+// and ExitCodes the exit statuses of the program.
+type CLISpec struct {
+	GeneratedFrom string       `json:"generatedFrom"`
+	Generator     string       `json:"generator"`
+	Commands      []CLICommand `json:"commands"`
+	ChatSlash     []SlashEntry `json:"chatSlash"`
+	ExitCodes     []ExitCode   `json:"exitCodes"`
+}
+
+// CLICommand is one command path with its usage, summary, positionals and flags; Mode says how the web runs it (run, net, priv,
+// server, tty_only) and Why, for a command that is refused or depends on its flags, says so in one sentence. When lists the flags
+// that change the mode (inspect --json runs, sessions prune --yes needs a confirmation). Parent names the command a subcommand belongs
+// to, AliasOf the command line it stands for (swarm is run --swarm N), and Index marks a group that only lists its subcommands.
+type CLICommand struct {
+	Path       []string        `json:"path"`
+	Usage      string          `json:"usage"`
+	Summary    string          `json:"summary"`
+	Positional []CLIPositional `json:"positional"`
+	Flags      []CLIFlag       `json:"flags"`
+	Source     string          `json:"source,omitempty"`
+	Mode       string          `json:"mode"`
+	Why        string          `json:"why,omitempty"`
+	When       []CLIModeRule   `json:"when,omitempty"`
+	Parent     string          `json:"parent,omitempty"`
+	AliasOf    string          `json:"aliasOf,omitempty"`
+	Index      bool            `json:"index,omitempty"`
+}
+
+// CLIModeRule changes a command's mode when a flag is set (to one of Values, when there are any; to an address that is not
+// loopback, with NonLoopback). NoKeys says that the run then gets none of the held provider keys (the flag names an endpoint or a key
+// variable of the run's own).
+type CLIModeRule struct {
+	Flag        string   `json:"flag"`
+	Values      []string `json:"values,omitempty"`
+	Mode        string   `json:"mode"`
+	NonLoopback bool     `json:"nonLoopback,omitempty"`
+	NoKeys      bool     `json:"noKeys,omitempty"`
+}
+
+// CLIPositional is a positional argument; Variadic takes the remaining words.
+type CLIPositional struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+	Desc     string `json:"desc,omitempty"`
+	Variadic bool   `json:"variadic,omitempty"`
+}
+
+// CLIFlag is one flag: Arg is bool, string, int, uint, float or duration. Choices lists the values the flag takes when they are a
+// fixed set; Required marks a flag the command cannot run without.
+type CLIFlag struct {
+	Name        string   `json:"name"`
+	Arg         string   `json:"arg"`
+	Default     any      `json:"default"`
+	DefaultNote string   `json:"defaultNote,omitempty"`
+	Repeatable  bool     `json:"repeatable"`
+	Desc        string   `json:"desc"`
+	Choices     []string `json:"choices,omitempty"`
+	Required    bool     `json:"required,omitempty"`
+}
+
+// SlashEntry is a chat slash command for the / menu and the palette.
+type SlashEntry struct {
+	Cmd         string `json:"cmd"`
+	Args        string `json:"args"`
+	Desc        string `json:"desc"`
+	Group       string `json:"group"`
+	PaletteArgs string `json:"paletteArgs,omitempty"`
+	PaletteDesc string `json:"paletteDesc,omitempty"`
+	Custom      bool   `json:"custom,omitempty"`
+}
+
+// ExitCode is one exit status of the program and what it means.
+type ExitCode struct {
+	Code    int    `json:"code"`
+	Meaning string `json:"meaning"`
+}
+
+// RunRequest runs a command: Path, positional values by name, flag values by name (strings, numbers, booleans; repeatable flags
+// as arrays), and the tab whose directory it runs in (a command of mode priv also needs an X-Confirm id for the scope
+// "run:<d16 of the argument vector>"; the refusal that asks for it names the scope).
+type RunRequest struct {
+	Path  []string          `json:"path"`
+	Pos   map[string]string `json:"pos,omitempty"`
+	Flags map[string]any    `json:"flags,omitempty"`
+	Tab   string            `json:"tab,omitempty"`
+}
+
+// RunStarted is the id of a started run and its command line as the person would type it.
+type RunStarted struct {
+	ID      string `json:"id"`
+	Cmdline string `json:"cmdline"`
+}
+
+// RunLine is one line of output: K is out, err, dim, head, ok, warn or bad.
+type RunLine struct {
+	K string `json:"k"`
+	T string `json:"t"`
+}
+
+// RunCard is the result card: a title and labelled values.
+type RunCard struct {
+	Title string      `json:"title"`
+	Rows  [][2]string `json:"rows"`
+}
+
+// RunResult is how a run ended.
+type RunResult struct {
+	Exit     int      `json:"exit"`
+	Ms       int64    `json:"ms"`
+	Card     *RunCard `json:"card,omitempty"`
+	Canceled bool     `json:"canceled,omitempty"`
+}
+
+// DoctorStep is one request of a doctor probe as the Doctor page draws it.
+type DoctorStep struct {
+	OK     bool   `json:"ok"`
+	Name   string `json:"name"`
+	Ms     int64  `json:"ms"`
+	Grp    string `json:"grp"`
+	In     int    `json:"in"`
+	Cached int    `json:"cached"`
+	Out    int    `json:"out"`
+}
+
+// DoctorVerdict is the end of a doctor probe: what the endpoint does, warnings, and the summary card.
+type DoctorVerdict struct {
+	KV   [][2]string `json:"kv"`
+	Warn []string    `json:"warn,omitempty"`
+	Card *RunCard    `json:"card,omitempty"`
+}
+
+// RunFrame is the data of a "run" frame.
+type RunFrame struct {
+	ID      string         `json:"id"`
+	Lines   []RunLine      `json:"lines,omitempty"`
+	Step    *DoctorStep    `json:"step,omitempty"`
+	Verdict *DoctorVerdict `json:"verdict,omitempty"`
+	Result  *RunResult     `json:"result,omitempty"`
+}
+
+// RunInfo is a run in the recent-runs list.
+type RunInfo struct {
+	ID      string         `json:"id"`
+	Path    []string       `json:"path"`
+	Flags   map[string]any `json:"flags,omitempty"`
+	Cmdline string         `json:"cmd"`
+	Exit    *int           `json:"exit,omitempty"`
+	Ms      int64          `json:"ms"`
+	Running bool           `json:"running"`
+}

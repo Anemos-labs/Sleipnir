@@ -1,0 +1,112 @@
+/* 91-web.css: what Sleipnir Web adds to the Dock: the Team activity feed (read-only), the read-only drawer, the permission dropdown, the dangerous modes
+ * in the New session dialog and the quiet cache details. Loaded last. */
+
+/* ---------- the Radio rail: the manager's chat, then Team activity ---------- */
+.feedwrap{flex:0 40 176px;min-height:30px;display:flex;flex-direction:column;border-top:1px solid var(--line);min-width:0}
+.feedwrap.shut{flex:none}
+.feedh{display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px 5px;text-align:left;font:700 11px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex:none}
+.feedh:hover{color:var(--fg)}
+.feedh .fq{margin-left:auto;font:500 10.5px var(--f-num);letter-spacing:0;text-transform:none;color:var(--dim)}
+.feedh .fc{font-size:11px;line-height:1;transition:transform .12s}
+.feedwrap.shut .fc{transform:rotate(-90deg)}
+.feed{flex:1 1 auto;min-height:0;padding:1px 12px 6px;gap:3px}
+.feed .msg{font-size:11.5px;line-height:1.3}
+.feed .msg.live>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.feed .msg.live[data-ag]{cursor:pointer}
+.feed .msg.live[data-ag]:hover{background:var(--panel2)}
+.feed .msg.compact{flex-wrap:nowrap;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11.5px}
+.feed .msg.stream{font-size:11.5px;color:var(--fg2)}
+.feed .msg.empty{padding:2px 0;text-align:left}
+.feed.quiet .msg.live[data-g="tool"],.feed.quiet .msg.live[data-g="edit"]{display:none}
+/* a cache break in Quiet: one calm line, no flash and no pink card */
+.msg.break.calm{display:flex;gap:6px;align-items:baseline;border:0;background:none;padding:0;font:500 11.5px/1.3 var(--f-num);color:var(--fg2)}
+.msg.break.calm .lg{flex:none;width:12px;text-align:center}
+.msg.break.calm .bt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.msg.break.calm b{color:var(--fg)}
+@media (max-height:800px) and (min-width:901px){
+  .feedh{padding:4px 12px 3px}
+  #rail:has(#qSlot .qstrip) .feedwrap{flex:0 40 30px}
+}
+@media (max-width:900px){
+  .feedwrap{flex:none;margin:0 0 4px}.feed{max-height:230px;overflow:auto}.feedh{padding:8px 16px 6px}.feed{padding:2px 16px 8px}
+}
+
+/* ---------- the drawer is read-only ---------- */
+.dr-ro{margin:0;padding:8px 14px 10px;border-top:1px solid var(--line);font:italic 11.5px/1.35 var(--f-ui);color:var(--dim)}
+.dstate{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin:0 0 10px;font:500 12.5px/1.35 var(--f-ui);color:var(--fg)}
+.dstate b{font:700 11.5px var(--f-num);color:var(--fg2);white-space:nowrap}
+.dstate b.st-ask{color:var(--warm)}.dstate b.st-done{color:var(--ok)}.dstate b.st-stuck{color:var(--err)}
+.dr-b>*{flex:none}.dr-b .tsteps{margin:0 0 12px;flex:none}
+.dr-h .r3{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font:500 11px var(--f-num);color:var(--dim)}
+.lnk{font:600 11.5px var(--f-num);color:var(--fe);text-decoration:underline;text-underline-offset:2px;padding:0 2px}
+.lnk:hover{color:var(--bright)}
+.chhead .mst{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;font:500 11.5px var(--f-num);color:var(--fg2)}
+.chhead .sp{display:none}
+
+/* ---------- New session: the five permission modes ---------- */
+.nsmodes{display:flex;flex-direction:column;gap:3px}
+.nsmode{display:grid;grid-template-columns:104px 1fr;gap:10px;align-items:baseline;text-align:left;padding:5px 9px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--fg2)}
+.nsmode .nm{font:700 12px var(--f-num);color:var(--bright);white-space:nowrap}
+.nsmode .nd{font:400 12px/1.3 var(--f-ui);color:var(--fg2)}
+.nsmode:hover{border-color:var(--dim)}
+.nsmode[aria-checked="true"]{background:var(--raise);border-color:var(--fe);box-shadow:inset 3px 0 var(--fe)}
+.nsmode.dng{border-color:var(--err-b);background:repeating-linear-gradient(135deg,var(--err-c) 0 6px,transparent 6px 12px),var(--panel2)}
+.nsmode.dng .nm{color:var(--err)}.nsmode.dng .nm i{font-style:normal}
+.nsmode.dng[aria-checked="true"]{border-color:var(--err);box-shadow:inset 3px 0 var(--err);background:repeating-linear-gradient(135deg,var(--err-b) 0 6px,var(--err-c) 6px 12px),var(--panel2)}
+.nswarn{margin-top:6px;padding:7px 10px;border:1px solid var(--err);background:var(--err-a);color:var(--err);font:600 12px/1.35 var(--f-ui)}
+.nswarn[hidden]{display:none}
+.cli-danger{color:var(--err);font-weight:700}
+.stab .dgm{flex:none;margin-left:3px;font-size:11px;line-height:1;color:var(--err)}
+@media (max-width:560px){.nsmode{grid-template-columns:1fr;gap:1px}}
+
+/* ---------- the permission mode: a dropdown, not a button that cycles ---------- */
+.mode .caret{flex:none;opacity:.7}
+.mode[aria-expanded="true"]{border-color:var(--fe);color:var(--bright)}
+.popover.modemenu{width:min(310px,calc(100% - 16px));padding:4px;bottom:auto;display:flex;flex-direction:column}
+.popover.modemenu button{display:grid;grid-template-columns:16px 1fr;column-gap:6px;row-gap:1px;width:100%;padding:6px 8px;text-align:left;color:var(--fg2);border-radius:2px}
+.modemenu button:hover,.modemenu button:focus-visible{background:var(--raise);color:var(--bright)}
+.modemenu .ck{grid-row:1/3;font-style:normal;text-align:center;color:var(--ok);font-weight:700}
+.modemenu .mn{font:700 12.5px var(--f-num);color:var(--bright)}
+.modemenu .md{grid-column:2;font:400 11.5px/1.3 var(--f-ui);color:var(--dim)}
+.modemenu button[aria-checked="true"] .mn{color:var(--ok)}
+.modemenu hr{border:0;border-top:1px solid var(--line2);margin:4px 2px}
+.modemenu .dngi .mn{color:var(--err)}.modemenu .dngi .ck{color:var(--err)}
+
+/* ---------- Cache details: Quiet (the default) and Full ----------
+ * Quiet keeps the cache out of the way: no saved or hit figures on the stalls, the Manager card, the session cards, the drawer header or the budget
+ * page; the HUD shows one small dim chip; the warm clock is small; a cache break is one calm line in Team activity and a small warning on the stall. */
+body.cq .qfull{display:none!important}
+body.cq .stall .n-hit,body.cq .stall .s-spark,body.cq .mgr-card .n-hit,body.cq .mgr-card .s-spark{display:none}
+body.cq .stall .s-nums{margin-top:auto}
+body.cq .mgr-card{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"top doing nums" "meta doing nums"}
+.s-meta .brk .bx{display:inline}
+body.cq .s-meta .brk{border:0;padding:0 2px;font-size:13px;color:var(--warm);animation:none;margin-left:auto}
+body.cq .s-meta .brk .bx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* the HUD: the hit ring becomes a small dim chip, the warm clock shrinks */
+.hitchip{display:none}
+body.cq #ringHit{padding:0;gap:0;align-self:center}
+body.cq #ringHit>svg,body.cq #ringHit>.rt{display:none}
+body.cq .hitchip{display:inline-flex;gap:4px;align-items:baseline;font:500 11px/1 var(--f-num);color:var(--dim);padding:3px 7px;border:1px solid var(--line);border-radius:10px;white-space:nowrap}
+body.cq .hitchip b{font-weight:600;color:var(--fg2)}
+body.cq #warmSvg{width:44px;height:44px}
+body.cq #warmTicks{display:none}
+body.cq #ringWarm .ring-arc{stroke:var(--dim)}
+body.cq #ringWarm.low .ring-arc{stroke:var(--err)}
+body.cq #ringWarm .rt small{font-size:10px;letter-spacing:.08em}
+body.cq #ringWarm .note{display:none}
+body.cq #ringWarm.low .note,body.cq #ringWarm.cold .note{display:block}
+body.cq #ringWarm:not(.low):not(.cold) .rv{fill:var(--fg2)}
+body.cq #ringWarm.pulse .ring-flash{animation:none}
+body.cq #ringWarm.pulse.low .ring-flash,body.cq #ringWarm.pulse.cold .ring-flash{animation:ringflash .7s ease-out}
+/* the Cache view stays reachable and calm */
+body.cq .anom .a{background:none;border-left-color:var(--warm)}
+body.cq .anom .a b{color:var(--warm)}
+.c-sav{margin:6px 0 0;font:400 11.5px var(--f-ui);color:var(--dim)}
+
+/* dialogs live outside the views' container: their two-column grids and label columns fold on a phone */
+@media (max-width:760px){.sheet .g2{grid-template-columns:minmax(0,1fr)}.sheet .fld{grid-template-columns:minmax(0,1fr)}.sheet .fld>label{padding-top:0}}
+/* Team activity: when the section is squeezed to its header, the half row left under it is hidden */
+.feedwrap{container-type:size}
+@container (max-height:64px){.feed{visibility:hidden}}
+@media (max-width:900px){.feedwrap{container-type:normal}}
+.tsteps li{color:var(--dim)}

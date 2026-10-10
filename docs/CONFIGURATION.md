@@ -337,7 +337,15 @@ tool list or permission rules.
 `web_allow_hosts` is an exemption from the private-network guard, not a list of the only hosts the agent may fetch:
 public hosts are reachable, subject to permissions. Whether a fetch is allowed at all is decided by `permissions`:
 in `default` mode `web_fetch` asks; `WebFetch(domain:example.com)` in `allow` lets it through (host and subdomains), and
-an allow rule also lifts the ban that `plan` mode puts on network access.
+an allow rule also lifts the ban that `plan` mode puts on network access. A rule judges the `url` the tool will fetch,
+read the way the tool reads it: surrounding white space is trimmed, a URL without a scheme is fetched over https, and an
+internationalised host is put in its ASCII (punycode) form. A URL the tool would refuse (a scheme other than http and
+https, a user name in it, a host with no ASCII form) matches no allow rule and every domain or URL deny or ask rule. A URL
+pattern matches the URL as given, as fetched, without the `/` of an empty path, and without its scheme, so a pattern
+without a scheme (`docs.example/*`) matches every scheme. A redirect that leaves the site (another host, another port, or
+from https down to http) is a request of its own: it is decided by the same rules, asks when none applies, and is refused
+when nobody can be asked. A redirect that stays on the site (adding `www.`, an upgrade to https, another path) is not asked
+about, but a deny rule that covers it refuses it.
 
 ### Recording and training data
 

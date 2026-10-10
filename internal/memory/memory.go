@@ -161,10 +161,14 @@ type domain struct {
 // open opens the file at rel (slash-separated, relative to the domain) without
 // blocking, so a FIFO planted under an instruction file's name cannot hang us.
 func (d *domain) open(rel string) (*os.File, error) {
-	if d.user {
-		return os.OpenFile(filepath.Join(d.dir, filepath.FromSlash(rel)), openFlags, 0)
+	local := filepath.FromSlash(rel)
+	if !filepath.IsLocal(local) {
+		return nil, fs.ErrInvalid // never a path that leaves the domain, whichever way the domain is opened
 	}
-	return d.root.OpenFile(filepath.FromSlash(rel), openFlags, 0)
+	if d.user {
+		return os.OpenFile(filepath.Join(d.dir, local), openFlags, 0)
+	}
+	return d.root.OpenFile(local, openFlags, 0)
 }
 
 type loader struct {

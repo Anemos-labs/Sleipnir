@@ -79,6 +79,7 @@ func cmdMCP(ctx context.Context, args []string) error {
 	return fmt.Errorf("mcp: unknown command %q", sub)
 }
 
+// mcpList prints the MCP servers a session in root would consider, where each came from and whether it may start.
 func mcpList(w io.Writer, home, root string, trust bool) error {
 	entries, issues, err := session.MCPEntries(home, root, trust)
 	if err != nil {
@@ -114,22 +115,12 @@ func mcpList(w io.Writer, home, root string, trust bool) error {
 	return tw.Flush()
 }
 
+// mcpApproval approves (after showing what it runs and asking, unless yes) or revokes a project entry for the project at root
+// (session.ProjectMCPEntry finds it).
 func mcpApproval(in io.Reader, out io.Writer, home, root string, approve bool, name string, yes bool) error {
-	entries, _, err := session.MCPEntries(home, root, true)
+	e, err := session.ProjectMCPEntry(home, root, name)
 	if err != nil {
 		return err
-	}
-	var e *session.MCPEntry
-	for i := range entries {
-		if entries[i].Name == name {
-			e = &entries[i]
-		}
-	}
-	if e == nil {
-		return fmt.Errorf("no project MCP server %q (see: sleipnir mcp list --trust-project)", name)
-	}
-	if e.Trusted {
-		return fmt.Errorf("%q is your own entry: it needs no approval", name)
 	}
 	ap := session.OpenMCPApprovals(home)
 	if !approve {

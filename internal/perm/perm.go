@@ -235,6 +235,10 @@ type Request struct {
 	// OffersTests is set by the engine on a question about a build or test command (one of the commands the tests preset covers): the
 	// dialog then has a fourth answer, "allow builds and tests for this session", which comes back as Decision.Preset.
 	OffersTests bool `json:"offers_tests,omitempty"`
+	// Why is the reason the engine asks (the verdict's reason), set on a question; Summary keeps its "[reason]" suffix for the TUI.
+	Why string `json:"why,omitempty"`
+	// RememberRules are the rules a "don't ask again" answer would add, set on a question.
+	RememberRules []string `json:"remember_rules,omitempty"`
 }
 
 // Scope says how long a remembered decision lasts.

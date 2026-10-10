@@ -38,7 +38,14 @@ type Snapshot struct {
 	Prefixes []Prefix   `json:"prefixes,omitempty"`
 	// Anomalies is the session-wide ring of cache anomalies, oldest first.
 	Anomalies []Anomaly `json:"anomalies,omitempty"`
-	Stats     Stats     `json:"stats"`
+	// Stalls are the supervision findings raised and not cleared, oldest first; Handovers the last HandoverLog phases of tasks
+	// changing hands; Goal the standing goal as the log last described it (nil: none was recorded); Checkpoints the last
+	// CheckpointLog checkpoints of the project's files.
+	Stalls      []Stall      `json:"stalls,omitempty"`
+	Handovers   []Handover   `json:"handovers,omitempty"`
+	Goal        *Goal        `json:"goal,omitempty"`
+	Checkpoints []Checkpoint `json:"checkpoints,omitempty"`
+	Stats       Stats        `json:"stats"`
 }
 
 // Snapshot copies the State as of its own clock, the time of the latest event.
@@ -61,6 +68,7 @@ func (s *State) SnapshotAt(now time.Time) *Snapshot {
 		Governor: s.govSnapshot(now), Perms: s.permSnapshot(), Supervision: s.sup,
 		Feed: s.feed.slice(), Activity: s.activitySnapshot(ags, now),
 		TTL: s.ttlEntries(), Prefixes: s.sortedPrefixes(), Anomalies: s.anoms.slice(), Stats: s.stats,
+		Stalls: s.stallsSnapshot(), Handovers: s.sup2.handovers.slice(), Goal: s.goalSnapshot(), Checkpoints: s.checkpointsSnapshot(),
 	}
 	snap.Stats.LastSeq = s.lastSeq
 	snap.Stats.UnknownTypes = cloneCounts(s.stats.UnknownTypes)

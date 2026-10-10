@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
@@ -36,26 +37,18 @@ func allowFlags(fs *flag.FlagSet) *allowFlag {
 	return a
 }
 
-const testsPreset = "tests"
+// testsPreset is the name that stands for the build and test commands (config.TestsPreset).
+const testsPreset = config.TestsPreset
 
-const testsPresetSummary = "go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run"
+// testsPresetSummary says in one line what the tests preset allows (config.TestsPresetSummary).
+const testsPresetSummary = config.TestsPresetSummary
 
 // testsAllow is the preset --allow tests: the commands that build and test a project (the list is in package perm, where the third answer of a
 // question about such a command uses it too).
 var testsAllow = perm.TestsAllow
 
-// expandAllow turns the names of sets of rules into the rules; anything else is a rule as it is written.
-func expandAllow(in []string) []string {
-	var out []string
-	for _, r := range in {
-		if strings.TrimSpace(r) == testsPreset {
-			out = append(out, testsAllow...)
-			continue
-		}
-		out = append(out, r)
-	}
-	return out
-}
+// expandAllow turns the names of sets of rules into the rules; anything else is a rule as it is written (config.ExpandAllow).
+func expandAllow(in []string) []string { return config.ExpandAllow(in) }
 
 // subcommandTools are the programs whose first argument says what they do, so that a rule for them names it: Bash(go test:*) and not
 // Bash(go:*), which would let go run anything.
