@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -547,7 +546,7 @@ func TestANewSessionDoesNotResumeALockedOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := holdLock(f); err != nil {
 		t.Fatal(err)
 	}
 	before := len(r.h.tabList())
