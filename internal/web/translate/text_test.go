@@ -276,3 +276,20 @@ func firstDifference(a, b string) (string, string) {
 	from := max(0, i-2)
 	return string(x[from:min(i+6, len(x))]), string(y[from:min(i+6, len(y))])
 }
+
+// The answer of a question that was not asked here opens nothing and sends nothing, and the ask that comes after it is ignored: no
+// card is left that nobody can answer.
+func TestAnAnswerBeforeItsAskOpensNothing(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	const id = "q_aaaaaaaaaaaaaaaaaaaaaaaaaa"
+	h.tr.Answered(wire.Answer{QID: id, Choice: 3, By: "closed"})
+	h.tr.Question(wire.Question{ID: id, Agent: "mgr", Kind: "command", Cmd: "ls"})
+	if evs := ofKind(h.decoded(), "ask", "answer"); len(evs) != 0 {
+		t.Errorf("an answer before its ask sent %v", evs)
+	}
+	h.tr.Question(wire.Question{ID: "q_bbbbbbbbbbbbbbbbbbbbbbbbbb", Agent: "mgr", Kind: "command", Cmd: "ls"})
+	h.tr.Answered(wire.Answer{QID: "q_bbbbbbbbbbbbbbbbbbbbbbbbbb", Choice: 1, By: "you"})
+	if evs := ofKind(h.decoded(), "ask", "answer"); len(evs) != 2 {
+		t.Errorf("an ask and its answer sent %d events", len(evs))
+	}
+}

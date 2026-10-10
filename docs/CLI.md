@@ -310,9 +310,11 @@ process with the same permissions as in the terminal, and with your rights; read
 anything but a browser on this machine at it. To use it from another machine, forward the port with SSH
 (`ssh -L 6969:127.0.0.1:6969 host`) and open the address there.
 
-The first session starts when the server starts, in `--cwd` with those defaults, as `sleipnir chat` would start
+The first session starts once the server holds its address, in `--cwd` with those defaults, as `sleipnir chat` would start
 (`--resume` and `--continue` included); when no model is configured and the terminal can ask, the chat's first-run setup runs
-before the address is printed. A first session that cannot start is reported on standard error, and the page opens with no
+before the address is printed. A run that cannot bind its address starts no session and changes nothing. Ctrl-C closes every
+session, waiting for the closes already under way (an isolated team's verified work is applied first), and records them as
+interrupted, as the terminal chat does. A first session that cannot start is reported on standard error, and the page opens with no
 session and offers a new one. Every session of the page runs in this one process; a restart (`/new`, `/clear`, `/swarm N`,
 `/restart`, a team's model or role change, Run settings Apply) closes the session first, an isolated team's verified work being
 applied to the checkout as at the end of a chat, and starts the next in the same tab. `/swarm N`, Apply and "run it again" carry

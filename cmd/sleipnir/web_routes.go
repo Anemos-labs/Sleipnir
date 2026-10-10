@@ -6,9 +6,11 @@ package main
 
 import (
 	"errors"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -47,9 +49,9 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	srv.HandleFunc("GET /api/hello", func(w http.ResponseWriter, r *http.Request) { ok(w, h.hello(r)) }, web.RouteOpts{})
 	srv.HandleFunc("GET /api/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		after := h.hub.LastID(seam.Topic) // read before the snapshots: the stream from here misses nothing
-		snaps := []wire.TabSnapshot{}
+		snaps := []tabSnapshot{}
 		for _, t := range h.tabList() {
-			if s, err := t.Snapshot(r.Context()); err == nil {
+			if s, err := t.snapshot(r.Context()); err == nil {
 				snaps = append(snaps, s)
 			}
 		}
@@ -64,7 +66,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	srv.HandleFunc("POST /api/sessions", h.newSession, web.RouteOpts{})
 	srv.HandleFunc("POST /api/sessions/resume", h.resume, web.RouteOpts{})
 	h.tabRoute(srv, "GET /api/sessions/{id}/snapshot", web.RouteOpts{WriteTimeout: snapshotWrite}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
-		snap, err := t.Snapshot(r.Context())
+		snap, err := t.snapshot(r.Context())
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -129,16 +131,16 @@ func (h *webHostImpl) routes(srv *web.Server) {
 			return
 		}
 		key := idemKey("messages/"+t.id, body.ClientID)
-		if e, seen := h.idemGet(key); seen {
-			_ = web.WriteJSON(w, e.status, e.body)
+		if !h.idemClaim(w, r, key) {
 			return
 		}
+		defer h.idemDone(key, false, 0, nil)
 		res, err := t.Send(r.Context(), body)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		h.idemPut(key, http.StatusOK, res)
+		h.idemDone(key, true, http.StatusOK, res)
 		ok(w, res)
 	})
 	h.tabRoute(srv, "POST /api/sessions/{id}/command", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
@@ -222,11 +224,12 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		if !web.DecodeJSON(w, r, &body) {
 			return
 		}
-		if err := t.Goal(r.Context(), body); err != nil {
+		queued, err := t.goalRoute(r.Context(), body)
+		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		ok(w, map[string]any{"ok": true, "state": t.goalState()})
+		ok(w, map[string]any{"ok": true, "state": t.goalState(), "queued": queued})
 	})
 
 	// 11. Session settings.
@@ -341,10 +344,10 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := idemKey("sessions", body.ClientID)
-	if e, seen := h.idemGet(key); seen {
-		_ = web.WriteJSON(w, e.status, e.body)
+	if !h.idemClaim(w, r, key) {
 		return
 	}
+	defer h.idemDone(key, false, 0, nil) // a request that did not create the tab is not the answer of its repeats
 	h.mu.Lock()
 	full := len(h.tabs) >= maxTabs
 	h.mu.Unlock()
@@ -396,12 +399,17 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		home, _ := os.UserHomeDir()
-		if _, err := session.ResolveResume(home, rootOf(dir), body.Resume); err != nil {
+		resolved, err := session.ResolveResume(home, rootOf(dir), body.Resume)
+		if err != nil {
 			writeErr(w, werr(http.StatusConflict, "not_resumable", clip(err.Error(), 400)))
 			return
 		}
-		if t := h.hosting(body.Resume); t != nil {
+		if t := h.holder(body.Resume, nil); t != nil {
 			web.ErrorDetail(w, http.StatusConflict, "hosted", "that session is open in a tab: switch to it", map[string]any{"tab": t.Summary()})
+			return
+		}
+		if session.Locked(resolved) {
+			writeErr(w, werr(http.StatusConflict, "locked", "another process is using that session"))
 			return
 		}
 		args = append(args, "--resume", body.Resume)
@@ -432,7 +440,7 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		trusted: trusted}
 	h.track(func() { _ = t.startGen(spec) })
 	res := map[string]any{"tab": t.Summary()}
-	h.idemPut(key, http.StatusCreated, res)
+	h.idemDone(key, true, http.StatusCreated, res)
 	_ = web.WriteJSON(w, http.StatusCreated, res)
 }
 
@@ -442,10 +450,14 @@ type resumeRequest struct {
 	ClientID string `json:"clientId,omitempty"`
 }
 
-// hosting is the tab whose session is the one named, or nil.
-func (h *webHostImpl) hosting(sid string) *webTab {
-	for _, t := range h.tabList() {
-		if t.Summary().SID == sid {
+// holder is a tab other than except that holds the session named, or is about to (its session, the one it had before its restart,
+// the one its restart resumes: sessionIDs), counting the tabs that are closing; nil when there is none.
+func (h *webHostImpl) holder(sid string, except *webTab) *webTab {
+	h.mu.Lock()
+	tabs := append(append([]*webTab(nil), h.tabs...), slices.Collect(maps.Keys(h.closing))...)
+	h.mu.Unlock()
+	for _, t := range tabs {
+		if t != except && slices.Contains(t.sessionIDs(), sid) {
 			return t
 		}
 	}
@@ -459,10 +471,10 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := idemKey("resume", body.ClientID)
-	if e, seen := h.idemGet(key); seen {
-		_ = web.WriteJSON(w, e.status, e.body)
+	if !h.idemClaim(w, r, key) {
 		return
 	}
+	defer h.idemDone(key, false, 0, nil)
 	from := strings.TrimSpace(body.From)
 	if from == "" {
 		from = "latest"
@@ -509,7 +521,7 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sid := filepath.Base(dir)
-	if t := h.hosting(sid); t != nil {
+	if t := h.holder(sid, nil); t != nil {
 		web.ErrorDetail(w, http.StatusConflict, "hosted", "that session is open in a tab: switch to it", map[string]any{"tab": t.Summary()})
 		return
 	}
@@ -545,7 +557,7 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 	spec := startSpec{args: args, name: strings.TrimSpace(body.Name), note: note, trusted: trusted}
 	h.track(func() { _ = t.startGen(spec) })
 	res := map[string]any{"tab": t.Summary()}
-	h.idemPut(key, http.StatusCreated, res)
+	h.idemDone(key, true, http.StatusCreated, res)
 	_ = web.WriteJSON(w, http.StatusCreated, res)
 }
 

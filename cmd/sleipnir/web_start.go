@@ -167,7 +167,7 @@ func (t *webTab) startGen(spec startSpec) error {
 	gen := t.gen
 	cwd := t.h.d.Cwd
 	tr := newTranslator(translatorConfig{
-		Tab: t.id, Gen: gen, StartedAt: started, Publish: t.h.Publish, Now: time.Now, Session: t.session,
+		Tab: t.id, Gen: gen, StartedAt: started, Publish: t.publishGen, Now: time.Now, Session: t.session,
 		Verify: func() (string, bool) {
 			if s := t.session(); s != nil {
 				return s.Options().Verify, s.WorktreeIsolation()
@@ -206,12 +206,17 @@ func (t *webTab) startGen(spec startSpec) error {
 		}
 		s, err = session.New(t.ctx, o)
 	}
+	if err == nil {
+		s.EnableWriteJournal() // the Workspace's per-line authorship covers the session from its first write
+		t.refreshView(s)       // the session takes no request yet
+	}
 	t.mu.Lock()
 	if err == nil && t.closed {
 		t.starting = false
 		t.cond.Broadcast()
+		reason := t.endReason
 		t.mu.Unlock()
-		s.SetEndReason(session.EndExit)
+		s.SetEndReason(reason)
 		s.Close()
 		return context.Canceled
 	}
@@ -271,6 +276,7 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 	}
 	if spec.effort != "" && spec.effort != "default" {
 		s.SetEffort(spec.effort)
+		t.refreshView(s) // still starting: nothing else calls into the session
 	}
 	if spec.note != "" {
 		t.sys("◇", spec.note)
@@ -281,12 +287,15 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 	t.starting = false
 	t.cond.Broadcast()
 	t.mu.Unlock()
-	t.note("◇", "ready: "+s.Model.ID+" · "+modeName(s)+" · session "+s.ID)
+	t.mu.Lock()
+	model := t.view.model
+	t.mu.Unlock()
+	t.note("◇", "ready: "+model+" · "+modeName(s)+" · session "+s.ID)
 	t.h.Publish(wire.Frame{Type: "tab", Data: wire.TabFrame{Op: "update", Tab: t.Summary()}, Critical: true})
 	t.publishMeta()
 	t.publishRoster()
 	if g := strings.TrimSpace(spec.goalText); g != "" {
-		_ = t.goalAction(t.ctx, s, wire.GoalRequest{Action: "set", Text: g}, true)
+		_, _ = t.goalAction(t.ctx, s, wire.GoalRequest{Action: "set", Text: g}, true)
 	}
 }
 
@@ -343,6 +352,16 @@ func (t *webTab) Restart(ctx context.Context, req wire.RestartRequest) error {
 	return t.restart(ctx, req.Kind, typed, fresh)
 }
 
+// namesFlag reports whether typed names a flag, in any of the spellings the flag package takes (restartArgs reads it so).
+func namesFlag(typed []string, name string) bool {
+	for _, a := range typed {
+		if a == name || a == "-"+name || strings.HasPrefix(a, name+"=") || strings.HasPrefix(a, "-"+name+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 // typedFlag returns the value of a flag in a typed argument list ("" when it is not there).
 func typedFlag(typed []string, name string) string {
 	for i, a := range typed {
@@ -361,7 +380,7 @@ func typedFlag(typed []string, name string) string {
 func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh bool) error {
 	typed = append(t.stagedFlags(), typed...) // what the line says wins over what Run settings staged
 	t.mu.Lock()
-	s, closed, busy, prev := t.s, t.closed, t.restarting || t.starting, append([]string(nil), t.args...)
+	s, closed, busy, prev, ref := t.s, t.closed, t.restarting || t.starting, append([]string(nil), t.args...), t.view.ref
 	t.mu.Unlock()
 	switch {
 	case closed:
@@ -371,9 +390,18 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	}
 	var args []string
 	var err error
-	if s != nil {
+	switch {
+	case s != nil && ref != "" && !namesFlag(typed, "--model"):
+		// the model the session runs on now, from the tab's view: restartArgs reads the session's own only when none is typed, and a
+		// model switch may be changing it
+		args, err = restartArgs(s, append(append([]string(nil), typed...), "--model", ref), fresh)
+	case s != nil && namesFlag(typed, "--model"):
 		args, err = restartArgs(s, typed, fresh)
-	} else {
+	case s != nil:
+		t.sessMu.Lock() // no reference to keep (a provider handed in as a value): nothing switches the model while this reads
+		args, err = restartArgs(s, typed, fresh)
+		t.sessMu.Unlock()
+	default:
 		args = append(launchArgs(prev, nil), typed...)
 	}
 	if err != nil {
@@ -412,6 +440,11 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	if f.resume != "" && f.resume != "latest" && !session.ValidID(f.resume) {
 		return werr(http.StatusBadRequest, "bad_flags", "--resume names a session of the server by its id, or latest")
 	}
+	if f.resume != "" {
+		if err := t.checkResumeTarget(f.resume, dir, s); err != nil {
+			return err // refused before anything is closed: the session stays
+		}
+	}
 	p := raised(f, base, dir)
 	confirmed := t.recheckTrust(f, base, dir, &p)
 	if err := authorize(ctx, restartScope(t.id, p), p.reasons()); err != nil {
@@ -432,6 +465,43 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	t.mu.Unlock()
 	webAction(s, "restart", kind+" "+commandLine(args))
 	t.h.track(func() { t.doRestart(s, args) })
+	return nil
+}
+
+// checkResumeTarget refuses a restart that would resume (spec: an id, or latest, which --continue is) a session the tab cannot
+// hold, before anything is closed: one that is not recorded (404 no_session), one that cannot be resumed (409 not_resumable), one
+// another tab holds (409 hosted, with the tab), one another process uses (409 locked). The tab's own session is an ordinary restart.
+func (t *webTab) checkResumeTarget(spec, dir string, s *session.Session) error {
+	if s != nil && spec == s.ID {
+		return nil // the conversation of the restart itself
+	}
+	home := ""
+	if s != nil {
+		home = s.Home()
+	}
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	if spec != "latest" && !fileExists(eventsPath(filepath.Join(session.SessionsDir(home), spec))) {
+		return werr(http.StatusNotFound, "no_session", "there is no such recorded session")
+	}
+	resolved, err := session.ResolveResume(home, rootOf(dir), spec)
+	switch {
+	case err != nil && spec == "latest":
+		return werr(http.StatusNotFound, "no_session", clip(err.Error(), 400))
+	case err != nil:
+		return werr(http.StatusConflict, "not_resumable", clip(err.Error(), 400))
+	}
+	sid := filepath.Base(resolved)
+	if s != nil && sid == s.ID {
+		return nil
+	}
+	if other := t.h.holder(sid, t); other != nil {
+		return &wire.Error{Status: http.StatusConflict, Code: "hosted", Msg: "that session is open in another tab: switch to it", Detail: map[string]any{"tab": other.Summary()}}
+	}
+	if session.Locked(resolved) {
+		return werr(http.StatusConflict, "locked", "another process is using that session")
+	}
 	return nil
 }
 
@@ -488,17 +558,24 @@ func closeSession(s *session.Session, reason string) *swarm.IntegrationReport {
 	return rep
 }
 
+// webCloseSession is closeSession for a tab that closes; a test makes it slow.
+var webCloseSession = closeSession
+
 // shutdown ends the tab: what runs is cancelled, its questions are refused, its turn goroutine stops, and its session is closed (an
-// isolated run is finished first). It returns how an isolated run ended.
-func (t *webTab) shutdown(by string) *swarm.IntegrationReport {
+// isolated run is finished first) with reason as its end reason. It returns how an isolated run ended. A second call, from anywhere,
+// waits until the first has ended and returns nil.
+func (t *webTab) shutdown(by, reason string) *swarm.IntegrationReport {
 	t.mu.Lock()
 	if t.closed {
 		t.mu.Unlock()
+		<-t.closedDone
 		return nil
 	}
 	t.closed = true
+	t.endReason = reason
 	cancel, cancelOp := t.cancel, t.cancelOp
 	t.mu.Unlock()
+	defer close(t.closedDone)
 	if cancel != nil {
 		cancel()
 	}
@@ -515,7 +592,7 @@ func (t *webTab) shutdown(by string) *swarm.IntegrationReport {
 	s, tr, detach := t.s, t.tr, t.detach
 	t.s, t.detach = nil, nil
 	t.mu.Unlock()
-	rep := closeSession(s, session.EndExit)
+	rep := webCloseSession(s, reason)
 	if detach != nil {
 		detach()
 	}

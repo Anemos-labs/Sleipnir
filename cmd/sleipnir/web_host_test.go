@@ -157,6 +157,7 @@ type webRig struct {
 	token  string
 	cancel context.CancelFunc
 	done   chan error
+	once   sync.Once // stop runs once: a test that stops the host itself leaves nothing to the cleanup
 	*frameLog
 }
 
@@ -219,14 +220,18 @@ func newWebRig(t *testing.T, d webDefaults, base session.Options) *webRig {
 		t.Fatal(err)
 	}
 	r := &webRig{t: t, h: h, srv: srv, base: "http://" + ln.Addr().String(), token: srv.Token(), cancel: cancel, done: make(chan error, 1)}
+	h.start()
 	go func() { r.done <- srv.Serve(ctx, ln) }()
 	t.Cleanup(r.stop)
 	r.stream()
 	return r
 }
 
-// stop ends the server and then the host, as the command does.
-func (r *webRig) stop() {
+// stop ends the server and then the host, as the command does; it runs once.
+func (r *webRig) stop() { r.once.Do(r.stopNow) }
+
+// stopNow is stop.
+func (r *webRig) stopNow() {
 	r.cancel()
 	select {
 	case <-r.done:

@@ -345,7 +345,7 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		printPermissions(stderr, s)
 	case "/trust":
 		home, _ := os.UserHomeDir()
-		dir, _ := os.Getwd()
+		dir := s.Cwd() // the session's project, which --cwd (or a tab of sleipnir web) chooses: not the process's directory
 		if err := trustShow(stderr, trust.OpenLedger(session.TrustLedgerPath(home)), home, dir); err != nil {
 			fmt.Fprintln(stderr, "trust:", err)
 		}

@@ -35,7 +35,8 @@ that exist are not slowed.
 
 GET routes never change state and need no header. The default body cap is 64 KiB; the exceptions are `POST /api/confirm` (1 KiB),
 `PATCH /api/sessions/{id}` (4 KiB), `POST /api/questions/{qid}/answer` (16 KiB) and `POST /api/sessions/{id}/messages` (256 KiB).
-Request headers are capped at 16 KiB, and every response is `no-store`.
+Request headers are capped at 16 KiB. Every API response is `no-store`; the page's own files (`GET /` and its assets) are
+`no-cache` with an `ETag`, so that a browser asks again on every load and gets `304` when nothing changed.
 
 **Responses.** A JSON answer has `Content-Type: application/json; charset=utf-8`, with `<`, `>` and `&` escaped as `<`,
 `>` and `&`. Every response carries `X-Request-Id`, which the server's log lines also carry. A path that no route
@@ -57,14 +58,15 @@ message holds no path outside the project, no secret and no body content; match 
 | 403 | `bad_host`, `forbidden_site`, `forbidden_origin`, `csrf`, `forbidden`, `confirm_invalid`, `not_a_project`, `denied`, `tty_only`, `dangerous_mode` |
 | 404 | `not_found`, `no_session`, `no_question`, `no_file`, `no_checkpoint`, `no_rule`, `unknown_command` |
 | 405, 413, 415 | `method_not_allowed`, `body_too_large`, `unsupported_media_type` |
-| 409 | `answered`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none` |
+| 409 | `answered`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `budget_configured`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none` |
 | 422 | `model`, `rejected`, `conflict` |
 | 428 | `confirm_required` |
 | 429, 500, 502, 503 | `rate_limited`; `internal`; `network`; `busy`, `too_many_streams`, `shutting_down` |
 
 **Retries.** `POST /api/sessions`, `POST /api/sessions/resume` and `POST /api/sessions/{id}/messages` accept an optional
 `clientId` (64 characters at most): a repeat with the same id within 60 seconds returns the first answer instead of doing it
-again.
+again. A repeat that arrives while the first is still being handled waits for it and returns its answer; when the first did not
+succeed, nothing is kept and the repeat acts in its place.
 
 **Identifiers in paths** are matched before anything is looked up, and a mismatch is `400 bad_request`: `{id}` a session (tab)
 id, `[a-z0-9-]{1,40}`; `{sid}` a recorded session, `YYYYMMDD-HHMMSS-xxxxxx`; `{qid}` a question, `q_` and 26 base32 characters;
@@ -146,9 +148,12 @@ once (`503 too_many_streams`).
 3. `GET /api/sessions/{id}/snapshot` (or `GET /api/snapshot` for every tab) gives the state of a tab: its `meta`, `roster`, the
    `keyframe` (a short set of events that stands for what the journal no longer holds), the retained `events`, the lines sent
    before (`hist`), the open `questions`, the session time `now` in seconds, the generation `gen` and `seq`, the sequence number
-   of the last event included.
+   of the last event included, and `metaV` and `rosterV`, the versions of the `meta` and `roster` frames its `meta` and `roster`
+   already hold.
 4. Apply the buffered `ev` frames whose `ev.seq` is above the snapshot's `seq`, then the later ones as they arrive; an event
-   whose `seq` is not above the last one applied is dropped.
+   whose `seq` is not above the last one applied is dropped. `meta` and `roster` frames carry a version `v` per tab (1, 2, ...,
+   across generations): a frame whose `v` is not above the snapshot's `metaV` (`rosterV`) is already in it, and a snapshot whose
+   `metaV` (`rosterV`) is below the version of a frame already applied is older than that frame for its `meta` (`roster`).
 
 Reconnecting sends `Last-Event-ID` (a browser's `EventSource` does it by itself; a script may pass `?after=` instead). The server
 replays the frames after that id when it still has them: the last 20,000 frames or 32 MiB. Otherwise, or when the id is ahead of
@@ -172,14 +177,14 @@ Nothing dropped is lost: the journal of the session holds it and a snapshot brin
 | Frame | Data | Meaning |
 |---|---|---|
 | `ev` | `wire.EvFrame`: `{tab, ev}` | one event of a session (below) |
-| `meta` | `wire.MetaFrame`: `{tab, patch}` | a change to the tab's settings and state (`wire.MetaPatch`: only the fields that changed) |
-| `roster` | `wire.RosterFrame`: `{tab, roster}` | the agents of the tab, replacing the list |
+| `meta` | `wire.MetaFrame` and its version: `{tab, patch, v}` | a change to the tab's settings and state (`wire.MetaPatch`: only the fields that changed); `v` counts the tab's `meta` frames, which reach a page in its order |
+| `roster` | `wire.RosterFrame` and its version: `{tab, roster, v}` | the agents of the tab, replacing the list; `v` counts the tab's `roster` frames |
 | `tab` | `wire.TabFrame`: `{op, tab}` | a session was added, renamed or updated, or removed (`op` is `add`, `update`, `remove`) |
 | `reset` | `wire.ResetFrame`: `{tab, gen}` | the tab started a new generation (restart, `/new`, `/clear`): fetch its snapshot |
 | `recorded` | `{}` | the list of recorded sessions changed: fetch `GET /api/recorded` |
 | `run` | `wire.RunFrame`: `{id, lines?, step?, verdict?, result?}` | output of a run started from the page: output lines, a doctor probe's steps and verdict, and the end |
 | `ping` | `wire.Ping`: `{now: {tab: seconds}}` | every 15 seconds, the session time of each tab |
-| `bye` | `wire.ReasonFrame`: `{reason}` | the server is stopping |
+| `bye` | `wire.ReasonFrame`: `{reason}` | the server is stopping: the last frame of every stream, delivered after what the stream holds (for half a second at most); the stream then ends |
 | `toast` | `wire.Toast`: `{tab?, text, kind?}` | a notice for the page to show; the server sends none at present |
 | `gap` | `{reason, dropped, last}` | frames may have been missed: `reason` is `aged` (the id left the history), `ahead` (the server restarted) or `overflow` (`dropped` frames were given up); `last` is the id of the newest frame |
 | `lagged` | `{after}` | the page was cut off for not holding critical frames; reconnect after `after` |
@@ -233,13 +238,13 @@ request raises something says so. Bodies and answers are the `wire` types named;
 |---|---|---|---|
 | `GET` | `/api/sessions` | `{tabs: [wire.TabSummary]}`, in strip order | - |
 | `GET` | `/api/projects` | `{projects: [wire.Project]}`: the directories a new session may start in (`--cwd`, `--project`, the open and recorded sessions' directories, the trust ledger), each with its trust state | - |
-| `POST` | `/api/sessions` | Starts a session: `wire.NewSessionRequest` and optional `resume` (a recorded session's id) and `clientId`; answers `201 {tab}`. `403 not_a_project` for a directory that is not listed, `409 limit` at 16 sessions, `409 hosted` when the recorded session is open | When it raises privilege: `session:<d16>`; project files: the trust challenge |
+| `POST` | `/api/sessions` | Starts a session: `wire.NewSessionRequest` and optional `resume` (a recorded session's id) and `clientId`; answers `201 {tab}`. `403 not_a_project` for a directory that is not listed, `409 limit` at 16 sessions, `409 hosted` when the recorded session is open, `409 locked` when another process uses it | When it raises privilege: `session:<d16>`; project files: the trust challenge |
 | `POST` | `/api/sessions/resume` | Continues a recorded session (`wire.ResumeRequest`: `from` is an id or `latest`) in a new tab; `201 {tab}` | As above |
 | `GET` | `/api/sessions/{id}/snapshot` | `wire.TabSnapshot` | - |
 | `PATCH` | `/api/sessions/{id}` | Renames: `{name}`; answers `{tab}` | - |
 | `POST` | `/api/sessions/{id}/stop` | Interrupts the running turn; `409 idle` when none runs | - |
 | `DELETE` | `/api/sessions/{id}` | Closes the session; an isolated team's verified work is applied to the checkout first (`integration` in the answer). `409 last` for the only session | - |
-| `POST` | `/api/sessions/{id}/restart` | `wire.RestartRequest`: `kind` is `new`, `clear`, `swarm`, `restart`, `model` or `roles`; `flags` are what a person would type after `/restart` and win over the flags that `PATCH .../launch` staged (a `--cwd` other than the tab's own must name a listed project, else `403 not_a_project`; `--resume` takes a session id or `latest`, else `400 bad_flags`); `new` and `clear` always start the chat empty, the others do so only with `fresh`. Answers `202 {gen}`; the tab starts its next generation in the background | When the final arguments raise privilege: `restart:<tab>:<d16>` |
+| `POST` | `/api/sessions/{id}/restart` | `wire.RestartRequest`: `kind` is `new`, `clear`, `swarm`, `restart`, `model` or `roles`; `flags` are what a person would type after `/restart` and win over the flags that `PATCH .../launch` staged (a `--cwd` other than the tab's own must name a listed project, else `403 not_a_project`; `--resume` takes a session id or `latest`, else `400 bad_flags`; a session to resume that is not recorded is `404 no_session`, one that cannot be resumed `409 not_resumable`, one another tab holds `409 hosted` with `detail.tab`, one another process uses `409 locked`: nothing is closed then); `new` and `clear` always start the chat empty, the others do so only with `fresh`. Answers `202 {gen}`; the tab starts its next generation in the background | When the final arguments raise privilege: `restart:<tab>:<d16>` |
 
 ### Chat
 
@@ -264,11 +269,11 @@ request raises something says so. Bodies and answers are the `wire` types named;
 
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
-| `POST` | `/api/sessions/{id}/goal` | `wire.GoalRequest`: `action` is `set` (with `text`), `pause`, `resume` or `clear`; answers `{ok, state}` | - |
+| `POST` | `/api/sessions/{id}/goal` | `wire.GoalRequest`: `action` is `set` (with `text`), `pause`, `resume` or `clear`; answers `{ok, state, queued}`: `queued` says that the action waits to run (`set` and `resume` run as the tab's next item; `pause` and `clear` while a turn stops), and `state` is then the goal's state before it | - |
 | `POST` | `/api/sessions/{id}/mode` | `wire.ModeRequest`: `default`, `accept-edits`, `plan`, `bypass`, `yolo` | `mode:<mode>:<tab>` for `bypass` and `yolo` |
 | `POST` | `/api/sessions/{id}/model` | `wire.ModelRequest`: the manager's model, or a role's; a team starts again on it. Answers `{ok, restarted}`; `422 model` for a model that cannot be used | Through the restart, when it raises |
 | `POST` | `/api/sessions/{id}/effort` | `wire.EffortRequest`; `wire.EffortResult` has the level the model applies | - |
-| `POST` | `/api/sessions/{id}/budget` | `wire.BudgetRequest`: `usd`, or `off`; a team's budget applies when it starts again. Answers `{ok, paused}`, `paused` being whether the goal paused because spending is already above the new limit | - |
+| `POST` | `/api/sessions/{id}/budget` | `wire.BudgetRequest`: `usd`, or `off`; a team's budget applies when it starts again, and `off` for a team whose configuration sets `swarm.budget_usd` is `409 budget_configured` (the team would start with that budget again). Answers `{ok, paused}`, `paused` being whether the goal paused because spending is already above the new limit | - |
 | `POST` | `/api/sessions/{id}/compact` | Folds the thread now (`{focus}`); answers `{from, to}` in tokens | - |
 | `PATCH` | `/api/sessions/{id}/launch` | `wire.LaunchPatch`: flags (`isolation`, `verify`, `commit`, `mailman`, `noMcp`, `trustProject`) staged for the next start of the team | - (checked at the restart that applies them) |
 | `GET` | `/api/sessions/{id}/rules` | `{rules: [wire.Rule]}`: the rules in force with their origin | - |

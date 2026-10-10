@@ -24,6 +24,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -100,11 +101,25 @@ type webTab struct {
 	trustedDir string
 	lastMeta   wire.MetaPatch
 	lastRoster []wire.RosterEntry
+	metaV      uint64 // the version of the last meta frame sent (seqMu)
+	rosterV    uint64 // the version of the last roster frame sent (seqMu)
 	shownQueue int
+	view       sessView      // the model, effort and budget the session has, as the tab last read them
+	endReason  string        // why the session ends when the tab closes (session.EndExit unless the server is interrupted)
+	closedDone chan struct{} // closed when the tab's close has ended
 
-	sessMu sync.Mutex // calls into the session that are not safe beside each other (the budget, the model)
-	calls  callLog    // the tool call each agent started last
-	goals  goalLoop
+	// sessMu serialises the calls that change the session (a model switch, a compaction, the budget, the effort, a slash command run
+	// against it): a model switch replaces the agent, the provider and the model without a lock of the session's own. Nothing that only
+	// reads takes it: meta and a restart read the tab's view instead.
+	sessMu sync.Mutex
+	// pubMu makes the computing, the diffing and the sending of the tab's meta or roster frame one step: two of them cannot reach the
+	// pages in the opposite order of what they describe. A snapshot computes its meta under it too.
+	pubMu sync.Mutex
+	// seqMu gives each meta and roster frame its version and hands it to the hub, so that the versions reach the pages in order (the
+	// translator's roster frames included). Nothing is locked under it.
+	seqMu sync.Mutex
+	calls callLog // the tool call each agent started last
+	goals goalLoop
 	// ends are what announces the end of the turns the item being run has run (final and turn end); the loop sends them once the tab
 	// is idle, so that a page that takes "turn end" for the end of the work finds nothing running.
 	ends []func()
@@ -117,7 +132,7 @@ type webTab struct {
 // newTab makes a tab and starts its turn goroutine; the caller starts its first generation.
 func newTab(h *webHostImpl, id, name string, base session.Options) *webTab {
 	t := &webTab{h: h, id: id, name: name, base: base, createdAt: time.Now().UnixMilli(), origins: map[string]string{},
-		wake: make(chan struct{}, 1), done: make(chan struct{})}
+		wake: make(chan struct{}, 1), done: make(chan struct{}), closedDone: make(chan struct{}), endReason: session.EndExit}
 	t.cond = sync.NewCond(&t.mu)
 	t.ctx, t.stop = context.WithCancel(context.WithoutCancel(h.ctx))
 	t.goals.yield = func() bool {
@@ -210,17 +225,35 @@ func (t *webTab) note(glyph, text string) {
 	t.emit(&wire.Say{Who: "sys", Glyph: glyph, Text: clip(text, 16<<10)})
 }
 
+// tabSnapshot is the snapshot of a tab as the routes send it: wire.TabSnapshot and the versions of the meta and roster frames it
+// already holds (metaFrame, rosterFrame): a patch of a later version is newer than the snapshot, one of that version or earlier is in it.
+type tabSnapshot struct {
+	wire.TabSnapshot
+	MetaV   uint64 `json:"metaV"`
+	RosterV uint64 `json:"rosterV"`
+}
+
 // Snapshot returns the tab's state for a late joiner.
 func (t *webTab) Snapshot(ctx context.Context) (wire.TabSnapshot, error) {
+	snap, err := t.snapshot(ctx)
+	return snap.TabSnapshot, err
+}
+
+// snapshot is Snapshot with the versions of its meta and roster. Its meta is computed as a meta frame is (under pubMu), and the roster's
+// version is read before the roster: each is at least as new as its version.
+func (t *webTab) snapshot(ctx context.Context) (tabSnapshot, error) {
 	t.mu.Lock()
 	if t.closed {
 		t.mu.Unlock()
-		return wire.TabSnapshot{}, werr(http.StatusNotFound, "not_found", "no such session")
+		return tabSnapshot{}, werr(http.StatusNotFound, "not_found", "no such session")
 	}
 	tr, sum := t.tr, t.summaryLocked()
 	hist := append([]string{}, t.hist...)
 	t.mu.Unlock()
+	t.pubMu.Lock()
 	meta := t.meta()
+	metaV, rosterV := t.versions()
+	t.pubMu.Unlock()
 	snap := wire.TabSnapshot{Tab: sum, Gen: sum.Gen, Meta: meta, Hist: hist, Keyframe: []wire.Raw{}, Events: []wire.Raw{}, Roster: []wire.RosterEntry{}}
 	if tr != nil {
 		kf, evs, seq, now := tr.Journal()
@@ -236,7 +269,7 @@ func (t *webTab) Snapshot(ctx context.Context) (wire.TabSnapshot, error) {
 		snap.Events = []wire.Raw{}
 	}
 	snap.Questions = t.h.bridge.OpenFor(t.id)
-	return snap, nil
+	return tabSnapshot{TabSnapshot: snap, MetaV: metaV, RosterV: rosterV}, nil
 }
 
 // Access gives the workspace and settings routes the current harness session of the tab.
@@ -267,6 +300,9 @@ func (t *webTab) loop() {
 		}
 		t.run(ctx, it)
 		t.mu.Lock()
+		if t.cancel != nil {
+			t.cancel() // the item's context ends with it
+		}
 		t.active, t.cancel = false, nil
 		ends := t.ends
 		t.ends = nil
@@ -439,7 +475,7 @@ func (t *webTab) runEnded(s *session.Session, res *session.Result, err error) {
 	switch {
 	case err == nil, errors.Is(err, context.Canceled):
 	case errors.Is(err, agent.ErrBudget):
-		t.sys("⚠", "budget reached: "+budgetStopped(s, res).Error())
+		t.sys("⚠", "budget reached: "+t.budgetStopped(s, res))
 	default:
 		msg := "error: " + err.Error()
 		if hint := providerHint(err, "Settings › Providers & login"); hint != "" {
@@ -447,6 +483,23 @@ func (t *webTab) runEnded(s *session.Session, res *session.Result, err error) {
 		}
 		t.emit(hintRow(msg, err))
 	}
+}
+
+// budgetStopped is budgetStopped of the terminal, with the budget the tab's view holds (the session's own is not read beside a call
+// that changes it).
+func (t *webTab) budgetStopped(s *session.Session, res *session.Result) string {
+	t.mu.Lock()
+	budget := t.view.budget
+	t.mu.Unlock()
+	spent := ""
+	if res != nil {
+		spent = " (" + cost.Dollars(res.CostUSD) + " spent)"
+	}
+	hint := "raise it with --budget-usd"
+	if s.Swarm != nil {
+		hint = "raise it with --budget-usd or swarm.budget_usd (0 removes the cap)"
+	}
+	return fmt.Sprintf("stopped: the budget of %s is exhausted%s; %s", cost.Dollars(budget), spent, hint)
 }
 
 // hintRow is a warning row that, when it is about a provider's key or a model, names the Settings page that sets it ("providers" or
@@ -549,7 +602,7 @@ func (t *webTab) Command(ctx context.Context, req wire.CommandRequest) (wire.Com
 	if !knownCommand(s, name) {
 		return wire.CommandResult{}, werr(http.StatusNotFound, "unknown_command", "unknown command "+clip(name, 60)+": "+didYouMean(name)+"/ lists them")
 	}
-	if isLookLine(line) || isImmediateLine(line) {
+	if isLookLine(line) || isImmediateLine(line) || isGoalStop(line) {
 		return t.runCommand(ctx, s, line)
 	}
 	var res wire.CommandResult
@@ -566,6 +619,13 @@ func (t *webTab) Command(ctx context.Context, req wire.CommandRequest) (wire.Com
 		return wire.CommandResult{Output: fmt.Sprintf("queued (%d): it runs when the turn is over", pos)}, nil
 	}
 	return res, err
+}
+
+// isGoalStop reports whether a slash line pauses or clears the goal: it acts at once, before what waits (the running turn stops
+// first, as in the terminal chat); it never waits behind the turn, where it would interrupt itself.
+func isGoalStop(line string) bool {
+	f := strings.Fields(strings.ToLower(line))
+	return len(f) == 2 && f[0] == "/goal" && (f[1] == "pause" || f[1] == "clear")
 }
 
 // isImmediateLine reports whether a slash line acts at once, beside a running turn, instead of waiting for it: a mode it names (as the
@@ -669,7 +729,7 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		default:
 			req = wire.GoalRequest{Action: "set", Text: arg}
 		}
-		if err := t.goalAction(ctx, s, req, false); err != nil {
+		if _, err := t.goalAction(ctx, s, req, false); err != nil {
 			return failed(err, "")
 		}
 		return res, nil
@@ -714,24 +774,35 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		return res, nil
 	case "/roles":
 		if len(f) > 1 {
+			// As the terminal does: every role checked, then one restart that carries them all (--role-model role=model each; the
+			// manager's too, which changes the manager alone).
 			rm := map[string]string{}
 			for _, kv := range f[1:] {
 				role, ref, ok := strings.Cut(kv, "=")
 				if !ok || role == "" || ref == "" {
-					res.Output = "usage: /roles [role=provider/model ...]"
+					res.Output = "usage: /roles [role=provider/model ...]: show the table, or change roles (e.g. /roles manager=provider/model compactor=provider/model)"
+					return res, nil
+				}
+				if s.Swarm == nil && role != session.CompactorRole {
+					res.Output = "roles: a single agent runs on one model (/model); a team has roles: /swarm 8 first. Only the compactor can differ here: /roles compactor=" + ref
+					return res, nil
+				}
+				if _, err := s.CheckModel(ref); err != nil {
+					res.Output = "roles: " + role + "=" + ref + ": " + clip(err.Error(), 300)
 					return res, nil
 				}
 				rm[role] = ref
 			}
-			for role, ref := range rm {
-				if err := t.SetModel(ctx, wire.ModelRequest{Ref: ref, Role: role}); err != nil {
-					return failed(err, "")
-				}
+			if err := t.Restart(ctx, wire.RestartRequest{Kind: "roles", RoleModels: rm}); err != nil {
+				return failed(err, "")
 			}
 			return res, nil
 		}
 		fmt.Fprintln(&out, "who runs on which model:")
-		for _, r := range s.RoleModels() {
+		t.sessMu.Lock()
+		roles := s.RoleModels()
+		t.sessMu.Unlock()
+		for _, r := range roles {
 			fmt.Fprintf(&out, "  %-10s %-44s %s\n", r.Role, r.Model, r.From)
 		}
 		res.Output = out.String()
@@ -808,6 +879,7 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 	}
 	t.sessMu.Lock()
 	quit, send := slashTo(ctx, s, line, &out, &out)
+	t.refreshView(s)
 	t.sessMu.Unlock()
 	_ = quit
 	res.Output = out.String()
@@ -838,10 +910,18 @@ func (t *webTab) Steer(ctx context.Context, text string) error {
 	t.mu.Lock()
 	running, s := t.active && t.cancel != nil, t.s
 	t.mu.Unlock()
-	if !running || s == nil || s.Main() == nil {
+	if !running || s == nil {
 		return werr(http.StatusConflict, "idle", "no turn is running: send it as a message")
 	}
-	s.Main().Steer(text)
+	t.sessMu.Lock()
+	a := s.Main()
+	if a != nil {
+		a.Steer(text)
+	}
+	t.sessMu.Unlock()
+	if a == nil {
+		return werr(http.StatusConflict, "idle", "no turn is running: send it as a message")
+	}
 	_, _ = s.Log.Emit("", "user.steer", map[string]any{"text": text})
 	t.emit(&wire.Steer{To: "mgr", Text: clip(text, maxSteerLen)})
 	return nil
@@ -967,9 +1047,16 @@ func webAction(s *session.Session, action, detail string) {
 
 // Goal sets, pauses, resumes or clears the standing goal.
 func (t *webTab) Goal(ctx context.Context, req wire.GoalRequest) error {
+	_, err := t.goalRoute(ctx, req)
+	return err
+}
+
+// goalRoute is Goal, reporting whether the action waits to run (set and resume always run as the tab's next item; pause and clear
+// wait while a turn stops): the goal's state then is still the one before it.
+func (t *webTab) goalRoute(ctx context.Context, req wire.GoalRequest) (waits bool, err error) {
 	s := t.session()
 	if s == nil {
-		return werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
 	}
 	return t.goalAction(ctx, s, req, true)
 }
@@ -983,17 +1070,17 @@ func (t *webTab) goalState() string {
 	return goalWire(g).S
 }
 
-// goalAction does a goal request (set, pause, resume or clear; wire.GoalRequest). pause and clear interrupt the running turn first and
-// take effect when it has stopped; set and resume start a turn, now or behind the running one.
-func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.GoalRequest, fromRoute bool) error {
+// goalAction does a goal request (set, pause, resume or clear; wire.GoalRequest) and reports whether it waits to run. pause and clear
+// interrupt the running turn first and take effect when it has stopped; set and resume start a turn as the tab's next item.
+func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.GoalRequest, fromRoute bool) (waits bool, err error) {
 	switch req.Action {
 	case "set":
 		text := strings.TrimSpace(req.Text)
 		switch {
 		case text == "":
-			return werr(http.StatusBadRequest, "empty", "/goal needs text")
+			return false, werr(http.StatusBadRequest, "empty", "/goal needs text")
 		case utf8.RuneCountInString(text) > maxGoalLen:
-			return werr(http.StatusBadRequest, "empty", "the goal is longer than 4,000 characters")
+			return false, werr(http.StatusBadRequest, "empty", "the goal is longer than 4,000 characters")
 		}
 		_, _, _, err := t.enqueue(queued{text: oneLineCLI("/goal "+text, 200), op: func(ctx context.Context, s *session.Session) {
 			start, err := t.goals.Set(s, text)
@@ -1008,14 +1095,14 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 			t.publishMeta()
 			t.turn(ctx, s, start, "", false)
 		}})
-		return err
+		return err == nil, err
 	case "pause", "clear":
 		g := t.goals.State()
 		switch {
 		case g == nil:
-			return werr(http.StatusConflict, "no_goal", "there is no goal: /goal TEXT sets one")
+			return false, werr(http.StatusConflict, "no_goal", "there is no goal: /goal TEXT sets one")
 		case req.Action == "pause" && g.Paused != "":
-			return werr(http.StatusConflict, "not_active", "the goal is already paused")
+			return false, werr(http.StatusConflict, "not_active", "the goal is already paused")
 		}
 		apply := func(_ context.Context, s *session.Session) {
 			if req.Action == "clear" {
@@ -1038,17 +1125,16 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 			cancel()
 			t.h.bridge.CancelAgent(t.id, mainAgent(s), approvals.ByCanceled)
 			t.emit(&wire.Interrupt{ID: "turn"})
-			return nil
+			return true, nil
 		}
-		_, err := t.whenIdle(ctx, "/goal "+req.Action, apply)
-		return err
+		return t.whenIdle(ctx, "/goal "+req.Action, apply)
 	case "resume":
 		g := t.goals.State()
 		switch {
 		case g == nil:
-			return werr(http.StatusConflict, "no_goal", "there is no goal: /goal TEXT sets one")
+			return false, werr(http.StatusConflict, "no_goal", "there is no goal: /goal TEXT sets one")
 		case g.Paused == "":
-			return werr(http.StatusConflict, "not_paused", "the goal is not paused")
+			return false, werr(http.StatusConflict, "not_paused", "the goal is not paused")
 		}
 		_, _, _, err := t.enqueue(queued{text: "/goal resume", op: func(ctx context.Context, s *session.Session) {
 			next, err := t.goals.Resume(s)
@@ -1060,9 +1146,9 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 			t.publishMeta()
 			t.turn(ctx, s, next, "", false)
 		}})
-		return err
+		return err == nil, err
 	}
-	return werr(http.StatusBadRequest, "bad_request", "the action is set, pause, resume or clear")
+	return false, werr(http.StatusBadRequest, "bad_request", "the action is set, pause, resume or clear")
 }
 
 // ---- session settings ------------------------------------------------------------------------------------------------------
@@ -1133,6 +1219,11 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 		_, err := t.whenIdle(ctx, "/model "+ref, func(ctx context.Context, s *session.Session) {
 			t.sessMu.Lock()
 			got, err := s.SwitchModel(ctx, ref)
+			unpriced := false
+			if err == nil {
+				unpriced = s.Model.Price.InputPerM == 0 && s.Model.Price.OutputPerM == 0
+				t.refreshView(s)
+			}
 			t.sessMu.Unlock()
 			if err != nil {
 				t.sys("⚠", "model: "+err.Error())
@@ -1140,7 +1231,7 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 			}
 			webAction(s, "model", got)
 			text := "model: " + got + " (the conversation carries over; the prompt cache starts over)"
-			if s.Model.Price.InputPerM == 0 && s.Model.Price.OutputPerM == 0 {
+			if unpriced {
 				text += " (price unknown)"
 			}
 			t.sys("◇", text)
@@ -1148,8 +1239,8 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 			t.publishRoster()
 		})
 		return false, err
-	case role == "" || role == "manager":
-		return true, t.Restart(ctx, wire.RestartRequest{Kind: "model", Model: ref})
+	case role == "":
+		return true, t.Restart(ctx, wire.RestartRequest{Kind: "model", Model: ref}) // the team's model: every role without its own
 	case s.Swarm == nil && role != session.CompactorRole:
 		return false, werr(http.StatusUnprocessableEntity, "model", "a single agent runs on one model; a team has roles: start a team first (/swarm 8). Only the compactor can differ here")
 	}
@@ -1169,8 +1260,11 @@ func (t *webTab) SetEffort(ctx context.Context, req wire.EffortRequest) (wire.Ef
 	if s == nil {
 		return wire.EffortResult{}, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
 	}
+	t.sessMu.Lock()
 	s.SetEffort(lv)
 	wanted, applied := s.Effort()
+	t.refreshView(s)
+	t.sessMu.Unlock()
 	if wanted == "" {
 		wanted = "default"
 	}
@@ -1208,6 +1302,11 @@ func (t *webTab) setBudget(ctx context.Context, usd float64) (bool, error) {
 		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
 	}
 	if s.Swarm != nil {
+		// A team takes its budget when it starts again, from --budget-usd; 0 there leaves it to swarm.budget_usd, so "none" can be
+		// kept only where the configuration sets none.
+		if cfg := configuredTeamBudget(s); usd == 0 && cfg > 0 {
+			return false, werr(http.StatusConflict, "budget_configured", fmt.Sprintf("a team's budget cannot be turned off here: when the team starts again it takes swarm.budget_usd of the configuration ($%.2f); set a larger budget, or set swarm.budget_usd to 0 for no limit", cfg))
+		}
 		t.mu.Lock()
 		t.teamBudget = &usd
 		t.mu.Unlock()
@@ -1216,22 +1315,29 @@ func (t *webTab) setBudget(ctx context.Context, usd float64) (bool, error) {
 		} else {
 			t.sys("◇", fmt.Sprintf("budget: $%.2f for the team (applies when the team starts again)", usd))
 		}
-	} else {
-		t.sessMu.Lock()
-		err := s.SetBudget(usd)
-		t.sessMu.Unlock()
-		if err != nil {
-			return false, werr(http.StatusBadRequest, "bad_budget", clip(err.Error(), 300))
+	}
+	t.sessMu.Lock()
+	var err error
+	if s.Swarm == nil {
+		if err = s.SetBudget(usd); err == nil {
+			t.refreshView(s)
 		}
-		if usd == 0 {
+	}
+	spent := s.Cost()
+	t.sessMu.Unlock()
+	if s.Swarm == nil {
+		switch {
+		case err != nil:
+			return false, werr(http.StatusBadRequest, "bad_budget", clip(err.Error(), 300))
+		case usd == 0:
 			t.sys("◇", "budget: removed")
-		} else {
-			t.sys("◇", fmt.Sprintf("budget: $%.2f for the turns from now on (spent so far $%.4f)", usd, s.Cost()))
+		default:
+			t.sys("◇", fmt.Sprintf("budget: $%.2f for the turns from now on (spent so far $%.4f)", usd, spent))
 		}
 	}
 	webAction(s, "budget", strconv.FormatFloat(usd, 'f', 2, 64))
 	paused := false
-	if g := t.goals.State(); usd > 0 && g != nil && g.Paused == "" && s.Cost() >= usd {
+	if g := t.goals.State(); usd > 0 && g != nil && g.Paused == "" && spent >= usd {
 		if t.goals.Pause(s, budgetReached) == nil {
 			paused = true
 			t.emit(goalWire(t.goals.State()))
@@ -1240,6 +1346,20 @@ func (t *webTab) setBudget(ctx context.Context, usd float64) (bool, error) {
 	}
 	t.publishMeta()
 	return paused, nil
+}
+
+// configuredTeamBudget is the budget a team starts with when --budget-usd sets none: swarm.budget_usd of its configuration (the
+// built-in cap when the configuration cannot be read).
+func configuredTeamBudget(s *session.Session) float64 {
+	o := s.Options()
+	if o.Config != nil {
+		return o.Config.Swarm.BudgetUSD
+	}
+	cfg, _, err := config.Load(config.LoadOpts{Cwd: o.Cwd, Root: o.Root, Home: o.Home, UntrustedProject: !o.TrustProject})
+	if err != nil {
+		return config.DefaultSwarmBudgetUSD
+	}
+	return cfg.Swarm.BudgetUSD
 }
 
 // Compact folds the manager's thread now.
@@ -1626,11 +1746,39 @@ func builtinSlash() []wire.SlashEntry {
 // ptr returns a pointer to a copy of v.
 func ptr[T any](v T) *T { return &v }
 
-// meta is the tab's whole meta (the page's S.meta).
+// sessView is what the tab shows of the settings its session changes without a lock of its own (the model, the effort, the budget):
+// the tab keeps it, the calls that change them refresh it while they hold sessMu, and meta, a restart and the tab's rows read it
+// instead of the live session.
+type sessView struct {
+	ref    string  // the model as --model takes it ("" when the provider was handed in as a value)
+	model  string  // ref, else the model's id
+	effort string  // the effort asked for ("default" when none)
+	budget float64 // the dollar budget (0: none)
+}
+
+// refreshView reads the view of s. The caller holds sessMu, or s takes no requests yet; the view of a session that is no longer the
+// tab's is dropped.
+func (t *webTab) refreshView(s *session.Session) {
+	v := sessView{ref: s.ModelRef(), budget: s.Budget()}
+	if v.model = v.ref; v.model == "" {
+		v.model = s.Model.ID
+	}
+	if v.effort, _ = s.Effort(); v.effort == "" {
+		v.effort = "default"
+	}
+	t.mu.Lock()
+	if t.s == s || t.s == nil {
+		t.view = v
+	}
+	t.mu.Unlock()
+}
+
+// meta is the tab's whole meta (the page's S.meta). It reads the session's settings from the tab's view, never from the live session,
+// and takes no lock that a call into the session holds: the clock and the snapshots that call it never wait for a model.
 func (t *webTab) meta() wire.MetaPatch {
 	t.mu.Lock()
 	s, args, startedAt, running := t.s, append([]string(nil), t.args...), t.startedAt, t.active
-	staged, teamBudget := t.staged, t.teamBudget
+	staged, teamBudget, view := t.staged, t.teamBudget, t.view
 	queue := make([]wire.QueuedLine, 0, len(t.queue))
 	for _, q := range t.queue {
 		queue = append(queue, wire.QueuedLine{ID: q.id, Text: clip(q.text, 300)})
@@ -1649,20 +1797,10 @@ func (t *webTab) meta() wire.MetaPatch {
 	o := f.options()
 	if s != nil {
 		o = s.Options()
-		model := s.ModelRef()
-		if model == "" {
-			model = s.Model.ID
-		}
-		m.Model = ptr(model)
+		m.Model = ptr(view.model)
 		m.Mode = ptr(string(s.Perm.Mode()))
-		wanted, _ := s.Effort()
-		if wanted == "" {
-			wanted = "default"
-		}
-		m.Effort = ptr(wanted)
-		t.sessMu.Lock()
-		m.Budget = ptr(s.Budget())
-		t.sessMu.Unlock()
+		m.Effort = ptr(view.effort)
+		m.Budget = ptr(view.budget)
 		workers := 0
 		if s.Swarm != nil {
 			workers = s.Swarm.MaxWorkers()
@@ -1768,8 +1906,47 @@ func metaDiff(old, cur wire.MetaPatch) (wire.MetaPatch, bool) {
 	return patch, changed
 }
 
-// publishMeta sends what changed in the tab's meta to the pages.
+// metaFrame is the data of a meta frame: wire.MetaFrame and its version v, which counts the tab's meta frames (1, 2, ...); a snapshot
+// says which version its meta is at (tabSnapshot.MetaV), and a patch of that version or an earlier one is already in it.
+type metaFrame struct {
+	wire.MetaFrame
+	V uint64 `json:"v"`
+}
+
+// rosterFrame is the data of a roster frame with its version, as metaFrame (tabSnapshot.RosterV).
+type rosterFrame struct {
+	wire.RosterFrame
+	V uint64 `json:"v"`
+}
+
+// sendVersioned hands a meta or roster frame to the pages with the next version of its kind (any other frame as it is): the frames
+// reach the hub in the order of their versions.
+func (t *webTab) sendVersioned(f wire.Frame) {
+	t.seqMu.Lock()
+	defer t.seqMu.Unlock()
+	switch d := f.Data.(type) {
+	case wire.MetaFrame:
+		t.metaV++
+		f.Data = metaFrame{d, t.metaV}
+	case wire.RosterFrame:
+		t.rosterV++
+		f.Data = rosterFrame{d, t.rosterV}
+	}
+	t.h.Publish(f)
+}
+
+// versions are the versions of the last meta and roster frames sent.
+func (t *webTab) versions() (metaV, rosterV uint64) {
+	t.seqMu.Lock()
+	defer t.seqMu.Unlock()
+	return t.metaV, t.rosterV
+}
+
+// publishMeta sends what changed in the tab's meta to the pages: computed, compared with what was sent last and sent as one step
+// (pubMu), so that a page applying the patches in order ends with the meta of the last one.
 func (t *webTab) publishMeta() {
+	t.pubMu.Lock()
+	defer t.pubMu.Unlock()
 	cur := t.meta()
 	t.mu.Lock()
 	patch, changed := metaDiff(t.lastMeta, cur)
@@ -1777,12 +1954,14 @@ func (t *webTab) publishMeta() {
 	closed := t.closed
 	t.mu.Unlock()
 	if changed && !closed {
-		t.h.Publish(wire.Frame{Type: "meta", Tab: t.id, Data: wire.MetaFrame{Tab: t.id, Patch: patch}, Critical: true})
+		t.sendVersioned(wire.Frame{Type: "meta", Tab: t.id, Data: wire.MetaFrame{Tab: t.id, Patch: patch}, Critical: true})
 	}
 }
 
-// publishRoster sends the roster when it changed.
+// publishRoster sends the roster when it changed, as one step with its computing (pubMu).
 func (t *webTab) publishRoster() {
+	t.pubMu.Lock()
+	defer t.pubMu.Unlock()
 	tr := t.translator()
 	if tr == nil {
 		return
@@ -1797,8 +1976,17 @@ func (t *webTab) publishRoster() {
 	closed := t.closed
 	t.mu.Unlock()
 	if !same && !closed {
-		t.h.Publish(wire.Frame{Type: "roster", Tab: t.id, Data: wire.RosterFrame{Tab: t.id, Roster: r}, Critical: true})
+		t.sendVersioned(wire.Frame{Type: "roster", Tab: t.id, Data: wire.RosterFrame{Tab: t.id, Roster: r}, Critical: true})
 	}
+}
+
+// publishGen is the Publish of the tab's translators: their roster frames take a version like the tab's own.
+func (t *webTab) publishGen(f wire.Frame) {
+	if f.Type == "roster" || f.Type == "meta" {
+		t.sendVersioned(f)
+		return
+	}
+	t.h.Publish(f)
 }
 
 // busy says whether a turn runs or an agent of the team is working.
@@ -1845,13 +2033,17 @@ func (a tabAccess) Emit(evs ...wire.Event) { a.t.emit(evs...) }
 // with its next step.
 func (a tabAccess) Notify(text string) {
 	if s := a.t.session(); s != nil && strings.TrimSpace(text) != "" {
+		a.t.sessMu.Lock()
 		s.Send(text)
+		a.t.sessMu.Unlock()
 	}
 }
 
-// Meta patches the tab's meta and publishes it.
+// Meta patches the tab's meta and publishes it, with the next version of the tab's meta frames.
 func (a tabAccess) Meta(p wire.MetaPatch) {
-	a.t.h.Publish(wire.Frame{Type: "meta", Tab: a.t.id, Data: wire.MetaFrame{Tab: a.t.id, Patch: p}, Critical: true})
+	a.t.pubMu.Lock()
+	defer a.t.pubMu.Unlock()
+	a.t.sendVersioned(wire.Frame{Type: "meta", Tab: a.t.id, Data: wire.MetaFrame{Tab: a.t.id, Patch: p}, Critical: true})
 }
 
 // ---- helpers ---------------------------------------------------------------------------------------------------------------

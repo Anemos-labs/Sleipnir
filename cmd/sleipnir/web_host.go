@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -103,15 +104,19 @@ type webHostImpl struct {
 	used     map[string]bool
 	active   string
 	nextOrd  int
-	idem     map[string]idemEntry
+	idem     map[string]*idemEntry
 	qagent   map[string]string // open question -> the agent that asked
+	closing  map[*webTab]bool  // tabs removed from the strip whose close has not ended
 	trustIDs map[string]trustIssued
 	wg       sync.WaitGroup
 }
 
-// idemEntry is the first answer to a request with a client id.
+// idemEntry is a request with a client id: claimed by the first request, which answers it (done is closed then); ok says that it
+// succeeded, and status and body are its answer.
 type idemEntry struct {
 	at     time.Time
+	done   chan struct{}
+	ok     bool
 	status int
 	body   any
 }
@@ -123,13 +128,14 @@ type trustIssued struct {
 	at    time.Time
 }
 
-// startWebHost is webHost: it builds the host and returns the function that registers its routes and the one that closes it.
-func startWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (func(*web.Server), func(), error) {
+// startWebHost is webHost: it builds the host and returns the function that registers its routes, the one that starts its first
+// session (once the address is bound) and the one that closes it.
+func startWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (func(*web.Server), func(), func(), error) {
 	h, err := newWebHost(ctx, d, logf)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return h.register, h.close, nil
+	return h.register, h.start, h.close, nil
 }
 
 // newWebHost makes the host. When the server has no model to start sessions with and its terminal can ask, the chat's first-run
@@ -142,7 +148,8 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 	_, _ = rand.Read(b)
 	hctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	h := &webHostImpl{ctx: hctx, cancel: cancel, cmdCtx: ctx, d: d, logf: logf, boot: hex.EncodeToString(b), askTimeout: d.AskTimeout,
-		used: map[string]bool{}, idem: map[string]idemEntry{}, qagent: map[string]string{}, trustIDs: map[string]trustIssued{}}
+		used: map[string]bool{}, idem: map[string]*idemEntry{}, qagent: map[string]string{}, trustIDs: map[string]trustIssued{},
+		closing: map[*webTab]bool{}}
 	grace := d.AskGrace
 	if grace == 0 {
 		grace = defaultGrace
@@ -191,8 +198,8 @@ func (h *webHostImpl) newBridge(floor, grace time.Duration) *approvals.Bridge {
 		}})
 }
 
-// register adds the host's routes and the linked route packages to the server, starts the host's clock and the first tab (or the
-// fixture's tabs). It is web.Config.Routes.
+// register adds the host's routes and the linked route packages to the server and starts the host's clock; it starts no session
+// (start does, once the server's address is bound). It is web.Config.Routes.
 func (h *webHostImpl) register(srv *web.Server) {
 	h.srv, h.hub = srv, srv.Hub()
 	h.routes(srv)
@@ -205,15 +212,15 @@ func (h *webHostImpl) register(srv *web.Server) {
 		p.register(srv, h, env)
 	}
 	h.track(h.clock)
-	if h.cmdCtx != nil {
-		stop := context.AfterFunc(h.cmdCtx, func() {
-			h.Publish(wire.Frame{Type: "bye", Data: wire.ReasonFrame{Reason: "the server is shutting down"}, Critical: true})
-		})
-		h.track(func() {
-			<-h.ctx.Done()
-			stop()
-		})
-	}
+	// the last frame every page gets: the server delivers it before it ends the streams
+	srv.OnShutdown(func() {
+		h.Publish(wire.Frame{Type: "bye", Data: wire.ReasonFrame{Reason: "the server is shutting down"}, Critical: true})
+	})
+}
+
+// start starts the first tab (or the fixture's tabs). The command calls it once the server's address is bound: a run that cannot
+// listen starts no session and leaves nothing behind.
+func (h *webHostImpl) start() {
 	if h.fixture != nil {
 		h.fixture.start(h)
 		return
@@ -288,14 +295,29 @@ func (h *webHostImpl) close() {
 		}
 		cancel()
 	}
-	tabs := h.tabList()
+	// Every tab, and every tab whose close a request started (DELETE, a first start that failed), is closed before the process may end:
+	// an isolated team's verified work is being applied to the checkout. The wait is bounded as finishing a run is.
+	reason := session.EndExit
+	if h.cmdCtx != nil && h.cmdCtx.Err() != nil {
+		reason = session.EndInterrupted // Ctrl-C or SIGTERM, as the terminal chat records it
+	}
+	h.mu.Lock()
+	tabs := append(append([]*webTab(nil), h.tabs...), slices.Collect(maps.Keys(h.closing))...)
+	h.mu.Unlock()
 	var wg sync.WaitGroup
 	for _, t := range tabs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if rep := t.shutdown(approvals.ByClosed); rep != nil {
-				h.logf("%s: %s", t.id, integrationText(rep))
+			done := make(chan *swarm.IntegrationReport, 1)
+			go func() { done <- t.shutdown(approvals.ByClosed, reason) }()
+			select {
+			case rep := <-done:
+				if rep != nil {
+					h.logf("%s: %s", t.id, integrationText(rep))
+				}
+			case <-time.After(closeLimit + time.Minute):
+				h.logf("%s: the session did not close within %v", t.id, closeLimit+time.Minute)
 			}
 		}()
 	}
@@ -678,10 +700,16 @@ func (h *webHostImpl) removeTab(t *webTab, by string) (rep *swarm.IntegrationRep
 	if h.active == t.id {
 		h.active = ""
 	}
+	h.closing[t] = true // until its close has ended, the host's close waits for it
 	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		delete(h.closing, t)
+		h.mu.Unlock()
+	}()
 	sum := t.Summary()
 	h.Publish(wire.Frame{Type: "tab", Data: wire.TabFrame{Op: "remove", Tab: sum}, Critical: true})
-	r := t.shutdown(by)
+	r := t.shutdown(by, session.EndExit)
 	h.Publish(wire.Frame{Type: "recorded", Data: map[string]any{}})
 	return r
 }
@@ -937,31 +965,72 @@ func idemKey(route, clientID string) string {
 	return route + "\x00" + clientID
 }
 
-// idemGet returns the first answer of a repeated request within the window.
-func (h *webHostImpl) idemGet(key string) (idemEntry, bool) {
+// idemClaim makes a request with a client id the one that acts, or answers it with the answer of the request that did. A repeat that
+// arrives while the first is still being handled waits for it (bounded by its own context); when the first did not succeed, the repeat
+// acts in its place (claimed). Without a key (no client id) the request always acts. When it is not claimed, the request has been
+// answered.
+func (h *webHostImpl) idemClaim(w http.ResponseWriter, r *http.Request, key string) (claimed bool) {
 	if key == "" {
-		return idemEntry{}, false
+		return true
 	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for k, e := range h.idem {
-		if time.Since(e.at) > idemWindow {
-			delete(h.idem, k)
+	for {
+		h.mu.Lock()
+		for k, e := range h.idem {
+			if e.ok && time.Since(e.at) > idemWindow {
+				delete(h.idem, k)
+			}
+		}
+		e := h.idem[key]
+		if e == nil {
+			if len(h.idem) >= 4096 {
+				h.mu.Unlock()
+				return true // too many to remember: the request acts unguarded
+			}
+			h.idem[key] = &idemEntry{at: time.Now(), done: make(chan struct{})}
+			h.mu.Unlock()
+			return true
+		}
+		h.mu.Unlock()
+		select {
+		case <-e.done:
+		case <-r.Context().Done():
+			writeErr(w, werr(http.StatusConflict, "busy", "the same request is still being handled"))
+			return false
+		}
+		if e.ok {
+			_ = web.WriteJSON(w, e.status, e.body)
+			return false
 		}
 	}
-	e, ok := h.idem[key]
-	return e, ok
 }
 
-// idemPut keeps the answer of a request with a client id.
-func (h *webHostImpl) idemPut(key string, status int, body any) {
+// idemDone records the answer of a request that claimed key: a success is kept for the window and is the answer of every repeat; a
+// failure is forgotten, so that a repeat acts again. Every claim ends with one call (a deferred idemDone(key, false, 0, nil) is a
+// no-op after a success).
+func (h *webHostImpl) idemDone(key string, ok bool, status int, body any) {
 	if key == "" {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(h.idem) < 4096 {
-		h.idem[key] = idemEntry{at: time.Now(), status: status, body: body}
+	e := h.idem[key]
+	if e == nil || e.isDone() {
+		return
+	}
+	e.ok, e.status, e.body, e.at = ok, status, body, time.Now()
+	if !ok {
+		delete(h.idem, key)
+	}
+	close(e.done)
+}
+
+// isDone reports whether the entry's request has answered.
+func (e *idemEntry) isDone() bool {
+	select {
+	case <-e.done:
+		return true
+	default:
+		return false
 	}
 }
 

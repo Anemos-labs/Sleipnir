@@ -114,9 +114,10 @@ func takeFixture(args []string) (rest []string, name string, err error) {
 // (in an init function of web_host.go); when it is nil the server serves the page and the
 // built-in routes only. It is called once, before the server is created, with the context of the
 // command (cancelled on Ctrl-C), the defaults and a log function that masks credentials. It
-// returns the function that registers the host's routes (web.Config.Routes) and a function that
+// returns the function that registers the host's routes (web.Config.Routes), the one that starts
+// its first session, which the command calls once the address is bound, and a function that
 // closes the host; the command calls the latter after the server has stopped.
-var webHost func(ctx context.Context, d webDefaults, logf func(format string, args ...any)) (routes func(*web.Server), closeHost func(), err error)
+var webHost func(ctx context.Context, d webDefaults, logf func(format string, args ...any)) (routes func(*web.Server), start func(), closeHost func(), err error)
 
 // cmdWeb serves the browser interface: sessions, workspace and settings over HTTP on loopback.
 func cmdWeb(ctx context.Context, args []string) error {
@@ -222,10 +223,18 @@ flags:
 		}
 	})
 
+	// The address is bound first: a run that cannot listen (the port is taken) starts no session, runs no first-run setup and leaves
+	// nothing in the state directory.
+	ln, err := web.Listen(*addr, false)
+	if err != nil {
+		return err
+	}
+	defer ln.Close()
 	logf := func(f string, a ...any) { fmt.Fprintf(os.Stderr, "sleipnir web: "+f+"\n", a...) }
 	cfg := web.Config{Addr: *addr, Logf: logf, Hub: webHubConfig}
+	start := func() {}
 	if webHost != nil {
-		routes, closeHost, err := webHost(ctx, d, logf)
+		routes, startHost, closeHost, err := webHost(ctx, d, logf)
 		if err != nil {
 			return err
 		}
@@ -233,15 +242,15 @@ flags:
 			defer closeHost()
 		}
 		cfg.Routes = routes
+		if startHost != nil {
+			start = startHost
+		}
 	}
 	srv, err := web.New(cfg)
 	if err != nil {
 		return err
 	}
-	ln, err := web.Listen(*addr, false)
-	if err != nil {
-		return err
-	}
+	start() // the first session, now that the address is the server's
 	u := srv.URL(ln.Addr())
 	fmt.Println(u) // the first line of standard output, and the only place the token is printed
 	fmt.Fprintf(os.Stderr, "sleipnir web: sessions started in the page work in %s\n", dir)

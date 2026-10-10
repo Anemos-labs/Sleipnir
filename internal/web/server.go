@@ -27,6 +27,8 @@ const (
 
 	// shutdownGrace is how long Serve waits for requests to finish after its context ends.
 	shutdownGrace = 3 * time.Second
+	// drainGrace is how long Serve lets the event streams deliver what they hold (a bye) when its context ends.
+	drainGrace = 500 * time.Millisecond
 )
 
 // Config configures a Server. The zero value is usable: it listens on DefaultAddr, serves the
@@ -77,8 +79,9 @@ type Server struct {
 	sem    chan struct{}
 	served atomic.Bool
 
-	routeMu  sync.Mutex
-	patterns []string // the patterns passed to Handle, in registration order
+	routeMu    sync.Mutex
+	patterns   []string // the patterns passed to Handle, in registration order
+	onShutdown []func() // run when Serve begins to shut down (OnShutdown)
 
 	// timeouts, overridden by tests
 	readHeaderTimeout time.Duration
@@ -161,6 +164,14 @@ func (s *Server) registerBuiltins() {
 	s.Handle("GET /", http.HandlerFunc(s.handleAssets), RouteOpts{})
 }
 
+// OnShutdown adds fn to what Serve runs when its context ends, before the event streams deliver what they hold and close: the place
+// to publish a last event to every page. The functions run in the order they were added.
+func (s *Server) OnShutdown(fn func()) {
+	s.routeMu.Lock()
+	defer s.routeMu.Unlock()
+	s.onShutdown = append(s.onShutdown, fn)
+}
+
 // ---- listening and serving ------------------------------------------------------------------
 
 // isLoopbackHost reports whether host names only this machine. Anything else, including an empty
@@ -228,8 +239,9 @@ func Listen(addr string, allowNonLoopback bool) (net.Listener, error) {
 	return ln, nil
 }
 
-// Serve serves on ln until ctx is cancelled, then shuts down: event streams end, requests in
-// flight get a few seconds, and the rest are cut off. It returns nil after a clean shutdown. It
+// Serve serves on ln until ctx is cancelled, then shuts down: the OnShutdown functions run, event
+// streams deliver what they hold (half a second at most) and end, requests in flight get a few
+// seconds, and the rest are cut off. It returns nil after a clean shutdown. It
 // refuses a listener that is not loopback unless remote access was allowed (the third check of
 // the rule), and can be called once.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
@@ -260,9 +272,17 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	go func() { errc <- hs.Serve(ln) }()
 	select {
 	case <-ctx.Done():
+		s.routeMu.Lock()
+		hooks := append([]func(){}, s.onShutdown...)
+		s.routeMu.Unlock()
+		for _, fn := range hooks {
+			fn()
+		}
+		drain, stopDrain := context.WithTimeout(context.Background(), drainGrace)
+		s.hub.Drain(drain) // each stream delivers what it holds (the bye of OnShutdown), then ends
+		stopDrain()
 		shutdown, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
-		s.hub.Close()
 		if err := hs.Shutdown(shutdown); err != nil {
 			_ = hs.Close()
 		}

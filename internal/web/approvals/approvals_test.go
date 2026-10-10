@@ -746,3 +746,35 @@ func TestUnreadablePatchesAreRefused(t *testing.T) {
 		t.Errorf("refused %q", *refused)
 	}
 }
+
+// Whatever resolves a question in the instant it is asked (an interrupt, a closed tab, a refusal of the host), its answer is reported
+// after its ask: a page never gets the answer of a question it has not been shown, and keeps no card that nobody can answer.
+func TestAnAnswerIsNeverReportedBeforeItsAsk(t *testing.T) {
+	var mu sync.Mutex
+	var order []string
+	note := func(s string) {
+		mu.Lock()
+		order = append(order, s)
+		mu.Unlock()
+	}
+	asking := make(chan struct{})
+	b := New(Config{
+		OnAsk: func(string, wire.Question) {
+			close(asking)
+			time.Sleep(200 * time.Millisecond) // the translator and the hub take their time
+			note("ask")
+		},
+		OnAnswer: func(string, wire.Answer) { note("answer") },
+	})
+	defer b.Close()
+	d := make(chan perm.Decision, 1)
+	go func() { d <- b.Prompter("shop", "/proj", nil, nil)(context.Background(), bash) }()
+	<-asking
+	b.CancelTab("shop", ByClosed)
+	<-d
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(order, []string{"ask", "answer"}) {
+		t.Errorf("reported %v, want the ask before its answer", order)
+	}
+}

@@ -93,7 +93,8 @@ type Config struct {
 	// Now is the clock (time.Now when nil).
 	Now func() time.Time
 	// OnAsk reports a question that was asked, OnAnswer one that was resolved (answered, refused, cancelled). They are called
-	// outside the bridge's lock and must not block for long.
+	// outside the bridge's lock and must not block for long. A question's OnAnswer comes after its OnAsk has returned, whatever
+	// resolved it; OnAsk must therefore not wait for the question to be resolved (Refuse it from another goroutine).
 	OnAsk    func(tab string, q wire.Question)
 	OnAnswer func(tab string, a wire.Answer)
 	// SessionTime gives the session time in seconds of a moment of a tab (the t0 of an open question); nil gives 0.
@@ -125,6 +126,7 @@ type question struct {
 	project bool // a question about the project's files or a tool server: "remember" is for the project
 	created time.Time
 	ans     chan perm.Decision // buffered 1; written once, under the lock
+	asked   chan struct{}      // closed once OnAsk has reported the question: its answer is reported after it, never before
 	done    bool
 }
 
@@ -213,7 +215,7 @@ func (b *Bridge) Prompter(tab, root string, describe func(agent string) (task, s
 		}
 		q := &question{id: id, tab: tab, agent: r.Agent, tests: r.OffersTests,
 			project: r.Tool == perm.ToolProjectTrust || r.Tool == perm.ToolMCPServer,
-			ans:     make(chan perm.Decision, 1)}
+			ans:     make(chan perm.Decision, 1), asked: make(chan struct{})}
 		var unshown string
 		q.q, unshown = b.shape(tab, id, root, task, scope, r)
 		if unshown == "" {
@@ -239,6 +241,7 @@ func (b *Bridge) Prompter(tab, root string, describe func(agent string) (task, s
 		if b.cfg.OnAsk != nil {
 			b.cfg.OnAsk(tab, q.q)
 		}
+		close(q.asked) // what resolves it from now on (or waited for this) reports its answer
 
 		select {
 		case d := <-q.ans:
@@ -302,6 +305,7 @@ func (b *Bridge) resolve(q *question, d perm.Decision, a wire.Answer) bool {
 	}
 	b.settleLocked(q, d)
 	b.mu.Unlock()
+	<-q.asked // a refusal in the instant of the asking is reported after the ask
 	if b.cfg.OnAnswer != nil {
 		b.cfg.OnAnswer(q.tab, a)
 	}
@@ -440,6 +444,7 @@ func (b *Bridge) Answer(ctx context.Context, qid string, req wire.AnswerRequest)
 	b.lastAnswer[q.tab] = now
 	b.settleLocked(q, d)
 	b.mu.Unlock()
+	<-q.asked
 	rule := ""
 	if req.Choice == 2 {
 		rule = q.q.Rule

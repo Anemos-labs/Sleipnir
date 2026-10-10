@@ -241,12 +241,13 @@ type topic struct {
 
 // Hub fans events out to the subscribers of topics. Its methods are safe for concurrent use.
 type Hub struct {
-	cfg     HubConfig
-	mu      sync.Mutex
-	topics  map[string]*topic
-	streams int
-	closed  bool
-	done    chan struct{}
+	cfg      HubConfig
+	mu       sync.Mutex
+	topics   map[string]*topic
+	streams  int
+	closed   bool
+	draining bool // Drain runs: no new subscriber, and the streams end once they have delivered what they hold
+	done     chan struct{}
 }
 
 // NewHub creates a hub. Server.Hub is the one a server uses; a hub of its own is for tests and
@@ -375,6 +376,37 @@ func (h *Hub) Close() {
 	}
 }
 
+// Drain ends the streams gracefully, for a shutdown: it takes no new subscriber, every open stream delivers the events it has
+// already queued (a last event published just before, a bye, included) and then ends, and the streams still open when ctx ends
+// are closed as Close closes them. Events published while it drains reach no stream. The hub is closed when it returns.
+func (h *Hub) Drain(ctx context.Context) {
+	h.mu.Lock()
+	if h.closed || h.draining {
+		h.mu.Unlock()
+		h.Close()
+		return
+	}
+	h.draining = true
+	for _, t := range h.topics {
+		for s := range t.subs {
+			s.draining = true
+			s.wake()
+		}
+	}
+	h.mu.Unlock()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for h.Streams() > 0 {
+		select {
+		case <-ctx.Done():
+			h.Close()
+			return
+		case <-tick.C:
+		}
+	}
+	h.Close()
+}
+
 // Streams returns the number of open streams.
 func (h *Hub) Streams() int {
 	h.mu.Lock()
@@ -417,7 +449,7 @@ func (h *Hub) Subscribe(name string, o SubscribeOpts) (*Stream, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed {
+	if h.closed || h.draining {
 		return nil, ErrClosed
 	}
 	if h.streams >= h.cfg.MaxStreams {
@@ -535,7 +567,10 @@ func (s *Stream) poll() (ev Event, ok bool, err error) {
 		s.delivered = ev.ID
 		return ev, true, nil
 	}
-	if s.draining {
+	switch {
+	case s.draining && s.h.draining:
+		return Event{}, false, ErrClosed // the server shuts down: what was queued is delivered, and the stream ends without more
+	case s.draining:
 		return Event{}, false, ErrTopicClosed
 	}
 	return Event{}, false, nil

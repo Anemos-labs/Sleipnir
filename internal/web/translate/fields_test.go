@@ -155,7 +155,7 @@ var absent = map[string]string{
 	"req.p": "live requests only", "req.o": "live requests only", "req.hist": "keyframes and history only",
 	"ckpt.step": "pack change sets are not produced", "ckpt.id": "the cid form is sent", "ckpt.skipped": "optional (false)", "ckpt.safety": "optional (false)",
 	"queue.cmd": "a queued submission only", "queue.step": "a queued submission only", "queue.ms": "a verified submission only",
-	"stream.code": "code streams only", "goal.paused": "a paused goal only", "say.open": "host rows only", "use.savedPartial": "reads at unknown prices only (TestHonestPrices)", "use.unpriced": "reads at unknown prices only (TestHonestPrices)", "sys.open": "host rows only", "alert.text": "raises only", "alert.key": "optional", "steer.quiet": "optional", "answer.note": "optional", "mail.id": "",
+	"stream.code": "code streams only", "goal.paused": "a paused goal only", "goal.turns": "a goal that has run continuation turns (omitempty; TestAGoalCarriesItsTurnsAndReason)", "goal.reason": "a goal the judge has given a reason for (omitempty; TestAGoalCarriesItsTurnsAndReason)", "say.open": "host rows only", "use.savedPartial": "reads at unknown prices only (TestHonestPrices)", "use.unpriced": "reads at unknown prices only (TestHonestPrices)", "sys.open": "host rows only", "alert.text": "raises only", "alert.key": "optional", "steer.quiet": "optional", "answer.note": "optional", "mail.id": "",
 }
 
 // Every field the page's reducer reads of an event is in what the server sends, or is listed with the reason it may be absent: the

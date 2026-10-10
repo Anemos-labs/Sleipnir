@@ -34,7 +34,13 @@ type holdInfo struct {
 type openQ struct {
 	q  wire.Question
 	at time.Time
+	// gone marks a question whose answer came before its ask (the bridge reports them in order; another caller may not): its ask, if
+	// it comes, opens nothing.
+	gone bool
 }
+
+// maxGone bounds the answers kept for asks that have not come.
+const maxGone = 256
 
 // stateGap is the least time between two state events of an agent (at most 20 a second).
 const stateGap = 0.05
@@ -377,6 +383,10 @@ func (t *Translator) question(q wire.Question, now time.Time) {
 	if q.ID == "" {
 		return
 	}
+	if o := t.d.qs[q.ID]; o != nil && o.gone {
+		delete(t.d.qs, q.ID) // answered already: a card that nobody can answer is not opened
+		return
+	}
 	if _, ok := t.d.qs[q.ID]; !ok {
 		t.d.qorder = append(t.d.qorder, q.ID)
 	}
@@ -391,18 +401,23 @@ func (t *Translator) question(q wire.Question, now time.Time) {
 // answered closes a question and sends its answer; the time it waited is not counted in its agent's running tool call.
 func (t *Translator) answered(a wire.Answer, now time.Time) {
 	ts := t.sessT(now)
-	var who string
-	if q := t.d.qs[a.QID]; q != nil {
-		who = q.q.Agent
-		waited := now.Sub(q.at)
-		for _, r := range t.d.runs {
-			if r.agent == who && waited > 0 {
-				r.waited += waited
-			}
+	q := t.d.qs[a.QID]
+	if q == nil || q.gone {
+		// the answer of a question that was never asked here creates nothing; its ask, if it comes later, is ignored
+		if q == nil && a.QID != "" && len(t.d.qs) < maxGone+len(t.d.qorder) {
+			t.d.qs[a.QID] = &openQ{gone: true}
 		}
-		delete(t.d.qs, a.QID)
-		t.d.qorder = remove(t.d.qorder, a.QID)
+		return
 	}
+	who := q.q.Agent
+	waited := now.Sub(q.at)
+	for _, r := range t.d.runs {
+		if r.agent == who && waited > 0 {
+			r.waited += waited
+		}
+	}
+	delete(t.d.qs, a.QID)
+	t.d.qorder = remove(t.d.qorder, a.QID)
 	a.Note = line(a.Note, capReason)
 	a.Rule = line(a.Rule, capPath)
 	if a.By == "" {
