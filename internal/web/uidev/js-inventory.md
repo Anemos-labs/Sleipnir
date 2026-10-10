@@ -1,7 +1,7 @@
 # JavaScript inventory
 
 Every file of `js/` in the order `index.html` loads it, with its purpose and its relation to the reference page
-(`internal/web/uidev/mock`, a self-contained prototype with sample data and a scripted simulation; see `DEV-ONLY.md`).
+(`internal/web/uidev/mock`, a self-contained prototype with sample data and a scripted simulation; see `README.md`).
 
 * **Shared**: a renderer, a reducer or shared infrastructure that exists in both pages with the same role. It draws from state and
   from `SL.D`, `SL.sessions`, `SL.act` and `SL.ws`; it differs from the reference page's file only where it reads the server's data
