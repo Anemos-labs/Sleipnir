@@ -258,7 +258,7 @@ request raises something says so. Bodies and answers are the `wire` types named;
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `GET` | `/api/questions` | `{questions: [wire.OpenQuestion]}`: the open permission questions of every tab | - |
-| `POST` | `/api/questions/{qid}/answer` | `wire.AnswerRequest`: `choice` 1 yes, 2 yes and remember for the session, 3 no (with `note`, which the agent reads), 4 yes and allow builds and tests (offered when `offersTests`). `wire.AnswerResult` has the rule that was added. `409 too_soon` within 350 ms of the question or of the tab's previous answer, `409 answered` | - |
+| `POST` | `/api/questions/{qid}/answer` | `wire.AnswerRequest`: `choice` 1 yes, 2 yes and remember for the session (offered only for a trust or tool-server question, or when the question's `rule` is not empty: that is the engine's exact rule text, joined by ", "; otherwise `400 bad_choice`), 3 no (with `note`, which the agent reads), 4 yes and allow builds and tests (offered when `offersTests`). `wire.AnswerResult` has the rule that was added. A question shows the whole request (a command up to 100,000 bytes, a change up to 256 KiB, an MCP call's whole arguments) or is not asked: the agent is told why it was refused. `409 too_soon` within 350 ms of the question or of the tab's previous answer, `409 answered` | - |
 
 ### Goal and session settings
 
