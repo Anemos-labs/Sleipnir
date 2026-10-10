@@ -1,9 +1,9 @@
 # The shipped page and the reference page
 
-The page in this directory is the one `sleipnir web` serves: plain files, embedded in the binary, wired to the HTTP API of the
+The page in `internal/web/ui` is the one `sleipnir web` serves: plain files, embedded in the binary, wired to the HTTP API of the
 server. The reference page (`internal/web/uidev/mock`, opened from its `index-mock.html`) is a tracked, self-contained
-prototype of the same screens that runs on sample data and a scripted simulation. Both load the stylesheets and fonts of this
-directory, and most renderers are the same code, so a screen drawn from the server's data can be compared with the same screen
+prototype of the same screens that runs on sample data and a scripted simulation. Both load the stylesheets and fonts of
+`internal/web/ui`, and most renderers are the same code, so a screen drawn from the server's data can be compared with the same screen
 drawn from the sample data (`scripts/web-parity.mjs`, and the tests in `internal/web/uidev/test`). Nothing in the embedded page
 touches the simulation or the sample data; this file lists what takes the place of each file that exists only in the reference
 page. `js-inventory.md` describes every module of the shipped page.
