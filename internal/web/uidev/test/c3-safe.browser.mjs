@@ -37,6 +37,7 @@ const FILL = `(() => { const X = ${JSON.stringify(X)}, M = SL.data.map, f = [X, 
   M.providers({ providers: [{ id: X, name: X, base: X, key: 'env', env: X, state: X, keyWhere: X, dialect: X, usedBy: X, who: X, recommended: true }, { id: 'p2', name: X, base: X, key: 'none', state: 'no key' }], providerNote: X });
   M.config({ layers: [{ kind: X, source: X, state: X, trusted: X }], precedence: X, effective: [{ key: X, value: X, layer: X, file: X, note: X, below: { [X]: X } }], issues: [{ file: X, line: 3, path: X, message: X, severity: X }], risks: [{ file: X, message: X }], valid: X, ok: false });
   M.schedule({ jobs: [{ id: 'j1', cron: X, goal: X, dir: X, model: X, mode: X, budgetUsd: X, lastRun: X, lastExit: X, next: X }], daemon: { running: true, owner: X, pid: X, every: X, timeout: X, line: X }, logs: [{ job: 'j1', file: X, exit: X, text: X }] });
+  M.projects({ projects: [{ dir: X + '1', root: X, name: X, trust: 'partial', files: 2 }, { dir: X + '2', root: X, name: X, trust: 'unreadable', files: 1 }] });
   M.doctor({ endpoints: [{ ref: X, where: X }] }); M.runs({ runs: [{ id: 'r_x', cmd: X, exit: 0, ms: 1, path: ['sessions'], flags: {}, running: false }] });
   SL.sessions.reg.recorded = [{ id: '20261001-000000-aaaaaa', name: X, first: X, model: X, cost: 0, mb: 0, ageS: 9e5, agents: 1, resumable: true, cwd: X, integration: { applied: false, message: X, hint: X } }];
   SL.bus.emit('recorded-changed'); SL.G.mcpOut = { [X]: { t: X, cls: X } }; SL.loop.dirty = true; return true; })()`;
@@ -45,6 +46,14 @@ try {
   for (const pg of ['models', 'roles', 'budget', 'permissions', 'trust', 'run', 'mcp', 'skills', 'providers', 'config', 'look']) {
     await p.eval(`SL.views.show('settings', { page: ${JSON.stringify(pg)} })`); await p.sleep(700); await p.eval(FILL); await p.sleep(500); await check('settings ' + pg);
   }
+  await p.eval(`SL.views.show('settings', { page: 'trust' })`); await p.sleep(700); await p.eval(FILL); await p.sleep(500);
+  // a project that could not be read: the word, and the trust step with every file and each path it could not read
+  const tags = await p.eval(`[...document.querySelectorAll('.setpage .tag')].map(t => t.textContent)`); if (!tags.includes('partial') || !tags.includes('unreadable')) { failed++; console.log('FAIL the Trust page does not show the words partial and unreadable: ' + tags.join(' | ')); } else console.log('ok trust page shows partial and unreadable');
+  await p.eval(`(() => { SL.ui.trustStep({ dir: ${JSON.stringify(X)}, files: [{ path: ${JSON.stringify(X)}, kind: 'unread' }, { path: 'a/b', kind: 'config', bytes: 3, hash: 'ab' }], partial: true, confirm: 'cf_x' }, { dir: ${JSON.stringify(X)} }).then(id => { window.__trustId = id; }); return true; })()`); await p.sleep(500);
+  await check('trust step with a hostile unread path');
+  const st = await p.eval(`(() => { const d = document.querySelector('.sheet'); return { list: [...d.querySelectorAll('#trList li')].map(l => l.textContent), yes: !d.querySelector('[data-ok]').disabled, once: /this session only/.test(d.innerText) }; })()`);
+  if (st.list.length === 2 && st.list[0] === 'could not be read: ' + X && st.once) console.log('ok the trust step lists the unread path as text and says the yes is for this session only'); else { failed++; console.log('FAIL trust step: ' + JSON.stringify(st)); }
+  await p.key('Escape'); await p.sleep(200); if ((await p.eval('window.__trustId')) !== null) { failed++; console.log('FAIL the trust step resolved an id without a yes'); }
   await p.eval(`SL.views.show('sessions')`); await p.sleep(700); await p.eval(FILL); await p.sleep(500); await check('sessions');
   await p.eval(`document.querySelector('[data-pick]').click()`); await p.sleep(200); await p.eval(`document.querySelector('[data-del]').click()`); await p.sleep(300); await check('sessions: delete selected confirm'); await p.key('Escape');
   await p.eval(`SL.views.show('tools')`); await p.sleep(700); await p.eval(`SL.D.spec.commands[0].summary = ${JSON.stringify(X)}; SL.D.spec.commands[0].usage = ${JSON.stringify(X)}; SL.loop.dirty = true; SL.bus.emit('data', 'cli')`); await p.sleep(500); await check('tools');
@@ -53,7 +62,8 @@ try {
   await p.eval(`SL.views.show('doctor')`); await p.sleep(700); await p.eval(FILL); await p.sleep(500); await check('doctor');
   await p.eval(`SL.views.show('schedule')`); await p.sleep(700); await p.eval(FILL); await p.sleep(500); await check('schedule');
   await p.eval(`document.querySelector('[data-edit]').click()`); await p.sleep(300); await check('schedule: edit form'); await p.eval(`document.querySelector('[data-lg]').click()`); await p.sleep(500); await check('schedule: log');
-  if (p.errors.length) { failed++; console.log('FAIL page errors:\n' + p.errors.join('\n')); }
+  const errs = p.errors.filter(e => !/api\/recorded\/watching/.test(e));   // the fake server has no list of watched runs
+  if (errs.length) { failed++; console.log('FAIL page errors:\n' + errs.join('\n')); }
 } finally { await p.close(); srv.kill('SIGTERM'); }
 console.log(failed ? failed + ' failed' : 'all checks passed');
 process.exit(failed ? 1 : 0);

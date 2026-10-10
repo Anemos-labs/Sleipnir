@@ -1,0 +1,42 @@
+$ sleipnir rl eval --tasks split.test.jsonl --model sample-policy-v2 --base-url http://127.0.0.1:18091/v1 --samples 2 --target-price anthropic-haiku --out runs/e001 --work-dir /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/rl/work --no-net-isolation --concurrency 3 --exclude split.train.jsonl
+[1/6] py-ini/0 ok pass=true score=1.000
+[2/6] py-ini/1 ok pass=true score=1.000
+[3/6] rs-rpn/0 ok pass=true score=1.000
+[4/6] rs-rpn/1 ok pass=true score=1.000
+[5/6] go-lru/0 ok pass=true score=1.000
+[6/6] go-lru/1 ok pass=true score=1.000
+eval e001 of sample-policy-v2: 3 tasks x 2 samples; 6 rollouts completed, 0 infra failures
+  pass@1 100.0%   mean score 1.000   mean reward 1.082   hack rate 0.0%   budget rate 0.0%
+  pass^1 100.0%   pass@1 100.0%
+  pass^2 100.0%   pass@2 100.0%
+  cost: median $0.0080 (p90 $0.0102)   ITE median 14416   requests median 5   steps median 4   wall median 1s
+
+TAG      TASKS  SAMPLES  PASS@1  MEAN USD  HACK
+feature  2      4        100.0%  $0.0091   0.0%
+fix      1      2        100.0%  $0.0077   0.0%
+fixture  3      6        100.0%  $0.0086   0.0%
+go       1      2        100.0%  $0.0077   0.0%
+medium   3      6        100.0%  $0.0086   0.0%
+python   1      2        100.0%  $0.0102   0.0%
+rust     1      2        100.0%  $0.0080   0.0%
+sample   3      6        100.0%  $0.0086   0.0%
+
+ROLE    EPISODES  MEAN STEPS  MEAN REWARD  MEAN OUT TOKENS
+worker  6         4.0         1.082        1101
+[exit 0]
+
+$ sleipnir rl taskgen composite -k 2 --seed 1 -o composite.jsonl tasks.jsonl
+wrote 0 composite tasks (2 components each) from 12 tasks to composite.jsonl
+composite verifiers reuse the components' hidden files: keep the blobs directory next to the output (copy or link it)
+[exit 0]
+
+$ sleipnir rl taskgen recall --repo /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/shop-final --max 3 -o recall.jsonl --seed 4 --repo-path ../shop-final
+sleipnir: rl taskgen recall: recall: /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/shop-final is not the root of a git repository
+[exit 1]
+
+$ sleipnir rl taskgen git --repo /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/shop --max 3 -o git.jsonl --lang go --no-net-isolation --work-dir /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/rl/work-gen
+wrote 0 tasks to git.jsonl (hidden files and reference solutions in blobs)
+  examined 1 commits, 0 candidates, 0 accepted, in 0s
+next: sleipnir rl tasks split git.jsonl, then sleipnir rl rollout --tasks <train file> --model <policy>
+[exit 0]
+

@@ -1,0 +1,4 @@
+$ sleipnir rl tasks validate tasks.jsonl
+tasks.jsonl: 12 tasks, all valid
+[exit 0]
+

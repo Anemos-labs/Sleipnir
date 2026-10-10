@@ -1,0 +1,17 @@
+layers (lowest precedence first):
+  defaults  defaults (active)
+  user      ~/.sleipnir/config.json (found)
+  project   ./.sleipnir/config.json (found)
+  local     ./.sleipnir/config.local.json (not found)
+keys:
+  cache        ~/.sleipnir/config.json
+  mcp          ~/.sleipnir/config.json
+  models       ~/.sleipnir/config.json
+  permissions  ./.sleipnir/config.json
+  providers    ~/.sleipnir/config.json
+  swarm        ./.sleipnir/config.json
+security-sensitive settings from project files:
+  ./.sleipnir/config.json:3:5: permissions.allow: is security-sensitive and comes from a project file that is not trusted; it was ignored
+configuration is valid
+swarm.isolation: worktree (./.sleipnir/config.json): every writer gets its own git worktree; finished work is merged and verified, and applied to the checkout at the end
+swarm.mailman: off (default): worker mail is delivered at once

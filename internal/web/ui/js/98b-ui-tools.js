@@ -186,7 +186,8 @@
     /** the directory and model lists (the server's projects and catalogue); what is chosen stays chosen, or prefer = {dir, model} */
     function fillSelects(prefer) {
       const dir = $('#sDir', root), want = prefer ? prefer.dir : dir.value, list = projects(); if (want && !list.includes(want)) list.unshift(want);
-      dir.innerHTML = list.map(p => '<option' + (p === want ? ' selected' : '') + '>' + esc(p) + '</option>').join('') || '<option value="">(no project)</option>';
+      const word = d => { const p = arr(X().projects).find(x => (x.dir || x.root) === d), w = p ? (C3.settings && C3.settings.projectState ? C3.settings.projectState(p.trust) : '') : ''; return w ? ' · ' + w : ''; };   // a scheduled run in a project nobody trusted or that could not be read says so
+      dir.innerHTML = list.map(p => '<option value="' + esc(p) + '"' + (p === want ? ' selected' : '') + '>' + esc(p) + esc(word(p)) + '</option>').join('') || '<option value="">(no project)</option>';
       const md = $('#sModel', root), mcur = prefer ? prefer.model : md.value, ms = models(); if (mcur && !ms.includes(mcur)) ms.unshift(mcur);
       md.innerHTML = '<option value="">the default model</option>' + ms.map(m => '<option value="' + esc(m) + '"' + (m === mcur ? ' selected' : '') + '>' + esc(m) + '</option>').join('');
     }

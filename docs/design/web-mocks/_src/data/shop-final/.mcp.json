@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tracker": {
+      "command": "tracker-mcp",
+      "args": ["--project", "SHOP"]
+    }
+  }
+}

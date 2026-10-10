@@ -1,0 +1,11 @@
+import { open } from './cdp.mjs';
+const page = await open(process.argv[2] || '../dist/pack-test.html', { query: 'manual' });
+const ev = js => page.eval('(async()=>{ const SL = __SL, T = SL.test, $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s)); ' + js + ' })()');
+await ev(`T.manual(); T.run(1);`);
+await page.key('k', 2); await page.sleep(300);
+console.log('palette open', await ev(`return { modal: SL.ui.hasModal(), input: !!$('#palIn'), active: document.activeElement && document.activeElement.id }`));
+for (const ch of 'diff') await page.key(ch);
+console.log('typed', await ev(`return { val: $('#palIn') && $('#palIn').value, first: $('#palList .cmd[aria-selected="true"] .cn') && $('#palList .cmd[aria-selected="true"] .cn').textContent }`));
+await page.key('Enter'); await page.sleep(300);
+console.log('after enter', await ev(`T.run(0.2); return { modal: SL.ui.hasModal(), view: SL.views.current.name, ws: SL.sessions.active.ui.ws }`));
+await page.close();

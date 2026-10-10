@@ -1,0 +1,22 @@
+Sleipnir demo: a team builds a small shop, against a cache-faithful mock endpoint (about twenty seconds).
+Everything but the model is real: git worktrees, the merge queue and its checks, mail, the cache planner, the governor, accounting.
+
+manager: Done. The shop has a catalogue with paging, a cart that totals in whole cents, the web handlers for both and smoke tests; every piece went through the merge queue and the checks pass on the result.
+
+  agents             9 (1 manager, 8 workers)
+  tasks              8 of 8 accepted by the harness after its own gate
+  merge queue        4 merged, 1 sent back (each merge was checked on the merged result)
+  mail               2 messages between agents
+  model requests     55 in 20.662s
+  input tokens       319152 read from cache, 0 written, 65816 uncached (hit ratio 83%)
+  cache              2 compactions, 5 cache anomalies (the provider dropped its cache once, on purpose), 1 nudge to an agent that repeated itself
+  cost               $0.0803
+    if every agent kept a private cache   $0.0953 (16% less with the shared prefix)
+    with no caching at all                $0.1999 (60% less)
+
+Prices are round demo numbers ($0.50/M input, $0.125/M cached, $2.00/M output) and the cache lives 25s here, not minutes, so that you can watch it cool; the model is a script.
+Workspace: /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/demo-shop/shop
+Recorded session: /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/demo-shop/session
+See it again: sleipnir replay /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/demo-shop/session
+
+Try it on a real model: sleipnir init --user && sleipnir swarm 8 "<goal>" --verify "<your tests>"

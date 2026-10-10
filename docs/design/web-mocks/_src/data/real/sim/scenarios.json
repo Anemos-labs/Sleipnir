@@ -1,0 +1,93 @@
+[
+  {
+    "Scenario": "typical",
+    "Agents": 20,
+    "NaiveITE": 25376838.999999963,
+    "SummaryITE": 22070569.399999987,
+    "LayeredITE": 16237041.9,
+    "VsNaive": -36.01629462203695,
+    "VsSummary": -26.431250568460595,
+    "AvgCtxNaive": 67698.98942420681,
+    "AvgCtxLayered": 42796.63833992095,
+    "WallNaive": 5999382416163,
+    "WallLayered": 4883250583128
+  },
+  {
+    "Scenario": "short tasks",
+    "Agents": 20,
+    "NaiveITE": 8532480.249999994,
+    "SummaryITE": 8532480.249999994,
+    "LayeredITE": 4722034.449999999,
+    "VsNaive": -44.65812622302874,
+    "VsSummary": -44.65812622302874,
+    "AvgCtxNaive": 38168.55741935484,
+    "AvgCtxLayered": 38254.93067226891,
+    "WallNaive": 2872941442149,
+    "WallLayered": 1582581070792
+  },
+  {
+    "Scenario": "long tasks",
+    "Agents": 20,
+    "NaiveITE": 96773503.60000005,
+    "SummaryITE": 50712500.90000002,
+    "LayeredITE": 45293118.749999925,
+    "VsNaive": -53.19677694298143,
+    "VsSummary": -10.686481742808496,
+    "AvgCtxNaive": 135303.95283492224,
+    "AvgCtxLayered": 45098.233922434956,
+    "WallNaive": 12819407155033,
+    "WallLayered": 12057164802710
+  },
+  {
+    "Scenario": "cold launches",
+    "Agents": 20,
+    "NaiveITE": 25598958.99999998,
+    "SummaryITE": 22261639.399999972,
+    "LayeredITE": 16409766.9,
+    "VsNaive": -35.896741347958674,
+    "VsSummary": -26.28679943490586,
+    "AvgCtxNaive": 67680.85680751174,
+    "AvgCtxLayered": 42785.39276315789,
+    "WallNaive": 12186546249844,
+    "WallLayered": 10769978750937
+  },
+  {
+    "Scenario": "small repo",
+    "Agents": 20,
+    "NaiveITE": 17069112.149999987,
+    "SummaryITE": 16392311.749999983,
+    "LayeredITE": 15524582.550000004,
+    "VsNaive": -9.048681539068703,
+    "VsSummary": -5.293513283750107,
+    "AvgCtxNaive": 51449.870604781994,
+    "AvgCtxLayered": 41646.65202927478,
+    "WallNaive": 5159710412898,
+    "WallLayered": 4882438903129
+  },
+  {
+    "Scenario": "bloated pins",
+    "Agents": 20,
+    "NaiveITE": 25376838.999999963,
+    "SummaryITE": 22070569.399999987,
+    "LayeredITE": 22778641.899999972,
+    "VsNaive": -10.238458383252514,
+    "VsSummary": 3.2082203552029176,
+    "AvgCtxNaive": 67698.98942420681,
+    "AvgCtxLayered": 84526.54611330698,
+    "WallNaive": 5999382416163,
+    "WallLayered": 4888290583128
+  },
+  {
+    "Scenario": "huge exploration",
+    "Agents": 20,
+    "NaiveITE": 50784587.00000004,
+    "SummaryITE": 32494038.850000035,
+    "LayeredITE": 18044045.699999973,
+    "VsNaive": -64.46944483372492,
+    "VsSummary": -44.469674012222846,
+    "AvgCtxNaive": 105834.06907037359,
+    "AvgCtxLayered": 44566.56028368794,
+    "WallNaive": 7792476041707,
+    "WallLayered": 4887784003129
+  }
+]

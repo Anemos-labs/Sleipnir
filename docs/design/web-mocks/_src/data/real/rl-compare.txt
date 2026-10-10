@@ -1,0 +1,102 @@
+$ sleipnir rl compare runs/r001 runs/r002
+A  r001  (sample-policy-v1)  48 episodes, pass 60% [46-73]  build dev none
+B  r002  (sample-policy-v2)  48 episodes, pass 73% [59-83]  build dev none
+
+12 tasks ran in both (only in A: 0, only in B: 0); 95% intervals from 2000 paired-bootstrap resamples over tasks
+
+METRIC         A        B        DELTA     INTERVAL              VERDICT
+pass_at_1      0.604    0.729    +0.125    [+0.042, +0.229]      better
+mean_score     0.604    0.729    +0.125    [+0.042, +0.229]      better
+mean_reward    0.569    0.729    +0.159    [+0.050, +0.296]      better
+mean_ite       13211    14955    +1744     [+492, +3168]         worse
+mean_usd       0.00663  0.00797  +0.00133  [+0.00052, +0.00221]  worse
+mean_requests  4.1      4.8      +0.7      [+0.3, +1.1]          worse
+mean_steps     3.4      4.0      +0.6      [+0.3, +0.9]          worse
+mean_wall_ms   4.4s     4.8s     +0.4s     [+0.0s, +0.9s]        worse
+hack_rate      0.000    0.000    +0.000    [+0.000, +0.000]      same
+pass_hat_4     0.083    0.333    +0.250    [+0.000, +0.500]      same
+[exit 0]
+
+$ sleipnir rl compare --gate pass_at_1:0.05 runs/r002 runs/r001
+A  r002  (sample-policy-v2)  48 episodes, pass 73% [59-83]  build dev none
+B  r001  (sample-policy-v1)  48 episodes, pass 60% [46-73]  build dev none
+
+12 tasks ran in both (only in A: 0, only in B: 0); 95% intervals from 2000 paired-bootstrap resamples over tasks
+
+METRIC         A        B        DELTA     INTERVAL              VERDICT
+pass_at_1      0.729    0.604    -0.125    [-0.229, -0.042]      worse
+mean_score     0.729    0.604    -0.125    [-0.229, -0.042]      worse
+mean_reward    0.729    0.569    -0.159    [-0.296, -0.050]      worse
+mean_ite       14955    13211    -1744     [-3168, -492]         better
+mean_usd       0.00797  0.00663  -0.00133  [-0.00221, -0.00052]  better
+mean_requests  4.8      4.1      -0.7      [-1.1, -0.3]          better
+mean_steps     4.0      3.4      -0.6      [-0.9, -0.3]          better
+mean_wall_ms   4.8s     4.4s     -0.4s     [-0.9s, -0.0s]        better
+hack_rate      0.000    0.000    +0.000    [+0.000, +0.000]      same
+pass_hat_4     0.333    0.083    -0.250    [-0.500, +0.000]      same
+
+gates:
+  FAIL  pass_at_1:0.05     pass_at_1 got worse by 0.125 (A 0.7292, B 0.6042), more than the tolerance of 0.05, and the interval [-0.2292, -0.04167] excludes zero
+sleipnir: rl compare: 1 of 1 gates failed
+[exit 1]
+
+$ sleipnir rl compare --format json runs/r001 runs/r002
+{
+  "comparison": {
+    "a": "sample-policy-v1 (r001)",
+    "b": "sample-policy-v2 (r002)",
+    "paired_tasks": 12,
+    "confidence": 0.95,
+    "resamples": 2000,
+    "metrics": [
+      {
+        "name": "pass_at_1",
+        "a": 0.6041666666666666,
+        "b": 0.7291666666666666,
+        "delta": 0.125,
+        "ci_low": 0.041666666666666664,
+        "ci_high": 0.22916666666666666,
+        "p": 0.002,
+        "significant": true,
+        "n": 12
+      },
+      {
+        "name": "mean_score",
+        "a": 0.6041666666666666,
+        "b": 0.7291666666666666,
+        "delta": 0.125,
+        "ci_low": 0.041666666666666664,
+        "ci_high": 0.22916666666666666,
+        "p": 0.002,
+        "significant": true,
+        "n": 12
+      },
+      {
+        "name": "mean_reward",
+        "a": 0.5694661458333333,
+        "b": 0.7287500000000001,
+        "delta": 0.1592838541666667,
+        "ci_low": 0.04972526041666672,
+        "ci_high": 0.29558723958333344,
+        "p": 0.002,
+        "significant": true,
+        "n": 12
+      },
+      {
+        "name": "mean_ite",
+        "a": 13211.292708333332,
+        "b": 14954.935416666669,
+        "delta": 1743.6427083333376,
+        "ci_low": 491.97924479166625,
+        "ci_high": 3167.916510416667,
+        "p": 0.001,
+        "significant": true,
+        "n": 12
+      },
+      {
+        "name": "mean_usd",
+        "a": 0.0066309666666666675,
+        "b": 0.007965558333333332,
+        "delta": 0.0013345916666666659,
+        "ci_low": 0.000523320729166667,
+        "ci_high": 0.0022084553125000005,

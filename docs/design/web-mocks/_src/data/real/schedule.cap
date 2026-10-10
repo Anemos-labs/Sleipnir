@@ -1,0 +1,26 @@
+### (in ~/projects/shop) sleipnir schedule
+no scheduled jobs. Add one:
+  sleipnir schedule add --cron "0 9 * * 1-5" "summarize yesterday's commits"
+[exit 0]
+### (in ~/projects/shop) sleipnir schedule add --cron 0 9 * * 1-5 --cwd ~/projects/shop summarize yesterday's commits
+j1: runs next at 2026-10-12 09:00; `sleipnir daemon` starts the jobs that are due
+[exit 0]
+### (in ~/projects/shop) sleipnir schedule add --cron @weekly --model anthropic/claude-haiku-5-5 --mode accept-edits --budget-usd 0.5 write the CHANGELOG entry for the week's merged work
+j2: runs next at 2026-10-11 00:00; `sleipnir daemon` starts the jobs that are due
+[exit 0]
+### (in ~/projects/shop) sleipnir schedule
+ID  CRON         NEXT         LAST   GOAL
+j1  0 9 * * 1-5  10-12 09:00  never  summarize yesterday's commits
+j2  @weekly      10-11 00:00  never  write the CHANGELOG entry for the week's merged work
+[exit 0]
+### (in ~/projects/shop) sleipnir schedule rm j2
+[exit 0]
+### (in ~/projects/shop) sleipnir schedule
+ID  CRON         NEXT         LAST   GOAL
+j1  0 9 * * 1-5  10-12 09:00  never  summarize yesterday's commits
+[exit 0]
+### (in ~/projects/shop) sleipnir schedule add --cron 61 * * * * bad cron
+sleipnir: schedule add: cron "61 * * * *": minute: "61" is outside 0-59
+[exit 1]
+### (in ~/projects/shop) sleipnir daemon --once
+[exit 0]

@@ -1,0 +1,10 @@
+provider: explicit-cache (Anthropic-like: read 0.1x, write 1.25x, TTL 5m)
+
+workers       naive  naive+sum   sleipnir  vs naive  vs n+sum
+1              2.5M       1.9M       1.6M      -37%      -17%
+2              3.4M       2.7M       1.9M      -43%      -28%
+5              7.1M       6.0M       4.1M      -42%      -31%
+10            12.0M      10.5M       7.5M      -38%      -29%
+20            25.4M      22.1M      16.2M      -36%      -26%
+50            61.3M      53.5M      40.5M      -34%      -24%
+100          121.6M     109.4M      82.2M      -32%      -25%

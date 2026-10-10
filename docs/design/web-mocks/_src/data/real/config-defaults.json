@@ -1,0 +1,28 @@
+{
+  "models": {},
+  "permissions": {
+    "mode": "default"
+  },
+  "cache": {
+    "instruction_max_tokens": 0,
+    "shared_ttl": "5m",
+    "min_layer_for_breakpoint": 1500,
+    "compact_threshold_tokens": 0,
+    "thread_soft_limit_tokens": 0,
+    "hot_max_tokens": 0,
+    "affinity_shards": 0
+  },
+  "swarm": {
+    "max_workers": 0,
+    "requests_per_minute": 0,
+    "max_concurrent_requests": 0,
+    "isolation": "none",
+    "budget_usd": 50
+  },
+  "tools": {
+    "max_output_chars": 24000,
+    "default_timeout_sec": 120,
+    "max_timeout_sec": 600,
+    "web_allow_private": false
+  }
+}

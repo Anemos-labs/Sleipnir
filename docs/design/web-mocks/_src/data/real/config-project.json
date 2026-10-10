@@ -1,0 +1,108 @@
+{
+  "cache": {
+    "affinity_shards": 0,
+    "compact_threshold_tokens": 0,
+    "hot_max_tokens": 0,
+    "instruction_max_tokens": 0,
+    "min_layer_for_breakpoint": 1500,
+    "shared_ttl": "5m",
+    "thread_soft_limit_tokens": 0
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "~/.sleipnir/hooks/format.sh",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "~/.sleipnir/hooks/block-dangerous.sh",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ]
+  },
+  "mcp": {
+    "docs": {
+      "command": "docs-mcp",
+      "type": "stdio"
+    },
+    "postgres": {
+      "command": "postgres-mcp",
+      "disabled": true,
+      "type": "stdio"
+    },
+    "sentry": {
+      "args": "(2 arguments, not shown)",
+      "command": "sentry-mcp",
+      "type": "stdio"
+    }
+  },
+  "models": {
+    "default": "anthropic/claude-sonnet-5-5",
+    "favorites": [
+      "anthropic/claude-sonnet-5-5",
+      "anthropic/claude-haiku-5-5",
+      "heimdall/demo-model"
+    ],
+    "roles": {
+      "backend": "heimdall/demo-model",
+      "docs": "heimdall/demo-model",
+      "frontend": "heimdall/demo-model",
+      "fullstack": "heimdall/demo-model",
+      "reviewer": "heimdall/demo-model",
+      "scout": "heimdall/demo-model",
+      "tester": "heimdall/demo-model"
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(make test)",
+      "Bash(make lint)"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Read(~/.ssh/**)",
+      "Read(./.env)",
+      "Read(./secrets/**)"
+    ],
+    "mode": "default"
+  },
+  "providers": {
+    "local": {
+      "base_url": "http://127.0.0.1:8000/v1",
+      "options": {
+        "capture_tokens": true
+      }
+    }
+  },
+  "swarm": {
+    "budget_usd": 25,
+    "isolation": "worktree",
+    "max_concurrent_requests": 0,
+    "max_workers": 12,
+    "requests_per_minute": 0
+  },
+  "tools": {
+    "default_timeout_sec": 120,
+    "max_output_chars": 24000,
+    "max_timeout_sec": 600,
+    "web_allow_private": false
+  }
+}

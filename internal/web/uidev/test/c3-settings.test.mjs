@@ -114,14 +114,49 @@ test('the Permissions tester keeps its previous result while a check is on its w
   assert.ok(html.includes('no rule matches') && html.includes('data-do="try" disabled'));
 });
 
-test('trusting: the confirm lists what the server scanned, the yes carries the id it issued, and nothing else', async () => {
-  const t = page({ modules: MODULES, routes: call => call.path === '/api/trust' ? { status: 200, body: { ok: true } } : { status: 404, body: { error: 'x', code: 'not_found' } } });
-  const S = t.SL.c3.settings, ch = { files: [{ path: 'AGENTS.md', kind: 'instructions', hash: 'a1b2c3d4e5f6a7b8c9d0' }, { path: EVIL, kind: EVIL, hash: EVIL }], changed: EVIL, partial: true, confirm: 'cf_issued_with_the_challenge' };
-  const sp = S.trustSpec('/p/' + EVIL, ch);
-  assert.equal(sp.title, 'Trust these files'); assert.equal(sp.ok, 'Trust these files'); assert.match(sp.text, /<b>2<\/b> files/); assert.match(sp.detail, /AGENTS\.md  instructions  a1b2c3d4e5f6a7b8/);
-  assert.ok(!hasMarkup(sp.text) && !hasMarkup(sp.detail) && !hasMarkup(sp.title));
-  const r = await S.trustPost('/p', ch); assert.equal(r.ok, true);
-  assert.deepEqual(plain(t.fetch.calls.map(c => c.method + ' ' + c.path)), ['POST /api/trust'], 'no second confirmation is asked for');
-  assert.equal(t.fetch.calls[0].headers['X-Confirm'], 'cf_issued_with_the_challenge'); assert.deepEqual(plain(t.fetch.calls[0].body), { dir: '/p', on: true });
-  const f = S.forgetSpec([{ dir: '/a' }, { dir: EVIL }]); assert.match(f.text, /<b>2<\/b> directories/); assert.ok(!hasMarkup(f.detail)); assert.equal(f.danger, true);
+test('the projects nobody trusted, or that could not be read, are rows of the ledger with the server\'s word', () => {
+  const { SL } = setup(), S = SL.c3.settings;
+  const projects = [{ dir: '/a', trust: 'trusted', files: 3 }, { dir: '/b', trust: 'untrusted', files: 2 }, { dir: '/c', trust: 'partial', files: 9 }, { dir: '/d', trust: 'unreadable', files: 1 }, { dir: '/e', trust: 'changed', files: 4 }, { dir: '/f', trust: 'none' }, { dir: '/g', trust: 'partial' }, { dir: '/led', trust: 'partial' }];
+  const rows = S.ledgerRows({ project: { dir: '/a', state: 'trusted' }, files: [] }, [{ dir: '/led', files: 2, state: 'trusted (Oct 8)' }], projects);
+  assert.deepEqual(plain(rows.map(r => r.dir + ':' + r.state)), ['/led:trusted (Oct 8)', '/b:not trusted', '/c:partial', '/d:unreadable', '/e:changed since your yes', '/g:partial'], 'trusted and nothing-to-trust projects are not listed; a project in the ledger once');
+  SL.D.extra.projects = projects; SL.D.extra.trust = { project: { dir: '/a', state: 'trusted' }, files: [], covers: '', ledger: [], question: { options: [] } }; SL.G.trustDirs = [];
+  const page = S.pages.trust(session(), S.newState({ page: 'trust' }));
+  const row = d => page.split('<tr><td class="bright mono">').find(p => p.startsWith(d + '</td>'));
+  for (const [dir, word] of [['/c', 'partial'], ['/d', 'unreadable']]) {
+    assert.match(row(dir), new RegExp('<span class="tag warm" title="[^"]*session only[^"]*">' + word + '</span>'), dir + ' shows the word in the tag style, with what it means');
+    assert.match(row(dir), new RegExp('data-trust="' + dir + '" data-on="1">Trust these files'), dir + ' offers the trust step');
+  }
+  assert.match(row('/b'), /<span class="tag warm" title="">not trusted<\/span>|<span class="tag warm">not trusted<\/span>/);
+});
+
+test('trusting goes through the trust step: it gets the whole challenge, and only the id it resolves is sent', async () => {
+  const challenge = { dir: '/p', files: [{ path: 'AGENTS.md', kind: 'instructions', bytes: 10, hash: 'ab' }, { path: '/p/' + EVIL, kind: 'unread' }], partial: true, confirm: 'cf_the_challenge', digest: 'd' };
+  const seen = [];
+  const mk = trustStep => { const t = page({ modules: MODULES, routes: call => call.path.startsWith('/api/trust/challenge') ? { status: 200, body: challenge } : call.path === '/api/trust' ? { status: 200, body: { ok: true } } : { status: 404, body: { error: 'x', code: 'not_found' } } }); if (trustStep) t.SL.ui.trustStep = trustStep; return t; };
+  const posts = t => t.fetch.calls.filter(c => c.method === 'POST' && c.path === '/api/trust');
+  // no step: nothing is trusted, the person is told
+  let t = mk(null); assert.equal(await t.SL.c3.settings.trustFlow('/p'), false); assert.equal(posts(t).length, 0); assert.match(t.toasts[0][0], /nothing was trusted/);
+  // declined
+  t = mk(async () => null); assert.equal(await t.SL.c3.settings.trustFlow('/p'), false); assert.equal(posts(t).length, 0);
+  // yes: the step got the challenge as the server sent it (the unread path included), and its id is what is sent
+  t = mk(async (ch, o) => { seen.push([ch, o]); return ch.confirm; });
+  assert.equal(await t.SL.c3.settings.trustFlow('/p'), true);
+  assert.deepEqual(plain(seen[0][0]), challenge); assert.deepEqual(plain(seen[0][1]), { dir: '/p' });
+  assert.equal(posts(t).length, 1); assert.equal(posts(t)[0].headers['X-Confirm'], 'cf_the_challenge'); assert.deepEqual(plain(posts(t)[0].body), { dir: '/p', on: true });
+  assert.deepEqual(plain(t.fetch.calls.map(c => c.path)), ['/api/trust/challenge?dir=%2Fp', '/api/trust'], 'no confirmation of the page\'s own is asked for');
+  // the id the step resolves is the one sent, even when it is not the challenge's
+  t = mk(async () => 'cf_other'); await t.SL.c3.settings.trustFlow('/p'); assert.equal(posts(t)[0].headers['X-Confirm'], 'cf_other');
+  // the server refuses the challenge: no step, no trust
+  const bad = page({ modules: MODULES, routes: () => ({ status: 403, body: { error: 'start a session in one of the listed projects', code: 'not_a_project' } }) });
+  let stepped = false; bad.SL.ui.trustStep = async () => { stepped = true; return 'x'; };
+  assert.equal(await bad.SL.c3.settings.trustFlow('/nope'), false); assert.equal(stepped, false); assert.deepEqual(plain(bad.toasts), [['start a session in one of the listed projects', 'warm']]);
+  const f = t.SL.c3.settings.forgetSpec([{ dir: '/a' }, { dir: EVIL }]); assert.match(f.text, /<b>2<\/b> directories/); assert.ok(!hasMarkup(f.detail)); assert.equal(f.danger, true);
+});
+
+test('a hostile project path and a hostile unread entry of the ledger are text on the Trust page', () => {
+  const { SL } = setup(), S = SL.c3.settings;
+  SL.D.extra.projects = [{ dir: '/p/' + EVIL, trust: 'partial', files: EVIL }, { dir: '/q/' + EVIL, trust: 'unreadable' }];
+  SL.D.extra.trust = { project: { dir: '/p/' + EVIL, state: 'partial' }, files: [{ path: EVIL, kind: 'unread', bytes: EVIL, hash: EVIL }], covers: EVIL, ledger: [], question: { options: [EVIL] } };
+  const html = S.pages.trust(session(), S.newState({ page: 'trust' }));
+  assert.ok(!hasMarkup(html)); assert.deepEqual(plain(scriptAttrs(html)), []); assert.ok(html.includes('&lt;img'));
 });

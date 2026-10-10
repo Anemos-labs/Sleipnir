@@ -1,0 +1,30 @@
+friction in 1 sessions (661 events, 55 model requests)
+
+#  SCORE  CATEGORY            COUNT  SESSIONS  WASTED  WHAT
+1  24     file.reread         6      1         0       the same part of a file read three or more times
+2  16     call.repeated       4      1         0       bash {"command":"sh checks.sh"}
+3  12     call.repeated       3      1         0       bash {"command":"sleep <n>.<n>"}
+4  8      call.repeated       2      1         0       bash {"command":"sh verify.sh"}
+5  8      agent.stuck         1      1         1       nudge
+6  8      permission.refused  1      1         1       bash: sh — role reviewer: plan mode (read-only): sh verify.sh is not a read-only… [policy]
+7  8      tool.error          1      1         1       task
+8  5      cache.break         5      1         0       low_hit
+
+score = count x severity squared (1 a cost, 2 waste, 3 a stop) x (1 + requests wasted per occurrence); WASTED is model requests.
+
+1. file.reread: the same part of a file read three or more times
+   the same part of a file read again and again: did the answer get lost (truncation, compaction) or never used?
+   data/demo-shop/session seq 258: read docs/api.md
+   data/demo-shop/session seq 259: read docs/design.md
+2. call.repeated: bash {"command":"sh checks.sh"}
+   the same call over and over: polling, or a loop
+   data/demo-shop/session seq 324: bash {"command":"sh checks.sh"}
+3. call.repeated: bash {"command":"sleep <n>.<n>"}
+   the same call over and over: polling, or a loop
+   data/demo-shop/session seq 311: bash {"command":"sleep 2.0"}
+4. call.repeated: bash {"command":"sh verify.sh"}
+   the same call over and over: polling, or a loop
+   data/demo-shop/session seq 314: bash {"command":"sh verify.sh"}
+5. agent.stuck: nudge
+   the same failing call again and again: what does the model see that does not tell it what to do next?
+   data/demo-shop/session seq 401: [harness] bash has now failed the same way 4 times with the same arguments. Repeating it will not change the result: try another approach, or stop and say what is blocking you.

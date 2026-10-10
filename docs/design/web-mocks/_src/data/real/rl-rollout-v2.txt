@@ -1,0 +1,19 @@
+run r002: finished; 12 tasks x 4 samples
+  rollouts 48: 48 completed (0 resumed), 0 infra errors, 0 cancelled, 0 pending
+  spent $0.3823 in all (every attempt, failed ones included; ledger.jsonl)
+  pass rate 72.9%   mean score 0.729   mean reward 0.729   hack rate 0.0%   budget rate 0.0%
+  mean cost $0.0080   mean ITE 14955   mean requests 4.8   mean steps 4.0   mean wall 4.8s
+
+TASK             SAMPLES  PASSED  PASS%  REWARD  COST
+go-jsonpath      4        1       25     0.106   $0.0058
+go-lru           4        4       100    1.082   $0.0093
+go-ratelimit     4        3       75     0.762   $0.0116
+go-wordfreq      4        4       100    1.072   $0.0067
+js-csv           4        1       25     0.114   $0.0063
+js-eventemitter  4        3       75     0.753   $0.0085
+js-slugify       4        3       75     0.745   $0.0062
+py-ini           4        4       100    1.082   $0.0111
+py-intervals     4        2       50     0.436   $0.0051
+py-roman         4        3       75     0.747   $0.0053
+rs-bitset        4        3       75     0.765   $0.0116
+rs-rpn           4        4       100    1.082   $0.0081

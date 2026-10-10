@@ -569,6 +569,7 @@ func (rt *router) pages() {
 	rt.get("/api/recorded", func(*http.Request) (any, error) {
 		return map[string]any{"recorded": Recorded(), "mb": 1.7}, nil
 	})
+	rt.get("/api/recorded/watching", func(*http.Request) (any, error) { return map[string]any{"tabs": []any{}}, nil })
 	rt.get("/api/recorded/{sid}/events", func(r *http.Request) (any, error) {
 		for _, s := range Recorded() {
 			if s.ID == r.PathValue("sid") {

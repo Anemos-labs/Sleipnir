@@ -1,0 +1,36 @@
+╭ SLEIPNIR ▸ cache · mgr · Build the shop: a catalog…  ■ ended · ◷ 21s · 9 agents · $0.08 · ⛁ 83% ─╮
+│ mgr manager · demo-model · 5 requests · 75% of its prompt from the cache                         │
+│ latest answer: 8.0k prompt · 7.9k from the cache · 109 paid in full · saved $0.01                │
+├─ its latest prompt ──────────────────────────────────────────────────────────────────────────────┤
+│ ██████████████████████████████████████████████████████████████████████████████████████████████▓░ │
+│                              G0                             G1   G2   G3           G5            │
+│ █ cached 7.9k  ░ paid 109  ▏ breakpoint                                     ● warm 0:25 ▰▰▰▰▰▰▰▰ │
+├─ hit ratio per request ──────────────────────────────────┬─ its prefix ──────────────────────────┤
+│                                                          │ shared 905 tokens of G1–G2 · 1 rider  │
+│ ▁▇▆██                                                    │ mgr                                   │
+│ 5 requests · mean 69% · lowest 0% at request 1           │ ● warm 0:25 ▰▰▰▰▰▰▰▰                  │
+│ ⚠ cache break   ◆ compaction   ↻ new epoch               │                                       │
+├─ compactions ────────────────────────────────────────────┼─ cache anomalies ─────────────────────┤
+│ none yet. When the thread outgrows its budget it is      │ none: every request read what its     │
+│ folded into a resume, at the moment the cache is         │ prompt said it should                 │
+│ coldest, so the rewrite costs nothing extra.             │ (5 in the session, on other agents)   │
+├─ every agent's cache ────────────────────────────────────┴───────────────────────────────────────┤
+│   AGENT    ROLE       REQ   HIT  LAST    READ    PAID   WRITE    SAVED                           │
+│ › mgr      manager      5   75%   99%   33.5k   11.1k       0    $0.01                           │
+│   be-1     backend      7   88%   97%   53.2k    7.0k       0    $0.02                           │
+│   be-2     backend     10   69%   97%   53.2k   23.5k       0    $0.02                           │
+│   fe-1     frontend    11   84%   98%   72.2k   13.5k       0    $0.03                           │
+│   rv-1     reviewer     3   95%   96%   15.4k     731       0  $0.0058                           │
+│   sc-1     scout        3   90%   97%   16.5k    1.8k       0  $0.0062                           │
+│   sc-2     scout        3   89%   97%   17.0k    2.1k       0  $0.0064                           │
+│   sc-3     scout        3   92%   97%   16.4k    1.5k       0  $0.0061                           │
+│   ts-1     tester       5   90%   97%   41.7k    4.5k       0    $0.02                           │
+├─ the session ────────────────────────────────────────────────────────────────────────────────────┤
+│ 83% of the session's prompt came from the cache · saved $0.12 (list price)                       │
+│ 2 compactions · 5 anomalies                                                                      │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ space pause · o cockpit · c cache · m mail · b board · ↑↓ agent · ? help · q quit                │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

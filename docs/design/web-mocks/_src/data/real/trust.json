@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "projects": {
+    "/tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/shop": {
+      "digest": "sha256:29fd17f2283f98a9b929b9cf158d1ab2f110e9d9d49d920592218c0043d14c38",
+      "files": {
+        ".mcp.json": "db820b992a6675ff",
+        ".sleipnir/config.json": "62ccbba3155eac57",
+        "AGENTS.md": "6f109230ae98c1a1"
+      },
+      "saved": "2026-10-09"
+    }
+  }
+}

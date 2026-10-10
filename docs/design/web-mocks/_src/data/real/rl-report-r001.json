@@ -1,0 +1,495 @@
+{
+  "schema": "sleipnir.rl.eval/2",
+  "run_id": "r001",
+  "model": "sample-policy-v1",
+  "created": "2026-10-09T22:23:01.664468662Z",
+  "tasks": 12,
+  "samples": 4,
+  "rollouts": 48,
+  "completed": 48,
+  "infra": 0,
+  "pass_at_1": 0.6041666666666666,
+  "pass_hat_k": {
+    "1": 0.6041666666666666,
+    "2": 0.38888888888888884,
+    "3": 0.22916666666666666,
+    "4": 0.08333333333333333
+  },
+  "pass_at_k": {
+    "1": 0.6041666666666666,
+    "2": 0.8194444444444443,
+    "3": 0.875,
+    "4": 0.9166666666666666
+  },
+  "mean_score": 0.6041666666666666,
+  "mean_reward": 0.5694661458333333,
+  "ite": {
+    "mean": 13211.292708333334,
+    "median": 12913.75,
+    "p90": 20918.215000000007,
+    "min": 5412.5,
+    "max": 30923.45
+  },
+  "usd": {
+    "mean": 0.006630966666666665,
+    "median": 0.007178800000000001,
+    "p90": 0.012265460000000002,
+    "min": 0.0005284,
+    "max": 0.0136668
+  },
+  "requests": {
+    "mean": 4.0625,
+    "median": 5,
+    "p90": 6,
+    "min": 1,
+    "max": 6
+  },
+  "steps": {
+    "mean": 3.3958333333333335,
+    "median": 4,
+    "p90": 5,
+    "min": 1,
+    "max": 5
+  },
+  "wall_ms": {
+    "mean": 4425.8125,
+    "median": 678,
+    "p90": 15759.6,
+    "min": 188,
+    "max": 21204
+  },
+  "hack_rate": 0,
+  "infra_rate": 0,
+  "budget_rate": 0,
+  "passed": 29,
+  "pass_low": 0.4631040849254725,
+  "pass_high": 0.7297917213940862,
+  "solved": 0.9166666666666666,
+  "usd_total": 0.31828639999999997,
+  "usd_per_pass": 0.010975393103448274,
+  "tokens": {
+    "input": 109268,
+    "cache_read": 888224,
+    "cache_write": 0,
+    "output": 30049
+  },
+  "hit_ratio": 0.8904572668251975,
+  "tool_errors_per_ep": 0,
+  "invalid_calls_per_ep": 0,
+  "retries_per_ep": 0,
+  "request_errors_per_ep": 0.22916666666666666,
+  "cache_anomalies_per_ep": 0,
+  "false_done_rate": 0.3958333333333333,
+  "attempts": {
+    "attempts": 48,
+    "wasted": 0,
+    "requests": 184,
+    "wasted_requests": 0,
+    "retries": 0,
+    "spent_usd": 0.3182864,
+    "wasted_usd": 0
+  },
+  "identity": {
+    "run": "r001",
+    "model": "sample-policy-v1",
+    "endpoint": "http://127.0.0.1:18090",
+    "mode": "single",
+    "group": 4,
+    "seed": 7,
+    "tasks": 12,
+    "tasks_digest": "0b64e8a7f8b3d907",
+    "version": "dev",
+    "commit": "none",
+    "renderer": "sleipnir-kv/3"
+  },
+  "by_tag": {
+    "easy": {
+      "tasks": 1,
+      "samples": 4,
+      "pass_at_1": 0.75,
+      "mean_ite": 11307.0875,
+      "mean_usd": 0.0056527999999999995,
+      "hack_rate": 0
+    },
+    "feature": {
+      "tasks": 6,
+      "samples": 24,
+      "pass_at_1": 0.5833333333333334,
+      "mean_ite": 12146.518750000001,
+      "mean_usd": 0.006256583333333334,
+      "hack_rate": 0
+    },
+    "fix": {
+      "tasks": 5,
+      "samples": 20,
+      "pass_at_1": 0.6,
+      "mean_ite": 12863.235,
+      "mean_usd": 0.006433810000000001,
+      "hack_rate": 0
+    },
+    "fixture": {
+      "tasks": 12,
+      "samples": 48,
+      "pass_at_1": 0.6041666666666666,
+      "mean_ite": 13211.292708333332,
+      "mean_usd": 0.0066309666666666675,
+      "hack_rate": 0
+    },
+    "go": {
+      "tasks": 4,
+      "samples": 16,
+      "pass_at_1": 0.5625,
+      "mean_ite": 13950.14375,
+      "mean_usd": 0.007006500000000001,
+      "hack_rate": 0
+    },
+    "hard": {
+      "tasks": 3,
+      "samples": 12,
+      "pass_at_1": 0.25,
+      "mean_ite": 8237.929166666667,
+      "mean_usd": 0.0032095166666666667,
+      "hack_rate": 0
+    },
+    "js": {
+      "tasks": 3,
+      "samples": 12,
+      "pass_at_1": 0.5833333333333334,
+      "mean_ite": 10841.854166666666,
+      "mean_usd": 0.005130066666666666,
+      "hack_rate": 0
+    },
+    "medium": {
+      "tasks": 8,
+      "samples": 32,
+      "pass_at_1": 0.71875,
+      "mean_ite": 15314.3296875,
+      "mean_usd": 0.008036281250000001,
+      "hack_rate": 0
+    },
+    "python": {
+      "tasks": 3,
+      "samples": 12,
+      "pass_at_1": 0.6666666666666666,
+      "mean_ite": 13159.254166666668,
+      "mean_usd": 0.006823833333333334,
+      "hack_rate": 0
+    },
+    "refactor": {
+      "tasks": 1,
+      "samples": 4,
+      "pass_at_1": 0.75,
+      "mean_ite": 21340.225000000002,
+      "mean_usd": 0.00986305,
+      "hack_rate": 0
+    },
+    "rust": {
+      "tasks": 2,
+      "samples": 8,
+      "pass_at_1": 0.625,
+      "mean_ite": 15365.806250000001,
+      "mean_usd": 0.00784195,
+      "hack_rate": 0
+    },
+    "sample": {
+      "tasks": 12,
+      "samples": 48,
+      "pass_at_1": 0.6041666666666666,
+      "mean_ite": 13211.292708333332,
+      "mean_usd": 0.0066309666666666675,
+      "hack_rate": 0
+    }
+  },
+  "by_role": {
+    "compactor": {
+      "episodes": 21,
+      "mean_steps": 1,
+      "mean_reward": 0,
+      "mean_output_tokens": 18.428571428571427
+    },
+    "worker": {
+      "episodes": 48,
+      "mean_steps": 3.3958333333333335,
+      "mean_reward": 0.5694661458333333,
+      "mean_output_tokens": 617.9583333333334
+    }
+  },
+  "per_task": [
+    {
+      "id": "go-jsonpath",
+      "repo": "fixture-repos/go-jsonpath",
+      "tags": [
+        "fixture",
+        "go",
+        "feature",
+        "hard",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 0,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0,
+      "mean_score": 0,
+      "mean_reward": -0.20843750000000003,
+      "mean_ite": 6540.75,
+      "mean_usd": 0.0023694499999999995,
+      "mean_requests": 2,
+      "mean_steps": 1.75,
+      "mean_wall_ms": 6612.5
+    },
+    {
+      "id": "go-lru",
+      "repo": "fixture-repos/go-lru",
+      "tags": [
+        "fixture",
+        "go",
+        "fix",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 3,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.75,
+      "mean_score": 0.75,
+      "mean_reward": 0.7568750000000001,
+      "mean_ite": 15348.775,
+      "mean_usd": 0.008996200000000001,
+      "mean_requests": 5,
+      "mean_steps": 4,
+      "mean_wall_ms": 15052.25
+    },
+    {
+      "id": "go-ratelimit",
+      "repo": "fixture-repos/go-ratelimit",
+      "tags": [
+        "fixture",
+        "go",
+        "refactor",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 3,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.75,
+      "mean_score": 0.75,
+      "mean_reward": 0.7689062500000001,
+      "mean_ite": 21340.225000000002,
+      "mean_usd": 0.00986305,
+      "mean_requests": 3.25,
+      "mean_steps": 3.25,
+      "mean_wall_ms": 18326.25
+    },
+    {
+      "id": "go-wordfreq",
+      "repo": "fixture-repos/go-wordfreq",
+      "tags": [
+        "fixture",
+        "go",
+        "feature",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 3,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.75,
+      "mean_score": 0.75,
+      "mean_reward": 0.7468750000000001,
+      "mean_ite": 12570.825,
+      "mean_usd": 0.0067973,
+      "mean_requests": 5,
+      "mean_steps": 4,
+      "mean_wall_ms": 9548.5
+    },
+    {
+      "id": "js-csv",
+      "repo": "fixture-repos/js-csv",
+      "tags": [
+        "fixture",
+        "js",
+        "feature",
+        "hard",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 1,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.25,
+      "mean_score": 0.25,
+      "mean_reward": 0.11859375,
+      "mean_ite": 9242.7625,
+      "mean_usd": 0.0037288,
+      "mean_requests": 2.25,
+      "mean_steps": 2,
+      "mean_wall_ms": 222.25
+    },
+    {
+      "id": "js-eventemitter",
+      "repo": "fixture-repos/js-eventemitter",
+      "tags": [
+        "fixture",
+        "js",
+        "fix",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 3,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.75,
+      "mean_score": 0.75,
+      "mean_reward": 0.75953125,
+      "mean_ite": 12827.275000000001,
+      "mean_usd": 0.0067694999999999995,
+      "mean_requests": 4.75,
+      "mean_steps": 4,
+      "mean_wall_ms": 398.75
+    },
+    {
+      "id": "js-slugify",
+      "repo": "fixture-repos/js-slugify",
+      "tags": [
+        "fixture",
+        "js",
+        "feature",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 3,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.75,
+      "mean_score": 0.75,
+      "mean_reward": 0.75203125,
+      "mean_ite": 10455.524999999998,
+      "mean_usd": 0.004891900000000001,
+      "mean_requests": 4.75,
+      "mean_steps": 4,
+      "mean_wall_ms": 378.75
+    },
+    {
+      "id": "py-ini",
+      "repo": "fixture-repos/py-ini",
+      "tags": [
+        "fixture",
+        "python",
+        "feature",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 3,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.75,
+      "mean_score": 0.75,
+      "mean_reward": 0.7568750000000001,
+      "mean_ite": 19240.4,
+      "mean_usd": 0.0112884,
+      "mean_requests": 5,
+      "mean_steps": 4,
+      "mean_wall_ms": 221.25
+    },
+    {
+      "id": "py-intervals",
+      "repo": "fixture-repos/py-intervals",
+      "tags": [
+        "fixture",
+        "python",
+        "fix",
+        "hard",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 2,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.5,
+      "mean_score": 0.5,
+      "mean_reward": 0.44000000000000006,
+      "mean_ite": 8930.275000000001,
+      "mean_usd": 0.0035302999999999997,
+      "mean_requests": 3,
+      "mean_steps": 2.5,
+      "mean_wall_ms": 615.75
+    },
+    {
+      "id": "py-roman",
+      "repo": "fixture-repos/py-roman",
+      "tags": [
+        "fixture",
+        "python",
+        "fix",
+        "easy",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 3,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.75,
+      "mean_score": 0.75,
+      "mean_reward": 0.7468750000000001,
+      "mean_ite": 11307.0875,
+      "mean_usd": 0.0056527999999999995,
+      "mean_requests": 5,
+      "mean_steps": 4,
+      "mean_wall_ms": 233
+    },
+    {
+      "id": "rs-bitset",
+      "repo": "fixture-repos/rs-bitset",
+      "tags": [
+        "fixture",
+        "rust",
+        "fix",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 1,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 0.25,
+      "mean_score": 0.25,
+      "mean_reward": 0.11359375000000005,
+      "mean_ite": 15902.7625,
+      "mean_usd": 0.007220250000000001,
+      "mean_requests": 3.75,
+      "mean_steps": 3.25,
+      "mean_wall_ms": 753
+    },
+    {
+      "id": "rs-rpn",
+      "repo": "fixture-repos/rs-rpn",
+      "tags": [
+        "fixture",
+        "rust",
+        "feature",
+        "medium",
+        "sample"
+      ],
+      "n": 4,
+      "correct": 4,
+      "infra": 0,
+      "hacks": 0,
+      "pass_at_1": 1,
+      "mean_score": 1,
+      "mean_reward": 1.0818750000000001,
+      "mean_ite": 14828.850000000002,
+      "mean_usd": 0.00846365,
+      "mean_requests": 5,
+      "mean_steps": 4,
+      "mean_wall_ms": 747.5
+    }
+  ]
+}

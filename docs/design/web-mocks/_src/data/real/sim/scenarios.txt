@@ -1,0 +1,11 @@
+provider: explicit-cache (Anthropic-like: read 0.1x, write 1.25x, TTL 5m)
+20 workers, 40 tasks
+
+scenario              naive  naive+sum   sleipnir  vs naive  vs n+sum  ctx n/s wall n/s
+typical               25.4M      22.1M      16.2M      -36%      -26%  68/43 k 100/81 m
+short tasks            8.5M       8.5M       4.7M      -45%      -45%  38/38 k  48/26 m
+long tasks            96.8M      50.7M      45.3M      -53%      -11% 135/45 k 214/201m
+cold launches         25.6M      22.3M      16.4M      -36%      -26%  68/43 k 203/179m
+small repo            17.1M      16.4M      15.5M       -9%       -5%  51/42 k  86/81 m
+bloated pins          25.4M      22.1M      22.8M      -10%       +3%  68/85 k 100/81 m
+huge exploration      50.8M      32.5M      18.0M      -64%      -44% 106/45 k 130/81 m

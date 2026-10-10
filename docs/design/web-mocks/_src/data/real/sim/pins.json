@@ -1,0 +1,44 @@
+[
+  {
+    "SharedTokens": 1800,
+    "RoleTokens": 2200,
+    "VsNaive": -44.47601649677475,
+    "VsSummary": -36.15827646023478
+  },
+  {
+    "SharedTokens": 4050,
+    "RoleTokens": 4950,
+    "VsNaive": -41.45362470085408,
+    "VsSummary": -32.683116911337976
+  },
+  {
+    "SharedTokens": 8100,
+    "RoleTokens": 9900,
+    "VsNaive": -36.01331946819687,
+    "VsSummary": -26.427829723323725
+  },
+  {
+    "SharedTokens": 13500,
+    "RoleTokens": 16500,
+    "VsNaive": -28.759579157987258,
+    "VsSummary": -18.087446805971386
+  },
+  {
+    "SharedTokens": 20250,
+    "RoleTokens": 24750,
+    "VsNaive": -19.69240377022522,
+    "VsSummary": -7.66196815928093
+  },
+  {
+    "SharedTokens": 31500,
+    "RoleTokens": 38500,
+    "VsNaive": -4.580444790621829,
+    "VsSummary": 9.713829585203126
+  },
+  {
+    "SharedTokens": 45000,
+    "RoleTokens": 55000,
+    "VsNaive": 13.553905984902359,
+    "VsSummary": 30.564786878584172
+  }
+]

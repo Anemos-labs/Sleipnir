@@ -1,0 +1,18 @@
+$ sleipnir rl taskgen recall --repo /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/shop --rev final --max 3 -o recall.jsonl --seed 4 --lang go --files 4
+sleipnir: rl taskgen recall: recall: no distinctive constants found to ask about
+[exit 1]
+
+$ sleipnir rl taskgen mutate --repo /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/shop --rev final --max 3 -o mutate.jsonl --seed 5 --lang go --no-net-isolation --work-dir /tmp/claude-1000/-home-thanos-Documents-Sleipnir--claude-worktrees-sleipnir-web-interface-cc5a2f/89f1666d-77a5-4149-8ab4-3ec92ce15f75/scratchpad/work/data/rl/work-gen --id-prefix shop-mut
+accepted mut-shop-mut-c019e1ee2a (1/3)
+accepted mut-shop-mut-72badbc88c (2/3)
+accepted mut-shop-mut-270cac9e97 (3/3)
+wrote 3 tasks to mutate.jsonl (hidden files and reference solutions in blobs)
+  examined 8 commits, 12 candidates, 3 accepted, in 26s
+  rejected: the mutation survives: the project's tests still pass=4
+next: sleipnir rl tasks split mutate.jsonl, then sleipnir rl rollout --tasks <train file> --model <policy>
+[exit 0]
+
+$ sleipnir rl taskgen recall --repo fixture-repos/go-wordfreq --max 2 -o recall.jsonl --seed 4 --files 3 --repo-path fixture-repos/go-wordfreq
+sleipnir: rl taskgen recall: recall: only 1 suitable source files at HEAD; need more than --files=3
+[exit 1]
+

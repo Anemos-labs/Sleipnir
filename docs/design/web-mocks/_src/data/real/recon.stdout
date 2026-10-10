@@ -1,0 +1,33 @@
+## project
+shop: 14 files (go 7)
+Layout (file counts):
+  api/ 6: cart(1)
+  cmd/ 1: shop(1)
+  seed/ 1
+  web/ 2
+  root files: .gitignore AGENTS.md Makefile go.mod
+
+Go module example.com/shop (go 1.25)
+  binaries: cmd/shop
+Makefile targets: build test lint run
+
+Detected commands (verify before relying on them):
+  go build ./...
+  go vet ./...
+  go test ./...
+  make build
+  make test
+  make lint
+
+## code map
+Packages (most depended-on first):
+api: serves the shop's HTTP API.
+api/cart: keeps what a customer is about to buy.
+
+Most central files and their top-level declarations (ranked by dependents and recent churn; read the file for details):
+api/orders.go: Line, Order
+api/customers.go: Customer
+api/server.go: Server, NewServer, Server.Handler
+api/fulfilment.go: Shipment
+api/cart/cart.go: Line, Cart, New, Cart.Add, Cart.Lines, Cart.Total
+

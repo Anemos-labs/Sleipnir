@@ -88,10 +88,15 @@
   }
   const clampWorkers = (v, max) => Math.max(0, Math.min(max || 12, parseInt(v, 10) || 0));
   const teamWord = n => n === 0 ? 'single agent' : 'manager + ' + n + ' worker' + (n === 1 ? '' : 's') + (n > 8 ? ' (' + (n - 8) + ' share leg' + (n - 8 === 1 ? '' : 's') + ')' : '');
-  /** the trust ledger as the table draws it: the server's rows, and the project of this tab when nobody said yes to it (so that it can be trusted from here) */
-  function ledgerRows(T, dirs) {
-    const rows = arr(dirs).slice(), pr = T && T.project;
-    if (pr && pr.dir && pr.state !== 'trusted' && !rows.some(d => d.dir === pr.dir)) rows.push({ dir: pr.dir, files: arr(T.files).length, state: pr.state && pr.state !== 'not trusted' ? pr.state : 'not trusted' });
+  /** A project's trust as the server words it (GET /api/projects: trusted, untrusted, changed, partial, unreadable) as the table shows it, or '' when there is nothing to trust. */
+  const projectState = t => { const v = String(t == null ? '' : t); return v === 'trusted' || v === 'none' || v === '' ? '' : v === 'untrusted' ? 'not trusted' : v === 'changed' ? 'changed since your yes' : v; };
+  /** What the two words that mean "not every file could be read" say; a yes for such a project holds for the session only. */
+  const TRUST_WHY = { partial: 'not every file of this project could be scanned: a yes holds for this session only and is not remembered', unreadable: 'its files could not be read: a yes holds for this session only and is not remembered' };
+  /** the trust ledger as the table draws it: the server's rows, then the projects nobody said yes to (the one of this tab, and the host's list: GET /api/projects), so that each can be trusted from here */
+  function ledgerRows(T, dirs, projects) {
+    const rows = arr(dirs).slice(), pr = T && T.project, have = d => rows.some(r => r.dir === d);
+    if (pr && pr.dir && pr.state !== 'trusted' && !have(pr.dir)) rows.push({ dir: pr.dir, files: arr(T.files).length, state: pr.state && pr.state !== 'not trusted' ? projectState(pr.state) || pr.state : 'not trusted' });
+    arr(projects).forEach(p => { const st = projectState(p && p.trust), dir = p && (p.dir || p.root); if (st && dir && !have(dir)) rows.push({ dir, files: p.files == null ? '' : p.files, state: st }); });
     return rows;
   }
   /** a warning of the configuration as {where, text}: "file:line: message" splits at the position, anything else is all message */
@@ -102,17 +107,24 @@
   const configWarnings = C => Array.isArray(C.issues) ? C.issues.map(issueRow) : arr(C.warnings).map(warningRow);
   /** the prompts of an MCP server as the slash commands they are: /mcp__server__name, each with its description */
   const promptCmds = (d, name) => arr(d && d.prompts).map(p => { const s = String(typeof p === 'string' ? p : (p && (p.command || p.cmd || p.name)) || ''); return s ? { cmd: /^\/?mcp__/.test(s) ? s.replace(/^\//, '') : 'mcp__' + name + '__' + s, desc: typeof p === 'string' ? '' : String((p && p.description) || '') } : null; }).filter(Boolean);
-  /** the confirm of "Trust these files": what the server scanned (path, kind, hash) and what it noticed (a file that changed, a partial scan) */
-  function trustSpec(dir, ch) {
-    const files = arr(ch.files);
-    return { title: 'Trust these files', text: 'Trust the <b>' + files.length + '</b> file' + (files.length === 1 ? '' : 's') + ' of <b class="mono">' + esc(dir) + '</b>? The yes holds until one of them changes.' + (ch.changed ? ' <span class="warm">Changed since your last yes: ' + esc(ch.changed) + '.</span>' : '') + (ch.partial ? ' <span class="warm">Some files could not be read: only the ones listed are covered.</span>' : ''),
-      detail: '<span class="mono">' + esc(files.map(f => f.path + '  ' + (f.kind || '') + '  ' + String(f.hash || '').slice(0, 16)).join('\n') || 'no file') + '</span>', ok: 'Trust these files', danger: false };
+  /** the yes itself: the id the trust step resolved (the one of the challenge it showed), not a new one */
+  const trustPost = (dir, id) => net.post('/api/trust', { dir, on: true }, { confirmId: id });
+  /**
+   * "Trust these files": the server's challenge goes to the trust step (ui.trustStep), which lists every file it sent, each path it could
+   * not read, and says that a yes for a partial or unreadable project holds for the session only; its yes stays asleep until the whole
+   * list is on screen. Only the id that step resolves is sent. Without the step nothing is trusted. Resolves true when it was.
+   */
+  async function trustFlow(dir) {
+    const c = await net.get('/api/trust/challenge?dir=' + encodeURIComponent(dir)); if (!c.ok) { net.fail(c, 'the files could not be read'); return false; }
+    if (typeof ui.trustStep !== 'function') { ui.toast('the trust step is not available here: nothing was trusted', 'err'); return false; }
+    const id = await ui.trustStep(c.data || {}, { dir }); if (!id) return false;
+    const r = await trustPost(dir, id), reload = () => { if (SL.data) { SL.data.load('trust', { force: true }); SL.data.load('projects', { force: true }); } };
+    if (!r.ok) { net.fail(r, 'the files were not trusted'); reload(); return false; }
+    reload(); ui.toast('trusted ' + dir, 'ok'); return true;
   }
-  /** the yes itself: the id the server issued with the challenge (bound to its digest), not a new one */
-  const trustPost = (dir, ch) => net.post('/api/trust', { dir, on: true }, { confirmId: ch.confirm });
   /** the confirm of "Forget all…": the directories it forgets */
   const forgetSpec = dirs => ({ title: 'Forget every directory', text: 'Forget the <b>' + dirs.length + '</b> director' + (dirs.length === 1 ? 'y' : 'ies') + ' you said yes to? Their own files are left out of the next session until you say yes again.', detail: '<span class="mono">' + esc(dirs.map(d => d.dir).join('\n')) + '</span>', ok: 'Forget them', danger: true });
-  C3.settings = { trustSpec, trustPost, forgetSpec, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, PAGES };
+  C3.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, PAGES };
 
   /* ---------------- the pages: pure builders of markup from the session S and the page state ST ---------------- */
   const P = {};
@@ -155,11 +167,11 @@
     };
     P.trust = (S, ST) => {
       const T = X.trust, pr = T && T.project, files = T ? arr(T.files) : [], used = !!S.meta.trustProject, st = pr ? pr.state : '';
-      const stateHtml = !used ? tag('not used', 'warm') + ' <span class="dim">--trust-project is off for this session: the project’s own files are left out</span>' : st === 'trusted' || !pr ? tag('trusted', 'ok') + ' <span class="dim">you said yes' + (pr && pr.savedDay ? ' on ' + esc(dayTxt(pr.savedDay)) : '') + '; the hashes are unchanged</span>' : /^changed/.test(st) ? tag('changed', 'warm') + ' <span class="dim">a file changed since your yes: ' + esc(st.replace(/^changed:?\s*/, '')) + '; it is left out until you say yes again</span>' : tag(st || 'not trusted', 'warm') + ' <span class="dim">nobody said yes to these files: they are left out until you do</span>';
-      const dirs = ledgerRows(T, G.trustDirs);
+      const stateHtml = !used ? tag('not used', 'warm') + ' <span class="dim">--trust-project is off for this session: the project’s own files are left out</span>' : st === 'trusted' || !pr ? tag('trusted', 'ok') + ' <span class="dim">you said yes' + (pr && pr.savedDay ? ' on ' + esc(dayTxt(pr.savedDay)) : '') + '; the hashes are unchanged</span>' : /^changed/.test(st) ? tag('changed', 'warm') + ' <span class="dim">a file changed since your yes: ' + esc(st.replace(/^changed:?\s*/, '')) + '; it is left out until you say yes again</span>' : tag(st || 'not trusted', 'warm') + ' <span class="dim">' + (TRUST_WHY[st] ? esc(TRUST_WHY[st]) : 'nobody said yes to these files: they are left out until you do') + '</span>';
+      const dirs = ledgerRows(T, G.trustDirs, X.projects);
       return card('This project', cli('trust list', 'trust list'), '<dl class="kv"><dt>directory</dt><dd>' + esc(pr ? pr.dir : S.meta.cwd) + '</dd><dt>state</dt><dd>' + stateHtml + '</dd>' + (pr ? '<dt>digest</dt><dd class="mono">' + esc(pr.digest) + '</dd><dt>unlocks</dt><dd>' + esc(pr.unlocks) + '</dd>' : '') + '</dl>' +
         '<table class="tbl" style="margin-top:10px"><thead><tr><th>file</th><th>kind</th><th class="r">bytes</th><th>hash</th></tr></thead><tbody>' + files.map(f => '<tr><td class="bright mono">' + esc(f.path) + '</td><td>' + esc(f.kind || '') + '</td><td class="r num">' + esc(f.bytes) + '</td><td class="mono dim">' + esc(String(f.hash).slice(0, 16)) + '</td></tr>').join('') + '</tbody></table><p class="stubnote" style="margin:10px 0 0">' + esc(T ? T.covers : 'what the harness itself reads as text and settings') + '</p>') +
-        card('Every directory you decided about', '<span class="mono">sleipnir trust add | forget | list</span>' + (dirs.some(d => /^(trusted|changed|gone)/.test(d.state)) ? ' <button class="btn sm danger" type="button" data-do="forget-all">Forget all…</button>' : ''), '<table class="tbl"><thead><tr><th>directory</th><th class="r">files</th><th>state</th><th></th></tr></thead><tbody>' + dirs.map(d => { const ok = /^trusted/.test(d.state); return '<tr><td class="bright mono">' + esc(d.dir) + '</td><td class="r num">' + esc(d.files) + '</td><td>' + tag(d.state, ok ? 'ok' : /gone/.test(d.state) ? '' : 'warm') + '</td><td class="r nowrap">' + (ok ? '<button class="btn sm" type="button" data-trust="' + esc(d.dir) + '" data-on="0">Forget</button>' : /gone/.test(d.state) ? '<button class="btn sm" type="button" data-trust="' + esc(d.dir) + '" data-on="0">Forget the entry</button>' : '<button class="btn sm pri" type="button" data-trust="' + esc(d.dir) + '" data-on="1">Trust these files</button>') + '</td></tr>'; }).join('') + '</tbody></table><p class="stubnote" style="margin:10px 0 0">The yes holds until one of the files changes: a changed file is left out until you say yes again. When a session starts in a directory nobody said yes to, it asks: <i>“' + esc(T ? arr(T.question && T.question.options).join(' · ') : 'use this project’s own files?') + '”</i>. Tool output, web pages, file contents and mail never carry a yes.</p>');
+        card('Every directory you decided about', '<span class="mono">sleipnir trust add | forget | list</span>' + (dirs.some(d => /^(trusted|changed|gone)/.test(d.state)) ? ' <button class="btn sm danger" type="button" data-do="forget-all">Forget all…</button>' : ''), '<table class="tbl"><thead><tr><th>directory</th><th class="r">files</th><th>state</th><th></th></tr></thead><tbody>' + dirs.map(d => { const ok = /^trusted/.test(d.state); return '<tr><td class="bright mono">' + esc(d.dir) + '</td><td class="r num">' + esc(d.files) + '</td><td>' + tag(d.state, ok ? 'ok' : /gone/.test(d.state) ? '' : 'warm', TRUST_WHY[d.state]) + '</td><td class="r nowrap">' + (ok ? '<button class="btn sm" type="button" data-trust="' + esc(d.dir) + '" data-on="0">Forget</button>' : /gone/.test(d.state) ? '<button class="btn sm" type="button" data-trust="' + esc(d.dir) + '" data-on="0">Forget the entry</button>' : '<button class="btn sm pri" type="button" data-trust="' + esc(d.dir) + '" data-on="1">Trust these files</button>') + '</td></tr>'; }).join('') + '</tbody></table><p class="stubnote" style="margin:10px 0 0">The yes holds until one of the files changes: a changed file is left out until you say yes again. When a session starts in a directory nobody said yes to, it asks: <i>“' + esc(T ? arr(T.question && T.question.options).join(' · ') : 'use this project’s own files?') + '”</i>. Tool output, web pages, file contents and mail never carry a yes.</p>');
     };
     P.run = (S, ST) => {
       const n = ST.run.n == null ? S.meta.swarm : ST.run.n, nW = S.roster.length - 1, M = S.meta, m = S.m || S.wm, defs = defaults(), mx = maxWorkers();
@@ -334,12 +346,6 @@
       if (my !== ST.perm.seq || !sc.alive) return; ST.perm.busy = false;
       if (r.ok && r.data) ST.perm.res = { d: String(r.data.d), why: String(r.data.why), cls: ['ok', 'warm', 'err'].includes(r.data.cls) ? r.data.cls : 'warm' }; else net.fail(r, 'the check could not be made');
       paint(true);
-    }
-    /** "Trust these files": the server's scan of the directory is shown, and the yes is the one confirmation id it issued for that digest */
-    async function trustFlow(dir) {
-      const c = await net.get('/api/trust/challenge?dir=' + encodeURIComponent(dir)); if (!sc.alive) return; if (!c.ok) { net.fail(c, 'the files could not be read'); return; }
-      const ch = c.data || {}, sp = trustSpec(dir, ch);
-      ui.confirm(Object.assign({}, sp, { run: async () => { const r = await trustPost(dir, ch); if (!r.ok) { net.fail(r, 'the files were not trusted'); if (SL.data) SL.data.load('trust', { force: true }); return; } if (SL.data) { SL.data.load('trust', { force: true }); SL.data.load('projects', { force: true }); } toast('trusted ' + dir, 'ok'); } }));
     }
     /** Forget every directory (trust forget --all) after one confirmation that lists them */
     function forgetAll() {

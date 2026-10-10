@@ -1,0 +1,169 @@
+{
+  "sessions": 1,
+  "events": 661,
+  "requests": 55,
+  "findings": [
+    {
+      "category": "file.reread",
+      "key": "the same part of a file read three or more times",
+      "count": 6,
+      "sessions": 1,
+      "severity": 2,
+      "wasted_requests": 0,
+      "score": 24,
+      "hint": "the same part of a file read again and again: did the answer get lost (truncation, compaction) or never used?",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 258,
+          "agent": "be-2",
+          "detail": "read docs/api.md"
+        },
+        {
+          "session": "data/demo-shop/session",
+          "seq": 259,
+          "agent": "be-2",
+          "detail": "read docs/design.md"
+        }
+      ]
+    },
+    {
+      "category": "call.repeated",
+      "key": "bash {\"command\":\"sh checks.sh\"}",
+      "count": 4,
+      "sessions": 1,
+      "severity": 2,
+      "wasted_requests": 0,
+      "score": 16,
+      "hint": "the same call over and over: polling, or a loop",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 324,
+          "agent": "be-2",
+          "detail": "bash {\"command\":\"sh checks.sh\"}"
+        }
+      ]
+    },
+    {
+      "category": "call.repeated",
+      "key": "bash {\"command\":\"sleep \u003cn\u003e.\u003cn\u003e\"}",
+      "count": 3,
+      "sessions": 1,
+      "severity": 2,
+      "wasted_requests": 0,
+      "score": 12,
+      "hint": "the same call over and over: polling, or a loop",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 311,
+          "agent": "fe-1",
+          "detail": "bash {\"command\":\"sleep 2.0\"}"
+        }
+      ]
+    },
+    {
+      "category": "call.repeated",
+      "key": "bash {\"command\":\"sh verify.sh\"}",
+      "count": 2,
+      "sessions": 1,
+      "severity": 2,
+      "wasted_requests": 0,
+      "score": 8,
+      "hint": "the same call over and over: polling, or a loop",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 314,
+          "agent": "ts-1",
+          "detail": "bash {\"command\":\"sh verify.sh\"}"
+        }
+      ]
+    },
+    {
+      "category": "agent.stuck",
+      "key": "nudge",
+      "count": 1,
+      "sessions": 1,
+      "severity": 2,
+      "wasted_requests": 1,
+      "score": 8,
+      "hint": "the same failing call again and again: what does the model see that does not tell it what to do next?",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 401,
+          "agent": "be-2",
+          "detail": "[harness] bash has now failed the same way 4 times with the same arguments. Repeating it will not change the result: try another approach, or stop and say what is blocking you."
+        }
+      ]
+    },
+    {
+      "category": "permission.refused",
+      "key": "bash: sh — role reviewer: plan mode (read-only): sh verify.sh is not a read-only… [policy]",
+      "count": 1,
+      "sessions": 1,
+      "severity": 2,
+      "wasted_requests": 1,
+      "score": 8,
+      "hint": "a tool call was refused: look at the commands (a cd to a path the model guessed? a scratch file in /tmp? a read-only command that is not on the allowlist?)",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 607,
+          "agent": "rv-1",
+          "detail": "sh verify.sh"
+        }
+      ]
+    },
+    {
+      "category": "tool.error",
+      "key": "task",
+      "count": 1,
+      "sessions": 1,
+      "severity": 2,
+      "wasted_requests": 1,
+      "score": 8,
+      "hint": "the tool said no: is the error message enough for the model to do something different?",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 526,
+          "agent": "fe-1",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "category": "cache.break",
+      "key": "low_hit",
+      "count": 5,
+      "sessions": 1,
+      "severity": 1,
+      "wasted_requests": 0,
+      "score": 5,
+      "hint": "the prompt cache broke: a stable layer changed, or the endpoint's cache is erratic",
+      "examples": [
+        {
+          "session": "data/demo-shop/session",
+          "seq": 409,
+          "agent": "fe-1",
+          "detail": "low_hit"
+        },
+        {
+          "session": "data/demo-shop/session",
+          "seq": 413,
+          "agent": "be-2",
+          "detail": "low_hit"
+        },
+        {
+          "session": "data/demo-shop/session",
+          "seq": 423,
+          "agent": "be-2",
+          "detail": "low_hit"
+        }
+      ]
+    }
+  ]
+}
