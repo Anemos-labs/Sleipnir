@@ -154,14 +154,23 @@ func (t *Translator) run() {
 				logCh = nil
 				continue
 			}
+			// A subscription that was full when an event was taken from it may have dropped the events that came next (Log.Emit
+			// does not wait for a subscriber); if nothing follows them, no gap would ever show. The clock reads them back.
+			full := len(logCh) >= cap(logCh)-1
 			t.mu.Lock()
 			if !t.closed {
+				t.d.lossy = t.d.lossy || full
 				t.followEvent(e)
 			}
 			t.mu.Unlock()
 		case <-tick.C:
 			t.mu.Lock()
 			if !t.closed {
+				if t.d.lossy && logCh != nil && len(logCh) == 0 {
+					t.d.lossy = false
+					t.rescan(t.d.logSeq, 0)
+					t.publishRoster()
+				}
 				t.tick(t.now())
 			}
 			t.mu.Unlock()

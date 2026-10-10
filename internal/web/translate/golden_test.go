@@ -9,14 +9,20 @@ import (
 )
 
 // translateLog runs a recorded log through a translator as a hosted session's log (logOnly false: the rows only the sink gives are
-// absent) or as a followed log (logOnly true: every row from the log), with the clock at each event's time and three seconds after
-// the last, and returns the journal.
+// absent), with the clock at each event's time and three seconds after the last, and returns the journal; or (logOnly true) as
+// Replay reads a recorded log: every row from the log, tool rows paired with their output however long their calls took, and the
+// rows still waiting sent at the end of a log whose last run ended.
 func translateLog(tb testing.TB, evs []events.Event, root string, logOnly bool) *harness {
 	tb.Helper()
 	h := newHarness(tb, Config{Root: root, StartedAt: evs[0].TS})
-	h.tr.d.logOnly = logOnly
+	h.tr.d.logOnly, h.tr.d.exactPend = logOnly, logOnly
 	h.feed(evs...)
 	h.advance(3 * time.Second)
+	if logOnly && h.tr.d.ended {
+		h.tr.mu.Lock()
+		h.tr.flushPend(time.Time{}, true)
+		h.tr.mu.Unlock()
+	}
 	return h
 }
 

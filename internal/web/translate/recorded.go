@@ -41,7 +41,7 @@ func Replay(ctx context.Context, dir string, cfg Config) ([]json.RawMessage, err
 	cfg.Publish = nil
 	cfg.Now = func() time.Time { return clock }
 	tr := newTranslator(cfg)
-	tr.d.logOnly = true
+	tr.d.logOnly, tr.d.exactPend = true, true
 	if fi.Size() > maxHistoryBytes {
 		tr.put(&wire.Say{Who: "sys", Glyph: "↺", Text: fmt.Sprintf("↺ this recorded session's log is %d MiB, more than the %d MiB a page replays: sleipnir replay %s plays it in a terminal",
 			fi.Size()>>20, maxHistoryBytes>>20, filepath.Base(dir))}, 0, 0, nil)
@@ -71,6 +71,7 @@ func Replay(ctx context.Context, dir string, cfg Config) ([]json.RawMessage, err
 	if tr.d.ended {
 		clock = clock.Add(flushAfter)
 		tr.tick(clock)
+		tr.flushPend(time.Time{}, true) // a step whose output the log never wrote: its rows, with what the log has
 	}
 	return journalOf(tr), nil
 }

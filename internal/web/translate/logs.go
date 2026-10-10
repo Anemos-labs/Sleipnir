@@ -152,7 +152,8 @@ func (t *Translator) followEvent(e events.Event) {
 	t.publishRoster()
 }
 
-// rescan applies the events of the file with a seq between from and to (both excluded), after flushing the log.
+// rescan applies the events of the file with a seq between from and to (both excluded; to 0 means to the end), after flushing the
+// log.
 func (t *Translator) rescan(from, to uint64) {
 	if t.d.logFlush != nil {
 		_ = t.d.logFlush()
@@ -161,7 +162,7 @@ func (t *Translator) rescan(from, to uint64) {
 		switch {
 		case e.Seq <= from:
 			return nil
-		case e.Seq >= to:
+		case to != 0 && e.Seq >= to:
 			return errStopScan
 		}
 		t.applyLog(e)
@@ -184,7 +185,7 @@ func (t *Translator) logTime(ts time.Time) (float64, int64) {
 // log folds to (the agents' token tables, ratio series, layers and states, the tasks, the mail counts) at t 0, then the resumed
 // row.
 func (t *Translator) finishHistory() {
-	t.flushPend(0, true)
+	t.flushPend(time.Time{}, true)
 	t.flushCkpts(0, true)
 	t.d.history = false
 	buf, dropped := t.d.histBuf, t.d.histDrop
@@ -629,8 +630,13 @@ type pendTool struct {
 	ms             int64
 	text           string
 	hasText        bool
-	slot           int // the history place kept for the row, or -1
+	slot           int       // the history place kept for the row, or -1
+	rw             time.Time // when its result was read (the translator's clock)
 }
+
+// pendGrace is how long a followed log's step may go without the turn.append that carries its output, after the last result of
+// its calls, before its rows are sent with what the log has.
+const pendGrace = 2 * time.Second
 
 // toolCall is tool.call: the plan of the main agent (any translation), a tool row waiting for its result (log-only), and the end of
 // a sink hold (the log has caught up with the tool start the sink showed).
@@ -656,7 +662,7 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 		return
 	}
 	if len(t.d.pend) >= maxPend {
-		t.flushPend(ts, true)
+		t.flushPend(time.Time{}, true)
 	}
 	pt := &pendTool{uid: uid, tid: p.ID, name: name, input: p.Input, ts: ts, at: at, slot: -1}
 	if t.d.history {
@@ -709,6 +715,7 @@ func (t *Translator) toolResult(e events.Event, ts float64, at int64) {
 	}
 	if pt := t.d.pend[p.ID]; pt != nil {
 		pt.hasResult, pt.isErr, pt.refused, pt.meta, pt.ms = true, p.Error, p.Refused, p.Meta, p.Ms
+		pt.rw = t.now()
 	}
 }
 
@@ -727,13 +734,34 @@ func (t *Translator) flushPendOf(uid string, ts float64) {
 	}
 }
 
-// flushPend sends the waiting tool rows that have their result and have waited two seconds (all of them, with all).
-func (t *Translator) flushPend(ts float64, all bool) {
+// flushPend sends the waiting tool rows of the steps that are over and whose output has not come: every call of the agent's step
+// has its result and the last one was read pendGrace ago (a turn.append normally follows at once; one that does not, because the
+// writer was stopped, must not hold the rows for ever). A call of the step that is still running keeps the rows of its quicker
+// siblings waiting, since their output comes with the step's. A translation that reads a whole log (Replay) waits for nothing:
+// its rows are sent when their output comes, or at the log's end. all sends every row that has its result now.
+func (t *Translator) flushPend(now time.Time, all bool) {
 	var ready []*pendTool
-	for id, p := range t.d.pend {
-		if all || (p.hasResult && ts-p.ts >= 2) {
+	switch {
+	case all:
+		for id, p := range t.d.pend {
 			delete(t.d.pend, id)
 			if p.hasResult {
+				ready = append(ready, p)
+			}
+		}
+	case !t.d.exactPend:
+		last, running := map[string]time.Time{}, map[string]bool{}
+		for _, p := range t.d.pend {
+			switch {
+			case !p.hasResult:
+				running[p.uid] = true
+			case p.rw.After(last[p.uid]):
+				last[p.uid] = p.rw
+			}
+		}
+		for id, p := range t.d.pend {
+			if p.hasResult && !running[p.uid] && now.Sub(last[p.uid]) >= pendGrace {
+				delete(t.d.pend, id)
 				ready = append(ready, p)
 			}
 		}

@@ -127,7 +127,7 @@ func (t *Translator) tick(now time.Time) {
 	t.checkGov(now, ts)
 	t.expireTwins(ts)
 	if t.d.logOnly {
-		t.flushPend(ts, false)
+		t.flushPend(now, false)
 	}
 	for _, uid := range sortedKeys(t.d.hold) {
 		if h := t.d.hold[uid]; ts-h.since >= 2 {

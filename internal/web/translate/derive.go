@@ -54,6 +54,8 @@ type deriveState struct {
 	stopFollow func()
 	lastTS     time.Time // the newest log event's time
 	turnOpen   bool      // a turn of the main agent is running
+	exactPend  bool      // log-only tool rows wait for their output however long it takes (a whole log is read: Replay)
+	lossy      bool      // the log subscription was full: it may have dropped events that no later event will reveal
 	root       string    // the project root a log-only translation learned from session.start (Config.Root unset)
 	ended      bool      // the log's last run ended (session.end, with no session.start after it)
 	lastWall   time.Time // when a followed log last gave an event (the server's clock)
