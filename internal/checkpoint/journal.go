@@ -107,13 +107,59 @@ func (s *Store) validJournalEntry(w *jwrite) bool {
 	return true
 }
 
+// defaultJournalBudget is what the write journal of one store may save when
+// EnableJournal is given no budget.
+const defaultJournalBudget = 256 << 20
+
+// EnableJournal turns the write journal on (it is off by default: a store that nobody
+// asks for line authorship keeps no content beyond the pre-images). From then on After
+// saves the content each write left, up to maxJournalBytes a file and maxBytes in all
+// (defaultJournalBudget when maxBytes <= 0); past the budget an entry keeps who wrote
+// and the checksum only. Records made before it was enabled are marked incomplete, so
+// that authorship over them is reported approximate. Later calls change nothing.
+func (s *Store) EnableJournal(maxBytes int64) {
+	if maxBytes <= 0 {
+		maxBytes = defaultJournalBudget
+	}
+	s.gate.RLock()
+	defer s.gate.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.journalOn.Load() {
+		return
+	}
+	s.journalLeft = maxBytes
+	for _, cp := range s.cps {
+		changed := false
+		for _, r := range cp.files {
+			if len(r.Agents) > 0 && len(r.Writes) == 0 && r.WritesLost == 0 {
+				r.WritesLost, changed = 1, true // written before the journal: not every write is known
+			}
+		}
+		if changed {
+			_ = s.persistLocked(cp)
+		}
+	}
+	s.journalOn.Store(true)
+}
+
+// JournalEnabled reports whether EnableJournal was called.
+func (s *Store) JournalEnabled() bool { return s.journalOn.Load() }
+
 // journalBlob saves the content a write left, when it is a regular file small enough
-// to keep; "" otherwise. A failure to save is not an error for the write: the entry
-// then records the checksum only.
+// to keep and within the journal's budget; "" otherwise. A failure to save is not an
+// error for the write: the entry then records the checksum only.
 func (s *Store) journalBlob(st state, data []byte) core.Hash {
 	if st.Kind != kFile || int64(len(data)) > maxJournalBytes {
 		return ""
 	}
+	s.mu.Lock()
+	if int64(len(data)) > s.journalLeft {
+		s.mu.Unlock()
+		return ""
+	}
+	s.journalLeft -= int64(len(data))
+	s.mu.Unlock()
 	h, err := s.blobs.Put(data)
 	if err != nil {
 		return ""

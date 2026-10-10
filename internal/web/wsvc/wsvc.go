@@ -125,6 +125,9 @@ func (s *service) tabOf(w http.ResponseWriter, r *http.Request) (seam.SessionAcc
 		fail(w, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment"))
 		return nil, nil, false
 	}
+	// Line authorship needs the write journal; a host enables it when it starts the
+	// session, and a session it did not (or not yet) is journaled from here on.
+	sess.EnableWriteJournal()
 	return acc, sess, true
 }
 

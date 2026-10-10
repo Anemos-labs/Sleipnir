@@ -298,7 +298,8 @@ func (s *State) onCheckpoint(e events.Event, t time.Time) {
 	var p struct {
 		ID     string   `json:"id"`
 		Label  string   `json:"label"`
-		Files  []string `json:"files"`
+		Files  []string `json:"files"` // logs that listed every file
+		Count  int      `json:"count"` // logs that count them
 		Agents []string `json:"agents"`
 		Safety bool     `json:"safety"`
 	}
@@ -329,7 +330,7 @@ func (s *State) onCheckpoint(e events.Event, t time.Time) {
 		r.push(Checkpoint{ID: id, T: t})
 		cur = r.at(r.len() - 1)
 	}
-	cur.Seq, cur.Label, cur.Files, cur.Safety = e.Seq, clean(p.Label, textLine), min(len(p.Files), smallCount), p.Safety
+	cur.Seq, cur.Label, cur.Files, cur.Safety = e.Seq, clean(p.Label, textLine), min(max(len(p.Files), p.Count, 0), smallCount), p.Safety
 	cur.Agents = clipList(p.Agents, MaxFiles, textID)
 }
 

@@ -40,17 +40,25 @@ func (p *prompts) init() {
 	p.inflight = map[string]*pending{}
 }
 
-// promptKey identifies "the same request" for coalescing: only a byte-identical request
-// (same tool, command, directory, paths, effects, summary and input) shares the answer of
-// a question that is open. Two edits of one path with different content are two
-// questions: the person answered for one content, not for another. The asking agent is
-// deliberately not part of it.
+// promptKey identifies "the same request" for coalescing; the asking agent is
+// deliberately not part of it. A shell command is the same request when the tool,
+// command, directory, paths and effects are: its description or other input does not
+// change what runs. Any other request is the same only when it is byte-identical (tool,
+// directory, paths, effects, summary and input): two edits of one path with different
+// content are two questions, as the person answered for one content, not for another.
 func promptKey(r Request) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%d:%s\x00%d:%s\x00%d:%s\x00%t\x00%t\x00%d:%s\x00", len(r.Tool), r.Tool, len(r.Command), r.Command, len(r.Cwd), r.Cwd,
-		r.Writes, r.Network, len(r.Summary), r.Summary)
 	paths := append([]string(nil), r.Paths...)
 	sort.Strings(paths)
+	if r.Command != "" {
+		fmt.Fprintf(h, "%s\x00%s\x00%s\x00%t\x00%t\x00", r.Tool, r.Command, r.Cwd, r.Writes, r.Network)
+		for _, p := range paths {
+			fmt.Fprintf(h, "p=%s\x00", p)
+		}
+		return hex.EncodeToString(h.Sum(nil))
+	}
+	fmt.Fprintf(h, "%d:%s\x00%d:%s\x00%t\x00%t\x00%d:%s\x00", len(r.Tool), r.Tool, len(r.Cwd), r.Cwd,
+		r.Writes, r.Network, len(r.Summary), r.Summary)
 	for _, p := range paths {
 		fmt.Fprintf(h, "p%d:%s\x00", len(p), p)
 	}

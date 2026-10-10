@@ -769,7 +769,8 @@ func (t *Translator) checkpoint(e events.Event, ts float64, at int64) {
 	var p struct {
 		ID      string   `json:"id"`
 		Label   string   `json:"label"`
-		Files   []string `json:"files"`
+		Files   []string `json:"files"` // logs that listed every file
+		Count   int      `json:"count"` // logs that count them
 		Agents  []string `json:"agents"`
 		Time    string   `json:"time"`
 		Safety  bool     `json:"safety"`
@@ -784,7 +785,8 @@ func (t *Translator) checkpoint(e events.Event, ts float64, at int64) {
 		tm = v
 	}
 	cid := cidOf(p.ID)
-	ev := &wire.Ckpt{CID: cid, TS: tm.Local().Format("15:04:05"), Files: len(p.Files), Note: line(p.Label, capNote), Skipped: len(p.Files) == 0,
+	n := max(len(p.Files), p.Count, 0)
+	ev := &wire.Ckpt{CID: cid, TS: tm.Local().Format("15:04:05"), Files: n, Note: line(p.Label, capNote), Skipped: n == 0,
 		Safety: p.Safety, Add: max(p.Added, 0), Del: max(p.Removed, 0)}
 	for _, a := range p.Agents {
 		if len(ev.Agents) < 16 {

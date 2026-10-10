@@ -51,6 +51,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -245,7 +246,12 @@ type Store struct {
 	warnings []string
 	warnMore int // warnings beyond maxWarnings
 	onChange []func(Info)
+	onEvent  []func(Event)
 	counts   map[[2]core.Hash]lineCount // line counts of content pairs (history.go)
+	// journalLeft is what the write journal may still save, in bytes (journal.go);
+	// journalOn says it was enabled.
+	journalLeft int64
+	journalOn   atomic.Bool
 }
 
 // New opens (creating if needed) the checkpoint store in dir. Existing
@@ -693,10 +699,15 @@ func underRoot(root, p string) (string, bool) {
 
 func (s *Store) snapshot(agent, abs string) error {
 	key := s.keyFor(abs)
-	// What is on disk now, to tell whether someone who is not recording changed the
-	// file since the last journaled write (a shell command, a person): taken before
-	// the lock, as it is a system call.
-	fi, lerr := os.Lstat(abs)
+	// With the write journal on: what is on disk now, to tell whether someone who is not
+	// recording changed the file since the last journaled write (a shell command, a
+	// person); taken before the lock, as it is a system call.
+	var fi os.FileInfo
+	var lerr error
+	journal := s.journalOn.Load()
+	if journal {
+		fi, lerr = os.Lstat(abs)
+	}
 	for {
 		s.mu.Lock()
 		cp := s.currentLocked()
@@ -704,7 +715,7 @@ func (s *Store) snapshot(agent, abs string) error {
 			// Already recorded in this checkpoint. Only attribution changes, and the
 			// pre-state is already safe on disk, so a failure to persist the extra
 			// agent name must not block this agent's edit.
-			if len(rec.Writes) > 0 && rec.Post != nil && changedSince(*rec.Post, fi, lerr) {
+			if journal && len(rec.Writes) > 0 && rec.Post != nil && changedSince(*rec.Post, fi, lerr) {
 				rec.gapNext = true
 			}
 			if rec.touch(agent, s.now()) {
@@ -743,7 +754,7 @@ func (s *Store) snapshot(agent, abs string) error {
 		f.err = err
 		close(f.done)
 		if err == nil {
-			s.notify(cp.ID) // the checkpoint's file set changed
+			s.notifyPath(key, cp.ID) // the checkpoint's file set changed
 		}
 		return err
 	}
@@ -794,9 +805,9 @@ func (s *Store) missingParents(abs string) []string {
 // edited the file afterwards" exactly. Without it Restore falls back to comparing
 // the file's mtime with the time of the last Before.
 //
-// It also keeps the write journal (Writes): the content the write left is saved in
-// the blob store (text up to maxJournalBytes), so that who wrote each line can be
-// told exactly later.
+// With the write journal enabled (EnableJournal) it also records the write: the content
+// it left is saved in the blob store (up to maxJournalBytes a file, within the
+// journal's budget), so that who wrote each line can be told exactly later.
 func (s *Store) After(agent, path string) {
 	if path == "" || strings.ContainsRune(path, 0) {
 		return
@@ -832,6 +843,16 @@ func (s *Store) after(agent, path string) {
 		// agent announced a write meanwhile (gen moved), what was read may already
 		// be stale: drop it and let that agent's own After record the truth.
 		st, data := s.capture(p)
+		if !s.journalOn.Load() {
+			s.mu.Lock()
+			if rec.gen == gen {
+				rec.Post = &st
+				rec.Last = s.now()
+				_ = s.persistLocked(cp)
+			}
+			s.mu.Unlock()
+			continue
+		}
 		blob := s.journalBlob(st, data)
 		s.mu.Lock()
 		now := s.now()
@@ -927,12 +948,60 @@ func (s *Store) OnChange(fn func(Info)) {
 	s.mu.Unlock()
 }
 
-// notify tells the OnChange listeners about each checkpoint id that still exists.
-func (s *Store) notify(ids ...string) {
+// Event is what OnEvent reports of a change: the checkpoint, how many paths it holds
+// now, and the path recorded in it for the first time ("" when the checkpoint began, or
+// when a restore or an undo changed what it holds). It is cheap to make: no file list.
+type Event struct {
+	ID, Label string
+	Time      time.Time
+	Files     int
+	Path      string
+}
+
+// OnEvent registers fn, called (outside the store's lock) on the same changes as
+// OnChange, with an Event instead of the whole Info: a listener that only counts, or
+// logs the new path, costs nothing per file already recorded. The same rules hold as
+// for OnChange.
+func (s *Store) OnEvent(fn func(Event)) {
+	if fn == nil {
+		return
+	}
 	s.mu.Lock()
-	fns := s.onChange
+	s.onEvent = append(s.onEvent, fn)
 	s.mu.Unlock()
-	if len(fns) == 0 || len(ids) == 0 {
+}
+
+// Agents lists the agents that wrote in a checkpoint, sorted (nil for an unknown id).
+func (s *Store) Agents(id string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx := s.indexLocked(id)
+	if idx < 0 || strings.TrimSpace(id) == "" {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, r := range s.cps[idx].files {
+		for _, a := range r.Agents {
+			if !seen[a] {
+				seen[a] = true
+				out = append(out, a)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// notify tells the listeners about each checkpoint id that still exists.
+func (s *Store) notify(ids ...string) { s.notifyPath("", ids...) }
+
+// notifyPath is notify for a change that recorded path for the first time.
+func (s *Store) notifyPath(path string, ids ...string) {
+	s.mu.Lock()
+	infoFns, eventFns := s.onChange, s.onEvent
+	s.mu.Unlock()
+	if len(infoFns)+len(eventFns) == 0 || len(ids) == 0 {
 		return
 	}
 	s.notifyMu.Lock()
@@ -944,14 +1013,22 @@ func (s *Store) notify(ids ...string) {
 		s.mu.Lock()
 		idx := s.indexLocked(id)
 		var info Info
+		var ev Event
 		if idx >= 0 {
-			info = infoLocked(s.cps[idx])
+			cp := s.cps[idx]
+			ev = Event{ID: cp.ID, Label: cp.Label, Time: cp.Time, Files: len(cp.files), Path: path}
+			if len(infoFns) > 0 {
+				info = infoLocked(cp)
+			}
 		}
 		s.mu.Unlock()
 		if idx < 0 {
 			continue
 		}
-		for _, fn := range fns {
+		for _, fn := range eventFns {
+			fn(ev)
+		}
+		for _, fn := range infoFns {
 			fn(info)
 		}
 	}

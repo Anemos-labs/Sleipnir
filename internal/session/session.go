@@ -208,6 +208,7 @@ type Session struct {
 	archive     *kv.Archive    // folded turns, for recall
 	handles     *tools.Handles // recall handles of truncated output
 	unlock      func()         // releases the lock on the session directory
+	ckptLog     *checkpointLog // writes the "checkpoint" events (web_access.go)
 	ext         *extensions
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
@@ -1023,6 +1024,7 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 	s.turn++
 	turn := s.turn
 	s.mu.Unlock()
+	defer s.flushCheckpoints()
 
 	goal, err := s.promptHook(ctx, first, goal)
 	if err != nil {
@@ -1275,6 +1277,9 @@ func (s *Session) Close() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionEnd, Agent: s.mainAgent(), Extra: map[string]any{"reason": reason}})
 		cancel()
+	}
+	if s.ckptLog != nil {
+		s.ckptLog.close() // the checkpoints' last changes, before the log ends
 	}
 	if started {
 		s.Log.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": s.cost(), "reason": reason})

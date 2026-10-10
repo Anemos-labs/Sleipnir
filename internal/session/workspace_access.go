@@ -59,6 +59,16 @@ func (s *Session) LastWriter(path string) (agent string, ok bool) {
 	return "", false
 }
 
+// EnableWriteJournal turns on the checkpoint store's write journal for this session (checkpoint.Store.EnableJournal, with its
+// default budget): the web workspace's per-line authorship needs it. A host that shows the session calls it when it starts the
+// session; the terminal chat, run and swarm never do, and keep only the pre-images. Writes made before the call are reported
+// with approximate authorship.
+func (s *Session) EnableWriteJournal() {
+	if s.Ckpt != nil {
+		s.Ckpt.EnableJournal(0)
+	}
+}
+
 // ErrNotIsolated is returned for an operation of an isolated team asked of a session
 // whose workers share the checkout (or that has no team).
 var ErrNotIsolated = swarm.ErrNotIsolated

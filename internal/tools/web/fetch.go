@@ -108,7 +108,9 @@ type document struct {
 	text       string
 	runes      int
 	redirected bool
-	crossHost  bool
+	crossHost  bool       // the final host is not the one asked for
+	hopped     bool       // a redirect left the site and was followed on the engine's (or a person's) answer
+	via        []*url.URL // the redirects that stayed on the site, each checked for refusals only
 }
 
 // size estimates document cache cost from retained string bytes plus a fixed metadata allowance.
@@ -278,6 +280,12 @@ func (t *fetchTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, erro
 
 	key := cacheKey(u)
 	doc, cached := f.cache.get(key, env.Now())
+	if cached {
+		// the redirects the page was reached through are judged for this caller too
+		if err := recheckVia(ctx, env, u, doc.via); err != nil {
+			return fail(env, "web_fetch: %v", err), nil
+		}
+	}
 	if !cached {
 		var herr *httpStatusError
 		var rerr *redirectRefusedError
@@ -290,9 +298,10 @@ func (t *fetchTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, erro
 		case err != nil:
 			return fail(env, "web_fetch: %s", f.describeError(err)), nil
 		}
-		if !doc.crossHost {
-			// a page reached through another host was fetched on the authority of that
-			// hop's answer: it is not served to a later caller without asking again
+		if !doc.hopped {
+			// a page reached through a redirect that left the site was fetched on the
+			// authority of that hop's answer: it is not served to a later caller
+			// without asking again
 			f.cache.put(key, doc, env.Now())
 		}
 	}
@@ -372,31 +381,43 @@ func isRedirect(code int) bool {
 	return false
 }
 
-// hopFunc decides whether a redirect to another host may be followed (nil: it may).
-type hopFunc func(ctx context.Context, from, to *url.URL) error
+// hopFunc decides whether a redirect may be followed (nil: it may). cross says that the
+// redirect leaves the site the fetch may reach (sameSite): it is judged as a first fetch
+// of its URL would be. A redirect that stays on the site is checked for refusals only.
+type hopFunc func(ctx context.Context, from, to *url.URL, cross bool) error
 
-// redirectRefusedError is a redirect to another host that the permission engine did
-// not allow; its message names the host so that the model can ask for it explicitly.
+// redirectRefusedError is a redirect that the permission engine did not allow; its
+// message names where it pointed so that the model can ask for it explicitly.
 type redirectRefusedError struct {
-	to     *url.URL
-	reason string
+	from, to *url.URL
+	reason   string
 }
 
-// Error says where the redirect pointed and why it was not followed.
+// Error says where the redirect pointed and why it was not followed. It suggests fetching
+// that URL directly unless the refusal is that nobody can be asked, which a fetch of its
+// own would meet as well.
 func (e *redirectRefusedError) Error() string {
-	msg := "the page redirected to another host, " + weburl.Host(e.to) + " (" + clip(e.to.String(), 300) + "), and fetching it was not allowed"
+	where := "the page redirected to another host, " + weburl.Host(e.to) + " (" + clip(e.to.String(), 300) + ")"
+	if e.from != nil && weburl.Host(e.from) == weburl.Host(e.to) {
+		where = "the page redirected to " + clip(e.to.String(), 300)
+	}
+	msg := where + ", and fetching it was not allowed"
 	if e.reason != "" {
 		msg += ": " + clip(e.reason, 300)
+	}
+	if perm.IsNoOneToAsk(e.reason) {
+		return msg
 	}
 	return msg + ". To read it, fetch that URL itself, which asks for it on its own"
 }
 
-// hopCheck asks the permission engine about a redirect to another host exactly as it
-// would be asked about a first fetch of that URL (a domain rule that allows it lets it
-// through, a deny rule refuses it, otherwise it is a question, refused when nobody can
-// answer).
+// hopCheck asks the permission engine about a redirect exactly as it would be asked
+// about a first fetch of its URL (a rule that allows it lets it through, a deny rule
+// refuses it, otherwise it is a question, refused when nobody can answer). A redirect
+// that stays on the site (cross false) is never a question: only a refusal stops it
+// (perm.RefusalsOnly).
 func hopCheck(env *tools.Env) hopFunc {
-	return func(ctx context.Context, from, to *url.URL) error {
+	return func(ctx context.Context, from, to *url.URL, cross bool) error {
 		in, err := json.Marshal(map[string]string{"url": to.String()})
 		if err != nil {
 			return err
@@ -404,6 +425,9 @@ func hopCheck(env *tools.Env) hopFunc {
 		summary := to.String()
 		if len(summary) > 300 {
 			summary = summary[:300] + "…"
+		}
+		if !cross {
+			ctx = perm.RefusalsOnly(ctx)
 		}
 		dec := env.Perm.Check(ctx, perm.Request{
 			Agent:   env.Agent,
@@ -414,22 +438,55 @@ func hopCheck(env *tools.Env) hopFunc {
 			Network: true,
 		})
 		if !dec.Allow {
-			return &redirectRefusedError{to: to, reason: dec.Reason}
+			return &redirectRefusedError{from: from, to: to, reason: dec.Reason}
 		}
 		return nil
 	}
 }
 
-// sameSite reports whether a redirect stays on a host the fetch may already reach: the
-// same host up to case, a trailing dot and a leading "www.".
-func sameSite(a, b *url.URL) bool {
-	norm := func(u *url.URL) string { return strings.TrimPrefix(weburl.Host(u), "www.") }
-	return norm(a) == norm(b)
+// recheckVia judges, for the caller of a cached page, the redirects on the site that the
+// page was reached through, for refusals only, as fetching it again would.
+func recheckVia(ctx context.Context, env *tools.Env, start *url.URL, via []*url.URL) error {
+	check, from := hopCheck(env), start
+	for _, to := range via {
+		if err := check(ctx, from, to, false); err != nil {
+			return err
+		}
+		from = to
+	}
+	return nil
 }
 
-// fetch performs the GET, following up to maxRedirects redirects by hand. A redirect to
-// another host is followed only when allowHop allows it; the time it takes to decide (a
-// person may be asked) does not count against the fetch's timeout.
+// sameSite reports whether a redirect from a to b stays on the site a fetch of a may
+// reach: the same host up to case, a trailing dot and a leading "www.", the same port,
+// and not from https down to http. An upgrade from http to https on the default ports is
+// the same site.
+func sameSite(a, b *url.URL) bool {
+	norm := func(u *url.URL) string { return strings.TrimPrefix(weburl.Host(u), "www.") }
+	if norm(a) != norm(b) {
+		return false
+	}
+	sa, sb := strings.ToLower(a.Scheme), strings.ToLower(b.Scheme)
+	if sa == "https" && sb != "https" {
+		return false
+	}
+	return siteOrigin(a) == siteOrigin(b)
+}
+
+// siteOrigin is the port a URL names when it is not its scheme's default ("" otherwise).
+func siteOrigin(u *url.URL) string {
+	p := u.Port()
+	switch {
+	case p == "443" && strings.EqualFold(u.Scheme, "https"), p == "80" && strings.EqualFold(u.Scheme, "http"):
+		return ""
+	}
+	return p
+}
+
+// fetch performs the GET, following up to maxRedirects redirects by hand. Every redirect
+// is put to allowHop, which may ask about one that leaves the site (the time it takes to
+// decide, a person may be asked, does not count against the fetch's timeout) and checks
+// one that stays on it for refusals only.
 func (f *fetcher) fetch(ctx context.Context, start *url.URL, allowHop hopFunc) (*document, error) {
 	parent := ctx
 	ctx, cancel := context.WithTimeout(parent, f.timeout)
@@ -437,8 +494,9 @@ func (f *fetcher) fetch(ctx context.Context, start *url.URL, allowHop hopFunc) (
 	defer func() { stop() }()
 
 	cur := start
-	crossHost := false
-	approved := []*url.URL{start} // hosts this fetch may reach
+	crossHost, hopped := false, false
+	var via []*url.URL
+	approved := []*url.URL{start} // sites this fetch may reach
 	for hop := 0; ; hop++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, cur.String(), nil)
 		if err != nil {
@@ -484,23 +542,31 @@ func (f *fetcher) fetch(ctx context.Context, start *url.URL, allowHop hopFunc) (
 				return nil, errors.New("redirect target carries embedded credentials")
 			}
 			next.Fragment, next.RawFragment = "", ""
-			if !strings.EqualFold(cur.Hostname(), next.Hostname()) {
+			if err := weburl.ToASCII(next); err != nil {
+				return nil, fmt.Errorf("invalid redirect target: %v", err)
+			}
+			if weburl.Host(cur) != weburl.Host(next) {
 				crossHost = true
 			}
-			known := false
+			cross := true
 			for _, a := range approved {
-				known = known || sameSite(a, next)
+				cross = cross && !sameSite(a, next)
 			}
-			if !known && allowHop != nil {
-				if err := allowHop(parent, cur, next); err != nil {
+			if allowHop != nil {
+				if err := allowHop(parent, cur, next, cross); err != nil {
 					return nil, err
 				}
-				approved = append(approved, next)
-				// the question may have taken a while: the rest of the fetch gets its own time
-				stop()
-				var again context.CancelFunc
-				ctx, again = context.WithTimeout(parent, f.timeout)
-				stop = again
+				if cross {
+					hopped = true
+					approved = append(approved, next)
+					// the question may have taken a while: the rest of the fetch gets its own time
+					stop()
+					var again context.CancelFunc
+					ctx, again = context.WithTimeout(parent, f.timeout)
+					stop = again
+				} else {
+					via = append(via, next)
+				}
 			}
 			cur = next
 			continue
@@ -513,7 +579,7 @@ func (f *fetcher) fetch(ctx context.Context, start *url.URL, allowHop hopFunc) (
 		}
 		doc.requested = start.String()
 		doc.redirected = cur.String() != start.String()
-		doc.crossHost = crossHost
+		doc.crossHost, doc.hopped, doc.via = crossHost, hopped, via
 		return doc, nil
 	}
 }

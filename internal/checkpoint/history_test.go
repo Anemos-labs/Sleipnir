@@ -179,6 +179,7 @@ func TestChangesPerCheckpoint(t *testing.T) {
 
 func TestWriteJournal(t *testing.T) {
 	e := newEnv(t)
+	e.s.EnableJournal(0)
 	e.write("f.txt", "a\n")
 	cp1 := e.s.Begin("one")
 	e.editAfter("w1", "f.txt", "a\nb\n")
@@ -229,6 +230,7 @@ func stripTimes(ws []Write) []Write {
 
 func TestJournalSkipsLargeContentButKeepsTheWriter(t *testing.T) {
 	e := newEnv(t)
+	e.s.EnableJournal(0)
 	e.s.Begin("p")
 	big := strings.Repeat("x", maxJournalBytes+1)
 	e.editAfter("w", "big.txt", big)
@@ -251,6 +253,7 @@ func authors(a Authorship) []string {
 
 func TestBlameExactAndInexact(t *testing.T) {
 	e := newEnv(t)
+	e.s.EnableJournal(0)
 	e.write("f.go", "package f\n\nfunc A() {}\n")
 	cp1 := e.s.Begin("one")
 	e.editAfter("be-1", "f.go", "package f\n\nfunc A() {}\n\nfunc B() {}\n")
@@ -302,6 +305,7 @@ func TestBlameExactAndInexact(t *testing.T) {
 
 func TestBlameAcrossAGapBetweenCheckpoints(t *testing.T) {
 	e := newEnv(t)
+	e.s.EnableJournal(0)
 	e.write("f.txt", "1\n")
 	e.s.Begin("one")
 	e.editAfter("a", "f.txt", "1\n2\n")
@@ -327,6 +331,7 @@ func TestBlameProperty(t *testing.T) {
 	rng := rand.New(rand.NewSource(7))
 	for trial := range 30 {
 		e := newEnv(t)
+		e.s.EnableJournal(0)
 		lines := []string{"base0", "base1", "base2"}
 		e.write("f.txt", strings.Join(lines, "\n")+"\n")
 		owner := []string{"-", "-", "-"}

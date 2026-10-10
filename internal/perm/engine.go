@@ -427,6 +427,9 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		e.audit(Audit{Kind: "decide", Request: r, Reason: v.reason, Decision: d, By: "policy"})
 		return d
 	}
+	if refusalsOnly(ctx) {
+		return Decision{Allow: true, Reason: "not asked (only a refusal applies): " + v.reason}
+	}
 	e.audit(Audit{Kind: "ask", Request: r, Reason: v.reason})
 	d := e.resolveAsk(ctx, r, v, judge)
 	by := "user"
@@ -475,4 +478,22 @@ func (e *Engine) Rules(a Action) []string {
 // withTests is the allow list and the build and test rules in one new slice.
 func withTests(allow, tests []*crule) []*crule {
 	return append(append(make([]*crule, 0, len(allow)+len(tests)), allow...), tests...)
+}
+
+// refusalsOnlyKey marks a context made by RefusalsOnly.
+type refusalsOnlyKey struct{}
+
+// RefusalsOnly is a context under which Engine.Check never asks: a request it would put
+// to a person (or refuse only because nobody can be asked) is let through, and only a
+// refusal stands (a deny rule, a protection, the mode). It is for a step that follows
+// from a request already approved, such as a redirect that stays on the site the fetch
+// was allowed to reach, which must still honour a rule that refuses where it leads.
+func RefusalsOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, refusalsOnlyKey{}, true)
+}
+
+// refusalsOnly reports whether ctx was made by RefusalsOnly.
+func refusalsOnly(ctx context.Context) bool {
+	on, _ := ctx.Value(refusalsOnlyKey{}).(bool)
+	return on
 }

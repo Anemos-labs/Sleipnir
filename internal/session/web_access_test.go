@@ -180,10 +180,11 @@ func TestCheckpointsAreLoggedWhenTheStoreReportsThem(t *testing.T) {
 		if e.Type == "checkpoint" {
 			var d struct {
 				ID, Label string
-				Files     []string
+				File      string   // the file the event reports as new
+				Files     []string // logs that listed every file
 			}
 			if json.Unmarshal(e.Data, &d) == nil && d.ID != "" && d.Label != "" {
-				files = append(files, d.Files...)
+				files = append(append(files, d.Files...), d.File)
 			}
 		}
 		return nil

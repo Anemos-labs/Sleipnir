@@ -137,6 +137,57 @@ func TestQuestionsCoalesceOnlyByteIdenticalRequests(t *testing.T) {
 	}
 }
 
+// Three requests to run one command, with different descriptions, are one question: what
+// runs is the same.
+func TestOneCommandWithDifferentDescriptionsIsOneQuestion(t *testing.T) {
+	f := newFixture(t)
+	release := make(chan struct{})
+	var mu sync.Mutex
+	asked := 0
+	e := f.engine(t, Config{Prompter: func(ctx context.Context, r Request) Decision {
+		mu.Lock()
+		asked++
+		mu.Unlock()
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return Decision{Allow: true}
+	}})
+	run := func(desc string) Request {
+		in, _ := json.Marshal(map[string]any{"command": "make deploy", "description": desc})
+		return Request{Agent: "a1", Tool: "bash", Input: in, Summary: desc, Command: "make deploy", Cwd: f.root}
+	}
+	var wg sync.WaitGroup
+	for _, desc := range []string{"deploy", "ship it", "deploy the site"} {
+		wg.Add(1)
+		go func(r Request) {
+			defer wg.Done()
+			if d := e.Check(context.Background(), r); !d.Allow {
+				t.Errorf("%s: %s", r.Summary, d.Reason)
+			}
+		}(run(desc))
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := asked
+		mu.Unlock()
+		if n >= 1 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	if asked != 1 {
+		t.Fatalf("asked %d times, want 1", asked)
+	}
+}
+
 // The engine's host of a web_fetch request is the host the tool's own parser gives,
 // for every spelling the shared parser's tests know.
 func TestEngineHostIsTheToolsHost(t *testing.T) {

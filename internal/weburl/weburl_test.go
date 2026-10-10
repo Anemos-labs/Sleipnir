@@ -74,6 +74,11 @@ func TestParseAgreesWithTheToolsFormerParser(t *testing.T) {
 		if err != nil {
 			continue
 		}
+		// The one intended difference: an internationalised host is in its ASCII form.
+		if h := lu.Hostname(); !isASCII(h) {
+			a, _ := ASCIIName(h)
+			lu.Host = a
+		}
 		if u.String() != lu.String() {
 			t.Errorf("%q: Parse %q, former %q", raw, u, lu)
 		}
@@ -102,5 +107,58 @@ func TestHostAndCanonical(t *testing.T) {
 		if _, err := Parse(bad); err == nil {
 			t.Errorf("%q must be refused", bad)
 		}
+	}
+}
+
+// Internationalised names are compared and fetched in their ASCII form (RFC 3492 vectors
+// and Python's punycode codec).
+func TestASCIIName(t *testing.T) {
+	for _, c := range []struct {
+		in, want string
+		ok       bool
+	}{
+		{"bücher.test", "xn--bcher-kva.test", true},
+		{"BÜCHER.Test", "xn--bcher-kva.test", true},
+		{"münchen.example.", "xn--mnchen-3ya.example.", true},
+		{"例え.テスト", "xn--r8jz45g.xn--zckzah", true},
+		{"他们为什么不说中文", "xn--ihqwcrb4cv8a8dqg056pqjye", true},
+		{"straße.test", "xn--strae-oqa.test", true},
+		{"ελληνικά.test", "xn--hxargifdar.test", true},
+		{"правительство.рф", "xn--80aealotwbjpid2k.xn--p1ai", true},
+		{"ｅｘａｍｐｌｅ。com", "example.com", true},
+		{"Docs.Example", "docs.example", true},
+		{"xn--bcher-kva.test", "xn--bcher-kva.test", true},
+		{"bü$cher.test", "bü$cher.test", false},
+		{"bü cher.test", "bü cher.test", false},
+		{"", "", false},
+	} {
+		got, ok := ASCIIName(c.in)
+		if got != c.want || ok != c.ok {
+			t.Errorf("ASCIIName(%q) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// Parse hands the HTTP client the ASCII name the rules judged, and refuses a name that has
+// none.
+func TestParseInternationalisedHosts(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://Bücher.test:8443/a?b=ü": "https://xn--bcher-kva.test:8443/a?b=ü",
+		"bücher.test/x":                  "https://xn--bcher-kva.test/x",
+		"https://ｅｘａｍｐｌｅ。com/":           "https://example.com/",
+	} {
+		u, err := Parse(raw)
+		if err != nil {
+			t.Fatalf("%q: %v", raw, err)
+		}
+		if u.String() != want {
+			t.Errorf("%q: %q, want %q", raw, u, want)
+		}
+		if h, ok := HostChecked(u); !ok || !isASCII(h) {
+			t.Errorf("%q: host %q, %v", raw, h, ok)
+		}
+	}
+	if _, err := Parse("https://bü$cher.test/"); err == nil {
+		t.Error("a host IDNA refuses must be refused")
 	}
 }

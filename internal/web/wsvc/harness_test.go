@@ -142,6 +142,7 @@ func newEnv(t *testing.T, root string, o session.Options) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
+	s.EnableWriteJournal() // as the web host does for the sessions it hosts
 	host := webtest.NewHost()
 	tab, err := host.AddTab("t", root)
 	if err != nil {

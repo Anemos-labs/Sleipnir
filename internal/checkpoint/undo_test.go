@@ -165,6 +165,7 @@ func TestUndoAfterNewWorkIsRecordedAsAWrite(t *testing.T) {
 
 func TestWriteFileAndUndo(t *testing.T) {
 	e := newEnv(t)
+	e.s.EnableJournal(0)
 	e.writeMode("f.sh", "#!/bin/sh\necho one\necho two\n", 0o755)
 	e.s.Begin("p")
 	e.editAfter("w", "f.sh", "#!/bin/sh\necho one\necho TWO\n")
