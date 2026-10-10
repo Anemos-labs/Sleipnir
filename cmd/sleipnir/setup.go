@@ -18,8 +18,6 @@ import (
 	"golang.org/x/term"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
-	"github.com/anemos-labs/sleipnir/internal/core"
-	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -263,12 +261,7 @@ func cmdSessions(_ context.Context, args []string) error {
 func printSessions(out, errw io.Writer, dir string, n int) error {
 	root := dir
 	if root == "" {
-		home := os.Getenv("SLEIPNIR_HOME")
-		if home == "" {
-			h, _ := os.UserHomeDir()
-			home = filepath.Join(h, ".sleipnir")
-		}
-		root = filepath.Join(home, "sessions")
+		root = session.SessionsDir("")
 	}
 	ents, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -338,41 +331,13 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 	return nil
 }
 
-// summarize reads just enough of a log for a listing line: the model from
-// session.start, the first user input, and the cost from session.end.
+// summarize reads just enough of a log for a listing line (session.Summarize): the model from session.start, the first user input,
+// and the cost from session.end.
 func summarize(path string, model, prompt *string, usd *float64) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 16<<20)
-	for sc.Scan() {
-		var e events.Event
-		if json.Unmarshal(sc.Bytes(), &e) != nil {
-			continue
-		}
-		switch e.Type {
-		case events.TypeSessionStart:
-			var d struct{ Model string }
-			json.Unmarshal(e.Data, &d)
-			*model = d.Model
-		case events.TypeUserInput:
-			if *prompt == "" {
-				var d struct{ Text, Origin string }
-				json.Unmarshal(e.Data, &d)
-				if d.Origin == "" || d.Origin == string(core.OriginUser) { // a task the harness handed out is not the prompt
-					*prompt = oneLineCLI(d.Text, 70)
-				}
-			}
-		case events.TypeSessionEnd:
-			var d struct {
-				Cost float64 `json:"cost_usd"`
-			}
-			json.Unmarshal(e.Data, &d)
-			*usd = d.Cost
-		}
+	sum := session.Summarize(path)
+	*model, *usd = sum.Model, sum.CostUSD
+	if sum.First != "" {
+		*prompt = oneLineCLI(sum.First, 70)
 	}
 }
 

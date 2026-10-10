@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
 
-	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/sched"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // init registers schedule management and daemon commands.
@@ -26,8 +25,7 @@ func init() {
 // scheduleStore returns the schedule file location under the user's state directory without
 // opening it.
 func scheduleStore() sched.Store {
-	home, _ := os.UserHomeDir()
-	return sched.Store{Path: filepath.Join(stateDir(home), "schedule.json")}
+	return sched.Store{Path: filepath.Join(session.StateRoot(""), "schedule.json")}
 }
 
 // cmdSchedule adds, lists and removes scheduled goals.
@@ -87,6 +85,7 @@ func scheduleAddFlags() (*flag.FlagSet, *addOpts) {
 	return fs, &o
 }
 
+// listJobs prints the jobs as a table (id, cron, the next run, the last run and how it ended, the goal on one line), or how to add one.
 func listJobs(w io.Writer, st sched.Store, now time.Time) error {
 	jobs, err := st.List()
 	if err != nil {
@@ -102,6 +101,8 @@ func listJobs(w io.Writer, st sched.Store, now time.Time) error {
 		next := "-"
 		if n, ok := sched.Next(j, now); ok {
 			next = n.Format("01-02 15:04")
+		} else if j.Paused {
+			next = "paused"
 		}
 		last := "never"
 		if !j.LastRun.IsZero() {
@@ -117,7 +118,9 @@ func listJobs(w io.Writer, st sched.Store, now time.Time) error {
 }
 
 // cmdDaemon starts the jobs that are due, once a half minute, until it is stopped. Each job is a headless `sleipnir run` of its own
-// (so a crash or a stuck run harms nothing else), its output in <state>/schedule-logs. It runs one job at a time.
+// (so a crash or a stuck run harms nothing else), its output in <state>/schedule-logs. It runs one job at a time, and holds the
+// schedule's daemon lock while it runs, so that a second daemon (another terminal, a cron --once, `sleipnir web`) cannot start the
+// same jobs.
 func cmdDaemon(ctx context.Context, args []string) error {
 	fs := newFlagSet("daemon", flag.ExitOnError)
 	once := fs.Bool("once", false, "start what is due now, wait for it, and exit (for cron or a systemd timer)")
@@ -129,12 +132,28 @@ func cmdDaemon(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	home, _ := os.UserHomeDir()
-	logs := filepath.Join(stateDir(home), "schedule-logs")
+	st := scheduleStore()
+	logs := st.LogDir()
 	launch := func(ctx context.Context, j sched.Job, now time.Time) (exit, log string) {
 		return runJob(ctx, self, logs, j, now)
 	}
-	st := scheduleStore()
+	unlock, pid, err := sched.Lock(st.LockPath())
+	if errors.Is(err, sched.ErrLocked) {
+		holder := "another process"
+		if pid > 0 {
+			holder = fmt.Sprintf("process %d", pid)
+		}
+		if *once {
+			// a cron --once that comes while a daemon (or the previous --once) is still at work: that one starts what is due
+			fmt.Fprintf(os.Stderr, "sleipnir daemon: the schedule is being run by %s; nothing started\n", holder)
+			return nil
+		}
+		return fmt.Errorf("daemon: the schedule is already being run by %s (a daemon, or sleipnir web); stop it first", holder)
+	}
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if *once {
 		return daemonTick(ctx, st, time.Now(), launch, os.Stderr)
 	}
@@ -152,94 +171,16 @@ func cmdDaemon(ctx context.Context, args []string) error {
 }
 
 // daemonTick starts every job that is due at now, one after another, recording each start before the run so that a crash cannot start
-// it twice, and how it ended after.
+// it twice, and how it ended after (sched.Tick).
 func daemonTick(ctx context.Context, st sched.Store, now time.Time, launch func(context.Context, sched.Job, time.Time) (string, string), logw io.Writer) error {
-	jobs, err := st.List()
-	if err != nil {
-		return err
-	}
-	for _, j := range sched.Due(jobs, now) {
-		if ctx.Err() != nil {
-			return nil
-		}
-		if err := record(st, j.ID, func(x *sched.Job) { x.LastRun, x.LastExit = now, "running" }); err != nil {
-			return err
-		}
-		fmt.Fprintf(logw, "sleipnir daemon: %s starts: %s\n", j.ID, strings.Join(strings.Fields(j.Goal), " "))
-		exit, log := launch(ctx, j, now)
-		if err := record(st, j.ID, func(x *sched.Job) { x.LastExit, x.Log = exit, log }); err != nil {
-			return err
-		}
-		fmt.Fprintf(logw, "sleipnir daemon: %s ended: %s\n", j.ID, exit)
-	}
-	return nil
+	return sched.Tick(ctx, st, now, launch, logw)
 }
-
-// record changes one job in the file as it is now (a person may have added or removed others since).
-func record(st sched.Store, id string, f func(*sched.Job)) error {
-	jobs, err := st.List()
-	if err != nil {
-		return err
-	}
-	for i := range jobs {
-		if jobs[i].ID == id {
-			f(&jobs[i])
-			return st.Save(jobs)
-		}
-	}
-	return nil // removed while it ran
-}
-
-// jobTimeout bounds one run: a stuck run must not hold the daemon, and so every job after it, for ever.
-const jobTimeout = time.Hour
 
 // jobEnv is the environment of a job's process: ours, with the provider keys that the harness took out of it at start (harden.MoveKeys)
-// put back. The process is Sleipnir itself, which hides them again from whatever its tools run; no other program is started with them.
-func jobEnv(env []string) []string {
-	for _, name := range harden.Held() {
-		env = append(env, name+"="+harden.Secret(name))
-	}
-	return env
-}
+// put back (sched.JobEnv).
+func jobEnv(env []string) []string { return sched.JobEnv(env) }
 
-// runJob runs one job as a child process and says how it ended.
+// runJob runs one job as a child process and says how it ended (sched.RunJob).
 func runJob(ctx context.Context, self, logs string, j sched.Job, now time.Time) (exit, log string) {
-	if err := os.MkdirAll(logs, 0o700); err != nil {
-		return "no log directory: " + err.Error(), ""
-	}
-	log = filepath.Join(logs, j.ID+"-"+now.Format("20060102-150405")+".log")
-	f, err := os.OpenFile(log, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return "no log file: " + err.Error(), ""
-	}
-	defer f.Close()
-	args := []string{"run", "--quiet"}
-	if j.Model != "" {
-		args = append(args, "--model", j.Model)
-	}
-	if j.Dir != "" {
-		args = append(args, "--cwd", j.Dir)
-	}
-	if j.Mode != "" {
-		args = append(args, "--mode", j.Mode)
-	}
-	if j.BudgetUSD > 0 {
-		args = append(args, "--budget-usd", fmt.Sprint(j.BudgetUSD))
-	}
-	args = append(args, "--", j.Goal)
-	rctx, cancel := context.WithTimeout(ctx, jobTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(rctx, self, args...)
-	cmd.Env = jobEnv(os.Environ())
-	cmd.Stdout, cmd.Stderr = f, f
-	switch err := cmd.Run(); {
-	case err == nil:
-		return "ok", log
-	case rctx.Err() == context.DeadlineExceeded:
-		return "timed out after " + jobTimeout.String(), log
-	case ctx.Err() != nil:
-		return "interrupted", log
-	default:
-		return err.Error(), log
-	}
+	return sched.RunJob(ctx, self, logs, j, now, jobEnv(os.Environ()), nil)
 }

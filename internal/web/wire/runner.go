@@ -9,7 +9,10 @@ type CLISpec struct {
 	ExitCodes     []ExitCode   `json:"exitCodes"`
 }
 
-// CLICommand is one command path with its usage, summary, positionals and flags; Mode says how the web runs it.
+// CLICommand is one command path with its usage, summary, positionals and flags; Mode says how the web runs it (run, net, priv,
+// server, tty_only) and Why, for a command that is refused or depends on its flags, says so in one sentence. When lists the flags
+// that change the mode (inspect --json runs, sessions prune --yes needs a confirmation). Parent names the command a subcommand belongs
+// to, AliasOf the command line it stands for (swarm is run --swarm N), and Index marks a group that only lists its subcommands.
 type CLICommand struct {
 	Path       []string        `json:"path"`
 	Usage      string          `json:"usage"`
@@ -19,22 +22,38 @@ type CLICommand struct {
 	Source     string          `json:"source,omitempty"`
 	Mode       string          `json:"mode"`
 	Why        string          `json:"why,omitempty"`
+	When       []CLIModeRule   `json:"when,omitempty"`
+	Parent     string          `json:"parent,omitempty"`
+	AliasOf    string          `json:"aliasOf,omitempty"`
+	Index      bool            `json:"index,omitempty"`
 }
 
-// CLIPositional is a positional argument.
+// CLIModeRule changes a command's mode when a flag is set (to one of Values, when there are any).
+type CLIModeRule struct {
+	Flag   string   `json:"flag"`
+	Values []string `json:"values,omitempty"`
+	Mode   string   `json:"mode"`
+}
+
+// CLIPositional is a positional argument; Variadic takes the remaining words.
 type CLIPositional struct {
 	Name     string `json:"name"`
 	Required bool   `json:"required"`
+	Desc     string `json:"desc,omitempty"`
+	Variadic bool   `json:"variadic,omitempty"`
 }
 
-// CLIFlag is one flag: Arg is bool, string, int, uint, float or duration.
+// CLIFlag is one flag: Arg is bool, string, int, uint, float or duration. Choices lists the values the flag takes when they are a
+// fixed set; Required marks a flag the command cannot run without.
 type CLIFlag struct {
-	Name        string `json:"name"`
-	Arg         string `json:"arg"`
-	Default     any    `json:"default"`
-	DefaultNote string `json:"defaultNote,omitempty"`
-	Repeatable  bool   `json:"repeatable"`
-	Desc        string `json:"desc"`
+	Name        string   `json:"name"`
+	Arg         string   `json:"arg"`
+	Default     any      `json:"default"`
+	DefaultNote string   `json:"defaultNote,omitempty"`
+	Repeatable  bool     `json:"repeatable"`
+	Desc        string   `json:"desc"`
+	Choices     []string `json:"choices,omitempty"`
+	Required    bool     `json:"required,omitempty"`
 }
 
 // SlashEntry is a chat slash command for the / menu and the palette.

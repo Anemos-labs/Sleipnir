@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/update"
@@ -83,38 +81,7 @@ func cmdUpdate(ctx context.Context, args []string) error {
 	return runUpdate(ctx, os.Stdout, updateOptions(), version, commit, exe, *check)
 }
 
-// runUpdate is `sleipnir update`.
+// runUpdate is `sleipnir update` (update.Run).
 func runUpdate(ctx context.Context, out io.Writer, o update.Options, version, commit, exe string, checkOnly bool) error {
-	update.CleanUp(exe)
-	if version == "dev" || strings.Contains(filepath.ToSlash(exe), "/go-build") {
-		fmt.Fprintln(out, "This build is from source, not from a release: update it with `go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest`, or `git pull` and `make build`.")
-		return nil
-	}
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	rel, st, err := update.Fetch(cctx, o, version, commit)
-	if err != nil {
-		return fmt.Errorf("update: could not look for the latest release: %w", err)
-	}
-	update.Remember(o, st) // what the chat says at its start is what this found
-	if !update.Newer(version, rel.Tag) {
-		fmt.Fprintf(out, "sleipnir %s is up to date (the latest release is %s).\n", version, rel.Tag)
-		return nil
-	}
-	ahead := ""
-	if st.Behind > 0 {
-		ahead = fmt.Sprintf(", %d commits ahead", st.Behind)
-	}
-	fmt.Fprintf(out, "sleipnir %s -> %s%s\n", version, rel.Tag, ahead)
-	if checkOnly {
-		fmt.Fprintln(out, "Run `sleipnir update` to install it.")
-		return nil
-	}
-	dctx, dcancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer dcancel()
-	if err := update.Install(dctx, o, rel, exe); err != nil {
-		return fmt.Errorf("update: %w", err)
-	}
-	fmt.Fprintf(out, "Updated %s to %s. A chat that is open keeps the old version until it is restarted. Release notes: %s\n", exe, rel.Tag, rel.URL)
-	return nil
+	return update.Run(ctx, out, o, version, commit, exe, checkOnly)
 }

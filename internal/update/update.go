@@ -113,6 +113,8 @@ type Status struct {
 	Behind  int       `json:"behind"` // commits the release is ahead of this build; -1 when it could not be told
 }
 
+// get fetches url with the options' client and user agent and returns the answer; a status other than 200, or an answer larger than
+// limit bytes, is an error.
 func (o Options) get(ctx context.Context, url string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -208,6 +210,7 @@ func Newer(version, tag string) bool {
 	return false
 }
 
+// parseVersion reads 1.2.3 or v1.2.3 (a pre-release suffix ignored) as its three numbers; ok is false for anything else.
 func parseVersion(s string) (v [3]int, ok bool) {
 	s = strings.TrimPrefix(strings.TrimSpace(s), "v")
 	if i := strings.IndexAny(s, "-+"); i >= 0 {
