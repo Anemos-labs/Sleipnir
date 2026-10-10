@@ -299,13 +299,6 @@ func TestProvidersKeySource(t *testing.T) {
 			t.Errorf("%s: %+v, want %+v", name, got[name], want)
 		}
 	}
-	// an auth.json that cannot be read: a key is there, where from cannot be told
-	if err := os.WriteFile(config.AuthPath(home), []byte("not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if st := StatusOf(home, KeyProvider{"stop", "CATTEST_STOP_API_KEY"}); st.Source != SourceUnknown || !st.Present {
-		t.Errorf("unreadable store: %+v", st)
-	}
 	ks := KeyProviders(cfg)
 	if ks[0].Name != "heimdall" {
 		t.Errorf("Heimdall comes first: %v", ks[:2])

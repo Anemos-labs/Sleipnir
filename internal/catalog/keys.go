@@ -30,8 +30,6 @@ const (
 	SourceStored = "stored"
 	// SourceNone: there is no key.
 	SourceNone = "none"
-	// SourceUnknown: a key is there but where it came from cannot be told (the stored keys could not be read).
-	SourceUnknown = "unknown"
 )
 
 // KeyProvider is a provider that takes a key: its name and the environment variable of the key.
@@ -61,13 +59,12 @@ type KeyStatus struct {
 	Provider string `json:"provider"`
 	EnvName  string `json:"env_name"`
 	Present  bool   `json:"present"`
-	// Source is SourceEnv, SourceStored, SourceNone or SourceUnknown.
+	// Source is SourceEnv, SourceStored or SourceNone.
 	Source string `json:"source"`
 }
 
 // StatusOf reports the key of one provider: whether this process holds a value for its variable (harden.Secret) and where that
-// value comes from. The environment wins over a stored key: a value that is not the stored one came from the environment; the stored
-// one is reported as stored.
+// value comes from (harden.SourceOf). The environment wins over a stored key.
 func StatusOf(home string, kp KeyProvider) KeyStatus {
 	st := KeyStatus{Provider: kp.Name, EnvName: kp.Env, Source: SourceNone}
 	if kp.Env == "" {
@@ -78,13 +75,9 @@ func StatusOf(home string, kp KeyProvider) KeyStatus {
 		return st
 	}
 	st.Present = true
-	stored, err := config.StoredKeys(home)
-	switch sv, ok := stored[kp.Env]; {
-	case err != nil:
-		st.Source = SourceUnknown
-	case ok && strings.TrimSpace(sv) == v:
+	if harden.SourceOf(kp.Env) == harden.SourceStored {
 		st.Source = SourceStored
-	default:
+	} else {
 		st.Source = SourceEnv
 	}
 	return st

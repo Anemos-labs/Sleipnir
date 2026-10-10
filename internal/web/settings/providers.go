@@ -24,7 +24,6 @@ const (
 	keyNone      = "none"
 	keySignedIn  = "signed in"
 	keyNotNeeded = "not needed"
-	keyUnknown   = "unknown"
 )
 
 // providerConfig is the configuration whose providers the page lists: the active tab's (its session's own, when it runs), else the
@@ -87,8 +86,6 @@ func (s *service) providerRow(cfg *config.Config, name, used string) wire.Provid
 			row.Key, row.State, row.KeyWhere = keyEnv, "connected", "the environment variable "+env
 		case catalog.SourceStored:
 			row.Key, row.State, row.KeyWhere = keyStored, "connected", s.display(config.AuthPath(s.o.Home))+" (mode 0600)"
-		case catalog.SourceUnknown:
-			row.Key, row.State = keyUnknown, "a key is there; where it comes from cannot be told"
 		default:
 			row.Key, row.State = keyNone, "no key"
 		}
@@ -221,7 +218,7 @@ func (s *service) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	case catalog.SourceEnv:
 		web.WriteError(w, fail(http.StatusConflict, "env", "the key comes from the environment variable "+env+": unset it there"))
 		return
-	case catalog.SourceStored, catalog.SourceUnknown:
+	case catalog.SourceStored:
 		if err := catalog.ForgetKey(s.o.Home, env); err != nil {
 			web.Logf(r, "auth.json not written")
 			web.WriteError(w, fail(http.StatusInternalServerError, "internal", "the stored key could not be removed"))
