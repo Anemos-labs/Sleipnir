@@ -21,3 +21,7 @@ internal/session              # recon fixtures use POSIX paths and names; runtim
 internal/shellparse           # differential tests against bash
 internal/swarm                # isolation tests compare POSIX paths
 internal/tools/fs             # file modes, symlinks and open-file semantics of POSIX
+internal/web/runner           # starts POSIX commands in their own process group and scans /proc
+internal/web/settings         # POSIX file modes (0600) that Windows does not keep
+internal/web/tools            # runs the schedule daemon and POSIX commands as children
+internal/web/wsvc             # git worktrees, symlinks and POSIX file modes in the workspace fixtures
