@@ -33,7 +33,7 @@ with workers.
 | `internal/checkpoint` | File snapshots and rewind |
 | `internal/events` | Append-only log and content-addressed blobs |
 | `internal/tui` | Terminal input, rendering, live views and replay |
-| `internal/web` | Browser interface: loopback HTTP server, authentication, event streams and the embedded UI |
+| `internal/web` | Browser interface: loopback HTTP server, authentication, event streams and the embedded UI; `wire` (its JSON shapes), `seam` (the interfaces between its packages) and `webtest` (fakes and a fake server) |
 | `internal/config`, `internal/memory` | Settings and instruction files |
 | `internal/skills`, `internal/hooks`, `internal/mcp` | Extensions |
 | `internal/rl` | Rollouts, verification, rewards and trajectory exports |

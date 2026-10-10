@@ -19,6 +19,11 @@ package web
 // is a different credential: it is looked up, never throttled, and its failures are not counted,
 // because a stale cookie after a restart is routine.
 //
+// Launch codes (Server.LaunchURL) are for handing a page to a program that is started with an argument list, such as the browser
+// opener that --open runs: that list is readable by every process of the user, so the run token, which is reusable and also a
+// bearer credential, must not be in it. A launch code is 128 random bits that the page URL "/" accepts once, within 30 seconds, in
+// place of the token, and that nothing else accepts.
+//
 // Confirmations (Server.IssueConfirm) are second-factor ids for privilege-raising routes: single
 // use, short-lived, bound to the credential that asked and to one scope.
 
@@ -54,6 +59,10 @@ const (
 	maxConfirmsPerPrincipal = 16
 	// maxScopeLen bounds a confirmation scope.
 	maxScopeLen = 120
+
+	// launchTTL is how long a launch code can be spent; maxLaunch bounds the codes outstanding.
+	launchTTL = 30 * time.Second
+	maxLaunch = 8
 )
 
 // Failures that make the next token attempt a 429 instead of a 401, by default: 10 failures in a
@@ -155,6 +164,7 @@ type authority struct {
 	epoch      *epoch
 	sessions   map[[sha256.Size]byte]*session
 	confirms   map[[sha256.Size]byte]*confirm
+	launch     map[[sha256.Size]byte]time.Time
 	fails      failureWindow
 }
 
@@ -174,6 +184,7 @@ func newAuthority(now func() time.Time, ttl, confirmTTL time.Duration) (*authori
 		now: now, ttl: ttl, confirmTTL: confirmTTL,
 		sessions: map[[sha256.Size]byte]*session{},
 		confirms: map[[sha256.Size]byte]*confirm{},
+		launch:   map[[sha256.Size]byte]time.Time{},
 		fails:    failureWindow{max: defaultAuthFailures, window: defaultAuthWindow},
 	}
 	if err := a.newTokenLocked(); err != nil {
@@ -249,19 +260,63 @@ func (a *authority) bearer(given string) (*principal, error) {
 	return a.bearerPrincipalLocked(), nil
 }
 
-// exchange checks the token of a page URL and, if it is right, starts a session and returns the
-// cookie value that names it.
+// exchange checks the token or launch code of a page URL and, if it is right, starts a session and returns the cookie value
+// that names it. A launch code is spent by being presented, whether or not it was still good.
 func (a *authority) exchange(given string) (string, *principal, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := a.checkAttemptLocked(); err != nil {
 		return "", nil, err
 	}
-	if !a.tokenOKLocked(given) {
+	if !a.tokenOKLocked(given) && !a.spendLaunchLocked(given) {
 		a.fails.record(a.now())
 		return "", nil, errBadCredential
 	}
 	return a.newSessionLocked()
+}
+
+// newLaunchCode makes a single-use code for the page URL, valid for launchTTL. At most maxLaunch are outstanding; the oldest is
+// forgotten first.
+func (a *authority) newLaunchCode() (string, error) {
+	code, err := randomString(16)
+	if err != nil {
+		return "", err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now := a.now()
+	for k, exp := range a.launch {
+		if !now.Before(exp) {
+			delete(a.launch, k)
+		}
+	}
+	for len(a.launch) >= maxLaunch {
+		var oldest [sha256.Size]byte
+		var at time.Time
+		first := true
+		for k, exp := range a.launch {
+			if first || exp.Before(at) {
+				oldest, at, first = k, exp, false
+			}
+		}
+		delete(a.launch, oldest)
+	}
+	a.launch[sha256.Sum256([]byte(code))] = now.Add(launchTTL)
+	return code, nil
+}
+
+// spendLaunchLocked uses up a launch code, reporting whether it was known and still within its time.
+func (a *authority) spendLaunchLocked(given string) bool {
+	if given == "" || len(given) > maxCredentialLen {
+		return false
+	}
+	key := sha256.Sum256([]byte(given))
+	exp, ok := a.launch[key]
+	if !ok {
+		return false
+	}
+	delete(a.launch, key)
+	return a.now().Before(exp)
 }
 
 // newSessionLocked starts a session, ending the oldest if there are too many, and returns the
@@ -364,6 +419,7 @@ func (a *authority) rotate() (string, *principal, error) {
 		a.endSessionLocked(k)
 	}
 	a.confirms = map[[sha256.Size]byte]*confirm{}
+	a.launch = map[[sha256.Size]byte]time.Time{}
 	a.fails.times = nil
 	if err := a.newTokenLocked(); err != nil {
 		return "", nil, err
@@ -663,10 +719,25 @@ func (s *Server) RequireConfirm(w http.ResponseWriter, r *http.Request, scope st
 // caller that prints it anywhere but the first line of standard output defeats the design.
 func (s *Server) Token() string { return s.auth.currentToken() }
 
+// LaunchURL is URL with a single-use launch code in place of the run token, for a program that is started with the address as an
+// argument (the browser opener of --open): argument lists are readable by every process of the user, and the run token must not be
+// among them. The code is accepted once, on the page URL only, within 30 seconds; it is no bearer credential and opens nothing but
+// a browser session. A new code is made on every call. It returns "" only if the system has no randomness.
+func (s *Server) LaunchURL(addr net.Addr) string {
+	code, err := s.auth.newLaunchCode()
+	if err != nil {
+		return ""
+	}
+	return s.addressURL(addr, code)
+}
+
 // URL returns the address to open for a server listening on addr: loopback names, the port that
 // was bound, and the run token as a query parameter, which the page URL turns into a cookie and
 // removes from the address bar. A wildcard bind is spelled localhost.
-func (s *Server) URL(addr net.Addr) string {
+func (s *Server) URL(addr net.Addr) string { return s.addressURL(addr, s.Token()) }
+
+// addressURL is the page URL of addr with credential as its token parameter.
+func (s *Server) addressURL(addr net.Addr, credential string) string {
 	host, port := "127.0.0.1", ""
 	if ta, ok := addr.(*net.TCPAddr); ok {
 		port = strconv.Itoa(ta.Port)
@@ -682,6 +753,6 @@ func (s *Server) URL(addr net.Addr) string {
 	if port != "" {
 		host += ":" + port
 	}
-	u := url.URL{Scheme: "http", Host: host, Path: "/", RawQuery: "token=" + url.QueryEscape(s.Token())}
+	u := url.URL{Scheme: "http", Host: host, Path: "/", RawQuery: "token=" + url.QueryEscape(credential)}
 	return u.String()
 }

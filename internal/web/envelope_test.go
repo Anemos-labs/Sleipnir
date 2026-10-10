@@ -696,3 +696,27 @@ func TestServerStreamingResponsesKeepTheirHeaders(t *testing.T) {
 	}
 	_ = url.QueryEscape
 }
+
+func TestMethodFallbacksOnTheAPIAreNotRoutesOfAPath(t *testing.T) {
+	rg := newRig(t, nil)
+	for _, m := range []string{"POST", "PUT", "DELETE"} {
+		rg.srv.HandleFunc(m+" /api/", func(w http.ResponseWriter, r *http.Request) {
+			Error(w, http.StatusNotImplemented, "not_implemented", "no")
+		}, RouteOpts{})
+	}
+	// A path that only the fallbacks match has no methods of its own: it is unknown, not "wrong method".
+	if rec := rg.get("/api/nothing"); rec.Code != 404 || errCode(rec) != "not_found" {
+		t.Errorf("GET of an unknown path = %d %s", rec.Code, rec.Body.String())
+	}
+	h := mergeHeaders(rg.bearer(), map[string]string{RequestHeader: "1"})
+	if rec := rg.do(req{method: "POST", target: "/api/nothing", header: h}); rec.Code != 501 {
+		t.Errorf("POST to an unknown path reaches the fallback: %d", rec.Code)
+	}
+	// A path with a real route still says which methods it has.
+	if rec := rg.do(req{method: "POST", target: "/api/ping", header: h}); rec.Code != 501 && rec.Code != 405 {
+		t.Errorf("POST /api/ping = %d", rec.Code)
+	}
+	if rec := rg.get("/api/danger"); rec.Code != 405 || !strings.Contains(rec.Header().Get("Allow"), "POST") {
+		t.Errorf("GET of a POST route = %d allow %q", rec.Code, rec.Header().Get("Allow"))
+	}
+}

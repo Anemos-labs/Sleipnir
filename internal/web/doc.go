@@ -39,7 +39,10 @@
 // an HttpOnly, SameSite=Strict cookie that holds an unrelated random session id; the server keeps
 // the sessions, so a session can expire, be logged out or be revoked without touching the token.
 // Failed token attempts are throttled for the whole server, and a request that presents a valid
-// session is never delayed by them. See auth.go; it is kept apart for review.
+// session is never delayed by them. A program that must be handed an address on its argument list
+// (the browser opener of --open) gets Server.LaunchURL instead: a single-use launch code, valid for
+// 30 seconds and accepted on the page URL only, never the reusable token, because every process of
+// the user can read an argument list. See auth.go; it is kept apart for review.
 //
 // # Confirmation
 //
@@ -75,11 +78,13 @@
 //	srv.Handle("POST /api/things/{id}/rename", h, web.RouteOpts{MaxBody: 1 << 10})
 //
 // The handler receives only requests that passed the whole envelope. It should write answers with
-// WriteJSON and Error (uniform JSON, no caching), read bodies with DecodeJSON, treat every string
-// it receives as data, and log through Logf, which tags the line with the request and masks
-// credentials. A GET route must not change state: the envelope does not require a custom header
-// or an Origin for it. Error bodies are {"error": message, "code": identifier}; the identifiers
-// are stable: unauthenticated, bad_host, forbidden_origin, forbidden_site, csrf, unsupported_media_type,
-// body_too_large, bad_json, bad_request, not_found, method_not_allowed, confirm_required,
-// confirm_invalid, rate_limited, busy, too_many_streams, shutting_down, internal.
+// WriteJSON, Error and ErrorDetail (uniform JSON, no caching; the detail carries what a client needs
+// to act on a refusal, such as a trust challenge), read bodies with DecodeJSON, treat every string it
+// receives as data, and log through Logf, which tags the line with the request and masks credentials.
+// A GET route must not change state: the envelope does not require a custom header or an Origin for
+// it. Error bodies are {"error": message, "code": identifier}, and from ErrorDetail also
+// "detail": data. The identifiers are stable: unauthenticated, bad_host, forbidden_origin,
+// forbidden_site, csrf, unsupported_media_type, body_too_large, bad_json, bad_request, not_found,
+// method_not_allowed, confirm_required, confirm_invalid, rate_limited, busy, too_many_streams,
+// shutting_down, internal.
 package web

@@ -28,8 +28,9 @@ const maxErrorMessage = 512
 
 // errorBody is the uniform shape of every error response.
 type errorBody struct {
-	Error string `json:"error"`
-	Code  string `json:"code"`
+	Error  string `json:"error"`
+	Code   string `json:"code"`
+	Detail any    `json:"detail,omitempty"`
 }
 
 // Error writes the uniform error response: status, then {"error": msg, "code": code} as JSON,
@@ -37,10 +38,20 @@ type errorBody struct {
 // uses); msg is for people and must not carry secrets, paths of other users, or anything a
 // request supplied that has not been bounded. A message longer than 512 bytes is cut.
 func Error(w http.ResponseWriter, status int, code, msg string) {
+	ErrorDetail(w, status, code, msg, nil)
+}
+
+// ErrorDetail is Error with structured data for the caller: {"error": msg, "code": code, "detail": detail}. The detail is what a
+// client needs to act on the refusal (a trust challenge, a retry delay); it is encoded like every other body, with the same
+// escaping, and must hold no secret. A nil detail, or one that cannot be encoded, is left out and the plain error is sent.
+func ErrorDetail(w http.ResponseWriter, status int, code, msg string, detail any) {
 	if len(msg) > maxErrorMessage {
 		msg = strings.ToValidUTF8(msg[:maxErrorMessage], "") + "..."
 	}
-	b, _ := json.Marshal(errorBody{Error: msg, Code: code})
+	b, err := json.Marshal(errorBody{Error: msg, Code: code, Detail: detail})
+	if err != nil {
+		b, _ = json.Marshal(errorBody{Error: msg, Code: code})
+	}
 	h := w.Header()
 	h.Set("Content-Type", jsonType)
 	h.Set("Cache-Control", "no-store")

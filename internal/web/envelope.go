@@ -225,8 +225,12 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// catchAll reports whether a pattern is one of the two that exist to answer what no route does.
-func catchAll(pattern string) bool { return pattern == "GET /" || pattern == "GET /api/" }
+// catchAll reports whether a pattern is one that exists to answer what no route does: a method on "/" or on "/api/" (the built-in
+// GET ones, and the fallbacks a route package may add for other methods). A path that only those match has no methods of its own.
+func catchAll(pattern string) bool {
+	_, path, ok := strings.Cut(pattern, " ")
+	return ok && (path == "/" || path == "/api/")
+}
 
 // miss answers a request that no route handles, as JSON: 405 with the methods the path does have
 // when it has others, else 404.
