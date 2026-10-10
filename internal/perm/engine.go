@@ -59,6 +59,9 @@ type Config struct {
 	// and what came of it. Plain allows are not reported (there is one per tool call). It is called outside any engine
 	// lock and must not block.
 	Audit func(Audit)
+	// RuleOrigin, when set, names where a rule of Allow, Ask or Deny came from (a configuration file, a flag, a
+	// built-in list), for Classify; "" keeps the default, OriginConfig.
+	RuleOrigin func(action Action, rule string) string
 }
 
 // Audit is one step of a request that was not simply allowed.
@@ -199,8 +202,8 @@ func stricter(a, b Mode) Mode {
 }
 
 // compileList parses and compiles permission rules in order, returning the first failure without a
-// partial rule list.
-func compileList(action Action, list []string, rs *resolver) ([]*crule, error) {
+// partial rule list. origin says where each rule came from.
+func compileList(action Action, list []string, rs *resolver, origin func(string) string) ([]*crule, error) {
 	out := make([]*crule, 0, len(list))
 	for _, s := range list {
 		r, err := ParseRule(action, s)
@@ -211,10 +214,16 @@ func compileList(action Action, list []string, rs *resolver) ([]*crule, error) {
 		if err != nil {
 			return nil, err
 		}
+		if origin != nil {
+			c.origin = origin(s)
+		}
 		out = append(out, c)
 	}
 	return out, nil
 }
+
+// fixedOrigin names the same origin for every rule of a list.
+func fixedOrigin(o string) func(string) string { return func(string) string { return o } }
 
 // NewEngine validates cfg and returns an engine. Every rule and role profile is
 // parsed up front, so a typo in a rule fails at start-up rather than silently
@@ -238,22 +247,35 @@ func NewEngine(cfg Config) (*Engine, error) {
 	}
 	rs.addTreeParents(cfg.TreeParents)
 	e := &Engine{cfg: cfg, rs: rs, mode: mode, roles: map[string]*profile{}, persisted: map[Rule]bool{}}
+	configured := func(action Action) func(string) string {
+		return func(rule string) string {
+			if cfg.RuleOrigin != nil {
+				if o := cfg.RuleOrigin(action, rule); o != "" {
+					return o
+				}
+			}
+			return OriginConfig
+		}
+	}
 	var err error
-	if e.allow, err = compileList(Allow, cfg.Allow, rs); err != nil {
+	if e.allow, err = compileList(Allow, cfg.Allow, rs, configured(Allow)); err != nil {
 		return nil, err
 	}
-	if e.tests, err = compileList(Allow, TestsAllow, rs); err != nil {
+	if e.tests, err = compileList(Allow, TestsAllow, rs, fixedOrigin(OriginTests)); err != nil {
 		return nil, err
 	}
 	e.allowEdits = withTests(e.allow, e.tests)
-	ask := cfg.Ask
-	if cfg.StateDir != "" {
-		ask = append(append([]string(nil), ask...), "Edit("+escapeGlob(cleanAbs(cfg.StateDir))+"/**)")
-	}
-	if e.ask, err = compileList(Ask, ask, rs); err != nil {
+	if e.ask, err = compileList(Ask, cfg.Ask, rs, configured(Ask)); err != nil {
 		return nil, err
 	}
-	if e.deny, err = compileList(Deny, cfg.Deny, rs); err != nil {
+	if cfg.StateDir != "" {
+		state, err := compileList(Ask, []string{"Edit(" + escapeGlob(cleanAbs(cfg.StateDir)) + "/**)"}, rs, fixedOrigin(OriginBuiltIn))
+		if err != nil {
+			return nil, err
+		}
+		e.ask = append(e.ask, state...)
+	}
+	if e.deny, err = compileList(Deny, cfg.Deny, rs, configured(Deny)); err != nil {
 		return nil, err
 	}
 	for name, rp := range cfg.Roles {
@@ -261,13 +283,14 @@ func NewEngine(cfg Config) (*Engine, error) {
 			return nil, fmt.Errorf("perm: role %q: unknown mode %q", name, rp.Mode)
 		}
 		p := &profile{mode: rp.Mode}
-		if p.allow, err = compileList(Allow, rp.Allow, rs); err != nil {
+		roleOrigin := fixedOrigin("role " + name)
+		if p.allow, err = compileList(Allow, rp.Allow, rs, roleOrigin); err != nil {
 			return nil, fmt.Errorf("role %q: %w", name, err)
 		}
-		if p.ask, err = compileList(Ask, rp.Ask, rs); err != nil {
+		if p.ask, err = compileList(Ask, rp.Ask, rs, roleOrigin); err != nil {
 			return nil, fmt.Errorf("role %q: %w", name, err)
 		}
-		if p.deny, err = compileList(Deny, rp.Deny, rs); err != nil {
+		if p.deny, err = compileList(Deny, rp.Deny, rs, roleOrigin); err != nil {
 			return nil, fmt.Errorf("role %q: %w", name, err)
 		}
 		e.roles[name] = p
@@ -298,6 +321,15 @@ func (e *Engine) SetMode(m Mode) {
 // the engine's locks). ScopeOnce adds nothing. A rule that does not compile is
 // ignored.
 func (e *Engine) AddRule(scope Scope, rule Rule) {
+	origin := OriginSession
+	if scope == ScopeProject {
+		origin = OriginProject
+	}
+	e.addRule(scope, rule, origin)
+}
+
+// addRule is AddRule with the origin Classify reports for the rule.
+func (e *Engine) addRule(scope Scope, rule Rule, origin string) {
 	if scope == ScopeOnce {
 		return
 	}
@@ -305,6 +337,7 @@ func (e *Engine) AddRule(scope Scope, rule Rule) {
 	if err != nil {
 		return
 	}
+	c.origin, c.runtime = origin, true
 	e.mu.Lock()
 	var list *[]*crule
 	switch rule.Action {

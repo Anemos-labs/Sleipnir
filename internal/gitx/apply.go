@@ -21,6 +21,13 @@ type ApplyOptions struct {
 	Index bool
 	// Reverse applies the patch backwards.
 	Reverse bool
+	// Include restricts the patch to the files matching these patterns (git apply
+	// --include): the rest of the patch is ignored.
+	Include []string
+	// Directory is prepended to every path of the patch (git apply --directory): a
+	// patch made relative to a subdirectory applies in the repository. It must be a
+	// relative path inside the repository.
+	Directory string
 }
 
 // Apply applies a patch (as produced by Diff) to the work tree; with check it
@@ -62,6 +69,19 @@ func (r *Repo) ApplyWith(ctx context.Context, patch string, opts ApplyOptions) e
 	}
 	if opts.Reverse {
 		args = append(args, "--reverse")
+	}
+	if opts.Directory != "" {
+		d, err := cleanRelPath("apply", opts.Directory)
+		if err != nil {
+			return err
+		}
+		args = append(args, "--directory="+d)
+	}
+	for _, inc := range opts.Include {
+		if inc == "" || strings.ContainsAny(inc, "\x00\n") {
+			return newErr(KindInvalid, "apply", "invalid include pattern")
+		}
+		args = append(args, "--include="+inc)
 	}
 	args = append(args, "-")
 	_, err := r.run(ctx, call{args: args, stdin: strings.NewReader(patch), mutating: !opts.Check})

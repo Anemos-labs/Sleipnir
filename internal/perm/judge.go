@@ -28,6 +28,22 @@ type verdict struct {
 	askRule bool
 	// rem are allow rules to add when the user chooses to remember an answer.
 	rem []Rule
+	// rule is the rule that decided ("" when a protection or the mode did), origin
+	// where it came from, tier what kind of decision it is (Classification.Tier;
+	// "" is the mode's).
+	rule, origin, tier string
+}
+
+// by marks a verdict as decided by a rule.
+func (v verdict) by(r *crule) verdict {
+	v.rule, v.origin, v.tier = r.String(), r.origin, TierRule
+	return v
+}
+
+// protected marks a verdict as decided by a built-in protection of a tier.
+func (v verdict) protected(tier string) verdict {
+	v.origin, v.tier = OriginBuiltIn, tier
+	return v
 }
 
 // allow constructs an allowed verdict carrying the policy explanation.
@@ -105,11 +121,11 @@ func (ev *evaluator) judge(u *unit) verdict {
 	all := u.allAccesses()
 	for _, a := range all {
 		if a.invalid != "" {
-			return deny(a.invalid + ": " + a.raw)
+			return deny(a.invalid + ": " + a.raw).protected(TierHard)
 		}
 		if a.dynamic {
 			if why := dynamicSuspect(a.raw, a.write); why != "" {
-				return deny("built-in protection: " + why)
+				return deny("built-in protection: " + why).protected(TierHard)
 			}
 			if !a.prefix {
 				continue
@@ -120,28 +136,30 @@ func (ev *evaluator) judge(u *unit) verdict {
 		}
 		switch p := ev.rs.protect(a); p.tier {
 		case tierHard:
-			return deny("built-in protection: " + p.why)
+			return deny("built-in protection: " + p.why).protected(TierHard)
 		case tierGuarded:
 			if ev.explicitAllowAccess(a) == nil {
-				return deny("built-in protection: " + p.why)
+				return deny("built-in protection: " + p.why).protected(TierGuarded)
 			}
 		}
 	}
 	if c, ok := ev.e.confinement(ev.r.Agent); ok {
 		for _, a := range all {
 			if why := ev.rs.leavesConfinement(c, a, ev.r.Agent); why != "" {
-				return deny("isolation: " + why)
+				v := deny("isolation: " + why)
+				v.origin, v.tier = OriginIsolation, TierHard
+				return v
 			}
 		}
 	}
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
-		return deny("denied by rule " + r.String())
+		return deny("denied by rule " + r.String()).by(r)
 	}
 	if r := ev.restrictMatch(ev.v.ask, u, all); r != nil {
 		if ev.v.mode == ModeYolo { // yolo never asks: a rule that would have asked refuses instead
-			return deny("yolo mode never asks, and rule " + r.String() + " requires approval; allow it with an Allow rule or leave yolo")
+			return deny("yolo mode never asks, and rule " + r.String() + " requires approval; allow it with an Allow rule or leave yolo").by(r)
 		}
-		v := ask("rule "+r.String()+" requires approval", nil)
+		v := ask("rule "+r.String()+" requires approval", nil).by(r)
 		v.askRule = true
 		return v
 	}
@@ -150,7 +168,7 @@ func (ev *evaluator) judge(u *unit) verdict {
 		if mode == ModePlan {
 			return deny(planReason(u.high.why))
 		}
-		return ask("high risk: "+u.high.why, ev.remember(u))
+		return ask("high risk: "+u.high.why, ev.remember(u)).protected(TierGuarded)
 	}
 	if u.tool {
 		return ev.decideTool(u)
@@ -208,7 +226,7 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 	case u.class == cmdNoop:
 		res = allow("assignments and redirections only")
 	case rule != nil:
-		res = allow("allowed by rule " + rule.String())
+		res = allow("allowed by rule " + rule.String()).by(rule)
 		res.explicit = !rule.blanket
 	case free(mode):
 		res = allow(string(mode) + " mode")
@@ -253,6 +271,7 @@ func combineAccess(res, av verdict) verdict {
 		out := combine(res, av)
 		if strings.HasSuffix(res.reason, genericSafe) || strings.HasSuffix(res.reason, genericFSWrite) {
 			out.reason = av.reason
+			out.rule, out.origin, out.tier = av.rule, av.origin, av.tier
 		}
 		return out
 	}
@@ -273,7 +292,7 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 	have := true
 	switch {
 	case rule != nil:
-		res = allow("allowed by rule " + rule.String())
+		res = allow("allowed by rule " + rule.String()).by(rule)
 		res.explicit = !rule.blanket
 	case u.network:
 		what := "network access"
@@ -345,7 +364,7 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		return allow("harmless device")
 	}
 	if r := ev.accessAllowRule(a); r != nil {
-		v := allow("allowed by rule " + r.String())
+		v := allow("allowed by rule " + r.String()).by(r)
 		v.explicit = !r.blanket
 		return v
 	}

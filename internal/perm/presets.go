@@ -24,7 +24,7 @@ func (e *Engine) addPreset(name string) {
 	}
 	for _, s := range TestsAllow {
 		if r, err := ParseRule(Allow, s); err == nil {
-			e.AddRule(ScopeSession, r)
+			e.addRule(ScopeSession, r, OriginTests)
 		}
 	}
 }

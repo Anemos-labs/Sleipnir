@@ -166,9 +166,11 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	// The human sees Summary and nothing else; tell them why they are asked.
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)
+	shown.Why = strings.TrimSpace(v.reason)
 	if !v.askRule && len(v.rem) > 0 {
 		shown.Remembers = e.rememberPhrase(v.rem)
 		shown.OffersTests = e.offersTests(v.rem)
+		shown.RememberRules = e.rememberRules(v.rem)
 	}
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
@@ -217,8 +219,26 @@ func (e *Engine) remember(d Decision, v verdict) {
 			// A no, and anything kept beyond the session, stay exact; a yes for the session may be wider (see widen).
 			rule, _ = e.widen(rule)
 		}
-		e.AddRule(d.Remember, rule)
+		origin := OriginRemembered
+		if d.Remember == ScopeProject {
+			origin = OriginProject
+		}
+		e.addRule(d.Remember, rule, origin)
 	}
+}
+
+// rememberRules are the rules a yes "and don't ask again" for the session would add
+// (remember, with the widening of a session answer), as text.
+func (e *Engine) rememberRules(rem []Rule) []string {
+	out := make([]string, 0, len(rem))
+	for _, r := range rem {
+		w, _ := e.widen(r)
+		w.Action = Allow
+		if s := w.String(); !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // rememberPhrase says what a yes for the rest of the session would remember, in the words of the dialog's option: for one command the wider

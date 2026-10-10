@@ -187,6 +187,50 @@ func runCases(t *testing.T, f fixture, cases []tc) {
 			if d.Reason == "" {
 				t.Errorf("decision has no reason")
 			}
+			checkClassifyEqualsCheck(t, f, c, roles, req, e, d)
 		})
+	}
+}
+
+// checkClassifyEqualsCheck holds Engine.Classify to what Check decides for the same
+// request: with a prompter (one that records being asked and says yes), Classify says
+// Ask exactly when Check put the question, and Allow or Deny as Check decided
+// otherwise; without one, it says Deny for everything Check refused, the questions
+// included. Classify never calls the prompter. Every table of the package runs it.
+func checkClassifyEqualsCheck(t *testing.T, f fixture, c tc, roles map[string]RoleProfile, req Request, plain *Engine, plainDecision Decision) {
+	t.Helper()
+	asked := 0
+	ep := f.engine(t, Config{
+		Mode: c.mode, Allow: f.expandAll(c.allow), Ask: f.expandAll(c.ask), Deny: f.expandAll(c.deny), Roles: roles,
+		Prompter: func(context.Context, Request) Decision { asked++; return Decision{Allow: true} },
+	})
+	cl := ep.Classify(req)
+	if asked != 0 {
+		t.Fatalf("Classify called the prompter")
+	}
+	dp := ep.Check(context.Background(), req)
+	want := Deny
+	switch {
+	case asked > 0:
+		want = Ask
+	case dp.Allow:
+		want = Allow
+	}
+	if cl.Verdict != want {
+		t.Errorf("Classify = %s (%q), Check with a prompter = %s (%q)", cl.Verdict, cl.Why, want, dp.Reason)
+	}
+	if cl.Why == "" || cl.Tier == "" {
+		t.Errorf("classification without a reason or a tier: %+v", cl)
+	}
+	if cl.Tier == TierRule && (cl.Rule == "" || cl.Origin == "") {
+		t.Errorf("a rule decided but is not named: %+v", cl)
+	}
+	pl := plain.Classify(req)
+	wantPlain := Deny
+	if plainDecision.Allow {
+		wantPlain = Allow
+	}
+	if pl.Verdict != wantPlain {
+		t.Errorf("without a prompter: Classify = %s, Check = %v (%q)", pl.Verdict, plainDecision.Allow, plainDecision.Reason)
 	}
 }
