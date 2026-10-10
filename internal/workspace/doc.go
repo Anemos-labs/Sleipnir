@@ -28,7 +28,9 @@
 // Prune refuse anything without a matching marker and branch prefix.
 //
 // Interruptions. A canceled context or a crash never leaves the repository or the
-// queue half-done. gitx stops git in a way that lets it remove its lock files;
+// queue half-done. gitx stops git in a way that lets it remove its lock files, and
+// the queue, which alone works in the integration tree, clears the few a stopped
+// git still leaves there before it merges or rolls back in that tree again;
 // the steps whose outcome would otherwise be ambiguous (moving the integration
 // branch, moving the user's branch, finishing the registration of a tree) run to
 // completion on their own bounded context once started; what an interrupted or

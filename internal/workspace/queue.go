@@ -914,8 +914,66 @@ func (q *Queue) changedBetween(ctx context.Context, a, b string) ([]string, erro
 	return files, nil
 }
 
-// settle makes sure the integration tree is at commit to and clean.
+// clearStaleLocks removes the lock files a stopped git command left in the
+// integration tree's administrative directory (ORIG_HEAD.lock, HEAD.lock,
+// index.lock, ...). git deletes its locks when it is asked to stop, but it installs
+// that cleanup only after it has created its first lock (ORIG_HEAD.lock, for a
+// merge), so a command that is stopped in between, or that has to be killed, leaves
+// the lock behind, and every later merge or reset in the tree then fails on it
+// until the file is removed.
+//
+// Call it only while holding the queue's turn and between commands of the queue.
+// The queue is the only user of the integration tree and runs one command at a
+// time; a stopped git (and the verifier) has been waited for, with its process
+// group, before its call returned, so a lock found then belongs to no running
+// process. That holds for the queue's own commands only: a git command a person
+// runs by hand inside the integration tree at that moment would lose its lock,
+// which is why the tree is not a place to work in.
+//
+// Only regular files named *.lock directly inside the directory are removed. The
+// directory has to be a real directory (not a link) that is an entry of the
+// repository's worktrees/ directory, and it is opened once, so that the listing and
+// the removals act on that directory and cannot leave it. The user's work tree and
+// .git, the agents' trees, and the lock file of the integration branch's ref are
+// never touched. Failures are ignored: a lock that stays is reported by the git
+// command that meets it.
+func (q *Queue) clearStaleLocks() {
+	if q.tree == nil {
+		return
+	}
+	admin := q.tree.repo.GitDir()
+	if filepath.Dir(admin) != filepath.Join(q.m.st.base.CommonDir(), "worktrees") {
+		return
+	}
+	fi, err := os.Lstat(admin)
+	if err != nil || !fi.IsDir() {
+		return
+	}
+	root, err := os.OpenRoot(admin)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	if ri, err := root.Stat("."); err != nil || !os.SameFile(fi, ri) {
+		return
+	}
+	dir, err := root.Open(".")
+	if err != nil {
+		return
+	}
+	entries, _ := dir.ReadDir(-1) // what was read before an error is still worth acting on
+	_ = dir.Close()
+	for _, e := range entries {
+		if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".lock") {
+			_ = root.Remove(e.Name())
+		}
+	}
+}
+
+// settle makes sure the integration tree is at commit to and clean, and free of the
+// lock files a stopped git left in it.
 func (q *Queue) settle(ctx context.Context, to string) error {
+	q.clearStaleLocks()
 	repo := q.tree.repo
 	if repo.InProgress() == "" {
 		head, herr := repo.Head(ctx)
@@ -950,7 +1008,11 @@ func (q *Queue) rollbackTo(ctx context.Context, to string) error {
 	return nil
 }
 
+// restore resets the integration tree in place to commit to and checks the result.
+// Lock files left by a stopped git command are cleared first; otherwise the reset
+// would wait for them, fail, and send rollbackTo to rebuilding the whole tree.
 func (q *Queue) restore(ctx context.Context, to string) error {
+	q.clearStaleLocks()
 	repo := q.tree.repo
 	if repo.InProgress() != "" {
 		_ = repo.Abort(ctx) // git returns to a place of its choosing; the reset below is what counts

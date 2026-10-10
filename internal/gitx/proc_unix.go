@@ -26,6 +26,13 @@ import (
 // asked to stop first and only killed when it does not (a hook that traps TERM, a
 // helper that ignores it) after termGrace.
 //
+// SIGTERM narrows the problem; it does not close it. git installs its cleanup
+// handler only after it has created its first lock file (for a merge, ORIG_HEAD.lock),
+// so a command that receives the signal in between dies by the default action and
+// leaves that file behind as well. A caller that owns its repository exclusively, as
+// the merge queue owns the integration tree, clears such locks between its own
+// commands (workspace.Queue); a caller that does not leaves them to their owner.
+//
 // The returned function must be called once the command has been waited for: it
 // cancels the pending escalation and, if a stop was requested, makes sure nothing
 // of the group is left behind.
