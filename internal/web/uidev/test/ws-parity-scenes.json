@@ -1,0 +1,289 @@
+{
+ "_doc": [
+  "Workspace scenes for scripts/web-parity.mjs beyond scripts/web-parity-scenes.json: the scrubber pinned on a checkpoint, the restore preview, the hunk revert dialog,",
+  "and the file view of a denied path. Run with the page of the mock plus the live Workspace modules (node internal/web/uidev/test/wsdev.mjs prints its URL):",
+  "  node scripts/web-parity.mjs --scenes internal/web/uidev/test/ws-parity-scenes.json --b http://127.0.0.1:PORT/index.html",
+  "Only selectors and events: the same steps run on the mock and on the page under test. `until` waits for what the page fetches.",
+  "The *-masked scenes repeat the committed Workspace scenes with the top bar (the Merge tab and the shorter scrubber it leaves room for) and the Verify and merge strip (Apply verified work, the gate count) painted over in both pages: everything else must be identical (threshold 0)."
+ ],
+ "defaults": {
+  "threshold": 0.5,
+  "viewports": [
+   [
+    1440,
+    900
+   ],
+   [
+    390,
+    844
+   ]
+  ]
+ },
+ "maskProfiles": {
+  "live": []
+ },
+ "scenes": [
+  {
+   "name": "ws-files-denied-path",
+   "viewports": [
+    [
+     1440,
+     900
+    ]
+   ],
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=files]"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "click": ".ws-list .wf.prot",
+     "nth": 0
+    },
+    {
+     "until": "document.querySelector('.ws-lock')",
+     "max": 5000
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "ws-scrubber-pinned",
+   "viewports": [
+    [
+     1440,
+     900
+    ],
+    [
+     390,
+     844
+    ]
+   ],
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=files]",
+     "when": "wide"
+    },
+    {
+     "click": "#mnav [data-n=changes]",
+     "when": "narrow"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "eval": "(() => { const s = document.getElementById('wsScrub'); s.value = '2'; s.dispatchEvent(new Event('input', { bubbles: true })); })()"
+    },
+    {
+     "until": "document.querySelector('.wnr.tt') && document.querySelector('.ws-body .ln')",
+     "max": 5000
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "ws-restore-preview",
+   "viewports": [
+    [
+     1440,
+     900
+    ]
+   ],
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=checkpoints]"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "click": "[data-restore]",
+     "nth": 1
+    },
+    {
+     "until": "document.querySelector('.sheet table')",
+     "max": 5000
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "ws-revert-dialog",
+   "viewports": [
+    [
+     1440,
+     900
+    ]
+   ],
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=changes]"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "click": "[data-rev]",
+     "nth": 0
+    },
+    {
+     "until": "document.querySelector('.sheet')",
+     "max": 5000
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "ws-whole-file",
+   "viewports": [
+    [
+     1440,
+     900
+    ]
+   ],
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=changes]"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "click": "[data-vw=file]",
+     "nth": 0
+    },
+    {
+     "wait": 400
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "workspace-files-masked",
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=files]"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "expect": ".wsv"
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "workspace-changes-masked",
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=changes]"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "expect": ".wsv"
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "workspace-checkpoints-masked",
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "[data-nav=checkpoints]"
+    },
+    {
+     "wait": 700
+    },
+    {
+     "expect": ".wsv"
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  },
+  {
+   "name": "workspace-phone-changes-masked",
+   "steps": [
+    {
+     "wait": 2000
+    },
+    {
+     "click": "#mnav [data-n=changes]",
+     "when": "narrow"
+    },
+    {
+     "click": "[data-nav=changes]",
+     "when": "wide"
+    },
+    {
+     "wait": 700
+    }
+   ],
+   "mask": [
+    ".ws-bar",
+    ".ws-strip"
+   ],
+   "threshold": 0
+  }
+ ]
+}
