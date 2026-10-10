@@ -30,6 +30,35 @@ func Propose(tool string, input []byte, current func(path string) (string, bool)
 	if current == nil {
 		current = func(string) (string, bool) { return "", false }
 	}
+	return ProposeFrom(tool, input, func(path string) Current {
+		text, exists := current(path)
+		return Current{Text: text, Exists: exists}
+	})
+}
+
+// Current is what a file holds now, for a proposed change: its text when it can be shown, whether it is there, and when it is there
+// but cannot be shown as text (larger than a diff reads, not UTF-8, binary, not a regular file), why.
+type Current struct {
+	Text    string
+	Exists  bool
+	Unshown string
+}
+
+// UnshownPrefix begins the line that stands for the diff of a change whose current file cannot be shown: "[current file not shown:
+// <why>]". A reader that must show a change whole treats it as it treats a diff that was cut.
+const UnshownPrefix = "[current file not shown: "
+
+// unshownChange is the change of a file that is there but cannot be shown: its name and why, never the creation of a new file.
+func unshownChange(path, why string) ProposedChange {
+	return ProposedChange{Path: path, Unified: "--- a/" + path + "\n+++ b/" + path + "\n" + UnshownPrefix + why + "]\n"}
+}
+
+// ProposeFrom is Propose with a current-content function that tells a file that is not there from one that is there and cannot be
+// shown: the change of the latter says so (UnshownPrefix) instead of being drawn as a new file.
+func ProposeFrom(tool string, input []byte, current func(path string) Current) (ProposedChange, bool) {
+	if current == nil {
+		current = func(string) Current { return Current{} }
+	}
 	switch strings.ToLower(tool) {
 	case "write":
 		var in struct {
@@ -44,8 +73,11 @@ func Propose(tool string, input []byte, current func(path string) (string, bool)
 		if p == "" {
 			return ProposedChange{}, false
 		}
-		old, exists := current(p)
-		return diffChange(p, old, *in.Content, exists), true
+		cur := current(p)
+		if cur.Exists && cur.Unshown != "" {
+			return unshownChange(p, cur.Unshown), true
+		}
+		return diffChange(p, cur.Text, *in.Content, cur.Exists), true
 	case "edit":
 		type pair struct {
 			Old        *string `json:"old_string"`
@@ -74,7 +106,11 @@ func Propose(tool string, input []byte, current func(path string) (string, bool)
 		if p == "" || len(pairs) == 0 {
 			return ProposedChange{}, false
 		}
-		old, exists := current(p)
+		cur := current(p)
+		if cur.Exists && cur.Unshown != "" {
+			return unshownChange(p, cur.Unshown), true
+		}
+		old, exists := cur.Text, cur.Exists
 		text, applied := old, exists
 		for _, e := range pairs {
 			if !applied {

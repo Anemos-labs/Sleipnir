@@ -2,6 +2,7 @@ package approvals
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/testutil"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -421,6 +423,7 @@ func TestChangesAreShownWholeOrRefused(t *testing.T) {
 		change string
 		ok     bool
 	}{
+		{"--- a/x.go\n+++ b/x.go\n" + checkpoint.UnshownPrefix + "it is not text]\n", true},
 		{diff + "[diff truncated]\n", true},
 		{"+" + strings.Repeat("z", MaxChange) + "\n", true},
 		{"", false},
@@ -430,7 +433,7 @@ func TestChangesAreShownWholeOrRefused(t *testing.T) {
 			t.Errorf("a change of %d bytes (ok %v): %+v", len(tc.change), tc.ok, d)
 		}
 	}
-	if len(*refused) != 3 {
+	if len(*refused) != 4 {
 		t.Errorf("refused %q", *refused)
 	}
 }
@@ -496,5 +499,30 @@ func TestCloseRefusesEverything(t *testing.T) {
 	}
 	if a := r.answersCopy(); len(a) != 1 || a[0].By != ByClosed {
 		t.Errorf("answers %+v", a)
+	}
+}
+
+// A web fetch or search is shown with the whole URL or query of the call, not the tool's one-line summary (a path or a query can
+// carry data to a host that is allowed); one too long to be shown is refused.
+func TestWebRequestsAreShownWithTheirWholeInput(t *testing.T) {
+	r, refused := refusedRig(t, Config{})
+	url := "https://docs.example.com/a?q=" + strings.Repeat("d", 400)
+	in, _ := json.Marshal(map[string]any{"url": url})
+	p := r.ask(context.Background(), "shop", perm.Request{Agent: "be-1", Tool: "web_fetch", Input: in, Summary: "fetch " + url[:300] + "…", Network: true})
+	if p.q.Cmd != "fetch "+url || p.q.Kind != "web" {
+		t.Errorf("the fetch shown: %d bytes %q", len(p.q.Cmd), p.q.Cmd[:min(60, len(p.q.Cmd))])
+	}
+	query := strings.Repeat("why ", 60)
+	qin, _ := json.Marshal(map[string]any{"query": query})
+	q := r.ask(context.Background(), "shop", perm.Request{Agent: "be-1", Tool: "web_search", Input: qin, Summary: "search the web for \"why why…\"", Network: true})
+	if q.q.Cmd != "search the web for "+strconv.Quote(query) {
+		t.Errorf("the search shown: %q", q.q.Cmd)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	p.decided(t)
+	q.decided(t)
+	long, _ := json.Marshal(map[string]any{"url": "https://docs.example.com/" + strings.Repeat("x", 20_000)})
+	if d := r.b.Prompter("shop", "/proj", nil, nil)(context.Background(), perm.Request{Agent: "be-1", Tool: "web_fetch", Input: long, Summary: "fetch …"}); d.Allow || len(*refused) != 1 {
+		t.Errorf("a fetch too long to show: %+v, refused %q", d, *refused)
 	}
 }

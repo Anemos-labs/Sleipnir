@@ -24,6 +24,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/trust"
 	"github.com/anemos-labs/sleipnir/internal/web"
+	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 )
 
 // confirmKey is the context key of a request's confirmation gate.
@@ -72,14 +73,36 @@ func authorize(ctx context.Context, scope string, reasons []string) error {
 	if len(reasons) == 0 {
 		return nil
 	}
+	shown, err := showReasons(reasons)
+	if err != nil {
+		return err
+	}
 	g, _ := ctx.Value(confirmKey{}).(*confirmGate)
 	if g == nil || g.r.Header.Get(web.ConfirmHeader) == "" {
-		return &confirmRequired{Scope: scope, Reasons: reasons}
+		return &confirmRequired{Scope: scope, Reasons: shown}
 	}
 	if g.srv.RequireConfirm(g.w, g.r, scope) {
 		return nil
 	}
 	return errConfirmAnswered
+}
+
+// maxReason bounds one line of what a confirmation raises, in bytes.
+const maxReason = 16 << 10
+
+// showReasons renders what a confirmation raises for the person, each line whole as a question's fields are (approvals.Shown):
+// controls and characters that reorder text shown as escapes, never removed. An action whose reasons cannot be shown whole (too long,
+// shaped like a secret) is refused, never confirmed half seen.
+func showReasons(reasons []string) ([]string, error) {
+	out := make([]string, 0, len(reasons))
+	for _, r := range reasons {
+		v, why := approvals.Shown("setting to confirm", r, maxReason)
+		if why != "" {
+			return nil, werr(http.StatusBadRequest, "bad_request", "this cannot be confirmed in the page: "+why)
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 // privileges are what a session's settings raise above a baseline.
@@ -151,11 +174,15 @@ func baselineOfSession(s *session.Session) baseline {
 }
 
 // footprint is the trust state of a directory's own files: their digest when they are not trusted ("" when they are, or when the
-// project has none).
+// project has none). A footprint that could not be read whole (a link that leaves the project, more than a scan reads) is never taken
+// for one with nothing in it; one that cannot be scanned at all is a footprint of its own ("unreadable").
 func footprint(dir string) string {
 	home, _ := os.UserHomeDir()
 	fp, err := trust.Scan(rootOf(dir), dir, home)
-	if err != nil || fp.Empty() {
+	switch {
+	case err != nil:
+		return "unreadable"
+	case fp.Empty() && !fp.Partial:
 		return ""
 	}
 	if st, _ := trust.OpenLedger(session.TrustLedgerPath(home)).Check(dir, fp); st == trust.Trusted {
@@ -179,8 +206,8 @@ func raised(f chatFlags, base baseline, dir string) privileges {
 	if f.verify != "" && f.verify != base.verify {
 		p.Verify = f.verify
 	}
-	if f.trust && !base.trusted {
-		p.Trust = footprint(dir)
+	if f.trust && (!base.trusted || dir != cleanDir(base.cwd)) {
+		p.Trust = footprint(dir) // trust established for one directory does not follow the session into another
 	}
 	return p
 }

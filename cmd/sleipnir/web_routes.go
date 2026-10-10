@@ -418,9 +418,7 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// What the session raises above the server's own command line needs the person's confirmation (web_authorize.go); trusting the
 	// project's files shows them first (409 trust_required with the challenge).
-	base := baselineOfFlags(chatFlags{mode: h.d.Mode, verify: h.d.Verify, allow: h.d.Allow}, cleanDir(h.d.Cwd))
-	base.trusted = h.d.TrustProject && dir == cleanDir(h.d.Cwd)
-	note, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, base, dir))
+	note, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, h.serverBaseline(), dir))
 	if !okay {
 		return
 	}
@@ -524,8 +522,14 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 	d := h.d
 	d.Cwd = cwd
 	args := chatArgsOf(d, sid)
-	if _, err := parseChatFlags(args); err != nil {
+	f, err := parseChatFlags(args)
+	if err != nil {
 		writeErr(w, werr(http.StatusBadRequest, "bad_flags", clip(err.Error(), 400)))
+		return
+	}
+	// The server's flags are the person's for --cwd: in another directory, trusting its files is raised as a new session raises it.
+	note, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, h.serverBaseline(), cleanDir(cwd)))
+	if !okay {
 		return
 	}
 	t, err := h.addTab(strings.TrimSpace(body.Name), cwd, h.base)
@@ -533,11 +537,19 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	spec := startSpec{args: args, name: strings.TrimSpace(body.Name)}
+	spec := startSpec{args: args, name: strings.TrimSpace(body.Name), note: note}
 	h.track(func() { _ = t.startGen(spec) })
 	res := map[string]any{"tab": t.Summary()}
 	h.idemPut(key, http.StatusCreated, res)
 	_ = web.WriteJSON(w, http.StatusCreated, res)
+}
+
+// serverBaseline is what the server's own command line grants a session: its mode, its allow rules, its verify command, and trust
+// in --cwd's files when --trust-project was given.
+func (h *webHostImpl) serverBaseline() baseline {
+	base := baselineOfFlags(chatFlags{mode: h.d.Mode, verify: h.d.Verify, allow: h.d.Allow}, cleanDir(h.d.Cwd))
+	base.trusted = h.d.TrustProject
+	return base
 }
 
 // checkModel says whether a model can be used, as CheckModel of a live session says it (422 model); with no live session it is

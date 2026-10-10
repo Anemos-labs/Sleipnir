@@ -326,16 +326,20 @@ command and taking back a deny or ask rule each need a confirmation: the request
 in `X-Confirm-Scope` and in `detail.scope` (with `detail.reasons`), and is repeated with an id for that scope (`POST /api/confirm`)
 in `X-Confirm`. An id is good once, for one minute, for exactly what it was asked for. Any signed-in client can obtain one: the
 confirmation stops forged, replayed and stale requests and is where the page shows the person what is raised; it is not a second
-credential. A new session is measured against the server's own flags, a restart against the session it replaces. A restart into a
-directory that is not in the projects list is refused, as a new session there is.
+credential. A new session or a resume is measured against the server's own flags, a restart against the session it replaces; trust
+given to one directory does not follow a session into another, so a restart or a resume in another project asks for that project's
+files. A restart into a directory that is not in the projects list is refused, as a new session there is. A project whose own files
+cannot all be read (a link that leaves it, more files than a scan reads) is listed as `partial`, never as having nothing to trust;
+trusting it names what could not be read and lasts for that session only.
 
 Questions are answered in the page: yes; yes and do not ask again this session (for a project's tool server or its own files: for
 the project); yes and allow the builds and tests of most projects for the session, when the question is about one of them; no,
 with an optional instruction that the agent reads with the refusal. A question shows everything that would run: the whole
 command (up to the shell tool's own limit of 100,000 bytes), the whole change of an edit, every rule a "don't ask again" would add,
 with terminal controls and characters that reorder text shown as escapes rather than removed. A request whose question cannot be
-shown whole (longer than that, a change longer than 256 KiB, a value shaped like a secret, which the page does not show) is refused
-without being asked, and the session says so. An answer earlier than 350 ms after the question appeared, or after the session's
+shown whole (longer than that, a change longer than 256 KiB, a value shaped like a secret, which the page does not show, a write over
+a file that cannot be shown as text) is refused without being asked, and the session says so. A web fetch or search is shown with its
+whole URL or query, and the change of a write through a link is drawn against the file the link leads to. An answer earlier than 350 ms after the question appeared, or after the session's
 previous answer, is refused, whatever the page does. A question nobody answered within `--ask-timeout` is
 refused (`0`, the default, waits), and so is every open question once no page has had the interface open for `--ask-grace`
 (one minute by default; `0` never refuses for that). Questions about a project's own files and its tool servers are not asked

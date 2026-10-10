@@ -414,9 +414,7 @@ func (t *webTab) runEnded(s *session.Session, res *session.Result, err error) {
 // hintRow is a warning row that, when it is about a provider's key or a model, names the Settings page that sets it ("providers" or
 // "models", the page's "open" field: a button that opens it).
 func hintRow(text string, err error) *wire.Sys {
-	ev := &wire.Sys{Ch: "mgr", Glyph: "⚠", Text: clip(text, 2000)}
-	setOptional(ev, "Open", settingsFor(err))
-	return ev
+	return &wire.Sys{Ch: "mgr", Glyph: "⚠", Text: clip(text, 2000), Open: settingsFor(err)}
 }
 
 // settingsFor is the Settings page that fixes an error of a provider or of the model ("" for any other error).
@@ -440,28 +438,6 @@ func settingsFor(err error) string {
 		return "providers"
 	}
 	return ""
-}
-
-// setOptional sets a field of a wire value by name when the wire type has it, and does nothing otherwise: fields the page reads that
-// the wire package does not carry yet (sys "open", meta "sessionDir").
-func setOptional(v any, name string, value any) {
-	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Pointer || rv.IsNil() || reflect.ValueOf(value).IsZero() {
-		return
-	}
-	f := rv.Elem().FieldByName(name)
-	if !f.IsValid() || !f.CanSet() {
-		return
-	}
-	val := reflect.ValueOf(value)
-	switch {
-	case val.Type().AssignableTo(f.Type()):
-		f.Set(val)
-	case f.Kind() == reflect.Pointer && val.Type().AssignableTo(f.Type().Elem()):
-		pv := reflect.New(f.Type().Elem())
-		pv.Elem().Set(val)
-		f.Set(pv)
-	}
 }
 
 // goalWire is the page's goal event of a goal state (nil: cleared).
@@ -1669,7 +1645,7 @@ func (t *webTab) meta() wire.MetaPatch {
 	}
 	m.Cwd = ptr(o.Cwd)
 	if s != nil {
-		setOptional(&m, "SessionDir", s.Dir) // /status's session directory (PARITY A27)
+		m.SessionDir = ptr(s.Dir) // /status's session directory (PARITY A27)
 	}
 	m.Verify = ptr(o.Verify)
 	m.Commit = ptr(o.Commit)

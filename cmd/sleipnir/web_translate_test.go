@@ -86,21 +86,6 @@ func TestStubTranslatorJournalsWhatItEmits(t *testing.T) {
 	}
 }
 
-// A field the page reads is set when the wire type has it and left alone when it does not; a pointer field takes a copy.
-func TestSetOptionalSetsWhatTheTypeHas(t *testing.T) {
-	var v struct {
-		Open       string
-		SessionDir *string
-	}
-	setOptional(&v, "Open", "providers")
-	setOptional(&v, "SessionDir", "/state/sessions/x")
-	setOptional(&v, "Missing", "x")
-	setOptional(&v, "Open", "") // a zero value sets nothing
-	if v.Open != "providers" || v.SessionDir == nil || *v.SessionDir != "/state/sessions/x" {
-		t.Errorf("%+v", v)
-	}
-}
-
 // A hint row names the Settings page that fixes a missing model or key.
 func TestHintsNameTheSettingsPage(t *testing.T) {
 	for _, tc := range []struct {
@@ -112,7 +97,7 @@ func TestHintsNameTheSettingsPage(t *testing.T) {
 		{errors.New(`provider "x" has no key: /login x, or set X_KEY`), "providers"},
 		{errors.New("disk full"), ""},
 	} {
-		if got := settingsFor(tc.err); got != tc.want {
+		if got := hintRow("x", tc.err).Open; got != tc.want {
 			t.Errorf("%v: %q, want %q", tc.err, got, tc.want)
 		}
 	}

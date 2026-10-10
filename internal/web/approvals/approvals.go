@@ -19,17 +19,20 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base32"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/rl/redact"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -116,8 +119,7 @@ type question struct {
 
 // Bridge holds the open questions of every tab. Its methods are safe for concurrent use.
 type Bridge struct {
-	cfg  Config
-	mask *redact.Redactor
+	cfg Config
 
 	mu          sync.Mutex
 	open        map[string]*question
@@ -144,7 +146,6 @@ func New(cfg Config) *Bridge {
 	}
 	return &Bridge{
 		cfg:  cfg,
-		mask: redact.New(redact.Config{Kinds: []string{redact.GroupTokens, redact.KindJWT, redact.KindPrivateKey, redact.KindURLCred, redact.KindBearer, redact.KindSecret}}),
 		open: map[string]*question{}, lastAnswer: map[string]time.Time{}, answered: map[string]bool{},
 		slots: map[string]chan struct{}{}, lonelySince: cfg.Now(),
 	}
@@ -530,17 +531,51 @@ func visible(s string) string {
 	return b.String()
 }
 
-// showWhole renders a field of a question: the text whole (visible), or why it cannot be shown: longer than limit bytes, or holding
-// a value shaped like a secret, which the page does not show.
-func (b *Bridge) showWhole(name, raw string, limit int) (string, string) {
+// secrets recognises values shaped like secrets, which the page never shows.
+var secrets = redact.New(redact.Config{Kinds: []string{redact.GroupTokens, redact.KindJWT, redact.KindPrivateKey, redact.KindURLCred, redact.KindBearer, redact.KindSecret}})
+
+// Shown renders text that a person decides on (a question's field, what a confirmation raises) whole: visible, at most limit bytes
+// of the original, and free of values shaped like secrets. When it cannot be shown so, why says so in a sentence about name, and
+// the caller must not ask the person at all.
+func Shown(name, raw string, limit int) (shown, why string) {
 	if len(raw) > limit {
 		return "", fmt.Sprintf("the %s is %d bytes and the page shows at most %d: split it, or write it to a file and run that", name, len(raw), limit)
 	}
 	v := visible(raw)
-	if b.mask.String(v) != v {
+	if secrets.String(v) != v {
 		return "", "the " + name + " holds a value shaped like a secret, which the page does not show: pass it through an environment variable or a file"
 	}
 	return v, ""
+}
+
+// showWhole is Shown for a field of a question.
+func (b *Bridge) showWhole(name, raw string, limit int) (string, string) {
+	return Shown(name, raw, limit)
+}
+
+// webText is the whole of what a web fetch or search asks for, from the call's input (its summary is cut to a line): "fetch <url>",
+// "search the web for <query>"; "" when the input cannot be read.
+func webText(r perm.Request) string {
+	var in map[string]json.RawMessage
+	if json.Unmarshal(r.Input, &in) != nil {
+		return ""
+	}
+	str := func(key string) (string, bool) {
+		var v string
+		raw, ok := in[key]
+		return v, ok && json.Unmarshal(raw, &v) == nil
+	}
+	switch r.Tool {
+	case "web_fetch":
+		if u, ok := str("url"); ok {
+			return "fetch " + u
+		}
+	case "web_search":
+		if q, ok := str("query"); ok {
+			return "search the web for " + strconv.Quote(q)
+		}
+	}
+	return ""
 }
 
 // shape builds the question the page shows (VOCAB.md 9), every field whole; unshown says why it cannot be shown whole (the request
@@ -554,6 +589,9 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wir
 	cmd, cmdName, cmdLimit := r.Command, "command", MaxCommand
 	if cmd == "" || kind != "command" {
 		cmd, cmdName, cmdLimit = summary, "request", maxField
+	}
+	if full := webText(r); kind == "web" && full != "" {
+		cmd = full // the URL or the query whole: the summary is cut, and a path or a query can carry data to an allowed host
 	}
 	where := func(dir string) string {
 		if b.cfg.Where != nil {
@@ -609,6 +647,8 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wir
 			return q, "the change it would make could not be shown"
 		case len(change) > MaxChange || hasLine(change, truncatedLine):
 			return q, fmt.Sprintf("the change is larger than the page shows (%d bytes): make it in smaller edits", MaxChange)
+		case hasLinePrefix(change, checkpoint.UnshownPrefix):
+			return q, "the file it changes is there and cannot be shown as text, so the change cannot be shown"
 		}
 		if path == "" && len(r.Paths) > 0 {
 			paths := append([]string(nil), r.Paths...)
@@ -626,6 +666,16 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wir
 		q.Path, q.Change = p, c
 	}
 	return q, ""
+}
+
+// hasLinePrefix reports whether text has a line that begins with prefix.
+func hasLinePrefix(text, prefix string) bool {
+	for _, l := range strings.Split(text, "\n") {
+		if strings.HasPrefix(l, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // hasLine reports whether text has a line that is exactly line.

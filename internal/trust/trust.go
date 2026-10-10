@@ -25,6 +25,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -75,6 +76,20 @@ type Footprint struct {
 	// Partial says that the project has more to read than a scan looks at (the limits above): such a footprint cannot be remembered,
 	// since the digest does not cover all of it.
 	Partial bool
+	// Unread names what made the footprint partial, at most maxUnread entries: a file that is there and could not be read as one (a
+	// link that leaves the project), a file over the size limit, the first file over the count limit, a directory too large to walk.
+	Unread []string
+}
+
+// maxUnread bounds Footprint.Unread.
+const maxUnread = 50
+
+// partial marks the footprint partial because of what path names.
+func (s *scanner) partial(path string) {
+	s.fp.Partial = true
+	if len(s.fp.Unread) < maxUnread && !slices.Contains(s.fp.Unread, path) {
+		s.fp.Unread = append(s.fp.Unread, path)
+	}
 }
 
 // Empty reports whether there is nothing in the project that trust would unlock.
@@ -138,7 +153,7 @@ type scanner struct {
 // add appends a trust fingerprint file while budget remains and otherwise marks the scan partial.
 func (s *scanner) add(f File) {
 	if s.files <= 0 {
-		s.fp.Partial = true
+		s.partial(f.Path + " (more files than a scan reads)")
 		return
 	}
 	s.files--
@@ -153,7 +168,7 @@ func (s *scanner) file(r *os.Root, rel string, kind Kind) {
 	f, err := r.OpenFile(name, openFlags, 0)
 	if err != nil {
 		if _, lerr := r.Lstat(name); lerr == nil {
-			s.fp.Partial = true
+			s.partial(rel)
 		}
 		return
 	}
@@ -169,14 +184,14 @@ func (s *scanner) read(f *os.File, rel string, kind Kind, prefix []byte) {
 		return
 	}
 	if s.bytes <= 0 || fi.Size() > s.bytes {
-		s.fp.Partial = true
+		s.partial(rel + " (larger than a scan reads)")
 		return
 	}
 	h := sha256.New()
 	h.Write(prefix)
 	n, err := io.Copy(h, io.LimitReader(f, s.bytes))
 	if err != nil {
-		s.fp.Partial = true // a file that cannot be read cannot be vouched for
+		s.partial(rel) // a file that cannot be read cannot be vouched for
 		return
 	}
 	s.bytes -= n
@@ -193,11 +208,11 @@ func (s *scanner) tree(r *os.Root, dir string, kind Kind) {
 	}
 	_ = fs.WalkDir(r.FS(), dir, func(p string, d fs.DirEntry, err error) error {
 		if s.visited++; s.visited > maxVisited {
-			s.fp.Partial = true
+			s.partial(dir + " (more entries than a scan looks at)")
 			return fs.SkipAll
 		}
 		if err != nil {
-			s.fp.Partial = true
+			s.partial(p)
 			return nil
 		}
 		switch {
@@ -206,7 +221,7 @@ func (s *scanner) tree(r *os.Root, dir string, kind Kind) {
 			target, lerr := r.Readlink(filepath.FromSlash(p))
 			f, oerr := r.OpenFile(filepath.FromSlash(p), openFlags, 0)
 			if lerr != nil || oerr != nil {
-				s.fp.Partial = true
+				s.partial(p)
 				return nil
 			}
 			s.read(f, p, kind, []byte("symlink\x00"+target+"\x00"))

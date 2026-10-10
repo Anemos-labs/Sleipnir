@@ -7,6 +7,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -24,9 +25,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 
+	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -160,6 +163,7 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 			// sessions started from the page run on the fixture's model too
 			b := fx.scenarios[0].base
 			b.Root, b.Cwd, b.AskTimeout = "", "", 0
+			b.TrustProject = false // trust in a session started from the page comes from its own request and gate, never from the fixture
 			h.base = b
 		}
 		return h, nil
@@ -383,8 +387,9 @@ func (h *webHostImpl) Active() string {
 // Questions lists the open questions of every tab, oldest first.
 func (h *webHostImpl) Questions() []wire.OpenQuestion { return h.bridge.Open() }
 
-// pendingChange is the change an edit of a tab asks to make (PARITY A1): its path and a unified diff of the file as it is now; ok is
-// false when it cannot be shown (the question is then not asked).
+// pendingChange is the change an edit of a tab asks to make (PARITY A1): its path and a unified diff against the file the write will
+// change (a link is followed, as the write follows it); a file that is there and cannot be shown as text is said to be so, never
+// drawn as a new file. ok is false when nothing can be shown (the question is then not asked).
 func (h *webHostImpl) pendingChange(tab string, r perm.Request) (path, change string, ok bool) {
 	t := h.tab(tab)
 	if t == nil {
@@ -398,14 +403,62 @@ func (h *webHostImpl) pendingChange(tab string, r perm.Request) (path, change st
 	if len(input) == 0 {
 		input, _ = t.calls.input(r.Agent, r.Tool) // the request names the call; the call's input came through the sink
 	}
-	pc, ok := s.PendingChange(r.Tool, input)
+	current := func(p string) checkpoint.Current {
+		abs := p
+		switch {
+		case len(r.Paths) == 1:
+			abs = r.Paths[0] // the file the tool resolved and asks about
+		case !filepath.IsAbs(p):
+			abs = filepath.Join(s.Cwd(), p)
+		}
+		return currentContent(abs)
+	}
+	pc, ok := checkpoint.ProposeFrom(r.Tool, input, current)
 	if !ok {
 		return "", "", false
 	}
-	if filepath.IsAbs(pc.Path) {
-		pc.Path = strings.TrimSuffix(h.where(tab, pc.Path), "/")
+	path = pc.Path
+	if len(r.Paths) == 1 {
+		path = r.Paths[0]
 	}
-	return pc.Path, pc.Change, true
+	if filepath.IsAbs(path) {
+		path = strings.TrimSuffix(h.where(tab, path), "/")
+	}
+	return path, pc.Unified, true
+}
+
+// maxCurrentContent is the largest current file a pending change is drawn against.
+const maxCurrentContent = 1 << 20
+
+// currentContent is what the file at abs holds now, following a link as a write through it does: its text, or why it cannot be
+// shown (not a regular file, larger than 1 MiB, not text).
+func currentContent(abs string) checkpoint.Current {
+	target, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		if _, lerr := os.Lstat(abs); lerr == nil {
+			return checkpoint.Current{Exists: true, Unshown: "a link whose target cannot be read"}
+		}
+		return checkpoint.Current{}
+	}
+	fi, err := os.Stat(target)
+	switch {
+	case err != nil:
+		return checkpoint.Current{Exists: true, Unshown: "it cannot be read"}
+	case !fi.Mode().IsRegular():
+		return checkpoint.Current{Exists: true, Unshown: "it is not a regular file"}
+	case fi.Size() > maxCurrentContent:
+		return checkpoint.Current{Exists: true, Unshown: fmt.Sprintf("it is %d bytes, larger than a change is drawn against (%d)", fi.Size(), maxCurrentContent)}
+	}
+	b, err := os.ReadFile(target)
+	switch {
+	case err != nil:
+		return checkpoint.Current{Exists: true, Unshown: "it cannot be read"}
+	case len(b) > maxCurrentContent:
+		return checkpoint.Current{Exists: true, Unshown: "it grew past the size a change is drawn against"}
+	case !utf8.Valid(b) || bytes.IndexByte(b, 0) >= 0:
+		return checkpoint.Current{Exists: true, Unshown: "it is not text"}
+	}
+	return checkpoint.Current{Text: string(b), Exists: true}
 }
 
 // where renders a directory of a tab for a question: relative to the project root ("." for the root, "web/" below it); inside an
@@ -626,7 +679,12 @@ func (h *webHostImpl) Projects(ctx context.Context) []wire.Project {
 	for _, d := range dirs {
 		root := rootOf(d)
 		p := wire.Project{Dir: d, Root: root, Name: filepath.Base(root), Trust: "none", Default: d == filepath.Clean(h.d.Cwd)}
-		if fp, err := trust.Scan(root, d, home); err == nil && !fp.Empty() {
+		switch fp, err := trust.Scan(root, d, home); {
+		case err != nil:
+			p.Trust = "unreadable" // never "none": a directory whose files cannot be read is not one with nothing to trust
+		case fp.Partial:
+			p.Files, p.Trust = len(fp.Files), "partial"
+		case !fp.Empty():
 			p.Files = len(fp.Files)
 			switch st, _ := trust.OpenLedger(session.TrustLedgerPath(home)).Check(d, fp); st {
 			case trust.Trusted:
@@ -726,6 +784,10 @@ func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p p
 	if len(reasons) == 0 {
 		return "", true
 	}
+	if _, err := showReasons(reasons); err != nil {
+		writeErr(w, err)
+		return "", false
+	}
 	scope := newSessionScope(p)
 	home, _ := os.UserHomeDir()
 	var fp *trust.Footprint
@@ -788,7 +850,13 @@ func (h *webHostImpl) trustChallenge(w http.ResponseWriter, r *http.Request, sco
 	for _, f := range fp.Files {
 		ch.Files = append(ch.Files, wire.TrustFile{Path: clip(f.Path, 4096), Kind: string(f.Kind), Bytes: f.Size, Hash: f.Sum})
 	}
+	for _, u := range fp.Unread {
+		ch.Files = append(ch.Files, wire.TrustFile{Path: clip(u, 4096), Kind: "unread"}) // what the digest does not cover
+	}
 	msg := "trust the files of this project first"
+	if fp.Partial {
+		msg = "trust the files of this project first; part of them could not be read (kind \"unread\"), and trusting it applies what is there too, for this session only"
+	}
 	if again {
 		msg = "the project's files, or what the session asks for, changed since you were shown them: look again"
 	}
