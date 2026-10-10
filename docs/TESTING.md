@@ -43,6 +43,9 @@ go test -count=1 -timeout 3m ./internal/tools/shell ./internal/session -run '^Te
 | Repository checks | Links, workflows, platform and release configuration |
 | Code-age collector | Committed line attribution across formatting and renames, unusual paths, incomplete history, and safe report rendering; see [Maintenance](MAINTENANCE.md) |
 | Production doc coverage | At least 90% of named, non-generated Go functions and methods have doc comments; tests and fixtures are excluded |
+| Browser interface: Go | The server envelope (token, Host and Origin, CSRF header, body limits, confirmation ids), every route with its error cases, the event translator against recorded logs, and the host over real sessions on the mock provider, including the real binary with `sleipnir web --fixture` |
+| Browser interface: JavaScript | `node --test internal/web/uidev/test/*.test.mjs`: the data layer, the reducer on recorded streams, the forms and state machines, and hostile strings in every field the server sends (names, diffs, command output, tool-server text) rendering as text |
+| Browser interface: appearance | `node scripts/web-parity.mjs` renders two pages in headless Chromium on a virtual clock and reports the differing pixels per scene (a change to a screen is compared with a reference page and then looked at); see [Building](BUILDING.md) |
 | Isolated-team recovery | Real process death with unfinished worker edits, original dirty base, integration cursors, ownership, mode validation and safe pruning |
 
 Use a focused test while fixing a bug, then run the relevant package suites.

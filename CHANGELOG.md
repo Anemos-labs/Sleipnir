@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `sleipnir web` serves the sessions in a browser on loopback (see `docs/CLI.md`
+  and `docs/SECURITY.md` section 5). Behind it, several commands share their
+  code with the web routes and behave as before: `models`, `fav`, `allow`,
+  `trust`, `mcp`, `login`, `sessions prune`, `schedule` and `update`. Three
+  behaviors differ: a project or local configuration file can no longer remove
+  the user's deny and ask rules or hooks by setting `permissions`,
+  `permissions.roles`, one role's section or `hooks` to `null` (it could, and
+  the lists were add-only only below those keys); the approvals of a project's
+  tool servers are read again from the ledger before every check and change, so
+  an approval made in another process takes effect without a restart; and
+  `sleipnir schedule daemon` holds a lock in the state directory, so a second
+  daemon refuses to start and a second `--once` run exits 0 saying so.
+  Configuration files are written under a lock per file.
 - Count workers, not the manager, in every team size a person types or reads.
   `--swarm N`, `sleipnir swarm N`, `/swarm N` and `rl --mode swarm:N` mean a
   manager and N workers again; `--swarm 0` is a single agent and

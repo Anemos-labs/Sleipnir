@@ -34,6 +34,8 @@ with workers.
 | `internal/events` | Append-only log and content-addressed blobs |
 | `internal/tui` | Terminal input, rendering, live views and replay |
 | `internal/web` | Browser interface: loopback HTTP server, authentication, event streams and the embedded UI; `wire` (its JSON shapes), `seam` (the interfaces between its packages) and `webtest` (fakes and a fake server) |
+| `internal/web/translate`, `approvals` | Events of a session as the page's vocabulary (live, replayed or followed from a log); permission questions bridged to the page |
+| `internal/web/wsvc`, `settings`, `tools`, `runner`, `clispec` | Routes of the workspace, the settings, the recorded sessions, schedule and doctor, and the command runner with the specification of the command line generated from `docs/CLI.md` |
 | `internal/config`, `internal/memory` | Settings and instruction files |
 | `internal/skills`, `internal/hooks`, `internal/mcp` | Extensions |
 | `internal/rl` | Rollouts, verification, rewards and trajectory exports |

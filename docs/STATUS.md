@@ -2,7 +2,7 @@
 
 Sleipnir provides interactive chat, single-agent and team runs, standing goals,
 file and shell tools, permission rules, checkpoints, session logs, MCP, skills,
-hooks, and trajectory export.
+hooks, and trajectory export. `sleipnir web` serves the same sessions in a browser.
 
 ## Limitations
 
@@ -20,6 +20,10 @@ hooks, and trajectory export.
   incomplete; see `scripts/windows-excluded.txt`.
 - Verification depends on the configured command and task scope. A passing
   command is evidence for what it checks, not proof of the entire objective.
+- The browser interface runs on the machine that runs the sessions and listens on loopback only; reaching it from another
+  machine needs an SSH forward. A model provider is signed in on a terminal, not in the page. A team's budget changed in the
+  page takes effect when the team starts again. A page that is closed does not stop the sessions: they run until the server
+  stops, and a question nobody answers is refused after the grace period.
 - Automatic shared-context refresh is not implemented. Tasks move between workers only
   when a worker or the manager hands one over; the stall sweep names stalled work but
   does not move or requeue it on its own.
