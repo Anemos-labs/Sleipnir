@@ -285,6 +285,9 @@ replaces the token without telling anyone the new one, and the browser that aske
   `localhost` or `127.0.0.1` that the user visits in the same browser profile receives it. `Origin` checks stop that server's pages
   from acting through the browser, but a program that copies the cookie can replay it, since a non-browser client chooses its own
   headers. Use a browser profile for this page, and rotate the token if another local server was visited.
+* **A local process can use up the sign-in throttle.** Eleven wrong tokens in a minute from any process of the machine make the next
+  sign-in with the right token wait out the minute (the 429 says how long). It cannot sign in, and sessions that exist are not
+  affected; a page of another site is counted apart and cannot do this through the browser.
 * **A confirmation is not a second credential.** Anything that can use the cookie can obtain a confirmation. It stops forged,
   replayed and mistaken requests and makes escalation an explicit act; it does not stop a holder of the session.
 * **Plain HTTP.** On a network path the token and the cookie are visible. Use an SSH tunnel, not a bind to another address.
