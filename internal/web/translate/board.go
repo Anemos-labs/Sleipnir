@@ -158,7 +158,7 @@ func (t *Translator) verifyCmd(task string) string {
 	if tk, ok := t.st.Task(task); ok {
 		files = tk.Files
 	}
-	return line(swarm.ExpandVerify(cmd, t.cfg.Root, files), capArg)
+	return line(swarm.ExpandVerify(cmd, t.root(), files), capArg)
 }
 
 // merge translates the merge queue's events (isolated teams; VOCAB.md 5.18, 5.19).
@@ -397,7 +397,7 @@ func (t *Translator) lease(e events.Event, ts float64, at int64) {
 		return
 	}
 	who := uiID(firstNonEmpty(p.Agent, e.Agent))
-	path := relPath(t.cfg.Root, p.Path)
+	path := relPath(t.root(), p.Path)
 	var task string
 	if a, ok := t.st.AgentLite(firstNonEmpty(p.Agent, e.Agent)); ok {
 		task = a.Task

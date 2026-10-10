@@ -210,7 +210,7 @@ func (t *Translator) stateOf(uid string, a state.Agent) *StateX {
 // summaryLine shows a tool summary with paths under the project made relative. A summary the State cut ends in the middle of a
 // word, which might be the start of a secret the masker can no longer recognise: that word is dropped.
 func (t *Translator) summaryLine(s string) string {
-	if root := t.cfg.Root; root != "" {
+	if root := t.root(); root != "" {
 		s = strings.ReplaceAll(s, strings.TrimSuffix(root, "/")+"/", "")
 	}
 	if cut, ok := strings.CutSuffix(s, "…"); ok {

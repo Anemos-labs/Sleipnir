@@ -54,6 +54,9 @@ type deriveState struct {
 	stopFollow func()
 	lastTS     time.Time // the newest log event's time
 	turnOpen   bool      // a turn of the main agent is running
+	root       string    // the project root a log-only translation learned from session.start (Config.Root unset)
+	ended      bool      // the log's last run ended (session.end, with no session.start after it)
+	lastWall   time.Time // when a followed log last gave an event (the server's clock)
 	permMode   string    // the last perm.state of the log: the permission mode
 	permRules  int       // and how many allow rules
 }
@@ -137,3 +140,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	sort.Strings(out)
 	return out
 }
+
+// root is the project root paths are shown relative to: Config.Root, else the root the log's session.start named.
+func (t *Translator) root() string { return firstNonEmpty(t.cfg.Root, t.d.root) }

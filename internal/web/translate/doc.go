@@ -12,7 +12,8 @@
 // supervision findings, handovers, checkpoints, the plan of the main agent and the standing goal and its verdicts. The host adds
 // its own (Emit, Question, Answered): the person's messages, turns, steers, interrupts, questions and answers.
 //
-// A log another process writes is followed by polling (Follow), and a session resumed with a log of earlier runs has that history
+// A log another process writes is followed by polling (Follow; FollowDir publishes it for a read-only tab until the session ends), a
+// recorded session is read once (Replay, the Replay view of a recorded tab), and a session resumed with a log of earlier runs has that history
 // translated first, at t 0 with each event's real time in at, followed by the state the whole log folds to and a resumed row
 // (VOCAB.md 12). Both read every row from the log: the answers of the main agent come from turn.append, tool rows from tool.call,
 // tool.result and the output in the next turn.append.

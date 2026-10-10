@@ -3,7 +3,6 @@ package translate
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,40 +67,13 @@ func (t *Translator) Attach(log *events.Log, dir string) (detach func()) {
 // which is polled; the run's start is its first event unless Config.StartedAt says otherwise. It returns the function that stops
 // following.
 func (t *Translator) Follow(path string) (stop func()) {
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
+	t.follow(path)
 	t.mu.Lock()
-	if t.closed {
-		t.mu.Unlock()
-		cancel()
+	defer t.mu.Unlock()
+	if t.d.stopFollow == nil {
 		return func() {}
 	}
-	t.d.logOnly = true
-	t.mu.Unlock()
-	go func() {
-		defer close(done)
-		_ = state.Tail(ctx, path, func(e events.Event) error {
-			t.mu.Lock()
-			defer t.mu.Unlock()
-			if t.closed {
-				return errStopScan
-			}
-			if t.started.IsZero() && !e.TS.IsZero() {
-				t.started = e.TS
-			}
-			t.applyLog(e)
-			t.publishRoster()
-			return nil
-		}, state.TailOptions{WaitForFile: true})
-	}()
-	stop = func() {
-		cancel()
-		<-done
-	}
-	t.mu.Lock()
-	t.d.stopFollow = stop
-	t.mu.Unlock()
-	return stop
+	return t.d.stopFollow
 }
 
 // readExisting translates what the log holds already: the history of earlier runs when the log has one (a session.start is in it),
@@ -527,6 +499,17 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 		if json.Unmarshal(e.Data, &p) == nil && p.Cmd != "" {
 			t.d.queue.gate = line(p.Cmd, capArg)
 		}
+	case events.TypeSessionStart:
+		t.d.ended = false
+		var p struct {
+			Root string `json:"root"`
+			Cwd  string `json:"cwd"`
+		}
+		if t.d.root == "" && json.Unmarshal(e.Data, &p) == nil {
+			t.d.root = firstNonEmpty(p.Root, p.Cwd)
+		}
+	case events.TypeSessionEnd:
+		t.d.ended = true
 	case events.TypePermState:
 		var p struct {
 			Mode  string   `json:"mode"`
@@ -777,8 +760,8 @@ func (t *Translator) sendPend(p *pendTool) {
 	if p.name == "spawn" && !p.isErr {
 		it.spawned = spawnedIn(p.text)
 	}
-	it.arg = argOf(t.cfg.Root, p.name, &in, it.spawned)
-	resultDetails(&it, t.cfg.Root, p.name, &in, p.text, p.meta)
+	it.arg = argOf(t.root(), p.name, &in, it.spawned)
+	resultDetails(&it, t.root(), p.name, &in, p.text, p.meta)
 	if p.refused && p.isErr {
 		it.refused = true
 	}
