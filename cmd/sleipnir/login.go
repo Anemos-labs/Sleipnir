@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 
 	"golang.org/x/term"
 
+	"github.com/anemos-labs/sleipnir/internal/catalog"
 	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
@@ -28,20 +28,13 @@ func init() {
 // loginChoice is a provider that needs a key.
 type loginChoice struct{ name, env string }
 
-// loginChoices are the providers that take a key, Heimdall first (it is the recommended one), then the others in alphabetical order.
+// loginChoices are the providers that take a key, Heimdall first (it is the recommended one), then the others in alphabetical order
+// (catalog.KeyProviders).
 func loginChoices(cfg *config.Config) []loginChoice {
 	var out []loginChoice
-	for _, n := range session.ProviderNames(cfg) {
-		if _, env, ok := session.ProviderInfo(cfg, n); ok && env != "" {
-			out = append(out, loginChoice{n, env})
-		}
+	for _, kp := range catalog.KeyProviders(cfg) {
+		out = append(out, loginChoice{kp.Name, kp.Env})
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if (out[i].name == "heimdall") != (out[j].name == "heimdall") {
-			return out[i].name == "heimdall"
-		}
-		return out[i].name < out[j].name
-	})
 	return out
 }
 

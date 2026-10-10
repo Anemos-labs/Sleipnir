@@ -5,35 +5,25 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"text/tabwriter"
-	"time"
 	"unicode/utf8"
 
-	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
+	"github.com/anemos-labs/sleipnir/internal/catalog"
 	"github.com/anemos-labs/sleipnir/internal/config"
-	"github.com/anemos-labs/sleipnir/internal/cost"
-	"github.com/anemos-labs/sleipnir/internal/harden"
-	"github.com/anemos-labs/sleipnir/internal/provider"
-	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
 
-// modelRow is one listed model: Ref is what --model takes.
-type modelRow struct {
-	Ref string
-	gateway.Entry
-}
+// modelRow is one listed model: Ref is what --model takes (catalog.Entry).
+type modelRow = catalog.Entry
 
-// modelFilter is the search of `sleipnir models`: every word must appear in the reference, and each flag narrows further.
+// modelFilter is the search of `sleipnir models`: every word must appear in the reference, and each flag narrows further. It has
+// the fields of catalog.Filter, which does the filtering.
 type modelFilter struct {
 	Words        []string
 	Tools        bool
@@ -45,99 +35,22 @@ type modelFilter struct {
 }
 
 // keep applies chat capability, tool, reasoning, favorite, price, context, and case-insensitive
-// search-word filters to a model row.
+// search-word filters to a model row (catalog.Filter.Keep).
 func (f modelFilter) keep(r modelRow, fav map[string]bool) bool {
-	if !f.All && !r.IsChat() {
-		return false
-	}
-	if f.Tools && !r.SupportsTools() || f.Reasoning && !r.SupportsReasoning() || f.OnlyFavorite && !fav[r.Ref] {
-		return false
-	}
-	if f.MaxOut > 0 && (r.Model.Provider == planProvider || r.Model.Price.OutputPerM > f.MaxOut) || r.Model.ContextTokens < f.MinContext {
-		return false
-	}
-	ref := strings.ToLower(r.Ref)
-	for _, w := range f.Words {
-		if !strings.Contains(ref, strings.ToLower(w)) {
-			return false
-		}
-	}
-	return true
+	return catalog.Filter(f).Keep(r, fav)
 }
 
-// parseTokens reads "128k", "1m" or "32768".
-func parseTokens(s string) (int, error) {
-	t := strings.ToLower(strings.TrimSpace(s))
-	mult := 1.0
-	switch {
-	case strings.HasSuffix(t, "k"):
-		mult, t = 1e3, t[:len(t)-1]
-	case strings.HasSuffix(t, "m"):
-		mult, t = 1e6, t[:len(t)-1]
-	}
-	v, err := strconv.ParseFloat(t, 64)
-	if err != nil || v < 0 {
-		return 0, fmt.Errorf("want a token count such as 128k, got %q", s)
-	}
-	return int(v * mult), nil
-}
+// parseTokens reads "128k", "1m" or "32768" (catalog.ParseTokens).
+func parseTokens(s string) (int, error) { return catalog.ParseTokens(s) }
 
-// usableProviders are the providers `models` asks when none is named: those whose key is set, and (withPublic) Heimdall, whose
-// catalogue is public (the chat asks only those with a key: it must not reach the network for a session that has none). Local servers and providers without a catalogue route are asked only by name.
+// usableProviders are the providers `models` asks when none is named (catalog.UsableProviders).
 func usableProviders(cfg *config.Config, withPublic bool) []string {
-	var out []string
-	for _, n := range session.ProviderNames(cfg) {
-		p, ok := session.LookupProvider(cfg, n)
-		if ok && p.Auth == config.AuthChatGPTPlan { // a ChatGPT plan has no key: the sign-in is what makes it usable
-			if session.ProviderReady(p) {
-				out = append(out, n)
-			}
-			continue
-		}
-		if !ok || p.EffectiveDialect() != config.DialectOpenAIChat {
-			continue
-		}
-		if withPublic && n == "heimdall" || p.APIKeyEnv != "" && harden.Secret(p.APIKeyEnv) != "" {
-			out = append(out, n)
-		}
-	}
-	return out
+	return catalog.UsableProviders(cfg, withPublic)
 }
 
-// localSources are the local servers (Ollama, LM Studio, llama.cpp, vLLM: providers with no key whose address is this machine) that answer with a
-// list of models right now. A server that is not running refuses at once, so asking costs nothing; it is asked for a second and a half at most.
+// localSources are the local servers that answer with a list of models right now (catalog.LocalSources).
 func localSources(ctx context.Context, cfg *config.Config) []modelSource {
-	var cand []modelSource
-	for _, n := range session.ProviderNames(cfg) {
-		p, ok := session.LookupProvider(cfg, n)
-		if !ok || p.APIKeyEnv != "" || p.EffectiveDialect() != config.DialectOpenAIChat {
-			continue
-		}
-		base, _, _ := session.ProviderInfo(cfg, n)
-		if u, err := url.Parse(base); err == nil && provider.IsLoopbackHost(u.Hostname()) {
-			cand = append(cand, modelSource{name: n, base: base})
-		}
-	}
-	up := make([]bool, len(cand))
-	var wg sync.WaitGroup
-	for i, c := range cand {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			cctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-			defer cancel()
-			es, err := gateway.Fetch(cctx, &http.Client{Timeout: 1500 * time.Millisecond}, c.base)
-			up[i] = err == nil && len(es) > 0
-		}()
-	}
-	wg.Wait()
-	var out []modelSource
-	for i, c := range cand {
-		if up[i] {
-			out = append(out, c)
-		}
-	}
-	return out
+	return fromCatalog(catalog.LocalSources(ctx, cfg))
 }
 
 // cmdModels lists filtered models from selected catalogs using each provider's
@@ -229,83 +142,45 @@ search (all must appear, any case). Favorites, marked *, come first.
 }
 
 // modelSource is one catalogue to ask: the provider's name ("" for a bare endpoint) and its base URL. A ChatGPT plan's list needs the
-// sign-in's token and is shaped differently, so it is asked another way (planModels).
+// sign-in's token and is shaped differently, so it is asked another way (catalog.PlanModels).
 type modelSource struct {
 	name, base string
 	plan       bool
 }
 
-// usableSources resolves catalog endpoints and authentication modes for providers eligible for
-// model listing.
-func usableSources(cfg *config.Config, withPublic bool) []modelSource {
+// fromCatalog converts catalogue sources into the command's.
+func fromCatalog(in []catalog.Source) []modelSource {
 	var out []modelSource
-	for _, n := range usableProviders(cfg, withPublic) {
-		b, _, _ := session.ProviderInfo(cfg, n)
-		p, _ := session.LookupProvider(cfg, n)
-		out = append(out, modelSource{name: n, base: b, plan: p.Auth == config.AuthChatGPTPlan})
+	for _, s := range in {
+		out = append(out, modelSource{name: s.Name, base: s.Base, plan: s.Plan})
 	}
 	return out
 }
 
-// fetchModels asks the catalogues at once. The rows are those of the catalogues that answered; errs says, per source, why one did not.
+// toCatalog converts the command's sources into the catalogue's.
+func toCatalog(in []modelSource) []catalog.Source {
+	out := make([]catalog.Source, len(in))
+	for i, s := range in {
+		out[i] = catalog.Source{Name: s.name, Base: s.base, Plan: s.plan}
+	}
+	return out
+}
+
+// usableSources resolves catalog endpoints and authentication modes for providers eligible for
+// model listing (catalog.UsableSources).
+func usableSources(cfg *config.Config, withPublic bool) []modelSource {
+	return fromCatalog(catalog.UsableSources(cfg, withPublic))
+}
+
+// fetchModels asks the catalogues at once (catalog.FetchEntries, the ChatGPT sign-in of the user's home). The rows are those of the
+// catalogues that answered; errs says, per source, why one did not.
 func fetchModels(ctx context.Context, sources []modelSource) (all []modelRow, errs []error) {
-	rows := make([][]modelRow, len(sources))
-	errs = make([]error, len(sources))
-	var wg sync.WaitGroup
-	for i, src := range sources {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			var es []gateway.Entry
-			var err error
-			if src.plan {
-				es, err = planModels(cctx)
-			} else {
-				es, err = gateway.Fetch(cctx, &http.Client{Timeout: 30 * time.Second}, src.base)
-			}
-			errs[i] = err
-			for _, e := range es {
-				ref := e.Model.ID
-				if src.name != "" {
-					ref = src.name + "/" + ref
-				}
-				rows[i] = append(rows[i], modelRow{Ref: ref, Entry: e})
-			}
-		}()
-	}
-	wg.Wait()
-	for i := range sources {
-		if errs[i] == nil {
-			all = append(all, rows[i]...)
-		}
-	}
-	return all, errs
+	return catalog.FetchEntries(ctx, userHome(), toCatalog(sources))
 }
 
 // planProvider marks catalog entries authenticated through ChatGPT. The catalog
 // supplies no per-token prices, so tables label their price cells "plan".
-const planProvider = "chatgpt-plan"
-
-// planModels lists the models available through the saved ChatGPT sign-in, with
-// context windows when supplied. Missing windows display as ?; session setup
-// uses a conservative fallback or an explicit options.context_window override.
-func planModels(ctx context.Context) ([]gateway.Entry, error) {
-	st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptauth.Path(userHome())})
-	if err != nil {
-		return nil, err
-	}
-	ms, err := st.Models(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]gateway.Entry, 0, len(ms))
-	for _, m := range ms {
-		out = append(out, gateway.Entry{Model: cost.Model{ID: m.Slug, Provider: planProvider, ContextTokens: m.ContextWindow}, Modality: "text->text", Supported: []string{"tools", "reasoning_effort"}})
-	}
-	return out, nil
-}
+const planProvider = catalog.PlanProvider
 
 // priceOut is the output price of a row as the tables show it: a plan's models say "plan".
 func priceOut(r modelRow) string {
@@ -394,38 +269,15 @@ func (m *modelMenu) Toggle(ref string) (bool, error) {
 	return starred, nil
 }
 
-// toggleFavorite adds ref to the favorites of the user's configuration under home, or removes it when it is there.
-func toggleFavorite(home, ref string) (bool, error) {
-	if _, _, ok := config.SplitModelRef(ref); !ok {
-		return false, fmt.Errorf("%q is not a provider/model reference (see `sleipnir models`)", ref)
-	}
-	cfg, _, err := config.Load(config.LoadOpts{Home: home, UntrustedProject: true})
-	if err != nil {
-		return false, err
-	}
-	favs := slices.Clone(cfg.Models.Favorites)
-	starred := !slices.Contains(favs, ref)
-	if starred {
-		favs = append(favs, ref)
-	} else {
-		favs = slices.DeleteFunc(favs, func(x string) bool { return x == ref })
-	}
-	return starred, saveFavorites(home, favs)
-}
+// toggleFavorite adds ref to the favorites of the user's configuration under home, or removes it when it is there
+// (catalog.ToggleFavorite).
+func toggleFavorite(home, ref string) (bool, error) { return catalog.ToggleFavorite(home, ref) }
 
-// saveFavorites writes the favorites into the user's configuration under home.
-func saveFavorites(home string, favs []string) error {
-	return config.Save(config.UserConfigPath(home), map[string]any{"models": map[string]any{"favorites": favs}})
-}
+// saveFavorites writes the favorites into the user's configuration under home (catalog.SaveFavorites).
+func saveFavorites(home string, favs []string) error { return catalog.SaveFavorites(home, favs) }
 
-// favoriteSet builds a membership map from configured model favorites.
-func favoriteSet(cfg *config.Config) map[string]bool {
-	m := map[string]bool{}
-	for _, r := range cfg.Models.Favorites {
-		m[r] = true
-	}
-	return m
-}
+// favoriteSet builds a membership map from configured model favorites (catalog.Favorites).
+func favoriteSet(cfg *config.Config) map[string]bool { return catalog.Favorites(cfg) }
 
 // printModels writes the table: favorites first, then by reference. On a terminal too narrow for it the columns that tell least go first
 // (REASONING, then the cached price, then the input price) and, as a last resort, a reference is cut short.
