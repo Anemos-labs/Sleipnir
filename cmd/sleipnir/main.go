@@ -243,6 +243,7 @@ Usage:
 
 Every day:
   chat      interactive session: what "sleipnir" alone opens on a terminal
+  web       the same sessions in a browser, on this machine (127.0.0.1:6969)
   run       run a goal (one agent; --swarm N for a manager and N workers)
   swarm     shorthand for run --swarm: sleipnir swarm <workers> "<goal>"
   login     store a key, or sign in with your ChatGPT plan; logout removes it

@@ -62,3 +62,23 @@ See [Building](BUILDING.md).
 Committed recordings are fixtures with specific provenance.
 [Gallery](GALLERY.md) identifies scripted and real-model recordings; they are
 not a guarantee that the current interface or performance matches a capture.
+
+## Web interface
+
+`sleipnir web` serves the same sessions in a browser. The first line it prints is the address to open (see
+[Command-line reference](CLI.md)); opening it signs the browser in and replaces the address with a clean one. A tab that
+has no session, or whose session has ended (24 hours, logout, or a rotation of the token), shows a short page that says to
+open the address again; nothing is shown from the session until then.
+
+- The page follows a session through an event stream. When the connection drops, the browser reconnects and the server
+  replays what was missed from its recent history; when the browser has been away longer than that history reaches, or the
+  server restarted, the page is told and fetches the current state instead of guessing.
+- A client that cannot keep up with the stream loses progress updates first, then ordinary events, and is told that it
+  did. Questions and state changes are never dropped: a client that cannot hold them is disconnected and reconnects.
+- Actions that raise privilege (a permissive mode, trusting a project, approving a tool server, adding a schedule,
+  updating, saving a key) take a second step: the page asks for a single-use confirmation that is valid for one minute and
+  for that action only.
+- The page sends no request to any other origin; the server's Content-Security-Policy would block it.
+
+Changes to the page are checked in a real browser at narrow and wide sizes, with the screenshots opened and read, as terminal
+changes are. See [Building](BUILDING.md).
