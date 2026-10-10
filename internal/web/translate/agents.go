@@ -9,6 +9,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
+	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -351,15 +352,25 @@ func (t *Translator) fellBehind(ts float64) {
 	}
 }
 
+// The bounds of a question's fields: the bridge's limits (internal/web/approvals), four times over for the escapes it writes for
+// control and invisible characters (one byte becomes at most four).
+const (
+	capQuestionCmd   = 4 * approvals.MaxCommand
+	capQuestionField = 4 * (16 << 10)
+)
+
 // question records an open question of the bridge and sends its ask.
 func (t *Translator) question(q wire.Question, now time.Time) {
 	q.Agent = uiID(q.Agent)
-	q.Cmd = line(q.Cmd, capPath)
-	q.Why = line(q.Why, capReason)
-	q.Scope = line(q.Scope, capReason)
-	q.What = line(q.What, capArg)
-	q.Rule = line(q.Rule, capPath)
-	q.Cwd = line(q.Cwd, capPath)
+	// What a question shows is what the person agrees to: the bridge has already made every field whole and visible (or refused to ask),
+	// so nothing here may shorten it or fold its lines. The caps only bound what a caller other than the bridge could send, and are the
+	// bridge's own limits with room for every byte to be written as an escape.
+	q.Cmd = text(q.Cmd, capQuestionCmd)
+	q.Why = text(q.Why, capQuestionField)
+	q.Scope = text(q.Scope, capQuestionField)
+	q.What = text(q.What, capQuestionField)
+	q.Rule = text(q.Rule, capQuestionField)
+	q.Cwd = text(q.Cwd, capQuestionField)
 	if q.ID == "" {
 		return
 	}
