@@ -28,6 +28,13 @@
 .trlist li.unread .mono{color:var(--warm)}
 .cf-req{font:400 12px/1.6 var(--f-num);margin:6px 0 10px;overflow-wrap:anywhere}.cf-req .mono{color:var(--fg)}
 .cf-req .dim{font:600 10.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;margin-right:6px}
+/* what a question or a confirmation names is drawn in the order it is written, left to right: a right-to-left word cannot trade places
+   with its neighbour (unicode-bidi does not inherit: each block that holds the text gets it); a character outside printable ASCII is
+   marked (.nca, its code point in the title; an isolate, so a directional formatting character in the text, marked on its own, acts
+   on nothing outside its mark) and a note says how many there are (.qnote) */
+.qcmd,.qblk,.qblk li,.qblk .pt,.diff.qdiff .ln span,.qrule code,.qpath,.qsv,.trlist li .mono,.trdir,.cf-req .mono,.askrow .mono{unicode-bidi:bidi-override;direction:ltr}
+mark.nca{unicode-bidi:isolate-override;direction:ltr;background:var(--warm-a);color:inherit;outline:1px solid var(--warm-b);outline-offset:-1px;border-radius:2px;padding:0 1px;text-decoration:underline dotted var(--warm)}
+.qnote{font:500 11px/1.3 var(--f-ui);color:var(--warm);margin:-2px 0 5px}
 .qopts{display:flex;flex-direction:column;gap:4px}
 .qopt{display:flex;gap:8px;align-items:flex-start;padding:4px 8px;border:1px solid var(--line2);background:var(--panel);text-align:left;font-size:12.5px;line-height:1.25;border-radius:2px;transition:background .15s,border-color .15s,opacity .2s}
 .qopt kbd{margin-top:1px;flex:none}

@@ -122,9 +122,14 @@ and the tab's badge appear at once, with a toast when the question is behind the
 A question names the agent, its task, what it wants to do (run a command, edit or write a file, apply a patch, fetch a page,
 search the web), the working directory, the scope and why it asks; a change to a file is shown as a diff, which opens whole in a
 larger view. The command, the reason and the diff are shown whole, each in a box of its own scroll in which every line wraps;
-a long one is headed by its number of lines and bytes and a `Show the end` button. The answers are 1 yes, 2 yes and do not ask
-again for that kind of request in this session (the exact rules it adds are listed under it), and 3 no with an instruction for
-the agent; a build or test command also offers allowing builds and tests for the session, which takes key 3 and moves no to 4.
+a long one is headed by its number of lines and bytes and a `Show the end` button. The command, the rules, the path, the scope
+and the reason are drawn left to right in the order they are written, so a right-to-left word keeps its place, and every
+character outside printable ASCII is marked, with its code point in the mark's title and a count under the command; a
+directional formatting character acts on nothing beyond its own mark. Copying the text copies it as written. The answers are 1 yes, 2 yes and do not ask
+again for that kind of request in this session (the exact rules it adds are listed under it; offered only when it would remember
+something, else the option is absent and the key 2 does nothing), and 3 no with an instruction for the agent; a build or test
+command also offers allowing builds and tests for the session, which takes key 3 and moves no to 4. A question that closes without
+an answer (canceled, timed out, the session closed) leaves a row that says so.
 Esc is no. The buttons and the keys work only after the keyboard has been quiet for 0.8 seconds since the question appeared on
 screen or since the last key; text typed meanwhile goes to the message box and never answers. A question that arrives while
 the rail is collapsed opens it; an answer key pressed while the question is not on screen opens it and answers nothing. The

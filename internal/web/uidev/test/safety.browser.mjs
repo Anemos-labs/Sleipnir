@@ -110,6 +110,64 @@ try {
     return { desktop: { cmdH: a.cmdH, whyH: a.whyH, strip: a.stripH }, phone: { cmdH: ph.cmdH, strip: ph.stripH, wide: ph.wide } };
   });
 
+  await step('a right-to-left word keeps its place, a look-alike letter and a hostile string are marked; the text copies as written', async () => {
+    const S = quiet; const shotQ = async name => { const r = await ev(`const b = document.querySelector('#qSlot .qstrip').getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: Math.min(b.height, 420) };`);
+      const { data } = await p.send('Page.captureScreenshot', { format: 'png', clip: { ...r, scale: 2 } }); fs.writeFileSync(path.join(out, name + '.png'), Buffer.from(data, 'base64')); };
+    const ask = (id, cmd, rule, why) => ev(`const S = SL.sessions.get(${JSON.stringify(S)}); for (const q of S.wm.qs.filter(q => !q.answered)) SL.live.applyEv(S, { k: 'answer', t: S.wt, qid: q.id, choice: 3, by: 'you' });
+      SL.live.applyEv(S, { k: 'ask', t: S.wt, q: { id: ${JSON.stringify(id)}, agent: 'mgr', kind: 'command', cmd: ${JSON.stringify(cmd)}, cwd: '.', why: ${JSON.stringify(why)}, what: 'x', rule: ${JSON.stringify(rule)} } });`);
+    const seen = {};
+    const cases = [['q-rtl', 'mv אבג דהו', 'Bash(mv אבג דהו)', 'move the file'], ['q-homo', 'git clone https://gіthub.com/acme/tool && npm i ехpress', 'Bash(npm i ехpress)', 'install from gіthub.com'],
+      ['q-hostile', 'echo ' + IMG + ' \u202Etxt.exe\u200B \x1b[31mred', 'Bash(echo ' + IMG + ')', 'because ' + COVER]];
+    for (const [id, cmd, rule, why] of cases) {
+      await ask(id, cmd, rule, why); await waitFor(`document.querySelector('#qSlot .qstrip .qopts[data-q=${JSON.stringify(id)}]')`);
+      await p.sleep(200); await shotQ('mark-' + id);
+      seen[id] = await ev(`const c = document.querySelector('#qSlot .qstrip .qcmd'), ms = Array.from(c.querySelectorAll('mark.nca')), h = harm => 0;
+        const order = ms.length >= 2 ? ms[0].getBoundingClientRect().left < ms[1].getBoundingClientRect().left : null;
+        let inner = null; if (ms[0] && ms[0].firstChild && ms[0].firstChild.length >= 3) { const t = ms[0].firstChild, a = document.createRange(), b = document.createRange(); a.setStart(t, 0); a.setEnd(t, 1); b.setStart(t, 2); b.setEnd(t, 3); inner = a.getBoundingClientRect().left < b.getBoundingClientRect().left; }
+        const ro = ms.find(m => m.title === 'U+202E right-to-left override'), after = ro && ro.nextSibling; let kept = null;
+        if (after && after.nodeType === 3 && after.length >= 7) { const a = document.createRange(), b = document.createRange(); a.setStart(after, 0); a.setEnd(after, 1); b.setStart(after, 6); b.setEnd(after, 7); kept = a.getBoundingClientRect().left < b.getBoundingClientRect().left; }
+        return { text: c.textContent, marks: ms.length, kept, titles: ms.map(m => m.title), order, inner, note: (document.querySelector('#qSlot .qstrip .qnote') || {}).textContent || '', rule: (document.querySelector('#qSlot .qrule code') || {}).textContent || '', ruleMarks: document.querySelectorAll('#qSlot .qrule mark.nca').length, whyMarks: document.querySelectorAll('#qSlot .qwhy mark.nca').length };`);
+      must(seen[id].text === '. $ ' + cmd, id + ': the text is not the command as written: ' + JSON.stringify(seen[id].text));
+      must(seen[id].rule === rule, id + ': the rule: ' + seen[id].rule);
+    }
+    const r = seen['q-rtl'], g = seen['q-homo'], x = seen['q-hostile'];
+    must(r.order === true && r.inner === true && r.note === 'contains 6 non-ASCII characters (marked)' && r.ruleMarks === 2, 'right to left: ' + JSON.stringify(r));
+    must(g.marks === 2 && g.titles[0] === 'U+0456 Cyrillic' && /U\+0435 Cyrillic, U\+0445 Cyrillic/.test(g.titles[1]) && g.whyMarks === 1, 'look-alikes: ' + JSON.stringify(g));
+    must(x.kept === true, 'a right-to-left override in the text reordered what follows it: ' + JSON.stringify(x));
+    must(x.titles.some(t => /right-to-left override/.test(t)) && x.titles.some(t => /zero width space/.test(t)) && x.titles.some(t => /U\+001B control character/.test(t)) && /1 control character/.test(x.note), 'hostile: ' + JSON.stringify(x));
+    const h = await harm(); must(h.pwn === null && h.imgs === base.imgs && h.covers === 0, 'harm: ' + JSON.stringify(h));
+    await ev(`const S = SL.sessions.get(${JSON.stringify(S)}); for (const q of S.wm.qs.filter(q => !q.answered)) SL.live.applyEv(S, { k: 'answer', t: S.wt, qid: q.id, choice: 3, by: 'you' });`);
+    return { rtl: { order: r.order, inner: r.inner, note: r.note }, homoglyphs: g.titles, hostile: x.titles.length };
+  });
+
+  await step('a 90,000-byte MCP call is bounded with its end in reach; a question that remembers nothing has no answer 2; a canceled one closes quietly', async () => {
+    const S = quiet; const shotQ = async name => { const r = await ev(`const b = document.querySelector('#qSlot .qstrip, #qSlot .qdone').getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: Math.min(b.height, 520) };`);
+      const { data } = await p.send('Page.captureScreenshot', { format: 'png', clip: { ...r, scale: 2 } }); fs.writeFileSync(path.join(out, name + '.png'), Buffer.from(data, 'base64')); };
+    const close = () => ev(`const S = SL.sessions.get(${JSON.stringify(S)}); for (const q of S.wm.qs.filter(q => !q.answered)) SL.live.applyEv(S, { k: 'answer', t: S.wt, qid: q.id, choice: 3, by: 'you' });`);
+    const put = q => ev(`const S = SL.sessions.get(${JSON.stringify(S)}); SL.live.applyEv(S, { k: 'ask', t: S.wt, q: ${JSON.stringify(q)} });`);
+    const args = JSON.stringify({ query: 'x'.repeat(89962), then: 'DROP TABLE users' }); must(args.length >= 89990, 'args ' + args.length);
+    await close(); await put({ id: 'q-mcp', agent: 'mgr', kind: 'other', tool: 'mcp__db__query', cmd: 'db/query ' + args, cwd: '.', why: 'a tool server call', what: 'every call of db/query, whatever its arguments', rule: 'mcp__db__query' });
+    await waitFor(`document.querySelector('#qSlot .qstrip .qopts[data-q="q-mcp"]')`);
+    const big = await ev(`const s = document.querySelector('#qSlot .qstrip'), c = s.querySelector('.qcmd'); s.querySelector('.qlen [data-end]').click(); await new Promise(r => setTimeout(r, 120));
+      const t = c.lastChild, r = document.createRange(); r.setStart(t, t.length - 10); r.setEnd(t, t.length); const lr = r.getBoundingClientRect(), cr = c.getBoundingClientRect();
+      return { len: s.querySelector('.qlen span').textContent, h: c.clientHeight, max: Math.min(innerHeight * .22, 190) + 2, end: lr.top >= cr.top - 1 && lr.bottom <= cr.bottom + 1, two: (s.querySelector('[data-choice="2"]') || {}).textContent || '' };`);
+    await shotQ('mcp-90k');
+    must(/^the command: 1 line, 8\d\.\d KB$/.test(big.len) && big.h <= big.max && big.end && /every call of db\/query, whatever its arguments/.test(big.two), 'the MCP call: ' + JSON.stringify(big));
+    await close(); await put({ id: 'q-nothing', agent: 'mgr', kind: 'command', cmd: 'make\ncheck', cwd: '.', why: 'a multi-line command', what: 'this command', rule: '', offersTests: true });
+    await waitFor(`document.querySelector('#qSlot .qstrip .qopts[data-q="q-nothing"]')`); await p.sleep(1200);
+    const none = await ev(`const s = document.querySelector('#qSlot .qstrip'); return { keys: Array.from(s.querySelectorAll('.qopt kbd')).map(k => k.textContent), two: !!s.querySelector('[data-choice="2"]'), meter: s.querySelector('.qmt').textContent };`);
+    await shotQ('no-answer-2');
+    await ev(`document.activeElement && document.activeElement.blur();`); await p.key('2'); await p.sleep(200);
+    const still = await ev(`return (SL.calc.openQuestion(SL.sessions.active.wm) || {}).id === 'q-nothing';`);
+    must(!none.two && none.keys.join('') === '134' && none.meter === 'ready: press 1, 3 or 4 (esc is 4)' && still, 'no answer 2: ' + JSON.stringify({ none, still }));
+    await ev(`window.__errToasts = 0; new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.classList && n.classList.contains('err')) window.__errToasts++; }))).observe(document.getElementById('toasts'), { childList: true });
+      const S = SL.sessions.get(${JSON.stringify(S)}); SL.live.applyEv(S, { k: 'answer', t: S.wt, qid: 'q-nothing', choice: 3, by: 'canceled' });`);
+    await waitFor(`document.querySelector('#qSlot .qdone')`); await p.sleep(300); await shotQ('canceled');
+    const done = await ev(`return { text: document.querySelector('#qSlot .qdone').textContent, errs: window.__errToasts, row: (SL.sessions.active.m.chan.mgr.slice(-1)[0] || {}).text };`);
+    must(/refused: canceled/.test(done.text) && done.errs === 0 && /refused without an answer \(canceled\)/.test(done.row), 'canceled: ' + JSON.stringify(done));
+    return { mcp: big.len, keys: none.keys.join(' '), canceled: done.text.slice(0, 60) };
+  });
+
   /* the projects of the fixture, as the New session dialog offers them */
   const projects = await ev(`await SL.data.load('projects', { force: true }); return (SL.D.extra.projects || []).map(x => x.dir).filter(d => /sleipnir-fixture-/.test(d));`);
   const many = projects[0], other = projects[1]; must(many && other, 'fixture projects: ' + projects);

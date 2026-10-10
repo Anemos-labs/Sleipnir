@@ -138,7 +138,7 @@
       const path = String(o.path || '').split('?')[0], fromNew = o.method === 'POST' && path === '/api/sessions';
       const dm = ((o.reasons || []).map(r => /^permission mode (bypass|yolo)$/.exec(r)).find(Boolean) || [])[1], typed = !!dm && !fromNew;
       const t = ASK_TITLE.find(x => x[0].test(path)), S = SL.sessions && SL.sessions.active, who = S && !S.placeholder && !fromNew ? '<b>' + esc(S.name) + '</b>' : 'the session';
-      const rs = (o.reasons || []).map(String), list = rs.length ? '<ul class="plist">' + rs.map(r => '<li><span class="pg">⚠</span><span class="pt">' + esc(r) + '</span></li>').join('') + '</ul>' : esc(o.message || 'this action needs a confirmation');
+      const rs = (o.reasons || []).map(String), list = rs.length ? '<ul class="plist">' + rs.map(r => '<li><span class="pg">⚠</span><span class="pt">' + ui.longText.mark(r) + '</span></li>').join('') + '</ul>' : esc(o.message || 'this action needs a confirmation');
       /* the request it confirms, whole: the method and the path (with its query), and the scope the server named */
       const req = '<p class="cf-req"><span class="dim">the request</span> <span class="mono">' + esc(String(o.method || '').toUpperCase()) + ' ' + esc(o.path || '') + '</span>' + (o.scope ? '<br><span class="dim">its scope</span> <span class="mono">' + esc(o.scope) + '</span>' : '') + '</p>';
       ui.modal({ title: t ? t[1] : 'Confirm', kicker: 'confirm', desc: '', color: 'var(--err)', cls: 'confirm', focus: typed ? '#cfType' : '[data-no]', onClose: () => finish(false),
@@ -163,7 +163,7 @@
   /* ---------- the trust step: the server's challenge, whole ---------- */
   const sizeOf = b => ui.longText.size(b > 0 ? b : 0);
   /** The rows of the trust list: every file the server sent (its path, kind and size), and each path it could not read. */
-  const trustRows = files => files.map(f => f.kind === 'unread' ? '<li class="unread"><span class="mono">could not be read: ' + esc(f.path) + '</span></li>' : '<li><span class="mono">' + esc(f.path) + '</span><span class="dim">' + esc(f.kind || 'file') + ' · ' + sizeOf(+f.bytes || 0) + '</span></li>').join('');
+  const trustRows = files => files.map(f => f.kind === 'unread' ? '<li class="unread"><span class="mono">could not be read: ' + ui.longText.mark(f.path) + '</span></li>' : '<li><span class="mono">' + ui.longText.mark(f.path) + '</span><span class="dim">' + esc(f.kind || 'file') + ' · ' + sizeOf(+f.bytes || 0) + '</span></li>').join('');
   /** The challenge as the dialog uses it: its files (objects only), the unread ones apart, its id, what else a yes confirms. */
   function trustModel(ch, o) {
     ch = ch && typeof ch === 'object' ? ch : {}; o = o || {};
@@ -175,13 +175,13 @@
   function trustBody(t) {
     const n = t.read.length;
     return (t.message ? '<p class="cf-t">' + esc(t.message) + '</p>' : '') +
-      '<p class="cf-t"><b class="mono">' + esc(t.dir) + '</b> brings its own instructions, skills and hooks. Use them in this session?</p>' +
+      '<p class="cf-t"><b class="mono trdir">' + ui.longText.mark(t.dir) + '</b> brings its own instructions, skills and hooks. Use them in this session?</p>' +
       '<div class="cf-d">' + (t.ch.changed ? 'Since your last yes: ' + esc(t.ch.changed) + '. ' : 'You have not said yes to these files before. ') +
       (t.once ? 'Part of this project could not be read, so a yes holds for this session only and is not remembered.' : 'The yes holds until one of them changes.') + '</div>' +
       '<div class="qlen"><span>' + n + ' file' + (n === 1 ? '' : 's') + ', ' + sizeOf(t.bytes) + (t.unread.length ? ' · ' + t.unread.length + ' could not be read' : '') + '</span><button class="btn sm" type="button" data-end>Show the end ↓</button></div>' +
       '<ol class="trlist qblk" id="trList" aria-label="The files you are asked to trust"></ol>' +
       (t.ch.partial ? '<p class="cf-d">The scan stopped before it read the whole project: what it did not read is not listed, except the entries marked could not be read.</p>' : '') +
-      (t.also.length ? '<p class="cf-t">The yes also confirms:</p><ul class="plist qblk">' + t.also.map(a => '<li><span class="pg">⚠</span><span class="pt mono">' + esc(a) + '</span></li>').join('') + '</ul>' : '') +
+      (t.also.length ? '<p class="cf-t">The yes also confirms:</p><ul class="plist qblk">' + t.also.map(a => '<li><span class="pg">⚠</span><span class="pt mono">' + ui.longText.mark(a) + '</span></li>').join('') + '</ul>' : '') +
       (t.id ? '' : '<p class="cf-d err">The server sent no confirmation with these files: there is nothing to say yes to here.</p>') +
       '<div class="row2"><button class="btn pri" type="button" data-ok disabled>Yes, trust these files</button><button class="btn" type="button" data-no>Cancel</button></div>';
   }

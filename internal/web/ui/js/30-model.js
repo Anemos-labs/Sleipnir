@@ -189,7 +189,9 @@
         const q = m.qs.find(x => x.id === ev.qid);
         if (q) { q.answered = ev.choice; q.tAns = ev.t; q.note = ev.note; q.by = ev.by; }
         m.q = m.qs.find(x => !x.answered) || null;
-        if (q) push(m, ctx, 'mgr', { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }, ev);
+        /* a question the person answered, or one that closed without an answer (canceled, timed out, the session closed, no page open): a quiet row */
+        if (q) push(m, ctx, 'mgr', ev.by && ev.by !== 'you' ? { k: 'sys', glyph: '⊘', text: 'refused without an answer (' + (SL.u.own(BY_WORD, ev.by) || 'closed') + '): ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }
+          : { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }, ev);
         break;
       }
       case 'queue': m.qHead = ev.head ? { task: ev.head, cmd: ev.cmd, step: ev.step, t0: (m.qHead && m.qHead.task === ev.head) ? m.qHead.t0 : ev.t, ms: ev.ms } : null; if (ev.conflicts != null) m.conflicts = ev.conflicts; if (ev.bounced != null) m.bounced = ev.bounced; break;
@@ -296,6 +298,8 @@
   };
 
   /** Plan step states of the server (internal/plan) as the plan box draws them. */
+  /** Why a question closed without the person's answer (VOCAB 5.17 `by`), in the words of its transcript row. */
+  const BY_WORD = { timeout: 'nobody answered in time', canceled: 'canceled', closed: 'the session closed', nobody: 'no page was open' };
   const PLAN_ST = { pending: 'pending', doing: 'act', act: 'act', done: 'done', verify: 'verify', edit: 'edit', ask: 'ask', queued: 'queued' };
   SL.model = { newModel, addAgent, reduce, reduceRange, isVisible, VISIBLE, CHAN_CAP, clean, cleanRoster };
   SL.calc = calc;

@@ -95,6 +95,7 @@
     const body = { choice }; if (choice === 3 && note) body.note = String(note).slice(0, 2000);
     return send(api().post('/api/questions/' + api().seg(qid) + '/answer', body), null, r => {
       if (r.code === 'answered') return true;                 // another page answered it first: the answer event closes it here too
+      if (r.code === 'no_question') return true;              // it was closed meanwhile (canceled, timed out, the session closed): its answer event says how
       if (r.code === 'too_soon') { if (SL.ui && SL.ui.approvals) SL.ui.approvals.shown[qid] = SL.time.T.wall; toast('the buttons wake up when the keyboard has been quiet for a moment', 'warm'); return true; }
       return false;
     });
