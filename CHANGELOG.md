@@ -49,7 +49,11 @@ they do not indicate whether a change has been released.
   refuses to start and a second `--once` run exits 0 saying so. Configuration
   files are written under a lock per file. Session logs gain the event types
   `checkpoint`, `goal.judge` and `verify.run`; readers that ignore unknown types
-  are unaffected. The terminal feed now shows `swarm.stall`, `swarm.handover`
+  are unaffected. A `checkpoint` event carries the checkpoint's file count and
+  the file recorded last, never the whole list; one is written when a checkpoint
+  begins, each time its count has grown by an eighth since the last one (every
+  count up to 16), and at the end of every turn, so where the events fall in the
+  log depends only on the changes, never on timing. The terminal feed now shows `swarm.stall`, `swarm.handover`
   and goal lines. A session the web host serves keeps a journal of the content
   each agent writes, bounded at 256 MiB per session, which the browser's
   per-line history reads; other sessions keep none.
