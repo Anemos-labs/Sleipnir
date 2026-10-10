@@ -252,7 +252,7 @@ func TestWebServesTheInterfaceBehindATokenAndStopsOnInterrupt(t *testing.T) {
 		t.Errorf("standard output after the address: %q: the address is the only thing on it", rest)
 	}
 	stderr := r.stderr.String()
-	for _, want := range []string{"sessions started in the page work in " + w.project, "Ctrl-C to stop", "token for this run only"} {
+	for _, want := range []string{"sessions started in the page work in " + physicalDir(w.project), "Ctrl-C to stop", "token for this run only"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr lacks %q:\n%s", want, stderr)
 		}
@@ -596,7 +596,7 @@ func TestWebFixtureOrdersTurnRestartAndClose(t *testing.T) {
 	frames.waitFor("reset to gen 2", func(f frame) bool { return f.event == "reset" && strings.Contains(string(f.data), `"gen":2`) })
 	frames.waitFor("meta of a team of 2", func(f frame) bool { return f.event == "meta" && strings.Contains(string(f.data), `"swarm":2`) })
 	zero := 0
-	code, body := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: w.project, Swarm: &zero})
+	code, body := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: physicalDir(w.project), Swarm: &zero})
 	if code != 201 {
 		t.Fatalf("a new session = %d %s", code, body)
 	}
@@ -615,4 +615,13 @@ func TestWebFixtureOrdersTurnRestartAndClose(t *testing.T) {
 	if strings.Contains(r.stderr.String(), r.token) {
 		t.Error("the token is on standard error")
 	}
+}
+
+// physicalDir is dir with its symbolic links resolved, the spelling the server's own working directory has (a process that starts in a
+// directory reaches it by its real path: on macOS the temporary directory is a link, /var -> /private/var).
+func physicalDir(dir string) string {
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		return real
+	}
+	return dir
 }

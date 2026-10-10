@@ -18,13 +18,11 @@ var (
 
 // WriteLock serialises the read-modify-write cycles of one file within this process and returns the function that ends the cycle.
 // Callers re-read the file after taking the lock and before they write, so the change of another goroutine is never written over. The
-// lock is per path (cleaned and made absolute; symbolic links are not resolved, so two spellings of one file through a link are two
-// locks) and is not reentrant: a caller that holds it must not call Save on the same path. It does nothing across processes.
+// lock is per file: the path is made absolute and its symbolic links are resolved as far as the path exists (so a file that does not
+// exist yet has the lock it will have once it does, and two spellings of one file through a link share one lock). It is not
+// reentrant: a caller that holds it must not call Save on the same path. It does nothing across processes.
 func WriteLock(path string) (unlock func()) {
-	key := filepath.Clean(path)
-	if abs, err := filepath.Abs(key); err == nil {
-		key = abs
-	}
+	key := resolveExisting(path)
 	writeLocksMu.Lock()
 	mu := writeLocks[key]
 	if mu == nil {
@@ -34,4 +32,26 @@ func WriteLock(path string) (unlock func()) {
 	writeLocksMu.Unlock()
 	mu.Lock()
 	return mu.Unlock
+}
+
+// resolveExisting is path made absolute and clean, with the symbolic links of the part that exists resolved: the file itself when it
+// exists, else its nearest existing ancestor joined with the rest. A file that is created later is thereby named as it will be named
+// once it exists (on macOS the temporary directory is a link, so the two spellings differ).
+func resolveExisting(path string) string {
+	abs := filepath.Clean(path)
+	if a, err := filepath.Abs(abs); err == nil {
+		abs = a
+	}
+	rest := ""
+	for dir := abs; ; {
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return abs
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = parent
+	}
 }

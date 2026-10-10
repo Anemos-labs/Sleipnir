@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // layerFixture writes a user file, a project file and a local file and returns the options that load them, with env as the whole
@@ -261,6 +262,30 @@ func TestWriteLockIsPerFile(t *testing.T) {
 	default:
 	}
 	a()
+	<-held
+}
+
+// A file that does not exist yet has the lock it will have once it does: its directory may be reached through a link (on macOS the
+// temporary directory is one), and the file then resolves to another spelling than the one it was first asked for by.
+func TestWriteLockKeyIsTheSameBeforeAndAfterTheFileExists(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symbolic links")
+	}
+	missing := WriteLock(filepath.Join(link, "sub", "config.json")) // neither the file nor its directory is there
+	held := make(chan struct{})
+	go func() {
+		unlock := WriteLock(filepath.Join(real, "sub", "config.json")) // the same file by its real path
+		close(held)
+		unlock()
+	}()
+	select {
+	case <-held:
+		t.Fatal("the same file by its real path took a second lock")
+	case <-time.After(50 * time.Millisecond):
+	}
+	missing()
 	<-held
 }
 

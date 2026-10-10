@@ -40,7 +40,7 @@ func Save(path string, patch map[string]any) error {
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		target = real
 	}
-	defer WriteLock(target)()
+	defer WriteLock(target)() // keyed by the file the path resolves to, also while the file is not there yet
 
 	existing := map[string]any{}
 	mode := fs.FileMode(0o600)
