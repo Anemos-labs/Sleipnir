@@ -12,3 +12,6 @@ internal/tui/vt/testdata/** -text
 *.ico binary
 *.zip binary
 *.gz binary
+
+# Embedded web interface assets are binary.
+*.woff2 binary
