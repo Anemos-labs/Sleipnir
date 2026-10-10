@@ -1,12 +1,17 @@
-/* 60-actions.js: SL.act (the store's explicit actions), SL.settings (per-viewer settings) and SL.G (state shared by every session).
+/* 60-actions.js: SL.act (every action a person can take) and SL.settings (per-viewer settings). SL.G, the state shared by every
+ * session, is built by 11-data-live.js.
  *
- * Rule: panels render from state; they never change it. Everything a person can do is one action here, and an action does exactly three
- * things: change meta/state, insert events at the world time (so the change shows up in the chat, the log and the replay), emit 'action'.
- * A setting changed in one place shows everywhere because every panel re-renders from the same meta (mode chip, HUD, drawer, footer ...). */
+ * Rule: panels render from state; they never change it. Every action keeps the mock's name, arguments and synchronous result: it
+ * runs the mock's own checks (same `why` texts) and returns {ok: false, why} when one fails; otherwise it sends the request and
+ * returns {ok: true, done} at once, where `done` is the promise of the API result. The effect on the screen comes from the events
+ * and the meta the server sends back, never from a local insertion; a refused request becomes a toast with the server's sentence
+ * ('warm' for a 409, 'err' otherwise). The only exceptions are UI-local state (settings, the favourite star, the reviewed mark) and the
+ * line the composer shows as queued while the request is on its way. */
 (function (SL) {
   'use strict';
-  const U = SL.u, D = SL.D, { deepCopy, fmtUsd } = U;
+  const U = SL.u, D = SL.D, G = SL.G, { fmtUsd } = U;
   const ACT = {};
+  const api = () => SL.api;
 
   /* ---------------- per-viewer settings (localStorage is a convenience: the page works without it) ---------------- */
   const settings = SL.settings = {
@@ -14,184 +19,240 @@
     motion: 'auto',           // 'auto' (follow the system) | 'reduce' | 'full'
     density: 'comfortable',   // 'comfortable' | 'compact'
     cache: 'quiet',           // 'quiet' (the default: no savings figures, no hit-% on cards, a small warm clock) | 'full' (the Dock v2 amount of cache detail)
+    title: 'auto',            // the tab title badge (PARITY A3): 'auto' (the server's default), 'on' or 'off'
     ver: 0,
-    load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['hover', 'motion', 'density', 'cache'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
-    save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ hover: settings.hover, motion: settings.motion, density: settings.density, cache: settings.cache })); } catch (e) { /* ignore */ } },
+    load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['hover', 'motion', 'density', 'cache', 'title'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
+    save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ hover: settings.hover, motion: settings.motion, density: settings.density, cache: settings.cache, title: settings.title })); } catch (e) { /* ignore */ } },
   };
   const OK = (v, list) => list.includes(v);
 
-  /* ---------------- state shared by every session (SL.G) ---------------- */
-  /** the trust ledger: the pack's (the shop's entry is real) plus a directory nobody said yes to */
-  function ledger() {
-    const L = D.extra.trust && D.extra.trust.ledger; if (!L) return [{ dir: '~/projects/shop', files: 3, state: 'trusted (Jan 1)' }, { dir: '~/projects/orders-api', files: 2, state: 'trusted (Jan 1)' }, { dir: '~/scratch/untrusted-demo', files: 4, state: 'not trusted' }];
-    const day = d => { const m = /^\d{4}-(\d\d)-(\d\d)$/.exec(d || ''); return m ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[1] - 1] + ' ' + (+m[2]) : d; };
-    return L.map(l => ({ dir: l.dir, files: l.files, saved: l.saved, now: l.now, state: l.state === 'trusted' ? 'trusted (' + day(l.saved) + ')' : l.state === 'changed' ? 'changed since your yes: ' + l.now : 'gone: ' + l.now })).concat([{ dir: '~/scratch/untrusted-demo', files: 4, saved: '', now: 'no yes given', state: 'not trusted' }]);
-  }
-  const G = SL.G = {
-    ver: 0, mcp: deepCopy(D.mcp), favs: new Set(D.models.filter(m => m.fav).map(m => m.ref)),
-    trust: D.trustFiles.map(([f, h]) => ({ file: f, hash: h, state: 'trusted' })), trustDirs: ledger(),
-    providers: deepCopy(D.providers), schedule: deepCopy(D.schedule), roleModels: Object.assign({}, D.roleModels), history: [],
-  };
-
   const act = (name, fn) => { ACT[name] = function () { const r = fn.apply(null, arguments); SL.bus.emit('action', { name, args: Array.prototype.slice.call(arguments) }); return r; }; };
   const ses = sid => sid ? SL.sessions.get(sid) : SL.sessions.active;
-  const say = (S, text, glyph, extra) => S.add({ k: 'say', who: 'sys', glyph: glyph || '⚙', text, ...(extra || {}) });
-  const ownerOf = (S, ev) => ev.own || ev.id || (ev.k === 'mail' ? ev.from : null) || (ev.q && ev.q.agent) || (ev.k === 'task' || ev.k === 'merge' ? ((S.wm.tasks[ev.id] || {}).owner) : null) || null;
-  /** Remove not-yet-applied events (index >= widx) of one agent (or all when id is null). Returns how many. */
-  function cancelFuture(S, id) {
-    const keep = [], drop = []; S.log.forEach((e, i) => { if (i >= S.widx && (id ? ownerOf(S, e) === id : ownerOf(S, e) && ownerOf(S, e) !== 'you')) drop.push(e); else keep.push(e); });
-    S.log = keep; return drop;
-  }
+  const toast = (t, k) => { if (SL.ui && SL.ui.toast) SL.ui.toast(t, k); };
+  /** The failure of a request, shown as the server said it; a 409 is the state not allowing it now. */
+  const fail = r => { if (!r || r.ok || r.code === 'aborted' || r.code === 'confirm_required') return; toast(r.message, r.status === 409 ? 'warm' : 'err'); };
+  /** Send a request; failures toast. onOk(data) runs on success. Returns {ok: true, done}. */
+  const send = (p, onOk, onFail) => ({ ok: true, done: p.then(r => { if (r.ok) { if (onOk) onOk(r.data, r); } else if (!onFail || onFail(r) !== true) fail(r); return r; }) });
+  const tab = S => api().tab(S.id);
+  /** A session that takes actions: a live tab (not the empty placeholder, not a recorded session opened read-only). */
+  const why = S => !S ? 'no session' : S.placeholder ? 'start a session first: + New' : S.recorded ? 'a recorded session is read-only: resume it to act on it' : '';
+  const refuse = S => ({ ok: false, why: why(S) });
 
   /* ---------------- settings actions ---------------- */
   act('setHover', v => { if (OK(v, ['both', 'chat', 'off'])) { settings.hover = v; settings.ver++; SL.time.setMode(v); settings.save(); } });
   act('setMotion', v => { if (OK(v, ['auto', 'reduce', 'full'])) { settings.motion = v; settings.ver++; SL.bus.emit('motion'); settings.save(); } });
   act('setCache', v => { if (OK(v, ['quiet', 'full'])) { settings.cache = v; settings.ver++; document.body.classList.toggle('cq', v === 'quiet'); settings.save(); SL.bus.emit('cache-detail', v); } });
   act('setDensity', v => { if (OK(v, ['comfortable', 'compact'])) { settings.density = v; settings.ver++; document.body.classList.toggle('compact', v === 'compact'); settings.save(); } });
+  act('setTitleBadge', v => { if (OK(v, ['auto', 'on', 'off'])) { settings.title = v; settings.ver++; settings.save(); SL.bus.emit('title-badge'); } });
 
   /* ---------------- per-session actions ---------------- */
   const CYCLE = ['default', 'accept-edits', 'plan'];
   act('setMode', (mode, opt, sid) => {
-    const S = ses(sid), m = D.modes.find(x => x.id === mode); if (!S || !m) return { ok: false, why: 'unknown mode ' + mode };
+    const S = ses(sid), m = D.modes.find(x => x.id === mode); if (!S || !m) return { ok: false, why: 'unknown mode ' + mode }; if (why(S)) return refuse(S);
     if (m.danger && !(opt && opt.confirm === mode)) return { ok: false, why: mode + ' is set only by typing its name to confirm' };
-    S.setMeta({ mode }); say(S, 'mode: ' + mode + (mode === 'plan' ? ' (read-only)' : m.danger ? ' (dangerous: ' + m.desc + ')' : ''), m.danger ? '⚠' : '⚙'); return { ok: true };
+    return send(api().post(tab(S) + '/mode', { mode }, m.danger ? { confirm: 'mode:' + mode + ':' + S.id } : undefined));
   });
   /** shift+tab: default → accept-edits → plan → default. Never bypass, never yolo; from either of those it returns to default. */
   act('cycleMode', sid => { const S = ses(sid); if (!S) return; const i = CYCLE.indexOf(S.meta.mode), nx = CYCLE[(i + 1) % CYCLE.length]; return ACT.setMode(i < 0 ? 'default' : nx, null, sid); });
-  act('setModel', (ref, sid) => { const S = ses(sid), mm = D.model(ref); if (!S) return; S.meta.model = ref; S.roster[0].model = ref; S.touch(); say(S, 'model: ' + ref + (mm && mm.in == null ? ' (price unknown)' : '') + '; a team starts again on it'); return { ok: true }; });
-  act('setRoleModel', (role, ref, sid) => { const S = ses(sid); if (!S) return; if (role === 'manager') return ACT.setModel(ref, sid); S.meta.roleModels = Object.assign({}, S.meta.roleModels, { [role]: ref }); S.roster.forEach(r => { if (r.role === role) r.model = ref; }); S.touch(); say(S, 'role ' + role + ' runs on ' + ref + ' (restarts the workers of that role)'); return { ok: true }; });
-  act('setEffort', (lv, sid) => { const S = ses(sid); if (!S) return; S.setMeta({ effort: lv }); say(S, 'reasoning effort: ' + lv + ' (closest supported level)'); });
+  act('setModel', (ref, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/model', { ref })); });
+  act('setRoleModel', (role, ref, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (role === 'manager') return ACT.setModel(ref, sid); if (why(S)) return refuse(S); return send(api().post(tab(S) + '/model', { ref, role })); });
+  act('setEffort', (lv, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/effort', { level: lv })); });
   act('setBudget', (usd, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; const v = usd === 'off' || usd === null || usd === 0 ? 0 : parseFloat(usd); if (isNaN(v) || v < 0) return { ok: false, why: 'a budget is a number of dollars, or off' };
-    S.setMeta({ budget: v }); say(S, v ? 'budget: ' + fmtUsd(v, 2) + ' for the turns from now on' : 'budget: off', '⚙');
-    if (v && SL.calc.totals(S.wm).cost >= v && S.wm.goal.state === 'active') { S.add({ k: 'goal', s: 'paused' }); say(S, 'budget reached: the goal is paused', '⚠'); }
-    return { ok: true };
+    if (why(S)) return refuse(S);
+    return send(api().post(tab(S) + '/budget', v ? { usd: v } : { off: true }));
   });
-  act('setIsolation', (v, sid) => { const S = ses(sid); if (S && OK(v, ['none', 'worktree'])) { S.setMeta({ isolation: v }); say(S, '--isolation ' + v + ' (applies when the team starts again)'); } });
-  act('setVerify', (v, sid) => { const S = ses(sid); if (S) { S.setMeta({ verify: v }); say(S, '--verify "' + v + '"'); } });
-  act('setFlag', (flag, on, sid) => { const S = ses(sid); if (S && OK(flag, ['commit', 'mailman', 'noMcp', 'trustProject'])) { S.setMeta({ [flag]: !!on }); say(S, ({ commit: '--commit', mailman: '--mailman', noMcp: '--no-mcp', trustProject: '--trust-project' })[flag] + ' ' + (on ? 'on' : 'off') + ' (applies when the team starts again)'); } });
+  const launch = (S, patch) => why(S) ? refuse(S) : send(api().patch(tab(S) + '/launch', patch));
+  act('setIsolation', (v, sid) => { const S = ses(sid); if (S && OK(v, ['none', 'worktree'])) return launch(S, { isolation: v }); });
+  act('setVerify', (v, sid) => { const S = ses(sid); if (S) return launch(S, { verify: String(v == null ? '' : v) }); });
+  act('setFlag', (flag, on, sid) => { const S = ses(sid); if (S && OK(flag, ['commit', 'mailman', 'noMcp', 'trustProject'])) return launch(S, { [flag]: !!on }); });
   /* rules: effect allow | deny | ask; the origin is shown on the Permissions page */
   act('allowRule', (rule, origin, sid) => addRule(ses(sid), 'allow', rule, origin || 'this session'));
   act('denyRule', (rule, origin, sid) => addRule(ses(sid), 'deny', rule, origin || 'this session'));
   act('askRule', (rule, origin, sid) => addRule(ses(sid), 'ask', rule, origin || 'this session'));
   function addRule(S, effect, rule, origin) {
     if (!S) return { ok: false }; rule = String(rule || '').trim(); if (!rule) return { ok: false, why: 'a rule needs text, e.g. tests or Bash(go test:*)' };
-    const rules = rule === 'tests' ? D.testsPreset : [rule];
-    rules.forEach(r => { if (!S.meta.rules.some(x => x.effect === effect && x.rule === r)) S.meta.rules.push({ effect, rule: r, origin: rule === 'tests' ? 'the tests preset' : origin }); });
-    S.touch(); say(S, effect + ' this session: ' + (rule === 'tests' ? 'tests (' + rules.length + ' rules)' : rule) + ' · from ' + origin, effect === 'deny' ? '⚠' : '⚙'); return { ok: true, added: rules.length };
+    if (why(S)) return refuse(S);
+    const r = send(api().post(tab(S) + '/rules', { effect, rule, origin })); r.added = rule === 'tests' ? (D.testsPreset.length || 1) : 1; return r;
   }
-  act('removeRule', (rule, sid) => { const S = ses(sid); if (!S) return; const n = S.meta.rules.length; S.meta.rules = S.meta.rules.filter(r => r.rule !== rule); S.touch(); if (S.meta.rules.length < n) say(S, 'rule removed: ' + rule); });
+  act('removeRule', (rule, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/rules/remove', { rule })); });
 
   /* goals */
+  const goal = (S, body) => send(api().post(tab(S) + '/goal', body));
   act('setGoal', (text, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; text = String(text || '').trim(); if (!text) return { ok: false, why: '/goal needs text' };
-    if (S.kind === 'shop' || S.kind === 'docs') { say(S, 'mock: the fixture keeps its goal; a new session takes a new one (New session)', '⚠'); return { ok: false, fixture: true }; }
-    S.setMeta({ goalText: text }); S.add([{ k: 'say', who: 'you', text: '/goal ' + text }, { k: 'goal', s: 'active' }, { k: 'say', who: 'sys', glyph: '◇', text: 'goal set (mock: the scripted run for a new session continues)' }]); return { ok: true };
+    if (why(S)) return refuse(S); return goal(S, { action: 'set', text });
   });
-  act('pauseGoal', sid => { const S = ses(sid); if (!S) return; if (S.wm.goal.state === 'active') { S.add({ k: 'goal', s: 'paused' }); say(S, 'goal paused', '⏸'); } });
-  act('resumeGoal', sid => {
-    const S = ses(sid); if (!S) return; if (S.wm.goal.state !== 'paused') return; S.add({ k: 'goal', s: 'active' }); say(S, 'goal resumed', '▶');
-    Object.keys(S.interrupted || {}).forEach(id => resumeAgent(S, id));
-  });
-  act('clearGoal', sid => { const S = ses(sid); if (!S) return; S.add({ k: 'goal', s: 'cleared' }); S.endgamed = true; say(S, 'goal cleared', '◇'); S.setMeta({ goalText: '' }); });
+  act('pauseGoal', sid => { const S = ses(sid); if (!S || why(S)) return S ? refuse(S) : { ok: false }; if (S.wm.goal.state !== 'active') return { ok: false, why: 'no active goal to pause' }; return goal(S, { action: 'pause' }); });
+  act('resumeGoal', sid => { const S = ses(sid); if (!S || why(S)) return S ? refuse(S) : { ok: false }; if (S.wm.goal.state !== 'paused') return { ok: false, why: 'the goal is not paused' }; return goal(S, { action: 'resume' }); });
+  act('clearGoal', sid => { const S = ses(sid); if (!S || why(S)) return S ? refuse(S) : { ok: false }; return goal(S, { action: 'clear' }); });
 
-  /* the question: the quiet-period rule lives in approvals.js, not here */
+  /* the question: the quiet-period rule lives in 85-ui-approvals.js; the server enforces its own floor (409 too_soon) */
   act('answerQuestion', (qid, choice, note, sid) => {
     const S = ses(sid) || SL.sessions.active; if (!S) return { ok: false };
     const q = S.wm.qs.find(x => x.id === qid && !x.answered); if (!q) return { ok: false, why: 'that question is not open' };
-    const a = S.wt; S.add({ k: 'answer', qid, choice, note, t: a });
-    if (choice === 2) addRule(S, 'allow', q.rule || 'Bash(' + q.cmd + ')', "don't ask again");   /* real: a command that is not a build or test one is remembered as the exact request */
-    if (q.cont) S.add(SL.scripts.afterAnswer(S, q, choice, note, a));
-    S.touch(); return { ok: true };
+    if (S.recorded) return refuse(S);
+    const body = { choice }; if (choice === 3 && note) body.note = String(note).slice(0, 2000);
+    return send(api().post('/api/questions/' + api().seg(qid) + '/answer', body), null, r => {
+      if (r.code === 'answered') return true;                 // another page answered it first: the answer event closes it here too
+      if (r.code === 'too_soon') { if (SL.ui && SL.ui.approvals) SL.ui.approvals.shown[qid] = SL.time.T.wall; toast('the buttons wake up when the keyboard has been quiet for a moment', 'warm'); return true; }
+      return false;
+    });
   });
-  function resumeAgent(S, id) {
-    const rec = S.interrupted && S.interrupted[id]; if (!rec) return; delete S.interrupted[id];
-    const b = new SL.scripts.SB(); b.vqFree = Math.max(S.vqFree, S.wt); const a = S.wt + 0.3, task = rec.task;
-    b.state(a, id, 'think', 'picking up ' + (task || 'its task') + ' again', task); b.req(a + 0.2, id, SL.scripts.liveRatio(id, 31), { p: SL.scripts.promptPer(id), o: SL.scripts.outPer(id) });
-    if (task && S.wm.tasks[task] && S.wm.tasks[task].st !== 'merged') { b.step(a + 2, id, 'edit', 'Edit', rec.file || (S.wm.ag[id].scope.split(',')[0].replace('**', 'main.go')), 'resumed work', task, { add: 3, del: 1 }); const end = b.submit(a + 5, id, task, 'go test ./...', 1.2, null, { keepPlan: true }); (rec.planDone || []).forEach(n => b.e(end, 'plan', { n, s: 'done' })); }
-    else b.state(a + 1, id, 'idle', 'waits for work', task);
-    S.vqFree = b.vqFree; S.add(b.ev);
-  }
   /** Interrupt the running turn (Esc): the manager's turn stops, the workers with it, and the goal is paused. The person talks to the manager only, so no single worker can be interrupted. */
   act('interrupt', (target, sid) => {
-    const S = ses(sid); if (!S) return { ok: false }; S.interrupted = S.interrupted || {};
+    const S = ses(sid); if (!S) return { ok: false };
     if (target !== 'turn' && target !== 'mgr') return { ok: false, why: 'you talk to the manager only: interrupt the turn, and the manager stops the team' };
-    const stop = id => { const A = S.wm.ag[id]; if (!A || !A.spawned || ['idle', 'done'].includes(A.state)) return false; const dropped = cancelFuture(S, id); S.interrupted[id] = { task: A.task, planDone: dropped.filter(e => e.k === 'plan' && e.s === 'done').map(e => e.n) }; S.add([{ k: 'interrupt', id }, { k: 'state', id, s: 'idle', doing: 'interrupted by you (esc)', task: A.task }]); return true; };
-    if (target === 'turn' || target === 'mgr') {
-      if (!SL.calc.turnRunning(S.wm)) return { ok: false, why: 'no turn is running' };
-      S.wm.order.forEach(id => { if (id !== 'mgr') stop(id); }); cancelFuture(S, 'mgr');
-      S.add([{ k: 'interrupt', id: 'turn' }, { k: 'goal', s: 'paused' }, { k: 'state', id: 'mgr', s: 'wait', doing: 'turn interrupted; the goal is paused (/goal resume)', task: null }]); S.endgamed = false; S.touch(); return { ok: true };
-    }
-    return { ok: false };
+    if (why(S)) return refuse(S);
+    if (!SL.calc.turnRunning(S.wm) && !S.meta.running) return { ok: false, why: 'no turn is running' };
+    return send(api().post(tab(S) + '/interrupt', { target: 'turn' }));
   });
-  /** Steer (`/steer TEXT`): guidance for the running turn of the MANAGER, without stopping it. The manager answers and notes it in its next step. */
+  /** Steer (`/steer TEXT`): guidance for the running turn of the MANAGER, without stopping it. The manager's answer is its next message. */
   act('steer', (agent, text, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; text = String(text || '').trim(); if (!text) return { ok: false, why: 'write what to tell the manager' };
     if (agent !== 'mgr') return { ok: false, why: 'you talk to the manager only: tell it, and it tells the worker' };
-    const A = S.wm.ag[agent]; if (!A) return { ok: false, why: 'no such agent' };
-    const r = SL.scripts.steerReply(S, agent, text), a = S.wt;
-    S.add([{ k: 'steer', to: agent, text }, { k: 'reply', id: agent, text: r.say, t: a + 1.1 }, { k: 'tool', id: agent, name: r.tool.name, arg: r.tool.arg, out: r.tool.out, t: a + 1.6, task: A.task }]);
-    S.touch(); return { ok: true };
+    if (why(S)) return refuse(S);
+    return send(api().post(tab(S) + '/steer', { text }));
   });
-  act('compact', (focus, sid) => {
-    const S = ses(sid); if (!S) return { ok: false }; const g5 = D.g5.mgr || 1400, to = Math.round(g5 * 0.45 / 5) * 5, pct = -Math.round((1 - to / g5) * 100);
-    S.add([{ k: 'compact', id: 'mgr', from: g5, to, pct }, { k: 'req', id: 'mgr', ratio: SL.scripts.liveRatio('mgr', 40), p: SL.scripts.promptPer('mgr'), o: 200 }, { k: 'say', who: 'sys', glyph: '◆', text: 'folded the older thread' + (focus ? '; keeping in view: ' + focus : '') + ' · a declared, priced rebase' }]); S.touch(); return { ok: true, from: g5, to };
-  });
-  /* the workspace: the person's marks live in S.ws (reviewed files, reverted hunks, a restore); the history itself is the recorded log */
+  act('compact', (focus, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/compact', focus ? { focus } : {})); });
+
+  /* the workspace: reviewed marks, hunk reverts and restores are kept by the server (WsIndex); the Workspace cache refreshes after each */
   const WS = S => S.ws || (S.ws = { reviewed: {}, reverted: {}, restore: null });
-  act('markReviewed', (path, cpid, on, sid) => { const S = ses(sid); if (!S) return; const w = WS(S); if (on) w.reviewed[path] = cpid; else delete w.reviewed[path]; S.touch(); });
-  act('revertHunk', (path, key, sid) => { const S = ses(sid); if (!S) return { ok: false }; WS(S).reverted[path + '#' + key] = S.wt; say(S, 'reverted a hunk of ' + path + ' (mock: nothing is written; the agent that wrote it is told to read the file again)', '↺'); S.touch(); return { ok: true }; });
-  act('unrevertHunk', (path, key, sid) => { const S = ses(sid); if (!S) return; delete WS(S).reverted[path + '#' + key]; S.touch(); });
-  /** /rewind ID: a safety checkpoint first, then every file touched in ID or later is put back as it was when ID began (the mock records it, writes nothing) */
-  act('rewind', (id, sid) => {
-    const S = ses(sid); if (!S) return { ok: false }; const c = S.wm.ckpts.find(x => x.id === id); if (!c || c.skipped || c.safety) return { ok: false, why: 'nothing to put back' };
-    const I = SL.ws && SL.ws.info(S), idx = I ? I.pos.findIndex(x => x.id === id) : -1, files = idx >= 0 ? SL.ws.filesFrom(I, idx) : [];
-    const safety = id + 's', n = files.length || c.files;
-    S.add([{ k: 'ckpt', cid: safety, ts: SL.u.tod(S.meta.t0, S.wt), files: n, note: 'before restoring ' + id, skipped: false, safety: true }]);
-    WS(S).restore = { to: id, files, at: S.wt, safety };
-    say(S, 'restored the files of ' + id + ' (' + n + ' file' + (n === 1 ? '' : 's') + '): ' + c.note + ' · safety checkpoint ' + safety + ' taken first (mock: nothing is written)', '↺'); S.touch(); return { ok: true };
+  const wsRefresh = S => { if (SL.ws && typeof SL.ws.refresh === 'function') SL.ws.refresh(S); SL.bus.emit('ws-changed', S); };
+  act('markReviewed', (path, cpid, on, sid) => {
+    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); const w = WS(S); if (on) w.reviewed[path] = cpid; else delete w.reviewed[path]; S.touch();   /* optimistic: the mark is the person's own */
+    return send(api().put(tab(S) + '/ws/reviewed', { path, cp: cpid || '', on: !!on }), () => wsRefresh(S), () => { if (on) delete w.reviewed[path]; else w.reviewed[path] = cpid; S.touch(); return false; });
   });
-  act('undoRewind', sid => { const S = ses(sid); if (!S || !WS(S).restore) return { ok: false }; const r = WS(S).restore; WS(S).restore = null; say(S, 'restore of ' + r.to + ' undone: the files are as the safety checkpoint ' + r.safety + ' had them (mock)', '↺'); S.touch(); return { ok: true }; });
-  act('send', (text, sid) => {
-    const S = ses(sid); if (!S) return { ok: false }; text = String(text || '').trim(); if (!text) return { ok: false };
-    S.hist.push(text);
-    const busy = SL.calc.turnRunning(S.wm);
-    if (busy) { S.ui.queued.push({ text, at: SL.time.wall + 1400 }); S.touch(); return { ok: true, queued: true }; }
-    deliver(S, text); return { ok: true };
+  /** opt: {from, to} of the diff the hunk was drawn from (the Workspace's current range); default base..live. */
+  act('revertHunk', (path, key, sid, opt) => {
+    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S);
+    const rg = Object.assign({ from: 'base', to: 'live' }, (SL.ws && typeof SL.ws.rangeOf === 'function' && SL.ws.rangeOf(S, path)) || {}, opt || {});
+    const body = { path, key, from: rg.from, to: rg.to };
+    return { ok: true, done: api().d16(body).then(d => api().post(tab(S) + '/ws/revert', body, { confirm: 'revert:' + S.id + ':' + d })).then(r => { if (r.ok) { WS(S).reverted[path + '#' + key] = r.data && r.data.id ? r.data.id : S.wt; wsRefresh(S); } else { fail(r); if (r.code === 'changed') wsRefresh(S); } return r; }) };
   });
-  function deliver(S, text) {
-    const a = S.wt, reply = SL.scripts.chatReply(S, text);
-    S.add([{ k: 'say', who: 'you', text, t: a }, { k: 'say', who: 'mgr', text: reply, t: a + 1.2 }]);
-    if (S.kind === 'orders' && /commit|push/i.test(text) && !S.openQuestion()) {
-      S.add([{ k: 'state', id: 'mgr', s: 'ask', doing: 'wants to run `git commit -am "orders: fix off-by-one in List"`', task: null, t: a + 3 }, { k: 'ask', t: a + 3, q: { id: 'q-orders-' + a.toFixed(0), agent: 'mgr', task: null, cmd: 'git commit -am "orders: fix off-by-one in List"', cwd: '.', why: 'writes a commit to the repository; it is not a build or test command', scope: 'cwd . (the single agent)', what: 'this command', cont: 'generic' } }]);
-    }
+  /** The id of a hunk revert the server recorded (the Workspace cache's reverted list), or what revertHunk kept. */
+  function revertId(S, path, key) {
+    if (SL.ws && typeof SL.ws.revertId === 'function') { const id = SL.ws.revertId(S, path, key); if (id) return id; }
+    const v = WS(S).reverted[path + '#' + key]; return typeof v === 'string' ? v : null;
   }
-  /** Deliver queued typed-ahead lines (called each frame with wall time). */
-  function pump() { SL.sessions.list.forEach(S => { const q = S.ui.queued; if (q.length && q[0].at <= SL.time.wall) { deliver(S, q.shift().text); S.touch(); } }); }
+  act('unrevertHunk', (path, key, sid, opt) => {
+    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); const rid = (opt && opt.rid) || revertId(S, path, key); if (!rid) return { ok: false, why: 'nothing to undo' };
+    return send(api().post(tab(S) + '/ws/revert/' + api().seg(rid) + '/undo'), () => { delete WS(S).reverted[path + '#' + key]; wsRefresh(S); }, r => { if (r.code === 'changed') wsRefresh(S); return false; });
+  });
+  /** /rewind ID: a safety checkpoint first, then every file touched in ID or later is put back as it was when ID began. */
+  act('rewind', (id, sid) => {
+    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); const c = S.wm.ckpts.find(x => x.id === id); if (!c || c.skipped || c.safety) return { ok: false, why: 'nothing to put back' };
+    return send(api().post(tab(S) + '/ws/restore', { id, dryRun: false }, { confirm: 'restore:' + S.id + ':' + id }), plan => { plan = plan || {}; WS(S).restore = { to: id, files: (plan.files || []).map(f => f.path || f), at: S.wt, safety: plan.safety || '' }; S.touch(); wsRefresh(S); });
+  });
+  act('undoRewind', sid => {
+    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); if (!WS(S).restore && !(SL.ws && SL.ws.hasRestore && SL.ws.hasRestore(S))) return { ok: false, why: 'no restore to undo' };
+    return send(api().post(tab(S) + '/ws/restore/undo', undefined, { confirm: 'restore.undo:' + S.id }), () => { WS(S).restore = null; S.touch(); wsRefresh(S); });
+  });
+
+  /** Expand the composer's paste chips into the text that reaches the agent; the chips stay in what the transcript shows. */
+  act('send', (text, sid, opt) => {
+    const S = ses(sid); if (!S) return { ok: false }; const display = String(text || '').trim(); if (!display) return { ok: false };
+    if (why(S)) return refuse(S);
+    const full = opt && opt.text ? String(opt.text) : display;
+    if (S.hist[S.hist.length - 1] !== display) S.hist.push(display);
+    const busy = SL.calc.turnRunning(S.wm) || S.meta.running === true, local = busy ? { id: '', text: display, local: true } : null;
+    if (local) { S.ui.queued.push(local); S.touch(); }
+    const body = { text: full, clientId: api().cid() }; if (full !== display) body.display = display;
+    return send(api().post(tab(S) + '/messages', body), res => { if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
+      () => { if (local) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } return false; });
+  });
+  /** A slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect): the server runs it. */
+  act('command', (line, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/command', { line: String(line) }), null, () => false); });
 
   /* sessions */
-  act('switchSession', id => SL.sessions.activate(id));
-  act('newSession', spec => { const S = SL.sessions.create(spec, true); return S; });
-  act('closeSession', id => SL.sessions.close(id));
-  act('renameSession', (id, name) => SL.sessions.rename(id, name));
+  act('switchSession', id => { const S = SL.sessions.activate(id); if (S && SL.data) SL.data.onSwitch(); return S; });
+  const want = { id: null };
+  /** Activate the tab the person just created once the page has it (the tab frame and the response can come in either order). */
+  function activateWhenReady(id) { if (!id) return; if (SL.sessions.get(id)) { want.id = null; ACT.switchSession(id); } else want.id = id; }
+  SL.bus.on('sessions-changed', () => { if (want.id && SL.sessions.get(want.id)) { const id = want.id; want.id = null; ACT.switchSession(id); } });
+  const slug = s => String(s || 'session').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'session';
+  /**
+   * Start a session from the New session dialog. spec: NewSessionRequest fields. opt: {confirmId (a trust challenge's id), onTrust(challenge)
+   * (the server wants the trust step: the dialog asks and calls again with confirmId)}. Returns {ok, name, done} at once.
+   */
+  act('newSession', (spec, opt) => {
+    opt = opt || {}; const body = Object.assign({}, spec); delete body.launch; delete body.resumedFrom;
+    if (!body.clientId) body.clientId = api().cid();
+    const name = spec.name || slug((spec.cwd || '').split('/').filter(Boolean).pop());
+    const p = api().post('/api/sessions', body, opt.confirmId ? { confirmId: opt.confirmId } : undefined).then(r => {
+      if (r.ok) { activateWhenReady(r.data && r.data.tab && r.data.tab.id); return r; }
+      if (r.code === 'trust_required' && opt.onTrust) { opt.onTrust(r.detail || {}, body); return r; }
+      fail(r); return r;
+    });
+    return { ok: true, name, done: p };
+  });
+  act('closeSession', id => {
+    const S = SL.sessions.get(id); if (!S) return { ok: false, why: 'no such session' };
+    if (S.recorded && SL.live.isWatch(id)) return send(api().del('/api/recorded/' + api().seg(S.sid) + '/watch'), () => SL.sessions.drop(id), r => { if (r.status === 404) { SL.sessions.drop(id); return true; } return false; });   /* the server stops following; its tab frame removes it everywhere */
+    if (S.recorded) { SL.sessions.drop(id); return { ok: true, done: Promise.resolve({ ok: true, data: {} }) }; }
+    if (SL.sessions.list.length <= 1) return { ok: false, why: 'the last session cannot be closed: start another first' };
+    return send(api().del(tab(S)));
+  });
+  act('renameSession', (id, name) => { const S = SL.sessions.get(id); name = String(name || '').trim(); if (!S || !name) return { ok: false }; if (why(S)) return refuse(S); return send(api().patch(tab(S), { name })); });
   act('resumeSession', (recId, opt) => {
     const rec = recId === 'latest' ? SL.sessions.recorded.find(r => r.resumable) : SL.sessions.recorded.find(r => r.id === recId);
     if (!rec) return { ok: false, why: 'no recorded session to resume' }; if (!rec.resumable) return { ok: false, why: rec.id + ' cannot be resumed (older than the checkpoint window)' };
-    const S = SL.sessions.create({ name: 'resume-' + rec.id.slice(9, 15), cwd: '~/projects/shop', model: rec.model, swarm: 8, resumedFrom: rec, launch: 'sleipnir chat --resume ' + rec.id }, true); return { ok: true, S };
+    const body = Object.assign({ from: recId === 'latest' ? 'latest' : rec.id }, opt && opt.name ? { name: opt.name } : {});
+    return send(api().post('/api/sessions/resume', body), d => activateWhenReady(d && d.tab && d.tab.id), r => { if (r.code === 'hosted' && r.detail && r.detail.tab) { ACT.switchSession(r.detail.tab.id || r.detail.tab); toast(r.message, 'warm'); return true; } return false; });
   });
+  /** /swarm N, Run settings Apply, "run it again": the team starts again and the manager's conversation carries over (D-06). */
   act('restartTeam', (patch, sid) => {
-    const S = ses(sid); if (!S) return { ok: false }; patch = Object.assign({}, patch); const force = patch.force; delete patch.force; const n = patch.swarm == null ? S.meta.swarm : Math.max(0, Math.min(12, parseInt(patch.swarm, 10) || 0));
+    const S = ses(sid); if (!S) return { ok: false }; patch = Object.assign({}, patch); const force = patch.force; delete patch.force; const n = patch.swarm == null ? S.meta.swarm : Math.max(0, parseInt(patch.swarm, 10) || 0);
     if (!force && n === S.meta.swarm && !Object.keys(patch).some(k => k !== 'swarm')) return { ok: false, why: 'already manager + ' + n + ' workers' };
-    Object.assign(S.meta, patch, { swarm: n }); if (S.kind !== 'new') S.kind = 'new';
-    S.plan = SL.sessions.PLANS.generic; S.meta.launch = 'sleipnir chat --swarm ' + n; S.initRun(); S.ui.chan = 'mgr';
-    if (SL.sessions.active === S) S.rebuild(S.wt); S.touch(); SL.bus.emit('sessions-changed'); return { ok: true };
+    if (why(S)) return refuse(S);
+    return send(api().post(tab(S) + '/restart', { kind: 'swarm', swarm: n, fresh: false }));
   });
-  act('newChat', sid => { const S = ses(sid); if (!S) return; S.meta.goalText = ''; return ACT.restartTeam({ swarm: S.meta.swarm, force: true }, sid); });
-  act('pruneSessions', (older, keep, apply) => SL.sessions.prune(older, keep, apply));
-  act('favModel', ref => { if (G.favs.has(ref)) G.favs.delete(ref); else G.favs.add(ref); const m = D.model(ref); if (m) m.fav = G.favs.has(ref); SL.bus.emit('models-changed'); });
-  act('trustDir', (dir, on) => { let d = G.trustDirs.find(x => x.dir === dir); if (!d) { d = { dir, files: 3, saved: '', now: '', state: 'not trusted' }; G.trustDirs.push(d); } d.state = on ? 'trusted (today)' : 'not trusted'; d.now = on ? 'unchanged' : d.now; G.ver++; SL.bus.emit('trust-changed'); });
-  act('setProvider', (id, patch) => { const p = G.providers.find(x => x.id === id); if (p) { Object.assign(p, patch); G.ver++; } });
-  act('setMcp', (name, patch) => { const s = G.mcp.find(x => x.name === name); if (s) { Object.assign(s, patch); SL.bus.emit('mcp-changed'); } });
+  /** /restart [flags]: start again with other flags, the conversation carried. */
+  act('restart', (flags, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/restart', { kind: 'restart', fresh: false, flags: flags || [] })); });
+  act('newChat', sid => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/restart', { kind: 'new', fresh: true })); });
+  /** The prune preview is the client's arithmetic over the recorded list (the server's rule); apply confirms the exact ids. */
+  act('pruneSessions', (older, keep, apply) => {
+    const age = SL.sessions.parseAge(older); if (isNaN(age)) return { error: 'bad --older-than: ' + older };
+    const list = SL.sessions.pruneCandidates(age, keep), mb = list.reduce((s, r) => s + r.mb, 0), out = { list, mb, applied: false };
+    if (!apply) return out;
+    const ids = list.map(r => r.id).sort();
+    out.done = api().d16(ids).then(d => api().post('/api/recorded/prune', { olderThan: String(older), keep: +keep || 0, apply: true }, { confirm: 'prune:' + d })).then(r => { if (!r.ok) fail(r); else if (SL.data) SL.data.load('recorded', { force: true }); return r; });
+    return out;
+  });
+  act('favModel', ref => {
+    const on = !G.favs.has(ref); if (on) G.favs.add(ref); else G.favs.delete(ref); const m = D.model(ref); if (m) m.fav = on; G.ver++; SL.bus.emit('models-changed');
+    return send(api().post('/api/models/fav', { ref, on }), null, () => { if (on) G.favs.delete(ref); else G.favs.add(ref); if (m) m.fav = !on; G.ver++; SL.bus.emit('models-changed'); return false; });
+  });
+  act('trustDir', (dir, on) => {
+    const after = () => { if (SL.data) { SL.data.load('trust', { force: true }); SL.data.load('projects', { force: true }); } };
+    if (!on) return send(api().post('/api/trust', { dir, on: false }), after);
+    return { ok: true, done: api().get('/api/trust/challenge?dir=' + encodeURIComponent(dir)).then(c => {
+      if (!c.ok) { fail(c); return c; }
+      return api().post('/api/trust', { dir, on: true }, { confirmId: c.data.confirm }).then(r => { if (r.ok) after(); else fail(r); return r; });
+    }) };
+  });
+  /** Providers (D-01): sign out, or check again after a sign-in in a terminal. */
+  act('setProvider', (id, patch) => {
+    const after = d => { if (d && Array.isArray(d.providers) && SL.data) { SL.data.map.providers(d); G.ver++; } else if (SL.data) SL.data.load('providers', { force: true }); };
+    if (patch && patch.key === 'none') return send(api().post('/api/providers/' + api().seg(id) + '/signout'), () => after(null));
+    return send(api().post('/api/providers/recheck'), after);
+  });
+  /** MCP servers: patch.action approve | revoke | test | reconnect (or the mock's state patch). The result line lands in G.mcpOut. */
+  act('setMcp', (name, patch) => {
+    const S = SL.sessions.active; if (!S) return { ok: false }; if (why(S)) return refuse(S); patch = patch || {};
+    const s = G.mcp.find(x => x.name === name), a = patch.action || (patch.state === 'running' ? 'approve' : patch.state === 'needs approval' ? 'revoke' : patch.state ? 'reconnect' : 'test');
+    const path = tab(S) + '/mcp/' + api().seg(name) + '/' + a, out = res => { G.mcpOut = G.mcpOut || {}; G.mcpOut[name] = res; G.ver++; SL.bus.emit('mcp-changed'); if (SL.data) SL.data.load('mcp', { force: true }); };
+    if (a !== 'approve') return send(api().post(path), out);
+    /* the server names the exact scope with the view (confirmScope); else the contract's mcp.approve:<d16 of {root, name, fingerprint}> */
+    const raw = (s && s.raw) || {}, mv = SL.D.extra.mcp || {}, root = mv.root || (SL.D.extra.trust && SL.D.extra.trust.project && SL.D.extra.trust.project.dir) || S.meta.cwd;
+    const scope = raw.confirmScope ? Promise.resolve(raw.confirmScope) : api().d16({ root, name, fingerprint: raw.fingerprint || '' }).then(d => 'mcp.approve:' + d);
+    return { ok: true, done: scope.then(sc => api().post(path, undefined, { confirm: sc })).then(r => { if (r.ok) out(r.data); else fail(r); return r; }) };
+  });
 
-  SL.act = ACT; SL.actions = { cancelFuture, ownerOf, pump, deliver, resumeAgent };
+  /** A recorded session opened read-only in its own tab (D-10), or followed while another process writes it (PARITY A7). */
+  act('openRecorded', (sid, opt) => { if (!sid) return { ok: false, why: 'no recorded session' }; return { ok: true, done: SL.live.openRecorded(String(sid), opt || {}) }; });
+
+  SL.act = ACT;
+  /** The simulation's hooks are gone: the queue of typed-ahead lines is the server's (meta.queued). */
+  SL.actions = { pump() {} };
 })(SL);

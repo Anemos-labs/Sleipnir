@@ -80,5 +80,59 @@ open the address again; nothing is shown from the session until then.
   for that action only.
 - The page sends no request to any other origin; the server's Content-Security-Policy would block it.
 
+### Sessions and views
+
+One page shows every session the server hosts, one tab each in the session strip; a tab keeps running, and can ask questions,
+while another is in front. `+ New` starts a session with every chat flag, seeded from the flags `sleipnir web` was started
+with; its directory is one of the server's projects, never a free path, and a project whose own instructions are not trusted
+yet is asked about first. `↺ Resume` continues a recorded session; a recorded session can also be opened read-only, to replay
+it, or followed while another process writes it. With no session hosted, the page opens the New session dialog.
+
+The left rail switches views: the Cockpit (the team as a horse whose eight legs are the first eight workers, the stalls, the
+gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
+Board, Replay, Sessions, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
+only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
+are read-only.
+
+The connection chip in the session strip shows the server's address. While the stream is down it reads `reconnecting` (the
+browser reconnects by itself), or `disconnected` after the server stopped; a new server run requires the new address.
+
+### Hold and catch-up
+
+The view keeps its own clock. While the pointer is over the conversation, keyboard focus is in it, or the hold is pinned (click
+the hold chip, or Space over the conversation), the view stops: nothing is appended, scrolled or typed, and the chip counts what
+arrived. Pointing at a stall or another linked item slows the view. On release, what is older than 18 seconds is folded into one
+digest row and the rest replays at up to six times speed. Questions are not held back: the question box, the `Needs you` count
+and the tab's badge appear at once, with a toast when the question is behind the hold or in another tab. The tab title shows
+`(? N)` while questions wait, unless Settings › Appearance turns the badge off.
+
+### Approvals
+
+A question names the agent, its task, what it wants to do (run a command, edit or write a file, apply a patch, fetch a page,
+search the web), the working directory, the scope and why it asks; a change to a file is shown as a diff, which opens whole in a
+larger view. The answers are 1 yes, 2 yes and do not ask again for that kind of request in this session, and 3 no with an
+instruction for the agent; a build or test command also offers allowing builds and tests for the session, which takes key 3 and
+moves no to 4. Esc is no. The buttons and the keys work only after the keyboard has been quiet for 0.8 seconds since the
+question appeared or since the last key; text typed meanwhile goes to the message box and never answers. The server also refuses
+an answer given within 350 ms. The `Needs you` inbox answers questions of every session under the same rule.
+
+### Keys
+
+| Keys | Action |
+|---|---|
+| Enter; `\` at the end of a line, alt+Enter or ctrl+J | send; a new line |
+| ↑ ↓, ctrl+R | the lines sent before |
+| `/`, `@` | commands of the session; a path of the project |
+| shift+Tab | mode default → accept-edits → plan (never bypass or yolo) |
+| Esc | release the hold, close what is open, answer no, leave a field or a replay, then interrupt the turn |
+| ctrl+C | discard the line; during a turn, interrupt it; twice at an empty prompt, close the session |
+| 1 2 3 (4) | answer the question in front, once the keyboard is quiet |
+| ctrl+K | the command palette |
+| alt+T, alt+G | Cache, Cockpit |
+| `g` then a letter; `o c m b r s , .` | a view |
+| alt+1 … alt+9 | the nth session |
+| Space, ← →, Home, End, `+ -` | pause, seek, start, live, replay speed |
+| `?` | the keys and the commands |
+
 Changes to the page are checked in a real browser at narrow and wide sizes, with the screenshots opened and read, as terminal
 changes are. See [Building](BUILDING.md).

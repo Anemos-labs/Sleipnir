@@ -3,8 +3,7 @@
  * the hold is pinned) the view clock stops and nothing is appended, scrolled or typed; on release it catches up (bounded, see 50-sessions.js).
  *
  * DOM budget: at most ROW_CAP rows exist per log; older rows are folded into one marker, a collapsed span of time is ONE digest row.
- * The entries themselves live in the model (m.chan.mgr); this file only renders them. A message the server is still streaming (an
- * entry with a `mid` that is not done) keeps growing: its row reads the entry's current text every frame until the server ends it. */
+ * The entries themselves live in the model (m.chan.mgr); this file only renders them. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk, frag, tod, fmtK, fmtUsd, agCol } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
@@ -13,19 +12,14 @@
   const TOOL_GLYPH = n => /^(Write|Edit)$/.test(n) ? '✎' : '⚙';
   const WORDS = { think: 'thinking', tool: 'running a tool', edit: 'editing', wait: 'waiting', ask: 'asking you', idle: 'idle', done: 'done', stuck: 'stuck' };
   const chip = t => esc(t).replace(/\[pasted text #\d+ \+\d+ lines\]/g, m => '<span class="pastechip">' + m + '</span>');
-  const hms = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0'); };
-  /** The time of day of an entry or event: its real time when the server sent one (`at`, history), else the session's start plus t. */
-  const todAt = (S, e) => e && e.at ? hms(e.at) : tod(S.meta.t0, e ? e.t : 0);
-  U.todAt = todAt; ui.todAt = todAt;
-  const OPEN = { providers: 'Open Providers', models: 'Open Models' };
 
   /* ---------- rows ---------- */
   function rowHtml(e, S, m) {
-    const T = todAt(S, e), at = ' data-ag="' + esc(e.ag || '') + '"' + (e.task ? ' data-task="' + esc(e.task) + '"' : '');
+    const T = tod(S.meta.t0, e.t), at = ' data-ag="' + esc(e.ag || '') + '"' + (e.task ? ' data-task="' + esc(e.task) + '"' : '');
     switch (e.k) {
       case 'you': return '<div class="msg you" data-ag="you"><div class="who">You <time>' + T + '</time></div><span class="' + (e.text.charAt(0) === '/' ? 'code' : '') + '">' + chip(e.text) + '</span></div>';
       case 'say': { const who = e.ag === 'mgr' ? 'Manager' : e.ag, col = agCol(e.ag); return '<div class="msg ' + (e.ag === 'mgr' ? 'mgr' : 'agsay') + '"' + at + ' style="--c:' + col + '"><div class="who">' + esc(who) + ' <time>' + T + '</time></div><span class="mt" ' + (e.stream ? 'data-full="' + esc(e.text) + '" data-t0="' + e.t + '" data-rate="' + (e.rate || 70) + '"' : '') + '>' + (e.stream ? '' : esc(e.text)) + '</span></div>'; }
-      case 'sys': return '<div class="msg sys"' + (e.ag ? at : '') + '><span class="sg">' + esc(e.glyph || '◇') + '</span><span>' + esc(e.text) + (e.plan ? ' <span class="dim">' + S.plan.length + ' steps, see Goal plan</span>' : '') + (OPEN[e.open] ? ' <button class="btn sm" type="button" data-open-page="' + e.open + '">' + OPEN[e.open] + '</button>' : '') + '</span></div>';
+      case 'sys': return '<div class="msg sys"' + (e.ag ? at : '') + '><span class="sg">' + esc(e.glyph || '◇') + '</span><span>' + esc(e.text) + (e.plan ? ' <span class="dim">' + S.plan.length + ' steps, see Goal plan</span>' : '') + '</span></div>';
       case 'tool': {
         if (e.refused) return '<div class="msg tool refused"' + at + '><span class="tg bad">⊘</span><span><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + ' <span class="bad">refused</span><span class="rsn">' + esc(e.reason || '') + '</span></span></div>';
         const fl = e.file ? ' data-file="' + esc(e.file) + '"' : '';
@@ -39,7 +33,7 @@
         return '<div class="msg break"' + at + '><b>⚠ cache break</b> (' + esc(e.kind) + ') · <b style="color:' + agCol(e.ag) + '">' + esc(e.ag) + '</b> · read ' + e.read + ' of ' + fmtK(e.expected) + ' expected · extra cost <span class="warm">≈ ' + fmtUsd(e.expected * 0.9 / 1e6, 4) + ' (est.)</span><em>' + esc(e.why) + '</em></div>';
       case 'compact': return '<div class="msg compact"' + at + '><b>◆ compacted</b><span class="num">' + fmtK(e.from) + ' → ' + fmtK(e.to) + '</span><span class="dim">' + (e.pct > 0 ? '+' : '−') + Math.abs(e.pct) + '%</span><span class="dim">· <span style="color:' + agCol(e.ag) + '">' + esc(e.ag) + '</span> · a declared, priced rebase</span></div>';
       case 'stream': return e.code ? '<div class="msg stream code"' + at + ' style="--c:' + agCol(e.ag) + '"><div class="who">' + esc(e.ag) + ' <time>writing</time></div><pre class="st" data-full="' + esc(e.text) + '" data-t0="' + e.t + '" data-rate="' + e.rate + '"></pre></div>' : '<div class="msg stream"' + at + ' style="--c:' + agCol(e.ag) + '"><span class="lid">' + esc(e.ag) + '</span> <span class="st" data-full="' + esc(e.text) + '" data-t0="' + e.t + '" data-rate="' + e.rate + '"></span></div>';
-      case 'final': { const c = calc.totals(m); return '<div class="msg final">-- ' + Math.round(e.t) + 's · ' + (m.final ? m.final.steps : m.steps) + ' steps · ' + fmtUsd(c.cost, 2) + (SL.settings.cache === 'full' && c.prompt ? ' · cache hit ' + c.pct + '%' : '') + '</div>'; }
+      case 'final': { const c = calc.totals(m); return '<div class="msg final">-- ' + Math.round(e.t) + 's · ' + (m.final ? m.final.steps : m.steps) + ' steps · ' + fmtUsd(c.cost, 2) + '</div>'; }
       case 'local': return '<div class="msg local"><div class="who">' + esc(e.title) + ' <time>' + T + '</time></div>' + e.html + '</div>';
       case 'mail': return '<div class="msg mailrow" data-ag="' + esc(e.from) + ' ' + esc(e.to) + '"><div class="who"><span style="color:' + agCol(e.from) + '">' + esc(e.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span class="mailtxt">“' + esc(e.text) + '”</span></div>';
       case 'steer': return '<div class="msg steer" data-ag="' + esc(e.to) + '"><div class="who">You → <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span>' + esc(e.text) + '</span></div>';
@@ -72,7 +66,6 @@
     function addRow(L, e, S, m) {
       const el = frag(rowHtml(e, S, m)); if (!el) return null; const rec = { e, el }; L.el.appendChild(el); L.rows.push(rec);
       if (e.k === 'stream' || (e.k === 'say' && e.stream)) { const t = $('.st,.mt', el); if (t) { rec.t = t; rec.done = false; L.stream.push(rec); } }
-      if (e.k === 'sys' && e.open) $$('[data-open-page]', el).forEach(b => b.addEventListener('click', () => ui.settingsPage(b.dataset.openPage)));
       return rec;
     }
     function foldOld(L) {
@@ -102,7 +95,7 @@
       const S = SL.sessions.active; if (!S || !S.m) return; const m = S.m;
       chHead(S, m); syncLog(TR, S, m, force); syncLog(FD, S, m, force); feedHead(S);
     }
-    function wireDigests(L) { $$('.digest .dtog:not([data-w])', L.el).forEach(b => { b.dataset.w = 1; sc.listen(b, 'click', () => { const o = b.nextElementSibling, open = o.hidden; if (open && o.dataset.lazy) { delete o.dataset.lazy; const S = SL.sessions.active, e = (S.m.chan.mgr || []).find(x => x.k === 'digest' && x.id === +b.closest('.digest').dataset.eid); if (e) o.innerHTML = e.dg.rows.slice(0, 60).map(r => '<li><time>' + todAt(S, r) + '</time> <span style="color:' + agCol(r.who || 'mgr') + '">' + esc(r.who || '') + '</span> ' + esc(r.k) + ' ' + esc(r.text || '') + '</li>').join('') + (e.dg.rows.length > 60 ? '<li class="dim">… ' + (e.dg.n - 60) + ' more</li>' : ''); } o.hidden = !open; b.setAttribute('aria-expanded', String(open)); $('.dx', b).textContent = open ? 'collapse' : 'expand'; }); }); }
+    function wireDigests(L) { $$('.digest .dtog:not([data-w])', L.el).forEach(b => { b.dataset.w = 1; sc.listen(b, 'click', () => { const o = b.nextElementSibling, open = o.hidden; if (open && o.dataset.lazy) { delete o.dataset.lazy; const S = SL.sessions.active, e = (S.m.chan.mgr || []).find(x => x.k === 'digest' && x.id === +b.closest('.digest').dataset.eid); if (e) o.innerHTML = e.dg.rows.slice(0, 60).map(r => '<li><time>' + tod(S.meta.t0, r.t) + '</time> <span style="color:' + agCol(r.who || 'mgr') + '">' + esc(r.who || '') + '</span> ' + esc(r.k) + ' ' + esc(r.text || '') + '</li>').join('') + (e.dg.rows.length > 60 ? '<li class="dim">… ' + (e.dg.n - 60) + ' more</li>' : ''); } o.hidden = !open; b.setAttribute('aria-expanded', String(open)); $('.dx', b).textContent = open ? 'collapse' : 'expand'; }); }); }
     /** the task thread of an agent as a stepper: lease, work, submit, verify, merge (drawn in the read-only Details drawer) */
     function thread(m, A) {
       const T = A.task && m.tasks[A.task]; if (!T) return '<div class="tsteps off">no task: ' + esc(A.doing || '') + '</div>';
@@ -125,14 +118,14 @@
       feedTog.title = open ? 'Collapse Team activity' : 'Show Team activity';
     }
     sc.listen(feedTog, 'click', () => { const S = SL.sessions.active; S.ui.feedOpen = S.ui.feedOpen === false; feedHead(S); if (S.ui.feedOpen !== false) { FD.stick = true; toEdge(FD); } });
-    sc.listen(talk, 'click', e => { const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli], null, true); return; } const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
+    sc.listen(talk, 'click', e => { const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
     sc.listen(feed, 'click', e => { const r = e.target.closest('.msg[data-ag]'); if (!r || window.getSelection().toString()) return; const id = (r.dataset.ag || '').split(' ')[0], S = SL.sessions.active; if (S && S.m && S.m.ag[id]) ui.openDrawer(id); });
     sc.listen(document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the goal is paused' : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
 
     /* ---------- per-frame: streaming text, the hold chip, the held class ---------- */
     function frameFn(dt, vt, S) {
       if (!S || !S.m) return;
-      [TR, FD].forEach(L => { for (let i = L.stream.length - 1; i >= 0; i--) { const r = L.stream[i], el = r.t; if (!el || el.dataset.full == null) continue; const growing = !!(r.e.mid && !r.e.done), full = r.e.mid ? r.e.text : el.dataset.full; const [s, typedAll] = ui.typed(full, +el.dataset.t0, +el.dataset.rate, vt), done = typedAll && !growing; const t = s + (done ? '' : '▍'); if (el._t !== t) { el._t = t; el.textContent = t; if (L.stick && !SL.time.held) toEdge(L); } if (done) { r.done = true; L.stream.splice(i, 1); } } });
+      [TR, FD].forEach(L => { for (let i = L.stream.length - 1; i >= 0; i--) { const r = L.stream[i], el = r.t; if (!el || !el.dataset.full) continue; const [s, done] = ui.typed(el.dataset.full, +el.dataset.t0, +el.dataset.rate, vt); const t = s + (done ? '' : '▍'); if (el._t !== t) { el._t = t; el.textContent = t; if (L.stick && !SL.time.held) toEdge(L); } if (done) { r.done = true; L.stream.splice(i, 1); } } });
       holdChip(S);
     }
     function holdChip(S) {
@@ -154,7 +147,7 @@
     const planBox = $('#planBox'), GL = { done: '✓', verify: '▸', act: '✎', edit: '✎', ask: '?', queued: '◌', pending: '◌' };
     const SHORT = { done: 'done', verify: 'verify', act: 'running', edit: 'editing', ask: 'asks you', queued: 'queued', pending: 'pending' };
     function renderPlan(S, m) {
-      if (!S.meta.goalText && !(m.goal.objective && m.goal.state !== 'cleared') && !m.torder.length) { planBox.hidden = true; return; } planBox.hidden = false;
+      if (!S.meta.goalText && !m.torder.length) { planBox.hidden = true; return; } planBox.hidden = false;
       const n = m.plan.filter(s => s === 'done').length, open = S.ui.planOpen, segs = m.plan.map(s => '<i class="' + (s === 'done' ? 'done' : ['verify', 'edit', 'act', 'ask'].includes(s) ? 'act' : '') + '"></i>').join('');
       const verdict = m.verdict ? '<div class="verdict ' + (m.goal.state === 'met' ? 'met' : '') + '"><b>judge</b>' + esc(m.verdict.replace(/`/g, '')) + '</div>' : '';
       const list = '<ul class="plist cp">' + S.plan.map((p, i) => '<li class="' + m.plan[i] + '"><span class="pg">' + GL[m.plan[i]] + '</span><span class="pt">' + (i + 1) + '. ' + esc(p) + '</span><span class="pc">' + (SHORT[m.plan[i]] || m.plan[i]) + '</span></li>').join('') + '</ul>';
@@ -166,14 +159,10 @@
     /* ---------- composer ---------- */
     const inp = $('#input'), form = $('#composer'), SLASH = { open: false, items: [], idx: 0, mode: 'cmd' }, slashEl = $('#slash'), RS = { pasted: [], hi: -1, cc: 0 };
     const autosize = () => { inp.style.height = 'auto'; inp.style.height = Math.min(120, inp.scrollHeight) + 'px'; };
-    function composerUpdate(S) {
-      feed.classList.toggle('quiet', S.ui.verbose === false); const qh = S.ui.queued.map(q => '<div>' + esc(q.text) + '</div>').join(''), ql = $('#queuedLines'); if (ql._h !== qh) { ql._h = qh; ql.innerHTML = qh; }
-      const ro = !!S.readOnly, t = S.placeholder ? 'start a session first: + New' : S.follow ? 'watching ' + S.sid + ' · read-only · the run belongs to another process' : S.recorded ? 'a recorded session is read-only: ↺ Resume continues it' : '';
-      if (inp.disabled !== ro) { inp.disabled = ro; $('.send', form).disabled = ro; } if (inp.title !== t) inp.title = t;
-    }
+    function composerUpdate(S) { feed.classList.toggle('quiet', S.ui.verbose === false); $('#queuedLines').innerHTML = S.ui.queued.map(q => '<div>' + esc(q.text) + '</div>').join(''); }
     function updateSlash() {
       const v = inp.value, pos = inp.selectionStart, at = /(^|\s)@([\w./-]*)$/.exec(v.slice(0, pos));
-      if (at) { SLASH.mode = 'file'; const files = SL.palette.files(at[2]); SLASH.items = files.filter(f => f.includes(at[2])).slice(0, 8).map(f => ({ name: f })); SLASH.open = SLASH.items.length > 0; SLASH.idx = 0; renderSlash(); return; }
+      if (at) { SLASH.mode = 'file'; const files = SL.palette.files(); SLASH.items = files.filter(f => f.includes(at[2])).slice(0, 8).map(f => ({ name: f })); SLASH.open = SLASH.items.length > 0; SLASH.idx = 0; renderSlash(); return; }
       if (v.charAt(0) === '/' && v.indexOf('\n') < 0 && v.indexOf(' ') < 0) { SLASH.mode = 'cmd'; SLASH.items = SL.palette.filter(v.slice(1), true).slice(0, 14); SLASH.open = true; SLASH.idx = Math.min(SLASH.idx, Math.max(0, SLASH.items.length - 1)); renderSlash(); return; }
       closeSlash();
     }
@@ -189,13 +178,11 @@
       closeSlash(); if (run && !c.args) { inp.value = ''; SL.palette.run(c, ''); } else { inp.value = c.name + ' '; inp.focus(); }
     }
     function submit() {
-      const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return; const pasted = RS.pasted.slice(); inp.value = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
+      const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return; inp.value = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; S.hist.push(v);
       if (v.charAt(0) === '/') { SL.palette.runLine(v); return; }
       if (S.replay) { ui.toast('go live to talk: a replay never changes the session', 'warm'); return; }
       if (SL.time.holdWanted()) { SL.time.release(); SL.time.pin(false); S.hold.pinned = false; }
-      /* the agent gets the pasted text; the transcript keeps the chips */
-      const full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
-      const r = SL.act.send(v, undefined, full !== v ? { text: full } : undefined); if (r && r.ok === false && r.why) ui.toast(r.why, 'warm'); composerUpdate(S);
+      const r = SL.act.send(v); if (r && r.ok === false && r.why) ui.toast(r.why, 'warm'); composerUpdate(S);
     }
     sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
     sc.listen(inp, 'keydown', e => {
@@ -210,11 +197,7 @@
       if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { const v = inp.value; if (v.endsWith('\\')) { e.preventDefault(); inp.value = v.slice(0, -1) + '\n'; autosize(); return; } e.preventDefault(); submit(); return; }
       if (e.key === 'Enter' && e.altKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
       if (e.key === 'j' && e.ctrlKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
-      if (e.key === 'c' && e.ctrlKey && inp.selectionStart === inp.selectionEnd) { e.preventDefault(); const S = SL.sessions.active;
-        if (inp.value) { inp.value = ''; autosize(); closeSlash(); ui.toast('line discarded (ctrl+c again at an empty prompt quits)'); }
-        else if (S && !S.readOnly && (SL.calc.turnRunning(S.wm) || S.meta.running)) { RS.cc = 0; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the turn is stopped and the goal is paused (/goal resume)' : (r.why || 'nothing is running to interrupt'), r.ok ? 'warm' : 'quiet'); }   /* PARITY A26: as Esc and the TUI */
-        else if (RS.cc && SL.time.wall - RS.cc < 1500) { RS.cc = 0; if (S) ui.closeSessionAsk(S); }   /* D-14: quitting a page's session is closing it */
-        else { RS.cc = SL.time.wall; ui.toast('ctrl+c again to quit'); } return; }
+      if (e.key === 'c' && e.ctrlKey && inp.selectionStart === inp.selectionEnd) { e.preventDefault(); if (inp.value) { inp.value = ''; autosize(); closeSlash(); ui.toast('line discarded (ctrl+c again at an empty prompt quits)'); } else if (RS.cc && SL.time.wall - RS.cc < 1500) ui.toast('mock: /exit would end the session here', 'warm'); else { RS.cc = SL.time.wall; ui.toast('ctrl+c again to quit'); } return; }
       if (e.key === 'r' && e.ctrlKey) { e.preventDefault(); ui.sheets.history(); return; }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey) {
         const S = SL.sessions.active, h = S.hist, atTop = inp.selectionStart === 0 || inp.value.indexOf('\n') < 0, atEnd = inp.value.indexOf('\n') < 0 || inp.selectionStart === inp.value.length;
@@ -232,7 +215,6 @@
     sc.on('activated', () => { TR.m = null; FD.m = null; sync(true); });
     sc.on('rebuilt', () => { TR.m = null; FD.m = null; });
     sc.on('cache-detail', () => { TR.m = null; FD.m = null; sync(true); });
-    sc.on('files-ready', () => { if (SLASH.mode === 'file' && document.activeElement === inp) updateSlash(); });
     ui.chat = { sync, togglePin, TR, FD };
   }
   SL.chat = { mount, rowHtml, ROW_CAP };

@@ -3,9 +3,7 @@
  *
  * Legs are numbered 1-8 in worker start order; a ninth worker shares leg 1 (both show a `+1` badge). The manager takes no leg and is not drawn on the horse: it has its own card.
  * Motion is driven by dtView (the governor), so a hold freezes the stride and a catch-up speeds it. Glow only on state: a working leg is
- * faintly haloed, `ask` pulses amber, `stuck` red, `done` stands planted and bright, `idle` is dim, a free leg is a ghost.
- * The prefix bar's sizes are the manager's latest prompt by layer (SL.D.layers); it is redrawn when they change, and drawn in equal
- * parts until the first request has reported them. */
+ * faintly haloed, `ask` pulses amber, `stuck` red, `done` stands planted and bright, `idle` is dim, a free leg is a ghost. */
 (function (SL) {
   'use strict';
   const U = SL.u, { sv, esc } = U, D = SL.D, calc = SL.calc, ui = SL.ui = SL.ui || {};
@@ -28,25 +26,18 @@
     const el = (n, a, p, t) => sv(n, a, p || svg, t);
     const title = el('text', { x: 2, y: 11, class: 'hh' }, null, workers.length ? 'Manager + ' + workers.length + ' workers' : 'One agent, no workers');
     const pre = el('g', { class: 'h-prefix' });   /* the shared prefix G0..G5: drawn in Cache details: Full, absent in Quiet */
-    const preLab = el('text', { x: 370, y: 11, 'text-anchor': 'end', class: 'hs' }, pre, '');
+    el('text', { x: 370, y: 11, 'text-anchor': 'end', class: 'hs' }, pre, 'one prefix · G0–G2 ' + U.fmtK(D.layers.slice(0, 3).reduce((s, l) => s + l.tok, 0)) + ' tok');
     /* prefix bar */
-    const BB = BAR_Y + BAR_H, bar = el('g', { class: 'pbar' }, pre); let warmSpan = null, flash = null, flashFill = null, coldR = null, barSig = '';
-    function drawBar() {
-      const layers = D.layers, sig = layers.map(l => l.tok).join(','); if (sig === barSig) return; barSig = sig;
-      while (bar.firstChild) bar.removeChild(bar.firstChild);
-      preLab.textContent = 'one prefix · G0–G2 ' + U.fmtK(layers.slice(0, 3).reduce((s, l) => s + l.tok, 0)) + ' tok';
-      const tot = layers.reduce((s, l) => s + l.tok, 0); let x = X0; const lay = [];
-      layers.forEach((l, i) => { const w = tot ? W * l.tok / tot : W / layers.length; el('rect', { x: x.toFixed(1), y: BAR_Y, width: Math.max(0, w - 1.5).toFixed(1), height: BAR_H, fill: l.col, opacity: i < 3 ? .88 : .5 }, bar); el('text', { x: (x + 1).toFixed(1), y: BB + 12, fill: l.col, 'font-size': i > 2 ? 9 : 10.5, 'font-weight': 700, 'font-family': 'var(--f-num)' }, bar, l.id); lay.push({ x0: x, w }); x += w; });
-      const shX1 = lay[2].x0 + lay[2].w - 1.5, BR = BB + 18;
-      el('path', { d: 'M' + X0 + ' ' + BR + ' V' + (BR + 4) + ' H' + shX1.toFixed(1) + ' V' + BR, fill: 'none', stroke: 'var(--mgr)', 'stroke-width': 1, opacity: .7 }, bar);
-      el('path', { d: 'M' + lay[3].x0.toFixed(1) + ' ' + BR + ' V' + (BR + 4) + ' H' + (X0 + W) + ' V' + BR, fill: 'none', stroke: 'var(--dim)', 'stroke-width': 1, opacity: .6 }, bar);
-      el('text', { x: X0 + W, y: BR + 16, fill: 'var(--dim)', 'font-size': 10, 'text-anchor': 'end', 'font-family': 'var(--f-num)' }, bar, 'per agent');
-      const warmTxt = el('text', { x: X0, y: BR + 16, fill: 'var(--mgr)', 'font-size': 10.5, 'font-family': 'var(--f-num)' }, bar); warmSpan = sv('tspan', { fill: 'var(--warm)', 'font-weight': 700 }); warmTxt.append('shared · ', warmSpan);
-      flash = el('rect', { x: X0 - 2, y: BAR_Y - 2, width: (shX1 - X0 + 4).toFixed(1), height: BAR_H + 4, fill: 'none', stroke: 'var(--err)', 'stroke-width': 2, opacity: 0 }, bar);
-      flashFill = el('rect', { x: X0 - 1, y: BAR_Y - 1, width: (shX1 - X0 + 2).toFixed(1), height: BAR_H + 2, fill: 'var(--err)', opacity: 0 }, bar);
-      coldR = el('rect', { x: X0 - 1, y: BAR_Y - 1, width: (shX1 - X0 + 2).toFixed(1), height: BAR_H + 2, fill: 'var(--bg)', opacity: 0 }, bar);
-    }
-    drawBar();
+    const tot = D.layers.reduce((s, l) => s + l.tok, 0), BB = BAR_Y + BAR_H, bar = el('g', { class: 'pbar' }, pre); let x = X0; const lay = [];
+    D.layers.forEach((l, i) => { const w = W * l.tok / tot; el('rect', { x: x.toFixed(1), y: BAR_Y, width: (w - 1.5).toFixed(1), height: BAR_H, fill: l.col, opacity: i < 3 ? .88 : .5 }, bar); el('text', { x: (x + 1).toFixed(1), y: BB + 12, fill: l.col, 'font-size': i > 2 ? 9 : 10.5, 'font-weight': 700, 'font-family': 'var(--f-num)' }, bar, l.id); lay.push({ x0: x, w }); x += w; });
+    const shX1 = lay[2].x0 + lay[2].w - 1.5, BR = BB + 18;
+    el('path', { d: 'M' + X0 + ' ' + BR + ' V' + (BR + 4) + ' H' + shX1.toFixed(1) + ' V' + BR, fill: 'none', stroke: 'var(--mgr)', 'stroke-width': 1, opacity: .7 }, bar);
+    el('path', { d: 'M' + lay[3].x0.toFixed(1) + ' ' + BR + ' V' + (BR + 4) + ' H' + (X0 + W) + ' V' + BR, fill: 'none', stroke: 'var(--dim)', 'stroke-width': 1, opacity: .6 }, bar);
+    el('text', { x: X0 + W, y: BR + 16, fill: 'var(--dim)', 'font-size': 10, 'text-anchor': 'end', 'font-family': 'var(--f-num)' }, bar, 'per agent');
+    const warmTxt = el('text', { x: X0, y: BR + 16, fill: 'var(--mgr)', 'font-size': 10.5, 'font-family': 'var(--f-num)' }, bar); const warmSpan = sv('tspan', { fill: 'var(--warm)', 'font-weight': 700 }); warmTxt.append('shared · ', warmSpan);
+    const flash = el('rect', { x: X0 - 2, y: BAR_Y - 2, width: (shX1 - X0 + 4).toFixed(1), height: BAR_H + 4, fill: 'none', stroke: 'var(--err)', 'stroke-width': 2, opacity: 0 }, bar);
+    const flashFill = el('rect', { x: X0 - 1, y: BAR_Y - 1, width: (shX1 - X0 + 2).toFixed(1), height: BAR_H + 2, fill: 'var(--err)', opacity: 0 }, bar);
+    const coldR = el('rect', { x: X0 - 1, y: BAR_Y - 1, width: (shX1 - X0 + 2).toFixed(1), height: BAR_H + 2, fill: 'var(--bg)', opacity: 0 }, bar);
 
     /* horse */
     const hg = el('g', { transform: 'translate(' + HTX + ' ' + HTY + ') scale(' + HS + ')' });
@@ -127,7 +118,7 @@
       const w = cold ? 'cold' : 'warm ' + U.clock(cc); if (warmSpan.textContent !== w) { warmSpan.textContent = w; warmSpan.setAttribute('fill', cold || cc < 8 ? 'var(--err)' : 'var(--warm)'); }
           }
     function update(S2, m) {
-      if (!m) return; drawBar(); const quiet = SL.settings.cache === 'quiet'; if (pre.style.display !== (quiet ? 'none' : '')) { pre.style.display = quiet ? 'none' : ''; svg.setAttribute('viewBox', quiet ? '0 30 372 358' : '0 0 372 388'); title.setAttribute('y', quiet ? 46 : 11); svg.parentNode.classList.toggle('qhorse', quiet); }
+      if (!m) return; const quiet = SL.settings.cache === 'quiet'; if (pre.style.display !== (quiet ? 'none' : '')) { pre.style.display = quiet ? 'none' : ''; svg.setAttribute('viewBox', quiet ? '0 30 372 358' : '0 0 372 388'); title.setAttribute('y', quiet ? 46 : 11); svg.parentNode.classList.toggle('qhorse', quiet); }
       labels.forEach(({ L, sg, badge }) => { const s = sharedState(m, L.ids), t = GLYPH[s] + ' ' + WORD[s]; if (sg.textContent !== t) sg.textContent = t; sg.setAttribute('fill', s === 'ask' ? 'var(--warm)' : s === 'stuck' ? 'var(--err)' : s === 'done' ? 'var(--ok)' : 'var(--dim)'); });
     }
     sc.frame(frame); sc.update(update); update(S, S.m);

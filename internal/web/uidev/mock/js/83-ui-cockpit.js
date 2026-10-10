@@ -1,7 +1,6 @@
 /* 83-ui-cockpit.js: the Cockpit view: the drawn horse (eight worker legs), the manager's own card and one stall per worker, the gantt,
  * the task board, the merge queue, mail and the governor. Mounted through the View API: everything it starts dies with it
- * (the mail arcs live in a layer inside this view's root). The governor's 429s and retries, the merge queue's counters and the
- * board's failed and blocked tasks (D-04: a failed task stays in todo with a ✗ mark and its closure as the title) are the server's. */
+ * (the mail arcs live in a layer inside this view's root). */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk, sv, fmtK, fmtUsd, fmtMs, mmss, tod, hitCls, agCol } = U, calc = SL.calc, D = SL.D, ui = SL.ui = SL.ui || {};
@@ -17,43 +16,6 @@
     return out;
   }
   ui.sparkBars = sparkBars;
-  /** The board's additions (PARITY A17, D-04): a ✗ mark on a failed card (its closure as the title), `try N` when a task took more
-   *  than one attempt; todo's count leaves failed tasks out. Returns {failed, blocked}. Runs after ui.board.update on the same board. */
-  ui.boardMarks = function (B, m) {
-    let failed = 0, blocked = 0, todoFailed = 0;
-    m.torder.forEach(id => {
-      const t = m.tasks[id], n = B.nodes[id]; if (!t || !n) return; const tow = n.querySelector('.tcr .tow');
-      const isF = !!t.failed, isB = /^blocked_on/.test(t.closure || ''); if (isF) { failed++; if (t.st === 'todo') todoFailed++; } if (isB) blocked++;
-      let mk2 = n.querySelector('.fmark');
-      if (isF && tow) { if (!mk2) { mk2 = document.createElement('span'); mk2.className = 'bad fmark'; mk2.textContent = '✗'; tow.appendChild(mk2); } mk2.title = 'failed: ' + (t.closure || 'closed'); } else if (mk2) mk2.remove();
-      let tr = n.querySelector('.tmark'); const nTry = t.attempts > 1 ? 'try ' + t.attempts : '';
-      if (nTry && tow) { if (!tr) { tr = document.createElement('span'); tr.className = 'dim tmark'; tow.appendChild(tr); } tr.textContent = nTry; } else if (tr) tr.remove();
-    });
-    if (todoFailed) { const c = B.host.querySelector('[data-col="todo"] .cnt'); if (c) c.textContent = String(Math.max(0, (+c.textContent || 0) - todoFailed)); }
-    return { failed, blocked };
-  };
-  /** The words added to a board summary: " (N blocked)", " · N failed". */
-  ui.boardExtra = x => (x.blocked ? ' (' + x.blocked + ' blocked)' : '') + (x.failed ? ' · ' + x.failed + ' failed' : '');
-  /** The board's alerts (stalls raised and board alerts) as a popover under btn. */
-  ui.alertsPop = function (btn, S, m) {
-    const ex = document.querySelector('.alertpop'); if (ex) { ex._off(); return; }
-    const list = alertList(m);
-    const p = mk('div', { class: 'popover alertpop', role: 'dialog', 'aria-label': 'Board alerts' }, '<h3 class="lab" style="margin:0 0 8px">alerts</h3>' + (list.length ? '<table class="tbl"><tbody>' + list.map(a => '<tr><td class="warm">' + esc(a.kind || '') + '</td><td>' + esc(a.text || '') + '</td><td class="dim r">' + ui.todAt(S, a) + '</td></tr>').join('') + '</tbody></table>' : '<p class="stubnote" style="margin:0">no alert</p>'));
-    const app = document.getElementById('app'); app.appendChild(p); const r = btn.getBoundingClientRect(), ar = app.getBoundingClientRect(); p.style.top = (r.bottom - ar.top + 4) + 'px'; p.style.right = Math.max(8, ar.right - r.right) + 'px';
-    const off = () => { p.remove(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esck, true); };
-    const away = e => { if (!p.contains(e.target) && e.target !== btn) off(); }, esck = e => { if (e.key === 'Escape') { e.stopPropagation(); off(); btn.focus(); } };
-    document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', esck, true); p._off = off;
-  };
-  /** The alerts tag of a board head: `⚠ N alerts`, or nothing. */
-  /** The board's alerts and the stalls no alert already names (the server raises both for a stalled agent). */
-  function alertList(m) { const al = Object.keys(m.alerts || {}).map(k => Object.assign({ key: k }, m.alerts[k])); return al.concat(Object.keys(m.stalls || {}).map(k => m.stalls[k]).filter(s => !al.some(a => a.key === s.id || a.key === s.task)).map(s => ({ kind: s.kind, text: s.text, t: s.t, at: s.at }))); }
-  ui.alertsTag = m => { const n = alertList(m).length; return n ? '<button class="tag warm" type="button" data-alerts title="what the board and the stall detector raised">⚠ ' + n + ' alert' + (n === 1 ? '' : 's') + '</button>' : ''; };
-  /** Keep the alerts tag just before `before` (a board head's summary) while there are alerts; nothing otherwise. */
-  ui.alertsSlot = (before, m) => { const html = ui.alertsTag(m); let el = before.parentNode.querySelector('.balert'); if (!html) { if (el) el.remove(); return; } if (!el) { el = document.createElement('span'); el.className = 'balert'; before.parentNode.insertBefore(el, before); } if (el._h !== html) { el._h = html; el.innerHTML = html; } };
-  /** The governor note: the mock's sentence while nothing throttles, the counts when something does (D-07). */
-  ui.govNote = m => (m.r429 || m.retries) ? m.r429 + ' 429' + (m.r429 === 1 ? '' : 's') + ', ' + m.retries + ' retr' + (m.retries === 1 ? 'y' : 'ies') + ': the endpoint is throttling the team' : 'no 429s, no retries: nothing is throttling the team';
-  /** `routed N · dup N · mailman on/off`: the dup term only when the server counts duplicates (D-07). */
-  ui.mailNote = (m, S) => { const st = m.mailstat; return 'routed ' + (st && st.sent != null ? st.sent : m.mail.length) + (st && st.dup != null ? ' · dup ' + st.dup : '') + ' · mailman ' + (S.meta.mailman ? 'on' : 'off'); };
   function miniTl(A, vt, col) {
     let out = '', w0 = vt - 60;
     A.segs.forEach(sg => {
@@ -90,7 +52,7 @@
     else {
       workers.forEach(w => {
         const b = mk('button', { class: 'stall', type: 'button', 'data-ag': w.id, 'data-state': 'idle', 'data-role': w.role, style: '--c:' + agCol(w.id) },
-          '<span class="s-top"><b class="s-id">' + esc(w.id) + '</b><span class="s-role">' + esc(w.role) + '</span><span class="s-st"><i class="g">◌</i><span class="sw">idle</span></span></span><span class="s-doing"></span>' +
+          '<span class="s-top"><b class="s-id">' + w.id + '</b><span class="s-role">' + w.role + '</span><span class="s-st"><i class="g">◌</i><span class="sw">idle</span></span></span><span class="s-doing"></span>' +
           '<span class="s-meta"><span class="chip task"></span><span class="s-scope"><i class="legn">leg ' + (w.leg + 1) + '</i>' + (w.scope === '-' || /^- /.test(w.scope) ? ' · read-only' : ' · ' + esc(w.scope)) + '</span><span class="brk" title="cache break: the prompt prefix did not change, the endpoint did not serve it"><span aria-hidden="true">⚠</span><span class="bx"> cache break</span></span></span>' +
           '<span class="s-nums"><span class="n-tok"></span><span class="n-cost"></span><span class="hit n-hit"></span></span><svg class="s-spark" viewBox="0 0 150 40" preserveAspectRatio="xMinYMax meet" aria-hidden="true"></svg><svg class="s-tl" viewBox="0 0 60 8" preserveAspectRatio="none" aria-hidden="true"></svg>');
         sc.listen(b, 'click', e => ui.focusAgent(w.id, e)); stallsEl.appendChild(b);
@@ -102,7 +64,7 @@
 
     function fillCard(R, A, c, spawned, m) {
       const s = spawned ? A.state : 'idle'; R.el.dataset.state = s; const [g, w] = SG[s]; R.g.textContent = g; R.sw.textContent = w;
-      if (!R.streaming) R.doing.textContent = spawned ? (ui.waitingFor(A, SL.sessions.active ? SL.sessions.active.vt : 0) || A.doing) : 'not started';
+      if (!R.streaming) R.doing.textContent = spawned ? A.doing : 'not started';
       if (R.chip) { R.chip.textContent = A.id === 'mgr' ? R.chip.textContent : (A.task || '–'); R.chip.className = 'chip task' + (A.task && m.tasks[A.task] && m.tasks[A.task].st === 'merged' ? ' t-merged' : ''); if (A.id !== 'mgr') R.el.setAttribute('data-task', A.task || ''); }
       R.tok.innerHTML = fmtK(c.prompt) + '<span class="u"> tok</span>'; R.cost.textContent = fmtUsd(c.cost, 3); R.hit.textContent = c.prompt ? c.pct + '%' : '–'; R.hit.className = 'hit n-hit ' + (c.prompt ? hitCls(c.pct) : '');
       R.el.setAttribute('aria-label', A.id + ' ' + A.role + ', ' + w + ': ' + A.doing);
@@ -119,17 +81,15 @@
     }
     function renderMail(m) {
       const list = m.mail.slice(-4).reverse();
-      const h = list.map(x => '<li><button class="mrow" type="button" data-ag="' + esc(x.from) + ' ' + esc(x.to) + '" data-mail="' + x.t + '"><span class="mt">' + ui.todAt(S, x) + '</span><span class="mi">✉</span><span class="mf"><span style="color:' + agCol(x.from) + '">' + esc(x.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(x.to) + '">' + esc(x.to) + '</span></span><span class="mx">“' + esc(x.text) + '”</span></button></li>').join('') || '<li class="mnote">no mail yet</li>';
-      if (mlist._h !== h) { mlist._h = h; mlist.innerHTML = h; } q('.mnote').textContent = ui.mailNote(m, S);
+      const h = list.map(x => '<li><button class="mrow" type="button" data-ag="' + x.from + ' ' + x.to + '" data-mail="' + x.t + '"><span class="mt">' + tod(S.meta.t0, x.t) + '</span><span class="mi">✉</span><span class="mf"><span style="color:' + agCol(x.from) + '">' + esc(x.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(x.to) + '">' + esc(x.to) + '</span></span><span class="mx">“' + esc(x.text) + '”</span></button></li>').join('') || '<li class="mnote">no mail yet</li>';
+      if (mlist._h !== h) { mlist._h = h; mlist.innerHTML = h; } q('.mnote').textContent = 'routed ' + m.mail.length + ' · dup 0 · mailman ' + (S.meta.mailman ? 'on' : 'off');
     }
     sc.listen(mlist, 'click', e => { const r = e.target.closest('[data-mail]'); if (r) { ui.mailSel = +r.dataset.mail; SL.views.show('mail'); } });
-    sc.listen(root, 'click', e => { const a = e.target.closest('[data-alerts]'); if (a) { const S2 = SL.sessions.active; ui.alertsPop(a, S2, S2.m); } });
     function renderGov(m) {
       const rs = m.rpmHist.slice(-14), mx = Math.max(60, ...rs.map(r => r.rpm)); let spk = ''; rs.forEach((r, i) => { const h = Math.max(2, r.rpm / mx * 30); spk += '<rect x="' + i * 7 + '" y="' + (34 - h) + '" width="5" height="' + h + '" fill="var(--fe)" opacity=".75"/>'; });
       const line = '<line x1="0" x2="98" y1="33" y2="33" stroke="var(--ok)" stroke-width="2"/>', g = q('.gov');
-      const bad = '<line x1="0" x2="98" y1="33" y2="33" stroke="var(--warm)" stroke-width="2"/>', r4 = m.r429 || 0, rt = m.retries || 0;
-      const h = '<div class="gauge2"><svg viewBox="0 0 98 34" preserveAspectRatio="none" aria-hidden="true">' + spk + '</svg><b class="num">' + (m.rpm || 0) + '</b><span>rpm</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + (r4 ? bad : line) + '</svg><b class="num ' + (r4 ? 'warm' : 'ok') + '">' + r4 + '</b><span>429s</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + (rt ? bad : line) + '</svg><b class="num ' + (rt ? 'warm' : 'ok') + '">' + rt + '</b><span>retries</span></div>';
-      if (g._h !== h) { g._h = h; g.innerHTML = h; } const gn = q('.gnote'), gt = ui.govNote(m); if (gn.textContent !== gt) gn.textContent = gt;
+      const h = '<div class="gauge2"><svg viewBox="0 0 98 34" preserveAspectRatio="none" aria-hidden="true">' + spk + '</svg><b class="num">' + (m.rpm || 0) + '</b><span>rpm</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + line + '</svg><b class="num ok">0</b><span>429s</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + line + '</svg><b class="num ok">0</b><span>retries</span></div>';
+      if (g._h !== h) { g._h = h; g.innerHTML = h; }
     }
 
     /* ---- gantt (rows: manager + workers) ---- */
@@ -137,9 +97,9 @@
     function buildGantt() {
       if (!gwrap.clientWidth) return; GT.W = gwrap.clientWidth - 20; GT.H = gwrap.clientHeight; GT.rowH = Math.max(9, Math.min(23, Math.floor((GT.H - GT.axisH - 6) / ids.length))); GT.pps = (GT.W - GT.left - 4) / 60;
       gsvg.setAttribute('viewBox', '0 0 ' + GT.W + ' ' + GT.H); gsvg.setAttribute('preserveAspectRatio', 'xMinYMin meet'); gsvg.style.height = GT.H + 'px';
-      let h = '<defs>'; ['manager', 'backend', 'frontend', 'scout', 'tester', 'reviewer', 'docs', 'fullstack'].concat(S.roster.map(x => x.role)).filter((r, i, a) => a.indexOf(r) === i).forEach(r => { const c = 'var(--c-' + ((D.roles[r] || SL.data.ROLES[r] || { code: r }).code) + ')'; h += '<pattern id="hx-' + r + '" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="5" fill="' + c + '" opacity=".7"/></pattern>'; });
+      let h = '<defs>'; ['manager', 'backend', 'frontend', 'scout', 'tester', 'reviewer', 'docs', 'fullstack'].forEach(r => { const c = 'var(--c-' + D.roles[r].code + ')'; h += '<pattern id="hx-' + r + '" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="5" fill="' + c + '" opacity=".7"/></pattern>'; });
       h += '<pattern id="hx-ask" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.6" height="5" fill="var(--warm)"/></pattern><clipPath id="gclip"><rect x="' + GT.left + '" y="0" width="' + (GT.W - GT.left) + '" height="' + GT.H + '"/></clipPath></defs>';
-      ids.forEach((id, i) => { const y = 2 + i * GT.rowH; h += '<g class="g-row" data-ag="' + esc(id) + '"><rect x="0" y="' + y + '" width="' + GT.W + '" height="' + GT.rowH + '" fill="transparent" class="g-hit"/><line x1="' + GT.left + '" x2="' + GT.W + '" y1="' + (y + GT.rowH - .5) + '" y2="' + (y + GT.rowH - .5) + '" class="g-grid"/><text x="0" y="' + (y + GT.rowH * .72) + '" class="g-lab" fill="' + agCol(id) + '" font-size="' + (GT.rowH > 13 ? 11 : 9.5) + '">' + esc(id) + '</text><g clip-path="url(#gclip)"><g class="gbars" data-i="' + i + '"></g></g></g>'; });
+      ids.forEach((id, i) => { const y = 2 + i * GT.rowH; h += '<g class="g-row" data-ag="' + id + '"><rect x="0" y="' + y + '" width="' + GT.W + '" height="' + GT.rowH + '" fill="transparent" class="g-hit"/><line x1="' + GT.left + '" x2="' + GT.W + '" y1="' + (y + GT.rowH - .5) + '" y2="' + (y + GT.rowH - .5) + '" class="g-grid"/><text x="0" y="' + (y + GT.rowH * .72) + '" class="g-lab" fill="' + agCol(id) + '" font-size="' + (GT.rowH > 13 ? 11 : 9.5) + '">' + id + '</text><g clip-path="url(#gclip)"><g class="gbars" data-i="' + i + '"></g></g></g>'; });
       h += '<g class="g-axis-g"></g><line class="g-now" x1="' + (GT.W - 4) + '" x2="' + (GT.W - 4) + '" y1="0" y2="' + (GT.H - GT.axisH) + '"/>';
       gsvg.innerHTML = h; GT.axisG = $('.g-axis-g', gsvg); GT.bars = $$('.gbars', gsvg); GT.axis = []; GT.built = true; GT.builtAt = -99; ganttBars(S.m, S.vt);
     }
@@ -174,7 +134,7 @@
     sc.observe(gwrap, () => { if (gwrap.clientWidth) buildGantt(); });
     sc.listen(gsvg, 'click', e => { const r = e.target.closest('.g-row'); if (r) ui.focusAgent(r.dataset.ag, e); });
     /* gantt controls = the replay controls: pause enters replay at the current time, the scrub bar seeks, live returns */
-    const gplay = q('.gplay'), scrub = q('.scrub'), glive = q('.glive'), scrubT = q('.scrubT');
+    const gplay = q('.gplay'), scrub = q('.scrub'), glive = q('.glive');
     function ctl(S2) { const rep = S2.replay, playing = !rep || rep.playing; gplay.innerHTML = playing ? ui.IC.pause : ui.IC.play; gplay.setAttribute('aria-label', playing ? 'Pause' : 'Play'); $$('[data-sp]', root).forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.sp === (rep ? rep.speed : 1)))); glive.setAttribute('aria-pressed', String(!rep)); }
     sc.listen(gplay, 'click', () => { const S2 = SL.sessions.active; if (!S2.replay) S2.seek(S2.vt, false); else S2.replay.playing = !S2.replay.playing; S2.touch(); });
     $$('[data-sp]', root).forEach(b => sc.listen(b, 'click', () => { const S2 = SL.sessions.active; if (!S2.replay) S2.seek(S2.vt, true); S2.replay.speed = +b.dataset.sp; S2.replay.playing = true; S2.touch(); }));
@@ -198,8 +158,7 @@
       if (!m) return; const mg = m.ag.mgr, cm = calc.agent(mg); fillCard(RC, mg, cm, true, m);
       if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool' && !e.collapsed).slice(-6).reverse(); $('.sololog', root).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">nothing yet</li>'; }
       workers.forEach(w => { const A = m.ag[w.id]; fillCard(ST[w.id], A, calc.agent(A), A.spawned, m); });
-      const cnt = ui.board.update(B, m), bx = ui.boardMarks(B, m); q('.bsum').textContent = (cnt.merged || 0) + ' merged · ' + (cnt.verify || 0) + ' verify · ' + (cnt.running || 0) + ' running' + ui.boardExtra(bx);
-      ui.alertsSlot(q('.bsum'), m);
+      const cnt = ui.board.update(B, m); q('.bsum').textContent = (cnt.merged || 0) + ' merged · ' + (cnt.verify || 0) + ' verify · ' + (cnt.running || 0) + ' running';
       renderQueue(m); renderMail(m); renderGov(m); ctl(S2); scrub.max = Math.max(S2.wt, 1).toFixed(1);
     }
     function frame(dt, vt, S2) {
@@ -210,8 +169,6 @@
       rows.forEach(([R, id]) => { const s = m.streams[id], A = m.ag[id]; const brk = m.lastBreakT > -900 && m.flash.id === id && vt - m.lastBreakT < (SL.settings.cache === 'quiet' ? 90 : 8) && vt >= m.lastBreakT; if (R.el.dataset.brk !== (brk ? '1' : '0')) R.el.dataset.brk = brk ? '1' : '0';
         if (s && !s.code && vt - s.t0 < s.text.length / s.rate + 5 && A.state !== 'idle') { const [t, done] = typed(s.text, s.t0, s.rate, vt); R.streaming = true; const h = esc(t) + (done ? '' : '<span class="caret"></span>'); if (R.doing._h !== h) { R.doing._h = h; R.doing.innerHTML = h; } } else if (R.streaming) { R.streaming = false; R.doing._h = null; R.doing.textContent = A.spawned ? A.doing : 'not started'; } });
       if ((SL.loop.frameNo % 30) === 0) workers.forEach(w => { const R = ST[w.id]; R.tl.style.setProperty('--c', agCol(w.id)); R.tl.innerHTML = miniTl(m.ag[w.id], vt, agCol(w.id)); });
-      if ((SL.loop.frameNo & 15) === 0 && !S2.replay) { const st = mmss(vt); if (scrubT.textContent !== st) scrubT.textContent = st; if (document.activeElement !== scrub) scrub.value = vt.toFixed(1); }
-      if ((SL.loop.frameNo % 30) === 15) rows.forEach(([R, id]) => { const A = m.ag[id]; if (R.streaming || !A || !A.spawned) return; const t = ui.waitingFor(A, vt) || A.doing; if (R.doing.textContent !== t) R.doing.textContent = t; });
     }
     sc.update(update); sc.frame(frame); update(S, S.m); buildGantt();
   }
