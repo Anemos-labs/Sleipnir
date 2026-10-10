@@ -209,6 +209,11 @@ func (s *service) preview(sess *session.Session, tab, cp string) (wire.RestorePl
 		if f.Outcome == checkpoint.OutcomePlanned && f.Action != checkpoint.ActionRmdir {
 			planned++
 			rf.Added, rf.Removed = linesBack(sess, cp, f.Path)
+			if secretCarrier(f.Path) && f.Action != checkpoint.ActionDelete {
+				// the page never shows this file's values: say that the whole file, its
+				// secrets included, goes back
+				rf.Reason = strings.TrimSpace(rf.Reason + " it holds secrets: the values it held then come back too")
+			}
 		}
 		if f.Outcome == checkpoint.OutcomeConflict {
 			conflicts = append(conflicts, f.Path)

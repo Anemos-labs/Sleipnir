@@ -36,8 +36,8 @@ func TestReverseHunkProperty(t *testing.T) {
 		d := checkpoint.DiffLines(a, b)
 		live := b
 		for i := len(d.Hunks) - 1; i >= 0; i-- {
-			next, ok := reverseHunk(a, b, live, d.Hunks[i])
-			if !ok {
+			next, err := reverseHunk(a, live, d.Hunks[i], false)
+			if err != nil {
 				t.Fatalf("trial %d: hunk %d does not reverse:\n%+v", trial, i, d.Hunks[i])
 			}
 			live = next
@@ -46,9 +46,9 @@ func TestReverseHunkProperty(t *testing.T) {
 			t.Fatalf("trial %d: reverting every hunk gave\n%q\nwant\n%q", trial, live, a)
 		}
 		if len(d.Hunks) > 1 {
-			one, ok := reverseHunk(a, b, b, d.Hunks[0])
+			one, err := reverseHunk(a, b, d.Hunks[0], false)
 			rest := checkpoint.DiffLines(a, one)
-			if !ok || len(rest.Hunks) != len(d.Hunks)-1 {
+			if err != nil || len(rest.Hunks) != len(d.Hunks)-1 {
 				t.Fatalf("trial %d: one hunk reverted leaves %d of %d hunks", trial, len(rest.Hunks), len(d.Hunks))
 			}
 		}
@@ -61,12 +61,12 @@ func TestReverseHunkFindsMovedLinesAndRefusesAmbiguity(t *testing.T) {
 	d := checkpoint.DiffLines(old, new)
 	// The live file has two lines more at the top: the hunk is found further down.
 	live := []byte("x\ny\na\nb\nc\nD\ne\nf\ng\n")
-	got, ok := reverseHunk(old, new, live, d.Hunks[0])
-	if !ok || string(got) != "x\ny\na\nb\nc\nd\ne\nf\ng\n" {
-		t.Fatalf("moved: %q %v", got, ok)
+	got, err := reverseHunk(old, live, d.Hunks[0], false)
+	if err != nil || string(got) != "x\ny\na\nb\nc\nd\ne\nf\ng\n" {
+		t.Fatalf("moved: %q %v", got, err)
 	}
 	// The hunk's lines are gone: refused.
-	if _, ok := reverseHunk(old, new, []byte("something else\n"), d.Hunks[0]); ok {
+	if _, err := reverseHunk(old, []byte("something else\n"), d.Hunks[0], false); err == nil {
 		t.Fatal("a hunk whose lines are not in the file must be refused")
 	}
 	// Twice, equally far from where the hunk was: refused rather than guessed.
@@ -82,13 +82,13 @@ func TestReverseHunkFindsMovedLinesAndRefusesAmbiguity(t *testing.T) {
 	pad := func(n int) string { return strings.Repeat("z\n", n) }
 	nStart := h.NewStart - 1
 	live2 := []byte(pad(nStart-8) + block + pad(9) + block)
-	if _, ok := reverseHunk(old2, new2, live2, h); ok {
+	if _, err := reverseHunk(old2, live2, h, false); err == nil {
 		t.Fatal("an ambiguous place must be refused")
 	}
 	// One copy nearer than the other: that one.
 	live3 := []byte(pad(nStart-8) + block + pad(12) + block)
-	got3, ok := reverseHunk(old2, new2, live3, h)
-	if !ok || !strings.HasPrefix(string(got3), pad(nStart-8)+"1\n2\n3\na\n") {
-		t.Fatalf("nearest copy: %v %q", ok, got3)
+	got3, err := reverseHunk(old2, live3, h, false)
+	if err != nil || !strings.HasPrefix(string(got3), pad(nStart-8)+"1\n2\n3\na\n") {
+		t.Fatalf("nearest copy: %v %q", err, got3)
 	}
 }

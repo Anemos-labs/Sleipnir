@@ -544,8 +544,11 @@ func (s *service) revert(sess *session.Session, rel, key string, from, to point)
 	if !exists {
 		return nil, werr(http.StatusUnprocessableEntity, "conflict", "the file does not exist now")
 	}
-	next, ok := reverseHunk(fd.old, fd.new, live, *hunk)
-	if !ok {
+	next, err := reverseHunk(fd.old, live, *hunk, secretCarrier(rel))
+	switch {
+	case errors.Is(err, errSecretLine):
+		return nil, werr(http.StatusUnprocessableEntity, "rejected", "this hunk changes a line that holds a secret the page does not show: edit the file in your editor")
+	case err != nil:
 		return nil, werr(http.StatusUnprocessableEntity, "conflict", "the hunk does not apply to the file as it is now")
 	}
 	undo, err := sess.Ckpt.WriteFile(checkpoint.PersonAgent, rel, next, core.HashBytes(live))
@@ -569,12 +572,32 @@ func (s *service) revert(sess *session.Session, rel, key string, from, to point)
 	return rec, nil
 }
 
-// reverseHunk puts the old lines of a hunk back in live where its new lines are: at the
-// hunk's position when they are there (always, when live is the diff's new side), else
-// where its new lines (context included) occur in live nearest to that position. false
-// when they do not occur, or occur at two places equally near.
-func reverseHunk(old, new, live []byte, h checkpoint.Hunk) ([]byte, bool) {
-	oldLines, newLines, liveLines := keepLines(old), keepLines(new), keepLines(live)
+var (
+	// errNoPlace is a hunk whose lines are not in the live file (or are there twice,
+	// equally near where the hunk was).
+	errNoPlace = errors.New("the hunk does not apply to the file as it is now")
+	// errSecretLine is a hunk that would write or remove a line whose value the page
+	// does not show.
+	errSecretLine = errors.New("the hunk changes a line that holds a secret the page does not show")
+)
+
+// reverseHunk reverts one hunk (h, as the page shows it) of a diff from old in live. It applies only the hunk's own changes: its added lines are removed from live
+// and its removed lines (from old) put back, while its context lines keep the live
+// text. The hunk is found where its new lines are in live: at its position when they
+// are there (always, when live is the diff's new side), else where they occur nearest
+// to it. For a secret carrier (mask) the page's lines are the masked ones: the hunk is
+// found by them, and a hunk that adds or removes a line whose value is hidden is
+// refused (errSecretLine), so a value the person did not see is never written back nor
+// dropped.
+func reverseHunk(old, live []byte, h checkpoint.Hunk, mask bool) ([]byte, error) {
+	oldRaw, liveRaw := keepLines(old), keepLines(live)
+	oldShown, liveShown := oldRaw, liveRaw
+	if mask {
+		oldShown, liveShown = keepLines([]byte(maskSecrets(string(old)))), keepLines([]byte(maskSecrets(string(live))))
+		if len(oldShown) != len(oldRaw) || len(liveShown) != len(liveRaw) {
+			return nil, errNoPlace
+		}
+	}
 	oStart, nStart := h.OldStart-1, h.NewStart-1
 	if h.OldLines == 0 {
 		oStart = h.OldStart
@@ -582,23 +605,29 @@ func reverseHunk(old, new, live []byte, h checkpoint.Hunk) ([]byte, bool) {
 	if h.NewLines == 0 {
 		nStart = h.NewStart
 	}
-	if oStart < 0 || nStart < 0 || oStart+h.OldLines > len(oldLines) || nStart+h.NewLines > len(newLines) {
-		return nil, false
+	if oStart < 0 || nStart < 0 {
+		return nil, errNoPlace
 	}
-	want := newLines[nStart : nStart+h.NewLines]
-	repl := oldLines[oStart : oStart+h.OldLines]
+	var want []string // the hunk's new side, as the page shows it
+	for _, l := range h.Lines {
+		if l.Op != '-' {
+			want = append(want, l.Text)
+		}
+	}
 	at := -1
-	if matchAt(liveLines, want, nStart) {
+	switch {
+	case shownAt(liveShown, want, nStart):
 		at = nStart
-	}
-	if at < 0 && len(want) > 0 {
+	case len(want) == 0:
+		return nil, errNoPlace
+	default:
 		best := -1
-		for i := 0; i+len(want) <= len(liveLines); i++ {
-			if !matchAt(liveLines, want, i) {
+		for i := 0; i+len(want) <= len(liveShown); i++ {
+			if !shownAt(liveShown, want, i) {
 				continue
 			}
 			if best >= 0 && abs(i-nStart) == abs(best-nStart) {
-				return nil, false // two places are as likely: refuse rather than guess
+				return nil, errNoPlace // two places are as likely: refuse rather than guess
 			}
 			if best < 0 || abs(i-nStart) < abs(best-nStart) {
 				best = i
@@ -607,28 +636,51 @@ func reverseHunk(old, new, live []byte, h checkpoint.Hunk) ([]byte, bool) {
 		at = best
 	}
 	if at < 0 {
-		return nil, false
+		return nil, errNoPlace
 	}
 	var out bytes.Buffer
-	for _, l := range liveLines[:at] {
+	for _, l := range liveRaw[:at] {
 		out.WriteString(l)
 	}
-	for _, l := range repl {
+	li, oi := at, oStart
+	for _, l := range h.Lines {
+		switch l.Op {
+		case ' ':
+			out.WriteString(liveRaw[li]) // context: the live text, never the old one
+			li++
+			oi++
+		case '+':
+			if liveRaw[li] != liveShown[li] {
+				return nil, errSecretLine
+			}
+			li++
+		case '-':
+			if oi >= len(oldRaw) || shownLine(oldShown[oi]) != l.Text {
+				return nil, errNoPlace
+			}
+			if oldRaw[oi] != oldShown[oi] {
+				return nil, errSecretLine
+			}
+			out.WriteString(oldRaw[oi])
+			oi++
+		}
+	}
+	for _, l := range liveRaw[li:] {
 		out.WriteString(l)
 	}
-	for _, l := range liveLines[at+len(want):] {
-		out.WriteString(l)
-	}
-	return out.Bytes(), true
+	return out.Bytes(), nil
 }
 
-// matchAt reports whether lines holds want at position i.
-func matchAt(lines, want []string, i int) bool {
+// shownLine is a line as a hunk carries it: without its terminator.
+func shownLine(l string) string { return strings.TrimSuffix(strings.TrimSuffix(l, "\n"), "\r") }
+
+// shownAt reports whether lines, as hunks show them, hold want at position i.
+func shownAt(lines, want []string, i int) bool {
 	if i < 0 || i+len(want) > len(lines) {
 		return false
 	}
 	for k, w := range want {
-		if lines[i+k] != w {
+		if shownLine(lines[i+k]) != w {
 			return false
 		}
 	}
