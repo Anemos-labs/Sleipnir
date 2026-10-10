@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/base64"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -335,6 +336,26 @@ func TestFailedTokensAreThrottled(t *testing.T) {
 	}
 	if rec := rg.do(req{target: "/?token=" + rg.srv.Token()}); rec.Code != 429 {
 		t.Errorf("exchange after %d wrong tokens = %d", defaultAuthFailures, rec.Code)
+	}
+}
+
+// A page of another site can navigate the browser to the address with a wrong token (a navigation to a page is allowed from anywhere).
+// Those attempts are throttled on their own, so they cannot use up the person's attempts and lock the sign-in.
+func TestAnotherSiteCannotLockTheSignIn(t *testing.T) {
+	rg := newRig(t, nil)
+	cross := map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
+	var last *httptest.ResponseRecorder
+	for i := 0; i < 5*defaultAuthFailures; i++ {
+		last = rg.do(req{target: "/?token=wrong", header: cross})
+	}
+	if last.Code != 429 {
+		t.Errorf("the hostile page itself is throttled: %d", last.Code)
+	}
+	// The person opening the address from the address bar (Sec-Fetch-Site none) or a browser that sends no metadata still signs in.
+	for _, h := range []map[string]string{{"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate"}, nil} {
+		if rec := rg.do(req{target: "/?token=" + rg.srv.Token(), header: h}); rec.Code != 302 && rec.Code != 303 && rec.Code != 200 {
+			t.Errorf("sign-in with %v after the hostile attempts = %d", h, rec.Code)
+		}
 	}
 }
 

@@ -166,6 +166,9 @@ type authority struct {
 	confirms   map[[sha256.Size]byte]*confirm
 	launch     map[[sha256.Size]byte]time.Time
 	fails      failureWindow
+	// crossFails counts the failed page-URL attempts that arrived from another site: a page open in the same browser can navigate
+	// to the address with a wrong token, and must not be able to lock out the person's own attempts.
+	crossFails failureWindow
 }
 
 // randomString returns n random bytes as unpadded URL-safe base64.
@@ -186,6 +189,8 @@ func newAuthority(now func() time.Time, ttl, confirmTTL time.Duration) (*authori
 		confirms: map[[sha256.Size]byte]*confirm{},
 		launch:   map[[sha256.Size]byte]time.Time{},
 		fails:    failureWindow{max: defaultAuthFailures, window: defaultAuthWindow},
+
+		crossFails: failureWindow{max: defaultAuthFailures, window: defaultAuthWindow},
 	}
 	if err := a.newTokenLocked(); err != nil {
 		return nil, err
@@ -261,15 +266,20 @@ func (a *authority) bearer(given string) (*principal, error) {
 }
 
 // exchange checks the token or launch code of a page URL and, if it is right, starts a session and returns the cookie value
-// that names it. A launch code is spent by being presented, whether or not it was still good.
-func (a *authority) exchange(given string) (string, *principal, error) {
+// that names it. A launch code is spent by being presented, whether or not it was still good. An attempt that arrived from another
+// site (crossSite) is throttled on its own count, so that a hostile page cannot use up the attempts of the person's own.
+func (a *authority) exchange(given string, crossSite bool) (string, *principal, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if err := a.checkAttemptLocked(); err != nil {
-		return "", nil, err
+	fails := &a.fails
+	if crossSite {
+		fails = &a.crossFails
+	}
+	if blocked, wait := fails.blocked(a.now()); blocked {
+		return "", nil, &throttleError{retryAfter: wait}
 	}
 	if !a.tokenOKLocked(given) && !a.spendLaunchLocked(given) {
-		a.fails.record(a.now())
+		fails.record(a.now())
 		return "", nil, errBadCredential
 	}
 	return a.newSessionLocked()
@@ -421,6 +431,7 @@ func (a *authority) rotate() (string, *principal, error) {
 	a.confirms = map[[sha256.Size]byte]*confirm{}
 	a.launch = map[[sha256.Size]byte]time.Time{}
 	a.fails.times = nil
+	a.crossFails.times = nil
 	if err := a.newTokenLocked(); err != nil {
 		return "", nil, err
 	}
@@ -508,7 +519,8 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, info *reqI
 	}
 	if safe && r.URL.Path == "/" {
 		if t := r.URL.Query().Get("token"); t != "" {
-			cookie, _, err := s.auth.exchange(t)
+			site := r.Header.Get("Sec-Fetch-Site")
+			cookie, _, err := s.auth.exchange(t, site != "" && site != "none" && site != "same-origin")
 			switch {
 			case err == nil:
 				s.startSession(w, r, cookie)
