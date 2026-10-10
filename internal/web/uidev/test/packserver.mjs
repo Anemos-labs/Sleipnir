@@ -36,6 +36,8 @@ const CP = n => String.fromCodePoint(n);
 const WORD = { A: 'added', M: 'modified', D: 'deleted', '-': 'unchanged' };
 const word = s => WORD[s] || 'unchanged';
 const d16 = s => createHash('sha256').update(s).digest('hex').slice(0, 16);
+/** The confirmation scope of exactly this: the page confirms what the server issued (as the real server does) and sends it back. */
+const scopeOf = (kind, ...parts) => kind + ':' + d16(parts.join('\u0001'));
 
 /** The server's index of the pack's session `kind` for the checkpoints the page's model holds (oldest first: {id, step, ts, note, files, skipped, safety}). */
 export function packIndex(oracle, kind, list, st) {
@@ -50,7 +52,7 @@ export function packIndex(oracle, kind, list, st) {
     const r = byPath.get(f.path);
     return { path: f.path, dir: r.dir, name: r.name, kind: f.kind || 'text', status: word(r.status), owner: r.owner || undefined, task: r.task || undefined, cp: r.cp || undefined, lease: f.lease || undefined, protected: f.protected || undefined, ask: f.ask || undefined, add: r.add, del: r.del, size: f.sizeFinal || 0, exists: r.status !== 'D' };
   });
-  const body = { root: '/home/me/projects/' + kind, isolation: kind === 'shop' ? 'worktree' : 'none', base: I.base.id === 'start' ? { id: 'base', label: I.base.label, time: I.base.time } : { id: I.base.id, label: I.base.label, time: I.base.time }, cps, tree, reviewed: Object.assign({}, st.reviewed), reverted: st.reverted.slice(), restore: st.restore || undefined };
+  const body = { root: '/home/me/projects/' + kind, isolation: kind === 'shop' ? 'worktree' : 'none', base: I.base.id === 'start' ? { id: 'base', label: I.base.label, time: I.base.time } : { id: I.base.id, label: I.base.label, time: I.base.time }, cps, tree, reviewed: st.reviewed, reverted: st.reverted.slice(), restore: st.restore || undefined };
   body.version = d16(JSON.stringify(body));
   return body;
 }
@@ -83,7 +85,8 @@ export function bigProject({ files = 10000, lines = 50000, hostile = false, chan
   tree.push({ path: 'big/huge.go', dir: 'big', name: 'huge.go', kind: 'go', status: 'modified', owner: 'be-1', task: 'T2', cp: 'c02', add: bigHunks(lines) * 4, del: bigHunks(lines) * 4, size: bigHunks(lines) * 20 * 20, exists: true });
   if (hostile) {
     const bad = ['<script>alert(1)<b>.go', 'dir<svg onload=alert(1)>/x.go', '<img src=x onerror=alert(1)>.txt', 'rtl' + CP(0x202e) + 'gnp.exe', 'zero' + CP(0x200b) + 'width.go', 'a'.repeat(300) + '.go', 'bin/blob.bin', 'link/to-outside', '"quote\'s&amp;.go', 'new\\nline.go'];
-    bad.forEach(p => { const cut = p.lastIndexOf('/'); tree.push({ path: p, dir: cut < 0 ? '' : p.slice(0, cut), name: p.slice(cut + 1), kind: p === 'link/to-outside' ? 'symlink' : p.endsWith('.bin') ? 'other' : 'go', status: 'modified', owner: 'be-1', task: 'T2', cp: 'c02', add: 1, del: 1, size: 10, exists: true }); });
+    ['constructor/a.go', '__proto__/b.go', 'toString/c.go', 'hasOwnProperty', 'valueOf', '__defineGetter__', 'isPrototypeOf'].forEach(p => bad.push(p));   // names of Object.prototype members: directories, files, tasks, agents
+    bad.forEach(p => { const cut = p.lastIndexOf('/'); tree.push({ path: p, dir: cut < 0 ? '' : p.slice(0, cut), name: p.slice(cut + 1), kind: p === 'link/to-outside' ? 'symlink' : p.endsWith('.bin') ? 'other' : 'go', status: 'modified', owner: /proto|constructor/.test(p) ? '__proto__' : 'be-1', task: /proto|constructor|toString/.test(p) ? 'constructor' : 'T2', cp: 'c02', add: 1, del: 1, size: 10, exists: true }); });
   }
   const cps = [
     { id: 'c01', time: '22:15:42', at: 1, label: 'turn 1', skipped: false, files: ['big/huge.go'], agents: ['be-1'], tasks: ['T2'], added: bigHunks(lines) * 20, removed: 0, nfiles: 1, changes: [{ path: 'big/huge.go', status: 'added', added: bigHunks(lines) * 20, removed: 0, agents: ['be-1'], task: 'T2' }] },
@@ -94,7 +97,7 @@ export function bigProject({ files = 10000, lines = 50000, hostile = false, chan
   for (let i = 0; i < extraCps; i++) cps.push({ id: 'c' + String(3 + i).padStart(2, '0'), time: '22:17:' + String(i % 60).padStart(2, '0'), at: 3 + i, label: 'turn ' + (3 + i), skipped: false, files: ['pkg0000/sub0/file00000.go'], agents: ['be-1'], tasks: ['T1'], added: 1, removed: 0, nfiles: 1, changes: [{ path: 'pkg0000/sub0/file00000.go', status: 'modified', added: 1, removed: 0, agents: ['be-1'], task: 'T1' }] });
   return { tree, cps, lines };
 }
-const hostileLine = i => ['    return "<script>alert(' + i + ')</script>"', '\tx := "rtl' + CP(0x202e) + 'txt.exe" // ' + CP(0x2066) + 'isolate' + CP(0x2069) + '', 'zero' + CP(0x200b) + 'width' + CP(0x200d) + 'here' + CP(0x2060) + '', '    // ' + 'long '.repeat(900), '\u0007bell and \u0001 control and \u001b[31m escape'][i % 5];
+const hostileLine = i => ['    return "<script>alert(' + i + ')</script>"', '\tx := "rtl' + CP(0x202e) + 'txt.exe" // ' + CP(0x2066) + 'isolate' + CP(0x2069) + '', 'zero' + CP(0x200b) + 'width' + CP(0x200d) + 'here' + CP(0x2060) + '', '    // START ' + 'long '.repeat(900) + 'THE-END', '\u0007bell and \u0001 control and \u001b[31m escape'][i % 5];
 export function bigContent(p, at, { lines = 50000, hostile = false } = {}) {
   if (p === 'big/huge.go') {
     const n = bigHunks(lines) * 20, ls = []; for (let i = 0; i < n; i++) ls.push(hostile && i % 70 === 3 ? hostileLine(i) : i % 20 >= 3 && i % 20 < 7 ? 'func f' + i + '() int { return ' + i + ' } // changed' : 'x' + i + ' := ' + i + ' // line ' + i);
@@ -106,16 +109,17 @@ export function bigContent(p, at, { lines = 50000, hostile = false } = {}) {
   const text = hostile ? [hostileLine(0), hostileLine(1), hostileLine(2), hostileLine(4)].join('\n') + '\n' : 'package x\n\nfunc F() int { return 1 }\n';
   return { path: p, at, exists: true, text, size: text.length, blame: [{ line: 1, count: 4, ag: 'be-1', id: 'c02', task: 'T2' }], exact: true };
 }
-export function bigDiff(p, from, to, { lines = 50000, hostile = false } = {}) {
+export function bigDiff(p, from, to, { lines = 50000, hostile = false, wide = 0 } = {}) {
   if (p === 'big/huge.go') {
     const hunks = [], nh = bigHunks(lines); let add = 0, del = 0;
     for (let k = 0; k < nh; k++) {
       const o = k * 20 + 1, ls = [];
       for (let j = 0; j < 3; j++) ls.push({ t: ' ', s: 'x' + (o + j) + ' := ' + (o + j) + ' // line ' + (o + j) });
-      for (let j = 0; j < 4; j++) ls.push({ t: '-', s: hostile && (k * 4 + j) % 70 === 3 ? hostileLine(k + j) : 'x' + (o + 3 + j) + ' := ' + (o + 3 + j) + ' // old' });
-      for (let j = 0; j < 4; j++) ls.push({ t: '+', s: hostile && (k * 4 + j) % 70 === 3 ? hostileLine(k + j + 1) : 'func f' + (o + 3 + j) + '() int { return ' + (o + 3 + j) + ' } // changed' });
+      const nd = k === 0 && wide ? wide : 4;
+      for (let j = 0; j < nd; j++) ls.push({ t: '-', s: hostile && (k * 4 + j) % 70 === 3 ? hostileLine(k + j) : 'x' + (o + 3 + j) + ' := ' + (o + 3 + j) + ' // old' });
+      for (let j = 0; j < nd; j++) ls.push({ t: '+', s: hostile && (k * 4 + j) % 70 === 3 ? hostileLine(k + j + 1) : 'func f' + (o + 3 + j) + '() int { return ' + (o + 3 + j) + ' } // changed' });
       for (let j = 0; j < 2; j++) ls.push({ t: ' ', s: 'x' + (o + 7 + j) + ' := ' + (o + 7 + j) + ' // line ' + (o + 7 + j) });
-      hunks.push({ oldStart: o, oldLines: 9, newStart: o, newLines: 9, section: 'func f' + k, lines: ls }); add += 4; del += 4;
+      hunks.push({ oldStart: o, oldLines: 5 + nd, newStart: o, newLines: 5 + nd, section: 'func f' + k, lines: ls }); add += nd; del += nd;
     }
     return { path: p, from, to, added: add, removed: del, hunks };
   }
@@ -150,13 +154,13 @@ const SHIM = `(function () {
 export async function startPackServer(opts) {
   const root = path.resolve(opts.root), mode = opts.mode || 'pack', oracle = mode === 'pack' ? loadOracle(opts.mockDir) : null;
   const big = bigProject(Object.assign({ hostile: mode === 'hostile' }, opts.big || {}));
-  const fresh = () => ({ reviewed: {}, reverted: [], restore: null, nrev: 0 });
-  const state = { reqs: [], confirms: 0, accepted: [], dirty: !!opts.dirty, insts: new Map() };
-  const stOf = inst => { let s = state.insts.get(inst || ''); if (!s) { s = fresh(); state.insts.set(inst || '', s); } return s; };
+  const fresh = () => ({ reviewed: Object.create(null), reverted: [], restore: null, nrev: 0 });
+  const state = { reqs: [], posts: [], confirms: 0, accepted: [], dirty: !!opts.dirty, insts: new Map() };
+  const stOf = inst => { let s = state.insts.get(inst || ''); if (!s) { s = fresh(); if (mode === 'hostile') { s.reviewed.hasOwnProperty = 'c02'; s.reviewed.__proto__ = 'c02'; s.reverted.push({ id: 'v_hostile00000001', path: 'valueOf', key: '1:1', t: 1 }); } state.insts.set(inst || '', s); } return s; };
   const kindOf = id => (id === 'shop' ? 'shop' : id === 'orders-api' ? 'orders' : null);
   const send = (res, code, body, type, extra) => { res.writeHead(code, Object.assign({ 'Content-Type': type || 'application/json; charset=utf-8', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' }, extra || {})); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
   const err = (res, code, status, msg, detail) => send(res, status, { error: msg, code, detail });
-  const readBody = req => new Promise(r => { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { try { r(b ? JSON.parse(b) : {}); } catch { r({}); } }); });
+  const readBody = req => new Promise(r => { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { let v = {}; try { v = b ? JSON.parse(b) : {}; } catch { v = {}; } state.posts.push({ method: req.method, url: req.url.split('?')[0], body: v, confirm: String(req.headers['x-confirm'] || '') }); r(v); }); });
   const queue = { branch: 'sleipnir/20261009-221530-a91c3e/integration', tip: 'ab12cd34ef56ab78', healthy: true, active: 'T4', phase: 'verifying', waiting: ['T5'], landed: [{ agent: 'be-1', task: 'T2', commit: '1a2b3c4d5e6f7a8b', files: ['api/catalog/load.go', 'seed/items.json'] }, { agent: 'fe-1', task: 'T3', commit: '9f8e7d6c5b4a3921', files: ['web/shop.js'] }], verify: 'go test {dirs}' };
   const worktrees = ['be-1', 'be-2', 'fe-1', 'ts-1'].map((a, i) => ({ agent: a, path: '/home/me/.sleipnir/work/' + a, branch: 'sleipnir/20261009-221530-a91c3e/' + a, base: 'ab12cd3', head: i === 0 ? '1a2b3c4' : 'ab12cd3', dirty: i === 1, files: i === 1 ? ['api/cart/cart.go'] : [] }));
   const verify = { T2: { task: 'T2', cmd: 'go test ./api/catalog/...', exitCode: 0, output: 'ok  \tshop/api/catalog\t0.412s\n' }, T4: { task: 'T4', cmd: 'go test ./api/catalog/...', runs: [{ attempt: 1, exit: 1, ms: 5100, at: '03:04:41', out: '--- FAIL: TestPage (0.00s)\n    items_test.go:31: got 13 items, want 12\nFAIL\nFAIL\tshop/api/catalog\t0.4s\n' }, { attempt: 2, exit: 0, ms: 6300, at: '03:04:50', out: 'ok  \tshop/api/catalog\t0.4s\n' }] } };
@@ -191,34 +195,61 @@ export async function startPackServer(opts) {
       }
       if (route === 'diff' && need('GET')) {
         const f = u.searchParams.get('path') || '', from = u.searchParams.get('from') || 'base', to = u.searchParams.get('to') || 'live'; if (delay) await delay;
-        const d = mode === 'pack' ? packDiff(oracle, kind, list, f, from, to) : bigDiff(f, from, to, { lines: big.lines, hostile: mode === 'hostile' });
+        const d = mode === 'pack' ? packDiff(oracle, kind, list, f, from, to) : bigDiff(f, from, to, { lines: big.lines, hostile: mode === 'hostile', wide: opts.wideHunk });
+        if (d && to === 'live') d.hunks.forEach(h => { h.scope = 'revert:' + id + ':' + scopeOf('h', f, h.oldStart + ':' + h.newStart, from, to, st.rvdrift || 0); });
         if (d && to === 'live') { const gone = st.reverted.filter(r => r.path === f).map(r => r.key); if (gone.length) d.hunks = d.hunks.filter(h => gone.indexOf(h.oldStart + ':' + h.newStart) < 0); }   // a reverted hunk is no longer in the file
         return d ? send(res, 200, d) : err(res, 'no_file', 404, 'this file does not exist at that point');
       }
       if (route === 'reviewed' && need('PUT')) { const b = await readBody(req); if (!b.path) return err(res, 'bad_path', 400, 'a project-relative path is needed'); if (b.on) st.reviewed[b.path] = b.cp; else delete st.reviewed[b.path]; return send(res, 200, { ok: true }); }
       if (route === 'revert' && req.method === 'POST' && !m[4]) {
-        const b = await readBody(req); if (!req.headers['x-confirm']) return err(res, 'confirm_required', 428, 'confirm first'); if (opts.revertFails) return err(res, 'changed', 409, 'the file changed since the diff was drawn: look again');
+        const b = await readBody(req); if (!req.headers['x-confirm']) return err(res, 'confirm_required', 428, 'confirm first');
+        const scopeNow = () => 'revert:' + id + ':' + scopeOf('h', b.path, b.key, b.from, b.to, st.rvdrift || 0);
+        if (opts.revertFails) return err(res, 'changed', 409, 'the file changed since the diff was drawn: look again');
+        if (opts.revertDrift && !st.rvdrifted) { st.rvdrifted = true; st.rvdrift = 1; }   // the file changes under the person once: the hunk's scope is another
+        if (b.scope !== undefined && (b.scope !== scopeNow() || !String(req.headers['x-confirm']).endsWith('_' + b.scope))) {
+          const d = mode === 'pack' ? packDiff(oracle, kind, list, b.path, b.from, b.to) : bigDiff(b.path, b.from, b.to, { lines: big.lines, hostile: mode === 'hostile', wide: opts.wideHunk });
+          d.hunks.forEach(h => { h.scope = 'revert:' + id + ':' + scopeOf('h', b.path, h.oldStart + ':' + h.newStart, b.from, b.to, st.rvdrift || 0); });
+          return err(res, 'changed', 409, 'the file changed since the diff was drawn: look at the new diff and confirm again', d);
+        }
         const r = { id: 'v_' + String(++st.nrev).padStart(16, 'a'), path: b.path, key: b.key, t: 1 }; st.reverted.push(r); return send(res, 200, r);
       }
       if (route === 'revert' && m[4] === 'undo' && req.method === 'POST') { st.reverted = st.reverted.filter(r => r.id !== m[3]); return send(res, 200, { ok: true }); }
       if (route === 'restore' && req.method === 'POST' && !m[3]) {
         const b = await readBody(req); const cp = (mode === 'pack' ? list : big.cps).find(c => c.id === b.id);
         if (!cp || cp.skipped) return err(res, 'nothing', 409, b.id + ' has nothing to put back');
-        const files = mode === 'pack' ? (() => { const { ws } = oracle, S = { id: kind, kind, runs: 0, m: { ckpts: list.slice().reverse(), tasks: {} } }, I = ws.info(S), idx = I.pos.findIndex(c => c.id === b.id), fs2 = ws.filesFrom(I, idx), before = ws.setAt(I, idx), now = ws.setAt(I, I.pos.length); return fs2.map(f => { const h = ws.hunks(I, f, before, now), sb = ws.textAt(I, f, before); return { path: f, action: sb == null ? 'delete' : 'restore', outcome: b.dryRun ? 'planned' : 'done', added: h.removed, removed: h.added, to: sb == null ? 'removed' : 'back to ' + (idx ? I.pos[idx - 1].id : 'c04') }; }); })() : cp.files.slice(0, 20).map(f => ({ path: f, action: 'restore', outcome: b.dryRun ? 'planned' : 'done', added: 1, removed: 1, to: 'back to base' }));
-        if (opts.restoreConflict) files.push({ path: 'edited.go', action: 'restore', outcome: 'conflict', added: 0, removed: 0, reason: 'edited since the checkpoint' });
-        if (!b.dryRun) { if (!req.headers['x-confirm']) return err(res, 'confirm_required', 428, 'confirm first'); if (opts.restoreConflict) return err(res, 'conflict', 409, 'files were edited since: nothing was written'); st.restore = { to: b.id, files: files.map(f => f.path), at: 1, safety: b.id + 's' }; }
-        return send(res, 200, { id: b.id, label: cp.label || cp.note, time: cp.time || cp.ts || '', files, applied: !b.dryRun, safety: b.dryRun ? undefined : b.id + 's', summary: 'checkpoint ' + b.id + ': would restore ' + files.length });
+        const planFiles = () => {
+          const files = mode === 'pack' ? (() => { const { ws } = oracle, S = { id: kind, kind, runs: 0, m: { ckpts: list.slice().reverse(), tasks: {} } }, I = ws.info(S), idx = I.pos.findIndex(c => c.id === b.id), fs2 = ws.filesFrom(I, idx), before = ws.setAt(I, idx), now = ws.setAt(I, I.pos.length); return fs2.map(f => { const h = ws.hunks(I, f, before, now), sb = ws.textAt(I, f, before); return { path: f, action: sb == null ? 'delete' : 'restore', outcome: b.dryRun ? 'planned' : 'done', added: h.removed, removed: h.added, to: sb == null ? 'removed' : 'back to ' + (idx ? I.pos[idx - 1].id : 'c04') }; }); })() : cp.files.map(f => ({ path: f, action: 'restore', outcome: b.dryRun ? 'planned' : 'done', added: 1, removed: 1, to: 'back to base' }));
+          if (st.rdrift) files.push({ path: 'drifted.go', action: 'restore', outcome: b.dryRun ? 'planned' : 'done', added: 2, removed: 1, to: 'back to base' });
+          if (opts.restoreConflict) files.push({ path: 'edited.go', action: 'restore', outcome: 'conflict', added: 0, removed: 0, reason: 'edited since the checkpoint' });
+          if (opts.restoreFolders) { files.push({ path: 'newdir', action: 'rmdir', outcome: b.dryRun ? 'planned' : 'done', added: 0, removed: 0 }); files.push({ path: 'same.go', action: 'none', outcome: 'unchanged', added: 0, removed: 0 }); }
+          return files;
+        };
+        const scopeNow = () => 'restore:' + id + ':' + b.id + ':' + scopeOf('p', b.id, JSON.stringify(planFiles().map(f => f.path + f.action)));
+        if (!b.dryRun) {
+          if (!req.headers['x-confirm']) return err(res, 'confirm_required', 428, 'confirm first');
+          if (opts.restoreDrift && !st.rdrifted) { st.rdrifted = true; st.rdrift = 1; }
+          if (opts.restoreConflict) return err(res, 'conflict', 409, 'files were edited since: nothing was written');
+          if (b.scope !== undefined && (b.scope !== scopeNow() || !String(req.headers['x-confirm']).endsWith('_' + b.scope))) { b.dryRun = true; const files = planFiles(); b.dryRun = false; return err(res, 'changed', 409, 'the files changed since the preview: look at the new plan and confirm it again', { id: b.id, label: cp.label || cp.note, time: cp.time || cp.ts || '', files, applied: false, summary: 'would restore ' + files.length, scope: scopeNow() }); }
+        }
+        const files = planFiles();
+        if (!b.dryRun) st.restore = { to: b.id, files: files.map(f => f.path), at: 1, safety: b.id + 's' };
+        return send(res, 200, { id: b.id, label: cp.label || cp.note, time: cp.time || cp.ts || '', files, applied: !b.dryRun, safety: b.dryRun ? undefined : b.id + 's', summary: 'checkpoint ' + b.id + ': would restore ' + files.length, scope: scopeNow() });
       }
       if (route === 'restore' && m[3] === 'undo' && req.method === 'POST') { if (!st.restore) return err(res, 'nothing', 409, 'nothing to undo'); const files = st.restore.files.map(f => ({ path: f, action: 'restore', outcome: 'done', added: 0, removed: 0 })); st.restore = null; return send(res, 200, { id: 'c00', label: '', time: '', files, applied: true, summary: 'undone' }); }
       if (route === 'worktrees' && need('GET')) return mode === 'pack' && kind !== 'shop' ? err(res, 'not_isolated', 409, 'this team does not use worktrees') : send(res, 200, { worktrees });
       if (route === 'queue' && need('GET')) return mode === 'pack' && kind !== 'shop' ? err(res, 'not_isolated', 409, 'this team does not use worktrees') : send(res, 200, queue);
       if (route === 'verify' && need('GET')) { const tk = decodeURIComponent(m[3] || ''), v = verify[tk] || (tk === 'T8' ? null : { task: tk, cmd: 'go test ./...', exitCode: 0, output: 'ok  \tshop\t0.2s\n' }); return v ? send(res, 200, v) : err(res, 'not_found', 404, 'no verification has run for this task'); }
       if (route === 'accept' && req.method === 'POST') {
-        const b = await readBody(req);
-        if (b.dryRun) return send(res, 200, { dryRun: true, waiting: true, canCommit: !state.dirty, commitBlocked: state.dirty ? 'dirty' : '', files: ['api/catalog/load.go', 'seed/items.json', 'web/shop.js'], tasks: ['T2', 'T3'], branch: 'main', message: 'verified work of 2 tasks is waiting' });
+        const b = await readBody(req), md = b.mode || 'commits';
+        const filesNow = () => ['api/catalog/load.go', 'seed/items.json', 'web/shop.js'].concat(st.adrift ? ['web/extra.js'] : []);
+        const scopeNow = () => 'accept:' + id + ':' + scopeOf('a', md, JSON.stringify(filesNow()));
+        const view = dry => ({ dryRun: dry || undefined, waiting: true, canCommit: !state.dirty, commitBlocked: state.dirty ? 'dirty' : '', files: filesNow(), tasks: ['T2', 'T3'], branch: 'main', message: 'verified work of 2 tasks is waiting', scope: scopeNow() });
+        if (b.dryRun) return send(res, 200, view(true));
         if (!req.headers['x-confirm']) return err(res, 'confirm_required', 428, 'confirm first');
+        if (opts.acceptDrift && !st.adrifted) { st.adrifted = true; st.adrift = 1; }
+        if (b.scope !== undefined && (b.scope !== scopeNow() || !String(req.headers['x-confirm']).endsWith('_' + b.scope))) return err(res, 'changed', 409, 'the verified work changed since it was shown: look at it again and confirm', view(true));
         if (state.dirty) return send(res, 409, { error: 'your checkout has uncommitted changes in the files to be applied', code: 'dirty', detail: { hint: 'git stash && sleipnir web accept' } });
-        state.accepted.push(b); return send(res, 200, { commit: 'deadbeefcafe0123', files: ['api/catalog/load.go', 'seed/items.json', 'web/shop.js'], branch: 'main' });
+        state.accepted.push({ mode: b.mode, message: b.message, scope: b.scope }); return send(res, 200, { commit: 'deadbeefcafe0123', files: filesNow(), branch: 'main', applied: true, committed: md !== 'edits' });
       }
       return err(res, 'not_found', 404, 'no such route');
     }

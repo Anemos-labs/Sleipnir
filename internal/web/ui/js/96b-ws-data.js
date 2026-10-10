@@ -9,8 +9,9 @@
  *   fileAt / diffAt              a file's text and per-line authorship, and a diff, fetched once and cached (an empty shape until they arrive)
  *   marks(S)                     the person's marks, as the server keeps them (S.ws mirrors the index; SL.act edits it ahead of the server): reviewed
  *                                files, reverted hunks, the latest restore
- *   ops                          what the Workspace asks of the server itself: the dry run of a restore, and accept (apply verified work)
- *   rangeOf / revertId / hasRestore / refresh   the hooks SL.act (60-actions.js) calls for the reviewed, revert and restore actions
+ *   ops                          what the Workspace asks of the server itself: restore and hunk revert (each confirmed with the scope the server issued for exactly
+ *                                what the person saw), and accept (apply verified work)
+ *   rangeOf / revertId / hasRestore / refresh   the hooks SL.act (60-actions.js) calls for the reviewed marks and the undo of a revert or a restore
  *   merge                        the worktrees, the merge queue and the verify output (the Merge tab)
  *
  * A "step" is the id of a change set (a checkpoint with files); the id a person sees is the server's. Values not fetched yet return the
@@ -39,6 +40,12 @@
   const num = x => (typeof x === 'number' && isFinite(x) ? x : 0);
   const arr = x => (Array.isArray(x) ? x : []);
   const str = x => (typeof x === 'string' ? x : x == null ? '' : String(x));
+  /** A map keyed by strings from the server (paths, ids): no prototype, so a directory called constructor or __proto__ is a key like any other. */
+  const dict = () => Object.create(null);
+  /** A copy of a plain object's own keys into such a map. */
+  const dictFrom = o => { const d = dict(); if (o && typeof o === 'object') Object.keys(o).forEach(k => { d[k] = o[k]; }); return d; };
+  /** The own value of a key of an object that may have a prototype (the model's tables), else undefined. */
+  const own = (o, k) => (o && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
 
   /* ================================================================ text: printable, bounded, windowed ================================== */
 
@@ -59,17 +66,29 @@
   /** Lines of a text: a trailing newline ends the last line instead of starting another; a CR before a newline is not part of the line. */
   const lines = t => (t == null || t === '' ? [] : str(t).replace(/\n$/, '').split('\n').map(l => (l.charCodeAt(l.length - 1) === 13 ? l.slice(0, -1) : l)));
   const KW = /^(func|return|type|package|import|const|var|for|range|if|else|struct|interface|map|chan|go|defer|switch|case|default|break|continue|nil|true|false|let|function|async|await|new|null)$/;
-  /** A little syntax colour for Go, JS, CSS, HTML and JSON: comments dim, strings green, keywords violet. Input is data: every piece is escaped,
-   *  a line over maxLine characters is cut and says how much was left out, and a line over 400 is not coloured. */
+  /** A line the page draws whole up to `n` characters; a longer one keeps its start and its last `tail` characters and says how many it left out
+   *  between them (never cutting a surrogate pair). */
+  function elide(t, n, tail) {
+    t = str(t); n = n || cfg.maxLine; tail = tail == null ? 200 : tail; if (t.length <= n) return { head: t, tail: '', hidden: 0 };
+    let he = n - tail; const hc = t.charCodeAt(he - 1); if (hc >= 0xd800 && hc <= 0xdbff) he--;
+    let ts = t.length - tail; const tc = t.charCodeAt(ts); if (tc >= 0xdc00 && tc <= 0xdfff) ts++;
+    return { head: t.slice(0, he), tail: t.slice(ts), hidden: ts - he };
+  }
+  /** What stands where the characters of an overlong line were left out. */
+  const more = n => '\u2026 ' + n.toLocaleString('en-US') + ' more characters \u2026';
+  /** A little syntax colour for Go, JS, CSS, HTML and JSON: comments dim, strings green, keywords violet. Input is data: every piece is escaped, an
+   *  overlong line (over maxLine) keeps its first and last characters and says how many are between them, and a line over 400 is not coloured. */
   function hl(t) {
-    const k = clip(t); t = k.t; let out;
+    const k = elide(t); let out;
+    if (k.hidden) return escv(k.head) + '<em class="c">' + more(k.hidden) + '</em>' + escv(k.tail);
+    t = k.head;
     if (t.length > 400) out = escv(t);
     else {
       const re = /(\/\/.*$)|("(?:[^"\\]|\\.)*"|`[^`]*`|'(?:[^'\\]|\\.)*')|([A-Za-z_][A-Za-z0-9_]*)/g; let i = 0, m; out = '';
       while ((m = re.exec(t))) { out += escv(t.slice(i, m.index)); i = m.index + m[0].length; if (m[1]) out += '<em class="c">' + escv(m[1]) + '</em>'; else if (m[2]) out += '<em class="s">' + escv(m[2]) + '</em>'; else out += KW.test(m[3]) ? '<em class="k">' + m[3] + '</em>' : m[3]; }
       out += escv(t.slice(i));
     }
-    return k.more ? out + '<em class="c">… +' + k.more + ' characters not shown</em>' : out;
+    return out;
   }
   /** Row offsets: o[i] is the top of row i, o[n] the total height; hOf(i) the height of row i. */
   function offsets(n, hOf) { const o = new Float64Array(n + 1); for (let i = 0; i < n; i++) o[i + 1] = o[i] + hOf(i); return o; }
@@ -107,13 +126,13 @@
   }
   /** A reverted hunk's key is "oldStart:newStart"; this gives the numbers back. */
   function keyParts(key) { const m = /^(\d+):(\d+)$/.exec(str(key)); return m ? { oldStart: +m[1], newStart: +m[2] } : { oldStart: 0, newStart: 0 }; }
-  ws.fmt = { ODD, vis, escv, clip, lines, hl, offsets, rowAt, windowOf, flatDiff, keyParts, NOBODY };
+  ws.fmt = { ODD, vis, escv, clip, elide, more, lines, hl, dict, dictFrom, own, offsets, rowAt, windowOf, flatDiff, keyParts, NOBODY };
 
   /* ================================================================ the per-session cache ================================================ */
 
   const STATUS = { added: 'A', add: 'A', a: 'A', new: 'A', created: 'A', modified: 'M', modify: 'M', m: 'M', changed: 'M', renamed: 'M', deleted: 'D', removed: 'D', d: 'D', unchanged: '-', '-': '-', '': '-' };
   /** A status word of the server as the screen's letter: A, M, D or - (nothing against the base). */
-  const stat = s => STATUS[str(s).toLowerCase()] || '-';
+  const stat = s => own(STATUS, str(s).toLowerCase()) || '-';
 
   /** The data of one session: the index, what was asked for, and the person's marks that the server has not confirmed yet. */
   function dataOf(S) {
@@ -180,7 +199,7 @@
     const I = build(S, D, data);
     D.lru.forEach(e => { if (e.live) e.stale = true; });
     D.I = I; const w = wsMarks(S);
-    w.reviewed = Object.assign({}, I.reviewed); w.reverted = {}; I.reverted.forEach(r => { w.reverted[r.path + '#' + r.key] = r.id; }); w.restore = I.restore ? Object.assign({}, I.restore) : null;
+    w.reviewed = dictFrom(I.reviewed); w.reverted = dict(); I.reverted.forEach(r => { w.reverted[r.path + '#' + r.key] = r.id; }); w.restore = I.restore ? Object.assign({}, I.restore) : null;
   }
   /** The session's marks object: {reviewed: {path: cp}, reverted: {"path#key": id}, restore}. */
   const wsMarks = S => S.ws || (S.ws = { reviewed: {}, reverted: {}, restore: null });
@@ -197,15 +216,15 @@
     const cps = arr(data.cps).map(normCp);                         // arrival order: I.cps keeps it (the list on screen shows the newest first)
     const pos = cps.filter(c => !c.skipped && !c.safety);          // the scrubber positions: checkpoints with files that were not taken by a restore
     pos.forEach(c => { c.step = c.id; });
-    const posOf = {}; pos.forEach((c, i) => { posOf[c.id] = i + 1; });
+    const posOf = dict(); pos.forEach((c, i) => { posOf[c.id] = i + 1; });
     const tl = Object.create(null);                                // path -> its touches, in arrival order, with the scrubber position of the checkpoint (0: not one)
     cps.forEach(c => c.changes.forEach(x => { (tl[x.path] || (tl[x.path] = [])).push({ pi: posOf[c.id] || 0, step: c.id, id: c.id, ag: x.agents[0] || '', agents: x.agents, task: x.task, status: x.status, added: x.added, removed: x.removed, binary: x.binary }); }));
     const tree = arr(data.tree).map(f => normFile(f)), byPath = new Map(); tree.forEach(f => byPath.set(f.path, f));
     const base = data.base || {};
     const I = { D, tab: S.id, version: str(data.version), root: str(data.root), isolation: str(data.isolation), key: S.id + '|' + sidOf(S) + '|' + str(data.version),
-      cps, pos, stepOfId: {}, posOf, tl, tree, byPath, raw: { tree }, cache: {},
+      cps, pos, stepOfId: dict(), posOf, tl, tree, byPath, raw: { tree }, cache: {},
       base: { id: str(base.id) || 'start', label: str(base.label) || 'before the session', time: str(base.time) },
-      reviewed: Object.assign({}, data.reviewed || {}), reverted: arr(data.reverted).map(r => ({ id: str(r.id), path: str(r.path), key: str(r.key), t: num(r.t) })),
+      reviewed: dictFrom(data.reviewed), reverted: arr(data.reverted).map(r => ({ id: str(r.id), path: str(r.path), key: str(r.key), t: num(r.t) })),
       restore: data.restore ? { to: str(data.restore.to), files: arr(data.restore.files).map(str), at: num(data.restore.at), safety: str(data.restore.safety) } : null };
     pos.forEach(c => { I.stepOfId[c.id] = c.id; });
     return I;
@@ -269,7 +288,7 @@
     I.tree.forEach(f => {
       const st = statusOf(I, f.path, steps), ex = existsAt(I, f.path, k); if (!ex && st === '-') return;
       const tch = touches(I, f.path, steps), last = tch[tch.length - 1], live = k >= n;
-      const T = f.lease && m && m.tasks ? m.tasks[f.lease.task] : null, leased = !!(f.lease && !(T && T.st === 'merged'));
+      const T = f.lease && m && m.tasks ? own(m.tasks, f.lease.task) : null, leased = !!(f.lease && !(T && T.st === 'merged'));
       let add = 0, del = 0; if (st !== '-') { if (live && (f.add || f.del)) { add = f.add; del = f.del; } else { tch.forEach(t => { add += t.added; del += t.removed; }); } }
       out.push({ path: f.path, dir: f.dir == null ? dirOf(f.path) : f.dir, name: f.name, status: st, owner: last ? last.ag || null : live ? f.owner : null, task: last ? last.task || null : live ? f.task : null, cp: last ? last.id : live ? f.cp : null,
         lease: leased ? f.lease : null, protected: f.protected, ask: f.ask, size: f.size, add, del, kind: f.kind, ignored: f.ignored });
@@ -277,7 +296,7 @@
     return (I.cache[ck] = out);
   }
   /** Files touched in change set `idx` (a position) and later: what /rewind would put back. */
-  function filesFrom(I, idx) { const seen = [], has = {}; I.pos.slice(idx).forEach(c => c.files.forEach(f => { if (!has[f]) { has[f] = 1; seen.push(f); } })); return seen; }
+  function filesFrom(I, idx) { const seen = [], has = new Set(); I.pos.slice(idx).forEach(c => c.files.forEach(f => { if (!has.has(f)) { has.add(f); seen.push(f); } })); return seen; }
   /** The id of the last checkpoint that changed a file (the one a reviewed mark is made at). */
   function lastId(I, path) { const tl = I.tl[path]; return tl && tl.length ? tl[tl.length - 1].id : null; }
 
@@ -346,7 +365,7 @@
   function liveFile(S, I) {
     const m = S.m; if (!m || !I) return null; let out = null;
     m.order.forEach(id => {
-      const A = m.ag[id]; if (!A || id === 'mgr' || A.state !== 'edit' || !A.doing) return;
+      const A = own(m.ag, id); if (!A || id === 'mgr' || A.state !== 'edit' || !A.doing) return;
       String(A.doing).split(/[\s`'"]+/).forEach(w => { if (w && I.byPath.has(w)) out = { path: w, ag: id, task: A.task, since: A.stateT }; });
     });
     return out;
@@ -360,7 +379,7 @@
     Object.keys(m.streams).forEach(id => {
       const st = m.streams[id]; if (!st || !st.code || !st.file || !st.rate) return;
       const full = str(st.text), dur = full.length / st.rate, n = Math.max(0, Math.floor(full.length * Math.min(1, (vt - st.t0) / dur)));
-      if (vt - st.t0 > dur + 1.5) return; const A = m.ag[id];
+      if (vt - st.t0 > dur + 1.5) return; const A = own(m.ag, id);
       out.push({ path: st.file, text: full.slice(0, n), done: n >= full.length, ag: id, task: A ? A.task : null });
     });
     return out;
@@ -373,7 +392,7 @@
   /** The person's marks: {reviewed: {path: cp}, reverted: {"path#key": id}, revs: {path: [{id, key}]}, restore: {to, files, at, safety} | null, stamp}. They are S.ws,
    *  which follows the server's index and which SL.act edits ahead of the server's answer. */
   function marks(S) {
-    const w = wsMarks(S), revs = {}; let nr = 0, nv = 0;
+    const w = wsMarks(S), revs = dict(); let nr = 0, nv = 0;
     for (const k in w.reviewed) nr++;
     for (const k in w.reverted) { nv++; if (typeof w.reverted[k] === 'string') { const i = k.lastIndexOf('#'); (revs[k.slice(0, i)] || (revs[k.slice(0, i)] = [])).push({ id: w.reverted[k], key: k.slice(i + 1) }); } }
     return { reviewed: w.reviewed, reverted: w.reverted, revs, restore: w.restore || null, stamp: nr + '/' + nv + '/' + (w.restore ? w.restore.to + w.restore.files.length + w.restore.safety : '') };
@@ -387,38 +406,72 @@
 
   /** What the Workspace asks of the server itself (the reviewed, revert and restore actions are SL.act's): each takes the session and resolves {ok, ...}. */
   const ops = ws.ops = {
-    /** The dry run of /rewind ID: what each file would do. Resolves {ok, plan} or {ok:false, code, message} ("nothing": c04 has nothing to put back). */
+    /** The dry run of /rewind ID: what each file would do, and the scope that confirms exactly that plan. Resolves {ok, plan} or {ok:false, code, message}
+     *  ("nothing": c04 has nothing to put back). */
     async previewRestore(S, id) {
       if (noTab(S)) return { ok: false, code: 'no_session', message: noTabWhy(S) };
       const r = await SL.api.post(tabUrl(S) + '/ws/restore', { id, dryRun: true });
       return r.ok ? { ok: true, plan: normPlan(r.data) } : { ok: false, code: r.code, message: r.message };
     },
-    /** Apply the verified, merged work of an isolated team to the person's checkout now. o = {mode: 'commits' (default) | 'edits', message, dryRun}:
-     *  a dry run says what would happen (no confirmation needed, nothing is written); the real call needs the confirmation. Resolves {ok, result}
-     *  (result: see normAccept) or {ok: false, code, message, detail}; the caller shows the sentence (it may carry a hint). */
+    /** Put the files back to before checkpoint `id`, as the plan the person saw says: the server's scope of that plan is confirmed and sent back, and when the
+     *  plan changed since (409 changed) nothing was written and the new plan comes back to be looked at and confirmed again. Resolves {ok, plan}, or
+     *  {ok: false, code, message, plan?} (plan: the new one after `changed`). A server that sends no scope is asked with the scope of the contract. */
+    async restore(S, id, plan) {
+      if (noTab(S)) return { ok: false, code: 'no_session', message: noTabWhy(S) };
+      const scope = plan && plan.scope, body = { id, dryRun: false }; if (scope) body.scope = scope;
+      const r = await SL.api.post(tabUrl(S) + '/ws/restore', body, { confirm: scope || 'restore:' + S.id + ':' + id });
+      if (r.ok) { const done = normPlan(r.data); done.files.forEach(f => { if (dataOf(S).I) forget(dataOf(S).I, f.path); }); refresh(S); changed(S); return { ok: true, plan: done }; }
+      if (r.code === 'changed' && r.detail) return { ok: false, code: 'changed', message: r.message, plan: normPlan(r.detail) };
+      toast(r.message, r.status === 409 ? 'warm' : 'err'); return { ok: false, code: r.code, message: r.message };
+    },
+    /** Revert one hunk (a hunk of the diff of `path` between `from` and `to`, as the diff returned it, with its own scope). 409 changed: nothing was written,
+     *  the diff as it is now was put in the cache (its hunks carry their new scopes) and `diff` says so. Resolves {ok} or {ok: false, code, message, diff?}. */
+    async revert(S, path, hunk, from, to) {
+      if (noTab(S)) return { ok: false, code: 'no_session', message: noTabWhy(S) };
+      const body = { path, key: hunk.oldStart + ':' + hunk.newStart, from, to }, scope = hunk.scope; if (scope) body.scope = scope;
+      const r = await SL.api.post(tabUrl(S) + '/ws/revert', body, { confirm: scope || 'revert:' + S.id + ':' + await SL.api.d16({ path, key: body.key, from, to }) });
+      const I = dataOf(S).I;
+      if (r.ok) { if (I) forget(I, path); refresh(S); changed(S); return { ok: true, revert: r.data }; }
+      if (r.code === 'changed') {
+        if (r.detail && r.detail.hunks && I) putDiff(I, path, from, to, r.detail); else if (I) forget(I, path);
+        refresh(S); return { ok: false, code: 'changed', message: r.message, diff: r.detail && r.detail.hunks ? r.detail : null };
+      }
+      toast(r.message, r.status === 409 ? 'warm' : 'err'); return { ok: false, code: r.code, message: r.message };
+    },
+    /** Apply the verified, merged work of an isolated team to the person's checkout now. o = {mode: 'commits' (default) | 'edits', message, dryRun, scope}:
+     *  a dry run says what would happen and gives the scope that confirms exactly that (nothing is written, no confirmation); the real call confirms the
+     *  scope and sends it back, and when what would be applied changed since (409 changed) nothing was written and the new dry run comes back as `result`.
+     *  Resolves {ok, result} (see normAccept) or {ok: false, code, message, detail, result?}; the caller shows the sentence (it may carry a hint). */
     async accept(S, o) {
       if (noTab(S)) return { ok: false, code: 'no_session', message: noTabWhy(S) };
       o = typeof o === 'string' ? { message: o } : (o || {}); const D = dataOf(S), body = {};
-      if (o.mode) body.mode = o.mode; if (o.message) body.message = str(o.message).slice(0, 200); if (o.dryRun) body.dryRun = true;
-      const r = await SL.api.post(tabUrl(S) + '/ws/accept', body, o.dryRun ? undefined : { confirm: 'accept:' + S.id });
-      if (!r.ok) return { ok: false, code: r.code, message: r.message, detail: r.detail };
+      if (o.mode) body.mode = o.mode; if (o.message) body.message = str(o.message).slice(0, 200); if (o.dryRun) body.dryRun = true; if (o.scope && !o.dryRun) body.scope = o.scope;
+      const r = await SL.api.post(tabUrl(S) + '/ws/accept', body, o.dryRun ? undefined : { confirm: o.scope || 'accept:' + S.id });
+      if (!r.ok) return { ok: false, code: r.code, message: r.message, detail: r.detail, result: r.code === 'changed' && r.detail ? normAccept(r.detail) : undefined };
       const result = normAccept(r.data);
-      if (!o.dryRun) { const q = D.merge.queue; D.acceptedLanded = q && q.data ? arr(q.data.landed).length : 0; delete D.merge.queue; delete D.merge.worktrees; refresh(S); bump(); }
+      if (!o.dryRun) { const q = D.merge.queue; D.acceptedLanded = q && q.data ? arr(q.data.landed).length : 0; delete D.merge.queue; delete D.merge.worktrees; refresh(S); changed(S); }
       return { ok: true, result };
     }
   };
+  /** The workspace changed under an action of the person: the page's other readers (the rail's badges, the drawer) look again. */
+  function changed(S) { bump(); try { SL.bus.emit('ws-changed', S); } catch (e) { /* no bus */ } }
+  /** Put a diff the server sent (the new one that came with a 409 changed) in the cache in place of what was there. */
+  function putDiff(I, path, from, to, d) {
+    const D = I.D, key = dkey(path, from, to), old = D.lru.get(key); if (old) D.chars -= old.size || 0;
+    const e = { key, state: 'ready', c: d, at: Date.now(), live: from === 'live' || to === 'live', stale: false, busy: false, size: diffSize(d) }; D.lru.set(key, e); D.chars += e.size; bump(); return e;
+  }
   /** The answer of the accept route: what was applied (or, for a dry run, would be), as optional fields with their empty values. canCommit is false only when the server says so. */
   function normAccept(d) {
     d = d || {};
     return { commit: str(d.commit), files: arr(d.files).map(str), branch: str(d.branch), applied: !!d.applied, committed: !!d.committed, waiting: !!d.waiting, dryRun: !!d.dryRun,
-      commitBlocked: str(d.commitBlocked), canCommit: d.canCommit !== false && !d.commitBlocked, message: str(d.message), tasks: arr(d.tasks).map(str) };
+      commitBlocked: str(d.commitBlocked), canCommit: d.canCommit !== false && !d.commitBlocked, message: str(d.message), tasks: arr(d.tasks).map(str), scope: str(d.scope) };
   }
   /** Is verified work waiting to be applied? The merge queue landed more submissions than the last apply covered. */
   function acceptWaiting(S) { const D = dataOf(S), q = D.merge.queue; if (!q || !q.data) return false; return arr(q.data.landed).length > (D.acceptedLanded || 0); }
   function normPlan(p) {
     p = p || {};
     return { id: str(p.id), label: str(p.label), time: str(p.time), applied: !!p.applied, safety: str(p.safety), summary: str(p.summary),
-      files: arr(p.files).map(f => ({ path: str(f.path), action: str(f.action), outcome: str(f.outcome), added: num(f.added), removed: num(f.removed), to: str(f.to), reason: str(f.reason) })) };
+      files: arr(p.files).map(f => ({ path: str(f.path), action: str(f.action), outcome: str(f.outcome), added: num(f.added), removed: num(f.removed), to: str(f.to), reason: str(f.reason) })), scope: str(p.scope) };
   }
 
   /* ================================================================ the Merge tab: worktrees, queue, verify output ======================== */

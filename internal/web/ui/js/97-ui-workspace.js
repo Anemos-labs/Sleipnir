@@ -11,7 +11,7 @@
  * hundred rows draws only the rows in view, with the same markup as the short ones. */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $, $$, esc, agCol, mmss } = U, ui = SL.ui = SL.ui || {}, ws = SL.ws, F = ws.fmt, hl = F.hl;
+  const U = SL.u, { $, $$, esc, agCol, mmss } = U, ui = SL.ui = SL.ui || {}, ws = SL.ws, F = ws.fmt, hl = F.hl, dict = F.dict, own = F.own;
   const arr = x => (Array.isArray(x) ? x : []);
   const WIN_LIST = 250, WIN_DIFF = 600, OVER = 12;                       // rows above which a list or a diff draws only the rows in view; rows drawn beyond the view
   const BIG_TREE = 1500, BIG_DIR = 200, CPS_PAGE = 150;                 // a tree of more files than this starts with its large, unchanged directories closed; checkpoints listed at first
@@ -28,7 +28,7 @@
   const LOADING = 'Loading the workspace…';
   const NO_ISOLATION = 'no worktree isolation in this run: work is written to the checkout directly';
 
-  const W0 = () => ({ tab: 'files', file: null, cp: null, mode: 'since', view: 'diff', group: 'task', q: '', changed: false, closed: {}, unreviewed: false, task: null, mview: 'queue', mtask: null, mattempt: null, wt: null, cpMore: 0 });
+  const W0 = () => ({ tab: 'files', file: null, cp: null, mode: 'since', view: 'diff', group: 'task', q: '', changed: false, closed: dict(), unreviewed: false, task: null, mview: 'queue', mtask: null, mattempt: null, wt: null, cpMore: 0 });
   const wsOf = S => (S.ui.ws = Object.assign(W0(), S.ui.ws || {}));
   const hasOpenAsk = (m, t) => m.qs.some(q => !q.answered && q.task === t);
 
@@ -51,7 +51,7 @@
   }
   /** a session without a readable history (the index loading, or not readable): the files its tool calls touched */
   function derived(S) {
-    const m = S.m || S.wm, by = {}; if (!m) return [];
+    const m = S.m || S.wm, by = dict(); if (!m) return [];
     m.order.forEach(id => (m.chan[id] || []).forEach(e => { if (e.k === 'tool' && e.file && !e.refused) { const r = by[e.file] || (by[e.file] = { path: e.file, ag: id, add: 0, del: 0, n: 0, task: e.task }); r.add += e.add || 0; r.del += e.del || 0; r.n++; r.ag = id; if (e.task) r.task = e.task; } }));
     return Object.keys(by).sort().map(k => by[k]);
   }
@@ -61,28 +61,35 @@
 
   const ACT_TAG = { restore: ['put back', 'warm'], recreate: ['put back', 'warm'], delete: ['removed', 'err'], none: ['unchanged', ''], chmod: ['mode', 'warm'], relink: ['link', 'warm'], mkdir: ['folder', ''], rmdir: ['folder', ''] };
   const REFUSED = { conflict: 'edited since', unrestorable: 'cannot be put back', failed: 'failed' };
-  /** the table of a restore plan: file / what happens / lines / result */
-  function planRows(I, id, plan) {
+  const FOLDER = { mkdir: 1, rmdir: 1 };
+  /** every file of a restore plan that changes, as a table: file / what happens / lines / result; folders the restore makes or removes are rows too */
+  function planRows(I, id, files) {
     const idx = I.pos.findIndex(x => x.id === id), before = idx > 0 ? I.pos[idx - 1].id : I.base.id;
-    return plan.files.filter(f => f.action !== 'mkdir' && f.action !== 'rmdir').map(f => {
-      const a = ACT_TAG[f.action] || [F.vis(f.action) || 'change', ''], bad = REFUSED[f.outcome];
+    return files.map(f => {
+      if (own(FOLDER, f.action)) return '<tr><td class="bright mono">' + vt(f.path) + '/</td><td><span class="tag">folder</span></td><td class="r num dim">–</td><td class="dim">' + (f.action === 'mkdir' ? 'made again' : 'removed') + '</td></tr>';
+      const a = own(ACT_TAG, f.action) || [F.vis(f.action) || 'change', ''], bad = own(REFUSED, f.outcome);
       const res = bad ? '<span class="err">' + esc(bad) + '</span>' + (f.reason ? ' <span class="dim">' + esc(F.vis(f.reason)) + '</span>' : '') : esc(F.vis(f.to) || (f.action === 'delete' ? 'removed' : 'back to ' + before));
       return '<tr><td class="bright mono">' + vt(f.path) + '</td><td><span class="tag ' + a[1] + '">' + esc(a[0]) + '</span></td><td class="r num"><b class="ok">+' + f.added + '</b> <b class="err">−' + f.removed + '</b></td><td class="dim">' + res + '</td></tr>';
     }).join('');
   }
-  /** Restore ID: ask the server what each file would do, then show it with its confirm. Nothing is written until the person says so. */
-  async function restoreDialog(S, id) {
+  /** Restore ID: ask the server what each file would do, then show every file of that plan with its confirm; the scope of that plan is what is confirmed, so a plan
+   *  that changed since (the server says so, with the new plan) is shown again, with a note, and confirmed again. Nothing is written until the person says so. */
+  async function restoreDialog(S, id, plan0, note) {
     const I = ws.info(S), cp = I ? I.pos.find(x => x.id === id) : null;
     if (!I || !cp) { ui.toast(id + ' has nothing to put back', 'warm'); return; }
-    const r = await ws.ops.previewRestore(S, id);
-    if (!r.ok) { ui.toast(r.message || id + ' has nothing to put back', 'warm'); return; }
-    const plan = r.plan, bad = plan.files.filter(f => REFUSED[f.outcome]).length, n = plan.files.filter(f => f.action !== 'mkdir' && f.action !== 'rmdir').length;
+    let plan = plan0;
+    if (!plan) { const r = await ws.ops.previewRestore(S, id); if (!r.ok) { ui.toast(r.message || id + ' has nothing to put back', 'warm'); return; } plan = r.plan; }
+    const change = plan.files.filter(f => f.action !== 'none' && f.outcome !== 'unchanged'), same = plan.files.length - change.length;
+    const bad = change.filter(f => own(REFUSED, f.outcome)).length, nf = change.filter(f => !own(FOLDER, f.action)).length, nd = change.length - nf;
     ui.modal({ title: 'Restore ' + cp.id, kicker: '/rewind ' + cp.id, desc: 'puts the files back to before this turn; the conversation stays', wide: true, color: 'var(--rv)', focus: '[data-no]',
-      body: '<p class="stubnote"><b>' + esc(F.vis(plan.label || cp.label)) + '</b> · ' + esc(plan.time || cp.time) + ' · ' + plural(n, 'file') + ' touched in this checkpoint or later. The agents are told to read them again. <span class="warm">A safety checkpoint is taken first, so this can be undone.</span></p>' +
+      body: (note ? '<p class="stubnote"><span class="warm">' + esc(note) + '</span></p>' : '') + '<p class="stubnote"><b>' + esc(F.vis(plan.label || cp.label)) + '</b> · ' + esc(plan.time || cp.time) + ' · ' + plural(nf, 'file') + (nd ? ' and ' + plural(nd, 'folder') : '') + ' touched in this checkpoint or later. The agents are told to read them again. <span class="warm">A safety checkpoint is taken first, so this can be undone.</span>' + (same ? ' <span class="dim">' + plural(same, 'file') + ' already as it was: not touched.</span>' : '') + '</p>' +
         (bad ? '<p class="stubnote"><span class="err">' + plural(bad, 'file') + ' cannot be put back</span> (edited since, or never saved): nothing is written until that is resolved.</p>' : '') +
-        '<table class="tbl"><thead><tr><th>file</th><th>what happens</th><th class="r">lines</th><th>result</th></tr></thead><tbody>' + planRows(I, cp.id, plan) + '</tbody></table><div class="row2"><button class="btn danger" type="button" data-ok' + (bad ? ' disabled title="a file cannot be put back"' : '') + '>Restore the files</button><button class="btn" type="button" data-no>Cancel</button></div>',
+        '<div style="max-height:50vh;overflow:auto"><table class="tbl"><thead><tr><th>file</th><th>what happens</th><th class="r">lines</th><th>result</th></tr></thead><tbody>' + planRows(I, cp.id, change) + '</tbody></table></div><div class="row2"><button class="btn danger" type="button" data-ok' + (bad ? ' disabled title="a file cannot be put back"' : '') + '>Restore the files</button><button class="btn" type="button" data-no>Cancel</button></div>',
       onMount(b, scm, close) {
-        scm.listen($('[data-ok]', b), 'click', () => { close(); const r = SL.act.rewind(cp.id); if (!r.ok) ui.toast(r.why || cp.id + ' has nothing to put back', 'warm'); else if (r.done) r.done.then(x => { if (x && x.ok) ui.toast('files put back to before ' + cp.id, 'ok'); }); });
+        scm.listen($('[data-ok]', b), 'click', async () => {
+          close(); const x = await ws.ops.restore(S, cp.id, plan);
+          if (x.ok) ui.toast('files put back to before ' + cp.id, 'ok'); else if (x.code === 'changed' && x.plan) restoreDialog(S, id, x.plan, 'The files changed since the preview: this is the plan now. Look at it and confirm again; nothing was written.');
+        });
         scm.listen($('[data-no]', b), 'click', close);
       } });
   }
@@ -90,28 +97,38 @@
   /* ================================================================ the Apply verified work dialog (accept -> commit) =================== */
 
   const BLOCKED = { dirty: 'your checkout has uncommitted changes', moved: 'your branch moved since the team started', branch: 'your checkout is not on the session’s branch' };
-  /** "Apply verified work…": what the server says it would apply (a dry run), the choice between commits and uncommitted edits, and the real call. */
-  async function acceptDialog(S) {
-    const q = ws.merge.queue(S).data || {}, pv = await ws.ops.accept(S, { dryRun: true });
-    if (!pv.ok && pv.code === 'nothing') { ui.toast(pv.message || 'nothing verified is waiting', 'warm'); return; }
-    const info = pv.ok ? pv.result : ws.normAccept({}), files = info.files.slice(), tasks = info.tasks.slice();
-    arr(q.landed).forEach(l => { if (l.task && tasks.indexOf(l.task) < 0) tasks.push(l.task); arr(l.files).forEach(f => { if (files.indexOf(f) < 0) files.push(f); }); });
+  /** "Apply verified work…": what the server says it would apply (a dry run, whose scope is what is confirmed), the choice between commits and uncommitted
+   *  edits (each is asked about again: what would be applied can differ), and the real call. A result that changed since (409) is shown again and confirmed again. */
+  async function acceptDialog(S, mode0, msg0, info0, note) {
+    const q = ws.merge.queue(S).data || {}, mode = mode0 || 'commits';
+    let info = info0;
+    if (!info) {
+      const pv = await ws.ops.accept(S, { dryRun: true, mode });
+      if (!pv.ok && pv.code === 'nothing') { ui.toast(pv.message || 'nothing verified is waiting', 'warm'); return; }
+      info = pv.ok ? pv.result : ws.normAccept({});
+      if (mode === 'commits' && pv.ok && !info.canCommit) {   // commits are not possible now: the choice is uncommitted edits, which is what is asked about (and confirmed)
+        const ed = await ws.ops.accept(S, { dryRun: true, mode: 'edits' }); if (ed.ok) { ed.result.commitBlocked = ed.result.commitBlocked || info.commitBlocked; ed.result.canCommit = false; info = ed.result; return acceptDialog(S, 'edits', msg0, info, note); }
+      }
+    }
+    const files = info.files.slice(), tasks = info.tasks.slice();
+    if (!info.scope && !files.length && !tasks.length) arr(q.landed).forEach(l => { if (l.task && tasks.indexOf(l.task) < 0) tasks.push(l.task); arr(l.files).forEach(f => { if (files.indexOf(f) < 0) files.push(f); }); });   // a server that cannot preview: what the queue landed
     if (!files.length && !tasks.length) { ui.toast('nothing verified is waiting', 'warm'); return; }
-    const branch = info.branch || q.branch || 'your branch', why = BLOCKED[info.commitBlocked] || info.commitBlocked;
-    let mode = info.canCommit ? 'commits' : 'edits';
+    const branch = info.branch || q.branch || 'your branch', why = own(BLOCKED, info.commitBlocked) || info.commitBlocked;
+    let cur = mode === 'commits' && !info.canCommit ? 'edits' : mode;
     ui.modal({ title: 'Apply the verified work', kicker: 'apply', desc: 'what passed verification reaches your checkout now', color: 'var(--ok)', focus: '[data-msg]',
-      body: '<p class="stubnote">The work of ' + plural(tasks.length, 'task') + (tasks.length ? ' (<span class="mono">' + esc(tasks.map(F.vis).join(' ')) + '</span>)' : '') + ' that passed <span class="mono">' + esc(F.vis(q.verify || 'the merge queue')) + '</span> is applied: ' + plural(files.length, 'file') + '. Nothing else in your checkout is touched.' + (info.message ? ' <span class="dim">' + esc(F.vis(info.message)) + '</span>' : '') + '</p>' +
-        '<div class="fld"><label>apply</label><div class="fc"><div class="seg" role="group" aria-label="Apply as"><button type="button" data-am="commits" aria-pressed="' + (mode === 'commits') + '"' + (info.canCommit ? '' : ' disabled title="' + esc(why) + '"') + '>as commits on <span class="mono">' + esc(F.vis(branch)) + '</span></button><button type="button" data-am="edits" aria-pressed="' + (mode === 'edits') + '">as uncommitted edits</button></div>' + (info.canCommit ? '' : '<small class="hint">committing is not offered: ' + esc(F.vis(why)) + '</small>') + '</div></div>' +
-        '<div class="fld" data-mf><label for="wsMsg">commit message</label><div class="fc"><input id="wsMsg" data-msg type="text" maxlength="200" placeholder="optional: the harness writes one" autocomplete="off"><small class="hint">one line; leave it empty for the default</small></div></div>' +
-        '<div class="diff wdiff" style="max-height:180px;overflow:auto">' + files.slice(0, 200).map(f => '<div class="ln ctx"><b class="who"></b><i></i><s></s><span>' + vt(f) + '</span></div>').join('') + (files.length > 200 ? '<div class="ln hunk"><b class="who"></b><i></i><s></s><span>… ' + (files.length - 200) + ' more</span></div>' : '') + '</div>' +
+      body: (note ? '<p class="stubnote"><span class="warm">' + esc(note) + '</span></p>' : '') + '<p class="stubnote">The work of ' + plural(tasks.length, 'task') + (tasks.length ? ' (<span class="mono">' + esc(tasks.map(F.vis).join(' ')) + '</span>)' : '') + ' that passed <span class="mono">' + esc(F.vis(q.verify || 'the merge queue')) + '</span> is applied: ' + plural(files.length, 'file') + '. Nothing else in your checkout is touched.' + (info.message ? ' <span class="dim">' + esc(F.vis(info.message)) + '</span>' : '') + '</p>' +
+        '<div class="fld"><label>apply</label><div class="fc"><div class="seg" role="group" aria-label="Apply as"><button type="button" data-am="commits" aria-pressed="' + (cur === 'commits') + '"' + (info.canCommit ? '' : ' disabled title="' + esc(why) + '"') + '>as commits on <span class="mono">' + esc(F.vis(branch)) + '</span></button><button type="button" data-am="edits" aria-pressed="' + (cur === 'edits') + '">as uncommitted edits</button></div>' + (info.canCommit ? '' : '<small class="hint">committing is not offered: ' + esc(F.vis(why)) + '</small>') + '</div></div>' +
+        '<div class="fld" data-mf><label for="wsMsg">commit message</label><div class="fc"><input id="wsMsg" data-msg type="text" maxlength="200" placeholder="optional: the harness writes one" autocomplete="off" value="' + esc(msg0 || '') + '"><small class="hint">one line; leave it empty for the default</small></div></div>' +
+        '<div class="diff wdiff" style="max-height:40vh;overflow:auto" tabindex="0" aria-label="the files that are applied">' + files.map(f => '<div class="ln ctx"><b class="who"></b><i></i><s></s><span>' + vt(f) + '</span></div>').join('') + '</div>' +
         '<div class="wsres" aria-live="polite"></div><div class="row2"><button class="btn pri" type="button" data-ok>Apply them</button><button class="btn" type="button" data-no>Cancel</button></div>',
       onMount(b, scm, close) {
-        const ok = $('[data-ok]', b), res = $('.wsres', b), mf = $('[data-mf]', b), sync = () => { $$('[data-am]', b).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.am === mode))); mf.hidden = mode !== 'commits'; }; sync();
-        $$('[data-am]', b).forEach(x => scm.listen(x, 'click', () => { if (x.disabled) return; mode = x.dataset.am; sync(); }));
+        const ok = $('[data-ok]', b), res = $('.wsres', b), mf = $('[data-mf]', b), msg = () => $('[data-msg]', b).value.trim(), sync = () => { $$('[data-am]', b).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.am === cur))); mf.hidden = cur !== 'commits'; }; sync();
+        $$('[data-am]', b).forEach(x => scm.listen(x, 'click', () => { if (x.disabled || x.dataset.am === cur) return; const m = x.dataset.am, text = msg(); close(); acceptDialog(S, m, text); }));   // what would be applied is asked about again for that mode
         scm.listen($('[data-no]', b), 'click', close);
         scm.listen(ok, 'click', async () => {
-          ok.disabled = true; const r = await ws.ops.accept(S, { mode, message: mode === 'commits' ? $('[data-msg]', b).value.trim() : '' });
+          ok.disabled = true; const r = await ws.ops.accept(S, { mode: cur, message: cur === 'commits' ? msg() : '', scope: info.scope });
           if (r.ok) { close(); const x = r.result; ui.toast(x.message || ('applied: ' + plural(x.files.length || files.length, 'file') + (x.committed || x.commit ? ' committed' + (x.commit ? ' as ' + x.commit.slice(0, 8) : '') + (x.branch ? ' on ' + x.branch : '') : ' as uncommitted edits')), 'ok'); return; }
+          if (r.code === 'changed' && r.result) { const text = msg(); close(); acceptDialog(S, cur, text, r.result, 'The verified work changed since it was shown: this is what would be applied now. Look at it and confirm again; nothing was written.'); return; }
           ok.disabled = false; const hint = r.detail && r.detail.hint;
           res.innerHTML = '<p class="stubnote"><span class="err">' + esc(F.vis(r.message || 'it could not be applied')) + '</span></p>' + (hint ? '<pre class="pre cli">' + esc(F.vis(hint)) + '</pre><button class="btn sm" type="button" data-hint>Copy the command</button>' : '');
           const hb = $('[data-hint]', res); if (hb) scm.listen(hb, 'click', () => U.copy(hint).then(c => ui.toast(c ? 'command copied' : 'copy is not available here', c ? 'ok' : 'warm')));
@@ -179,7 +196,7 @@
       const base = ws.rows(S, I, W2.mode === 'from' ? all : steps), bmap = rowMapOf(base), pends = k === n ? ws.pendingAll(S, I, S.vt) : [];
       const extra = pends.filter(p => !bmap.has(p.path)).map(p => { const f = I.byPath.get(p.path), cut = p.path.lastIndexOf('/'); return { path: p.path, dir: cut < 0 ? '' : p.path.slice(0, cut), name: p.path.slice(cut + 1), status: 'A', owner: p.ag, task: p.task, cp: null, lease: f && f.lease, protected: null, ask: null, add: F.lines(p.text).length, del: 0, writing: true, kind: 'text' }; });
       const rows = extra.length ? base.concat(extra) : base, rmap = extra.length ? new Map(Array.from(bmap).concat(extra.map(r => [r.path, r]))) : bmap;
-      return { S, W: W2, I, m, n, k, steps, prev, all, range, mk: mkv, cur: k > 0 ? I.pos[k - 1] : null, pinned: k < n, rows, rmap, pends, lastId: p => ws.lastId(I, p), reviewed: p => { const l = ws.lastId(I, p); return !!(l && mkv.reviewed[p] === l); } };
+      return { S, W: W2, I, m, n, k, steps, prev, all, range, mk: mkv, cur: k > 0 ? I.pos[k - 1] : null, pinned: k < n, rows, rmap, pends, lastId: p => ws.lastId(I, p), reviewed: p => { const l = ws.lastId(I, p); return !!(l && own(mkv.reviewed, p) === l); } };
     }
     const pointsOf = c => [ws.pointId(c.I, ws.pointOf(c.I, c.range[0])), ws.pointId(c.I, ws.pointOf(c.I, c.range[1]))];
 
@@ -188,15 +205,15 @@
     function fileRow(c, r, depth, opt) {
       const S = c.S, sel = c.W.file === r.path, tag = ST_TAG[opt && opt.restored ? 'R' : r.status], col = r.owner ? aCol(S, r.owner) : 'transparent', rv = c.reviewed(r.path);
       const icons = (r.protected ? '<span class="wi deny" title="denied: ' + esc(r.protected.rule) + ' (' + esc(r.protected.origin) + '): ' + esc(r.protected.why) + '">' + LOCK + '</span>' : '') + (r.lease ? '<span class="wi lease" style="color:' + aCol(S, r.lease.agent) + '" title="leased to ' + esc(r.lease.agent) + ' for ' + esc(r.lease.task) + ': ' + esc(r.lease.glob) + '">' + LOCK + '</span>' : '') + (r.ask ? '<span class="wi ask" title="a write here always asks (' + esc(r.ask.rule) + '): ' + esc(r.ask.why) + '">?</span>' : '');
-      const rvt = (c.mk.revs[r.path] || []).length;
+      const rvt = (own(c.mk.revs, r.path) || []).length;
       return '<button type="button" class="wf' + (sel ? ' sel' : '') + (r.protected ? ' prot' : '') + '" data-file="' + esc(r.path) + '"' + (r.owner ? ' data-ag="' + esc(r.owner) + '"' : '') + (r.task ? ' data-task="' + esc(r.task) + '"' : '') + ' style="--c:' + col + ';padding-left:' + (10 + depth * 14) + 'px"' + (sel ? ' aria-current="true"' : '') + '>' +
-        '<span class="wn"' + (r.ignored ? ' title="ignored by the project’s ignore rules"' : r.kind === 'symlink' ? ' title="a symbolic link: this page does not follow it"' : '') + '>' + vt(opt && opt.full ? r.path : r.name) + '</span>' + icons + '<span class="wr">' + (r.writing ? '<span class="warm" title="being written now">✎</span>' : '') + (rvt ? '<span class="tag warm" title="' + plural(rvt, 'hunk') + ' reverted by you">⟲ ' + rvt + '</span>' : '') + (r.status !== '-' ? '<span class="wcnt"><b class="ok">+' + r.add + '</b>' + (r.del ? ' <b class="err">−' + r.del + '</b>' : '') + '</span>' : '') + (r.owner && !(opt && opt.noowner) ? '<span class="wo" style="color:' + col + '">' + vt(r.owner) + '</span>' : '') + (tag ? '<span class="tag ' + tag[1] + '" title="' + tag[2] + '">' + tag[0] + '</span>' : '') + (rv ? '<span class="wrv" title="reviewed">✓</span>' : '') + '</span></button>';
+        '<span class="wn"' + (r.ignored ? ' title="ignored by the project’s ignore rules"' : r.kind === 'symlink' ? ' title="a symbolic link: this page does not follow it"' : r.name.length > 36 ? ' title="' + esc(F.vis(r.path)) + '"' : '') + '>' + vt(opt && opt.full ? r.path : r.name) + '</span>' + icons + '<span class="wr">' + (r.writing ? '<span class="warm" title="being written now">✎</span>' : '') + (rvt ? '<span class="tag warm" title="' + plural(rvt, 'hunk') + ' reverted by you">⟲ ' + rvt + '</span>' : '') + (r.status !== '-' ? '<span class="wcnt"><b class="ok">+' + r.add + '</b>' + (r.del ? ' <b class="err">−' + r.del + '</b>' : '') + '</span>' : '') + (r.owner && !(opt && opt.noowner) ? '<span class="wo" style="color:' + col + '">' + vt(r.owner) + '</span>' : '') + (tag ? '<span class="tag ' + tag[1] + '" title="' + tag[2] + '">' + tag[0] + '</span>' : '') + (rv ? '<span class="wrv" title="reviewed">✓</span>' : '') + '</span></button>';
     }
     /** the tree as a flat list of rows: directories (with their owners and change count) and files, in the order they are drawn; collapsed directories hold nothing */
     function treeItems(c) {
       const W2 = c.W, qq = W2.q.trim().toLowerCase(), rows = c.rows.filter(r => (!qq || r.path.toLowerCase().indexOf(qq) >= 0) && (!W2.changed || r.status !== '-'));
-      const root = { dirs: {}, files: [] };
-      rows.forEach(r => { let n = root, p = ''; if (r.dir) r.dir.split('/').forEach(seg => { p = p ? p + '/' + seg : seg; n = n.dirs[seg] || (n.dirs[seg] = { name: seg, path: p, dirs: {}, files: [] }); }); n.files.push(r); });
+      const root = { dirs: dict(), files: [] };
+      rows.forEach(r => { let n = root, p = ''; if (r.dir) r.dir.split('/').forEach(seg => { p = p ? p + '/' + seg : seg; n = n.dirs[seg] || (n.dirs[seg] = { name: seg, path: p, dirs: dict(), files: [] }); }); n.files.push(r); });
       const big = !qq && c.rows.length > BIG_TREE, items = [];
       const stat = d => { let cnt = 0, chg = 0, sel = false; const ow = []; (function g(x) { x.files.forEach(f => { cnt++; if (f.status !== '-') chg++; if (f.path === W2.file) sel = true; if (f.owner && ow.indexOf(f.owner) < 0) ow.push(f.owner); }); Object.keys(x.dirs).forEach(y => g(x.dirs[y])); })(d); return { cnt, chg, sel, ow }; };
       const walk = (n, depth) => {
@@ -226,13 +243,13 @@
     }
     /** the Changes list as items: a head per task (or agent), then its files */
     function changeItems(c) {
-      const W2 = c.W, rows = changeRows(c).filter(r => !W2.unreviewed || c.mk.reviewed[r.path] !== r.cp); c._changes = rows;
-      const grp = {}, order = [];
-      rows.forEach(r => { const key = W2.group === 'agent' ? (r.owner || '?') : (r.task || 'no task'); if (!grp[key]) { grp[key] = []; order.push(key); } grp[key].push(r); });
-      c.pends.forEach(p => { if (rows.some(r => r.path === p.path)) return; const key = W2.group === 'agent' ? p.ag : (p.task || 'no task'); if (!grp[key]) { grp[key] = []; order.push(key); } const cut = p.path.lastIndexOf('/'); grp[key].unshift({ path: p.path, name: p.path.slice(cut + 1), dir: cut < 0 ? '' : p.path.slice(0, cut), status: 'A', owner: p.ag, task: p.task, add: F.lines(p.text).length, del: 0, writing: true, cp: null }); });
+      const W2 = c.W, rows = changeRows(c).filter(r => !W2.unreviewed || own(c.mk.reviewed, r.path) !== r.cp); c._changes = rows;
+      const grp = new Map(), order = [];
+      rows.forEach(r => { const key = W2.group === 'agent' ? (r.owner || '?') : (r.task || 'no task'); if (!grp.has(key)) { grp.set(key, []); order.push(key); } grp.get(key).push(r); });
+      c.pends.forEach(p => { if (rows.some(r => r.path === p.path)) return; const key = W2.group === 'agent' ? p.ag : (p.task || 'no task'); if (!grp.has(key)) { grp.set(key, []); order.push(key); } const cut = p.path.lastIndexOf('/'); grp.get(key).unshift({ path: p.path, name: p.path.slice(cut + 1), dir: cut < 0 ? '' : p.path.slice(0, cut), status: 'A', owner: p.ag, task: p.task, add: F.lines(p.text).length, del: 0, writing: true, cp: null }); });
       order.sort((x, y) => x < y ? -1 : 1);
       const items = [];
-      order.forEach(key => { const list = grp[key]; items.push({ k: 'g', key, add: list.reduce((s, r) => s + r.add, 0), del: list.reduce((s, r) => s + r.del, 0) }); list.forEach(r => items.push({ k: 'r', r })); });
+      order.forEach(key => { const list = grp.get(key); items.push({ k: 'g', key, add: list.reduce((s, r) => s + r.add, 0), del: list.reduce((s, r) => s + r.del, 0) }); list.forEach(r => items.push({ k: 'r', r })); });
       if (c.mk.restore) items.push({ k: 'g', rest: true });
       return items;
     }
@@ -240,12 +257,12 @@
       const W2 = c.W;
       if (it.k === 'g') {
         if (it.rest) return '<div class="wg rest"><b class="gid">↺ restored</b><span class="gti">to before ' + esc(c.mk.restore.to) + ': ' + plural(c.mk.restore.files.length, 'file') + '</span></div>';
-        const key = it.key; if (W2.group === 'agent') { const A = c.m.ag[key], col = aCol(c.S, key); return '<div class="wg" style="--c:' + col + '" data-ag="' + esc(key) + '"><b class="gid">' + vt(key) + '</b><span class="dim">' + esc(A ? A.role : '') + '</span><span class="wr"><b class="ok">+' + it.add + '</b> <b class="err">−' + it.del + '</b></span></div>'; }
-        const T = c.m.tasks[key], col = T && T.owner ? aCol(c.S, T.owner) : 'var(--dim)', fail = !!(T && T.failed && T.st === 'todo'), st = fail ? ['✗ failed', 'err'] : T ? TASK_ST[T.st] || ['', ''] : ['', ''];
+        const key = it.key; if (W2.group === 'agent') { const A = own(c.m.ag, key), col = aCol(c.S, key); return '<div class="wg" style="--c:' + col + '" data-ag="' + esc(key) + '"><b class="gid">' + vt(key) + '</b><span class="dim">' + esc(A ? A.role : '') + '</span><span class="wr"><b class="ok">+' + it.add + '</b> <b class="err">−' + it.del + '</b></span></div>'; }
+        const T = own(c.m.tasks, key), col = T && T.owner ? aCol(c.S, T.owner) : 'var(--dim)', fail = !!(T && T.failed && T.st === 'todo'), st = fail ? ['✗ failed', 'err'] : T ? own(TASK_ST, T.st) || ['', ''] : ['', ''];
         return '<div class="wg" style="--c:' + col + '" data-task="' + esc(key) + '"><b class="gid">' + (T ? vt(key) : '◇') + '</b><span class="gti">' + vt(T ? T.title : 'what the agent changed (a single agent keeps no task board)') + '</span>' + (T ? '<span class="tag ' + st[1] + '" title="verification state of the task">' + st[0] + '</span>' : '') + '<span class="wr"><b class="ok">+' + it.add + '</b> <b class="err">−' + it.del + '</b></span></div>';
       }
-      const r = it.r, lid = c.lastId(r.path), rv = lid && c.mk.reviewed[r.path] === lid, tag = ST_TAG[r.status];
-      return '<div class="wfr' + (W2.file === r.path ? ' sel' : '') + '"><button type="button" class="wf" data-file="' + esc(r.path) + '"' + (r.owner ? ' data-ag="' + esc(r.owner) + '"' : '') + (r.task ? ' data-task="' + esc(r.task) + '"' : '') + ' style="--c:' + aCol(c.S, r.owner) + '"' + (W2.file === r.path ? ' aria-current="true"' : '') + '><span class="wn"><span class="dim">' + vt(r.dir ? r.dir + '/' : '') + '</span>' + vt(r.name) + '</span><span class="wr">' + (r.writing ? '<span class="warm" title="being written now">✎ writing</span>' : '') + '<span class="wcnt"><b class="ok">+' + r.add + '</b>' + (r.del ? ' <b class="err">−' + r.del + '</b>' : '') + '</span>' + (W2.group === 'task' ? '<span class="wo" style="color:' + aCol(c.S, r.owner) + '">' + vt(r.owner || '') + '</span>' : '') + (tag ? '<span class="tag ' + tag[1] + '" title="' + tag[2] + '">' + tag[0] + '</span>' : '') + '</span></button>' + (r.writing ? '' : '<button type="button" class="wrvb' + (rv ? ' on' : '') + '" data-review="' + esc(r.path) + '" data-cpid="' + esc(lid || '') + '" aria-pressed="' + !!rv + '" title="' + (rv ? 'reviewed: click to unmark' : 'mark as reviewed') + '"><span class="sr">Reviewed: ' + vt(r.path) + '</span>' + (rv ? '✓' : '○') + '</button>') + '</div>';
+      const r = it.r, lid = c.lastId(r.path), rv = lid && own(c.mk.reviewed, r.path) === lid, tag = ST_TAG[r.status];
+      return '<div class="wfr' + (W2.file === r.path ? ' sel' : '') + '"><button type="button" class="wf" data-file="' + esc(r.path) + '"' + (r.owner ? ' data-ag="' + esc(r.owner) + '"' : '') + (r.task ? ' data-task="' + esc(r.task) + '"' : '') + ' style="--c:' + aCol(c.S, r.owner) + '"' + (W2.file === r.path ? ' aria-current="true"' : '') + '><span class="wn"' + (r.path.length > 36 ? ' title="' + esc(F.vis(r.path)) + '"' : '') + '><span class="dim">' + vt(r.dir ? r.dir + '/' : '') + '</span>' + vt(r.name) + '</span><span class="wr">' + (r.writing ? '<span class="warm" title="being written now">✎ writing</span>' : '') + '<span class="wcnt"><b class="ok">+' + r.add + '</b>' + (r.del ? ' <b class="err">−' + r.del + '</b>' : '') + '</span>' + (W2.group === 'task' ? '<span class="wo" style="color:' + aCol(c.S, r.owner) + '">' + vt(r.owner || '') + '</span>' : '') + (tag ? '<span class="tag ' + tag[1] + '" title="' + tag[2] + '">' + tag[0] + '</span>' : '') + '</span></button>' + (r.writing ? '' : '<button type="button" class="wrvb' + (rv ? ' on' : '') + '" data-review="' + esc(r.path) + '" data-cpid="' + esc(lid || '') + '" aria-pressed="' + !!rv + '" title="' + (rv ? 'reviewed: click to unmark' : 'mark as reviewed') + '"><span class="sr">Reviewed: ' + vt(r.path) + '</span>' + (rv ? '✓' : '○') + '</button>') + '</div>';
     }
     /* ---------------- left: checkpoints ---------------- */
     function cpsHtml(c) {
@@ -272,7 +289,7 @@
       if (!list.length) return '<p class="ws-none">No worker has a worktree yet.</p>';
       const S = c.S, m = c.m;
       return list.map(t => {
-        const ag = String(t.agent || ''), sel = c.W.wt === ag, A = m.ag[ag], T = A && A.task ? m.tasks[A.task] : null, merged = T && T.st === 'merged', tag = t.dirty ? ['dirty', 'warm'] : merged ? ['merged', 'ok'] : ['clean', ''];
+        const ag = String(t.agent || ''), sel = c.W.wt === ag, A = own(m.ag, ag), T = A && A.task ? own(m.tasks, A.task) : null, merged = T && T.st === 'merged', tag = t.dirty ? ['dirty', 'warm'] : merged ? ['merged', 'ok'] : ['clean', ''];
         return '<div class="wc' + (sel ? ' sel' : '') + '" data-ag="' + esc(ag) + '"><button type="button" class="wcm" data-wt="' + esc(ag) + '" style="box-shadow:inset 3px 0 ' + aCol(S, ag) + '"' + (sel ? ' aria-current="true"' : '') + '><b class="cid" style="color:' + aCol(S, ag) + '">' + vt(ag) + '</b><span class="ctm num">' + esc(String(t.head || '').slice(0, 8)) + '</span><span class="clb mono">' + vt(t.branch) + '</span><span class="cmeta">' + (A && A.task ? '<span class="chip" data-task="' + esc(A.task) + '">' + vt(A.task) + '</span>' : '') + '<span class="tag ' + tag[1] + '">' + tag[0] + '</span>' + (arr(t.files).length ? '<span class="num">' + plural(arr(t.files).length, 'file') + '</span>' : '') + '</span></button><span class="cact"><button type="button" class="btn sm" data-copy="' + esc(t.path) + '" title="copy the path of the worktree">Copy path</button></span></div>';
       }).join('');
     }
@@ -291,13 +308,13 @@
       const r = c.rmap.get(path), a = c.range[0], b = c.range[1], pend = c.pends.find(p => p.path === path) || null, [from, to] = pointsOf(c), isLiveEnd = to === 'live';
       const row = c.I.byPath.get(path) || {}, prot = row.protected, tch = ws.touches(c.I, path, c.all), last = tch[tch.length - 1], owner = r && r.owner, status = pend ? 'A' : ws.statusOf(c.I, path, b);
       const rv = c.reviewed(path), lastCp = ws.lastId(c.I, path);
-      const vtask = c.m && c.m.tasks[(last || {}).task], tstate = vtask ? TASK_ST[vtask.st] || ['', ''] : null, tag = ST_TAG[status];
+      const vtask = c.m && own(c.m.tasks, (last || {}).task), tstate = vtask ? own(TASK_ST, vtask.st) || ['', ''] : null, tag = ST_TAG[status];
       const wantDiff = !(W2.view === 'file' || (status === '-' && !pend));
       let eNow = null, eDiff = null;
       if (!prot && !pend) { eNow = ws.fileEntry(c.I, path, to); if (wantDiff) eDiff = ws.diffEntry(c.I, path, from, to); }
       const cn = pend ? { added: F.lines(pend.text).length, removed: 0 } : eDiff && eDiff.state === 'ready' ? { added: eDiff.c.added, removed: eDiff.c.removed } : ws.counts(c.I, path, a, b);
       const approx = eNow && eNow.state === 'ready' && eNow.c.exact === false;
-      const head = '<div class="ws-ph"><div class="wtop"><h2 class="wpath"><span class="dim">' + vt(path.indexOf('/') >= 0 ? path.slice(0, path.lastIndexOf('/') + 1) : '') + '</span>' + vt(path.slice(path.lastIndexOf('/') + 1)) + '</h2>' + (tag ? '<span class="tag ' + tag[1] + '" title="' + tag[2] + ' against the start of the session">' + tag[0] + '</span>' : '') +
+      const head = '<div class="ws-ph"><div class="wtop"><h2 class="wpath" title="' + esc(F.vis(path)) + '"><span class="dim">' + vt(path.indexOf('/') >= 0 ? path.slice(0, path.lastIndexOf('/') + 1) : '') + '</span>' + vt(path.slice(path.lastIndexOf('/') + 1)) + '</h2>' + (tag ? '<span class="tag ' + tag[1] + '" title="' + tag[2] + ' against the start of the session">' + tag[0] + '</span>' : '') +
         (owner || pend ? '<span class="chip task" style="--c:' + aCol(S, pend ? pend.ag : owner) + '" data-ag="' + esc(pend ? pend.ag : owner) + '">' + vt(pend ? pend.ag : owner) + '</span>' : '') + ((last && last.task) || (pend && pend.task) ? '<span class="chip" data-task="' + esc(pend ? pend.task : last.task) + '">' + vt(pend ? pend.task : last.task) + '</span>' : '') + (tstate && !pend ? '<span class="tag ' + tstate[1] + '">' + tstate[0] + '</span>' : '') +
         (last ? '<span class="chip" title="the checkpoint of the last change">' + vt(last.id) + '</span>' : '') + '<span class="num wcounts"' + (approx ? ' title="the counts are the real ones; who wrote each line is approximate here: part of this file was changed outside the agents’ tools"' : '') + '><b class="ok">+' + cn.added + '</b> <b class="err">−' + cn.removed + '</b></span></div>' +
         '<div class="wtool"><div class="seg" role="group" aria-label="Show"><button type="button" data-vw="diff" aria-pressed="' + (W2.view === 'diff') + '">Diff</button><button type="button" data-vw="file" aria-pressed="' + (W2.view === 'file') + '">Whole file</button></div>' +
@@ -320,7 +337,7 @@
         const dd = eDiff.c;
         if (dd.binary) return { head, html: noneP('A binary file: there is no line difference to show.') };
         if (!cNow.exists && !arr(dd.hunks).length) return { head, html: noneP('This file does not exist at this point in time.') };
-        const revs = isLiveEnd ? (c.mk.revs[path] || []).filter(v => !arr(dd.hunks).some(h => h.oldStart + ':' + h.newStart === v.key)).map(v => Object.assign({ rid: v.id, key: v.key }, F.keyParts(v.key))) : [];
+        const revs = isLiveEnd ? (own(c.mk.revs, path) || []).filter(v => !arr(dd.hunks).some(h => h.oldStart + ':' + h.newStart === v.key)).map(v => Object.assign({ rid: v.id, key: v.key }, F.keyParts(v.key))) : [];
         if (!arr(dd.hunks).length && !revs.length) return { head, html: '<p class="ws-none">No difference in this view. <button type="button" class="btn sm" data-vw="file">Show the whole file</button></p>' };
         const live2 = ws.liveFile(S, c.I), car = ws.editing(c.m, live2, path) && c.k === c.n ? 1 : 0;
         return { head, mode: 'diff', flat: F.flatDiff(dd, revs), bl: ws.blameOf(eNow), owner, caret: car, truncated: !!dd.truncated, canRevert: isLiveEnd, from, to, path };
@@ -370,7 +387,7 @@
     /* ---------------- the merge queue and the verify output (Merge tab) ---------------- */
     const phaseTag = p => ({ rebase: ['rebase', 'warm'], rebasing: ['rebase', 'warm'], verifying: ['verifying', 'warm'], verified: ['verified', 'ok'], merging: ['merging', 'warm'], merged: ['merged', 'ok'] }[String(p || '')] || [String(p || 'queued'), '']);
     function queueRows(c, d) {
-      const m = c.m, T = id => m.tasks[id], rows = [];
+      const m = c.m, T = id => own(m.tasks, id), rows = [];
       const row = (task, step, ag, commit, files, el) => '<tr data-task="' + esc(task) + '"' + (ag ? ' data-ag="' + esc(ag) + '"' : '') + '><td class="bright mono">' + vt(task) + '</td><td>' + step + '</td><td style="color:' + aCol(c.S, ag) + ';font-weight:700">' + vt(ag || '') + '</td><td class="mono dim">' + esc(String(commit || '').slice(0, 10)) + '</td><td class="r num">' + (files == null ? '' : files) + '</td><td class="r num dim">' + esc(el || '') + '</td></tr>';
       const qh = m.qHead;
       if (d.active) { const t = T(d.active), pt = phaseTag(d.phase || (qh && qh.step)); rows.push(row(d.active, '<span class="tag ' + pt[1] + '">' + esc(pt[0]) + '</span>', t && t.owner, '', null, qh && qh.task === d.active ? mmss(Math.max(0, c.S.vt - qh.t0)) : '')); }
@@ -388,8 +405,8 @@
       const meta = d ? '<span class="tag ' + (d.healthy ? 'ok' : 'err') + '" title="' + (d.healthy ? 'the integration branch builds' : 'the integration branch does not verify') + '">' + (d.healthy ? 'healthy' : 'broken') + '</span><span class="chip mono" title="the integration branch">' + vt(d.branch) + '</span><span class="chip mono" title="its tip">' + esc(String(d.tip || '').slice(0, 10)) + '</span>' : '';
       const head = '<div class="ws-ph"><div class="wtop"><h2 class="wpath">' + (W2.mview === 'verify' ? 'Verify output' : 'Merge queue') + '</h2>' + meta + '<span class="num wcounts" title="merged / conflicts / bounced">merged <b class="ok">' + m.merged.length + '</b> · conflicts <b class="' + (m.conflicts ? 'err' : '') + '">' + m.conflicts + '</b> · bounced <b class="' + (m.bounced ? 'err' : '') + '">' + m.bounced + '</b></span></div><div class="wtool">' + tabs + '<span class="dim wnote">' + esc(F.vis(S.meta.verify ? '--verify "' + S.meta.verify + '"' : 'no verify command')) + '</span></div></div>';
       if (W2.mview === 'verify') {
-        const tasks = m.torder, cur = W2.mtask && m.tasks[W2.mtask] ? W2.mtask : (m.qHead && m.qHead.task !== 'goal' ? m.qHead.task : tasks[0]);
-        const chips = tasks.map(t => { const T = m.tasks[t], st = TASK_ST[T.st] || ['', '']; return '<button type="button" class="wtk" data-vtask="' + esc(t) + '" data-task="' + esc(t) + '" style="--c:' + aCol(S, T.owner) + '" aria-pressed="' + (cur === t) + '" title="' + esc(t + ' ' + T.title) + '"><b>' + vt(t) + '</b><span class="' + st[1] + '" aria-hidden="true">' + st[0].split(' ')[0] + '</span></button>'; }).join('');
+        const tasks = m.torder, cur = W2.mtask && own(m.tasks, W2.mtask) ? W2.mtask : (m.qHead && m.qHead.task !== 'goal' ? m.qHead.task : tasks[0]);
+        const chips = tasks.map(t => { const T = own(m.tasks, t), st = own(TASK_ST, T.st) || ['', '']; return '<button type="button" class="wtk" data-vtask="' + esc(t) + '" data-task="' + esc(t) + '" style="--c:' + aCol(S, T.owner) + '" aria-pressed="' + (cur === t) + '" title="' + esc(t + ' ' + T.title) + '"><b>' + vt(t) + '</b><span class="' + st[1] + '" aria-hidden="true">' + st[0].split(' ')[0] + '</span></button>'; }).join('');
         let out = '';
         if (!cur) out = noneP('No task has been submitted yet.');
         else {
@@ -412,26 +429,26 @@
       const runs = v.runs, sel = want == null ? runs.length - 1 : Math.max(0, Math.min(runs.length - 1, want));
       const lines = v.runs[sel].out.split('\n'), cut = Math.max(0, lines.length - 2000), shown = lines.slice(cut);
       const tbl = '<table class="tbl"><thead><tr><th>attempt</th><th>command</th><th>exit</th><th class="r">took</th><th>at</th><th></th></tr></thead><tbody>' + runs.map((r, i) => '<tr' + (i === sel ? ' class="sel"' : '') + '><td class="num">' + (runs.length > 1 ? '<button type="button" class="btn sm" data-attempt="' + i + '" aria-pressed="' + (i === sel) + '">' + r.attempt + '</button>' : r.attempt) + '</td><td class="mono bright">$ ' + vt(v.cmd) + '</td><td class="num">' + r.exit + '</td><td class="r num dim">' + (r.ms ? (r.ms < 1000 ? r.ms + 'ms' : (r.ms / 1000).toFixed(1) + 's') : '') + '</td><td class="num dim">' + esc(r.at) + '</td><td><span class="tag ' + (r.exit === 0 && !r.timedOut ? 'ok' : 'err') + '">' + (r.timedOut ? 'timed out' : r.exit === 0 ? 'ok' : 'failed') + '</span></td></tr>').join('') + '</tbody></table>';
-      return '<div class="wcalls">' + tbl + '</div><div class="slog"><div class="term" tabindex="0"><div class="tl hd"><span class="prompt">$</span> ' + vt(v.cmd) + '</div>' + (cut ? '<div class="tl dim">… ' + cut + ' earlier lines not shown</div>' : '') + shown.map(l => '<div class="tl' + (/\b(FAIL|panic|error)\b/i.test(l) ? ' err' : '') + '">' + vt(F.clip(l, 4096).t) + '</div>').join('') + (runs[sel].truncated ? '<div class="tl dim">… the output is truncated: the start and the end are kept</div>' : '') + '</div></div>';
+      return '<div class="wcalls">' + tbl + '</div><div class="slog"><div class="term" tabindex="0"><div class="tl hd"><span class="prompt">$</span> ' + vt(v.cmd) + '</div>' + (cut ? '<div class="tl dim">… ' + cut + ' earlier lines not shown</div>' : '') + shown.map(l => { const e = F.elide(l, 4096); return '<div class="tl' + (/\b(FAIL|panic|error)\b/i.test(l) ? ' err' : '') + '">' + vt(e.hidden ? e.head + F.more(e.hidden) + e.tail : e.head) + '</div>'; }).join('') + (runs[sel].truncated ? '<div class="tl dim">… the output is truncated: the start and the end are kept</div>' : '') + '</div></div>';
     }
 
     /* ---------------- bottom: the verify / merge strip ---------------- */
     function stripHtml(c) {
       const m = c.m, S = c.S, qh = m.qHead, merged = m.merged.slice().sort(), isGoal = qh && qh.task === 'goal';
-      const chips = m.torder.map(t => { const T = m.tasks[t], failed = !!T.failed && T.st === 'todo', st = failed ? ['✗ failed', 'err'] : TASK_ST[T.st] || ['', ''], blocked = T.st === 'running' && hasOpenAsk(m, t); return '<button type="button" class="wtk" data-taskf="' + esc(t) + '" data-task="' + esc(t) + '" style="--c:' + aCol(S, T.owner) + '" aria-pressed="' + (c.W.task === t) + '" title="' + esc(t + ' ' + T.title + ' · ' + (T.owner || '') + ' · ' + (blocked ? 'asks you' : st[0]) + (failed && T.closure && T.closure.kind ? ' (' + T.closure.kind + ')' : '') + ' (click: show only its changes; alt-click: its verify output)') + '"><b>' + vt(t) + '</b><span class="' + (blocked ? 'warm' : st[1]) + '" aria-hidden="true">' + (blocked ? '?' : st[0].split(' ')[0]) + '</span><span class="sr">' + esc(t + ' ' + (blocked ? 'asks you' : st[0])) + '</span></button>'; }).join('');
-      const chg = c.I ? changeRows(c) : derived(S).map(r => ({ path: r.path })), rvd = c.I ? chg.filter(r => c.lastId(r.path) && c.mk.reviewed[r.path] === c.lastId(r.path)).length : 0;
+      const chips = m.torder.map(t => { const T = own(m.tasks, t), failed = !!T.failed && T.st === 'todo', st = failed ? ['✗ failed', 'err'] : own(TASK_ST, T.st) || ['', ''], blocked = T.st === 'running' && hasOpenAsk(m, t); return '<button type="button" class="wtk" data-taskf="' + esc(t) + '" data-task="' + esc(t) + '" style="--c:' + aCol(S, T.owner) + '" aria-pressed="' + (c.W.task === t) + '" title="' + esc(t + ' ' + T.title + ' · ' + (T.owner || '') + ' · ' + (blocked ? 'asks you' : st[0]) + (failed && T.closure && T.closure.kind ? ' (' + T.closure.kind + ')' : '') + ' (click: show only its changes; alt-click: its verify output)') + '"><b>' + vt(t) + '</b><span class="' + (blocked ? 'warm' : st[1]) + '" aria-hidden="true">' + (blocked ? '?' : st[0].split(' ')[0]) + '</span><span class="sr">' + esc(t + ' ' + (blocked ? 'asks you' : st[0])) + '</span></button>'; }).join('');
+      const chg = c.I ? changeRows(c) : derived(S).map(r => ({ path: r.path })), rvd = c.I ? chg.filter(r => c.lastId(r.path) && own(c.mk.reviewed, r.path) === c.lastId(r.path)).length : 0;
       const isol = (c.I && c.I.isolation ? c.I.isolation : S.meta.isolation) === 'worktree', gate = S.meta.verify ? merged.length + m.bounced : 0;
       let accept = '';
       if (isol) { ws.merge.queue(S); accept = '<button type="button" class="btn sm pri" data-accept' + (ws.acceptWaiting(S) ? '' : ' disabled title="nothing verified is waiting"') + '>Apply verified work…</button>'; }
       return '<div class="ws-sh"><h2>Verify and merge</h2><span class="mono dim">--verify "' + esc(F.vis(S.meta.verify || '(none)')) + '"</span>' + accept + '</div>' +
-        '<div class="ws-sb"><div class="wq">' + (qh ? '<div class="wqh"><span class="tri">▸</span><b style="color:' + (isGoal ? 'var(--mgr)' : aCol(S, (m.tasks[qh.task] || {}).owner)) + '">' + (isGoal ? '◇ goal' : vt(qh.task)) + '</b>' + (isGoal ? '<span>all merged</span>' : '<span>rebase <span class="ok">✓</span></span>') + '<span class="dim">·</span><span>' + (qh.step === 'verified' ? 'verified' : 'verifying') + '</span><span class="mono cmd">' + vt(qh.cmd) + '</span></div><div class="qbar" aria-hidden="true">' + (qh.step === 'verified' ? '<i style="width:100%;left:0;animation:none;background:var(--ok)"></i>' : '<i></i>') + '</div>' : '<div class="wqh dim"><span>▹ queue empty</span><span>·</span><span>the next submission is rebased, then verified</span></div><div class="qbar" aria-hidden="true"></div>') +
+        '<div class="ws-sb"><div class="wq">' + (qh ? '<div class="wqh"><span class="tri">▸</span><b style="color:' + (isGoal ? 'var(--mgr)' : aCol(S, (own(m.tasks, qh.task) || {}).owner)) + '">' + (isGoal ? '◇ goal' : vt(qh.task)) + '</b>' + (isGoal ? '<span>all merged</span>' : '<span>rebase <span class="ok">✓</span></span>') + '<span class="dim">·</span><span>' + (qh.step === 'verified' ? 'verified' : 'verifying') + '</span><span class="mono cmd">' + vt(qh.cmd) + '</span></div><div class="qbar" aria-hidden="true">' + (qh.step === 'verified' ? '<i style="width:100%;left:0;animation:none;background:var(--ok)"></i>' : '<i></i>') + '</div>' : '<div class="wqh dim"><span>▹ queue empty</span><span>·</span><span>the next submission is rebased, then verified</span></div><div class="qbar" aria-hidden="true"></div>') +
         '</div><div class="wtks" role="group" aria-label="Tasks: click to show only its changes">' + chips + '</div><div class="wmeta"><span>merged <b>' + merged.length + '</b>/' + m.torder.length + '</span><span>conflicts <b>' + m.conflicts + '</b></span><span>bounced <b>' + m.bounced + '</b>' + (gate ? ' of <b>' + gate + '</b> gate runs' : '') + '</span><span>reviewed <b>' + rvd + '</b>/' + chg.length + '</span></div></div>';
     }
 
     /* ---------------- paint ---------------- */
     /** a short string that changes when anything the section draws changed: the section is drawn only then */
     function sigOf(c, extra) {
-      const m = c.m, W2 = c.W, tk = m ? m.torder.map(t => t + m.tasks[t].st).join(',') : '';
+      const m = c.m, W2 = c.W, tk = m ? m.torder.map(t => t + own(m.tasks, t).st).join(',') : '';
       return [c.S.id, c.I && c.I.key, W2.tab, c.k, W2.cp, W2.mode, W2.view, W2.group, W2.q, W2.changed, W2.unreviewed, W2.task, W2.file, W2.mview, W2.mtask, W2.mattempt, W2.wt, W2.cpMore, W2.tab === 'merge' ? Math.floor(c.S.vt) : '', JSON.stringify(W2.closed), c.mk && c.mk.stamp, tk, c.pends && c.pends.map(p => p.path + p.text.length).join(','), SL.G ? SL.G.ver : 0, extra].join('|');
     }
     function paint() {
@@ -547,11 +564,21 @@
     scrub.addEventListener('keydown', () => { SL.time.noteKey(); });
 
     /* ---------------- dialogs: hunk revert ---------------- */
-    function revertDialog(key) {
-      const c = ctx(); if (!c.I) return; const path = c.W.file, [from, to] = pointsOf(c), h = ws.hunks(c.I, path, c.range[0], c.range[1]), hk = h.hunks.find(x => x.oldStart + ':' + x.newStart === key); if (!hk) return;
-      const pv = hk.lines.filter(l => l.t !== ' ' && l.t !== '…').slice(0, 14).map(l => '<div class="ln ' + (l.t === '+' ? 'del' : 'add') + '"><b class="who"></b><i></i><s>' + (l.t === '+' ? '−' : '+') + '</s><span>' + hl(l.s) + '</span></div>').join('');
-      ui.modal({ title: 'Revert this hunk', kicker: F.vis(path).slice(0, 60), desc: 'put these lines back as they were before', color: 'var(--rv)', focus: '[data-no]', body: '<p class="stubnote">The hunk at line ' + hk.newStart + ' of <b class="mono">' + vt(path) + '</b> goes back to its earlier text. What the revert would do, line by line:</p><div class="diff wdiff">' + pv + '</div><div class="row2"><button class="btn danger" type="button" data-ok>Revert the hunk</button><button class="btn" type="button" data-no>Cancel</button></div>',
-        onMount(b, scm, close) { scm.listen($('[data-ok]', b), 'click', () => { close(); SL.act.revertHunk(path, key, undefined, { from, to }); }); scm.listen($('[data-no]', b), 'click', close); } });
+    function revertDialog(key, note) {
+      const c = ctx(); if (!c.I) return; const S = c.S, path = c.W.file, [from, to] = pointsOf(c), h = ws.hunks(c.I, path, c.range[0], c.range[1]), hk = h.hunks.find(x => x.oldStart + ':' + x.newStart === key); if (!hk) return;
+      const changed = hk.lines.filter(l => l.t === '+' || l.t === '-'), put = changed.filter(l => l.t === '-').length, out = changed.length - put;
+      const pv = changed.map(l => '<div class="ln ' + (l.t === '+' ? 'del' : 'add') + '"><b class="who"></b><i></i><s>' + (l.t === '+' ? '−' : '+') + '</s><span>' + hl(l.s) + '</span></div>').join('');
+      ui.modal({ title: 'Revert this hunk', kicker: F.vis(path).slice(0, 60), desc: 'put ' + plural(changed.length, 'line') + ' back as they were before', color: 'var(--rv)', focus: '[data-no]', body: (note ? '<p class="stubnote"><span class="warm">' + esc(note) + '</span></p>' : '') + '<p class="stubnote">The hunk at line ' + hk.newStart + ' of <b class="mono">' + vt(path) + '</b> goes back to its earlier text: ' + plural(put, 'line') + ' put back, ' + plural(out, 'line') + ' taken out. What the revert would do, line by line:</p><div class="diff wdiff" style="max-height:50vh;overflow:auto" tabindex="0" aria-label="the lines the revert changes">' + pv + '</div><div class="row2"><button class="btn danger" type="button" data-ok>Revert the hunk</button><button class="btn" type="button" data-no>Cancel</button></div>',
+        onMount(b, scm, close) {
+          scm.listen($('[data-ok]', b), 'click', async () => {
+            close(); const r = await ws.ops.revert(S, path, hk, from, to);
+            if (r.code === 'changed') {   // the file or the hunk changed since it was shown: the new diff is in the cache; the same hunk is shown again when it is still there
+              const again = r.diff && r.diff.hunks.some(x => x.oldStart + ':' + x.newStart === key);
+              if (again) revertDialog(key, 'The file changed since the diff was drawn: this is the hunk now. Look at it and confirm again; nothing was written.'); else ui.toast(r.message, 'warm');
+            }
+          });
+          scm.listen($('[data-no]', b), 'click', close);
+        } });
     }
 
     /* ---------------- live: typing caret and the update hook ---------------- */

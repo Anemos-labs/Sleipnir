@@ -192,7 +192,7 @@ test('apply verified work: a dry run needs no confirmation; the real call asks f
   const r = await ws.ops.accept(W.S, { mode: 'edits', message: 'x'.repeat(300) }); assert.equal(r.ok, true); assert.equal(r.result.committed, false); assert.equal(r.result.message, 'applied 1 file');
   call = W.hits.filter(h => h.path.endsWith('/ws/accept')).pop(); assert.equal(call.headers['X-Confirm'], 'id-accept:shop'); assert.equal(JSON.parse(call.body).mode, 'edits'); assert.equal(JSON.parse(call.body).message.length, 200, 'a message is one line, bounded');
   const bad = await ws.ops.accept(W.S, { message: 'dirty' }); assert.equal(bad.ok, false); assert.equal(bad.code, 'dirty'); assert.equal(bad.detail.hint, 'git stash');
-  const n = ws.normAccept({}); assert.deepEqual(plain(n), { commit: '', files: [], branch: '', applied: false, committed: false, waiting: false, dryRun: false, commitBlocked: '', canCommit: true, message: '', tasks: [] });
+  const n = ws.normAccept({}); assert.deepEqual(plain(n), { commit: '', files: [], branch: '', applied: false, committed: false, waiting: false, dryRun: false, commitBlocked: '', canCommit: true, message: '', tasks: [], scope: '' });
   assert.equal(ws.normAccept({ canCommit: false }).canCommit, false); assert.equal(ws.normAccept({ commitBlocked: 'moved' }).canCommit, false);
 });
 
@@ -242,7 +242,10 @@ test('hostile text becomes printable and bounded', async () => {
   assert.equal(F.vis('tab\there\nline'), 'tab\there\nline', 'a tab and a newline are text');
   const h = F.hl('<script>alert(1)</script><img src=x onerror="y">'); assert.ok(!/<script|<img/i.test(h)); assert.match(h, /&lt;script&gt;/);
   assert.match(F.hl('x := "' + CP(0x202e) + 'evil"'), /<em class="c">⟨U\+202E⟩<\/em>/);
-  const long = F.hl('a'.repeat(5000)); assert.ok(long.length < 2300); assert.match(long, /\+3000 characters not shown/);
+  const raw = 'S' + 'a'.repeat(4998) + 'E', long = F.hl(raw); assert.ok(long.length < 2300); assert.ok(long.includes('… 3,000 more characters …'), 'says how many are between');
+  assert.ok(long.startsWith('S' + 'a'.repeat(1799)) && long.endsWith('a'.repeat(199) + 'E'), 'the first and the last characters are both there');
+  const e = F.elide(raw); assert.equal(e.head.length + e.tail.length + e.hidden, 5000); assert.equal(e.head.length, 1800); assert.equal(e.tail.length, 200); assert.deepEqual(plain(F.elide('short')), { head: 'short', tail: '', hidden: 0 });
+  const em = F.elide('😀'.repeat(2000)); assert.ok(!/[\ud800-\udbff]$/.test(em.head) && !/^[\udc00-\udfff]/.test(em.tail), 'no pair is cut'); assert.equal(em.head.length + em.tail.length + em.hidden, 4000);
   const emoji = '😀'.repeat(1500); const c = F.clip(emoji, 2001); assert.equal(c.t.length, 2000, 'a pair is not cut in two'); assert.equal(c.more, 1000);
   assert.deepEqual(plain(F.lines('a\r\nb\r\n')), ['a', 'b']); assert.deepEqual(plain(F.lines('')), []); assert.deepEqual(plain(F.lines('\n')), ['']);
   assert.ok(!/["'<>&]/.test(F.vis('a') + F.escv('ok').replace(/<em class="c">|<\/em>/g, '')) || true);
@@ -279,4 +282,48 @@ test('a recorded, watched or placeholder tab never calls the workspace API: no r
     assert.equal((await ws.ops.previewRestore(S, 'c01')).ok, false); assert.equal((await ws.ops.accept(S, { dryRun: true })).ok, false);
     assert.deepEqual(plain(ws.filesOf(S, 'be-1')), []); assert.equal(W.hits.length, 0, 'no request at all for ' + JSON.stringify(kind)); assert.deepEqual(plain(W.toasts), []);
   }
+});
+
+test('paths, tasks and agents named like the members of Object.prototype are keys like any other', async () => {
+  const names = ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf'];
+  const ch = (path, st, ag, task) => ({ path, status: st, added: 1, removed: 0, agents: [ag], task });
+  const W = world((m, p) => (p.endsWith('/ws/index') ? ok(index({
+    cps: [{ id: 'c01', time: 't', at: 1, label: 'l', skipped: false, files: names, agents: ['__proto__'], tasks: ['constructor'], added: 5, removed: 0, nfiles: 5, changes: names.map(n => ch(n, 'added', '__proto__', 'constructor')) }],
+    tree: names.map(n => ({ path: n, dir: '', name: n, kind: 'go', status: 'added', owner: '__proto__', task: 'constructor', cp: 'c01', add: 1, del: 0, size: 1, exists: true, lease: { agent: '__proto__', task: 'constructor', glob: '**' } })),
+    reviewed: JSON.parse('{"constructor":"c01","__proto__":"c01"}'), reverted: [{ id: 'v_1', path: '__proto__', key: '1:1', t: 1 }], restore: null })) : null)), ws = W.SL.ws, S = W.S;
+  W.S.m.tasks = { constructor: { st: 'merged' } }; W.S.m.merged = ['constructor'];
+  const I = await ready(W); assert.equal(I.pos.length, 1); assert.deepEqual(plain(Object.keys(I.tl).sort()), names.slice().sort());
+  const rows = ws.rows(S, I, ws.setAt(I, 1)); assert.deepEqual(plain(rows.map(r => r.path).sort()), names.slice().sort()); assert.ok(rows.every(r => r.status === 'A' && r.owner === '__proto__' && r.task === 'constructor' && r.cp === 'c01' && r.lease === null), 'the lease ended with the merged task called constructor');
+  assert.equal(ws.lastId(I, '__proto__'), 'c01'); assert.deepEqual(plain(ws.touches(I, 'constructor', ws.setAt(I, 1)).map(t => t.id)), ['c01']); assert.equal(ws.statusOf(I, 'toString', ws.setAt(I, 1)), 'A');
+  assert.equal(Object.keys(S.ws.reviewed).length, 2, 'both marks are own keys'); assert.equal(S.ws.reviewed['__proto__'], 'c01'); assert.equal(S.ws.reviewed.constructor, 'c01');
+  const m = ws.marks(S); assert.deepEqual(plain(m.revs['__proto__']), [{ id: 'v_1', key: '1:1' }]); assert.equal(m.revs.constructor, undefined); assert.equal(ws.revertId(S, '__proto__', '1:1'), 'v_1');
+  assert.equal(ws.stat('constructor'), '-'); assert.equal(ws.stat('Added'), 'A'); assert.deepEqual(plain(ws.filesFrom(I, 0)), names);
+  assert.deepEqual(plain(ws.filesOf(S, '__proto__').map(r => r.path).sort()), names.slice().sort());
+});
+
+test('restore, revert and apply confirm the scope the server issued for what was shown, send it back, and take a 409 changed as a new thing to look at', async () => {
+  const seen = [];
+  const W = world((m, p, q, call) => {
+    if (p === '/api/confirm') return ok({ id: 'id:' + JSON.parse(call.body).scope, scope: JSON.parse(call.body).scope, expires_in: 60 });
+    const b = call.body ? JSON.parse(call.body) : {}; if (/\/ws\/(restore|revert|accept)$/.test(p)) seen.push({ p: p.split('/').pop(), b, x: call.headers['X-Confirm'] });
+    if (p.endsWith('/ws/restore')) return b.scope === 'restore:shop:c02:new' ? ok({ id: 'c02', files: [{ path: 'a.go', action: 'restore', outcome: 'done' }], applied: true, safety: 'c02s' }) : err(409, 'changed', 'the files changed since the preview', { id: 'c02', label: 'l', time: 't', files: [{ path: 'a.go', action: 'restore', outcome: 'planned', added: 1, removed: 2 }, { path: 'b.go', action: 'delete', outcome: 'planned' }], applied: false, scope: 'restore:shop:c02:new' });
+    if (p.endsWith('/ws/revert')) return b.scope === 'revert:shop:new' ? ok({ id: 'v_1', path: b.path, key: b.key, t: 1 }) : err(409, 'changed', 'the file changed since the diff was drawn', { path: b.path, from: b.from, to: b.to, added: 1, removed: 1, hunks: [{ oldStart: 3, oldLines: 1, newStart: 3, newLines: 1, lines: [{ t: '-', s: 'x' }, { t: '+', s: 'y' }], scope: 'revert:shop:new' }] });
+    if (p.endsWith('/ws/accept')) return b.scope === 'accept:shop:new' ? ok({ applied: true, files: ['a'] }) : err(409, 'changed', 'the verified work changed', { dryRun: true, files: ['a', 'b'], tasks: ['T1'], scope: 'accept:shop:new', canCommit: true });
+    return idx()(m, p);
+  });
+  const ws = W.SL.ws, S = W.S; await ready(W); W.toasts.length = 0;
+  // restore: the plan's scope, confirmed and sent back; changed: nothing is toasted, the new plan comes back with its scope
+  let r = await ws.ops.restore(S, 'c02', { scope: 'restore:shop:c02:old' }); assert.equal(r.ok, false); assert.equal(r.code, 'changed'); assert.equal(r.plan.scope, 'restore:shop:c02:new'); assert.equal(r.plan.files.length, 2); assert.equal(r.plan.files[1].action, 'delete'); assert.deepEqual(plain(W.toasts), []);
+  assert.deepEqual(plain(seen[0].b), { id: 'c02', dryRun: false, scope: 'restore:shop:c02:old' }); assert.equal(seen[0].x, 'id:restore:shop:c02:old', 'the exact scope was confirmed');
+  r = await ws.ops.restore(S, 'c02', r.plan); assert.equal(r.ok, true); assert.equal(seen[1].x, 'id:restore:shop:c02:new'); assert.equal(r.plan.safety, 'c02s');
+  r = await ws.ops.restore(S, 'c02', { files: [] }); assert.equal(seen[2].x, 'id:restore:shop:c02', 'a server that sends no scope: the scope of the contract'); assert.equal('scope' in seen[2].b, false);
+  // revert: the hunk's scope; changed: the new diff replaces the cached one (no new request) and says so
+  const hk = { oldStart: 3, newStart: 3, scope: 'revert:shop:old', lines: [] };
+  r = await ws.ops.revert(S, 'a.go', hk, 'base', 'live'); assert.equal(r.ok, false); assert.equal(r.code, 'changed'); assert.equal(r.diff.hunks[0].scope, 'revert:shop:new'); assert.deepEqual(plain(seen[3].b), { path: 'a.go', key: '3:3', from: 'base', to: 'live', scope: 'revert:shop:old' }); assert.equal(seen[3].x, 'id:revert:shop:old');
+  const n = W.hits.filter(h => h.path.includes('/ws/diff')).length; const I = ws.info(S); assert.equal(ws.diffEntry(I, 'a.go', 'base', 'live').c.hunks[0].scope, 'revert:shop:new'); assert.equal(W.hits.filter(h => h.path.includes('/ws/diff')).length, n, 'the diff came with the answer');
+  r = await ws.ops.revert(S, 'a.go', r.diff.hunks[0], 'base', 'live'); assert.equal(r.ok, true); assert.equal(seen[4].x, 'id:revert:shop:new');
+  // apply: the dry run's scope
+  r = await ws.ops.accept(S, { mode: 'edits', scope: 'accept:shop:old' }); assert.equal(r.ok, false); assert.equal(r.code, 'changed'); assert.deepEqual(plain(r.result.files), ['a', 'b']); assert.equal(r.result.scope, 'accept:shop:new'); assert.deepEqual(plain(seen[5].b), { mode: 'edits', scope: 'accept:shop:old' });
+  r = await ws.ops.accept(S, { mode: 'edits', scope: r.result.scope }); assert.equal(r.ok, true); assert.equal(seen[6].x, 'id:accept:shop:new');
+  assert.deepEqual(plain(W.toasts), [], 'a changed answer is for the dialog to show, not a toast');
 });

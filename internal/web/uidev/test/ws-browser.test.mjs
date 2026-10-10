@@ -106,50 +106,71 @@ test('a reviewed mark goes to the server at once and comes back from the index',
   await close(p);
 });
 
-test('hunk revert: preview, a confirmation of its scope, the hunk becomes a "reverted by you" row, undo brings it back', T, async t => {
+test('hunk revert: every line it changes, the hunk\'s own scope confirmed and sent back, the hunk becomes a "reverted by you" row, undo brings it back', T, async t => {
   if (needActs(t)) return;
-  const srv = await serve('pack'), p = await open(srv);
+  const srv = await serve('pack'), p = await open(srv), posts = u => srv.state.posts.filter(x => x.url.endsWith(u));
   await tab(p, 'changes'); await until(p, '.ws-body .ln.hunk.wh [data-rev]');
-  const key = await ev(p, 'document.querySelector(".ws-body [data-rev]").dataset.rev'), hunks0 = await count(p, '.ws-body .ln.hunk.wh');
+  const key = await ev(p, 'document.querySelector(".ws-body [data-rev]").dataset.rev'), hunks0 = await count(p, '.ws-body .ln.hunk.wh'), scope = await ev(p, '(() => { const I = SL.ws.info(SL.sessions.active), f = SL.sessions.active.ui.ws.file, d = SL.ws.diffEntry(I, f, "base", "live"); return d.c.hunks.find(h => h.oldStart + ":" + h.newStart === document.querySelector(".ws-body [data-rev]").dataset.rev).scope; })()');
+  assert.match(scope, /^revert:shop:/, 'the hunk carries the scope the server issued');
   await click(p, '.ws-body [data-rev]'); await until(p, '.sheet');
-  assert.match(await text(p, '.sheet .sh-h h2'), /Revert this hunk/); assert.ok((await count(p, '.sheet .diff .ln')) >= 1);
-  await click(p, '.sheet [data-no]'); await p.wait(100); assert.equal(reqs(srv, /^POST .*ws\/revert/).length, 0, 'cancel writes nothing');
+  assert.match(await text(p, '.sheet .sh-h h2'), /Revert this hunk/); assert.match(await text(p, '.sheet .sh-h .d'), /^put \d+ lines? back as they were before$/);
+  assert.equal(await count(p, '.sheet .diff .ln'), await ev(p, 'SL.ws.hunks(SL.ws.info(SL.sessions.active), SL.sessions.active.ui.ws.file, [], SL.ws.setAt(SL.ws.info(SL.sessions.active), 99)).hunks.find(h => h.oldStart + ":" + h.newStart === ' + JSON.stringify(key) + ').lines.filter(l => l.t === "+" || l.t === "-").length'), 'every line the revert changes');
+  await click(p, '.sheet [data-no]'); await p.wait(100); assert.equal(posts('/ws/revert').length, 0, 'cancel writes nothing');
   await click(p, '.ws-body [data-rev]'); await until(p, '.sheet'); await click(p, '.sheet [data-ok]');
   await until(p, 'document.querySelector(".ws-body [data-unrev]")');
-  const post = reqs(srv, /^POST \S*ws\/revert(\?|$)/); assert.equal(post.length, 1);
-  const path0 = await ev(p, 'SL.sessions.active.ui.ws.file'), cid = srv.state.confirms;
-  assert.ok(cid >= 1, 'a confirmation was asked for');
+  const post = posts('/ws/revert'); assert.equal(post.length, 1); assert.equal(post[0].body.scope, scope, 'the scope is sent back'); assert.ok(post[0].confirm.endsWith('_' + scope), 'and is what was confirmed: ' + post[0].confirm); assert.equal(post[0].body.key, key); assert.equal(post[0].body.to, 'live');
   assert.match(await text(p, '.ws-body .rvd'), /reverted by you/); assert.doesNotMatch(await text(p, '.ws-body .rvd'), /mock/); assert.equal(await count(p, '.ws-body .ln.hunk.wh'), hunks0, 'the row stands where the hunk was');
-  assert.ok((await count(p, '.ws-list .wf .tag.warm')) >= 1, 'the file row says a hunk of it was reverted');
   await click(p, '.ws-body [data-unrev]'); await until(p, '!document.querySelector(".ws-body [data-unrev]") && document.querySelector(".ws-body [data-rev]")');
-  assert.equal(reqs(srv, /^POST \S*revert\/v_[a-z0-9]+\/undo(\?|$)/).length, 1); assert.ok(key && path0);
+  assert.equal(reqs(srv, /^POST \S*revert\/v_[a-z0-9]+\/undo(\?|$)/).length, 1);
   await close(p);
-  // a file that changed under the person: the server's sentence, the page looks again
+  // the file changes under the person: nothing is written, the hunk comes back with its new scope and is confirmed again
+  const dr = await serve('pack', { revertDrift: true }), p3 = await open(dr);
+  await tab(p3, 'changes'); await until(p3, '.ws-body [data-rev]'); await click(p3, '.ws-body [data-rev]'); await until(p3, '.sheet'); await click(p3, '.sheet [data-ok]');
+  await until(p3, '.sheet .stubnote .warm'); assert.match(await text(p3, '.sheet .stubnote .warm'), /The file changed since the diff was drawn: this is the hunk now/); assert.equal(dr.state.posts.filter(x => x.url.endsWith('/ws/revert')).length, 1, 'nothing written yet'); assert.equal(await count(p3, '.ws-body .rvd'), 0);
+  await click(p3, '.sheet [data-ok]'); await until(p3, '.ws-body [data-unrev]'); const two = dr.state.posts.filter(x => x.url.endsWith('/ws/revert')); assert.equal(two.length, 2); assert.notEqual(two[0].body.scope, two[1].body.scope, 'the new scope is what was confirmed'); assert.ok(two[1].confirm.endsWith('_' + two[1].body.scope)); await close(p3);
+  // a refusal with no new diff: the server's sentence
   const bad = await serve('pack', { revertFails: true }), p2 = await open(bad);
   await tab(p2, 'changes'); await until(p2, '.ws-body [data-rev]'); await click(p2, '.ws-body [data-rev]'); await until(p2, '.sheet'); await click(p2, '.sheet [data-ok]');
-  await until(p2, '.toast'); assert.match(await text(p2, '.toast'), /the file changed since the diff was drawn/); assert.ok((await count(p2, '.ws-body [data-rev]')) >= 1); await close(p2);
+  await until(p2, '.toast'); assert.match(await text(p2, '.toast'), /the file changed since the diff was drawn/); await until(p2, '.ws-body [data-rev]'); await close(p2);   // the page looks at the file again
 });
 
-test('restore: a dry run lists what would happen, cancel writes nothing, apply asks for its confirmation and shows the banner, undo takes it away', T, async t => {
+test('restore: every file of the dry run\'s plan, its scope confirmed and sent back, a plan that changed is shown again, the banner and undo', T, async t => {
   if (needActs(t)) return;
-  const srv = await serve('pack'), p = await open(srv);
+  const srv = await serve('pack'), p = await open(srv), posts = u => srv.state.posts.filter(x => x.url.endsWith(u));
   await tab(p, 'checkpoints'); await until(p, '.ws-list [data-restore]');
   const id = await ev(p, 'document.querySelectorAll(".ws-list [data-restore]")[1].dataset.restore');
   await click(p, '.ws-list [data-restore]', '', 1); await until(p, '.sheet');
-  const dry = reqs(srv, /^POST \S*ws\/restore(\?|$)/); assert.equal(dry.length, 1, 'the preview is one dry run');
+  assert.equal(posts('/ws/restore').length, 1, 'the preview is one dry run'); assert.equal(posts('/ws/restore')[0].body.dryRun, true);
   assert.match(await text(p, '.sheet .sh-h h2'), new RegExp('Restore ' + id)); assert.match(await text(p, '.sheet .stubnote'), /The agents are told to read them again\. A safety checkpoint is taken first/);
   assert.ok((await count(p, '.sheet table tbody tr')) >= 1); assert.match(await text(p, '.sheet table'), /put back|removed/); assert.doesNotMatch(await text(p, '.sheet'), /mock/);
-  await click(p, '.sheet [data-no]'); await p.wait(100); assert.equal(reqs(srv, /^POST \S*ws\/restore(\?|$)/).length, 1, 'cancel: nothing more');
+  await click(p, '.sheet [data-no]'); await p.wait(100); assert.equal(posts('/ws/restore').length, 1, 'cancel: nothing more');
   await click(p, '.ws-list [data-restore]', '', 1); await until(p, '.sheet'); await click(p, '.sheet [data-ok]');
   await until(p, 'document.querySelector(".wnr.rs")');
-  assert.equal(reqs(srv, /^POST \S*ws\/restore(\?|$)/).length, 3, 'preview twice, one apply'); assert.match(await text(p, '.wnr.rs'), /Restored · \d+ files? put back to before c\d\d; a safety checkpoint c\d\ds was taken first\./);
+  const rs = posts('/ws/restore'); assert.equal(rs.length, 3, 'preview twice, one apply'); const plan = await ev(p, 'null') || null, ap = rs[2];
+  assert.equal(ap.body.dryRun, false); assert.match(ap.body.scope, /^restore:shop:/, 'the scope of the plan is sent back'); assert.ok(ap.confirm.endsWith('_' + ap.body.scope), 'and is what was confirmed');
+  assert.match(await text(p, '.wnr.rs'), /Restored · \d+ files? put back to before c\d\d; a safety checkpoint c\d\ds was taken first\./);
   assert.match(await text(p, '.toast'), new RegExp('files put back to before ' + id + '$'));
   await click(p, '[data-undorestore]'); await until(p, '!document.querySelector(".wnr.rs")'); assert.equal(reqs(srv, /^POST \S*restore\/undo(\?|$)/).length, 1);
   await close(p);
+  // the plan changes between the preview and the confirmation: nothing is written, the new plan is shown with a note and confirmed again
+  const dr = await serve('pack', { restoreDrift: true }), p3 = await open(dr);
+  await tab(p3, 'checkpoints'); await until(p3, '.ws-list [data-restore]'); await click(p3, '.ws-list [data-restore]', '', 1); await until(p3, '.sheet'); const n0 = await count(p3, '.sheet table tbody tr'); await click(p3, '.sheet [data-ok]');
+  await until(p3, '.sheet .stubnote .warm'); assert.match(await text(p3, '.sheet .stubnote .warm'), /The files changed since the preview: this is the plan now/); assert.equal(await count(p3, '.sheet table tbody tr'), n0 + 1, 'the new plan has the file that appeared'); assert.match(await text(p3, '.sheet table'), /drifted\.go/); assert.equal(await count(p3, '.wnr.rs'), 0, 'nothing was written');
+  await click(p3, '.sheet [data-ok]'); await until(p3, 'document.querySelector(".wnr.rs")'); const two = dr.state.posts.filter(x => x.url.endsWith('/ws/restore') && x.body.dryRun === false); assert.equal(two.length, 2); assert.notEqual(two[0].body.scope, two[1].body.scope); assert.ok(two[1].confirm.endsWith('_' + two[1].body.scope)); await close(p3);
   // a file that cannot be put back: the preview says so and the confirm is off
   const c = await serve('pack', { restoreConflict: true }), p2 = await open(c);
   await tab(p2, 'checkpoints'); await until(p2, '.ws-list [data-restore]'); await click(p2, '.ws-list [data-restore]', '', 1); await until(p2, '.sheet');
   assert.equal(await ev(p2, 'document.querySelector(".sheet [data-ok]").disabled'), true); assert.match(await text(p2, '.sheet'), /1 file cannot be put back/); assert.match(await text(p2, '.sheet table'), /edited since/); await close(p2);
+});
+
+test('restore: every file of a large plan, in a box that scrolls; folders are rows, files that already match are counted', T, async () => {
+  const srv = await serve('big', { big: { files: 3000, lines: 200, changedEvery: 4 }, restoreFolders: true }), p = await open(srv);
+  await tab(p, 'checkpoints'); await until(p, '.ws-list [data-restore]'); await click(p, '.ws-list [data-restore]', '', 0); await until(p, '.sheet table');
+  const changed = await ev(p, 'SL.ws.info(SL.sessions.active).cps.find(c => c.id === "c02").files.length');
+  assert.equal(await count(p, '.sheet table tbody tr'), changed + 1, 'every file of the plan and the folder: ' + changed); assert.ok(changed > 500);
+  assert.match(await text(p, '.sheet table'), /newdir\/.*folder/); assert.match(await text(p, '.sheet .stubnote'), new RegExp(changed + ' files and 1 folder touched')); assert.match(await text(p, '.sheet .stubnote'), /1 file already as it was: not touched/);
+  const sc = await ev(p, '(() => { const w = document.querySelector(".sheet table").parentElement; return { over: getComputedStyle(w).overflowY, scrolls: w.scrollHeight > w.clientHeight, h: w.clientHeight, vh: innerHeight }; })()'); assert.equal(sc.over, 'auto'); assert.ok(sc.scrolls && sc.h <= sc.vh * 0.5 + 2, JSON.stringify(sc));
+  await close(p);
 });
 
 test('Merge: worktrees, the queue in order and the verify output; not isolated: the one sentence', T, async () => {
@@ -169,21 +190,29 @@ test('Merge: worktrees, the queue in order and the verify output; not isolated: 
   await until(p2, '.ws-body .ws-none'); assert.equal(await text(p2, '.ws-body .ws-none'), 'no worktree isolation in this run: work is written to the checkout directly'); assert.equal(await count(p2, '[data-accept]'), 0); await close(p2);
 });
 
-test('Apply verified work: disabled until something landed, a dry run, the choice of commits or edits, its confirmation, the answer', T, async () => {
-  const srv = await serve('pack'), p = await open(srv);
+test('Apply verified work: disabled until something landed, a dry run, commits or edits (each asked about), its scope confirmed and sent back, a changed result shown again', T, async () => {
+  const srv = await serve('pack'), p = await open(srv), accepts = () => srv.state.posts.filter(x => x.url.endsWith('/ws/accept'));
   await tab(p, 'files'); await until(p, '[data-accept]'); await until(p, '[data-accept]:not([disabled])');
   assert.equal(await text(p, '[data-accept]'), 'Apply verified work…');
   await click(p, '[data-accept]'); await until(p, '.sheet [data-am]');
-  const dry = reqs(srv, /^POST \S*ws\/accept(\?|$)/); assert.equal(dry.length, 1); assert.equal(srv.state.confirms, 0, 'the dry run needs no confirmation');
-  assert.match(await text(p, '.sheet .sh-h h2'), /Apply the verified work/); assert.equal(await count(p, '.sheet .diff .ln'), 3, 'the files the queue landed');
+  assert.equal(accepts().length, 1); assert.equal(accepts()[0].body.dryRun, true); assert.equal(accepts()[0].confirm, '', 'the dry run needs no confirmation'); assert.equal(srv.state.confirms, 0);
+  assert.match(await text(p, '.sheet .sh-h h2'), /Apply the verified work/); assert.equal(await count(p, '.sheet .diff .ln'), 3, 'every file the dry run lists');
   assert.equal(await ev(p, 'document.querySelector("[data-am=commits]").getAttribute("aria-pressed")'), 'true'); assert.equal(await ev(p, 'document.querySelector("[data-mf]").hidden'), false);
-  await click(p, '.sheet [data-am=edits]'); assert.equal(await ev(p, 'document.querySelector("[data-mf]").hidden'), true, 'no commit message for edits');
-  await click(p, '.sheet [data-am=commits]'); await ev(p, 'const i = document.querySelector("[data-msg]"); i.value = "ship it"; i.dispatchEvent(new Event("input", { bubbles: true }))');
-  await click(p, '.sheet [data-ok]'); await until(p, '.toast'); const done = srv.state.accepted; assert.equal(done.length, 1); assert.deepEqual(done[0], { mode: 'commits', message: 'ship it' });
+  await click(p, '.sheet [data-am=edits]'); await until(p, '.sheet [data-am=edits][aria-pressed=true]'); assert.equal(accepts().length, 2, 'what edits would apply is asked about again'); assert.equal(accepts()[1].body.mode, 'edits'); assert.equal(await ev(p, 'document.querySelector("[data-mf]").hidden'), true, 'no commit message for edits');
+  await click(p, '.sheet [data-am=commits]'); await until(p, '.sheet [data-am=commits][aria-pressed=true]'); assert.equal(accepts().length, 3); await ev(p, 'const i = document.querySelector("[data-msg]"); i.value = "ship it"; i.dispatchEvent(new Event("input", { bubbles: true }))');
+  await click(p, '.sheet [data-ok]'); await until(p, '.toast'); const done = accepts(); assert.equal(done.length, 4); const real = done[3];
+  assert.equal(real.body.mode, 'commits'); assert.equal(real.body.message, 'ship it'); assert.match(real.body.scope, /^accept:shop:/); assert.ok(real.confirm.endsWith('_' + real.body.scope), 'the scope of the dry run is what was confirmed'); assert.equal(real.body.scope, srv.state.accepted[0].scope);
   assert.match(await text(p, '.toast'), /applied: 3 files committed as deadbeef on main/); assert.equal(srv.state.confirms, 1);
   await until(p, '[data-accept][disabled]'); assert.equal(await ev(p, 'document.querySelector("[data-accept]").title'), 'nothing verified is waiting', 'what landed is applied: nothing waits');
   await close(p);
-  const dirty = await serve('pack', { dirty: true }), p2 = await open(dirty); await tab(p2, 'files'); await until(p2, '[data-accept]:not([disabled])'); await click(p2, '[data-accept]'); await until(p2, '.sheet [data-ok]'); await click(p2, '.sheet [data-ok]');
+  // the verified work changes between the dry run and the confirmation: nothing is applied, the new result is shown and confirmed again
+  const dr = await serve('pack', { acceptDrift: true }), p3 = await open(dr);
+  await tab(p3, 'files'); await until(p3, '[data-accept]:not([disabled])'); await click(p3, '[data-accept]'); await until(p3, '.sheet [data-ok]'); await click(p3, '.sheet [data-ok]');
+  await until(p3, '.sheet .stubnote .warm'); assert.match(await text(p3, '.sheet .stubnote .warm'), /changed since it was shown/); assert.equal(await count(p3, '.sheet .diff .ln'), 4, 'the new list has the file that appeared'); assert.equal(dr.state.accepted.length, 0, 'nothing was applied');
+  await click(p3, '.sheet [data-ok]'); await until(p3, '.toast'); assert.equal(dr.state.accepted.length, 1); await close(p3);
+  const dirty = await serve('pack', { dirty: true }), p2 = await open(dirty); await tab(p2, 'files'); await until(p2, '[data-accept]:not([disabled])'); await click(p2, '[data-accept]'); await until(p2, '.sheet [data-ok]');
+  assert.equal(await ev(p2, 'document.querySelector("[data-am=commits]").disabled'), true); assert.match(await text(p2, '.sheet .hint'), /committing is not offered: your checkout has uncommitted changes/); assert.equal(await ev(p2, 'document.querySelector("[data-am=edits]").getAttribute("aria-pressed")'), 'true', 'edits are chosen: commits are blocked');
+  await click(p2, '.sheet [data-ok]');
   await until(p2, '.sheet .wsres .err'); assert.match(await text(p2, '.sheet .wsres'), /uncommitted changes.*git stash/); assert.equal(await count(p2, '.sheet [data-hint]'), 1, 'Copy the command'); assert.equal(await ev(p2, 'document.querySelector("[data-ok]").disabled'), false, 'the person can choose again'); await close(p2);
 });
 
@@ -217,7 +246,7 @@ test('hostile names and contents are text: nothing runs, nothing leaves its box,
   assert.equal(visited, 6, 'every hostile row was opened');
   assert.match(await text(p, '.ws-body .ws-none'), /A symbolic link: this page does not follow it/);
   await ev(p, 'document.querySelector(".ws-list .wf[data-file*=huge]").click()'); await p.wait(300); await until(p, '.ws-body .ln', 8000);
-  assert.ok((await count(p, '.ws-body .ln')) <= 120, 'a long diff draws a window'); const html = await ev(p, 'document.querySelector(".ws-body").innerHTML'); assert.ok(!/<script|<img/i.test(html), 'the content is escaped'); assert.match(html, /⟨U\+202E⟩|characters not shown|&lt;script&gt;/);
+  assert.ok((await count(p, '.ws-body .ln')) <= 120, 'a long diff draws a window'); const html = await ev(p, 'document.querySelector(".ws-body").innerHTML'); assert.ok(!/<script|<img/i.test(html), 'the content is escaped'); assert.match(html, /⟨U\+0007⟩|more characters …|&lt;script&gt;/); assert.match(html, /… [\d,]+ more characters …/, 'an overlong line says how much it leaves out');
   assert.equal(await ev(p, 'window.__pwned'), 0); const pr = await p.pageProblems(); assert.deepEqual(pr.filter(x => /csp/.test(x)), [], 'no policy violation');
   await close(p);
 });
@@ -284,5 +313,39 @@ test('a file a worker is writing is listed as "writing" and typed in the diff fr
   await p.wait(1500); await p.settle(); const n2 = await count(p, '.ws-body .ln.add'); assert.ok(n2 > n1, 'the text grows: ' + n1 + ' then ' + n2); assert.equal(await count(p, '.ws-body .ln.caretline'), 1, 'the caret is on the last line');
   assert.match(await text(p, '.ws-fh'), /new_test\.go.*A/); await p.wait(6000); await p.settle(); await sleep(200);
   assert.equal(await count(p, '.ws-list .wf[data-file="api/catalog/new_test.go"]'), 0, 'the record takes over (nothing is recorded in this fixture, so the row goes)');
+  await close(p);
+});
+
+test('names that are those of Object.prototype members (constructor, __proto__, toString ...) are directories, files, tasks and agents like any other', T, async () => {
+  const srv = await serve('hostile', { big: { files: 20, lines: 200 } }), p = await open(srv);
+  await tab(p, 'files'); await until(p, '.ws-list .wf');
+  const dirs = await ev(p, 'Array.from(document.querySelectorAll(".ws-list .wd .wn")).map(e => e.textContent)'); for (const d of ['constructor/', '__proto__/', 'toString/']) assert.ok(dirs.includes(d), d + ' is a directory: ' + dirs);
+  const names = await ev(p, 'Array.from(document.querySelectorAll(".ws-list .wf .wn")).map(e => e.textContent)'); for (const n of ['hasOwnProperty', 'valueOf', '__defineGetter__', 'isPrototypeOf', 'a.go', 'b.go', 'c.go']) assert.ok(names.includes(n), n + ' is a file: ' + names);
+  assert.equal(await count(p, '.ws-list .wf[data-file="hasOwnProperty"] .wrv'), 1, 'a reviewed mark on a file called hasOwnProperty'); assert.equal(await count(p, '.ws-list .wf[data-file="valueOf"] .tag.warm[title*="reverted"]'), 1, 'a reverted hunk on a file called valueOf');
+  // a directory with such a name folds and unfolds
+  assert.equal(await ev(p, 'document.querySelector(".ws-list .wd[data-dir=constructor]").getAttribute("aria-expanded")'), 'true');
+  await click(p, '.ws-list .wd[data-dir=constructor]'); assert.equal(await ev(p, 'document.querySelector(".ws-list .wd[data-dir=constructor]").getAttribute("aria-expanded")'), 'false'); assert.equal(await count(p, '.ws-list .wf[data-file="constructor/a.go"]'), 0);
+  await click(p, '.ws-list .wd[data-dir=constructor]'); assert.equal(await count(p, '.ws-list .wf[data-file="constructor/a.go"]'), 1);
+  await click(p, '.ws-list .wf[data-file="__proto__/b.go"]'); await until(p, '.ws-body .ln'); assert.match(await text(p, '.wpath'), /b\.go/);
+  // the changes are grouped by a task called constructor and by an agent called __proto__
+  await tab(p, 'changes'); await until(p, '.ws-list .wg'); const heads = await ev(p, 'Array.from(document.querySelectorAll(".ws-list .wg")).map(e => e.dataset.task)'); assert.ok(heads.includes('constructor'), 'task heads: ' + heads);
+  await click(p, '[data-grp=agent]'); await until(p, '.ws-list .wg[data-ag]'); assert.ok((await ev(p, 'Array.from(document.querySelectorAll(".ws-list .wg")).map(e => e.dataset.ag)')).includes('__proto__'));
+  await click(p, '[data-review="valueOf"]'); await until(p, '.ws-list [data-review="valueOf"].on'); assert.equal(reqs(srv, /^PUT /).length >= 1, true);
+  assert.deepEqual((await p.pageProblems()).concat(p.problems).filter(x => !/Failed to load resource/.test(x)), [], 'nothing threw');
+  await close(p);
+});
+
+test('a revert preview shows every line the hunk changes, counted in its heading, in a box that scrolls both ways; an overlong line keeps its first and last characters and says how many it leaves out', T, async t => {
+  if (needActs(t)) return;
+  const srv = await serve('hostile', { big: { files: 20, lines: 300 }, wideHunk: 40 }), p = await open(srv);
+  await tab(p, 'files'); await until(p, '.ws-list .wf'); await ev(p, 'const S = SL.sessions.active; S.ui.ws.file = "big/huge.go"; S.ui.ws.tab = "changes"; S.touch()'); await until(p, 'document.querySelectorAll(".ws-body .ln").length > 100');
+  // the diff itself: the long line is reachable by scrolling, from its first characters to its last
+  const row = await ev(p, '(() => { const r = Array.from(document.querySelectorAll(".ws-body .ln span")).find(e => e.textContent.includes("THE-END") && e.textContent.includes("START")); return r ? { text: r.textContent, hasMarker: !!r.querySelector("em.c"), body: document.querySelector(".ws-body").scrollWidth > document.querySelector(".ws-body").clientWidth + 2000 } : null; })()');
+  assert.ok(row, 'the first 200 and the last 200 characters of the long line are on the page'); assert.match(row.text, /START long long/); assert.match(row.text, /long THE-END$/); assert.match(row.text, /… 2,5\d\d more characters …/); assert.ok(row.hasMarker && row.body, 'the line scrolls sideways');
+  await click(p, '.ws-body [data-rev]'); await until(p, '.sheet .diff .ln');
+  assert.equal(await count(p, '.sheet .diff .ln'), 80, 'all 80 lines the hunk changes, not a sample'); assert.match(await text(p, '.sheet .sh-h .d'), /^put 80 lines back as they were before$/); assert.match(await text(p, '.sheet .stubnote'), /40 lines put back, 40 lines taken out/);
+  const box = await ev(p, '(() => { const b = document.querySelector(".sheet .diff"), r = b.getBoundingClientRect(); return { ox: getComputedStyle(b).overflowX, oy: getComputedStyle(b).overflowY, v: b.scrollHeight > b.clientHeight, h: b.scrollWidth > b.clientWidth, height: r.height, vh: innerHeight, tab: b.tabIndex }; })()');
+  assert.deepEqual([box.ox, box.oy, box.v, box.h, box.tab], ['auto', 'auto', true, true, 0], JSON.stringify(box)); assert.ok(box.height <= box.vh * 0.5 + 2);
+  assert.match(await ev(p, 'document.querySelector(".sheet .diff").textContent'), /START long[\s\S]*long THE-END/); await click(p, '.sheet [data-no]');
   await close(p);
 });
