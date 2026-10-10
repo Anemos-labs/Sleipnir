@@ -247,6 +247,10 @@ func (t *Translator) merge(e events.Event, ts float64, at int64) {
 			how = "failed (exit " + strconv.Itoa(*p.ExitCode) + ")"
 		}
 		t.sysRow("mgr", "⚠", firstNonEmpty(id, "work")+": "+firstNonEmpty(p.Cmd, "the verification")+" "+how, uiID(e.Agent), id, ts, at)
+	case events.TypeMergeRolledBack:
+		// The terminal's merge list adds "rolled back" to the entry of the failed verification; the page's row of that failure is
+		// already in the journal, so the undoing is a row of its own.
+		t.sysRow("mgr", "↺", firstNonEmpty(id, "work")+": the merge was rolled back", uiID(e.Agent), id, ts, at)
 	}
 }
 
@@ -643,7 +647,21 @@ func (t *Translator) compact(e events.Event, ts float64, at int64) {
 	if from > 0 {
 		pct = int(roundHalfAway(float64(to-from) / float64(from) * 100))
 	}
-	t.put(&wire.Compact{ID: uiID(e.Agent), From: from, To: to, Pct: pct}, ts, at, nil)
+	t.put(&CompactX{Compact: wire.Compact{ID: uiID(e.Agent), From: from, To: to, Pct: pct}, Moment: t.compactMoment(e)}, ts, at, nil)
+}
+
+// compactMoment is whether the cache was warm or cold when the planner decided on the compaction the log event commits ("warm",
+// "cold"), as the State worked it out from the compact.plan before it for the terminal; "" for a compaction that had no plan.
+func (t *Translator) compactMoment(e events.Event) string {
+	c, ok := t.st.LastCompaction(e.Agent)
+	if !ok || (e.Seq != 0 && c.Seq != e.Seq) {
+		return ""
+	}
+	switch c.Moment {
+	case "warm", "cold":
+		return c.Moment
+	}
+	return ""
 }
 
 // roundHalfAway rounds to the nearest integer, halves away from zero.

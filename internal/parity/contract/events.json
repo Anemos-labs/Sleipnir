@@ -3,6 +3,8 @@
     {"item": "agent.state", "reason": "The translator folds it into the State it shares with the terminal and sends the agent's state event from it (think, tool, edit, wait, ask, idle, done or stuck), which is what the page draws."},
     {"item": "agent.stuck", "reason": "The shared State marks the agent stuck and the translator sends it as stuck with the guard's note. Only the nudge and stop phases do; the phases that send an answer back (plan, verify, leak) add a line to the terminal's feed and the page shows nothing for them."},
     {"item": "agent.abandon", "reason": "The shared State ends the run as failed and the translator sends the agent as stuck, 'failed: the run stopped'. The terminal's feed line, which says the run did not stop when asked, has no row on the page."},
+    {"item": "compact.plan", "reason": "The shared State marks the agent as compacting from the planner's decision to the commit, and the translator sends the agent's state with the terminal's words for it ('folds its thread'). The same plan says whether the cache was warm or cold, and the translator sends that on the compaction it belongs to (moment), which the page's row and its Cache view tell in the terminal's words: a declared, priced rebase, or a rewrite that cost nothing extra."},
+    {"item": "compact.patch", "reason": "The shared State marks the agent as compacting while the compactor's patch is made, and the translator sends the agent's state with the terminal's words ('folds its thread') until the compaction is committed or rejected."},
     {"item": "governor", "reason": "The shared State keeps the governor's counters and the translator sends them as the gov event (requests a minute, rate limits, retries, in flight, queued), which the page draws as its gauge. The terminal's feed line with the slower rate and the pause has no row on the page."},
     {"item": "perm.ask", "reason": "The shared State holds the question against the agent and the translator sends the agent as asking, 'wants to run <command>'. In a hosted tab the card comes from the approvals bridge; in a followed or replayed log this state is all the page has."},
     {"item": "perm.decide", "reason": "The shared State closes the question it answers and the translator sends the agent's state again. A refusal by policy that was never asked leaves the terminal's feed line only; the page shows it on the refused tool row."}
@@ -37,20 +39,5 @@
     {"item": "turn.append", "reason": "The page rebuilds the conversation of a followed, replayed or resumed log from the turns. The terminal's chat takes its conversation from the session's own sink and thread, and its cockpit shows none."},
     {"item": "verify.run", "reason": "The page labels the merge queue's verification with the gate command of a run and the Workspace pane lists the runs. The terminal's merge list names a command only from merge.verify_failed."},
     {"item": "web.action", "reason": "Written by the page's own actions (a restart, a rule); the page shows them as rows when it follows or replays the log. The terminal has no such action to record."}
-  ],
-  "gaps": [
-    {"item": "compact.plan", "reason": "The terminal marks an agent as compacting while a compaction is being worked out and says on the commit whether it came at a warm or a cold moment. The page shows a compaction only when it is committed, with neither."},
-    {"item": "compact.patch", "reason": "The terminal marks an agent as compacting while the compactor's patch is being made; the page shows a compaction only when it is committed."},
-    {"item": "compact.reject", "reason": "The terminal's feed says a compaction was rejected, or that the compactor's patch was unusable and the fold is mechanical, with the reason; the page says nothing."},
-    {"item": "layer.commit", "reason": "The terminal's feed says when the shared prefix was re-written (a new epoch) and its cache view marks epochs and rebases on an agent's hit-ratio line; the page shows neither."},
-    {"item": "merge.rolled_back", "reason": "The terminal's merge list adds 'rolled back' to a merge that failed its verification; the page's row for the failed verification does not say the merge was undone."},
-    {"item": "sink.panic", "reason": "The terminal's feed shows the line that a panic of an agent's output sink was recovered; the page shows no row for it."},
-    {"item": "swarm.hold", "reason": "The terminal's feed says the manager answered while work was unfinished and was sent back to it; the page shows no row for it."},
-    {"item": "swarm.unfinished", "reason": "The terminal's feed says the run ended with work unfinished; the page shows no row for it. (The State reads a reason key where the producer writes unfinished, so the terminal's line has no detail.)"},
-    {"item": "swarm.wake", "reason": "The terminal's feed says the idle manager was woken, with the note; the page shows no row for it."},
-    {"item": "swarm.wake.paused", "reason": "The terminal's feed says the manager will not be woken again until the person writes to it; the page shows no row for it."},
-    {"item": "swarm.wake_limit", "reason": "The terminal's feed says peer mail no longer wakes a worker; the page shows no row for it."},
-    {"item": "swarm.shutdown", "reason": "The terminal's feed says the swarm shut down with agents still running; the page shows no row for it."},
-    {"item": "tool.job", "reason": "The terminal's feed says when a background job finished, was killed or exited with an error, with its command and time; the page has no row for it."}
   ]
 }

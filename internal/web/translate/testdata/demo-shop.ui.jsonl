@@ -194,8 +194,8 @@
 {"t":1.898,"k":"use","seq":194,"id":"be-1","rd":19056,"un":4005,"out":610,"wr":0,"cost":0.0056045,"saved":0.007146}
 {"t":1.898,"k":"layers","seq":195,"id":"be-1","toks":[4794,273,156,258,0,3387]}
 {"t":1.898,"k":"state","seq":196,"id":"be-1","s":"think","doing":"starting","task":"T4"}
-{"t":1.898,"k":"state","seq":197,"id":"be-2","s":"think","doing":"starting","task":"T5","reqSince":1.778}
-{"t":1.898,"k":"state","seq":198,"id":"ts-1","s":"think","doing":"starting","task":"T7","reqSince":1.779}
+{"t":1.898,"k":"state","seq":197,"id":"be-2","s":"think","doing":"folds its thread","task":"T5","reqSince":1.778}
+{"t":1.898,"k":"state","seq":198,"id":"ts-1","s":"think","doing":"folds its thread","task":"T7","reqSince":1.779}
 {"t":1.905,"k":"req","seq":199,"id":"be-2","ratio":0.977918750762474,"p":8197,"o":15}
 {"t":1.905,"k":"use","seq":200,"id":"be-2","rd":26544,"un":3330,"out":184,"wr":0,"cost":0.005351,"saved":0.009954000000000001}
 {"t":1.905,"k":"layers","seq":201,"id":"be-2","toks":[4794,271,155,249,0,2728]}
@@ -208,26 +208,26 @@
 {"t":1.938,"k":"task","seq":208,"id":"T7","title":"Smoke tests: start the service, fill a cart, read the total, check out","owner":"ts-1","scope":"tests/**","s":"verify"}
 {"t":1.939,"k":"use","seq":209,"id":"be-2","rd":34560,"un":4136,"out":302,"wr":0,"cost":0.006992,"saved":0.012960000000000001}
 {"t":1.939,"k":"use","seq":210,"id":"ts-1","rd":34432,"un":4294,"out":392,"wr":0,"cost":0.007234999999999999,"saved":0.012912}
-{"t":1.962,"k":"state","seq":211,"id":"be-1","s":"think","doing":"editing files","task":"T4","reqSince":1.905}
-{"t":1.962,"k":"state","seq":212,"id":"be-2","s":"think","doing":"running a command","task":"T5","reqSince":1.913}
+{"t":1.962,"k":"state","seq":211,"id":"be-1","s":"think","doing":"folds its thread","task":"T4","reqSince":1.905}
+{"t":1.962,"k":"state","seq":212,"id":"be-2","s":"think","doing":"folds its thread","task":"T5","reqSince":1.913}
 {"t":1.962,"k":"state","seq":213,"id":"ts-1","s":"tool","doing":"TaskBoard done T7","task":"T7"}
 {"t":1.984,"k":"queue","seq":214,"head":"T7","cmd":"sh verify.sh","step":"verified","ms":45,"conflicts":0,"bounced":0}
 {"t":1.984,"k":"task","seq":215,"id":"T7","title":"Smoke tests: start the service, fill a cart, read the total, check out","owner":"ts-1","scope":"tests/**","s":"merged"}
 {"t":1.984,"k":"merge","seq":216,"id":"T7","cmd":"sh verify.sh","ms":45}
 {"t":1.984,"k":"queue","seq":217,"head":null,"conflicts":0,"bounced":0}
-{"t":1.984,"k":"compact","seq":218,"id":"ts-1","from":2827,"to":374,"pct":-87}
+{"t":1.984,"k":"compact","seq":218,"id":"ts-1","from":2827,"to":374,"pct":-87,"moment":"warm"}
 {"t":2.007,"k":"state","seq":219,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
 {"t":2.039,"k":"req","seq":220,"id":"be-1","ratio":0.9475054229934924,"p":9220,"o":25}
 {"t":2.039,"k":"use","seq":221,"id":"be-1","rd":27792,"un":4489,"out":635,"wr":0,"cost":0.0069885,"saved":0.010421999999999999}
 {"t":2.039,"k":"layers","seq":222,"id":"be-1","toks":[4794,271,155,256,0,3744]}
 {"t":2.039,"k":"warm","seq":223,"ttl":21}
-{"t":2.039,"k":"state","seq":224,"id":"be-1","s":"think","doing":"editing files","task":"T4"}
+{"t":2.039,"k":"state","seq":224,"id":"be-1","s":"think","doing":"folds its thread","task":"T4"}
 {"t":2.039,"k":"state","seq":225,"id":"ts-1","s":"think","doing":"coordinating","task":"T7","reqSince":1.988}
 {"t":2.041,"k":"req","seq":226,"id":"be-2","ratio":0.9779286926994907,"p":8246,"o":15}
 {"t":2.041,"k":"use","seq":227,"id":"be-2","rd":42624,"un":4318,"out":317,"wr":0,"cost":0.008121,"saved":0.015984}
 {"t":2.041,"k":"layers","seq":228,"id":"be-2","toks":[4794,271,154,249,0,2778]}
-{"t":2.041,"k":"state","seq":229,"id":"be-2","s":"think","doing":"running a command","task":"T5"}
-{"t":2.045,"k":"compact","seq":230,"id":"be-2","from":2798,"to":352,"pct":-87}
+{"t":2.041,"k":"state","seq":229,"id":"be-2","s":"think","doing":"folds its thread","task":"T5"}
+{"t":2.045,"k":"compact","seq":230,"id":"be-2","from":2798,"to":352,"pct":-87,"moment":"warm"}
 {"t":2.073,"k":"use","seq":231,"id":"be-1","rd":36528,"un":5605,"out":758,"wr":0,"cost":0.0088845,"saved":0.013697999999999998}
 {"t":2.073,"k":"state","seq":232,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":2.01}
 {"t":2.112,"k":"req","seq":233,"id":"ts-1","ratio":0.9015578389128273,"p":6034,"o":10}
@@ -319,26 +319,26 @@
 {"t":3.763,"k":"layers","seq":319,"id":"fe-1","toks":[4794,276,135,256,0,1803]}
 {"t":3.763,"k":"warm","seq":320,"ttl":21}
 {"t":3.764,"k":"state","seq":321,"id":"fe-1","s":"tool","doing":"Bash sleep 0.5","task":"T6"}
-{"t":3.845,"k":"state","seq":322,"id":"be-1","s":"think","doing":"running a command","task":"T4"}
-{"t":3.845,"k":"compact","seq":323,"id":"be-1","from":3883,"to":751,"pct":-81}
+{"t":3.845,"k":"state","seq":322,"id":"be-1","s":"think","doing":"folds its thread","task":"T4"}
+{"t":3.845,"k":"compact","seq":323,"id":"be-1","from":3883,"to":751,"pct":-81,"moment":"cold"}
 {"t":4.005,"k":"req","seq":324,"id":"be-1","ratio":0.8219952867242734,"p":6365,"o":22}
 {"t":4.005,"k":"use","seq":325,"id":"be-1","rd":41760,"un":6738,"out":780,"wr":0,"cost":0.010149,"saved":0.01566}
 {"t":4.005,"k":"layers","seq":326,"id":"be-1","toks":[4794,276,157,298,66,774]}
 {"t":4.005,"k":"warm","seq":327,"ttl":21}
-{"t":4.006,"k":"state","seq":328,"id":"be-1","s":"tool","doing":"Bash sh verify.sh","task":"T4"}
+{"t":4.005,"k":"state","seq":328,"id":"be-1","s":"think","doing":"running a command","task":"T4"}
 {"t":4.014,"k":"state","seq":329,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
 {"t":4.072,"k":"state","seq":330,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":4.072}
-{"t":4.072,"k":"state","seq":331,"id":"be-1","s":"think","doing":"running a command","task":"T4"}
+{"t":4.073,"k":"state","seq":331,"id":"be-1","s":"think","doing":"running a command","task":"T4","reqSince":4.073}
 {"t":4.199,"k":"req","seq":332,"id":"rv-1","ratio":0.9722991689750693,"p":5776,"o":19}
 {"t":4.199,"k":"use","seq":333,"id":"rv-1","rd":27072,"un":6893,"out":119,"wr":0,"cost":0.0070685,"saved":0.010152}
 {"t":4.199,"k":"layers","seq":334,"id":"rv-1","toks":[4794,275,135,68,0,504]}
 {"t":4.199,"k":"warm","seq":335,"ttl":21}
 {"t":4.199,"k":"state","seq":336,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
-{"t":4.199,"k":"state","seq":337,"id":"be-1","s":"think","doing":"running a command","task":"T4","reqSince":4.073}
-{"t":4.209,"k":"req","seq":338,"id":"be-1","ratio":0.9733270940570894,"p":6411,"o":30}
-{"t":4.209,"k":"use","seq":339,"id":"be-1","rd":48000,"un":6909,"out":810,"wr":0,"cost":0.0110745,"saved":0.018000000000000002}
-{"t":4.209,"k":"layers","seq":340,"id":"be-1","toks":[4794,275,157,298,66,821]}
-{"t":4.209,"k":"warm","seq":341,"ttl":21}
+{"t":4.209,"k":"req","seq":337,"id":"be-1","ratio":0.9733270940570894,"p":6411,"o":30}
+{"t":4.209,"k":"use","seq":338,"id":"be-1","rd":48000,"un":6909,"out":810,"wr":0,"cost":0.0110745,"saved":0.018000000000000002}
+{"t":4.209,"k":"layers","seq":339,"id":"be-1","toks":[4794,275,157,298,66,821]}
+{"t":4.209,"k":"warm","seq":340,"ttl":21}
+{"t":4.209,"k":"state","seq":341,"id":"be-1","s":"think","doing":"running a command","task":"T4"}
 {"t":4.237,"k":"queue","seq":342,"head":"T4","cmd":"sh verify.sh","step":"verifying","conflicts":0,"bounced":0}
 {"t":4.237,"k":"task","seq":343,"id":"T4","title":"Catalogue: the items, paging by a stable cursor, and the one DefaultPort of the shop","owner":"be-1","scope":"shop/catalogue/**","s":"verify"}
 {"t":4.267,"k":"state","seq":344,"id":"fe-1","s":"think","doing":"running a command","task":"T6"}
@@ -386,92 +386,93 @@
 {"t":5.38,"k":"queue","seq":386,"head":null,"conflicts":0,"bounced":1}
 {"t":5.38,"k":"sys","seq":387,"ch":"mgr","glyph":"⚠","text":"T6: sh verify.sh failed (exit 1)","ag":"fe-1","task":"T6"}
 {"t":5.38,"k":"task","seq":388,"id":"T6","title":"Web: the handlers for the catalogue and the cart, JSON with snake_case keys","owner":"fe-1","scope":"shop/web/**","s":"running"}
-{"t":5.423,"k":"state","seq":389,"id":"fe-1","s":"think","doing":"coordinating","task":"T6","reqSince":5.423}
-{"t":5.423,"k":"state","seq":390,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":5.381}
-{"t":5.507,"k":"req","seq":391,"id":"rv-1","ratio":0.9721033715557077,"p":5843,"o":19}
-{"t":5.507,"k":"use","seq":392,"id":"rv-1","rd":38400,"un":7215,"out":157,"wr":0,"cost":0.0087215,"saved":0.0144}
-{"t":5.507,"k":"layers","seq":393,"id":"rv-1","toks":[4794,276,135,68,0,570]}
-{"t":5.507,"k":"warm","seq":394,"ttl":21}
-{"t":5.507,"k":"state","seq":395,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
-{"t":5.66,"k":"req","seq":396,"id":"fe-1","ratio":0.9642904553298819,"p":7533,"o":237}
-{"t":5.66,"k":"use","seq":397,"id":"fe-1","rd":58336,"un":12472,"out":557,"wr":0,"cost":0.014641999999999999,"saved":0.021876}
-{"t":5.66,"k":"layers","seq":398,"id":"fe-1","toks":[4794,276,135,256,0,2072]}
-{"t":5.66,"k":"warm","seq":399,"ttl":21}
-{"t":5.66,"k":"state","seq":400,"id":"fe-1","s":"think","doing":"coordinating","task":"T6"}
-{"t":5.66,"k":"state","seq":401,"id":"rv-1","s":"tool","doing":"Bash sleep 0.5","task":"T8"}
-{"t":5.721,"k":"state","seq":402,"id":"fe-1","s":"think","doing":"coordinating","task":"T6","reqSince":5.721}
-{"t":5.856,"k":"req","seq":403,"id":"fe-1","ratio":0.9498653673547891,"p":7799,"o":26}
-{"t":5.856,"k":"use","seq":404,"id":"fe-1","rd":65744,"un":12863,"out":583,"wr":0,"cost":0.0158155,"saved":0.024654}
-{"t":5.856,"k":"layers","seq":405,"id":"fe-1","toks":[4794,276,135,257,0,2337]}
-{"t":5.856,"k":"warm","seq":406,"ttl":21}
-{"t":5.856,"k":"state","seq":407,"id":"fe-1","s":"think","doing":"coordinating","task":"T6"}
-{"t":5.889,"k":"queue","seq":408,"head":"T6","cmd":"sh verify.sh","step":"verifying","conflicts":0,"bounced":1}
-{"t":5.889,"k":"task","seq":409,"id":"T6","title":"Web: the handlers for the catalogue and the cart, JSON with snake_case keys","owner":"fe-1","scope":"shop/web/**","s":"verify"}
-{"t":5.917,"k":"use","seq":410,"id":"fe-1","rd":73152,"un":13957,"out":810,"wr":0,"cost":0.0177425,"saved":0.027431999999999998}
-{"t":5.917,"k":"state","seq":411,"id":"fe-1","s":"tool","doing":"TaskBoard done T6","task":"T6"}
+{"t":5.391,"k":"sys","seq":389,"ch":"mgr","glyph":"↺","text":"T6: the merge was rolled back","ag":"fe-1","task":"T6"}
+{"t":5.423,"k":"state","seq":390,"id":"fe-1","s":"think","doing":"coordinating","task":"T6","reqSince":5.423}
+{"t":5.423,"k":"state","seq":391,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":5.381}
+{"t":5.507,"k":"req","seq":392,"id":"rv-1","ratio":0.9721033715557077,"p":5843,"o":19}
+{"t":5.507,"k":"use","seq":393,"id":"rv-1","rd":38400,"un":7215,"out":157,"wr":0,"cost":0.0087215,"saved":0.0144}
+{"t":5.507,"k":"layers","seq":394,"id":"rv-1","toks":[4794,276,135,68,0,570]}
+{"t":5.507,"k":"warm","seq":395,"ttl":21}
+{"t":5.507,"k":"state","seq":396,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
+{"t":5.66,"k":"req","seq":397,"id":"fe-1","ratio":0.9642904553298819,"p":7533,"o":237}
+{"t":5.66,"k":"use","seq":398,"id":"fe-1","rd":58336,"un":12472,"out":557,"wr":0,"cost":0.014641999999999999,"saved":0.021876}
+{"t":5.66,"k":"layers","seq":399,"id":"fe-1","toks":[4794,276,135,256,0,2072]}
+{"t":5.66,"k":"warm","seq":400,"ttl":21}
+{"t":5.66,"k":"state","seq":401,"id":"fe-1","s":"think","doing":"coordinating","task":"T6"}
+{"t":5.66,"k":"state","seq":402,"id":"rv-1","s":"tool","doing":"Bash sleep 0.5","task":"T8"}
+{"t":5.719,"k":"state","seq":403,"id":"fe-1","s":"think","doing":"folds its thread","task":"T6"}
+{"t":5.856,"k":"req","seq":404,"id":"fe-1","ratio":0.9498653673547891,"p":7799,"o":26}
+{"t":5.856,"k":"use","seq":405,"id":"fe-1","rd":65744,"un":12863,"out":583,"wr":0,"cost":0.0158155,"saved":0.024654}
+{"t":5.856,"k":"layers","seq":406,"id":"fe-1","toks":[4794,276,135,257,0,2337]}
+{"t":5.856,"k":"warm","seq":407,"ttl":21}
+{"t":5.856,"k":"state","seq":408,"id":"fe-1","s":"tool","doing":"TaskBoard done T6","task":"T6"}
+{"t":5.889,"k":"queue","seq":409,"head":"T6","cmd":"sh verify.sh","step":"verifying","conflicts":0,"bounced":1}
+{"t":5.889,"k":"task","seq":410,"id":"T6","title":"Web: the handlers for the catalogue and the cart, JSON with snake_case keys","owner":"fe-1","scope":"shop/web/**","s":"verify"}
+{"t":5.917,"k":"use","seq":411,"id":"fe-1","rd":73152,"un":13957,"out":810,"wr":0,"cost":0.0177425,"saved":0.027431999999999998}
 {"t":5.943,"k":"queue","seq":412,"head":"T6","cmd":"sh verify.sh","step":"verified","ms":54,"conflicts":0,"bounced":1}
 {"t":5.943,"k":"task","seq":413,"id":"T6","title":"Web: the handlers for the catalogue and the cart, JSON with snake_case keys","owner":"fe-1","scope":"shop/web/**","s":"merged"}
 {"t":5.943,"k":"merge","seq":414,"id":"T6","cmd":"sh verify.sh","ms":54}
 {"t":5.943,"k":"queue","seq":415,"head":null,"conflicts":0,"bounced":1}
-{"t":5.943,"k":"state","seq":416,"id":"mgr","s":"wait","doing":"reviewing results","task":null}
-{"t":5.943,"k":"compact","seq":417,"id":"fe-1","from":2540,"to":602,"pct":-76}
-{"t":6.001,"k":"state","seq":418,"id":"fe-1","s":"think","doing":"coordinating","task":"T6","reqSince":6.001}
-{"t":6.001,"k":"state","seq":419,"id":"mgr","s":"think","doing":"reviewing results","task":null}
-{"t":6.02,"k":"state","seq":420,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
-{"t":6.129,"k":"req","seq":421,"id":"fe-1","ratio":0.8741764422304354,"p":6223,"o":18}
-{"t":6.129,"k":"use","seq":422,"id":"fe-1","rd":78592,"un":14740,"out":828,"wr":0,"cost":0.018850000000000002,"saved":0.029471999999999998}
-{"t":6.129,"k":"layers","seq":423,"id":"fe-1","toks":[4794,276,135,295,143,580]}
-{"t":6.129,"k":"warm","seq":424,"ttl":21}
-{"t":6.129,"k":"state","seq":425,"id":"fe-1","s":"idle","doing":"waits for work","task":"T6"}
-{"t":6.129,"k":"state","seq":426,"id":"mgr","s":"think","doing":"reviewing results","task":null,"reqSince":6.002}
-{"t":6.129,"k":"state","seq":427,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":6.041}
-{"t":6.13,"k":"note","seq":428,"id":"fe-1","g":"done","text":"edited 1 (handlers.go); no tests run","task":"T6"}
-{"t":6.183,"k":"req","seq":429,"id":"rv-1","ratio":0.9743153597550603,"p":5879,"o":41}
-{"t":6.183,"k":"use","seq":430,"id":"rv-1","rd":44128,"un":7366,"out":198,"wr":0,"cost":0.009595,"saved":0.016548}
-{"t":6.183,"k":"layers","seq":431,"id":"rv-1","toks":[4794,276,136,68,0,605]}
-{"t":6.183,"k":"warm","seq":432,"ttl":21}
-{"t":6.183,"k":"state","seq":433,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
-{"t":6.185,"k":"req","seq":434,"id":"mgr","ratio":0.6364773580185139,"p":7994,"o":70}
-{"t":6.185,"k":"use","seq":435,"id":"mgr","rd":10912,"un":9606,"out":587,"wr":0,"cost":0.007341,"saved":0.004092}
-{"t":6.185,"k":"layers","seq":436,"id":"mgr","toks":[4794,276,627,130,0,2167]}
-{"t":6.185,"k":"state","seq":437,"id":"mgr","s":"think","doing":"reviewing results","task":null}
-{"t":6.185,"k":"task","seq":438,"id":"T4","title":"Catalogue: the items, paging by a stable cursor, and the one DefaultPort of the shop","owner":"be-1","scope":"shop/catalogue/**","s":"merged","closure":"verified"}
-{"t":6.185,"k":"state","seq":439,"id":"be-1","s":"done","doing":"edited 2 (items.go, store.go); no tests run","task":"T4"}
-{"t":6.185,"k":"task","seq":440,"id":"T5","title":"Cart: lines, and a total in whole cents rounded once at the end","owner":"be-2","scope":"shop/cart/**","s":"merged","closure":"verified"}
-{"t":6.185,"k":"state","seq":441,"id":"be-2","s":"done","doing":"edited 1 (cart.go); no tests run","task":"T5"}
-{"t":6.185,"k":"task","seq":442,"id":"T6","title":"Web: the handlers for the catalogue and the cart, JSON with snake_case keys","owner":"fe-1","scope":"shop/web/**","s":"merged","closure":"verified"}
-{"t":6.185,"k":"state","seq":443,"id":"fe-1","s":"done","doing":"edited 1 (handlers.go); no tests run","task":"T6"}
-{"t":6.185,"k":"task","seq":444,"id":"T7","title":"Smoke tests: start the service, fill a cart, read the total, check out","owner":"ts-1","scope":"tests/**","s":"merged","closure":"verified"}
-{"t":6.185,"k":"state","seq":445,"id":"ts-1","s":"done","doing":"edited 1 (smoke.sh); no tests run","task":"T7"}
-{"t":6.355,"k":"req","seq":446,"id":"rv-1","ratio":0.9640167364016736,"p":5975,"o":38}
-{"t":6.355,"k":"use","seq":447,"id":"rv-1","rd":49888,"un":7581,"out":236,"wr":0,"cost":0.0104985,"saved":0.018708}
-{"t":6.355,"k":"layers","seq":448,"id":"rv-1","toks":[4794,277,136,68,0,700]}
-{"t":6.355,"k":"warm","seq":449,"ttl":21}
-{"t":6.355,"k":"state","seq":450,"id":"mgr","s":"wait","doing":"reviewing results","task":null}
-{"t":6.356,"k":"state","seq":451,"id":"rv-1","s":"think","doing":"coordinating","task":"T8"}
-{"t":6.367,"k":"note","seq":452,"id":"rv-1","g":"done","text":"submitted T8","task":"T8"}
-{"t":6.367,"k":"task","seq":453,"id":"T8","title":"Review what was merged against AGENTS.md and run the shop's checks","owner":"rv-1","scope":"-","s":"verify"}
-{"t":6.427,"k":"state","seq":454,"id":"rv-1","s":"think","doing":"coordinating","task":"T8","reqSince":6.427}
-{"t":6.427,"k":"state","seq":455,"id":"mgr","s":"think","doing":"reviewing results","task":null}
-{"t":6.547,"k":"req","seq":456,"id":"rv-1","ratio":0.9676140118968936,"p":6052,"o":8}
-{"t":6.547,"k":"use","seq":457,"id":"rv-1","rd":55744,"un":7777,"out":244,"wr":0,"cost":0.011344499999999999,"saved":0.020904}
-{"t":6.547,"k":"layers","seq":458,"id":"rv-1","toks":[4794,277,136,68,0,777]}
-{"t":6.547,"k":"warm","seq":459,"ttl":21}
-{"t":6.547,"k":"state","seq":460,"id":"rv-1","s":"idle","doing":"waits for work","task":"T8"}
-{"t":6.547,"k":"state","seq":461,"id":"mgr","s":"think","doing":"reviewing results","task":null,"reqSince":6.428}
-{"t":6.548,"k":"note","seq":462,"id":"rv-1","g":"done","text":"no files edited; no tests run","task":"T8"}
-{"t":6.555,"k":"req","seq":463,"id":"mgr","ratio":0.9519853390348197,"p":8185,"o":12}
-{"t":6.555,"k":"use","seq":464,"id":"mgr","rd":18704,"un":9999,"out":599,"wr":0,"cost":0.0085355,"saved":0.007014}
-{"t":6.555,"k":"layers","seq":465,"id":"mgr","toks":[4794,277,631,131,0,2352]}
-{"t":6.555,"k":"warm","seq":466,"ttl":21}
-{"t":6.566,"k":"task","seq":467,"id":"T8","title":"Review what was merged against AGENTS.md and run the shop's checks","owner":"rv-1","scope":"-","s":"merged","closure":"verified"}
-{"t":6.593,"k":"use","seq":468,"id":"mgr","rd":26496,"un":11043,"out":717,"wr":0,"cost":0.010267499999999999,"saved":0.009936}
-{"t":6.694,"k":"state","seq":469,"id":"mgr","s":"think","doing":"coordinating","task":null,"reqSince":6.59}
-{"t":6.694,"k":"state","seq":470,"id":"rv-1","s":"done","doing":"no files edited; no tests run","task":"T8"}
-{"t":6.726,"k":"req","seq":471,"id":"mgr","ratio":0.9852168601099572,"p":8185,"o":50}
-{"t":6.726,"k":"use","seq":472,"id":"mgr","rd":34560,"un":11164,"out":767,"wr":0,"cost":0.011435999999999998,"saved":0.012960000000000001}
-{"t":6.726,"k":"layers","seq":473,"id":"mgr","toks":[4794,278,632,131,0,2350]}
-{"t":6.726,"k":"warm","seq":474,"ttl":21}
-{"t":6.738,"k":"ckpt","seq":475,"at":1791608321729,"cid":"c01","ts":"04:58:41","files":1,"note":"turn 1: Build the shop: a catalogue with paging, a cart that totals …","agents":["integration"]}
-{"t":6.759,"k":"state","seq":476,"id":"mgr","s":"done","doing":"done","task":null}
-{"t":9.872,"k":"ckpt","seq":477,"at":1791608321729,"cid":"c01","ts":"04:58:41","files":5,"note":"turn 1: Build the shop: a catalogue with paging, a cart that totals …","agents":["integration"]}
+{"t":5.943,"k":"state","seq":416,"id":"fe-1","s":"think","doing":"folds its thread","task":"T6"}
+{"t":5.943,"k":"state","seq":417,"id":"mgr","s":"wait","doing":"reviewing results","task":null}
+{"t":5.943,"k":"compact","seq":418,"id":"fe-1","from":2540,"to":602,"pct":-76,"moment":"warm"}
+{"t":6.001,"k":"state","seq":419,"id":"fe-1","s":"think","doing":"coordinating","task":"T6","reqSince":6.001}
+{"t":6.001,"k":"state","seq":420,"id":"mgr","s":"think","doing":"reviewing results","task":null}
+{"t":6.02,"k":"state","seq":421,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
+{"t":6.129,"k":"req","seq":422,"id":"fe-1","ratio":0.8741764422304354,"p":6223,"o":18}
+{"t":6.129,"k":"use","seq":423,"id":"fe-1","rd":78592,"un":14740,"out":828,"wr":0,"cost":0.018850000000000002,"saved":0.029471999999999998}
+{"t":6.129,"k":"layers","seq":424,"id":"fe-1","toks":[4794,276,135,295,143,580]}
+{"t":6.129,"k":"warm","seq":425,"ttl":21}
+{"t":6.129,"k":"state","seq":426,"id":"fe-1","s":"idle","doing":"waits for work","task":"T6"}
+{"t":6.129,"k":"state","seq":427,"id":"mgr","s":"think","doing":"reviewing results","task":null,"reqSince":6.002}
+{"t":6.129,"k":"state","seq":428,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":6.041}
+{"t":6.13,"k":"note","seq":429,"id":"fe-1","g":"done","text":"edited 1 (handlers.go); no tests run","task":"T6"}
+{"t":6.183,"k":"req","seq":430,"id":"rv-1","ratio":0.9743153597550603,"p":5879,"o":41}
+{"t":6.183,"k":"use","seq":431,"id":"rv-1","rd":44128,"un":7366,"out":198,"wr":0,"cost":0.009595,"saved":0.016548}
+{"t":6.183,"k":"layers","seq":432,"id":"rv-1","toks":[4794,276,136,68,0,605]}
+{"t":6.183,"k":"warm","seq":433,"ttl":21}
+{"t":6.183,"k":"state","seq":434,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
+{"t":6.185,"k":"req","seq":435,"id":"mgr","ratio":0.6364773580185139,"p":7994,"o":70}
+{"t":6.185,"k":"use","seq":436,"id":"mgr","rd":10912,"un":9606,"out":587,"wr":0,"cost":0.007341,"saved":0.004092}
+{"t":6.185,"k":"layers","seq":437,"id":"mgr","toks":[4794,276,627,130,0,2167]}
+{"t":6.185,"k":"state","seq":438,"id":"mgr","s":"think","doing":"reviewing results","task":null}
+{"t":6.185,"k":"task","seq":439,"id":"T4","title":"Catalogue: the items, paging by a stable cursor, and the one DefaultPort of the shop","owner":"be-1","scope":"shop/catalogue/**","s":"merged","closure":"verified"}
+{"t":6.185,"k":"state","seq":440,"id":"be-1","s":"done","doing":"edited 2 (items.go, store.go); no tests run","task":"T4"}
+{"t":6.185,"k":"task","seq":441,"id":"T5","title":"Cart: lines, and a total in whole cents rounded once at the end","owner":"be-2","scope":"shop/cart/**","s":"merged","closure":"verified"}
+{"t":6.185,"k":"state","seq":442,"id":"be-2","s":"done","doing":"edited 1 (cart.go); no tests run","task":"T5"}
+{"t":6.185,"k":"task","seq":443,"id":"T6","title":"Web: the handlers for the catalogue and the cart, JSON with snake_case keys","owner":"fe-1","scope":"shop/web/**","s":"merged","closure":"verified"}
+{"t":6.185,"k":"state","seq":444,"id":"fe-1","s":"done","doing":"edited 1 (handlers.go); no tests run","task":"T6"}
+{"t":6.185,"k":"task","seq":445,"id":"T7","title":"Smoke tests: start the service, fill a cart, read the total, check out","owner":"ts-1","scope":"tests/**","s":"merged","closure":"verified"}
+{"t":6.185,"k":"state","seq":446,"id":"ts-1","s":"done","doing":"edited 1 (smoke.sh); no tests run","task":"T7"}
+{"t":6.355,"k":"req","seq":447,"id":"rv-1","ratio":0.9640167364016736,"p":5975,"o":38}
+{"t":6.355,"k":"use","seq":448,"id":"rv-1","rd":49888,"un":7581,"out":236,"wr":0,"cost":0.0104985,"saved":0.018708}
+{"t":6.355,"k":"layers","seq":449,"id":"rv-1","toks":[4794,277,136,68,0,700]}
+{"t":6.355,"k":"warm","seq":450,"ttl":21}
+{"t":6.355,"k":"state","seq":451,"id":"mgr","s":"wait","doing":"reviewing results","task":null}
+{"t":6.356,"k":"state","seq":452,"id":"rv-1","s":"think","doing":"coordinating","task":"T8"}
+{"t":6.367,"k":"note","seq":453,"id":"rv-1","g":"done","text":"submitted T8","task":"T8"}
+{"t":6.367,"k":"task","seq":454,"id":"T8","title":"Review what was merged against AGENTS.md and run the shop's checks","owner":"rv-1","scope":"-","s":"verify"}
+{"t":6.427,"k":"state","seq":455,"id":"rv-1","s":"think","doing":"coordinating","task":"T8","reqSince":6.427}
+{"t":6.427,"k":"state","seq":456,"id":"mgr","s":"think","doing":"folds its thread","task":null}
+{"t":6.547,"k":"req","seq":457,"id":"rv-1","ratio":0.9676140118968936,"p":6052,"o":8}
+{"t":6.547,"k":"use","seq":458,"id":"rv-1","rd":55744,"un":7777,"out":244,"wr":0,"cost":0.011344499999999999,"saved":0.020904}
+{"t":6.547,"k":"layers","seq":459,"id":"rv-1","toks":[4794,277,136,68,0,777]}
+{"t":6.547,"k":"warm","seq":460,"ttl":21}
+{"t":6.547,"k":"state","seq":461,"id":"rv-1","s":"idle","doing":"waits for work","task":"T8"}
+{"t":6.547,"k":"state","seq":462,"id":"mgr","s":"think","doing":"folds its thread","task":null,"reqSince":6.428}
+{"t":6.548,"k":"note","seq":463,"id":"rv-1","g":"done","text":"no files edited; no tests run","task":"T8"}
+{"t":6.555,"k":"req","seq":464,"id":"mgr","ratio":0.9519853390348197,"p":8185,"o":12}
+{"t":6.555,"k":"use","seq":465,"id":"mgr","rd":18704,"un":9999,"out":599,"wr":0,"cost":0.0085355,"saved":0.007014}
+{"t":6.555,"k":"layers","seq":466,"id":"mgr","toks":[4794,277,631,131,0,2352]}
+{"t":6.555,"k":"warm","seq":467,"ttl":21}
+{"t":6.566,"k":"task","seq":468,"id":"T8","title":"Review what was merged against AGENTS.md and run the shop's checks","owner":"rv-1","scope":"-","s":"merged","closure":"verified"}
+{"t":6.593,"k":"use","seq":469,"id":"mgr","rd":26496,"un":11043,"out":717,"wr":0,"cost":0.010267499999999999,"saved":0.009936}
+{"t":6.694,"k":"state","seq":470,"id":"mgr","s":"think","doing":"folds its thread","task":null,"reqSince":6.59}
+{"t":6.694,"k":"state","seq":471,"id":"rv-1","s":"done","doing":"no files edited; no tests run","task":"T8"}
+{"t":6.726,"k":"req","seq":472,"id":"mgr","ratio":0.9852168601099572,"p":8185,"o":50}
+{"t":6.726,"k":"use","seq":473,"id":"mgr","rd":34560,"un":11164,"out":767,"wr":0,"cost":0.011435999999999998,"saved":0.012960000000000001}
+{"t":6.726,"k":"layers","seq":474,"id":"mgr","toks":[4794,278,632,131,0,2350]}
+{"t":6.726,"k":"warm","seq":475,"ttl":21}
+{"t":6.738,"k":"ckpt","seq":476,"at":1791608321729,"cid":"c01","ts":"04:58:41","files":1,"note":"turn 1: Build the shop: a catalogue with paging, a cart that totals …","agents":["integration"]}
+{"t":6.759,"k":"state","seq":477,"id":"mgr","s":"done","doing":"done","task":null}
+{"t":9.872,"k":"ckpt","seq":478,"at":1791608321729,"cid":"c01","ts":"04:58:41","files":5,"note":"turn 1: Build the shop: a catalogue with paging, a cart that totals …","agents":["integration"]}

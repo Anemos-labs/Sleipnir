@@ -218,8 +218,15 @@ func (t *Translator) finishHistory() {
 		}
 		t.sendUse(hid, 0, true)
 		t.sendLayers(hid, 0, true)
-		for _, r := range t.st.Hits(hid).Ratios {
-			t.put(&wire.Req{ID: uid, Ratio: r, Hist: true}, 0, 0, nil)
+		hits := t.st.Hits(hid)
+		for i, r := range hits.Ratios {
+			var at []state.MarkKind
+			for _, m := range hits.Marks {
+				if m.At == hits.First+i {
+					at = append(at, m.Kind)
+				}
+			}
+			t.put(&ReqX{Req: wire.Req{ID: uid, Ratio: r, Hist: true}, Mark: reqMark(at)}, 0, 0, nil)
 		}
 		if a, ok := t.st.AgentLite(hid); ok {
 			t.sendState(uid, t.agentOutOf(uid), t.stateOf(uid, a), 0)
@@ -280,12 +287,14 @@ func (t *Translator) applyLog(e events.Event) {
 	}
 	t.chA, t.chT = t.chA[:0], t.chT[:0]
 	t.st.Apply(e)
+	t.d.fed, t.d.feedN = t.st.FeedSince(t.d.feedN)
 	agents, tasks := append([]string(nil), t.chA...), append([]string(nil), t.chT...)
 	for _, id := range agents {
 		t.seen(id)
 	}
 	t.publishRoster()
 	t.derive(e, ts, at)
+	t.d.fed = nil
 	if isAlert {
 		t.syncAlerts(alerts, ts)
 	}
@@ -422,9 +431,12 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 	case events.TypeMailSend, events.TypeMailDigest, events.TypeMailRoute, events.TypeMailDeliver, "mail.drop", events.TypeMailAck,
 		events.TypeMailDirect, events.TypeMailBatch, events.TypeMailmanState:
 		t.mail(e, ts, at)
-	case events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail, events.TypeMergeRejected,
-		events.TypeTaskMerge:
+	case events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail, events.TypeMergeRolledBack,
+		events.TypeMergeRejected, events.TypeTaskMerge:
 		t.merge(e, ts, at)
+	case events.TypeCompactReject, events.TypeLayerCommit, "sink.panic", events.TypeSwarmHold, events.TypeSwarmUnfinished, events.TypeSwarmWake,
+		events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, "swarm.shutdown", events.TypeToolJob:
+		t.feedRows(ts, at)
 	case "swarm.budget":
 		var p struct {
 			BudgetUSD float64 `json:"budget_usd"`

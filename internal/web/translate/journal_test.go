@@ -38,10 +38,11 @@ func view(tb testing.TB, m *mirror) string {
 		Use    *UseX
 		Layers *wire.Layers
 		Ratios []float64
+		Marks  []string
 	}
 	agents := map[string]agent{}
 	for id, a := range m.agents {
-		ag := agent{Ratios: append([]float64{}, lastN(a.ratios, mirrorRatios)...)}
+		ag := agent{Ratios: append([]float64{}, lastN(a.ratios, mirrorRatios)...), Marks: append([]string{}, lastN(a.marks, mirrorRatios)...)}
 		if a.state != nil {
 			c := *a.state
 			c.Base = wire.Base{}

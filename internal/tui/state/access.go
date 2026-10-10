@@ -70,6 +70,60 @@ func (s *State) Hits(id string) Hits {
 	return Hits{First: a.hitIdx - n, Ratios: a.hits.slice(), Marks: a.marks.slice()}
 }
 
+// FeedSince returns the lines the feed received after its first n lines, oldest first, and the number of lines it has received in all
+// (the n for the next call). A follower that shows what the terminal's feed says calls it after each event with the total of the call
+// before, and gets the lines that event wrote, in the words the terminal shows. Lines that the ring has already overwritten are not
+// returned; an n above the total (the State was reset) counts from the start.
+func (s *State) FeedSince(n int) (lines []FeedLine, total int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	total = s.feed.total
+	if n > total {
+		n = 0
+	}
+	from := max(n, total-s.feed.len())
+	if from >= total {
+		return nil, total
+	}
+	lines = make([]FeedLine, 0, total-from)
+	for abs := from; abs < total; abs++ {
+		if l, ok := s.feed.byAbs(abs); ok {
+			lines = append(lines, *l)
+		}
+	}
+	return lines, total
+}
+
+// MarksAt returns the kinds of the markers of the agent's hit-ratio history that precede its main response number at, counted from its
+// first as Mark.At is: an epoch (the agent took a new shared layer), a rebase (its thinking blocks were dropped), an anomaly or a
+// compaction, in the order they were noted.
+func (s *State) MarksAt(id string, at int) []MarkKind {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	a := s.agents[id]
+	if a == nil {
+		return nil
+	}
+	var out []MarkKind
+	for i := 0; i < a.marks.len(); i++ {
+		if m := a.marks.at(i); m.At == at {
+			out = append(out, m.Kind)
+		}
+	}
+	return out
+}
+
+// LastCompaction returns the newest compaction the agent with the id committed (a copy), false when it has committed none.
+func (s *State) LastCompaction(id string) (Compaction, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	a := s.agents[id]
+	if a == nil || a.compacts.len() == 0 {
+		return Compaction{}, false
+	}
+	return *a.compacts.at(a.compacts.len() - 1), true
+}
+
 // Task returns a copy of the task with the id, with its derived column (Task.State).
 func (s *State) Task(id string) (Task, bool) {
 	s.mu.RLock()

@@ -101,7 +101,7 @@ test('every row of the conversation stays plain markup with hostile ids and valu
     ev(1, 1, 'say', { who: 'mgr', text: IMG, mid: COVER }), ev(2, 2, 'tool', { id: IMG, name: IMG, arg: COVER, add: COVER, del: IMG, file: COVER }),
     ev(3, 3, 'note', { id: COVER, g: 'constructor', text: IMG }), ev(4, 4, 'state', { id: 'be-1', s: 'toString', doing: IMG }),
     ev(5, 5, 'mail', { from: IMG, to: COVER, text: IMG }), ev(6, 6, 'break', { id: IMG, kind: IMG, read: COVER, expected: 9, why: IMG }),
-    ev(7, 7, 'compact', { id: COVER, from: IMG, to: 1, pct: COVER }), ev(8, 8, 'stream', { id: IMG, text: IMG, rate: COVER, code: true }),
+    ev(7, 7, 'compact', { id: COVER, from: IMG, to: 1, pct: COVER, moment: IMG }), ev(8, 8, 'stream', { id: IMG, text: IMG, rate: COVER, code: true }),
     ev(9, 9, 'steer', { to: IMG, text: IMG }), ev(10, 10, 'ask', { q: { id: IMG, agent: COVER, cmd: IMG, why: IMG } }),
     ev(11, 11, 'sys', { text: IMG, ag: IMG, open: 'constructor' }), ev(12, 12, 'say', { who: 'scouts', lines: [[IMG, IMG], [COVER, 'x']] }),
     ev(13, 13, 'refuse', { id: IMG, name: IMG, arg: IMG, reason: IMG })
@@ -113,8 +113,23 @@ test('every row of the conversation stays plain markup with hostile ids and valu
   /* the markup itself holds when an entry was never cleaned (a page-made row, a test double): ids escaped, numbers numbers, tables own keys */
   const direct = [{ k: 'scouts', lines: [[IMG, IMG]] }, { k: 'digest', id: IMG, dg: { merged: [IMG], submitted: [], n: COVER, t0: 0, t1: 1 } }, { k: 'sys', text: 't', open: 'constructor' },
     { k: 'feed', ag: IMG, g: 'toString', text: 'x', to: COVER }, { k: 'say', ag: COVER, text: 'x', stream: true, t: IMG, rate: COVER }, { k: 'mail', from: IMG, to: COVER, text: 'x' },
-    { k: 'break', ag: IMG, kind: 'k', read: IMG, expected: 1, why: 'w' }, { k: 'compact', ag: IMG, from: 1, to: 1, pct: IMG }, { k: 'tool', ag: COVER, name: 'n', add: IMG, del: COVER }];
+    { k: 'break', ag: IMG, kind: 'k', read: IMG, expected: 1, why: 'w' }, { k: 'compact', ag: IMG, from: 1, to: 1, pct: IMG, moment: IMG }, { k: 'tool', ag: COVER, name: 'n', add: IMG, del: COVER }];
   direct.forEach(e => { const h = SL.chat.rowHtml(Object.assign({ t: 1 }, e), S, m); assert.ok(!broken(h), h); assert.ok(!/function|native code/.test(h), h); });
+});
+
+test('a compaction row says when the cache was cold in the terminal\'s words, and the rows of the feed-style events are escaped text', async () => {
+  const { SL } = boot({ snaps: { a: snap('a', []) } });
+  await SL.live.start();
+  const S = SL.sessions.get('a'), m = SL.model.newModel(S);
+  const row = moment => SL.chat.rowHtml({ k: 'compact', ag: 'be-1', from: 9000, to: 1000, pct: -89, moment, t: 1 }, S, m);
+  assert.match(row('cold'), /cache rewritten while cold: free/); assert.doesNotMatch(row('cold'), /priced rebase/);
+  for (const moment of ['warm', '', undefined, IMG]) { assert.match(row(moment), /a declared, priced rebase/); assert.doesNotMatch(row(moment), /while cold|onerror/); }
+  /* a hold, a wake, a job, a rejected compaction, a rolled back merge: a text of the log is shown as text, in the row of the agent it is about */
+  const sys = (text, ag) => SL.chat.rowHtml({ k: 'sys', glyph: '⚠', text, ag, task: 'T1', t: 1 }, S, m);
+  for (const h of [sys('background job j1 exited 1: ' + IMG, 'be-1'), sys('the idle manager was woken · <script>window.__pwn=1</script>', 'mgr'), sys('T1: the merge was rolled back', COVER)]) {
+    assert.ok(!broken(h), h); assert.ok(!/<script/i.test(h), h);
+  }
+  assert.match(sys('a panic in be-1\'s output sink was recovered', 'be-1'), /<div class="msg sys" data-ag="be-1" data-task="T1"><span class="sg">⚠<\/span><span>a panic in be-1&#39;s output sink was recovered/);
 });
 
 test('a long question: the command, the reason and the change are bounded blocks, each says how long it is and offers its end', () => {

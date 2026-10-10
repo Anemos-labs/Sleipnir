@@ -33,6 +33,7 @@ type mAgent struct {
 	use     *UseX
 	layers  *wire.Layers
 	ratios  []float64
+	marks   []string // the mark of each request in ratios ("" for none)
 	lastReq float64
 }
 
@@ -52,7 +53,7 @@ type mirror struct {
 	qorder   []string
 	mails    []*MailX
 	anoms    []*wire.Break
-	comps    []*wire.Compact
+	comps    []*CompactX
 	warm     *wire.Warm
 	gov      *wire.Gov
 	queue    *wire.Queue
@@ -120,11 +121,10 @@ func (m *mirror) fold(e wire.Event) {
 			c := *v
 			a.layers = &c
 		}
+	case *ReqX:
+		m.request(&v.Req, v.Mark)
 	case *wire.Req:
-		if a := m.agent(v.ID); a != nil {
-			a.ratios = appendCapped(a.ratios, v.Ratio, mirrorRatios)
-			a.lastReq = v.T
-		}
+		m.request(v, "")
 	case *TaskX:
 		m.task(v)
 	case *wire.Task:
@@ -177,9 +177,11 @@ func (m *mirror) fold(e wire.Event) {
 	case *wire.Break:
 		c := *v
 		m.anoms = appendCapped(m.anoms, &c, mirrorAnoms)
-	case *wire.Compact:
+	case *CompactX:
 		c := *v
 		m.comps = appendCapped(m.comps, &c, mirrorAnoms)
+	case *wire.Compact:
+		m.comps = appendCapped(m.comps, &CompactX{Compact: *v}, mirrorAnoms)
 	case *wire.Warm:
 		c := *v
 		m.warm = &c
@@ -231,6 +233,15 @@ func (m *mirror) fold(e wire.Event) {
 		}
 		c := *v
 		m.stalls[k] = &c
+	}
+}
+
+// request folds a req event: the ratio of an answered request of the agent, with its mark.
+func (m *mirror) request(v *wire.Req, mark string) {
+	if a := m.agent(v.ID); a != nil {
+		a.ratios = appendCapped(a.ratios, v.Ratio, mirrorRatios)
+		a.marks = appendCapped(a.marks, mark, mirrorRatios)
+		a.lastReq = v.T
 	}
 }
 
@@ -330,8 +341,9 @@ func (m *mirror) keyframe(t0 float64) []wire.Event {
 			c := *a.layers
 			at(&c)
 		}
-		for _, r := range lastN(a.ratios, mirrorRatios) {
-			at(&wire.Req{ID: id, Ratio: r, Hist: true})
+		marks := lastN(a.marks, mirrorRatios)
+		for i, r := range lastN(a.ratios, mirrorRatios) {
+			at(&ReqX{Req: wire.Req{ID: id, Ratio: r, Hist: true}, Mark: marks[i]})
 		}
 		if a.state != nil {
 			c := *a.state
@@ -447,7 +459,7 @@ func newOfKind(k string) wire.Event {
 	case "verdict":
 		return &wire.Verdict{}
 	case "req":
-		return &wire.Req{}
+		return &ReqX{}
 	case "use":
 		return &UseX{}
 	case "warm":
@@ -469,7 +481,7 @@ func newOfKind(k string) wire.Event {
 	case "break":
 		return &wire.Break{}
 	case "compact":
-		return &wire.Compact{}
+		return &CompactX{}
 	case "stream":
 		return &wire.Stream{}
 	case "diff":

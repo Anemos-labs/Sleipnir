@@ -76,7 +76,7 @@
     if (!okId(r.id) || !okId(r.role)) r = cleanAgent(r);
     if (m.ag[r.id]) { Object.assign(m.ag[r.id], { role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model }); return m.ag[r.id]; }
     m.ag[r.id] = { id: r.id, role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model, state: 'idle', doing: r.id === 'mgr' ? 'waits for the first message' : 'not started',
-      task: null, rd: 0, un: 0, out: 0, wr: 0, cost: null, saved: null, layers: null, reqSince: null, calls: 0, ratios: [], nreq: 0, lastReq: -999, segs: [], cur: null, spawned: r.id === 'mgr', spawnT: r.spawn, steered: null, stateT: 0 };
+      task: null, rd: 0, un: 0, out: 0, wr: 0, cost: null, saved: null, layers: null, reqSince: null, calls: 0, ratios: [], rmarks: [], nreq: 0, lastReq: -999, segs: [], cur: null, spawned: r.id === 'mgr', spawnT: r.spawn, steered: null, stateT: 0 };
     m.order.push(r.id); if (r.id !== 'mgr' && !m.chan[r.id]) m.chan[r.id] = [];
     return m.ag[r.id];
   }
@@ -155,6 +155,7 @@
       case 'req': {
         if (!A) break;
         A.ratios.push(ev.ratio); capList(A.ratios, RATIO_CAP); A.nreq++; A.lastReq = ev.t;
+        A.rmarks.push(ev.mark === 'epoch' || ev.mark === 'rebase' ? ev.mark : ''); capList(A.rmarks, RATIO_CAP);   /* what came before the request: a new shared prefix, thinking dropped */
         if (!ev.hist) {
           const p = ev.p || Math.round((A.rd + A.un) / Math.max(1, A.nreq - 1)) || 1200;
           const rd = Math.round(p * ev.ratio); A.rd += rd; A.un += Math.round(p) - rd; A.out += ev.o || 0;
@@ -217,9 +218,10 @@
         break;
       }
       case 'compact': {
-        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
-        push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, t: ev.t }, ev);
-        if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, t: ev.t }, ev);
+        const moment = ev.moment === 'cold' || ev.moment === 'warm' ? ev.moment : '';   /* when the planner decided: a cold cache makes the rewrite free */
+        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
+        push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, t: ev.t }, ev);
+        if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, t: ev.t }, ev);
         if (d) d.compacts++;
         break;
       }

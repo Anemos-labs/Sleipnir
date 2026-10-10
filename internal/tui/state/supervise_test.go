@@ -277,3 +277,96 @@ func TestUnpricedReadsPerAgent(t *testing.T) {
 		t.Fatalf("unpriced %d saved %v", a.UnpricedReadTokens, a.SavedUSD)
 	}
 }
+
+// swarm.unfinished carries what was left in the key the producer writes (internal/swarm/swarm.go afterManagerRun: "unfinished"), and
+// the line of the feed shows it; a log that names the key reason is read as well.
+func TestUnfinishedLineCarriesWhatWasLeft(t *testing.T) {
+	b := newB()
+	st := fold(t,
+		b.Emit("mgr", events.TypeSwarmUnfinished, map[string]any{"unfinished": "running: be-1 (T3); waiting: T5"}),
+		b.Emit("mgr", events.TypeSwarmUnfinished, map[string]any{"reason": "T6 not started"}),
+		b.Emit("mgr", events.TypeSwarmUnfinished, map[string]any{}),
+	)
+	var details []string
+	for _, l := range st.Snapshot().Feed {
+		if l.Text == "the run ended with work unfinished" {
+			details = append(details, l.Detail)
+		}
+	}
+	if !reflect.DeepEqual(details, []string{"running: be-1 (T3); waiting: T5", "T6 not started", ""}) {
+		t.Fatalf("details of the unfinished lines: %q", details)
+	}
+	if st.Snapshot().Supervision.Unfinished != 3 {
+		t.Fatalf("supervision: %s", js(st.Snapshot().Supervision))
+	}
+}
+
+// A recovered panic of an agent's output sink is a line of the feed that says so, names the agent and shows the panic.
+func TestSinkPanicLineSaysWhatHappened(t *testing.T) {
+	b := newB()
+	st := fold(t, b.Emit("swarm", "sink.panic", map[string]any{"agent": "be-1", "panic": "index out of range [3] with length 2"}))
+	feed := st.Snapshot().Feed
+	if len(feed) != 1 || feed[0].Kind != FeedError || feed[0].Agent != "be-1" ||
+		feed[0].Text != "a panic in be-1's output sink was recovered" || feed[0].Detail != "index out of range [3] with length 2" {
+		t.Fatalf("feed: %s", js(feed))
+	}
+}
+
+// FeedSince gives the lines an event wrote and the total to ask from next; the lines the ring overwrote are not given, and a total
+// above the feed's (the State was reset) counts from the start.
+func TestFeedSinceGivesWhatEachEventWrote(t *testing.T) {
+	b := newB()
+	st := New()
+	lines, total := st.FeedSince(0)
+	if len(lines) != 0 || total != 0 {
+		t.Fatalf("an empty feed gave %d lines, total %d", len(lines), total)
+	}
+	apply(t, st, b.Emit("mgr", events.TypeSwarmWake, map[string]any{"n": 1, "note": "be-1 finished"}))
+	lines, total = st.FeedSince(total)
+	if len(lines) != 1 || total != 1 || lines[0].Text != "the idle manager was woken" || lines[0].Detail != "be-1 finished" {
+		t.Fatalf("after a wake: %s, total %d", js(lines), total)
+	}
+	apply(t, st, b.Emit("mgr", events.TypeSwarmWakePaused, map[string]any{"n": 3}), b.Emit("swarm", "swarm.shutdown", map[string]any{}))
+	lines, total = st.FeedSince(total)
+	if len(lines) != 2 || total != 3 || lines[0].Text != "the manager will not be woken again until you write to it" || lines[1].Text != "the swarm shut down with agents still running" {
+		t.Fatalf("after two more: %s, total %d", js(lines), total)
+	}
+	if lines, _ = st.FeedSince(total); len(lines) != 0 {
+		t.Fatalf("nothing happened and %d lines came", len(lines))
+	}
+	for i := 0; i < FeedCap+10; i++ {
+		apply(t, st, b.Emit("mgr", events.TypeSwarmWake, map[string]any{"n": i}))
+	}
+	lines, total2 := st.FeedSince(total)
+	if len(lines) != FeedCap || total2 != total+FeedCap+10 {
+		t.Fatalf("after %d lines the ring holds %d of them; total %d", FeedCap+10, len(lines), total2)
+	}
+	st.Reset()
+	apply(t, st, b.Emit("mgr", events.TypeSwarmWake, map[string]any{"n": 1}))
+	if lines, total = st.FeedSince(total2); len(lines) != 1 || total != 1 {
+		t.Fatalf("after a reset: %d lines, total %d", len(lines), total)
+	}
+}
+
+// LastCompaction is the agent's newest commit, with the moment the planner decided at.
+func TestLastCompactionKeepsTheMoment(t *testing.T) {
+	b := newB()
+	st := New()
+	if _, ok := st.LastCompaction("be-1"); ok {
+		t.Fatal("a compaction of an agent nobody has heard of")
+	}
+	apply(t, st, b.Spawn("be-1", "backend", "", "mgr"))
+	if _, ok := st.LastCompaction("be-1"); ok {
+		t.Fatal("a compaction before any commit")
+	}
+	apply(t, st,
+		b.Emit("be-1", events.TypeCompactPlan, map[string]any{"decision": "start", "mode": "fork", "warm": false}),
+		b.Emit("be-1", events.TypeCompactCommit, map[string]any{"reason": "thread over its limit", "snap_tokens": 9000, "spine_added": 300, "retained_tokens": 700}),
+		b.Emit("be-1", events.TypeCompactPlan, map[string]any{"decision": "start", "mode": "fork", "warm": true}),
+		b.Emit("be-1", events.TypeCompactCommit, map[string]any{"reason": "thread over its limit", "snap_tokens": 8000, "spine_added": 200, "retained_tokens": 600}),
+	)
+	c, ok := st.LastCompaction("be-1")
+	if !ok || c.Moment != "warm" || c.Before != 8000 || c.After != 800 {
+		t.Fatalf("the newest compaction: %s", js(c))
+	}
+}

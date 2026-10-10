@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -45,13 +46,36 @@ func (t *Translator) response(e events.Event, ts float64, at int64) {
 		if prompt > 0 {
 			ratio = float64(c(p.Usage.Read)) / float64(prompt)
 		}
-		t.put(&wire.Req{ID: uiID(hid), Ratio: ratio, P: prompt, O: c(p.Usage.Output)}, ts, 0, nil)
+		t.put(&ReqX{Req: wire.Req{ID: uiID(hid), Ratio: ratio, P: prompt, O: c(p.Usage.Output)}, Mark: t.markOfResponse(hid)}, ts, 0, nil)
 	}
 	t.sendUse(hid, ts, false)
 	if !side {
 		t.sendLayers(hid, ts, false)
 		t.sendWarm(hid)
 	}
+}
+
+// markOfResponse is the mark of the main response of the agent the State has just folded: "epoch" or "rebase" when the State noted
+// one of those before the request it answers (the terminal draws it above the request on the hit-ratio line), else "".
+func (t *Translator) markOfResponse(hid string) string {
+	a, ok := t.st.AgentLite(hid)
+	if !ok || a.Hits.First < 1 {
+		return ""
+	}
+	return reqMark(t.st.MarksAt(hid, a.Hits.First-1))
+}
+
+// reqMark is the mark of a request from the kinds of the markers that precede it: the first epoch or rebase among them.
+func reqMark(kinds []state.MarkKind) string {
+	for _, k := range kinds {
+		switch k {
+		case state.MarkEpoch:
+			return "epoch"
+		case state.MarkRebase:
+			return "rebase"
+		}
+	}
+	return ""
 }
 
 // sendWarm sends the warm clock when the shared prefix the agent rides (the main agent's own prompt when it rides none) was read

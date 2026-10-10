@@ -26,6 +26,22 @@ type UseX struct {
 	Unpriced     int64 `json:"unpriced,omitempty"`
 }
 
+// CompactX is a compact event with Moment: whether the shared prefix's cache was "warm" when the planner decided on the compaction (a
+// declared, priced rebase) or "cold" (the rewrite costs nothing extra), as the compact.plan before the commit said; absent for a
+// compaction with no plan before it (an emergency or a mask compaction).
+type CompactX struct {
+	wire.Compact
+	Moment string `json:"moment,omitempty"`
+}
+
+// ReqX is a req event with Mark: "epoch" when the agent took a new shared prefix before the request (layer.commit shared-sync, the
+// terminal's new epoch on the hit-ratio line) or "rebase" when its thinking blocks were dropped before it (layer.commit
+// thinking-strip); absent otherwise. A request answered after the mark is the one it affects.
+type ReqX struct {
+	wire.Req
+	Mark string `json:"mark,omitempty"`
+}
+
 // TaskX is a task event with Failed (the board failed the task: it stays in the todo column with its closure), Attempts (how many
 // assignments it has had) and Blocked (the board's blocked status: its owner waits).
 type TaskX struct {
@@ -92,6 +108,7 @@ type SvcUse struct {
 var extKinds = map[reflect.Type]string{
 	reflect.TypeOf(&StateX{}): "state", reflect.TypeOf(&UseX{}): "use", reflect.TypeOf(&TaskX{}): "task", reflect.TypeOf(&MailX{}): "mail",
 	reflect.TypeOf(&ToolX{}): "tool", reflect.TypeOf(&Alert{}): "alert", reflect.TypeOf(&MailStat{}): "mailstat", reflect.TypeOf(&SvcUse{}): "svc",
+	reflect.TypeOf(&CompactX{}): "compact", reflect.TypeOf(&ReqX{}): "req",
 }
 
 // kindOf names the kind of any event of the vocabulary, the extensions included ("" for an unknown type).

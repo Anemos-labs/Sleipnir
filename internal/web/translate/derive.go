@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -64,6 +65,9 @@ type deriveState struct {
 	lastWall   time.Time // when a followed log last gave an event (the server's clock)
 	permMode   string    // the last perm.state of the log: the permission mode
 	permRules  int       // and how many allow rules
+
+	feedN int              // the lines the State's feed had received before the log event being applied
+	fed   []state.FeedLine // the lines that event wrote to the State's feed: the terminal's words for it
 }
 
 // histEntry is a history event waiting to be journalled at the end of the history (its seq is not known before).

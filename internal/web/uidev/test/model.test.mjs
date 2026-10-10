@@ -102,6 +102,37 @@ test('use, warm, gov, queue, layers, stall, alert, handover, mailstat: counters 
   ['more', 'turn', 'stall', 'handover', 'layers'].forEach(k => assert.equal(SL.model.isVisible({ k }), false));
 });
 
+test('compact: the moment the planner decided at (warm or cold) is kept with the compaction, in the log of every channel and for the Cache view; anything else is dropped', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
+  SL.model.reduce(m, { t: 1, k: 'compact', id: 'be-1', from: 9000, to: 1000, pct: -89, moment: 'cold' });
+  SL.model.reduce(m, { t: 2, k: 'compact', id: 'be-1', from: 8000, to: 900, pct: -89, moment: 'warm' });
+  SL.model.reduce(m, { t: 3, k: 'compact', id: 'be-1', from: 7000, to: 800, pct: -89 });
+  SL.model.reduce(m, { t: 4, k: 'compact', id: 'be-1', from: 6000, to: 700, pct: -88, moment: '<img src=x>' });
+  assert.deepEqual(plain(m.compactions.map(c => c.moment)), ['cold', 'warm', '', '']);
+  assert.deepEqual(plain(m.chan.mgr.filter(e => e.k === 'compact').map(e => e.moment)), ['cold', 'warm', '', '']);
+  assert.deepEqual(plain(m.chan['be-1'].filter(e => e.k === 'compact').map(e => e.moment)), ['cold', 'warm', '', '']);
+});
+
+test('req: the mark of a request (a new epoch, a rebase) is kept beside its ratio for the Cache view, bounded with it; anything else is no mark', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S), A = m.ag['be-1'];
+  [[0.9, undefined], [0.1, 'epoch'], [0.95, ''], [0.2, 'rebase'], [0.9, '<img src=x>'], [0.9, 7]].forEach(([ratio, mark], i) => SL.model.reduce(m, { t: i, k: 'req', id: 'be-1', ratio, mark }));
+  assert.deepEqual(plain(A.rmarks), ['', 'epoch', '', 'rebase', '', '']); assert.equal(A.rmarks.length, A.ratios.length);
+  for (let i = 0; i < 700; i++) SL.model.reduce(m, { t: 10 + i, k: 'req', id: 'be-1', ratio: 0.9, mark: i % 100 === 0 ? 'epoch' : undefined, hist: true });
+  assert.equal(A.ratios.length, 400); assert.equal(A.rmarks.length, 400); assert.equal(A.nreq, 706);
+  assert.equal(A.rmarks.filter(x => x).length, 4, 'the marks that stay are those of the requests that stay (the series is cut at its oldest end, both together)');
+});
+
+test('sys: the rows of the feed-style events (a hold, a wake, a job, a rejected compaction, a rolled back merge) are rows of the manager\'s channel, bounded like any other', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
+  SL.model.reduce(m, { t: 1, k: 'sys', ch: 'mgr', glyph: '⚠', text: 'the manager answered while work was unfinished and was sent back to it · T1 is unfinished', ag: 'mgr' });
+  SL.model.reduce(m, { t: 2, k: 'sys', ch: 'mgr', glyph: '↺', text: 'T1: the merge was rolled back', ag: 'be-1', task: 'T1' });
+  assert.deepEqual(plain(m.chan.mgr.map(e => [e.k, e.glyph, e.ag, e.task])), [['sys', '⚠', 'mgr', null], ['sys', '↺', 'be-1', 'T1']]);
+  assert.equal(SL.model.isVisible({ k: 'sys' }), true);
+  for (let i = 0; i < SL.model.CHAN_CAP + 700; i++) SL.model.reduce(m, { t: 3 + i, k: 'sys', ch: 'mgr', glyph: '✓', text: 'background job j' + i + ' finished: make', ag: 'be-1' });
+  assert.ok(m.chan.mgr.length <= SL.model.CHAN_CAP, 'the channel holds ' + m.chan.mgr.length);
+  assert.ok(m.folded.mgr >= 500, 'the rows that left are counted');
+});
+
 test('svc: what the harness\'s service agents used is added to the totals, replaces the last, and is no agent', () => {
   const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
   SL.model.reduce(m, { t: 1, k: 'use', id: 'mgr', rd: 100, un: 50, out: 10, wr: 20, cost: 0.5, saved: 0.01 });

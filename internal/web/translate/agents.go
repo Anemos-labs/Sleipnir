@@ -162,6 +162,9 @@ func (t *Translator) stateOf(uid string, a state.Agent) *StateX {
 	switch a.Status {
 	case state.StatusStarting, state.StatusThinking:
 		s, doing = "think", firstNonEmpty(a.Line, "thinking")
+		if a.Compacting {
+			doing = "folds its thread" // the terminal's words, while a compaction is worked out (compact.plan to its commit)
+		}
 	case state.StatusTool:
 		s, doing = "tool", strings.TrimSpace(displayName(a.Tool)+" "+t.summaryLine(a.ToolSummary))
 	case state.StatusEditing:
