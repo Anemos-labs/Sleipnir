@@ -1,7 +1,8 @@
-/* api.js: SL.api, the page's only door to the server (UI-WIRING.md 4). Every request goes to this origin under /api/ with the
- * session cookie; a request that changes something carries the X-Sleipnir-Web header (and, with a body, JSON). A call never throws:
- * it resolves {ok: true, status, data} or {ok: false, status, code, message, detail}, where message is the server's sentence (safe
- * to show in a toast). Nothing here logs a request body, a confirmation id or a response body.
+/* api.js: SL.api, the page's only door to the server (docs/WEB-API.md documents the routes, the confirmation protocol, the error body
+ * and the stream). Every request goes to this origin under /api/ with the session cookie; a request that changes something carries
+ * the X-Sleipnir-Web header (and, with a body, JSON). A call never throws: it resolves {ok: true, status, data} or
+ * {ok: false, status, code, message, detail}, where message is the server's sentence (safe to show in a toast). Nothing here logs a
+ * request body, a confirmation id or a response body.
  *
  * Confirmations. The server decides what raises privilege, on the settings that will take effect, and answers such a request
  * 428 confirm_required with the scope to confirm (X-Confirm-Scope, and detail {scope, reasons}). Any request can get that answer:
@@ -17,7 +18,7 @@
   const CONFIRM = 'X-Confirm';
   const NET = 'the server is not reachable';
   /** Defaults a test may change (SL.api.cfg): request timeout, the longer one for snapshots and diffs, the 429 retry cap, the
-   *  stream's reopen delay, and what a 401 does (the server answers the reloaded page with its sign-in page, D-13). */
+   *  stream's reopen delay, and what a 401 does (the server answers the reloaded page with its sign-in page). */
   const cfg = {
     timeoutMs: 30000, longMs: 60000, retryCapMs: 5000, reopenMs: 2000,
     reload() { try { G.location.reload(); } catch (e) { /* no page to reload (tests) */ } },
@@ -30,12 +31,12 @@
   let cidN = 0;
   const bus = SL.bus;
 
-  /** Only paths under /api/ are ever requested (UI-WIRING.md 12). */
+  /** Only paths under /api/ are ever requested. */
   const checkPath = p => typeof p === 'string' && p.indexOf('/api/') === 0 && p.indexOf('//') < 0;
   const slow = p => /\/snapshot$|\/ws\/(diff|index)\b/.test(p.split('?')[0]);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  /** The server became (un)reachable: live.js shows the disconnected state (D-13) and comes back on its own. */
+  /** The server became (un)reachable: live.js shows the disconnected state and comes back on its own. */
   const setReachable = on => {
     if (reachable === on) return;
     reachable = on;
@@ -139,7 +140,7 @@
     return { ok: false, status: 0, code: 'gave_up', message: 'the request did not go through' };
   }
 
-  /** A single-use confirmation id for scope (CONTRACT.md 20), or null. */
+  /** A single-use confirmation id for scope, or null. */
   async function confirm(scope) {
     const r = await request('POST', '/api/confirm', { scope: String(scope) }, { noRetry: true });
     return r.ok && r.data && typeof r.data.id === 'string' ? r.data.id : null;
@@ -166,7 +167,7 @@
   const cid = () => 'c' + (++cidN);
 
   /**
-   * The page's one stream (CONTRACT.md 4): EventSource on /api/stream?after=N. handlers: frame(type, data, id) for every named
+   * The page's one stream: EventSource on /api/stream?after=N. handlers: frame(type, data, id) for every named
    * frame, state('open' | 'reconnecting' | 'closed'), and beforeReopen() (async, may resolve false to stay closed) which runs before
    * the stream is opened again after the browser gave up on it (a refused or broken response). The browser's own reconnects carry
    * Last-Event-ID; a reopen carries ?after= the last id seen. Returns {close(), lastId()}.

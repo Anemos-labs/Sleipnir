@@ -1,8 +1,8 @@
-// c3-settings.test.mjs: the eleven Settings pages (98-ui-settings.js): the filters, the Run settings line, the rules in force, the ledger and
+// settings.test.mjs: the eleven Settings pages (98-ui-settings.js): the filters, the Run settings line, the rules in force, the ledger and
 // the key tags, and the markup of every page with hostile text in every field the server fills.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { page, EVIL, hasMarkup, scriptAttrs } from './c3-harness.mjs';
+import { page, EVIL, hasMarkup, scriptAttrs } from './pages-harness.mjs';
 
 const MODULES = ['91-views-b.js', '98-ui-settings.js'];
 const plain = x => JSON.parse(JSON.stringify(x));
@@ -17,7 +17,7 @@ const MODELS = [
 const st = o => Object.assign({ q: '', tools: false, reasoning: false, favs: false, maxp: '', maxo: '', minc: '' }, o || {});
 
 test('the model filters: words, tools, reasoning, favourites, input and output price, context; favourites first', () => {
-  const { SL } = setup(), S = SL.c3.settings, favs = new Set(['b/fav']);
+  const { SL } = setup(), S = SL.toolkit.settings, favs = new Set(['b/fav']);
   const refs = f => S.modelRows(MODELS, st(f), favs).map(m => m.ref);
   assert.deepEqual(plain(refs()), ['b/fav', 'a/cheap', 'a/big', 'b/unknown']);
   assert.deepEqual(plain(refs({ q: 'A/ BIG' })), ['a/big'], 'every word, any case');
@@ -30,11 +30,11 @@ test('the model filters: words, tools, reasoning, favourites, input and output p
 });
 
 test('the "Run as CLI" line of Models names the output price flag, not the input price', () => {
-  const { SL } = setup(), c = SL.c3.settings.modelsCli(st({ q: 'claude', tools: true, favs: true, all: true, maxo: '5', maxp: '3', minc: '128000' }));
+  const { SL } = setup(), c = SL.toolkit.settings.modelsCli(st({ q: 'claude', tools: true, favs: true, all: true, maxo: '5', maxp: '3', minc: '128000' }));
   assert.equal(c.label, 'models claude --tools --fav --all --max-price 5 --min-context 128000');
   assert.deepEqual(plain(c.flags), { tools: true, fav: true, all: true, 'max-price': 5, 'min-context': '128000' });
   assert.deepEqual(plain(c.pos), { WORDS: 'claude' });
-  assert.equal(SL.c3.settings.modelsCli(st()).label, 'models');
+  assert.equal(SL.toolkit.settings.modelsCli(st()).label, 'models');
 });
 
 test('the rules in force: the server\'s then the session\'s, a rule both carry once, the session one removable', () => {
@@ -43,12 +43,12 @@ test('the rules in force: the server\'s then the session\'s, a rule both carry o
     { effect: 'deny', rule: 'Read(./.env)', origin: 'project config', file: '.sleipnir/config.json' },
     { effect: 'allow', rule: 'Bash(make:*)', origin: 'this session' }] }) });
   SL.D.extra.permissions = { rules: { allow: [{ rule: 'Bash(go test:*)', origin: '--allow flag' }], deny: [{ rule: 'Read(./.env)', origin: 'project config', file: '.sleipnir/config.json' }, { rule: 'Read(~/.ssh/**)', origin: 'built-in protection', fixed: true }], ask: [] } };
-  const out = SL.c3.settings.rulesIn(S).map(r => r.effect + ' ' + r.rule + ' ' + (r.fixed ? 'locked' : 'removable'));
+  const out = SL.toolkit.settings.rulesIn(S).map(r => r.effect + ' ' + r.rule + ' ' + (r.fixed ? 'locked' : 'removable'));
   assert.deepEqual(plain(out), ['deny Read(./.env) locked', 'deny Read(~/.ssh/**) locked', 'allow Bash(go test:*) removable', 'allow Bash(make:*) removable']);
 });
 
 test('how a provider\'s key is told, and what button its row gets', () => {
-  const { SL } = setup(), k = SL.c3.settings.keyInfo;
+  const { SL } = setup(), k = SL.toolkit.settings.keyInfo;
   assert.deepEqual(plain(k({ key: 'none', state: 'no key' })), { txt: 'no key', cls: '', btn: 'in' });
   assert.deepEqual(plain(k({ key: 'none', state: 'no key needed' })), { txt: 'no key needed', cls: '', btn: '' });
   assert.deepEqual(plain(k({ key: 'env', env: 'X_KEY' })), { txt: '✓ env X_KEY', cls: 'ok', btn: 'out', env: true });
@@ -56,7 +56,7 @@ test('how a provider\'s key is told, and what button its row gets', () => {
 });
 
 test('the Run settings: the command line says what a restart would start, the stepper is clamped to the ceiling', () => {
-  const { SL } = setup(), S = SL.c3.settings, M = session().meta;
+  const { SL } = setup(), S = SL.toolkit.settings, M = session().meta;
   M.swarm = 4; M.verify = 'go test {dirs}'; M.budget = 5; M.commit = true; M.trustProject = false;
   assert.equal(S.runLine(M, {}), 'sleipnir chat --model a/m --mode default --swarm 4 --isolation worktree --verify "go test {dirs}" --budget-usd 5 --commit');
   assert.ok(S.runLine(Object.assign({}, M, { commit: false, mailman: false }), { mailman: true, commit: false }).endsWith('--mailman=false'), 'off against a default of on');
@@ -65,7 +65,7 @@ test('the Run settings: the command line says what a restart would start, the st
 });
 
 test('the trust ledger gets the project of the tab when nobody said yes to it; a warning splits at its position', () => {
-  const { SL } = setup(), S = SL.c3.settings;
+  const { SL } = setup(), S = SL.toolkit.settings;
   const T = { project: { dir: '/p', state: 'not trusted' }, files: [{ path: 'a' }, { path: 'b' }] };
   assert.deepEqual(plain(S.ledgerRows(T, [{ dir: '/q', files: 1, state: 'trusted (Oct 8)' }])).map(r => r.dir + ':' + r.state), ['/q:trusted (Oct 8)', '/p:not trusted']);
   assert.equal(S.ledgerRows({ project: { dir: '/q', state: 'trusted' }, files: [] }, [{ dir: '/q', state: 'trusted (x)' }]).length, 1);
@@ -95,10 +95,10 @@ test('every page shows hostile text of the server as text', () => {
   X.config = { layers: [{ kind: EVIL, source: EVIL, state: EVIL, trusted: EVIL }], precedence: EVIL, effective: [{ key: EVIL, value: EVIL, layer: EVIL, file: EVIL, note: EVIL, below: { [EVIL]: EVIL } }], issues: [{ file: EVIL, line: 3, path: EVIL, message: EVIL, severity: EVIL }], risks: [{ file: EVIL, message: EVIL }], valid: EVIL, ok: false };
   SL.live.hello = { server: { addr: EVIL }, defaults: { maxWorkers: 10, swarm: EVIL }, ui: {} }; SL.live.addr = EVIL;
   SL.settings.title = EVIL;
-  const ST = SL.c3.settings.newState({ page: 'models' }); ST.models.q = EVIL; ST.cfg.q = EVIL; ST.perm.arg = EVIL; ST.perm.res = { d: EVIL, why: EVIL, cls: EVIL }; ST.perm.danger = EVIL;
+  const ST = SL.toolkit.settings.newState({ page: 'models' }); ST.models.q = EVIL; ST.cfg.q = EVIL; ST.perm.arg = EVIL; ST.perm.res = { d: EVIL, why: EVIL, cls: EVIL }; ST.perm.danger = EVIL;
   const seen = [];
-  Object.keys(SL.c3.settings.pages).forEach(name => {
-    const html = SL.c3.settings.pages[name](S, ST);
+  Object.keys(SL.toolkit.settings.pages).forEach(name => {
+    const html = SL.toolkit.settings.pages[name](S, ST);
     assert.ok(!hasMarkup(html), 'the ' + name + ' page holds an element made of hostile text');
     assert.deepEqual(plain(scriptAttrs(html)), [], 'the ' + name + ' page has an attribute that runs script');
     if (html.includes('&lt;img')) seen.push(name);
@@ -107,15 +107,15 @@ test('every page shows hostile text of the server as text', () => {
 });
 
 test('the Permissions tester keeps its previous result while a check is on its way, and shows what the server said as text', () => {
-  const { SL } = setup(), S = session(), ST = SL.c3.settings.newState({ page: 'permissions' });
+  const { SL } = setup(), S = session(), ST = SL.toolkit.settings.newState({ page: 'permissions' });
   SL.D.extra.permissions = { modes: [], order: ['deny'], managerWrites: { text: 't', note: 'n' }, testsPreset: { summary: '', rules: [] }, rules: { allow: [], deny: [], ask: [] } };
   ST.perm.res = { d: 'ask', why: 'no rule matches', cls: 'warm' }; ST.perm.busy = true;
-  const html = SL.c3.settings.pages.permissions(S, ST);
+  const html = SL.toolkit.settings.pages.permissions(S, ST);
   assert.ok(html.includes('no rule matches') && html.includes('data-do="try" disabled'));
 });
 
 test('the projects nobody trusted, or that could not be read, are rows of the ledger with the server\'s word', () => {
-  const { SL } = setup(), S = SL.c3.settings;
+  const { SL } = setup(), S = SL.toolkit.settings;
   const projects = [{ dir: '/a', trust: 'trusted', files: 3 }, { dir: '/b', trust: 'untrusted', files: 2 }, { dir: '/c', trust: 'partial', files: 9 }, { dir: '/d', trust: 'unreadable', files: 1 }, { dir: '/e', trust: 'changed', files: 4 }, { dir: '/f', trust: 'none' }, { dir: '/g', trust: 'partial' }, { dir: '/led', trust: 'partial' }];
   const rows = S.ledgerRows({ project: { dir: '/a', state: 'trusted' }, files: [] }, [{ dir: '/led', files: 2, state: 'trusted (Oct 8)' }], projects);
   assert.deepEqual(plain(rows.map(r => r.dir + ':' + r.state)), ['/led:trusted (Oct 8)', '/b:not trusted', '/c:partial', '/d:unreadable', '/e:changed since your yes', '/g:partial'], 'trusted and nothing-to-trust projects are not listed; a project in the ledger once');
@@ -135,26 +135,26 @@ test('trusting goes through the trust step: it gets the whole challenge, and onl
   const mk = trustStep => { const t = page({ modules: MODULES, routes: call => call.path.startsWith('/api/trust/challenge') ? { status: 200, body: challenge } : call.path === '/api/trust' ? { status: 200, body: { ok: true } } : { status: 404, body: { error: 'x', code: 'not_found' } } }); if (trustStep) t.SL.ui.trustStep = trustStep; return t; };
   const posts = t => t.fetch.calls.filter(c => c.method === 'POST' && c.path === '/api/trust');
   // no step: nothing is trusted, the person is told
-  let t = mk(null); assert.equal(await t.SL.c3.settings.trustFlow('/p'), false); assert.equal(posts(t).length, 0); assert.match(t.toasts[0][0], /nothing was trusted/);
+  let t = mk(null); assert.equal(await t.SL.toolkit.settings.trustFlow('/p'), false); assert.equal(posts(t).length, 0); assert.match(t.toasts[0][0], /nothing was trusted/);
   // declined
-  t = mk(async () => null); assert.equal(await t.SL.c3.settings.trustFlow('/p'), false); assert.equal(posts(t).length, 0);
+  t = mk(async () => null); assert.equal(await t.SL.toolkit.settings.trustFlow('/p'), false); assert.equal(posts(t).length, 0);
   // yes: the step got the challenge as the server sent it (the unread path included), and its id is what is sent
   t = mk(async (ch, o) => { seen.push([ch, o]); return ch.confirm; });
-  assert.equal(await t.SL.c3.settings.trustFlow('/p'), true);
+  assert.equal(await t.SL.toolkit.settings.trustFlow('/p'), true);
   assert.deepEqual(plain(seen[0][0]), challenge); assert.deepEqual(plain(seen[0][1]), { dir: '/p' });
   assert.equal(posts(t).length, 1); assert.equal(posts(t)[0].headers['X-Confirm'], 'cf_the_challenge'); assert.deepEqual(plain(posts(t)[0].body), { dir: '/p', on: true });
   assert.deepEqual(plain(t.fetch.calls.map(c => c.path)), ['/api/trust/challenge?dir=%2Fp', '/api/trust'], 'no confirmation of the page\'s own is asked for');
   // the id the step resolves is the one sent, even when it is not the challenge's
-  t = mk(async () => 'cf_other'); await t.SL.c3.settings.trustFlow('/p'); assert.equal(posts(t)[0].headers['X-Confirm'], 'cf_other');
+  t = mk(async () => 'cf_other'); await t.SL.toolkit.settings.trustFlow('/p'); assert.equal(posts(t)[0].headers['X-Confirm'], 'cf_other');
   // the server refuses the challenge: no step, no trust
   const bad = page({ modules: MODULES, routes: () => ({ status: 403, body: { error: 'start a session in one of the listed projects', code: 'not_a_project' } }) });
   let stepped = false; bad.SL.ui.trustStep = async () => { stepped = true; return 'x'; };
-  assert.equal(await bad.SL.c3.settings.trustFlow('/nope'), false); assert.equal(stepped, false); assert.deepEqual(plain(bad.toasts), [['start a session in one of the listed projects', 'warm']]);
-  const f = t.SL.c3.settings.forgetSpec([{ dir: '/a' }, { dir: EVIL }]); assert.match(f.text, /<b>2<\/b> directories/); assert.ok(!hasMarkup(f.detail)); assert.equal(f.danger, true);
+  assert.equal(await bad.SL.toolkit.settings.trustFlow('/nope'), false); assert.equal(stepped, false); assert.deepEqual(plain(bad.toasts), [['start a session in one of the listed projects', 'warm']]);
+  const f = t.SL.toolkit.settings.forgetSpec([{ dir: '/a' }, { dir: EVIL }]); assert.match(f.text, /<b>2<\/b> directories/); assert.ok(!hasMarkup(f.detail)); assert.equal(f.danger, true);
 });
 
 test('a hostile project path and a hostile unread entry of the ledger are text on the Trust page', () => {
-  const { SL } = setup(), S = SL.c3.settings;
+  const { SL } = setup(), S = SL.toolkit.settings;
   SL.D.extra.projects = [{ dir: '/p/' + EVIL, trust: 'partial', files: EVIL }, { dir: '/q/' + EVIL, trust: 'unreadable' }];
   SL.D.extra.trust = { project: { dir: '/p/' + EVIL, state: 'partial' }, files: [{ path: EVIL, kind: 'unread', bytes: EVIL, hash: EVIL }], covers: EVIL, ledger: [], question: { options: [EVIL] } };
   const html = S.pages.trust(session(), S.newState({ page: 'trust' }));

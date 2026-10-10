@@ -1,7 +1,7 @@
 {
 "generatedFrom":"docs/CLI.md",
-"generator":"gen-cli-spec.mjs",
-"note":"flags parsed from the binary's own -h output as recorded in docs/CLI.md; positionals, enumerations and subcommand summaries of mcp/trust/models fav/schedule/logout are curated in the generator and each carries its source",
+"generator":"checked-in data file",
+"note":"flags parsed from the binary's own -h output as recorded in docs/CLI.md; positionals, enumerations and subcommand summaries of mcp/trust/models fav/schedule/logout are curated by hand and each carries its source",
 "exitCodes":[{"code":0,"meaning":"success; also -h/--help, version, and a chat the person ends"},{"code":1,"meaning":"the command failed: any error is printed as `sleipnir: <error>` on stderr"},{"code":2,"meaning":"usage: no command, an unknown command, or an unknown or malformed flag"},{"code":3,"meaning":"unfinished: a swarm's manager stopped with work left undone"},{"code":130,"meaning":"interrupted by Ctrl-C (143 for SIGTERM)"},{"code":75,"meaning":"try again later (EX_TEMPFAIL): rl rollout or rl eval in which no rollout completed"}],
 "commands":[
 {"path":["chat"],"usage":"sleipnir chat [flags]","summary":"Interactive session. On a terminal, a manager and eight workers; --swarm N sets the number of workers, --swarm 0 is a single agent.","positional":[],"source":"docs/CLI.md:191","flags":[

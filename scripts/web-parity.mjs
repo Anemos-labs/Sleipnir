@@ -1,30 +1,33 @@
 #!/usr/bin/env node
 // web-parity.mjs: numeric screenshot parity of two pages of the Sleipnir web UI, with no dependencies.
 //
-//   node scripts/web-parity.mjs [--a MOCK.html|URL] [--b DIR|URL] [--scenes scripts/web-parity-scenes.json] [--out dist/web-parity]
+//   node scripts/web-parity.mjs [--a REFERENCE.html|URL] [--b DIR|URL] [--scenes scripts/web-parity-scenes.json] [--out dist/web-parity]
 //                               [--only NAME,NAME] [--viewport 1440x900] [--threshold PCT] [--tolerance N] [--profile NAME]
 //                               [--self] [--jobs N] [--images diff|all|none] [--json FILE] [--list]
 //
-// A is the approved single-file mock (default docs/design/web-mocks/v3/sleipnir-web.html), B is the page under test: a URL, or a
-// directory that is served by scripts/web-ui-dev.mjs (default internal/web/ui). Every scene opens both pages in a fresh browser
+// A is the reference page (default internal/web/uidev/mock/index-mock.html: the page with sample data and a scripted simulation, which
+// the shipped page is compared with), B is the page under test: a URL, or a directory that is served by scripts/web-ui-dev.mjs
+// (default internal/web/ui). Every scene opens both pages in a fresh browser
 // context, runs the same steps in each (clicks, keys, hovers, waits, JS), takes a screenshot of each, decodes the two PNGs itself
 // and reports, per scene and viewport: the percentage of pixels that differ, the bounding boxes of the differing regions, and a
 // diff image (the page dimmed, every differing pixel red, every region outlined). The exit status is 1 when a scene is above its
 // threshold (default 0.5 %), when a page threw, logged a console error, or (for B) broke the Content-Security-Policy.
 //
-// DETERMINISM. The mock is a simulation: its clock is requestAnimationFrame. Both pages are brought to the same state by a virtual
+// DETERMINISM. The reference page is a simulation: its clock is requestAnimationFrame. Both pages are brought to the same state by a virtual
 // clock that is injected before any page script runs (Page.addScriptToEvaluateOnNewDocument) and replaces setTimeout, setInterval,
 // requestAnimationFrame, performance.now, Date and Math.random. Time stands still until a step says `wait`: the driver then runs
 // the page's own timers and animation frames in order, 1/60 s of virtual time per frame, as fast as the CPU allows. Both pages
 // therefore see the same sequence of frame timestamps and the simulation reaches the same state at the same virtual second,
-// whatever the machine load; the shipped mock needs no test hook for this. What the clock cannot reach is the browser's own
+// whatever the machine load; the reference page needs no test hook for this. What the clock cannot reach is the browser's own
 // animation timeline (CSS animations and transitions, Web Animations): before the screenshot every animation is finished (finite)
 // or parked at its start (infinite), and the text caret is hidden, so the picture is a pure function of the DOM. Fonts are waited
 // for. `--self` compares A with itself: any difference is nondeterminism of the method, and must be 0.
 //
-// NETWORK. The browser resolves no host except 127.0.0.1. The mock's Google Fonts link is answered from local files
-// (--fonts, default docs/design/web-mocks/_src/fonts: the same woff2 files the packaged UI embeds) through the DevTools Fetch
-// domain, so the mock renders with its real fonts; any other request fails and is reported.
+// NETWORK. The browser resolves no host except 127.0.0.1. A Google Fonts link in page A (the reference page links the fonts of
+// internal/web/ui/fonts itself and has none) is answered from local files (--fonts, default internal/web/ui/fonts: the woff2 files
+// the packaged UI embeds) through the DevTools Fetch domain; any other request fails and is reported. A file given as A is served
+// without a Content-Security-Policy: from internal/web when it lies there (the reference page links assets of ../../ui), otherwise
+// from its own directory.
 //
 // SCENES are JSON (scripts/web-parity-scenes.json, documented there). A step is one object:
 //   {"wait": MS}                               advance the virtual clock
@@ -51,6 +54,7 @@ import path from 'node:path';
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { TYPES } from './web-ui-dev.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -253,7 +257,7 @@ const FREEZE = `(() => {
   for (const a of document.getAnimations()) {
     try {
       const t = a.effect && a.effect.getComputedTiming();
-      a.playbackRate = 1;   // the mock slows every animation to 0 while the hold is on, and finish() refuses a stopped animation
+      a.playbackRate = 1;   // the reference page slows every animation to 0 while the hold is on, and finish() refuses a stopped animation
       if (t && Number.isFinite(t.endTime)) a.finish(); else { a.pause(); a.currentTime = 0; }
       n++;
     } catch (e) { /* not ours to freeze */ }
@@ -355,7 +359,7 @@ export class Browser {
 
 const KEYS = { Escape: [27, 'Escape'], Enter: [13, 'Enter'], Tab: [9, 'Tab'], ArrowUp: [38, 'ArrowUp'], ArrowDown: [40, 'ArrowDown'], ArrowLeft: [37, 'ArrowLeft'], ArrowRight: [39, 'ArrowRight'], Backspace: [8, 'Backspace'], Space: [32, ' '], Home: [36, 'Home'], End: [35, 'End'] };
 
-/** One page in its own browser context, with the virtual clock, the problem log and (for the mock) the local font responder. */
+/** One page in its own browser context, with the virtual clock, the problem log and (for page A) the local font responder. */
 export class Page {
   static async open(browser, url, { width, height, mobile, fonts, mock, reducedMotion }) {
     const { browserContextId } = await browser.send('Target.createBrowserContext');
@@ -392,7 +396,7 @@ export class Page {
     else if (method === 'Fetch.requestPaused') this.answer(a).catch(e => this.problems.push('fetch: ' + e.message));
   }
   /**
-   * The mock links Google Fonts: answer it from local files so that it renders with its real fonts. A page that is not the mock
+   * Page A may link Google Fonts: answer it from local files so that it renders with the packaged fonts. A page that is not A
    * must not ask for them (its CSP forbids it): the request is failed and reported. Every other external request fails anyway.
    */
   async answer(a) {
@@ -505,11 +509,27 @@ export function loadScenes(file, profile) {
   return out;
 }
 
+/**
+ * Serve the file given as page A with the files around it: a page of internal/web is served from internal/web (so that the links of
+ * the reference page to ../../ui resolve), any other file from its own directory. Only GET and HEAD, no Content-Security-Policy,
+ * paths resolved inside the root. Resolves {srv, url}, the url being the page itself.
+ */
 function startServer(file) {
-  const html = fs.readFileSync(file);
+  file = path.resolve(file);
+  const web = path.join(repo, 'internal/web');
+  const root = file.startsWith(web + path.sep) ? web : path.dirname(file);
+  const srv = http.createServer((req, res) => {
+    const send = (code, type, body) => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(req.method === 'HEAD' ? undefined : body); };
+    if (req.method !== 'GET' && req.method !== 'HEAD') return send(405, 'text/plain; charset=utf-8', 'method not allowed\n');
+    let rel;
+    try { rel = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { return send(400, 'text/plain; charset=utf-8', 'bad request\n'); }
+    const f = path.resolve(root, '.' + rel);
+    if (rel.includes('\0') || (f !== root && !f.startsWith(root + path.sep))) return send(404, 'text/plain; charset=utf-8', 'not found\n');
+    fs.readFile(f, (err, buf) => err ? send(404, 'text/plain; charset=utf-8', 'not found\n') : send(200, TYPES[path.extname(f).toLowerCase()] || 'application/octet-stream', buf));
+  });
   return new Promise((resolve, reject) => {
-    const srv = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(req.method === 'HEAD' ? undefined : html); });
-    srv.once('error', reject); srv.listen(0, '127.0.0.1', () => resolve({ srv, url: 'http://127.0.0.1:' + srv.address().port + '/' }));
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, url: 'http://127.0.0.1:' + srv.address().port + '/' + path.relative(root, file).split(path.sep).map(encodeURIComponent).join('/') }));
   });
 }
 
@@ -576,7 +596,7 @@ function selftest() {
 
 function usage(code) {
   console.log(`usage: node scripts/web-parity.mjs [options]
-  --a FILE|URL        the reference page (default docs/design/web-mocks/v3/sleipnir-web.html)
+  --a FILE|URL        the reference page (default internal/web/uidev/mock/index-mock.html)
   --b DIR|URL         the page under test; a directory is served like scripts/web-ui-dev.mjs (default internal/web/ui)
   --self              compare A with itself: any difference is nondeterminism of the method
   --scenes FILE       scenes (default scripts/web-parity-scenes.json)
@@ -589,7 +609,7 @@ function usage(code) {
   --out DIR           where the PNGs go (default dist/web-parity)
   --images diff|all|none   which PNGs to write (default diff: only for scenes with a difference)
   --json FILE         write the report as JSON
-  --fonts DIR         the mock's fonts for its Google Fonts link (default docs/design/web-mocks/_src/fonts)
+  --fonts DIR         the fonts that answer a Google Fonts link in page A (default internal/web/ui/fonts)
   --chrome PATH       the Chromium (headless shell)
   --mobile auto|on|off   emulate a phone (meta viewport, overlay scrollbars) below 600 px wide (default auto)
   --list              list the scenes and exit
@@ -600,8 +620,8 @@ function usage(code) {
 async function main() {
   process.stdout.on('error', () => process.exit(1));   // `| head` closed the pipe: stop, the exit handler removes the browser
   const argv = process.argv.slice(2), opt = {
-    a: path.join(repo, 'docs/design/web-mocks/v3/sleipnir-web.html'), b: path.join(repo, 'internal/web/ui'), scenes: path.join(here, 'web-parity-scenes.json'), out: path.join(repo, 'dist/web-parity'),
-    only: null, viewport: null, threshold: null, tolerance: 0, profile: null, self: false, jobs: 2, images: 'diff', json: null, fonts: path.join(repo, 'docs/design/web-mocks/_src/fonts'), chrome: null, list: false, mobile: 'auto',
+    a: path.join(repo, 'internal/web/uidev/mock/index-mock.html'), b: path.join(repo, 'internal/web/ui'), scenes: path.join(here, 'web-parity-scenes.json'), out: path.join(repo, 'dist/web-parity'),
+    only: null, viewport: null, threshold: null, tolerance: 0, profile: null, self: false, jobs: 2, images: 'diff', json: null, fonts: path.join(repo, 'internal/web/ui/fonts'), chrome: null, list: false, mobile: 'auto',
   };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i], v = () => { if (i + 1 >= argv.length) { console.error('missing value for ' + k); process.exit(2); } return argv[++i]; };

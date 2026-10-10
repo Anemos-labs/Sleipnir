@@ -7,8 +7,8 @@
  * Every number on screen is derived from the per-agent token table in the model (read, uncached, out): hit, cost, savings, the HUD ring,
  * the Cache tab, the stalls and the drawer all call SL.calc, so they agree to the percent at every moment.
  *
- * Event kinds (see ARCHITECTURE.md for the full table): say, sys, tool, note, state, task, plan, verdict, req, use, warm, gov, mail, ckpt,
- * ask, answer, queue, merge, break, compact, stream, goal, final, local, steer, reply, interrupt, refuse, digest. */
+ * Event kinds (internal/web/wire/events.go has the fields of each): say, sys, tool, note, state, task, plan, verdict, req, use, warm,
+ * gov, mail, ckpt, ask, answer, queue, merge, break, compact, stream, goal, final, local, steer, reply, interrupt, refuse, digest. */
 (function (SL) {
   'use strict';
   const { upperBound } = SL.u;

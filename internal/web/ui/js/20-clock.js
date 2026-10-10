@@ -1,4 +1,4 @@
-/* 20-clock.js: SL.time, the sim clock and the time governor.
+/* 20-clock.js: SL.time, the session clocks and the time governor.
  *
  * Two clocks exist per session: the WORLD clock (`S.wt`, always 1 s per wall second, events happen on it) and the VIEW clock
  * (`S.vt`, what the screen shows). The governor owns the ratio between view time and wall time, the RATE:

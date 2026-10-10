@@ -110,7 +110,7 @@ test('every row of the conversation stays plain markup with hostile ids and valu
   Object.keys(m.chan).forEach(ch => m.chan[ch].forEach(e => html.push(SL.chat.rowHtml(e, S, m))));
   assert.ok(html.length > 15);
   html.forEach(h => assert.ok(!broken(h), h));
-  /* the markup itself holds when an entry was never cleaned (a page-made row, a mock): ids escaped, numbers numbers, tables own keys */
+  /* the markup itself holds when an entry was never cleaned (a page-made row, a test double): ids escaped, numbers numbers, tables own keys */
   const direct = [{ k: 'scouts', lines: [[IMG, IMG]] }, { k: 'digest', id: IMG, dg: { merged: [IMG], submitted: [], n: COVER, t0: 0, t1: 1 } }, { k: 'sys', text: 't', open: 'constructor' },
     { k: 'feed', ag: IMG, g: 'toString', text: 'x', to: COVER }, { k: 'say', ag: COVER, text: 'x', stream: true, t: IMG, rate: COVER }, { k: 'mail', from: IMG, to: COVER, text: 'x' },
     { k: 'break', ag: IMG, kind: 'k', read: IMG, expected: 1, why: 'w' }, { k: 'compact', ag: IMG, from: 1, to: 1, pct: IMG }, { k: 'tool', ag: COVER, name: 'n', add: IMG, del: COVER }];

@@ -370,7 +370,7 @@
     }
     const TRUNC = '<div class="ln hunk"><b class="who"></b><i></i><s></s><span>… truncated: the page shows the first part of this file</span></div>';
     const TRUNC_D = '<div class="ln hunk"><b class="who"></b><i></i><s></s><span>… the difference is truncated: the page shows its first part</span></div>';
-    /** draw the body of the file pane: short ones in full (the markup of the mock), long ones as a window */
+    /** draw the body of the file pane: short ones in full (the markup of the reference page), long ones as a window */
     function paintBody(c, o) {
       if (o.html != null) { VB.off(); return put(body, o.html); }
       const R = o.flat; let n, rowHtml, kindOf, pinOf = null; const tail = o.truncated ? (o.mode === 'diff' ? TRUNC_D : TRUNC) : '';

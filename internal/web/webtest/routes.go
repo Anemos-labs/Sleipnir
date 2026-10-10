@@ -24,15 +24,15 @@ type RouteOptions struct {
 	Addr func() string
 }
 
-// D16 is the first 16 hex characters of the SHA-256 of the JSON encoding of v (maps with sorted keys, no spaces): the digest of
-// the confirmation scopes of CONTRACT.md section 20.
+// D16 is the first 16 hex characters of the SHA-256 of the JSON encoding of v (maps with sorted keys, no spaces): the digest that
+// the scope of a confirmation carries.
 func D16(v any) string {
 	b, _ := json.Marshal(v)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// PublishFrame hands a frame to the hub of the page's stream as the real host does (OWNERSHIP.md 5.3): the frame's type is the SSE
+// PublishFrame hands a frame to the hub of the page's stream as the real host does: the frame's type is the SSE
 // event name, its data the body, its class the hub's.
 func PublishFrame(hub *web.Hub, f wire.Frame) (uint64, error) {
 	b, err := json.Marshal(f.Data)
@@ -49,11 +49,11 @@ type router struct {
 	opts RouteOptions
 }
 
-// RegisterRoutes adds the fake routes to srv: the routes of CONTRACT.md that the live session needs, answered by the fake host (hello,
-// the stream, tabs, snapshots, messages, approvals, session settings), fixed contract-shaped answers for the pages (models,
-// providers, permissions, trust, MCP, skills, configuration, schedule, the Workspace, recorded sessions, the CLI spec, runs), the
-// control routes /api/_fake/*, and a 501 not_implemented for any other mutating route under /api/. Frames the host publishes reach
-// the hub. Call it from web.Config.Routes.
+// RegisterRoutes adds the fake routes to srv: the routes of docs/WEB-API.md that the live session needs, answered by the fake host
+// (hello, the stream, tabs, snapshots, messages, approvals, session settings), fixed answers in the shapes of package wire for the
+// pages (models, providers, permissions, trust, MCP, skills, configuration, schedule, the Workspace, recorded sessions, the CLI spec,
+// runs), the control routes /api/_fake/*, and a 501 not_implemented for any other mutating route under /api/. Frames the host
+// publishes reach the hub. Call it from web.Config.Routes.
 func RegisterRoutes(srv *web.Server, h *Host, o RouteOptions) {
 	if o.Version == "" {
 		o.Version = "v0.9.0"

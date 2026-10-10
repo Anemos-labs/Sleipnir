@@ -65,7 +65,7 @@ type webDefaults struct {
 	Fixture string
 }
 
-// webHubConfig bounds the event hub of `sleipnir web`: one topic carries every tab (CONTRACT.md 2.9, Δ3).
+// webHubConfig bounds the event hub of `sleipnir web`: one topic carries every tab.
 var webHubConfig = web.HubConfig{ReplayEvents: 20000, ReplayBytes: 32 << 20, Buffer: 2048, BufferBytes: 8 << 20, MaxEventBytes: 1 << 20}
 
 // projectsFlag is --project, repeatable.

@@ -1,5 +1,5 @@
 /* 99-app.js: boot. Order: settings, sessions, the shell scope (HUD, strip, rail, approvals, keys, link), the first view, the loop.
- * A variant that replaces the shell layout keeps this file and swaps the pieces it mounts. */
+ * A different shell layout keeps this file and swaps the pieces it mounts. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $ } = U, ui = SL.ui;

@@ -1,17 +1,16 @@
 {
   "_doc": [
-    "Scenes for scripts/web-parity.mjs. Every scene runs, in a fresh browser context, in A (the approved mock) and in B (the page under test), and the two",
+    "Scenes for scripts/web-parity.mjs. Every scene runs, in a fresh browser context, in A (the reference page) and in B (the page under test), and the two",
     "screenshots are compared pixel by pixel. The steps are documented at the top of web-parity.mjs.",
     "Time is virtual: `wait` runs the page's own timers and animation frames for that many milliseconds of the simulation (1/60 s per frame). The simulation",
     "is deterministic from t = 0, so two builds of the same UI reach the same state at the same total of `wait`s. `until` waits for a JS condition instead",
     "(for a page whose state comes from the network: the virtual clock does not control a socket, the condition does).",
-    "Steps must work in both pages: they use selectors (ids, classes, data attributes), never the page's JavaScript namespace (`SL` is private in the",
-    "single-file mock). `when` limits a step to wide or narrow (width <= 760) viewports. A step that matches nothing is an error, not a skip.",
+    "Steps must work in both pages: they use selectors (ids, classes, data attributes), never the page's JavaScript namespace (the two pages do not share one). `when` limits a step to wide or narrow (width <= 760) viewports. A step that matches nothing is an error, not a skip.",
     "`each` repeats a scene for the cartesian product of its lists; `${name}` is substituted in the scene.",
     "`mask`: selectors whose boxes (in either page) are painted over in both pictures before they are compared, for content that legitimately differs",
     "(live clocks, timestamps, ids). A scene that must be pixel-identical has none. `maskProfiles.live` is added to every scene with `--profile live`: the",
-    "comparison of the mock with the UI wired to the real API, where clocks come from a real session.",
-    "`threshold` is the percentage of differing pixels allowed (default 0.5; the packaged mock-backed UI is expected to be 0).",
+    "comparison of the reference page with the UI wired to the API, where clocks come from a real session.",
+    "`threshold` is the percentage of differing pixels allowed (default 0.5; the shipped UI served from the reference page's own sessions (internal/web/uidev/mockapi.mjs) is expected to be 0).",
     "`sweep-*` scenes click every distinct control of a view (and type into its fields): they exist to catch handlers that break the Content-Security-Policy",
     "or throw, and to compare what the handlers leave behind."
   ],

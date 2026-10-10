@@ -42,18 +42,18 @@
     '/verbose': a => { const S = S_(), on = a ? a !== 'off' : S.ui.verbose === false; S.ui.verbose = on; S.touch(); ui.toast(on ? 'notices on: Team activity shows every tool call' : 'notices off: Team activity keeps questions, mail, merges and cache breaks, and hides tool calls', on ? 'ok' : 'quiet'); },
     '/anim': a => { const on = a ? a === 'on' : ui.still(); SL.act.setMotion(on ? 'full' : 'reduce'); ui.applyMotion(); ui.toast('motion ' + (on ? 'on' : 'off') + (on ? '' : ': the horse stands')); },
     '/cwd': () => { const S = S_(); local('/cwd', '<code>' + esc(S.meta.cwd) + '</code><br><span class="dim">--isolation ' + esc(S.meta.isolation) + (S.meta.isolation === 'worktree' ? ': each worker has its own checkout' : '') + '</span>'); },
-    /* PARITY A25: the session's own project map (the pinned shared layer), with a way to run a fresh survey */
+    /* the session's own project map (the pinned shared layer), with a way to run a fresh survey */
     '/recon': a => serverLine('/recon' + (a ? ' ' + a : ''), '/recon', '<div class="row2" style="margin:6px 0 0"><button class="btn sm" type="button" data-cli="recon">Run a fresh survey</button></div>'),
     '/skills': () => ui.settingsPage('skills'), '/mcp': a => { if (a) serverLine('/mcp ' + a, '/mcp ' + a); else ui.settingsPage('mcp'); }, '/help': () => ui.sheets.help(),
   };
   function newChat() { const S = S_(); ui.confirm({ title: 'Start again, empty', text: 'Clear <b>' + esc(S.name) + '</b>: the chat and the team start again with the same model and mode. Checkpoints stay.', ok: 'Start again', danger: true, run: () => onOk(SL.act.newChat(), () => ui.toast('started again, empty', 'ok')) }); }
-  /** /swarm N: the team starts again and the manager's conversation carries over (D-06). */
+  /** /swarm N: the team starts again and the manager's conversation carries over. */
   function restart(n) {
     const S = S_(), N = Math.max(0, Math.min(maxWorkers(), n)); if (N === S.meta.swarm) return ui.toast('already ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'warm');
     ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (N ? 'a manager and <b>' + N + '</b> worker' + (N === 1 ? '' : 's') + (N > 8 ? ' (' + (N - 8) + ' share legs)' : '') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restartTeam({ swarm: N }), () => ui.toast('the team starts again: ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'ok')) });
   }
   /** A line the server runs (custom commands, skills, MCP prompts, /mcp reconnect, /recon): its output becomes a local card;
-   *  an unknown command is the server's sentence (with its "did you mean", PARITY A26). */
+   *  an unknown command is the server's sentence (with its "did you mean"). */
   function serverLine(line, title, extra) {
     const S = S_(); if (S.replay) { ui.toast('go live first: a replay never changes the session', 'warm'); return; }
     const r = SL.act.command(line); if (r && r.ok === false) { if (r.why) ui.toast(r.why, 'warm'); return; }

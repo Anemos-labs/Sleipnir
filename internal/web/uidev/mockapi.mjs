@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// mockapi.mjs: serves the REAL page (internal/web/ui, the live data layer and all) with the API answered from the mock's own sessions,
-// so that the page can be compared with the approved mock on the same content (scripts/web-parity.mjs --b http://127.0.0.1:PORT/).
+// mockapi.mjs: serves the REAL page (internal/web/ui, the live data layer and all) with the API answered from the reference page's own
+// sessions, so that the page can be compared with the reference page on the same content (scripts/web-parity.mjs --b http://127.0.0.1:PORT/).
 //
 //   node internal/web/uidev/mockapi.mjs [--port 0] [--ui DIR]
 //
-// The mock's modules (internal/web/uidev/mock/js: the data pack, the fixtures and the scripted timelines) run in a vm of their own and
-// build the mock's three live sessions; each becomes a tab whose snapshot holds the whole scripted log at the mock's own start time
-// (shop at 00:38), so that the page's clock reaches each event when the mock's would. What the mock computed on the page and the real
+// The reference page's modules (internal/web/uidev/mock/js: the data pack, the fixtures and the scripted timelines) run in a vm of their own
+// and build its three live sessions; each becomes a tab whose snapshot holds the whole scripted log at the reference page's own start time
+// (shop at 00:38), so that the page's clock reaches each event when the reference page's would. What the reference page computed itself and the real
 // server sends as events is added: the plan's steps, every agent's prompt layers, and each agent's reported cost after a request (the
-// mock's sample prices), so that the two pages show the same numbers. Catalogues (models, roles, providers, projects, recorded
+// reference page's sample prices), so that the two pages show the same numbers. Catalogues (models, roles, providers, projects, recorded
 // sessions, the CLI spec, the slash commands, the settings views and the schedule) come from the same pack. The stream stays open with heartbeats; an answer to a question
 // is accepted and published as its `answer` event. Anything else under /api/ is 404 (or 501 for a mutation). Nothing here ships.
 import http from 'node:http';
@@ -23,7 +23,7 @@ const CSP = ["default-src 'none'", "script-src 'self'", "style-src 'self'", "sty
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 const MOCK = ['00-namespace.js', 'data.js', 'outputs.js', 'cli-spec.js', '00-util.js', '10-fixtures.js', '11-data-adapter.js', '20-clock.js', '30-model.js', '40-scripts.js', '50-sessions.js'];
 
-/** The mock's world: its modules in a vm, its sessions built (the oracle). */
+/** The reference page's world: its modules in a vm, its sessions built (the oracle). */
 export function oracle(dir = path.join(here, 'mock', 'js')) {
   const sb = { console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Math, JSON };
   sb.window = sb; sb.globalThis = sb; vm.createContext(sb);
@@ -36,7 +36,7 @@ export function oracle(dir = path.join(here, 'mock', 'js')) {
  *  UTC, as scripts/web-parity.mjs sets it (Emulation.setTimezoneOverride). */
 const startedAt = t0 => Date.UTC(2026, 0, 2) + Math.round(t0 * 1000);
 
-/** A mock session as a TabSnapshot: the whole scripted log, with the events the real server sends that the mock computed itself. */
+/** A session of the reference page as a TabSnapshot: the whole scripted log, with the events the real server sends that the reference page computed itself. */
 export function snapshotOf(SL, S, order) {
   const D = SL.D, R = SL.model, log = S.log.slice().sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
   const keyframe = [{ t: 0, k: 'plan', seq: 0, steps: S.plan.slice(), st: S.plan.map(() => 'pending') }].concat(S.roster.map(r => ({ t: 0, k: 'layers', seq: 0, id: r.id, toks: D.layerToks(r.id) })));
@@ -60,7 +60,7 @@ export function catalogues(SL) {
     slash: D.slash,
     models: { models: D.models.map(x => ({ ref: x.ref, provider: x.ref.split('/')[0], ctx: x.ctx, in: x.in, out: x.out, cached: x.cached, tools: x.tools, reasoning: x.reasoning, fav: !!x.fav, priceKnown: x.in != null })), favs: D.models.filter(x => x.fav).map(x => x.ref), roles: Object.keys(D.roles).map(n => ({ name: n, code: D.roles[n].code, ro: D.roles[n].ro, desc: D.roles[n].desc })), roleOrder: D.roleOrder, roleModels: D.roleModels, efforts: ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] },
     providers: { providers: (Array.isArray(X.providers) ? X.providers.map(p => ({ id: p.name, name: p.name.charAt(0).toUpperCase() + p.name.slice(1), base: p.baseUrl, key: p.signedIn ? 'signed in' : p.keyState === 'env' ? 'env' : p.keyState === 'stored' ? 'stored' : 'none', env: p.keyEnv, state: p.signedIn ? 'signed in' : (p.keyWhere || p.keyState), note: p.notes || '', recommended: !!p.recommended, keyWhere: p.keyWhere, dialect: p.dialect, signedIn: !!p.signedIn })) : D.providers.map(p => ({ id: p.id, name: p.name, base: p.base, key: p.key, env: p.env, state: p.state, note: p.note }))), providerNote: X.providerNote || '' },
-    /* the pack's settings views have the API's shapes (the contract took them from it) */
+    /* the pack's settings views have the API's shapes */
     permissions: X.permissions, trust: X.trust, mcp: X.mcp, config: X.config,
     skills: { skills: X.skills || [], skillsBudget: X.skillsBudget, commands: X.commands || [], hooks: X.hooks },
     schedule: X.schedule ? { jobs: X.schedule.jobs || [], daemon: X.schedule.daemon || {}, logs: X.schedule.logs || [] } : null,
@@ -90,13 +90,13 @@ export function start(o = {}) {
         if (g) return json(res, 200, g);
         if (/^\/api\/sessions\/[^/]+\/ws\/index$/.test(p)) return json(res, 200, { root: '/x', isolation: 'none', base: { id: 'base', label: 'before the session', time: '' }, cps: [], tree: [], version: 'v0' });   /* the Workspace's own parity runs on internal/web/uidev/test/packserver.mjs */
         if (/^\/api\/sessions\/[^/]+\/complete$/.test(p)) return json(res, 200, { paths: [] });
-        return json(res, 404, { error: 'not in the mock API', code: 'not_found' });
+        return json(res, 404, { error: 'not served by this development server', code: 'not_found' });
       }
       let body = ''; req.on('data', d => { body += d; }); req.on('end', () => {
         const m = /^\/api\/questions\/([^/]+)\/answer$/.exec(p);
         if (m) { let a = {}; try { a = JSON.parse(body || '{}'); } catch { /* empty */ } const tab = Object.values(snaps).find(s => s.events.some(e => e.k === 'ask' && e.q.id === m[1])); if (!tab) return json(res, 404, { error: 'no such question', code: 'no_question' }); tab.seq++; publish('ev', { tab: tab.tab.id, ev: { t: 0, k: 'answer', seq: tab.seq, qid: m[1], choice: a.choice, note: a.note || '', by: 'you' } }); return json(res, 200, { ok: true }); }
         if (p === '/api/confirm') return json(res, 200, { id: 'mock', scope: '', expires_in: 60 });
-        return json(res, 501, { error: 'the mock API does not do that', code: 'not_implemented' });
+        return json(res, 501, { error: 'this development server does not do that', code: 'not_implemented' });
       });
       return;
     }

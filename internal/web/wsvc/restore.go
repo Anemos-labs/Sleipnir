@@ -71,7 +71,7 @@ func infoOf(sess *session.Session, cp string) (checkpoint.Info, bool) {
 
 // handleRestore answers POST /api/sessions/{id}/ws/restore: with dryRun the preview of
 // /rewind ID (what each file would become, and its lines); without, the restore itself,
-// confirmed with restore:<id>:<cid>, refused while a turn runs and refused whole when a
+// confirmed with the preview's scope (restore:<tab>:<cid>:<d16>), refused while a turn runs and refused whole when a
 // file was edited since its last recorded write (force is not offered). The files it
 // overwrites are captured first (the safety checkpoint <cid>s), so the restore can be
 // undone; the agents are told to read the files again.
@@ -321,7 +321,7 @@ func itoa(n int) string {
 }
 
 // handleRestoreUndo answers POST /api/sessions/{id}/ws/restore/undo, confirmed with
-// restore.undo:<id>: the files of the latest restore go back to what the safety
+// restore.undo:<tab>: the files of the latest restore go back to what the safety
 // checkpoint captured, when none changed since the restore.
 func (s *service) handleRestoreUndo(w http.ResponseWriter, r *http.Request) {
 	acc, _, ok := s.tabOf(w, r)

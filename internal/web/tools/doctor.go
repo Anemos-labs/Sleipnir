@@ -24,7 +24,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// The Doctor (CONTRACT.md 19): a probe of an endpoint is `sleipnir doctor --json` run by the runner, with the held keys (it sends a
+// The Doctor: a probe of an endpoint is `sleipnir doctor --json` run by the runner, with the held keys (it sends a
 // few billable requests, as the command does). Its progress lines on standard error become step frames ({step: DoctorStep}, in the
 // groups the probe announces), its report on standard output becomes the verdict of the last frame ({verdict, result}): what the
 // endpoint does, its warnings and a summary card. Running the command keeps the doctor of the page and of the terminal one thing

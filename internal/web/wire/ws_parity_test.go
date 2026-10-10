@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// The fields PARITY A9 and A10 added to the Workspace bodies are optional: a body
-// without them encodes as before, and a body with them round-trips.
-func TestWorkspaceParityFieldsAreOptionalAndRoundTrip(t *testing.T) {
+// The optional fields of the Workspace bodies (the scope of a confirmation, the runs of a verification gate, the details of an accept)
+// are omitted when empty, and a body that has them round-trips.
+func TestWorkspaceOptionalFieldsAreOmittedAndRoundTrip(t *testing.T) {
 	for _, c := range []struct {
 		v    any
 		want string

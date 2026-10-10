@@ -94,7 +94,7 @@ func jsNum(v any) string {
 	return string(b)
 }
 
-// Each tool shows by its page name with its argument (VOCAB.md 8.2); a write shows its content as code, then its row with the lines
+// Each tool shows by its page name with its argument; a write shows its content as code, then its row with the lines
 // written, then the end of its file's write; a patch is one row for every file and a diff for each; a refusal is a refused row, and a
 // refusal for want of anyone to answer a refuse row.
 func TestToolRows(t *testing.T) {

@@ -1,9 +1,9 @@
 {
  "_doc": [
   "Workspace scenes for scripts/web-parity.mjs beyond scripts/web-parity-scenes.json: the scrubber pinned on a checkpoint, the restore preview, the hunk revert dialog,",
-  "and the file view of a denied path. Run with the page of the mock plus the live Workspace modules (node internal/web/uidev/test/wsdev.mjs prints its URL):",
+  "and the file view of a denied path. Run with the reference page plus the live Workspace modules (node internal/web/uidev/test/wsdev.mjs prints its URL):",
   "  node scripts/web-parity.mjs --scenes internal/web/uidev/test/ws-parity-scenes.json --b http://127.0.0.1:PORT/index.html",
-  "Only selectors and events: the same steps run on the mock and on the page under test. `until` waits for what the page fetches.",
+  "Only selectors and events: the same steps run on the reference page and on the page under test. `until` waits for what the page fetches.",
   "The *-masked scenes repeat the committed Workspace scenes with the top bar (the Merge tab and the shorter scrubber it leaves room for) and the Verify and merge strip (Apply verified work, the gate count) painted over in both pages: everything else must be identical (threshold 0)."
  ],
  "defaults": {

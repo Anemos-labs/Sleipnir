@@ -358,7 +358,7 @@ func TestMCPPage(t *testing.T) {
 	e.ok("GET", "/api/sessions/t1/mcp", nil, nil, &v)
 	for _, s := range v.Servers {
 		if s.Name == "proj" && (!s.Approved || s.State != "not started") {
-			t.Errorf("approved during the session, it starts with the next one (D-08): %+v", s)
+			t.Errorf("approved during the session, it starts with the next one: %+v", s)
 		}
 	}
 	e.ok("POST", "/api/sessions/t1/mcp/proj/test", nil, nil, &res)

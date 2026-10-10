@@ -14,7 +14,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// Outcome lines of the MCP actions (decision D-08: a session's tool list is fixed when it starts, so an approval or a revocation
+// Outcome lines of the MCP actions (a session's tool list is fixed when it starts, so an approval or a revocation
 // takes effect when the team starts again).
 const (
 	mcpApproved = "approved: it starts when the team starts again (the tool list of a running session is fixed)"
@@ -159,7 +159,7 @@ func (s *service) mcpServerOf(tc *tabCtx, e session.MCPEntry, rep *config.Report
 		srv.State = "off"
 		srv.Note = "this session was started without tool servers (--no-mcp)"
 	case !running || st.State == mcp.StateRefused:
-		// not in this session, or refused when it started and approved since: the tool list is fixed (D-08)
+		// not in this session, or refused when it started and approved since: the tool list is fixed
 		srv.State = "not started"
 		srv.Note = "it starts when the team starts again"
 		if !e.Trusted && !tc.trusted {
@@ -239,7 +239,7 @@ func (s *service) mcpEntry(r *http.Request) (*tabCtx, session.MCPEntry, error) {
 }
 
 // handleMCPApprove is POST /api/sessions/{id}/mcp/{name}/approve: remember a project entry for the project, with the confirmation
-// mcp.approve:<d16 of {root, name, fingerprint}> (the entry as it is now). It applies when the team starts again (D-08).
+// mcp.approve:<d16 of {root, name, fingerprint}> (the entry as it is now). It applies when the team starts again.
 func (s *service) handleMCPApprove(w http.ResponseWriter, r *http.Request) {
 	tc, e, err := s.mcpEntry(r)
 	if err != nil {

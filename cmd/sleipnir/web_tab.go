@@ -35,7 +35,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// Limits of the person's input (CONTRACT.md 22).
+// Limits of the person's input: the length of a name, a rule, a goal and a steering message, and the lines of input history a tab keeps.
 const (
 	maxNameLen  = 60
 	maxRuleLen  = 500
@@ -945,8 +945,8 @@ func (t *webTab) goalState() string {
 	return goalWire(g).S
 }
 
-// goalAction does a goal request (VOCAB.md 5.24, CONTRACT.md 10). pause and clear interrupt the running turn first and take effect
-// when it has stopped; set and resume start a turn, now or behind the running one.
+// goalAction does a goal request (set, pause, resume or clear; wire.GoalRequest). pause and clear interrupt the running turn first and
+// take effect when it has stopped; set and resume start a turn, now or behind the running one.
 func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.GoalRequest, fromRoute bool) error {
 	switch req.Action {
 	case "set":
@@ -1645,7 +1645,7 @@ func (t *webTab) meta() wire.MetaPatch {
 	}
 	m.Cwd = ptr(o.Cwd)
 	if s != nil {
-		m.SessionDir = ptr(s.Dir) // /status's session directory (PARITY A27)
+		m.SessionDir = ptr(s.Dir) // /status's session directory
 	}
 	m.Verify = ptr(o.Verify)
 	m.Commit = ptr(o.Commit)

@@ -143,7 +143,7 @@
     if (reg.byId[S.id]) drop(S.id, true);
     reg.list.push(S); reg.byId[S.id] = S; reg.list.sort((a, b) => (a.order || 0) - (b.order || 0)); return S;
   }
-  /** The session shown when the server hosts no tab (D-12): empty values, no composer action. */
+  /** The session shown when the server hosts no tab: empty values, no composer action. */
   function placeholder() { return reg.placeholder || (reg.placeholder = new Session({ id: '', name: 'no session', placeholder: true })); }
   function init() { if (!reg.list.length) { activate(null); return; } activate(reg.list[0].id); }
   /** Make a session active: the previous one drops its view model; the new one rebuilds from its log. null: the placeholder. */
@@ -160,7 +160,7 @@
     return S;
   }
   /** Remove a tab from the page (the server closed it, or it was never there). The neighbour becomes active; with no tab left the
-   *  placeholder does (D-12). quiet: no sessions-changed event (a replacement follows). */
+   *  placeholder does. quiet: no sessions-changed event (a replacement follows). */
   function drop(id, quiet) {
     const S = reg.byId[id]; if (!S) return false;
     const i = reg.list.indexOf(S); reg.list.splice(i, 1); delete reg.byId[id]; S.closed = true; S.m = null;

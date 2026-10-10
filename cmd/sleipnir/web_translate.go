@@ -1,9 +1,9 @@
 package main
 
-// The translator of a tab generation turns what the harness does into the page's events (VOCAB.md). The real one is
-// internal/web/translate; until it is linked in (web_translate_real.go sets newTranslator), the host uses stubTranslator, which
-// derives only say, sys and state from the session's sink and passes on what the host itself emits (questions, answers, the turn,
-// the goal), so that the page and the tests have a working conversation.
+// The translator of a tab generation turns what the harness does into the page's events (internal/web/wire). The translator in use is
+// internal/web/translate (web_translate_real.go sets newTranslator); stubTranslator is the stand-in that newTranslator holds by default.
+// It derives only say, sys and state from the session's sink and passes on what the host itself emits (questions, answers, the turn,
+// the goal), which is enough for a working conversation.
 
 import (
 	"encoding/json"
@@ -43,7 +43,7 @@ type translatorConfig struct {
 // newTranslator makes the translator of a tab generation. web_translate_real.go replaces it with internal/web/translate.
 var newTranslator = func(c translatorConfig) seam.Translator { return newStubTranslator(c) }
 
-// frameClass is the hub class of an "ev" frame of a kind (VOCAB.md 14): critical (never dropped), coalescable with a key (a newer one
+// frameClass is the hub class of an "ev" frame of a kind (wire.Frame): critical (never dropped), coalescable with a key (a newer one
 // replaces it in a slow page's queue), or ordinary.
 func frameClass(tab string, ev wire.Event, firstCkpt bool) (critical, coalescable bool, key string) {
 	switch e := ev.(type) {
@@ -358,7 +358,7 @@ func (s stubSink) Reset(agentID string) {
 	s.t.endLocked(agentID, true)
 }
 
-// toolTitle is a harness tool's display name (VOCAB.md 8.2).
+// toolTitle is a harness tool's display name, as the activity line of an agent names the tool it runs.
 func toolTitle(name string) string {
 	switch name {
 	case "bash", "bash_output", "bash_kill":

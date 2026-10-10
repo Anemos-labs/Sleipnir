@@ -1,7 +1,8 @@
-/* 92-runner.js: SL.runner, the generic command runner. For every `sleipnir` command in the spec (cli-spec.json: generated from docs/CLI.md,
- * or the small built-in spec) it builds a FORM from the real flags (types, defaults, descriptions), shows the equivalent command line live,
- * runs it, and streams a terminal-styled output pane plus a result card. Outputs come from SLDATA.outputs[path](flags, ctx) when the data
- * pack is loaded; the built-in outputs below cover sim, sessions prune, trust, mcp, doctor (and read the live registry, so `--yes` really prunes).
+/* 92-runner.js: SL.runner, the generic command runner. For every `sleipnir` command in the spec (window.SLCLISPEC from cli-spec.js,
+ * generated from docs/CLI.md, or the small built-in spec) it builds a FORM from the real flags (types, defaults, descriptions), shows
+ * the equivalent command line live, runs it, and streams a terminal-styled output pane plus a result card. Outputs come from
+ * SLDATA.outputs[path](flags, ctx) when the data pack is loaded; the built-in outputs below cover sim, sessions prune, trust, mcp,
+ * doctor (and read the live registry, so `--yes` really prunes).
  * Everything the runner starts (the streaming timers) belongs to its view scope. */
 (function (SL) {
   'use strict';

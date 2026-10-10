@@ -1,17 +1,17 @@
-// c3-sessions.test.mjs: the Sessions view (91-views-b.js): the recorded table with its selection column, which rows can be deleted, the
+// sessions.test.mjs: the Sessions view (91-views-b.js): the recorded table with its selection column, which rows can be deleted, the
 // confirmations of delete and prune (the ids are sorted, the scope carries their digest), the preview and result texts, the live cards, and
 // hostile text in every field of a session.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { page, EVIL, hasMarkup, scriptAttrs } from './c3-harness.mjs';
+import { page, EVIL, hasMarkup, scriptAttrs } from './pages-harness.mjs';
 
 const plain = x => JSON.parse(JSON.stringify(x));
 const rec = (id, o) => Object.assign({ id, first: 'a prompt', model: 'a/m', cost: 0.5, mb: 1.25, ageS: 90000, agents: 3, resumable: true, lastWritten: 1 }, o || {});
 const d16 = v => createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 16);
 
 test('which recorded sessions can be deleted from the page, and why not', () => {
-  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.c3.sessions;
+  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.toolkit.sessions;
   const hosted = new Set(['20261001-000000-aaaaaa']);
   assert.equal(S.whyNotDeletable(rec('20261001-000000-aaaaaa'), hosted), 'open in a tab: close it first');
   assert.equal(S.whyNotDeletable(rec('x', { locked: true }), hosted), 'another process is writing it');
@@ -22,7 +22,7 @@ test('which recorded sessions can be deleted from the page, and why not', () => 
 });
 
 test('the recorded table: a box per row, disabled with its reason; Watch for a live one; the copy button of an unapplied result', () => {
-  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.c3.sessions;
+  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.toolkit.sessions;
   const list = [rec('a1'), rec('b2', { locked: true, lastWritten: 1 }), rec('c3', { interrupted: true, integration: { applied: false, message: 'your checkout has changes', hint: 'git merge sleipnir/c3' } }), rec('d4', { name: 'my name', resumable: false })];
   const html = S.recHtml(list, { sel: new Set(['a1']), hosted: new Set(['d4']), now: 1e12 });
   const row = id => html.split('<tr data-rid="').find(p => p.startsWith(id + '"'));
@@ -42,7 +42,7 @@ test('the recorded table: a box per row, disabled with its reason; Watch for a l
 });
 
 test('every field of a recorded session is shown as text', () => {
-  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.c3.sessions;
+  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.toolkit.sessions;
   const r = rec('20261001-000000-' + EVIL, { name: EVIL, first: EVIL, model: EVIL, cwd: EVIL, agents: EVIL, cost: EVIL, mb: EVIL, ageS: EVIL, interrupted: true, integration: { applied: false, message: EVIL, hint: EVIL } });
   const html = S.recHtml([r], { sel: new Set([r.id]), hosted: new Set(), now: 0 });
   assert.ok(!hasMarkup(html)); assert.deepEqual(plain(scriptAttrs(html)), []); assert.ok(html.includes('&lt;img'));
@@ -53,7 +53,7 @@ test('every field of a recorded session is shown as text', () => {
 });
 
 test('the prune preview and the confirm texts', () => {
-  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.c3.sessions;
+  const { SL } = page({ modules: ['91-views-b.js'] }), S = SL.toolkit.sessions;
   assert.equal(S.pruneText({ list: [rec('a', { ageS: 40 * 86400, mb: 2 })], mb: 2 }), 'would delete 1 session (2.0 MB):\n  a  40d  2.0 MB\n\nnothing is deleted without --yes');
   assert.equal(S.pruneText({ list: [], mb: 0 }), 'would delete 0 sessions (0.0 MB):\n  none\n\nnothing is deleted without --yes');
   assert.equal(S.pruneText({ error: 'bad --older-than: 3x' }), 'bad --older-than: 3x');
@@ -78,7 +78,7 @@ test('deleting sessions confirms the digest of their sorted ids, once, and sends
     if (call.path === '/api/recorded/delete') { const ok = issued.get(call.headers['X-Confirm']) === 'delete:' + d16(ids.slice().sort()); return ok ? { status: 200, body: { list: [], mb: 1, applied: true } } : { status: 403, body: { error: 'wrong scope', code: 'confirm_invalid' } }; }
     return { status: 404, body: { error: 'x', code: 'not_found' } };
   }) });
-  const r = await t.SL.c3.sessions.deleteIds(ids);
+  const r = await t.SL.toolkit.sessions.deleteIds(ids);
   assert.equal(r.ok, true);
   assert.deepEqual(plain(t.fetch.calls.map(c => c.path)), ['/api/confirm', '/api/recorded/delete']);
   assert.deepEqual(plain(t.fetch.calls[1].body), { ids: ids.slice().sort() });
@@ -91,24 +91,24 @@ test('pruning confirms the ids of the plan it applies, with the same arguments a
     if (call.path === '/api/recorded/prune') return issued.get(call.headers['X-Confirm']) === 'prune:' + d16(['a', 'b']) ? { status: 200, body: { list: [], mb: 0, applied: true } } : { status: 403, body: { error: 'wrong scope', code: 'confirm_invalid' } };
     return { status: 404, body: { error: 'x', code: 'not_found' } };
   }) });
-  const r = await t.SL.c3.sessions.pruneApply('30d', 20, ids);
+  const r = await t.SL.toolkit.sessions.pruneApply('30d', 20, ids);
   assert.equal(r.ok, true); assert.deepEqual(plain(t.fetch.calls[1].body), { olderThan: '30d', keep: 20, apply: true });
 });
 
 test('a refusal of the server reaches the person in its own words', async () => {
   const t = page({ modules: ['91-views-b.js'], routes: server(() => ({ status: 409, body: { error: '20261001-090000-0a7d55 is open in a tab: close it first', code: 'hosted' } })) });
-  const r = await t.SL.c3.sessions.deleteIds(['20261001-090000-0a7d55']);
-  assert.equal(r.ok, false); t.SL.c3.net.fail(r);
+  const r = await t.SL.toolkit.sessions.deleteIds(['20261001-090000-0a7d55']);
+  assert.equal(r.ok, false); t.SL.toolkit.net.fail(r);
   assert.deepEqual(plain(t.toasts), [['20261001-090000-0a7d55 is open in a tab: close it first', 'warm']]);
-  t.toasts.length = 0; t.SL.c3.net.fail({ ok: false, status: 500, message: 'boom' }); assert.deepEqual(plain(t.toasts), [['boom', 'err']]);
-  t.toasts.length = 0; t.SL.c3.net.fail({ ok: false, status: 0, code: 'aborted', message: 'canceled' }); assert.deepEqual(plain(t.toasts), [], 'a canceled request is not an error');
+  t.toasts.length = 0; t.SL.toolkit.net.fail({ ok: false, status: 500, message: 'boom' }); assert.deepEqual(plain(t.toasts), [['boom', 'err']]);
+  t.toasts.length = 0; t.SL.toolkit.net.fail({ ok: false, status: 0, code: 'aborted', message: 'canceled' }); assert.deepEqual(plain(t.toasts), [], 'a canceled request is not an error');
 });
 
 test('a live session card shows hostile text as text', () => {
   const S = { id: EVIL, name: EVIL, sid: EVIL, recorded: false, state: () => 'run', roster: [{ id: 'mgr' }, { id: 'be-1' }], wm: { merged: [1], torder: [1, 2] }, meta: { cwd: EVIL, model: 'p/' + EVIL, mode: EVIL, launch: EVIL, started: EVIL, budget: 5, headless: true, askTimeout: EVIL } };
   const { SL } = page({ modules: ['91-views-b.js'], sessions: [S] });
-  const html = SL.c3.sessions.cardHtml(S);
+  const html = SL.toolkit.sessions.cardHtml(S);
   assert.ok(!hasMarkup(html)); assert.deepEqual(plain(scriptAttrs(html)), []); assert.ok(html.includes('&lt;img'));
   assert.match(html, /data-stop/); S.recorded = true; S.follow = true;
-  const ro = SL.c3.sessions.cardHtml(S); assert.doesNotMatch(ro, /data-stop/); assert.match(ro, /watching/);
+  const ro = SL.toolkit.sessions.cardHtml(S); assert.doesNotMatch(ro, /data-stop/); assert.match(ro, /watching/);
 });

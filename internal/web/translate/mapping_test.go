@@ -19,7 +19,7 @@ func lastState(evs []map[string]any, id string) map[string]any {
 	return out
 }
 
-// Each status of the State maps to the page's state and doing line (VOCAB.md 8.3); the single agent is mgr.
+// Each status of the State maps to the page's state and doing line; the single agent is mgr.
 func TestStateMapping(t *testing.T) {
 	type step struct {
 		agent, typ string
@@ -84,7 +84,7 @@ func TestQuestionShowsTheAgentAsking(t *testing.T) {
 	}
 }
 
-// The board's columns map to the page's four (VOCAB.md 8.4; ERRATA D-04): a failed task is in todo with failed and its closure; one
+// The board's columns map to the page's four: a failed task is in todo with failed and its closure; one
 // superseded or canceled keeps its column; a blocked one is running with blocked_on(T) as closure; a handover moves its owner.
 func TestTaskMapping(t *testing.T) {
 	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
@@ -140,7 +140,7 @@ func TestTaskMapping(t *testing.T) {
 	}
 }
 
-// The queue's counters (VOCAB.md 5.18): a conflict and a refusal count in conflicts, a failed verification in bounced (an empty
+// The queue's counters: a conflict and a refusal count in conflicts, a failed verification in bounced (an empty
 // submission in neither); a shared-tree team's failed verification gates count in bounced too.
 func TestQueueCounters(t *testing.T) {
 	h := newHarness(t, Config{Root: "/work", StartedAt: t0, Verify: func() (string, bool) { return "go test {dirs}", true }})
@@ -284,7 +284,7 @@ func TestRoster(t *testing.T) {
 	}
 }
 
-// The frames carry the class of VOCAB.md 14: critical, coalescable with its key, or ordinary.
+// The frames carry a class: critical, coalescable with its key, or ordinary.
 func TestFrameClasses(t *testing.T) {
 	h := fullScenario(t)
 	byKind := map[string]wire.Frame{}

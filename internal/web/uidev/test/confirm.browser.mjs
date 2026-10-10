@@ -8,7 +8,7 @@
 //   SLEIPNIR_BIN=/tmp/x/sleipnir [OUT=dir] node internal/web/uidev/test/confirm.browser.mjs
 //
 // The server runs with HOME and SLEIPNIR_HOME in a fresh temporary directory, removed with the server at the end. It needs a Chromium
-// (CHROME_PATH, or the Playwright headless shell the mock's tests use); it is not part of `node --test` and not of CI.
+// (CHROME_PATH, or the Playwright headless shell: see cdp.mjs); it is not part of `node --test` and not of CI.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '../../../..');
-const { open } = await import(path.join(repo, 'docs/design/web-mocks/_src/v3/test/cdp.mjs'));
+const { open } = await import(path.join(here, 'cdp.mjs'));
 const bin = process.env.SLEIPNIR_BIN; if (!bin) { console.log('skip: set SLEIPNIR_BIN to a built ./cmd/sleipnir'); process.exit(0); }
 const home = fs.mkdtempSync(path.join(process.env.SCRATCH || os.tmpdir(), 'web-confirm-')), out = process.env.OUT || fs.mkdtempSync(path.join(process.env.SCRATCH || os.tmpdir(), 'web-confirm-shots-'));
 const srv = spawn(bin, ['web', '--addr', '127.0.0.1:0', '--fixture', 'all'], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: home, SLEIPNIR_HOME: path.join(home, 'state') } });

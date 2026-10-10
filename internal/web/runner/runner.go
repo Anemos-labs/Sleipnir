@@ -1,4 +1,4 @@
-// Package runner serves the command runner of `sleipnir web` (CONTRACT.md 18): every `sleipnir` command of the CLI spec
+// Package runner serves the command runner of `sleipnir web`: every `sleipnir` command of the CLI spec
 // (internal/web/clispec) run from a form, its output streamed to the page as "run" frames, and stopped on request.
 //
 // # How a command runs
@@ -21,7 +21,7 @@
 // (tools.SanitizeForTerminal) and masked (the held keys, the run token, and credential-shaped strings), and sent in "run" frames
 // every 50 ms: {id, lines: [{k: "out"|"err", t}]}. The end is {id, result: {exit, ms, card, canceled}} (critical: a slow page may
 // miss lines, never the end). A run keeps its lines for GET /api/runs/{run}/output, so that a page that comes back to a run it
-// kept going (PARITY.md A22) can show what it missed. At most four runs go at once; a run ends after an hour (servers excepted).
+// kept going can show what it missed. At most four runs go at once; a run ends after an hour (servers excepted).
 //
 // # Confirmation of privileged commands
 //
@@ -46,8 +46,8 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 )
 
-// Options configure the runner: the executable to run and the environment of its commands. The limits are for tests; zero is the
-// contract's value.
+// Options configure the runner: the executable to run and the environment of its commands. The limits are for tests; a zero limit
+// takes the default shown.
 type Options struct {
 	// Self is the executable of the runs (this program). Default: os.Executable.
 	Self string
@@ -134,7 +134,7 @@ func Shutdown(ctx context.Context, srv *web.Server) {
 // runIDRE is the shape of a run id.
 var runIDRE = regexp.MustCompile(`^r_[a-z2-7]{16}$`)
 
-// runRequest is wire.RunRequest with Keep (PARITY.md A22): the page lets the run go on when it leaves the runner.
+// runRequest is wire.RunRequest with Keep: the page lets the run go on when it leaves the runner.
 type runRequest struct {
 	Path  []string          `json:"path"`
 	Pos   map[string]string `json:"pos,omitempty"`
@@ -143,7 +143,7 @@ type runRequest struct {
 	Keep  bool              `json:"keep,omitempty"`
 }
 
-// Register adds the routes of CONTRACT.md section 18 to srv, resolving tabs through h; output goes to h.Publish.
+// Register adds the runner routes to srv, resolving tabs through h; output goes to h.Publish.
 //
 //	GET    /api/cli                     the CLI spec
 //	POST   /api/runs                    start a run (RunRequest, plus keep) → 202 RunStarted

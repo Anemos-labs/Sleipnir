@@ -1,4 +1,4 @@
-// Package settings serves the Settings pages of `sleipnir web` (CONTRACT.md sections 13 to 16): the model catalogue and the
+// Package settings serves the Settings pages of `sleipnir web`: the model catalogue and the
 // favourites, the permission rules in force with the origin of each, trust in a project's own files, the MCP servers, skills,
 // commands and hooks, providers and their sign-in state, and the configuration layers with the provenance of every value.
 //
@@ -8,15 +8,15 @@
 // values withheld, secret-shaped strings and tokens inside command lines withheld). Untrusted text (a file name, an MCP server's
 // error) is sent as JSON and escaped by the page.
 //
-// Writes that raise privilege need a confirmation of the scope CONTRACT.md section 20 names: trusting a project's files
+// Writes that raise privilege need a confirmation whose scope names what it covers (docs/WEB-API.md): trusting a project's files
 // (`trust:<d16 of {dir, digest}>`, issued by the trust challenge) and approving an MCP server (`mcp.approve:<d16 of {root, name,
 // fingerprint}>`). Writes to the person's files (the user configuration, auth.json, trust.json, mcp-approvals.json) are serialised
 // per file within the process and read the file again before they write it (config.WriteLock); config.Save writes canonical JSON,
 // so the comments of a configuration file that a page changes are not kept.
 //
-// The routes that take a provider key from the browser or start a ChatGPT sign-in are not served: decision D-01 keeps sign-in in
-// the terminal (`sleipnir login`), and KeyRoutes is false. The service they would call is built and tested (catalog.StoreKey,
-// catalog.CheckKey, the handler of POST /api/providers/{name}/key).
+// The routes that take a provider key from the browser or start a ChatGPT sign-in are not served: sign-in stays in the terminal
+// (`sleipnir login`) and the page never holds a provider key, so KeyRoutes is false. The service they would call is built and
+// tested (catalog.StoreKey, catalog.CheckKey, the handler of POST /api/providers/{name}/key).
 package settings
 
 import (
@@ -49,11 +49,11 @@ type Options struct {
 	Self    string
 }
 
-// KeyRoutes says whether POST /api/providers/{name}/key (a provider key typed in the browser) is served. Decision D-01 (sign-in
-// stays in the terminal) keeps it false; the handler exists, with its tests, for the day the decision changes.
+// KeyRoutes says whether POST /api/providers/{name}/key (a provider key typed in the browser) is served. It is false: sign-in stays
+// in the terminal and the page never holds a provider key. The handler and its tests remain, so that serving it is one constant.
 const KeyRoutes = false
 
-// keyMaxBody is the body cap of the key route (CONTRACT.md section 22).
+// keyMaxBody is the body cap of the key route.
 const keyMaxBody = 8 << 10
 
 // mcpTester starts MCP servers to list their tools (session.MCPTest).
@@ -79,7 +79,7 @@ type service struct {
 	stored     map[string][32]byte // auth.json as last seen: variable name -> SHA-256 of the stored key (never the key)
 }
 
-// Register adds the routes of CONTRACT.md sections 13 to 16 to srv, resolving tabs through h.
+// Register adds the settings routes to srv, resolving tabs through h.
 func Register(srv *web.Server, h seam.Host, o Options) {
 	newService(srv, h, o).register()
 }
@@ -131,7 +131,7 @@ func (s *service) registerKeyRoute() {
 
 // ---- errors and parameters --------------------------------------------------------------------------------------------------
 
-// fail is a refusal in the contract's shape.
+// fail is a refusal in the shape of the API's error body (wire.Error).
 func fail(status int, code, msg string) error {
 	return &wire.Error{Status: status, Code: code, Msg: msg}
 }
@@ -231,7 +231,7 @@ func (s *service) ledger() *trust.Ledger { return trust.OpenLedger(session.Trust
 // ---- confirmation scopes ----------------------------------------------------------------------------------------------------
 
 // d16 is the first 16 hex characters of the SHA-256 of the canonical JSON of v (sorted keys, no spaces, no HTML escaping): the hash
-// that confirmation scopes carry (CONTRACT.md section 20).
+// that confirmation scopes carry.
 func d16(v map[string]string) string {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

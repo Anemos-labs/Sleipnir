@@ -1,6 +1,8 @@
 package wire
 
-// CLISpec is every `sleipnir` command with its flags, as the runner builds forms from it (the shape of the mock's cli-spec.json).
+// CLISpec is every `sleipnir` command with its flags, as the runner builds forms from it. It is generated from docs/CLI.md (see
+// internal/web/clispec): GeneratedFrom and Generator name its source, Commands are the commands, ChatSlash the chat's slash commands
+// and ExitCodes the exit statuses of the program.
 type CLISpec struct {
 	GeneratedFrom string       `json:"generatedFrom"`
 	Generator     string       `json:"generator"`
@@ -78,7 +80,8 @@ type ExitCode struct {
 }
 
 // RunRequest runs a command: Path, positional values by name, flag values by name (strings, numbers, booleans; repeatable flags
-// as arrays), and the tab whose directory it runs in (a privileged command also needs an X-Confirm id, CONTRACT.md 20).
+// as arrays), and the tab whose directory it runs in (a command of mode priv also needs an X-Confirm id for the scope
+// "run:<d16 of the argument vector>"; the refusal that asks for it names the scope).
 type RunRequest struct {
 	Path  []string          `json:"path"`
 	Pos   map[string]string `json:"pos,omitempty"`

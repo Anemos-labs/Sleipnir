@@ -26,7 +26,7 @@
   const sv = (tag, attrs, parent, text) => { const e = document.createElementNS(NSV, tag); for (const k in (attrs || {})) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; };
   /** html string -> first element (used by the transcript to build rows). */
   const frag = html => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
-  /** Deterministic PRNG (mulberry32): every scripted timeline is a pure function of its seed. */
+  /** Deterministic PRNG (mulberry32): the same seed always gives the same sequence. */
   const rng = seed => { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
   const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
   let _uid = 0;
@@ -38,7 +38,7 @@
   const makeBus = () => { const subs = {}; return { on(topic, fn) { (subs[topic] = subs[topic] || new Set()).add(fn); return () => subs[topic] && subs[topic].delete(fn); }, emit(topic, a, b) { const s = subs[topic]; if (s) Array.from(s).forEach(fn => { try { fn(a, b); } catch (e) { console.error(e); } }); }, count() { return Object.keys(subs).reduce((n, k) => n + subs[k].size, 0); } }; };
   /** Copy text to the clipboard; the promise rejection is swallowed (the page may not be allowed). */
   const copy = txt => { try { return navigator.clipboard.writeText(txt).then(() => true, () => false); } catch (e) { return Promise.resolve(false); } };
-  /** Simple string template for the tiny HTML samples of the kit. */
+  /** The string with its first letter in upper case. */
   const ucfirst = s => s ? s[0].toUpperCase() + s.slice(1) : s;
   /**
    * Ids the server names (agents, tasks, roles) become object keys, data-* attributes, CSS variable names and words of markup. A plain

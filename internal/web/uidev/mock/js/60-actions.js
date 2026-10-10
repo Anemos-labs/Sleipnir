@@ -13,7 +13,7 @@
     hover: 'both',            // 'both' = hold on chat + slow on linked items | 'chat' = hold on chat only | 'off'
     motion: 'auto',           // 'auto' (follow the system) | 'reduce' | 'full'
     density: 'comfortable',   // 'comfortable' | 'compact'
-    cache: 'quiet',           // 'quiet' (the default: no savings figures, no hit-% on cards, a small warm clock) | 'full' (the Dock v2 amount of cache detail)
+    cache: 'quiet',           // 'quiet' (the default: no savings figures, no hit-% on cards, a small warm clock) | 'full' (every cache figure)
     ver: 0,
     load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['hover', 'motion', 'density', 'cache'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
     save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ hover: settings.hover, motion: settings.motion, density: settings.density, cache: settings.cache })); } catch (e) { /* ignore */ } },
@@ -142,7 +142,7 @@
   act('markReviewed', (path, cpid, on, sid) => { const S = ses(sid); if (!S) return; const w = WS(S); if (on) w.reviewed[path] = cpid; else delete w.reviewed[path]; S.touch(); });
   act('revertHunk', (path, key, sid) => { const S = ses(sid); if (!S) return { ok: false }; WS(S).reverted[path + '#' + key] = S.wt; say(S, 'reverted a hunk of ' + path + ' (mock: nothing is written; the agent that wrote it is told to read the file again)', '↺'); S.touch(); return { ok: true }; });
   act('unrevertHunk', (path, key, sid) => { const S = ses(sid); if (!S) return; delete WS(S).reverted[path + '#' + key]; S.touch(); });
-  /** /rewind ID: a safety checkpoint first, then every file touched in ID or later is put back as it was when ID began (the mock records it, writes nothing) */
+  /** /rewind ID: a safety checkpoint first, then every file touched in ID or later is put back as it was when ID began (the reference page records it, writes nothing) */
   act('rewind', (id, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; const c = S.wm.ckpts.find(x => x.id === id); if (!c || c.skipped || c.safety) return { ok: false, why: 'nothing to put back' };
     const I = SL.ws && SL.ws.info(S), idx = I ? I.pos.findIndex(x => x.id === id) : -1, files = idx >= 0 ? SL.ws.filesFrom(I, idx) : [];

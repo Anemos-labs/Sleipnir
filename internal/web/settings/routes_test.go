@@ -107,11 +107,11 @@ func TestTabIdsAreCheckedBeforeAnyLookup(t *testing.T) {
 	}
 }
 
-// The key route is not served (decision D-01): the catch-all answers it.
+// The key route is not served (sign-in stays in the terminal): the catch-all answers it.
 func TestTheKeyRouteIsNotServed(t *testing.T) {
 	e := newEnv(t, nil)
 	if KeyRoutes {
-		t.Fatal("KeyRoutes is on: decision D-01 keeps sign-in in the terminal")
+		t.Fatal("KeyRoutes is on: sign-in stays in the terminal")
 	}
 	rec := e.do("POST", "/api/providers/openai/key", wire.KeySaveRequest{Key: "sk-whatever-0123456789abcdef"}, map[string]string{"X-Confirm": e.confirm("key:openai")})
 	if rec.Code != http.StatusNotFound {

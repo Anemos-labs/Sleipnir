@@ -1,7 +1,8 @@
 package wire
 
-// The shapes in this file mirror the data pack fields the Settings and Tools pages read (SLDATA.models, providers, mcp, skills,
-// commands, hooks, config, permissions, trust, schedule, doctor), so that the pages read the same names from live data.
+// The shapes in this file are the answers the Settings and Tools pages read: the model catalogue, providers, tool servers, skills,
+// commands and hooks, configuration layers, permissions, trust, the schedule and the doctor. None carries a secret: a key is never
+// returned, and environment and header values are withheld.
 
 // ModelRow is one model of the catalogue. In, Out and Cached are US dollars per million tokens; nil means the price is unknown.
 type ModelRow struct {

@@ -1,5 +1,5 @@
-/* 95-kit.js: the `?kit` view: the live component catalogue (every class a variant may use, with the HTML that makes it).
- * The same samples are written out in COMPONENTS.md. Open it with the palette ("Kit") or by loading the page with ?kit. */
+/* 95-kit.js: the `?kit` view: the live component catalogue (every component class of the page, with the HTML that makes it).
+ * Open it with the palette ("Kit") or by loading the page with ?kit. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk } = U, ui = SL.ui = SL.ui || {};
@@ -35,7 +35,7 @@
     ['Tooltip (CSS only)', '<span class="chip" data-tip="a tooltip needs no script, so it can never outlive its view" tabindex="0">hover or focus me</span>', '[data-tip] + :hover/:focus-visible ::after'],
   ];
   function mount(sc, root) {
-    root.innerHTML = '<div class="kitv"><header class="kit-h"><h1>Component catalogue</h1><p>Every class a variant may use. The same samples with their HTML are in COMPONENTS.md. Colours come only from tokens on <code>:root</code>.</p></header><div class="kit-grid"></div></div>';
+    root.innerHTML = '<div class="kitv"><header class="kit-h"><h1>Component catalogue</h1><p>Every component class of the page, with the HTML that makes it. Colours come only from tokens on <code>:root</code>.</p></header><div class="kit-grid"></div></div>';
     const g = $('.kit-grid', root);
     SEC.forEach(([t, html, note]) => { const s = mk('section', { class: 'panel kit-s' }); s.innerHTML = '<div class="ph"><h2>' + t + '</h2></div><div class="kit-demo">' + html + '</div><details class="kit-code"><summary>HTML</summary><pre class="pre"></pre></details><p class="kit-note">' + esc(note) + '</p>'; $('.pre', s).textContent = html.replace(/></g, '>\n<'); g.appendChild(s); });
     /* the overlays are live: a dialog, a sheet, a toast, a popover (the popover lives in this view's own layer) */

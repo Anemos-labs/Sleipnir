@@ -1,9 +1,9 @@
-/* 11-data-live.js: SL.D, SL.G and SL.data: the page's catalogues as live caches over the API (UI-WIRING.md 6).
+/* 11-data-live.js: SL.D, SL.G and SL.data: the page's catalogues as live caches over the API.
  *
  * SL.D keeps the field names the views read; its values come from the server. Reads are synchronous: a cache that has not arrived yet
  * reads as its empty shape (an empty list, a zero), and when it arrives SL.G.ver is bumped and the loop re-renders through the views'
  * own update hooks. The tables that are the UI's own copy (the five modes, the keys list, the names and colours of the six prompt
- * layers, the built-in roles as a fallback) live here as constants; nothing here is sample data.
+ * layers, the built-in roles as a fallback) live here as constants; nothing here is invented data.
  *
  * SL.data.load(name, opts) fills one cache (names below); SL.data.forPage(page) loads what a Settings page or a Tools view reads. */
 (function (SL) {
@@ -29,7 +29,7 @@
     docs: { code: 'dc', ro: false, desc: 'documentation' },
   };
   const ROLE_ORDER = ['scout', 'backend', 'frontend', 'tester', 'reviewer', 'docs', 'fullstack'];
-  /** The six prompt layers G0..G5 as the page draws them (D-16: the hot tail is folded into G5). Token sizes come from the model. */
+  /** The six prompt layers G0..G5 as the page draws them (the hot tail is folded into G5). Token sizes come from the model. */
   const LAYERS = [
     { id: 'G0', name: 'constitution', note: 'the constitution and the universal tool list (every agent sends the same tools array, byte for byte)', col: 'var(--mgr)' },
     { id: 'G1', name: 'shared pin', note: 'the project map (recon) and the instruction files: AGENTS.md, the skills listing', col: 'var(--be)' },
@@ -98,7 +98,7 @@
     /** G5 by agent: {id: tokens}. */
     get g5() { const m = curModel(), out = {}; if (m) m.order.forEach(id => { const t = toks(m, id); if (t) out[id] = t[5]; }); return out; },
     extra: X,
-    /* removed with the sample data; kept as empty values so that a reader not yet moved to the live caches renders empty */
+    /* fields a reader may still look up: always empty here, because the live caches (SL.G, SL.data) hold this data */
     recorded: [], schedule: [], outputs: {}, mcp: [], providers: [], config: [], trustFiles: [],
   };
   /** The token sizes of an agent's latest prompt by layer, else six zeros. */
@@ -110,7 +110,7 @@
   D.LAYERS = LAYERS;
   const slashOf = {};
 
-  /** State shared by every session (UI-WIRING.md 6). */
+  /** State shared by every session. */
   const G = SL.G = {
     ver: 0, mcp: [], favs: new Set(), trust: [], trustDirs: [], providers: [], schedule: [], roleModels: {}, history: [], runs: [],
     sched: { jobs: [], daemon: {}, logs: [], n: 0 },
@@ -217,7 +217,7 @@
   /** Forget what belongs to a tab that went away. */
   function forget(tab) { delete slashOf[tab]; }
 
-  /** The caches a page reads (UI-WIRING.md 6: loaded when the page opens, then every 30 s while it is open). */
+  /** The caches a page reads (loaded when the page opens, then every 30 s while it is open). */
   const PAGES = {
     models: ['models'], roles: ['models'], budget: [], permissions: ['permissions'], trust: ['trust', 'projects'], run: ['models'], mcp: ['mcp'],
     skills: ['skills'], providers: ['providers'], config: ['config'], look: [],

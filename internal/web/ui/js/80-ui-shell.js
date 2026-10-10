@@ -1,7 +1,7 @@
 /* 80-ui-shell.js: the persistent chrome (SL.ui.shell): HUD, session strip, view tabs, replay banner, footer, phone nav.
  * It is mounted once, under the shell scope, and re-renders from the active session. Nothing here is view-specific.
  * The warm ring's 25 ticks are a fraction of the prefix's real cache lifetime (m.ttl); the connection chip shows the server's
- * address and the stream's state (D-13). */
+ * address and the stream's state (connected, reconnecting, disconnected). */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk, fmtUsd, mmss, clock, pct, hitCls } = U, calc = SL.calc;
@@ -9,9 +9,9 @@
   const WARM_LIFE = 25, WARM_RED = 8, RING_C = 2 * Math.PI * 22, HIT_C = 2 * Math.PI * 19;
   const SESS_GLYPH = { run: '●', ask: '?', idle: '◌', done: '✓', paused: '⏸' };
   const ST_WORD = { run: 'running', ask: 'needs you', idle: 'at the prompt', done: 'done', paused: 'paused' };
-  /** "N tokens at unknown prices are not counted" when some are (PARITY A16), else ''. */
+  /** "N tokens at unknown prices are not counted" when some are, else ''. */
   const unpricedNote = n => n > 0 ? '; ' + U.fmtN(n) + ' tokens at unknown prices are not counted' : '';
-  /** A turn's model request without an answer for 45 s or more: "waiting for the model (1m 05s)" (PARITY A13). */
+  /** A turn's model request without an answer for 45 s or more: "waiting for the model (1m 05s)". */
   ui.waitingFor = (A, vt) => { if (!A || A.reqSince == null || !['think', 'tool', 'edit', 'wait'].includes(A.state)) return ''; const s = vt - A.reqSince; if (s < 45) return ''; const n = Math.floor(s); return 'waiting for the model (' + (n < 60 ? n + 's' : Math.floor(n / 60) + 'm ' + String(n % 60).padStart(2, '0') + 's') + ')'; };
 
   function mount(sc) {
@@ -79,7 +79,7 @@
       h += connHtml();
       return h;
     }
-    /** The connection chip: the server's address; `· loopback · token ✓` while the stream is up, `○ … · reconnecting` (warm) while not (D-13). */
+    /** The connection chip: the server's address; `· loopback · token ✓` while the stream is up, `○ … · reconnecting` (warm) while not. */
     function connHtml() {
       const L = SL.live, addr = esc(L.addr), st = L.state;
       if (st === 'open' || st === 'connecting') return '<span class="conn" id="conn" title="the page is served from loopback and carries a launch token; the token is held in this tab"><span class="on">●</span> ' + addr + ' <span class="cx">· loopback · token <span class="tk">✓</span></span></span>';
@@ -98,7 +98,7 @@
     }
     sc.update(renderStrip); sc.on('sessions-changed', () => { strip._sig = ''; renderStrip(); }); sc.on('needs-changed', () => { strip._sig = ''; renderStrip(); }); sc.on('activated', () => { strip._sig = ''; renderStrip(); });
     /** The Close confirm. An isolated team's verified work is applied first: the confirm says how, and the result toast is the
-     *  server's integration report (PARITY A5). */
+     *  server's integration report. */
     ui.closeSessionAsk = S => { if (S.placeholder) return; const iso = S.meta.isolation === 'worktree' && S.roster.length > 1 && !S.recorded;
       ui.confirm({ title: 'Close the session', text: 'Close <b>' + esc(S.name) + '</b>? Its team stops and the tab goes away. The recorded log stays on disk and can be resumed with ↺.' + (iso ? ' Its verified work is applied to your checkout first (' + (S.meta.commit ? 'as commits on the current branch' : 'as uncommitted edits') + ').' : ''), detail: SL.sessions.list.length < 2 && !S.recorded ? '<span class="warm">This is the last session: it cannot be closed. Start another first.</span>' : (SL.calc.openQuestion(S.wm) ? '<span class="warm">A question is still open in this session; closing it refuses the command.</span>' : ''), ok: 'Close it', danger: true, run: () => { const r = SL.act.closeSession(S.id); if (r && r.ok === false) { ui.toast(r.why || 'the last session cannot be closed: start another first', 'warm'); return; }
         if (r && r.done) r.done.then(res => { if (!res || !res.ok) return; const ig = res.data && res.data.integration; if (ig && typeof ig === 'object' && ig.message) ui.toast(ig.message + (ig.applied === false && ig.hint ? ' (' + ig.hint + ')' : ''), ig.applied === false ? 'err' : 'ok'); else if (typeof ig === 'string' && ig) ui.toast(ig, / \(.*\)$/.test(ig) ? 'err' : 'ok'); else ui.toast('closed ' + S.name); }); } }); };

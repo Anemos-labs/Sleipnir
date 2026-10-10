@@ -1,4 +1,5 @@
-/* zz-test-hooks.js: test hooks, appended by `build.mjs --test` ONLY. The shipped file never contains this.
+/* zz-test-hooks.js: test hooks of the reference page (the last script of index-mock.html). The shipped page never loads this file;
+ * internal/web/uidev/hooks-real.js is its counterpart.
  * - window.__SL            the engine namespace
  * - SL.test.manual()       stop the rAF loop; drive frames with SL.test.step(dt) / run(seconds, dt): a time warp
  * - SL.test.flood(S,...)   deterministic synthetic events (a long-running job) inserted through the normal S.add path

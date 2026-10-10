@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -99,6 +100,19 @@ func (s *Server) Handle(pattern string, h http.Handler, opts RouteOpts) {
 		panic(fmt.Sprintf("web: pattern %q: a GET route cannot need a confirmation; GET must not change state", pattern))
 	}
 	s.mux.Handle(pattern, s.wrap(rt))
+	s.routeMu.Lock()
+	s.patterns = append(s.patterns, pattern)
+	s.routeMu.Unlock()
+}
+
+// Routes returns the patterns ("METHOD /path") of every route registered so far, the built-in ones included, sorted. The list is
+// the route set that docs/WEB-API.md describes.
+func (s *Server) Routes() []string {
+	s.routeMu.Lock()
+	out := append([]string(nil), s.patterns...)
+	s.routeMu.Unlock()
+	sort.Strings(out)
+	return out
 }
 
 // HandleFunc is Handle for a function.

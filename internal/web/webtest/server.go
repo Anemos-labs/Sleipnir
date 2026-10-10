@@ -50,7 +50,7 @@ func NewServer(o Options) (*Server, error) {
 	s.addr.Store(o.Addr)
 	w, err := web.New(web.Config{
 		Addr: o.Addr, UI: o.UI, Logf: o.Logf,
-		// the hub of `sleipnir web` (CONTRACT.md 2.9, delta 3): one topic carries every tab
+		// the hub of `sleipnir web`: one topic carries every tab
 		Hub: web.HubConfig{ReplayEvents: 20000, ReplayBytes: 32 << 20, Buffer: 2048, BufferBytes: 8 << 20, MaxEventBytes: 1 << 20},
 		Routes: func(srv *web.Server) {
 			RegisterRoutes(srv, o.Host, RouteOptions{Addr: func() string { return s.addr.Load().(string) }})

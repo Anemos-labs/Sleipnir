@@ -1,4 +1,4 @@
-// Package wsvc serves the Workspace routes of `sleipnir web` (B3): the project's files
+// Package wsvc serves the Workspace routes of `sleipnir web`: the project's files
 // and their history as the session's checkpoint store records it, diffs between any two
 // points with per-line authorship, a hunk's revert and its undo, a checkpoint's restore
 // (preview, apply with an undo capture, undo), reviewed marks, the isolated team's
@@ -12,7 +12,7 @@
 // session's state directory and every path the permission engine refuses an agent to
 // read are never served. Mutations take the tab exclusively (no turn may run), write
 // atomically through the store (which also records them, so /rewind sees them) and are
-// confirmed where CONTRACT.md section 20 says.
+// confirmed with a scope that names what they change (restore, a hunk's revert, applying verified work; docs/WEB-API.md).
 package wsvc
 
 import (
@@ -36,7 +36,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// Register adds the Workspace routes (CONTRACT.md section 12) to srv, resolving tabs through h.
+// Register adds the Workspace routes to srv, resolving tabs through h.
 func Register(srv *web.Server, h seam.Host) {
 	s := newService(srv, h)
 	long := web.RouteOpts{WriteTimeout: 60 * time.Second}
@@ -84,14 +84,14 @@ func newService(srv *web.Server, h seam.Host) *service {
 	}
 }
 
-// Path parameters (CONTRACT.md section 0) and the shapes of the ids this package makes.
+// The shapes of the path parameters: a tab, a revert (the ids this package makes) and a task.
 var (
 	tabIDRE  = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
 	revIDRE  = regexp.MustCompile(`^v_[a-z2-7]{16}$`)
 	taskIDRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,40}$`)
 )
 
-// werr builds the error of a route (CONTRACT.md section 21).
+// werr builds the error of a route (the error body of docs/WEB-API.md).
 func werr(status int, code, msg string) *wire.Error {
 	return &wire.Error{Status: status, Code: code, Msg: msg}
 }
@@ -153,7 +153,7 @@ func (s *service) acquire(ctx context.Context) (func(), error) {
 }
 
 // d16 is the first 16 hex characters of the SHA-256 of the canonical JSON of v (sorted
-// keys, no spaces), as confirmation scopes use it (CONTRACT.md section 20).
+// keys, no spaces), as confirmation scopes use it.
 func d16(v map[string]string) string {
 	keys := make([]string, 0, len(v))
 	for k := range v {

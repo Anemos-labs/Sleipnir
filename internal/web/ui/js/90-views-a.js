@@ -1,5 +1,5 @@
 /* 90-views-a.js: the Cache, Mail, Board and Replay views. Each mounts through SL.views.register and owns what it starts.
- * The Cache view follows the agent that was answered last until the person picks one (`f` follows again, PARITY A28); its write
+ * The Cache view follows the agent that was answered last until the person picks one (`f` follows again); its write
  * column, costs and savings are the server's numbers at list prices. */
 (function (SL) {
   'use strict';
@@ -50,7 +50,7 @@
     const svg = $('.flowsvg', root), listEl = $('.mlistv', root), det = $('.mdetail', root), env = [];
     let sel = ui.mailSel || null; const W = 1040, BY = 150;
     function xOf(i, n) { const X0 = 56, DX = (W - 2 * X0) / Math.max(1, n - 1); return X0 + i * DX; }
-    /** The Mail head: the TUI's counts when the server sends them (PARITY A18), else `N routed · mailman on/off` (D-07). */
+    /** The Mail head: the TUI's counts when the server sends them, else `N routed · mailman on/off`. */
     function mailHead(m, S) { const st = m.mailstat, mm = 'mailman ' + (st && st.mailman ? esc(st.mailman) : S.meta.mailman ? 'on' : 'off'); if (!st) return esc(m.mail.length + ' routed · ' + mm); const nd = st.undelivered != null ? st.undelivered : (st.dropped || 0); return (st.sent || 0) + ' sent · ' + (st.delivered || 0) + ' delivered · <span class="' + (nd ? 'warm' : '') + '">' + nd + ' not delivered</span>' + (st.digests ? ' · ' + st.digests + ' digests in ' + (st.batches || 0) + ' batches' : '') + ' · ' + mm; }
     function render(S, m) {
       if (!m) return; const ids = m.order, n = ids.length, ml = m.mail.slice().reverse(); if (!sel || !m.mail.some(x => x.t === sel)) sel = ml.length ? ml[0].t : null; const cur = m.mail.find(x => x.t === sel);
@@ -66,7 +66,7 @@
       $('.mmeta', root).textContent = cur ? ui.todAt(S, cur) : '';
     }
     sc.listen(root, 'click', e => { const x = e.target.closest('[data-mt]'); if (x) { sel = ui.mailSel = +x.dataset.mt; svg._h = ''; render(SL.sessions.active, SL.sessions.active.m); return; } const o = e.target.closest('[data-open]'); if (o) ui.openDrawer(o.dataset.open); });
-    /* a travelling envelope for each new mail: transient, inside this view, moved by the sim clock */
+    /* a travelling envelope for each new mail: transient, inside this view, moved by the view clock */
     sc.on('ev', ({ ev }) => { if (ev.k !== 'mail' || ui.still()) return; const m = SL.sessions.active.m, ids = m.order, a = ids.indexOf(ev.from), b = ids.indexOf(ev.to); if (a < 0 || b < 0) return; const tr = $('.travel', svg); if (!tr) return; const x1 = xOf(a, ids.length), x2 = xOf(b, ids.length), h = 20 + Math.abs(a - b) * 15, cy = BY - h * 1.75, p = sv('path', { d: 'M' + x1 + ' ' + BY + ' Q' + (x1 + x2) / 2 + ' ' + cy + ' ' + x2 + ' ' + BY, fill: 'none' }, tr), e = sv('text', { class: 'arc-env', 'text-anchor': 'middle' }, tr, '✉'); env.push({ p, e, len: p.getTotalLength(), t: 0 }); });
     sc.frame(dt => { for (let i = env.length - 1; i >= 0; i--) { const v = env[i]; v.t += dt / 1.2; const k = Math.min(1, v.t), pt = v.p.getPointAtLength(v.len * k); v.e.setAttribute('x', pt.x); v.e.setAttribute('y', pt.y + 5); if (k >= 1) { v.p.remove(); v.e.remove(); env.splice(i, 1); } } });
     sc.update(render); render(S0, S0.m);

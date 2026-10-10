@@ -83,7 +83,7 @@ sleipnir web --open
 The page shows the team at work, asks the permission questions, and has the workspace (files, changes and
 checkpoints), the settings and the tools of the command line. It listens on loopback only and prints an address whose
 token is valid for that run. [Browser interface](docs/UX.md#web-interface) · [Command](docs/CLI.md#sleipnir-web) ·
-[Security](docs/SECURITY.md#5-the-web-interface-sleipnir-web)
+[Security](docs/SECURITY.md#5-the-web-interface-sleipnir-web) · [HTTP API](docs/WEB-API.md)
 
 ## Cache behavior
 
@@ -101,7 +101,7 @@ Simulation results are not measured savings. [Cache design](docs/CACHE-DESIGN.md
 - [Getting started](docs/GETTING-STARTED.md), [CLI reference](docs/CLI.md), [configuration](docs/CONFIGURATION.md)
 - [Providers](docs/PROVIDERS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md)
 - [Architecture](docs/ARCHITECTURE.md), [team coordination](docs/SWARM-PROTOCOL.md), [terminal and browser interfaces](docs/UX.md)
-- [Building](docs/BUILDING.md), [testing](docs/TESTING.md), [maintenance](docs/MAINTENANCE.md), [contributing](CONTRIBUTING.md)
+- [Web API](docs/WEB-API.md), [building](docs/BUILDING.md), [testing](docs/TESTING.md), [maintenance](docs/MAINTENANCE.md), [contributing](CONTRIBUTING.md)
 - [Limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md), [training data](docs/TRAINING-DATA.md)
 
 ## Development

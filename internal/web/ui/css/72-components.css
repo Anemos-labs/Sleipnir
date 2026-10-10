@@ -1,4 +1,4 @@
-/* the component kit (see COMPONENTS.md): buttons, segmented control, toggle, fields, tabs, meters, tooltips, popovers, terminal pane */
+/* the component kit: buttons, segmented control, toggle, fields, tabs, meters, tooltips, popovers, terminal pane */
 .btn.sm{padding:2px 8px;font-size:11.5px}
 .btn.sm kbd{margin-left:2px}
 .field-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}

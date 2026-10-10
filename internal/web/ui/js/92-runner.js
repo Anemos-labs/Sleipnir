@@ -1,15 +1,15 @@
 /* 92-runner.js: SL.runner, the generic command runner. For every `sleipnir` command of the server's spec (GET /api/cli) it builds a FORM from
  * the real flags (types, choices, defaults, descriptions), shows the equivalent command line live, runs it on the server, and streams a
- * terminal-styled output pane plus a result card. A run is a child process of the server (CONTRACT.md 18): its stdout lines arrive as `out`,
- * its stderr as `err` (D-19), its end as a result.
+ * terminal-styled output pane plus a result card. A run is a child process of the server (internal/web/wire/runner.go): its stdout lines
+ * arrive as `out`, its stderr as `err` (the only two kinds the server sends), its end as a result.
  *
- * A run belongs to this view (D-05): leaving the view, Reset or choosing another command stops it, unless the person ticked "Keep running
- * when I leave" (A22). A command that changes something asks first: the server answers 428 with the exact scope, the page shows the
+ * A run belongs to the view that started it: leaving the view, Reset or choosing another command stops it, unless the person ticked "Keep
+ * running when I leave". A command that changes something asks first: the server answers 428 with the exact scope, the page shows the
  * standard confirm, and only then asks for the single-use id and repeats the request. Output is text: every line goes through esc(). */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $, $$, esc, mk } = U, D = SL.D, G = SL.G, ui = SL.ui = SL.ui || {}, C3 = SL.c3 = SL.c3 || {};
-  const net = C3.net;
+  const U = SL.u, { $, $$, esc, mk } = U, D = SL.D, G = SL.G, ui = SL.ui = SL.ui || {}, TK = SL.toolkit = SL.toolkit || {};
+  const net = TK.net;
   const spec = () => D.spec, cmds = () => (spec() && spec().commands) || [];
   const key = c => c.path.join(' ');
   const find = p => { const k = Array.isArray(p) ? p.join(' ') : String(p).replace(/^sleipnir\s+/, ''); return cmds().find(c => key(c) === k) || null; };
@@ -72,7 +72,7 @@
    */
   function createRun(deps) {
     const R = { phase: 'idle', id: null, cmdline: '', req: null, seq: 0, keep: false, dead: false };
-    const tk = C3.tracker({
+    const tk = TK.tracker({
       line: l => deps.onLine && deps.onLine(l),
       step: s => deps.onStep && deps.onStep(s),
       verdict: v => deps.onVerdict && deps.onVerdict(v),
@@ -84,7 +84,7 @@
     async function send(req, opts) {
       const my = ++R.seq; R.phase = 'starting'; R.req = req; R.keep = !!req.keep; tk.arm();
       const r = await (opts && opts.confirm ? deps.post(req, opts) : quiet(() => deps.post(req, opts)));
-      if (my !== R.seq || R.dead) { if (r.ok && r.data && r.data.id && !(req.keep && !R.dead)) deps.cancel(r.data.id); return { state: 'stale' }; }   // nobody is looking any more: a run that started is stopped (D-05)
+      if (my !== R.seq || R.dead) { if (r.ok && r.data && r.data.id && !(req.keep && !R.dead)) deps.cancel(r.data.id); return { state: 'stale' }; }   // nobody is looking any more: a run that started is stopped
       if (r.ok && r.data && r.data.id) { R.id = r.data.id; R.cmdline = r.data.cmdline || ''; R.phase = 'running'; tk.begin(R.id); return { state: 'started', id: R.id, cmdline: R.cmdline }; }
       tk.abort();
       if (r.status === 428 && r.code === 'confirm_required') {
@@ -112,7 +112,7 @@
         if (!r.ok && r.status === 404) { R.phase = 'done'; if (deps.onResult) deps.onResult({ exit: 130, ms: 0, canceled: true }); }
         return true;
       },
-      /** the view goes away: a run that is not to be kept is stopped (D-05); a kept one keeps going on the server */
+      /** the view goes away: a run that is not to be kept is stopped; a kept one keeps going on the server */
       leave() { R.dead = true; if (R.phase === 'running' && !R.keep && R.id) { R.phase = 'stopping'; deps.cancel(R.id); } },
       /** show a run that is already going (a kept one): its retained output first, then what follows */
       attach(id, info) { R.id = id; R.phase = info && info.running === false ? 'done' : 'running'; R.keep = true; R.cmdline = (info && info.cmd) || ''; tk.arm(); tk.begin(id, { onlyResult: true }); },
@@ -189,12 +189,12 @@
       card.innerHTML = '<div class="rc ' + (ok ? 'ok' : 'bad') + '"><b>' + (ok ? '✓' : '✗') + ' ' + esc((r.card && r.card.title) || (canceled ? key(st.c) + ' (canceled)' : key(st.c))) + '</b><span>exit status ' + esc(r.exit) + '</span><span>elapsed ' + msTxt(ms) + '</span>' + arr(r.card && r.card.rows).map(row => '<span><i class="dim">' + esc(row[0]) + '</i> ' + esc(row[1]) + '</span>').join('') + '</div>' + watchHtml();
       runBtn.disabled = false; loadRuns().then(ok2 => { if (!ok2) { G.runs.unshift({ cmd: cmdline(st.c, st), exit: r.exit, ms, path: st.c.path.slice(), flags: Object.assign({}, st.flags) }); G.runs = G.runs.slice(0, 12); } hist(); }); findWatch();
     }
-    /** a `run` or `swarm` writes a session of its own: when one shows up in the recorded list, Watch it opens it read-only (A7) */
+    /** a `run` or `swarm` writes a session of its own: when one shows up in the recorded list, Watch it opens it read-only */
     let watch = null;
     const watchHtml = () => watch ? '<div class="row2" style="margin:8px 0 0"><button class="btn sm" type="button" data-watchit title="a read-only tab: the run belongs to another process">Watch it</button> <span class="dim">' + esc(watch.id) + '</span></div>' : '';
     async function findWatch() {
-      if (!['run', 'swarm'].includes(st.c.path[0]) || st.c.path.length > 1) return; await C3.refreshRecorded(); const hosted = C3.sessions.hostedSids();
-      const cand = arr(SL.sessions.recorded).filter(r => r.lastWritten >= st.t0 - 5000 && !hosted.has(r.id) && (r.locked || C3.sessions.isLive(r))).sort((a, b) => b.lastWritten - a.lastWritten)[0];
+      if (!['run', 'swarm'].includes(st.c.path[0]) || st.c.path.length > 1) return; await TK.refreshRecorded(); const hosted = TK.sessions.hostedSids();
+      const cand = arr(SL.sessions.recorded).filter(r => r.lastWritten >= st.t0 - 5000 && !hosted.has(r.id) && (r.locked || TK.sessions.isLive(r))).sort((a, b) => b.lastWritten - a.lastWritten)[0];
       if (cand && sc.alive) { watch = cand; const h = $('[data-watchit]', card); if (!h) card.insertAdjacentHTML('beforeend', watchHtml()); }
     }
     function hist() { $('.rhist', root).innerHTML = G.runs.length ? '<div class="rgrp">recent runs</div>' + G.runs.map((h, i) => '<button type="button" class="hrow" data-h="' + i + '"><span class="' + (h.running ? 'warm' : h.exit === 0 ? 'ok' : 'err') + '">' + (h.running ? '●' : h.exit === 0 ? '✓' : '✗') + '</span><span class="mono">' + esc(h.cmd) + '</span><span class="dim">' + (h.running ? 'running' : h.ms < 1000 ? Math.round(h.ms) + 'ms' : (h.ms / 1000).toFixed(1) + 's') + '</span></button>').join('') : ''; }
@@ -202,13 +202,13 @@
     /* the run itself */
     const ctl = createRun({
       post: (req, opts) => net.post('/api/runs', req, opts),
-      cancel: id => C3.cancelRun(id),
+      cancel: id => TK.cancelRun(id),
       onLine: addLine,
       onResult: r => { if (!sc.alive) return; showResult(r); },
     });
     sc.on('run', d => ctl.frame(d));
     sc.on('data', w => { if (w === 'runs') hist(); });
-    sc.onUnmount(() => ctl.leave());   // D-05: the process is the view's, unless it was kept
+    sc.onUnmount(() => ctl.leave());   // the process belongs to the view, unless it was kept
     const setRunning = on => { runBtn.disabled = on; if (on) stat.innerHTML = '<span class="dim">starting…</span>'; };
     const setStopBtn = () => { stat.innerHTML = '<span class="dim">running…</span> <button class="btn sm" type="button" data-stop title="stop the process">Stop</button>'; };
     async function run() {
@@ -252,7 +252,7 @@
       const h = e.target.closest('[data-h]'); if (h) { const r = G.runs[+h.dataset.h]; if (!r) return;
         if (r.running && r.id) { reset(); st.c = find(r.path) || st.c; st.flags = Object.assign({}, r.flags); st.pos = {}; drawList(); drawForm(); reattach(r); return; }
         reset(); st.c = find(r.path) || st.c; st.flags = Object.assign({}, r.flags); st.pos = {}; drawList(); drawForm(); } });
-    /** a kept run that is still going: show what it printed so far, then what follows (A22) */
+    /** a kept run that is still going: show what it printed so far, then what follows */
     async function reattach(r) {
       clearOut(); header(r.cmd); setRunning(true); ctl.attach(r.id, r); setStopBtn();
       const o = await net.get('/api/runs/' + encodeURIComponent(r.id) + '/output'); if (!sc.alive) return;
@@ -264,6 +264,6 @@
   }
   SL.views.register({ name: 'runner', title: 'Run a command', nav: false, mount });
   SL.runner = { find, cmdline, flagValues, buildRequest, validate, modeOf, createRun, spec, loadRuns, formHtml, listHtml, shownCmds };
-  C3.loadRuns = loadRuns;
+  TK.loadRuns = loadRuns;
   ui.runCli = (path, flags, run, pos) => SL.views.show('runner', { path, flags, run, pos });
 })(SL);

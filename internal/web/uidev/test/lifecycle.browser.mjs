@@ -1,17 +1,17 @@
-// lifecycle.browser.mjs: the mock's t-lifecycle.mjs on the REAL page (TEST-PLAN.md 6): nothing a view or a session starts outlives it.
-// The page runs on internal/web/uidev/mockapi.mjs (the mock's own three sessions as API data) with hooks-real.js injected before its
+// lifecycle.browser.mjs: nothing a view or a session starts outlives it (timers, listeners, observers, animations, frame hooks).
+// The page runs on internal/web/uidev/mockapi.mjs (the reference page's three sessions as API data) with hooks-real.js injected before its
 // scripts; questions arrive through the live layer (SL.live.applyEv) while the views and the sessions switch.
 //
 //   node internal/web/uidev/test/lifecycle.browser.mjs
 //
-// It needs a Chromium (CHROME_PATH, or the Playwright headless shell the mock's tests use); it is not part of `node --test` and not of CI.
+// It needs a Chromium (CHROME_PATH, or the Playwright headless shell: see cdp.mjs); it is not part of `node --test` and not of CI.
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '../../../..');
-const { open } = await import(path.join(repo, 'docs/design/web-mocks/_src/v3/test/cdp.mjs'));
+const { open } = await import(path.join(here, 'cdp.mjs'));
 const { start } = await import(path.join(here, '..', 'mockapi.mjs'));
 const srv = await start({});
 const p = await open('about:blank', { w: 1440, h: 900 });

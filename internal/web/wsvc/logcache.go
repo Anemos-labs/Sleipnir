@@ -72,7 +72,7 @@ func (s *service) logOf(dir string) *logCache {
 	return c
 }
 
-// taskIDRE finds the task id at the start of a queue submission's task ("T3: title").
+// taskPrefixRE finds the task id at the start of a queue submission's task ("T3: title").
 var taskPrefixRE = regexp.MustCompile(`^(T\d+)\b`)
 
 // taskID is the board id of a task as an event names it.

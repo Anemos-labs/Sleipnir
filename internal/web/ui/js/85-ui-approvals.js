@@ -5,8 +5,9 @@
  * or since the last key; until then the buttons are inert and the meter fills. Text typed ahead goes to the prompt and never answers.
  * The same rule governs the inbox, which can answer a question of a background session. Several questions are asked one at a time.
  * The server keeps its own floor (350 ms, `409 too_soon`): the meter re-arms when it refuses. The header says what the question is
- * about (D-09); a question that offers it gets the TUI's fourth answer, builds and tests for the session (PARITY A2: on screen 3,
- * on the wire choice 4; No is 4 and Esc); an edit, a write or a patch shows the change it asks to make (PARITY A1).
+ * about (a command, an edit, a fetch, project files or a tool server). A question that can offer it gets the TUI's fourth answer,
+ * builds and tests for the session (on screen 3, on the wire choice 4; No is 4 and Esc). An edit, a write or a patch shows the change
+ * it asks to make.
  * What a question shows is shown whole and stays in reach: the command, the change and the reason each scroll on their own with every
  * character wrapped, and a long one says how many lines and bytes it has and offers its end in one press (a dangerous last line is never
  * below the fold unannounced). Answer 2 names the exact rules it remembers. A key answers only a question that is on screen: with the
@@ -51,7 +52,7 @@
   /** The key a choice has on screen: with the fourth answer, the tests preset is 3 and No is 4. */
   const keyOf = (q, c) => q.offersTests ? ({ 1: 1, 2: 2, 4: 3, 3: 4 })[c] : c;
   const choiceOfKey = (q, k) => q.offersTests ? ({ 1: 1, 2: 2, 3: 4, 4: 3 })[k] : k;
-  /** What the agent wants, by the question's kind (D-09; PARITY A1 names writes, patches and web searches). */
+  /** What the agent wants, by the question's kind (the header of a question depends on it; writes, patches and web searches are named too). */
   function wants(q) {
     switch (q.kind) {
       case 'edit': return q.tool === 'write' ? 'wants to write a file' : q.tool === 'apply_patch' ? 'wants to apply a patch' : 'wants to edit a file';
@@ -143,9 +144,9 @@
     function wire() { $$('.qopt', box).forEach(b => b.addEventListener('click', () => answer(S, q, +b.dataset.choice, box))); }
     wire(); shown[q.id] = shown[q.id] == null ? SL.time.T.wall : shown[q.id];
   }
-  /** Who closed a question when it was not the person (VOCAB 5.17 `by`). */
+  /** Who closed a question when it was not the person (the `by` of an answer event). */
   const BY = { timeout: 'refused: nobody answered in time', canceled: 'refused: the turn was interrupted', closed: 'refused: the session closed', nobody: 'refused: no page was open to answer' };
-  /** The command: every line and every character of it (PARITY A1), in a block of its own scroll; a long one has its length and its end above it. */
+  /** The command: every line and every character of it, in a block of its own scroll; a long one has its length and its end above it. */
   const cmdHtml = q => lenLine(q.cmd, 'the command') + '<div class="qcmd qblk"><i>' + esc(q.cwd || '.') + ' $</i> ' + esc(q.cmd) + '</div>';
   /** Why it asks, in a block of its own scroll (a reason can be as long as the command it explains). */
   const whyHtml = (q, id) => lenLine(q.why, 'the reason') + '<div class="qwhy qblk"' + (id ? ' id="' + id + '"' : '') + '><b>why it asks</b>' + esc(q.why) + '</div>';

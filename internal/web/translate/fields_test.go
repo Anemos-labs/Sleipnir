@@ -13,7 +13,7 @@ import (
 )
 
 // required lists, per kind, the fields every event of the kind carries: what the page's reducer (30-model.js) and the views that
-// read the log (Replay) read, by VOCAB.md 5 and 6. A dotted name is a field of an object field.
+// read the log (Replay) read. A dotted name is a field of an object field.
 var required = map[string][]string{
 	"say":       {"who", "text"},
 	"sys":       {"ch", "glyph", "text"},
@@ -51,8 +51,8 @@ var required = map[string][]string{
 	"mailstat":  {"sent", "delivered", "dropped"},
 }
 
-// notProduced are the kinds of the mock the server never sends (VOCAB.md 5.3, 5.27, 5.30): the page makes them itself, or they were
-// a scripted reply.
+// notProduced are the kinds of the reference page that the server never sends: the page makes them itself, or they belong to a
+// scripted reply.
 var notProduced = map[string]bool{"local": true, "digest": true, "reply": true}
 
 // has reports whether the event has the dotted field.
@@ -142,7 +142,7 @@ func readFields(t *testing.T) map[string][]string {
 	return out
 }
 
-// absent are the fields the reducer reads that the server leaves out on purpose, with the reason (VOCAB.md): a field that is
+// absent are the fields the reducer reads that the server leaves out on purpose, with the reason: a field that is
 // optional (read with a default), or one of a form the server does not produce.
 var absent = map[string]string{
 	"say.lines": "scouts rows are not produced", "say.title": "local rows are page-made", "say.html": "local rows are page-made",
@@ -155,7 +155,7 @@ var absent = map[string]string{
 	"req.p": "live requests only", "req.o": "live requests only", "req.hist": "keyframes and history only",
 	"ckpt.step": "pack change sets are not produced", "ckpt.id": "the cid form is sent", "ckpt.skipped": "optional (false)", "ckpt.safety": "optional (false)",
 	"queue.cmd": "a queued submission only", "queue.step": "a queued submission only", "queue.ms": "a verified submission only",
-	"stream.code": "code streams only", "goal.paused": "a paused goal only", "say.open": "host rows only (B1)", "use.savedPartial": "reads at unknown prices only (TestHonestPrices)", "use.unpriced": "reads at unknown prices only (TestHonestPrices)", "sys.open": "host rows only (B1)", "alert.text": "raises only", "alert.key": "optional", "steer.quiet": "optional", "answer.note": "optional", "mail.id": "",
+	"stream.code": "code streams only", "goal.paused": "a paused goal only", "say.open": "host rows only", "use.savedPartial": "reads at unknown prices only (TestHonestPrices)", "use.unpriced": "reads at unknown prices only (TestHonestPrices)", "sys.open": "host rows only", "alert.text": "raises only", "alert.key": "optional", "steer.quiet": "optional", "answer.note": "optional", "mail.id": "",
 }
 
 // Every field the page's reducer reads of an event is in what the server sends, or is listed with the reason it may be absent: the
@@ -182,7 +182,7 @@ func TestEveryFieldTheReducerReadsIsProduced(t *testing.T) {
 		}
 		for _, f := range fields {
 			if _, ok := absent[kind+"."+f]; ok || f == "at" {
-				continue // at is on history events only (VOCAB.md 3)
+				continue // at is on history events only
 			}
 			found := false
 			for _, e := range evs {
@@ -198,7 +198,8 @@ func TestEveryFieldTheReducerReadsIsProduced(t *testing.T) {
 	}
 }
 
-// Every kind of the vocabulary is produced by some test (the 30 of the mock but local, digest and reply, and the additive ones).
+// Every kind of the vocabulary is produced by some test (the 30 kinds of the reference page but local, digest and reply, and the
+// additive ones).
 func TestEveryKindIsCovered(t *testing.T) {
 	corpus := everyKindCorpus(t)
 	seen := map[string]int{}

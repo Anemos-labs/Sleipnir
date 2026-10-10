@@ -22,8 +22,9 @@ type taskOut struct {
 	lastCol string // the last column that was not a failure's
 }
 
-// syncTask sends a task event when the task's column, title, owner, deps, scope or closure changed (VOCAB.md 5.7, 8.4; ERRATA D-04),
-// and a note when its owner submitted it. force sends it whatever it says.
+// syncTask sends a task event when the task's column, title, owner, deps, scope or closure changed, and a note when its owner
+// submitted it. force sends it whatever it says. A task the board failed stays in the todo column with Failed set and its closure; one
+// that was superseded or canceled keeps the column it had.
 func (t *Translator) syncTask(id string, ts float64, force bool) {
 	tk, ok := t.st.Task(id)
 	if !ok {
@@ -161,7 +162,8 @@ func (t *Translator) verifyCmd(task string) string {
 	return line(swarm.ExpandVerify(cmd, t.root(), files), capArg)
 }
 
-// merge translates the merge queue's events (isolated teams; VOCAB.md 5.18, 5.19).
+// merge translates the merge queue's events (isolated teams) into queue events (head, step, counters) and merge events, and the
+// conflicts, refusals and failed verifications into system rows.
 func (t *Translator) merge(e events.Event, ts float64, at int64) {
 	if t.d.history {
 		return
@@ -268,7 +270,7 @@ type noticeGate struct {
 	skipped int
 }
 
-// The notice rate limit (VOCAB.md 14).
+// The notice rate limit: at most gateMax gated rows in each window of gateWindow seconds.
 const (
 	gateMax    = 20
 	gateWindow = 10.0
@@ -661,7 +663,7 @@ func verdictKey(v *wire.Verdict) string {
 	return v.Kind + "\x00" + v.Text + "\x00" + strings.Join(v.Left, "\x00")
 }
 
-// goalState is goal.state: the standing goal after a change (VOCAB.md 5.24).
+// goalState translates goal.state into a goal event: the standing goal after a change (active, paused, met or cleared).
 func (t *Translator) goalState(e events.Event, ts float64, at int64) {
 	var p struct {
 		Goal *struct {
@@ -700,7 +702,7 @@ func (t *Translator) goalState(e events.Event, ts float64, at int64) {
 	}
 }
 
-// goalJudge is goal.judge: the judge's verdict on a turn (VOCAB.md 5.9).
+// goalJudge translates goal.judge into a verdict event: the judge's verdict on a turn.
 func (t *Translator) goalJudge(e events.Event, ts float64, at int64) {
 	var p struct {
 		Verdict string   `json:"verdict"`

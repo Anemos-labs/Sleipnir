@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -75,6 +76,9 @@ type Server struct {
 	port   atomic.Int32    // the port that was bound; 0 until known
 	sem    chan struct{}
 	served atomic.Bool
+
+	routeMu  sync.Mutex
+	patterns []string // the patterns passed to Handle, in registration order
 
 	// timeouts, overridden by tests
 	readHeaderTimeout time.Duration

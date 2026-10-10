@@ -6,8 +6,8 @@
  * confirmation the server asks for. Output text from a probe, a job log or a file is data: it is escaped and never read as markup. */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $, $$, esc, mk, fmtN } = U, D = SL.D, G = SL.G, ui = SL.ui = SL.ui || {}, C3 = SL.c3 = SL.c3 || {};
-  const X = () => D.extra || (D.extra = {}), net = C3.net;
+  const U = SL.u, { $, $$, esc, mk, fmtN } = U, D = SL.D, G = SL.G, ui = SL.ui = SL.ui || {}, TK = SL.toolkit = SL.toolkit || {};
+  const X = () => D.extra || (D.extra = {}), net = TK.net;
   const reg = SL.views.register, arr = x => Array.isArray(x) ? x : [];
   ui.settingsPage = id => { ui.setPage = id; SL.views.show('settings', { page: id }); };
   const GROUPS = [
@@ -77,7 +77,7 @@
     if (flags.model) body.model = flags.model; if (flags['base-url']) body.baseUrl = flags['base-url']; body.deep = !!flags.deep;
     return body;
   }
-  C3.doctor = { stepHtml, verdictHtml, lineHtml, doctorRequest };
+  TK.doctor = { stepHtml, verdictHtml, lineHtml, doctorRequest };
 
   /* ---------------------------------------------------------------- doctor */
   reg({ name: 'doctor', title: 'Doctor', mount(sc, root) {
@@ -94,7 +94,7 @@
     const steps = q('.dsteps'), body = q('.dbody'), res = q('.dres'), meter = q('.dmeter'), stat = q('.dstat'), runBtn = q('#dRun');
     let verdict = null;
     const ctl = SL.runner.createRun({
-      post: (req, opts) => net.post('/api/doctor', req, opts), cancel: id => C3.cancelRun(id),
+      post: (req, opts) => net.post('/api/doctor', req, opts), cancel: id => TK.cancelRun(id),
       onLine: l => { steps.insertAdjacentHTML('beforeend', lineHtml(l)); body.scrollTop = body.scrollHeight; },
       onStep: s => {
         const grp = s.grp !== st.lastGrp; if (grp) st.lastGrp = s.grp; st.steps++;
@@ -106,12 +106,12 @@
         stat.innerHTML = r.canceled ? '<span class="warm">canceled</span>' : '<span class="' + (ok ? 'ok' : 'err') + '">' + (ok ? '✓ done' : '✗ exit ' + esc(r.exit)) + '</span><span>' + (ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1) + ' s') + '</span>';
         if (verdict && ok) res.innerHTML = verdictHtml(Object.assign({}, verdict, { card: verdict.card || r.card }));
         else if (!ok && !r.canceled) res.innerHTML = '<div class="dverd bad"><h3>The probe could not run</h3><p>' + esc(lastBad || 'the probe failed; see the lines above') + '</p></div>';
-        body.scrollTop = body.scrollHeight; if (C3.loadRuns) C3.loadRuns();
+        body.scrollTop = body.scrollHeight; if (TK.loadRuns) TK.loadRuns();
       },
     });
     let lastBad = '';   // the failure message is the last stderr line the probe printed
     sc.on('run', d => { if (d && d.id && d.id === ctl.id && d.lines) d.lines.forEach(l => { if (l.k === 'err' || l.k === 'bad') lastBad = String(l.t); }); ctl.frame(d); });
-    sc.onUnmount(() => ctl.leave());   // D-05: the probe is stopped when the view goes away
+    sc.onUnmount(() => ctl.leave());   // the probe is stopped when the view goes away
     async function run() {
       if (ctl.open) return; const f = flags();
       if (st.p.id === 'custom' && (!f['base-url'] || !f.model)) { ui.toast('a custom endpoint needs --base-url and --model', 'warm'); return; }
@@ -168,7 +168,7 @@
   }
   /** The body of an add or an edit (bypass and yolo are not offered here, and the server refuses them). */
   const jobRequest = f => ({ cron: String(f.cron).trim(), goal: String(f.goal).trim(), dir: f.dir, model: f.model || '', mode: f.mode || '', budgetUsd: parseFloat(f.budget) });
-  C3.schedule = { hm, exitInfo, daemonHtml, jobRow, validateJob, jobRequest };
+  TK.schedule = { hm, exitInfo, daemonHtml, jobRow, validateJob, jobRequest };
 
   /* ---------------------------------------------------------------- schedule */
   const SCH = () => G.sched || (G.sched = { jobs: [], daemon: { running: false, owner: 'none', every: '30s', timeout: '', line: '' }, logs: [], n: 0 });
@@ -186,7 +186,7 @@
     /** the directory and model lists (the server's projects and catalogue); what is chosen stays chosen, or prefer = {dir, model} */
     function fillSelects(prefer) {
       const dir = $('#sDir', root), want = prefer ? prefer.dir : dir.value, list = projects(); if (want && !list.includes(want)) list.unshift(want);
-      const word = d => { const p = arr(X().projects).find(x => (x.dir || x.root) === d), w = p ? (C3.settings && C3.settings.projectState ? C3.settings.projectState(p.trust) : '') : ''; return w ? ' · ' + w : ''; };   // a scheduled run in a project nobody trusted or that could not be read says so
+      const word = d => { const p = arr(X().projects).find(x => (x.dir || x.root) === d), w = p ? (TK.settings && TK.settings.projectState ? TK.settings.projectState(p.trust) : '') : ''; return w ? ' · ' + w : ''; };   // a scheduled run in a project nobody trusted or that could not be read says so
       dir.innerHTML = list.map(p => '<option value="' + esc(p) + '"' + (p === want ? ' selected' : '') + '>' + esc(p) + esc(word(p)) + '</option>').join('') || '<option value="">(no project)</option>';
       const md = $('#sModel', root), mcur = prefer ? prefer.model : md.value, ms = models(); if (mcur && !ms.includes(mcur)) ms.unshift(mcur);
       md.innerHTML = '<option value="">the default model</option>' + ms.map(m => '<option value="' + esc(m) + '"' + (m === mcur ? ' selected' : '') + '>' + esc(m) + '</option>').join('');
@@ -216,20 +216,20 @@
       st.log = id; const j = S().jobs.find(x => x.id === id), cached = S().logs.find(l => l.job === id); showLogText(j, cached); draw();
       const r = await net.get('/api/schedule/jobs/' + encodeURIComponent(id) + '/log'); if (!sc.alive || st.log !== id) return; if (r.ok && r.data) showLogText(j, r.data); else if (!net.quiet(r)) net.fail(r, 'the log could not be read');
     }
-    /* run now: the job's own output as it prints; the view owns the process (D-05) */
+    /* run now: the job's own output as it prints; the view owns the process */
     let runId = '';
     const term = () => $('.term', root);
-    const tracker = C3.tracker({
+    const tracker = TK.tracker({
       line: l => { const t = term(), e = mk('div', { class: 'tl ' + (['ok', 'warn', 'bad', 'err', 'dim', 'head'].includes(l.k) ? l.k : 'out') }); e.textContent = String(l.t); t.appendChild(e); t.scrollTop = t.scrollHeight; },
       result: r => { if (!sc.alive) return; const j = S().jobs.find(x => x.id === st.log); runId = ''; q('.lgh').innerHTML = st.log ? '<span class="mono">' + esc(st.log) + '</span>' : ''; ui.toast(r.canceled ? 'job ' + (j ? j.id : '') + ' canceled' : 'job ' + (j ? j.id : '') + ' ran: exit ' + (r.exit === 0 ? 'ok' : r.exit), r.exit === 0 && !r.canceled ? 'ok' : 'warm'); loadSchedule().then(() => { if (sc.alive) draw(); }); },
     });
     sc.on('run', d => tracker.frame(d));
-    sc.onUnmount(() => { if (runId) C3.cancelRun(runId); });
+    sc.onUnmount(() => { if (runId) TK.cancelRun(runId); });
     async function runNow(id) {
       const j = S().jobs.find(x => x.id === id); if (!j) return; if (runId) { ui.toast('a job is running: wait for it or leave this view', 'warm'); return; }
       st.log = id; q('.lgh').innerHTML = '<span class="mono">' + esc(id) + ' · running</span>'; const t = term(); t.innerHTML = ''; draw();
       tracker.arm(); const r = await net.post('/api/schedule/jobs/' + encodeURIComponent(id) + '/run');
-      if (!sc.alive) { if (r.ok && r.data && r.data.id) C3.cancelRun(r.data.id); return; }
+      if (!sc.alive) { if (r.ok && r.data && r.data.id) TK.cancelRun(r.data.id); return; }
       if (!r.ok) { tracker.abort(); q('.lgh').innerHTML = '<span class="mono">' + esc(id) + '</span>'; net.fail(r, 'the job could not be started'); return; }
       runId = r.data.id; const hd = mk('div', { class: 'tl hd' }); hd.innerHTML = '<span class="prompt">$</span> '; hd.appendChild(document.createTextNode(r.data.cmdline || id)); t.insertBefore(hd, t.firstChild); tracker.begin(runId);
     }

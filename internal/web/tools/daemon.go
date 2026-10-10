@@ -23,7 +23,7 @@ type daemon struct {
 	done   chan struct{}
 }
 
-// Bounds of the daemon's interval (PARITY.md A12).
+// Bounds of the daemon's interval.
 const (
 	minEvery = 5 * time.Second
 	maxEvery = 24 * time.Hour

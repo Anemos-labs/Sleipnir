@@ -26,7 +26,7 @@ type configIssue struct {
 	Severity string `json:"severity"`
 }
 
-// configView is wire.ConfigView with the warnings located (PARITY A19): Issues are the warnings of `sleipnir config`, Risks the
+// configView is wire.ConfigView with the warnings located: Issues are the warnings of `sleipnir config`, Risks the
 // project's security-sensitive settings and whether they were left out, Valid the closing line ("configuration is valid", with the
 // number of warnings, or why it is not).
 type configView struct {

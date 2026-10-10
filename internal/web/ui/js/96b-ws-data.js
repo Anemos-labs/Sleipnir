@@ -1,6 +1,6 @@
 /* 96b-ws-data.js: SL.ws, the data layer of the Workspace (Files / Changes / Checkpoints / Merge) on the server's workspace API
- * (CONTRACT.md 12). It keeps the shape the screen was drawn from (a base, then one change set per checkpoint, turned into what the screen
- * needs at any point in time) and fills it from the API instead of a data pack:
+ * (internal/web/wire/ws.go). It keeps the shape the screen draws from (a base, then one change set per checkpoint, turned into what the screen
+ * needs at any point in time) and fills it from the API:
  *
  *   info(S)                      the checkpoints of the session (arrival order), the scrubber positions and the tree; null while loading
  *   setAt(I, k) / pointId(I, k)  the change sets applied at scrubber position k, and the API point ("base", a checkpoint id, "live") it names
@@ -415,7 +415,7 @@
     },
     /** Put the files back to before checkpoint `id`, as the plan the person saw says: the server's scope of that plan is confirmed and sent back, and when the
      *  plan changed since (409 changed) nothing was written and the new plan comes back to be looked at and confirmed again. Resolves {ok, plan}, or
-     *  {ok: false, code, message, plan?} (plan: the new one after `changed`). A server that sends no scope is asked with the scope of the contract. */
+     *  {ok: false, code, message, plan?} (plan: the new one after `changed`). A server that sends no scope is asked with the scope `restore:<session>:<id>`. */
     async restore(S, id, plan) {
       if (noTab(S)) return { ok: false, code: 'no_session', message: noTabWhy(S) };
       const scope = plan && plan.scope, body = { id, dryRun: false }; if (scope) body.scope = scope;

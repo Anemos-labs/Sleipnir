@@ -4,12 +4,12 @@
  *   this session   Models · Roles & effort · Budget · Permissions · Trust · Run settings
  *   every session  MCP servers · Skills, commands & hooks · Providers & login · Config layers
  *   this browser   Appearance & motion
- * Text from files, servers, mail and models is data: it goes through esc(). The browser never holds an API key (D-01): signing in is the
+ * Text from files, servers, mail and models is data: it goes through esc(). The browser never holds an API key: signing in is the
  * terminal's flow, and this page only learns which providers are connected. Nothing a page shows or keeps is a secret. */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $, $$, esc, mk, fmtK, fmtUsd, fmtN, agCol } = U, D = SL.D, G = SL.G, X = D.extra, calc = SL.calc, ui = SL.ui = SL.ui || {}, C3 = SL.c3 = SL.c3 || {};
-  const net = C3.net, arr = x => Array.isArray(x) ? x : [];
+  const U = SL.u, { $, $$, esc, mk, fmtK, fmtUsd, fmtN, agCol } = U, D = SL.D, G = SL.G, X = D.extra, calc = SL.calc, ui = SL.ui = SL.ui || {}, TK = SL.toolkit = SL.toolkit || {};
+  const net = TK.net, arr = x => Array.isArray(x) ? x : [];
   const PAGES = [
     ['models', 'Models', 'session', 'the catalogue: filter, star, choose for the manager or a role'],
     ['roles', 'Roles & effort', 'session', 'which model each role runs on, and how hard it thinks'],
@@ -37,7 +37,7 @@
   const workerModel = S => { const w = arr(S.roster).find(x => x.id !== 'mgr' && x.model); return w ? w.model : S.meta.model; };
   const curModel = (S, role) => role === 'manager' ? S.meta.model : ((S.meta.roleModels || {})[role] || D.roleModels[role] || workerModel(S));
   const ALL_ROLES = () => ['manager'].concat(D.roleOrder);
-  const hello = () => C3.hello() || {};
+  const hello = () => TK.hello() || {};
   /** the server's defaults for a new session (hello.defaults), or {} */
   /** the tab title badge as it is now: the person's choice, else the server's default (off when SLEIPNIR_BELL=0) */
   const titleOn = () => { const v = SL.settings.title; return v === 'on' || (v !== 'off' && !(hello().ui && hello().ui.bell === false)); };
@@ -124,7 +124,7 @@
   }
   /** the confirm of "Forget all…": the directories it forgets */
   const forgetSpec = dirs => ({ title: 'Forget every directory', text: 'Forget the <b>' + dirs.length + '</b> director' + (dirs.length === 1 ? 'y' : 'ies') + ' you said yes to? Their own files are left out of the next session until you say yes again.', detail: '<span class="mono">' + esc(dirs.map(d => d.dir).join('\n')) + '</span>', ok: 'Forget them', danger: true });
-  C3.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, PAGES };
+  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, PAGES };
 
   /* ---------------- the pages: pure builders of markup from the session S and the page state ST ---------------- */
   const P = {};
@@ -224,10 +224,10 @@
         card('Keys', '<span class="mono">?</span> opens this anywhere', '<dl class="kv keys2">' + [['g then c r f h k a m b p s t e', 'Cockpit, Radio, Files, Changes, Checkpoints, Cache, Mail, Board, Replay, Sessions, Tools, Settings'], ['o c m b r s ,', 'the round-1 single keys for the same views'], ['ctrl+k · /', 'command palette · slash menu in the composer'], ['alt+t · alt+g', 'Cache · Cockpit (browsers reserve ctrl+t and ctrl+g)'], ['alt+1 … alt+9', 'the nth session tab']].concat(D.shortcuts.slice(0, 12)).map(([k, d]) => '<dt>' + esc(k) + '</dt><dd>' + esc(d) + '</dd>').join('') + '</dl>');
     };
 
-  C3.settings.pages = P;
+  TK.settings.pages = P;
   /** the state of the page: the sub-page, the filters of Models, the permission tester, the Run settings stepper, the MCP lines */
   const newState = params => ({ page: (params && params.page) || ui.setPage || 'models', models: { q: '', tools: false, reasoning: false, favs: false, all: false, maxp: '', maxo: '', minc: '', role: 'manager', view: null, busy: false }, perm: { tool: 'Bash', arg: 'go test ./api/...', res: null, danger: null, busy: false, seq: 0 }, cfg: { q: '' }, run: { n: null, dirty: {} }, mcp: { out: {}, busy: {} }, eff: {}, cmdq: '' });
-  C3.settings.newState = newState;
+  TK.settings.newState = newState;
 
   function mount(sc, root, params, S0) {
     const ST = newState(params);
@@ -243,7 +243,7 @@
     };
     /* ---------------- paint ---------------- */
     const sess = $('.sess', root);
-    /** with no session (the page started with none, D-12) the pages of a session have nothing to show: Appearance does, the rest say what to do */
+    /** with no session (the server hosts no tab) the pages of a session have nothing to show: Appearance does, the rest say what to do */
     function paintEmpty() {
       sess.textContent = ''; $$('.snb', nav).forEach(b => b.setAttribute('aria-current', String(b.dataset.page === ST.page)));
       const def = PAGES.find(p => p[0] === ST.page) || PAGES[0], h = '<header class="sethead"><h1>' + def[1] + '</h1><p>' + def[3] + '</p></header><div class="setbody2">' + (def[0] === 'look' ? P.look({ meta: {}, roster: [] }, ST) : '<p class="stubnote">These settings belong to a session, and none is open: start one with <b>+ New</b> (or ctrl+k).</p>') + '</div>';
@@ -353,7 +353,7 @@
       ui.confirm(Object.assign({}, forgetSpec(dirs), { run: async () => { const r = await net.post('/api/trust', { all: true, on: false }); if (!r.ok) { net.fail(r, 'the directories were not forgotten'); return; } if (SL.data) { SL.data.load('trust', { force: true }); SL.data.load('projects', { force: true }); } const n = r.data && r.data.forgot != null ? r.data.forgot : dirs.length; toast('forgot ' + n + ' director' + (n === 1 ? 'y' : 'ies'), 'warm'); } }));
     }
     function signOut(p) { acted(SL.act.setProvider(p.id, { key: 'none' }), () => toast('signed out of ' + p.name, 'ok')); }
-    /** Sign in (D-01): the page shows the command for the terminal and, when it was run, asks the server again which providers are connected */
+    /** Sign in: the page shows the command for the terminal and, when it was run, asks the server again which providers are connected */
     function signIn(p) {
       ui.modal({ title: 'Sign in to ' + p.name, kicker: 'terminal flow', desc: 'the browser never sees an API key', color: 'var(--ok)', body: '<p class="stubnote">Run this in a terminal; it asks for the key (or opens the ChatGPT sign-in) and stores it in <span class="mono">~/.sleipnir/auth.json</span> with mode 0600. This page then shows the provider as connected.</p><pre class="pre cli">sleipnir login ' + esc(p.id) + '</pre><div class="row2"><button class="btn" type="button" data-copy>Copy the command</button><button class="btn pri" type="button" data-done>I ran it: check again</button><button class="btn" type="button" data-close>Cancel</button></div>',
         onMount(b, scm, close) {
@@ -361,7 +361,7 @@
           scm.listen($('[data-done]', b), 'click', () => { close(); acted(SL.act.setProvider(p.id, {}), () => { const now = arr(G.providers).find(x => x.id === p.id); if (now && keyInfo(now).btn !== 'in') toast(p.name + ' now shows as connected', 'ok'); else toast(p.name + ' still has no key: run the command in a terminal first', 'warm'); }); });
         } });
     }
-    /** approve, revoke, test or reconnect a tool server: the server's one line for the card, and a toast for what changed (D-08: an approval applies when the team starts again) */
+    /** approve, revoke, test or reconnect a tool server: the server's one line for the card, and a toast for what changed (an approval or a revocation applies when the team starts again) */
     async function mcpDo(a, n) {
       const r = SL.act.setMcp(n, { action: a }); if (r && r.ok === false) { toast(r.why || 'that cannot be done now', 'warm'); return; }
       ST.mcp.busy[n] = a; paint(true);

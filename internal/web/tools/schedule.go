@@ -21,7 +21,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// The schedule (CONTRACT.md 17, PARITY.md A11, A12): the jobs of <state>/schedule.json, the daemon that starts the due ones, run
+// The schedule: the jobs of <state>/schedule.json, the daemon that starts the due ones, run
 // now, logs. The job file is package sched's, and so are its locks: the write lock keeps this page, a terminal's `sleipnir schedule`
 // and a daemon from losing each other's change, and the daemon lock keeps two daemons (this page's and a terminal's) from starting a
 // job twice. A daemon started here runs in this process and stops with the server.
@@ -42,7 +42,7 @@ const (
 // schedModes are the permission modes a job may be given here (bypass and yolo are refused: nobody is there to see what they do).
 var schedModes = map[string]bool{"": true, "default": true, "accept-edits": true, "plan": true}
 
-// registerSchedule adds the routes of CONTRACT.md 17.
+// registerSchedule adds the routes of the schedule: jobs, run now, logs and the daemon.
 func (s *service) registerSchedule() {
 	s.srv.HandleFunc("GET /api/schedule", s.handleSchedule, web.RouteOpts{})
 	s.srv.HandleFunc("GET /api/schedule/next", s.handleNext, web.RouteOpts{})

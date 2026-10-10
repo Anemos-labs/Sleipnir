@@ -175,8 +175,8 @@ func (r *Runs) Plan(_ context.Context, path []string, pos map[string]string, fla
 		Dir: dir, Reasons: reasons, Command: c}, nil
 }
 
-// Flags that make a run privileged whatever command carries them (CONTRACT.md 18.2; the spec's generated "when" rules say the same
-// to the page). The runner decides on them in Go, on the parsed vector, so that no spelling and no spec can let one through.
+// Flags that make a run privileged whatever command carries them (the spec's generated "when" rules say the same to the page).
+// The runner decides on them in Go, on the parsed vector, so that no spelling and no spec can let one through.
 var (
 	// keyRouteFlags name an endpoint or a key variable of the run's own: the run gets no held key (the CLI treats them as the
 	// person's word, and would send the key there) and needs a confirmation.
@@ -465,7 +465,7 @@ func Cmdline(args []string) string {
 }
 
 // D16 is the first 16 hex digits of the SHA-256 of a list of strings as JSON, written as JavaScript's JSON.stringify writes it
-// (the confirmation scopes of CONTRACT.md 20: a page computes the same digest).
+// (the digest of the confirmation scopes run:, prune: and delete:, which a page computes the same way).
 func D16(list []string) string {
 	var b strings.Builder
 	b.WriteByte('[')

@@ -7,10 +7,10 @@
  * Every number on screen is derived from the per-agent token table in the model (read, uncached, out): hit, cost, savings, the HUD ring,
  * the Cache tab, the stalls and the drawer all call SL.calc, so they agree to the percent at every moment.
  *
- * Event kinds (VOCAB.md): say, sys, tool, note, state, task, plan, verdict, req, use, warm, gov, mail, ckpt, ask, answer, queue, merge,
- * break, compact, stream, goal, final, local, steer, reply, interrupt, refuse, digest, and the additive more, turn, stall, handover,
- * layers (plus alert and mailstat when the server sends them). The server sends the same objects the mock's simulation made; the
- * additive fields of VOCAB.md section 7 only keep the model faithful to real data and change no rendering path. */
+ * Event kinds (their fields and caps are the types of internal/web/wire/events.go): say, sys, tool, note, state, task, plan, verdict,
+ * req, use, warm, gov, mail, ckpt, ask, answer, queue, merge, break, compact, stream, goal, final, local, steer, reply, interrupt,
+ * refuse, digest, and more, turn, stall, handover, layers (plus alert and mailstat when the server sends them). Fields that real data
+ * carries beyond what a screen draws are kept in the model and change no rendering path. */
 (function (SL) {
   'use strict';
   const { upperBound } = SL.u;

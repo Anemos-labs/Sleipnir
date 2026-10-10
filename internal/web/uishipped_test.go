@@ -9,12 +9,12 @@ import (
 	"testing"
 )
 
-// The shipped page is wired to the live API: the mock's sample data, its simulation and its test hooks stay under internal/web/uidev
-// (outside the embed) and must not be reachable from index.html. These tests fail when one of those files is embedded again, when
-// index.html loads one, when a shipped script touches the sample pack or the simulation, or when a sentence of the sample data
-// shows up in a shipped file.
+// The shipped page is wired to the live API: the sample data of the reference page (internal/web/uidev/mock), its simulation and its
+// test hooks stay under internal/web/uidev (outside the embed) and must not be reachable from index.html. These tests fail when one
+// of those files is embedded again, when index.html loads one, when a shipped script touches the sample pack or the simulation, or
+// when a sentence of the sample data shows up in a shipped file.
 
-// mockOnly are the files of the mock that only exist for its simulation and sample data (UI-WIRING.md 9).
+// mockOnly are the files of the reference page that only exist for its simulation and sample data.
 var mockOnly = []string{"data.js", "outputs.js", "cli-spec.js", "10-fixtures.js", "11-data-adapter.js", "40-scripts.js", "95-kit.js", "zz-test-hooks.js", "hooks-real.js"}
 
 func TestSampleDataAndTheSimulationAreNotShipped(t *testing.T) {
@@ -26,7 +26,8 @@ func TestSampleDataAndTheSimulationAreNotShipped(t *testing.T) {
 	for name := range files {
 		for _, m := range mockOnly {
 			if path.Base(name) == m {
-				t.Errorf("%s is embedded: the mock-only files live in internal/web/uidev", name)
+				t.Errorf("%s is embedded: the files of the reference page that only exist for its simulation and sample data"+
+					" live in internal/web/uidev", name)
 			}
 		}
 	}
@@ -49,7 +50,7 @@ func TestSampleDataAndTheSimulationAreNotShipped(t *testing.T) {
 		}
 	}
 	if strings.Contains(html, "mockchip") || strings.Contains(html, "MOCK · sample data") {
-		t.Error("index.html still shows the MOCK chip (D-07)")
+		t.Error("index.html still shows the chip that marks sample data")
 	}
 	reach := regexp.MustCompile(`\bSL\.FX\b|\bSLDATA\b|\bSLCLISPEC\b|\bSL\.scripts\b|window\.__SL\b|\bSL\.test\s*=`)
 	for name, src := range files {
@@ -93,8 +94,9 @@ func TestNoSentenceOfTheSampleDataIsShipped(t *testing.T) {
 			sample[s] = true
 		}
 	}
-	// The UI's own copy: what the mock's kept modules and its shell markup already said (any text of them), and the four tables
-	// 11-data-live.js keeps as the page's copy (the modes, the built-in roles, the layer notes and the keys list).
+	// The UI's own copy: what the modules of the reference page that the UI keeps and its shell markup already said (any text of
+	// them), and the four tables 11-data-live.js keeps as the page's copy (the modes, the built-in roles, the layer notes and the keys
+	// list).
 	var own strings.Builder
 	entries, err := os.ReadDir(dir)
 	if err != nil {

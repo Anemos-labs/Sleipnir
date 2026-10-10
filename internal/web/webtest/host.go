@@ -14,7 +14,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// Compile-time checks: the fakes are the interfaces of the contract.
+// Compile-time checks: the fakes implement the interfaces of package seam.
 var (
 	_ seam.Host          = (*Host)(nil)
 	_ seam.Tab           = (*Tab)(nil)
@@ -24,7 +24,7 @@ var (
 // answerFloor is the quiet period after a question appears (and after the tab's previous answer) before an answer is accepted.
 const answerFloor = 350 * time.Millisecond
 
-// maxTabs is the number of tabs a host runs (CONTRACT.md section 22).
+// maxTabs is the most tabs a host runs.
 const maxTabs = 16
 
 // Host is an in-memory seam.Host. It holds fake tabs, records every frame published to it and optionally forwards them (the real
@@ -276,7 +276,7 @@ type Call struct {
 }
 
 // Tab is an in-memory seam.Tab and seam.SessionAccess. It keeps a journal of UI events like the real tab, answers the requests of
-// CONTRACT.md with the contract's errors, and publishes the acknowledgements the real host would (a say row, a meta patch).
+// the HTTP API (docs/WEB-API.md) with its errors, and publishes the acknowledgements the real host would (a say row, a meta patch).
 type Tab struct {
 	host *Host
 
@@ -837,7 +837,7 @@ func rosterOf(n int) []wire.RosterEntry {
 	return out
 }
 
-// Goal sets, pauses, resumes or clears the standing goal, with the contract's errors.
+// Goal sets, pauses, resumes or clears the standing goal, with the API's errors.
 func (t *Tab) Goal(_ context.Context, req wire.GoalRequest) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -873,7 +873,7 @@ func (t *Tab) Goal(_ context.Context, req wire.GoalRequest) error {
 	return nil
 }
 
-// modeNote is the acknowledgment row of a permission mode (CONTRACT.md section 11).
+// modeNote is the acknowledgment row of a permission mode.
 func modeNote(mode string) (glyph, text string) {
 	switch mode {
 	case "plan":

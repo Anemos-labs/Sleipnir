@@ -36,7 +36,7 @@ type openQ struct {
 	at time.Time
 }
 
-// stateGap is the least time between two state events of an agent (at most 20 a second, VOCAB.md 14).
+// stateGap is the least time between two state events of an agent (at most 20 a second).
 const stateGap = 0.05
 
 // agentOutOf returns the record of an agent (UI id).
@@ -149,7 +149,8 @@ func (t *Translator) refreshAgent(hid string, ts float64, force bool) {
 	t.offerState(uid, t.stateOf(uid, a), ts, force)
 }
 
-// stateOf maps an agent of the State to its state event (VOCAB.md 8.3).
+// stateOf maps an agent of the State to its state event: its status becomes the page's state and the running tool or the wait its
+// doing line.
 func (t *Translator) stateOf(uid string, a state.Agent) *StateX {
 	var s, doing string
 	switch a.Status {

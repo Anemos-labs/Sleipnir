@@ -192,7 +192,7 @@ func TestAHeldTurnLetsTheQueueSteerAndInterruptBeExercised(t *testing.T) {
 	}
 }
 
-func TestSettingsAreAcknowledgedAndRefusedWithTheContractsCodes(t *testing.T) {
+func TestSettingsAreAcknowledgedAndRefusedWithTheErrorCodes(t *testing.T) {
 	h := NewHost()
 	tab, _ := h.AddTab("scratch", Cwd)
 	meta := func() wire.MetaPatch { return tab.metaFull() }
@@ -296,7 +296,7 @@ func TestRulesAreAddedRemovedAndFixedOnesRefused(t *testing.T) {
 	}
 }
 
-func TestGoalFollowsTheContractsStates(t *testing.T) {
+func TestGoalFollowsTheStatesOfTheAPI(t *testing.T) {
 	h := NewHost()
 	tab, _ := h.AddTab("scratch", Cwd)
 	for action, want := range map[string]string{"pause": "no_goal", "resume": "no_goal", "clear": "no_goal"} {

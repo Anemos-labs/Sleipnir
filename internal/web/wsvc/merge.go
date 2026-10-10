@@ -15,7 +15,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// The isolated team's side of the Workspace (PARITY A8 to A10): its worktrees, its merge
+// The isolated team's side of the Workspace: its worktrees, its merge
 // queue, the output of each verification gate, and applying the verified work now.
 
 // errNotIsolated is the refusal of an isolated team's route on a shared-tree session.
@@ -150,7 +150,7 @@ func blobText(sess *session.Session, h string) string {
 // verified work to the checkout now, as commits on the person's branch (the default) or
 // as uncommitted edits (mode "edits"). A dry run reports the files, the tasks and whether
 // commits are possible, needs no confirmation and changes nothing; the application needs
-// accept:<id> and no running turn.
+// the dry run's scope (accept:<tab>:<d16>) and no running turn.
 func (s *service) handleAccept(w http.ResponseWriter, r *http.Request) {
 	acc, sess, ok := s.tabOf(w, r)
 	if !ok {
@@ -246,7 +246,7 @@ func acceptChanged(now wire.AcceptResult) error {
 		Msg: "the verified work changed since it was shown: look at it again and confirm", Detail: now}
 }
 
-// acceptError maps Accept's refusals to the contract's errors (409 not_isolated, nothing,
+// acceptError maps Accept's refusals to the errors of the API (409 not_isolated, nothing,
 // dirty, moved); a failed application is 409 conflict with the report's message.
 func acceptError(err error, rep *swarm.AcceptReport) error {
 	var we *wire.Error

@@ -1,7 +1,7 @@
 /* 83-ui-cockpit.js: the Cockpit view: the drawn horse (eight worker legs), the manager's own card and one stall per worker, the gantt,
  * the task board, the merge queue, mail and the governor. Mounted through the View API: everything it starts dies with it
  * (the mail arcs live in a layer inside this view's root). The governor's 429s and retries, the merge queue's counters and the
- * board's failed and blocked tasks (D-04: a failed task stays in todo with a ✗ mark and its closure as the title) are the server's. */
+ * board's failed and blocked tasks (a failed task stays in todo with a ✗ mark and its closure as the title) are the server's. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk, sv, fmtK, fmtUsd, fmtMs, mmss, tod, hitCls, agCol } = U, calc = SL.calc, D = SL.D, ui = SL.ui = SL.ui || {};
@@ -17,7 +17,7 @@
     return out;
   }
   ui.sparkBars = sparkBars;
-  /** The board's additions (PARITY A17, D-04): a ✗ mark on a failed card (its closure as the title), `try N` when a task took more
+  /** The board's additions: a ✗ mark on a failed card (its closure as the title), `try N` when a task took more
    *  than one attempt; todo's count leaves failed tasks out. Returns {failed, blocked}. Runs after ui.board.update on the same board. */
   ui.boardMarks = function (B, m) {
     let failed = 0, blocked = 0, todoFailed = 0;
@@ -50,9 +50,9 @@
   ui.alertsTag = m => { const n = alertList(m).length; return n ? '<button class="tag warm" type="button" data-alerts title="what the board and the stall detector raised">⚠ ' + n + ' alert' + (n === 1 ? '' : 's') + '</button>' : ''; };
   /** Keep the alerts tag just before `before` (a board head's summary) while there are alerts; nothing otherwise. */
   ui.alertsSlot = (before, m) => { const html = ui.alertsTag(m); let el = before.parentNode.querySelector('.balert'); if (!html) { if (el) el.remove(); return; } if (!el) { el = document.createElement('span'); el.className = 'balert'; before.parentNode.insertBefore(el, before); } if (el._h !== html) { el._h = html; el.innerHTML = html; } };
-  /** The governor note: the mock's sentence while nothing throttles, the counts when something does (D-07). */
+  /** The governor note: a plain sentence while nothing throttles, the counts when something does. */
   ui.govNote = m => (m.r429 || m.retries) ? m.r429 + ' 429' + (m.r429 === 1 ? '' : 's') + ', ' + m.retries + ' retr' + (m.retries === 1 ? 'y' : 'ies') + ': the endpoint is throttling the team' : 'no 429s, no retries: nothing is throttling the team';
-  /** `routed N · dup N · mailman on/off`: the dup term only when the server counts duplicates (D-07). */
+  /** `routed N · dup N · mailman on/off`: the dup term only when the server counts duplicates. */
   ui.mailNote = (m, S) => { const st = m.mailstat; return 'routed ' + (st && st.sent != null ? st.sent : m.mail.length) + (st && st.dup != null ? ' · dup ' + st.dup : '') + ' · mailman ' + (S.meta.mailman ? 'on' : 'off'); };
   function miniTl(A, vt, col) {
     let out = '', w0 = vt - 60;
@@ -181,7 +181,7 @@
     sc.listen(scrub, 'input', () => { const S2 = SL.sessions.active; S2.seek(+scrub.value, S2.replay ? S2.replay.playing : false); S2.touch(); });
     sc.listen(glive, 'click', () => { const S2 = SL.sessions.active; S2.goLive(); S2.touch(); });
 
-    /* ---- mail arcs: transient, in this view's own layer, advanced by the sim clock ---- */
+    /* ---- mail arcs: transient, in this view's own layer, advanced by the view clock ---- */
     const arcLayer = sc.layer('arcs'), arcSvg = sv('svg', { class: 'arcs', 'aria-hidden': 'true' }, arcLayer), arcs = [];
     function launchArc(from, to) {
       const a = ST[from] ? ST[from].el : from === 'mgr' ? rc : null, b = ST[to] ? ST[to].el : to === 'mgr' ? rc : null; if (!a || !b || ui.still()) return;
@@ -193,7 +193,7 @@
     sc.on('ev', ({ ev }) => { if (ev.k === 'mail') launchArc(ev.from, ev.to); });
     function arcsFrame(dt) { for (let i = arcs.length - 1; i >= 0; i--) { const a = arcs[i]; a.t += dt / 1.3; const k = Math.min(1, a.t), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2, pt = a.p.getPointAtLength(a.len * e); a.env.setAttribute('x', pt.x); a.env.setAttribute('y', pt.y + 5); a.lb.setAttribute('x', pt.x); a.lb.setAttribute('y', pt.y - 12); a.g.setAttribute('opacity', k > .8 ? ((1 - k) * 5).toFixed(2) : 1); if (k >= 1) { a.g.remove(); arcs.splice(i, 1); } } }
 
-    /* ---- update (model changed) and frame (every frame, sim clock) ---- */
+    /* ---- update (model changed) and frame (every frame, view clock) ---- */
     function update(S2, m) {
       if (!m) return; const mg = m.ag.mgr, cm = calc.agent(mg); fillCard(RC, mg, cm, true, m);
       if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool' && !e.collapsed).slice(-6).reverse(); $('.sololog', root).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">nothing yet</li>'; }

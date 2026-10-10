@@ -449,7 +449,7 @@ func TestSessionsCanBeRenamedStoppedResumedAndClosed(t *testing.T) {
 	}
 }
 
-func TestEveryCannedPageAnswerIsInTheContractsShape(t *testing.T) {
+func TestEveryCannedPageAnswerHasTheShapeOfItsWireType(t *testing.T) {
 	r := StartT(t, Options{})
 	for _, c := range []struct {
 		path string

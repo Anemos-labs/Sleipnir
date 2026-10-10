@@ -28,7 +28,7 @@ func TestEveryEventTypeHasADistinctKind(t *testing.T) {
 			t.Errorf("%T: head %+v after Stamp", e, h)
 		}
 	}
-	// 30 kinds of the mock minus the three the server does not produce (local, reply, digest), plus the five additive ones.
+	// 30 kinds of the reference page minus the three the server does not produce (local, reply, digest), plus the five additive ones.
 	if len(seen) != 32 {
 		t.Errorf("%d kinds: %v", len(seen), seen)
 	}

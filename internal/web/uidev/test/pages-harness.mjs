@@ -1,4 +1,4 @@
-// c3-harness.mjs: loads the classic scripts of the Sessions, Runner, Settings and Tools pages into a Node vm context with the few browser
+// pages-harness.mjs: loads the classic scripts of the Sessions, Runner, Settings and Tools pages into a Node vm context with the few browser
 // globals and page modules they touch (stubs for the views registry, the sessions registry, the model calculations, the data layer and the
 // toast and confirm of the overlays), so that their pure parts, their state machines and their API calls can be tested with `node --test`
 // and no dependency. These modules render into a DOM: what is tested here is the markup they build (as strings), the requests they make

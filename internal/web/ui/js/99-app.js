@@ -1,10 +1,11 @@
 /* 99-app.js: boot. Order: settings; the live data (hello, stream, snapshots: live.js); the shell scope (HUD, strip, rail, approvals,
  * keys, link); the first view; the loop. Until the sessions exist the page keeps the empty shell of index.html (no sample values).
- * With no tab on the server the shell mounts on the placeholder session and opens the New session dialog (D-12). */
+ * The server may host no tab at all: the shell then mounts on the placeholder session (an empty shell) and opens the New session
+ * dialog. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $ } = U, ui = SL.ui;
-  /** The tab title: `(? N) Sleipnir` while questions wait in any tab, `✓ <tab> · Sleipnir` after a long turn ended unseen (PARITY A3). */
+  /** The tab title: `(? N) Sleipnir` while questions wait in any tab, `✓ <tab> · Sleipnir` after a long turn ended unseen. */
   const TITLE = { base: document.title || 'Sleipnir Web', done: null };
   function badgeOn() { const s = SL.settings.title; if (s === 'on') return true; if (s === 'off') return false; const h = SL.live.hello; return !(h && h.ui && h.ui.bell === false); }
   function paintTitle() {
@@ -16,7 +17,7 @@
     SL.settings.load(); SL.time.setMode(SL.settings.hover); ui.applyMotion(); document.body.classList.toggle('compact', SL.settings.density === 'compact'); document.body.classList.toggle('cq', SL.settings.cache === 'quiet');
     SL.live.start().then(h => { serverMotion(h); mountShell(); });
   }
-  /** Motion "auto" also stands still when the server runs with SLEIPNIR_ANIM=0 or REDUCE_MOTION (PARITY A29); a choice the person
+  /** Motion "auto" also stands still when the server runs with SLEIPNIR_ANIM=0 or REDUCE_MOTION; a choice the person
    *  made in Appearance wins. */
   function serverMotion(h) {
     if (!(h && h.ui && h.ui.reduceMotion)) return;

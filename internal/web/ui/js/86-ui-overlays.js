@@ -11,7 +11,7 @@
     start: '<svg class="ic" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><rect x="1.5" y="1.5" width="2" height="9"/><path d="M10.5 1.5 L4.5 6 L10.5 10.5Z"/></svg>',
     end: '<svg class="ic" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><rect x="8.5" y="1.5" width="2" height="9"/><path d="M1.5 1.5 L7.5 6 L1.5 10.5Z"/></svg>',
   };
-  /** Motion off: the horse stands, arcs and flashes are skipped; the simulation still advances. */
+  /** Motion off: the horse stands, arcs and flashes are skipped; the clocks still advance. */
   const mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   ui.still = () => { const m = SL.settings.motion; return m === 'reduce' || (m === 'auto' && !!(mq && mq.matches)); };
   ui.applyMotion = () => document.body.classList.toggle('still', ui.still());

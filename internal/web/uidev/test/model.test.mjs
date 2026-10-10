@@ -1,5 +1,5 @@
 // model.test.mjs: the page's reducer (30-model.js) on the translator's golden UI streams (internal/web/translate/testdata/*.ui.jsonl)
-// and on hand-made events for each additive field of VOCAB.md section 7.
+// and on hand-made events for the fields real data carries beyond what a screen draws (their types are in internal/web/wire/events.go).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -20,7 +20,7 @@ function rosterOf(events) {
   return ids.map((id, i) => ({ id, role: id === 'mgr' ? 'manager' : 'worker', code: id.split('-')[0], nth: 1, k: i, leg: i - 1, scope: '', ro: false, model: 'm', spawn: 0 }));
 }
 const session = events => ({ id: 't', meta: { goalText: '' }, roster: rosterOf(events) });
-/** Every kind the reducer handles (the mock's thirty, the five additive kinds and the two the translator adds). */
+/** Every kind the reducer handles (the thirty of the reference page, the five additive kinds and the two the translator adds). */
 const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse digest more turn stall handover layers alert mailstat'.split(' '));
 
 test('the golden streams exist', () => { assert.ok(goldens.length >= 2, 'no golden UI stream under ' + GOLDEN); });

@@ -72,7 +72,7 @@ func TestTimeAndOrdering(t *testing.T) {
 	}
 }
 
-// A response at a price nobody knows makes the agent's saving a lower bound (PARITY A16).
+// A response at a price nobody knows makes the agent's saving a lower bound.
 func TestHonestPrices(t *testing.T) {
 	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
 	b := newLog(t0)

@@ -1,8 +1,8 @@
-/* hooks-real.js: the instrumentation of the mock's zz-test-hooks.js for the REAL page (UI-WIRING.md 11). Never shipped and never
+/* hooks-real.js: the instrumentation of the reference page's zz-test-hooks.js for the REAL page. Never shipped and never
  * loaded by index.html: a test driver injects it through the DevTools protocol before the page's own scripts run
  * (Page.addScriptToEvaluateOnNewDocument). It wraps the timer, frame, listener, observer and animation functions at once, and when
  * the page's namespace exists it exposes window.__SL and SL.test: counts(), idle(), settle(), gc(), listenerMap() and sig(m). The
- * time-warp hooks of the mock (manual, step, run, flood) are not here: the real page runs on real time and its events come from
+ * time-warp hooks of the reference page (manual, step, run, flood) are not here: the real page runs on real time and its events come from
  * the server. */
 (function () {
   const T = {};

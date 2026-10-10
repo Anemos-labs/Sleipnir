@@ -430,7 +430,7 @@ func parseKey(k string) (int, int, bool) {
 // its own diff of from..to (the page sends its key, never patch text), puts the old lines
 // back in the live file where the hunk's new lines are, records the write as the
 // person's (Before, the write, After: /rewind sees it) with an undo capture, and tells
-// the agent that last wrote the file. Confirmed with revert:<id>:<d16 of path,key,from,to>.
+// the agent that last wrote the file. Confirmed with the hunk's scope (revert:<tab>:<d16>, see scopeHunks).
 func (s *service) handleRevert(w http.ResponseWriter, r *http.Request) {
 	acc, sess, ok := s.tabOf(w, r)
 	if !ok {

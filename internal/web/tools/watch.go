@@ -14,7 +14,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// Watching a session another process writes (PARITY.md A7): a read-only tab whose events come from following the session's log as
+// Watching a session another process writes: a read-only tab whose events come from following the session's log as
 // it is written (a run of the runner, a daemon job, a chat in a terminal), as `sleipnir watch` follows it. The tab has no composer
 // and no question buttons: the run belongs to the other process. Its id is "w-" and the session id; its summary says headless.
 

@@ -16,8 +16,8 @@ import (
 )
 
 // Recorded sessions: a session directory no tab hosts, translated read-only from its log. Replay reads a log once (the Replay view of
-// a recorded tab, FEATURES.md D-10); FollowDir follows a log another process is writing, as `sleipnir watch` does (PARITY.md A7).
-// Both read every row from the log, as a followed log is translated, and clean and mask its text exactly as a live session's.
+// a recorded tab, which opens read-only and plays its log); FollowDir follows a log another process is writing, as `sleipnir watch`
+// does. Both read every row from the log, as a followed log is translated, and clean and mask its text exactly as a live session's.
 
 // flushAfter is how far past the last event of a finished log the clock is moved at the end of a Replay, so that what waits on a
 // later moment (a state held back by the rate limit, a checkpoint's debounced update, a tool row that waited for its output) is sent.

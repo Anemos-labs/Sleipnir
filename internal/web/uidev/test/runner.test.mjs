@@ -1,9 +1,9 @@
-// c3-runner.test.mjs: the command runner (92-runner.js): the form's command line and request, validation, the state machine of a run (a
+// runner.test.mjs: the command runner (92-runner.js): the form's command line and request, validation, the state machine of a run (a
 // started run whose frames came first, a privileged command and its confirmation, refusals, cancel, leaving the view), the confirmation
 // protocol through the real api.js, and hostile text in the spec and in the output.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { page, EVIL, hasMarkup, tick } from './c3-harness.mjs';
+import { page, EVIL, hasMarkup, tick } from './pages-harness.mjs';
 
 const MODULES = ['91-views-b.js', '92-runner.js'];
 const SPEC = { commands: [
@@ -143,7 +143,7 @@ test('cancel asks the server to stop it, and the result frame closes the run; a 
   assert.equal(run2.phase, 'done'); assert.equal(e.results[0].canceled, true);
 });
 
-test('leaving the view stops a run, unless it was kept; a request still on its way is stopped when it lands (D-05)', async () => {
+test('leaving the view stops a run, unless it was kept; a request still on its way is stopped when it lands', async () => {
   const { SL } = setup();
   let d = deps([started('r_l', 'x')]), run = SL.runner.createRun(d);
   await run.start({ path: ['models'] }); run.leave(); assert.deepEqual(d.cancels, ['r_l']);
@@ -167,7 +167,7 @@ test('the confirmation protocol through api.js: the probe is silent, the repeat 
     return { status: 404, body: { error: 'x', code: 'not_found' } };
   });
   const { SL, fetch, toasts } = t;
-  const run = SL.runner.createRun({ post: (req, opts) => SL.c3.net.post('/api/runs', req, opts), cancel: id => SL.c3.cancelRun(id), onLine() {}, onResult() {} });
+  const run = SL.runner.createRun({ post: (req, opts) => SL.toolkit.net.post('/api/runs', req, opts), cancel: id => SL.toolkit.cancelRun(id), onLine() {}, onResult() {} });
   const r1 = await run.start({ path: ['trust', 'add'] });
   assert.equal(r1.state, 'confirm'); assert.equal(r1.scope, 'run:feedbeef');
   assert.deepEqual(toasts, [], 'the 428 of the probe is the protocol, not a page bug: nothing is toasted');
@@ -182,14 +182,14 @@ test('the confirmation protocol through api.js: the probe is silent, the repeat 
 
 test('the tracker keeps the frames of every run until its own id is known, and drops the other runs', () => {
   const { SL } = setup(), got = [];
-  const tk = SL.c3.tracker({ line: l => got.push(l.t), result: r => got.push('end ' + r.exit) });
+  const tk = SL.toolkit.tracker({ line: l => got.push(l.t), result: r => got.push('end ' + r.exit) });
   tk.frame({ id: 'r_x', lines: [{ k: 'out', t: 'ignored: not armed' }] });
   tk.arm();
   tk.frame({ id: 'r_1', lines: [{ k: 'out', t: 'a' }] }); tk.frame({ id: 'r_2', lines: [{ k: 'out', t: 'b' }] }); tk.frame({ id: 'r_1', result: { exit: 3 } });
   tk.begin('r_1');
   tk.frame({ id: 'r_1', lines: [{ k: 'out', t: 'late' }] });
   assert.deepEqual(got, ['a', 'end 3']);
-  const g2 = []; const t2 = SL.c3.tracker({ line: l => g2.push(l.t), result: r => g2.push('end') });
+  const g2 = []; const t2 = SL.toolkit.tracker({ line: l => g2.push(l.t), result: r => g2.push('end') });
   t2.arm(); t2.frame({ id: 'r_9', lines: [{ k: 'out', t: 'x' }] }); t2.frame({ id: 'r_9', result: { exit: 0 } }); t2.begin('r_9', { onlyResult: true });
   assert.deepEqual(g2, ['end'], 'a run whose output was fetched separately only takes its end from the buffer');
 });

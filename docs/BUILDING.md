@@ -67,7 +67,7 @@ on it against a server with canned data, or against the real one on a demo proje
 go run ./internal/web/webtest/cmd/fakeserver          # canned sessions, no model and no keys
 sleipnir web --fixture shop                           # a real server over a demo project on the mock provider
 node --test internal/web/uidev/test/*.test.mjs        # data layer, reducer, forms, hostile strings
-node scripts/web-parity.mjs --a REFERENCE.html        # screenshot parity of two pages, per scene
+node scripts/web-parity.mjs                           # the page against the reference page (uidev/mock), per scene; --a names another
 ```
 
 Open the page and look at it, in a wide and a phone-sized window; a test of the markup cannot tell a readable

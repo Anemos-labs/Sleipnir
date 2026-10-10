@@ -1,10 +1,10 @@
-// wsdev.mjs: builds the page of the mock (internal/web/uidev/mock) with the live Workspace modules (96b-ws-data.js, 97-ui-workspace.js) and
+// wsdev.mjs: builds the reference page (internal/web/uidev/mock) with the live Workspace modules (96b-ws-data.js, 97-ui-workspace.js) and
 // api.js swapped in, and serves it with the workspace answers of packserver.mjs.
 //
 //   node internal/web/uidev/test/wsdev.mjs [--mode pack|big|hostile] [--port 0] [--dir DIR]
 //
-// The mock's own simulation drives the sessions; the Workspace takes its history from the server, so the screens can be compared with the
-// mock (scripts/web-parity.mjs --b http://127.0.0.1:PORT/index.html) and driven at scale.
+// The reference page's own simulation drives the sessions; the Workspace takes its history from the server, so the screens can be compared
+// with the reference page (scripts/web-parity.mjs --b http://127.0.0.1:PORT/index.html) and driven at scale.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +13,7 @@ import { REPO, startPackServer } from './packserver.mjs';
 
 /**
  * The Workspace actions of the live page (markReviewed, revertHunk, unrevertHunk, rewind, undoRewind), cut verbatim out of 60-actions.js with the few
- * helpers they use, installed over the mock's own: the hybrid page then runs the same SL.act code the live page does, against the pack server.
+ * helpers they use, installed over the reference page's own: the hybrid page then runs the same SL.act code the live page does, against the pack server.
  */
 export function wsActs(file) {
   const src = fs.readFileSync(file, 'utf8'), lines = src.split('\n');
@@ -23,7 +23,7 @@ export function wsActs(file) {
   if (a < 0 || b < 0) throw new Error('60-actions.js: the workspace section moved');
   return "(function (SL) {\n  'use strict';\n  const ACT = SL.act;\n" + helpers + '\n' + src.slice(a, b) + '})(SL);\n';
 }
-/** Copy the mock page into `dir` and lay the live Workspace modules over it. Returns dir. */
+/** Copy the reference page into `dir` and lay the live Workspace modules over it. Returns dir. */
 export function makeHybrid(dir) {
   const src = path.join(REPO, 'internal/web/uidev/mock'), ui = path.join(REPO, 'internal/web/ui');
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });

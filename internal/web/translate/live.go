@@ -9,7 +9,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// response is model.response: for a main request the req row of the agent's hit ratio (VOCAB.md 5.10), its prompt by layer and the
+// response is model.response: for a main request the req row of the agent's hit ratio, its prompt by layer and the
 // warm clock; for every request its token table.
 func (t *Translator) response(e events.Event, ts float64, at int64) {
 	var p struct {
@@ -50,7 +50,7 @@ func (t *Translator) response(e events.Event, ts float64, at int64) {
 }
 
 // sendWarm sends the warm clock when the shared prefix the agent rides (the main agent's own prompt when it rides none) was read
-// or written later than the clock last said (VOCAB.md 5.12).
+// or written later than the clock last said.
 func (t *Translator) sendWarm(hid string) {
 	e, ok := t.st.PrefixTouch(hid)
 	if !ok || (e.Kind != "prefix" && !isMain(hid)) || !e.Last.After(t.d.warm) {
@@ -91,7 +91,7 @@ type govOut struct {
 // govGap is the least time between two gov events while only the request rate changed.
 const govGap = 5.0
 
-// checkGov sends the governor's gauge (VOCAB.md 5.13): at once when the rate limits or the retries changed, else at most every
+// checkGov sends the governor's gauge: at once when the rate limits or the retries changed, else at most every
 // govGap seconds while anything changed.
 func (t *Translator) checkGov(now time.Time, ts float64) {
 	g := t.st.GovernorAt(now)
@@ -146,7 +146,7 @@ func (t *Translator) tick(now time.Time) {
 	t.publishRoster()
 }
 
-// hostEvent journals an event of the host (VOCAB.md 4, source H): the person's messages and actions, the goal loop, turns. It ends
+// hostEvent journals an event of the host: the person's messages and actions, the goal loop, turns. It ends
 // the manager's open message at a turn's end, sends a goal or verdict state once whichever of the host and the log says it, and
 // cleans the text it carries.
 func (t *Translator) hostEvent(e wire.Event, ts float64) {

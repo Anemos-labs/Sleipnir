@@ -15,7 +15,7 @@ import (
 // looks like a secret (internal/rl/redact: provider keys, tokens, private keys, credentials in URLs, bearer values, key=value
 // secrets, high-entropy values next to a key-like word) and cut to a bound. The page escapes every string it renders as well.
 
-// The caps of VOCAB.md, in runes for one-line fields and in bytes for messages.
+// The caps, in runes for one-line fields and in bytes for messages.
 const (
 	capArg     = 160   // tool.arg, refuse.arg
 	capOut     = 200   // tool.out

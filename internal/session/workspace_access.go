@@ -179,8 +179,8 @@ func (s *Session) absPath(p string) string {
 
 // RuleOrigin names where a rule of the session's engine came from, as the Permissions
 // page shows it: "--allow flag", "built-in protection" (the configuration directories
-// whose writes always ask), "configuration" (a file; B4's rule origins name which), or
-// the origin the engine gives a rule added while the session ran.
+// whose writes always ask), "configuration" (a rule of a configuration file, perm.OriginConfig),
+// or the origin the engine gives a rule added while the session ran.
 func (s *Session) RuleOrigin(rule string) string {
 	if s.Perm == nil {
 		return ""

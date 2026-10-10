@@ -14,9 +14,9 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// The frames of the page's stream have the hub classes of VOCAB.md 14: what the page must not miss is critical, a value that a newer
+// The frames of the page's stream have the hub classes of wire.Frame: what the page must not miss is critical, a value that a newer
 // one replaces is coalescable under its key, and a message's continuation is ordinary.
-func TestFrameClassesFollowTheVocabulary(t *testing.T) {
+func TestFrameClassesAreTheHubClasses(t *testing.T) {
 	for _, tc := range []struct {
 		ev        wire.Event
 		first     bool

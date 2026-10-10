@@ -1,8 +1,8 @@
 package main
 
-// The routes of the session host (CONTRACT.md sections 4, 5, 6, 8, 9, 10 and 11). Every route is behind the envelope of
-// internal/web (loopback, token or cookie, Origin, the custom header, JSON bodies within a cap); a route that raises privilege also
-// asks for its confirmation here.
+// The routes of the session host: the stream, hello and snapshot, the tabs and what a tab does, and the open questions
+// (docs/WEB-API.md). Every route is behind the envelope of internal/web (loopback, token or cookie, Origin, the custom header,
+// JSON bodies within a cap); a route that raises privilege also asks for its confirmation here.
 
 import (
 	"errors"
@@ -387,7 +387,7 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--swarm", strconv.Itoa(h.d.Workers))
 	}
 	if !body.Mailman && h.defaults().Mailman {
-		args = append(args, "--mailman=false") // unchecked against a default of on (PARITY A4)
+		args = append(args, "--mailman=false") // unchecked against a default of on
 	}
 	if body.Resume != "" {
 		if !session.ValidID(body.Resume) {

@@ -152,7 +152,7 @@ func content(sess *session.Session, p point, rel string) (data []byte, exists bo
 // ---- secret carriers --------------------------------------------------------------------
 
 // secretCarrier reports whether a file is one whose secret-shaped values are masked when
-// it is served (CONTRACT.md 2.3): .env files, PEM files and SSH keys.
+// it is served: .env files, PEM files and SSH keys.
 func secretCarrier(rel string) bool {
 	base := strings.ToLower(path.Base(rel))
 	return strings.HasPrefix(base, ".env") || strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") ||

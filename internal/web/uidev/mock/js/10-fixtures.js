@@ -1,6 +1,6 @@
 /* 10-fixtures.js: the built-in sample data (SL.FX). Everything here is SAMPLE unless a comment says REAL.
  * The core works with only this; 11-data-adapter.js lets window.SLDATA (the data pack) override pieces of it.
- * The roster table below is the ONE table every number in the app derives from (10-v2-shared.md). */
+ * The roster table below is the ONE table every number in the app derives from. */
 (function (SL) {
   'use strict';
   const { rng } = SL.u;
@@ -82,7 +82,7 @@
     { id: 'c04', ts: '03:04:12', files: 0, note: 'skipped: nothing to put back', skipped: true },
   ];
 
-  /* ---- code (REAL given verbatim in 00-shared.md; items_test.go is sample) ---- */
+  /* ---- code (REAL: the text of the repository; items_test.go is sample) ---- */
   const CODE = {
     'api/catalog/items.go': { st: 'A', add: 31, del: 0, ag: 'be-1', task: 'T4', kind: 'file', text:
 `package catalog

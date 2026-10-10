@@ -1,12 +1,12 @@
 /* 60-actions.js: SL.act (every action a person can take) and SL.settings (per-viewer settings). SL.G, the state shared by every
  * session, is built by 11-data-live.js.
  *
- * Rule: panels render from state; they never change it. Every action keeps the mock's name, arguments and synchronous result: it
- * runs the mock's own checks (same `why` texts) and returns {ok: false, why} when one fails; otherwise it sends the request and
- * returns {ok: true, done} at once, where `done` is the promise of the API result. The effect on the screen comes from the events
- * and the meta the server sends back, never from a local insertion; a refused request becomes a toast with the server's sentence
- * ('warm' for a 409, 'err' otherwise). The only exceptions are UI-local state (settings, the favourite star, the reviewed mark) and the
- * line the composer shows as queued while the request is on its way. */
+ * Rule: panels render from state; they never change it. Every action has the name, arguments and synchronous result of the same
+ * action of the reference page: it runs the same checks (same `why` texts) and returns {ok: false, why} when one fails; otherwise
+ * it sends the request and returns {ok: true, done} at once, where `done` is the promise of the API result. The effect on the
+ * screen comes from the events and the meta the server sends back, never from a local insertion; a refused request becomes a
+ * toast with the server's sentence ('warm' for a 409, 'err' otherwise). The only exceptions are UI-local state (settings, the
+ * favourite star, the reviewed mark) and the line the composer shows as queued while the request is on its way. */
 (function (SL) {
   'use strict';
   const U = SL.u, D = SL.D, G = SL.G, { fmtUsd } = U;
@@ -18,8 +18,8 @@
     hover: 'both',            // 'both' = hold on chat + slow on linked items | 'chat' = hold on chat only | 'off'
     motion: 'auto',           // 'auto' (follow the system) | 'reduce' | 'full'
     density: 'comfortable',   // 'comfortable' | 'compact'
-    cache: 'quiet',           // 'quiet' (the default: no savings figures, no hit-% on cards, a small warm clock) | 'full' (the Dock v2 amount of cache detail)
-    title: 'auto',            // the tab title badge (PARITY A3): 'auto' (the server's default), 'on' or 'off'
+    cache: 'quiet',           // 'quiet' (the default: no savings figures, no hit-% on cards, a small warm clock) | 'full' (every cache figure)
+    title: 'auto',            // the tab title badge: 'auto' (the server's default), 'on' or 'off'
     ver: 0,
     load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['hover', 'motion', 'density', 'cache', 'title'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
     save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ hover: settings.hover, motion: settings.motion, density: settings.density, cache: settings.cache, title: settings.title })); } catch (e) { /* ignore */ } },
@@ -208,7 +208,7 @@
     /* a resume asks for trust as a new session does (the same challenge): the same trust step */
     return send(trusting(id => api().post('/api/sessions/resume', body, id ? { confirmId: id } : undefined)), d => activateWhenReady(d && d.tab && d.tab.id), r => { if (r.declined) return true; if (r.code === 'hosted' && r.detail && r.detail.tab) { ACT.switchSession(r.detail.tab.id || r.detail.tab); toast(r.message, 'warm'); return true; } return false; });
   });
-  /** /swarm N, Run settings Apply, "run it again": the team starts again and the manager's conversation carries over (D-06). */
+  /** /swarm N, Run settings Apply, "run it again": the team starts again and the manager's conversation carries over (/new and /clear start empty). */
   act('restartTeam', (patch, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; patch = Object.assign({}, patch); const force = patch.force; delete patch.force; const n = patch.swarm == null ? S.meta.swarm : Math.max(0, parseInt(patch.swarm, 10) || 0);
     if (!force && n === S.meta.swarm && !Object.keys(patch).some(k => k !== 'swarm')) return { ok: false, why: 'already manager + ' + n + ' workers' };
@@ -239,19 +239,19 @@
       return api().post('/api/trust', { dir, on: true }, { confirmId: c.data.confirm }).then(r => { if (r.ok) after(); else fail(r); return r; });
     }) };
   });
-  /** Providers (D-01): sign out, or check again after a sign-in in a terminal. */
+  /** Providers: sign out, or check again after a sign-in in a terminal (the browser never holds a provider key). */
   act('setProvider', (id, patch) => {
     const after = d => { if (d && Array.isArray(d.providers) && SL.data) { SL.data.map.providers(d); G.ver++; } else if (SL.data) SL.data.load('providers', { force: true }); };
     if (patch && patch.key === 'none') return send(api().post('/api/providers/' + api().seg(id) + '/signout'), () => after(null));
     return send(api().post('/api/providers/recheck'), after);
   });
-  /** MCP servers: patch.action approve | revoke | test | reconnect (or the mock's state patch). The result line lands in G.mcpOut. */
+  /** MCP servers: patch.action approve | revoke | test | reconnect (or the reference page's state patch). The result line lands in G.mcpOut. */
   act('setMcp', (name, patch) => {
     const S = SL.sessions.active; if (!S) return { ok: false }; if (why(S)) return refuse(S); patch = patch || {};
     const s = G.mcp.find(x => x.name === name), a = patch.action || (patch.state === 'running' ? 'approve' : patch.state === 'needs approval' ? 'revoke' : patch.state ? 'reconnect' : 'test');
     const path = tab(S) + '/mcp/' + api().seg(name) + '/' + a, out = res => { G.mcpOut = G.mcpOut || {}; G.mcpOut[name] = res; G.ver++; SL.bus.emit('mcp-changed'); if (SL.data) SL.data.load('mcp', { force: true }); };
     if (a !== 'approve') return send(api().post(path), out);
-    /* the server names the exact scope with the view (confirmScope); else the contract's mcp.approve:<d16 of {root, name, fingerprint}> */
+    /* the server names the exact scope with the view (confirmScope); else mcp.approve:<digest of {root, name, fingerprint}> */
     const raw = (s && s.raw) || {}, mv = SL.D.extra.mcp || {}, root = mv.root || (SL.D.extra.trust && SL.D.extra.trust.project && SL.D.extra.trust.project.dir) || S.meta.cwd;
     const scope = raw.confirmScope ? Promise.resolve(raw.confirmScope) : api().d16({ root, name, fingerprint: raw.fingerprint || '' }).then(d => 'mcp.approve:' + d);
     /* the confirmation covers exactly the entry the card showed: when the server's entry is another one now (.mcp.json was edited), nothing
@@ -263,10 +263,10 @@
       return r; }) };
   });
 
-  /** A recorded session opened read-only in its own tab (D-10), or followed while another process writes it (PARITY A7). */
+  /** A recorded session opened read-only in its own tab, or followed while another process writes it. */
   act('openRecorded', (sid, opt) => { if (!sid) return { ok: false, why: 'no recorded session' }; return { ok: true, done: SL.live.openRecorded(String(sid), opt || {}) }; });
 
   SL.act = ACT;
-  /** The simulation's hooks are gone: the queue of typed-ahead lines is the server's (meta.queued). */
+  /** There is nothing to pump: the queue of typed-ahead lines is the server's (meta.queued). */
   SL.actions = { pump() {} };
 })(SL);

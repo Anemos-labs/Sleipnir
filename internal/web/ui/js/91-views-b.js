@@ -1,4 +1,4 @@
-/* 91-views-b.js: the Sessions view (live sessions, recorded sessions, prune, delete selected), and SL.c3, the small toolkit the pages of Settings,
+/* 91-views-b.js: the Sessions view (live sessions, recorded sessions, prune, delete selected), and SL.toolkit, the small toolkit the pages of Settings,
  * Tools, the Runner and Sessions share (the API calls with their confirmations, the page caches, one honest way to say a request failed).
  *
  * Every number and name on this page comes from the server through SL.sessions (live tabs, the recorded list) or through the calls below; a
@@ -11,12 +11,12 @@
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const mb1 = n => (Number(n) || 0).toFixed(1);
 
-  /* ======================================================================== SL.c3: the shared toolkit */
-  const C3 = SL.c3 = SL.c3 || {};
+  /* ======================================================================== SL.toolkit: the shared toolkit */
+  const TK = SL.toolkit = SL.toolkit || {};
   const NOAPI = { ok: false, status: 0, code: 'no_api', message: 'the server is not reachable' };
   const api = () => SL.api || null;
   /** The API calls of the pages: the same shape as SL.api (never throws), or a failure when this page has no server behind it. */
-  const net = C3.net = {
+  const net = TK.net = {
     get: (path, opts) => api() ? api().get(path, opts) : Promise.resolve(NOAPI),
     post: (path, body, opts) => api() ? api().post(path, body, opts) : Promise.resolve(NOAPI),
     put: (path, body, opts) => api() ? api().put(path, body, opts) : Promise.resolve(NOAPI),
@@ -35,18 +35,18 @@
     },
   };
   /** Tell every view that a shared cache changed, so that the pages draw it again. */
-  C3.changed = topic => { G.ver++; if (SL.loop) SL.loop.dirty = true; if (topic) SL.bus.emit(topic); };
+  TK.changed = topic => { G.ver++; if (SL.loop) SL.loop.dirty = true; if (topic) SL.bus.emit(topic); };
   /** The server's idea of this page, from the hello when the live core keeps it. */
-  C3.hello = () => (SL.live && SL.live.hello) || null;
+  TK.hello = () => (SL.live && SL.live.hello) || null;
   /** Fetch the recorded sessions again (after a prune, a delete, a tab closing): the data layer owns the cache. */
-  C3.refreshRecorded = function () { return SL.data ? SL.data.load('recorded', { force: true }) : Promise.resolve(false); };
+  TK.refreshRecorded = function () { return SL.data ? SL.data.load('recorded', { force: true }) : Promise.resolve(false); };
 
   /**
    * The frames of one started run. A run's frames travel on the page's stream and can arrive before the answer that names its id, so a
    * tracker is armed before the request (it keeps every frame of every run), then begin(id) hands it the frames of its own run in order;
    * after that only frames of that id count. h = {line(l), step(s), verdict(v), result(r)}.
    */
-  C3.tracker = function (h) {
+  TK.tracker = function (h) {
     let id = null, buf = null, done = false;
     const apply = d => {
       if (done) return;
@@ -67,8 +67,8 @@
       frame(d) { if (!d || typeof d !== 'object' || done) return; if (id == null) { if (buf && buf.length < 5000) buf.push(d); return; } if (d.id === id) apply(d); },
     };
   };
-  /** Ask the server to stop a run (D-05); the answer is the run's own result frame. */
-  C3.cancelRun = id => id ? net.del('/api/runs/' + encodeURIComponent(id)) : Promise.resolve(NOAPI);
+  /** Ask the server to stop a run (a run belongs to the view that started it); the answer is the run's own result frame. */
+  TK.cancelRun = id => id ? net.del('/api/runs/' + encodeURIComponent(id)) : Promise.resolve(NOAPI);
 
   /* ======================================================================== SESSIONS: pure parts */
   /** The ids of the sessions that tabs of this page host: a recorded row of one of them cannot be deleted from here. */
@@ -126,13 +126,13 @@
   /** The card of one live (or read-only) session. */
   function cardHtml(S) { const w = S.wm, c = calc.totals(w), st = S.state(), cur = S === SL.sessions.active, q = calc.openQuestion(w), nW = S.roster.length - 1, merged = w.merged.length, tot = w.torder.length;
         return '<article class="scard' + (cur ? ' cur' : '') + '" data-sid="' + esc(S.id) + '" data-state="' + st + '"><div class="sc-h"><span class="sg">' + GL[st] + '</span><b class="sn">' + esc(S.name) + '</b>' + (cur ? '<span class="tag ok">active</span>' : '') + (S.recorded ? '<span class="tag" title="a recorded session opened read-only: nothing here changes it">' + (S.follow ? 'watching' : 'replay') + '</span>' : '') + (S.meta.headless ? '<span class="tag warm" title="nobody can answer: an action that needs approval is refused (--ask-timeout ' + esc(S.meta.askTimeout || '10m') + ')">headless</span>' : '') + (q ? '<span class="tag warm">? needs you</span>' : '') + '<span class="sp"></span><span class="dim">' + WORD[st] + '</span></div><div class="sc-m"><span class="mono">' + esc(S.meta.cwd) + '</span><span>' + esc(S.meta.model.split('/')[1] || S.meta.model) + '</span><span>' + esc(S.meta.mode) + '</span><span>' + (nW ? 'manager + ' + nW + ' workers' : 'single agent') + '</span><span>started ' + esc(S.meta.started || '') + '</span></div><div class="sc-n"><span class="num" data-c="cost">' + fmtUsd(c.cost, 3) + '</span><span class="dim">of ' + (S.meta.budget ? fmtUsd(S.meta.budget, 2) : 'no budget') + '</span><span class="' + hitCls(c.pct) + ' num qfull" data-c="hit">' + c.pct + '% hit</span>' + (tot ? '<span class="num">' + merged + '/' + tot + ' merged</span>' : '') + '</div><div class="gauge wide"><i style="width:' + (S.meta.budget ? Math.min(100, c.cost / S.meta.budget * 100) : 0) + '%"></i></div><pre class="launch mono">' + esc(S.meta.launch || 'sleipnir chat') + '</pre><div class="sc-a"><button class="btn sm pri" type="button" data-open>Open</button><button class="btn sm" type="button" data-ren>Rename</button>' + (S.recorded ? '' : '<button class="btn sm" type="button" data-stop>Stop run</button>') + '<button class="btn sm danger" type="button" data-close>Close</button></div></article>'; }
-  C3.sessions = { cardHtml, hostedSids, isLive, whyNotDeletable, recRow, recHtml, pruneText, doneNote, noteHtml, deleteSpec, deleteIds, pruneApply };
+  TK.sessions = { cardHtml, hostedSids, isLive, whyNotDeletable, recRow, recHtml, pruneText, doneNote, noteHtml, deleteSpec, deleteIds, pruneApply };
 
   /* ======================================================================== SESSIONS */
   reg({ name: 'sessions', title: 'Sessions', mount(sc, root) {
     root.innerHTML = '<div class="sessv"><section class="panel"><div class="ph"><h2>Live sessions</h2><div class="r"><span class="lcount"></span><button class="btn sm pri" type="button" data-new>+ New session</button></div></div><div class="livecards"></div><div class="ph" style="margin-top:6px"><h2>Recorded</h2><div class="r"><span class="rcount"></span><button class="btn sm danger" type="button" data-del disabled>Delete selected…</button><button class="btn sm" type="button" data-cont>↺ --continue</button></div></div><div class="reclist"></div></section><div class="sess-side"><section class="panel"><div class="ph"><h2>Prune</h2><div class="r"><span class="mono">sessions prune</span></div></div><div class="prune"><p style="margin:0 0 8px">Deletes recorded sessions that are old: the event log, the blobs it points at and the checkpoints of each. The newest are kept whatever their age, and so is any session written to in the last ten minutes. Live sessions are never touched.</p><div class="field-row"><label class="mono" for="pOlder">--older-than</label><input id="pOlder" value="30d" style="max-width:90px"><label class="mono" for="pKeep">--keep</label><input id="pKeep" value="20" style="max-width:70px"></div><pre id="pPre" class="pre"></pre><div class="row2"><button class="btn danger" type="button" id="pYes">Prune with --yes…</button></div><p id="pNote" class="stubnote" style="margin:8px 0 0"></p></div></section><section class="panel"><div class="ph"><h2>Cross-session inbox</h2><div class="r"><span class="nneed"></span></div></div><div class="needs-list"></div></section></div></div>';
     const live = $('.livecards', root), rec = $('.reclist', root), sel = new Set(), P = { plan: null, seq: 0, timer: 0, busy: false };
-    /** the tabs the cards show: every session but the empty placeholder of a page with no tab (D-12) */
+    /** the tabs the cards show: every session but the empty placeholder of a page with no tab */
     const sessionsShown = () => SL.sessions.list.filter(S => !S.placeholder);
     const liveHtml = () => sessionsShown().map(cardHtml).join('');
     const recorded = () => SL.sessions.recorded || [];
@@ -160,7 +160,7 @@
       $$('.scard', live).forEach(c => { const S = SL.sessions.get(c.dataset.sid); if (!S) return; const t = calc.totals(S.wm), e = $('[data-c="cost"]', c), h = $('[data-c="hit"]', c); if (e) { const x = fmtUsd(t.cost, 3); if (e.textContent !== x) e.textContent = x; } if (h) { const x = t.pct + '% hit'; if (h.textContent !== x) h.textContent = x; } });
     }
 
-    /* the recorded session of a tab: Replay and Watch open a read-only tab through the live core (D-10, A7) */
+    /* the recorded session of a tab: Replay and Watch open a read-only tab through the live core (Replay plays its log; Watch follows a session another process writes) */
     function openRecorded(id, follow) {
       const open = (SL.act && SL.act.openRecorded) || (SL.sessions && SL.sessions.openRecorded);
       if (typeof open !== 'function') { ui.toast('replay it with sleipnir replay ' + id + ' in a terminal', 'warm'); return; }
@@ -186,11 +186,11 @@
       ui.confirm({ title: sp.title, text: sp.text, detail: sp.detail, ok: sp.ok, danger: true, run: async () => {
         P.busy = true; picked();
         const r = await deleteIds(rows.map(x => x.id)); P.busy = false;
-        if (!r.ok) { net.fail(r, 'the sessions could not be deleted'); picked(); C3.refreshRecorded(); return; }
+        if (!r.ok) { net.fail(r, 'the sessions could not be deleted'); picked(); TK.refreshRecorded(); return; }
         const n = doneNote('deleted', r.data), note = $('#pNote', root);
         rows.forEach(x => sel.delete(x.id));
         if (note) note.innerHTML = noteHtml(n);
-        if (n.error) ui.toast(n.error, 'warm'); ui.toast('deleted ' + plural(r.data.list.length, 'session') + ', ' + mb1(r.data.mb) + ' MB freed', n.error ? 'warm' : 'ok'); await C3.refreshRecorded(); sig = ''; render();
+        if (n.error) ui.toast(n.error, 'warm'); ui.toast('deleted ' + plural(r.data.list.length, 'session') + ', ' + mb1(r.data.mb) + ' MB freed', n.error ? 'warm' : 'ok'); await TK.refreshRecorded(); sig = ''; render();
       } });
     }
 
@@ -210,9 +210,9 @@
         ui.confirm({ title: sp.title, text: sp.text, detail: sp.detail, ok: sp.ok, danger: true, run: async () => {
           P.busy = true; $('#pYes', root).disabled = true;
           const r = await pruneApply(o, k, list.map(x => x.id)); P.busy = false;
-          if (!r.ok) { net.fail(r, 'the sessions could not be pruned'); await C3.refreshRecorded(); sig = ''; render(); return; }
+          if (!r.ok) { net.fail(r, 'the sessions could not be pruned'); await TK.refreshRecorded(); sig = ''; render(); return; }
           const n = doneNote('deleted', r.data); $('#pNote', root).innerHTML = noteHtml(n);
-          if (n.error) ui.toast(n.error, 'warm'); ui.toast('pruned ' + plural(r.data.list.length, 'session') + ', ' + mb1(r.data.mb) + ' MB freed', n.error ? 'warm' : 'ok'); await C3.refreshRecorded(); sig = ''; render();
+          if (n.error) ui.toast(n.error, 'warm'); ui.toast('pruned ' + plural(r.data.list.length, 'session') + ', ' + mb1(r.data.mb) + ' MB freed', n.error ? 'warm' : 'ok'); await TK.refreshRecorded(); sig = ''; render();
         } });
       } });
     sc.listen(root, 'change', e => {

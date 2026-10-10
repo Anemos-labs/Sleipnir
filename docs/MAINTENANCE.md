@@ -8,6 +8,7 @@
 | Current release and installed version | Git tags and published releases; binary build metadata | Install documentation uses `releases/latest` and `@latest`; release CI checks source identity, checksums, and provenance |
 | CLI commands and flags | Binary help | `scripts/gen-cli-docs.sh --check` |
 | Command specification of the browser interface | `docs/CLI.md` | `scripts/gen-clispec.sh --check` |
+| Route set of the browser interface (`docs/WEB-API.md`) | The routes the host registers (`web.Server.Routes`) | `TestWebAPIDocumentListsEveryRegisteredRoute` in `cmd/sleipnir` compares them with the route tables of the document |
 | Provider option names | Adapter configuration | Configuration tests compare documented options with supported keys |
 | Cache simulation output | Simulator | CI regenerates `docs/CACHE-ECONOMICS.md` and compares it |
 | Stable prompt bytes | Renderers, schemas, golden fixtures | Golden tests and `scripts/check-declared.sh` require a compatibility declaration |

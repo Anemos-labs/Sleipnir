@@ -1,4 +1,4 @@
-// ws-live.browser.mjs: the Workspace of the real page (internal/web/ui, with every module of the live data layer) against A2's fake server
+// ws-live.browser.mjs: the Workspace of the real page (internal/web/ui, with every module of the live data layer) against the fake server
 // (internal/web/webtest/cmd/fakeserver, built here with the Go toolchain). Needs Go and a Chromium; not part of the `*.test.mjs` set that CI runs:
 //   node --test internal/web/uidev/test/ws-live.browser.mjs
 import test, { before, after } from 'node:test';

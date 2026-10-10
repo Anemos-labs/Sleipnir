@@ -298,7 +298,9 @@ there is no flag or environment variable that sets it, and it appears only on th
 cookie (HttpOnly, SameSite=Strict, 24 hours) and removes it from the address bar; the server keeps the sessions, so a session can
 be ended without ending the run. A browser without a session is told to open the address again. A script uses the same token as
 `Authorization: Bearer <token>`; every request other than GET also needs `X-Sleipnir-Web: 1` and, with a body, `Content-Type:
-application/json`. `GET /healthz` answers without a token and says nothing but `{"ok":true}`; `GET /api/ping` needs one.
+application/json`. `GET /healthz` answers without a token and says nothing but `{"ok":true}`; `GET /api/ping` needs one. The routes,
+the confirmation protocol and the event stream the page uses are listed in [Web API](WEB-API.md); that interface is the page's and
+may change between releases.
 
 The chat flags (`--model`, `--mode`, `--swarm`, `--budget-usd`, `--isolation`, `--verify`, `--commit`, `--mailman`, `--role-model`,
 `--allow`, `--trust-project`, `--no-mcp`, `--resume`, `--continue`) and `--cwd` are the defaults of the sessions started in the

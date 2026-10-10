@@ -9,7 +9,8 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// specJSON is the mock's CLI spec (its generator reads docs/CLI.md); CLISpec adds the mode of each command.
+// specJSON is the fake server's CLI spec, a snapshot of the commands, flags and chat slash commands of docs/CLI.md; CLISpec adds the
+// mode of each command.
 //
 //go:embed testdata/cli-spec.json
 var specJSON []byte
@@ -19,7 +20,8 @@ var (
 	spec     wire.CLISpec
 )
 
-// CLISpec returns the CLI spec with the run mode of every command (CONTRACT.md section 18.2). The value is shared: do not modify it.
+// CLISpec returns the CLI spec with the run mode of every command (run, net, priv, server or tty_only). The value is shared: do not
+// modify it.
 func CLISpec() wire.CLISpec {
 	specOnce.Do(func() {
 		if err := json.Unmarshal(specJSON, &spec); err != nil {
@@ -33,7 +35,8 @@ func CLISpec() wire.CLISpec {
 	return spec
 }
 
-// modeOf is the run mode of a command (CONTRACT.md 18.2) and, for the refusals, the sentence that names the web equivalent.
+// modeOf is the run mode of a command (run, net, priv, server or tty_only) and, for the refusals, the sentence that names the web
+// equivalent.
 func modeOf(path []string) (mode, why string) {
 	p := strings.Join(path, " ")
 	switch p {

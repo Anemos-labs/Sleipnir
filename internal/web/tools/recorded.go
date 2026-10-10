@@ -21,7 +21,7 @@ import (
 )
 
 // recordedRow is a recorded session as the Sessions view and the Resume dialog read it: wire.RecordedSession, plus whether it is
-// being written now (PARITY.md A7) and how the end of its isolated run went (A5).
+// being written now and how the end of its isolated run went.
 type recordedRow struct {
 	wire.RecordedSession
 	Live        bool                 `json:"live,omitempty"`
@@ -56,7 +56,7 @@ func mb(bytes int64) float64 {
 	return float64(int64(v*100+0.5)) / 100
 }
 
-// registerRecorded adds the routes of CONTRACT.md 7 and the watching of PARITY.md A7.
+// registerRecorded adds the routes of the recorded sessions and the following of a session another process writes.
 func (s *service) registerRecorded() {
 	s.srv.HandleFunc("GET /api/recorded", s.handleRecorded, web.RouteOpts{WriteTimeout: 60 * time.Second})
 	s.srv.HandleFunc("POST /api/recorded/prune", s.handlePrune, web.RouteOpts{WriteTimeout: 10 * time.Minute})
@@ -208,7 +208,7 @@ func (s *service) remove(w http.ResponseWriter, r *http.Request, ids []string, r
 // maxDelete bounds the sessions one delete names.
 const maxDelete = 1000
 
-// handleDelete is POST /api/recorded/delete: the sessions the person chose (PARITY.md A6), with prune's safety.
+// handleDelete is POST /api/recorded/delete: the sessions the person chose, with prune's safety.
 func (s *service) handleDelete(w http.ResponseWriter, r *http.Request) {
 	var body wire.DeleteRecordedRequest
 	if !web.DecodeJSON(w, r, &body) {
@@ -351,8 +351,8 @@ const (
 	maxEventsPage     = 5000
 )
 
-// handleEvents is GET /api/recorded/{sid}/events?from=&limit=: a recorded session's history in the page's UI events (FEATURES.md
-// D-10: the Replay view of a read-only tab plays it), a page at a time; next is where the following page starts ("" at the end).
+// handleEvents is GET /api/recorded/{sid}/events?from=&limit=: a recorded session's history in the page's UI events (the Replay
+// view of a read-only tab plays it), a page at a time; next is where the following page starts ("" at the end).
 func (s *service) handleEvents(w http.ResponseWriter, r *http.Request) {
 	dir, err := s.sessionDir(r.PathValue("sid"))
 	if err != nil {

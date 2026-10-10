@@ -7,7 +7,7 @@ import (
 )
 
 // The journal of a tab generation: every UI event with its seq, in order, bounded by a number of events and a number of bytes of
-// JSON (VOCAB.md 11). What it evicts from the front is folded into the front mirror, whose keyframe stands in for it in a snapshot.
+// JSON. What it evicts from the front is folded into the front mirror, whose keyframe stands in for it in a snapshot.
 // It also folds every event it appends into a tail mirror and keeps a keyframe of that every keyframeEvery events, so that the state
 // at any retained seq is a keyframe and a short run of events away (Seek: the scrubber, a late joiner that wants a moment).
 

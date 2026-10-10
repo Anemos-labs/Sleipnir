@@ -1,8 +1,8 @@
-// ws-browser.test.mjs: the Workspace views (97-ui-workspace.js on 96b-ws-data.js) in a headless Chromium, on the page of the mock with the live
+// ws-browser.test.mjs: the Workspace views (97-ui-workspace.js on 96b-ws-data.js) in a headless Chromium, on the reference page with the live
 // modules swapped in (wsdev.mjs) and the answers of packserver.mjs: what the screens show from the server's index, files and diffs; time travel;
 // reviewed marks; hunk revert and undo; restore preview, apply and undo; apply verified work; the Merge tab; denied, binary and failing files;
 // hostile names and contents; and a project of 10,000 files with a diff of 50,000 lines. Serial; the browser and the servers end with the file.
-// Skipped when no Chromium is installed or the mock's data pack is not in the tree.
+// Skipped when no Chromium is installed or the reference page's data pack is not in the tree.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,7 +14,7 @@ import { makeHybrid } from './wsdev.mjs';
 
 let chrome = null, skip = false;
 try { chrome = findChrome(); } catch { skip = 'no Chromium'; }
-if (!skip && !fs.existsSync(path.join(REPO, 'internal/web/uidev/mock/js/data.js'))) skip = 'the mock data pack is not in the tree';
+if (!skip && !fs.existsSync(path.join(REPO, 'internal/web/uidev/mock/js/data.js'))) skip = 'the data pack of the reference page is not in the tree';
 const FONTS = path.join(REPO, 'internal/web/ui/fonts');
 const T = { skip };
 /** the flows of SL.act (reviewed, revert, restore) need the live page's own actions, cut out of 60-actions.js: a test that needs them skips when they are not there */
@@ -185,7 +185,7 @@ test('Merge: worktrees, the queue in order and the verify output; not isolated: 
   // alt-click on a strip chip opens its verify output
   await click(p, '.ws-tabs [data-tab=files]'); await ev(p, 'document.querySelector("[data-taskf=T2]").dispatchEvent(new MouseEvent("click", { bubbles: true, altKey: true }))'); await until(p, '.ws-tabs [data-tab=merge][aria-selected=true]');
   assert.equal(await ev(p, 'document.querySelector("[data-vtask=T2]").getAttribute("aria-pressed")'), 'true'); await close(p);
-  // the single agent of the mock: no worktrees
+  // the single agent of the reference page: no worktrees
   const p2 = await open(srv); await ev(p2, 'SL.act.switchSession("orders-api")'); await p2.wait(300); await tab(p2, 'files'); await click(p2, '.ws-tabs [data-tab=merge]');
   await until(p2, '.ws-body .ws-none'); assert.equal(await text(p2, '.ws-body .ws-none'), 'no worktree isolation in this run: work is written to the checkout directly'); assert.equal(await count(p2, '[data-accept]'), 0); await close(p2);
 });

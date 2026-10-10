@@ -279,7 +279,7 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 }
 
 // restartTyped is the restart request as the flags a person would type after /restart, and whether the chat starts empty: /new and
-// /clear always do; /swarm, Run settings Apply and "run it again" carry the conversation unless the request says fresh (D-06).
+// /clear always do; /swarm, Run settings Apply and "run it again" carry the conversation unless the request says fresh.
 func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err error) {
 	for _, f := range req.Flags {
 		if len(f) > 4000 {

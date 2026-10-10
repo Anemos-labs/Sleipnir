@@ -42,7 +42,7 @@ type sinkItem struct {
 	// a tool call
 	tid, tool string
 	summary   string // state.ToolSummary of the call
-	arg       string // the row's argument (VOCAB.md 8.2), raw
+	arg       string // the row's argument, raw
 	file      string // the file of a write, edit or apply_patch, project-relative
 	files     []string
 	content   *string // a write's content when it fits the code stream

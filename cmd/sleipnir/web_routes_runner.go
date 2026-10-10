@@ -8,7 +8,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 )
 
-// init links the command runner (CONTRACT.md 18) into `sleipnir web`.
+// init links the command runner into `sleipnir web`.
 func init() {
 	webRoutePackages = append(webRoutePackages, webRoutePackage{name: "runner", order: 40,
 		register: func(srv *web.Server, h seam.Host, env webRouteEnv) {

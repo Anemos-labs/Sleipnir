@@ -1,7 +1,6 @@
-// Package tools serves the recorded-session, schedule, doctor and update routes of `sleipnir web` (CONTRACT.md sections 7, 17 and
-// 19, with PARITY.md A5, A6, A7, A11, A12 and A23): the Sessions view's recorded list, prune and delete; the read-only replay and
-// the live following of a session another process writes; the Schedule view's jobs, run now, logs and the daemon; the Doctor's
-// probe; the update check and install.
+// Package tools serves the recorded-session, schedule, doctor and update routes of `sleipnir web`: the Sessions view's recorded
+// list, prune and delete; the read-only replay and the live following of a session another process writes; the Schedule view's
+// jobs, run now, logs and the daemon; the Doctor's probe; the update check and install.
 //
 // It reads the state directory (session.StateRoot) and never a session's log while it is written by this package: sessions are
 // listed and summarised by package session, deleted through session.RemoveRecorded (the session's lock, the salvage of worker
@@ -9,7 +8,7 @@
 // (the doctor's probe, a job run now, an update) go through the runner of the same server (package runner), so they share its cap,
 // its process groups, its masking of output and its "run" frames.
 //
-// Privileged actions need a confirmation (CONTRACT.md 20): a prune with apply (prune:<d16 of the sorted ids>), a delete
+// Privileged actions need a confirmation (docs/WEB-API.md): a prune with apply (prune:<d16 of the sorted ids>), a delete
 // (delete:<d16 of the sorted ids>), adding a job (job.add), editing one (job.edit:<job>), installing an update (update:<version>).
 // A request without the X-Confirm header is answered 428 with the scope in X-Confirm-Scope and, where the server decides what is
 // confirmed (a prune), the plan as the error's detail.
@@ -78,7 +77,7 @@ var services = struct {
 	m map[*web.Server]*service
 }{m: map[*web.Server]*service{}}
 
-// Register adds the routes of CONTRACT.md sections 7, 17 and 19 to srv, resolving tabs through h; output goes to h.Publish.
+// Register adds the recorded-session, schedule, doctor and update routes to srv, resolving tabs through h; output goes to h.Publish.
 func Register(srv *web.Server, h seam.Host, o Options) {
 	if o.Now == nil {
 		o.Now = time.Now

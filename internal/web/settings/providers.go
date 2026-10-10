@@ -136,7 +136,7 @@ func (s *service) handleProviders(w http.ResponseWriter, r *http.Request) {
 	reply(w, s.providersView(), nil)
 }
 
-// handleRecheck is POST /api/providers/recheck (the sign-in dialog's "I ran it: check again", decision D-01): the keys `sleipnir login`
+// handleRecheck is POST /api/providers/recheck (the sign-in dialog's "I ran it: check again"): the keys `sleipnir login`
 // stored or `sleipnir logout` removed in a terminal since are taken up by this process, then the providers are listed again.
 func (s *service) handleRecheck(w http.ResponseWriter, r *http.Request) {
 	s.reloadStored()
@@ -229,7 +229,7 @@ func (s *service) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	reply(w, s.providerRow(cfg, name, ""), nil)
 }
 
-// handleKey is POST /api/providers/{name}/key (served only when KeyRoutes is true; decision D-01 keeps it off): store a provider's
+// handleKey is POST /api/providers/{name}/key (served only when KeyRoutes is true, which it is not): store a provider's
 // key typed in the browser, with the confirmation key:<name>; with check, one small request tries it and a refused key is not kept
 // (422 rejected). The key is read from the body only, never logged, never returned.
 func (s *service) handleKey(w http.ResponseWriter, r *http.Request) {

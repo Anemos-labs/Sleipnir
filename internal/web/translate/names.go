@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// uiID is the agent id of the vocabulary: the single agent ("main") and the manager are "mgr" (VOCAB.md 8.1); every other id is
-// as the swarm named it.
+// uiID is the agent id of the vocabulary: the single agent ("main") and the manager are "mgr"; every other id is as the
+// swarm named it.
 func uiID(id string) string {
 	if id == "main" {
 		return "mgr"
@@ -28,7 +28,7 @@ func nonAgent(id string) bool {
 	return false
 }
 
-// displayName is the tool's name as the page shows it (VOCAB.md 8.2).
+// displayName is the tool's name as the page shows it.
 func displayName(tool string) string {
 	switch tool {
 	case "bash", "bash_output", "bash_kill":
@@ -144,7 +144,7 @@ func relPath(root, p string) string {
 	return filepath.ToSlash(p)
 }
 
-// argOf is the one-line argument of a tool row (VOCAB.md 8.2): the command, the path, the pattern, what a swarm tool was asked.
+// argOf is the one-line argument of a tool row: the command, the path, the pattern, what a swarm tool was asked.
 // spawned names the agents a spawn call started, when the result said so.
 func argOf(root, tool string, in *callInput, spawned string) string {
 	switch tool {

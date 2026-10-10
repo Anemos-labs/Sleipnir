@@ -1,4 +1,4 @@
-// safe.browser.mjs: hostile text renders as text (TEST-PLAN.md S-08). Runs the real page in headless Chromium against the fake server
+// safe.browser.mjs: hostile text renders as text. Runs the real page in headless Chromium against the fake server
 // (internal/web/webtest), puts markup into every place untrusted text reaches (model text, tool output, file names, mail, session
 // names, question commands and changes, the recorded list, MCP and provider names) and checks that no element was created from it
 // and that the text shows as typed.
@@ -6,14 +6,14 @@
 //   go build -o /tmp/fakeserver ./internal/web/webtest/cmd/fakeserver
 //   FAKESERVER=/tmp/fakeserver node internal/web/uidev/test/safe.browser.mjs
 //
-// It needs a Chromium (CHROME_PATH, or the Playwright headless shell the mock's tests use); it is not part of `node --test` and not of CI.
+// It needs a Chromium (CHROME_PATH, or the Playwright headless shell: see cdp.mjs); it is not part of `node --test` and not of CI.
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '../../../..');
-const { open } = await import(path.join(repo, 'docs/design/web-mocks/_src/v3/test/cdp.mjs'));
+const { open } = await import(path.join(here, 'cdp.mjs'));
 const bin = process.env.FAKESERVER; if (!bin) { console.log('skip: set FAKESERVER to a built internal/web/webtest/cmd/fakeserver'); process.exit(0); }
 const srv = spawn(bin, ['-addr', '127.0.0.1:0', '-ui', path.join(repo, 'internal/web/ui'), '-speed', '0'], { stdio: ['ignore', 'pipe', 'inherit'] });
 process.once('exit', () => { try { srv.kill('SIGKILL'); } catch { /* gone */ } });

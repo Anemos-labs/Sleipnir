@@ -29,7 +29,7 @@ type Config struct {
 	Verify func() (cmd string, isolated bool)
 }
 
-// Limits bound the journal and the sink queue (VOCAB.md section 14); the zero value means the defaults.
+// Limits bound the journal and the sink queue; the zero value means the defaults.
 type Limits struct {
 	JournalEvents int
 	JournalBytes  int
@@ -48,7 +48,7 @@ const (
 	// tickEvery is the translator's clock: the coalescing of streamed text (one more per message per 100 ms), the rate limits and the
 	// governor's gauge.
 	tickEvery = 100 * time.Millisecond
-	// subscriptionBuffer is the log subscription's channel (VOCAB.md 14).
+	// subscriptionBuffer is the capacity of the log subscription's channel.
 	subscriptionBuffer = 4096
 )
 
@@ -69,8 +69,8 @@ func (l Limits) withDefaults() Limits {
 	return l
 }
 
-// Translator turns one tab generation's harness activity into the UI events of VOCAB.md, keeps them in the tab's journal and publishes
-// them. It implements seam.Translator. Every method is safe for concurrent use; the sinks never block.
+// Translator turns one tab generation's harness activity into the UI events of package wire, keeps them in the tab's journal and
+// publishes them. It implements seam.Translator. Every method is safe for concurrent use; the sinks never block.
 type Translator struct {
 	cfg Config
 	lim Limits

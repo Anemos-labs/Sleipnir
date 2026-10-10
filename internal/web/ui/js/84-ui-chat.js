@@ -214,8 +214,8 @@
       if (e.key === 'j' && e.ctrlKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
       if (e.key === 'c' && e.ctrlKey && inp.selectionStart === inp.selectionEnd) { e.preventDefault(); const S = SL.sessions.active;
         if (inp.value) { inp.value = ''; autosize(); closeSlash(); ui.toast('line discarded (ctrl+c again at an empty prompt quits)'); }
-        else if (S && !S.readOnly && (SL.calc.turnRunning(S.wm) || S.meta.running)) { RS.cc = 0; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the turn is stopped and the goal is paused (/goal resume)' : (r.why || 'nothing is running to interrupt'), r.ok ? 'warm' : 'quiet'); }   /* PARITY A26: as Esc and the TUI */
-        else if (RS.cc && SL.time.wall - RS.cc < 1500) { RS.cc = 0; if (S) ui.closeSessionAsk(S); }   /* D-14: quitting a page's session is closing it */
+        else if (S && !S.readOnly && (SL.calc.turnRunning(S.wm) || S.meta.running)) { RS.cc = 0; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the turn is stopped and the goal is paused (/goal resume)' : (r.why || 'nothing is running to interrupt'), r.ok ? 'warm' : 'quiet'); }   /* as Esc does, and as the TUI does */
+        else if (RS.cc && SL.time.wall - RS.cc < 1500) { RS.cc = 0; if (S) ui.closeSessionAsk(S); }   /* ctrl+c twice at an empty prompt closes the session (quitting a page's session is closing it) */
         else { RS.cc = SL.time.wall; ui.toast('ctrl+c again to quit'); } return; }
       if (e.key === 'r' && e.ctrlKey) { e.preventDefault(); ui.sheets.history(); return; }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey) {

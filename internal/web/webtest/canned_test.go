@@ -38,7 +38,7 @@ func strictDecode(t testing.TB, data []byte, v any) {
 	}
 }
 
-func TestTheCannedSessionIsInTheContractsVocabulary(t *testing.T) {
+func TestTheCannedSessionIsInTheEventVocabulary(t *testing.T) {
 	sc := Shop()
 	all := append(append([]wire.Event{}, sc.History...), sc.Live...)
 	kinds := map[string]bool{}
@@ -106,7 +106,7 @@ func TestMessageIdsPointAtTheEventsThatOpenThem(t *testing.T) {
 	}
 }
 
-func TestQuestionIdsHaveTheShapeOfTheContract(t *testing.T) {
+func TestQuestionIdsHaveTheWireShape(t *testing.T) {
 	re := regexp.MustCompile(`^q_[a-z2-7]{26}$`)
 	for _, q := range []wire.Question{ShopQuestion(), LaterQuestion()} {
 		if !re.MatchString(q.ID) {
@@ -128,7 +128,7 @@ func TestScenariosAreIndependentValues(t *testing.T) {
 	}
 }
 
-func TestFrameClassesAreThoseOfTheContract(t *testing.T) {
+func TestFrameClassesAreTheHubClasses(t *testing.T) {
 	var c Classifier
 	cases := []struct {
 		e           wire.Event

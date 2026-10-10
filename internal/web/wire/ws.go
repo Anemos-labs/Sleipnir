@@ -1,7 +1,7 @@
 package wire
 
 // WsIndex is a tab's Workspace history: its checkpoints in arrival order, the base, and the tree at the live edge. It is the
-// real counterpart of the data pack's files.shop that 96b-ws-data.js read.
+// state of the project that the Workspace view draws; Version changes with the content and is the ETag of the answer.
 type WsIndex struct {
 	Root      string            `json:"root"`
 	Isolation string            `json:"isolation"`

@@ -15,9 +15,9 @@
   };
   ui.miniStack = function (m, id) { const toks = D.layerToks(id), tot = toks.reduce((a, b) => a + b, 0), A = m.ag[id], r = A.ratios.length ? A.ratios[A.ratios.length - 1] : 0; let cum = 0; return '<div class="mini">' + D.layers.map((l, i) => { const tk = toks[i], rd = Math.max(0, Math.min(tk, r * tot - cum)), f = tk ? rd / tk : 0; cum += tk; return '<span style="width:' + (tot ? tk / tot * 100 : 100 / toks.length) + '%;display:flex;--lc:' + l.col + '"><i style="width:' + (f * 100) + '%"></i><i class="p" style="width:' + ((1 - f) * 100) + '%"></i></span>'; }).join('') + '</div>'; };
 
-  /** The files an agent wrote last, from the Workspace index (C2's cache); [] while it loads. */
+  /** The files an agent wrote last, from the Workspace index (its cache); [] while it loads. */
   const FILES_OF = (S, id) => (ui.ws && typeof ui.ws.filesOf === 'function' ? ui.ws.filesOf(S, id) || [] : []);
-  /** "saved est." or, when some cache reads had no price, "saved at least" (PARITY A16). */
+  /** "saved est." or, when some cache reads had no price, "saved at least". */
   ui.savedWord = c => c.savedPartial ? 'saved at least' : 'saved est.';
   const D_ = { cur: null };
   ui.closeDrawer = function () { const c = D_.cur; if (!c) return; D_.cur = null; SL.link.select(null); c.offs.forEach(f => f()); c.el.remove(); const S = SL.sessions.active; if (S) S.ui.drawer = null; if (c.prev && c.prev.focus && document.contains(c.prev)) c.prev.focus(); };

@@ -17,9 +17,9 @@
       timeout(fn, ms) { if (!sc.alive) return 0; const id = setTimeout(() => { sc.timers.delete(id); if (sc.alive) fn(); }, ms); sc.timers.add(id); return id; },
       interval(fn, ms) { if (!sc.alive) return 0; const id = setInterval(() => { if (sc.alive) fn(); }, ms); sc.ints.add(id); return id; },
       clear(id) { clearTimeout(id); clearInterval(id); sc.timers.delete(id); sc.ints.delete(id); },
-      /** requestAnimationFrame that dies with the scope (for work that must follow the display, not the sim clock). */
+      /** requestAnimationFrame that dies with the scope (for work that must follow the display, not the view clock). */
       raf(fn) { if (!sc.alive) return 0; const id = requestAnimationFrame(t => { sc.rafs.delete(id); if (sc.alive) fn(t); }); sc.rafs.add(id); return id; },
-      /** A per-frame callback on the SIM clock: fn(dtView, vt, session). Returns a remover. */
+      /** A per-frame callback on the VIEW clock: fn(dtView, vt, session). Returns a remover. */
       frame(fn) { const rec = { fn, sc }; sc.frames.add(rec); SL.loop.frames.add(rec); return () => { sc.frames.delete(rec); SL.loop.frames.delete(rec); }; },
       /** Re-render hook: fn(session, model) runs when the model, the meta or the settings changed. */
       update(fn) { const rec = { fn, sc }; sc.updaters.add(rec); SL.loop.updaters.add(rec); return () => { sc.updaters.delete(rec); SL.loop.updaters.delete(rec); }; },

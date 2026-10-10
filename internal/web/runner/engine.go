@@ -36,7 +36,7 @@ type Spec struct {
 	Net bool
 	// Func runs the command in this process instead of a child: it writes to stdout and stderr and returns the exit status.
 	Func func(ctx context.Context, stdout, stderr io.Writer) int
-	// Keep says that the page lets the run go on when it leaves it (PARITY.md A22); Server that the run has no time limit (a
+	// Keep says that the page lets the run go on when it leaves it; Server that the run has no time limit (a
 	// server runs until it is stopped).
 	Keep, Server bool
 	// Timeout replaces the runner's limit when positive.
@@ -50,7 +50,7 @@ type Spec struct {
 	End func(res *wire.RunResult) *wire.DoctorVerdict
 }
 
-// RunInfo is a run in the recent-runs list: wire.RunInfo, plus whether the page keeps it going (A22).
+// RunInfo is a run in the recent-runs list: wire.RunInfo, plus whether the page keeps it going.
 type RunInfo struct {
 	wire.RunInfo
 	Keep    bool `json:"keep,omitempty"`

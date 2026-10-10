@@ -1,5 +1,5 @@
 // Package clispec holds the CLI spec of `sleipnir web`: every `sleipnir` command with its usage, summary, positionals and typed
-// flags, the mode the page's runner runs it in (CONTRACT.md 18.2), the chat's slash commands and the exit codes. The page builds
+// flags, the mode the page's runner runs it in, the chat's slash commands and the exit codes. The page builds
 // the runner's forms, the Tools catalogue and the palette's program entries from it (GET /api/cli).
 //
 // clispec.json is generated and checked in: `go generate ./internal/web/clispec` rebuilds it from docs/CLI.md (whose flag blocks are

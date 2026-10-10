@@ -34,7 +34,7 @@ func TestCLISpecDrift(t *testing.T) {
 	}
 }
 
-// Every command that `sleipnir --help` lists has an entry, and every entry has a mode of CONTRACT.md 18.2.
+// Every command that `sleipnir --help` lists has an entry, and every entry has one of the modes of the runner.
 func TestEveryHelpCommandHasAnEntryWithAMode(t *testing.T) {
 	in, err := specgen.ReadInputs(repo)
 	if err != nil {
@@ -70,8 +70,8 @@ func TestEveryHelpCommandHasAnEntryWithAMode(t *testing.T) {
 	}
 }
 
-// The modes the contract names (CONTRACT.md 18.2, PARITY.md A30) are the ones the spec carries.
-func TestModesOfTheContract(t *testing.T) {
+// The spec carries the mode each command runs in: terminal-only, plain, network, privileged and server.
+func TestModesAreTheOnesTheSpecCarries(t *testing.T) {
 	for path, want := range map[string]string{
 		"chat": "tty_only", "watch": "tty_only", "login": "tty_only", "web": "tty_only", "inspect": "tty_only", "replay": "tty_only",
 		"config": "run", "sessions": "run", "sessions prune": "run", "recon": "run", "sim": "run", "friction": "run", "version": "run",

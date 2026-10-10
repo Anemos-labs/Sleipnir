@@ -1,6 +1,6 @@
 /* 87-ui-sheets.js: SL.ui.sheets (goal, mode, context, help, history) and SL.ui.dialogs (new session, resume, rename). Each one reads
  * the active session and changes it only through SL.act; what it shows after an action is what the server sends back.
- * The New session dialog starts from the server's defaults (its flags and configuration, PARITY A4), offers the projects the server
+ * The New session dialog starts from the server's defaults (its flags and configuration), offers the projects the server
  * allows (a new session never starts in a free path). It never decides that a project needs trust: the request goes first, and the
  * server's challenge (409 trust_required, for a new session and a resume alike) is the "Trust this project?" dialog (ui.trustStep), which
  * lists every file the server sent and wakes its yes only once that list is on screen; the yes repeats the request with the challenge's
@@ -21,7 +21,7 @@
   /* ---------- goal ---------- */
   sheets.goal = function () {
     const S = S_(), m = S.m || S.wm, gs = m.goal.state, goalText = S.meta.goalText || m.goal.objective || '';
-    /* evidence: the tasks merged, then what the judge says is left (unchecked), or its reason when the goal is met (D-07) */
+    /* evidence: the tasks merged, then what the judge says is left (unchecked), or its reason when the goal is met */
     const ev = m.torder.map(t => [t + ' ' + m.tasks[t].title + ' merged', m.tasks[t].st === 'merged']).concat(gs === 'met' ? (m.goal.reason ? [[m.goal.reason, true]] : []) : (m.left || []).map(x => [x, false]));
     const done = m.plan.filter(s => s === 'done').length, plan = S.plan, max = m.goal.max, used = m.goal.turns || 0;
     ui.modal({ title: 'Goal', kicker: '/goal', desc: 'work until it is met, judged on evidence', wide: true, body:
@@ -86,11 +86,11 @@
    *  (untrusted, changed, partial: not every file could be scanned, unreadable: its files could not be read). */
   const TRUST_WORD = { untrusted: 'not trusted', changed: 'changed since trusted', partial: 'partial: not every file could be scanned', unreadable: 'unreadable: its files could not be read' };
   const trustWord = t => t && t !== 'trusted' && t !== 'none' ? ' · ' + (U.own(TRUST_WORD, t) || String(t)) : '';
-  /** The seed of the New session dialog: the server's defaults (its flags over the configuration), else the mock's own values. */
+  /** The seed of the New session dialog: the server's defaults (its flags over the configuration), else the page's own values. */
   function seedOf() {
     const has = !!(SL.live && SL.live.defaults()), d = has ? SL.live.defaults() : {}, projects = (D.extra.projects || []), def = projects.find(p => p.default) || projects[0];
     const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '';
-    /* with the server's defaults an absent field is the CLI's own default (no budget, no verify command); without them, the mock's seeds */
+    /* with the server's defaults an absent field is the CLI's own default (no budget, no verify command); without them, the page's own seeds */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
     return { name: '', cwd, model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : has ? 'off' : '5', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 12, resume: '' };
   }

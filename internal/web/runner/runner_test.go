@@ -199,7 +199,7 @@ func TestRunStreamsOutputAndEnds(t *testing.T) {
 		case "err":
 			errs++
 		default:
-			t.Errorf("kind %q (D-19: out and err only)", l.K)
+			t.Errorf("kind %q: a line of a run is out or err", l.K)
 		}
 	}
 	if outs != 12 || errs != 1 {

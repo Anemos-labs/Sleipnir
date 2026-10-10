@@ -290,7 +290,7 @@ type soloScript struct {
 	step  int // the next reply of the current turn
 }
 
-// respond answers the mock's calls.
+// respond answers the mock provider's calls.
 func (sc *soloScript) respond(c *mock.Call) mock.Reply {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()

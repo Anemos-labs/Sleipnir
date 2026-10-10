@@ -7,28 +7,27 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// The events of this file extend the vocabulary of package wire additively, for the gaps of PARITY.md the translator fills (A13, A16,
-// A17, A18, A27): an existing kind with optional fields the reducer does not read (it ignores unknown keys), or a new kind it does not
-// handle. Each embeds the wire type it extends, so it encodes as that type's fields plus its own, and it is a wire.Event through the
-// embedded Base.
+// The events of this file extend the vocabulary of package wire additively: an existing kind with optional fields (a reader that does
+// not know them ignores them), or a new kind (alert, mailstat). Each embeds the wire type it extends, so it encodes as that type's
+// fields plus its own, and it is a wire.Event through the embedded Base.
 
-// StateX is a state event with reqSince: the session time at which the agent's oldest unanswered main request was sent (PARITY A13,
-// "waiting for the model"), absent when no request is in flight.
+// StateX is a state event with reqSince: the session time at which the agent's oldest unanswered main request was sent (the page
+// shows "waiting for the model" from it), absent when no request is in flight.
 type StateX struct {
 	wire.State
 	ReqSince *float64 `json:"reqSince,omitempty"`
 }
 
 // UseX is a use event with SavedPartial (some of the agent's cache reads were at a price nobody knows, so Saved is a lower bound) and
-// Unpriced, those cache-read tokens (PARITY A16).
+// Unpriced, the number of those cache-read tokens.
 type UseX struct {
 	wire.Use
 	SavedPartial bool  `json:"savedPartial,omitempty"`
 	Unpriced     int64 `json:"unpriced,omitempty"`
 }
 
-// TaskX is a task event with Failed (the board failed the task: it stays in the todo column with its closure, ERRATA D-04),
-// Attempts (how many assignments it has had, PARITY A17) and Blocked (the board's blocked status: its owner waits).
+// TaskX is a task event with Failed (the board failed the task: it stays in the todo column with its closure), Attempts (how many
+// assignments it has had) and Blocked (the board's blocked status: its owner waits).
 type TaskX struct {
 	wire.Task
 	Failed   bool `json:"failed,omitempty"`
@@ -36,8 +35,8 @@ type TaskX struct {
 	Blocked  bool `json:"blocked,omitempty"`
 }
 
-// MailX is a mail event with Tok, the estimated size of the text in tokens (PARITY A18), and Digest, the number of messages a
-// mailman's digest stands for.
+// MailX is a mail event with Tok, the estimated size of the text in tokens, and Digest, the number of messages a mailman's digest
+// stands for.
 type MailX struct {
 	wire.Mail
 	Tok    int `json:"tok,omitempty"`
@@ -45,15 +44,15 @@ type MailX struct {
 }
 
 // ToolX is a tool event with Ms, the time the call ran, and Waited, the part of it spent waiting for a person's answer to a question
-// (PARITY A27: a tool's duration excludes the wait; Ms is already without it).
+// (a tool's duration excludes that wait; Ms is already without it).
 type ToolX struct {
 	wire.Tool
 	Ms     int64 `json:"ms,omitempty"`
 	Waited int64 `json:"waited,omitempty"`
 }
 
-// Alert is a new kind (PARITY A17): one of the board's short-lived warnings raised or cleared (board.op alert, alert-clear,
-// alert-expire). Key tells two alerts of one kind apart; S is raise or clear.
+// Alert is a new kind: one of the board's short-lived warnings raised or cleared (board.op alert, alert-clear, alert-expire). Key
+// tells two alerts of one kind apart; S is raise or clear.
 type Alert struct {
 	wire.Base
 	S    string `json:"s"`
@@ -62,7 +61,7 @@ type Alert struct {
 	Text string `json:"text,omitempty"`
 }
 
-// MailStat is a new kind (PARITY A18): the session's mail counts and the mailman's state, as absolute values.
+// MailStat is a new kind: the session's mail counts and the mailman's state, as absolute values.
 type MailStat struct {
 	wire.Base
 	Sent      int    `json:"sent"`
@@ -111,7 +110,7 @@ func baseOf(e wire.Event) *wire.Base {
 	return el.FieldByIndex(idx.([]int)).Addr().Interface().(*wire.Base)
 }
 
-// class is how the hub treats an event's frame for a slow page (VOCAB.md 14).
+// class is how the hub treats an event's frame for a slow page.
 type class struct {
 	critical    bool
 	coalescable bool

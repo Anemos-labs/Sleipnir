@@ -77,7 +77,7 @@ test('ev: duplicates by seq are dropped; meta merges and carries the queue; rost
   es().emit('ping', { now: { a: 20 } }, 15); assert.equal(S.wt, 40, 'a ping never moves the clock back');
 });
 
-test('tab frames add, rename and remove tabs; the last removal leaves the placeholder (D-12)', async () => {
+test('tab frames add, rename and remove tabs; the last removal leaves the placeholder', async () => {
   const { SL, es, state } = setup();
   await SL.live.start(); SL.sessions.init();
   state.snaps.b = snapshot('b', 1, [ev(1, 1, 'say', { who: 'you', text: 'b' })]);
@@ -125,7 +125,7 @@ test('connection states: reconnecting, down on bye, a new boot reloads the page'
   s2.es().emit('bye', { reason: 'shutting down' }, 50); assert.equal(s2.SL.live.state, 'down');
 });
 
-test('actions: synchronous refusals keep the mock\'s whys; requests carry the header, the body and the confirm scope', async () => {
+test('actions: synchronous refusals keep the reference page\'s whys; requests carry the header, the body and the confirm scope', async () => {
   const { SL, state } = setup({ post: (m, p) => p === '/api/confirm' ? { status: 200, body: { id: 'cid-1' } } : { status: 200, body: { ok: true, queued: false } } });
   await SL.live.start(); SL.sessions.init();
   assert.deepEqual(plain(SL.act.setMode('yolo')), { ok: false, why: 'yolo is set only by typing its name to confirm' });
@@ -142,7 +142,7 @@ test('actions: synchronous refusals keep the mock\'s whys; requests carry the he
   await SL.act.send('[pasted text #1 +5 lines]', undefined, { text: 'a\nb\nc\nd\ne' }).done;
   const msg = state.posts.find(x => x[1] === '/api/sessions/a/messages')[2]; assert.equal(msg.text, 'a\nb\nc\nd\ne'); assert.equal(msg.display, '[pasted text #1 +5 lines]'); assert.match(msg.clientId, /^c\d+$/);
   await SL.act.restartTeam({ swarm: 4 }).done;
-  assert.deepEqual(state.posts.find(x => x[1] === '/api/sessions/a/restart')[2], { kind: 'swarm', swarm: 4, fresh: false }, '/swarm carries the conversation (D-06)');
+  assert.deepEqual(state.posts.find(x => x[1] === '/api/sessions/a/restart')[2], { kind: 'swarm', swarm: 4, fresh: false }, '/swarm carries the conversation');
   await SL.act.newChat().done;
   assert.deepEqual(state.posts.filter(x => x[1] === '/api/sessions/a/restart')[1][2], { kind: 'new', fresh: true });
 });
@@ -156,7 +156,7 @@ test('a too-early answer re-arms the quiet period and says why; an answer anothe
   code = 'answered'; const n = toasts.length; await SL.act.answerQuestion('q_1', 1).done; assert.equal(toasts.length, n);
 });
 
-test('a recorded session opens read-only from its events (D-10)', async () => {
+test('a recorded session opens read-only from its events', async () => {
   const { SL } = setup();
   await SL.live.start(); SL.sessions.init();
   SL.views = { show() {} };

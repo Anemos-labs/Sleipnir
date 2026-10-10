@@ -4,8 +4,8 @@ import "encoding/json"
 
 // Error is the body of every non-2xx response (the shape of web.Error, plus an optional Detail) and the error type the route
 // packages return: Status is the HTTP status, Msg one sentence a person can read (it is shown in a toast; never a path outside
-// the project, never a secret), Code a stable identifier (CONTRACT.md section 21), Detail optional structured data (a trust
-// challenge, a retry delay).
+// the project, never a secret), Code a stable identifier (docs/WEB-API.md lists them), Detail optional structured data (a trust
+// challenge, the scope and reasons of a confirmation, the plan that changed).
 type Error struct {
 	Status int    `json:"-"`
 	Msg    string `json:"error"`
@@ -16,8 +16,8 @@ type Error struct {
 // Error implements the error interface.
 func (e *Error) Error() string { return e.Code + ": " + e.Msg }
 
-// Frame is one message of the page's stream before it is handed to the hub: Type is the SSE event name (VOCAB.md section 10),
-// Tab the tab it belongs to ("" for global frames), Data its JSON body. Critical frames are never dropped for a slow page;
+// Frame is one message of the page's stream before it is handed to the hub: Type is the SSE event name (docs/WEB-API.md lists the
+// frames), Tab the tab it belongs to ("" for global frames), Data its JSON body. Critical frames are never dropped for a slow page;
 // Coalescable frames with the same Type and Key replace each other in a slow page's queue (web.Event has the same flags).
 type Frame struct {
 	Type        string
@@ -28,42 +28,45 @@ type Frame struct {
 	Key         string
 }
 
-// EvFrame is the data of an "ev" frame.
+// EvFrame is the data of an "ev" frame: one event of the tab (its Base carries the kind and the sequence number).
 type EvFrame struct {
 	Tab string          `json:"tab"`
 	Ev  json.RawMessage `json:"ev"`
 }
 
-// MetaFrame is the data of a "meta" frame.
+// MetaFrame is the data of a "meta" frame: the fields of the tab's meta that changed.
 type MetaFrame struct {
 	Tab   string    `json:"tab"`
 	Patch MetaPatch `json:"patch"`
 }
 
-// RosterFrame is the data of a "roster" frame.
+// RosterFrame is the data of a "roster" frame: the agents of the tab, replacing the earlier list.
 type RosterFrame struct {
 	Tab    string        `json:"tab"`
 	Roster []RosterEntry `json:"roster"`
 }
 
-// TabFrame is the data of a "tab" frame: Op is add, update or remove.
+// TabFrame is the data of a "tab" frame: Op is add, update (a rename, a new generation, a new session id) or remove.
 type TabFrame struct {
 	Op  string     `json:"op"`
 	Tab TabSummary `json:"tab"`
 }
 
-// ReasonFrame is the data of the "resync" and "bye" frames.
+// ReasonFrame is the data of the "bye" frame: why the server is stopping.
 type ReasonFrame struct {
 	Reason string `json:"reason"`
 }
 
-// ResetFrame is the data of a "reset" frame.
+// ResetFrame is the data of a "reset" frame: the tab started generation Gen (a restart), so its sequence numbers start again and the
+// page fetches its snapshot.
 type ResetFrame struct {
 	Tab string `json:"tab"`
 	Gen uint64 `json:"gen"`
 }
 
-// Hello is the data of the first frame of a stream and of GET /api/hello.
+// Hello is the body of GET /api/hello, which a page reads before it opens the stream. Boot identifies the run of the server (a page
+// that finds another Boot after a lost connection starts over), Now is the server's clock in epoch milliseconds, Tabs the live
+// sessions in strip order and Active the id of the one in front. Version is the program's version.
 type Hello struct {
 	Boot    string       `json:"boot"`
 	Now     int64        `json:"now"`
@@ -78,26 +81,29 @@ type Hello struct {
 	StreamAfter uint64 `json:"streamAfter"`
 }
 
-// ServerInfo describes the server: its listening address as the page should show it, and the program version.
+// ServerInfo describes the server: its listening address as the page shows it (the Host of the request), whether it is bound to
+// loopback (true for the server the command starts), and the program version.
 type ServerInfo struct {
 	Addr     string `json:"addr"`
 	Loopback bool   `json:"loopback"`
 	Version  string `json:"version"`
 }
 
-// Limits are the body and list limits the page must respect.
+// Limits are the limits the page respects: the largest request body in bytes, the largest message in bytes, and how many questions
+// of one tab may be open at once.
 type Limits struct {
 	MaxBody      int `json:"maxBody"`
 	MaxMessage   int `json:"maxMessage"`
 	MaxQuestions int `json:"maxQuestions"`
 }
 
-// UIInfo identifies the embedded UI build (a hash of its files).
+// UIInfo identifies the embedded UI build.
 type UIInfo struct {
 	Version string `json:"version"`
 }
 
-// Toast is the data of a "toast" frame.
+// Toast is the data of a "toast" frame: a notice that is not a row of a session, shown for the tab (Tab, or any when empty) in the
+// tone Kind. The page handles it; the server sends none at present.
 type Toast struct {
 	Tab  string `json:"tab,omitempty"`
 	Text string `json:"text"`
@@ -109,7 +115,10 @@ type Ping struct {
 	Now map[string]float64 `json:"now"`
 }
 
-// TabSummary is a live tab as lists show it.
+// TabSummary is a live tab as lists show it. ID is the tab's id and SID the id of the session it hosts, which names its directory
+// among the recorded sessions. Gen counts the generations of the tab (each restart starts one), CreatedAt is epoch milliseconds and
+// Order the position in the strip. Headless marks a session in which nobody is expected to answer questions: its questions are
+// refused after --ask-timeout, or it follows a session that another process runs.
 type TabSummary struct {
 	ID        string `json:"id"`
 	SID       string `json:"sid"`
@@ -121,7 +130,11 @@ type TabSummary struct {
 	Order     int    `json:"order"`
 }
 
-// RosterEntry is one agent of a tab as the page's Session.roster holds it.
+// RosterEntry is one agent of a tab. ID is the agent's id (mgr for the manager and for a single agent; a role's short code, "-" and a
+// number for a worker, such as be-2), Role its role, Code the role's short code and Nth the number in the id. K is the worker's
+// 1-based start order and Leg its leg of the horse, (K-1) mod 8; the manager has K 0 and Leg -1. Scope is the globs of its current
+// task ("- (read-only)" for a read-only role, "- (edits no file)" for the manager of a team, "**" for a single agent), RO whether
+// its role writes no file, Model the model it runs on and Spawn the session time at which it started.
 type RosterEntry struct {
 	ID    string  `json:"id"`
 	Role  string  `json:"role"`
@@ -135,7 +148,9 @@ type RosterEntry struct {
 	Spawn float64 `json:"spawn"`
 }
 
-// Rule is a permission rule with its origin as the Permissions page shows it.
+// Rule is a permission rule with its origin as the Permissions page shows it. Effect is allow, deny or ask; Origin says where the rule
+// comes from (a configuration layer, a built-in protection, a flag or the session), File the file that holds it and Fixed that it
+// cannot be removed from the page.
 type Rule struct {
 	Effect string `json:"effect"`
 	Rule   string `json:"rule"`
@@ -151,8 +166,12 @@ type QueuedLine struct {
 	Text string `json:"text"`
 }
 
-// MetaPatch is a change to a tab's meta (the page's S.meta); only set fields are sent. Pointers distinguish "unset" from zero, and a
-// pointer to an empty slice or map sends an empty value (the last rule removed, the queue drained).
+// MetaPatch is a change to a tab's meta, the settings and state of the session that the page shows (its directory, model, mode,
+// effort, budget, team size, launch flags, rules, goal, queued lines and whether a turn runs); only set fields are sent. Pointers
+// distinguish "unset" from zero, and a pointer to an empty slice or map sends an empty value (the last rule removed, the queue
+// drained). Launch is the `sleipnir chat` command line that starts the same team again (staged flags included), StartedAt (epoch
+// milliseconds) the moment this run began, which the session time of its events counts from, and ResumedFrom the recorded session
+// that it continues.
 type MetaPatch struct {
 	Cwd          *string            `json:"cwd,omitempty"`
 	Model        *string            `json:"model,omitempty"`
@@ -179,7 +198,12 @@ type MetaPatch struct {
 	Running      *bool              `json:"running,omitempty"`
 }
 
-// TabSnapshot is the full state of a tab for a late joiner (VOCAB.md section 11).
+// TabSnapshot is the full state of a tab for a late joiner. Gen is the tab's generation, Seq the sequence number of the last event
+// included and Now the session time in seconds at which the snapshot was made. Keyframe is a short set of events, stamped with the time
+// of the first retained event, that stands for what the tab's journal no longer holds (each agent's token table and request ratios,
+// its layers and state, the tasks, the plan, the goal and the checkpoints); Events are the retained journal events in Seq order, so
+// that a page's log is Keyframe followed by Events. Hist lists the lines the person sent (for the arrow keys) and Questions the open
+// questions. The journal keeps the newest 50,000 events or 32 MiB of JSON.
 type TabSnapshot struct {
 	Tab       TabSummary        `json:"tab"`
 	Gen       uint64            `json:"gen"`
@@ -193,14 +217,16 @@ type TabSnapshot struct {
 	Questions []Question        `json:"questions"`
 }
 
-// OpenQuestion is a question with the tab it belongs to (the cross-session inbox).
+// OpenQuestion is a question with the tab it belongs to (the inbox of every session): T0 is the session time at which it was asked.
 type OpenQuestion struct {
 	Tab string   `json:"tab"`
 	Q   Question `json:"q"`
 	T0  float64  `json:"t0"`
 }
 
-// NewSessionRequest is the New session dialog: every chat flag it shows, plus a name and a first goal.
+// NewSessionRequest is the New session dialog: every chat flag it shows, plus a name and a first goal. Cwd must be one of the projects
+// the server lists. Swarm is the number of workers (0 is a single agent; absent takes the server's default), Rules are --allow rules,
+// Budget is in US dollars, and RoleModels maps a role to the model it runs on.
 type NewSessionRequest struct {
 	Name         string            `json:"name,omitempty"`
 	Cwd          string            `json:"cwd"`
@@ -237,7 +263,8 @@ type RestartRequest struct {
 	Flags      []string          `json:"flags,omitempty"`
 }
 
-// MessageRequest is a line sent from the composer: Text is what reaches the agent, Display what the transcript shows.
+// MessageRequest is a line sent from the composer: Text is what reaches the agent, Display what the transcript shows (the line as
+// typed, when it differs), ClientID makes a repeated request return the first answer.
 type MessageRequest struct {
 	Text     string `json:"text"`
 	Display  string `json:"display,omitempty"`
@@ -251,7 +278,8 @@ type SendResult struct {
 	ID       string `json:"id"`
 }
 
-// CommandRequest is a slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect).
+// CommandRequest is a slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect) or that the
+// server runs as the route it stands for (/mode, /allow, /model, /restart and the like).
 type CommandRequest struct {
 	Line string `json:"line"`
 }
@@ -281,7 +309,7 @@ type GoalRequest struct {
 	Text   string `json:"text,omitempty"`
 }
 
-// ModeRequest sets the permission mode; bypass and yolo need an X-Confirm id (CONTRACT.md 20).
+// ModeRequest sets the permission mode (default, accept-edits, plan, bypass or yolo); bypass and yolo need an X-Confirm id.
 type ModeRequest struct {
 	Mode string `json:"mode"`
 }
@@ -394,13 +422,13 @@ type PrunePlan struct {
 	Kept    []string          `json:"branchesKept,omitempty"`
 }
 
-// DeleteRecordedRequest deletes the named recorded sessions (the route needs a confirmation, CONTRACT.md 20).
+// DeleteRecordedRequest deletes the named recorded sessions (the route needs a confirmation for exactly those ids).
 type DeleteRecordedRequest struct {
 	IDs []string `json:"ids"`
 }
 
-// ConfirmRequest is the body of POST /api/confirm (a built-in route of internal/web): the scope of the privileged action
-// (CONTRACT.md section 20).
+// ConfirmRequest is the body of POST /api/confirm (a built-in route of internal/web): the scope of the privileged action, which the
+// refusal that asked for the confirmation names (docs/WEB-API.md lists the scopes).
 type ConfirmRequest struct {
 	Scope string `json:"scope"`
 }

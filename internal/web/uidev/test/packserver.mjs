@@ -1,9 +1,9 @@
 // packserver.mjs: a development server for the Workspace views (96b-ws-data.js, 97-ui-workspace.js) with the answers of the workspace API
-// (CONTRACT.md 12) computed from the mock's own data pack. Three jobs:
+// (internal/web/wire/ws.go) computed from the reference page's own data pack. Three jobs:
 //
-//   1. Parity. The page of the mock (internal/web/uidev/mock) with the live Workspace modules swapped in is served here, and the three
-//      workspace routes answer with what the mock's own data layer computes for the same checkpoints (the page tells the server which ones
-//      its model holds), so the live Workspace is drawn from the mock's content and must look like the mock.
+//   1. Parity. The reference page (internal/web/uidev/mock) with the live Workspace modules swapped in is served here, and the three
+//      workspace routes answer with what the reference page's own data layer computes for the same checkpoints (the page tells the server
+//      which ones its model holds), so the live Workspace is drawn from the reference page's content and must look like the reference page.
 //   2. Scale. `big` answers with a project of thousands of files and a diff of tens of thousands of lines, and `hostile` adds paths and
 //      contents that try to break the layout or to pass as markup.
 //   3. Flows. Reviewed marks, hunk reverts, restores, the merge queue, the worktrees and the verify output keep a little state, so that the
@@ -22,7 +22,7 @@ export const REPO = path.resolve(here, '..', '..', '..', '..');
 const CSP = ["default-src 'none'", "script-src 'self'", "style-src 'self'", "style-src-attr 'unsafe-inline'", "font-src 'self'", "img-src 'self' data:", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'none'", "base-uri 'none'"].join('; ');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
-/** The data pack of the mock and its data layer (the oracle), in a vm of their own. */
+/** The data pack of the reference page and its data layer (the oracle), in a vm of their own. */
 export function loadOracle(mockDir = path.join(REPO, 'internal/web/uidev/mock/js')) {
   const sb = { console }; sb.window = sb; vm.createContext(sb);
   vm.runInContext(fs.readFileSync(path.join(mockDir, 'data.js'), 'utf8'), sb, { filename: 'data.js' });
@@ -148,7 +148,7 @@ const SHIM = `(function () {
 
 /**
  * The server. opts: root (the directory of the page), mode 'pack' | 'big' | 'hostile', big {files, lines}, tab (the tab id the Workspace API answers
- * for, default the sessions of the mock), log (a function that is given each API request), delay (ms added to ws/file and ws/diff).
+ * for, default the sessions of the reference page), log (a function that is given each API request), delay (ms added to ws/file and ws/diff).
  * Resolves {server, url, state, close()}.
  */
 export async function startPackServer(opts) {

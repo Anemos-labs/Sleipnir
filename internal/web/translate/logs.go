@@ -21,14 +21,14 @@ import (
 )
 
 // maxHistoryBytes is the largest events.jsonl whose history is translated when a session is resumed; a longer one is shown by its
-// resumed row alone (its history is in Replay, VOCAB.md 12).
+// resumed row alone (its history is in Replay).
 const maxHistoryBytes = 256 << 20
 
 // errStopScan ends a scan early.
 var errStopScan = errors.New("translate: stop")
 
-// Attach follows a session's log until the returned function is called; the history of an existing log (VOCAB.md section 12) is
-// translated first. It subscribes before it reads the file, so an event written meanwhile is in both and applied once (by its seq).
+// Attach follows a session's log until the returned function is called; the history of an existing log is translated
+// first. It subscribes before it reads the file, so an event written meanwhile is in both and applied once (by its seq).
 func (t *Translator) Attach(log *events.Log, dir string) (detach func()) {
 	if log == nil {
 		return func() {}
@@ -63,7 +63,7 @@ func (t *Translator) Attach(log *events.Log, dir string) (detach func()) {
 	return cancel
 }
 
-// Follow translates a log that another process writes (PARITY A7: a session watched read-only): every event comes from the file,
+// Follow translates a log that another process writes (a session watched read-only): every event comes from the file,
 // which is polled; the run's start is its first event unless Config.StartedAt says otherwise. It returns the function that stops
 // following.
 func (t *Translator) Follow(path string) (stop func()) {
@@ -256,7 +256,7 @@ func (t *Translator) resumedText() string {
 	return line(s, capReason)
 }
 
-// applyLog folds one log event into the State and sends what it means (VOCAB.md 5, 6, 15, 16).
+// applyLog folds one log event into the State and sends what it means.
 func (t *Translator) applyLog(e events.Event) {
 	if e.Seq != 0 {
 		if e.Seq <= t.d.logSeq {

@@ -1,7 +1,7 @@
 package main
 
-// The session host of `sleipnir web`: several harness sessions in this process, one per tab, behind the routes of CONTRACT.md
-// sections 4 to 6 and 8 to 11, and the registration of the other route packages (the Workspace, the settings, the tools and the
+// The session host of `sleipnir web`: several harness sessions in this process, one per tab, behind the session, stream and
+// question routes, and the registration of the other route packages (the Workspace, the settings, the tools and the
 // runner). web.go calls webHost before the server exists; the host registers its routes when the server is made (web.Config.Routes)
 // and closes every tab after the server has stopped.
 
@@ -45,7 +45,7 @@ import (
 // init attaches the session host to `sleipnir web`.
 func init() { webHost = startWebHost }
 
-// Bounds of the host (CONTRACT.md 22).
+// Bounds of the host: tabs, message and project sizes, the idempotency window, the stream ping and the snapshot write.
 const (
 	maxTabs       = 16
 	maxMessage    = 256 << 10
@@ -311,7 +311,7 @@ func (h *webHostImpl) close() {
 // ---- seam.Host ---------------------------------------------------------------------------------------------------------------
 
 // publishFrame hands a wire.Frame to the hub on the page topic: the data encoded as JSON, the frame's class carried over (Critical,
-// Coalescable and Key, VOCAB.md 14). It is the implementation of seam.Host.Publish.
+// Coalescable and Key; wire.Frame). It is the implementation of seam.Host.Publish.
 func publishFrame(hub *web.Hub, f wire.Frame) error {
 	if hub == nil {
 		return errors.New("no hub")
@@ -387,7 +387,7 @@ func (h *webHostImpl) Active() string {
 // Questions lists the open questions of every tab, oldest first.
 func (h *webHostImpl) Questions() []wire.OpenQuestion { return h.bridge.Open() }
 
-// pendingChange is the change an edit of a tab asks to make (PARITY A1): its path and a unified diff against the file the write will
+// pendingChange is the change an edit of a tab asks to make: its path and a unified diff against the file the write will
 // change (a link is followed, as the write follows it); a file that is there and cannot be shown as text is said to be so, never
 // drawn as a new file. ok is false when nothing can be shown (the question is then not asked).
 func (h *webHostImpl) pendingChange(tab string, r perm.Request) (path, change string, ok bool) {
@@ -711,7 +711,7 @@ func (h *webHostImpl) isProject(ctx context.Context, dir string) (wire.Project, 
 	return wire.Project{}, false
 }
 
-// ---- defaults of a new session (PARITY A4) ---------------------------------------------------------------------------------
+// ---- defaults of a new session ---------------------------------------------------------------------------------
 
 // swarmWorkerCeiling is the most workers a team may have when swarm.max_workers sets no ceiling (the swarm's own default).
 const swarmWorkerCeiling = 24
@@ -769,7 +769,8 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 
 // ---- trust step of a new session ---------------------------------------------------------------------------------------------
 
-// d16 is the first 16 hex characters of SHA-256 over the canonical JSON of v (CONTRACT.md 20).
+// d16 is the first 16 hex characters of SHA-256 over the JSON of v: the digest that the scope of a confirmation carries, which the
+// page computes the same way (docs/WEB-API.md).
 func d16(v any) string {
 	b, _ := json.Marshal(v)
 	return hex.EncodeToString(sha256Sum(b))[:16]
@@ -903,14 +904,14 @@ func (h *webHostImpl) idemPut(key string, status int, body any) {
 
 // ---- hello ---------------------------------------------------------------------------------------------------------------------
 
-// helloUI is hello.ui: the UI build and the server's motion and bell preferences (PARITY A29).
+// helloUI is hello.ui: the UI build and the server's motion and bell preferences.
 type helloUI struct {
 	Version      string `json:"version"`
 	ReduceMotion bool   `json:"reduceMotion,omitempty"`
 	Bell         bool   `json:"bell"`
 }
 
-// helloUpdate is hello.update (PARITY A14): a newer release is out.
+// helloUpdate is hello.update: a newer release is out.
 type helloUpdate struct {
 	Current string `json:"current"`
 	Latest  string `json:"latest"`

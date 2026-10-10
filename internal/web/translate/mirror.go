@@ -8,7 +8,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// The mirror is a Go reduction of what the page's world model holds, minus the transcript rows (VOCAB.md 11): per agent its state,
+// The mirror is a Go reduction of what the page's world model holds, minus the transcript rows: per agent its state,
 // token table, ratio history and prompt layers; the tasks and the merged list; the plan, the goal and the verdict; the checkpoints;
 // the open questions; the last mails, anomalies and compactions; the warm clock, the governor, the merge queue; the board's alerts,
 // the open stall findings and the mail counts. The journal folds into one mirror every event it evicts, and the keyframe of a

@@ -5,7 +5,7 @@
 // (positionals, enumerations, the subcommands of mcp, trust, models fav and schedule) is curated here, each fact next to the command it
 // belongs to. The output is deterministic: the same inputs give the same bytes.
 //
-// It is the port of the mock's data/gen-cli-spec.mjs, plus the modes of CONTRACT.md 18.2.
+// Each command also gets the mode in which the page's runner runs it (the modes table).
 package specgen
 
 import (
@@ -302,7 +302,9 @@ func choicesFor(path string, name string) []string {
 	return choices[name]
 }
 
-// Modes of CONTRACT.md 18.2.
+// The modes in which the page's runner runs a command: run and net run it at once (net calls a provider and is given the held keys),
+// priv asks for a confirmation of the exact argument vector first, server runs until it is stopped, and tty_only is refused because
+// the command needs a terminal.
 const (
 	ModeRun     = "run"
 	ModeNet     = "net"
@@ -366,7 +368,7 @@ func privRules(md modeOf, flags []wire.CLIFlag) []wire.CLIModeRule {
 	return rules
 }
 
-// modes is the mode table of CONTRACT.md 18.2, with PARITY.md A30.
+// modes is the mode table: how the page's runner runs each command, with the flags that change the mode.
 var modes = map[string]modeOf{
 	"config": {mode: ModeRun}, "sessions": {mode: ModeRun},
 	"sessions prune": {mode: ModeRun, why: "with --yes it deletes sessions: it asks for a confirmation first",
@@ -524,7 +526,7 @@ func (s *spec) finish(path []string, usage, summary string, flags []wire.CLIFlag
 	}
 	md, ok := modes[key]
 	if !ok {
-		return fmt.Errorf("no mode for %s (CONTRACT.md 18.2; add it in specgen)", key)
+		return fmt.Errorf("no mode for %s (add it to the modes table in specgen)", key)
 	}
 	switch {
 	case usage == "":
@@ -670,7 +672,7 @@ func Generate(in Inputs) (*wire.CLISpec, error) {
 				}
 			}
 		case "web":
-			// refused in the page (PARITY.md A30): its flags are not offered, so that they need no form
+			// refused in the page: its flags are not offered, so that they need no form
 			err = s.finish(parts, usageLine(b.text), "Serves the same sessions in a browser on this machine: this page.", nil, sec, wire.CLICommand{})
 		default:
 			if strings.HasPrefix(cmd, "rl ") {
@@ -703,7 +705,7 @@ func Generate(in Inputs) (*wire.CLISpec, error) {
 			}
 			fl := parseFlagLines(b.text)
 			if cmd == "update" && len(fl) == 0 {
-				// the help of update has a usage line and no listing (PARITY.md A30)
+				// the help of update has a usage line and no listing
 				fl = []wire.CLIFlag{boolFlag("check", "only say whether a newer release is out")}
 			}
 			u := usageLine(b.text)

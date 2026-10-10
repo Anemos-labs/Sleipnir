@@ -1,4 +1,4 @@
-/* live.js: SL.live, the page's connection to the server (UI-WIRING.md 3 and 5): the boot sequence, the one stream, the snapshots,
+/* live.js: SL.live, the page's connection to the server: the boot sequence, the one stream, the snapshots,
  * and the frames that become sessions, events, meta and rosters.
  *
  * Boot: GET /api/hello; open the stream at hello.streamAfter and buffer its frames; fetch the snapshot of every tab and the shell's
@@ -8,7 +8,7 @@
  * toasts react at once, whatever the view does). A tab whose snapshot is in flight buffers its frames (at most BUFFER per tab; beyond
  * that its snapshot is fetched again). A `gap` refetches every snapshot; a `reset` rebuilds its tab from a new snapshot.
  *
- * Connection states (D-13): `open` (the stream is up), `reconnecting` (the browser reconnects with Last-Event-ID, or the page reopens
+ * Connection states: `open` (the stream is up), `reconnecting` (the browser reconnects with Last-Event-ID, or the page reopens
  * the stream after asking /api/hello every 2 s), `down` (the server said bye, or the topic closed). A new boot id means a new server
  * run: the page reloads (the server answers with its sign-in page). */
 (function (SL) {
@@ -41,7 +41,7 @@
     return S;
   }
 
-  /** A tab the server made to follow a session another process writes (POST /api/recorded/{sid}/watch, PARITY A7): it has no
+  /** A tab the server made to follow a session another process writes (POST /api/recorded/{sid}/watch): it has no
    *  snapshot; its history is the recorded session's events, and its frames continue them. */
   const isWatch = id => /^w-/.test(String(id || ''));
   /** Fetch a tab's snapshot; frames of the tab that arrive meanwhile are buffered and applied after it (the newer ones only). */
@@ -143,7 +143,7 @@
     const h = H[type]; if (h) { try { h(data || {}); } catch (e) { console.error('frame ' + type, e); } }
   }
 
-  /* ---------------- connection state (D-13) ---------------- */
+  /* ---------------- connection state ---------------- */
   function setState(s, why) {
     if (L.state === s) return; const was = L.state; L.state = s; L.why = why || '';
     SL.bus.emit('conn', s);
@@ -184,7 +184,8 @@
       await new Promise(res => setTimeout(res, RETRY_MS));
     }
   }
-  /** Boot: hello, stream, snapshots and the shell's caches. Resolves when the sessions exist (zero is a valid number: D-12). */
+  /** Boot: hello, stream, snapshots and the shell's caches. Resolves when the sessions exist (zero is a valid number: the server
+   *  may host no tab, and the page then shows an empty shell). */
   async function start() {
     if (L.started) return L.ready; L.started = true;
     L.ready = (async () => {
@@ -207,7 +208,7 @@
     return L.ready;
   }
 
-  /* ---------------- recorded sessions opened read-only (D-10), or followed (PARITY A7) ---------------- */
+  /* ---------------- recorded sessions opened read-only, or followed ---------------- */
   const PAGE = 5000, MAX_EVENTS = 50000, FOLLOW_MS = 2000;
   /** The agents of a recorded log, in the order they first act: the manager first, workers on legs by that order. */
   function rosterOf(events) {
@@ -228,8 +229,8 @@
     return { ok: true, events: out, next };
   }
   /**
-   * Open a recorded session in a read-only tab of this page and play it in the Replay view (D-10). opt.follow keeps reading the log
-   * while another process writes it (PARITY A7): the page asks for the events after the last one every 2 s while the tab is open.
+   * Open a recorded session in a read-only tab of this page and play it in the Replay view. opt.follow keeps reading the log
+   * while another process writes it: the page asks for the events after the last one every 2 s while the tab is open.
    * Resolves the API-shaped result {ok, ...}; failures toast.
    */
   async function openRecorded(sid, opt) {
@@ -265,7 +266,7 @@
     S.followTimer = setTimeout(tick, FOLLOW_MS);
   }
 
-  /** The defaults of a new session (the server's flags and configuration, PARITY A4), when the server sends them. */
+  /** The defaults of a new session (the server's flags and configuration), when the server sends them. */
   L.defaults = () => (L.hello && L.hello.defaults) || null;
   Object.assign(L, { start, loadTab, loadWatch, isWatch, applyEv, fromSnapshot, onFrame, setState, refetchAll, H, openRecorded, rosterOf });
 })(SL);

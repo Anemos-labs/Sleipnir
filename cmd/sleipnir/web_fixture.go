@@ -2,7 +2,7 @@ package main
 
 // The hidden --fixture backend of `sleipnir web`: tabs whose model is internal/provider/mock with a script, in projects made in a
 // scratch directory, so that the whole harness runs end to end with a model that does the same thing every time. It reproduces the
-// sessions of the approved mock closely enough for the parity screenshots and the end-to-end tests (TEST-PLAN.md 3):
+// sessions of the reference page (internal/web/uidev/mock) closely enough for the parity screenshots and the end-to-end tests:
 //
 //	shop    a manager and eight workers under a standing goal with a plan: three scouts survey, two backends, a frontend, a tester
 //	        and a reviewer build in worktrees of their own and merge through the verifying queue; the frontend asks to run

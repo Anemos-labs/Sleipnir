@@ -217,7 +217,7 @@ func Shop() *Scenario {
 	}
 }
 
-// resolveMids gives the messages their ids: "m" and the sequence number of the event that opened them (VOCAB.md section 2). The
+// resolveMids gives the messages their ids: "m" and the sequence number of the event that opened them. The
 // timelines name a message "@name" where it opens and where it continues; the events are journaled in order from seq 1, history
 // first.
 func resolveMids(parts ...[]wire.Event) {
@@ -252,16 +252,16 @@ func resolveMids(parts ...[]wire.Event) {
 func raw(e wire.Event) json.RawMessage {
 	b, err := json.Marshal(e)
 	if err != nil {
-		panic("webtest: encoding " + wire.KindOf(e) + ": " + err.Error()) // the types are the contract's: a failure is a bug here
+		panic("webtest: encoding " + wire.KindOf(e) + ": " + err.Error()) // the types are those of package wire: a failure is a bug here
 	}
 	return b
 }
 
-// Classifier assigns the hub class of a frame (VOCAB.md section 14). It remembers the checkpoints it has seen: the first ckpt of an
-// id is critical, later ones coalesce.
+// Classifier assigns the hub class of a frame (docs/WEB-API.md lists the classes). It remembers the checkpoints it has seen: the
+// first ckpt of an id is critical, later ones coalesce.
 type Classifier struct{ seen map[string]bool }
 
-// EvFrame wraps a UI event of a tab in its "ev" frame with the class and key of VOCAB.md section 14.
+// EvFrame wraps a UI event of a tab in its "ev" frame with its class and key.
 func (c *Classifier) EvFrame(tab string, e wire.Event) wire.Frame {
 	f := wire.Frame{Type: "ev", Tab: tab, Data: wire.EvFrame{Tab: tab, Ev: raw(e)}, Critical: true}
 	coalesce := func(key string) { f.Critical, f.Coalescable, f.Key = false, true, key }
@@ -288,7 +288,7 @@ func (c *Classifier) EvFrame(tab string, e wire.Event) wire.Frame {
 	return f
 }
 
-// Frames wraps control data in a frame of the given type with the class of VOCAB.md section 14 (tab, reset, roster, meta, bye are
+// Frames wraps control data in a frame of the given type with its class (tab, reset, roster, meta, bye are
 // critical; ping coalesces under "ping"; recorded, run and toast are ordinary).
 func Frames(typ, tab string, data any) wire.Frame {
 	f := wire.Frame{Type: typ, Tab: tab, Data: data}

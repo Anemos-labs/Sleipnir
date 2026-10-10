@@ -1,6 +1,6 @@
-// Package seam holds the Go interfaces between the builders of `sleipnir web`: the session host (cmd/sleipnir), the translator
-// (internal/web/translate) and the route packages (internal/web/wsvc, settings, runner). internal/web itself knows nothing about
-// sessions; these interfaces do, so they live here.
+// Package seam holds the Go interfaces between the packages of `sleipnir web`: the session host (cmd/sleipnir), the translator
+// (internal/web/translate) and the route packages (internal/web/wsvc, settings, tools, runner). internal/web itself knows nothing
+// about sessions; these interfaces do, so they live here.
 package seam
 
 import (
@@ -15,7 +15,7 @@ import (
 // Topic is the hub topic of the page's stream: every tab's frames and the global ones (one connection per page).
 const Topic = "ui"
 
-// Host is the set of live tabs, as the route packages see it. cmd/sleipnir implements it (B1).
+// Host is the set of live tabs, as the route packages see it. cmd/sleipnir implements it.
 type Host interface {
 	// Tabs lists the live tabs in strip order.
 	Tabs() []wire.TabSummary
@@ -95,15 +95,15 @@ type SessionAccess interface {
 	Meta(p wire.MetaPatch)
 }
 
-// Translator turns one tab generation's harness activity into UI events, keeps them in the tab's journal and publishes them
-// (B2). The host (B1) creates one per generation with translate.New and installs its sinks before session.New.
+// Translator turns one tab generation's harness activity into UI events, keeps them in the tab's journal and publishes them.
+// The host creates one per generation with translate.New and installs its sinks before session.New.
 type Translator interface {
 	// Sink is the agent.Sink to install as session.Options.Sink.
 	Sink() agent.Sink
 	// NewSink is the per-agent sink constructor for session.Options.NewSink.
 	NewSink(agentID string) agent.Sink
-	// Attach follows a session's log until the returned function is called; the history of an existing log (VOCAB.md section
-	// 12) is translated first.
+	// Attach follows a session's log until the returned function is called; the history of an existing log is translated
+	// first.
 	Attach(log *events.Log, dir string) (detach func())
 	// Emit appends host-originated events (stamped with the current session time) and publishes them.
 	Emit(evs ...wire.Event)

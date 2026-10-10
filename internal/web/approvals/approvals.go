@@ -461,7 +461,7 @@ func agentID(a string) string {
 	return a
 }
 
-// kindOf is the question's kind for its header (FEATURES.md D-09).
+// kindOf is the question's kind for its header (wire.Question.Kind): trust, mcp, command, edit, read, web or other.
 func kindOf(r perm.Request) string {
 	switch strings.ToLower(r.Tool) {
 	case perm.ToolProjectTrust:
@@ -578,7 +578,7 @@ func webText(r perm.Request) string {
 	return ""
 }
 
-// shape builds the question the page shows (VOCAB.md 9), every field whole; unshown says why it cannot be shown whole (the request
+// shape builds the question the page shows (wire.Question), every field whole; unshown says why it cannot be shown whole (the request
 // is then refused without being asked).
 func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wire.Question, unshown string) {
 	kind := kindOf(r)
