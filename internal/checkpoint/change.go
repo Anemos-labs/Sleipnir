@@ -3,6 +3,8 @@ package checkpoint
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/anemos-labs/sleipnir/internal/tools/fs"
 )
 
 // ProposedChange is what a file tool call that waits for approval would change, as a
@@ -158,7 +160,7 @@ func ProposeFrom(tool string, input []byte, current func(path string) Current) (
 		if json.Unmarshal(input, &in) != nil || in.Patch == nil {
 			return ProposedChange{}, false
 		}
-		return patchChange(*in.Patch), true
+		return patchChange(*in.Patch, current), true
 	}
 	return ProposedChange{}, false
 }
@@ -185,67 +187,76 @@ func dropHeader(u string) string {
 	return u
 }
 
-// patchChange renders an apply_patch patch ("*** Begin Patch" format) as a unified
-// diff: added files as all-new, deleted files by name, updates with their hunks.
-func patchChange(patch string) ProposedChange {
+// UnreadPatchPrefix begins the line that stands for the diff of a patch that the apply_patch tool cannot read: "[patch not read:
+// <why>]". A reader that must show a change whole treats it as it treats a diff that was cut.
+const UnreadPatchPrefix = "[patch not read: "
+
+// patchChange renders an apply_patch patch as a unified diff from the operations the apply_patch tool itself reads in it
+// (fs.ParsePatch: the same normalization of a heredoc wrapper, uniform indentation, line ends and blank lines): an added file as
+// all-new, a deleted file with the lines it holds now (current), an update with its hunks, a move with "rename from"/"rename to". A
+// patch the tool cannot read is a single UnreadPatchPrefix line.
+func patchChange(patch string, current func(path string) Current) ProposedChange {
+	ops, err := fs.ParsePatch(patch)
+	if err != nil {
+		return ProposedChange{Unified: UnreadPatchPrefix + strings.ReplaceAll(err.Error(), "\n", " ") + "]\n"}
+	}
 	var out ProposedChange
 	var b strings.Builder
-	var adds []string
-	addPath := ""
-	note := func(p string) {
+	for _, op := range ops {
 		if out.Path == "" {
-			out.Path = p
+			out.Path = op.Path
 		}
-	}
-	flushAdd := func() {
-		if addPath == "" {
-			return
-		}
-		b.WriteString("--- /dev/null\n+++ b/" + addPath + "\n")
-		b.WriteString("@@ -0,0 +1," + itoa(len(adds)) + " @@\n")
-		for _, a := range adds {
-			b.WriteString("+" + a + "\n")
-		}
-		out.Added += len(adds)
-		adds, addPath = nil, ""
-	}
-	for _, ln := range strings.Split(strings.ReplaceAll(patch, "\r\n", "\n"), "\n") {
 		if b.Len() > maxDiffOutput {
 			b.WriteString("[diff truncated]\n")
 			break
 		}
-		switch {
-		case strings.HasPrefix(ln, "*** Begin Patch"), strings.HasPrefix(ln, "*** End Patch"), strings.HasPrefix(ln, "*** End of File"):
-			flushAdd()
-		case strings.HasPrefix(ln, "*** Add File:"):
-			flushAdd()
-			addPath = strings.TrimSpace(strings.TrimPrefix(ln, "*** Add File:"))
-			note(addPath)
-		case strings.HasPrefix(ln, "*** Delete File:"):
-			flushAdd()
-			p := strings.TrimSpace(strings.TrimPrefix(ln, "*** Delete File:"))
-			note(p)
-			b.WriteString("--- a/" + p + "\n+++ /dev/null\n")
-		case strings.HasPrefix(ln, "*** Update File:"):
-			flushAdd()
-			p := strings.TrimSpace(strings.TrimPrefix(ln, "*** Update File:"))
-			note(p)
-			b.WriteString("--- a/" + p + "\n+++ b/" + p + "\n")
-		case strings.HasPrefix(ln, "*** Move to:"):
-			b.WriteString("rename to " + strings.TrimSpace(strings.TrimPrefix(ln, "*** Move to:")) + "\n")
-		case addPath != "":
-			adds = append(adds, strings.TrimPrefix(ln, "+"))
-		case strings.HasPrefix(ln, "@@"), strings.HasPrefix(ln, " "):
-			b.WriteString(ln + "\n")
-		case strings.HasPrefix(ln, "-"):
-			b.WriteString(ln + "\n")
-			out.Removed++
-		case strings.HasPrefix(ln, "+"):
-			b.WriteString(ln + "\n")
-			out.Added++
+		switch op.Kind {
+		case "add":
+			b.WriteString("--- /dev/null\n+++ b/" + op.Path + "\n")
+			b.WriteString("@@ -0,0 +1," + itoa(len(op.Add)) + " @@\n")
+			for _, l := range op.Add {
+				b.WriteString("+" + l + "\n")
+			}
+			out.Added += len(op.Add)
+		case "delete":
+			cur := current(op.Path)
+			switch {
+			case cur.Exists && cur.Unshown != "":
+				// Deleting it is the whole of the change, whatever it holds.
+				b.WriteString("--- a/" + op.Path + "\n+++ /dev/null\n[deleted whole; what it holds is not shown: " + cur.Unshown + "]\n")
+			case cur.Exists && cur.Text != "":
+				u, _, r := unifiedDiff("a/"+op.Path, "/dev/null", cur.Text, "")
+				b.WriteString(u)
+				out.Removed += r
+			default: // empty, or not there (the tool then fails and writes nothing)
+				b.WriteString("--- a/" + op.Path + "\n+++ /dev/null\n")
+			}
+		case "update":
+			to := op.Path
+			if op.Move != "" {
+				to = op.Move
+				b.WriteString("rename from " + op.Path + "\nrename to " + op.Move + "\n")
+			}
+			b.WriteString("--- a/" + op.Path + "\n+++ b/" + to + "\n")
+			for _, h := range op.Hunks {
+				if len(h.Anchors) == 0 {
+					b.WriteString("@@\n")
+				}
+				for _, a := range h.Anchors {
+					b.WriteString("@@ " + a + "\n")
+				}
+				for _, l := range h.Lines {
+					b.WriteString(string(l.Op) + l.Text + "\n")
+					switch l.Op {
+					case '+':
+						out.Added++
+					case '-':
+						out.Removed++
+					}
+				}
+			}
 		}
 	}
-	flushAdd()
 	out.Unified = b.String()
 	return out
 }

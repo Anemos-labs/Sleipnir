@@ -182,7 +182,7 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 // questions wait with no page connected (0: forever).
 func (h *webHostImpl) newBridge(floor, grace time.Duration) *approvals.Bridge {
 	return approvals.New(approvals.Config{Floor: floor, Grace: grace, OnAsk: h.onAsk, OnAnswer: h.onAnswer, Change: h.pendingChange,
-		Where: h.where, OnRefused: h.refused,
+		Where: h.where, OnRefused: h.refused, MaxEncoded: webHubConfig.MaxEventBytes - 16<<10, // the room an event leaves for its question
 		SessionTime: func(tab string, at time.Time) float64 {
 			if t := h.tab(tab); t != nil {
 				return t.sessionTime(at)
@@ -324,14 +324,39 @@ func publishFrame(hub *web.Hub, f wire.Frame) error {
 	return err
 }
 
-// Publish sends a frame to every page.
+// Publish sends a frame to every page. A question whose ask could not be sent (too large for the stream, which the bridge checks
+// before asking) is refused: nobody could see it, so it must not stay open.
 func (h *webHostImpl) Publish(f wire.Frame) {
 	if h.hub == nil {
 		return
 	}
-	if err := publishFrame(h.hub, f); err != nil && !errors.Is(err, web.ErrClosed) {
-		h.logf("a %s frame was not sent: %v", f.Type, err)
+	err := publishFrame(h.hub, f)
+	if err == nil || errors.Is(err, web.ErrClosed) {
+		return
 	}
+	h.logf("a %s frame was not sent: %v", f.Type, err)
+	if qid := askID(f); qid != "" && h.bridge != nil {
+		// From a goroutine of its own: the translator that publishes holds its lock, and the refusal's answer event goes through it.
+		go h.bridge.Refuse(qid, "its question could not be sent to the page ("+err.Error()+")")
+	}
+}
+
+// askID is the id of the question of an ask event's frame, "" for any other frame.
+func askID(f wire.Frame) string {
+	ev, ok := f.Data.(wire.EvFrame)
+	if f.Type != "ev" || !ok {
+		return ""
+	}
+	var a struct {
+		K string `json:"k"`
+		Q struct {
+			ID string `json:"id"`
+		} `json:"q"`
+	}
+	if json.Unmarshal(ev.Ev, &a) != nil || a.K != "ask" {
+		return ""
+	}
+	return a.Q.ID
 }
 
 // tabList is the tabs in strip order.
@@ -403,17 +428,19 @@ func (h *webHostImpl) pendingChange(tab string, r perm.Request) (path, change st
 	if len(input) == 0 {
 		input, _ = t.calls.input(r.Agent, r.Tool) // the request names the call; the call's input came through the sink
 	}
-	current := func(p string) checkpoint.Current {
-		abs := p
-		switch {
-		case len(r.Paths) == 1:
-			abs = r.Paths[0] // the file the tool resolved and asks about
-		case !filepath.IsAbs(p):
-			abs = filepath.Join(s.Cwd(), p)
-		}
-		return currentContent(abs)
+	path, change, ok = proposedChange(r, input, s.Cwd())
+	if ok && filepath.IsAbs(path) {
+		path = strings.TrimSuffix(h.where(tab, path), "/")
 	}
-	pc, ok := checkpoint.ProposeFrom(r.Tool, input, current)
+	return path, change, ok
+}
+
+// proposedChange is the change a file tool's request (r, with the call's input) asks to make, drawn against what the files it
+// names hold now: its path (absolute when the request names one file) and a unified diff (checkpoint.ProposeFrom; a patch is read
+// as the apply_patch tool reads it). cwd resolves a relative path that the request does not name. ok is false for another tool or
+// an input that cannot be read.
+func proposedChange(r perm.Request, input []byte, cwd string) (path, change string, ok bool) {
+	pc, ok := checkpoint.ProposeFrom(r.Tool, input, func(p string) checkpoint.Current { return currentOf(p, r.Paths, cwd) })
 	if !ok {
 		return "", "", false
 	}
@@ -421,10 +448,32 @@ func (h *webHostImpl) pendingChange(tab string, r perm.Request) (path, change st
 	if len(r.Paths) == 1 {
 		path = r.Paths[0]
 	}
-	if filepath.IsAbs(path) {
-		path = strings.TrimSuffix(h.where(tab, path), "/")
-	}
 	return path, pc.Unified, true
+}
+
+// currentOf is what the file p of a call holds now. paths are the files the tool resolved and asks about: the only one when there is
+// one, else the one that p names (a patch names several, relative to the agent's directory); cwd resolves p when the request names
+// none. A file that cannot be told apart among them is said to be unshown.
+func currentOf(p string, paths []string, cwd string) checkpoint.Current {
+	switch {
+	case len(paths) == 1:
+		return currentContent(paths[0])
+	case len(paths) == 0 && filepath.IsAbs(p):
+		return currentContent(filepath.Clean(p))
+	case len(paths) == 0:
+		return currentContent(filepath.Join(cwd, p))
+	}
+	clean := filepath.Clean(p)
+	var match []string
+	for _, abs := range paths {
+		if abs == clean || (!filepath.IsAbs(clean) && strings.HasSuffix(abs, string(filepath.Separator)+clean)) {
+			match = append(match, abs)
+		}
+	}
+	if len(match) != 1 {
+		return checkpoint.Current{Exists: true, Unshown: "it cannot be told apart among the files the request names"}
+	}
+	return currentContent(match[0])
 }
 
 // maxCurrentContent is the largest current file a pending change is drawn against.
@@ -779,15 +828,16 @@ func d16(v any) string {
 // gateNewSession authorizes what a new session raises (p): nothing raised goes on; trusting the project's files is answered first
 // with the trust challenge (409 trust_required: the files, and a confirmation id for the session's scope), whose repeat records the
 // trust as `sleipnir trust add` does; anything else raised needs the confirmation of its scope (428). It reports false when it has
-// answered the request; note is a row for the session (a partial footprint is trusted for this session only).
-func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p privileges) (note string, ok bool) {
+// answered the request; note is a row for the session (a partial footprint is trusted for this session only), and trusted the
+// footprint of the files the person confirmed (nil when trust was not raised).
+func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p privileges) (note string, trusted *trust.Footprint, ok bool) {
 	reasons := p.reasons()
 	if len(reasons) == 0 {
-		return "", true
+		return "", nil, true
 	}
 	if _, err := showReasons(reasons); err != nil {
 		writeErr(w, err)
-		return "", false
+		return "", nil, false
 	}
 	scope := newSessionScope(p)
 	home, _ := os.UserHomeDir()
@@ -797,7 +847,7 @@ func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p p
 		f, err := trust.Scan(rootOf(p.Dir), p.Dir, home)
 		if err != nil {
 			writeErr(w, werr(http.StatusConflict, "trust_required", "the project's files could not be read: "+clip(err.Error(), 200)))
-			return "", false
+			return "", nil, false
 		}
 		fp = f
 		confirm := r.Header.Get(web.ConfirmHeader)
@@ -806,26 +856,26 @@ func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p p
 		h.mu.Unlock()
 		if confirm == "" || (known && issued.scope != scope) {
 			h.trustChallenge(w, r, scope, p.Dir, fp, ledger, known)
-			return "", false
+			return "", nil, false
 		}
 	}
 	if err := authorize(r.Context(), scope, reasons); err != nil {
 		writeErr(w, err)
-		return "", false
+		return "", nil, false
 	}
 	if fp == nil {
-		return "", true
+		return "", nil, true
 	}
 	h.mu.Lock()
 	delete(h.trustIDs, r.Header.Get(web.ConfirmHeader))
 	h.mu.Unlock()
 	if fp.Partial {
-		return "this project has more files than can be remembered, so it is trusted for this session only", true
+		return "this project has more files than can be remembered, so it is trusted for this session only", fp, true
 	}
 	if err := ledger.Remember(p.Dir, fp, time.Now()); err != nil {
-		return "trusted for this session; not remembered: " + clip(err.Error(), 200), true
+		return "trusted for this session; not remembered: " + clip(err.Error(), 200), fp, true
 	}
-	return "", true
+	return "", fp, true
 }
 
 // trustChallenge answers 409 trust_required: the files of the project that would be trusted, and a confirmation id for scope that

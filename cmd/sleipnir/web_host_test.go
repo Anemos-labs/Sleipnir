@@ -19,10 +19,12 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web"
+	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -985,3 +987,31 @@ func TestBuiltinSlashFollowsTheChatsHelp(t *testing.T) {
 
 // keep exec imported for git availability checks in the helpers above
 var _ = exec.LookPath
+
+// A question whose ask cannot be sent on the stream (here a hub whose events are smaller than it) does not stay open: the request is
+// refused, saying why, and the open questions no longer list it.
+func TestAQuestionThatCannotBeSentIsRefused(t *testing.T) {
+	h := &webHostImpl{logf: t.Logf, hub: web.NewHub(web.HubConfig{MaxEventBytes: 1024})}
+	defer h.hub.Close()
+	h.bridge = approvals.New(approvals.Config{OnAsk: func(tab string, q wire.Question) {
+		raw, _ := json.Marshal(map[string]any{"k": "ask", "q": q})
+		h.Publish(wire.Frame{Type: "ev", Tab: tab, Data: wire.EvFrame{Tab: tab, Ev: raw}, Critical: true})
+	}})
+	defer h.bridge.Close()
+	ask := h.bridge.Prompter("t1", "/proj", nil, nil)
+	done := make(chan perm.Decision, 1)
+	go func() {
+		done <- ask(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: "echo " + strings.Repeat("x", 2000)})
+	}()
+	select {
+	case d := <-done:
+		if d.Allow || !strings.Contains(d.Reason, "could not be sent to the page") {
+			t.Errorf("decision %+v", d)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a question that no page received stays open")
+	}
+	if open := h.bridge.Open(); len(open) != 0 {
+		t.Errorf("open questions %+v", open)
+	}
+}

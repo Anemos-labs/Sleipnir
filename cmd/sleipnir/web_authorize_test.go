@@ -360,3 +360,61 @@ func TestPendingChangesAreDrawnAgainstTheRealFile(t *testing.T) {
 		t.Errorf("a question was asked about a change that cannot be shown: %+v", open.Questions)
 	}
 }
+
+// A session that trusts its project's files keeps that trust across restarts only while the files are the ones the person confirmed:
+// a restart after AGENTS.md changed needs a confirmation that names the change, and does not start before it; without a change, or
+// once the change was confirmed, a restart needs nothing.
+func TestRestartsAskAgainWhenTheTrustedFilesChanged(t *testing.T) {
+	project := webWorld(t)
+	other := untrustedProject(t, project, "shop")
+	_, base := newWebModel(t, sayScript("ok"))
+	base.TrustProject = false
+	d := soloDefaults(project)
+	d.Projects = []string{other}
+	r := newWebRig(t, d, base)
+	r.ready("")
+	zero := 0
+	code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: other, Swarm: &zero, TrustProject: true})
+	var challenge struct {
+		Code   string
+		Detail wire.TrustChallenge
+	}
+	if code != 409 || json.Unmarshal(body, &challenge) != nil || challenge.Code != "trust_required" {
+		t.Fatalf("a new trusted session = %d %s", code, body)
+	}
+	var created struct{ Tab wire.TabSummary }
+	r.json("POST", "/api/sessions", wire.NewSessionRequest{Cwd: other, Swarm: &zero, TrustProject: true}, 201, &created, web.ConfirmHeader, challenge.Detail.Confirm)
+	tab := r.ready(created.Tab.ID)
+	path := "/api/sessions/" + tab.ID
+	if !r.h.tab(tab.ID).session().Options().TrustProject {
+		t.Fatal("the confirmed session does not trust its project")
+	}
+	r.json("POST", path+"/restart", wire.RestartRequest{Kind: "restart"}, 202, nil)
+	r.waitForSID(tab.ID, 2)
+
+	if err := os.WriteFile(filepath.Join(other, "AGENTS.md"), []byte("instructions an agent rewrote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, body = r.do("POST", path+"/restart", wire.RestartRequest{Kind: "new", Fresh: true})
+	var refusal struct {
+		Code   string
+		Detail struct {
+			Scope   string
+			Reasons []string
+		}
+	}
+	if code != http.StatusPreconditionRequired || json.Unmarshal(body, &refusal) != nil || refusal.Code != "confirm_required" ||
+		!strings.Contains(strings.Join(refusal.Detail.Reasons, "\n"), "AGENTS.md changed") {
+		t.Fatalf("a restart after AGENTS.md changed = %d %s, want 428 naming the change", code, body)
+	}
+	if r.h.tab(tab.ID).Summary().Gen != 2 {
+		t.Fatal("the session restarted trusting files nobody confirmed")
+	}
+	r.json("POST", path+"/restart", wire.RestartRequest{Kind: "new", Fresh: true}, 202, nil, web.ConfirmHeader, r.confirmFor(refusal.Detail.Scope))
+	r.waitForSID(tab.ID, 3)
+	if !r.h.tab(tab.ID).session().Options().TrustProject {
+		t.Error("the confirmed restart does not trust the project")
+	}
+	r.json("POST", path+"/restart", wire.RestartRequest{Kind: "restart"}, 202, nil)
+	r.waitForSID(tab.ID, 4)
+}

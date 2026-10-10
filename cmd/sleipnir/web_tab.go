@@ -30,6 +30,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/trust"
 	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -94,6 +95,8 @@ type webTab struct {
 	hist       []string
 	origins    map[string]string // "allow Bash(x)" -> where a session rule came from
 	resumed    *wire.RecordedSession
+	trusted    *trust.Footprint // the project files the person confirmed for trustedDir, which the session uses (nil: none)
+	trustedDir string
 	lastMeta   wire.MetaPatch
 	lastRoster []wire.RosterEntry
 	shownQueue int

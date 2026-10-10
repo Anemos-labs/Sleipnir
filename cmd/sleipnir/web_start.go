@@ -22,6 +22,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
+	"github.com/anemos-labs/sleipnir/internal/trust"
 	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
@@ -36,6 +37,9 @@ type startSpec struct {
 	integration string   // how the previous generation's isolated run ended
 	restart     bool     // a restart: the new generation says so
 	first       bool     // the first tab of the server: if it cannot start, it is removed
+	// trusted is the footprint of the project's files that the person confirmed with this start (the New session dialog's trust
+	// step); nil when there was none.
+	trusted *trust.Footprint
 }
 
 // callLog keeps the tool call each agent of a tab started last (the sink's ToolStart): a question about an edit shows the change of
@@ -236,6 +240,7 @@ func (t *webTab) startGen(spec startSpec) error {
 // afterStart is what follows a start: the name, the goal the log kept, the resumed session's line, the effort and first goal of
 // the New session dialog, and the tab's frames.
 func (t *webTab) afterStart(s *session.Session, spec startSpec) {
+	t.noteTrust(s, spec.trusted)
 	name := strings.TrimSpace(spec.name)
 	if name != "" {
 		_ = session.UpdateMeta(s.Dir, func(m *session.Meta) { m.Name = name })
@@ -396,6 +401,7 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 		}
 	}
 	p := raised(f, base, dir)
+	confirmed := t.recheckTrust(f, base, dir, &p)
 	if err := authorize(ctx, restartScope(t.id, p), p.reasons()); err != nil {
 		return err
 	}
@@ -403,6 +409,9 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	if t.restarting || t.starting || t.closed {
 		t.mu.Unlock()
 		return werr(http.StatusConflict, "busy", "the session is starting: try again when it has started")
+	}
+	if confirmed != nil {
+		t.trusted, t.trustedDir = confirmed, dir // the files this confirmation covered
 	}
 	t.restarting = true
 	t.gen++

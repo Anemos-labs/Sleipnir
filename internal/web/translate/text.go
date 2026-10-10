@@ -8,6 +8,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/rl/redact"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 )
 
 // Untrusted text (model text, tool output, file names, mail, notices) leaves the translator as plain strings that are sanitized for
@@ -42,8 +43,8 @@ var (
 // their own project expects to see.
 func masker() *redact.Redactor {
 	redactorOnce.Do(func() {
-		redactor = redact.New(redact.Config{Salt: "sleipnir-web", Kinds: []string{redact.GroupTokens, redact.KindJWT, redact.KindPrivateKey,
-			redact.KindURLCred, redact.KindBearer, redact.KindSecret, redact.KindEntropy}})
+		// The bridge's kinds (approvals.SecretKinds): a question it lets through is one this would not alter.
+		redactor = redact.New(redact.Config{Salt: approvals.SecretSalt, Kinds: approvals.SecretKinds()})
 	})
 	return redactor
 }

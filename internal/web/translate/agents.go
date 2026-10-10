@@ -358,20 +358,22 @@ func (t *Translator) fellBehind(ts float64) {
 const (
 	capQuestionCmd   = 4 * approvals.MaxCommand
 	capQuestionField = 4 * (16 << 10)
+	capQuestionRule  = capQuestionCmd + capQuestionField // an exact rule is as long as the command it names
 )
 
 // question records an open question of the bridge and sends its ask.
 func (t *Translator) question(q wire.Question, now time.Time) {
 	q.Agent = uiID(q.Agent)
-	// What a question shows is what the person agrees to: the bridge has already made every field whole and visible (or refused to ask),
-	// so nothing here may shorten it or fold its lines. The caps only bound what a caller other than the bridge could send, and are the
-	// bridge's own limits with room for every byte to be written as an escape.
-	q.Cmd = text(q.Cmd, capQuestionCmd)
-	q.Why = text(q.Why, capQuestionField)
-	q.Scope = text(q.Scope, capQuestionField)
-	q.What = text(q.What, capQuestionField)
-	q.Rule = text(q.Rule, capQuestionField)
-	q.Cwd = text(q.Cwd, capQuestionField)
+	// What a question shows is what the person agrees to. The bridge has already made every field whole and visible, free of anything
+	// shaped like a secret (or refused to ask), so its text passes unchanged: nothing here masks, strips, shortens or folds it. The
+	// byte bounds hold only for a caller other than the bridge, and are the bridge's own limits with room for every byte to be written
+	// as an escape.
+	q.Cmd = cutBytes(q.Cmd, capQuestionCmd)
+	q.Why = cutBytes(q.Why, capQuestionField)
+	q.Scope = cutBytes(q.Scope, capQuestionField)
+	q.What = cutBytes(q.What, capQuestionField)
+	q.Rule = cutBytes(q.Rule, capQuestionRule)
+	q.Cwd = cutBytes(q.Cwd, capQuestionField)
 	if q.ID == "" {
 		return
 	}

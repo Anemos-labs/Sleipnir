@@ -1,11 +1,17 @@
 package translate
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -28,7 +34,14 @@ func TestNoUntrustedMarkup(t *testing.T) {
 	b := newLog(t0)
 	h.feed(b.add(time.Second, "be-1", "mail.send", map[string]any{"id": "m1", "from": "be-1", "to": "fe-1", "text": hostile}))
 	h.set(t0.Add(2 * time.Second))
-	h.tr.Question(wire.Question{ID: "q_1", Agent: "be-1", Cmd: hostile, Why: hostile, Kind: "command"})
+	// A question reaches the translator from the approvals bridge only, which shows it whole with escapes or refuses it.
+	markup := strings.ReplaceAll(hostile, " key="+secret, "")
+	if !askThroughBridge(t, h, perm.Request{Agent: "be-1", Tool: "bash", Command: "echo " + markup, Summary: "echo [" + markup + "]"}) {
+		t.Fatal("the question without a secret was not asked")
+	}
+	if askThroughBridge(t, h, perm.Request{Agent: "be-1", Tool: "bash", Command: "echo " + hostile, Summary: "echo"}) {
+		t.Error("a question holding a secret was asked")
+	}
 	h.tr.Emit(&wire.Sys{Ch: "mgr", Glyph: "◇", Text: hostile})
 	raw := string(lines(h.raws()))
 	for _, bad := range []string{"\x1b", "\u001b", "‮", "​", "\x07", secret, "<script>", "<img"} {
@@ -38,6 +51,16 @@ func TestNoUntrustedMarkup(t *testing.T) {
 	}
 	if !strings.Contains(raw, "⟦redacted:") || !strings.Contains(raw, "\\u003cscript\\u003e") {
 		t.Errorf("the secret was not masked or the markup not kept as text:\n%s", raw)
+	}
+	asks := ofKind(h.decoded(), "ask")
+	if len(asks) != 1 {
+		t.Fatalf("%d asks", len(asks))
+	}
+	q, _ := asks[0]["q"].(map[string]any)
+	for _, esc := range []string{`\x1b[2J`, `\x1b]52;c;ZXZpbA==\x07`, `\u202e`, `\u200b`} {
+		if cmd, _ := q["cmd"].(string); !strings.Contains(cmd, esc) {
+			t.Errorf("the question does not show %s: %q", esc, cmd)
+		}
 	}
 	for _, e := range h.decoded() {
 		if e["k"] == "tool" {
@@ -158,4 +181,98 @@ func TestQuestionFieldsArriveWhole(t *testing.T) {
 			t.Errorf("%s: no ask event", name)
 		}
 	}
+}
+
+// askThroughBridge puts r to the person as the host does, through an approvals bridge whose questions reach h's translator, and
+// reports whether it was asked (the bridge refuses one it cannot show whole). Nothing is left waiting.
+func askThroughBridge(t *testing.T, h *harness, r perm.Request) bool {
+	t.Helper()
+	asked := make(chan struct{}, 1)
+	b := approvals.New(approvals.Config{OnAsk: func(_ string, q wire.Question) { h.tr.Question(q); asked <- struct{}{} }})
+	defer b.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan perm.Decision, 1)
+	go func() { done <- b.Prompter("t1", "/work", nil, nil)(ctx, r) }()
+	select {
+	case <-asked:
+		cancel()
+		<-done
+		return true
+	case <-done:
+		return false
+	case <-time.After(10 * time.Second):
+		t.Fatal("the bridge neither asked nor refused")
+		return false
+	}
+}
+
+// lastAsk is the question of the last ask event published.
+func lastAsk(t *testing.T, h *harness) wire.Question {
+	t.Helper()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := len(h.frames) - 1; i >= 0; i-- {
+		ev, ok := h.frames[i].Data.(wire.EvFrame)
+		if !ok {
+			continue
+		}
+		var a struct {
+			K string        `json:"k"`
+			Q wire.Question `json:"q"`
+		}
+		if json.Unmarshal(ev.Ev, &a) == nil && a.K == "ask" {
+			h.frames = h.frames[:0]
+			return a.Q
+		}
+	}
+	t.Fatal("no ask was published")
+	return wire.Question{}
+}
+
+// Every code point the bridge renders passes the translator's question path exactly as the bridge wrote it: the translator neither
+// masks nor strips a question, and the bridge writes nothing that the translator's sanitizer would remove.
+func TestQuestionsPassEveryRuneAsTheBridgeWroteIt(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	var raw strings.Builder
+	n := 0
+	check := func() {
+		shown, why := approvals.Shown("command", raw.String(), 1<<20)
+		if why != "" {
+			t.Fatalf("not shown: %s", why)
+		}
+		if clean := tools.SanitizeForTerminal(shown); clean != shown {
+			was, now := firstDifference(shown, clean)
+			t.Fatalf("the bridge writes text that the sanitizer alters: %q becomes %q", was, now)
+		}
+		n++
+		h.tr.Question(wire.Question{ID: fmt.Sprintf("q_%026d", n), Agent: "mgr", Kind: "command", Cmd: shown})
+		if got := lastAsk(t, h).Cmd; got != shown {
+			was, now := firstDifference(shown, got)
+			t.Fatalf("the question changed after the bridge: %q became %q", was, now)
+		}
+		raw.Reset()
+	}
+	for r := rune(0); r <= utf8.MaxRune; r++ {
+		if r >= 0xd800 && r <= 0xdfff {
+			continue // no UTF-8 encoding
+		}
+		raw.WriteRune(r)
+		raw.WriteByte('\n')
+		if raw.Len() > 16<<10 {
+			check()
+		}
+	}
+	check()
+}
+
+// firstDifference is a few runes of a and of b from the first rune where they differ.
+func firstDifference(a, b string) (string, string) {
+	x, y := []rune(a), []rune(b)
+	i := 0
+	for i < len(x) && i < len(y) && x[i] == y[i] {
+		i++
+	}
+	from := max(0, i-2)
+	return string(x[from:min(i+6, len(x))]), string(y[from:min(i+6, len(y))])
 }

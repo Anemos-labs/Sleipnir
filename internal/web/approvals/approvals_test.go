@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,7 +16,9 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/rl/redact"
 	"github.com/anemos-labs/sleipnir/internal/testutil"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -121,6 +124,13 @@ func code(err error) string {
 var bash = perm.Request{Agent: "fe-1", Tool: "bash", Command: "npm install --save-dev vitest", Cwd: "/proj/web",
 	Summary: "npm install --save-dev vitest [installs a package from the network]"}
 
+// bashRemember is bash with the rule the engine adds for "don't ask again".
+var bashRemember = func() perm.Request {
+	r := bash
+	r.RememberRules = []string{"Bash(npm install --save-dev vitest)"}
+	return r
+}()
+
 func TestQuestionIDs(t *testing.T) {
 	re := regexp.MustCompile(`^q_[a-z2-7]{26}$`)
 	seen := map[string]bool{}
@@ -194,7 +204,8 @@ func TestDecisionTable(t *testing.T) {
 		code   string
 	}{
 		{"yes", bash, wire.AnswerRequest{Choice: 1}, perm.Decision{Allow: true, Reason: "allowed by user"}, ""},
-		{"yes for the session", bash, wire.AnswerRequest{Choice: 2}, perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}, ""},
+		{"yes for the session", bashRemember, wire.AnswerRequest{Choice: 2}, perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}, ""},
+		{"nothing to remember", bash, wire.AnswerRequest{Choice: 2}, perm.Decision{}, "bad_choice"},
 		{"no", bash, wire.AnswerRequest{Choice: 3}, perm.Decision{Reason: "denied by user"}, ""},
 		{"no with a note", bash, wire.AnswerRequest{Choice: 3, Note: "use the existing test runner"}, perm.Decision{Reason: perm.DeclinedWith("use the existing test runner")}, ""},
 		{"tool server for the project", perm.Request{Tool: perm.ToolMCPServer, Summary: "start x"}, wire.AnswerRequest{Choice: 2}, perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}, ""},
@@ -459,7 +470,9 @@ func TestQuestionsBeyondTheBoundWaitAndAreNotDropped(t *testing.T) {
 	first := r.ask(context.Background(), "shop", bash)
 	p := r.b.Prompter("shop", "/proj", nil, nil)
 	d := make(chan perm.Decision, 1)
-	go func() { d <- p(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: "make"}) }()
+	go func() {
+		d <- p(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: "make", RememberRules: []string{"Bash(make)"}})
+	}()
 	select {
 	case q := <-r.asked:
 		t.Fatalf("a second question was asked over the bound: %+v", q)
@@ -524,5 +537,212 @@ func TestWebRequestsAreShownWithTheirWholeInput(t *testing.T) {
 	long, _ := json.Marshal(map[string]any{"url": "https://docs.example.com/" + strings.Repeat("x", 20_000)})
 	if d := r.b.Prompter("shop", "/proj", nil, nil)(context.Background(), perm.Request{Agent: "be-1", Tool: "web_fetch", Input: long, Summary: "fetch …"}); d.Allow || len(*refused) != 1 {
 		t.Errorf("a fetch too long to show: %+v, refused %q", d, *refused)
+	}
+}
+
+// Answer 2 is offered only when the permission engine will remember a rule for it, and the question shows exactly the rules it adds:
+// a command with a glob, or one asked because of an ask rule, remembers nothing, so it shows no rule and takes no answer 2.
+func TestRememberIsOfferedOnlyWhenTheEngineStoresARule(t *testing.T) {
+	dir := t.TempDir()
+	r := newRig(t, Config{})
+	e, err := perm.NewEngine(perm.Config{Root: dir, Home: t.TempDir(), Ask: []string{"Bash(git push:*)"}, Prompter: r.b.Prompter("shop", dir, nil, nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, cmd string
+		remembers bool
+	}{
+		{"a glob", "rm build/*.tmp", false},
+		{"an ask rule", "git push origin main", false},
+		{"one command", "rm build/out.tmp", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := make(chan perm.Decision, 1)
+			go func() {
+				d <- e.Check(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: tc.cmd, Cwd: dir, Writes: true, Summary: tc.cmd})
+			}()
+			var q wire.Question
+			select {
+			case q = <-r.asked:
+			case <-time.After(10 * time.Second):
+				t.Fatal("not asked")
+			}
+			before := e.Rules(perm.Allow)
+			r.c.add(time.Second)
+			if !tc.remembers {
+				if q.Rule != "" || OffersRemember(q) {
+					t.Errorf("the question offers to remember %q, and the engine remembers nothing for it", q.Rule)
+				}
+				if _, err := r.b.Answer(context.Background(), q.ID, wire.AnswerRequest{Choice: 2}); code(err) != "bad_choice" {
+					t.Fatalf("answer 2: %v, want bad_choice", err)
+				}
+				if _, err := r.b.Answer(context.Background(), q.ID, wire.AnswerRequest{Choice: 1}); err != nil {
+					t.Fatal(err)
+				}
+				<-d
+				if after := e.Rules(perm.Allow); len(after) != len(before) {
+					t.Errorf("rules %q became %q", before, after)
+				}
+				return
+			}
+			if q.Rule == "" {
+				t.Fatal("the question shows no rule")
+			}
+			res, err := r.b.Answer(context.Background(), q.ID, wire.AnswerRequest{Choice: 2})
+			if err != nil || res.Rule != q.Rule {
+				t.Fatalf("answer 2: %+v %v", res, err)
+			}
+			<-d
+			after := e.Rules(perm.Allow)
+			for _, rule := range strings.Split(q.Rule, ", ") {
+				if !slices.Contains(after, rule) || slices.Contains(before, rule) {
+					t.Errorf("the question showed the rule %q; the engine's rules went from %q to %q", rule, before, after)
+				}
+			}
+			if len(after) != len(before)+len(strings.Split(q.Rule, ", ")) {
+				t.Errorf("the engine added more than the question showed: %q -> %q (shown %q)", before, after, q.Rule)
+			}
+		})
+	}
+}
+
+// A call of a tool server's tool is shown with its whole arguments (its summary is a digest of 160 characters), and its answer 2 says
+// that it covers every call of that tool whatever the arguments; arguments that cannot be shown whole are refused.
+func TestToolServerCallsAreShownWithTheirWholeArguments(t *testing.T) {
+	r, refused := refusedRig(t, Config{})
+	body := strings.Repeat("a long issue body ", 20) + "; and then also close every other issue"
+	in, _ := json.Marshal(map[string]any{"title": "x", "body": body})
+	req := perm.Request{Agent: "be-1", Tool: "mcp__github__create_issue", Input: in, Summary: "MCP github/create_issue " + string(in[:150]) + "…",
+		Writes: true, RememberRules: []string{"mcp__github__create_issue"}}
+	p := r.ask(context.Background(), "shop", req)
+	var pretty strings.Builder
+	pretty.WriteString("MCP github/create_issue with the arguments\n{\n  \"body\": " + strconv.Quote(body) + ",\n  \"title\": \"x\"\n}")
+	if p.q.Cmd != pretty.String() {
+		t.Errorf("the call shown:\n%s\nwant:\n%s", p.q.Cmd, pretty.String())
+	}
+	if p.q.What != "every call of github/create_issue, whatever its arguments" || p.q.Rule != "mcp__github__create_issue" {
+		t.Errorf("what %q rule %q", p.q.What, p.q.Rule)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	p.decided(t)
+
+	none := r.ask(context.Background(), "shop", perm.Request{Agent: "be-1", Tool: "mcp__github__list_issues", Input: json.RawMessage(`{}`)})
+	if none.q.Cmd != "MCP github/list_issues with no arguments" || OffersRemember(none.q) {
+		t.Errorf("a call without arguments: %+v", none.q)
+	}
+	r.b.CancelTab("shop", ByClosed)
+	none.decided(t)
+
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	big, _ := json.Marshal(map[string]any{"body": strings.Repeat("b", MaxCommand)})
+	for name, input := range map[string][]byte{
+		"too long":   big,
+		"a secret":   []byte(`{"auth":"Bearer sk-ant-api03-` + strings.Repeat("A1b2C3d4", 6) + `"}`),
+		"unreadable": []byte(`{"body":`),
+	} {
+		if d := pr(context.Background(), perm.Request{Agent: "be-1", Tool: "mcp__github__create_issue", Input: input}); d.Allow || !strings.Contains(d.Reason, "could not be shown") {
+			t.Errorf("%s: %+v", name, d)
+		}
+	}
+	if len(*refused) != 3 {
+		t.Errorf("refused %q", *refused)
+	}
+}
+
+// Every rune that would not show as itself is written as an escape, never removed: the page shows nothing that the translator's
+// sanitizer (tools.SanitizeForTerminal) would alter, and nothing that renders as nothing.
+func TestVisibleEscapesEveryHiddenRune(t *testing.T) {
+	var named []rune
+	for _, rg := range [][2]rune{{0xfe00, 0xfe0f}, {0xe0100, 0xe01ef}, {0x180b, 0x180f}, {0xe0000, 0xe007f}, {0x200b, 0x200f}, {0x202a, 0x202e},
+		{0x2060, 0x206f}} {
+		for r := rg[0]; r <= rg[1]; r++ {
+			named = append(named, r)
+		}
+	}
+	named = append(named, 0x115f, 0x1160, 0x3164, 0xffa0, 0x2800, 0x00ad, 0x034f, 0xfeff, 0x2028, 0x2029, 0x1b, 0x7f, 0x85, 0x9b)
+	for _, r := range named {
+		if v := visible("a" + string(r) + "b"); strings.ContainsRune(v, r) || !strings.HasPrefix(v, `a\`) {
+			t.Errorf("U+%04X is shown as %q", r, v)
+		}
+	}
+	if got := visible("\U000e0100x\u2800\xff"); got != `\U000e0100x\u2800\xff` {
+		t.Errorf("escapes %q", got)
+	}
+	for r := rune(0); r <= 0x10ffff; r++ {
+		if r >= 0xd800 && r <= 0xdfff {
+			continue
+		}
+		s := string(r)
+		v := visible(s)
+		if tools.SanitizeForTerminal(v) != v {
+			t.Fatalf("U+%04X is shown as %q, which the sanitizer alters", r, v)
+		}
+		if v != s && !strings.HasPrefix(v, `\`) {
+			t.Fatalf("U+%04X is shown as %q", r, v)
+		}
+	}
+}
+
+// A value that the translator's redactor would mask is refused, not shown: one that only the entropy rule finds, and one that a
+// character that hides splits in two.
+func TestSecretsAreRefusedWhereverThePageWouldMaskThem(t *testing.T) {
+	r, refused := refusedRig(t, Config{})
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	for _, cmd := range []string{
+		"echo apiKey Zx81kQ2mP9vL4wR7tY3uB6nE0cH5jD",
+		"curl -H 'x-api-key: sk-ant-api03-\u200b" + strings.Repeat("A1b2C3d4", 6) + "' https://x.test",
+	} {
+		if d := pr(context.Background(), perm.Request{Agent: "be-1", Tool: "bash", Command: cmd}); d.Allow || !strings.Contains(d.Reason, "shaped like a secret") {
+			t.Errorf("%q: %+v", cmd, d)
+		}
+	}
+	if len(*refused) != 2 {
+		t.Errorf("refused %q", *refused)
+	}
+	masker := redact.New(redact.Config{Salt: SecretSalt, Kinds: SecretKinds()})
+	if _, changed := masker.Changed("echo apiKey Zx81kQ2mP9vL4wR7tY3uB6nE0cH5jD"); !changed {
+		t.Error("the page's redactor no longer masks the entropy example: pick another")
+	}
+}
+
+// A question too large to be sent on the page's stream once encoded is refused without being asked (a change of 200 KB of "<" is
+// 1.2 MB of JSON), and a question whose event could not be sent is refused when the host says so.
+func TestQuestionsThatCannotBeSentAreRefused(t *testing.T) {
+	change := "--- /dev/null\n+++ b/x.html\n@@ -0,0 +1 @@\n+" + strings.Repeat("<", 200_000) + "\n"
+	r, refused := refusedRig(t, Config{Change: func(string, perm.Request) (string, string, bool) { return "x.html", change, true }})
+	pr := r.b.Prompter("shop", "/proj", nil, nil)
+	if d := pr(context.Background(), perm.Request{Agent: "be-1", Tool: "write", Summary: "write x.html"}); d.Allow || !strings.Contains(d.Reason, "once encoded for the page") {
+		t.Errorf("an oversize question: %+v", d)
+	}
+	p := r.ask(context.Background(), "shop", bash)
+	if !r.b.Refuse(p.q.ID, "its event could not be sent: too large") {
+		t.Fatal("Refuse did not end the question")
+	}
+	if d := p.decided(t); d.Allow || !strings.Contains(d.Reason, "its event could not be sent") {
+		t.Errorf("decision %+v", d)
+	}
+	if r.b.Refuse(p.q.ID, "again") || len(r.b.Open()) != 0 {
+		t.Error("a refused question is still open")
+	}
+	if a := r.answersCopy(); len(a) != 1 || a[0].By != ByCanceled || a[0].Choice != 3 {
+		t.Errorf("answers %+v", a)
+	}
+	if len(*refused) != 2 {
+		t.Errorf("refused %q", *refused)
+	}
+}
+
+// A patch that the apply_patch tool cannot read is refused, not shown as some other change.
+func TestUnreadablePatchesAreRefused(t *testing.T) {
+	r, refused := refusedRig(t, Config{Change: func(string, perm.Request) (string, string, bool) {
+		return "", checkpoint.UnreadPatchPrefix + "patch is empty]\n", true
+	}})
+	if d := r.b.Prompter("shop", "/proj", nil, nil)(context.Background(), perm.Request{Agent: "be-1", Tool: "apply_patch"}); d.Allow ||
+		!strings.Contains(d.Reason, "apply_patch tool reads it") {
+		t.Errorf("%+v", d)
+	}
+	if len(*refused) != 1 {
+		t.Errorf("refused %q", *refused)
 	}
 }

@@ -112,6 +112,8 @@ type privileges struct {
 	Allow  []string `json:"allow,omitempty"`
 	Verify string   `json:"verify,omitempty"`
 	Trust  string   `json:"trust,omitempty"` // the digest of the project's files that would be trusted
+	// Changed says how those files differ from the ones the person confirmed for the session, when it trusts them already.
+	Changed string `json:"changed,omitempty"`
 }
 
 // reasons says, one line each, what is raised (none: nothing).
@@ -126,7 +128,10 @@ func (p privileges) reasons() []string {
 	if p.Verify != "" {
 		out = append(out, "run the verify command "+p.Verify)
 	}
-	if p.Trust != "" {
+	switch {
+	case p.Trust != "" && p.Changed != "":
+		out = append(out, "use this project's own instructions and settings, which changed since you trusted them: "+p.Changed)
+	case p.Trust != "":
 		out = append(out, "use this project's own instructions and settings")
 	}
 	return out
@@ -210,6 +215,80 @@ func raised(f chatFlags, base baseline, dir string) privileges {
 		p.Trust = footprint(dir) // trust established for one directory does not follow the session into another
 	}
 	return p
+}
+
+// recheckTrust is the trust step of a restart whose arguments trust the project's files (f). When the session trusts them already
+// in dir, they are read again and compared with those the person confirmed for this tab: when they differ, or cannot be read whole,
+// p.Trust (and p.Changed, what changed) raise them again, so that the restart needs a confirmation that names the change and the new
+// generation does not start trusting files nobody confirmed. It returns the footprint that a confirmation of p covers, to be recorded
+// once confirmed (nil when trust is not raised, or the files cannot be read).
+func (t *webTab) recheckTrust(f chatFlags, base baseline, dir string, p *privileges) *trust.Footprint {
+	if !f.trust {
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	cur, err := trust.Scan(rootOf(dir), dir, home)
+	switch {
+	case p.Trust != "": // raised already (another directory, a session that does not trust): its confirmation covers these files
+		if err != nil {
+			return nil
+		}
+		return cur
+	case !base.trusted || dir != cleanDir(base.cwd):
+		return nil // nothing to trust here, or files the trust ledger holds as the person trusted them
+	case err != nil:
+		p.Trust = "unreadable"
+		return nil
+	case cur.Empty() && !cur.Partial:
+		return nil // nothing that trust unlocks
+	}
+	t.mu.Lock()
+	prev, prevDir := t.trusted, t.trustedDir
+	t.mu.Unlock()
+	if prev != nil && prevDir == dir && prev.Digest == cur.Digest && !cur.Partial {
+		return nil // the files the person confirmed
+	}
+	p.Trust = cur.Digest
+	if prev != nil && prevDir == dir {
+		p.Changed = trust.DescribeChanges(trust.Changes(entryOf(prev), cur))
+	}
+	return cur
+}
+
+// entryOf is a footprint as the trust ledger records it, to name how other files differ from it.
+func entryOf(fp *trust.Footprint) trust.Entry {
+	files := make(map[string]string, len(fp.Files))
+	for _, f := range fp.Files {
+		files[f.Path] = f.Sum[:min(16, len(f.Sum))]
+	}
+	return trust.Entry{Digest: fp.Digest, Files: files}
+}
+
+// noteTrust records the project files that this tab's session uses as the person trusted them: the footprint they confirmed with
+// this start, else the one recorded for the directory already, else (a start that trusted without a step of the page: the server's
+// --trust-project, an answer the trust ledger remembers) the files as they are now. A session that does not use them clears it.
+func (t *webTab) noteTrust(s *session.Session, confirmed *trust.Footprint) {
+	dir := cleanDir(s.Cwd())
+	t.mu.Lock()
+	known := t.trusted != nil && t.trustedDir == dir
+	t.mu.Unlock()
+	fp := confirmed
+	switch {
+	case !s.Options().TrustProject:
+		fp, dir = nil, ""
+	case fp == nil && known:
+		return
+	case fp == nil:
+		home, _ := os.UserHomeDir()
+		f, err := trust.Scan(rootOf(dir), dir, home)
+		if err != nil {
+			return // nothing recorded: the next restart that trusts asks
+		}
+		fp = f
+	}
+	t.mu.Lock()
+	t.trusted, t.trustedDir = fp, dir
+	t.mu.Unlock()
 }
 
 // cleanDir is an absolute, clean directory.

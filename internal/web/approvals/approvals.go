@@ -11,11 +11,14 @@
 // The bridge does not choose what an answer means: choice 1 is yes, 2 yes and remember for the session (for a project's tool
 // server or its own files: for the project), 3 no with an optional instruction that the model reads with the refusal, and 4 (only
 // when the question offers it) yes and allow the builds and tests of most projects for the session; the page cannot pick a scope.
+// Choice 2 is offered only where it remembers something: a question about a project's tool server or its own files, or one whose Rule
+// names the rules the permission engine will add (OffersRemember); a question without one takes no choice 2.
 // Questions about the project's own files and its tool servers are refused without being asked while the session is starting:
 // the New session dialog decides those before the start.
 package approvals
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base32"
@@ -60,6 +63,11 @@ const (
 	truncatedLine = "[diff truncated]"
 	// maxRemembered is how many answered ids are kept to tell "answered" from "no such question".
 	maxRemembered = 4096
+	// DefaultMaxEncoded bounds a question once it is encoded as JSON for the page, in bytes: the event limit of `sleipnir web`'s
+	// stream (1 MiB) less room for the frame around the question. A larger question could not be delivered, so it is not asked.
+	DefaultMaxEncoded = 1<<20 - 16<<10
+	// unshownReason begins the refusal of a request whose question could not be shown to the person whole.
+	unshownReason = "approval required, and the question could not be shown to the person whole, so nothing was approved: "
 )
 
 // Who resolved a question other than a person (wire.Answer.By).
@@ -102,6 +110,9 @@ type Config struct {
 	OnRefused func(tab, agent, why string)
 	// MaxPerTab bounds the open questions of a tab (DefaultMaxPerTab when zero).
 	MaxPerTab int
+	// MaxEncoded bounds a question encoded as JSON, in bytes (DefaultMaxEncoded when zero): the room an event of the page's stream
+	// leaves for it. A larger question is refused without being asked.
+	MaxEncoded int
 }
 
 // question is one open question.
@@ -143,6 +154,9 @@ func New(cfg Config) *Bridge {
 	}
 	if cfg.MaxPerTab <= 0 {
 		cfg.MaxPerTab = DefaultMaxPerTab
+	}
+	if cfg.MaxEncoded <= 0 {
+		cfg.MaxEncoded = DefaultMaxEncoded
 	}
 	return &Bridge{
 		cfg:  cfg,
@@ -202,12 +216,15 @@ func (b *Bridge) Prompter(tab, root string, describe func(agent string) (task, s
 			ans:     make(chan perm.Decision, 1)}
 		var unshown string
 		q.q, unshown = b.shape(tab, id, root, task, scope, r)
+		if unshown == "" {
+			unshown = b.fits(q.q)
+		}
 		if unshown != "" {
 			// A person must never approve less than what will run: a question that cannot be shown whole is not asked.
 			if b.cfg.OnRefused != nil {
 				b.cfg.OnRefused(tab, r.Agent, unshown)
 			}
-			return perm.Decision{Allow: false, Reason: "approval required, and the question could not be shown to the person whole, so nothing was approved: " + unshown}
+			return perm.Decision{Allow: false, Reason: unshownReason + unshown}
 		}
 
 		b.mu.Lock()
@@ -237,6 +254,43 @@ func (b *Bridge) Prompter(tab, root string, describe func(agent string) (task, s
 			return <-q.ans // answered in the same instant: the answer stands (the engine discards it if the turn is over)
 		}
 	}
+}
+
+// fits says why q cannot be delivered to the page, encoded as the stream encodes it (JSON, with <, > and & escaped), or "" when it
+// can.
+func (b *Bridge) fits(q wire.Question) string {
+	enc, err := json.Marshal(q)
+	switch {
+	case err != nil:
+		return "the question could not be encoded for the page"
+	case len(enc) > b.cfg.MaxEncoded:
+		return fmt.Sprintf("the question is %d bytes once encoded for the page, which takes at most %d: make the request smaller", len(enc), b.cfg.MaxEncoded)
+	}
+	return ""
+}
+
+// Refuse ends an open question that could not be delivered to the pages (its event could not be sent): the request is refused, why
+// says so (in the refusal and through Config.OnRefused), and the answer event says "canceled". It reports whether it ended one.
+func (b *Bridge) Refuse(qid, why string) bool {
+	b.mu.Lock()
+	q := b.open[qid]
+	b.mu.Unlock()
+	if q == nil {
+		return false
+	}
+	if !b.resolve(q, perm.Decision{Allow: false, Reason: unshownReason + why}, wire.Answer{QID: qid, Choice: 3, By: ByCanceled}) {
+		return false
+	}
+	if b.cfg.OnRefused != nil {
+		b.cfg.OnRefused(q.tab, q.agent, why)
+	}
+	return true
+}
+
+// OffersRemember reports whether a question takes choice 2: a question about a project's tool server or its own files remembers
+// for the project, and any other remembers only the rules its Rule names (the permission engine adds none for it otherwise).
+func OffersRemember(q wire.Question) bool {
+	return q.Kind == "trust" || q.Kind == "mcp" || q.Rule != ""
 }
 
 // resolve settles q with d and reports a's answer event, once; it reports whether this call settled it.
@@ -334,8 +388,8 @@ func decision(q *question, choice int, note string) perm.Decision {
 	return perm.Decision{Allow: false, Reason: perm.DeclinedWith(note)}
 }
 
-// Answer resolves a question with a person's answer: choice 1, 2, 3 (no, with an optional note of at most MaxNote characters) or 4
-// (only when the question offers the tests preset). It refuses an answer earlier than the floor after the question was asked and
+// Answer resolves a question with a person's answer: choice 1, 2 (only when OffersRemember), 3 (no, with an optional note of at
+// most MaxNote characters) or 4 (only when the question offers the tests preset). It refuses an answer earlier than the floor after the question was asked and
 // after the tab's previous answer (409 too_soon, with retryAfterMs), a second answer (409 answered) and an unknown id (404
 // no_question). Errors are *wire.Error.
 func (b *Bridge) Answer(ctx context.Context, qid string, req wire.AnswerRequest) (wire.AnswerResult, error) {
@@ -362,6 +416,10 @@ func (b *Bridge) Answer(ctx context.Context, qid string, req wire.AnswerRequest)
 	if req.Choice == 4 && !q.tests {
 		b.mu.Unlock()
 		return wire.AnswerResult{}, errorf(http.StatusBadRequest, "bad_choice", "this question does not offer the builds and tests answer", nil)
+	}
+	if req.Choice == 2 && !OffersRemember(q.q) {
+		b.mu.Unlock()
+		return wire.AnswerResult{}, errorf(http.StatusBadRequest, "bad_choice", "this question does not offer to remember the answer: nothing would be remembered", nil)
 	}
 	now := b.cfg.Now()
 	armAt := q.created
@@ -507,9 +565,9 @@ func relDir(root, dir string) string {
 	return filepath.ToSlash(rel) + "/"
 }
 
-// visible renders text for the page without hiding any of it: terminal controls (but newline and tab), the Unicode format characters
-// that reorder or hide text (bidirectional controls, zero-width characters, the byte order mark, line and paragraph separators) and
-// bytes that are not UTF-8 are written as escapes (\x1b, \u202e, \xff), never removed, so that the page shows what will run.
+// visible renders text for the page without hiding any of it: every rune that would not show as itself (see hidden) and every byte
+// that is not UTF-8 is written as an escape (\x1b, \u202e, \U000e0100, \xff), never removed, so that the page shows what will run.
+// Newline and tab stay.
 func visible(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); {
@@ -519,31 +577,67 @@ func visible(s string) string {
 			fmt.Fprintf(&b, "\\x%02x", s[i])
 		case r == '\n' || r == '\t':
 			b.WriteRune(r)
-		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
-			fmt.Fprintf(&b, "\\x%02x", r)
-		case unicode.Is(unicode.Cf, r) || r == 0x2028 || r == 0x2029:
-			fmt.Fprintf(&b, "\\u%04x", r)
+		case hidden(r):
+			switch {
+			case r < 0x80:
+				fmt.Fprintf(&b, "\\x%02x", r)
+			case r <= 0xffff:
+				fmt.Fprintf(&b, "\\u%04x", r)
+			default:
+				fmt.Fprintf(&b, "\\U%08x", r)
+			}
 		default:
-			b.WriteRune(r)
+			b.WriteString(s[i : i+n])
 		}
 		i += n
 	}
 	return b.String()
 }
 
+// hidden reports a rune that a page or a terminal would not show as itself: the C0 and C1 controls and DEL; every rune that is not
+// graphic (format characters such as the bidirectional controls, zero-width characters and the byte order mark; the line and
+// paragraph separators; private-use and unassigned code points); the default-ignorable ones that are (the Hangul fillers, the
+// combining grapheme joiner) and the variation selectors; the braille blank; and anything else that tools.SanitizeForTerminal, which
+// cleans text for display elsewhere, would remove or replace.
+func hidden(r rune) bool {
+	switch {
+	case r < 0x80:
+		return r < 0x20 || r == 0x7f
+	case !unicode.IsGraphic(r), unicode.In(r, unicode.Other_Default_Ignorable_Code_Point, unicode.Variation_Selector), r == 0x2800,
+		tools.Invisible(r):
+		return true
+	}
+	s := string(r)
+	return tools.SanitizeForTerminal(s) != s
+}
+
+// SecretKinds are the kinds of values shaped like secrets (internal/rl/redact) that the page never shows: provider keys and other
+// tokens, JWTs, private keys, credentials in URLs, bearer values, key=value secrets and high-entropy values next to a key-like word.
+// The translator masks with the same kinds, so that a question the bridge lets through is one it would not alter.
+func SecretKinds() []string {
+	return []string{redact.GroupTokens, redact.KindJWT, redact.KindPrivateKey, redact.KindURLCred, redact.KindBearer, redact.KindSecret,
+		redact.KindEntropy}
+}
+
+// SecretSalt is the salt of the page's redaction tokens.
+const SecretSalt = "sleipnir-web"
+
 // secrets recognises values shaped like secrets, which the page never shows.
-var secrets = redact.New(redact.Config{Kinds: []string{redact.GroupTokens, redact.KindJWT, redact.KindPrivateKey, redact.KindURLCred, redact.KindBearer, redact.KindSecret}})
+var secrets = redact.New(redact.Config{Salt: SecretSalt, Kinds: SecretKinds()})
 
 // Shown renders text that a person decides on (a question's field, what a confirmation raises) whole: visible, at most limit bytes
-// of the original, and free of values shaped like secrets. When it cannot be shown so, why says so in a sentence about name, and
-// the caller must not ask the person at all.
+// of the original, and free of values shaped like secrets (in the text as it is, as the page shows it, and as it reads once the
+// characters that hide are removed). When it cannot be shown so, why says so in a sentence about name, and the caller must not ask
+// the person at all.
 func Shown(name, raw string, limit int) (shown, why string) {
 	if len(raw) > limit {
 		return "", fmt.Sprintf("the %s is %d bytes and the page shows at most %d: split it, or write it to a file and run that", name, len(raw), limit)
 	}
 	v := visible(raw)
-	if secrets.String(v) != v {
-		return "", "the " + name + " holds a value shaped like a secret, which the page does not show: pass it through an environment variable or a file"
+	for _, s := range []string{v, raw, tools.SanitizeForTerminal(raw)} {
+		if _, changed := secrets.Changed(s); changed {
+			return "", "the " + name + " holds a value shaped like a secret, which the page does not show: pass it through an environment variable or a file"
+		}
 	}
 	return v, ""
 }
@@ -578,6 +672,36 @@ func webText(r perm.Request) string {
 	return ""
 }
 
+// mcpPrefix begins the name of every tool of a tool server (internal/mcp): "mcp__<server>__<tool>".
+const mcpPrefix = "mcp__"
+
+// mcpCall is the whole of a call of a tool server's tool, from the call's input (its summary is a short digest): the server and the
+// tool as the harness names them, and the arguments as indented JSON. ok is false for another tool; text is "" when the arguments
+// cannot be read.
+func mcpCall(r perm.Request) (server, tool, text string, ok bool) {
+	rest, ok := strings.CutPrefix(r.Tool, mcpPrefix)
+	if !ok {
+		return "", "", "", false
+	}
+	server, tool, found := strings.Cut(rest, "__")
+	if !found {
+		server, tool = rest, ""
+	}
+	args := bytes.TrimSpace(r.Input)
+	if len(args) == 0 || string(args) == "null" {
+		args = []byte("{}")
+	}
+	var pretty bytes.Buffer
+	if !json.Valid(args) || json.Indent(&pretty, args, "", "  ") != nil {
+		return server, tool, "", true
+	}
+	text = "MCP " + server + "/" + tool + " with no arguments"
+	if p := pretty.String(); p != "{}" {
+		text = "MCP " + server + "/" + tool + " with the arguments\n" + p
+	}
+	return server, tool, text, true
+}
+
 // shape builds the question the page shows (wire.Question), every field whole; unshown says why it cannot be shown whole (the request
 // is then refused without being asked).
 func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wire.Question, unshown string) {
@@ -592,6 +716,15 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wir
 	}
 	if full := webText(r); kind == "web" && full != "" {
 		cmd = full // the URL or the query whole: the summary is cut, and a path or a query can carry data to an allowed host
+	}
+	server, tool, call, isMCP := mcpCall(r)
+	if isMCP {
+		if call == "" {
+			return wire.Question{}, "the arguments of the tool call cannot be read"
+		}
+		// The arguments whole (the summary is a digest of them), bounded as a command is: the longest text a question asks a person
+		// to read through.
+		cmd, cmdName, cmdLimit = call, "tool call", MaxCommand
 	}
 	where := func(dir string) string {
 		if b.cfg.Where != nil {
@@ -615,9 +748,10 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wir
 			what = "this request"
 		}
 	}
-	rule := strings.Join(r.RememberRules, ", ") // a "don't ask again" adds every one of them
-	if rule == "" && r.Remembers == "" && kind == "command" && r.Command != "" && !strings.ContainsAny(r.Command, "\n") {
-		rule = "Bash(" + r.Command + ")"
+	// The rules a "don't ask again" adds, every one of them, as the engine writes them; none means that answer is not offered.
+	rule := strings.Join(r.RememberRules, ", ")
+	if isMCP && rule == r.Tool {
+		what = "every call of " + server + "/" + tool + ", whatever its arguments"
 	}
 	q = wire.Question{ID: id, Agent: agentID(r.Agent), Kind: kind, OffersTests: r.OffersTests}
 	// Every field is shown whole or the question is not asked; an exact rule is as long as the command it names.
@@ -649,6 +783,8 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wir
 			return q, fmt.Sprintf("the change is larger than the page shows (%d bytes): make it in smaller edits", MaxChange)
 		case hasLinePrefix(change, checkpoint.UnshownPrefix):
 			return q, "the file it changes is there and cannot be shown as text, so the change cannot be shown"
+		case hasLinePrefix(change, checkpoint.UnreadPatchPrefix):
+			return q, "the patch cannot be read as the apply_patch tool reads it, so the change cannot be shown"
 		}
 		if path == "" && len(r.Paths) > 0 {
 			paths := append([]string(nil), r.Paths...)

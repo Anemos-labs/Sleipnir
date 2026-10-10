@@ -418,7 +418,7 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// What the session raises above the server's own command line needs the person's confirmation (web_authorize.go); trusting the
 	// project's files shows them first (409 trust_required with the challenge).
-	note, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, h.serverBaseline(), dir))
+	note, trusted, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, h.serverBaseline(), dir))
 	if !okay {
 		return
 	}
@@ -427,7 +427,8 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	spec := startSpec{args: args, name: strings.TrimSpace(body.Name), goalText: body.GoalText, effort: strings.TrimSpace(body.Effort), note: note}
+	spec := startSpec{args: args, name: strings.TrimSpace(body.Name), goalText: body.GoalText, effort: strings.TrimSpace(body.Effort), note: note,
+		trusted: trusted}
 	h.track(func() { _ = t.startGen(spec) })
 	res := map[string]any{"tab": t.Summary()}
 	h.idemPut(key, http.StatusCreated, res)
@@ -528,7 +529,7 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The server's flags are the person's for --cwd: in another directory, trusting its files is raised as a new session raises it.
-	note, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, h.serverBaseline(), cleanDir(cwd)))
+	note, trusted, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, h.serverBaseline(), cleanDir(cwd)))
 	if !okay {
 		return
 	}
@@ -537,7 +538,7 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	spec := startSpec{args: args, name: strings.TrimSpace(body.Name), note: note}
+	spec := startSpec{args: args, name: strings.TrimSpace(body.Name), note: note, trusted: trusted}
 	h.track(func() { _ = t.startGen(spec) })
 	res := map[string]any{"tab": t.Summary()}
 	h.idemPut(key, http.StatusCreated, res)
