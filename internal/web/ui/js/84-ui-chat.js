@@ -189,7 +189,7 @@
       closeSlash(); if (run && !c.args) { inp.value = ''; SL.palette.run(c, ''); } else { inp.value = c.name + ' '; inp.focus(); }
     }
     function submit() {
-      const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return; const pasted = RS.pasted.slice(); inp.value = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
+      const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return; const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1;   /* the sent line is no draft to restore */ if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
       if (v.charAt(0) === '/') { SL.palette.runLine(v); return; }
       if (S.replay) { ui.toast('go live to talk: a replay never changes the session', 'warm'); return; }
       if (SL.time.holdWanted()) { SL.time.release(); SL.time.pin(false); S.hold.pinned = false; }

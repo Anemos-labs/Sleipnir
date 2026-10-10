@@ -58,12 +58,73 @@ test('401 reloads the page (the server answers with its sign-in page)', async ()
   assert.equal(ctx.reloads.n, 1);
 });
 
-test('428 is a page bug: toasted, not retried', async () => {
-  const { SL, fetch, toasts } = setup(() => ({ status: 428, body: { error: 'needs a confirmation', code: 'confirm_required' }, headers: { 'X-Confirm-Scope': 'mode:yolo:a' } }));
-  const r = await SL.api.post('/api/sessions/a/mode', { mode: 'yolo' });
-  assert.equal(r.scope, 'mode:yolo:a');
-  assert.equal(fetch.calls.length, 1);
-  assert.deepEqual(toasts, [['needs a confirmation', 'err']]);
+/** A server that refuses /api/sessions/a/mode with 428 until it gets X-Confirm good for the scope; 'bad' ids are refused 403. */
+function confirmServer(o) {
+  o = o || {}; const issued = [];
+  const routes = (m, p, init) => {
+    if (p === '/api/confirm') { const sc = JSON.parse(init.body).scope; const id = 'id' + (issued.length + 1); issued.push([id, sc]); return { status: 200, body: { id, scope: sc, expires_in: 60 } }; }
+    const id = init.headers['X-Confirm'];
+    if (!id) return { status: 428, headers: { 'X-Confirm-Scope': 'restart:a:0123456789abcdef' }, body: { error: 'this action needs a confirmation: obtain an id for the scope and send it as X-Confirm', code: 'confirm_required', detail: { scope: 'restart:a:0123456789abcdef', reasons: ['permission mode yolo', 'allow Bash(go test:*)'] } } };
+    const got = issued.find(x => x[0] === id);
+    if (!got || got[1] !== 'restart:a:0123456789abcdef' || (o.expireFirst && id === 'id1')) return { status: 403, body: { error: 'the confirmation is unknown, already used, expired or for something else; obtain a new one', code: 'confirm_invalid' } };
+    return { status: 202, body: { gen: 2 } };
+  };
+  return routes;
+}
+
+test('428 on any request: the shell is asked with the server\'s scope and reasons; yes confirms that scope and repeats the same request once', async () => {
+  const { SL, fetch, toasts } = setup(confirmServer());
+  const asks = []; SL.api.cfg.askConfirm = async a => { asks.push(a); return true; };
+  const r = await SL.api.post('/api/sessions/a/restart', { kind: 'swarm', swarm: 3, fresh: false });
+  assert.equal(r.ok, true); assert.equal(r.status, 202);
+  assert.deepEqual(plain(asks), [{ scope: 'restart:a:0123456789abcdef', reasons: ['permission mode yolo', 'allow Bash(go test:*)'], message: 'this action needs a confirmation: obtain an id for the scope and send it as X-Confirm', method: 'POST', path: '/api/sessions/a/restart' }]);
+  const tries = fetch.calls.filter(c => c.path === '/api/sessions/a/restart');
+  assert.equal(tries.length, 2); assert.equal(tries[0].body, tries[1].body, 'the same body is sent again');
+  assert.equal(tries[0].headers['X-Confirm'], undefined); assert.equal(tries[1].headers['X-Confirm'], 'id1');
+  assert.deepEqual(fetch.calls.filter(c => c.path === '/api/confirm').map(c => JSON.parse(c.body)), [{ scope: 'restart:a:0123456789abcdef' }]);
+  assert.deepEqual(toasts, []);
+});
+
+test('428: no from the person sends nothing more and toasts nothing; without the hook the 428 comes back as it is', async () => {
+  const s1 = setup(confirmServer());
+  s1.SL.api.cfg.askConfirm = async () => false;
+  const r = await s1.SL.api.post('/api/sessions/a/restart', { kind: 'new', fresh: true });
+  assert.equal(r.status, 428); assert.equal(r.code, 'confirm_required'); assert.equal(r.declined, true); assert.equal(r.scope, 'restart:a:0123456789abcdef');
+  assert.equal(s1.fetch.calls.length, 1); assert.deepEqual(s1.toasts, []);
+  const s2 = setup(confirmServer());
+  const r2 = await s2.SL.api.post('/api/sessions/a/restart', { kind: 'new', fresh: true });
+  assert.equal(r2.status, 428); assert.equal(r2.declined, undefined); assert.equal(s2.fetch.calls.length, 1); assert.deepEqual(s2.toasts, []);
+  const s3 = setup(confirmServer());
+  let n = 0; s3.SL.api.cfg.askConfirm = async () => { n++; return true; };
+  const r3 = await s3.SL.api.post('/api/sessions/a/restart', {}, { noAsk: true });
+  assert.equal(r3.status, 428); assert.equal(n, 0);
+});
+
+test('428: an id that is refused on the repeat is renewed once for the same scope; the person is asked only once', async () => {
+  const { SL, fetch } = setup(confirmServer({ expireFirst: true }));
+  let n = 0; SL.api.cfg.askConfirm = async () => { n++; return true; };
+  const r = await SL.api.post('/api/sessions/a/restart', { kind: 'swarm', swarm: 2 });
+  assert.equal(r.ok, true); assert.equal(n, 1);
+  assert.deepEqual(fetch.calls.filter(c => c.path === '/api/sessions/a/restart').map(c => c.headers['X-Confirm'] || ''), ['', 'id1', 'id2']);
+});
+
+test('a caller\'s own id for another scope: refused 403, the server then names its scope and the generic question is asked once', async () => {
+  const { SL, fetch } = setup(confirmServer());
+  let n = 0; SL.api.cfg.askConfirm = async () => { n++; return true; };
+  const r = await SL.api.post('/api/sessions/a/restart', { kind: 'restart' }, { confirm: 'restart:a:wrongwrongwrong0' });
+  assert.equal(r.ok, true); assert.equal(n, 1);
+  assert.deepEqual(fetch.calls.filter(c => c.path === '/api/sessions/a/restart').map(c => c.headers['X-Confirm'] || ''), ['id1', 'id2', '', 'id3']);
+  const held = setup(confirmServer()); let m = 0; held.SL.api.cfg.askConfirm = async () => { m++; return true; };
+  const r2 = await held.SL.api.post('/api/sessions/a/restart', {}, { confirmId: 'stale' });
+  assert.equal(r2.ok, true); assert.equal(m, 1);
+  assert.deepEqual(held.fetch.calls.filter(c => c.path === '/api/sessions/a/restart').map(c => c.headers['X-Confirm'] || ''), ['stale', '', 'id1']);
+});
+
+test('a caller that already asked (the scope the server wants) is not asked again', async () => {
+  const { SL } = setup(confirmServer());
+  let n = 0; SL.api.cfg.askConfirm = async () => { n++; return true; };
+  const r = await SL.api.post('/api/sessions/a/restart', {}, { confirm: 'restart:a:0123456789abcdef' });
+  assert.equal(r.ok, true); assert.equal(n, 0);
 });
 
 test('opts.confirm obtains an id for the scope and sends it as X-Confirm; an expired id is replaced once', async () => {

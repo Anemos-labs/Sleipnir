@@ -85,7 +85,8 @@
     const has = !!(SL.live && SL.live.defaults()), d = has ? SL.live.defaults() : {}, projects = (D.extra.projects || []), def = projects.find(p => p.default) || projects[0];
     const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '';
     /* with the server's defaults an absent field is the CLI's own default (no budget, no verify command); without them, the mock's seeds */
-    return { name: '', cwd, model: d.model || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : has ? 'off' : '5', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 12, resume: '' };
+    const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
+    return { name: '', cwd, model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : has ? 'off' : '5', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 12, resume: '' };
   }
   dialogs.newSession = function (seed) {
     if (SL.data) { SL.data.load('projects'); SL.data.load('models'); }
@@ -118,6 +119,33 @@
         });
       } });
   };
+  /* ---------- the server's confirmation of what a request raises (any request: SL.api asks through this) ---------- */
+  const ASK_TITLE = [[/^\/api\/sessions$/, 'Start the session'], [/^\/api\/sessions\/resume$/, 'Resume the session'], [/\/restart$/, 'Start again'], [/\/mode$/, 'Set the mode'], [/\/rules\/remove$/, 'Remove the rule'], [/\/rules$/, 'Add the rule'], [/\/command$/, 'Run the command'], [/\/ws\/restore/, 'Restore the files']];
+  const TYPE_TEXT = { yolo: 'yolo asks nothing, the very dangerous included; deny rules and guarded paths still refuse. For sandboxes. Type yolo to confirm.', bypass: 'bypass asks nothing except about the very dangerous; deny rules still apply. Type bypass to confirm.' };
+  /**
+   * The person's answer to what the server says a request raises ({scope, reasons, message, method, path} -> Promise<boolean>): the
+   * standard confirm with the server's reasons; a dangerous mode is confirmed by typing its name, as in the Mode sheet, except when the
+   * request is the New session dialog's own start, where choosing the mode in the dialog is the confirmation (its own warning says so).
+   */
+  function askConfirm(o) {
+    return new Promise(resolve => {
+      let done = false; const finish = v => { if (!done) { done = true; resolve(v); } };
+      const path = String(o.path || '').split('?')[0], fromNew = o.method === 'POST' && path === '/api/sessions';
+      const dm = ((o.reasons || []).map(r => /^permission mode (bypass|yolo)$/.exec(r)).find(Boolean) || [])[1], typed = !!dm && !fromNew;
+      const t = ASK_TITLE.find(x => x[0].test(path)), S = SL.sessions && SL.sessions.active, who = S && !S.placeholder && !fromNew ? '<b>' + esc(S.name) + '</b>' : 'the session';
+      const list = (o.reasons || []).length ? '<ul class="plist">' + o.reasons.map(r => '<li><span class="pg">⚠</span><span class="pt">' + esc(r) + '</span></li>').join('') + '</ul>' : esc(o.message || 'this action needs a confirmation');
+      ui.modal({ title: t ? t[1] : 'Confirm', kicker: 'confirm', desc: '', color: 'var(--err)', cls: 'confirm', focus: typed ? '#cfType' : '[data-no]', onClose: () => finish(false),
+        body: '<p class="cf-t">This raises what ' + who + ' may do:</p><div class="cf-d">' + list + '</div>' + (typed ? '<div class="dangerbox"><span>' + esc(TYPE_TEXT[dm]) + '</span><input id="cfType" type="text" autocomplete="off" aria-label="Type the mode name to confirm"></div>' : '') + '<div class="row2"><button class="btn danger" type="button" data-ok' + (typed ? ' disabled' : '') + '>' + (typed ? 'Set it' : 'Yes, go ahead') + '</button><button class="btn" type="button" data-no>Cancel</button></div>',
+        onMount(b, sc, close) {
+          const ok = $('[data-ok]', b);
+          if (typed) { const i = $('#cfType', b); sc.listen(i, 'input', () => { ok.disabled = i.value.trim() !== dm; }); sc.listen(i, 'keydown', e => { if (e.key === 'Enter' && !ok.disabled) { e.preventDefault(); ok.click(); } }); }
+          sc.listen(ok, 'click', () => { if (ok.disabled) return; finish(true); close(); }); sc.listen($('[data-no]', b), 'click', () => close());
+        } });
+    });
+  }
+  ui.askConfirm = askConfirm;
+  if (SL.api && SL.api.cfg) SL.api.cfg.askConfirm = askConfirm;
+
   /** Start the session; the server's trust challenge (409 trust_required) opens the trust confirm, whose yes repeats with its id. */
   function start(spec, confirmId) {
     const r = SL.act.newSession(spec, { confirmId, onTrust: ch => trustThen(spec.cwd, ch, spec) });
@@ -128,7 +156,9 @@
    *  and the server's challenge (which this yes already answered) is accepted straight away. */
   function trustThen(dir, ch, spec) {
     const files = ch && ch.files && ch.files.length ? ch.files.slice(0, 6).map(f => f.path).join(', ') + (ch.files.length > 6 ? ', …' : '') : '';
-    ui.confirm({ title: 'Trust this project?', text: '<b>' + esc(dir) + '</b> brings its own instructions, skills and hooks. Use them in this session?', detail: (ch && ch.changed ? 'Since your last yes: ' + esc(ch.changed) + '. ' : 'You have not said yes to these files before. ') + 'The yes holds until one of them changes.' + (files ? '<br><span class="mono dim">' + esc(files) + '</span>' : ''), ok: 'Yes, trust these files',
+    /* the yes also confirms what else the session raises (one confirmation covers the session's settings): say it */
+    const also = [].concat(spec.mode === 'bypass' || spec.mode === 'yolo' ? ['permission mode ' + spec.mode] : [], (spec.rules || []).length ? ['allow ' + spec.rules.join(', ')] : [], spec.verify ? ['run the verify command ' + spec.verify] : []);
+    ui.confirm({ title: 'Trust this project?', text: '<b>' + esc(dir) + '</b> brings its own instructions, skills and hooks. Use them in this session?', detail: (ch && ch.changed ? 'Since your last yes: ' + esc(ch.changed) + '. ' : 'You have not said yes to these files before. ') + 'The yes holds until one of them changes.' + (files ? '<br><span class="mono dim">' + esc(files) + '</span>' : '') + (also.length ? '<br>It also confirms: ' + also.map(a => '<span class="mono">' + esc(a) + '</span>').join(' · ') : ''), ok: 'Yes, trust these files',
       run: () => { if (ch && ch.confirm) start(spec, ch.confirm); else { const r = SL.act.newSession(spec, { onTrust: c2 => start(spec, c2.confirm) }); if (refused(r)) return; r.done.then(res => { if (res.ok) ui.toast('started ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); }); } } });
   }
 })(SL);

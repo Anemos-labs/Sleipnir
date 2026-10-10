@@ -77,7 +77,10 @@ open the address again; nothing is shown from the session until then.
   did. Questions and state changes are never dropped: a client that cannot hold them is disconnected and reconnects.
 - Actions that raise privilege (a permissive mode, trusting a project, approving a tool server, adding a schedule,
   updating, saving a key) take a second step: the page asks for a single-use confirmation that is valid for one minute and
-  for that action only.
+  for that action only. The server decides what a request raises from the settings that would take effect (a dangerous mode,
+  allow rules the session does not have, a verify command, a project's own files, the removal of a deny or ask rule); the page
+  lists those reasons and asks before it sends the request again. Outside the New session dialog, a dangerous mode is
+  confirmed by typing its name; in that dialog, choosing the mode is the confirmation.
 - The page sends no request to any other origin; the server's Content-Security-Policy would block it.
 
 ### Sessions and views

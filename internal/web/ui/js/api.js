@@ -1,7 +1,15 @@
 /* api.js: SL.api, the page's only door to the server (UI-WIRING.md 4). Every request goes to this origin under /api/ with the
  * session cookie; a request that changes something carries the X-Sleipnir-Web header (and, with a body, JSON). A call never throws:
  * it resolves {ok: true, status, data} or {ok: false, status, code, message, detail}, where message is the server's sentence (safe
- * to show in a toast). Nothing here logs a request body, a confirmation id or a response body. */
+ * to show in a toast). Nothing here logs a request body, a confirmation id or a response body.
+ *
+ * Confirmations. The server decides what raises privilege, on the settings that will take effect, and answers such a request
+ * 428 confirm_required with the scope to confirm (X-Confirm-Scope, and detail {scope, reasons}). Any request can get that answer:
+ * the page shows the person what is raised (cfg.askConfirm, set by the shell) and, on yes, sends the SAME request once more with a
+ * single-use id for exactly that scope; on no it resolves the 428 with `declined: true` and nothing is toasted. The page never computes
+ * those scopes itself. A caller that already asked the person (a typed mode name, a restore) passes its scope or id and is not asked
+ * again; when that id is not good for what the server wants (403 confirm_invalid), the server names the scope and the question above
+ * is asked once. */
 (function (SL) {
   'use strict';
   const G = typeof window !== 'undefined' ? window : globalThis;
@@ -13,7 +21,10 @@
   const cfg = {
     timeoutMs: 30000, longMs: 60000, retryCapMs: 5000, reopenMs: 2000,
     reload() { try { G.location.reload(); } catch (e) { /* no page to reload (tests) */ } },
-    toast(text, kind) { if (SL.ui && SL.ui.toast) SL.ui.toast(text, kind); }
+    toast(text, kind) { if (SL.ui && SL.ui.toast) SL.ui.toast(text, kind); },
+    /** askConfirm({scope, reasons, message, method, path}) -> Promise<boolean>: the person's answer to what a request raises. Set by
+     *  the shell; without it a 428 is returned as it came. */
+    askConfirm: null,
   };
   let reachable = true;
   let cidN = 0;
@@ -43,9 +54,9 @@
   };
 
   /**
-   * One request. opts: confirm (a scope: the id is obtained right before the request, and once more if the server says it is no
-   * longer valid), confirmId (an id the server issued already, e.g. a trust challenge), timeout (ms), signal (an AbortSignal of the
-   * caller), noRetry (no 429 retry for a GET).
+   * One request. opts: confirm (a scope the caller already asked the person about: the id is obtained right before the request, and
+   * once more if the server says it is no longer valid), confirmId (an id the server issued already, e.g. a trust challenge), timeout
+   * (ms), signal (an AbortSignal of the caller), noRetry (no 429 retry for a GET), noAsk (return a 428 without asking).
    */
   async function request(method, path, body, opts) {
     opts = opts || {};
@@ -56,12 +67,13 @@
       headers[HDR] = '1';
       if (body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(body); }
     }
-    let confirmed = opts.confirmId || '';
+    let confirmed = opts.confirmId || '', scope = opts.confirm || '', asked = false, renewed = false;
+    const noId = { ok: false, status: 0, code: 'confirm_failed', message: 'the server did not issue a confirmation' };
     if (opts.confirm && !confirmed) {
       confirmed = await confirm(opts.confirm);
-      if (!confirmed) return { ok: false, status: 0, code: 'confirm_failed', message: 'the server did not issue a confirmation' };
+      if (!confirmed) return noId;
     }
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
       if (confirmed) headers[CONFIRM] = confirmed; else delete headers[CONFIRM];
       const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
       let timedOut = false;
@@ -94,16 +106,22 @@
       }
       const f = await failure(res);
       if (res.status === 401) { cfg.reload(); return f; }
-      if (res.status === 403 && f.code === 'confirm_invalid' && opts.confirm && attempt === 0) {
-        // An id expires after a minute: one fresh id for the same scope, then the answer stands.
-        confirmed = await confirm(opts.confirm);
-        if (confirmed) continue;
+      if (res.status === 403 && f.code === 'confirm_invalid' && confirmed) {
+        // An id expires after a minute: one fresh id for the same scope; then (an id for something else) the server names its scope.
+        if (scope && !renewed) { renewed = true; confirmed = await confirm(scope); if (confirmed) continue; return noId; }
+        if (!asked) { confirmed = ''; scope = ''; continue; }
         return f;
       }
       if (res.status === 428 && f.code === 'confirm_required') {
-        // The page asks for every confirmation before it sends the request; reaching this is a page bug, not the person's.
-        cfg.toast(f.message, 'err');
-        return f;
+        const sc = f.scope || (f.detail && typeof f.detail.scope === 'string' ? f.detail.scope : '');
+        if (asked || !sc || opts.noAsk || typeof cfg.askConfirm !== 'function') return f;
+        asked = true;
+        let yes = false;
+        try { yes = await cfg.askConfirm({ scope: sc, reasons: (f.detail && Array.isArray(f.detail.reasons) ? f.detail.reasons : []).map(String), message: f.message, method, path }); } catch (e) { yes = false; }
+        if (!yes) { f.declined = true; return f; }
+        scope = sc; renewed = false; confirmed = await confirm(sc);
+        if (!confirmed) return noId;
+        continue;
       }
       if (res.status === 429 && method === 'GET' && !opts.noRetry && attempt === 0) {
         await sleep(Math.min(cfg.retryCapMs, f.retryAfter * 1000));
