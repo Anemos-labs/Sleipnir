@@ -580,6 +580,9 @@ func TestGoalPauseTypedDuringATurnActsAtOnce(t *testing.T) {
 	if s := r.h.tab(tab.ID).goalState(); s != "paused" {
 		t.Errorf("the goal is %q", s)
 	}
+	// the frames reach the rig a moment after the state changes: the turn's end is the last of what the pause does
+	r.waitEv(tab.ID, "interrupt", map[string]any{"id": "turn"})
+	r.waitEv(tab.ID, "turn", map[string]any{"s": "end"})
 	n := 0
 	r.mu.Lock()
 	for _, f := range r.frames {
