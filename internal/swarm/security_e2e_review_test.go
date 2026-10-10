@@ -113,12 +113,24 @@ func TestSec_S18_WriterCapBypassedByReusingIdleWriters(t *testing.T) {
 	// as well: the first two are accepted, the rest are refused.
 	block.Store(true)
 	refused := 0
+	// reuse gives a worker new work. The board shows a worker idle a moment before its run has ended, and until then it is "still
+	// working": that refusal is not the cap's, and it passes on its own, so it is waited out.
+	reuse := func(req swarm.SpawnReq) error {
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			_, err := r.sw.Spawn(req)
+			if err == nil || !strings.Contains(err.Error(), "is still working") || time.Now().After(deadline) {
+				return err
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+	}
 	for i := 1; i <= n; i++ {
 		task, err := r.sw.Board.CreateTask("mgr", swarm.TaskSpec{Title: fmt.Sprintf("phase2-%d", i), Role: "backend", Files: []string{fmt.Sprintf("mod%d/**", i)}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := r.sw.Spawn(swarm.SpawnReq{Agent: fmt.Sprintf("be-%d", i), TaskID: task.ID, By: "mgr"}); err != nil {
+		if err := reuse(swarm.SpawnReq{Agent: fmt.Sprintf("be-%d", i), TaskID: task.ID, By: "mgr"}); err != nil {
 			if !strings.Contains(err.Error(), "writers are already active") {
 				t.Fatalf("reuse be-%d refused for another reason: %v", i, err)
 			}

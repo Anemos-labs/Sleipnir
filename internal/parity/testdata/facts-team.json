@@ -1,0 +1,51 @@
+{
+  "agents": 6,
+  "alerts_open": 1,
+  "cache_breaks": 1,
+  "cache_hit_ratio": 0.4375,
+  "checkpoint_files": 5,
+  "checkpoints": 2,
+  "compactions": 1,
+  "cost_usd": 0.0057,
+  "goal_state": "active",
+  "goal_turns": 3,
+  "goal_verdict": "continue",
+  "handovers": 2,
+  "mail_delivered": 1,
+  "mail_dropped": 1,
+  "mail_sent": 2,
+  "main_responses": 3,
+  "manager_state": "waiting",
+  "merge_bounced": 3,
+  "merge_conflicts": 1,
+  "merged_tasks": [
+    "T1",
+    "T2"
+  ],
+  "permission_denials": 1,
+  "questions_asked": 2,
+  "rate_limited": 1,
+  "retries": 1,
+  "savings_usd": 0.00189,
+  "stalls_open": 1,
+  "tasks": 5,
+  "tasks_by_status": {
+    "failed": 1,
+    "merged": 2,
+    "running": 1,
+    "todo": 1,
+    "verify": 0
+  },
+  "tokens_cache_read": 2100,
+  "tokens_cache_write": 1200,
+  "tokens_output": 250,
+  "tokens_prompt": 4800,
+  "tool_calls": 3,
+  "tool_errors": 1,
+  "workers_by_state": {
+    "asking": 1,
+    "done": 2,
+    "stuck": 1,
+    "working": 1
+  }
+}

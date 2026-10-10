@@ -213,12 +213,20 @@ func (t *Translator) finishHistory() {
 		}
 		uid := uiID(hid)
 		if t.agentOutOf(uid).service {
+			t.noteSvc(hid)
 			continue
 		}
 		t.sendUse(hid, 0, true)
 		t.sendLayers(hid, 0, true)
-		for _, r := range t.st.Hits(hid).Ratios {
-			t.put(&wire.Req{ID: uid, Ratio: r, Hist: true}, 0, 0, nil)
+		hits := t.st.Hits(hid)
+		for i, r := range hits.Ratios {
+			var at []state.MarkKind
+			for _, m := range hits.Marks {
+				if m.At == hits.First+i {
+					at = append(at, m.Kind)
+				}
+			}
+			t.put(&ReqX{Req: wire.Req{ID: uid, Ratio: r, Hist: true}, Mark: reqMark(at)}, 0, 0, nil)
 		}
 		if a, ok := t.st.AgentLite(hid); ok {
 			t.sendState(uid, t.agentOutOf(uid), t.stateOf(uid, a), 0)
@@ -226,6 +234,9 @@ func (t *Translator) finishHistory() {
 	}
 	for _, id := range t.st.TaskIDs() {
 		t.syncTask(id, 0, true)
+	}
+	if len(t.d.svc) > 0 {
+		t.sendSvc(0, true)
 	}
 	t.syncMailStat(0)
 	t.syncAlerts(nil, 0)
@@ -276,12 +287,14 @@ func (t *Translator) applyLog(e events.Event) {
 	}
 	t.chA, t.chT = t.chA[:0], t.chT[:0]
 	t.st.Apply(e)
+	t.d.fed, t.d.feedN = t.st.FeedSince(t.d.feedN)
 	agents, tasks := append([]string(nil), t.chA...), append([]string(nil), t.chT...)
 	for _, id := range agents {
 		t.seen(id)
 	}
 	t.publishRoster()
 	t.derive(e, ts, at)
+	t.d.fed = nil
 	if isAlert {
 		t.syncAlerts(alerts, ts)
 	}
@@ -418,9 +431,12 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 	case events.TypeMailSend, events.TypeMailDigest, events.TypeMailRoute, events.TypeMailDeliver, "mail.drop", events.TypeMailAck,
 		events.TypeMailDirect, events.TypeMailBatch, events.TypeMailmanState:
 		t.mail(e, ts, at)
-	case events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail, events.TypeMergeRejected,
-		events.TypeTaskMerge:
+	case events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail, events.TypeMergeRolledBack,
+		events.TypeMergeRejected, events.TypeTaskMerge:
 		t.merge(e, ts, at)
+	case events.TypeCompactReject, events.TypeLayerCommit, "sink.panic", events.TypeSwarmHold, events.TypeSwarmUnfinished, events.TypeSwarmWake,
+		events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, "swarm.shutdown", events.TypeToolJob:
+		t.feedRows(e, ts, at)
 	case "swarm.budget":
 		var p struct {
 			BudgetUSD float64 `json:"budget_usd"`
@@ -597,7 +613,7 @@ func (t *Translator) turnAppend(e events.Event, ts float64, at int64) {
 			if blk.Kind != core.BlockToolResult {
 				continue
 			}
-			if p := t.d.pend[blk.ToolID]; p != nil {
+			if p := t.d.pend[callKey(uid, blk.ToolID)]; p != nil {
 				var b strings.Builder
 				for _, r := range blk.Result {
 					if r.Kind == core.BlockText {
@@ -668,7 +684,7 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 	if t.d.history {
 		pt.slot = t.d.histPut(histEntry{}, t.lim.History) // the row's place: the transcript keeps the order of the calls
 	}
-	t.d.pend[p.ID] = pt
+	t.d.pend[callKey(uid, p.ID)] = pt
 }
 
 // planCall is a call of the plan tool by the main agent: the whole plan, normalized as the tool does.
@@ -713,7 +729,7 @@ func (t *Translator) toolResult(e events.Event, ts float64, at int64) {
 	if json.Unmarshal(e.Data, &p) != nil {
 		return
 	}
-	if pt := t.d.pend[p.ID]; pt != nil {
+	if pt := t.d.pend[callKey(uiID(e.Agent), p.ID)]; pt != nil {
 		pt.hasResult, pt.isErr, pt.refused, pt.meta, pt.ms = true, p.Error, p.Refused, p.Meta, p.Ms
 		pt.rw = t.now()
 	}

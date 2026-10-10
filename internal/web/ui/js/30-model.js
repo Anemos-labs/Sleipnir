@@ -9,7 +9,7 @@
  *
  * Event kinds (their fields and caps are the types of internal/web/wire/events.go): say, sys, tool, note, state, task, plan, verdict,
  * req, use, warm, gov, mail, ckpt, ask, answer, queue, merge, break, compact, stream, goal, final, local, steer, reply, interrupt,
- * refuse, digest, and more, turn, stall, handover, layers (plus alert and mailstat when the server sends them). Fields that real data
+ * refuse, digest, and more, turn, stall, handover, layers (plus alert, mailstat and svc when the server sends them). Fields that real data
  * carries beyond what a screen draws are kept in the model and change no rendering path. */
 (function (SL) {
   'use strict';
@@ -66,7 +66,7 @@
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
       mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ckpts: [],
       reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0,
-      mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
+      mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
     return m;
   }
@@ -76,7 +76,7 @@
     if (!okId(r.id) || !okId(r.role)) r = cleanAgent(r);
     if (m.ag[r.id]) { Object.assign(m.ag[r.id], { role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model }); return m.ag[r.id]; }
     m.ag[r.id] = { id: r.id, role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model, state: 'idle', doing: r.id === 'mgr' ? 'waits for the first message' : 'not started',
-      task: null, rd: 0, un: 0, out: 0, wr: 0, cost: null, saved: null, layers: null, reqSince: null, calls: 0, ratios: [], nreq: 0, lastReq: -999, segs: [], cur: null, spawned: r.id === 'mgr', spawnT: r.spawn, steered: null, stateT: 0 };
+      task: null, rd: 0, un: 0, out: 0, wr: 0, cost: null, saved: null, layers: null, reqSince: null, calls: 0, ratios: [], rmarks: [], nreq: 0, lastReq: -999, segs: [], cur: null, spawned: r.id === 'mgr', spawnT: r.spawn, steered: null, stateT: 0 };
     m.order.push(r.id); if (r.id !== 'mgr' && !m.chan[r.id]) m.chan[r.id] = [];
     return m.ag[r.id];
   }
@@ -155,6 +155,7 @@
       case 'req': {
         if (!A) break;
         A.ratios.push(ev.ratio); capList(A.ratios, RATIO_CAP); A.nreq++; A.lastReq = ev.t;
+        A.rmarks.push(ev.mark === 'epoch' || ev.mark === 'rebase' ? ev.mark : ''); capList(A.rmarks, RATIO_CAP);   /* what came before the request: a new shared prefix, thinking dropped */
         if (!ev.hist) {
           const p = ev.p || Math.round((A.rd + A.un) / Math.max(1, A.nreq - 1)) || 1200;
           const rd = Math.round(p * ev.ratio); A.rd += rd; A.un += Math.round(p) - rd; A.out += ev.o || 0;
@@ -217,9 +218,12 @@
         break;
       }
       case 'compact': {
-        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
-        push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, t: ev.t }, ev);
-        if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, t: ev.t }, ev);
+        /* when the planner decided (a cold cache makes the rewrite free) and how the thread was folded; both are '' when the server does not say,
+           and a compaction nobody planned (an emergency one, one a person asked for) has no moment: the page then states no price */
+        const moment = ev.moment === 'cold' || ev.moment === 'warm' ? ev.moment : '', mode = ev.mode === 'fork' || ev.mode === 'mask' || ev.mode === 'emergency' ? ev.mode : '';
+        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
+        push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
+        if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
         if (d) d.compacts++;
         break;
       }
@@ -265,6 +269,11 @@
       case 'layers': if (A && Array.isArray(ev.toks)) A.layers = ev.toks.slice(0, 6); break;
       case 'alert': { const k = String(ev.key || ev.kind || ''); if (k in Object.prototype) break; if (ev.s === 'clear') delete m.alerts[k]; else m.alerts[k] = { kind: ev.kind, text: ev.text, t: ev.t, at: ev.at }; break; }
       case 'mailstat': m.mailstat = ev; break;
+      case 'svc': {   /* what the harness's own service agents (the mailman) have used, in all: no row of their own, but part of the run's totals */
+        const n = x => typeof x === 'number' && isFinite(x) ? x : 0;
+        m.svc = { rd: n(ev.rd), un: n(ev.un), out: n(ev.out), wr: n(ev.wr), cost: n(ev.cost), saved: n(ev.saved), savedPartial: !!ev.savedPartial, unpriced: n(ev.unpriced) };
+        break;
+      }
       case 'digest': break;
       default: break;
     }
@@ -282,12 +291,23 @@
       const cost = typeof a.cost === 'number' ? a.cost : (a.un * pr.in + a.rd * pr.cached + a.out * pr.out) / 1e6, saved = typeof a.saved === 'number' ? a.saved : a.rd * (pr.in - pr.cached) / 1e6;
       return { prompt, read: a.rd, un: a.un, out: a.out, wr: a.wr || 0, hit, pct: Math.round(hit * 100), cost, saved, savedPartial: !!a.savedPartial, unpriced: a.unpriced || 0 };
     },
-    /** Totals over every agent of a model (manager included). */
+    /** Totals over every agent of a model (manager included) and what the harness's service agents used (they have no row of their own). */
     totals(m) {
       const t = { prompt: 0, read: 0, un: 0, out: 0, wr: 0, cost: 0, saved: 0, calls: 0, savedPartial: false, unpriced: 0 };
       m.order.forEach(id => { const c = calc.agent(m.ag[id]); t.prompt += c.prompt; t.read += c.read; t.un += c.un; t.out += c.out; t.wr += c.wr; t.cost += c.cost; t.saved += c.saved; t.calls += m.ag[id].calls; if (c.savedPartial) t.savedPartial = true; t.unpriced += c.unpriced; });
+      const v = m.svc;
+      if (v) { t.prompt += v.rd + v.un; t.read += v.rd; t.un += v.un; t.out += v.out; t.wr += v.wr; t.cost += v.cost; t.saved += v.saved; if (v.savedPartial) t.savedPartial = true; t.unpriced += v.unpriced; }
       t.hit = t.prompt > 0 ? t.read / t.prompt : 0; t.pct = Math.round(t.hit * 100); t.hit1 = Math.round(t.hit * 1000) / 10;
       return t;
+    },
+    /** What a compaction (a row of the conversation, an entry of m.compactions) says about its moment, in the terminal's words: the
+     *  cache rewritten while cold costs nothing extra (short: the conversation's row; long: the Cache view's note), at a warm moment it is a
+     *  declared, priced rebase. A compaction that no plan preceded has no moment and so no price: it says how it was made ("emergency
+     *  compaction", as the terminal's feed does), or nothing when the server did not say. Only the words of this table are ever returned. */
+    compactNote(c, long) {
+      if (c && c.moment === 'cold') return long ? 'the cache was cold, so the rewrite cost nothing extra' : 'cache rewritten while cold: free';
+      if (c && c.moment === 'warm') return long ? 'the cache was warm: a declared, priced rebase' : 'a declared, priced rebase';
+      return c && (c.mode === 'fork' || c.mode === 'mask' || c.mode === 'emergency') ? c.mode + ' compaction' : '';
     },
     /** Seconds of warm cache left on the shared prefix at view time vt (negative = cold). */
     warmLeft(m, vt) { return m.lastReq < -9000 ? 0 : (m.ttl || 25) - (vt - m.lastReq); },

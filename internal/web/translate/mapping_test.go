@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -140,8 +141,9 @@ func TestTaskMapping(t *testing.T) {
 	}
 }
 
-// The queue's counters: a conflict and a refusal count in conflicts, a failed verification in bounced (an empty
-// submission in neither); a shared-tree team's failed verification gates count in bounced too.
+// The queue's counters, as the terminal's merge line counts them (the State's merge counts): a conflict counts in conflicts and only
+// a conflict does; a submission sent back to its worker, whether for a conflict, a failed verification or a refusal of the queue,
+// counts in bounced (an empty submission in neither); a shared-tree team's failed verification gates count in bounced too.
 func TestQueueCounters(t *testing.T) {
 	h := newHarness(t, Config{Root: "/work", StartedAt: t0, Verify: func() (string, bool) { return "go test {dirs}", true }})
 	b := newLog(t0)
@@ -158,8 +160,18 @@ func TestQueueCounters(t *testing.T) {
 	)
 	qs := ofKind(h.decoded(), "queue")
 	last := qs[len(qs)-1]
-	if last["conflicts"] != 2.0 || last["bounced"] != 1.0 || last["head"] != nil {
-		t.Fatalf("counters: %v", last)
+	if last["conflicts"] != 1.0 || last["bounced"] != 3.0 || last["head"] != nil {
+		t.Fatalf("counters: %v, want 1 conflict among 3 submissions sent back (a conflict, a failed verification, a refusal)", last)
+	}
+	// after each outcome: the conflict, the failed verification, the refusal
+	var seen [][2]float64
+	for _, q := range qs {
+		if q["head"] == nil {
+			seen = append(seen, [2]float64{q["conflicts"].(float64), q["bounced"].(float64)})
+		}
+	}
+	if want := [][2]float64{{1, 1}, {1, 2}, {1, 3}, {1, 3}}; !reflect.DeepEqual(seen, want) {
+		t.Fatalf("conflicts and bounced after each outcome: %v, want %v", seen, want)
 	}
 	if qs[0]["cmd"] != "go test ./..." || qs[0]["step"] != "verifying" || qs[0]["head"] != "T1" {
 		t.Fatalf("the first queue: %v", qs[0])

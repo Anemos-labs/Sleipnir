@@ -180,7 +180,7 @@ func (s *Swarm) tryWake() {
 		w.mu.Unlock()
 		if tell {
 			s.emitAs(m.id, events.TypeSwarmWakePaused, map[string]any{"n": n})
-			s.managerNotice(m, "warn", fmt.Sprintf("the manager was woken %d times without input from you and will not be again until you write to it; waiting for it: %s", n, note))
+			s.managerNotice(m, "warn", WakePausedNotice(n, note))
 		}
 		return
 	}
@@ -262,6 +262,14 @@ func (s *Swarm) releaseManager(m *member) {
 	m.mu.Lock()
 	m.life = lifeIdle
 	m.mu.Unlock()
+}
+
+// WakePausedNotice is the notice the swarm gives with a swarm.wake.paused event (n, the number of wakes): the manager was woken n times
+// without input from the person and is not woken again until they write to it, with the note of what it waits for. The event carries n
+// and not the note, so WakePausedNotice(n, "") is the part of the notice a reader of the log can tell: a reader that also receives the
+// notice (the web page) recognizes it as the event's by that prefix.
+func WakePausedNotice(n int, note string) string {
+	return fmt.Sprintf("the manager was woken %d times without input from you and will not be again until you write to it; waiting for it: %s", n, note)
 }
 
 // managerNotice shows the person something about the manager through the session's

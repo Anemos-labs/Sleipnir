@@ -191,11 +191,65 @@ func TestToolRows(t *testing.T) {
 	}
 }
 
+// Tool calls of different agents that carry the same id are different calls: each keeps its own code stream and its own running time
+// (the part of it spent waiting for a person's answer is taken from the call of the agent that asked, and from no other). A model's
+// call ids are its own; the demo's mock model numbers the calls of every agent from w1.
+func TestSinkCallsOfAgentsThatShareCallIDsStaySeparate(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	s := h.tr.Sink()
+	writeA := call("w1", "write", map[string]any{"path": "/work/a.go", "content": "package a\n"})
+	writeB := call("w1", "write", map[string]any{"path": "/work/b.go", "content": "package b\n"})
+	done := &tools.Result{Text: "Created", Meta: map[string]any{"created": true}}
+
+	h.set(h.now().Add(time.Second))
+	s.ToolStart("be-1", writeA)
+	s.ToolStart("be-2", writeB)
+	h.drain()
+	h.tr.Question(wire.Question{ID: "q1", Agent: "be-2", Cmd: "npm i", Kind: "command"})
+	h.set(h.now().Add(5 * time.Second))
+	h.tr.Answered(wire.Answer{QID: "q1", Choice: 1, By: "you"})
+	h.set(h.now().Add(time.Second))
+	s.ToolEnd("be-1", writeA, done, 6*time.Second)
+	h.drain()
+
+	evs := h.decoded()
+	streams := map[string]string{} // agent -> mid of its code stream
+	for _, e := range ofKind(evs, "stream") {
+		streams[e["id"].(string)] = e["mid"].(string)
+	}
+	if len(streams) != 2 {
+		t.Fatalf("code streams: %v", streams)
+	}
+	var ended []string
+	for _, e := range ofKind(evs, "more") {
+		if e["end"] == true {
+			ended = append(ended, e["mid"].(string))
+		}
+	}
+	if len(ended) != 1 || ended[0] != streams["be-1"] {
+		t.Errorf("after be-1's write ended, the streams that ended are %v; be-1's is %s and be-2's %s", ended, streams["be-1"], streams["be-2"])
+	}
+
+	s.ToolEnd("be-2", writeB, done, 6*time.Second)
+	h.drain()
+	rows := map[string]map[string]any{}
+	for _, e := range ofKind(h.decoded(), "tool") {
+		rows[e["id"].(string)] = e
+	}
+	if a := rows["be-1"]; a == nil || a["ms"] != 6000.0 || a["waited"] != nil {
+		t.Errorf("be-1's write ran 6 s and waited for nobody: %v", a)
+	}
+	if b := rows["be-2"]; b == nil || b["ms"] != 1000.0 || b["waited"] != 5000.0 {
+		t.Errorf("be-2's write ran 6 s, 5 of them waiting for the answer: %v", b)
+	}
+}
+
 // A sink call never blocks, whatever the translator is doing: with its goroutine stuck in a publisher that does not return, 100,000
 // calls return at once; when it can go on, it reports the loss once and sends every agent's state, token table and layers afresh.
 func TestSinkNeverBlocks(t *testing.T) {
 	release := make(chan struct{})
-	var once sync.Once
+	var once, releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
 	var armed atomic.Bool
 	publish := func(f wire.Frame) {
 		if armed.Load() {
@@ -204,6 +258,7 @@ func TestSinkNeverBlocks(t *testing.T) {
 	}
 	tr := New(Config{Tab: "t", StartedAt: time.Now(), Publish: publish, Limits: Limits{SinkQueue: 1000}})
 	defer tr.Close()
+	defer unblock() // runs before Close: a frame that waits for the release must not outlive a test that failed first
 	// an agent the State knows, so that the fresh set has something in it
 	tr.mu.Lock()
 	b := newLog(time.Now())
@@ -215,14 +270,24 @@ func TestSinkNeverBlocks(t *testing.T) {
 	s := tr.Sink()
 	s.Text("be-1", "first ") // its frame blocks the goroutine
 	time.Sleep(20 * time.Millisecond)
+	// A call that blocks would never return, and a call that costs more than a few microseconds would show in a total of minutes: the
+	// bound is far above what a slow, shared machine takes (about 1.6 s under the race detector), so that only a block or a
+	// slowdown of the calls themselves fails.
+	done := make(chan struct{})
 	start := time.Now()
-	for i := 0; i < 100_000; i++ {
-		s.ToolStart("be-1", call("c", "bash", map[string]any{"command": "true"}))
+	go func() {
+		defer close(done)
+		for i := 0; i < 100_000; i++ {
+			s.ToolStart("be-1", call("c", "bash", map[string]any{"command": "true"}))
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Minute):
+		t.Fatalf("100,000 sink calls took more than a minute (a call blocks, or costs far more than it did)")
 	}
-	if d := time.Since(start); d > 5*time.Second {
-		t.Fatalf("100,000 sink calls took %v", d)
-	}
-	close(release)
+	t.Logf("100,000 sink calls took %v", time.Since(start))
+	unblock()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		_, evs, _, _ := tr.Journal()

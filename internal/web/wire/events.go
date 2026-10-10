@@ -332,8 +332,9 @@ type Answer struct {
 }
 
 // Queue is the merge queue's head of an isolated team; QHead nil (null) means the queue is empty. Cmd is the verification command
-// that runs, Step is verifying or verified and Ms how long a merge took. Conflicts (merges refused for a conflict) and Bounced
-// (verifications that failed) are absolute counters. A team that shares the tree has no merge queue and sends no Queue events.
+// that runs, Step is verifying or verified and Ms how long a merge took. Conflicts (submissions that conflicted with what was
+// merged) and Bounced (submissions sent back to their worker: a conflict, a failed verification, a refusal of the queue) are
+// absolute counters. A team that shares the tree has no merge queue and sends no Queue events.
 type Queue struct {
 	Base
 	QHead     *string `json:"head"`

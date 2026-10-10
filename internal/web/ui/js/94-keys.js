@@ -36,6 +36,15 @@
       if ((e.ctrlKey || e.altKey) && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 't') { e.preventDefault(); SL.views.show('cache'); return; }
       if ((e.ctrlKey || e.altKey) && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'g') { e.preventDefault(); SL.views.show('cockpit'); return; }
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') { e.preventDefault(); const tk = $('#talk'); tk.classList.toggle('xo'); ui.toast(tk.classList.contains('xo') ? 'tool output expanded (ctrl+o)' : 'tool output collapsed'); return; }
+      /* ctrl+d quits the terminal's chat at an empty prompt; quitting a page's session is closing it, so the key asks what the tab's × asks
+         (the team stops, an open question is named, and nothing closes without the answer, whether or not a turn runs). It acts in an
+         empty message box and with nothing focused. It claims the key there, so that the browser does not bookmark the page, and also
+         while a dialog is open (that one is not opened twice); with text in the box, or in any other field, the key is the browser's. */
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'd') {
+        const S = SL.sessions.active, open = ui.hasModal();
+        if (S && !S.placeholder && (open ? !inField : (!t || t === document.body || t === document.documentElement || (t.id === 'input' && t.value === '')))) { e.preventDefault(); if (!open) ui.closeSessionAsk(S); }
+        return;
+      }
       if (inField || ui.hasModal() || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key, S = SL.sessions.active;
       /* the arrows, Home, End, Space, + and - belong to a widget that takes them (the session tabs, the views rail, a menu, a list, a

@@ -1,0 +1,43 @@
+{
+  "via_state": [
+    {"item": "agent.state", "reason": "The translator folds it into the State it shares with the terminal and sends the agent's state event from it (think, tool, edit, wait, ask, idle, done or stuck), which is what the page draws."},
+    {"item": "agent.stuck", "reason": "The shared State marks the agent stuck and the translator sends it as stuck with the guard's note. Only the nudge and stop phases do; the phases that send an answer back (plan, verify, leak) add a line to the terminal's feed and the page shows nothing for them."},
+    {"item": "agent.abandon", "reason": "The shared State ends the run as failed and the translator sends the agent as stuck, 'failed: the run stopped'. The terminal's feed line, which says the run did not stop when asked, has no row on the page."},
+    {"item": "compact.plan", "reason": "The shared State marks the agent as compacting from the planner's decision to the commit, and the translator sends the agent's state with the terminal's words for it ('folds its thread'). The same plan says whether the cache was warm or cold, and the translator sends that on the compaction it belongs to (moment), which the page's row and its Cache view tell in the terminal's words: a declared, priced rebase, or a rewrite that cost nothing extra. A compaction that no plan preceded (an emergency one, or one a person asked for) has no moment and the page claims no price for it: its row says how it was made (mode), as the terminal's feed does."},
+    {"item": "compact.patch", "reason": "The shared State marks the agent as compacting while the compactor's patch is made, and the translator sends the agent's state with the terminal's words ('folds its thread') until the compaction is committed or rejected."},
+    {"item": "governor", "reason": "The shared State keeps the governor's counters and the translator sends them as the gov event (requests a minute, rate limits, retries, in flight, queued), which the page draws as its gauge. The terminal's feed line with the slower rate and the pause has no row on the page."},
+    {"item": "perm.ask", "reason": "The shared State holds the question against the agent and the translator sends the agent as asking, 'wants to run <command>'. In a hosted tab the card comes from the approvals bridge; in a followed or replayed log this state is all the page has."},
+    {"item": "perm.decide", "reason": "The shared State closes the question it answers and the translator sends the agent's state again. A refusal by policy that was never asked leaves the terminal's feed line only; the page shows it on the refused tool row."}
+  ],
+  "ignored": [
+    {"item": "agent.prepare", "reason": "Written before a worker's spawn so that a resume knows the agent existed (internal/session/resume.go reads it); no screen of either interface shows it."},
+    {"item": "agent.snapshot", "reason": "Names the blob that a resume restores an agent from; a record for recovery that no screen of either interface shows."},
+    {"item": "cache.plan", "reason": "Declared for the cache engine's plans and written by no producer; the State lists it as known and neither interface shows anything for it."},
+    {"item": "hook.run", "reason": "Records that a hook command ran (internal/session/hooks.go); the State lists it as known and neither interface shows the record."},
+    {"item": "model.switch", "reason": "Records /model for the log. The person who switched sees it where they did it (the chat's command, the page's model picker); neither interface reads it back from the log."},
+    {"item": "outcome", "reason": "A training label (internal/rl, internal/inspect read it); neither interface shows it."},
+    {"item": "recall", "reason": "Declared for the recall tool's records and written by no producer; neither interface shows anything for it."},
+    {"item": "session.isolation", "reason": "The isolation record that a resume and the recovery of unfinished worker edits read (internal/session/isolate.go); neither interface shows it."},
+    {"item": "swarm.integration_state", "reason": "The recovery position of an integration that is being applied (internal/session/isolate.go); neither interface shows it."},
+    {"item": "tool.budget", "reason": "Records that a tool result was held to the per-turn budget (internal/agent/exec.go); the result itself is what both interfaces show."},
+    {"item": "tool.spill", "reason": "Records the blob that holds the whole of a result too long for the thread (internal/agent/exec.go); the shortened result is what both interfaces show."}
+  ],
+  "terminal_only": [
+    {"item": "log.open", "reason": "The State keeps the log's schema number in the session, and no terminal view draws it; the page shows nothing for it either, so a person sees the same."},
+    {"item": "log.corrupt", "reason": "The State adds the damaged lines to a counter that no terminal view draws; the page skips damaged lines (events.Scan) as the terminal's loader does, and neither says so on screen."},
+    {"item": "workspace.create", "reason": "The State counts the trees, which no terminal view draws, and notes that the run is isolated so that the merge section appears. The page learns isolation from session.start and lists the trees in its Workspace pane from the repository."},
+    {"item": "workspace.remove", "reason": "The State counts the trees, which no terminal view draws, and notes that the run is isolated so that the merge section appears. The page learns isolation from session.start and lists the trees in its Workspace pane from the repository."},
+    {"item": "workspace.prune", "reason": "Housekeeping of the trees: the State only notes that the run is isolated, so that the merge section appears; the page learns isolation from session.start."},
+    {"item": "workspace.commit", "reason": "Housekeeping of the trees: the State only notes that the run is isolated, so that the merge section appears; the page learns isolation from session.start."},
+    {"item": "workspace.reset", "reason": "Housekeeping of the trees: the State only notes that the run is isolated, so that the merge section appears; the page learns isolation from session.start."},
+    {"item": "swarm.integration", "reason": "The terminal's feed says whether the merged work reached the checkout. A hosted page gets the same report when the tab closes (the integration object of the close answer: a toast, and the badge and hint on the recorded session) and shows the integration branch in its Workspace pane; a page that only watches another process's log does not see it."},
+    {"item": "merge.fast_forward", "reason": "The feed line 'branch moved to the integration tip' is the same step as swarm.integration (internal/swarm/isolate.go applyCommits): the page's close report carries it as 'Moved your branch ... to the integration tip'."},
+    {"item": "tool.timeout", "reason": "The terminal's feed line comes with a failed tool result whose text says the tool ran longer than its limit and was stopped; the page shows that text on the failed tool row."}
+  ],
+  "web_only": [
+    {"item": "perm.state", "reason": "The page reads the last permission state of a resumed log for its 'Back as they were' row. The terminal says the same at resume (cmd/sleipnir/chat_tty.go) from session.RestoredPermissions, which reads the event in internal/session, not in the State."},
+    {"item": "turn.append", "reason": "The page rebuilds the conversation of a followed, replayed or resumed log from the turns. The terminal's chat takes its conversation from the session's own sink and thread, and its cockpit shows none."},
+    {"item": "verify.run", "reason": "The page labels the merge queue's verification with the gate command of a run and the Workspace pane lists the runs. The terminal's merge list names a command only from merge.verify_failed."},
+    {"item": "web.action", "reason": "Written by the page's own actions (a restart, a rule); the page shows them as rows when it follows or replays the log. The terminal has no such action to record."}
+  ]
+}

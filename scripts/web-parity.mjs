@@ -339,17 +339,38 @@ export class Browser {
     b.ws = new WebSocket(wsURL);
     await new Promise((r, j) => { b.ws.onopen = r; b.ws.onerror = () => j(new Error('cannot connect to ' + wsURL)); });
     b.ws.onmessage = ev => b.dispatch(JSON.parse(ev.data));
+    // a browser that dies or drops the connection ends every call that waits for it, with the reason, instead of leaving them to wait
+    b.ws.onclose = () => b.fail('the DevTools connection closed');
+    proc.on('exit', c => b.fail('chrome exited (' + c + ')'));
     return b;
   }
-  constructor(proc, profile) { this.proc = proc; this.profile = profile; this.id = 0; this.pending = new Map(); this.handlers = new Map(); }
+  constructor(proc, profile) {
+    this.proc = proc; this.profile = profile; this.id = 0; this.pending = new Map(); this.handlers = new Map();
+    /** how long a call may wait for its answer, in milliseconds: far above what any call of the tests takes, so that only a lost answer fails */
+    this.timeout = 120000;
+    this.dead = '';
+  }
+  /** fail ends every call that waits, and every later one, with why (a browser that was closed on purpose has nobody waiting). */
+  fail(why) {
+    if (this.dead) return;
+    this.dead = why;
+    for (const [id, { rej }] of [...this.pending]) { this.pending.delete(id); rej(new Error(why)); }
+  }
   dispatch(m) {
     if (m.id && this.pending.has(m.id)) { const { res, rej } = this.pending.get(m.id); this.pending.delete(m.id); m.error ? rej(new Error(m.error.message)) : res(m.result || {}); return; }
     const h = this.handlers.get(m.sessionId || ''); if (h && m.method) h(m.method, m.params || {});
   }
   send(method, params = {}, sessionId) {
-    return new Promise((res, rej) => { const id = ++this.id; this.pending.set(id, { res, rej }); this.ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) })); });
+    return new Promise((res, rej) => {
+      if (this.dead) return rej(new Error(this.dead));
+      const id = ++this.id;
+      const t = setTimeout(() => { this.pending.delete(id); rej(new Error('no answer to ' + method + ' in ' + this.timeout / 1000 + ' s: the browser is stuck')); }, this.timeout);
+      this.pending.set(id, { res: v => { clearTimeout(t); res(v); }, rej: e => { clearTimeout(t); rej(e); } });
+      this.ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+    });
   }
   async close() {
+    this.dead = this.dead || 'the browser was closed';
     try { this.ws.close(); } catch { /* closed */ }
     try { this.proc.kill('SIGKILL'); } catch { /* gone */ }
     await new Promise(r => { if (this.proc.exitCode !== null) r(); else { this.proc.once('exit', r); setTimeout(r, 2000); } });

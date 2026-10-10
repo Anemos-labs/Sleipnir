@@ -116,7 +116,8 @@ func (t *Translator) isolated() bool {
 	return t.st.Session().Isolation == "worktree"
 }
 
-// queueOut is the merge queue's counters and what is known of its submissions.
+// queueOut is the merge queue's counters and what is known of its submissions. bounced counts the conflicts too, and the failed
+// verification gates of a team that shares the tree.
 type queueOut struct {
 	conflicts, bounced int
 	at                 map[string]time.Time // task -> when its submission was queued
@@ -163,7 +164,9 @@ func (t *Translator) verifyCmd(task string) string {
 }
 
 // merge translates the merge queue's events (isolated teams) into queue events (head, step, counters) and merge events, and the
-// conflicts, refusals and failed verifications into system rows.
+// conflicts, refusals and failed verifications into system rows. The counters are the terminal's merge line: conflicts counts the
+// submissions that conflicted with what was merged, bounced every submission sent back to its worker (a conflict, a failed
+// verification, a refusal of the queue; one that had nothing to merge is neither).
 func (t *Translator) merge(e events.Event, ts float64, at int64) {
 	if t.d.history {
 		return
@@ -221,6 +224,7 @@ func (t *Translator) merge(e events.Event, ts float64, at int64) {
 	case events.TypeMergeConflict:
 		delete(q.merging, id)
 		q.conflicts++
+		q.bounced++
 		empty()
 		t.sysRow("mgr", "⚠", firstNonEmpty(id, "work")+": merge conflict in "+strings.Join(p.Files, ", "), uiID(e.Agent), id, ts, at)
 	case events.TypeMergeRejected:
@@ -228,7 +232,7 @@ func (t *Translator) merge(e events.Event, ts float64, at int64) {
 			return
 		}
 		delete(q.merging, id)
-		q.conflicts++
+		q.bounced++
 		empty()
 		t.sysRow("mgr", "⚠", firstNonEmpty(id, "work")+": the merge queue refused it: "+p.Reason, uiID(e.Agent), id, ts, at)
 	case events.TypeMergeVerifyFail:
@@ -243,6 +247,10 @@ func (t *Translator) merge(e events.Event, ts float64, at int64) {
 			how = "failed (exit " + strconv.Itoa(*p.ExitCode) + ")"
 		}
 		t.sysRow("mgr", "⚠", firstNonEmpty(id, "work")+": "+firstNonEmpty(p.Cmd, "the verification")+" "+how, uiID(e.Agent), id, ts, at)
+	case events.TypeMergeRolledBack:
+		// The terminal's merge list adds "rolled back" to the entry of the failed verification; the page's row of that failure is
+		// already in the journal, so the undoing is a row of its own.
+		t.sysRow("mgr", "↺", firstNonEmpty(id, "work")+": the merge was rolled back", uiID(e.Agent), id, ts, at)
 	}
 }
 
@@ -370,10 +378,23 @@ func (t *Translator) notice(uid, level, msg string, ts float64, fromSink bool) {
 }
 
 // noticeAt sends a notice as a sys row of the agent's channel (the manager's for the session's own), once whichever side it came
-// from, within the rate limit.
+// from, within the rate limit. The notice of the sink that an event of the log has a row for takes the place of that row (pairs.go),
+// when the notice is shown: one the rate limit holds back leaves the row to be shown instead.
 func (t *Translator) noticeAt(uid, level, msg string, ts float64, at int64, fromSink bool) {
-	if msg == "" || t.twin(uid, msg, fromSink, ts) || !t.pass(ts) {
+	if msg == "" {
 		return
+	}
+	if t.twin(uid, msg, fromSink, ts) {
+		if fromSink {
+			t.pairTaken(uid, level, msg) // the notice was shown from the log's side: it says what the row says
+		}
+		return
+	}
+	if !t.pass(ts) {
+		return
+	}
+	if fromSink {
+		t.pairTaken(uid, level, msg)
 	}
 	glyph := "◇"
 	if level == "warn" || level == "error" {
@@ -384,6 +405,9 @@ func (t *Translator) noticeAt(uid, level, msg string, ts float64, at int64, from
 		ag = uid
 	}
 	t.sysRow(uid, glyph, msg, ag, "", ts, at)
+	if fromSink {
+		t.noteShown(uid, level, msg, ts)
+	}
 }
 
 // lease sends the lease warnings a person should see: a write refused because another agent holds the file, or outside its task's
@@ -639,7 +663,27 @@ func (t *Translator) compact(e events.Event, ts float64, at int64) {
 	if from > 0 {
 		pct = int(roundHalfAway(float64(to-from) / float64(from) * 100))
 	}
-	t.put(&wire.Compact{ID: uiID(e.Agent), From: from, To: to, Pct: pct}, ts, at, nil)
+	moment, mode := t.compactFacts(e)
+	t.put(&CompactX{Compact: wire.Compact{ID: uiID(e.Agent), From: from, To: to, Pct: pct}, Moment: moment, Mode: mode}, ts, at, nil)
+}
+
+// compactFacts are what the State knows of the compaction the log event commits, as it worked them out for the terminal: whether the
+// cache was warm or cold when the planner decided on it ("warm", "cold"; "" for a compaction that had no plan, whose moment nobody
+// chose) and how the thread was folded ("fork", "mask", "emergency"; "" when the State has no such commit).
+func (t *Translator) compactFacts(e events.Event) (moment, mode string) {
+	c, ok := t.st.LastCompaction(e.Agent)
+	if !ok || (e.Seq != 0 && c.Seq != e.Seq) {
+		return "", ""
+	}
+	switch c.Moment {
+	case "warm", "cold":
+		moment = c.Moment
+	}
+	switch c.Mode {
+	case "fork", "mask", "emergency":
+		mode = c.Mode
+	}
+	return moment, mode
 }
 
 // roundHalfAway rounds to the nearest integer, halves away from zero.

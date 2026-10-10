@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -30,7 +31,12 @@ func (t *Translator) response(e events.Event, ts float64, at int64) {
 	key := hid + "|" + p.Req
 	side := p.Side || t.d.reqSide[key]
 	delete(t.d.reqSide, key)
-	if t.d.history || t.agentOutOf(uiID(hid)).service {
+	if t.d.history {
+		return
+	}
+	if t.agentOutOf(uiID(hid)).service {
+		t.noteSvc(hid) // a service agent has no row; what it used is added to the totals
+		t.sendSvc(ts, false)
 		return
 	}
 	if !side {
@@ -40,13 +46,36 @@ func (t *Translator) response(e events.Event, ts float64, at int64) {
 		if prompt > 0 {
 			ratio = float64(c(p.Usage.Read)) / float64(prompt)
 		}
-		t.put(&wire.Req{ID: uiID(hid), Ratio: ratio, P: prompt, O: c(p.Usage.Output)}, ts, 0, nil)
+		t.put(&ReqX{Req: wire.Req{ID: uiID(hid), Ratio: ratio, P: prompt, O: c(p.Usage.Output)}, Mark: t.markOfResponse(hid)}, ts, 0, nil)
 	}
 	t.sendUse(hid, ts, false)
 	if !side {
 		t.sendLayers(hid, ts, false)
 		t.sendWarm(hid)
 	}
+}
+
+// markOfResponse is the mark of the main response of the agent the State has just folded: "epoch" or "rebase" when the State noted
+// one of those before the request it answers (the terminal draws it above the request on the hit-ratio line), else "".
+func (t *Translator) markOfResponse(hid string) string {
+	a, ok := t.st.AgentLite(hid)
+	if !ok || a.Hits.First < 1 {
+		return ""
+	}
+	return reqMark(t.st.MarksAt(hid, a.Hits.First-1))
+}
+
+// reqMark is the mark of a request from the kinds of the markers that precede it: the first epoch or rebase among them.
+func reqMark(kinds []state.MarkKind) string {
+	for _, k := range kinds {
+		switch k {
+		case state.MarkEpoch:
+			return "epoch"
+		case state.MarkRebase:
+			return "rebase"
+		}
+	}
+	return ""
 }
 
 // sendWarm sends the warm clock when the shared prefix the agent rides (the main agent's own prompt when it rides none) was read
@@ -113,8 +142,8 @@ func (t *Translator) checkGov(now time.Time, ts float64) {
 }
 
 // tick is the translator's clock: the streamed text that waited 100 ms, the held-back states and checkpoint updates, the notice
-// gate's count, the governor, the holds of the sink that the log did not confirm, the waiting log-only tool rows and, once a second,
-// a pass over every agent (what changes with no event of its own, such as the manager waiting for its team).
+// gate's count, the governor, the feed rows that waited for a notice, the holds of the sink that the log did not confirm, the waiting
+// log-only tool rows and, once a second, a pass over every agent (what changes with no event of its own, such as the manager waiting for its team).
 func (t *Translator) tick(now time.Time) {
 	ts := t.sessT(now)
 	t.flushMessages(ts)
@@ -126,6 +155,7 @@ func (t *Translator) tick(now time.Time) {
 	}
 	t.checkGov(now, ts)
 	t.expireTwins(ts)
+	t.flushPairs(ts, false)
 	if t.d.logOnly {
 		t.flushPend(now, false)
 	}

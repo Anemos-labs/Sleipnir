@@ -505,6 +505,9 @@ func (s *State) onFault(e events.Event, t time.Time) {
 	case "agent.panic":
 		text = id + " crashed"
 		detail = clean(strings.TrimSpace(p.Panic+" "+p.Where+" "+p.In), textShort)
+	case "sink.panic":
+		text = "a panic in " + firstOf(id, "an agent") + "'s output sink was recovered"
+		detail = clean(p.Panic, textShort)
 	default:
 		text = e.Type
 		detail = clean(p.Panic, textShort)

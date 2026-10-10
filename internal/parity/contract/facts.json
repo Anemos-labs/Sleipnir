@@ -1,0 +1,6 @@
+{
+  "terminal_only": [
+    {"item": "team/questions_asked", "reason": "The terminal counts the permission questions the log records (perm.ask). A followed or replayed log shows the asking agent as asking, but its question card is made by the approvals bridge of a hosted tab, which a followed log has none of and nobody could answer; in a hosted tab the page's count is the bridge's."},
+    {"item": "team/tool_calls", "reason": "The State counts a tool call when it starts (tool.call). A followed log's tool row is written when the call ends with its output, so a call still running (the manager's wait at the end of this recording) is in the terminal's count and not yet a row on the page, which shows it in the agent's doing line."}
+  ]
+}

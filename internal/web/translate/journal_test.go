@@ -28,7 +28,8 @@ func reduce(tb testing.TB, raws ...[]wire.Raw) *mirror {
 
 // view is what of a mirror a page shows outside the transcript, as comparable JSON: every agent's state, tokens, layers and ratio
 // series, the tasks and the order they merged in, the plan, the goal, the verdict, the checkpoints, the open questions, the mails,
-// anomalies and compactions with their times, the warm clock, the governor, the queue, the alerts, the stalls and the mail counts.
+// anomalies and compactions with their times, the warm clock, the governor, the queue, the alerts, the stalls, the mail counts and
+// what the service agents used.
 // The time of an agent's last request is left out: a keyframe gives the ratio series at its own t.
 func view(tb testing.TB, m *mirror) string {
 	tb.Helper()
@@ -37,10 +38,11 @@ func view(tb testing.TB, m *mirror) string {
 		Use    *UseX
 		Layers *wire.Layers
 		Ratios []float64
+		Marks  []string
 	}
 	agents := map[string]agent{}
 	for id, a := range m.agents {
-		ag := agent{Ratios: append([]float64{}, lastN(a.ratios, mirrorRatios)...)}
+		ag := agent{Ratios: append([]float64{}, lastN(a.ratios, mirrorRatios)...), Marks: append([]string{}, lastN(a.marks, mirrorRatios)...)}
 		if a.state != nil {
 			c := *a.state
 			c.Base = wire.Base{}
@@ -110,7 +112,7 @@ func view(tb testing.TB, m *mirror) string {
 	out := map[string]any{"agents": agents, "tasks": tasks, "torder": m.torder, "merged": m.merged, "plan": stripT(m.plan),
 		"goal": stripT(m.goal), "verdict": stripT(m.verdict), "ckpts": ckpts, "open": opens, "mails": mails, "anoms": anoms,
 		"comps": comps, "warm": stripT(m.warm), "gov": stripT(m.gov), "queue": stripT(m.queue), "alerts": alerts, "stalls": stalls,
-		"mailstat": stripT(m.mailstat)}
+		"mailstat": stripT(m.mailstat), "svc": stripT(m.svc)}
 	b, err := json.MarshalIndent(out, "", " ")
 	if err != nil {
 		tb.Fatal(err)

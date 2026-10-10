@@ -1,0 +1,170 @@
+{
+  "terminal_only": [
+    {
+      "item": "cache.affinity_shards",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.compact_threshold_tokens",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.compaction_mode",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.hot_max_tokens",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.instruction_max_tokens",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.min_layer_for_breakpoint",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.shared_ttl",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.thread_soft_limit_tokens",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "hooks.*",
+      "reason": "hooks are defined in configuration files in both interfaces; Settings > Skills, commands & hooks lists the configured hooks and their events read-only"
+    },
+    {
+      "item": "permissions.roles.*.allow",
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+    },
+    {
+      "item": "permissions.roles.*.ask",
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+    },
+    {
+      "item": "permissions.roles.*.deny",
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+    },
+    {
+      "item": "permissions.roles.*.mode",
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+    },
+    {
+      "item": "providers.*.allow_hosts",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "providers.*.allow_insecure_http",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "providers.*.api_key_env",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "providers.*.auth",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "providers.*.base_url",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "providers.*.dialect",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "providers.*.headers.*",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "providers.*.options.*",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+    },
+    {
+      "item": "swarm.max_concurrent_requests",
+      "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS in both interfaces; the governor line of the HUD shows its effect and Config layers its value"
+    },
+    {
+      "item": "swarm.max_workers",
+      "reason": "the ceiling on the team size: a file or SLEIPNIR_SWARM_MAX_WORKERS in both interfaces; the worker steppers of the New session dialog and of Run settings stop at it, and Config layers shows it"
+    },
+    {
+      "item": "swarm.requests_per_minute",
+      "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_REQUESTS_PER_MINUTE in both interfaces; the governor line of the HUD shows its effect and Config layers its value"
+    },
+    {
+      "item": "tools.default_timeout_sec",
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+    },
+    {
+      "item": "tools.max_output_chars",
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+    },
+    {
+      "item": "tools.max_timeout_sec",
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+    },
+    {
+      "item": "tools.web_allow_hosts",
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+    },
+    {
+      "item": "tools.web_allow_private",
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+    }
+  ],
+  "web_only": [
+    {
+      "item": "browser:look.seg:hover",
+      "reason": "how the view slows or holds while the pointer is over the chat; a setting of this browser kept in localStorage, with no configuration key and no terminal counterpart"
+    },
+    {
+      "item": "browser:look.seg:motion",
+      "reason": "reduces or restores motion in this browser; the terminal's counterpart is --no-anim, /anim and SLEIPNIR_ANIM, which the Motion setting follows when it is on auto"
+    },
+    {
+      "item": "browser:look.seg:density",
+      "reason": "comfortable or compact spacing of this browser's page; a terminal has no layout density"
+    },
+    {
+      "item": "browser:look.seg:cache",
+      "reason": "how much of the cache the page shows (Quiet or Full); a display choice of this browser, with no configuration key"
+    },
+    {
+      "item": "browser:look.seg:title",
+      "reason": "the question badge in this browser tab's title; a browser feature, the terminal rings its bell instead (SLEIPNIR_BELL)"
+    },
+    {
+      "item": "browser:look.seg:navmode",
+      "reason": "icons or wide labels in the left rail; the layout of this browser's page"
+    },
+    {
+      "item": "browser:look.seg:radiomode",
+      "reason": "opens or collapses the Radio rail; the layout of this browser's page"
+    },
+    {
+      "item": "browser:look.do:railreset",
+      "reason": "resets the Radio rail's width; the layout of this browser's page"
+    },
+    {
+      "item": "state:roles.seg:effort",
+      "reason": "the reasoning effort of the session; the terminal has /effort, and no configuration key holds it"
+    },
+    {
+      "item": "state:trust.trust*",
+      "reason": "trust a project's files or forget a directory: the trust ledger, a file of its own that `sleipnir trust add|forget|list` also edits"
+    },
+    {
+      "item": "state:trust.do:forget-all",
+      "reason": "forget every directory of the trust ledger; `sleipnir trust forget --all` does the same"
+    },
+    {
+      "item": "state:providers.prov*",
+      "reason": "sign a stored provider key out, or show the command that signs one in: the key store (auth.json), which `sleipnir login` and `logout` edit; it is not configuration"
+    }
+  ]
+}

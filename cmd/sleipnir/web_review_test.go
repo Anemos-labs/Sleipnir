@@ -165,6 +165,9 @@ func TestTheHostWaitsForATabThatIsClosing(t *testing.T) {
 	dir := r.h.tab(b.ID).session().Dir
 
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(unblock) // after the rig's own cleanup was registered, so it runs first: a close that waits must not outlive a failed test
 	entered := make(chan struct{})
 	prev := webCloseSession
 	webCloseSession = func(s *session.Session, reason string) *swarm.IntegrationReport {
@@ -192,7 +195,7 @@ func TestTheHostWaitsForATabThatIsClosing(t *testing.T) {
 		t.Fatal("the host closed while a tab was still closing")
 	case <-time.After(500 * time.Millisecond):
 	}
-	close(release)
+	unblock()
 	select {
 	case <-closed:
 	case <-time.After(webGuard):
@@ -580,6 +583,9 @@ func TestGoalPauseTypedDuringATurnActsAtOnce(t *testing.T) {
 	if s := r.h.tab(tab.ID).goalState(); s != "paused" {
 		t.Errorf("the goal is %q", s)
 	}
+	// the frames reach the rig a moment after the state changes: the turn's end is the last of what the pause does
+	r.waitEv(tab.ID, "interrupt", map[string]any{"id": "turn"})
+	r.waitEv(tab.ID, "turn", map[string]any{"s": "end"})
 	n := 0
 	r.mu.Lock()
 	for _, f := range r.frames {

@@ -9,6 +9,7 @@
 | CLI commands and flags | Binary help | `scripts/gen-cli-docs.sh --check` |
 | Command specification of the browser interface | `docs/CLI.md` | `scripts/gen-clispec.sh --check` |
 | Route set of the browser interface (`docs/WEB-API.md`) | The routes the host registers (`web.Server.Routes`) | `TestWebAPIDocumentListsEveryRegisteredRoute` in `cmd/sleipnir` compares them with the route tables of the document |
+| What the terminal and browser interfaces offer (commands, flags, slash commands, views, settings, events, keys, recorded numbers) | The code of each interface, listed by the tests, and `internal/parity/contract/` for stated differences | `internal/parity` and the tests `docs/PARITY.md` names; `scripts/gen-webui-inventory.sh --check` keeps the page's inventory current |
 | Provider option names | Adapter configuration | Configuration tests compare documented options with supported keys |
 | Cache simulation output | Simulator | CI regenerates `docs/CACHE-ECONOMICS.md` and compares it |
 | Stable prompt bytes | Renderers, schemas, golden fixtures | Golden tests and `scripts/check-declared.sh` require a compatibility declaration |

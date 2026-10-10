@@ -11,9 +11,9 @@ import (
 // The mirror is a Go reduction of what the page's world model holds, minus the transcript rows: per agent its state,
 // token table, ratio history and prompt layers; the tasks and the merged list; the plan, the goal and the verdict; the checkpoints;
 // the open questions; the last mails, anomalies and compactions; the warm clock, the governor, the merge queue; the board's alerts,
-// the open stall findings and the mail counts. The journal folds into one mirror every event it evicts, and the keyframe of a
-// snapshot is that mirror written back as events: a page that reduces keyframe ⧺ retained events ends where one that reduced every
-// event would, for everything but the transcript.
+// the open stall findings, the mail counts and what the harness's service agents used. The journal folds into one mirror every
+// event it evicts, and the keyframe of a snapshot is that mirror written back as events: a page that reduces keyframe ⧺ retained
+// events ends where one that reduced every event would, for everything but the transcript.
 
 // The caps of the mirror.
 const (
@@ -33,6 +33,7 @@ type mAgent struct {
 	use     *UseX
 	layers  *wire.Layers
 	ratios  []float64
+	marks   []string // the mark of each request in ratios ("" for none)
 	lastReq float64
 }
 
@@ -52,7 +53,7 @@ type mirror struct {
 	qorder   []string
 	mails    []*MailX
 	anoms    []*wire.Break
-	comps    []*wire.Compact
+	comps    []*CompactX
 	warm     *wire.Warm
 	gov      *wire.Gov
 	queue    *wire.Queue
@@ -61,6 +62,7 @@ type mirror struct {
 	stalls   map[string]*wire.Stall
 	sorder   []string
 	mailstat *MailStat
+	svc      *SvcUse
 	t        float64 // the t of the newest event folded
 	n        uint64  // events folded
 }
@@ -119,11 +121,10 @@ func (m *mirror) fold(e wire.Event) {
 			c := *v
 			a.layers = &c
 		}
+	case *ReqX:
+		m.request(&v.Req, v.Mark)
 	case *wire.Req:
-		if a := m.agent(v.ID); a != nil {
-			a.ratios = appendCapped(a.ratios, v.Ratio, mirrorRatios)
-			a.lastReq = v.T
-		}
+		m.request(v, "")
 	case *TaskX:
 		m.task(v)
 	case *wire.Task:
@@ -176,9 +177,11 @@ func (m *mirror) fold(e wire.Event) {
 	case *wire.Break:
 		c := *v
 		m.anoms = appendCapped(m.anoms, &c, mirrorAnoms)
-	case *wire.Compact:
+	case *CompactX:
 		c := *v
 		m.comps = appendCapped(m.comps, &c, mirrorAnoms)
+	case *wire.Compact:
+		m.comps = appendCapped(m.comps, &CompactX{Compact: *v}, mirrorAnoms)
 	case *wire.Warm:
 		c := *v
 		m.warm = &c
@@ -191,6 +194,9 @@ func (m *mirror) fold(e wire.Event) {
 	case *MailStat:
 		c := *v
 		m.mailstat = &c
+	case *SvcUse:
+		c := *v
+		m.svc = &c
 	case *Alert:
 		k := v.Kind + "|" + v.Key
 		if v.S == "clear" {
@@ -227,6 +233,15 @@ func (m *mirror) fold(e wire.Event) {
 		}
 		c := *v
 		m.stalls[k] = &c
+	}
+}
+
+// request folds a req event: the ratio of an answered request of the agent, with its mark.
+func (m *mirror) request(v *wire.Req, mark string) {
+	if a := m.agent(v.ID); a != nil {
+		a.ratios = appendCapped(a.ratios, v.Ratio, mirrorRatios)
+		a.marks = appendCapped(a.marks, mark, mirrorRatios)
+		a.lastReq = v.T
 	}
 }
 
@@ -326,8 +341,9 @@ func (m *mirror) keyframe(t0 float64) []wire.Event {
 			c := *a.layers
 			at(&c)
 		}
-		for _, r := range lastN(a.ratios, mirrorRatios) {
-			at(&wire.Req{ID: id, Ratio: r, Hist: true})
+		marks := lastN(a.marks, mirrorRatios)
+		for i, r := range lastN(a.ratios, mirrorRatios) {
+			at(&ReqX{Req: wire.Req{ID: id, Ratio: r, Hist: true}, Mark: marks[i]})
 		}
 		if a.state != nil {
 			c := *a.state
@@ -387,6 +403,10 @@ func (m *mirror) keyframe(t0 float64) []wire.Event {
 		c := *m.mailstat
 		at(&c)
 	}
+	if m.svc != nil {
+		c := *m.svc
+		at(&c)
+	}
 	for _, k := range m.alorder {
 		c := *m.alerts[k]
 		at(&c)
@@ -439,7 +459,7 @@ func newOfKind(k string) wire.Event {
 	case "verdict":
 		return &wire.Verdict{}
 	case "req":
-		return &wire.Req{}
+		return &ReqX{}
 	case "use":
 		return &UseX{}
 	case "warm":
@@ -461,7 +481,7 @@ func newOfKind(k string) wire.Event {
 	case "break":
 		return &wire.Break{}
 	case "compact":
-		return &wire.Compact{}
+		return &CompactX{}
 	case "stream":
 		return &wire.Stream{}
 	case "diff":
@@ -490,6 +510,8 @@ func newOfKind(k string) wire.Event {
 		return &Alert{}
 	case "mailstat":
 		return &MailStat{}
+	case "svc":
+		return &SvcUse{}
 	}
 	return nil
 }

@@ -1,0 +1,12 @@
+{
+  "terminal_only": [
+    {
+      "item": "chat --plain",
+      "reason": "plain lines are how a pipe is served, not a setting: the page is always the full interface, and a chat without a terminal is `sleipnir chat --plain` run from a script"
+    },
+    {
+      "item": "watch --poll",
+      "reason": "the interval at which watch re-reads the session file of another process; the page follows the server's event stream and has nothing to poll"
+    }
+  ]
+}

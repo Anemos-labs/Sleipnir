@@ -9,6 +9,9 @@ go build ./...
 gofmt -l cmd internal
 ```
 
+The terminal and web interfaces are kept level by `internal/parity` and the tests it names (`docs/PARITY.md`); they run with the
+required checks above and the node tests of `internal/web/uidev/test`.
+
 `scripts/check.sh` also checks generated files, module consistency, dependency
 policy, action pinning, and release builds. CI configuration is in
 `.github/workflows/`. The broad Windows suite excludes packages listed with reasons

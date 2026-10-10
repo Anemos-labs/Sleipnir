@@ -142,13 +142,17 @@ func fullScenario(tb testing.TB) *harness {
 	return h
 }
 
-// everyKindCorpus is the events of the full scenario and of the recorded demo sessions, decoded.
+// everyKindCorpus is the events of the full scenario, of the recorded demo sessions, of a team with a mailman and of a worker whose
+// requests carry marks, decoded.
 func everyKindCorpus(tb testing.TB) []map[string]any {
 	tb.Helper()
 	out := fullScenario(tb).decoded()
 	out = append(out, translateLog(tb, shopEvents(tb), "/work/shop", false).decoded()...)
 	out = append(out, translateLog(tb, shopEvents(tb), "/work/shop", true).decoded()...)
 	out = append(out, translateLog(tb, statetest.DemoEvents(), "/work/handbook", true).decoded()...)
+	out = append(out, translateLog(tb, mailmanLog(), "/work", true).decoded()...)
+	marked, _ := marksLog()
+	out = append(out, translateLog(tb, marked, "/work", true).decoded()...)
 	return out
 }
 

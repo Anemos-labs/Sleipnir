@@ -314,6 +314,17 @@ func TestHoldIsBoundedAndTheRunReportsWhatWasLeft(t *testing.T) {
 	if n := len(r.log.OfType(events.TypeSwarmUnfinished)); n != 1 {
 		t.Fatalf("%d swarm.unfinished events, want 1", n)
 	}
+	// The notice is UnfinishedNotice of the event's list, word for word: the web page drops the notice or the feed's row of the same event
+	// by computing it from the event, so the two must not part.
+	var left struct {
+		Unfinished string `json:"unfinished"`
+	}
+	if err := json.Unmarshal(r.log.OfType(events.TypeSwarmUnfinished)[0].Data, &left); err != nil || left.Unfinished == "" {
+		t.Fatalf("the swarm.unfinished event: %v %s", err, r.log.OfType(events.TypeSwarmUnfinished)[0].Data)
+	}
+	if !sink.has("mgr warn: " + UnfinishedNotice(left.Unfinished)) {
+		t.Fatalf("the notice is not UnfinishedNotice of the event's list %q: %v", left.Unfinished, sink.all())
+	}
 	// the caller can tell from the result's data, without parsing its text, that the run did not finish
 	if got := r.sw.Unfinished(); got != "running: be-1 (T1)" {
 		t.Fatalf("Unfinished() = %q, want the running worker", got)

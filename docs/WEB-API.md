@@ -167,7 +167,7 @@ this order and says so:
 | Class | Frames | When the page falls behind |
 |---|---|---|
 | Critical | `tab`, `reset`, `roster`, `meta`, `bye`, a run's result, and the `ev` kinds marked below | never dropped. A page that cannot hold them is disconnected with `lagged` and reconnects with `Last-Event-ID` |
-| Coalescable, with a key | `ping`; `ev` of kinds `use`, `layers`, `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat`, `diff`, and `ckpt` after its first event | a newer frame with the same type and key replaces it; otherwise it is dropped first |
+| Coalescable, with a key | `ping`; `ev` of kinds `use`, `layers`, `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat`, `svc`, `diff`, and `ckpt` after its first event | a newer frame with the same type and key replaces it; otherwise it is dropped first |
 | Ordinary | `recorded`, a run's output lines and steps, `ev` of kind `more` | dropped after the coalescable ones; the page is told with `gap` |
 
 Nothing dropped is lost: the journal of the session holds it and a snapshot brings it back.
@@ -200,11 +200,38 @@ are the types of `internal/web/wire/events.go`, found by their `k`:
 | Class | Kinds |
 |---|---|
 | Critical | `ask`, `answer`, `state`, `task`, `goal`, `final`, `turn`, `merge`, `mail`, `tool`, `say`, `stream`, `sys`, `note`, `refuse`, `interrupt`, `steer`, `break`, `compact`, `req`, `stall`, `handover`, `alert`, and the first `ckpt` of an id |
-| Coalescable (key) | `use` and `layers` (per agent), `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat` (per tab), `diff` (per file), `ckpt` after the first of an id |
+| Coalescable (key) | `use` and `layers` (per agent), `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat` and `svc` (per tab), `diff` (per file), `ckpt` after the first of an id |
 | Ordinary | `more` |
 
-Kinds and fields that the server adds to the base vocabulary are in `internal/web/translate/events.go`: the kinds `alert` and
-`mailstat`, and extra fields on `state`, `task`, `mail`, `use` and `tool`.
+Kinds and fields that the server adds to the base vocabulary are in `internal/web/translate/events.go`: the kinds `alert`,
+`mailstat` and `svc`, and extra fields on `state`, `task`, `mail`, `use`, `tool`, `compact` and `req`. A `compact` event says in
+`moment` whether the shared prefix's cache was `warm` (a declared, priced rebase) or `cold` (the rewrite costs nothing extra) when
+the compaction was decided, and has none for a compaction that no plan preceded (an emergency compaction, or one a person asked
+for): nobody chose its moment and the log does not tell its price, so a page states none for it. `mode` says how the thread was
+folded, in the terminal's words: `fork` (the compactor model's patch), `mask` (bulky results folded without a model) or `emergency`
+(the harness's own safety net); a page shows a compaction with no `moment` as, say, "emergency compaction", as the terminal's feed
+does. A `req` event carries `mark` when the agent took a new shared prefix (`epoch`) or dropped its thinking blocks (`rebase`) before the request it reports, the places the terminal marks
+on an agent's hit-ratio line. An `svc` event carries, as absolute values, the
+tokens, cost and estimated saving of the harness's own service agents (the mailman) together; they are in no roster and have no
+`use` event, and a page adds them to the totals of its agents so that the totals are those of the run.
+
+Events that have a line in the terminal's feed and no kind of their own become `sys` rows of the manager's channel, with `ag` the
+agent they are about, in the words of that line (the translator reads them from the same state the terminal folds, so the two
+cannot say different things; the line's small print follows its text after a middle dot): a compaction that was rejected, the
+shared prefix re-written (a new epoch), a recovered panic of an agent's output sink, the manager's supervision (a hold, a run that
+ended with work unfinished, a wake, the bound on wakes, a worker whose mail no longer wakes it, a shutdown with agents still
+running) and a background job that finished, was killed or exited with an error. A merge that was rolled back after its
+verification failed is a `sys` row of its own after the row of the failure. These rows are held to the rate limit of notices (20 in
+10 seconds, the rest counted in one row). While a compaction is worked out, from the planner's decision to its commit or rejection,
+the agent's `state` event says it folds its thread.
+
+In a hosted session three of these events are also given to the session's sink as a notice by the swarm, with the same words and more
+(a feed line cuts its text at 160 characters and its small print at 80): a wake (the note the manager is woken with), the bound on
+wakes (how many, and what the manager waits for) and a run that ended with work unfinished (the whole list). The page shows the
+notice, in the manager's channel, in the place of the line, so that the fact is one row; the notice is matched to its event by the
+words the swarm computes from the event (`swarm.WakePausedNotice`, `swarm.UnfinishedNotice`), whichever of the two arrives first. A
+line whose notice has not come after 2 seconds is shown after all, and so is every line of a log that no sink goes with (a followed or
+replayed one). Every other notice is a row of its own, as it is given.
 
 ## Routes
 

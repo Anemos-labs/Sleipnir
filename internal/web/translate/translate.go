@@ -289,7 +289,9 @@ func (t *Translator) Close() {
 	t.once.Do(func() {
 		t.mu.Lock()
 		if !t.closed {
-			t.endAll(t.sessT(t.now()))
+			ts := t.sessT(t.now())
+			t.endAll(ts)
+			t.flushPairs(ts, true)
 		}
 		t.closed = true
 		stop := t.d.stopFollow

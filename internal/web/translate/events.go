@@ -8,7 +8,7 @@ import (
 )
 
 // The events of this file extend the vocabulary of package wire additively: an existing kind with optional fields (a reader that does
-// not know them ignores them), or a new kind (alert, mailstat). Each embeds the wire type it extends, so it encodes as that type's
+// not know them ignores them), or a new kind (alert, mailstat, svc). Each embeds the wire type it extends, so it encodes as that type's
 // fields plus its own, and it is a wire.Event through the embedded Base.
 
 // StateX is a state event with reqSince: the session time at which the agent's oldest unanswered main request was sent (the page
@@ -24,6 +24,26 @@ type UseX struct {
 	wire.Use
 	SavedPartial bool  `json:"savedPartial,omitempty"`
 	Unpriced     int64 `json:"unpriced,omitempty"`
+}
+
+// CompactX is a compact event with Moment and Mode. Moment says whether the shared prefix's cache was "warm" when the planner decided
+// on the compaction (a declared, priced rebase) or "cold" (the rewrite costs nothing extra), as the compact.plan before the commit
+// said; it is absent for a compaction with no plan before it (an emergency compaction, or one a person asked for), whose moment nobody
+// chose and whose price the log does not tell. Mode is how the thread was folded, in the State's words: "fork" (the compactor model's
+// patch), "mask" (bulky results folded without a model) or "emergency" (the harness's own safety net); absent when the State does not
+// know the commit.
+type CompactX struct {
+	wire.Compact
+	Moment string `json:"moment,omitempty"`
+	Mode   string `json:"mode,omitempty"`
+}
+
+// ReqX is a req event with Mark: "epoch" when the agent took a new shared prefix before the request (layer.commit shared-sync, the
+// terminal's new epoch on the hit-ratio line) or "rebase" when its thinking blocks were dropped before it (layer.commit
+// thinking-strip); absent otherwise. A request answered after the mark is the one it affects.
+type ReqX struct {
+	wire.Req
+	Mark string `json:"mark,omitempty"`
 }
 
 // TaskX is a task event with Failed (the board failed the task: it stays in the todo column with its closure), Attempts (how many
@@ -73,10 +93,26 @@ type MailStat struct {
 	Mailman   string `json:"mailman,omitempty"`
 }
 
+// SvcUse is a new kind: the token table, cost and estimated saving of the harness's own service agents (the mailman) taken together,
+// as absolute values like a use event's, which replace the last. A service agent is in no roster and has no row of its own, but what
+// it asks of the model is part of what the run used and cost, so the page adds this to the totals of its agents.
+type SvcUse struct {
+	wire.Base
+	Rd           int64   `json:"rd"`
+	Un           int64   `json:"un"`
+	Out          int64   `json:"out"`
+	Wr           int64   `json:"wr"`
+	Cost         float64 `json:"cost"`
+	Saved        float64 `json:"saved"`
+	SavedPartial bool    `json:"savedPartial,omitempty"`
+	Unpriced     int64   `json:"unpriced,omitempty"`
+}
+
 // extKinds names the kind of each extension type.
 var extKinds = map[reflect.Type]string{
 	reflect.TypeOf(&StateX{}): "state", reflect.TypeOf(&UseX{}): "use", reflect.TypeOf(&TaskX{}): "task", reflect.TypeOf(&MailX{}): "mail",
-	reflect.TypeOf(&ToolX{}): "tool", reflect.TypeOf(&Alert{}): "alert", reflect.TypeOf(&MailStat{}): "mailstat",
+	reflect.TypeOf(&ToolX{}): "tool", reflect.TypeOf(&Alert{}): "alert", reflect.TypeOf(&MailStat{}): "mailstat", reflect.TypeOf(&SvcUse{}): "svc",
+	reflect.TypeOf(&CompactX{}): "compact", reflect.TypeOf(&ReqX{}): "req",
 }
 
 // kindOf names the kind of any event of the vocabulary, the extensions included ("" for an unknown type).
@@ -145,7 +181,7 @@ func classOf(tab, kind string, e wire.Event, firstCkpt bool) class {
 		if d, ok := e.(*wire.Diff); ok {
 			return class{coalescable: true, key: "diff/" + tab + "/" + d.File}
 		}
-	case kind == "gov", kind == "warm", kind == "plan", kind == "verdict", kind == "queue", kind == "mailstat":
+	case kind == "gov", kind == "warm", kind == "plan", kind == "verdict", kind == "queue", kind == "mailstat", kind == "svc":
 		return class{coalescable: true, key: kind + "/" + tab}
 	}
 	return class{}

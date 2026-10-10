@@ -181,5 +181,5 @@
 {"t":0.891,"k":"use","seq":181,"id":"mgr","rd":20464,"un":6133,"out":395,"wr":0,"cost":0.05289599999999999,"saved":0.007674}
 {"t":0.891,"k":"layers","seq":182,"id":"mgr","toks":[4112,88,274,0,0,1288]}
 {"t":0.891,"k":"warm","seq":183,"ttl":300}
-{"t":3.891,"k":"state","seq":184,"id":"mgr","s":"wait","doing":"waits for the team","task":null}
+{"t":3.891,"k":"state","seq":184,"id":"mgr","s":"done","doing":"done","task":null}
 {"t":3.891,"k":"state","seq":185,"id":"rv-1","s":"done","doing":"no files edited; no tests run","task":"T7"}

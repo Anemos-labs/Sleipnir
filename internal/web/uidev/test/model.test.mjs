@@ -20,8 +20,8 @@ function rosterOf(events) {
   return ids.map((id, i) => ({ id, role: id === 'mgr' ? 'manager' : 'worker', code: id.split('-')[0], nth: 1, k: i, leg: i - 1, scope: '', ro: false, model: 'm', spawn: 0 }));
 }
 const session = events => ({ id: 't', meta: { goalText: '' }, roster: rosterOf(events) });
-/** Every kind the reducer handles (the thirty of the reference page, the five additive kinds and the two the translator adds). */
-const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse digest more turn stall handover layers alert mailstat'.split(' '));
+/** Every kind the reducer handles (the thirty of the reference page, the five additive kinds and the three the translator adds). */
+const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse digest more turn stall handover layers alert mailstat svc'.split(' '));
 
 test('the golden streams exist', () => { assert.ok(goldens.length >= 2, 'no golden UI stream under ' + GOLDEN); });
 
@@ -100,6 +100,79 @@ test('use, warm, gov, queue, layers, stall, alert, handover, mailstat: counters 
   SL.model.reduce(m, { t: 5, k: 'mailstat', sent: 3, delivered: 2, dropped: 1 }); assert.equal(m.mailstat.sent, 3);
   // the hidden kinds do not count as visible (the hold chip's "new")
   ['more', 'turn', 'stall', 'handover', 'layers'].forEach(k => assert.equal(SL.model.isVisible({ k }), false));
+});
+
+test('compact: the moment the planner decided at (warm or cold) and the mode are kept with the compaction, in the log of every channel and for the Cache view; anything else is dropped', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
+  SL.model.reduce(m, { t: 1, k: 'compact', id: 'be-1', from: 9000, to: 1000, pct: -89, moment: 'cold', mode: 'fork' });
+  SL.model.reduce(m, { t: 2, k: 'compact', id: 'be-1', from: 8000, to: 900, pct: -89, moment: 'warm', mode: 'mask' });
+  SL.model.reduce(m, { t: 3, k: 'compact', id: 'be-1', from: 7000, to: 800, pct: -89, mode: 'emergency' });
+  SL.model.reduce(m, { t: 4, k: 'compact', id: 'be-1', from: 6000, to: 700, pct: -88, moment: '<img src=x>', mode: '<img src=x>' });
+  SL.model.reduce(m, { t: 5, k: 'compact', id: 'be-1', from: 5000, to: 600, pct: -88 });
+  const moments = ['cold', 'warm', '', '', ''], modes = ['fork', 'mask', 'emergency', '', ''];
+  assert.deepEqual(plain(m.compactions.map(c => c.moment)), moments); assert.deepEqual(plain(m.compactions.map(c => c.mode)), modes);
+  for (const ch of ['mgr', 'be-1']) {
+    assert.deepEqual(plain(m.chan[ch].filter(e => e.k === 'compact').map(e => e.moment)), moments);
+    assert.deepEqual(plain(m.chan[ch].filter(e => e.k === 'compact').map(e => e.mode)), modes);
+  }
+});
+
+test('compactNote: a compaction says its price only when the planner decided on its moment; one nobody planned says how it was made, or nothing', () => {
+  const SL = setup(), note = (c, long) => SL.calc.compactNote(c, long);
+  assert.equal(note({ moment: 'cold' }, false), 'cache rewritten while cold: free');
+  assert.equal(note({ moment: 'cold' }, true), 'the cache was cold, so the rewrite cost nothing extra');
+  assert.equal(note({ moment: 'warm' }, false), 'a declared, priced rebase');
+  assert.equal(note({ moment: 'warm' }, true), 'the cache was warm: a declared, priced rebase');
+  assert.equal(note({ moment: 'warm', mode: 'fork' }, false), 'a declared, priced rebase', 'a known moment is the whole note');
+  for (const long of [false, true]) {
+    assert.equal(note({ moment: '', mode: 'emergency' }, long), 'emergency compaction');
+    assert.equal(note({ mode: 'mask' }, long), 'mask compaction');
+    assert.equal(note({ mode: 'fork' }, long), 'fork compaction');
+    for (const c of [{}, { moment: '', mode: '' }, { moment: 'lukewarm', mode: 'both' }, { moment: 7, mode: '<img src=x>' }, null, undefined]) {
+      assert.equal(note(c, long), '', 'no claim of a price or a rebase for ' + JSON.stringify(c));
+    }
+  }
+});
+
+test('req: the mark of a request (a new epoch, a rebase) is kept beside its ratio for the Cache view, bounded with it; anything else is no mark', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S), A = m.ag['be-1'];
+  [[0.9, undefined], [0.1, 'epoch'], [0.95, ''], [0.2, 'rebase'], [0.9, '<img src=x>'], [0.9, 7]].forEach(([ratio, mark], i) => SL.model.reduce(m, { t: i, k: 'req', id: 'be-1', ratio, mark }));
+  assert.deepEqual(plain(A.rmarks), ['', 'epoch', '', 'rebase', '', '']); assert.equal(A.rmarks.length, A.ratios.length);
+  for (let i = 0; i < 700; i++) SL.model.reduce(m, { t: 10 + i, k: 'req', id: 'be-1', ratio: 0.9, mark: i % 100 === 0 ? 'epoch' : undefined, hist: true });
+  assert.equal(A.ratios.length, 400); assert.equal(A.rmarks.length, 400); assert.equal(A.nreq, 706);
+  assert.equal(A.rmarks.filter(x => x).length, 4, 'the marks that stay are those of the requests that stay (the series is cut at its oldest end, both together)');
+});
+
+test('sys: the rows of the feed-style events (a hold, a wake, a job, a rejected compaction, a rolled back merge) are rows of the manager\'s channel, bounded like any other', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
+  SL.model.reduce(m, { t: 1, k: 'sys', ch: 'mgr', glyph: '⚠', text: 'the manager answered while work was unfinished and was sent back to it · T1 is unfinished', ag: 'mgr' });
+  SL.model.reduce(m, { t: 2, k: 'sys', ch: 'mgr', glyph: '↺', text: 'T1: the merge was rolled back', ag: 'be-1', task: 'T1' });
+  assert.deepEqual(plain(m.chan.mgr.map(e => [e.k, e.glyph, e.ag, e.task])), [['sys', '⚠', 'mgr', null], ['sys', '↺', 'be-1', 'T1']]);
+  assert.equal(SL.model.isVisible({ k: 'sys' }), true);
+  for (let i = 0; i < SL.model.CHAN_CAP + 700; i++) SL.model.reduce(m, { t: 3 + i, k: 'sys', ch: 'mgr', glyph: '✓', text: 'background job j' + i + ' finished: make', ag: 'be-1' });
+  assert.ok(m.chan.mgr.length <= SL.model.CHAN_CAP, 'the channel holds ' + m.chan.mgr.length);
+  assert.ok(m.folded.mgr >= 500, 'the rows that left are counted');
+});
+
+test('svc: what the harness\'s service agents used is added to the totals, replaces the last, and is no agent', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
+  SL.model.reduce(m, { t: 1, k: 'use', id: 'mgr', rd: 100, un: 50, out: 10, wr: 20, cost: 0.5, saved: 0.01 });
+  SL.model.reduce(m, { t: 1, k: 'use', id: 'be-1', rd: 900, un: 100, out: 50, wr: 100, cost: 0.25, saved: 0.1 });
+  const before = SL.calc.totals(m);
+  assert.equal(before.prompt, 1150); assert.equal(before.out, 60); assert.ok(Math.abs(before.cost - 0.75) < 1e-9);
+  SL.model.reduce(m, { t: 2, k: 'svc', rd: 40, un: 160, out: 40, wr: 0, cost: 0.0004, saved: 0.002, unpriced: 8, savedPartial: true });
+  const T = SL.calc.totals(m);
+  assert.equal(T.prompt, 1150 + 200); assert.equal(T.read, 1000 + 40); assert.equal(T.un, 150 + 160); assert.equal(T.out, 60 + 40); assert.equal(T.wr, 120);
+  assert.ok(Math.abs(T.cost - 0.7504) < 1e-9); assert.ok(Math.abs(T.saved - 0.112) < 1e-9);
+  assert.equal(T.savedPartial, true); assert.equal(T.unpriced, 8); assert.ok(Math.abs(T.hit - 1040 / 1350) < 1e-9);
+  // the event holds absolute values: a later one replaces the earlier
+  SL.model.reduce(m, { t: 3, k: 'svc', rd: 40, un: 360, out: 90, wr: 0, cost: 0.001, saved: 0.002 });
+  assert.equal(SL.calc.totals(m).prompt, 1150 + 400); assert.equal(SL.calc.totals(m).savedPartial, false);
+  // it is nobody's row: no agent appears, and the per-agent tables stay what they were
+  assert.deepEqual(plain(m.order), ['mgr', 'be-1']); assert.equal(SL.calc.agent(m.ag['be-1']).prompt, 1000);
+  // what is not a finite number counts as nothing
+  SL.model.reduce(m, { t: 4, k: 'svc', rd: 'x', un: null, out: Infinity, cost: '5' });
+  assert.equal(SL.calc.totals(m).prompt, 1150); assert.ok(Math.abs(SL.calc.totals(m).cost - 0.75) < 1e-9);
 });
 
 test('addAgent adds a worker to a running model once', () => {

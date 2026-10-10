@@ -564,11 +564,15 @@ func (s *State) dropAllAsks() {
 	}
 }
 
+// onSupervision folds the manager's supervision events (internal/swarm hold.go, swarm.go, wake.go, lifecycle.go): a hold (reason),
+// the end of a run with work left (unfinished, the list the producer writes; reason is read as well, for a log that names it so), a
+// wake (n, note), the bound on wakes, a worker whose mail no longer wakes the manager, and a shutdown with agents still running.
 func (s *State) onSupervision(e events.Event, t time.Time) {
 	var p struct {
-		Reason string `json:"reason"`
-		Note   string `json:"note"`
-		N      int    `json:"n"`
+		Reason     string `json:"reason"`
+		Unfinished string `json:"unfinished"`
+		Note       string `json:"note"`
+		N          int    `json:"n"`
 	}
 	if !s.decode(e.Data, maxPayload, &p) {
 		return
@@ -581,7 +585,7 @@ func (s *State) onSupervision(e events.Event, t time.Time) {
 		s.line(e.Seq, t, e.Agent, FeedNote, GlyphWarn, "the manager answered while work was unfinished and was sent back to it", sup.LastHold)
 	case events.TypeSwarmUnfinished:
 		sup.Unfinished++
-		s.line(e.Seq, t, e.Agent, FeedNote, GlyphWarn, "the run ended with work unfinished", clean(p.Reason, textShort))
+		s.line(e.Seq, t, e.Agent, FeedNote, GlyphWarn, "the run ended with work unfinished", clean(firstOf(p.Unfinished, p.Reason), textShort))
 	case events.TypeSwarmWake:
 		sup.Wakes++
 		sup.LastWake = clean(p.Note, textLine)
