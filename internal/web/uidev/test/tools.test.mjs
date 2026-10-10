@@ -68,8 +68,9 @@ test('the daemon line: stopped offers every and Start; here offers Stop; held by
 
 test('the form of a job: what is checked before the server is asked, and the body it sends', () => {
   const { SL } = setup(), S = SL.toolkit.schedule;
-  assert.deepEqual(plain(S.validateJob({ goal: '', budget: 'x' }, false).map(b => b.text)), ['the cron expression is not valid', 'a goal is required', 'the budget is a number of dollars']);
+  assert.deepEqual(plain(S.validateJob({ goal: '', budget: 'x' }, false).map(b => b.text)), ['the cron expression is not valid', 'a goal is required', 'the budget is a number of dollars, 0 for no limit']);
   assert.deepEqual(plain(S.validateJob({ goal: 'g', budget: '0.5' }, true)), []);
-  assert.equal(S.validateJob({ goal: 'g', budget: '0' }, true)[0].text, 'the budget is a number of dollars');
+  assert.deepEqual(plain(S.validateJob({ goal: 'g', budget: '0' }, true)), []); // 0 is no limit, as in the CLI
+  assert.equal(S.validateJob({ goal: 'g', budget: '-1' }, true)[0].text, 'the budget is a number of dollars, 0 for no limit');
   assert.deepEqual(plain(S.jobRequest({ cron: ' 0 9 * * * ', goal: ' go ', dir: '/p', model: '', mode: 'plan', budget: '0.5' })), { cron: '0 9 * * *', goal: 'go', dir: '/p', model: '', mode: 'plan', budgetUsd: 0.5 });
 });

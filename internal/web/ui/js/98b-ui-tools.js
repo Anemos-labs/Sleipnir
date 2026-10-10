@@ -163,7 +163,7 @@
     const bad = [];
     if (!cronOk) bad.push({ field: 'sCron', text: 'the cron expression is not valid', kind: 'err' });
     if (!String(f.goal || '').trim()) bad.push({ field: 'sGoal', text: 'a goal is required', kind: 'warm' });
-    if (!(parseFloat(f.budget) > 0)) bad.push({ field: 'sBudget', text: 'the budget is a number of dollars', kind: 'err' });
+    if (!(parseFloat(f.budget) >= 0)) bad.push({ field: 'sBudget', text: 'the budget is a number of dollars, 0 for no limit', kind: 'err' });
     return bad;
   }
   /** The body of an add or an edit (bypass and yolo are not offered here, and the server refuses them). */
