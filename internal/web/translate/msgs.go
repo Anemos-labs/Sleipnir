@@ -134,9 +134,9 @@ func (t *Translator) endAll(ts float64) {
 	for _, uid := range sortedKeys(t.d.msgs) {
 		t.endMsg(uid, ts, false)
 	}
-	for _, tid := range sortedKeys(t.d.codes) {
-		m := t.d.codes[tid]
-		delete(t.d.codes, tid)
+	for _, key := range sortedKeys(t.d.codes) {
+		m := t.d.codes[key]
+		delete(t.d.codes, key)
 		t.closeMsg(m, ts, false)
 	}
 }
@@ -227,7 +227,7 @@ func (t *Translator) toolStart(uid string, it *sinkItem, ts float64) {
 				break
 			}
 		}
-		t.d.runs[it.tid] = &toolRun{agent: uid, start: it.at}
+		t.d.runs[callKey(uid, it.tid)] = &toolRun{agent: uid, start: it.at}
 	}
 	if t.agentOutOf(uid).service {
 		return
@@ -267,7 +267,7 @@ func (t *Translator) toolStart(uid string, it *sinkItem, ts float64) {
 		})
 		m.opened, m.sent = true, len(content)
 		if it.tid != "" {
-			t.d.codes[it.tid] = m
+			t.d.codes[callKey(uid, it.tid)] = m
 		} else {
 			t.closeMsg(m, ts, false)
 		}
@@ -287,15 +287,16 @@ func (t *Translator) toolEnd(uid string, it *sinkItem, ts float64, at int64) {
 		}
 	}
 	var ms, waited int64
-	if r := t.d.runs[it.tid]; r != nil && it.tid != "" {
-		delete(t.d.runs, it.tid)
+	key := callKey(uid, it.tid)
+	if r := t.d.runs[key]; r != nil && it.tid != "" {
+		delete(t.d.runs, key)
 		waited = r.waited.Milliseconds()
 	}
 	if it.took > 0 {
 		ms = max(it.took.Milliseconds()-waited, 0)
 	}
-	if m := t.d.codes[it.tid]; m != nil && it.tid != "" {
-		delete(t.d.codes, it.tid)
+	if m := t.d.codes[key]; m != nil && it.tid != "" {
+		delete(t.d.codes, key)
 		t.closeMsg(m, ts, false)
 	}
 	if t.agentOutOf(uid).service {

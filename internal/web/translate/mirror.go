@@ -11,9 +11,9 @@ import (
 // The mirror is a Go reduction of what the page's world model holds, minus the transcript rows: per agent its state,
 // token table, ratio history and prompt layers; the tasks and the merged list; the plan, the goal and the verdict; the checkpoints;
 // the open questions; the last mails, anomalies and compactions; the warm clock, the governor, the merge queue; the board's alerts,
-// the open stall findings and the mail counts. The journal folds into one mirror every event it evicts, and the keyframe of a
-// snapshot is that mirror written back as events: a page that reduces keyframe ⧺ retained events ends where one that reduced every
-// event would, for everything but the transcript.
+// the open stall findings, the mail counts and what the harness's service agents used. The journal folds into one mirror every
+// event it evicts, and the keyframe of a snapshot is that mirror written back as events: a page that reduces keyframe ⧺ retained
+// events ends where one that reduced every event would, for everything but the transcript.
 
 // The caps of the mirror.
 const (
@@ -61,6 +61,7 @@ type mirror struct {
 	stalls   map[string]*wire.Stall
 	sorder   []string
 	mailstat *MailStat
+	svc      *SvcUse
 	t        float64 // the t of the newest event folded
 	n        uint64  // events folded
 }
@@ -191,6 +192,9 @@ func (m *mirror) fold(e wire.Event) {
 	case *MailStat:
 		c := *v
 		m.mailstat = &c
+	case *SvcUse:
+		c := *v
+		m.svc = &c
 	case *Alert:
 		k := v.Kind + "|" + v.Key
 		if v.S == "clear" {
@@ -387,6 +391,10 @@ func (m *mirror) keyframe(t0 float64) []wire.Event {
 		c := *m.mailstat
 		at(&c)
 	}
+	if m.svc != nil {
+		c := *m.svc
+		at(&c)
+	}
 	for _, k := range m.alorder {
 		c := *m.alerts[k]
 		at(&c)
@@ -490,6 +498,8 @@ func newOfKind(k string) wire.Event {
 		return &Alert{}
 	case "mailstat":
 		return &MailStat{}
+	case "svc":
+		return &SvcUse{}
 	}
 	return nil
 }

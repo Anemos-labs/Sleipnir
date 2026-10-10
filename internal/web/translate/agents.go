@@ -267,13 +267,18 @@ func (t *Translator) openTasks() []string {
 	return out
 }
 
-// workersBusy reports whether a worker is working (its last state is neither idle nor done).
+// workersBusy reports whether a worker is working: its newest state, the one held back by the rate limit when there is one, is
+// neither idle nor done.
 func (t *Translator) workersBusy() bool {
 	for uid, a := range t.d.ags {
-		if uid == "mgr" || a.service || a.st == nil {
+		cur := a.st
+		if a.pend != nil {
+			cur = a.pend
+		}
+		if uid == "mgr" || a.service || cur == nil {
 			continue
 		}
-		if a.st.S != "idle" && a.st.S != "done" {
+		if cur.S != "idle" && cur.S != "done" {
 			return true
 		}
 	}
@@ -326,6 +331,43 @@ func (t *Translator) sendUse(hid string, ts float64, force bool) {
 	t.put(u, ts, 0, nil)
 }
 
+// svcRow is what one service agent of the harness has used: its token table, cost and estimated saving.
+type svcRow struct {
+	rd, un, out, wr, unpriced int64
+	cost, saved               float64
+}
+
+// noteSvc records what a service agent (the harness id of one the translator keeps out of the roster) has used so far, from the State.
+// The page has no row for it, but what it asks of the model is part of what the run used and cost. At most maxSvc agents are kept.
+func (t *Translator) noteSvc(hid string) {
+	a, ok := t.st.AgentLite(hid)
+	if !ok {
+		return
+	}
+	if _, known := t.d.svc[hid]; !known && len(t.d.svc) >= maxSvc {
+		return
+	}
+	t.d.svc[hid] = svcRow{rd: a.Tokens.CacheRead, un: a.Tokens.Input + a.Tokens.CacheWrite, out: a.Tokens.Output, wr: a.Tokens.CacheWrite,
+		unpriced: a.UnpricedReadTokens, cost: a.CostUSD, saved: a.SavedUSD}
+}
+
+// sendSvc sends the total of what the service agents have used when it changed (or always, with force), as one svc event.
+func (t *Translator) sendSvc(ts float64, force bool) {
+	var u SvcUse
+	for _, hid := range sortedKeys(t.d.svc) {
+		r := t.d.svc[hid]
+		u.Rd, u.Un, u.Out, u.Wr, u.Unpriced = u.Rd+r.rd, u.Un+r.un, u.Out+r.out, u.Wr+r.wr, u.Unpriced+r.unpriced
+		u.Cost, u.Saved = u.Cost+r.cost, u.Saved+r.saved
+	}
+	u.SavedPartial = u.Unpriced > 0
+	if !force && ((t.d.svcSent == nil && u == (SvcUse{})) || (t.d.svcSent != nil && *t.d.svcSent == u)) {
+		return
+	}
+	c := u
+	t.d.svcSent = &c
+	t.put(&u, ts, 0, nil)
+}
+
 // sendLayers sends an agent's latest prompt by layer when it changed (or always, with force).
 func (t *Translator) sendLayers(hid string, ts float64, force bool) {
 	uid := uiID(hid)
@@ -353,9 +395,15 @@ func (t *Translator) fellBehind(ts float64) {
 	t.put(&wire.Say{Who: "sys", Glyph: "⚠", Text: "the page fell behind: some activity rows were skipped"}, ts, 0, nil)
 	for _, hid := range t.st.AgentIDs() {
 		delete(t.d.hold, uiID(hid))
+		if t.agentOutOf(uiID(hid)).service {
+			t.noteSvc(hid)
+		}
 		t.sendUse(hid, ts, true)
 		t.sendLayers(hid, ts, true)
 		t.refreshAgent(hid, ts, true)
+	}
+	if len(t.d.svc) > 0 {
+		t.sendSvc(ts, true)
 	}
 }
 

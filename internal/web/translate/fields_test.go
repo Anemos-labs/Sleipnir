@@ -49,6 +49,7 @@ var required = map[string][]string{
 	"layers":    {"id", "toks"},
 	"alert":     {"s", "kind"},
 	"mailstat":  {"sent", "delivered", "dropped"},
+	"svc":       {"rd", "un", "out", "wr", "cost", "saved"},
 }
 
 // notProduced are the kinds of the reference page that the server never sends: the page makes them itself, or they belong to a

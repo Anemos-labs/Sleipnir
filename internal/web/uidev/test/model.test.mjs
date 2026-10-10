@@ -20,8 +20,8 @@ function rosterOf(events) {
   return ids.map((id, i) => ({ id, role: id === 'mgr' ? 'manager' : 'worker', code: id.split('-')[0], nth: 1, k: i, leg: i - 1, scope: '', ro: false, model: 'm', spawn: 0 }));
 }
 const session = events => ({ id: 't', meta: { goalText: '' }, roster: rosterOf(events) });
-/** Every kind the reducer handles (the thirty of the reference page, the five additive kinds and the two the translator adds). */
-const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse digest more turn stall handover layers alert mailstat'.split(' '));
+/** Every kind the reducer handles (the thirty of the reference page, the five additive kinds and the three the translator adds). */
+const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse digest more turn stall handover layers alert mailstat svc'.split(' '));
 
 test('the golden streams exist', () => { assert.ok(goldens.length >= 2, 'no golden UI stream under ' + GOLDEN); });
 
@@ -100,6 +100,27 @@ test('use, warm, gov, queue, layers, stall, alert, handover, mailstat: counters 
   SL.model.reduce(m, { t: 5, k: 'mailstat', sent: 3, delivered: 2, dropped: 1 }); assert.equal(m.mailstat.sent, 3);
   // the hidden kinds do not count as visible (the hold chip's "new")
   ['more', 'turn', 'stall', 'handover', 'layers'].forEach(k => assert.equal(SL.model.isVisible({ k }), false));
+});
+
+test('svc: what the harness\'s service agents used is added to the totals, replaces the last, and is no agent', () => {
+  const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
+  SL.model.reduce(m, { t: 1, k: 'use', id: 'mgr', rd: 100, un: 50, out: 10, wr: 20, cost: 0.5, saved: 0.01 });
+  SL.model.reduce(m, { t: 1, k: 'use', id: 'be-1', rd: 900, un: 100, out: 50, wr: 100, cost: 0.25, saved: 0.1 });
+  const before = SL.calc.totals(m);
+  assert.equal(before.prompt, 1150); assert.equal(before.out, 60); assert.ok(Math.abs(before.cost - 0.75) < 1e-9);
+  SL.model.reduce(m, { t: 2, k: 'svc', rd: 40, un: 160, out: 40, wr: 0, cost: 0.0004, saved: 0.002, unpriced: 8, savedPartial: true });
+  const T = SL.calc.totals(m);
+  assert.equal(T.prompt, 1150 + 200); assert.equal(T.read, 1000 + 40); assert.equal(T.un, 150 + 160); assert.equal(T.out, 60 + 40); assert.equal(T.wr, 120);
+  assert.ok(Math.abs(T.cost - 0.7504) < 1e-9); assert.ok(Math.abs(T.saved - 0.112) < 1e-9);
+  assert.equal(T.savedPartial, true); assert.equal(T.unpriced, 8); assert.ok(Math.abs(T.hit - 1040 / 1350) < 1e-9);
+  // the event holds absolute values: a later one replaces the earlier
+  SL.model.reduce(m, { t: 3, k: 'svc', rd: 40, un: 360, out: 90, wr: 0, cost: 0.001, saved: 0.002 });
+  assert.equal(SL.calc.totals(m).prompt, 1150 + 400); assert.equal(SL.calc.totals(m).savedPartial, false);
+  // it is nobody's row: no agent appears, and the per-agent tables stay what they were
+  assert.deepEqual(plain(m.order), ['mgr', 'be-1']); assert.equal(SL.calc.agent(m.ag['be-1']).prompt, 1000);
+  // what is not a finite number counts as nothing
+  SL.model.reduce(m, { t: 4, k: 'svc', rd: 'x', un: null, out: Infinity, cost: '5' });
+  assert.equal(SL.calc.totals(m).prompt, 1150); assert.ok(Math.abs(SL.calc.totals(m).cost - 0.75) < 1e-9);
 });
 
 test('addAgent adds a worker to a running model once', () => {

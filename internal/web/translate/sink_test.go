@@ -191,6 +191,59 @@ func TestToolRows(t *testing.T) {
 	}
 }
 
+// Tool calls of different agents that carry the same id are different calls: each keeps its own code stream and its own running time
+// (the part of it spent waiting for a person's answer is taken from the call of the agent that asked, and from no other). A model's
+// call ids are its own; the demo's mock model numbers the calls of every agent from w1.
+func TestSinkCallsOfAgentsThatShareCallIDsStaySeparate(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	s := h.tr.Sink()
+	writeA := call("w1", "write", map[string]any{"path": "/work/a.go", "content": "package a\n"})
+	writeB := call("w1", "write", map[string]any{"path": "/work/b.go", "content": "package b\n"})
+	done := &tools.Result{Text: "Created", Meta: map[string]any{"created": true}}
+
+	h.set(h.now().Add(time.Second))
+	s.ToolStart("be-1", writeA)
+	s.ToolStart("be-2", writeB)
+	h.drain()
+	h.tr.Question(wire.Question{ID: "q1", Agent: "be-2", Cmd: "npm i", Kind: "command"})
+	h.set(h.now().Add(5 * time.Second))
+	h.tr.Answered(wire.Answer{QID: "q1", Choice: 1, By: "you"})
+	h.set(h.now().Add(time.Second))
+	s.ToolEnd("be-1", writeA, done, 6*time.Second)
+	h.drain()
+
+	evs := h.decoded()
+	streams := map[string]string{} // agent -> mid of its code stream
+	for _, e := range ofKind(evs, "stream") {
+		streams[e["id"].(string)] = e["mid"].(string)
+	}
+	if len(streams) != 2 {
+		t.Fatalf("code streams: %v", streams)
+	}
+	var ended []string
+	for _, e := range ofKind(evs, "more") {
+		if e["end"] == true {
+			ended = append(ended, e["mid"].(string))
+		}
+	}
+	if len(ended) != 1 || ended[0] != streams["be-1"] {
+		t.Errorf("after be-1's write ended, the streams that ended are %v; be-1's is %s and be-2's %s", ended, streams["be-1"], streams["be-2"])
+	}
+
+	s.ToolEnd("be-2", writeB, done, 6*time.Second)
+	h.drain()
+	rows := map[string]map[string]any{}
+	for _, e := range ofKind(h.decoded(), "tool") {
+		rows[e["id"].(string)] = e
+	}
+	if a := rows["be-1"]; a == nil || a["ms"] != 6000.0 || a["waited"] != nil {
+		t.Errorf("be-1's write ran 6 s and waited for nobody: %v", a)
+	}
+	if b := rows["be-2"]; b == nil || b["ms"] != 1000.0 || b["waited"] != 5000.0 {
+		t.Errorf("be-2's write ran 6 s, 5 of them waiting for the answer: %v", b)
+	}
+}
+
 // A sink call never blocks, whatever the translator is doing: with its goroutine stuck in a publisher that does not return, 100,000
 // calls return at once; when it can go on, it reports the loss once and sends every agent's state, token table and layers afresh.
 func TestSinkNeverBlocks(t *testing.T) {

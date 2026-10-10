@@ -236,5 +236,5 @@
 {"t":0.891,"k":"say","seq":236,"who":"mgr","text":"Done: 4 topics surveyed and summarised, and the summaries were reviewed.","stream":false}
 {"t":0.891,"k":"final","seq":237}
 {"t":0.891,"k":"turn","seq":238,"s":"end"}
-{"t":3.891,"k":"state","seq":239,"id":"mgr","s":"wait","doing":"waits for the team","task":null}
+{"t":3.891,"k":"state","seq":239,"id":"mgr","s":"done","doing":"done","task":null}
 {"t":3.891,"k":"state","seq":240,"id":"rv-1","s":"done","doing":"no files edited; no tests run","task":"T7"}

@@ -69,6 +69,56 @@ func TestReplayKeepsTheOutputOfSlowCalls(t *testing.T) {
 	}
 }
 
+// sharedIDLog is a log in which two agents run a tool call each with the same call id, side by side: a model's ids are its own, so
+// nothing makes them unique across agents (the demo's mock model numbers the calls of every agent from w1, r1, c1). The results of
+// both come before the turn.append of either.
+func sharedIDLog() []events.Event {
+	b := newLog(t0)
+	b.add(0, "", "session.start", map[string]any{"root": "/work", "swarm": true})
+	b.add(time.Millisecond, "be-1", "tool.call", map[string]any{"id": "c1", "name": "bash", "input": map[string]any{"command": "echo one"}})
+	b.add(time.Millisecond, "be-2", "tool.call", map[string]any{"id": "c1", "name": "bash", "input": map[string]any{"command": "echo two"}})
+	b.add(time.Millisecond, "be-1", "tool.result", map[string]any{"id": "c1", "name": "bash", "error": false, "ms": 3})
+	b.add(time.Millisecond, "be-2", "tool.result", map[string]any{"id": "c1", "name": "bash", "error": true, "ms": 4})
+	b.add(time.Millisecond, "be-1", "turn.append", map[string]any{"role": "user", "blocks": []map[string]any{
+		{"kind": "tool_result", "tool_id": "c1", "result": []map[string]any{{"kind": "text", "text": "one"}}}}})
+	b.add(time.Millisecond, "be-2", "turn.append", map[string]any{"role": "user", "blocks": []map[string]any{
+		{"kind": "tool_result", "tool_id": "c1", "is_error": true, "result": []map[string]any{{"kind": "text", "text": "two"}}}}})
+	b.add(time.Second, "", "session.end", map[string]any{"reason": "other"})
+	return b.evs
+}
+
+// Two agents whose tool calls carry the same id each get their own row, with their own output and outcome: the table of calls
+// waiting for their output is keyed by the agent and the id, and no call replaces another agent's. A replay and a followed log
+// agree.
+func TestToolRowsOfAgentsThatShareCallIDsAreKept(t *testing.T) {
+	check := func(name string, tools []map[string]any) {
+		t.Helper()
+		if len(tools) != 2 {
+			t.Fatalf("%s: %d tool rows, want one for each agent: %v", name, len(tools), tools)
+		}
+		for _, r := range tools {
+			switch r["id"] {
+			case "be-1":
+				if r["out"] != "one" || r["ok"] != true || r["arg"] != "echo one" {
+					t.Errorf("%s: be-1's row is %v", name, r)
+				}
+			case "be-2":
+				if r["out"] != "two" || r["ok"] != false || r["arg"] != "echo two" {
+					t.Errorf("%s: be-2's row is %v", name, r)
+				}
+			default:
+				t.Errorf("%s: a row of %v", name, r["id"])
+			}
+		}
+	}
+	raws, err := Replay(context.Background(), recordedDir(t, encodeLog(sharedIDLog())), Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("replay", ofKind(decodeAll(t, toRaws(raws)), "tool"))
+	check("followed", ofKind(translateLog(t, sharedIDLog(), "/work", true).decoded(), "tool"))
+}
+
 // toRaws converts encoded events.
 func toRaws(evs []json.RawMessage) []wire.Raw {
 	out := make([]wire.Raw, len(evs))

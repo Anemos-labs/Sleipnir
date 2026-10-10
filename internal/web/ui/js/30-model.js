@@ -9,7 +9,7 @@
  *
  * Event kinds (their fields and caps are the types of internal/web/wire/events.go): say, sys, tool, note, state, task, plan, verdict,
  * req, use, warm, gov, mail, ckpt, ask, answer, queue, merge, break, compact, stream, goal, final, local, steer, reply, interrupt,
- * refuse, digest, and more, turn, stall, handover, layers (plus alert and mailstat when the server sends them). Fields that real data
+ * refuse, digest, and more, turn, stall, handover, layers (plus alert, mailstat and svc when the server sends them). Fields that real data
  * carries beyond what a screen draws are kept in the model and change no rendering path. */
 (function (SL) {
   'use strict';
@@ -66,7 +66,7 @@
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
       mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ckpts: [],
       reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0,
-      mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
+      mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
     return m;
   }
@@ -265,6 +265,11 @@
       case 'layers': if (A && Array.isArray(ev.toks)) A.layers = ev.toks.slice(0, 6); break;
       case 'alert': { const k = String(ev.key || ev.kind || ''); if (k in Object.prototype) break; if (ev.s === 'clear') delete m.alerts[k]; else m.alerts[k] = { kind: ev.kind, text: ev.text, t: ev.t, at: ev.at }; break; }
       case 'mailstat': m.mailstat = ev; break;
+      case 'svc': {   /* what the harness's own service agents (the mailman) have used, in all: no row of their own, but part of the run's totals */
+        const n = x => typeof x === 'number' && isFinite(x) ? x : 0;
+        m.svc = { rd: n(ev.rd), un: n(ev.un), out: n(ev.out), wr: n(ev.wr), cost: n(ev.cost), saved: n(ev.saved), savedPartial: !!ev.savedPartial, unpriced: n(ev.unpriced) };
+        break;
+      }
       case 'digest': break;
       default: break;
     }
@@ -282,10 +287,12 @@
       const cost = typeof a.cost === 'number' ? a.cost : (a.un * pr.in + a.rd * pr.cached + a.out * pr.out) / 1e6, saved = typeof a.saved === 'number' ? a.saved : a.rd * (pr.in - pr.cached) / 1e6;
       return { prompt, read: a.rd, un: a.un, out: a.out, wr: a.wr || 0, hit, pct: Math.round(hit * 100), cost, saved, savedPartial: !!a.savedPartial, unpriced: a.unpriced || 0 };
     },
-    /** Totals over every agent of a model (manager included). */
+    /** Totals over every agent of a model (manager included) and what the harness's service agents used (they have no row of their own). */
     totals(m) {
       const t = { prompt: 0, read: 0, un: 0, out: 0, wr: 0, cost: 0, saved: 0, calls: 0, savedPartial: false, unpriced: 0 };
       m.order.forEach(id => { const c = calc.agent(m.ag[id]); t.prompt += c.prompt; t.read += c.read; t.un += c.un; t.out += c.out; t.wr += c.wr; t.cost += c.cost; t.saved += c.saved; t.calls += m.ag[id].calls; if (c.savedPartial) t.savedPartial = true; t.unpriced += c.unpriced; });
+      const v = m.svc;
+      if (v) { t.prompt += v.rd + v.un; t.read += v.rd; t.un += v.un; t.out += v.out; t.wr += v.wr; t.cost += v.cost; t.saved += v.saved; if (v.savedPartial) t.savedPartial = true; t.unpriced += v.unpriced; }
       t.hit = t.prompt > 0 ? t.read / t.prompt : 0; t.pct = Math.round(t.hit * 100); t.hit1 = Math.round(t.hit * 1000) / 10;
       return t;
     },

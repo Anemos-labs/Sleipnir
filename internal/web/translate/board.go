@@ -116,7 +116,8 @@ func (t *Translator) isolated() bool {
 	return t.st.Session().Isolation == "worktree"
 }
 
-// queueOut is the merge queue's counters and what is known of its submissions.
+// queueOut is the merge queue's counters and what is known of its submissions. bounced counts the conflicts too, and the failed
+// verification gates of a team that shares the tree.
 type queueOut struct {
 	conflicts, bounced int
 	at                 map[string]time.Time // task -> when its submission was queued
@@ -163,7 +164,9 @@ func (t *Translator) verifyCmd(task string) string {
 }
 
 // merge translates the merge queue's events (isolated teams) into queue events (head, step, counters) and merge events, and the
-// conflicts, refusals and failed verifications into system rows.
+// conflicts, refusals and failed verifications into system rows. The counters are the terminal's merge line: conflicts counts the
+// submissions that conflicted with what was merged, bounced every submission sent back to its worker (a conflict, a failed
+// verification, a refusal of the queue; one that had nothing to merge is neither).
 func (t *Translator) merge(e events.Event, ts float64, at int64) {
 	if t.d.history {
 		return
@@ -221,6 +224,7 @@ func (t *Translator) merge(e events.Event, ts float64, at int64) {
 	case events.TypeMergeConflict:
 		delete(q.merging, id)
 		q.conflicts++
+		q.bounced++
 		empty()
 		t.sysRow("mgr", "⚠", firstNonEmpty(id, "work")+": merge conflict in "+strings.Join(p.Files, ", "), uiID(e.Agent), id, ts, at)
 	case events.TypeMergeRejected:
@@ -228,7 +232,7 @@ func (t *Translator) merge(e events.Event, ts float64, at int64) {
 			return
 		}
 		delete(q.merging, id)
-		q.conflicts++
+		q.bounced++
 		empty()
 		t.sysRow("mgr", "⚠", firstNonEmpty(id, "work")+": the merge queue refused it: "+p.Reason, uiID(e.Agent), id, ts, at)
 	case events.TypeMergeVerifyFail:

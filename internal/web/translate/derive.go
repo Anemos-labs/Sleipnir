@@ -2,6 +2,7 @@ package translate
 
 import (
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -15,8 +16,8 @@ type deriveState struct {
 	ros      rosterOut
 	hid      map[string]string   // UI id -> the harness's id (mgr -> main for a single agent)
 	msgs     map[string]*message // the open prose message of an agent (UI id)
-	codes    map[string]*message // the open code stream of a write (tool call id)
-	runs     map[string]*toolRun // open tool calls seen through the sink (tool call id)
+	codes    map[string]*message // the open code stream of a write (callKey of the agent and the tool call id)
+	runs     map[string]*toolRun // open tool calls seen through the sink (callKey of the agent and the tool call id)
 	qs       map[string]*openQ   // open questions (question id)
 	qorder   []string
 	reqSide  map[string]bool // agent|req -> a side request (compactor)
@@ -31,12 +32,14 @@ type deriveState struct {
 	dedupe   noticeDedupe
 	lastErr  map[string]string
 	hold     map[string]holdInfo  // UI id -> a sink tool start the log has not caught up with
-	pend     map[string]*pendTool // log-only tool rows waiting for their output (tool call id)
+	pend     map[string]*pendTool // log-only tool rows waiting for their output (callKey of the agent and the tool call id)
 	hist     []string             // the person's lines
 	ckpts    map[string]*ckptOut  // cid
 	ckptSeen map[string]bool      // cid -> a ckpt event was journalled (the first is critical)
 	mstat    MailStat
 	mstatOK  bool
+	svc      map[string]svcRow     // harness id -> what a service agent (the mailman) has used; at most maxSvc
+	svcSent  *SvcUse               // the service agents' total as last sent
 	digests  map[string]digestInfo // a mailman digest's mail.send, until its mail.digest
 	full     float64               // the session time of the last full pass over the agents
 
@@ -70,11 +73,13 @@ type histEntry struct {
 	pre func(seq uint64)
 }
 
-// maxDigests bounds the mailman digests waiting for their mail.digest; maxPend the log-only tool rows waiting for their output.
+// maxDigests bounds the mailman digests waiting for their mail.digest; maxPend the log-only tool rows waiting for their output;
+// maxSvc the service agents whose use is kept.
 const (
 	maxDigests = 256
 	maxPend    = 1024
 	maxHist    = 200
+	maxSvc     = 16
 )
 
 // init makes the maps.
@@ -97,6 +102,7 @@ func (d *deriveState) init() {
 	d.ckpts = map[string]*ckptOut{}
 	d.ckptSeen = map[string]bool{}
 	d.digests = map[string]digestInfo{}
+	d.svc = map[string]svcRow{}
 	d.dedupe.n = map[string]*dedupeEntry{}
 	d.histSlot = -1
 }
@@ -131,6 +137,12 @@ func (d *deriveState) addHist(s string) {
 		d.hist = append(d.hist[:0], d.hist[len(d.hist)-maxHist:]...)
 	}
 }
+
+// callKey names a tool call by its agent (UI id) and its id. A call id is the model's own, unique among one agent's calls and
+// nothing more: agents of one session may use the same id at the same moment (the demo's mock model numbers every agent's calls from
+// w1, r1, c1), so a table of open calls keyed by the id alone lets one agent's call replace another's. The key is unambiguous: the
+// agent's length comes first.
+func callKey(uid, tid string) string { return strconv.Itoa(len(uid)) + ":" + uid + tid }
 
 // sortedKeys lists a map's keys in order, so that whatever the translator does for each entry of a map it does in the same order on
 // every run.

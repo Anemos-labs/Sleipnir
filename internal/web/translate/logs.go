@@ -213,6 +213,7 @@ func (t *Translator) finishHistory() {
 		}
 		uid := uiID(hid)
 		if t.agentOutOf(uid).service {
+			t.noteSvc(hid)
 			continue
 		}
 		t.sendUse(hid, 0, true)
@@ -226,6 +227,9 @@ func (t *Translator) finishHistory() {
 	}
 	for _, id := range t.st.TaskIDs() {
 		t.syncTask(id, 0, true)
+	}
+	if len(t.d.svc) > 0 {
+		t.sendSvc(0, true)
 	}
 	t.syncMailStat(0)
 	t.syncAlerts(nil, 0)
@@ -597,7 +601,7 @@ func (t *Translator) turnAppend(e events.Event, ts float64, at int64) {
 			if blk.Kind != core.BlockToolResult {
 				continue
 			}
-			if p := t.d.pend[blk.ToolID]; p != nil {
+			if p := t.d.pend[callKey(uid, blk.ToolID)]; p != nil {
 				var b strings.Builder
 				for _, r := range blk.Result {
 					if r.Kind == core.BlockText {
@@ -668,7 +672,7 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 	if t.d.history {
 		pt.slot = t.d.histPut(histEntry{}, t.lim.History) // the row's place: the transcript keeps the order of the calls
 	}
-	t.d.pend[p.ID] = pt
+	t.d.pend[callKey(uid, p.ID)] = pt
 }
 
 // planCall is a call of the plan tool by the main agent: the whole plan, normalized as the tool does.
@@ -713,7 +717,7 @@ func (t *Translator) toolResult(e events.Event, ts float64, at int64) {
 	if json.Unmarshal(e.Data, &p) != nil {
 		return
 	}
-	if pt := t.d.pend[p.ID]; pt != nil {
+	if pt := t.d.pend[callKey(uiID(e.Agent), p.ID)]; pt != nil {
 		pt.hasResult, pt.isErr, pt.refused, pt.meta, pt.ms = true, p.Error, p.Refused, p.Meta, p.Ms
 		pt.rw = t.now()
 	}

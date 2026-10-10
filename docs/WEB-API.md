@@ -167,7 +167,7 @@ this order and says so:
 | Class | Frames | When the page falls behind |
 |---|---|---|
 | Critical | `tab`, `reset`, `roster`, `meta`, `bye`, a run's result, and the `ev` kinds marked below | never dropped. A page that cannot hold them is disconnected with `lagged` and reconnects with `Last-Event-ID` |
-| Coalescable, with a key | `ping`; `ev` of kinds `use`, `layers`, `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat`, `diff`, and `ckpt` after its first event | a newer frame with the same type and key replaces it; otherwise it is dropped first |
+| Coalescable, with a key | `ping`; `ev` of kinds `use`, `layers`, `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat`, `svc`, `diff`, and `ckpt` after its first event | a newer frame with the same type and key replaces it; otherwise it is dropped first |
 | Ordinary | `recorded`, a run's output lines and steps, `ev` of kind `more` | dropped after the coalescable ones; the page is told with `gap` |
 
 Nothing dropped is lost: the journal of the session holds it and a snapshot brings it back.
@@ -200,11 +200,13 @@ are the types of `internal/web/wire/events.go`, found by their `k`:
 | Class | Kinds |
 |---|---|
 | Critical | `ask`, `answer`, `state`, `task`, `goal`, `final`, `turn`, `merge`, `mail`, `tool`, `say`, `stream`, `sys`, `note`, `refuse`, `interrupt`, `steer`, `break`, `compact`, `req`, `stall`, `handover`, `alert`, and the first `ckpt` of an id |
-| Coalescable (key) | `use` and `layers` (per agent), `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat` (per tab), `diff` (per file), `ckpt` after the first of an id |
+| Coalescable (key) | `use` and `layers` (per agent), `gov`, `warm`, `plan`, `verdict`, `queue`, `mailstat` and `svc` (per tab), `diff` (per file), `ckpt` after the first of an id |
 | Ordinary | `more` |
 
-Kinds and fields that the server adds to the base vocabulary are in `internal/web/translate/events.go`: the kinds `alert` and
-`mailstat`, and extra fields on `state`, `task`, `mail`, `use` and `tool`.
+Kinds and fields that the server adds to the base vocabulary are in `internal/web/translate/events.go`: the kinds `alert`,
+`mailstat` and `svc`, and extra fields on `state`, `task`, `mail`, `use` and `tool`. An `svc` event carries, as absolute values, the
+tokens, cost and estimated saving of the harness's own service agents (the mailman) together; they are in no roster and have no
+`use` event, and a page adds them to the totals of its agents so that the totals are those of the run.
 
 ## Routes
 

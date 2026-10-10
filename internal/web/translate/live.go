@@ -30,7 +30,12 @@ func (t *Translator) response(e events.Event, ts float64, at int64) {
 	key := hid + "|" + p.Req
 	side := p.Side || t.d.reqSide[key]
 	delete(t.d.reqSide, key)
-	if t.d.history || t.agentOutOf(uiID(hid)).service {
+	if t.d.history {
+		return
+	}
+	if t.agentOutOf(uiID(hid)).service {
+		t.noteSvc(hid) // a service agent has no row; what it used is added to the totals
+		t.sendSvc(ts, false)
 		return
 	}
 	if !side {
