@@ -160,6 +160,7 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 | `shift+Tab` | mode default → accept-edits → plan (never bypass or yolo) |
 | `Esc` | release the hold, close what is open, answer no, leave a field or a replay, then interrupt the turn |
 | `ctrl+C` | discard the line; during a turn, interrupt it; twice at an empty prompt, close the session |
+| `ctrl+D` | in an empty message box, or with nothing focused, close the session, asking first as its tab's close does; with text in the box, the browser's own |
 | `1` `2` `3` `4` | answer the question in front, once the keyboard is quiet; 2 only where it would remember something, 4 only for a build or test command |
 | `ctrl+K` | the command palette |
 | `ctrl+T` `alt+T`, `ctrl+G` `alt+G` | Cache, Cockpit; a browser may keep ctrl+T and ctrl+G, the alt keys reach the page |

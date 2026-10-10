@@ -61,11 +61,6 @@
       "reason": "animation off in sleipnir watch and sleipnir replay; the page has /anim and Settings, Appearance, motion, and no key for it"
     },
     {
-      "side": "gaps",
-      "items": ["ctrl+d"],
-      "reason": "the terminal quits on ctrl+d at an empty prompt, and the Help sheet of the page lists ctrl+d for the same (SHORTCUTS in js/11-data-live.js), but the message box binds no ctrl+d: bind it to the question that closes the session (as ctrl+c twice does), or take it off the sheet"
-    },
-    {
       "side": "web_only",
       "items": ["alt+1", "alt+2", "alt+3", "alt+4", "alt+5", "alt+6", "alt+7", "alt+8", "alt+9"],
       "reason": "switch to the nth session tab; a terminal program shows one session and has no tabs"
@@ -107,6 +102,7 @@
   "different_meaning": [
     {"item": "ctrl+k", "terminal": "kills the text from the cursor to the end of the line, in the prompt's editor", "web": "opens the command palette"},
     {"item": "delete", "terminal": "deletes the character after the cursor in the prompt", "web": "on a focused session tab, asks whether to close it (the text box deletes by itself)"},
+    {"item": "ctrl+d", "terminal": "quits the chat at an empty prompt (after the turn that runs, if one does), refuses a question in front, and deletes the character after the cursor when the prompt has text", "web": "in an empty message box, or with nothing focused, asks whether to close the session, as the tab's close does (the team stops, and an open question is named); with text in the box it is the browser's"},
     {"item": "1", "terminal": "answers a question in the chat; in sleipnir watch and replay it chooses the cockpit view, 2 3 and 4 the others", "web": "answers the question in front, as 2 3 and 4 do"}
   ]
 }

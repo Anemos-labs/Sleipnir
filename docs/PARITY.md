@@ -39,6 +39,12 @@ recordings (`internal/web/translate/testdata`, `internal/parity/testdata/team.ui
 (agents and their final states, tasks by status, tokens, cost, cache hit ratio, merge counters, goal, stalls, mail and others)
 must come out equal. A difference is a failure naming the fact, the recording and both values.
 
+The keys the page tells its users about are held to the same record. The Help sheet and Settings › Look › Keys are read as the page draws them
+(the rows they build themselves and the rows of `SHORTCUTS` in `internal/web/ui/js/11-data-live.js`), and
+`internal/web/uidev/test/help-keys.test.mjs` fails when a row names a key that `internal/parity/testdata/keys-web.json` does not list as
+doing something on the page. The first column of a row holds keys only (the grammar is at the head of the test); what a key does goes in the
+second.
+
 ## The page's inventory
 
 The page's registries (views, rail, palette, slash handlers, Settings controls, dialogs, the runner's forms) are JavaScript, so
@@ -62,6 +68,7 @@ flag changed.
 | `X under <list> is stale` | remove the entry: the difference is gone |
 | `webui.json is out of date` | `sh scripts/gen-webui-inventory.sh`, read the diff |
 | a fact differs | decide which interface is right, fix the other, then run `go test ./internal/parity -run TestTerminalFacts -update` and `go test ./internal/parity -run TestFactsStreamsAreCurrent -update`, and keep both halves equal |
+| `the Help sheet: the row ... names ..., which the page does nothing with` | give the row the keys the page has (`SHORTCUTS` in `internal/web/ui/js/11-data-live.js`), keep words in its second column, or take the row out |
 | a key differs | build the key in the other interface, or list it in `contract/keys.json`; record the terminal's keys with `go test ./internal/tui/app -run TestKeysParityTerminal -update` and the page's with `node internal/web/uidev/test/keys-parity.test.mjs --update` |
 
 Every guard has a test that proves it fails: a synthetic extra item on either side makes the comparison report it, and a contract

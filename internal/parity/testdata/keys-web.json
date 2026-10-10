@@ -33,6 +33,7 @@
     "b": ["page","question","replay","cache","hold","view-mail","view-board","view-replay","view-sessions","view-tools","view-doctor","view-schedule","view-settings","view-workspace","view-runner"],
     "c": ["page","question","replay","cache","hold","view-mail","view-board","view-replay","view-sessions","view-tools","view-doctor","view-schedule","view-settings","view-workspace","view-runner"],
     "ctrl+c": ["composer","composer-text","composer-running","question-composer"],
+    "ctrl+d": ["composer","page","question","replay","cache","hold"],
     "ctrl+g": ["composer","composer-text","page","question","replay","cache","hold"],
     "ctrl+j": ["composer","composer-text"],
     "ctrl+k": ["composer","composer-text","page","question","replay","cache","hold"],
