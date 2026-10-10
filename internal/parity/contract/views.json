@@ -1,0 +1,52 @@
+{
+  "web_only": [
+    {
+      "item": "radio",
+      "reason": "the Radio rail is the page's chat column beside every view; in the terminal the chat is the program itself, so there is nothing to open"
+    },
+    {
+      "item": "sessions",
+      "reason": "lists live and recorded sessions, prunes and deletes them; the terminal has `sleipnir sessions`, `sessions prune` and /sessions, each a command with its own output"
+    },
+    {
+      "item": "settings",
+      "reason": "eleven pages for the model, roles, budget, permissions, trust, run flags, tool servers, skills, providers and the configuration layers; the terminal has /model, /roles, /budget, /permissions, /trust, /mcp, /skills and `sleipnir config`"
+    },
+    {
+      "item": "tools",
+      "reason": "the catalogue of `sleipnir` commands with a form for each; the terminal types the command and reads `sleipnir --help`"
+    },
+    {
+      "item": "doctor",
+      "reason": "probes an endpoint and shows each request; the terminal has the command `sleipnir doctor`, which prints the same steps"
+    },
+    {
+      "item": "schedule",
+      "reason": "edits the cron jobs and runs the daemon; the terminal has `sleipnir schedule` and `sleipnir daemon`"
+    },
+    {
+      "item": "runner",
+      "reason": "the form that runs a `sleipnir` command from its flags and streams the output; the terminal types the command line"
+    },
+    {
+      "item": "workspace",
+      "reason": "the tracker of files, changes, checkpoints and the merge queue of the session; the terminal has /rewind and /diff, which write their answer into the chat"
+    },
+    {
+      "item": "workspace/files",
+      "reason": "the tree of the project with who owns each file; the terminal has no file tree (the agents' tools and /diff show files)"
+    },
+    {
+      "item": "workspace/changes",
+      "reason": "the changes by task or agent with a diff and a per-line gutter; the terminal has /diff, which prints one checkpoint's diff"
+    },
+    {
+      "item": "workspace/checkpoints",
+      "reason": "the checkpoints with restore and its preview; the terminal has /rewind, which lists them and restores one"
+    },
+    {
+      "item": "workspace/merge",
+      "reason": "the merge queue, the verification of each task and the worktrees of an isolated team; the terminal shows the queue counts on the Board view and prints the integration at the end"
+    }
+  ]
+}

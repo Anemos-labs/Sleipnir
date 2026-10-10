@@ -1,0 +1,16 @@
+{
+  "terminal_only": [
+    {
+      "item": "chat-record",
+      "reason": "a hidden tool that records the chat program's terminal output for the documentation; it is not a user command, is not in `sleipnir --help` and has no page equivalent"
+    },
+    {
+      "item": "term-svg",
+      "reason": "a hidden tool that renders a terminal recording as an SVG for the documentation; it is not a user command, is not in `sleipnir --help` and has no page equivalent"
+    },
+    {
+      "item": "web",
+      "reason": "sleipnir web serves the page itself: the runner refuses it with a 403 tty_only (a nested server) and the page is its output"
+    }
+  ]
+}

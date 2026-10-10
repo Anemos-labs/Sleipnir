@@ -1,0 +1,112 @@
+{
+  "groups": [
+    {
+      "side": "terminal_only",
+      "items": ["alt+<", "alt+>", "alt+b", "alt+d", "alt+f", "alt+y", "alt+z", "backspace", "ctrl+_", "ctrl+a", "ctrl+b", "ctrl+e", "ctrl+f", "ctrl+u", "ctrl+w", "ctrl+y", "ctrl+z", "shift+enter"],
+      "reason": "text editing: the prompt of the terminal is its own line editor, which implements the readline keys itself; the page's message box is a browser text box, which edits with the platform's own keys, so the page has no code for them"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["ctrl+n", "ctrl+p"],
+      "reason": "emacs aliases of the down and up arrows in the prompt's history, the menus and a question; the page has the arrows"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["ctrl+l"],
+      "reason": "repaints a terminal that was scribbled on; a browser repaints its page itself"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["pgdn"],
+      "reason": "pages down in the command menu and in the statistics page of the terminal; the page scrolls its panes with the browser's own keys"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["j", "k"],
+      "reason": "vi aliases of the down and up arrows in sleipnir watch and sleipnir replay, which choose the agent the views are about; the page has the arrows"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["[", "]", "_"],
+      "reason": "aliases of - and + for the speed of sleipnir replay; the page has - and +"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["0", "$"],
+      "reason": "vi aliases of Home and End (the start and the end of a recording) in sleipnir replay; the page has Home and End"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["shift+h", "shift+l"],
+      "reason": "vi aliases of the left and right arrows (seek ten seconds) in sleipnir replay; the page has the arrows"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["p"],
+      "reason": "alias of Space (pause) in sleipnir watch and sleipnir replay; the page has Space"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["h", "f1"],
+      "reason": "the help overlay of sleipnir watch and sleipnir replay; the page's help is the question mark"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["q", "shift+q"],
+      "reason": "leave sleipnir watch or sleipnir replay, which are programs of their own; the page is left by closing its tab"
+    },
+    {
+      "side": "terminal_only",
+      "items": ["a"],
+      "reason": "animation off in sleipnir watch and sleipnir replay; the page has /anim and Settings, Appearance, motion, and no key for it"
+    },
+    {
+      "side": "gaps",
+      "items": ["ctrl+d"],
+      "reason": "the terminal quits on ctrl+d at an empty prompt, and the Help sheet of the page lists ctrl+d for the same (SHORTCUTS in js/11-data-live.js), but the message box binds no ctrl+d: bind it to the question that closes the session (as ctrl+c twice does), or take it off the sheet"
+    },
+    {
+      "side": "web_only",
+      "items": ["alt+1", "alt+2", "alt+3", "alt+4", "alt+5", "alt+6", "alt+7", "alt+8", "alt+9"],
+      "reason": "switch to the nth session tab; a terminal program shows one session and has no tabs"
+    },
+    {
+      "side": "web_only",
+      "items": ["f2"],
+      "reason": "renames the focused session tab; the terminal has no tabs, and its session is renamed with a command"
+    },
+    {
+      "side": "web_only",
+      "items": [",", "."],
+      "reason": "open the Settings and Tools views, which have no screen in the terminal chat; the terminal reaches them with slash commands and sleipnir subcommands (see the views dimension)"
+    },
+    {
+      "side": "web_only",
+      "items": ["r", "s"],
+      "reason": "open the Replay and Sessions views; in the terminal, replay is a program of its own (sleipnir replay) and sessions are listed by /resume"
+    },
+    {
+      "side": "web_only",
+      "items": ["g"],
+      "reason": "the prefix of the chords to the views of the left rail"
+    },
+    {
+      "side": "web_only",
+      "items": ["g r", "g f", "g h", "g k", "g q", "g p", "g s", "g t", "g e"],
+      "reason": "chords to views of the page's left rail that the terminal chat has no screen for: Radio, Files, Changes, Checkpoints, Merge, Replay, Sessions, Tools and Settings (see the views dimension)"
+    }
+  ],
+  "equivalent": [
+    {"terminal": "ctrl+g", "web": "alt+g", "reason": "browsers keep ctrl+g on some platforms, so the page binds alt+g to the same cockpit"},
+    {"terminal": "ctrl+t", "web": "alt+t", "reason": "browsers keep ctrl+t (a new tab), so the page binds alt+t to the same statistics, which are its Cache view"},
+    {"terminal": "ctrl+g", "web": "g c", "reason": "the cockpit: the terminal's page of the team and the page's chord to its Cockpit view"},
+    {"terminal": "ctrl+t", "web": "g a", "reason": "the cache and cost statistics: the terminal's stats page and the page's chord to its Cache view"},
+    {"terminal": "m", "web": "g m", "reason": "the Mail view: the page's chord for the key that sleipnir watch has on m"},
+    {"terminal": "b", "web": "g b", "reason": "the Board view: the page's chord for the key that sleipnir watch has on b"}
+  ],
+  "different_meaning": [
+    {"item": "ctrl+k", "terminal": "kills the text from the cursor to the end of the line, in the prompt's editor", "web": "opens the command palette"},
+    {"item": "delete", "terminal": "deletes the character after the cursor in the prompt", "web": "on a focused session tab, asks whether to close it (the text box deletes by itself)"},
+    {"item": "1", "terminal": "answers a question in the chat; in sleipnir watch and replay it chooses the cockpit view, 2 3 and 4 the others", "web": "answers the question in front, as 2 3 and 4 do"}
+  ]
+}

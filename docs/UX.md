@@ -151,18 +151,25 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 
 | Keys | Action |
 |---|---|
-| Enter; `\` at the end of a line, alt+Enter or ctrl+J | send; a new line |
-| ↑ ↓, ctrl+R | the lines sent before |
+| `Enter` | send |
+| `alt+Enter`, `ctrl+J`, or a backslash at the end of the line before `Enter` | a new line |
+| `↑` `↓` | the lines sent before; outside the message box, the agent the views are about |
+| `ctrl+R` | search the lines sent before |
 | `/`, `@` | commands of the session; a path of the project |
-| shift+Tab | mode default → accept-edits → plan (never bypass or yolo) |
-| Esc | release the hold, close what is open, answer no, leave a field or a replay, then interrupt the turn |
-| ctrl+C | discard the line; during a turn, interrupt it; twice at an empty prompt, close the session |
-| 1 2 3 (4) | answer the question in front, once the keyboard is quiet |
-| ctrl+K | the command palette |
-| alt+T, alt+G | Cache, Cockpit |
-| `g` then a letter; `o c m b r s , .` | a view |
-| alt+1 … alt+9 | the nth session |
-| Space, ← →, Home, End, `+ -` | pause, seek, start, live, replay speed |
+| `Tab`, `Enter`, `↑` `↓`, `Esc` in a menu | complete, choose, close (commands, paths, permission mode, palette) |
+| `shift+Tab` | mode default → accept-edits → plan (never bypass or yolo) |
+| `Esc` | release the hold, close what is open, answer no, leave a field or a replay, then interrupt the turn |
+| `ctrl+C` | discard the line; during a turn, interrupt it; twice at an empty prompt, close the session |
+| `1` `2` `3` `4` | answer the question in front, once the keyboard is quiet; 2 only where it would remember something, 4 only for a build or test command |
+| `ctrl+K` | the command palette |
+| `ctrl+T` `alt+T`, `ctrl+G` `alt+G` | Cache, Cockpit; a browser may keep ctrl+T and ctrl+G, the alt keys reach the page |
+| `ctrl+O` | expand or collapse the output of the tools in the conversation |
+| `g` then `c` `r` `f` `h` `k` `q` `a` `m` `b` `p` `s` `t` `e` | a view: Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Sessions, Tools, Settings |
+| `o` `c` `m` `b` `r` `s` `,` `.` | a view: Cockpit, Cache, Mail, Board, Replay, Sessions, Settings, Tools |
+| `alt+1` to `alt+9` | the nth session |
+| `Space`, `←` `→`, `shift+←` `shift+→`, `Home`, `End`, `+` `=` `-` | pause, seek (a minute with shift), start, live, replay speed |
+| `f` | in the Cache view, follow the agent that was answered last |
+| `F2`, `Delete` | on a focused session tab: rename, close |
 | `?` | the keys and the commands |
 
 Changes to the page are checked in a real browser at narrow and wide sizes, with the screenshots opened and read, as terminal
