@@ -34,6 +34,10 @@
 // it only works once every reader of those variables has moved to Secret: a variable
 // that is gone from the environment is invisible to os.Getenv.
 //
+// Keys the person stored (config.LoadStoredKeys) are handed to Provide and held in memory the
+// same way. The environment wins over them whether the variable is still set or MoveKeys
+// already took it out, and SourceOf tells which of the two supplies a key.
+//
 // SLEIPNIR_DUMPABLE=1 leaves the process dumpable (debuggers, core dumps, reading
 // /proc/<pid>/environ for debugging). It does not stop the environment erasure.
 package harden
@@ -88,12 +92,13 @@ func MoveKeys(extra ...string) Option {
 }
 
 var (
-	mu     sync.Mutex
-	done   bool
-	status Status
-	moving bool              // MoveKeys was requested: Secret moves the credentials it reads
-	named  []string          // variables MoveKeys was told are credentials whatever they look like
-	held   map[string]string // credentials moved out of the environment
+	mu      sync.Mutex
+	done    bool
+	status  Status
+	moving  bool              // MoveKeys was requested: Secret moves the credentials it reads
+	named   []string          // variables MoveKeys was told are credentials whatever they look like
+	held    map[string]string // credentials held in memory: moved out of the environment, or handed to Provide
+	fromEnv map[string]bool   // the names in held that were moved out of the environment; the rest were handed to Provide
 )
 
 // Process hardens the running process; call it once, first thing in main, before
@@ -174,9 +179,26 @@ func listed(name string, names []string) bool {
 // hold the hardening lock.
 func moveLocked(name string) {
 	if v, ok := os.LookupEnv(name); ok {
-		held[name] = v
+		holdLocked(name, v, true)
 		_ = os.Unsetenv(name)
 	}
+}
+
+// holdLocked records a credential in held storage and remembers whether it came from the
+// environment; the caller must hold the hardening lock.
+func holdLocked(name, value string, fromEnvironment bool) {
+	if held == nil {
+		held = map[string]string{}
+	}
+	held[name] = value
+	if !fromEnvironment {
+		delete(fromEnv, name)
+		return
+	}
+	if fromEnv == nil {
+		fromEnv = map[string]bool{}
+	}
+	fromEnv[name] = true
 }
 
 // sortedHeld returns saved environment-variable names in lexical order; the caller must
@@ -205,19 +227,74 @@ func Secret(name string) string {
 func LookupSecret(name string) (string, bool) {
 	mu.Lock()
 	defer mu.Unlock()
-	if v, ok := os.LookupEnv(name); ok && (v != "" || held[name] == "") { // the environment wins: it may have been set again; an empty variable is not a word
-		if moving && movableLocked(name, v) {
-			held[name] = v
-			_ = os.Unsetenv(name)
-		}
-		return v, true
-	}
-	v, ok := held[name]
+	v, _, ok := lookupLocked(name)
 	return v, ok
 }
 
-// Held lists, sorted, the names of the credentials MoveKeys took out of the
-// environment. A caller that lets an operator pass such a variable on to commands
+// Source says where the value Secret returns for a credential comes from.
+type Source int
+
+const (
+	// SourceNone means Secret returns nothing for the name: it is unset or empty.
+	SourceNone Source = iota
+	// SourceEnvironment means the process environment supplied the value, whether it is
+	// still there or MoveKeys took it out. It wins over a stored key.
+	SourceEnvironment
+	// SourceStored means the value was handed to Provide (a key `sleipnir login` stored)
+	// and nothing in the environment overrides it.
+	SourceStored
+)
+
+// String names the source for messages: "none", "environment" or "stored".
+func (s Source) String() string {
+	switch s {
+	case SourceEnvironment:
+		return "environment"
+	case SourceStored:
+		return "stored"
+	}
+	return "none"
+}
+
+// SourceOf reports where Secret(name) gets its value: the environment (set at start and
+// moved by MoveKeys, or set again since) or a key handed to Provide. It is SourceNone when
+// Secret returns "". Like Secret, in moving mode it moves a credential it finds in the
+// environment into memory.
+func SourceOf(name string) Source {
+	mu.Lock()
+	defer mu.Unlock()
+	v, src, _ := lookupLocked(name)
+	if v == "" {
+		return SourceNone
+	}
+	return src
+}
+
+// lookupLocked resolves a credential for Secret, LookupSecret and SourceOf; the caller must
+// hold the hardening lock. The environment wins: it may have been set again since start,
+// and an empty variable is not a word. In moving mode a credential found there is moved into
+// memory, replacing whatever was held, so a variable set again takes the place of a moved
+// or stored copy.
+func lookupLocked(name string) (value string, src Source, ok bool) {
+	if v, set := os.LookupEnv(name); set && (v != "" || held[name] == "") {
+		if moving && movableLocked(name, v) {
+			holdLocked(name, v, true)
+			_ = os.Unsetenv(name)
+		}
+		return v, SourceEnvironment, true
+	}
+	v, ok := held[name]
+	if !ok {
+		return "", SourceNone, false
+	}
+	if fromEnv[name] {
+		return v, SourceEnvironment, true
+	}
+	return v, SourceStored, true
+}
+
+// Held lists, sorted, the names of the credentials held in memory: those MoveKeys took out
+// of the environment and those handed to Provide. A caller that lets an operator pass such a variable on to commands
 // on purpose (shell.Options.PassEnv) can read it back with Secret.
 func Held() []string {
 	mu.Lock()
@@ -225,21 +302,33 @@ func Held() []string {
 	return sortedHeld()
 }
 
-// Provide (with an empty value: forget) makes a credential known to Secret without putting it in the environment: a key the person stored (config.LoadStoredKeys). The
-// environment wins: a variable that is set is the person's word for this process, whatever was stored. Like a moved key, a provided one
-// is held in memory only, so no command the harness starts can read it from its environment.
+// Provide makes a credential known to Secret without putting it in the environment: a key
+// the person stored (config.LoadStoredKeys, `sleipnir login`). Like a moved key, a provided
+// one is held in memory only, so no command the harness starts can read it from its
+// environment.
+//
+// The environment wins: a variable set to a value is the person's word for this process,
+// whatever was stored, and so is a value MoveKeys took out of the environment (the variable
+// is gone from os.Getenv, but its value is still the person's word). Provide keeps that
+// value. A key that was itself provided is replaced, so storing a key again takes effect. An empty value forgets a provided key; a credential from the environment is
+// not Provide's to forget and stays.
 func Provide(name, value string) {
 	mu.Lock()
 	defer mu.Unlock()
-	if value == "" { // forget it
-		delete(held, name)
+	if name == "" {
 		return
 	}
-	if v, ok := os.LookupEnv(name); (ok && v != "") || name == "" {
+	if value == "" { // forget the stored key, not the environment's
+		if !fromEnv[name] {
+			delete(held, name)
+		}
 		return
 	}
-	if held == nil {
-		held = map[string]string{}
+	if v, ok := os.LookupEnv(name); ok && v != "" {
+		return
 	}
-	held[name] = value
+	if fromEnv[name] && held[name] != "" {
+		return
+	}
+	holdLocked(name, value, false)
 }

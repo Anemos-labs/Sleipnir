@@ -260,6 +260,85 @@ func TestLoginRefusesWhatTakesNoKeyAndLogoutForgets(t *testing.T) {
 	}
 }
 
+// The notice after a login names the environment only when a variable of the key's name is set and so is the key in use; the
+// stored key is otherwise the one in use and nothing is said to take precedence over it. Logout says the same of the variable.
+func TestLoginAndLogoutSayWhetherTheEnvironmentIsTheKeyInUse(t *testing.T) {
+	_, home := projectDir(t)
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	in := bufio.NewReader(strings.NewReader(""))
+	t.Cleanup(func() { harden.Provide("GROQ_API_KEY", "") })
+	secret := func() (string, error) { return "sk-groq", nil }
+
+	t.Setenv("GROQ_API_KEY", "")
+	var out bytes.Buffer
+	if _, err := login(context.Background(), in, &out, secret, cfg, "groq", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Saved.") || strings.Contains(out.String(), "precedence") {
+		t.Errorf("no variable is set, so the stored key is the one in use: %q", out.String())
+	}
+	if harden.SourceOf("GROQ_API_KEY") != harden.SourceStored {
+		t.Errorf("source after login = %v", harden.SourceOf("GROQ_API_KEY"))
+	}
+
+	t.Setenv("GROQ_API_KEY", "sk-from-environment")
+	out.Reset()
+	if _, err := login(context.Background(), in, &out, secret, cfg, "groq", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "GROQ_API_KEY in the environment still takes precedence") {
+		t.Errorf("the variable is set, so it wins: %q", out.String())
+	}
+	if harden.Secret("GROQ_API_KEY") != "sk-from-environment" {
+		t.Error("a stored key replaced the variable's")
+	}
+	if got := removedNotice("groq", "GROQ_API_KEY"); !strings.Contains(got, "GROQ_API_KEY in the environment is untouched") {
+		t.Errorf("logout with the variable set: %q", got)
+	}
+	t.Setenv("GROQ_API_KEY", "")
+	if got := removedNotice("groq", "GROQ_API_KEY"); strings.Contains(got, "environment") || !strings.Contains(got, "removed the stored key for groq") {
+		t.Errorf("logout with no variable: %q", got)
+	}
+	if keys, _ := config.StoredKeys(home); keys["GROQ_API_KEY"] != "sk-groq" {
+		t.Errorf("stored: %v", keys)
+	}
+}
+
+// A variable of the key's name wins over the stored key, so the one small request carries the variable's value. When that is refused
+// the key just typed was never tried: it is kept, and the error names the variable.
+func TestARefusedKeyOfTheEnvironmentLeavesTheStoredKeyAlone(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusUnauthorized)
+			io.WriteString(w, `{"error":{"message":"Missing or invalid API key"}}`)
+			return
+		}
+		io.WriteString(w, `{"data":[{"id":"only-model"}]}`)
+	}))
+	defer ts.Close()
+	_, home := projectDir(t)
+	unsetProviderKeys(t)
+	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
+	t.Setenv("HEIMDALL_API_KEY", "sk-stale-export")
+	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
+	if err := config.SaveStoredKey(home, "HEIMDALL_API_KEY", "sk-typed"); err != nil {
+		t.Fatal(err)
+	}
+	harden.Provide("HEIMDALL_API_KEY", "sk-typed")
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	var out bytes.Buffer
+	err := checkKey(context.Background(), cfg, "heimdall/only-model", &out)
+	if err == nil || !strings.Contains(err.Error(), "key in HEIMDALL_API_KEY") || !strings.Contains(err.Error(), "was kept") {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if keys, _ := config.StoredKeys(home); keys["HEIMDALL_API_KEY"] != "sk-typed" {
+		t.Errorf("the stored key was dropped for a refusal of the environment's: %v", keys)
+	}
+	if harden.Secret("HEIMDALL_API_KEY") != "sk-stale-export" {
+		t.Error("the variable stopped being the key in use")
+	}
+}
+
 func TestARefusedKeyTellsThePersonWhatToDo(t *testing.T) {
 	var out bytes.Buffer
 	err := &provider.Error{Kind: provider.ErrAuth, Status: 401, Message: "Missing or invalid API key"}

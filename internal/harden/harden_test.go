@@ -220,7 +220,7 @@ func resetVault(t *testing.T) {
 	t.Helper()
 	reset := func() {
 		mu.Lock()
-		moving, held, named = false, nil, nil
+		moving, held, fromEnv, named = false, nil, nil, nil
 		mu.Unlock()
 	}
 	reset()
@@ -406,5 +406,199 @@ func TestProvideHoldsAStoredKeyInMemoryAndTheEnvironmentWins(t *testing.T) {
 	Provide(name, "other")
 	if got := Secret(name); got != "from-env" {
 		t.Errorf("a set variable is not replaced: %q", got)
+	}
+}
+
+// unsetForTest removes a variable for the length of the test and puts it back afterwards.
+func unsetForTest(t *testing.T, name string) {
+	t.Helper()
+	t.Setenv(name, "x") // registers the restore
+	if err := os.Unsetenv(name); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A key stored by `sleipnir login` must not replace the one MoveKeys took out of the environment:
+// main moves the keys first and loads the stored ones after, and by then os.LookupEnv no longer
+// sees the variable, so Provide has to remember where a held key came from.
+func TestProvideKeepsAKeyMovedFromTheEnvironment(t *testing.T) {
+	resetVault(t)
+	const name = "HARDEN_T_PROBE_PROVIDER_API_KEY"
+	t.Setenv(name, "FROM-ENVIRONMENT")
+	applyForTest(MoveKeys())
+	if getenv(name) != "" {
+		t.Fatal("the key was not moved out of the environment")
+	}
+	Provide(name, "FROM-STORED-FILE")
+	if got := Secret(name); got != "FROM-ENVIRONMENT" {
+		t.Fatalf("Secret = %q, want the key of the environment", got)
+	}
+	if got := SourceOf(name); got != SourceEnvironment {
+		t.Errorf("SourceOf = %v, want %v", got, SourceEnvironment)
+	}
+	if getenv(name) != "" {
+		t.Error("Provide put a key back in the environment")
+	}
+	if got, want := Held(), []string{name}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Held = %v, want %v", got, want)
+	}
+	Provide(name, "AGAIN") // however often it is offered
+	if got := Secret(name); got != "FROM-ENVIRONMENT" {
+		t.Errorf("after a second Provide Secret = %q", got)
+	}
+}
+
+// With nothing in the environment the stored key is the one in use, held in memory only.
+func TestProvideHoldsAStoredKeyWhenTheEnvironmentHasNone(t *testing.T) {
+	resetVault(t)
+	const name = "HARDEN_T_STORED_ONLY_API_KEY"
+	unsetForTest(t, name)
+	applyForTest(MoveKeys())
+	if got := SourceOf(name); got != SourceNone {
+		t.Fatalf("SourceOf before Provide = %v", got)
+	}
+	Provide(name, "FROM-STORED-FILE")
+	if got := Secret(name); got != "FROM-STORED-FILE" {
+		t.Fatalf("Secret = %q, want the stored key", got)
+	}
+	if got := SourceOf(name); got != SourceStored {
+		t.Errorf("SourceOf = %v, want %v", got, SourceStored)
+	}
+	if getenv(name) != "" {
+		t.Error("a stored key must not appear in the environment: commands inherit it")
+	}
+	if v, ok := LookupSecret(name); !ok || v != "FROM-STORED-FILE" {
+		t.Errorf("LookupSecret = %q, %v", v, ok)
+	}
+}
+
+// Storing a key again (`sleipnir login` a second time in one process) replaces the earlier stored key.
+func TestProvideReplacesAPreviouslyProvidedKey(t *testing.T) {
+	resetVault(t)
+	const name = "HARDEN_T_RELOGIN_API_KEY"
+	unsetForTest(t, name)
+	applyForTest(MoveKeys())
+	Provide(name, "first")
+	Provide(name, "second")
+	if got := Secret(name); got != "second" {
+		t.Fatalf("Secret = %q, want the key stored last", got)
+	}
+	if got := SourceOf(name); got != SourceStored {
+		t.Errorf("SourceOf = %v, want %v", got, SourceStored)
+	}
+}
+
+// An empty value forgets a provided key, and only a provided one: the environment is not Provide's to unset.
+func TestProvideWithAnEmptyValueForgetsTheProvidedKeyOnly(t *testing.T) {
+	resetVault(t)
+	const stored, moved = "HARDEN_T_FORGET_STORED_API_KEY", "HARDEN_T_FORGET_MOVED_API_KEY"
+	unsetForTest(t, stored)
+	t.Setenv(moved, "FROM-ENVIRONMENT")
+	applyForTest(MoveKeys())
+
+	Provide(stored, "FROM-STORED-FILE")
+	Provide(stored, "")
+	if v, ok := LookupSecret(stored); ok || v != "" {
+		t.Errorf("a forgotten key = %q, %v", v, ok)
+	}
+	if got := SourceOf(stored); got != SourceNone {
+		t.Errorf("SourceOf a forgotten key = %v", got)
+	}
+	if len(Held()) != 1 || Held()[0] != moved {
+		t.Errorf("Held = %v, want only %s", Held(), moved)
+	}
+	Provide("HARDEN_T_NEVER_PROVIDED", "") // nothing to forget, nothing to fail
+
+	Provide(moved, "")
+	if got := Secret(moved); got != "FROM-ENVIRONMENT" {
+		t.Errorf("forgetting a stored key dropped the key of the environment: Secret = %q", got)
+	}
+	Provide(moved, "FROM-STORED-FILE")
+	Provide(moved, "")
+	if got, src := Secret(moved), SourceOf(moved); got != "FROM-ENVIRONMENT" || src != SourceEnvironment {
+		t.Errorf("after offering and forgetting a stored key: Secret = %q from %v", got, src)
+	}
+	Provide("", "orphan") // a nameless credential is nobody's
+	if len(Held()) != 1 {
+		t.Errorf("Held = %v after a nameless Provide", Held())
+	}
+}
+
+// A variable set again after the start is the person's newest word: it wins in Secret over a moved
+// key and over a stored one, and a stored key offered afterwards does not take its place.
+func TestAVariableSetAgainAfterStartupStillWins(t *testing.T) {
+	resetVault(t)
+	const name = "HARDEN_T_ROTATED_API_KEY"
+	t.Setenv(name, "at-start")
+	applyForTest(MoveKeys())
+	Provide(name, "FROM-STORED-FILE")
+	if got := Secret(name); got != "at-start" {
+		t.Fatalf("Secret = %q", got)
+	}
+	t.Setenv(name, "rotated")
+	if got, src := Secret(name), SourceOf(name); got != "rotated" || src != SourceEnvironment {
+		t.Fatalf("after the variable was set again: Secret = %q from %v", got, src)
+	}
+	if getenv(name) != "" {
+		t.Error("the rotated key was not moved out of the environment in turn")
+	}
+	Provide(name, "FROM-STORED-FILE-AGAIN")
+	if got := Secret(name); got != "rotated" {
+		t.Errorf("a stored key replaced the rotated one: %q", got)
+	}
+
+	const late = "HARDEN_T_LATE_API_KEY" // stored first, the variable appears later
+	unsetForTest(t, late)
+	Provide(late, "FROM-STORED-FILE")
+	if got, src := Secret(late), SourceOf(late); got != "FROM-STORED-FILE" || src != SourceStored {
+		t.Fatalf("stored key: Secret = %q from %v", got, src)
+	}
+	t.Setenv(late, "FROM-ENVIRONMENT")
+	if got, src := Secret(late), SourceOf(late); got != "FROM-ENVIRONMENT" || src != SourceEnvironment {
+		t.Fatalf("a variable set after the stored key: Secret = %q from %v", got, src)
+	}
+	Provide(late, "")
+	if got := Secret(late); got != "FROM-ENVIRONMENT" {
+		t.Errorf("forgetting the stored key dropped the variable's value: %q", got)
+	}
+}
+
+// An empty variable is not a word: a key moved out of the environment as "" does not shut out the stored one.
+func TestProvideReplacesAnEmptyMovedKey(t *testing.T) {
+	resetVault(t)
+	const name = "HARDEN_T_EMPTY_THEN_STORED_API_KEY"
+	t.Setenv(name, "")
+	applyForTest(MoveKeys())
+	if got := SourceOf(name); got != SourceNone {
+		t.Fatalf("SourceOf an empty key = %v", got)
+	}
+	Provide(name, "FROM-STORED-FILE")
+	if got, src := Secret(name), SourceOf(name); got != "FROM-STORED-FILE" || src != SourceStored {
+		t.Fatalf("Secret = %q from %v, want the stored key", got, src)
+	}
+}
+
+// Without MoveKeys nothing is held from the environment: the variable stays where it is and still wins.
+func TestSourceOfWithoutMoveKeys(t *testing.T) {
+	resetVault(t)
+	const name = "HARDEN_T_PLAIN_ENV_API_KEY"
+	t.Setenv(name, "FROM-ENVIRONMENT")
+	Provide(name, "FROM-STORED-FILE")
+	if got, src := Secret(name), SourceOf(name); got != "FROM-ENVIRONMENT" || src != SourceEnvironment {
+		t.Fatalf("Secret = %q from %v", got, src)
+	}
+	if getenv(name) != "FROM-ENVIRONMENT" || len(Held()) != 0 {
+		t.Errorf("reading changed state: env=%q held=%v", getenv(name), Held())
+	}
+	if got := SourceOf("HARDEN_T_NEVER_SET_API_KEY"); got != SourceNone {
+		t.Errorf("SourceOf an unset variable = %v", got)
+	}
+}
+
+func TestSourceNames(t *testing.T) {
+	for src, want := range map[Source]string{SourceNone: "none", SourceEnvironment: "environment", SourceStored: "stored", Source(99): "none"} {
+		if got := src.String(); got != want {
+			t.Errorf("Source(%d).String() = %q, want %q", int(src), got, want)
+		}
 	}
 }
