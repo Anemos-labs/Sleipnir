@@ -2,10 +2,12 @@ package session_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -128,5 +130,52 @@ func TestMCPTestStartsServersWithoutASession(t *testing.T) {
 	}
 	if _, err := session.ProjectMCPEntry(home, repo, "nope"); err == nil || !strings.Contains(err.Error(), "no project MCP server") {
 		t.Errorf("an unknown entry: %v", err)
+	}
+}
+
+// Sessions that start at the same moment, and the web's trust routes, each remember a yes in the one ledger file: none may lose
+// another's (each trust.Ledger value has its own mutex; RememberTrust holds the file's write lock, as the routes do).
+func TestRememberTrustKeepsEveryConcurrentYes(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("SLEIPNIR_HOME", "")
+	const n = 24
+	dirs := make([]string, n)
+	fps := make([]*trust.Footprint, n)
+	for i := range dirs {
+		dirs[i] = t.TempDir()
+		writeFile(t, filepath.Join(dirs[i], "AGENTS.md"), fmt.Sprintf("project %d\n", i))
+		fp, err := session.ProjectFootprint(home, dirs[i])
+		if err != nil || fp.Empty() {
+			t.Fatalf("footprint %d: %v", i, err)
+		}
+		fps[i] = fp
+	}
+	path := session.TrustLedgerPath(home)
+	for round := 0; round < 4; round++ {
+		var wg sync.WaitGroup
+		for i := range dirs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				var err error
+				if i%3 == 0 { // the web's routes: the write lock around their own ledger value
+					unlock := config.WriteLock(path)
+					err = trust.OpenLedger(path).Remember(dirs[i], fps[i], time.Now())
+					unlock()
+				} else {
+					err = session.RememberTrust(home, dirs[i], fps[i], time.Now())
+				}
+				if err != nil {
+					t.Error(err)
+				}
+			}()
+		}
+		wg.Wait()
+		if got := len(trust.OpenLedger(path).All()); got != n {
+			t.Fatalf("round %d: %d of %d yeses kept", round, got, n)
+		}
+		if _, err := trust.OpenLedger(path).ForgetAll(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

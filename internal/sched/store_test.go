@@ -68,3 +68,24 @@ func TestStoreAddListRemoveAndDue(t *testing.T) {
 		t.Errorf("IDs are not reused: %+v %v", a, err)
 	}
 }
+
+// A removed job keeps its logs, and the next job does not take its id (it would show them as its own).
+func TestRemovedJobsIDIsNotGivenAgain(t *testing.T) {
+	s := Store{Path: filepath.Join(t.TempDir(), "schedule.json")}
+	t0 := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
+	a, _ := s.Add(Job{Cron: "@daily", Goal: "a"}, t0)
+	b, _ := s.Add(Job{Cron: "@daily", Goal: "b"}, t0)
+	if err := os.MkdirAll(s.LogDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(LogFile(s.LogDir(), b, t0), []byte("b's run"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Remove(b.ID); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.Add(Job{Cron: "@daily", Goal: "c"}, t0)
+	if err != nil || a.ID != "j1" || b.ID != "j2" || c.ID != "j3" {
+		t.Fatalf("ids %s %s %s: %v", a.ID, b.ID, c.ID, err)
+	}
+}

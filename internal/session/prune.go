@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -127,8 +128,8 @@ type PrunePlan struct {
 
 // PlanPrune applies the prune rule to the state directory's sessions: older than olderThan, not among the newest keep, not written
 // in the last ten minutes. The sessions named in live (the ones this process hosts) count toward keep, as the newest, and are never
-// deleted; a session another process holds is moved to Locked. A state directory without sessions gives an empty plan. The rows
-// to delete carry what a listing shows of them.
+// deleted; a session another process holds is moved to Locked. A state directory without sessions gives an empty plan. The first
+// 200 rows to delete (the oldest) carry what a listing shows of them; the rest their id, size and age.
 func PlanPrune(home string, now time.Time, olderThan time.Duration, keep int, live []string) (*PrunePlan, error) {
 	p, err := PlanPruneDir(SessionsDir(home), now, olderThan, keep, live)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -138,17 +139,20 @@ func PlanPrune(home string, now time.Time, olderThan time.Duration, keep int, li
 		return nil, err
 	}
 	kept := p.Delete[:0]
+	locks := readFlocks()
 	for _, r := range p.Delete {
-		if Locked(r.Dir) {
+		if lockedIn(r.Dir, locks) {
 			p.Locked = append(p.Locked, r.ID)
 			p.Bytes -= r.Bytes
 			continue
 		}
-		if fi, err := os.Lstat(r.Dir); err == nil {
-			if log, err := os.Stat(filepath.Join(r.Dir, "events.jsonl")); err == nil {
-				full := recordedOf(r.ID, r.Dir, fi, log, readListing(r.Dir, fi, log))
-				full.Bytes, full.LastWritten = r.Bytes, r.LastWritten
-				r = full
+		if len(kept) < maxPlanDetail { // what a listing shows of it (the log is read), for the rows a person reads; the rest go by size
+			if fi, err := os.Lstat(r.Dir); err == nil {
+				if log, err := os.Stat(filepath.Join(r.Dir, "events.jsonl")); err == nil {
+					full := recordedOf(r.ID, r.Dir, fi, log, readListing(r.Dir, fi, log))
+					full.Bytes, full.LastWritten = r.Bytes, r.LastWritten
+					r = full
+				}
 			}
 		}
 		kept = append(kept, r)
@@ -156,6 +160,10 @@ func PlanPrune(home string, now time.Time, olderThan time.Duration, keep int, li
 	p.Delete = kept
 	return p, nil
 }
+
+// maxPlanDetail is how many sessions of a prune plan are read for what a listing shows of them (the first prompt, the model, the
+// cost); the others carry their id, size and age, as `sleipnir sessions prune` lists them.
+const maxPlanDetail = 200
 
 // PlanPruneDir is the prune rule over the sessions directory root, as `sleipnir sessions prune` applies it: every session whose
 // newest file (the directory or its log) is older than olderThan, except the newest keep sessions and any written to within
@@ -228,7 +236,9 @@ func ParseAge(s string) (time.Duration, error) {
 	for suffix, unit := range map[string]time.Duration{"d": 24 * time.Hour, "w": 7 * 24 * time.Hour} {
 		if n, ok := strings.CutSuffix(s, suffix); ok {
 			v, err := strconv.ParseFloat(n, 64)
-			if err != nil || v < 0 {
+			// NaN, an infinity or a number of days past what a duration holds would come out as a negative age, which every
+			// session is older than: refused, as a typo is
+			if err != nil || math.IsNaN(v) || v < 0 || v*float64(unit) >= math.MaxInt64 {
 				return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", s)
 			}
 			return time.Duration(v * float64(unit)), nil

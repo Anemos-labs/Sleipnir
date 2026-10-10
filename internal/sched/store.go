@@ -78,7 +78,7 @@ func (s Store) Save(jobs []Job) error {
 	return os.Rename(tmp.Name(), s.Path)
 }
 
-// Add validates and stores a job; the ID is chosen here.
+// Add validates and stores a job; the ID is chosen here, and never one a job had before (an ID with logs is not given again).
 func (s Store) Add(j Job, now time.Time) (Job, error) {
 	if _, err := ParseCron(j.Cron); err != nil {
 		return Job{}, err
@@ -95,7 +95,7 @@ func (s Store) Add(j Job, now time.Time) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	n := 0
+	n := s.highestLogged()
 	for _, o := range jobs {
 		var v int
 		if _, err := fmt.Sscanf(o.ID, "j%d", &v); err == nil && v > n {
@@ -104,6 +104,24 @@ func (s Store) Add(j Job, now time.Time) (Job, error) {
 	}
 	j.ID, j.Created = fmt.Sprintf("j%d", n+1), now
 	return j, s.Save(append(jobs, j))
+}
+
+// highestLogged is the highest job number that has a log in LogDir: a removed job keeps its logs, and a new job must not take its
+// id (it would show them as its own). The job file stays a plain list, as every version reads it.
+func (s Store) highestLogged() int {
+	ents, err := os.ReadDir(s.LogDir())
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range ents {
+		id, _, ok := strings.Cut(e.Name(), "-")
+		var v int
+		if _, err := fmt.Sscanf(id, "j%d", &v); ok && err == nil && v > n && id == fmt.Sprintf("j%d", v) {
+			n = v
+		}
+	}
+	return n
 }
 
 // Remove deletes a job by ID.

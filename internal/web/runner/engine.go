@@ -105,9 +105,6 @@ type run struct {
 	done     chan struct{}
 }
 
-// maxKeptBytes bounds the text a run keeps for reattaching.
-const maxKeptBytes = 4 << 20
-
 // info is the run as the list shows it.
 func (x *run) info() RunInfo {
 	x.mu.Lock()
@@ -300,7 +297,9 @@ func (r *Runs) execute(ctx context.Context, x *run, timeout time.Duration) {
 	res.Canceled = x.canceled
 	x.mu.Unlock()
 	if !res.Canceled && ctx.Err() == context.DeadlineExceeded {
-		r.line(x, "err", fmt.Sprintf("sleipnir web: the command was stopped after %s", timeout))
+		x.mu.Lock()
+		noteLocked(x, fmt.Sprintf("sleipnir web: the command was stopped after %s", timeout))
+		x.mu.Unlock()
 	}
 	var verdict *wire.DoctorVerdict
 	if x.spec.End != nil {
@@ -308,7 +307,7 @@ func (r *Runs) execute(ctx context.Context, x *run, timeout time.Duration) {
 	}
 	x.mu.Lock()
 	if x.dropped > 0 {
-		x.pending = append(x.pending, wire.RunLine{K: "err", T: fmt.Sprintf("[%d more lines were not shown]", x.dropped)})
+		noteLocked(x, fmt.Sprintf("[%d more lines were not shown]", x.dropped))
 	}
 	lines := x.pending
 	x.pending = nil
@@ -351,18 +350,22 @@ func (r *Runs) line(x *run, k, text string) {
 	}
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	if len(x.lines) >= r.o.MaxLines {
-		x.dropped++
+	if len(x.lines) >= r.o.MaxLines || x.bytes+len(text) > r.o.MaxBytes {
+		x.dropped++ // past either limit a line is neither sent nor kept: the page and a reattach see the same lines
 		return
 	}
 	l := wire.RunLine{K: k, T: text}
 	x.pending = append(x.pending, l)
-	if x.bytes+len(text) <= maxKeptBytes {
-		x.lines = append(x.lines, l)
-		x.bytes += len(text)
-	} else {
-		x.dropped++
-	}
+	x.lines = append(x.lines, l)
+	x.bytes += len(text)
+}
+
+// noteLocked adds a line of the runner's own (the run was stopped, lines were left out) past the limits: it is sent and kept as the
+// last lines of the run. The caller holds x.mu.
+func noteLocked(x *run, text string) {
+	l := wire.RunLine{K: "err", T: text}
+	x.pending = append(x.pending, l)
+	x.lines = append(x.lines, l)
 }
 
 // read splits one stream into lines of at most MaxLineBytes (a longer line is cut, its rest dropped) and adds them.

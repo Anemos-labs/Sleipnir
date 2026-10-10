@@ -456,6 +456,9 @@ func (t *webTab) doRestart(old *session.Session, args []string) {
 	}
 	oldTr, detach := t.tr, t.detach
 	t.s, t.detach = nil, nil
+	if old != nil {
+		t.prevSID = old.ID // still hosted until the next generation holds its session (sessionIDs)
+	}
 	t.mu.Unlock()
 	rep := closeSession(old, session.EndExit)
 	if detach != nil {

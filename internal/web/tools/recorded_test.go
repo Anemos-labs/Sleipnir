@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -264,5 +265,70 @@ func TestWatchASessionAnotherProcessWrites(t *testing.T) {
 	plain.session(sidOld, time.Second, "x")
 	if w := plain.do(req{method: "POST", path: "/api/recorded/" + sidOld + "/watch"}); w.Code != http.StatusNotImplemented {
 		t.Errorf("no follower: %d", w.Code)
+	}
+}
+
+// An age that overflows a duration is refused, not read as a negative age every session is older than.
+func TestPruneRefusesAnAgeThatOverflows(t *testing.T) {
+	rg := newRig(t, nil)
+	rg.session(sidOld, 20*time.Minute, "recent")
+	for _, age := range []string{"NaNd", "Infd", "1e300d", "9999999999d"} {
+		w := rg.do(req{method: "POST", path: "/api/recorded/prune", body: map[string]any{"olderThan": age, "keep": 0}})
+		if w.Code != 400 || errCode(w) != "bad_age" {
+			t.Errorf("%s: %d %s", age, w.Code, w.Body.String())
+		}
+	}
+}
+
+// keep left out is the CLI's --keep 20; an explicit 0 keeps nothing back.
+func TestPruneKeepDefaultsLikeTheCLI(t *testing.T) {
+	rg := newRig(t, nil)
+	for i := range 3 {
+		rg.session(fmt.Sprintf("2025010%d-000000-aaaaaa", i+1), time.Duration(40+i)*24*time.Hour, "old")
+	}
+	plan := decode[planReply](t, rg.do(req{method: "POST", path: "/api/recorded/prune", body: map[string]any{"olderThan": "30d"}}))
+	if len(plan.List) != 0 || plan.Newest != 3 {
+		t.Errorf("keep left out: %+v", plan)
+	}
+	plan = decode[planReply](t, rg.do(req{method: "POST", path: "/api/recorded/prune", body: map[string]any{"olderThan": "30d", "keep": 0}}))
+	if len(plan.List) != 3 {
+		t.Errorf("keep 0: %+v", plan)
+	}
+}
+
+// A session whose tab restarts is still hosted: no lock holds it in the gap, and a delete or a prune must leave it for the start.
+func TestARestartingTabsSessionIsHosted(t *testing.T) {
+	rg := newRig(t, nil)
+	rg.session(sidOld, 90*24*time.Hour, "restarting")
+	rg.host.tabs = []wire.TabSummary{{ID: "shop"}} // its summary names no session while it restarts
+	rg.host.hosted = map[string]string{sidOld: "shop"}
+	w := rg.do(req{method: "POST", path: "/api/recorded/delete", body: map[string]any{"ids": []string{sidOld}}})
+	if w.Code != 409 || errCode(w) != "hosted" {
+		t.Errorf("delete: %d %s", w.Code, w.Body.String())
+	}
+	plan := decode[planReply](t, rg.do(req{method: "POST", path: "/api/recorded/prune", body: map[string]any{"olderThan": "1d", "keep": 0}}))
+	if len(plan.List) != 0 {
+		t.Errorf("prune: %+v", plan)
+	}
+	if l := decode[recordedList](t, rg.do(req{method: "GET", path: "/api/recorded"})); len(l.Recorded) != 0 {
+		t.Errorf("listed as recorded: %+v", l)
+	}
+}
+
+// Watching and unwatching a session whose follower ends at once, many times over, races on nothing (run with -race).
+func TestWatchStress(t *testing.T) {
+	rg := newRig(t, func(o *Options) {
+		o.Follow = func(context.Context, string, string, func(wire.Frame)) error { return nil }
+	})
+	rg.session(sidOld, time.Second, "live")
+	for range 300 {
+		for range 2 {
+			if w := rg.do(req{method: "POST", path: "/api/recorded/" + sidOld + "/watch"}); w.Code != 201 && w.Code != 200 {
+				t.Fatalf("watch: %d %s", w.Code, w.Body.String())
+			}
+		}
+		if w := rg.do(req{method: "DELETE", path: "/api/recorded/" + sidOld + "/watch"}); w.Code != 200 {
+			t.Fatalf("unwatch: %d %s", w.Code, w.Body.String())
+		}
 	}
 }

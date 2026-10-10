@@ -91,8 +91,16 @@ func (s *service) handleRecorded(w http.ResponseWriter, r *http.Request) {
 	_ = web.WriteJSON(w, http.StatusOK, map[string]any{"recorded": rows, "mb": mb(total)})
 }
 
-// pruneRequest is wire.PruneRequest.
-type pruneRequest = wire.PruneRequest
+// pruneRequest is wire.PruneRequest with the CLI's defaults for what is left out: olderThan "30d", and keep 20 (Keep nil; an explicit
+// 0 keeps nothing back, as --keep 0 does).
+type pruneRequest struct {
+	OlderThan string `json:"olderThan"`
+	Keep      *int   `json:"keep"`
+	Apply     bool   `json:"apply,omitempty"`
+}
+
+// defaultKeep is the CLI's --keep: the newest sessions a prune never deletes.
+const defaultKeep = 20
 
 // planReply is the PrunePlan of a prune or a delete as the page reads it, plus what it left alone and why.
 type planReply struct {
@@ -126,7 +134,11 @@ func (s *service) handlePrune(w http.ResponseWriter, r *http.Request) {
 		web.Error(w, http.StatusBadRequest, "bad_age", "bad --older-than: "+strconv.Quote(clip(older, 32))+" is not an age (try 30d, 36h or 2w)")
 		return
 	}
-	if body.Keep < 0 || body.Keep > maxKeep {
+	keep := defaultKeep
+	if body.Keep != nil {
+		keep = *body.Keep
+	}
+	if keep < 0 || keep > maxKeep {
 		web.Error(w, http.StatusBadRequest, "bad_flags", "--keep must be a number of sessions, 0 or more")
 		return
 	}
@@ -137,7 +149,7 @@ func (s *service) handlePrune(w http.ResponseWriter, r *http.Request) {
 		live = append(live, sid)
 	}
 	sort.Strings(live)
-	plan, err := session.PlanPrune(s.home(), now, age, body.Keep, live)
+	plan, err := session.PlanPrune(s.home(), now, age, keep, live)
 	if err != nil {
 		web.Logf(r, "planning a prune: %v", err)
 		web.Error(w, http.StatusInternalServerError, "internal", "the sessions could not be read")

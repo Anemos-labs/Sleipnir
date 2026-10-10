@@ -136,7 +136,14 @@ func (s *service) store() sched.Store {
 	return sched.Store{Path: filepath.Join(session.StateRoot(s.home()), "schedule.json")}
 }
 
-// hostedSIDs are the session ids of the live tabs: a recorded listing leaves them out, a prune keeps them, a delete refuses them.
+// hostedSessions is what a host that knows more than its tabs' summaries tells: every session id a tab holds or is about to hold
+// while it starts or restarts (a summary names none in that gap, and the session's lock is free).
+type hostedSessions interface {
+	HostedSessions() map[string]string
+}
+
+// hostedSIDs are the session ids of the live tabs, with the tab of each: a recorded listing leaves them out, a prune keeps them, a
+// delete refuses them. A tab that restarts counts for the session it had and the one it resumes.
 func (s *service) hostedSIDs() map[string]string {
 	out := map[string]string{}
 	if s.host == nil {
@@ -145,6 +152,11 @@ func (s *service) hostedSIDs() map[string]string {
 	for _, t := range s.host.Tabs() {
 		if t.SID != "" {
 			out[t.SID] = t.ID
+		}
+	}
+	if hs, ok := s.host.(hostedSessions); ok {
+		for sid, tab := range hs.HostedSessions() {
+			out[sid] = tab
 		}
 	}
 	return out

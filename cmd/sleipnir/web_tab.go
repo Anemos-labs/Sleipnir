@@ -95,6 +95,7 @@ type webTab struct {
 	hist       []string
 	origins    map[string]string // "allow Bash(x)" -> where a session rule came from
 	resumed    *wire.RecordedSession
+	prevSID    string           // the session the tab had before its restart (sessionIDs)
 	trusted    *trust.Footprint // the project files the person confirmed for trustedDir, which the session uses (nil: none)
 	trustedDir string
 	lastMeta   wire.MetaPatch
@@ -144,6 +145,27 @@ func (t *webTab) summaryLocked() wire.TabSummary {
 		sum.SID = t.s.ID // a tab is ready, and takes requests, once its start is over
 	}
 	return sum
+}
+
+// sessionIDs are the session directories the tab holds, or is about to hold: its session's, and while it starts or restarts the one
+// it had and the one its arguments resume. Between the close of one generation and the start of the next no lock holds them, and a
+// delete or a prune of the page must not remove what the start resumes (internal/web/tools reads them through HostedSessions).
+func (t *webTab) sessionIDs() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var out []string
+	if t.s != nil {
+		out = append(out, t.s.ID)
+	}
+	if t.starting || t.restarting {
+		if t.prevSID != "" {
+			out = append(out, t.prevSID)
+		}
+		if f, err := parseChatFlags(t.args); err == nil && session.ValidID(f.resume) {
+			out = append(out, f.resume)
+		}
+	}
+	return out
 }
 
 // cwdLocked is the directory the tab works in.

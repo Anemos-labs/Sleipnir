@@ -60,10 +60,17 @@ func (s *service) handleWatch(w http.ResponseWriter, r *http.Request) {
 		web.Error(w, http.StatusNotImplemented, "not_implemented", "following a session is not available in this build: sleipnir watch <id> in a terminal follows it")
 		return
 	}
+	// what the tab is named and where it works, read before the lock (a log can be long)
+	name := "watching " + sid
+	if m, err := session.LoadMeta(dir); err == nil && m.Name != "" {
+		name = runner.Clean(m.Name)
+	}
+	sum := session.Summarize(filepath.Join(dir, "events.jsonl"))
 	s.mu.Lock()
 	if cur, ok := s.watches[sid]; ok {
+		tab := cur.tab // a copy under the lock: the follower changes the tab when the session ends
 		s.mu.Unlock()
-		_ = web.WriteJSON(w, http.StatusOK, map[string]any{"tab": cur.tab})
+		_ = web.WriteJSON(w, http.StatusOK, map[string]any{"tab": tab})
 		return
 	}
 	if len(s.watches) >= maxWatches {
@@ -71,33 +78,29 @@ func (s *service) handleWatch(w http.ResponseWriter, r *http.Request) {
 		web.Error(w, http.StatusConflict, "limit", "too many sessions are followed: close one first")
 		return
 	}
-	name := "watching " + sid
-	if m, err := session.LoadMeta(dir); err == nil && m.Name != "" {
-		name = runner.Clean(m.Name)
-	}
-	sum := session.Summarize(filepath.Join(dir, "events.jsonl"))
 	ctx, cancel := context.WithCancel(context.Background())
 	wt := &watch{
 		tab:    wire.TabSummary{ID: watchTab(sid), SID: sid, Name: name, Cwd: sum.Cwd, Headless: true, CreatedAt: s.o.Now().UnixMilli(), Order: 1000 + len(s.watches)},
 		cancel: cancel, done: make(chan struct{}),
 	}
 	s.watches[sid] = wt
+	tab := wt.tab
 	s.mu.Unlock()
-	s.publish(wire.Frame{Type: "tab", Tab: wt.tab.ID, Data: wire.TabFrame{Op: "add", Tab: wt.tab}, Critical: true})
+	s.publish(wire.Frame{Type: "tab", Tab: tab.ID, Data: wire.TabFrame{Op: "add", Tab: tab}, Critical: true})
 	go func() {
 		defer close(wt.done)
-		if err := s.o.Follow(ctx, wt.tab.ID, dir, s.publish); err != nil && ctx.Err() == nil {
+		if err := s.o.Follow(ctx, tab.ID, dir, s.publish); err != nil && ctx.Err() == nil {
 			s.srv.Logf("following session %s: %v", sid, err)
 		}
 		if ctx.Err() == nil { // the session ended: the tab stays, no longer live
 			s.mu.Lock()
 			wt.tab.Headless = false
-			tab := wt.tab
+			ended := wt.tab
 			s.mu.Unlock()
-			s.publish(wire.Frame{Type: "tab", Tab: tab.ID, Data: wire.TabFrame{Op: "update", Tab: tab}, Critical: true})
+			s.publish(wire.Frame{Type: "tab", Tab: ended.ID, Data: wire.TabFrame{Op: "update", Tab: ended}, Critical: true})
 		}
 	}()
-	_ = web.WriteJSON(w, http.StatusCreated, map[string]any{"tab": wt.tab})
+	_ = web.WriteJSON(w, http.StatusCreated, map[string]any{"tab": tab})
 }
 
 // handleUnwatch is DELETE /api/recorded/{sid}/watch: stop following and remove the tab.
@@ -110,6 +113,10 @@ func (s *service) handleUnwatch(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	wt, found := s.watches[sid]
 	delete(s.watches, sid)
+	var tab wire.TabSummary
+	if found {
+		tab = wt.tab
+	}
 	s.mu.Unlock()
 	if !found {
 		web.Error(w, http.StatusNotFound, "not_found", "this session is not followed")
@@ -120,7 +127,7 @@ func (s *service) handleUnwatch(w http.ResponseWriter, r *http.Request) {
 	case <-wt.done:
 	case <-time.After(5 * time.Second):
 	}
-	s.publish(wire.Frame{Type: "tab", Tab: wt.tab.ID, Data: wire.TabFrame{Op: "remove", Tab: wt.tab}, Critical: true})
+	s.publish(wire.Frame{Type: "tab", Tab: tab.ID, Data: wire.TabFrame{Op: "remove", Tab: tab}, Critical: true})
 	ok(w)
 }
 

@@ -156,12 +156,12 @@ func TestRemoveRecordedIsAsSafeAsPrune(t *testing.T) {
 }
 
 func TestParseAge(t *testing.T) {
-	for in, want := range map[string]time.Duration{"30d": 30 * 24 * time.Hour, "2w": 14 * 24 * time.Hour, "36h": 36 * time.Hour, "0": 0, "1.5d": 36 * time.Hour} {
+	for in, want := range map[string]time.Duration{"30d": 30 * 24 * time.Hour, "2w": 14 * 24 * time.Hour, "36h": 36 * time.Hour, "0": 0, "1.5d": 36 * time.Hour, "106751d": 106751 * 24 * time.Hour} {
 		if got, err := ParseAge(in); err != nil || got != want {
 			t.Errorf("ParseAge(%q) = %v, %v", in, got, err)
 		}
 	}
-	for _, in := range []string{"", "soon", "-3d", "d", "3 days"} {
+	for _, in := range []string{"", "soon", "-3d", "d", "3 days", "NaNd", "nanw", "Infd", "+Infw", "-Infd", "1e300d", "9999999999d", "106752d", "15251w"} {
 		if _, err := ParseAge(in); err == nil || !strings.Contains(err.Error(), "is not an age") {
 			t.Errorf("ParseAge(%q): %v", in, err)
 		}

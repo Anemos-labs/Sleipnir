@@ -387,6 +387,18 @@ func (h *webHostImpl) Tabs() []wire.TabSummary {
 	return out
 }
 
+// HostedSessions maps the session ids the tabs hold, or are about to hold while they start or restart, to their tab (webTab.sessionIDs):
+// a recorded-session delete or prune of the page leaves them alone (internal/web/tools).
+func (h *webHostImpl) HostedSessions() map[string]string {
+	out := map[string]string{}
+	for _, t := range h.tabList() {
+		for _, sid := range t.sessionIDs() {
+			out[sid] = t.id
+		}
+	}
+	return out
+}
+
 // Tab finds a live tab by its id.
 func (h *webHostImpl) Tab(id string) (seam.Tab, bool) {
 	t := h.tab(id)
@@ -873,7 +885,7 @@ func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p p
 	if fp.Partial {
 		return "this project has more files than can be remembered, so it is trusted for this session only", fp, true
 	}
-	if err := ledger.Remember(p.Dir, fp, time.Now()); err != nil {
+	if err := session.RememberTrust(home, p.Dir, fp, time.Now()); err != nil {
 		return "trusted for this session; not remembered: " + clip(err.Error(), 200), fp, true
 	}
 	return "", fp, true

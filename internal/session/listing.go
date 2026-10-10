@@ -7,8 +7,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -219,12 +222,28 @@ func collapse(s string, n int) string {
 }
 
 // Locked reports whether another process (or this one) holds a session directory's lock. It never creates the lock file (a
-// directory without one is held by nobody: every holder creates it) and so never changes the directory's modification time; it
-// probes by taking the lock and giving it back at once. A lock that cannot be probed (permissions) counts as held: a caller that
-// would delete must not. On a platform without directory locks nothing is ever held.
+// directory without one is held by nobody: every holder creates it) and so never changes the directory's modification time. On Linux
+// it reads the kernel's table of locks (/proc/locks) and takes no lock itself, so that a `--resume` that starts at that moment never
+// finds the session "in use" because of the probe. Elsewhere, or when that table cannot be read, it probes by taking the lock and
+// giving it back at once. A lock that cannot be probed (permissions) counts as held: a caller that would delete must not. On a
+// platform without directory locks nothing is ever held.
 func Locked(dir string) bool {
-	if _, err := os.Lstat(filepath.Join(dir, ".lock")); err != nil {
+	return lockedIn(dir, nil)
+}
+
+// lockedIn is Locked with the kernel's lock table already read (nil: read it, or probe).
+func lockedIn(dir string, table *flockTable) bool {
+	fi, err := os.Lstat(filepath.Join(dir, ".lock"))
+	if err != nil {
 		return false
+	}
+	if table == nil {
+		table = readFlocks()
+	}
+	if table != nil {
+		if key, ok := fileKey(fi); ok {
+			return table.held[key]
+		}
 	}
 	unlock, err := lockDir(dir)
 	if err != nil {
@@ -234,15 +253,74 @@ func Locked(dir string) bool {
 	return false
 }
 
+// flockKey names a file as /proc/locks does: the device's major and minor numbers and the inode.
+type flockKey struct{ major, minor, ino uint64 }
+
+// flockTable is the set of files that hold a flock now.
+type flockTable struct{ held map[flockKey]bool }
+
+// readFlocks reads the flock entries of /proc/locks (Linux); nil where there is no such table.
+func readFlocks() *flockTable {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	b, err := os.ReadFile("/proc/locks")
+	if err != nil {
+		return nil
+	}
+	return parseFlocks(b)
+}
+
+// parseFlocks reads lines such as "1: FLOCK  ADVISORY  WRITE 4321 fd:01:131073 0 EOF" (a waiter's line, "1: -> FLOCK ...", holds
+// nothing). The device is MAJOR:MINOR in hex, the inode in decimal.
+func parseFlocks(b []byte) *flockTable {
+	t := &flockTable{held: map[flockKey]bool{}}
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 6 || f[1] != "FLOCK" {
+			continue
+		}
+		parts := strings.Split(f[5], ":")
+		if len(parts) != 3 {
+			continue
+		}
+		major, err1 := strconv.ParseUint(parts[0], 16, 64)
+		minor, err2 := strconv.ParseUint(parts[1], 16, 64)
+		ino, err3 := strconv.ParseUint(parts[2], 10, 64)
+		if err1 == nil && err2 == nil && err3 == nil {
+			t.held[flockKey{major, minor, ino}] = true
+		}
+	}
+	return t
+}
+
+// fileKey is the device and inode of a file as /proc/locks names them (Linux's encoding of a device number), read from the stat
+// structure by name so that the code builds on every platform.
+func fileKey(fi fs.FileInfo) (flockKey, bool) {
+	v := reflect.ValueOf(fi.Sys())
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return flockKey{}, false
+	}
+	dev, ino := v.FieldByName("Dev"), v.FieldByName("Ino")
+	if !dev.IsValid() || !ino.IsValid() || !dev.CanUint() || !ino.CanUint() {
+		return flockKey{}, false
+	}
+	d := dev.Uint()
+	major := (d>>8)&0xfff | (d>>32)&^uint64(0xfff)
+	minor := d&0xff | (d>>12)&^uint64(0xff)
+	return flockKey{major, minor, ino.Uint()}, true
+}
+
 // listCache keeps what was read of each session directory, keyed by the directory, valid while its log and the directory itself
-// are unchanged: a listing of hundreds of sessions reads only the ones written since the last.
+// are unchanged: a listing of hundreds of sessions reads only the ones written since the last. A listing evicts the entries of its
+// sessions directory that it no longer finds, so the cache holds what exists and no more.
 var listCache = struct {
 	sync.Mutex
 	m map[string]cachedListing
 }{m: map[string]cachedListing{}}
-
-// maxListCache bounds the cache; past it, it starts over.
-const maxListCache = 8192
 
 // cachedListing is the cached part of one directory's listing and the stamps it is valid for.
 type cachedListing struct {
@@ -266,9 +344,6 @@ func readListing(dir string, fi, log fs.FileInfo) cachedListing {
 	c.bytes = DirSize(dir)
 	c.resumable = Resumable(dir)
 	listCache.Lock()
-	if len(listCache.m) >= maxListCache {
-		listCache.m = map[string]cachedListing{}
-	}
 	listCache.m[dir] = c
 	listCache.Unlock()
 	return c
@@ -290,6 +365,8 @@ func ListRecordedDir(root string, now time.Time) ([]Recorded, error) {
 		return nil, err
 	}
 	var out []Recorded
+	locks := readFlocks() // once for the whole listing
+	seen := map[string]bool{}
 	for _, e := range ents {
 		dir := filepath.Join(root, e.Name())
 		fi, err := os.Lstat(dir)
@@ -300,9 +377,10 @@ func ListRecordedDir(root string, now time.Time) ([]Recorded, error) {
 		if err != nil || log.IsDir() {
 			continue
 		}
+		seen[dir] = true
 		c := readListing(dir, fi, log)
 		r := recordedOf(e.Name(), dir, fi, log, c)
-		r.Locked = Locked(dir)
+		r.Locked = lockedIn(dir, locks)
 		r.Live = r.Locked || now.Sub(log.ModTime()) < LiveWindow
 		r.Interrupted = c.sum.EndReason == EndInterrupted || (c.sum.Open && !r.Live)
 		if m, err := LoadMeta(dir); err == nil {
@@ -316,7 +394,20 @@ func ListRecordedDir(root string, now time.Time) ([]Recorded, error) {
 		}
 		return out[i].ID > out[j].ID
 	})
+	evictGone(root, seen)
 	return out, nil
+}
+
+// evictGone drops the cached entries of the sessions directory root whose session the listing did not find (deleted, or no longer a
+// session).
+func evictGone(root string, seen map[string]bool) {
+	listCache.Lock()
+	defer listCache.Unlock()
+	for dir := range listCache.m {
+		if filepath.Dir(dir) == root && !seen[dir] {
+			delete(listCache.m, dir)
+		}
+	}
 }
 
 // recordedOf fills a listing row from what was read of the directory.

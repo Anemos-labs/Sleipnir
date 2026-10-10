@@ -1,9 +1,12 @@
 package runner
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -421,5 +424,46 @@ func TestD16IsJSONStringifyThenSHA256(t *testing.T) {
 		if got := JSONString(in); got != want {
 			t.Errorf("JSONString(%q) = %s, want %s", in, got, want)
 		}
+	}
+}
+
+// Past either limit (lines or bytes) a line is neither sent nor kept: the page's frames and a reattach show the same lines, and the
+// closing line counts exactly the ones left out.
+func TestOutputLimitsAgreeLiveAndKept(t *testing.T) {
+	for name, o := range map[string]Options{
+		"bytes": {MaxLines: 20000, MaxBytes: 64 << 10},
+		"lines": {MaxLines: 100, MaxBytes: 4 << 20},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rg := newRig(t, o)
+			const n, width = 6000, 300
+			started, err := rg.runs.Start(Spec{Path: []string{"x"}, Func: func(_ context.Context, stdout, _ io.Writer) int {
+				line := strings.Repeat("y", width) + "\n"
+				for range n {
+					_, _ = io.WriteString(stdout, line)
+				}
+				return 0
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rg.wait(started.ID, 30*time.Second)
+			live := rg.lines(started.ID)
+			out, ok := rg.runs.Output(started.ID, 0)
+			if !ok {
+				t.Fatal("no output")
+			}
+			if len(live) != len(out.Lines) {
+				t.Fatalf("sent %d lines, kept %d", len(live), len(out.Lines))
+			}
+			shown := len(live) - 1
+			note := live[len(live)-1].T
+			if want := fmt.Sprintf("[%d more lines were not shown]", n-shown); note != want || out.Lines[len(out.Lines)-1].T != want {
+				t.Errorf("closing line %q, want %q (%d shown)", note, want, shown)
+			}
+			if shown*width > o.MaxBytes || shown > o.MaxLines {
+				t.Errorf("%d lines of %d bytes passed the limits %+v", shown, width, o)
+			}
+		})
 	}
 }

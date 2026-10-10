@@ -251,3 +251,28 @@ func TestRunNowRefusesADangerousJob(t *testing.T) {
 		t.Errorf("it started %v", kids)
 	}
 }
+
+// A budget left out is the CLI's US$1 for a new job and the job's own for an edit; an explicit 0 is no limit, and a job with no
+// limit can be edited without giving one.
+func TestJobBudgetDefaultsLikeTheCLI(t *testing.T) {
+	rg := newRig(t, nil)
+	add := func(body string) wire.ScheduleJob {
+		w := rg.do(req{method: "POST", path: "/api/schedule/jobs", raw: body, header: map[string]string{"X-Confirm": rg.confirm("job.add")}})
+		if w.Code != http.StatusCreated {
+			t.Fatalf("add %s: %d %s", body, w.Code, w.Body.String())
+		}
+		return decode[wire.ScheduleJob](t, w)
+	}
+	if j := add(`{"cron":"@daily","goal":"g","dir":"` + rg.project + `"}`); j.BudgetUSD != 1 {
+		t.Errorf("left out: %v", j.BudgetUSD)
+	}
+	free := add(`{"cron":"@daily","goal":"g","dir":"` + rg.project + `","budgetUsd":0}`)
+	if free.BudgetUSD != 0 {
+		t.Errorf("explicit 0: %v", free.BudgetUSD)
+	}
+	w := rg.do(req{method: "PUT", path: "/api/schedule/jobs/" + free.ID, raw: `{"cron":"@hourly","goal":"g2","dir":"` + rg.project + `"}`,
+		header: map[string]string{"X-Confirm": rg.confirm("job.edit:" + free.ID)}})
+	if e := decode[wire.ScheduleJob](t, w); w.Code != 200 || e.BudgetUSD != 0 || e.Cron != "@hourly" {
+		t.Errorf("edit without a budget: %d %s", w.Code, w.Body.String())
+	}
+}

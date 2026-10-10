@@ -323,7 +323,7 @@ The page never holds a provider key: signing in is `sleipnir login` in a termina
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `GET` | `/api/recorded` | The session directories no tab hosts, newest first (`wire.RecordedSession`), and their size | - |
-| `POST` | `/api/recorded/prune` | `wire.PruneRequest`: the plan of `sleipnir sessions prune`, or with `apply` its deletion. Sessions open in a tab or locked by a process are kept | `prune:<d16>` for `apply` |
+| `POST` | `/api/recorded/prune` | `wire.PruneRequest`: the plan of `sleipnir sessions prune`, or with `apply` its deletion; `olderThan` and `keep` left out are the CLI's `30d` and `20`. Sessions open in a tab (one that restarts included) or locked by a process are kept | `prune:<d16>` for `apply` |
 | `POST` | `/api/recorded/delete` | `wire.DeleteRecordedRequest`: deletes the named sessions (1,000 at most), with prune's safety; `409 hosted` or `409 locked` for one in use | `delete:<d16>` |
 | `GET` | `/api/recorded/{sid}/events` | `?from=&limit=`: a recorded session's history as events, a page at a time; `next` is where the next page starts | - |
 | `POST` | `/api/recorded/{sid}/watch` | Follows a session another process is writing, read-only, in a tab of its own: `201 {tab}`, or `200` when already followed | - |
@@ -336,8 +336,8 @@ The page never holds a provider key: signing in is `sleipnir login` in a termina
 |---|---|---|---|
 | `GET` | `/api/schedule` | `wire.ScheduleView`: the jobs, the daemon and the last logs of each job | - |
 | `GET` | `/api/schedule/next` | `?cron=`: `wire.CronCheck`, whether the expression is valid and when it next runs | - |
-| `POST` | `/api/schedule/jobs` | `wire.JobRequest`: adds a job; `bypass` and `yolo` are refused | `job.add` |
-| `PUT` | `/api/schedule/jobs/{job}` | Edits a job's cron, goal, directory, model, mode and budget | `job.edit:<job>` |
+| `POST` | `/api/schedule/jobs` | `wire.JobRequest`: adds a job; `bypass` and `yolo` are refused. `budgetUsd` left out is US$1, as `schedule add`; `0` is no limit. A job never takes the id of a removed job that left logs | `job.add` |
+| `PUT` | `/api/schedule/jobs/{job}` | Edits a job's cron, goal, directory, model, mode and budget; a budget left out stays what it was | `job.edit:<job>` |
 | `POST` | `/api/schedule/jobs/{job}/pause` | `{paused}`: a paused job is skipped by the daemon and can still be run by hand | - |
 | `DELETE` | `/api/schedule/jobs/{job}` | Removes the job | - |
 | `POST` | `/api/schedule/jobs/{job}/run` | Runs the job now as the daemon would, its output as `run` frames and in its log; answers `202 wire.RunStarted`. `403 dangerous_mode` for a bypass or yolo job, `409 running` | - |
@@ -359,7 +359,7 @@ error).
 | `POST` | `/api/runs` | `wire.RunRequest` and `keep` (let the run continue when the page leaves): starts a run, `202 wire.RunStarted` | `run:<d16>` for a `priv` command, including any whose flags widen its privileges |
 | `GET` | `/api/runs` | `{runs: [wire.RunInfo]}`: running and recent runs | - |
 | `DELETE` | `/api/runs/{run}` | Stops a run | - |
-| `GET` | `/api/runs/{run}/output` | `?from=`: the lines a run kept, from a line number on (20,000 lines of 4 KiB at most) | - |
+| `GET` | `/api/runs/{run}/output` | `?from=`: the lines a run sent, from a line number on: its first 20,000 lines and 4 MiB of text (a line is cut at 4 KiB), then one line saying how many were left out | - |
 
 ### Doctor and update
 

@@ -29,6 +29,18 @@ type fakeHost struct {
 	tabs     []wire.TabSummary
 	projects []wire.Project
 	frames   []wire.Frame
+	hosted   map[string]string // sessions a tab holds beyond its summary (a restart)
+}
+
+// HostedSessions is what the real host tells beyond the summaries: the sessions of tabs that restart.
+func (h *fakeHost) HostedSessions() map[string]string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := map[string]string{}
+	for k, v := range h.hosted {
+		out[k] = v
+	}
+	return out
 }
 
 // fakeTab is a tab of the fake host: only its summary is real.

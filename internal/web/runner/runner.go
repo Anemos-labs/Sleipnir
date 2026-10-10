@@ -17,11 +17,13 @@
 //
 // # Output
 //
-// Standard output and standard error are read line by line (4 KiB a line, 20,000 lines a run), made safe for display
+// Standard output and standard error are read line by line (a line is cut at 4 KiB), made safe for display
 // (tools.SanitizeForTerminal) and masked (the held keys, the run token, and credential-shaped strings), and sent in "run" frames
-// every 50 ms: {id, lines: [{k: "out"|"err", t}]}. The end is {id, result: {exit, ms, card, canceled}} (critical: a slow page may
-// miss lines, never the end). A run keeps its lines for GET /api/runs/{run}/output, so that a page that comes back to a run it
-// kept going can show what it missed. At most four runs go at once; a run ends after an hour (servers excepted).
+// every 50 ms: {id, lines: [{k: "out"|"err", t}]}. A run sends and keeps its first 20,000 lines and 4 MiB of text; a line past
+// either limit is neither sent nor kept, and a last line says how many were left out. The end is {id, result: {exit, ms, card,
+// canceled}} (critical: a slow page may miss lines, never the end). A run keeps the lines it sent for GET /api/runs/{run}/output, so
+// that a page that comes back to a run it kept going can show what it missed. At most four runs go at once; a run ends after an
+// hour (servers excepted).
 //
 // # Confirmation of privileged commands
 //
@@ -58,6 +60,7 @@ type Options struct {
 
 	MaxRuns      int           // runs at once (4)
 	MaxLines     int           // lines kept and sent per run (20,000)
+	MaxBytes     int           // text kept and sent per run (4 MiB)
 	MaxLineBytes int           // bytes per line (4 KiB)
 	Timeout      time.Duration // the limit of one run, servers excepted (1 hour)
 	Grace        time.Duration // between SIGTERM and SIGKILL (5 s)
@@ -78,6 +81,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.MaxRuns <= 0 {
 		o.MaxRuns = 4
+	}
+	if o.MaxBytes <= 0 {
+		o.MaxBytes = 4 << 20
 	}
 	if o.MaxLines <= 0 {
 		o.MaxLines = 20000

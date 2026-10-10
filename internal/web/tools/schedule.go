@@ -192,9 +192,31 @@ func (s *service) allowedDir(ctx context.Context, dir string) bool {
 	return false
 }
 
+// jobRequest is wire.JobRequest with the CLI's default for a budget left out (BudgetUSD nil): US$1 for a new job, the job's own for
+// an edit. An explicit 0 is no limit, as `schedule add --budget-usd 0`.
+type jobRequest struct {
+	Cron      string   `json:"cron"`
+	Goal      string   `json:"goal"`
+	Dir       string   `json:"dir"`
+	Model     string   `json:"model,omitempty"`
+	Mode      string   `json:"mode,omitempty"`
+	BudgetUSD *float64 `json:"budgetUsd"`
+}
+
+// defaultBudget is the CLI's `schedule add --budget-usd`.
+const defaultBudget = 1.0
+
 // checkJob validates a job request and returns the job it describes (prev is the job being edited, or nil).
-func (s *service) checkJob(ctx context.Context, req wire.JobRequest, prev *sched.Job) (sched.Job, error) {
-	j := sched.Job{Cron: strings.TrimSpace(req.Cron), Goal: strings.TrimSpace(req.Goal), Dir: strings.TrimSpace(req.Dir), Model: strings.TrimSpace(req.Model), Mode: strings.TrimSpace(req.Mode), BudgetUSD: req.BudgetUSD}
+func (s *service) checkJob(ctx context.Context, req jobRequest, prev *sched.Job) (sched.Job, error) {
+	j := sched.Job{Cron: strings.TrimSpace(req.Cron), Goal: strings.TrimSpace(req.Goal), Dir: strings.TrimSpace(req.Dir), Model: strings.TrimSpace(req.Model), Mode: strings.TrimSpace(req.Mode)}
+	switch {
+	case req.BudgetUSD != nil:
+		j.BudgetUSD = *req.BudgetUSD // 0 is no limit, as --budget-usd 0
+	case prev != nil:
+		j.BudgetUSD = prev.BudgetUSD // an edit that leaves it out keeps it
+	default:
+		j.BudgetUSD = defaultBudget
+	}
 	if len(j.Cron) > maxCron {
 		return j, werr(http.StatusBadRequest, "bad_cron", "the cron expression is not valid")
 	}
@@ -230,7 +252,7 @@ func (s *service) checkJob(ctx context.Context, req wire.JobRequest, prev *sched
 
 // handleAddJob is POST /api/schedule/jobs (confirmed for job.add).
 func (s *service) handleAddJob(w http.ResponseWriter, r *http.Request) {
-	var req wire.JobRequest
+	var req jobRequest
 	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
@@ -280,7 +302,7 @@ func (s *service) handleEditJob(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, err)
 		return
 	}
-	var req wire.JobRequest
+	var req jobRequest
 	if !web.DecodeJSON(w, r, &req) {
 		return
 	}
