@@ -2,6 +2,7 @@ package wsvc
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -138,15 +139,28 @@ func TestIsolatedTeamQueueTreesVerifyBlameAndAccept(t *testing.T) {
 	// Apply the verified work as a commit: the dry run first, which needs no confirmation.
 	var plan wire.AcceptResult
 	expect(t, e.post("/ws/accept", wire.AcceptRequest{DryRun: true}, "", &plan), http.StatusOK, "")
-	if !plan.DryRun || !plan.Waiting || !plan.CanCommit || strings.Join(plan.Files, ",") != "d1.txt" || plan.Commit != "" {
+	if !plan.DryRun || !plan.Waiting || !plan.CanCommit || strings.Join(plan.Files, ",") != "d1.txt" || plan.Commit != "" ||
+		!strings.HasPrefix(plan.Scope, "accept:"+e.tab.TabID()+":") {
 		t.Fatalf("dry run = %+v", plan)
 	}
 	if st := git(t, e.root, "status", "--porcelain"); !strings.Contains(st, "d1.txt") {
 		t.Fatalf("a dry run changes nothing: %q", st)
 	}
 	expect(t, e.post("/ws/accept", wire.AcceptRequest{Message: "Add d1.txt (verified)"}, "", nil), http.StatusPreconditionRequired, "confirm_required")
+	// What would be applied changes after the dry run: refused with the new dry run.
+	d1 := filepath.Join(e.root, "d1.txt")
+	writeFile(t, d1, "made in a tree\nsecond line\nedited by hand\n")
+	w := e.post("/ws/accept", wire.AcceptRequest{Message: "x", Scope: plan.Scope}, plan.Scope, nil)
+	expect(t, w, http.StatusConflict, "changed")
+	var changed struct {
+		Detail wire.AcceptResult `json:"detail"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &changed); err != nil || changed.Detail.Scope == plan.Scope || changed.Detail.CanCommit {
+		t.Fatalf("409 changed carries the new dry run: %s", w.Body)
+	}
+	writeFile(t, d1, "made in a tree\nsecond line\n")
 	var res wire.AcceptResult
-	expect(t, e.post("/ws/accept", wire.AcceptRequest{Message: "Add d1.txt (verified)"}, "accept:"+e.tab.TabID(), &res), http.StatusOK, "")
+	expect(t, e.post("/ws/accept", wire.AcceptRequest{Message: "Add d1.txt (verified)", Scope: plan.Scope}, plan.Scope, &res), http.StatusOK, "")
 	if !res.Committed || res.Commit == "" || res.Branch == "" {
 		t.Fatalf("accept = %+v", res)
 	}
@@ -162,7 +176,7 @@ func TestIsolatedTeamQueueTreesVerifyBlameAndAccept(t *testing.T) {
 	if !sawSys(e, "Committed 1 file(s)") {
 		t.Fatal("no acknowledgement row")
 	}
-	expect(t, e.post("/ws/accept", wire.AcceptRequest{}, "accept:"+e.tab.TabID(), nil), http.StatusConflict, "nothing")
+	expect(t, e.post("/ws/accept", wire.AcceptRequest{}, e.acceptScope(""), nil), http.StatusConflict, "nothing")
 
 	// A change of the person's own blocks commits, and the dry run says why.
 	writeFile(t, filepath.Join(e.root, "README.md"), "# mine\n")
@@ -171,7 +185,15 @@ func TestIsolatedTeamQueueTreesVerifyBlameAndAccept(t *testing.T) {
 	if dirty.CanCommit || !strings.Contains(dirty.CommitBlocked, "README.md") || dirty.Waiting {
 		t.Fatalf("dirty dry run = %+v", dirty)
 	}
-	expect(t, e.post("/ws/accept", wire.AcceptRequest{Mode: "edits"}, "accept:"+e.tab.TabID(), nil), http.StatusConflict, "nothing")
+	expect(t, e.post("/ws/accept", wire.AcceptRequest{Mode: "edits"}, e.acceptScope("edits"), nil), http.StatusConflict, "nothing")
+}
+
+// acceptScope asks for the dry run of an application and returns its scope.
+func (e *env) acceptScope(mode string) string {
+	e.t.Helper()
+	var r wire.AcceptResult
+	expect(e.t, e.post("/ws/accept", wire.AcceptRequest{Mode: mode, DryRun: true}, "", &r), http.StatusOK, "")
+	return r.Scope
 }
 
 // A team in the shared checkout: the index names the worker and its task for the file it

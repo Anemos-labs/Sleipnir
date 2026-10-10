@@ -261,8 +261,11 @@ func TestDiffBetweenPoints(t *testing.T) {
 func TestRevertHunkAndUndo(t *testing.T) {
 	e := soloEnv(t)
 	util := filepath.Join(e.root, "lib/util.go")
-	body := map[string]string{"path": "lib/util.go", "key": "24:24", "from": "base", "to": "live"}
-	scope := "revert:" + e.tab.TabID() + ":" + d16(body)
+	body := wire.RevertRequest{Path: "lib/util.go", Key: "24:24", From: "base", To: "live"}
+	body.Scope = e.hunkScope("lib/util.go", "24:24", "base", "live")
+	if !strings.HasPrefix(body.Scope, "revert:"+e.tab.TabID()+":") {
+		t.Fatalf("scope %q", body.Scope)
+	}
 	// no confirmation: 428; a confirmation for something else: 403
 	expect(t, e.post("/ws/revert", body, "", nil), http.StatusPreconditionRequired, "confirm_required")
 	expect(t, e.post("/ws/revert", body, "revert:"+e.tab.TabID()+":0000000000000000", nil), http.StatusForbidden, "confirm_invalid")
@@ -271,12 +274,31 @@ func TestRevertHunkAndUndo(t *testing.T) {
 	if _, err := e.tab.Send(context.Background(), wire.MessageRequest{Text: "hold"}); err != nil {
 		t.Fatal(err)
 	}
-	expect(t, e.post("/ws/revert", body, scope, nil), http.StatusConflict, "busy")
+	expect(t, e.post("/ws/revert", body, body.Scope, nil), http.StatusConflict, "busy")
 	e.tab.ReleaseTurn()
 	e.tab.HoldTurns(false)
 
+	// The file changes after the diff was drawn: the confirmed hunk is refused with the
+	// new diff, whose hunk carries the scope that applies now.
+	writeFile(t, util, utilText(3, 27, "changed ")+"appended\n")
+	w := e.post("/ws/revert", body, body.Scope, nil)
+	expect(t, w, http.StatusConflict, "changed")
+	var changed struct {
+		Detail wire.WsDiff `json:"detail"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &changed); err != nil || len(changed.Detail.Hunks) != 2 {
+		t.Fatalf("409 changed carries the new diff: %s", w.Body)
+	}
+	fresh := changed.Detail.Hunks[1]
+	if fresh.Scope == "" || fresh.Scope == body.Scope || hunkKey(fresh.OldStart, fresh.NewStart) != "24:24" {
+		t.Fatalf("new hunk = %+v", fresh)
+	}
+	if readFile(t, util) != utilText(3, 27, "changed ")+"appended\n" {
+		t.Fatal("a refused revert writes nothing")
+	}
+	body.Scope = fresh.Scope
 	var rev wire.WsRevert
-	expect(t, e.post("/ws/revert", body, scope, &rev), http.StatusOK, "")
+	expect(t, e.post("/ws/revert", body, body.Scope, &rev), http.StatusOK, "")
 	if readFile(t, util) != utilText(3, 0, "changed ") || !revIDRE.MatchString(rev.ID) || rev.Path != "lib/util.go" {
 		t.Fatalf("after revert: %q %+v", readFile(t, util), rev)
 	}
@@ -286,15 +308,15 @@ func TestRevertHunkAndUndo(t *testing.T) {
 		t.Fatalf("journal: %+v", ws)
 	}
 	// the same hunk again: it is not in the diff any more
-	expect(t, e.post("/ws/revert", body, scope, nil), http.StatusConflict, "changed")
+	expect(t, e.post("/ws/revert", body, body.Scope, nil), http.StatusConflict, "changed")
 	var idx wire.WsIndex
 	e.get("/ws/index", &idx)
 	if len(idx.Reverted) != 1 || idx.Reverted[0].ID != rev.ID {
 		t.Fatalf("index reverts: %+v", idx.Reverted)
 	}
-	// undo puts the line back
+	// undo puts the lines back
 	expect(t, e.post("/ws/revert/"+rev.ID+"/undo", nil, "", nil), http.StatusOK, "")
-	if readFile(t, util) != utilText(3, 27, "changed ") {
+	if readFile(t, util) != utilText(3, 27, "changed ")+"appended\n" {
 		t.Fatalf("after undo: %q", readFile(t, util))
 	}
 	expect(t, e.post("/ws/revert/"+rev.ID+"/undo", nil, "", nil), http.StatusNotFound, "not_found")
@@ -313,15 +335,42 @@ func TestRevertHunkAndUndo(t *testing.T) {
 		t.Fatalf("the agent was not told: %+v", e.tab.Calls())
 	}
 	// a revert whose undo would overwrite a later change is refused
-	expect(t, e.post("/ws/revert", body, scope, &rev), http.StatusOK, "")
+	body.Scope = e.hunkScope("lib/util.go", "24:24", "base", "live")
+	expect(t, e.post("/ws/revert", body, body.Scope, &rev), http.StatusOK, "")
 	writeFile(t, util, "edited by the person afterwards\n")
 	expect(t, e.post("/ws/revert/"+rev.ID+"/undo", nil, "", nil), http.StatusConflict, "changed")
 	if readFile(t, util) != "edited by the person afterwards\n" {
 		t.Fatal("a refused undo writes nothing")
 	}
 	// a hunk that does not apply to the file as it is now
-	body2 := map[string]string{"path": "lib/util.go", "key": "1:1", "from": "base", "to": "c02"}
-	expect(t, e.post("/ws/revert", body2, "revert:"+e.tab.TabID()+":"+d16(body2), nil), http.StatusUnprocessableEntity, "conflict")
+	body2 := wire.RevertRequest{Path: "lib/util.go", Key: "1:1", From: "base", To: "c02"}
+	body2.Scope = e.hunkScope("lib/util.go", "1:1", "base", "c02")
+	expect(t, e.post("/ws/revert", body2, body2.Scope, nil), http.StatusUnprocessableEntity, "conflict")
+}
+
+// hunkScope reads the confirmation scope of one hunk from the diff route.
+func (e *env) hunkScope(path, key, from, to string) string {
+	e.t.Helper()
+	var d wire.WsDiff
+	expect(e.t, e.get("/ws/diff?path="+url.QueryEscape(path)+"&from="+from+"&to="+to, &d), http.StatusOK, "")
+	for _, h := range d.Hunks {
+		if hunkKey(h.OldStart, h.NewStart) == key {
+			return h.Scope
+		}
+	}
+	e.t.Fatalf("no hunk %s in %+v", key, d.Hunks)
+	return ""
+}
+
+// restoreScope previews a restore and returns the scope of its plan.
+func (e *env) restoreScope(id string) string {
+	e.t.Helper()
+	var p wire.RestorePlan
+	expect(e.t, e.post("/ws/restore", wire.RestoreRequest{ID: id, DryRun: true}, "", &p), http.StatusOK, "")
+	if !strings.HasPrefix(p.Scope, "restore:"+e.tab.TabID()+":"+id+":") {
+		e.t.Fatalf("plan scope %q", p.Scope)
+	}
+	return p.Scope
 }
 
 // sawSys reports whether the tab's journal received a sys say row containing text.
@@ -371,8 +420,28 @@ func TestRestorePreviewApplyUndo(t *testing.T) {
 	expect(t, e.post("/ws/restore", wire.RestoreRequest{ID: "c09", DryRun: true}, "", nil), http.StatusNotFound, "no_checkpoint")
 	expect(t, e.post("/ws/restore", wire.RestoreRequest{ID: "c01"}, "", nil), http.StatusPreconditionRequired, "confirm_required")
 
+	// The plan changes after the preview: the confirmed restore is refused with the new
+	// plan and its scope; once the file is as previewed again, the confirmation holds.
+	scope := plan.Scope
+	writeFile(t, filepath.Join(e.root, "new.txt"), "fresh\nand more\n")
+	w := e.post("/ws/restore", wire.RestoreRequest{ID: "c01", Scope: scope}, scope, nil)
+	expect(t, w, http.StatusConflict, "changed")
+	var changed struct {
+		Detail wire.RestorePlan `json:"detail"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &changed); err != nil || changed.Detail.Scope == "" || changed.Detail.Scope == scope || len(changed.Detail.Files) != 3 {
+		t.Fatalf("409 changed carries the new plan: %s", w.Body)
+	}
+	if readFile(t, util) != before["util"] {
+		t.Fatal("a refused restore writes nothing")
+	}
+	writeFile(t, filepath.Join(e.root, "new.txt"), "fresh\n")
+	if again := e.restoreScope("c01"); again != scope {
+		t.Fatalf("the same files give the same scope: %s / %s", again, scope)
+	}
+
 	var applied wire.RestorePlan
-	expect(t, e.post("/ws/restore", wire.RestoreRequest{ID: "c01"}, "restore:"+e.tab.TabID()+":c01", &applied), http.StatusOK, "")
+	expect(t, e.post("/ws/restore", wire.RestoreRequest{ID: "c01", Scope: scope}, scope, &applied), http.StatusOK, "")
 	if !applied.Applied || applied.Safety != "c01s" || readFile(t, util) != utilText(0, 0, "") {
 		t.Fatalf("restore: %+v", applied)
 	}
@@ -409,7 +478,8 @@ func TestRestorePreviewApplyUndo(t *testing.T) {
 
 	// A file edited after the agents' last write: the restore is refused whole.
 	writeFile(t, main, "edited by the person\n")
-	w := e.post("/ws/restore", wire.RestoreRequest{ID: "c02"}, "restore:"+e.tab.TabID()+":c02", nil)
+	scope = e.restoreScope("c02")
+	w = e.post("/ws/restore", wire.RestoreRequest{ID: "c02", Scope: scope}, scope, nil)
 	expect(t, w, http.StatusConflict, "conflict")
 	if !strings.Contains(w.Body.String(), "main.go") || readFile(t, main) != "edited by the person\n" {
 		t.Fatalf("conflict: %s", w.Body)
@@ -510,10 +580,14 @@ func TestTheEnvelopeGuardsEveryRoute(t *testing.T) {
 		expect(t, e.do(request{method: http.MethodPost, path: path, raw: []byte(`{"path":"` + strings.Repeat("a", 70<<10) + `"}`)}), http.StatusRequestEntityTooLarge, "body_too_large")
 	}
 	// a confirmation is spent by its first use
-	scope := "restore:" + e.tab.TabID() + ":c02"
+	scope := e.restoreScope("c02")
 	id := e.confirm(scope)
-	expect(t, e.do(request{method: http.MethodPost, path: e.tabPath("/ws/restore"), body: wire.RestoreRequest{ID: "c02"}, confirm: id}), http.StatusOK, "")
-	expect(t, e.do(request{method: http.MethodPost, path: e.tabPath("/ws/restore"), body: wire.RestoreRequest{ID: "c02"}, confirm: id}), http.StatusForbidden, "confirm_invalid")
+	expect(t, e.do(request{method: http.MethodPost, path: e.tabPath("/ws/restore"), body: wire.RestoreRequest{ID: "c02", Scope: scope}, confirm: id}), http.StatusOK, "")
+	undo := e.confirm("restore.undo:" + e.tab.TabID())
+	expect(t, e.do(request{method: http.MethodPost, path: e.tabPath("/ws/restore/undo"), confirm: undo}), http.StatusOK, "")
+	expect(t, e.do(request{method: http.MethodPost, path: e.tabPath("/ws/restore/undo"), confirm: undo}), http.StatusForbidden, "confirm_invalid")
+	// a confirmation of one plan does not apply another
+	expect(t, e.do(request{method: http.MethodPost, path: e.tabPath("/ws/restore"), body: wire.RestoreRequest{ID: "c01"}, confirm: e.confirm(scope)}), http.StatusForbidden, "confirm_invalid")
 	// tab ids are checked before any lookup
 	expect(t, e.do(request{method: http.MethodGet, path: "/api/sessions/BAD_ID/ws/index"}), http.StatusBadRequest, "bad_request")
 	expect(t, e.do(request{method: http.MethodGet, path: "/api/sessions/nobody/ws/index"}), http.StatusNotFound, "not_found")

@@ -124,7 +124,8 @@ type WsDiff struct {
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
-// Hunk is one hunk; its key in the page is OldStart:NewStart.
+// Hunk is one hunk; its key in the page is OldStart:NewStart. Scope is the confirmation scope of reverting exactly this hunk of
+// the file as it is now (set on a diff whose new side is the live file's history; the page confirms it and sends it back).
 type Hunk struct {
 	OldStart int        `json:"oldStart"`
 	OldLines int        `json:"oldLines"`
@@ -132,6 +133,7 @@ type Hunk struct {
 	NewLines int        `json:"newLines"`
 	Section  string     `json:"section,omitempty"`
 	Lines    []HunkLine `json:"lines"`
+	Scope    string     `json:"scope,omitempty"`
 }
 
 // HunkLine is one line of a hunk: T is " ", "+", "-" or "…" (an elided run), S its text.
@@ -140,12 +142,14 @@ type HunkLine struct {
 	S string `json:"s"`
 }
 
-// RevertRequest reverts one hunk of the diff of Path between From and To (checkpoint ids, "base" or "live").
+// RevertRequest reverts one hunk of the diff of Path between From and To (checkpoint ids, "base" or "live"). Scope is the hunk's
+// scope from the diff the person saw: when the hunk or the file changed since, the answer is 409 changed with the new diff.
 type RevertRequest struct {
-	Path string `json:"path"`
-	Key  string `json:"key"`
-	From string `json:"from"`
-	To   string `json:"to"`
+	Path  string `json:"path"`
+	Key   string `json:"key"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Scope string `json:"scope,omitempty"`
 }
 
 // WsRevert is a hunk revert the person made (it can be undone while the file has not changed since).
@@ -156,10 +160,12 @@ type WsRevert struct {
 	At   float64 `json:"t"`
 }
 
-// RestoreRequest previews (DryRun) or applies /rewind ID.
+// RestoreRequest previews (DryRun) or applies /rewind ID. Scope is the preview's scope: when the plan changed since, the answer is
+// 409 changed with the new plan.
 type RestoreRequest struct {
 	ID     string `json:"id"`
 	DryRun bool   `json:"dryRun"`
+	Scope  string `json:"scope,omitempty"`
 }
 
 // RestoreFile is one file of a restore: what happens to it and its lines.
@@ -182,6 +188,8 @@ type RestorePlan struct {
 	Applied bool          `json:"applied"`
 	Safety  string        `json:"safety,omitempty"`
 	Summary string        `json:"summary"`
+	// Scope is the confirmation scope of applying exactly this plan (restore:<id>:<cid>:<digest>).
+	Scope string `json:"scope,omitempty"`
 }
 
 // WsRestore is the latest restore of the tab, while it can be undone.
@@ -265,6 +273,8 @@ type AcceptRequest struct {
 	Message string `json:"message,omitempty"`
 	Mode    string `json:"mode,omitempty"`
 	DryRun  bool   `json:"dryRun,omitempty"`
+	// Scope is the dry run's scope: when what would be applied changed since, the answer is 409 changed with the new result.
+	Scope string `json:"scope,omitempty"`
 }
 
 // AcceptResult is the commit that accept made, or for a dry run what it would apply: the files and tasks, whether anything
@@ -281,4 +291,6 @@ type AcceptResult struct {
 	CommitBlocked string   `json:"commitBlocked,omitempty"`
 	Message       string   `json:"message,omitempty"`
 	DryRun        bool     `json:"dryRun,omitempty"`
+	// Scope is the confirmation scope of applying exactly what a dry run reported (accept:<id>:<digest>).
+	Scope string `json:"scope,omitempty"`
 }

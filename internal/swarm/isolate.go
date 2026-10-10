@@ -872,6 +872,9 @@ var (
 	// ErrBranchMoved is returned by Accept when the checkout is not on the session's
 	// branch, or that branch has commits the session did not start from.
 	ErrBranchMoved = errors.New("swarm: the checkout's branch moved")
+	// ErrAcceptChanged is returned by Accept when the verified work is not the one the
+	// caller expected (AcceptOptions.ExpectTip, ExpectFrom).
+	ErrAcceptChanged = errors.New("swarm: the verified work changed since it was shown")
 )
 
 // AcceptOptions choose how Accept puts the verified work into the person's checkout.
@@ -886,6 +889,10 @@ type AcceptOptions struct {
 	Message string
 	// DryRun reports what would happen and changes nothing.
 	DryRun bool
+	// ExpectTip and ExpectFrom, when ExpectTip is set, are the integration tip and the
+	// checkout's position a dry run reported: if either moved since, Accept changes
+	// nothing and fails with ErrAcceptChanged (the person confirmed another set of work).
+	ExpectTip, ExpectFrom string
 }
 
 // AcceptReport says what Accept did, or would do.
@@ -933,6 +940,9 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 	rep := &AcceptReport{Branch: q.Branch(), Tip: q.Tip(), From: s.apply.applied, DryRun: o.DryRun}
 	if rep.From == "" {
 		rep.From = q.Base()
+	}
+	if !o.DryRun && o.ExpectTip != "" && (o.ExpectTip != rep.Tip || o.ExpectFrom != rep.From) {
+		return rep, ErrAcceptChanged
 	}
 	incoming := map[string]bool{}
 	if rep.Tip != rep.From {

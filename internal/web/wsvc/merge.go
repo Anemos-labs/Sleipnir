@@ -177,25 +177,39 @@ func (s *service) handleAccept(w http.ResponseWriter, r *http.Request) {
 		fail(w, errNotIsolated)
 		return
 	}
-	opts := swarm.AcceptOptions{Commits: commits, Message: req.Message, DryRun: req.DryRun}
+	mode := map[bool]string{true: "commits", false: "edits"}[commits]
+	// The dry run, always: it is the answer to a dry run, and what a confirmation binds.
+	dry, err := sess.ApplyVerified(r.Context(), swarm.AcceptOptions{Commits: commits, DryRun: true})
+	if err != nil {
+		fail(w, acceptError(err, dry))
+		return
+	}
+	shown := acceptResult(dry, acc.TabID(), mode)
 	if req.DryRun {
-		rep, err := sess.ApplyVerified(r.Context(), opts)
-		if err != nil {
-			fail(w, acceptError(err, rep))
-			return
-		}
-		_ = web.WriteJSON(w, http.StatusOK, acceptResult(rep))
+		_ = web.WriteJSON(w, http.StatusOK, shown)
 		return
 	}
-	if !s.srv.RequireConfirm(w, r, "accept:"+acc.TabID()) {
+	if req.Scope != "" && req.Scope != shown.Scope {
+		fail(w, acceptChanged(shown))
 		return
 	}
+	if !s.srv.RequireConfirm(w, r, shown.Scope) {
+		return
+	}
+	opts := swarm.AcceptOptions{Commits: commits, Message: req.Message, ExpectTip: dry.Tip, ExpectFrom: dry.From}
 	var rep *swarm.AcceptReport
-	err := s.exclusive(r.Context(), acc, func(sess *session.Session) error {
+	err = s.exclusive(r.Context(), acc, func(sess *session.Session) error {
 		var err error
 		rep, err = sess.ApplyVerified(r.Context(), opts)
+		if errors.Is(err, swarm.ErrAcceptChanged) {
+			now, derr := sess.ApplyVerified(r.Context(), swarm.AcceptOptions{Commits: commits, DryRun: true})
+			if derr != nil {
+				return derr
+			}
+			return acceptChanged(acceptResult(now, acc.TabID(), mode))
+		}
 		if err == nil {
-			s.logAction(sess, "accept", map[string]any{"mode": map[bool]string{true: "commits", false: "edits"}[commits], "files": len(rep.Files), "commit": rep.Commit})
+			s.logAction(sess, "accept", map[string]any{"mode": mode, "files": len(rep.Files), "commit": rep.Commit})
 		}
 		return err
 	})
@@ -206,17 +220,30 @@ func (s *service) handleAccept(w http.ResponseWriter, r *http.Request) {
 	if rep.Message != "" {
 		acc.Emit(&wire.Say{Who: "sys", Glyph: "✓", Text: rep.Message})
 	}
-	_ = web.WriteJSON(w, http.StatusOK, acceptResult(rep))
+	_ = web.WriteJSON(w, http.StatusOK, acceptResult(rep, acc.TabID(), mode))
 }
 
-// acceptResult is the wire form of an application's report.
-func acceptResult(rep *swarm.AcceptReport) wire.AcceptResult {
+// acceptResult is the wire form of an application's report. A dry run's carries the scope
+// that confirms exactly it: accept:<tab>:<d16 of the mode, the integration tip, the
+// checkout's position, the files and the tasks>.
+func acceptResult(rep *swarm.AcceptReport, tab, mode string) wire.AcceptResult {
 	out := wire.AcceptResult{Commit: rep.Commit, Files: nonNil(rep.Files), Branch: rep.Checkout, Tasks: rep.Tasks, Applied: rep.Applied,
 		Committed: rep.Committed, Waiting: rep.Waiting, CanCommit: rep.CanCommit, Message: rep.Message, DryRun: rep.DryRun}
 	if rep.CommitBlocked != nil {
 		out.CommitBlocked = clip(rep.CommitBlocked.Error(), 400)
 	}
+	if rep.DryRun {
+		out.Scope = "accept:" + tab + ":" + d16(map[string]string{"mode": mode, "tip": rep.Tip, "from": rep.From,
+			"files": strings.Join(rep.Files, "\x00"), "tasks": strings.Join(rep.Tasks, "\x00")})
+	}
 	return out
+}
+
+// acceptChanged is the refusal of a confirmed application whose work is not the one
+// confirmed: 409 changed, with the dry run as it is now (and its scope) in the detail.
+func acceptChanged(now wire.AcceptResult) error {
+	return &wire.Error{Status: http.StatusConflict, Code: "changed",
+		Msg: "the verified work changed since it was shown: look at it again and confirm", Detail: now}
 }
 
 // acceptError maps Accept's refusals to the contract's errors (409 not_isolated, nothing,

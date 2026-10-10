@@ -3,6 +3,8 @@ package wsvc
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"path/filepath"
@@ -245,7 +247,7 @@ func shortSHA(sha string) string {
 // handleDiff answers GET /api/sessions/{id}/ws/diff?path=&from=&to= (from base and to live
 // by default).
 func (s *service) handleDiff(w http.ResponseWriter, r *http.Request) {
-	_, sess, ok := s.tabOf(w, r)
+	acc, sess, ok := s.tabOf(w, r)
 	if !ok {
 		return
 	}
@@ -275,7 +277,42 @@ func (s *service) handleDiff(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	scopeHunks(&d, acc.TabID(), nowSum(sess, rel))
 	_ = web.WriteJSON(w, http.StatusOK, d.out)
+}
+
+// scopeHunks gives every hunk of a diff the confirmation scope of reverting exactly it in
+// the file as it is now: revert:<tab>:<d16 of the path, the hunk's key, the two points,
+// the hunk's lines and the checksum of the live file>.
+func scopeHunks(d *fileDiff, tab, liveSum string) {
+	for i := range d.out.Hunks {
+		d.out.Hunks[i].Scope = hunkScope(tab, d.out, d.out.Hunks[i], liveSum)
+	}
+}
+
+// hunkScope is the confirmation scope of reverting one hunk (see scopeHunks).
+func hunkScope(tab string, d wire.WsDiff, h wire.Hunk, liveSum string) string {
+	var b strings.Builder
+	for _, l := range h.Lines {
+		b.WriteString(l.T)
+		b.WriteString(l.S)
+		b.WriteByte('\n')
+	}
+	lines := sha256.Sum256([]byte(b.String()))
+	return "revert:" + tab + ":" + d16(map[string]string{"path": d.Path, "key": hunkKey(h.OldStart, h.NewStart), "from": d.From, "to": d.To,
+		"lines": hex.EncodeToString(lines[:]), "sum": liveSum})
+}
+
+// hunkKey is a hunk's key as the page names it.
+func hunkKey(oldStart, newStart int) string {
+	return strconv.Itoa(oldStart) + ":" + strconv.Itoa(newStart)
+}
+
+// revertChanged is the refusal of a confirmed revert whose hunk or file is not the one
+// confirmed: 409 changed, with the diff as it is now (its hunks carry their new scopes).
+func revertChanged(d wire.WsDiff) error {
+	return &wire.Error{Status: http.StatusConflict, Code: "changed",
+		Msg: "the file changed since the diff was drawn: look at the new diff and confirm again", Detail: d}
 }
 
 // fileDiff is a diff and the contents it was computed from.
@@ -422,14 +459,35 @@ func (s *service) handleRevert(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	scope := "revert:" + acc.TabID() + ":" + d16(map[string]string{"path": req.Path, "key": req.Key, "from": req.From, "to": req.To})
+	// The confirmation is of one hunk of the file as the person saw it: when either
+	// changed since, the hunk's scope is another, and the answer is the new diff.
+	release, err := s.acquire(r.Context())
+	if err != nil {
+		return
+	}
+	scope, shown, err := s.revertScope(sess, acc.TabID(), rel, req.Key, from, to)
+	release()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if req.Scope != "" && req.Scope != scope {
+		fail(w, revertChanged(shown))
+		return
+	}
 	if !s.srv.RequireConfirm(w, r, scope) {
 		return
 	}
 	prev, _ := sess.LastWriter(rel) // the agent to tell, before the revert makes the person the last writer
 	var rec *revertRec
 	err = s.exclusive(r.Context(), acc, func(sess *session.Session) error {
-		var err error
+		now, d, err := s.revertScope(sess, acc.TabID(), rel, req.Key, from, to)
+		if err != nil {
+			return err
+		}
+		if now != scope {
+			return revertChanged(d)
+		}
 		rec, err = s.revert(sess, rel, req.Key, from, to)
 		return err
 	})
@@ -443,6 +501,22 @@ func (s *service) handleRevert(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logAction(sess, "revert", map[string]any{"path": rel, "key": req.Key, "from": from.name(), "to": to.name()})
 	_ = web.WriteJSON(w, http.StatusOK, wire.WsRevert{ID: rec.id, Path: rec.path, Key: rec.key, At: rec.at})
+}
+
+// revertScope is the scope of reverting the hunk with key, and the diff it is part of; a
+// hunk that is not in the diff now is 409 changed (with the diff).
+func (s *service) revertScope(sess *session.Session, tab, rel, key string, from, to point) (string, wire.WsDiff, error) {
+	fd, _, err := s.diffOf(sess, rel, from, to)
+	if err != nil {
+		return "", wire.WsDiff{}, err
+	}
+	scopeHunks(&fd, tab, nowSum(sess, rel))
+	for _, h := range fd.out.Hunks {
+		if hunkKey(h.OldStart, h.NewStart) == key {
+			return h.Scope, fd.out, nil
+		}
+	}
+	return "", fd.out, revertChanged(fd.out)
 }
 
 // revert reverses one hunk of the diff of rel between two points in the live file.

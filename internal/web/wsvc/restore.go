@@ -1,6 +1,9 @@
 package wsvc
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -9,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -91,7 +95,7 @@ func (s *service) handleRestore(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer release()
-		plan, _, err := s.preview(sess, cp)
+		plan, _, err := s.preview(sess, acc.TabID(), cp)
 		if err != nil {
 			fail(w, err)
 			return
@@ -99,16 +103,35 @@ func (s *service) handleRestore(w http.ResponseWriter, r *http.Request) {
 		_ = web.WriteJSON(w, http.StatusOK, plan)
 		return
 	}
-	if !s.srv.RequireConfirm(w, r, "restore:"+acc.TabID()+":"+uiID(cp)) {
+	// The confirmation is of one plan: the one the person previewed. When the files or the
+	// checkpoints changed since, the plan's scope is another, and the answer is the new plan.
+	release, err := s.acquire(r.Context())
+	if err != nil {
+		return
+	}
+	shown, _, err := s.preview(sess, acc.TabID(), cp)
+	release()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if req.Scope != "" && req.Scope != shown.Scope {
+		fail(w, planChanged(shown))
+		return
+	}
+	if !s.srv.RequireConfirm(w, r, shown.Scope) {
 		return
 	}
 	var plan wire.RestorePlan
 	var note string
 	var evs []wire.Event
-	err := s.exclusive(r.Context(), acc, func(sess *session.Session) error {
-		pre, conflicts, err := s.preview(sess, cp)
+	err = s.exclusive(r.Context(), acc, func(sess *session.Session) error {
+		pre, conflicts, err := s.preview(sess, acc.TabID(), cp)
 		if err != nil {
 			return err
+		}
+		if pre.Scope != shown.Scope {
+			return planChanged(pre)
 		}
 		if len(conflicts) > 0 {
 			return &wire.Error{Status: http.StatusConflict, Code: "conflict",
@@ -158,10 +181,18 @@ func (s *service) handleRestore(w http.ResponseWriter, r *http.Request) {
 	_ = web.WriteJSON(w, http.StatusOK, plan)
 }
 
+// planChanged is the refusal of a confirmed restore whose plan is not the one confirmed:
+// 409 changed, with the plan as it is now (and its scope) in the detail.
+func planChanged(plan wire.RestorePlan) error {
+	return &wire.Error{Status: http.StatusConflict, Code: "changed",
+		Msg: "the files changed since the preview: look at the new plan and confirm it again", Detail: plan}
+}
+
 // preview is the dry run of a restore as a plan, with the files a restore would refuse
 // because they were edited since (their outcome is conflict); it refuses a checkpoint
-// with nothing to put back (409 nothing).
-func (s *service) preview(sess *session.Session, cp string) (wire.RestorePlan, []string, error) {
+// with nothing to put back (409 nothing). The plan's scope binds a confirmation to it:
+// restore:<tab>:<cid>:<d16 of every file's path, action, outcome and current content>.
+func (s *service) preview(sess *session.Session, tab, cp string) (wire.RestorePlan, []string, error) {
 	rep, err := sess.Ckpt.Restore(cp, checkpoint.RestoreOpts{DryRun: true})
 	if errors.Is(err, checkpoint.ErrUnknownCheckpoint) {
 		return wire.RestorePlan{}, nil, werr(http.StatusNotFound, "no_checkpoint", "there is no such checkpoint")
@@ -187,7 +218,37 @@ func (s *service) preview(sess *session.Session, cp string) (wire.RestorePlan, [
 	if planned == 0 && len(conflicts) == 0 {
 		return plan, nil, werr(http.StatusConflict, "nothing", uiID(cp)+" has nothing to put back")
 	}
+	plan.Scope = "restore:" + tab + ":" + uiID(cp) + ":" + planDigest(sess, cp, rep)
 	return plan, conflicts, nil
+}
+
+// planDigest fingerprints what a restore would do: for every file of the dry run its
+// path, action and outcome, and the checksum of what the file holds now.
+func planDigest(sess *session.Session, cp string, rep checkpoint.RestoreReport) string {
+	items := make([][4]string, 0, len(rep.Files))
+	for _, f := range rep.Files {
+		items = append(items, [4]string{f.Path, string(f.Action), string(f.Outcome), nowSum(sess, f.Path)})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i][0] < items[j][0] })
+	b, _ := json.Marshal(struct {
+		CP    string      `json:"cp"`
+		Files [][4]string `json:"files"`
+	}{cp, items})
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// nowSum is the checksum of a project file now ("absent", or the kind of failure for
+// something that is not a readable regular file).
+func nowSum(sess *session.Session, rel string) string {
+	data, ok, err := sess.Ckpt.CurrentContent(rel)
+	switch {
+	case err != nil:
+		return "unreadable:" + err.Error()
+	case !ok:
+		return "absent"
+	}
+	return string(core.HashBytes(data))
 }
 
 // planOf is a preview with the outcomes of the restore that was made.
