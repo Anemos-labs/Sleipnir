@@ -206,8 +206,11 @@ are the types of `internal/web/wire/events.go`, found by their `k`:
 Kinds and fields that the server adds to the base vocabulary are in `internal/web/translate/events.go`: the kinds `alert`,
 `mailstat` and `svc`, and extra fields on `state`, `task`, `mail`, `use`, `tool`, `compact` and `req`. A `compact` event says in
 `moment` whether the shared prefix's cache was `warm` (a declared, priced rebase) or `cold` (the rewrite costs nothing extra) when
-the compaction was decided, and has none for a compaction that was not planned. A `req` event carries `mark` when the agent took a
-new shared prefix (`epoch`) or dropped its thinking blocks (`rebase`) before the request it reports, the places the terminal marks
+the compaction was decided, and has none for a compaction that no plan preceded (an emergency compaction, or one a person asked
+for): nobody chose its moment and the log does not tell its price, so a page states none for it. `mode` says how the thread was
+folded, in the terminal's words: `fork` (the compactor model's patch), `mask` (bulky results folded without a model) or `emergency`
+(the harness's own safety net); a page shows a compaction with no `moment` as, say, "emergency compaction", as the terminal's feed
+does. A `req` event carries `mark` when the agent took a new shared prefix (`epoch`) or dropped its thinking blocks (`rebase`) before the request it reports, the places the terminal marks
 on an agent's hit-ratio line. An `svc` event carries, as absolute values, the
 tokens, cost and estimated saving of the harness's own service agents (the mailman) together; they are in no roster and have no
 `use` event, and a page adds them to the totals of its agents so that the totals are those of the run.
@@ -221,6 +224,14 @@ running) and a background job that finished, was killed or exited with an error.
 verification failed is a `sys` row of its own after the row of the failure. These rows are held to the rate limit of notices (20 in
 10 seconds, the rest counted in one row). While a compaction is worked out, from the planner's decision to its commit or rejection,
 the agent's `state` event says it folds its thread.
+
+In a hosted session three of these events are also given to the session's sink as a notice by the swarm, with the same words and more
+(a feed line cuts its text at 160 characters and its small print at 80): a wake (the note the manager is woken with), the bound on
+wakes (how many, and what the manager waits for) and a run that ended with work unfinished (the whole list). The page shows the
+notice, in the manager's channel, in the place of the line, so that the fact is one row; the notice is matched to its event by the
+words the swarm computes from the event (`swarm.WakePausedNotice`, `swarm.UnfinishedNotice`), whichever of the two arrives first. A
+line whose notice has not come after 2 seconds is shown after all, and so is every line of a log that no sink goes with (a followed or
+replayed one). Every other notice is a row of its own, as it is given.
 
 ## Routes
 

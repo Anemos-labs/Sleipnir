@@ -378,9 +378,15 @@ func (t *Translator) notice(uid, level, msg string, ts float64, fromSink bool) {
 }
 
 // noticeAt sends a notice as a sys row of the agent's channel (the manager's for the session's own), once whichever side it came
-// from, within the rate limit.
+// from, within the rate limit. The notice of the sink that an event of the log has a row for takes the place of that row (pairs.go).
 func (t *Translator) noticeAt(uid, level, msg string, ts float64, at int64, fromSink bool) {
-	if msg == "" || t.twin(uid, msg, fromSink, ts) || !t.pass(ts) {
+	if msg == "" {
+		return
+	}
+	if fromSink {
+		t.pairTaken(uid, level, msg)
+	}
+	if t.twin(uid, msg, fromSink, ts) || !t.pass(ts) {
 		return
 	}
 	glyph := "◇"
@@ -392,6 +398,9 @@ func (t *Translator) noticeAt(uid, level, msg string, ts float64, at int64, from
 		ag = uid
 	}
 	t.sysRow(uid, glyph, msg, ag, "", ts, at)
+	if fromSink {
+		t.noteShown(uid, level, msg, ts)
+	}
 }
 
 // lease sends the lease warnings a person should see: a write refused because another agent holds the file, or outside its task's
@@ -647,21 +656,27 @@ func (t *Translator) compact(e events.Event, ts float64, at int64) {
 	if from > 0 {
 		pct = int(roundHalfAway(float64(to-from) / float64(from) * 100))
 	}
-	t.put(&CompactX{Compact: wire.Compact{ID: uiID(e.Agent), From: from, To: to, Pct: pct}, Moment: t.compactMoment(e)}, ts, at, nil)
+	moment, mode := t.compactFacts(e)
+	t.put(&CompactX{Compact: wire.Compact{ID: uiID(e.Agent), From: from, To: to, Pct: pct}, Moment: moment, Mode: mode}, ts, at, nil)
 }
 
-// compactMoment is whether the cache was warm or cold when the planner decided on the compaction the log event commits ("warm",
-// "cold"), as the State worked it out from the compact.plan before it for the terminal; "" for a compaction that had no plan.
-func (t *Translator) compactMoment(e events.Event) string {
+// compactFacts are what the State knows of the compaction the log event commits, as it worked them out for the terminal: whether the
+// cache was warm or cold when the planner decided on it ("warm", "cold"; "" for a compaction that had no plan, whose moment nobody
+// chose) and how the thread was folded ("fork", "mask", "emergency"; "" when the State has no such commit).
+func (t *Translator) compactFacts(e events.Event) (moment, mode string) {
 	c, ok := t.st.LastCompaction(e.Agent)
 	if !ok || (e.Seq != 0 && c.Seq != e.Seq) {
-		return ""
+		return "", ""
 	}
 	switch c.Moment {
 	case "warm", "cold":
-		return c.Moment
+		moment = c.Moment
 	}
-	return ""
+	switch c.Mode {
+	case "fork", "mask", "emergency":
+		mode = c.Mode
+	}
+	return moment, mode
 }
 
 // roundHalfAway rounds to the nearest integer, halves away from zero.

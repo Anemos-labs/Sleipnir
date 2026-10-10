@@ -26,12 +26,16 @@ type UseX struct {
 	Unpriced     int64 `json:"unpriced,omitempty"`
 }
 
-// CompactX is a compact event with Moment: whether the shared prefix's cache was "warm" when the planner decided on the compaction (a
-// declared, priced rebase) or "cold" (the rewrite costs nothing extra), as the compact.plan before the commit said; absent for a
-// compaction with no plan before it (an emergency or a mask compaction).
+// CompactX is a compact event with Moment and Mode. Moment says whether the shared prefix's cache was "warm" when the planner decided
+// on the compaction (a declared, priced rebase) or "cold" (the rewrite costs nothing extra), as the compact.plan before the commit
+// said; it is absent for a compaction with no plan before it (an emergency compaction, or one a person asked for), whose moment nobody
+// chose and whose price the log does not tell. Mode is how the thread was folded, in the State's words: "fork" (the compactor model's
+// patch), "mask" (bulky results folded without a model) or "emergency" (the harness's own safety net); absent when the State does not
+// know the commit.
 type CompactX struct {
 	wire.Compact
 	Moment string `json:"moment,omitempty"`
+	Mode   string `json:"mode,omitempty"`
 }
 
 // ReqX is a req event with Mark: "epoch" when the agent took a new shared prefix before the request (layer.commit shared-sync, the

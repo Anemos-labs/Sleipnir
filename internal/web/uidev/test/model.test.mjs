@@ -102,15 +102,36 @@ test('use, warm, gov, queue, layers, stall, alert, handover, mailstat: counters 
   ['more', 'turn', 'stall', 'handover', 'layers'].forEach(k => assert.equal(SL.model.isVisible({ k }), false));
 });
 
-test('compact: the moment the planner decided at (warm or cold) is kept with the compaction, in the log of every channel and for the Cache view; anything else is dropped', () => {
+test('compact: the moment the planner decided at (warm or cold) and the mode are kept with the compaction, in the log of every channel and for the Cache view; anything else is dropped', () => {
   const SL = setup(), S = session([{ k: 'state', id: 'be-1' }]), m = SL.model.newModel(S);
-  SL.model.reduce(m, { t: 1, k: 'compact', id: 'be-1', from: 9000, to: 1000, pct: -89, moment: 'cold' });
-  SL.model.reduce(m, { t: 2, k: 'compact', id: 'be-1', from: 8000, to: 900, pct: -89, moment: 'warm' });
-  SL.model.reduce(m, { t: 3, k: 'compact', id: 'be-1', from: 7000, to: 800, pct: -89 });
-  SL.model.reduce(m, { t: 4, k: 'compact', id: 'be-1', from: 6000, to: 700, pct: -88, moment: '<img src=x>' });
-  assert.deepEqual(plain(m.compactions.map(c => c.moment)), ['cold', 'warm', '', '']);
-  assert.deepEqual(plain(m.chan.mgr.filter(e => e.k === 'compact').map(e => e.moment)), ['cold', 'warm', '', '']);
-  assert.deepEqual(plain(m.chan['be-1'].filter(e => e.k === 'compact').map(e => e.moment)), ['cold', 'warm', '', '']);
+  SL.model.reduce(m, { t: 1, k: 'compact', id: 'be-1', from: 9000, to: 1000, pct: -89, moment: 'cold', mode: 'fork' });
+  SL.model.reduce(m, { t: 2, k: 'compact', id: 'be-1', from: 8000, to: 900, pct: -89, moment: 'warm', mode: 'mask' });
+  SL.model.reduce(m, { t: 3, k: 'compact', id: 'be-1', from: 7000, to: 800, pct: -89, mode: 'emergency' });
+  SL.model.reduce(m, { t: 4, k: 'compact', id: 'be-1', from: 6000, to: 700, pct: -88, moment: '<img src=x>', mode: '<img src=x>' });
+  SL.model.reduce(m, { t: 5, k: 'compact', id: 'be-1', from: 5000, to: 600, pct: -88 });
+  const moments = ['cold', 'warm', '', '', ''], modes = ['fork', 'mask', 'emergency', '', ''];
+  assert.deepEqual(plain(m.compactions.map(c => c.moment)), moments); assert.deepEqual(plain(m.compactions.map(c => c.mode)), modes);
+  for (const ch of ['mgr', 'be-1']) {
+    assert.deepEqual(plain(m.chan[ch].filter(e => e.k === 'compact').map(e => e.moment)), moments);
+    assert.deepEqual(plain(m.chan[ch].filter(e => e.k === 'compact').map(e => e.mode)), modes);
+  }
+});
+
+test('compactNote: a compaction says its price only when the planner decided on its moment; one nobody planned says how it was made, or nothing', () => {
+  const SL = setup(), note = (c, long) => SL.calc.compactNote(c, long);
+  assert.equal(note({ moment: 'cold' }, false), 'cache rewritten while cold: free');
+  assert.equal(note({ moment: 'cold' }, true), 'the cache was cold, so the rewrite cost nothing extra');
+  assert.equal(note({ moment: 'warm' }, false), 'a declared, priced rebase');
+  assert.equal(note({ moment: 'warm' }, true), 'the cache was warm: a declared, priced rebase');
+  assert.equal(note({ moment: 'warm', mode: 'fork' }, false), 'a declared, priced rebase', 'a known moment is the whole note');
+  for (const long of [false, true]) {
+    assert.equal(note({ moment: '', mode: 'emergency' }, long), 'emergency compaction');
+    assert.equal(note({ mode: 'mask' }, long), 'mask compaction');
+    assert.equal(note({ mode: 'fork' }, long), 'fork compaction');
+    for (const c of [{}, { moment: '', mode: '' }, { moment: 'lukewarm', mode: 'both' }, { moment: 7, mode: '<img src=x>' }, null, undefined]) {
+      assert.equal(note(c, long), '', 'no claim of a price or a rebase for ' + JSON.stringify(c));
+    }
+  }
 });
 
 test('req: the mark of a request (a new epoch, a rebase) is kept beside its ratio for the Cache view, bounded with it; anything else is no mark', () => {

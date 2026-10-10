@@ -6,6 +6,7 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -106,6 +107,17 @@ func TestWakeHappensOnceForABurstOfThreeCompletions(t *testing.T) {
 	}
 	if !sink.has("mgr wake: " + wakeMarker + ": T1 is in review (be-1); T2 is in review (fe-1); T3 is in review (fs-1)") {
 		t.Fatalf("the person was not shown the wake: %v", sink.all())
+	}
+	// The notice is the event's note, word for word: the web page drops the notice or the feed's row of the same event by comparing them.
+	var woke struct {
+		N    int    `json:"n"`
+		Note string `json:"note"`
+	}
+	if err := json.Unmarshal(evs[0].Data, &woke); err != nil || woke.Note == "" {
+		t.Fatalf("the swarm.wake event: %v %s", err, evs[0].Data)
+	}
+	if got := sink.all(); len(got) == 0 || !sink.has("mgr wake: "+woke.Note) {
+		t.Fatalf("the notice is not the event's note %q: %v", woke.Note, got)
 	}
 	for _, id := range []string{"T1", "T2", "T3"} {
 		if tk, _ := r.sw.Board.Snapshot().Task(id); tk.Status != StatusReview {
@@ -270,6 +282,17 @@ func TestWakeIsBoundedBetweenHumanInputs(t *testing.T) {
 	}
 	if n := len(r.log.OfType(events.TypeSwarmWakePaused)); n != 1 {
 		t.Fatalf("%d wake.paused events, want 1", n)
+	}
+	// The notice is WakePausedNotice of the event's count and the note of what the manager waits for: the web page drops the notice or the
+	// feed's row of the same event by computing the part of it the event tells, so the two must not part.
+	var paused struct {
+		N int `json:"n"`
+	}
+	if err := json.Unmarshal(r.log.OfType(events.TypeSwarmWakePaused)[0].Data, &paused); err != nil || paused.N != 2 {
+		t.Fatalf("the swarm.wake.paused event: %v %s", err, r.log.OfType(events.TypeSwarmWakePaused)[0].Data)
+	}
+	if !sink.has("mgr warn: "+WakePausedNotice(paused.N, "")) || !sink.has("waiting for it: ") {
+		t.Fatalf("the notice does not begin with WakePausedNotice of the event's count: %v", sink.all())
 	}
 	// A human input resets the count: the next event wakes the manager again.
 	r.sw.HumanInput()

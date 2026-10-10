@@ -635,13 +635,18 @@ func (s *Swarm) afterManagerRun(m *member, res *agent.Result) {
 			}
 			res.Text += "[harness] Unfinished when the manager stopped: " + txt + "."
 			s.emitAs(m.id, events.TypeSwarmUnfinished, map[string]any{"unfinished": txt})
-			s.managerNotice(m, "warn", "the manager stopped with unfinished work: "+txt)
+			s.managerNotice(m, "warn", UnfinishedNotice(txt))
 		}
 	}
 	if s.cfg.WakeManager && s.wakeNote(m) != "" {
 		s.managerEvent()
 	}
 }
+
+// UnfinishedNotice is the notice the swarm gives with a swarm.unfinished event, whose `unfinished` field is left: the manager stopped
+// with that work undone. A reader of the log that also receives the notice (the web page) recognizes it as the event's by computing it
+// from the event with this function.
+func UnfinishedNotice(left string) string { return "the manager stopped with unfinished work: " + left }
 
 // Unfinished says what the manager's last run left undone: the running workers, the submissions waiting for a verdict and the
 // tasks nobody finished, as the final answer's harness note lists them. It is empty for a run that settled its board, and for

@@ -215,7 +215,7 @@
 {"t":1.984,"k":"task","seq":215,"id":"T7","title":"Smoke tests: start the service, fill a cart, read the total, check out","owner":"ts-1","scope":"tests/**","s":"merged"}
 {"t":1.984,"k":"merge","seq":216,"id":"T7","cmd":"sh verify.sh","ms":45}
 {"t":1.984,"k":"queue","seq":217,"head":null,"conflicts":0,"bounced":0}
-{"t":1.984,"k":"compact","seq":218,"id":"ts-1","from":2827,"to":374,"pct":-87,"moment":"warm"}
+{"t":1.984,"k":"compact","seq":218,"id":"ts-1","from":2827,"to":374,"pct":-87,"moment":"warm","mode":"fork"}
 {"t":2.007,"k":"state","seq":219,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
 {"t":2.039,"k":"req","seq":220,"id":"be-1","ratio":0.9475054229934924,"p":9220,"o":25}
 {"t":2.039,"k":"use","seq":221,"id":"be-1","rd":27792,"un":4489,"out":635,"wr":0,"cost":0.0069885,"saved":0.010421999999999999}
@@ -227,7 +227,7 @@
 {"t":2.041,"k":"use","seq":227,"id":"be-2","rd":42624,"un":4318,"out":317,"wr":0,"cost":0.008121,"saved":0.015984}
 {"t":2.041,"k":"layers","seq":228,"id":"be-2","toks":[4794,271,154,249,0,2778]}
 {"t":2.041,"k":"state","seq":229,"id":"be-2","s":"think","doing":"folds its thread","task":"T5"}
-{"t":2.045,"k":"compact","seq":230,"id":"be-2","from":2798,"to":352,"pct":-87,"moment":"warm"}
+{"t":2.045,"k":"compact","seq":230,"id":"be-2","from":2798,"to":352,"pct":-87,"moment":"warm","mode":"fork"}
 {"t":2.073,"k":"use","seq":231,"id":"be-1","rd":36528,"un":5605,"out":758,"wr":0,"cost":0.0088845,"saved":0.013697999999999998}
 {"t":2.073,"k":"state","seq":232,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":2.01}
 {"t":2.112,"k":"req","seq":233,"id":"ts-1","ratio":0.9015578389128273,"p":6034,"o":10}
@@ -320,7 +320,7 @@
 {"t":3.763,"k":"warm","seq":320,"ttl":21}
 {"t":3.764,"k":"state","seq":321,"id":"fe-1","s":"tool","doing":"Bash sleep 0.5","task":"T6"}
 {"t":3.845,"k":"state","seq":322,"id":"be-1","s":"think","doing":"folds its thread","task":"T4"}
-{"t":3.845,"k":"compact","seq":323,"id":"be-1","from":3883,"to":751,"pct":-81,"moment":"cold"}
+{"t":3.845,"k":"compact","seq":323,"id":"be-1","from":3883,"to":751,"pct":-81,"moment":"cold","mode":"fork"}
 {"t":4.005,"k":"req","seq":324,"id":"be-1","ratio":0.8219952867242734,"p":6365,"o":22}
 {"t":4.005,"k":"use","seq":325,"id":"be-1","rd":41760,"un":6738,"out":780,"wr":0,"cost":0.010149,"saved":0.01566}
 {"t":4.005,"k":"layers","seq":326,"id":"be-1","toks":[4794,276,157,298,66,774]}
@@ -415,7 +415,7 @@
 {"t":5.943,"k":"queue","seq":415,"head":null,"conflicts":0,"bounced":1}
 {"t":5.943,"k":"state","seq":416,"id":"fe-1","s":"think","doing":"folds its thread","task":"T6"}
 {"t":5.943,"k":"state","seq":417,"id":"mgr","s":"wait","doing":"reviewing results","task":null}
-{"t":5.943,"k":"compact","seq":418,"id":"fe-1","from":2540,"to":602,"pct":-76,"moment":"warm"}
+{"t":5.943,"k":"compact","seq":418,"id":"fe-1","from":2540,"to":602,"pct":-76,"moment":"warm","mode":"fork"}
 {"t":6.001,"k":"state","seq":419,"id":"fe-1","s":"think","doing":"coordinating","task":"T6","reqSince":6.001}
 {"t":6.001,"k":"state","seq":420,"id":"mgr","s":"think","doing":"reviewing results","task":null}
 {"t":6.02,"k":"state","seq":421,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}

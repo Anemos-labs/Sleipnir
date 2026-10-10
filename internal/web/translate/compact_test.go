@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -73,8 +74,9 @@ func TestAnAgentThatCompactsSaysSo(t *testing.T) {
 	check("a tool call during the compaction")
 }
 
-// The page's row of a compaction says whether the cache was warm or cold when the planner decided on it, as the terminal's does; a
-// compaction with no plan before it (an emergency or a mask compaction) says neither.
+// The page's row of a compaction says whether the cache was warm or cold when the planner decided on it, as the terminal's does, and how
+// the thread was folded (fork, mask or emergency); a compaction with no plan before it (an emergency compaction, or one a person asked
+// for) has no moment, since nobody chose one and the log does not tell its price, and says only how it was made.
 func TestACompactionSaysWhetherTheCacheWasWarm(t *testing.T) {
 	h, b := compactionLog(t)
 	step := func(typ string, data map[string]any) {
@@ -90,15 +92,22 @@ func TestACompactionSaysWhetherTheCacheWasWarm(t *testing.T) {
 	commit("emergency: the prompt would not fit")
 	step("compact.plan", map[string]any{"decision": "start", "mode": "mask", "warm": false})
 	commit("mask: bulky results")
-	var moments []any
+	commit("mask: bulky results, asked for by a person")
+	commit("a person asked for it")
+	step("compact.plan", map[string]any{"decision": "commit?", "yes": true}) // a plan that does not say whether the cache was warm
+	commit("thread over its limit")
+	var moments, modes []any
 	for _, e := range ofKind(h.decoded(), "compact") {
 		if e["from"] != 9000.0 || e["to"] != 1000.0 || e["pct"] != -89.0 {
 			t.Errorf("the compaction: %v", e)
 		}
-		moments = append(moments, e["moment"])
+		moments, modes = append(moments, e["moment"]), append(modes, e["mode"])
 	}
-	if len(moments) != 4 || moments[0] != "cold" || moments[1] != "warm" || moments[2] != nil || moments[3] != "cold" {
-		t.Fatalf("the moments of the four compactions: %v", moments)
+	if len(moments) != 7 || moments[0] != "cold" || moments[1] != "warm" || moments[2] != nil || moments[3] != "cold" || moments[4] != nil || moments[5] != nil || moments[6] != nil {
+		t.Fatalf("the moments of the seven compactions: %v", moments)
+	}
+	if want := []any{"fork", "fork", "emergency", "mask", "mask", "fork", "fork"}; !reflect.DeepEqual(modes, want) {
+		t.Fatalf("the modes of the seven compactions: %v, want %v", modes, want)
 	}
 }
 

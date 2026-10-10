@@ -31,6 +31,8 @@ type deriveState struct {
 	g0       int
 	gate     noticeGate
 	dedupe   noticeDedupe
+	pairs    []*pair       // events with a notice twin, with the feed row held for it, until the notice came or the wait is over (pairs.go)
+	shown    []shownNotice // notices of the sink that were shown, until the event they may belong to came
 	lastErr  map[string]string
 	hold     map[string]holdInfo  // UI id -> a sink tool start the log has not caught up with
 	pend     map[string]*pendTool // log-only tool rows waiting for their output (callKey of the agent and the tool call id)

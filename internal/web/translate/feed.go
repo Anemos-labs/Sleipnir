@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
@@ -12,17 +13,28 @@ import (
 
 // feedRows sends the lines the State's feed received for the log event being applied as system rows of the manager's channel, within
 // the rate limit of notices (past it the rows are counted into one). Each row carries the line's agent, and its small print after
-// the text.
-func (t *Translator) feedRows(ts float64, at int64) {
-	for _, l := range t.d.fed {
-		if !t.pass(ts) {
-			continue
-		}
+// the text. In a hosted session a few events have a notice twin that says the same or more (pairs.go): the line of such an event is
+// shown, or held for its notice, as the pair decides.
+func (t *Translator) feedRows(e events.Event, ts float64, at int64) {
+	p := t.pairOf(e, ts)
+	for i, l := range t.d.fed {
 		who := ""
 		if !nonAgent(l.Agent) {
 			who = uiID(l.Agent)
 		}
-		t.sysRow("mgr", feedGlyph(l.Glyph), feedText(l), who, "", ts, at)
+		row := heldRow{glyph: feedGlyph(l.Glyph), text: feedText(l), who: who, ts: ts, at: at}
+		if i == 0 && p != nil {
+			t.pairFeedRow(p, row)
+			continue
+		}
+		t.sendFeedRow(row)
+	}
+}
+
+// sendFeedRow sends a feed line as a system row of the manager's channel, if the rate limit of notices lets one more through.
+func (t *Translator) sendFeedRow(r heldRow) {
+	if t.pass(r.ts) {
+		t.sysRow("mgr", r.glyph, r.text, r.who, "", r.ts, r.at)
 	}
 }
 

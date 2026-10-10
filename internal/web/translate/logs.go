@@ -436,7 +436,7 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 		t.merge(e, ts, at)
 	case events.TypeCompactReject, events.TypeLayerCommit, "sink.panic", events.TypeSwarmHold, events.TypeSwarmUnfinished, events.TypeSwarmWake,
 		events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, "swarm.shutdown", events.TypeToolJob:
-		t.feedRows(ts, at)
+		t.feedRows(e, ts, at)
 	case "swarm.budget":
 		var p struct {
 			BudgetUSD float64 `json:"budget_usd"`

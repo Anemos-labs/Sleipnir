@@ -218,10 +218,12 @@
         break;
       }
       case 'compact': {
-        const moment = ev.moment === 'cold' || ev.moment === 'warm' ? ev.moment : '';   /* when the planner decided: a cold cache makes the rewrite free */
-        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
-        push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, t: ev.t }, ev);
-        if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, t: ev.t }, ev);
+        /* when the planner decided (a cold cache makes the rewrite free) and how the thread was folded; both are '' when the server does not say,
+           and a compaction nobody planned (an emergency one, one a person asked for) has no moment: the page then states no price */
+        const moment = ev.moment === 'cold' || ev.moment === 'warm' ? ev.moment : '', mode = ev.mode === 'fork' || ev.mode === 'mask' || ev.mode === 'emergency' ? ev.mode : '';
+        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
+        push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
+        if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
         if (d) d.compacts++;
         break;
       }
@@ -297,6 +299,15 @@
       if (v) { t.prompt += v.rd + v.un; t.read += v.rd; t.un += v.un; t.out += v.out; t.wr += v.wr; t.cost += v.cost; t.saved += v.saved; if (v.savedPartial) t.savedPartial = true; t.unpriced += v.unpriced; }
       t.hit = t.prompt > 0 ? t.read / t.prompt : 0; t.pct = Math.round(t.hit * 100); t.hit1 = Math.round(t.hit * 1000) / 10;
       return t;
+    },
+    /** What a compaction (a row of the conversation, an entry of m.compactions) says about its moment, in the terminal's words: the
+     *  cache rewritten while cold costs nothing extra (short: the conversation's row; long: the Cache view's note), at a warm moment it is a
+     *  declared, priced rebase. A compaction that no plan preceded has no moment and so no price: it says how it was made ("emergency
+     *  compaction", as the terminal's feed does), or nothing when the server did not say. Only the words of this table are ever returned. */
+    compactNote(c, long) {
+      if (c && c.moment === 'cold') return long ? 'the cache was cold, so the rewrite cost nothing extra' : 'cache rewritten while cold: free';
+      if (c && c.moment === 'warm') return long ? 'the cache was warm: a declared, priced rebase' : 'a declared, priced rebase';
+      return c && (c.mode === 'fork' || c.mode === 'mask' || c.mode === 'emergency') ? c.mode + ' compaction' : '';
     },
     /** Seconds of warm cache left on the shared prefix at view time vt (negative = cold). */
     warmLeft(m, vt) { return m.lastReq < -9000 ? 0 : (m.ttl || 25) - (vt - m.lastReq); },

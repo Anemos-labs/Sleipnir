@@ -54,7 +54,7 @@
 {"t":7.85,"k":"alert","seq":54,"s":"raise","kind":"idle","key":"sc-1","text":"sc-1 is idle"}
 {"t":8,"k":"alert","seq":55,"s":"clear","kind":"idle","key":"sc-1"}
 {"t":8.15,"k":"break","seq":56,"id":"be-1","kind":"low_hit","read":0,"expected":4500,"why":"the prompt prefix did not change: the endpoint did not serve it"}
-{"t":8.3,"k":"compact","seq":57,"id":"be-1","from":1400,"to":625,"pct":-55}
+{"t":8.3,"k":"compact","seq":57,"id":"be-1","from":1400,"to":625,"pct":-55,"mode":"fork"}
 {"t":8.45,"k":"gov","seq":58,"rpm":4,"r429":1,"retries":1}
 {"t":8.75,"k":"queue","seq":59,"head":"T1","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":0}
 {"t":8.75,"k":"task","seq":60,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"verify","attempts":1}

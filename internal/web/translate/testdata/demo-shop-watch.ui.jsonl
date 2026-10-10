@@ -253,7 +253,7 @@
 {"t":1.984,"k":"merge","seq":253,"id":"T7","cmd":"sh verify.sh","ms":45}
 {"t":1.984,"k":"queue","seq":254,"head":null,"conflicts":0,"bounced":0}
 {"t":1.984,"k":"tool","seq":255,"id":"ts-1","name":"TaskBoard","arg":"done T7","out":"T7 is now in review (merged into integration 8cccc6a8 (verified); edited 1 (smoke.sh); no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T7","tid":"d1","ms":70}
-{"t":1.984,"k":"compact","seq":256,"id":"ts-1","from":2827,"to":374,"pct":-87,"moment":"warm"}
+{"t":1.984,"k":"compact","seq":256,"id":"ts-1","from":2827,"to":374,"pct":-87,"moment":"warm","mode":"fork"}
 {"t":2.007,"k":"state","seq":257,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
 {"t":2.007,"k":"tool","seq":258,"id":"rv-1","name":"Bash","arg":"sleep 0.5","out":"[exit code 0]","ok":true,"task":"T8","tid":"b544","ms":503}
 {"t":2.039,"k":"req","seq":259,"id":"be-1","ratio":0.9475054229934924,"p":9220,"o":25}
@@ -267,7 +267,7 @@
 {"t":2.041,"k":"layers","seq":267,"id":"be-2","toks":[4794,271,154,249,0,2778]}
 {"t":2.041,"k":"state","seq":268,"id":"be-2","s":"think","doing":"folds its thread","task":"T5"}
 {"t":2.041,"k":"tool","seq":269,"id":"be-2","name":"Bash","arg":"sh checks.sh","out":"2 lines","ok":true,"task":"T5","tid":"c4","ms":4}
-{"t":2.045,"k":"compact","seq":270,"id":"be-2","from":2798,"to":352,"pct":-87,"moment":"warm"}
+{"t":2.045,"k":"compact","seq":270,"id":"be-2","from":2798,"to":352,"pct":-87,"moment":"warm","mode":"fork"}
 {"t":2.073,"k":"use","seq":271,"id":"be-1","rd":36528,"un":5605,"out":758,"wr":0,"cost":0.0088845,"saved":0.013697999999999998}
 {"t":2.073,"k":"state","seq":272,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":2.01}
 {"t":2.112,"k":"req","seq":273,"id":"ts-1","ratio":0.9015578389128273,"p":6034,"o":10}
@@ -370,7 +370,7 @@
 {"t":3.764,"k":"state","seq":370,"id":"fe-1","s":"tool","doing":"Bash sleep 0.5","task":"T6"}
 {"t":3.845,"k":"state","seq":371,"id":"be-1","s":"think","doing":"folds its thread","task":"T4"}
 {"t":3.845,"k":"tool","seq":372,"id":"be-1","name":"Bash","arg":"sleep 1.8; echo built","out":"2 lines","ok":true,"task":"T4","tid":"b1","ms":1805}
-{"t":3.845,"k":"compact","seq":373,"id":"be-1","from":3883,"to":751,"pct":-81,"moment":"cold"}
+{"t":3.845,"k":"compact","seq":373,"id":"be-1","from":3883,"to":751,"pct":-81,"moment":"cold","mode":"fork"}
 {"t":4.005,"k":"req","seq":374,"id":"be-1","ratio":0.8219952867242734,"p":6365,"o":22}
 {"t":4.005,"k":"use","seq":375,"id":"be-1","rd":41760,"un":6738,"out":780,"wr":0,"cost":0.010149,"saved":0.01566}
 {"t":4.005,"k":"layers","seq":376,"id":"be-1","toks":[4794,276,157,298,66,774]}
@@ -476,7 +476,7 @@
 {"t":5.943,"k":"state","seq":476,"id":"fe-1","s":"think","doing":"folds its thread","task":"T6"}
 {"t":5.943,"k":"tool","seq":477,"id":"fe-1","name":"TaskBoard","arg":"done T6","out":"T6 is now in review (merged into integration b9b8ae71 (verified); edited 1 (handlers.go); no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T6","tid":"d2","ms":86}
 {"t":5.943,"k":"state","seq":478,"id":"mgr","s":"wait","doing":"reviewing results","task":null}
-{"t":5.943,"k":"compact","seq":479,"id":"fe-1","from":2540,"to":602,"pct":-76,"moment":"warm"}
+{"t":5.943,"k":"compact","seq":479,"id":"fe-1","from":2540,"to":602,"pct":-76,"moment":"warm","mode":"fork"}
 {"t":5.943,"k":"tool","seq":480,"id":"mgr","name":"TaskBoard","arg":"accept T1","out":"T1 accepted","ok":true,"tid":"a1","ms":11}
 {"t":5.943,"k":"tool","seq":481,"id":"mgr","name":"TaskBoard","arg":"accept T2","out":"T2 accepted","ok":true,"tid":"a2","ms":10}
 {"t":5.943,"k":"tool","seq":482,"id":"mgr","name":"TaskBoard","arg":"accept T3","out":"T3 accepted","ok":true,"tid":"a3","ms":9}

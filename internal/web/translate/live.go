@@ -142,8 +142,8 @@ func (t *Translator) checkGov(now time.Time, ts float64) {
 }
 
 // tick is the translator's clock: the streamed text that waited 100 ms, the held-back states and checkpoint updates, the notice
-// gate's count, the governor, the holds of the sink that the log did not confirm, the waiting log-only tool rows and, once a second,
-// a pass over every agent (what changes with no event of its own, such as the manager waiting for its team).
+// gate's count, the governor, the feed rows that waited for a notice, the holds of the sink that the log did not confirm, the waiting
+// log-only tool rows and, once a second, a pass over every agent (what changes with no event of its own, such as the manager waiting for its team).
 func (t *Translator) tick(now time.Time) {
 	ts := t.sessT(now)
 	t.flushMessages(ts)
@@ -155,6 +155,7 @@ func (t *Translator) tick(now time.Time) {
 	}
 	t.checkGov(now, ts)
 	t.expireTwins(ts)
+	t.flushPairs(ts, false)
 	if t.d.logOnly {
 		t.flushPend(now, false)
 	}

@@ -43,7 +43,9 @@ The keys the page tells its users about are held to the same record. The Help sh
 (the rows they build themselves and the rows of `SHORTCUTS` in `internal/web/ui/js/11-data-live.js`), and
 `internal/web/uidev/test/help-keys.test.mjs` fails when a row names a key that `internal/parity/testdata/keys-web.json` does not list as
 doing something on the page. The first column of a row holds keys only (the grammar is at the head of the test); what a key does goes in the
-second.
+second. The other direction is held too: every key that opens a view (the `g` chords of the views rail and the single keys, found by pressing
+each single-character key of `keys-web.json` on the page) is named by the Help sheet and by the Settings card, except a key listed in the test's
+`NOT_ADVERTISED` with its reason.
 
 ## The page's inventory
 
@@ -69,6 +71,7 @@ flag changed.
 | `webui.json is out of date` | `sh scripts/gen-webui-inventory.sh`, read the diff |
 | a fact differs | decide which interface is right, fix the other, then run `go test ./internal/parity -run TestTerminalFacts -update` and `go test ./internal/parity -run TestFactsStreamsAreCurrent -update`, and keep both halves equal |
 | `the Help sheet: the row ... names ..., which the page does nothing with` | give the row the keys the page has (`SHORTCUTS` in `internal/web/ui/js/11-data-live.js`), keep words in its second column, or take the row out |
+| `the Help sheet does not name "g q", which opens a view on the page` | add the key to the sheet's row of the keys of the views (`internal/web/ui/js/87-ui-sheets.js`, and the card in `98-ui-settings.js`), or list it in `NOT_ADVERTISED` of `help-keys.test.mjs` with the reason it is hidden |
 | a key differs | build the key in the other interface, or list it in `contract/keys.json`; record the terminal's keys with `go test ./internal/tui/app -run TestKeysParityTerminal -update` and the page's with `node internal/web/uidev/test/keys-parity.test.mjs --update` |
 
 Every guard has a test that proves it fails: a synthetic extra item on either side makes the comparison report it, and a contract
