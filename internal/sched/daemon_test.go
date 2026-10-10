@@ -3,11 +3,14 @@ package sched
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,8 +41,14 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	case "run":
+		ReceiveKeys() // as main does, first
 		fmt.Println("args:", strings.Join(os.Args[1:], "|"))
 		fmt.Fprintln(os.Stderr, "key:", os.Getenv("SCHED_TEST_API_KEY") != "")
+		sum := sha256.Sum256([]byte(os.Getenv("SCHED_TEST_API_KEY")))
+		fmt.Println("key-sha:", hex.EncodeToString(sum[:8]))
+		if d, err := time.ParseDuration(os.Getenv("SCHED_TEST_HOLD")); err == nil {
+			time.Sleep(d)
+		}
 		if os.Getenv("SCHED_TEST_FAIL") != "" {
 			os.Exit(3)
 		}
@@ -198,7 +207,7 @@ func TestRunJobRunsTheJobWithItsKeysAndLogsIt(t *testing.T) {
 	logs := t.TempDir()
 	j := Job{ID: "j4", Goal: "do it", Model: "m/x", Dir: "/w", Mode: "plan", BudgetUSD: 2}
 	now := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
-	env := append(JobEnv(os.Environ()), "SCHED_TEST_CHILD=run")
+	env := append(os.Environ(), "SCHED_TEST_CHILD=run")
 	var out bytes.Buffer
 	exit, log := RunJob(context.Background(), os.Args[0], logs, j, now, env, &out)
 	if exit != "ok" || log != filepath.Join(logs, "j4-20261001-080000.log") {
@@ -217,5 +226,94 @@ func TestRunJobRunsTheJobWithItsKeysAndLogsIt(t *testing.T) {
 	env = append(env, "SCHED_TEST_FAIL=1")
 	if exit, _ := RunJob(context.Background(), os.Args[0], logs, j, now.Add(time.Second), env, nil); exit != "exit status 3" {
 		t.Errorf("a failed run: %q", exit)
+	}
+}
+
+// environOfChildren reads the environment blocks of this process's children as /proc shows them to any process of the user, until
+// stop is closed: what an unprivileged loop polling /proc/*/environ would capture.
+func environOfChildren(stop <-chan struct{}) <-chan string {
+	out := make(chan string, 1)
+	go func() {
+		var seen strings.Builder
+		me := strconv.Itoa(os.Getpid())
+		for {
+			ents, _ := os.ReadDir("/proc")
+			for _, e := range ents {
+				stat, err := os.ReadFile("/proc/" + e.Name() + "/stat")
+				if err != nil {
+					continue
+				}
+				i := strings.LastIndexByte(string(stat), ')')
+				if f := strings.Fields(string(stat)[i+1:]); i < 0 || len(f) < 2 || f[1] != me {
+					continue
+				}
+				if b, err := os.ReadFile("/proc/" + e.Name() + "/environ"); err == nil {
+					seen.Write(b)
+					seen.WriteByte('\n')
+				}
+			}
+			select {
+			case <-stop:
+				out <- seen.String()
+				return
+			case <-time.After(2 * time.Millisecond):
+			}
+		}
+	}()
+	return out
+}
+
+// A job's process gets the held keys on a pipe: a loop that reads /proc/<pid>/environ of the job for its whole life never sees one,
+// and the job has the key all the same (it prints a hash of it). The control shows that the loop sees a key put in the environment,
+// as JobEnv puts it.
+func TestAJobsKeyIsNeverInItsEnvironment(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads /proc")
+	}
+	const name, key = "SCHED_TEST_API_KEY", "sk-test-environ-0123456789abcdefghij"
+	t.Setenv(name, "")
+	harden.Provide(name, key)
+	t.Cleanup(func() { harden.Provide(name, "") })
+	sum := sha256.Sum256([]byte(key))
+	j := Job{ID: "j5", Goal: "hold"}
+	env := append(os.Environ(), "SCHED_TEST_CHILD=run", "SCHED_TEST_HOLD=600ms")
+
+	stop := make(chan struct{})
+	seen := environOfChildren(stop)
+	var out bytes.Buffer
+	exit, _ := RunJob(context.Background(), os.Args[0], t.TempDir(), j, time.Now(), env, &out)
+	close(stop)
+	environ := <-seen
+	if exit != "ok" || !strings.Contains(out.String(), "key-sha: "+hex.EncodeToString(sum[:8])) {
+		t.Fatalf("the job did not get its key: %q %q", exit, out.String())
+	}
+	if !strings.Contains(environ, KeysFDEnv+"=") {
+		t.Fatalf("the loop never read the job's environment: %q", environ)
+	}
+	if strings.Contains(environ, key) {
+		t.Fatal("the key was in the job's environment")
+	}
+
+	t.Run("control", func(t *testing.T) {
+		stop := make(chan struct{})
+		seen := environOfChildren(stop)
+		cmd := exec.Command(os.Args[0], "-test.run=^$")
+		cmd.Env = append(JobEnv(os.Environ()), "SCHED_TEST_CHILD=run", "SCHED_TEST_HOLD=300ms")
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+		close(stop)
+		if !strings.Contains(<-seen, key) {
+			t.Fatal("the loop does not see a key in an environment: it proves nothing")
+		}
+	})
+}
+
+// The key payload carries names and values that a child can take back, and nothing else.
+func TestKeyPayload(t *testing.T) {
+	got := parsePayload([]byte("A_API_KEY=sk-1\nBAD NAME=x\n=y\nEMPTY=\nB_TOKEN=t=2\n\nC"))
+	want := [][2]string{{"A_API_KEY", "sk-1"}, {"B_TOKEN", "t=2"}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("parsed %v", got)
 	}
 }

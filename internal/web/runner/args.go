@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -17,15 +18,17 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// Plan is a run request turned into a command: its argument vector, its mode with the flags applied, whether it gets the held keys,
-// and where it runs.
+// Plan is a run request turned into a command: its argument vector, its mode with the flags applied (Reasons says why it needs a
+// confirmation), whether it gets the held keys (Net), whether it is a server (no time limit), and where it runs.
 type Plan struct {
 	Path    []string
 	Args    []string
 	Cmdline string
 	Mode    string
 	Net     bool
+	Server  bool
 	Dir     string
+	Reasons []string
 	Command *wire.CLICommand
 }
 
@@ -69,7 +72,7 @@ func (r *Runs) Plan(_ context.Context, path []string, pos map[string]string, fla
 			return nil, errBadFlags("sleipnir %s has no flag --%s", key, quoteShort(name))
 		}
 	}
-	set := map[string][]string{} // the values given, by flag, as the command line carries them
+	set := map[string]bool{} // the flags the request gave
 	var flagArgs []string
 	for _, f := range c.Flags { // in the spec's order: the same request is the same vector
 		v, ok := flags[f.Name]
@@ -83,7 +86,7 @@ func (r *Runs) Plan(_ context.Context, path []string, pos map[string]string, fla
 		if len(vals) == 0 {
 			continue
 		}
-		set[f.Name] = vals
+		set[f.Name] = true
 		if f.Arg == "bool" {
 			if vals[0] == "true" {
 				flagArgs = append(flagArgs, "--"+f.Name)
@@ -96,27 +99,8 @@ func (r *Runs) Plan(_ context.Context, path []string, pos map[string]string, fla
 			flagArgs = append(flagArgs, "--"+f.Name+"="+x)
 		}
 	}
-	if forcedYes[key] && set["yes"] == nil {
+	if forcedYes[key] && !set["yes"] {
 		flagArgs = append(flagArgs, "--yes")
-		set["yes"] = []string{"true"}
-	}
-	// the mode, with the flags that change it
-	mode := c.Mode
-	for _, rule := range c.When {
-		vals := set[rule.Flag]
-		if len(vals) == 0 || vals[0] == "false" {
-			continue
-		}
-		if len(rule.Values) > 0 && !slices.Contains(rule.Values, vals[0]) {
-			continue
-		}
-		mode = rule.Mode
-	}
-	if mode == "tty_only" {
-		if c.Mode != "tty_only" && key == "schedule add" {
-			return nil, &wire.Error{Status: http.StatusForbidden, Code: "dangerous_mode", Msg: "bypass and yolo cannot be scheduled from here"}
-		}
-		return nil, &wire.Error{Status: http.StatusForbidden, Code: "tty_only", Msg: c.Why}
 	}
 	// positionals
 	for name := range pos {
@@ -162,6 +146,18 @@ func (r *Runs) Plan(_ context.Context, path []string, pos map[string]string, fla
 		tail = append(tail, words...)
 	}
 	args = append(append(append(args, lead...), flagArgs...), tail...)
+	// the mode is decided on the vector as the command will parse it, not on the request
+	parsed, err := parseArgv(c, args[len(c.Path):])
+	if err != nil {
+		return nil, err
+	}
+	mode, noKeys, reasons := judge(c, parsed)
+	if mode == "tty_only" {
+		if c.Mode != "tty_only" && key == "schedule add" {
+			return nil, &wire.Error{Status: http.StatusForbidden, Code: "dangerous_mode", Msg: "bypass and yolo cannot be scheduled from here"}
+		}
+		return nil, &wire.Error{Status: http.StatusForbidden, Code: "tty_only", Msg: c.Why}
+	}
 	dir := r.o.Cwd
 	if tab != "" {
 		if r.host == nil {
@@ -175,7 +171,166 @@ func (r *Runs) Plan(_ context.Context, path []string, pos map[string]string, fla
 			dir = cwd
 		}
 	}
-	return &Plan{Path: c.Path, Args: args, Cmdline: Cmdline(args), Mode: mode, Net: c.Mode == "net", Dir: dir, Command: c}, nil
+	return &Plan{Path: c.Path, Args: args, Cmdline: Cmdline(args), Mode: mode, Net: c.Mode == "net" && !noKeys, Server: c.Mode == "server",
+		Dir: dir, Reasons: reasons, Command: c}, nil
+}
+
+// Flags that make a run privileged whatever command carries them (CONTRACT.md 18.2; the spec's generated "when" rules say the same
+// to the page). The runner decides on them in Go, on the parsed vector, so that no spelling and no spec can let one through.
+var (
+	// keyRouteFlags name an endpoint or a key variable of the run's own: the run gets no held key (the CLI treats them as the
+	// person's word, and would send the key there) and needs a confirmation.
+	keyRouteFlags = []string{"base-url", "api-key-env", "policy-host", "policy-key-env", "allow-insecure-http"}
+	// wideningFlags let a run do more than its mode: run commands without asking, use a project's own settings, reach the network
+	// from a sandbox, pass the server's environment on, run a verification command.
+	wideningFlags = []string{"allow", "trust-project", "no-net-isolation", "pass-env", "set-env", "verify"}
+	// modeFlags are permission modes; bypass and yolo are dangerous ones.
+	modeFlags      = []string{"mode", "perm-mode"}
+	dangerousModes = []string{"bypass", "yolo"}
+)
+
+// judge is the mode of a command with its parsed flags (the spec's rules, then the runner's own), whether the run must go without
+// the held keys, and the reasons a confirmation is needed. A command that needs a terminal stays refused whatever its flags.
+func judge(c *wire.CLICommand, parsed map[string][]string) (mode string, noKeys bool, reasons []string) {
+	mode = c.Mode
+	for _, rule := range c.When {
+		v, ok := last(parsed, rule.Flag)
+		if !ok || v == "false" || v == "" {
+			continue
+		}
+		if len(rule.Values) > 0 && !slices.Contains(rule.Values, strings.ToLower(v)) {
+			continue
+		}
+		if rule.NonLoopback && loopback(v) {
+			continue
+		}
+		mode = rule.Mode
+	}
+	if mode == "tty_only" {
+		return mode, false, nil
+	}
+	for _, name := range keyRouteFlags {
+		if on(parsed, name) {
+			noKeys = true
+			reasons = append(reasons, "--"+name+" names an endpoint or a key of its own: the command runs without your keys")
+		}
+	}
+	for _, name := range wideningFlags {
+		if on(parsed, name) {
+			reasons = append(reasons, "--"+name+" lets the command do more than its mode allows")
+		}
+	}
+	for _, name := range modeFlags {
+		if v, ok := last(parsed, name); ok && slices.Contains(dangerousModes, strings.ToLower(v)) {
+			reasons = append(reasons, "--"+name+" "+strings.ToLower(v)+" runs without asking")
+		}
+	}
+	if addr, ok := effective(c, parsed, "addr"); ok && !loopback(addr) {
+		reasons = append(reasons, "--addr "+addr+" listens beyond this machine")
+	}
+	if len(reasons) > 0 {
+		mode = "priv"
+	}
+	return mode, noKeys, reasons
+}
+
+// last is the value a flag ends with (Go's flag package keeps the last of a flag given twice), lower-cased for a bool.
+func last(parsed map[string][]string, name string) (string, bool) {
+	vals := parsed[name]
+	if len(vals) == 0 {
+		return "", false
+	}
+	return strings.TrimSpace(vals[len(vals)-1]), true
+}
+
+// on reports whether a flag is set to something: a bool that is true, or a value that is not empty.
+func on(parsed map[string][]string, name string) bool {
+	for _, v := range parsed[name] {
+		if v = strings.TrimSpace(v); v != "" && v != "false" {
+			return true
+		}
+	}
+	return false
+}
+
+// effective is a flag's value: the one given, else its default.
+func effective(c *wire.CLICommand, parsed map[string][]string, name string) (string, bool) {
+	if v, ok := last(parsed, name); ok {
+		return v, true
+	}
+	for _, f := range c.Flags {
+		if f.Name == name {
+			if d, ok := f.Default.(string); ok {
+				return d, true
+			}
+			return "", false
+		}
+	}
+	return "", false
+}
+
+// loopback reports whether a listen address stays on this machine: a loopback IP or localhost (no host is every interface).
+func loopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// parseArgv reads an argument vector (after the command's path) as Go's flag package and the commands' interspersed parsing do:
+// -name and --name, -name=value, -name value for a flag that is not a bool (a bool takes a value only after =, read with
+// strconv.ParseBool), positionals between the flags skipped, nothing after "--". Bools come out "true" or "false". A flag the command
+// does not have is an error.
+func parseArgv(c *wire.CLICommand, argv []string) (map[string][]string, error) {
+	flags := map[string]*wire.CLIFlag{}
+	for i := range c.Flags {
+		flags[c.Flags[i].Name] = &c.Flags[i]
+	}
+	out := map[string][]string{}
+	for i := 0; i < len(argv); i++ {
+		a := argv[i]
+		if a == "--" {
+			break
+		}
+		if len(a) < 2 || a[0] != '-' {
+			continue // a positional
+		}
+		name := strings.TrimPrefix(strings.TrimPrefix(a, "-"), "-")
+		value, hasValue := "", false
+		if n, v, ok := strings.Cut(name, "="); ok {
+			name, value, hasValue = n, v, true
+		}
+		f := flags[name]
+		if f == nil {
+			return nil, errBadFlags("sleipnir %s has no flag -%s", strings.Join(c.Path, " "), quoteShort(name))
+		}
+		if f.Arg == "bool" {
+			b := true
+			if hasValue {
+				var err error
+				if b, err = strconv.ParseBool(value); err != nil {
+					return nil, errBadFlags("--%s takes on or off", name)
+				}
+			}
+			out[name] = append(out[name], strconv.FormatBool(b))
+			continue
+		}
+		if !hasValue {
+			if i+1 >= len(argv) {
+				return nil, errBadFlags("--%s needs a value", name)
+			}
+			i++
+			value = argv[i]
+		}
+		out[name] = append(out[name], value)
+	}
+	return out, nil
 }
 
 // flagValues turns the value the page sent for a flag into the values of the command line: none (the flag is left out), one, or
@@ -186,22 +341,22 @@ func flagValues(f *wire.CLIFlag, v any) ([]string, error) {
 		return nil, nil
 	}
 	if f.Arg == "bool" {
-		on := false
+		yes := false
 		switch x := v.(type) {
 		case bool:
-			on = x
+			yes = x
 		case string:
-			switch strings.TrimSpace(x) {
-			case "", "false":
-			case "true":
-				on = true
-			default:
-				return nil, bad("on or off")
+			if t := strings.TrimSpace(x); t != "" {
+				b, err := strconv.ParseBool(t)
+				if err != nil {
+					return nil, bad("on or off")
+				}
+				yes = b
 			}
 		default:
 			return nil, bad("on or off")
 		}
-		if on {
+		if yes {
 			return []string{"true"}, nil
 		}
 		if d, ok := f.Default.(bool); ok && d {

@@ -322,6 +322,50 @@ type modeOf struct {
 // dangerous are the permission modes that need a confirmation in a run of the runner.
 var dangerous = []string{"bypass", "yolo"}
 
+// The flags that make any command that has them privileged (internal/web/runner decides on them in Go as well, on the parsed
+// argument vector; these rules tell the page).
+var (
+	// keyRouteFlags name an endpoint or a key variable of the run's own: the run gets none of the held keys.
+	keyRouteFlags = []string{"base-url", "api-key-env", "policy-host", "policy-key-env", "allow-insecure-http"}
+	// wideningFlags let a run do more than its mode.
+	wideningFlags = []string{"allow", "trust-project", "no-net-isolation", "pass-env", "set-env", "verify"}
+	// modeFlags are permission modes.
+	modeFlags = []string{"mode", "perm-mode"}
+)
+
+// privRules are a command's rules: its own, then the privileged flags it has (a command that needs a terminal gets none: no flag
+// makes it run here, except its own rules).
+func privRules(md modeOf, flags []wire.CLIFlag) []wire.CLIModeRule {
+	rules := append([]wire.CLIModeRule(nil), md.when...)
+	if md.mode == ModeTTYOnly {
+		return rules
+	}
+	has, ruled := map[string]bool{}, map[string]bool{}
+	for _, f := range flags {
+		has[f.Name] = true
+	}
+	for _, r := range rules {
+		ruled[r.Flag] = true
+	}
+	add := func(r wire.CLIModeRule) {
+		if has[r.Flag] && !ruled[r.Flag] {
+			rules = append(rules, r)
+			ruled[r.Flag] = true
+		}
+	}
+	for _, name := range keyRouteFlags {
+		add(wire.CLIModeRule{Flag: name, Mode: ModePriv, NoKeys: true})
+	}
+	for _, name := range wideningFlags {
+		add(wire.CLIModeRule{Flag: name, Mode: ModePriv})
+	}
+	for _, name := range modeFlags {
+		add(wire.CLIModeRule{Flag: name, Values: dangerous, Mode: ModePriv})
+	}
+	add(wire.CLIModeRule{Flag: "addr", Mode: ModePriv, NonLoopback: true})
+	return rules
+}
+
 // modes is the mode table of CONTRACT.md 18.2, with PARITY.md A30.
 var modes = map[string]modeOf{
 	"config": {mode: ModeRun}, "sessions": {mode: ModeRun},
@@ -351,13 +395,13 @@ var modes = map[string]modeOf{
 	"models": {mode: ModeNet}, "doctor": {mode: ModeNet},
 	"update": {mode: ModePriv, why: "it replaces this program with the latest release: it asks for a confirmation first; --check only looks",
 		when: []wire.CLIModeRule{{Flag: "check", Mode: ModeNet}}},
-	"rl eval":              {mode: ModeNet, when: []wire.CLIModeRule{{Flag: "perm-mode", Values: dangerous, Mode: ModePriv}}},
-	"rl rollout":           {mode: ModeNet, when: []wire.CLIModeRule{{Flag: "perm-mode", Values: dangerous, Mode: ModePriv}}},
+	"rl eval":              {mode: ModeNet},
+	"rl rollout":           {mode: ModeNet},
 	"rl taskgen composite": {mode: ModeNet}, "rl taskgen fixture": {mode: ModeNet}, "rl taskgen git": {mode: ModeNet},
 	"rl taskgen mutate": {mode: ModeNet}, "rl taskgen recall": {mode: ModeNet}, "rl tasks check": {mode: ModeNet},
 	"rl reward": {mode: ModeNet}, "rl export": {mode: ModeNet},
-	"run":            {mode: ModeNet, when: []wire.CLIModeRule{{Flag: "mode", Values: dangerous, Mode: ModePriv}}},
-	"swarm":          {mode: ModeNet, when: []wire.CLIModeRule{{Flag: "mode", Values: dangerous, Mode: ModePriv}}},
+	"run":            {mode: ModeNet},
+	"swarm":          {mode: ModeNet},
 	"demo":           {mode: ModeNet},
 	"init":           {mode: ModePriv, why: "it writes configuration files: it asks for a confirmation first"},
 	"logout":         {mode: ModePriv, why: "it removes a stored key or a sign-in: it asks for a confirmation first"},
@@ -497,7 +541,7 @@ func (s *spec) finish(path []string, usage, summary string, flags []wire.CLIFlag
 	if sec != nil {
 		c.Source = sourceOf(sec)
 	}
-	c.Mode, c.Why, c.When = md.mode, md.why, md.when
+	c.Mode, c.Why, c.When = md.mode, md.why, privRules(md, out)
 	return s.add(c)
 }
 

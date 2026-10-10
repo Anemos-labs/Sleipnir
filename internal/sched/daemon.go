@@ -55,9 +55,9 @@ func record(st Store, id string, f func(*Job)) error {
 	return err
 }
 
-// JobEnv is the environment of a job's process: env, with the provider keys that the harness took out of it at start
-// (harden.MoveKeys) put back. The process is Sleipnir itself, which hides them again from whatever its tools run; no other program is
-// started with them, and no key is ever in an argument list.
+// JobEnv is env with the provider keys that the harness took out of it at start (harden.MoveKeys) put back: the environment a child
+// Sleipnir gets where its keys cannot be passed on an inherited pipe (PassKeys does this on Windows only; a child's environment is
+// readable by every same-user process on Linux). No key is ever in an argument list.
 func JobEnv(env []string) []string {
 	for _, name := range harden.Held() {
 		env = append(env, name+"="+harden.Secret(name))
@@ -92,9 +92,9 @@ func LogFile(logs string, j Job, now time.Time) string {
 	return filepath.Join(logs, j.ID+"-"+now.Format("20060102-150405")+".log")
 }
 
-// RunJob runs one job as a child process of self (Args, environment env, stdin closed), writing its output to a new log file in logs,
-// and says how it ended: "ok", "timed out after 1h0m0s", "interrupted" (ctx ended), or the error of the process. out, when not nil,
-// receives the output too.
+// RunJob runs one job as a child process of self (Args, environment env, stdin closed, the held keys passed by PassKeys and never in
+// env), writing its output to a new log file in logs, and says how it ended: "ok", "timed out after 1h0m0s", "interrupted" (ctx
+// ended), or the error of the process. out, when not nil, receives the output too.
 func RunJob(ctx context.Context, self, logs string, j Job, now time.Time, env []string, out io.Writer) (exit, log string) {
 	if err := os.MkdirAll(logs, 0o700); err != nil {
 		return "no log directory: " + err.Error(), ""
@@ -114,7 +114,13 @@ func RunJob(ctx context.Context, self, logs string, j Job, now time.Time, env []
 		w = io.MultiWriter(f, out)
 	}
 	cmd.Stdout, cmd.Stderr = w, w
-	switch err := cmd.Run(); {
+	started := PassKeys(cmd)
+	err = cmd.Start()
+	started(err)
+	if err == nil {
+		err = cmd.Wait()
+	}
+	switch {
 	case err == nil:
 		return "ok", log
 	case rctx.Err() == context.DeadlineExceeded:

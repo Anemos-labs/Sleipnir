@@ -390,6 +390,10 @@ func (s *service) handleRunJob(w http.ResponseWriter, r *http.Request) {
 		web.Error(w, http.StatusConflict, "running", "this job is running now")
 		return
 	}
+	if !schedModes[j.Mode] { // a bypass or yolo job made in a terminal runs from the daemon, not from a click
+		web.Error(w, http.StatusForbidden, "dangerous_mode", "bypass and yolo jobs cannot be run from here: sleipnir daemon runs them")
+		return
+	}
 	st := s.store()
 	now := s.o.Now()
 	logs := st.LogDir()

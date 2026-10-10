@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/sched"
 	"github.com/anemos-labs/sleipnir/internal/testutil"
 )
 
@@ -29,6 +30,7 @@ func TestMain(m *testing.M) {
 
 // fakeSleipnir is what the test binary does as `sleipnir`.
 func fakeSleipnir(args []string) int {
+	sched.ReceiveKeys() // as main does, first
 	if len(args) == 0 {
 		return 2
 	}

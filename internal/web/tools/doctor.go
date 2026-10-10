@@ -128,7 +128,8 @@ func (s *service) handleDoctor(w http.ResponseWriter, r *http.Request) {
 	}
 	p := &doctorParse{}
 	started, err := s.runs.Start(runner.Spec{
-		Path: []string{"doctor"}, Flags: flags, Args: args, Cmdline: runner.Cmdline(args), Net: true,
+		// a custom endpoint is probed without the held keys: a key goes only where the configuration sends it
+		Path: []string{"doctor"}, Flags: flags, Args: args, Cmdline: runner.Cmdline(args), Net: body.BaseURL == "",
 		Line: p.line, End: p.end,
 	})
 	if err != nil {

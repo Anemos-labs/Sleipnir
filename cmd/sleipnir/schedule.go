@@ -176,11 +176,12 @@ func daemonTick(ctx context.Context, st sched.Store, now time.Time, launch func(
 	return sched.Tick(ctx, st, now, launch, logw)
 }
 
-// jobEnv is the environment of a job's process: ours, with the provider keys that the harness took out of it at start (harden.MoveKeys)
-// put back (sched.JobEnv).
+// jobEnv is env with the provider keys that the harness took out of it at start (harden.MoveKeys) put back (sched.JobEnv): what a
+// job's process gets where its keys cannot be passed on an inherited pipe. runJob passes them with sched.PassKeys instead.
 func jobEnv(env []string) []string { return sched.JobEnv(env) }
 
-// runJob runs one job as a child process and says how it ended (sched.RunJob).
+// runJob runs one job as a child process and says how it ended (sched.RunJob: the held keys reach it on a pipe, not in its
+// environment).
 func runJob(ctx context.Context, self, logs string, j sched.Job, now time.Time) (exit, log string) {
-	return sched.RunJob(ctx, self, logs, j, now, jobEnv(os.Environ()), nil)
+	return sched.RunJob(ctx, self, logs, j, now, os.Environ(), nil)
 }

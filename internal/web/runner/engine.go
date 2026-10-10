@@ -30,7 +30,8 @@ type Spec struct {
 	// Args are the arguments after the program's name; Dir the working directory (empty: the runner's).
 	Args []string
 	Dir  string
-	// Env replaces the runner's environment when not nil; Net adds the held provider keys (sched.JobEnv).
+	// Env replaces the runner's environment when not nil; Net passes the held provider keys to the child (sched.PassKeys: on an
+	// inherited pipe, never in its environment).
 	Env []string
 	Net bool
 	// Func runs the command in this process instead of a child: it writes to stdout and stderr and returns the exit status.
@@ -460,9 +461,6 @@ func (r *Runs) child(ctx context.Context, x *run) int {
 	if env == nil {
 		env = r.o.Env()
 	}
-	if x.spec.Net {
-		env = sched.JobEnv(env)
-	}
 	dir := x.spec.Dir
 	if dir == "" {
 		dir = r.o.Cwd
@@ -483,7 +481,13 @@ func (r *Runs) child(ctx context.Context, x *run) int {
 		return -1
 	}
 	cmd.Stdout, cmd.Stderr = orW, erW
-	if err := cmd.Start(); err != nil {
+	passed := func(error) {}
+	if x.spec.Net {
+		passed = sched.PassKeys(cmd) // on a pipe the child reads at its start, never in its environment
+	}
+	err = cmd.Start()
+	passed(err)
+	if err != nil {
 		orR.Close()
 		orW.Close()
 		erR.Close()

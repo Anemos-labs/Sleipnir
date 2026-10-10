@@ -28,6 +28,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/provider/probe"
+	"github.com/anemos-labs/sleipnir/internal/sched"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -42,7 +43,10 @@ func main() {
 	// First, before anything reads a key or starts a command: see docs/SECURITY.md. MoveKeys takes the
 	// provider keys out of the environment, so no command the harness starts inherits them; every reader
 	// goes through harden.Secret (harden.TestReadersOfCredentialsUseSecret).
-	harden.Process(harden.MoveKeys("HF_TOKEN")) // a key that does not end in API_KEY is named
+	// A key that does not end in API_KEY is named. A parent Sleipnir (the schedule's daemon, the web runner) passes the keys a child
+	// needs on an inherited pipe, never in the environment: sched.ReceiveKeys reads them (the argument is evaluated before Process
+	// runs) and they are moved like the rest, whatever their names.
+	harden.Process(harden.MoveKeys(append([]string{"HF_TOKEN"}, sched.ReceiveKeys()...)...))
 	// Keys the person stored with `sleipnir login`: held in memory beside the ones moved out of the environment.
 	if err := config.LoadStoredKeys(userHome()); err != nil {
 		fmt.Fprintln(os.Stderr, "sleipnir:", err)

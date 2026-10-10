@@ -236,3 +236,18 @@ func TestDaemonOnceRunsWhatIsDue(t *testing.T) {
 func (rg *rig) daemonRunning() bool {
 	return decode[wire.ScheduleView](rg.t, rg.do(req{method: "GET", path: "/api/schedule"})).Daemon.Owner == "here"
 }
+
+// A bypass or yolo job (one a terminal scheduled) is not run from the page: the daemon runs it, a click does not.
+func TestRunNowRefusesADangerousJob(t *testing.T) {
+	rg := newRig(t, nil)
+	st := sched.Store{Path: filepath.Join(rg.state, "schedule.json")}
+	if _, err := st.Add(sched.Job{Cron: "@daily", Goal: "anything", Dir: rg.project, Mode: "yolo"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if w := rg.do(req{method: "POST", path: "/api/schedule/jobs/j1/run"}); w.Code != http.StatusForbidden || errCode(w) != "dangerous_mode" {
+		t.Errorf("run now of a yolo job: %d %s", w.Code, w.Body.String())
+	}
+	if kids := children(); len(kids) > 0 {
+		t.Errorf("it started %v", kids)
+	}
+}

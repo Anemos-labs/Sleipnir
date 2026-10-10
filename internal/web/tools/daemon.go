@@ -164,7 +164,7 @@ func (s *service) loop(ctx context.Context, d *daemon, st sched.Store, unlock fu
 			delete(s.busy, j.ID)
 			s.mu.Unlock()
 		}()
-		return sched.RunJob(ctx, s.o.Self, st.LogDir(), j, now, sched.JobEnv(env()), nil)
+		return sched.RunJob(ctx, s.o.Self, st.LogDir(), j, now, env(), nil) // the keys go on a pipe (sched.PassKeys)
 	}
 	for {
 		if err := sched.Tick(ctx, st, s.o.Now(), launch, logWriter{s.srv}); err != nil {

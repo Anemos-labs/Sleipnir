@@ -7,9 +7,13 @@
 // (never through a shell, never with a key in its arguments), in the directory of the tab the request names (else the server's
 // directory). Its standard input is closed; it starts in a process group of its own, which a cancel ends (SIGTERM, then SIGKILL
 // after five seconds) and which dies with the server on Linux. Its environment is the server's, from which the provider keys were
-// taken at start (harden.MoveKeys); the commands that call a provider (mode "net") get the held keys back through
-// sched.JobEnv, as a scheduled job does. Each command's mode decides: "run" and "net" run, "priv" needs a confirmation for the exact
-// argument vector, "server" runs until it is stopped, "tty_only" is refused with the sentence that names the page's equivalent.
+// taken at start (harden.MoveKeys); the commands that call a provider (mode "net") get the held keys on an inherited pipe they read
+// at their start (sched.PassKeys), as a scheduled job does, never in their environment, which every same-user process can read on
+// Linux. A command whose arguments name an endpoint or a key variable of their own (--base-url, --api-key-env, --policy-host,
+// --policy-key-env, --allow-insecure-http) gets no key at all and needs a confirmation. Each command's mode decides: "run" and "net"
+// run, "priv" needs a confirmation for the exact argument vector, "server" runs until it is stopped, "tty_only" is refused with the
+// sentence that names the page's equivalent; the flags that widen what a run may do (--allow, --trust-project, --verify,
+// --no-net-isolation, --pass-env, --set-env, a bypass or yolo mode, a listen address that is not loopback) make it "priv".
 //
 // # Output
 //
@@ -214,7 +218,7 @@ func (r *Runs) handleStart(w http.ResponseWriter, req *http.Request) {
 	}
 	started, err := r.Start(Spec{
 		Path: plan.Path, Flags: body.Flags, Args: plan.Args, Dir: plan.Dir, Net: plan.Net, Cmdline: plan.Cmdline,
-		Keep: body.Keep, Server: plan.Mode == "server",
+		Keep: body.Keep, Server: plan.Server,
 	})
 	if err != nil {
 		web.WriteError(w, err)
@@ -231,7 +235,7 @@ func (r *Runs) confirm(w http.ResponseWriter, req *http.Request, plan *Plan) boo
 		w.Header().Set("X-Confirm-Scope", scope)
 		web.ErrorDetail(w, http.StatusPreconditionRequired, "confirm_required",
 			"this command changes your settings or files: confirm it, then send it again with the confirmation",
-			map[string]any{"scope": scope, "argv": plan.Args, "cmdline": plan.Cmdline})
+			map[string]any{"scope": scope, "argv": plan.Args, "cmdline": plan.Cmdline, "reasons": plan.Reasons})
 		return false
 	}
 	return r.srv.RequireConfirm(w, req, scope)

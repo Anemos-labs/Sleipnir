@@ -28,11 +28,15 @@ type CLICommand struct {
 	Index      bool            `json:"index,omitempty"`
 }
 
-// CLIModeRule changes a command's mode when a flag is set (to one of Values, when there are any).
+// CLIModeRule changes a command's mode when a flag is set (to one of Values, when there are any; to an address that is not
+// loopback, with NonLoopback). NoKeys says that the run then gets none of the held provider keys (the flag names an endpoint or a key
+// variable of the run's own).
 type CLIModeRule struct {
-	Flag   string   `json:"flag"`
-	Values []string `json:"values,omitempty"`
-	Mode   string   `json:"mode"`
+	Flag        string   `json:"flag"`
+	Values      []string `json:"values,omitempty"`
+	Mode        string   `json:"mode"`
+	NonLoopback bool     `json:"nonLoopback,omitempty"`
+	NoKeys      bool     `json:"noKeys,omitempty"`
 }
 
 // CLIPositional is a positional argument; Variadic takes the remaining words.

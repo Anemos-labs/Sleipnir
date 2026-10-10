@@ -92,7 +92,8 @@ func TestDoctorProbeStreamsStepsAndAVerdict(t *testing.T) {
 	if !strings.Contains(strings.Join(end.Verdict.Warn, "|"), "did not call the offered tool") || !strings.Contains(strings.Join(end.Verdict.Warn, "|"), "basic reply was empty") {
 		t.Errorf("warnings %v", end.Verdict.Warn)
 	}
-	if !strings.Contains(text.String(), "probing m-1") || !strings.Contains(text.String(), "key seen: [redacted]") || strings.Contains(text.String(), "\"findings\"") {
+	// the probe names its endpoint (--base-url): it runs without the held keys
+	if !strings.Contains(text.String(), "probing m-1") || !strings.Contains(text.String(), "key seen: \n") || strings.Contains(text.String(), "\"findings\"") {
 		t.Errorf("lines %q", text.String())
 	}
 	b, _ := json.Marshal(frames)
@@ -146,5 +147,30 @@ func TestUpdateCheckAndInstall(t *testing.T) {
 	down := newRig(t, func(o *Options) { o.Update = update.Options{API: "http://127.0.0.1:1"}; o.Self = exe })
 	if w := down.do(req{method: "GET", path: "/api/update"}); w.Code != http.StatusBadGateway || errCode(w) != "network" {
 		t.Errorf("no network: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A probe of an endpoint the request names runs without the held keys: a key goes only where the configuration sends it.
+func TestDoctorOfACustomEndpointGetsNoKey(t *testing.T) {
+	const name, key = "TOOLSTEST_API_KEY", "sk-test-custom-0123456789abcdefghij"
+	t.Setenv(name, "")
+	harden.Provide(name, key)
+	t.Cleanup(func() { harden.Provide(name, "") })
+	rg := newRig(t, nil)
+	for body, want := range map[string]string{
+		`{"model":"m-1","baseUrl":"https://attacker.invalid/v1"}`: "key seen: \n",
+		`{"model":"m-1"}`: "key seen: [redacted]\n",
+	} {
+		w := rg.do(req{method: "POST", path: "/api/doctor", raw: body})
+		started := decode[wire.RunStarted](t, w)
+		var text strings.Builder
+		for _, f := range rg.waitRun(started.ID) {
+			for _, l := range f.Lines {
+				text.WriteString(l.T + "\n")
+			}
+		}
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("%s: %q, want %q", body, text.String(), want)
+		}
 	}
 }

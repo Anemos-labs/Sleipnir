@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/sched"
 	"github.com/anemos-labs/sleipnir/internal/testutil"
 )
 
@@ -35,6 +38,7 @@ func TestMain(m *testing.M) {
 
 // fakeSleipnir is what the test binary does as a child of the runner.
 func fakeSleipnir(args []string) int {
+	sched.ReceiveKeys() // as main does, first
 	if len(args) == 0 {
 		return 2
 	}
@@ -69,6 +73,7 @@ func fakeSleipnir(args []string) int {
 		fmt.Println("after")
 		return 0
 	case "doctor":
+		fmt.Println("doctor key:", os.Getenv("RUNNERTEST_API_KEY") != "")
 		fmt.Fprintln(os.Stderr, "probing m-1 at http://127.0.0.1:1/v1 (key from none)")
 		for _, l := range []string{"basic", "  ✓ basic            12ms  in=10 out=5 cost=false", "tools", "  ✓ tools            34ms  in=20 cached=0 out=8",
 			"    ! it answered, but did not call the offered tool", "cache", "  ✓ cache            56ms  in=900 cached=800 out=1", "  ✗ cache-2        connection refused"} {
@@ -88,8 +93,13 @@ func fakeSleipnir(args []string) int {
 	}
 	fmt.Println("argv:", strings.Join(args, "|"))
 	fmt.Println("key:", os.Getenv("RUNNERTEST_API_KEY"))
+	sum := sha256.Sum256([]byte(os.Getenv("RUNNERTEST_API_KEY")))
+	fmt.Println("key-sha:", hex.EncodeToString(sum[:8]))
 	if wd, err := os.Getwd(); err == nil {
 		fmt.Println("cwd:", wd)
+	}
+	if d, err := time.ParseDuration(os.Getenv("RUNNER_FAKE_HOLD")); err == nil {
+		time.Sleep(d)
 	}
 	return 0
 }
