@@ -47,9 +47,13 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-// Write records that the response has started.
+// Write records that the response has started. A body whose handler named no content type is labelled as bytes: Go would otherwise
+// label it by sniffing its first bytes, and a body that looks like HTML would be served as HTML.
 func (w *statusWriter) Write(b []byte) (int, error) {
 	w.wrote = true
+	if h := w.ResponseWriter.Header(); h.Get("Content-Type") == "" {
+		h.Set("Content-Type", "application/octet-stream")
+	}
 	return w.ResponseWriter.Write(b)
 }
 

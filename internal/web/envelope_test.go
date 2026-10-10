@@ -720,3 +720,23 @@ func TestMethodFallbacksOnTheAPIAreNotRoutesOfAPath(t *testing.T) {
 		t.Errorf("GET of a POST route = %d allow %q", rec.Code, rec.Header().Get("Allow"))
 	}
 }
+
+// A body whose handler named no content type is labelled as bytes: Go would label it by sniffing, and a body that looks like HTML
+// would be served as text/html (and, with nosniff, obeyed as such by a browser).
+func TestAnUnlabelledBodyIsNeverServedAsHTML(t *testing.T) {
+	rec := httptest.NewRecorder()
+	w := &statusWriter{ResponseWriter: rec}
+	if _, err := w.Write([]byte("<html><script>alert(1)</script></html>")); err != nil {
+		t.Fatal(err)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/octet-stream" {
+		t.Errorf("an unlabelled body is served as %q", got)
+	}
+	rec = httptest.NewRecorder()
+	rec.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w = &statusWriter{ResponseWriter: rec}
+	_, _ = w.Write([]byte("{}"))
+	if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Errorf("a handler's own content type became %q", got)
+	}
+}
