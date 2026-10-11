@@ -145,7 +145,7 @@ func TestDiffPatchAppliesToAFreshCheckout(t *testing.T) {
 		}
 		for name, content := range want {
 			if got[name] != content {
-				t.Fatalf("renames=%v: %s differs after apply", renames, name)
+				t.Fatalf("renames=%v: %s differs after apply: got %.80q want %.80q", renames, name, got[name], content)
 			}
 		}
 		if renames && !strings.Contains(d.Patch, "rename from b.txt") {
@@ -193,7 +193,13 @@ func snapshotFiles(t *testing.T, dir string) map[string]string {
 		if err != nil {
 			return err
 		}
-		out[rel] = info.Mode().String() + "|" + string(b)
+		// Record the mode as git tracks it, not the permission bits: files git creates follow the umask, so
+		// group and other bits differ between a checkout and files the test wrote.
+		mode := "100644"
+		if info.Mode()&0o100 != 0 {
+			mode = "100755"
+		}
+		out[rel] = mode + "|" + string(b)
 		return nil
 	})
 	if err != nil {
