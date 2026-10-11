@@ -102,8 +102,12 @@ type Options struct {
 	Swarm bool
 	// Workers is the most workers the manager may run (--swarm N), the manager not counted; 0 is
 	// swarm.max_workers, or the swarm's own default when that is unset too.
-	Workers    int
-	Roles      swarm.Roles
+	Workers int
+	Roles   swarm.Roles
+	// Owners assigns repository paths to roles (an RL task's team.owns): only agents
+	// of an owning role may write such a path (swarm.Deps.Owners). Nil: no path is
+	// owned. It applies to swarms.
+	Owners     swarm.PathOwners
 	Verify     string // command the harness runs before a worker's task may leave "doing"
 	RoleModels map[string]string
 	// Interactive says a person is at the keyboard across turns (sleipnir chat).
@@ -837,6 +841,7 @@ func (s *Session) build(ctx context.Context) error {
 		OutagePatience:     outagePatience(o.OutagePatience),
 		WaitUnreachable:    o.WaitUnreachable,
 		BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
+		Owners:             o.Owners,
 	}
 	if len(o.RoleModels) > 0 {
 		if err := s.checkRoleModels(o.RoleModels); err != nil {

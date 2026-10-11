@@ -286,7 +286,7 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task) integration {
 	}
 	res, err := iso.Queue.Submit(ctx, workspace.Submission{
 		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), Message: subject,
-		Scope: t.Files, EnforceScope: len(t.Files) > 0,
+		Scope: t.Files, EnforceScope: len(t.Files) > 0, Refuse: s.ownedRefusal(m.role),
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -329,9 +329,48 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task) integration {
 		return integration{bounce: s.verifyBounce(ctx, m, res.Verify)}
 	default:
 		reason := cleanText(res.Reason, 400)
+		if owners := s.ownersElsewhere(m.role, res.Files); len(owners) > 0 {
+			worker := article(owners[0]) + " " + joinWords(owners, "or") + " worker"
+			return integration{bounce: "Not done: the merge queue refused your work: " + reason +
+				". Revert those files in your tree: only " + worker + " may change them (if your task needs the change, ask the manager (mail) to create a task for " +
+				worker + "). Then call task done again."}
+		}
 		return integration{bounce: "Not done: the merge queue refused your work: " + reason +
 			". Fix that in your tree (revert files outside your scope, or ask the manager to widen it), then call task done again."}
 	}
+}
+
+// ownedRefusal is the merge queue's check of a submission by an agent of role
+// against the paths other roles own (Deps.Owners): for a path it may not change it
+// answers "<path> belongs to the <owner> role". Nil when no path is owned.
+func (s *Swarm) ownedRefusal(role string) func(string) string {
+	if s.deps.Owners == nil {
+		return nil
+	}
+	return func(rel string) string {
+		if own := foreignOwners(s.deps.Owners, role, rel); len(own) > 0 {
+			return displayPath(rel) + " belongs to " + ownersText(own)
+		}
+		return ""
+	}
+}
+
+// ownersElsewhere returns, sorted and without duplicates, the roles that own any of
+// files when an agent of role may not change it: the merge queue refused those files
+// for their owners, not for the task's scope. Nil when none is.
+func (s *Swarm) ownersElsewhere(role string, files []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range files {
+		for _, r := range foreignOwners(s.deps.Owners, role, f) {
+			if !seen[r] {
+				seen[r] = true
+				out = append(out, r)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // notCommitted maps a refusal of Tree.Commit onto what the worker is told.

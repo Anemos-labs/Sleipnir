@@ -53,7 +53,8 @@ type component struct {
 // FromGit tasks share a starting commit only by coincidence. Setup commands are
 // merged as the longest common prefix followed by each task's own remainder, so
 // that k mutations are applied one after the other after a shared dependency
-// download.
+// download. When a component's solution changes a user-interface file, the
+// composite's UI paths belong to the frontend role (OwnUI).
 //
 // Grouping is greedy over tasks ordered by a hash of (seed, id): deterministic,
 // and independent of the input order. Tasks that fit no group are left out.
@@ -287,7 +288,7 @@ func buildComposite(sel []component, seed int64) (rl.Task, error) {
 	}
 	metaRaw, _ := json.Marshal(meta)
 
-	return rl.Task{
+	t := rl.Task{
 		ID:     fmt.Sprintf("composite-%d-%s", k, hex.EncodeToString(sum[:5])),
 		Kind:   rl.TaskSwarm,
 		Repo:   first.Repo,
@@ -301,7 +302,10 @@ func buildComposite(sel []component, seed int64) (rl.Task, error) {
 		Tags:    dedupe(tags),
 		Network: first.Network,
 		Meta:    metaRaw,
-	}, nil
+	}
+	// A component that changes a UI file makes the UI the frontend role's.
+	OwnUI(&t, files)
+	return t, nil
 }
 
 // compositeScript is the generated verifier. Each component command runs in a
