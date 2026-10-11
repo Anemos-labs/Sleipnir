@@ -197,6 +197,23 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets
   (a stop is an outcome: `budget`), wall-clock is enforced by the runner, and infrastructure failures are retried and
   never become episodes.
+* **Confinement** (`--confine bwrap`, on `rl rollout`, `rl eval`, `rl tasks check` and the task generators): without
+  it, a command the permission rules cannot judge statically (`python3 -c ...`) and the code a verifier runs see the
+  host's files, including the hidden test files and reference solutions in the blob store, the full history of a
+  mined repository and other rollouts' workspaces, so a policy could be rewarded for reading the answer. With it, every
+  setup, agent and verifier command (and a swarm's done check) runs in a bubblewrap sandbox: the root file system
+  read-only; user homes, `/tmp`, `/run`, service state, the work dir, the task sources, the blob store and the run
+  output hidden (empty); `/etc/shadow` and SSH keys masked; its own PID, IPC and UTS namespaces (it cannot see or
+  signal the harness, whose environment holds provider keys) and, unless the task needs the network, its own network
+  namespace with loopback up. Writable are only the command's own tree, HOME and TMPDIR and the caches named by its
+  environment (`GOCACHE`, `GOMODCACHE`, `CARGO_HOME`, `PIP_CACHE_DIR`, ...); toolchains on its `PATH` (and
+  `GOROOT`, `RUSTUP_HOME`, `JAVA_HOME`) stay readable. `--confine-ro DIR` and `--confine-rw DIR` re-expose other
+  toolchain or cache directories. Nothing re-exposes the work dir, the blob store or the run output, or anything in
+  them; the directory relative task repositories resolve against (the current directory) is never re-exposed whole,
+  but a toolchain or cache inside it is (a run started in a home directory keeps `~/.local/go`). A task with the
+  network also sees the directory `/etc/resolv.conf` links into. `bwrap` mode refuses to start where bubblewrap cannot create a sandbox (it needs
+  unprivileged user namespaces, or root); use it whenever rollouts are training data. Shared caches remain a shared
+  write area between rollouts.
 * **Outages pause a rollout instead of failing it.** A failure of the policy endpoint that waiting cures (a status of
   500 or more, 429, a refused or reset connection, a connection cut mid-stream, no response within the client's
   timeouts) starts an outage; the next answer from any model of the rollout ends it. Meanwhile the agents repeat the
@@ -563,7 +580,8 @@ any role's steps (default 1: never); the statistics file is still written.
   the kind of work, for trainable steps too.
 * **Licences and consent.** The repo licence and any consent flag travel with every record; `--licenses` filters.
 * **Contamination.** Task splits by repo/date; hidden verifier files never appear in prompts; a scanner flags
-  episodes whose transcript contains verifier content or benchmark strings.
+  episodes whose transcript contains verifier content or benchmark strings; `--confine bwrap` keeps commands from
+  reading hidden files, reference solutions and mined history at all.
 * **Dedup and balance.** Exact dedup by prompt hash; per-task caps; `sleipnir rl show RUN [TASK/SAMPLE]` prints pass rates, reward
   distributions, per-role step counts, flagged episodes, token totals, cache anomalies and group statistics.
 
