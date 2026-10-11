@@ -9,11 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -316,7 +314,7 @@ func Rebuild(ctx context.Context, repoPath string, opts RebuildOptions) (*rl.Tas
 	if err != nil {
 		return nil, rep, fmt.Errorf("resolving %s: %w", rev, err)
 	}
-	rep.Commit, rep.Repo = commit, sourceRepoName(ctx, r, abs)
+	rep.Commit, rep.Repo = commit, repoIdentity(ctx, r, abs)
 	if opts.IDPrefix == "" {
 		opts.IDPrefix = sanitizeID(filepath.Base(abs))
 	}
@@ -873,25 +871,6 @@ func (l *rebuildLib) goBuildScript() string {
 	}
 	return cd + "out=$(go build " + list + " 2>&1) || { printf '%s\\n' \"$out\" | tail -n 40; exit 11; }\n" +
 		"out=$(go test -count=1 -run '^$' -exec true " + list + " 2>&1) || { printf '%s\\n' \"$out\" | tail -n 40; exit 11; }"
-}
-
-// scpOriginRe matches an scp-style git URL (user@host:path).
-var scpOriginRe = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/]`)
-
-// sourceRepoName names the repository in provenance: its origin's URL without credentials, query or fragment, or
-// else the directory's base name (never a local path).
-func sourceRepoName(ctx context.Context, r *repo, abs string) string {
-	if out, err := r.git(ctx, "config", "--get", "remote.origin.url"); err == nil {
-		u := strings.TrimSpace(string(out))
-		if p, err := url.Parse(u); err == nil && p.Host != "" && (p.Scheme == "https" || p.Scheme == "http" || p.Scheme == "ssh" || p.Scheme == "git") {
-			p.User, p.RawQuery, p.Fragment = nil, "", ""
-			return p.String()
-		}
-		if scpOriginRe.MatchString(u) {
-			return u
-		}
-	}
-	return filepath.Base(abs)
 }
 
 // FormatRebuildUnits describes units for a person: each unit's name, weight and tests, in order.

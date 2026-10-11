@@ -421,21 +421,13 @@ func pyTestUnit(file string, refs map[string]int, order map[string]int, fallback
 
 // pytestINIAt is the reference's pytest configuration of the project in dir (see PytestINIFromDir), read from rev.
 func pytestINIAt(ctx context.Context, r *repo, rev, dir string) (string, error) {
-	tmp, err := os.MkdirTemp("", "sleipnir-pytest-ini-")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(tmp)
-	for _, name := range []string{"pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg"} {
+	return pytestINI(func(name string) (string, bool, error) {
 		b, err := r.show(ctx, rev, path.Join(dir, name))
 		if err != nil {
-			continue // absent at rev
+			return "", false, nil // absent at rev
 		}
-		if err := os.WriteFile(filepath.Join(tmp, name), b, 0o600); err != nil {
-			return "", err
-		}
-	}
-	return PytestINIFromDir(tmp)
+		return string(b), true, nil
+	})
 }
 
 // pyAPISection documents one module for API.md: its name and file, its docstring, and its API as Python skeletons
