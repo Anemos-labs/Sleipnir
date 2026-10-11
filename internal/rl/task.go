@@ -48,6 +48,12 @@ type Team struct {
 	Mode   string   `json:"mode"`             // single | swarm
 	Agents int      `json:"agents,omitempty"` // workers; the manager is not counted
 	Roles  []string `json:"roles,omitempty"`
+	// Owns maps a role to the repository paths that only agents of that role may
+	// write, as globs in Verifier.Protected's syntax ("*.css", "web/"). The swarm's
+	// write guard refuses a file tool's write to an owned path by an agent of any
+	// other role, the manager included; a path several roles own may be written by
+	// any of them. It applies to swarm teams only.
+	Owns map[string][]string `json:"owns,omitempty"`
 }
 
 // Verifier defines how the result is judged. It always runs in a clean
