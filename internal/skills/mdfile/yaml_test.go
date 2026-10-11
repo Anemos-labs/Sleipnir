@@ -137,6 +137,8 @@ func TestParseYAMLErrors(t *testing.T) {
 		{"key too long", strings.Repeat("k", 200) + ": v", 2, "longer than"},
 		{"bad escape", `a: "\q"`, 2, "unknown escape"},
 		{"bad unicode escape", `a: "\uZZZZ"`, 2, "invalid escape"},
+		{"a code point past the last one", `a: "\U00110000"`, 2, "invalid escape"},
+		{"a code point that does not fit 31 bits", `a: "\UFFFFFFFF"`, 2, "invalid escape"},
 		{"nesting too deep", nestedMaps(12), 0, "nested"},
 		{"flow nesting too deep", "a: " + strings.Repeat("[", 30) + strings.Repeat("]", 30) + "\nb: [" + strings.Repeat("[", 30) + "\n", 0, ""},
 		{"multi-line quoted junk after close", "a: \"x\n y\" junk", 2, "after the closing quote"},

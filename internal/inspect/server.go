@@ -481,6 +481,19 @@ func textParam(r *http.Request, name string) (string, error) {
 	return v, nil
 }
 
+// limitParam parses an optional count query parameter: a decimal number of no sign, at most max (a larger one is max).
+func limitParam(r *http.Request, name string, def, max int) (int, error) {
+	v := r.URL.Query().Get(name)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || strings.HasPrefix(v, "+") {
+		return 0, fmt.Errorf("bad %s parameter", name)
+	}
+	return min(n, max), nil
+}
+
 func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request, sess *Session) {
 	q := RequestQuery{}
 	var err error
@@ -500,12 +513,12 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request, sess *Se
 		s.fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	limit, err := uintParam(r, "limit", 1000, 20000)
+	limit, err := limitParam(r, "limit", 1000, 20000)
 	if err != nil {
 		s.fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	q.Since, q.Limit = since, int(limit)
+	q.Since, q.Limit = since, limit
 	switch r.URL.Query().Get("tail") {
 	case "1", "true":
 		q.Tail = true
@@ -545,12 +558,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, sess *Sess
 		s.fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	limit, err := uintParam(r, "limit", 200, 2000)
+	limit, err := limitParam(r, "limit", 200, 2000)
 	if err != nil {
 		s.fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	q.Limit = int(limit)
+	q.Limit = limit
 	if r.URL.Query().Get("since") == "" {
 		q.Tail = true
 	} else if q.Since, err = uintParam(r, "since", 0, 1<<62); err != nil {
