@@ -182,46 +182,53 @@ func TestAConfigFileBeingWrittenIsWaitedFor(t *testing.T) {
 	}
 }
 
+// Both of git's wordings of a ref's parent directory vanishing under it, with the errno that names the race: the ref's
+// lock file, and the reflog git writes before it commits the ref.
 func TestWorktreeAddRetriesMissingRefLockParent(t *testing.T) {
-	for _, wait := range []bool{false, true} {
-		t.Run(fmt.Sprint(wait), func(t *testing.T) {
-			dir := newRepo(t)
-			gitShim, evidence := shim(t, `
+	for _, c := range []struct{ name, msg string }{
+		{"lock-file", "fatal: cannot lock ref 'refs/heads/sleipnir/retry/worker': Unable to create '/repo/.git/refs/heads/sleipnir/retry/worker.lock': No such file or directory"},
+		{"reflog", "fatal: cannot update the ref 'refs/heads/sleipnir/retry/worker': unable to create directory for '/repo/.git/logs/refs/heads/sleipnir/retry/worker': No such file or directory"},
+	} {
+		for _, wait := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/wait=%v", c.name, wait), func(t *testing.T) {
+				dir := newRepo(t)
+				gitShim, evidence := shim(t, `
 case " $* " in
   *" branch --no-track -- sleipnir/retry/worker "*)
     echo attempt >> "$D/attempts"
     if [ ! -f "$D/failed-once" ]; then
       touch "$D/failed-once"
-      echo "fatal: cannot lock ref 'refs/heads/sleipnir/retry/worker': Unable to create '/repo/.git/refs/heads/sleipnir/retry/worker.lock': No such file or directory" >&2
+      echo "`+c.msg+`" >&2
       exit 128
     fi
     ;;
 esac
 exec "$REAL" "$@"`)
-			lockWait := time.Duration(0)
-			if wait {
-				lockWait = 5 * time.Second
-			}
-			r := openRepo(t, dir, WithGitPath(gitShim), WithLockWait(lockWait))
-			path := filepath.Join(t.TempDir(), "worker")
-			err := r.WorktreeAdd(ctxT(t), WorktreeAddOptions{Path: path, Branch: "sleipnir/retry/worker", Commit: "HEAD"})
-			attempts := strings.Count(readFile(t, filepath.Join(evidence, "attempts")), "attempt\n")
-			if !wait {
-				if !errors.Is(err, ErrLocked) || attempts != 1 {
-					t.Fatalf("no-wait add: attempts=%d error=%v", attempts, err)
+				lockWait := time.Duration(0)
+				if wait {
+					lockWait = 5 * time.Second
 				}
-				if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
-					t.Fatalf("ref lock failure left a worktree: %v", statErr)
+				r := openRepo(t, dir, WithGitPath(gitShim), WithLockWait(lockWait))
+				path := filepath.Join(t.TempDir(), "worker")
+				err := r.WorktreeAdd(ctxT(t), WorktreeAddOptions{Path: path, Branch: "sleipnir/retry/worker", Commit: "HEAD"})
+				attempts := strings.Count(readFile(t, filepath.Join(evidence, "attempts")), "attempt\n")
+				if !wait {
+					if !errors.Is(err, ErrLocked) || attempts != 1 {
+						t.Fatalf("no-wait add: attempts=%d error=%v", attempts, err)
+					}
+					if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+						t.Fatalf("ref lock failure left a worktree: %v", statErr)
+					}
+					return
 				}
-				return
-			}
-			if err != nil || attempts != 2 {
-				t.Fatalf("retrying add: attempts=%d error=%v", attempts, err)
-			}
-			if branch, err := openRepo(t, path).Branch(ctxT(t)); err != nil || branch != "sleipnir/retry/worker" {
-				t.Fatalf("worktree branch=%q error=%v", branch, err)
-			}
-		})
+				if err != nil || attempts != 2 {
+					t.Fatalf("retrying add: attempts=%d error=%v", attempts, err)
+				}
+				if branch, err := openRepo(t, path).Branch(ctxT(t)); err != nil || branch != "sleipnir/retry/worker" {
+					t.Fatalf("worktree branch=%q error=%v", branch, err)
+				}
+			})
+		}
 	}
 }
 
