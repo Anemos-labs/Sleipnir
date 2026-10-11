@@ -11,6 +11,16 @@ they do not indicate whether a change has been released.
   `--max-total-bytes` (`FixtureOptions.MaxFiles`, `MaxFileBytes`,
   `MaxTotalBytes`) for large project fixtures; the defaults (400 files,
   1 MiB per file, 8 MiB per tree) are unchanged.
+- Sessions can take savepoints (`session.Options.Savepoints`,
+  `Session.Savepoint`): tool batches that can write hold a barrier, a
+  savepoint pauses them for a moment, writes every agent's state as an
+  `agent.snapshot` marked `savepoint`, emits the new `session.savepoint`
+  event and flushes the log; a log cut back to it resumes into that state.
+  RL workspaces can be prepared at a stable path, captured into a store and
+  rebuilt there (`PrepareID`, `Capture`, `RestoreWorkspace`). Without the
+  option nothing changes; prompt and tool-schema bytes are unchanged
+  (`core.ToolSpec` gains the scheduling hint `NoTreeWrites`, set on the
+  swarm's task, mail, note and spawn tools, which is never rendered).
 - A `json-score` verifier's score line may carry a breakdown of the score,
   `"units"` and `"guards"` (`docs/TRAINING-DATA.md`, section 3.1). Verifier
   results, outcome events, the episode's `outcome.verifier` and the results in
