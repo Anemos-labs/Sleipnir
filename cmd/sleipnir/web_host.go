@@ -192,17 +192,32 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 }
 
 // unlimitedByDefault says whether the sessions of the page start with no spending cap, as the New session dialog shows them (budget
-// off): they do unless sleipnir web was given --budget-usd or the configuration sets swarm.budget_usd, the cap that stands for a team
-// where nobody chose a budget is the built-in one, which the terminal applies and the page does not.
+// off): they do unless sleipnir web was given --budget-usd or the configuration sets swarm.budget_usd (to the built-in amount too: a
+// setting is the person's choice whatever it says); the cap that stands for a team where nobody chose a budget is the built-in one,
+// which the terminal applies and the page does not.
 func (h *webHostImpl) unlimitedByDefault() bool {
 	if h.d.BudgetUSD > 0 {
 		return false
 	}
 	cfg := h.base.Config // the configuration the sessions run with, when the base brings one
+	var rep *config.Report
 	if cfg == nil {
-		cfg, _, _ = config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
+		cfg, rep, _ = config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
 	}
-	return cfg == nil || cfg.Swarm.BudgetUSD == 0 || cfg.Swarm.BudgetUSD == config.DefaultSwarmBudgetUSD
+	switch {
+	case cfg == nil || cfg.Swarm.BudgetUSD == 0:
+		return true
+	case cfg.Swarm.BudgetUSD != config.DefaultSwarmBudgetUSD:
+		return false
+	}
+	// the built-in amount: a cap nobody chose, unless a layer of the configuration (the person's file, the environment) set it; the
+	// report names the origin of a setting a layer made, and none of one the built-in defaults supply
+	if rep != nil {
+		if _, set := rep.Origins["swarm.budget_usd"]; set {
+			return false
+		}
+	}
+	return true
 }
 
 // newBridge makes the approvals bridge of the host: floor is the least time before an answer (0: the default 350 ms), grace how long

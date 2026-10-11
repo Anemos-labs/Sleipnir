@@ -97,3 +97,42 @@ func TestTheSettingThatLiftsTheTeamCapIsOneTheConfigurationReads(t *testing.T) {
 		t.Errorf("with %s the configuration says %v, %v: a team has the cap of %v", unlimitedEnv, cfg.Swarm.BudgetUSD, err, config.DefaultSwarmBudgetUSD)
 	}
 }
+
+// The built-in cap is the one nobody chose: a swarm.budget_usd the person wrote is kept even when it is the built-in amount, whether the
+// setting comes from their file or from the environment.
+func TestAnExplicitBudgetEqualToTheBuiltInOneIsKept(t *testing.T) {
+	project := webWorld(t)
+	home, _ := os.UserHomeDir()
+	host := func() *webHostImpl { return &webHostImpl{d: webDefaults{Cwd: project}} }
+	if !host().unlimitedByDefault() {
+		t.Fatal("with nothing configured the sessions of the page have no cap")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(home, ".sleipnir", "config.json")
+	for name, tc := range map[string]struct {
+		json      string
+		unlimited bool
+	}{
+		"50 written in the file":    {`{"swarm":{"budget_usd":50}}`, false},
+		"another amount":            {`{"swarm":{"budget_usd":12.5}}`, false},
+		"no limit written":          {`{"swarm":{"budget_usd":0}}`, true},
+		"a file that sets no limit": {`{"swarm":{"max_workers":4}}`, true},
+	} {
+		if err := os.WriteFile(file, []byte(tc.json), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := host().unlimitedByDefault(); got != tc.unlimited {
+			t.Errorf("%s: unlimitedByDefault = %v, want %v", name, got, tc.unlimited)
+		}
+	}
+	os.Remove(file)
+	t.Setenv("SLEIPNIR_SWARM_BUDGET_USD", "50")
+	if host().unlimitedByDefault() {
+		t.Error("50 set in the environment is a choice, and the page keeps it")
+	}
+	if (&webHostImpl{d: webDefaults{Cwd: project, BudgetUSD: 7}}).unlimitedByDefault() {
+		t.Error("--budget-usd of sleipnir web is a choice")
+	}
+}
