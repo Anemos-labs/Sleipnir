@@ -1,0 +1,157 @@
+package agent_test
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/tools"
+)
+
+// The barrier waits politely, then gates new writers for at most firm, and
+// gives up without leaving anyone blocked.
+func TestSavepointBarrier(t *testing.T) {
+	ctx := context.Background()
+	b := agent.NewSavepointBarrier()
+	if !b.Acquire(ctx, 10*time.Millisecond, 10*time.Millisecond) {
+		t.Fatal("an idle barrier could not be acquired")
+	}
+	b.Release()
+
+	// A writer that outlasts both phases: the savepoint gives up, and new
+	// writers are not held after it did.
+	b.RLock()
+	start := time.Now()
+	if b.Acquire(ctx, 20*time.Millisecond, 30*time.Millisecond) {
+		t.Fatal("acquired while a writer held the barrier")
+	}
+	if d := time.Since(start); d < 50*time.Millisecond || d > 2*time.Second {
+		t.Errorf("gave up after %v, want about polite+firm", d)
+	}
+	done := make(chan struct{})
+	go func() { b.RLock(); b.RUnlock(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a new writer stayed blocked after the savepoint gave up")
+	}
+	b.RUnlock()
+
+	// A writer that ends during the firm phase: the savepoint gets the barrier,
+	// and a writer arriving meanwhile waits for the release.
+	b.RLock()
+	got := make(chan bool, 1)
+	go func() { got <- b.Acquire(ctx, 5*time.Millisecond, 2*time.Second) }()
+	time.Sleep(50 * time.Millisecond) // the savepoint is gating now
+	var late atomic.Bool
+	lateDone := make(chan struct{})
+	go func() { b.RLock(); late.Store(true); b.RUnlock(); close(lateDone) }()
+	time.Sleep(20 * time.Millisecond)
+	if late.Load() {
+		t.Fatal("a new writer started while the savepoint was gating")
+	}
+	b.RUnlock()
+	if !<-got {
+		t.Fatal("the savepoint did not get the barrier when the writer ended")
+	}
+	if late.Load() {
+		t.Fatal("a writer ran while the savepoint held the barrier")
+	}
+	b.Release()
+	<-lateDone
+
+	// A cancelled context ends the wait.
+	b.RLock()
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	if b.Acquire(cctx, time.Minute, time.Minute) {
+		t.Fatal("acquired with a cancelled context")
+	}
+	b.RUnlock()
+}
+
+// An agent with a barrier keeps a recoverable snapshot at tool-batch
+// boundaries, holds the barrier only while a writing batch runs, and writes the
+// snapshot on request.
+func TestAgentRecoverableSnapshotAtToolBoundaries(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{}, 1)
+	bash := fakeTool{name: "bash", runCtx: func(ctx context.Context, c *tools.Call) *tools.Result {
+		started <- struct{}{}
+		<-release
+		return &tools.Result{Text: "built"}
+	}}
+	look := fakeTool{name: "look", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: "seen"} }}
+	b := agent.NewSavepointBarrier()
+	step := 0
+	r := newLimRig(t, func(c *agent.Config) { c.Barrier = b }, []fakeTool{bash, look}, func(c *mock.Call) mock.Reply {
+		step++
+		switch step {
+		case 1:
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "r1", Name: "look", Args: `{}`}}}
+		case 2:
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "b1", Name: "bash", Args: `{"command":"make"}`}}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	ctx := context.Background()
+	res := make(chan error, 1)
+	go func() { _, err := r.agent.Run(ctx, "build it"); res <- err }()
+	<-started // the writing batch is running
+	if b.Acquire(ctx, 20*time.Millisecond, 20*time.Millisecond) {
+		t.Fatal("a savepoint got the barrier while bash ran")
+	}
+	snap, ok := r.agent.Recoverable()
+	if !ok || !strings.Contains(turnsText(snap.Turns), "seen") || strings.Contains(turnsText(snap.Turns), "built") {
+		t.Fatalf("recoverable snapshot mid-batch should end after the read batch: ok=%v %q", ok, turnsText(snap.Turns))
+	}
+	close(release)
+	if err := <-res; err != nil {
+		t.Fatal(err)
+	}
+	if !b.Acquire(ctx, time.Second, time.Second) {
+		t.Fatal("the barrier stayed held after the run")
+	}
+	b.Release()
+	snap, _ = r.agent.Recoverable()
+	if !strings.Contains(turnsText(snap.Turns), "built") {
+		t.Fatalf("the recoverable snapshot lacks the bash result: %q", turnsText(snap.Turns))
+	}
+	h, err := r.agent.WriteRecoverable()
+	if err != nil || h == "" {
+		t.Fatalf("WriteRecoverable: %q %v", h, err)
+	}
+	found := false
+	for _, e := range r.log.OfType(events.TypeAgentSnapshot) {
+		if strings.Contains(string(e.Data), `"savepoint":true`) && strings.Contains(string(e.Data), string(h)) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("no savepoint agent.snapshot event")
+	}
+}
+
+// turnsText concatenates the text of turns, tool results included.
+func turnsText(ts []core.Turn) string {
+	var sb strings.Builder
+	var walk func([]core.Block)
+	walk = func(bs []core.Block) {
+		for _, b := range bs {
+			sb.WriteString(b.Text)
+			sb.WriteString("\n")
+			walk(b.Result)
+		}
+	}
+	for _, t := range ts {
+		walk(t.Blocks)
+	}
+	return sb.String()
+}

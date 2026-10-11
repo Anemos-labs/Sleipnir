@@ -24,6 +24,10 @@ const (
 	// agent (thread, notes, spine, counters); TypeAgentRestore records a resume.
 	TypeAgentSnapshot = "agent.snapshot"
 	TypeAgentRestore  = "agent.restore"
+	// TypeSessionSavepoint marks a durable resume point of a long run (session.Savepoint): every agent's recoverable
+	// snapshot was written just before it, and the log up to and including it is what a resume keeps. Payload: n,
+	// consistent (false when writes did not pause in time; nothing was captured), agents (agent id -> snapshot blob).
+	TypeSessionSavepoint = "session.savepoint"
 	// TypeModelSwitch records /model: the single agent moved to another model, keeping its thread.
 	TypeModelSwitch = "model.switch"
 

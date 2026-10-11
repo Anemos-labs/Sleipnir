@@ -157,7 +157,9 @@ type Deps struct {
 	// OutagePatience and WaitUnreachable are agent.Config's for every agent of the swarm.
 	OutagePatience  time.Duration
 	WaitUnreachable bool
-	Registry        *tools.Registry
+	// Barrier is agent.Config.Barrier for every agent of the swarm (savepoints).
+	Barrier  agent.Barrier
+	Registry *tools.Registry
 	// ToolSpecs is the frozen tool list (must include the swarm tools).
 	ToolSpecs []core.ToolSpec
 	Const     *kv.Layer
@@ -556,6 +558,25 @@ func (s *Swarm) StartIdleManager() (*agent.Agent, error) {
 		m.setState(s, "done", "")
 	}
 	return a, nil
+}
+
+// LiveAgents returns the agents of the swarm's current members (the manager,
+// workers and service agents), in id order: what a savepoint snapshots.
+func (s *Swarm) LiveAgents() []*agent.Agent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0, len(s.members))
+	for id := range s.members {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]*agent.Agent, 0, len(ids))
+	for _, id := range ids {
+		if m := s.members[id]; m != nil && m.a != nil {
+			out = append(out, m.a)
+		}
+	}
+	return out
 }
 
 // RunManager runs the manager on a goal and returns its final answer. If ctx ends

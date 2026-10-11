@@ -97,6 +97,68 @@ func (a *Agent) Snapshot() Snapshot {
 	}
 }
 
+// Barrier is what Config.Barrier needs: a reader-writer lock (sync.RWMutex).
+type Barrier interface {
+	RLock()
+	RUnlock()
+}
+
+// noteRecoverable keeps the agent's current state as its recoverable snapshot,
+// when a barrier is configured (savepoints are on). It is called where the
+// thread ends in complete tool results or in fresh input: a state from which a
+// later process can simply send the next request.
+func (a *Agent) noteRecoverable() {
+	if a.cfg.Barrier == nil {
+		return
+	}
+	snap := a.Snapshot()
+	a.mu.Lock()
+	a.recoverable = &snap
+	a.mu.Unlock()
+}
+
+// Recoverable returns the newest snapshot taken at a tool-batch boundary, and
+// false before the first one (or without Config.Barrier).
+func (a *Agent) Recoverable() (Snapshot, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.recoverable == nil {
+		return Snapshot{}, false
+	}
+	return *a.recoverable, true
+}
+
+// WriteRecoverable records the recoverable snapshot in the blob store and the
+// log (an agent.snapshot event, unless it is the snapshot written last) and
+// returns its blob. Without one it writes nothing and returns "".
+func (a *Agent) WriteRecoverable() (core.Hash, error) {
+	snap, ok := a.Recoverable()
+	if !ok {
+		return "", nil
+	}
+	b, err := json.Marshal(snap)
+	if err != nil {
+		return "", err
+	}
+	h, err := a.cfg.Blobs.Put(b)
+	if err != nil {
+		return "", err
+	}
+	a.mu.Lock()
+	same := a.lastSnap == h
+	a.mu.Unlock()
+	if !same {
+		if _, err := a.cfg.Events.Emit(a.cfg.ID, events.TypeAgentSnapshot, map[string]any{"blob": h, "turns": len(snap.Turns), "bytes": len(b),
+			"requests": snap.Requests, "savepoint": true}); err != nil {
+			return "", err
+		}
+		a.mu.Lock()
+		a.lastSnap = h
+		a.mu.Unlock()
+	}
+	return h, nil
+}
+
 // ErrNotEmpty is returned by Restore for an agent that has already run.
 var ErrNotEmpty = errors.New("agent: only a fresh agent can be restored")
 
