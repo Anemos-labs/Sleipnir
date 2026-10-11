@@ -322,6 +322,41 @@ type Verdict struct {
 	Version string    `json:"version,omitempty"`
 	Detail  core.Hash `json:"detail,omitempty"` // blob with logs
 	Ms      int64     `json:"ms,omitempty"`
+	// Units and Guards are the breakdown a json-score verifier printed with its score (the last run's, when it was
+	// repeated): what each unit of work and the guards contributed. They describe Score and never change it or Pass.
+	Units  map[string]UnitScore `json:"units,omitempty"`
+	Guards *GuardScore          `json:"guards,omitempty"`
+}
+
+// Clone returns a copy of the verdict that shares no map or pointer with it.
+func (v Verdict) Clone() Verdict {
+	if v.Units != nil {
+		units := make(map[string]UnitScore, len(v.Units))
+		for k, u := range v.Units {
+			units[k] = u
+		}
+		v.Units = units
+	}
+	if v.Guards != nil {
+		g := *v.Guards
+		v.Guards = &g
+	}
+	return v
+}
+
+// UnitScore is one unit of a verifier's breakdown, a milestone of a test suite for example: Passed of its Total checks
+// passed, and Weight is its share of the score relative to the other units' weights.
+type UnitScore struct {
+	Passed int     `json:"passed"`
+	Total  int     `json:"total"`
+	Weight float64 `json:"weight"`
+}
+
+// GuardScore counts a verifier's guards, the checks that passed at the start and must keep passing: Kept of Total
+// still did.
+type GuardScore struct {
+	Kept  int `json:"kept"`
+	Total int `json:"total"`
 }
 
 // Outcome gathers what happened at the end of the episode.

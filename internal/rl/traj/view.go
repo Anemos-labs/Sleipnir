@@ -7,6 +7,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // view is the non-model part of the log, parsed once per Episode call: who was
@@ -107,6 +108,8 @@ type outcomeEv struct {
 	version  string
 	detail   core.Hash
 	ms       int64
+	units    map[string]rl.UnitScore
+	guards   *rl.GuardScore
 }
 
 type turnEv struct {
@@ -329,6 +332,15 @@ func parseOutcome(e events.Event) outcomeEv {
 	}
 	if p.Score != nil {
 		o.score, o.hasScore = *p.Score, true
+	}
+	// The score's breakdown is read on its own, so a malformed one is dropped
+	// whole and never half-filled.
+	var bd struct {
+		Units  map[string]rl.UnitScore `json:"units"`
+		Guards *rl.GuardScore          `json:"guards"`
+	}
+	if json.Unmarshal(e.Data, &bd) == nil {
+		o.units, o.guards = bd.Units, bd.Guards
 	}
 	return o
 }
