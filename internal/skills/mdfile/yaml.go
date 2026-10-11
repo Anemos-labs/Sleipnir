@@ -606,7 +606,7 @@ func scanQuoted(s string) (out string, end int, closed bool, err error) {
 					return "", 0, false, nil
 				}
 				code, perr := strconv.ParseUint(s[i+1:i+1+n], 16, 32)
-				if perr != nil || !utf8.ValidRune(rune(code)) {
+				if perr != nil || code > utf8.MaxRune || !utf8.ValidRune(rune(code)) {
 					return "", 0, false, fmt.Errorf("invalid escape \\%c%s", e, s[i+1:i+1+n])
 				}
 				b.WriteRune(rune(code))

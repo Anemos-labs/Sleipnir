@@ -311,7 +311,7 @@ func TestHardcodeHelpers(t *testing.T) {
 	}
 	for in, want := range map[string]string{
 		`plain`: "plain", `a\nb`: "a\nb", `\x41\x42`: "AB", `é`: "é", `\U0001F600`: "😀", `bad\xZZ`: `bad\xZZ`, `tail\`: `tail\`,
-		`\"q\"`: `"q"`, `\'`: `'`, `\u12`: `u12`, `\0`: "\x00", `\t\r`: "\t\r",
+		`\"q\"`: `"q"`, `\'`: `'`, `\u12`: `u12`, `\0`: "\x00", `\t\r`: "\t\r", `\U00110000`: "U00110000", `\UFFFFFFFF`: "UFFFFFFFF",
 	} {
 		if got := decodeEscapes(in); got != want {
 			t.Errorf("decodeEscapes(%q) = %q, want %q", in, got, want)
