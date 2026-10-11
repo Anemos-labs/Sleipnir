@@ -248,7 +248,7 @@ func decodeEscapes(s string) string {
 				w = 8
 			}
 			if end := i + 1 + w; end <= len(s) {
-				if v, err := strconv.ParseUint(s[i+1:end], 16, 32); err == nil && utf8.ValidRune(rune(v)) {
+				if v, err := strconv.ParseUint(s[i+1:end], 16, 32); err == nil && v <= utf8.MaxRune && utf8.ValidRune(rune(v)) {
 					b.WriteRune(rune(v))
 					i = end - 1
 					continue
