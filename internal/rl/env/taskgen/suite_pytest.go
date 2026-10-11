@@ -16,9 +16,9 @@ import (
 // (even without a [pytest] section), the [tool.pytest.ini_options] table of
 // pyproject.toml, the [pytest] section of tox.ini and the [tool:pytest] section
 // of setup.cfg. A project with none gets "[pytest]\n". Of TOML, the table's
-// strings, string arrays, booleans and numbers are understood; anything else (a
-// multi-line string, an inline table) is an error, and the caller writes the
-// configuration itself.
+// strings (multi-line ones included), string arrays, booleans and numbers are
+// understood; anything else (an inline table) is an error, and the caller
+// writes the configuration itself.
 func PytestINIFromDir(dir string) (string, error) {
 	return pytestINI(func(name string) (string, bool, error) {
 		b, err := os.ReadFile(filepath.Join(dir, name))
@@ -156,14 +156,31 @@ func pyprojectPytest(src string) (string, bool, error) {
 	return b.String(), true, nil
 }
 
-// iniValue writes one key of the converted table: a scalar on its line, an
-// array as one item per indented line (quoted for options pytest splits like a
-// shell command line).
+// iniValue writes one key of the converted table: a scalar on its line, a
+// string with line breaks as its first line there and the others as indented
+// continuation lines (pytest reads both forms alike: options it splits like a
+// shell command line or by line ignore the blank lines and the indentation, which
+// are dropped), an array as one item per indented line (quoted for options
+// pytest splits like a shell command line).
 func iniValue(key string, v any) (string, error) {
 	switch x := v.(type) {
 	case string:
 		if strings.ContainsAny(x, "\r\n") {
-			return "", fmt.Errorf("%s: a value with a line break cannot be written to an ini file", key)
+			var lines []string
+			for _, l := range strings.Split(strings.ReplaceAll(x, "\r\n", "\n"), "\n") {
+				if l = strings.TrimSpace(l); l != "" {
+					lines = append(lines, l)
+				}
+			}
+			if len(lines) == 0 {
+				return key + " =\n", nil
+			}
+			var b strings.Builder
+			b.WriteString(key + " = " + lines[0] + "\n")
+			for _, l := range lines[1:] {
+				b.WriteString("    " + l + "\n")
+			}
+			return b.String(), nil
 		}
 		return key + " = " + x + "\n", nil
 	case []string:
@@ -291,11 +308,12 @@ func (t *tomlScanner) value() (any, error) {
 	}
 }
 
-// str reads a basic ("...") or literal ('...') single-line string.
+// str reads a basic ("...") or literal ('...') string, single-line or
+// multi-line.
 func (t *tomlScanner) str() (string, error) {
 	q := t.peek()
 	if strings.HasPrefix(t.s[t.i:], strings.Repeat(string(q), 3)) {
-		return "", errors.New("multi-line strings are not supported")
+		return t.multiline(q)
 	}
 	j := t.i + 1
 	for j < len(t.s) && t.s[j] != q && t.s[j] != '\n' {
@@ -317,6 +335,100 @@ func (t *tomlScanner) str() (string, error) {
 		return "", fmt.Errorf("cannot read the string %s: %w", raw, err)
 	}
 	return s, nil
+}
+
+// multiline reads a multi-line basic ("""...""") or literal (”'...”') string:
+// a line break right after the opening delimiter is not part of it, up to two
+// quotes may stand right before the closing delimiter, and in a basic string
+// escapes are read and a backslash at the end of a line removes the line break
+// and the white space after it.
+func (t *tomlScanner) multiline(q byte) (string, error) {
+	j := t.i + 3
+	for {
+		if j >= len(t.s) {
+			return "", errors.New("unterminated multi-line string")
+		}
+		if q == '"' && t.s[j] == '\\' {
+			j += 2
+			continue
+		}
+		if t.s[j] == q && strings.HasPrefix(t.s[j:], strings.Repeat(string(q), 3)) {
+			n := 3
+			for j+n < len(t.s) && t.s[j+n] == q {
+				n++
+			}
+			if n > 5 {
+				return "", errors.New("too many quotes closing a multi-line string")
+			}
+			body := t.s[t.i+3 : j+n-3]
+			t.i = j + n
+			body = strings.TrimPrefix(strings.TrimPrefix(body, "\r"), "\n")
+			if q == '\'' {
+				return body, nil
+			}
+			return unescapeTOML(body)
+		}
+		j++
+	}
+}
+
+// unescapeTOML reads the escapes of a multi-line basic string's body, and its
+// line-ending backslashes.
+func unescapeTOML(body string) (string, error) {
+	var b strings.Builder
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if c != '\\' {
+			b.WriteByte(c)
+			continue
+		}
+		if i+1 >= len(body) {
+			return "", errors.New("a string ends in a backslash")
+		}
+		// A backslash followed by white space up to a line break joins the lines.
+		k := i + 1
+		for k < len(body) && (body[k] == ' ' || body[k] == '\t') {
+			k++
+		}
+		if k < len(body) && (body[k] == '\n' || body[k] == '\r') {
+			for k < len(body) && strings.IndexByte(" \t\r\n", body[k]) >= 0 {
+				k++
+			}
+			i = k - 1
+			continue
+		}
+		i++
+		switch e := body[i]; e {
+		case 'b':
+			b.WriteByte('\b')
+		case 't':
+			b.WriteByte('\t')
+		case 'n':
+			b.WriteByte('\n')
+		case 'f':
+			b.WriteByte('\f')
+		case 'r':
+			b.WriteByte('\r')
+		case 'e':
+			b.WriteByte(0x1b)
+		case '"', '\\':
+			b.WriteByte(e)
+		case 'x', 'u', 'U':
+			n := map[byte]int{'x': 2, 'u': 4, 'U': 8}[e]
+			if i+1+n > len(body) {
+				return "", fmt.Errorf("a short \\%c escape", e)
+			}
+			r, err := strconv.ParseUint(body[i+1:i+1+n], 16, 32)
+			if err != nil {
+				return "", fmt.Errorf("a bad \\%c escape: %w", e, err)
+			}
+			b.WriteRune(rune(r))
+			i += n
+		default:
+			return "", fmt.Errorf("an unknown escape \\%c", e)
+		}
+	}
+	return b.String(), nil
 }
 
 // snippet returns s up to its first line break, at most 40 bytes, for an error

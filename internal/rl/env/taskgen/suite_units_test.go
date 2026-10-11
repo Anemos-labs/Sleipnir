@@ -276,6 +276,27 @@ x = 1
 `}, "[pytest]\nminversion = 6.0\naddopts =\n    -ra\n    -k\n    'not slow'\ntestpaths =\n    tests\n    integration\nmarkers =\n    slow: marks tests as slow\n    db\n" +
 			"xfail_strict = true\ntimeout = 30\nquoted-key = v\n"},
 	}
+	// Multi-line strings: the first line break is dropped, a line-ending backslash joins lines, a literal string keeps its
+	// backslashes, escapes are read, and up to two quotes may stand before the closing delimiter.
+	multi := "[tool.pytest.ini_options]\n" + `addopts = """
+  --strict-markers
+
+  -p no:warnings \
+     -q
+"""
+markers = '''
+slow: a \n stays
+db'''
+filterwarnings = """error::\u0044eprecationWarning"""
+log_format = """"quoted""""
+`
+	cases = append(cases, struct {
+		name  string
+		files map[string]string
+		want  string
+	}{"pyproject multi-line strings", map[string]string{"pyproject.toml": multi},
+		"[pytest]\naddopts = --strict-markers\n    -p no:warnings -q\nmarkers = slow: a \\n stays\n    db\n" +
+			"filterwarnings = error::DeprecationWarning\nlog_format = \"quoted\"\n"})
 	for _, tc := range cases {
 		got, err := PytestINIFromDir(write(tc.files))
 		if err != nil || got != tc.want {
@@ -283,7 +304,8 @@ x = 1
 		}
 	}
 	for _, bad := range []string{
-		"[tool.pytest.ini_options]\naddopts = \"\"\"-q\"\"\"\n",
+		"[tool.pytest.ini_options]\naddopts = \"\"\"-q\n",
+		"[tool.pytest.ini_options]\naddopts = \"\"\"\\q\"\"\"\n",
 		"[tool.pytest.ini_options]\nenv = {A = \"1\"}\n",
 		"[tool.pytest.ini_options]\naddopts = [1, 2]\n",
 		"[tool.pytest.ini_options]\naddopts = \"unterminated\n",
