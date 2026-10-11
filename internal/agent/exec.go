@@ -72,7 +72,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 	return results, exitFailed
 }
 
-// refusalText is the result of a call that was not run because its turn asked for asked calls and limit are run.
+// refusalText is the result text of a call that was not run because its turn asked for asked calls and at most limit are run.
 func refusalText(asked, limit int) string {
 	return fmt.Sprintf("Not run: this turn asked for %d tool calls and at most %d are run per turn. Issue fewer calls (a grep or a glob instead of many reads, several edits in one apply_patch) and call this one again if you still need it.", asked, limit)
 }

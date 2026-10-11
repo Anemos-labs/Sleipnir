@@ -30,7 +30,7 @@ func rlBranch(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	at := fs.String("at", "last", "where to branch: sp:N[,M...], every:K (every K-th savepoint), last, compaction (before each compaction), milestone (where the progress score rose) or plateau (where it stalled; needs --score-savepoints)")
 	k := fs.Int("k", 4, "branches per point (the siblings of a point are one GRPO group)")
 	horizon := fs.Duration("horizon", 0, "agent time a branch gets after its point (0: the rest of the trunk's budget)")
-	compactFirst := fs.Bool("compact-first", false, "each branch compacts its context before anything else: competing summaries of the point's state")
+	compactFirst := fs.Bool("compact-first", false, "each branch compacts its context before anything else, when it has enough to fold: competing summaries of the point's state")
 	out := fs.String("out", "", "run directory of the branches (rerunning into it resumes)")
 	asJSON := fs.Bool("json", false, "print the summary as JSON")
 	if _, err := parseInterspersed(fs, args); err != nil {

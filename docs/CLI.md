@@ -1573,13 +1573,16 @@ flags:
 ### `sleipnir rl branch`
 
 Continues a finished rollout that took savepoints (`--savepoint-every`) from some of them, `--k` times each, into a new
-run directory: `--at sp:N[,M]` names savepoints, `every:K` takes every K-th, `last` the newest. Each branch resumes the
+run directory: `--at sp:N[,M]` names savepoints, `every:K` takes every K-th, `last` the newest, `compaction` the last one
+before each compaction, `milestone` each one whose progress score rose and `plateau` each one where it stalled (both need
+`--score-savepoints` on the trunk). Each branch resumes the
 trunk's state with its own seed and runs for `--horizon` of agent time after its point (0: the rest of the trunk's
 budget), then is verified like any rollout. The branches run one after the other, at the trunk's own workspace path:
 give the trunk's `--work-dir`. The siblings of a point are one GRPO group, their steps before the fork are marked
 inherited and left out of the training formats, and their first prompt after the fork is the same, so
 `rl export --format dpo --pair best-worst` pairs their decisions. `--compact-first` makes each branch compact its context
-before anything else: competing summaries of the point's state. Details in docs/TRAINING-DATA.md, section 3.3.
+before anything else, when it has enough to fold (otherwise no compactor is called): competing summaries of the point's
+state. Details in docs/TRAINING-DATA.md, section 3.3.
 
 <!-- flags: rl branch -->
 ```text
@@ -1603,7 +1606,7 @@ flags:
   -capture
         ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
   -compact-first
-        each branch compacts its context before anything else: competing summaries of the point's state
+        each branch compacts its context before anything else, when it has enough to fold: competing summaries of the point's state
   -concurrency int
         rollouts in flight (default 1)
   -confine string
