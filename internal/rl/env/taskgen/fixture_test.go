@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -199,6 +200,17 @@ func TestFixtureLimitsCanBeRaised(t *testing.T) {
 	if _, err := FromFixture(context.Background(), dir, FixtureOptions{RepoRoot: t.TempDir(), HiddenBlobs: fixtureBlobs(t), MaxFiles: 1000,
 		MaxTotalBytes: 100}); err == nil || !strings.Contains(err.Error(), "bytes in all") {
 		t.Fatalf("a lowered byte limit: %v", err)
+	}
+	// The largest limits still read every byte (one past the limit would overflow).
+	repos := t.TempDir()
+	if _, err := FromFixture(context.Background(), dir, FixtureOptions{RepoRoot: repos, HiddenBlobs: fixtureBlobs(t), MaxFiles: 1000,
+		MaxFileBytes: math.MaxInt, MaxTotalBytes: math.MaxInt}); err != nil {
+		t.Fatalf("the largest limits: %v", err)
+	}
+	want, _ := os.ReadFile(filepath.Join(dir, "start", "lib.sh"))
+	got, err := exec.Command("git", "-C", filepath.Join(repos, "demo-add"), "show", "HEAD:lib.sh").Output()
+	if err != nil || len(want) == 0 || string(got) != string(want) {
+		t.Fatalf("with the largest limits the start's lib.sh is %q (%v), want %q", got, err, want)
 	}
 }
 

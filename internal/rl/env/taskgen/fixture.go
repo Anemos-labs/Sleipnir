@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -295,7 +296,12 @@ func readTree(root string, lim treeLimits) (map[string][]byte, error) {
 			return err
 		}
 		defer f.Close()
-		data, err := io.ReadAll(io.LimitReader(f, int64(lim.fileBytes)+1))
+		// One byte past the limit tells an oversized file; a limit of math.MaxInt64 has no byte past it.
+		read := int64(lim.fileBytes)
+		if read < math.MaxInt64 {
+			read++
+		}
+		data, err := io.ReadAll(io.LimitReader(f, read))
 		if err != nil {
 			return err
 		}
