@@ -10,6 +10,17 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
+// noBudgetEnv takes the environment's say on the team budget out of a test, and puts it back when the test ends: a runner that sets
+// SLEIPNIR_SWARM_BUDGET_USD would otherwise change what the test reads from the configuration.
+func noBudgetEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv(budgetEnv, "") // registers the restore of what was there
+	os.Unsetenv(budgetEnv)
+}
+
+// budgetEnv is the environment variable of swarm.budget_usd.
+const budgetEnv = "SLEIPNIR_SWARM_BUDGET_USD"
+
 // startTeam starts a team of two in the project with the budget of the request and returns its tab.
 func (r *webRig) startTeam(project string, budget *float64) string {
 	r.t.Helper()
@@ -29,6 +40,7 @@ func (r *webRig) teamBudget(project string, budget *float64) float64 {
 // A session started in the page has no spending cap unless one is asked for: the terminal caps a team at the built-in $50 where nobody
 // chose a budget, the page does not, and the New session dialog starts at off. A budget in the request is the budget; 0 is off.
 func TestSessionsOfThePageHaveNoCapUnlessOneIsAsked(t *testing.T) {
+	noBudgetEnv(t)
 	project := webWorld(t)
 	_, base := newWebModel(t, sayScript("ok"))
 	r := newWebRig(t, soloDefaults(project), base)
@@ -54,6 +66,7 @@ func TestSessionsOfThePageHaveNoCapUnlessOneIsAsked(t *testing.T) {
 // team that says nothing, off in the request lifts it for that session alone, and a team that was started off takes a budget when it
 // is told off, which a team under a configured cap cannot be.
 func TestAConfiguredBudgetIsKeptAndOffLiftsItForTheSession(t *testing.T) {
+	noBudgetEnv(t)
 	project := webWorld(t)
 	home, _ := os.UserHomeDir()
 	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o755); err != nil {
@@ -91,6 +104,9 @@ func TestAConfiguredBudgetIsKeptAndOffLiftsItForTheSession(t *testing.T) {
 // configuration reads swarm.budget_usd from it.
 func TestTheSettingThatLiftsTheTeamCapIsOneTheConfigurationReads(t *testing.T) {
 	name, value, _ := strings.Cut(unlimitedEnv, "=")
+	if name != budgetEnv {
+		t.Fatalf("the setting is %s, not %s", name, budgetEnv)
+	}
 	t.Setenv(name, value)
 	cfg, _, err := config.Load(config.LoadOpts{Cwd: t.TempDir(), UntrustedProject: true})
 	if err != nil || cfg.Swarm.BudgetUSD != 0 {
@@ -101,6 +117,7 @@ func TestTheSettingThatLiftsTheTeamCapIsOneTheConfigurationReads(t *testing.T) {
 // The built-in cap is the one nobody chose: a swarm.budget_usd the person wrote is kept even when it is the built-in amount, whether the
 // setting comes from their file or from the environment.
 func TestAnExplicitBudgetEqualToTheBuiltInOneIsKept(t *testing.T) {
+	noBudgetEnv(t)
 	project := webWorld(t)
 	home, _ := os.UserHomeDir()
 	host := func() *webHostImpl { return &webHostImpl{d: webDefaults{Cwd: project}} }
@@ -128,7 +145,7 @@ func TestAnExplicitBudgetEqualToTheBuiltInOneIsKept(t *testing.T) {
 		}
 	}
 	os.Remove(file)
-	t.Setenv("SLEIPNIR_SWARM_BUDGET_USD", "50")
+	t.Setenv(budgetEnv, "50")
 	if host().unlimitedByDefault() {
 		t.Error("50 set in the environment is a choice, and the page keeps it")
 	}
