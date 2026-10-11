@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -407,4 +408,50 @@ func loadEpisode(t *testing.T, dir string) *rl.Episode {
 		t.Fatal(err)
 	}
 	return &ep
+}
+
+// Branch points by what happened in the trunk: before each compaction, where
+// the progress score rose, where it stalled.
+func TestTrunkPointsAt(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seqs []uint64
+	for i := 0; i < 6; i++ {
+		seq, err := log.Emit("main", events.TypeModelResponse, map[string]any{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		seqs = append(seqs, seq)
+	}
+	c1, _ := log.Emit("main", events.TypeCompactCommit, map[string]any{})
+	c2, _ := log.Emit("main", events.TypeCompactCommit, map[string]any{})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Savepoints 1-4 at the responses' seqs; both compactions come after savepoint 4.
+	for i, seq := range seqs[:4] {
+		if err := appendSavepoint(dir, savepointRecord{SavepointInfo: SavepointInfo{N: i + 1, Consistent: true, Seq: seq, LogBytes: 1}, Tree: "t"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if pts, err := TrunkPointsAt(dir, "compaction"); err != nil || !reflect.DeepEqual(pts, []int{4}) || c1 >= c2 {
+		t.Errorf("compaction points %v %v", pts, err)
+	}
+	for i, score := range []float64{0, 0.2, 0.2, 0.2, 0.5} {
+		if err := appendJSONLine(filepath.Join(dir, progressFile), rl.ProgressPoint{Savepoint: i + 1, Score: score}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if pts, _ := TrunkPointsAt(dir, "milestone"); !reflect.DeepEqual(pts, []int{2, 5}) {
+		t.Errorf("milestone points %v, want [2 5]", pts)
+	}
+	if pts, _ := TrunkPointsAt(dir, "plateau"); !reflect.DeepEqual(pts, []int{4}) {
+		t.Errorf("plateau points %v, want [4]", pts)
+	}
+	if _, err := TrunkPointsAt(dir, "random"); err == nil {
+		t.Error("an unknown mode was accepted")
+	}
 }

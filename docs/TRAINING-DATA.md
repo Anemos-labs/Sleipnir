@@ -277,8 +277,9 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   above 0 at a savepoint, up to its best-scoring one: the steps that completed before that savepoint was taken (the
   others are counted as `step:after_best_savepoint`, the episodes in `best_prefixes`). A twelve-hour run that went
   wrong in its last hours still teaches what it did well before.
-* **Branches** (`sleipnir rl branch --tasks FILE --from RUN/TASK/SAMPLE --at sp:N[,M]|every:K|last --k 4 --horizon 45m
-  --out DIR`): a finished rollout that took savepoints (the trunk) is continued from some of them, K times each, with
+* **Branches** (`sleipnir rl branch --tasks FILE --from RUN/TASK/SAMPLE --at POINTS --k 4 --horizon 45m --out DIR`, where
+  `POINTS` is `sp:N[,M]`, `every:K`, `last`, `compaction` (the last savepoint before each compaction), `milestone` (each
+  savepoint whose progress score rose) or `plateau` (each savepoint whose score had not moved over the two before it)): a finished rollout that took savepoints (the trunk) is continued from some of them, K times each, with
   different sampling seeds, so the outcomes compare decisions taken from the same state without paying for the prefix
   again. Sample `p*K+k-1` of the branch run is sibling `k` of point `p`: its log is the trunk's up to the savepoint plus
   an `rl.fork` event, its blobs are hard links to the trunk's, and its capture store borrows the trunk's objects; the

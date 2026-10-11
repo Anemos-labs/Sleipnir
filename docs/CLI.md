@@ -1587,7 +1587,7 @@ flags:
   -api-key-env string
         name of the environment variable holding the policy's API key (default: the provider's)
   -at string
-        where to branch: sp:N[,M...] (those savepoints), every:K (every K-th), or last (default "last")
+        where to branch: sp:N[,M...], every:K (every K-th savepoint), last, compaction (before each compaction), milestone (where the progress score rose) or plateau (where it stalled; needs --score-savepoints) (default "last")
   -base-url string
         policy endpoint base URL (default: the provider's)
   -blobs string

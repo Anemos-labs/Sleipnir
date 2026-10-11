@@ -281,3 +281,59 @@ func linkTree(src, dst string) error {
 		return copyRange(p, target, 0, fi.Size())
 	})
 }
+
+// TrunkPointsAt chooses branch points of a finished rollout by what happened in
+// it: "compaction" is the last savepoint before each compaction of any agent
+// (branches that then summarise differently), "milestone" every savepoint whose
+// progress score rose over the one before (progress.jsonl), "plateau" every
+// savepoint whose score had not changed over the two before it (a run that
+// stalled, from where other choices may get further). The points are in order,
+// without repeats.
+func TrunkPointsAt(trunk, mode string) ([]int, error) {
+	recs, err := readSavepoints(trunk)
+	if err != nil {
+		return nil, err
+	}
+	var out []int
+	add := func(n int) {
+		if len(out) == 0 || out[len(out)-1] != n {
+			out = append(out, n)
+		}
+	}
+	switch mode {
+	case "compaction":
+		var commits []uint64
+		if err := events.Scan(filepath.Join(trunk, "events.jsonl"), func(e events.Event) error {
+			if e.Type == events.TypeCompactCommit {
+				commits = append(commits, e.Seq)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+		for _, c := range commits {
+			last := 0
+			for _, r := range recs {
+				if r.Seq < c {
+					last = r.N
+				}
+			}
+			if last > 0 {
+				add(last)
+			}
+		}
+	case "milestone", "plateau":
+		pts := readProgress(trunk)
+		for i, p := range pts {
+			switch {
+			case mode == "milestone" && i > 0 && p.Score > pts[i-1].Score:
+				add(p.Savepoint)
+			case mode == "plateau" && i >= 2 && p.Score == pts[i-1].Score && p.Score == pts[i-2].Score && p.Score < 1:
+				add(p.Savepoint)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("branch points by %q: want compaction, milestone or plateau", mode)
+	}
+	return out, nil
+}

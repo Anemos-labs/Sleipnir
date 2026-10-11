@@ -134,7 +134,7 @@
   {"name":"allow","arg":"string","default":null,"repeatable":false,"desc":"permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)"},
   {"name":"allow-insecure-http","arg":"bool","default":null,"repeatable":false,"desc":"let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default"},
   {"name":"api-key-env","arg":"string","default":null,"defaultNote":"the provider's","repeatable":false,"desc":"name of the environment variable holding the policy's API key (default: the provider's)"},
-  {"name":"at","arg":"string","default":"last","repeatable":false,"desc":"where to branch: sp:N[,M...] (those savepoints), every:K (every K-th), or last"},
+  {"name":"at","arg":"string","default":"last","repeatable":false,"desc":"where to branch: sp:N[,M...], every:K (every K-th savepoint), last, compaction (before each compaction), milestone (where the progress score rose) or plateau (where it stalled; needs --score-savepoints)"},
   {"name":"base-url","arg":"string","default":null,"defaultNote":"the provider's","repeatable":false,"desc":"policy endpoint base URL (default: the provider's)"},
   {"name":"blobs","arg":"string","default":null,"defaultNote":"blobs/ next to the tasks file","repeatable":false,"desc":"blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)"},
   {"name":"budget-usd","arg":"float","default":null,"repeatable":false,"desc":"spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)"},

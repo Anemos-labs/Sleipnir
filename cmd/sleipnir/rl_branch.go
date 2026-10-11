@@ -27,7 +27,7 @@ func rlBranch(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	rf.register(fs)
 	tasksFile := fs.String("tasks", "", "tasks file (JSON lines) that holds the trunk's task")
 	from := fs.String("from", "", "the trunk: the sample directory of a finished rollout that took savepoints (RUN/TASK/SAMPLE)")
-	at := fs.String("at", "last", "where to branch: sp:N[,M...] (those savepoints), every:K (every K-th), or last")
+	at := fs.String("at", "last", "where to branch: sp:N[,M...], every:K (every K-th savepoint), last, compaction (before each compaction), milestone (where the progress score rose) or plateau (where it stalled; needs --score-savepoints)")
 	k := fs.Int("k", 4, "branches per point (the siblings of a point are one GRPO group)")
 	horizon := fs.Duration("horizon", 0, "agent time a branch gets after its point (0: the rest of the trunk's budget)")
 	compactFirst := fs.Bool("compact-first", false, "each branch compacts its context before anything else: competing summaries of the point's state")
@@ -57,7 +57,15 @@ func rlBranch(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	if err != nil {
 		return fmt.Errorf("rl branch: %w", err)
 	}
-	points, err := branchPoints(*at, avail)
+	var points []int
+	switch *at {
+	case "compaction", "milestone", "plateau":
+		if points, err = env.TrunkPointsAt(*from, *at); err == nil && len(points) == 0 {
+			err = fmt.Errorf("--at %s: the trunk has no such savepoint", *at)
+		}
+	default:
+		points, err = branchPoints(*at, avail)
+	}
 	if err != nil {
 		return fmt.Errorf("rl branch: %w", err)
 	}
