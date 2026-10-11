@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -50,6 +51,9 @@ func eraseEnviron(erase func(name, value string) bool) (int, error) {
 	}
 	if end == start { // started with an empty environment
 		return 0, nil
+	}
+	if end > math.MaxInt64 { // parseEnvRange refuses more already; the offsets below are signed
+		return 0, errors.New("the environment range is outside user space")
 	}
 	served, err := os.ReadFile("/proc/self/environ")
 	if err != nil {

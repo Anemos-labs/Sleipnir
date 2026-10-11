@@ -378,7 +378,7 @@ func (p *parser) hex4() (rune, bool) {
 	if p.pos+4 > len(p.src) {
 		return 0, false
 	}
-	n, err := strconv.ParseUint(string(p.src[p.pos:p.pos+4]), 16, 32)
+	n, err := strconv.ParseUint(string(p.src[p.pos:p.pos+4]), 16, 16) // four hex digits: 16 bits
 	if err != nil {
 		return 0, false
 	}
