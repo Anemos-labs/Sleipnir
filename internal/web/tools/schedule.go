@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"net/http"
 	"os"
@@ -171,25 +172,22 @@ func (s *service) handleNext(w http.ResponseWriter, r *http.Request) {
 	_ = web.WriteJSON(w, http.StatusOK, wire.CronCheck{OK: true, Next: iso(n)})
 }
 
-// allowedDir reports whether a job may run in dir: a project of the page (the host's list), a live tab's directory, or the server's.
-func (s *service) allowedDir(ctx context.Context, dir string) bool {
-	if dir == s.o.Cwd {
-		return true
+// jobDir says whether dir is a folder a job may run in: an absolute path of a folder that exists (one that cannot be looked at is
+// refused for that, not taken for absent). A job is added and edited only with
+// the confirmation of its own scope (job.add, job.edit:<job>), which is where the person sees what it will run; the folder need not be
+// one of the page's projects.
+func jobDir(dir string) error {
+	if !filepath.IsAbs(dir) {
+		return werr(http.StatusBadRequest, "bad_path", "the folder of a job is an absolute path")
 	}
-	if s.host == nil {
-		return false
+	fi, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) || (err == nil && !fi.IsDir()):
+		return werr(http.StatusNotFound, "no_dir", "that folder does not exist")
+	case err != nil: // permission, a link that loops: it may be there, and it cannot be looked at
+		return werr(http.StatusForbidden, "unreadable", "the server cannot look at that folder")
 	}
-	for _, p := range s.host.Projects(ctx) {
-		if p.Dir == dir || p.Root == dir {
-			return true
-		}
-	}
-	for _, t := range s.host.Tabs() {
-		if t.Cwd == dir {
-			return true
-		}
-	}
-	return false
+	return nil
 }
 
 // jobRequest is wire.JobRequest with the CLI's default for a budget left out (BudgetUSD nil): US$1 for a new job, the job's own for
@@ -244,8 +242,8 @@ func (s *service) checkJob(ctx context.Context, req jobRequest, prev *sched.Job)
 	if j.Dir == "" {
 		j.Dir = s.o.Cwd
 	}
-	if !filepath.IsAbs(j.Dir) || !(s.allowedDir(ctx, j.Dir) || (prev != nil && prev.Dir == j.Dir)) {
-		return j, werr(http.StatusForbidden, "not_a_project", "a job runs in one of the projects of this page")
+	if err := jobDir(j.Dir); err != nil {
+		return j, err
 	}
 	return j, nil
 }

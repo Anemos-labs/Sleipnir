@@ -110,3 +110,35 @@ body.cq .anom .a b{color:var(--warm)}
 @container (max-height:64px){.feed{visibility:hidden}}
 @media (max-width:900px){.feedwrap{container-type:normal}}
 .tsteps li{color:var(--dim)}
+
+/* ---------- New session: the folder field that completes, and the help under each control ---------- */
+.nsh{margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid var(--line)}.ns>div>.nsh:first-child{margin-top:0}
+.dirbox{position:relative;flex:1 1 100%;min-width:0}
+.dirrow{display:flex;gap:6px;align-items:center}.dirrow input{flex:1 1 auto;min-width:0}
+.dirlist{position:absolute;z-index:6;left:0;right:0;top:calc(100% + 2px);max-height:230px;overflow:auto;margin:0;padding:3px;list-style:none;background:var(--panel);border:1px solid var(--line2);box-shadow:0 12px 30px var(--shade)}
+.dirlist[hidden]{display:none}
+.dirlist li.dir{display:flex;gap:8px;align-items:baseline;padding:4px 8px;cursor:pointer;font:500 12.5px var(--f-num);color:var(--fg)}
+.dirlist li.dir.on,.dirlist li.dir:hover{background:var(--raise);color:var(--bright)}
+.dirlist .dn{flex:none}.dirlist .dp{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dim)}
+.dirmore{padding:4px 8px;font:italic 11px var(--f-ui);color:var(--dim)}
+.dirstate{flex-basis:100%;display:flex;flex-direction:column;gap:2px;margin-top:5px;font:500 12px/1.4 var(--f-ui);color:var(--fg2)}.dirstate:empty{display:none}
+.dirstate.ok .dirlead{color:var(--ok)}.dirstate.new .dirlead{color:var(--fe)}.dirstate.bad .dirlead{color:var(--err)}
+.dirabs{font-size:11px;color:var(--dim);word-break:break-all}.dirnote{font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
+.nsgit,.nsopt{display:flex;align-items:center;flex-basis:100%;margin:3px 0}
+.nsgit[hidden]{display:none}.nsgit .chk,.nsopt .chk{margin:0;white-space:nowrap}
+.nsd{font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
+.nsteam{flex-basis:100%;display:flex;flex-direction:column;gap:8px}.nsteam.nsoff{opacity:.5}
+.nserr{flex-basis:100%;margin:4px 0 0;font:600 12px/1.35 var(--f-ui)}.nserr[hidden]{display:none}
+.chips{display:flex;flex-wrap:wrap;gap:5px;flex-basis:100%;margin-top:5px;align-items:center}
+.nschip{display:inline-flex;align-items:center;padding:3px 8px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--fg2);font:500 12px var(--f-num);text-align:left}
+.nschip:hover,.nschip[aria-pressed="true"]{border-color:var(--fe);color:var(--bright)}
+.nsfs{flex-basis:100%;min-width:0;margin:0;padding:0;border:0}.nsfs:disabled{opacity:.5}.nsfs:disabled .tag button,.nsfs:disabled .nschip{cursor:not-allowed}
+.nsquiet{flex-basis:100%;margin:4px 0;padding:6px 9px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg2)}.nsquiet[hidden]{display:none}
+
+/* ---------- help dots: a ? that explains, on hover, on focus and on a tap ---------- */
+.qh{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;border:1px solid var(--line2);border-radius:50%;background:transparent;color:var(--dim);font:700 10px/1 var(--f-num);cursor:help;vertical-align:middle}
+.qh:hover,.qh:focus-visible,.qh[data-popup-open]{border-color:var(--fe);color:var(--bright)}
+.helptip{position:fixed;z-index:70;max-width:340px;padding:8px 11px;background:var(--panel);border:1px solid var(--fe);box-shadow:0 12px 30px var(--shade);font:400 12px/1.45 var(--f-ui);color:var(--fg);pointer-events:none}
+.helptip[hidden]{display:none}.helptip b{color:var(--bright)}.helptip kbd{font:600 10.5px var(--f-num)}
+.fld>.fl{display:flex;align-items:flex-start;gap:0;min-width:0}.fld>.fl>label{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:7px}.fld>.fl .qh{margin-top:6px}
+[data-help].nschip{cursor:help}

@@ -10,7 +10,7 @@ import vm from 'node:vm';
 import { context, load, fakeFetch, tick, plain } from './harness.mjs';
 
 const BASE = ['00-namespace.js', '00-util.js', 'api.js', '11-data-live.js', '20-clock.js', '30-model.js', '50-sessions.js', '60-actions.js', 'live.js'];
-const UI = ['84-ui-chat.js', '85-ui-approvals.js', '87-ui-sheets.js', '93-palette.js'];
+const UI = ['84-ui-chat.js', '85-ui-approvals.js', '87b-ui-folder.js', '87-ui-sheets.js', '93-palette.js'];
 const IMG = '"><img src=x onerror=window.__pwn=1>', COVER = 'x" style="position:fixed;inset:0';
 const HOSTILE = [IMG, COVER, '__proto__', 'constructor', 'toString', 'a'.repeat(65), 'be 1', '', 7];
 /** markup that a hostile value broke out of: a tag it brought, or a tag of the page that is not only well-formed name="value" attributes

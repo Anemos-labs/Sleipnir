@@ -107,7 +107,12 @@ func showReasons(reasons []string) ([]string, error) {
 
 // privileges are what a session's settings raise above a baseline.
 type privileges struct {
-	Dir    string   `json:"dir"`
+	Dir string `json:"dir"`
+	// NewDir says the folder is not one of the server's projects; Create that it does not exist yet and is made; Git that it becomes
+	// a git repository with an empty first commit.
+	NewDir bool     `json:"newDir,omitempty"`
+	Create bool     `json:"create,omitempty"`
+	Git    bool     `json:"git,omitempty"`
 	Mode   string   `json:"mode,omitempty"`
 	Allow  []string `json:"allow,omitempty"`
 	Verify string   `json:"verify,omitempty"`
@@ -119,6 +124,15 @@ type privileges struct {
 // reasons says, one line each, what is raised (none: nothing).
 func (p privileges) reasons() []string {
 	var out []string
+	switch {
+	case p.Create:
+		out = append(out, "make the folder "+p.Dir+" and work in it")
+	case p.NewDir:
+		out = append(out, "work in the folder "+p.Dir+", which is not one of this server's projects")
+	}
+	if p.Git {
+		out = append(out, "make "+p.Dir+" a git repository, with an empty first commit")
+	}
 	if p.Mode != "" {
 		out = append(out, "permission mode "+p.Mode)
 	}

@@ -295,7 +295,7 @@ const snapshot = (id, order, seq) => ({ tab: { id, sid: 's-' + id, name: id, cwd
 export async function boot(o) {
   o = o || {};
   LOG.errors = [];
-  const win = new Target(), doc = new Doc(win), calls = [], errors = [], store = new Map(), timers = { now: 0, n: 0, list: [] }, streams = [];
+  const win = new Target(), doc = new Doc(win), calls = [], posts = [], errors = [], store = new Map(), timers = { now: 0, n: 0, list: [] }, streams = [];
   const body = /<body[^>]*>([\s\S]*)<\/body>/i.exec(MARKUP)[1].replace(/<script[\s\S]*?<\/script>/gi, '');
   parseInto(doc, doc.body, body); LOG.rows = [];
   const setT = (fn, ms, rep) => { const t = { id: ++timers.n, at: timers.now + Math.max(0, +ms || 0), fn, rep: rep ? Math.max(1, +ms || 1) : 0 }; timers.list.push(t); return t.id; };
@@ -303,6 +303,7 @@ export async function boot(o) {
   const advance = ms => { const end = timers.now + ms; for (;;) { timers.list.sort((a, b) => a.at - b.at || a.id - b.id); const t = timers.list[0]; if (!t || t.at > end) break; timers.list.shift(); timers.now = t.at; if (t.rep) { t.at += t.rep; timers.list.push(t); } t.fn(); } timers.now = end; };
   const snaps = { a: snapshot('a', 0, 2) }; if (o.two) snaps.b = snapshot('b', 1, 2);
   const route = (method, p, init) => {
+    if (o.route) { const r = o.route(method, p, init); if (r !== undefined) return r; }   // a test's own answers first
     if (p === '/api/hello') return { boot: 'b1', streamAfter: 7, server: { addr: '127.0.0.1:7777' }, tabs: Object.values(snaps).map(s => s.tab), active: 'a', ui: {} };
     let m = /^\/api\/sessions\/([^/]+)\/snapshot$/.exec(p); if (m) return snaps[m[1]] || { _status: 404, error: 'no', code: 'not_found' };
     if (/\/complete\?/.test(p)) return { paths: ['api/cart.go', 'web/app.js', 'README.md'] };
@@ -317,7 +318,7 @@ export async function boot(o) {
     return { _status: 404, error: 'not found', code: 'not_found' };
   };
   const fetch = async (p, init) => {
-    init = init || {}; const method = init.method || 'GET'; if (method !== 'GET') calls.push(method + ' ' + p); const r = route(method, p, init), status = r && r._status || 200;
+    init = init || {}; const method = init.method || 'GET'; if (method !== 'GET') { calls.push(method + ' ' + p); posts.push({ method, path: p, body: init.body ? JSON.parse(init.body) : undefined, confirm: (init.headers || {})['X-Confirm'] || '' }); } const r = await route(method, p, init), status = r && r._status || 200;
     return { ok: status < 300, status, headers: { get: () => null }, json: async () => JSON.parse(JSON.stringify(r)) };
   };
   class ES extends Target { constructor(u) { super(); this.url = u; this.readyState = 0; this.fns = {}; streams.push(this); setT(() => { this.readyState = 1; if (this.onopen) this.onopen({}); }, 0); } addEventListener(t, f) { (this.fns[t] = this.fns[t] || []).push(f); } emit(type, data, id) { (this.fns[type] || []).forEach(f => f({ data: JSON.stringify(data), lastEventId: String(id || '') })); } close() { this.readyState = 2; } }
@@ -340,7 +341,7 @@ export async function boot(o) {
   let seq = 10, id = 100;
   if (errors.length || LOG.errors.length) throw new Error('the page failed to boot: ' + errors.concat(LOG.errors)[0]);
   const L = {
-    SL, doc, $, calls, errors, snaps, settle, advance,
+    SL, doc, $, calls, posts, errors, snaps, settle, advance,
     /** The page's own clock, moved by `s` seconds (the quiet period of a question, the window of a chord). */
     async step(s) { SL.loop.step(s); advance(s * 1000); await settle(); },
     /** A frame of the event stream, as the server sends it. */
