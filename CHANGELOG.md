@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Commands in a task's scrubbed environment (agent and verifier) get
+  `RUSTUP_HOME` set to the host's `~/.rustup` when the host has one and does
+  not set the variable: with HOME replaced, rustup's cargo and rustc found no
+  toolchain and every cargo command failed.
+- Task generators can score a task with the project's whole test suite
+  (`taskgen.WriteSuite`, `RecordSuite`): a hidden scorer runs Go, pytest and
+  cargo suites, each command in its own session with its output in files,
+  and prints a json-score line with units (milestones weighted as the
+  generator chose) and guards; tests are allowlisted from repeated runs of
+  the reference and the start. Progress mode (`SUITE_SAMPLE`,
+  `SUITE_BUDGET_S`) runs a sample under a deadline. `VerifyOptions.Stdout`
+  hands each verifier run's stdout to the caller; `env.MaxScoreUnits` and
+  `MaxScoreUnitName` are exported. Existing verifiers are unchanged.
 - `rl taskgen fixture` takes `--max-files`, `--max-file-bytes` and
   `--max-total-bytes` (`FixtureOptions.MaxFiles`, `MaxFileBytes`,
   `MaxTotalBytes`) for large project fixtures; the defaults (400 files,

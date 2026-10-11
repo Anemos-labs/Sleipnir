@@ -69,6 +69,11 @@ type VerifyOptions struct {
 	MaxDiffBytes int64
 	// KeepCheckout leaves the last clean checkout on disk (Result.CheckoutDir).
 	KeepCheckout bool
+	// Stdout, when set, is called after each run of the verifier command with
+	// the run's index and its standard output (bounded by MaxOutput: the head
+	// and the tail are kept), for a caller that reads more than the verdict
+	// from it, such as taskgen's suite recorder.
+	Stdout func(run int, stdout string)
 }
 
 // VerifyRun is one execution of the verifier command.
@@ -526,6 +531,9 @@ func (m *Workspaces) runVerifierOnce(ctx context.Context, in verifyInput, fr fil
 		}
 	}
 	rr = judgeRun(pm, er)
+	if opts.Stdout != nil {
+		opts.Stdout(idx, er.Stdout)
+	}
 	return rr, er.Output, "", nil
 }
 
@@ -587,8 +595,10 @@ type scoreLine struct {
 // longer names, has its breakdown ignored (its score still counts), so a
 // verdict stays small enough to travel in every episode.
 const (
-	maxScoreUnits    = 1024
-	maxScoreUnitName = 256
+	// MaxScoreUnits is the most units a breakdown may name.
+	MaxScoreUnits = 1024
+	// MaxScoreUnitName is the longest unit name, in bytes.
+	MaxScoreUnitName = 256
 )
 
 // lastLineScore parses the last non-empty line of stdout as {"score": x}. The
@@ -634,12 +644,12 @@ func parseUnits(raw json.RawMessage) map[string]rl.UnitScore {
 		// Weight is raw so that an explicit null (malformed) differs from an absent weight (1).
 		Weight json.RawMessage `json:"weight"`
 	}
-	if err := json.Unmarshal(raw, &in); err != nil || len(in) == 0 || len(in) > maxScoreUnits {
+	if err := json.Unmarshal(raw, &in); err != nil || len(in) == 0 || len(in) > MaxScoreUnits {
 		return nil
 	}
 	out := make(map[string]rl.UnitScore, len(in))
 	for name, u := range in {
-		if name == "" || len(name) > maxScoreUnitName || u.Passed == nil || u.Total == nil {
+		if name == "" || len(name) > MaxScoreUnitName || u.Passed == nil || u.Total == nil {
 			return nil
 		}
 		passed, ok1 := jsonCount(*u.Passed)

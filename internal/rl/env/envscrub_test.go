@@ -105,6 +105,35 @@ func TestBuildEnvNetworkAndPassEnv(t *testing.T) {
 	}
 }
 
+func TestBuildEnvNamesRustupsDefaultHome(t *testing.T) {
+	op := t.TempDir()
+	without := func(name string, env []string) []string {
+		var out []string
+		for _, kv := range env {
+			if !strings.HasPrefix(kv, name+"=") {
+				out = append(out, kv)
+			}
+		}
+		return out
+	}
+	base := append(without("HOME", without("RUSTUP_HOME", hostEnv("/usr/bin"))), "HOME="+op)
+	// No ~/.rustup: nothing to name.
+	if v, ok := EnvMap(BuildEnv(EnvSpec{Home: t.TempDir(), Base: base}))["RUSTUP_HOME"]; ok {
+		t.Errorf("RUSTUP_HOME = %q without a ~/.rustup", v)
+	}
+	// rustup in its default place: the replaced HOME would hide it, so it is named.
+	if err := os.Mkdir(filepath.Join(op, ".rustup"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := EnvMap(BuildEnv(EnvSpec{Home: t.TempDir(), Base: base}))["RUSTUP_HOME"], filepath.Join(op, ".rustup"); got != want {
+		t.Errorf("RUSTUP_HOME = %q, want %q", got, want)
+	}
+	// An explicit RUSTUP_HOME wins.
+	if got := EnvMap(BuildEnv(EnvSpec{Home: t.TempDir(), Base: append(base, "RUSTUP_HOME=/opt/rustup")}))["RUSTUP_HOME"]; got != "/opt/rustup" {
+		t.Errorf("RUSTUP_HOME = %q, want /opt/rustup", got)
+	}
+}
+
 func TestBuildEnvDeterministicAndClean(t *testing.T) {
 	bin := t.TempDir()
 	spec := EnvSpec{Home: t.TempDir(), Base: hostEnv(bin)}

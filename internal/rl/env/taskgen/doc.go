@@ -10,6 +10,25 @@
 //	Composite  k independent tasks of one commit combined into a swarm task whose
 //	           verifier needs all of them.
 //	RecallGenerator  a documented hook only.
+//	WriteSuite a task's verifier made the whole-suite scorer: the weighted share of
+//	           the repository's test suite that passes, with guards, from the
+//	           reports of go test -json, pytest's junit XML or cargo test.
+//	           RecordSuite and BuildUnits choose its units and guards from runs on
+//	           the start and the reference solution.
+//
+// # The whole-suite scorer
+//
+// suite_score.py, embedded and written as a hidden file, runs each test command
+// of a SuiteSpec in its own session with stdin closed and its output in private
+// files, kills what the command left running before the next one starts, reads
+// the command's report (never its printed lines) and prints
+// {"score", "units", "guards"} as the only line of its stdout. A test no report
+// mentions has failed; a command's timeout and the suite's deadline still end
+// in a score. SUITE_MODE=record lists every test's outcome instead (RecordSuite);
+// SUITE_SAMPLE=N scores a stable sample of each unit, cheaply, for progress
+// during a run. Units are the tests that fail at every start run and pass in
+// every reference run (BuildUnits), so the start scores exactly 0 and the
+// reference exactly 1.
 //
 // # Soundness
 //
