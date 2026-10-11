@@ -1118,6 +1118,12 @@ flags:
         the chains to mine, one JSON object per line: {id, commits: [3 to 8 merge or squash commits, oldest first], issues: [an issue text per commit, optional], source: {provenance}}
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -gen-concurrency int
         chains recorded at once (default 1)
   -id-prefix string
@@ -1128,6 +1134,8 @@ flags:
         keep the workspaces of failed rollouts for debugging
   -licenses string
         comma-separated SPDX ids the licence at a chain's last commit must be one of
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-spend-usd float
@@ -1135,11 +1143,13 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -o string
         output tasks file (default "tasks.jsonl")
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -repeats int
@@ -1387,6 +1397,12 @@ flags:
         the reference version: the revision whose sources are rebuilt (default HEAD)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -id-prefix string
         prefix of the task id, and a tag of the task (default: the repository directory name)
   -infra-retries int
@@ -1395,6 +1411,8 @@ flags:
         keep the workspaces of failed rollouts for debugging
   -licenses string
         comma-separated SPDX ids the licence at --commit must be one of
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-spend-usd float
@@ -1402,11 +1420,13 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -o string
         output tasks file (default "tasks.jsonl")
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -repeats int
