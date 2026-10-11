@@ -224,7 +224,7 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 			return fmt.Errorf("rl tasks check: %w", err)
 		}
 	}
-	ws, err := rf.workspaces(stderr)
+	ws, err := rf.workspaces(stderr, blobsDir, *goldDir)
 	if err != nil {
 		return fmt.Errorf("rl tasks check: %w", err)
 	}
@@ -566,7 +566,7 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		return fmt.Errorf("rl taskgen git: --until: %w", err)
 	}
 	if !*noValidate {
-		ws, err := g.rig.workspaces(stderr)
+		ws, err := g.rig.workspaces(stderr, blobsDir, g.repo, filepath.Dir(g.out))
 		if err != nil {
 			return fmt.Errorf("rl taskgen git: %w", err)
 		}
@@ -608,7 +608,7 @@ func taskgenMutate(ctx context.Context, args []string, stdout, stderr io.Writer)
 	if err != nil {
 		return fmt.Errorf("rl taskgen mutate: %w", err)
 	}
-	ws, err := g.rig.workspaces(stderr)
+	ws, err := g.rig.workspaces(stderr, blobsDir, g.repo, filepath.Dir(g.out))
 	if err != nil {
 		return fmt.Errorf("rl taskgen mutate: %w", err)
 	}

@@ -111,7 +111,7 @@ func TestATeamRolloutCarriesClosuresSignalsAndRanksTogether(t *testing.T) {
 		Repo:     rl.RepoSpec{Path: repo, Commit: head},
 		Prompt:   "Add returns the wrong result. Fix it with a team and check with the tests.",
 		Team:     rl.Team{Mode: "swarm", Agents: 3, Roles: []string{"backend"}},
-		Verifier: rl.Verifier{Cmd: "go test ./...", TimeoutS: 120, Protected: []string{"*_test.go"}},
+		Verifier: rl.Verifier{Cmd: `test "$DONE_CHECK_SENTINEL" = done-check && go test ./...`, TimeoutS: 120, Protected: []string{"*_test.go"}},
 		Budget:   rl.Budget{Steps: 60, Requests: 200, WallS: 300},
 		Tags:     []string{"go", "swarm"},
 	}
@@ -123,7 +123,8 @@ func TestATeamRolloutCarriesClosuresSignalsAndRanksTogether(t *testing.T) {
 	pol := startPolicy(t, teamPolicy(&sample))
 	ws, err := env.NewWorkspaces(env.WorkspaceOptions{
 		Root: t.TempDir(), RepoBase: "/", DisableNetIsolation: true,
-		SetEnv: map[string]string{"GOCACHE": goCache(t), "GOFLAGS": "-mod=mod", "GOTOOLCHAIN": "local"},
+		// The sentinel reaches commands only through the rollout's environment: the swarm's done check must run in it.
+		SetEnv: map[string]string{"GOCACHE": goCache(t), "GOFLAGS": "-mod=mod", "GOTOOLCHAIN": "local", "DONE_CHECK_SENTINEL": "done-check"},
 	})
 	if err != nil {
 		t.Fatal(err)

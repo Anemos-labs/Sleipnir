@@ -823,7 +823,7 @@ func (s *Session) build(ctx context.Context) error {
 		sc.Hot.MaxTokens = v
 	}
 	sc.VerifyCmd = o.Verify
-	sc.Verify = runVerify
+	sc.Verify = s.verifier()
 	sc.HoldManager, sc.WakeManager = !o.Interactive, o.Interactive
 	sc.Mailman = s.mailmanOn()
 

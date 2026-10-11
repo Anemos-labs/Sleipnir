@@ -118,6 +118,14 @@
 //     is recorded in the manifest's warnings (or is an error with
 //     WorkspaceOptions.RequireNetIsolation). The harness owns the agent's shell,
 //     so it applies the prefix from RunSpec.NetPrefix.
+//   - Confinement (WorkspaceOptions.Confine = ConfineBwrap, `--confine bwrap`):
+//     every setup, agent and verifier command runs in a bubblewrap sandbox with a
+//     read-only root, the work root, task sources, blob store, run output, user
+//     homes and runtime directories hidden, secrets masked, its own PID, IPC,
+//     UTS and (unless the task needs it) network namespaces, and only its own
+//     tree, HOME, TMPDIR and cache directories writable (see Confinement). Without
+//     it an agent's shell or the code a verifier runs can read hidden tests and
+//     reference solutions.
 //   - Cleanup never follows symlinks out of a workspace and makes read-only
 //     directories (Go's module cache) writable first; it refuses to remove anything
 //     outside the workspace area.

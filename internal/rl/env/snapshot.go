@@ -764,7 +764,9 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 	if task.Repo.Subdir != "" {
 		dir = filepath.Join(s.tree, filepath.FromSlash(task.Repo.Subdir))
 	}
-	pol := ExecPolicy{Network: true, Marker: marker, MaxOutput: m.opts.MaxOutput, Limits: m.opts.Limits, Grace: m.opts.KillGrace}
+	// Confined, setup sees only the snapshot being built (tree, home, its own tmp).
+	pol := ExecPolicy{Network: true, Marker: marker, MaxOutput: m.opts.MaxOutput, Limits: m.opts.Limits, Grace: m.opts.KillGrace,
+		Mounts: &Mounts{RW: []string{s.dir}}}
 	var log bytes.Buffer
 	defer func() { _ = os.WriteFile(filepath.Join(s.dir, "setup.log"), log.Bytes(), 0o644) }()
 	defer sweepMarker(marker)
