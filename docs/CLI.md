@@ -1029,7 +1029,7 @@ flags:
   -o string
         output tasks file (default "tasks.jsonl")
   -outage-patience duration
-        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 20m; negative: no waiting, six attempts per request)
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -repeats int
@@ -1119,7 +1119,7 @@ flags:
   -o string
         output tasks file (default "tasks.jsonl")
   -outage-patience duration
-        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 20m; negative: no waiting, six attempts per request)
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -repo string
@@ -1346,7 +1346,7 @@ flags:
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -outage-patience duration
-        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 20m; negative: no waiting, six attempts per request)
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -report string
@@ -1391,7 +1391,7 @@ Budgets and cost accounting, for runs against a real endpoint:
   retries, `active_wall_ms`, `paused_ms`), written as the attempt ends: an attempt starts from an empty sample directory,
   so what a failed one spent would otherwise vanish. `summary.json` has `spent_usd`, the ledger's total.
 * An outage of the policy endpoint (a 5xx, a 429, a refused or reset connection, no response) pauses a rollout instead of
-  failing it: the agents wait it out for up to `--outage-patience` (default 20m) per outage, and the wall clock
+  failing it: the agents wait it out for up to `--outage-patience` (default 3h) per outage, and the wall clock
   (`--max-wall`, a task's `wall_s`) stops meanwhile. An attempt whose outages add up to `--max-outage-pause` (default 3h)
   ends as an infra failure and is not retried; a rerun into the same `--out` runs it again. An outage that lasts half a
   minute is announced on stderr when it starts and when it ends. Details in docs/TRAINING-DATA.md, section 3.3.
@@ -1462,7 +1462,7 @@ flags:
   -out string
         run directory (default: runs/<timestamp>); rerunning into it resumes
   -outage-patience duration
-        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 20m; negative: no waiting, six attempts per request)
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
@@ -1570,7 +1570,7 @@ flags:
   -out string
         run directory (default: runs/eval-<timestamp>)
   -outage-patience duration
-        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 20m; negative: no waiting, six attempts per request)
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
@@ -1656,7 +1656,7 @@ flags:
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -outage-patience duration
-        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 20m; negative: no waiting, six attempts per request)
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -policy-host string

@@ -187,7 +187,7 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   request, at most half a minute apart, and the rollout's wall clock (`budget.wall_s`, `--max-wall`) stops: only the
   time the endpoint was up counts against it. A request the endpoint refused (400, 401, 403, 404, 422, a prompt over
   the context window) and a misaddressed endpoint (a host name that does not resolve, a certificate that is not
-  accepted) are not outages. Two limits bound the wait: `--outage-patience` (default 20m) is how long one outage may
+  accepted) are not outages. Two limits bound the wait: `--outage-patience` (default 3h) is how long one outage may
   last before the agent gives up, which ends the attempt as an infra failure that the runner retries
   (`--infra-retries`); `--max-outage-pause` (default 3h) is how much outage one attempt sits out in all, after which it
   ends as an infra failure that is not retried (a later run into the same `--out` reruns it). A negative value turns

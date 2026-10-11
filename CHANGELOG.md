@@ -10,7 +10,7 @@ they do not indicate whether a change has been released.
 - Pause RL rollouts during outages of the policy endpoint instead of failing
   them. A rollout's agents wait out a 5xx, a 429, a refused or reset
   connection and a request that gets no response, for up to
-  `--outage-patience` (default 20m) per outage, and the rollout's wall clock
+  `--outage-patience` (default 3h) per outage, and the rollout's wall clock
   (`budget.wall_s`, `--max-wall`) stops while the endpoint is down; an attempt
   whose outages add up to `--max-outage-pause` (default 3h) ends as an infra
   failure that is not retried. A negative value restores the old behaviour of

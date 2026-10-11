@@ -16,8 +16,9 @@ import (
 
 const (
 	// DefaultOutagePatience is how long one continuous outage of the policy endpoint may last before an agent gives up on it,
-	// when Runner.OutagePatience is zero.
-	DefaultOutagePatience = 20 * time.Minute
+	// when Runner.OutagePatience is zero. It equals DefaultMaxOutagePause: a gateway outage of an hour or more (seen in
+	// practice) is waited out once instead of failing the attempt and retrying it into the same outage.
+	DefaultOutagePatience = 3 * time.Hour
 	// DefaultMaxOutagePause is how much outage, in all, one attempt at a rollout sits out before it ends as an infrastructure
 	// failure, when Runner.MaxOutagePause is zero.
 	DefaultMaxOutagePause = 3 * time.Hour

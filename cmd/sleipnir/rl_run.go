@@ -245,7 +245,7 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&r.verifyPolicy, "verify-policy", "", "with repeats: all | any | majority")
 	fs.IntVar(&r.infraRetries, "infra-retries", 0, "retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)")
 	fs.DurationVar(&r.maxWall, "max-wall", 0, "wall-clock cap of a rollout whose task sets none (default 1h); time the policy endpoint is down does not count (see --max-outage-pause)")
-	fs.DurationVar(&r.outagePatience, "outage-patience", 0, "how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 20m; negative: no waiting, six attempts per request)")
+	fs.DurationVar(&r.outagePatience, "outage-patience", 0, "how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)")
 	fs.DurationVar(&r.maxOutagePause, "max-outage-pause", 0, "how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)")
 	fs.BoolVar(&r.noNetIsolation, "no-net-isolation", false, "do not isolate the network of tasks that do not need it")
 	fs.BoolVar(&r.requireNetIsolation, "require-net-isolation", false, "refuse to run where network isolation is unavailable")
