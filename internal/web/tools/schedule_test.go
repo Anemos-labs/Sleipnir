@@ -296,3 +296,16 @@ func TestAJobMayRunInAnyFolderThatExists(t *testing.T) {
 		t.Errorf("moving it into the project: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// A folder the server cannot look at is not said to be missing: a job in it is refused for that.
+func TestAJobFolderThatCannotBeLookedAtIsNotSaidToBeMissing(t *testing.T) {
+	rg := newRig(t, nil)
+	loop := filepath.Join(rg.project, "loop")
+	if err := os.Symlink("loop", loop); err != nil {
+		t.Skipf("no links here: %v", err)
+	}
+	w := rg.do(req{method: "POST", path: "/api/schedule/jobs", body: wire.JobRequest{Cron: "@daily", Goal: "tidy", Dir: loop, Mode: "plan", BudgetUSD: 1}, header: map[string]string{"X-Confirm": rg.confirm("job.add")}})
+	if w.Code != http.StatusForbidden || errCode(w) != "unreadable" {
+		t.Errorf("a link that loops as a job's folder: %d %s", w.Code, w.Body.String())
+	}
+}

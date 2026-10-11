@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"net/http"
 	"os"
@@ -171,15 +172,20 @@ func (s *service) handleNext(w http.ResponseWriter, r *http.Request) {
 	_ = web.WriteJSON(w, http.StatusOK, wire.CronCheck{OK: true, Next: iso(n)})
 }
 
-// jobDir says whether dir is a folder a job may run in: an absolute path of a folder that exists. A job is added and edited only with
+// jobDir says whether dir is a folder a job may run in: an absolute path of a folder that exists (one that cannot be looked at is
+// refused for that, not taken for absent). A job is added and edited only with
 // the confirmation of its own scope (job.add, job.edit:<job>), which is where the person sees what it will run; the folder need not be
 // one of the page's projects.
 func jobDir(dir string) error {
 	if !filepath.IsAbs(dir) {
 		return werr(http.StatusBadRequest, "bad_path", "the folder of a job is an absolute path")
 	}
-	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+	fi, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) || (err == nil && !fi.IsDir()):
 		return werr(http.StatusNotFound, "no_dir", "that folder does not exist")
+	case err != nil: // permission, a link that loops: it may be there, and it cannot be looked at
+		return werr(http.StatusForbidden, "unreadable", "the server cannot look at that folder")
 	}
 	return nil
 }
