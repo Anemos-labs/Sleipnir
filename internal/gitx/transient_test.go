@@ -226,37 +226,47 @@ exec "$REAL" "$@"`)
 }
 
 // Git words the vanishing ref parent differently when it fails while creating the leading directories: "unable to
-// create directory for <ref file>", with no reason. That failure is retried a few times (the race clears at once),
-// never for the whole lock wait (a permission problem reads the same and does not clear), and not at all when the
-// caller does not wait for locks.
+// create directory for <ref file>", with no reason. That failure is retried a few times with short waits of its own
+// (the race clears at once), never for the whole lock wait (a permission problem reads the same and does not clear),
+// not at all when the caller does not wait for locks, and not when the command was killed for its timeout.
 func TestWorktreeAddRetriesVanishedRefDirectoryBriefly(t *testing.T) {
+	const race = `echo "fatal: cannot lock ref 'refs/heads/sleipnir/s/w4-45': unable to create directory for /repo/.git/refs/heads/sleipnir/s/w4-45" >&2; exit 128`
+	const lock = `echo "fatal: Unable to create '/repo/.git/refs/heads/sleipnir/s/w4-45.lock': File exists." >&2; exit 128`
 	for _, tc := range []struct {
-		name      string
-		failures  int // attempts that fail before git is let through (-1: all)
-		lockWait  time.Duration
-		attempts  int
-		succeeds  bool
-		maxLength time.Duration
+		name     string
+		script   string // run for attempt $n of the branch command; falling through runs the real git
+		lockWait time.Duration
+		timeout  time.Duration
+		attempts int
+		kind     Kind // of the error; KindOther with succeeds false means "any non-lock error"
+		succeeds bool
+		within   time.Duration
 	}{
-		{name: "race", failures: 1, lockWait: time.Minute, attempts: 2, succeeds: true, maxLength: 10 * time.Second},
-		{name: "persistent", failures: -1, lockWait: time.Minute, attempts: 1 + refDirRetries, maxLength: 3 * time.Second},
-		{name: "no wait", failures: 1, lockWait: 0, attempts: 1},
+		{name: "race", script: `[ "$n" -le 1 ] && { ` + race + `; }`, lockWait: time.Minute, attempts: 2, succeeds: true, within: 10 * time.Second},
+		{name: "persistent", script: race, lockWait: time.Minute, attempts: 1 + refDirRetries, within: 3 * time.Second},
+		// Five lock retries wait 25 to 400 ms and leave the lock backoff at 800 ms; the race retries after them still
+		// wait 25, 50 and 100 ms (with the lock backoff they would add about four seconds).
+		{name: "after lock retries", script: `[ "$n" -le 5 ] && { ` + lock + `; }; ` + race, lockWait: time.Minute, attempts: 5 + 1 + refDirRetries, within: 3 * time.Second},
+		{name: "no wait", script: `[ "$n" -le 1 ] && { ` + race + `; }`, lockWait: 0, attempts: 1},
+		{name: "timeout", script: `echo "fatal: cannot lock ref 'refs/heads/sleipnir/s/w4-45': unable to create directory for /repo/.git/refs/heads/sleipnir/s/w4-45" >&2; sleep 5`,
+			lockWait: time.Minute, timeout: time.Second, attempts: 1, kind: KindTimeout},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := newRepo(t)
-			gitShim, evidence := shim(t, fmt.Sprintf(`
+			gitShim, evidence := shim(t, `
 case " $* " in
   *" branch --no-track -- sleipnir/s/w4-45 "*)
     echo attempt >> "$D/attempts"
     n=$(grep -c attempt "$D/attempts")
-    if [ %d -lt 0 ] || [ "$n" -le %d ]; then
-      echo "fatal: cannot lock ref 'refs/heads/sleipnir/s/w4-45': unable to create directory for /repo/.git/refs/heads/sleipnir/s/w4-45" >&2
-      exit 128
-    fi
+    `+tc.script+`
     ;;
 esac
-exec "$REAL" "$@"`, tc.failures, tc.failures))
-			r := openRepo(t, dir, WithGitPath(gitShim), WithLockWait(tc.lockWait))
+exec "$REAL" "$@"`)
+			opts := []Option{WithGitPath(gitShim), WithLockWait(tc.lockWait)}
+			if tc.timeout > 0 {
+				opts = append(opts, WithTimeout(tc.timeout))
+			}
+			r := openRepo(t, dir, opts...)
 			path := filepath.Join(t.TempDir(), "worker")
 			start := time.Now()
 			err := r.WorktreeAdd(ctxT(t), WorktreeAddOptions{Path: path, Branch: "sleipnir/s/w4-45", Commit: "HEAD"})
@@ -268,8 +278,11 @@ exec "$REAL" "$@"`, tc.failures, tc.failures))
 			if err != nil && errors.Is(err, ErrLocked) {
 				t.Fatalf("the failure is reported as lock contention: %v", err)
 			}
-			if tc.maxLength > 0 && took > tc.maxLength {
-				t.Fatalf("took %v, want at most %v: the failure was retried for the lock wait", took, tc.maxLength)
+			if tc.kind != KindOther && KindOf(err) != tc.kind {
+				t.Fatalf("error kind %v, want %v: %v", KindOf(err), tc.kind, err)
+			}
+			if tc.within > 0 && took > tc.within {
+				t.Fatalf("took %v, want at most %v", took, tc.within)
 			}
 		})
 	}
