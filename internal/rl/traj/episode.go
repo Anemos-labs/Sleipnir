@@ -221,6 +221,7 @@ func (b *builder) identify(ep *rl.Episode) {
 		}
 		ep.Env.Commit = t.Repo.Commit
 		ep.Env.Network = t.Network
+		ep.Env.Tags = append([]string(nil), t.Tags...)
 		lim := map[string]string{}
 		if t.Budget.Steps > 0 {
 			lim["steps"] = strconv.Itoa(t.Budget.Steps)
@@ -354,7 +355,7 @@ func (b *builder) stepOf(st *stepInfo) rl.Step {
 		lat = p.ts.Sub(q.ts).Milliseconds()
 	}
 	return rl.Step{
-		ID: q.id, Kind: q.kind, Role: role, Model: model, At: q.ts,
+		ID: q.id, Kind: q.kind, Role: role, Model: model, Provider: p.provider, At: q.ts,
 		Prompt:     rl.PromptRef{Req: q.id, WireHash: wire, Tokens: p.usage.TotalInput()},
 		Completion: rl.Completion{Turn: st.turn, Stop: p.stop},
 		Tokens:     st.tok,

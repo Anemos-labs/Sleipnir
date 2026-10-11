@@ -83,6 +83,7 @@ type respInfo struct {
 	idx        int
 	ts         time.Time
 	model      string
+	provider   string // the upstream that served the call, when the gateway said
 	usage      core.Usage
 	costUSD    float64
 	hitRatio   float64
@@ -302,6 +303,7 @@ func (r *Run) indexResponse(i int, e events.Event) {
 	var p struct {
 		Req          string          `json:"req"`
 		Model        string          `json:"model"`
+		Provider     string          `json:"provider"`
 		Usage        core.Usage      `json:"usage"`
 		CostUSD      float64         `json:"cost_usd"`
 		HitRatio     float64         `json:"hit_ratio"`
@@ -326,7 +328,7 @@ func (r *Run) indexResponse(i int, e events.Event) {
 		return
 	}
 	s := &respInfo{
-		id: p.Req, seq: e.Seq, idx: i, ts: e.TS, model: p.Model, usage: p.Usage, costUSD: p.CostUSD, hitRatio: p.HitRatio,
+		id: p.Req, seq: e.Seq, idx: i, ts: e.TS, model: p.Model, provider: p.Provider, usage: p.Usage, costUSD: p.CostUSD, hitRatio: p.HitRatio,
 		expected: p.ExpectedRead, anomaly: p.Anomaly, stop: p.Stop, totalMs: p.TotalMs, side: p.Side,
 		completion: p.Completion, tokens: p.Tokens,
 	}
