@@ -152,6 +152,10 @@ func (b *builder) build() (*rl.Episode, error) {
 	}
 	ep.StartedAt, ep.EndedAt = b.span()
 	ep.Signals = b.signals
+	if f := b.v.fork; f != nil {
+		fork := *f
+		ep.Fork = &fork
+	}
 	ep.Outcome = b.outcome()
 	ep.Cost = b.cost()
 	b.provenance(ep)
@@ -369,6 +373,10 @@ func (b *builder) stepOf(st *stepInfo) rl.Step {
 // shared-prefix reference.
 func (b *builder) finishStep(st *stepInfo, sp sharedInfo) {
 	st.step.Trainable = b.o.Policy.Model != "" && st.step.Model == b.o.Policy.Model
+	if f := b.v.fork; f != nil && st.q.seq < f.Seq {
+		// The trunk's step, copied with its log: it is trained on in the trunk's episode, not again in every branch.
+		st.step.Inherited, st.step.Trainable = true, false
+	}
 	if sp.ok && st.q.man.Tools == sp.tools && equalHashes(st.q.man.System, sp.system) {
 		st.step.Prompt.SharedPrefix = sp.id
 		st.step.Prompt.SharedMessages = commonPrefix(st.msgs, sp.leading)
@@ -511,6 +519,11 @@ func (b *builder) continues(prev, cur *stepInfo) bool {
 
 // reason labels a rebase using the events between two requests of an agent.
 func (b *builder) reason(a *agentInfo, from, to uint64) string {
+	for _, seq := range b.v.restores[a.id] {
+		if seq > from && seq < to {
+			return "resume"
+		}
+	}
 	for _, c := range b.v.commits {
 		if c.agent == a.id && c.seq > from && c.seq < to {
 			return "compact"

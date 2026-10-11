@@ -2,9 +2,11 @@ package export_test
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/rl"
@@ -447,4 +449,38 @@ type failingResolver struct{}
 
 func (failingResolver) Prompt(*rl.Episode, *rl.Step) (*core.Prompt, error) {
 	return nil, fmt.Errorf("resolver must not be called")
+}
+
+// With SFTPrefix best a failed episode that scored above 0 at a savepoint
+// contributes the steps completed before its best one; without it, or without
+// a score above 0, it contributes nothing.
+func TestSFTBestPrefixOfAFailedEpisode(t *testing.T) {
+	failed := rollout(t, variant{sample: 1, plan: "partly right", reward: -0.2, pass: false})
+	steps := failed.Episode.Agents[0].Steps
+	if len(steps) < 2 {
+		t.Fatalf("fixture has %d steps", len(steps))
+	}
+	first := steps[0]
+	cut := first.At.Add(time.Duration(first.LatencyMs)*time.Millisecond + time.Millisecond)
+	if !steps[1].At.After(cut) {
+		cut = steps[1].At.Add(-time.Nanosecond) // the two steps are close: cut just before the second
+	}
+	failed.Episode.Progress = []rl.ProgressPoint{{Savepoint: 1, At: cut, Score: 0.4}, {Savepoint: 2, At: cut.Add(time.Hour), Score: 0.1}}
+	o := export.Options{Format: export.FormatSFT, DropFlagged: true}
+	if out, _ := run(t, []export.Source{failed}, o); len(decode(t, out)) != 0 {
+		t.Fatal("a failed episode was exported without SFTPrefix")
+	}
+	o.SFTPrefix = export.PrefixBest
+	out, st := run(t, []export.Source{failed}, o)
+	recs := decode(t, out)
+	if len(recs) != 1 || st.Prefixes != 1 || st.Drops["step:after_best_savepoint"] != 1 {
+		t.Fatalf("records %d, prefixes %d, drops %v: want the one step before the best savepoint", len(recs), st.Prefixes, st.Drops)
+	}
+	failed.Episode.Progress = []rl.ProgressPoint{{Savepoint: 1, At: cut, Score: 0}}
+	if out, _ := run(t, []export.Source{failed}, o); len(decode(t, out)) != 0 {
+		t.Error("a failed episode that never scored above 0 was exported")
+	}
+	if _, err := export.Export(io.Discard, nil, export.Options{Format: export.FormatSFT, SFTPrefix: "worst"}); err == nil {
+		t.Error("an unknown SFTPrefix was accepted")
+	}
 }

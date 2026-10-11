@@ -7,6 +7,43 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Resume long RL rollouts from savepoints instead of starting them over
+  (`--savepoint-every`, off by default). Tool batches that can write hold a
+  barrier that a savepoint takes for a moment; a savepoint writes every
+  agent's state as an `agent.snapshot` (marked `savepoint`), emits the new
+  `session.savepoint` event and captures the work tree into the sample's
+  `savepoints/`. An attempt that finds one resumes from it: the log is cut
+  back (its tail kept as `events.rewound.N.jsonl`), the workspace is rebuilt
+  at its stable path, the session continues with a note to the agent, and the
+  remaining wall, request and step budgets carry over. Such an attempt does
+  not use up an infra retry. `ledger.jsonl` entries count only what an
+  attempt appended to the log, plus `rewound` entries for spend that no entry
+  had counted; episodes label the steps after a resume as a `resume` segment;
+  the progress stream gains `rollout.resume`, `manifest.json`
+  `savepoint_every_ms`. With savepoints off, rollouts and their records are
+  unchanged. Prompt and tool-schema bytes are unchanged; a resumed agent's
+  first request re-writes its cached prefix once.
+- Score the work tree of long rollouts at their savepoints
+  (`--score-savepoints`, with `--progress-sample` and `--progress-budget`):
+  the task's verifier runs on each savepoint's tree in a clean checkout, in
+  progress mode (`SUITE_SAMPLE`, `SUITE_BUDGET_S` in its environment), and the
+  scores go to the sample's `progress.jsonl` and the episode's new `progress`.
+  New reward components `progress` and `regressions` (cap `regressions`) read
+  them; their default weight is 0, so rewards are unchanged unless a rewards
+  file weights them. `VerifyOptions.Env` adds entries to a verifier's
+  environment. `rl export --sft-prefix best` exports failed episodes up to
+  their best-scoring savepoint (`best_prefixes` in the statistics). Prompt and
+  tool-schema bytes are unchanged.
+- Continue finished long rollouts from their savepoints with `sleipnir rl
+  branch`: K branches per savepoint, each resuming the trunk's state with its
+  own seed, for a horizon of agent time. Episodes gain `fork` and steps
+  `inherited`: a branch's steps before its fork are not trainable and are
+  dropped from the training formats (`step:inherited`). The siblings of a
+  point share the group `<task>@<parent>:sp<NNNN>`. The log gains the
+  `rl.fork` event. A capture store keeps alternates it already had (a
+  branch borrows its trunk's objects). With `--compact-first` each branch
+  compacts first, so the siblings' first calls are competing summaries of one
+  state (`fork.compact_first`). Prompt and tool-schema bytes are unchanged.
 - Sessions can take savepoints (`session.Options.Savepoints`,
   `Session.Savepoint`): tool batches that can write hold a barrier, a
   savepoint pauses them for a moment, writes every agent's state as an

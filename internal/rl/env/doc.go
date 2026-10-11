@@ -42,6 +42,23 @@
 // it sits beside a log that the agent's harness writes, and the policy must
 // never be able to read verifier content there.
 //
+// # Savepoints
+//
+// With Runner.SavepointEvery a rollout is resumable. Its workspace is at a
+// stable path (PrepareID, StableID). While the harness runs, the runner asks it
+// for a savepoint at the interval (RunSpec.Savepoints, SavepointHook): the
+// session pauses the agents' writes, logs their state, and the runner captures
+// the work tree into <sample>/savepoints/git (Workspace.Capture) and appends the
+// savepoint to <sample>/savepoints/index.jsonl. An attempt that finds a
+// savepoint of the same policy and seed cuts the log back to the newest
+// (events.rewound.N.jsonl keeps the tail), rebuilds the workspace at its path
+// with the captured tree (RestoreWorkspace), and runs the harness with
+// RunSpec.Resume and what is left of the budgets. The ledger counts what each
+// attempt appended (savepoints/recorded.json is the offset it has counted to).
+// With Runner.ScoreSavepoints each savepoint's tree is also scored by the
+// task's verifier in progress mode (progress.go): <sample>/progress.jsonl and
+// Episode.Progress.
+//
 // # Infrastructure errors versus verdicts
 //
 // A failure of the machinery (a setup command that could not run, a git error on

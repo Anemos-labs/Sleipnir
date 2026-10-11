@@ -91,6 +91,19 @@ type RunSpec struct {
 	// nothing answered counted as outages too: the endpoint is known to exist).
 	// Zero or negative: the agents do not wait outages out.
 	OutagePatience time.Duration
+	// Savepoints, when set, asks for savepoints (Runner.SavepointEvery): the
+	// harness turns them on in its session and binds a function that takes one
+	// (SavepointHook.Bind), and unbinds it before the session closes.
+	Savepoints *SavepointHook
+	// Resume says that RunDir holds the log of an earlier attempt, cut back to a
+	// savepoint, and Workspace the tree captured at it: the harness resumes that
+	// session and tells its agent (a team's manager) to continue (ResumeNote)
+	// instead of giving it the task. Budget is then what is left of the task's.
+	Resume bool
+	// CompactFirst asks a resumed session to compact its agent's (a team's
+	// manager's) context before it continues: the first attempt of a branch made
+	// with --compact-first, whose siblings then summarise the same state.
+	CompactFirst bool
 }
 
 // RunResult is what the harness reports.
@@ -158,6 +171,24 @@ type Runner struct {
 	// (default DefaultMaxOutagePause; negative: the clock does not stop for
 	// outages).
 	MaxOutagePause time.Duration
+	// SavepointEvery, when positive, takes a savepoint of every rollout at this
+	// interval: the harness pauses the agents' writes for a moment, records their
+	// state in the log, and the runner captures the work tree. An attempt that
+	// finds a savepoint of the same policy and seed in its sample directory
+	// resumes from the newest instead of starting over (an infra retry, or a later
+	// run into the same Out after the process died), with what is left of the
+	// wall, step and request budgets. Zero: no savepoints; every attempt starts
+	// over.
+	SavepointEvery time.Duration
+	// ScoreSavepoints scores the work tree of every consistent savepoint with the
+	// task's verifier, in a clean checkout and in progress mode, one tree at a
+	// time in the background: <sample>/progress.jsonl and Episode.Progress
+	// (see progress.go). ProgressSample and ProgressBudget are the progress
+	// mode's SUITE_SAMPLE and SUITE_BUDGET_S (defaults DefaultProgressSample and
+	// DefaultProgressBudget).
+	ScoreSavepoints bool
+	ProgressSample  int
+	ProgressBudget  time.Duration
 	// MaxSpendUSD caps what a run may spend, failed attempts and earlier invocations into the same directory
 	// included (see LedgerFile). When it is reached no further rollout starts; those are reported as capped.
 	// Rollouts already running finish, so the cap is overshot by at most what they are still allowed to spend:
@@ -205,11 +236,11 @@ type RolloutOpts struct {
 // Progress is one progress event.
 type Progress struct {
 	Time    time.Time `json:"time"`
-	Type    string    `json:"type"` // run.start, rollout.start, rollout.stage, rollout.retry, rollout.outage, rollout.done, run.done
+	Type    string    `json:"type"` // run.start, rollout.start, rollout.stage, rollout.retry, rollout.resume, rollout.outage, rollout.done, run.done
 	RunID   string    `json:"run_id"`
 	Task    string    `json:"task,omitempty"`
 	Sample  int       `json:"sample"`
-	Stage   string    `json:"stage,omitempty"` // prepare, agent, verify, extract, score
+	Stage   string    `json:"stage,omitempty"` // prepare or restore, agent, verify, extract, score
 	Attempt int       `json:"attempt,omitempty"`
 	Done    int       `json:"done"`
 	Total   int       `json:"total"`
@@ -223,6 +254,8 @@ type Progress struct {
 	Error  string   `json:"error,omitempty"`
 	// OutageMs is how long the outage that a rollout.outage "up" event ends lasted.
 	OutageMs int64 `json:"outage_ms,omitempty"`
+	// Savepoint is the savepoint a rollout.resume event resumes from.
+	Savepoint int `json:"savepoint,omitempty"`
 }
 
 // MaxWireSeed is the largest sampling seed every endpoint accepts: a signed 32-bit integer's.
@@ -340,7 +373,8 @@ type run struct {
 	start  time.Time
 	policy PolicySpec
 
-	ledger *ledger // what every attempt spent
+	ledger   *ledger        // what every attempt spent
+	progress *progressQueue // scores savepoints (Runner.ScoreSavepoints), or nil
 
 	mu       sync.Mutex // guards done, results, lastSave
 	done     int
@@ -474,6 +508,11 @@ func (r *Runner) Rollout(ctx context.Context, tasks []rl.Task, group int, opts R
 		return nil, err
 	}
 	rn.emit(Progress{Type: "run.start"})
+	if r.ScoreSavepoints && r.SavepointEvery > 0 {
+		pctx, stop := context.WithCancel(ctx)
+		defer stop()
+		rn.progress = newProgressQueue(pctx, rn)
+	}
 
 	conc := max(r.Concurrency, 1)
 	jobs := make(chan job)
@@ -620,9 +659,14 @@ func (rn *run) rollout(ctx context.Context, j job) (res RolloutResult) {
 
 	maxAttempts := rn.r.retries() + 1
 	var last attemptOutcome
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	for attempt, resumes := 1, 0; attempt <= maxAttempts; attempt++ {
 		last = rn.attempt(ctx, j, dir, attempt)
 		last.result.Attempts = attempt
+		if last.savepoints > 0 && resumes < maxResumes {
+			// The next attempt resumes where this one got to: only attempts that made no progress count.
+			maxAttempts++
+			resumes++
+		}
 		if last.cancelled || ctx.Err() != nil {
 			out := base
 			out.Attempts = attempt
@@ -662,6 +706,9 @@ type attemptOutcome struct {
 	result    RolloutResult
 	retry     bool // infra failure worth another attempt
 	cancelled bool
+	// savepoints counts the savepoints the attempt recorded: an attempt that made
+	// progress a retry resumes from does not use up a retry.
+	savepoints int
 }
 
 // stage marks progress and lets a panic name where it happened.
@@ -689,6 +736,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	var (
 		ws      *Workspace
 		tm      timing
+		saved   int  // savepoints recorded
 		keep    bool // the workspace is worth keeping if the caller asked for that
 		abandon bool // a harness may still be running in the workspace: leave it alone
 	)
@@ -706,12 +754,16 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 		return attemptOutcome{result: res, retry: retry}
 	}
 	defer func() {
+		if rn.progress != nil {
+			rn.progress.finish(dir) // a score still being taken must not write into the next attempt's rewind
+		}
 		if p := recover(); p != nil {
 			r.logf("env: %s/%d: panic in stage %s: %v\n%s", task.ID, j.sample, st.n, p, debug.Stack())
 			out = fail(fmt.Errorf("panic: %v", p), st.n != "extract" && st.n != "score")
 		}
 		// The split of the agent's time is the runner's to know, whatever the outcome: the ledger records it for every attempt.
 		out.result.ActiveWallMs, out.result.PausedMs = tm.activeMs, tm.pausedMs
+		out.savepoints = saved
 		if ws != nil {
 			switch {
 			case abandon:
@@ -728,24 +780,64 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 		}
 	}()
 
-	// Every attempt starts from an empty sample directory: a half-written
-	// events.jsonl from a crashed attempt would otherwise be resumed by the
-	// harness and corrupt the trajectory.
-	if err := removeAllNoFollow(dir); err != nil {
-		return fail(err, true)
+	// 1. workspace: the newest savepoint's, or a fresh one in an empty sample
+	// directory (a half-written events.jsonl from a crashed attempt would
+	// otherwise be resumed by the harness and corrupt the trajectory).
+	seed := SampleSeed(rn.opts.Seed, task.ID, j.sample)
+	var (
+		resume *savepointRecord
+		prior  spend // what the kept part of the log spent
+		err    error
+	)
+	if r.SavepointEvery > 0 && !(rn.opts.Force && attempt == 1) {
+		resume = lastSavepoint(dir, rn.policy.Model, seed)
+	}
+	if resume != nil {
+		st.set("restore", attempt)
+		if ws, err = r.Workspaces.RestoreWorkspace(ctx, task, resume.Workspace, savepointStoreDir(dir), resume.Tree); err != nil {
+			if ctx.Err() != nil {
+				return attemptOutcome{cancelled: true}
+			}
+			r.logf("env: %s/%d: cannot resume from savepoint %d, starting over: %v", task.ID, j.sample, resume.N, err)
+			resume = nil
+		}
+	}
+	if resume != nil {
+		lost, err := rewindTo(dir, resume)
+		if err != nil {
+			return fail(fmt.Errorf("rewinding to savepoint %d: %w", resume.N, err), true)
+		}
+		rn.recordRewound(j, attempt, lost)
+		prior = spendOfRange(filepath.Join(dir, "events.jsonl"), 0, resume.LogBytes)
+		rn.emit(Progress{Type: "rollout.resume", Task: task.ID, Sample: j.sample, Attempt: attempt, Savepoint: resume.N})
+	} else {
+		if err := removeAllNoFollow(dir); err != nil {
+			return fail(err, true)
+		}
 	}
 	store, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
 	if err != nil {
 		return fail(err, true)
 	}
-
-	// 1. workspace
-	st.set("prepare", attempt)
-	if ws, err = r.Workspaces.Prepare(ctx, task, fmt.Sprintf("s%d", j.sample)); err != nil {
-		if ctx.Err() != nil {
-			return attemptOutcome{cancelled: true}
+	if resume == nil {
+		st.set("prepare", attempt)
+		if r.SavepointEvery > 0 {
+			// At a path that a resume restores, which the agent's log records.
+			ws, err = r.Workspaces.PrepareID(ctx, task, StableID(task.ID, j.sample, runTag(rn.out)))
+		} else {
+			ws, err = r.Workspaces.Prepare(ctx, task, fmt.Sprintf("s%d", j.sample))
 		}
-		return fail(err, IsInfra(err))
+		if err != nil {
+			if ctx.Err() != nil {
+				return attemptOutcome{cancelled: true}
+			}
+			return fail(err, IsInfra(err))
+		}
+	}
+	if r.SavepointEvery > 0 {
+		if err := ws.MarkResumable(dir); err != nil {
+			return fail(err, true)
+		}
 	}
 	if err := rn.writeTaskFiles(dir, task, ws); err != nil {
 		return fail(err, true)
@@ -762,15 +854,44 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	spec := RunSpec{
 		Task: task, Workspace: ws.Dir, RunDir: dir, Policy: rn.policy, Capture: rn.opts.Capture, Swarm: swarm, Single: rn.opts.Single,
 		Agents: agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
-		Seed: SampleSeed(rn.opts.Seed, task.ID, j.sample), Budget: mergeBudget(task.Budget, rn.opts.Budget),
+		Seed: seed, Budget: mergeBudget(task.Budget, rn.opts.Budget),
 		Sample: j.sample, Group: rn.groupID(task.ID), Attempt: attempt, Env: ws.Env(),
 		NetPrefix: r.Workspaces.CommandPrefix(task, ws), OutagePatience: r.outagePatience(),
 	}
-	agentStart := r.now()
 	walled := task
 	walled.Budget = spec.Budget
-	ho := rn.runHarness(ctx, spec, r.wallFor(walled))
+	wall := r.wallFor(walled)
+	var priorActive time.Duration
+	if resume != nil {
+		spec.Resume = true
+		priorActive = time.Duration(resume.ActiveWallMs) * time.Millisecond
+		spec.Budget = remainingBudget(spec.Budget, prior, !swarm)
+		if wall > 0 {
+			wall = max(wall-priorActive, time.Millisecond)
+		}
+		if f := readFork(dir); f != nil && f.CompactFirst && resume.N == f.Savepoint {
+			spec.CompactFirst = true // from the fork itself, not from a later savepoint of the branch
+		}
+		if f := readFork(dir); f != nil && f.HorizonMs > 0 {
+			// A branch runs for its horizon after the fork, whatever the trunk's budget leaves.
+			left := time.Duration(f.ActiveWallMs+f.HorizonMs)*time.Millisecond - priorActive
+			if wall <= 0 || left < wall {
+				wall = max(left, time.Millisecond)
+			}
+		}
+	}
+	var sp *savepointRun
+	if r.SavepointEvery > 0 {
+		spec.Savepoints = newSavepointHook(r.SavepointEvery)
+		sp = &savepointRun{hook: spec.Savepoints, ws: ws, dir: dir, policy: rn.policy.Model, seed: seed, prior: priorActive, task: task}
+		if resume != nil {
+			sp.base = resume.N
+		}
+	}
+	agentStart := r.now()
+	ho := rn.runHarness(ctx, spec, wall, sp)
 	tm = timing{wallMs: r.now().Sub(agentStart).Milliseconds(), activeMs: ho.active.Milliseconds(), pausedMs: ho.paused.Milliseconds()}
+	saved = ho.savepoints
 	if ctx.Err() != nil {
 		return attemptOutcome{cancelled: true}
 	}
@@ -823,6 +944,9 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	}
 
 	// 5. episode
+	if rn.progress != nil {
+		rn.progress.finish(dir)
+	}
 	st.set("extract", attempt)
 	extract := r.Extract
 	if extract == nil {
@@ -838,6 +962,15 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 		return fail(errors.New("extractor returned no episode"), false)
 	}
 	rn.finalizeEpisode(ep, j, ws, &vr, claimed, ho.budget, tm)
+	ep.Progress = readProgress(dir)
+	if f := readFork(dir); f != nil {
+		// The siblings of one point are one group, whatever the run's own grouping.
+		if ep.Fork == nil {
+			fork := f.Fork
+			ep.Fork = &fork
+		}
+		ep.Group = rl.ForkGroup(task.ID, ep.Fork)
+	}
 
 	st.set("score", attempt)
 	if r.Score != nil {
@@ -872,6 +1005,7 @@ type harnessOutcome struct {
 	// was down for, in outages (both zero without a pausable clock).
 	active, paused time.Duration
 	outages        int
+	savepoints     int // recorded while the harness ran
 }
 
 // timing is how long the agent of an attempt ran: in all (wallMs), against its wall budget (activeMs) and paused while the
@@ -939,10 +1073,11 @@ func (n *outageNotices) emit(status, cause string, lasted time.Duration) {
 // to the pause limit end the run as an outage. A harness that does not return
 // within the grace period after its context ended is abandoned (and reported as
 // hung) rather than allowed to stall the whole run.
-func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration) harnessOutcome {
+func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration, sp *savepointRun) harnessOutcome {
 	rctx := ctx
 	cancel := func() {}
 	var clock *WallClock
+	start := rn.r.now()
 	if pause := rn.r.maxOutagePause(); pause > 0 {
 		notices := &outageNotices{rn: rn, spec: spec}
 		defer notices.close()
@@ -953,6 +1088,30 @@ func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration)
 		rctx, cancel = context.WithTimeout(ctx, wall)
 	}
 	defer cancel()
+	savepoints := func() int { return 0 }
+	if sp != nil {
+		// Savepoints stop with the harness: the last one must not capture the tree
+		// while the verifier reads it.
+		spctx, spstop := context.WithCancel(rctx)
+		recorded := make(chan int, 1)
+		go func() {
+			recorded <- rn.savepointLoop(spctx, sp, func() time.Duration {
+				if clock != nil {
+					return sp.prior + clock.Active()
+				}
+				return sp.prior + rn.r.now().Sub(start)
+			})
+		}()
+		var n int
+		savepoints = func() int {
+			if spstop != nil {
+				spstop()
+				n, spstop = <-recorded, nil
+			}
+			return n
+		}
+		defer savepoints()
+	}
 	done := make(chan harnessOutcome, 1)
 	go func() {
 		defer func() {
@@ -975,6 +1134,7 @@ func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration)
 			o = harnessOutcome{hung: true}
 		}
 	}
+	o.savepoints = savepoints()
 	clock.Stop()
 	o.active, o.paused, o.outages = clock.Active(), clock.Paused(), clock.Outages()
 	if o.hung {

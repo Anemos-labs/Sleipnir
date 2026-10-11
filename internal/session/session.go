@@ -69,7 +69,8 @@ type Options struct {
 	CaptureTokens bool
 
 	// ID names the session; Dir is where events.jsonl and blobs/ live (default
-	// <state>/sessions/<id>).
+	// <state>/sessions/<id>). With Resume, ID is the resumed directory's name
+	// unless set (a rollout's log names its session otherwise).
 	ID, Dir string
 	// Resume continues an earlier single-agent session instead of starting a new
 	// one: a session id, a session directory, or "latest" (the newest session of
@@ -314,7 +315,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		if err != nil {
 			return nil, err
 		}
-		o.Dir, o.ID = dir, filepath.Base(dir)
+		o.Dir = dir
+		if o.ID == "" {
+			o.ID = filepath.Base(dir)
+		}
 		if prior := inspectLog(dir); prior.isolated && prior.recovery {
 			if prior.id == "" || prior.id == "." || prior.id == ".." || strings.ContainsAny(prior.id, "/\\\x00\r\n") {
 				return nil, errors.New("invalid session id in isolation recovery metadata")

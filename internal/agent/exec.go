@@ -49,6 +49,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 					defer wg.Done()
 					defer func() { <-sem }()
 					results[k], exitFailed[k] = a.runOne(ctx, calls[k])
+					a.notePending(k, results[k])
 				}(k)
 			}
 			wg.Wait()
@@ -56,6 +57,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 			continue
 		}
 		results[i], exitFailed[i] = a.runOne(ctx, calls[i])
+		a.notePending(i, results[i])
 		i++
 	}
 	for i := run; i < len(calls); i++ {

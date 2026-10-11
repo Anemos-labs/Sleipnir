@@ -293,6 +293,8 @@ type ManifestConfig struct {
 	// off.
 	OutagePatienceMs int64 `json:"outage_patience_ms"`
 	MaxOutagePauseMs int64 `json:"max_outage_pause_ms"`
+	// SavepointEveryMs is Runner.SavepointEvery (0: no savepoints).
+	SavepointEveryMs int64 `json:"savepoint_every_ms,omitempty"`
 }
 
 // ManifestPolicy identifies the policy. The endpoint is scheme and host only and
@@ -352,7 +354,8 @@ func (rn *run) writeManifest(status string) error {
 		Agents: rn.opts.Agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
 		InfraRetries: r.retries(), VerifyRepeats: max(r.VerifyRepeats, 1), PassPolicy: r.VerifyPassPolicy,
 		OutagePatienceMs: msOrOff(r.outagePatience()), MaxOutagePauseMs: msOrOff(r.maxOutagePause()),
-		WorkspaceMode: r.Workspaces.opts.Mode, Group: rn.opts.Group, KeepFailed: rn.opts.KeepFailed, Force: rn.opts.Force,
+		SavepointEveryMs: max(r.SavepointEvery, 0).Milliseconds(),
+		WorkspaceMode:    r.Workspaces.opts.Mode, Group: rn.opts.Group, KeepFailed: rn.opts.KeepFailed, Force: rn.opts.Force,
 	}
 	m.Policy = ManifestPolicy{
 		Model: rn.policy.Model, Endpoint: endpointHost(rn.policy.BaseURL), APIKeyEnv: rn.policy.APIKeyEnv, Sampling: rn.policy.Sampling,

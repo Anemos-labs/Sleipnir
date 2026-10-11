@@ -35,8 +35,14 @@
 // A segment is a maximal run of one agent's main steps whose prompts are
 // append-only extensions of each other. The manifest chain decides where a
 // segment ends (message hash lists are compared; no blob is read). Events only
-// label why: "compact" (compact.commit or an agent layer.commit in between),
-// "epoch" (a shared-epoch or shared-sync layer.commit), "strip" (any other
+// A branch's log (rl branch) starts with a copy of its trunk's up to a savepoint
+// and an rl.fork event: steps whose request comes before that event are marked
+// Inherited (and not trainable), and the episode carries Fork.
+//
+// label why: "resume" (agent.restore in between: a resumed session restored the
+// agent from a snapshot and re-rendered its prompt), "compact" (compact.commit or
+// an agent layer.commit in between), "epoch" (a shared-epoch or shared-sync
+// layer.commit), "strip" (any other
 // rebase: thinking strip, a changed tool list, a changed system block, a model
 // swap). A hot tail (the swarm's live board block, appended to the last message
 // of a request and replaced on the next) is not a rebase: message-level
