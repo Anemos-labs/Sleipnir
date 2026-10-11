@@ -198,7 +198,8 @@ func appendJSONLine(path string, v any) error {
 }
 
 // readProgress reads a sample's progress.jsonl in savepoint order; unreadable
-// lines are skipped.
+// lines are skipped. A point written without its time (by an earlier version)
+// takes it from the savepoint index.
 func readProgress(dir string) []rl.ProgressPoint {
 	f, err := os.Open(filepath.Join(dir, progressFile))
 	if err != nil {
@@ -206,11 +207,26 @@ func readProgress(dir string) []rl.ProgressPoint {
 	}
 	defer f.Close()
 	var out []rl.ProgressPoint
+	missing := false
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		var p rl.ProgressPoint
 		if json.Unmarshal(sc.Bytes(), &p) == nil && p.Savepoint > 0 {
 			out = append(out, p)
+			missing = missing || p.At.IsZero()
+		}
+	}
+	if missing {
+		if recs, err := readSavepoints(dir); err == nil {
+			at := map[int]time.Time{}
+			for _, r := range recs {
+				at[r.N] = r.At
+			}
+			for i := range out {
+				if out[i].At.IsZero() {
+					out[i].At = at[out[i].Savepoint]
+				}
+			}
 		}
 	}
 	return out

@@ -463,3 +463,23 @@ func TestTrunkPointsAt(t *testing.T) {
 		t.Error("an unknown mode was accepted")
 	}
 }
+
+// Progress points written without their time (by an earlier version) take it from the savepoint index, so a failed
+// run can still be cut at its best savepoint (rl export --sft-prefix best).
+func TestProgressWithoutTimesTakesThemFromTheIndex(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Date(2026, 10, 11, 18, 50, 30, 0, time.UTC)
+	if err := appendSavepoint(dir, savepointRecord{SavepointInfo: SavepointInfo{N: 1, Consistent: true, Seq: 9, LogBytes: 1}, Tree: "t", At: at}); err != nil {
+		t.Fatal(err)
+	}
+	own := at.Add(time.Hour)
+	for _, p := range []rl.ProgressPoint{{Savepoint: 1, Score: 0.4}, {Savepoint: 2, Score: 0.6, At: own}, {Savepoint: 3, Score: 0.7}} {
+		if err := appendJSONLine(filepath.Join(dir, progressFile), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pts := readProgress(dir)
+	if len(pts) != 3 || !pts[0].At.Equal(at) || !pts[1].At.Equal(own) || !pts[2].At.IsZero() {
+		t.Errorf("progress %+v: want savepoint 1 at %v from the index, 2 at its own time, 3 (not in the index) without", pts, at)
+	}
+}
