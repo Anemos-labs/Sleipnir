@@ -88,6 +88,10 @@ type GitOptions struct {
 	Since      time.Time
 	Until      time.Time
 	MaxCommits int
+	// Picks, when set, replaces the history scan: exactly these changes are
+	// considered, in this order (see Pick and pickCommits). The licence is still
+	// read at Rev.
+	Picks []Pick
 	// Max stops after that many accepted tasks (0 means all).
 	Max int
 
@@ -156,6 +160,10 @@ type Meta struct {
 	Components []string `json:"components,omitempty"`
 	GoldBlobs  []string `json:"gold_blobs,omitempty"`
 	Base       string   `json:"base,omitempty"`
+	// Issue and Source record where a picked change came from (Pick.Issue.Ref
+	// and Pick.Source).
+	Issue  string            `json:"issue,omitempty"`
+	Source map[string]string `json:"source,omitempty"`
 }
 
 // commitInfo is a candidate commit before task assembly.
@@ -164,6 +172,7 @@ type commitInfo struct {
 	AuthorDate   time.Time
 	Subject      string
 	Files        []nameStatus
+	Pick         *Pick // the pick it came from, nil for a scanned commit
 }
 
 type nameStatus struct {
@@ -174,7 +183,9 @@ type nameStatus struct {
 // FromGit mines repoPath for commits that change source and tests and turns
 // each into a task: the workspace is the parent commit, the prompt is the commit
 // message, the verifier is the commit's test files (hidden and protected) plus a
-// test command restricted to them where the language allows.
+// test command restricted to them where the language allows. With
+// GitOptions.Picks it mines exactly the listed changes instead of scanning
+// history, and a pick's issue, when given, is the prompt.
 //
 // Unless NoValidate is set every candidate is validated by running the
 // verifier twice in the real environment: it must FAIL on the parent (else the
@@ -229,7 +240,12 @@ func FromGit(ctx context.Context, repoPath string, opts GitOptions) ([]rl.Task, 
 		return nil, rep, fmt.Errorf("%w: found %q, allowed %v", ErrLicense, license, opts.AllowLicenses)
 	}
 
-	commits, err := listCommits(ctx, r, tip, opts, rep)
+	var commits []commitInfo
+	if len(opts.Picks) > 0 {
+		commits, err = pickCommits(ctx, r, opts, rep)
+	} else {
+		commits, err = listCommits(ctx, r, tip, opts, rep)
+	}
 	if err != nil {
 		return nil, rep, err
 	}
@@ -567,6 +583,13 @@ func buildTask(ctx context.Context, r *repo, ci commitInfo, license, repoDir str
 		Subject: ci.Subject, Lang: pl.Lang, Files: allPaths, Lines: lines,
 		GoldHash: hex.EncodeToString(goldHash[:]), HiddenHash: hex.EncodeToString(h.Sum(nil)),
 	}
+	var issue *Issue
+	if ci.Pick != nil {
+		meta.Source, issue = ci.Pick.Source, ci.Pick.Issue
+		if issue != nil {
+			meta.Issue = issue.Ref
+		}
+	}
 	if opts.GoldBlobs != nil {
 		hash, err := opts.GoldBlobs.Put(gold)
 		if err != nil {
@@ -580,21 +603,32 @@ func buildTask(ctx context.Context, r *repo, ci commitInfo, license, repoDir str
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	issues := map[string]string{}
-	if opts.Issue != nil {
-		for _, ref := range IssueRefs(string(msgRaw)) {
-			if txt, err := opts.Issue(ctx, ref); err == nil {
-				issues[ref] = txt
+	// The prompt: a picked issue's text, or else the commit message with the
+	// issues it closes when a resolver is set.
+	prompt, kind := "", ""
+	empty, emptyWhat := false, "empty commit message"
+	if issue != nil {
+		prompt, kind = BuildIssuePrompt(*issue), InferKind(issue.Title)
+		empty, emptyWhat = strings.TrimSpace(CleanIssue(issue.Title+"\n"+issue.Body)) == "", "empty issue"
+	} else {
+		issues := map[string]string{}
+		if opts.Issue != nil {
+			for _, ref := range IssueRefs(string(msgRaw)) {
+				if txt, err := opts.Issue(ctx, ref); err == nil {
+					issues[ref] = txt
+				}
 			}
 		}
+		prompt, kind = BuildPrompt(string(msgRaw), issues), InferKind(ci.Subject)
+		empty = strings.TrimSpace(CleanMessage(string(msgRaw))) == ""
 	}
 
 	t := &rl.Task{
 		ID:     fmt.Sprintf("%s-%s", opts.IDPrefix, ci.Hash[:8]),
-		Kind:   InferKind(ci.Subject),
+		Kind:   kind,
 		Repo:   rl.RepoSpec{Path: repoDir, Commit: ci.Parent, License: license},
 		Setup:  pl.Setup,
-		Prompt: BuildPrompt(string(msgRaw), issues),
+		Prompt: prompt,
 		Team:   rl.Team{Mode: "single"},
 		Verifier: rl.Verifier{
 			Cmd: pl.Cmd, TimeoutS: int(opts.Timeout / time.Second), Pass: "exit0", Hidden: hiddenRefs, Protected: protected,
@@ -603,8 +637,8 @@ func buildTask(ctx context.Context, r *repo, ci commitInfo, license, repoDir str
 		Tags:   dedupe(append([]string{pl.Lang, "mined", sizeTag(len(changes), lines), opts.IDPrefix}, opts.Tags...)),
 		Meta:   metaRaw,
 	}
-	if t.Prompt == "" || strings.TrimSpace(CleanMessage(string(msgRaw))) == "" {
-		return rej(ReasonNoTestPlan, "empty commit message")
+	if t.Prompt == "" || empty {
+		return rej(ReasonNoTestPlan, emptyWhat)
 	}
 	return t, gold, nil, nil
 }

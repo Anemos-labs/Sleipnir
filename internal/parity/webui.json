@@ -2967,6 +2967,7 @@
     "flags": [
      "blobs",
      "budget-usd",
+     "commits",
      "concurrency",
      "gen-concurrency",
      "id-prefix",

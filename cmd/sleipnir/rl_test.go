@@ -230,3 +230,47 @@ func TestRLPipelineThroughTheCLI(t *testing.T) {
 		t.Error("export with no run directory must fail")
 	}
 }
+
+// --commits mines exactly the listed changes; a listed issue is the prompt and
+// the provenance lands in the task's meta.
+func TestTaskgenGitCommitsFlag(t *testing.T) {
+	repo := gitRepo(t)
+	dir := t.TempDir()
+	list := filepath.Join(dir, "picks.jsonl")
+	pick := `{"commit":"HEAD","issue":{"ref":"#3","title":"Add returns the difference","body":"Add(2, 3) gives -1."},"source":{"pr":"https://example.com/demo/pull/4"}}`
+	if err := os.WriteFile(list, []byte("# one pick\n"+pick+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tasksFile := filepath.Join(dir, "tasks.jsonl")
+	r := rlRun{t}
+	out := r.must(rlTaskgen, "git", "--repo", repo, "--commits", list, "--no-validate", "-o", tasksFile, "--id-prefix", "demo")
+	if !strings.Contains(out, "wrote 1 tasks") {
+		t.Fatalf("taskgen output:\n%s", out)
+	}
+	raw, err := os.ReadFile(tasksFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var task struct {
+		Prompt string `json:"prompt"`
+		Meta   struct {
+			Issue  string            `json:"issue"`
+			Source map[string]string `json:"source"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &task); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(task.Prompt, "Issue: Add returns the difference\n\nAdd(2, 3) gives -1.") || strings.Contains(task.Prompt, "subtracted") ||
+		task.Meta.Issue != "#3" || task.Meta.Source["pr"] != "https://example.com/demo/pull/4" {
+		t.Errorf("task: %+v", task)
+	}
+
+	if _, _, err := r.do(rlTaskgen, "git", "--repo", repo, "--commits", list, "--since", "2024-01-01", "--no-validate", "-o", tasksFile); err == nil ||
+		!strings.Contains(err.Error(), "cannot be combined") {
+		t.Errorf("--commits with --since: %v", err)
+	}
+	if _, _, err := r.do(rlTaskgen, "git", "--repo", repo, "--commits", filepath.Join(dir, "missing"), "--no-validate", "-o", tasksFile); err == nil {
+		t.Error("a missing --commits file was accepted")
+	}
+}
