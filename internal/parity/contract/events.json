@@ -17,6 +17,7 @@
     {"item": "model.switch", "reason": "Records /model for the log. The person who switched sees it where they did it (the chat's command, the page's model picker); neither interface reads it back from the log."},
     {"item": "outcome", "reason": "A training label (internal/rl, internal/inspect read it); neither interface shows it."},
     {"item": "recall", "reason": "Declared for the recall tool's records and written by no producer; neither interface shows anything for it."},
+    {"item": "rl.fork", "reason": "Marks where a branch of a long rollout leaves the copy of its trunk's log (rl branch); the trajectory extractor reads it, and no screen of either interface shows it."},
     {"item": "rl.outage", "reason": "A rollout's record of when its policy endpoint went down and came back, for the runner's paused wall clock and the training data (internal/rl reads the totals from the runner, not from the log); the agent's own retry notices are what both interfaces show of an outage."},
     {"item": "session.isolation", "reason": "The isolation record that a resume and the recovery of unfinished worker edits read (internal/session/isolate.go); neither interface shows it."},
     {"item": "session.savepoint", "reason": "Marks a resume point of a long rollout (internal/session/savepoint.go): the runner cuts the log back to it when it resumes; a record for recovery that no screen of either interface shows."},

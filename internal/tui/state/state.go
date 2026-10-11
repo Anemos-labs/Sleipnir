@@ -287,7 +287,7 @@ func (s *State) apply(e events.Event) {
 		s.onRestore(e, t)
 
 	case events.TypeTurnAppend, events.TypeAgentSnapshot, events.TypeCachePlan, events.TypeRecall,
-		events.TypeOutcome, events.TypeRLOutage, "tool.spill", "tool.budget", "hook.run",
+		events.TypeOutcome, events.TypeRLOutage, events.TypeRLFork, "tool.spill", "tool.budget", "hook.run",
 		events.TypePermState, events.TypeModelSwitch, "agent.prepare", "session.isolation", events.TypeSessionSavepoint, "swarm.integration_state", TypeWebAction, "verify.run":
 		// Known, and nothing the UI shows: the transcript is the conversation's, not the state's.
 	default:

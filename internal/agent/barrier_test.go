@@ -222,3 +222,68 @@ func TestAnyToolThatMayWriteHoldsTheBarrier(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A batch that cannot write (a team's wait) does not hold the barrier, and a
+// savepoint taken while it runs records it interrupted where it has got to: the
+// calls that returned with their results, the others as interrupted, and those
+// over the per-turn cap as refused. Once the batch ends, the recoverable state
+// has the real results again.
+func TestAWaitIsRecordedInterruptedAtASavepoint(t *testing.T) {
+	release := make(chan struct{})
+	waiting := make(chan struct{}, 1)
+	looked := make(chan struct{})
+	look := fakeTool{name: "look", readOnly: true, run: func(json.RawMessage) *tools.Result {
+		defer close(looked)
+		return &tools.Result{Text: "seen"}
+	}}
+	wait := fakeTool{name: "wait", readOnly: true, runCtx: func(ctx context.Context, c *tools.Call) *tools.Result {
+		waiting <- struct{}{}
+		<-release
+		return &tools.Result{Text: "T1 is done"}
+	}}
+	b := agent.NewSavepointBarrier()
+	step := 0
+	r := newLimRig(t, func(c *agent.Config) { c.Barrier, c.MaxToolCallsPerTurn = b, 2 }, []fakeTool{look, wait}, func(c *mock.Call) mock.Reply {
+		step++
+		if step == 1 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "l1", Name: "look", Args: `{}`}, {ID: "w1", Name: "wait", Args: `{}`},
+				{ID: "l2", Name: "look", Args: `{}`}}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	ctx := context.Background()
+	res := make(chan error, 1)
+	go func() { _, err := r.agent.Run(ctx, "coordinate"); res <- err }()
+	<-waiting
+	<-looked // both are read-only and run side by side: wait until the look's result is recorded
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		if snap, ok := r.agent.Recoverable(); ok && strings.Contains(turnsText(snap.Turns), "seen") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the look's result was never recorded")
+		}
+	}
+	if !b.Acquire(ctx, time.Second, time.Second) {
+		t.Fatal("a savepoint waited for a batch that cannot write")
+	}
+	snap, ok := r.agent.Recoverable()
+	b.Release()
+	if !ok || len(snap.Turns) == 0 {
+		t.Fatalf("no recoverable state mid-batch: %v", ok)
+	}
+	last := snap.Turns[len(snap.Turns)-1]
+	text := turnsText([]core.Turn{last})
+	if last.Role != core.RoleUser || !strings.Contains(text, "seen") || strings.Count(text, agent.InterruptedCall) != 1 ||
+		!strings.Contains(text, "Not run: this turn asked for 3 tool calls") || last.ID != snap.NextTurn-1 {
+		t.Fatalf("the interrupted batch's turn: %+v (next %d)\n%s", last, snap.NextTurn, text)
+	}
+	close(release)
+	if err := <-res; err != nil {
+		t.Fatal(err)
+	}
+	snap, _ = r.agent.Recoverable()
+	if all := turnsText(snap.Turns); !strings.Contains(all, "T1 is done") || strings.Contains(all, agent.InterruptedCall) {
+		t.Fatalf("after the batch the recoverable state lacks its results:\n%s", all)
+	}
+}

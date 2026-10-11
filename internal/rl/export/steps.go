@@ -48,6 +48,9 @@ func eachStep(work []*workEpisode, fn func(c stepCtx) error) error {
 // alike and their drops are counted under their own names.
 func (x *exporter) stepVerdict(c stepCtx) string {
 	st := c.st
+	if st.Inherited {
+		return "inherited"
+	}
 	if !x.roleMatches(st.Role) {
 		return "role_filtered"
 	}

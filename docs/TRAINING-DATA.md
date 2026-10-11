@@ -401,6 +401,66 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   rollout as `active_wall_ms` (what counted against the budget) and `paused_ms` in the episode's `cost`, the summary's
   results and `ledger.jsonl`; `summary.json` adds up `paused_ms` over the run, and `manifest.json` records both
   settings (`outage_patience_ms`, `max_outage_pause_ms`, -1 when off). `wall_ms` stays the whole span of the run.
+* **Savepoints and resume** (`--savepoint-every 15m`, on `rl rollout`, `rl eval` and `rl serve`; off by default): a
+  long rollout is not started over when its attempt ends early (an infra failure, the process stopped or killed).
+  At the interval the runner asks the session for a savepoint: tool batches that can change the work tree (`bash`,
+  `apply_patch`, `edit`, `write`) and a team's done check hold a shared barrier, and the savepoint waits for a moment
+  when none runs (politely for up to half the interval, then for at most the interval while new ones wait; at most
+  30 s and 2 min); it is skipped when no such moment comes. With writes paused, every agent's state after its last
+  complete tool batch is written as an `agent.snapshot` (a batch that cannot write, such as a manager's `wait`, is
+  recorded with the calls that had not returned marked interrupted), a `session.savepoint` event follows, the log is
+  flushed, and the work tree is captured into `savepoints/git` in the sample directory (files git ignores, the
+  agent's own git history, HOME, TMPDIR and running processes are not captured). `savepoints/index.jsonl` lists
+  each savepoint (`n`, `log_bytes`, `tree`, the workspace, `policy`, `seed`, `active_wall_ms`). A savepoint workspace
+  lives at a stable path (`ws/<task>-s<sample>-<run tag>` under the work dir). An attempt that finds a savepoint of the
+  same policy and seed resumes from the newest: the log is cut back to it (the cut-off tail is kept as
+  `events.rewound.N.jsonl`), the workspace is rebuilt at the same path with the captured tree, the session resumes
+  from the agents' snapshots, and the agent (a team's manager) is told it was resumed instead of being given the task
+  again. A team's workers do not survive: their unfinished tasks go back on the board as to do. The resumed attempt
+  gets what is left of the wall budget (less the agent time recorded at the savepoint), of the request budget and,
+  for a single agent, of the step budget. An attempt that recorded a savepoint does not use up an infra retry (at most
+  20 resumes per rollout). `ledger.jsonl` counts each response once: an attempt's entry counts what it appended to
+  the log, and spend in a cut-off tail that no entry counted (the process died) gets an entry with status `rewound`.
+  The progress stream reports `rollout.resume` with the savepoint, the episode marks the steps after a resume as a
+  segment with reason `resume`, and `manifest.json` records `savepoint_every_ms`. `--force` starts the first attempt
+  over.
+* **Progress at savepoints** (`--score-savepoints`, with `--savepoint-every`): the work tree of every consistent
+  savepoint is scored by the task's verifier in a clean checkout, as the final verification is, and invisible to the
+  agents. It runs in the background, one tree at a time per run; a sample whose earlier tree still waits has it
+  replaced by the newer one, and an attempt that ends waits for its tree being scored. The verifier runs in progress
+  mode: its environment carries `SUITE_SAMPLE` (`--progress-sample`, default 20 tests of each unit) and
+  `SUITE_BUDGET_S` (`--progress-budget`, default 5m), which the whole-suite scorer reads to run a sample under a
+  deadline (another verifier runs whole). The scores go to `progress.jsonl` in the sample directory and to the
+  episode's `progress` (`savepoint`, `active_wall_ms`, `score`, `pass`, `ms`); a resume drops those of the savepoints
+  it cuts off. Two reward components read them, both off by default: `progress` is the mean score over the agent's
+  time, from the baseline score at the start through each savepoint to the outcome at the end (getting far early
+  scores higher), and `regressions` is minus the number of falls of at least 0.05, saturating at
+  `caps.regressions` (3). `rl export --format sft --sft-prefix best` also exports each failed episode that scored
+  above 0 at a savepoint, up to its best-scoring one: the steps that completed before that savepoint was taken (the
+  others are counted as `step:after_best_savepoint`, the episodes in `best_prefixes`). A twelve-hour run that went
+  wrong in its last hours still teaches what it did well before.
+* **Branches** (`sleipnir rl branch --tasks FILE --from RUN/TASK/SAMPLE --at POINTS --k 4 --horizon 45m --out DIR`, where
+  `POINTS` is `sp:N[,M]`, `every:K`, `last`, `compaction` (the last savepoint before each compaction), `milestone` (each
+  savepoint whose progress score rose) or `plateau` (each savepoint whose score had not moved over the two before it)): a finished rollout that took savepoints (the trunk) is continued from some of them, K times each, with
+  different sampling seeds, so the outcomes compare decisions taken from the same state without paying for the prefix
+  again. Sample `p*K+k-1` of the branch run is sibling `k` of point `p`: its log is the trunk's up to the savepoint plus
+  an `rl.fork` event, its blobs are hard links to the trunk's, and its capture store borrows the trunk's objects; the
+  runner then resumes it as it resumes any rollout. Rerunning the same request into the same `--out` keeps the finished
+  branches and resumes the others; a different one (another trunk, point, `--k`, `--horizon` or `--compact-first`) is
+  refused there. A branch of a branch has the `rl.fork` events of both; its own is the last. The siblings run one after the other, because they restore the
+  trunk's workspace at the trunk's own path, which the agents' conversation names: give `rl branch` the trunk's
+  `--work-dir`. `--horizon` is the agent time a branch gets after its point (0: the rest of the trunk's budget); at the
+  horizon it ends as a `budget` episode and is verified like any rollout. A branch episode has `fork` (`parent`,
+  `savepoint`, `seq`, `sibling`, `siblings`, `horizon_ms`); its group is `<task>@<parent>:sp<NNNN>`, so the siblings of
+  one point are one GRPO group; its steps before the fork are the trunk's and are marked `inherited` (not trainable,
+  dropped from every training format as `step:inherited`; the canonical export keeps them). The siblings' first request
+  after the fork is the same prompt, so `rl export --format dpo --pair best-worst` pairs their decisions at that step.
+  The ledger of the branch run counts only what the branches spent. With `--compact-first` every branch compacts its
+  agent's (a team's manager's) context before anything else (when there is enough to fold): the siblings' first calls
+  are competing summaries of one state, each sampled with its branch's seed, and what each branch then achieves until
+  its horizon scores them. Their compactor steps share a GRPO baseline (their compaction number is the same, since the
+  inherited compactions before the fork are), and DPO pairs them on their common prompt; `fork.compact_first` records
+  the choice. With too little to fold, no compactor is called and the branch goes on as without the flag.
 * Output: `runs/r001/<task>/<sample>/` with `events.jsonl`, `blobs/`, `episode.json` (canonical trajectory with
   rewards), `diff.patch`, `verifier.log`; plus `runs/r001/manifest.json` and `summary.json` (pass rate, cost,
   per-role stats). Rerunning into the same directory resumes: finished rollouts are skipped.

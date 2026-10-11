@@ -69,6 +69,9 @@ type VerifyOptions struct {
 	MaxDiffBytes int64
 	// KeepCheckout leaves the last clean checkout on disk (Result.CheckoutDir).
 	KeepCheckout bool
+	// Env adds NAME=value entries to the verifier command's environment (the
+	// progress mode's SUITE_SAMPLE and SUITE_BUDGET_S).
+	Env []string
 	// Stdout, when set, is called after each run of the verifier command with
 	// the run's index and its standard output (bounded by MaxOutput: the head
 	// and the tail are kept), for a caller that reads more than the verdict
@@ -511,7 +514,7 @@ func (m *Workspaces) runVerifierOnce(ctx context.Context, in verifyInput, fr fil
 		Network: task.Network, MaxOutput: maxOut, Marker: co.id,
 		Limits: m.opts.Limits, Grace: m.opts.KillGrace, Mounts: co.mountsFor(in.snap),
 	}
-	env := m.commandEnv(co.home, co.tmp, task.Network, co.id)
+	env := append(m.commandEnv(co.home, co.tmp, task.Network, co.id), in.opts.Env...)
 	defer sweepMarker(co.id)
 	er, err := m.sandbox.Exec(WithExecPolicy(ctx, pol), co.dirIn, env, task.Verifier.Cmd, timeout)
 	if err != nil {

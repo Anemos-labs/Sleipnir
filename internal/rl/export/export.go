@@ -10,6 +10,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
@@ -86,6 +87,11 @@ type Options struct {
 	// verified episode, best TopK per task by reward; "best" keeps the best TopK
 	// (default 1) verified episodes of each rollout group by rl.CompareRank.
 	Select string
+	// SFTPrefix "best" also exports, from an sft run, the part of each failed
+	// episode up to its best-scoring savepoint (rl.Episode.Progress, a score
+	// above 0): the steps completed before that savepoint was taken. "" (the
+	// default) exports verified episodes only.
+	SFTPrefix string
 	// Pair chooses the dpo pairs: "reward" (or "", the default) pairs best and
 	// worst by reward; "best-worst" pairs rank 1 with rank last of one rollout
 	// group by rl.CompareRank, only when rank 1 is verified and its rank key is
@@ -173,7 +179,9 @@ type Stats struct {
 	Format   Format `json:"format"`
 	Episodes int    `json:"episodes"`      // episodes offered
 	Kept     int    `json:"episodes_kept"` // episodes that contributed at least one record
-	Records  int    `json:"records"`
+	// Prefixes counts the failed episodes offered up to their best savepoint (Options.SFTPrefix).
+	Prefixes int `json:"best_prefixes,omitempty"`
+	Records  int `json:"records"`
 	// ByRole counts records per training role; ByUnit per unit (step, segment,
 	// episode, pair); BySplit per split.
 	ByRole  map[string]int `json:"by_role,omitempty"`
@@ -323,6 +331,9 @@ func newExporter(w io.Writer, o Options) (*exporter, error) {
 	case "", SelectAll, SelectBest:
 	default:
 		return nil, fmt.Errorf("%w: select must be %s or %s, not %q", ErrBadOptions, SelectAll, SelectBest, o.Select)
+	}
+	if o.SFTPrefix != "" && o.SFTPrefix != PrefixBest {
+		return nil, fmt.Errorf("%w: sft prefix must be %s or empty, not %q", ErrBadOptions, PrefixBest, o.SFTPrefix)
 	}
 	switch o.Pair {
 	case "", PairReward, PairBestWorst:
@@ -474,6 +485,8 @@ func (x *exporter) run(srcs []Source) error {
 type workEpisode struct {
 	src Source
 	ep  *rl.Episode
+	// until, when set, keeps only the steps completed by then (SFTPrefix).
+	until time.Time
 	// contributed is set when the episode produced at least one record.
 	contributed bool
 	// key and rank place the episode in its rollout group by the best-of-n ranking.

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -106,22 +107,78 @@ type Barrier interface {
 // noteRecoverable keeps the agent's current state as its recoverable snapshot,
 // when a barrier is configured (savepoints are on). It is called where the
 // thread ends in complete tool results or in fresh input: a state from which a
-// later process can simply send the next request.
+// later process can simply send the next request. It ends the pending batch.
 func (a *Agent) noteRecoverable() {
 	if a.cfg.Barrier == nil {
 		return
 	}
 	snap := a.Snapshot()
 	a.mu.Lock()
-	a.recoverable = &snap
+	a.recoverable, a.pending = &snap, nil
 	a.mu.Unlock()
 }
 
+// InterruptedCall is the result a recoverable snapshot gives a call of a batch
+// that was still running when the snapshot was taken (a team's wait).
+const InterruptedCall = "Interrupted: the run stopped while this call was running and was resumed from a savepoint, so " +
+	"its result is unknown. Check the state it was about (the board, the files) and call it again if you still need it."
+
+// pendingBatch is a batch of calls that cannot write the work tree (reads,
+// coordination) while it runs: a savepoint does not wait for it, and the
+// recoverable state is then the thread with the results that came back and the
+// other calls interrupted.
+type pendingBatch struct {
+	base    Snapshot // the state with the calls' turn last in the thread
+	calls   []core.Block
+	results []core.Block
+	done    []bool
+}
+
+// beginPending marks the start of a batch that cannot write.
+func (a *Agent) beginPending(calls []core.Block) {
+	base := a.Snapshot()
+	a.mu.Lock()
+	a.pending = &pendingBatch{base: base, calls: calls, results: make([]core.Block, len(calls)), done: make([]bool, len(calls))}
+	a.mu.Unlock()
+}
+
+// notePending records that call i of the pending batch returned r.
+func (a *Agent) notePending(i int, r core.Block) {
+	a.mu.Lock()
+	if p := a.pending; p != nil && i < len(p.calls) {
+		p.results[i], p.done[i] = r, true
+	}
+	a.mu.Unlock()
+}
+
+// snapshot is the pending batch's recoverable state: its base with a tool
+// result turn in which the calls that did not return are interrupted.
+func (p *pendingBatch) snapshot() Snapshot {
+	s := p.base
+	blocks := make([]core.Block, len(p.calls))
+	for i, c := range p.calls {
+		if p.done[i] {
+			blocks[i] = p.results[i]
+		} else {
+			blocks[i] = core.ToolResult(c.ToolID, true, core.Text(InterruptedCall))
+		}
+	}
+	s.Turns = append(append([]core.Turn(nil), s.Turns...),
+		core.Turn{ID: s.NextTurn, Role: core.RoleUser, Origin: core.OriginTool, Blocks: blocks, At: time.Now().UTC()})
+	s.NextTurn++
+	return s
+}
+
 // Recoverable returns the newest snapshot taken at a tool-batch boundary, and
-// false before the first one (or without Config.Barrier).
+// false before the first one (or without Config.Barrier). While a batch that
+// cannot write runs, it is the state with that batch interrupted where it has
+// got to.
 func (a *Agent) Recoverable() (Snapshot, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.pending != nil {
+		return a.pending.snapshot(), true
+	}
 	if a.recoverable == nil {
 		return Snapshot{}, false
 	}

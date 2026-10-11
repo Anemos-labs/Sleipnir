@@ -379,7 +379,51 @@ func (s *scorer) episodeComponents() map[string]float64 {
 	}
 	c[CompWaste] = penalty(gate * s.cfg.frac(rl.Waste(ep.Signals), CapWaste))
 	c[CompGroupITE] = penalty(gate * s.groupITEFrac())
+
+	// progress, regressions: from the scores at savepoints
+	mean, drops := progressTerms(ep.Progress, t.Verifier.BaselineScore, score, ep.Cost.ActiveWallMs)
+	c[CompProgress] = mean
+	c[CompRegressions] = penalty(s.cfg.frac(drops, CapRegress))
 	return c
+}
+
+// progressDrop is the fall of the progress score that counts as a regression.
+const progressDrop = 0.05
+
+// progressTerms reads a long rollout's scores at its savepoints as a curve over
+// agent time, from the start (the task's baseline score) through each
+// savepoint to the end (the outcome's score at activeMs): its mean height (the
+// area under it divided by its length) and how many times it fell by at least
+// progressDrop. Without points both are 0.
+func progressTerms(points []rl.ProgressPoint, baseline, final float64, activeMs int64) (mean, drops float64) {
+	if len(points) == 0 {
+		return 0, 0
+	}
+	type pt struct {
+		t float64
+		y float64
+	}
+	curve := []pt{{0, clamp01(baseline)}}
+	for _, p := range points {
+		if t := float64(p.ActiveWallMs); t >= curve[len(curve)-1].t {
+			curve = append(curve, pt{t, clamp01(p.Score)})
+		}
+	}
+	if end := float64(activeMs); end >= curve[len(curve)-1].t {
+		curve = append(curve, pt{end, clamp01(final)})
+	}
+	var area float64
+	for i := 1; i < len(curve); i++ {
+		area += (curve[i].t - curve[i-1].t) * (curve[i].y + curve[i-1].y) / 2
+		if curve[i-1].y-curve[i].y >= progressDrop {
+			drops++
+		}
+	}
+	length := curve[len(curve)-1].t
+	if length <= 0 {
+		return curve[len(curve)-1].y, drops
+	}
+	return area / length, drops
 }
 
 // criticalPathSteps prefers the harness's own signal and falls back to the

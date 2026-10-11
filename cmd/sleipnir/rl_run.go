@@ -226,6 +226,9 @@ type rigFlags struct {
 	infraRetries                          int
 	maxWall                               time.Duration
 	outagePatience, maxOutagePause        time.Duration
+	savepointEvery, progressBudget        time.Duration
+	scoreSavepoints                       bool
+	progressSample                        int
 	noNetIsolation, requireNetIsolation   bool
 	keepFailed                            bool
 	passEnv                               string
@@ -249,6 +252,10 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.DurationVar(&r.maxWall, "max-wall", 0, "wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)")
 	fs.DurationVar(&r.outagePatience, "outage-patience", 0, "how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)")
 	fs.DurationVar(&r.maxOutagePause, "max-outage-pause", 0, "how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)")
+	fs.DurationVar(&r.savepointEvery, "savepoint-every", 0, "take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)")
+	fs.BoolVar(&r.scoreSavepoints, "score-savepoints", false, "with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)")
+	fs.IntVar(&r.progressSample, "progress-sample", 0, "progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)")
+	fs.DurationVar(&r.progressBudget, "progress-budget", 0, "progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)")
 	fs.BoolVar(&r.noNetIsolation, "no-net-isolation", false, "do not isolate the network of tasks that do not need it")
 	fs.BoolVar(&r.requireNetIsolation, "require-net-isolation", false, "refuse to run where network isolation is unavailable")
 	fs.BoolVar(&r.keepFailed, "keep-failed", false, "keep the workspaces of failed rollouts for debugging")
@@ -276,6 +283,15 @@ func (rf *rigFlags) validate() error {
 	}
 	if rf.maxSteps < 0 || rf.maxRequests < 0 {
 		return errors.New("--max-steps and --max-requests must not be negative")
+	}
+	if rf.savepointEvery < 0 {
+		return errors.New("--savepoint-every must not be negative")
+	}
+	if rf.scoreSavepoints && rf.savepointEvery == 0 {
+		return errors.New("--score-savepoints needs --savepoint-every")
+	}
+	if rf.progressSample < 0 || rf.progressBudget < 0 {
+		return errors.New("--progress-sample and --progress-budget must not be negative")
 	}
 	return nil
 }
@@ -368,7 +384,8 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		Concurrency: rf.concurrency, HiddenBlobs: hidden,
 		VerifyRepeats: rf.verifyRepeats, VerifyPassPolicy: rf.verifyPolicy,
 		InfraRetries: rf.infraRetries, MaxWall: rf.maxWall, MaxSpendUSD: rf.maxSpend,
-		OutagePatience: rf.outagePatience, MaxOutagePause: rf.maxOutagePause,
+		OutagePatience: rf.outagePatience, MaxOutagePause: rf.maxOutagePause, SavepointEvery: rf.savepointEvery,
+		ScoreSavepoints: rf.scoreSavepoints, ProgressSample: rf.progressSample, ProgressBudget: rf.progressBudget,
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
 	}
 	return &rig{Runner: rn, Pipe: pipe, Reward: cfg, closeF: ws.Close}, nil
@@ -454,6 +471,8 @@ func progressPrinter(w io.Writer) func(env.Progress) {
 			fmt.Fprintln(w, line)
 		case "rollout.retry":
 			fmt.Fprintf(w, "%s/%d: retrying (attempt %d): %s\n", p.Task, p.Sample, p.Attempt, p.Error)
+		case "rollout.resume":
+			fmt.Fprintf(w, "%s/%d: resuming from savepoint %d (attempt %d)\n", p.Task, p.Sample, p.Savepoint, p.Attempt)
 		case "rollout.outage":
 			if p.Status == "down" {
 				fmt.Fprintf(w, "%s/%d: the policy endpoint is down (%s): waiting, with the rollout's clock stopped\n", p.Task, p.Sample, p.Error)
