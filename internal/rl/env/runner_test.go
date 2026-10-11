@@ -235,6 +235,13 @@ func TestRolloutFullPath(t *testing.T) {
 	if ep0.Env.Commit != f.base || ep0.Env.TreeHash == "" || ep0.Provenance.License != "MIT" {
 		t.Errorf("env/provenance: %+v %+v", ep0.Env, ep0.Provenance)
 	}
+	// The task's tags travel with every episode, the infra stub's included, so
+	// export rules can select by them.
+	for _, s := range []int{0, 4} {
+		if ep := f.episode("mathx-max", s); strings.Join(ep.Env.Tags, ",") != "go,small" {
+			t.Errorf("sample %d: env tags %v, want the task's [go small]", s, ep.Env.Tags)
+		}
+	}
 	if len(ep0.Agents) != 1 || len(ep0.Agents[0].Steps) != 1 {
 		t.Errorf("extracted agents: %+v", ep0.Agents)
 	}
