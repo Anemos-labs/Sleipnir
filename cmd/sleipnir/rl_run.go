@@ -231,6 +231,8 @@ type rigFlags struct {
 	setEnv                                kvFlags
 	budgetUSD, maxSpend                   float64
 	maxSteps, maxRequests                 int
+	confine                               string
+	confineRO, confineRW                  multiFlag
 }
 
 func (r *rigFlags) register(fs *flag.FlagSet) {
@@ -253,6 +255,9 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.Float64Var(&r.budgetUSD, "budget-usd", 0, "spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)")
 	fs.IntVar(&r.maxSteps, "max-steps", 0, "step cap of one rollout whose task sets none")
 	fs.IntVar(&r.maxRequests, "max-requests", 0, "cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)")
+	fs.StringVar(&r.confine, "confine", env.ConfineOff, "off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data")
+	fs.Var(&r.confineRO, "confine-ro", "with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically")
+	fs.Var(&r.confineRW, "confine-rw", "with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically")
 	fs.Float64Var(&r.maxSpend, "max-spend-usd", 0, "spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too")
 }
 
@@ -294,8 +299,10 @@ type rig struct {
 // Close invokes the cleanup function associated with this rollout rig.
 func (r *rig) Close() { r.closeF() }
 
-// workspaces builds the workspace manager the flags describe.
-func (rf *rigFlags) workspaces(stderr io.Writer) (*env.Workspaces, error) {
+// workspaces builds the workspace manager the flags describe. protect are
+// directories confined commands must never see beyond the work dir and the task
+// sources (the blob store, the run output, a mined repository with its future).
+func (rf *rigFlags) workspaces(stderr io.Writer, protect ...string) (*env.Workspaces, error) {
 	work := rf.workDir
 	if work == "" {
 		home, _ := os.UserHomeDir()
@@ -306,6 +313,7 @@ func (rf *rigFlags) workspaces(stderr io.Writer) (*env.Workspaces, error) {
 		Root: work, Mode: rf.mode, RepoBase: wd,
 		DisableNetIsolation: rf.noNetIsolation, RequireNetIsolation: rf.requireNetIsolation,
 		PassEnv: splitList(rf.passEnv), SetEnv: map[string]string(rf.setEnv),
+		Confine: rf.confine, ConfineProtect: nonEmpty(protect), ConfineRO: []string(rf.confineRO), ConfineRW: []string(rf.confineRW),
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, "env: "+f+"\n", a...) },
 	})
 	if err != nil {
@@ -334,15 +342,15 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		}
 		cfg.TargetName, cfg.Target = rf.target, cost.Model{}
 	}
-	ws, err := rf.workspaces(stderr)
-	if err != nil {
-		return nil, err
-	}
 	blobsDir := rf.blobs
 	if blobsDir == "" && tasksFile != "" {
 		if d := filepath.Join(filepath.Dir(tasksFile), "blobs"); dirExists(d) {
 			blobsDir = d
 		}
+	}
+	ws, err := rf.workspaces(stderr, out, blobsDir)
+	if err != nil {
+		return nil, err
 	}
 	var hidden events.Blobs
 	if blobsDir != "" {
@@ -360,6 +368,17 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
 	}
 	return &rig{Runner: rn, Pipe: pipe, Reward: cfg, closeF: ws.Close}, nil
+}
+
+// nonEmpty drops empty strings.
+func nonEmpty(ps []string) []string {
+	var out []string
+	for _, p := range ps {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // dirExists follows symlinks and reports whether the path names an accessible directory.

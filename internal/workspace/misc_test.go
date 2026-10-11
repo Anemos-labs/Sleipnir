@@ -92,6 +92,22 @@ func TestVerifyResultSummaries(t *testing.T) {
 	}
 }
 
+// A wrap prefix runs the shell under another program (a sandbox), and a base
+// environment replaces the process's own (secrets still removed).
+func TestRunShellWrapAndBaseEnv(t *testing.T) {
+	dir := t.TempDir()
+	res := RunShell(tctx(t), VerifyRequest{Dir: dir, Cmd: `echo "$WRAPPED/$ONLY_BASE/$GITHUB_TOKEN"`,
+		Wrap:    []string{"/usr/bin/env", "WRAPPED=yes"},
+		BaseEnv: []string{"PATH=/usr/bin:/bin", "ONLY_BASE=base", "GITHUB_TOKEN=ghp-secret"}})
+	if !res.OK() || strings.TrimSpace(res.Output) != "yes/base/" {
+		t.Fatalf("output %q err %v", res.Output, res.Err)
+	}
+	res = RunShell(tctx(t), VerifyRequest{Dir: dir, Cmd: `echo "[$OPENAI_API_KEY]"`, BaseEnv: []string{"PATH=/usr/bin:/bin", "OPENAI_API_KEY=sk-secret"}})
+	if strings.Contains(res.Output, "sk-secret") {
+		t.Fatalf("a secret from the base environment reached the command: %q", res.Output)
+	}
+}
+
 func TestRunShellBasics(t *testing.T) {
 	skipWithoutUnix(t)
 	dir := t.TempDir()

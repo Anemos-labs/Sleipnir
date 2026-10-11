@@ -992,6 +992,12 @@ flags:
         mine exactly these changes instead of scanning history: a file with one per line, a commit id or a JSON object {commit, parent, issue: {ref, title, body}, source} whose issue becomes the prompt
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -gen-concurrency int
         candidates validated at once (default 2)
   -id-prefix string
@@ -1084,6 +1090,12 @@ flags:
         spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -file value
         restrict mutated files to this path.Match pattern, repeatable
   -gen-concurrency int
@@ -1317,6 +1329,12 @@ flags:
         write the tasks to this file with verifier.baseline_score set to the start's measured score; a task whose recorded score differs is then not a failure
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -gold string
         blob store holding the reference solutions (default: --blobs)
   -infra-retries int
@@ -1406,6 +1424,12 @@ flags:
         ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -context-tokens int
         the policy's context window when a task does not set one
   -force
@@ -1512,6 +1536,12 @@ flags:
         ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -context-tokens int
         the policy's context window when a task does not set one
   -exclude string
@@ -1610,6 +1640,12 @@ flags:
         spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -infra-retries int
         retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
   -keep-failed

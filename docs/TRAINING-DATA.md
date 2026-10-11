@@ -180,6 +180,20 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets
   (a stop is an outcome: `budget`), wall-clock is enforced by the runner, and infrastructure failures are retried and
   never become episodes.
+* **Confinement** (`--confine bwrap`, on `rl rollout`, `rl eval`, `rl tasks check` and the task generators): without
+  it, a command the permission rules cannot judge statically (`python3 -c ...`) and the code a verifier runs see the
+  host's files, including the hidden test files and reference solutions in the blob store, the full history of a
+  mined repository and other rollouts' workspaces, so a policy could be rewarded for reading the answer. With it, every
+  setup, agent and verifier command (and a swarm's done check) runs in a bubblewrap sandbox: the root file system
+  read-only; user homes, `/tmp`, `/run`, service state, the work dir, the task sources, the blob store and the run
+  output hidden (empty); `/etc/shadow` and SSH keys masked; its own PID, IPC and UTS namespaces (it cannot see or
+  signal the harness, whose environment holds provider keys) and, unless the task needs the network, its own network
+  namespace with loopback up. Writable are only the command's own tree, HOME and TMPDIR and the caches named by its
+  environment (`GOCACHE`, `GOMODCACHE`, `CARGO_HOME`, `PIP_CACHE_DIR`, ...); toolchains on its `PATH` (and
+  `GOROOT`, `RUSTUP_HOME`, `JAVA_HOME`) stay readable. `--confine-ro DIR` and `--confine-rw DIR` re-expose other
+  toolchain or cache directories. `bwrap` mode refuses to start where bubblewrap cannot create a sandbox (it needs
+  unprivileged user namespaces, or root); use it whenever rollouts are training data. Shared caches remain a shared
+  write area between rollouts.
 * Output: `runs/r001/<task>/<sample>/` with `events.jsonl`, `blobs/`, `episode.json` (canonical trajectory with
   rewards), `diff.patch`, `verifier.log`; plus `runs/r001/manifest.json` and `summary.json` (pass rate, cost,
   per-role stats). Rerunning into the same directory resumes: finished rollouts are skipped.
@@ -444,7 +458,8 @@ sleipnir rl export runs/r1 --format groups --advantage grpo -o groups.jsonl
   terms forbid it.
 * **Licences and consent.** The repo licence and any consent flag travel with every record; `--licenses` filters.
 * **Contamination.** Task splits by repo/date; hidden verifier files never appear in prompts; a scanner flags
-  episodes whose transcript contains verifier content or benchmark strings.
+  episodes whose transcript contains verifier content or benchmark strings; `--confine bwrap` keeps commands from
+  reading hidden files, reference solutions and mined history at all.
 * **Dedup and balance.** Exact dedup by prompt hash; per-task caps; `sleipnir rl show RUN [TASK/SAMPLE]` prints pass rates, reward
   distributions, per-role step counts, flagged episodes, token totals, cache anomalies and group statistics.
 
