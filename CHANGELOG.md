@@ -40,8 +40,10 @@ they do not indicate whether a change has been released.
   point share the group `<task>@<parent>:sp<NNNN>`. The log gains the
   `rl.fork` event. A capture store keeps alternates it already had (a
   branch borrows its trunk's objects). With `--compact-first` each branch
-  compacts first, so the siblings' first calls are competing summaries of one
-  state (`fork.compact_first`). Prompt and tool-schema bytes are unchanged.
+  compacts first when its context has enough to fold, and the siblings' first
+  calls are then competing summaries of one state (`fork.compact_first`);
+  with too little to fold, no compactor is called. Prompt and tool-schema
+  bytes are unchanged.
 - Link every compaction to the compactor call it came from, and baseline
   compactor advantages by compaction number. `compact.patch` and
   `compact.commit` events gain `req`, the compactor's `model.request` id (on a

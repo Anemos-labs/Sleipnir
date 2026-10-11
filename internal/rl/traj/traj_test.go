@@ -1636,3 +1636,31 @@ func TestWorkspaceRootsComeFromTheLog(t *testing.T) {
 		t.Errorf("a log that says nothing has no roots, got %q", got)
 	}
 }
+
+// A branch of a branch carries the rl.fork events of both generations: the
+// episode's fork is the last one, and every step before it, the first branch's
+// included, is inherited.
+func TestANestedBranchHasItsOwnFork(t *testing.T) {
+	b := trajtest.New()
+	a := b.Agent("be-1", "backend", "mock-1")
+	read := func(path string) trajtest.Call {
+		return trajtest.Call{Text: "read " + path, Tool: "read", Input: `{"path":"` + path + `"}`, Result: "package " + path}
+	}
+	a.User("fix the parser")
+	a.Step(read("a")) // the trunk's
+	b.Emit("", events.TypeRLFork, rl.Fork{Parent: "r1/fix/0", Savepoint: 2, Sibling: 1, Siblings: 2})
+	a.Step(read("b")) // the first branch's
+	own := b.Emit("", events.TypeRLFork, rl.Fork{Parent: "r2/fix/0", Savepoint: 3, Sibling: 2, Siblings: 4})
+	a.Step(trajtest.Call{Text: "fixed"}) // the nested branch's own
+	ep := episode(t, traj.OpenWith(b.Events(), b.Blobs), traj.Options{TaskID: "fix", Policy: policy})
+	if f := ep.Fork; f == nil || f.Parent != "r2/fix/0" || f.Savepoint != 3 || f.Sibling != 2 || f.Seq != own {
+		t.Fatalf("fork %+v, want the nested branch's (seq %d)", ep.Fork, own)
+	}
+	var got []string
+	for _, st := range ep.Agents[0].Steps {
+		got = append(got, fmt.Sprintf("%v/%v", st.Inherited, st.Trainable))
+	}
+	if fmt.Sprint(got) != "[true/false true/false false/true]" {
+		t.Errorf("inherited/trainable per step: %v", got)
+	}
+}

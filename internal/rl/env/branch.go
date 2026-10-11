@@ -46,7 +46,8 @@ type BranchRequest struct {
 	// the trunk's budget.
 	Horizon time.Duration
 	// CompactFirst makes every branch compact its context before it goes on
-	// (RunSpec.CompactFirst): K competing summaries of the point's state.
+	// (RunSpec.CompactFirst): K competing summaries of the point's state, when
+	// the context has enough to fold.
 	CompactFirst bool
 }
 
@@ -157,9 +158,21 @@ func trunkName(dir string) string {
 }
 
 // prepareBranch makes dir a copy of the trunk up to rec plus an rl.fork event,
-// unless it was prepared before.
+// unless it was prepared before for the same branch. A sample prepared for
+// another branch (another trunk, savepoint, sibling count, horizon or
+// compact-first) is an error: it is kept, not rebuilt.
 func (r *Runner) prepareBranch(ctx context.Context, trunk, dir string, rec savepointRecord, fork forkRecord, seed int64, policy string) error {
 	if _, err := os.Stat(filepath.Join(dir, forkFile)); err == nil {
+		old := readFork(dir)
+		if old == nil {
+			return fmt.Errorf("%s holds an unreadable %s", dir, forkFile)
+		}
+		want := fork.Fork
+		if got := old.Fork; got.Parent != want.Parent || got.Savepoint != want.Savepoint || got.Sibling != want.Sibling ||
+			got.Siblings != want.Siblings || got.HorizonMs != want.HorizonMs || got.CompactFirst != want.CompactFirst {
+			return fmt.Errorf("%s already holds another branch (%s savepoint %d, sibling %d of %d, horizon %dms, compact-first %v): "+
+				"branch into another --out", dir, got.Parent, got.Savepoint, got.Sibling, got.Siblings, got.HorizonMs, got.CompactFirst)
+		}
 		return nil // prepared by an earlier run: the runner resumes or keeps it
 	}
 	if err := removeAllNoFollow(dir); err != nil {

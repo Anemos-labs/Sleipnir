@@ -225,8 +225,9 @@ func TestAnyToolThatMayWriteHoldsTheBarrier(t *testing.T) {
 
 // A batch that cannot write (a team's wait) does not hold the barrier, and a
 // savepoint taken while it runs records it interrupted where it has got to: the
-// calls that returned with their results, the others as interrupted. Once the
-// batch ends, the recoverable state has the real results again.
+// calls that returned with their results, the others as interrupted, and those
+// over the per-turn cap as refused. Once the batch ends, the recoverable state
+// has the real results again.
 func TestAWaitIsRecordedInterruptedAtASavepoint(t *testing.T) {
 	release := make(chan struct{})
 	waiting := make(chan struct{}, 1)
@@ -242,10 +243,11 @@ func TestAWaitIsRecordedInterruptedAtASavepoint(t *testing.T) {
 	}}
 	b := agent.NewSavepointBarrier()
 	step := 0
-	r := newLimRig(t, func(c *agent.Config) { c.Barrier = b }, []fakeTool{look, wait}, func(c *mock.Call) mock.Reply {
+	r := newLimRig(t, func(c *agent.Config) { c.Barrier, c.MaxToolCallsPerTurn = b, 2 }, []fakeTool{look, wait}, func(c *mock.Call) mock.Reply {
 		step++
 		if step == 1 {
-			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "l1", Name: "look", Args: `{}`}, {ID: "w1", Name: "wait", Args: `{}`}}}
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "l1", Name: "look", Args: `{}`}, {ID: "w1", Name: "wait", Args: `{}`},
+				{ID: "l2", Name: "look", Args: `{}`}}}
 		}
 		return mock.Reply{Text: "done"}
 	})
@@ -272,7 +274,8 @@ func TestAWaitIsRecordedInterruptedAtASavepoint(t *testing.T) {
 	}
 	last := snap.Turns[len(snap.Turns)-1]
 	text := turnsText([]core.Turn{last})
-	if last.Role != core.RoleUser || !strings.Contains(text, "seen") || !strings.Contains(text, agent.InterruptedCall) || last.ID != snap.NextTurn-1 {
+	if last.Role != core.RoleUser || !strings.Contains(text, "seen") || strings.Count(text, agent.InterruptedCall) != 1 ||
+		!strings.Contains(text, "Not run: this turn asked for 3 tool calls") || last.ID != snap.NextTurn-1 {
 		t.Fatalf("the interrupted batch's turn: %+v (next %d)\n%s", last, snap.NextTurn, text)
 	}
 	close(release)

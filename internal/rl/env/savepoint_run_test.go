@@ -394,6 +394,14 @@ func TestBranchContinuesTheTrunkFromASavepoint(t *testing.T) {
 	if _, err := f.r.Branch(context.Background(), f.task, BranchRequest{Trunk: trunk, Points: []int{99}, Siblings: 1}, f.opts()); err == nil {
 		t.Error("a branch from a savepoint the trunk does not have was accepted")
 	}
+	// The same request again keeps the finished branches; another one into the same directory is refused.
+	if sum, err := f.r.Branch(context.Background(), f.task, BranchRequest{Trunk: trunk, Points: points[:1], Siblings: 2}, f.opts()); err != nil || len(seeds) != 2 {
+		t.Errorf("the same branches again: %+v, %v (%d runs)", sum, err, len(seeds))
+	}
+	if _, err := f.r.Branch(context.Background(), f.task, BranchRequest{Trunk: trunk, Points: points[:1], Siblings: 2, Horizon: time.Minute}, f.opts()); err == nil ||
+		!strings.Contains(err.Error(), "already holds another branch") {
+		t.Errorf("other branches into the same directory: %v", err)
+	}
 }
 
 // loadEpisode reads a sample's episode.json.

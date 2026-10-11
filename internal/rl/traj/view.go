@@ -23,7 +23,7 @@ type view struct {
 	layers  []layerEv  // layer.commit
 	// restores are the agent.restore events: agent -> their seqs (a resumed session restored the agent from a snapshot).
 	restores map[string][]uint64
-	// fork is the branch's rl.fork event (rl branch), or nil.
+	// fork is the branch's rl.fork event (rl branch), the last of them in a branch of a branch, or nil.
 	fork      *rl.Fork
 	rejects   int // compact.reject
 	mails     []mailEv
@@ -161,8 +161,9 @@ func (r *Run) buildView() *view {
 			t := e.TS
 			v.sessionEnd = &t
 		case events.TypeRLFork:
+			// A branch of a branch has a fork event per generation: the last is its own.
 			var p rl.Fork
-			if json.Unmarshal(e.Data, &p) == nil && v.fork == nil {
+			if json.Unmarshal(e.Data, &p) == nil {
 				p.Seq = e.Seq
 				v.fork = &p
 			}

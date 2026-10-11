@@ -284,7 +284,9 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   different sampling seeds, so the outcomes compare decisions taken from the same state without paying for the prefix
   again. Sample `p*K+k-1` of the branch run is sibling `k` of point `p`: its log is the trunk's up to the savepoint plus
   an `rl.fork` event, its blobs are hard links to the trunk's, and its capture store borrows the trunk's objects; the
-  runner then resumes it as it resumes any rollout. The siblings run one after the other, because they restore the
+  runner then resumes it as it resumes any rollout. Rerunning the same request into the same `--out` keeps the finished
+  branches and resumes the others; a different one (another trunk, point, `--k`, `--horizon` or `--compact-first`) is
+  refused there. A branch of a branch has the `rl.fork` events of both; its own is the last. The siblings run one after the other, because they restore the
   trunk's workspace at the trunk's own path, which the agents' conversation names: give `rl branch` the trunk's
   `--work-dir`. `--horizon` is the agent time a branch gets after its point (0: the rest of the trunk's budget); at the
   horizon it ends as a `budget` episode and is verified like any rollout. A branch episode has `fork` (`parent`,
@@ -295,8 +297,9 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   The ledger of the branch run counts only what the branches spent. With `--compact-first` every branch compacts its
   agent's (a team's manager's) context before anything else (when there is enough to fold): the siblings' first calls
   are competing summaries of one state, each sampled with its branch's seed, and what each branch then achieves until
-  its horizon scores them. Their compactor steps share a GRPO baseline as the first compaction of their group, and DPO
-  pairs them on their common prompt; `fork.compact_first` records the choice.
+  its horizon scores them. Their compactor steps share a GRPO baseline (their compaction number is the same, since the
+  inherited compactions before the fork are), and DPO pairs them on their common prompt; `fork.compact_first` records
+  the choice. With too little to fold, no compactor is called and the branch goes on as without the flag.
 * Output: `runs/r001/<task>/<sample>/` with `events.jsonl`, `blobs/`, `episode.json` (canonical trajectory with
   rewards), `diff.patch`, `verifier.log`; plus `runs/r001/manifest.json` and `summary.json` (pass rate, cost,
   per-role stats). Rerunning into the same directory resumes: finished rollouts are skipped.
