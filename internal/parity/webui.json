@@ -1109,6 +1109,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir rl taskgen chain",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:rl taskgen chain"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir rl taskgen composite",
    "kind": "program",
    "live": true,
@@ -1141,6 +1150,15 @@
    "live": true,
    "effects": [
     "runner:rl taskgen mutate"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir rl taskgen rebuild",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:rl taskgen rebuild"
    ]
   },
   {
@@ -2161,10 +2179,12 @@
    "rl serve",
    "rl show",
    "rl taskgen",
+   "rl taskgen chain",
    "rl taskgen composite",
    "rl taskgen fixture",
    "rl taskgen git",
    "rl taskgen mutate",
+   "rl taskgen rebuild",
    "rl taskgen recall",
    "rl tasks",
    "rl tasks check",
@@ -3050,6 +3070,59 @@
     "flags": [],
     "modeWith": {}
    },
+   "rl taskgen chain": {
+    "mode": "net",
+    "positionals": [
+     "REPO"
+    ],
+    "flags": [
+     "blobs",
+     "budget-usd",
+     "chains",
+     "concurrency",
+     "confine",
+     "confine-ro",
+     "confine-rw",
+     "gen-concurrency",
+     "id-prefix",
+     "infra-retries",
+     "keep-failed",
+     "licenses",
+     "max-outage-pause",
+     "max-requests",
+     "max-spend-usd",
+     "max-steps",
+     "max-wall",
+     "no-net-isolation",
+     "o",
+     "outage-patience",
+     "pass-env",
+     "progress-budget",
+     "progress-sample",
+     "repeats",
+     "repo-path",
+     "report",
+     "require-net-isolation",
+     "rewards",
+     "savepoint-every",
+     "score-savepoints",
+     "seal",
+     "set-env",
+     "setup",
+     "tag",
+     "target-price",
+     "timeout",
+     "verify-policy",
+     "verify-repeats",
+     "work-dir",
+     "workspace-mode"
+    ],
+    "modeWith": {
+     "no-net-isolation": "priv",
+     "pass-env": "priv",
+     "set-env": "priv"
+    }
+   },
    "rl taskgen composite": {
     "mode": "net",
     "positionals": [
@@ -3122,6 +3195,7 @@
      "rewards",
      "savepoint-every",
      "score-savepoints",
+     "seal",
      "set-env",
      "setup",
      "since",
@@ -3184,6 +3258,60 @@
      "tag",
      "target-price",
      "test",
+     "timeout",
+     "verify-policy",
+     "verify-repeats",
+     "work-dir",
+     "workspace-mode"
+    ],
+    "modeWith": {
+     "no-net-isolation": "priv",
+     "pass-env": "priv",
+     "set-env": "priv"
+    }
+   },
+   "rl taskgen rebuild": {
+    "mode": "net",
+    "positionals": [
+     "REPO"
+    ],
+    "flags": [
+     "blobs",
+     "budget-usd",
+     "commit",
+     "concurrency",
+     "confine",
+     "confine-ro",
+     "confine-rw",
+     "id-prefix",
+     "infra-retries",
+     "keep-failed",
+     "licenses",
+     "max-outage-pause",
+     "max-requests",
+     "max-spend-usd",
+     "max-steps",
+     "max-wall",
+     "no-net-isolation",
+     "o",
+     "outage-patience",
+     "pass-env",
+     "progress-budget",
+     "progress-sample",
+     "repeats",
+     "repo-path",
+     "report",
+     "require-net-isolation",
+     "rewards",
+     "savepoint-every",
+     "scope",
+     "score-savepoints",
+     "seal",
+     "set-env",
+     "setup",
+     "tag",
+     "target-price",
+     "tier",
      "timeout",
      "verify-policy",
      "verify-repeats",

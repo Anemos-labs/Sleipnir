@@ -107,13 +107,26 @@ func TestAnInterruptedRolloutResumesFromItsSavepoint(t *testing.T) {
 		}
 		done <- sum
 	}()
+	// Savepoints are taken from the start, so on a slow machine the first ones come before the first answer. The
+	// agent asking for its second answer means its first tool batch is in its thread; a savepoint that began before
+	// that may still be finishing, so the run is stopped after two more.
 	deadline := time.Now().Add(time.Minute)
-	for savepoints(sample) < 2 {
-		if time.Now().After(deadline) {
-			t.Fatal("no savepoint was recorded")
+	waitFor := func(what string, cond func() bool) {
+		t.Helper()
+		for !cond() {
+			if time.Now().After(deadline) {
+				t.Fatal(what)
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
+	waitFor("the agent never asked for its second answer", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(prompts) >= 2
+	})
+	after := savepoints(sample)
+	waitFor("no savepoint was recorded while the agent waited", func() bool { return savepoints(sample) >= after+2 })
 	cancel()
 	if sum := <-done; sum == nil || sum.Results[0].Status != env.StatusCancelled {
 		t.Fatalf("the first run was not interrupted: %+v", sum)
@@ -219,7 +232,7 @@ func TestAnInterruptedTeamRolloutResumes(t *testing.T) {
 		t.Skip("end-to-end")
 	}
 	agent.RetryBase = time.Millisecond
-	var stall atomic.Bool
+	var stall, workerWaiting atomic.Bool
 	stall.Store(true)
 	var mu sync.Mutex
 	var managerAfter []string // the manager's prompts after the resume
@@ -270,6 +283,7 @@ func TestAnInterruptedTeamRolloutResumes(t *testing.T) {
 		case 0:
 			return mock.Reply{Text: "note", ToolCalls: []mock.ToolCall{call("w0", "bash", map[string]any{"command": "echo started >> progress.txt"})}}
 		case 1:
+			workerWaiting.Store(true) // its first batch is done, and the manager is in its wait
 			for i := 0; i < 400 && stall.Load(); i++ {
 				time.Sleep(10 * time.Millisecond)
 			}
@@ -319,10 +333,19 @@ func TestAnInterruptedTeamRolloutResumes(t *testing.T) {
 			t.Error(err)
 		}
 	}()
+	// The run is stopped by savepoints taken while the worker waits for its second answer and the manager is in its
+	// wait: earlier ones (a slow machine takes some before the first answers) hold neither (see the single-agent test).
 	deadline := time.Now().Add(time.Minute)
-	for savepoints(sample) < 2 {
+	for !workerWaiting.Load() {
 		if time.Now().After(deadline) {
-			t.Fatal("no savepoint was recorded")
+			t.Fatal("the worker never asked for its second answer")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	after := savepoints(sample)
+	for savepoints(sample) < after+2 {
+		if time.Now().After(deadline) {
+			t.Fatal("no savepoint was recorded while the team waited")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

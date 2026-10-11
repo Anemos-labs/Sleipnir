@@ -157,12 +157,17 @@ the tasks file and never enters a workspace.
   tests as the verifier (hidden; protected) and the commit message (or a linked issue, via a resolver) as the prompt.
   `--commits FILE` mines a chosen list instead, for example the merged pull requests that closed an issue, each with
   the issue's text as its prompt and its provenance in `meta.source`.
+* `sleipnir rl taskgen chain --chains FILE R`: 3 to 8 consecutive merged pull requests become one long swarm task,
+  scored per milestone by the project's own test suite (see **Chain tasks** below).
 * `sleipnir rl taskgen mutate --repo R`: language-aware bug injection (flip a comparison, drop a nil check, off by
   one) with the project's own tests as the verifier; only mutations the tests catch, whose reversal makes them pass,
   are kept. Cheap volume, and the source of many independent tasks in one repository state.
 * `sleipnir rl taskgen composite TASKS -k 3`: combine *k* independent tasks of one repository (disjoint files) into one
   **swarm task**: the natural structure for training the manager's dispatch and the workers' coordination (the
   verifier passes only when every component passes; its score is the fraction that do).
+* `sleipnir rl taskgen rebuild --scope PKG,... R`: a library rebuilt from its specification. Its packages are reduced to
+  stubs or to an `API.md`, and its own tests are hidden and scored per package, as one long swarm task (see
+  **Rebuild tasks** below).
 * `sleipnir rl taskgen recall --repo R`: memory tasks. The agent reads a distinctive constant in one file, reads
   a dozen other files under a small context window (so its early history is compacted), and must then state the
   constant exactly. The verdict is an exact match on the final message, no command and no model. It trains
@@ -191,7 +196,8 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   `classname::name`) or `cargo` (cargo's output; a test is `target::module::name`, doc-tests excluded). `units`, each
   `{name, weight, tests}`, are the milestones; `guards` are tests that passed at the start and must keep passing;
   `deadline_s` bounds the whole run (default 1800 s); `origin` maps a test to the command that reports it. The default
-  commands are `go test -json -count=1 -p 2 ./...`; `python3 -m pytest` without `-x`, from the project directory, with
+  commands are `go test -json -count=1 -p 2 ./...` (or the packages a generator names); `python3 -m pytest` without
+  `-x`, from the project directory, with
   `-p no:cacheprovider -p no:randomly`, a 120 s limit per test where pytest-timeout is installed, and the reference's
   pytest configuration copied to the hidden `.sleipnir/suite/pytest.ini` (`-c` with `--rootdir .`), so options an
   agent writes into `pyproject.toml`, `setup.cfg` or `tox.ini` are not the ones the tests run with; and
@@ -222,6 +228,117 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   are scored, each command gets its share of the sample in `SUITE_ARGS` (which the default commands turn into
   `-run`, node ids or `--exact` names) and a command with none in the sample is not run; `SUITE_BUDGET_S` shortens
   the deadline. The final verdict always runs the whole suite.
+
+**Sealed start states** (`--seal DIR` of `rl taskgen git` and `rl taskgen chain`, `taskgen.Seal`). A workspace holds
+only the start tree, but the repository a task names stays on disk with every later commit in it, the fix included,
+where an agent running as the same user can read it. `--seal DIR` writes the start of each task it emits as `DIR/<task
+id>.git`: a bare repository with one commit (no parent; a fixed author, committer, date and message, so the same tree
+always seals to the same commit id), whose tree is the start's tree; its one pack holds that commit and the trees and
+blobs its tree reaches, and no object outside them. The task's `repo` names it: `repo.commit` is the sealed commit and
+`repo.path` is `<--repo-path>/<task id>.git` when `--repo-path` is given (a path relative to the directory the rollouts
+run in), else the absolute path. The commits the task came from stay in `meta` (`commit`, `parent`). A generator can
+leave paths out of the sealed tree (`taskgen.SealOptions.Remove`), so what it takes away from the start is nowhere on
+disk either. The sealed repositories travel with the tasks file, like the blob store. `rl tasks split` groups tasks by
+the repository they name, so it sees each sealed repository as a repository of its own; to keep one source repository's
+tasks in one part, select them by the tag every generator gives them, the id prefix (`rl tasks filter --tag <id
+prefix>`).
+
+**Chain tasks** (`sleipnir rl taskgen chain --chains FILE [flags] REPO`, `taskgen.FromChains`). A chain is 3 to 8 pull
+requests merged one after another on first-parent history; its task asks a team for all of them, in order, over
+hours. A line of FILE is `{"id", "commits", "issues", "source"}`: the merge or squash commit of each pull request,
+oldest first, each one's first parent being the one before; optionally an issue text per commit; and provenance.
+
+* **Start, tests, solution.** The start is the first commit's first parent. The hidden tests are the last commit's
+  version of every test file any of the pull requests touched; a test file the chain deletes is removed before the
+  suite runs (and left out of a sealed start). The reference solution is the start-to-end diff of every other file.
+  Every test file of the suite's languages (`*_test.go` and `testdata/`; `test_*.py`, `*_test.py`, `tests/` and
+  `test/`; `tests/` and the Rust test file names) is protected, so no test the score counts is the agent's to edit.
+* **Prompt.** The milestones in order, each the issue's text when one is given and otherwise the commit message,
+  without the "Merge pull request" line of a merge commit (cleaned as for `--commits`; at most 16 KiB each), then how
+  the work is checked.
+* **Score.** The whole-suite scorer runs `go test` in each Go module, pytest in the Python project (one at most; with
+  `src/` first on `PYTHONPATH` when the project has one, so the tests import the working tree rather than an installed
+  copy) and `cargo test` in each cargo package the tests belong to. The suite is recorded `--repeats` times (default 3) at the
+  start and after each pull request (the start with the non-test changes up to it and the hidden tests in place;
+  `taskgen.RecordSuiteSteps`). `taskgen.BuildStepUnits` makes the unit `milestone-k` of the tests that fail in every
+  run before pull request k and pass in every run from it on, weighted by the lines pull request k changed outside the
+  tests; tests that pass in every run at every step are guards, and the rest (flaky, failing at the end, passing then
+  failing) are dropped. A pull request that makes no test pass for good has no unit. In Go a test file that uses what
+  a later pull request adds keeps its whole package from compiling until then, so its package's tests belong to that
+  later milestone.
+* **Self-check.** Before a task is written it is scored as rollouts will be, one run per state: the start must score
+  0 (its guards pass, no milestone does), the state after pull request k the weight of the milestones up to k over the
+  weight of all of them (within 0.02), and the end exactly 1. The scores are printed and kept in the report
+  (`chains`: `want`, `got`); a chain that fails is rejected. Recording costs (pull requests + 1) × `--repeats` runs of
+  the whole suite, and the check pull requests + 1 more.
+* **Task.** `kind` `swarm`, `team` `{"mode": "swarm", "agents": n}` with one worker fewer than pull requests (2 to 6),
+  `budget.wall_s` 6 hours, 45 minutes more per pull request beyond the third and an hour more per 1000 changed lines,
+  at most 12 hours; tags `long`, `chain`, `harvested`, the languages and the id prefix. `meta.commits` lists the pull
+  requests' commits, `meta.parent` and `meta.commit` are the start and the end, and `meta.source` holds `repo` (the
+  origin's URL without credentials, or the directory's name), `range` (`<start>..<end>`) and `license` (the SPDX id at
+  the end, when recognised), with the chain's own `source` keys over them.
+
+**Rebuild tasks** (`sleipnir rl taskgen rebuild --scope PKG,... [flags] REPO`, `taskgen.Rebuild`). A rebuild task asks a
+team to write a library again from its specification, as it is at a version of the repository (`--commit`, default
+`HEAD`).
+
+* **Scope.** Go package directories relative to the repository (`dir/...` adds every package below `dir`; a package's
+  import path names it too), all in one module; or Python package (or module) names, looked up under the repository
+  root, `src/`, `lib/` and `python/`, all in one project (the nearest directory with `pyproject.toml`, `setup.py` or
+  `setup.cfg`, else the root). A Go package is the non-test `.go` files of its directory, a Python package every module
+  below its directory. The scope's size is its lines that are neither blank nor only a comment.
+* **Start state.** The reference with the scope's sources replaced and its tests removed, written to `--seal DIR`
+  (default `starts/` next to the tasks file) as `DIR/<task id>.git`: one commit (no parent; a fixed author, date and
+  message), holding that commit and the trees and blobs its tree reaches, and no object outside them. `repo.path` names
+  it, as `<--repo-path>/<task id>.git` when `--repo-path` is given.
+  Tier `stubs` keeps the API. A Go stub keeps the package clause, every constant, variable, type and method, the
+  exported functions and the unexported ones that kept code or the package's own tests use, with their doc comments;
+  every body becomes `panic("not implemented")` (function literals in variables' values too), `init` and the other
+  unexported functions are removed, and so are the imports nothing kept uses. A Python stub keeps everything outside
+  function bodies (imports, assignments, class attributes, decorators, docstrings, comments) and replaces the body of
+  every function and method, and of an `if __name__ == "__main__":` block, with `raise NotImplementedError`; a body
+  that is only `pass`, `...` or such a raise stays. Python is analysed by an embedded script run with `python3`, which
+  parses the sources with the `ast` module and runs none of them. Tier `spec` removes the sources and writes `API.md`
+  at the root (`REBUILD-API.md` when the repository has one): each package in dependency order with its documentation
+  and its API, then the unexported declarations its own tests use. For Go the API is what `go doc` shows (exported
+  declarations and their doc comments, without function bodies and unexported fields); for Python it is the public
+  names (`__all__`, else the names without a leading underscore) as signatures with their docstrings, classes with
+  their public and special methods and attributes, and a package's re-exports. Everything else (README,
+  documentation, examples, data files, build manifests) is kept.
+* **Tests and milestones.** The scope's tests are the hidden suite: the `_test.go` files and `testdata/` of its Go
+  packages; the test files and test helpers inside its Python packages, and every test file of the project that
+  imports one of their modules. The verifier is the whole-suite scorer: `go test` of the scope's packages, or pytest of
+  the hidden test files with the reference's configuration, run from the project's directory with the scope's import
+  root (`src/`, `lib/` or `python/`, when the packages are there) on `PYTHONPATH`, since the project itself is never
+  installed. The suite is recorded `--repeats` times (default 3) on the
+  start and with the reference; the tests that fail on the start and pass with the reference every time are scored,
+  and the others are dropped (a rebuild task has no guards). There is one unit per Go package or Python module,
+  weighted by its lines and listed in the order the packages import each other (an import cycle between Python modules
+  is broken at the module with the fewest imports left). A Go test belongs to its package. A Python test file belongs
+  to the module it exercises: the one it is named after (`test_core.py`, `core_test.py`), else the one it refers to
+  most (an import of it, or a name imported from it or read as its attribute, followed through the re-exports of a
+  package's `__init__.py` to the module that defines the name), the later in import order on a tie; a test file that
+  refers to no module belongs to the scope's first package (the last module in import order when that package has no
+  `__init__.py`). A test that panics in a Go stub stops its package's tests, and those not run count as failed.
+* **Gates and checks.** The scope has 2,000 to 10,000 lines, at least 150 scored tests, and one run of the reference
+  suite takes less than 10 minutes. In the environment rollouts use, the scope must not be importable from outside
+  the start tree: for Go, its module (also without a `/vN` suffix) is in neither the module cache, `GOPATH/src` nor
+  `vendor/`; for Python, `importlib.util.find_spec`, on the import path the tests get (the user site and `PYTHONPATH`
+  included) less the working directory, finds none of its top-level packages outside the checkout, so a setup must not
+  install the package itself, even in editable mode or with `pip install --user`. Go stubs must build, with
+  their tests compiling against them. Last, the task is scored as rollouts will score it: the start must score 0 and
+  the reference exactly 1. A scope that fails any of these yields no task: the reason is printed and kept in
+  `--report` (`rejected`), and the command fails.
+* **Protected.** The README, `docs/`, `doc/`, `examples/`, the licence, the language's manifests (`go.mod`, `go.sum`,
+  `go.work`; `pyproject.toml`, `setup.py`, `setup.cfg`, `requirements*.txt`, lock files, `tox.ini`), `API.md`, and
+  the test file names of the scope's directories, where the hidden tests are written; the prompt asks for tests of the
+  agent's own in a directory of their own.
+* **Task.** `kind` `swarm`; `team` `{"mode": "swarm", "agents": n}` with 3 workers for 2,000 lines up to 6 for 10,000;
+  `budget.wall_s` from 6 hours for 2,000 lines up to 12 hours for 10,000; tags `long`, `rebuild`, `harvested`, the
+  language, `rebuild-<tier>` and the id prefix. The prompt lists the packages in dependency order with their sizes and
+  says how the work is scored. The reference solution, the diff from the start to the reference sources, is stored
+  like every generator's (`meta.gold_blob`), and `meta.source` holds `repo` (the origin's URL without credentials, or
+  the directory's name), `commit`, `scope`, `tier` and `spdx` (when the licence is recognised).
 
 ### 3.3 Rollouts (`sleipnir rl rollout`)
 
@@ -724,7 +841,7 @@ cache). Size KV memory for one shared prefix plus N private tails; keep the same
 ## 10. Command reference
 
 ```
-sleipnir rl taskgen git|mutate|composite|recall ...   build tasks.jsonl (+ blobs/) from repositories
+sleipnir rl taskgen git|chain|mutate|composite|recall|rebuild  build tasks.jsonl (+ blobs/) from repositories
 sleipnir rl tasks validate|stats|filter|split|check   task file hygiene and soundness proofs
 sleipnir rl rollout --tasks T --model M --out RUN     run G samples per task through the real harness
 sleipnir rl eval --tasks holdout.jsonl --model M      pass@1 / pass^k / cost / protocol metrics, optional --baseline report.json

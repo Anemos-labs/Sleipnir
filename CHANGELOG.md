@@ -89,6 +89,36 @@ they do not indicate whether a change has been released.
   option nothing changes; prompt and tool-schema bytes are unchanged
   (`core.ToolSpec` gains the scheduling hint `NoTreeWrites`, set on the
   swarm's task, mail, note and spawn tools, which is never rendered).
+- `sleipnir rl taskgen chain --chains FILE REPO` makes one long swarm task of
+  each chain of 3 to 8 consecutive merged pull requests, scored per milestone
+  by the whole-suite scorer and checked at every pull request before it is
+  written (`docs/TRAINING-DATA.md`, section 3.2); `--seal DIR` seals each
+  start as for `rl taskgen git`. The generation report's
+  rejections gain the field `chain` and the report the list `chains` (each
+  chain's self-check); a task's `meta` gains `commits`, the chain's pull
+  requests. Readers that ignore unknown fields are unaffected.
+- `sleipnir rl taskgen git --seal DIR` writes each task's start state as a
+  repository of its own, `DIR/<task id>.git`, with one commit (the start tree,
+  no history, a fixed author and date): the repository holds that commit and
+  the trees and blobs its tree reaches, and no object outside them, and the
+  task's `repo` names it: `repo.commit` is the sealed commit and `repo.path`
+  the sealed repository (`<--repo-path>/<task id>.git` when `--repo-path` is
+  given). The source commits stay in `meta.commit` and `meta.parent`. Without
+  `--seal` tasks are written as before. Sealed tasks need their repositories
+  next to the tasks file, and `rl tasks split` treats each sealed repository
+  as a repository of its own (`docs/TRAINING-DATA.md`, section 3.2).
+- `sleipnir rl taskgen rebuild --scope PKG,... REPO` makes one long swarm task
+  of rebuilding a library from its specification: the scope's Go packages or
+  Python modules at `--commit` are reduced to stubs (`--tier stubs`) or removed
+  and documented in `API.md` (`--tier spec`), their own tests become the hidden
+  suite of the whole-suite scorer with one milestone per package or module,
+  weighted by its lines, and the start state is written to `--seal DIR` as a
+  repository with one commit (`docs/TRAINING-DATA.md`, section 3.2). A scope
+  outside the size gates, importable from outside the start tree, or whose
+  task fails its self-check yields no task and the command fails with the
+  reason. The task's `meta.source` holds `repo`, `commit`, `scope`, `tier` and
+  `spdx`. `taskgen.GoSuiteCommand` takes the packages to run; without them it
+  runs the whole module, as before.
 - A `json-score` verifier's score line may carry a breakdown of the score,
   `"units"` and `"guards"` (`docs/TRAINING-DATA.md`, section 3.1). Verifier
   results, outcome events, the episode's `outcome.verifier` and the results in

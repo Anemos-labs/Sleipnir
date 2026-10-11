@@ -399,6 +399,10 @@ func rlTaskgen(ctx context.Context, args []string, stdout, stderr io.Writer) err
              (a small context window makes the agent compact its history in between)
   fixture    authored tasks: a directory per task (task.json, start/, hidden/, solution/), for what mined
              history cannot give (other languages, tasks built from a specification, planted bugs)
+  chain      3 to 8 consecutive merged pull requests as one long swarm task, scored per milestone by the
+             project's own test suite
+  rebuild    a library rebuilt from its specification: its packages reduced to stubs or to API.md, its own tests
+             hidden and scored per package, as one long swarm task
 
 Every task is validated in the same environment rollouts use before it is written:
 the verifier must fail on the start state and pass with the reference solution.
@@ -418,6 +422,10 @@ the verifier must fail on the start state and pass with the reference solution.
 		return taskgenRecall(args[1:], stdout, stderr)
 	case "fixture":
 		return taskgenFixture(ctx, args[1:], stdout, stderr)
+	case "chain":
+		return taskgenChain(ctx, args[1:], stdout, stderr)
+	case "rebuild":
+		return taskgenRebuild(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printHelp(stdout, usage)
 		return nil
@@ -529,6 +537,7 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	repeats := fs.Int("repeats", 0, "run each baseline this many times to catch flaky tests")
 	noValidate := fs.Bool("no-validate", false, "skip the baseline and reference-solution runs (tasks are then unverified: for dry runs only)")
 	commits := fs.String("commits", "", "mine exactly these changes instead of scanning history: a file with one per line, a commit id or a JSON object {commit, parent, issue: {ref, title, body}, source} whose issue becomes the prompt")
+	seal := fs.String("seal", "", sealUsage)
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return err
 	}
@@ -559,6 +568,10 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	if len(g.setup) > 0 {
 		opts.Setup = []string(g.setup)
 	}
+	if *seal != "" {
+		// --repo-path then names the directory of the sealed repositories.
+		opts.Seal, opts.SealPath, g.repoPath = *seal, g.repoPath, ""
+	}
 	if opts.Since, err = parseDate(*since); err != nil {
 		return fmt.Errorf("rl taskgen git: --since: %w", err)
 	}
@@ -577,7 +590,135 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	if err != nil {
 		return fmt.Errorf("rl taskgen git: %w", err)
 	}
-	return g.finish(tasks, rep, blobsDir, stdout, stderr)
+	if err := g.finish(tasks, rep, blobsDir, stdout, stderr); err != nil {
+		return err
+	}
+	reportSealed(stdout, *seal, len(tasks))
+	return nil
+}
+
+const sealUsage = "write each task's start state to DIR/<task id>.git, a repository with one commit (the start tree, without history), and point the task at it; with --repo-path the tasks name it <repo-path>/<task id>.git"
+
+// reportSealed says where --seal wrote the start states, when it was given.
+func reportSealed(stdout io.Writer, dir string, n int) {
+	if dir != "" {
+		fmt.Fprintf(stdout, "  start states sealed in %s (%d repositories, one commit each)\n", dir, n)
+	}
+}
+
+// taskgenChain makes a long swarm task of each chain of consecutive merged changes (taskgen.FromChains): it records the
+// repository's test suite at every milestone and checks each task's scores before it writes it.
+func taskgenChain(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("rl taskgen chain", stderr, "rl taskgen chain --chains FILE [flags] REPO")
+	chainsFile := fs.String("chains", "", "the chains to mine, one JSON object per line: {id, commits: [3 to 8 merge or squash commits, oldest first], issues: [an issue text per commit, optional], source: {provenance}}")
+	out := fs.String("o", "tasks.jsonl", "output tasks file")
+	report := fs.String("report", "", "also write the generation report (counts, every rejection with its reason, each chain's self-check) as JSON")
+	idPrefix := fs.String("id-prefix", "", "prefix of task ids, and a tag of every task (default: the repository directory name)")
+	repoPath := fs.String("repo-path", "", "how the tasks name REPO (default: its absolute path) or, with --seal, the --seal directory (<repo-path>/<task id>.git); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine")
+	licenses := fs.String("licenses", "", "comma-separated SPDX ids the licence at a chain's last commit must be one of")
+	repeats := fs.Int("repeats", 3, "runs of the test suite recorded at the start and after each pull request: a test counts only where they all agree")
+	timeout := fs.Duration("timeout", 0, "deadline of one run of the whole test suite, written into the tasks (default 30m)")
+	concurrency := fs.Int("gen-concurrency", 1, "chains recorded at once")
+	seal := fs.String("seal", "", sealUsage)
+	var tags, setup multiFlag
+	fs.Var(&tags, "tag", "tag added to every task, repeatable")
+	fs.Var(&setup, "setup", "setup command run once per task snapshot, repeatable (default: detected)")
+	var rf rigFlags
+	rf.register(fs)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return usageError(fs, "rl taskgen chain: pass exactly one repository")
+	}
+	if *chainsFile == "" {
+		return errors.New("rl taskgen chain: --chains is required")
+	}
+	f, err := os.Open(*chainsFile)
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: --chains: %w", err)
+	}
+	chains, err := taskgen.ReadChains(f)
+	_ = f.Close()
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: --chains: %w", err)
+	}
+	g := genCommon{out: *out, report: *report, rig: rf}
+	hidden, blobsDir, err := g.stores()
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: %w", err)
+	}
+	ws, err := rf.workspaces(stderr)
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: %w", err)
+	}
+	defer ws.Close()
+	opts := taskgen.ChainOptions{
+		Workspaces: ws, Repeats: *repeats, Concurrency: *concurrency, DeadlineS: int(timeout.Seconds()),
+		AllowLicenses: splitList(*licenses), HiddenBlobs: hidden, GoldBlobs: hidden, IDPrefix: *idPrefix, Tags: tags,
+		Progress: func(m string) { fmt.Fprintln(stderr, m) },
+	}
+	if len(setup) > 0 {
+		opts.Setup = []string(setup)
+	}
+	if *seal != "" {
+		// --repo-path then names the directory of the sealed repositories.
+		opts.Seal, opts.SealPath = *seal, *repoPath
+	} else {
+		g.repoPath = *repoPath
+	}
+	tasks, rep, err := taskgen.FromChains(ctx, pos[0], chains, opts)
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: %w", err)
+	}
+	nameRepo(tasks, g.repoPath)
+	if err := env.ValidateTasks(tasks); err != nil {
+		return fmt.Errorf("rl taskgen chain: the generator produced invalid tasks: %w", err)
+	}
+	if err := env.WriteTasks(g.out, tasks); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "wrote %d chain tasks to %s (hidden files and reference solutions in %s)\n", len(tasks), g.out, blobsDir)
+	fmt.Fprintf(stdout, "  read %d chains, %d of them consecutive changes, %d accepted, in %s\n", rep.Examined, rep.Candidates, rep.Accepted, rep.Duration.Round(time.Second))
+	for _, c := range rep.Chains {
+		verdict := "ok"
+		if !c.OK {
+			verdict = "FAIL"
+		}
+		fmt.Fprintf(stdout, "  %s: self-check %s: %s\n", c.ID, verdict, c.Summary())
+	}
+	if len(rep.Rejected) > 0 {
+		fmt.Fprintf(stdout, "  rejected: %s\n", kvLine(rep.Rejected))
+		for _, r := range rep.Rejections {
+			fmt.Fprintf(stdout, "    %s: %s%s\n", r.Chain, r.Reason, prefixed(": ", firstLineOf(r.Detail)))
+		}
+	}
+	if len(rep.InfraErrors) > 0 {
+		fmt.Fprintf(stdout, "  %d chains were skipped because of infrastructure errors (see --report)\n", len(rep.InfraErrors))
+	}
+	reportSealed(stdout, *seal, len(tasks))
+	if *report != "" {
+		if err := writeJSONFile(*report, rep); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(stderr, "next: sleipnir rl tasks check %s, then sleipnir rl rollout --tasks %s --model <policy>\n", g.out, g.out)
+	return nil
+}
+
+// prefixed puts p before s, or is "" when s is.
+func prefixed(p, s string) string {
+	if s == "" {
+		return ""
+	}
+	return p + s
+}
+
+// firstLineOf is s up to its first line break.
+func firstLineOf(s string) string {
+	line, _, _ := strings.Cut(s, "\n")
+	return line
 }
 
 // readPicks reads the --commits file of rl taskgen git (see taskgen.ReadPicks).
@@ -803,6 +944,102 @@ func taskgenFixture(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	fmt.Fprintf(stdout, "wrote %d tasks to %s (repositories in %s, hidden files and reference solutions in %s)\n", len(tasks), *out, *repoRoot, blobsDir)
 	fmt.Fprintf(stderr, "next: sleipnir rl tasks check %s, run from the directory that holds %s/ so the tasks' relative repositories resolve\n", *out, *prefix)
+	return nil
+}
+
+// taskgenRebuild makes one rebuild task of a repository's packages (taskgen.Rebuild): the start state is written as a
+// repository of its own, the suite is recorded and the task is scored before it is written. A repository and scope
+// that make no sound task are reported with the reason, and the command fails.
+func taskgenRebuild(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("rl taskgen rebuild", stderr, "rl taskgen rebuild --scope PKG,... [flags] REPO")
+	commit := fs.String("commit", "", "the reference version: the revision whose sources are rebuilt (default HEAD)")
+	scope := fs.String("scope", "", "comma-separated packages to rebuild: Go package directories relative to the repository (dir/... with every package below it), or Python package names")
+	tier := fs.String("tier", taskgen.RebuildStubs, "stubs: the declarations and documentation stay, function bodies panic or raise NotImplementedError | spec: the sources are removed and API.md documents their API")
+	out := fs.String("o", "tasks.jsonl", "output tasks file")
+	seal := fs.String("seal", "", "where the start state is written: DIR/<task id>.git, a repository with one commit and no history (default: starts/ next to the tasks file)")
+	repoPath := fs.String("repo-path", "", "how the task names the --seal directory: <repo-path>/<task id>.git, a path relative to the directory the rollouts run in (default: its absolute path)")
+	report := fs.String("report", "", "also write the generation report (the scope, its units, the self-check, or why the task was rejected) as JSON")
+	idPrefix := fs.String("id-prefix", "", "prefix of the task id, and a tag of the task (default: the repository directory name)")
+	licenses := fs.String("licenses", "", "comma-separated SPDX ids the licence at --commit must be one of")
+	repeats := fs.Int("repeats", 3, "runs of the test suite recorded on the start and with the reference: a test counts only when they all agree")
+	timeout := fs.Duration("timeout", 0, "deadline of one run of the whole test suite, written into the task (default 30m)")
+	var tags, setup multiFlag
+	fs.Var(&tags, "tag", "tag added to the task, repeatable")
+	fs.Var(&setup, "setup", "setup command run once per task snapshot, repeatable (default: detected)")
+	var rf rigFlags
+	rf.register(fs)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return usageError(fs, "rl taskgen rebuild: pass exactly one repository")
+	}
+	if strings.TrimSpace(*scope) == "" {
+		return errors.New("rl taskgen rebuild: --scope is required")
+	}
+	if *tier != taskgen.RebuildStubs && *tier != taskgen.RebuildSpec {
+		return fmt.Errorf("rl taskgen rebuild: --tier %q: want %s or %s", *tier, taskgen.RebuildStubs, taskgen.RebuildSpec)
+	}
+	g := genCommon{out: *out, report: *report, rig: rf}
+	hidden, blobsDir, err := g.stores()
+	if err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	sealDir := *seal
+	if sealDir == "" {
+		sealDir = filepath.Join(filepath.Dir(*out), "starts")
+	}
+	ws, err := rf.workspaces(stderr)
+	if err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	defer ws.Close()
+	opts := taskgen.RebuildOptions{
+		Workspaces: ws, Commit: *commit, Scope: splitList(*scope), Tier: *tier, Seal: sealDir, SealPath: *repoPath,
+		HiddenBlobs: hidden, GoldBlobs: hidden, Repeats: *repeats, DeadlineS: int(timeout.Seconds()),
+		AllowLicenses: splitList(*licenses), IDPrefix: *idPrefix, Tags: tags,
+		Progress: func(m string) { fmt.Fprintln(stderr, m) },
+	}
+	if len(setup) > 0 {
+		opts.Setup = []string(setup)
+	}
+	task, rep, err := taskgen.Rebuild(ctx, pos[0], opts)
+	if *report != "" && rep != nil {
+		if werr := writeJSONFile(*report, rep); werr != nil && err == nil {
+			err = werr
+		}
+	}
+	var rj *taskgen.RebuildRejection
+	if errors.As(err, &rj) {
+		fmt.Fprintf(stdout, "rejected: %s\n", rj.Error())
+		if rep != nil && rep.LOC > 0 {
+			fmt.Fprintf(stdout, "  scope: %s, %d lines\n", strings.Join(rep.Scope, ", "), rep.LOC)
+		}
+		return fmt.Errorf("rl taskgen rebuild: no task: %s", rj.Reason)
+	}
+	if err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	if err := env.WriteTasks(*out, []rl.Task{*task}); err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	fmt.Fprintf(stdout, "wrote 1 rebuild task to %s (hidden files and reference solution in %s, start state in %s)\n",
+		*out, blobsDir, filepath.Join(sealDir, task.ID+".git"))
+	noun := "modules"
+	if rep.Lang == "go" {
+		noun = "packages"
+	}
+	fmt.Fprintf(stdout, "  %s: %s, tier %s, %d %s, %d lines, %d test files hidden, %d agents, %s wall clock\n",
+		task.ID, rep.Lang, rep.Tier, len(rep.Packages), noun, rep.LOC, rep.Hidden, task.Team.Agents,
+		(time.Duration(task.Budget.WallS) * time.Second).String())
+	fmt.Fprintf(stdout, "  units, in dependency order: %s\n", taskgen.FormatRebuildUnits(rep.Units))
+	fmt.Fprintf(stdout, "  tests: %d scored, %d dropped (passing on the start, flaky, or failing with the reference)\n", rep.Tests, rep.Dropped)
+	if rep.StartScore != nil && rep.ReferenceScore != nil {
+		fmt.Fprintf(stdout, "  self-check: the start scores %g, the reference %g; one run of the suite takes %s\n",
+			*rep.StartScore, *rep.ReferenceScore, (time.Duration(rep.SuiteMs) * time.Millisecond).Round(time.Second))
+	}
+	fmt.Fprintf(stderr, "next: sleipnir rl tasks check %s, then sleipnir rl rollout --tasks %s --model <policy>\n", *out, *out)
 	return nil
 }
 

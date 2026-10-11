@@ -39,8 +39,10 @@ const (
 	ReasonUnsupportedName = "path needs quoting"
 )
 
-// Rejection records why a candidate commit did not become a task.
+// Rejection records why a candidate commit (or chain) did not become a task.
 type Rejection struct {
+	// Chain is the id of the chain rejected, for FromChains.
+	Chain   string `json:"chain,omitempty"`
 	Commit  string `json:"commit"`
 	Subject string `json:"subject,omitempty"`
 	Reason  string `json:"reason"`
@@ -49,25 +51,32 @@ type Rejection struct {
 
 // Report summarises a generation run.
 type Report struct {
-	Examined    int            `json:"examined"`   // commits scanned
-	Candidates  int            `json:"candidates"` // commits that change source and tests
+	Examined    int            `json:"examined"`   // commits scanned (chains, for FromChains)
+	Candidates  int            `json:"candidates"` // commits that change source and tests (chains of consecutive changes)
 	Accepted    int            `json:"accepted"`
 	Rejected    map[string]int `json:"rejected,omitempty"`
 	Rejections  []Rejection    `json:"rejections,omitempty"`
 	InfraErrors []Rejection    `json:"infra_errors,omitempty"`
 	License     string         `json:"license,omitempty"`
 	Duration    time.Duration  `json:"duration_ns"`
+	// Chains are FromChains' self-checks, one per chain that got that far.
+	Chains []ChainCheck `json:"chains,omitempty"`
 }
 
 // reject counts a rejection reason and retains details for at most the first 2000 rejected
 // commits.
 func (r *Report) reject(commit, subject, reason, detail string) {
+	r.add(Rejection{Commit: commit, Subject: subject, Reason: reason, Detail: detail})
+}
+
+// add counts a rejection's reason and retains it among the first 2000.
+func (r *Report) add(rej Rejection) {
 	if r.Rejected == nil {
 		r.Rejected = map[string]int{}
 	}
-	r.Rejected[reason]++
+	r.Rejected[rej.Reason]++
 	if len(r.Rejections) < 2000 {
-		r.Rejections = append(r.Rejections, Rejection{Commit: commit, Subject: subject, Reason: reason, Detail: detail})
+		r.Rejections = append(r.Rejections, rej)
 	}
 }
 
@@ -133,6 +142,15 @@ type GitOptions struct {
 	// Issue optionally resolves closing references in commit messages.
 	Issue IssueResolver
 
+	// Seal, when set, writes the start state of every accepted task as a sealed
+	// repository, <Seal>/<task id>.git (see Seal), and points the task at it: the
+	// repository mined from, with its later commits, is then not what the task
+	// names. SealPath is how the tasks name the Seal directory (default: its
+	// absolute path); a relative one is resolved by a rollout against the
+	// directory it runs in.
+	Seal     string
+	SealPath string
+
 	Progress func(string)
 }
 
@@ -161,9 +179,12 @@ type Meta struct {
 	GoldBlobs  []string `json:"gold_blobs,omitempty"`
 	Base       string   `json:"base,omitempty"`
 	// Issue and Source record where a picked change came from (Pick.Issue.Ref
-	// and Pick.Source).
+	// and Pick.Source); for a chain, Source holds repo, range and license.
 	Issue  string            `json:"issue,omitempty"`
 	Source map[string]string `json:"source,omitempty"`
+	// Commits are a chain's pull requests, oldest first: Parent is the start,
+	// Commit the last of them.
+	Commits []string `json:"commits,omitempty"`
 }
 
 // commitInfo is a candidate commit before task assembly.
@@ -185,7 +206,9 @@ type nameStatus struct {
 // message, the verifier is the commit's test files (hidden and protected) plus a
 // test command restricted to them where the language allows. With
 // GitOptions.Picks it mines exactly the listed changes instead of scanning
-// history, and a pick's issue, when given, is the prompt.
+// history, and a pick's issue, when given, is the prompt. With GitOptions.Seal
+// each accepted task names a sealed copy of its start state (Seal) instead of
+// repoPath.
 //
 // Unless NoValidate is set every candidate is validated by running the
 // verifier twice in the real environment: it must FAIL on the parent (else the
@@ -309,11 +332,24 @@ func FromGit(ctx context.Context, repoPath string, opts GitOptions) ([]rl.Task, 
 			}(j)
 		}
 		wg.Wait()
-		for _, o := range outs {
+		for j, o := range outs {
 			switch {
 			case o.task != nil:
 				if opts.Max > 0 && len(tasks) >= opts.Max {
 					continue
+				}
+				if opts.Seal != "" {
+					// The sealed start has the parent's tree, which validation ran on.
+					if err := sealTask(ctx, g, gd, o.task, opts.Seal, opts.SealPath, SealOptions{}); err != nil {
+						if ctx.Err() != nil {
+							return tasks, rep, ctx.Err()
+						}
+						if len(rep.InfraErrors) < 500 {
+							ci := commits[i+j]
+							rep.InfraErrors = append(rep.InfraErrors, Rejection{Commit: ci.Hash, Subject: ci.Subject, Reason: ReasonInfra, Detail: err.Error()})
+						}
+						continue
+					}
 				}
 				tasks = append(tasks, *o.task)
 				rep.Accepted++

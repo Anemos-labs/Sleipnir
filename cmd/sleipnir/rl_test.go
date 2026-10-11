@@ -14,6 +14,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 )
 
 // gitRepo makes a repository whose second commit fixes a bug and adds the test
@@ -272,5 +273,29 @@ func TestTaskgenGitCommitsFlag(t *testing.T) {
 	}
 	if _, _, err := r.do(rlTaskgen, "git", "--repo", repo, "--commits", filepath.Join(dir, "missing"), "--no-validate", "-o", tasksFile); err == nil {
 		t.Error("a missing --commits file was accepted")
+	}
+}
+
+// TestTaskgenGitSealFlag: --seal writes each start state as a one-commit repository, and --repo-path names its directory.
+func TestTaskgenGitSealFlag(t *testing.T) {
+	repo := gitRepo(t)
+	dir := t.TempDir()
+	tasksFile := filepath.Join(dir, "tasks.jsonl")
+	seal := filepath.Join(dir, "repos")
+	out := (rlRun{t}).must(rlTaskgen, "git", "--repo", repo, "--no-validate", "-o", tasksFile, "--id-prefix", "demo", "--seal", seal, "--repo-path", "repos")
+	if !strings.Contains(out, "start states sealed in "+seal) {
+		t.Fatalf("taskgen output:\n%s", out)
+	}
+	tasks, err := env.LoadTasks(tasksFile)
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("%v %+v", err, tasks)
+	}
+	tk := tasks[0]
+	if tk.Repo.Path != "repos/"+tk.ID+".git" {
+		t.Fatalf("repo: %+v", tk.Repo)
+	}
+	c := exec.Command("git", "--git-dir="+filepath.Join(seal, tk.ID+".git"), "rev-list", "--all")
+	if b, err := c.Output(); err != nil || strings.TrimSpace(string(b)) != tk.Repo.Commit {
+		t.Errorf("the sealed repository's commits: %q %v, want only %s", b, err, tk.Repo.Commit)
 	}
 }
