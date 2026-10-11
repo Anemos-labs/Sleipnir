@@ -184,9 +184,13 @@ func NewWorkspaces(o WorkspaceOptions) (*Workspaces, error) {
 		m.sandbox = o.Sandbox
 	} else {
 		protect := append([]string{root}, o.ConfineProtect...)
+		// The base relative task repositories resolve against (resolveSource):
+		// RepoBase, or the current directory.
 		var base []string
-		if o.RepoBase != "" {
-			base = append(base, o.RepoBase)
+		if b := o.RepoBase; b != "" {
+			base = append(base, b)
+		} else if wd, err := os.Getwd(); err == nil {
+			base = append(base, wd)
 		}
 		ls, err := NewLocalSandbox(LocalSandboxOptions{
 			DisableNetIsolation: o.DisableNetIsolation,

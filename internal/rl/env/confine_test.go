@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -78,6 +79,27 @@ func TestConfinementBaseDirectory(t *testing.T) {
 		if strings.Contains(line, bad) {
 			t.Errorf("argv has %q:\n%s", bad, line)
 		}
+	}
+}
+
+// Without RepoBase the current directory is where relative task repositories
+// resolve, so it is the confinement's base: hidden even where no default hide
+// covers it.
+func TestConfinementHidesTheCurrentDirectoryWithoutRepoBase(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	m, err := NewWorkspaces(WorkspaceOptions{Root: filepath.Join(t.TempDir(), "root"), DisableNetIsolation: true, Confine: ConfineBwrap})
+	if errors.Is(err, ErrConfinementUnavailable) {
+		t.Skipf("bubblewrap unavailable: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Close)
+	c := m.local.Confinement()
+	wd, _ := os.Getwd()
+	if !slices.Contains(c.Hide, wd) || !slices.Contains(c.bases, wd) {
+		t.Fatalf("the current directory %s is not a hidden base: hide %v, bases %v", wd, c.Hide, c.bases)
 	}
 }
 
