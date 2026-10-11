@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,11 +108,21 @@ func TestCaptureAndRestoreWorkspace(t *testing.T) {
 		t.Fatalf("second restore: %v", err)
 	}
 
-	// A restore onto a different start is refused.
+	// A restore onto a different start is refused, and one that fails leaves the workspace at the path as it was.
+	mustWrite(t, filepath.Join(r2.Root, "kept.txt"), "work in progress\n")
 	other := info
 	other.BaseTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 	if _, err := m.RestoreWorkspace(ctxT(t), task, other, store, tree2); err == nil {
 		t.Error("a restore onto another base tree was accepted")
+	}
+	if _, err := m.RestoreWorkspace(ctxT(t), task, info, store, "0123456789abcdef0123456789abcdef01234567"); err == nil {
+		t.Error("a restore of a tree the store does not hold was accepted")
+	}
+	if got := mustRead(t, filepath.Join(r2.Root, "kept.txt")); got != "work in progress\n" {
+		t.Errorf("a failed restore changed the workspace at the path: %q", got)
+	}
+	if exists(info.Path+".restore") || exists(info.Path+".old") {
+		t.Error("a failed restore left its staging directories behind")
 	}
 }
 
@@ -126,6 +137,11 @@ func TestPrepareIDRejectsUnsafeIDs(t *testing.T) {
 	}
 	if got := StableID("fix/odd id", 2, "abc123"); got != "fix_odd_id-s2-abc123" {
 		t.Errorf("StableID = %q", got)
+	}
+	// A run tag too long for the id is replaced by a digest: no panic, a valid id, distinct tags kept apart.
+	long1, long2 := StableID("task", 1, strings.Repeat("a", 300)), StableID("task", 1, strings.Repeat("a", 299)+"b")
+	if long1 == long2 || len(long1) > maxWorkspaceID || labelRe.MatchString(long1) {
+		t.Errorf("long run tags: %q %q", long1, long2)
 	}
 }
 

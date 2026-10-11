@@ -155,3 +155,36 @@ func turnsText(ts []core.Turn) string {
 	}
 	return sb.String()
 }
+
+// A tool the agent knows nothing special about (a tool server's) holds the
+// barrier while it runs unless its spec says it is read-only: the barrier
+// follows the tools' declarations, not a list of names.
+func TestAnyToolThatMayWriteHoldsTheBarrier(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{}, 1)
+	deploy := fakeTool{name: "deploy", runCtx: func(ctx context.Context, c *tools.Call) *tools.Result {
+		started <- struct{}{}
+		<-release
+		return &tools.Result{Text: "deployed"}
+	}}
+	b := agent.NewSavepointBarrier()
+	step := 0
+	r := newLimRig(t, func(c *agent.Config) { c.Barrier = b }, []fakeTool{deploy}, func(c *mock.Call) mock.Reply {
+		step++
+		if step == 1 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "d1", Name: "deploy", Args: `{}`}}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	ctx := context.Background()
+	res := make(chan error, 1)
+	go func() { _, err := r.agent.Run(ctx, "ship it"); res <- err }()
+	<-started
+	if b.Acquire(ctx, 20*time.Millisecond, 20*time.Millisecond) {
+		t.Fatal("a savepoint got the barrier while a tool that may write ran")
+	}
+	close(release)
+	if err := <-res; err != nil {
+		t.Fatal(err)
+	}
+}

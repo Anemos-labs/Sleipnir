@@ -2,11 +2,14 @@ package env
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
@@ -82,12 +85,19 @@ func (m *Workspaces) PrepareID(ctx context.Context, task rl.Task, id string) (*W
 
 // StableID is the stable workspace id of a rollout: the task, the sample and a
 // tag of the run (for example a hash of its output directory), so two runs of
-// the same task never share a workspace.
+// the same task never share a workspace. A run tag too long to leave room for
+// the task is replaced by a digest of it (distinct tags stay distinct), and a
+// long task name is cut.
 func StableID(task string, sample int, run string) string {
 	id := labelRe.ReplaceAllString(task, "_")
-	suffix := fmt.Sprintf("-s%d-%s", sample, labelRe.ReplaceAllString(run, "_"))
+	tag := labelRe.ReplaceAllString(run, "_")
+	if len(tag) > maxWorkspaceID/2 {
+		h := sha256.Sum256([]byte(run))
+		tag = hex.EncodeToString(h[:8])
+	}
+	suffix := fmt.Sprintf("-s%d-%s", sample, tag)
 	if len(id)+len(suffix) > maxWorkspaceID {
-		id = id[:maxWorkspaceID-len(suffix)]
+		id = id[:max(maxWorkspaceID-len(suffix), 0)]
 	}
 	return id + suffix
 }
@@ -138,30 +148,73 @@ const maxRestoreBytes int64 = 1 << 30
 // RestoreWorkspace rebuilds the workspace of info at the same path with the
 // work tree captured as tree in storeDir: a fresh clone of the task's snapshot
 // with the difference between the start and tree applied. It refuses when the
-// task's snapshot no longer starts from info's base tree.
+// task now starts from another tree than the capture did. The new workspace is
+// built and checked beside the old one (ws/<id>.restore) and takes its place
+// only once it is complete: a restore that fails leaves whatever was at the
+// path as it was.
 func (m *Workspaces) RestoreWorkspace(ctx context.Context, task rl.Task, info WorkspaceInfo, storeDir, tree string) (*Workspace, error) {
-	w, err := m.PrepareID(ctx, task, info.ID)
+	if info.ID == "" || len(info.ID) > maxWorkspaceID || labelRe.MatchString(info.ID) || info.ID == "." || info.ID == ".." {
+		return nil, fmt.Errorf("workspace id %q is not a plain name of at most %d characters", info.ID, maxWorkspaceID)
+	}
+	if err := ValidateTask(task); err != nil {
+		return nil, Infra("restore", err)
+	}
+	snap, err := m.snapshotFor(ctx, task)
 	if err != nil {
 		return nil, err
 	}
-	fail := func(err error) (*Workspace, error) {
-		_ = w.Cleanup()
+	if info.BaseTree != "" && snap.meta.BaseTree != info.BaseTree {
+		return nil, fmt.Errorf("restore %s: the task now starts from tree %s, the capture from %s", info.ID, snap.meta.BaseTree, info.BaseTree)
+	}
+	if err := m.ensureStore(ctx, storeDir, snap); err != nil {
+		return nil, Infra("restore", err)
+	}
+	patch, err := m.diffTrees(ctx, storeDir, snap.meta.BaseTree, tree, maxRestoreBytes)
+	if err != nil {
+		return nil, Infra("restore", fmt.Errorf("diff %s..%s: %w", snap.meta.BaseTree, tree, err))
+	}
+	final := filepath.Join(m.root, "ws", info.ID)
+	stage := final + ".restore"
+	if err := removeAllNoFollow(stage); err != nil {
+		return nil, Infra("restore", err)
+	}
+	co, err := m.cloneSnapshot(ctx, snap, stage, task)
+	if err != nil {
 		return nil, err
 	}
-	if info.BaseTree != "" && w.BaseTree != info.BaseTree {
-		return fail(fmt.Errorf("restore %s: the task now starts from tree %s, the capture from %s", info.ID, w.BaseTree, info.BaseTree))
+	if err := m.applyPatch(ctx, co.tree, patch); err != nil {
+		_ = removeAllNoFollow(stage)
+		return nil, Infra("restore", fmt.Errorf("apply the captured tree: %w", err))
 	}
-	if err := m.ensureStore(ctx, storeDir, w.snap); err != nil {
-		return fail(Infra("restore", err))
+	// Swap: the old workspace moves aside first, so that at every moment one of the two is whole.
+	old := final + ".old"
+	if err := removeAllNoFollow(old); err != nil {
+		_ = removeAllNoFollow(stage)
+		return nil, Infra("restore", err)
 	}
-	patch, err := m.diffTrees(ctx, storeDir, w.BaseTree, tree, maxRestoreBytes)
-	if err != nil {
-		return fail(Infra("restore", fmt.Errorf("diff %s..%s: %w", w.BaseTree, tree, err)))
+	if _, err := os.Lstat(final); err == nil {
+		sweepMarker(info.ID)
+		if err := os.Rename(final, old); err != nil {
+			_ = removeAllNoFollow(stage)
+			return nil, Infra("restore", err)
+		}
 	}
-	if err := m.applyPatch(ctx, w.Root, patch); err != nil {
-		return fail(Infra("restore", fmt.Errorf("apply the captured tree: %w", err)))
+	if err := os.Rename(stage, final); err != nil {
+		if _, serr := os.Lstat(old); serr == nil {
+			_ = os.Rename(old, final)
+		}
+		_ = removeAllNoFollow(stage)
+		return nil, Infra("restore", err)
 	}
-	return w, nil
+	_ = removeAllNoFollow(old)
+	at := func(p string) string {
+		return filepath.Join(final, strings.TrimPrefix(p, stage+string(filepath.Separator)))
+	}
+	return &Workspace{
+		ID: info.ID, Dir: at(co.dirIn), Root: at(co.tree), Home: at(co.home), Tmp: at(co.tmp),
+		BaseTree: snap.meta.BaseTree, Commit: snap.meta.Commit, Warnings: m.Warnings(),
+		mgr: m, task: task, snap: snap, dir: final, marker: info.ID,
+	}, nil
 }
 
 // MarkResumable records next to the workspace that it belongs to the rollout in

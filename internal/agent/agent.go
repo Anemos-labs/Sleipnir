@@ -868,7 +868,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 // before releasing it. stuck is the repeat
 // guard's verdict that the run must end.
 func (a *Agent) toolBatch(ctx context.Context, calls []core.Block) (stuck error) {
-	if b := a.cfg.Barrier; b != nil && batchWrites(calls) {
+	if b := a.cfg.Barrier; b != nil && a.batchWrites(calls) {
 		b.RLock()
 		defer b.RUnlock()
 	}
