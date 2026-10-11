@@ -401,6 +401,8 @@ func rlTaskgen(ctx context.Context, args []string, stdout, stderr io.Writer) err
              history cannot give (other languages, tasks built from a specification, planted bugs)
   chain      3 to 8 consecutive merged pull requests as one long swarm task, scored per milestone by the
              project's own test suite
+  rebuild    a library rebuilt from its specification: its packages reduced to stubs or to API.md, its own tests
+             hidden and scored per package, as one long swarm task
 
 Every task is validated in the same environment rollouts use before it is written:
 the verifier must fail on the start state and pass with the reference solution.
@@ -422,6 +424,8 @@ the verifier must fail on the start state and pass with the reference solution.
 		return taskgenFixture(ctx, args[1:], stdout, stderr)
 	case "chain":
 		return taskgenChain(ctx, args[1:], stdout, stderr)
+	case "rebuild":
+		return taskgenRebuild(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printHelp(stdout, usage)
 		return nil
@@ -940,6 +944,102 @@ func taskgenFixture(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	fmt.Fprintf(stdout, "wrote %d tasks to %s (repositories in %s, hidden files and reference solutions in %s)\n", len(tasks), *out, *repoRoot, blobsDir)
 	fmt.Fprintf(stderr, "next: sleipnir rl tasks check %s, run from the directory that holds %s/ so the tasks' relative repositories resolve\n", *out, *prefix)
+	return nil
+}
+
+// taskgenRebuild makes one rebuild task of a repository's packages (taskgen.Rebuild): the start state is written as a
+// repository of its own, the suite is recorded and the task is scored before it is written. A repository and scope
+// that make no sound task are reported with the reason, and the command fails.
+func taskgenRebuild(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("rl taskgen rebuild", stderr, "rl taskgen rebuild --scope PKG,... [flags] REPO")
+	commit := fs.String("commit", "", "the reference version: the revision whose sources are rebuilt (default HEAD)")
+	scope := fs.String("scope", "", "comma-separated packages to rebuild: Go package directories relative to the repository (dir/... with every package below it), or Python package names")
+	tier := fs.String("tier", taskgen.RebuildStubs, "stubs: the declarations and documentation stay, function bodies panic or raise NotImplementedError | spec: the sources are removed and API.md documents their API")
+	out := fs.String("o", "tasks.jsonl", "output tasks file")
+	seal := fs.String("seal", "", "where the start state is written: DIR/<task id>.git, a repository with one commit and no history (default: starts/ next to the tasks file)")
+	repoPath := fs.String("repo-path", "", "how the task names the --seal directory: <repo-path>/<task id>.git, a path relative to the directory the rollouts run in (default: its absolute path)")
+	report := fs.String("report", "", "also write the generation report (the scope, its units, the self-check, or why the task was rejected) as JSON")
+	idPrefix := fs.String("id-prefix", "", "prefix of the task id, and a tag of the task (default: the repository directory name)")
+	licenses := fs.String("licenses", "", "comma-separated SPDX ids the licence at --commit must be one of")
+	repeats := fs.Int("repeats", 3, "runs of the test suite recorded on the start and with the reference: a test counts only when they all agree")
+	timeout := fs.Duration("timeout", 0, "deadline of one run of the whole test suite, written into the task (default 30m)")
+	var tags, setup multiFlag
+	fs.Var(&tags, "tag", "tag added to the task, repeatable")
+	fs.Var(&setup, "setup", "setup command run once per task snapshot, repeatable (default: detected)")
+	var rf rigFlags
+	rf.register(fs)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return usageError(fs, "rl taskgen rebuild: pass exactly one repository")
+	}
+	if strings.TrimSpace(*scope) == "" {
+		return errors.New("rl taskgen rebuild: --scope is required")
+	}
+	if *tier != taskgen.RebuildStubs && *tier != taskgen.RebuildSpec {
+		return fmt.Errorf("rl taskgen rebuild: --tier %q: want %s or %s", *tier, taskgen.RebuildStubs, taskgen.RebuildSpec)
+	}
+	g := genCommon{out: *out, report: *report, rig: rf}
+	hidden, blobsDir, err := g.stores()
+	if err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	sealDir := *seal
+	if sealDir == "" {
+		sealDir = filepath.Join(filepath.Dir(*out), "starts")
+	}
+	ws, err := rf.workspaces(stderr)
+	if err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	defer ws.Close()
+	opts := taskgen.RebuildOptions{
+		Workspaces: ws, Commit: *commit, Scope: splitList(*scope), Tier: *tier, Seal: sealDir, SealPath: *repoPath,
+		HiddenBlobs: hidden, GoldBlobs: hidden, Repeats: *repeats, DeadlineS: int(timeout.Seconds()),
+		AllowLicenses: splitList(*licenses), IDPrefix: *idPrefix, Tags: tags,
+		Progress: func(m string) { fmt.Fprintln(stderr, m) },
+	}
+	if len(setup) > 0 {
+		opts.Setup = []string(setup)
+	}
+	task, rep, err := taskgen.Rebuild(ctx, pos[0], opts)
+	if *report != "" && rep != nil {
+		if werr := writeJSONFile(*report, rep); werr != nil && err == nil {
+			err = werr
+		}
+	}
+	var rj *taskgen.RebuildRejection
+	if errors.As(err, &rj) {
+		fmt.Fprintf(stdout, "rejected: %s\n", rj.Error())
+		if rep != nil && rep.LOC > 0 {
+			fmt.Fprintf(stdout, "  scope: %s, %d lines\n", strings.Join(rep.Scope, ", "), rep.LOC)
+		}
+		return fmt.Errorf("rl taskgen rebuild: no task: %s", rj.Reason)
+	}
+	if err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	if err := env.WriteTasks(*out, []rl.Task{*task}); err != nil {
+		return fmt.Errorf("rl taskgen rebuild: %w", err)
+	}
+	fmt.Fprintf(stdout, "wrote 1 rebuild task to %s (hidden files and reference solution in %s, start state in %s)\n",
+		*out, blobsDir, filepath.Join(sealDir, task.ID+".git"))
+	noun := "modules"
+	if rep.Lang == "go" {
+		noun = "packages"
+	}
+	fmt.Fprintf(stdout, "  %s: %s, tier %s, %d %s, %d lines, %d test files hidden, %d agents, %s wall clock\n",
+		task.ID, rep.Lang, rep.Tier, len(rep.Packages), noun, rep.LOC, rep.Hidden, task.Team.Agents,
+		(time.Duration(task.Budget.WallS) * time.Second).String())
+	fmt.Fprintf(stdout, "  units, in dependency order: %s\n", taskgen.FormatRebuildUnits(rep.Units))
+	fmt.Fprintf(stdout, "  tests: %d scored, %d dropped (passing on the start, flaky, or failing with the reference)\n", rep.Tests, rep.Dropped)
+	if rep.StartScore != nil && rep.ReferenceScore != nil {
+		fmt.Fprintf(stdout, "  self-check: the start scores %g, the reference %g; one run of the suite takes %s\n",
+			*rep.StartScore, *rep.ReferenceScore, (time.Duration(rep.SuiteMs) * time.Millisecond).Round(time.Second))
+	}
+	fmt.Fprintf(stderr, "next: sleipnir rl tasks check %s, then sleipnir rl rollout --tasks %s --model <policy>\n", *out, *out)
 	return nil
 }
 

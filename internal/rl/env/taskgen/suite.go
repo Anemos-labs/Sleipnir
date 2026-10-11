@@ -126,12 +126,22 @@ func suiteCommandName(tool, dir string) string {
 	return tool + ":" + dir
 }
 
-// GoSuiteCommand runs every package of the Go module in dir (relative to the
-// verifier's directory, "" for it): go test -json -count=1 -p 2 ./...
-func GoSuiteCommand(dir string) SuiteCommand {
+// GoSuiteCommand runs the packages pkgs (package patterns relative to dir,
+// such as "./calc"; every package, ./..., when none are given) of the Go module
+// in dir (relative to the verifier's directory, "" for it):
+// go test -json -count=1 -p 2 <pkgs>
+func GoSuiteCommand(dir string, pkgs ...string) SuiteCommand {
+	args := "./..."
+	if len(pkgs) > 0 {
+		quoted := make([]string, len(pkgs))
+		for i, p := range pkgs {
+			quoted[i] = shq(p)
+		}
+		args = strings.Join(quoted, " ")
+	}
 	return SuiteCommand{
 		Name: suiteCommandName("go", dir), Parser: SuiteParserGoTest, Cwd: dir,
-		Run: `set -- ./...; ` + suiteSelect + `go test -json -count=1 -p 2 "$@"`,
+		Run: `set -- ` + args + `; ` + suiteSelect + `go test -json -count=1 -p 2 "$@"`,
 	}
 }
 

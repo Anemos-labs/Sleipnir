@@ -947,6 +947,7 @@ and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exi
 
 ```text
 sleipnir rl taskgen <generator>    make tasks from history, chains of merged pull requests, authored fixtures, mutations or recall questions, or compose swarm tasks
+sleipnir rl taskgen <generator>    make tasks from history, authored fixtures, mutations, recall questions or libraries rebuilt from their specification, or compose swarm tasks
 sleipnir rl tasks <command> FILE   validate, filter, split and check task files
 sleipnir rl rollout                run G samples per task with a policy and write a run directory
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
@@ -1356,6 +1357,92 @@ flags:
         where the fixtures' repositories are written, one per fixture (default: fixture-repos next to -o)
   -tag value
         tag added to every task, repeatable
+```
+<!-- /flags -->
+
+### `sleipnir rl taskgen rebuild`
+
+Make one long swarm task of rebuilding a library from its specification: the packages of `--scope` at `--commit` (Go
+package directories relative to the repository, `dir/...` with every package below it, or Python package names) are
+reduced to stubs (`--tier stubs`: declarations, signatures, types, constants and documentation kept, function bodies
+`panic("not implemented")` or `raise NotImplementedError`) or removed and documented in `API.md` (`--tier spec`). Their
+tests are taken out of the start and become the hidden suite, scored by the whole-suite scorer with one milestone per
+package (Go) or module (Python), weighted by its lines, in the order they import each other. The start state is written
+to `--seal` as a repository with one commit. The scope must have 2,000 to 10,000 lines, at least 150 tests that fail on
+the start and pass with the reference every time (`--repeats` runs of each), a reference suite under 10 minutes, and
+must not be importable from outside the start tree; before the task is written the start must score 0 and the
+reference 1. Otherwise nothing is written: the reason is printed (and kept in `--report`) and the command fails
+(`docs/TRAINING-DATA.md`, section 3.2).
+
+<!-- flags: rl taskgen rebuild -->
+```text
+usage: sleipnir rl taskgen rebuild --scope PKG,... [flags] REPO
+
+flags:
+  -blobs string
+        blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
+  -commit string
+        the reference version: the revision whose sources are rebuilt (default HEAD)
+  -concurrency int
+        rollouts in flight (default 1)
+  -id-prefix string
+        prefix of the task id, and a tag of the task (default: the repository directory name)
+  -infra-retries int
+        retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
+  -keep-failed
+        keep the workspaces of failed rollouts for debugging
+  -licenses string
+        comma-separated SPDX ids the licence at --commit must be one of
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
+  -max-wall duration
+        wall-clock cap of a rollout whose task sets none (default 1h)
+  -no-net-isolation
+        do not isolate the network of tasks that do not need it
+  -o string
+        output tasks file (default "tasks.jsonl")
+  -pass-env string
+        comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -repeats int
+        runs of the test suite recorded on the start and with the reference: a test counts only when they all agree (default 3)
+  -repo-path string
+        how the task names the --seal directory: <repo-path>/<task id>.git, a path relative to the directory the rollouts run in (default: its absolute path)
+  -report string
+        also write the generation report (the scope, its units, the self-check, or why the task was rejected) as JSON
+  -require-net-isolation
+        refuse to run where network isolation is unavailable
+  -rewards string
+        rewards.json with weights, caps and detectors (default: the documented defaults)
+  -scope string
+        comma-separated packages to rebuild: Go package directories relative to the repository (dir/... with every package below it), or Python package names
+  -seal string
+        where the start state is written: DIR/<task id>.git, a repository with one commit and no history (default: starts/ next to the tasks file)
+  -set-env value
+        NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
+  -setup value
+        setup command run once per task snapshot, repeatable (default: detected)
+  -tag value
+        tag added to the task, repeatable
+  -target-price string
+        price and cache model rollouts are repriced under (see: sleipnir rl reward -list-targets)
+  -tier string
+        stubs: the declarations and documentation stay, function bodies panic or raise NotImplementedError | spec: the sources are removed and API.md documents their API (default "stubs")
+  -timeout duration
+        deadline of one run of the whole test suite, written into the task (default 30m)
+  -verify-policy string
+        with repeats: all | any | majority
+  -verify-repeats int
+        run the verifier this many times to catch flaky tests
+  -work-dir string
+        where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)
+  -workspace-mode string
+        export: a fresh single-commit tree without history | clone: a local clone with history (default "export")
 ```
 <!-- /flags -->
 

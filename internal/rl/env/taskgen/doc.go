@@ -23,6 +23,9 @@
 //	           hidden, the pull requests' texts as ordered milestones, and the
 //	           whole-suite scorer with a unit per pull request (RecordSuiteSteps,
 //	           BuildStepUnits), checked at every step before it is emitted.
+//	Rebuild    a library rebuilt from its specification: a scope of Go packages or
+//	           Python modules reduced to stubs or to API.md, its own tests hidden and
+//	           scored by the whole-suite scorer per package, in import order.
 //
 // # The whole-suite scorer
 //
@@ -40,6 +43,22 @@
 // unit of pull request k holds the tests that fail in every run before it and
 // pass in every run from it on, so the state after it scores the weight of the
 // milestones it reached.
+//
+// # Rebuild tasks
+//
+// Rebuild resolves a scope at a reference version (Go package directories of
+// one module, or Python packages of one project) and writes the start state as
+// a repository of its own with one commit: the scope's sources replaced by stubs
+// that keep their API and documentation (Go stubs made with go/ast and gofmt,
+// Python stubs with rebuild_py.py, an embedded script run with python3 that
+// parses with the ast module and runs nothing) or removed and documented in
+// API.md, and the scope's tests removed. Those tests are the hidden suite; the
+// tests that fail on the start and pass with the reference in every recorded run
+// are scored, one unit per package or module weighted by its lines, in the
+// order the packages import each other, without guards. Size gates, a check
+// that the scope cannot be imported from outside the start tree, a build check
+// of Go stubs and a final self-check (start 0, reference 1) reject what would
+// not make a sound task, with the reason (RebuildRejection).
 //
 // # Soundness
 //

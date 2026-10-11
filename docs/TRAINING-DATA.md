@@ -165,6 +165,9 @@ the tasks file and never enters a workspace.
 * `sleipnir rl taskgen composite TASKS -k 3`: combine *k* independent tasks of one repository (disjoint files) into one
   **swarm task**: the natural structure for training the manager's dispatch and the workers' coordination (the
   verifier passes only when every component passes; its score is the fraction that do).
+* `sleipnir rl taskgen rebuild --scope PKG,... R`: a library rebuilt from its specification. Its packages are reduced to
+  stubs or to an `API.md`, and its own tests are hidden and scored per package, as one long swarm task (see
+  **Rebuild tasks** below).
 * `sleipnir rl taskgen recall --repo R`: memory tasks. The agent reads a distinctive constant in one file, reads
   a dozen other files under a small context window (so its early history is compacted), and must then state the
   constant exactly. The verdict is an exact match on the final message, no command and no model. It trains
@@ -193,7 +196,8 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   `classname::name`) or `cargo` (cargo's output; a test is `target::module::name`, doc-tests excluded). `units`, each
   `{name, weight, tests}`, are the milestones; `guards` are tests that passed at the start and must keep passing;
   `deadline_s` bounds the whole run (default 1800 s); `origin` maps a test to the command that reports it. The default
-  commands are `go test -json -count=1 -p 2 ./...`; `python3 -m pytest` without `-x`, from the project directory, with
+  commands are `go test -json -count=1 -p 2 ./...` (or the packages a generator names); `python3 -m pytest` without
+  `-x`, from the project directory, with
   `-p no:cacheprovider -p no:randomly`, a 120 s limit per test where pytest-timeout is installed, and the reference's
   pytest configuration copied to the hidden `.sleipnir/suite/pytest.ini` (`-c` with `--rootdir .`), so options an
   agent writes into `pyproject.toml`, `setup.cfg` or `tox.ini` are not the ones the tests run with; and
@@ -271,6 +275,63 @@ oldest first, each one's first parent being the one before; optionally an issue 
   requests' commits, `meta.parent` and `meta.commit` are the start and the end, and `meta.source` holds `repo` (the
   origin's URL without credentials, or the directory's name), `range` (`<start>..<end>`) and `license` (the SPDX id at
   the end, when recognised), with the chain's own `source` keys over them.
+**Rebuild tasks** (`sleipnir rl taskgen rebuild --scope PKG,... [flags] REPO`, `taskgen.Rebuild`). A rebuild task asks a
+team to write a library again from its specification, as it is at a version of the repository (`--commit`, default
+`HEAD`).
+
+* **Scope.** Go package directories relative to the repository (`dir/...` adds every package below `dir`; a package's
+  import path names it too), all in one module; or Python package (or module) names, looked up under the repository
+  root, `src/`, `lib/` and `python/`, all in one project (the nearest directory with `pyproject.toml`, `setup.py` or
+  `setup.cfg`, else the root). A Go package is the non-test `.go` files of its directory, a Python package every module
+  below its directory. The scope's size is its lines that are neither blank nor only a comment.
+* **Start state.** The reference with the scope's sources replaced and its tests removed, written to `--seal DIR`
+  (default `starts/` next to the tasks file) as `DIR/<task id>.git`: one commit (no parent; a fixed author, date and
+  message) and no other object. `repo.path` names it, as `<--repo-path>/<task id>.git` when `--repo-path` is given.
+  Tier `stubs` keeps the API. A Go stub keeps the package clause, every constant, variable, type and method, the
+  exported functions and the unexported ones that kept code or the package's own tests use, with their doc comments;
+  every body becomes `panic("not implemented")` (function literals in variables' values too), `init` and the other
+  unexported functions are removed, and so are the imports nothing kept uses. A Python stub keeps everything outside
+  function bodies (imports, assignments, class attributes, decorators, docstrings, comments) and replaces the body of
+  every function and method, and of an `if __name__ == "__main__":` block, with `raise NotImplementedError`; a body
+  that is only `pass`, `...` or such a raise stays. Python is analysed by an embedded script run with `python3`, which
+  parses the sources with the `ast` module and runs none of them. Tier `spec` removes the sources and writes `API.md`
+  at the root (`REBUILD-API.md` when the repository has one): each package in dependency order with its documentation
+  and its API, then the unexported declarations its own tests use. For Go the API is what `go doc` shows (exported
+  declarations and their doc comments, without function bodies and unexported fields); for Python it is the public
+  names (`__all__`, else the names without a leading underscore) as signatures with their docstrings, classes with
+  their public and special methods and attributes, and a package's re-exports. Everything else (README,
+  documentation, examples, data files, build manifests) is kept.
+* **Tests and milestones.** The scope's tests are the hidden suite: the `_test.go` files and `testdata/` of its Go
+  packages; the test files and test helpers inside its Python packages, and every test file of the project that
+  imports one of their modules. The verifier is the whole-suite scorer: `go test` of the scope's packages, or pytest of
+  the hidden test files with the reference's configuration. The suite is recorded `--repeats` times (default 3) on the
+  start and with the reference; the tests that fail on the start and pass with the reference every time are scored,
+  and the others are dropped (a rebuild task has no guards). There is one unit per Go package or Python module,
+  weighted by its lines and listed in the order the packages import each other (an import cycle between Python modules
+  is broken at the module with the fewest imports left). A Go test belongs to its package. A Python test file belongs
+  to the module it exercises: the one it is named after (`test_core.py`, `core_test.py`), else the one it refers to
+  most (an import of it, or a name imported from it or read as its attribute, followed through the re-exports of a
+  package's `__init__.py` to the module that defines the name), the later in import order on a tie; a test file that
+  refers to no module belongs to the scope's first package (the last module in import order when that package has no
+  `__init__.py`). A test that panics in a Go stub stops its package's tests, and those not run count as failed.
+* **Gates and checks.** The scope has 2,000 to 10,000 lines, at least 150 scored tests, and one run of the reference
+  suite takes less than 10 minutes. In the environment rollouts use, the scope must not be importable from outside
+  the start tree: for Go, its module (also without a `/vN` suffix) is in neither the module cache, `GOPATH/src` nor
+  `vendor/`; for Python, `importlib.util.find_spec` (under `python3 -I`) finds none of its top-level packages outside
+  the checkout, so a setup must not install the package itself, even in editable mode. Go stubs must build, with
+  their tests compiling against them. Last, the task is scored as rollouts will score it: the start must score 0 and
+  the reference exactly 1. A scope that fails any of these yields no task: the reason is printed and kept in
+  `--report` (`rejected`), and the command fails.
+* **Protected.** The README, `docs/`, `doc/`, `examples/`, the licence, the language's manifests (`go.mod`, `go.sum`,
+  `go.work`; `pyproject.toml`, `setup.py`, `setup.cfg`, `requirements*.txt`, lock files, `tox.ini`), `API.md`, and
+  the test file names of the scope's directories, where the hidden tests are written; the prompt asks for tests of the
+  agent's own in a directory of their own.
+* **Task.** `kind` `swarm`; `team` `{"mode": "swarm", "agents": n}` with 3 workers for 2,000 lines up to 6 for 10,000;
+  `budget.wall_s` from 6 hours for 2,000 lines up to 12 hours for 10,000; tags `long`, `rebuild`, `harvested`, the
+  language, `rebuild-<tier>` and the id prefix. The prompt lists the packages in dependency order with their sizes and
+  says how the work is scored. The reference solution, the diff from the start to the reference sources, is stored
+  like every generator's (`meta.gold_blob`), and `meta.source` holds `repo` (the origin's URL without credentials, or
+  the directory's name), `commit`, `scope`, `tier` and `spdx` (when the licence is recognised).
 
 ### 3.3 Rollouts (`sleipnir rl rollout`)
 
@@ -714,6 +775,7 @@ cache). Size KV memory for one shared prefix plus N private tails; keep the same
 
 ```
 sleipnir rl taskgen git|chain|mutate|composite|recall build tasks.jsonl (+ blobs/) from repositories
+sleipnir rl taskgen git|mutate|composite|recall|rebuild  build tasks.jsonl (+ blobs/) from repositories
 sleipnir rl tasks validate|stats|filter|split|check   task file hygiene and soundness proofs
 sleipnir rl rollout --tasks T --model M --out RUN     run G samples per task through the real harness
 sleipnir rl eval --tasks holdout.jsonl --model M      pass@1 / pass^k / cost / protocol metrics, optional --baseline report.json

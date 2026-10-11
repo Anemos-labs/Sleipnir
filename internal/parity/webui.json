@@ -1145,6 +1145,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir rl taskgen rebuild",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:rl taskgen rebuild"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir rl taskgen recall",
    "kind": "program",
    "live": true,
@@ -2165,6 +2174,7 @@
    "rl taskgen fixture",
    "rl taskgen git",
    "rl taskgen mutate",
+   "rl taskgen rebuild",
    "rl taskgen recall",
    "rl tasks",
    "rl tasks check",
@@ -3136,6 +3146,51 @@
      "tag",
      "target-price",
      "test",
+     "timeout",
+     "verify-policy",
+     "verify-repeats",
+     "work-dir",
+     "workspace-mode"
+    ],
+    "modeWith": {
+     "no-net-isolation": "priv",
+     "pass-env": "priv",
+     "set-env": "priv"
+    }
+   },
+   "rl taskgen rebuild": {
+    "mode": "net",
+    "positionals": [
+     "REPO"
+    ],
+    "flags": [
+     "blobs",
+     "budget-usd",
+     "commit",
+     "concurrency",
+     "id-prefix",
+     "infra-retries",
+     "keep-failed",
+     "licenses",
+     "max-requests",
+     "max-spend-usd",
+     "max-steps",
+     "max-wall",
+     "no-net-isolation",
+     "o",
+     "pass-env",
+     "repeats",
+     "repo-path",
+     "report",
+     "require-net-isolation",
+     "rewards",
+     "scope",
+     "seal",
+     "set-env",
+     "setup",
+     "tag",
+     "target-price",
+     "tier",
      "timeout",
      "verify-policy",
      "verify-repeats",
