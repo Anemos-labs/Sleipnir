@@ -245,6 +245,9 @@ type RolloutResult struct {
 	Steps    int      `json:"steps"`
 	WallMs   int64    `json:"wall_ms"`
 	VerifyMs int64    `json:"verify_ms"`
+	// Units and Guards are the verifier's breakdown of Score (rl.Verdict.Units, rl.Verdict.Guards), when it printed one.
+	Units  map[string]rl.UnitScore `json:"units,omitempty"`
+	Guards *rl.GuardScore          `json:"guards,omitempty"`
 	// What the rollout used and how it went, from its episode: billed tokens by kind, and the episode's own counts of
 	// failed tool calls, malformed ones, retried and failed requests, and cache breaks (see the rl.Sig* signals).
 	Tokens         Tokens `json:"tokens"`
@@ -790,6 +793,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	// The verifier's own verdict is authoritative for the record, whatever the
 	// extractor put in the episode.
 	res.Verified, res.Pass, res.Score, res.VerifyMs = true, vr.Pass, vr.Score, vr.Ms
+	res.Units, res.Guards = vr.Units, vr.Guards
 	res.ProtectedTouched = vr.ProtectedTouched
 	return attemptOutcome{result: res}
 }
@@ -911,7 +915,8 @@ func stripURLCredentials(s string) string {
 }
 
 // outcomePayload is the data of the outcome events Runner appends. The first six
-// fields are the contract with traj; the rest are additions it may ignore.
+// fields are the contract with traj, which also reads the score's breakdown
+// (units, guards) when there is one; the rest are additions it may ignore.
 type outcomePayload struct {
 	Kind    string    `json:"kind"`
 	Pass    bool      `json:"pass"`
@@ -919,6 +924,9 @@ type outcomePayload struct {
 	Version string    `json:"version,omitempty"`
 	Detail  core.Hash `json:"detail,omitempty"`
 	Ms      int64     `json:"ms"`
+
+	Units  map[string]rl.UnitScore `json:"units,omitempty"`
+	Guards *rl.GuardScore          `json:"guards,omitempty"`
 
 	Diff            core.Hash `json:"diff,omitempty"`
 	Claimed         string    `json:"claimed,omitempty"`
@@ -936,7 +944,7 @@ type outcomePayload struct {
 func verifierOutcome(r Result, claimed string) outcomePayload {
 	return outcomePayload{
 		Kind: "verifier", Pass: r.Pass, Score: r.Score, Version: r.Version, Detail: r.LogBlob, Ms: r.Ms,
-		Diff: r.DiffBlob, Claimed: claimed, Protected: r.ProtectedTouched, VerifierTouched: r.VerifierTouched,
+		Units: r.Units, Guards: r.Guards, Diff: r.DiffBlob, Claimed: claimed, Protected: r.ProtectedTouched, VerifierTouched: r.VerifierTouched,
 		TimedOut: r.TimedOut, Rejected: r.Rejected, Flaky: r.Flaky, Repeats: len(r.Runs),
 	}
 }
@@ -1139,6 +1147,8 @@ func ResultFromEpisode(ep *rl.Episode, tags []string) RolloutResult {
 	}
 	if v := ep.Outcome.Verifier; v != nil {
 		res.Verified, res.Pass, res.Score, res.VerifyMs = true, v.Pass, v.Score, v.Ms
+		c := v.Clone()
+		res.Units, res.Guards = c.Units, c.Guards
 	}
 	efficiencyFields(&res, ep)
 	res.Closures = cloneClosures(ep.Outcome.Closures)

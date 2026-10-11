@@ -474,10 +474,13 @@ func cloneEpisode(ep *rl.Episode) *rl.Episode {
 	}
 	c.Provenance.TeacherModels = append([]string(nil), ep.Provenance.TeacherModels...)
 	if ep.Outcome.Verifier != nil {
-		v := *ep.Outcome.Verifier
+		v := ep.Outcome.Verifier.Clone()
 		c.Outcome.Verifier = &v
 	}
-	c.Outcome.Reviews = append([]rl.Verdict(nil), ep.Outcome.Reviews...)
+	c.Outcome.Reviews = nil
+	for _, r := range ep.Outcome.Reviews {
+		c.Outcome.Reviews = append(c.Outcome.Reviews, r.Clone())
+	}
 	c.Outcome.Labels = append([]string(nil), ep.Outcome.Labels...)
 	if ep.Outcome.Closures != nil {
 		c.Outcome.Closures = make(map[string]int, len(ep.Outcome.Closures))

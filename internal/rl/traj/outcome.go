@@ -31,7 +31,8 @@ func (b *builder) root() *agentInfo {
 // outcome gathers verdicts, what the team claimed and the human-facing labels.
 //
 // Verdicts come from outcome events: the last verifier verdict is the result; all
-// review, human and protocol verdicts are kept in order. An "infra" outcome is a
+// review, human and protocol verdicts are kept in order. A verdict keeps the
+// breakdown of its score (units, guards) when its event carries one. An "infra" outcome is a
 // failure of the environment, not a verdict, and is reported through the
 // infra_error flag instead. A verdict without a score gets 1 when it passed and 0
 // when it did not.
@@ -41,7 +42,8 @@ func (b *builder) outcome() rl.Outcome {
 		if o.kind == "infra" {
 			continue
 		}
-		vd := rl.Verdict{Kind: o.kind, Pass: o.pass, Score: o.score, Version: o.version, Detail: o.detail, Ms: o.ms}
+		vd := rl.Verdict{Kind: o.kind, Pass: o.pass, Score: o.score, Version: o.version, Detail: o.detail, Ms: o.ms,
+			Units: o.units, Guards: o.guards}
 		if !o.hasScore {
 			vd.Score = 0
 			if o.pass {

@@ -81,6 +81,10 @@ type VerifyRun struct {
 	Signal    int     `json:"signal,omitempty"`
 	Ms        int64   `json:"ms"`
 	Note      string  `json:"note,omitempty"`
+	// Units and Guards are the breakdown a json-score verifier's score line carried with the score (see
+	// lastLineScore), when it carried a well-formed one. They describe Score; they never change it or Pass.
+	Units  map[string]rl.UnitScore `json:"units,omitempty"`
+	Guards *rl.GuardScore          `json:"guards,omitempty"`
 }
 
 // Result is the outcome of one verification.
@@ -100,6 +104,10 @@ type Result struct {
 	TimedOut  bool  `json:"timed_out,omitempty"`
 	Truncated bool  `json:"truncated,omitempty"`
 	Ms        int64 `json:"ms"`
+	// Units and Guards are the last run's breakdown of its score (VerifyRun.Units, VerifyRun.Guards), when the
+	// verifier printed one.
+	Units  map[string]rl.UnitScore `json:"units,omitempty"`
+	Guards *rl.GuardScore          `json:"guards,omitempty"`
 
 	// Rejected is set when the submission was refused before the verifier ran
 	// (a diff over the size limit, a diff that does not apply). Pass is false.
@@ -132,9 +140,10 @@ type Result struct {
 	CheckoutDir string    `json:"checkout_dir,omitempty"`
 }
 
-// Verdict converts the result to the schema's Verdict.
+// Verdict converts the result to the schema's Verdict, with the last run's breakdown of the score when there is one.
 func (r Result) Verdict() rl.Verdict {
-	return rl.Verdict{Kind: "verifier", Pass: r.Pass, Score: r.Score, Version: r.Version, Detail: r.LogBlob, Ms: r.Ms}
+	v := rl.Verdict{Kind: "verifier", Pass: r.Pass, Score: r.Score, Version: r.Version, Detail: r.LogBlob, Ms: r.Ms, Units: r.Units, Guards: r.Guards}
+	return v.Clone()
 }
 
 // Sentinel errors of the task-quality checks.
@@ -459,6 +468,7 @@ func (m *Workspaces) verify(ctx context.Context, in verifyInput) (Result, error)
 		res.Pass, res.Score, res.Flaky = combineRuns(res.Runs, opts.PassPolicy)
 		last := res.Runs[len(res.Runs)-1]
 		res.ExitCode, res.TimedOut, res.Truncated = last.ExitCode, last.TimedOut, last.Truncated
+		res.Units, res.Guards = last.Units, last.Guards
 	}
 	header := m.logHeader(task, res)
 	res.Log = header + log.String()
@@ -545,13 +555,14 @@ func judgeRun(pm PassMode, er ExecResult) VerifyRun {
 			}
 		}
 	case PassJSONScore:
-		score, ok := lastLineScore(er.Stdout)
+		line, ok := lastLineScore(er.Stdout)
 		switch {
 		case !ok:
 			rr.Note = "the last line of stdout is not a {\"score\": x} object"
 		default:
-			rr.Score = score
-			rr.Pass = score >= 1-1e-9
+			rr.Score = line.Score
+			rr.Pass = line.Score >= 1-1e-9
+			rr.Units, rr.Guards = line.Units, line.Guards
 		}
 	default:
 		switch er.ExitCode {
@@ -564,25 +575,116 @@ func judgeRun(pm PassMode, er ExecResult) VerifyRun {
 	return rr
 }
 
+// scoreLine is the last line of a json-score verifier's stdout: the score, and
+// the optional breakdown of it.
+type scoreLine struct {
+	Score  float64
+	Units  map[string]rl.UnitScore
+	Guards *rl.GuardScore
+}
+
+// Bounds of a score line's breakdown: a verifier that names more units, or
+// longer names, has its breakdown ignored (its score still counts), so a
+// verdict stays small enough to travel in every episode.
+const (
+	maxScoreUnits    = 1024
+	maxScoreUnitName = 256
+)
+
 // lastLineScore parses the last non-empty line of stdout as {"score": x}. The
-// score is clamped to [0,1].
-func lastLineScore(stdout string) (float64, bool) {
+// score is clamped to [0,1]. The line may also carry a breakdown,
+//
+//	"units": {"<name>": {"passed": n, "total": m, "weight": w}, ...}
+//	"guards": {"kept": k, "total": g}
+//
+// with counts that are integers, 0 <= passed <= total and 0 <= kept <= total,
+// and a finite weight >= 0 (1 when absent). A malformed units or guards value
+// is ignored whole, never an error: the breakdown describes the score and has
+// no say in it.
+func lastLineScore(stdout string) (scoreLine, bool) {
 	lines := strings.Split(strings.TrimRight(stdout, "\r\n \t"), "\n")
 	last := strings.TrimSpace(lines[len(lines)-1])
 	if last == "" {
-		return 0, false
+		return scoreLine{}, false
 	}
 	var obj struct {
-		Score *float64 `json:"score"`
+		Score  *float64        `json:"score"`
+		Units  json.RawMessage `json:"units"`
+		Guards json.RawMessage `json:"guards"`
 	}
 	if err := json.Unmarshal([]byte(last), &obj); err != nil || obj.Score == nil {
-		return 0, false
+		return scoreLine{}, false
 	}
 	s := *obj.Score
 	if math.IsNaN(s) {
+		return scoreLine{}, false
+	}
+	return scoreLine{Score: math.Max(0, math.Min(1, s)), Units: parseUnits(obj.Units), Guards: parseGuards(obj.Guards)}, true
+}
+
+// parseUnits reads a score line's "units" object; nil when it is absent or
+// any part of it is malformed.
+func parseUnits(raw json.RawMessage) map[string]rl.UnitScore {
+	if len(raw) == 0 {
+		return nil
+	}
+	var in map[string]struct {
+		Passed *float64 `json:"passed"`
+		Total  *float64 `json:"total"`
+		Weight *float64 `json:"weight"`
+	}
+	if err := json.Unmarshal(raw, &in); err != nil || len(in) == 0 || len(in) > maxScoreUnits {
+		return nil
+	}
+	out := make(map[string]rl.UnitScore, len(in))
+	for name, u := range in {
+		if name == "" || len(name) > maxScoreUnitName || u.Passed == nil || u.Total == nil {
+			return nil
+		}
+		passed, ok1 := jsonCount(*u.Passed)
+		total, ok2 := jsonCount(*u.Total)
+		if !ok1 || !ok2 || passed > total {
+			return nil
+		}
+		w := 1.0
+		if u.Weight != nil {
+			w = *u.Weight
+		}
+		if math.IsNaN(w) || math.IsInf(w, 0) || w < 0 {
+			return nil
+		}
+		out[name] = rl.UnitScore{Passed: passed, Total: total, Weight: w}
+	}
+	return out
+}
+
+// parseGuards reads a score line's "guards" object; nil when it is absent or
+// malformed.
+func parseGuards(raw json.RawMessage) *rl.GuardScore {
+	if len(raw) == 0 {
+		return nil
+	}
+	var in struct {
+		Kept  *float64 `json:"kept"`
+		Total *float64 `json:"total"`
+	}
+	if err := json.Unmarshal(raw, &in); err != nil || in.Kept == nil || in.Total == nil {
+		return nil
+	}
+	kept, ok1 := jsonCount(*in.Kept)
+	total, ok2 := jsonCount(*in.Total)
+	if !ok1 || !ok2 || kept > total {
+		return nil
+	}
+	return &rl.GuardScore{Kept: kept, Total: total}
+}
+
+// jsonCount accepts a JSON number that is a non-negative integer of a sane size.
+func jsonCount(f float64) (int, bool) {
+	if f < 0 || f > 1<<31 || f != math.Trunc(f) {
 		return 0, false
 	}
-	return math.Max(0, math.Min(1, s)), true
+	return int(f), true
 }
 
 // expectFailure is the note of an answer that fails its check.
@@ -755,6 +857,9 @@ func (m *Workspaces) logHeader(task rl.Task, r Result) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "task: %s\nverifier: %s (%s)\ncommand: %s\n", task.ID, r.Version, r.Mode, task.Verifier.Cmd)
 	fmt.Fprintf(&b, "result: pass=%v score=%.3f runs=%d flaky=%v\n", r.Pass, r.Score, len(r.Runs), r.Flaky)
+	if line := describeBreakdown(r.Units, r.Guards); line != "" {
+		fmt.Fprintf(&b, "breakdown: %s\n", line)
+	}
 	if r.Rejected != "" {
 		fmt.Fprintf(&b, "rejected: %s\n", r.Rejected)
 	}
@@ -769,6 +874,33 @@ func (m *Workspaces) logHeader(task rl.Task, r Result) string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// describeBreakdown formats a score's breakdown for the verifier log: the units
+// in name order (the first 40, then a count of the rest) and the guards; "" when
+// there is none.
+func describeBreakdown(units map[string]rl.UnitScore, guards *rl.GuardScore) string {
+	var parts []string
+	if len(units) > 0 {
+		names := make([]string, 0, len(units))
+		for n := range units {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		const shown = 40
+		for i, n := range names {
+			if i == shown {
+				parts = append(parts, fmt.Sprintf("and %d more units", len(names)-shown))
+				break
+			}
+			u := units[n]
+			parts = append(parts, fmt.Sprintf("%q %d/%d (weight %g)", n, u.Passed, u.Total, u.Weight))
+		}
+	}
+	if guards != nil {
+		parts = append(parts, fmt.Sprintf("guards kept %d/%d", guards.Kept, guards.Total))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // finishRejected formats the rejection log before applying the common result finalization path.

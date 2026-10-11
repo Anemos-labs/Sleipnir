@@ -84,7 +84,7 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
  "verifier": {
    "cmd": "go test ./... -run 'TestEncodedSlash|TestRoute' -count=1",
    "timeout_s": 300,
-   "pass": "exit0",                  // exit0 | regex:<re> | json-score (last stdout line {"score":0..1})
+   "pass": "exit0",                  // exit0 | regex:<re> | json-score (last stdout line {"score":0..1}, optionally with a breakdown)
    "baseline_score": 0,              // json-score only: the untouched start's score, recorded by `rl tasks check --calibrate`
    "hidden": {"mux_hidden_test.go": "blob:9f2c..."},   // written only at verification time
    "protected": ["*_test.go", "go.mod", ".github/**"]   // agent edits here are discarded and flagged
@@ -98,6 +98,15 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 * **Isolation.** Each rollout gets a fresh worktree (or a copy when the repo is not git) and its own event log
   directory. The verifier runs in a *separate clean checkout* with the agent's diff applied minus protected paths,
   plus the hidden files, so tampering with tests or the verifier has no effect (and is flagged).
+* **Score breakdown.** The last stdout line of a `json-score` verifier may say how its score was made:
+  `{"score": s, "units": {"<unit>": {"passed": n, "total": m, "weight": w}}, "guards": {"kept": k, "total": g}}`.
+  A unit is a part of the work (a milestone of a test suite) of which `n` of `m` checks passed, weighing `w` (1 when
+  absent) against the other units; guards are checks that passed at the start and must keep passing. Counts are
+  integers with `n <= m` and `k <= g`, weights are finite and not negative, there are at most 1024 units with names of
+  at most 256 bytes; a `units` or `guards` value that breaks a rule is ignored whole. The breakdown is a description:
+  `score` alone decides the verdict, and a line without it is still no score line. The last run's breakdown is kept in
+  the verifier's result, the outcome event, the episode's `outcome.verifier` and the run summary's results (`units`,
+  `guards`), and is printed in the head of `verifier.log`.
 * **Answer checks.** `verifier.expect` judges the agent's final message, alone (no `cmd`) or together with a command:
   `{"contains": ["..."], "regex": "<RE2>", "fold": true}`. Every `contains` string must occur in the answer; the score
   is the fraction that do. `regex` must match the answer with surrounding white space trimmed (`^` and `$` anchor at the

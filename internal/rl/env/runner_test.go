@@ -674,6 +674,50 @@ func TestRolloutRecallTaskUsesTheFinalMessage(t *testing.T) {
 	}
 }
 
+// TestRolloutCarriesTheScoreBreakdown: the units and guards of a json-score verifier's score line reach the outcome
+// event, the episode's verdict and the summary's result, as the verifier printed them.
+func TestRolloutCarriesTheScoreBreakdown(t *testing.T) {
+	f := newRunnerFixture(t)
+	f.task.Verifier.Pass = "json-score"
+	f.task.Verifier.Cmd = `if tr -d ' \t\n' < mathx.go | grep -q 'ifa>b{returna}'; then n=1; else n=0; fi; ` +
+		`echo "{\"score\": $n, \"units\": {\"max\": {\"passed\": $n, \"total\": 1, \"weight\": 2}}, \"guards\": {\"kept\": 1, \"total\": 1}}"`
+	f.h.Scripts = map[string]FakeScript{
+		"mathx-max/0": {Steps: []FakeStep{FakeWrite("mathx.go", fixedMath)}, Claimed: "done"},
+		"mathx-max/1": {Claimed: "done"},
+	}
+	sum := f.rollout([]rl.Task{f.task}, 2, f.opts())
+	guards := rl.GuardScore{Kept: 1, Total: 1}
+	for s, passed := range []int{1, 0} {
+		units := map[string]rl.UnitScore{"max": {Passed: passed, Total: 1, Weight: 2}}
+		r := sum.Results[s]
+		if r.Score != float64(passed) || !reflect.DeepEqual(r.Units, units) || r.Guards == nil || *r.Guards != guards {
+			t.Errorf("sample %d result: score=%v units=%v guards=%v", s, r.Score, r.Units, r.Guards)
+		}
+		v := f.episode("mathx-max", s).Outcome.Verifier
+		if v == nil || v.Score != float64(passed) || !reflect.DeepEqual(v.Units, units) || v.Guards == nil || *v.Guards != guards {
+			t.Errorf("sample %d episode verdict: %+v", s, v)
+		}
+		if again := ResultFromEpisode(f.episode("mathx-max", s), nil); !reflect.DeepEqual(again.Units, units) || again.Guards == nil {
+			t.Errorf("sample %d: the result recomputed from the episode lost the breakdown: %+v", s, again)
+		}
+		oc := f.outcomes("mathx-max", s)
+		if len(oc) != 1 || oc[0]["units"] == nil || oc[0]["guards"] == nil {
+			t.Errorf("sample %d outcome event: %v", s, oc)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(f.out, "summary.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var onDisk Summary
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatal(err)
+	}
+	if len(onDisk.Results) != 2 || onDisk.Results[0].Units["max"].Passed != 1 || onDisk.Results[1].Guards == nil {
+		t.Errorf("summary.json lacks the breakdown:\n%s", raw)
+	}
+}
+
 func TestRolloutValidatesInputs(t *testing.T) {
 	f := newRunnerFixture(t)
 	ctx := context.Background()

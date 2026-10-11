@@ -57,7 +57,8 @@ type Verifier struct {
 	Cmd      string `json:"cmd"`
 	TimeoutS int    `json:"timeout_s,omitempty"`
 	// Pass: "exit0" (default), "regex:<re>" matched against stdout, or
-	// "json-score" (last stdout line is {"score": 0..1}).
+	// "json-score" (last stdout line is {"score": 0..1}, which may also carry a
+	// breakdown of the score: Verdict.Units and Verdict.Guards).
 	Pass string `json:"pass,omitempty"`
 	// Hidden maps a relative path to a blob ("blob:<hash>") or inline text
 	// ("text:...") written into the verification checkout only.
