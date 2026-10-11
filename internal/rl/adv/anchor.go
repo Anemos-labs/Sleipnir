@@ -37,12 +37,14 @@ type anchorRef struct {
 }
 
 // anchorKey groups by wire hash when available unless depth grouping is requested; otherwise it
-// combines tree, prefix, and ordinal identity.
+// combines tree, prefix, and ordinal identity. Either way it stays inside the sample's baseline
+// role, so a compactor call anchors only with calls of the same compaction number.
 func anchorKey(smp *sample, st *rl.Step, ordinal int, by string) string {
+	role := smp.baselineRole()
 	if by != AnchorByDepth && st.Prompt.WireHash != "" {
-		return "w|" + smp.group + "|" + smp.role + "|" + string(st.Prompt.WireHash)
+		return "w|" + smp.group + "|" + role + "|" + string(st.Prompt.WireHash)
 	}
-	return "d|" + smp.group + "|" + smp.role + "|" + smp.ep.Env.TreeHash + "|" + st.Prompt.SharedPrefix + "|" + strconv.Itoa(ordinal)
+	return "d|" + smp.group + "|" + role + "|" + smp.ep.Env.TreeHash + "|" + st.Prompt.SharedPrefix + "|" + strconv.Itoa(ordinal)
 }
 
 func applyAnchor(samples []*sample, s Spec) AnchorStat {
