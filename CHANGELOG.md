@@ -12,13 +12,15 @@ they do not indicate whether a change has been released.
   `compact.commit` events gain `req`, the compactor's `model.request` id (on a
   commit, `""` when no compactor was asked: a mask or emergency compaction);
   `compact.commit` already carried `fallback`. RL episodes link a commit's
-  `compact` edge to exactly that call and gain an optional `fallback` field on
-  the edge, set when a mechanical patch replaced the call's; a commit with an
-  empty `req`, or whose request got no response, has no edge. Logs without
+  `compact` edge to exactly that call, when it is an earlier kept compactor
+  call of the same agent that no earlier commit took, and gain an optional
+  `fallback` field on the edge, set when a mechanical patch replaced the
+  call's; a commit with an empty `req`, or whose request got no response, has
+  no edge. Logs without
   `req` still extract with the previous heuristic, which now also gives no
   edge to a commit whose reason marks a mask or emergency compaction. `adv`
-  baselines a compactor call scored on its own by (group, role, compaction
-  number), the k-th compactor call of its agent in step order, so its
+  baselines (per role, the default) a compactor call scored on its own by
+  (group, role, compaction number), the k-th compactor call of its agent in step order, so its
   advantage changes; a number with a single trainable call in the group is
   flat (advantage 0, reported in `Flat`), as any single-sample group is. Report
   groups gain `Compaction` and the key `<group>|compactor#<k>`. Prompt and

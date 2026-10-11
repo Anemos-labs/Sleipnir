@@ -280,13 +280,15 @@ Edge    { kind: spawn | mail | compact | promote | lease | board, from, to, ref,
 * `edges` make the swarm a DAG: a worker's first step points at the manager step that spawned it; a mail delivery
   points from sender step to recipient step; a compaction commit points from the compactor call to the first step
   of the new segment (`ref` `<agent>#<n>`, n counting the agent's commits).
-* A compaction is linked by the `req` its `compact.commit` names: the edge starts at exactly that compactor call.
-  A commit with an empty `req` (a mask or emergency compaction) asked no compactor and has no edge, nor has one whose
-  compactor request never got a response. `fallback` is set on the edge when the call was made but its answer was
+* A compaction is linked by the `req` its `compact.commit` names: the edge starts at exactly that compactor call,
+  provided the call is a kept compactor step of the same agent, requested before the commit and not already taken by
+  an earlier commit; otherwise the commit has no edge. A commit with an empty `req` (a mask or emergency compaction)
+  asked no compactor and has no edge, nor has one whose compactor request never got a response (that request is not
+  a step). `fallback` is set on the edge when the call was made but its answer was
   unusable and a mechanical patch was committed instead. Logs written before commits named their request are linked
   by a heuristic (the latest compactor call before the commit that no other commit took, none for a commit whose
-  reason marks a mask or emergency compaction), which gives a commit whose own compactor request got no response an
-  earlier call whose patch failed.
+  reason marks a mask or emergency compaction), which can give a commit whose own compactor request got no response
+  an earlier call whose patch was dropped or failed.
 * Training units: **step** (one call: prompt to completion), **segment** (a packed multi-turn sequence), or
   **episode** (preference pairs). All are derived, never stored separately.
 
@@ -384,7 +386,9 @@ requests. The same episode can therefore be priced for Anthropic-like, OpenAI-li
 Exporters can attach advantages (or leave raw rewards to the trainer):
 
 * `grpo`: (r − mean) / (std + ε) within the group (same task and policy snapshot), per **role** (a global baseline
-  destabilises heterogeneous agents). A compactor call scored on its own is baselined per (group, role, **compaction
+  destabilises heterogeneous agents). Per-role baselines are the default (`adv.Spec.PerRole`); with them off every
+  sample of a rollout group shares one baseline, whatever its role or compaction number, and the rules below about
+  compaction numbers do not apply. A compactor call scored on its own is baselined per (group, role, **compaction
   number**): k counts the agent's compactor calls in step order, teacher calls included, so the first compactions of
   a group share one baseline, the second ones another, and so on; the first compaction of a run and the fifth are
   different problems. A number with a single trainable call in the group has no peer: like any single-sample group
