@@ -1,9 +1,11 @@
 package swarm
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -12,8 +14,11 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
-// Leases is the swarm's tools.Guard. It does two jobs before a write happens:
+// Leases is the swarm's tools.Guard. It does three jobs before a write happens:
 //
+//   - Ownership. When paths are owned by roles (SetOwners), a write to an owned
+//     path by an agent of any other role, the manager included, is refused with a
+//     message that names the owning role and says to hand the work to it.
 //   - Scope. A task declares the paths it may touch; a write outside the writer's
 //     task scope is refused with a message that names the scope. An agent with no
 //     task, or whose task declares no scope, is not restricted.
@@ -32,15 +37,22 @@ import (
 // each writer's writes to its own tree (and refuses writes by agents that have none:
 // the manager and read-only roles do not edit files in an isolated run, because
 // anything written into the shared checkout would bypass the merge queue), it keeps
-// enforcing the task's scope, and it turns the lease table into an advisory one: two
-// writers touching the same repository-relative path raise an alert that names the
-// agents (never the file) and warns of a merge conflict.
+// enforcing ownership and the task's scope, and it turns the lease table into an
+// advisory one: two writers touching the same repository-relative path raise an alert
+// that names the agents (never the file) and warns of a merge conflict.
+//
+// The guard sees the writes of the file tools only. A shell command's writes are not
+// checked in a shared tree; in an isolated run the merge queue checks ownership and
+// scope again on what a submission changed, whichever tool changed it.
 type Leases struct {
 	ttl   time.Duration
 	now   func() time.Time
 	board *Board
 	ev    events.Emitter
 	roots []string
+
+	owners PathOwners          // nil: no path is owned
+	roleOf func(string) string // agent id -> role, for owners
 
 	mu       sync.Mutex
 	held     map[string]*lease
@@ -116,9 +128,23 @@ func (l *Leases) SetRoots(roots ...string) {
 	l.mu.Unlock()
 }
 
+// SetOwners makes the guard enforce role ownership of paths: a write to a path
+// owners assigns to roles is refused unless roleOf(agent) is one of them. roleOf
+// answers "" for an id it does not know, which no role matches.
+func (l *Leases) SetOwners(owners PathOwners, roleOf func(agent string) string) {
+	l.mu.Lock()
+	l.owners, l.roleOf = owners, roleOf
+	l.mu.Unlock()
+}
+
 // emit snapshots the lease event emitter under lock and records the action with optional path and
 // holder fields, ignoring emission errors.
 func (l *Leases) emit(agent, action, path, holder string) {
+	l.emitWith(agent, action, path, holder, nil)
+}
+
+// emitWith is emit with extra fields in the event's data.
+func (l *Leases) emitWith(agent, action, path, holder string, extra map[string]any) {
 	l.mu.Lock()
 	ev := l.ev
 	l.mu.Unlock()
@@ -129,7 +155,95 @@ func (l *Leases) emit(agent, action, path, holder string) {
 	if holder != "" {
 		data["holder"] = holder
 	}
+	for k, v := range extra {
+		data[k] = v
+	}
 	_, _ = ev.Emit(agent, events.TypeLease, data)
+}
+
+// checkOwner refuses a write by agent to the repository-relative path rel (relOK says
+// the path lies inside the repository) when rel is owned by roles the agent's role is
+// not among. The refusal raises an alert, emits a lease event of action "owner" with
+// the owning roles, and is returned as the error the model reads.
+func (l *Leases) checkOwner(agent, rel string, relOK bool) error {
+	l.mu.Lock()
+	owners, roleOf := l.owners, l.roleOf
+	l.mu.Unlock()
+	if owners == nil || !relOK {
+		return nil
+	}
+	role := ""
+	if roleOf != nil {
+		role = roleOf(agent)
+	}
+	shown := foreignOwners(owners, role, rel)
+	if len(shown) == 0 {
+		return nil
+	}
+	if l.board != nil {
+		l.board.RaiseAlertKey("scope", "owner:"+agent, fmt.Sprintf("%s tried to change a file of %s", safeToken(agent, 24), ownersText(shown)))
+	}
+	l.emitWith(agent, "owner", rel, "", map[string]any{"owners": shown})
+	return errors.New(ownedMsg(rel, shown, role == "manager"))
+}
+
+// foreignOwners returns the roles that own the repository-relative path rel, made
+// safe to show, when role is not among them. It returns nil when owners is nil, when
+// nobody owns rel, and when role owns it; an empty role owns nothing.
+func foreignOwners(owners PathOwners, role, rel string) []string {
+	if owners == nil {
+		return nil
+	}
+	own := owners.OwnersOf(rel)
+	if len(own) == 0 || (role != "" && slices.Contains(own, role)) {
+		return nil
+	}
+	shown := make([]string, len(own))
+	for i, r := range own {
+		shown[i] = safeToken(r, 24)
+	}
+	return shown
+}
+
+// ownedMsg is the refusal of a write to rel, which the roles own, by an agent of
+// another role: it names the owning roles and tells the writer how to hand the work
+// to them (the manager creates tasks; a worker asks the manager for one). The text
+// contains "belongs to the" and "may change it", which agent.classifyToolError reads
+// as a scope refusal.
+func ownedMsg(rel string, roles []string, manager bool) string {
+	worker := article(roles[0]) + " " + joinWords(roles, "or") + " worker"
+	head := fmt.Sprintf("%s belongs to %s: only %s may change it. ", displayPath(rel), ownersText(roles), worker)
+	if manager {
+		return head + "Create a task for " + worker + " and leave the change to it"
+	}
+	return head + "Leave it alone; if your task needs the change, ask the manager (mail) to create a task for " + worker
+}
+
+// ownersText names the owning roles: "the frontend role", "the frontend and docs roles".
+func ownersText(roles []string) string {
+	if len(roles) == 1 {
+		return "the " + roles[0] + " role"
+	}
+	return "the " + joinWords(roles, "and") + " roles"
+}
+
+// joinWords joins words as prose: "a", "a and b", "a, b and c" (conj is the last joiner).
+func joinWords(words []string, conj string) string {
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		return words[0]
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " " + conj + " " + words[len(words)-1]
+}
+
+// article is the indefinite article for a word: "an" before a vowel letter, else "a".
+func article(word string) string {
+	if word != "" && strings.ContainsRune("aeiouAEIOU", rune(word[0])) {
+		return "an"
+	}
+	return "a"
 }
 
 // rel returns path relative to the repository root, as a slash path.
@@ -172,14 +286,9 @@ func (l *Leases) scopeOf(agent string) (scopes, ids []string, scoped bool) {
 	return scopes, ids, len(ids) > 0
 }
 
-// checkScope resolves a path relative to the lease root before checking the agent's allowed scope.
-func (l *Leases) checkScope(agent, path string) error {
-	rel, ok := l.rel(path)
-	return l.checkScopeAt(agent, path, rel, ok)
-}
-
-// checkScopeAt is checkScope for a caller that has already made the path relative
-// to the repository root (ok says it lies inside it).
+// checkScopeAt refuses a write by agent to path outside the scope of the tasks it is
+// doing. The caller has already made the path relative to the repository root (rel;
+// relOK says it lies inside it).
 func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 	scopes, ids, scoped := l.scopeOf(agent)
 	if !scoped {
@@ -219,6 +328,9 @@ func (l *Leases) beforeIsolatedWrite(agent, path string) error {
 	rel, ok := relTo(dir, path)
 	if !ok {
 		return fmt.Errorf("%s is outside your working tree: this run gives every writer its own git worktree, so edit files under your working directory (the paths there are the project's paths)", displayPath(path))
+	}
+	if err := l.checkOwner(agent, rel, true); err != nil {
+		return err
 	}
 	if err := l.checkScopeAt(agent, path, rel, true); err != nil {
 		return err
@@ -305,7 +417,11 @@ func (l *Leases) BeforeWrite(agent, path string) error {
 	if isolated {
 		return l.beforeIsolatedWrite(agent, path)
 	}
-	if err := l.checkScope(agent, path); err != nil {
+	rel, relOK := l.rel(path)
+	if err := l.checkOwner(agent, rel, relOK); err != nil {
+		return err
+	}
+	if err := l.checkScopeAt(agent, path, rel, relOK); err != nil {
 		return err
 	}
 	l.mu.Lock()
@@ -397,6 +513,7 @@ func (l *Leases) ReleaseAll(agent string) []string {
 			l.board.ClearAlertKey("lease", p)
 		}
 		l.board.ClearAlertKey("scope", "scope:"+agent)
+		l.board.ClearAlertKey("scope", "owner:"+agent)
 	}
 	if len(out) > 0 {
 		l.emit(agent, "release", "", "")

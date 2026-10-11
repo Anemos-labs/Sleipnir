@@ -2,6 +2,7 @@ package rl
 
 import (
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -42,4 +43,23 @@ func IsUIPath(p string) bool {
 		}
 	}
 	return false
+}
+
+// UIGlobs returns IsUIPath's rules as globs in Verifier.Protected's syntax, sorted:
+// "*.css" and the like for the extensions, and "web/" and the like for the directory
+// names (a directory of that name at any depth, and everything below it). Matched
+// as that syntax matches, without regard to case, they cover every repository path
+// IsUIPath accepts; they also cover the files below a directory whose own name ends
+// in a UI extension, which IsUIPath does not. Task generators use them as the paths
+// the frontend role owns (Team.Owns).
+func UIGlobs() []string {
+	out := make([]string, 0, len(uiExtensions)+len(uiDirs))
+	for ext := range uiExtensions {
+		out = append(out, "*"+ext)
+	}
+	for d := range uiDirs {
+		out = append(out, d+"/")
+	}
+	sort.Strings(out)
+	return out
 }

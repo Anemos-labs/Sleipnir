@@ -5,10 +5,10 @@ import "strings"
 // Kinds of tool failure recorded on tool.result events (meta["error_kind"]). They
 // are the vocabulary the training pipeline counts protocol mistakes with: an
 // invalid call, an edit to a file that changed under the agent, a write another
-// agent holds or that lies outside the task's scope, a refused permission. They
-// are attached where the harness knows the cause, and otherwise recognised from
-// the wording of the harness's own messages, which are stable and written in one
-// place each.
+// agent holds or that lies outside the task's scope (a path another role owns is
+// a scope refusal too), a refused permission. They are attached where the harness
+// knows the cause, and otherwise recognised from the wording of the harness's own
+// messages, which are stable and written in one place each.
 const (
 	ErrKindUnknownTool  = "unknown_tool"
 	ErrKindInvalidInput = "invalid_input"
@@ -44,7 +44,9 @@ func classifyToolError(text string) string {
 	switch {
 	case strings.Contains(text, "changed since you last read it"):
 		return ErrKindStale
-	case strings.Contains(text, "is outside the scope of your task"):
+	case strings.Contains(text, "is outside the scope of your task"),
+		strings.Contains(text, " belongs to the ") && strings.Contains(text, " may change it"):
+		// The second is a write to a path another role owns (swarm.Deps.Owners): outside the writer's role's scope.
 		return ErrKindScope
 	case strings.Contains(text, "is being edited by"):
 		return ErrKindLease

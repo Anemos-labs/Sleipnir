@@ -83,6 +83,12 @@ type Submission struct {
 	// to the integration tip, so work merged in from other agents does not count.
 	Scope        []string
 	EnforceScope bool
+	// Refuse, when set, is asked about every file the submission changed (judged
+	// like Scope, on the submission's own changes, renames at both ends); a file it
+	// answers with a non-empty reason is refused, and the submission is rejected
+	// with the reasons. The swarm uses it for paths that only another role may
+	// change.
+	Refuse func(path string) string
 }
 
 // Outcome is what happened to a submission.
@@ -617,8 +623,8 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		return nil, err
 	}
 
-	// 2. Scope, judged on what this submission itself changed.
-	if s.EnforceScope && len(s.Scope) > 0 {
+	// 2. Scope and refused files, judged on what this submission itself changed.
+	if (s.EnforceScope && len(s.Scope) > 0) || s.Refuse != nil {
 		d, err := hist.Diff(ctx, mb, gitx.DiffOptions{To: theirs, NoPatch: true, MaxFiles: 1 << 20})
 		if err != nil {
 			return nil, err
@@ -630,9 +636,17 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 				files = append(files, f.OldPath)
 			}
 		}
-		if out := OutOfScope(files, s.Scope); len(out) > 0 {
-			res.Files = out
-			return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s", len(out), strings.Join(firstN(out, 8), ", "))), nil
+		if s.Refuse != nil {
+			if out, why := refused(files, s.Refuse); len(out) > 0 {
+				res.Files = out
+				return q.reject(res, fmt.Sprintf("changed %d file(s) it may not change: %s", len(out), strings.Join(firstN(why, 8), "; "))), nil
+			}
+		}
+		if s.EnforceScope && len(s.Scope) > 0 {
+			if out := OutOfScope(files, s.Scope); len(out) > 0 {
+				res.Files = out
+				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s", len(out), strings.Join(firstN(out, 8), ", "))), nil
+			}
 		}
 	}
 
@@ -797,6 +811,24 @@ func (q *Queue) publish(ctx context.Context, after, prev, agent string) error {
 		return fmt.Errorf("workspace: the integration branch moved underneath the queue: %w", err)
 	}
 	return fmt.Errorf("workspace: publishing the integration branch failed: %w", err)
+}
+
+// refused asks refuse about each file once and returns, sorted by path, the files it
+// refused and its reasons for them.
+func refused(files []string, refuse func(string) string) (out, why []string) {
+	seen := map[string]bool{}
+	sorted := append([]string(nil), files...)
+	sort.Strings(sorted)
+	for _, f := range sorted {
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		if r := refuse(f); r != "" {
+			out, why = append(out, f), append(why, r)
+		}
+	}
+	return out, why
 }
 
 // firstN returns a shared prefix of at most n strings; n must be nonnegative.

@@ -260,9 +260,39 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 			return o, err
 		}
 		o.Roles = roles
+		own, err := ownersFor(task.Team, roles)
+		if err != nil {
+			return o, err
+		}
+		if own != nil {
+			o.Owners = own
+		}
 		o.Verify = visibleVerify(task)
 	}
 	return o, nil
+}
+
+// ownersFor compiles the task's team.owns for the swarm (nil when it owns
+// nothing). Every owning role must be one of the team's roles: roles, or every
+// built-in role when roles is nil.
+func ownersFor(t rl.Team, roles swarm.Roles) (*env.Ownership, error) {
+	own, err := env.CompileOwnership(t.Owns)
+	if err != nil || own == nil {
+		return nil, err
+	}
+	if roles == nil {
+		roles = swarm.BuiltinRoles()
+	}
+	for _, r := range own.Roles() {
+		role, ok := roles[r]
+		switch {
+		case !ok:
+			return nil, fmt.Errorf("task team.owns names role %q, which is not in the team (%s)", r, strings.Join(roles.Names(), ", "))
+		case r == "manager" || role.ReadOnly:
+			return nil, fmt.Errorf("task team.owns names role %q, which does not write files", r)
+		}
+	}
+	return own, nil
 }
 
 // hostOf is the host of a URL, never its credentials or path.

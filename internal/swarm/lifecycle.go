@@ -298,6 +298,14 @@ func (s *Swarm) get(id string) *member {
 	return s.members[id]
 }
 
+// roleOf is the role of a member, or "" for an id that is not one.
+func (s *Swarm) roleOf(id string) string {
+	if m := s.get(id); m != nil {
+		return m.role
+	}
+	return ""
+}
+
 // activeWriters counts members that may write files and are running now.
 func (s *Swarm) activeWriters() int {
 	s.mu.Lock()
