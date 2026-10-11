@@ -23,7 +23,7 @@ import (
 
 // FakeStep is one scripted action of a FakeHarness run.
 type FakeStep struct {
-	Op      string // write, append, delete, chmod, symlink, mkdir, exec, sleep, hang, hang-forever, panic, infra, agent-fail
+	Op      string // write, append, delete, chmod, symlink, mkdir, exec, sleep, hang, hang-forever, panic, infra, agent-fail, down, up
 	Path    string
 	Data    string
 	Mode    os.FileMode
@@ -86,6 +86,13 @@ func FakeInfra(msg string) FakeStep { return FakeStep{Op: "infra", Data: msg} }
 // FakeAgentFail describes an agent failure with a gave_up claim, without classifying it as
 // infrastructure failure.
 func FakeAgentFail(msg string) FakeStep { return FakeStep{Op: "agent-fail", Data: msg} }
+
+// FakeDown describes the policy endpoint going down, as a real harness reports it to the rollout's clock (RunSpec.Clock.Down)
+// at a failure that is an outage; cause says what failed.
+func FakeDown(cause string) FakeStep { return FakeStep{Op: "down", Data: cause} }
+
+// FakeUp describes the policy endpoint answering again (RunSpec.Clock.Up).
+func FakeUp() FakeStep { return FakeStep{Op: "up"} }
 
 // OnAttempt restricts a step to one attempt (1-based), which is how tests make
 // a rollout fail on the first try and succeed on the retry.
@@ -311,6 +318,12 @@ func (h *FakeHarness) doStep(ctx context.Context, spec RunSpec, st FakeStep) (st
 		return "", &fakeEnd{reason: "infra", err: Infra("fake provider", errors.New(st.Data))}
 	case "agent-fail":
 		return "", &fakeEnd{reason: "agent failure", res: &RunResult{Claimed: "gave_up", Err: errors.New(st.Data)}}
+	case "down":
+		spec.Clock.Down(st.Data)
+		return "down", nil
+	case "up":
+		spec.Clock.Up()
+		return "up", nil
 	}
 	return "", fmt.Errorf("unknown fake step %q", st.Op)
 }

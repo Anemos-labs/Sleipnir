@@ -388,4 +388,9 @@ type CostRef struct {
 	Target   string  `json:"target,omitempty"`
 	Requests int     `json:"requests"`
 	WallMs   int64   `json:"wall_ms,omitempty"`
+	// ActiveWallMs is the part of the agent's run that counted against its wall-clock budget, and PausedMs the part the policy
+	// endpoint was down for, which did not (the runner stops the clock during an outage). Both are absent when the runner kept no
+	// such clock.
+	ActiveWallMs int64 `json:"active_wall_ms,omitempty"`
+	PausedMs     int64 `json:"paused_ms,omitempty"`
 }

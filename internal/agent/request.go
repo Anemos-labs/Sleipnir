@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
-	"net/http"
 	"strings"
 	"time"
 
@@ -498,10 +497,17 @@ func retryNotice(pe *provider.Error, delay time.Duration) string {
 // program that draws cache breaks from the log (the chat on a terminal) leaves the notice out: it says what the break line says.
 const CacheMissNoticePrefix = "cache miss: expected"
 
-// outage says whether a failure is the endpoint being down or overloaded: it answered with a status of 500 or more, or with 429.
-// Those are the failures that a wait cures. Nothing that came with no status is one: the endpoint may not exist.
-func outage(pe *provider.Error) bool {
-	return pe.Status >= 500 || pe.Status == http.StatusTooManyRequests
+// outage says whether a failure is the endpoint being down or overloaded, which OutagePatience waits out: it answered with a
+// status of 500 or more, or with 429. A failure in which nothing answered (provider.OutageUnanswered) is one only when unreachable
+// (Config.WaitUnreachable) says the endpoint is known to exist: otherwise it may be an endpoint that is not there.
+func outage(pe *provider.Error, unreachable bool) bool {
+	switch pe.Outage() {
+	case provider.OutageAnswered:
+		return true
+	case provider.OutageUnanswered:
+		return unreachable
+	}
+	return false
 }
 
 // maxOutageDelay is the longest wait between two attempts of a request that keeps failing for an outage: often enough to
@@ -509,11 +515,11 @@ func outage(pe *provider.Error) bool {
 const maxOutageDelay = 30 * time.Second
 
 // retryDelay says whether a request that failed on attempt (counting from 0) is tried again, and after how long. Every failure gets
-// maxAttempts attempts, with a wait that doubles. A failure that is an outage gets more, while the waits add up to less than
-// patience: they stop growing at maxOutageDelay, what the endpoint asked for (Retry-After, bounded by MaxRetryAfter) is still a
-// floor, and the last wait is cut to what is left of the patience.
-func retryDelay(attempt int, pe *provider.Error, waited, patience time.Duration) (delay time.Duration, again bool) {
-	patient := patience > 0 && outage(pe) && waited < patience
+// maxAttempts attempts, with a wait that doubles. A failure that is an outage (down, see outage) gets more while less than patience
+// has passed since the request first failed (waited): the waits stop growing at maxOutageDelay, what the endpoint asked for
+// (Retry-After, bounded by MaxRetryAfter) is still a floor, and the last wait is cut to what is left of the patience.
+func retryDelay(attempt int, pe *provider.Error, down bool, waited, patience time.Duration) (delay time.Duration, again bool) {
+	patient := patience > 0 && down && waited < patience
 	if attempt >= maxAttempts-1 && !patient {
 		return 0, false
 	}
@@ -545,8 +551,8 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 // callOn is call on a named provider: the compactor's, when the session gives it a model of its own.
 func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
 	var last error
-	var waited time.Duration // how long the outage has been waited out, for OutagePatience
-	announced := -1          // the half-minute of waiting that the last notice of the patient phase was made in
+	var failed time.Time // when the request first failed: OutagePatience counts from there
+	announced := -1      // the half-minute of waiting that the last notice of the patient phase was made in
 	for attempt := 0; ; attempt++ {
 		rel, err := a.cfg.Limiter.Acquire(ctx, prio)
 		if err != nil {
@@ -562,15 +568,27 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 			return resp, nil
 		}
 		pe, ok := provider.AsError(err)
-		if !ok || !pe.Retryable() || ctx.Err() != nil {
+		if !ok || ctx.Err() != nil {
+			return nil, err
+		}
+		if failed.IsZero() {
+			failed = time.Now()
+		}
+		// The time an outage lasts, not the sum of the waits: an endpoint that answers nothing takes the whole of each attempt's
+		// timeout to say so.
+		waited := time.Since(failed)
+		down := outage(pe, a.cfg.WaitUnreachable)
+		// What repeating does not cure ends here, except a silence (an endpoint that swallowed the request again) that the agent is
+		// still waiting out as an outage.
+		if !pe.Retryable() && !(down && a.cfg.OutagePatience > 0 && waited < a.cfg.OutagePatience) {
 			return nil, err
 		}
 		last = err
-		delay, again := retryDelay(attempt, pe, waited, a.cfg.OutagePatience)
+		delay, again := retryDelay(attempt, pe, down, waited, a.cfg.OutagePatience)
 		if !again {
 			break // that was the last one: nothing follows it, so there is nothing to wait for or to announce
 		}
-		waited += delay
+		waited += delay // by the next attempt
 		of := fmt.Sprintf("attempt %d of %d", attempt+2, maxAttempts)
 		if attempt >= maxAttempts-1 {
 			of = fmt.Sprintf("attempt %d, waited %s of %s for the endpoint", attempt+2, waited.Round(time.Second), a.cfg.OutagePatience.Round(time.Second))
