@@ -137,8 +137,11 @@ type Options struct {
 	Mailman *bool
 
 	// Limits.
-	MaxSteps      int
-	BudgetUSD     float64
+	MaxSteps  int
+	BudgetUSD float64
+	// NoBudget lifts the cap a swarm has from swarm.budget_usd (the built-in cap unless the configuration sets another) when BudgetUSD
+	// sets none; BudgetUSD still wins. It is SLEIPNIR_SWARM_BUDGET_USD=0 for one session. A single agent has no such cap.
+	NoBudget      bool
 	ContextWindow int // overrides the model's window (RL: small windows force compaction)
 	Params        core.Params
 
@@ -827,7 +830,7 @@ func (s *Session) build(ctx context.Context) error {
 	if v := s.cfg.Cache.AffinityShards; v > 0 {
 		sc.AffinityShards = v
 	}
-	if v := s.cfg.Swarm.BudgetUSD; v > 0 {
+	if v := s.cfg.Swarm.BudgetUSD; v > 0 && !o.NoBudget {
 		sc.BudgetUSD = v
 	}
 	if o.BudgetUSD > 0 {

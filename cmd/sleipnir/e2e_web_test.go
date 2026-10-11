@@ -600,8 +600,11 @@ func TestWebFixtureOrdersTurnRestartAndClose(t *testing.T) {
 	if code != 201 {
 		t.Fatalf("a new session = %d %s", code, body)
 	}
-	if code, _ := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: w.tmp}); code != 403 {
-		t.Errorf("a directory that is not a project = %d", code)
+	if code, _ := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: w.tmp}); code != 428 {
+		t.Errorf("a folder that is not a project starts nothing before it is confirmed = %d", code)
+	}
+	if code, _ := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: filepath.Join(w.tmp, "no", "such")}); code != 404 {
+		t.Errorf("a folder that does not exist = %d", code)
 	}
 	var created struct{ Tab wire.TabSummary }
 	_ = json.Unmarshal(body, &created)

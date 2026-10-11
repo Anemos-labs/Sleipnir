@@ -53,15 +53,15 @@ message holds no path outside the project, no secret and no body content; match 
 
 | Status | Codes |
 |---|---|
-| 400 | `bad_json`, `bad_request`, `bad_path`, `bad_flags`, `bad_mode`, `bad_rule`, `bad_level`, `bad_budget`, `bad_cron`, `bad_age`, `bad_choice`, `bad_tool`, `bad_name`, `bad_key`, `bad_isolation`, `empty` |
+| 400 | `bad_json`, `bad_request`, `bad_path`, `bad_flags`, `bad_mode`, `bad_rule`, `bad_level`, `bad_budget`, `bad_cron`, `bad_age`, `bad_choice`, `bad_tool`, `bad_name`, `bad_key`, `bad_isolation`, `not_a_dir`, `empty` |
 | 401 | `unauthenticated` |
-| 403 | `bad_host`, `forbidden_site`, `forbidden_origin`, `csrf`, `forbidden`, `confirm_invalid`, `not_a_project`, `denied`, `tty_only`, `dangerous_mode` |
-| 404 | `not_found`, `no_session`, `no_question`, `no_file`, `no_checkpoint`, `no_rule`, `unknown_command` |
+| 403 | `bad_host`, `forbidden_site`, `forbidden_origin`, `csrf`, `forbidden`, `confirm_invalid`, `not_a_project`, `denied`, `tty_only`, `dangerous_mode`, `unreadable` |
+| 404 | `not_found`, `no_session`, `no_question`, `no_file`, `no_checkpoint`, `no_rule`, `no_dir`, `unknown_command` |
 | 405, 413, 415 | `method_not_allowed`, `body_too_large`, `unsupported_media_type` |
-| 409 | `answered`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `budget_configured`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none` |
+| 409 | `answered`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `budget_configured`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none`, `git_init`, `mkdir` |
 | 422 | `model`, `rejected`, `conflict` |
 | 428 | `confirm_required` |
-| 429, 500, 502, 503 | `rate_limited`; `internal`; `network`; `busy`, `too_many_streams`, `shutting_down` |
+| 429, 500, 502, 503, 504 | `rate_limited`; `internal`; `network`; `busy`, `too_many_streams`, `shutting_down`; `slow` |
 
 **Retries.** `POST /api/sessions`, `POST /api/sessions/resume` and `POST /api/sessions/{id}/messages` accept an optional
 `clientId` (64 characters at most): a repeat with the same id within 60 seconds returns the first answer instead of doing it
@@ -256,7 +256,7 @@ request raises something says so. Bodies and answers are the `wire` types named;
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `GET` | `/api/stream` | The event stream (above). `after=` or `Last-Event-ID` resumes | - |
-| `GET` | `/api/hello` | `wire.Hello` and more: `boot`, `now` (epoch ms), `tabs`, `active`, `server` (`addr`, `loopback`, `version`), `limits` (`maxBody`, `maxMessage`, `maxQuestions`), `ui` (build, `reduceMotion`, `bell`), `streamAfter`, `defaults` (the New session dialog's values and `maxWorkers`) and `update` (a newer release, when one is known) | - |
+| `GET` | `/api/hello` | `wire.Hello` and more: `boot`, `now` (epoch ms), `tabs`, `active`, `server` (`addr`, `loopback`, `version`), `limits` (`maxBody`, `maxMessage`, `maxQuestions`), `ui` (build, `reduceMotion`, `bell`), `streamAfter`, `defaults` (the New session dialog's values, `maxWorkers`, and `testsPreset`, what the allow rule `tests` lets through) and `update` (a newer release, when one is known) | - |
 | `GET` | `/api/snapshot` | `{streamAfter, active, tabs: [wire.TabSnapshot]}`: every tab's snapshot | - |
 
 ### Sessions (tabs)
@@ -265,13 +265,14 @@ request raises something says so. Bodies and answers are the `wire` types named;
 |---|---|---|---|
 | `GET` | `/api/sessions` | `{tabs: [wire.TabSummary]}`, in strip order | - |
 | `GET` | `/api/projects` | `{projects: [wire.Project]}`: the directories a new session may start in (`--cwd`, `--project`, the open and recorded sessions' directories, the trust ledger), each with its trust state | - |
-| `POST` | `/api/sessions` | Starts a session: `wire.NewSessionRequest` and optional `resume` (a recorded session's id) and `clientId`; answers `201 {tab}`. `403 not_a_project` for a directory that is not listed, `409 limit` at 16 sessions, `409 hosted` when the recorded session is open, `409 locked` when another process uses it | When it raises privilege: `session:<d16>`; project files: the trust challenge |
+| `GET` | `/api/fs/dirs` | `wire.DirListing` for the query `path`: the subfolders that complete the path typed (`entries`, at most 60, `more` when there are others; the folders whose names start with the last part of the path, hidden ones only when that part starts with a dot) and `state`, what the path is: its absolute form (`~` is the home folder, a relative path is read from the folder the server was started in), whether it exists, is a folder, can be read, is one of the projects, is empty, is a git repository (`repo`), is inside one (`inside`, with `gitRoot`) or neither, and the checks its files suggest for `--verify`. Only folder names are read, and only those that are safe to show; `400 bad_request` for an empty path, `400 bad_path` for one that cannot be read as a path, `504 slow` when the folder does not answer, `429 busy` while four listings are in flight | - |
+| `POST` | `/api/sessions` | Starts a session: `wire.NewSessionRequest` and optional `resume` (a recorded session's id) and `clientId`; answers `201 {tab}`. `cwd` is the absolute path of a folder that exists (`400 bad_path` for another path, `400 not_a_dir` for a file, `404 no_dir`), of a project or of any other; `createDir` makes the last part of the path when it does not exist and its parent does; `gitInit` makes a new or empty folder, outside any repository, a git repository with an empty first commit (`409 git_init`). A folder that is not a project, a folder to make and a repository to make are each a reason of the confirmation, and nothing is made until it is given. `budget` in US dollars: absent leaves the session to the configuration, `0` is no limit (a team then has none, not even the built-in cap the terminal applies where nobody chose a budget). The `defaults` of `GET /api/hello` carry a `budget` only when `sleipnir web --budget-usd` or `swarm.budget_usd` of the configuration set one, so that the dialog starts at off. `409 limit` at 16 sessions, `409 hosted` when the recorded session is open, `409 locked` when another process uses it | When it raises privilege: `session:<d16>`; project files: the trust challenge |
 | `POST` | `/api/sessions/resume` | Continues a recorded session (`wire.ResumeRequest`: `from` is an id or `latest`) in a new tab; `201 {tab}` | As above |
 | `GET` | `/api/sessions/{id}/snapshot` | `wire.TabSnapshot` | - |
 | `PATCH` | `/api/sessions/{id}` | Renames: `{name}`; answers `{tab}` | - |
 | `POST` | `/api/sessions/{id}/stop` | Interrupts the running turn; `409 idle` when none runs | - |
 | `DELETE` | `/api/sessions/{id}` | Closes the session; an isolated team's verified work is applied to the checkout first (`integration` in the answer). `409 last` for the only session | - |
-| `POST` | `/api/sessions/{id}/restart` | `wire.RestartRequest`: `kind` is `new`, `clear`, `swarm`, `restart`, `model` or `roles`; `flags` are what a person would type after `/restart` and win over the flags that `PATCH .../launch` staged (a `--cwd` other than the tab's own must name a listed project, else `403 not_a_project`; `--resume` takes a session id or `latest`, else `400 bad_flags`; a session to resume that is not recorded is `404 no_session`, one that cannot be resumed `409 not_resumable`, one another tab holds `409 hosted` with `detail.tab`, one another process uses `409 locked`: nothing is closed then); `new` and `clear` always start the chat empty, the others do so only with `fresh`. Answers `202 {gen}`; the tab starts its next generation in the background | When the final arguments raise privilege: `restart:<tab>:<d16>` |
+| `POST` | `/api/sessions/{id}/restart` | `wire.RestartRequest`: `kind` is `new`, `clear`, `swarm`, `restart`, `model` or `roles`; `flags` are what a person would type after `/restart` and win over the flags that `PATCH .../launch` staged (a `--cwd` other than the tab's own names a folder that exists, else `404 no_dir`, and one that is not a listed project is a reason of the confirmation; `--resume` takes a session id or `latest`, else `400 bad_flags`; a session to resume that is not recorded is `404 no_session`, one that cannot be resumed `409 not_resumable`, one another tab holds `409 hosted` with `detail.tab`, one another process uses `409 locked`: nothing is closed then); `new` and `clear` always start the chat empty, the others do so only with `fresh`. Answers `202 {gen}`; the tab starts its next generation in the background | When the final arguments raise privilege: `restart:<tab>:<d16>` |
 
 ### Chat
 
@@ -368,7 +369,7 @@ The page never holds a provider key: signing in is `sleipnir login` in a termina
 |---|---|---|---|
 | `GET` | `/api/schedule` | `wire.ScheduleView`: the jobs, the daemon and the last logs of each job | - |
 | `GET` | `/api/schedule/next` | `?cron=`: `wire.CronCheck`, whether the expression is valid and when it next runs | - |
-| `POST` | `/api/schedule/jobs` | `wire.JobRequest`: adds a job; `bypass` and `yolo` are refused. `budgetUsd` left out is US$1, as `schedule add`; `0` is no limit. A job never takes the id of a removed job that left logs | `job.add` |
+| `POST` | `/api/schedule/jobs` | `wire.JobRequest`: adds a job; `bypass` and `yolo` are refused. `dir` is the absolute path of a folder that exists, a project of the page or any other (`400 bad_path`, `404 no_dir`, `403 unreadable` for one the server cannot look at); the confirmation is where the person sees what the job will run. `budgetUsd` left out is US$1, as `schedule add`; `0` is no limit. A job never takes the id of a removed job that left logs | `job.add` |
 | `PUT` | `/api/schedule/jobs/{job}` | Edits a job's cron, goal, directory, model, mode and budget; a budget left out stays what it was | `job.edit:<job>` |
 | `POST` | `/api/schedule/jobs/{job}/pause` | `{paused}`: a paused job is skipped by the daemon and can still be run by hand | - |
 | `DELETE` | `/api/schedule/jobs/{job}` | Removes the job | - |

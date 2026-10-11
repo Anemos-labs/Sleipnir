@@ -44,7 +44,7 @@ try {
   /** New session in the directory of the fixture tab `from` (the fixture's mock provider serves its own projects), with the model it uses. */
   const newSession = async (name, set, from) => {
     await ev(`SL.ui.dialogs.newSession()`); await waitFor(`document.getElementById('nsStart')`);
-    if (from) await ev(`const T = SL.sessions.get(${JSON.stringify(from)}), c = document.getElementById('nsCwd'); if (T && Array.from(c.options).some(o => o.value === T.meta.cwd)) { c.value = T.meta.cwd; c.dispatchEvent(new Event('change', { bubbles: true })); }`);
+    if (from) await ev(`const T = SL.sessions.get(${JSON.stringify(from)}), c = document.getElementById('nsCwd'); if (T) { c.value = T.meta.cwd; c.dispatchEvent(new Event('input', { bubbles: true })); }`);
     /* a local model name passes the server's model check without a key (the fixture's own provider serves only its tabs) */
     await typeIn('#nsName', name); await ev(`const m = document.getElementById('nsModel'), o = document.createElement('option'); o.textContent = 'ollama/confirm-test'; m.appendChild(o); m.value = 'ollama/confirm-test'; m.dispatchEvent(new Event('change', { bubbles: true }));`); await set();
     await ev(`document.getElementById('nsStart').click()`);

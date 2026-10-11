@@ -60,6 +60,40 @@
       onMount(b, sc, close) { sc.listen($('[data-ok]', b), 'click', () => { close(); o.run(); }); sc.listen($('[data-no]', b), 'click', close); } });
   };
 
+  /* ---------- help dots: a ? beside what needs explaining ---------- */
+  /** The attribute that gives an element an explanation (any element of a dialog that called ui.helpMount): the text, which may hold
+   *  <b>, <kbd> and <span class="mono">, is the page's own copy. */
+  ui.helpAttr = text => ' data-help="' + esc(text) + '"';
+  /** A ? dot that shows the explanation `text` of `about` on hover, on keyboard focus and on a tap. */
+  ui.help = (text, about) => '<button type="button" class="qh" aria-label="' + esc('What is ' + about + '?') + '"' + ui.helpAttr(text) + '>?</button>';
+  /**
+   * Make the explanations of a dialog show: an element with data-help shows its text in one popover when the pointer is over it or the
+   * focus is on it (a tap shows it and another hides it), placed by the element and kept on screen, and Escape hides it before it
+   * closes the dialog. body: the dialog's body, sc: its scope; the popover goes with the dialog.
+   */
+  ui.helpMount = function (body, sc) {
+    const tip = mk('div', { class: 'helptip', role: 'tooltip', id: 'helpTip' }); tip.hidden = true; sc.root.appendChild(tip);
+    let cur = null;
+    const of = e => (e.target && e.target.closest ? e.target.closest('[data-help]') : null);
+    const hide = () => { if (cur) { cur.removeAttribute('aria-describedby'); cur.removeAttribute('data-popup-open'); } cur = null; tip.hidden = true; };
+    const place = d => {
+      if (!d.getBoundingClientRect) return;
+      const r = d.getBoundingClientRect(), vw = window.innerWidth || 800, vh = window.innerHeight || 600;
+      tip.style.maxWidth = Math.min(340, vw - 16) + 'px'; tip.style.left = '0px'; tip.style.top = '0px';
+      const w = tip.offsetWidth || 0, h = tip.offsetHeight || 0; let top = r.bottom + 6;
+      if (top + h > vh - 8) top = Math.max(8, r.top - h - 6);
+      tip.style.left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), Math.max(8, vw - w - 8)) + 'px'; tip.style.top = top + 'px';
+    };
+    const show = d => { if (cur === d) return; hide(); cur = d; tip.innerHTML = d.getAttribute('data-help'); tip.hidden = false; d.setAttribute('aria-describedby', 'helpTip'); d.setAttribute('data-popup-open', ''); place(d); };
+    sc.listen(body, 'mouseover', e => { const d = of(e); if (d) show(d); });
+    sc.listen(body, 'mouseout', e => { const d = of(e); if (d && !(e.relatedTarget && d.contains && d.contains(e.relatedTarget))) hide(); });
+    sc.listen(body, 'focusin', e => { const d = of(e); if (d) show(d); else hide(); });
+    sc.listen(body, 'focusout', hide);
+    sc.listen(body, 'click', e => { const d = e.target && e.target.closest ? e.target.closest('.qh') : null; if (d) { e.preventDefault(); if (cur === d) hide(); else show(d); } });
+    sc.listen(body, 'keydown', e => { if (e.key === 'Escape' && cur && !tip.hidden) { e.stopPropagation(); e.preventDefault(); hide(); } });
+    sc.listen(body, 'scroll', hide, true);
+  };
+
   /* ---------- the session menu (rename / stop / close) ---------- */
   /** The one open session menu, or null: every way it closes (an item, Escape, a press elsewhere, its button again) goes through
    *  close(), which removes the two document listeners it added. */

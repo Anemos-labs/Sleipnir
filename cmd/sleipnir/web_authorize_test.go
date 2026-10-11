@@ -129,11 +129,11 @@ func TestRestartsAreAuthorizedOnTheirFinalArguments(t *testing.T) {
 	r.json("PATCH", path+"/launch", wire.LaunchPatch{Verify: &empty}, 200, nil)
 	r.needsConfirm("POST", path+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--trust-project=True"}})
 	elsewhere := t.TempDir()
-	if code, body := r.do("POST", path+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--cwd", elsewhere, "--trust-project=True"}}); code != 403 || !strings.Contains(string(body), "not_a_project") {
-		t.Errorf("a restart into a directory that is not a project = %d %s", code, body)
+	if code, body := r.do("POST", path+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--cwd", elsewhere, "--trust-project=True"}}); code != 428 || !strings.Contains(string(body), "not one of this server's projects") {
+		t.Errorf("a restart into a folder that is not a project, before it is confirmed = %d %s", code, body)
 	}
-	if code, body := r.do("POST", path+"/command", wire.CommandRequest{Line: "/restart --cwd " + elsewhere}); code != 403 || !strings.Contains(string(body), "not_a_project") {
-		t.Errorf("/restart --cwd outside the projects = %d %s", code, body)
+	if code, body := r.do("POST", path+"/command", wire.CommandRequest{Line: "/restart --cwd " + elsewhere}); code != 428 || !strings.Contains(string(body), "not one of this server's projects") {
+		t.Errorf("/restart --cwd outside the projects, before it is confirmed = %d %s", code, body)
 	}
 	sc := r.needsConfirm("POST", path+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--trust-project"}})
 	r.json("POST", path+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--trust-project"}}, 202, nil, web.ConfirmHeader, r.confirmFor(sc))

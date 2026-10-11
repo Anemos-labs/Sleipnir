@@ -175,19 +175,22 @@
   const loadSchedule = () => SL.data ? SL.data.load('schedule', { force: true }) : Promise.resolve(false);
   reg({ name: 'schedule', title: 'Schedule', mount(sc, root) {
     const st = { log: null, edit: null, every: '30s', next: new Map(), seq: 0 };
-    const projects = () => { const p = arr(X().projects).map(x => x.root || x.dir).filter(Boolean); return p.length ? p : []; };
+    const projects = () => { const p = arr(X().projects).map(x => x.dir || x.root).filter(Boolean); return p.length ? p : []; };
+    /* the folder of a job: any folder that exists, typed and completed as in New session (a job's folder is not made) */
+    const SD = { input: 'sDir', list: 'sDirList', state: 'sDirState', projects: 'sProjects', row: 'sDirRow' }, dirSt = { cwd: '' };
+    let fm = null;
     const models = () => arr(D.models).map(m => m.ref);
     root.innerHTML = '<div class="schv"><header class="sethead"><h1>Schedule</h1><p>Cron jobs the daemon starts as headless runs: nobody can answer, so an action that needs approval is refused. <span class="mono">sleipnir schedule add | rm</span> · <span class="mono">sleipnir daemon</span></p></header>' +
       '<section class="panel"><div class="ph"><h2>Daemon</h2><div class="r dmn"></div></div></section><section class="panel"><div class="ph"><h2>Jobs</h2><div class="r jn"></div></div><div class="setcard jobs"></div></section>' +
-      '<div class="g2s"><section class="panel"><div class="ph"><h2 class="addh">Add a job</h2><div class="r"><span class="mono addm">schedule add</span></div></div><div class="setcard"><div class="fld"><label for="sCron">cron</label><div class="fc"><input id="sCron" type="text" value="0 9 * * 1-5" autocomplete="off" spellcheck="false"><small class="hint" id="sNext"></small></div></div><div class="fld"><label for="sGoal">goal</label><div class="fc"><textarea id="sGoal" rows="2" placeholder="what the run should do, judged on evidence"></textarea></div></div><div class="fld"><label for="sDir">--cwd</label><div class="fc"><select id="sDir"></select></div></div><div class="fld"><label for="sMode">--mode</label><div class="fc"><select id="sMode"><option value="">default</option><option>accept-edits</option><option>plan</option></select><small class="hint">bypass and yolo cannot be scheduled from here</small></div></div><div class="fld"><label for="sModel">--model</label><div class="fc"><select id="sModel"></select></div></div><div class="fld"><label for="sBudget">--budget-usd</label><div class="fc"><input id="sBudget" type="text" value="1" inputmode="decimal"></div></div><div class="row2"><button class="btn pri" type="button" id="sAdd">Add the job</button><button class="btn" type="button" id="sCancel" hidden>Cancel</button></div></div></section>' +
+      '<div class="g2s"><section class="panel"><div class="ph"><h2 class="addh">Add a job</h2><div class="r"><span class="mono addm">schedule add</span></div></div><div class="setcard"><div class="fld"><label for="sCron">cron</label><div class="fc"><input id="sCron" type="text" value="0 9 * * 1-5" autocomplete="off" spellcheck="false"><small class="hint" id="sNext"></small></div></div><div class="fld"><label for="sGoal">goal</label><div class="fc"><textarea id="sGoal" rows="2" placeholder="what the run should do, judged on evidence"></textarea></div></div><div class="fld"><div class="fl"><label for="sDir">--cwd</label>' + ui.help(ui.folder.helpText, 'the folder') + '</div><div class="fc">' + ui.folder.html('', SD) + '</div></div><div class="fld"><label for="sMode">--mode</label><div class="fc"><select id="sMode"><option value="">default</option><option>accept-edits</option><option>plan</option></select><small class="hint">bypass and yolo cannot be scheduled from here</small></div></div><div class="fld"><label for="sModel">--model</label><div class="fc"><select id="sModel"></select></div></div><div class="fld"><label for="sBudget">--budget-usd</label><div class="fc"><input id="sBudget" type="text" value="1" inputmode="decimal"></div></div><div class="row2"><button class="btn pri" type="button" id="sAdd">Add the job</button><button class="btn" type="button" id="sCancel" hidden>Cancel</button></div></div></section>' +
       '<section class="panel"><div class="ph"><h2>Log</h2><div class="r lgh"></div></div><div class="slog"><div class="term" tabindex="0"><div class="tl dim">Pick a job’s log, or run one now.</div></div></div></section></div></div>';
     const q = s => $(s, root), S = () => SCH();
+    ui.helpMount(root, sc); fm = ui.folder.mount(root, sc, dirSt, { ids: SD, projects: () => arr(X().projects), make: false, onState() {} });
     const nextOf = j => { const n = st.next.get(j.cron); return j.next ? hm(j.next) : n && n.ok ? hm(n.next) : '–'; };
     /** the directory and model lists (the server's projects and catalogue); what is chosen stays chosen, or prefer = {dir, model} */
     function fillSelects(prefer) {
-      const dir = $('#sDir', root), want = prefer ? prefer.dir : dir.value, list = projects(); if (want && !list.includes(want)) list.unshift(want);
-      const word = d => { const p = arr(X().projects).find(x => (x.dir || x.root) === d), w = p ? (TK.settings && TK.settings.projectState ? TK.settings.projectState(p.trust) : '') : ''; return w ? ' · ' + w : ''; };   // a scheduled run in a project nobody trusted or that could not be read says so
-      dir.innerHTML = list.map(p => '<option value="' + esc(p) + '"' + (p === want ? ' selected' : '') + '>' + esc(p) + esc(word(p)) + '</option>').join('') || '<option value="">(no project)</option>';
+      const box = $('#sDir', root), want = prefer ? prefer.dir : box.value.trim() ? null : projects()[0];   // a job being edited has its folder; a new one starts in the first project
+      if (want != null && want !== box.value) { box.value = dirSt.cwd = want; box.dispatchEvent(new Event('input', { bubbles: true })); }
       const md = $('#sModel', root), mcur = prefer ? prefer.model : md.value, ms = models(); if (mcur && !ms.includes(mcur)) ms.unshift(mcur);
       md.innerHTML = '<option value="">the default model</option>' + ms.map(m => '<option value="' + esc(m) + '"' + (m === mcur ? ' selected' : '') + '>' + esc(m) + '</option>').join('');
     }
@@ -244,8 +247,13 @@
       return new Promise(res => { hintT = sc.timeout(async () => { const r = await net.get('/api/schedule/next?cron=' + encodeURIComponent(v)); if (r.ok && r.data) { st.next.set(v, r.data); if (mine === st.seq && $('#sCron', root).value.trim() === v) hint.innerHTML = hintHtml(r.data); res(!!r.data.ok); } else { res(false); } }, 150); });
     }
     async function submit() {
-      const f = { cron: $('#sCron', root).value, goal: $('#sGoal', root).value, dir: $('#sDir', root).value, model: $('#sModel', root).value, mode: $('#sMode', root).value, budget: $('#sBudget', root).value };
+      const f = { cron: $('#sCron', root).value, goal: $('#sGoal', root).value, dir: $('#sDir', root).value.trim(), model: $('#sModel', root).value, mode: $('#sMode', root).value, budget: $('#sBudget', root).value };
       const ok = await nextHint(), bad = validateJob(f, ok); if (bad.length) { ui.toast(bad[0].text, bad[0].kind); const e = document.getElementById(bad[0].field); if (e) e.focus(); return; }
+      /* the folder is what the server says it is for the text in the box: a path that is no folder stops here, ~ is resolved */
+      const where = await fm.ensure(), d = ui.folder.describe(where, { make: false });
+      if (d.level === 'bad') { ui.toast(d.lead, 'err'); $('#sDir', root).focus(); return; }
+      if (!where && !ui.folder.absolute(f.dir)) { ui.toast('The server could not check that folder: write its full path.', 'err'); $('#sDir', root).focus(); return; }
+      if (where) f.dir = where.path;
       const body = jobRequest(f), editing = st.edit, btn = q('#sAdd'); btn.disabled = true;
       const r = editing ? await net.put('/api/schedule/jobs/' + encodeURIComponent(editing.id), body, { confirm: 'job.edit:' + editing.id }) : await net.post('/api/schedule/jobs', body, { confirm: 'job.add' });
       btn.disabled = false; if (!sc.alive) return;

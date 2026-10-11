@@ -63,6 +63,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	srv.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
 		ok(w, map[string]any{"projects": h.Projects(r.Context())})
 	}, web.RouteOpts{})
+	srv.HandleFunc("GET /api/fs/dirs", h.fsDirs, web.RouteOpts{})
 	srv.HandleFunc("POST /api/sessions", h.newSession, web.RouteOpts{})
 	srv.HandleFunc("POST /api/sessions/resume", h.resume, web.RouteOpts{})
 	h.tabRoute(srv, "GET /api/sessions/{id}/snapshot", web.RouteOpts{WriteTimeout: snapshotWrite}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
@@ -356,15 +357,19 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Cwd == "" || !filepath.IsAbs(body.Cwd) {
-		writeErr(w, werr(http.StatusForbidden, "not_a_project", "start a session in one of the listed projects"))
+		writeErr(w, werr(http.StatusBadRequest, "bad_path", "the folder is an absolute path"))
 		return
 	}
-	proj, ok := h.isProject(r.Context(), filepath.Clean(body.Cwd))
-	if !ok {
-		writeErr(w, werr(http.StatusForbidden, "not_a_project", "start a session in one of the listed projects"))
+	dir := filepath.Clean(body.Cwd)
+	proj, listed := h.isProject(r.Context(), dir)
+	if listed {
+		dir = proj.Dir // the listed project's own spelling, the one the server named: the request's is not used past this point
+	}
+	plan, err := planDir(dir, !listed, body.CreateDir, body.GitInit)
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
-	dir := proj.Dir // the listed project's own spelling, the one the server named: the request's is not used past this point
 	body.Cwd = dir
 	if body.Name != "" {
 		if err := validName(strings.TrimSpace(body.Name)); err != nil {
@@ -427,11 +432,24 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// What the session raises above the server's own command line needs the person's confirmation (web_authorize.go); trusting the
 	// project's files shows them first (409 trust_required with the challenge).
-	note, trusted, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), raised(f, h.serverBaseline(), dir))
+	p := raised(f, h.serverBaseline(), dir)
+	p.NewDir, p.Create, p.Git = plan.unlisted && !plan.create, plan.create, plan.git
+	if plan.create {
+		p.Trust = "" // a folder that does not exist yet has no files to trust
+	}
+	note, trusted, okay := h.gateNewSession(w, withConfirmGate(h.srv, w, r), p)
 	if !okay {
 		return
 	}
-	t, err := h.addTab(strings.TrimSpace(body.Name), dir, h.base)
+	if err := plan.apply(r.Context(), dir); err != nil {
+		writeErr(w, err)
+		return
+	}
+	base := h.base
+	if body.Budget != nil && *body.Budget == 0 {
+		base.NoBudget = true // off, said in the request: no cap, not even the one a team has where nobody chose a budget
+	}
+	t, err := h.addTab(strings.TrimSpace(body.Name), dir, base)
 	if err != nil {
 		writeErr(w, err)
 		return
