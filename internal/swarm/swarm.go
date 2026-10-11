@@ -154,9 +154,10 @@ type Deps struct {
 	CompactorModel cost.Model
 	// Plans holds each agent's plan (internal/plan); nil: no plan tool.
 	Plans *plan.Store
-	// OutagePatience is agent.Config.OutagePatience for every agent of the swarm.
-	OutagePatience time.Duration
-	Registry       *tools.Registry
+	// OutagePatience and WaitUnreachable are agent.Config's for every agent of the swarm.
+	OutagePatience  time.Duration
+	WaitUnreachable bool
+	Registry        *tools.Registry
 	// ToolSpecs is the frozen tool list (must include the swarm tools).
 	ToolSpecs []core.ToolSpec
 	Const     *kv.Layer
@@ -203,6 +204,20 @@ type Deps struct {
 	// integrates finished work through a verifying merge queue (isolate.go). Nil is
 	// swarm.isolation = "none": one shared tree, guarded by leases.
 	Isolation *Isolation
+	// Owners assigns repository paths to roles (an RL task's team.owns): the write
+	// guard refuses a write to an owned path by an agent of any other role, and the
+	// merge queue a submission that changed one (see PathOwners). Nil: no path is
+	// owned.
+	Owners PathOwners
+}
+
+// PathOwners says which roles own a repository path. An owned path may be
+// written only by agents of a role that owns it; every other agent, the manager
+// included, is refused, and is told which role to hand the work to.
+type PathOwners interface {
+	// OwnersOf returns, sorted, the roles that own the slash-separated
+	// repository-relative path rel; none means any role may write it.
+	OwnersOf(rel string) []string
 }
 
 // RoleModel is a per-role model override.
@@ -377,6 +392,9 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Leases = NewLeases(cfg.LeaseTTL, s.Board)
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
+	if deps.Owners != nil {
+		s.Leases.SetOwners(deps.Owners, s.roleOf)
+	}
 	if s.isolated() {
 		s.Leases.Isolate()
 	}

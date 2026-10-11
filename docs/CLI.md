@@ -1013,6 +1013,8 @@ flags:
         skip commits changing more files than this (default 12)
   -max-lines int
         skip commits changing more lines than this (default 800)
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-spend-usd float
@@ -1020,13 +1022,15 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -no-validate
         skip the baseline and reference-solution runs (tasks are then unverified: for dry runs only)
   -o string
         output tasks file (default "tasks.jsonl")
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -repeats int
@@ -1101,6 +1105,8 @@ flags:
         stop after this many tasks (0: all)
   -max-attempts int
         candidate mutations to try (default 20 x --max)
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-spend-usd float
@@ -1108,11 +1114,13 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -o string
         output tasks file (default "tasks.jsonl")
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -repo string
@@ -1324,6 +1332,8 @@ flags:
         retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
   -keep-failed
         keep the workspaces of failed rollouts for debugging
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-spend-usd float
@@ -1331,11 +1341,13 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -mutants
         also leave each file of the reference solution at its start content in turn and report the task weak (a warning) when the verifier still passes: one more verifier run per solution file
   -no-net-isolation
         do not isolate the network of tasks that do not need it
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -report string
@@ -1377,8 +1389,13 @@ Budgets and cost accounting, for runs against a real endpoint:
   included. When it is reached no further rollout starts (those are reported `capped`); rollouts already running finish, so
   it is overshot by at most what they may still spend. Without `--budget-usd` each rollout is held to a share of the cap.
 * `ledger.jsonl` in the run directory has one line per attempt (task, sample, attempt, status, cost, answered requests,
-  retries), written as the attempt ends: an attempt starts from an empty sample directory, so what a failed one spent
-  would otherwise vanish. `summary.json` has `spent_usd`, the ledger's total.
+  retries, `active_wall_ms`, `paused_ms`), written as the attempt ends: an attempt starts from an empty sample directory,
+  so what a failed one spent would otherwise vanish. `summary.json` has `spent_usd`, the ledger's total.
+* An outage of the policy endpoint (a 5xx, a 429, a refused or reset connection, no response) pauses a rollout instead of
+  failing it: the agents wait it out for up to `--outage-patience` (default 3h) per outage, and the wall clock
+  (`--max-wall`, a task's `wall_s`) stops meanwhile. An attempt whose outages add up to `--max-outage-pause` (default 3h)
+  ends as an infra failure and is not retried; a rerun into the same `--out` runs it again. An outage that lasts half a
+  minute is announced on stderr when it starts and when it ends. Details in docs/TRAINING-DATA.md, section 3.3.
 * `--rpm` paces the policy requests of **all** rollouts to one rate; a swarm's governor limits one swarm, so without it
   `--concurrency` multiplies the endpoint's limit.
 * `--mode single` runs every task as one agent, swarm tasks too (the baseline a swarm is compared with); `--mode swarm:N`
@@ -1423,6 +1440,8 @@ flags:
         print the summary as JSON
   -keep-failed
         keep the workspaces of failed rollouts for debugging
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-spend-usd float
@@ -1432,7 +1451,7 @@ flags:
   -max-tokens int
         completion limit per request (overrides --sampling)
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -mode string
         who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager and N workers, the same as --swarm N) | empty: what each task's team says
   -model string
@@ -1443,6 +1462,8 @@ flags:
         do not isolate the network of tasks that do not need it
   -out string
         run directory (default: runs/<timestamp>); rerunning into it resumes
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
@@ -1527,6 +1548,8 @@ flags:
         print the report as JSON
   -keep-failed
         keep the workspaces of failed rollouts for debugging
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-spend-usd float
@@ -1536,7 +1559,7 @@ flags:
   -max-tokens int
         completion limit per request (overrides --sampling)
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -mode string
         who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager and N workers, the same as --swarm N) | empty: what each task's team says
   -model string
@@ -1547,6 +1570,8 @@ flags:
         do not isolate the network of tasks that do not need it
   -out string
         run directory (default: runs/eval-<timestamp>)
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
@@ -1617,6 +1642,8 @@ flags:
         keep the workspaces of failed rollouts for debugging
   -max-group int
         largest group size of one request (default 64)
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
   -max-requests int
         cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
   -max-runs int
@@ -1626,9 +1653,11 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -policy-host string
@@ -1748,6 +1777,10 @@ usage: sleipnir rl export [flags] RUN_DIR...
 flags:
   -advantage string
         grpo | rloo | broadcast | anchor | none (default: grpo for steps, tokens and groups; none for the rest)
+  -drop value
+        drop rule for the training formats, repeatable: a preset (ds-frontend: the steps a deepseek model wrote doing front-end work) or conditions such as 'name=N;models=GLOB,...;roles=R,...;edits-ui', also tags, task-ids and providers (docs/TRAINING-DATA.md)
+  -exclude value
+        file of rollouts to leave out of every format, one per line (a sample directory, or its path from the run directory's parent or from the run directory, e.g. job/task/3), repeatable
   -format string
         steps | tokens | groups | sft | dpo | kto | atif | canonical (default "steps")
   -group-by string
@@ -1762,8 +1795,12 @@ flags:
         keep episodes with no verifier verdict in the training formats
   -licenses string
         comma-separated SPDX ids an episode's repository may carry (empty allows any)
+  -max-drop-rate float
+        fail, removing the -o file, when the length limits drop more than this share (0 to 1) of any role's steps; 1 never fails (default 1)
   -max-prompt-tokens int
         drop steps whose prompt is longer (0: no limit)
+  -max-sample-tokens int
+        drop steps whose prompt plus completion is longer, e.g. the trainer's maximum sequence length (0: no limit)
   -max-samples int
         stop after this many records (0: no limit)
   -min-reward float
@@ -1780,6 +1817,8 @@ flags:
         reasoning in completions: drop | field | keep (default "drop")
   -redact-salt string
         salt of the redaction tokens; equal secrets get equal tokens per salt
+  -role-teacher value
+        ROLE=MODEL[,MODEL...]: steps of that role, and the compactor and mailman calls of its agents, may only come from these models (globs), trainable or not; repeatable
   -roles string
         comma-separated roles to keep (worker, manager, reviewer, compactor, mailman); empty keeps all
   -seed int
@@ -1794,6 +1833,8 @@ flags:
         wire role of the system prompt (default: system)
   -table string
         canonical: write the segment table to this file instead of the head of the output
+  -tasks string
+        tasks file whose tags are given to episodes that recorded none (older runs); without it, each rollout's task.json
   -teacher string
         comma-separated non-policy models whose completions may be trained on (sft, dpo, kto); others are skipped
   -top-k int

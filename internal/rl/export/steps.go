@@ -2,6 +2,10 @@ package export
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/rl"
@@ -32,16 +36,26 @@ func eachStep(work []*workEpisode, fn func(c stepCtx) error) error {
 }
 
 // stepVerdict says why a step cannot be exported in the current format, or "" if
-// it can: role, provider terms, prompt size. Nothing is recorded; the caller that
-// leaves the step out calls noteDrop, so a step is counted once.
+// it can: role, drop rules, role teachers, provider terms, an empty completion, the
+// length limits. Drops are not recorded here; the caller that leaves the step out
+// calls noteDrop. A step that reaches the length limits is counted once in
+// Stats.CandidatesByRole, whatever the limits decide.
 //
 // RL formats only ever export the policy's own steps. sft, dpo and kto may also
 // use a teacher's completions, but only for models listed in TeacherOK; every
-// other non-policy step is skipped and counted, never exported as a target.
+// other non-policy step is skipped and counted, never exported as a target. Drop
+// rules and role teachers come first, so they apply to trainable and teacher steps
+// alike and their drops are counted under their own names.
 func (x *exporter) stepVerdict(c stepCtx) string {
 	st := c.st
 	if !x.roleMatches(st.Role) {
 		return "role_filtered"
+	}
+	if name := x.ruleMatch(c); name != "" {
+		return "rule:" + name
+	}
+	if !x.roleTeacherOK(c) {
+		return "role_teacher"
 	}
 	if !st.Trainable {
 		switch {
@@ -54,18 +68,120 @@ func (x *exporter) stepVerdict(c stepCtx) string {
 	if len(st.Completion.Turn.Blocks) == 0 {
 		return "empty_completion"
 	}
+	if !x.candidate[st] {
+		x.candidate[st] = true
+		bump(&x.stats.CandidatesByRole, st.Role, 1)
+	}
+	return x.tooLong(st)
+}
+
+// Length drop reasons.
+const (
+	reasonPromptTooLong = "prompt_too_long"
+	reasonSampleTooLong = "sample_too_long"
+)
+
+// tooLong names the length limit a step exceeds, or "": MaxPromptTokens on the
+// recorded prompt size, then MaxSampleTokens on sampleTokens. A step whose size was
+// not recorded (0) is never too long.
+func (x *exporter) tooLong(st *rl.Step) string {
 	if x.o.MaxPromptTokens > 0 && st.Prompt.Tokens > x.o.MaxPromptTokens {
-		return "prompt_too_long"
+		return reasonPromptTooLong
+	}
+	if x.o.MaxSampleTokens > 0 && x.sampleTokens(st) > x.o.MaxSampleTokens {
+		return reasonSampleTooLong
 	}
 	return ""
 }
 
-// noteDrop records that a step was left out and why.
+// sampleTokens is the length of the sample a step becomes: in the tokens format,
+// the ids of its trace when it has one (prompt and response ids exactly as
+// exported); otherwise the recorded prompt size plus the output tokens, less the
+// reasoning tokens when Reasoning drops reasoning from the completion.
+func (x *exporter) sampleTokens(st *rl.Step) int {
+	if tr := st.Tokens; x.o.Format == FormatTokens && tr != nil && len(tr.PromptIDs) > 0 {
+		return len(tr.PromptIDs) + len(tr.CompletionIDs)
+	}
+	n := st.Prompt.Tokens + st.Usage.OutputTokens
+	if x.o.Reasoning == "drop" {
+		n -= st.Usage.ReasoningTokens
+	}
+	return n
+}
+
+// cutLong drops the trailing steps of a chain that exceed the length limits. A
+// conversation rendered from a chain is its last step's prompt and completion, so
+// it then fits the limits too. Prompts of one segment only grow, so the steps that
+// are too long are normally a tail of the chain and nothing else is lost.
+func (x *exporter) cutLong(unit []stepCtx) []stepCtx {
+	end := len(unit)
+	for end > 0 && x.tooLong(unit[end-1].st) != "" {
+		end--
+	}
+	return unit[:end]
+}
+
+// noteDrop records that a step was left out and why: in Drops on every call, and
+// in DroppedByRole once per step.
 func (x *exporter) noteDrop(c stepCtx, reason string) {
 	x.stats.drop("step:" + reason)
 	if reason == "teacher_not_ok" {
 		bump(&x.stats.TeacherSkipped, c.st.Model, 1)
 	}
+	if x.noted[c.st] {
+		return
+	}
+	x.noted[c.st] = true
+	if x.stats.DroppedByRole == nil {
+		x.stats.DroppedByRole = map[string]map[string]int{}
+	}
+	m := x.stats.DroppedByRole[c.st.Role]
+	bump(&m, reason, 1)
+	x.stats.DroppedByRole[c.st.Role] = m
+}
+
+// LengthDropRates returns, for each role with candidate steps, the share of them
+// that the length limits (MaxPromptTokens, MaxSampleTokens) dropped.
+func (s Stats) LengthDropRates() map[string]float64 {
+	out := map[string]float64{}
+	for role, n := range s.CandidatesByRole {
+		if n <= 0 {
+			continue
+		}
+		d := s.DroppedByRole[role]
+		out[role] = float64(d[reasonPromptTooLong]+d[reasonSampleTooLong]) / float64(n)
+	}
+	return out
+}
+
+// ErrDropRate is returned by CheckLengthDropRate when the length limits dropped
+// too large a share of some role's steps.
+var ErrDropRate = errors.New("export: too many steps dropped for length")
+
+// CheckLengthDropRate fails, naming every offending role in order, when the
+// length limits dropped more than max (a fraction in [0, 1]) of the candidate
+// steps of any role. max >= 1 never fails; 0 fails on any length drop.
+func (s Stats) CheckLengthDropRate(max float64) error {
+	if max >= 1 {
+		return nil
+	}
+	rates := s.LengthDropRates()
+	roles := make([]string, 0, len(rates))
+	for r := range rates {
+		roles = append(roles, r)
+	}
+	sort.Strings(roles)
+	var bad []string
+	for _, r := range roles {
+		if rates[r] > max {
+			d := s.DroppedByRole[r]
+			bad = append(bad, fmt.Sprintf("%s: %d of %d steps (%.1f%%)", r, d[reasonPromptTooLong]+d[reasonSampleTooLong], s.CandidatesByRole[r], 100*rates[r]))
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: more than %.1f%% of a role's steps exceed the length limits: %s", ErrDropRate, 100*max, strings.Join(bad, "; "))
 }
 
 // selectStep is stepVerdict plus recording, for formats whose unit is one step.

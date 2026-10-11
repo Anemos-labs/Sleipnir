@@ -7,6 +7,34 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- RL tasks can give paths to roles: `team.owns` maps a role to globs (the
+  syntax of `verifier.protected`) that only agents of that role may write in a
+  swarm. The write guard refuses another agent's write to an owned path, the
+  manager's included, with a tool error that names the owning role and says to
+  hand the work to it; it counts as a scope error (`error_kind` `scope`, so in
+  the `scope_violations` signal), raises an alert and is logged as a `lease`
+  event of the new action `owner`. In an isolated run the merge queue also
+  refuses a submission that changed such a path. `taskgen composite` gives a
+  composite whose solution changes a user-interface file
+  `"owns": {"frontend": [...]}`. The refusal, its alert and the merge queue's
+  bounce are new prompt content only for a task that sets `team.owns`; without
+  it no prompt byte changes. Task files without the field are read as before,
+  and readers of the log that ignore unknown lease actions are unaffected.
+- Pause RL rollouts during outages of the policy endpoint instead of failing
+  them. A rollout's agents wait out a 5xx, a 429, a refused or reset
+  connection and a request that gets no response, for up to
+  `--outage-patience` (default 3h) per outage, and the rollout's wall clock
+  (`budget.wall_s`, `--max-wall`) stops while the endpoint is down; an attempt
+  whose outages add up to `--max-outage-pause` (default 3h) ends as an infra
+  failure that is not retried. A negative value restores the old behaviour of
+  either: no waiting (rollouts failed after the six attempts every request
+  gets), or a clock that runs through outages. Episodes, summary results and
+  `ledger.jsonl` gain `active_wall_ms` and `paused_ms`, `summary.json` a total
+  `paused_ms`, `manifest.json` both settings; the rollout's log records each
+  outage as `rl.outage` events and the progress stream announces one that
+  lasts half a minute as `rollout.outage`. An agent's outage patience now
+  counts the time since a request first failed rather than the sum of the
+  waits between its attempts. Prompt and tool-schema bytes are unchanged.
 - Keep a provider key from the environment in use when a key is also stored.
   A key that `harden.MoveKeys` took out of the environment at start is no
   longer replaced by the one `sleipnir login` stored, as documented: the

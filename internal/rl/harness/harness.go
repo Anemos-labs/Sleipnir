@@ -21,6 +21,10 @@
 //     agent edit inside its workspace and run the usual build and test tooling.
 //   - Budgets are hard limits: steps and requests end the run as a normal
 //     "budget" outcome; wall-clock is enforced by the runner through ctx.
+//   - An outage of the policy endpoint pauses the run instead of failing it: the
+//     agents wait it out (env.RunSpec.OutagePatience), and every model call
+//     reports outages to the runner's clock (env.RunSpec.Clock), which does not
+//     count them against the wall budget.
 package harness
 
 import (
@@ -118,6 +122,9 @@ func (h *Harness) Run(ctx context.Context, spec env.RunSpec) (env.RunResult, err
 	if err != nil {
 		return env.RunResult{}, env.Infra("policy", err)
 	}
+	// Every model of the rollout, the policy's and the roles', reports its outages to the runner's clock.
+	watch := &outageWatch{clock: spec.Clock}
+	prov = watch.wrap(prov)
 	if h.RateLimit != nil {
 		prov = &paced{Provider: prov, limit: h.RateLimit}
 	}
@@ -130,11 +137,14 @@ func (h *Harness) Run(ctx context.Context, spec env.RunSpec) (env.RunResult, err
 	if err != nil {
 		return env.RunResult{}, env.Infra("task", err)
 	}
+	opts.WrapProvider = watch.wrap
 	sess, err := session.New(ctx, opts)
 	if err != nil {
 		return env.RunResult{}, env.Infra("session", err)
 	}
+	watch.attach(sess.Log)
 	res, runErr := sess.Run(ctx, spec.Task.Prompt)
+	watch.attach(nil) // a request still returning must not write to a log that is being closed
 	// The runner appends the outcome events to the same log afterwards, so the log
 	// has to be closed before this function returns.
 	if err := sess.Close(); err != nil {
@@ -228,9 +238,15 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 	}
 	params, _ := samplingParams(spec.Policy.Sampling)
 	o.Params = params
-	// A rollout does not wait out an endpoint that is down: the runner repeats a rollout that ended for that reason, whole and at no
-	// cost to the statistics, and a wait inside it would spend the run's own clock and end it as a budget episode.
-	o.OutagePatience = -1
+	// A rollout waits out an endpoint that is down, whether it says so (a 5xx, a 429) or answers nothing (a refused or reset
+	// connection, no response in time): the endpoint is the one the run has been using, so silence is an outage and not a wrong
+	// address. The runner's clock stops meanwhile (spec.Clock), so the wait costs the rollout none of its wall budget. Without a
+	// patience the agents give up after the usual attempts, and the runner repeats the rollout whole.
+	if spec.OutagePatience > 0 {
+		o.OutagePatience, o.WaitUnreachable = spec.OutagePatience, true
+	} else {
+		o.OutagePatience = -1
+	}
 	if !spec.Single && (spec.Swarm || task.Team.Mode == "swarm") {
 		o.Swarm = true
 		// A team size counts workers (`--swarm N` and `--mode swarm:N` are N workers and a manager, and a composite
@@ -244,9 +260,39 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 			return o, err
 		}
 		o.Roles = roles
+		own, err := ownersFor(task.Team, roles)
+		if err != nil {
+			return o, err
+		}
+		if own != nil {
+			o.Owners = own
+		}
 		o.Verify = visibleVerify(task)
 	}
 	return o, nil
+}
+
+// ownersFor compiles the task's team.owns for the swarm (nil when it owns
+// nothing). Every owning role must be one of the team's roles: roles, or every
+// built-in role when roles is nil.
+func ownersFor(t rl.Team, roles swarm.Roles) (*env.Ownership, error) {
+	own, err := env.CompileOwnership(t.Owns)
+	if err != nil || own == nil {
+		return nil, err
+	}
+	if roles == nil {
+		roles = swarm.BuiltinRoles()
+	}
+	for _, r := range own.Roles() {
+		role, ok := roles[r]
+		switch {
+		case !ok:
+			return nil, fmt.Errorf("task team.owns names role %q, which is not in the team (%s)", r, strings.Join(roles.Names(), ", "))
+		case r == "manager" || role.ReadOnly:
+			return nil, fmt.Errorf("task team.owns names role %q, which does not write files", r)
+		}
+	}
+	return own, nil
 }
 
 // hostOf is the host of a URL, never its credentials or path.
@@ -521,10 +567,11 @@ func (l *limited) Do(ctx context.Context, req *provider.Request, on func(provide
 }
 
 // unanswered reports whether a request failed in a way the agent repeats it for: the endpoint could not be
-// reached, timed out, refused for rate, or failed (the kinds that say nothing about the policy, see isInfra).
+// reached, timed out, refused for rate, or failed (the kinds that say nothing about the policy, see isInfra),
+// or went silent during an outage the agent waits out.
 func unanswered(err error) bool {
 	var pe *provider.Error
-	return errors.As(err, &pe) && pe.Retryable()
+	return errors.As(err, &pe) && (pe.Retryable() || pe.Outage() != provider.NotOutage)
 }
 
 // exhausted atomically reports whether the request limit has been reached.

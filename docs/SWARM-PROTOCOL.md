@@ -378,6 +378,12 @@ Layered, cheapest first:
    report (files, hunks) returned to the worker whose work conflicted, verify command after each merge, rollback on
    failure. In that mode leases become advisory and the merge queue settles overlaps; section 14 is the whole design.
 6. **Role gates**: reviewers and scouts cannot write; the engine denies it.
+7. **Role-owned paths** (optional; an RL task's `team.owns`, `swarm.Deps.Owners`): a path owned by roles is written only
+   by agents of those roles. The lease guard refuses another agent's write, the manager's included, before scope and
+   leases are considered, with a message naming the owning role and how to hand the work to it, a fixed-text alert and
+   a `lease` event of action `owner`. The guard sees the file tools only: a shell command's writes to an owned path
+   are not checked in a shared tree. In an isolated run the merge queue also refuses a submission that changed a path
+   another role owns, whichever tool changed it, and the worker is told to revert those files.
 
 ## 8. The hot view and the governor
 
@@ -421,7 +427,7 @@ an instruction.
 | worker stops (crash, panic, provider error, step or budget limit) | its task returns to `todo` (or `failed` after 3 attempts), leases are released, the manager is told in one line; a panic anywhere on the worker's goroutines is contained (the process, the manager and the other workers carry on) |
 | cancelled from outside (Ctrl-C, shutdown, the manager cancelled) | workers are stopped with it; their tasks return to `todo`, no attempt is counted, no notice is sent |
 | stuck worker | watchdog: no model or tool event for 10 minutes -> alert; at 20 minutes the run is cancelled and its task requeued (attempt counted); a run that ignores the cancel for 30 more seconds is abandoned: the worker is retired and its goroutine left to finish alone. A worker that is waiting for the person to answer a question (an approval prompt, `Swarm.Asking`) is stopped the same way, but the alert and the manager's line name the question, because nobody is at fault in the worker |
-| provider outage / 429 / 5xx | retry with backoff inside the request: six attempts, and then, for an endpoint that answered with a status of 500 or more or with 429, more of them every half minute until the waits add up to five minutes (a worker that said nothing for ten is not stuck: each notice counts as a sign of life); the governor slows the whole swarm. Only then does the run end, and the task goes back to the board with an attempt counted |
+| provider outage / 429 / 5xx | retry with backoff inside the request: six attempts, and then, for an endpoint that answered with a status of 500 or more or with 429, more of them every half minute until five minutes have passed since the request first failed (a worker that said nothing for ten is not stuck: each notice counts as a sign of life); the governor slows the whole swarm. Only then does the run end, and the task goes back to the board with an attempt counted |
 | swarm budget spent | no request is admitted, running workers are stopped, the manager is told once |
 | manager finishes | a batch run holds it until the board is settled (section 4); when the bound is reached the run ends and names what was left. In an interactive session workers legitimately outlive the turn and finished work wakes the manager (section 13) |
 | shutdown | agents are cancelled and awaited for at most 10 s; nothing new starts afterwards |
@@ -463,7 +469,7 @@ submission, while submitted work and newer task assignments remain intact.
 
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
-release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
+owner, overlap, release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
 `swarm.wake`/`swarm.wake.paused` (waking an idle manager), `swarm.wake_limit` (peer mail stopped waking a worker),
 `swarm.stall` (a named stall raised or cleared, section 10), `swarm.handover` (a handover's `begin`, `done` or `abort`,
 section 6), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman

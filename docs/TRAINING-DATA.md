@@ -55,6 +55,7 @@ lease operation. RL adds these fields (all content-addressed blobs; unique text 
 | `outcome` | `kind` (`verifier`, `review`, `human`, `protocol`), `score`, `pass`, `detail` (blob), `verifier_version` | reward inputs |
 | `board.op` | `closure` (`{kind, target}` on done and failed tasks), `blocked_on`; on a handover, `from` and `assignment_closure` | typed task outcomes, counted in `outcome.closures` |
 | `swarm.stall` | `action` (`raise`, `clear`), `kind`, `task`, `agent`, `notify`, `detail` | named coordination stalls |
+| `rl.outage` | `phase` (`start`: `kind`, `status`, `class` (`answered`, `unanswered`), `error`; `end`: `outage_ms`), `active_ms`, `paused_ms` | when the policy endpoint was down and the rollout's wall clock stood still (3.3) |
 
 **Manifest.** A prompt is stored as a manifest of blob hashes: `tools` (one blob, identical for every agent), the
 `system` blocks, and the messages. Because prompts are append-only between rebases, messages are delta-encoded
@@ -81,6 +82,7 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
  "setup": ["go mod download"],       // run once per task snapshot, result cached
  "prompt": "Requests with an encoded slash in the path 404. Fix it.",
  "team": {"mode": "single"},         // or {"mode":"swarm","agents":6,"roles":["backend","tester"]}: 6 workers and a manager
+                                     // swarm only: "owns": {"frontend": ["*.css", "web/"]} (paths only that role writes)
  "verifier": {
    "cmd": "go test ./... -run 'TestEncodedSlash|TestRoute' -count=1",
    "timeout_s": 300,
@@ -98,6 +100,20 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 * **Isolation.** Each rollout gets a fresh worktree (or a copy when the repo is not git) and its own event log
   directory. The verifier runs in a *separate clean checkout* with the agent's diff applied minus protected paths,
   plus the hidden files, so tampering with tests or the verifier has no effect (and is flagged).
+* **Role-owned paths.** `team.owns` maps a role to globs (the syntax of `protected`) that only agents of that role may
+  write, so that a team whose roles run on different models keeps each kind of work with the model chosen for it. The
+  swarm's write guard refuses a file tool's write to an owned path by any other agent, the manager included, with a
+  tool error that names the owning role and says to hand the work to it ("web/app.css belongs to the frontend role:
+  only a frontend worker may change it. ..."); the refusal counts as a scope violation (`error_kind` `scope`), is
+  logged as a `lease` event of action `owner` and raises an alert. A path several roles own may be written by any of
+  them. Validation requires a swarm team, roles other than the manager that are in `team.roles` when the task lists
+  them, at least one path per role and valid globs; a rollout also refuses an owning role the team does not have or
+  that cannot write. A shell command's writes are not checked in a shared tree; with `swarm.isolation` `worktree` the
+  merge queue refuses a submission that changed a path another role owns, whichever tool changed it. A run with a
+  single agent (`--mode single`) ignores `team.owns`. `taskgen composite` gives a composite whose reference solution
+  changes a user-interface file (a path the export's `edits-ui` condition counts as UI work; test files do not count)
+  `"owns": {"frontend": [...]}` with globs covering every such path (`*.css`, `web/` and the like), and adds `frontend`
+  to `team.roles` when the task lists roles without it.
 * **Answer checks.** `verifier.expect` judges the agent's final message, alone (no `cmd`) or together with a command:
   `{"contains": ["..."], "regex": "<RE2>", "fold": true}`. Every `contains` string must occur in the answer; the score
   is the fraction that do. `regex` must match the answer with surrounding white space trimmed (`^` and `$` anchor at the
@@ -116,8 +132,8 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 * **Budgets** stop runaway episodes; a stop is an outcome (`budget_exceeded`) and is penalised, not silently
   dropped. `context_window` may be set low (for example 32k) to force frequent compaction and so generate dense
   compaction data.
-* **Infra errors** (setup failure, verifier crash, provider outage) mark the episode `infra_error`; exporters drop
-  such episodes by default so noise is not learned.
+* **Infra errors** (setup failure, verifier crash, a provider outage longer than the rollout may wait, see 3.3) mark
+  the episode `infra_error`; exporters drop such episodes by default so noise is not learned.
 
 ### 3.2 Task generators (`sleipnir rl taskgen`)
 
@@ -180,6 +196,22 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets
   (a stop is an outcome: `budget`), wall-clock is enforced by the runner, and infrastructure failures are retried and
   never become episodes.
+* **Outages pause a rollout instead of failing it.** A failure of the policy endpoint that waiting cures (a status of
+  500 or more, 429, a refused or reset connection, a connection cut mid-stream, no response within the client's
+  timeouts) starts an outage; the next answer from any model of the rollout ends it. Meanwhile the agents repeat the
+  request, at most half a minute apart, and the rollout's wall clock (`budget.wall_s`, `--max-wall`) stops: only the
+  time the endpoint was up counts against it. A request the endpoint refused (400, 401, 403, 404, 422, a prompt over
+  the context window) and a misaddressed endpoint (a host name that does not resolve, a certificate that is not
+  accepted) are not outages. Two limits bound the wait: `--outage-patience` (default 3h) is how long one outage may
+  last before the agent gives up, which ends the attempt as an infra failure that the runner retries
+  (`--infra-retries`); `--max-outage-pause` (default 3h) is how much outage one attempt sits out in all, after which it
+  ends as an infra failure that is not retried (a later run into the same `--out` reruns it). A negative value turns
+  either off: no waiting, or a wall clock that runs through outages. Each outage is recorded in the rollout's
+  `events.jsonl` as `rl.outage` events (`phase` `start`, with the failure's `kind`, `status` and `class`, and `end`,
+  with `outage_ms`), reported on the progress stream as `rollout.outage` (`status` `down` or `up`), and summed per
+  rollout as `active_wall_ms` (what counted against the budget) and `paused_ms` in the episode's `cost`, the summary's
+  results and `ledger.jsonl`; `summary.json` adds up `paused_ms` over the run, and `manifest.json` records both
+  settings (`outage_patience_ms`, `max_outage_pause_ms`, -1 when off). `wall_ms` stays the whole span of the run.
 * Output: `runs/r001/<task>/<sample>/` with `events.jsonl`, `blobs/`, `episode.json` (canonical trajectory with
   rewards), `diff.patch`, `verifier.log`; plus `runs/r001/manifest.json` and `summary.json` (pass rate, cost,
   per-role stats). Rerunning into the same directory resumes: finished rollouts are skipped.
@@ -202,14 +234,17 @@ machine also needs `--allow-insecure-http`, on `rl serve` as on `rl rollout` and
 
 ```
 Episode { id, task_id, group, sample, policy{model, endpoint, checkpoint, sampling}, harness{version, renderer,
-          config_hash, roles, agents}, env{repo, commit, image, limits}, agents[], edges[], outcome, reward,
+          config_hash, roles, agents}, env{repo, commit, image, limits, tags}, agents[], edges[], outcome, reward,
           flags[], cost{actual, repriced}, provenance{license, consent, teacher} }
 Agent   { id, role, parent, steps[], reward }
-Step    { id, kind, epoch, segment, prompt(manifest ref), completion, tokens?, usage, cache, latency_ms,
-          observations[], wire_hash, reward?, advantage? }
+Step    { id, kind, role, model, provider?, epoch, segment, prompt(manifest ref), completion, tokens?, usage, cache,
+          latency_ms, observations[], wire_hash, reward?, advantage? }
 Edge    { kind: spawn | mail | compact | promote | lease | board, from, to, ref }
 ```
 
+* `env.tags` are the task's tags as the rollout recorded them; `provider` is the upstream that served the call, as
+  the gateway named it in the response (absent when it did not). Both are optional, so older episodes still load;
+  `rl export` gives an episode without tags those of its task (section 7.2).
 * `outcome.closures` counts each task's final typed closure as `status:kind` (`done:verified`,
   `failed:superseded`) and each handed-over assignment as `handed_off`; a reopened task counts only by how it
   finally closed.
@@ -341,7 +376,8 @@ Common flags: `--roles worker,manager,compactor`, `--min-reward`, `--top-k N`, `
 `--pair reward|best-worst` (dpo; both in section 7.1), `--advantage grpo|rloo|broadcast|anchor|none`
 (default: grpo for steps, tokens and groups), `--group-by task|task+policy|group`, `--keep-flagged` (flagged episodes are
 dropped by default), `--keep-flat`, `--keep-weak`, `--no-redact` (redaction is on by default), `--redact-salt`,
-`--teacher MODEL,...` (provider-terms filter), `--licenses`, `--max-prompt-tokens`, `--max-samples`,
+`--teacher MODEL,...` (provider-terms filter), `--licenses`, `--max-prompt-tokens`, `--max-sample-tokens`,
+`--max-drop-rate`, `--drop`, `--role-teacher`, `--exclude`, `--tasks` (section 7.2), `--max-samples`,
 `--split train:0.9,val:0.1` (by repository), `--seed`, `--pack` (pack a segment into one token sequence when its traces
 chain), `--reasoning drop|field|keep`, `--stats FILE`. Output files are 0600. Start from these defaults: an exporter that
 keeps everything exports infra failures, truncated runs and reward-hacked episodes.
@@ -430,6 +466,75 @@ sleipnir rl export runs/r1 --format dpo --pair best-worst -o dpo.jsonl
 sleipnir rl export runs/r1 --format groups --advantage grpo -o groups.jsonl
 ```
 
+## 7.2 Leaving data out: drop rules, exclusions, role teachers, length
+
+Every filter below is counted in the export statistics (`--stats FILE`, and the summary `rl export` prints), so nothing
+is left out silently.
+
+**Drop rules** (`--drop RULE`, repeatable) remove steps from the training formats (steps, tokens, groups, sft, dpo,
+kto), trainable and teacher steps alike, before the provider-terms filter. A dropped step counts as
+`step:rule:<name>`; it is never a training target: in a conversation format (groups, packed sft) it stays context with
+no weight, and no dpo pair is formed with it on either side (the pair is made from the remaining candidates, or not at
+all). canonical and atif are archives and keep every step. A rule is a preset name or conditions separated by `;`:
+
+```
+--drop ds-frontend
+--drop 'name=no-ds-docs;models=*deepseek*;roles=docs'
+--drop 'name=impcc-ui;providers=ImpCC;edits-ui'
+```
+
+| Condition | Matches |
+|---|---|
+| `models=GLOB,...` | the step's model |
+| `roles=GLOB,...` | the step's role or the role of the agent that made the call (so `frontend` covers a frontend agent's compactor and mailman calls) |
+| `tags=GLOB,...` | any of the episode's task tags (`env.tags`) |
+| `task-ids=GLOB,...` | the episode's task id |
+| `providers=GLOB,...` | the upstream that served the call (`provider`); a call without one matches only `*` |
+| `edits-ui` | the step's tool calls write or edit a user-interface file (below) |
+| `name=NAME` | (required) the name the drops are counted under |
+
+A rule matches a step when every condition it sets holds; a list holds when any of its patterns matches. Patterns
+ignore case; `*` matches any run of characters, `/` included (`*deepseek*` matches `deepseek/deepseek-v4.1-flash`), and
+`?` one character. A rule must set at least one condition.
+
+`edits-ui` reads the calls of the file tools `write` and `edit` (their `path` or `file_path`) and `apply_patch` (every
+`*** Add File:`, `*** Update File:`, `*** Delete File:` and `*** Move to:` path), in the completion and in the recorded
+observations; arguments cut off mid-call are searched for a `path`. Shell commands are not inspected. A path is UI work
+(`rl.IsUIPath`) when its extension is `.html`, `.htm`, `.css`, `.scss`, `.sass`, `.less`, `.jsx`, `.tsx`, `.vue`,
+`.svelte` or `.astro`, or when one of its directories is named `templates`, `static`, `public`, `web`, `ui`,
+`frontend`, `components` or `styles` (case ignored).
+
+The preset `ds-frontend` removes every step a deepseek model wrote doing front-end or visual work: model `*deepseek*`
+and any of role `frontend`, a task tag `frontend`, `ui`, `design`, `frontend_correct` or `frontend_design`, or
+`edits-ui`. It is three rules named `ds-frontend`, one per alternative.
+
+**Task tags of older runs.** Rules on tags need `env.tags`. An episode recorded without them gets its task's tags at
+export: from `--tasks tasks.jsonl` when the file lists the task, else from the `task.json` stored with the rollout.
+
+**Role teachers** (`--role-teacher ROLE=MODEL[,MODEL...]`, repeatable; models are globs as above) say which models a
+role may learn from. A step whose role, or whose agent's role, has an entry is dropped (`step:role_teacher`) unless its
+model matches; this holds for trainable steps too, so `--role-teacher frontend=claude-*` keeps a deepseek policy's own
+frontend steps, and the compactor calls of its frontend agents, out of the data. When both the step's role and its
+agent's role have entries, the model must satisfy both.
+
+**Exclusion lists** (`--exclude FILE`, repeatable) remove whole rollouts from every format, archives included
+(`episode:excluded`): corrupt runs, rollouts whose task leaked. One rollout per line; blank lines and `#` comments are
+ignored. A line names a sample directory: absolute, relative to the current directory, relative to the parent of the
+path given to `rl export` (`deepseek_deepseek-v4.1-flash/job/task/3` when exporting `runs/deepseek_deepseek-v4.1-flash`),
+relative to that path itself, or as the run directory's name and the episode id (`job/task/3`). A bare episode id
+(`task/3`) names a rollout only when the path given is the run directory itself. Entries that match no rollout are
+reported.
+
+**Length.** `--max-prompt-tokens N` drops steps whose prompt is longer than N (`step:prompt_too_long`);
+`--max-sample-tokens N` drops steps whose prompt plus completion is longer (`step:sample_too_long`), where the completion
+counts its reasoning only when `--reasoning` exports it, and the tokens format measures a step with a token trace by its
+ids. Set `--max-sample-tokens` to the trainer's maximum sequence length so the trainer never truncates or skips a
+sample on its own. A conversation (a groups trajectory, a packed sft record) loses the trailing steps that are too
+long, so it fits as well. The statistics count every step drop by role and reason (`dropped_by_role`) and, by role, the
+steps the limits decided on (`candidates_by_role`); the summary prints `dropped for length, by role: worker=3/120
+(2.5%)`. `--max-drop-rate F` fails the export, removing the `-o` file, when the limits dropped more than the share F of
+any role's steps (default 1: never); the statistics file is still written.
+
 ## 8. Governance and data quality
 
 * **Raw logs are private.** The event log and blobs hold everything the agent saw, including any secret a tool
@@ -441,7 +546,8 @@ sleipnir rl export runs/r1 --format groups --advantage grpo -o groups.jsonl
   home-directory paths. Runs at export time over prompts, completions and observations.
 * **Provider terms.** Episodes record which model produced each completion and whether it is a teacher. Exports
   refuse teacher outputs unless the model is listed in `--teacher`. Do not train competing models on outputs whose
-  terms forbid it.
+  terms forbid it. Drop rules and role teachers (section 7.2) narrow this further by role, task, served provider or
+  the kind of work, for trainable steps too.
 * **Licences and consent.** The repo licence and any consent flag travel with every record; `--licenses` filters.
 * **Contamination.** Task splits by repo/date; hidden verifier files never appear in prompts; a scanner flags
   episodes whose transcript contains verifier content or benchmark strings.

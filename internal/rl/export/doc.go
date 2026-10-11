@@ -26,21 +26,40 @@
 //
 // Export applies, in this order:
 //
-//  1. drop episodes carrying a hard flag (rl.HardFlag: infra_error, truncated,
+//  1. drop the episodes the caller excluded (Source.Excluded, in every format),
+//     then episodes carrying a hard flag (rl.HardFlag: infra_error, truncated,
 //     replay_mismatch, contaminated, hack:*), and for the training formats
 //     weak_label episodes unless KeepWeak. token_mismatch counts only for the
-//     tokens format. DropFlagged=false disables all of it.
+//     tokens format. DropFlagged=false disables the flag and weak-label drops.
 //  2. the Advantage hook, on clones of the kept episodes (the caller's episodes
 //     are never modified);
 //  3. drop zero-variance groups (RL formats: steps, tokens, groups) unless KeepFlat:
 //     a group whose rewards are equal for every role, with no non-zero advantage,
 //     teaches nothing;
 //  4. the licence allow-list (Licenses);
-//  5. per-step filters: Roles, then the provider-terms rule (below), then
-//     MaxPromptTokens;
+//  5. per-step filters of the training formats: Roles, then the drop rules (Drop),
+//     then the role teachers (RoleTeachers), then the provider-terms rule (below),
+//     then the length limits (MaxPromptTokens, MaxSampleTokens);
 //  6. redaction of every string (prompts, tools, completions, tool arguments,
 //     observations);
 //  7. split assignment (by repository) and the MaxSamples cap.
+//
+// Drop rules. A DropRule removes the steps it matches by model, role (the step's
+// or its agent's), task tag, task id, served provider and whether the step writes
+// or edits a UI file (rl.IsUIPath); see DropRule for the matching. Rules and role
+// teachers act on trainable and teacher steps alike, before the provider-terms
+// rule, and count as step:rule:<name> and step:role_teacher. A step they drop is
+// never a training target: in the conversation formats (groups, packed sft) it
+// stays context with no weight, and no preference pair has it on either side. The
+// preset ds-frontend (Preset) drops every step a deepseek model wrote doing
+// front-end work.
+//
+// Length. MaxPromptTokens and MaxSampleTokens drop the steps that exceed them
+// (step:prompt_too_long, step:sample_too_long) and cut a conversation off before
+// its trailing steps that do, so a trainer with that maximum length never has to
+// truncate or skip a record unseen. Stats.DroppedByRole counts every step drop by
+// role and reason, Stats.CandidatesByRole the steps the limits decided on, and
+// Stats.CheckLengthDropRate fails when they dropped too large a share of a role.
 //
 // Provider terms. A step is trainable only if its model is the policy under
 // training. The RL formats export trainable steps only. sft, dpo and kto may also

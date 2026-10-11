@@ -152,9 +152,13 @@ func (x *exporter) sftStep(c stepCtx) error {
 }
 
 // sftPacked writes a whole segment as one conversation: every model turn that was
-// selected gets weight 1, every other turn (teacher turns not in TeacherOK, tool
-// results, mail) weight 0.
+// selected gets weight 1, every other turn (teacher turns not in TeacherOK, steps a
+// rule dropped, tool results, mail) weight 0. Trailing steps that exceed a length
+// limit are cut off (cutLong), so the conversation fits too.
 func (x *exporter) sftPacked(unit, ok []stepCtx) error {
+	if unit = x.cutLong(unit); len(unit) == 0 {
+		return nil
+	}
 	cv, err := x.renderChain(unit, false)
 	if err != nil {
 		x.stats.drop("step:no_prompt")

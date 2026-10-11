@@ -894,6 +894,45 @@ func TestQueueEmptyAndRejectedSubmissions(t *testing.T) {
 	auto.integrationClean()
 }
 
+// Refuse is asked about every file a submission itself changed, scope or not; a file
+// it refuses rejects the submission with its reason, and files merged in from others'
+// work are not asked about.
+func TestQueueRefusesTheFilesRefuseNames(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	refuse := func(p string) string {
+		if strings.HasPrefix(p, "web/") {
+			return p + " belongs to the frontend role"
+		}
+		return ""
+	}
+	fe := e.agent("fe")
+	edit(t, fe, "web/app.css", "body {}\n")
+	if r := e.submit(fe, "fe"); !r.Merged() {
+		t.Fatalf("fe: %+v", r)
+	}
+	be := e.agent("be")
+	if _, err := be.Update(tctx(t), e.q.Tip()); err != nil {
+		t.Fatal(err)
+	}
+	edit(t, be, "api/server.go", "package api\n")
+	edit(t, be, "web/index.html", "<p>hi</p>\n")
+	r := mustSubmit(t, e.q, Submission{Tree: be, Task: "be", Refuse: refuse})
+	if r.Outcome != OutcomeRejected || r.Reason != "changed 1 file(s) it may not change: web/index.html belongs to the frontend role" {
+		t.Fatalf("refused: %+v", r)
+	}
+	if strings.Join(r.Files, ",") != "web/index.html" {
+		t.Fatalf("refused files: %v", r.Files)
+	}
+	// Without the refused file, the submission merges: web/app.css came from fe's work.
+	if err := os.Remove(filepath.Join(be.Path, "web", "index.html")); err != nil {
+		t.Fatal(err)
+	}
+	if r := mustSubmit(t, e.q, Submission{Tree: be, Task: "be", Refuse: refuse}); !r.Merged() {
+		t.Fatalf("after the revert: %+v", r)
+	}
+	e.integrationClean()
+}
+
 func TestQueueScopeJudgesOnlyTheSubmissionsOwnChanges(t *testing.T) {
 	e := newQueueEnv(t, QueueOptions{})
 	a, b := e.agent("a"), e.agent("b")

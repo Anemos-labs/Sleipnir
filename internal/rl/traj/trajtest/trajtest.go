@@ -260,7 +260,12 @@ func (a *Agent) Step(c Call) string {
 		}
 		blk := core.ToolUse(id, c.Tool, input)
 		blk.Invalid = c.Invalid
-		blk.Wire = json.RawMessage(fmt.Sprintf(`{"function":{"arguments":%s,"name":%q},"id":%q,"type":"function"}`, mustJSON(in), c.Tool, id))
+		wire, err := json.Marshal(map[string]any{ // keys in order, as the provider writes them; Go quoting (%q) is not JSON quoting
+			"function": map[string]any{"arguments": json.RawMessage(mustJSON(in)), "name": c.Tool}, "id": id, "type": "function"})
+		if err != nil {
+			panic("trajtest: " + err.Error()) // a string and a JSON text always marshal
+		}
+		blk.Wire = wire
 		blk.WireFormat = "openai-chat"
 		blocks = append(blocks, blk)
 		if stop == "" {

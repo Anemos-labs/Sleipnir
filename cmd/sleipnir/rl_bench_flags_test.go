@@ -139,8 +139,9 @@ func TestRLRolloutAgainstADeadEndpointExitsWithTempFail(t *testing.T) {
 	r := rlRun{t}
 	r.must(rlTaskgen, append([]string{"git", "--repo", repo, "-o", tasksFile, "--work-dir", work, "--id-prefix", "demo", "--tag", "go"}, shared...)...)
 	runDir := filepath.Join(dir, "runs", "dead")
+	// The agents wait an outage out (3 hours by default); a short patience makes the dead endpoint end the run quickly.
 	out, errb, err := r.do(rlRollout, append([]string{"--tasks", tasksFile, "--model", "policy-model", "--base-url", dead.URL, "--group", "2",
-		"--out", runDir, "--work-dir", work, "--infra-retries", "-1", "--max-spend-usd", "5"}, shared...)...)
+		"--out", runDir, "--work-dir", work, "--infra-retries", "-1", "--max-spend-usd", "5", "--outage-patience", "300ms"}, shared...)...)
 	var ee *exitError
 	if !errors.As(err, &ee) || ee.code != exitTempFail {
 		t.Fatalf("want exit status %d, got %v\nstdout:\n%s\nstderr:\n%s", exitTempFail, err, out, errb)
