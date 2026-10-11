@@ -220,9 +220,14 @@ func classify(text string) Kind {
 	// Concurrent ref deletion can remove an empty parent directory between Git's
 	// directory creation and lock-file creation. Retry only that lock failure;
 	// missing revisions, index paths, permissions, and expected-value conflicts
-	// keep their ordinary classifications.
+	// keep their ordinary classifications. Git words the same race "unable to
+	// create directory for <ref file>" when the parent keeps vanishing while it
+	// creates the leading directories; that message carries no reason, so a
+	// persistent cause costs only the bounded retries.
 	case strings.Contains(l, "cannot lock ref 'refs/") && strings.Contains(l, "unable to create '") &&
 		strings.Contains(l, ".lock': no such file or directory"):
+		return KindLocked
+	case strings.Contains(l, "cannot lock ref 'refs/") && strings.Contains(l, "unable to create directory for "):
 		return KindLocked
 	case worktreeAdminChanging(l):
 		return KindLocked

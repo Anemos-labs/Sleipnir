@@ -509,6 +509,8 @@ func TestErrorFormatting(t *testing.T) {
 		"error: could not lock config file .git/config: File exists":                                                                                   KindLocked,
 		"error: could not lock config file .git/config: Permission denied":                                                                             KindOther,
 		"fatal: cannot lock ref 'refs/heads/sleipnir/s/w3-60': Unable to create '/x/.git/refs/heads/sleipnir/s/w3-60.lock': No such file or directory": KindLocked,
+		"fatal: cannot lock ref 'refs/heads/sleipnir/s/w4-45': unable to create directory for /x/.git/refs/heads/sleipnir/s/w4-45":                     KindLocked,
+		"fatal: unable to create directory for /x/notes/w4":                                                                                            KindOther,
 		"fatal: cannot lock ref 'refs/heads/a': Unable to create '/x/.git/refs/heads/a.lock': Permission denied":                                       KindOther,
 		"fatal: cannot lock ref 'refs/heads/a': is at 123 but expected 456":                                                                            KindConflict,
 		"fatal: Unable to create '/x/.git/index.lock': No such file or directory":                                                                      KindNotFound,
