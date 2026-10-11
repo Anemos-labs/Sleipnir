@@ -377,8 +377,17 @@ func MinimalExtractor(runDir string, task rl.Task, sample int, group string) (*r
 			if err := json.Unmarshal(e.Data, &p); err != nil {
 				return err
 			}
+			// The breakdown is optional and described, not required: a malformed one is left out, the verdict kept.
+			var bd struct {
+				Units  map[string]rl.UnitScore `json:"units"`
+				Guards *rl.GuardScore          `json:"guards"`
+			}
+			if json.Unmarshal(e.Data, &bd) != nil {
+				bd.Units, bd.Guards = nil, nil
+			}
 			if p.Kind == "verifier" {
-				ep.Outcome.Verifier = &rl.Verdict{Kind: "verifier", Pass: p.Pass, Score: p.Score, Version: p.Version, Detail: p.Detail, Ms: p.Ms}
+				ep.Outcome.Verifier = &rl.Verdict{Kind: "verifier", Pass: p.Pass, Score: p.Score, Version: p.Version, Detail: p.Detail, Ms: p.Ms,
+					Units: bd.Units, Guards: bd.Guards}
 				ep.Outcome.Claimed = p.Claimed
 				ep.Outcome.Diff = p.Diff
 			}
