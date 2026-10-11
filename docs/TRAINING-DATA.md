@@ -229,18 +229,19 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   `-run`, node ids or `--exact` names) and a command with none in the sample is not run; `SUITE_BUDGET_S` shortens
   the deadline. The final verdict always runs the whole suite.
 
-**Sealed start states** (`--seal DIR` of `rl taskgen git` and `rl taskgen chain`, `taskgen.Seal`). A workspace holds only the start tree, but the repository a
-task names stays on disk with every later commit in it, the fix included, where an agent running as the same user can
-read it. `--seal DIR` writes the start of each task it emits as `DIR/<task id>.git`: a bare repository with one commit
-(no parent; a fixed author, committer, date and message, so the same tree always seals to the same commit id), whose
-tree is the start's tree, and no other object, in one pack. The task's `repo` names it: `repo.commit` is the sealed
-commit and `repo.path` is `<--repo-path>/<task id>.git` when `--repo-path` is given (a path relative to the directory
-the rollouts run in), else the absolute path. The commits the task came from stay in `meta` (`commit`, `parent`). A
-generator can leave paths out of the sealed tree (`taskgen.SealOptions.Remove`), so what it takes away from the start
-is nowhere on disk either. The sealed repositories travel with the tasks file, like the blob store. `rl tasks split`
-groups tasks by the repository they name, so it sees each sealed repository as a repository of its own; to keep one
-source repository's tasks in one part, select them by the tag every generator gives them, the id prefix (`rl tasks
-filter --tag <id prefix>`).
+**Sealed start states** (`--seal DIR` of `rl taskgen git` and `rl taskgen chain`, `taskgen.Seal`). A workspace holds
+only the start tree, but the repository a task names stays on disk with every later commit in it, the fix included,
+where an agent running as the same user can read it. `--seal DIR` writes the start of each task it emits as `DIR/<task
+id>.git`: a bare repository with one commit (no parent; a fixed author, committer, date and message, so the same tree
+always seals to the same commit id), whose tree is the start's tree; its one pack holds that commit and the trees and
+blobs its tree reaches, and no object outside them. The task's `repo` names it: `repo.commit` is the sealed commit and
+`repo.path` is `<--repo-path>/<task id>.git` when `--repo-path` is given (a path relative to the directory the rollouts
+run in), else the absolute path. The commits the task came from stay in `meta` (`commit`, `parent`). A generator can
+leave paths out of the sealed tree (`taskgen.SealOptions.Remove`), so what it takes away from the start is nowhere on
+disk either. The sealed repositories travel with the tasks file, like the blob store. `rl tasks split` groups tasks by
+the repository they name, so it sees each sealed repository as a repository of its own; to keep one source repository's
+tasks in one part, select them by the tag every generator gives them, the id prefix (`rl tasks filter --tag <id
+prefix>`).
 
 **Chain tasks** (`sleipnir rl taskgen chain --chains FILE [flags] REPO`, `taskgen.FromChains`). A chain is 3 to 8 pull
 requests merged one after another on first-parent history; its task asks a team for all of them, in order, over
@@ -288,7 +289,8 @@ team to write a library again from its specification, as it is at a version of t
   below its directory. The scope's size is its lines that are neither blank nor only a comment.
 * **Start state.** The reference with the scope's sources replaced and its tests removed, written to `--seal DIR`
   (default `starts/` next to the tasks file) as `DIR/<task id>.git`: one commit (no parent; a fixed author, date and
-  message) and no other object. `repo.path` names it, as `<--repo-path>/<task id>.git` when `--repo-path` is given.
+  message), holding that commit and the trees and blobs its tree reaches, and no object outside them. `repo.path` names
+  it, as `<--repo-path>/<task id>.git` when `--repo-path` is given.
   Tier `stubs` keeps the API. A Go stub keeps the package clause, every constant, variable, type and method, the
   exported functions and the unexported ones that kept code or the package's own tests use, with their doc comments;
   every body becomes `panic("not implemented")` (function literals in variables' values too), `init` and the other

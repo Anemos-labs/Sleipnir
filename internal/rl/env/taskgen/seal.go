@@ -21,8 +21,9 @@ import (
 // repository stays on disk, though, with every later commit in it (the fix of a
 // task mined from history), where an agent running as the same user can read it.
 // Seal writes the start state as a repository of its own: a bare repository with
-// one commit that holds the start tree and no other object, so a task that names
-// it carries no future and nothing a generator took away from the start.
+// one commit, holding that commit and the trees and blobs its start tree reaches
+// and no object outside them, so a task that names it carries no future and
+// nothing a generator took away from the start.
 
 // SealOptions configures Seal.
 type SealOptions struct {
