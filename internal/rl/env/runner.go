@@ -1008,7 +1008,7 @@ func (rn *run) stubEpisode(j job) *rl.Episode {
 	ep := &rl.Episode{
 		Schema: rl.SchemaEpisode, ID: fmt.Sprintf("%s/%d", t.ID, j.sample), TaskID: t.ID, Group: rn.groupID(t.ID), Sample: j.sample,
 		Policy:     rn.policyRef(),
-		Env:        rl.EnvRef{Repo: stripURLCredentials(firstNonEmpty(t.Repo.Path, t.Repo.URL)), Commit: t.Repo.Commit, Network: t.Network},
+		Env:        rl.EnvRef{Repo: stripURLCredentials(firstNonEmpty(t.Repo.Path, t.Repo.URL)), Commit: t.Repo.Commit, Network: t.Network, Tags: append([]string(nil), t.Tags...)},
 		Provenance: rl.Provenance{License: t.Repo.License},
 		StartedAt:  rn.start, EndedAt: rn.r.now().UTC(),
 	}
@@ -1074,6 +1074,9 @@ func (rn *run) finalizeEpisode(ep *rl.Episode, j job, ws *Workspace, vres *Resul
 		ep.Env.TreeHash = ws.BaseTree
 	}
 	ep.Env.Network = t.Network
+	if len(ep.Env.Tags) == 0 {
+		ep.Env.Tags = append([]string(nil), t.Tags...)
+	}
 	if ep.Provenance.License == "" {
 		ep.Provenance.License = t.Repo.License
 	}

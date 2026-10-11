@@ -122,7 +122,8 @@ func (x *exporter) writeGroups(work []*workEpisode) error {
 }
 
 // trajectoryOf renders one chain as a trajectory. Only steps that pass the step
-// filters become choices; the rest of the conversation is context.
+// filters become choices; the rest of the conversation is context. Trailing steps
+// that exceed a length limit are cut off (cutLong), so the conversation fits too.
 func (x *exporter) trajectoryOf(unit []stepCtx) (trajectory, bool, error) {
 	var sel []bool
 	anySel := false
@@ -138,6 +139,8 @@ func (x *exporter) trajectoryOf(unit []stepCtx) (trajectory, bool, error) {
 	if !anySel {
 		return trajectory{}, false, nil
 	}
+	unit = x.cutLong(unit)
+	sel = sel[:len(unit)]
 	cv, err := x.renderChain(unit, false)
 	if err != nil {
 		return trajectory{}, false, err

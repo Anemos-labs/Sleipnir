@@ -61,6 +61,10 @@ type PromptResolver interface {
 type Source struct {
 	Episode *rl.Episode
 	Prompts PromptResolver
+	// Excluded drops the episode from every format, archives included, before any
+	// other filter; it counts as "episode:excluded". The command line sets it for the
+	// rollouts its --exclude lists name (corrupt or leaked runs).
+	Excluded bool
 }
 
 // Options controls an export. The zero value exports nothing useful: Format is
@@ -122,6 +126,25 @@ type Options struct {
 	Reasoning string
 	// MaxPromptTokens drops steps whose prompt is longer (0: no limit).
 	MaxPromptTokens int
+	// MaxSampleTokens drops steps whose sample is longer than this many tokens (0: no
+	// limit): prompt plus completion, where the completion counts its reasoning only
+	// when Reasoning exports it ("field" or "keep"). In the tokens format a step with
+	// a token trace is measured by its ids instead. Set it to the trainer's maximum
+	// sequence length so no sample is truncated or skipped there unseen. In the
+	// conversation formats (groups, packed sft) a chain is cut before its first step
+	// that is too long, so the rendered conversation fits too.
+	MaxSampleTokens int
+	// Drop removes the steps any rule matches from the training formats, trainable
+	// or not (see DropRule); counted as "step:rule:<name>". A preference pair is
+	// never formed with a side that contains a dropped step. canonical and atif are
+	// archives and ignore it.
+	Drop []DropRule
+	// RoleTeachers restricts which models a role's steps may come from: a step whose
+	// role, or whose agent's role, has an entry here is dropped ("step:role_teacher")
+	// unless its model matches one of the entry's patterns (globs, as in DropRule).
+	// It applies to trainable steps too, and to the compactor and mailman calls an
+	// agent of that role makes. canonical and atif ignore it.
+	RoleTeachers map[string][]string
 	// MaxSamples stops after this many records (0: no limit).
 	MaxSamples int
 	// Split assigns whole repositories to named splits, e.g. "train:0.9,val:0.1".
@@ -177,6 +200,13 @@ type Stats struct {
 	// Teacher completions are never exported as trainable otherwise.
 	TeacherSkipped map[string]int `json:"teacher_skipped,omitempty"`
 	TeacherUsed    map[string]int `json:"teacher_used,omitempty"`
+	// DroppedByRole counts the steps left out, each once, by step role and then by
+	// reason (the reasons of Drops without "step:"). CandidatesByRole counts, by
+	// role, the steps that passed every filter before the length limits: the steps
+	// that MaxPromptTokens and MaxSampleTokens decide on, and the base of
+	// LengthDropRates.
+	DroppedByRole    map[string]map[string]int `json:"dropped_by_role,omitempty"`
+	CandidatesByRole map[string]int            `json:"candidates_by_role,omitempty"`
 	// Warnings holds the first few unexpected conditions (unresolvable prompts...).
 	Warnings []string `json:"warnings,omitempty"`
 }
@@ -223,17 +253,22 @@ type exporter struct {
 	roles     []string
 	splits    []splitBin
 
+	// noted and candidate remember the steps already counted in DroppedByRole and
+	// CandidatesByRole: some formats test a step more than once.
+	noted     map[*rl.Step]bool
+	candidate map[*rl.Step]bool
+
 	// work is the set of episodes that reached the format writers, for the
 	// episodes-kept count.
 	work []*workEpisode
 }
 
 // Export writes the selected records of srcs to w as JSON lines and returns what it
-// did. The pipeline, in order: drop infra and hard-flagged episodes (and weak
-// labels, for training formats), run the Advantage hook on clones of the kept
-// episodes, drop zero-variance groups (RL formats, unless KeepFlat), filter by
-// role, enforce the provider-terms (TeacherOK) and licence filters, redact all
-// text, assign splits and apply the caps. Output is deterministic: sources are
+// did. The pipeline, in order: drop excluded, infra and hard-flagged episodes (and
+// weak labels, for training formats), run the Advantage hook on clones of the kept
+// episodes, drop zero-variance groups (RL formats, unless KeepFlat), apply the
+// licence filter, filter steps by role, drop rules, role teachers, provider terms
+// (TeacherOK) and length, redact all text, assign splits and apply the caps. Output is deterministic: sources are
 // ordered by (group, task, sample, id) and every map is written in sorted order.
 func Export(w io.Writer, srcs []Source, o Options) (Stats, error) {
 	x, err := newExporter(w, o)
@@ -271,8 +306,18 @@ func newExporter(w io.Writer, o Options) (*exporter, error) {
 	if o.MinReward != o.MinReward || math.IsInf(o.MinReward, 0) {
 		return nil, fmt.Errorf("%w: min reward must be a finite number", ErrBadOptions)
 	}
-	if o.TopK < 0 || o.MaxSamples < 0 || o.MaxPromptTokens < 0 {
-		return nil, fmt.Errorf("%w: TopK, MaxSamples and MaxPromptTokens cannot be negative", ErrBadOptions)
+	if o.TopK < 0 || o.MaxSamples < 0 || o.MaxPromptTokens < 0 || o.MaxSampleTokens < 0 {
+		return nil, fmt.Errorf("%w: TopK, MaxSamples, MaxPromptTokens and MaxSampleTokens cannot be negative", ErrBadOptions)
+	}
+	for _, r := range o.Drop {
+		if err := r.validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadOptions, err)
+		}
+	}
+	for role, models := range o.RoleTeachers {
+		if strings.TrimSpace(role) == "" || len(models) == 0 {
+			return nil, fmt.Errorf("%w: a role-teacher entry needs a role and at least one model (role %q, models %v)", ErrBadOptions, role, models)
+		}
 	}
 	switch o.Select {
 	case "", SelectAll, SelectBest:
@@ -289,7 +334,7 @@ func newExporter(w io.Writer, o Options) (*exporter, error) {
 		return nil, fmt.Errorf("%w: %v", ErrBadOptions, err)
 	}
 	x := &exporter{o: o, out: bufio.NewWriterSize(w, 1<<20), red: o.Redactor, splits: splits,
-		teacherOK: map[string]bool{}, licenses: map[string]bool{}}
+		teacherOK: map[string]bool{}, licenses: map[string]bool{}, noted: map[*rl.Step]bool{}, candidate: map[*rl.Step]bool{}}
 	x.stats.Format = o.Format
 	for _, m := range o.TeacherOK {
 		x.teacherOK[m] = true
@@ -350,9 +395,13 @@ func (x *exporter) run(srcs []Source) error {
 	})
 	x.stats.Episodes = len(list)
 
-	// 1. infra / hard flags / weak labels.
+	// 1. the caller's exclusions, infra / hard flags / weak labels.
 	kept := list[:0:0]
 	for _, s := range list {
+		if s.Excluded {
+			x.stats.drop("episode:excluded")
+			continue
+		}
 		if reason := x.episodeDrop(s.Episode); reason != "" {
 			x.stats.drop("episode:" + reason)
 			continue
