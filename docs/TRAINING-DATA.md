@@ -223,11 +223,16 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   solution, each several times in fresh clean checkouts as verification does, and `taskgen.BuildUnits` keeps as units
   the tests that fail in every start run and pass in every reference run, grouped by Go package, Python file or Rust
   module (or a grouping the caller gives), and as guards the tests that pass in every run; flaky tests and tests that
-  fail with the reference are dropped. `SUITE_SAMPLE=N` is the progress mode for cheap, repeated scoring during a run:
-  at most N tests of each unit and N guards, the same ones every time (those with the smallest SHA-256 of their id),
-  are scored, each command gets its share of the sample in `SUITE_ARGS` (which the default commands turn into
-  `-run`, node ids or `--exact` names) and a command with none in the sample is not run; `SUITE_BUDGET_S` shortens
-  the deadline. The final verdict always runs the whole suite.
+  fail with the reference are dropped. When not one run with the reference reports a test (pytest stopping at startup
+  because its `addopts` name a plugin the environment lacks, such as `--cov` without pytest-cov, or a `conftest.py`
+  that does not import), the "nothing to score" rejection says so and quotes how the first such run's commands ended
+  (`pytest: exit 4`) and the last 1,500 bytes, from a line start, of what the scorer relayed of the failing command's
+  output; `taskgen.BuildStepUnits` does the same for the last step, or the earliest silent one after the start. The
+  quote is diagnostic text for the error and the generation report, never part of a task. `SUITE_SAMPLE=N` is the
+  progress mode for cheap, repeated scoring during a run: at most N tests of each unit and N guards, the same ones
+  every time (those with the smallest SHA-256 of their id), are scored, each command gets its share of the sample in
+  `SUITE_ARGS` (which the default commands turn into `-run`, node ids or `--exact` names) and a command with none in
+  the sample is not run; `SUITE_BUDGET_S` shortens the deadline. The final verdict always runs the whole suite.
 
 **Sealed start states** (`--seal DIR` of `rl taskgen git` and `rl taskgen chain`, `taskgen.Seal`). A workspace holds
 only the start tree, but the repository a task names stays on disk with every later commit in it, the fix included,

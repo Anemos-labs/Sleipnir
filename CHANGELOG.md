@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- When no run with the reference solution reports a single test, the
+  "nothing to score" rejection of `rl taskgen rebuild` and `rl taskgen chain`
+  says so, with how that step's first run ended (`pytest: exit 4`) and the
+  last 1,500 bytes of the output the scorer relayed: for example pytest
+  stopping at startup because its `addopts` name a plugin the environment
+  lacks. `taskgen.SuiteRecord` gains `start_no_tests` and
+  `reference_no_tests`, `taskgen.SuiteSteps` gains `no_tests`, and
+  `env.VerifyOptions` gains a `Stderr` callback. Tasks, the scorer script and
+  prompt bytes are unchanged.
 - Resume long RL rollouts from savepoints instead of starting them over
   (`--savepoint-every`, off by default): a rollout takes a session savepoint
   at that interval and captures the work tree into the sample's
