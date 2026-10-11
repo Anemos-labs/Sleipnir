@@ -1247,6 +1247,12 @@ flags:
         directory of fixtures: one subdirectory each, with task.json, start/, hidden/ and solution/
   -id string
         comma-separated fixture ids (path.Match wildcards allowed); default all
+  -max-file-bytes int
+        largest file of a fixture, in bytes (default 1 MiB)
+  -max-files int
+        most files in each of a fixture's trees (default 400; raise it for a large project fixture)
+  -max-total-bytes int
+        most bytes in each of a fixture's trees (default 8 MiB)
   -o string
         output tasks file (default "tasks.jsonl")
   -repo-path-prefix string

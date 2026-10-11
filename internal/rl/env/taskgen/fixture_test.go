@@ -3,6 +3,8 @@ package taskgen
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -175,6 +177,40 @@ func TestFromFixtureRefusesWhatIsNotAFixture(t *testing.T) {
 				t.Fatalf("err = %v, want one mentioning %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// A fixture over the default limits is refused, and builds once the limits are raised: a large project fixture (a long
+// team task over many packages) says so explicitly.
+func TestFixtureLimitsCanBeRaised(t *testing.T) {
+	root := t.TempDir()
+	dir := writeFixture(t, root, "demo-add", nil)
+	for i := 0; i < DefaultFixtureMaxFiles; i++ {
+		if err := os.WriteFile(filepath.Join(dir, "start", fmt.Sprintf("extra-%03d.txt", i)), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := FromFixture(context.Background(), dir, FixtureOptions{RepoRoot: t.TempDir(), HiddenBlobs: fixtureBlobs(t)}); err == nil ||
+		!strings.Contains(err.Error(), "more than 400 files") {
+		t.Fatalf("a fixture over the default file limit: %v", err)
+	}
+	if _, err := FromFixture(context.Background(), dir, FixtureOptions{RepoRoot: t.TempDir(), HiddenBlobs: fixtureBlobs(t), MaxFiles: 1000}); err != nil {
+		t.Fatalf("with the limit raised: %v", err)
+	}
+	if _, err := FromFixture(context.Background(), dir, FixtureOptions{RepoRoot: t.TempDir(), HiddenBlobs: fixtureBlobs(t), MaxFiles: 1000,
+		MaxTotalBytes: 100}); err == nil || !strings.Contains(err.Error(), "bytes in all") {
+		t.Fatalf("a lowered byte limit: %v", err)
+	}
+	// The largest limits still read every byte (one past the limit would overflow).
+	repos := t.TempDir()
+	if _, err := FromFixture(context.Background(), dir, FixtureOptions{RepoRoot: repos, HiddenBlobs: fixtureBlobs(t), MaxFiles: 1000,
+		MaxFileBytes: math.MaxInt, MaxTotalBytes: math.MaxInt}); err != nil {
+		t.Fatalf("the largest limits: %v", err)
+	}
+	want, _ := os.ReadFile(filepath.Join(dir, "start", "lib.sh"))
+	got, err := exec.Command("git", "-C", filepath.Join(repos, "demo-add"), "show", "HEAD:lib.sh").Output()
+	if err != nil || len(want) == 0 || string(got) != string(want) {
+		t.Fatalf("with the largest limits the start's lib.sh is %q (%v), want %q", got, err, want)
 	}
 }
 
