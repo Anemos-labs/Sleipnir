@@ -225,6 +225,56 @@ exec "$REAL" "$@"`)
 	}
 }
 
+// Git words the vanishing ref parent differently when it fails while creating the leading directories: "unable to
+// create directory for <ref file>", with no reason. That failure is retried a few times (the race clears at once),
+// never for the whole lock wait (a permission problem reads the same and does not clear), and not at all when the
+// caller does not wait for locks.
+func TestWorktreeAddRetriesVanishedRefDirectoryBriefly(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		failures  int // attempts that fail before git is let through (-1: all)
+		lockWait  time.Duration
+		attempts  int
+		succeeds  bool
+		maxLength time.Duration
+	}{
+		{name: "race", failures: 1, lockWait: time.Minute, attempts: 2, succeeds: true, maxLength: 10 * time.Second},
+		{name: "persistent", failures: -1, lockWait: time.Minute, attempts: 1 + refDirRetries, maxLength: 3 * time.Second},
+		{name: "no wait", failures: 1, lockWait: 0, attempts: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := newRepo(t)
+			gitShim, evidence := shim(t, fmt.Sprintf(`
+case " $* " in
+  *" branch --no-track -- sleipnir/s/w4-45 "*)
+    echo attempt >> "$D/attempts"
+    n=$(grep -c attempt "$D/attempts")
+    if [ %d -lt 0 ] || [ "$n" -le %d ]; then
+      echo "fatal: cannot lock ref 'refs/heads/sleipnir/s/w4-45': unable to create directory for /repo/.git/refs/heads/sleipnir/s/w4-45" >&2
+      exit 128
+    fi
+    ;;
+esac
+exec "$REAL" "$@"`, tc.failures, tc.failures))
+			r := openRepo(t, dir, WithGitPath(gitShim), WithLockWait(tc.lockWait))
+			path := filepath.Join(t.TempDir(), "worker")
+			start := time.Now()
+			err := r.WorktreeAdd(ctxT(t), WorktreeAddOptions{Path: path, Branch: "sleipnir/s/w4-45", Commit: "HEAD"})
+			took := time.Since(start)
+			attempts := strings.Count(readFile(t, filepath.Join(evidence, "attempts")), "attempt\n")
+			if attempts != tc.attempts || (err == nil) != tc.succeeds {
+				t.Fatalf("attempts=%d (want %d) error=%v", attempts, tc.attempts, err)
+			}
+			if err != nil && errors.Is(err, ErrLocked) {
+				t.Fatalf("the failure is reported as lock contention: %v", err)
+			}
+			if tc.maxLength > 0 && took > tc.maxLength {
+				t.Fatalf("took %v, want at most %v: the failure was retried for the lock wait", took, tc.maxLength)
+			}
+		})
+	}
+}
+
 // The real thing, not a planted entry: handles that add, remove and list the worktrees of one repository at
 // once (a swarm's managers, and a person's own git). Before the runner waited these moments out, three
 // seconds of it gave dozens of failures: an empty commondir being read, a commondir that vanished, the

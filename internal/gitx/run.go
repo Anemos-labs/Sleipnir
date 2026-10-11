@@ -366,10 +366,15 @@ func (s *settings) exec(ctx context.Context, c call) (*output, error) {
 	op := opName(c.args)
 	deadline := time.Now().Add(s.lockWait)
 	backoff := 25 * time.Millisecond
+	races := 0
 	for {
 		out, err := s.execOnce(ctx, c, op)
-		if err == nil || KindOf(err) != KindLocked || !time.Now().Before(deadline) {
+		race := s.lockWait > 0 && races < refDirRetries && refDirVanished(err)
+		if !race && (err == nil || KindOf(err) != KindLocked || !time.Now().Before(deadline)) {
 			return out, err
+		}
+		if race {
+			races++
 		}
 		// A retry must send the same input again. Readers we can rewind (every stdin
 		// we pass is a strings or bytes reader) are; anything else cannot be replayed,
@@ -397,6 +402,27 @@ func (s *settings) exec(ctx context.Context, c call) (*output, error) {
 			backoff *= 2
 		}
 	}
+}
+
+// refDirRetries bounds the retries of a ref lock whose leading directories git
+// could not create (refDirVanished): with the lock backoff, under 200 ms in all.
+const refDirRetries = 3
+
+// refDirVanished reports whether err is git's "cannot lock ref 'refs/...':
+// unable to create directory for <ref file>". Git prints it when the parent
+// directory of a new ref keeps vanishing while it creates the leading
+// directories, because another command deletes branches in the same namespace;
+// the next attempt then succeeds. It prints the same words for a cause that does
+// not go away (a permission), and the message does not say which, so classify
+// leaves the error KindOther and exec retries it only refDirRetries times,
+// whatever the lock wait (none when the lock wait is zero).
+func refDirVanished(err error) bool {
+	var e *Error
+	if err == nil || !errors.As(err, &e) {
+		return false
+	}
+	l := strings.ToLower(e.Stderr)
+	return strings.Contains(l, "cannot lock ref 'refs/") && strings.Contains(l, "unable to create directory for ")
 }
 
 // opName extracts a readable Git operation, including supported subcommands; args must be
