@@ -631,7 +631,8 @@ func parseUnits(raw json.RawMessage) map[string]rl.UnitScore {
 	var in map[string]struct {
 		Passed *float64 `json:"passed"`
 		Total  *float64 `json:"total"`
-		Weight *float64 `json:"weight"`
+		// Weight is raw so that an explicit null (malformed) differs from an absent weight (1).
+		Weight json.RawMessage `json:"weight"`
 	}
 	if err := json.Unmarshal(raw, &in); err != nil || len(in) == 0 || len(in) > maxScoreUnits {
 		return nil
@@ -647,8 +648,12 @@ func parseUnits(raw json.RawMessage) map[string]rl.UnitScore {
 			return nil
 		}
 		w := 1.0
-		if u.Weight != nil {
-			w = *u.Weight
+		if len(u.Weight) > 0 {
+			var f *float64
+			if json.Unmarshal(u.Weight, &f) != nil || f == nil {
+				return nil
+			}
+			w = *f
 		}
 		if math.IsNaN(w) || math.IsInf(w, 0) || w < 0 {
 			return nil

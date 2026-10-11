@@ -599,6 +599,7 @@ func TestLastLineScoreBreakdown(t *testing.T) {
 		{"string count", `{"score": 0.5, "units": {"a": {"passed": "1", "total": 2}}}`, 0.5, nil, nil},
 		{"missing total", `{"score": 0.5, "units": {"a": {"passed": 1}}}`, 0.5, nil, nil},
 		{"negative weight", `{"score": 0.5, "units": {"a": {"passed": 1, "total": 2, "weight": -1}}}`, 0.5, nil, nil},
+		{"null weight", `{"score": 0.5, "units": {"x": {"passed": 1, "total": 2, "weight": null}}}`, 0.5, nil, nil},
 		{"one bad unit drops them all", `{"score": 0.5, "units": {"a": {"passed": 1, "total": 2}, "b": {"passed": 5, "total": 2}}}`, 0.5, nil, nil},
 		{"empty unit name", `{"score": 0.5, "units": {"": {"passed": 1, "total": 2}}}`, 0.5, nil, nil},
 		{"kept above total", `{"score": 0.5, "guards": {"kept": 3, "total": 2}}`, 0.5, nil, nil},
@@ -1117,5 +1118,30 @@ func TestVerifyRejectsAnInvalidTaskAsInfra(t *testing.T) {
 	bad.Verifier.Pass = "bogus"
 	if _, err := Verify(ctxT(t), bad, w, VerifyOptions{}); err == nil || !IsInfra(err) || !strings.Contains(err.Error(), "verifier.pass") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// The minimal extractor keeps an outcome's verdict when its breakdown is
+// malformed, as the trajectory reader does: the breakdown describes the score
+// and has no say in whether the episode exists.
+func TestMinimalExtractorIgnoresAMalformedBreakdown(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := log.Emit("", events.TypeOutcome, map[string]any{"kind": "verifier", "pass": true, "score": 1, "units": "not an object", "guards": []int{1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ep, err := MinimalExtractor(dir, rl.Task{ID: "t"}, 0, "g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := ep.Outcome.Verifier
+	if v == nil || !v.Pass || v.Score != 1 || v.Units != nil || v.Guards != nil {
+		t.Fatalf("verdict %+v", v)
 	}
 }

@@ -365,23 +365,29 @@ func MinimalExtractor(runDir string, task rl.Task, sample int, group string) (*r
 			sawEnd = true
 		case events.TypeOutcome:
 			var p struct {
-				Kind    string                  `json:"kind"`
-				Pass    bool                    `json:"pass"`
-				Score   float64                 `json:"score"`
-				Version string                  `json:"version"`
-				Detail  core.Hash               `json:"detail"`
-				Ms      int64                   `json:"ms"`
-				Diff    core.Hash               `json:"diff"`
-				Claimed string                  `json:"claimed"`
-				Units   map[string]rl.UnitScore `json:"units"`
-				Guards  *rl.GuardScore          `json:"guards"`
+				Kind    string    `json:"kind"`
+				Pass    bool      `json:"pass"`
+				Score   float64   `json:"score"`
+				Version string    `json:"version"`
+				Detail  core.Hash `json:"detail"`
+				Ms      int64     `json:"ms"`
+				Diff    core.Hash `json:"diff"`
+				Claimed string    `json:"claimed"`
 			}
 			if err := json.Unmarshal(e.Data, &p); err != nil {
 				return err
 			}
+			// The breakdown is optional and described, not required: a malformed one is left out, the verdict kept.
+			var bd struct {
+				Units  map[string]rl.UnitScore `json:"units"`
+				Guards *rl.GuardScore          `json:"guards"`
+			}
+			if json.Unmarshal(e.Data, &bd) != nil {
+				bd.Units, bd.Guards = nil, nil
+			}
 			if p.Kind == "verifier" {
 				ep.Outcome.Verifier = &rl.Verdict{Kind: "verifier", Pass: p.Pass, Score: p.Score, Version: p.Version, Detail: p.Detail, Ms: p.Ms,
-					Units: p.Units, Guards: p.Guards}
+					Units: bd.Units, Guards: bd.Guards}
 				ep.Outcome.Claimed = p.Claimed
 				ep.Outcome.Diff = p.Diff
 			}

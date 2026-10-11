@@ -103,9 +103,10 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 * **Score breakdown.** The last stdout line of a `json-score` verifier may say how its score was made:
   `{"score": s, "units": {"<unit>": {"passed": n, "total": m, "weight": w}}, "guards": {"kept": k, "total": g}}`.
   A unit is a part of the work (a milestone of a test suite) of which `n` of `m` checks passed, weighing `w` (1 when
-  absent) against the other units; guards are checks that passed at the start and must keep passing. Counts are
-  integers with `n <= m` and `k <= g`, weights are finite and not negative, there are at most 1024 units with names of
-  at most 256 bytes; a `units` or `guards` value that breaks a rule is ignored whole. The breakdown is a description:
+  absent; an explicit `null` is malformed) against the other units; guards are checks that passed at the start and
+  must keep passing. Counts are integers from 0 to 2^31 with `n <= m` and `k <= g`, weights are finite and not
+  negative, there are at most 1024 units with non-empty names of at most 256 bytes; a `units` or `guards` value that
+  breaks a rule is ignored whole. The breakdown is a description:
   `score` alone decides the verdict, and a line without it is still no score line. The last run's breakdown is kept in
   the verifier's result, the outcome event, the episode's `outcome.verifier` and the run summary's results (`units`,
   `guards`), and is printed in the head of `verifier.log`.
