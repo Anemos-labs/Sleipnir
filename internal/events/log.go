@@ -511,6 +511,28 @@ func (l *Log) Flush() error {
 	return l.f.Sync()
 }
 
+// FlushedSize is Flush followed by the log file's size: every event emitted
+// before the call is durable and lies within the returned number of bytes (a
+// savepoint's truncation point, see TruncateTail).
+func (l *Log) FlushedSize() (int64, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return 0, errors.New("events: log is closed")
+	}
+	if err := l.flushBufferLocked(); err != nil {
+		return 0, err
+	}
+	if err := l.f.Sync(); err != nil {
+		return 0, err
+	}
+	fi, err := l.f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	return fi.Size(), nil
+}
+
 // Close flushes and closes the log, and stops its background flush.
 func (l *Log) Close() error {
 	l.mu.Lock()

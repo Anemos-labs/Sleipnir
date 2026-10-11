@@ -19,11 +19,16 @@ func runVerify(ctx context.Context, dir, cmd string) (string, int, error) {
 // own command sandbox (Options.ShellWrap) and environment (Options.ShellEnv)
 // apply to the done check too, since it runs code the agents wrote.
 func (s *Session) verifier() func(ctx context.Context, dir, cmd string) (string, int, error) {
-	wrap, env := s.opts.ShellWrap, s.opts.ShellEnv
-	if len(wrap) == 0 && env == nil {
+	wrap, env, b := s.opts.ShellWrap, s.opts.ShellEnv, s.barrier
+	if len(wrap) == 0 && env == nil && b == nil {
 		return runVerify
 	}
 	return func(ctx context.Context, dir, cmd string) (string, int, error) {
+		if b != nil {
+			// Tests write (caches, reports): a savepoint must not capture the tree half way.
+			b.RLock()
+			defer b.RUnlock()
+		}
 		return runVerifyIn(ctx, dir, cmd, wrap, env)
 	}
 }
