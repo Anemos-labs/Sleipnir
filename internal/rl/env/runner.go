@@ -73,11 +73,13 @@ type RunSpec struct {
 	// Env is the scrubbed environment for the agent's commands (see EnvSpec):
 	// HOME and TMPDIR private to this rollout, no credentials.
 	Env []string
-	// NetPrefix is an argv prefix that runs a command without network access
-	// (a fresh network namespace with loopback up). It is nil when the task may
-	// use the network or the host cannot isolate; the reason is in the run
-	// manifest's warnings. The harness owns the agent's shell, so applying it is
-	// the harness's job.
+	// NetPrefix is the argv prefix the agent's own commands run under
+	// (Workspaces.CommandPrefix): with confinement (--confine bwrap) a
+	// bubblewrap sandbox that sees only this rollout's workspace, otherwise a
+	// fresh network namespace with loopback up. It is nil when the task may use
+	// the network and nothing is confined, or the host cannot isolate; the
+	// reason is in the run manifest's warnings. The harness owns the agent's
+	// shell (and the swarm's done check), so applying it is the harness's job.
 	NetPrefix []string
 	// Clock is the attempt's wall clock, which stops while the policy endpoint is
 	// down. The harness reports outages to it: Down at a failure that is one
@@ -762,7 +764,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 		Agents: agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
 		Seed: SampleSeed(rn.opts.Seed, task.ID, j.sample), Budget: mergeBudget(task.Budget, rn.opts.Budget),
 		Sample: j.sample, Group: rn.groupID(task.ID), Attempt: attempt, Env: ws.Env(),
-		NetPrefix: r.Workspaces.IsolationPrefix(task), OutagePatience: r.outagePatience(),
+		NetPrefix: r.Workspaces.CommandPrefix(task, ws), OutagePatience: r.outagePatience(),
 	}
 	agentStart := r.now()
 	walled := task

@@ -93,6 +93,12 @@ type ExecPolicy struct {
 	// SLEIPNIR_ENV_RUN so stragglers that escaped the process group can be found
 	// and killed (Linux only).
 	Marker string
+	// Mounts, when set and the sandbox confines commands (Confinement), are the
+	// directories the command may use beyond the read-only view: its tree, HOME
+	// and TMPDIR. Nil runs the command unconfined.
+	Mounts *Mounts
+
+	env []string // the command's environment, set by Exec for the confinement's PATH and cache binds
 }
 
 const (
@@ -143,6 +149,7 @@ type LocalSandbox struct {
 	shell    string
 	prlimit  string
 	netIso   NetIsolation
+	confine  Confinement
 	defaults ExecPolicy
 	warnings []string
 }
@@ -157,6 +164,13 @@ type LocalSandboxOptions struct {
 	// DisableNetIsolation and DisableRlimits skip the corresponding probes.
 	DisableNetIsolation bool
 	DisableRlimits      bool
+	// Confine is the confinement mode (ConfineOff or ConfineBwrap; "" is off).
+	// ConfineBwrap fails construction where bubblewrap cannot create a sandbox:
+	// a run that asked for confinement must not quietly run without it.
+	Confine string
+	// ConfineOptions configure the confinement (protected and re-exposed
+	// directories); LookPath and Probe below are used for its probe too.
+	ConfineOptions ConfineOptions
 	// LookPath and Probe let tests substitute the host; nil means exec.LookPath
 	// and running the command with a short timeout.
 	LookPath func(string) (string, error)
@@ -191,7 +205,19 @@ func NewLocalSandbox(o LocalSandboxOptions) (*LocalSandbox, error) {
 			s.prlimit = p
 		}
 	}
-	if !o.DisableNetIsolation {
+	switch o.Confine {
+	case "", ConfineOff:
+	case ConfineBwrap:
+		co := o.ConfineOptions
+		co.LookPath, co.Probe = look, probe
+		s.confine = DetectConfinement(co)
+		if !s.confine.Available {
+			return nil, fmt.Errorf("%w: %s", ErrConfinementUnavailable, s.confine.Reason)
+		}
+	default:
+		return nil, fmt.Errorf("unknown confinement mode %q (want %s or %s)", o.Confine, ConfineOff, ConfineBwrap)
+	}
+	if !o.DisableNetIsolation && !s.confine.Available {
 		s.netIso = detectNetIsolation(look, probe)
 		if !s.netIso.Available {
 			s.warnings = append(s.warnings, "network isolation unavailable, commands of tasks with network=false run with host networking: "+s.netIso.Reason)
@@ -199,6 +225,10 @@ func NewLocalSandbox(o LocalSandboxOptions) (*LocalSandbox, error) {
 	}
 	return s, nil
 }
+
+// Confinement reports the command confinement in effect (Available false when
+// commands run unconfined).
+func (s *LocalSandbox) Confinement() Confinement { return s.confine }
 
 // Warnings lists the degradations found at construction (each is also added to
 // the ExecResult of commands that were affected).
@@ -235,6 +265,10 @@ func (s *LocalSandbox) argv(cmd string, pol ExecPolicy) (argv []string, warnings
 		if !pol.Limits.Core {
 			inner = append([]string{s.shell, "-c", `ulimit -c 0 2>/dev/null; exec "$@"`, "sleipnir-limits"}, inner...)
 		}
+	}
+	if pol.Mounts != nil && s.confine.Available {
+		// Confinement brings its own network namespace (loopback up).
+		return s.confine.argv(*pol.Mounts, pol.Network, pol.env, inner), nil
 	}
 	if pol.Network {
 		return inner, nil
@@ -282,6 +316,7 @@ func (s *LocalSandbox) Exec(ctx context.Context, dir string, env []string, cmd s
 		pol = s.defaults
 	}
 	pol = pol.withDefaults()
+	pol.env = env
 	argv, warns := s.argv(cmd, pol)
 	res := ExecResult{ExitCode: -1, Warnings: warns}
 	if err := ctx.Err(); err != nil {

@@ -504,7 +504,7 @@ func (m *Workspaces) runVerifierOnce(ctx context.Context, in verifyInput, fr fil
 
 	pol := ExecPolicy{
 		Network: task.Network, MaxOutput: maxOut, Marker: co.id,
-		Limits: m.opts.Limits, Grace: m.opts.KillGrace,
+		Limits: m.opts.Limits, Grace: m.opts.KillGrace, Mounts: co.mountsFor(in.snap),
 	}
 	env := m.commandEnv(co.home, co.tmp, task.Network, co.id)
 	defer sweepMarker(co.id)
