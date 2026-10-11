@@ -38,7 +38,7 @@ func jobEvents(h *harness) []JobEvent {
 
 // killedJobOutput is what the output of "echo hi; sleep 30" reads after the job is killed: hi, perhaps a shell notice that the sleep was
 // terminated, and the status line.
-var killedJobOutput = regexp.MustCompile(`^hi\n(?:[^\n]*Terminated[^\n]*\n)?\[job_1 killed; next offset \d+\]$`)
+var killedJobOutput = regexp.MustCompile(`^hi\n(?:[^\n]*: line \d+: \d+ Terminated(?:: \d+)? +[^\n]+\n)?\[job_1 killed; next offset \d+\]$`)
 
 func TestBackgroundJobLifecycle(t *testing.T) {
 	h := newHarness(t, Options{KillGrace: 500 * time.Millisecond})
@@ -596,6 +596,8 @@ func TestKilledJobOutputPattern(t *testing.T) {
 	for in, want := range map[string]bool{
 		"hi\n[job_1 killed; next offset 3]": true,
 		"hi\n/bin/bash: line 1: 64836 Terminated: 15          sleep 30\n[job_1 killed; next offset 61]": true,
+		"hi\nbash: line 1: 4242 Terminated   sleep 30\n[job_1 killed; next offset 40]":                  true,
+		"hi\nunexpected Terminated output\n[job_1 killed; next offset 3]":                               false,
 		"hi\nsomething else\n[job_1 killed; next offset 3]":                                             false,
 		"[job_1 killed; next offset 0]":                                                                 false,
 		"hi\n[job_1 running; next offset 3]":                                                            false,
