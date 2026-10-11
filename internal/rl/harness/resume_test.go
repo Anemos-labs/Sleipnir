@@ -107,13 +107,26 @@ func TestAnInterruptedRolloutResumesFromItsSavepoint(t *testing.T) {
 		}
 		done <- sum
 	}()
+	// Savepoints are taken from the start, so on a slow machine the first ones come before the first answer. The
+	// agent asking for its second answer means its first tool batch is in its thread; a savepoint that began before
+	// that may still be finishing, so the run is stopped after two more.
 	deadline := time.Now().Add(time.Minute)
-	for savepoints(sample) < 2 {
-		if time.Now().After(deadline) {
-			t.Fatal("no savepoint was recorded")
+	waitFor := func(what string, cond func() bool) {
+		t.Helper()
+		for !cond() {
+			if time.Now().After(deadline) {
+				t.Fatal(what)
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
+	waitFor("the agent never asked for its second answer", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(prompts) >= 2
+	})
+	after := savepoints(sample)
+	waitFor("no savepoint was recorded while the agent waited", func() bool { return savepoints(sample) >= after+2 })
 	cancel()
 	if sum := <-done; sum == nil || sum.Results[0].Status != env.StatusCancelled {
 		t.Fatalf("the first run was not interrupted: %+v", sum)
