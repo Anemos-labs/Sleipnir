@@ -32,7 +32,9 @@ import (
 // format). RecordSuite runs the same script in record mode on the start and on
 // the reference solution, and BuildUnits turns those records into units (tests
 // that fail at the start and pass with the reference, every time) and guards
-// (tests that pass in both).
+// (tests that pass in both). RecordSuiteSteps and BuildStepUnits do the same
+// over a series of states, a reference solution made of several changes: the
+// unit of a step holds the tests that step makes pass for good.
 
 //go:embed suite_score.py
 var suiteScoreScript string
@@ -394,18 +396,65 @@ type SuiteRecord struct {
 // A failure of the scorer itself (no record printed, the reference not applying)
 // is an error.
 func RecordSuite(ctx context.Context, ws *env.Workspaces, task rl.Task, gold []byte, repeats int, hidden events.Blobs) (SuiteRecord, error) {
+	steps, err := recordSuite(ctx, ws, task, []suiteStep{{"start", nil}, {"reference solution", gold}}, repeats, hidden)
+	rec := SuiteRecord{Origin: steps.Origin, Parser: steps.Parser}
+	if len(steps.Runs) > 0 {
+		rec.Start = steps.Runs[0]
+	}
+	if len(steps.Runs) > 1 {
+		rec.Reference = steps.Runs[1]
+	}
+	return rec, err
+}
+
+// SuiteSteps is what RecordSuiteSteps saw: the outcome of every test in each
+// run at each step.
+type SuiteSteps struct {
+	// Runs[k] are the runs at step k: the start for k = 0, the start with the
+	// k-th patch applied after.
+	Runs [][]SuiteOutcomes `json:"runs"`
+	// Origin and Parser name, for every test seen, the command that reported it
+	// and that command's parser.
+	Origin map[string]string `json:"origin"`
+	Parser map[string]string `json:"parser"`
+}
+
+// RecordSuiteSteps is RecordSuite over a sequence of states: it runs the task's
+// suite scorer in record mode repeats times on each, step k being the starting
+// state with patches[k] applied (nil: the start itself), each run in a fresh
+// clean checkout with the hidden files in place, and returns the outcome of
+// every test at every step. A generator whose reference solution is a series of
+// changes (taskgen's chains) records the state after each one this way and
+// chooses its milestones with BuildStepUnits.
+func RecordSuiteSteps(ctx context.Context, ws *env.Workspaces, task rl.Task, patches [][]byte, repeats int, hidden events.Blobs) (SuiteSteps, error) {
+	steps := make([]suiteStep, len(patches))
+	for k, p := range patches {
+		steps[k] = suiteStep{fmt.Sprintf("step %d", k), p}
+	}
+	return recordSuite(ctx, ws, task, steps, repeats, hidden)
+}
+
+// suiteStep is one state a record is taken of.
+type suiteStep struct {
+	label string
+	patch []byte
+}
+
+// recordSuite runs the record mode on each step in order and stops at the first
+// failure, returning what it recorded until then.
+func recordSuite(ctx context.Context, ws *env.Workspaces, task rl.Task, steps []suiteStep, repeats int, hidden events.Blobs) (SuiteSteps, error) {
 	if ws == nil {
-		return SuiteRecord{}, errors.New("RecordSuite: no workspaces")
+		return SuiteSteps{}, errors.New("RecordSuite: no workspaces")
 	}
 	if task.Verifier.Cmd != "python3 "+suiteScriptRel {
-		return SuiteRecord{}, errors.New("RecordSuite: the task's verifier is not the suite scorer (WriteSuite first)")
+		return SuiteSteps{}, errors.New("RecordSuite: the task's verifier is not the suite scorer (WriteSuite first)")
 	}
 	repeats = max(repeats, 1)
 	rt := task
 	rt.Verifier.Cmd = "SUITE_MODE=record " + task.Verifier.Cmd
 	rt.Verifier.Pass = "exit0"
 	rt.Verifier.BaselineScore = 0
-	rec := SuiteRecord{Origin: map[string]string{}, Parser: map[string]string{}}
+	rec := SuiteSteps{Origin: map[string]string{}, Parser: map[string]string{}}
 	run := func(label string, patch []byte) ([]SuiteOutcomes, error) {
 		outs := make([]string, repeats)
 		opts := env.VerifyOptions{
@@ -442,12 +491,12 @@ func RecordSuite(ctx context.Context, ws *env.Workspaces, task rl.Task, gold []b
 		}
 		return runs, nil
 	}
-	var err error
-	if rec.Start, err = run("start", nil); err != nil {
-		return rec, err
-	}
-	if rec.Reference, err = run("reference solution", gold); err != nil {
-		return rec, err
+	for _, s := range steps {
+		runs, err := run(s.label, s.patch)
+		if err != nil {
+			return rec, err
+		}
+		rec.Runs = append(rec.Runs, runs)
 	}
 	return rec, nil
 }
@@ -605,6 +654,118 @@ func BuildUnits(rec SuiteRecord, group SuiteGroup) (SuiteSelection, error) {
 	sort.Strings(names)
 	for _, n := range names {
 		sel.Units = append(sel.Units, SuiteUnit{Name: n, Weight: 1, Tests: byUnit[n]})
+	}
+	return sel, nil
+}
+
+// SuiteMilestone names and weighs the unit of one step of a SuiteSteps record.
+type SuiteMilestone struct {
+	Name   string
+	Weight float64
+}
+
+// BuildStepUnits chooses the tests a suite scores from a record of steps
+// (RecordSuiteSteps): milestones[k-1] is the unit of step k, for k = 1 ..
+// len(steps.Runs)-1. A test belongs to the unit of step k when it fails (or is
+// skipped, or is not reported) in every run of every step before k and passes
+// in every run of step k and of every step after it: the step makes it pass and
+// no later step breaks it. A test that passes in every run of every step is a
+// guard; every other test (flaky at some step, failing at the last, or passing
+// and failing again) is dropped. A step whose unit would hold no test has no
+// unit. Units keep the order of the steps, their names cut to
+// env.MaxScoreUnitName bytes as BuildUnits does.
+//
+// Scored with these units, the state at step k reaches exactly the weight of
+// the units up to k over the weight of all units, with every guard kept, so a
+// generator can check each step against that value. It is an error when the
+// record has fewer than two steps, the milestones do not match the steps, or no
+// test makes a unit.
+func BuildStepUnits(steps SuiteSteps, milestones []SuiteMilestone) (SuiteSelection, error) {
+	n := len(steps.Runs)
+	if n < 2 {
+		return SuiteSelection{}, errors.New("the record needs runs on the start and on at least one step")
+	}
+	if len(milestones) != n-1 {
+		return SuiteSelection{}, fmt.Errorf("%d milestones for %d steps after the start", len(milestones), n-1)
+	}
+	for k, runs := range steps.Runs {
+		if len(runs) == 0 {
+			return SuiteSelection{}, fmt.Errorf("step %d has no runs", k)
+		}
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, runs := range steps.Runs {
+		for _, r := range runs {
+			for id := range r {
+				if !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
+			}
+		}
+	}
+	sort.Strings(ids)
+	// state is 1 when a test passed in every run of a step, 0 when it passed in
+	// none, and -1 when the runs disagree.
+	state := func(k int, id string) int {
+		passed := 0
+		for _, r := range steps.Runs[k] {
+			if r[id] == SuitePass {
+				passed++
+			}
+		}
+		switch passed {
+		case 0:
+			return 0
+		case len(steps.Runs[k]):
+			return 1
+		}
+		return -1
+	}
+	sel := SuiteSelection{Origin: map[string]string{}}
+	byStep := make([][]string, n)
+	for _, id := range ids {
+		first := -1 // the step from which the test passes for good
+		ok := true
+		for k := 0; k < n && ok; k++ {
+			switch s := state(k, id); {
+			case s < 0:
+				ok = false
+			case s == 1 && first < 0:
+				first = k
+			case s == 0 && first >= 0:
+				ok = false
+			}
+		}
+		switch {
+		case !ok || first < 0:
+			sel.Dropped = append(sel.Dropped, id)
+			continue
+		case first == 0:
+			sel.Guards = append(sel.Guards, id)
+		default:
+			byStep[first] = append(byStep[first], id)
+		}
+		if c, ok := steps.Origin[id]; ok {
+			sel.Origin[id] = c
+		}
+	}
+	names := map[string]bool{}
+	for k := 1; k < n; k++ {
+		if len(byStep[k]) == 0 {
+			continue
+		}
+		m := milestones[k-1]
+		name := unitName(m.Name)
+		if names[name] {
+			return sel, fmt.Errorf("milestone %d: the name %q is used twice", k, name)
+		}
+		names[name] = true
+		sel.Units = append(sel.Units, SuiteUnit{Name: name, Weight: m.Weight, Tests: byStep[k]})
+	}
+	if len(sel.Units) == 0 {
+		return sel, errors.New("no test fails at the start and passes from some step on, every time: nothing to score")
 	}
 	return sel, nil
 }

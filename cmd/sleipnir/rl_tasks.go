@@ -399,6 +399,8 @@ func rlTaskgen(ctx context.Context, args []string, stdout, stderr io.Writer) err
              (a small context window makes the agent compact its history in between)
   fixture    authored tasks: a directory per task (task.json, start/, hidden/, solution/), for what mined
              history cannot give (other languages, tasks built from a specification, planted bugs)
+  chain      3 to 8 consecutive merged pull requests as one long swarm task, scored per milestone by the
+             project's own test suite
 
 Every task is validated in the same environment rollouts use before it is written:
 the verifier must fail on the start state and pass with the reference solution.
@@ -418,6 +420,8 @@ the verifier must fail on the start state and pass with the reference solution.
 		return taskgenRecall(args[1:], stdout, stderr)
 	case "fixture":
 		return taskgenFixture(ctx, args[1:], stdout, stderr)
+	case "chain":
+		return taskgenChain(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printHelp(stdout, usage)
 		return nil
@@ -596,6 +600,121 @@ func reportSealed(stdout io.Writer, dir string, n int) {
 	if dir != "" {
 		fmt.Fprintf(stdout, "  start states sealed in %s (%d repositories, one commit each)\n", dir, n)
 	}
+}
+
+// taskgenChain makes a long swarm task of each chain of consecutive merged changes (taskgen.FromChains): it records the
+// repository's test suite at every milestone and checks each task's scores before it writes it.
+func taskgenChain(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("rl taskgen chain", stderr, "rl taskgen chain --chains FILE [flags] REPO")
+	chainsFile := fs.String("chains", "", "the chains to mine, one JSON object per line: {id, commits: [3 to 8 merge or squash commits, oldest first], issues: [an issue text per commit, optional], source: {provenance}}")
+	out := fs.String("o", "tasks.jsonl", "output tasks file")
+	report := fs.String("report", "", "also write the generation report (counts, every rejection with its reason, each chain's self-check) as JSON")
+	idPrefix := fs.String("id-prefix", "", "prefix of task ids, and a tag of every task (default: the repository directory name)")
+	repoPath := fs.String("repo-path", "", repoPathUsage)
+	licenses := fs.String("licenses", "", "comma-separated SPDX ids the licence at a chain's last commit must be one of")
+	repeats := fs.Int("repeats", 3, "runs of the test suite recorded at the start and after each pull request: a test counts only where they all agree")
+	timeout := fs.Duration("timeout", 0, "deadline of one run of the whole test suite, written into the tasks (default 30m)")
+	concurrency := fs.Int("gen-concurrency", 1, "chains recorded at once")
+	seal := fs.String("seal", "", sealUsage)
+	var tags, setup multiFlag
+	fs.Var(&tags, "tag", "tag added to every task, repeatable")
+	fs.Var(&setup, "setup", "setup command run once per task snapshot, repeatable (default: detected)")
+	var rf rigFlags
+	rf.register(fs)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return usageError(fs, "rl taskgen chain: pass exactly one repository")
+	}
+	if *chainsFile == "" {
+		return errors.New("rl taskgen chain: --chains is required")
+	}
+	f, err := os.Open(*chainsFile)
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: --chains: %w", err)
+	}
+	chains, err := taskgen.ReadChains(f)
+	_ = f.Close()
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: --chains: %w", err)
+	}
+	g := genCommon{out: *out, report: *report, rig: rf}
+	hidden, blobsDir, err := g.stores()
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: %w", err)
+	}
+	ws, err := rf.workspaces(stderr)
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: %w", err)
+	}
+	defer ws.Close()
+	opts := taskgen.ChainOptions{
+		Workspaces: ws, Repeats: *repeats, Concurrency: *concurrency, DeadlineS: int(timeout.Seconds()),
+		AllowLicenses: splitList(*licenses), HiddenBlobs: hidden, GoldBlobs: hidden, IDPrefix: *idPrefix, Tags: tags,
+		Progress: func(m string) { fmt.Fprintln(stderr, m) },
+	}
+	if len(setup) > 0 {
+		opts.Setup = []string(setup)
+	}
+	if *seal != "" {
+		// --repo-path then names the directory of the sealed repositories.
+		opts.Seal, opts.SealPath = *seal, *repoPath
+	} else {
+		g.repoPath = *repoPath
+	}
+	tasks, rep, err := taskgen.FromChains(ctx, pos[0], chains, opts)
+	if err != nil {
+		return fmt.Errorf("rl taskgen chain: %w", err)
+	}
+	nameRepo(tasks, g.repoPath)
+	if err := env.ValidateTasks(tasks); err != nil {
+		return fmt.Errorf("rl taskgen chain: the generator produced invalid tasks: %w", err)
+	}
+	if err := env.WriteTasks(g.out, tasks); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "wrote %d chain tasks to %s (hidden files and reference solutions in %s)\n", len(tasks), g.out, blobsDir)
+	fmt.Fprintf(stdout, "  read %d chains, %d of them consecutive changes, %d accepted, in %s\n", rep.Examined, rep.Candidates, rep.Accepted, rep.Duration.Round(time.Second))
+	for _, c := range rep.Chains {
+		verdict := "ok"
+		if !c.OK {
+			verdict = "FAIL"
+		}
+		fmt.Fprintf(stdout, "  %s: self-check %s: %s\n", c.ID, verdict, c.Summary())
+	}
+	if len(rep.Rejected) > 0 {
+		fmt.Fprintf(stdout, "  rejected: %s\n", kvLine(rep.Rejected))
+		for _, r := range rep.Rejections {
+			fmt.Fprintf(stdout, "    %s: %s%s\n", r.Chain, r.Reason, prefixed(": ", firstLineOf(r.Detail)))
+		}
+	}
+	if len(rep.InfraErrors) > 0 {
+		fmt.Fprintf(stdout, "  %d chains were skipped because of infrastructure errors (see --report)\n", len(rep.InfraErrors))
+	}
+	reportSealed(stdout, *seal, len(tasks))
+	if *report != "" {
+		if err := writeJSONFile(*report, rep); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(stderr, "next: sleipnir rl tasks check %s, then sleipnir rl rollout --tasks %s --model <policy>\n", g.out, g.out)
+	return nil
+}
+
+// prefixed puts p before s, or is "" when s is.
+func prefixed(p, s string) string {
+	if s == "" {
+		return ""
+	}
+	return p + s
+}
+
+// firstLineOf is s up to its first line break.
+func firstLineOf(s string) string {
+	line, _, _ := strings.Cut(s, "\n")
+	return line
 }
 
 // readPicks reads the --commits file of rl taskgen git (see taskgen.ReadPicks).

@@ -20,7 +20,7 @@ import (
 // multi-line string, an inline table) is an error, and the caller writes the
 // configuration itself.
 func PytestINIFromDir(dir string) (string, error) {
-	read := func(name string) (string, bool, error) {
+	return pytestINI(func(name string) (string, bool, error) {
 		b, err := os.ReadFile(filepath.Join(dir, name))
 		if errors.Is(err, os.ErrNotExist) {
 			return "", false, nil
@@ -29,7 +29,12 @@ func PytestINIFromDir(dir string) (string, error) {
 			return "", false, err
 		}
 		return string(b), true, nil
-	}
+	})
+}
+
+// pytestINI is PytestINIFromDir over a reader of the project's files: read
+// returns a file's content and whether it exists.
+func pytestINI(read func(name string) (string, bool, error)) (string, error) {
 	if src, ok, err := read("pytest.ini"); err != nil || ok {
 		if err != nil {
 			return "", err

@@ -52,6 +52,14 @@ they do not indicate whether a change has been released.
   option nothing changes; prompt and tool-schema bytes are unchanged
   (`core.ToolSpec` gains the scheduling hint `NoTreeWrites`, set on the
   swarm's task, mail, note and spawn tools, which is never rendered).
+- `sleipnir rl taskgen chain --chains FILE REPO` makes one long swarm task of
+  each chain of 3 to 8 consecutive merged pull requests, scored per milestone
+  by the whole-suite scorer and checked at every pull request before it is
+  written (`docs/TRAINING-DATA.md`, section 3.2); `--seal DIR` seals each
+  start as for `rl taskgen git`. The generation report's
+  rejections gain the field `chain` and the report the list `chains` (each
+  chain's self-check); a task's `meta` gains `commits`, the chain's pull
+  requests. Readers that ignore unknown fields are unaffected.
 - `sleipnir rl taskgen git --seal DIR` writes each task's start state as a
   repository of its own, `DIR/<task id>.git`, with one commit (the start tree,
   no history, a fixed author and date) and no other object, and the task's

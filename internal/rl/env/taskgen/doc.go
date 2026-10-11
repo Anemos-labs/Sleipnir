@@ -16,7 +16,13 @@
 //	           RecordSuite and BuildUnits choose its units and guards from runs on
 //	           the start and the reference solution.
 //	Seal       a task's start state written as a repository of its own: one
-//	           commit, the start tree, no history (GitOptions.Seal).
+//	           commit, the start tree, no history (GitOptions.Seal,
+//	           ChainOptions.Seal).
+//	FromChains 3 to 8 consecutive merged pull requests (ReadChains) become one
+//	           long swarm task: the start before the first, the end's tests
+//	           hidden, the pull requests' texts as ordered milestones, and the
+//	           whole-suite scorer with a unit per pull request (RecordSuiteSteps,
+//	           BuildStepUnits), checked at every step before it is emitted.
 //
 // # The whole-suite scorer
 //
@@ -30,7 +36,10 @@
 // SUITE_SAMPLE=N scores a stable sample of each unit, cheaply, for progress
 // during a run. Units are the tests that fail at every start run and pass in
 // every reference run (BuildUnits), so the start scores exactly 0 and the
-// reference exactly 1.
+// reference exactly 1. A chain's units follow its pull requests instead: the
+// unit of pull request k holds the tests that fail in every run before it and
+// pass in every run from it on, so the state after it scores the weight of the
+// milestones it reached.
 //
 // # Soundness
 //

@@ -157,6 +157,8 @@ the tasks file and never enters a workspace.
   tests as the verifier (hidden; protected) and the commit message (or a linked issue, via a resolver) as the prompt.
   `--commits FILE` mines a chosen list instead, for example the merged pull requests that closed an issue, each with
   the issue's text as its prompt and its provenance in `meta.source`.
+* `sleipnir rl taskgen chain --chains FILE R`: 3 to 8 consecutive merged pull requests become one long swarm task,
+  scored per milestone by the project's own test suite (see **Chain tasks** below).
 * `sleipnir rl taskgen mutate --repo R`: language-aware bug injection (flip a comparison, drop a nil check, off by
   one) with the project's own tests as the verifier; only mutations the tests catch, whose reversal makes them pass,
   are kept. Cheap volume, and the source of many independent tasks in one repository state.
@@ -223,7 +225,7 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   `-run`, node ids or `--exact` names) and a command with none in the sample is not run; `SUITE_BUDGET_S` shortens
   the deadline. The final verdict always runs the whole suite.
 
-**Sealed start states** (`--seal DIR`, `taskgen.Seal`). A workspace holds only the start tree, but the repository a
+**Sealed start states** (`--seal DIR` of `rl taskgen git` and `rl taskgen chain`, `taskgen.Seal`). A workspace holds only the start tree, but the repository a
 task names stays on disk with every later commit in it, the fix included, where an agent running as the same user can
 read it. `--seal DIR` writes the start of each task it emits as `DIR/<task id>.git`: a bare repository with one commit
 (no parent; a fixed author, committer, date and message, so the same tree always seals to the same commit id), whose
@@ -235,6 +237,40 @@ is nowhere on disk either. The sealed repositories travel with the tasks file, l
 groups tasks by the repository they name, so it sees each sealed repository as a repository of its own; to keep one
 source repository's tasks in one part, select them by the tag every generator gives them, the id prefix (`rl tasks
 filter --tag <id prefix>`).
+
+**Chain tasks** (`sleipnir rl taskgen chain --chains FILE [flags] REPO`, `taskgen.FromChains`). A chain is 3 to 8 pull
+requests merged one after another on first-parent history; its task asks a team for all of them, in order, over
+hours. A line of FILE is `{"id", "commits", "issues", "source"}`: the merge or squash commit of each pull request,
+oldest first, each one's first parent being the one before; optionally an issue text per commit; and provenance.
+
+* **Start, tests, solution.** The start is the first commit's first parent. The hidden tests are the last commit's
+  version of every test file any of the pull requests touched; a test file the chain deletes is removed before the
+  suite runs (and left out of a sealed start). The reference solution is the start-to-end diff of every other file.
+  Every test file of the suite's languages (`*_test.go` and `testdata/`; `test_*.py`, `*_test.py`, `tests/` and
+  `test/`; `tests/` and the Rust test file names) is protected, so no test the score counts is the agent's to edit.
+* **Prompt.** The milestones in order, each the issue's text when one is given and otherwise the commit message,
+  without the "Merge pull request" line of a merge commit (cleaned as for `--commits`; at most 16 KiB each), then how
+  the work is checked.
+* **Score.** The whole-suite scorer runs `go test` in each Go module, pytest in the Python project (one at most) and
+  `cargo test` in each cargo package the tests belong to. The suite is recorded `--repeats` times (default 3) at the
+  start and after each pull request (the start with the non-test changes up to it and the hidden tests in place;
+  `taskgen.RecordSuiteSteps`). `taskgen.BuildStepUnits` makes the unit `milestone-k` of the tests that fail in every
+  run before pull request k and pass in every run from it on, weighted by the lines pull request k changed outside the
+  tests; tests that pass in every run at every step are guards, and the rest (flaky, failing at the end, passing then
+  failing) are dropped. A pull request that makes no test pass for good has no unit. In Go a test file that uses what
+  a later pull request adds keeps its whole package from compiling until then, so its package's tests belong to that
+  later milestone.
+* **Self-check.** Before a task is written it is scored as rollouts will be, one run per state: the start must score
+  0 (its guards pass, no milestone does), the state after pull request k the weight of the milestones up to k over the
+  weight of all of them (within 0.02), and the end exactly 1. The scores are printed and kept in the report
+  (`chains`: `want`, `got`); a chain that fails is rejected. Recording costs (pull requests + 1) × `--repeats` runs of
+  the whole suite, and the check pull requests + 1 more.
+* **Task.** `kind` `swarm`, `team` `{"mode": "swarm", "agents": n}` with one worker fewer than pull requests (2 to 6),
+  `budget.wall_s` 6 hours, 45 minutes more per pull request beyond the third and an hour more per 1000 changed lines,
+  at most 12 hours; tags `long`, `chain`, `harvested`, the languages and the id prefix. `meta.commits` lists the pull
+  requests' commits, `meta.parent` and `meta.commit` are the start and the end, and `meta.source` holds `repo` (the
+  origin's URL without credentials, or the directory's name), `range` (`<start>..<end>`) and `license` (the SPDX id at
+  the end, when recognised), with the chain's own `source` keys over them.
 
 ### 3.3 Rollouts (`sleipnir rl rollout`)
 
@@ -677,7 +713,7 @@ cache). Size KV memory for one shared prefix plus N private tails; keep the same
 ## 10. Command reference
 
 ```
-sleipnir rl taskgen git|mutate|composite|recall ...   build tasks.jsonl (+ blobs/) from repositories
+sleipnir rl taskgen git|chain|mutate|composite|recall build tasks.jsonl (+ blobs/) from repositories
 sleipnir rl tasks validate|stats|filter|split|check   task file hygiene and soundness proofs
 sleipnir rl rollout --tasks T --model M --out RUN     run G samples per task through the real harness
 sleipnir rl eval --tasks holdout.jsonl --model M      pass@1 / pass^k / cost / protocol metrics, optional --baseline report.json

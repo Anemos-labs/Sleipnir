@@ -39,8 +39,10 @@ const (
 	ReasonUnsupportedName = "path needs quoting"
 )
 
-// Rejection records why a candidate commit did not become a task.
+// Rejection records why a candidate commit (or chain) did not become a task.
 type Rejection struct {
+	// Chain is the id of the chain rejected, for FromChains.
+	Chain   string `json:"chain,omitempty"`
 	Commit  string `json:"commit"`
 	Subject string `json:"subject,omitempty"`
 	Reason  string `json:"reason"`
@@ -49,25 +51,32 @@ type Rejection struct {
 
 // Report summarises a generation run.
 type Report struct {
-	Examined    int            `json:"examined"`   // commits scanned
-	Candidates  int            `json:"candidates"` // commits that change source and tests
+	Examined    int            `json:"examined"`   // commits scanned (chains, for FromChains)
+	Candidates  int            `json:"candidates"` // commits that change source and tests (chains of consecutive changes)
 	Accepted    int            `json:"accepted"`
 	Rejected    map[string]int `json:"rejected,omitempty"`
 	Rejections  []Rejection    `json:"rejections,omitempty"`
 	InfraErrors []Rejection    `json:"infra_errors,omitempty"`
 	License     string         `json:"license,omitempty"`
 	Duration    time.Duration  `json:"duration_ns"`
+	// Chains are FromChains' self-checks, one per chain that got that far.
+	Chains []ChainCheck `json:"chains,omitempty"`
 }
 
 // reject counts a rejection reason and retains details for at most the first 2000 rejected
 // commits.
 func (r *Report) reject(commit, subject, reason, detail string) {
+	r.add(Rejection{Commit: commit, Subject: subject, Reason: reason, Detail: detail})
+}
+
+// add counts a rejection's reason and retains it among the first 2000.
+func (r *Report) add(rej Rejection) {
 	if r.Rejected == nil {
 		r.Rejected = map[string]int{}
 	}
-	r.Rejected[reason]++
+	r.Rejected[rej.Reason]++
 	if len(r.Rejections) < 2000 {
-		r.Rejections = append(r.Rejections, Rejection{Commit: commit, Subject: subject, Reason: reason, Detail: detail})
+		r.Rejections = append(r.Rejections, rej)
 	}
 }
 
@@ -170,9 +179,12 @@ type Meta struct {
 	GoldBlobs  []string `json:"gold_blobs,omitempty"`
 	Base       string   `json:"base,omitempty"`
 	// Issue and Source record where a picked change came from (Pick.Issue.Ref
-	// and Pick.Source).
+	// and Pick.Source); for a chain, Source holds repo, range and license.
 	Issue  string            `json:"issue,omitempty"`
 	Source map[string]string `json:"source,omitempty"`
+	// Commits are a chain's pull requests, oldest first: Parent is the start,
+	// Commit the last of them.
+	Commits []string `json:"commits,omitempty"`
 }
 
 // commitInfo is a candidate commit before task assembly.
