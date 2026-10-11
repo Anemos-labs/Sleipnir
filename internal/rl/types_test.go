@@ -18,8 +18,9 @@ func TestEpisodeRoundTrip(t *testing.T) {
 			Completion: Completion{Turn: core.Turn{ID: 3, Role: core.RoleAssistant, Blocks: []core.Block{core.Text("ok")}}, Stop: core.StopEnd},
 			Tokens:     &TokenTrace{CompletionIDs: []int32{1, 2}, Logprobs: []float32{-0.1, -0.2}},
 		}}}},
-		Edges:   []Edge{{Kind: EdgeSpawn, From: "mgr.1", To: "w1"}},
-		Outcome: Outcome{Verifier: &Verdict{Kind: "verifier", Pass: true, Score: 1}},
+		Edges: []Edge{{Kind: EdgeSpawn, From: "mgr.1", To: "w1"}},
+		Outcome: Outcome{Verifier: &Verdict{Kind: "verifier", Pass: true, Score: 1,
+			Units: map[string]UnitScore{"parser": {Passed: 4, Total: 4, Weight: 2}}, Guards: &GuardScore{Kept: 9, Total: 9}}},
 		Reward:  Reward{Total: 0.9, Components: map[string]float64{"outcome": 1, "cost": -0.1}},
 		Signals: map[string]float64{SigRequests: 4},
 		Flags:   []string{FlagWeakLabel},
@@ -34,6 +35,25 @@ func TestEpisodeRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(ep, back) {
 		t.Fatalf("round trip changed the episode:\n%s", b)
+	}
+}
+
+// TestVerdictCloneSharesNothing: a cloned verdict's breakdown can be edited without touching the original's.
+func TestVerdictCloneSharesNothing(t *testing.T) {
+	v := Verdict{Kind: "verifier", Score: 0.5, Units: map[string]UnitScore{"a": {Passed: 1, Total: 2, Weight: 1}}, Guards: &GuardScore{Kept: 1, Total: 2}}
+	c := v.Clone()
+	c.Units["a"] = UnitScore{}
+	c.Units["b"] = UnitScore{}
+	c.Guards.Kept = 0
+	if len(v.Units) != 1 || v.Units["a"].Passed != 1 || v.Guards.Kept != 1 {
+		t.Fatalf("the clone shares state with the original: %+v %+v", v.Units, *v.Guards)
+	}
+	if e := (Verdict{Kind: "review"}).Clone(); e.Units != nil || e.Guards != nil {
+		t.Fatalf("a verdict without a breakdown gains one: %+v", e)
+	}
+	b, _ := json.Marshal(Verdict{Kind: "verifier", Score: 1})
+	if string(b) != `{"kind":"verifier","pass":false,"score":1}` {
+		t.Fatalf("a verdict without a breakdown changed its JSON: %s", b)
 	}
 }
 

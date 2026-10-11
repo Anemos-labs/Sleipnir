@@ -1197,6 +1197,22 @@ func TestOutcomeAndFlags(t *testing.T) {
 			t.Fatalf("flags: %v", ep.Flags)
 		}
 	})
+	t.Run("score breakdown", func(t *testing.T) {
+		ep := build(func(b *trajtest.Run, a *trajtest.Agent) {
+			a.Step(trajtest.Call{Text: "done"})
+			b.Emit("", "outcome", map[string]any{"kind": "verifier", "pass": false, "score": 0.5,
+				"units":  map[string]any{"parser": map[string]any{"passed": 1, "total": 2, "weight": 1}},
+				"guards": map[string]any{"kept": 3, "total": 3}})
+			b.Emit("", "outcome", map[string]any{"kind": "review", "pass": true, "score": 1.0, "units": "not an object"})
+		})
+		v := ep.Outcome.Verifier
+		if v == nil || v.Score != 0.5 || v.Units["parser"] != (rl.UnitScore{Passed: 1, Total: 2, Weight: 1}) || v.Guards == nil || *v.Guards != (rl.GuardScore{Kept: 3, Total: 3}) {
+			t.Fatalf("verifier: %+v", v)
+		}
+		if len(ep.Outcome.Reviews) != 1 || ep.Outcome.Reviews[0].Units != nil || ep.Outcome.Reviews[0].Score != 1 {
+			t.Fatalf("a malformed breakdown is dropped, the verdict kept: %+v", ep.Outcome.Reviews)
+		}
+	})
 	t.Run("infra failure", func(t *testing.T) {
 		ep := build(func(b *trajtest.Run, a *trajtest.Agent) {
 			a.Step(trajtest.Call{Text: "done"})

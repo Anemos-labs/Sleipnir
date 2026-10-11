@@ -11,6 +11,12 @@ they do not indicate whether a change has been released.
   `--max-total-bytes` (`FixtureOptions.MaxFiles`, `MaxFileBytes`,
   `MaxTotalBytes`) for large project fixtures; the defaults (400 files,
   1 MiB per file, 8 MiB per tree) are unchanged.
+- A `json-score` verifier's score line may carry a breakdown of the score,
+  `"units"` and `"guards"` (`docs/TRAINING-DATA.md`, section 3.1). Verifier
+  results, outcome events, the episode's `outcome.verifier` and the results in
+  a run's `summary.json` gain the optional fields `units` and `guards`; readers
+  that ignore unknown fields are unaffected, and the score and verdict are the
+  same as before.
 - Confine RL setup, agent and verifier commands with `--confine bwrap` (on
   `rl rollout`, `rl eval`, `rl tasks check` and the task generators): each
   runs in a bubblewrap sandbox that sees a read-only system, its own tree,
