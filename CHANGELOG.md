@@ -14,7 +14,9 @@ they do not indicate whether a change has been released.
   event and flushes the log; a log cut back to it resumes into that state.
   RL workspaces can be prepared at a stable path, captured into a store and
   rebuilt there (`PrepareID`, `Capture`, `RestoreWorkspace`). Without the
-  option nothing changes; prompt and tool-schema bytes are unchanged.
+  option nothing changes; prompt and tool-schema bytes are unchanged
+  (`core.ToolSpec` gains the scheduling hint `NoTreeWrites`, set on the
+  swarm's task, mail, note and spawn tools, which is never rendered).
 - Confine RL setup, agent and verifier commands with `--confine bwrap` (on
   `rl rollout`, `rl eval`, `rl tasks check` and the task generators): each
   runs in a bubblewrap sandbox that sees a read-only system, its own tree,

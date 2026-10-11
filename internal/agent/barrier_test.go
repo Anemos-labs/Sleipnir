@@ -156,6 +156,40 @@ func turnsText(ts []core.Turn) string {
 	return sb.String()
 }
 
+// A batch of coordination (a manager creating a task and waiting for it) does
+// not hold the barrier: its tools change no file of the work tree.
+func TestCoordinationDoesNotHoldTheBarrier(t *testing.T) {
+	release := make(chan struct{})
+	waiting := make(chan struct{}, 1)
+	task := fakeTool{name: "task", noTreeWrites: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: "T1 created"} }}
+	wait := fakeTool{name: "wait", readOnly: true, runCtx: func(ctx context.Context, c *tools.Call) *tools.Result {
+		waiting <- struct{}{}
+		<-release
+		return &tools.Result{Text: "T1 is done"}
+	}}
+	b := agent.NewSavepointBarrier()
+	step := 0
+	r := newLimRig(t, func(c *agent.Config) { c.Barrier = b }, []fakeTool{task, wait}, func(c *mock.Call) mock.Reply {
+		step++
+		if step == 1 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "t1", Name: "task", Args: `{}`}, {ID: "w1", Name: "wait", Args: `{}`}}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	ctx := context.Background()
+	res := make(chan error, 1)
+	go func() { _, err := r.agent.Run(ctx, "coordinate"); res <- err }()
+	<-waiting
+	if !b.Acquire(ctx, time.Second, time.Second) {
+		t.Fatal("a savepoint waited for a batch of coordination")
+	}
+	b.Release()
+	close(release)
+	if err := <-res; err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A tool the agent knows nothing special about (a tool server's) holds the
 // barrier while it runs unless its spec says it is read-only: the barrier
 // follows the tools' declarations, not a list of names.

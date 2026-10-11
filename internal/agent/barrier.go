@@ -9,14 +9,15 @@ import (
 )
 
 // batchWrites reports whether a batch of tool calls may change the work tree:
-// whether any of its tools is not declared read-only (bash, edit, write,
-// apply_patch, a tool server's tools, the swarm's coordination tools, which
-// return at once). A tool batch holds Config.Barrier only then: a batch of
-// reads, or a manager's wait (read-only, and it can last hours), must never
-// keep a savepoint from finding a moment when nothing writes.
+// whether any of its tools is declared neither read-only nor free of work-tree
+// writes (bash, edit, write, apply_patch, a tool server's tools). A tool batch
+// holds Config.Barrier only then: a batch of reads or of coordination (the
+// swarm's task, mail, note and spawn, and a manager's wait, which can last
+// hours) must never keep a savepoint from finding a moment when nothing writes.
 func (a *Agent) batchWrites(calls []core.Block) bool {
 	for _, c := range calls {
-		if !a.readOnly(c) {
+		t, ok := a.cfg.Tools.Get(a.toolNameFor(c.ToolName))
+		if ok && !t.Spec().ReadOnly && !t.Spec().NoTreeWrites {
 			return true
 		}
 	}
