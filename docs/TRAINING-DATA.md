@@ -177,6 +177,51 @@ the tasks file and never enters a workspace.
   solution touches a file the task does not need. Files are taken in path order and each mutant is one verification
   (all repeats must pass under `--verify-repeats`), so the result is deterministic.
 
+**The whole-suite scorer** (`taskgen.WriteSuite`, a Go API for generators) scores a long task by the share of a
+repository's real test suite that passes, weighted by milestones, instead of one pass or fail at the end. It makes the
+task's verifier `python3 .sleipnir/suite/score.py` (`json-score`), a scorer written as a hidden file with its spec
+`.sleipnir/suite/spec.json`; both sit beside the verifier's directory, and `.sleipnir/**` is protected. The scorer
+needs Python 3.8 or later and nothing outside its standard library, and a POSIX system.
+
+* **Spec.** `commands`, each `{name, run, parser, timeout_s, cwd}`: a shell line run from `cwd` (relative to the
+  verifier's directory) and the parser of its report: `gotest-json` (stdout of `go test -json`; a test is
+  `import/path.TestName`, top-level tests only), `junit` (the XML file the command writes to `$SUITE_REPORT`; a pytest
+  test is its node id `file::Class::name`, rebuilt from the report with `junit_family=xunit1`, any other testcase is
+  `classname::name`) or `cargo` (cargo's output; a test is `target::module::name`, doc-tests excluded). `units`, each
+  `{name, weight, tests}`, are the milestones; `guards` are tests that passed at the start and must keep passing;
+  `deadline_s` bounds the whole run (default 1800 s); `origin` maps a test to the command that reports it. The default
+  commands are `go test -json -count=1 -p 2 ./...`; `python3 -m pytest` without `-x`, from the project directory, with
+  `-p no:cacheprovider -p no:randomly`, a 120 s limit per test where pytest-timeout is installed, and the reference's
+  pytest configuration copied to the hidden `.sleipnir/suite/pytest.ini` (`-c` with `--rootdir .`), so options an
+  agent writes into `pyproject.toml`, `setup.cfg` or `tox.ini` are not the ones the tests run with; and
+  `cargo test --offline --no-fail-fast --tests`. `conftest.py`, `pytest.ini`, `sitecustomize.py`, `usercustomize.py`
+  and `.cargo` directories are protected with them. The tests themselves are the generator's to hide or protect.
+* **Score.** (Σ<sub>u</sub> w<sub>u</sub> · passed<sub>u</sub>/|u| ÷ Σ<sub>u</sub> w<sub>u</sub>) × (kept guards ÷
+  guards, 1 without guards), computed exactly, so a reference that passes everything scores exactly 1 and a start on
+  which every unit's test fails exactly 0. A test that no report mentions has failed; a skipped one too; one reported
+  more than once passes only if every report says so. The score line carries the breakdown (section 3.1); stderr has
+  one line per command and at most 200 lines naming the tests that failed and the guards that broke.
+* **What the code under test cannot do.** Each command runs in a session of its own with stdin closed and stdout and
+  stderr in private files, so nothing it prints reaches the scorer's stdout, where the score is the one line, written
+  last; results are read from the report, so a printed `{"score": 1}`, `--- PASS` or `ok` line (or a test2json event,
+  which `go test -json` wraps as output) is not a result, nor is what a failing Rust test printed; and when a command
+  ends, every process still in its process group is killed before the next command runs, so none can write a later
+  report or print after the score. A command over its `timeout_s`, or still running at the deadline, is killed: the
+  tests it reported count, the others and those of commands not reached have failed, and a score is still printed. A
+  test process can still rewrite its own report from the inside (the scorer runs as the same user, see the security
+  model in `internal/rl/env`), and a process that leaves its process group escapes the scorer's kill (on Linux the
+  environment's sweep of the run's processes still ends it when the verifier does).
+* **Modes.** `SUITE_MODE=record` prints `{"suite_record": 1, "commands": [...]}` instead of a score: every test each
+  command reported, with `pass`, `fail` or `skip`. `taskgen.RecordSuite` runs it on the start and on the reference
+  solution, each several times in fresh clean checkouts as verification does, and `taskgen.BuildUnits` keeps as units
+  the tests that fail in every start run and pass in every reference run, grouped by Go package, Python file or Rust
+  module (or a grouping the caller gives), and as guards the tests that pass in every run; flaky tests and tests that
+  fail with the reference are dropped. `SUITE_SAMPLE=N` is the progress mode for cheap, repeated scoring during a run:
+  at most N tests of each unit and N guards, the same ones every time (those with the smallest SHA-256 of their id),
+  are scored, each command gets its share of the sample in `SUITE_ARGS` (which the default commands turn into
+  `-run`, node ids or `--exact` names) and a command with none in the sample is not run; `SUITE_BUDGET_S` shortens
+  the deadline. The final verdict always runs the whole suite.
+
 ### 3.3 Rollouts (`sleipnir rl rollout`)
 
 ```

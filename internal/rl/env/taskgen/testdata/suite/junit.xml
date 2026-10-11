@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="1" skipped="2" tests="10" time="0.034" timestamp="2026-10-11T12:50:16.130187-04:00" hostname="host"><testcase classname="tests.test_mod" name="test_plain" file="tests/test_mod.py" line="3" time="0.000" /><testcase classname="tests.test_mod" name="test_fails" file="tests/test_mod.py" line="8" time="0.001"><failure message="assert 1 == 2">def test_fails():
+&gt;       assert 1 == 2
+E       assert 1 == 2
+
+tests/test_mod.py:10: AssertionError</failure></testcase><testcase classname="tests.test_mod" name="test_param[1]" file="tests/test_mod.py" line="12" time="0.000" /><testcase classname="tests.test_mod" name="test_param[2.5]" file="tests/test_mod.py" line="12" time="0.000" /><testcase classname="tests.test_mod" name="test_param[a b]" file="tests/test_mod.py" line="12" time="0.000" /><testcase classname="tests.test_mod" name="test_skipped" file="tests/test_mod.py" line="17" time="0.000"><skipped type="pytest.skip" message="no">/work/tests/test_mod.py:18: no</skipped></testcase><testcase classname="tests.test_mod.TestThing" name="test_method" file="tests/test_mod.py" line="23" time="0.000" /><testcase classname="tests.test_mod.TestThing.TestInner" name="test_deep" file="tests/test_mod.py" line="27" time="0.000" /><testcase classname="tests.test_mod" name="test_teardown_error" file="tests/test_mod.py" line="37" time="0.000"><error message="failed on teardown with &quot;RuntimeError: teardown&quot;">@pytest.fixture
+    def broken():
+        yield 1
+&gt;       raise RuntimeError("teardown")
+E       RuntimeError: teardown
+
+tests/test_mod.py:35: RuntimeError</error></testcase><testcase classname="tests.test_mod" name="test_xfail" file="tests/test_mod.py" line="41" time="0.000"><skipped type="pytest.xfail" message="" /></testcase></testsuite></testsuites>
