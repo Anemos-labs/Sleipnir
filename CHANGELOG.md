@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker started after a team session is resumed (without worktree
+  isolation) gets an id past those the earlier process used, as an isolated
+  team's already did: before, it could be given the id of a worker from
+  before the resume, and two agents then shared request ids in one log, which
+  made the session's training data fail to replay. Its prompts name the new
+  id.
 - RL tasks can give paths to roles: `team.owns` maps a role to globs (the
   syntax of `verifier.protected`) that only agents of that role may write in a
   swarm. The write guard refuses another agent's write to an owned path, the

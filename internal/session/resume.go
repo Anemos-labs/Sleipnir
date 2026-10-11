@@ -196,6 +196,7 @@ func (s *Session) restore() error {
 				return err
 			}
 		} else {
+			s.Swarm.ReserveIDs(spawnedIDs(evs))
 			s.Swarm.Board.Restore(prev)
 		}
 	}
@@ -224,6 +225,22 @@ func (s *Session) restore() error {
 		s.notice("", "resume: recall handles could not be restored: "+err.Error())
 	}
 	return nil
+}
+
+// spawnedIDs are the agents a log spawned or prepared, other than the manager:
+// agent id -> role.
+func spawnedIDs(evs []events.Event) map[string]string {
+	ids := map[string]string{}
+	for _, e := range evs {
+		switch e.Type {
+		case events.TypeAgentSpawn, "agent.assign", "agent.prepare":
+			var w struct{ ID, Role string }
+			if json.Unmarshal(e.Data, &w) == nil && w.ID != "" && w.ID != managerAgent && w.Role != "" {
+				ids[w.ID] = w.Role
+			}
+		}
+	}
+	return ids
 }
 
 // restoreWorkers joins roster, assignment, tree and snapshot records before any
