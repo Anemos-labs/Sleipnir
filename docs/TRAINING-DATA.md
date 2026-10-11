@@ -128,6 +128,8 @@ the tasks file and never enters a workspace.
 
 * `sleipnir rl taskgen git --repo R`: for commits that change source *and* tests, check out the parent, take the
   tests as the verifier (hidden; protected) and the commit message (or a linked issue, via a resolver) as the prompt.
+  `--commits FILE` mines a chosen list instead, for example the merged pull requests that closed an issue, each with
+  the issue's text as its prompt and its provenance in `meta.source`.
 * `sleipnir rl taskgen mutate --repo R`: language-aware bug injection (flip a comparison, drop a nil check, off by
   one) with the project's own tests as the verifier; only mutations the tests catch, whose reversal makes them pass,
   are kept. Cheap volume, and the source of many independent tasks in one repository state.

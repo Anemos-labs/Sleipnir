@@ -965,6 +965,20 @@ sleipnir rl show                   summarise a run directory, or one episode of 
 Mine a repository's history: a commit that changes source and tests becomes a task (the parent commit is the start, the
 commit message the prompt, the commit's tests the hidden verifier).
 
+`--commits FILE` mines exactly the changes listed in FILE instead of scanning history, in the order given and whatever
+their dates. A line is a revision, or a JSON object:
+
+```json
+{"commit": "<merge or last commit>", "parent": "<start, default: the first parent>", "issue": {"ref": "#123", "title": "...", "body": "..."}, "source": {"pr": "https://..."}}
+```
+
+The first parent of a merge commit is the start, so a pull request merged with a merge commit is one entry; `parent`
+names the start of any other range. An `issue` is the prompt in place of the commit message (HTML comments, links to
+commits and pull requests, and commit ids removed; a body over 16 KiB is cut), so the task states the problem rather
+than the fix, and its title sets the task kind. `issue.ref` and `source` are recorded in the task's `meta` (`issue`,
+`source`) and never shown to the agent. Every other filter applies, and a listed change that fails one is reported
+with its reason.
+
 <!-- flags: rl taskgen git -->
 ```text
 usage: sleipnir rl taskgen git --repo PATH [flags]
@@ -974,6 +988,8 @@ flags:
         blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
   -budget-usd float
         spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
+  -commits string
+        mine exactly these changes instead of scanning history: a file with one per line, a commit id or a JSON object {commit, parent, issue: {ref, title, body}, source} whose issue becomes the prompt
   -concurrency int
         rollouts in flight (default 1)
   -gen-concurrency int

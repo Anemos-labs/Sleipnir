@@ -528,18 +528,29 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	licenses := fs.String("licenses", "", "comma-separated SPDX ids the repository's licence must be one of")
 	repeats := fs.Int("repeats", 0, "run each baseline this many times to catch flaky tests")
 	noValidate := fs.Bool("no-validate", false, "skip the baseline and reference-solution runs (tasks are then unverified: for dry runs only)")
+	commits := fs.String("commits", "", "mine exactly these changes instead of scanning history: a file with one per line, a commit id or a JSON object {commit, parent, issue: {ref, title, body}, source} whose issue becomes the prompt")
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return err
 	}
 	if g.repo == "" {
 		return errors.New("rl taskgen git: --repo is required")
 	}
+	var picks []taskgen.Pick
+	if *commits != "" {
+		if *since != "" || *until != "" || *maxCommits != 0 {
+			return errors.New("rl taskgen git: --commits lists the changes itself; it cannot be combined with --since, --until or --max-commits")
+		}
+		var err error
+		if picks, err = readPicks(*commits); err != nil {
+			return fmt.Errorf("rl taskgen git: --commits: %w", err)
+		}
+	}
 	hidden, blobsDir, err := g.stores()
 	if err != nil {
 		return fmt.Errorf("rl taskgen git: %w", err)
 	}
 	opts := taskgen.GitOptions{
-		NoValidate: *noValidate, Rev: g.rev, MaxCommits: *maxCommits, Max: g.max,
+		NoValidate: *noValidate, Rev: g.rev, MaxCommits: *maxCommits, Picks: picks, Max: g.max,
 		MaxFiles: *maxFiles, MaxLines: *maxLines, Languages: splitList(g.langs), AllowLicenses: splitList(*licenses),
 		TestCmd: g.testCmd, Timeout: g.timeout, Concurrency: g.concurrency, Repeats: *repeats,
 		HiddenBlobs: hidden, GoldBlobs: hidden, IDPrefix: g.idPrefix, Tags: g.tags,
@@ -567,6 +578,16 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		return fmt.Errorf("rl taskgen git: %w", err)
 	}
 	return g.finish(tasks, rep, blobsDir, stdout, stderr)
+}
+
+// readPicks reads the --commits file of rl taskgen git (see taskgen.ReadPicks).
+func readPicks(file string) ([]taskgen.Pick, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return taskgen.ReadPicks(f)
 }
 
 func taskgenMutate(ctx context.Context, args []string, stdout, stderr io.Writer) error {
