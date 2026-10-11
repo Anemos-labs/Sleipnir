@@ -375,6 +375,50 @@ func TestPolicyDecidesTrainability(t *testing.T) {
 	}
 }
 
+// Each step records the upstream its response named, and the episode its task's
+// tags, so export rules can select by either.
+func TestStepProviderAndTaskTags(t *testing.T) {
+	b := trajtest.New()
+	a := b.Agent("solo", "worker", "m1")
+	a.User("go")
+	a.Step(trajtest.Call{Text: "look", Tool: "read", Input: `{"path":"a.go"}`, Result: "package a"})
+	a.Step(trajtest.Call{Text: "done"})
+	evs := b.Events()
+	// The second response names no provider, as a gateway that does not say.
+	for i, e := range evs {
+		if e.Type != events.TypeModelResponse || !strings.Contains(string(e.Data), `"req":"solo.2"`) {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal(e.Data, &m); err != nil {
+			t.Fatal(err)
+		}
+		delete(m, "provider")
+		evs[i].Data, _ = json.Marshal(m)
+	}
+	task := &rl.Task{ID: "t", Tags: []string{"ui", "go"}}
+	ep, err := traj.OpenWith(evs, b.Blobs).Episode(traj.Options{Policy: rl.PolicyRef{Model: "m1"}, Task: task})
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps := ep.Agents[0].Steps
+	if len(steps) != 2 || steps[0].Provider != "fake" || steps[1].Provider != "" {
+		t.Errorf("providers: %+v", steps)
+	}
+	if !slices.Equal(ep.Env.Tags, []string{"ui", "go"}) {
+		t.Errorf("env tags %v, want the task's", ep.Env.Tags)
+	}
+	task.Tags[0] = "changed"
+	if ep.Env.Tags[0] != "ui" {
+		t.Error("the episode shares the task's tag slice")
+	}
+	b2, _ := json.Marshal(ep)
+	var back rl.Episode
+	if err := json.Unmarshal(b2, &back); err != nil || back.Agents[0].Steps[0].Provider != "fake" || !slices.Equal(back.Env.Tags, []string{"ui", "go"}) {
+		t.Errorf("round trip: %v %+v", err, back.Env)
+	}
+}
+
 // tamper is an in-memory copy of the fixture's events and blobs that a test can
 // damage without touching the fixture or the disk.
 type tamper struct {

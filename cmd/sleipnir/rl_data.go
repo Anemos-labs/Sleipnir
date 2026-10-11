@@ -21,24 +21,32 @@ import (
 
 // sample is one recorded rollout on disk.
 type sample struct {
-	Dir     string
+	Dir string
+	// Root is the command-line path the rollout was found under (Dir itself for a
+	// sample directory given directly).
+	Root    string
 	Episode *rl.Episode
 }
 
 // findSamples resolves each path to the rollouts under it: a sample directory
 // (it holds episode.json), a run directory (its <task>/<sample> children), or a
 // directory of run directories. The result is sorted by path, so exports are
-// deterministic whatever order the filesystem lists things in.
+// deterministic whatever order the filesystem lists things in. A rollout reached
+// from two paths is listed once, under the first.
 func findSamples(paths []string) ([]sample, error) {
 	seen := map[string]bool{}
 	var dirs []string
+	roots := map[string]string{}
+	var root string
 	add := func(d string) {
 		if !seen[d] {
 			seen[d] = true
 			dirs = append(dirs, d)
+			roots[d] = root
 		}
 	}
 	for _, p := range paths {
+		root = p
 		st, err := os.Stat(p)
 		if err != nil {
 			return nil, err
@@ -78,7 +86,7 @@ func findSamples(paths []string) ([]sample, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", d, err)
 		}
-		out = append(out, sample{Dir: d, Episode: ep})
+		out = append(out, sample{Dir: d, Root: roots[d], Episode: ep})
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no rollouts found under %v (looking for <task>/<sample>/episode.json)", paths)

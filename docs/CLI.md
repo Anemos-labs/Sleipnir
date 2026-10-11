@@ -1747,6 +1747,10 @@ usage: sleipnir rl export [flags] RUN_DIR...
 flags:
   -advantage string
         grpo | rloo | broadcast | anchor | none (default: grpo for steps, tokens and groups; none for the rest)
+  -drop value
+        drop rule for the training formats, repeatable: a preset (ds-frontend: the steps a deepseek model wrote doing front-end work) or conditions such as 'name=N;models=GLOB,...;roles=R,...;edits-ui', also tags, task-ids and providers (docs/TRAINING-DATA.md)
+  -exclude value
+        file of rollouts to leave out of every format, one per line (a sample directory, or its path from the run directory's parent or from the run directory, e.g. job/task/3), repeatable
   -format string
         steps | tokens | groups | sft | dpo | kto | atif | canonical (default "steps")
   -group-by string
@@ -1761,8 +1765,12 @@ flags:
         keep episodes with no verifier verdict in the training formats
   -licenses string
         comma-separated SPDX ids an episode's repository may carry (empty allows any)
+  -max-drop-rate float
+        fail, removing the -o file, when the length limits drop more than this share (0 to 1) of any role's steps; 1 never fails (default 1)
   -max-prompt-tokens int
         drop steps whose prompt is longer (0: no limit)
+  -max-sample-tokens int
+        drop steps whose prompt plus completion is longer, e.g. the trainer's maximum sequence length (0: no limit)
   -max-samples int
         stop after this many records (0: no limit)
   -min-reward float
@@ -1779,6 +1787,8 @@ flags:
         reasoning in completions: drop | field | keep (default "drop")
   -redact-salt string
         salt of the redaction tokens; equal secrets get equal tokens per salt
+  -role-teacher value
+        ROLE=MODEL[,MODEL...]: steps of that role, and the compactor and mailman calls of its agents, may only come from these models (globs), trainable or not; repeatable
   -roles string
         comma-separated roles to keep (worker, manager, reviewer, compactor, mailman); empty keeps all
   -seed int
@@ -1793,6 +1803,8 @@ flags:
         wire role of the system prompt (default: system)
   -table string
         canonical: write the segment table to this file instead of the head of the output
+  -tasks string
+        tasks file whose tags are given to episodes that recorded none (older runs); without it, each rollout's task.json
   -teacher string
         comma-separated non-policy models whose completions may be trained on (sft, dpo, kto); others are skipped
   -top-k int
