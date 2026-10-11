@@ -9,26 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { boot, FakeEvent } from './pagedom.mjs';
 
-const HOME = '/home/me', BASE = '/p/a';
-/** The server's side of the field: folders by path (file: a file; git: a repository; empty; verify: what its files suggest). */
-const TREE = {
-  '/': {}, '/home': {}, [HOME]: {}, [HOME + '/code']: {}, [HOME + '/code/api-server']: { git: true }, [HOME + '/code/shop']: { verify: [{ cmd: 'go test {dirs}', why: 'go.mod' }] },
-  [HOME + '/code/notes']: {}, [HOME + '/code/Sandbox']: { empty: true }, [HOME + '/code/readme.txt']: { file: true }, '/p': {}, [BASE]: {},
-};
-const join = (a, b) => (a === '/' ? '' : a) + '/' + b, dirname = p => p.slice(0, p.lastIndexOf('/')) || '/';
-/** What GET /api/fs/dirs?path= answers for a path, as internal/web/dirs does. */
-function answer(text) {
-  const t = text.trim(); let p = t === '~' || t.startsWith('~/') ? HOME + t.slice(1) : t;
-  if (!p.startsWith('/')) p = BASE + '/' + p;
-  const whole = t === '~' || /\/$/.test(t) || /\/\.\.$/.test(t), abs = p.replace(/\/+$/, '') || '/', i = p.lastIndexOf('/');
-  const parent = whole ? abs : p.slice(0, i) || '/', prefix = whole ? '' : p.slice(i + 1);
-  const entries = Object.keys(TREE).filter(k => k !== '/' && dirname(k) === parent && !TREE[k].file).map(k => k.slice(k.lastIndexOf('/') + 1))
-    .filter(n => !n.startsWith('.') && n.toLowerCase().startsWith(prefix.toLowerCase())).sort((a, b) => (+b.startsWith(prefix) - +a.startsWith(prefix)) || a.toLowerCase().localeCompare(b.toLowerCase()))
-    .map(n => ({ name: n, path: join(parent, n), repo: !!TREE[join(parent, n)].git || undefined }));
-  const node = TREE[abs], up = TREE[dirname(abs)];
-  return { dir: parent, prefix, entries, home: HOME, sep: '/', state: { path: abs, exists: !!node, dir: !!node && !node.file, readable: !!node && !node.file, parentOk: !!up && !up.file, known: abs === BASE,
-    empty: !!(node && node.empty), git: node && node.git ? 'repo' : 'none', verify: (node && node.verify) || [] } };
-}
+import { HOME, BASE, answer } from './fsfake.mjs';
 
 /** A page with the field's server: asked = the paths asked of it; hold = a map of paths whose answer waits for release(path). */
 async function open(seed, o) {

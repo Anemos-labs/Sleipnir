@@ -8,7 +8,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -82,6 +81,8 @@ func planDir(dir string, unlisted, create, git bool) (dirPlan, error) {
 	pl := dirPlan{unlisted: unlisted}
 	st := dirs.Inspect(dir)
 	switch {
+	case st.Inaccessible:
+		return pl, werr(http.StatusForbidden, "unreadable", "the server cannot look at that path")
 	case st.Exists && !st.Dir:
 		return pl, werr(http.StatusBadRequest, "not_a_dir", "that is a file, not a folder")
 	case !st.Exists && !st.ParentOK:
@@ -124,7 +125,8 @@ func plainName(name string) error {
 // only), then the repository and its first commit.
 func (pl dirPlan) apply(ctx context.Context, dir string) error {
 	if pl.create {
-		if err := os.Mkdir(dir, 0o777); err != nil && !errors.Is(err, fs.ErrExist) {
+		// a folder that is there by now (another request, another process) is not the one that was confirmed: nothing of it is used
+		if err := os.Mkdir(dir, 0o755); err != nil {
 			return werr(http.StatusConflict, "mkdir", "the folder could not be made: "+clip(err.Error(), 300))
 		}
 	}

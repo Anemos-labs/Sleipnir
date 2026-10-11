@@ -120,13 +120,18 @@ func Complete(text string, o Options) (wire.DirListing, error) {
 	return out, nil
 }
 
-// Inspect says what the absolute path abs names, without listing anything but whether a folder is empty.
+// Inspect says what the absolute path abs names, without listing anything but whether a folder is empty. A path that cannot be looked
+// at for any other reason than that it is not there is Inaccessible, not absent.
 func Inspect(abs string) wire.DirState {
 	st := wire.DirState{Path: abs, Git: "none", Verify: []wire.VerifyHint{}}
 	if fi, err := os.Stat(filepath.Dir(abs)); err == nil && fi.IsDir() {
 		st.ParentOK = true
 	}
 	fi, err := os.Stat(abs)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		st.Exists, st.Inaccessible = true, true // there, as far as anyone can tell (permission, a link that loops): never a folder to make
+		return st
+	}
 	if err != nil || !fi.IsDir() {
 		st.Exists = err == nil
 		st.Git, st.GitRoot = gitAround(filepath.Dir(abs))

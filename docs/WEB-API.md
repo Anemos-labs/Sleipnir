@@ -369,7 +369,7 @@ The page never holds a provider key: signing in is `sleipnir login` in a termina
 |---|---|---|---|
 | `GET` | `/api/schedule` | `wire.ScheduleView`: the jobs, the daemon and the last logs of each job | - |
 | `GET` | `/api/schedule/next` | `?cron=`: `wire.CronCheck`, whether the expression is valid and when it next runs | - |
-| `POST` | `/api/schedule/jobs` | `wire.JobRequest`: adds a job; `bypass` and `yolo` are refused. `budgetUsd` left out is US$1, as `schedule add`; `0` is no limit. A job never takes the id of a removed job that left logs | `job.add` |
+| `POST` | `/api/schedule/jobs` | `wire.JobRequest`: adds a job; `bypass` and `yolo` are refused. `dir` is the absolute path of a folder that exists, a project of the page or any other (`400 bad_path`, `404 no_dir`); the confirmation is where the person sees what the job will run. `budgetUsd` left out is US$1, as `schedule add`; `0` is no limit. A job never takes the id of a removed job that left logs | `job.add` |
 | `PUT` | `/api/schedule/jobs/{job}` | Edits a job's cron, goal, directory, model, mode and budget; a budget left out stays what it was | `job.edit:<job>` |
 | `POST` | `/api/schedule/jobs/{job}/pause` | `{paused}`: a paused job is skipped by the daemon and can still be run by hand | - |
 | `DELETE` | `/api/schedule/jobs/{job}` | Removes the job | - |

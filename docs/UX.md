@@ -92,7 +92,7 @@ open the address again; nothing is shown from the session until then.
 One page shows every session the server hosts, one tab each in the session strip; a tab keeps running, and can ask questions,
 while another is in front. `+ New` starts a session with every chat flag, seeded from the flags `sleipnir web` was started with. Its folder is a path typed in a
 field that completes folder names as it is typed (`Tab` completes, the arrow keys choose, `Enter` takes one; `~` is the home folder) and says
-under it what the path is: a project, a folder that will be made, a git repository or not. A new or empty folder can be made a git
+under it what the path is: a project, a folder that will be made, a git repository or not. The `--cwd` of the Schedule form is the same field (a job's folder must exist: it is not offered to be made). A new or empty folder can be made a git
 repository with an empty first commit (on by default); a folder that has files is never made one. The `Projects` button lists the folders the
 server knows, with their trust when the project's files are not trusted (`not trusted`, `changed since trusted`, `partial` when not every
 file could be scanned, `unreadable`). Whatever needs explaining has a `?` beside it that says in plain words what it is, on hover, on keyboard focus and on a tap (`Escape` hides it before it closes the dialog): the workers, the isolation, `--verify` (the

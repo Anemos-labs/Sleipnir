@@ -30,6 +30,10 @@ func TestScheduleAddEditPauseRemove(t *testing.T) {
 	if w := rg.do(req{method: "POST", path: "/api/schedule/jobs", body: good}); w.Code != http.StatusPreconditionRequired {
 		t.Fatalf("add without a confirmation: %d", w.Code)
 	}
+	file := filepath.Join(rg.project, "a-file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for name, tc := range map[string]struct {
 		mut  func(*wire.JobRequest)
 		st   int
@@ -41,8 +45,9 @@ func TestScheduleAddEditPauseRemove(t *testing.T) {
 		"yolo":       {func(j *wire.JobRequest) { j.Mode = "yolo" }, 403, "dangerous_mode"},
 		"bypass":     {func(j *wire.JobRequest) { j.Mode = "bypass" }, 403, "dangerous_mode"},
 		"odd mode":   {func(j *wire.JobRequest) { j.Mode = "chaos" }, 400, "bad_mode"},
-		"elsewhere":  {func(j *wire.JobRequest) { j.Dir = "/etc" }, 403, "not_a_project"},
-		"relative":   {func(j *wire.JobRequest) { j.Dir = "proj" }, 403, "not_a_project"},
+		"no folder":  {func(j *wire.JobRequest) { j.Dir = filepath.Join(rg.state, "no", "such") }, 404, "no_dir"},
+		"a file":     {func(j *wire.JobRequest) { j.Dir = file }, 404, "no_dir"},
+		"relative":   {func(j *wire.JobRequest) { j.Dir = "proj" }, 400, "bad_path"},
 		"flag model": {func(j *wire.JobRequest) { j.Model = "--yolo" }, 400, "bad_flags"},
 	} {
 		body := good
@@ -274,5 +279,20 @@ func TestJobBudgetDefaultsLikeTheCLI(t *testing.T) {
 		header: map[string]string{"X-Confirm": rg.confirm("job.edit:" + free.ID)}})
 	if e := decode[wire.ScheduleJob](t, w); w.Code != 200 || e.BudgetUSD != 0 || e.Cron != "@hourly" {
 		t.Errorf("edit without a budget: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A job may run in any folder that exists, not only in a project of the page: adding it (and editing it) needs the confirmation of its
+// own scope either way.
+func TestAJobMayRunInAnyFolderThatExists(t *testing.T) {
+	rg := newRig(t, nil)
+	elsewhere := t.TempDir()
+	j := rg.addJob(wire.JobRequest{Cron: "@daily", Goal: "tidy", Dir: elsewhere, Mode: "plan", BudgetUSD: 1})
+	if j.Dir != elsewhere {
+		t.Errorf("the job runs in %q, want %q", j.Dir, elsewhere)
+	}
+	edit := wire.JobRequest{Cron: "@weekly", Goal: "tidy up", Dir: rg.project, Mode: "plan", BudgetUSD: 1}
+	if w := rg.do(req{method: "PUT", path: "/api/schedule/jobs/" + j.ID, body: edit, header: map[string]string{"X-Confirm": rg.confirm("job.edit:" + j.ID)}}); w.Code != 200 {
+		t.Errorf("moving it into the project: %d %s", w.Code, w.Body.String())
 	}
 }

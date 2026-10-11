@@ -107,3 +107,11 @@ test('what needs explaining has a ? beside it, and the explanation shows on hove
   // the popover goes with the dialog
   L.SL.ui.closeModal(); assert.equal(L.$('#helpTip'), null);
 });
+
+test('what the server sent into an explanation is text, never markup', async () => {
+  const hostile = '<img src=x onerror=window.__pwn=1>';
+  const L = await open({}, { testsPreset: hostile });
+  L.$('#nsRuleEx [data-ex="tests"]').dispatchEvent(new FakeEvent('mouseover', { bubbles: true }));
+  assert.equal(L.doc.querySelectorAll('#helpTip img').length, 0, 'no element came out of it');
+  assert.match(L.$('#helpTip').textContent, /<img src=x onerror=window\.__pwn=1>/, 'it is shown as it was written');
+});

@@ -8,9 +8,16 @@
   'use strict';
   const U = SL.u, { $, $$, esc } = U, ui = SL.ui = SL.ui || {};
   const folder = ui.folder = {};
+  /** The element ids of one field (the New session dialog's by default; the Schedule form has its own). */
+  const IDS = { input: 'nsCwd', list: 'nsDirList', state: 'nsDirState', projects: 'nsProjects', row: 'nsDir' };
   const DEBOUNCE_MS = 140, MAX_PROJECTS = 8, ABSOLUTE = /^([\\/]|[A-Za-z]:[\\/])/;   // a typed path that is written in full needs no repeating
 
   /** A typed path as its head (up to and including the last separator) and the unfinished name after it. */
+  /** A path written in full (a root, or a drive): the server can take it as it is. */
+  folder.absolute = text => ABSOLUTE.test(String(text).trim());
+  /** What the ? beside a folder field says. */
+  folder.helpText = 'Any folder on this machine; <span class="mono">~</span> is your home folder. Folder names complete as you type: <kbd>Tab</kbd> completes, <kbd>↑</kbd> <kbd>↓</kbd> choose, <kbd>Enter</kbd> takes one.';
+
   folder.split = text => { text = String(text == null ? '' : text); const i = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\')); return { head: text.slice(0, i + 1), tail: text.slice(i + 1) }; };
 
   /** The text that takes a listed folder: its path written the way the person writes theirs (the home folder as ~ when they began with
@@ -35,10 +42,12 @@
    * folder to make), bad (nothing can start there), '' (nothing known). git: repo, inside (root names the repository above), offer (a
    * new or empty folder: a repository can be made), files (a folder with files and no repository), '' (no folder).
    */
-  folder.describe = state => {
-    const s = state;
+  folder.describe = (state, opts) => {
+    const s = state, make = !(opts && opts.make === false);   // make: a folder that does not exist may be made (a session), else it is refused (a job)
     if (!s) return { level: '', lead: '', git: '', root: '' };
+    if (s.inaccessible) return { level: 'bad', lead: 'The server cannot look at this path.', git: '', root: '' };
     if (s.exists && !s.dir) return { level: 'bad', lead: 'That is a file, not a folder.', git: '', root: '' };
+    if (!s.exists && !make) return { level: 'bad', lead: 'This folder does not exist.', git: '', root: '' };
     if (!s.exists) {
       if (!s.parentOk) return { level: 'bad', lead: 'This folder does not exist, and neither does the one it would be made in.', git: '', root: '' };
       return { level: 'new', lead: 'New folder: made when the session starts.', git: s.git === 'inside' ? 'inside' : 'offer', root: s.gitRoot || '' };
@@ -69,8 +78,8 @@
   const trustWord = t => t && t !== 'trusted' && t !== 'none' ? U.own(TRUST_WORD, t) || String(t) : '';
 
   /** The markup of the field: the text box that completes, its list, and what the path is. */
-  folder.html = (value) => '<div class="dirbox"><div class="dirrow"><input id="nsCwd" type="text" value="' + esc(value == null ? '' : value) + '" role="combobox" aria-label="Folder" aria-autocomplete="list" aria-expanded="false" aria-controls="nsDirList" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="~/code/my-project"><button type="button" class="btn sm" id="nsProjects" aria-label="Projects this server knows" title="Projects this server knows">Projects ▾</button></div>' +
-    '<ul id="nsDirList" class="dirlist" role="listbox" aria-label="Folders" hidden></ul></div><div id="nsDirState" class="dirstate" role="status" aria-live="polite"></div>';
+  folder.html = (value, ids) => { ids = Object.assign({}, IDS, ids); return '<div class="dirbox"><div class="dirrow"><input id="' + ids.input + '" type="text" value="' + esc(value == null ? '' : value) + '" role="combobox" aria-label="Folder" aria-autocomplete="list" aria-expanded="false" aria-controls="' + ids.list + '" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="~/code/my-project"><button type="button" class="btn sm" id="' + ids.projects + '" aria-label="Projects this server knows" title="Projects this server knows">Projects ▾</button></div>' +
+    '<ul id="' + ids.list + '" class="dirlist" role="listbox" aria-label="Folders" hidden></ul></div><div id="' + ids.state + '" class="dirstate" role="status" aria-live="polite"></div>'; };
 
   /**
    * Make the field work. b: the dialog's body, sc: its scope, st: the dialog's state (st.cwd follows the text), o.projects(): the projects
@@ -78,13 +87,13 @@
    * {state(), ensure()}: the answer for the text now in the box (null when none could be had), and a promise of it, asking when needed.
    */
   folder.mount = function (b, sc, st, o) {
-    const input = $('#nsCwd', b), list = $('#nsDirList', b), box = $('#nsDirState', b);
+    const ids = Object.assign({}, IDS, o.ids), input = $('#' + ids.input, b), list = $('#' + ids.list, b), box = $('#' + ids.state, b), make = o.make !== false;
     let listing = null, answered = null, seq = 0, timer = 0, rows = [], at = -1, pick = false;   // pick: the list is the known projects, whatever is typed
     const text = () => input.value;
     const isOpen = () => !list.hidden;
 
     function paintState() {
-      const state = answered && answered.text === text() ? answered.state : null, d = folder.describe(state), note = folder.gitNote(d);
+      const state = answered && answered.text === text() ? answered.state : null, d = folder.describe(state, { make }), note = folder.gitNote(d);
       box.className = 'dirstate' + (d.level ? ' ' + d.level : '');
       box.innerHTML = d.lead ? '<span class="dirlead">' + esc(d.lead) + '</span>' + (state && state.path && !ABSOLUTE.test(text().trim()) ? ' <span class="dirabs mono" title="the folder, in full">' + esc(state.path) + '</span>' : '') + (note ? '<span class="dirnote">' + esc(note) + (folder.gitHelp(d) ? ui.help(folder.gitHelp(d), 'a folder that is not a repository') : '') + '</span>' : '') : '';
     }
@@ -98,7 +107,7 @@
         rows = asked.entries.map(e => ({ path: e.path, label: e.name, sub: '', tag: e.link ? 'link' : '', repo: !!e.repo }));
       } else rows = [];
       if (at >= rows.length) at = -1;
-      list.innerHTML = rows.map((r, i) => '<li id="nsDir' + i + '" role="option" class="dir' + (i === at ? ' on' : '') + '" data-i="' + i + '" aria-selected="' + (i === at) + '"><span class="dn">' + esc(r.label) + '</span>' + (r.sub ? '<span class="dp mono">' + esc(r.sub) + '</span>' : '') + (r.repo ? '<span class="tag">git</span>' : '') + (r.tag ? '<span class="tag warm">' + esc(r.tag) + '</span>' : '') + '</li>').join('') +
+      list.innerHTML = rows.map((r, i) => '<li id="' + ids.row + i + '" role="option" class="dir' + (i === at ? ' on' : '') + '" data-i="' + i + '" aria-selected="' + (i === at) + '"><span class="dn">' + esc(r.label) + '</span>' + (r.sub ? '<span class="dp mono">' + esc(r.sub) + '</span>' : '') + (r.repo ? '<span class="tag">git</span>' : '') + (r.tag ? '<span class="tag warm">' + esc(r.tag) + '</span>' : '') + '</li>').join('') +
         ((!t || pick) && rows.length ? '<li class="dirmore" role="presentation">projects this server knows; or type a path</li>' : '') + (!pick && asked && asked.more ? '<li class="dirmore" role="presentation">more folders: keep typing</li>' : '');
       setOpen(rows.length > 0 && document.activeElement === input);
     }
@@ -106,7 +115,7 @@
     function setOpen(on) {
       list.hidden = !on; input.setAttribute('aria-expanded', String(on));
       if (on) input.setAttribute('data-popup-open', ''); else input.removeAttribute('data-popup-open');   // 94-keys.js leaves Escape to a field with its list open
-      if (on && at >= 0) input.setAttribute('aria-activedescendant', 'nsDir' + at); else input.removeAttribute('aria-activedescendant');
+      if (on && at >= 0) input.setAttribute('aria-activedescendant', ids.row + at); else input.removeAttribute('aria-activedescendant');
     }
 
     function ask(t) {
@@ -148,13 +157,13 @@
         if (!rows.length) return; e.preventDefault();
         if (!isOpen()) setOpen(true);
         at = k === 'ArrowDown' ? (at + 1) % rows.length : (at <= 0 ? rows.length - 1 : at - 1);
-        $$('#nsDirList li.dir', b).forEach((li, i) => { li.classList.toggle('on', i === at); li.setAttribute('aria-selected', String(i === at)); });
-        input.setAttribute('aria-activedescendant', 'nsDir' + at); const li = $('#nsDir' + at, b); if (li && li.scrollIntoView) li.scrollIntoView({ block: 'nearest' });
+        $$('li.dir', list).forEach((li, i) => { li.classList.toggle('on', i === at); li.setAttribute('aria-selected', String(i === at)); });
+        input.setAttribute('aria-activedescendant', ids.row + at); const li = $('#' + ids.row + at, b); if (li && li.scrollIntoView) li.scrollIntoView({ block: 'nearest' });
       } else if (k === 'Enter' && isOpen() && at >= 0) { e.preventDefault(); take(at); }
       else if (k === 'Tab' && !e.shiftKey && isOpen() && complete()) e.preventDefault();
       else if (k === 'Escape' && isOpen()) { e.preventDefault(); e.stopPropagation(); at = -1; setOpen(false); }
     });
-    const btn = $('#nsProjects', b);
+    const btn = $('#' + ids.projects, b);
     sc.listen(btn, 'click', () => { const was = pick && isOpen(); pick = !was; at = -1; input.focus(); paintList(); if (was) setOpen(false); });
     sc.listen(list, 'mousedown', e => { e.preventDefault(); });   // the box keeps the focus: a press on a name is a choice, not a blur
     sc.listen(list, 'click', e => { const li = e.target.closest && e.target.closest('[data-i]'); if (li) take(+li.dataset.i); });

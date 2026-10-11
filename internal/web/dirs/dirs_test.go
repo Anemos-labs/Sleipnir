@@ -92,11 +92,15 @@ func TestExpandPaths(t *testing.T) {
 		"shop":           filepath.Join(root, "code", "shop"),
 		"./shop/../shop": filepath.Join(root, "code", "shop"),
 		"  ~/code/  ":    filepath.Join(root, "code"),
-		"/a//b/../c":     filepath.FromSlash("/a/c"),
 	} {
 		got, err := Expand(text, o)
 		if err != nil || got != want {
 			t.Errorf("%q: %q, %v; want %q", text, got, err, want)
+		}
+	}
+	if runtime.GOOS != "windows" { // a path with no drive is not absolute there
+		if got, err := Expand("/a//b/../c", o); err != nil || got != "/a/c" {
+			t.Errorf("/a//b/../c: %q, %v", got, err)
 		}
 	}
 	for _, text := range []string{"~other/x", "a\x00b", strings.Repeat("a", maxPath+1), "\xff\xfe"} {
@@ -244,5 +248,22 @@ func TestCompleteOfTheRootAndOfWhatCannotBeRead(t *testing.T) {
 	l, err = Complete(locked+string(filepath.Separator), Options{})
 	if err != nil || len(l.Entries) != 0 || !l.State.Dir || l.State.Readable {
 		t.Errorf("a folder that cannot be read: %+v, %v", l, err)
+	}
+}
+
+// A path that cannot be looked at for another reason than that it is not there (a link that loops) is there as far as anyone can tell:
+// it is never taken for absent, so that nothing is made where it stands.
+func TestInspectDoesNotTakeWhatCannotBeLookedAtForAbsent(t *testing.T) {
+	root := t.TempDir()
+	loop := filepath.Join(root, "loop")
+	if err := os.Symlink("loop", loop); err != nil {
+		t.Skipf("no links here: %v", err)
+	}
+	st := Inspect(loop)
+	if !st.Exists || !st.Inaccessible || st.Dir {
+		t.Errorf("a link that loops: %+v", st)
+	}
+	if st := Inspect(filepath.Join(root, "absent")); st.Exists || st.Inaccessible || !st.ParentOK {
+		t.Errorf("a path that is not there: %+v", st)
 	}
 }

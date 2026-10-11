@@ -225,3 +225,28 @@ func TestAFolderThatCannotHoldTheSessionIsRefusedBeforeAnythingIsMade(t *testing
 		t.Error("a folder was made in a repository that was refused")
 	}
 }
+
+// A folder that is there by the time the confirmed request makes it (another request, another process) is not the one that was
+// confirmed: nothing of it is used, and no repository is made in it. A path the server cannot look at is refused, never made.
+func TestAFolderThatAppearedAfterTheConfirmationIsNotUsedAndWhatCannotBeLookedAtIsNotMade(t *testing.T) {
+	dir := mkdirs(t, t.TempDir(), "taken")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := dirPlan{create: true, git: true}.apply(context.Background(), dir)
+	if we, ok := err.(*wire.Error); !ok || we.Status != 409 || we.Code != "mkdir" {
+		t.Fatalf("apply on a folder that exists = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		t.Error("a repository was made in a folder that was not the one confirmed")
+	}
+	loop := filepath.Join(t.TempDir(), "loop")
+	if err := os.Symlink("loop", loop); err != nil {
+		t.Skipf("no links here: %v", err)
+	}
+	if _, err := planDir(loop, true, true, true); err == nil {
+		t.Error("a path that cannot be looked at was planned")
+	} else if we, ok := err.(*wire.Error); !ok || we.Status != 403 || we.Code != "unreadable" {
+		t.Errorf("planDir of a link that loops = %v", err)
+	}
+}

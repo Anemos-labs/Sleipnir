@@ -419,19 +419,22 @@ type DirEntry struct {
 
 // DirState is what a path typed names: Path is its absolute form (a leading ~ and a relative path resolved), Exists and Dir say
 // whether there is a folder, Readable whether its entries can be listed, ParentOK whether its parent is a folder (so that it can be
-// made), Known whether it is one of the server's projects, Empty whether the folder has nothing in it. Git is "repo" for the top of
+// made), Known whether it is one of the server's projects, Empty whether the folder has nothing in it, Inaccessible that the server
+// could not look at the path at all (it is there, as far as anyone can tell, and nothing can start in it). Git is "repo" for the top of
 // a git repository, "inside" for a folder within another one (GitRoot), "none" otherwise. Verify are the checks its files suggest.
 type DirState struct {
-	Path     string       `json:"path"`
-	Exists   bool         `json:"exists"`
-	Dir      bool         `json:"dir"`
-	Readable bool         `json:"readable"`
-	ParentOK bool         `json:"parentOk"`
-	Known    bool         `json:"known"`
-	Empty    bool         `json:"empty"`
-	Git      string       `json:"git"`
-	GitRoot  string       `json:"gitRoot,omitempty"`
-	Verify   []VerifyHint `json:"verify"`
+	Path     string `json:"path"`
+	Exists   bool   `json:"exists"`
+	Dir      bool   `json:"dir"`
+	Readable bool   `json:"readable"`
+	ParentOK bool   `json:"parentOk"`
+	Known    bool   `json:"known"`
+	Empty    bool   `json:"empty"`
+	// Inaccessible is a path that could not be looked at (permission, a link that loops): not a path to make or to take for absent.
+	Inaccessible bool         `json:"inaccessible,omitempty"`
+	Git          string       `json:"git"`
+	GitRoot      string       `json:"gitRoot,omitempty"`
+	Verify       []VerifyHint `json:"verify"`
 }
 
 // VerifyHint is a command that checks a project of the kind a folder looks like (Cmd) and the file that says so (Why).

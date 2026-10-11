@@ -13,6 +13,7 @@
   const chipTag = (t, c) => '<span class="tag ' + (c || '') + '">' + esc(t) + '</span>';
   const inp = (id, v, extra) => '<input id="' + id + '" type="text" value="' + esc(v == null ? '' : v) + '" ' + (extra || '') + '>';
   const seg = (name, list, cur) => '<div class="seg" role="group" aria-label="' + name + '">' + list.map(v => '<button type="button" data-seg="' + name + '" data-v="' + esc(v) + '" aria-pressed="' + (String(v) === String(cur)) + '">' + esc(v) + '</button>').join('') + '</div>';
+  /* An explanation (ui.help, ui.helpAttr) is page markup: what the server sent into one is escaped by whoever puts it there. */
   /** A labelled control: hint is a line under it, help the markup of a ? dot (ui.help) beside the label. */
   const field = (label, inner, hint, help) => '<div class="fld">' + (help ? '<div class="fl"><label>' + label + '</label>' + help + '</div>' : '<label>' + label + '</label>') + '<div class="fc">' + inner + (hint ? '<small class="hint">' + hint + '</small>' : '') + '</div></div>';
   ui.fmt = { seg, field, inp, chipTag };
@@ -111,7 +112,7 @@
   /* ---------- the New session dialog: what each control does, in a ? beside the control (hover, focus or a tap) ---------- */
   const NS_HELP = {
     name: 'Shown on the tab. Empty: the name of the folder.',
-    folder: 'Any folder on this machine; <span class="mono">~</span> is your home folder. Folder names complete as you type: <kbd>Tab</kbd> completes, <kbd>↑</kbd> <kbd>↓</kbd> choose, <kbd>Enter</kbd> takes one. A folder that does not exist is made.',
+    folder: ui.folder.helpText + ' A folder that does not exist is made.',
     git: 'Start a git repository here (<span class="mono">git init</span>, with an empty first commit): the work gets real history, and a team can give each worker its own worktree.',
     model: 'The model the manager and the workers run on. A role below can run on another.',
     workers: 'How many workers the manager can give tasks to, side by side. <b>0</b>: a single agent does everything itself.',
@@ -153,8 +154,8 @@
     const opt = (k, flag, about) => '<div class="nsopt"><label class="chk"><input type="checkbox" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + flag + '</label>' + help(k, about) + '</div>';
     const team = inner => '<div class="nsteam" data-team>' + inner + '</div>';
     /* a button that says what it does when it is hovered or focused */
-    const chip = (attr, cmd, why) => '<button type="button" class="chip mono" ' + attr + '="' + esc(cmd) + '"' + ui.helpAttr(why) + '>' + esc(cmd) + '</button>';
-    const ruleEx = RULE_EXAMPLES.map(([r, why]) => chip('data-ex', r, r === 'tests' && st.testsSummary ? 'the build and test commands of ' + st.testsSummary : why)).join('');
+    const chip = (attr, cmd, why) => '<button type="button" class="nschip mono" ' + attr + '="' + esc(cmd) + '"' + ui.helpAttr(why) + '>' + esc(cmd) + '</button>';
+    const ruleEx = RULE_EXAMPLES.map(([r, why]) => chip('data-ex', r, r === 'tests' && st.testsSummary ? 'the build and test commands of ' + esc(st.testsSummary) : why)).join('');
     ui.modal({ title: 'New session', kicker: '+ chat flags', desc: 'one tab = one sleipnir session: its own chat, team, log, folder and budget', wide: true, color: 'var(--ok)', focus: '#nsName', body:
       (st.error ? '<p class="nserr err" role="alert">' + esc(st.error) + '</p>' : '') + (st.resume ? '<p class="stubnote mono" style="margin:0 0 8px">resume ' + esc(st.resume) + '</p>' : '') +
       '<div class="g2 ns"><div><h3 class="lab nsh">Project</h3>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"'), '', help('name', 'the name')) +
@@ -173,7 +174,7 @@
       onMount(b, sc, close) {
         const paintVerify = () => {
           const s = fstate(), hs = folder.verifyHints(s), el = $('#nsVerifyHints', b);
-          el.innerHTML = !s ? '' : hs.length ? '<span class="dim">suggested for this folder:</span>' + hs.map(h => chip('data-vh', h.cmd, 'Suggested by ' + h.why + ' in this folder. Click to use it.')).join('') : s.exists && s.dir ? '<span class="dim">no build files recognised here: write the command yourself, like <span class="mono">npm test</span>.</span>' : '';
+          el.innerHTML = !s ? '' : hs.length ? '<span class="dim">suggested for this folder:</span>' + hs.map(h => chip('data-vh', h.cmd, 'Suggested by ' + esc(h.why) + ' in this folder. Click to use it.')).join('') : s.exists && s.dir ? '<span class="dim">no build files recognised here: write the command yourself, like <span class="mono">npm test</span>.</span>' : '';
           $$('[data-vh]', el).forEach(c => c.setAttribute('aria-pressed', String(c.dataset.vh === st.verify)));
         };
         const paint = () => {

@@ -20,9 +20,10 @@
       if (!mod && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3') && !ui.hasModal() && (!inField || (t.id === 'input' && t.value === ''))) { if (ui.approvals.tryKey(e.key)) { e.preventDefault(); return; } }
       if (!mod) SL.time.noteKey();
       if (e.key === 'Escape') {
+        /* a field with a list open (a folder field) takes the key first: it closes the list, and the next one closes the dialog */
+        if (t && t.hasAttribute && t.hasAttribute('data-popup-open')) return;
         if (SL.time.holdWanted()) { const S = SL.sessions.active; S.hold.pinned = false; S.hold.vtSaved = null; SL.time.pin(false); SL.time.release(); e.preventDefault(); return; }
-        /* a field with a list open (the folder field of New session) takes the key first: it closes the list, and the next one closes the dialog */
-        if (ui.hasModal()) { if (t && t.hasAttribute && t.hasAttribute('data-popup-open')) return; e.preventDefault(); ui.closeModal(); return; }
+        if (ui.hasModal()) { e.preventDefault(); ui.closeModal(); return; }
         if (ui.inbox && ui.inbox.isOpen()) { ui.inbox.close(); e.preventDefault(); return; }
         if ($('.sessmenu') || $('.budpop') || $('.modemenu')) return;
         if (ui.drawerOpen && ui.drawerOpen()) { e.preventDefault(); ui.closeDrawer(); return; }
