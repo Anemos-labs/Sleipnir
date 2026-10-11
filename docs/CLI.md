@@ -947,7 +947,7 @@ Project provider settings are never read by `rl`; configure the policy in your u
 and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exits 0.
 
 ```text
-sleipnir rl taskgen <generator>    make tasks from history, authored fixtures, mutations or recall questions, or compose swarm tasks
+sleipnir rl taskgen <generator>    make tasks from history, chains of merged pull requests, authored fixtures, mutations, recall questions or libraries rebuilt from their specification, or compose swarm tasks
 sleipnir rl tasks <command> FILE   validate, filter, split and check task files
 sleipnir rl rollout                run G samples per task with a policy and write a run directory
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
@@ -980,6 +980,10 @@ than the fix, and its title sets the task kind. `issue.ref` and `source` are rec
 `source`) and never shown to the agent. Every other filter applies, and a listed change that fails one is reported
 with its reason.
 
+`--seal DIR` writes the start state of each task as a repository of its own, `DIR/<task id>.git`: one commit with the
+start tree and no history, so the source repository's later commits are not what the task names
+(`docs/TRAINING-DATA.md`, section 3.2). `--repo-path` then says how the tasks name DIR.
+
 <!-- flags: rl taskgen git -->
 ```text
 usage: sleipnir rl taskgen git --repo PATH [flags]
@@ -993,6 +997,12 @@ flags:
         mine exactly these changes instead of scanning history: a file with one per line, a commit id or a JSON object {commit, parent, issue: {ref, title, body}, source} whose issue becomes the prompt
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -gen-concurrency int
         candidates validated at once (default 2)
   -id-prefix string
@@ -1033,6 +1043,10 @@ flags:
         how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
   -repeats int
         run each baseline this many times to catch flaky tests
   -repo string
@@ -1047,6 +1061,12 @@ flags:
         revision to generate from (default HEAD)
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
+  -seal string
+        write each task's start state to DIR/<task id>.git, a repository with one commit (the start tree, without history), and point the task at it; with --repo-path the tasks name it <repo-path>/<task id>.git
   -set-env value
         NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
   -setup value
@@ -1074,6 +1094,113 @@ flags:
 ```
 <!-- /flags -->
 
+### `sleipnir rl taskgen chain`
+
+Make one long swarm task of each chain of 3 to 8 pull requests merged one after another on first-parent history: the
+task starts before the first and asks for all of them, in order, as milestones. A line of the `--chains` file is
+
+```json
+{"id": "parser-rework", "commits": ["<merge or squash commit of the first PR>", "...", "<of the last>"], "issues": ["<the first PR's issue>", ""], "source": {"prs": "https://..."}}
+```
+
+Each commit's first parent must be the commit before it. A milestone's text is its issue's text when one is given, and
+otherwise the commit message, without the "Merge pull request" line of a merge commit. The hidden tests are the last
+commit's version of every test file a pull request touched; the reference solution is the diff of every other file.
+The verifier is the whole-suite scorer: the project's test suite is recorded `--repeats` times at the start and after
+each pull request, the tests a pull request makes pass for good are its milestone, weighted by the lines it changed
+outside the tests, and the tests that pass throughout are guards. Before a task is written it is scored as rollouts
+will be: the start must score 0, the state after each pull request the weight of the milestones it reached (within
+0.02) and the end exactly 1. The output lists each chain's scores, and a chain that fails is rejected
+(`docs/TRAINING-DATA.md`, section 3.2). `--seal DIR` seals each start state, as for `rl taskgen git`.
+
+<!-- flags: rl taskgen chain -->
+```text
+usage: sleipnir rl taskgen chain --chains FILE [flags] REPO
+
+flags:
+  -blobs string
+        blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
+  -chains string
+        the chains to mine, one JSON object per line: {id, commits: [3 to 8 merge or squash commits, oldest first], issues: [an issue text per commit, optional], source: {provenance}}
+  -concurrency int
+        rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
+  -gen-concurrency int
+        chains recorded at once (default 1)
+  -id-prefix string
+        prefix of task ids, and a tag of every task (default: the repository directory name)
+  -infra-retries int
+        retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
+  -keep-failed
+        keep the workspaces of failed rollouts for debugging
+  -licenses string
+        comma-separated SPDX ids the licence at a chain's last commit must be one of
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
+  -max-wall duration
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
+  -no-net-isolation
+        do not isolate the network of tasks that do not need it
+  -o string
+        output tasks file (default "tasks.jsonl")
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
+  -pass-env string
+        comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
+  -repeats int
+        runs of the test suite recorded at the start and after each pull request: a test counts only where they all agree (default 3)
+  -repo-path string
+        how the tasks name REPO (default: its absolute path) or, with --seal, the --seal directory (<repo-path>/<task id>.git); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine
+  -report string
+        also write the generation report (counts, every rejection with its reason, each chain's self-check) as JSON
+  -require-net-isolation
+        refuse to run where network isolation is unavailable
+  -rewards string
+        rewards.json with weights, caps and detectors (default: the documented defaults)
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
+  -seal string
+        write each task's start state to DIR/<task id>.git, a repository with one commit (the start tree, without history), and point the task at it; with --repo-path the tasks name it <repo-path>/<task id>.git
+  -set-env value
+        NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
+  -setup value
+        setup command run once per task snapshot, repeatable (default: detected)
+  -tag value
+        tag added to every task, repeatable
+  -target-price string
+        price and cache model rollouts are repriced under (see: sleipnir rl reward -list-targets)
+  -timeout duration
+        deadline of one run of the whole test suite, written into the tasks (default 30m)
+  -verify-policy string
+        with repeats: all | any | majority
+  -verify-repeats int
+        run the verifier this many times to catch flaky tests
+  -work-dir string
+        where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)
+  -workspace-mode string
+        export: a fresh single-commit tree without history | clone: a local clone with history (default "export")
+```
+<!-- /flags -->
+
 ### `sleipnir rl taskgen mutate`
 
 Inject bugs the project's own tests catch; the reverse patch is the reference solution.
@@ -1089,6 +1216,12 @@ flags:
         spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -file value
         restrict mutated files to this path.Match pattern, repeatable
   -gen-concurrency int
@@ -1123,6 +1256,10 @@ flags:
         how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
   -repo string
         the repository to generate from (a local path)
   -repo-path string
@@ -1135,6 +1272,10 @@ flags:
         revision to generate from (default HEAD)
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
   -seed int
         selects which mutations are tried first; the result is deterministic
   -set-env value
@@ -1236,6 +1377,12 @@ flags:
         directory of fixtures: one subdirectory each, with task.json, start/, hidden/ and solution/
   -id string
         comma-separated fixture ids (path.Match wildcards allowed); default all
+  -max-file-bytes int
+        largest file of a fixture, in bytes (default 1 MiB)
+  -max-files int
+        most files in each of a fixture's trees (default 400; raise it for a large project fixture)
+  -max-total-bytes int
+        most bytes in each of a fixture's trees (default 8 MiB)
   -o string
         output tasks file (default "tasks.jsonl")
   -repo-path-prefix string
@@ -1244,6 +1391,110 @@ flags:
         where the fixtures' repositories are written, one per fixture (default: fixture-repos next to -o)
   -tag value
         tag added to every task, repeatable
+```
+<!-- /flags -->
+
+### `sleipnir rl taskgen rebuild`
+
+Make one long swarm task of rebuilding a library from its specification: the packages of `--scope` at `--commit` (Go
+package directories relative to the repository, `dir/...` with every package below it, or Python package names) are
+reduced to stubs (`--tier stubs`: declarations, signatures, types, constants and documentation kept, function bodies
+`panic("not implemented")` or `raise NotImplementedError`) or removed and documented in `API.md` (`--tier spec`). Their
+tests are taken out of the start and become the hidden suite, scored by the whole-suite scorer with one milestone per
+package (Go) or module (Python), weighted by its lines, in the order they import each other. The start state is written
+to `--seal` as a repository with one commit. The scope must have 2,000 to 10,000 lines, at least 150 tests that fail on
+the start and pass with the reference every time (`--repeats` runs of each), a reference suite under 10 minutes, and
+must not be importable from outside the start tree; before the task is written the start must score 0 and the
+reference 1. Otherwise nothing is written: the reason is printed (and kept in `--report`) and the command fails
+(`docs/TRAINING-DATA.md`, section 3.2).
+
+<!-- flags: rl taskgen rebuild -->
+```text
+usage: sleipnir rl taskgen rebuild --scope PKG,... [flags] REPO
+
+flags:
+  -blobs string
+        blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
+  -commit string
+        the reference version: the revision whose sources are rebuilt (default HEAD)
+  -concurrency int
+        rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
+  -id-prefix string
+        prefix of the task id, and a tag of the task (default: the repository directory name)
+  -infra-retries int
+        retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
+  -keep-failed
+        keep the workspaces of failed rollouts for debugging
+  -licenses string
+        comma-separated SPDX ids the licence at --commit must be one of
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
+  -max-wall duration
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
+  -no-net-isolation
+        do not isolate the network of tasks that do not need it
+  -o string
+        output tasks file (default "tasks.jsonl")
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
+  -pass-env string
+        comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
+  -repeats int
+        runs of the test suite recorded on the start and with the reference: a test counts only when they all agree (default 3)
+  -repo-path string
+        how the task names the --seal directory: <repo-path>/<task id>.git, a path relative to the directory the rollouts run in (default: its absolute path)
+  -report string
+        also write the generation report (the scope, its units, the self-check, or why the task was rejected) as JSON
+  -require-net-isolation
+        refuse to run where network isolation is unavailable
+  -rewards string
+        rewards.json with weights, caps and detectors (default: the documented defaults)
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -scope string
+        comma-separated packages to rebuild: Go package directories relative to the repository (dir/... with every package below it), or Python package names
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
+  -seal string
+        where the start state is written: DIR/<task id>.git, a repository with one commit and no history (default: starts/ next to the tasks file)
+  -set-env value
+        NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
+  -setup value
+        setup command run once per task snapshot, repeatable (default: detected)
+  -tag value
+        tag added to the task, repeatable
+  -target-price string
+        price and cache model rollouts are repriced under (see: sleipnir rl reward -list-targets)
+  -tier string
+        stubs: the declarations and documentation stay, function bodies panic or raise NotImplementedError | spec: the sources are removed and API.md documents their API (default "stubs")
+  -timeout duration
+        deadline of one run of the whole test suite, written into the task (default 30m)
+  -verify-policy string
+        with repeats: all | any | majority
+  -verify-repeats int
+        run the verifier this many times to catch flaky tests
+  -work-dir string
+        where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)
+  -workspace-mode string
+        export: a fresh single-commit tree without history | clone: a local clone with history (default "export")
 ```
 <!-- /flags -->
 
@@ -1326,6 +1577,12 @@ flags:
         write the tasks to this file with verifier.baseline_score set to the start's measured score; a task whose recorded score differs is then not a failure
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -gold string
         blob store holding the reference solutions (default: --blobs)
   -infra-retries int
@@ -1350,12 +1607,20 @@ flags:
         how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
   -pass-env string
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
   -report string
         also write each task's verdict as JSON ({id, ok, skipped, reason, baseline_score, missing, weak}): a script can quarantine what failed
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
   -set-env value
         NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
   -target-price string
@@ -1424,6 +1689,12 @@ flags:
         ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -context-tokens int
         the policy's context window when a task does not set one
   -force
@@ -1468,6 +1739,10 @@ flags:
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
         permission mode of the agents: accept-edits (the default) | default | plan | bypass | yolo
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string
@@ -1478,6 +1753,10 @@ flags:
         pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -sampling string
         sampling parameters as a JSON object, e.g. {"temperature":1,"top_p":0.95,"max_tokens":4096}
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
   -seed int
         run seed; each rollout's sampling seed derives from it
   -set-env value
@@ -1492,6 +1771,138 @@ flags:
         seed of the -n subset
   -tasks string
         tasks file (JSON lines)
+  -temperature float
+        sampling temperature (overrides --sampling)
+  -thread-soft-limit int
+        the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout
+  -top-p float
+        nucleus sampling (overrides --sampling)
+  -verify-policy string
+        with repeats: all | any | majority
+  -verify-repeats int
+        run the verifier this many times to catch flaky tests
+  -work-dir string
+        where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)
+  -workspace-mode string
+        export: a fresh single-commit tree without history | clone: a local clone with history (default "export")
+```
+<!-- /flags -->
+
+### `sleipnir rl branch`
+
+Continues a finished rollout that took savepoints (`--savepoint-every`) from some of them, `--k` times each, into a new
+run directory: `--at sp:N[,M]` names savepoints, `every:K` takes every K-th, `last` the newest, `compaction` the last one
+before each compaction, `milestone` each one whose progress score rose and `plateau` each one where it stalled (both need
+`--score-savepoints` on the trunk). Each branch resumes the
+trunk's state with its own seed and runs for `--horizon` of agent time after its point (0: the rest of the trunk's
+budget), then is verified like any rollout. The branches run one after the other, at the trunk's own workspace path:
+give the trunk's `--work-dir`. The siblings of a point are one GRPO group, their steps before the fork are marked
+inherited and left out of the training formats, and their first prompt after the fork is the same, so
+`rl export --format dpo --pair best-worst` pairs their decisions. `--compact-first` makes each branch compact its context
+before anything else, when it has enough to fold (otherwise no compactor is called): competing summaries of the point's
+state. Details in docs/TRAINING-DATA.md, section 3.3.
+
+<!-- flags: rl branch -->
+```text
+usage: sleipnir rl branch --tasks tasks.jsonl --from RUN/TASK/SAMPLE --at sp:N[,M] --k 4 --model MODEL --out RUN_DIR [flags]
+
+flags:
+  -allow string
+        permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)
+  -allow-insecure-http
+        let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default
+  -api-key-env string
+        name of the environment variable holding the policy's API key (default: the provider's)
+  -at string
+        where to branch: sp:N[,M...], every:K (every K-th savepoint), last, compaction (before each compaction), milestone (where the progress score rose) or plateau (where it stalled; needs --score-savepoints) (default "last")
+  -base-url string
+        policy endpoint base URL (default: the provider's)
+  -blobs string
+        blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
+  -capture
+        ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
+  -compact-first
+        each branch compacts its context before anything else, when it has enough to fold: competing summaries of the point's state
+  -concurrency int
+        rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
+  -context-tokens int
+        the policy's context window when a task does not set one
+  -from string
+        the trunk: the sample directory of a finished rollout that took savepoints (RUN/TASK/SAMPLE)
+  -horizon duration
+        agent time a branch gets after its point (0: the rest of the trunk's budget)
+  -ignore-repo-instructions
+        do not load AGENTS.md-style files of a task's repository into the agents' context
+  -infra-retries int
+        retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
+  -json
+        print the summary as JSON
+  -k int
+        branches per point (the siblings of a point are one GRPO group) (default 4)
+  -keep-failed
+        keep the workspaces of failed rollouts for debugging
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
+  -max-tokens int
+        completion limit per request (overrides --sampling)
+  -max-wall duration
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
+  -mode string
+        who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager and N workers, the same as --swarm N) | empty: what each task's team says
+  -model string
+        the policy: provider/model or a bare id for the default provider (default: config models.default)
+  -no-net-isolation
+        do not isolate the network of tasks that do not need it
+  -out string
+        run directory of the branches (rerunning into it resumes)
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
+  -pass-env string
+        comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -perm-mode string
+        permission mode of the agents: accept-edits (the default) | default | plan | bypass | yolo
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
+  -require-net-isolation
+        refuse to run where network isolation is unavailable
+  -rewards string
+        rewards.json with weights, caps and detectors (default: the documented defaults)
+  -role-model value
+        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+  -rpm int
+        pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
+  -sampling string
+        sampling parameters as a JSON object, e.g. {"temperature":1,"top_p":0.95,"max_tokens":4096}
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
+  -seed int
+        run seed; each rollout's sampling seed derives from it
+  -set-env value
+        NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
+  -swarm int
+        run a manager and N workers instead of a single agent (default: what the task's team says)
+  -target-price string
+        price and cache model rollouts are repriced under (see: sleipnir rl reward -list-targets)
+  -tasks string
+        tasks file (JSON lines) that holds the trunk's task
   -temperature float
         sampling temperature (overrides --sampling)
   -thread-soft-limit int
@@ -1534,6 +1945,12 @@ flags:
         ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -context-tokens int
         the policy's context window when a task does not set one
   -exclude string
@@ -1576,6 +1993,10 @@ flags:
         comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
   -perm-mode string
         permission mode of the agents: accept-edits (the default) | default | plan | bypass | yolo
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
   -require-net-isolation
         refuse to run where network isolation is unavailable
   -rewards string
@@ -1588,6 +2009,10 @@ flags:
         samples per task (pass^k needs k or more) (default 1)
   -sampling string
         sampling parameters as a JSON object, e.g. {"temperature":1,"top_p":0.95,"max_tokens":4096}
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
   -seed int
         run seed; each rollout's sampling seed derives from it
   -set-env value
@@ -1636,6 +2061,12 @@ flags:
         spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
   -concurrency int
         rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
   -infra-retries int
         retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
   -keep-failed
@@ -1664,6 +2095,10 @@ flags:
         comma-separated hosts (host or host:port) a request's policy.base_url may name; loopback is always allowed
   -policy-key-env string
         comma-separated names of the environment variables a request's policy.api_key_env may name (default: none, so no request can pick one of this server's credentials)
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
   -repo-root string
         comma-separated directories: inline tasks may only use repositories under them
   -require-net-isolation
@@ -1674,6 +2109,10 @@ flags:
         directory of rewards files a request may name
   -runs string
         directory holding one subdirectory per run (default "runs")
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
   -set-env value
         NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
   -target-price string
@@ -1825,6 +2264,8 @@ flags:
         salt of the split assignment
   -select string
         sft: all (every verified episode, --top-k by reward) | best (the best verified episode of each group by the best-of-n ranking) (default "all")
+  -sft-prefix string
+        sft: best also exports each failed episode up to its best-scoring savepoint (--score-savepoints runs); empty: verified episodes only
   -split string
         assign whole repositories to splits, e.g. train:0.9,val:0.1
   -stats string

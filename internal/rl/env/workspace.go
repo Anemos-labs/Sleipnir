@@ -68,6 +68,16 @@ type WorkspaceOptions struct {
 	// SkipSnapshotCheck turns off the integrity check run each time a cached
 	// snapshot is used (see checkSnapshot).
 	SkipSnapshotCheck bool
+	// Confine is the command confinement mode (ConfineOff, the default, or
+	// ConfineBwrap: every setup, agent and verifier command runs in a
+	// bubblewrap sandbox that hides the work root, RepoBase and the
+	// directories in ConfineProtect; see Confinement). ConfineProtect are
+	// directories that hold data no command may see (the blob store, the run
+	// output); ConfineRO and ConfineRW re-expose toolchain and cache
+	// directories for every command. RepoBase is never re-exposed whole, but a
+	// toolchain or cache directory inside it is (ConfineOptions.Base).
+	Confine                              string
+	ConfineProtect, ConfineRO, ConfineRW []string
 	// MaxFiles and MaxFileBytes bound what is hashed into a baseline or diff.
 	MaxFiles     int
 	MaxFileBytes int64
@@ -173,17 +183,28 @@ func NewWorkspaces(o WorkspaceOptions) (*Workspaces, error) {
 	if o.Sandbox != nil {
 		m.sandbox = o.Sandbox
 	} else {
+		protect := append([]string{root}, o.ConfineProtect...)
+		// The base relative task repositories resolve against (resolveSource):
+		// RepoBase, or the current directory.
+		var base []string
+		if b := o.RepoBase; b != "" {
+			base = append(base, b)
+		} else if wd, err := os.Getwd(); err == nil {
+			base = append(base, wd)
+		}
 		ls, err := NewLocalSandbox(LocalSandboxOptions{
 			DisableNetIsolation: o.DisableNetIsolation,
 			Defaults:            ExecPolicy{Limits: o.Limits, MaxOutput: o.MaxOutput, Grace: o.KillGrace},
 			LookPath:            o.LookPath, Probe: o.Probe,
+			Confine:        o.Confine,
+			ConfineOptions: ConfineOptions{Protect: protect, Base: base, RO: o.ConfineRO, RW: o.ConfineRW},
 		})
 		if err != nil {
 			return nil, err
 		}
 		m.local, m.sandbox = ls, ls
 		m.warnings = append(m.warnings, ls.Warnings()...)
-		if o.RequireNetIsolation && !ls.NetIsolation().Available {
+		if o.RequireNetIsolation && !ls.NetIsolation().Available && !ls.Confinement().Available {
 			return nil, fmt.Errorf("network isolation is required but unavailable: %s", ls.NetIsolation().Reason)
 		}
 	}
@@ -230,6 +251,40 @@ func (m *Workspaces) IsolationPrefix(task rl.Task) []string {
 		return nil
 	}
 	return m.local.netIso.wrap(m.local.shell, nil)
+}
+
+// CommandPrefix is the argv prefix the agent's own commands (its shell, the
+// swarm's done check) run under in ws: the confinement sandbox when commands
+// are confined (the workspace's tree, HOME and TMPDIR writable, its snapshot's
+// objects readable, network only for tasks that need it), otherwise the
+// network-only prefix of IsolationPrefix. The prefix ends in "--" or is empty.
+func (m *Workspaces) CommandPrefix(task rl.Task, ws *Workspace) []string {
+	if m.local == nil || !m.local.confine.Available || ws == nil {
+		return m.IsolationPrefix(task)
+	}
+	return m.local.confine.argv(ws.mounts(), task.Network, ws.Env(), nil)
+}
+
+// Confined reports whether commands run in the confinement sandbox.
+func (m *Workspaces) Confined() bool { return m.local != nil && m.local.confine.Available }
+
+// mounts are the directories the workspace's commands may use: its tree, HOME
+// and TMPDIR, and the snapshot objects its git reads through alternates.
+func (w *Workspace) mounts() Mounts {
+	mt := Mounts{RW: []string{w.Root, w.Home, w.Tmp}}
+	if w.snap != nil && w.snap.base != "" {
+		mt.RO = append(mt.RO, w.snap.base)
+	}
+	return mt
+}
+
+// mountsFor are the directories a checkout's commands may use (see Workspace.mounts).
+func (co *checkout) mountsFor(snap *snapshot) *Mounts {
+	mt := &Mounts{RW: []string{co.tree, co.home, co.tmp}}
+	if snap != nil && snap.base != "" {
+		mt.RO = append(mt.RO, snap.base)
+	}
+	return mt
 }
 
 // Close stops background snapshot builds and waits for them.
@@ -692,6 +747,9 @@ func (m *Workspaces) PruneStale(maxAge time.Duration) (removed int, err error) {
 			fi, ierr := e.Info()
 			if ierr != nil || fi.ModTime().After(cutoff) {
 				continue
+			}
+			if area.dir == "ws" && keepResumable(filepath.Join(m.root, area.dir, e.Name()), time.Now()) {
+				continue // a rollout that can still be resumed (MarkResumable)
 			}
 			if rerr := removeAllNoFollow(filepath.Join(m.root, area.dir, e.Name())); rerr != nil {
 				err = errors.Join(err, rerr)

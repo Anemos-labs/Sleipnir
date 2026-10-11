@@ -226,12 +226,17 @@ type rigFlags struct {
 	infraRetries                          int
 	maxWall                               time.Duration
 	outagePatience, maxOutagePause        time.Duration
+	savepointEvery, progressBudget        time.Duration
+	scoreSavepoints                       bool
+	progressSample                        int
 	noNetIsolation, requireNetIsolation   bool
 	keepFailed                            bool
 	passEnv                               string
 	setEnv                                kvFlags
 	budgetUSD, maxSpend                   float64
 	maxSteps, maxRequests                 int
+	confine                               string
+	confineRO, confineRW                  multiFlag
 }
 
 func (r *rigFlags) register(fs *flag.FlagSet) {
@@ -247,6 +252,10 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.DurationVar(&r.maxWall, "max-wall", 0, "wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)")
 	fs.DurationVar(&r.outagePatience, "outage-patience", 0, "how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)")
 	fs.DurationVar(&r.maxOutagePause, "max-outage-pause", 0, "how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)")
+	fs.DurationVar(&r.savepointEvery, "savepoint-every", 0, "take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)")
+	fs.BoolVar(&r.scoreSavepoints, "score-savepoints", false, "with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)")
+	fs.IntVar(&r.progressSample, "progress-sample", 0, "progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)")
+	fs.DurationVar(&r.progressBudget, "progress-budget", 0, "progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)")
 	fs.BoolVar(&r.noNetIsolation, "no-net-isolation", false, "do not isolate the network of tasks that do not need it")
 	fs.BoolVar(&r.requireNetIsolation, "require-net-isolation", false, "refuse to run where network isolation is unavailable")
 	fs.BoolVar(&r.keepFailed, "keep-failed", false, "keep the workspaces of failed rollouts for debugging")
@@ -256,6 +265,9 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.Float64Var(&r.budgetUSD, "budget-usd", 0, "spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)")
 	fs.IntVar(&r.maxSteps, "max-steps", 0, "step cap of one rollout whose task sets none")
 	fs.IntVar(&r.maxRequests, "max-requests", 0, "cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)")
+	fs.StringVar(&r.confine, "confine", env.ConfineOff, "off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data")
+	fs.Var(&r.confineRO, "confine-ro", "with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically")
+	fs.Var(&r.confineRW, "confine-rw", "with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically")
 	fs.Float64Var(&r.maxSpend, "max-spend-usd", 0, "spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too")
 }
 
@@ -271,6 +283,15 @@ func (rf *rigFlags) validate() error {
 	}
 	if rf.maxSteps < 0 || rf.maxRequests < 0 {
 		return errors.New("--max-steps and --max-requests must not be negative")
+	}
+	if rf.savepointEvery < 0 {
+		return errors.New("--savepoint-every must not be negative")
+	}
+	if rf.scoreSavepoints && rf.savepointEvery == 0 {
+		return errors.New("--score-savepoints needs --savepoint-every")
+	}
+	if rf.progressSample < 0 || rf.progressBudget < 0 {
+		return errors.New("--progress-sample and --progress-budget must not be negative")
 	}
 	return nil
 }
@@ -297,8 +318,10 @@ type rig struct {
 // Close invokes the cleanup function associated with this rollout rig.
 func (r *rig) Close() { r.closeF() }
 
-// workspaces builds the workspace manager the flags describe.
-func (rf *rigFlags) workspaces(stderr io.Writer) (*env.Workspaces, error) {
+// workspaces builds the workspace manager the flags describe. protect are
+// directories confined commands must never see beyond the work dir and the task
+// sources (the blob store, the run output, a mined repository with its future).
+func (rf *rigFlags) workspaces(stderr io.Writer, protect ...string) (*env.Workspaces, error) {
 	work := rf.workDir
 	if work == "" {
 		home, _ := os.UserHomeDir()
@@ -309,6 +332,7 @@ func (rf *rigFlags) workspaces(stderr io.Writer) (*env.Workspaces, error) {
 		Root: work, Mode: rf.mode, RepoBase: wd,
 		DisableNetIsolation: rf.noNetIsolation, RequireNetIsolation: rf.requireNetIsolation,
 		PassEnv: splitList(rf.passEnv), SetEnv: map[string]string(rf.setEnv),
+		Confine: rf.confine, ConfineProtect: nonEmpty(protect), ConfineRO: []string(rf.confineRO), ConfineRW: []string(rf.confineRW),
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, "env: "+f+"\n", a...) },
 	})
 	if err != nil {
@@ -337,15 +361,15 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		}
 		cfg.TargetName, cfg.Target = rf.target, cost.Model{}
 	}
-	ws, err := rf.workspaces(stderr)
-	if err != nil {
-		return nil, err
-	}
 	blobsDir := rf.blobs
 	if blobsDir == "" && tasksFile != "" {
 		if d := filepath.Join(filepath.Dir(tasksFile), "blobs"); dirExists(d) {
 			blobsDir = d
 		}
+	}
+	ws, err := rf.workspaces(stderr, out, blobsDir)
+	if err != nil {
+		return nil, err
 	}
 	var hidden events.Blobs
 	if blobsDir != "" {
@@ -360,10 +384,22 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		Concurrency: rf.concurrency, HiddenBlobs: hidden,
 		VerifyRepeats: rf.verifyRepeats, VerifyPassPolicy: rf.verifyPolicy,
 		InfraRetries: rf.infraRetries, MaxWall: rf.maxWall, MaxSpendUSD: rf.maxSpend,
-		OutagePatience: rf.outagePatience, MaxOutagePause: rf.maxOutagePause,
+		OutagePatience: rf.outagePatience, MaxOutagePause: rf.maxOutagePause, SavepointEvery: rf.savepointEvery,
+		ScoreSavepoints: rf.scoreSavepoints, ProgressSample: rf.progressSample, ProgressBudget: rf.progressBudget,
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
 	}
 	return &rig{Runner: rn, Pipe: pipe, Reward: cfg, closeF: ws.Close}, nil
+}
+
+// nonEmpty drops empty strings.
+func nonEmpty(ps []string) []string {
+	var out []string
+	for _, p := range ps {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // dirExists follows symlinks and reports whether the path names an accessible directory.
@@ -435,6 +471,8 @@ func progressPrinter(w io.Writer) func(env.Progress) {
 			fmt.Fprintln(w, line)
 		case "rollout.retry":
 			fmt.Fprintf(w, "%s/%d: retrying (attempt %d): %s\n", p.Task, p.Sample, p.Attempt, p.Error)
+		case "rollout.resume":
+			fmt.Fprintf(w, "%s/%d: resuming from savepoint %d (attempt %d)\n", p.Task, p.Sample, p.Savepoint, p.Attempt)
 		case "rollout.outage":
 			if p.Status == "down" {
 				fmt.Fprintf(w, "%s/%d: the policy endpoint is down (%s): waiting, with the rollout's clock stopped\n", p.Task, p.Sample, p.Error)

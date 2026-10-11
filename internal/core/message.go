@@ -179,8 +179,11 @@ type ToolSpec struct {
 	InputSchema json.RawMessage `json:"input_schema"`
 	Strict      bool            `json:"strict,omitempty"`
 
-	// Scheduling hints for the harness; never rendered to the model.
-	ReadOnly bool `json:"-"`
+	// Scheduling hints for the harness; never rendered to the model. ReadOnly:
+	// the tool changes nothing. NoTreeWrites: the tool changes no file of the
+	// work tree, though it may change other state (a team's board, its mail).
+	ReadOnly     bool `json:"-"`
+	NoTreeWrites bool `json:"-"`
 }
 
 // StopReason normalises provider stop reasons.

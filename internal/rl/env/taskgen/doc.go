@@ -10,6 +10,55 @@
 //	Composite  k independent tasks of one commit combined into a swarm task whose
 //	           verifier needs all of them.
 //	RecallGenerator  a documented hook only.
+//	WriteSuite a task's verifier made the whole-suite scorer: the weighted share of
+//	           the repository's test suite that passes, with guards, from the
+//	           reports of go test -json, pytest's junit XML or cargo test.
+//	           RecordSuite and BuildUnits choose its units and guards from runs on
+//	           the start and the reference solution.
+//	Seal       a task's start state written as a repository of its own: one
+//	           commit, the start tree, no history (GitOptions.Seal,
+//	           ChainOptions.Seal).
+//	FromChains 3 to 8 consecutive merged pull requests (ReadChains) become one
+//	           long swarm task: the start before the first, the end's tests
+//	           hidden, the pull requests' texts as ordered milestones, and the
+//	           whole-suite scorer with a unit per pull request (RecordSuiteSteps,
+//	           BuildStepUnits), checked at every step before it is emitted.
+//	Rebuild    a library rebuilt from its specification: a scope of Go packages or
+//	           Python modules reduced to stubs or to API.md, its own tests hidden and
+//	           scored by the whole-suite scorer per package, in import order.
+//
+// # The whole-suite scorer
+//
+// suite_score.py, embedded and written as a hidden file, runs each test command
+// of a SuiteSpec in its own session with stdin closed and its output in private
+// files, kills what the command left running before the next one starts, reads
+// the command's report (never its printed lines) and prints
+// {"score", "units", "guards"} as the only line of its stdout. A test no report
+// mentions has failed; a command's timeout and the suite's deadline still end
+// in a score. SUITE_MODE=record lists every test's outcome instead (RecordSuite);
+// SUITE_SAMPLE=N scores a stable sample of each unit, cheaply, for progress
+// during a run. Units are the tests that fail at every start run and pass in
+// every reference run (BuildUnits), so the start scores exactly 0 and the
+// reference exactly 1. A chain's units follow its pull requests instead: the
+// unit of pull request k holds the tests that fail in every run before it and
+// pass in every run from it on, so the state after it scores the weight of the
+// milestones it reached.
+//
+// # Rebuild tasks
+//
+// Rebuild resolves a scope at a reference version (Go package directories of
+// one module, or Python packages of one project) and writes the start state as
+// a repository of its own with one commit: the scope's sources replaced by stubs
+// that keep their API and documentation (Go stubs made with go/ast and gofmt,
+// Python stubs with rebuild_py.py, an embedded script run with python3 that
+// parses with the ast module and runs nothing) or removed and documented in
+// API.md, and the scope's tests removed. Those tests are the hidden suite; the
+// tests that fail on the start and pass with the reference in every recorded run
+// are scored, one unit per package or module weighted by its lines, in the
+// order the packages import each other, without guards. Size gates, a check
+// that the scope cannot be imported from outside the start tree, a build check
+// of Go stubs and a final self-check (start 0, reference 1) reject what would
+// not make a sound task, with the reason (RebuildRejection).
 //
 // # Soundness
 //
@@ -28,7 +77,10 @@
 // Prompts come from the cleaned commit message: trailers, links to the upstream
 // commit or pull request and bare commit ids are removed, and workspaces are
 // history-free (see package env), so the agent cannot look the solution up.
-// Hidden test files are stored by content hash in a blob store that travels with
+// The repository a task names is still on disk with its later commits; a sealed
+// task (Seal) names a repository that holds the start tree and nothing else, so
+// neither the future nor what a generator removed from the start is there to
+// read. Hidden test files are stored by content hash in a blob store that travels with
 // the tasks file (GitOptions.HiddenBlobs); without one they are inlined as text,
 // which puts verifier content in tasks.jsonl. Task.Meta records the source commit
 // and author date for date-based splits (env.Holdout) and the changed files that

@@ -7,6 +7,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/rl"
 )
 
 // view is the non-model part of the log, parsed once per Episode call: who was
@@ -16,11 +17,15 @@ import (
 // time; the model traffic, which training data rests on, is parsed strictly in
 // run.go.
 type view struct {
-	spawns    []spawnEv
-	ends      []endEv
-	commits   []commitEv // compact.commit
-	layers    []layerEv  // layer.commit
-	rejects   int        // compact.reject
+	spawns  []spawnEv
+	ends    []endEv
+	commits []commitEv // compact.commit
+	layers  []layerEv  // layer.commit
+	// restores are the agent.restore events: agent -> their seqs (a resumed session restored the agent from a snapshot).
+	restores map[string][]uint64
+	// fork is the branch's rl.fork event (rl branch), the last of them in a branch of a branch, or nil.
+	fork      *rl.Fork
+	rejects   int // compact.reject
 	mails     []mailEv
 	delivers  []deliverEv
 	outcomes  []outcomeEv
@@ -58,6 +63,9 @@ type endEv struct {
 	state string
 }
 
+// commitEv is one compact.commit. req is the compactor request whose patch the commit applied ("" when
+// none was asked: a mask or emergency compaction); hasReq is false for a log written before commits named
+// their request, whose commits are linked to a compactor call by a heuristic instead (compactEdges).
 type commitEv struct {
 	seq      uint64
 	idx      int
@@ -66,6 +74,8 @@ type commitEv struct {
 	keepFrom core.TurnID
 	reason   string
 	fallback bool
+	req      string
+	hasReq   bool
 }
 
 type layerEv struct {
@@ -102,6 +112,8 @@ type outcomeEv struct {
 	version  string
 	detail   core.Hash
 	ms       int64
+	units    map[string]rl.UnitScore
+	guards   *rl.GuardScore
 }
 
 type turnEv struct {
@@ -148,6 +160,18 @@ func (r *Run) buildView() *view {
 		case events.TypeSessionEnd:
 			t := e.TS
 			v.sessionEnd = &t
+		case events.TypeRLFork:
+			// A branch of a branch has a fork event per generation: the last is its own.
+			var p rl.Fork
+			if json.Unmarshal(e.Data, &p) == nil {
+				p.Seq = e.Seq
+				v.fork = &p
+			}
+		case events.TypeAgentRestore:
+			if v.restores == nil {
+				v.restores = map[string][]uint64{}
+			}
+			v.restores[e.Agent] = append(v.restores[e.Agent], e.Seq)
 		case events.TypeAgentSpawn:
 			var p struct {
 				ID, Role, Parent, By, Model, Task string
@@ -174,9 +198,14 @@ func (r *Run) buildView() *view {
 				KeepFrom core.TurnID `json:"keep_from"`
 				Reason   string      `json:"reason"`
 				Fallback bool        `json:"fallback"`
+				Req      *string     `json:"req"`
 			}
 			_ = json.Unmarshal(e.Data, &p)
-			v.commits = append(v.commits, commitEv{seq: e.Seq, idx: i, ts: e.TS, agent: e.Agent, keepFrom: p.KeepFrom, reason: p.Reason, fallback: p.Fallback})
+			c := commitEv{seq: e.Seq, idx: i, ts: e.TS, agent: e.Agent, keepFrom: p.KeepFrom, reason: p.Reason, fallback: p.Fallback}
+			if p.Req != nil {
+				c.req, c.hasReq = *p.Req, true
+			}
+			v.commits = append(v.commits, c)
 		case events.TypeLayerCommit:
 			var p struct{ Scope, Hash string }
 			_ = json.Unmarshal(e.Data, &p)
@@ -319,6 +348,15 @@ func parseOutcome(e events.Event) outcomeEv {
 	}
 	if p.Score != nil {
 		o.score, o.hasScore = *p.Score, true
+	}
+	// The score's breakdown is read on its own, so a malformed one is dropped
+	// whole and never half-filled.
+	var bd struct {
+		Units  map[string]rl.UnitScore `json:"units"`
+		Guards *rl.GuardScore          `json:"guards"`
+	}
+	if json.Unmarshal(e.Data, &bd) == nil {
+		o.units, o.guards = bd.Units, bd.Guards
 	}
 	return o
 }

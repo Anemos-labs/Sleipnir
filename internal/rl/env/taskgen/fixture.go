@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -61,14 +62,37 @@ type FixtureOptions struct {
 	GoldBlobs events.Blobs
 	// Git runs git; nil makes one of its own.
 	Git *env.Git
+	// MaxFiles, MaxFileBytes and MaxTotalBytes bound what each of a fixture's trees (start, hidden, solution) may hold;
+	// zero is the default (DefaultFixtureMaxFiles, DefaultFixtureMaxFileBytes, DefaultFixtureMaxTotalBytes). A large
+	// project fixture (a long team task over many packages) raises them.
+	MaxFiles, MaxFileBytes, MaxTotalBytes int
 }
 
-// Limits on what a fixture may hold: a fixture is small by design, and a runaway one (a stray build directory) is an error.
+// Default limits on what a fixture's tree may hold: a fixture is small by default, and a runaway one (a stray build
+// directory) is an error.
 const (
-	maxFixtureFiles = 400
-	maxFixtureFile  = 1 << 20
-	maxFixtureTotal = 8 << 20
+	DefaultFixtureMaxFiles      = 400
+	DefaultFixtureMaxFileBytes  = 1 << 20
+	DefaultFixtureMaxTotalBytes = 8 << 20
 )
+
+// treeLimits are the resolved limits of readTree.
+type treeLimits struct{ files, fileBytes, totalBytes int }
+
+// limits resolves the options' limits against the defaults.
+func (o FixtureOptions) limits() treeLimits {
+	l := treeLimits{DefaultFixtureMaxFiles, DefaultFixtureMaxFileBytes, DefaultFixtureMaxTotalBytes}
+	if o.MaxFiles > 0 {
+		l.files = o.MaxFiles
+	}
+	if o.MaxFileBytes > 0 {
+		l.fileBytes = o.MaxFileBytes
+	}
+	if o.MaxTotalBytes > 0 {
+		l.totalBytes = o.MaxTotalBytes
+	}
+	return l
+}
 
 // FromFixture turns a fixture directory into a task: it writes the start repository, stores the hidden files and the
 // reference solution, and describes the verifier. It does not run anything: `rl tasks check` proves the task sound.
@@ -80,15 +104,15 @@ func FromFixture(ctx context.Context, dir string, opts FixtureOptions) (*rl.Task
 	if opts.RepoRoot == "" {
 		return nil, errors.New("fixture: RepoRoot is required")
 	}
-	start, err := readTree(filepath.Join(dir, "start"))
+	start, err := readTree(filepath.Join(dir, "start"), opts.limits())
 	if err != nil {
 		return nil, fmt.Errorf("fixture %s: start/: %w", spec.ID, err)
 	}
-	hidden, err := readTree(filepath.Join(dir, "hidden"))
+	hidden, err := readTree(filepath.Join(dir, "hidden"), opts.limits())
 	if err != nil {
 		return nil, fmt.Errorf("fixture %s: hidden/: %w", spec.ID, err)
 	}
-	solution, err := readTree(filepath.Join(dir, "solution"))
+	solution, err := readTree(filepath.Join(dir, "solution"), opts.limits())
 	if err != nil {
 		return nil, fmt.Errorf("fixture %s: solution/: %w", spec.ID, err)
 	}
@@ -245,8 +269,8 @@ func safeID(s string) bool {
 }
 
 // readTree reads a directory's regular files into memory, keyed by slash-separated relative path. Symlinks, special files,
-// anything oversized and a runaway file count are errors.
-func readTree(root string) (map[string][]byte, error) {
+// anything over the limits and a runaway file count are errors.
+func readTree(root string, lim treeLimits) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	total := 0
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -264,23 +288,28 @@ func readTree(root string) (map[string][]byte, error) {
 		if !d.Type().IsRegular() {
 			return fmt.Errorf("%s is not a regular file", rel)
 		}
-		if len(out) >= maxFixtureFiles {
-			return fmt.Errorf("more than %d files", maxFixtureFiles)
+		if len(out) >= lim.files {
+			return fmt.Errorf("more than %d files (raise the limit for a large project fixture)", lim.files)
 		}
 		f, err := os.Open(p)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		data, err := io.ReadAll(io.LimitReader(f, maxFixtureFile+1))
+		// One byte past the limit tells an oversized file; a limit of math.MaxInt64 has no byte past it.
+		read := int64(lim.fileBytes)
+		if read < math.MaxInt64 {
+			read++
+		}
+		data, err := io.ReadAll(io.LimitReader(f, read))
 		if err != nil {
 			return err
 		}
-		if len(data) > maxFixtureFile {
-			return fmt.Errorf("%s is larger than %d bytes", rel, maxFixtureFile)
+		if len(data) > lim.fileBytes {
+			return fmt.Errorf("%s is larger than %d bytes", rel, lim.fileBytes)
 		}
-		if total += len(data); total > maxFixtureTotal {
-			return fmt.Errorf("more than %d bytes in all", maxFixtureTotal)
+		if total += len(data); total > lim.totalBytes {
+			return fmt.Errorf("more than %d bytes in all", lim.totalBytes)
 		}
 		out[rel] = data
 		return nil

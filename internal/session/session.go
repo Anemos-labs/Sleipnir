@@ -69,7 +69,8 @@ type Options struct {
 	CaptureTokens bool
 
 	// ID names the session; Dir is where events.jsonl and blobs/ live (default
-	// <state>/sessions/<id>).
+	// <state>/sessions/<id>). With Resume, ID is the resumed directory's name
+	// unless set (a rollout's log names its session otherwise).
 	ID, Dir string
 	// Resume continues an earlier single-agent session instead of starting a new
 	// one: a session id, a session directory, or "latest" (the newest session of
@@ -97,6 +98,9 @@ type Options struct {
 	// Provider is nil, the roles' models, the compactor's, a /model switch): a rollout watches them all for outages. The
 	// Provider given here is the caller's and is used as given.
 	WrapProvider func(provider.Provider) provider.Provider
+	// Savepoints makes the session's agents keep recoverable snapshots at tool-batch boundaries and share a barrier that
+	// Savepoint uses to pause writes for a moment: what a long rollout needs to be resumed mid-run.
+	Savepoints bool
 
 	// Swarm runs a manager plus workers instead of a single agent.
 	Swarm bool
@@ -210,6 +214,10 @@ type Session struct {
 
 	Agent *agent.Agent
 	Swarm *swarm.Swarm
+	// barrier is shared by the agents and the swarm's done check when Options.Savepoints is set (Savepoint).
+	barrier *agent.SavepointBarrier
+	// savepoints counts the savepoints written (Savepoint), under mu.
+	savepoints int
 
 	// Skills is the catalogue of skills the session discovered; Roles the swarm's
 	// roles, built-in plus project and user definitions.
@@ -310,7 +318,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		if err != nil {
 			return nil, err
 		}
-		o.Dir, o.ID = dir, filepath.Base(dir)
+		o.Dir = dir
+		if o.ID == "" {
+			o.ID = filepath.Base(dir)
+		}
 		if prior := inspectLog(dir); prior.isolated && prior.recovery {
 			if prior.id == "" || prior.id == "." || prior.id == ".." || strings.ContainsAny(prior.id, "/\\\x00\r\n") {
 				return nil, errors.New("invalid session id in isolation recovery metadata")
@@ -346,6 +357,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		return nil, fmt.Errorf("budget: --budget-usd must be zero (no limit) or a positive amount, got %v", b)
 	}
 	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo}
+	if o.Savepoints {
+		s.barrier = agent.NewSavepointBarrier()
+	}
 
 	// Identity and storage.
 	s.ID = o.ID
@@ -779,6 +793,7 @@ func (s *Session) build(ctx context.Context) error {
 				BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
 				MaxSteps:           orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
 				Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience), WaitUnreachable: o.WaitUnreachable,
+				Barrier: s.agentBarrier(),
 			})
 		}
 		a, err := mk()
@@ -826,7 +841,7 @@ func (s *Session) build(ctx context.Context) error {
 		sc.Hot.MaxTokens = v
 	}
 	sc.VerifyCmd = o.Verify
-	sc.Verify = runVerify
+	sc.Verify = s.verifier()
 	sc.HoldManager, sc.WakeManager = !o.Interactive, o.Interactive
 	sc.Mailman = s.mailmanOn()
 
@@ -845,6 +860,7 @@ func (s *Session) build(ctx context.Context) error {
 		WaitUnreachable:    o.WaitUnreachable,
 		BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
 		Owners:             o.Owners,
+		Barrier:            s.agentBarrier(),
 	}
 	if len(o.RoleModels) > 0 {
 		if err := s.checkRoleModels(o.RoleModels); err != nil {

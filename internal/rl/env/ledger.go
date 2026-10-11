@@ -27,7 +27,8 @@ type LedgerEntry struct {
 	Task    string    `json:"task"`
 	Sample  int       `json:"sample"`
 	Attempt int       `json:"attempt"`
-	// Status is how the attempt ended: ok, infra or cancelled.
+	// Status is how the attempt ended: ok, infra or cancelled; or rewound, for the spend of a stretch of log that a
+	// resume from a savepoint cut off and that no entry had counted (the process died before its attempt ended).
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
 	// CostUSD and Requests are what the attempt's own log recorded: model responses and what they cost.
@@ -41,6 +42,9 @@ type LedgerEntry struct {
 	ActiveWallMs int64 `json:"active_wall_ms,omitempty"`
 	PausedMs     int64 `json:"paused_ms,omitempty"`
 }
+
+// StatusRewound is the ledger status of spend that a resume threw away (LedgerEntry.Status).
+const StatusRewound = "rewound"
 
 // ledger appends entries to LedgerFile and keeps the running total.
 type ledger struct {
@@ -132,7 +136,23 @@ func (rn *run) recordAttempt(j job, dir string, attempt int, out attemptOutcome)
 	if rn.ledger == nil {
 		return
 	}
-	usd, requests, retries := spendOf(dir)
+	var usd float64
+	var requests, retries int
+	if rn.r.SavepointEvery > 0 {
+		// The log may continue an earlier attempt's (resumed from a savepoint): only what this attempt appended is its spend.
+		logPath := filepath.Join(dir, "events.jsonl")
+		fi, err := os.Stat(logPath)
+		if err != nil {
+			return
+		}
+		sp := spendOfRange(logPath, min(recordedBytes(dir), fi.Size()), fi.Size())
+		usd, requests, retries = sp.usd, sp.requests, sp.retries
+		if err := setRecordedBytes(dir, fi.Size()); err != nil {
+			rn.r.logf("env: %s/%d: recording the ledger's offset: %v", j.task.ID, j.sample, err)
+		}
+	} else {
+		usd, requests, retries = spendOf(dir)
+	}
 	if usd == 0 && requests == 0 && retries == 0 {
 		return
 	}

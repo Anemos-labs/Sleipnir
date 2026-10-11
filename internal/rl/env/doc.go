@@ -42,6 +42,23 @@
 // it sits beside a log that the agent's harness writes, and the policy must
 // never be able to read verifier content there.
 //
+// # Savepoints
+//
+// With Runner.SavepointEvery a rollout is resumable. Its workspace is at a
+// stable path (PrepareID, StableID). While the harness runs, the runner asks it
+// for a savepoint at the interval (RunSpec.Savepoints, SavepointHook): the
+// session pauses the agents' writes, logs their state, and the runner captures
+// the work tree into <sample>/savepoints/git (Workspace.Capture) and appends the
+// savepoint to <sample>/savepoints/index.jsonl. An attempt that finds a
+// savepoint of the same policy and seed cuts the log back to the newest
+// (events.rewound.N.jsonl keeps the tail), rebuilds the workspace at its path
+// with the captured tree (RestoreWorkspace), and runs the harness with
+// RunSpec.Resume and what is left of the budgets. The ledger counts what each
+// attempt appended (savepoints/recorded.json is the offset it has counted to).
+// With Runner.ScoreSavepoints each savepoint's tree is also scored by the
+// task's verifier in progress mode (progress.go): <sample>/progress.jsonl and
+// Episode.Progress.
+//
 // # Infrastructure errors versus verdicts
 //
 // A failure of the machinery (a setup command that could not run, a git error on
@@ -118,6 +135,14 @@
 //     is recorded in the manifest's warnings (or is an error with
 //     WorkspaceOptions.RequireNetIsolation). The harness owns the agent's shell,
 //     so it applies the prefix from RunSpec.NetPrefix.
+//   - Confinement (WorkspaceOptions.Confine = ConfineBwrap, `--confine bwrap`):
+//     every setup, agent and verifier command runs in a bubblewrap sandbox with a
+//     read-only root, the work root, task sources, blob store, run output, user
+//     homes and runtime directories hidden, secrets masked, its own PID, IPC,
+//     UTS and (unless the task needs it) network namespaces, and only its own
+//     tree, HOME, TMPDIR and cache directories writable (see Confinement). Without
+//     it an agent's shell or the code a verifier runs can read hidden tests and
+//     reference solutions.
 //   - Cleanup never follows symlinks out of a workspace and makes read-only
 //     directories (Go's module cache) writable first; it refuses to remove anything
 //     outside the workspace area.

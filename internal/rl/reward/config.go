@@ -38,6 +38,14 @@ const (
 	// its rollout group, and needs Config.GroupITE.
 	CompWaste    = "waste"
 	CompGroupITE = "group_ite"
+	// CompProgress is the mean verifier score over a long rollout's agent time,
+	// from the scores at its savepoints (rl.Episode.Progress; the start scores
+	// the task's baseline, the end the outcome): credit for getting far early.
+	// CompRegressions is -min(1, drops / caps.regressions), a drop being a fall of
+	// at least 0.05 between consecutive scores. Both are 0 for an episode without
+	// progress scores, and off by default (weight 0).
+	CompProgress    = "progress"
+	CompRegressions = "regressions"
 
 	// Worker.
 	CompEvidence = "evidence"
@@ -76,6 +84,7 @@ const (
 	CapScope     = "scope"
 	CapRebase    = "rebase_cost" // ITE written by a commit's next request
 	CapWaste     = "waste"       // waste events (rl.WasteSignals) at which the waste penalty saturates
+	CapRegress   = "regressions" // drops of the progress score at which the regressions penalty saturates
 
 	CapProbeFacts    = "probe_facts"      // facts sampled per compaction probe
 	CapHardcodeLen   = "hardcode_min_len" // shortest hidden literal the hardcode detector trusts
@@ -105,15 +114,17 @@ const DefaultTargetName = "anthropic-sonnet"
 // meant to be tuned per run through rewards.json.
 func defaultWeights() map[string]float64 {
 	return map[string]float64{
-		CompOutcome:    1.0,
-		CompHonestDone: 0.1,
-		CompFalseDone:  0.2,
-		CompCost:       0.15,
-		CompRequests:   0.05,
-		CompTime:       0.05,
-		CompProtocol:   0.1,
-		CompWaste:      0,
-		CompGroupITE:   0,
+		CompOutcome:     1.0,
+		CompHonestDone:  0.1,
+		CompFalseDone:   0.2,
+		CompCost:        0.15,
+		CompRequests:    0.05,
+		CompTime:        0.05,
+		CompProtocol:    0.1,
+		CompWaste:       0,
+		CompGroupITE:    0,
+		CompProgress:    0,
+		CompRegressions: 0,
 
 		CompEvidence: 0.1,
 		CompReread:   0.05,
@@ -148,6 +159,7 @@ func defaultCaps() map[string]float64 {
 		CapScope:     3,
 		CapRebase:    60_000,
 		CapWaste:     10,
+		CapRegress:   3,
 
 		CapProbeFacts:    8,
 		CapHardcodeLen:   6,

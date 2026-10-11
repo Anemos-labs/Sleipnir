@@ -21,6 +21,22 @@ type RecoveredWorker struct {
 	Snapshot       *agent.Snapshot
 }
 
+// ReserveIDs makes the agent ids of an earlier process (agent id -> role, from
+// its log) unavailable to new spawns: a worker started after a resume gets a
+// number past them, so two agents never share an id, or request ids, in one
+// log. It must run before Start.
+func (s *Swarm) ReserveIDs(ids map[string]string) {
+	for id, role := range ids {
+		if r, ok := s.roles[role]; ok {
+			if suffix, ok := strings.CutPrefix(id, r.Short+"-"); ok {
+				if n, err := strconv.Atoi(suffix); err == nil {
+					s.seq[role] = max(s.seq[role], n)
+				}
+			}
+		}
+	}
+}
+
 // RestoreTeam reconnects idle workers to their private trees and reserves their
 // unfinished tasks. It must run before Start, against an empty task board. IDs
 // includes retired workers so a new spawn cannot collide with their branches.
@@ -52,15 +68,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 			}
 		}
 	}
-	for id, role := range ids {
-		if r, ok := s.roles[role]; ok {
-			if suffix, ok := strings.CutPrefix(id, r.Short+"-"); ok {
-				if n, err := strconv.Atoi(suffix); err == nil {
-					s.seq[role] = max(s.seq[role], n)
-				}
-			}
-		}
-	}
+	s.ReserveIDs(ids)
 	owners := map[string]string{}
 	var restored []*member
 	for _, w := range workers {

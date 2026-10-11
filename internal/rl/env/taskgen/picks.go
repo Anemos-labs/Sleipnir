@@ -195,22 +195,28 @@ func CleanIssue(text string) string {
 	return strings.TrimSpace(blankRunRe.ReplaceAllString(strings.Join(lines, "\n"), "\n\n"))
 }
 
+// capText cuts text longer than limit bytes at its last line break within the
+// limit (or, without one, at a UTF-8 boundary) and ends it with note.
+func capText(text string, limit int, note string) string {
+	if len(text) <= limit {
+		return text
+	}
+	cut := strings.LastIndexByte(text[:limit], '\n')
+	if cut <= 0 {
+		cut = limit
+		for cut > 0 && text[cut]&0xC0 == 0x80 { // not inside a UTF-8 sequence
+			cut--
+		}
+	}
+	return strings.TrimRight(text[:cut], " \t\n") + "\n\n" + note
+}
+
 // BuildIssuePrompt turns an issue into the task prompt: its cleaned title and
 // body (at most maxIssueBytes of body), then the same closing instruction as
 // BuildPrompt. The issue's Ref is not included.
 func BuildIssuePrompt(is Issue) string {
 	title := strings.Join(strings.Fields(CleanIssue(is.Title)), " ")
-	body := CleanIssue(is.Body)
-	if len(body) > maxIssueBytes {
-		cut := strings.LastIndexByte(body[:maxIssueBytes], '\n')
-		if cut <= 0 {
-			cut = maxIssueBytes
-			for cut > 0 && body[cut]&0xC0 == 0x80 { // not inside a UTF-8 sequence
-				cut--
-			}
-		}
-		body = strings.TrimRight(body[:cut], " \t\n") + "\n\n[The rest of the issue is omitted.]"
-	}
+	body := capText(CleanIssue(is.Body), maxIssueBytes, "[The rest of the issue is omitted.]")
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace("Issue: " + title))
 	if body != "" {

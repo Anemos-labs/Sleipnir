@@ -7,6 +7,139 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Resume long RL rollouts from savepoints instead of starting them over
+  (`--savepoint-every`, off by default): a rollout takes a session savepoint
+  at that interval and captures the work tree into the sample's
+  `savepoints/`. An attempt that finds one resumes from it: the log is cut
+  back (its tail kept as `events.rewound.N.jsonl`), the workspace is rebuilt
+  at its stable path, the session continues with a note to the agent, and the
+  remaining wall, request and step budgets carry over. Such an attempt does
+  not use up an infra retry. `ledger.jsonl` entries count only what an
+  attempt appended to the log, plus `rewound` entries for spend that no entry
+  had counted; episodes label the steps after a resume as a `resume` segment;
+  the progress stream gains `rollout.resume`, `manifest.json`
+  `savepoint_every_ms`. With savepoints off, rollouts and their records are
+  unchanged. Prompt and tool-schema bytes are unchanged; a resumed agent's
+  first request re-writes its cached prefix once.
+- Score the work tree of long rollouts at their savepoints
+  (`--score-savepoints`, with `--progress-sample` and `--progress-budget`):
+  the task's verifier runs on each savepoint's tree in a clean checkout, in
+  progress mode (`SUITE_SAMPLE`, `SUITE_BUDGET_S` in its environment), and the
+  scores go to the sample's `progress.jsonl` and the episode's new `progress`.
+  New reward components `progress` and `regressions` (cap `regressions`) read
+  them; their default weight is 0, so rewards are unchanged unless a rewards
+  file weights them. `VerifyOptions.Env` adds entries to a verifier's
+  environment. `rl export --sft-prefix best` exports failed episodes up to
+  their best-scoring savepoint (`best_prefixes` in the statistics). Prompt and
+  tool-schema bytes are unchanged.
+- Continue finished long rollouts from their savepoints with `sleipnir rl
+  branch`: K branches per savepoint, each resuming the trunk's state with its
+  own seed, for a horizon of agent time. Episodes gain `fork` and steps
+  `inherited`: a branch's steps before its fork are not trainable and are
+  dropped from the training formats (`step:inherited`). The siblings of a
+  point share the group `<task>@<parent>:sp<NNNN>`. The log gains the
+  `rl.fork` event. A capture store keeps alternates it already had (a
+  branch borrows its trunk's objects). With `--compact-first` each branch
+  compacts first when its context has enough to fold, and the siblings' first
+  calls are then competing summaries of one state (`fork.compact_first`);
+  with too little to fold, no compactor is called. Prompt and tool-schema
+  bytes are unchanged.
+- Commands in a task's scrubbed environment (agent and verifier) get
+  `RUSTUP_HOME` set to the host's `~/.rustup` when the host has one and does
+  not set the variable: with HOME replaced, rustup's cargo and rustc found no
+  toolchain and every cargo command failed.
+- Task generators can score a task with the project's whole test suite
+  (`taskgen.WriteSuite`, `RecordSuite`): a hidden scorer runs Go, pytest and
+  cargo suites, each command in its own session with its output in files,
+  and prints a json-score line with units (milestones weighted as the
+  generator chose) and guards; tests are allowlisted from repeated runs of
+  the reference and the start. Progress mode (`SUITE_SAMPLE`,
+  `SUITE_BUDGET_S`) runs a sample under a deadline. `VerifyOptions.Stdout`
+  hands each verifier run's stdout to the caller; `env.MaxScoreUnits` and
+  `MaxScoreUnitName` are exported. Existing verifiers are unchanged.
+- `rl taskgen fixture` takes `--max-files`, `--max-file-bytes` and
+  `--max-total-bytes` (`FixtureOptions.MaxFiles`, `MaxFileBytes`,
+  `MaxTotalBytes`) for large project fixtures; the defaults (400 files,
+  1 MiB per file, 8 MiB per tree) are unchanged.
+- Link every compaction to the compactor call it came from, and baseline
+  compactor advantages by compaction number. `compact.patch` and
+  `compact.commit` events gain `req`, the compactor's `model.request` id (on a
+  commit, `""` when no compactor was asked: a mask or emergency compaction);
+  `compact.commit` already carried `fallback`. RL episodes link a commit's
+  `compact` edge to exactly that call, when it is an earlier kept compactor
+  call of the same agent that no earlier commit took, and gain an optional
+  `fallback` field on the edge, set when a mechanical patch replaced the
+  call's; a commit with an empty `req`, or whose request got no response, has
+  no edge. Logs without
+  `req` still extract with the previous heuristic, which now also gives no
+  edge to a commit whose reason marks a mask or emergency compaction. `adv`
+  baselines (per role, the default) a compactor call scored on its own by
+  (group, role, compaction number), the k-th compactor call of its agent in step order, so its
+  advantage changes; a number with a single trainable call in the group is
+  flat (advantage 0, reported in `Flat`), as any single-sample group is. Report
+  groups gain `Compaction` and the key `<group>|compactor#<k>`. Prompt and
+  tool-schema bytes are unchanged.
+- Sessions can take savepoints (`session.Options.Savepoints`,
+  `Session.Savepoint`): tool batches that can write hold a barrier, a
+  savepoint pauses them for a moment, writes every agent's state as an
+  `agent.snapshot` marked `savepoint`, emits the new `session.savepoint`
+  event and flushes the log; a log cut back to it resumes into that state.
+  RL workspaces can be prepared at a stable path, captured into a store and
+  rebuilt there (`PrepareID`, `Capture`, `RestoreWorkspace`). Without the
+  option nothing changes; prompt and tool-schema bytes are unchanged
+  (`core.ToolSpec` gains the scheduling hint `NoTreeWrites`, set on the
+  swarm's task, mail, note and spawn tools, which is never rendered).
+- `sleipnir rl taskgen chain --chains FILE REPO` makes one long swarm task of
+  each chain of 3 to 8 consecutive merged pull requests, scored per milestone
+  by the whole-suite scorer and checked at every pull request before it is
+  written (`docs/TRAINING-DATA.md`, section 3.2); `--seal DIR` seals each
+  start as for `rl taskgen git`. The generation report's
+  rejections gain the field `chain` and the report the list `chains` (each
+  chain's self-check); a task's `meta` gains `commits`, the chain's pull
+  requests. Readers that ignore unknown fields are unaffected.
+- `sleipnir rl taskgen git --seal DIR` writes each task's start state as a
+  repository of its own, `DIR/<task id>.git`, with one commit (the start tree,
+  no history, a fixed author and date): the repository holds that commit and
+  the trees and blobs its tree reaches, and no object outside them, and the
+  task's `repo` names it: `repo.commit` is the sealed commit and `repo.path`
+  the sealed repository (`<--repo-path>/<task id>.git` when `--repo-path` is
+  given). The source commits stay in `meta.commit` and `meta.parent`. Without
+  `--seal` tasks are written as before. Sealed tasks need their repositories
+  next to the tasks file, and `rl tasks split` treats each sealed repository
+  as a repository of its own (`docs/TRAINING-DATA.md`, section 3.2).
+- `sleipnir rl taskgen rebuild --scope PKG,... REPO` makes one long swarm task
+  of rebuilding a library from its specification: the scope's Go packages or
+  Python modules at `--commit` are reduced to stubs (`--tier stubs`) or removed
+  and documented in `API.md` (`--tier spec`), their own tests become the hidden
+  suite of the whole-suite scorer with one milestone per package or module,
+  weighted by its lines, and the start state is written to `--seal DIR` as a
+  repository with one commit (`docs/TRAINING-DATA.md`, section 3.2). A scope
+  outside the size gates, importable from outside the start tree, or whose
+  task fails its self-check yields no task and the command fails with the
+  reason. The task's `meta.source` holds `repo`, `commit`, `scope`, `tier` and
+  `spdx`. `taskgen.GoSuiteCommand` takes the packages to run; without them it
+  runs the whole module, as before.
+- A `json-score` verifier's score line may carry a breakdown of the score,
+  `"units"` and `"guards"` (`docs/TRAINING-DATA.md`, section 3.1). Verifier
+  results, outcome events, the episode's `outcome.verifier` and the results in
+  a run's `summary.json` gain the optional fields `units` and `guards`; readers
+  that ignore unknown fields are unaffected, and the score and verdict are the
+  same as before.
+- Confine RL setup, agent and verifier commands with `--confine bwrap` (on
+  `rl rollout`, `rl eval`, `rl tasks check` and the task generators): each
+  runs in a bubblewrap sandbox that sees a read-only system, its own tree,
+  HOME, TMPDIR and caches, with the work dir, the blob store, the run output
+  and the directory task sources resolve against hidden, and its own PID, IPC,
+  UTS and (unless the task needs it) network namespaces. `--confine-ro` and
+  `--confine-rw` re-expose other toolchain and cache directories. The default
+  (`off`) runs commands as before. `VerifyRequest` gains `Wrap` and `BaseEnv`;
+  prompt and tool-schema bytes are unchanged.
+- A worker started after a team session is resumed (without worktree
+  isolation) gets an id past those the earlier process used, as an isolated
+  team's already did: before, it could be given the id of a worker from
+  before the resume, and two agents then shared request ids in one log, which
+  made the session's training data fail to replay. Its prompts name the new
+  id.
 - RL tasks can give paths to roles: `team.owns` maps a role to globs (the
   syntax of `verifier.protected`) that only agents of that role may write in a
   swarm. The write guard refuses another agent's write to an owned path, the

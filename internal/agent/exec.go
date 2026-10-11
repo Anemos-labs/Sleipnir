@@ -34,6 +34,11 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 	if limit := a.cfg.MaxToolCallsPerTurn; limit > 0 && run > limit {
 		run = limit
 	}
+	// The calls over the cap are refused whatever the others do, so a savepoint taken while the batch runs records
+	// them refused rather than interrupted.
+	for i := run; i < len(calls); i++ {
+		a.notePending(i, core.ToolResult(calls[i].ToolID, true, core.Text(refusalText(len(calls), run))))
+	}
 	for i := 0; i < run; {
 		if a.readOnly(calls[i]) {
 			j := i
@@ -49,6 +54,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 					defer wg.Done()
 					defer func() { <-sem }()
 					results[k], exitFailed[k] = a.runOne(ctx, calls[k])
+					a.notePending(k, results[k])
 				}(k)
 			}
 			wg.Wait()
@@ -56,6 +62,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 			continue
 		}
 		results[i], exitFailed[i] = a.runOne(ctx, calls[i])
+		a.notePending(i, results[i])
 		i++
 	}
 	for i := run; i < len(calls); i++ {
@@ -65,9 +72,14 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 	return results, exitFailed
 }
 
+// refusalText is the result text of a call that was not run because its turn asked for asked calls and at most limit are run.
+func refusalText(asked, limit int) string {
+	return fmt.Sprintf("Not run: this turn asked for %d tool calls and at most %d are run per turn. Issue fewer calls (a grep or a glob instead of many reads, several edits in one apply_patch) and call this one again if you still need it.", asked, limit)
+}
+
 // refuseCall answers a call that was not run because its turn asked for too many.
 func (a *Agent) refuseCall(call core.Block, asked, limit int) core.Block {
-	msg := fmt.Sprintf("Not run: this turn asked for %d tool calls and at most %d are run per turn. Issue fewer calls (a grep or a glob instead of many reads, several edits in one apply_patch) and call this one again if you still need it.", asked, limit)
+	msg := refusalText(asked, limit)
 	res := tools.Errorf("%s", msg)
 	res.Meta = withErrorKind(res.Meta, ErrKindTooManyCalls)
 	a.emit(events.TypeToolResult, map[string]any{

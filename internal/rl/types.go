@@ -2,6 +2,7 @@ package rl
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -133,6 +134,13 @@ type Episode struct {
 	Signals map[string]float64 `json:"signals,omitempty"`
 	Cost    CostRef            `json:"cost"`
 	Flags   []string           `json:"flags,omitempty"`
+	// Progress is the verifier's score of the work tree at each savepoint of a
+	// long rollout, in savepoint order (env.Runner.ScoreSavepoints).
+	Progress []ProgressPoint `json:"progress,omitempty"`
+	// Fork says that the episode is a branch of another rollout, continued
+	// from one of its savepoints (rl branch): its steps up to the fork are the
+	// trunk's (Step.Inherited).
+	Fork *Fork `json:"fork,omitempty"`
 
 	Provenance Provenance `json:"provenance"`
 }
@@ -221,7 +229,7 @@ type Segment struct {
 	From   int    `json:"from"` // step index, inclusive
 	To     int    `json:"to"`   // step index, inclusive
 	Epoch  int    `json:"epoch"`
-	Reason string `json:"reason"` // start | compact | epoch | strip
+	Reason string `json:"reason"` // start | resume | compact | epoch | strip
 }
 
 // Step is one model call and what came of it. A training sample is derived
@@ -254,6 +262,10 @@ type Step struct {
 	// Trainable is false for calls the policy under training did not sample
 	// (teacher models, replayed or copied context).
 	Trainable bool `json:"trainable"`
+	// Inherited marks a step of a branch episode that came before its fork: the
+	// trunk's, copied with its log. It is not trainable, and the training
+	// exports leave it out (the canonical one keeps it).
+	Inherited bool `json:"inherited,omitempty"`
 	// Reward is the step-level shaped reward when the reward config defines one;
 	// Advantage is filled by the adv package.
 	Reward    float64 `json:"reward,omitempty"`
@@ -308,6 +320,56 @@ type Edge struct {
 	From string `json:"from"` // step or agent id
 	To   string `json:"to"`
 	Ref  string `json:"ref,omitempty"` // task id, mail id, lease id, patch id
+	// Fallback is set on a compact edge whose commit applied a mechanical patch in place of the
+	// compactor call's: the call (From) was made, but its answer was unusable, so the segment that
+	// follows (To) is not its work.
+	Fallback bool `json:"fallback,omitempty"`
+}
+
+// Fork places a branch episode in its tree of rollouts. The siblings of one
+// branch point share a GRPO group ("<task>@<parent>:sp<NNNN>") and their first
+// prompt after the fork, so the existing group statistics and DPO pairing
+// compare them.
+type Fork struct {
+	// Parent is the trunk's sample ("<run>/<task>/<sample>").
+	Parent string `json:"parent"`
+	// Savepoint is the trunk's savepoint the branch continues from; Seq is the
+	// rl.fork event's sequence number in the branch's log.
+	Savepoint int    `json:"savepoint"`
+	Seq       uint64 `json:"seq"`
+	// Sibling numbers the branch among the Siblings of its point, from 1.
+	Sibling  int `json:"sibling"`
+	Siblings int `json:"siblings"`
+	// HorizonMs is how much agent time the branch had after the fork (0: the
+	// rest of the budget).
+	HorizonMs int64 `json:"horizon_ms,omitempty"`
+	// CompactFirst says the branch compacted its context before anything else:
+	// the siblings' first steps are competing summaries of one state.
+	CompactFirst bool `json:"compact_first,omitempty"`
+}
+
+// ForkGroup is the GRPO group of the branches of one savepoint of a trunk.
+func ForkGroup(task string, f *Fork) string {
+	return fmt.Sprintf("%s@%s:sp%04d", task, f.Parent, f.Savepoint)
+}
+
+// ProgressPoint is the score of a rollout's work tree at one of its savepoints,
+// taken while the rollout went on: the task's verifier in a clean checkout, in
+// progress mode (a sample of each unit's tests under a deadline).
+type ProgressPoint struct {
+	// Savepoint numbers the savepoint in the rollout; Seq is its event's
+	// sequence number in the log.
+	Savepoint int    `json:"savepoint"`
+	Seq       uint64 `json:"seq,omitempty"`
+	// ActiveWallMs is the agent time the rollout had used at the savepoint, and
+	// At when it was taken.
+	ActiveWallMs int64     `json:"active_wall_ms"`
+	At           time.Time `json:"at,omitempty"`
+	Score        float64   `json:"score"`
+	Pass         bool      `json:"pass"`
+	TimedOut     bool      `json:"timed_out,omitempty"`
+	// Ms is how long the scoring took.
+	Ms int64 `json:"ms"`
 }
 
 // Verdict is one verification result.
@@ -318,6 +380,41 @@ type Verdict struct {
 	Version string    `json:"version,omitempty"`
 	Detail  core.Hash `json:"detail,omitempty"` // blob with logs
 	Ms      int64     `json:"ms,omitempty"`
+	// Units and Guards are the breakdown a json-score verifier printed with its score (the last run's, when it was
+	// repeated): what each unit of work and the guards contributed. They describe Score and never change it or Pass.
+	Units  map[string]UnitScore `json:"units,omitempty"`
+	Guards *GuardScore          `json:"guards,omitempty"`
+}
+
+// Clone returns a copy of the verdict that shares no map or pointer with it.
+func (v Verdict) Clone() Verdict {
+	if v.Units != nil {
+		units := make(map[string]UnitScore, len(v.Units))
+		for k, u := range v.Units {
+			units[k] = u
+		}
+		v.Units = units
+	}
+	if v.Guards != nil {
+		g := *v.Guards
+		v.Guards = &g
+	}
+	return v
+}
+
+// UnitScore is one unit of a verifier's breakdown, a milestone of a test suite for example: Passed of its Total checks
+// passed, and Weight is its share of the score relative to the other units' weights.
+type UnitScore struct {
+	Passed int     `json:"passed"`
+	Total  int     `json:"total"`
+	Weight float64 `json:"weight"`
+}
+
+// GuardScore counts a verifier's guards, the checks that passed at the start and must keep passing: Kept of Total
+// still did.
+type GuardScore struct {
+	Kept  int `json:"kept"`
+	Total int `json:"total"`
 }
 
 // Outcome gathers what happened at the end of the episode.

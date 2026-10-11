@@ -242,8 +242,10 @@ var positionals = map[string][]wire.CLIPositional{
 	"mcp test":    {many("NAME", false, "servers to start (default: all)")},
 	"trust":       {}, "trust add": {}, "trust forget": {}, "trust list": {},
 	"models fav list": {}, "models fav add": {many("REF", true, "provider/model")}, "models fav rm": {many("REF", true, "provider/model")},
-	"rl taskgen git": {}, "rl taskgen mutate": {}, "rl taskgen recall": {}, "rl taskgen fixture": {}, "rl rollout": {}, "rl eval": {}, "rl serve": {},
+	"rl taskgen git": {}, "rl taskgen mutate": {}, "rl taskgen recall": {}, "rl taskgen fixture": {}, "rl rollout": {}, "rl branch": {}, "rl eval": {}, "rl serve": {},
 	"rl taskgen composite": {pos("TASKS", true, "the tasks file to combine")},
+	"rl taskgen chain":     {pos("REPO", true, "the repository the chains' commits are in (a local path)")},
+	"rl taskgen rebuild":   {pos("REPO", true, "the repository whose packages are rebuilt (a local path)")},
 	"rl tasks validate":    {pos("FILE", true, tasksFile)},
 	"rl tasks stats":       {pos("FILE", true, tasksFile)},
 	"rl tasks filter":      {pos("FILE", true, tasksFile)},
@@ -281,7 +283,7 @@ func choicesFor(path string, name string) []string {
 		switch path {
 		case "sim":
 			return []string{"compare", "scenarios", "pins", "agents"}
-		case "rl rollout", "rl eval":
+		case "rl rollout", "rl branch", "rl eval":
 			return nil // single | swarm:N | empty
 		}
 	case "provider":
@@ -399,9 +401,10 @@ var modes = map[string]modeOf{
 		when: []wire.CLIModeRule{{Flag: "check", Mode: ModeNet}}},
 	"rl eval":              {mode: ModeNet},
 	"rl rollout":           {mode: ModeNet},
+	"rl branch":            {mode: ModeNet},
 	"rl taskgen composite": {mode: ModeNet}, "rl taskgen fixture": {mode: ModeNet}, "rl taskgen git": {mode: ModeNet},
 	"rl taskgen mutate": {mode: ModeNet}, "rl taskgen recall": {mode: ModeNet}, "rl tasks check": {mode: ModeNet},
-	"rl reward": {mode: ModeNet}, "rl export": {mode: ModeNet},
+	"rl taskgen chain": {mode: ModeNet}, "rl taskgen rebuild": {mode: ModeNet}, "rl reward": {mode: ModeNet}, "rl export": {mode: ModeNet},
 	"run":            {mode: ModeNet},
 	"swarm":          {mode: ModeNet},
 	"demo":           {mode: ModeNet},
@@ -727,7 +730,7 @@ func Generate(in Inputs) (*wire.CLISpec, error) {
 	for _, c := range []wire.CLICommand{
 		{Path: []string{"rl"}, Usage: "sleipnir rl <command> [flags]", Summary: "The RL environment: generate tasks, roll a policy out on them, score, export.", Source: line("`sleipnir rl`"), Index: true},
 		{Path: []string{"mcp"}, Usage: "sleipnir mcp <command> [flags]", Summary: "Tool servers (the Model Context Protocol): list, approve, revoke, test, without starting a session.", Source: line("`sleipnir mcp`"), Index: true},
-		{Path: []string{"rl", "taskgen"}, Usage: "sleipnir rl taskgen <generator>", Summary: "Make tasks from history (git), authored fixtures (fixture), mutations (mutate) or recall questions (recall), or compose swarm tasks (composite).", Source: "docs/CLI.md (rl command list)", Index: true},
+		{Path: []string{"rl", "taskgen"}, Usage: "sleipnir rl taskgen <generator>", Summary: "Make tasks from history (git), chains of merged pull requests (chain), authored fixtures (fixture), mutations (mutate), recall questions (recall) or libraries rebuilt from their specification (rebuild), or compose swarm tasks (composite).", Source: "docs/CLI.md (rl command list)", Index: true},
 		{Path: []string{"rl", "tasks"}, Usage: "sleipnir rl tasks <command> FILE", Summary: "Validate, filter, split and check task files.", Source: "docs/CLI.md (rl command list)", Index: true},
 		{Path: []string{"version"}, Usage: "sleipnir version", Summary: "Prints sleipnir <version> (<commit>); also --version and -v.", Source: "docs/CLI.md (commands table)"},
 		{Path: []string{"help"}, Usage: "sleipnir help", Summary: "Prints the command list (also --help); every command takes -h.", Source: "cmd/sleipnir/main.go"},

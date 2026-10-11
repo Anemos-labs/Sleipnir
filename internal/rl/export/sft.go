@@ -3,6 +3,7 @@ package export
 import (
 	"encoding/json"
 	"sort"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
 )
@@ -49,20 +50,69 @@ func (x *exporter) sftEpisodes(work []*workEpisode) []*workEpisode {
 		}
 		ok = append(ok, we)
 	}
-	if x.o.Select == SelectBest {
-		return x.topPer(work, ok, rl.GroupKey, max(x.o.TopK, 1), "episode:not_best_of_group", func(a, b *workEpisode) bool {
+	var kept []*workEpisode
+	switch {
+	case x.o.Select == SelectBest:
+		kept = x.topPer(work, ok, rl.GroupKey, max(x.o.TopK, 1), "episode:not_best_of_group", func(a, b *workEpisode) bool {
 			return a.rank.Position < b.rank.Position
 		})
+	case x.o.TopK <= 0:
+		kept = ok
+	default:
+		kept = x.topPer(work, ok, func(ep *rl.Episode) string { return ep.TaskID }, x.o.TopK, "episode:below_top_k", func(a, b *workEpisode) bool {
+			if a.ep.Reward.Total != b.ep.Reward.Total {
+				return a.ep.Reward.Total > b.ep.Reward.Total
+			}
+			return a.ep.ID < b.ep.ID
+		})
 	}
-	if x.o.TopK <= 0 {
-		return ok
+	if x.o.SFTPrefix == PrefixBest {
+		kept = append(kept, x.bestPrefixes(work)...)
 	}
-	return x.topPer(work, ok, func(ep *rl.Episode) string { return ep.TaskID }, x.o.TopK, "episode:below_top_k", func(a, b *workEpisode) bool {
-		if a.ep.Reward.Total != b.ep.Reward.Total {
-			return a.ep.Reward.Total > b.ep.Reward.Total
+	return kept
+}
+
+// PrefixBest is the SFTPrefix that exports failed episodes up to their best
+// savepoint.
+const PrefixBest = "best"
+
+// bestPrefixes are the failed episodes that scored above 0 at a savepoint, each
+// cut at its best-scoring one (the earliest of equal scores): the work that
+// went well before the run went wrong. Their until is the savepoint's time.
+func (x *exporter) bestPrefixes(work []*workEpisode) []*workEpisode {
+	var out []*workEpisode
+	for _, we := range work {
+		v := we.ep.Outcome.Verifier
+		if v == nil || v.Pass || len(we.ep.Progress) == 0 {
+			continue
 		}
-		return a.ep.ID < b.ep.ID
-	})
+		best := -1
+		for i, p := range we.ep.Progress {
+			if !p.At.IsZero() && p.Score > 0 && (best < 0 || p.Score > we.ep.Progress[best].Score) {
+				best = i
+			}
+		}
+		if best < 0 {
+			continue
+		}
+		cut := *we
+		cut.until = we.ep.Progress[best].At
+		x.stats.Prefixes++
+		out = append(out, &cut)
+	}
+	return out
+}
+
+// beforeCut reports whether a step of a prefix-cut episode completed before its
+// cut (always true for an episode without one).
+func beforeCut(we *workEpisode, st *rl.Step) bool {
+	if we.until.IsZero() {
+		return true
+	}
+	if st.At.IsZero() {
+		return false
+	}
+	return !st.At.Add(time.Duration(st.LatencyMs) * time.Millisecond).After(we.until)
 }
 
 // topPer keeps the k first episodes of each bucket in the order less defines, counts the rest
@@ -117,6 +167,17 @@ func (x *exporter) writeSFT(work []*workEpisode) error {
 // sftUnit writes one chain as a packed record (PackSegments) or each of its steps
 // as its own record.
 func (x *exporter) sftUnit(unit []stepCtx) error {
+	if len(unit) > 0 && !unit[0].we.until.IsZero() {
+		var before []stepCtx
+		for _, c := range unit {
+			if beforeCut(c.we, c.st) {
+				before = append(before, c)
+			} else {
+				x.stats.drop("step:after_best_savepoint")
+			}
+		}
+		unit = before
+	}
 	var ok []stepCtx
 	for _, c := range unit {
 		if x.selectStep(c) {
