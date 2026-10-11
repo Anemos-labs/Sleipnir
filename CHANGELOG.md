@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Task generators can score a task with the project's whole test suite
+  (`taskgen.WriteSuite`, `RecordSuite`): a hidden scorer runs Go, pytest and
+  cargo suites, each command in its own session with its output in files,
+  and prints a json-score line with units (milestones weighted as the
+  generator chose) and guards; tests are allowlisted from repeated runs of
+  the reference and the start. Progress mode (`SUITE_SAMPLE`,
+  `SUITE_BUDGET_S`) runs a sample under a deadline. `VerifyOptions.Stdout`
+  hands each verifier run's stdout to the caller; `env.MaxScoreUnits` and
+  `MaxScoreUnitName` are exported. Existing verifiers are unchanged.
 - A `json-score` verifier's score line may carry a breakdown of the score,
   `"units"` and `"guards"` (`docs/TRAINING-DATA.md`, section 3.1). Verifier
   results, outcome events, the episode's `outcome.verifier` and the results in
