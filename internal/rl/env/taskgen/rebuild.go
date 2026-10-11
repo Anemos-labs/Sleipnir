@@ -250,8 +250,8 @@ func (l *rebuildLib) group(id, parser string) string {
 //     removed and described in API.md (RebuildSpec), and the scope's tests removed; the reference sources' diff from
 //     it is the gold;
 //   - in the environment rollouts use, the scope must not be importable from outside the start tree (Go: its module
-//     in neither the module cache, GOPATH nor vendor/; Python: no installed package by its name), and Go stubs must
-//     build with their tests;
+//     in neither the module cache, GOPATH nor vendor/; Python: no package by its name on the import path outside the
+//     tree, the user site and PYTHONPATH included), and Go stubs must build with their tests;
 //   - the suite is recorded Repeats times on the start and with the gold (RecordSuite), and the tests that fail on the
 //     start and pass with the gold every time become the units, one per package or module, weighted by its lines and
 //     in dependency order; there are no guards (Gates.MinTests);
@@ -807,10 +807,13 @@ func checkOutput(log string) string {
 func (l *rebuildLib) leakScript() string {
 	var b strings.Builder
 	if l.lang == Python {
+		// The check sees what the tests see, the user site and PYTHONPATH included (python3 -I would skip both), and
+		// runs from / so the start tree's own package, found through the working directory, hides none elsewhere.
 		code := `import importlib.util, os, sys
-root = os.path.realpath(os.getcwd())
+root = os.path.realpath(sys.argv[1])
+sys.path[:] = [p for p in sys.path if p not in ("", ".")]
 bad = []
-for n in sys.argv[1:]:
+for n in sys.argv[2:]:
     try:
         s = importlib.util.find_spec(n)
     except Exception:
@@ -828,7 +831,7 @@ for m in bad:
     print(m)
 sys.exit(10 if bad else 0)
 `
-		b.WriteString("python3 -I -c " + shq(code))
+		b.WriteString("r=$(pwd -P) && cd / && python3 -c " + shq(code) + " \"$r\"")
 		for _, top := range l.tops {
 			b.WriteString(" " + shq(top))
 		}

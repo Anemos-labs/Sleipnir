@@ -479,6 +479,52 @@ func TestRebuildPython(t *testing.T) {
 			}
 		})
 	}
+
+	// A copy of the package where the tests would import it from outside the checkout: the user site (where
+	// pip install --user puts it) or a PYTHONPATH entry. Either one leaks the reference.
+	userBase := t.TempDir()
+	where := exec.Command("python3", "-c", "import site; print(site.ENABLE_USER_SITE, site.getusersitepackages())")
+	where.Env = append(os.Environ(), "PYTHONUSERBASE="+userBase)
+	out, err := where.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled, userSite, _ := strings.Cut(strings.TrimSpace(string(out)), " ")
+	pyPath := t.TempDir()
+	for _, c := range []struct {
+		name, dir string
+		env       map[string]string
+	}{
+		{"user site", userSite, map[string]string{"PYTHONUSERBASE": userBase}},
+		{"PYTHONPATH", pyPath, map[string]string{"PYTHONPATH": pyPath}},
+	} {
+		if c.name == "user site" && enabled != "True" {
+			t.Logf("python3 has no user site (%s), so nothing installed there is importable", enabled)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Join(c.dir, "mylib"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(c.dir, "mylib", "__init__.py"), []byte("from .core import Stack, total\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c.env["GOCACHE"] = sharedGoCache
+		leaky, err := env.NewWorkspaces(env.WorkspaceOptions{
+			Root: filepath.Join(t.TempDir(), "root"), DisableNetIsolation: true, SetupTimeout: 2 * time.Minute, FailureTTL: -1, SetEnv: c.env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		opts := rbOptions(t, leaky, events.NewMemBlobs(), RebuildStubs)
+		opts.Scope = []string{"mylib"}
+		opts.Gates.MinTests = 4
+		_, rep, err := Rebuild(context.Background(), f.Dir, opts)
+		leaky.Close()
+		var rj *RebuildRejection
+		if !errors.As(err, &rj) || rj.Reason != ReasonRebuildLeak || !strings.Contains(err.Error(), "mylib is installed at "+c.dir) {
+			t.Errorf("mylib in the %s: %v %+v", c.name, err, rep)
+		}
+	}
 }
 
 func TestRebuildRejections(t *testing.T) {

@@ -317,8 +317,9 @@ team to write a library again from its specification, as it is at a version of t
 * **Gates and checks.** The scope has 2,000 to 10,000 lines, at least 150 scored tests, and one run of the reference
   suite takes less than 10 minutes. In the environment rollouts use, the scope must not be importable from outside
   the start tree: for Go, its module (also without a `/vN` suffix) is in neither the module cache, `GOPATH/src` nor
-  `vendor/`; for Python, `importlib.util.find_spec` (under `python3 -I`) finds none of its top-level packages outside
-  the checkout, so a setup must not install the package itself, even in editable mode. Go stubs must build, with
+  `vendor/`; for Python, `importlib.util.find_spec`, on the import path the tests get (the user site and `PYTHONPATH`
+  included) less the working directory, finds none of its top-level packages outside the checkout, so a setup must not
+  install the package itself, even in editable mode or with `pip install --user`. Go stubs must build, with
   their tests compiling against them. Last, the task is scored as rollouts will score it: the start must score 0 and
   the reference exactly 1. A scope that fails any of these yields no task: the reason is printed and kept in
   `--report` (`rejected`), and the command fails.
