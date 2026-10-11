@@ -156,12 +156,14 @@ func TestFixtureVerifiesAndBuildsAnEpisode(t *testing.T) {
 		}
 	}
 
-	// Compact edges connect each fork to the first call after its commit.
+	// Compact edges connect each fork to the first call after its commit. The log
+	// predates commits naming their compactor request, so the forks are found by the
+	// heuristic; the last three commits applied the mechanical fallback.
 	wantEdges := []rl.Edge{
 		{Kind: rl.EdgeCompact, From: "be-1.c1", To: "be-1.10", Ref: "be-1#1"},
-		{Kind: rl.EdgeCompact, From: "be-1.c2", To: "be-1.13", Ref: "be-1#2"},
-		{Kind: rl.EdgeCompact, From: "be-1.c3", To: "be-1.18", Ref: "be-1#3"},
-		{Kind: rl.EdgeCompact, From: "be-1.c4", To: "be-1.23", Ref: "be-1#4"},
+		{Kind: rl.EdgeCompact, From: "be-1.c2", To: "be-1.13", Ref: "be-1#2", Fallback: true},
+		{Kind: rl.EdgeCompact, From: "be-1.c3", To: "be-1.18", Ref: "be-1#3", Fallback: true},
+		{Kind: rl.EdgeCompact, From: "be-1.c4", To: "be-1.23", Ref: "be-1#4", Fallback: true},
 	}
 	if fmt.Sprint(ep.Edges) != fmt.Sprint(wantEdges) {
 		t.Fatalf("edges:\n got %+v\nwant %+v", ep.Edges, wantEdges)
@@ -1065,6 +1067,118 @@ func TestSwarmEpisode(t *testing.T) {
 		}
 	}
 	mustJSON(t, ep)
+}
+
+// compactionRun records one agent that compacts three times, the way the agent
+// logs it: a compactor call whose answer was unusable and whose job ended without a
+// commit (be-1.c1); an emergency compaction that asked no compactor (#1); a
+// compaction whose compactor request never got a response, so a mechanical patch was
+// committed (be-1.c2, #2); and one that applied a usable patch (be-1.c3, #3). named
+// selects the current compact.commit payload, which names the compactor request,
+// over the payload of logs written before it.
+func compactionRun(named bool) *trajtest.Run {
+	b := trajtest.New()
+	a := b.Agent("be-1", "backend", "mock-1")
+	commit := func(req string, keepFrom core.TurnID, fallback bool, reason string) {
+		if named {
+			a.CommitFor(req, keepFrom, fallback, reason)
+		} else {
+			a.Commit(keepFrom, fallback, reason)
+		}
+	}
+	read := func(path string) trajtest.Call {
+		return trajtest.Call{Text: "read " + path, Tool: "read", Input: `{"path":"` + path + `"}`, Result: "package " + path}
+	}
+	a.User("fix the parser")    // t1
+	a.Step(read("a"))           // be-1.1: t2, t3
+	a.Step(read("b"))           // be-1.2: t4, t5
+	a.Fork("no JSON today", "") // be-1.c1
+	b.Emit("be-1", events.TypeCompactReject, map[string]any{"stage": "model_patch", "reason": "no patch", "fallback": "mechanical"})
+	b.Emit("be-1", events.TypeCompactReject, map[string]any{"stage": "propose", "reason": "nothing to compact"})
+	a.Step(read("c")) // be-1.3: t6, t7
+	commit("", 6, true, "emergency: prompt over 85% of the context window")
+	a.Step(read("d"))    // be-1.4: t8, t9
+	a.Step(read("e"))    // be-1.5: t10, t11
+	c2 := a.ForkFail("") // be-1.c2: no response
+	b.Emit("be-1", events.TypeCompactReject, map[string]any{"stage": "model_patch", "reason": "boom", "fallback": "mechanical"})
+	commit(c2, 10, true, "pays back within 2 turns")
+	a.Step(read("f"))                       // be-1.6: t12, t13
+	c3 := a.Fork(`{"keep_from":"t12"}`, "") // be-1.c3
+	commit(c3, 12, false, "pays back within 3 turns")
+	a.Step(trajtest.Call{Text: "fixed"}) // be-1.7
+	return b
+}
+
+func TestCompactEdgesFollowTheNamedRequest(t *testing.T) {
+	build := func(named bool) *rl.Episode {
+		t.Helper()
+		b := compactionRun(named)
+		run := traj.OpenWith(b.Events(), b.Blobs)
+		if ms := run.Verify(); len(ms) != 0 {
+			t.Fatalf("synthetic run must replay: %v", ms)
+		}
+		ep := episode(t, run, traj.Options{TaskID: "compact", Policy: policy})
+		var segs []string
+		for _, s := range ep.Agents[0].Segments {
+			segs = append(segs, s.Reason)
+		}
+		if fmt.Sprint(segs) != "[start compact compact compact]" || ep.Signals[rl.SigCompactions] != 3 || ep.Signals[traj.SigRequestErrors] != 1 {
+			t.Fatalf("named=%v: segments %v, signals %v", named, segs, ep.Signals)
+		}
+		return ep
+	}
+
+	// Commits that name their request are linked to exactly that call: the emergency
+	// commit asked no compactor, the second commit's request has no step, and the
+	// failed be-1.c1 is linked to nothing.
+	ep := build(true)
+	want := []rl.Edge{{Kind: rl.EdgeCompact, From: "be-1.c3", To: "be-1.7", Ref: "be-1#3"}}
+	if fmt.Sprint(ep.Edges) != fmt.Sprint(want) {
+		t.Fatalf("named requests:\n got %+v\nwant %+v", ep.Edges, want)
+	}
+
+	// The same run logged before commits named their request: the heuristic skips the
+	// emergency commit (its reason says it asked no compactor) but gives the mechanical
+	// commit the failed be-1.c1, which is the wrong call. The edge says the patch was
+	// not the call's.
+	ep = build(false)
+	want = []rl.Edge{
+		{Kind: rl.EdgeCompact, From: "be-1.c1", To: "be-1.6", Ref: "be-1#2", Fallback: true},
+		{Kind: rl.EdgeCompact, From: "be-1.c3", To: "be-1.7", Ref: "be-1#3"},
+	}
+	if fmt.Sprint(ep.Edges) != fmt.Sprint(want) {
+		t.Fatalf("heuristic:\n got %+v\nwant %+v", ep.Edges, want)
+	}
+	if js := mustJSON(t, ep.Edges); !strings.Contains(js, `"ref":"be-1#2","fallback":true}`) || strings.Count(js, `"fallback"`) != 1 {
+		t.Fatalf("fallback is written only where it is set: %s", js)
+	}
+}
+
+func TestCompactEdgeForAFallbackCommitThatNamesItsCall(t *testing.T) {
+	// The compactor answered, its patch was unusable and the mechanical one was
+	// committed: the call is still the one the commit came from, and the edge says
+	// the patch was not its own. A commit naming a request of another agent, or a
+	// main request, is linked to nothing.
+	b := trajtest.New()
+	a := b.Agent("be-1", "backend", "mock-1")
+	o := b.Agent("be-2", "backend", "mock-1")
+	a.User("go")
+	o.User("go")
+	a.Step(trajtest.Call{Text: "x", Tool: "read", Input: `{}`, Result: "x"}) // be-1.1
+	main := a.Step(trajtest.Call{Text: "y", Tool: "read", Input: `{}`, Result: "y"})
+	other := o.Fork(`{"keep_from":"t1"}`, "") // be-2.c1
+	c1 := a.Fork("not a patch", "")           // be-1.c1
+	a.CommitFor(c1, 4, true, "pays back within 1 turn")
+	a.Step(trajtest.Call{Text: "z", Tool: "read", Input: `{}`, Result: "z"}) // be-1.3
+	a.CommitFor(other, 4, false, "pays back within 1 turn")
+	a.Step(trajtest.Call{Text: "w", Tool: "read", Input: `{}`, Result: "w"}) // be-1.4
+	a.CommitFor(main, 4, false, "pays back within 1 turn")
+	a.Step(trajtest.Call{Text: "done"}) // be-1.5
+	ep := episode(t, traj.OpenWith(b.Events(), b.Blobs), traj.Options{TaskID: "compact", Policy: policy})
+	want := []rl.Edge{{Kind: rl.EdgeCompact, From: "be-1.c1", To: "be-1.3", Ref: "be-1#1", Fallback: true}}
+	if fmt.Sprint(ep.Edges) != fmt.Sprint(want) {
+		t.Fatalf("edges:\n got %+v\nwant %+v", ep.Edges, want)
+	}
 }
 
 func TestSwarmTokenChains(t *testing.T) {

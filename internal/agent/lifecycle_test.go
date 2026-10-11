@@ -444,6 +444,11 @@ func TestSec_S06_EmergencyExcerptsAnOversizedFirstExchange(t *testing.T) {
 	if len(commits) != 1 || commits[0]["squeezed"] != float64(5) || !strings.Contains(fmt.Sprint(commits[0]["reason"]), "emergency") {
 		t.Fatalf("expected one emergency commit that excerpted 5 results: %v", commits)
 	}
+	// No compactor was asked: the commit says so with an empty req (present, so a reader does not take
+	// it for a log written before commits named their request) and is a fallback.
+	if req, ok := commits[0]["req"]; !ok || req != "" || commits[0]["fallback"] != true {
+		t.Fatalf("an emergency commit names no compactor request and is a fallback: %v", commits[0])
+	}
 	if len(second) != 5 {
 		t.Fatalf("%d tool messages", len(second))
 	}

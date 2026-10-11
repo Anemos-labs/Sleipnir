@@ -56,6 +56,11 @@ type readyPatch struct {
 	fallback bool    // mechanical patch used instead of the model's
 	snapLive int     // live thread tokens, as sent, when the snapshot was taken
 	manual   bool    // a person's /compact: the session announces it to the hooks, not the agent
+	// req is the id of the compactor request this patch answers (its model.request "req", "<agent>.c<n>"),
+	// the last one when an effort recovery retried it; "" when no compactor was asked (mask and emergency
+	// compactions). The compact.patch and compact.commit events carry it so the RL pipeline links a commit to
+	// the exact compactor call instead of guessing.
+	req string
 }
 
 // compactionCooldown avoids hammering a failing compactor.
@@ -387,7 +392,7 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	a.mu.Unlock()
 	defer a.clearPending(label)
 	a.recordRequest(label, &kv.Rendered{Prompt: p, Sections: nil}, nil, kv.Check{}, prof, KindCompactor, false)
-	a.emit(events.TypeCompactPatch, map[string]any{"stage": "request", "reason": reason, "thread_from": firstID(snap), "thread_to": lastID(snap)})
+	a.emit(events.TypeCompactPatch, map[string]any{"stage": "request", "req": label, "reason": reason, "thread_from": firstID(snap), "thread_to": lastID(snap)})
 
 	z := kv.Sizer{Est: a.est, Caps: pol.Caps}
 	snapLive := z.Turns(snap.Thread.Turns)
@@ -447,9 +452,9 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		}
 		rp.fallback = true
 	}
-	rp.patch, rp.res = patch, res
+	rp.patch, rp.res, rp.req = patch, res, label
 	a.emit(events.TypeCompactPatch, map[string]any{
-		"stage": "ready", "keep_from": res.KeepFrom, "removed_tokens": res.RemovedTokens, "retained_tokens": res.RetainedTokens,
+		"stage": "ready", "req": label, "keep_from": res.KeepFrom, "removed_tokens": res.RemovedTokens, "retained_tokens": res.RetainedTokens,
 		"snap_tokens": res.SnapTokens, "spine_added": res.SpineAdded, "masked": res.MaskedResults, "mechanical_lines": res.Mechanical,
 		"fallback": rp.fallback, "warnings": res.Warnings, "cost_ite": rp.itc,
 	})
@@ -512,7 +517,9 @@ func (a *Agent) commit(ctx context.Context, rp *readyPatch, why string) error {
 	return nil
 }
 
-// applyCommit is the atomic part of commit.
+// applyCommit is the atomic part of commit. The compact.commit event it emits names the compactor
+// request the patch answers (req; "" for mask and emergency compactions, which ask no compactor) and
+// whether a mechanical patch replaced the compactor's (fallback).
 func (a *Agent) applyCommit(rp *readyPatch, why string) error {
 	res := rp.res
 	a.mu.Lock()
@@ -542,6 +549,9 @@ func (a *Agent) applyCommit(rp *readyPatch, why string) error {
 		"user_text_cut": res.UserTextCut, "proposals": len(res.Proposals),
 		"fallback": rp.fallback, "warnings": res.Warnings,
 		"held_ms": a.cfg.Now().Sub(rp.at).Milliseconds(),
+		// Always present, "" when no compactor was asked: a reader tells a commit without a compactor call
+		// from one written before commits named their request.
+		"req": rp.req,
 	})
 	if len(res.UserTextCut) > 0 {
 		// The one case in which what a person typed is not pinned in full.

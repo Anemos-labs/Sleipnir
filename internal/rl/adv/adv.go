@@ -14,6 +14,13 @@
 //     reward.Score scored it individually (Step.Reward, with a "role/<name>"
 //     aggregate on the episode); otherwise it inherits the reward of the chain it
 //     served and shares that chain's advantage;
+//   - a compactor call is compared only with the calls of the same compaction
+//     number: the k-th compactor call of its agent, counted in step order. The
+//     first compaction of a run and the fifth are different problems (the fifth
+//     works on a thread already folded four times), so the first compactions of a
+//     group share one baseline, the second ones another, and so on. A number with
+//     a single trainable call in the group has no peer and is a flat group like
+//     any other single sample (see Apply); it is not pooled with other numbers;
 //   - episodes carrying a hard flag (rl.HardFlag: infra errors, hacks, replay
 //     mismatches, ...) and steps the policy did not sample (Trainable false) never
 //     contribute to a baseline and never receive an advantage.
@@ -28,6 +35,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
@@ -189,12 +197,15 @@ func (s Spec) eps() float64 {
 }
 
 // GroupStat describes one baseline group: the samples of one role (or of all
-// roles, when PerRole is off) among the episodes of one rollout group.
+// roles, when PerRole is off) among the episodes of one rollout group; for the
+// compactor role, the calls of one compaction number.
 type GroupStat struct {
-	Key  string // "<group>|<role>"
+	Key  string // "<group>|<role>", or "<group>|compactor#<k>" for the k-th compactions
 	Role string
-	N    int
-	Mean float64
+	// Compaction is k for the group of k-th compactor calls; 0 for every other group.
+	Compaction int
+	N          int
+	Mean       float64
 	// Std is the sample standard deviation (n-1); 0 when N < 2.
 	Std, Min, Max float64
 	// Flat groups have no learning signal: a single sample or all rewards equal.
@@ -310,6 +321,10 @@ type sample struct {
 	steps  []*rl.Step // trainable steps, in order
 	reward float64
 	valid  bool
+	// nth is the compaction number of a compactor call scored on its own: its 1-based
+	// position among its agent's compactor calls in step order, trainable or not. It is
+	// 0 for every other sample.
+	nth int
 
 	group string // rollout group key
 	adv   float64
@@ -320,6 +335,15 @@ type sample struct {
 // sortKey orders samples by episode ID, then zero-padded agent and step indices separated by NUL
 // bytes.
 func (s *sample) sortKey() string { return fmt.Sprintf("%s\x00%06d\x00%06d", s.ep.ID, s.ai, s.si) }
+
+// baselineRole is what a sample's baseline is keyed by besides its rollout group: its
+// role, and for a compactor call also its compaction number ("compactor#2").
+func (s *sample) baselineRole() string {
+	if s.nth > 0 {
+		return s.role + "#" + strconv.Itoa(s.nth)
+	}
+	return s.role
+}
 
 // singleCall roles are trained per call, each with its own reward.
 func singleCall(role string) bool { return role == rl.RoleCompactor || role == rl.RoleMailman }
@@ -371,17 +395,25 @@ func collectSamples(eps []*rl.Episode, spec Spec, rep *Report) []*sample {
 			a := &ep.Agents[ai]
 			perRole := map[string]*sample{}
 			var roles []string
+			nth := 0 // the agent's compactor calls so far, trainable or not
 			for si := range a.Steps {
 				st := &a.Steps[si]
+				role := reward.StepRole(a, st)
+				if role == rl.RoleCompactor {
+					nth++
+				}
 				if !st.Trainable {
 					continue
 				}
-				role := reward.StepRole(a, st)
 				if singleCall(role) {
 					if r, ok := callReward(ep, a, st, role); ok {
-						// Scored individually: one sample per call, in the call's own role.
-						out = append(out, &sample{ep: ep, ai: ai, si: si, role: role, steps: []*rl.Step{st},
-							reward: r, group: gk})
+						// Scored individually: one sample per call, in the call's own role
+						// (and, for a compactor, its compaction number).
+						smp := &sample{ep: ep, ai: ai, si: si, role: role, steps: []*rl.Step{st}, reward: r, group: gk}
+						if role == rl.RoleCompactor {
+							smp.nth = nth
+						}
+						out = append(out, smp)
 						continue
 					}
 					// Unscored: the call inherits the reward of the chain it served, i.e.
@@ -463,11 +495,15 @@ func spread(v []float64) (lo, hi float64) {
 // Apply computes advantages and writes them to Step.Advantage.
 //
 // Every step of every given episode is first reset to 0, so the result never
-// mixes runs. Then, for each rollout group and role, the samples' rewards are
-// turned into advantages by the chosen method and assigned to the samples'
-// trainable steps. Groups of a single sample or with all-equal rewards have no
-// baseline to speak of: their advantages are 0 (for grpo, rloo and anchor) and
-// they are listed in Report.Flat.
+// mixes runs. Then, for each rollout group and role (for compactor calls, each
+// rollout group and compaction number), the samples' rewards are turned into
+// advantages by the chosen method and assigned to the samples' trainable steps.
+// Groups of a single sample or with all-equal rewards have no baseline to speak
+// of: their advantages are 0 (for grpo, rloo and anchor) and they are listed in
+// Report.Flat. That includes a compaction number with a single trainable call in
+// the group: the call is not compared with calls of other numbers instead. With
+// PerRole off every sample of a rollout group shares one baseline, compactions of
+// every number included.
 func Apply(eps []*rl.Episode, s Spec) (Report, error) {
 	s.Method = strings.ToLower(strings.TrimSpace(s.Method))
 	s.GroupBy = strings.ToLower(strings.TrimSpace(s.GroupBy))
@@ -499,9 +535,10 @@ func Apply(eps []*rl.Episode, s Spec) (Report, error) {
 	samples := collectSamples(eps, s, &rep)
 	sort.SliceStable(rep.Skipped, func(i, j int) bool { return rep.Skipped[i].Episode < rep.Skipped[j].Episode })
 
-	// Bucket by rollout group and role.
+	// Bucket by rollout group and role, and compactor calls by compaction number.
 	type bucket struct {
 		key, role string
+		nth       int
 		members   []*sample
 	}
 	byKey := map[string]*bucket{}
@@ -510,14 +547,14 @@ func Apply(eps []*rl.Episode, s Spec) (Report, error) {
 			rep.Invalid++
 			continue
 		}
-		role := smp.role
+		role, label, nth := smp.role, smp.baselineRole(), smp.nth
 		if !s.PerRole {
-			role = "*"
+			role, label, nth = "*", "*", 0
 		}
-		key := smp.group + "|" + role
+		key := smp.group + "|" + label
 		b := byKey[key]
 		if b == nil {
-			b = &bucket{key: key, role: role}
+			b = &bucket{key: key, role: role, nth: nth}
 			byKey[key] = b
 		}
 		b.members = append(b.members, smp)
@@ -538,7 +575,7 @@ func Apply(eps []*rl.Episode, s Spec) (Report, error) {
 		mean, std := meanStd(rewards)
 		lo, hi := spread(rewards)
 		flat := len(rewards) < 2 || hi-lo <= flatTol
-		gs := GroupStat{Key: k, Role: b.role, N: len(rewards), Mean: mean, Std: std, Min: lo, Max: hi, Flat: flat}
+		gs := GroupStat{Key: k, Role: b.role, Compaction: b.nth, N: len(rewards), Mean: mean, Std: std, Min: lo, Max: hi, Flat: flat}
 		epSet := map[string]bool{}
 		for _, m := range b.members {
 			m.flat = flat
