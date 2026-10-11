@@ -199,7 +199,8 @@ func Seal(ctx context.Context, g *env.Git, gitDir, rev, dest string, opts SealOp
 }
 
 // installDir puts the directory tmp in place at dest. A dest that exists is moved aside first and put back when the
-// new one cannot be installed, so a failure never leaves dest missing; once tmp is in place the old one is removed.
+// new one cannot be installed, so a failure never leaves dest missing; once tmp is in place the old one is removed,
+// and failing to remove it (a hidden .<name>.old- directory left next to dest) does not undo the installation.
 func installDir(tmp, dest string) error {
 	if _, err := os.Lstat(dest); err != nil {
 		return os.Rename(tmp, dest)
@@ -220,8 +221,12 @@ func installDir(tmp, dest string) error {
 		_ = os.Remove(aside)
 		return err
 	}
-	return os.RemoveAll(aside)
+	_ = removeAside(aside)
+	return nil
 }
+
+// removeAside removes what installDir moved aside; a variable so that a test can make it fail.
+var removeAside = os.RemoveAll
 
 // sealTask seals t's start state (t.Repo.Commit of the repository at gitDir) as
 // <dir>/<t.ID>.git and points t at it: Repo.Path becomes <as>/<t.ID>.git (as is

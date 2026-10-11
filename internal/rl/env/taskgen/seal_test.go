@@ -3,6 +3,7 @@ package taskgen
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -277,5 +278,30 @@ func TestInstallDirKeepsTheOldOneWhenItFails(t *testing.T) {
 	mk(filepath.Join(dir, "other"), "x")
 	if err := installDir(filepath.Join(dir, "other"), fresh); err != nil {
 		t.Fatalf("install where nothing was: %v", err)
+	}
+}
+
+// Once the new repository is installed, a failure to remove the old one is not a failure of the installation: Seal
+// still returns its commit and the new repository stays in place.
+func TestInstallDirIgnoresAFailedCleanup(t *testing.T) {
+	f := newFixture(t)
+	f.write("a.txt", "one\n")
+	first := f.commit("first")
+	f.write("a.txt", "two\n")
+	second := f.commit("second")
+	g := newGit(t)
+	dest := filepath.Join(t.TempDir(), "start.git")
+	gitDir := filepath.Join(f.Dir, ".git")
+	if _, err := Seal(context.Background(), g, gitDir, first, dest, SealOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	removeAside = func(string) error { return errors.New("the old copy is busy") }
+	t.Cleanup(func() { removeAside = os.RemoveAll })
+	commit, err := Seal(context.Background(), g, gitDir, second, dest, SealOptions{})
+	if err != nil || commit == "" {
+		t.Fatalf("Seal over an existing repository whose old copy cannot be removed: %q, %v", commit, err)
+	}
+	if got := f.git("--git-dir="+dest, "rev-parse", "HEAD"); got != commit {
+		t.Errorf("the installed repository is at %s, want the new commit %s", got, commit)
 	}
 }
