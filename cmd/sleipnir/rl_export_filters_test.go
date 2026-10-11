@@ -207,6 +207,8 @@ func TestRLExportDropRulesThroughTheCLI(t *testing.T) {
 		{"--drop", "name=all"},
 		{"--role-teacher", "worker"},
 		{"--max-drop-rate", "-0.1"},
+		{"--max-drop-rate", "50"},
+		{"--max-drop-rate", "+Inf"},
 		{"--exclude", filepath.Join(base, "missing.txt")},
 	} {
 		if _, _, err := r.do(rlExport, append([]string{model, "--format", "steps"}, args...)...); err == nil {

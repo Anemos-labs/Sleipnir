@@ -150,7 +150,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	if err := oneOf("reasoning", *reasoning, "drop", "field", "keep"); err != nil {
 		return fmt.Errorf("rl export: %w", err)
 	}
-	if *maxDropRate < 0 || *maxDropRate != *maxDropRate {
+	if *maxDropRate < 0 || *maxDropRate > 1 || *maxDropRate != *maxDropRate {
 		return fmt.Errorf("rl export: --max-drop-rate must be a share between 0 and 1, not %v", *maxDropRate)
 	}
 	var rules []export.DropRule
