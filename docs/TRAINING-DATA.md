@@ -246,7 +246,8 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   `mail.batch`, `mail.digest` (digest out, naming every original sender) and `mail.direct` (a delivery that bypassed it).
 * The agent's commands run in a scrubbed environment (private HOME and TMPDIR, no credentials, no network when the
   host can isolate it; on Windows also the system variables such as SYSTEMROOT, PATHEXT and COMSPEC, with TEMP, TMP,
-  USERPROFILE and LOCALAPPDATA inside the private directories);
+  USERPROFILE and LOCALAPPDATA inside the private directories; `RUSTUP_HOME` names the host's `~/.rustup` when the
+  host does not set it, so rustup's toolchains stay found under the private HOME);
   permission prompts are refused, as an unattended session would refuse them, and the rules let
   the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets
   (a stop is an outcome: `budget`), wall-clock is enforced by the runner, and infrastructure failures are retried and

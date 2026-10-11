@@ -148,6 +148,17 @@ func buildEnv(s EnvSpec, goos string) []string {
 			out[k] = v
 		}
 	}
+	if _, ok := out["RUSTUP_HOME"]; !ok {
+		// rustup keeps its toolchains in ~/.rustup unless RUSTUP_HOME says otherwise; with HOME replaced, a cargo or
+		// rustc proxy would find none, so the original location is named.
+		h := base["HOME"]
+		if windows && h == "" {
+			h = base["USERPROFILE"]
+		}
+		if d := filepath.Join(h, ".rustup"); h != "" && isDir(d) {
+			out["RUSTUP_HOME"] = d
+		}
+	}
 	if windows {
 		for _, k := range windowsVars {
 			if v, ok := base[k]; ok {
@@ -304,4 +315,10 @@ func EnvMap(env []string) map[string]string {
 		}
 	}
 	return m
+}
+
+// isDir reports whether p is a directory, following symbolic links.
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
