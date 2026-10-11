@@ -304,7 +304,9 @@ team to write a library again from its specification, as it is at a version of t
 * **Tests and milestones.** The scope's tests are the hidden suite: the `_test.go` files and `testdata/` of its Go
   packages; the test files and test helpers inside its Python packages, and every test file of the project that
   imports one of their modules. The verifier is the whole-suite scorer: `go test` of the scope's packages, or pytest of
-  the hidden test files with the reference's configuration. The suite is recorded `--repeats` times (default 3) on the
+  the hidden test files with the reference's configuration, run from the project's directory with the scope's import
+  root (`src/`, `lib/` or `python/`, when the packages are there) on `PYTHONPATH`, since the project itself is never
+  installed. The suite is recorded `--repeats` times (default 3) on the
   start and with the reference; the tests that fail on the start and pass with the reference every time are scored,
   and the others are dropped (a rebuild task has no guards). There is one unit per Go package or Python module,
   weighted by its lines and listed in the order the packages import each other (an import cycle between Python modules

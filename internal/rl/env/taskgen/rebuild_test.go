@@ -418,7 +418,7 @@ func TestRebuildPython(t *testing.T) {
 	}
 	havePytest(t)
 	f := newFixture(t)
-	for p, body := range map[string]string{
+	lib := map[string]string{
 		"pyproject.toml":    "[project]\nname = \"mylib\"\nversion = \"0\"\n\n[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\n",
 		"README.md":         "# mylib\n",
 		"mylib/__init__.py": "\"\"\"A small library.\"\"\"\nfrom .core import Stack, total\n\n__all__ = [\"Stack\", \"total\"]\n",
@@ -428,7 +428,8 @@ func TestRebuildPython(t *testing.T) {
 		"tests/test_util.py":  "from mylib.util import double, _clip\n\n\ndef test_double():\n    assert double(3) == 6\n\n\ndef test_clip():\n    assert _clip(9, 5) == 5\n",
 		"tests/test_core.py":  "import mylib\nfrom mylib import Stack\n\n\ndef test_total():\n    assert mylib.total([1, 2]) == 6\n    assert mylib.total([9]) == 10\n\n\ndef test_stack():\n    assert Stack().push(1).push(2).size() == 2\n",
 		"tests/test_const.py": "from mylib.core import LIMIT\n\n\ndef test_limit():\n    assert LIMIT == 10\n",
-	} {
+	}
+	for p, body := range lib {
 		f.write(p, body)
 	}
 	f.commit("the library")
@@ -478,6 +479,23 @@ func TestRebuildPython(t *testing.T) {
 				}
 			}
 		})
+	}
+
+	// The same library in a src layout: the tests import it only because the suite puts src/ on the import path.
+	srcf := newFixture(t)
+	for p, body := range lib {
+		if strings.HasPrefix(p, "mylib/") {
+			p = "src/" + p
+		}
+		srcf.write(p, body)
+	}
+	srcf.commit("the library, in src/")
+	srcOpts := rbOptions(t, newManager(t), events.NewMemBlobs(), RebuildStubs)
+	srcOpts.Scope = []string{"mylib"}
+	srcOpts.Gates.MinTests = 4
+	if _, rep, err := Rebuild(context.Background(), srcf.Dir, srcOpts); err != nil || rep.ReferenceScore == nil || *rep.ReferenceScore != 1 ||
+		rep.StartScore == nil || *rep.StartScore != 0 {
+		t.Errorf("src layout: %v %+v", err, rep)
 	}
 
 	// A copy of the package where the tests would import it from outside the checkout: the user site (where

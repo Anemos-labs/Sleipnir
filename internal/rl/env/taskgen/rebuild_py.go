@@ -119,6 +119,27 @@ type pyScopePkg struct {
 	name, dir, file, root string
 }
 
+// pyImportDirs are the import roots of the scope's packages relative to their project's directory, in scope order,
+// leaving out the project's directory itself (the suite runs there, and python3 -m puts it on the import path).
+func pyImportDirs(scope []pyScopePkg, project string) []string {
+	var dirs []string
+	seen := map[string]bool{}
+	for _, s := range scope {
+		d := s.root
+		if project != "." {
+			if d == project {
+				continue
+			}
+			d = strings.TrimPrefix(d, project+"/")
+		}
+		if d != "." && !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
 // pyModuleName is the module a .py file under the import root root is, and whether it is a package's __init__.py;
 // "" when a part of its path is not an identifier.
 func pyModuleName(root, file string) (string, bool) {
@@ -359,6 +380,11 @@ func rebuildPython(ctx context.Context, r *repo, commit string, files []string, 
 		cwd = project
 	}
 	lib.command = PythonSuiteCommand(cwd, suite...)
+	if dirs := pyImportDirs(scope, project); len(dirs) > 0 {
+		// A package under src/, lib/ or python/ is importable from there only once its project is installed, which a
+		// rebuild never does (the leak check forbids it), so the suite puts that directory on the import path.
+		lib.command.Run = "export PYTHONPATH=" + shq(strings.Join(dirs, ":")) + `":$PYTHONPATH"; ` + lib.command.Run
+	}
 	if lib.pytestINI, err = pytestINIAt(ctx, r, commit, project); err != nil {
 		return nil, reject(ReasonRebuildScope, "the reference's pytest configuration: %v", err)
 	}
