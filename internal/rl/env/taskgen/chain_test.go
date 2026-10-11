@@ -342,6 +342,7 @@ func TestChainSuiteCommands(t *testing.T) {
 	f.write("go.mod", "module example.com/a\n")
 	f.write("svc/go.mod", "module example.com/svc\n")
 	f.write("py/pyproject.toml", "[tool.pytest.ini_options]\naddopts = \"-q\"\n")
+	f.write("py/src/pkg/__init__.py", "")
 	f.write("rs/Cargo.toml", "[package]\nname = \"rs\"\n")
 	rev := f.commit("layout")
 	r := &repo{g: newGit(t), gitDir: filepath.Join(f.Dir, ".git")}
@@ -367,6 +368,9 @@ func TestChainSuiteCommands(t *testing.T) {
 	if !reflect.DeepEqual(setup, []string{"go mod download", "cd 'svc' && go mod download", "cd 'rs' && cargo fetch"}) ||
 		!reflect.DeepEqual(langs, []string{"go", "python", "rust"}) || spec.PytestINI != "[pytest]\naddopts = -q\n" {
 		t.Errorf("setup %v langs %v ini %q", setup, langs, spec.PytestINI)
+	}
+	if !strings.Contains(spec.Commands[2].Run, `; export PYTHONPATH="src:$PYTHONPATH"; `) || strings.Contains(spec.Commands[0].Run, "PYTHONPATH") {
+		t.Errorf("the src layout's import path: %q", spec.Commands[2].Run)
 	}
 	if err := spec.Validate(false); err != nil {
 		t.Error(err)

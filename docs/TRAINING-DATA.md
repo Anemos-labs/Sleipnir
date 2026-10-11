@@ -255,8 +255,9 @@ oldest first, each one's first parent being the one before; optionally an issue 
 * **Prompt.** The milestones in order, each the issue's text when one is given and otherwise the commit message,
   without the "Merge pull request" line of a merge commit (cleaned as for `--commits`; at most 16 KiB each), then how
   the work is checked.
-* **Score.** The whole-suite scorer runs `go test` in each Go module, pytest in the Python project (one at most) and
-  `cargo test` in each cargo package the tests belong to. The suite is recorded `--repeats` times (default 3) at the
+* **Score.** The whole-suite scorer runs `go test` in each Go module, pytest in the Python project (one at most; with
+  `src/` first on `PYTHONPATH` when the project has one, so the tests import the working tree rather than an installed
+  copy) and `cargo test` in each cargo package the tests belong to. The suite is recorded `--repeats` times (default 3) at the
   start and after each pull request (the start with the non-test changes up to it and the hidden tests in place;
   `taskgen.RecordSuiteSteps`). `taskgen.BuildStepUnits` makes the unit `milestone-k` of the tests that fail in every
   run before pull request k and pass in every run from it on, weighted by the lines pull request k changed outside the

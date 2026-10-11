@@ -708,7 +708,8 @@ var pythonProjectFiles = []string{"pyproject.toml", "setup.cfg", "setup.py", "py
 
 // chainSuite chooses the suite of a chain from its hidden tests at rev (the
 // end): GoSuiteCommand for each Go module, PythonSuiteCommand for the Python
-// project (one at most) with the end's pytest configuration, RustSuiteCommand
+// project (one at most) with the end's pytest configuration and, in a src
+// layout, src/ first on PYTHONPATH, RustSuiteCommand
 // for each cargo package. Each command first removes the deleted test files.
 // It returns the record-only spec, the setup commands (go mod download and
 // cargo fetch where they apply) and the languages, the most tested first.
@@ -799,7 +800,13 @@ func chainSuite(ctx context.Context, r *repo, rev string, hidden []hiddenFile, d
 			return SuiteSpec{}, nil, nil, fmt.Errorf("the pytest configuration: %w", err)
 		}
 		spec.PytestINI = ini
-		spec.Commands = append(spec.Commands, PythonSuiteCommand(rel(d)))
+		c := PythonSuiteCommand(rel(d))
+		if r.exists(ctx, rev, path.Join(d, "src")) {
+			// A src layout: the tests import the working tree only with src/ first on the import path, ahead of
+			// any installed copy of the project.
+			c.Run = `export PYTHONPATH="src:$PYTHONPATH"; ` + c.Run
+		}
+		spec.Commands = append(spec.Commands, c)
 	}
 	for _, d := range sortedKeysBool(dirs[Rust]) {
 		spec.Commands = append(spec.Commands, RustSuiteCommand(rel(d)))
