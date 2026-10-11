@@ -122,9 +122,15 @@ type Config struct {
 	// all results from the preceding tool batch have been appended. This also
 	// protects the first run of an isolated team that has never returned an answer.
 	SnapshotEachStep bool
-	ID               string
-	Role             string
-	Model            cost.Model
+	// Barrier, when set, is held shared from the start of each tool batch until
+	// its results are in the thread, and the agent keeps an in-memory recoverable
+	// snapshot taken at that point (Recoverable). A savepoint that holds it
+	// exclusively therefore sees the work tree and every agent's recoverable
+	// snapshot at one consistent moment: no tool is half way.
+	Barrier Barrier
+	ID      string
+	Role    string
+	Model   cost.Model
 
 	Provider provider.Provider
 	// Compactor, when set, writes the compaction patches in place of Provider (a cheaper model
@@ -375,6 +381,7 @@ type Agent struct {
 	stepInRun   int
 	lastMaskReq int
 	lastSnap    core.Hash // the blob of the newest snapshot written
+	recoverable *Snapshot // the newest snapshot taken at a tool-batch boundary (Config.Barrier)
 
 	comp compactionState
 
@@ -702,6 +709,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
 	}
+	a.noteRecoverable()
 	if a.cfg.SnapshotEachStep {
 		if err := a.writeSnapshot(true); err != nil {
 			return res, fmt.Errorf("save recovery snapshot: %w", err)
@@ -843,22 +851,8 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			return res, nil
 		}
 		phase = "tools"
-		results, exitFailed := a.runTools(ctx, calls)
+		stuck := a.toolBatch(ctx, calls)
 		phase = "between"
-		blocks := results
-		if extra := a.takeInbox(); len(extra) > 0 {
-			blocks = append(blocks, extra...)
-		}
-		note, stuck := a.rep.observeExits(a.cfg.ID, calls, results, exitFailed)
-		guard := "repeat"
-		if tn := a.tests.observe(calls, results, exitFailed); tn != "" && note == "" {
-			note, guard = tn, "tests"
-		}
-		if note != "" && stuck == nil {
-			blocks = append(blocks, core.Text(note))
-			a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "guard": guard, "note": note})
-		}
-		a.pushUser(core.OriginTool, blocks)
 		if stuck != nil {
 			// The results are in the thread, so it stays valid; the run ends here.
 			a.emit(events.TypeAgentStuck, map[string]any{"phase": "stop", "error": stuck.Error()})
@@ -866,6 +860,35 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		}
 	}
 	return res, fmt.Errorf("agent %s: step limit %d reached", a.cfg.ID, a.cfg.MaxSteps)
+}
+
+// toolBatch runs one batch of calls and appends their results (and any mail and
+// guard notes) to the thread, holding Config.Barrier shared for the whole of it
+// when the batch may write (batchWrites), and notes the recoverable snapshot
+// before releasing it. stuck is the repeat
+// guard's verdict that the run must end.
+func (a *Agent) toolBatch(ctx context.Context, calls []core.Block) (stuck error) {
+	if b := a.cfg.Barrier; b != nil && a.batchWrites(calls) {
+		b.RLock()
+		defer b.RUnlock()
+	}
+	results, exitFailed := a.runTools(ctx, calls)
+	blocks := results
+	if extra := a.takeInbox(); len(extra) > 0 {
+		blocks = append(blocks, extra...)
+	}
+	note, stuck := a.rep.observeExits(a.cfg.ID, calls, results, exitFailed)
+	guard := "repeat"
+	if tn := a.tests.observe(calls, results, exitFailed); tn != "" && note == "" {
+		note, guard = tn, "tests"
+	}
+	if note != "" && stuck == nil {
+		blocks = append(blocks, core.Text(note))
+		a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "guard": guard, "note": note})
+	}
+	a.pushUser(core.OriginTool, blocks)
+	a.noteRecoverable()
+	return stuck
 }
 
 // inputEvent is the payload of the user.input event for an input turn: what the model
