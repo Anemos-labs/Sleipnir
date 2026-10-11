@@ -320,6 +320,10 @@ type Edge struct {
 	From string `json:"from"` // step or agent id
 	To   string `json:"to"`
 	Ref  string `json:"ref,omitempty"` // task id, mail id, lease id, patch id
+	// Fallback is set on a compact edge whose commit applied a mechanical patch in place of the
+	// compactor call's: the call (From) was made, but its answer was unusable, so the segment that
+	// follows (To) is not its work.
+	Fallback bool `json:"fallback,omitempty"`
 }
 
 // Fork places a branch episode in its tree of rollouts. The siblings of one

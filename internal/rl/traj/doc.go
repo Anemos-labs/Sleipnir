@@ -58,8 +58,14 @@
 // Edges: spawn (parent's last main step before agent.spawn -> child agent), mail
 // (sender's last main step before mail.send -> recipient's first main step after
 // mail.deliver, Ref the mail id), compact (the compactor call behind a
-// compact.commit -> the first main step after it, Ref "<agent>#<n>"), promote
-// (each note call between shared epochs -> "epoch:<n>").
+// compact.commit -> the first main step after it, Ref "<agent>#<n>", Fallback when
+// a mechanical patch replaced the call's), promote (each note call between shared
+// epochs -> "epoch:<n>"). A compact.commit names its compactor request (req), and
+// the edge starts at exactly that call; an empty req (a mask or emergency
+// compaction) or a request without a response gives no edge. Logs written before
+// commits named their request are linked by a heuristic: the latest compactor call
+// before the commit that no other commit took or names, and none for a commit whose
+// reason marks a mask or emergency compaction.
 //
 // # Signals
 //
